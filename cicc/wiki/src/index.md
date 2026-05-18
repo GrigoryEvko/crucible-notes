@@ -60,9 +60,9 @@ A distinctive feature of cicc is its **dual-path design** — two complete copie
 |---|---|---|
 | **Purpose** | LibNVVM API mode | Standalone mode |
 | **Simple compile** | `sub_902D10` | `sub_1262860` |
-| **Multi-stage** | `sub_905EE0` (43KB) | `sub_1265970` (48KB) |
+| **Multi-stage** | `sub_905EE0` (9 KB native) | `sub_1265970` (9 KB native) |
 | **CLI parsing** | `sub_900130` | `sub_125FB30` |
-| **Builtin table** | `sub_90AEE0` (109KB) | `sub_126A910` (123KB) |
+| **Builtin table** | `sub_90AEE0` (33 KB native) | `sub_126A910` (34 KB native) |
 | **Libdevice** | `unk_3EA0080` (455KB) | `unk_420FD80` (455KB) |
 | **Version string** | `-nvvm-version=nvvm-latest` | `-nvvm-version=nvvm70` |
 

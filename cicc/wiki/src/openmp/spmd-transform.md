@@ -428,7 +428,7 @@ worker_state_machine:
 
 The state machine consumes five runtime calls per parallel-region invocation per worker thread: two `__kmpc_barrier_simple_generic` (ID 188) for poll/sync barriers, one `__kmpc_kernel_parallel` (ID 171) to check for dispatched work, one indirect or direct call to the outlined function, and one `__kmpc_kernel_end_parallel` (ID 172) to signal completion. Each `__kmpc_barrier_simple_generic` call compiles to a poll loop on a shared-memory flag -- not a hardware `bar.sync` -- because the generic barrier must handle the asymmetric wakeup protocol where the master thread signals workers through `__kmpc_kernel_prepare_parallel`.
 
-### Worker State Machine Generator: `sub_2678420` (41 KB)
+### Worker State Machine Generator: `sub_2678420` (9 KB native)
 
 When the SPMD transformation fails (eligibility flag `*(a1+241) == 0`), cicc falls back to `sub_2678420` which builds a *customized* state machine that is more efficient than the default runtime state machine. The customization replaces the indirect `fn(args)` call in `.fallback.execute` with a direct-call dispatch table when the set of outlined parallel functions is statically known.
 
@@ -509,7 +509,7 @@ The runtime calls consumed by `sub_2678420`:
 
 ### SPMD Amenability Analysis Pipeline
 
-The eligibility flag at `*(a1+241)` -- which gates whether `sub_26968A0` attempts the SPMD transformation -- is computed by the Attributor-based OpenMP optimization driver at `sub_269F530` (63 KB). This driver orchestrates interprocedural fixed-point analysis using the standard LLVM Attributor framework.
+The eligibility flag at `*(a1+241)` -- which gates whether `sub_26968A0` attempts the SPMD transformation -- is computed by the Attributor-based OpenMP optimization driver at `sub_269F530` (10 KB native). This driver orchestrates interprocedural fixed-point analysis using the standard LLVM Attributor framework.
 
 The analysis pipeline:
 
@@ -648,7 +648,7 @@ The cicc SPMD transformation in `sub_26968A0` is a proprietary reimplementation 
 | Barrier | `__kmpc_barrier_simple_spmd` | Same: `__kmpc_barrier_simple_spmd` (call ID 187) |
 | Hash tables | LLVM `DenseSet` / `SmallPtrSet` | Custom open-addressing with `-4096` sentinel ([details](../infra/hash-infrastructure.md)) |
 | Region merging | Separate `openmp-opt-enable-merging` flag (disabled by default) | Integrated into the complex path; always runs when needed |
-| State machine fallback | `buildCustomStateMachine` in same `AAKernelInfo::manifest` | Separate function `sub_2678420` (41 KB) |
+| State machine fallback | `buildCustomStateMachine` in same `AAKernelInfo::manifest` | Separate function `sub_2678420` (9 KB native) |
 | Diagnostic IDs | OMP120, OMP121 (identical) | OMP120, OMP121 (identical) |
 | `ompx_spmd_amenable` override | Same attribute name | Same attribute name |
 

@@ -7,7 +7,7 @@ The pass runs repeatedly throughout the pipeline -- up to 10 times in the "mid" 
 | | |
 |---|---|
 | **Pass factory** | `sub_1CB4E40` (creates pass instance with level parameter) |
-| **Core engine** | `sub_2C63FB0` (140KB, 2,460 lines) |
+| **Core engine** | `sub_2C63FB0` (12 KB native; 2,460 lines decomp) |
 | **Pass type** | FunctionPass (Legacy PM) |
 | **Registration** | Legacy PM only (not separately registered in New PM); invoked from pipeline assembler |
 | **Runtime positions** | Tier 1/2/3 #1, #3, #28, #50, #64 (level 1); "mid" path has 4 level-0 invocations (see [Pipeline](../llvm/pipeline.md)) |
@@ -267,11 +267,11 @@ This global is not exposed as a user-facing knob. It is initialized at program s
 | Function | Address | Role |
 |---|---|---|
 | `sub_1CB4E40` | `0x1CB4E40` | Pass factory -- creates pass with level parameter |
-| `sub_2C63FB0` | `0x2C63FB0` | Core lowering engine (140KB, 2,460 lines) |
+| `sub_2C63FB0` | `0x2C63FB0` | Core lowering engine (12 KB native; 2,460 lines decomp) |
 
 ## Diagnostic Strings
 
-The core engine at `sub_2C63FB0` contains no user-visible diagnostic strings. This is unusual for a 140KB function and reflects the fact that intrinsic lowering is a mechanical pattern-matching operation: either a lowering rule matches (silently applied) or it does not (silently skipped). Failures are not reported because an unlowered intrinsic is not necessarily an error -- it may be handled by a later pass (NVVMLowerBarriers, GenericToNVVM) or by the NVPTX instruction selector directly.
+The core engine at `sub_2C63FB0` contains no user-visible diagnostic strings. This is unusual for a 12 KB native function and reflects the fact that intrinsic lowering is a mechanical pattern-matching operation: either a lowering rule matches (silently applied) or it does not (silently skipped). Failures are not reported because an unlowered intrinsic is not necessarily an error -- it may be handled by a later pass (NVVMLowerBarriers, GenericToNVVM) or by the NVPTX instruction selector directly.
 
 The pass factory `sub_1CB4E40` similarly contains no diagnostic strings.
 

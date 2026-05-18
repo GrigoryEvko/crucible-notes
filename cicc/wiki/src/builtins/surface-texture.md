@@ -303,9 +303,9 @@ These intrinsics handle the compile-time binding of texture and surface referenc
 
 Intrinsic `0x48` (opcode 332) handles global texture handles, while `0x162` (opcode 331) handles sampler handles. Intrinsic `0x169` dispatches to `sub_3400BD0` + `sub_3406EB0(opcode=333)` for indirect texture access.
 
-## Instruction Selection: `sub_306A930` (52KB)
+## Instruction Selection: `sub_306A930` (10 KB native)
 
-The NVPTX instruction selection pass contains a 52KB handler (`sub_306A930`) dedicated to matching texture/surface DAG nodes to machine instructions. It calls five helper functions:
+The NVPTX instruction selection pass contains a 10 KB native handler (`sub_306A930`) dedicated to matching texture/surface DAG nodes to machine instructions. It calls five helper functions:
 
 | Helper | Address | Role |
 |---|---|---|
@@ -317,9 +317,9 @@ The NVPTX instruction selection pass contains a 52KB handler (`sub_306A930`) ded
 
 The ISel handler selects among `tex`, `suld`, `sust` machine instruction patterns, with address space awareness for the different texture/surface memory regions.
 
-## Image Type Validation: `sub_21DD1A0` (16KB)
+## Image Type Validation: `sub_21DD1A0` (2.7 KB native)
 
-A dedicated 16KB validation function (`sub_21DD1A0`) checks that the image type encoding is legal for the instruction class. Four error messages cover the instruction categories:
+A dedicated 2.7 KB native validation function (`sub_21DD1A0`) checks that the image type encoding is legal for the instruction class. Four error messages cover the instruction categories:
 
 | Error String | Instruction Class |
 |---|---|
@@ -343,7 +343,7 @@ The out-of-bounds mode is encoded in the intrinsic name itself, not as a paramet
 
 ## PTX Emission: Sampler State Initializers
 
-The PTX emitter `sub_2156420` (20KB) handles module-level emission of texture, surface, and sampler global variables. Sampler references receive structured initializers:
+The PTX emitter `sub_2156420` (5 KB native) handles module-level emission of texture, surface, and sampler global variables. Sampler references receive structured initializers:
 
 ```ptx
 .global .samplerref my_sampler = {
@@ -371,7 +371,7 @@ The complete texture/surface compilation pipeline spans five compiler phases:
 | **EDG Frontend** | `sub_72BA30` | Parses `__nv_tex_surf_handle_t` as built-in type; keyword 277 |
 | **NVVM Builtin Lowering** | `sub_955A70` case `0x287` / `sub_954F10` | String-based dispatch constructs LLVM intrinsic names; red-black tree maps resolve builtin IDs to intrinsic IDs |
 | **SelectionDAG Lowering** | `sub_33B0210` / `sub_33A4350` / `sub_33A3180` | 50+ texture intrinsic IDs become NVPTXISD DAG nodes; handle binding validated against GlobalVariable metadata |
-| **Instruction Selection** | `sub_306A930` (52KB) | DAG nodes matched to `tex.*` / `suld.*` / `sust.*` machine instructions |
+| **Instruction Selection** | `sub_306A930` (10 KB native) | DAG nodes matched to `tex.*` / `suld.*` / `sust.*` machine instructions |
 | **PTX Emission** | `sub_2156420` / `sub_21DD1A0` | `.texref`/`.surfref`/`.samplerref` globals emitted; image type validated; `NVPTXReplaceImageHandles` substitutes abstract handles |
 
 ## Architecture Considerations

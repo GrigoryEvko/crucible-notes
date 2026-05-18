@@ -44,7 +44,7 @@ for (i = K+1; i < N; i++) normal();
 
 This eliminates the branch from both resulting loops entirely. On a GPU, this means warps executing the pre-K or post-K loops never diverge on this condition.
 
-**Implementation:** `sub_2CC3FF0` (13KB, New PM) / part of `sub_1C77080` (46KB, Legacy PM).
+**Implementation:** `sub_2CC3FF0` (2.7 KB native, New PM) / part of `sub_1C77080` (10 KB native, Legacy PM).
 
 ### Mode B: Only-One-Iteration Collapse (`processOnlyOneIterationLoop`)
 
@@ -66,7 +66,7 @@ if (K >= 0 && K < N) doWork();
 
 This transforms an O(N) loop into O(1) code -- a dramatic optimization when the original loop's only purpose was to find and execute a single iteration.
 
-**Implementation:** `sub_2CC4A70` (19KB, New PM) / part of `sub_1C77080` (46KB, Legacy PM).
+**Implementation:** `sub_2CC4A70` (3.7 KB native, New PM) / part of `sub_1C77080` (10 KB native, Legacy PM).
 
 ### Mode C: Range Split (`processSplitRangeLoop`)
 
@@ -89,11 +89,11 @@ for (i = M; i < N; i++) b();
 
 This is the most common transformation for GPU boundary handling code, where the first/last few iterations of a tile perform padding or clamping.
 
-**Implementation:** `sub_2CC5900` (68KB, New PM) / `sub_1C7B2C0` (84KB, Legacy PM). The loop cloning and rewiring logic is in `sub_2CC1B10` (42KB), with split point computation in `sub_2CC0040` and `sub_2CC0CC0` (7KB each).
+**Implementation:** `sub_2CC5900` (11 KB native, New PM) / `sub_1C7B2C0` (11 KB native, Legacy PM). The loop cloning and rewiring logic is in `sub_2CC1B10` (9 KB native), with split point computation in `sub_2CC0040` (0.5 KB native) and `sub_2CC0CC0` (1.5 KB native).
 
 ## Algorithm Detail
 
-The main driver (`sub_2CC5900`, 68KB) proceeds as follows:
+The main driver (`sub_2CC5900`, 11 KB native) proceeds as follows:
 
 1. **Verify loop structure:** The loop must have exactly one exit, a preheader, a latch block, and an identifiable header.
 2. **Initialize SCEV analysis:** Obtains the ScalarEvolution result for the loop to identify the induction variable and compute trip counts.

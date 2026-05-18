@@ -2,25 +2,25 @@
 
 CICC implements a **two-phase concurrent compilation model** that is entirely absent from upstream LLVM. The optimizer runs twice over the same module: Phase I performs whole-module analysis and early IR optimizations on a single thread, then Phase II runs per-function backend optimization in parallel across a thread pool. The design exploits the fact that most backend passes (instruction selection prep, register pressure reduction, peephole) are function-local and do not require cross-function information once Phase I has completed interprocedural analysis.
 
-The two-phase protocol lives in `sub_12E7E70` (9,405 bytes), which calls the same master pipeline function `sub_12E54A0` twice, discriminated only by a TLS phase counter. The concurrency infrastructure spans the `0x12D4000`--`0x12EA000` address range and includes a GNU Make jobserver integration for build-system-aware parallelism throttling -- a feature that allows `make -j8` to correctly limit total system load even when each cicc invocation itself wants to spawn threads.
+The two-phase protocol lives in `sub_12E7E70` (2,118 bytes native), which calls the same master pipeline function `sub_12E54A0` twice, discriminated only by a TLS phase counter. The concurrency infrastructure spans the `0x12D4000`--`0x12EA000` address range and includes a GNU Make jobserver integration for build-system-aware parallelism throttling -- a feature that allows `make -j8` to correctly limit total system load even when each cicc invocation itself wants to spawn threads.
 
 | | |
 |---|---|
-| **Phase I/II orchestrator** | `sub_12E7E70` (9,405 bytes) |
+| **Phase I/II orchestrator** | `sub_12E7E70` (2,118 bytes native) |
 | **Phase counter (TLS)** | `qword_4FBB3B0` -- values 1, 2, 3 |
-| **Concurrency eligibility** | `sub_12D4250` (626 bytes) |
-| **Function sorting** | `sub_12E0CA0` (23,422 bytes) |
-| **Concurrent entry** | `sub_12E1EF0` (51,325 bytes) |
-| **Worker entry** | `sub_12E7B90` (2,997 bytes) |
+| **Concurrency eligibility** | `sub_12D4250` (161 bytes native) |
+| **Function sorting** | `sub_12E0CA0` (4,678 bytes native) |
+| **Concurrent entry** | `sub_12E1EF0` (10,509 bytes native) |
+| **Worker entry** | `sub_12E7B90` (732 bytes native) |
 | **Per-function callback** | `sub_12E8D50` |
-| **Per-function optimizer** | `sub_12E86C0` (7,687 bytes) |
+| **Per-function optimizer** | `sub_12E86C0` (1,665 bytes native) |
 | **GNU jobserver init** | `sub_16832F0` |
 | **MAKEFLAGS parser** | `sub_1682BF0` |
 | **Thread pool create** | `sub_16D4AB0` |
 | **Thread pool enqueue** | `sub_16D5230` |
 | **Thread pool join** | `sub_16D4EC0` |
 | **Disable env var** | `LIBNVVM_DISABLE_CONCURRENT_API` -- `byte_4F92D70` |
-| **Pipeline function** | `sub_12E54A0` (49,800 bytes) -- called by both phases |
+| **Pipeline function** | `sub_12E54A0` (9,968 bytes native) -- called by both phases |
 
 ## Two-Phase Architecture
 
@@ -99,7 +99,7 @@ Phase I always runs single-threaded on the whole module because interprocedural 
 
 ## Eligibility Check
 
-`sub_12D4250` (626 bytes) determines whether the module qualifies for concurrent compilation. The check is straightforward:
+`sub_12D4250` (161 bytes native) determines whether the module qualifies for concurrent compilation. The check is straightforward:
 
 ```
 int sub_12D4250(Module *mod, Options *opts) {
@@ -123,7 +123,7 @@ The key gate is `defined_count > 1`. A module with a single kernel and no device
 
 ## Function Priority Sorting
 
-Before distributing functions to worker threads, `sub_12E0CA0` (23,422 bytes) sorts them by compilation priority. This step is critical for load balancing: larger or more complex functions should start compiling first so they don't become tail stragglers.
+Before distributing functions to worker threads, `sub_12E0CA0` (4,678 bytes native) sorts them by compilation priority. This step is critical for load balancing: larger or more complex functions should start compiling first so they don't become tail stragglers.
 
 ### Sorting Algorithm
 
@@ -138,10 +138,10 @@ The threshold between insertion sort and introsort is 256 bytes of element data 
 
 ### Priority Source
 
-Priority values come from function attributes extracted by `sub_12D3D20` (585 bytes). The sorted output is a vector of `(name_ptr, name_len, priority)` tuples with 32-byte stride, used directly by the per-function dispatch loop to determine compilation order. Functions with higher priority (likely larger or more critical kernels) are submitted to the thread pool first.
+Priority values come from function attributes extracted by `sub_12D3D20` (145 bytes native). The sorted output is a vector of `(name_ptr, name_len, priority)` tuples with 32-byte stride, used directly by the per-function dispatch loop to determine compilation order. Functions with higher priority (likely larger or more critical kernels) are submitted to the thread pool first.
 
 ```c
-/* Function priority enumeration + sort, sub_12E0CA0 (4678 bytes).
+/* Function priority enumeration + sort, sub_12E0CA0 (4,678 bytes native).
  * Output is a contiguous array of 32-byte records; the dispatch loop
  * walks this array in priority-descending order. */
 typedef struct {
@@ -321,7 +321,7 @@ void sub_12E8D50(Context *ctx) {
 }
 ```
 
-### Per-Function Phase II Optimizer (sub_12E86C0, 7,687 bytes)
+### Per-Function Phase II Optimizer (sub_12E86C0, 1,665 bytes native)
 
 This function sets the TLS phase counter to 2 and runs the pass pipeline on the individual function's module:
 

@@ -2,11 +2,11 @@
 
 NVVMPassOptions is NVIDIA's proprietary per-pass configuration system -- a 4,512-byte flat struct containing 221 option slots that controls every aspect of the NVVM optimization pipeline. It has no upstream LLVM equivalent. Where LLVM uses scattered `cl::opt<T>` globals that each pass reads independently, NVIDIA consolidates all pass configuration into a single contiguous struct that is allocated once and threaded through the entire pipeline assembler as a parameter. This design allows the pipeline to make pass-enable decisions through simple byte reads at known offsets rather than hash-table lookups, and it ensures that the complete configuration state can be copied between Phase I and Phase II of the two-phase compilation model.
 
-The struct is populated by a single 125KB function (`sub_12D6300`) that reads from a `PassOptionRegistry` hash table and flattens the results into 221 typed slots. The pipeline assembler (`sub_12E54A0`) and its sub-pipeline builders (`sub_12DE330`, `sub_12DE8F0`) then read individual slots by offset to decide which passes to insert and how to configure them.
+The struct is populated by a single 27 KB native function (`sub_12D6300`, ~4,786 lines decompiled) that reads from a `PassOptionRegistry` hash table and flattens the results into 221 typed slots. The pipeline assembler (`sub_12E54A0`) and its sub-pipeline builders (`sub_12DE330`, `sub_12DE8F0`) then read individual slots by offset to decide which passes to insert and how to configure them.
 
 | | |
 |---|---|
-| **Initializer** | `sub_12D6300` (125KB, 4,786 lines) |
+| **Initializer** | `sub_12D6300` (27 KB native; 4,786 lines decomp) |
 | **Struct size** | 4,512 bytes (`sub_22077B0(4512)`) |
 | **Slot count** | 221 (1-based index: 1--221) |
 | **Slot types** | 5: STRING (24B), BOOL_COMPACT (16B), BOOL_INLINE (16B), INTEGER (16B), STRING_PTR (28B) |
@@ -219,13 +219,13 @@ The path from a user-visible flag to an NVVMPassOptions slot traverses four stag
 nvcc -Xcicc -opt "-do-licm=0"          ← user invocation
     │
     ▼
-sub_9624D0 (flag catalog, 75KB)        ← parses -opt flags into opt_argv vector
+sub_9624D0 (flag catalog, 19 KB native)  ← parses -opt flags into opt_argv vector
     │   pushes "-do-licm=0" into v327 (opt vector)
     ▼
 PassOptionRegistry (hash table)         ← opt-phase parser populates registry
     │   key = slot_index, value = "0"
     ▼
-sub_12D6300 (125KB initializer)         ← flattens registry into 4512-byte struct
+sub_12D6300 (27 KB native initializer)  ← flattens registry into 4512-byte struct
     │   sub_12D6240(registry, LICM_SLOT, "1") → returns 0 (overridden)
     │   writes opts[2880] = 0
     ▼

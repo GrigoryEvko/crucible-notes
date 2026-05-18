@@ -26,7 +26,7 @@ Address range `0x12D0000`–`0x16FFFFF` (~4.2 MB of code).
 ## Architecture
 
 ```
-sub_12E1EF0 (51KB, concurrent compilation entry)
+sub_12E1EF0 (10 KB native, concurrent compilation entry)
   │
   ├─ GNU Jobserver init (sub_16832F0, --jobserver-auth=R,W from MAKEFLAGS)
   ├─ Bitcode reading + verification (sub_153BF40)

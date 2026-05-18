@@ -7,8 +7,8 @@ The NVPTXTargetMachine, NVPTXSubtarget, and NVPTXTargetTransformInfo form the ta
 | Property | Value |
 |---|---|
 | SM processor table | `qword_502A920` (45 entries, stride-2, `ctor_605` at `0x584510`) |
-| Target lookup | `sub_12EA530` (4KB, calls `sub_16D3AC0` = `TargetRegistry::lookupTarget`) |
-| TargetMachine creation | `sub_12F4060` (16KB, NVIDIA options) / `sub_12E54A0` (50KB, pipeline path) |
+| Target lookup | `sub_12EA530` (1 KB native, calls `sub_16D3AC0` = `TargetRegistry::lookupTarget`) |
+| TargetMachine creation | `sub_12F4060` (4 KB native, NVIDIA options) / `sub_12E54A0` (10 KB native, pipeline path) |
 | TTI wrapper pass | `sub_1BFB520` (208-byte alloc, wraps `sub_1BFB9A0`) |
 | Register bit width (Vector) | `sub_DFE640` -- returns 32 (fixed) |
 | Scalable vectors | `sub_DFE610` -- returns `false` |
@@ -34,7 +34,7 @@ sub_12F7D90 — CLI parser:
     parse "-prec-sqrt=N"     → sqrt precision
     parse "--device-c"       → device compilation flag
 
-sub_12F4060 — TargetMachine creation (16KB):
+sub_12F4060 — TargetMachine creation (4 KB native):
     triple = (pointerWidth == 64) ? "nvptx64" : "nvptx"
     features = ""
     if (sharedmem32bit):
@@ -167,7 +167,7 @@ The TTI is the interface through which all LLVM optimization passes query target
 | `getMaxInterleaveFactor()` | `sub_DFB120` | Register-pressure-bounded | CPU returns 2-4 based on uarch |
 | `getMaxInterleaveFactor(vectorized)` | `sub_DFB730` | Separate limit for vectorized loops | -- |
 | `getRegisterBitWidth(Scalar)` | `sub_DFB1B0` | 32 | Matches PTX 32-bit register file |
-| `getInstructionCost()` | `sub_20E14F0` (32KB) | Per-opcode latency from sched model | -- |
+| `getInstructionCost()` | `sub_20E14F0` (6.4 KB native) | Per-opcode latency from sched model | -- |
 | `hasAttribute(30)` | `sub_B2D610` | Checks `noimplicitfloat` | Standard LLVM |
 | `hasAttribute(47)` | `sub_B2D610` | Checks `alwaysvectorize` | Standard LLVM |
 | `hasAttribute(18)` | `sub_B2D610` | Checks `optnone` | Standard LLVM |

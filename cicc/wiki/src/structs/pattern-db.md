@@ -1,6 +1,6 @@
 # Instruction Constraint Table (Pattern Database)
 
-The instruction selection backend in cicc v13.0 uses a global constraint table to map target opcodes to their operand requirements. This table drives the `sub_B612D0` constraint emission function (104KB), which consults a packed 16-bit word array to determine register classes and constraint patterns for each machine instruction. The constraint table is the single authoritative source of truth for every NVPTX MachineInstr's register requirements -- any reimplementation of the backend codegen must reproduce it exactly.
+The instruction selection backend in cicc v13.0 uses a global constraint table to map target opcodes to their operand requirements. This table drives the `sub_B612D0` constraint emission function (38 KB native), which consults a packed 16-bit word array to determine register classes and constraint patterns for each machine instruction. The constraint table is the single authoritative source of truth for every NVPTX MachineInstr's register requirements -- any reimplementation of the backend codegen must reproduce it exactly.
 
 ## Global Table: `word_3F3E6C0`
 
@@ -102,7 +102,7 @@ The constraint emission pipeline involves these collaborating functions:
 | `sub_A78010` | -- | `emitConstraint(a1, &desc_array, N)` | Emit the final constraint with N entries to the instruction descriptor |
 | `sub_B612D0` | 104KB | `emitInstrConstraint(a1, opcode)` | Top-level: lookup `word_3F3E6C0`, dispatch on constraint class, build and emit |
 
-The `sub_B5BA00` function (21KB) is itself a 111-case switch that translates register class IDs into the internal constraint representation. It produces the `value` field for output constraint entries. Its size suggests that it handles not just the 9 primary register classes but also sub-register classes, paired classes, and special accumulator classes for tensor operations.
+The `sub_B5BA00` function (10 KB native) is itself a 111-case switch that translates register class IDs into the internal constraint representation. It produces the `value` field for output constraint entries. Its size suggests that it handles not just the 9 primary register classes but also sub-register classes, paired classes, and special accumulator classes for tensor operations.
 
 ## Constraint Switch Structure
 

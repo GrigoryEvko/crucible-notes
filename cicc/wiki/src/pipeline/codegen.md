@@ -35,40 +35,40 @@ LLVM IR
   │
   ├─ SelectionDAG Build
   │    sub_2065D30 (visit dispatcher)
-  │    sub_2056920 (major worker, 69KB)
+  │    sub_2056920 (major worker, 15 KB native)
   │    sub_2077400 (NVVM tex/surf handle lowering) ★ NVIDIA
-  │    sub_2072590 (NVPTX argument passing, 38KB) ★ NVIDIA
+  │    sub_2072590 (NVPTX argument passing, 6 KB native) ★ NVIDIA
   │
   ├─ LegalizeTypes
-  │    sub_20019C0 (348KB main loop)
-  │    sub_201E5F0 (opcode dispatch, 81KB)
-  │    sub_201BB90 (expand integer, 75KB)
+  │    sub_20019C0 (45 KB native main loop)
+  │    sub_201E5F0 (opcode dispatch, 11 KB native)
+  │    sub_201BB90 (expand integer, 11 KB native)
   │
   ├─ LegalizeOp
-  │    sub_1FFB890 (169KB, type action dispatch)
-  │    sub_1FF6F70 (43KB, atomic target-specific lowering) ★ NVIDIA
+  │    sub_1FFB890 (17 KB native, type action dispatch)
+  │    sub_1FF6F70 (10 KB native, atomic target-specific lowering) ★ NVIDIA
   │
   ├─ DAG Combining
-  │    sub_F681E0 (65KB, top-level orchestrator)
-  │    sub_F20C20 (64KB, visitNode main)
+  │    sub_F681E0 (11 KB native, top-level orchestrator)
+  │    sub_F20C20 (11 KB native, visitNode main)
   │
   ├─ Instruction Selection
-  │    sub_3090F90 (91KB, NVPTXDAGToDAGISel::Select) ★ NVIDIA
-  │    sub_33D4EF0 (complex addressing, calls sub_969240 399×)
+  │    sub_3090F90 (13 KB native, NVPTXDAGToDAGISel::Select) ★ NVIDIA
+  │    sub_33D4EF0 (29 KB native, complex addressing, calls sub_969240 399×)
   │
   ├─ Instruction Scheduling
-  │    sub_355F610 (64KB, ScheduleDAGMILive post-RA)
-  │    sub_3563190 (58KB, MachinePipeliner)
+  │    sub_355F610 (11 KB native, ScheduleDAGMILive post-RA)
+  │    sub_3563190 (13 KB native, MachinePipeliner)
   │
   ├─ Register Allocation
-  │    sub_2F49070 (82KB, RAGreedy::selectOrSplit)
-  │    sub_2F2D9F0 (93KB, LiveRangeSplitter)
+  │    sub_2F49070 (11 KB native, RAGreedy::selectOrSplit)
+  │    sub_2F2D9F0 (12 KB native, LiveRangeSplitter)
   │
   ├─ Machine-Level Passes
   │    MRPA, Block Remat, Mem2Reg, LDG, Peephole, etc.
   │
   └─ StructurizeCFG
-       sub_35CC920 (95KB, mandatory for PTX structured control flow)
+       sub_35CC920 (12 KB native, mandatory for PTX structured control flow)
 ```
 
 Items marked **★ NVIDIA** are NVIDIA-proprietary additions not present in upstream LLVM.

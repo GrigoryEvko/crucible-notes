@@ -6,14 +6,14 @@ Understanding these three layers is essential for reimplementation because they 
 
 | | |
 |---|---|
-| **EDG terminal emitter** | `sub_681D20` (37KB, 1,342 lines) at `0x681D20` |
-| **EDG dispatch/SARIF emitter** | `sub_6837D0` (20KB) at `0x6837D0` |
+| **EDG terminal emitter** | `sub_681D20` (6 KB native; 1,342 lines decomp) at `0x681D20` |
+| **EDG dispatch/SARIF emitter** | `sub_6837D0` (4 KB native) at `0x6837D0` |
 | **Diagnostic format selector** | `unk_4D04198`: 0 = text, 1 = SARIF |
 | **Format CLI flag** | `--diagnostics_format=text\|sarif` (case 0x125 in `sub_617BD0`) |
 | **EDG output mode CLI** | `--output_mode text\|sarif` (case 293 in lgenfe_main) |
 | **LLVM remark registration** | `ctor_152` at `0x4CE3F0` (3 regex `cl::opt`s) |
-| **LLVM remark YAML serializer** | `sub_15CAD70` (13KB) at `0x15CAD70` |
-| **LLVM remark bitstream serializer** | `sub_F01350` (23KB) at `0xF01350` |
+| **LLVM remark YAML serializer** | `sub_15CAD70` (2.6 KB native) at `0x15CAD70` |
+| **LLVM remark bitstream serializer** | `sub_F01350` (4.4 KB native) at `0xF01350` |
 | **Profuse inlining knob** | `profuseinline` at `0x4DBEC0` (ctor\_186\_0), default off |
 | **Profuse GVN knob** | `profusegvn` at `0x4FAE7E0` (ctor\_201), default true |
 | **Diagnostic output stream** | `qword_4F07510` (FILE\*, typically stderr) |

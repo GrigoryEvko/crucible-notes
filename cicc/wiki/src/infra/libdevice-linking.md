@@ -13,8 +13,8 @@ Upstream LLVM has no equivalent of this embedded-library mechanism. Clang relies
 | **Target triple** | `nvptx64-nvidia-gpulibs` |
 | **NVVM IR version** | `!nvvmir.version = !{i32 2, i32 0}` (always-compatible sentinel) |
 | **Attribute group** | `#0 = { alwaysinline nounwind }` on all public functions |
-| **Module linker** | `sub_12C06E0` (63KB, 2,154 lines) |
-| **Version checker** | `sub_12BFF60` (9KB, 362 lines) |
+| **Module linker** | `sub_12C06E0` (12 KB native; 2,154 lines decomp) |
+| **Version checker** | `sub_12BFF60` (1.9 KB native; 362 lines decomp) |
 | **Pipeline stage** | LNK (first stage, before OPT) |
 | **Override** | `-nvvmir-library <path>` CLI flag substitutes an external file |
 | **Version bypass** | `NVVM_IR_VER_CHK=0` disables IR version validation |
@@ -26,8 +26,8 @@ The cicc binary contains two byte-identical copies of the libdevice bitcode at d
 ```
 Binary offset         Path   Referenced by          Size
 ─────────────────────────────────────────────────────────────
-unk_3EA0080           A      sub_905EE0 (43KB)      455,876 bytes
-unk_420FD80           B      sub_1265970 (48KB)      455,876 bytes
+unk_3EA0080           A      sub_905EE0 (9 KB native)   455,876 bytes
+unk_420FD80           B      sub_1265970 (9 KB native)  455,876 bytes
 ```
 
 Both copies contain identical LLVM bitcode with:
@@ -99,7 +99,7 @@ The bitcode contains precomputed coefficient tables in address space 1 (global m
 
 ## Module Linker Algorithm
 
-`sub_12C06E0` (63KB) is the central module linker that operates during the LNK pipeline stage. It receives a list of user modules and a list of builtin modules (which includes libdevice), validates them, and produces a single merged LLVM module. The algorithm proceeds in six phases:
+`sub_12C06E0` (12 KB native) is the central module linker that operates during the LNK pipeline stage. It receives a list of user modules and a list of builtin modules (which includes libdevice), validates them, and produces a single merged LLVM module. The algorithm proceeds in six phases:
 
 ### Phase A: Module Iteration and Bitcode Validation
 

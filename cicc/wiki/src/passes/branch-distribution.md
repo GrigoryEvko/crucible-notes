@@ -12,8 +12,8 @@ The pass works by classifying every instruction in the function as a shared/glob
 | Pass type | FunctionPass (NVIDIA-custom, not in upstream LLVM) |
 | Registration | New PM #377, line 2217 in `sub_2342890` |
 | Runtime positions | Tier 1/2/3 #78, #82 (NVVMBranchDist via `sub_1CB73C0`, gated by `!opts[2080] && !opts[2120]`); see [Pipeline](../llvm/pipeline.md) |
-| Core function | `sub_1C47810` (2357 lines) |
-| Pass wrapper | `sub_1C49D10` (179 lines) |
+| Core function | `sub_1C47810` (9.5 KB native; 2,357 lines decomp) |
+| Pass wrapper | `sub_1C49D10` (970 bytes native; 179 lines decomp) |
 | Knob constructor | `ctor_525_0` at `0x563730` (493 lines) |
 | Global enable flag | `byte_4FBB6C0` (initialized to 0 in `ctor_261`) |
 

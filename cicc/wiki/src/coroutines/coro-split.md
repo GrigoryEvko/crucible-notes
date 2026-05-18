@@ -6,17 +6,17 @@ cicc v13.0 carries the complete LLVM coroutine lowering pipeline -- CoroEarly, C
 
 | Property | Value |
 |---|---|
-| CoroSplit pass entry | `sub_24EF980` (71 KB, address range `0x24EF980`--`0x24F2300`) |
-| CoroFrame layout computation | `sub_24F6730` (11,249 bytes, stack frame 5,624 bytes) |
+| CoroSplit pass entry | `sub_24EF980` (11 KB native, address range `0x24EF980`--`0x24F2300`) |
+| CoroFrame layout computation | `sub_24F6730` (11,249 bytes native, stack frame 5,624 bytes) |
 | Core frame layout workhorse | `sub_24F5860` (called from CoroFrame) |
 | createResumeFunction | `sub_2284030` |
 | createDestroyFunction | `sub_2284040` |
-| CoroEarly pass | `sub_24DCD10` (41 KB) |
-| CoroElide pass | `sub_24DF350` (80 KB) |
-| CoroAnnotationElide pass | `sub_24E2340` (33 KB) |
-| CoroSplit Cloner/Driver | `sub_25CA370` (55 KB) |
-| CoroFrame Materializer | `sub_25C5C80` (49 KB, heap-to-stack frame layout) |
-| CoroFrame Spill Analysis | `sub_25C1030` (37 KB) |
+| CoroEarly pass | `sub_24DCD10` (7 KB native) |
+| CoroElide pass | `sub_24DF350` (11 KB native) |
+| CoroAnnotationElide pass | `sub_24E2340` (6 KB native) |
+| CoroSplit Cloner/Driver | `sub_25CA370` (11 KB native) |
+| CoroFrame Materializer | `sub_25C5C80` (9 KB native, heap-to-stack frame layout) |
+| CoroFrame Spill Analysis | `sub_25C1030` (5 KB native) |
 | Pass name / debug type | `"CoroSplit"` / `"coro-split"` (at `0x4388A37` / `0x4387AC3`) |
 | Coroutine metadata table | `unk_4F8FAE8` |
 | Pipeline parser ID | #156 (CGSCC pass, param: `reuse-storage`) |
@@ -224,7 +224,7 @@ The format is: `Split '<function_name>' (frame_size=N, align=M)` where `N` is th
 
 ### The `.corodispatch` Trampoline
 
-The CoroSplit dispatcher at `sub_3160A60` (48 KB, second code cluster) generates a `.corodispatch` function -- a lightweight trampoline that:
+The CoroSplit dispatcher at `sub_3160A60` (9 KB native, second code cluster) generates a `.corodispatch` function -- a lightweight trampoline that:
 
 1. Loads `__coro_index` from the coroutine frame at offset `+0x10`
 2. Switches on the index value to select the correct resume point
@@ -271,7 +271,7 @@ struct __coro_frame {                              // type name: ".coro_frame_ty
 
 The frame variable is named `"__coro_frame"` and the type is `".coro_frame_ty"`. The suspend point index field `"__coro_index"` is the state variable for the resume switch dispatch: value 0 means "initial entry", value N means "resumed at suspend point N", and a poison/unreachable value means "coroutine has returned".
 
-The frame type builder at `sub_3169200` (46 KB) constructs the `StructType` using these rules:
+The frame type builder at `sub_3169200` (10 KB native) constructs the `StructType` using these rules:
 
 1. The two function pointers (`__resume_fn`, `__destroy_fn`) always occupy the first 16 bytes
 2. `__coro_index` occupies bytes 16--19 (i32)
@@ -281,7 +281,7 @@ The frame type builder at `sub_3169200` (46 KB) constructs the `StructType` usin
 
 ### Spill/Reload Code Generation
 
-The spill/reload generator at `sub_31650D0` (47 KB) creates the actual load/store instructions that move values between SSA registers and the coroutine frame:
+The spill/reload generator at `sub_31650D0` (9 KB native) creates the actual load/store instructions that move values between SSA registers and the coroutine frame:
 
 - A basic block named `"AllocaSpillBB"` is inserted at the function entry. All alloca instructions that need to survive across suspend points are moved here and replaced with GEP+store into the frame.
 - A basic block named `"PostSpill"` follows, branching to the original entry logic.
@@ -410,7 +410,7 @@ The combined overhead of malloc latency + global memory access latency makes un-
 
 ### CoroElide: The GPU Escape Analysis
 
-`sub_24DF350` (80 KB -- the largest coroutine pass) implements the classic heap allocation elision. It runs as a function-level pass (#220 in the pipeline parser), meaning it analyzes each caller individually after CoroSplit has already split the coroutine.
+`sub_24DF350` (11 KB native -- the largest coroutine pass) implements the classic heap allocation elision. It runs as a function-level pass (#220 in the pipeline parser), meaning it analyzes each caller individually after CoroSplit has already split the coroutine.
 
 #### Elision Preconditions
 
@@ -491,7 +491,7 @@ nvcc -Xptxas -v --compiler-options="-Rpass-missed=coro-elide" foo.cu
 
 ### CoroAnnotationElide: Developer-Asserted Elision
 
-`sub_24E2340` (33 KB) is the newer annotation-driven elision from LLVM 19. It looks for the `"elide_safe_attr"` function attribute and `".noalloc"` suffix on coroutine function names. When both are present, elision proceeds without the full escape analysis -- the developer has asserted safety.
+`sub_24E2340` (6 KB native) is the newer annotation-driven elision from LLVM 19. It looks for the `"elide_safe_attr"` function attribute and `".noalloc"` suffix on coroutine function names. When both are present, elision proceeds without the full escape analysis -- the developer has asserted safety.
 
 This is particularly useful for GPU code where the developer knows the coroutine is single-thread-scoped but the compiler cannot prove it due to pointer-to-generic-address-space casts. The `"caller_presplit"` attribute marks the caller as needing coroutine lowering, enabling the annotation elide pass to fire during the CGSCC iteration before the caller itself is split.
 
@@ -565,9 +565,9 @@ The CoroFrame at `0x3171DA0` emits:
 
 The EDG 6.6 frontend fully implements C++20 coroutine semantics in two key functions:
 
-- **`sub_87AFA0`** (14 KB) -- Coroutine body processor. Resolves `promise_type` methods: `initial_suspend`, `final_suspend`, `unhandled_exception`, `get_return_object`, `get_return_object_on_allocation_failure`. Generates the coroutine body scaffolding including the implicit try-catch around user code.
+- **`sub_87AFA0`** (3 KB native) -- Coroutine body processor. Resolves `promise_type` methods: `initial_suspend`, `final_suspend`, `unhandled_exception`, `get_return_object`, `get_return_object_on_allocation_failure`. Generates the coroutine body scaffolding including the implicit try-catch around user code.
 
-- **`sub_87BD00`** (6 KB) -- Coroutine trait resolver. Looks up `std::coroutine_traits<R, Args...>::promise_type`, `std::coroutine_handle`, `return_value`, `return_void`. The EDG IL walker maps these as IL node type 64 (`il_coroutine`), with expression sub-type `0x21` (`coroutine_expr`). The IL copier handles coroutine handles as entity type 72 (`coroutine_handle`).
+- **`sub_87BD00`** (1.4 KB native) -- Coroutine trait resolver. Looks up `std::coroutine_traits<R, Args...>::promise_type`, `std::coroutine_handle`, `return_value`, `return_void`. The EDG IL walker maps these as IL node type 64 (`il_coroutine`), with expression sub-type `0x21` (`coroutine_expr`). The IL copier handles coroutine handles as entity type 72 (`coroutine_handle`).
 
 The frontend does **not** restrict coroutines to host-side code. The EDG configuration sets `COROUTINE_ENABLING_POSSIBLE = 1` globally, meaning `__device__` functions can be coroutines. The full coroutine IR (with `llvm.coro.id`, `llvm.coro.begin`, `llvm.coro.suspend`, etc.) flows into the NVVM optimizer pipeline regardless of the function's execution space.
 

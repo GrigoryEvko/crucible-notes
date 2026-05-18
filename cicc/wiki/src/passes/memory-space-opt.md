@@ -13,7 +13,7 @@ The pass is implemented as a multi-function cluster totaling roughly 250KB of de
 | Pass type | Parameterized FunctionPass (NVIDIA-custom) |
 | Registration | New PM #416, parameterized: `first-time;second-time;no-warnings;warnings` |
 | Runtime positions | Tier 1/2/3 #65 (after DSE + DCE + LLVM standard pipeline); also runs early in "mid" path (see [Pipeline](../llvm/pipeline.md)) |
-| Pass entry point | `sub_1C70910` (2,427 lines) |
+| Pass entry point | `sub_1C70910` (11 KB native; 2,427 lines decomp) |
 | Pass factory | `sub_1C8E680` |
 | NVVMPassOptions slot | Offset `+2680` (disable), offset `+3120` (mode parameter) |
 | Binary size | ~250 KB total (multi-function cluster) |
@@ -89,7 +89,7 @@ The IP-MSP driver in `sub_1C70910` implements a fixed-point worklist algorithm t
 5. If the return memory space is resolved (`"return memory space is resolved"`), propagate to callers.
 6. Repeat until the worklist is empty.
 
-A second IP-MSP implementation exists at `sub_1C6A6C0` (54KB), which appears to be the LIBNVVM/module-pass variant. It uses DenseMap-style hash tables (sentinel -8 for empty, -16 for tombstone), has explicit loop-induction analysis (`sub_1BF8310`), and runs three sub-phases: call-site collection (level controlled by `dword_4FBD1E0`, default 4), address space resolution (level `dword_4FBD2C0`, default 2), and a WMMA-specific pass (`sub_1C5FDC0`).
+A second IP-MSP implementation exists at `sub_1C6A6C0` (11 KB native), which appears to be the LIBNVVM/module-pass variant. It uses DenseMap-style hash tables (sentinel -8 for empty, -16 for tombstone), has explicit loop-induction analysis (`sub_1BF8310`), and runs three sub-phases: call-site collection (level controlled by `dword_4FBD1E0`, default 4), address space resolution (level `dword_4FBD2C0`, default 2), and a WMMA-specific pass (`sub_1C5FDC0`).
 
 ## Function Cloning for Specialization
 

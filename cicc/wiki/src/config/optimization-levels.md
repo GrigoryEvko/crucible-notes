@@ -454,8 +454,8 @@ Before any optimization, the pipeline assembler inserts (lines 396--420):
 
 | # | Factory | Pass |
 |---|---------|------|
-| 1 | `sub_149CCE0` (368 bytes alloc) | TargetLibraryInfoWrapperPass |
-| 2 | `sub_1BFB520` (208 bytes alloc) | TargetTransformInfoWrapperPass |
+| 1 | `sub_149CCE0` (allocates 368-byte pass instance) | TargetLibraryInfoWrapperPass |
+| 2 | `sub_1BFB520` (allocates 208-byte pass instance) | TargetTransformInfoWrapperPass |
 | 3 | `sub_14A7550()` | VerifierPass / BasicAliasAnalysis |
 | 4 | `sub_1361950()` | AssumptionCacheTracker |
 | 5 | `sub_1CB0F50()` | ProfileSummaryInfoWrapperPass |

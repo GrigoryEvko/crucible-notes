@@ -4,9 +4,9 @@
 
 | | |
 |---|---|
-| **Pre-opt table builder** | `sub_90AEE0` (109 KB, populates all 770 entries) |
+| **Pre-opt table builder** | `sub_90AEE0` (33 KB native, populates all 770 entries) |
 | **Pre-opt dispatcher** | `sub_913450` (name -> ID lookup) |
-| **Post-opt table builder** | `sub_126A910` (123 KB) |
+| **Post-opt table builder** | `sub_126A910` (34 KB native) |
 | **Post-opt dispatcher** | `sub_12731E0` (name -> ID lookup) |
 | **Hash function** | `sub_CBF760` (wyhash v4 family) |
 | **Hash table insert** | `sub_90ADD0` -> `sub_C92610` -> `sub_C92740` |

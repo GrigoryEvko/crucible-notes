@@ -5,7 +5,7 @@ Three independent knob systems control compiler behavior: LLVM `cl::opt` flags (
 | | |
 |---|---|
 | **LLVM cl::opt** | 1,496 unique flags across 353 constructor files |
-| **NVVMPassOptions** | 221 slots, initialized by `sub_12D6300` (125KB) |
+| **NVVMPassOptions** | 221 slots, initialized by `sub_12D6300` (27 KB native) |
 | **Codegen knobs** | ~70, parsed by `sub_1C20170` / `sub_CD9990` from NVVM container |
 | **BSS storage** | `0x4F7FEA0`–`0x4FA5xxx` (cl::opt), `a1+0`–`a1+4464` (PassOptions) |
 | **Dual PM** | Same options registered for both Legacy PM (`sub_C53080`) and New PM (`sub_16B8280`) |
@@ -553,7 +553,7 @@ Two knobs for the New Pass Manager CGSCC inliner at `0x2613930`. See [Inliner Co
 
 ## Knob System 2: NVVMPassOptions
 
-221 pass option slots initialized by `sub_12D6300` (125KB). Each slot is accessed by integer index (1--221) and stored in a 4,512-byte struct (slot block at offsets 16--4479, 32-byte zero sentinel at 4480--4511).
+221 pass option slots initialized by `sub_12D6300` (27 KB native). Each slot is accessed by integer index (1--221) and stored in a 4,512-byte struct (slot block at offsets 16--4479, 32-byte zero sentinel at 4480--4511).
 
 ### Access Functions
 

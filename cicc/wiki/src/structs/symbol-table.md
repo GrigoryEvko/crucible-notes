@@ -489,7 +489,7 @@ When set, enables O(1) identity comparison via the `unique_id` field at `scope+3
 
 ## IL Tree Walker and Copier
 
-### Tree Walker -- `sub_7506E0` (190KB, 7283 lines)
+### Tree Walker -- `sub_7506E0` (37 KB native; 7,283 lines decomp)
 
 The generic IL tree walker visits every node in the EDG intermediate representation. It dispatches on 83 node kinds (1-86 with gaps at 24-26) using a massive switch statement.
 
@@ -520,7 +520,7 @@ for cursor = node.field; cursor; cursor = cursor.next:
 
 Next-pointer stride varies by node kind: +0, +16, +24, +32, +56, +112, +120 bytes.
 
-### Tree Copier -- `sub_766570` (148KB, 5187 lines)
+### Tree Copier -- `sub_766570` (24 KB native; 5,187 lines decomp)
 
 The copier is driven by template instantiation (`sub_8C5CD0` -> `sub_8C4EC0` -> `sub_8C2C50` -> `sub_766570`). It uses the walker's callback infrastructure:
 

@@ -162,7 +162,7 @@ This 4 MB zone contains LLVM mid-level infrastructure and the NVVM container for
 | `0xCC0130`-`0xCCABA0` | LLVM Triple parsing | `sub_CC0130` Triple_normalize (35KB) |
 | `0xCCBB10`-`0xCDCA30` | **NVVM container format** | `sub_CDD2D0` serialize, `sub_CD1D80` deserialize, `sub_CCD5F0` version validator (9KB) |
 | `0xCD9990` | | NVVM options parser (calls 60+ parse helpers) |
-| `0xD60000`-`0xD82000` | **NV Module Summary / LTO** | `sub_D7D4E0` buildModuleSummary (74KB), `sub_D81040` runOnModule (56KB) |
+| `0xD60000`-`0xD82000` | **NV Module Summary / LTO** | `sub_D7D4E0` buildModuleSummary (15 KB native), `sub_D81040` runOnModule (11 KB native) |
 | `0xD83000`-`0xDFD000` | **ScalarEvolution (SCEV)** | SCEV framework, AddRecExpr, backedge analysis |
 | `0xE00000`-`0xE0FFFF` | DWARF debug info string/enum tables | |
 | `0xE10000`-`0xE2FFFF` | Itanium C++ name demangler | `sub_E18BB0` parseExpr (47KB) |
@@ -177,7 +177,7 @@ This 4 MB zone contains LLVM mid-level infrastructure and the NVVM container for
 | `0xFF0000`-`0x101FFFF` | Block scheduling, RPO traversal, constant folding | |
 | `0x1020000`-`0x103FFFF` | **Inline ASM + scheduling model** | `sub_1035170` CUTLASS kernel detection (41KB) |
 | `0x1040000`-`0x106FFFF` | Divergence analysis, DAG utilities, IR linker | |
-| `0x1070000`-`0x10AFFFF` | MC object emission, **InstructionSimplify** | `sub_10ACA40` visitAdd (94KB) |
+| `0x1070000`-`0x10AFFFF` | MC object emission, **InstructionSimplify** | `sub_10ACA40` visitAdd (16 KB native) |
 
 ### Zone 8: InstCombine Mega-Region (0x10D0000 - 0x122FFFF)
 
@@ -186,10 +186,10 @@ The single largest contiguous pass in the binary. NVIDIA's modified InstCombine 
 | Sub-range | Contents | Key functions |
 |---|---|---|
 | `0x10D0000`-`0x10EFFFF` | InstCombine visitors (casts, shifts, memory) | Various visitXxx functions |
-| `0x10EE7A0` | **InstCombine main visitor** | `sub_10EE7A0` (405KB / 9,258 lines -- largest function in binary) |
+| `0x10EE7A0` | **InstCombine main visitor** | `sub_10EE7A0` (60 KB native; 9,258 lines decomp -- among the largest functions in the binary) |
 | `0x10F0000`-`0x1100000` | Sub-visitors for specific opcodes | |
-| `0x1100000`-`0x1170000` | Intrinsic folding, demanded bits | `sub_1169C30` intrinsic folder (87KB), `sub_11A7600` computeKnownBits (127KB) |
-| `0x1180000`-`0x119FFFF` | InstCombine core worklist | `sub_1190310` main dispatch (88KB) |
+| `0x1100000`-`0x1170000` | Intrinsic folding, demanded bits | `sub_1169C30` intrinsic folder (11 KB native), `sub_11A7600` computeKnownBits (27 KB native) |
+| `0x1180000`-`0x119FFFF` | InstCombine core worklist | `sub_1190310` main dispatch (16 KB native) |
 | `0x11A0000`-`0x11AFFFF` | **ValueTracking / KnownBits** | `sub_11AE870` SimplifyDemandedBits |
 | `0x11B0000`-`0x11BFFFF` | InstCombine tail (vector, extract/insert) | |
 | `0x11D0000`-`0x11FFFFF` | **SimplifyLibCalls** | Math function optimization |
@@ -204,7 +204,7 @@ This zone is the core NVIDIA bridge between the EDG frontend AST and the LLVM IR
 | `0x1230000`-`0x125FFFF` | LLVM IR codegen from AST | Expression, statement, type codegen |
 | `0x125FB30` | Path B CLI parsing | `sub_125FB30` (standalone/nvcc mode) |
 | `0x1262860` | Path B simple compile | `sub_1262860` |
-| `0x1265970` | Path B multi-stage pipeline | `sub_1265970` (48KB) |
+| `0x1265970` | Path B multi-stage pipeline | `sub_1265970` (9 KB native) |
 | `0x126A7B0` | Builtin lookup helper | `sub_126A7B0` |
 | `0x126A910` | **Builtin registration table** | `sub_126A910` (126KB) -- registers 717 builtins (IDs 1-770) |
 | `0x12B3FD0` | **Builtin resolution dispatch** | `sub_12B3FD0` (103KB) -- giant switch on builtin ID |

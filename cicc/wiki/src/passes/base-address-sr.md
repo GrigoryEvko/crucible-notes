@@ -21,7 +21,7 @@ Base Address Strength Reduction (BASR) is an NVIDIA-proprietary IR-level pass th
 | Required analyses | LoopInfo (`sub_1632FA0`), DataLayout |
 | Option registration | `ctor_263_0` at `0x4F36F0` (shared with SCEV-CGP, 44 strings total) |
 | Companion pass | [Common Base Elimination](./common-base-elim.md) (`sub_1C5DFC0`) |
-| Helper | Bitcast helper at `sub_1C637F0` (28 KB, strings `"baseValue"`, `"bitCastEnd"`) |
+| Helper | Bitcast helper at `sub_1C637F0` (6.3 KB native; strings `"baseValue"`, `"bitCastEnd"`) |
 
 ## Algorithm
 

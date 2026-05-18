@@ -2,16 +2,16 @@
 
 GPU register files are typed and scalar. An SM has no concept of loading a struct, storing a struct, or passing a struct through a register -- every value that survives past IR lowering must reduce to a set of individually-named scalar registers. LLVM's standard SROA pass handles alloca-based aggregates by promoting them to scalars, but a large class of aggregate operations never touch an alloca: return values, call arguments, PHI nodes carrying struct types, and aggregate load/store patterns from memcpy lowering. NVIDIA's struct-splitting pass operates on these non-alloca aggregate operations at the NVVM IR level, decomposing every struct-typed value into its constituent scalar fields so that downstream register allocation sees only scalar types.
 
-The pass exists in two binary instances. The primary implementation at `sub_1C86CA0` (72KB, ~1,200 lines, 500+ locals) lives in the aggregate-splitting cluster at `0x1C80000`--`0x1CBFFFF` and operates on NVVM IR using NVIDIA-proprietary type IDs. A second, closely related implementation at `sub_2CCF450` (58KB) handles the `lower-aggr-copies` pipeline pass and shares the same string constants (`"splitStruct"`, `"srcptr"`, `"dstptr"`, `"remsrc"`, `"remdst"`, `"split"`, `"vld"`). Both instances produce the same fundamental transformation: aggregate operations become sequences of scalar operations on individual struct elements.
+The pass exists in two binary instances. The primary implementation at `sub_1C86CA0` (14 KB native; ~1,200 lines decomp, 500+ locals) lives in the aggregate-splitting cluster at `0x1C80000`--`0x1CBFFFF` and operates on NVVM IR using NVIDIA-proprietary type IDs. A second, closely related implementation at `sub_2CCF450` (12 KB native) handles the `lower-aggr-copies` pipeline pass and shares the same string constants (`"splitStruct"`, `"srcptr"`, `"dstptr"`, `"remsrc"`, `"remdst"`, `"split"`, `"vld"`). Both instances produce the same fundamental transformation: aggregate operations become sequences of scalar operations on individual struct elements.
 
 ## Key Facts
 
 | Property | Value |
 |---|---|
 | Entry point | `sub_1C86CA0` |
-| Size | 72KB (~1,200 lines decompiled), 500+ local variables |
+| Size | 14 KB native (~1,200 lines decomp), 500+ local variables |
 | Binary cluster | `0x1C80000`--`0x1CBFFFF` (Aggregate Splitting + Memory Ops) |
-| Second instance | `sub_2CCF450` (58KB, `lower-aggr-copies` pass) |
+| Second instance | `sub_2CCF450` (12 KB native, `lower-aggr-copies` pass) |
 | Pipeline pass name | `lower-aggr-copies` (parameterized: `lower-aggr-func-args`) |
 | Related pass | `lower-struct-args` (parameterized: `opt-byval`) |
 | IR level | NVVM IR (NVIDIA-proprietary type IDs, not LLVM `Type::TypeID`) |

@@ -9,7 +9,7 @@ Tensor core builtins implement the Warp Matrix Multiply-Accumulate (WMMA) and Wa
 | Builtin IDs | 678--770 (93 entries) |
 | WGMMA handler (IDs 753--768) | ~800 lines in `sub_12B3FD0` / `sub_955A70` |
 | LLVM intrinsic range (WGMMA) | 5304--5447 (144-entry 5-D grid) plus 10654--10779 (N-dimension table) |
-| NVVM lowering | `sub_955A70` (105KB), `sub_12B3FD0` (103KB) |
+| NVVM lowering | `sub_955A70` (24 KB native), `sub_12B3FD0` (22 KB native) |
 | Backend emission | `sub_21E74C0` (PTX builder), `sub_36E9630` (tcgen05 ISD selection) |
 | SM gates | SM 70+ HMMA, SM 72+ IMMA, SM 75+ BMMA, SM 80+ DMMA/TF32/BF16, SM 90+ WGMMA |
 

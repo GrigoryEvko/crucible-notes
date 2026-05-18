@@ -2,7 +2,7 @@
 
 Address-to-identity lookup table. Confidence: VERY HIGH = string evidence, HIGH = strong structural evidence, MEDIUM = inferred from context/callgraph.
 
-> **Audit note (sizes):** The size column for entries above ~20KB was originally inflated (decompiled-line count, not byte count). Where a context file exists, the true byte range from IDA is the authoritative size — figures below 20KB and `je_malloc_conf_init` (15.4KB) cross-check to the byte; multi-hundred-KB figures are inflated roughly 5-10x. Treat sizes >50KB as "very large, exact byte size in `context/sub_<addr>_*.md`" rather than literal.
+> **Audit note (sizes):** Earlier revisions of this table conflated decompiled C source size with the binary text-section size. The labeling convention is now: `(native)` = binary `.text` byte count from IDA's authoritative function table, `(decomp)` = pseudocode/source-line count from the decompiler. Unlabeled small entries (under ~20 KB) approximate the native size. Anywhere a single function is cited as multi-hundred KB, treat the figure with skepticism and consult `cicc_functions.json` for the authoritative `size` field.
 
 ## Top Functions by Size
 
@@ -10,18 +10,18 @@ Address-to-identity lookup table. Confidence: VERY HIGH = string evidence, HIGH 
 |---|---|---|---|
 | X86 AutoUpgrade (intrinsic rename, leftover from LLVM x86 target) | `0xA939D0` | 65KB (281 strings, 2202 bb) | VERY HIGH |
 | InstCombine main visitor (`InstCombinerImpl::visitInstruction`, full opcode switch, ~9,258 decompiled lines) | `0x10EE7A0` | 60KB (2288 bb, 324 callees) | VERY HIGH |
-| SelectionDAG LegalizeTypes workhorse (ExpandOp/PromoteOp) | `0x20019C0` | 341KB | HIGH |
-| New PassManager pipeline parser (function-level, 268 pass names) | `0x2368220` | 326KB | VERY HIGH |
-| EDG constexpr expression evaluator core (124 operator opcodes, 9,075 lines) | `0x786210` | 317KB | VERY HIGH |
-| SelectionDAG LegalizeOp main switch | `0x20ACAE0` | 295KB | HIGH |
-| SelectionDAGBuilder::visit (IR → DAG) | `0x2081F00` | 261KB | HIGH |
-| LLVM IR Verifier (visitCallInst), 298 verification messages | `0xBFC6A0` | 207KB | VERY HIGH |
-| X86 Intrinsic Upgrade Helper (broadcastf32x4, compress, etc.) | `0xA8A170` | 195KB | HIGH |
-| EDG IL tree walker #1 (297 self-recursive, 87 node types, 305 cases) | `0x7506E0` | 190KB | HIGH |
-| EDG declaration specifier parser (393 LABEL\_ gotos, NOT switch/case) | `0x7C0F00` | 184KB | HIGH |
-| Bitcode Reader parseFunctionBody, 174 error strings | `0x9F2A40` | 182KB | VERY HIGH |
-| EDG constexpr top-level dispatch (80 expression types + 62 intrinsics) | `0x77FCB0` | 150KB | HIGH |
-| EDG IL tree copier/transformer (callback params a3/a4, template instantiation) | `0x766570` | 148KB | HIGH |
+| SelectionDAG LegalizeTypes workhorse (ExpandOp/PromoteOp) | `0x20019C0` | 45 KB (native) | HIGH |
+| New PassManager pipeline parser (function-level, 268 pass names) | `0x2368220` | 60 KB (native) | VERY HIGH |
+| EDG constexpr expression evaluator core (124 operator opcodes, 9,075 lines decomp) | `0x786210` | 58 KB (native) | VERY HIGH |
+| SelectionDAG LegalizeOp main switch | `0x20ACAE0` | 30 KB (native) | HIGH |
+| SelectionDAGBuilder::visit (IR → DAG) | `0x2081F00` | 40 KB (native) | HIGH |
+| LLVM IR Verifier (visitCallInst), 298 verification messages | `0xBFC6A0` | 34 KB (native) | VERY HIGH |
+| X86 Intrinsic Upgrade Helper (broadcastf32x4, compress, etc.) | `0xA8A170` | 16 KB (native) | HIGH |
+| EDG IL tree walker #1 (297 self-recursive, 87 node types, 305 cases) | `0x7506E0` | 37 KB (native) | HIGH |
+| EDG declaration specifier parser (393 LABEL\_ gotos, NOT switch/case) | `0x7C0F00` | 20 KB (native) | HIGH |
+| Bitcode Reader parseFunctionBody, 174 error strings | `0x9F2A40` | 45 KB (native) | VERY HIGH |
+| EDG constexpr top-level dispatch (80 expression types + 62 intrinsics) | `0x77FCB0` | 25 KB (native) | HIGH |
+| EDG IL tree copier/transformer (callback params a3/a4, template instantiation) | `0x766570` | 24 KB (native) | HIGH |
 | SelectionDAG LegalizeTypes dispatch (967 case labels) | `0x1FFB890` | 17.4KB (native) | HIGH |
 | EDG declaration specifier state machine (80 token cases, 4,371 lines) | `0x672A20` | 25.2KB (native) / 132KB (decomp) | VERY HIGH |
 | je\_malloc\_conf\_init (199 config strings) | `0x12FCDB0` | 15.4KB (native) | VERY HIGH |
@@ -37,20 +37,20 @@ Address-to-identity lookup table. Confidence: VERY HIGH = string evidence, HIGH 
 | Bitcode linker: triple validation, IR version check, symbol size matching | `0x12C06E0` | 11.7KB (native) / 63KB (decomp) | VERY HIGH |
 | NVVM IR version checker (nvvmir.version metadata, NVVM_IR_VER_CHK env) | `0x12BFF60` | 1.9KB (native) / 9KB (decomp) | VERY HIGH |
 | NVVM container format parser (arch, FTZ, IEEE, opt level extraction) | `0x12642A0` | — | HIGH |
-| Concurrent worker entry (dispatches Phase I/II) | `0x12E7B90` | 3KB | HIGH |
+| Concurrent worker entry (dispatches Phase I/II) | `0x12E7B90` | 732 bytes (native) | HIGH |
 | Concurrent compilation entry (jobserver, thread pool, split-module; strings "GNU Jobserver support requested", "<split-module>") | `0x12E1EF0` | 10.5KB (383 bb) | VERY HIGH |
 | Function sorting by priority (insertion sort / introsort) | `0x12E0CA0` | — | HIGH |
 | Per-function compilation callback (completion handler) | `0x12E8D50` | — | HIGH |
 | Phase II per-function optimizer (sets qword_4FBB3B0=2) | `0x12E86C0` | — | HIGH |
 | Concurrency eligibility check (counts defined functions) | `0x12D4250` | — | HIGH |
 | GNU Jobserver init (parse MAKEFLAGS, create pipe, spawn pthread) | `0x16832F0` | — | HIGH |
-| Bitcode Metadata Reader (parseMetadata) | `0xA09F80` | 121KB | VERY HIGH |
-| EDG IL function body processor (14 params, scope stack management) | `0x627530` | 114KB | HIGH |
-| EDG IL tree walker #2 (427 self-recursive, parallel traversal) | `0x760BD0` | 109KB | HIGH |
-| EDG IL codegen (node type dispatch on byte+80, 2,589 lines) | `0x8BA620` | 108KB | HIGH |
-| NVVM Builtin Resolution table (pre-opt, 770 entries) | `0x90AEE0` | 107KB | VERY HIGH |
-| NVVM Builtin lowering engine (pre-opt, wgmma/tex/surf, 3571 lines) | `0x955A70` | 103KB | HIGH |
-| New PassManager pipeline parser (CGSCC-level) | `0x2377300` | 103KB | HIGH |
+| Bitcode Metadata Reader (parseMetadata) | `0xA09F80` | 24 KB (native) | VERY HIGH |
+| EDG IL function body processor (14 params, scope stack management) | `0x627530` | 16 KB (native) | HIGH |
+| EDG IL tree walker #2 (427 self-recursive, parallel traversal) | `0x760BD0` | 20 KB (native) | HIGH |
+| EDG IL codegen (node type dispatch on byte+80, 2,589 lines decomp) | `0x8BA620` | 15 KB (native) | HIGH |
+| NVVM Builtin Resolution table (pre-opt, 770 entries) | `0x90AEE0` | 33 KB (native) | VERY HIGH |
+| NVVM Builtin lowering engine (pre-opt, wgmma/tex/surf, 3571 lines decomp) | `0x955A70` | 24 KB (native) | HIGH |
+| New PassManager pipeline parser (CGSCC-level) | `0x2377300` | 43 KB (native) | HIGH |
 
 ## Pipeline Functions
 
@@ -60,8 +60,8 @@ Address-to-identity lookup table. Confidence: VERY HIGH = string evidence, HIGH 
 | Real main: CLI parsing, wizard check, dispatch | `0x8F9C90` | 10KB | VERY HIGH |
 | Simple compile entry (Path A) | `0x902D10` | — | HIGH |
 | Simple compile entry (Path B) | `0x1262860` | — | HIGH |
-| LibNVVM pipeline driver (Path A): 14-phase flow, libdevice linking, API dispatch | `0x905EE0` | 43KB | VERY HIGH |
-| LibNVVM compilation entry (Path B): 4-stage pipeline, embedded builtins | `0x1265970` | 48KB | VERY HIGH |
+| LibNVVM pipeline driver (Path A): 14-phase flow, libdevice linking, API dispatch | `0x905EE0` | 9 KB (native) | VERY HIGH |
+| LibNVVM compilation entry (Path B): 4-stage pipeline, embedded builtins | `0x1265970` | 9 KB (native) | VERY HIGH |
 | CUDA C++ Front-End stage (lgenfe): timer "CUDA C++ Front-End" | `0x905880` | 6KB | HIGH |
 | NVVM IR Container → Module opt setup | `0x9047E0` | 10KB | HIGH |
 | Backend SM config + EDG binding, triple construction | `0x908850` | 10KB | HIGH |
@@ -85,7 +85,7 @@ Address-to-identity lookup table. Confidence: VERY HIGH = string evidence, HIGH 
 | Function | Address | Size | Confidence |
 |---|---|---|---|
 | EDG master orchestrator (setjmp recovery, timer callbacks) | `0x5D2A80` | 2KB | VERY HIGH |
-| EDG lgenfe\_main (282-case CLI switch, 737 config macros, EDG 6.6) | `0x617BD0` | 123KB | VERY HIGH |
+| EDG lgenfe\_main (282-case CLI switch, 737 config macros, EDG 6.6) | `0x617BD0` | 36.4 KB (native) / 123 KB (decomp) | VERY HIGH |
 | CLI option registration table (~300 options via sub_6101D0) | `0x610260` | 22KB | HIGH |
 | Option fetcher (called in main loop of sub_617BD0) | `0x6140E0` | 6KB | HIGH |
 | Backend entry: "Generating NVVM IR", file output (.int.c/.device.c/.stub.c), TileIR dlopen | `0x5E3AD0` | 11KB | VERY HIGH |
@@ -115,8 +115,8 @@ Address-to-identity lookup table. Confidence: VERY HIGH = string evidence, HIGH 
 
 | Function | Address | Size | Confidence |
 |---|---|---|---|
-| Declaration specifier state machine (while/switch, 80 token cases) | `0x672A20` | 132KB | VERY HIGH |
-| Declaration specifier parser (393 LABEL\_ gotos, NOT switch/case) | `0x7C0F00` | 184KB | HIGH |
+| Declaration specifier state machine (while/switch, 80 token cases) | `0x672A20` | 25 KB (native) / 132 KB (decomp) | VERY HIGH |
+| Declaration specifier parser (393 LABEL\_ gotos, NOT switch/case) | `0x7C0F00` | 20 KB (native) | HIGH |
 | Top-level declaration/declarator parser | `0x662DE0` | 61KB | HIGH |
 | Overloaded function resolution (\_\_builtin\_ detection, OMP variants) | `0x6523A0` | 64KB | HIGH |
 | Struct/union/class specifier processing | `0x66AC40` | 49KB | HIGH |
@@ -129,7 +129,7 @@ Address-to-identity lookup table. Confidence: VERY HIGH = string evidence, HIGH 
 | Primary declarator-to-IL conversion (type kind dispatch) | `0x6333F0` | 26KB | HIGH |
 | Name/identifier processing | `0x64BAA0` | 46KB | HIGH |
 | Builtin/intrinsic recognition (53 string refs, C++20/23 reflection) | `0x64A920` | 25KB | HIGH |
-| IL function body processor (14 params, scope stack management) | `0x627530` | 114KB | HIGH |
+| IL function body processor (14 params, scope stack management) | `0x627530` | 16 KB (native) | HIGH |
 | IL statement processing (16 params, IL walker/transformer) | `0x62C0A0` | 63KB | HIGH |
 
 ### Type System

@@ -15,7 +15,7 @@ One of the most distinctive features of cicc's IR generation is that **two compl
 | **EmitStmt (statement dispatch)** | `sub_9363D0` | (parallel at similar offset) |
 | **EmitFunction (entry block setup)** | `sub_946060` | (parallel) |
 | **GenerateFunctionProlog** | `sub_938240` | (parallel) |
-| **Builtin lowering mega-switch** | `sub_90AEE0` (109KB) | `sub_12B3FD0` (103KB) |
+| **Builtin lowering mega-switch** | `sub_90AEE0` (33 KB native) | `sub_12B3FD0` (22 KB native) |
 | **Bitfield load/store** | `sub_923780` / `sub_925930` | `sub_1282050` / `sub_1284570` |
 | **Special variable codegen** | `sub_920430` / `sub_922290` | `sub_127F7A0` / `sub_1285550` |
 | **Inline asm codegen** | `sub_932270` | `sub_1292420` |

@@ -393,7 +393,7 @@ For each atomic instruction in the function:
 
 ### Sub-Word Atomic Expansion (sub_20CB200)
 
-No NVIDIA GPU architecture through SM 120 supports native sub-word (i8/i16) atomics. The pass generates mask-and-shift wrappers around word-sized CAS loops. The mask generation function `sub_20CB200` (2896 bytes) produces a 6-field output struct:
+No NVIDIA GPU architecture through SM 120 supports native sub-word (i8/i16) atomics. The pass generates mask-and-shift wrappers around word-sized CAS loops. The mask generation function `sub_20CB200` (2,896 bytes native) produces a 6-field output struct:
 
 | Field | Name | Purpose |
 |---|---|---|

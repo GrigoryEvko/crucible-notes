@@ -315,7 +315,7 @@ The numeric values are the boolean (0/1) access flags for each category. When th
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| -- | `sub_2C84BA0` | 96KB (3,400 lines) | Main engine: 5-phase algorithm |
+| -- | `sub_2C84BA0` | 13 KB native (3,400 lines decomp) | Main engine: 5-phase algorithm |
 | -- | `sub_2C83D20` | small | `isSyncBarrier` predicate |
 | -- | `sub_2C83AE0` | small | `classifyMemoryAccess` (read/write classification) |
 | -- | `sub_2C84640` | medium | Per-BB analysis (bidirectional, direction parameter) |

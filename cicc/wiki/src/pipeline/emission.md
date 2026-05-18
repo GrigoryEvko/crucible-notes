@@ -4,12 +4,12 @@ PTX assembly output, function headers, stack frames, register declarations, spec
 
 | | |
 |---|---|
-| **AsmPrinter::emitFunctionBody** | `sub_31EC4F0` (72KB) |
+| **AsmPrinter::emitFunctionBody** | `sub_31EC4F0` (12 KB native) |
 | **Function header orchestrator** | `sub_215A3C0` (.entry/.func, .param, kernel attrs, .pragma) |
 | **Kernel attribute emission** | `sub_214DA90` (.reqntid, .maxntid, .minnctapersm, cluster) |
-| **Stack frame setup** | `sub_2158E80` (17KB, .local, .reg, `__local_depot`) |
+| **Stack frame setup** | `sub_2158E80` (3.3 KB native, .local, .reg, `__local_depot`) |
 | **Register class map** | `sub_2163730` + `sub_21638D0` (9 classes) |
-| **GenericToNVVM** | `sub_215DC20` / `sub_215E100` (36KB, addrspace rewriting) |
+| **GenericToNVVM** | `sub_215DC20` / `sub_215E100` (6.7 KB native worker, addrspace rewriting) |
 | **Special registers** | `sub_21E86B0` (%tid, %ctaid, %ntid, %nctaid) |
 | **Cluster registers** | `sub_21E9060` (15 registers, SM 90+) |
 | **Atomic emission** | `sub_21E5E70` (13 opcodes) + `sub_21E6420` (L2 cache hints) |
@@ -250,7 +250,7 @@ Registration uses a once-init pattern guarded by `dword_4FD1558`. The 80-byte pa
 
 A new-pass-manager version also exists: `GenericToNVVMPass`, registered at `sub_305ED20` / `sub_305E2C0` with CLI name `"generic-to-nvvm"`.
 
-### Algorithm -- `sub_215E100` (36KB)
+### Algorithm -- `sub_215E100` (6.7 KB native)
 
 The pass body at `sub_215E100` is 36KB because it must rewrite every address-space-dependent use of every affected global. The factory function `sub_215D530` allocates a 320-byte state object containing two DenseMap-like hash tables:
 
@@ -325,7 +325,7 @@ GPU kernels have no "program startup" phase -- no `__crt_init` equivalent. Stati
 
 ### Overview
 
-The function `sub_2156420` (20KB, `printModuleLevelGV`) handles PTX emission for individual global variables. It processes each global in the module, categorizing it by type (texture reference, surface reference, sampler reference, or data variable) and emitting the appropriate PTX declaration.
+The function `sub_2156420` (5 KB native, `printModuleLevelGV`) handles PTX emission for individual global variables. It processes each global in the module, categorizing it by type (texture reference, surface reference, sampler reference, or data variable) and emitting the appropriate PTX declaration.
 
 Skipped globals: `"llvm.metadata"`, `"llvm.*"`, `"nvvm.*"`.
 
@@ -508,7 +508,7 @@ Three LTO modes interact with emission:
 
 ## Bitcode Producer ID
 
-The bitcode writer at `sub_1538EC0` (58KB, `writeModule`) stamps `"LLVM7.0.1"` as the producer identification string in the `IDENTIFICATION_BLOCK` of every output bitcode file. This is despite cicc being built on LLVM 20.0.0 internally.
+The bitcode writer at `sub_1538EC0` (12 KB native, `writeModule`) stamps `"LLVM7.0.1"` as the producer identification string in the `IDENTIFICATION_BLOCK` of every output bitcode file. This is despite cicc being built on LLVM 20.0.0 internally.
 
 ### Dual-Constructor Mechanism
 

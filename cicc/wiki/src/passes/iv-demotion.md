@@ -8,7 +8,7 @@ The sub-pass is large -- 75KB of compiled code, larger than the main remateriali
 
 | Property | Value |
 |---|---|
-| Entry point | `sub_1CD74B0` (75KB, ~2500 lines) |
+| Entry point | `sub_1CD74B0` (12 KB native; ~2,500 lines decomp) |
 | Parent pass | `nvvmrematerialize` (IR-level rematerialization) |
 | Invocation site | `sub_1CE7DD0` line ~2276 (post-remat phase) |
 | Primary knob | `remat-iv` (default **4** = full demotion) |

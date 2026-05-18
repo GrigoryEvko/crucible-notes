@@ -10,8 +10,8 @@ Disabling this pass (`-disable-MemorySpaceOptPass`) causes 2--20x performance re
 | **Class** | `llvm::IPMSPPass` |
 | **Scope** | Module pass |
 | **Registration** | New PM slot 125, line 1111 in `sub_2342890` |
-| **Main function** | `sub_2CBBE90` (71 KB) -- MemorySpaceCloning worklist driver |
-| **LIBNVVM variant** | `sub_1C6A6C0` (54 KB) |
+| **Main function** | `sub_2CBBE90` (11 KB native) -- MemorySpaceCloning worklist driver |
+| **LIBNVVM variant** | `sub_1C6A6C0` (11 KB native) |
 | **Inference engine** | `sub_2CE96D0` -> `sub_2CE8530` |
 | **Cloning engine** | `sub_F4BFF0` (CloneFunction) |
 | **Callee matching** | `sub_2CE7410` |
@@ -404,7 +404,7 @@ Once a callee's address space is determined, this function creates a specialized
 
 ## The LIBNVVM Variant
 
-A second implementation at `sub_1C6A6C0` (54 KB) serves the LIBNVVM/module-pass path. Key differences:
+A second implementation at `sub_1C6A6C0` (11 KB native) serves the LIBNVVM/module-pass path. Key differences:
 
 - Uses DenseMap-style hash tables (empty sentinel = -8, tombstone = -16, 16-byte entries)
 - Includes loop-induction analysis via `sub_1BF8310` with `maxLoopInd` tracking (debug: `"phi maxLoopInd = N: Function name"`)

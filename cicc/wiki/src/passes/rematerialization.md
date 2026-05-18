@@ -254,7 +254,7 @@ The sequencing is important: the main loop reduces cross-block live-in pressure 
 
 ### Registration
 
-Registered at `ctor_361_0` (address `0x5108E0`) with pass name `"nv-remat-block"` and description `"Do Remat Machine Block"`. Main entry point: `sub_2186D90` (47KB, ~1742 lines).
+Registered at `ctor_361_0` (address `0x5108E0`) with pass name `"nv-remat-block"` and description `"Do Remat Machine Block"`. Main entry point: `sub_2186D90` (9.5 KB native; ~1,742 lines decomp).
 
 ### Algorithm Overview
 

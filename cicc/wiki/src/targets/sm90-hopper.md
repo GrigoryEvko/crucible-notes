@@ -197,7 +197,7 @@ This gives TMA descriptors a distinct ABI: calling convention 7 with flag bit 4,
 
 ### TMA Intrinsic Name Parsing (sub_A8E250)
 
-The intrinsic dispatcher `sub_A8E250` (52 KB) matches TMA intrinsic names via string comparison and assigns internal opcode IDs. Two families exist:
+The intrinsic dispatcher `sub_A8E250` (12 KB native) matches TMA intrinsic names via string comparison and assigns internal opcode IDs. Two families exist:
 
 **Tensor-structured copies** (require a tensor map descriptor):
 
@@ -404,12 +404,12 @@ The master feature configurator `sub_60E7C0` sets the following flags at the sm_
 | `sub_FCDCB0` | `0xFCDCB0` | setmaxnreg inline asm pattern matching | setmaxnreg inline asm pattern matching |
 | `sub_955A70` | `0x955A70` | WGMMA lowering (M-dimension switch) | WGMMA lowering (M-dimension switch) |
 | `sub_90AEE0` | `0x90AEE0` | Builtin registration (WGMMA, cluster barriers/queries) | Builtin registration (WGMMA, cluster barriers/queries) |
-| `sub_A8E250` | `0xA8E250` | TMA intrinsic name parsing (52 KB) | TMA intrinsic name parsing (52 KB) |
+| `sub_A8E250` | `0xA8E250` | TMA intrinsic name parsing (12 KB native) | TMA intrinsic name parsing (12 KB native) |
 | `sub_33AD3D0` | `0x33AD3D0` | TMA SelectionDAG lowering handler (modes 2/3/5/7) | TMA SelectionDAG lowering handler (modes 2/3/5/7) |
 | `sub_33AB690` | `0x33AB690` | `cp.async.bulk` non-tensor handler | `cp.async.bulk` non-tensor handler |
 | `sub_33AC2B0` | `0x33AC2B0` | `cp.async` handler | `cp.async` handler |
 | `sub_33AC130` | `0x33AC130` | `cp.async.wait` handler | `cp.async.wait` handler |
-| `sub_36EC510` | `0x36EC510` | CpAsyncBulkTensor G2S lowering (27 KB, 1185 lines) | CpAsyncBulkTensor G2S lowering (27 KB, 1185 lines) |
+| `sub_36EC510` | `0x36EC510` | CpAsyncBulkTensor G2S lowering (6 KB native; 1,185 lines decomp) | CpAsyncBulkTensor G2S lowering (6 KB native; 1,185 lines decomp) |
 | `sub_9483E0` | `0x9483E0` | TMA descriptor extraction | TMA descriptor extraction |
 | `sub_12AA280` | `0x12AA280` | TMA descriptor builder (EDG -> LLVM IR) | TMA descriptor builder (EDG -> LLVM IR) |
 | `sub_12A7070` | `0x12A7070` | TMA scatter/store builtin handler | TMA scatter/store builtin handler |

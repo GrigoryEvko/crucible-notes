@@ -12,7 +12,7 @@ Debug information in cicc follows a four-stage lifecycle: generation in the EDG/
 | **Debugify injector** | `sub_29C1CB0` |
 | **Stripping passes** | `#110`--`#114` in the pipeline parser |
 | **`.loc` emission** | `sub_31D55F0` (per-instruction), `sub_31E4280` (function-scope `.file`/`.loc`) |
-| **DWARF section emission** | `sub_399B1E0` (29KB, `DwarfDebug::beginModule`) |
+| **DWARF section emission** | `sub_399B1E0` (5.2 KB native, `DwarfDebug::beginModule`) |
 | **NVVM container field** | `DebugInfo` at container offset +12 (enum: NONE/LINE_INFO/DWARF) |
 | **cl::opt registration** | `ctor_043` at `0x48D7F0` -- `debug-compile`, `generate-line-info`, `line-info-inlined-at` |
 

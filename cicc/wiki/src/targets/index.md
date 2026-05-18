@@ -5,8 +5,8 @@
 | | |
 |---|---|
 | **SM table** | `qword_502A920` (45 entries, `ctor_605` at `0x584510`) |
-| **Arch detection** | `sub_95EB40` (38KB, CLI -> 3-column mapping) |
-| **NVVM arch enum** | `sub_CD09E0` (14.5KB, `NVVM_ARCH_*` strings) |
+| **Arch detection** | `sub_95EB40` (14 KB native, CLI -> 3-column mapping) |
+| **NVVM arch enum** | `sub_CD09E0` (2.3 KB native, `NVVM_ARCH_*` strings) |
 | **EDG arch gates** | `sub_60E7C0` (~60 feature flags based on SM version) |
 | **Backend subtarget** | NVPTXSubtarget (feature offsets at +2498, +2584, +2843) |
 | **Target triples** | `nvptx64-nvidia-cuda`, `nvsass-nvidia-directx`, `nvsass-nvidia-spirv` |

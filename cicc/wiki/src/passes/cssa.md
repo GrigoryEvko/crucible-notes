@@ -6,7 +6,7 @@ CSSA (Conventional SSA) is NVIDIA's transformation that rewrites the IR so that 
 
 | | |
 |---|---|
-| **Pass location** | `sub_3720740` (3521 bytes, 165 basic blocks, 17 callees) |
+| **Pass location** | `sub_3720740` (3,521 bytes native, 165 basic blocks, 17 callees) |
 | **Address range** | `0x3720740`--`0x3721501` |
 | **Single caller** | `sub_3721510` (pass driver thunk) |
 | **Gate knob** | `do-cssa` (NVVMPassOptions boolean toggle) |

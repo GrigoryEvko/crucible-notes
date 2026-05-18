@@ -413,7 +413,7 @@ This is a key difference from stock LLVM `SinkingPass`, which requires `MemorySS
 | `sub_1CC60B0` | NVVMSinking2 late-pipeline factory |
 | `sub_1A634D0` | Stock LLVM Sink legacy PM registration |
 | `sub_29776B0` | Stock LLVM Sink New PM registration |
-| `sub_1B51110` | Stock Sink core (51KB, creates `.sink.split` / `.sink` blocks) |
+| `sub_1B51110` | Stock Sink core (9 KB native; creates `.sink.split` / `.sink` blocks) |
 | `sub_1869C50` | Stock Sink pipeline factory (called with params `1,0,1`) |
 
 **Total code size:** ~80KB (Legacy PM) + ~65KB (New PM) = ~145KB

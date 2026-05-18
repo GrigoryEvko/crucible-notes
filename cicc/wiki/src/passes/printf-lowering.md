@@ -8,8 +8,8 @@ The printf lowering pass rewrites device-side `printf()` calls into CUDA's runti
 | **Class** | `llvm::PrintfLoweringPass` |
 | **Scope** | Module pass |
 | **Registration** | New PM slot 130, `sub_2342890` |
-| **Module-level entry** | `sub_1CB1E60` (31 KB) |
-| **AST-level lowering** | `sub_12992B0` (24 KB) |
+| **Module-level entry** | `sub_1CB1E60` (6.6 KB native) |
+| **AST-level lowering** | `sub_12992B0` (4.9 KB native) |
 | **Enable knob** | `nvvm-lower-printf` (registered at `ctor_269`) |
 
 ## Two Lowering Stages

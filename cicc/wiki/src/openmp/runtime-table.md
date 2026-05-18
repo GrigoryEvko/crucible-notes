@@ -631,12 +631,12 @@ When a call instruction references a function not in this set, the SPMD transfor
 |---|---|---|---|
 | `sub_312CF50` -- OpenMP runtime declaration factory (194-case switch) | `0x312CF50` | -- | -- |
 | `sub_3122A50` -- `registerRuntimeFunction(context, index, funcDecl)` | `0x3122A50` | -- | -- |
-| `sub_2686D90` -- OpenMP runtime declaration table (215 KB, outer wrapper) | `0x2686D90` | -- | -- |
-| `sub_26968A0` -- Generic-to-SPMD transformation (61 KB) | `0x26968A0` | -- | -- |
-| `sub_2680940` -- Parallel region merging (52 KB) | `0x2680940` | -- | -- |
-| `sub_2678420` -- State machine generation for Generic mode (41 KB) | `0x2678420` | -- | -- |
-| `sub_269F530` -- Attributor-based OpenMP optimization driver (63 KB) | `0x269F530` | -- | -- |
-| `sub_313D1B0` -- Parallel region outliner (47 KB) | `0x313D1B0` | -- | -- |
+| `sub_2686D90` -- OpenMP runtime declaration table (58 KB native, outer wrapper) | `0x2686D90` | -- | -- |
+| `sub_26968A0` -- Generic-to-SPMD transformation (10 KB native) | `0x26968A0` | -- | -- |
+| `sub_2680940` -- Parallel region merging (10 KB native) | `0x2680940` | -- | -- |
+| `sub_2678420` -- State machine generation for Generic mode (9 KB native) | `0x2678420` | -- | -- |
+| `sub_269F530` -- Attributor-based OpenMP optimization driver (10 KB native) | `0x269F530` | -- | -- |
+| `sub_313D1B0` -- Parallel region outliner (10 KB native) | `0x313D1B0` | -- | -- |
 | `sub_BCF480` -- `FunctionType::get(retTy, paramTys, count, isVarArg)` | `0xBCF480` | -- | -- |
 | `sub_BA8CB0` -- `Module::getNamedValue(name)` | `0xBA8CB0` | -- | -- |
 | `sub_B2C660` -- `Function::Create(funcTy, linkage, name, module)` | `0xB2C660` | -- | -- |

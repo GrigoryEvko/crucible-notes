@@ -156,7 +156,7 @@ NVIDIA uses LLVM's standard instruction opcode numbering with minor adjustments.
 | 0x41 | 65 | `cmpxchg` | Only i32/i64/i128; must be generic/global/shared AS |
 | 0x42 | 66 | `atomicrmw` | Address space validation |
 | 0x4F | 79 | `addrspacecast` | "Cannot cast non-generic to different non-generic" |
-| 0x55 | 85 | Intrinsic call | Routes to `sub_2C7B6A0` (143KB verifier) |
+| 0x55 | 85 | Intrinsic call | Routes to `sub_2C7B6A0` (22 KB native verifier) |
 | 0x58 | 88 | `alloca` (inalloca) | Same as 0x18 |
 | 0x5F | 95 | `landingpad` | "landingpad" unsupported |
 
@@ -185,7 +185,7 @@ The binary opcodes in the 0x23--0x34 range follow LLVM's `BinaryOperator` number
 
 ### InstCombine Internal Opcode Table
 
-The InstCombine mega-visitor `sub_10EE7A0` (405KB, the single largest function in cicc) uses a *different* opcode numbering -- the full LLVM `Instruction::getOpcode()` values rather than the bitcode record codes. These are accessed via `sub_987FE0` (getOpcode equivalent). Key ranges observed:
+The InstCombine mega-visitor `sub_10EE7A0` (60 KB native; 9,258 lines decomp, among the largest functions in cicc) uses a *different* opcode numbering -- the full LLVM `Instruction::getOpcode()` values rather than the bitcode record codes. These are accessed via `sub_987FE0` (getOpcode equivalent). Key ranges observed:
 
 | Opcode Range | LLVM Instructions |
 |-------------|-------------------|
