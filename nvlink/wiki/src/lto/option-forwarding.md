@@ -367,8 +367,8 @@ Complete mapping of every option that flows from nvlink CLI to cicc and/or ptxas
 | `-g` / `--debug` | `-g` | *(not forwarded)* | `sub_426CD0` |
 | `--device-c` | `--device-c` | *(not forwarded)* | `sub_426CD0` |
 | `--force-partial-lto` | `--force-device-c` | *(not forwarded)* | `sub_426CD0` |
-| `--Xnvvm OPTS` | *(forwarded verbatim, filtered)* | *(not applicable)* | `sub_426CD0` |
-| `--Xptxas OPTS` | *(not forwarded)* | *(joined space-separated)* | `sub_429BA0` |
+| `-Xnvvm OPTS` | *(forwarded verbatim, filtered)* | *(not applicable)* | `sub_426CD0` |
+| `-Xptxas OPTS` | *(not forwarded)* | *(joined space-separated)* | `sub_429BA0` |
 | `--device-stack-protector` | *(not forwarded)* | `--device-stack-protector=true/false` | `sub_429BA0` |
 | `--device-stack-protector-frame-size-threshold N` | *(not forwarded)* | `--device-stack-protector-frame-size-threshold=N` | `sub_429BA0` |
 | `--cuda-api-version VER` | *(not forwarded)* | `-cuda-api-version=VER` | `sub_429BA0` |
@@ -397,8 +397,8 @@ nvlink_parse_options (0x427AE0)
    +-- Stores --arch                  -> dword_2A5F314
    +-- Stores --maxrregcount          -> dword_2A5F22C
    +-- Stores --Ofast-compile         -> qword_2A5F258
-   +-- Stores --Xnvvm                 -> qword_2A5F230 (linked list)
-   +-- Stores --Xptxas               -> qword_2A5F238 (linked list)
+   +-- Stores -Xnvvm                  -> qword_2A5F230 (linked list)
+   +-- Stores -Xptxas                 -> qword_2A5F238 (linked list)
    +-- Stores -g                      -> byte_2A5F310
    +-- Stores --split-compile         -> dword_2A5B518
    +-- Stores --split-compile-extended -> dword_2A5B514

@@ -44,7 +44,7 @@ LogicalResult verify_atom_instance(Atom atom, Target target, Shape use_shape) {
 | SM80 | `sm80.mma`, `sm80.sparse_mma` | `atom.simt_async_copy`, `atom.ldsm` | Ampere dense and sparse `mma.sync`, plus `cp.async`-style copy atoms. |
 | SM89 | `sm89.mma` | SM80 copy atoms | Ada extends the dense register-MMA surface with FP8 inputs. |
 | SM90 | `sm90.mma`, `smem_desc_view` | `atom.tma_load`, `atom.tma_store`, `atom.tma_reduce`, `atom.stsm`, non-exec TMA atoms | Hopper WGMMA, SMEM descriptors, and TMA descriptor traffic. |
-| SM100/SM103 | `sm100.mma`, `sm100.mma_bs`, `sm100.mma_bs_sp` | `atom.tmem_load`, `atom.tmem_store`, `atom.s2t_copy`, TMA atoms | Datacenter Blackwell UMMA, block-scaled MMA, sparse block-scaled MMA, and tensor memory. |
+| SM100/SM103 | `sm100.mma`, `sm100.mma_sp`, `sm100.mma_bs`, `sm100.mma_bs_sp` | `atom.tmem_load`, `atom.tmem_store`, `atom.s2t_copy`, TMA atoms | Datacenter Blackwell UMMA, sparse UMMA, block-scaled MMA, sparse block-scaled MMA, and tensor memory. |
 | SM110 (Jetson Thor) | — | inherited universal atoms | SM110 is registered as a target tier (`sm_110` / `sm_110a` / `sm_110f`) but has no dedicated MMA mnemonic; see note below. |
 | SM120/SM121 | `SM120.mma_bs` | Register-based copy and scale-factor paths | Consumer Blackwell block-scaled MMA with uppercase `SM120` spelling. |
 
@@ -74,6 +74,7 @@ The dialect registers one MLIR `TypeID` per atom kind. Generic `cute` code never
 | `atom.tma_reduce` | SM90 | `CopyAtom`, `TmaAtom`, `AsyncCopyAtom` | descriptor-driven reduce into `gmem` |
 | `atom.non_exec_tiled_tma_*` | SM90 | `TmaAtom` (non-exec) | partition-verified TMA atom waiting on mbarrier and cache binding |
 | `sm100.mma` (UMMA) | SM100 | `MmaAtom`, `TmemAtom` | A in `memref`/`smem_desc_view`; B in `smem_desc_view`; D in `memref` (tmem) |
+| `sm100.mma_sp` | SM100 | `MmaAtom`, `TmemAtom`, `SparseMetadataAtom` | UMMA contract + structurally-sparse A and metadata operand |
 | `sm100.mma_bs` | SM100 | `MmaAtom`, `TmemAtom`, `BlockScaleAtom` | UMMA contract + scale-factor operand |
 | `sm100.mma_bs_sp` | SM100 | `MmaAtom`, `TmemAtom`, `BlockScaleAtom`, `SparseMetadataAtom` | UMMA block-scale + sparsity |
 | `atom.tmem_load` | SM100 | `CopyAtom` | `src=tmem`, `dst=rmem` |

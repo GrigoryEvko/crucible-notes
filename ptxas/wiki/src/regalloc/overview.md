@@ -65,15 +65,17 @@ The register allocator runs in the late pipeline, after all optimization passes 
 
 The allocator processes 7 register classes. Class 0 (unified) is skipped in the normal per-class loop; it is used for cross-class constraint propagation. Classes 1--6 are allocated independently in order:
 
-| ID | Name | Width | HW Limit | Description |
-|----|------|-------|----------|-------------|
-| 0 | -- | -- | -- | Unified / cross-class (skipped in main loop) |
-| 1 | R | 32-bit | 255 | General-purpose registers (R0--R254) |
-| 2 | R (alt) | 32-bit | 255 | GPR variant (RZ sentinel, stat collector alternate) |
-| 3 | UR | 32-bit | 63 | Uniform general-purpose registers (UR0--UR62) |
-| 4 | UR (ext) | 32-bit | 63 | Uniform GPR variant (extended uniform) |
-| 5 | P / UP | 1-bit | 7 | Predicate registers (P0--P6, UP0--UP6) |
-| 6 | Tensor/Acc | 32-bit | varies | Tensor/accumulator registers (MMA/WGMMA) |
+| ID | Name | Width | Arch cap | Effective budget source | Description |
+|----|------|-------|----------|--------------------------|-------------|
+| 0 | -- | -- | -- | -- | Unified / cross-class (skipped in main loop) |
+| 1 | R | 32-bit | 255 | `min(maxrregcount, .maxnreg, occupancy-derived)` | General-purpose registers (R0--R254) |
+| 2 | R (alt) | 32-bit | 255 | mirror of class 1 | GPR variant (RZ sentinel, stat-collector alternate) |
+| 3 | UR | 32-bit | 63 | fixed by arch profile | Uniform general-purpose registers (UR0--UR62) |
+| 4 | UR (ext) | 32-bit | 63 | mirror of class 3 | Uniform GPR variant (extended uniform) |
+| 5 | P / UP | 1-bit | 7 | fixed by arch profile | Predicate registers (P0--P6, UP0--UP6) |
+| 6 | Tensor/Acc | 32-bit | per-arch | profile vtable | Tensor/accumulator registers (MMA/WGMMA) |
+
+The arch cap is the architectural ceiling reported as `regfile_params[3]`. The effective budget written into `RegClassDesc.max_regs` (`alloc+884+32*class_id`) is the minimum of the CLI/PTX inputs and the occupancy-derived budget from `evaluate_budget_fraction()` (see below). Classes 3--5 are not exposed to `--maxrregcount`; their budget equals the architectural cap.
 
 Barrier registers (B, UB) have `reg_type = 9`, which is above the `<= 6` allocator cutoff and are handled by a separate mechanism.
 
@@ -183,9 +185,15 @@ Both arrays are zeroed with SSE2 vectorized loops at the start of each allocatio
 
 ```
 function fatpoint_allocate(alloc_state, ctx, mode):
-    maxRegs = alloc_state.hw_limit + 7               // from alloc+756
-    if mode == CSSA_PAIRED (6):  maxRegs *= 2
-    if mode == CSSA (3):         maxRegs *= 4
+    // sub_957160 lines 421-435
+    maxRegs = max(alloc_state.hw_limit + 7,           // alloc+756 + headroom
+                  alloc_state.max_regs_aligned)       // alloc+1556 = (budget+4) & ~3
+
+    // CSSA modes widen the histogram for paired / quad-grouped slots
+    if mode in {CSSA(3), CSSA_PAIRED(6)}:
+        widen = (code_obj[+1369] & 0x40) ? 4 : 2      // mode-bit gates 4x vs 2x
+        maxRegs *= widen
+    alloc_state[+60] = maxRegs                        // committed bound
 
     primary[512]   = {0}                              // SSE2 memset
     secondary[512] = {0}
@@ -196,10 +204,13 @@ function fatpoint_allocate(alloc_state, ctx, mode):
         // Populate interference bitmaps for this vreg
         build_interference_bitmaps(vreg, primary, secondary)   // sub_957020
 
-        // Scan for minimum-pressure physical register
+        // Scan for minimum-pressure physical register.
+        // maxRegs is clamped against the 512-DWORD histogram capacity;
+        // assignments above 512 are unreachable in practice because the
+        // architectural cap is 255 even with CSSA 4x widening (1020 < 2052B).
         best_slot = -1
         best_cost = MAX_INT
-        for slot in 0..maxRegs:
+        for slot in 0..min(maxRegs, 512):
             if primary[slot] > threshold:
                 continue                              // too congested
             cost = primary[slot]
@@ -1168,7 +1179,22 @@ needs_spill = (pair_penalty + demanded + live_count)
             > (phys_range_end - phys_range_start + 1) * fraction
 ```
 
-**Occupancy formula** (`sub_A99FE0`, 7 instructions). Given a per-SM register file configuration from `occupancy_constants.json` (see `register_file_config.json` for the per-arch tables), the maximum warp occupancy for a given register count is:
+**Per-SM register-file parameters** (`extracted/occupancy_constants.json`, eight 16-byte rodata records starting at `0x229C400`):
+
+| Label | VA | Granularity mask | Half regfile | Reg cap | Max warps / SM |
+|-------|----|-------------------|--------------|---------|----------------|
+| sm53--sm62 regfile | `0x229C440` | -- | 128 | 65536 / 256 | 255 cap |
+| sm60--sm70 max warps | `0x229C430` | -- | -- | -- | 32 / 32 / 64 / 32 |
+| sm35--sm37 max warps | `0x229C450` | -- | -- | -- | 32 / 32 / 48 / 16 |
+| sm3x--sm5x max warps | `0x229C460` | -- | -- | -- | 32 / 32 / 48 / 24 |
+| sm70+ granularity | `0x229C470` | 80 | -- | -- | per-warp offset 16 |
+| sm90 regfile | `0x229C400` | -- | 128 | 32768 / 256 | 255 cap |
+| sm90 granularity | `0x229C410` | 63 | -- | -- | per-warp offset 16 |
+| barrier / CTA limits | `0x229C420` | -- | -- | -- | 4 barriers, 2048 threads, 8 CTAs, 2 reserved |
+
+The half-regfile value (128 for sm90, 256 for sm53--sm62) is `total_regs / 256` rounded for the per-warp slice. The 255 GPR cap in field [3] is the architectural ceiling reported via the `Used %d registers` diagnostic and the upper bound enforced after `--maxrregcount` clamping.
+
+**Occupancy formula** (`sub_A99FE0`, 7 instructions). The maximum warp occupancy for a given register count is:
 
 ```
 // Profile fields (set by sub_AAFCF0 from the arch profile vtable):
@@ -1182,6 +1208,33 @@ max_warps(regs) = (-granularity_mask & (2 * half_reg_file_size / regs)) - warp_o
 For sm90: `granularity_mask=63`, `half_reg_file=128`, so with 64 registers: `(-63 & (256/64)) - offset = (-63 & 4) - offset`. The negation creates a bitmask that rounds down to the granularity boundary, enforcing the hardware's allocation granularity constraint.
 
 The linear model at +1720/+1728/+1736 provides an equivalent fast path used in the main allocation loop (`sub_96D940`), where `fraction = (thread_count - x_min) * slope + y_min` with `slope = (coeffB - coeffC) / (maxOccupancy - minOccupancy)`.
+
+### External Budget Inputs: `--maxrregcount`, `setmaxnreg`, `register-usage-level`
+
+The HW limit (`alloc+756`) and the per-class `RegClassDesc.max_regs` field (`+884 + 32*class_id`) are computed before allocation from three ordered inputs that clamp the same field:
+
+| Source | Front-end token | Effect on budget |
+|--------|------------------|------------------|
+| Architectural cap | -- | 255 (GPR), 63 (UR), 7 (P/UP). Field [3] of `regfile_params`. |
+| `--maxrregcount=N` | `-maxrregcount` | Global cap. Diagnostic `"Too big maxrregcount value specified %d, will be ignored"` fires when `N > 255`; `"global register limit specified"` records the clamped value. Values below the ABI floor are bumped up silently. |
+| `--device-function-maxrregcount=N` | `device-function-maxrregcount` | Overrides `-maxrregcount` for `-c` compilations; ignored for whole-program. Diagnostic `"Overriding global maxrregcount %d with entry-specific value %d %s"` records the substitution. |
+| `.maxnreg N` (PTX directive) | `of .maxnreg` | Per-function override; takes precedence over the CLI value when `--override-directive-values` is not set. |
+| `.minnctapersm N` (PTX) | `minnctapersm` | Drives occupancy target. Ignored if `-maxrregcount` is also given (diagnostic `"... ignored if -maxrregcount option is used"`). |
+| `setmaxnreg.inc/dec` (SASS) | `setmaxnreg.inc/dec` | Runtime per-warp register pool adjustment on sm90+. Validated against the static budget; see the bail-out diagnostics below. |
+| `--register-usage-level=[0..10]` | `register-usage-level` | Bias knob (default 5). Maps to OCG knob index that scales the spill-cost multiplier at `alloc+1548` (default 4.0). Higher values trade extra registers for fewer spills. |
+
+`setmaxnreg.inc/dec` carries five rejection paths, all emitting `Potential Performance Loss:`:
+- `'setmaxnreg' ignored to allow debugging.` (debug builds disable register repartitioning)
+- `'setmaxnreg' ignored to maintain compatibility across compilation units.` (separately-compiled callers)
+- `'setmaxnreg' ignored; unable to determine register count at entry.` (no static peak)
+- `'setmaxnreg' ignored to maintain compatibility into 'extern' call.` (external call edge)
+- `'setmaxnreg' ignored to maintain minimum register requirements.` (ABI floor violated)
+
+Two hard errors validate consistency with launch bounds:
+- `setmaxreg.dealloc/release has register count (%d) less than launch min target (%d) allowed.`
+- `setmaxnreg.dec has register count (%d) which is larger than the largest temporal register count in the program (%d)`
+
+The patch-code path (`--compile-as-tools-patch`) forces the budget to the ABI minimum regardless of `-maxrregcount`. The shape-incompatibility error `"Function '%s' using feature '%s' and with shape '%s' cannot be compiled with specified register target constraints"` fires when the resolved per-function budget cannot satisfy the active feature set (tensor-core groups, paired-mode constraints, etc.).
 
 ## Virtual Register Object Layout
 

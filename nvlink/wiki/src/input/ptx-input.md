@@ -538,7 +538,7 @@ See [Mercury Finalizer](../mercury/fnlzr.md) for the 10-phase finalization pipel
 
 ## Option Forwarding
 
-nvlink forwards several option categories to the embedded ptxas. The forwarding logic is centralized in `sub_429BA0`, which builds the space-delimited option string that `sub_4BDB90` later tokenizes.
+nvlink forwards several option categories to the embedded ptxas. The forwarding logic is centralized in `sub_429BA0`, which builds the space-delimited option string that `sub_4BDB90` later tokenizes. The complete end-to-end matrix (including the parallel `-Xnvvm` path that feeds cicc instead of ptxas, and the per-module consensus mechanism for math-mode flags carried inside fatbin members) is documented in [Option Forwarding to cicc and ptxas](../lto/option-forwarding.md); this section focuses only on the ptxas-bound subset that reaches `sub_4BDB90` via `context+32`.
 
 ### sub\_429BA0 -- Option String Construction
 
@@ -566,7 +566,11 @@ Several nvlink-level CLI flags are automatically translated to ptxas options by 
 | `-suppress-debug-info` | `byte_2A5F226` | (sets `byte_2A5F310 = 0`) | Forces `-g` off in `sub_427AE0` line 1087 |
 | `-maxrregcount N` | `dword_2A5F22C` | `-maxrregcount N` | Appended by `sub_429BA0` |
 | `-Xptxas <str>` | `qword_2A5F238` (list) | `<str>` verbatim | Accumulated by `sub_429BA0`, tokenized by `sub_4BDB90` |
-| `-Ofast-compile` | `qword_2A5F258` | `-Ofast-compile` or similar | Appended by `sub_429BA0` |
+| `--Ofast-compile <lvl>` / `-Ofc` | `qword_2A5F258` | `--Ofast-compile=<lvl>` (two dashes; one-dash variant goes to cicc) | Appended by `sub_429BA0` via `0x1D33EEC` format `"--Ofast-compile=%s"` |
+| `--cuda-api-version <ver>` | `qword_2A5F218` | `-cuda-api-version=<ver>` | Appended by `sub_429BA0` via `0x1D33ED7` |
+| `--device-stack-protector` | `byte_2A5F1FE`/`byte_2A5F1FF` | `--device-stack-protector=true` or `=false` | Appended by `sub_429BA0` (`0x1D33EA8` / `0x1D33F18`) |
+| `--device-stack-protector-frame-size-threshold <N>` | `byte_2A5F1FC`/`dword_2A5F1F8` | `--device-stack-protector-frame-size-threshold=<N>` | Formatted via `0x1D33F38`; delivered through a separate channel (not in the six-part `snprintf`) |
+| `--split-compile <N>` | `dword_2A5B518` | `-split-compile=<N>` | Appended by `sub_429BA0` when `dword_2A5B518 != 1` |
 | `--verbose-keep` | `byte_2A5F29B` | (logs ptxas cmdline to stderr) | `main()` line 1471 (`nvlink -extract ...`) |
 
 ## Error Handling

@@ -211,7 +211,7 @@ Note the typo `"instrinsic"` in the Volta and Ada messages -- this is present in
 
 ## Intrinsic Verification Categories
 
-The intrinsic verifier is a single monolithic switch on the NVVM internal intrinsic ID (stored at function value offset +36). The 143KB function covers 26+ validation categories:
+The intrinsic verifier is a single monolithic switch on the NVVM internal intrinsic ID (stored at function value offset +36). The 143KB function covers 26+ validation categories. The sections below group the major ones; reduction (`nvvm.red`), fence, `setmaxnreg`, `tcgen05.cp`, and arch-gated MMA variants each have dedicated check blocks documented in subsections G.1-G.3, O.1, P, and Q.
 
 ### A. Constant Argument Validation
 
@@ -289,11 +289,54 @@ Inline assembly type validation uses a bitmask check: valid bit widths are 1, 8,
 | CAST type restriction | `"atomic.cast only overloads on i32 and i64"` |
 | CAST pointer restriction | `"atomic.cast is only allowed on shared pointers"` |
 | CAST ordering restriction | `"atomic.cast works on shared memory, so cannot be ordered"` |
+| Vector RMW opcode | `"the opcode of atomic_rmw_v2f32 and atomic_rmw_v4f32 must be FADD"` |
 | Global ordering scope | `"Global ordering on atomics is only allowed on generic/global pointers"` |
 | Ordering mode | `"ordering mode not a valid value"` |
 | Scope mode | `"scope mode not a valid value"` |
+| Unsupported RMW ordering | `"unsupported ordering for nvvm.atomic.rmw"` |
 | Cache hint | `"Cache operation hint not a valid value"` |
 | Operation mode | `"operation mode not a valid value"` |
+| 128-bit gate | `"128b atomics not supported on this architecture!"` (pre-sm_90) |
+| Vector atomic gate | `"vector atomics not supported on this architecture!"` (pre-sm_90) |
+
+### G.1. NVVM Reduction (`nvvm.red`) Validation
+
+The `nvvm.red` family (warp/CTA-wide reduction operators) has its own dedicated validation block, separate from generic atomics. The pointer operand identifies the destination memory; the operator selects the reduction kernel; the type-and-vector-length pair must match the hardware-supported reduction operator set.
+
+| Check | Message |
+|---|---|
+| Pointer AS (top-level intrinsic AS field) | `"Invalid address space for nvvm.red"` |
+| Pointer operand AS (the actual pointer's AS) | `"Invalid address space for pointer operand in nvvm.red"` |
+| Reduction opcode field | `"Invalid reduction op for nvvm.red"` |
+| Reduction element type field | `"Invalid reduction type for nvvm.red"` |
+| Op/type cross-check | `"Invalid op and type combination for nvvm.red"` |
+| Vector length vs type | `"Invalid type and vector length for nvvm.red"` |
+| Element IR type | `"Invalid Type for nvvm.red"` |
+| Memory ordering | `"Invalid memory model ordering for nvvm.red"` |
+
+### G.2. Fence Intrinsic Validation
+
+In addition to the IR-level `fence` instruction (opcode 0x40, see [Per-Instruction Validation](#per-instruction-validation-module-verifier)), there is a dedicated `llvm.nvvm.fence` intrinsic whose opcode/scope/ordering tuple is validated independently.
+
+| Check | Message |
+|---|---|
+| Opcode field | `"Invalid opcode for nvvm_fence_opcode intrinsic"` |
+| Ordering whitelist | `"Invalid ordering for fence, only acq_rel and seq_cst are supported."` |
+| Scope/ordering pair | `"Unsupported "{}" ordering and "{}" scope for fence."` |
+| Acquire/release/acq_rel scope | `"Unsupported scope "{}" for acquire/release/acq_rel fence."` |
+| seq_cst scope | `"Unsupported scope "{}" for seq_cst fence."` |
+| Wait operation ordering | `"relaxed memory ordering is not allowed on 'wait' operation"` |
+
+### G.3. Register Count (`nvvm.setmaxnreg`) Validation
+
+The Hopper register-reallocation intrinsic accepts only specific count values:
+
+| Check | Message |
+|---|---|
+| Range | `"reg_count argument to nvvm.setmaxnreg must be within [24, 256]"` |
+| Granularity | `"reg_count argument to nvvm.setmaxnreg must be in multiples of 8"` |
+
+Combined, the legal `reg_count` set is `{24, 32, 40, ..., 248, 256}` -- 30 distinct values.
 
 ### H. Texture/Surface Validation
 
@@ -308,7 +351,17 @@ Inline assembly type validation uses a bitmask check: valid bit widths are 1, 8,
 | Semantic mode | `"semantic mode not a valid value"` |
 | Query mode | `"query mode is not a valid value"` |
 | Handle source | `"Op0 of nvvm.texsurf.handle must be a metadata wrapper around a tex/surf GlobalVariable"` |
+| Handle (short form) | `"nvvm_texsurf_handle op0 must be metadata wrapping a GlobalVariable"` |
+| Global declaration AS | `"Texture/surface variables must be global address space"` |
 | Deprecated desc | `"Desc parameter is deprecated and should be undef."` (IDs 8937, 9549) |
+
+### H.1. Barrier Pointer Validation
+
+| Check | Message |
+|---|---|
+| Barrier intrinsic pointer AS | `"Barrier pointer must be in shared memory space"` |
+
+Mbarrier / arrive-wait synchronization objects live exclusively in `addrspace(3)` (shared); a generic or global pointer is rejected.
 
 ### I. SATF (Saturate-to-Float) Validation
 
@@ -413,7 +466,52 @@ Messages: "conversion type not a valid value"
           "Src and dst type must be different bit widths"
 ```
 
-### P. Other Validation Categories
+### O.1. Pack-Float Conversion (`nvvm.cvt.packfloat`) Validation
+
+| Check | Message |
+|---|---|
+| Src/dst pair | `"Invalid Src/Dst Type in cvt_packfloat Intrinsic."` |
+
+The pack-float family converts pairs of FP values to packed sub-word formats; the type pair must be one of a small whitelist (e.g., `{f32, f32} -> v2bf16`).
+
+### P. tcgen05 (Blackwell Tensor Core Gen-5) Validation
+
+The Blackwell-introduced `tcgen05.cp` / `tcgen05.mma` intrinsics carry an encoded shape and multicast flag word; the verifier validates the tuple as a unit:
+
+| Check | Message |
+|---|---|
+| Copy shape encoding | `"Unexpected tcgen05.cp shape"` |
+| Copy destination format | `"Unsupported tcgen05.cp destination format"` |
+| Copy shape + multicast cross-check | `"Unsupported tcgen05.cp shape and multicast flags"` |
+| Block-scale ashift gate | `"ashift is not supported with tcgen05.mma.block_scale variants"` |
+
+These checks fire only on sm_100+ targets; on earlier architectures the intrinsic is rejected by the SM gate first.
+
+### Q. Architecture-Gated MMA / Vector Intrinsic Variants
+
+Beyond the SM-version gates in the [Architecture Gates](#architecture-gates-sm-gated-features) table, the intrinsic verifier rejects specific MMA, atomic, and vector variants whose hardware support landed in scattered SM versions. These messages follow a unified pattern -- `"<name> is not supported on this architecture"` -- and are checked against per-feature SM tables internal to the intrinsic verifier.
+
+| Family | Variant | Message |
+|---|---|---|
+| HMMA (FP16 tensor) | mma | `"hmmamma is not supported on this architecture"` |
+| HMMA | load-A/B | `"hmmaldab is not supported on this architecture"` |
+| HMMA | load-C | `"hmmaldc is not supported on this architecture"` |
+| HMMA | store-C | `"hmmastc is not supported on this architecture"` |
+| IMMA (int8 tensor) | mma | `"immamma is not supported on this architecture"` |
+| IMMA | load-A/B | `"immaldab is not supported on this architecture"` |
+| IMMA | load-C | `"immaldc is not supported on this architecture"` |
+| IMMA | store-C | `"imma stc not supported on this architecture"` (sic -- missing dash) |
+| BMMA (binary tensor) | mma | `"bmmamma is not supported on this architecture"` |
+| F32x2 | -- | `"F32x2 intrinsics are not supported on this architecture"` |
+| Vector atomics | -- | `"vector atomics not supported on this architecture!"` |
+| 128-bit atomics | -- | `"128b atomics not supported on this architecture!"` |
+| TMA G2S | 2CTA mode | `"2CTA Mode for CpAsyncBulkTensorG2S not supported on this architecture"` |
+| WGMMA (Hopper) | shape check | `"The shape %s is not supported for __wgmma_mma_async builtin"` |
+| WGMMA | operand overflow | `"unexpected constant overflow in __wgmma_mma_async operand"` |
+
+Several "unexpected"-prefixed messages indicate the verifier detected an MMA variant that should have been lowered earlier in the pipeline; reaching the verifier in this state implies an upstream pass bug rather than user IR error: `"unexpected imma_ld intrinsic!"`, `"unexpected imma_mma intrinsic call!"`, `"unexpected overloaded mma intrinsic call!"`, `"unexpected overloaded mma load intrinsic call!"`, `"unexpected overloaded mma store intrinsic call!"`, `"unexpected WMMA intrinsic!"`.
+
+### R. Other Validation Categories
 
 | Category | IDs | Key Messages |
 |---|---|---|
@@ -424,6 +522,11 @@ Messages: "conversion type not a valid value"
 | Cache operations | -- | `"invalid cache type"`, `"invalid cache op"` |
 | Wait intrinsic | -- | `"Invalid wait mode"` |
 | ISBE | 0x2BC1 (11201) | `"Only writes to MAP or ATTR are supported"`, `"Cannot write to input ISBE"` |
+| `llvm.nvvm.sub` | -- | `"First argument of 'llvm.nvvm.sub' must be a constant."` |
+| Load/store first arg | -- | `"The first argument of load/store intrinsic must be a constant."` |
+| Address-space cvt deprecation | -- | `"nvvm address space conversion intrinsics are not supported. Please use addrspacecast instruction for address space conversions"` |
+| `read.sreg` overload | -- | `"Unsupported overloaded declaration of llvm.nvvm.read.sreg intrinsic"` |
+| `read.sreg` SM gate | -- | Specific sreg IDs gate on SM version (clock64 needs sm_30+, etc.) |
 | Unsupported fallback | -- | `"Unsupported intrinsic: <name>"` |
 
 ## Cmpxchg Restrictions

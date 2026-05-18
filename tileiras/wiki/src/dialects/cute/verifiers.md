@@ -352,7 +352,7 @@ Four parallel function-pointer tables index by the kind ordinal — the row posi
 | `parse`    | per-kind bytecode reader |
 | `fold`     | per-kind canonicalisation |
 
-A separate nine-entry operand-kind table records the expected kind discriminator for each operand slot of multi-operand ops. The arity of nine covers the widest cute op: `cute.partition` consumes up to nine sub-layouts. Narrower ops such as `cute.compose` (two operands) and `cute.zipped_divide` (three) leave the trailing entries unused but read the same table layout, which keeps the verifier-side per-operand checks index-uniform.
+A separate nine-entry operand-kind table records the expected kind discriminator for each operand slot of multi-operand ops. The arity of nine covers the widest cute op: `cute.partition` consumes up to nine sub-layouts (input view, tiler, coord, mode list, and up to five auxiliary atom-binding slots). Narrower ops such as `cute.compose` (two operands) and `cute.zipped_divide` (three) leave the trailing entries unused but read the same table layout, which keeps the verifier-side per-operand checks index-uniform. The partition op page documents the consumer side of this slot table — see [Tile and Divide Ops — Tiled partition verifier](tile-and-divide-ops.md#tiled-partition-verifier).
 
 Dispatch is a linear scan over the seven sentinels followed by an indexed call into the appropriate table. Pointer-identity comparison keeps the inner loop to a single compare per kind; falling off the end is a hard error because every well-formed `cute` Type must carry one of the seven sentinels.
 

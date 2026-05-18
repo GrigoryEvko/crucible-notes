@@ -98,6 +98,8 @@ A correct verifier should reject invalid target combinations early:
 - sparse MMA forms include valid metadata and selector attributes,
 - block-scaled MMA forms include valid scale-vector layout and per-lane scale ids,
 - TMA descriptor operands agree with the source or destination layout,
+- `tcgen05.mma` kind words clear the 13-rule mutual-exclusion ladder before opcode selection,
+- TMA partition ops clear the 11-step ladder (type, layout-kind, integer-stride, swizzle, static, shape-equiv, G-basis, layout, tensor-type, multicast),
 - tensor-memory operations respect allocation, deallocation, and permit-transfer order,
 - descriptor views preserve address space, element type, shape, and swizzle requirements,
 - kernel entry markers are rewritten before NVVM emission.

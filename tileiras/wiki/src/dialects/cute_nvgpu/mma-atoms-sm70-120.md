@@ -39,7 +39,7 @@ Notes on the lattice:
 - SM120 block-scaled MMA accepts only `K = 32` (FP4/FP6/FP8 inputs with E8M0 scales, `vec_size = 32`) or
   `K = 64` (FP4 only, `vec_size in {16, 32}`).
 - Sparse variants halve the structurally-sparse operand and add a metadata operand; the shape entry above
-  applies to the dense operand.
+  applies to the dense operand. SM100 carries both a dense-sparse atom (`sm100.mma_sp`) and a block-scaled-sparse atom (`sm100.mma_bs_sp`); the former keeps the UMMA element-type set, the latter overlays the FP4/FP8 microscale lattice.
 
 ```c
 LogicalResult check_shape_in_lattice(SmTier tier, Shape mnk,
