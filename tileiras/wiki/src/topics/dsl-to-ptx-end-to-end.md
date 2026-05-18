@@ -99,13 +99,13 @@ Distinctive markers at this tier: tile types are `!cuda_tile.tile<...>`, memory 
 
 ## Stage 2: nv_tileaa IR
 
-`ConvertCudaTileToTileAA` rewrites every public operation into the alias-aware internal dialect. The three-populator structure documented in [cuda_tile to tileaa](../lowering/cuda-tile-to-tileaa.md) drives the rewrite: Part A handles arithmetic and control flow, Part B handles memory and views, Part C specialises `mmaf` and the reductions. Tile types collapse to plain `tensor<...>`, token types become `!nv_tileaa.token`, and pointer arithmetic becomes explicit through `addptr` and `make_memref`.
+`ConvertCudaTileToTileAA` rewrites every public operation into the alias-aware internal dialect. The three-populator structure documented in [cuda_tile to tileaa](../lowering/cuda-tile-to-tileaa.md) drives the rewrite: Part A handles arithmetic and control flow, Part B handles memory and views, Part C specialises `mmaf` and the reductions. Tile types collapse to plain `tensor<...>`, token types become `!nv_tileaa.mem_token`, and pointer arithmetic becomes explicit through `addptr` and `make_memref`.
 
 ```mlir
 nv_tileaa.func @gemm(%A: !llvm.ptr<1>, %B: !llvm.ptr<1>,
                     %C: !llvm.ptr<1>, %D: !llvm.ptr<1>,
                     %M: i32, %N: i32, %K: i32) {
-  %tok0 = nv_tileaa.create_mem_token : !nv_tileaa.token
+  %tok0 = nv_tileaa.create_mem_token : !nv_tileaa.mem_token
   %bm = nv_tileaa.get_program_id { axis = 0 : i32 } : i32
   %bn = nv_tileaa.get_program_id { axis = 1 : i32 } : i32
 
@@ -131,13 +131,13 @@ nv_tileaa.func @gemm(%A: !llvm.ptr<1>, %B: !llvm.ptr<1>,
     %a, %tok_a = nv_tileaa.tiled_load %off_a, %tok0
                { copy_atom = #cute_nvgpu.copy_atom<sm90_tma_load_2d_f16> }
                : !nv_tileaa.memref<?x?xf16> -> tensor<128x64xf16>,
-                 !nv_tileaa.token
+                 !nv_tileaa.mem_token
     %off_b = nv_tileaa.addptr %b_ref, [%bn, %k]
            : !nv_tileaa.memref<?x?xf16>
     %b, %tok_b = nv_tileaa.tiled_load %off_b, %tok_a
                { copy_atom = #cute_nvgpu.copy_atom<sm90_tma_load_2d_f16> }
                : !nv_tileaa.memref<?x?xf16> -> tensor<128x64xf16>,
-                 !nv_tileaa.token
+                 !nv_tileaa.mem_token
     %acc_n = nv_tileaa.dot %a, %b, %acc
            { input_precision = "tf32", fastmath = "contract" }
            : tensor<128x64xf16>, tensor<128x64xf16>, tensor<128x128xf32>
@@ -149,20 +149,20 @@ nv_tileaa.func @gemm(%A: !llvm.ptr<1>, %B: !llvm.ptr<1>,
   %c_tile, %tok_c = nv_tileaa.tiled_load %off_c, %tok0
                   { copy_atom = #cute_nvgpu.copy_atom<sm90_tma_load_2d_f32> }
                   : !nv_tileaa.memref<?x?xf32> -> tensor<128x128xf32>,
-                    !nv_tileaa.token
+                    !nv_tileaa.mem_token
 
   %d_tile = arith.addf %acc_out, %c_tile : tensor<128x128xf32>
 
   %off_d = nv_tileaa.addptr %d_ref, [%bm, %bn] : !nv_tileaa.memref<?x?xf32>
   %tok_s = nv_tileaa.tiled_store %off_d, %d_tile, %tok_c
          { copy_atom = #cute_nvgpu.copy_atom<sm90_tma_store_2d_f32> }
-         : tensor<128x128xf32>, !nv_tileaa.memref<?x?xf32>, !nv_tileaa.token
+         : tensor<128x128xf32>, !nv_tileaa.memref<?x?xf32>, !nv_tileaa.mem_token
 
   nv_tileaa.return
 }
 ```
 
-Three changes carry the most weight downstream. Tile types are now plain MLIR `tensor<...>`, which lets ordinary tensor passes and the shared LLVM `TypeConverter` see through them. Every memory operation produces or consumes a `!nv_tileaa.token`, giving the scheduler an SSA representation of memory ordering. And every `tiled_load`/`tiled_store` carries a `copy_atom` witness attribute, picked from the [SM-Tier Roster and Copy Atom Registry](../dialects/cute_nvgpu/sm-tier-roster-and-copy-atom-registry.md); that witness is what the next stage uses to select a concrete hardware copy primitive.
+Three changes carry the most weight downstream. Tile types are now plain MLIR `tensor<...>`, which lets ordinary tensor passes and the shared LLVM `TypeConverter` see through them. Every memory operation produces or consumes a `!nv_tileaa.mem_token`, giving the scheduler an SSA representation of memory ordering. And every `tiled_load`/`tiled_store` carries a `copy_atom` witness attribute, picked from the [SM-Tier Roster and Copy Atom Registry](../dialects/cute_nvgpu/sm-tier-roster-and-copy-atom-registry.md); that witness is what the next stage uses to select a concrete hardware copy primitive.
 
 ## Stage 3: nv_tileas IR (after scheduling)
 

@@ -162,8 +162,8 @@ The Blackwell shared-to-tensor-memory copy lowers in two stages. First, the CuTe
 %tok = cute_nvgpu.cp_async.s2t %src_smem_view, %dst_tmem_ptr, %mbar, %partition
     { atom = #cute_nvgpu.copy_atom<sm100_s2t_b8x128>,
       cta_group = 2 : i32 }
-    : !nv_tileas.tiled_view<128x128xi8, smem>, !llvm.ptr<6>, !llvm.ptr<3>, i32
-    -> !nv_tileas.AsyncToken
+    : !nv_tileaa.tiled_view<128x128xi8, smem>, !llvm.ptr<6>, !llvm.ptr<3>, i32
+    -> !nv_tileas.async
 
 // After
 %src_addr  = llvm.extractvalue %src_smem_view[0]

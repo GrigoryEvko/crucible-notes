@@ -95,8 +95,8 @@ The witness is also the gate `LowerTMALoadStoreToAsync` reads in phase 2 of its 
                   in_bounds = array<i1: true, true>,
                   mem_semantic = #nv_tileas<mem_semantic relaxed>,
                   mem_scope = #nv_tileas<mem_scope cluster> }
-                : !nv_tileas.memref<?x?xbf16> -> tensor<128x128xbf16>,
-                  !nv_tileas.mem_token
+                : !nv_tileaa.memref<?x?xbf16> -> tensor<128x128xbf16>,
+                  !nv_tileaa.mem_token
 ```
 
 Then the [TileAS TMA and Memops Family](../passes/tileas/tma-and-memops-family.md) pipeline runs, with `LowerTMALoadStoreToAsync` doing the heavy work. The eight-phase walk (KernelSpec gate, TMA-eligibility scan, `tmaIdx` assignment, descriptor bind, async op materialization, mbarrier emission, wait sinking, diagnostic finalization) is documented in [TileAS TMA and Memops Family — LowerTMALoadStoreToAsync](../passes/tileas/tma-and-memops-family.md#lowertmaloadstoretoasync). The output is the four-op sequence the downstream lowering expects: descriptor build, async TMA op, mbarrier expect-tx, mbarrier wait.
@@ -122,7 +122,7 @@ Then the [TileAS TMA and Memops Family](../passes/tileas/tma-and-memops-family.m
            !nv_tileas.smem<128x128xbf16>,
            index, index,
            !nv_tileas.mbarrier
-         -> !nv_tileas.AsyncToken
+         -> !nv_tileas.async
 ```
 
 Three new entities appear at this stage. First, the **TMA descriptor** is a first-class SSA value — `%desc_a` is the result of `make_tiled_tma_desc`, which captures tensor shape, stride, padding mode, descriptor mode (tiled), element type, and the `cute_nvgpu.tma_atom` witness with its swizzle. The descriptor's `tmaIdx` attribute is the per-function counter assigned in phase 3 of `LowerTMALoadStoreToAsync`; downstream the `AttachTMADescriptorArgs` pass (documented in [TileAS TMA and Memops Family — Descriptor ABI](../passes/tileas/tma-and-memops-family.md#descriptor-abi)) reads it to wire host descriptor preparation back to device descriptor consumption. Second, the **mbarrier slot** is an explicit `!nv_tileas.mbarrier` SSA value with an `arrive_count` of 1 — one producer agent will publish completion. Third, the **transaction-byte count** is a concrete `tx_count = 32768 : i32` attribute on the async load. That integer is the byte count the consumer's `mbarrier.try_wait.parity` will check against.

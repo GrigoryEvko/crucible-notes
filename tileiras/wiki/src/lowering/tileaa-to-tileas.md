@@ -128,11 +128,11 @@ The TileAA `tiled_load` already carries a `CopyAtomAttrInterface` witness chosen
       mem_semantic = #nv_tileas<mem_semantic relaxed>,
       mem_scope = #nv_tileas<mem_scope cluster>,
       operandSegmentSizes = array<i32: 1, 2, 0, 1> }
-    : !nv_tileas.tiled_view<128x32xf16>, index, index, !nv_tileas.mem_token
-    -> tile<128x32xf16>, !nv_tileas.mem_token
+    : !nv_tileaa.tiled_view<128x32xf16>, index, index, !nv_tileaa.mem_token
+    -> tile<128x32xf16>, !nv_tileaa.mem_token
 ```
 
-The view-typed operand changes shape: `nv_tileaa.memref<?x?xf16, 1>` becomes `nv_tileas.tiled_view<128x32xf16>` because TileAS represents the access through the static tile box rather than the parent dynamic memref. The TypeConverter materialises a `nv_tileas.view` operation upstream so the rewritten `tiled_load` consumes an already-typed view; the materialiser is not visible at the call site of the rewrite, but its output feeds the operand slot during partial conversion.
+The view-typed operand changes shape: `nv_tileaa.memref<?x?xf16, 1>` becomes `nv_tileaa.tiled_view<128x32xf16>` because TileAS represents the access through the static tile box rather than the parent dynamic memref. The `tiled_view` type itself is declared in the alias-aware dialect and survives the rewrite untouched; only the producer mnemonic changes. The TypeConverter materialises a `nv_tileas.view` operation upstream so the rewritten `tiled_load` consumes an already-typed view; the materialiser is not visible at the call site of the rewrite, but its output feeds the operand slot during partial conversion.
 
 The `mem_semantic` and `mem_scope` enum attributes change their dialect prefix but retain identical discriminant values. The `CopyAtomAttrInterface` witness is the only attribute that is dialect-neutral — `#cute_nvgpu.copy_atom<sm90_tma_load_2d>` carries through unchanged because the cute_nvgpu dialect publishes the witness for both consumers.
 

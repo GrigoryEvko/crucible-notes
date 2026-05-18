@@ -365,7 +365,7 @@ The TileAS TMA-load lowering is a five-step rewrite. The TMA descriptor (an `nv_
     { atom = #nv_tileas<atom tma_load_2d>,
       operandSegmentSizes = array<i32: 1, 1, 2, 1> }
     : !nv_tileas.tma_descriptor_iter, !nv_tileaa.tiled_view<128x64xf16>,
-      index, index, !nv_tileas.mem_token
+      index, index, !nv_tileaa.mem_token
     -> !nv_tileas.async.token
 
 // After
@@ -431,7 +431,7 @@ mbarrier initialisation is a one-to-one rewrite. The barrier value lives in shar
 ```mlir
 // Before
 %mbar_init = nv_tileas.async.mbarrier_init %mbar, %ticks
-    : !nv_tileas.mem_token, i32 -> !nv_tileas.mem_token
+    : !nv_tileaa.mem_token, i32 -> !nv_tileaa.mem_token
 
 // After
 %mbar_addr = llvm.extractvalue %mbar_struct[0]

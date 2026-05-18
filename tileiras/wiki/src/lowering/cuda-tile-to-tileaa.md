@@ -290,7 +290,7 @@ Token-aware operations stay explicit in the IR rather than collapsing immediatel
 ```mlir
 %t = cuda_tile.token.join [%t0, %t1, %t2] : !cuda_tile.token
    ↓
-%t = nv_tileaa.join_mem_token [%t0, %t1, %t2] : !nv_tileaa.token
+%t = nv_tileaa.join_mem_token [%t0, %t1, %t2] : !nv_tileaa.mem_token
 ```
 
 Singleton joins skip the `join_mem_token` op and pass the single token through unchanged; empty joins lower to `nv_tileaa.create_mem_token` (with empty operand list), the same producer the downstream `nv_tileas.async.pipeline.create_null_token` later consumes, so every downstream op still has a token operand to consume.
