@@ -92,6 +92,7 @@
 # CUDA Intrinsics
 
 - [Intrinsic Table (608 Entries)](./intrinsics/index.md)
+- [Prototype Emitter (1,080-Case Dispatch)](./intrinsics/prototype-emitter.md)
 - [OCG Intrinsic System (44 Operations)](./intrinsics/ocg.md)
 - [Math Intrinsics](./intrinsics/math.md)
 - [Tensor Core Intrinsics](./intrinsics/tensor.md)

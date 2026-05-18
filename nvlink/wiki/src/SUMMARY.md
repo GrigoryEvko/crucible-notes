@@ -53,6 +53,7 @@
 
 - [LTO Overview](lto/overview.md)
 - [libnvvm Integration](lto/libnvvm-integration.md)
+- [Module-Add Path (sub_4CE070)](lto/module-add-path.md)
 - [Whole vs Partial LTO](lto/whole-vs-partial.md)
 - [Split Compilation](lto/split-compilation.md)
 - [Option Forwarding to cicc](lto/option-forwarding.md)

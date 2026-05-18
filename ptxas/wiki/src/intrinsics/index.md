@@ -19,6 +19,7 @@ ptxas maintains two separate intrinsic subsystems that together cover every CUDA
 
 **Per-Family Deep Dives:**
 
+- [Prototype Emitter (`sub_5FF700`)](prototype-emitter.md) -- 1,080-case dispatch producing the `.weak .func` / `.FORCE_INLINE .func` PTX declarations consumed by every helper-emitting kernel
 - [OCG Intrinsic System](ocg.md) -- SM100+ OCG builtins (44 operations), lowering pipeline, SASS handler map
 - [Math Intrinsics](math.md) -- IEEE math software emulation (div, rcp, sqrt, rem)
 - [Tensor Core Intrinsics](tensor.md) -- WMMA, MMA, WGMMA, tcgen05 lowering

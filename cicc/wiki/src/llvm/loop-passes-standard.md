@@ -2,7 +2,7 @@
 
 > **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
 
-CICC v13.0 includes a full complement of LLVM loop transformation passes beyond the major ones (LoopVectorize, LoopUnroll, LICM, LSR) that have their own pages. This page covers the remaining loop passes: LoopInterchange, IRCE, IndVarSimplify, LoopDistribute, LoopIdiom, LoopRotate, LoopSimplify, and LCSSA. Most are stock LLVM with default thresholds, but IndVarSimplify carries three NVIDIA-specific knobs that materially change behavior on GPU code. LoopRotate appears multiple times in the pipeline as a canonicalization prerequisite for LICM and unrolling. The canonicalization trio -- LoopSimplify, LCSSA, and LoopRotate -- run so frequently they constitute the backbone of loop pass infrastructure in cicc.
+CICC v13.0 includes a full complement of LLVM loop transformation passes beyond the major ones (LoopVectorize, LoopUnroll, LICM, LSR) that have their own pages. This page covers the remaining loop passes: LoopInterchange, IRCE, IndVarSimplify, LoopDistribute, LoopIdiom, LoopRotate, LoopSimplify, LCSSA, LoopSimplifyCFG, LoopDeletion, SimpleLoopUnswitch, LoopFlatten, LoopPredication, LoopSink, and LoopVersioning. Most are stock LLVM with default thresholds, but IndVarSimplify carries three NVIDIA-specific knobs that materially change behavior on GPU code and SimpleLoopUnswitch exposes a GPU-critical `unswitch-uniform-only` knob that gates unswitching on warp-uniform conditions. LoopRotate appears multiple times in the pipeline as a canonicalization prerequisite for LICM and unrolling. The canonicalization trio -- LoopSimplify, LCSSA, and LoopRotate -- run so frequently they constitute the backbone of loop pass infrastructure in cicc.
 
 **Barrier awareness.** None of these 8 passes have explicit barrier (`__syncthreads()`) awareness. Barrier handling in cicc occurs through dedicated NVIDIA passes: Dead Barrier Elimination (`sub_2C83D20`) and convergence control token verification (`sub_E35A10`). The structural passes (LoopRotate, LoopSimplify, LCSSA) do not move instructions across basic blocks in ways that could reorder barriers. LoopInterchange and LoopDistribute could theoretically reorder barriers, but barriers in CUDA kernels typically occur outside perfectly-nested loop bodies (interchange) or create non-distributable loop bodies (distribution).
 
@@ -352,6 +352,231 @@ Ensures that every value defined inside a loop and used outside it passes throug
 
 ---
 
+## LoopSimplifyCFG
+
+A loop-local variant of SimplifyCFG that performs CFG-level cleanup confined to a single loop nest -- branch folding, dead-block removal, terminator constant-folding, and switch lowering -- without invalidating the surrounding loop pass manager's loop list. Unlike global SimplifyCFG (which can blow away loop structure entirely), LoopSimplifyCFG is safe to interleave with other LPM passes because it preserves the `LoopInfo`, `DominatorTree`, `LCSSA`, and `MemorySSA` invariants the LPM contract requires.
+
+| Property | Value |
+|---|---|
+| Entry point | `sub_198E0D0` (226 bytes -- thin NewPM wrapper) |
+| Type-name string | `"LoopSimplifyCFGPass"` at `0x4374398` |
+| Pass name | `"loop-simplifycfg"` at `0x42c02b6` |
+| Description string | `"Simplify loop CFG"` at `0x42c02a4` |
+| Knob | `enable-loop-simplifycfg-term-folding` at `0x4395ab0` |
+| Knob constructor | `ctor_468` (70 bytes -- single bool knob) |
+| Wired into pipelines | `sub_233C410`, `sub_2342890`, `sub_235B6A0`, `sub_2368220`, `sub_2377300`, `sub_2382460`, `sub_2394710`, `sub_28487C0` |
+| NVIDIA delta | **None** -- stock LLVM |
+
+**What it does.** Walks the loop's basic blocks and applies four cleanup transformations:
+
+1. **Terminator constant-folding** (gated by `enable-loop-simplifycfg-term-folding`) -- when a conditional branch or switch terminator has a constant condition after upstream propagation, replaces it with an unconditional branch and removes the dead successor. This is the most aggressive step: it can delete entire sub-CFGs within the loop.
+2. **Dead-block removal** -- blocks with no predecessors (orphaned by terminator folding) are spliced out, their PHI uses repaired in successors.
+3. **Branch threading** -- single-predecessor / single-successor block pairs are merged when no PHI nodes block the merge.
+4. **Trivial loop deletion** -- if the loop becomes a trivial fall-through (empty header, no backedge), it is removed and the LPM updater is notified via `LPMUpdater::markLoopAsDeleted`.
+
+**Pipeline placement.** Eight call sites distributed across LPM construction. The pass typically runs immediately after LICM/LoopUnswitch/IndVarSimplify to clean up the dead branches those passes leave behind. Note that the pipeline assembler functions (`sub_233C410` etc.) are the family of LPM builders -- LoopSimplifyCFG appears in essentially every flavor of the loop pipeline that cicc constructs.
+
+**GPU considerations.** The `enable-loop-simplifycfg-term-folding` knob is significant for GPU codegen because terminator folding can convert a divergent branch (where some threads in a warp take one path, others take the other) into a uniform branch (when the condition reduces to a constant). This reduces warp divergence pressure for the downstream NVPTX backend. The pass has no explicit divergence model -- it relies on constant-folding having already eliminated the divergence at IR level. There is no barrier awareness: if the deleted dead block contained a `__syncthreads()`, the barrier is removed silently. This is correct (the barrier was on a path that constant analysis proved unreachable) but the removal happens without a remark.
+
+---
+
+## LoopDeletion
+
+Removes loops that the optimizer can prove are dead -- either because they execute zero iterations, because their results are entirely unused, or (in the extended NVIDIA-aware configuration) because symbolic execution of the first iteration proves the backedge is never taken. Deleting a loop early in the pipeline is enormously profitable because it eliminates work for every downstream pass.
+
+| Property | Value |
+|---|---|
+| Entry point | `sub_19681C0` (226 bytes -- NewPM wrapper) |
+| Type-name string | `"LoopDeletionPass"` at `0x436ac90` |
+| Pass name | `"loop-deletion"` at `0x42bf0bb` |
+| Description string | `"Delete dead loops"` at `0x42bf0a9` |
+| Disable knob | `disable-LoopDeletionPass` at `0x4282255` (description: `"Disable LoopDeletionPass"` at `0x428226e`) |
+| Symbolic-execution knob | `loop-deletion-enable-symbolic-execution` at `0x4394b58` |
+| Symbolic-execution description | `"Break backedge through symbolic execution of 1st iteration attempting to prove that the backedge is never taken"` at `0x4394b80` |
+| Knob constructor | `ctor_459` (526 bytes) |
+| Pipeline call sites | `sub_233C410`, `sub_2342890`, `sub_235B6A0`, `sub_2368220`, `sub_2377300`, `sub_2382460`, `sub_2394710` |
+| NVIDIA delta | **Knob present** -- the disable switch is NVIDIA-named; symbolic execution is recent LLVM but exposed as configurable |
+
+**Three deletion conditions.** LoopDeletion fires when ANY of three conditions are proved:
+
+1. **Zero-trip provable via SCEV** -- `ScalarEvolution::getBackedgeTakenCount` returns a constant that is provably <= 0 at the loop's entry condition. The loop body never executes; the entry edge is rewired directly to the exit. This is the cheapest and most common case.
+2. **Loop output is dead** -- every value defined inside the loop has no use outside the loop. Combined with proof that the loop terminates (mustprogress attribute, finite-trip SCEV, or explicit `llvm.loop.mustprogress` metadata), the loop is removed wholesale. The LCSSA PHI nodes at the exit are replaced with their entry-edge incoming values (since the loop is provably equivalent to its initial state for any live-out).
+3. **Symbolic execution of iteration 1** (gated by `loop-deletion-enable-symbolic-execution`) -- the optimizer symbolically executes the first iteration of the loop with concrete values from the preheader, then checks whether the backedge condition evaluates to false. If so, the loop runs at most once; combined with output-dead analysis or trivial body, this proves zero-or-one iterations and enables deletion of the backedge.
+
+**Pipeline placement.** Seven call sites in the LPM builders. LoopDeletion typically runs at the **end** of the loop pipeline so that earlier passes (IndVarSimplify trip-count refinement, LICM hoisting making the body output-dead, LoopUnswitch eliminating conditions, LoopPredication tightening bounds) have had a chance to expose deletion opportunities.
+
+**GPU considerations.** Loop deletion is unconditionally profitable on GPU. Even loops with very small bodies cost a meaningful fraction of the kernel's runtime because of barrier and synchronization overhead in surrounding code. The symbolic execution mode is particularly valuable for CUDA kernels with thread-coarsening loops where the trip count depends on `blockDim` / `gridDim` -- after constant propagation of grid configuration into the kernel (when known at compile time via launch bounds), the symbolic execution can prove the loop runs zero times for certain block shapes. The pass has no barrier awareness: deleting a loop that contains `__syncthreads()` is **incorrect** if other threads in the warp/block expect to participate in the barrier, but the LLVM loop deletion pass treats convergent calls as side-effecting (preventing deletion), so this is structurally safe.
+
+---
+
+## SimpleLoopUnswitch
+
+Hoists a loop-invariant conditional branch out of the loop by duplicating the loop body once per branch outcome, with each clone specialized for one value of the condition. This is the new-PM replacement for the legacy `LoopUnswitchPass` and is the pass actually invoked in cicc's pipelines.
+
+| Property | Value |
+|---|---|
+| Trivial-unswitch entry | `sub_1981A10` (234 bytes -- NewPM wrapper) |
+| Non-trivial unswitch entry | `sub_1981CC0` (7,073 bytes -- core implementation) |
+| Type-name string | `"SimpleLoopUnswitchPass"` at `0x436aa80` |
+| Description string | `"Simple unswitch loops"` |
+| Pass name (cluster) | `extra-simple-loop-unswitch-passes` at `0x437c0f0` |
+| Driver string | `should-run-extra-simple-loop-unswitch` at `0x437c1c0` |
+| Knob constructor | `ctor_484_0` (3,259 bytes -- large knob inventory) |
+| Cost-multiplier ctor | `ctor_223` (794 bytes -- `enable-nontrivial-unswitch`) |
+| Threshold ctor | `ctor_217` (810 bytes -- `loop-unswitch-threshold`, `Max loop size to unswitch`) |
+| Legacy-disable ctor | `ctor_484_0` registers `disable-LoopUnswitchPass` |
+| NVIDIA delta | **Significant** -- `unswitch-uniform-only` knob explicitly targets GPU warp uniformity |
+
+**Knob inventory** (all registered by `ctor_484_0` unless noted):
+
+| Knob | Address | Purpose |
+|---|---|---|
+| `enable-simple-loop-unswitch` | `0x4530eeb` | Master enable (default on; registered by ctor_723_0) |
+| `enable-nontrivial-unswitch` | `0x42c3cad` | Allows code-size-increasing unswitching beyond the trivial form (ctor_223) |
+| `loop-unswitch-threshold` | `0x42c2031` | Max loop size to unswitch -- `"Max loop size to unswitch"` (ctor_217) |
+| `unswitch-threshold-unroll` | `0x4398aa6` | `"The cost threshold for unswitching a fully unrolled loop."` |
+| `unswitch-max-switch-cases` | `0x4398ac0` | `"Max switch cases for fully unrolled loops where we decide to unswitch without checking profitability"` |
+| `unswitch-uniform-only` | `0x4398a90` | `"Only unswitch uniform conditions."` -- **GPU-relevant** |
+| `unswitch-num-initial-unscaled-candidates` | `0x4398ca0` | `"Number of unswitch candidates that are ignored when calculating cost multiplier."` |
+| `unswitch-siblings-toplevel-div` | `0x4398c50` | Sibling-loop sharing factor |
+| `enable-unswitch-cost-multiplier` | `0x4398bd0` | `"Enable unswitch cost multiplier that prohibits exponential explosion in nontrivial unswitch."` |
+| `freeze-loop-unswitch-cond` | `0x4398af6` | `"If enabled, the freeze instruction will be added to condition of loop unswitch to prevent miscompilation."` |
+| `simple-loop-unswitch-guards` | `0x4398ada` | `"If enabled, simple loop unswitching will also consider llvm.experimental.guard intrinsics as unswitch candidates."` |
+| `simple-loop-unswitch-memoryssa-threshold` | `0x4398e58` | MemorySSA query budget |
+| `simple-loop-unswitch-inject-invariant-conditions` | `0x4398f48` | `"Whether we should inject new invariants and unswitch them to eliminate some existing (non-invariant) conditions."` |
+| `simple-loop-unswitch-inject-invariant-condition-hotness-threshold` | `0x4398ff8` | `"Only try to inject loop invariant conditions and unswitch on them to eliminate branches that are not-taken 1/<this option> times or less."` |
+| `simple-loop-unswitch-drop-non-trivial-implicit-null-checks` | `0x4398da0` | `"If enabled, drop make.implicit metadata in unswitched implicit null checks to save time analyzing if we can keep it."` |
+| `disable-loop-unswitching` | `0x4282207` | Disable description: `"Disables loop unswitching."` at `0x4282220` |
+| `disable-LoopUnswitchPass` | `0x42823c2` | Disable description: `"Disable LoopUnswitchPass"` at `0x42823db` |
+
+**Two-tier execution.** SimpleLoopUnswitch is run in two distinct modes within the LPM:
+
+1. **Trivial unswitching** (`sub_1981A10`, 234 bytes) -- only unswitches conditions that do not require code duplication. The branch must dominate the loop exit, so the unswitch becomes a guard outside the loop. No body cloning. Cheap and always profitable. This is the variant that runs in O1-level pipelines.
+
+2. **Non-trivial unswitching** (`sub_1981CC0`, 7,073 bytes) -- duplicates the loop body. Each candidate condition multiplies the loop size by the number of branch outcomes. The cost multiplier (`enable-unswitch-cost-multiplier`) prevents exponential blowup by tracking accumulated duplication factor across sibling candidates. Gated by `enable-nontrivial-unswitch`.
+
+The `ShouldRunExtraSimpleLoopUnswitch` analysis (type names at `0x436bcd8`, `0x436e2f8`, `0x436fb60`, `0x4374af8`) is a driver that decides whether to run an extra unswitch pass after other transforms create new unswitching opportunities. The `require<should-run-extra-simple-loop-unswitch>` (`0x437cd90`) and `invalidate<should-run-extra-simple-loop-unswitch>` (`0x437cdc0`) pseudo-passes thread this signal through the pass manager.
+
+**Metadata that controls unswitching:**
+
+| Metadata | Address | Effect |
+|---|---|---|
+| `llvm.loop.unswitch.partial` | `0x4399125` | Marks a loop as a candidate for partial unswitching |
+| `llvm.loop.unswitch.partial.disable` | `0x43990d8` | Disables partial unswitching for this loop |
+| `llvm.loop.unswitch.injection` | `0x4399140` | Marks a loop where invariant-condition injection should run |
+| `llvm.loop.unswitch.injection.disable` | `0x4399100` | Disables injection |
+
+The string `unswitched.select` appears in the binary -- the select instruction that the unswitch transform creates at the exit to choose between the cloned-loop-result and the unentered case.
+
+**Algorithm sketch.** For each candidate branch in the loop:
+
+1. **Trivial check first** -- does the condition's dominator chain reach a loop exit without revisiting the latch? If yes, hoist as guard (cheap path).
+2. **Cost evaluation** -- compute the duplication cost = (loop size in IR instructions) * (number of branch outcomes - 1). Compare against `loop-unswitch-threshold` (or `unswitch-threshold-unroll` if the loop is provably small enough for full unrolling). Apply the cost multiplier from sibling unswitches already performed.
+3. **Uniformity gate** (NVIDIA-relevant) -- if `unswitch-uniform-only` is set, the condition must be provably warp-uniform (does not depend on `threadIdx.x` or any divergent value). This avoids creating per-thread-divergent specialized loop clones, which would defeat the purpose of unswitching on GPU.
+4. **Freeze insertion** -- if `freeze-loop-unswitch-cond` is set, wrap the condition in a `freeze` instruction to block speculative-execution miscompiles when the condition is undef-poisoned in the original code.
+5. **Clone and rewire** -- duplicate the loop, replace the condition with `true`/`false` in each clone, rewire the entry edge to dispatch to the correct clone based on the original condition value. Update LoopInfo, DominatorTree, LCSSA, and (optionally) MemorySSA.
+6. **Update remarks** -- `unswitched.select` instructions are inserted at the post-loop merge point to consolidate exit values from the two clones.
+
+**GPU considerations.** Loop unswitching is a code-size-vs-divergence trade-off that is unusually high-stakes on GPU:
+
+- **Code size matters more** -- duplicating a loop body across two clones doubles the static instruction count, increasing SM instruction cache pressure. Many GPU kernels are I-cache-sensitive (especially with small SM I-cache sizes on consumer parts).
+- **Divergence matters more** -- if the unswitched condition is divergent (threads in the same warp see different values), the two clones are useless because some lanes execute one clone and some execute the other in lockstep with SIMT predication. The `unswitch-uniform-only` knob exists precisely to prevent this pathology. When enabled (default behavior on GPU pipelines), only conditions provably independent of `threadIdx` / `laneId` / `divergence-tagged values` are unswitched.
+- **Cost multiplier is essential** -- nested loops in CUDA kernels create exponential candidate counts. Without the cost multiplier, a 3-deep nested loop with 2 invariant conditions each would explode to 8 clones. The `enable-unswitch-cost-multiplier` knob keeps this in check.
+- **Convergence-token interaction** -- if the unswitched condition is computed from a convergent call (e.g., `__ballot_sync`), unswitching could violate the call's reconvergence requirement. SimpleLoopUnswitch does not have explicit convergence-token awareness; the safety relies on `unswitch-uniform-only` blocking non-uniform-condition unswitching, since convergent-call results are typically tagged divergent.
+
+**Pipeline placement.** Trivial unswitching runs early in the loop pipeline (before LICM, which depends on rotation but benefits from earlier hoisting of trivial guards). Non-trivial unswitching runs later, typically after IndVarSimplify and LICM, when the loop has been canonicalized and remaining invariants are easier to identify. The `extra-simple-loop-unswitch-passes` cluster lets the pipeline re-run unswitching after subsequent transforms create new opportunities.
+
+---
+
+## LoopFlatten
+
+Collapses a perfectly-nested loop pair into a single loop with a wider induction variable. The classic case: `for (i = 0; i < M; ++i) for (j = 0; j < N; ++j) body(i*N + j)` becomes `for (k = 0; k < M*N; ++k) body(k)`. This reduces overhead from the outer loop's exit-check and PHI traffic.
+
+| Property | Value |
+|---|---|
+| Pass name | `enable-loop-flatten` at `0x437df57` |
+| Knob constructor | `ctor_461` (2,043 bytes) |
+| Cost knob | `loop-flatten-cost-threshold` at `0x4394e5b` -- `"Limit on the cost of instructions that can be repeated due to loop flattening"` (`0x4394ea8`) |
+| Widening knob | `loop-flatten-widen-iv` at `0x4394e77` -- forces IV widening before flattening to avoid overflow |
+| Versioning knob | `loop-flatten-version-loops` at `0x4394e8d` -- emits a runtime guard for overflow safety |
+| No-overflow knob | `loop-flatten-assume-no-overflow` at `0x4394ef8` -- assumes IV math cannot overflow (skips runtime check) |
+| Registered by | `ctor_388_0` (master enable) and `ctor_461` (sub-knobs) |
+| NVIDIA delta | **None visible** -- stock LLVM, default-off (`enable-loop-flatten` defaults to false) |
+
+**Algorithm.** Requires the inner loop's bounds to be loop-invariant in the outer loop, all uses of the outer IV inside the inner body to follow the pattern `outer*inner_bound + inner_offset`, and the trip count product to not overflow. The pass either widens the IV (`loop-flatten-widen-iv`) or inserts a runtime overflow check that branches to the original two-loop form on overflow (`loop-flatten-version-loops`).
+
+**GPU considerations.** LoopFlatten is potentially valuable for CUDA stencil kernels with 2-D or 3-D iteration spaces collapsed into thread-block tiles, but in practice the address-computation pattern `i*N + j` is often already coalesced at the IR level by IndVarSimplify and LSR. The default-off state suggests NVIDIA does not rely on this pass. When enabled, the cost threshold guards against duplicating expensive inner-loop preheader code.
+
+---
+
+## LoopPredication
+
+Strengthens loop-invariant predicates (typically guard intrinsics or implicit null checks) into the loop's exit condition so that the predicate is implied by the loop bound rather than checked per-iteration. This eliminates per-iteration branches on conditions that are mathematically subsumed by the IV's range.
+
+| Property | Value |
+|---|---|
+| Entry point | `sub_28418C0` (12,172 bytes -- core implementation) |
+| Type-name string | `"LoopPredicationPass"` at `0x436fd10` |
+| Pass name | `"loop-predication"` at `0x42bfe77` |
+| Knob constructor | `ctor_210` (1,452 bytes) and `ctor_466` (2,974 bytes) |
+| IV-truncation knob | `loop-predication-enable-iv-truncation` at `0x42c0010` |
+| Count-down knob | `loop-predication-enable-count-down-loop` at `0x42c0038` |
+| Skip-profitability knob | `loop-predication-skip-profitability-checks` at `0x42c0060` |
+| Latch-probability scale | `loop-predication-latch-probability-scale` at `0x42c0090` |
+| Predicate-widening knob | `loop-predication-predicate-widenable-branches-to-deopt` at `0x43958e8` |
+| Insert-assumes knob | `loop-predication-insert-assumes-of-predicated-guards-conditions` at `0x4395980` |
+| Pipeline call sites | `sub_1981A10`, `sub_1981CC0`, `sub_233C410`, `sub_2342890`, `sub_235B6A0`, `sub_2368220`, `sub_2377300`, `sub_2382460`, `sub_2394710`, `sub_28418C0` |
+| NVIDIA delta | **None visible** -- stock LLVM |
+
+**Algorithm.** Identifies `llvm.experimental.guard` intrinsics (or `widenable_condition` branches) inside the loop, computes the safe range for each guard's predicate via SCEV, and folds the guard's condition into the loop's exit check. The guard is then removed from the body, replaced by an `assume` outside the loop. The result: the loop body has fewer branches; deoptimization, if needed, happens at the bound check on the IV.
+
+**GPU considerations.** Guard intrinsics are uncommon in CUDA-generated IR (they are mainly used by JVM-like deoptimization scenarios). LoopPredication may fire on hand-written CUDA C++ that uses `__builtin_assume` heavily, but its primary value is for managed-runtime IR. The `predicate-widenable-branches-to-deopt` knob is irrelevant for CUDA (no deopt support on GPU). The pass is wired into many pipeline builders but likely fires rarely on cicc-typical input.
+
+---
+
+## LoopSink
+
+Moves loop-invariant code that LICM hoisted INTO the preheader back DOWN into the loop body, but only into cold paths inside the loop. This is the inverse of LICM: when an invariant is used only on a rarely-taken path, executing it once in the preheader is more expensive than executing it conditionally inside the loop (because the preheader path always pays for it, while the cold-path placement only pays when the condition fires).
+
+| Property | Value |
+|---|---|
+| Entry point | `sub_1990220` (234 bytes -- NewPM wrapper) |
+| Pass name | `"loop-sink"` at `0x42c02d1` |
+| Pipeline call sites | `sub_1990220`, `sub_233C410`, `sub_233F860`, `sub_2342890`, `sub_2368220`, `sub_2377300`, `sub_2382460` |
+| NVIDIA delta | **None visible** -- stock LLVM |
+
+**Algorithm.** Walks the preheader's instructions in reverse. For each instruction, computes the set of loop-internal use blocks. If all uses are in blocks colder than the preheader (by branch-probability metadata), sinks the instruction to the lowest common dominator of the uses (still inside the loop). The cost model uses `BranchProbabilityAnalysis` and block-frequency information.
+
+**GPU considerations.** LoopSink's interaction with GPU code generation is subtle. Sinking an invariant into a cold path inside the loop:
+
+- **Saves registers** -- the sunk value does not need a register reserved across the entire loop body, freeing it for other uses. This is good for occupancy.
+- **Increases dynamic instruction count** on the cold path -- but only when that path executes, so amortized over warps, this is usually a net win.
+- **Can introduce divergence** -- if the cold path is divergent (some lanes take it, some don't), the sunk instruction now executes under divergence rather than uniformly in the preheader. For pure data computations this is fine; for instructions with side effects (which LICM wouldn't have hoisted anyway), it would be unsafe.
+
+The pass has no explicit GPU model -- it relies on the upstream LICM having already filtered out side-effecting instructions.
+
+---
+
+## LoopVersioning
+
+Wraps a loop in a runtime check that selects between two versions: an optimized version (with assumptions baked in, e.g., no aliasing, stride==1, bounds satisfied) and a conservative original. Used as a transformation primitive by LoopDistribute, LoopUnrollAndJam, LoopVectorize, and as a standalone licm-versioning mode.
+
+| Property | Value |
+|---|---|
+| Entry point | `sub_1B1EBF0` (244 bytes -- NewPM wrapper) |
+| Type-name string | `"LoopVersioningPass"` at `0x4368b88` |
+| Pass name | `"loop-versioning"` at `0x42c738a` |
+| Standalone-mode knob | `enable-loop-versioning-licm` at `0x437e0e1` |
+| Knob constructor | `ctor_388_0` and `ctor_723_0` |
+| Pipeline call sites | `sub_1B1EBF0`, `sub_233C410`, `sub_233F860`, `sub_2342890`, `sub_2368220`, `sub_2377300`, `sub_2382460` |
+| NVIDIA delta | **None visible** -- stock LLVM |
+
+**Algorithm.** Given a set of `MemoryRuntimeCheck` predicates from `LoopAccessAnalysis` (pointer overlap, stride equality, bounds), versioning clones the loop body, adds a runtime dispatch block that evaluates the predicate set, and routes execution to the unaliased (or stride-safe) clone when the predicates hold and to the original conservative clone otherwise. The two clones share PHI fixup at the merge point.
+
+**GPU considerations.** Runtime pointer-aliasing checks are valuable on GPU because pointer provenance is often opaque to the optimizer (especially with `__device__` function parameters that come from host pointers). However, the overhead of the runtime check itself -- a few integer comparisons and a divergent branch on the dispatch -- is non-trivial on GPU. The `enable-loop-versioning-licm` standalone mode is rarely worth enabling on GPU because the unaliased speedup must outweigh both the check cost and the I-cache pressure of carrying two loop clones.
+
+---
+
 ## Function Map
 
 | Function | Address | Size | Role |
@@ -419,6 +644,54 @@ Ensures that every value defined inside a loop and used outside it passes throug
 | LCSSA lightweight `.lcssa` PHI insertion | `sub_1961B00` | 13 KB | -- |
 | LCSSA form updater (used post-interchange) | `sub_1AF8F90` | -- | -- |
 | `verifyLoopLCSSA` (assertion: "Loops must remain in LCSSA form!") | `sub_D48E00` | -- | -- |
+| `LoopSimplifyCFGPass::run` (NewPM wrapper) | `sub_198E0D0` | 226 B | terminator folding + dead-block removal inside a loop |
+| `LoopDeletionPass::run` (NewPM wrapper) | `sub_19681C0` | 226 B | zero-trip / dead-output / symbolic-exec deletion |
+| `SimpleLoopUnswitchPass::run` (trivial) | `sub_1981A10` | 234 B | guard-style trivial unswitching |
+| `SimpleLoopUnswitchPass::run` (non-trivial core) | `sub_1981CC0` | 7,073 B | full loop cloning unswitch |
+| `LoopPredicationPass::run` (core) | `sub_28418C0` | 12,172 B | guard widening into loop bounds |
+| `LoopSinkPass::run` (NewPM wrapper) | `sub_1990220` | 234 B | sink preheader-hoisted invariants into cold paths |
+| `LoopVersioningPass::run` (NewPM wrapper) | `sub_1B1EBF0` | 244 B | runtime predicate dispatch between loop clones |
+| `loop-deletion` knob ctor | `ctor_459` | 526 B | registers `loop-deletion-enable-symbolic-execution` |
+| `loop-flatten` knob ctor | `ctor_461` | 2,043 B | registers cost-threshold, widen-iv, version-loops, assume-no-overflow |
+| `loop-predication` knob ctor (primary) | `ctor_466` | 2,974 B | registers latch-probability-scale, predicate-widenable, insert-assumes |
+| `loop-predication` knob ctor (truncation/count-down) | `ctor_210` | 1,452 B | registers enable-iv-truncation, enable-count-down-loop |
+| `loop-simplifycfg-term-folding` knob ctor | `ctor_468` | 70 B | single bool knob |
+| `loop-unswitch-threshold` ctor | `ctor_217` | 810 B | registers `loop-unswitch-threshold` |
+| `enable-nontrivial-unswitch` ctor | `ctor_223` | 794 B | registers the non-trivial unswitch gate |
+| `simple-loop-unswitch-*` ctor (omnibus) | `ctor_484_0` | 3,259 B | registers ~16 unswitch knobs including `unswitch-uniform-only` |
+| LPM pipeline assembler family | `sub_233C410`, `sub_2342890`, `sub_235B6A0`, `sub_2368220`, `sub_2377300`, `sub_2382460`, `sub_2394710` | -- | wire LoopDeletion, LoopSimplifyCFG, LoopPredication, LoopSink, LoopVersioning into LPM |
+
+---
+
+## NVIDIA QUIRKs
+
+These are concrete, binary-grounded oddities worth knowing when reimplementing or debugging.
+
+### QUIRK 1: `unswitch-uniform-only` is the single most GPU-defining knob in this group
+
+The description `"Only unswitch uniform conditions."` at `0x4398b10` (knob string at `0x4398a90`) reveals an explicit warp-divergence model that no other LLVM-distributed loop pass exposes. When set, SimpleLoopUnswitch refuses to clone a loop unless the unswitching condition is provably warp-uniform. This matters because:
+
+- LLVM's upstream cost model for loop unswitching is purely code-size-based; it has no notion of SIMT execution.
+- A non-uniform unswitch on GPU produces two loop clones that are useless: every warp executes both clones in lockstep with predication, so the supposed "specialization" benefit evaporates and only the code-size cost remains.
+- The knob is wired through `ctor_484_0` alongside ~15 other unswitch tunables, suggesting NVIDIA tuned the entire unswitch behavior for GPU workloads rather than just adding one filter.
+
+The implementation must consult a divergence analysis (likely the same one NVPTX uses downstream) to classify conditions. If the divergence analysis is unavailable or imprecise, the conservative default is to treat all conditions as divergent, which effectively disables non-trivial unswitching on GPU code. This is consistent with cicc's observed behavior: loop unswitching fires rarely on CUDA kernels even though many CUDA loops contain seemingly invariant conditionals (which are often actually thread-id-dependent).
+
+### QUIRK 2: LoopDeletion's symbolic-execution mode is opt-in via `loop-deletion-enable-symbolic-execution`
+
+The description string at `0x4394b80` is unusually explicit: `"Break backedge through symbolic execution of 1st iteration attempting to prove that the backedge is never taken"`. This mode -- which symbolically executes the first iteration with concrete preheader values to prove the backedge is dead -- is registered by `ctor_459` and is **off by default**. Two consequences:
+
+1. Many "easy" GPU loops that would be deletable via one-iteration symbolic execution (e.g., trip counts computed from launch bounds that happen to evaluate to zero for certain block shapes) survive into later pipeline stages and pay the cost of being processed by every subsequent loop pass.
+2. The `disable-LoopDeletionPass` knob exists alongside the symbolic-execution enable, giving two orthogonal axes of control: the entire pass can be disabled (presumably for compile-time debugging) or just the symbolic-execution sub-mode. This pair of knobs only makes sense if cicc users have hit miscompilations or compile-time blowups specific to symbolic execution -- it would not be carried forward as a per-mode toggle otherwise.
+
+### QUIRK 3: Eight LPM builders all wire the same standard-pass set
+
+The strings `loop-deletion`, `loop-simplifycfg`, `loop-predication`, `loop-versioning`, `loop-sink` each list ~7-8 reference functions in the `sub_233xxxxx`/`sub_234xxxxx`/`sub_235xxxxx`/`sub_237xxxxx`/`sub_239xxxxx` ranges. These are the LPM pipeline builders for different optimization tiers (O0, O1, O2, O3, Ofcmid, OS, Oz, etc.). Two observations:
+
+- **Sink does NOT appear in `sub_2394710`** -- it is missing from one specific tier (likely Oz or O0), suggesting a deliberate tier choice rather than uniform inclusion.
+- **Versioning does NOT appear in `sub_2394710` or `sub_2377300`** -- versioning is selectively excluded from multiple tiers, consistent with its high runtime-overhead profile.
+
+This selective wiring is the only mechanism by which cicc tunes which standard loop passes run at which optimization level. There is no global "is this pass enabled" gate -- the choice is encoded in the pipeline-construction function calls. For reimplementation, this means each tier's LPM must be assembled by hand from the set of passes appropriate to that tier, not by filtering a master list.
 
 ---
 
@@ -433,6 +706,10 @@ Ensures that every value defined inside a loop and used outside it passes throug
 | **IRCE** | Range check elimination for deoptimization-safe targets | Present but effectiveness limited on GPU: no deoptimization support, relies on SCEV range analysis for bound proofs |
 | **LoopInterchange** | Cost model driven by cache locality | Same legality checks; profitability analysis implicitly favors stride-1 access (coalescing) over cache line optimization |
 | **IV Demotion** | Not present | Downstream NVIDIA pass ([IV Demotion](../passes/iv-demotion.md)) narrows IVs widened by IndVarSimplify back to 32-bit where GPU value ranges permit |
+| **SimpleLoopUnswitch uniform-only** | No divergence-aware unswitching; cost model is purely code-size | `unswitch-uniform-only` knob (`0x4398a90`, ctor_484_0) blocks unswitching on non-warp-uniform conditions, preventing useless clone duplication under SIMT predication |
+| **LoopDeletion configurability** | Single enable/disable | Two-axis control: full pass disable (`disable-LoopDeletionPass` at `0x4282255`) plus separate symbolic-execution toggle (`loop-deletion-enable-symbolic-execution` at `0x4394b58`) |
+| **LoopSimplifyCFG term-folding** | Always on | Gated by `enable-loop-simplifycfg-term-folding` (ctor_468) so terminator folding can be selectively disabled |
+| **Per-tier pass selection** | Standard pass set per opt level via opt-tool flags | Eight distinct LPM-builder functions (`sub_233C410` family) each wire a hand-picked subset of LoopDeletion / LoopSimplifyCFG / LoopPredication / LoopSink / LoopVersioning -- no global enable list |
 
 ## Cross-References
 

@@ -220,6 +220,13 @@ addresses (the Meyers Idiom-2 ones for interfaces, the Idiom-1 ones for concrete
 
 ## Cross-References
 
+The companion page [TypeID Construction Idioms](typeid-idioms.md) covers the two idioms in the
+abstract — why `&typeid(T)` is unusable under hidden visibility, how Idiom 1 builds identity from a
+per-class static sentinel address, how Idiom 2 builds it from a `__PRETTY_FUNCTION__`-derived
+string interned through the process-wide pool — without the address-band specifics that occupy
+this page. Read that page first for the architectural justification; read this page for the
+tileiras layout.
+
 [Operation Layout](operation-layout.md) describes the op header where the kindPtr lives. [Interface
 VTables](interface-vtables.md) covers the concept tables that the Meyers-cached interface TypeIDs key
 into. [Storage Uniquer and ContextImpl](storage-uniquer-and-context-impl.md) documents the registration

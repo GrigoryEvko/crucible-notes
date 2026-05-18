@@ -155,6 +155,7 @@
 - [StorageUniquer and Context Impl](mlir-infra/storage-uniquer-and-context-impl.md)
 - [Pattern Vtables and Shapes](mlir-infra/pattern-vtables-and-shapes.md)
 - [Interface Vtables](mlir-infra/interface-vtables.md)
+- [TypeID Construction Idioms](mlir-infra/typeid-idioms.md)
 - [TypeID Sentinels and Anchors](mlir-infra/typeid-sentinels-and-anchors.md)
 - [Container Fingerprints](mlir-infra/container-fingerprints.md)
 - [Diagnostic ABI and Helpers](mlir-infra/diagnostic-abi-and-helpers.md)
