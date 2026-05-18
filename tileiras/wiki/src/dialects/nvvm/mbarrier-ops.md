@@ -2,7 +2,7 @@
 
 ## Abstract
 
-`nvvm.mbarrier.*` covers the sm_80+ mbarrier (memory barrier) state machine — a 64-bit shared-memory slot that counts arrivals, tracks an expected-transaction byte count, advances a phase parity, and lets warps wait for the slot to flip. The 21 ops in this family each implement one transition of that state machine and emit the matching `mbarrier.*` PTX instruction. See [mbarrier State Machine](../../topics/mbarrier-state-machine.md) for the cross-op semantics and [mbarrier Emission](../../codegen/tcgen05-wgmma-mbarrier-cluster.md#mbarrier-emission) for the codegen side.
+`nvvm.mbarrier.*` covers the sm_80+ mbarrier (memory barrier) state machine — a 64-bit shared-memory slot that counts arrivals, tracks an expected-transaction byte count, advances a phase parity, and lets warps wait for the slot to flip. The ops in this family each implement one transition of that state machine and emit the matching `mbarrier.*` PTX instruction. See [mbarrier State Machine](../../topics/mbarrier-state-machine.md) for the cross-op semantics and [mbarrier Emission](../../codegen/tcgen05-wgmma-mbarrier-cluster.md#mbarrier-emission) for the codegen side.
 
 Two slot variants exist for almost every op: a generic-pointer form for completeness and a `.shared` form for the common case where the slot lives in shared memory. Lowering picks the `.shared` form whenever the operand address space is 3; the generic form remains so kernels that explicitly cast through `__cvta_to_shared` round-trip.
 
@@ -47,7 +47,7 @@ The `expect_tx` op is the producer-side handshake for TMA tile loads: the consum
 | `nvvm.fence.mbarrier.init` | (one op) — proxy fence before `init` |
 | `nvvm.mbarrier.complete_tx` | (one op) — explicit tx-count bump |
 
-Eleven ops × the two address-space variants account for the 21 entries in the dialect roster.
+Nine of these eleven ops carry a `.shared` variant (the address-space split adds 9 extra entries); `nvvm.fence.mbarrier.init` and `nvvm.mbarrier.complete_tx` are single-variant. The dialect roster therefore lists 9 + 9 + 2 = 20 entries.
 
 ## Operand Tables
 

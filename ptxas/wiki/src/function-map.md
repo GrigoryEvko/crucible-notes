@@ -210,8 +210,8 @@ These functions appear in 10+ wiki pages -- they are the universal building bloc
 | `0x7B9B80` | `bitfield_insert(insn, off, wid, val)` | 9 | **18,347** | Most-called by caller count |
 | `0x7BC030` | `encode_register_operand` | 4 | 6,147 | 1-bit + 4-bit type + 10-bit reg |
 | `0x7B9D60` | `encode_reuse_flags_predicate` | 4 | 2,408 | 1-bit reuse + 5-bit predicate |
-| `0x7BC5C0` | `encode_immediate_const_operand` | 4 | 1,449 | Const buffer index or immediate |
-| `0x7BCF00` | `encode_predicate_register` | 4 | 1,657 | PT=14, 2-bit type + 3-bit condition |
+| `0x7BC5C0` | `encode_predicate_operand` | 4 | 1,449 | 1-bit presence + 5-bit predicate value (P0..P6/PT + UP/file + `.NOT`); body is a pair of inline bitfield-insert loops into the 1280-bit instruction buffer at `a1+0x220`. See `codegen/encoding.md` -- earlier wiki labelled this "encode_immediate_const_operand", which is wrong |
+| `0x7BCF00` | `encode_predicate_register` | 4 | 1,657 | PT sentinel = operand byte[0]==14 (matches `sub_B28EB0`); appears wired to a different predicate-operand slot than `sub_7BC5C0` |
 | `0x10B6180` | `1_bit_boolean_encoder` | 3 | 8,091 | .S/.U, .STRONG, etc. |
 
 > **Details**: [Encoding](codegen/encoding.md), [SASS Printing](codegen/sass-printing.md)

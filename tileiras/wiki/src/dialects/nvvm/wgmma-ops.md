@@ -2,7 +2,7 @@
 
 ## Abstract
 
-`nvvm.wgmma.*` is the warp-group asynchronous MMA family used on Hopper (sm_90a). A warp group is four contiguous warps cooperating on one `m64nNkK` accumulator tile, with B always resident in shared memory through a 64-bit SMEM descriptor and A either in registers or in SMEM through a second descriptor. The 9 ops in this family pair into a four-stage pipeline: fence, `mma_async`, commit, wait. See [WGMMA Emission Protocol — The Four-Op Sequence](../../topics/wgmma-emission-protocol.md#the-four-op-sequence) for the pipeline timing and [WGMMA Emission](../../codegen/tcgen05-wgmma-mbarrier-cluster.md#wgmma-emission) for the codegen side.
+`nvvm.wgmma.*` is the warp-group asynchronous MMA family used on Hopper (sm_90a). A warp group is four contiguous warps cooperating on one `m64nNkK` accumulator tile, with B always resident in shared memory through a 64-bit SMEM descriptor and A either in registers or in SMEM through a second descriptor. The four ops in this family pair into a four-stage pipeline: fence, `mma_async`, commit, wait. See [WGMMA Emission Protocol — The Four-Op Sequence](../../topics/wgmma-emission-protocol.md#the-four-op-sequence) for the pipeline timing and [WGMMA Emission](../../codegen/tcgen05-wgmma-mbarrier-cluster.md#wgmma-emission) for the codegen side.
 
 Blackwell (sm_100+) does not extend this family. The Hopper WGMMA path is the only `wgmma.*` PTX surface; Blackwell MMA lives in [`nvvm.tcgen05.*`](tcgen05-ops.md).
 
@@ -13,18 +13,17 @@ The "Properties slots used" column tracks where each op stores its attribute pay
 | Op | Role | Properties slots used |
 |---|---|---|
 | `nvvm.wgmma.fence.aligned` | producer-side fence before `mma_async` | none |
-| `nvvm.wgmma.fence.sync.aligned` | consumer-side fence after wait | none |
 | `nvvm.wgmma.mma_async.sync.aligned` | the MMA itself | `typeA`, `b1Op`, `typeB`, `shape`, `typeC`, `scaleIn`, `scaleOut`, `layoutA`, `layoutB` |
 | `nvvm.wgmma.commit.group.sync.aligned` | close the current MMA group | `wgmma_type`, `wgmma_layout` |
 | `nvvm.wgmma.wait.group.sync.aligned` | wait for the group with depth `N` | `wgmma_type`, `wgmma_layout`, shape-N |
 
-The two extra "commit/wait carry attributes" entries exist because the printed PTX carries the type+layout suffix even though no register operand survives — the suffix selects which earlier `mma_async` group the wait drains.
+`commit.group` and `wait.group` carry type+layout attributes even though no register operand survives — the suffix selects which earlier `mma_async` group the wait drains.
 
 ## Operand Tables
 
-### `nvvm.wgmma.fence.aligned` / `nvvm.wgmma.fence.sync.aligned`
+### `nvvm.wgmma.fence.aligned`
 
-No operands and no result. Both lower to a single PTX `wgmma.fence.sync.aligned;` instruction.
+No operands and no result. Lowers to a single PTX `wgmma.fence.sync.aligned;` instruction.
 
 ### `nvvm.wgmma.mma_async.sync.aligned`
 

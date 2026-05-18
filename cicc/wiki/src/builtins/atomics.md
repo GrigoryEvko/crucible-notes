@@ -646,4 +646,4 @@ These opcodes are emitted by the SelectionDAG lowering for native atomic operati
 - [SM 100 Blackwell Features](../targets/sm100-blackwell.md) -- f16x4 atomics
 - [PTX Emission](../pipeline/emission.md) -- instruction printer subsystem
 - [NVPTX Opcodes Reference](../reference/nvptx-opcodes.md) -- MachineInstr opcode table
-- [Inline Assembly Codegen](../pipeline/irgen-expressions.md) -- general inline ASM infrastructure at sub_1292420
+- [Inline Assembly Codegen](../pipeline/irgen-functions.md#inline-assembly-codegen) -- general inline ASM infrastructure at sub_1292420 (and Path-A duplicate sub_932270)

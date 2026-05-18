@@ -2,7 +2,7 @@
 
 ## Abstract
 
-`nvvm.cluster.*` and the adjacent cluster-aware helpers cover Hopper's thread-block-cluster surface: a small group of CTAs running on neighbouring SMs that share a logical cluster-wide barrier and a `mapa`-addressable view of their peer CTAs' shared memory. The 8 ops in this family handle cluster-wide arrival, wait, and rank queries; they pair with mbarrier ops in [`nvvm.mbarrier.*`](mbarrier-ops.md) for the data-side handshake. See [Cluster Sync and DSMEM Handshake](../../topics/cluster-sync-and-dsmem-handshake.md) for the cross-CTA protocol and [Cluster Sync Emission](../../codegen/tcgen05-wgmma-mbarrier-cluster.md#cluster-sync-emission) for the codegen side.
+`nvvm.cluster.*` and the adjacent cluster-aware helpers cover Hopper's thread-block-cluster surface: a small group of CTAs running on neighbouring SMs that share a logical cluster-wide barrier and a `mapa`-addressable view of their peer CTAs' shared memory. The ops in this family handle cluster-wide arrival, wait, and rank queries; they pair with mbarrier ops in [`nvvm.mbarrier.*`](mbarrier-ops.md) for the data-side handshake. See [Cluster Sync and DSMEM Handshake](../../topics/cluster-sync-and-dsmem-handshake.md) for the cross-CTA protocol and [Cluster Sync Emission](../../codegen/tcgen05-wgmma-mbarrier-cluster.md#cluster-sync-emission) for the codegen side.
 
 Blackwell (sm_100+) keeps the cluster surface; the same op set is the access path on every sm_90+ target.
 

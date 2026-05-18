@@ -2,7 +2,7 @@
 
 ## Abstract
 
-`nvvm.tcgen05.*` covers the Blackwell (sm_100+) tensor-memory family. Tensor memory (TMEM) is a per-SM scratchpad allocated and freed through the dialect's alloc / dealloc ops, accessed through `ld` / `st` and the long-K MMA path, and torn down before the kernel exits. The 14 ops enumerated here are the only path to TMEM from MLIR; Hopper's WGMMA family ([`nvvm.wgmma.*`](wgmma-ops.md)) does not reach Blackwell tensor cores. See [tcgen05 Tensor Memory Model](../../topics/tcgen05-tensor-memory-model.md) for the TMEM allocation discipline and the variant taxonomy, and [tcgen05 Machine Validation](../../codegen/tcgen05-wgmma-mbarrier-cluster.md#tcgen05-machine-validation) for the codegen-side verifier rules.
+`nvvm.tcgen05.*` covers the Blackwell (sm_100+) tensor-memory family. Tensor memory (TMEM) is a per-SM scratchpad allocated and freed through the dialect's alloc / dealloc ops, accessed through `ld` / `st` and the long-K MMA path, and torn down before the kernel exits. The roster below is the only path to TMEM from MLIR; Hopper's WGMMA family ([`nvvm.wgmma.*`](wgmma-ops.md)) does not reach Blackwell tensor cores. See [tcgen05 Tensor Memory Model](../../topics/tcgen05-tensor-memory-model.md) for the TMEM allocation discipline and the variant taxonomy, and [tcgen05 Machine Validation](../../codegen/tcgen05-wgmma-mbarrier-cluster.md#tcgen05-machine-validation) for the codegen-side verifier rules.
 
 `tcgen05.mma` carries a control-word modifier table that selects element-type interpretation, sparsity, block-scaling, and collector behaviour. Block-scaled UMMA exposes scale-vector size and scale-format enums; the cross-product produces several thousand legal PTX forms from a single dialect op.
 
@@ -17,7 +17,6 @@ The "Properties slots used" column tracks where each op stores its attribute pay
 | `nvvm.tcgen05.relinquish_alloc_permit` | drop the alloc-permit token | `cta_group` |
 | `nvvm.tcgen05.ld` | load from TMEM to registers | (none — operand-typed) |
 | `nvvm.tcgen05.st` | store from registers to TMEM | (none — operand-typed) |
-| `nvvm.tcgen05.ldmatrix` / `.stmatrix` | move a TMEM tile through SMEM | (none — indexed walker) |
 | `nvvm.tcgen05.cp` | copy TMEM tile across CTAs | `multicast`, `shape`, `src_fmt` |
 | `nvvm.tcgen05.mma` | MMA into TMEM accumulator | `typeA/cType`, `collectorA`, `scale_d`, layout-bits |
 | `nvvm.tcgen05.mma.sp` | sparse-input variant of above | same + sparse metadata operand |
@@ -200,7 +199,7 @@ The two `r` slots are the destination and source TMEM column indices. The shape,
 | Op family | SM floor | `ptx_min` |
 |---|---|---|
 | `alloc` / `dealloc` / `relinquish_alloc_permit` | sm_100a | 8.6 |
-| `ld` / `st` / `ldmatrix` / `stmatrix` | sm_100a | 8.6 |
+| `ld` / `st` | sm_100a | 8.6 |
 | `cp` | sm_100a (+ `sm_100f` for the `f`-suffixed variants) | 8.6 |
 | `mma` / `mma.sp` | sm_100a | 8.6 |
 | `mma.block_scale` / `mma.sp.block_scale` | sm_100a | 8.6 |

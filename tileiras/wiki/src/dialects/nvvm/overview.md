@@ -141,7 +141,7 @@ constraint:  "=r,=r,=r,=r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r,r"
 
 The first four `=r` slots are the output D fragment; the trailing `r` slots are the input fragments and the metadata word. The selector immediate is baked into the template literal at lowering time rather than passed as an operand; the same op emits 0x0 or 0x1 depending on the `sparsitySelector` attribute.
 
-For shape `m16n8k16.row.col.f16.f16.f16.f16` the operand widths are A=4, B=8, C=4, D=4, metadata=1 (total 17 operands). For `m16n8k32.row.col.s8.s8.s32.s32` they are A=2, B=4, C=4, D=4, metadata=1 (total 15 operands). The verifier rejects any combination not listed in the PTX ISA.
+For shape `m16n8k16.row.col.f16.f16.f16.f16` the constraint string above expands to four `=r` outputs (D fragment) and seventeen `r` inputs (A=4, B=8, C=4, plus the sparse-metadata word), matching the template's `%0..%20` slot range. For `m16n8k32.row.col.s32.s8.s8.s32` the printed PTX is `{$0..$3}, {$4,$5}, {$6,$7}, {$8..$11}, $12` — four `s32` outputs and nine inputs (A=2, B=2, C=4, metadata=1). The verifier rejects any combination not listed in the PTX ISA.
 
 ### im2col TMA store with L2 cache hint
 

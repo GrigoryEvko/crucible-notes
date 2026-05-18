@@ -31,8 +31,8 @@ Variants are spelled out explicitly rather than parameterised over `rank` and `m
 | operand 1 | `tensorMap` | `ptr` (global, opaque) | 128-byte `CUtensorMap` pointer |
 | operands 2..N+1 | `coords` | variadic `i32`, rank N | tile origin in tensor space |
 | operand N+2 | `barrier` | `ptr addrspace(3)` | mbarrier slot for expect-tx completion |
-| operand N+3 | `multicastMask` | optional `i16` | cluster multicast bitmap (operand slot 6+rank) |
-| operand N+4 | `cacheHint` | optional `i64` | L2 cache hint (operand slot 7+rank) |
+| operand N+3 | `multicastMask` | optional `i16` | cluster multicast bitmap (positional slot in the intrinsic call) |
+| operand N+4 | `cacheHint` | optional `i64` | L2 cache hint (positional slot in the intrinsic call) |
 | attribute | `cacheHintEnable` | `UnitAttr` | gates the `.L2::cache_hint` modifier |
 | attribute | `multicastEnable` | `UnitAttr` | gates the `.multicast` modifier |
 | attribute | `mode` | enum `tma_load_mode` | `tile` / `im2col` / `im2col_w` / `im2col_w_128` |

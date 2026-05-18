@@ -2,7 +2,7 @@
 
 The statement code generator converts EDG IL statement nodes into LLVM IR basic blocks and terminators. It is the control flow backbone of NVVM IR generation: every `if`, `while`, `for`, `switch`, `goto`, `return`, and compound block passes through a single recursive dispatcher (`sub_9363D0`) that reads a statement-kind byte and fans out to 17 specialized handlers. Each handler creates named basic blocks following a fixed naming convention, connects them with conditional or unconditional branches, and attaches metadata for branch prediction and loop optimization. Understanding this subsystem means understanding exactly how C/CUDA source-level control flow maps to the LLVM IR that downstream optimization passes will transform.
 
-**Binary coordinates:** Handlers span `0x930000`--`0x948000` (~96 KB). The dispatcher itself is at `0x9363D0`; the most complex handler (try/catch at `sub_932270`) is 57 KB alone.
+**Binary coordinates:** Handlers span `0x930000`--`0x948000` (~96 KB). The dispatcher itself is at `0x9363D0`; the most complex handler (the inline-`asm` statement emitter at `sub_932270`, IL kind 18) is ~12 KB and 2,476 instructions -- a duplicate of `sub_1292420` documented in [Inline Assembly Codegen](./irgen-functions.md#inline-assembly-codegen). Try/catch is not in the dispatch table: the EDG frontend strips it before codegen because CUDA device exceptions are disabled by default (`DEFAULT_EXCEPTIONS_ENABLED = 0`), and the NVVM IR verifier (`sub_2C76F10`) rejects `landingpad`, `invoke`, and `resume` instructions outright.
 
 ## Statement Dispatcher -- `sub_9363D0` (emitStmt)
 
@@ -39,7 +39,7 @@ The dispatcher is the only entry point for statement lowering. All control flow 
 | 15 | `case` label | `emitCase` | `sub_935670` |
 | 16 | `switch` statement | `emitSwitch` | `sub_9359B0` |
 | 17 | Variable declaration | `emitDeclStmt` | `sub_9303A0` |
-| 18 | `try/catch` | `emitTryCatch` | `sub_932270` |
+| 18 | `asm` statement (`__asm__(...)`) | `emitAsmStmt` | `sub_932270` |
 | 20 | Cleanup/destructor scope | `emitCleanupScope` | `sub_931670` |
 | 24 | Null/empty statement | *(return immediately)* | -- |
 | 25 | Expression statement (alt) | `emitExprStmt` | `sub_921EA0` |
@@ -47,6 +47,8 @@ The dispatcher is the only entry point for statement lowering. All control flow 
 Kinds 0 and 25 share the same handler. The split likely distinguishes C expression-statements from GNU statement-expressions or a similar EDG internal distinction. Any unrecognized kind triggers `fatal("unsupported statement type")`.
 
 Gaps in the numbering (3, 4, 9, 10, 14, 19, 21--23) either correspond to statement types handled entirely in the EDG frontend (lowered before codegen sees them) or are reserved for future use.
+
+The IL-18 handler `sub_932270` is the statement-path (Path A) duplicate of the inline-asm-to-LLVM `InlineAsm` translator; the near-identical Path B variant lives at `sub_1292420`. Both implement the same 7-phase template parser, constraint table, and operand binding logic with different diagnostic function pointers. See [Inline Assembly Codegen](./irgen-functions.md#inline-assembly-codegen) for the full pipeline.
 
 ---
 
@@ -324,7 +326,7 @@ The `for.inc` BB is only created when an increment expression exists. If omitted
 
 ## Switch Statement -- `sub_9359B0`
 
-The largest control flow handler after try/catch (~550 decompiled lines). Uses a three-phase approach with an internal open-addressing hash table.
+The largest pure-control-flow handler (~550 decompiled lines; the inline-`asm` handler at `sub_932270` is larger but is not control flow). Uses a three-phase approach with an internal open-addressing hash table.
 
 ### Phase 1: Build case-to-BB mapping
 
@@ -436,25 +438,13 @@ The unified return block pattern means every `return` in a function branches to 
 
 ---
 
-## Try/Catch -- `sub_932270`
+## Inline `asm` Statement -- `sub_932270`
 
-The largest single statement handler at 2,225 decompiled lines (57 KB, 0x3B0 bytes of stack locals). Lowers C++ try/catch into LLVM's landingpad-based exception handling model.
+IL kind 18 routes to `sub_932270` (~12 KB, 2,476 instructions). The dispatcher's sole call site lives in the `case 18:` arm at `0x9363D0+0x...`, and `sub_932270` itself has exactly one caller -- this statement dispatcher. Its body is the 7-phase CUDA `__asm__()` template-to-LLVM `InlineAsm` translator: template scan with `%N` / `%cN` / `%=` / `%[name]` handling, `'C'` constraint string-literal extraction, constraint-class parsing, operand binding, and tied-operand validation. Diagnostic strings include `"symbolic operand reference not supported!"`, `"asm operand index requested is larger than the number of asm operands provided!"`, `"error extracting string literal operand"`, `"error extracting address of constant for 'C' constraint"`, and `"tied input/output operands not supported!"`.
 
-**High-level structure:**
+This is the **Path A** copy of the inline-asm emitter; a near-identical Path B copy at `sub_1292420` lives in the function-codegen module and is called from `sub_1296350`. Both share the same constraint table and parser structure; they differ only in which diagnostic and value-resolution helpers they invoke. The full 7-phase pipeline (template parsing, template reconstruction, constraint classification, operand binding, `InlineAsm` construction, sideeffects/alignstack flags, call instruction emission) is documented in detail at [Inline Assembly Codegen](./irgen-functions.md#inline-assembly-codegen).
 
-1. **Collect catch handlers:** Traverses the linked list at `stmt->auxData+136` to build a vector of catch clause pointers.
-
-2. **Construct cleanup names:** Builds a mangled cleanup function name from the function's symbol (reading name range from symbol +184/+176). Single `$` characters are doubled to `$$` for LLVM compatibility.
-
-3. **Build dispatch mapping:** Creates an outer dispatch vector mapping each catch clause to its target BB, stored in the same open-addressing hash table scheme used by switch.
-
-4. **Emit try body:** Installs the landingpad/invoke mechanism so that throwing calls within the try body become `invoke` instructions rather than `call` instructions.
-
-5. **Emit catch handlers:** For each catch clause, creates a BB, emits the handler body, and generates the cleanup/resume path.
-
-Note that CUDA device code has exceptions **disabled by default** (EDG config `DEFAULT_EXCEPTIONS_ENABLED = 0`). This handler is exercised primarily for host-side code compiled through cicc, or for the rare case where exceptions are explicitly enabled via compiler flags. When exceptions are disabled, the EDG frontend strips try/catch entirely and the codegen never sees kind 18.
-
-The NVVM IR verifier (`sub_2C76F10`) explicitly rejects `landingpad`, `invoke`, and `resume` instructions in device code, confirming that exception handling is a host-only feature.
+There is no separate try/catch handler in the statement dispatcher: CUDA device code disables exceptions by default (`DEFAULT_EXCEPTIONS_ENABLED = 0`) and the EDG frontend lowers any host-only try/catch before codegen sees it. The NVVM IR verifier (`sub_2C76F10`) reinforces this by rejecting `landingpad`, `invoke`, and `resume` outright.
 
 ---
 

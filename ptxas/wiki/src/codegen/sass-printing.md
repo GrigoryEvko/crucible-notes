@@ -550,7 +550,7 @@ Each 8-byte operand slot encodes:
 | 30 | 1 | `.ABS` modifier (`0x40000000`) -- absolute value of source |
 | 31 | 1 | `.NEG` modifier (`0x80000000`) -- arithmetic negation of source |
 
-The polarity is "set means modifier applied". In `sub_9D12F0` the word-1 bit-31 test is `v17 < 0` (sign-bit set means negate); bit-30 is `v17 & 0x40000000` (set means absolute value). These two source-operand modifiers are independent of the **branch predicate guard** sign bit, which lives in the high bit of the guard operand (see `passes/predication.md`) and is decoded by `sub_70B780` via the textual `'!'` prefix at offset `+2120` of the operand descriptor.
+The polarity is "set means modifier applied". In `sub_9D12F0` the word-1 bit-31 test is `v17 < 0` (sign-bit set means negate); bit-30 is `v17 & 0x40000000` (set means absolute value). These two source-operand modifiers are independent of the **branch predicate guard** negation bit, which lives at **bit 24 (`0x1000000`)** of word1 of the predicate-register operand in the guard pair (verified in `sub_137E3A0` line 50, which reads `instr[2*last_idx + 22] & 0x1000000`). The textual printer `sub_70B780` does **not** consult this binary bit -- it reads the `'!'` prefix from the operand-descriptor name string at `+2120`. The two surfaces stay in sync because the passes that negate a guard set both, but downstream code that mutates only one must rebuild the other (see `passes/predication.md`).
 
 ### Global Lookup Tables
 

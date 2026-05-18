@@ -257,7 +257,7 @@ This function (`sub_137E3A0`, 367 bytes) validates that a basic block is part of
 
 1. **Predecessor count**: The merge block must have exactly `header_predecessor_count + 1` predecessors.
 2. **Terminator type**: The header's terminator must match opcode 95 after masking bits 12-13 (`STS` in the ROT13 name table; used here as a control-flow terminator class marker, not an actual store-shared instruction).
-3. **Branch predicate**: The branch guard must be a non-negated register operand (type field `(>>28)&7 == 1`), from the predicate register file (register file type checked against the state's expected file types 2 or 3, corresponding to R or UR).
+3. **Branch predicate**: The branch guard must be a non-negated register operand. Three independent fields are consulted (parallel to the `.UR` multi-field surface described in [Registers](../ir/registers.md#operand-field-encoding)): (a) operand word0 type tag `(word0 >> 28) & 7 == 1` (register-class operand); (b) operand word1 bit 24 (`& 0x1000000`) must be **clear** (negation flag) -- this is the binary-IR counterpart to the textual `!` prefix that `sub_70B780` reads from the operand-descriptor name string at `+2120`; (c) the vreg's `+64` reg_type must match one of the state's two stored predicate file types at `a1[5]` (primary) or `a1[6]` (secondary). The wiki had previously claimed these were "2 or 3, R or UR" -- the state slots actually hold the P / UP file-type values, not R/UR, and the constants are loaded from the SM backend's vtable initializer.
 4. **No backedges**: The predecessor list must not contain a self-edge.
 5. **Merge block successor check**: Validates that the merge block's sole successor leads to the expected continuation block.
 
@@ -541,25 +541,50 @@ For a non-branch instruction with opcode `op`:
 7. **Delete the original** instruction via `sub_9253C0`.
 
 ```
-// Predicate guard encoding in operand word:
-//   guard_pred = predicate_reg_index | 0x60000000
-//   (type field 3 = 0x6000_0000 >> 28, register index in low 24 bits)
+// Predicate guard is appended as TWO consecutive operands (each operand =
+// 8 bytes = word0 + word1). sub_9324E0 lines 71-74 write:
+//
+//   slot N   = *a4               // caller-supplied guard pair (the
+//                                 //   predicate-register operand:
+//                                 //   word0 = 0x10000000 | P_index   (type 1)
+//                                 //   word1 = 0 or 0x1000000 if negated  (@!P)
+//   slot N+1: word0 = (P_index & 0xFFFFFF) | 0x60000000  // control word
+//             word1 = 0
+//
+// The "type field" tags in the high nibble of word0:
+//     0x1_______  = register (consumed/source)
+//     0x6_______  = control / guard reference
+// (Bits [30:28] = 1 vs 6; the high nibble carries the operand-class tag.)
 //
 // Example: @P2 IADD3 R0, R1, R2, RZ
-//   Original IADD3 operands: [R0_def, R1, R2, RZ]
-//   Predicated operands:     [R0_def, R1, R2, RZ, guard_word, P2 | 0x60000000]
+//   Predicated operand list (each | separator = one 8-byte slot):
+//     [R0_def | R1 | R2 | RZ | (word0=0x10000002, word1=0) | (word0=0x60000002, word1=0)]
+//
+// For @!P2 the second slot's word1 has bit 24 set (0x1000000).
 ```
 
 ### Already-Predicated Instructions -- `sub_9321B0`
 
 When `sub_9324E0` encounters an instruction with bit 12 already set (predicated by an earlier pass), it delegates to `sub_9321B0` (812 bytes) rather than blindly appending a second guard. The function composes the existing predicate with the new guard by emitting a PLOP3 (Ori opcode 23, three-input predicate logic) that ANDs the two predicates into a freshly-allocated predicate register, then re-predicates the stripped instruction with the combined result.
 
-**Extracting the existing guard.** The function reads the operand count at `instr[20]` and indexes backward by 2 to locate the existing guard pair:
+**Extracting the existing guard.** The function reads the operand count at `instr[20]` and indexes backward by 2 to locate the existing guard pair. Each operand is 8 bytes = (word0, word1):
 
 ```
-existing_guard_ctl  = instr[2*(operand_count - 2) + 21]   // guard control word
-existing_pred_word  = instr[2*(operand_count - 2) + 23]   // predicate register operand
-existing_pred_index = existing_pred_word & 0xFFFFFF        // register index
+// instr[+84] is the operand-array base; slot k occupies DWORDs [2k, 2k+1].
+// Predicate guard occupies the LAST TWO slots:
+//   slot (count-2)  -- the predicate-register operand (type 1)
+//     word0 at [2*(count-2)+21]: 0x10000000 | reg_index   (register operand)
+//     word1 at [2*(count-2)+22]: flags; bit 24 (0x1000000) = '!' negation
+//   slot (count-1)  -- the control / guard-reference operand (type 6)
+//     word0 at [2*(count-1)+21] = [2*(count-2)+23]: 0x60000000 | reg_index
+//     word1 at [2*(count-1)+22] = [2*(count-2)+24]: zero
+//
+// `sub_9321B0` reads:
+//   existing_pred_word  = instr[2*(operand_count - 2) + 21]   // the register operand
+//   existing_pred_index = existing_pred_word & 0xFFFFFF        // register index
+//
+// `sub_137E3A0` line 50 reads the SAME slot's word1 for negation:
+//   negated = (instr[2*(operand_count - 2) + 22] & 0x1000000) != 0
 ```
 
 **Fast path -- accumulator reuse.** The caller passes an optional accumulator pointer (`a9`). When non-null and `*a9 != 0`, its low 5 bits cache the existing predicate index and bits 5-28 cache the previously-allocated combined register from a prior invocation. If the current instruction's existing predicate matches the cached index, the function skips PLOP3 emission: it extracts the combined register as `(*a9 >> 5) & 0xFFFFFF`, builds a type-1 guard operand (`combined_reg | 0x10000000`), strips the old guard (decrement operand count by 2, clear bit 12), and calls `sub_9324E0` to re-predicate with the cached result.
@@ -753,7 +778,7 @@ FSETP.LT.AND P1, P2, R3, R4, PT   // P1 = (R3 < R4), P2 = !(R3 < R4)
 
 Uniform predicates (UP0--UP6, UPT) are the warp-uniform variant available on sm_75+. When all threads in a warp have the same predicate value, using UP instead of P avoids consuming a per-thread predicate register and enables the hardware to skip the entire instruction rather than masking per-thread.
 
-In the Ori IR, predicate operands are encoded with type field 5 (bits 28-30 of the packed operand word). The guard predicate is appended as a pair of extra operands: the guard control word (type 3, `0x60000000 | reg_index`) followed by the predicate register operand itself.
+In the Ori IR, the predicate **guard** is appended as a pair of operands: the **register operand** (word0 type tag 1, `0x10000000 | reg_index`; word1 carries the negation flag at bit 24 / `0x1000000`) followed by the **control word** (word0 type tag 6, `0x60000000 | reg_index`; word1 zero). The "type field 5" used elsewhere in the operand-class taxonomy refers to constant-pool indirect, not predicates. The predicate-register **encoder** at the SASS-binary level (`sub_7BC5C0`, 416 bytes, see [Encoding](../codegen/encoding.md#predicate-encoder--sub_7bc5c0)) emits two contiguous bitfields: a 1-bit presence/range flag and a 5-bit predicate value where bits [2:0] select P0..P6/PT and the upper two bits encode the file (P vs UP) and the `.NOT` polarity, so the **same** negation signal travels through three independent surfaces (Ori operand word1 bit 24, textual `!` in the descriptor name at `+2120`, and the SASS-binary 5-bit field's polarity bit).
 
 ## Opcode Reference
 
