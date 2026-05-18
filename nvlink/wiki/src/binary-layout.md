@@ -305,12 +305,12 @@ Other large functions outside ISel hubs:
 
 | Address | Size | Identity |
 |---|---|---|
-| `sub_15B86A0` | 345 KB | `cuda_builtin_prototype_generator` -- 608-case switch on builtin index |
-| `sub_147EF50` | 288 KB | `ptx_instruction_semantic_analyzer` -- master instruction validator |
-| `sub_1487650` | 240 KB | `ptx_statement_processor` -- top-level PTX statement handler |
-| `sub_146BEC0` | 206 KB | `ptx_load_store_validator` -- memory operation validator |
 | `sub_15903D0` | 165 KB | CUDA builtin code-template generator (SM variant) |
 | `sub_1638800` | 118 KB | PTX intrinsic lowering dispatch |
+| `sub_146BEC0` | 51 KB | `ptx_load_store_validator` -- memory operation validator |
+| `sub_1487650` | 47 KB | `ptx_statement_processor` -- top-level PTX statement handler |
+| `sub_15B86A0` | 34 KB | `cuda_builtin_prototype_generator` -- 608-case switch on builtin index |
+| `sub_147EF50` | 28 KB | `ptx_instruction_semantic_analyzer` -- master instruction validator |
 
 ## Complete .text Address Map
 
@@ -575,7 +575,7 @@ The 99 KB `.bss` section (`0x2A5F180`--`0x2A77DD8`) stores runtime state:
 
 3. **Encoding tables**: The massive contiguous blocks at `0x620000`--`0x84DD70` and `0xDA0000`--`0xF15A50` are instruction encoder/decoder tables. Each function is 4--9 KB, follows a rigid template, and differs only in opcode constants and operand layouts. Analyzing one is sufficient to understand all of them.
 
-4. **Four operand dispatch switches**: `sub_A5B6B0` (180 KB), `sub_A62220` (65 KB), `sub_A65900` (67 KB), `sub_A67910` (141 KB) are the operand read/write dispatch functions. They map `(opcode_class, field_id)` to specific field accessors. If you see a call to `sub_A49150`, it routes through these.
+4. **Four operand dispatch switches**: `sub_A5B6B0` (27 KB), `sub_A62220` (14 KB), `sub_A65900` (8 KB), `sub_A67910` (36 KB) are the operand read/write dispatch functions. They map `(opcode_class, field_id)` to specific field accessors. If you see a call to `sub_A49150`, it routes through these.
 
 5. **The 31K-caller function**: `sub_530FB0` (get operand by index) is the most-called function in the binary with 31,399 callers. `sub_A49150` (get instruction attribute) is second with 30,768 callers. These are the IR accessor layer that every backend function uses.
 

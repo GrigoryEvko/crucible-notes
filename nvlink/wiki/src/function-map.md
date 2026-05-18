@@ -93,7 +93,7 @@ Functions with the highest cross-reference count in the binary. These form the b
 
 | Address | Decompiled | Proposed Name | Size | Confidence | Description |
 |---------|------------|---------------|------|------------|-------------|
-| `0x45E7D0` | `sub_45E7D0` | **merge_elf** | 89KB | VERY HIGH | Heart of the linker. Iterates all sections of input ELF, merges symbols/relocations/data. Handles `.nv.global`, `.nv.shared`, `.nv.constant`, `.nv.info`, DWARF debug. 450+ locals. |
+| `0x45E7D0` | `sub_45E7D0` | **merge_elf** | 15KB | VERY HIGH | Heart of the linker. Iterates all sections of input ELF, merges symbols/relocations/data. Handles `.nv.global`, `.nv.shared`, `.nv.constant`, `.nv.info`, DWARF debug. 450+ locals. |
 | `0x45D180` | `sub_45D180` | merge_weak_function | 26.8KB | HIGH | Resolves weak function conflicts by comparing register counts and PTX versions. |
 | `0x426570` | `sub_426570` | validate_arch_and_merge | 7.4KB | HIGH | Validates cubin architecture matches target ("compute_%d%c", "sm_%d%c"). |
 | `0x432B10` | `sub_432B10` | merge_overlapping_global | 11.7KB | HIGH | Validates overlapping symbol definitions in `.nv.global` contain identical data. |
@@ -444,10 +444,10 @@ The fundamental API for accessing IR instruction fields. `sub_530FB0` alone has 
 | Address | Decompiled | Proposed Name | Size | Confidence | Description |
 |---------|------------|---------------|------|------------|-------------|
 | `0xA49150` | `sub_A49150` | **NVInst_getOperandField** | 60B | VERY HIGH | 30,768 callers. Calls `sub_A7DE70` (hasOperand), then `sub_A709F0` (getValue). Returns -1 if field absent. |
-| `0xA49120` | `sub_A49120` | NVInst_setOperandField | 16B | HIGH | Thunk to `sub_A5B6B0` (180KB switch dispatch). |
-| `0xA491D0` | `sub_A491D0` | NVInst_setOperandImm | 16B | HIGH | Thunk to `sub_A62220` (65KB switch dispatch). |
-| `0xA491E0` | `sub_A491E0` | NVInst_getOperandFieldSlot | 16B | HIGH | Thunk to `sub_A65900` (67KB switch dispatch). |
-| `0xA49130` | `sub_A49130` | NVInst_getDefaultOperandValue | 16B | HIGH | Thunk to `sub_A67910` (141KB switch dispatch). |
+| `0xA49120` | `sub_A49120` | NVInst_setOperandField | 16B | HIGH | Thunk to `sub_A5B6B0` (27KB switch dispatch). |
+| `0xA491D0` | `sub_A491D0` | NVInst_setOperandImm | 16B | HIGH | Thunk to `sub_A62220` (14KB switch dispatch). |
+| `0xA491E0` | `sub_A491E0` | NVInst_getOperandFieldSlot | 16B | HIGH | Thunk to `sub_A65900` (8KB switch dispatch). |
+| `0xA49130` | `sub_A49130` | NVInst_getDefaultOperandValue | 16B | HIGH | Thunk to `sub_A67910` (36KB switch dispatch). |
 | `0xA49190` | `sub_A49190` | NVInst_hasOperandField | 16B | HIGH | Direct wrapper for `sub_A7DE70`. |
 | `0xA491A0` | `sub_A491A0` | NVInst_copyOperandField | 48B | HIGH | Gets from src via `sub_A709F0`, sets on dst via `sub_A5B6B0`. |
 | `0xA49220` | `sub_A49220` | NVInst_lookupOpcodeDesc | 96B | HIGH | FNV-1a hash lookup in opcode descriptor table. |
@@ -459,12 +459,12 @@ Four giant switch-case functions that implement the complete operand field encod
 
 | Address | Decompiled | Proposed Name | Size | Confidence | Description |
 |---------|------------|---------------|------|------------|-------------|
-| `0xA5B6B0` | `sub_A5B6B0` | setOperandField_dispatch | 180KB | HIGH | Sets operand field value on instruction. Switch on opcode class (0x00-0x171). |
-| `0xA62220` | `sub_A62220` | setOperandImm_dispatch | 65KB | HIGH | Sets immediate operand value. Same switch structure. |
-| `0xA65900` | `sub_A65900` | getOperandField_dispatch | 67KB | HIGH | Gets operand field value for specific slot. |
-| `0xA67910` | `sub_A67910` | getDefaultOperandValue_dispatch | 141KB | HIGH | Returns default value for an operand field. |
-| `0xA709F0` | `sub_A709F0` | InstrFieldOffset_Query | ~180KB | HIGH | 6,491-line switch mapping (opcode_class, field_id) to bit-offset in instruction encoding. Returns -1 if absent. |
-| `0xA7DE70` | `sub_A7DE70` | InstrFieldPresent_Query | ~170KB | HIGH | Same switch structure; returns `(extract != 0)`. Companion to `sub_A709F0`. |
+| `0xA5B6B0` | `sub_A5B6B0` | setOperandField_dispatch | 27KB | HIGH | Sets operand field value on instruction. Switch on opcode class (0x00-0x171). |
+| `0xA62220` | `sub_A62220` | setOperandImm_dispatch | 14KB | HIGH | Sets immediate operand value. Same switch structure. |
+| `0xA65900` | `sub_A65900` | getOperandField_dispatch | 8KB | HIGH | Gets operand field value for specific slot. |
+| `0xA67910` | `sub_A67910` | getDefaultOperandValue_dispatch | 36KB | HIGH | Returns default value for an operand field. |
+| `0xA709F0` | `sub_A709F0` | InstrFieldOffset_Query | 53KB | HIGH | 6,491-line switch mapping (opcode_class, field_id) to bit-offset in instruction encoding. Returns -1 if absent. |
+| `0xA7DE70` | `sub_A7DE70` | InstrFieldPresent_Query | 29KB | HIGH | Same switch structure; returns `(extract != 0)`. Companion to `sub_A709F0`. |
 
 ### ISel Pattern Matching
 
@@ -556,10 +556,10 @@ Large PTX processing subsystem in the `0x1430000`--`0x15C0000` range.
 
 | Address | Decompiled | Proposed Name | Size | Confidence | Description |
 |---------|------------|---------------|------|------------|-------------|
-| `0x15B86A0` | `sub_15B86A0` | cuda_builtin_prototype_gen | 345KB | HIGH | Giant switch (~608 cases) generating PTX prototype strings for CUDA builtins: div, rem, rcp, sqrt, wmma, shfl, vote, tcgen05, bulk_copy, etc. |
-| `0x147EF50` | `sub_147EF50` | ptx_instr_semantic_analyzer | 288KB | HIGH | Master instruction validator. SM version gates, texture modes, cache policies, state spaces, vector types, scoping. |
-| `0x1487650` | `sub_1487650` | ptx_statement_processor | 240KB | MEDIUM | Top-level PTX statement handler. Processes `.maxnctapersm`, `.reqntid`, kernel parameter limits (4352 bytes), function prototypes. |
-| `0x146BEC0` | `sub_146BEC0` | ptx_load_store_validator | 206KB | HIGH | Memory operation validator. Validates ld/st, atomics, reductions, fence, membar, cp.async, cache eviction, scope. |
+| `0x15B86A0` | `sub_15B86A0` | cuda_builtin_prototype_gen | 34KB | HIGH | Giant switch (~608 cases) generating PTX prototype strings for CUDA builtins: div, rem, rcp, sqrt, wmma, shfl, vote, tcgen05, bulk_copy, etc. |
+| `0x147EF50` | `sub_147EF50` | ptx_instr_semantic_analyzer | 28KB | HIGH | Master instruction validator. SM version gates, texture modes, cache policies, state spaces, vector types, scoping. |
+| `0x1487650` | `sub_1487650` | ptx_statement_processor | 47KB | MEDIUM | Top-level PTX statement handler. Processes `.maxnctapersm`, `.reqntid`, kernel parameter limits (4352 bytes), function prototypes. |
+| `0x146BEC0` | `sub_146BEC0` | ptx_load_store_validator | 51KB | HIGH | Memory operation validator. Validates ld/st, atomics, reductions, fence, membar, cp.async, cache eviction, scope. |
 
 ### Embedded ptxas Option / Driver Interface
 
@@ -591,7 +591,7 @@ The embedded ptxas backend exposes its own argv-style option surface, separate f
 | Instruction descriptor inits | ~1,600+ |
 | Instruction decoders (all arches) | ~800+ |
 | Subsystems identified | 20 |
-| Largest function | `sub_15B86A0` cuda_builtin_prototype_gen (345KB) |
+| Largest function | `sub_FBB810` SM75 ISel dispatch (280KB) |
 | Most-called function | `sub_530FB0` IRNode_GetOperand (31,399 callers) |
 | Binary composition | ~5% linker, ~95% embedded compiler backend |
 

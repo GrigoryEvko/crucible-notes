@@ -4,25 +4,25 @@
 
 > **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
 
-The NVPTX instruction selector in cicc v13.0 translates legal SelectionDAG nodes into target MachineInstr opcodes through a three-level dispatch hierarchy totaling approximately 900KB of code. At the top sits `NVPTXDAGToDAGISel::Select` (`sub_3090F90`, 91KB), which builds a per-function cost table, manages a priority-queue-driven topological worklist, and calls the pattern matcher (`sub_308FEE0`) for every node. The pattern matcher fans out to a hand-written NVPTX-specific select switch (`sub_347A8D0`, 309KB) and a TableGen-generated `SelectCode` function (`sub_348D3E0`, 256KB). Surrounding this core are six NVPTX-specific sub-selectors covering memory operations, texture/surface fetches, complex addressing modes, vector patterns, and atomics. The hand-written switch is responsible for the 460 distinct `NVPTXISD::*` target nodes catalogued in [NVPTXISD Opcodes](nvptxisd-opcodes.md) (372 of which are the texture/surface family) -- anything in the standard `ISD::*` range falls through to `SelectCode`. NVIDIA's key delta from upstream LLVM is (1) a compressed per-SM-variant legality table that gates which target opcodes exist on which GPU architecture, (2) a secondary 4-bit packed bitfield for fine-grained operand-class legality, and (3) the iteration budget that prevents the selector from looping indefinitely on pathological DAGs.
+The NVPTX instruction selector in cicc v13.0 translates legal SelectionDAG nodes into target MachineInstr opcodes through a three-level dispatch hierarchy totaling roughly 175 KB of code across the principal selectors. At the top sits `NVPTXDAGToDAGISel::Select` (`sub_3090F90`, 12 KB / 3,012 insns), which builds a per-function cost table, manages a priority-queue-driven topological worklist, and calls the pattern matcher (`sub_308FEE0`) for every node. The pattern matcher fans out to a hand-written NVPTX-specific select switch (`sub_347A8D0`, 50 KB / 10,416 insns -- the largest ISel function) and a TableGen-generated `SelectCode` function (`sub_348D3E0`, 26 KB / 6,163 insns). Surrounding this core are six NVPTX-specific sub-selectors covering memory operations, texture/surface fetches, complex addressing modes, vector patterns, and atomics. The hand-written switch is responsible for the 460 distinct `NVPTXISD::*` target nodes catalogued in [NVPTXISD Opcodes](nvptxisd-opcodes.md) (372 of which are the texture/surface family) -- anything in the standard `ISD::*` range falls through to `SelectCode`. NVIDIA's key delta from upstream LLVM is (1) a compressed per-SM-variant legality table that gates which target opcodes exist on which GPU architecture, (2) a secondary 4-bit packed bitfield for fine-grained operand-class legality, and (3) the iteration budget that prevents the selector from looping indefinitely on pathological DAGs.
 
 | | |
 |---|---|
-| **ISel driver** | `sub_3090F90` (91KB, 2,828 lines) |
+| **ISel driver** | `sub_3090F90` (12 KB, 3,012 insns) |
 | **Pattern matcher entry** | `sub_308FEE0` |
-| **NVPTX Select switch** | `sub_347A8D0` (309KB -- largest ISel function) |
-| **SelectCode (TableGen)** | `sub_348D3E0` (256KB -- auto-generated) |
-| **Vector/SIMD patterns** | `sub_3475BB0` (89KB) |
-| **Memory operation patterns** | `sub_306D850` (77KB) |
-| **Complex addressing modes** | `sub_30811D0` (77KB) |
-| **Addressing mode helper** | `sub_30783B0` (39KB) |
-| **Texture/surface ISel** | `sub_306A930` (52KB) |
-| **Atomic lowering** | `sub_3048C30` (86KB) |
+| **NVPTX Select switch** | `sub_347A8D0` (50 KB, 10,416 insns -- largest ISel function) |
+| **SelectCode (TableGen)** | `sub_348D3E0` (26 KB, 6,163 insns -- auto-generated) |
+| **Vector/SIMD patterns** | `sub_3475BB0` (19 KB, 3,966 insns) |
+| **Memory operation patterns** | `sub_306D850` (14 KB, 3,192 insns) |
+| **Complex addressing modes** | `sub_30811D0` (10 KB, 2,604 insns) |
+| **Addressing mode helper** | `sub_30783B0` (7 KB, 1,722 insns) |
+| **Texture/surface ISel** | `sub_306A930` (9 KB, 2,191 insns) |
+| **Atomic lowering** | `sub_3048C30` (14 KB, 3,015 insns) |
 | **Constraint table** | `word_3F3E6C0` (see [Pattern Database](../structs/pattern-db.md)) |
 | **Compressed legality table** | Base + 6414, 500-byte stride per SM variant |
 | **Secondary 4-bit bitfield** | Base + 521536 |
 | **Legalize action table** | Object + 72760, 4-bit packed |
-| **Knob registration** | `ctor_286` at `0x4FA0C0` (5KB) |
+| **Knob registration** | `ctor_286` at `0x4FA0C0` (1.7 KB) |
 | **Upstream LLVM source** | `lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp`, `lib/Target/NVPTX/NVPTXISelDAGToDAG.cpp` |
 
 ## ISel Driver: `sub_3090F90`
@@ -293,7 +293,7 @@ Note that cicc does **not** use FastISel for GPU code generation. The `fast-isel
 | **Argument cost table** | Not present in `SelectionDAGISel` | Hash table with `key * 37` hash for argument byte sizes |
 | **Legality table** | Simple `isLegal()` callback per target | Compressed 500-stride table + 4-bit packed secondary table |
 | **FastISel** | Used for -O0 on most targets | Never used; always full SelectionDAG |
-| **ISel function size** | Typical NVPTX `Select()` is ~50KB upstream | 309KB hand-written + 256KB TableGen = 565KB total |
+| **ISel function size** | Typical NVPTX `Select()` is a few KB upstream | 50 KB hand-written + 26 KB TableGen = ~76 KB combined |
 | **Memory patterns** | Standard load/store | 5 address spaces, each with distinct PTX encoding |
 | **Texture/surface** | Not present in upstream NVPTX (handled by intrinsics only) | 52KB dedicated sub-selector for tex/suld/sust |
 | **Atomic patterns** | Standard expansion via AtomicExpandPass | 86KB custom selector with scope qualifiers and architecture gating |
@@ -302,7 +302,7 @@ Note that cicc does **not** use FastISel for GPU code generation. The `fast-isel
 
 | Function | Address | Size | Role |
 |---|---|---|---|
-| `NVPTXDAGToDAGISel::Select` -- ISel driver | `sub_3090F90` | 91KB | -- |
+| `NVPTXDAGToDAGISel::Select` -- ISel driver | `sub_3090F90` | 12 KB | -- |
 | Pattern matcher entry (dispatches to Select switch and SelectCode) | `sub_308FEE0` | -- | -- |
 | NVPTX hand-written Select switch | `sub_347A8D0` | 309KB | -- |
 | TableGen-generated SelectCode | `sub_348D3E0` | 256KB | -- |
