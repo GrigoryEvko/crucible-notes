@@ -6,7 +6,7 @@
 
 ## Abstract
 
-The `cutlass` dialect packs thirty-eight ops across four operation families plus a small MODS async-dispatch sidecar. It models the structure CUTLASS C++ templates normally generate: asynchronous producer/consumer pipelines, persistent tile schedulers, ordered sequence barriers, and block-striped shared-memory movement. The dialect constructor at `sub_1761D90` registers all thirty-eight ops in a single thunk-chain, then installs two op-level verifiers and the post-verify arrive-count builder.
+The `cutlass` dialect packs thirty-eight ops across four operation families plus a small MODS sidecar nested under tile_scheduler. It models the structure CUTLASS C++ templates normally generate: asynchronous producer/consumer pipelines, persistent tile schedulers, ordered sequence barriers, and block-striped shared-memory movement. The dialect constructor at `sub_1761D90` registers all thirty-eight ops in a single thunk-chain, then installs two op-level verifiers and the post-verify arrive-count builder.
 
 `cutlass` sits above `cute_nvgpu` and `nv_tileas`. `cute_nvgpu` provides hardware atoms — MMA, TMA. `nv_tileas` provides operational async scheduling. `cutlass` connects the two at a larger granularity: it names which agents participate in the pipeline, how tiles are assigned to CTAs, how producers and consumers synchronise, and how persistent kernels advance through their work.
 
@@ -40,7 +40,7 @@ The thirty-eight ops split into five families. Pipeline is the largest, covering
 | tile_scheduler | 8 | `cutlass.tile_scheduler.create_streamk_params`, `cutlass.tile_scheduler.create_static_persistent_params`, `cutlass.tile_scheduler.create_dp_params`, plus per-variant accessors (`work_tile_info_*`, `fetch_next_work`, `advance_to_next_work`, and the SM100 persistent-fixup hooks) |
 | seq_bar | 5 | `cutlass.seq_bar.create`, `cutlass.seq_bar.init`, `cutlass.seq_bar.arrive`, `cutlass.seq_bar.wait`, `cutlass.seq_bar.state.create` |
 | block_striped | 8 | `cutlass.block_striped.load`, `cutlass.block_striped.store`, `cutlass.block_striped.reduce`, plus five type-specialized forms covering the half, bfloat, packed, integer, and float variants |
-| MODS async_dispatch | 4 | `cutlass.mods.async_dispatch.*` (four ops covering the alternate async-call ABI used by the MODS telemetry path) |
+| MODS (nested under tile_scheduler) | 4 | `cutlass.tile_scheduler.mods_report_mainloop_start`, `cutlass.tile_scheduler.mods_report_mainloop_end`, `cutlass.tile_scheduler.mods_report_smid`, `cutlass.tile_scheduler.mods_throttle` (four ops covering the alternate async-call ABI used by the MODS telemetry path) |
 
 ## Two Verifiers Carry Pipeline Correctness
 
@@ -62,7 +62,7 @@ Four operand-layout checkers serve the block-striped family, one per variant: `s
 
 ## Cutlass-Bar Warp-Cooperative Diagnostic
 
-`BarOpLowering` at `sub_15FC250` is a ~5.5 KB routine that handles `cutlass.bar` lowering and emits the warp-cooperative diagnostic. It fires when a `cutlass.bar` op carries an arrive-count that is not a multiple of warp size, or when the op sits outside warp-cooperative scope. The diagnostic catches the misuse pattern where a thread-level barrier lands in a kernel region the rest of the dialect expects to coordinate warps as a unit.
+`BarOpLowering` at `sub_15FC250` is a ~5.5 KB routine that handles `cutlass.named_barrier.*` and `cutlass.generic_barrier.*` lowering and emits the warp-cooperative diagnostic. It fires when an arrive-count is not a multiple of warp size, or when the op sits outside warp-cooperative scope. The diagnostic catches the misuse pattern where a thread-level barrier lands in a kernel region the rest of the dialect expects to coordinate warps as a unit.
 
 ## Barrier-Id Helper
 
@@ -144,7 +144,7 @@ The `cutlass` dialect is the IR shape of the orchestration classes living in `cu
 | `consumer_wait / release` | `cutlass.pipeline.consumer_{wait,release}` ops |
 | Warp-specialized executor partition | `cutlass.pipeline.switch_by_executor` |
 | `OrderedSequenceBarrier<Stages, ...>` | `cutlass.seq_bar.{create,init,arrive,wait,state.create}` (five-op family) |
-| `arch::NamedBarrier::sync(id, threads)` | `cutlass.bar` (warp-cooperative-only; gated by the `BarOpLowering` diagnostic) |
+| `arch::NamedBarrier::sync(id, threads)` | `cutlass.named_barrier.arrive`, `cutlass.named_barrier.arrive_and_wait`, `cutlass.generic_barrier.{arrive_increment,wait_eq,wait_less_than}`, `cutlass.generic_barrier_sync` (warp-cooperative-only; gated by the `BarOpLowering` diagnostic) |
 | `PersistentTileScheduler` | `cutlass.tile_scheduler.create_static_persistent_params` (with companion `create_static_persistent_work_tile_info`) |
 | `StreamKScheduler` | `cutlass.tile_scheduler.create_streamk_params` (with companion `create_streamk_work_tile_info`; SM100 variant body `sub_R01`) |
 | `DataParallelScheduler` | `cutlass.tile_scheduler.create_dp_params` (with companion `create_dp_work_tile_info`) |
