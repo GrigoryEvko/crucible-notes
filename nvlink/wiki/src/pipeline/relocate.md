@@ -719,44 +719,50 @@ if (ctx->preserve_relocs) {
 
 ## Resolved-Rela Emission: sub_46ADC0
 
-The function `sub_46ADC0` (11,515 bytes, 406 lines) walks the preserve-relocs list at `ctx+384` and writes each relocation into a `.nv.resolvedrela` section. This is used when the output is a relocatable object (`-r` flag) or when `--preserve-relocs` is specified, so that a subsequent link step or the CUDA runtime loader can perform final relocation at load time.
+The function `sub_46ADC0` (11,515 bytes, 388 decompiled lines) is the writer-side counterpart to the apply engine. It walks **two** linked lists in sequence:
 
-For each preserved relocation:
+1. **Primary list at `ctx+376`** -- the same list `sub_469D60` walked during application. After the apply phase has unlinked each consumed reloc, the surviving entries (those routed through the preserve-relocs path; see [Preserve-Relocs Path](#preserve-relocs-path) above and [`relocation-engine.md` § Resolved-Rela Emitter](../linker/relocation-engine.md#resolved-rela-emitter-sub_46adc0)) are still rooted at `ctx+376`. This loop runs **unconditionally** -- there is no `--preserve-relocs` guard around it. Every entry on the list is emitted into a `.rela`-class output section, with the section index taken from the record's `section_idx` field at offset +24. The output section was created (or located) earlier by `sub_442760` using SHT_RELA (type `4`) as the target type tag.
 
-1. **Symbol index remapping**: Calls `sub_444720` to remap the symbol index from internal numbering to output ELF symbol table numbering.
+2. **Secondary list at `ctx+384`** -- only walked when `*(_BYTE *)(ctx + 85)` (the `--preserve-relocs` byte) is set. These are records that the apply engine handed off via `sub_4644C0` *in addition* to leaving the originals on `ctx+376` -- specifically, relocations against texture/surface symbols (symbol type 13, binding `& 0xE0 == 0x40`) on parent sections whose flags carry bit `0x4`. The selection is tight: the loop also requires the parent section's data size to be nonzero and the Mercury / CUDA architecture flag to be live (`*(uint8_t*)(ctx+7) == 'A'` selects mask `1`, otherwise mask `0x80000000`, against `*(uint32_t*)(ctx+48)`). For qualifying entries, the function builds the output section name by prepending `".nv.resolvedrela"` to the parent section's name (consecutive entries with the same parent reuse the cached name), looks up or creates that section via `sub_4411D0`, and writes a single record. **The first loop's `.rela.*` output sections are unrelated to the second loop's `.nv.resolvedrela*` sections** -- they live in different parts of the output ELF and are produced by independent code paths inside the same function.
 
-2. **Symbol value validation**: The resolved symbol's value at offset `+8` must not be `-1` (unallocated):
-   ```
-   "symbol never allocated"
-   ```
+For each record on either list:
 
-3. **Section data location**: Same chunk-list walk as the main engine, with the same error:
-   ```
-   "reloc address not found"
-   ```
+1. **Symbol-addend resolution** (primary list only, ELF32-style link type): If `*(uint32_t*)(rec+28)` (sym_addend_idx) is nonzero, the function calls `sub_444720` to remap it and `sub_440590` to look up the symbol record. The resolved value at `sym+8` is validated against `-1` (`"symbol never allocated"`) and **added to `*(uint64_t*)(rec+0)`** -- the record's `r_offset` field, *not* the addend. This fold is the writer-side equivalent of the apply engine's `S + A` resolution: the symbol value contributes to the final on-disk relocation offset rather than to the addend.
 
-4. **Offset validation**: Verifies the relocation offset does not exceed the section's data size:
-   ```
-   "relocation is past end of offset"
-   ```
+2. **Section lookup**: Reads `section_idx` from `*(uint32_t*)(rec+24)` and resolves to the section record. The parent section's data size (`parent+32`) is validated to be nonzero and strictly greater than `*(uint64_t*)(rec+0)` (`"relocation is past end of offset"`).
 
-5. **Rela section allocation**: Calls `sub_442760` to find or create the `.nv.resolvedrela` section for the target, with error:
-   ```
-   "rela section never allocated"
-   ```
+3. **Descriptor-driven addend extraction** (primary list only, when `*(uint8_t*)(ctx+89)` is set and the parent section type is not `4`/SHT_RELA): The function selects the descriptor table by architecture (`off_1D3CBE0` for Mercury when bit 0/sign-bit of `*(uint32_t*)(ctx+48)` is set, otherwise `off_1D3DBE0`), validates the relocation type is above `0x10000` on the Mercury branch (`"unexpected reloc"`), and indexes the 64-byte descriptor entry. Up to three rounds of `sub_468670` bit-field extraction read existing in-instruction values back out using the (bit_offset, bit_width, present) triples at descriptor uint32 indices [3,4,5], [7,8,9], [11,12,13]. Each extracted value is **added** to `*(uint64_t*)(rec+16)` -- the `extra` field, which becomes the on-disk `r_addend`. This is the writer-side *inverse* of the apply engine's bit-field write: it recovers the in-instruction addend that the assembler originally encoded so the downstream linker / runtime can re-apply the same patch without consulting the section bytes. Section data is located via the same chunk-list walk as the apply engine (`"reloc address not found"` on failure).
 
-6. **Descriptor-driven extraction**: For relocations with non-trivial descriptors, the engine extracts existing bit-field values from the patched instruction data using the same `sub_468670` bit-field reader, accumulating the extracted value into the relocation addend at offset `+16`.
+4. **Output rela section**: Calls `sub_442760(ctx, parent_idx, 4)` -- where `4` is SHT_RELA -- to find or create the `.rela`-class output section for this target. On failure: `"rela section never allocated"`.
 
-7. **Output format**: Writes the relocation record in either REL or RELA format depending on the ELF class (byte at `ctx+4`). For RELA (class == 2), the full 24-byte record `{offset, info, addend}` is emitted via `sub_4336B0`. For REL, the record is 12 bytes with the addend folded into `info`.
+5. **Symbol index remap**: Calls `sub_444720` on `*(uint32_t*)(rec+12)` to translate the internal symbol index to the output ELF `.symtab` index. The remapped value is folded into `*(uint64_t*)(rec+8)` as the high 32 bits: `(rec+8) = (uint32_t)(rec+8) | (remapped_sym << 32)`. The low 32 bits remain the relocation type.
 
-After all preserved relocations are emitted, if this is a non-Mercury relocatable link, the function also generates a `.nv.rel.action` section containing the relocation descriptor actions themselves, so downstream tools can re-apply them:
+6. **On-disk record format**: Selected by `*(uint8_t*)(ctx+4)` (ELF class):
 
-```c
-if (link_type == 2 && !mercury_flag) {
-    action_section = sub_441AC0(ctx, ".nv.rel.action", SHT_CUDA_xxx, ...);
-    // Iterate descriptor table entries, emit action records
-}
-```
+   | ELF class | Record size | Alignment | Layout | Note |
+   |---|---|---|---|---|
+   | `2` (ELF64 / RELA) | 24 bytes | 8 | `r_offset` (8) at `rec+0`, `r_info` (8) at `rec+8`, `r_addend` (8) at `rec+16` | The 24-byte slab is emitted verbatim via `sub_4336B0(ctx, sec_idx, rec, 8, 24, ...)`. The in-memory record layout is arranged so its leading 24 bytes already match the on-disk RELA format. |
+   | `1` (ELF32 / REL) | 12 bytes | 4 | `r_offset` (4) at `rec+0`, `r_info` (4) at `rec+4`, `r_addend` (4) at `rec+8` | The function repacks the record in place: it overwrites `rec+4` with `((remapped_sym << 8) | (type & 0xFF))` and `rec+8` with the low 32 bits of `rec+16` (the extracted addend), then emits 12 bytes via `sub_4336B0(ctx, sec_idx, rec, 4, 12, ...)`. ELF32 REL has no separate addend slot, but nvlink synthesizes a 12-byte REL+addend hybrid for downstream tooling. |
+
+   The secondary list (`.nv.resolvedrela.*`) uses the same two formats and the same `sub_4336B0` emit call -- the writer code path is unified once selection is done.
+
+`sub_4336B0` itself constructs a 40-byte fragment node (data pointer = record, size, alignment) and appends it to the target section's data list at `sec+72`. The record bytes are copied into the section buffer when the output phase walks the data fragments (see [`pipeline/output.md` § Phase 6](output.md#phase-6-section-data)). This means `sub_46ADC0` produces output by *growing the section data list*, not by writing to a file -- the actual byte emission is deferred to the serialize loop.
+
+### What gets dropped vs preserved
+
+| Apply-time disposition | Survives to which output list | Output section |
+|---|---|---|
+| Relocation fully consumed by `sub_468760` and node freed (`--preserve-relocs` absent) | None | -- |
+| Relocation consumed but record retained on `ctx+376` (`--preserve-relocs` set, normal path) | Primary | `.rela.<parent>` (or per-section `.rela` named from `sub_442760` rules) |
+| Texture/surface symbol relocation (sym type 13, binding 0x40), parent section flag bit 0x4 set, arch flag live | Secondary (in addition to wherever the apply engine left the original) | `.nv.resolvedrela.<parent>` |
+| Dead-function relocation (`"ignore reloc on dead func"`) | None | -- |
+| UFT_OFFSET drop (`"ignore reloc on UFT_OFFSET"`) | None | -- |
+| Unified reloc remap (`"replace unified reloc N with M"`) | Same list it was on, but with rewritten type | Same as the post-rewrite type |
+| `R_CUDA_NONE` (type 0) sentinel | None | -- |
+
+### `.nv.rel.action` is *not* written here
+
+`sub_46ADC0` does **not** emit the `.nv.rel.action` section. That section (SHT type `0x7000000B`, SHT_CUDA_RELOCINFO) is produced by `sub_469D60` itself near the end of the apply phase (decompiled line 688: `sub_441AC0(ctx, ".nv.rel.action", 1879048203, ...)`). The action descriptor compaction loop documented in [`relocation-engine.md` § .nv.rel.action Section Emission](../linker/relocation-engine.md#nvrelaction-section-emission) lives inside the apply engine, not the resolved-rela writer.
 
 ## Relocation Vtable: sub_459640
 

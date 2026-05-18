@@ -119,7 +119,7 @@ Functions with the highest cross-reference count in the binary. These form the b
 | Address | Decompiled | Proposed Name | Size | Confidence | Description |
 |---------|------------|---------------|------|------------|-------------|
 | `0x469D60` | `sub_469D60` | **apply_relocations** | 26.6KB | VERY HIGH | Complete relocation resolution. Handles `__UFT_OFFSET`, `__UDT_OFFSET`, `__UFT_CANONICAL`, `__UDT`, `__UFT`. Processes `.nv.resolvedrela`. |
-| `0x46ADC0` | `sub_46ADC0` | emit_resolved_relocations | 11.5KB | HIGH | Creates `.nv.resolvedrela` section when `--preserve-relocs`. |
+| `0x46ADC0` | `sub_46ADC0` | emit_resolved_relocations | 11.5KB | HIGH | Writer-side relocation emitter. Always emits `.rela.*` records from list at `ctx+376` (24 B RELA / 12 B REL+addend) with descriptor-driven bit-field addend recovery via `sub_468670`. Additionally emits `.nv.resolvedrela.*` from list at `ctx+384` when `--preserve-relocs` is set, restricted to texture/surface/bindless symbols on `SHT_PROGBITS+SHF_EXECINSTR` parent sections. |
 | `0x459640` | `sub_459640` | reloc_vtable_create | 16.1KB | HIGH | Creates 632-byte vtable with ~70 handler slots, dispatched per arch generation (sm30..sm100+). |
 
 > **Details**: [Pipeline Relocate](pipeline/relocate.md), [R_CUDA Relocations](linker/r-cuda-relocations.md), [R_MERCURY Catalog](reference/r-mercury-catalog.md)
@@ -235,7 +235,7 @@ Functions with the highest cross-reference count in the binary. These form the b
 | `0x468760` | `sub_468760` | reloc_action_dispatcher | 14.3KB | HIGH | Descriptor-driven per-relocation action engine called from `sub_469D60`. Indexes a 64-byte-per-entry descriptor table by `type<<6`; encodes a resolved symbol value into the instruction word via the bit-field writer, handling SHT_RELA (absolute) vs SHT_REL (addend-based) paths. 582 lines decompiled. |
 | `0x468670` | `sub_468670` | reloc_bitfield_extract | ~240 B | HIGH | Bit-field extractor used by `sub_468760` to read the existing addend bits out of an instruction word before adding the resolved symbol value. |
 | `0x4685B0` | `sub_4685B0` | reloc_bitfield_write | ~240 B | HIGH | Bit-field writer used by `sub_468760` to splice resolved values back into instruction words and data at non-byte-aligned positions. |
-| `0x46ADC0` | `sub_46ADC0` | emit_resolved_relocations | 11.5KB | HIGH | Creates `.nv.resolvedrela` section when `--preserve-relocs`. |
+| `0x46ADC0` | `sub_46ADC0` | emit_resolved_relocations | 11.5KB | HIGH | Writer-side relocation emitter. Always emits `.rela.*` records from list at `ctx+376` (24 B RELA / 12 B REL+addend) with descriptor-driven bit-field addend recovery via `sub_468670`. Additionally emits `.nv.resolvedrela.*` from list at `ctx+384` when `--preserve-relocs` is set, restricted to texture/surface/bindless symbols on `SHT_PROGBITS+SHF_EXECINSTR` parent sections. |
 | `0x459640` | `sub_459640` | reloc_vtable_create | 16.1KB | HIGH | Creates 632-byte vtable with ~70 handler slots, dispatched per arch generation (sm30..sm100+). |
 | `0x4AF3C0` | `sub_4AF3C0` | hrk_section_process | 8.8KB | HIGH | Processes `.nvHRKE` / `.nvHRKI` (Hash Relocation Key External/Internal). |
 | `0x4B02A0` | `sub_4B02A0` | hrc_hrd_section_process | 16.3KB | HIGH | Processes `.nvHRCE` / `.nvHRCI` / `.nvHRDE` / `.nvHRDI` (Hash Relocation Code/Data). |

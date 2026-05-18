@@ -83,10 +83,12 @@ Offset  Size    Field             Access in decompiled code
 +0      int64   addend            v5->m128i_i64[0]
 +8      int32   reloc_type        (uint32_t)(v5->m128i_i64[1])
 +12     int32   symbol_index      SHIDWORD(v5->m128i_i64[1])  (v5->m128i_i32[3])
-+16     uint32  section_idx       v5[1].m128i_u32[2]
-+20     uint32  sym_addend_idx    v5[1].m128i_i32[3]
-+24     int64   extra             v5[1].m128i_i64[0]
++16     int64   extra             v5[1].m128i_i64[0]
++24     uint32  section_idx       v5[1].m128i_u32[2]
++28     uint32  sym_addend_idx    v5[1].m128i_i32[3]
 ```
+
+The `v5[1]` `__m128i` covers bytes [16:32] of the record, so `v5[1].m128i_i64[0]` reads bytes [16:24] (the `extra` slot used for in-instruction addend accumulation), `v5[1].m128i_u32[2]` reads bytes [24:28], and `v5[1].m128i_i32[3]` reads bytes [28:32]. The writer-side emitter `sub_46ADC0` confirms this layout: it loads `section_idx` from `*(_DWORD *)(rec+24)` and `sym_addend_idx` from `*(_DWORD *)(rec+28)`, and accumulates extracted bit-field values into `*(_QWORD *)(rec+16)` -- the same byte ranges accessed through the `__m128i` view in the apply engine.
 
 The SSE `_mm_loadu_si128` loads are an optimization: rather than reading individual fields with scalar loads, the entire 32-byte record is loaded in two unaligned 128-bit operations, which the CPU can handle efficiently. The decompiler shows the record stored in `__m128i` typed variables (`v5` is an `__m128i*`), with fields accessed through the union members `.m128i_i32[]`, `.m128i_u32[]`, and `.m128i_i64[]`.
 
@@ -109,7 +111,7 @@ void apply_relocations(linker_ctx* ctx, pthread_mutexattr_t* mutex_attr) {
         reloc_record* rec = node->record;
 
         // ---- Step 1: Addend symbol resolution ----
-        uint32_t sym_addend_idx = rec->sym_addend_idx;   // offset +20
+        uint32_t sym_addend_idx = rec->sym_addend_idx;   // offset +28
         if (sym_addend_idx != 0) {
             symbol_rec* sym = sub_440590(ctx, sym_addend_idx);
             rec->addend += *(int64_t*)(sym + 8);
@@ -242,7 +244,7 @@ The `_mm_loadu_si128` intrinsic generates a single `MOVDQU` instruction on x86-6
 
 Symbol resolution in `sub_469D60` is a multi-step process:
 
-1. **Addend symbol resolution** (`sym_addend_idx` at record offset +20): If nonzero, `sub_440590(ctx, sym_addend_idx)` returns the symbol record, and `*(int64_t*)(sym + 8)` (the resolved symbol value) is added to the record's addend at offset +0. This implements the `S + A` (symbol + addend) pattern.
+1. **Addend symbol resolution** (`sym_addend_idx` at record offset +28): If nonzero, `sub_440590(ctx, sym_addend_idx)` returns the symbol record, and `*(int64_t*)(sym + 8)` (the resolved symbol value) is added to the record's addend at offset +0. This implements the `S + A` (symbol + addend) pattern.
 
 2. **Target symbol resolution** (`symbol_index` at record offset +12): `sub_440590(ctx, SHIDWORD(rec->reloc_info))` returns the target symbol record. The symbol's resolved address at offset +8 becomes the `a7` (symbol\_value) argument to `sub_468760`.
 
@@ -938,13 +940,13 @@ The first loop walks the relocation list at `ctx+376`, processing entries that w
 
 1. **ELF class check**: Reads `ctx+4` (ELF class byte) and `ctx+16` (link type). Class 1 = ELF32-style relocations; class 2 = RELA-style.
 
-2. **Symbol addend resolution**: If the entry's symbol addend index (at record offset `+28`) is nonzero, calls `sub_444720` to remap the symbol index and `sub_440590` to look up the symbol record. Validates that the resolved value at symbol offset `+8` is not `-1` (fatal: `"symbol never allocated"`). Adds the resolved value to the record's addend.
+2. **Symbol-addend fold into `r_offset`** (only when link type at `ctx+16` is `1`, i.e. ELF32-style record handling): If `*(uint32_t*)(rec+28)` (sym_addend_idx) is nonzero, calls `sub_444720` to remap the symbol index, then `sub_440590` to look up the symbol record. Validates that the resolved value at `sym+8` is not `-1` (fatal: `"symbol never allocated"`). The resolved value is then added to `*(uint64_t*)(rec+0)` -- the field that becomes the on-disk `r_offset`, **not** the `r_addend`. This is the writer-side `S + A` accumulation: any sub-symbol displacement encoded by the assembler is folded into the relocation target offset before emission.
 
 3. **Section lookup**: Calls `sub_442270` for the target section and its parent section (at section offset `+44`).
 
 4. **Offset validation**: The parent section's data size (at offset `+32`) must be nonzero and must exceed the relocation's target offset (fatal: `"relocation is past end of offset"`).
 
-5. **Descriptor-driven bit-field extraction**: When `ctx+89` is set and the section type is not 4, the function selects the appropriate descriptor table and performs up to three rounds of bit-field extraction using `sub_468670`. For each of three field specifications at descriptor offsets (+3,+4,+5), (+7,+8,+9), and (+11,+12,+13) in uint32 units: if the "present" flag is nonzero, extracts a bit field and accumulates it into the record's extra addend at offset `+16`.
+5. **Descriptor-driven bit-field extraction** (writer-side addend recovery): When `*(uint8_t*)(ctx+89)` is set and the *target* section's type (`sec+4`, where `sec = sub_442270(ctx, rec->section_idx)`) is not `4` (SHT_RELA -- skipping records that already point at a `.rela`-class section), the function selects the descriptor table by architecture (`off_1D3CBE0` for Mercury, `off_1D3DBE0` for CUDA) and performs up to three rounds of `sub_468670` bit-field extraction. For each of three field specifications at descriptor uint32 indices (+3,+4,+5), (+7,+8,+9), and (+11,+12,+13): if the "present" flag (the third uint32 of each triple) is nonzero, the extractor reads `bit_width` bits starting at `bit_offset` from the section data at the relocation site and *adds* the result to `*(uint64_t*)(rec+16)` -- the `extra` slot that becomes the on-disk `r_addend`. This is the writer-side inverse of the apply engine's bit-field write: it recovers the in-instruction addend so a downstream linker or runtime can re-apply the same patch sequence without needing the section bytes. The Mercury branch additionally subtracts `0x10000` from the relocation type before indexing the descriptor table, and validates that the type is above `0x10000` (`"unexpected reloc"`).
 
 6. **Section data location**: Same chunk-list walk as the main engine. The section record at offset `+72` holds a linked list of data chunks. On failure: `"reloc address not found"`.
 
@@ -956,12 +958,18 @@ The first loop walks the relocation list at `ctx+376`, processing entries that w
 
 ### Secondary List: ctx+384
 
-A second loop processes `ctx+384`. Selection criteria:
-- Parent section has nonzero data size
-- Architecture flag check passes
-- Symbol type == 13 (STT\_CUDA\_TEXTURE/SURFACE-related), binding field `& 0xE0` == 64 (0x40)
+A second loop processes `ctx+384`. **It runs only when `*(uint8_t*)(ctx+85)` (the `--preserve-relocs` flag) is set** -- there is no entry to this loop on a non-preserve link. Selection criteria, all of which must hold for a record to be emitted:
 
-For qualifying entries, the function constructs the output section name by prepending `".nv.resolvedrela"` to the parent section name, calls `sub_4411D0` to find or create that section, and writes the relocation record. Section names are cached: if consecutive relocations target the same section, the lookup is skipped.
+- Parent section data size (`parent+32`) is nonzero
+- Architecture flag check: `(*(uint8_t*)(ctx+7) == 'A' ? 1 : 0x80000000) & *(uint32_t*)(ctx+48)` is nonzero (the Mercury / non-Mercury arch family is live)
+- Parent section type (`parent+4`) is `1` (`SHT_PROGBITS`) -- code/data sections only, not synthetic ELF sections
+- Parent section flags low byte (`parent+8`) has bit `0x4` set (`SHF_EXECINSTR`) -- text sections only
+- Symbol `st_info` low nibble (`sym+4 & 0xF`) is `0xD` (CUDA-extended symbol type, indices texture/surface/bindless)
+- Symbol `st_info` high three bits (`sym+5 & 0xE0`) equal `0x40` (binding `STB_CUDA_*` value 2 in the high field)
+
+For qualifying entries, the function constructs the output section name by prepending `".nv.resolvedrela"` to the parent section name (the parent's `sec+96` name string), calls `sub_4411D0` to find or create that section, and writes the relocation record via `sub_4336B0` using the same RELA / REL slab format as the primary loop (24 bytes for ELF64, 12 bytes for ELF32, alignment 8 / 4). Section names are cached across iterations: if consecutive relocations target the same parent section, the `sprintf` and lookup are skipped (`v83 == v20` short-circuit).
+
+Note that the primary loop at `ctx+376` runs **unconditionally** (no `ctx+85` guard) -- the preserve-relocs flag only gates the secondary `.nv.resolvedrela` emission. For a relocatable (`-r`) link with `--preserve-relocs` absent, the primary loop still emits standard `.rela.<section>` entries for all surviving records; only the texture/surface-specific `.nv.resolvedrela.*` sections are suppressed.
 
 ## Error Conditions
 
