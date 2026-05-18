@@ -542,9 +542,9 @@ The callgraph vector at `ctx+408` holds one node per function. Each node is 64 b
    offset   field                 type   notes
    ──────   ───────────────────   ─────  ─────────────────────────────────────
       +0    section_id            i32    negative => from ctx+352, positive => ctx+344
-      +4    forwarding_idx        i32    set by sub_44BA60 (address-taken targets)
+      +4    forwarding_idx        i32    set by sub_44BA60 (which also stamps +50 address_taken=1)
       +8    alt_call_list head    ptr    external/indirect callee edges built by sub_44BAA0
-     +16    callee_list head      ptr    outgoing direct calls; each node holds callee section_id at node+8
+     +16    callee_list head      ptr    outgoing direct calls built by sub_44B9F0; each node holds callee section_id at node+8
      +32    fn_ptr_edge_list      ptr    fn-pointer/address-taken edges built by sub_44BF90
      +40    caller_list head      ptr    incoming edges; non-NULL ⇒ "has callers" (Test 2);
                                         returned by sub_44C740 (callgraph_get_callers)

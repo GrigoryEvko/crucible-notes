@@ -490,12 +490,12 @@ The actual relocation entry is added to the output via `sub_469790` (SHT\_RELA) 
 
 #### `.nv.callgraph` Sections (`0x70000001`)
 
-Callgraph entries are 8-byte records (caller\_sym, callee\_sym). Each symbol index is translated through `map_symbol_index`. The translated pairs are registered via:
+Callgraph entries are 8-byte records. A leading record with a zero caller carries a type marker in its high 32 bits (`-1`, `-2`, `-3`, `-4`); subsequent records inherit that type until the next marker. Each non-marker record's symbol index (caller, low 32 bits) is translated through `map_symbol_index`, and the trailing 32 bits encode either a callee section index or a name-string offset depending on the active type. The four edge builders are:
 
-- `sub_44B9F0` -- standard call edge (callee is a symbol index)
-- `sub_44BA60` -- call edge with string name
-- `sub_44BAA0` -- call edge variant (string-based)
-- `sub_44BF90` -- call edge with special flags
+- type `-1` -- `sub_44B9F0(ctx, caller_sec, callee_sec)` -- appends to the caller node's `callee_list` (entry offset `+16`), keyed by callee section id; this is the standard direct-call edge.
+- type `-2` -- `sub_44BA60(ctx, sec, name_attr)` -- writes the node's `forwarding_idx` (entry offset `+4`) and stamps the `address_taken` byte (offset `+50`); represents an address-taken forward to a named target.
+- type `-3` -- `sub_44BAA0(ctx, sec, name_attr)` -- appends to the caller's `alt_call_list` (entry offset `+8`), keyed by interned string index; this carries indirect or external-by-name callees.
+- type `-4` -- `sub_44BF90(ctx, caller_sec, callee_sec)` -- appends to the caller's `fn_ptr_edge_list` (entry offset `+32`) and stamps `address_taken=1` on the callee node; this is the function-pointer / address-taken edge.
 
 Entries referencing weak-processed symbols are skipped.
 
