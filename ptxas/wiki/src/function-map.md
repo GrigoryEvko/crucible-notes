@@ -326,7 +326,7 @@ To find a specific function, locate it by address range or subsystem topic in th
 
 ### By Address Range
 
-Functions in the binary are clustered by subsystem. This table maps address ranges to the pages that document them.
+Functions in the binary are clustered by subsystem. This table maps address ranges to the pages that document them. Row widths were tightened so no single row collapses three unrelated subsystems: previous revisions packed 5,580 functions (`0xAA8000`-`0xC52000`) and 4,679 functions (`0x13CF000`-`0x17F8000`) into single rows that hid the 204 KB peephole dispatcher `sub_BA9D00`, the 28 KB template lowering dispatcher `sub_AED3C0`, and the 280 KB megaswitch `sub_169B190`. Function counts below are exact from `ptxas_functions.json`; heavyweights are flagged with native byte sizes.
 
 | Address Range | Primary Subsystem | Key Pages |
 |---------------|-------------------|-----------|
@@ -338,18 +338,39 @@ Functions in the binary are clustered by subsystem. This table maps address rang
 | `0x4D5000`-`0x5AA000` | PTX-to-ORI, early IR | [ptx-to-ori.md](pipeline/ptx-to-ori.md), [instructions.md](ir/instructions.md) |
 | `0x5AA000`-`0x612000` | Intrinsic infrastructure | [index.md](intrinsics/index.md), [math.md](intrinsics/math.md), [tensor.md](intrinsics/tensor.md) |
 | `0x612000`-`0x67F000` | Section builder, target config | [sections.md](output/sections.md), [index.md](targets/index.md) |
-| `0x67F000`-`0x6E4000` | Scheduling engine, OCG lowering, encoding | [overview.md](scheduling/overview.md), [encoding.md](codegen/encoding.md) |
-| `0x6E4000`-`0x754000` | SASS codegen, SASS pipeline | [mercury.md](codegen/mercury.md), [overview.md](pipeline/overview.md) |
-| `0x754000`-`0x7C0000` | Liveness, knobs, bitfield encoding | [liveness.md](passes/liveness.md), [knobs.md](config/knobs.md), [encoding.md](codegen/encoding.md) |
-| `0x7C0000`-`0x8FE000` | Peephole, SASS mnemonics, scheduling upper | [peephole.md](codegen/peephole.md), [algorithm.md](scheduling/algorithm.md) |
+| `0x67F000`-`0x6A0000` | Ready-list / region-init / scheduler thunks (~135 funcs) | [overview.md](scheduling/overview.md) |
+| `0x6A0000`-`0x6BD000` | OCG intrinsic lowering, atomic / mbarrier / cp.async handlers (~200 funcs, heavyweights `sub_6B6100` 12 KB, `sub_6AFDA0` 6.5 KB) | [sync-warp.md](intrinsics/sync-warp.md), [tensor.md](intrinsics/tensor.md) |
+| `0x6BD000`-`0x6D8000` | OCG handler validators, MMA codegen (`sub_6D4350` 6.3 KB), TCGen05 (~180 funcs) | [tensor.md](intrinsics/tensor.md) |
+| `0x6D8000`-`0x6E4000` | Master Mercury encoder (`sub_6D9690` 27 KB) + register encoders (~120 funcs) | [mercury.md](codegen/mercury.md), [encoding.md](codegen/encoding.md) |
+| `0x6E4000`-`0x754000` | SASS codegen, SASS pipeline (~140 funcs incl `sub_6F52F0` orchestrator) | [mercury.md](codegen/mercury.md), [overview.md](pipeline/overview.md) |
+| `0x754000`-`0x778000` | Liveness analysis cluster: `sub_7753F0` 15.6 KB, `sub_761EB0` 1.7 KB (~190 funcs) | [liveness.md](passes/liveness.md) |
+| `0x778000`-`0x794000` | IR iteration / phase dispatch helpers (`sub_781F80` 8.3 KB instruction iterator, `sub_78DB70` 7 KB, ~80 funcs) | [instructions.md](ir/instructions.md), [phase-manager.md](passes/phase-manager.md) |
+| `0x794000`-`0x7B0000` | Knobs subsystem (`sub_7A5D10` 7.6 KB, `sub_79D990` 7 KB ProcessKnobs, `sub_79F540` 3.6 KB ParseKnobValue, ~155 funcs) | [knobs.md](config/knobs.md) |
+| `0x7B0000`-`0x7C0000` | Bitfield-insert encoders (`sub_7B9B80` 18,347 callers, `sub_7BC030`, ~75 funcs) | [encoding.md](codegen/encoding.md) |
+| `0x7C0000`-`0x83E000` | Mid-pipeline IR / dataflow helpers (`sub_7CB560` 24 KB pattern walker, `sub_7F7DC0` 8.8 KB, ~770 funcs) | [general-optimize.md](passes/general-optimize.md), [optimizer.md](pipeline/optimizer.md) |
+| `0x83E000`-`0x880000` | Main peephole pass (`sub_83EF00` 29 KB), peephole helpers (`sub_846370` 9 KB, `sub_849C60` 13 KB, `sub_84EC30` 10 KB, ~480 funcs) | [peephole.md](codegen/peephole.md) |
+| `0x880000`-`0x8C0000` | SASS mnemonic / opcode tables (`sub_896D50` 21 KB ROT13 table, `sub_89FBA0` 16 KB SetOpcodeLatencies, ~360 funcs) | [sass-printing.md](codegen/sass-printing.md), [latency-model.md](scheduling/latency-model.md) |
+| `0x8C0000`-`0x8FE000` | Scheduling priority / DynBatch upper (`sub_8C9320` 10 KB priority fn, `sub_8CF880` BuildDependencyGraph, `sub_8D0640` ScheduleInstructions, ~280 funcs) | [algorithm.md](scheduling/algorithm.md), [overview.md](scheduling/overview.md) |
 | `0x8FE000`-`0x9D3000` | Register allocator | [overview.md](regalloc/overview.md), [algorithm.md](regalloc/algorithm.md), [abi.md](regalloc/abi.md) |
-| `0x9D3000`-`0xAA8000` | Post-regalloc, named phases, remat | [rematerialization.md](passes/rematerialization.md), [phase-manager.md](passes/phase-manager.md) |
-| `0xAA8000`-`0xC52000` | Mega-passes, sync barriers, dataflow | [sync-barriers.md](passes/sync-barriers.md), [general-optimize.md](passes/general-optimize.md) |
-| `0xC52000`-`0xD27000` | Phase manager, phase factory | [phase-manager.md](passes/phase-manager.md), [optimizer.md](pipeline/optimizer.md) |
+| `0x9D3000`-`0xA20000` | NamedPhases parser, NvOptRecipe builder (`sub_9F4040` 9 KB, `sub_A04270` 8 KB, ~280 funcs) | [phase-manager.md](passes/phase-manager.md), [optimizer.md](pipeline/optimizer.md) |
+| `0xA20000`-`0xA60000` | Rematerialization + post-RA pipeline (`sub_A36360` 11.8 KB pass_sequence_builder, `sub_A50650` 12.8 KB CodeObject_EmitRecords, `sub_A4D3F0` 7.7 KB, ~470 funcs) | [rematerialization.md](passes/rematerialization.md), [optimizer.md](pipeline/optimizer.md) |
+| `0xA60000`-`0xAA8000` | Post-regalloc updates, sched-context configure (`sub_A85090` 8.4 KB, `sub_A88A80` 7.5 KB, `sub_A97600` 7.8 KB PostSchedulePass, `sub_A9EDB0` 14.5 KB, ~660 funcs) | [phase-manager.md](passes/phase-manager.md) |
+| `0xAA8000`-`0xAE8000` | Late legalization + operand legalization (`sub_AB3C30` post-RA legalizer, `sub_AC2750` operand converter, `sub_ACF4D0` constraint solver, ~560 funcs) | [late-legalization.md](passes/late-legalization.md) |
+| `0xAE8000`-`0xB08000` | Master template / lowering dispatcher (`sub_AED3C0` 28 KB ISel-template lowering, `sub_AEB330` 2.8 KB, `sub_AE95C0` 2.3 KB, ~2,384 funcs — densest cluster in the binary, mostly template-generated lowering helpers) | [templates.md](codegen/templates.md), [isel.md](codegen/isel.md) |
+| `0xB08000`-`0xBA8000` | ISel pattern-matcher infrastructure (`sub_B285D0` ISel driver, type/operand predicates `sub_B28E00`..`sub_B28E90`, ~1,950 funcs) | [isel.md](codegen/isel.md) |
+| `0xBA8000`-`0xBC8000` | 4th SM-target peephole dispatcher (`sub_BA9D00` 204 KB, 373-case switch) + tail of matcher cluster (~23 funcs) | [peephole.md](codegen/peephole.md) |
+| `0xBC8000`-`0xC08000` | Sync-barrier / dataflow analysis (`sub_BE7390` 7.5 KB, `sub_BEF110` 17 KB, `sub_BE0690` 7 KB, ~250 funcs) | [sync-barriers.md](passes/sync-barriers.md) |
+| `0xC08000`-`0xC48000` | Mega-passes: main instruction selector (`sub_C0EB10` 34 KB), `sub_C173E0` 17.3 KB, `sub_BFC850` 6.9 KB (~347 funcs) | [isel.md](codegen/isel.md), [general-optimize.md](passes/general-optimize.md) |
+| `0xC48000`-`0xC52000` | Phase factory / phase manager entry (`sub_C571C0` 5 KB, `sub_C4A560` 2.5 KB, `sub_C4BDA0` 2.4 KB, ~270 funcs — first half of the phase-manager block) | [phase-manager.md](passes/phase-manager.md) |
+| `0xC52000`-`0xD27000` | Phase manager, phase factory (`sub_C60D30` phase_factory, `sub_C62720` PhaseManager_ctor, `sub_C64310` per-phase timing reporter) | [phase-manager.md](passes/phase-manager.md), [optimizer.md](pipeline/optimizer.md) |
 | `0xD27000`-`0x10B7000` | 592 SASS encoder bodies | [encoding.md](codegen/encoding.md), [isel.md](codegen/isel.md) |
 | `0x10B7000`-`0x1225000` | Field encoders, ISel helpers | [encoding.md](codegen/encoding.md), [isel.md](codegen/isel.md) |
 | `0x1225000`-`0x13CF000` | Bitvector, ISel coordinators | [hash-bitvector.md](infra/hash-bitvector.md), [isel.md](codegen/isel.md) |
-| `0x13CF000`-`0x17F8000` | SM-specific ISel, pattern matchers, templates | [isel.md](codegen/isel.md), [templates.md](codegen/templates.md) |
+| `0x13CF000`-`0x14CF000` | SM120 peephole mega-dispatcher (`sub_143C440` 239 KB, 1,087 matchers) + surrounding matcher families (~1,335 funcs) | [peephole.md](codegen/peephole.md) |
+| `0x14CF000`-`0x15CF000` | ISel pattern-matcher template clones (~750 funcs, mostly 1-3 KB matchers) | [isel.md](codegen/isel.md) |
+| `0x15CF000`-`0x16CF000` | Encoding helpers / format builders (~1,827 funcs — densest sub-cluster) | [encoding.md](codegen/encoding.md) |
+| `0x16CF000`-`0x17CF000` | Generic peephole mega-dispatcher (`sub_169B190` 280 KB, 762 matchers — largest function in ptxas), Newton-Raphson templates (`sub_170E260`, `sub_1722D60`, ~641 funcs) | [peephole.md](codegen/peephole.md), [templates.md](codegen/templates.md) |
+| `0x17CF000`-`0x17F8000` | NR-template sub-expanders, ISel-variant entry-point thunks (~1,587 funcs) | [templates.md](codegen/templates.md), [isel.md](codegen/isel.md) |
 | `0x17F8000`-`0x1C21000` | SASS printing, peephole mega-dispatchers | [sass-printing.md](codegen/sass-printing.md), [peephole.md](codegen/peephole.md) |
 | `0x1C21000`-`0x1CE3000` | ELF emitter, capsule mercury, relocations | [elf-emitter.md](output/elf-emitter.md), [capmerc.md](codegen/capmerc.md) |
 
