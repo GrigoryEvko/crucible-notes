@@ -89,9 +89,9 @@ For the full header encoding, see [Device ELF Format -- ELF Identification](../e
 | +91 | 1 | `optimize_data_layout` | `(a9 & 0x4000) != 0` | `--optimize-data-layout` (CLI byte `byte_2A5F2A8`, bit 14). Forces the data-layout pre-pass and OCG constant optimization. |
 | +92 | 1 | `suppress_stack_warn` | `(a9 & 0x40) != 0` | `--suppress-stack-size-warning` (CLI byte `byte_2A5F299`, bit 6). |
 | +93 | 1 | `extra_warnings` | `BYTE1(a9) & 1` | merge_flags bit 8 (CLI byte `byte_2A5F289`, extra-warnings flag). |
-| +94 | 1 | `extended_smem_sm_gate` | `(a5 > 0x45) & ((a9 >> 7) & 1)` | Sm-gated bit 7: requires `sm_minor > 0x45` AND merge_flags bit 7. *Distinct* from the `--enable-extended-smem` flag (which lives at merge_flags bit 12 / `byte_2A5F210`); this byte is a sm-detection gate, not a CLI alias. |
-| +96 | 1 | `host_info_mode` | `(a9 & 0x800) != 0` | merge_flags bit 11: set when `byte_2A5F216` (use-host-info) OR `byte_2A5F215` (ignore-host-info) is true. |
-| +99 | 1 | `std_smem_mode` | `((a9 >> 12) ^ 1) & 1` | Inverted bit 12 of `merge_flags`. `a9` bit 12 is set when `--enable-extended-smem` is passed (entry.md "merge_flags" table, sourced from `byte_2A5F210`); the byte at +99 is therefore the **complement** -- it is 1 when the linker is in **standard shared-memory mode** (i.e. `--enable-extended-smem` was NOT given) and 0 when extended smem is active. Used as a gate by `sub_445000` at line 347 to enable the shared-memory rebasing pass `sub_439640`. |
+| +94 | 1 | `extended_smem_sm_gate` | `(a5 > 0x45) & ((a9 >> 7) & 1)` | Sm-gated bit 7: requires `sm_minor > 0x45` AND merge_flags bit 7. *Distinct* from the `--enable-extended-smem` flag (which actually lives at merge_flags bit 25 / `byte_2A5F1FD` per [cli-options.md](../pipeline/cli-options.md#global-variable-map)); this byte at +94 is a sm-detection gate, not a CLI alias for extended-smem. |
+| +96 | 1 | `host_info_mode` | `(a9 & 0x800) != 0` | merge_flags bit 11: set when `byte_2A5F213` (use-host-info) OR `byte_2A5F212` (ignore-host-info) is true. Byte addresses per [cli-options.md global map](../pipeline/cli-options.md#global-variable-map); `byte_2A5F215`/`byte_2A5F216` are the `dump-callgraph-no-demangle`/`dump-callgraph` pair, not host-info. |
+| +99 | 1 | `std_smem_mode` | `((a9 >> 12) ^ 1) & 1` | Inverted bit 12 of `merge_flags`. `a9` bit 12 is sourced from `byte_2A5F210` (`--disable-smem-reservation` per the [cli-options global map](../pipeline/cli-options.md#global-variable-map)); the byte at +99 is therefore the **complement** -- it is 1 when smem reservation is **not** disabled (standard layout) and 0 when `--disable-smem-reservation` is set. Used as a gate by `sub_445000` at line 347 to enable the shared-memory rebasing pass `sub_439640`. *(Earlier wiki revisions attributed this byte to `--enable-extended-smem`; that CLI flag actually feeds bit 25 via `byte_2A5F1FD`.)* |
 | +100 | 1 | `flag_bit13` | `(a9 & 0x2000) != 0` | merge_flags bit 13 (no confirmed CLI source observed in `main`'s bit assembly). |
 | +101 | 1 | `is_device_elf` | `(a9 & 0x8000) != 0` | Bit 15 of merge_flags, set when `byte_2A5F224` (sm > 72 detector) is true. Used by the constructor as the device-ELF gate: triggers OSABI 0x41, allocates tkinfo/cuinfo note buffers, calls `sub_45AC50` for the arch vtable. *(Note: also overwritten at byte word-offset +202 as `symtab_section_idx`; the BYTE at +101 and the WORD at +202 are separate fields -- WORD index 101 = bytes 202..203.)* |
 
@@ -420,24 +420,26 @@ The `merge_flags` parameter (`a9`) is a 32-bit bitmask that controls the elfw's 
 
 | Bit | Hex | Flag Name | Offset | Description |
 |-----|-----|-----------|--------|-------------|
-| 0 | `0x1` | `preserve_relocs` | +84 | `--preserve-relocs` |
-| 1 | `0x2` | `force_rela` | +85 | `--force-rela` |
-| 2 | `0x4` | `no_opt` | +87 | `--no-opt` |
-| 3 | `0x8` | `optimize_data` | +88 | `--optimize-data-layout` |
-| 4 | `0x10` | `flag_bit4` | +89 | Or'd with mercury_flag |
-| 5 | `0x20` | `emit_ptx` | +90 | `--emit-ptx` |
-| 6 | `0x40` | `flag_bit6` | +92 | Reserved |
-| 7 | `0x80` | `extended_smem_gate` | +94 | Gate for extended shared memory (combined with sm_minor > 0x45) |
-| 8 | `0x100` | `flag_bit8` | +93 | Reserved |
-| 9 | `0x200` | `allow_undef` | +86 | `--allow-undefined-globals` |
+| 0 | `0x1` | `callgraph_enabled` | +84 | Always-set base bit (`0x40401`); read as "callgraph built" gate |
+| 1 | `0x2` | `preserve_relocs` | +85 | `--preserve-relocs` (`byte_2A5F2CE`) |
+| 2 | `0x4` | `reserve_null` | +87 | reserve-null-pointer (derived from `byte_2A5F2CD`) |
+| 3 | `0x8` | `allow_undef_globals` | +88 | `--allow-undefined-globals` (`byte_2A5F2CC`) |
+| 4 | `0x10` | `force_rela` / mercury_or | +89 | `--force-rela` (`byte_2A5F2AA`); also forced when mercury or `a10` set |
+| 5 | `0x20` | `no_opt` | +90 | `--no-opt` (`byte_2A5F2A9`) |
+| 6 | `0x40` | `suppress_stack_warn` | +92 | `--suppress-stack-size-warning` (`byte_2A5F299`) |
+| 7 | `0x80` | `extended_smem_sm_gate` | +94 | Gate for `sm_minor > 0x45` AND bit 7 (sm-detection gate, *not* the `--enable-extended-smem` CLI option) |
+| 8 | `0x100` | `extra_warnings` | +93 | `--extra-warnings` (`byte_2A5F289`) |
+| 9 | `0x200` | `stack_protector` | +86 | `--device-stack-protector` (`byte_2A5F1FE`) |
 | 10 | `0x400` | `private_arena` | -- | Creates dedicated "elfw memory space" arena |
-| 11 | `0x800` | `flag_bit11` | +96 | Reserved |
-| 12 | `0x1000` | `enable_extended_smem` (stored inverted at +99) | +99 | `byte+99 = ((a9 >> 12) ^ 1) & 1`. `a9` bit 12 is the `--enable-extended-smem` option (`byte_2A5F210`, see [entry.md merge_flags](../pipeline/entry.md#phase-1-elf-writer-creation-lines-426-593)); the stored byte is the inverse, asserting standard smem mode. Read by `sub_445000:347` to gate `sub_439640` (shared-memory variable rebasing). |
-| 13 | `0x2000` | `flag_bit13` | +100 | Reserved |
-| 14 | `0x4000` | `flag_bit14` | +91 | Reserved |
-| 15 | `0x8000` | `is_device_elf` | +101 | Selects OSABI 0x41 path, enables CUDA-specific sections |
+| 11 | `0x800` | `host_info_mode` | +96 | `--use-host-info` (`byte_2A5F213`) OR `--ignore-host-info` (`byte_2A5F212`) |
+| 12 | `0x1000` | `disable_smem_reservation` (stored inverted at +99) | +99 | `byte+99 = ((a9 >> 12) ^ 1) & 1`. `a9` bit 12 is the `--disable-smem-reservation` option (`byte_2A5F210` per the [cli-options.md global map](../pipeline/cli-options.md#global-variable-map)); the stored byte is the inverse, asserting standard smem mode. Read by `sub_445000:347` to gate `sub_439640` (shared-memory variable rebasing). *(`--enable-extended-smem` is a different CLI option that maps to `byte_2A5F1FD` and feeds bit 25, not bit 12.)* |
+| 13 | `0x2000` | `flag_bit13` | +100 | No confirmed CLI source observed in `main`'s bit assembly |
+| 14 | `0x4000` | `optimize_data_layout` | +91 | `--optimize-data-layout` (`byte_2A5F2A8`) |
+| 15 | `0x8000` | `is_device_elf` | +101 | Selects OSABI 0x41 path, enables CUDA-specific sections (sm > 72 from `byte_2A5F224`) |
 | 17-18 | `0x60000` | `segment_flags` | +68 | Bits `a9 & 0x70000` stored at offset +68 |
 | 19 | `0x80000` | `mercury_reloc` | -- | Set when mercury_flag or `a9 & 0x180000`; forces relocatable ELF type |
+| 20 | `0x100000` | `mercury_mode` | -- | Mercury mode (`byte_2A5F222`); also forces relocatable path |
+| 25 | `0x2000000` | `enable_extended_smem` | -- | `--enable-extended-smem` (`byte_2A5F1FD`); distinct CLI option from the bit-12 `--disable-smem-reservation` |
 
 When `mercury_flag` is true or bits 19-20 are set, the constructor sets the `mercury_reloc` bit (`a9 |= 0x80000`) in the internal flag word at `+76` and routes through the Mercury initialisation path (`sub_45AC50` arch state). `e_type` itself at `+16` is **not** rewritten by these gates -- it remains the value of the `elf_type` parameter passed in by the caller (set in `main` at line 391 from `(byte_2A5F1E8 == 0) + 1`). The Mercury `0xFF00` `e_type` only appears when the caller passes that value explicitly (e.g. intermediate Mercury serialisations); standard nvlink output is `ET_EXEC=2` or `ET_REL=1` regardless of Mercury flags.
 
@@ -539,7 +541,7 @@ Each claim below was verified against decompiled functions (`sub_4438F0` at `/de
 | `extra_warnings` at offset 93 (bit 8) | HIGH | `*((_BYTE *)v17 + 93) = BYTE1(v20) & 1` on line 253 |
 | `extended_smem_sm_gate` at offset 94 (bit 7 AND `sm_minor > 0x45`) | HIGH | `*((_BYTE *)v17 + 94) = (a5 > 0x45u) & ((unsigned __int8)v20 >> 7)` on line 260 |
 | `host_info_mode` at offset 96 (bit 11, `0x800`) | HIGH | `*((_BYTE *)v17 + 96) = (v20 & 0x800) != 0` on line 259 |
-| `std_smem_mode` at offset 99 = inverse of `merge_flags` bit 12 (`--enable-extended-smem`) | HIGH | `*((_BYTE *)v17 + 99) = ((v21 >> 12) ^ 1) & 1` at `sub_4438F0_0x4438f0.c:229`; `a9` bit 12 source documented in `entry.md` merge_flags table (line 101: `byte_2A5F210` -> `enable-extended-smem`); consumed by `sub_445000_0x445000.c:347` as the second clause of the `sub_439640` gate |
+| `std_smem_mode` at offset 99 = inverse of `merge_flags` bit 12 (`--disable-smem-reservation`) | HIGH | `*((_BYTE *)v17 + 99) = ((v21 >> 12) ^ 1) & 1` at `sub_4438F0_0x4438f0.c:229`; `a9` bit 12 source documented in `entry.md` merge_flags table (`byte_2A5F210` -> `disable-smem-reservation` per [cli-options.md global map](../pipeline/cli-options.md#global-variable-map)); consumed by `sub_445000_0x445000.c:347` as the second clause of the `sub_439640` gate. The neighbouring `--enable-extended-smem` flag (`byte_2A5F1FD`) is a separate CLI option that feeds bit 25, *not* bit 12 |
 | `flag_bit13` at offset 100 = `(v20 & 0x2000) != 0` (bit 13) | HIGH | `*((_BYTE *)v17 + 100) = (v20 & 0x2000) != 0` on line 252 (overwrites earlier word-wide write at line 177/221) |
 | `is_device_elf` at offset 101 | HIGH | `*((_BYTE *)v17 + 101) = (a9 & 0x8000) != 0` on line 144 |
 

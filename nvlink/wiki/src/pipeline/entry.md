@@ -95,13 +95,13 @@ The `merge_flags` bitfield `v44` is assembled from multiple option flags:
 | 5 | `byte_2A5F2A9` | no-opt (corresponds to `elfw+90`) |
 | 6 | `byte_2A5F299` | suppress-stack-size-warning (corresponds to `elfw+92`) |
 | 8 | `byte_2A5F289` | extra-warnings (corresponds to `elfw+93`) |
-| 9 | `byte_2A5F226` | device-stack-protector (corresponds to `elfw+86`) |
-| 11 | `byte_2A5F216` or `byte_2A5F215` | use-host-info or ignore-host-info (corresponds to `elfw+96`) |
-| 12 | `byte_2A5F210` | enable-extended-smem (the *complement* is stored at `elfw+99` as `std_smem_mode`) |
+| 9 | `byte_2A5F1FE` | device-stack-protector (corresponds to `elfw+86`). Byte address per [cli-options.md global map](cli-options.md#global-variable-map); `byte_2A5F226` is the `suppress-debug-info` flag, not the stack protector. |
+| 11 | `byte_2A5F213` or `byte_2A5F212` | use-host-info or ignore-host-info (corresponds to `elfw+96`). Byte addresses per [cli-options.md global map](cli-options.md#global-variable-map); `byte_2A5F215`/`byte_2A5F216` are the `dump-callgraph-no-demangle` / `dump-callgraph` pair. |
+| 12 | `byte_2A5F210` | disable-smem-reservation (the *complement* is stored at `elfw+99` as `std_smem_mode`). Per [cli-options.md](cli-options.md#linking-behavior-options), `byte_2A5F210` is the CLI byte for `--disable-smem-reservation`; the closely-named `--enable-extended-smem` lives at `byte_2A5F1FD` and feeds bit 25. Earlier wiki revisions called this `enable-extended-smem` at this slot, which mixed up the two adjacent smem-related options. |
 | 14 | `byte_2A5F2A8` | optimize-data-layout (corresponds to `elfw+91`) |
 | 15 | `byte_2A5F224` | sm > 72 flag (corresponds to `elfw+101` BYTE = `is_device_elf` gate) |
 | 20 | `byte_2A5F222` | mercury mode (also forces relocatable path) |
-| 25 | `byte_2A5F1FD` | fdcmpt |
+| 25 | `byte_2A5F1FD` | enable-extended-smem. Per [cli-options.md](cli-options.md#linking-behavior-options), `byte_2A5F1FD` is the CLI byte for `--enable-extended-smem`; the `fdcmpt` flag lives at `byte_2A5F228`. Earlier wiki revisions labelled this row `fdcmpt`, which conflicted with the cli-options global map. |
 
 Bit attribution is recovered from `main_0x409800.c` lines 338--389 -- the consecutive `if (cli_byte) v41 |= bit;` assembly. Earlier wiki revisions reused a stale table that swapped the bit-1/bit-2/bit-4 trio (preserve-relocs / reserve-null / force-rela) and conflated bit 5/6/14 (no-opt / suppress-stack-warn / optimize-data-layout); the wrong mappings propagated through `structs/elf-writer.md`, `structs/linker-context.md`, and `linker/data-layout-opt.md` and have been corrected.
 

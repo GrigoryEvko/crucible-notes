@@ -2,7 +2,7 @@
 
 ## Abstract
 
-`cutlass.seq_bar.*` models CUTLASS ordered sequence barriers — a ring of mbarrier slots plus a phase/index state cursor. `cutlass.block_striped.*` models per-thread striped memory movement and partial reduction across a CTA. Together they form the synchronisation and cooperative-movement substrate for warp-specialized GEMM mainloops and StreamK/split-K epilogues. The seq-bar family contributes five of the thirty-eight ops the dialect ctor registers at `sub_1761D90`; the block-striped family contributes eight.
+`cutlass.seq_bar.*` models CUTLASS ordered sequence barriers — a ring of mbarrier slots plus a phase/index state cursor. `cutlass.block_striped.*` models per-thread striped memory movement and partial reduction across a CTA. Together they form the synchronisation and cooperative-movement substrate for warp-specialized GEMM mainloops and StreamK/split-K epilogues. The seq-bar family contributes five of the seventy ops the dialect ctor registers at `sub_1761D90`; the block-striped family contributes four.
 
 ## Sequential Barrier Model
 
@@ -93,7 +93,7 @@ SmallVector<int> block_striped_indices(int thread_id, int threads, int elements)
 
 ## Block-Striped Operations
 
-The eight block-striped ops cover three core movement variants plus five type-specialised forms. The three core variants are `cutlass.block_striped.load`, `cutlass.block_striped.store`, and `cutlass.block_striped.reduce`. The five specialised forms — half, bfloat, packed, integer, float — exist because each needs distinct atom selection at lowering time.
+The four block-striped ops are `cutlass.block_striped.load`, `cutlass.block_striped.load_add` (fused load-then-atomic-add), `cutlass.block_striped.store`, and `cutlass.block_striped.reduce`. Type specialisation (half, bfloat, packed, integer, float) is carried as an attribute on each op rather than as separate op-name entries — each variant needs distinct atom selection at lowering time, but the op registration is shared.
 
 | Operation | Contract |
 |---|---|

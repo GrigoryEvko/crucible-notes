@@ -123,7 +123,7 @@ When the outer kind is `0x01` (operation), the byte at `expr+0x38` selects which
 | `0x58` | Logical OR `\|\|` | See [Logical OR](#logical-or-short-circuit) | `lor.rhs`/`lor.end` + PHI |
 | `0x59`, `0x5A`, `0x5D` | Type-level consts | `ConstantFromType` (`sub_127D2C0`) | Compile-time constant |
 | `0x5B` | Statement expression `({...})` | RValue dispatch (`sub_127FF60`, scalar vs aggregate); create empty BB if `(*a1)[7] == 0` | Body emission |
-| `0x5C`, `0x5E`, `0x5F` | Compound special | `EmitCompoundAssign` (`sub_1287ED0`) | Read-modify-write |
+| `0x5C`, `0x5E`, `0x5F` | Lvalue-load variant (EDG node-kind alias) | `EmitLvalueLoad` (`sub_1287ED0`) — thin two-call wrapper: `EmitAddressOf` (`sub_1286D80`) then `EmitLoadFromAddress` (`sub_1287CD0`); identical shape to `0x03`/`0x06`/`0x08` and to outer-kind `0x14` decl-ref | `%addr = ...` + `%val = load T, ptr %addr` |
 | `0x67` | Ternary `?:` | See [Ternary operator](#ternary--conditional-operator) | `cond.true`/`cond.false`/`cond.end` + PHI |
 | `0x68` | Type-level const | `ConstantFromType` (`sub_127D2C0`) | Compile-time constant |
 | `0x69` | Special const | Special-constant materializer (`sub_1281200`) | Constant materialization |
@@ -829,7 +829,7 @@ if (debugLoc) {
 | `sub_127F650` | `EmitLiteral` | Numeric/string literal emission |
 | `sub_1286D80` | `EmitAddressOf` | Compute pointer to lvalue |
 | `sub_1287CD0` | lvalue-load workhorse | Loads from computed lvalue with full attribute trimmings (14 args: out-buf, ctx, srcloc, type-info, ...); diagnostic `"unexpected error generating l-value!"` on lvalue-build failure |
-| `sub_1287ED0` | `EmitCompoundAssign` | Generic compound assignment |
+| `sub_1287ED0` | `EmitLvalueLoad` | Two-call lvalue-load wrapper: `EmitAddressOf` (`sub_1286D80`) + `EmitLoadFromAddress` (`sub_1287CD0`); shared dispatch target for inner cases `0x03`/`0x06`/`0x08`/`0x5C`/`0x5E`/`0x5F`. Not a compound-assign emitter — the real compound-assign machinery is `sub_12901D0`. |
 | `sub_128C390` | `EmitIncDec` | Pre/post increment/decrement |
 | `sub_128F9F0` | `EmitBinaryArithBitwise` | Binary arithmetic (`+`,`-`,`*`,`/`,`%`) and bitwise (`&`,`\|`,`^`); diagnostic `"unsupported binary expression!"` |
 | `sub_128F580` | `EmitCompare` | Equality and relational comparisons (`==`,`!=`,`<`,`>`,`<=`,`>=`); string label `"cmp"` |

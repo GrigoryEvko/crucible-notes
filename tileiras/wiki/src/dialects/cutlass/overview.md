@@ -6,7 +6,7 @@
 
 ## Abstract
 
-The `cutlass` dialect packs thirty-eight ops across five operation families. Four cover the large-scale orchestration concerns (pipeline, tile_scheduler, seq_bar, block_striped); the fifth is the small MODS sidecar whose ops live under the `cutlass.tile_scheduler.mods_*` prefix but register and verify as their own family. It models the structure CUTLASS C++ templates normally generate: asynchronous producer/consumer pipelines, persistent tile schedulers, ordered sequence barriers, and block-striped shared-memory movement. The dialect constructor at `sub_1761D90` registers all thirty-eight ops in a single thunk-chain, then installs two op-level verifiers and the post-verify arrive-count builder.
+The `cutlass` dialect packs seventy ops across eight operation families. Four cover the large-scale orchestration concerns (pipeline, tile_scheduler, seq_bar, block_striped); the MODS sidecar lives under the `cutlass.tile_scheduler.mods_*` prefix but registers and verifies as its own family; three smaller families (named_barrier, generic_barrier, and a single async-exec op) round out the dialect. It models the structure CUTLASS C++ templates normally generate: asynchronous producer/consumer pipelines, persistent tile schedulers, ordered sequence barriers, named/generic barriers, and block-striped shared-memory movement. The dialect constructor at `sub_1761D90` registers all seventy ops in a single thunk-chain (thirty-nine ops inline plus thirty-one delegated to per-op helper thunks `sub_175E920..sub_1761C20`), then installs two op-level verifiers and the post-verify arrive-count builder.
 
 `cutlass` sits above `cute_nvgpu` and `nv_tileas`. `cute_nvgpu` provides hardware atoms — MMA, TMA. `nv_tileas` provides operational async scheduling. `cutlass` connects the two at a larger granularity: it names which agents participate in the pipeline, how tiles are assigned to CTAs, how producers and consumers synchronise, and how persistent kernels advance through their work.
 
@@ -32,19 +32,22 @@ For users, `cutlass` is a frontend-oriented dialect — useful when the source p
 
 ## Operation Roster
 
-The thirty-eight ops split into five families. Pipeline is the largest, covering the full producer/consumer state machine plus the per-CTA executor switch. Tile-scheduler carries one op per scheduler kind plus the per-variant accessors. Seq-bar and block-striped are smaller and more regular. The MODS async-dispatch family is a four-op sidecar wired to an alternate async-call ABI.
+The seventy ops split into eight families. Tile-scheduler is the largest at thirty-one ops, carrying one op per scheduler kind plus an extensive set of per-variant accessors, fixup hooks, and parameter builders. Pipeline (twenty ops) covers the full producer/consumer state machine plus the per-CTA executor switch and the `cutlass.pipeline.state.*` cursor accessors. Seq-bar and block-striped are smaller and more regular. The MODS async-dispatch family is a four-op sidecar wired to an alternate async-call ABI. Three small barrier and async families register alongside the orchestration families.
 
 | Family | Count | Examples |
 |---|---:|---|
-| pipeline | 12 | `cutlass.pipeline.create`, `cutlass.pipeline.init`, `cutlass.pipeline.producer_acquire`, `cutlass.pipeline.producer_commit`, `cutlass.pipeline.producer_tail`, `cutlass.pipeline.consumer_wait`, `cutlass.pipeline.consumer_release`, `cutlass.pipeline.state.create`, `cutlass.pipeline.state.increment`, `cutlass.pipeline.consume`, `cutlass.pipeline.produce`, `cutlass.pipeline.switch_by_executor` |
-| tile_scheduler | 8 | `cutlass.tile_scheduler.create_streamk_params`, `cutlass.tile_scheduler.create_static_persistent_params`, `cutlass.tile_scheduler.create_dp_params`, plus per-variant accessors (`work_tile_info_*`, `fetch_next_work`, `advance_to_next_work`, and the SM100 persistent-fixup hooks) |
+| pipeline | 20 | `cutlass.pipeline.create`, `cutlass.pipeline.init`, `cutlass.pipeline.make_participants`, `cutlass.pipeline.producer_{acquire,try_acquire,commit,tail}`, `cutlass.pipeline.consumer_{wait,try_wait,release}`, `cutlass.pipeline.{produce,consume}`, `cutlass.pipeline.get_producer_{barrier,mask}`, `cutlass.pipeline.state.{create,increment,get_count,get_index,get_phase}`, `cutlass.pipeline.switch_by_executor` |
+| tile_scheduler (non-MODS) | 31 | scheduler-kind constructors (`create_{dp,static_persistent,streamk}_params`, `create_SM100_scheduler`), per-variant param builders (`make_{dp,static_persistent,streamk}_params`), work-tile-info constructors and accessors (`create_*_work_tile_info`, `work_tile_info_{get,set}_value`, `work_tile_info_to_{coord_mnkl,cta_coord}`, `initial_work_tile_info`), the streamk fixup trio (`fixup`, `fixup_increment`, `fixup_wait`), persistent-state mutators (`advance_to_next_work`, `query_next_work`, `{,static_}fetch_next_work`, `get_current_work`, `get_workid_response_ptr`), workspace plumbing (`initialize_workspace`, `get_workspace_sizes`, `get_grid_shape`), and the K-tile boundary accessors (`get_work_k_tile_{count,start}`), plus `compute_epilogue` and `params_get_value` |
 | seq_bar | 5 | `cutlass.seq_bar.create`, `cutlass.seq_bar.init`, `cutlass.seq_bar.arrive`, `cutlass.seq_bar.wait`, `cutlass.seq_bar.state.create` |
-| block_striped | 8 | `cutlass.block_striped.load`, `cutlass.block_striped.store`, `cutlass.block_striped.reduce`, plus five type-specialized forms covering the half, bfloat, packed, integer, and float variants |
+| block_striped | 4 | `cutlass.block_striped.load`, `cutlass.block_striped.load_add`, `cutlass.block_striped.store`, `cutlass.block_striped.reduce` |
 | MODS (nested under tile_scheduler) | 4 | `cutlass.tile_scheduler.mods_report_mainloop_start`, `cutlass.tile_scheduler.mods_report_mainloop_end`, `cutlass.tile_scheduler.mods_report_smid`, `cutlass.tile_scheduler.mods_throttle` (four ops covering the alternate async-call ABI used by the MODS telemetry path) |
+| named_barrier | 2 | `cutlass.named_barrier.arrive`, `cutlass.named_barrier.arrive_and_wait` |
+| generic_barrier | 3 | `cutlass.generic_barrier.arrive_increment`, `cutlass.generic_barrier.wait_eq`, `cutlass.generic_barrier.wait_less_than` |
+| async | 1 | `cutlass.async.exec` |
 
 ## Two Verifiers Carry Pipeline Correctness
 
-Of the thirty-eight ops, only two carry non-trivial verifier code. The rest lean on type-system structural checks plus the operand-layout helpers below. Both non-trivial verifiers target the pipeline family and both gate the rest of the lowering pipeline.
+Of the seventy ops, only two carry non-trivial verifier code. The rest lean on type-system structural checks plus the operand-layout helpers below. Both non-trivial verifiers target the pipeline family and both gate the rest of the lowering pipeline.
 
 `PipelineInitOp::verify` at `sub_1771F40` is a 3 406-byte routine that verifies the `cutlass.pipeline.init` op's operands match the declared pipeline shape. It reads `numStages` from the op attribute, checks that `numStages > 0`, then reads the participants list via `sub_172E930` and checks that its length matches `numProducers`. It reads the consumer list via `sub_172E940` and checks that its length matches `numConsumers`. It then checks that `barrier_id_base` falls within the per-CTA NamedBarrier pool `[0, 32)`, and that `producer_group_id` and `consumer_group_id` are distinct so producer and consumer groups do not overlap. The diagnostics it emits include `"cutlass.pipeline.init: invalid numStages"` and `"cutlass.pipeline.init: participants length mismatch"` among the per-field messages.
 
@@ -148,7 +151,7 @@ The `cutlass` dialect is the IR shape of the orchestration classes living in `cu
 | `PersistentTileScheduler` | `cutlass.tile_scheduler.create_static_persistent_params` (with companion `create_static_persistent_work_tile_info`) |
 | `StreamKScheduler` | `cutlass.tile_scheduler.create_streamk_params` (with companion `create_streamk_work_tile_info`; SM100 variant body `sub_R01`) |
 | `DataParallelScheduler` | `cutlass.tile_scheduler.create_dp_params` (with companion `create_dp_work_tile_info`) |
-| `BlockStriped<T>::load/store/reduce` | `cutlass.block_striped.{load,store,reduce}` (eight-op family) |
+| `BlockStriped<T>::load/store/reduce` | `cutlass.block_striped.{load,load_add,store,reduce}` (four-op family) |
 | `MODS` telemetry hooks (`cutlass::mods::*`) | `cutlass.tile_scheduler.mods_*` ops (side-effecting) |
 
 Two structural points. First, most of CUTLASS's class-template instantiations turn into op attributes on a small set of ops, so a kernel using three pipelines and two schedulers is described by a few dozen ops rather than by template specialisations in a thousand-line header. Second, the participant model — producers, consumers, warp-specialized executors — lives in explicit lists on the init op, cross-checked by `PipelineInitOp::verify` at `sub_1771F40` before the lowering pass ever runs.

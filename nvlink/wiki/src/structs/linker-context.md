@@ -63,7 +63,7 @@ Offset  Size  Field                   merge_flags bit    Description
 ------  ----  -----                   ---------------    -----------
  84      1    callgraph_enabled       bit 0              Base bit (`0x40401`) -- always set on the normal path; gates root-kernel scan in sub_44DB00 and callgraph remap in sub_44CA40/sub_44CBC0
  85      1    preserve_relocs         bit 1              `--preserve-relocs` (CLI byte `byte_2A5F2CE`)
- 86      1    stack_protector         bit 9              `--device-stack-protector` (CLI byte `byte_2A5F226`)
+ 86      1    stack_protector         bit 9              `--device-stack-protector` (CLI byte `byte_2A5F1FE` per the [cli-options.md global map](../pipeline/cli-options.md#global-variable-map); `byte_2A5F226` is `suppress-debug-info`, not the stack protector)
  87      1    reserve_null            bit 2              `--reserve-null-pointer` effective flag (CLI byte `byte_2A5F2CD`)
  88      1    allow_undef_globals     bit 3              `--allow-undefined-globals` (CLI byte `byte_2A5F2CC`)
  89      1    is_rela_mode            bit 4 (or forced)  `--force-rela` (CLI byte `byte_2A5F2AA`); also forced to 1 when relocatable parameter `a10` is set or `merge_flags & 0x180000` (mercury / forced-relocatable)
@@ -71,9 +71,9 @@ Offset  Size  Field                   merge_flags bit    Description
  91      1    optimize_data           bit 14             `--optimize-data-layout` (CLI byte `byte_2A5F2A8`)
  92      1    suppress_stack_warn     bit 6              `--suppress-stack-size-warning` (CLI byte `byte_2A5F299`)
  93      1    extra_warnings          bit 8              extra-warnings flag (CLI byte `byte_2A5F289`)
- 94      1    extended_smem_sm_gate   (conditional)      sm_minor > 0x45 && bit 7 (sm-gated bit, distinct from the `--enable-extended-smem` CLI bit which lives at bit 12)
- 96      1    host_info_mode          bit 11             `--use-host-info` or `--ignore-host-info` (CLI bytes `byte_2A5F216` / `byte_2A5F215`)
- 99      1    std_smem_mode           ~bit 12            Complement of bit 12 -- `1` when `--enable-extended-smem` is *not* set (standard banked-smem layout). Gates `sub_439640` rebase in `sub_445000`. (Corrected: previously mislabeled `no_debug_info` / `no_warn_dead_code`.)
+ 94      1    extended_smem_sm_gate   (conditional)      sm_minor > 0x45 && bit 7 (sm-gated bit; *not* a CLI alias for `--enable-extended-smem`. The real `--enable-extended-smem` flag maps to `byte_2A5F1FD` and feeds bit 25, per the [cli-options.md global map](../pipeline/cli-options.md#global-variable-map))
+ 96      1    host_info_mode          bit 11             `--use-host-info` or `--ignore-host-info` (CLI bytes `byte_2A5F213` / `byte_2A5F212` per the [cli-options.md global map](../pipeline/cli-options.md#global-variable-map); `byte_2A5F215`/`byte_2A5F216` are the `dump-callgraph-no-demangle` / `dump-callgraph` pair, not host-info)
+ 99      1    std_smem_mode           ~bit 12            Complement of bit 12 -- `1` when `--disable-smem-reservation` is *not* set (standard banked-smem layout). Gates `sub_439640` rebase in `sub_445000`. CLI byte for bit 12 is `byte_2A5F210` per the [cli-options.md global map](../pipeline/cli-options.md#global-variable-map); earlier wiki revisions called this `--enable-extended-smem` but that flag actually feeds bit 25 via `byte_2A5F1FD`. (Previously mislabeled `no_debug_info` / `no_warn_dead_code`.)
 100      1    flag_bit13              bit 13             merge_flags bit 13 (no confirmed CLI source observed in `main`'s bit assembly)
 101      1    is_device_elf           (a9 & 0x8000)      Bit 15 of merge_flags. Set when `byte_2A5F224` (sm > 72 detector) is true; the constructor uses this bit as the device-ELF gate (OSABI = 0x41, tkinfo/cuinfo notes initialized).
 ```
