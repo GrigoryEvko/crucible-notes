@@ -89,17 +89,21 @@ When the outer kind is `0x01` (operation), the byte at `expr+0x38` selects which
 | `0x24` | Pre-decrement `--x` | `EmitIncDec` (`sub_128C390`): inc=0, isPostfix=0 | `%dec = sub ...` / `%ptrincdec = getelementptr ...` |
 | `0x25` | Post-increment `x++` | `EmitIncDec` (`sub_128C390`): inc=1, isPostfix=1 | Returns old value; `%inc = add ...` |
 | `0x26` | Post-decrement `x--` | `EmitIncDec` (`sub_128C390`): inc=0, isPostfix=1 | Returns old value; `%dec = sub ...` |
-| `0x27`-`0x2B` | `+`, `-`, `*`, `/`, `%` | `EmitBinaryArithCmp` (`sub_128F9F0`) | `add`/`sub`/`mul`/`sdiv`/`srem` (or `u`/`f` variants) |
+| `0x27`-`0x2B` | `+`, `-`, `*`, `/`, `%` | `EmitBinaryArithBitwise` (`sub_128F9F0`) | `add`/`sub`/`mul`/`sdiv`/`srem` (or `u`/`f` variants) |
 | `0x32` | Comma `(a, b)` | Emit both sides; return RHS | (LHS discarded) |
 | `0x33` | Subscript `a[i]` | `EmitSubscriptOp` (`sub_128B750`): GEP + load | `%arrayidx = getelementptr ...` + `load` |
 | `0x34` | Pointer subtraction | See [Pointer subtraction](#pointer-subtraction) | `%sub.ptr.div = sdiv exact ...` |
-| `0x35`-`0x39` | `==`, `!=`, `<`, `>`, `<=`, `>=` | `EmitBinaryArithCmp` (`sub_128F9F0`) | `icmp eq`/`ne`/`slt`/`sgt`/`sle`/`sge` (or `u`/`f` variants) |
-| `0x3A` | `<<` | `EmitShiftOrBitwise` (`sub_128F580`): triple `(1, 32, 32)` | `shl` |
-| `0x3B` | `>>` | `EmitShiftOrBitwise` (`sub_128F580`): triple `(14, 33, 33)` | `ashr` (signed) / `lshr` (unsigned) |
-| `0x3C` | `&` | `EmitShiftOrBitwise` (`sub_128F580`): triple `(2, 38, 34)` | `and` |
-| `0x3D` | `^` | `EmitShiftOrBitwise` (`sub_128F580`): triple `(4, 40, 36)` | `xor` |
-| `0x3E` | `\|` | `EmitShiftOrBitwise` (`sub_128F580`): triple `(3, 39, 35)` | `or` |
-| `0x3F` | Rotate | `EmitShiftOrBitwise` (`sub_128F580`): triple `(5, 41, 37)` | `llvm.fshl` / `llvm.fshr` |
+| `0x35` | `<<` | `EmitBinaryArithBitwise` (`sub_128F9F0`) → `sub_1288B70` (shift-left helper, CICC opcode 23, string label `"shl"`) | `shl` |
+| `0x36` | `>>` | `EmitBinaryArithBitwise` (`sub_128F9F0`) → `sub_1289360` (shift-right helper, CICC opcode 24 signed / 25 unsigned, string label `"shr"`) | `ashr` (signed) / `lshr` (unsigned) |
+| `0x37` | `&` | `EmitBinaryArithBitwise` (`sub_128F9F0`) inline with all-ones-mask constant-fold shortcut; CICC opcode 26, string label `"and"` | `and` |
+| `0x38` | `\|` | `EmitBinaryArithBitwise` (`sub_128F9F0`) inline with zero-operand constant-fold shortcut; CICC opcode 27, string label `"or"` | `or` |
+| `0x39` | `^` | `EmitBinaryArithBitwise` (`sub_128F9F0`) → `sub_15FB440(28, …)`; string label `"xor"` | `xor` |
+| `0x3A` | `==` | `EmitCompare` (`sub_128F580`): triple `(1, 32, 32)` = `(FCMP_OEQ, ICMP_EQ, ICMP_EQ)` | `fcmp oeq` / `icmp eq` |
+| `0x3B` | `!=` | `EmitCompare` (`sub_128F580`): triple `(14, 33, 33)` = `(FCMP_UNE, ICMP_NE, ICMP_NE)` | `fcmp une` / `icmp ne` |
+| `0x3C` | `>` | `EmitCompare` (`sub_128F580`): triple `(2, 38, 34)` = `(FCMP_OGT, ICMP_SGT, ICMP_UGT)` | `fcmp ogt` / `icmp sgt`/`ugt` |
+| `0x3D` | `<` | `EmitCompare` (`sub_128F580`): triple `(4, 40, 36)` = `(FCMP_OLT, ICMP_SLT, ICMP_ULT)` | `fcmp olt` / `icmp slt`/`ult` |
+| `0x3E` | `>=` | `EmitCompare` (`sub_128F580`): triple `(3, 39, 35)` = `(FCMP_OGE, ICMP_SGE, ICMP_UGE)` | `fcmp oge` / `icmp sge`/`uge` |
+| `0x3F` | `<=` | `EmitCompare` (`sub_128F580`): triple `(5, 41, 37)` = `(FCMP_OLE, ICMP_SLE, ICMP_ULE)` | `fcmp ole` / `icmp sle`/`ule` |
 | `0x41`-`0x46` | Type-level consts | `ConstantFromType` (`sub_127D2C0`) | Compile-time constant |
 | `0x49` | Member access `.`/`->` | See [Member access](#member-access) | `getelementptr` + `load` (or bitfield path) |
 | `0x4A` | `+=` | the compound-assign wrapper (`sub_12901D0`) + `sub_1288F60` | Load + add + store |
@@ -107,10 +111,10 @@ When the outer kind is `0x01` (operation), the byte at `expr+0x38` selects which
 | `0x4C` | `*=` | the compound-assign wrapper (`sub_12901D0`) + `sub_1288770` | Load + mul + store |
 | `0x4D` | `/=` | the compound-assign wrapper (`sub_12901D0`) + `sub_1289D20` | Load + div + store |
 | `0x4E` | `%=` | the compound-assign wrapper (`sub_12901D0`) + `sub_1288DC0` | Load + rem + store |
-| `0x4F` | `&=` | the compound-assign wrapper (`sub_12901D0`) + `sub_1288B70` | Load + and + store |
-| `0x50` | `\|=` | the compound-assign wrapper (`sub_12901D0`) + `sub_1289360` | Load + or + store |
-| `0x51` | `<<=` | the compound-assign wrapper (`sub_12901D0`) + `sub_1288090` | Load + shl + store |
-| `0x52` | `>>=` | the compound-assign wrapper (`sub_12901D0`) + `sub_1287F30` | Load + ashr/lshr + store |
+| `0x4F` | `<<=` | the compound-assign wrapper (`sub_12901D0`) + `sub_1288B70` (string `"shl"`, CICC opcode 23) | Load + shl + store |
+| `0x50` | `>>=` | the compound-assign wrapper (`sub_12901D0`) + `sub_1289360` (string `"shr"`, CICC opcodes 24/25) | Load + ashr/lshr + store |
+| `0x51` | `&=` | the compound-assign wrapper (`sub_12901D0`) + `sub_1288090` (string `"and"`, CICC opcode 26) | Load + and + store |
+| `0x52` | `\|=` | the compound-assign wrapper (`sub_12901D0`) + `sub_1287F30` (string `"or"`, CICC opcode 27) | Load + or + store |
 | `0x53` | `^=` | the compound-assign wrapper (`sub_12901D0`) + `sub_1288230` | Load + xor + store |
 | `0x54` | `,=` (rare) | the compound-assign wrapper (`sub_12901D0`) + `sub_128BE50` | Comma-compound |
 | `0x55` | `[]=` (subscript compound) | the compound-assign wrapper (`sub_12901D0`) + `sub_128B750` | GEP + R-M-W |
@@ -129,9 +133,11 @@ When the outer kind is `0x01` (operation), the byte at `expr+0x38` selects which
 | `0x72` | `va_arg` | `sub_12A4D00` on va_list child + `sub_1286000` | `va_arg` lowering |
 | default | | `FatalDiag` (`sub_127B550`) | `"unsupported operation expression!"` |
 
-#### Shift and bitwise triple encoding
+#### Compare predicate triple encoding
 
-The `EmitShiftOrBitwise` (`sub_128F580`) triple `(signedOp, intOp, fpOp)` encodes three things: `signedOp` controls signed-vs-unsigned selection for right shift (14 selects `ashr` for signed, `lshr` for unsigned), `intOp` is the LLVM integer opcode number, and `fpOp` is the floating-point variant (unused for shift/bitwise but present for uniformity).
+The `EmitCompare` (`sub_128F580`) triple `(fpPred, sIntPred, uIntPred)` carries three LLVM `CmpInst::Predicate` values selected by operand type. The function dispatches: floating-point operand → `FCmp` with `fpPred`, signed integer (or pointer, signed semantics) → `ICmp` with `sIntPred`, unsigned integer → `ICmp` with `uIntPred`. Internally, the helper calls `sub_15FEC10` with opcode `51` (ICmp) or `52` (FCmp) and one of the predicate numbers; on the constant-fold path it calls `sub_15A37B0(pred, lhs, rhs)`. Predicate numbering matches LLVM: `FCMP_OEQ=1`, `FCMP_OGT=2`, `FCMP_OGE=3`, `FCMP_OLT=4`, `FCMP_OLE=5`, `FCMP_UNE=14`; `ICMP_EQ=32`, `ICMP_NE=33`, `ICMP_UGT=34`, `ICMP_UGE=35`, `ICMP_ULT=36`, `ICMP_ULE=37`, `ICMP_SGT=38`, `ICMP_SGE=39`, `ICMP_SLT=40`, `ICMP_SLE=41`. Diagnostic strings inside the helper are `"cmp"`.
+
+Shifts and bitwise operators (`<<`, `>>`, `&`, `|`, `^`) are not handled here -- they ride `EmitBinaryArithBitwise` (`sub_128F9F0`) under cases `0x35`-`0x39`. That helper's inner `switch (*(_BYTE*)(a2 + 56))` dispatches the same opcode byte a second time: cases `'\''`-`'+'` (`0x27`-`0x2B`) call the per-operator arithmetic helpers (`sub_1288F60` add, `sub_1288370` sub, `sub_1288770` mul, `sub_1289D20` div, `sub_1288DC0` rem); cases `'5'`-`'9'` (`0x35`-`0x39`) handle shift-left, shift-right, and-with-mask shortcut, or-with-zero shortcut, and xor respectively. The default arm raises `"unsupported binary expression!"`.
 
 #### Increment / decrement detail
 
@@ -825,8 +831,8 @@ if (debugLoc) {
 | `sub_1287CD0` | lvalue-load workhorse | Loads from computed lvalue with full attribute trimmings (14 args: out-buf, ctx, srcloc, type-info, ...); diagnostic `"unexpected error generating l-value!"` on lvalue-build failure |
 | `sub_1287ED0` | `EmitCompoundAssign` | Generic compound assignment |
 | `sub_128C390` | `EmitIncDec` | Pre/post increment/decrement |
-| `sub_128F9F0` | `EmitBinaryArithCmp` | Binary arithmetic and comparison |
-| `sub_128F580` | `EmitShiftOrBitwise` | Shift and bitwise operators |
+| `sub_128F9F0` | `EmitBinaryArithBitwise` | Binary arithmetic (`+`,`-`,`*`,`/`,`%`) and bitwise (`&`,`\|`,`^`); diagnostic `"unsupported binary expression!"` |
+| `sub_128F580` | `EmitCompare` | Equality and relational comparisons (`==`,`!=`,`<`,`>`,`<=`,`>=`); string label `"cmp"` |
 | `sub_128B750` | `EmitSubscriptOp` | Array subscript (GEP + load) |
 | `sub_128FDE0` | `EmitSizeofAlignof` | `sizeof` and `alignof` operators |
 | `sub_12901D0` | compound-assign wrapper | Wrapper dispatching to per-operator impl |

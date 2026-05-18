@@ -36,7 +36,7 @@ The remainder of this page uses Path B addresses (the `0x12xxxxx` range) as the 
 | `0x127A000`--`0x127CFFF` | Type translation helpers | `sub_127A030` (EDG-to-LLVM type lookup), `sub_127B390` (SM-version query), `sub_127B420` (address-of predicate), `sub_127B550` (fatal diagnostic) |
 | `0x127D000`--`0x127FFFF` | Constants, alloca creation, bool emission | `sub_127D8B0` (constant-expression emitter), `sub_127FC40` (alloca creator), `sub_127FEC0` (bool-conversion helper) |
 | `0x1280000`--`0x1285FFF` | Bitfield access, member loads, inline asm | `sub_1282050` (bitfield store), `sub_1284570` (bitfield load), `sub_1285290` (asm-call emitter) |
-| `0x1286000`--`0x128FFFF` | L-value codegen, binary ops, expression dispatch | `sub_1286D80` (address-of L-value), `sub_128A450` (cast/conversion), `sub_128D0F0` (expression master dispatch), `sub_128F9F0` (binary arithmetic/compare) |
+| `0x1286000`--`0x128FFFF` | L-value codegen, binary ops, expression dispatch | `sub_1286D80` (address-of L-value), `sub_128A450` (cast/conversion), `sub_128D0F0` (expression master dispatch), `sub_128F9F0` (binary arithmetic and bitwise), `sub_128F580` (compare predicates) |
 | `0x1290000`--`0x129AFFF` | Control flow helpers, inline asm, printf lowering | `sub_1290AF0` (insertion-point setter), `sub_1292420` (inline-asm emitter), `sub_12992B0` (printf-to-vprintf lowering) |
 | `0x129B000`--`0x12AFFFF` | Builtin helpers, atomic ops, surface/texture ops | `sub_12A4D50` (basic-block creator), `sub_12A7DA0` (atomic ops), `sub_12ADE80` (surface/texture) |
 | `0x12B0000`--`0x12BFFFF` | Builtin mega-switch | `sub_12B3FD0` (builtin lowering, 103KB, 770 IDs) |
