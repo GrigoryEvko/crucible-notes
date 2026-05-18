@@ -17,7 +17,7 @@ The ordering function walks the vreg linked list (`alloc+736`) and classifies ea
 | High | `alloc+120` | Spill cost exceeds threshold (`alloc+768`), or flag bit `0x80000` set | 3rd |
 | VeryHigh | `alloc+144` | Paired-mode vregs with `(flags ^ 0x300000) & 0x300000 != 0` | 2nd |
 | Unconstrained | `alloc+168` | No constraint chain (`vreg+144 == NULL`) | 1st |
-| LargeVec | stack-local | Width > 4 registers; merged into VeryHigh after classification | (merged) |
+| LargeVec | arena-allocated through the OCG slab allocator (vtable slot +24) | Width > 4 registers; merged into VeryHigh after classification | (merged) |
 
 **Simplify phase:** Lists are drained in order Unconstrained, VeryHigh, High. Each vreg is popped, processed by `sub_93F130` (which computes final ordering metadata), and pushed onto the assignment stack at `alloc+744`.
 
@@ -172,7 +172,7 @@ The central allocation function (1658 lines). This is where physical registers a
 
 ### Data Structures
 
-Two 2056-byte arrays (512 DWORDs + 2-DWORD sentinel each):
+Two 2056-byte arrays (512 DWORDs + 2-DWORD sentinel each), **arena-allocated through the OCG slab allocator (vtable slot +24)** — not stack frames. At `ptxas_full.c:995796` the allocator dispatches `(*(void**)(*(a2+16) + 24))(*(a2+16), 2056)` to obtain each block from the per-compilation arena rooted at `a2+16`.
 
 | Array | Role |
 |-------|------|

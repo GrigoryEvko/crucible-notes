@@ -17,7 +17,7 @@ The ptxas register allocator uses a fat-point algorithm with a Chaitin-Briggs-st
 
 ## Pressure Array Construction
 
-The core allocator (`sub_957160`) allocates two stack-local arrays at the start of each allocation round. Each array is 2056 bytes: 512 DWORDs (2048 bytes) of pressure data plus a 2-DWORD sentinel.
+The core allocator (`sub_957160`) allocates two pressure arrays at the start of each allocation round. They are **arena-allocated through the OCG slab allocator (vtable slot +24)**, not stack frames: at `ptxas_full.c:995796` the allocator invokes `(*(void**)(*(a2+16) + 24))(*(a2+16), 2056)` to obtain a 2056-byte block — 512 DWORDs (2048 bytes) of pressure data plus a 2-DWORD sentinel — and immediately a second matching call for the secondary array. The 2056-byte size is hard-coded; the allocator object handle is the OCG context's `a2+16` slot, which is reused across the entire compilation. See the [OCG slab allocator vtable+24 idiom sidebar in encoding-tables.md](../codegen/encoding-tables.md#sidebar--the-ocg-slab-allocator-vtable-24-idiom).
 
 | Array | Variable | Role |
 |-------|----------|------|

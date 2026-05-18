@@ -10,7 +10,7 @@ These dispatch tables are not the format descriptors in 0x23F1xxx–0x23F2xxx (t
 |---|---|
 | **Total tables** | 409 |
 | **Total slots** | 70,528 |
-| **Section** | `.rodata` (all of them) |
+| **Section** | 404 in `.rodata`, 4 in `.data.rel.ro` (`0x29f9a28`, `0x29f9b18`, `0x29f9b68`, `0x29f9c68`), 1 in `.data` (`0x29fca68`, the 269-slot percase table). The split reflects immutability semantics: `.rodata` entries are link-time-final, `.data.rel.ro` entries are resolved by the dynamic linker then mprotected read-only via RELRO, and the single `.data` table is genuinely mutable at runtime — the only dispatch table ptxas can rewrite mid-execution. |
 | **Slot width** | 8 bytes (absolute VA, no relocation needed in a non-PIE build) |
 | **Largest single table** | `0x22f1f60` — 5,560 slots (the consolidated mega-dispatcher jump table) |
 | **Density** | 329 tables target the 0x0040000–0x00FFFFFF text range; 80 tables target 0x01000000–0x01FFFFFF |
@@ -102,7 +102,7 @@ These tables each point to >200 distinct functions and are the workhorses of the
 | `0x22ad230` | 2,129 | 246 | 65 | `0xA393D0..0x19F72E0` | Composite operand-decode dispatch (multi-segment) | **MED** |
 | `0x23b3a80` | 2,109 | 150 | 1 | `0x9DAA40..0x181D9B0` | Opcode→canonical-name printer (PTX↔SASS) | **MED** |
 | `0x23f4430` | 633 | 633 | 0 | `0x1BB38B0..0x1BBD2C0` | One-to-one per-slot dispatch — 633 unique entries, no sharing | **MED** |
-| `0x21f9158` | 470 | 469 | 0 | `0x7D6AE0..0xBE26C0` | Per-opcode pretty-printer or trace formatter | **MED** |
+| `0x21f9158` | 470 | 469 | 8 | `0x7D6AE0..0xBE26C0` | Per-opcode pretty-printer or trace formatter (nullsubs at slots 4, 55, 302, 321, 331, 457, 460, 461) | **MED** |
 | `0x21d6860` | 470 | 469 | 4 | `0x6611B0..0x15F4870` | Sibling of `0x21f9158`, distinct entry-point set | **MED** |
 | `0x21d82b0` | 466 | 466 | 33 | `0x6611B0..0x15F5800` | Per-opcode handler, broad-range | **MED** |
 | `0x21f5b70` | 443 | 443 | 0 | (similar range) | Per-opcode dispatch — fully unique | **LOW** |
@@ -134,13 +134,15 @@ The lack of a length field is critical for reverse engineering: knowing `N` requ
 | <-- 64-bit absolute virtual address of target function -------> |
 +-----------------------------------------------------------------+
 
-Example slot 0 of 0x22a5aa0:
-    0x22a5aa0:  B0 80 0A 00 00 00 00 00     ; → 0x0AB080A0 (nullsub_593)
+Example slot 0 of 0x22a5aa0 (VA 0x22a5aa0 = rodata_base 0x1ce2e00 + offset 0x5c2ca0):
+    0x22a5aa0:  A0 80 B0 00 00 00 00 00     ; → 0x00B080A0 (nullsub_593)
                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
                 little-endian, no relocation in non-PIE binary
                 (ptxas is a non-PIE statically-linked-style ELF —
                  confirmed by absence of R_X86_64_RELATIVE entries)
 ```
+
+The slot-0 nullsub at `0x00B080A0` is the **sentinel convention** — every Group-A SM-tier table reserves index 0 for an empty `ret`-only target (one nullsub per table, hence `nullsub_593`/`_594`/`_595`/`_596`). Reading slot 0 of any such table tells you whether index 0 is a real opcode (rare) or a reserved "OP_INVALID" probe slot; for the encoder family it is the latter. See [Targeting Behavior — `nullsub` Sentinels](#targeting-behavior--nullsub-sentinels) below.
 
 The slots are *not* relocations — ptxas is built non-PIE so absolute addresses are baked into rodata at link time. A PIE rebuild would convert all 70,528 slots into `R_X86_64_RELATIVE` entries and balloon the dynamic relocation count from 146 (PLT-only) to ~70,000.
 
@@ -239,7 +241,7 @@ A compact catalog for navigation. The "Pattern" column captures what the table l
 | `0x22b3960` | 504 | — | — | — | — |
 | `0x22b64d8` | 503 | 208 | 46 | mixed | Per-opcode validate/encode |
 | `0x21dd3a0` | 502 | 2 | 0 | gotomap | — |
-| `0x21f9158` | 470 | 469 | 0 | percase | Per-opcode printer/dispatch |
+| `0x21f9158` | 470 | 469 | 8 | percase | Per-opcode printer/dispatch — nullsubs at slots 4, 55, 302, 321, 331, 457, 460, 461 (`nullsub_148`, `_190`, `_227`, `_231`, `_232`, `_246`, `_247`, `_248`) |
 | `0x21d6860` | 470 | 469 | 4 | percase | Sibling of `0x21f9158` |
 | `0x229d418` | 469 | 468 | — | percase | — |
 | `0x21d82b0` | 466 | 466 | 33 | percase | — |
@@ -277,14 +279,16 @@ Tables below 100 slots — 349 of the 409 — are mostly per-instruction-family 
 
 A targeted re-audit of `ptxas_data_tables.json` surfaced several tables in the 158–244-slot range that the initial catalog skipped over. They sort into two structural groups.
 
-**Group A — fourth four-tier SM-tier family (240/243/244 slots, ~73–74 nullsubs each).** Same shape as the `0x22a5aa0` family (page §Per-SM-Tier Encoder Index Tables) but a different per-opcode aspect — distinct slot-0 fingerprints and a target range that overlaps the opcode-printer corpus rather than the opcode-encoder corpus. Strong evidence this is a *second* parallel 4-tier vtable, likely the per-opcode *validate-or-cost* probe parallel to the encoder vtable.
+**Group A — fourth four-tier SM-tier family (240/243/244 slots, ~73–74 nullsubs each).** Same shape as the `0x22a5aa0` family (page §Per-SM-Tier Encoder Index Tables) but a different per-opcode aspect — distinct slot-1 fingerprints and a target range that overlaps the opcode-printer corpus rather than the opcode-encoder corpus. Strong evidence this is a *second* parallel 4-tier vtable, likely the per-opcode *validate-or-cost* probe parallel to the encoder vtable.
+
+All four tables share slot 0 = `nullsub_469` (the OP_INVALID sentinel — uniform across the cohort, so it cannot fingerprint individual tables). The **distinguishing slot is slot 1**: it varies across all four members and is the only practical disambiguator when reading a dispatch trace.
 
 | Address | Slots | Uniq | Nullsubs | Tier reading | Notes |
 |---|---|---|---|---|---|
-| `0x21f6a90` | 244 | 244 | 74 | latest tier (most populated) | Target range `0x19F6890..0xC5DAB0`; slot 0 = `nullsub_469`, slot 2 = `sub_A393D0` (bracketing fingerprint shared with siblings) |
-| `0x23d8178` | 243 | 243 | 73 | mid tier | Slot 0 = `nullsub_469`, slot 1 = `sub_19FF740` (only sibling with this bridge), slot 2 = `sub_A393D0` |
-| `0x22b5150` | 243 | 243 | 73 | mid tier (alt) | Identical slot-0/slot-2 fingerprint to `0x23d8178` — likely tier 2 vs tier 3 of the same SM cohort |
-| `0x21fa5e0` | 240 | 240 | 73 | earliest tier | Smallest population, distinct slot-1 (`sub_C5DBB0`) — predates four opcodes added in later tiers |
+| `0x21f6a90` | 244 | 244 | 74 | latest tier (most populated) | Target range `0xA393D0..0x1BB0FA0`; slot 0 = `nullsub_469`, slot 1 = `sub_C1EF80`, slot 2 = `sub_A393D0` (slot-2 is a fixed prologue handler shared with siblings) |
+| `0x23d8178` | 243 | 243 | 73 | mid tier | Slot 0 = `nullsub_469`, slot 1 = `sub_19FF740` (only sibling with this slot-1 target), slot 2 = `sub_A393D0` |
+| `0x22b5150` | 243 | 243 | 73 | mid tier (alt) | Slot 0 = `nullsub_469`, slot 1 = `sub_C1EF80` (matches `0x21f6a90` at slot 1; collision means these two tables agree on the first non-sentinel entry — diff the remaining slots to separate them), slot 2 = `sub_A393D0` |
+| `0x21fa5e0` | 240 | 240 | 73 | earliest tier | Smallest population, distinct slot 1 = `sub_C5DBB0` — predates four opcodes added in later tiers |
 
 The 240→243→243→244 progression matches the "opcodes added per SM generation, never removed" rule documented for the `0x22a5aa0` family. Diffing slot lists across the four would yield the exact opcode set added per SM generation for whichever aspect this vtable controls. **Confidence: HIGH for structural classification, MED for "validate/cost" role attribution — the constant `sub_A393D0` at slot 2 of every entry suggests a fixed prologue handler, which is more consistent with a probe/cost role than with a printer or encoder role.**
 
@@ -320,6 +324,35 @@ The 409 tables in `ptxas_data_tables.json` do **not** include:
 5. **Format descriptor xmmwords** at `0x23F1CE8..0x23F2EF8`. These are 128-bit constant blobs, not function pointers — they're consumed by `_mm_loadu_si128` in the encoder template.
 
 Item 1 is the most surprising omission. Per-opcode encoders are *not* dispatched through rodata — they're hardcoded as direct `call` targets inside each mega-switch case body. This means swapping out an opcode's encoder at runtime requires patching the case body itself, not just rewriting a table slot. The implication for binary diffing is significant: an SM tier added in ptxas v14 will probably appear as a new switch case (and a new slot in the `0x22f1f60` mega-table) rather than as a slot reassignment.
+
+## Sidebar — The OCG Slab Allocator (vtable +24) Idiom
+
+> ⚡ **QUIRK — register allocator routes through a vtable-dispatched slab, not malloc**
+> ptxas does not allocate working-set buffers from `malloc`. Every per-compilation buffer is obtained from an arena object reachable as `*(ctx + 16)` (the OCG context's allocator handle). The handle is a polymorphic C++ object whose **vtable slot +24** is the byte-sized "raw allocate" entry point. Call shape:
+>
+> ```c
+> // Generic form seen at dozens of call sites:
+> _QWORD *alloc_obj = *(_QWORD **)(ctx + 16);  // OCG allocator handle
+> void *mem = (*(__int64 (**)(_QWORD *, __int64, ...))(*alloc_obj + 24))(alloc_obj, size, ...);
+> ```
+>
+> The first argument is `this`, the second is the byte size, and Hex-Rays renders any remaining stack slots as `double`/`__m128i` carry-over from the caller's frame — those are noise from the SysV AMD64 ABI, not real parameters. The callee uses `(this, size)` only.
+
+This idiom is **not** confined to one subsystem. Verified call sites in `ptxas_full.c` (v13.0.88):
+
+| `ptxas_full.c` line | Owner | Allocation size | Subsystem | Buffer role |
+|---|---|---|---|---|
+| 622528 | `sub_704D30` callees | 24 | early IR construction | Per-record IR node (24-byte payload) |
+| 748581 | helper near `sub_823020` | 80 | mid-pipeline | 80-byte working record |
+| 501648 | caller of `sub_7AB*` | 192 | mid-pipeline | 192-byte container record |
+| 995796 | `sub_957160` | 2056 | **regalloc** | Pressure histogram (512 DWORDs + 2-DWORD sentinel) — see [regalloc/algorithm.md § Pressure Array Construction](../regalloc/algorithm.md#pressure-array-construction) |
+| 1478513 | caller in `sub_BCEF*` | 4096 | scratch/staging | One-page scratch buffer |
+
+Five distinct sizes (24, 80, 192, 2056, 4096) appear across the binary; the slot +24 entry point services all of them. There is no separate "small/medium/large" dispatch — the allocator decides bucket internally. The implication for reimplementers: a faithful clone cannot model regalloc's pressure arrays as stack-frame locals or as `new int[512]`. They live in the same arena as IR nodes, the same arena as the 4096-byte scratch pages, and the same arena as the 80-byte working records — and that arena is destroyed wholesale at end-of-compilation, not per-pass. Code that holds raw pointers into this arena across compilation boundaries is undefined.
+
+**Sentinel pattern at the call site.** Every observed call site follows an identical pre-sequence: the caller writes a 3-word sentinel header (`{handle, 0, 0xFFFFFFFF}`) onto its own stack *before* the allocator call (visible at `ptxas_full.c:995791–995795` for the regalloc case). This is the arena's free-list bookkeeping — the allocator threads the returned block onto the caller's local list so that the caller's destructor can mass-release on scope exit. The `0xFFFFFFFF` is a "no successor" marker. A reimplementer who misses this sentinel will leak everything the function allocates because the arena's reclamation pass walks those headers.
+
+**Confidence: HIGH for the vtable+24 idiom and the verified call sites; MED for the "destroyed at end-of-compilation" lifetime claim (inferred from absence of explicit free calls — the allocator's destructor is in the OCG context teardown, which has not been disassembled in detail).**
 
 ## Open Follow-Ups
 
