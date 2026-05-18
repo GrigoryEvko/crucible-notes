@@ -282,7 +282,7 @@ This is where the CUDA `%N` convention is translated to LLVM's `$N` convention. 
 
 ### Phase 3: Constraint String Construction
 
-The parser iterates the EDG operand linked list, building a comma-separated LLVM constraint string. Each EDG operand carries a constraint type-chain -- a linked list of tag bytes that map through a 256-byte global lookup table (`aXg0123456789rh[]`) to produce LLVM constraint letters.
+The parser iterates the EDG operand linked list, building a comma-separated LLVM constraint string. Each EDG operand carries a constraint type-chain -- a linked list of tag bytes that map through a 61-byte global lookup table at `0x4B6DEC0` (`"@,&%#*?!Xg0123456789rhlCfmpoV><insFabcdSDRqQAtuxYyIJMKNLGHeZ~"`) to produce LLVM constraint letters.
 
 **Output operands** (`flags & 2 != 0`):
 - Pointer types: constraint prefix `"=*"` + letters (indirect output).
