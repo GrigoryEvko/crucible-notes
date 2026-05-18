@@ -247,15 +247,15 @@ int container_set_content(void *ctx, const void *content) {
     *(void **)(ctx + 72) = content;
     if (!content) { /* setjmp-restore, return 1 */ }
 
-    // Classify
+    // Classify (all multibyte loads are native little-endian x86-64)
     uint64_t hdr = *(uint64_t *)content & 0xFFFFFFFFFFFFLL;
-    if (hdr == 0x1BA55ED50LL) {                            // fatbin magic
-        *(uint32_t *)(ctx + 80) = 2;
+    if (hdr == 0x1BA55ED50LL) {                            // fatbin (BASSED + version 0x01), 40-bit pattern, 48-bit mask
+        *(uint32_t *)(ctx + 80) = 2;                        // fatbin / nested fatbin
     } else if (sub_43D970(content) && elf_e_machine(content) == 190) {
         *(uint32_t *)(ctx + 80) = 3;                        // ELF cubin (EM_CUDA)
-    } else if (load_le32(content) == 0xDEC0170B            // NVVM magic LE
-            || load_be32(content) == 0x1EE55A01) {          // alt-endian
-        *(uint32_t *)(ctx + 80) = 1;                        // LTO-IR / compiled
+    } else if (load_le32(content) == 0x1EE55A01            // NVVM IR wrapper (LEESA), 32-bit u32
+            || (load_le32(content) == 0 && load_le32(content + 4) == 0x1EE55A01)) {  // 4-byte zero pad variant
+        *(uint32_t *)(ctx + 80) = 1;                        // NVVM IR / LTO IR
     } else if (sub_4CDF80(content)) {                      // ".version" probe
         *(uint32_t *)(ctx + 80) = 4;                        // PTX text
     } else {
@@ -266,7 +266,7 @@ int container_set_content(void *ctx, const void *content) {
 }
 ```
 
-This is the only setter that performs content classification. The four canonical content_type codes are written here: 1 (LTO-IR / pre-compiled), 2 (fatbin), 3 (ELF cubin), 4 (PTX text). NVVM is detected here but classified as 1; the NVVM-specific code 8 is written by `sub_4CE8C0` later, during arch matching, when a fatbin member is identified as NVVM. See [PTX Input](ptx-input.md#flow-sub_4bd760) and [NVVM IR Input](nvvm-ir-input.md) for how downstream consumers interpret these codes.
+This is the only setter that performs content classification. The four canonical content_type codes are written here: 1 (NVVM IR / LTO IR wrapper), 2 (fatbin / nested fatbin), 3 (ELF cubin), 4 (PTX text). The NVVM-specific code 8 is written by `sub_4CE8C0` later, during arch matching, when a fatbin member is identified as NVVM. See [PTX Input](ptx-input.md#flow-sub_4bd760) and [NVVM IR Input](nvvm-ir-input.md) for how downstream consumers interpret these codes.
 
 ## Reader: sub_4BDB90
 
@@ -337,7 +337,7 @@ Critically, the magic is **not** zeroed before the final free. This is safe only
 
 ## QUIRK 1: The Magic Is Not a Tag
 
-`0x1464243BC` looks deliberately non-ASCII. The low 32 bits `0x4243BC` are not printable; the upper byte `0x01` makes the whole word fall outside any common type tag. The choice is consistent with a *random* sentinel rather than a four-character cookie. Compare with NVIDIA's other sentinels: fatbin uses the 36-bit value `0x1BA55ED50` ("1BASSED50", checked against `*hdr & 0xFFFFFFFFFFFF`), NVVM IR uses `0xDEC0170B` ("DECOI70B"), ELF uses `0x7F454C46` (".ELF"). The container magic is the only one in nvlink's input pipeline that is *not* a backronym, suggesting it was generated rather than chosen -- which is good practice for an internal sentinel that should not collide with any user-controlled bytes.
+`0x1464243BC` looks deliberately non-ASCII. The low 32 bits `0x4243BC` are not printable; the upper byte `0x01` makes the whole word fall outside any common type tag. The choice is consistent with a *random* sentinel rather than a four-character cookie. Compare with NVIDIA's other sentinels: fatbin uses the 40-bit pattern `0x1BA55ED50` ("BASSED" + version `0x01`, checked against `*hdr & 0xFFFFFFFFFFFF` as a 48-bit prefix match), the NVVM IR wrapper uses the 32-bit u32 `0x1EE55A01` ("LEESA"), ELF uses `0x464C457F` (".ELF"). The container magic is the only one in nvlink's input pipeline that is *not* a backronym, suggesting it was generated rather than chosen -- which is good practice for an internal sentinel that should not collide with any user-controlled bytes.
 
 ## QUIRK 2: Two Accelerated-Arch Flag Bytes at +160/+161
 

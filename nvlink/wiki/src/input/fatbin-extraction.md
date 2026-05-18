@@ -33,10 +33,11 @@ The wrapper header contains at minimum:
 
 | Offset | Size | Field | Description |
 |---|---|---|---|
-| 0 | 4 | `magic` | `0xBA55ED50` -- fatbin wrapper magic |
-| 4 | 2 | `version` | Wrapper format version |
-| 6 | 2 | `header_size` | Size of the wrapper header in bytes |
-| 8 | 8 | `data_size` | Total size of all container data following the header |
+| 0 | 4 | `magic` | `0xBA55ED50` -- fatbin wrapper magic, read as little-endian u32 (`int32_t -1168773808`) |
+| 4 | 1 | `version` | Wrapper format version byte; required to be `0x01`. `sub_4CE070`'s nested probe folds this byte into the magic via the 48-bit masked compare against `0x1BA55ED50` |
+| 5 | 1 | _reserved_ | Forced to zero by the 48-bit-mask compare in `sub_4CE070`; never read as data |
+| 6 | 2 | `header_size` | Size of the wrapper header in bytes; read as `uint16_t` in `sub_4CE8C0` (`*(unsigned __int16 *)(content + 6)`) and used as the base offset for the member array |
+| 8 | 4 | `data_size` | Total size of all member entries that follow; read as `int32_t` (signed 4-byte) in `sub_4CE8C0` (`*(int *)(content + 8)`). Negative or zero values exit the member loop immediately. **There is no 8-byte `data_size` field** -- earlier wiki drafts described an 8-byte field here based on a misread of an unaligned `_QWORD` cast |
 
 After the wrapper header, the data region contains one or more fatbin containers laid out sequentially.
 
@@ -175,10 +176,10 @@ The content type codes written to `ctx + 80`:
 
 | Code | Content type | Description |
 |---|---|---|
-| 1 | PTX container | Contains PTX assembly source with metadata |
-| 2 | Fatbin container | Nested fatbin (wrapper-within-wrapper) |
-| 3 | Cubin (ELF) | Pre-compiled CUDA device ELF |
-| 4 | NVVM IR | NVVM bitcode in wrapper format |
+| 1 | NVVM IR / LTO IR wrapper | First u32 (or u32 at offset 4 after a 4-byte zero pad) is `0x1EE55A01` (LEESA). `sub_4CE8C0` case 1 then delegates to the wrapper directory walker `sub_11E96E0` |
+| 2 | Fatbin / nested fatbin | First five bytes are `50 ED 55 BA 01` (BASSED + version `0x01`). `sub_4CE8C0` case 2 walks the container's member directory |
+| 3 | Cubin (ELF) | Pre-compiled CUDA device ELF — `\x7fELF` magic plus `e_machine == 190` |
+| 4 | PTX text | First non-whitespace, non-comment token is `.version`; `sub_4CE8C0` case 4 forwards the buffer as a NUL-terminated string |
 
 ### Stage 7: Architecture Matching (sub\_4CE8C0)
 
@@ -191,18 +192,18 @@ Before entering the member iteration loop, `sub_4CE8C0` dispatches on `content_t
 ```c
 // sub_4CE8C0 content type dispatch
 switch (ctx->content_type) {    // *(int32_t *)(a1 + 80)
-    case 1:   // PTX container -- delegate to sub_11E96E0 for PTX-internal matching
+    case 1:   // NVVM IR / LTO IR wrapper -- delegate to sub_11E96E0 (wrapper directory walker)
     case 2:   // Fatbin container -- iterate members (main loop below)
     case 3:   // Cubin (ELF) -- single-object arch validation
-    case 4:   // NVVM IR / obfuscated PTX -- accept directly
+    case 4:   // PTX text (optionally obfuscated) -- accept directly
 }
 ```
 
 **Case 3 (cubin/ELF):** For a raw cubin, the function extracts the member's SM architecture from the ELF header. It first checks for Mercury format via `sub_43DA00` (CapMerc magic detection). If Mercury, the type is set to 16 and the size is read via `sub_43DA80`. Otherwise, it checks `sub_43DA40` (AMDGPU-style ELF machine type 65 / `'A'`), and for standard cubins reads the SM number from the `e_flags` field. The function then builds an arch name string (e.g., `"sm_100"`) via `sub_44E530`, parses it via `sub_486FF0`, and compares the member's parsed version against the target's parsed version using `sub_4876A0` (the compatibility checker). If the member's architecture does not match the target, it reads the `.nv.compat` section via `sub_43E610` and calls `sub_4709E0` (finalization compatibility) and `sub_470DA0` (capability mask compatibility) to check cross-architecture translation. If both fail, the function returns 3 (no match). If `sub_470DA0` allows it (via ISA descriptor compatibility), the content is copied, its SM tag is rewritten via `sub_4CD880(content, target_arch)`, and the result is returned as type 2 (cubin).
 
-**Case 4 (PTX source / obfuscated PTX):** The content is accepted directly. If `ctx->obfuscation_key` (offset +136) is nonzero, the function logs `"PTX Obfuscation"` via `sub_467460`. The content size is set to `strlen(content) + 1` and the type is set to 1 (PTX).
+**Case 4 (PTX source / obfuscated PTX):** The content is accepted directly. If `ctx->obfuscation_key` (offset +136) is nonzero, the function logs `"PTX Obfuscation"` via `sub_467460`. The content size is set to `strlen(content) + 1` and the output type is set to 1 (PTX).
 
-**Case 1 (PTX container):** The function delegates to `sub_11E96E0`, an internal PTX container parser that handles PTX-within-fatbin matching. It passes the target arch string, request mode, and receives back the matched PTX content. If the returned content starts with the ELF magic `0x7F454C46`, the type is set to 2 (cubin) rather than 1 (PTX). If `sub_11E96E0` finds no match, the function returns 3.
+**Case 1 (NVVM IR / LTO IR wrapper):** The function delegates to `sub_11E96E0`, the wrapper directory walker that selects the entry whose embedded arch tag matches the requested SM. It passes the target arch string, request mode, and receives back the matched payload. If the returned content starts with the ELF magic `0x7F454C46`, the output type is set to 2 (cubin); otherwise it is left as 1 (PTX produced by the wrapper). If `sub_11E96E0` finds no match, the function returns 3.
 
 #### Member Iteration Loop (Content Type 2)
 

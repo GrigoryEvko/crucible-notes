@@ -78,10 +78,10 @@ After the `setjmp` returns 0 (normal-path), the function stores the raw payload 
 
 if ( a2 )
 {
-    // Test 1: NVVM IR wrapper magic
+    // Test 1: Fatbin wrapper magic (BASSED + version byte 0x01, low 48 bits)
     if ( (*(_QWORD *)a2->__size & 0xFFFFFFFFFFFFLL) == 0x1BA55ED50LL )
     {
-        *(_DWORD *)(a1 + 80) = 2;   // tag: NVVM bitcode
+        *(_DWORD *)(a1 + 80) = 2;   // tag: fatbin / nested fatbin
         goto LABEL_18;
     }
 
@@ -96,13 +96,13 @@ if ( a2 )
         }
     }
 
-    // Test 3: Fatbin/legacy container magic
+    // Test 3: NVVM IR wrapper magic (LEESA), accepted at offset 0 or 4
     if ( LODWORD(v5->__jmpbuf[0]) == 518347265
          || (!LODWORD(v5->__jmpbuf[0])
              && HIDWORD(v5->__jmpbuf[0]) == 518347265) )
                                      // 518347265 == 0x1EE55A01
     {
-        *(_DWORD *)(a1 + 80) = 1;    // tag: fatbin/legacy
+        *(_DWORD *)(a1 + 80) = 1;    // tag: NVVM IR / LTO IR
         goto LABEL_18;
     }
 
@@ -131,14 +131,14 @@ else
 
 | Tag | Class | Detection | Notes |
 |---|---|---|---|
-| 1 | Fatbin / legacy container | First or second `int` equals `0x1EE55A01` | Two-position match handles 4-byte alignment padding ahead of the container. Used for embedded `.nv_fatbin` slices that arrive after fatbin extraction has already peeled off the outer wrapper |
-| 2 | NVVM IR (LLVM bitcode wrapper) | Low 48 bits of first qword equal `0x1BA55ED50` | The high 16 bits are masked off because the NVVM wrapper carries a flags/version field at bits 48–63 that varies between toolkit versions. The 48-bit core is the stable magic |
-| 3 | Cubin (CUDA ELF) | `\x7fELF` magic AND `e_machine == 190` (`EM_CUDA`) | `sub_43D970` does the ELF check; `sub_448360` is the identity wrapper that returns the same pointer (used here as a marker for the bytes-at-offset-18 read so that IDA's type analyser keeps the cast clean) |
+| 1 | NVVM IR / LTO IR wrapper | First or second `int` equals `0x1EE55A01` (LEESA, little-endian u32) | Two-position match handles a 4-byte zero pad ahead of the wrapper. The decompiled compare reads two 32-bit halves of one qword — the first arm checks offset 0, the second requires offset 0 to be exactly zero and the magic at offset 4. The constant is a u32, not a packed magic-plus-version like the fatbin pair |
+| 2 | Fatbin / nested fatbin container | Low 48 bits of first qword equal `0x1BA55ED50` (BASSED + version byte `0x01`) | The compare reads a full 64-bit qword and masks with `0xFFFFFFFFFFFF`, so the four magic bytes plus the version byte are matched as a single 5-byte / 40-bit prefix. The top 8 bits of the masked 48-bit window are required to be zero (anything other than version 1 would no-match). The high 16 bits of the qword are simply not part of the prefix and are ignored |
+| 3 | Cubin (CUDA ELF) | `\x7fELF` magic AND `e_machine == 190` (`EM_CUDA`) | `sub_43D970` does the 4-byte ELF check; `sub_448360` is the identity wrapper that returns the same pointer (used here as a marker for the 2-byte read at offset 18 so that IDA's type analyser keeps the cast clean) |
 | 4 | PTX text | Starts with `.version` after skipping ASCII whitespace and `//` / `/*` comments | `sub_4CDF80` uses `__ctype_b_loc()` to skip space-class bytes and `sub_45CB90` to skip over block/line comments before doing the 8-byte `memcmp(".version", ...)` |
 
 ### Test Order Is Significant
 
-The order is bitcode → ELF → fatbin → PTX text. PTX is checked last because its detection is the only one that walks an arbitrary number of bytes (whitespace and comment skipping), whereas the other three are constant-time prefix matches. ELF is checked before fatbin because a stray `0x1EE55A01` could in principle appear at offset 4 inside an ELF header (it cannot — that position is `e_machine`/`e_version` — but the ordering removes any ambiguity).
+The order is fatbin → ELF → NVVM IR → PTX text. PTX is checked last because its detection is the only one that walks an arbitrary number of bytes (whitespace and comment skipping), whereas the other three are constant-time prefix matches. Fatbin (a 48-bit packed compare) is probed before ELF and NVVM IR because its prefix is the most specific — five fixed bytes — so a positive match cannot be confused with anything else. NVVM IR's 32-bit u32 magic is probed after the ELF check so that the (still 32-bit) NVVM compare runs only on inputs that already failed the more constrained checks above.
 
 ### Diagnostic on No-Match
 
@@ -150,8 +150,8 @@ After `LABEL_18` writes the tag into `ctx + 80`, the function falls into the sha
 
 | Tag | `sub_4CE8C0` pipeline | Description |
 |---|---|---|
-| 1 | Fatbin slice unpacker | Decodes the embedded container, iterates members, and recurses with each member rebound via a second `sub_4CE070` call on the inner ctx. Used when input came from a `.nv_fatbin` section the outer linker did not pre-peel |
-| 2 | NVVM bitcode reader | Hands the buffer to the libnvvm side via a deferred bind (the launcher itself does not link against libnvvm — for tag 2 it currently emits an internal error because `sub_4CE070` is reached only via the ptxas wrappers, which never see bitcode in production. See QUIRK 2 below) |
+| 1 | NVVM IR wrapper reader (`sub_11E96E0`) | Walks the wrapper's internal directory of PTX-and-arch entries and selects the entry matching the requested SM. Reached only when an NVVM IR wrapper is fed in directly — in the LTO path the wrapper is normally consumed by `sub_4BC4A0` / `sub_4BD1F0` via dlsym before reaching this classifier |
+| 2 | Fatbin slice unpacker | Decodes the embedded container, iterates members, and recurses with each member rebound via a second `sub_4CE070` call on the inner ctx. Used when input came from a `.nv_fatbin` section the outer linker did not pre-peel |
 | 3 | Cubin pass-through | Skips compilation, just validates and forwards. The cubin already is SASS; the only work `sub_4CE8C0` does is to wrap it in the compile driver's output envelope so `sub_4CE670` can return it uniformly |
 | 4 | PTX parser → ISel → emit | The normal PTX-to-SASS pipeline. This is the path every LTO output takes in practice: libnvvm produces PTX text, nvlink hands it to one of the ptxas wrappers, those wrappers call `sub_4CE070` which tags the input `4`, and `sub_4CE8C0` runs the full backend |
 
@@ -176,8 +176,8 @@ The three callers (`sub_4BD0A0`, `sub_4BD4E0`, `sub_4BD760`) each have their own
 |---|---|
 | `dword_2A5BFA0` | Warning channel descriptor used for the "could not classify input" diagnostic |
 | `0x1464243BC` | Compile-driver context signature; written by `sub_4CDD60`, checked here and in every other compile-driver entry |
-| `0x1BA55ED50` | NVVM IR wrapper magic (48-bit) |
-| `0x1EE55A01` | Fatbin / legacy container magic |
+| `0x1BA55ED50` | Fatbin / nested-fatbin magic + version byte (40-bit pattern, compared with a 48-bit mask) |
+| `0x1EE55A01` | NVVM IR / LTO IR wrapper magic (32-bit little-endian u32) |
 | `0x464C457F` | ELF magic (checked indirectly via `sub_43D970`) |
 | `190` | `EM_CUDA` for ELF `e_machine` |
 | `30675157` (`0x1D410D5`) | Format string for the classification-failure diagnostic |
@@ -186,17 +186,17 @@ The three callers (`sub_4BD0A0`, `sub_4BD4E0`, `sub_4BD760`) each have their own
 
 ## QUIRKs
 
-### QUIRK 1: NVVM Magic Is Masked To 48 Bits
+### QUIRK 1: Fatbin Magic Is A 40-Bit Pattern Compared Through A 48-Bit Mask
 
-The bitcode check reads a full qword and `AND`s with `0xFFFFFFFFFFFF` before comparing to `0x1BA55ED50`. The top 16 bits of the actual file header carry a version/flags word that NVIDIA increments across toolkit releases. The classifier intentionally ignores them so that an old nvlink can still tag a newer bitcode container correctly — the tag-3 versus tag-2 routing decision must not depend on version stamps. Validation of the version field happens later, inside the bitcode reader on the libnvvm side, where it can be turned into a "minimum toolkit" diagnostic rather than a "could not classify" one. See [LTO IR Format Versions](ir-format-versions.md) for the version tables.
+The fatbin check reads a full qword and `AND`s with `0xFFFFFFFFFFFF` before comparing to `0x1BA55ED50`. The four magic bytes (`50 ED 55 BA`) plus the one-byte version (`01`) form a 40-bit pattern; the comparison mask is one byte wider than the pattern, so byte 5 of the file (the bits the mask zeroes between bit 40 and bit 48) is forced to zero. This rejects any fatbin whose version byte at offset 4 is something other than `0x01` even though only the version-1 wrapper is currently emitted. The high 16 bits of the qword (bytes 6–7 of the file) are simply not part of the prefix and are ignored by the mask. See [LTO IR Format Versions](ir-format-versions.md) for the per-wrapper version tables.
 
-### QUIRK 2: Tag 2 Is Reachable But Unused In Production
+### QUIRK 2: Tag 1 (NVVM IR) Is Reachable But Unused In Production
 
-`sub_4CE070` happily classifies a payload as NVVM bitcode (tag 2) when invoked through `sub_4BD0A0` / `sub_4BD4E0` / `sub_4BD760`, but those three callers always feed it PTX text. In the LTO pipeline, NVVM bitcode is consumed by `sub_4BC4A0` / `sub_4BD1F0` (which call `nvvmAddModuleToProgram` directly via dlsym) — it never reaches the embedded ptxas wrappers. The tag-2 branch is therefore vestigial in the LTO path. It is exercised only when someone constructs an explicit compile-driver context outside the LTO flow and hands it a bitcode buffer, which the public driver API supports for compatibility with older toolchain configurations but `main()` never does. Removing the branch would shrink the function, but doing so would break any third-party caller that links against the embedded driver via its (undocumented) symbols.
+`sub_4CE070` happily classifies a payload as NVVM IR (tag 1) when invoked through `sub_4BD0A0` / `sub_4BD4E0` / `sub_4BD760`, but those three callers always feed it PTX text. In the LTO pipeline, NVVM IR is consumed by `sub_4BC4A0` / `sub_4BD1F0` (which call `nvvmAddModuleToProgram` directly via dlsym) — it never reaches the embedded ptxas wrappers. The tag-1 branch is therefore vestigial in the LTO path. It is exercised only when someone constructs an explicit compile-driver context outside the LTO flow and hands it an NVVM IR buffer, which the public driver API supports for compatibility with older toolchain configurations but `main()` never does. Removing the branch would shrink the function, but doing so would break any third-party caller that links against the embedded driver via its (undocumented) symbols.
 
-### QUIRK 3: Two-Position Fatbin Magic Check
+### QUIRK 3: Two-Position NVVM IR Magic Check
 
-Tag 1's test reads `(LODWORD == 0x1EE55A01) || (LODWORD == 0 && HIDWORD == 0x1EE55A01)`. The second arm — magic at offset 4 with a zero word at offset 0 — handles the case where the fatbin slice arrives from a caller that prepended an 8-byte zero header. This happens specifically when the input comes through the archive-extraction path (`sub_42AF40` → `sub_42A680`), which copies the member into a buffer with an 8-byte alignment prefix on some toolkit versions. Rather than fix the prefix in the producer, NVIDIA accepts both positions in the consumer. The check is order-sensitive: the second arm requires the first 4 bytes to be exactly zero, not just "not the magic", so a buffer whose first 4 bytes happen to be `0x00000001` (a perfectly legal NVVM bitcode prefix in some encodings) cannot accidentally match here because tag 2 would have matched first.
+Tag 1's test reads `(LODWORD == 0x1EE55A01) || (LODWORD == 0 && HIDWORD == 0x1EE55A01)`. The second arm — magic at offset 4 with a zero word at offset 0 — handles the case where the NVVM IR buffer arrives from a caller that prepended a 4-byte zero pad ahead of an 8-byte-aligned region. This happens specifically when the input comes through the archive-extraction path (`sub_42AF40` → `sub_42A680`), which copies the member into a buffer with a 4-byte alignment prefix on some toolkit versions. Rather than fix the pad in the producer, NVIDIA accepts both positions in the consumer. The check is order-sensitive: the second arm requires the first 4 bytes to be exactly zero, not just "not the magic", and the fatbin check above already rejects any buffer whose first 5 bytes look like the BASSED pattern, so the two two-position tests cannot collide on a single input.
 
 ## Related Pages
 

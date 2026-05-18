@@ -124,12 +124,12 @@ The flag semantics:
 
 When the SASS flag is set, the cubin contains actual machine instructions. When clear, it is a PTX-only cubin that serves as a compatibility fallback and cannot execute directly.
 
-## Elf32 File Loader: sub\_43E100
+## Cubin File Loader: sub\_43E100
 
-`sub_43E100` is a standalone cubin loader that reads a cubin from a file path, validates it, and returns a heap-allocated buffer. It is the Elf32 loading path (the condition checks `e_ident[EI_CLASS] == 1`):
+`sub_43E100` is a standalone cubin loader that reads a cubin from a file path, validates it, and returns a heap-allocated buffer. The endianness gate reads `e_ident[EI_DATA]` (byte 5) and requires `1` (ELFDATA2LSB, little-endian) — there is **no** ELFCLASS check here, and the loader accepts both ELFCLASS32 and ELFCLASS64 cubins as far as this entry-level validation is concerned. The 4-byte magic compare is a little-endian `int32_t` against `0x464C457F` (`\x7fELF`):
 
 ```c
-// sub_43E100 -- load_cubin_from_file (Elf32 path)
+// sub_43E100 -- load_cubin_from_file
 void *load_cubin_from_file(const char *path) {
     FILE *fp = fopen(path, "rb");
     if (!fp) return NULL;
@@ -148,21 +148,23 @@ void *load_cubin_from_file(const char *path) {
     size_t nread = fread(buf, 1, size, fp);
     fclose(fp);
 
-    // Validate: correct read length, ELFCLASS32, ELF magic
-    Elf32_Ehdr *ehdr = get_elf32_header(buf);
-    if (nread != size || ehdr->e_ident[EI_CLASS] != 1 || ehdr->e_ident_magic != 0x464C457F) {
+    // Validate: correct read length, little-endian (EI_DATA == 1), ELF magic
+    uint8_t *e_ident = sub_46B590(buf);
+    if (nread != size
+        || e_ident[5] != 1                              // EI_DATA == ELFDATA2LSB (offset 5, 1 byte)
+        || *(int32_t *)e_ident != 0x464C457F) {          // e_ident magic (offset 0, 4 bytes, LE)
         arena_free(buf, 1);
         return NULL;
     }
 
-    // Full structural validation
-    if (!validate_elf_structure(buf, size)) {
+    // Full structural validation (verifies offsets, sizes, section count)
+    if (!sub_43DD30(buf, size)) {
         arena_free(buf, size);
         return NULL;
     }
 
-    // Must be EM_CUDA
-    if (get_elf32_header(buf)->e_machine != 190) {
+    // Must be EM_CUDA: e_machine at offset 0x12 = 18, read as uint16_t LE
+    if (*(uint16_t *)(sub_46B590(buf) + 18) != 190) {
         arena_free(buf, size);
         return NULL;
     }
@@ -172,10 +174,12 @@ void *load_cubin_from_file(const char *path) {
 ```
 
 Key details:
-- The minimum file size threshold is **52 bytes** (the size of an Elf32 header).
+- The minimum file size threshold is **52 bytes**, which happens to equal the size of an Elf32 header but is a buffer-size floor, not a class check. Elf64 headers (64 bytes) trivially clear it. The actual class discrimination happens later inside `sub_43DD30`.
+- The endianness gate reads `e_ident[EI_DATA]` (offset 5, 1 byte) and requires `1` (`ELFDATA2LSB`). Big-endian cubins are rejected here — there are no big-endian SM targets and the rest of nvlink reads multibyte ELF fields as native little-endian without byteswap.
+- The 4-byte magic comparison is a native little-endian `int32_t` against `0x464C457F`; the bytes on disk are `7F 45 4C 46`.
 - Memory is allocated from the linker's arena allocator, not `malloc`.
-- `sub_43DD30` (`validate_elf_structure`) performs a thorough check of all section headers and program headers, verifying that every offset+size pair falls within the buffer bounds.
-- The `e_machine == 190` check is the final gate.
+- `sub_43DD30` (`validate_elf_structure`) performs a thorough check of all section headers and program headers, verifying that every offset+size pair falls within the buffer bounds. It branches on the byte at offset 4 (`EI_CLASS`) to pick the Elf32 or Elf64 layout.
+- The `e_machine == 190` check is the final gate; the field is at offset `0x12` (decimal 18) and is read as a 2-byte little-endian word.
 
 ## Structural Validation: sub\_43DD30
 
