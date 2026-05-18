@@ -370,8 +370,8 @@ for each deferred_entry in deferred_list:
 
     section.flags = (section.flags & 0xFC) | 0x01    // mark dead
     list_free(entry.callee_list)                      // entry+16
-    list_free(entry.caller_list)                      // entry+8
-    list_free(entry.attribute_list)                    // entry+40
+    list_free(entry.alt_call_list)                    // entry+8  (external/indirect callee edges)
+    list_free(entry.caller_list)                      // entry+40
     arena_free(entry)
     callgraph[idx] = NULL
 
@@ -486,8 +486,8 @@ function remove_dead_function(ctx, entry, cg_index, section):
 
     # ── Cleanup callgraph entry ──────────────────────────────────
     list_free(entry.callee_list)                     // entry+16
-    list_free(entry.caller_list)                     // entry+8
-    list_free(entry.attribute_list)                   // entry+40
+    list_free(entry.alt_call_list)                   // entry+8  (external/indirect callee edges)
+    list_free(entry.caller_list)                     // entry+40
     arena_free(entry)
     callgraph[cg_index] = NULL
 ```
@@ -542,10 +542,12 @@ The callgraph vector at `ctx+408` holds one node per function. Each node is 64 b
    offset   field                 type   notes
    ──────   ───────────────────   ─────  ─────────────────────────────────────
       +0    section_id            i32    negative => from ctx+352, positive => ctx+344
-      +8    callee_list head      ptr    outgoing edges, linked via node+0
-     +16    callee_list tail      ptr    used by append path in merge phase
-     +24    caller_list head      ptr    reverse edges (populated as callees are added)
-     +40    attribute_list / r-l  ptr    used for caller_list in Phase 2 check
+      +4    forwarding_idx        i32    set by sub_44BA60 (address-taken targets)
+      +8    alt_call_list head    ptr    external/indirect callee edges built by sub_44BAA0
+     +16    callee_list head      ptr    outgoing direct calls; each node holds callee section_id at node+8
+     +32    fn_ptr_edge_list      ptr    fn-pointer/address-taken edges built by sub_44BF90
+     +40    caller_list head      ptr    incoming edges; non-NULL ⇒ "has callers" (Test 2);
+                                        returned by sub_44C740 (callgraph_get_callers)
      +50    address_taken         u8     nonzero if a fn-pointer reloc observed
 ```
 

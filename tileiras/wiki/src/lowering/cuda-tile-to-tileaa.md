@@ -149,15 +149,15 @@ The operand `%wide` flows through the source materialiser when its definition ha
 
 ```mlir
 // Before
-%r = cuda_tile.fma %a, %b, %c { fastmath = #cuda_tile.fastmath<contract> }
+%r = cuda_tile.fma %a, %b, %c { fastmath = #arith.fastmath<contract> }
     : !cuda_tile.tile<8x64xf32>
 
 // After
-%r = nv_tileaa.fma %a, %b, %c { fastmath = #nv_tileaa.fastmath<contract> }
+%r = nv_tileaa.fma %a, %b, %c { fastmath = #arith.fastmath<contract> }
     : tensor<8x64xf32>
 ```
 
-The `fastmath` attribute carries verbatim through the rewrite, but its dialect-qualified attribute kind changes from `#cuda_tile.fastmath<...>` to `#nv_tileaa.fastmath<...>` because each dialect publishes its own attribute. The rewriter looks the source attribute up in the TileAA dialect's attribute registry by short-name match and reconstructs the typed attribute; identical short names with identical underlying values are required to round-trip, otherwise the verifier on the new op rejects the result.
+The `fastmath` attribute carries verbatim through the rewrite. Both dialects accept the shared `arith.fastmath` enum (the same one the MLIR `arith` dialect publishes), so no attribute kind translation is required — the same typed attribute object is re-attached to the rewritten op. A later lowering past `nv_tileaa` translates it to `llvm.fastmath` when descending into the LLVM dialect, but at this stage the attribute is dialect-shared rather than dialect-private.
 
 ## Type-Converter Materialisers
 

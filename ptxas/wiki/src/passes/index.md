@@ -198,7 +198,7 @@ All 17 gate passes fall into three categories when activated by a backend overri
 | `AdvPhPreSched` (97) | 113 | A | vtable dispatch | `ScheduleInstructions` [114]; `sub_8D0640` (22 KB) | P5_02 table; string `"ScheduleInstructions"` |
 | `AdvPhAllocReg` (101) | 121 | A | vtable dispatch | `AllocateRegisters` [122] | String `"Please use -knob DUMPIR=AllocateRegisters"` at `sub_9714E0` |
 | `AdvPhPostExpansion` (104) | 126 | A | vtable dispatch | `PostExpansion` [127]; post-RA expansion dispatch | P5_02 table |
-| `AdvPhPostSched` (106) | 129 | C | `sub_C5E830` (7B) | `ctx+1552 = 14`; marks post-scheduling | P0_03 thunk table; adjacent to `PostSchedule` [110] |
+| `AdvPhPostSched` (106) | 129 | C | `sub_C5E830` (7B) | `ctx+1552 = 14`; marks entry into PostSchedule worker (before phase 110) | P0_03 thunk table; adjacent to `PostSchedule` [110] |
 | `AdvPhPostFixUp` (111) | 134 | A | vtable dispatch | `PostFixUp` [140]; `ctx+0x630` vtable+0x148 | P2_14 line 85; target-specific post-fixup |
 | `AdvScoreboardsAndOpexes` (115) | 138 | B | vtable dispatch | `sub_A36360` (52 KB) + `sub_A23CF0` (54 KB); O1+ only | Control word gen + DAG scheduler; -O0 uses phase 139 instead |
 | `AdvPhOriPhaseEncoding` (127) | 152 | C | `sub_C5E0B0` (7B) | `ctx+1552 = 21`; marks encoding boundary | P2_15 disasm; `sub_8C0270` checks `== 19` |

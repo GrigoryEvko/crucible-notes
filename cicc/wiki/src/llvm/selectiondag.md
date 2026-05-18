@@ -688,7 +688,7 @@ The following components appear to be stock LLVM with no NVIDIA modifications:
 | NVPTX `computeKnownBitsForTargetNode` | `sub_33D4EF0` | 114KB | -- |
 | NVPTX inline asm constraint handler | `sub_338BA40` | 79KB | -- |
 | `SelectionDAGBuilder::visitInlineAsm` | `sub_2079C70` | 83KB | -- |
-| NVPTX `visitNVVMTexSurf` handler | `sub_2077400` | 20KB | -- |
+| NVPTX `nvvm_texsurf_handle` lowering | `sub_2077400` | 20KB | -- |
 | NVPTX argument passing / type coercion | `sub_2072590` | 38KB | -- |
 | `NVPTXDAGToDAGISel::Select` driver | `sub_3090F90` | 91KB | -- |
 | Address space / memory operation support | `sub_33067C0` | 74KB | -- |

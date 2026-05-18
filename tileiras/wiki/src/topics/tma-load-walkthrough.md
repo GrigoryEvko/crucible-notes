@@ -63,7 +63,7 @@ There is no descriptor, no mbarrier, no transaction-byte count, and no TMA menti
        : !nv_tileaa.memref<?x?xbf16>
 
 %a_tile, %tok_a = nv_tileaa.tiled_load %off_a, %tok0
-                { atom = #cute_nvgpu.copy_atom<sm90_tma_load_2d_bf16>,
+                { atom = #cute.copy_atom<sm90_tma_load_2d_bf16>,
                   in_bounds = array<i1: true, true>,
                   mem_semantic = #nv_tileaa<mem_semantic relaxed>,
                   mem_scope = #nv_tileaa<mem_scope cluster> }
@@ -91,7 +91,7 @@ The witness is also the gate `LowerTMALoadStoreToAsync` reads in phase 2 of its 
 
 ```mlir
 %a_tile, %tok_a = nv_tileas.tiled_load %off_a, %tok0
-                { atom = #cute_nvgpu.copy_atom<sm90_tma_load_2d_bf16>,
+                { atom = #cute.copy_atom<sm90_tma_load_2d_bf16>,
                   in_bounds = array<i1: true, true>,
                   mem_semantic = #nv_tileas<mem_semantic relaxed>,
                   mem_scope = #nv_tileas<mem_scope cluster> }
@@ -104,7 +104,7 @@ Then the [TileAS TMA and Memops Family](../passes/tileas/tma-and-memops-family.m
 ```mlir
 // ---- descriptor materialized by phase 4
 %desc_a = nv_tileas.make_tiled_tma_desc %a_ref, box = [128, 128],
-          atom = #cute_nvgpu.tma_atom<load_2d_bf16, swizzle_128B>,
+          atom = #cute_nvgpu.atom_copy_field_tmaload<load_2d_bf16, swizzle_128B>,
           tmaIdx = 0 : i32
         : !nv_tileas.tma_desc<128x128xbf16>
 
@@ -115,7 +115,7 @@ Then the [TileAS TMA and Memops Family](../passes/tileas/tma-and-memops-family.m
 // ---- async TMA load: phase 5 emission
 %tok_a = nv_tileas.async.tiled_tma_load
            %desc_a, %a_smem[%bm, %bk], %mbar_a
-           { atom = #cute_nvgpu.tma_atom<load_2d_bf16, swizzle_128B>,
+           { atom = #cute_nvgpu.atom_copy_field_tmaload<load_2d_bf16, swizzle_128B>,
              tx_count = 32768 : i32,
              tmaIdx = 0 : i32 }
          : !nv_tileas.tma_desc<128x128xbf16>,

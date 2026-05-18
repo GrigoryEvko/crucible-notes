@@ -214,6 +214,6 @@ Pre-RA scheduling cannot enforce any of these because they all reference physica
 | `sub_1908D90` | -- | Backend C `RBTScheduleOrchestrator` -- modern sm_80+ post-schedule, also installed at sub-target vtable +0x90 | HIGH |
 | `sub_C5FFF0` | -- | `DispatchPostSchedule` -- parallel side-channel dispatcher (NOT phase 110's call path) | CERTAIN |
 | `sub_C5E830` | 7 B | `AdvancedPhasePostSched` Type-C thunk -- writes `ctx+1552 = 14` immediately before phase 110 runs | CERTAIN |
-| `sub_C5E390` | 11 B | `AdvancedPhasePostFixUp` Type-C thunk -- writes `ctx+1552 = 20` immediately after phase 110 returns | CERTAIN |
+| `sub_C5E390` | 11 B | `AdvancedPhasePostFixUp` Type-C thunk -- writes `ctx+1552 = 20` before the post-fixup worker (phase 140 `PostFixUp`) enters | CERTAIN |
 | `off_22BEA90` | 24 B | Phase-110 vtable: `{ sub_C60640, sub_C5E3C0, sub_C5E3D0 }` | CERTAIN |
 | `off_22BD0C0[133]` | -- | Static name table entry: `"PostSchedule"` at `0x22BCD47` | CERTAIN |

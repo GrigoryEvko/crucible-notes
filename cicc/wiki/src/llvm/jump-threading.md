@@ -399,20 +399,19 @@ The core algorithm is unmodified from upstream. NVIDIA's changes are configurati
 | Function | Address | Size | Role |
 |---|---|---|---|
 | `JumpThreadingPass::run` (main pass body) | `sub_2DC4260` | 12,932 bytes | -- |
-| Block cloning engine (`duplicateBlock`) | `sub_2DC22F0` | 2,797 bytes | -- |
+| Block cloning engine | `sub_2DC22F0` | 2,797 bytes | -- |
 | CFG finalization after threading | `sub_2DC30A0` | 1,094 bytes | -- |
 | Single-instruction threading | `sub_2DC37C0` | 2,288 bytes | -- |
-| `tryToUnfoldSelect` | `sub_2DC40B0` | 420 bytes | -- |
+| Select unfolding helper | `sub_2DC40B0` | 420 bytes | -- |
 | SmallVector append/copy for instruction map | `sub_2DC1F40` | 349 bytes | -- |
-| `LVI::getPredicateAt` | `sub_11F3070` | -- | -- |
-| `evaluateConditionOnEdge` | `sub_DFABC0` | -- | -- |
-| `getConstantOnEdge` | `sub_988330` | -- | -- |
-| `isImpliedCondition` | `sub_AC4810` | -- | -- |
-| `SimplifyICmpInst` | `sub_AA93C0` | -- | -- |
-| `getBranchCondition` | `sub_981210` | -- | -- |
-| `BranchInst::getCondition` | `sub_B43CB0` | -- | -- |
-| `BranchInst::Create` (conditional) | `sub_B4C9A0` | -- | -- |
-| `BranchInst::Create` (unconditional) | `sub_B4C8F0` | -- | -- |
+| LazyValueInfo predicate query | `sub_11F3070` | -- | -- |
+| Edge condition evaluator | `sub_DFABC0` | -- | -- |
+| Edge constant lookup helper | `sub_988330` | -- | -- |
+| Implied-condition checker | `sub_AC4810` | -- | -- |
+| ICmp simplifier | `sub_AA93C0` | -- | -- |
+| Branch-condition getter | `sub_981210` | -- | -- |
+| Conditional-branch builder | `sub_B4C9A0` | -- | -- |
+| Unconditional-branch builder | `sub_B4C8F0` | -- | -- |
 | `PHINode::addIncoming` | `sub_B99FD0` | -- | -- |
 | `PHINode::Create` | `sub_D5C860` | -- | -- |
 | `SplitBlockAndInsertIfThen` | `sub_F36990` | -- | -- |
@@ -425,8 +424,8 @@ The core algorithm is unmodified from upstream. NVIDIA's changes are configurati
 | `PHINode::getIncomingValueForBlock` | `sub_AD69F0` | -- | -- |
 | LoopInfo pass lookup | `sub_C959E0` | -- | -- |
 | Predicate implies branch check | `sub_B532B0` | -- | -- |
-| `ConstantExpr::getICmp` or create threaded edge | `sub_B52EF0` | -- | -- |
-| `CloneBasicBlock` or wire new block | `sub_92B530` | -- | -- |
+| Threaded-edge builder | `sub_B52EF0` | -- | -- |
+| `CloneBasicBlock` | `sub_92B530` | -- | -- |
 | `CloneBasicBlock` (alternate path) | `sub_929DE0` | -- | -- |
 
 ## Cross-References

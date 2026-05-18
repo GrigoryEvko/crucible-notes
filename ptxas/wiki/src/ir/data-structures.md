@@ -384,13 +384,13 @@ Known values and their associated phases:
 | 11 | `sub_C5EA80` | After SetAfterLegalization (phase 95) region |
 | 12 | `sub_C5E980` | Post-legalization |
 | 13 | `sub_13B5C80` | ISel/scheduling |
-| 14 | `sub_C5E830` | Post-scheduling |
+| 14 | `sub_C5E830` | Before PostSchedule worker (phase 106 `AdvancedPhasePostSched` Type-C thunk) |
 | 15 | `sub_C5E7C0` | After OptimizeHotColdInLoop (phase 108) |
 | 16 | `sub_C5E6E0` | Post-regalloc |
 | 17 | `sub_C5E5A0` | Mercury/codegen |
 | 18 | `sub_C5E4D0` | Post-Mercury |
 | 19 | `sub_C5E440` | Late codegen |
-| 20 | `sub_C5E390` | Post-RA cleanup |
+| 20 | `sub_C5E390` | Before PostFixUp worker (phase 111 `AdvancedPhasePostFixUp` Type-C thunk) |
 | 21 | `sub_C5E0B0` | Final pipeline stage |
 
 Readers of downstream passes use `*(ctx+1552) > N` to gate behavior that should only run after a certain pipeline point. For example, the rematerialization cross-block pass checks `*(ctx+1552) > 4` to enable its second-pass mode.

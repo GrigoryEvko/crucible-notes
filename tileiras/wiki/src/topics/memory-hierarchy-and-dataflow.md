@@ -16,7 +16,7 @@ Every NVPTX address space corresponds to a distinct hardware structure with its 
 |---|---|---:|---|---|---|---|
 | Global | `.global` | 1 | `#gpu.address_space<global>` | tens of GB | ~3 TB/s | device-wide |
 | Shared | `.shared` | 3 | `#gpu.address_space<workgroup>` | 228 KB / SM | ~20 TB/s | CTA |
-| Distributed Shared | `.shared::cluster` | 7 | `#nvvm.address_space<dist_shared>` | `cluster_size × 228 KB` | DSMEM network | cluster |
+| Distributed Shared | `.shared::cluster` | 7 | `#nvvm.shared_space<cluster>` | `cluster_size × 228 KB` | DSMEM network | cluster |
 | Constant | `.const` | 4 | `#gpu.address_space<uniform_constant>` | 64 KB / module | broadcast | device |
 | Local | `.local` | 5 | (LLVM stack) | bounded by spill budget | GMEM-backed | thread |
 | Tensor (SM100+) | `.tmem` (proxy via `tcgen05`) | 6 | TMEM dialect handle | 256 cols × 128 rows / SM | per-SM | SM |

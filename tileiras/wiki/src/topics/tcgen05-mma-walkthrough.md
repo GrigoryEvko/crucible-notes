@@ -64,7 +64,7 @@ There is no TMEM, no kind word, no CTA-group selector, no collector mode, and no
 
 ```mlir
 %acc_out = nv_tileaa.dot %a_tile, %b_tile, %acc_in
-         { atom         = #cute_nvgpu.mma_atom<sm100_umma_m64n128k16_f32_bf16_bf16>,
+         { atom         = #cute.mma_atom<sm100_umma_m64n128k16_f32_bf16_bf16>,
            input_precision = "bf16",
            fastmath     = "contract" }
          : tensor<64x16xbf16>, tensor<16x128xbf16>, tensor<64x128xf32>
@@ -100,14 +100,14 @@ Three things are *not* yet visible at this stage. The accumulator residency is s
 
 // ---- tcgen05.mma with packed kind word; D is the TMEM accumulator
 %tok_mma = nv_tileas.umma %tmem_d, %a_desc, %b_desc
-           { kind            = #cute_nvgpu.tcgen05_mma_kind<f16>,
-             cta_group       = #cute_nvgpu.tcgen05_cta_group<cta1>,
-             scale_vec_size  = #cute_nvgpu.tcgen05_scale_vec<1X>,
+           { kind            = #nvvm.tcgen05_mma_kind<f16>,
+             cta_group       = #nvvm.tcgen05_group<cta1>,
+             scale_vec_size  = #nvvm.tcgen05_mma_scale_vec<1X>,
              scale_input_acc = false,
              block_scale     = false,
-             collector_a     = #cute_nvgpu.tcgen05_collector<fill>,
+             collector_a     = #nvvm.tcgen05_mma_collectorop<fill>,
              ashift          = false,
-             atom            = #cute_nvgpu.mma_atom<sm100_umma_m64n128k16_f32_bf16_bf16> }
+             atom            = #cute.mma_atom<sm100_umma_m64n128k16_f32_bf16_bf16> }
          : !nv_tileas.tmem<64x128xf32>,
            !nv_tileas.umma_smem_desc<64x16xbf16>,
            !nv_tileas.umma_smem_desc<16x128xbf16>
@@ -115,7 +115,7 @@ Three things are *not* yet visible at this stage. The accumulator residency is s
 
 // ---- TMEM read-back when the accumulator is needed by the epilogue
 %acc_reg = nv_tileas.tmem_load %tmem_d
-         { shape = #cute_nvgpu.tcgen05_ldst_shape<m64n8x32b> }
+         { shape = #nvvm.tcgen05_ldst_shape<m64n8x32b> }
          : !nv_tileas.tmem<64x128xf32> -> tensor<64x128xf32>
 
 // ---- TMEM deallocation, sunk to function exit
@@ -157,9 +157,9 @@ The walkthrough above uses A as an SMEM descriptor — the simpler residency. Th
         : !nv_tileas.tmem<64x16xbf16>
 
 nv_tileas.umma_smem_to_tmem_cp %smem_a, %tmem_a
-    { shape = #cute_nvgpu.tcgen05_cp_shape<m64n128b>,
-      multicast = #cute_nvgpu.tcgen05_cp_multicast<warpx2_01_23>,
-      src_fmt = #cute_nvgpu.tcgen05_cp_src_fmt<b32x2> }
+    { shape = #nvvm.tcgen05_cp_shape<m64n128b>,
+      multicast = #nvvm.tcgen05_cp_multicast<warpx2_01_23>,
+      src_fmt = #nvvm.tcgen05_cp_src_fmt<b32x2> }
   : !nv_tileas.smem<64x16xbf16>, !nv_tileas.tmem<64x16xbf16>
 ```
 

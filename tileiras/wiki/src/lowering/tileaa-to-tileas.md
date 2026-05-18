@@ -70,8 +70,8 @@ The arith populator runs first because the math populator falls back to arith fo
 The shared rewrite shape for a memory op is:
 
 ```text
-input  : %t = nv_tileaa.tiled_load %src, layout = #layout {copy_atom = #cute_nvgpu.copy_atom<...>}
-output : %t = nv_tileas.tiled_load %src, layout = #layout {copy_atom = #cute_nvgpu.copy_atom<...>}
+input  : %t = nv_tileaa.tiled_load %src, layout = #layout {copy_atom = #cute.copy_atom<...>}
+output : %t = nv_tileas.tiled_load %src, layout = #layout {copy_atom = #cute.copy_atom<...>}
 ```
 
 The witness attribute carries verbatim across the rewrite; the next stage ([TileAS to LLVM](tileas-to-llvm.md#tile-memory-and-descriptor-lowering)) picks the concrete hardware primitive (`cp.async`, `cp.async.bulk`, `tcgen05.cp`, `ldmatrix`, `stmatrix`) from it.
@@ -113,7 +113,7 @@ The TileAA `tiled_load` already carries a `CopyAtomAttrInterface` witness chosen
 ```mlir
 // Before
 %v, %t1 = nv_tileaa.tiled_load %mr_a[%i, %k], %t0
-    { atom = #cute_nvgpu.copy_atom<sm90_tma_load_2d>,
+    { atom = #cute.copy_atom<sm90_tma_load_2d>,
       in_bounds = array<i1: true, true>,
       mem_semantic = #nv_tileaa<mem_semantic relaxed>,
       mem_scope = #nv_tileaa<mem_scope cluster>,
@@ -123,7 +123,7 @@ The TileAA `tiled_load` already carries a `CopyAtomAttrInterface` witness chosen
 
 // After
 %v, %t1 = nv_tileas.tiled_load %mr_a[%i, %k], %t0
-    { atom = #cute_nvgpu.copy_atom<sm90_tma_load_2d>,
+    { atom = #cute.copy_atom<sm90_tma_load_2d>,
       in_bounds = array<i1: true, true>,
       mem_semantic = #nv_tileas<mem_semantic relaxed>,
       mem_scope = #nv_tileas<mem_scope cluster>,
@@ -134,7 +134,7 @@ The TileAA `tiled_load` already carries a `CopyAtomAttrInterface` witness chosen
 
 The view-typed operand changes shape: `nv_tileaa.memref<?x?xf16, 1>` becomes `nv_tileaa.tiled_view<128x32xf16>` because TileAS represents the access through the static tile box rather than the parent dynamic memref. The `tiled_view` type itself is declared in the alias-aware dialect and survives the rewrite untouched; only the producer mnemonic changes. The TypeConverter materialises a `nv_tileas.view` operation upstream so the rewritten `tiled_load` consumes an already-typed view; the materialiser is not visible at the call site of the rewrite, but its output feeds the operand slot during partial conversion.
 
-The `mem_semantic` and `mem_scope` enum attributes change their dialect prefix but retain identical discriminant values. The `CopyAtomAttrInterface` witness is the only attribute that is dialect-neutral — `#cute_nvgpu.copy_atom<sm90_tma_load_2d>` carries through unchanged because the cute_nvgpu dialect publishes the witness for both consumers.
+The `mem_semantic` and `mem_scope` enum attributes change their dialect prefix but retain identical discriminant values. The `CopyAtomAttrInterface` witness is the only attribute that is dialect-neutral — `#cute.copy_atom<sm90_tma_load_2d>` carries through unchanged because the cute dialect publishes the witness interface for both consumers (the SM-specific field attributes that implement it live in cute_nvgpu).
 
 ### `dot` Dispatch by Compute Capability
 

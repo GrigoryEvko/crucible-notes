@@ -271,7 +271,7 @@ The `--emit-optix-ir` mode (triggered by OptiX runtime compilation with device t
 | `EarlyMachineLICMPass` | (in codegen pipeline) | -- | Pre-RA machine-level LICM |
 | `MachineLICMPass` | (in codegen pipeline) | -- | Post-RA machine-level LICM |
 | `LoopSinkPass` | pipeline parser entry 271 | -- | Inverse of LICM hoist -- sinks unprofitable hoists |
-| `NVVMLowerBarriers` | `sub_1C98160` | -- | Runs between LICM invocations; lowers barrier intrinsics |
+| NVVM barrier-lowering pass | `sub_1C98160` | -- | Runs between LICM invocations; lowers barrier intrinsics |
 | NVVM AA query | `sub_146F1B0` | -- | Address-space-based NoAlias determination used by MemorySSA |
 | MemorySSA clobber walk | `sub_1A6AFB3` | -- | Walker that LICM uses to determine load hoistability |
 | Loop-invariant check | `sub_1C51340` | -- | Utility for checking if a value is loop-invariant |

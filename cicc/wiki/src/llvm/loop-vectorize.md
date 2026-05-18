@@ -324,15 +324,15 @@ All diagnostic strings are embedded in the binary with `OptimizationRemarkAnalys
 | `canVectorize()` -- pre-check | `sub_31A91F0` | -- | -- |
 | `canVectorize()` -- full check | `sub_31AF060` | -- | -- |
 | `getBestPlanFor(VF)` -- VPlan lookup | `sub_2BF1320` | -- | -- |
-| `cloneVPlan()` | `sub_2BF7CB0` | -- | -- |
-| `mergeVPlans()` -- main + epilogue merge | `sub_2AB0350` | -- | -- |
+| VPlan clone helper | `sub_2BF7CB0` | -- | -- |
+| Main+epilogue VPlan merge helper | `sub_2AB0350` | -- | -- |
 | `buildInterleaveGroupRecipes()` | `sub_2C06CE0` | -- | -- |
 | VPlan cost annotation pass | `sub_2C2E3C0` | -- | -- |
 | VPlan simplification / recipe combining | `sub_2C32950` | -- | -- |
 | VPlan legality re-verification | `sub_2C2A390` | -- | -- |
 | `getSmallBestKnownTC()` -- trip count upper bound | `sub_2AA7EC0` | -- | -- |
-| `tryToBuildRecipesForVF()` -- per-VF body builder | `sub_2AA9E60` | -- | -- |
-| `finalizeRecipesForVF()` -- scaling/widening | `sub_2AD9850` | -- | -- |
+| Per-VF recipe builder | `sub_2AA9E60` | -- | -- |
+| Recipe scaling/widening finalizer | `sub_2AD9850` | -- | -- |
 | `TTI::getMaxInterleaveFactor()` | `sub_DFB120` | -- | -- |
 | `TTI::getRegisterBitWidth(Vector)` | `sub_DFE640` | -- | -- |
 | `TTI::supportsScalableVectors()` | `sub_DFE610` | -- | -- |

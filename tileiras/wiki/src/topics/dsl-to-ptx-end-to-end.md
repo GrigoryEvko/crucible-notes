@@ -129,13 +129,13 @@ nv_tileaa.func @gemm(%A: !llvm.ptr<1>, %B: !llvm.ptr<1>,
     %off_a = nv_tileaa.addptr %a_ref, [%bm, %k]
            : !nv_tileaa.memref<?x?xf16>
     %a, %tok_a = nv_tileaa.tiled_load %off_a, %tok0
-               { copy_atom = #cute_nvgpu.copy_atom<sm90_tma_load_2d_f16> }
+               { copy_atom = #cute.copy_atom<sm90_tma_load_2d_f16> }
                : !nv_tileaa.memref<?x?xf16> -> tensor<128x64xf16>,
                  !nv_tileaa.mem_token
     %off_b = nv_tileaa.addptr %b_ref, [%bn, %k]
            : !nv_tileaa.memref<?x?xf16>
     %b, %tok_b = nv_tileaa.tiled_load %off_b, %tok_a
-               { copy_atom = #cute_nvgpu.copy_atom<sm90_tma_load_2d_f16> }
+               { copy_atom = #cute.copy_atom<sm90_tma_load_2d_f16> }
                : !nv_tileaa.memref<?x?xf16> -> tensor<128x64xf16>,
                  !nv_tileaa.mem_token
     %acc_n = nv_tileaa.dot %a, %b, %acc
@@ -147,7 +147,7 @@ nv_tileaa.func @gemm(%A: !llvm.ptr<1>, %B: !llvm.ptr<1>,
 
   %off_c = nv_tileaa.addptr %c_ref, [%bm, %bn] : !nv_tileaa.memref<?x?xf32>
   %c_tile, %tok_c = nv_tileaa.tiled_load %off_c, %tok0
-                  { copy_atom = #cute_nvgpu.copy_atom<sm90_tma_load_2d_f32> }
+                  { copy_atom = #cute.copy_atom<sm90_tma_load_2d_f32> }
                   : !nv_tileaa.memref<?x?xf32> -> tensor<128x128xf32>,
                     !nv_tileaa.mem_token
 
@@ -155,7 +155,7 @@ nv_tileaa.func @gemm(%A: !llvm.ptr<1>, %B: !llvm.ptr<1>,
 
   %off_d = nv_tileaa.addptr %d_ref, [%bm, %bn] : !nv_tileaa.memref<?x?xf32>
   %tok_s = nv_tileaa.tiled_store %off_d, %d_tile, %tok_c
-         { copy_atom = #cute_nvgpu.copy_atom<sm90_tma_store_2d_f32> }
+         { copy_atom = #cute.copy_atom<sm90_tma_store_2d_f32> }
          : tensor<128x128xf32>, !nv_tileaa.memref<?x?xf32>, !nv_tileaa.mem_token
 
   nv_tileaa.return
@@ -171,10 +171,10 @@ Three changes carry the most weight downstream. Tile types are now plain MLIR `t
 ```mlir
 nv_tileas.func @gemm(...) attributes { nv_tileaa.kernel_spec = #ks } {
   %desc_a = nv_tileas.make_tiled_tma_desc %a_ref, box = [128, 64],
-            atom = #cute_nvgpu.tma_atom<load_2d_f16, swizzle_128B>
+            atom = #cute_nvgpu.atom_copy_field_tmaload<load_2d_f16, swizzle_128B>
           : !nv_tileas.tma_desc<128x64xf16>
   %desc_b = nv_tileas.make_tiled_tma_desc %b_ref, box = [128, 64],
-            atom = #cute_nvgpu.tma_atom<load_2d_f16, swizzle_128B>
+            atom = #cute_nvgpu.atom_copy_field_tmaload<load_2d_f16, swizzle_128B>
           : !nv_tileas.tma_desc<128x64xf16>
 
   %smem_a = nv_tileas.alloc_tensor { stages = 3 : i32 }
@@ -216,7 +216,7 @@ nv_tileas.func @gemm(...) attributes { nv_tileaa.kernel_spec = #ks } {
         %b_stage = nv_tileas.view %smem_b, %iter
                  : !nv_tileas.smem<128x64xf16>
         %acc_w = nv_tileas.dot %a_stage, %b_stage, %acc
-               { atom = #cute_nvgpu.mma_atom<sm90_wgmma_m64n128k16_f32_f16_f16> }
+               { atom = #cute.mma_atom<sm90_wgmma_m64n128k16_f32_f16_f16> }
                : !nv_tileas.smem<128x64xf16>, !nv_tileas.smem<128x64xf16>,
                  tensor<128x128xf32> -> tensor<128x128xf32>
         nv_tileas.async.pipeline.yield %acc_w : tensor<128x128xf32>
@@ -233,11 +233,11 @@ nv_tileas.func @gemm(...) attributes { nv_tileaa.kernel_spec = #ks } {
 
   // epilogue: load C, add, store D (TMA store)
   %c_tile = nv_tileas.tiled_load %c_ref, [%bm, %bn]
-          { atom = #cute_nvgpu.copy_atom<sm90_ldg_128_f32> }
+          { atom = #cute.copy_atom<sm90_ldg_128_f32> }
           : tensor<128x128xf32>
   %d_tile = arith.addf %acc_out, %c_tile : tensor<128x128xf32>
   %desc_d = nv_tileas.make_tiled_tma_desc %d_ref, box = [128, 128],
-            atom = #cute_nvgpu.tma_atom<store_2d_f32, swizzle_128B>
+            atom = #cute_nvgpu.atom_copy_field_tmastore<store_2d_f32, swizzle_128B>
           : !nv_tileas.tma_desc<128x128xf32>
   nv_tileas.async.tiled_tma_store %desc_d, [%bm, %bn], %d_tile
   nv_tileas.return
