@@ -240,7 +240,7 @@ After divide the result layout has the form `((tile_M, tile_N), rest_M, rest_N)`
 
 Result layout: `((64, 64), 2, 2) : ((1, 128), 64, 8192)`. Size: `64 * 64 * 2 * 2 = 16384 = 128 * 128`. The verifier checks the divisibility predicate: `128 % 64 == 0` on both axes; the rank table `(rank(layout)=2, rank(tile)=2 -> rank(result) in {2, 3})` from the [Tiled partition verifier](#tiled-partition-verifier) is satisfied with `rank(result) = 3`.
 
-A failure case, `tile = (40, 64)`: the divisibility predicate fails on the M axis (`128 % 40 != 0`); the verifier emits `"expects same size in rank 0 but got srcShape:{128, 128}, dstShape:{40, 64}"` and the op never lowers.
+A failure case, `tile = (40, 64)`: the divisibility predicate fails on the M axis (`128 % 40 != 0`); the verifier emits the format-string prefix `"expects same size in rank 0 but got srcShape: "` followed by the printed source and destination shapes, and the op never lowers.
 
 ### Worked Example: logical divide preserving hierarchy
 
@@ -300,7 +300,7 @@ Phase one is the rank cross-check. For `cute.copy(A, C)` and its tiled-partition
 | `2` | `2` or `3` |
 | `3` | `3` |
 
-When the pair falls outside this table the verifier emits, verbatim, `"expects same size in rank N but got srcShape:{...}, dstShape:{...}"`, substituting `N` for the rank that disagreed and filling the curly braces with the printed shape tuples. The diagnostic keys on the disagreeing rank, not the operand pair, so a rank-3-to-rank-1 failure reports the first rank that cannot be reconciled rather than the overall pair.
+When the pair falls outside this table the verifier emits the format-string prefix `"expects same size in rank"` followed by the disagreeing rank, then `" but got srcShape: "` and the printed source and destination shape tuples. The diagnostic keys on the disagreeing rank, not the operand pair, so a rank-3-to-rank-1 failure reports the first rank that cannot be reconciled rather than the overall pair.
 
 Phase two runs only when the op carries the optional `pred` operand. The predicate is a tile-shaped mask that suppresses out-of-bounds lanes inside a partitioned copy, and it must share the same memref-shaped envelope as the data tiles. Concretely: `pred` must be a `CuteMemRefType`, its memory space must be one of `rmem`, `smem`, `gmem`, or `generic`, and its layout's swizzle component must be the identity. Bit-reversal swizzles are rejected here because a swizzled predicate would reorder mask bits relative to the data lanes they gate, breaking the per-lane correspondence the lowering relies on. On failure the verifier emits the matching diagnostic verbatim: `"pred must be a CuteMemRefType"`, `"pred memory space invalid"`, or the swizzle-identity message.
 

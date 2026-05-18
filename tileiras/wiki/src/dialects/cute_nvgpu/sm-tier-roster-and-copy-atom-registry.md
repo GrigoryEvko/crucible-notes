@@ -109,7 +109,7 @@ The `x1`/`x2`/`x4` suffix is the number of 8x8 sub-tiles the atom fetches in one
 | `atom.simt_async_copy<16>` | `gmem` | `smem` | 16-byte element | 128 bits | 1 i128-equivalent per lane | `cp.async.cg.shared.global` (16 bytes; bypass L1) |
 | `atom.ldsm<m8n8.*>` | `smem` | `rmem` | inherited from SM75 | 16 bits | inherited | `ldmatrix.sync.aligned.*` |
 
-The 4/8/16 vector widths are the only legal `cp.async` granularities; the verifier rejects any other width with `"unsupported cp.async vector width"`. The 16-byte variant uses the `cg` cache-policy (bypass L1) because the L1 cache cannot satisfy a 128-bit single-instruction store; the 4- and 8-byte variants use `ca` (cache-all). Lowering chooses the cache policy from the atom's width alone — there is no per-op cache hint.
+The 4/8/16 vector widths are the only legal `cp.async` granularities; any other width is rejected before lowering — the binary stores no dedicated diagnostic for the width-out-of-range case, so the failure surfaces through the standard `'{0}' cannot vectorize copy to {1} elements (static strides must be 1)` / `'{0}' cannot vectorize copy to {1} elements (static strides must match)` template that the copy-vectorization helper emits for any vectorisation failure. The 16-byte variant uses the `cg` cache-policy (bypass L1) because the L1 cache cannot satisfy a 128-bit single-instruction store; the 4- and 8-byte variants use `ca` (cache-all). Lowering chooses the cache policy from the atom's width alone — there is no per-op cache hint.
 
 ### SM90 TMA atom family
 
@@ -220,8 +220,8 @@ Every MMA atom registers one verifier through the dialect. The verifier emits ve
 
 ### Layout-shape verifier (all UMMA / SM90 / SM100 variants)
 
-- `"expects Mma atom layout of {0}"` — strict equality between the op's declared per-operand layout and the canonical layout the atom's traits table reconstructs. The `{0}` slot prints the canonical reference layout.
-- `"expects static and no scaled basis layout for {0}"` — the stride basis must be static integer; scaled-basis layouts are rejected because the descriptor packer cannot encode them.
+- `"expects Mma atom layout of "` (binary string, with the canonical reference layout streamed in after the trailing space) — strict equality between the op's declared per-operand layout and the canonical layout the atom's traits table reconstructs.
+- `"expects static and no scaled basis layout for"` (printed layout follows) — the stride basis must be static integer; scaled-basis layouts are rejected because the descriptor packer cannot encode them.
 
 ### Element-type ladder (UMMA family)
 
@@ -247,7 +247,7 @@ UMMA B is always SMEM-descriptor; A is either an RMEM `memref` or an SMEM-descri
 ### Non-UMMA shared verifier (SM70 / 75 / 80 / 89)
 
 - `"expects all mma operands to have element type"`
-- `"expects rmem for input operands, but got A: {0}, B: {1}, D: {2}"`
+- `"expects rmem for input operands, but got A: "` (binary string; printed A/B/D operand types follow)
 - `"expects operand a with element type "` (followed by expected and actual types)
 
 The non-UMMA path enforces the simpler rule that A, B, and D all share one element type and all live in register memory. This is the only path SM70-89 use.

@@ -121,7 +121,7 @@ The convention is used across the entire TileAS pipeline. The list below covers 
 | Pass | Trigger | Verbatim diagnostic |
 |---|---|---|
 | `TileASMaterializeAsync` (D08) | conflicting producer-like ops on one pipeline | `"there are two `produce-one-like` operations using different instructions to generate data into the same pipeline. It's a bug of MaterializeAsync Pass."` |
-| `TileASMaterializeConvertLayout` (D09) | target-spec lookup failure | `"failed to query target spec for convert_layout"` |
+| `TileASMaterializeConvertLayout` (D09) | layout-conversion decomposition failure | `"failed to decompose the convert_layout"` |
 | `TileASMaterializeSchedule` (D10) | missing ScheduleAnalysis or alias contract violation | `"Alias is not expected here."` |
 | `TileASUnspecializedPipeline` (D11) | non-pipelinable loop shape | `"Failed to pipeline loop"` |
 | `TileASOptimizePipelineRegion` (D13) | reads D11's bit; never sets its own | (skips work, no diagnostic) |

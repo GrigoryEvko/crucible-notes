@@ -50,11 +50,12 @@ The diagnostics this routine emits:
 
 | Diagnostic | Cause |
 |---|---|
-| `"pipeline regions must end with 'nv_tileas.async.pipeline.yield'"` | A pipeline region's terminator is the wrong op kind. |
-| `"expects region arguement types to match with producer types"` (typo preserved) | Region block-argument types disagree with the producer-type list. |
-| `"expects region result types to be match with operation result types"` (phrasing preserved) | Yield operand types disagree with the parent's result types. |
-| `"branch arms must yield matching pipeline iterator types"` | Two `scf.if` arms yield iterators with different payload types. |
-| `"consumer_idx out of range for consumer group"` | A `consumer_wait` or `consumer_read` carries an index outside the consumer group's bounds. |
+| `"expects regions to end with '"` (binary stores the closing op name separately) | A pipeline region's terminator is the wrong op kind; the trailing op-name fragment is appended at print time. |
+| `"expects region arguement types to match with producer types ["` (typo preserved, trailing bracket opens the printed type list) | Region block-argument types disagree with the producer-type list. |
+| `"expects region result types to be match with operation result types ["` (phrasing preserved, trailing bracket opens the printed type list) | Yield operand types disagree with the parent's result types. |
+| `"expects region yield types to match with result types ["` | A region's yield operand types disagree with the parent op's result types. |
+| `"expected 'consumer_idx' less than the number of consumer "` | A `consumer_wait` or `consumer_read` carries an index outside the consumer group's bounds. |
+| `"expected 'consumer_idx' in token to be the same as 'consumer_idx' attribute of this operation "` | The token operand and the op's `consumer_idx` attribute disagree. |
 
 ## Region-Op Verifier Template
 
@@ -147,19 +148,17 @@ LogicalResult verify_tma_load(TmaLoadOp op) {
 }
 ```
 
-The TMA diagnostic surface:
+The TMA diagnostic surface (verbatim strings carried by the binary):
 
 | Diagnostic | Cause |
 |---|---|
-| `"expected a TMA load atom"` | The op's `atom` attribute references a non-load atom on a load op. |
-| `"expected a TMA store atom"` | Same for a store op. |
-| `"expected a TMA reduce atom"` | Same for a TMA atomic-RMW op. |
-| `"TMA box dimensions do not match atom box dimensions"` | The op's box-dim count differs from the atom's. |
-| `"TMA descriptors require unit element stride"` | A non-unit element stride was passed to a TMA descriptor builder. |
-| `"shared-memory layout is not TMA-compatible"` | The shared-memory layout does not match a swizzle-and-stride combination the TMA descriptor accepts. |
-| `"TMA descriptor capture references a non-representable value"` | The descriptor captures an SSA value the descriptor ABI cannot represent (for example, a value defined inside a structured-control region). |
+| `"tma box-dim and copy atom box-dim mismatch"` | The op's box-dim count differs from the atom's. |
+| `"tma leading box-dim bit-width is not 16 bytes aligned"` | The leading box-dim of a TMA descriptor is not a multiple of 16 bytes. |
+| `"TmaLoad only support zero padding now"` | A non-zero padding value was supplied to a TMA load. |
+| `"expected MakeTiledTMADescOp not depends on scf"` | A descriptor builder captures an SSA value defined inside a structured-control region. |
+| `"expect lower MakeTiledTMADescOp"` | A `make_tiled_tma_desc` op survived past the lowering point that should have erased it. |
 
-Descriptor capture is deliberately conservative. A descriptor moved to the host or passed through the descriptor ABI must not depend on values the ABI cannot represent.
+Descriptor capture is deliberately conservative. A descriptor moved to the host or passed through the descriptor ABI must not depend on values the ABI cannot represent — that constraint is enforced by the `"expected MakeTiledTMADescOp not depends on scf"` check above.
 
 ## Tiled Memop Verification
 
@@ -213,25 +212,19 @@ LogicalResult verify_tiled_memop(TiledMemOp op) {
 }
 ```
 
-The tiled-memop diagnostic surface:
+The atomic-RMW diagnostic surface (verified verbatim strings in the binary):
 
 | Diagnostic | Cause |
 |---|---|
-| `"operandSegmentSizes does not match the op schema"` | The segment-size attribute does not partition the operand list correctly. |
-| `"tiled memop token segment must hold zero or one value"` | More than one token slot was supplied for a single tile op. |
-| `"tiled memop coordinate count does not match the view rank"` | The number of coordinate operands disagrees with the view's rank plus the descriptor-specific coordinate count. |
-| `"tiled memop coordinates must be index-typed"` | A coordinate operand has a non-index type. |
-| `"tile shape must match tensor shape"` | The result tile's shape disagrees with the view's tensor shape. |
-| `"tile element type must match view element type"` | The result tile's element type differs from the view's element type. |
-| `"tile dimensions must be positive powers of two"` | A tile dimension is zero, negative, or not a power of two. |
-| `"tile total element count exceeds the implementation limit"` | The product of the tile dimensions exceeds the implementation cap. |
-| `"tiled_load rejects acquire_release semantic"` | A load op carries `acquire_release` memory semantic. |
-| `"tiled_store rejects acquire semantic"` | A store op carries `acquire` or `acquire_release` memory semantic. |
-| `"padding value is allowed only when in-bounds is false"` | A `padding_value` attribute appears alongside `in_bounds = true` on some axis. |
-| `"tiled_atomic_rmw requires rmw_mode"` | The atomic op is missing its `rmw_mode` attribute. |
-| `"tiled_atomic_rmw rejects 8-bit element types"` | An 8-bit element was passed to an atomic op. |
-| `"tiled_atomic_rmw rejects 16-bit integer atomics"` | A 16-bit integer atomic was attempted. |
-| `"16-bit floating atomic supports only add, max, and min"` | A 16-bit floating atomic uses an unsupported mode. |
+| `"requires attribute 'rmw_mode'"` | The atomic op is missing its `rmw_mode` attribute. |
+| `"tiled_atomic_rmw not supported for 8-bit types"` (async variant: `"async_tiled_atomic_rmw not supported for 8-bit types"`) | An 8-bit element was passed to an atomic op. |
+| `"tiled_atomic_rmw not supported for 16-bit integer"` (async variant: `"async_tiled_atomic_rmw not supported for 16-bit integer"`) | A 16-bit integer atomic was attempted. |
+| `"tiled_atomic_rmw for 16-bit float only supports add, max, min operations"` (async variant: `"async_tiled_atomic_rmw for 16-bit float only supports add, max, min operations"`) | A 16-bit floating atomic uses an unsupported mode. |
+| `"tiled_atomic_rmw op cannot use fadd operation, please use add instead for both int and float types"` | An atomic op uses `fadd` where the verifier requires `add`. |
+| `"tiled_atomic_rmw op cannot use xchg operation"` | An atomic op uses an unsupported `xchg` mode. |
+| `"tiled_atomic_rmw's tiled_view type must be produced by block_tile directly"` | The `tiled_view` operand is not the direct SSA result of `block_tile`. |
+
+The companion rules for `tiled_load` and `tiled_store` (segment-size partitioning, coordinate rank match, index-typed coordinates, tile-shape / element-type agreement with the `tiled_view`, positive power-of-two tile dimensions, and the load/store-specific memory-ordering restrictions described above) are enforced by trait verifiers and shared helpers whose user-visible diagnostic spellings are emitted from outside this op family — the strings the binary reserves locally for the tiled-memop family are the load/store-direction analogues of the `tiled_view` provenance rule, namely `"tiled_load's tiled_view type must be produced by block_tile directly"` and `"tiled_store's tiled_view type must be produced by block_tile directly"`. MED confidence: a few of the trait-level diagnostics in the binary are emitted through `printf`-style format helpers and are not stored as one verbatim string, which is why this table does not enumerate them.
 
 Atomic RMW carries stricter element-type rules. Sixteen-bit floating-point atomics are limited to add, max, and min. The path rejects fadd and exchange modes on 16-bit floats so the lowering can pick a supported target operation without ambiguity.
 
@@ -260,10 +253,10 @@ Eleven diagnostics cover five phases. The phase order is fixed: presence, agreem
 | Phase | Diagnostic | Cause |
 |---|---|---|
 | 1 — scale-factor presence | `"fp4 mma should expect scaling factors"` | A type pair landed on the FP4 slot but `sfa` or `sfb` is missing |
-| 2 — scale-factor agreement | `"sfa and sfb element type mismatch"` | `sfa` and `sfb` resolve to different types |
+| 2 — scale-factor agreement | `"expects sfa/sfb element types to be the same"` | `sfa` and `sfb` resolve to different types |
 | 3 — accumulator type | `"expects c type to be Float32"` | The destination/accumulator type is not `Float32` |
 | 4 — K-extent agreement | `"Scale factor vector size mismatch:"` followed by two formatted K extents | A and B disagree on the scale-factor K dimension after vectorisation |
-| 5 — atom catalog | `"unsupported block-scaled mma configuration"` and four narrower variants for FP8, MX-FP4, NVFP4, and 2-CTA selector failures | The resolved `(atom_K, vecSize)` does not appear in the legal catalog |
+| 5 — atom catalog | per-combo expectation diagnostics — `"expects A and B element types are valid 4bit types, such asFloat4E2M1FNType or FloatNV4E0M3FType , when (atom_K=64 && vecSize=16)"`, `"expects sfa/sfb element types to be Float8E8M0FNUType or Float8E4M3FNType when (atom_K=64 && vecSize=16)"`, `"expects A/B element types to be Float4E2M1FNType and sfa/sfb element types to be Float8E8M0FNUType when (atom_K=64 && vecSize=32)"`, plus `"invalid block scale vector size. Expecting 32, but got "` for the vector-size axis, `"mma block scale is not supported by compute capability < sm100"` for the SM-tier gate, and `"Block scale is not supported for f16, tf32, f8f6f4, and i8 types"` / `"Block scale not supported for f16, tf32, f8f6f4 and int8 types"` for the element-type gate | The resolved `(atom_K, vecSize)` does not appear in the legal catalog |
 
 The trailing colon in the phase-4 diagnostic signals that two integers follow on the same line. Reimplementations that print the integers on a separate line break log-scrapers.
 
@@ -320,7 +313,9 @@ uint64_t verify_block_scaled_mma(Type a, Type b, Type c,
         return ((uint64_t)64 << 32) | 32;
     }
 
-    emit_diag(op, "unsupported block-scaled mma configuration");
+    /* Emit the per-combo expectation diagnostic matching the failing axis
+     * (element type, scale-factor type, vecSize, SM tier) — see the
+     * phase-5 table above for the verbatim binary strings. */
     return 0;
 }
 ```
@@ -340,7 +335,7 @@ A concrete walk illustrates the phase-2 diagnostic. Consider the input
     -> tile<128x128xf32>
 ```
 
-The atom selects MX-FP4 with `(atom_K=64, vecSize=16)`. Phase 1 passes because both `sfa` and `sfb` are present. Phase 2 fails: `sfa` resolves to `Float8E8M0FNU` while `sfb` resolves to `Float8E4M3FN`. The verifier emits `"sfa and sfb element type mismatch"` and returns `0`. Phases 3 through 5 never run; the op never reaches lowering. Fixing the input requires the producer to choose a single scale-factor element type (typically `Float8E8M0FNU` for MX-FP4, since `Float8E4M3FN` is legal only on the OCP MX-FP4 path that further constrains the block size).
+The atom selects MX-FP4 with `(atom_K=64, vecSize=16)`. Phase 1 passes because both `sfa` and `sfb` are present. Phase 2 fails: `sfa` resolves to `Float8E8M0FNU` while `sfb` resolves to `Float8E4M3FN`. The verifier emits `"expects sfa/sfb element types to be the same"` and returns `0`. Phases 3 through 5 never run; the op never reaches lowering. Fixing the input requires the producer to choose a single scale-factor element type (typically `Float8E8M0FNU` for MX-FP4, since `Float8E4M3FN` is legal only on the OCP MX-FP4 path that further constrains the block size).
 
 A correct reimplementation therefore enforces:
 

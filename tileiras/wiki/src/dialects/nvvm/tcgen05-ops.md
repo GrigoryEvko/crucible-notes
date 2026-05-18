@@ -213,7 +213,7 @@ The two `r` slots are the destination and source TMEM column indices. The shape,
 - TMEM column counts are multiples of 32.
 - `cta_group` agrees between matched `alloc` / `dealloc` and between the in-flight MMA and its `commit` / `wait`.
 - `scale` is a compile-time immediate.
-- Block-scaled `(atom_K, vecSize)` matches one of `(32, 32)`, `(64, 16)`, `(64, 32)`; other combinations are rejected with `"Invalid (atom_K, vecSize) combination for block-scaled MMA"`.
+- Block-scaled `(atom_K, vecSize)` matches one of `(32, 32)`, `(64, 16)`, `(64, 32)`; other combinations are rejected by the per-combo expectation diagnostics listed under [nv_tileas Verifiers — Block-Scaled MMA Verification](../nv_tileas/verifiers.md#block-scaled-mma-verification) (e.g. `"expects A/B element types to be Float4E2M1FNType and sfa/sfb element types to be Float8E8M0FNUType when (atom_K=64 && vecSize=32)"`).
 - Sparse metadata column must be valid TMEM and non-zero stride.
 - Accumulator element type is `f32` for every block-scaled variant.
 - `kindA` and `kindB` agree (no mixed scale-factor formats).

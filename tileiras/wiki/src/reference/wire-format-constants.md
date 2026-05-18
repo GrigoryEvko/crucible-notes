@@ -104,7 +104,7 @@ of upstream MLIR's `BytecodeTypeOpcodes.td`:
 The trailing `f8E8M0FNU` extension routes through the registered-type path rather
 than the inline switch — a producer that emits a tag above `0x12` must additionally
 declare the extension dialect in the envelope's dialect list, otherwise the reader
-emits `"unknown type tag "` and aborts the section.
+emits `"unknown type tag: "` and aborts the section.
 
 ## Layer 3 — AttrTag Numbering (`sub_59F100`)
 

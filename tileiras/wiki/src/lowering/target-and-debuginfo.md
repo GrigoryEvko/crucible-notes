@@ -20,7 +20,7 @@ Three module-level attributes feed the target adapter, read in the order below.
 | `nv_tileaa.target_spec` | `StringAttr` (`"sm_XX"` form) | Fallback when compute_capability is absent. |
 | `nv_tileaa.libnvvm_use_nvgpucomp` | `BoolAttr` | Optional; selects the NVGpuComp/libNVVM serialisation path. |
 
-When neither compute_capability nor target_spec resolves, the pass emits `"missing compute capability for NVVM target"` and fails the module.
+When neither compute_capability nor target_spec resolves, the pass surfaces the verbatim `"failed to get compute capability."` diagnostic (with the trailing period) and fails the module; the closely related `"invalid or missing --compute-capability option"` is emitted by the option parser earlier in the pipeline when the CLI argument itself is absent.
 
 ### Generated Target Fields
 
@@ -67,7 +67,7 @@ LogicalResult attach_nvvm_target(ModuleOp module, TargetOptions options) {
             cc = read_target_spec_compute_capability(gpu_module);
         }
         if (!cc.valid()) {
-            return gpu_module.emit_error("missing compute capability for NVVM target");
+            return gpu_module.emit_error("failed to get compute capability.");
         }
 
         DictionaryAttr flags = build_libnvvm_flags(gpu_module, options);

@@ -413,7 +413,7 @@ unreadable buffer regardless of in-memory correctness.
 ### Missing Compute Capability
 
 **Symptom.** `"Failed to get ComputeCapability"` (`O3`) or
-`"missing compute capability for NVVM target"` (`O2`) at lowering time.
+`"failed to get compute capability."` (`O2`) at lowering time, depending on which pass first observes the missing attribute.
 
 **Cause.** Neither `nv_tileaa.compute_capability` nor `nv_tileaa.target_spec`
 attached to the module. The driver's `--gpu-name=sm_<NN>` option is the

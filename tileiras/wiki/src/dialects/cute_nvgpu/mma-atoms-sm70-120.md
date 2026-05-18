@@ -377,7 +377,7 @@ SM100 UMMA's block-scaled MMA atom family covers FP4 and FP8 microscale matrix m
 
 The accumulator type is hard-locked to `Float32` across all three variants, regardless of input element type. Any other accumulator type triggers `"expects c type to be Float32"` and the op fails before lowering.
 
-`cute_nvgpu` carries two 4-bit element-type TypeIDs sharing the same `.data.rel.ro` slot at `&unk_5BE6068`: `Float4E2M1FN` is the IEEE-style OCP MX-FP4 encoding (2 exponent, 1 mantissa, finite-only), and `FloatNV4E0M3F` is NVIDIA's NVFP4 fixed-point encoding (0 exponent, 3 mantissa). They share the slot because both are 4-bit packed types, but the dispatcher in `sub_14B71C0` distinguishes them by the `sf_a` and `sf_b` scale-factor element types. When `sf_a == sf_b == E8M0` the layout is NVFP4 and selects `kind::mxf4nvf4`. When the scale-factor element type is `E4M3FN` the layout is OCP MX-FP4 and selects `kind::mxf4`. A mismatch between `sf_a` and `sf_b` triggers `"sfa/sfb element type mismatch"`.
+`cute_nvgpu` carries two 4-bit element-type TypeIDs sharing the same `.data.rel.ro` slot at `&unk_5BE6068`: `Float4E2M1FN` is the IEEE-style OCP MX-FP4 encoding (2 exponent, 1 mantissa, finite-only), and `FloatNV4E0M3F` is NVIDIA's NVFP4 fixed-point encoding (0 exponent, 3 mantissa). They share the slot because both are 4-bit packed types, but the dispatcher in `sub_14B71C0` distinguishes them by the `sf_a` and `sf_b` scale-factor element types. When `sf_a == sf_b == E8M0` the layout is NVFP4 and selects `kind::mxf4nvf4`. When the scale-factor element type is `E4M3FN` the layout is OCP MX-FP4 and selects `kind::mxf4`. A mismatch between `sf_a` and `sf_b` triggers `"expects sfa/sfb element types to be the same"`.
 
 The verifier's accept set is the conjunction of four predicates:
 
@@ -386,7 +386,7 @@ The verifier's accept set is the conjunction of four predicates:
 - `(sf.elementType, vecSize)` matches one of `(E8M0, 32)`, `(E8M0, 16)`, or `(E4M3FN, 16)`.
 - `sf_a.elementType == sf_b.elementType`.
 
-Every other combination emits `"Invalid (atom_K, vecSize) combination for block-scaled MMA"` and returns 0. See
+Every other combination is rejected by the per-combo expectation diagnostics listed in the nv_tileas page and returns 0. See
 [nv_tileas Verifiers — Block-Scaled MMA Verification](../nv_tileas/verifiers.md#block-scaled-mma-verification) for the broader verifier context this table summarises, and
 [NVPTX Subtarget Feature Matrix — Cached Tensor-Memory Predicate](../../codegen/nvptx-subtarget-and-feature-matrix.md#cached-tensor-memory-predicate) for the `tmem` feature
 that gates SM100 atoms.
@@ -489,7 +489,7 @@ For the 2-CTA cooperative variant the M extent doubles to 128 and the TMEM accum
 | Scale factor A | TMEM column | `M * (64 / vecSize) = M * 2` per instance | `E8M0` for NVFP4; `E4M3FN` rejected at this `vecSize` |
 | Scale factor B | TMEM column | `(64 / vecSize) * N = 2 * N` per instance | matches A's scale-factor element type |
 
-Scale factor vectors live in TMEM columns next to the accumulator; the layout walk for each scale-factor operand mirrors the consumer's vec-size walk through the K axis. The verifier rejects any combination outside the three legal `(atom_K, vecSize)` triples documented earlier in this page with `"Invalid (atom_K, vecSize) combination for block-scaled MMA"`.
+Scale factor vectors live in TMEM columns next to the accumulator; the layout walk for each scale-factor operand mirrors the consumer's vec-size walk through the K axis. The verifier rejects any combination outside the three legal `(atom_K, vecSize)` triples documented earlier in this page via the per-combo expectation diagnostics listed under [nv_tileas Verifiers — Block-Scaled MMA Verification](../nv_tileas/verifiers.md#block-scaled-mma-verification).
 
 ### SM120 block-scaled `m16n8k32` FP4 / FP8 (register-resident)
 

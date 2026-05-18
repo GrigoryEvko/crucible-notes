@@ -373,9 +373,10 @@ and the diagnostics it emits sometimes spell the attribute as `nv_tileaa.div_by`
 `cuda_tile.div_by` — the dialect was renamed mid-binary and the diagnostic strings were never refreshed.
 Treat both spellings as the same attribute when matching error output.
 
-The verifier opens by checking that the divisor is positive. A non-positive divisor is rejected immediately
-with `"DivByAttr divisor must be positive"`. It then bound-checks the magnitude against `2^62`, emitting
-`"DivByAttr divisor exceeds 2^62"` on overflow. The ceiling is chosen so the divisor can be multiplied by a
+The verifier opens by checking that the divisor is positive. A non-positive divisor is rejected
+immediately; the verifier emits a diagnostic suffixed with the verbatim `"' divisor must be a power of 2"`
+phrase (the leading `'` closes the quoted attribute-name prefix the diagnostic prints first). It then
+bound-checks the magnitude against `2^62`. The ceiling is chosen so the divisor can be multiplied by a
 signed 64-bit residue without overflow during downstream simplification — the primary reason a divisibility
 fact gets consulted.
 
@@ -395,11 +396,13 @@ type and rechecks the leaf element. A pointer-of-pointer or tile-of-tile termina
 because each recursion is guarded by the same dispatch.
 
 `DivByAttr` carries two optional covariant fields, `every` and `along`. `every` asserts the fact for every
-dimension of a multi-dim divisor; `along` restricts the assertion to a single axis. They are mutually
-exclusive, and the verifier emits `"DivByAttr 'every' and 'along' are mutually exclusive"` when both are set.
-When `every` is present on a multi-dim divisor the verifier requires every dim of the divisor to divide
-cleanly into the corresponding tile extent; when `along` is present it checks divisibility only along the
-named axis and leaves the other axes unconstrained.
+dimension of a multi-dim divisor; `along` restricts the assertion to a single axis. The two fields obey a
+joint-presence contract policed by three verbatim binary diagnostics — `"' 'every'/'along' must be used in combination"`,
+`"' 'every'/'along' cannot be used if the constrained value is a tensor_view"`, and
+`"' 'every'/'along' cannot be used if the constrained value is a 0D tile"` (each with the leading `'`
+closing the quoted attribute-name prefix). When `every` is present on a multi-dim divisor the verifier
+requires every dim of the divisor to divide cleanly into the corresponding tile extent; when `along` is
+present it checks divisibility only along the named axis and leaves the other axes unconstrained.
 
 ## BoundedAttr Verifier
 

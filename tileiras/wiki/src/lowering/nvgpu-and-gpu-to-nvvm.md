@@ -31,7 +31,7 @@ The conversion target is strict:
 | `nvgpu.mma.sp.sync` | `llvm.inline_asm` carrying the PTX sparse-MMA instruction |
 | SM100 packed arithmetic and conversion ops | dedicated `nvvm.*` packed operations |
 
-Violation behavior is uniform across the two halves of the pass: any executable `gpu.*` or `nvgpu.*` op remaining after the partial conversion is a hard failure — `applyPartialConversion` reports the unconverted op and the pass fails. An `nvgpu.mbarrier.*` op whose operand does not resolve to a shared-memory pointer emits `"mbarrier requires shared-memory operand"` and rejects, because an implicit address-space cast would change the semantic memory space tcgen05 lowering relies on. A vector-typed `math.*` operation that reaches libdevice dispatch without prior scalarisation is rejected by the conversion target rather than dispatched lane-by-lane silently. A `cf.assert` whose message globals cannot be materialised falls through to the upstream LLVM diagnostic. The `gpu.module` container itself is the only legal `gpu.*` surface on output; any other surviving `gpu.*` op signals a missing pattern in this bank.
+Violation behavior is uniform across the two halves of the pass: any executable `gpu.*` or `nvgpu.*` op remaining after the partial conversion is a hard failure — `applyPartialConversion` reports the unconverted op and the pass fails. An `nvgpu.mbarrier.*` op whose operand does not resolve to a shared-memory pointer is rejected by the typed-operand trait check (which surfaces as the verbatim `" must be mbarrier barrier type, but got "` diagnostic, prefixed by the operand label and suffixed with the printed offending type) rather than implicitly inserting an address-space cast, because the cast would change the semantic memory space tcgen05 lowering relies on. A vector-typed `math.*` operation that reaches libdevice dispatch without prior scalarisation is rejected by the conversion target rather than dispatched lane-by-lane silently. A `cf.assert` whose message globals cannot be materialised falls through to the upstream LLVM diagnostic. The `gpu.module` container itself is the only legal `gpu.*` surface on output; any other surviving `gpu.*` op signals a missing pattern in this bank.
 
 ## GPU Dialect Lowering
 
@@ -180,7 +180,7 @@ nvgpu.mbarrier.inval %bar : !nvgpu.mbarrier
 nvvm.mbarrier.inval.shared %bar : !llvm.ptr<3>
 ```
 
-If the source operand does not resolve to a shared-memory pointer, the rewriter emits `"mbarrier requires shared-memory operand"` and fails. The pattern rejects rather than inserts an implicit cast because the cast would change the semantic memory space and downstream tcgen05 lowering depends on shared-memory residence.
+If the source operand does not resolve to a shared-memory pointer, the rewriter fails via the typed-operand trait check, surfacing the verbatim `" must be mbarrier barrier type, but got "` diagnostic (prefixed by the operand label and followed by the printed offending type). The pattern rejects rather than inserts an implicit cast because the cast would change the semantic memory space and downstream tcgen05 lowering depends on shared-memory residence.
 
 ### TMA Async Load
 

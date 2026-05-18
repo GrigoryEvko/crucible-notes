@@ -116,12 +116,14 @@ Older targets (sm_70 / sm_80) skip the fence — there is no cross-CTA visibilit
 
 ## Diagnostic Strings
 
-The mbarrier verifier emits these messages, by structural failure category:
+The mbarrier verifier and lowerings emit these verbatim binary messages:
 
-- `"mbarrier requires shared-memory operand"` — the operand to a shared-only arrive or try-wait is not in address space 3.
-- `"mbarrier.try_wait.parity requires a phase operand"` — the parity form is missing the explicit `%phase` value.
-- `"mbarrier kind must be ordinary, TMA-transaction, or cluster-transaction"` — the kind enum carries an unsupported value.
-- `"mbarrier.txn expected transaction byte count to be non-negative"` — the published `expect_tx` is signed-negative.
+- `" must be mbarrier barrier type, but got "` — the typed-operand trait reports a non-mbarrier SSA type; the printed type name follows the trailing space.
+- `"Only acquire/relaxed ordering supported for MBarrierWaitOp."` (and the parallel `MBarrierWaitParityOp.` / `MBarrierTryWaitTimeLimitOp.` / `MBarrierTryWaitParityTimeLimitOp.` variants) — the memory-ordering attribute is outside the acquire / relaxed set.
+- `"using transaction mbarrier is not supported"` — a transaction-mbarrier was used on a code path that has not been wired up to the txn family.
+- `"mbarrier has wait-like users, cannot share pipeline buffer."` — the alias pass refuses to fold a buffer shared with a wait-side user.
+- `"Invalid TxnKind in MBarrierTransactionCTASpaceOp."` — the transaction kind enum carries an unsupported value.
+- Lowering-time failures: `"failed to find smem buffer address for mbarrier"`, `"failed to find address of omitted mbarrier"` (note: the binary also carries the misspelled twin `"failed to find address of ommited mbarrier"`), `"failed to init mbarrier"` / `"Failed to init mbarrier"`, `"failed to setup mbarrier"`, `"failed to get MBarrier object"`.
 
 The lowering rejects mismatched-address-space combinations before the printer fires, so the final PTX template never has to recover from a malformed modifier word.
 

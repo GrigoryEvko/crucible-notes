@@ -228,8 +228,8 @@ The diagnostics:
 
 | Diagnostic | Cause |
 |---|---|
-| `"expects regions to end with 'nv_tileaa.yield'"` | A region-bearing op's terminator is the wrong op kind. |
-| `"expects parent op 'nv_tileaa.func'"` | A yield, return, or function-scoped op appears outside its required parent. |
+| `"expects regions to end with '"` (binary string; the required terminator op-name and a closing `'` are appended at print time, e.g. `nv_tileaa.yield`) | A region-bearing op's terminator is the wrong op kind. |
+| `"expects parent op "` (binary string; the required parent op-name is appended at print time, e.g. `'nv_tileaa.func'`) | A yield, return, or function-scoped op appears outside its required parent. |
 
 ## Assumption Predicate Verification
 
