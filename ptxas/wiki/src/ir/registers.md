@@ -452,9 +452,9 @@ Encoded register field (16 bits at variable bit offset):
   bits 5-14:  register number (10 bits)
 ```
 
-The 4-bit register file type field in the SASS encoding maps the internal operand type tag to hardware encoding:
+The 4-bit register file type field in the SASS encoding maps the **operand-record `+20` raw type code** (`*(int*)(operand + 20)` at `sub_7BC030`) to a hardware register-file selector. This is a different field from the operand word's bits [30:28] (which is a 3-bit operand-class tag with values 1=register, 2/3=wide-register, 5=constant-pool indirect) and from the vreg's `+64` reg_type enum:
 
-| Operand type tag | Encoded value | Register file |
+| Operand `+20` raw code | Encoded value | Register file |
 |------------------|---------------|---------------|
 | 1 | 0 | R (32-bit) |
 | 2 | 1 | R pair (64-bit) |
@@ -468,6 +468,8 @@ The 4-bit register file type field in the SASS encoding maps the internal operan
 | 32 | 9 | (extended) |
 | 64 | 10 | (extended pair) |
 | 128 | 11 | (extended quad) |
+
+The `.UR` discriminator at the SASS encoding layer is therefore the **encoded value 2 or 3** of this 4-bit field (originating from operand `+20` raw codes 3 or 4). A parallel sentinel exists in the operand-record's first byte: the small predicate cluster at `sub_B28E00`..`sub_B28EC0` checks fixed byte constants (3 = R class, 15 = UR class, 13/14/16 = other special operand families), used by IR-level lowering helpers such as `sub_B2A420`. The 3-bit field in the operand word at bits [30:28] is **not** the `.UR` flag -- it does not carry uniformity information at all.
 
 The predicate operand encoder (`sub_7BCF00`, 856 bytes, 1657 callers) uses a different format: 2-bit predicate type, 3-bit predicate condition, and 8-bit value. It checks for PT (operand byte[0] == 14) and handles the always-true case.
 

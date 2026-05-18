@@ -1,13 +1,13 @@
 # ELF Parsing (Elf32 / Elf64)
 
-nvlink operates directly on in-memory ELF images. Every input cubin -- whether loaded from disk, extracted from a fatbin, or produced by the embedded ptxas -- is a complete ELF file mapped into an arena-allocated buffer. The linker never uses `libelf` or any external ELF library; it implements its own accessor functions that interpret raw header bytes at fixed offsets from the buffer base. There are two parallel sets of accessors: one for Elf64 (the normal case for 64-bit CUDA targets) and one for Elf32 (used for 32-bit device code, rare in practice). The class selection is a single byte check at `e_ident[EI_CLASS]` (offset 4 from the ELF base).
+nvlink operates directly on in-memory ELF images. Every input cubin -- whether loaded from disk, extracted from a fatbin, or produced by the embedded ptxas -- is a complete ELF file mapped into an arena-allocated buffer. The linker never uses `libelf` or any external ELF library; it implements its own accessor functions that interpret raw header bytes at fixed offsets from the buffer base. There are two parallel sets of accessors: one for Elf64 (the normal case for 64-bit CUDA targets) and one for Elf32 (the legacy path, e.g. the OSABI `0x33` 32-bit device ABI). Both classes are accepted by the disk loaders and the structural validator; the class byte at `e_ident[EI_CLASS]` (offset 4 from the ELF base) selects which accessor family is used rather than gating acceptance. Modern targets (sm\_75 and above as registered in the active profile database) emit Elf64 in practice, but the parser will walk an Elf32 cubin just as readily.
 
 ## Key Facts
 
 | Property | Value |
 |---|---|
 | Class selector | `e_ident[4]` (EI_CLASS): `2` = Elf64, anything else = Elf32 |
-| Endianness | Little-endian assumed; `e_ident[EI_DATA]` is never checked |
+| Endianness | Little-endian only; `e_ident[EI_DATA] == 1` is enforced by the disk loaders (`sub_43E100`, `sub_43DFC0`) but not re-checked by the accessor family or `sub_43DD30` |
 | Elf64 section header size | 64 bytes (`e_shentsize` at offset 58, checked == 64) |
 | Elf64 program header size | 56 bytes (`e_phentsize` at offset 54, checked == 56) |
 | Elf64 symbol entry size | 24 bytes (hardcoded stride, not read from `sh_entsize`) |
@@ -30,7 +30,7 @@ nvlink operates directly on in-memory ELF images. Every input cubin -- whether l
 | ELF magic check tests `*(uint32_t*)base == 0x464C457F` | HIGH | Literal `0x464C457F` in `sub_43D970`; matches `\x7fELF` little-endian |
 | Elf64 section-header size = 64 bytes, program-header size = 56 bytes (checked exactly) | HIGH | `e_shentsize` at +58 compared `== 64`, `e_phentsize` at +54 compared `== 56` in `sub_43DD30` |
 | Elf64 symbol entry stride = 24 bytes (hardcoded, not from `sh_entsize`) | HIGH | Symbol accessors `sub_448600`/`sub_4486A0`/`sub_448750` multiply index by 24 directly |
-| `EI_DATA` (endianness byte) never validated | MEDIUM | Absence is the evidence: search for `e_ident[5]` access in validation paths yields none; only EI_CLASS at +4 is read |
+| `EI_DATA` validated only by disk-loader entry points (`sub_43E100`, `sub_43DFC0`); accessor/validator family ignores it | HIGH | `sub_43E100` line 45 and `sub_43DFC0` line 46 test `e_ident[5] == 1` (ELFDATA2LSB); the structural validator `sub_43DD30` and every Elf64/Elf32 accessor read `e_ident[4]` only. ELFs that bypass the disk loaders (e.g. embedded fatbin payloads) are never re-checked for endianness |
 | File loading via fopen/fseek/ftell/fread in `sub_476BF0`, no `mmap` for ELF input | HIGH | Direct PLT imports for `fopen`/`fread`/`fseek`/`ftell`/`fclose` visible in disassembly of `sub_476BF0`; no `mmap` xref from the same function |
 | `null_terminate` flag distinguishes binary inputs from PTX text input | HIGH | Parameter branch writes `((char*)buf)[size]='\0'` only when flag is set |
 | No size-limit check before arena allocation | HIGH | Result of `ftell` is passed straight to `arena_alloc`; no bounds compare visible |
@@ -1006,7 +1006,7 @@ Same dispatch shape as `is_mercury_capable`: for CUDA device OSABI (`0x41`), che
 
 ## Endianness Handling
 
-**nvlink assumes little-endian throughout the entire ELF parser.** There is no check on `e_ident[EI_DATA]` (offset 5 in `e_ident`) and no byte-swapping code anywhere in the accessor family. Every `*(uint16_t *)`, `*(uint32_t *)`, and `*(uint64_t *)` load directly reinterprets the buffer bytes as a host-order integer.
+**nvlink assumes little-endian throughout the entire ELF parser.** The disk-loader entry points (`sub_43E100` for cubins, `sub_43DFC0` for host ELFs) gate on `e_ident[EI_DATA] == 1` (ELFDATA2LSB) and reject big-endian files before they reach the accessor family. Once a buffer has passed that gate -- or has been delivered to the linker by some other path (embedded fatbin payload, in-memory ELF produced by the integrated ptxas) -- nothing else re-checks the byte. The accessors and `sub_43DD30` validator contain no byte-swapping code; every `*(uint16_t *)`, `*(uint32_t *)`, and `*(uint64_t *)` load directly reinterprets the buffer bytes as a host-order integer.
 
 This is correct for all real-world usage:
 

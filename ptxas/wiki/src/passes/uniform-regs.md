@@ -172,7 +172,7 @@ Phase 74 runs immediately after SSA destruction (`ConvertAllMovPhiToMov`, phase 
 
 The eligibility check (`sub_90C010`, 456 bytes) tests all five criteria simultaneously per instruction. A value qualifies for R-to-UR conversion when all hold:
 
-1. **R-file source operand.** The operand word at `inst+84+8*idx` must have type field `(operand>>28) & 7 == 1` (R register) and byte +7 high bit clear (not special/fixed). Checked first -- if the operand is already UR or not R, the function returns 0 immediately.
+1. **R-file source operand.** The operand word at `inst+84+8*idx` must have type field `(operand>>28) & 7 == 1` (register-class operand -- this 3-bit field carries 1=register, 2/3=wide-register pair/quad, 5=constant-pool indirect; it does **not** distinguish R from UR -- both R and UR sources appear with class 1) and byte `+7` low bit clear (special/fixed flag). The R-vs-UR discriminator is the referenced vreg's `+64` reg_type (R is class 1, UR is class 3 in the enum at `ir/registers.md`); the check at `sub_90C010:21` is structurally only a "must be register class" gate, and the subsequent reg_type test (`v8 = vreg[+64]`) is what selects R-source candidates for promotion. The function returns 0 immediately if either gate fails.
 
 2. **UR-expressible opcode.** The opcode (masked to `opcode & 0xFFFFCFFF` to strip modifier bits) must match the 64-bit bitmask `0x2080000010000001` shifted by base 22, selecting exactly four opcode classes: **IADD3** (22), **PRMT** (50), **SEL** (77), **SGXT** (83). Opcodes **297** and **352** (VOTEU and a predicate variant) pass via explicit equality checks. MOV (164) is explicitly *rejected* in `sub_90B790`, returning cost 1 (bridge-only).
 

@@ -315,8 +315,14 @@ bool is_elf64(const uint8_t *buf) {
 }
 ```
 
-nvlink requires 64-bit ELFs for all modern SM architectures. A
-legacy 32-bit cubin passes `is_elf` but fails this predicate.
+This is a *dispatch* predicate, not a hard reject. The loader entry
+points (`sub_43E100`, `sub_43DFC0`) deliberately accept both
+ELFCLASS32 and ELFCLASS64 buffers -- the structural validator
+`sub_43DD30` and the merge path branch on `e_ident[EI_CLASS]` to
+pick the Elf32 (40-byte section header, 32-byte program header) or
+Elf64 (64-byte section header, 56-byte program header) layout.
+Modern targets always emit ELFCLASS64 in practice, but the parser
+will happily walk an ELFCLASS32 cubin.
 
 ### 5.3 `sub_43D9B0` - is_relocatable (ET_REL check)
 
@@ -555,12 +561,12 @@ classification:
 
 | Constant | Value | Field | Offset (ELF64) | Meaning |
 |---|---|---|---|---|
-| `ELFCLASS64` | 2 | `e_ident[EI_CLASS]` | 4 | 64-bit ELF (required for modern CUDA) |
+| `ELFCLASS64` | 2 | `e_ident[EI_CLASS]` | 4 | 64-bit ELF (modern CUDA default); `ELFCLASS32` (1) is also accepted -- the byte selects the Elf32 vs Elf64 accessor family rather than being a hard reject |
 | `EI_OSABI` legacy | `0x41` (`'A'`) | `e_ident[EI_OSABI]` | 7 | Legacy NVIDIA OSABI (affects SASS flag mask) |
 | `ET_REL` | 1 | `e_type` | 16 | Relocatable object (expected for cubin input) |
 | `EM_CUDA` | 190 (`0xBE`) | `e_machine` | 18 | NVIDIA CUDA device ELF |
-| SASS flag (legacy) | `0x00000002` | `e_flags` | 48 | SASS present, when `EI_OSABI == 0x41` |
-| SASS flag (current) | `0x00004000` | `e_flags` | 48 | SASS present, when `EI_OSABI != 0x41` |
+| SASS flag (current device ABI) | `0x00000002` | `e_flags` | 48 | SASS present, when `EI_OSABI == 0x41` (NVIDIA CUDA device OSABI 65) |
+| SASS flag (legacy / 32-bit ABI) | `0x00004000` | `e_flags` | 48 | SASS present, when `EI_OSABI != 0x41` (e.g. `0x33` = 32-bit legacy) |
 
 `EM_CUDA = 190` is the definitive test that separates a cubin from a
 host object file. For reference, common host values are

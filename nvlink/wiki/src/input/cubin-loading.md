@@ -186,16 +186,16 @@ Key details:
 `sub_43DD30` validates the complete ELF structural integrity of an in-memory cubin before any further processing. It checks both Elf32 and Elf64 paths:
 
 **For Elf32:**
-- `e_phentsize == 40` (sizeof Elf32\_Phdr must be 40 if program headers exist)
-- `e_shentsize` is zero or `e_shstrndx == 32` (section header entry size sanity)
+- `e_shentsize == 40` (sizeof Elf32\_Shdr); read from offset 46 in the Elf32 ehdr
+- `e_phnum == 0` OR `e_phentsize == 32` (sizeof Elf32\_Phdr); e_phnum is at offset 44, e_phentsize at offset 42
 - Program header table offset (`e_phoff`) is within the buffer and `e_phoff > 0x33` (beyond the ELF header)
 - Total program header table size (`e_phoff + e_phentsize * e_phnum`) fits in buffer
 - Section header table offset (`e_shoff`) and total size fits in buffer
 - For each section: if the section type is not `SHT_NOBITS` (8) and not in the NVIDIA-specific range (`0x70000007`--`0x70000015`, which includes `SHT_CUDA_INFO`, `SHT_CUDA_CALLGRAPH`, etc.), the section data range `[sh_offset, sh_offset + sh_size)` must fit within the buffer
 
 **For Elf64:**
-- `e_phentsize == 64` (sizeof Elf64\_Phdr)
-- `e_shentsize` is zero or `e_shstrndx == 56`
+- `e_shentsize == 64` (sizeof Elf64\_Shdr); read from offset 58 in the Elf64 ehdr
+- `e_phnum == 0` OR `e_phentsize == 56` (sizeof Elf64\_Phdr); e_phnum is at offset 56, e_phentsize at offset 54
 - Same offset/size boundary checks as Elf32, adjusted for 64-bit field widths
 - Overflow protection: checks `sh_offset + sh_size` does not wrap around
 

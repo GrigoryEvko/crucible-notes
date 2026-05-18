@@ -839,7 +839,16 @@ C6  (sign agreement):     for each operand slot k in 0..operand_count-1:
 
 C7  (per-operand match):  for each operand slot k where op[k] < 0 (definitions):
     C7a (tag type):           tag(I1.op[k]) == tag(I2.op[k])
-            -- bits [30:28] must agree (1 = register, 2/3 = immediate, 5 = const ref)
+            -- bits [30:28] of the operand word must agree.  Observed values:
+               1 = register operand; 2/3 = wide-register encodings (pair/quad,
+               see `((v >> 28) & 7u) - 2 > 1` discriminators in sub_404FBB,
+               sub_404E02, sub_4046A2); 5 = constant-pool indirect, looked up
+               via descriptor table at `ctx+152` (sub_67E7F0).
+               This field does NOT carry the uniform-register (`.UR`) tag --
+               R-vs-UR is distinguished by the referenced vreg's `+64`
+               reg_type (3 = UR, 4 = UR-ext) and by the per-operand byte
+               sentinel checked by sub_B28E90 (UR byte code = 15), both of
+               which sit outside the bits [30:28] field.
     C7b (modifier word):      I1.op_mod[k] == I2.op_mod[k]
             -- the companion dword (operands[2k+1] at I+88+8k) must match exactly
     C7c (register class):     reg_file[I1.op[k]].class == reg_file[I2.op[k]].class
@@ -862,7 +871,7 @@ Source: `sub_8F4510` at `0x8F4510` (101 lines); predicate compatibility from `su
 
 - Bit 0: base eligibility (1 for most pure instructions)
 - Bits 20-21: memory address space class (`sub_74E530`)
-- Bit 25: uniform register destination (register type 8)
+- Bit 25: destination vreg has `+64` reg_type == 8 (extended type created by `sub_83EF00` for constant-buffer materialisation; **not** the uniform-register class -- UR is reg_type 3, see `ir/registers.md` enum table). Set at `sub_74ED70:83` after gating on `((v10 >> 28) & 7) == 1` and `(*(BYTE *)(a2+91) & 1) == 0`.
 - Bit 27: non-volatile memory reference
 - Bit 28: non-invariant address
 - Bit 29: specific addressing mode
