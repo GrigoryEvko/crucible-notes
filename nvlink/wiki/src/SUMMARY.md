@@ -61,6 +61,7 @@
 # Embedded ptxas
 
 - [Architecture Overview](ptxas/overview.md)
+- [Compilation Driver (sub_1112F30)](ptxas/embedded-driver.md)
 - [Architecture Dispatch (vtables)](ptxas/arch-dispatch.md)
 - [Instruction Selection Hubs](ptxas/isel-hubs.md)
 - [Register Allocation](ptxas/register-allocation.md)

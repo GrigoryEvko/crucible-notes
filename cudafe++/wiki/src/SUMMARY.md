@@ -84,6 +84,7 @@
 - [Type System](./edg/type-system.md)
 - [Preprocessor](./edg/preprocessor.md)
 - [Pragma Engine](./edg/pragma-engine.md)
+- [Symbol Reference & Name Hiding](./edg/symbol-ref.md)
 
 # Error & Diagnostic System
 

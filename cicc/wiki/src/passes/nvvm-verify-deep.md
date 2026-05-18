@@ -489,25 +489,51 @@ These checks fire only on sm_100+ targets; on earlier architectures the intrinsi
 
 ### Q. Architecture-Gated MMA / Vector Intrinsic Variants
 
-Beyond the SM-version gates in the [Architecture Gates](#architecture-gates-sm-gated-features) table, the intrinsic verifier rejects specific MMA, atomic, and vector variants whose hardware support landed in scattered SM versions. These messages follow a unified pattern -- `"<name> is not supported on this architecture"` -- and are checked against per-feature SM tables internal to the intrinsic verifier.
+Beyond the eight monolithic SM gates in the [Architecture Gates](#architecture-gates-sm-gated-features) table, each MMA, vector-atomic, and TMA-2CTA variant has a private threshold check colocated with its lowering helper. The helpers live outside `sub_2C7B6A0` proper but are reached from the same dispatch -- the verifier walks an arch-availability sub-table per feature rather than collapsing them into the main switch.
 
-| Family | Variant | Message |
+The encoding is uniform across all variants: `*(_DWORD *)(ctx + 1136)` resolves to the target descriptor, and field `+344` carries the compute capability as `major * 10 + minor` (e.g. sm_70 = 70, sm_72 = 72, sm_75 = 75, sm_90 = 90, sm_100 = 100). The threshold uses `<=` so `<= 0x45u` rejects sm_69 and below, admitting sm_70+. Two helpers (2CTA-TMA, block-scale tcgen05) use a second field at `+340` to encode an extended family token (values like 1101, 1102 select Blackwell-datacenter-family) and a third at `+336` for the family-base SM.
+
+**Per-variant SM availability matrix (decoded from `sub_36E5710`, `sub_36E72A0`, `sub_36E7580`, `sub_36E77C0`, `sub_36E7B50`, `sub_36E7EA0`, `sub_36E8630`, `sub_36E8BD0`, `sub_36E91F0`, `sub_36EC510`, `sub_304C610`, `sub_2179030`):**
+
+| Family | Variant | Helper | Threshold | Min SM | Message |
+|---|---|---|---|---|---|
+| HMMA (FP16) | mma | `sub_36E77C0` | `<= 0x45u` (69) | sm_70 (Volta) | `"hmmamma is not supported on this architecture"` |
+| HMMA | load-A/B | `sub_36E72A0` | `<= 0x45u` (69) | sm_70 (Volta) | `"hmmaldab is not supported on this architecture"` |
+| HMMA | load-C | `sub_36E7580` | `<= 0x45u` (69) | sm_70 (Volta) | `"hmmaldc is not supported on this architecture"` |
+| HMMA | store-C | `sub_36E91F0` | `<= 0x45u` (69) | sm_70 (Volta) | `"hmmastc is not supported on this architecture"` |
+| IMMA (int8) | mma | `sub_36E8630` | `<= 0x47` (71); sm_72 + intrinsic-ID>1 forbidden | sm_72 (Xavier) / sm_75 for extended variants | `"immamma is not supported on this architecture"` |
+| IMMA | load-A/B | `sub_36E7B50` | `<= 0x47` (71); sm_72 + opc>1 forbidden | sm_72 / sm_75 ext | `"immaldab is not supported on this architecture"` |
+| IMMA | load-C | `sub_36E7EA0` | `<= 0x47` (71); plus `a2 in {386,387,1595,1596}` forbids sm_72 | sm_72 / sm_75 for extended C types | `"immaldc is not supported on this architecture"` |
+| IMMA | store-C | (shared store path) | `<= 0x47` (71) | sm_72 | `"imma stc not supported on this architecture"` (sic) |
+| BMMA (binary) | mma | `sub_36E8BD0` | `<= 0x48u` (72) | sm_75 (Turing; sm_73/74 do not exist) | `"bmmamma is not supported on this architecture"` |
+| F32x2 | all | `sub_36E5710` | `<= 0x63u` (99) | sm_100 (Blackwell-datacenter) | `"F32x2 intrinsics are not supported on this architecture"` |
+| 128-bit atomics | rmw/cas | `sub_304C610` | `<= 0x59u` (89) | sm_90 (Hopper) | `"128b atomics not supported on this architecture!"` |
+| Vector atomics (v2/v4) | rmw | `sub_2179030` | `<= 0x59u` (89) | sm_90 (Hopper) | `"vector atomics not supported on this architecture!"` |
+| TMA G2S | 2CTA mode | `sub_36EC510` | `+340 in {1101,1102}` OR `+340 > 0x408` (1032) OR `(+340 mod 5 != 0 && +336 > 0x57) && +336 <= 0x55` | sm_100a/sm_103a/sm_110a (Blackwell datacenter "-a" arch) | `"2CTA Mode for CpAsyncBulkTensorG2S not supported on this architecture"` |
+| TMA G2S | Im2Col_W / Im2Col_W128 | `sub_36EC510` | same family token as 2CTA | sm_100a+ family | `"Im2Col_W and Im2Col_W128 modes are not supported on this architecture."` |
+| tcgen05.mma | scale-input acc | `sub_36E9630` | `+336 > 0x57` (87) and family token | sm_100a+ (block-scale path) | `"Scale input accumulator is not supported on this architecture."` |
+| WGMMA (Hopper) | shape | C++ builtin handler | shape table lookup | sm_90a (string `"sm_90a"` is the explicit gate) | `"The shape %s is not supported for __wgmma_mma_async builtin"` |
+| WGMMA | operand overflow | builtin handler | constant-fold check | sm_90a | `"unexpected constant overflow in __wgmma_mma_async operand"` |
+
+**SM tiers pinned by Section Q:**
+
+| Tier | Architecture | Variants gated here |
 |---|---|---|
-| HMMA (FP16 tensor) | mma | `"hmmamma is not supported on this architecture"` |
-| HMMA | load-A/B | `"hmmaldab is not supported on this architecture"` |
-| HMMA | load-C | `"hmmaldc is not supported on this architecture"` |
-| HMMA | store-C | `"hmmastc is not supported on this architecture"` |
-| IMMA (int8 tensor) | mma | `"immamma is not supported on this architecture"` |
-| IMMA | load-A/B | `"immaldab is not supported on this architecture"` |
-| IMMA | load-C | `"immaldc is not supported on this architecture"` |
-| IMMA | store-C | `"imma stc not supported on this architecture"` (sic -- missing dash) |
-| BMMA (binary tensor) | mma | `"bmmamma is not supported on this architecture"` |
-| F32x2 | -- | `"F32x2 intrinsics are not supported on this architecture"` |
-| Vector atomics | -- | `"vector atomics not supported on this architecture!"` |
-| 128-bit atomics | -- | `"128b atomics not supported on this architecture!"` |
-| TMA G2S | 2CTA mode | `"2CTA Mode for CpAsyncBulkTensorG2S not supported on this architecture"` |
-| WGMMA (Hopper) | shape check | `"The shape %s is not supported for __wgmma_mma_async builtin"` |
-| WGMMA | operand overflow | `"unexpected constant overflow in __wgmma_mma_async operand"` |
+| `<= 69` | pre-Volta | HMMA mma / ldab / ldc / stc (4 variants) |
+| `<= 71` | pre-Volta+ (sm_72) | IMMA mma / ldab / ldc / stc (4 variants) |
+| `<= 72` | pre-Turing | BMMA mma |
+| `<= 89` | pre-Hopper | 128-bit atomics, vector atomics |
+| `<= 99` | pre-Blackwell | F32x2 |
+| family token | Blackwell `-a` | TMA 2CTA, Im2Col_W/W128, tcgen05 scale-input |
+| string-only | sm_90a | WGMMA (frontend builtin) |
+
+The IMMA family has a two-stage check: the base test `v <= 0x47` admits sm_72, but several IMMA variants then add `&& opc > 1` or `&& a2 in {386,387,1595,1596}` to forbid sm_72 specifically -- those subvariants need sm_75. The dispatch matches each sm_72/sm_75 split point to a different LLVM intrinsic ID, so a sm_72 user reaching a sm_75-only intrinsic ID gets the same `"immaXXX is not supported"` message rather than a distinct one. The BMMA threshold of `0x48` (72) rejects sm_72 cleanly because sm_73 and sm_74 do not exist in the NVIDIA ISA lineup -- the next valid value after 72 is 75, which is where BMMA debuted on Turing.
+
+> **QUIRK:** The 2CTA-TMA gate in `sub_36EC510` is not a simple `<=` threshold but a three-clause family-token test on field `+340` (extended SM token, e.g. 1101 = sm_110a, 1102 = sm_111a) joined to field `+336` (family-base SM). The expression `(__ROR4__(-858993459 * v38 + 1717986918, 1) > 0x19999999u || v39 <= 0x57) && v39 <= 0x55` is a compiler-folded modulo-5 test (`-858993459 = -0x33333333` is the magic multiplier for `n % 5`), checking that the family token is not a multiple of 5 while the base SM is in the `[85, 87]` window -- this is the verifier's way of admitting `sm_100a` / `sm_103a` / `sm_110a` while rejecting `sm_100` / `sm_103` / `sm_110` (non-`a` variants).
+
+> **QUIRK:** BMMA threshold `0x48u` (72) versus the user-facing "BMMA requires sm_75". The verifier accepts any value `>= 73`, but no such SM exists in the NVIDIA range, so the effective minimum is sm_75. This single-byte threshold avoids encoding the sm_73/74 holes explicitly -- the gap is implicit in the SM numbering.
+
+> **QUIRK:** The IMMA ld-C gate `sub_36E7EA0` uses a four-value whitelist `{386, 387, 1595, 1596}` on the intrinsic-ID argument to forbid sm_72 selectively. These four IDs correspond to s8/u8 packed-load intrinsics that landed in sm_75; the sm_72 IMMA path supports only the unpacked variants. A more conventional implementation would split into two separate intrinsic IDs with separate gates, but the verifier collapses both into one ID-range check, which is why a single helper raises `"immaldc is not supported on this architecture"` for two structurally different errors (pre-Volta+ vs. sm_72-extended).
 
 Several "unexpected"-prefixed messages indicate the verifier detected an MMA variant that should have been lowered earlier in the pipeline; reaching the verifier in this state implies an upstream pass bug rather than user IR error: `"unexpected imma_ld intrinsic!"`, `"unexpected imma_mma intrinsic call!"`, `"unexpected overloaded mma intrinsic call!"`, `"unexpected overloaded mma load intrinsic call!"`, `"unexpected overloaded mma store intrinsic call!"`, `"unexpected WMMA intrinsic!"`.
 

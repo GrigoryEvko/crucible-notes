@@ -62,6 +62,84 @@ Both 32-bit and 64-bit targets receive the same service table. The triple decide
 whether the compilation is `nvptx` or `nvptx64`, and the MC asm-info constructor
 turns that into the pointer-size and stack-slot-size choices needed by the ABI.
 
+## User Target vs gpulibs Subtarget Triple
+
+The 64-bit NVPTX target record handles two distinct triples that travel through
+the same `TargetMachine` factory but exit with different feature gates: the
+user-facing `nvptx64-nvidia-cuda` triple compiled by the host LLVM-21 backend at
+run time, and the embedded-only `nvptx64-nvidia-gpulibs` subtarget triple
+carried as producer metadata on prebuilt bitcode resources baked into the
+binary at link time. The host backend never *emits* `gpulibs` IR; it only
+*consumes* it through the bitcode reader during the `blobLinkedLib` link step.
+
+What makes this surprising is that the same compiler binary ships IR produced
+by *two different clang generations*, both of which predate the host LLVM-21
+link target by several major versions:
+
+| Producer string | Subtarget triple | Carried symbol family |
+|---|---|---|
+| `clang version 16.0.0` (NVIDIA internal) | `nvptx64-nvidia-gpulibs` | `__nv_fp128` softfloat path — fp128 arithmetic and transcendentals |
+| `clang version 7.1.0 git-630d6c22278` | `nvptx64-nvidia-gpulibs` | `__nv_*128` integer family — 128-bit integer divide, modulo, conversion |
+
+The dual-clang split exists because the integer-128 helper library was
+finalized against clang 7.1.0 long before the fp128 softfloat work began, and
+NVIDIA never recompiled the older IR against newer clang releases. Recompiling
+the legacy IR would force re-verification of the entire `__nv_*128` integer
+helper set against every supported SM, and the helpers are pure bitwise
+arithmetic that LLVM 21's optimizer consumes identically to LLVM 7's output.
+The fp128 work, by contrast, was a fresh integration that needed clang-16
+features (newer `__attribute__((target))` handling, fp128 ABI fixes) and was
+checked in at the version that built cleanly. Both blobs were frozen at their
+respective producer generations and embedded side by side rather than
+maintained on a moving baseline.
+
+What the gpulibs IR ships, structurally:
+
+- **Berkeley SoftFloat** — `f128M_add`, `f128M_mul`, `f128M_div`,
+  `f128M_sqrt`, `softfloat_*` rounding and rawFloat helpers. Provides the
+  arithmetic backbone of the fp128 softfloat path. The library is statically
+  linked into the gpulibs bitcode rather than shipped as a separate
+  `.bc` resource; on-disk it is invisible.
+- **Sleef** — `Sleef_*` transcendental functions, `Sleef_rempitabqp` (the
+  Payne–Hanek argument-reduction table for quad-precision), and the
+  `qp_cuda_sleefq` CUDA bridge. Provides `sinq`, `cosq`, `tanq`, `expq`,
+  `logq`, and the rest of the fp128 transcendental surface.
+- **NVIDIA `__nv_*128` helpers** — `__nv_udivti3`, `__nv_umodti3`,
+  `__nv_divti3`, `__nv_modti3`, and the wider 128-bit integer conversion
+  set. These come from the clang-7.1 blob, not the clang-16 one.
+
+Integration into the host pipeline goes through the same `blobLinkedLib`
+attribute described below: the gpulibs bitcode is parsed by the LLVM-21
+bitcode reader, linked with `LinkOnlyNeeded` so only the helpers the kernel
+actually references survive, then dropped into the optimization pipeline as
+ordinary internal functions. The optimizer sees no producer-version
+distinction — the IR is read as plain LLVM 21 IR once the bitcode reader has
+upgraded any forward-compatible constructs.
+
+> ⚡ **QUIRK — two compiler generations, one binary**
+> A stripped tileiras binary carries producer strings for `clang version 16.0.0`
+> and `clang version 7.1.0 git-630d6c22278` simultaneously, alongside the
+> primary host link target identifying as `LLVM21.0.0git`. The producer strings
+> are the fingerprint to grep for when locating the embedded bitcode resources
+> in a stripped binary; they survive both LTO and `strip` because they live
+> inside the bitcode payload, not in the host symbol table.
+
+> ⚡ **QUIRK — `nvptx64-nvidia-gpulibs` is a producer-only triple**
+> The host backend never builds or registers a `TargetMachine` for the
+> `gpulibs` triple. The triple appears only in the module metadata of embedded
+> bitcode resources and tells the bitcode reader to apply gpulibs-specific
+> attribute defaults during deserialization. A reimplementation that registers
+> `gpulibs` as a callable target will be calling code paths the original
+> binary never exercises at run time.
+
+> ⚡ **QUIRK — SoftFloat and Sleef are not separate `.bc` files**
+> Both third-party libraries are statically linked into the gpulibs blob
+> before the producer-string serialization happens. The blob exposes
+> `f128M_*`, `softfloat_*`, `Sleef_*`, and `__nv_fp128_*` as if they were a
+> single translation unit, which is why the producer string is `clang
+> version 16.0.0` for the entire fp128 surface even though the upstream
+> SoftFloat and Sleef sources were never built with clang-16 in isolation.
+
 ## NVPTXMCAsmInfo Constructor
 
 `NVPTXMCAsmInfo` starts from ordinary LLVM MC defaults and then replaces the
@@ -384,6 +462,14 @@ installed when the target machine was built.
   the chip/feature predicates the peephole-pass selection consults.
 - [libdevice Overview](../libdevice/overview.md) — the bitcode library most
   often delivered through the `blobLinkedLib` attribute.
+- [Math Pass Pipeline and Crosswalk](../libdevice/math-pass-pipeline-and-crosswalk.md) — the
+  consumer side of the gpulibs IR: where `f128M_*`, `softfloat_*`, `Sleef_*`,
+  and the `__nv_*128` integer helpers get wired into kernel-side math.
+- [Versions and Fingerprints](../VERSIONS.md) — the producer-string and
+  subtarget-triple table this section refers to.
+- [LLVM Fingerprint Table](../reference/llvm-fingerprint-table.md) — the
+  host LLVM-21 link-target identification that distinguishes the run-time
+  backend from the embedded clang-16 / clang-7.1 producers.
 - [Lowering — Target Attribute Conversion](../lowering/target-and-debuginfo.md#target-attribute-conversion) — the
   point at which `gpu.module` acquires the `#nvvm.target` and `blobLinkedLib`
   attributes the bring-up reads.

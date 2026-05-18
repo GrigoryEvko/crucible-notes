@@ -43,6 +43,7 @@
 - [Copy Propagation & CSE](./passes/copy-prop-cse.md)
 - [Predication](./passes/predication.md)
 - [Rematerialization](./passes/rematerialization.md)
+- [Instruction Movement Engine](./passes/instruction-movement.md)
 - [Liveness Analysis](./passes/liveness.md)
 - [Synchronization & Barriers](./passes/sync-barriers.md)
 - [Hot/Cold Partitioning](./passes/hot-cold.md)
