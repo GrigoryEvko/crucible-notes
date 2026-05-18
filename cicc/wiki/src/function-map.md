@@ -410,7 +410,7 @@ Address-to-identity lookup table. Confidence: VERY HIGH = string evidence, HIGH 
 | Instruction constraint emission (180+ case opcode switch) | `0xB612D0` | 102KB | HIGH |
 | SimplifyAndColor phase | `0x1081400` | 13KB | HIGH |
 | SelectNodeForRemoval / Briggs criterion (K=15 at 3 locations) | `0x1090BD0` | 10KB | VERY HIGH |
-| AssignColorsAndOptimize candidate (address `0x10841C0` not present in extracted function list — closest neighbor `0x1084620` is a 146-byte stub; real AssignColorsAndOptimize is likely fused into `sub_1081400` / `sub_1090BD0`) | `0x10841C0`? | unverified | LOW |
+| SimplifyAndColor multi-pass driver (calls `sub_1081400` with selector `a3 = 0` once, or `a3 = 1` then `a3 = 2` based on flag at `*(a1+1092)`; rotates frame pointers at `a1+104` between contexts at `a1+1096` and `a1+1104` — looks like single-pass vs. split-pass register coloring orchestration) | `0x1084620` | 146 B trampoline | MEDIUM |
 | Operand constraint spec creator (type 14=GPR, 40=FP, 78=vec) | `0xA778C0` | — | HIGH |
 | Final instruction emitter with allocated registers | `0xA78010` | — | HIGH |
 

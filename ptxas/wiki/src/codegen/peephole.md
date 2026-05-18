@@ -12,8 +12,8 @@ share the same architecture: a giant opcode-based switch dispatches to hundreds 
 pattern matchers; the highest-priority match wins; the winning rewrite modifies the
 instruction in-place.
 
-None of the three mega-dispatchers can be decompiled by Hex-Rays due to their
-extreme size (233--280 KB each).  All analysis in this page derives from
+None of the five mega-dispatchers can be decompiled by Hex-Rays due to their
+extreme size (204--280 KB each).  All analysis in this page derives from
 disassembly, call graphs, and the 3,185 pattern-matcher functions that they invoke.
 
 ## Scale Summary
@@ -22,7 +22,9 @@ disassembly, call graphs, and the 3,185 pattern-matcher functions that they invo
 |-------------------|-------------|-------------|-----------------|--------------------:|-------------------:|-------------------:|----------------------:|-----------------|---------|
 | `sub_169B190` | 280 KB | 65,999 | 762 | 249 / 373 | 110 | 2,347 | 245 (cases 0..244) | `sub_B12930` | Generic (all SM) |
 | `sub_143C440` | 233 KB | ~56,241 | 1,087 | 203 / 373 | 85 | 1,971 | 190 (cases 0..189) | `sub_B12940` | SM120-specific |
+| `sub_18A2CA0` | 231 KB | 54,043 | 1,330 | 203 / 373 | 86 | ~1,970 | -- | `sub_B12950` | Third SM target (likely SM103 / SM110 / SM121) |
 | `sub_198BCD0` | 233 KB | 54,043 | 1,336 | 203 / 373 | 85 | 1,966 | 190 (cases 0..189) | `sub_B12960` | Post-scheduling |
+| `sub_BA9D00` | 204 KB | 48,053 | 1,327 | 203 / 373 | -- | -- | -- | `sub_B12970` | Fourth SM target (likely SM103 / SM110 / SM121) |
 
 All three primary switches dispatch over the same 0..372 opcode space, but the
 **generic dispatcher recognizes 249 distinct opcodes**, while the SM120 and
@@ -37,8 +39,19 @@ namespace.  All three share an identical 72-case rewrite-action table (at
 `0x143FB8B`, `0x16A166C`, `0x198F41B`) plus 50--52-case secondary tables that
 gate medium-frequency rewrites.
 
-All three entry trampolines (`sub_B12930`, `sub_B12940`, `sub_B12960`) are 11-byte
-thunks that strip or forward one argument and tail-call the corresponding giant.
+All five entry trampolines (`sub_B12930`, `sub_B12940`, `sub_B12950`, `sub_B12960`,
+`sub_B12970`) are 11-byte thunks that strip or forward one argument and tail-call
+the corresponding giant.  The two newly-identified dispatchers `sub_18A2CA0` and
+`sub_BA9D00` share the call-graph fingerprint of the SM120/post-schedule giants:
+identical helper set (`sub_B28F10`/`sub_B28F20` write scheduling-class bytes at
+descriptor offsets `+0x0E` / `+0x0F`; `sub_BA9C30`/`sub_BA9C50`/`sub_BA9C70`/
+`sub_BA9CB0`/`sub_BA9CF0` write the resource-class word at `+0x8C`), identical
+373-case primary opcode switch, identical sole-caller-via-thunk linkage from the
+contiguous `sub_B129xx` vtable column.  They are almost certainly the per-target
+dispatchers for the remaining SM families documented in the wiki (SM103 Blackwell
+Ultra GB300, SM110 Jetson Thor, SM121 DGX Spark); mapping each function to a
+specific SM ID requires inspecting the call-site that loads the vtable column at
+`0xB12930-0xB12970` and is left for follow-up.
 
 ## Pipeline Position
 
@@ -761,9 +774,11 @@ functions.  Each encoder packs a 128-bit SASS instruction word using
 
 | Address | Size | Identity | Confidence |
 |---------|------|----------|---|
-| `sub_B12930` | 11 B | Entry trampoline for generic peephole | CERTAIN |
-| `sub_B12940` | 11 B | Entry trampoline for SM120 peephole | CERTAIN |
-| `sub_B12960` | 11 B | Entry trampoline for post-schedule peephole | CERTAIN |
+| `sub_B12930` | 11 B | Entry trampoline for generic peephole (-> `sub_169B190`) | CERTAIN |
+| `sub_B12940` | 11 B | Entry trampoline for SM120 peephole (-> `sub_143C440`) | CERTAIN |
+| `sub_B12950` | 11 B | Entry trampoline for third SM-target peephole (-> `sub_18A2CA0`) | CERTAIN |
+| `sub_B12960` | 11 B | Entry trampoline for post-schedule peephole (-> `sub_198BCD0`) | CERTAIN |
+| `sub_B12970` | 11 B | Entry trampoline for fourth SM-target peephole (-> `sub_BA9D00`) | CERTAIN |
 | `sub_169B190` | 280 KB | Generic peephole mega-dispatcher | HIGH |
 | `sub_143C440` | 233 KB | SM120 peephole mega-dispatcher | HIGH |
 | `sub_198BCD0` | 233 KB | Post-schedule peephole mega-dispatcher | HIGH |

@@ -190,6 +190,8 @@ These functions appear in 10+ wiki pages -- they are the universal building bloc
 | `0x169B190` | `isel_pattern_dispatch` (master) | 5 | 1 | 280 KB, 65,999 insns -- largest function |
 | `0x143C440` | `sm120_peephole_dispatch` | 4 | 1 | SM120 (RTX 50), 373-case switch |
 | `0x198BCD0` | `sm100_peephole_dispatch` | 4 | 1 | SM100 (Blackwell), 1336 callees |
+| `0x18A2CA0` | `smXX_peephole_dispatch` (3rd SM target) | 1 | 1 | 231 KB, 373-case switch, same vtable column as SM100/120; reached via thunk `0xB12950`. Likely SM103/SM110/SM121 -- CONFIDENCE: MEDIUM |
+| `0xBA9D00` | `smXX_peephole_dispatch` (4th SM target) | 1 | 1 | 204 KB, 373-case switch, same vtable column as SM100/120; reached via thunk `0xB12970`. Likely SM103/SM110/SM121 -- CONFIDENCE: MEDIUM |
 | `0x83EF00` | `main_peephole_pass` | 6 | 0 | 29 KB, 392 callees |
 | `0x6D9690` | `master_instruction_encoder` | 7 | 1 | 27 KB native, opcode switch |
 | `0x6E4110` | `sass_codegen_main` | 4 | 1 | EmitSASSForFunction, FNV-1a BB hash |
@@ -379,8 +381,8 @@ Sizes below are native bytes as reported by IDA (`size` field in `ptxas_function
 | 1 | `0x169B190` | isel_pattern_dispatch | 280 KB |
 | 2 | `0x198BCD0` | sm100_peephole_dispatch | 239 KB |
 | 3 | `0x143C440` | sm120_peephole_dispatch | 239 KB |
-| 4 | `0x18A2CA0` | (large SASS-side dispatcher) | 231 KB |
-| 5 | `0xBA9D00` | (post-regalloc mega-pass) | 204 KB |
+| 4 | `0x18A2CA0` | smN_peephole_dispatch (third SM target) | 231 KB |
+| 5 | `0xBA9D00` | smN_peephole_dispatch (fourth SM target) | 204 KB |
 
 ### Top 10 Most Cross-Referenced (by wiki page count)
 

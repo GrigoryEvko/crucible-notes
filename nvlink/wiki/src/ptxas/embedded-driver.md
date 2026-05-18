@@ -2,7 +2,7 @@
 
 > **Note**: This page is the algorithm reference for the per-module compilation driver inside nvlink's embedded ptxas. It is a binary-recovered companion to the standalone wiki -- for the equivalent algorithm in the open-coded standalone `ptxas` (without nvlink's split-compile harness, EWP fallback rules, or 168-byte input-container plumbing) see [ptxas: Pipeline Overview](../../ptxas/pipeline/overview.html) and [ptxas: Entry Point](../../ptxas/pipeline/entry.html). The 26-phase ordering, callback identities, and stack-snapshot widths documented below are unique to the nvlink-embedded copy in v13.0.88; their cross-version stability is unverified.
 
-The function at `0x1112F30` is the per-module compilation orchestrator in nvlink's embedded ptxas. Hex-Rays recovers 2,164 lines (12,219 instruction bytes, 65,018 source bytes) from a single function with no helper extraction. It is reached from two entry points -- `sub_4BD760` (PTX JIT path) and `sub_4BC6F0` (LTO finalization after libnvvm produces PTX) -- with a module-context pointer in `rdi` and a PTX module descriptor in `rsi`. The body partitions cleanly into 26 sequential phases: option capture, timing, callback registration, mode dispatch, header emission, flag negotiation, table allocation, per-function configuration, the inner compile loop (sequential or thread-pooled), and teardown. The function returns 0 on success; failures longjmp through `sub_45CAC0` to the linker's top-level error handler.
+The function at `0x1112F30` is the per-module compilation orchestrator in nvlink's embedded ptxas. Hex-Rays recovers 2,088 lines (13,774 instruction bytes across 2,641 instructions in 538 basic blocks) from a single function with no helper extraction. It is reached from two entry points -- `sub_4BD760` (PTX JIT path) and `sub_4BC6F0` (LTO finalization after libnvvm produces PTX) -- with a module-context pointer in `rdi` and a PTX module descriptor in `rsi`. The body partitions cleanly into 26 sequential phases: option capture, timing, callback registration, mode dispatch, header emission, flag negotiation, table allocation, per-function configuration, the inner compile loop (sequential or thread-pooled), and teardown. The function returns 0 on success; failures longjmp through `sub_45CAC0` to the linker's top-level error handler.
 
 This page documents each phase, the per-function inner pipeline at Phase 23, the mode-flag matrix at Phase 6, the C pseudocode of the driver loop, and three quirks that distinguish this driver from the standalone `ptxas` entry path.
 
@@ -10,7 +10,7 @@ This page documents each phase, the per-function inner pipeline at Phase 23, the
 
 | Address | Symbol | Size | Decompilation depth | Confidence |
 |---|---|---|---|---|
-| `0x1112F30` | `sub_1112F30` (= `ptxas_compile_module`) | 12,219 B (65,018 src B) | 2,164 lines (`decompiled/sub_1112F30_0x1112f30.c`) | **HIGH** |
+| `0x1112F30` | `sub_1112F30` (= `ptxas_compile_module`) | 13,774 B / 2,641 insns / 538 BBs | 2,088 lines (`decompiled/sub_1112F30_0x1112f30.c`) | **HIGH** |
 | `0x4BD760` | `ptxas_jit_compile` | -- | calling site #1 (PTX from disk) | HIGH |
 | `0x4BC6F0` | `compile_linked_lto_ir` | -- | calling site #2 (LTO post-libnvvm) | HIGH |
 
@@ -80,13 +80,15 @@ Picks one of four `(init_fn, begin_fn)` pairs from `--compile-only`, `--compile-
 
 ### Phase 7 -- PTX Header Emission
 
-If `a2[178]` is set and `a2[236]` is clear (in-memory mode), `sub_12AF550` emits a synthetic header into a temporary buffer:
+If `a2[178]` is set and `a2[236]` is clear (in-memory mode), `sub_12AF550` emits a synthetic header into a temporary buffer using three separate format strings (`\t.version %s`, `\t.target  %s`, `\t.entry %s { ret; }`):
 
 ```c
-sprintf(buf, ".version 8.6\n.target sm_%d\n.entry __cuda_dummy_entry__ { ret; }\n", sm);
+fprintf(buf, "\t.version %s\n", version_str);
+fprintf(buf, "\t.target  %s\n", target_str);
+fprintf(buf, "\t.entry %s { ret; }\n", "__cuda_dummy_entry__");
 ```
 
-Otherwise the driver opens the file at `a2+184` via `fopen`, writes the same triple, and re-parses via `sub_12AF200`. The dummy entry exists because the PTX validator (`sub_147EF50`, 288 KB) refuses to operate on a header-only module; the entry is later pruned during dead-code elimination if no real entries reference it.
+Otherwise the driver opens the file at `a2+184` via `fopen`, writes the same triple, and re-parses via `sub_12AF200`. The dummy entry exists because the PTX validator (`sub_147EF50`, ~28 KB / 5,872 insns) refuses to operate on a header-only module; the entry is later pruned during dead-code elimination if no real entries reference it.
 
 ### Phase 8 -- Tools-Patch Warnings
 
@@ -164,7 +166,7 @@ The driver snapshots ~224 bytes of flag state at offset 1072 of `a1`. This snaps
 
 ### Phase 15 -- `init_callback(ctx, entries)`
 
-Calls the `init_fn` selected at Phase 6 (`sub_110CD20`, `sub_110CBA0`, `sub_110D0B0`, or `sub_110D110`). All four iterate the entry list and call `sub_110BC90` once per entry to allocate a codegen descriptor (`sub_110BC90` returns a `pthread_mutexattr_t *` pointing at a fresh descriptor; this is a Hex-Rays artifact -- the actual type is `CodegenRecord`). The descriptor is inserted into the map at `a1+1192` keyed by the entry's symbol name.
+Calls the `init_fn` selected at Phase 6 (`sub_110CD20` 907 B, `sub_110CBA0` 370 B, `sub_110D0B0` 82 B, or `sub_110D110` 399 B). The three larger variants iterate the entry list; `sub_110D0B0` is the degenerate single-entry path used when no entry walk is required. All four ultimately call `sub_110BC90` (3,843 B) to allocate a codegen descriptor (`sub_110BC90` returns a `pthread_mutexattr_t *` pointing at a fresh descriptor; this is a Hex-Rays artifact -- the actual type is `CodegenRecord`). The descriptor is inserted into the map at `a1+1192` keyed by the entry's symbol name.
 
 ```c
 for (entry = entries; entry; entry = entry->next) {
