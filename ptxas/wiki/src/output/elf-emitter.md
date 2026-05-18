@@ -2,7 +2,7 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-ptxas builds its ELF/cubin output without libelf or any external ELF library. The entire ELF construction pipeline is a custom implementation spread across approximately 20 functions in the `0x1C99`--`0x1CD1` address range, totaling roughly 300 KB of binary code. At the center is a 672-byte in-memory object called the "ELF world" (`ELFW`), which owns all sections, symbols, and string tables. The emitter writes standard ELF headers with NVIDIA extensions: `EM_CUDA` (`0xBE` / 190) as the machine type, NVIDIA-specific section types (`SHT_CUDA_INFO` = `0x70000064`), and CUDA-specific ELF flags encoding the SM architecture version (HIGH -- `0xBE` immediate visible in `sub_1CB53A0` header init; `0x70000064` matches values observed in any cubin via `readelf -S`). The design handles both 32-bit and 64-bit ELF classes, with the class byte at ELF offset 4 set to `'3'` (32-bit) or `'A'` (64-bit). Finalization is a single-pass algorithm that orders sections into 8 priority buckets, assigns file offsets with alignment, and handles the ELF extended section index mechanism (`SHN_XINDEX`) when the section count exceeds 65,280.
+ptxas builds its ELF/cubin output without libelf or any external ELF library. The entire ELF construction pipeline is a custom implementation spread across approximately 20 functions in the `0x1C99`--`0x1CD1` address range, totaling roughly 300 KB of binary code. At the center is a 672-byte in-memory object called the "ELF world" (`ELFW`), which owns all sections, symbols, and string tables. The emitter writes standard ELF headers with NVIDIA extensions: `EM_CUDA` (`0xBE` / 190) as the machine type, NVIDIA-specific section types (`SHT_CUDA_INFO` = `0x70000000` for `.nv.info`, `SHT_CUDA_CALLGRAPH` = `0x70000064` for `.nv.callgraph`, `SHT_CUDA_COMPAT` = `0x70000086` for `.nv.compat`), and CUDA-specific ELF flags encoding the SM architecture version. The design handles both 32-bit and 64-bit ELF classes, with the class byte at ELF offset 4 set to `'3'` (32-bit) or `'A'` (64-bit). Finalization is a single-pass algorithm that orders sections into 8 priority buckets, assigns file offsets with alignment, and handles the ELF extended section index mechanism (`SHN_XINDEX`) when the section count exceeds 65,280.
 
 | | |
 |---|---|
@@ -18,7 +18,9 @@ ptxas builds its ELF/cubin output without libelf or any external ELF library. Th
 | **File serializer** | `sub_1CD13A0` (2,541 bytes) |
 | **Cubin entry point** | `sub_612DE0` (47 KB, called from `sub_446240`) |
 | **ELF machine type** | `EM_CUDA` = `0xBE` (190) |
-| **CUDA section type** | `SHT_CUDA_INFO` = `0x70000064` |
+| **CUDA section type (`.nv.info`)** | `SHT_CUDA_INFO` = `0x70000000` |
+| **CUDA section type (`.nv.callgraph`)** | `SHT_CUDA_CALLGRAPH` = `0x70000064` |
+| **CUDA section type (`.nv.compat`)** | `SHT_CUDA_COMPAT` = `0x70000086` |
 | **ELF magic** | `0x464C457F` (`\x7fELF`) |
 | **Memory pool** | `"elfw memory space"` (4,096-byte initial) |
 
@@ -597,15 +599,15 @@ The `e_flags` field encodes the target SM architecture (e.g., `sm_100` for Black
 
 ## NVIDIA-Specific Section Types
 
-Beyond standard ELF section types, the emitter uses NVIDIA-defined types in the `SHT_LOPROC`--`SHT_HIPROC` range:
+Beyond standard ELF section types, the emitter uses NVIDIA-defined types in the `SHT_LOPROC`--`SHT_HIPROC` range. See [Section Catalog](sections.md#nvidia-specific-section-types) for the authoritative table; the constants below are repeated here for the emitter context:
 
 | Type Constant | Value | Section |
 |---|---|---|
-| `SHT_CUDA_INFO` | `0x70000064` | `.nv.info.*` -- per-entry EIATTR attributes |
-| `SHT_CUDA_CALLGRAPH` | (proc-specific) | `.nv.callgraph` -- inter-function call edges |
-| `SHT_CUDA_CONSTANT` | (proc-specific) | `.nv.constant0.*` -- per-entry constant banks |
+| `SHT_CUDA_INFO` | `0x70000000` | `.nv.info`, `.nv.info.*` -- global and per-entry EIATTR attributes |
+| `SHT_CUDA_CALLGRAPH` | `0x70000064` | `.nv.callgraph` -- inter-function call edges (relocatable mode) |
+| `SHT_CUDA_COMPAT` | `0x70000086` | `.nv.compat` -- forward-compatibility attributes |
 
-The magic constant `1879048292` appearing in the emitter decompilation is `0x70000064`, confirming `SHT_CUDA_INFO` as the type used for NVIDIA info sections.
+The magic constant `1879048292` (`0x70000064`) appears in the emitter decompilation as a range-check endpoint for CUDA-specific section types -- `sub_1CB3570` treats the range `0x70000064`--`0x7000007E` plus `0x70000006` as receiving special relocatable-mode handling. The `.nv.info` section creator `sub_1CC7FB0` passes `1879048192` (`0x70000000`) for the type field.
 
 ## Cross-References
 

@@ -1,10 +1,10 @@
 # ISel Pattern Matching & Instruction Selection
 
-> **Prerequisites:** Familiarity with [SelectionDAG](selectiondag.md), [Type Legalization](type-legalization.md), and [DAG Node Layout](../structs/dag-node.md). Understanding of the [Pattern Database](../structs/pattern-db.md) structure and [NVPTX opcodes](../reference/nvptx-opcodes.md) is recommended.
+> **Prerequisites:** Familiarity with [SelectionDAG](selectiondag.md), [Type Legalization](type-legalization.md), and [DAG Node Layout](../structs/dag-node.md). Understanding of the [Pattern Database](../structs/pattern-db.md) structure, the [460 NVPTXISD opcodes](nvptxisd-opcodes.md) catalog, and [NVPTX machine opcodes](../reference/nvptx-opcodes.md) is recommended.
 
 > **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
 
-The NVPTX instruction selector in cicc v13.0 translates legal SelectionDAG nodes into target MachineInstr opcodes through a three-level dispatch hierarchy totaling approximately 900KB of code. At the top sits `NVPTXDAGToDAGISel::Select` (`sub_3090F90`, 91KB), which builds a per-function cost table, manages a priority-queue-driven topological worklist, and calls the pattern matcher (`sub_308FEE0`) for every node. The pattern matcher fans out to a hand-written NVPTX-specific select switch (`sub_347A8D0`, 309KB) and a TableGen-generated `SelectCode` function (`sub_348D3E0`, 256KB). Surrounding this core are six NVPTX-specific sub-selectors covering memory operations, texture/surface fetches, complex addressing modes, vector patterns, and atomics. NVIDIA's key delta from upstream LLVM is (1) a compressed per-SM-variant legality table that gates which target opcodes exist on which GPU architecture, (2) a secondary 4-bit packed bitfield for fine-grained operand-class legality, and (3) the iteration budget that prevents the selector from looping indefinitely on pathological DAGs.
+The NVPTX instruction selector in cicc v13.0 translates legal SelectionDAG nodes into target MachineInstr opcodes through a three-level dispatch hierarchy totaling approximately 900KB of code. At the top sits `NVPTXDAGToDAGISel::Select` (`sub_3090F90`, 91KB), which builds a per-function cost table, manages a priority-queue-driven topological worklist, and calls the pattern matcher (`sub_308FEE0`) for every node. The pattern matcher fans out to a hand-written NVPTX-specific select switch (`sub_347A8D0`, 309KB) and a TableGen-generated `SelectCode` function (`sub_348D3E0`, 256KB). Surrounding this core are six NVPTX-specific sub-selectors covering memory operations, texture/surface fetches, complex addressing modes, vector patterns, and atomics. The hand-written switch is responsible for the 460 distinct `NVPTXISD::*` target nodes catalogued in [NVPTXISD Opcodes](nvptxisd-opcodes.md) (372 of which are the texture/surface family) -- anything in the standard `ISD::*` range falls through to `SelectCode`. NVIDIA's key delta from upstream LLVM is (1) a compressed per-SM-variant legality table that gates which target opcodes exist on which GPU architecture, (2) a secondary 4-bit packed bitfield for fine-grained operand-class legality, and (3) the iteration budget that prevents the selector from looping indefinitely on pathological DAGs.
 
 | | |
 |---|---|
@@ -103,7 +103,7 @@ The iteration budget formula `4 * numInstructions * maxBlockSize` is an NVIDIA a
 The pattern matcher is called once per SDNode. It reads the node's opcode at `*(node + 24)` and dispatches through a multi-level decision tree:
 
 1. **Quick-reject filter.** If the node is already selected (machine opcode bit set in flags), return immediately.
-2. **NVPTX-specific hand-written patterns.** Calls `sub_347A8D0` for NVPTX custom opcodes (NVPTXISD range >= 499). This handles texture loads, MMA instructions, atomic operations, `.param`-space loads/stores, and other GPU-specific patterns.
+2. **NVPTX-specific hand-written patterns.** Calls `sub_347A8D0` for NVPTX custom opcodes (`NVPTXISD::*`, values at or above `ISD::BUILTIN_OP_END` -- reconstructed as 499 from the `sub_33D4EF0` cutover, see [NVPTXISD Opcodes](nvptxisd-opcodes.md#how-opcode-names-reach-the-binary)). This handles the 460 enumerated target nodes -- texture/surface fetches (372 opcodes, dispatched into `sub_306A930`), MMA instructions, atomic operations, `.param`-space loads/stores, branch-index tables (`Brx*`), funnel shifts, and the call-frame pseudos in MachineInstr opcode range 505--573.
 3. **TableGen auto-generated matcher.** Calls `sub_348D3E0` (`SelectCode`) for standard ISD opcodes. This function is mechanically generated from the `.td` pattern files in the NVPTX backend and contains a massive switch table mapping DAG patterns to MachineInstr opcodes.
 4. **Complex pattern matching.** For load/store addressing modes, calls `sub_30811D0` (77KB) and `sub_30783B0` (39KB), which match `base + offset`, `base + scaled_index`, and address-space-qualified patterns.
 5. **Fallback.** If no pattern matches, the node is marked as "failed ISel" and the driver may retry after DAG combining.
@@ -229,27 +229,39 @@ The complex pattern matcher at `sub_30811D0` calls seven helper functions (`sub_
 
 Tensor core instruction selection is split across the intrinsic lowering stage (which generates NVPTXISD nodes from `wmma.load`, `wmma.mma`, `mma.sync`, `wgmma` intrinsics) and the ISel stage (which selects the specific PTX opcode). The ISel switch in `sub_347A8D0` handles these by checking:
 
-1. **SM architecture** -- `wmma` requires SM 70+, `mma.sync` requires SM 75+, `wgmma` requires SM 90+.
+1. **SM architecture** -- `wmma` requires SM 70+, `mma.sync` requires SM 75+, `wgmma` requires SM 90+, `tcgen05.mma` requires SM 100+ (gated by the "supported only on arch-conditional or family-conditional variants from SM100 onwards" diagnostic recovered from `cicc_strings.json`).
 2. **Matrix dimensions** -- m16n16k16, m8n8k4, m16n8k8, etc.
 3. **Data types** -- f16, bf16, tf32, f64, i8, i4, b1, fp8 (SM 90+), fp4 (SM 100+).
 4. **Accumulator type** -- f16 or f32 for half-precision MMA.
 
-The architecture check consults the compressed legality table to determine whether a given MMA variant is legal on the target SM.
+The architecture check consults the compressed legality table to determine whether a given MMA variant is legal on the target SM. The block-scale variants impose an extra structural check: the matcher rejects `ashift` operands with a specific "ashift is not supported with tcgen05.mma.block_scale variants" assert path.
+
+### SM90+ / SM100+ Extensions (Hopper / Blackwell)
+
+A distinct family of ISel patterns covers the asynchronous bulk-copy and tensor-memory subsystems introduced on Hopper and Blackwell. These are selected in `sub_347A8D0` and rely heavily on the compressed legality table for SM gating:
+
+- **`cp.async.bulk.tensor.g2s.*`** -- TMA bulk load/store with optional multicast (`.multicast::cluster`) and shared-memory destination (`.shared::cluster`). Selected from intrinsic-lowered NVPTXISD nodes.
+- **`tcgen05.{alloc,dealloc,commit,cp,fence,mma,wait,relinquish.alloc}`** -- tensor-memory allocator and compute family; binary strings confirm all eight verbs are present and gated to SM100+ arch-conditional variants.
+- **Cluster barriers** -- `barrier.cluster.{arrive,arrive.relaxed,wait}`, `cluster.barrier.aligned`, `fence.sc.cluster`, `cluster.get.rank`, `cluster.set.rank`. The atomic-scope downgrade diagnostic ("scope of cluster is supported on architecture sm_90 or above. Using device scope instead.") drives a fallback path when the target SM is too old.
+- **`setmaxnreg.{inc,dec}.sync.aligned`** -- per-warp register-budget reshaping; emitted via dedicated NVPTXISD nodes.
+- **`griddepcontrol.{launch_dependents,wait}`** and **`elect.sync`** -- producer/consumer kernel coordination.
 
 ### Atomic Operations: `sub_3048C30` (86KB)
 
 Atomic instruction selection generates `atom.{scope}.{op}.{type}` instructions. The selector handles:
 
-| Operation | PTX | NVPTXISD opcodes |
+| Operation | PTX mnemonic | MachineInstr opcode range (reconstructed) |
 |---|---|---|
-| Compare-and-swap | `atom.cas` | 462 |
+| Compare-and-swap | `atom.cas` | ~462 |
 | Add (int) | `atom.add` | 294--297 |
 | Min (signed) | `atom.min` | 302--305 |
 | Max (signed) | `atom.max` | 314--317 |
 | Exchange | `atom.exch` | (via generic path) |
 | AND/OR/XOR | `atom.and` / `atom.or` / `atom.xor` | (via generic path) |
 
-The selector checks `"vector atomics not supported on this architecture!"` for vector-width atomics and gates them behind an SM version check (likely SM 90+). Scope qualifiers (`.cta`, `.gpu`, `.sys`) are determined from the memory ordering of the LLVM atomic instruction.
+> **Numbering caveat.** The integer values above are reconstructed *MachineInstr* opcode positions (the third dispatch level, after `NVPTXISD::*`), not NVPTXISD enumerator values. `cicc_strings.json` contains exactly 460 `NVPTXISD::*` symbols; the [NVPTXISD Opcodes](nvptxisd-opcodes.md) catalog is the authoritative cross-reference. Atomics enter ISel through generic `ISD::ATOMIC_*` nodes (handled by `SelectCode`) rather than as named `NVPTXISD::*` opcodes, which is why this family has no entry in the 460-name list.
+
+The selector checks `"vector atomics not supported on this architecture!"` for vector-width atomics and gates them behind an SM version check (SM 90+ per the cluster-scope downgrade diagnostic). Scope qualifiers (`.cta`, `.gpu`, `.sys`, and on SM90+ `.cluster`) are determined from the memory ordering of the LLVM atomic instruction; on pre-Hopper targets a cluster-scoped atomic is silently rewritten to device scope and the diagnostic `"atomic operations' scope of cluster is supported on architecture sm_90 or above. Using device scope instead."` is emitted.
 
 ### Vector / SIMD Patterns: `sub_3475BB0` (89KB)
 
@@ -312,8 +324,10 @@ Note that cicc does **not** use FastISel for GPU code generation. The `fast-isel
 ## Cross-References
 
 - [SelectionDAG & Instruction Selection](./selectiondag.md) -- parent page covering the full SelectionDAG pipeline (type legalization, operation legalization, DAG combining, and the ISel overview)
+- [NVPTXISD Opcodes](./nvptxisd-opcodes.md) -- authoritative catalog of all 460 `NVPTXISD::*` target nodes recovered from the binary, grouped by family (texture/surface 372, load 18, store 17, call/frame 29, math 10, funnel-shift 4, brx 3, misc 7)
 - [Pattern Database / Constraint Table](../structs/pattern-db.md) -- the per-instruction operand constraint table at `word_3F3E6C0`
 - [DAG Node Layout](../structs/dag-node.md) -- SDNode structure definition
+- [NVPTX Machine Opcode Reference](../reference/nvptx-opcodes.md) -- the MachineInstr opcodes that NVPTXISD nodes lower into, including the 505--573 call-ABI pseudo range
 - [NVPTX Target Infrastructure](../infra/nvptx-target.md) -- target machine, subtarget features, and register classes
 - [Hash Infrastructure](../infra/hash-infrastructure.md) -- the `key * 37` integer hash used throughout cicc
 - [Tensor / MMA Builtins](../builtins/tensor-mma.md) -- intrinsic lowering for MMA operations that feed into ISel

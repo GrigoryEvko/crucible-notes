@@ -129,9 +129,24 @@ The layout calculator `sub_1C9DC60` skips `.nv.constant0` sections during offset
 | `.nv.shared.reserved.` | Reserved shared memory for runtime allocation |
 | `.nv.reservedSmem` | Reserved shared memory master section |
 | `.nv.reservedSmem.begin` | Start offset of reserved region |
+| `.nv.reservedSmem.end` | End offset of reserved region |
 | `.nv.reservedSmem.cap` | Capacity of reserved region |
 | `.nv.reservedSmem.offset0` | Offset within reserved region 0 |
-| `.nv.global.init` | Initialized global variables |
+| `.nv.reservedSmem.offset1` | Offset within reserved region 1 |
+| `.nv.global` | Uninitialized global variables (BSS-style, `SHT_NOBITS`) |
+| `.nv.global.init` | Initialized global variables (`SHT_PROGBITS`) |
+| `.nv.ptx.const0.size` | Per-function PTX constant bank 0 size record (linker metadata) |
+
+### Texture / Surface Descriptor Tables
+
+Created when the program declares texture references, surface references, or samplers. Each section records the descriptor footprint for a specific binding mode so the driver can size its descriptor heap at load time.
+
+| Section | Purpose |
+|---|---|
+| `.nv.independent.texrefDescSize` | Per-texref descriptor size (independent texture/sampler mode) |
+| `.nv.independent.samplerrefDescSize` | Per-samplerref descriptor size (independent mode) |
+| `.nv.unified.texrefDescSize` | Per-texref descriptor size (unified texture+sampler mode) |
+| `.nv.surfrefDescSize` | Per-surfref descriptor size |
 
 The master section allocator `sub_1CABD60` assigns addresses to shared, constant, and local memory sections. The layout calculator skips `.nv.reservedSmem` for the same reason it skips `.nv.constant0` -- its address comes from the shared memory master allocator.
 

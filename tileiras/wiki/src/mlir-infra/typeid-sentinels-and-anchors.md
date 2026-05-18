@@ -8,6 +8,14 @@ singleton that lazily interns a `__PRETTY_FUNCTION__`-derived RTTI string the fi
 runs, then caches the resulting `TypeID*` in a qword next to a one-shot guard byte. The two never mix:
 every TypeID in the binary is either a static sentinel pointer or a Meyers-cached qword.
 
+Neither idiom touches the Itanium C++ ABI's `typeinfo`/`vtable` machinery. The binary's `.data.rel.ro`
+typeinfo block (`0x4FA5242..0x5A2C360`) holds only libstdc++ classes — exceptions, streams, locale
+facets — and no MLIR class appears there. This is the architectural reason both idioms exist: MLIR
+needs cross-DSO identity for types that the C++ standard's `&typeid(T)` cannot give it (anonymous
+namespaces, hidden visibility, statically linked dialects), so it builds its own discriminators on
+top of address-taking and string-interning instead. A reimplementation that swaps in `std::type_info*`
+will be unable to keep pointer-equality stable across the registered-dialect set.
+
 The distinction is significant. Idiom 1 carries the ABI-frozen identities — dialects, the registered
 Type and Attribute subclasses, the upstream MLIR built-ins — whose addresses are link-time constants and
 whose registration happens before `main`. Idiom 2 carries identities that come into existence at runtime
@@ -39,13 +47,17 @@ band per owning dialect or category. Three bands carry the weight of Tileiras di
 | `&unk_5B38B[B0..C8]`          | `cuda_tile` dialect Type TypeIDs                                     | `cuda_tile.tile`, `cuda_tile.ptr`, `cuda_tile.tensor_view` |
 | `&unk_5B48D[88..F8]` / `5B48E[00..58]` | `cute_nvgpu` concrete Type TypeIDs (27 slots, 8-byte pitch)  | `cute_nvgpu.sm90.mma`, `cute_nvgpu.smem_desc`, `cute_nvgpu.atom.tma_load` |
 | `&unk_5B49A[98..B18]`         | `cute` dialect concrete Type TypeIDs (17 slots, 8-byte pitch)        | `cute.layout`, `cute.swizzle`, `cute.tile`           |
-| `&unk_5B44E[B8..F0]` / `5B44F[10..D8]` | `nv_tileas` per-op descriptor sentinels (kindPtr targets)   | `nv_tileas.tiled_load`, `nv_tileas.gather_load`      |
+| `&unk_5B44E[B8..F8]` / `5B44F[08..FD8]` | `nv_tileas` per-op `opInfo` sentinels (21 ops, 8-byte pitch) | `nv_tileas.tiled_load` @ `5B44ED0`, `nv_tileas.gather_load` @ `5B44FA8`, `nv_tileas.convert_layout` @ `5B44FD8`. Paired kindPtr forms live in `0x5BE3F*` / `0x5BE4*` / `0x5BE5*` — see [Sentinel Sharing And Aliasing](#sentinel-sharing-and-aliasing). |
 | `&unk_5B46[D28..F68]`         | `nv_tileaa` per-op FoldRecord sentinels (33 ops)                     | `nv_tileaa.make_memref`, `nv_tileaa.block_tile`      |
 | `&unk_5BE5xxx` / `&unk_5BE6xxx` | Upstream MLIR Type and Attribute TypeIDs (built-in dialect)        | `f32` at `&unk_5BE6030`, `f8E4M3FN` at `&unk_5BE60A0` |
 | `&unk_5BAADxx`                | Opaque / erased-storage TypeIDs                                      | the i32-blocked-layout-id-1 variant at `&unk_5BAADB8`|
 
 Dialect TypeIDs get their own one-byte slots too: `&unk_5B496B8` for the `cute` dialect,
-`&unk_5B482C8` for `cute_nvgpu`. Op-info kindPtrs live in the `&unk_5B44Exx` / `5B44Fxx` block.
+`&unk_5B482C8` for `cute_nvgpu`, `&unk_5BA8F60` for `LLVM`, `&unk_5BE5908` for `arith`. The
+`nv_tile_ir::as::schedule_utils::ScheduleAnalysis` analysis registration at `qword_5B38E78` is the
+canonical Idiom-2 example for analyses; the dialect-level Idiom-1 sentinels and the analysis-level
+Idiom-2 sentinels coexist in the same `MLIRContext` without colliding because their bands never
+overlap.
 
 ## Dispatch By Pointer-Identity
 
@@ -102,7 +114,10 @@ When a TypeID is not a link-time constant — primarily Op and Type interfaces a
 `addInterfaces<>`, analysis types registered through `mlir::AnalysisManager`, and pattern RTTI tags —
 the binary falls back to a `{guard:u8, qword:u64}` pair plus a one-shot init function. The factory
 `sub_44A6CA0` takes a string ending in `]` (the closing bracket of `__PRETTY_FUNCTION__` captured by
-MLIR's `TypeID::get<T>()` trick) and returns the uniqued `TypeID*` for that string.
+MLIR's `TypeID::get<T>()` trick) and returns the uniqued `TypeID*` for that string. These strings
+sit in ordinary `.rodata` literal pools, not in the Itanium typeinfo block, so a binary triage that
+scans for `typeinfo for'mlir::...` will find nothing — every MLIR identity string in this binary is
+addressable only through the corresponding install-site call.
 
 ```c
 TypeID get_function_op_interface_typeid(void) {
@@ -208,4 +223,8 @@ addresses (the Meyers Idiom-2 ones for interfaces, the Idiom-1 ones for concrete
 [Operation Layout](operation-layout.md) describes the op header where the kindPtr lives. [Interface
 VTables](interface-vtables.md) covers the concept tables that the Meyers-cached interface TypeIDs key
 into. [Storage Uniquer and ContextImpl](storage-uniquer-and-context-impl.md) documents the registration
-machinery that installs both idioms during dialect load.
+machinery that installs both idioms during dialect load. The companion address-sorted reference
+[TypeID Sentinel Address Table](../reference/typeid-sentinel-table.md) enumerates every individual
+sentinel referenced anywhere in the binary, including the full 213-slot NVVM op slab at
+`0x5B8D610..0x5B8DCB8` and the 33-slot `nv_tileaa` FoldRecord band at `0x5B46D28..0x5B46F68`,
+neither of which is unpacked here.
