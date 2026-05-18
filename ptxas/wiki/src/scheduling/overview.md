@@ -651,11 +651,11 @@ Key behaviors:
 
 The scheduler runs at two distinct points in the ptxas pipeline, separated by register allocation. The two stages share most of the same machinery (Backend A's unified engine `sub_688DD0`, Backend C's RBT orchestrator `sub_1908D90`) but see fundamentally different inputs and enforce different constraint sets. Phase 110 (`PostSchedule`) is documented in full on [Phase 110 -- PostSchedule](post-schedule.md); this section is the cross-stage summary.
 
-| Aspect | Pre-RA scheduling (phase 98) | Post-RA scheduling (phase 110) |
+| Aspect | Pre-RA scheduling (bin 114) | Post-RA scheduling (wiki phase 110) |
 |---|---|---|
-| **Pipeline phase** | 98 (`ScheduleInstructions`) | 110 (`PostSchedule`) |
-| **Triggers via** | `AdvPhPreSched` [97] Type-A gate -> `sub_8D0640` | `AdvPhPostSched` [106] Type-C thunk -> `sub_C60640` (51 B body) |
-| **Timing** | Before `AllocateRegisters` [102] | After `ApplyPostRegAllocWars` [105] and `OptimizeHotCold` [108--109] |
+| **Pipeline phase** | bin 114 `ScheduleInstructions` (SKIP-numbered worker; dispatched by wiki 97 gate) | wiki 110 / bin 133 `PostSchedule` |
+| **Triggers via** | `AdvPhPreSched` [wiki 97] Type-A gate -> `sub_8D0640` | `AdvPhPostSched` [wiki 106] Type-C thunk -> `sub_C60640` (51 B body) |
+| **Timing** | Before `AllocateRegisters` (bin 122, SKIP-numbered) | After `ApplyPostRegAllocWars` [wiki 105] and `OptimizeHotCold` [wiki 108--109] |
 | **Register model** | Virtual register IDs, live-range tracker (`sub_69A1A0`, 952 B) | Physical R-regs / UR-regs / P-regs with exact occupancy map |
 | **Primary goal** | Trade ILP against register pressure so RA has headroom | Re-order against real bank conflicts, reuse-cache slots, and spill/reload latency |
 | **Phases active** | All 3 -- ReduceReg (mode 0x39), ILP (0x49), DynBatch (0x41) | Single mode (`mode=0` to Backend C; "post-RA mode" byte to Backend A engine) |
@@ -670,18 +670,18 @@ The scheduler runs at two distinct points in the ptxas pipeline, separated by re
 
 The two stages are not just "scheduling twice." Each enforces a constraint class the other physically cannot evaluate.
 
-| Constraint | Pre-RA (phase 98) | Post-RA (phase 110) |
+| Constraint | Pre-RA (bin 114 `ScheduleInstructions`) | Post-RA (wiki 110 `PostSchedule`) |
 |---|---|---|
 | Register-file bank read-port conflicts | Invisible -- no physical bank assignment yet | Enforced by `sub_19043F0` constraint validator (Backend C); at most 2 sources from one bank per issue |
 | Reuse-cache slot occupancy (6-bit hint) | Invisible -- requires physical source register numbers | Encoded into scheduling decisions; pre-RA reuse hints are placeholders |
-| Spill/reload latency hiding | Invisible -- spills/reloads inserted by phase 102 don't yet exist | Hoists independent instructions between `STL.W spilled` and `LDL.W spilled` (~30/~20 cycle gap on sm\_80+) |
+| Spill/reload latency hiding | Invisible -- spills/reloads inserted by `AllocateRegisters` (bin 122) don't yet exist | Hoists independent instructions between `STL.W spilled` and `LDL.W spilled` (~30/~20 cycle gap on sm\_80+) |
 | Operand-collector WAW timing (sm\_90+) | Invisible -- depends on physical destination register, not live range | Enforced with at-least-one independent slot between back-to-back writes to same phys reg |
 | Dual-issue pairing (Maxwell only) | Decided here -- `sub_8CF5D0` `CheckDualIssueEligibility` after ILP phase | Not re-decided; sm\_70+ post-RA scheduling does not pair |
 | Cross-BB register pressure | Tracked via occupancy estimate | Tracked via `RBTInterBlockScheduling` (`sub_19072F0`, 14 KB) using real liveness |
 | Virtual-register WAR hazards | Resolved by reordering inside ReduceReg/ILP | Already resolved by phase 105 `ApplyPostRegAllocWars` before phase 110 runs |
 | Instruction-distance scoreboards | Preliminary via `sub_8D7760` (41 KB), barrier indices written into operand high words | Recomputed from scratch by phase 115; only the tracking flag bit 23 survives the boundary (see [scoreboards.md](scoreboards.md#barrier-assignment-lifecycle-reconciliation)) |
 
-The asymmetric coverage is why phase 110 is not a no-op even when phase 98 produced what looks like a finished schedule: phase 98's "finished schedule" is finished against a virtual register file. Phase 110 is where the schedule meets hardware.
+The asymmetric coverage is why phase 110 is not a no-op even when the pre-RA scheduler (bin 114) produced what looks like a finished schedule: the pre-RA "finished schedule" is finished against a virtual register file. Phase 110 is where the schedule meets hardware.
 
 ## Scheduling Variants
 

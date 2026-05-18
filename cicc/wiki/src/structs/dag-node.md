@@ -425,7 +425,7 @@ This matches the LLVM `ilist` intrusive linked list pattern where the list hook 
 | NVIDIA DAGCombiner | 142KB `sub_3425710` with `"COVERED"`/`"INCLUDED"` internal tracing | No equivalent; target combines via `PerformDAGCombine` hook only |
 | computeKnownBits | 114KB `sub_33D4EF0`, covers 112+ ISD opcodes including NVPTX target nodes | ~30 opcodes in generic `computeKnownBits`, target extends via hook |
 | Inline asm | 162KB total (`sub_2079C70` + `sub_338BA40`) | ~200 lines per target |
-| Intrinsic lowering | 343KB switch covering 200+ intrinsic IDs up to 14196 | ~300 standard intrinsic IDs |
+| Intrinsic lowering | 60KB / 785-case switch (Intrinsic::ID 0--0x310) covering 200+ NVPTX intrinsics | ~300 standard intrinsic IDs |
 | Address spaces | AS 101 (param alt), AS 7 (`.param`), CTA/GPU/SYS scope atomics | No AS 101; no scope atomics |
 | Libcall metadata | `"nvptx-libcall-callee"` metadata for custom libcall routing | Not present |
 | Legal vector types | Only v2f16, v2bf16, v2i16, v4i8 (packed into 32-bit registers) | Varies by target; typically much wider vectors |

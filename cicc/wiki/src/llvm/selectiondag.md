@@ -4,7 +4,7 @@
 >
 > **Upstream source:** Target-independent DAG infrastructure: `llvm/lib/CodeGen/SelectionDAG/SelectionDAG.cpp`, `DAGCombiner.cpp`, `LegalizeDAG.cpp`, `LegalizeTypes.cpp`, `SelectionDAGBuilder.cpp`, `SelectionDAGISel.cpp`. NVPTX target: `llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp`, `NVPTXISelDAGToDAG.cpp`, `NVPTXInstrInfo.td` (LLVM 20.0.0).
 >
-> **LLVM version note:** The target-independent SelectionDAG infrastructure at `0xF05000`--`0xF70000` appears to be stock LLVM 20 with no detectable NVIDIA modifications. All NVIDIA customization lives in the NVPTX target range (`0x3290000`--`0x35FFFFF`) via virtual dispatch through `NVPTXTargetLowering` and `NVPTXDAGToDAGISel`. The intrinsic lowering switch covers IDs up to 14196 (0x3774), far exceeding upstream NVPTX which covers approximately IDs 0--300.
+> **LLVM version note:** The target-independent SelectionDAG infrastructure at `0xF05000`--`0xF70000` appears to be stock LLVM 20 with no detectable NVIDIA modifications. All NVIDIA customization lives in the NVPTX target range (`0x3290000`--`0x35FFFFF`) via virtual dispatch through `NVPTXTargetLowering` and `NVPTXDAGToDAGISel`. The intrinsic lowering switch (`sub_33B0210`, 60KB) dispatches 785 cases over Intrinsic::ID values 0--0x310, far exceeding upstream NVPTX which covers approximately IDs 0--300.
 
 CICC v13.0 contains a complete NVPTX SelectionDAG backend derived from LLVM 20.0.0, with substantial NVIDIA customizations for GPU-specific lowering, the PTX `.param`-space calling convention, tensor core intrinsic selection, and a 343KB intrinsic lowering mega-switch covering over 200 CUDA intrinsic IDs. The SelectionDAG pipeline converts LLVM IR into machine-level PTX instructions through four major phases: type legalization, operation legalization, DAG combining, and pattern-based instruction selection.
 
@@ -14,7 +14,7 @@ The NVPTX SelectionDAG backend spans roughly 4MB of code across two address rang
 |---|---|
 | **LowerOperation dispatcher** | `sub_32E3060` (111KB, 3,626 lines) |
 | **LowerCall (.param ABI)** | `sub_3040BF0` (88KB, 2,909 lines) |
-| **Intrinsic lowering switch** | `sub_33B0210` (343KB, 9,518 lines) |
+| **Intrinsic lowering switch** | `sub_33B0210` (60 KB binary / 343 KB decompiled C, 9,518 lines, 785-case main switch over Intrinsic::ID 0--0x310) |
 | **ISel::Select driver** | `sub_3090F90` (91KB, 2,828 lines) |
 | **LegalizeTypes** | `sub_20019C0` (348KB, 10,739 lines) |
 | **LegalizeOp dispatcher** | `sub_1FCE100` (91KB, ~100 opcodes) |
@@ -481,7 +481,7 @@ Address space handling permeates the entire lowering infrastructure. Functions `
 
 ## Intrinsic Lowering
 
-The intrinsic lowering mega-switch (`sub_33B0210`, 343KB) dispatches over 200 distinct NVPTX intrinsic IDs into DAG node construction. The switch covers intrinsic IDs 0--0x310 in the main body, with high-ID ranges for texture/surface operations extending to ID 14196 (0x3774). The function contains approximately 1,000 local variables and calls `sub_338B750` (getValue helper) 195 times, `sub_3406EB0` (getNode) 116 times, and `sub_337DC20` (setValue) 100 times.
+The intrinsic lowering mega-switch (`sub_33B0210`, 60KB / 61,601 bytes, 903 basic blocks) dispatches over 200 distinct NVPTX intrinsic IDs into DAG node construction. The main 785-case switch at `0x33b0358` covers intrinsic IDs 0--0x310 (0--784) contiguously; two secondary switches inside the function (at `0x33b118f` and `0x33baba1`) re-dispatch over the sub-ranges 333--372 and 308--355 for texture/surface and address-space variants. The function contains approximately 1,000 local variables and calls `sub_338B750` (getValue helper) 195 times, `sub_3406EB0` (getNode) 116 times, and `sub_337DC20` (setValue) 100 times.
 
 Key intrinsic categories:
 
@@ -602,7 +602,7 @@ Upstream LLVM's SelectionDAG framework was designed for CPU ISAs where register 
 
 - **Upstream assumes register classes interfere with each other.** On x86, GR32 is a sub-register of GR64; allocating `eax` constrains `rax`. The interference graph, coalescing, and copy elimination infrastructure all assume overlapping classes. NVPTX has nine completely disjoint classes (`%r`, `%f`, `%fd`, `%p`, etc.) with zero cross-class interference. The DAG's register pressure tracking, copy coalescing hints, and class constraint propagation solve a problem that does not exist on this target.
 - **Upstream assumes function calls are cheap register shuffles.** CPU calling conventions move arguments through registers (`rdi`, `rsi`, etc.) or a stack backed by L1 cache. NVPTX function calls go through the `.param` address space with explicit `DeclareParam`/`st.param`/`ld.param` sequences -- O(n) memory operations per argument. The `LowerCall` function in cicc is 88KB (vs. upstream's few KB) because it must handle four call flavors, monotonic `.param` naming, and `"nvptx-libcall-callee"` metadata for synthesized calls.
-- **Upstream assumes a small set of intrinsics.** Upstream NVPTX intrinsic lowering covers approximately IDs 0-300. CICC's intrinsic mega-switch at `sub_33B0210` (343KB) handles IDs up to 14196, covering cp.async, TMA, WGMMA, and the full SM 90/100 tensor operation set. The upstream framework's assumption that intrinsic lowering is a small switch case is off by two orders of magnitude.
+- **Upstream assumes a small set of intrinsics.** Upstream NVPTX intrinsic lowering covers approximately IDs 0-300. CICC's intrinsic mega-switch at `sub_33B0210` (60KB) handles 785 contiguous Intrinsic::ID values 0--0x310, covering cp.async, TMA, WGMMA, and the full SM 90/100 tensor operation set; secondary high-ID dispatch for texture/surface attribute lookup lives in helpers such as `sub_247CB70` (cases up to 15839). The upstream framework's assumption that intrinsic lowering is a small switch case is off by more than 2x even before counting the auxiliary tables.
 - **Upstream assumes vector types are natively supported.** CPU targets have native vector registers (XMM/YMM/ZMM, NEON Q-registers). NVPTX has no native vector registers -- most vector operations are marked Custom or Expand, forcing them through 111KB of custom lowering at `sub_32E3060`. The "legalize then select" pipeline spends most of its time decomposing vectors that never should have been formed.
 - **Upstream assumes known-bits propagation is a small target hook.** Upstream NVPTX's `computeKnownBitsForTargetNode` handles fewer than 20 opcodes. CICC's version at `sub_33D4EF0` (114KB, 112 opcode cases) propagates bits through texture fetches, address space loads, and NVPTX-specific operations -- a 50x expansion that upstream's hook interface was never designed to support cleanly.
 
@@ -624,7 +624,7 @@ The NVPTX SelectionDAG backend in cicc v13.0 diverges from upstream LLVM NVPTX i
 
 **Calling convention.** Upstream LLVM NVPTX uses a simplified `LowerCall` that handles only the standard `.param` space protocol. CICC's `sub_3040BF0` (88KB) adds `"nvptx-libcall-callee"` metadata for synthesized libcalls, monotonic sequence counters for unique `.param` names, and four call flavors (with/without prototype x direct/indirect). The upstream has two flavors.
 
-**Intrinsic count.** The cicc intrinsic lowering switch (`sub_33B0210`, 343KB) handles intrinsic IDs up to 14196 (0x3774), with dedicated handlers for cp.async/TMA and WGMMA instructions. Upstream LLVM's NVPTX intrinsic lowering covers approximately IDs 0--300. The extended range covers SM 90 (Hopper) and SM 100 (Blackwell) tensor operations.
+**Intrinsic count.** The cicc intrinsic lowering switch (`sub_33B0210`, 60KB) handles 785 contiguous Intrinsic::ID values 0--0x310 in its main dispatch, with dedicated handlers for cp.async/TMA and WGMMA instructions. Upstream LLVM's NVPTX intrinsic lowering covers approximately IDs 0--300. The extended range covers SM 90 (Hopper) and SM 100 (Blackwell) tensor operations.
 
 **Vector shuffle lowering.** The three-level shuffle lowering (identity detection, BitVector tracking, BUILD_VECTOR fallback) is more sophisticated than upstream NVPTX, which typically scalarizes all shuffles unconditionally.
 
@@ -700,7 +700,7 @@ The following components appear to be stock LLVM with no NVIDIA modifications:
 
 1. **NVPTXTargetLowering with legality tables.** Populate the 2D action table at offset +2422 (259-byte row stride, indexed by `259 * VT + opcode`) with per-SM-version legal/custom/expand/promote actions for all ISD opcodes and NVPTX-specific opcodes. Include the condition-code action table at offset +18112 and the SM-gated type legality rules (f16 on SM 53+, v2f16 on SM 70+, bf16 on SM 80+).
 2. **LowerOperation dispatcher (111KB equivalent).** Implement the master `LowerOperation` switch dispatching ~3,626 lines of GPU-specific lowering for loads, stores, calls, atomics, vector operations, and address space casts, including the `.param`-space calling convention with DeclareParam/StoreV1-V4/LoadRetParam sequences.
-3. **Intrinsic lowering mega-switch (343KB equivalent).** Build the intrinsic lowering function covering 200+ CUDA intrinsic IDs (up to ID 14196/0x3774), organized as a jump table with per-intrinsic lowering handlers for tensor core, warp, surface/texture, and math intrinsics.
+3. **Intrinsic lowering mega-switch (60KB equivalent).** Build the intrinsic lowering function covering 200+ CUDA intrinsic IDs in a contiguous 0--0x310 dispatch, organized as a jump table with per-intrinsic lowering handlers for tensor core, warp, surface/texture, and math intrinsics.
 4. **PerformDAGCombine for NVPTX.** Implement the NVPTX-specific DAG combines (62KB) that run after operation legalization, including load/store vectorization (offset-based coalescing with sorting for `ld.v2`/`ld.v4`/`st.v2`/`st.v4` detection), NVPTX-specific algebraic simplifications, and the "COVERED"/"INCLUDED" tracing infrastructure.
 5. **ISel::Select pattern matching (91KB equivalent).** Implement the top-down instruction selection driver that visits DAG nodes in topological order, matching against NVPTX-specific patterns via opcode-indexed tables, with special handling for tensor core instructions, inline assembly constraints, and multi-result nodes.
 6. **computeKnownBits for NVPTX (114KB).** Implement the NVPTX-specific known-bits analysis covering `ctaid`, `tid`, `ntid`, address space pointer width constraints, and GPU-specific intrinsic range information to enable downstream optimization.

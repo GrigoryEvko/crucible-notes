@@ -2,7 +2,7 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-Phase 110 (`PostSchedule`) is the post-register-allocation re-scheduling pass. Where phase 98 (`ScheduleInstructions`, `sub_8D0640`) runs **pre-RA** on virtual registers and is responsible for ILP/pressure trade-offs, phase 110 runs **after** register allocation, after the post-RA WAR fixup (phase 105 `ApplyPostRegAllocWars`), and after the hot/cold layout passes (108--109), to re-order the now-physical instruction stream against the actual hardware latency/throughput model that requires concrete register numbers, banks, and reuse cache slots to be known.
+Phase 110 (`PostSchedule`) is the post-register-allocation re-scheduling pass. Where `ScheduleInstructions` (`sub_8D0640`, bin 114 — a SKIP-numbered worker invoked by the wiki-97 gate `AdvPhPreSched`) runs **pre-RA** on virtual registers and is responsible for ILP/pressure trade-offs, phase 110 runs **after** register allocation, after the post-RA WAR fixup (phase 105 `ApplyPostRegAllocWars`), and after the hot/cold layout passes (108--109), to re-order the now-physical instruction stream against the actual hardware latency/throughput model that requires concrete register numbers, banks, and reuse cache slots to be known.
 
 The phase is implemented as a thin Type-A-shaped dispatcher whose body is 51 bytes (16 x86-64 instructions, 4 basic blocks) and which performs no scheduling work directly. Instead it routes through the **sub-target's** vtable at slot `+0x90` to the SM-family-specific post-scheduling backend -- either Backend A's `PostSchedulePass::runOnFunction` (`sub_A97600`, 42 KB) on the legacy path or, for Ampere and later (sm_80+), one of the modern backends that have a native post-scheduling entry point. PostSchedule is the **only** caller in the binary of the sentinel `nullsub_45` at `0x680190`; that sentinel is the marker the dispatcher uses to recognise a sub-target that does not install a post-scheduling override and therefore wants the phase to be a no-op.
 
@@ -27,11 +27,11 @@ Phase 110 sits in the **post-RA cleanup band** between physical-register livenes
 
 | # | Bin# | Phase | Role w.r.t. PostSchedule |
 |---|---|---|---|
-| 97 | 113 | `AdvPhPreSched` | Type-A gate, dispatches to `ScheduleInstructions` [98]; marks pre-RA scheduling boundary |
-| 98 | 114 | `ScheduleInstructions` (`sub_8D0640`) | Pre-RA scheduling -- 3-phase ReduceReg/ILP/DynBatch on virtual registers |
-| 101 | 121 | `AdvPhAllocReg` | Dispatches to `AllocateRegisters` [102] (fatpoint allocator, `sub_957160`) |
-| 102 | 122 | `AllocateRegisters` | Physical register assignment |
-| 104 | 126 | `AdvPhPostExpansion` | Type-A gate -> `PostExpansion` [127] |
+| 97 | 113 | `AdvPhPreSched` | Type-A gate, dispatches to `ScheduleInstructions` (bin 114, SKIP-numbered worker); marks pre-RA scheduling boundary |
+| -- | 114 | `ScheduleInstructions` (`sub_8D0640`) | Pre-RA scheduling -- 3-phase ReduceReg/ILP/DynBatch on virtual registers; SKIP-numbered in wiki |
+| 101 | 121 | `AdvPhAllocReg` | Dispatches to `AllocateRegisters` (bin 122, SKIP-numbered worker; fatpoint allocator, `sub_957160`) |
+| -- | 122 | `AllocateRegisters` | Physical register assignment; SKIP-numbered in wiki |
+| 104 | 126 | `AdvPhPostExpansion` | Type-A gate -> `PostExpansion` (bin 127, SKIP-numbered worker) |
 | 105 | 128 | `ApplyPostRegAllocWars` | Fixes WAR hazards exposed by RA |
 | 106 | 129 | `AdvPhPostSched` | **Type-C** thunk `sub_C5E830`: writes `ctx+1552 = 14`. This is the timeline marker that downstream guards read to confirm "PostSchedule reached" |
 | 107 | 130 | `OriRemoveNopCode` | Removes placeholder NOPs |
@@ -102,7 +102,7 @@ The relationship between phase 110 and the side-channel `DispatchPostSchedule` (
 
 ## Why PostSchedule Re-Runs Scheduling
 
-Pre-RA scheduling (`ScheduleInstructions`, phase 98) cannot model:
+Pre-RA scheduling (`ScheduleInstructions`, bin 114; dispatched by the wiki-97 gate `AdvPhPreSched`) cannot model:
 
 1. **Register-file bank conflicts.** Until RA has assigned physical registers, the scheduler does not know which operands sit in the same bank and therefore which instructions will stall on read-port contention. Backend C uses `RBTPressureCostModel` (`sub_18F3CB0`, 16 KB) which can score post-RA schedules accurately but only sees the right inputs after RA.
 2. **Reuse cache slot assignment.** The 6-bit per-source reuse hint encoded in the control word requires knowing the exact source register numbers; pre-RA scheduling reasons about live ranges, not registers, so it cannot decide reuse cache occupancy.
@@ -140,7 +140,7 @@ The motivation is **per-SM-variant specialisation without per-SM-family vtable d
 
 ## QUIRK -- Skipped Entirely on sm_50--sm_75
 
-The SM-version gate `sub_7DDB50(ctx) > 1` means PostSchedule does **nothing** on Maxwell (sm_50/sm_52/sm_53), Pascal (sm_60/sm_61/sm_62), Volta (sm_70/sm_72), and Turing (sm_75). For those architectures the schedule from phase 98 is the final schedule, modulo only the WAR-fixup in phase 105 and the texture-barrier work in phase 114.
+The SM-version gate `sub_7DDB50(ctx) > 1` means PostSchedule does **nothing** on Maxwell (sm_50/sm_52/sm_53), Pascal (sm_60/sm_61/sm_62), Volta (sm_70/sm_72), and Turing (sm_75). For those architectures the schedule from the pre-RA scheduler (bin 114 `ScheduleInstructions`) is the final schedule, modulo only the WAR-fixup in phase 105 and the texture-barrier work in phase 114.
 
 This is consistent with the per-SM-backend dispatch documented in `scheduling/algorithm.md`: Backends B (SM89/90 codec) and C (RBT list) replace Backend A's three-phase scheduling on sm_80+, and only those backends have a meaningful post-scheduling step. On pre-sm_80 architectures the pre-RA scheduler is the only scheduler that runs, the dependency-graph re-build in PostSchedule would expose nothing the pre-RA pass missed, and the cost of re-scheduling 30--50% of the function would not pay for itself. The gate is hard-coded in the execute body rather than being a knob, and there is no `-knob SchedulePost*` option to override it.
 

@@ -4,14 +4,14 @@
 
 Binary phases 78 (`DoKillMovement`) and 79 (`DoTexMovement`), together with two unnamed sibling movement phases, are four thin wrappers (`sub_C5FE00`, `sub_C5FE30`, `sub_C5FE60`, `sub_C5FE90`) that all tail-call the same 573-byte engine, `sub_8FFDE0`. The wrappers differ in exactly one register: the second argument passed to the engine — a movement-kind discriminator with values 0, 1, 2, 3. The engine then applies that discriminator at three internal decision points to select the direction of motion (down vs up), the destination block class (last-use vs preheader), and whether the cleanup-emission helper `sub_785E20` is invoked at the end. The entire scheme is a single parameterised movement primitive masquerading as four phases.
 
-The engine reuses the LICM dataflow built earlier in the pipeline by `OriHoistInvariantsLate` (wiki 66 / binary 88). It is gated on the same `HoistInvariants` named-phase token that gates the late LICM pass, and the underlying movement worker `sub_A112C0` is the same function that LICM itself calls. The "movement" phases are therefore best understood as **post-LICM positional fixups** that drive the LICM worker in different modes to relocate specific instruction classes (kill markers, TEX, and two unnamed classes) into more profitable basic blocks.
+The engine reuses the LICM dataflow built earlier in the pipeline by `OriHoistInvariantsLate` (wiki 66 / binary 76). It is gated on the same `HoistInvariants` named-phase token that gates the late LICM pass, and the underlying movement worker `sub_A112C0` is the same function that LICM itself calls. The "movement" phases are therefore best understood as **post-LICM positional fixups** that drive the LICM worker in different modes to relocate specific instruction classes (kill markers, TEX, and two unnamed classes) into more profitable basic blocks.
 
 | | |
 |---|---|
 | **Binary phases covered** | 78 (`DoKillMovement`), 79 (`DoTexMovement`), and two adjacent unnamed phases sharing the same engine |
 | **Wiki phases covered** | 67 (`DoKillMovement`), 68 (`DoTexMovement`); two sibling movements have no separate wiki entry |
 | **Category** | Optimization (post-LICM positional fixup) |
-| **Pipeline position** | Between `OriHoistInvariantsLate` (binary 88) and `OriDoRemat` (binary 93); after `SinkCodeIntoBlock` (binary 89) and around `LateExpansionUnsupportedOps` (binary 90) |
+| **Pipeline position** | Between `OriHoistInvariantsLate` (binary 76) and `OriDoRemat` (binary 80); after `SinkCodeIntoBlock` (binary 77) |
 | **Wrapper functions** | `sub_C5FE00` (esi=0), `sub_C5FE30` (esi=1), `sub_C5FE60` (esi=2), `sub_C5FE90` (esi=3) — 34 bytes / 12 instructions each |
 | **Shared engine** | `sub_8FFDE0` — 573 bytes, 37 BBs, 129 instructions, 9 outgoing callees |
 | **Movement worker** | `sub_A112C0` — same function that `OriHoistInvariantsLate` calls; loops while `sub_A11060` returns true |
@@ -236,19 +236,19 @@ Confidence: **HIGH** for the wrapper roles (each is fully decompiled and the onl
 ## Pipeline Context
 
 ```
-Phase 88  OriHoistInvariantsLate           ┐  builds the LICM dataflow that the
+Bin 76  OriHoistInvariantsLate             ┐  builds the LICM dataflow that the
                                             │  movement engine reuses
-Phase 89  SinkCodeIntoBlock                │  ⊖ (skipped phase; code-sinking that
+Bin 77  SinkCodeIntoBlock                  │  ⊖ (SKIP-numbered phase; code-sinking
                                             │     unaffected by kill/tex)
-Phase 90  ★ DoKillMovement   (esi=0) ──────┤
-Phase ?   sibling A          (esi=1) ──────┤  ── four wrappers, one engine
-Phase 92  ★ DoTexMovement    (esi=2) ──────┤     (sub_8FFDE0)
-Phase ?   sibling B          (esi=3) ──────┘
-Phase 93  OriDoRemat                         consumes the moved positions when
+Bin 78  ★ DoKillMovement     (esi=0) ──────┤
+Bin ??  sibling A            (esi=1) ──────┤  ── four wrappers, one engine
+Bin 79  ★ DoTexMovement      (esi=2) ──────┤     (sub_8FFDE0)
+Bin ??  sibling B            (esi=3) ──────┘
+Bin 80  OriDoRemat                           consumes the moved positions when
                                              selecting remat candidates
 ```
 
-The movement family runs after `OriHoistInvariantsLate` (binary 88) so the LICM dataflow is fresh, and before `OriDoRemat` (binary 93) so rematerialization sees the moved kill markers and chooses remat candidates that respect the new register-pressure profile. The engine deliberately does not invalidate the LICM dataflow; instead it relies on `sub_785E20` (the post-cleanup helper) to repair the parts of use-def that are affected by movement.
+The movement family runs after `OriHoistInvariantsLate` (binary 76) so the LICM dataflow is fresh, and before `OriDoRemat` (binary 80) so rematerialization sees the moved kill markers and chooses remat candidates that respect the new register-pressure profile. The engine deliberately does not invalidate the LICM dataflow; instead it relies on `sub_785E20` (the post-cleanup helper) to repair the parts of use-def that are affected by movement.
 
 > ⚡ **QUIRK — sibling phases inherit `DoKillMovement`'s phase manager entry**
 > The phase manager (wiki [phase-manager.md](phase-manager.md)) lists only `DoKillMovement` (wiki 67) and `DoTexMovement` (wiki 68), with no separate entries for siblings A and B. This is because the binary phase vtable at `0x21DBEF8`-family stores only two distinct names for the four wrappers — the unnamed wrappers reuse the previous name's slot, and `--dump-named-phases` reports them as identical to their named predecessor. Toggling `DUMPIR=DoKillMovement` actually dumps IR around **both** kill-class wrappers (esi=0 and esi=1), and `DUMPIR=DoTexMovement` dumps around **both** tex-class wrappers (esi=2 and esi=3). Confidence: MED (consistent with the absence of additional strings in `ptxas_strings.json`, but the DUMPIR behaviour is inferred from the named-phase token check rather than directly observed).
@@ -331,8 +331,8 @@ Net: one TEX instruction relocated three basic blocks downward, hiding ~80 cycle
 
 - [Pass Inventory & Ordering](index.md) — binary phases 78 (`DoKillMovement`) and 79 (`DoTexMovement`) entries; siblings A and B at adjacent unnamed positions
 - [Phase Manager Infrastructure](phase-manager.md) — the vtable-based dispatch that calls all four wrappers and the named-phase token mechanism that gates them
-- [Loop Passes](loop-passes.md) — `OriHoistInvariantsLate` (binary 88, wiki 66) shares the `"HoistInvariants"` token and the underlying `sub_A112C0` worker
-- [Rematerialization](rematerialization.md) — `OriDoRemat` (binary 93) consumes the moved kill positions when selecting remat candidates; movement runs immediately before remat
+- [Loop Passes](loop-passes.md) — `OriHoistInvariantsLate` (binary 76, wiki 66) shares the `"HoistInvariants"` token and the underlying `sub_A112C0` worker
+- [Rematerialization](rematerialization.md) — `OriDoRemat` (binary 80) consumes the moved kill positions when selecting remat candidates; movement runs immediately before remat
 - [Liveness Analysis](liveness.md) — `OriPerformLiveDead*` passes use the same `KILL` pseudo-instructions that `DoKillMovement` repositions
 - [Late Expansion & Legalization](late-legalization.md) — runs at binary phase 90, immediately after the movement family; consumes a stabilized IR
 - [Knobs System](config/knobs.md) — knobs 381 (per-function movement eligibility) and 499 (throttled opt-level lookup)

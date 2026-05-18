@@ -303,7 +303,7 @@ The 949-byte rewriter is the smallest of the three main callees. For each surviv
 1. Allocates a constant-bank slot via the shader-info bank allocator (writes back to `*(si + 16)` and `*(si + 20)` — the same fields the gate reads).
 2. Emits a one-time `LDC` materialization stub. The stub is placed at the kernel entry point, not at each use site — it runs exactly once per kernel invocation and writes the computed value into the constant bank slot via `c[bank].store`. (On Maxwell+ hardware, the constant bank is read-mostly with one driver-controlled writer, so the "stub" is really a metadata entry the runtime patches before launch, not an actual store instruction.)
 3. Replaces every use of `root_vreg` with a `LDC c[bank_class][slot_offset]` reading the patched value.
-4. Marks the old definition's expression chain for DCE (which `OriPerformLiveDeadSecond` at phase 33 already ran, so the cleanup is delayed until the next liveness pass — phase 56 `OriPerformLiveDeadThird` for first-position rewrites, phase 67 for final-position).
+4. Marks the old definition's expression chain for DCE (which `OriPerformLiveDeadSecond` at phase 33 already ran, so the cleanup is delayed until the next liveness pass — phase 61 `OriPerformLiveDeadThird` for first-position rewrites, phase 84 `OriPerformLiveDeadFourth` for final-position).
 
 The intermediate vregs do not survive `OriPerformLiveDeadThird`/`Fourth`; the rewriter does not call DCE itself.
 
