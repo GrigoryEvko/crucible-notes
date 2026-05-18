@@ -12,20 +12,20 @@ In short: driver -> bytecode -> dialects (via the registry) -> lowering -> sched
 
 ## Driver
 
-The driver owns process-level behavior: command-line parsing, target validation, CUDA installation discovery, output naming, subprocess invocation, and error reporting.
+The driver owns process-level behavior: command-line parsing, target validation, CUDA tool discovery (`ptxas`, `fatbinary`), output naming, subprocess invocation via `posix_spawn`, and error reporting. Note: libdevice is *not* discovered here — it is embedded in the tileiras binary as `_mlir_embedded_libdevice`.
 
 | Conceptual entry point | Role |
 | --- | --- |
 | `parse_command_line` | Read argv into a structured compile configuration; reject malformed flags. |
-| `resolve_cuda_installation` | Locate the CUDA toolkit root, the libdevice bitcode, and the ptxas binary. |
-| `validate_target` | Check that the requested GPU target is supported by this build of the assembler. |
+| `resolve_cuda_installation` | Resolve `CUDA_HOME` / `CUDA_PATH` to find the `ptxas` and `fatbinary` binaries; the libdevice bitcode is embedded in the tileiras binary itself, not loaded from the toolkit. |
+| `validate_target` | Check that the requested GPU architecture is supported, emitting `invalid GPU architecture: <name>` on rejection. |
 | `open_input_module` | Map the input file and hand its buffer to the bytecode reader. |
 | `run_compilation` | Drive the pipeline against the parsed module and the configuration. |
-| `invoke_ptxas` | Spawn ptxas with the derived option set and stream its output. |
-| `emit_host_object` | Wrap the cubin or PTX payload into the host relocatable. |
+| `invoke_ptxas` | Spawn ptxas via `posix_spawn` with the derived option set and capture its output. |
+| `invoke_fatbinary` | Spawn `fatbinary` to package one or more `.cubin` outputs into a fat binary container. |
 | `report_error` | Format a subprocess or pipeline failure as a user-facing diagnostic. |
 
-Callers: process entry. Callees: bytecode reader, pipeline builder, codegen, subprocess harness. See [Driver Overview](driver/overview.md), [CLI Options](driver/cli-options.md), [Subprocess Harness](driver/subprocess-harness.md).
+Callers: process entry. Callees: bytecode reader, pipeline builder, codegen, subprocess harness (`ptxas`, `fatbinary`). See [Driver Overview](driver/overview.md), [CLI Options](driver/cli-options.md), [Subprocess Harness](driver/subprocess-harness.md).
 
 ## Bytecode Reader
 
@@ -97,18 +97,18 @@ Codegen is the boundary between MLIR and the LLVM toolchain. It produces an `llv
 | `link_libdevice` | Resolve libdevice math calls against the bundled bitcode. |
 | `run_llvm_passes` | Run the LLVM IR pipeline (NVVM reflection, address-space opt, arg lowering, etc.). |
 | `select_nvptx_instructions` | Match LLVM IR against the NVPTX matcher table to produce MachineIR. |
-| `verify_nvptx_machine_ir` | Run NVPTX-specific machine verifiers before emission. |
+| `verify_nvptx_machine_ir` | Run LLVM's `MachineVerifierPass` over the NVPTX MachineIR before printing. |
 | `emit_ptx_text` | Print the final PTX module. |
 
 Callers: pipeline driver, after lowering reaches LLVM dialect. Callees: libdevice subsystem, MLIR translation infrastructure. See [Codegen Overview](codegen/overview.md), [NVPTX Backend Passes](nvptx-passes/overview.md).
 
 ## libdevice
 
-libdevice is the bundled bitcode that supplies math intrinsics. It is loaded once per compilation and integrated by the LLVM IR pipeline.
+libdevice is the bitcode that supplies math intrinsics. It is embedded as the symbol `_mlir_embedded_libdevice` inside the tileiras binary (not loaded from the CUDA toolkit), parsed once per compilation, and integrated by the LLVM IR pipeline.
 
 | Conceptual entry point | Role |
 | --- | --- |
-| `load_libdevice_bitcode` | Parse the bundled `libdevice.*.bc` into an `llvm::Module`. |
+| `load_libdevice_bitcode` | Parse the embedded libdevice bitcode (symbol `_mlir_embedded_libdevice` linked into the tileiras binary) into an `llvm::Module`. |
 | `resolve_nvvm_reflect` | Replace `__nvvm_reflect` calls with the compile-time reflection answer. |
 | `inline_selected_math` | Inline the math functions whose bodies are pulled into the kernel module. |
 | `prune_unused_bodies` | Drop libdevice functions that survived as unused declarations. |

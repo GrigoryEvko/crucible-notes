@@ -2,12 +2,14 @@
 
 Address-to-identity lookup table. Confidence: VERY HIGH = string evidence, HIGH = strong structural evidence, MEDIUM = inferred from context/callgraph.
 
+> **Audit note (sizes):** The size column for entries above ~20KB was originally inflated (decompiled-line count, not byte count). Where a context file exists, the true byte range from IDA is the authoritative size — figures below 20KB and `je_malloc_conf_init` (15.4KB) cross-check to the byte; multi-hundred-KB figures are inflated roughly 5-10x. Treat sizes >50KB as "very large, exact byte size in `context/sub_<addr>_*.md`" rather than literal.
+
 ## Top Functions by Size
 
 | Function | Address | Size | Confidence |
 |---|---|---|---|
-| X86 AutoUpgrade (intrinsic rename, leftover from LLVM x86 target) | `0xA939D0` | 457KB | VERY HIGH |
-| InstCombine main visitor (`InstCombinerImpl::visitInstruction`, full opcode switch, 9,258 lines -- largest function in the binary) | `0x10EE7A0` | 405KB | VERY HIGH |
+| X86 AutoUpgrade (intrinsic rename, leftover from LLVM x86 target) | `0xA939D0` | 65KB (281 strings, 2202 bb) | VERY HIGH |
+| InstCombine main visitor (`InstCombinerImpl::visitInstruction`, full opcode switch, ~9,258 decompiled lines) | `0x10EE7A0` | 60KB (2288 bb, 324 callees) | VERY HIGH |
 | SelectionDAG LegalizeTypes workhorse (ExpandOp/PromoteOp) | `0x20019C0` | 341KB | HIGH |
 | New PassManager pipeline parser (function-level, 268 pass names) | `0x2368220` | 326KB | VERY HIGH |
 | EDG constexpr expression evaluator core (124 operator opcodes, 9,075 lines) | `0x786210` | 317KB | VERY HIGH |
@@ -36,7 +38,7 @@ Address-to-identity lookup table. Confidence: VERY HIGH = string evidence, HIGH 
 | NVVM IR version checker (nvvmir.version metadata, NVVM_IR_VER_CHK env) | `0x12BFF60` | 9KB | VERY HIGH |
 | NVVM container format parser (arch, FTZ, IEEE, opt level extraction) | `0x12642A0` | — | HIGH |
 | Concurrent worker entry (dispatches Phase I/II) | `0x12E7B90` | 3KB | HIGH |
-| Concurrent compilation entry (jobserver, thread pool, split-module) | `0x12E1EF0` | 51KB | VERY HIGH |
+| Concurrent compilation entry (jobserver, thread pool, split-module; strings "GNU Jobserver support requested", "<split-module>") | `0x12E1EF0` | 10.5KB (383 bb) | VERY HIGH |
 | Function sorting by priority (insertion sort / introsort) | `0x12E0CA0` | — | HIGH |
 | Per-function compilation callback (completion handler) | `0x12E8D50` | — | HIGH |
 | Phase II per-function optimizer (sets qword_4FBB3B0=2) | `0x12E86C0` | — | HIGH |
@@ -408,7 +410,7 @@ Address-to-identity lookup table. Confidence: VERY HIGH = string evidence, HIGH 
 | Instruction constraint emission (180+ case opcode switch) | `0xB612D0` | 102KB | HIGH |
 | SimplifyAndColor phase | `0x1081400` | 13KB | HIGH |
 | SelectNodeForRemoval / Briggs criterion (K=15 at 3 locations) | `0x1090BD0` | 10KB | VERY HIGH |
-| AssignColorsAndOptimize (address unverified, was erroneously listed as 0x12E1EF0) | `0x10841C0` | 11KB | MEDIUM |
+| AssignColorsAndOptimize candidate (address `0x10841C0` not present in extracted function list — closest neighbor `0x1084620` is a 146-byte stub; real AssignColorsAndOptimize is likely fused into `sub_1081400` / `sub_1090BD0`) | `0x10841C0`? | unverified | LOW |
 | Operand constraint spec creator (type 14=GPR, 40=FP, 78=vec) | `0xA778C0` | — | HIGH |
 | Final instruction emitter with allocated registers | `0xA78010` | — | HIGH |
 
@@ -495,7 +497,7 @@ Each factory creates a pass instance; referenced from `sub_12E54A0`, `sub_12DE33
 
 | Function | Address | Size | Confidence |
 |---|---|---|---|
-| NVPTXTargetLowering::LowerIntrinsicCall (largest function in binary) | `0x33B0210` | 343KB | VERY HIGH |
+| NVPTXTargetLowering::LowerIntrinsicCall (one of the largest by basic-block count: 903 bb, 224 callees; ~60KB of code, much larger by symbol-table extent including jump tables) | `0x33B0210` | 60KB (903 bb) | VERY HIGH |
 | NVPTXDAGToDAGISel::Select (ISel entry, hash-based cost table) | `0x3090F90` | 91KB | VERY HIGH |
 | computeKnownBitsForTargetNode (112 opcodes, 399x sub\_969240 calls) | `0x33D4EF0` | 114KB | HIGH |
 | NVPTXTargetLowering::LowerCall (PTX `.param` calling convention) | `0x3040BF0` | 88KB | HIGH |

@@ -399,7 +399,7 @@ The FNLZR finalization orchestrator (`sub_471700`, 78,516 bytes) is the largest 
 
 ## JIT Finalization Path
 
-A separate JIT finalization entry exists at `sub_52DD50` (781 bytes; `0x52DD50`..`0x52E05C`), the JIT-specific wrapper that owns all five `FNLZR: ... JIT` diagnostic strings (verified xrefs at `0x52DDE1`, `0x52DE07`, `0x52DFB0`, `0x52DFFB`, `0x52E049`). `sub_52DD50` delegates to the same `sub_4748F0` engine used by the AOT path. The adjacent function `sub_52E060` (11,802 bytes) is the JIT *finalization driver* invoked from the wrapper; it owns the long-form per-kernel JIT compile loop. This handles the CUDA driver's JIT compilation path with its own logging:
+A separate JIT finalization entry exists at `sub_52DD50` (781 bytes; `0x52DD50`..`0x52E05C`), the JIT-specific wrapper that owns all five `FNLZR: ... JIT` diagnostic strings (verified xrefs at `0x52DDE1`, `0x52DE07`, `0x52DFB0`, `0x52DFFB`, `0x52E049`). `sub_52DD50` delegates to the same `sub_4748F0` engine used by the AOT path. The byte-adjacent function `sub_52E060` (11,802 bytes; starts at `0x52E060`, immediately after `sub_52DD50` ends at `0x52E05C`) is **not** part of the finalizer -- it is the embedded nvJIT API option parser (the entry point installed at `qword_2A77DD0` by `sub_4FFC30` and dispatched by `sub_4BE350`/`sub_4BDB90`; see [PTX Input Handling](../input/ptx-input.md)). Its decompilation contains no `FNLZR`/JIT/ptxas-internal strings; instead it owns `"nvJIT API"`, `"JIT API Command Line Options"`, `"in-memory-ELF-image"`, and the toolchain version banner, plus a 23-entry option-handler dispatch table at `0x1df8ce0..0x1df8d90` whose every slot lands back inside itself. The 23 paired `_setjmp` buffers are per-option longjmp targets for option-parse failure (not C++ exception machinery). The `sub_52DD50` wrapper handles the CUDA driver's JIT finalization path with its own logging:
 
 ```
 FNLZR: JIT Path
@@ -410,7 +410,7 @@ FNLZR: Starting JIT
 FNLZR: Ending JIT
 ```
 
-The JIT path uses `setjmp` for error handling across its multiple compilation phases. It shares the underlying finalization orchestrator (`sub_471700`) with the ahead-of-time path but wraps it in a JIT-specific framework that handles on-the-fly architecture selection and runtime option injection.
+The JIT wrapper shares the underlying finalization orchestrator (`sub_471700`) with the ahead-of-time path but adds JIT-specific framing for on-the-fly architecture selection and runtime option injection.
 
 ## Error Conditions
 
@@ -443,8 +443,8 @@ The JIT path uses `setjmp` for error handling across its multiple compilation ph
 | `sub_4709E0` | 2,609 B | can_finalize_architecture_check | Architecture compatibility check |
 | `sub_470DA0` | 2,074 B | can_finalize_with_capability_mask | Capability bitmask check |
 | `sub_5207A0` | 18,673 B | capmerc_reconstitute_sass | SASS reconstitution from Mercury |
-| `sub_52DD50` | 781 B | finalizer_jit_entry | JIT-path wrapper (owns all `FNLZR: ... JIT` strings) |
-| `sub_52E060` | 11,802 B | finalizer_jit_driver | JIT per-kernel compile driver invoked by the wrapper |
+| `sub_52DD50` | 781 B | finalizer_jit_entry | JIT-path wrapper (owns all `FNLZR: ... JIT` strings); delegates to `sub_4748F0` |
+| `sub_52E060` | 11,802 B | nvjit_api_option_parser | Embedded nvJIT API option parser -- byte-adjacent to `sub_52DD50` but unrelated to finalization; installed at `qword_2A77DD0` by `sub_4FFC30` (documented in [PTX Input Handling](../input/ptx-input.md)) |
 | `sub_45C950` | ~1 KB | write_elf_to_memory | Serialize ELF to buffer (Mercury path) |
 | `sub_45C980` | ~1 KB | compute_elf_size | Compute serialized ELF byte count |
 | `sub_45BF00` | 13,258 B | serialize_elf | Core ELF serialization engine |
@@ -510,7 +510,8 @@ The JIT path uses `setjmp` for error handling across its multiple compilation ph
 | Decade-family matching (`arch1/10 == arch2/10`) | **HIGH** | Integer division comparison verified in decompiled `sub_4709E0`. |
 | Version ceiling `> 0x101` returns error 25 | **HIGH** | Verified from decompiled `sub_4748F0` Phase 2. |
 | `"Failed to create finalizer thread"` at `0x2458EC0` | **HIGH** | Verified in `nvlink_strings.json`. Confirms thread-based finalization. |
-| JIT wrapper `sub_52DD50` (781 bytes) owns `FNLZR: ... JIT` strings | **HIGH** | All five JIT diagnostic strings (`"FNLZR: JIT Path"`, `"FNLZR: preLink Mode"`, `"FNLZR: postLink Mode"`, `"FNLZR: Ending JIT"`, `"FNLZR: Starting JIT"`) carry xrefs into `sub_52DD50` at `0x52DDE1`, `0x52DE07`, `0x52DFB0`, `0x52DFFB`, and `0x52E049` respectively (verified in `nvlink_strings.json`). Adjacent `sub_52E060` (11,802 bytes) is the per-kernel JIT driver invoked from the wrapper, not the JIT entry itself. |
+| JIT wrapper `sub_52DD50` (781 bytes) owns `FNLZR: ... JIT` strings | **HIGH** | All five JIT diagnostic strings (`"FNLZR: JIT Path"`, `"FNLZR: preLink Mode"`, `"FNLZR: postLink Mode"`, `"FNLZR: Ending JIT"`, `"FNLZR: Starting JIT"`) carry xrefs into `sub_52DD50` at `0x52DDE1`, `0x52DE07`, `0x52DFB0`, `0x52DFFB`, and `0x52E049` respectively (verified in `nvlink_strings.json`). |
+| Byte-adjacent `sub_52E060` is **not** a finalizer function | **HIGH** | `sub_52E060` decompilation contains zero `FNLZR`/JIT/ptxas-internal strings. It owns `"nvJIT API"`, `"JIT API Command Line Options"`, `"in-memory-ELF-image"`, and the toolchain version banner (call at line 1345 to `sub_443730`). 23-entry option-handler dispatch table at `0x1df8ce0..0x1df8d90` lands every slot back inside `sub_52E060`; the matching 23 `_setjmp` buffers are per-option longjmp error-recovery targets, not C++ EH. Single caller chain: installer `sub_4FFC30` writes `qword_2A77DD0 = sub_52E060`, dispatcher `sub_4BE350` reads and calls through that pointer (see [PTX Input Handling](../input/ptx-input.md) and [Wave-17C correction](../input/ptx-input.md)). |
 | Section catalog: 19 `.nv.merc.*` names | **HIGH** | All 19 section name strings verified at addresses `0x24582E8`--`0x2458D00`. Xrefs to emitter functions confirmed. |
 | `"skip mercury section %i"` at `0x1D3BCB7` | **HIGH** | String verified at exact address with xref to `0x45F624`. |
 | Hash Relocation sections `.nvHRKE`/`.nvHRKI`/`.nvHRCE`/`.nvHRCI`/`.nvHRDE`/`.nvHRDI` | **MEDIUM** | Section names inferred from decompiled code. Not individually verified in string scan. |

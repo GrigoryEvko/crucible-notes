@@ -9,6 +9,8 @@ This page is the central lookup index for identified functions in ptxas. It list
 
 **Confidence levels**: CERTAIN = named in symbols or strings. HIGH = strong evidence from strings and call patterns (>90%). MEDIUM = structural analysis with partial string evidence (70-90%).
 
+**Size convention**: All "KB" figures in this page refer to *native byte size* of the function body as reported by IDA (`size` field of `ptxas_functions.json`). Do not confuse this with the line count of the Hex-Rays decompilation: a function can have 28 KB of native code and decompile to 140 KB of C. Audits should always pull the native size from `ptxas_functions.json` before labeling a function a "mega-pass".
+
 ---
 
 ## Core Infrastructure
@@ -131,12 +133,12 @@ These functions appear in 10+ wiki pages -- they are the universal building bloc
 |---------|----------|:-----:|--------:|-------|
 | `0x5D1660` | `intrinsic_table_register` (608 entries) | 7 | 1 | Master name-to-ID table |
 | `0x5D4190` | `intrinsic_dispatch_builder` | 13 | 1 | PTX opcode -> codegen handler mapping |
-| `0x5FF700` | `intrinsic_prototype_emitter` | 5 | 1 | 354 KB -- largest function in binary |
-| `0x5C7A50` | `wmma_mma_codegen` | 4 | 1 | 173 KB, all shapes/types/layouts |
-| `0x5C10A0` | `mma_codegen` (mma.sync) | 4 | 1 | 120 KB, m8n8k4 through m16n8k256 |
-| `0x5BBC30` | `tcgen05_mma_codegen` (Blackwell) | 5 | 1 | 90 KB, 5th-gen tensor core |
+| `0x5FF700` | `intrinsic_prototype_emitter` | 5 | 1 | 33.6 KB native (size reported by IDA); larger sibling at `0x5D7430` (160 KB) appears to hold the master table |
+| `0x5C7A50` | `wmma_mma_codegen` | 4 | 1 | 39 KB native, all shapes/types/layouts |
+| `0x5C10A0` | `mma_codegen` (mma.sync) | 4 | 1 | 26 KB native, m8n8k4 through m16n8k256 |
+| `0x5BBC30` | `tcgen05_mma_codegen` (Blackwell) | 5 | 1 | 21 KB native, 5th-gen tensor core |
 | `0x70FA00` | `ocg_intrinsic_handler` | 8 | 1 | OCG-level intrinsic routing |
-| `0x6A97B0` | `intrinsic_lowering_main` | 4 | 1 | 26 KB, switch-based lowering |
+| `0x6A97B0` | `intrinsic_lowering_main` | 4 | 1 | 3.5 KB native, switch-based lowering |
 | `0x6C9EB0` | `ocg_builtin_name_lookup` | 5 | 1 | Blackwell+ OCG name table |
 
 > **Details**: [Intrinsics Index](intrinsics/index.md), [Math Intrinsics](intrinsics/math.md), [Tensor Intrinsics](intrinsics/tensor.md), [Sync & Warp](intrinsics/sync-warp.md)
@@ -189,7 +191,7 @@ These functions appear in 10+ wiki pages -- they are the universal building bloc
 | `0x143C440` | `sm120_peephole_dispatch` | 4 | 1 | SM120 (RTX 50), 373-case switch |
 | `0x198BCD0` | `sm100_peephole_dispatch` | 4 | 1 | SM100 (Blackwell), 1336 callees |
 | `0x83EF00` | `main_peephole_pass` | 6 | 0 | 29 KB, 392 callees |
-| `0x6D9690` | `master_instruction_encoder` | 7 | 1 | 94 KB, opcode switch |
+| `0x6D9690` | `master_instruction_encoder` | 7 | 1 | 27 KB native, opcode switch |
 | `0x6E4110` | `sass_codegen_main` | 4 | 1 | EmitSASSForFunction, FNV-1a BB hash |
 | `0x6F52F0` | `SASS_pipeline_run_stages` | 5 | 1 | Mercury SASS compilation pipeline |
 | `0x9ED2D0` | `MercConverter_entry` | 6 | 1 | ORI to Mercury IR conversion |
@@ -218,7 +220,7 @@ These functions appear in 10+ wiki pages -- they are the universal building bloc
 
 | Address | Identity | Pages | Callers | Notes |
 |---------|----------|:-----:|--------:|-------|
-| `0x612DE0` | `section_attr_builder` | 11 | 1 | 76 KB, ELF section/attribute config |
+| `0x612DE0` | `section_attr_builder` | 11 | 1 | 8.7 KB native, ELF section/attribute config |
 | `0x1C9F280` | `master_elf_emitter` | 9 | 1 | Complete CUBIN assembly |
 | `0x1CB53A0` | `elf_world_init` | 7 | 1 | 672-byte ELFW context |
 | `0x1CB68D0` | `symbol_table_builder` | 5 | 1 | .symtab from internal symbols |
@@ -370,13 +372,15 @@ Functions in the binary are clustered by subsystem. This table maps address rang
 
 ### Top 5 Largest Functions
 
+Sizes below are native bytes as reported by IDA (`size` field in `ptxas_functions.json`). Earlier revisions of this table conflated decompiled C line counts with native byte sizes; the figures here are the on-disk function bodies.
+
 | Rank | Address | Identity | Size |
 |------|---------|----------|-----:|
-| 1 | `0x5FF700` | intrinsic_prototype_emitter | 354 KB |
-| 2 | `0x169B190` | isel_pattern_dispatch | 280 KB |
-| 3 | `0x198BCD0` | sm100_peephole_dispatch | 233 KB |
-| 4 | `0x143C440` | sm120_peephole_dispatch | 233 KB |
-| 5 | `0x5C7A50` | wmma_mma_codegen | 173 KB |
+| 1 | `0x169B190` | isel_pattern_dispatch | 280 KB |
+| 2 | `0x198BCD0` | sm100_peephole_dispatch | 239 KB |
+| 3 | `0x143C440` | sm120_peephole_dispatch | 239 KB |
+| 4 | `0x18A2CA0` | (large SASS-side dispatcher) | 231 KB |
+| 5 | `0xBA9D00` | (post-regalloc mega-pass) | 204 KB |
 
 ### Top 10 Most Cross-Referenced (by wiki page count)
 
