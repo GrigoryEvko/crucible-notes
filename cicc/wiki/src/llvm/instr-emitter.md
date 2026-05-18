@@ -2,6 +2,8 @@
 
 > **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm) for GPU-specific changes.
 >
+> **Upstream source:** `llvm/lib/CodeGen/SelectionDAG/InstrEmitter.cpp`, `InstrEmitter.h` (LLVM 20.0.0). MachineInstr flag bit set defined in `llvm/include/llvm/CodeGen/MachineInstr.h`; bit 36 (`0x1000000000`) is not part of the upstream `MIFlag` enum. The CopyToReg helper corresponds to upstream `InstrEmitter::EmitCopyToRegClassNode`.
+>
 > **LLVM version note:** SDNode field layout matches LLVM 20.0.0 base. NVIDIA merges the upstream `EmitNode`/`EmitSpecialNode` split into a single monolithic function, adds a dedicated CopyToReg handler, an extended MachineInstr flag at bit 36, and a triple vtable dispatch for GPU pseudo-expansion.
 
 InstrEmitter is the final translation layer between LLVM's SelectionDAG representation and the machine-level MachineInstr pipeline. After instruction selection has converted LLVM IR into a DAG of target-specific SDNodes, and after scheduling has linearized those nodes into a sequence, InstrEmitter walks the scheduled sequence and converts each SDNode into one or more MachineInstrs inserted into the current MachineBasicBlock. In CICC v13.0, the emitter lives at `sub_2EDDF20` (11,722 bytes) and is called by `ScheduleDAGSDNodes::EmitSchedule` (`sub_2EE0CF0`). NVIDIA's build contains three key modifications relative to upstream LLVM: a dedicated CopyToReg handler factored out for NVPTX's physical-register-heavy parameter ABI, a triple vtable dispatch pattern that gates custom pseudo-expansion for GPU-specific instructions, and an extended MachineInstr flag at bit 36 (`0x1000000000`) not present in stock LLVM.

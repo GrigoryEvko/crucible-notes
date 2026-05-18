@@ -854,7 +854,7 @@ This analysis runs after scheduling is complete and drives feedback for the Mac 
 
 ## Dual-Issue Rules
 
-Dual-issue scheduling is controlled by `sub_8CF5D0` (CheckDualIssueEligibility, 3.5 KB) and implemented by `sub_8B77C0` (DualIssueScheduler, 15 KB) with pairing logic in `sub_8BDC40` (7.9 KB).
+Dual-issue scheduling is split across three functions: `sub_8CF5D0` (CheckDualIssueEligibility, 3.5 KB) decides whether the pass runs at all and computes the per-function benefit score; `sub_8B77C0` (DualIssueScheduler, 15 KB) drives the per-slot pairing loop; `sub_8BDC40` (DualIssuePairing, 7.9 KB) is the partner-record helper that `sub_8B77C0` calls per candidate -- it walks the candidate's dependency-rule bucket, applies the `pipe_masks_b` compatibility mask, checks for RAW/WAR conflicts against the already-committed slot 0 instruction, and either marks the pair as co-issued (writing into `pair_record+offset` at `slot_array[id*96]`) or returns 0 to signal the caller to try the next candidate.
 
 ### Eligibility Check
 
@@ -875,9 +875,9 @@ Dual-issue pairs must satisfy all four conditions simultaneously:
 1. **Pipe compatibility**: the two instructions must target different functional units. Same-pipe pairs cannot dual-issue.
 2. **No RAW dependency**: the pair must not have a read-after-write hazard on the same register in the same cycle.
 3. **No pending barrier**: neither instruction may be waiting on a scoreboard barrier.
-4. **Architecture gate**: dual-issue is a Maxwell feature (sm\_50/sm\_52). The eligibility check returns false when `target+1032` bit 7 is clear (sm\_70+ architectures).
+4. **Architecture gate**: dual-issue is a Maxwell-only feature -- sm\_50, sm\_52, and sm\_53 (Tegra X1) all carry `target+1032` bit 7 set. The eligibility check returns false on every later family (sm\_60 Pascal onward clears the bit; Volta/Turing post-RA scheduling explicitly excludes dual-issue per [PostSchedule](post-schedule.md), and sm\_8x\_shared zeros `pipe_masks_b[0..1]` at the latency-table level).
 
-For sm\_50, a special register budget function adjusts the register allocation target to account for reduced register pressure from dual-issue execution.
+For Maxwell, a dedicated register-budget adjustment (`DualIssueBudget`, invoked from `ComputeRegisterBudget` when `arch_id == 5`) trims the per-warp register target so paired co-issued instructions keep both dispatch slots busy without spilling. This budget delta is the only register-allocation pressure knob with a Maxwell-specific code path.
 
 ### Memory Space Classification for Pairing
 

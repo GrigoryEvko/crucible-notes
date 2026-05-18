@@ -2,6 +2,8 @@
 
 > **NVIDIA-modified pass.** See [Differences from Upstream](#differences-from-upstream-llvm-2000) for GPU-specific changes.
 >
+> **Upstream source:** `llvm/lib/Transforms/Scalar/EarlyCSE.cpp` (LLVM 20.0.0). The four scoped hash tables (values, loads, calls, plus NVIDIA's added store-forwarding table) are scoped via `ScopedHashTable<...>` from `llvm/include/llvm/ADT/ScopedHashTable.h`.
+>
 > **LLVM version note:** Based on LLVM 20.0.0 `EarlyCSE.cpp`. Evidence: iterative (non-recursive) dominator-tree walk matches the LLVM 16+ refactoring; MemorySSA-backed variant with `early-cse-memssa` pipeline parameter matches LLVM 14+. NVIDIA adds four GPU extensions (barrier-aware versioning, AS 7 handling, NVVM call CSE, PHI limit) and a fourth scoped hash table not present in any upstream version.
 
 EarlyCSE is a fast dominator-tree-walk pass that eliminates redundant computations, loads, and calls within a function. Cicc's version is **not** stock LLVM 20.0.0 -- the binary contains four CUDA-specific extensions that handle GPU memory model semantics: barrier-aware memory versioning with hardcoded NVVM intrinsic ID checks, shared memory address space 7 protection against unsafe store-to-load forwarding, a dedicated NVVM intrinsic call CSE handler with a fast-path for thread-invariant special register reads, and a PHI operand limit of 5 for compile-time control. It also adds a fourth scoped hash table (store-forwarding) that upstream lacks.

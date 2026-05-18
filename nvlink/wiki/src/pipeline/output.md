@@ -136,7 +136,7 @@ Mode 3 is constructed by `sub_45B950` (for `sub_45C920`). It opens the output FI
 
 Mode 2 uses a growable vector backed by arena-allocated chunks. The `sub_44FC10` (vector\_append) function manages this: each chunk is a 24-byte header (`capacity`, `remaining`, `data_ptr`) linked into a list. When the current chunk cannot hold the incoming write, a new chunk is allocated (sized to at least the vector's default chunk size or the write size, whichever is larger), the data is copied, and the chunk is appended to the list. The linker context's total byte count at offset `+8` of the vector is incremented after each write.
 
-Mode 1 (no-op) is never explicitly constructed in the observed output paths but exists as a valid mode in the switch. Its purpose is not determined from the decompiled code; it may serve as a dry-run size estimation mode or a placeholder for an unused output target.
+Mode 1 (no-op) is never explicitly constructed in the observed output paths but exists as a valid mode in the switch. It returns `len` without writing anything, so callers can replay the full serialization sequence against a mode-1 writer to obtain a byte count -- a dry-run sizer. In practice nothing exercises it: `sub_45C980` derives the size directly from precomputed ELF header fields rather than driving the serializer, so this mode survives only as latent infrastructure.
 
 ### Writer Cleanup: sub\_45B6A0
 
@@ -207,7 +207,7 @@ for (p = 0; p < sorted_array_count(elfw->pos_symbol_array); p++)  // elfw+344
 
 The main serialization loop iterates sections 4 through `e_shnum - 1` (skipping the first 4 standard sections: null, shstrtab, strtab, symtab, which were already serialized inline). For each section:
 
-1. **Alignment padding**: Compute gap between the current running offset and the section's `sh_offset`. If positive, emit zero bytes. If negative, fatal error `"Negative size encountered"`.
+1. **Alignment padding**: Compute gap between the current running offset and the section's `sh_offset`. If positive, emit `0x00` bytes one at a time through `sub_45B6D0`. If negative, fatal error `"Negative size encountered"`. The serializer never emits SASS NOP-sled fill or any non-zero pattern: code-section gaps are zero-filled identically to data-section gaps, and any in-stream NOPs that end up inside `.text*` must already be present in the fragment data produced by the merge / layout phases.
 
 2. **NOBITS / empty check**: Sections of type `SHT_NOBITS` (8) or certain CUDA-specific no-data types (`0x7000000{8,A,B,C}` -- bitmask check `(0x400D >> (type - 0x70000008)) & 1`) are skipped entirely -- no data bytes emitted.
 

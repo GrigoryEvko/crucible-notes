@@ -66,6 +66,7 @@
 - [CUDA Runtime Boilerplate](./output/cuda-runtime.md)
 - [Host Reference Arrays](./output/host-reference-arrays.md)
 - [Module ID & Registration](./output/module-id.md)
+- [Attribute Emission to .int.c](./output/attribute-emission.md)
 
 # EDG Frontend Internals
 

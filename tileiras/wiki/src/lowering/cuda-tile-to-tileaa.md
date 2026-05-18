@@ -6,6 +6,16 @@
 
 The conversion is partial. The pass loads six legal dialects, marks `cuda_tile` illegal, attaches a dynamic-legality predicate to `ub.poison`, registers three type-conversion functor pairs, and applies a pattern bank assembled by three independent populators in a fixed order.
 
+## Boundary Contract
+
+| Dimension | Specification |
+|---|---|
+| Allowed input ops | every `cuda_tile.*` executable op (whitelisted via `addIllegalDialect<cuda_tile>`); `ub.poison` accepted under a dynamic-legality predicate that requires an `nv_tileaa`-primitive result type |
+| Allowed input types / attributes | `cuda_tile::TileType`, `cuda_tile::PointerType`, `cuda_tile::TokenType`; `cuda_tile.fastmath`, `axis`, `inclusive`, and per-op attribute dictionaries; module-level `--compute-capability` option must parse |
+| Guaranteed output ops | only ops from `arith`, `nv_tileaa`, `func`, `gpu`, `scf`, `math` (the six legal dialects); no `cuda_tile.*` survives; bridge `builtin.unrealized_conversion_cast` may remain pending downstream reconciliation |
+| Guaranteed output types / attributes | tile → `llvm.struct<...>` descriptor, pointer → `llvm.ptr`, token → `llvm.token` through the materialiser triple; region block-arg types rewritten through the same `TypeConverter`; `#cuda_tile.fastmath<...>` re-keyed as `#nv_tileaa.fastmath<...>` with identical discriminant |
+| Violation behavior | residual `cuda_tile.*` op → `applyPartialConversion` fails with `"failed to convert cuda_tile to nv_tileaa"`; malformed compute capability → `"invalid or missing --compute-capability option"`; mismatched region block-arg types → next-stage verifier rejects the parent op (no localised diagnostic from this pass) |
+
 ## Pass Driver
 
 `runOnOperation` reads the stored `--compute-capability` option, builds the conversion target, populates three pattern groups in order, runs the PDL fallback, and invokes `applyPartialConversion`. Two user-facing diagnostics escape: `"invalid or missing --compute-capability option"` when the option parses as malformed, and `"failed to convert cuda_tile to nv_tileaa"` when partial conversion fails to legalise every `cuda_tile.*` op.

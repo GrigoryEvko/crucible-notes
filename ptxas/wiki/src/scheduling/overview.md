@@ -478,9 +478,12 @@ function ComputeRegisterBudget(sched):
         physRegs = VirtToPhys(sched, maxRegs)   // sub_A99FE0
         budget = physRegs - (physRegs >> 6)     // 98.4% utilization
 
-    // For sm_50: apply special dual-issue budget
+    // Maxwell (sm_50/sm_52/sm_53): apply dual-issue register budget
+    // The Maxwell back-end reserves extra registers per warp so paired
+    // co-issued instructions can keep both dispatch slots busy without
+    // spilling. Gated by `target+1032 bit 7` (same gate as `sub_8CF5D0`).
     if arch_id == 5:
-        budget = DualIssueBudget(budget)
+        budget = DualIssueBudget(budget)    // Maxwell-only register-target adjustment
 
     pressureCurve = ComputePressureCurve(sched, budget - 2)  // sub_8CE520
 
@@ -698,8 +701,8 @@ function SelectStrategy(BB, scheduler, arch):
                 return SoftwarePipeline    // sub_8B9390
         return LoopScheduler               // sub_8BAAE0
 
-    if arch <= sm_52 AND scheduler+328 > 0:  // dual-issue benefit > 0
-        return DualIssueScheduler          // sub_8B77C0
+    if (target+1032 bit 7 set) AND scheduler+328 > 0:  // dual-issue benefit > 0
+        return DualIssueScheduler          // sub_8B77C0 -- gate covers sm_50/sm_52/sm_53 (Maxwell)
 
     if BB.instr_count <= 12:
         return PermuteSchedule             // sub_8B4590  (exhaustive)
@@ -764,7 +767,9 @@ function ScheduleWithBacktrack(BB, dag, ready_list):
 
 ### Dual-Issue Scheduler (`sub_8B77C0`, 15 KB)
 
-Pairs compatible instructions into dual-issue slots on architectures that support it (sm_50/Maxwell, sm_52). The outer loop walks scheduling slots; the inner loop finds a co-issuable partner via the dependency rule table.
+Pairs compatible instructions into dual-issue slots on the Maxwell family (sm\_50/sm\_52/sm\_53). The gate is `target+1032` bit 7, set only for the Maxwell back-end class -- subsequent architectures (Pascal sm\_60+ onwards) clear this bit and the strategy is never selected. The outer loop walks scheduling slots; the inner loop finds a co-issuable partner via the dependency rule table.
+
+`sub_8B77C0` orchestrates the per-slot search; the actual pair-record bookkeeping (rejection set, partner commit, cross-slot dependency flag) lives in `sub_8BDC40` (7.9 KB), which `sub_8B77C0` calls once per candidate. Compatibility predicates `sub_A9CDE0` (`IsHotMemory`) and `sub_A9CF90` (`IsColdMemory`) drive the partner choice -- see [Dual-Issue Rules](latency-model.md#dual-issue-rules) for the memory-space classification and the `pipe_masks_b` pairing matrix.
 
 ```
 function DualIssueSchedule(scheduler, slot_start, slot_end, phase_mask):

@@ -294,6 +294,8 @@ running_offset = target;
 
 Section 3 is the `.symtab` section in nvlink's canonical ordering: index 0 = null, 1 = `.shstrtab`, 2 = `.strtab`, 3 = `.symtab`. The alignment padding ensures the symbol table (and subsequent sections) begin at their computed file offsets.
 
+The padding pattern is always `0x00` and is emitted one byte per `elf_write` call. The serializer never emits SASS NOP encodings, architecture-specific fill instructions, or any non-zero pattern -- code-section alignment fences and inter-section gaps are byte-for-byte identical to data-section gaps. If a `.text*` section needs intra-section NOP padding for instruction-stream alignment, that padding must already be baked into its fragment list (Phase 7c) by the layout / merge phases before serialization runs.
+
 ### Phase 6: Symbol Table Contents (.symtab)
 
 After Phase 5 pads to the `.symtab` section's file offset, the serializer iterates the **positive symbol array** at `elfw+344` (`pos_symbol_array`, a `SortedArray*` of 48-byte `SymbolRecord` entries) and writes the first 24 bytes (ELF64) or 16 bytes (ELF32) of each record. The internal `SymbolRecord` is laid out so that its leading bytes already match the ELF-standard `Elf64_Sym` / `Elf32_Sym` on-disk format, so a direct memcpy produces the `.symtab` contents:
@@ -408,6 +410,8 @@ while (node) {
 ```
 
 A `desc->sec_offset` of `(uint64_t)-1` (0xFFFFFFFFFFFFFFFF) is treated as a sentinel meaning "no offset specified; append immediately after the previous fragment." This avoids emitting a spurious gap.
+
+NVIDIA-specific TLV-bearing sections -- `.nv.info`, per-kernel `.nv.info.<func>`, `.nv.shared.<func>`, `.nv.constant{0,2,3}.<func>`, `.nv.callgraph`, `.nv.rel.action`, and the rest of the `0x70000000`-range section family that does **not** match the NOBITS bitmask in 7b -- carry no special emission logic in `sub_45BF00`. They flow through this fragment-list traversal identically to standard sections: the merge / finalize phases assemble the TLV byte stream into one or more fragments hanging off `sec+72`, and the serializer concatenates them at the section's computed `sh_offset`. See [.nv.info](nv-info.md) for the TLV record layout that ends up in those fragments.
 
 #### 7d. Size Validation
 
@@ -731,7 +735,7 @@ All three call `sub_467460` which is the linker's fatal error handler. The first
 | `0x45B6A0` | `destroy_writer` | ~48 bytes | Calls cleanup function and frees context |
 | `0x45BAA0` | `write_program_headers` | 5,657 bytes | Constructs and writes ELF Phdr table |
 | `0x44FC10` | `vector_append` | ~256 bytes | Growable vector write for mode 2 |
-| `0x438BB0` | `align_accumulate` | -- | Alignment-aware size accumulator for phdr construction |
+| `0x438BB0` | `align_up` | -- | `align_up(value, align)` -- returns `value` if already aligned, else `((value / align) + 1) * align`; used by `sub_45BAA0` to accumulate NOBITS extents in the `.shstrtab` segment's `p_memsz` |
 | `0x464DB0` | `list_get` | -- | Ordered list element accessor |
 | `0x464BB0` | `list_size` | -- | Ordered list count accessor |
 | `0x467460` | `fatal_error` | -- | Fatal error reporter (does not return) |

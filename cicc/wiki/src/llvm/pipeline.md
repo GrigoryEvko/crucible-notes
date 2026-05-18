@@ -1,5 +1,9 @@
 # Pipeline & Pass Ordering
 
+> **Mixed provenance.** The PassBuilder, pipeline parser, and `StringMap`-driven registry are stock LLVM 20.0.0 infrastructure; the 33 NVIDIA passes (`nvvm-reflect`, `nvvm-intrinsic-lowering`, `process-restrict`, `lower-struct-args`, `lower-aggr-copies`, `nv-memory-space-opt`, the seven `nvopt<...>` pipeline shorthands, etc.) and the per-tier driver (`sub_12E54A0`) are NVIDIA additions injected via the standard extension-callback table at `[PassBuilder+2208]`. See per-pass pages and [NVIDIA Custom Passes Overview](../passes/index.md) for the proprietary entries.
+>
+> **Upstream source:** `llvm/lib/Passes/PassBuilder.cpp`, `PassRegistry.def`, `PassBuilderPipelines.cpp`, `llvm/include/llvm/Passes/PassBuilder.h` (LLVM 20.0.0). NVPTX target-specific pipeline hooks: `llvm/lib/Target/NVPTX/NVPTXTargetMachine.cpp::registerPassBuilderCallbacks`.
+
 CICC v13.0 implements the LLVM New Pass Manager pipeline infrastructure, with NVIDIA injecting 33 custom passes into the registration table alongside approximately 493 standard LLVM passes. The master registration function at `sub_2342890` populates a `StringMap<PassInfo>` hash table with every known pass name at startup, and a text-based pipeline parser allows the full pass ordering to be specified as a parenthesized string (e.g., `module(function(instcombine,dse))`). This page documents the complete pass inventory, the registration mechanism, the NVIDIA-specific additions, and — critically — the **runtime pass execution order** for each optimization level including the tier system and pass factory addresses.
 
 | | |

@@ -6,6 +6,16 @@
 
 Structurally this is a textbook MLIR partial conversion. A single driver assembles a `RewritePatternSet` from three fixed-order populators, attaches kernel-spec metadata onto the function, builds the conversion target, and runs `applyPartialConversion`. There is no second pipeline stage — canonicalization of slice scaffolding is left to the following passes.
 
+## Boundary Contract
+
+| Dimension | Specification |
+|---|---|
+| Allowed input ops | every executable `nv_tileaa.*` op (illegal-dialect), plus `arith.*` and `math.*`; `nv_tileaa.func`, `nv_tileaa.return`, `nv_tileaa.mark_for_reuse` explicitly stay legal (owned by `ConvertTileFuncToLLVM`) |
+| Allowed input types / attributes | `nv_tileaa::memref`, `nv_tileaa::ptr`, `nv_tileaa::mem_token`; `CopyAtomAttrInterface` witness on memory ops, `ReduceAtomAttrInterface` on reduce/scan; `mem_semantic`, `mem_scope`, `operandSegmentSizes`, `in_bounds`; `cute.kernel` attribute on the function (mirrored to `nv_tileaa.kernel_spec`) |
+| Guaranteed output ops | `nv_tileas.*` plus `arith.*`/`math.*` lowered to TileAS-compatible form; combiner body internals lowered to `arith.*` (not `nv_tileas.*`) because the arith populator runs first |
+| Guaranteed output types / attributes | tile types preserved as `tile<S × element>`; memref → `nv_tileas.tiled_view<...>` (static shape); CopyAtom and ReduceAtom witnesses carry verbatim; `mem_semantic`/`mem_scope` re-keyed with `nv_tileas` prefix but identical discriminant; SM100 block-scaled MMA emits an `atom = #nv_tileas<atom umma_bs_...>` attribute |
+| Violation behavior | residual `nv_tileaa.*` executable op → `applyPartialConversion` fails with `"failed to convert nv_tileaa to nv_tileas"`; block-scale variant on cc ≤ sm_89 → `"mma block scale is not supported by compute capability < sm100"` before rewrite; missing target spec → `"failed to get the target spec"`; layout failures emit `"missing source layout"` / `"failed to infer source layout"` / `"fails to assign layout"`; queue-typed mismatch in `mark_for_reuse` → `"expect operands with queue types"` |
+
 ## Pass Driver
 
 `runOnOperation` populates three pattern groups in fixed order, attaches the kernel-spec attribute onto the function, constructs the conversion target, and applies it.

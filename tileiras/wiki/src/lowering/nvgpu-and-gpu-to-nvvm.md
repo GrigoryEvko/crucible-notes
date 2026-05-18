@@ -31,6 +31,8 @@ The conversion target is strict:
 | `nvgpu.mma.sp.sync` | `llvm.inline_asm` carrying the PTX sparse-MMA instruction |
 | SM100 packed arithmetic and conversion ops | dedicated `nvvm.*` packed operations |
 
+Violation behavior is uniform across the two halves of the pass: any executable `gpu.*` or `nvgpu.*` op remaining after the partial conversion is a hard failure — `applyPartialConversion` reports the unconverted op and the pass fails. An `nvgpu.mbarrier.*` op whose operand does not resolve to a shared-memory pointer emits `"mbarrier requires shared-memory operand"` and rejects, because an implicit address-space cast would change the semantic memory space tcgen05 lowering relies on. A vector-typed `math.*` operation that reaches libdevice dispatch without prior scalarisation is rejected by the conversion target rather than dispatched lane-by-lane silently. A `cf.assert` whose message globals cannot be materialised falls through to the upstream LLVM diagnostic. The `gpu.module` container itself is the only legal `gpu.*` surface on output; any other surviving `gpu.*` op signals a missing pattern in this bank.
+
 ## GPU Dialect Lowering
 
 The standard GPU pass builds a conversion target that legalises LLVM and NVVM, keeps `gpu.module` and `gpu.yield` legal so kernel bodies can be rewritten in place, marks the rest of the GPU dialect illegal, and adds libdevice-backed math operations and `cf.assert` to the illegal set. A surviving `gpu.*` op after this pass means either no pattern was registered or the pattern rejected the operation; the strict target makes the failure mode visible.

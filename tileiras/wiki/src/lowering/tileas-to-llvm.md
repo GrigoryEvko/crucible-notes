@@ -6,6 +6,16 @@
 
 Function-boundary conversion runs before body conversion. The order matters: kernel function signatures and attributes must be LLVM-compatible before body patterns lower pointers, descriptors, async tokens, barriers, and target-specific operations.
 
+## Boundary Contract
+
+| Dimension | Specification |
+|---|---|
+| Allowed input ops | residual `nv_tileaa.*`, every `nv_tileas.*` including `async.pipeline.*`, `cute.*`, `cute_nvgpu.*`, `cutlass.*`, surviving `arith.*` and `math.*`; `nv_tileaa.func`, `nv_tileaa.return`, `nv_tileaa.mark_for_reuse` enter legal because the sister pass already handled the function boundary |
+| Allowed input types / attributes | TileAA / TileAS memref, view, token, layout, atom types; CopyAtom / ReduceAtom witnesses; `nv_tileaa.kernel_spec`, `nv_tileaa.compute_capability`, `nv_tileaa.target_spec` on the function/module (required when kernel-translation path is active); extended-SMEM byte budget in `pass[6]` |
+| Guaranteed output ops | `llvm.*` and `nvvm.*` plus statically-legal `gpu.module` containers; surviving `cute.*`/`cute_nvgpu.*`/`cutlass.*` only when consumed by the companion lowering; no executable `nv_tileaa.*` or `nv_tileas.*` op remains; `builtin.unrealized_conversion_cast` stripped by phase 8 reconciliation |
+| Guaranteed output types / attributes | LLVM descriptor structs, address-space-qualified `llvm.ptr`, `i32` async-pipeline tokens, `i1` mbarrier results; kernel-spec mirrored to `nvvm.reqntid` / `nvvm.cluster_dim` / `nvvm.blocksareclusters` / `nvvm.minctasm` / `nvvm.maxnreg` per the eight-row translation table; `global_smem` synthesised at addr-space 3, align 16 when `pass[6] > 0` |
+| Violation behavior | absent `compute_capability` or `target_spec` → `"Failed to get ComputeCapability"` (sev 0x103); kernel return with operands → `"Kernel functions do not support return with operands"`; per-phase populator failures emit `"fails to decompose print ops"` / `"fails to do bufferization analysis"` / `"region types conversion failed"`; PDL fallback failure → `"failed to lower PDL pattern module to the PDL Interpreter"`; residual TileAA/TileAS op → `applyPartialConversion` fails (sticky failure bit set at `pass[5] |= 4`, `signalPassFailure()` deferred to pass-manager wrapper) |
+
 ## Input and Output Dialects
 
 | Direction | Surface |

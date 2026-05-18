@@ -1,5 +1,9 @@
 # Machine-Level Passes
 
+> **Mixed provenance.** Of the 64 registered MF passes, 51 are stock LLVM 20.0.0 (`MachineScheduler`, `RAGreedy`, `PrologEpilogInserter`, `BranchFolderPass`, `MachineBlockPlacement`, etc.) and 13 are NVIDIA-only. The NVIDIA additions cluster around four areas: PTX structurization (`nvptx-lower-aggr-copies`, `nvptx-lower-args`), pre-RA pressure shaping (MRPA, IV demotion, rematerialization), texture-group merging, and AsmPrinter glue (`nvptx-prolog-epilog`, `nvptx-proxy-reg-erasure`). Each pass on this umbrella links to its dedicated page where the upstream/NVIDIA delta is described.
+>
+> **Upstream source:** Core codegen drivers in `llvm/lib/CodeGen/*.cpp` (LLVM 20.0.0); NVPTX-specific MF passes in `llvm/lib/Target/NVPTX/NVPTX*.cpp`. Pipeline assembly (`addISelPasses`, `addPreRegAlloc`, `addPostRegAlloc`) follows the stock `TargetPassConfig` interface; NVIDIA overrides via `NVPTXPassConfig`.
+
 Machine-level passes in CICC v13.0 operate on `MachineFunction` / `MachineBasicBlock` / `MachineInstr` representations after SelectionDAG instruction selection has converted LLVM IR into target-specific pseudo-instructions. On a conventional CPU target, these passes ultimately produce native machine code; on NVPTX, they produce PTX assembly -- a virtual ISA with unlimited virtual registers and a structured instruction set. This distinction is fundamental: NVPTX's "machine code" still uses virtual registers (`%r0`, `%f1`, `%p3`), and the final PTX text is consumed by `ptxas` which performs the actual register allocation against the hardware register file. The machine-level passes in CICC therefore serve a different purpose than on CPU: they optimize register pressure (to maximize occupancy), structure control flow (PTX requires structured CFG), compute `.local` memory frame layouts, and prepare clean PTX for `ptxas` to finish.
 
 | | |
