@@ -597,11 +597,15 @@ int32 fields[16]:
 
 Type 1 writes the resolved value directly. Type 19 writes zero. Types 22--29 apply a bitmask from the `xmmword_1D3F8E0` SSE constant table, shift right by the amount from `xmmword_1D3F920`, and write the result.
 
+## Capsule Mercury Sections Beyond `.nv.merc.*`
+
+A capmerc (`--binary-kind=capmerc`) cubin is not just the `.nv.merc.*` family documented above. The outer capsule also carries the per-function capsule descriptors under section names of the form `.nv.capmerc<func>` (distinct prefix, `sh_type = 1`/PROGBITS, no `SHF_NV_MERC` flag) and the Hash Relocation sections (`.nvHRKE`, `.nvHRKI`, `.nvHRCE`, `.nvHRCI`, `.nvHRDE`, `.nvHRDI`) used by FNLZR for incremental linking. These are produced and consumed by FNLZR (`sub_4748F0`), not by the section emitters on this page. The 328-byte capsule descriptor layout and the Hash Relocation pairing rules are documented in [Capsule Mercury Format](capmerc-format.md) and the ptxas-side wiki cross-link below; this page covers only the `.nv.merc.*` namespace.
+
 ## Cross-References
 
 ### nvlink Internal
 - [Mercury Overview](overview.md) -- what Mercury is and why it exists
-- [Capsule Mercury Format](capmerc-format.md) -- the capmerc container that wraps Mercury + SASS
+- [Capsule Mercury Format](capmerc-format.md) -- the capmerc container that wraps Mercury + SASS, including `.nv.capmerc<func>` descriptors and `.nvHR*` hash-relocation sections
 - [FNLZR](fnlzr.md) -- the post-link finalizer that consumes Mercury sections
 - [R_MERCURY Relocations](r-mercury-relocations.md) -- relocation types used in `.nv.merc.rela`
 - [Merge Phase](../pipeline/merge.md) -- where Mercury sections are skipped during linking

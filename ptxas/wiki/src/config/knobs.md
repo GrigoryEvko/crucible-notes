@@ -83,7 +83,33 @@ if (tolower(query_char) != tolower(c))
 
 The `& 0xDF` trick converts lowercase to uppercase before range-checking, so both `'a'-'m'` and `'A'-'M'` hit the first branch. Non-alphabetic characters pass through unchanged. This means knob names like `SchedNumBB_Limit` with underscores and digits are handled correctly -- only the alphabetic portion rotates.
 
-To reverse-engineer knob names from the binary: extract the ROT13 strings from the knob definition table (64-byte stride at the table base pointer), apply ROT13, and you get the cleartext name.
+To reverse-engineer knob names from the binary: extract the ROT13 strings from the knob definition table (64-byte stride at the table base pointer), apply ROT13, and you get the cleartext name. A reference decoder lives at `tools/decode_rot13_knobs.py` and operates directly on `ptxas_strings.json`; the prefix-filter mode (`--prefix Mercury`, `--prefix URF`, `--prefix Speculatively`) keeps the output narrow when triaging a specific subsystem.
+
+> ⚡ **QUIRK — why ROT13 at all?**
+> ROT13 is involutive (`rot13(rot13(x)) == x`), trivially reversible, and adds zero runtime cost when the decoder is fused with the case-insensitive compare (one `& 0xDF` masks case; one range test selects the rotation). The goal is not secrecy — anyone with a Python shell defeats it in two lines — it is to keep internal names out of casual `strings(1)` scans, ELF symbol dumps, and grep-based audits of customer support payloads. Three concrete effects: (1) the ~3,000 ROT13'd identifiers never appear in `strings ptxas | sort -u`, so a grep for `Mercury`, `XBlock`, or `Scav` returns only the handful of plaintext pipeline-phase labels; (2) the `0k`-prefixed hex defaults (1,380 strings, e.g. `0x590`, `0x5a0`) are interleaved with ROT13 names, raising the noise floor for entropy-based string filters; (3) the obfuscation lives below `.dynsym` and `.symtab` (both stripped), so symbol-table tooling sees nothing. The cipher is also stable across observed builds — every ptxas since r10.x uses the same scheme — so a single decoder works across the toolkit history.
+
+### Broader Decoded-Name Surface (beyond Mercury)
+
+ROT13 hides knob clusters across the entire compiler, not just the Mercury backend. Representative decoded prefixes recovered by `decode_rot13_knobs.py`:
+
+| ROT13 form | Decoded form | Subsystem |
+|---|---|---|
+| `PgnErpbasvtZnkErtNyybp` | `CtaReconfigMaxRegAlloc` | Register reconfiguration (CTA-level) |
+| `PgnErpbasvtZnkErtQrnyybp` | `CtaReconfigMaxRegDealloc` | Register reconfiguration (CTA-level) |
+| `HESGenqrbssYbjreYvzvgOnfr` | `URFTradeoffLowerLimitBase` | Uniform RF promotion |
+| `HESGenqrbssPbairegPbfgYvzvg` | `URFTradeoffConvertCostLimit` | Uniform RF promotion |
+| `HESCebzbgrWgPbaq` | `URFPromoteJtCond` | Uniform RF promotion |
+| `FcrphyngvirylUbvfgGrkOhqtrg` | `SpeculativelyHoistTexBudget` | Speculative tex-hoisting |
+| `FcrphyngvirylUbvfgGrkZnkVafgf` | `SpeculativelyHoistTexMaxInsts` | Speculative tex-hoisting |
+| `FcrphyngvirUbvfgPbzzbaVafgf` | `SpeculativeHoistCommonInsts` | Speculative hoisting |
+| `QvfnoyrYbatVagNevguNqqerffSbyqvat` | `DisableLongIntArithAddressFolding` | Address folding |
+| `YbatVagNevguSbyqvatOhqtrg` | `LongIntArithFoldingBudget` | Address folding |
+| `PbairegBssfrgOvaqyrffGbObhaqGbHErt` | `ConvertOffsetBindlessToBoundToUReg` | Tex operand legalization |
+| `HfrArjYbbcVainevnagEbhgvarSbeUbvfgvat` | `UseNewLoopInvariantRoutineForHoisting` | LICM |
+| `GenprCunfrYriry` | `TracePhaseLevel` | Phase tracing |
+| `GenprCunfrSvyr` | `TracePhaseFile` | Phase tracing |
+
+Running `python3 tools/decode_rot13_knobs.py` against the strings dump produces ~525 prefix-recognized decodes out of ~3,344 identifier-shaped candidates; the rest are mostly enum tokens, log-message identifiers, and pass-internal constants that look identifier-like but aren't in the knob registry.
 
 ## Knob Descriptor Layout
 

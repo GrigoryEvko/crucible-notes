@@ -37,7 +37,7 @@ Internally, option parsing in `sub_427AE0` sets `byte_2A5F222 = 1` and `byte_2A5
 | Option | Help text | Function |
 |---|---|---|
 | `--binary-kind` | Target ELF binary kind | Selects mercury/capmerc/sass |
-| `--cap-merc` | Generate Capsule Mercury | Boolean, same effect as `--binary-kind=capmerc` |
+| `--cap-merc` | Generate Capsule Mercury | Boolean shortcut for `--binary-kind=capmerc`; the parser order in `sub_4AC380` registers `--cap-merc` *after* `--binary-kind`, so a later `--binary-kind=sass` overrides an earlier `--cap-merc` and an explicit `--cap-merc` cannot un-set a prior `--binary-kind=sass` |
 | `--self-check` | Self check for capsule mercury (capmerc) | Validates round-trip reconstitution |
 | `--out-sass` | Output reconstituted SASS | Writes SASS from capmerc only via `--self-check` |
 | `--fastpath-off` | Turns off the fast-path finalization optimization | Disables cross-family fast finalization |
@@ -282,17 +282,23 @@ This occurs when the driver's target architecture differs from the compilation a
 
 ### Opportunistic Finalization
 
-The `--opportunistic-finalization-lvl` option controls when off-target finalization is attempted:
+The `--opportunistic-finalization-lvl` option controls when off-target finalization is attempted. The CLI help string at `0x1D41EE2` documents only four values:
 
-| Level | Behavior |
-|---|---|
-| 0 | Default (driver decides) |
-| 1 | No opportunistic finalization |
-| 2 | Intra-family finalization only |
-| 3 | Intra and inter family finalization |
-| 4 | (Accepted by parser; behavior undocumented, possibly maximum permissiveness) |
+```
+Specify the opportunistic finalization level. 0=default,
+1=no opportunistic finalization, 2=intra family finalization only,
+or 3=intra and inter family finalization
+```
 
-The option parser (`sub_4AC380`) rejects values greater than 4, not greater than 3 -- the range check is `> 4`. The attribute `EICOMPAT_ATTR_ENABLE_OPPORTUNISTIC_FINALIZATION` is emitted into the ELF to communicate this level to the driver.
+| Level | Behavior | Source |
+|---|---|---|
+| 0 | Default (driver decides) | help text |
+| 1 | No opportunistic finalization | help text |
+| 2 | Intra-family finalization only | help text |
+| 3 | Intra and inter family finalization | help text |
+| 4 | Undocumented; parser accepts but help text omits | parser only |
+
+The option parser (`sub_4AC380`) range-checks the integer with `value > 4` (rejecting 5 and above), so values 0..4 reach the option store while the help string only advertises 0..3. Level 4 is reachable through the CLI but has no documented semantics; its observable effect is the value written into `EICOMPAT_ATTR_ENABLE_OPPORTUNISTIC_FINALIZATION`, which the driver interprets. Treat level 4 as an undocumented escape hatch rather than a stable interface.
 
 ## Architecture Compatibility
 
@@ -359,7 +365,23 @@ The reconstitution itself is performed by `sub_5207A0` (18,673 bytes, 784 lines)
 
 The error string `"Invalid elf provided for mercury uplift."` reveals a conversion mechanism called "mercury uplift" -- the process of converting a traditional SASS cubin into a capmerc binary. When an input cubin is detected as SASS-only (fatbin member type is default cubin rather than 16), the linker can "uplift" it by wrapping the SASS content in Mercury sections. This operation validates that the input ELF is structurally sound before attempting the conversion.
 
-The `MercGenerateSassUCode` string at `0x2443D02` names the internal pass that generates Mercury microcode from SASS input, forming the core of the uplift pipeline.
+The `MercGenerateSassUCode` string at `0x2443D02` names the internal pass that generates Mercury microcode from SASS input, forming the core of the uplift pipeline. The companion target-fixup stage `PostFixForMercTargets` (string at `0x2443C44`, master-table entry at `0x24443C0`) runs as the first Mercury-specific phase after register allocation; uplift relies on it to apply Mercury-only instruction rewrites before SASS UCode emission. See [Mercury Compiler Passes](compiler-passes.md) for the full phase table.
+
+## Capmerc Binary String Anchors
+
+The following nine strings together fully characterise the capmerc surface in the linker binary; every claim on this page is traceable to one of them.
+
+| Address | String | Xref function | Role |
+|---|---|---|---|
+| `0x1D33FA9` | `capmerc.cubin` | `main` | Default output filename in capmerc mode |
+| `0x1D41D03` | `mercury,capmerc,sass` | `sub_4AC380` (`0x4AC55C`) | `--binary-kind` choice list |
+| `0x1D41D94` | `<mercury\|capmerc\|sass>` | `sub_4AC380` | `--binary-kind` argument hint |
+| `0x1D41E78` | `Specify the type of target ELF binary kind. Default on sm100+ is capmerc` | `sub_4AC380` | Help text confirming sm100+ default |
+| `0x1D41ED9` | `Generate Capsule Mercury` | `sub_4AC380` | `--cap-merc` help text |
+| `0x1D41EF8` | `Self check for capsule mercury (capmerc)` | `sub_4AC380` | `--self-check` help text |
+| `0x1D41F2A` | `Generate output of capmerc based reconstituted sass only through -self-check` | `sub_4AC380` | `--out-sass` help text |
+| `0x2458F38` / `0x2458F70` / `0x2458FA8` | `Self check for capsule mercury text/debug/relocation section failed` | self-check verifier | Per-section self-check failure |
+| `0x1F44288` | `Failure of '%s' section in self-check for capsule mercury. See the Jira confluence page 'MERCSW-125' for more information...` | self-check verifier | MERCSW-125 Jira anchor |
 
 ## FNLZR Internals
 
@@ -377,7 +399,7 @@ The FNLZR finalization orchestrator (`sub_471700`, 78,516 bytes) is the largest 
 
 ## JIT Finalization Path
 
-A separate JIT finalization entry exists at `sub_52E060` (47,095 bytes, called `finalizer_jit_entry`). This handles the CUDA driver's JIT compilation path with its own logging:
+A separate JIT finalization entry exists at `sub_52DD50` (781 bytes; `0x52DD50`..`0x52E05C`), the JIT-specific wrapper that owns all five `FNLZR: ... JIT` diagnostic strings (verified xrefs at `0x52DDE1`, `0x52DE07`, `0x52DFB0`, `0x52DFFB`, `0x52E049`). `sub_52DD50` delegates to the same `sub_4748F0` engine used by the AOT path. The adjacent function `sub_52E060` (11,802 bytes) is the JIT *finalization driver* invoked from the wrapper; it owns the long-form per-kernel JIT compile loop. This handles the CUDA driver's JIT compilation path with its own logging:
 
 ```
 FNLZR: JIT Path
@@ -421,7 +443,8 @@ The JIT path uses `setjmp` for error handling across its multiple compilation ph
 | `sub_4709E0` | 2,609 B | can_finalize_architecture_check | Architecture compatibility check |
 | `sub_470DA0` | 2,074 B | can_finalize_with_capability_mask | Capability bitmask check |
 | `sub_5207A0` | 18,673 B | capmerc_reconstitute_sass | SASS reconstitution from Mercury |
-| `sub_52E060` | 47,095 B | finalizer_jit_entry | JIT finalization entry point |
+| `sub_52DD50` | 781 B | finalizer_jit_entry | JIT-path wrapper (owns all `FNLZR: ... JIT` strings) |
+| `sub_52E060` | 11,802 B | finalizer_jit_driver | JIT per-kernel compile driver invoked by the wrapper |
 | `sub_45C950` | ~1 KB | write_elf_to_memory | Serialize ELF to buffer (Mercury path) |
 | `sub_45C980` | ~1 KB | compute_elf_size | Compute serialized ELF byte count |
 | `sub_45BF00` | 13,258 B | serialize_elf | Core ELF serialization engine |
@@ -487,7 +510,7 @@ The JIT path uses `setjmp` for error handling across its multiple compilation ph
 | Decade-family matching (`arch1/10 == arch2/10`) | **HIGH** | Integer division comparison verified in decompiled `sub_4709E0`. |
 | Version ceiling `> 0x101` returns error 25 | **HIGH** | Verified from decompiled `sub_4748F0` Phase 2. |
 | `"Failed to create finalizer thread"` at `0x2458EC0` | **HIGH** | Verified in `nvlink_strings.json`. Confirms thread-based finalization. |
-| JIT entry `sub_52E060` (47,095 bytes) | **HIGH** | Function exists. JIT diagnostic strings verified: `"FNLZR: JIT Path"`, `"FNLZR: preLink Mode"`, `"FNLZR: postLink Mode"`, `"FNLZR: Ending JIT"`, `"FNLZR: Starting JIT"` all confirmed in `nvlink_strings.json`. |
+| JIT wrapper `sub_52DD50` (781 bytes) owns `FNLZR: ... JIT` strings | **HIGH** | All five JIT diagnostic strings (`"FNLZR: JIT Path"`, `"FNLZR: preLink Mode"`, `"FNLZR: postLink Mode"`, `"FNLZR: Ending JIT"`, `"FNLZR: Starting JIT"`) carry xrefs into `sub_52DD50` at `0x52DDE1`, `0x52DE07`, `0x52DFB0`, `0x52DFFB`, and `0x52E049` respectively (verified in `nvlink_strings.json`). Adjacent `sub_52E060` (11,802 bytes) is the per-kernel JIT driver invoked from the wrapper, not the JIT entry itself. |
 | Section catalog: 19 `.nv.merc.*` names | **HIGH** | All 19 section name strings verified at addresses `0x24582E8`--`0x2458D00`. Xrefs to emitter functions confirmed. |
 | `"skip mercury section %i"` at `0x1D3BCB7` | **HIGH** | String verified at exact address with xref to `0x45F624`. |
 | Hash Relocation sections `.nvHRKE`/`.nvHRKI`/`.nvHRCE`/`.nvHRCI`/`.nvHRDE`/`.nvHRDI` | **MEDIUM** | Section names inferred from decompiled code. Not individually verified in string scan. |

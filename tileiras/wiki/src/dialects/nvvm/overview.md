@@ -1,5 +1,9 @@
 # NVVM Dialect Overview
 
+## Provenance vs Upstream MLIR
+
+`nvvm` is the upstream MLIR dialect, linked unchanged from the LLVM/MLIR snapshot tileiras tracks (the same dialect described in `mlir/Dialect/LLVMIR/NVVMOps.td`). Tileiras adds no `nvvm.*` op of its own — every op listed below comes from upstream. What the binary does override is *usage*: the inline-PTX templates, sparse-MMA path, and a few tcgen05 lowerings emit forms not yet exposed as upstream NVVM intrinsics in this snapshot. Those gaps are called out per family below.
+
 ## Abstract
 
 Every `nvvm.X` op exists to print one PTX instruction (or one inline-asm template). `nvvm` is the bottom MLIR dialect in TileIR's lowering stack — a typed intrinsic layer, not a programming model. Earlier dialects decide tiling, scheduling, pipeline stages, layouts, and target atoms; `nvvm` preserves those decisions in a form LLVM and the NVPTX backend understand.

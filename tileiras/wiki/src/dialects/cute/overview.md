@@ -1,5 +1,9 @@
 # cute Dialect Overview
 
+## Provenance vs Upstream MLIR
+
+`cute` is NVIDIA-introduced and has no upstream MLIR equivalent. Upstream MLIR has no dialect that models CUTLASS cuTe layout algebra as first-class IR — the open-source CUTLASS library expresses the same algebra in C++ templates, not in MLIR. Tileiras lifts those templates into an MLIR dialect so passes can inspect, compose, verify, and lower layout values rather than expand them at C++ compile time. Without this dialect the pipeline would have no in-IR carrier for shape/stride/swizzle/atom data between layout assignment and the architecture-specific `cute_nvgpu` binding step.
+
 ## Abstract
 
 `cute` is tileiras's MLIR form of CUTLASS cuTe layout algebra. It encodes shapes, strides, layouts, swizzles, coordinates, tiles, pointer views, copy atoms, and MMA atoms — together with the operations that compose, divide, complement, coalesce, and filter them — and stops short of binding any of it to NVIDIA hardware. That binding is the job of `cute_nvgpu`. Every later GPU-specific dialect (`cute_nvgpu`, `nvgpu`, `nvvm`) reads layout values produced here.

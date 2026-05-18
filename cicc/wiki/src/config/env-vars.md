@@ -262,7 +262,7 @@ When detected, cicc integrates with the jobserver to limit concurrent compilatio
 
 ### MALLOC\_CONF
 
-Checked in `sub_12FCDB0` (jemalloc initialization, 131,600 bytes -- the largest function in its range). One of five configuration sources for the bundled jemalloc allocator. Expected: jemalloc config string such as `"narenas:2,dirty_decay_ms:0"`.
+Checked in `sub_12FCDB0` (jemalloc `malloc_conf_init`, 15.4 KB -- the largest function in its range). One of five configuration sources for the bundled jemalloc allocator. Expected: jemalloc config string such as `"narenas:2,dirty_decay_ms:0"`.
 
 ## Dynamic / Generic Access
 

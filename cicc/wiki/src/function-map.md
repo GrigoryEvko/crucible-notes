@@ -22,7 +22,7 @@ Address-to-identity lookup table. Confidence: VERY HIGH = string evidence, HIGH 
 | EDG IL tree copier/transformer (callback params a3/a4, template instantiation) | `0x766570` | 148KB | HIGH |
 | SelectionDAG LegalizeTypes dispatch (967 case labels) | `0x1FFB890` | 137KB | HIGH |
 | EDG declaration specifier state machine (80 token cases, 4,371 lines) | `0x672A20` | 132KB | VERY HIGH |
-| je\_malloc\_conf\_init (199 config strings) | `0x12FCDB0` | 129KB | VERY HIGH |
+| je\_malloc\_conf\_init (199 config strings) | `0x12FCDB0` | 15.4KB | VERY HIGH |
 | computeKnownBits / SimplifyDemandedBits | `0x11A7600` | 125KB | VERY HIGH |
 | EDG lgenfe\_main (282-case CLI switch, 737 config macros, EDG 6.6) | `0x617BD0` | 123KB | VERY HIGH |
 | NVVM Builtin Resolution table (post-opt, 770 entries) | `0x126A910` | 123KB | VERY HIGH |
@@ -423,7 +423,7 @@ Address-to-identity lookup table. Confidence: VERY HIGH = string evidence, HIGH 
 | je\_stats\_print\_large (large extent class stats) | `0x40EF06` | 13KB | HIGH |
 | je\_malloc\_vsnprintf (custom format printer, avoids reentrancy) | `0x40D5CA` | 21KB | HIGH |
 | je\_mutex\_stats\_read (mutex profiling counters) | `0x40E5B5` | 7KB | HIGH |
-| je\_malloc\_conf\_init (199 config strings) | `0x12FCDB0` | 129KB | VERY HIGH |
+| je\_malloc\_conf\_init (199 config strings) | `0x12FCDB0` | 15.4KB | VERY HIGH |
 
 ## Optimizer Pipeline Assembly
 

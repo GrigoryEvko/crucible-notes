@@ -21,7 +21,7 @@ Address range `0x12D0000`–`0x16FFFFF` (~4.2 MB of code).
 | **Tier 1/2/3 sub-pipeline** | `sub_12DE8F0` (17.9KB, phase-conditional) |
 | **Codegen dispatch** | `sub_12DFE00` (20.7KB) |
 | **LTO pipeline** | `sub_12F5F30` (37.8KB, dead kernel elimination) |
-| **jemalloc** | 5.3.x statically linked (~400 functions at `0x12FC000`) |
+| **jemalloc** | 5.3.x statically linked (767 functions at `0x12FC000`) |
 
 ## Architecture
 

@@ -8,6 +8,10 @@ cuda_tile -> nv_tileaa -> nv_tileas -> llvm/nvvm -> targeted gpu.module
 
 Every stage shares the same shape: declare which dialects and operations are legal, populate a rewrite pattern set, convert types through the stage's type converter, run conversion, and verify that the previous abstraction level has not leaked through. The public contract is the sequence of legality boundaries — not the identity of any recovered helper in the binary.
 
+## Provenance vs Upstream MLIR
+
+The four NVIDIA-specific stages (`ConvertCudaTileToTileAA`, `ConvertTileAAToTileAS`, `ConvertTileASToLLVM`, `ConvertCuteAndCuteNvgpuToLLVM`) and the `TranslateDebugInfo` rewrite have no upstream MLIR counterpart — they exist because `cuda_tile`, `nv_tileaa`, `nv_tileas`, `cute`, `cute_nvgpu`, and `cutlass` are NVIDIA-introduced dialects (see each dialect's *Provenance vs Upstream MLIR* section). The two stages that touch only upstream-linked dialects — `ConvertNVGPUAndGPUToNVVM` and `AttachNVVMTarget` — reuse the upstream populators `populateNVGPUToNVVMConversionPatterns` and `populateGpuToNVVMConversionPatterns` essentially unchanged; the SM-feature gates and bare-pointer ABI choices ride on configuration, not on rewritten patterns. The LLVM type converter the cascade shares is upstream MLIR's `LLVMTypeConverter` with one tileiras override (async/pipeline token width fixed at `i32` with the low bit carrying parity).
+
 `cute`, `cute_nvgpu`, and `cutlass` are companion dialects rather than a single linear rung. They may survive one lowering stage when a later sister pass owns their conversion. The arrangement is intentional: TileAS handles scheduling and layout, while the CuTe/CUTLASS families carry atom, descriptor, and pipeline structure until NVVM conversion can emit the right target intrinsics.
 
 ## Cascade

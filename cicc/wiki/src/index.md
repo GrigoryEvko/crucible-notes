@@ -25,7 +25,7 @@ CICC is not a monolithic compiler. It is composed of three largely independent s
 
 **3. LLVM 20.0.0 Backend** (~45 MB, `0x12D0000`–`0x3BFFFFF`) — A heavily modified LLVM fork that performs IR optimization and PTX code generation. NVIDIA has added 35 custom passes (MemorySpaceOpt, Rematerialization, BranchDist, LoopIndexSplit, Sinking2, etc.), a proprietary two-phase compilation model with per-function thread parallelism, and extensive modifications to the NVPTX backend for tensor core code generation across 5 GPU architecture generations. See [Code Generation](./pipeline/codegen.md) and [PTX Emission](./pipeline/emission.md).
 
-Additionally, **jemalloc 5.3.x** (~400 functions at `0x12FC000`) is statically linked, replacing the system allocator for improved memory allocation performance during compilation.
+Additionally, **jemalloc 5.3.x** (767 functions at `0x12FC000`–`0x133FFFF`) is statically linked, replacing the system allocator for improved memory allocation performance during compilation. See the dedicated [jemalloc Allocator](./infra/jemalloc.md) page.
 
 ## Key Discoveries
 

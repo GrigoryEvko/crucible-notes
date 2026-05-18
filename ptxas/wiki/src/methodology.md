@@ -51,7 +51,7 @@ All analysis was performed with IDA Pro 8.x and the Hex-Rays x86-64 decompiler. 
 | Custom Python script | `analyze_ptxas.py`: batch string, function, graph, xref, and decompilation export |
 | ptxas CLI | `--stat`, `--verbose`, `--compiler-stats`, `--fdevice-time-trace` for runtime validation |
 | ptxas DUMPIR knob | `-knob DUMPIR=<phase>` to dump IR at specific pipeline points |
-| ROT13 decoder | Standard `codecs.decode(s, "rot_13")` for 2,000+ obfuscated knob/opcode names |
+| ROT13 decoder | Standard `codecs.decode(s, "rot_13")` for 2,000+ obfuscated knob/opcode names. A turnkey script lives at `tools/decode_rot13_knobs.py` (operates on `ptxas_strings.json`, supports `--prefix` filtering for subsystem triage). |
 
 ## IDA Pro Setup and Initial Analysis
 

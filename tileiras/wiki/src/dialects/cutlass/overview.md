@@ -1,5 +1,9 @@
 # cutlass Dialect Overview
 
+## Provenance vs Upstream MLIR
+
+`cutlass` is NVIDIA-introduced and has no upstream MLIR counterpart. Upstream MLIR has no dialect that models CUTLASS-style asynchronous producer/consumer pipelines, persistent tile schedulers, sequence barriers, or block-striped shared-memory movement — the open-source CUTLASS library expresses all of this in C++ templates that the compiler instantiates per kernel. Tileiras lifts those template-time constructs into IR so the scheduler and the architecture-atom dialects can see them as ordinary ops with verifier-checked operands. Without this dialect, pipeline shape, scheduler kind, and barrier identity would have to be inferred from instantiation patterns rather than stated by the producer.
+
 ## Abstract
 
 The `cutlass` dialect packs thirty-eight ops across four operation families plus a small MODS async-dispatch sidecar. It models the structure CUTLASS C++ templates normally generate: asynchronous producer/consumer pipelines, persistent tile schedulers, ordered sequence barriers, and block-striped shared-memory movement. The dialect constructor at `sub_1761D90` registers all thirty-eight ops in a single thunk-chain, then installs two op-level verifiers and the post-verify arrive-count builder.

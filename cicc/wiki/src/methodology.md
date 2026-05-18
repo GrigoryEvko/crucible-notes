@@ -73,7 +73,7 @@ Similarly, the EDG frontend's constexpr evaluator (`sub_786210`, 317 KB) is iden
 
 ### Known Library Fingerprinting (Medium Confidence)
 
-jemalloc was identified by its 199 configuration string names (`"background_thread"`, `"dirty_decay_ms"`, `"narenas"`, etc.), which are unique to jemalloc's `malloc_conf_init` function. Once the allocator library was identified, its ~400 functions were bulk-labeled, removing them from the analysis scope.
+jemalloc was identified by its 199 configuration string names (`"background_thread"`, `"dirty_decay_ms"`, `"narenas"`, etc.), which are unique to jemalloc's `malloc_conf_init` function. Once the allocator library was identified, its 767 functions were bulk-labeled, removing them from the analysis scope.
 
 The X86 AutoUpgrade function (`sub_A939D0`, 457 KB) is an LLVM artifact -- leftover x86 intrinsic renaming code that ships in every LLVM-based binary regardless of target. It was identified by its intrinsic name strings (`"llvm.x86.sse2.*"`, `"llvm.x86.avx.*"`) and excluded from NVPTX-specific analysis.
 

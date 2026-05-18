@@ -1,5 +1,9 @@
 # cute_nvgpu Dialect Overview
 
+## Provenance vs Upstream MLIR
+
+`cute_nvgpu` is NVIDIA-introduced and has no upstream MLIR counterpart. Upstream MLIR exposes NVIDIA hardware operations only through `nvgpu` (a thin bridge dialect) and `nvvm` (typed intrinsics). Neither models the SM-tier-qualified atom catalogue — WGMMA, UMMA, TMA, TMEM lifecycle, ldmatrix/stmatrix, block-scaled MMA forms — that tileiras needs to keep around between `cute` layout algebra and `nvgpu` lowering. Without this dialect the layout-to-intrinsic step would have to collapse atom selection, SM-tier verification, and intrinsic emission into one rewrite; the dialect splits those concerns so the SM gate can run before NVVM conversion. See [`nvgpu`](../nvgpu/overview.md) for the upstream-linked bridge below this layer.
+
 ## Abstract
 
 `cute_nvgpu` is the NVIDIA architectural atom dialect sitting on top of `cute`. It hosts MMA atoms from SM70 through SM120 (WGMMA and UMMA included), TMA descriptor and transfer atoms, TMEM lifecycle operations, LDSM/STSM matrix-load atoms, and SMEM descriptor views. Every operation passes through an explicit SM-tier verifier, so an invalid `(shape, element type, target)` triple is rejected before NVVM emission. This page is the dialect-level map; per-family detail lives in the linked sub-pages.

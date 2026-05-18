@@ -225,6 +225,53 @@ struct __nv_hdl_wrapper_t<false, false, NeverThrows, Tag,
 };
 ```
 
+### Exact Binary Strings for the Manager Block
+
+The `manager<Lambda>` struct, its three static methods, and the wrapper's data-erasure ctor body are emitted as one literal string each. The binary text (verified from `cudafe_strings.json`) is reproduced byte-for-byte:
+
+```cpp
+ typedef OpFuncR(__opfunc_t)(OpFuncArgs...);
+
+ void *data;
+
+
+ template <typename Lambda>
+ struct manager {
+     static void *do_copy(void *buf) {
+       auto ptr = static_cast<Lambda *>(buf);
+       return static_cast<void *>(new Lambda(*ptr));
+     };
+     static OpFuncR do_call(void *buf, OpFuncArgs... args) {
+       auto ptr = static_cast<Lambda *>(buf);
+       return (*ptr)(std::forward<OpFuncArgs>(args)...);
+     };
+     static void do_delete(void *buf) {
+       auto ptr = static_cast<Lambda *>(buf);
+       delete ptr;
+     }
+ };
+```
+
+Note three details that diverge from a hand-written version: (1) the single-space indentation on the outer typedef and `void *data`, (2) the trailing semicolon after `do_copy` and `do_call` lambda definitions but not after `do_delete`, (3) two blank lines between `void *data;` and `template <typename Lambda>`. The constructor body that wires the static function pointers is emitted as a separate literal:
+
+```cpp
+data(static_cast<void *>(new Lambda(std::move(lam)))) {
+__nv_hdl_helper<Tag, OpFuncR, OpFuncArgs...>::fp_copier =   &manager<Lambda>::do_copy;
+ __nv_hdl_helper<Tag, OpFuncR, OpFuncArgs...>::fp_deleter =   &manager<Lambda>::do_delete;
+ __nv_hdl_helper<Tag, OpFuncR, OpFuncArgs...>::fp_caller =   &manager<Lambda>::do_call;
+}
+```
+
+Notice the double space `=   &manager` -- this is present in the literal and reaches the host compiler exactly as shown. The copy ctor / move ctor / destructor are emitted as three more independent literals:
+
+```cpp
+data(__nv_hdl_helper<Tag, OpFuncR, OpFuncArgs...>::fp_copier(in.data)) { }
+data(in.data) { in.data = 0; }
+~__nv_hdl_wrapper_t(void) { __nv_hdl_helper<Tag, OpFuncR, OpFuncArgs...>::fp_deleter(data); }
+```
+
+The capture-side initializer list entries are built by repeating `f%u(in.f%u) ` and `f%u(std::move(in.f%u)) ` (per the format-string anchors in the binary), one per capture index, before the `data(...)` segment.
+
 ### Key Design Decisions
 
 **Heap allocation in constructor.** The lambda is `std::move`d into a heap-allocated copy via `new Lambda(std::move(lam))`. This erases the concrete type -- the wrapper only holds a `void*` afterward. The `manager<Lambda>` static methods are assigned to the `__nv_hdl_helper` static function pointers during construction, preserving the type information as function pointer values rather than as template parameters.

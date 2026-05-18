@@ -14,7 +14,7 @@ CICC is a statically linked, stripped x86-64 ELF binary. There are no dynamic sy
 | Stripped | Yes, all symbol tables removed |
 | Build ID | `cuda_13.0.r13.0/compiler.36424714_0` |
 | Compiler | Built with GCC (inferred from CRT stubs and `.init_array` layout) |
-| Allocator | jemalloc 5.3.x, statically linked (~400 functions) |
+| Allocator | jemalloc 5.3.x, statically linked (767 functions) |
 
 Because the binary is statically linked, libc, libpthread, and libm are all embedded. This inflates the raw function count but also means every call target resolves to a concrete address within the binary itself -- there are no external dependencies at runtime beyond the kernel syscall interface.
 
@@ -53,7 +53,7 @@ The binary's `.text` section spans roughly `0x400000` to `0x3C00000`. Within tha
          │  PassManager / NVVM bridge                │  4.2 MB
          │  Pipeline assembly (sub_12E54A0)          │
 0x12FC000├ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┤
-         │  jemalloc core (~400 functions)           │  ~256 KB
+         │  jemalloc core (767 functions)           │  ~256 KB
 0x1700000├─────────────────────────────────────────┤
          │  Backend / machine passes                 │  8 MB
          │  RegAlloc, Block Remat, Mem2Reg           │
@@ -582,7 +582,7 @@ The binary includes a proprietary container format for wrapping LLVM bitcode wit
 
 ## jemalloc Integration
 
-NVIDIA statically links jemalloc 5.3.x as the process-wide memory allocator. The jemalloc functions cluster around `0x12FC000` (approximately 400 functions). The configuration initialization function `sub_12FCDB0` (129 KB, one of the largest functions in the binary) parses 199 configuration strings from the `MALLOC_CONF` environment variable.
+NVIDIA statically links jemalloc 5.3.x as the process-wide memory allocator. The jemalloc functions cluster in `0x12FC000`–`0x133FFFF` (767 functions, ~262 KB of code). The configuration initialization function `sub_12FCDB0` (15.4 KB, the largest single function in this range) parses up to 199 configuration strings from the `MALLOC_CONF` environment variable. See [jemalloc Allocator](./infra/jemalloc.md) for the full inventory.
 
 Key jemalloc entry points visible in the binary:
 
@@ -684,7 +684,7 @@ The definitive quick-reference for "what lives at address X?" Every major addres
 | `0x10D0000` | `0x122FFFF` | 1.4 MB | **InstCombine mega-region** (main visitor 396KB, KnownBits 125KB, SimplifyLibCalls, LLParser) | 8 |
 | `0x1230000` | `0x12CFFFF` | 640 KB | **NVVM Bridge / IR codegen** (AST-to-IR, Path B entry, builtin tables, bitcode linker) | 9 |
 | `0x12D0000` | `0x12FBFFF` | 176 KB | **Pipeline builder** (NVVMPassOptions 125KB, `AddPass`, tier builders, master assembler 50KB) | 10 |
-| `0x12FC000` | `0x133FFFF` | 256 KB | **jemalloc core** (~400 functions, `malloc_conf_init` 129KB) | 10 |
+| `0x12FC000` | `0x133FFFF` | 262 KB | **jemalloc core** (767 functions, `malloc_conf_init` 15.4 KB) | 10 |
 | `0x1340000` | `0x16FFFFF` | 3.8 MB | **IR infrastructure / PassManager** (IR types, constants, instructions, metadata, execution engine, IR linker) | 11 |
 | `0x1700000` | `0x17FFFFF` | 1 MB | **InstCombine (NewPM) + Sanitizers + PGO** (MSan, TSan, coverage, GCov) | 12 |
 | `0x1800000` | `0x18DFFFF` | 896 KB | **Standard scalar passes** (InstructionCombining, TailCallElim, FunctionAttrs, SCCP, Sink, MemorySSA) | 13 |

@@ -235,6 +235,26 @@ Allocated by `sub_5E92A0`. This is the per-lambda metadata node created during `
 | `sub_47ECC0` | `gen_template` (dispatcher) | `cp_gen_be.c` | 1917 | Backend: master source sequence dispatcher |
 | `sub_489000` | `process_file_scope_entities` | `cp_gen_be.c` | 723 | Backend: entry point, emits lambda macro defines in boilerplate |
 
+### Additional Recovered Function Names
+
+The following EDG/NVIDIA function names appear as `__FUNCTION__` / assertion / log-tag strings in the binary. They are part of the lambda subsystem in `class_decl.c` but have not yet been mapped to specific `sub_*` addresses. Listed here so downstream agents can recognize them when crawling the binary:
+
+| Recovered name | Subsystem role |
+|---|---|
+| `decl_call_operator_for_lambda` | Creates the `operator()` entity on the closure class and propagates execution-space bits from `lambda_info+25` (Stage 5 of the pipeline above). |
+| `scan_lambda_declarator` | Parses the optional `(params)` declarator and the `mutable` / `constexpr` / execution-space specifiers between the capture list and the body. |
+| `scan_optional_lambda_declarator` | Wrapper that handles the parameter-less form `[]{ ... }` where the declarator is elided. |
+| `scan_lambda_template_param_list` | Parses C++20 explicit template parameter lists (`[]<typename T>(T x){...}`). |
+| `finish_lambda_routine_processing` | Closes out `operator()` body processing, finalizes deduced return type, links the closure class into its enclosing scope. |
+| `lambda_capture_for_variable` / `lambda_capture_for_init_capture` | IL constructors that allocate a capture node bound to a variable / init-capture expression. |
+| `r_add_lambda_capture` / `add_lambda_capture` | Append a capture entry to the lambda's capture list (`r_`-prefix variant takes a resolved entity, plain variant takes a name to look up). |
+| `make_field_for_lambda_capture` | Creates the closure-class field corresponding to a capture entry (sub_42EE00). |
+| `field_for_lambda_capture` / `find_lambda_capture` | Look-up helpers that map a captured entity back to its closure-class field. |
+| `enclosing_lambda_of` | Walks the scope stack to find the enclosing closure class given an entity defined inside a lambda body. |
+| `generic_lambda_prototype` | Returns the template signature of a generic lambda's `operator()`. |
+| `function_contains_generic_lambda` / `distinct_lambda_signatures` | Predicates queried by the device-code emitter to decide whether per-instantiation wrapper specializations are needed. |
+| `nv_gen_extended_lambda_capture_types` | Backend emitter for the `F1..FN` template arguments (sub_46E640, see [Capture Handling](./capture-handling.md)). |
+
 ## Global State
 
 | Variable | Address | Purpose |
@@ -250,6 +270,17 @@ Allocated by `sub_5E92A0`. This is the per-lambda metadata node created during `
 | `dword_E7FE48` | `0xE7FE48` | Red-black tree sentinel node |
 | `dword_E85700` | `0xE85700` | `host_runtime.h` already included flag |
 | `dword_106BDD8` | `0x106BDD8` | OptiX mode flag (triggers error 3689 on incompatible lambdas) |
+
+### Related EDG Option Anchors
+
+cudafe++ exposes several option keys that gate the lambda parser independently of `--extended-lambda`. They appear as raw strings in the binary and are surfaced through the standard EDG `--enable`/`--disable` infrastructure:
+
+| String anchor | Role |
+|---|---|
+| `DEFAULT_LAMBDAS_ENABLED` | Default master switch for C++11 lambda parsing (independent of extended-lambda). Read by the front-end before `scan_lambda` is invoked. |
+| `no_lambdas` | Diagnostic tag emitted when a lambda is parsed under a dialect where lambdas are disabled (pre-C++11 or `--no-lambdas`). |
+| `disable_ext_lambda_cache` | EDG-level toggle that suppresses caching of extended-lambda resolution results across translation units (used in incremental rebuilds). |
+| `extended-lambda` | The literal flag name string used by `--extended-lambda` / `--expt-extended-lambda` argument processing. |
 
 ## Concrete End-to-End Example
 

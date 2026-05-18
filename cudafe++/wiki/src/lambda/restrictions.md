@@ -39,7 +39,7 @@ These checks run in two phases. The per-lambda checks (3593, 3595) occur in `sca
 | 3610 | `extended_lambda_init_capture_initlist` | Init-captures with `std::initializer_list` type are prohibited. The type walk callback `sub_41B420` checks kind and class identity. | `sub_41B420` / `sub_4907A0` |
 | 3602 | `extended_lambda_capture_in_constexpr_if` | An extended lambda cannot first-capture a variable inside a `constexpr if` branch. The capture must be visible outside the discarded branch. | `sub_447930` Phase 6 |
 | 3614 | `extended_lambda_hd_init_capture` | Init-captures are completely prohibited for `__host__ __device__` lambdas. When byte+25 bit 4 is set (HD wrapper) and the lambda has any captures, this error fires and the HD bits are cleared. | `sub_447930` line ~1710 |
-| -- | `this_addr_capture_ext_lambda` | Implicit capture of `this` in an extended lambda triggers a warning. Separate from the errors above; fires during capture list processing. | `sub_42FE50` / `sub_42D710` |
+| -- | `this_addr_capture_ext_lambda` | Implicit capture of `this` in an extended lambda triggers a warning. Separate from the errors above; fires during capture list processing. The closure stores a host-side `this` pointer that is meaningless on the device, so the warning steers users to explicit `*this` (by value) or to passing the needed members through the capture list. | `sub_42FE50` / `sub_42D710` |
 | -- | *(no tag)* | `*this` capture requires either `__device__`-only or definition inside `__device__`/`__global__` function, unless enabled by language dialect. | `sub_42FE50` |
 
 ### Category 2: Type Restrictions
@@ -256,6 +256,40 @@ This compact callback (33 lines decompiled) is invoked by `sub_7B0B60` for every
 2. **Private/protected member type** -- `entity+81 bit 2` set AND `entity+80 bits 0-1` in range [1,2] (private or protected access specifier). Error selection parallels the local-type case: 3604, 3607, or 3611 depending on `dword_E7FE78`.
 
 Special case: when `entity+132 == 9` (template parameter dependent type) AND `entity+152` points to a class with `byte+86 bit 0` set AND `entity+72` is non-null, the function-local check is suppressed. This handles template parameters that are not themselves local but instantiate with local types -- the error is deferred to instantiation time.
+
+## Adjacent Standard-Lambda Diagnostics
+
+The validators above only run under `--extended-lambda`. cudafe++ also exposes the EDG standard-C++ lambda diagnostic tags. They are not part of the extended-lambda gate, but they sit on the same code path and can fire on the same lambda expressions before the extended-lambda phase runs. Suppressing them does not affect the extended-lambda checks. Verified binary anchors:
+
+| Tag | When it fires |
+|---|---|
+| `no_implicit_capture_on_enclosing_lambda` | Nested lambda attempts to implicitly capture an entity that the enclosing lambda did not capture. Raised before any extended-lambda processing. |
+| `not_captured_this_in_lambda` | `this` is referenced inside a lambda whose capture list did not name `this` or `*this`. |
+| `lambda_in_noexcept_specifier` | A lambda expression appears in the `noexcept` clause of a template. The closure type would not match across instantiations. |
+| `lambda_not_allowed_here` | A lambda appears in a syntactic context that forbids lambdas (e.g., a default template argument in some dialects). |
+| `lambda_not_constant_expr` | A lambda expression appears where a constant expression is required and constexpr lambdas are not enabled. |
+| `lambda_mutable_and_static` | The `static` keyword (C++23 static lambdas) combined with `mutable` on the same lambda. |
+| `static_lambda_with_capture` | A `static` lambda has a non-empty capture list. Forbidden in C++23. |
+| `static_lambda_nonstandard` | `static` on a lambda in a dialect that pre-dates C++23. |
+| `lambda_operator_annotated` | The `operator()` of a closure type was reached via a path that violates the annotation invariant. Distinct from error 3621 (the extended-lambda surface of the same rule). |
+| `bad_local_var_in_lambda` | A variable with no linkage local to the enclosing function is named in the capture list in a way the standard forbids. |
+| `bad_unevaluated_lambda` | A lambda appears in an unevaluated operand context (some dialects forbid this). |
+| `bad_constant_lambda` | The lambda body is used as a non-type template argument or constant context but does not satisfy the requirements. |
+| `nonstandard_lambda_attributes` | C++ attribute placement on the lambda violates the standard grammar (NVIDIA-specific relaxation). |
+| `type_qualifier_on_lambda` | A type qualifier (`const` / `volatile`) appears in a position on the lambda where the grammar forbids it. |
+| `missing_lambda_body` | The lambda is missing its `{...}` body. |
+| `struct_binding_lambda` | A lambda whose capture list interacts badly with a structured binding declaration. |
+| `global_lambda_template_arg` | A lambda defined at file scope is used as a template argument (closure type would have no linkage). |
+| `anon_union_ref_in_lambda` | A reference to a member of an anonymous union appears inside a lambda body. |
+| `braced_list_for_implicit_lambda_type` | A braced-init-list was used in a position where the implicit lambda return type cannot be deduced from it. |
+| `cl_lambdas_option_only_in_cplusplus` | The `--lambdas` cl-style option was passed when compiling C, not C++. |
+| `empty_lambda_template_param_list` | `template <> []()` -- C++20 generic lambda with an empty explicit template parameter list. |
+| `explicit_lambda_template_parameters_is_cpp20` | Explicit template parameters on lambdas (`[]<typename T>()`) require C++20. |
+| `constexpr_lambdas_not_enabled` | `constexpr` lambda used under a pre-C++17 dialect. |
+| `lambdas_is_cpp11` | A lambda expression encountered under pre-C++11 dialect. |
+| `generic_lambda_cannot_capture` | C++14 generic lambda (`auto` parameters) attempted a capture that is not legal for a generic closure. |
+
+These tags fire on the standard parser path in `class_decl.c`; the extended-lambda validator (`sub_447930` Phase 4) runs only after these have already cleared.
 
 ## Diagnostic Tag Reference
 

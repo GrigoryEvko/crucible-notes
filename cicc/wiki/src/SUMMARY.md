@@ -143,6 +143,7 @@
 - [Concurrent Compilation](./infra/concurrent-compilation.md)
 - [Diagnostics & Optimization Remarks](./infra/diagnostics.md)
 - [Hash Table Infrastructure](./infra/hash-infrastructure.md)
+- [jemalloc Allocator](./infra/jemalloc.md)
 
 # Coroutines
 
