@@ -18,7 +18,7 @@ SM90 occupies a transitional position in the Mercury architecture story. Three p
 
 The key difference from SM100+: SM90 runs Mercury in the backend but outputs standard SASS. SM100+ outputs capmerc by default. The `--binary-kind` CLI flag at `0x1D41D94` makes this explicit:
 
-```
+```text
 --binary-kind <mercury|capmerc|sass>
 
 Default on sm100+ is capmerc.
@@ -257,7 +257,7 @@ Although SM89 and SM90 share the same 1.9 MB backend, the binary distinguishes t
 
 SM90 uses 128-bit (16-byte) instruction words, consistent with the format introduced in SM80 (Ampere). Every instruction occupies exactly two 64-bit words written to the output buffer at `*(a1+40)`:
 
-```
+```text
 Bit layout (128-bit SASS instruction word):
 
 Word 0 (bits 0-63):
@@ -290,7 +290,7 @@ The encoding helper `sub_A50D10(arch, value)` packs a register number into the d
 
 Each operand is a 32-byte record within an operand array at `*(a2+32)`, indexed by `*(a2+40)`:
 
-```
+```c
 struct operand {             // 32 bytes
     uint32_t  kind;          // [+0]  operand type (register, immediate, const bank, ...)
     uint32_t  reg_num;       // [+4]  register number (1023 = unused sentinel)
@@ -442,7 +442,7 @@ The three largest functions in the entire codec region are WMMA decoders, all fo
 
 Each decoder processes 7 register operands plus 1 predicate output and contains **hundreds** of post-decode register pairing fixup checks. Each check is a 5-way conjunction:
 
-```
+```c
 if (sub_A58D30() == X &&    // instruction variant
     sub_A58D50() == Y &&    // data type
     sub_A58C90() == Z &&    // precision
@@ -661,7 +661,7 @@ Register class 1023 acts as a wildcard ("any class"). Priority values (e.g., 16)
 
 `sub_119BF40` (225,792 bytes, estimated 7,500+ lines) is the master instruction selection dispatch function for SM89/90 targets. It is too large for Hex-Rays to decompile. Located immediately after the ISel helper functions, it contains a massive switch/jump-table on the IR opcode that calls the ~160 pattern matchers and selects the highest-priority match for each IR node. The protocol is uniform across all ISel backends:
 
-```
+```c
 for each pattern_matcher in sm89_90_table:
     matched = pattern_matcher(ctx, ir_node, &pattern_id, &priority)
     if matched && priority > best_priority:
@@ -695,7 +695,7 @@ This is a classic list-scheduling implementation that tracks data dependencies (
 
 The key call paths for the SM89/90 backend:
 
-```
+```text
 sub_1116890 (ELF output entry)
   -> sub_1104950 (parse options)
   -> sub_1112F30 (main compilation driver)

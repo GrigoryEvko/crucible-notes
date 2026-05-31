@@ -31,7 +31,7 @@ The structure combines three functional regions: an embedded ELF header template
 
 These fields are written directly into the output ELF during serialization.
 
-```
+```text
 Offset  Size  QWORD  Field                   Description
 ------  ----  -----  -----                   -----------
   0      4    [0]    elf_magic               0x464C457F ("\x7fELF")
@@ -58,7 +58,7 @@ Offset  Size  QWORD  Field                   Description
 
 Individual boolean flags are decomposed from `merge_flags` during construction. These single-byte flags govern behavior throughout the pipeline without requiring repeated bitmask checks.
 
-```
+```text
 Offset  Size  Field                   merge_flags bit    Description
 ------  ----  -----                   ---------------    -----------
  84      1    callgraph_enabled       bit 0              Base bit (`0x40401`) -- always set on the normal path; gates root-kernel scan in sub_44DB00 and callgraph remap in sub_44CA40/sub_44CBC0
@@ -80,7 +80,7 @@ Offset  Size  Field                   merge_flags bit    Description
 
 Tkinfo and cuinfo buffers are initialized by `sub_43E490`:
 
-```
+```text
 Offset  Size  Field              Initial capacity
 ------  ----  -----              ----------------
 108      32   tkinfo_buffer      1,000 bytes (for .note.nv.tkinfo content)
@@ -89,7 +89,7 @@ Offset  Size  Field              Initial capacity
 
 Program header name buffer (set by `sub_443730`):
 
-```
+```text
 Offset  Size  Field              Description
 ------  ----  -----              -----------
 192      8    phdr_string_buf    Pointer to growable string buffer
@@ -102,7 +102,7 @@ Offset  Size  Field              Description
 
 Section index tracking for core ELF sections:
 
-```
+```text
 Offset  Size  Field                Description
 ------  ----  -----                -----------
 200      2    tkinfo_section_idx   .note.nv.tkinfo section index
@@ -118,7 +118,7 @@ Offset  Size  Field                Description
 
 This is the core of the linker context. All section, symbol, and relocation data is accessed through these fields.
 
-```
+```text
 Offset  Bytes  QWORD   Field                        Type / Description
 ------  -----  ------  -----                        ------------------
 288      8     [36]    symbol_name_hash             LinkerHash* -- hash table for symbol lookup by name (512 buckets)
@@ -242,7 +242,7 @@ The `"reference to deleted symbol"` error appears 14+ times across the binary, a
 
 ### Parameters
 
-```
+```c
 elfw *elfw_create(
     a1:  type_code,       // Overloaded: arena pointer in some paths, type code in others
     a2:  is_64bit,        // 0 = 32-bit ELF, nonzero = 64-bit ELF

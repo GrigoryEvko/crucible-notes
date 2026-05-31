@@ -32,7 +32,7 @@ Unlike the lexer/preprocessor pair, this subsystem has **no** dispatch table. Th
 
 ## Architecture
 
-```
+```text
 Expression parser / decl parser / template engine / constexpr interpreter
         │  resolves an identifier or qualified-id to an entity node
         ▼

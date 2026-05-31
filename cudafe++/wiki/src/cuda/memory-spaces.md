@@ -29,7 +29,7 @@ Memory spaces apply exclusively to variables (entity kind 7). `__shared__` and `
 
 ### Byte +148: Primary Memory Space
 
-```
+```text
 Byte at entity+148:
 
   bit 0  (0x01)   __device__       Variable in device global memory
@@ -44,7 +44,7 @@ Bits 3, 4, and 7 are set by `decl_variable` (`sub_4CA6C0`) during declaration pr
 
 ### Byte +149: Extended Memory Space
 
-```
+```text
 Byte at entity+149:
 
   bit 0  (0x01)   __managed__    Unified memory (host + device accessible)
@@ -337,7 +337,7 @@ The decompiled code resolves this definitively in favor of the p1.01 assignment.
 
 The canonical encoding is:
 
-```
+```text
 Byte +148:  bit 0 = __device__,  bit 1 = __shared__,  bit 2 = __constant__
 Byte +149:  bit 0 = __managed__
 ```
@@ -393,7 +393,7 @@ When host code references a device-side variable, the symbol reference recorder 
 
 ### Gate Logic
 
-```
+```text
 1. Is cross-space checking enabled?
    → dword_106BFD0 != 0 OR dword_106BFCC != 0
 
@@ -465,7 +465,7 @@ Six global lists (at addresses `unk_1286780` through `unk_12868C0`) accumulate s
 
 When a variable is redeclared, `decl_variable` (`sub_4CA6C0`) compares the memory space bits between the prior declaration and the new one. Error 1306 is emitted for mismatched CUDA memory spaces:
 
-```
+```text
 Error 1306: CUDA memory space mismatch on redeclaration
 ```
 

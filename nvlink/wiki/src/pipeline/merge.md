@@ -52,13 +52,13 @@ The CUDA device runtime library (`libcudadevrt`) receives special treatment. Whe
 
 When the `-vkeep` (verbose-keep) flag is set (`byte_2A5F29B`), nvlink prints the equivalent command that would reproduce the merge step. This appears in the fatbin extraction code (`sub_42AF40`) as:
 
-```
+```bash
 nvlink -extract <fatbin> -m<bits> -arch=<arch> -o <output>
 ```
 
 and for LTO modules:
 
-```
+```bash
 nvlink -lto-add-module <file>.nvvm
 ```
 
@@ -156,7 +156,7 @@ The return value of `merge_weak_function` is stored directly into `map_symbol_in
 
 `merge_weak_function` (`sub_45D180`) is the second-largest function in the merge subsystem at 26,816 bytes (913 decompiled lines, 235+ local variables). It implements a complex decision tree that handles first-seen symbols, global-over-weak replacement, and weak-over-weak comparison. The complete control flow:
 
-```
+```c
 merge_weak_function(ctx, input_elf, merge_ctx, sym_idx, st_info, ...)
 │
 ├── Extract symbol name from input string table
@@ -233,7 +233,7 @@ merge_weak_function(ctx, input_elf, merge_ctx, sym_idx, st_info, ...)
 
 When both the incoming and existing definitions are `STB_WEAK`, the linker applies CUDA's register-aware selection policy. This is the core of `merge_weak_function` (decompiled lines 774-906):
 
-```
+```text
 WEAK-OVER-WEAK COMPARISON:
 │
 ├── Step 1: Extract register counts
@@ -538,7 +538,7 @@ When `main()` advances to the next input, the output ELF state (`ctx`) now conta
 
 This section walks through merging two small cubins on the nvlink command line:
 
-```
+```bash
 nvlink -arch=sm_90 input1.cubin input2.cubin -o merged.cubin
 ```
 
@@ -658,7 +658,7 @@ Both symbol hash maps (`ctx+288`, `ctx+296`) are empty. The driver list at `ctx+
 
 At this point the mapping arrays for input1 look like:
 
-```
+```text
 map_symbol_index:  [0, 1, 2, -1, -2]
 map_section_index: [0, 6, 0, 0, 0, 7, 0, 0, 0]   // only sections 1 and 5 were mapped
 map_section_offset:[0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -754,7 +754,7 @@ The relocation at `.rela.text.kernel_a + 0x00` now references output symbol -2. 
 
 Mapping arrays for input2:
 
-```
+```text
 map_symbol_index:  [0, 3, 4, -2, -3]
 map_section_index: [0, 11, 12, 0, 0, 0, 0]
 map_section_offset:[0, 0, 0, 0, 0, 0, 0]
@@ -864,7 +864,7 @@ void timing_checkpoint(const char *phase_name) {
 
 The global timer state is at `unk_2A5F1B0`, and the initialized flag is `byte_2A5F1C0`. This produces output like:
 
-```
+```text
 merge time: 0.042000
 ```
 

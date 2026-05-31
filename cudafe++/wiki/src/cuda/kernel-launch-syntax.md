@@ -52,7 +52,7 @@ The node is rewritten before the IL walker reaches it; downstream phases never o
 
 ### Productions (informal)
 
-```
+```text
 postfix-expr:
     ...
     postfix-expr launch-config '(' [expression-list] ')'

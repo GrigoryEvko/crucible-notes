@@ -227,7 +227,7 @@ Two versions of the evidence aggregation engine synthesize all data sources into
 
 The complete analysis data is organized as follows:
 
-```
+```text
 cicc/
   databases/                    # IDA exports (input data)
     cicc_functions.json         #   80,562 function records

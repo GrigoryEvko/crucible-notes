@@ -23,7 +23,7 @@ The ELF writer object (the "elfw" context, first argument `a1` in most functions
 
 Each symbol record is a 48-byte structure (allocated via `sub_4307C0` with size 48):
 
-```
+```c
 struct symbol_record {              // 48 bytes
     uint32_t  st_name;              // [0:4]   string table offset
     uint8_t   st_info;              // [4]     high nibble = binding, low nibble = type

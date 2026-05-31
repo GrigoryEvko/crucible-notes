@@ -34,7 +34,7 @@ The elfw (linker context) structure stores two nvvm-related pointers:
 
 Loading occurs during elfw initialization (line 513 of `main()`), only when `-lto` is active (`byte_2A5F288`). The library path is constructed from the `--nvvmpath` CLI option:
 
-```
+```text
 path = nvvmpath + "/lib64" + "/libnvvm.so"
 ```
 
@@ -355,7 +355,7 @@ This callback is the mechanism behind the `linked_lto.bc` and `linked_lto.ptx` f
 
 The full libnvvm integration sequence within `main()`:
 
-```
+```text
 Phase 1 (init):
   sub_4BC470(elfw, nvvmpath)
     +-- sub_5F5AC0(nvvmpath, "libnvvm.so", 0)     // path_join + dlopen
@@ -465,7 +465,7 @@ This protects nvlink from crashes inside libnvvm.so. If libnvvm triggers a signa
 
 This section traces every call into `libnvvm.so` for a concrete two-input LTO link:
 
-```
+```bash
 nvcc -dlto -arch=sm_90 a.cu b.cu -o app
 ```
 
@@ -473,7 +473,7 @@ After host-compilation and fatbin extraction, nvcc invokes nvlink with two NVVM 
 
 ### Step-by-Step Call Trace
 
-```
+```text
 Step 1: PATH CONSTRUCTION                     main() line 516-518           (addr 0x40A4E4)
     path = concat(qword_2A5F278, "/lib64")    via sub_426AA0 + strcat
     // qword_2A5F278 holds "--nvvmpath" argument value,
@@ -627,7 +627,7 @@ For `force_device_c` compilation or a compile that produces multiple output modu
 
 For the concrete example above the option vector passed to `nvvmCompileProgram` is:
 
-```
+```text
 option_count = 1
 option_array = {
     "-arch=sm_90"       // from the -arch option, forwarded via sub_426CD0
@@ -636,7 +636,7 @@ option_array = {
 
 If the link had used `nvcc -dlto -dc` (relocatable mode), `sub_427AE0` would set `elfw[97] = 1` and `--Xnvvm="--force-device-c"` would be added to the user options. The option scanner in `sub_4BC6F0` lines 213--235 would match `"--force-device-c"` (17-byte strncmp on line 219, comparing to the string literal at the loop start), set `v25 = 1`, and compute `v30 = (~v25) & 1 = 0` -- which suppresses host-reference option appending. The final vector would look like:
 
-```
+```text
 option_count = 2
 option_array = {
     "-arch=sm_90",
@@ -646,7 +646,7 @@ option_array = {
 
 If instead `elfw[97] == 1` and `--force-device-c` is **not** in the user options (host-reference compile mode), up to seven additional options are appended:
 
-```
+```text
 option_count = 1 + (up to 6 host-ref) + (0 or 1 "-variables")
 option_array = {
     "-arch=sm_90",
@@ -702,7 +702,7 @@ The PTX text consumed by the embedded ptxas has the exact format documented in t
 
 When `-vkeep` is active, step 6 of the trace registers `sub_4299E0` as a post-link callback. Inside libnvvm, after the LTO passes have linked and optimized the merged IR but before PTX emission, libnvvm calls the registered callback twice -- once with the linked bitcode (`void *data, size_t size`) and once with the linked PTX (same signature, different data). `sub_4299E0` writes each invocation to disk:
 
-```
+```bash
 nvlink -lto-post-link -o /tmp/.../linked_lto.bc
 nvlink -lto-post-link -o /tmp/.../linked_lto.ptx
 ```

@@ -198,7 +198,7 @@ Note on scope: the six sections catalogued below are the **complete set** of NVI
 
 The three active concatenation writers (`sub_181B050` for `.debug_frame`, plus the two NVIDIA-specific writers) share a common 24-byte stride in the context structure. Each writer slot contains three fields:
 
-```
+```text
 slot_base +  0:  QWORD  list_head       // linked list of fragment nodes
 slot_base +  8:  QWORD  output_buffer   // allocated during writer run
 slot_base + 16:  DWORD  total_size      // sum of fragment sizes
@@ -287,7 +287,7 @@ Three functions with identical structure handle the final emission of concatenat
 
 ### Common Algorithm
 
-```
+```c
 writer(context, elf_writer):
     list_head = context[linked_list_offset]
     total_size = context[size_offset]

@@ -27,7 +27,7 @@ The lexer does not use generated tables from tools like flex. Instead, every cha
 
 The lexer is organized as four concentric layers, each calling into the one below it:
 
-```
+```text
 Parser (expr.c, decls.c, statements.c)
   │
   ▼
@@ -220,7 +220,7 @@ This in-band signaling approach avoids the cost of checking buffer boundaries on
 
 After `scan_token` produces a raw token, `get_token_main` performs these classification steps:
 
-```
+```text
 scan_token produces raw token
   │
   ├── Identifier?
@@ -339,7 +339,7 @@ switch (entity->kind) {    // offset +80
 
 ### Token Delivery Flow
 
-```
+```text
 get_next_token (sub_676860)
   │
   ├── Check cached_token_rescan_list (qword_1270150)
@@ -380,7 +380,7 @@ The numeric literal scanner is 1,571 lines and handles every numeric literal for
 
 ### Literal Prefix Dispatch
 
-```
+```text
 scan_numeric_literal
   │
   ├── First char '0':
@@ -504,7 +504,7 @@ The feature is controlled by `dword_106BCC4` (universal characters enabled) and 
 
 Keywords are registered conditionally based on language mode and standard version:
 
-```
+```text
 keyword_init (sub_5863A0)
   │
   ├── C89 core (always registered)

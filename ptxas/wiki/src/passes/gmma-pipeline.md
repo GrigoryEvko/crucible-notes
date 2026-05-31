@@ -64,7 +64,7 @@ Phase 85 propagates WGMMA accumulator register liveness information through the 
 
 The outer driver `sub_AE5030` checks the target architecture before proceeding. At offset +1381 of the compilation context, a flag indicates whether the target supports WGMMA. The check at the function entry:
 
-```
+```c
 if (*(char*)(context + 1381) >= 0)  // bit 7 clear = no WGMMA support
     return;
 ```
@@ -114,7 +114,7 @@ Warning `0x1CEF` (7407) fires independently for source and destination sets, ena
 
 When the simple path is selected (mode byte at +26208 == 1 and sub-field at +26216 nonzero), `sub_ADCA60` performs a single linear scan over the function's basic blocks via the block index array at `codeObj+512`:
 
-```
+```c
 for each BB index in codeObj->blockIndexArray[0 .. codeObj->blockCount-1]:
     bb = codeObj->bbArray[index]
     prev_wgmma_idx = -1
@@ -161,7 +161,7 @@ The per-BB FNV-1a hash table (`pass+184` through `pass+208`) stores accumulator 
 
 The propagation algorithm:
 
-```
+```c
 sub_ADBD30(pass, bb_index):
     push worklist entry: {bb_id=blockIndexArray[bb_index], cursor=-1, scope_bound=-1}
     while worklist is not empty:
@@ -222,7 +222,7 @@ The key invariant: each BB is processed at most once per accumulator scope. The 
 
 ### Call Chain
 
-```
+```text
 sub_AE5030  (2,967B -- SM gate, iteration over basic blocks)
   └─ sub_ADCA60  (3,643B -- per-function pipeline analysis)
        └─ sub_ADBD30  (3,364B -- per-block accumulator propagation)
@@ -263,7 +263,7 @@ Phase 87 is the critical legalization pass. It analyzes WGMMA instruction sequen
 
 The 182-byte wrapper orchestrates the complete fixup sequence:
 
-```
+```text
 sub_AE4F70 (FixupGmmaSequence orchestrator)
   │
   ├─ [1] sub_ADEB40  -- primary sequence fixup (inject arrive/wait)
@@ -368,7 +368,7 @@ Complete state table extracted from `sub_ADEB40`:
 
 **Transition rules during the main instruction walk:**
 
-```
+```c
 for each instruction in pipeline-stage walk:
     opcode = instr->field_72 & 0xFFFFCFFF
 
@@ -647,7 +647,7 @@ if (threadIdx.x < 64) {        // divergent
 
 The orchestrator `sub_AE4F70` calls validation functions in sequence. Each returns a packed 64-bit value with the error code in the low bits and a function identifier in the high 32 bits:
 
-```
+```text
 sub_AE4F70
   │
   ├─ sub_ADEB40 (primary fixup)

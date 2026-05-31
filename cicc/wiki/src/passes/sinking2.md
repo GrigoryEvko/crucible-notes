@@ -97,7 +97,7 @@ The pass does **not** require ScalarEvolution (SCEV), MemorySSA, or PostDominato
 
 The core algorithm is a fixpoint iteration over the dominator tree:
 
-```
+```c
 function SinkingWorklist(F, DT, LI, textureLevel, sinkLimit):
     changed = false
     do:
@@ -184,7 +184,7 @@ Implements a hash-based ordering of basic blocks for comparing sink profitabilit
 
 Validates that moving instruction `I` from block `From` to block `To` does not reorder `I` past any conflicting memory access:
 
-```
+```c
 function isSafeToSink(I, From, To):
     if not I.mayReadOrWriteMemory():
         return true                    // pure computation, always safe
@@ -255,7 +255,7 @@ Sinking2 itself does not contain explicit `__syncthreads` / `bar.sync` detection
 
 The **late** NVVMSinking2 (`sub_1CC60B0`) runs after barrier lowering (`sub_1CB73C0`) and warp-level optimization passes. By that point, barriers have been lowered to their final form. The pipeline ordering is:
 
-```
+```text
 NVVMBranchDist -> NVVMWarpShuffle -> NVVMReduction -> NVVMSinking2
 ```
 

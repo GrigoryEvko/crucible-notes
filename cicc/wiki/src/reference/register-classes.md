@@ -47,13 +47,13 @@ Throughout this wiki, the **emission-derived names** (Int16HalfRegs, Int32HalfRe
 
 Every virtual register in the NVPTX backend is encoded as a 32-bit value that packs the register class and a per-class index into a single integer. The encoding function at `sub_21583D0` (1.1 KB) implements this:
 
-```
+```c
 encoded_register = class_tag | (register_index & 0x0FFFFFFF)
 ```
 
 The bit layout:
 
-```
+```text
  31  28 27                             0
 +------+-------------------------------+
 | class|       register index          |
@@ -72,7 +72,7 @@ The function operates in two modes:
 
 If the vtable does not match any of the nine known classes, the function triggers a fatal error:
 
-```
+```text
 "Bad register class"
 ```
 

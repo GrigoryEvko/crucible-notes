@@ -229,7 +229,7 @@ All Mercury sections carry `SHF_CUDA_MERCURY` (`0x10000000`) in `sh_flags`. The 
 ## Fatbin Sections (Host ELF)
 
 These sections appear in the host-side ELF, not in the device cubin. The linker script template embeds them:
-```
+```text
 SECTIONS {
     .nvFatBinSegment : { *(.nvFatBinSegment) }
     __nv_relfatbin   : { *(__nv_relfatbin) }

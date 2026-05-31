@@ -414,7 +414,7 @@ Each instruction operand is encoded as a 32-bit packed value in the operand arra
 
 ### Packed Operand Format (Ori IR)
 
-```
+```text
  31   30  29  28  27            24  23  22  21  20  19                  0
 +----+---+---+---+---------------+---+---+---+---+---------------------+
 |sign|     type  |  modifier (8) |                index (20)           |
@@ -445,7 +445,7 @@ For register operands (type 1), the index is masked as `operand & 0xFFFFFF` (24 
 
 During final SASS encoding, the register operand encoder (`sub_7BC030`, 814 bytes, 6147 callers) packs register operands into the 128-bit instruction word:
 
-```
+```text
 Encoded register field (16 bits at variable bit offset):
   bit 0:      presence flag (1 = register present)
   bits 1-4:   register file type (4 bits, 12 values)

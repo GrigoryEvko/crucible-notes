@@ -2,7 +2,7 @@
 
 A verified TileIR module reaches NVVM-ready MLIR through a staged dialect-conversion pipeline:
 
-```
+```text
 cuda_tile -> nv_tileaa -> nv_tileas -> llvm/nvvm -> targeted gpu.module
 ```
 
@@ -16,7 +16,7 @@ The four NVIDIA-specific stages (`ConvertCudaTileToTileAA`, `ConvertTileAAToTile
 
 ## Cascade
 
-```
+```text
    TileIR bytecode
                        |
                        v

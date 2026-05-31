@@ -38,7 +38,7 @@ static_assert(bad() == 0);
 
 Rendered diagnostic (tags shown in brackets):
 
-```
+```text
 error #2692 [constexpr_begin_report]: expression must have a constant value
     static_assert(bad() == 0);
                   ^

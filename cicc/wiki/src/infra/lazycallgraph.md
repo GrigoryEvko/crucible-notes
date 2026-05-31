@@ -35,7 +35,7 @@ The graph is not built all at once. When the CGSCC pass manager begins, the LCG 
 
 **Ref edges** (bit 2 clear): any other reference to a defined function -- a function pointer stored in a global, passed as a callback argument, taken address of. These contribute to RefSCC grouping but do not create call-graph cycles.
 
-```
+```text
 Node layout (deduced from binary):
   +0x00: Function*          (LLVM IR function)
   +0x08: Edge array pointer  (populated lazily)
@@ -63,7 +63,7 @@ The LCG maintains a two-level SCC decomposition:
 
 2. **RefSCC** (Reference SCC): a maximal set of SCCs connected by ref edges. A RefSCC contains one or more SCCs. SCCs within a RefSCC can reference each other (e.g., mutually store each other's function pointers) but do not necessarily call each other.
 
-```
+```text
 RefSCC layout (from [r15] in sub_D25FD0):
   +0x00: LazyCallGraph*     (parent graph)
   +0x08: SCC array pointer   (SmallVector data)
@@ -99,7 +99,7 @@ The Tarjan implementation lives inside `sub_D2C610` (`switchInternalEdgeToRef`) 
 
 The following pseudocode is reconstructed directly from the binary. Every variable name corresponds to a register or stack slot; every offset corresponds to a binary address.
 
-```
+```rust
 // Address: 0xD2CC66 -- 0xD2D0BC (inside sub_D2C610)
 // Input:  RefSCC containing one SCC whose internal call-edge structure changed
 // Output: zero or more new SCCs replacing the original
@@ -234,7 +234,7 @@ When a pass modifies the call graph, the SCC structure must be updated without r
 
 Called when a ref edge within the same RefSCC becomes a call edge (the inliner or devirtualization resolves an indirect call to a direct call). This may merge previously separate SCCs into one.
 
-```
+```rust
 // Address: 0xD25FD0 -- 0xD27566
 // Signature (deduced):
 //   RefSCC::switchInternalEdgeToCall(
@@ -320,7 +320,7 @@ fn switchInternalEdgeToCall(source: &Node, target: &Node, merge_cb: Option<Fn>) 
 
 Called when a call edge within a RefSCC is demoted to a ref edge (a direct call is deleted or replaced with an indirect reference). This may split a single SCC into multiple smaller SCCs.
 
-```
+```rust
 // Address: 0xD2C610 -- 0xD2DA84
 // Signature (deduced):
 //   RefSCC::switchInternalEdgeToRef(
@@ -429,7 +429,7 @@ The CGSCC pass manager (`sub_1A62BF0`) wraps the LCG traversal and runs a pipeli
 
 In the O1/O2/O3 pipeline, it is invoked four times, each with 1 devirtualization iteration:
 
-```
+```text
 sub_1A62BF0(1,0,0,1,0,0,1)  -- pass #2  (inliner framework, early)
 sub_1A62BF0(1,0,0,1,0,0,1)  -- pass #17 (after DSE/GVN/MemCpyOpt)
 sub_1A62BF0(1,0,0,1,0,0,1)  -- pass #21 (after ADCE/JumpThreading)
@@ -454,7 +454,7 @@ The pipeline IDs observed across all optimization levels are 1, 2, 4, 5, 7, and 
 
 The pass manager's run loop implements the `DevirtSCCRepeatedPass` pattern. For each SCC in post-order:
 
-```
+```rust
 fn run_cgscc_pipeline(module: &Module, lcg: &mut LazyCallGraph, max_devirt_iterations: u32) {
     // Build initial SCC post-order via sub_D2BEB0 (buildSCCs)
     let post_order = lcg.build_sccs();           // sub_D2BEB0, 10KB
@@ -539,7 +539,7 @@ The inliner is the most important consumer of the LazyCallGraph. The New PM inli
 
 The core inlining loop (implemented at `sub_186CA00`, 61KB, `Inliner::inlineCallsImpl`) runs within the CGSCC framework:
 
-```
+```rust
 fn inline_calls_in_scc(scc: &mut SCC, lcg: &mut LazyCallGraph) {
     // Collect all call sites in the SCC
     let mut worklist: Vec<CallSite> = collect_call_sites(scc);
@@ -619,7 +619,7 @@ This verifier is expensive (O(V + E) for the whole graph) and is only enabled in
 
 ## LazyCallGraph Data Structure Layout
 
-```
+```text
 LazyCallGraph (pointed to by [RefSCC+0]):
   +0x000: ...
   +0x130: DenseMap<Node*, SCC*>  (NodeToSCCMap)
@@ -698,7 +698,7 @@ The `function-inline-cost-multiplier` knob (visible in `sub_2613930`'s string ta
 
 The call graph printer at `sub_D2B640` (12,287 bytes) emits these strings for debugging:
 
-```
+```text
 "Printing the call graph for module:"
 "RefSCC with"
 "SCC with"

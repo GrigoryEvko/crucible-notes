@@ -370,7 +370,7 @@ Scanning all phase wrappers in `0xC5F7xx`--`0xC60Bxx` (the per-phase `execute` t
 
 **The phase-to-O-level activity matrix is therefore regular**: the layer-1 wrapper either runs the phase at every level, or gates it at exactly one threshold (`opt_level > 1`). Per-phase irregularity exists only at layer 2 -- inside the implementations that the wrappers call. This collapses the "159 phases × 6 opt-levels" table to a **two-column classification** at the outer dispatch layer:
 
-```
+```text
 +------------------------------+-------------------------------------+
 |  Category A: always-run       |  Category B: O2+ only               |
 |  (no sub_7DDB50 in wrapper)   |  (wrapper: sub_7DDB50(ctx) > 1)     |
@@ -688,7 +688,7 @@ Each entry gives: execute function address, body size in bytes, vtable address, 
 
 **Phase 139 `ProcessO0WaitsAndSBs`** -- `vtable=0x22BEB80` -- execute `sub_C5E2A0` (41 bytes, IDA missed it, recovered via objdump).
 Runs on sm50+ only. Tail-dispatches to the target's `ApplyConservativeScoreboards` hook (vtable slot `0x150`) with flag `edx=1` (O0 mode). On sm30 / sm_3x and pre-sm50 architectures the phase returns immediately because the legacy shader-processor scoreboard model does not apply.
-```
+```asm
 mov  rdi, [rsi+0x630]          ; rdi = ocg_ctx->target
 cmp  dword [rdi+0x174], 0x3FFF ; if sm_version_encoded <= 16383 (pre-sm50)
 jle  .return                   ;   skip
@@ -702,7 +702,7 @@ ret
 
 **Phase 140 `PostFixUp`** -- `vtable=0x22BEBA8` -- execute `sub_C5E270` (13 bytes).
 Unconditional target-hook dispatch. Every Mercury target registers a post-fixup method at vtable slot `0x148`; non-Mercury targets install a nullptr-safe stub. The method performs target-specific cleanup after schedule and register allocation are final (examples: texture barrier placement on Volta, scoreboard packing on Turing+).
-```
+```asm
 mov  rdi, [rsi+0x630]          ; target
 mov  rax, [rdi]                ; target.vtable
 jmp  [rax+0x148]                ; target->PostFixUp(target)
@@ -711,7 +711,7 @@ jmp  [rax+0x148]                ; target->PostFixUp(target)
 
 **Phase 141 `MercConverter`** -- `vtable=0x22BEBD0` -- execute `sub_C60300` (8 bytes, thunk) -> body `sub_9F3760`.
 Second MercConverter invocation, re-running the 35 KB opcode-dispatch machinery from phase 5 (`ConvertUnsupportedOps`) on instructions introduced by optimization passes (rematerialization, peephole, loop transforms) that may carry unlegalized PTX-derived opcodes. Internal gate `testb $0x10, [rdi+0x570]` (bit 4) inside `sub_9F3760` makes the body an immediate return on non-Mercury targets. When enabled the body dispatches on `target.sm_code` at `[rdi+0x174]` with the arch constants `0x9000`/`0x7005`/`0x7001`/`0x6001` to pick a per-generation conversion path. After completion every IR instruction carries a valid SASS opcode ready for encoding. See [Mercury](../codegen/mercury.md) `sub_9F1A90` / `sub_9ED2D0` for the full opcode dispatch.
-```
+```asm
 ; execute thunk
 mov  rdi, rsi                  ; rdi = ocg_ctx
 jmp  0x9F3760                  ; MercConverter::Run
@@ -724,7 +724,7 @@ jz   .return
 
 **Phase 142 `MercEncodeAndDecode`** -- `vtable=0x22BEBF8` -- execute `sub_C60310` (8 bytes, thunk) -> body `sub_18F21F0`.
 Encodes each Ori IR node to its Mercury-node form via `sub_6D9690` (the master encoder), then round-trip-decodes to verify the binary encoding is reversible. After this phase all subsequent pipeline stages operate on Mercury nodes exclusively. Internal gate `testb $0x2, [rdi+0x571]` (bit 1 of the high byte of `ctx+0x570`) makes it a no-op when Mercury is not the active backend.
-```
+```asm
 mov  rdi, rsi
 jmp  0x18F21F0                 ; MercEncodeAndDecode::Run
 
@@ -739,7 +739,7 @@ jz   .return
 
 **Phase 143 `MercExpandInstructions`** -- `vtable=0x22BEC20` -- execute `sub_C60320` (16 bytes).
 Expands compound Mercury pseudo-instructions (e.g. multi-word branches, multi-step LDG/STG sequences, sm_120 TCGEN05 macros) into their SASS primitives. Gated by `ctx+0x570` bit 5; the Mercury backend sets this bit during its init recipe. Tail-calls `sub_C3DFC0` (102 bytes, an orchestrator that calls `sub_C3CC60` to iterate the Mercury list and invokes per-instruction `vtable+0x40` `Expand` hooks). `sub_C3DFC0` also emits the `"After MercExpand"` diagnostic on completion.
-```
+```asm
 testb [rsi+0x570], 0x20        ; bit 5: MercExpandEnable
 jnz  .active
 repz ret                        ; skip -- non-Mercury target
@@ -750,7 +750,7 @@ jmp  0xC3DFC0                  ; RunMercExpandPass
 
 **Phase 144 `MercGenerateWARs1`** -- `vtable=0x22BEC48` -- execute `sub_C60340` (16 bytes).
 First WAR-hazard annotation pass. Walks the Mercury node list and tags each consumer with the write-after-read stall counts needed to satisfy the target's hazard model. Runs after `MercExpandInstructions` (143) but before `MercGenerateOpex` (145); the "pass-1" naming reflects that two WAR passes are needed because Opex (145) can rewrite operand banks and introduce new write-to-read distances that pass 146 then re-annotates. Gated by the sign bit (`cmpb $0, [rsi+0x570]; js` i.e. bit 7) of `ctx+0x570`.
-```
+```asm
 cmpb [rsi+0x570], 0             ; js = "if signed" = bit 7 set
 js   .active
 repz ret
@@ -761,7 +761,7 @@ jmp  0x6FC240                  ; RunMercWARsPass (47 bytes)
 
 **Phase 145 `MercGenerateOpex`** -- `vtable=0x22BEC70` -- execute `sub_C60380` (16 bytes).
 Generates Opex (operand-exchange) annotations per instruction -- extra control bits that tell the hardware which physical register bank to read each operand from, required by the sm_90+ banked-register file to avoid bank conflicts. Gated by `ctx+0x570` bit 6. Tail-calls `sub_7032A0` (472 bytes, `RunMercOpexPass`). See [Mercury](../codegen/mercury.md) Stage 4.
-```
+```asm
 testb [rsi+0x570], 0x40
 jnz  .active
 repz ret
@@ -772,7 +772,7 @@ jmp  0x7032A0
 
 **Phase 146 `MercGenerateWARs2`** -- `vtable=0x22BEC98` -- execute `sub_C60360` (16 bytes).
 Second WAR-hazard pass. Identical instruction body to phase 144 (same `sub_6FC240` tail-call, same bit-7 gate); the two invocations bracket phase 145 (Opex) which may rewrite operand banks and thereby introduce new write-to-read distances that need re-annotation. Opcode bytes are byte-for-byte identical to phase 144 modulo the vtable store before it.
-```
+```asm
 cmpb [rsi+0x570], 0
 js   .active
 repz ret
@@ -783,7 +783,7 @@ jmp  0x6FC240                  ; same entry as phase 144
 
 **Phase 147 `MercGenerateSassUCode`** -- `vtable=0x22BECC0` -- execute `sub_C603A0` (16 bytes).
 The terminal Mercury stage: walks the fully-annotated Mercury node list and emits the final SASS binary microcode bytes that will end up in the ELF `.text` section. Gated by `ctx+0x571` bit 0 (the lowest bit of the second flag byte). Tail-calls `sub_6EEE90` (1472 bytes), which is a thin wrapper that allocates a 0x110-byte stack scratch area, invokes `sub_6E8EB0` for per-function setup, then calls into `sub_6E4110` (24 KB, the real emitter documented in [Mercury](../codegen/mercury.md) Stage 5).
-```
+```asm
 testb [rsi+0x571], 0x1
 jnz  .active
 repz ret
@@ -794,7 +794,7 @@ jmp  0x6EEE90                  ; MercGenerateSassUCode::Run
 
 **Phase 148 `ComputeVCallRegUse`** -- `vtable=0x22BECE8` -- execute `sub_C5E160` (13 bytes).
 Computes register usage at virtual call sites (indirect calls, function pointers) and stores the result in the target-side register-use tracker. The data is consumed during ELF emission as `EIATTR_EXTERNS`/`EIATTR_INDIRECT_BRANCH_TARGETS` metadata so that the CUDA runtime can honour conservative register budgets for callees whose register footprint is unknown at compile time. Unconditional; all architectures route through the target vtable slot `0x2B8`.
-```
+```asm
 mov  rdi, [rsi+0x630]           ; target
 mov  rax, [rdi]                 ; vtable
 jmp  [rax+0x2B8]                ; target->ComputeVCallRegUse(target)
@@ -802,7 +802,7 @@ jmp  [rax+0x2B8]                ; target->ComputeVCallRegUse(target)
 
 **Phase 149 `CalcRegisterMap`** -- `vtable=0x22BED10` -- execute `sub_C603C0` (32 bytes).
 Computes the final physical-to-logical register mapping that gets emitted as `EIATTR_REGCOUNT` / `EIATTR_MIN_STACK_SIZE` metadata. The mapping is needed by the CUDA driver to inflate saved contexts during preemption and by NVRTC for relocation. Gated by `ctx+0x590` bit 1 (register-map-export knob). Indirects through `ctx.target->tex_or_fat_target` at `ctx+0x630 ; [rax+0x18]` then tail-calls `sub_95A350` (6456 bytes, the actual mapping builder).
-```
+```asm
 testb [rsi+0x590], 0x2
 jnz  .active
 repz ret
@@ -819,7 +819,7 @@ jmp  0x95A350                   ; CalcRegisterMap body
 **True no-op.** `isNoOp()` = 1 (`sub_C5E100`). Debug builds would dump the memory-arena high-water mark to stderr here; release strips the body entirely.
 
 **Phase 152 `AdvancedPhaseOriPhaseEncoding`** -- `vtable=0x22BED88` -- execute `sub_C5E0B0` (**11 bytes**). The single surviving late-pipeline gate hook.
-```
+```asm
 movl dword [rsi+0x610], 0x15   ; pipeline_progress = 21
 ret
 ```
@@ -827,7 +827,7 @@ Writes `pipeline_progress = 21` (the final value of the monotonic `ctx+0x610` co
 
 **Phase 153 `FormatCodeList`** -- `vtable=0x22BEDB0` -- execute `sub_C5E080` (13 bytes).
 Indirects through a different context object than the other late phases: `ctx+0x648` is the code-list / ELF-section emitter rather than `ctx+0x630` (target) or `ctx+0x788` (Mercury context). Tail-calls `vtable+0x10` on that object -- the "format" entry point that serialises the fully-encoded instructions into the final ELF text-section layout (addresses, relocations, alignment).
-```
+```asm
 mov  rdi, [rsi+0x648]           ; code-list emitter
 mov  rax, [rdi]                 ; its vtable
 jmp  [rax+0x10]                 ; emitter->FormatCodeList()
@@ -838,7 +838,7 @@ jmp  [rax+0x10]                 ; emitter->FormatCodeList()
 
 **Phase 155 `DumpNVuCodeText`** -- `vtable=0x22BEE00` -- execute `sub_C60420` (54 bytes).
 The gate cascade `ctx+0x598 > 0 && ctx+0x740 != NULL && *(ctx+0x740) != NULL` is fully retained, so the code path is reachable when the hidden `-dump_nvu_code_text=1` knob is set, but the tail-call target `0x67FF60` resolves to **`nullsub_31` (2 bytes)** -- the actual text dumper has been stripped from release ptxas, leaving an orphan gate that falls through to a stub.
-```
+```asm
 mov  eax, [rsi+0x598]           ; verbosity level
 test eax, eax
 jle  .skip

@@ -429,7 +429,7 @@ Colorization is initialized by `init_colorization` (`sub_4F2C10`), called from t
 
 **Decision sequence:**
 
-```
+```text
 1. Assert dword_126ECA0 != 0       (colorization was requested via --colors)
 2. Check getenv("NOCOLOR")         → if set, disable
 3. Check sub_5AF770()              → if stderr is not a TTY, disable

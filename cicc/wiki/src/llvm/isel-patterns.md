@@ -33,7 +33,7 @@ The top-level driver is *not* the pattern matcher itself; it is the orchestratio
 
 Before selecting any instructions, the driver builds a DenseMap-style hash table at `this + 408` that maps function argument indices to their byte sizes. The hash table uses LLVM's standard integer-key hash function `key * 37`, open addressing with linear probing, and the tombstone sentinel `-2`. Growth triggers at 75% load factor (`4 * (count + 1) >= 3 * capacity`).
 
-```
+```c
 // Phase 1: build argument cost table
 hash_table = this->arg_cost_map;  // at this + 408
 for each argument A in function->args():
@@ -72,7 +72,7 @@ Each return value's aligned byte size is inserted into the argument cost table, 
 
 The main selection loop processes DAG nodes in topological order using a min-heap priority queue where priority equals topological order (lower number = earlier in the DAG, processed first). The iteration is bounded by an explicit budget.
 
-```
+```c
 // Phase 3: main ISel loop
 sub_308B6F0(this);  // initialize worklist from DAG
 budget = 4 * numInstructions * maxBlockSize
@@ -143,7 +143,7 @@ NVIDIA's instruction selector uses a per-SM-variant legality table to determine 
 
 The table lives at a fixed offset from the base of the ISel object, accessed by `sub_376DE90`:
 
-```
+```c
 legality = *(uint8_t*)(base + 500 * arch_variant + opcode + 6414)
 ```
 
@@ -162,7 +162,7 @@ The `arch_variant` value selects which row of the table to consult. Each row con
 
 A second legality table at `base + 521536` provides fine-grained operand-class legality using 4-bit packed nibbles:
 
-```
+```c
 byte_offset = (opcode_class >> 3) + 36 * arch_id - arch_id
 nibble      = (*(uint8_t*)(base + 521536 + byte_offset) >> (4 * (opcode_class & 7))) & 0xF
 ```
@@ -173,7 +173,7 @@ The offset simplification `36 * arch_id - arch_id` equals `35 * arch_id`, giving
 
 The operation legalization subsystem (separate from the ISel legality table above) uses a 4-bit packed action table at object offset 72760 to determine how to legalize each `(opcode, type)` pair:
 
-```
+```c
 index  = type_bits + 15 * opcode + 18112
 action = (*(uint32_t*)(object + 4 * index + 72760) >> (4 * (type & 7))) & 0xF
 ```

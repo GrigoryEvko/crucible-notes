@@ -24,7 +24,7 @@ The knobs infrastructure lives primarily in two address regions: `0x6F0000`--`0x
 
 ## Architecture
 
-```
+```text
                   ┌──────────────────────────────────────────┐
                   │            KnobsInit (sub_79D990)        │
                   │  Called once from global init sub_662920  │
@@ -115,7 +115,7 @@ Running `python3 tools/decode_rot13_knobs.py` against the strings dump produces 
 
 Each knob is described by a 64-byte entry in the knob definition table. The table is an array at `(knob_state + 16)` with count at `(knob_state + 24)`.
 
-```
+```text
 Offset  Size  Field
 ──────  ────  ─────────────────────────────────────
 +0      8     name_ptr          Pointer to ROT13-encoded primary name
@@ -136,7 +136,7 @@ Both primary and alias names are checked during lookup. A knob matches if either
 
 Runtime knob values are stored in a flat array of 72-byte slots at `(knob_state + 72 * index)`. The slot layout depends on the type:
 
-```
+```text
 Offset  Size  Field
 ──────  ────  ─────────────────────────────────────
 +0      1     type_tag          Runtime type (0=unset, 1-10)
@@ -175,7 +175,7 @@ The type tag at runtime differs from the definition-table type tag. The definiti
 
 **Types 1, 2, 3, 4, 5, 7, 8** -- scalar types using only bytes +0 through +15:
 
-```
+```text
 Type 1 (int32):      +0 = 0x01, +8 = int32 value (4 bytes)
 Type 2 (float):      +0 = 0x02, +8 = float value (4 bytes, upper 4 undefined)
 Type 3 (double):     +0 = 0x03, +8 = double value (8 bytes)
@@ -187,7 +187,7 @@ Type 8 (int-range):  +0 = 0x08, +8 = int32 low, +12 = int32 high
 
 **Types 6 and 9** -- doubly-linked list types using the full 72 bytes:
 
-```
+```text
 +0:   byte   type tag (6 or 9)
 +8:   ptr    next pointer (initially 0)
 +16:  ptr    → slot+24 (sentinel backward link)
@@ -201,14 +201,14 @@ Type 8 (int-range):  +0 = 0x08, +8 = int32 low, +12 = int32 high
 
 Each list node is 24 bytes, allocated from the arena at +64:
 
-```
+```text
 Type 6 node: [next(8), prev(8), string_ptr(8)]
 Type 9 node: [next(8), prev(8), opcode_id(4) | int_value(4)]
 ```
 
 **Type 10** -- dynamic growable array:
 
-```
+```text
 +0:   byte   = 0x0A
 +8:   ptr    arena allocator
 +16:  ptr    array base (int32 elements, grown via sub_6EFD20)
@@ -304,7 +304,7 @@ case 12:  // OKT_ILIST variant -> runtime type 10
 
 **Type 4 (`OKT_IRNG`, integer range):** Parses `"low..high"` format with these edge cases:
 
-```
+```text
 "100..200"    -> low=100,  high=200        Standard range
 "100.."       -> low=100,  high=0x7FFFFFFF  Open upper bound
 "..200"       -> low=0x80000000, high=200   Open lower bound
@@ -378,7 +378,7 @@ All errors carry source attribution: `generic_knobs_impl.h` with a line number a
 
 ### Method 1: `-knob` CLI Flag
 
-```
+```bash
 ptxas -knob SchedNumBB_Limit=100 -knob DisableCSE=1 input.ptx -o output.cubin
 ```
 
@@ -401,7 +401,7 @@ WHEN=SH=0xDEADBEEF;SchedNumBB_Limit=200
 
 `ReadKnobsFile` (`sub_79D070`, source lines 1060--1090 of `generic_knobs_impl.h`) processes the file:
 
-```
+```text
 1. fopen(path, "r")                               line ~1060
 2. fseek(file, 0, SEEK_END)                        line 1075
 3. size = ftell(file)                               line 1075
@@ -441,7 +441,7 @@ Knobs can be set from PTX source via `.pragma` directives, unless the `DisablePr
 
 The most powerful mechanism allows setting knobs conditionally, based on shader hash or instruction hash. The override string uses `~` (tilde) as a record separator:
 
-```
+```text
 WHEN=SH=0xDEADBEEF;SchedNumBB_Limit=200~WHEN=IH=0x12345;DisableCSE=1
 ```
 
@@ -504,7 +504,7 @@ OCG knob indices referenced across the codebase include: 185 (pass-disable strin
 
 The master knob state object is constructed by `KnobInit` (`sub_7A0C10`):
 
-```
+```text
 Offset    Size    Field
 ────────  ──────  ──────────────────────────────
 +0        8       vtable pointer (off_21C0738)
@@ -540,7 +540,7 @@ Access is O(1) by index -- no hash lookup or name comparison at runtime. The `Ge
 
 The knobs system provides a string-based pass disable mechanism through knob index 185 (OCG offset 13320). The string contains `+`-delimited pass names:
 
-```
+```bash
 -knob DisablePhases=LoopMakeSingleEntry+SinkCodeIntoBlock
 ```
 
@@ -572,7 +572,7 @@ The `+` character is used as a delimiter between alternative phase names in the 
 
 Parses a comma-separated list of `name=value` pairs into parallel arrays (max 256 entries). Used by `KnobsInitFromEnv` (`sub_79C9D0`) to process environment variable-based knob overrides.
 
-```
+```text
 Input:  "knob1=value1,knob2=value2,knob3=value3"
 Output: names[256], values[256], full_strings[256]
 ```
@@ -1287,7 +1287,7 @@ if (dump_path) {
 
 The path is stored in a small-string-optimized (SSO) buffer at knob_state offsets +88 through +104:
 
-```
+```text
 Offset  Size  Field
 ──────  ────  ─────────────────────────────────────
 +88     8     data pointer (or first 8 inline bytes if len <= 15)
@@ -1303,7 +1303,7 @@ This is the primary mechanism for discovering which knobs exist and what their c
 
 The knob system uses structured error descriptors (96 bytes each) allocated from an arena:
 
-```
+```text
 Offset  Size  Field
 ──────  ────  ─────────────────────────────────────
 +0      8     formatted message string pointer

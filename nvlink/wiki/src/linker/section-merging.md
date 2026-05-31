@@ -18,7 +18,7 @@ The section merging infrastructure is built on four core primitives -- `find_sec
 
 During the merge phase, input sections are reclassified from standard ELF types into NVIDIA CUDA section types. The dispatch logic in `merge_elf` (`sub_45E7D0`) uses both the `sh_type` field and the section name prefix:
 
-```
+```text
 Input sh_type      Section name prefix        Output type
 --------------------------------------------------------------
 SHT_NOBITS (8)     .nv.global                 SHT_CUDA_GLOBAL          (0x70000007)
@@ -188,7 +188,7 @@ void section_data_copy(elfw *ctx, uint32_t section_idx,
 
 ### Copy Algorithm
 
-```
+```c
 section = get_section_header(ctx, section_idx)
 if section is NULL: return   // silently skip unmapped sections
 
@@ -267,7 +267,7 @@ int merge_overlapping_global(elfw *ctx, uint32_t section_idx,
 
 The algorithm walks the section's existing data-node linked list and checks whether the new contribution overlaps with any existing one:
 
-```
+```c
 for each existing_node in section.symbol_list:
     if new_range overlaps existing_range:
         overlap_start = max(new_offset, existing_offset)
@@ -349,7 +349,7 @@ For deleted symbols (from dead code elimination or weak resolution), the functio
 
 Global variables (`.nv.global`) have a special accumulation path. During the merge phase, globals are not immediately placed into the output section. Instead, they are appended to a pending-merge list at `ctx+448`. This defers the actual merge until the layout phase, which processes them in Phase 1:
 
-```
+```c
 // Layout Phase 1 (in sub_439830):
 if ctx->pending_globals is not NULL:
     section = find_or_create(".nv.global", SHT_CUDA_GLOBAL)
@@ -373,7 +373,7 @@ This deferred approach allows the linker to collect all global variable definiti
 
 CUDA kernels have per-kernel sections for shared memory, local data, and constant banks. These follow a naming convention:
 
-```
+```text
 <base_section_name>.<entry_function_name>
 ```
 
@@ -511,7 +511,7 @@ The section type classifier (`sub_45E3C0`, called from `merge_elf` at `sub_45E7D
 
 When the input `sh_type` is `SHT_NOBITS` (8), the section carries no data in the ELF file but reserves address space. The classifier checks the section name to determine which GPU memory space it belongs to:
 
-```
+```text
 Input sh_type = SHT_NOBITS (8):
 
     if name starts with ".nv.global"          -> SHT_CUDA_GLOBAL          (0x70000007)
@@ -528,7 +528,7 @@ The comparison lengths are exact: `.nv.global` uses `memcmp(name, ".nv.global", 
 
 When the input `sh_type` is `SHT_PROGBITS` (1), the section contains initialized data. Two name prefixes trigger reclassification:
 
-```
+```text
 Input sh_type = SHT_PROGBITS (1):
 
     if name starts with ".nv.constant"        -> SHT_CUDA_CONSTANT0 + strtol(name+12, NULL, 10)
@@ -554,7 +554,7 @@ Per-entry constant sections like `.nv.constant0.my_kernel` also match -- `strtol
 
 When the input `sh_type` is already `SHT_CUDA_CONSTANT` (`0x70000006`), the section is a constant bank whose bank number must be extracted from the name. This path shares the same `strtol(name + 12, ...)` logic:
 
-```
+```text
 Input sh_type = SHT_CUDA_CONSTANT (0x70000006):
 
     -> SHT_CUDA_CONSTANT0 + strtol(name+12, NULL, 10)
@@ -567,7 +567,7 @@ This handles the case where an input cubin already uses the generic `SHT_CUDA_CO
 
 When the input `sh_type` is `SHT_NOTE` (7) and the section flags include `0x1000000` (a CUDA-specific flag indicating a parameter bank), the classifier handles it as a special case. It does not reclassify the type; instead, it updates the parameter bank size field on the note section's associated entry point:
 
-```
+```c
 Input sh_type = SHT_NOTE (7) with flags & 0x1000000:
 
     entry_section = get_section_header(ctx, ctx->param_bank_section)   // ctx+208
@@ -588,7 +588,7 @@ Any `sh_type` value that does not match the above cases passes through unchanged
 
 ### Complete Dispatch Summary
 
-```
+```text
 sub_45E3C0 dispatch table:
 +-------------------------------+----------------------------+---------------------------+
 | Input sh_type                 | Section name prefix        | Output sh_type            |

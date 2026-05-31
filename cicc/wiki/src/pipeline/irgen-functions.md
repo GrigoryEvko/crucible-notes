@@ -20,7 +20,7 @@ Every LLVM function produced by cicc starts with the same structural skeleton: a
 
 The entry-block setup routine executes a fixed 10-step initialization sequence before tail-calling into the prolog generator:
 
-```
+```c
 function_entry_setup(IRGenState *S, FunctionDecl *Decl, Function *F,
                      ParamList *Params, TypeInfoArray *TI, SourceLoc Loc, bool ByvalDemotion):
 
@@ -168,7 +168,7 @@ Debug location metadata is emitted via `sub_92FD10`. Then a special case: if the
 
 If the call node's `preserve_data` field (offset +64) is non-null, up to three operand bundles are attached to the call instruction:
 
-```
+```text
 preserve_data[0] >= 0  =>  "preserve_n_data"    = ConstantInt(value)
 preserve_data[1] >= 0  =>  "preserve_n_control"  = ConstantInt(value)
 preserve_data[2] >= 0  =>  "preserve_n_after"    = ConstantInt(value)
@@ -193,7 +193,7 @@ For indirect calls, `callalign` metadata is constructed by querying the alignmen
 
 ### Call Emission Pseudocode
 
-```
+```c
 call_emitter(Result *Out, CodegenCtx *Ctx, CallNode *Call, u64 DestFlags, u32 Align):
 
   callee_decl = resolve_callee(Call->operand[0])
@@ -337,7 +337,7 @@ All temporary vectors and strings are freed: the fragment array (with per-elemen
 
 ### End-to-End Example
 
-```
+```text
 CUDA source:    __asm__("mov.u32 %0, %tid.x" : "=r"(result));
 
 Phase 1 parse:  [literal("mov.u32 "), operand(idx=0), literal(", %tid.x")]

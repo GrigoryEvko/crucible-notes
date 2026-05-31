@@ -78,7 +78,7 @@ This design avoids recursion depth limits (multiply chains in unrolled loops can
 
 ### Data Flow
 
-```
+```text
 sub_C5FB30 (execute wrapper)
   |
   +-- sub_7DDB50: check function count > 1
@@ -165,7 +165,7 @@ Recognition:
 7. Loop depth heuristic: if the shift definitions are in a shallower loop than the current instruction (checked via block RPO depth at `*(block+156)`), the transformation may be suppressed to avoid increasing register pressure
 
 Transformation:
-```
+```text
 Before:  t1 = SHL(x, n)          ; opcode 213
          t2 = SHR(x, 32-n)       ; opcode 214
          r  = ALU(t1, t2)        ; opcode 290/151/2
@@ -189,7 +189,7 @@ Recognition:
 5. Dominance check passes
 
 Transformation:
-```
+```text
 Before:  t = BFE(x, amount)      ; opcode 210
          r = IADD(t, y)          ; opcode 2
 

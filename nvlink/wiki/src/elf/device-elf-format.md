@@ -235,7 +235,7 @@ The constructor extracts individual flag bits from the `merge_flags` parameter (
 
 The constructor takes 10 parameters and initializes the complete output ELF structure:
 
-```
+```c
 elfw_create(
     a1: type_or_arena,    // elfw type code (e.g., 1 = relocatable)
     a2: is_64bit,         // 0 = 32-bit, nonzero = 64-bit

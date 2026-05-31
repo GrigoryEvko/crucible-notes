@@ -27,7 +27,7 @@ The design is a textbook Strategy + Abstract Factory pattern: a 159-case switch 
 
 The PhaseManager is a plain C++ object (no vtable of its own) allocated by the compilation driver. Minimum size is 112 bytes, though the full extent depends on whether timing and NvOptRecipe are enabled.
 
-```
+```text
 PhaseManager (112+ bytes)
   +0    int64     compilation_unit      // back-pointer to owning compilation unit
   +8    int64*    allocator             // pool allocator (from compilation_unit->field_16)
@@ -55,7 +55,7 @@ The two allocator fields (`+8` and `+32`) both point to the same pool allocator 
 
 Each phase is a 16-byte polymorphic object:
 
-```
+```text
 Phase (16 bytes)
   +0    vtable*   // points to one of 159 vtable instances
   +8    void*     // pool pointer (memory pool for phase-local allocations)
@@ -288,7 +288,7 @@ The sorted name table is rebuilt on demand by `sub_C63FA0` when the raw count di
 
 When timing is enabled (option 17928), the dispatch loop calls `sub_C64310` after each phase to print memory statistics:
 
-```
+```text
 <indent><phase_name>  ::  [Total 1234 KB]  [Freeable 567 KB]  [Freeable Leaked 12 KB] (2%)
 ```
 
@@ -307,7 +307,7 @@ Size formatting thresholds:
 
 After all phases complete, the loop prints an "All Phases Summary" line using the same reporter, then calls `sub_C62200` to print the pool consumption total:
 
-```
+```text
 [Pool Consumption = 45.678 MB]
 ```
 
@@ -315,7 +315,7 @@ After all phases complete, the loop prints an "All Phases Summary" line using th
 
 Each timing entry is 32 bytes:
 
-```
+```text
 Timing Record (32 bytes)
   +0    int       phase_index       // -1 for sentinel
   +8    int64     phase_name        // string pointer, or 0x2030007 for sentinel
@@ -331,7 +331,7 @@ When option 391 is enabled, the constructor creates a 440-byte NvOptRecipe sub-m
 
 ### Object Layout
 
-```
+```text
 NvOptRecipe (440 bytes)
   +0    int64     compilation_unit           // back-pointer to owning CU
   +8    int64     phase_manager_backref      // back-pointer to PhaseManager
@@ -366,7 +366,7 @@ NvOptRecipe (440 bytes)
 
 **Ref-Counted List Node (24 bytes)** -- used at `+16`, `+392`, `+432`:
 
-```
+```text
 RefCountedListNode (24 bytes)
   +0    int64     refcount        // manual shared_ptr: decrement-and-destroy
   +8    void*     next            // singly-linked list chain
@@ -377,7 +377,7 @@ When the refcount reaches zero, the destructor walks the `next` chain freeing ea
 
 **Hash Bucket Entry (24 bytes)** -- array at `+408`:
 
-```
+```text
 HashBucketEntry (24 bytes)
   +0    void*     chain_head      // first element in bucket chain
   +8    void*     chain_sentinel  // end-of-chain sentinel
@@ -386,7 +386,7 @@ HashBucketEntry (24 bytes)
 
 **Timing Record (584 bytes)** -- array at `+344`:
 
-```
+```text
 TimingRecord (584 bytes)
   +0    (40 B)    header
   +40   void*     sub_allocator   // allocator for sub-data at +48
@@ -543,13 +543,13 @@ Three parallel buffers are populated:
 
 Concretely, the recipe is a flat **comma-delimited** sequence with no `=` sign. To set `swap1=3`, the actual string is:
 
-```
+```text
 swap1,3
 ```
 
 Multiple directives chain with commas:
 
-```
+```text
 shuffle,1,reps,2,swap1,3,swap2,5,swap3,11,swap4,17,swap5,23,swap6,31
 ```
 
@@ -663,7 +663,7 @@ This has two consequences:
 
 Default phase order (first 12 entries from `0x22BEEA0`):
 
-```
+```text
 [0]  OriCheckInitialProgram
 [1]  ApplyNvOptRecipes
 [2]  PromoteFP16
@@ -680,14 +680,14 @@ Default phase order (first 12 entries from `0x22BEEA0`):
 
 Recipe string passed via option 298:
 
-```
+```text
 shuffle,1,reps,2,swap1,3,swap2,8,dce1,5
 ```
 
 Step-by-step expansion:
 
 1. **Phase 1 (DCE injection)**: `dce1 = 5`. Walking the default table, when `read == 5` (`ConvertUnsupportedOps`), inject `OriPerformLiveDead` *before* it. The `dest[]` prefix becomes:
-    ```
+    ```text
     [0]  OriCheckInitialProgram
     [1]  ApplyNvOptRecipes
     [2]  PromoteFP16
@@ -990,7 +990,7 @@ The 16 AdvancedPhase entries are insertion points for architecture-specific or o
 
 Phases 113--122 form a self-contained sub-pipeline that transforms the optimized, register-allocated Ori IR into final SASS machine code via the Mercury encoding format:
 
-```
+```text
 PostFixForMercTargets (113)
   → FixUpTexDepBarAndSync (114)
     → [AdvancedScoreboardsAndOpexes hook (115)]

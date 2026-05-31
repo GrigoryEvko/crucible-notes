@@ -24,7 +24,7 @@ MLIR's dialect mechanism keeps each level of abstraction explicit until the leve
 
 The cascade has four stages and not one, and the answer to "why not collapse them?" is that each stage establishes invariants the next stage relies on.
 
-```
+```text
 cuda_tile          (input form, frontend-emitted)
    |
    | ConvertCudaTileToTileAA

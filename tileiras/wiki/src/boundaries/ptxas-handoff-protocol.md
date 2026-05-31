@@ -10,7 +10,7 @@ The argv vector is assembled by the PTX serialization path and handed to a subpr
 
 The final argv shape, in order, is:
 
-```
+```text
 ptxas
 [ <module-attribute "ptxas-options" tokens> ]
 -arch sm_<NN>
@@ -76,7 +76,7 @@ A reimplementation should preserve two invariants. First, never strip the ptxas 
 
 Tileiras only writes the path; ptxas does the parsing. The receiver-side file format is:
 
-```
+```text
 <arbitrary preamble bytes>
 [knobs]
 <command-stream>

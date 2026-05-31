@@ -161,7 +161,7 @@ uint32_t bucket = hash & (num_buckets - 1);
 
 ### Hash Map Structure
 
-```
+```text
 HashMap:
   +0   ptr   first_free_node    // Free list for node recycling
   +8   ptr   node_arena         // Pool allocator for new nodes
@@ -216,7 +216,7 @@ The core of step 1 walks every basic block, finds its last instruction via the l
 | N | 68 (`BRX`) | Multi-way indirect branch (switch lowering). The target count is read from the edge hash table's sub-hash at the `BRX` instruction's jump table operand. Each jump table entry produces one successor edge. |
 | 1 | *all other opcodes* | Fall-through to the next sequential block. Non-control-flow terminators (the block was split at this point by an earlier pass or the parser) get a single fall-through edge to `bb_array[bix + 1]`. |
 
-```
+```c
 function populateSuccessorEdges(code_obj):
     succ_map  = &code_obj[+648]      // FNV-1a hash map (64-byte nodes)
     bb_array  = code_obj[+296]       // array of BasicBlock pointers
@@ -289,7 +289,7 @@ cooperate: `need_expand` marks blocks whose successors have not yet been pushed;
 `in_stack` prevents the same block from being pushed twice (which would happen at
 diamond-shaped joins without the guard).
 
-```
+```c
 function computeRPO(cfg, entry_block):
     stack = [entry_block]              // Explicit stack at offset +88..+100
     need_expand = BitArray(num_blocks) // +16  -- 1 = unvisited, cleared on expand
@@ -331,7 +331,7 @@ After completion, `rpo_array[0]` is the entry block, and `rpo_array[num_blocks]`
 
 `sub_BDEA50` (`CFG::dumpRPOAndBackedges`) prints the RPO state:
 
-```
+```text
 Showing RPO state for each basic block:
     bix0 -> RPONum: 0
     bix1 -> RPONum: 1
@@ -389,7 +389,7 @@ Dominance information is computed as a byproduct of the RPO/backedge analysis in
 2. **DFS-based RPO** is computed first by calling either `sub_BDE6C0` (recursive DFS) or `sub_BDE150` (iterative DFS with explicit stack). The choice is gated by a knob query at CodeObject vtable slot +72 with argument 7.
 
 3. **Immediate dominator via RPO-number intersection:** The core loop (at `0xbdff30` in the binary) iterates over backedge successors from the FNV-1a hash map and computes the idom by comparing RPO numbers:
-```
+```c
     if rpo_num[pred] <= rpo_num[current_block]:
         intersect(pred, current_block)  // walk up idom chains
 ```
@@ -444,7 +444,7 @@ Passes that modify the CFG (block splitting, merging, edge redirection) must mai
 
 The general pattern observed in `sub_931920` (block splitter called from `sub_78B430`):
 
-```
+```c
 function splitBlock(ctx, bb, split_point):
     new_bb = allocateBasicBlock()
     

@@ -199,7 +199,7 @@ The `float_type.h` block at `0x7D1C90`--`0x7DEB90` (52 KB) is technically mapped
 
 The files are laid out in the binary in rough alphabetical order, consistent with a build system that compiles object files in directory-listing order and a linker that processes them sequentially:
 
-```
+```text
 0x409350  attribute.c      (a)
 0x419280  class_decl.c     (c)
 0x44B250  cmd_line.c       (c)
@@ -269,7 +269,7 @@ jq '[.[] | select(.value | test("/dvs/p4/.*\\.c$")) |
 
 The full build path for every source file is:
 
-```
+```text
 /dvs/p4/build/sw/rel/gpgpu/toolkit/r13.0/compiler/drivers/compiler/edg/EDG_6.6/src/<filename>
 ```
 

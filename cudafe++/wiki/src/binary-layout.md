@@ -45,7 +45,7 @@ Total virtual address space consumed: `0x12D73A8 - 0x400000` = 18.9 MB.
 
 The `.text` section contains all 6,501 functions in the binary. It divides into four distinct regions, laid out contiguously by the linker:
 
-```
+```text
 0x403300                                                          0x829722
 |-- assert stubs --|-- ctors --|---- EDG main body ----|-- C++ runtime ----|
 0x403300    0x408B40  0x409350                  0x7DF400          0x829722
@@ -85,7 +85,7 @@ Constructors 4--9 belong to statically-linked libstdc++. Only constructors 1--3 
 
 The core of the compiler. Contains 5,115 functions compiled from 52 EDG `.c` source files plus 3 NVIDIA-specific source files. Functions are laid out in approximate alphabetical order by source file name -- the linker processed object files in directory-listing order:
 
-```
+```text
 0x409350   attribute.c     (170 functions)
 0x419280   class_decl.c    (264 functions)
 0x44B250   cmd_line.c      (43 functions)
@@ -140,7 +140,7 @@ The `.rodata` section at `0x829740` -- `0xAA3FA3` holds all constant data: strin
 
 The EDG diagnostic system's message template table. An array of 3,795 `const char*` pointers, indexed by error code 0--3794:
 
-```
+```text
 off_88FAA0[0]    = ""                           // error 0: unused
 off_88FAA0[1]    = "last line of file ends ..."  // error 1
   ...
@@ -153,7 +153,7 @@ Each pointer references a NUL-terminated format string elsewhere in `.rodata` co
 
 Maps the 85 `entry_kind` enum values (0--84) to human-readable strings. Used by the IL display subsystem (`il_to_str.c`) for debug output:
 
-```
+```text
 off_E6DD80[0]  = "scope"
 off_E6DD80[6]  = "type"
 off_E6DD80[11] = "routine"
@@ -350,7 +350,7 @@ No shared libraries are loaded at runtime. The binary is fully self-contained.
 
 ## Virtual Address Space Map
 
-```
+```text
 0x400000 +-----------------------+
          | ELF headers           |  10.5 KB
 0x402A18 | .init                 |  24 B

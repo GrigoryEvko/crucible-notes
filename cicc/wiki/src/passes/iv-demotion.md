@@ -40,7 +40,7 @@ Level 4 is the default because it captures the vast majority of profitable demot
 
 The algorithm iterates over every loop in the function (obtained from LoopInfo, `sub_1440EE0`). For each loop, it examines the loop header block's PHI nodes. Each PHI node is a candidate induction variable. The pass checks the PHI's type width via `sub_127FA20` (`DataLayout::getTypeStoreSize`).
 
-```
+```c
 for each loop L in function:
     header = L.getHeader()
     for each PHI in header:
@@ -53,7 +53,7 @@ for each loop L in function:
 
 For each 64-bit PHI, the pass identifies the increment pattern -- the value feeding back from the latch block. It verifies the pattern is a simple `add`/`sub` by a constant. The helper `sub_1CD5F30` (IV analysis helper) walks the def-use chain of the PHI's backedge operand to extract the step value and verify linearity.
 
-```
+```c
 backedge_val = PHI.getIncomingValueForBlock(latch)
 if backedge_val is not (PHI + constant) and
    backedge_val is not (PHI - constant):
@@ -65,7 +65,7 @@ step = extract_constant(backedge_val)
 
 The critical safety check. The pass must prove that the IV's value never exceeds the 32-bit signed range throughout the loop's execution. The check uses an unsigned comparison trick:
 
-```
+```c
 (val + 0x80000000) <= 0xFFFFFFFF
 ```
 
@@ -200,7 +200,7 @@ The ptxas assembler has its own rematerialization controls (`--knob RegAllocRema
 
 All strings emitted by `sub_1CD74B0`:
 
-```
+```text
 "phiNode"           -- PHI node identification during loop header scan
 "demoteIV"          -- Truncation instruction creation
 "newInit"           -- Narrow initial value for new base IV

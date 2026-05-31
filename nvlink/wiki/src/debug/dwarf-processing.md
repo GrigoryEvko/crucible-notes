@@ -118,7 +118,7 @@ The parser stores entries in a contiguous buffer at `ctx+128`. Initial allocatio
 
 Each abbreviation entry is a 32-byte record:
 
-```
+```text
 Offset   Size   Field
 ------   ----   -----
 +0       4      DW_TAG code (from first ULEB128 of attr/form pair loop)
@@ -131,7 +131,7 @@ Offset   Size   Field
 
 The pair array at `+24` stores each attribute/form pair as an 8-byte record: 4 bytes for `DW_AT_*` code, 4 bytes for `DW_FORM_*` code. The maximum number of pairs per abbreviation is 256; exceeding this triggers a fatal error:
 
-```
+```text
 unexpectedly too many dwarf attributes for any DW_TAG entry!
 ```
 
@@ -148,7 +148,7 @@ The parser is a `while(1)` loop that reads ULEB128-encoded abbreviation numbers 
 
 When `verbose` (a4) is non-zero, the parser prints each entry to stdout:
 
-```
+```text
 Contents of the .debug_abbrev section:
 
   Number  TAG
@@ -190,7 +190,7 @@ A simple switch-based lookup (`sub_1D16C60` at `0x1D16C60`, 80 lines) that maps 
 
 This covers all forms defined in DWARF-2 and DWARF-3. Form code 2 (`DW_FORM_block2` gap in the standard) is not handled -- the standard reserves but does not assign it. Unknown form codes produce a diagnostic to stderr:
 
-```
+```text
 Unknown FORM value %d
 ```
 
@@ -266,7 +266,7 @@ The attribute name lookup (`sub_1D16DF0` at `0x1D16DF0`, 330 lines) is a deeply 
 
 Unknown attribute codes produce a diagnostic to stderr:
 
-```
+```text
 Unknown Attribute value %d
 ```
 
@@ -441,13 +441,13 @@ The `DW_FORM_block1` reader has an additional dispatch based on the attribute co
 
 Encountering `DW_FORM_indirect` triggers a fatal error with `exit(1)` and the message:
 
-```
+```text
 Warning: we should not get here! - DW_FORM_indirect
 ```
 
 Any unrecognized form code triggers:
 
-```
+```text
 Error in get_form_value default
 ```
 
@@ -476,7 +476,7 @@ int dwarf_parse_debug_info(
 
 Each compilation unit starts with an 11-byte header (DWARF-2/3 32-bit format):
 
-```
+```text
 Offset   Size   Field
 ------   ----   -----
 +0       4      unit_length: total bytes after this field (excludes the 4-byte length itself)
@@ -498,7 +498,7 @@ ctx->cu_abbrev_offset   = abbrev_offset;     // +212
 
 When verbose mode is active (a10 != 0), the parser prints:
 
-```
+```text
  Compilation Unit @ offset 0x%zx:
   Length:           %d
   Version:          %d
@@ -538,7 +538,7 @@ The DIE tree walker (`sub_1D1BE80` at `0x1D1BE80`, 5,218 bytes) recursively proc
 
 In verbose mode, each DIE is printed as:
 
-```
+```text
  <%d><%x>:  Abbrev Number: %d   (0x%02x %s)
 ```
 

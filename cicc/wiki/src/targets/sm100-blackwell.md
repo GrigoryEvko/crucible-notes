@@ -48,7 +48,7 @@ Blackwell introduces a two-tier feature gating system that distinguishes between
 
 The gate check at `sub_30462A0`, `sub_304E6C0`, and `sub_36E9630` uses a complex encoding:
 
-```
+```c
 v = arch_version (offset +340 of arch struct)
 if (v > 0x408) {           // 0x408 = 1032 = sm_103.2
     if (v - 1101 > 1)      // allows {1101, 1102} — sm_110a/sm_110f (Jetson Thor)

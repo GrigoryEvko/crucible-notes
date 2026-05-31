@@ -24,7 +24,7 @@ The template subsystem lives at `0x1700000`--`0x172A090` in the ptxas binary: 36
 
 Every math template follows the same structural pattern: a **top-level handler** performs lazy initialization and operand legalization, then delegates to a **coordinator** that allocates virtual registers and calls a sequence of **sub-expanders**, each of which emits a portion of the final SASS instruction sequence.
 
-```
+```text
 sub_AED3C0 (Master Lowering Dispatcher, 28 KB)
   |
   +-- sub_170E8B0 (DDIV handler)        -- FP64 division
@@ -142,7 +142,7 @@ Double-precision division `a / b` has no single-instruction implementation on an
 
 The DDIV template produces three code sections. The pseudocode below is reconstructed from the emission calls in `sub_1704180` (Part 1), `sub_1705820` (Part 2), and `sub_17075A0` (Part 3); register names like `v[N]` refer to virtual register indices from `dword_23993E0`.
 
-```
+```asm
 ; === DDIV1 (sub_1704180): seed generation ===
     MOV.HI   v[7],  b_hi           ; extract high 32 bits of divisor
     MOV.LO   v[8],  b_lo           ; extract low 32 bits
@@ -252,7 +252,7 @@ Both paths share the same coordinator and register pool (289 vregs from `dword_2
 
 **DRCP** (Parts 1--4) mirrors DDIV's N-R core but outputs the reciprocal directly. Part 1 (`sub_170ED40`) has identical seed extraction (PRMT 0x15, LOP3.LUT 0x14, ISETP 0xC9, SHR 0x19, BRA 0x5F for denormal/inf/NaN guards). Part 2 (`sub_1710280`) emits the same MUFU.RCP + two-DFMA iteration pattern:
 
-```
+```asm
     MUFU.RCP x0, float32(b)       ; 0x3C: ~23-bit seed
     POPC     t, x0                 ; 0x93: mantissa parity for rounding
     IMAD     t, x0, ...            ; 0x6E: integer mantissa fixup (x4)
@@ -264,7 +264,7 @@ Both paths share the same coordinator and register pool (289 vregs from `dword_2
 
 **DSQRT** (Parts 5--6) computes `sqrt(a) = a * rsqrt(a)` using integer-mantissa Goldschmidt iteration instead of DFMA. The `DNEG` instruction (opcode 0xB4, unique to sqrt/rsqrt paths) negates the input for residual computation:
 
-```
+```asm
     DNEG     neg_a, a              ; 0xB4: -a for residual
     IMAD     t, a_mant, ...        ; 0x6E: extract mantissa as integer
     I2F/F2I  y0, t                 ; 0xD5/0xD6: round-trip normalization for seed
@@ -312,7 +312,7 @@ The hardware flag at `*(config + 1037) & 1` likely distinguishes architectures w
 
 Reconstructed from `sub_1719080` (Part 1) and `sub_171A260` (Part 2). DRSQRT outputs `1/sqrt(a)` directly, using the same integer-mantissa Goldschmidt approach as DSQRT but without the final `a * rsqrt(a)` multiply.
 
-```
+```asm
 ; === Part 1 (sub_1719080): rsqrt seed via IMAD chain ===
     MOV      t0, a_hi              ; 0x82: copy FP64 high word
     DNEG     neg_a, a              ; 0xB4: -a for residual computation
@@ -347,7 +347,7 @@ Integer division and modulo by variable (non-constant) values are expanded into 
 
 Algorithm for unsigned 32-bit `a / b`:
 
-```
+```asm
 Step 1:  float_b = I2F(b)                    ; convert divisor to FP32
 Step 2:  rcp     = MUFU.RCP(float_b)          ; ~23-bit reciprocal approximation
 Step 3:  int_rcp = F2I(rcp)                   ; convert back to integer
@@ -399,7 +399,7 @@ Two variants handle 64-bit operands, both called sequentially from `sub_1729B50`
 
 Algorithm for unsigned 64-bit `{a_hi, a_lo} / {b_hi, b_lo}`:
 
-```
+```asm
 Phase 1 -- Normalization check (4 insns + 1 branch)
   MOV      t0 = a_hi                            ; 0x82: copy dividend high half
   MOV.T    t1 = t0, 0x7FFFFFFF                  ; 0x0A: mask sign for magnitude
@@ -492,7 +492,7 @@ Complete SASS instruction mix:
 
 The signed variant does NOT call `sub_1728930` -- it inlines its own equivalent unsigned core wrapped with sign handling:
 
-```
+```asm
 Phase A -- Sign extraction and absolute value (10 insns + 1 branch)
   MOV      a_hi = dividend_hi                   ; 0x82 x4: copy both halves
   MOV      a_lo = dividend_lo                   ;   of both operands

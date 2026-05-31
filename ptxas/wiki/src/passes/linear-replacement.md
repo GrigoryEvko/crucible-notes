@@ -333,7 +333,7 @@ Confidence: **HIGH** for the role descriptions of the leaf helpers (each is smal
 
 ## Pipeline Context
 
-```
+```text
 Phase 28  SinkRemat                  ┐
 Phase 29  GeneralOptimize            │   produces unrolled, strength-reduced,
 Phase 30  DoSwitchOptSecond          ┤   switch-lowered IR with many spurious
@@ -366,7 +366,7 @@ Phase 31 runs before:
 
 Per-instruction state during the linearizer pass (extracted from the v200..v209 / v176..v179 cluster of locals in the decompilation):
 
-```
+```text
 v176  (offset +0):  current operand triple (32-bit type|reg + 32-bit imm)
 v177  (offset +4):  byte flag — bit 0 = "has displacement to absorb"
 v199  (+0):         operand[2] of pending emission
@@ -385,7 +385,7 @@ The pending-emission cluster is constructed in-place by every pattern's emit pro
 
 Input IR (after phase 30, before phase 31):
 
-```
+```asm
    R10 = LDC c[0][0x10]           ; load kernel param "base"
    R11 = S2R SR_TID_X             ; per-lane thread id
    R12 = IMUL.WIDE R11, 4         ; index byte offset
@@ -411,7 +411,7 @@ Reaching R14, opcode 2 (IADD), case 1 again:
 
 Output IR (after phase 31):
 
-```
+```asm
    R11 = S2R SR_TID_X
    R14 = IADD3 R11, c[0][0x10]+32, 0    ; single-instruction address computation
    R15 = LDG.E [R14]

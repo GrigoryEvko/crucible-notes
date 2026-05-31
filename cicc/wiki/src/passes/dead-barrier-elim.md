@@ -47,7 +47,7 @@ This is the same check implemented by `sub_2C83D20` in the full engine.
 
 Two or more `__syncthreads()` calls with no intervening instructions (or only non-memory instructions between them). The second and subsequent barriers are redundant because the first already forces all threads to synchronize.
 
-```
+```llvm
 ; Before basic-dbe:
   call void @llvm.nvvm.barrier0()     ; barrier A
   call void @llvm.nvvm.barrier0()     ; barrier B -- DEAD (consecutive)
@@ -60,7 +60,7 @@ Two or more `__syncthreads()` calls with no intervening instructions (or only no
 
 A basic block whose only non-terminator instructions are barriers and non-memory operations (debug info, metadata). If no instruction in the block reads or writes shared/global memory, every barrier in the block is dead -- there is nothing to order.
 
-```
+```llvm
 ; Before basic-dbe:
 bb_empty:
   call void @llvm.nvvm.barrier0()     ; DEAD -- no memory ops in block
@@ -81,7 +81,7 @@ A barrier immediately before a return with no memory operations between the barr
 
 ### Pseudocode
 
-```
+```cpp
 function BasicDeadBarrierEliminationPass::run(F):
     if not byte_4FBB6C0:          // global enable flag
         return PreservedAnalyses::all()

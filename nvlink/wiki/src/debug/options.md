@@ -99,7 +99,7 @@ The help text in the binary reads: `"Specify that this was a debug compile"`.
 
 **Interaction with `--suppress-debug-info`**: The decompiled code at `sub_427AE0` line 1084 shows that when both `-g` and `--suppress-debug-info` are present, nvlink **clears** `byte_2A5F310` to 0. This is a pre-generation suppression: the debug flag is removed before any compilation occurs, so no debug sections are ever generated. This is more efficient than post-generation stripping because it avoids the compilation cost of debug information entirely.
 
-```
+```c
 // sub_427AE0, lines 1084-1089
 if ( byte_2A5F226 )          // --suppress-debug-info set?
 {
@@ -152,7 +152,7 @@ Registered with long name `"verbose-tkinfo"` (type 1, boolean, default `"false"`
 
 When set, the tkinfo section in the output cubin includes the full compilation command line and source file names. This option has a special interaction with `-g`: if `-g` is set and the user did NOT explicitly provide `--verbose-tkinfo`, nvlink automatically enables it (line 947-948 of `sub_427AE0`):
 
-```
+```c
 sub_42E390(v2, "verbose-tkinfo", &byte_2A5F223, 1);
 if ( byte_2A5F310 && !(unsigned __int8)sub_42E580(v2, "verbose-tkinfo") )
   byte_2A5F223 = 1;
@@ -225,7 +225,7 @@ Registered in `sub_1103030` at `0x1103B1F`. The help text reads: `"Used in debug
 
 The global word `dword_2A5B528` at `0x2A5B528` encodes the overall compilation mode as a 4-value enumeration. It is set in `nvlink_parse_options` based on the combination of archive mode (`byte_2A5F2C1`), SASS mode (`byte_2A5F225`), and LTO mode (`byte_2A5F288`):
 
-```
+```c
 // sub_427AE0, lines 1137-1163
 if ( byte_2A5F2C1 )           // output-is-archive?
   dword_2A5B528 = 2;          //   passthrough mode
@@ -244,7 +244,7 @@ dword_2A5B528 = 4;            // LTO mode (reached through LTO path)
 
 The effective debug level is determined by the combination of `dword_2A5B528` and the three user flags:
 
-```
+```text
 Level 0: No debug
   dword_2A5B528 = any, byte_2A5F310 = 0, byte_2A5F24C = 0
 
@@ -384,7 +384,7 @@ The `@@DWARF` mechanism is used only during JIT compilation of PTX inputs (the `
 
 During link-time optimization, debug flags must propagate from nvlink's CLI through to the cicc compiler and embedded ptxas back-end. The complete flow is:
 
-```
+```text
 nvlink CLI
   |
   +--> nvlink_parse_options (sub_427AE0)
@@ -426,7 +426,7 @@ nvlink CLI
 
 The cicc option builder (`sub_426CD0`) performs deduplication when `-Xnvvm` options are present. If the user has passed `-Xnvvm "-generate-line-info"`, the builder checks whether the option is already in the `-Xnvvm` list before appending its own copy. The deduplication logic at lines 227-233 of the decompiled source tests:
 
-```
+```c
 if ( strcmp("-link-lto", v22)
   && (!byte_2A5F24C || strcmp("-generate-line-info", v22))
   && (!byte_2A5F310 || *v23 != '-' || v23[1] != 'g' || v23[2]) )
@@ -447,7 +447,7 @@ The `--generate-line-info` option is special because it participates in the per-
 
 The decompiled consensus logic in `sub_42AF40` (fatbin extraction, lines 469-489):
 
-```
+```c
 if ( strstr(v54, "-generate-line-info") )
 {
   byte_2A5F24C = 1;                      // set the value flag
@@ -512,7 +512,7 @@ Two functions classify section names as debug sections, used during ELF processi
 
 Recognizes 15 unprefixed debug section names in the following check order:
 
-```
+```text
 .debug_abbrev, .debug_aranges, .debug_frame, .debug_info,
 .debug_loc, .debug_macinfo, .debug_pubnames, .debug_pubtypes,
 .debug_ranges, .debug_str, .nv_debug_info_reg_sass,

@@ -24,7 +24,7 @@ The timing infrastructure brackets this work with `sub_4279C0("write")`. The pha
 
 ## Pipeline Position
 
-```
+```text
 Finalization Phase (sub_445000)
   |
   v
@@ -56,7 +56,7 @@ Host Linker Script (--gen-host-linker-script, separate path)
 
 The output decision tree in `main()` (starting around decompiled line 1447) selects one of two serialization paths depending on whether Mercury mode is active (`byte_2A5F222`, set when arch > sm\_99):
 
-```
+```c
 if (error_flag)  ->  skip output entirely
 
 fopen(output_filename, "wb")       // ::filename global
@@ -84,7 +84,7 @@ Every byte of the serialized ELF passes through `sub_45B6D0`, a polymorphic writ
 
 ### Writer Context Layout
 
-```
+```c
 struct elf_writer {           // 40 bytes total
     int32_t  mode;            // +0:  backend selector (0..4)
     int32_t  reserved;        // +4:  always 0
@@ -150,7 +150,7 @@ The function handles both ELF32 (class 1, `elfw+4 == 1`) and ELF64 (class 2, `el
 
 ### Phase 1: ELF Header
 
-```
+```c
 Write elfw (52 or 64 bytes)       // the ELF header (e_ident through e_shstrndx)
 Write 1 byte of zero padding      // null terminator for alignment
 ```
@@ -159,7 +159,7 @@ The header size is determined by the class: 52 bytes for ELF32 (`v5 = 52, v4 = 5
 
 ### Phase 2: Section Header String Table (.shstrtab)
 
-```
+```c
 Write 1 byte null (index 0)       // SHN_UNDEF name
 for i = 1..shstrtab_count:
     Write shstrtab[i] string + NUL terminator
@@ -170,7 +170,7 @@ The section-header string table entries are stored in the ordered list at `elfw+
 
 ### Phase 3: Symbol String Table (.strtab)
 
-```
+```c
 Write 1 byte null (index 0)       // empty string at strtab[0]
 for j = 1..strtab_count:
     Write strtab[j] string + NUL terminator
@@ -183,7 +183,7 @@ Identical structure to .shstrtab, sourced from `elfw+328` (count at `elfw+304`).
 
 After both string tables, the function looks up section index 3 from the section list (`elfw+360`) via `sub_464DB0`. This section's file offset (at `sec+16` for ELF32 or `sec+24` for ELF64) determines how many zero-pad bytes must be emitted to reach the correct alignment:
 
-```
+```c
 target_offset = section[3].sh_offset;    // from layout
 pad_count = target_offset - running_offset;
 if (pad_count < 0)
@@ -196,7 +196,7 @@ for (k = 0; k < pad_count; k++)
 
 The positive symbol array at `elfw+344` is serialized as the `.symtab` section content. Each entry is 24 bytes for ELF64 (`Elf64_Sym`) or 16 bytes for ELF32 (`Elf32_Sym`). The internal `SymbolRecord` layout is arranged so that its leading bytes already match the ELF-standard `Sym` on-disk format:
 
-```
+```c
 sym_entry_size = (elf_class == 2) ? 24 : 16;
 for (p = 0; p < sorted_array_count(elfw->pos_symbol_array); p++)  // elfw+344
     write(pos_symbol_array[p], sym_entry_size);
@@ -221,7 +221,7 @@ The main serialization loop iterates sections 4 through `e_shnum - 1` (skipping 
 
    The function walks this list, emitting inter-fragment padding when the fragment's offset exceeds the running position, then writing the fragment data:
 
-   ```
+   ```c
    cursor = 0;
    for (frag = section->frag_list; frag; frag = frag->next) {
        desc = frag->descriptor;
@@ -244,7 +244,7 @@ After all section data is emitted, the function checks whether the current offse
 
 The final loop writes the raw section header entries:
 
-```
+```c
 shdr_size = (elf_class == 2) ? 64 : 40;
 for (s = 0; s < e_shnum; s++) {
     shdr = list_get(elfw->sections, section_order[s]);
@@ -275,7 +275,7 @@ The segment construction differs between ELF32 and ELF64: ELF32 phdrs are 32 byt
 `sub_45C980` computes the total byte count of the serialized ELF without actually writing anything. This is used by the Mercury path to pre-allocate the buffer before calling `sub_45C950`.
 
 For ELF32:
-```
+```c
 e_shnum = elfw->e_shnum;            // +48, uint16
 if (e_shnum == 0)
     e_shnum = list_get(elfw->sections, 0)->sh_size;  // overflow encoding
@@ -285,7 +285,7 @@ if (elfw->e_type == ET_EXEC)
 ```
 
 For ELF64:
-```
+```c
 e_shnum = elfw->e_shnum_64;         // +60, uint16
 if (e_shnum == 0)
     e_shnum = list_get(elfw->sections, 0)->sh_size_64;
@@ -356,7 +356,7 @@ fclose(f);
 
 `sub_44CCF0` iterates the callgraph stored in the ordered list at `elfw+408`. For each entry (starting at index 1, since index 0 is the null sentinel), it resolves the function's symbol record via `sub_440590`, then walks the adjacency list at `entry+16` (a linked list of callee indices). For each edge, it emits a DOT edge line:
 
-```
+```dot
 digraph callgraph {
     kernel_A -> device_func_B;
     kernel_A -> device_func_C;
@@ -370,7 +370,7 @@ The function names come from the symbol record's name field at `sym+32`. The out
 
 A completely separate output path (controlled by `--gen-host-linker-script` / `-ghls`, stored in `dword_2A77DC0`) generates a linker script for the host linker rather than a device ELF. This path does not call any of the ELF serialization functions. Instead it writes a fixed linker script template:
 
-```
+```text
 SECTIONS
 {
     .nvFatBinSegment : { *(.nvFatBinSegment) }

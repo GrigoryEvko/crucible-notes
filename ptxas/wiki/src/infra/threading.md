@@ -21,7 +21,7 @@ ptxas compiles multiple entry functions (kernels) in a single PTX input file. Wh
 
 ## Architecture
 
-```
+```text
                          ┌─────────────────────────────────────────┐
                          │          Compilation Driver             │
                          │           sub_446240                    │
@@ -448,7 +448,7 @@ The compilation driver (`sub_446240`) decides between serial and parallel execut
 
 ### Serial Path (default)
 
-```
+```c
 for each kernel in compile_unit:
     sub_43A400(kernel)          // target configuration
     sub_43CC70(kernel)          // DAGgen → OCG → ELF → DebugInfo
@@ -456,7 +456,7 @@ for each kernel in compile_unit:
 
 ### Parallel Path (`--split-compile` / `--allow-expensive-optimizations`)
 
-```
+```c
 pool = sub_1CB18B0(thread_count)
 
 for each kernel in compile_unit:
@@ -600,7 +600,7 @@ If state is 5 or 6 (no MAKEFLAGS, no auth string), the caller (`sub_4428E0`) emi
 
 A dedicated background thread that reads tokens from the Make pipe/FIFO and buffers them for the acquire function:
 
-```
+```c
 loop:
     if state != 0 or shutdown → exit
 
@@ -771,7 +771,7 @@ All state transitions use `_InterlockedCompareExchange(state, new_value, 0)` -- 
 
 With `make -jN` and `--split-compile M` where M > N:
 
-```
+```text
 ptxas creates M worker threads in the pool
 but only N-1 pipe tokens exist + 1 implicit token = N total
 workers that cannot acquire a token block in cond_wait

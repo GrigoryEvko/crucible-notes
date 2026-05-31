@@ -29,7 +29,7 @@ The embedded ptxas compiler in nvlink supports 22 architecture strings across 12
 
 Seven global `qword` pointers store the hash map objects. A `byte` flag guards singleton initialization.
 
-```
+```text
 Address          Name              Content
 ---------------------------------------------------------
 qword_2A644B8    map_cpf_optx      Hash map: arch -> cpf_optx callback
@@ -106,7 +106,7 @@ Each entry is a pointer to a static 4-byte array in `.data` containing the compu
 
 This map uniquely registers both `sm_XX` and `compute_XX` keys pointing to the same data, so lookups by either naming convention succeed:
 
-```
+```text
 byte_2A5EE40 -> compute_75 byte array
 byte_2A5EE3C -> compute_80 byte array
 byte_2A5EE38 -> compute_86 byte array
@@ -176,7 +176,7 @@ The following table lists every architecture string registered in `sub_15C0CE0`,
 
 The complete per-architecture-string dispatch table below expands every variant alias. This is the full set of 22 architecture strings exactly as registered in `sub_15C0CE0`, in registration order. Each row shows the 6 function pointer addresses and the A0 data pointer stored for that exact key string. Rows sharing a silicon group are identical -- listed individually to serve as a lookup reference for any arch string encountered in the binary.
 
-```
+```text
 Arch String  B8 (cpf_optx)  B0 (cpf_alt)   A8 (nv.info)   A0 (CC data)    90 (perf)      88 (codegen)
 -----------  -------------  -------------  -------------  --------------  -------------  -------------
 sm_75        sub_15C2AA0    sub_15C2A70    sub_15C3210    byte_2A5EE40    sub_15C1C80    sub_15C2610
@@ -208,7 +208,7 @@ sm_121f      sub_15C2E00    sub_15C2AD0    sub_15C3410    asc_2A5EE14     sub_15
 
 In addition to the 22 `sm_XX` keys above, map A0 also registers `compute_XX` aliases that point to the same static byte arrays. These aliases allow lookups by either `sm_XX` or `compute_XX` naming convention. The full set of A0 entries (44 total: 22 sm_ keys + 22 compute_ keys):
 
-```
+```text
 sm_ key      compute_ alias   Data pointer      Notes
 -----------  ---------------  ---------------   -----
 sm_75        compute_75       byte_2A5EE40
@@ -326,7 +326,7 @@ Looks up and immediately invokes the codegen-options callback with 6 arguments. 
 
 At `0x5272D0`--`0x527310`, five 11-byte functions serve as vtable-compatible wrappers around the ISel mega-hub functions. Each accepts 3 arguments `(context, ir_node, output)` but discards the first argument and forwards the remaining two to the actual mega-hub. These wrappers adapt a 3-argument vtable call convention to the 2-argument mega-hub interface.
 
-```
+```text
 sub_5272D0: (a1, a2, a3) -> sub_FBB810(a2, a3)    // SM75 Turing  (280 KB)
 sub_5272E0: (a1, a2, a3) -> sub_D5FD70(a2, a3)    // SM80 Ampere  (239 KB)
 sub_5272F0: (a1, a2, a3) -> sub_119BF40(a2, a3)   // SM89/90 Ada/Hopper (231 KB)
@@ -388,7 +388,7 @@ void destroy_sm_dispatch_tables(int64_t ctx, uint64_t a2) {
 
 The full dispatch flow from a compilation request to SM-specific codegen:
 
-```
+```text
 nvlink receives PTX/LTO input for sm_100
     |
     v

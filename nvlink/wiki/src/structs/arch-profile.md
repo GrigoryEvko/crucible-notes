@@ -6,7 +6,7 @@ This page documents the byte-level layout derived from the constructor (`sub_484
 
 ## Constructor: sub_484DB0
 
-```
+```c
 Prototype (reconstructed):
     ArchProfile* ArchProfile::create(
         uint8_t  is_virtual,       // a1: 0=real (sm_), 1=virtual (compute_/lto_)
@@ -85,7 +85,7 @@ if (!is_virtual) {
 
 ## Struct Layout
 
-```
+```text
 ArchProfile (136 bytes, 8-byte aligned, heap-allocated)
 ==========================================================================
 Offset  Size  Type      Field                 Description
@@ -266,14 +266,14 @@ Each of the three linked list pointers at offsets 48, 56, and 64 is a full hash-
 
 For base architectures, this list connects the real profile to its virtual counterpart and self:
 
-```
+```text
 sm_100.compat_list_0 -> { compute_100, sm_100 }
 compute_100.compat_list_0 -> { sm_100 }
 ```
 
 For suffix variants, the base arch is also linked:
 
-```
+```text
 sm_100a.compat_list_0 -> { compute_100a, sm_100a, sm_100 }
 sm_100f.compat_list_0 -> { compute_100f, sm_100f, sm_100 }
 ```
@@ -282,7 +282,7 @@ sm_100f.compat_list_0 -> { compute_100f, sm_100f, sm_100 }
 
 Links all architectures within the same generation. For Ampere:
 
-```
+```text
 sm_80.compat_list_1 -> { sm_80, sm_86, sm_87, sm_88, sm_89 }
 ```
 
@@ -290,7 +290,7 @@ The sm_89 (Ada) profile is appended to sm_80's family list despite being classif
 
 For Blackwell, both intra-family and cross-family links exist:
 
-```
+```text
 sm_120.compat_list_1 -> { sm_120, sm_121, sm_121a }
 sm_121.compat_list_1 -> { sm_121, sm_120 }
 ```
@@ -385,7 +385,7 @@ ArchParseResult* profile_to_parse_result(ArchProfile* profile) {
 
 The `ArchParseResult` layout:
 
-```
+```text
 ArchParseResult (12 bytes)
 ==========================================================================
 Offset  Size  Type      Field               Description

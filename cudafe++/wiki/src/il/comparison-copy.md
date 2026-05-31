@@ -39,7 +39,7 @@ Three front-end subsystems need structural equality testing on IL trees:
 
 This is the main entry point. It takes two expression-node pointers and a flags word, and returns 1 (match) or 0 (mismatch). It uses a 36-case switch on the expression-node kind byte (offset +24 in the node layout).
 
-```
+```python
 compare_expressions(expr_a, expr_b, flags) -> bool:
 
     if expr_a == expr_b:
@@ -167,7 +167,7 @@ compare_expressions(expr_a, expr_b, flags) -> bool:
 
 Constants are the most structurally complex IL nodes. A single constant node is 184 bytes and carries a `constant_kind` byte at offset +148 that selects among 16 primary kinds, some of which contain nested sub-kinds. The comparison function uses an outer switch on `constant_kind` and inner switches for aggregate and template-parameter sub-kinds.
 
-```
+```python
 compare_constants(const_a, const_b, flags) -> bool:
 
     if const_a == const_b:
@@ -257,7 +257,7 @@ compare_constants(const_a, const_b, flags) -> bool:
 
 Dynamic initializers represent runtime initialization expressions (constructors, aggregate init, etc.). The comparison function dispatches on the init kind byte at offset +48:
 
-```
+```python
 compare_dynamic_inits(init_a, init_b, flags) -> bool:
 
     if init_a->kind != init_b->kind:
@@ -286,7 +286,7 @@ Without deduplication, every occurrence of the integer constant `42` in a transl
 
 Not all constants can be shared. The predicate `constant_is_shareable` (`sub_5D2210`) checks several blocking conditions:
 
-```
+```python
 constant_is_shareable(constant) -> bool:
 
     if not sharing_enabled (dword_126EE48):
@@ -318,7 +318,7 @@ The rationale for excluding aggregates and template parameters: aggregate consta
 
 The hash table is allocated during `il_init` (`sub_5CFE20`) as a 16,312-byte block (stored at `qword_126F228`), yielding 2039 bucket slots (16312 / 8 = 2039). Each bucket is a pointer to the head of a singly-linked chain of constant nodes.
 
-```
+```text
 Hash Table Layout (qword_126F228):
 
     +--------+--------+--------+     +--------+
@@ -338,7 +338,7 @@ Hash Table Layout (qword_126F228):
 
 This is the entry point for all constant allocation when sharing is enabled. It implements a hash-table lookup with MRU (most recently used) reordering of the chain:
 
-```
+```python
 alloc_shareable_constant(local_constant) -> constant*:
 
     total_alloc_count++                              // qword_126F208
@@ -404,7 +404,7 @@ alloc_shareable_constant(local_constant) -> constant*:
 
 String literals receive a separate interning pass through `intern_string_constant` at `0x5DBAB0`. This function reuses the same 2039-bucket hash table (`qword_126F228`) but with string-specific comparison logic:
 
-```
+```python
 intern_string_constant(string, context_a, context_b) -> constant*:
 
     hash = compute_constant_hash(string)
@@ -450,7 +450,7 @@ Default argument expansion also uses the copy engine: when a function call omits
 
 The central expression copier. It takes an expression node, a flags word, and a substitution-list context, then returns a freshly allocated deep copy.
 
-```
+```python
 i_copy_expr_tree(src_expr, flags, subst_list) -> expr_node*:
 
     // shallow clone: allocate new node, copy fixed fields
@@ -565,7 +565,7 @@ i_copy_expr_tree(src_expr, flags, subst_list) -> expr_node*:
 
 A helper that walks a linked list of expression nodes (connected via the `next` pointer at offset +16), copies each via `i_copy_expr_tree`, and links the copies into a new list:
 
-```
+```python
 i_copy_list_of_expr_trees(head, flags, subst) -> expr_node*:
 
     result_head = NULL
@@ -588,7 +588,7 @@ i_copy_list_of_expr_trees(head, flags, subst) -> expr_node*:
 
 The constant copier handles the 184-byte constant node and its recursive sub-structure. It maintains a substitution list to avoid duplicating shared type definitions across the copy tree.
 
-```
+```python
 i_copy_constant_full(src, dest_or_null, flags, subst_list) -> constant*:
 
     if dest_or_null:
@@ -682,7 +682,7 @@ copy_template_param_expr(
 
 The function dispatches on `expr->kind` and, for operation nodes, further dispatches on the operation code:
 
-```
+```python
 copy_template_param_expr(expr, tctx, ...):
 
     switch expr->kind:
@@ -786,7 +786,7 @@ copy_template_param_expr(expr, tctx, ...):
 
 The constant-level substitution dispatcher. At 819 lines, it handles the case where a constant node in a template definition contains a reference to a template parameter:
 
-```
+```python
 copy_template_param_con(constant, tctx, expected_type, scope, flags,
                         error_flag, diag, scratch) -> constant*:
 
@@ -864,7 +864,7 @@ copy_template_param_con(constant, tctx, expected_type, scope, flags,
 
 The top-level entry point for template constant substitution, called from the template instantiation driver. It manages the IL region switch (moving allocation to file-scope for the duration of instantiation), handles the initial overload-resolution check, and performs post-substitution type normalization:
 
-```
+```python
 copy_template_param_con_with_substitution(constant, template_args, scope,
                                           expected_type, access, flags,
                                           error_flag, scratch):
@@ -930,7 +930,7 @@ copy_template_param_con_with_substitution(constant, template_args, scope,
 
 The four subsystems interact in a specific calling pattern during template instantiation:
 
-```
+```text
 Template Instantiation Driver
   |
   +-> copy_template_param_con_with_substitution (entry point)

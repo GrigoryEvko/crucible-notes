@@ -694,7 +694,7 @@ Additional behaviors:
 
 ## Flow Diagram
 
-```
+```text
                     +-----------------------+
                     | qword_2A5F330 (head)  |
                     +----------+------------+

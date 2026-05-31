@@ -22,7 +22,7 @@ The EDG frontend is configured at compile time through 737 `#define` macros, inc
 
 The compilation flow through EDG has four major phases: CLI parsing (282-case switch), translation unit initialization (keyword tables, parser bootstrapping), parsing and semantic analysis (the bulk of the 3.2 MB), and backend code emission (generating three output files: `.int.c` for internal declarations, `.device.c` for device code, and `.stub.c` for host-side launch stubs). Error recovery uses `setjmp`/`longjmp` — any of the 478 call sites that invoke the abort handler (`sub_721090`) will unwind back to the orchestrator rather than crashing the process.
 
-```
+```text
 sub_5D2A80 (orchestrator, setjmp error recovery)
   │
   ├─ sub_617BD0 (lgenfe_main: 282-case CLI switch, 737 config #defines)
@@ -80,7 +80,7 @@ Signature: `(int argc, __int64 argv)`.
 
 ### Architecture Parsing (case `0x52`)
 
-```
+```text
 compute_75, compute_80, compute_86, compute_87, compute_88, compute_89
 compute_90, compute_90a
 compute_100, compute_100a, compute_100f
@@ -833,7 +833,7 @@ These types are represented as fundamental types with distinct sub-kind values a
 
 The complete pipeline from CUDA source keyword to LLVM IR metadata:
 
-```
+```text
 CUDA source: __global__ void kernel() __launch_bounds__(256, 2)
   |
   v

@@ -277,7 +277,7 @@ This pass is unusual in that it runs even at O0 -- address space resolution is a
 
 ## Diagnostic Strings
 
-```
+```text
 "Initial work list size: %d"
 "changed in argument memory space"
 "is cloned"
@@ -298,7 +298,7 @@ This pass is unusual in that it runs even at O0 -- address space resolution is a
 
 The following diagram shows how three cooperating subsystems exchange data to resolve generic pointers into specific address spaces. The left column is MemorySpaceOpt (per-function), the center is IP-MSP (module-level), and the right is NVVM Alias Analysis (query service). Arrows show data produced (`-->`) and consumed (`<--`).
 
-```
+```text
  MemorySpaceOpt (per-function)       IP-MSP (module-level)          NVVM Alias Analysis
  ==============================      ==========================      ======================
 

@@ -50,7 +50,7 @@ On sm100+ (Blackwell), `VOTEU` is available as a uniform-register variant of `VO
 
 The vote handler follows the standard intrinsic codegen pattern: allocates a 50,000-byte scratch buffer via `sub_424070`, then builds an inline PTX function body through sequential `sprintf()` calls. The handler dispatches on three architecture tiers:
 
-```
+```c
 sub_580E50(ctx, string_table):
     instr = *(ctx + 1096)
     buf = alloc(50000)
@@ -135,7 +135,7 @@ The `c` operand packs the clamp value and width: `c = ((width - 1) << 8) | clamp
 
 The shuffle handler is structurally similar to vote. It reads up to 5 operands (source value, lane offset, clamp/width, membermask, and optional predicate output) through the accessor chain:
 
-```
+```c
 sub_5801D0(ctx, string_table):
     // string_table offsets start at 311376
     // Prologue with 4 sprintf calls for parameter declarations
@@ -187,7 +187,7 @@ Warp match instructions compare a value across lanes and return which lanes hold
 
 The match handler has three architecture tiers and handles both b32 and b64 operand widths:
 
-```
+```c
 sub_58A730(ctx, string_table):
     // string_table offsets start at 323786
 
@@ -239,7 +239,7 @@ The scheduler tracks redux operations on the dedicated `redux` functional unit p
 
 ### Codegen Handler -- `sub_567680`
 
-```
+```c
 sub_567680(ctx, string_table):
     // Prologue: function header
 
@@ -322,7 +322,7 @@ The hardware provides 16 named barriers (indices 0--15). The `EIATTR_NUM_BARRIER
 
 The `bar.sync` / `bar` handler dispatches across three architecture generations:
 
-```
+```c
 sub_524FB0(ctx, string_table):
     // string_table offsets start at 294205
 
@@ -372,7 +372,7 @@ This combinatorial explosion produces 160 intrinsic entries for barriers alone (
 
 The `barrier` (PTX 8.0 form) handler at `sub_570290` (2.5KB) is the most complex barrier handler. It adds cluster-awareness for sm90+ and handles the `barrier.cta.*` variants. The handler has an elaborate multi-level dispatch:
 
-```
+```c
 sub_570290(ctx, string_table):
     // sm90+ path: additional CTA scope parameters
     //   sub_709E80(instr) -- barrier scope enum
@@ -401,7 +401,7 @@ The `membar` codegen handler at `sub_4DB410` (84 lines decompiled) is the smalle
 | `membar.gpu` | `MEMBAR.GPU` | Device (GPU) |
 | `membar.sys` | `MEMBAR.SYS` | System (all agents) |
 
-```
+```c
 sub_4DB410(ctx, string_table):
     mode = sub_709FE0(instr)
 
@@ -500,7 +500,7 @@ The "trivial" mbarrier operations (types 0--8) are handled inline; "non-trivial"
 
 Mbarrier objects are tracked through shared memory symbols following the pattern:
 
-```
+```text
 %mbarrier_{basename}_{operation}
 ```
 
@@ -527,7 +527,7 @@ The expansion is architecture-specific:
 
 Expansion pattern:
 
-```
+```text
 Before (Ori pseudo-ops):           After (native SASS):
 MBARRIER_INIT  %mbar, count       MBARRIER.INIT  [smem], count
 MBARRIER_ARRIVE_EXPECT_TX          MBARRIER.ARRIVE.EXPECT_TX  [smem], bytes
@@ -593,7 +593,7 @@ Tokens not matching any case are silently skipped. If the parameter array is emp
 
 The parsed qualifiers are packed into a single 32-bit modifier word that accompanies the Ori instruction through the pipeline to ISel:
 
-```
+```text
 Bit [14:13] = type encoding:  00=u32  01=s32  10=u64/f32  11=invalid
 Bit [12:10] = operation:      0=add  1=min  2=max  3=inc  4=dec  5=and  6=or  7=xor
 Bit [8]     = no-return:      1=reduction (red.*)  0=atomic (atom.*)
@@ -638,7 +638,7 @@ After validation, the handler resolves up to three operand slots:
 
 The final instruction is emitted as:
 
-```
+```c
 sub_92C240(output, ctx, 314, data_type, operand_count, operand_buffer, 1)
 ```
 

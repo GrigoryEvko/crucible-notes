@@ -228,7 +228,7 @@ The SM architecture version is encoded in `e_flags` with a layout that depends o
 
 ### Legacy Layout (OSABI != 0x41)
 
-```
+```text
 e_flags (Elf32_Ehdr or Elf64_Ehdr):
   bits [7:0]    = SM version number (e.g., 75 for sm_75, 90 for sm_90)
   bit  [11]     = ABI suffix ('a') flag
@@ -239,7 +239,7 @@ e_flags (Elf32_Ehdr or Elf64_Ehdr):
 
 ### Modern Layout (OSABI == 0x41, Mercury)
 
-```
+```text
 e_flags (Elf64_Ehdr, always 64-bit for Mercury):
   bits [15:8]   = SM version number (shifted right by 8)
   bit  [1]      = SASS flag
@@ -495,7 +495,7 @@ On success, the ELF at `*elf_ptr` has been rewritten in place. On failure, a fat
 
 When verbose mode is active (`dword_2A5F308 & 1`), the Finalizer prints to stderr:
 
-```
+```text
 FNLZR: Input ELF: <filename>
 FNLZR: Post-Link Mode          (or "Pre-Link Mode")
 FNLZR: Flags [ <post_link> | <mercury_capable> ]
@@ -592,7 +592,7 @@ This logic is implemented in `sub_43E260` and `sub_43E2F0` and reflects the hist
 
 The `.nv.compat` section (also accepted as an `SHT_NOTE` variant with the `0x1000000` CUDA flag) carries ISA compatibility attributes as a stream of tagged records. `sub_43E610` retrieves the section buffer and delegates the raw parse to `sub_43E500`. For the structured pass, `sub_45E7D0:1806-1851` walks the buffer record-by-record:
 
-```
+```text
 Record layout:
   [0]       tag_kind    (1 byte)    // 0x00..0x08 for known kinds
   [1]       tag_id      (1 byte)    // attribute id (0..8)
@@ -686,7 +686,7 @@ The constant-bank extraction happens as a natural consequence of the section dis
 
 Concrete example from a sample cubin:
 
-```
+```text
 Input section header:
   sh_name    -> ".nv.constant0"        (from shstrtab)
   sh_type    -> 1  (SHT_PROGBITS)      or 0x70000006 (SHT_CUDA_CONSTANT)
@@ -703,7 +703,7 @@ After sub_45E7D0:1006-1012 classification:
 
 Wait -- the literal in the decompiled code is `1879048292` which equals `0x70000064` directly. The `0x70000024` base from the earlier description is the value `1879048228`, but the actual code uses `1879048292 = 0x70000064` which already includes the `+64` offset. Correcting the formula:
 
-```
+```text
 internal_type = strtol(name + 12, 0, 10) + 0x70000064   // bank 0 at base
               = strtol(name + 12, 0, 10) + 1879048292
 ```
@@ -796,7 +796,7 @@ This level of paranoia is necessary because cubins may be embedded in fatbins of
 
 ## Complete Cubin Loading Flow
 
-```
+```text
 Input file identified as cubin (ELF magic + e_machine == 190)
   |
   v

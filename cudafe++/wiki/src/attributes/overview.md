@@ -95,7 +95,7 @@ The 204-byte static buffer `byte_E7FB80` is shared across calls (not thread-safe
 
 Every attribute is represented by a 72-byte IL node (entry kind 0x48 = `attribute`). The node layout:
 
-```
+```c
 struct attr_node_t {               // 72 bytes, IL entry kind 0x48
     attr_node_t*  next;            // +0   next attribute in list
     uint8_t       kind;            // +8   attribute kind byte (CUDA: 'V'..'n')
@@ -327,7 +327,7 @@ CUDA attributes modify specific byte fields in entity nodes. The key fields for 
 
 ### Execution Space (`entity+182`)
 
-```
+```text
 Bit 0 (0x01): __device__           set by apply_nv_device_attr
 Bit 2 (0x04): __host__             set by apply_nv_host_attr
 Bit 4 (0x10): (reserved)
@@ -340,7 +340,7 @@ Handlers use OR-masks: `__host__` sets `0x15` (bits 0+2+4), `__device__` sets `0
 
 ### Memory Space (`entity+148`)
 
-```
+```text
 Bit 0 (0x01): __device__           device memory
 Bit 1 (0x02): __shared__           shared memory
 Bit 2 (0x04): __constant__         constant memory
@@ -348,7 +348,7 @@ Bit 2 (0x04): __constant__         constant memory
 
 ### Extended Memory Space (`entity+149`)
 
-```
+```text
 Bit 0 (0x01): __managed__          managed (unified) memory
 ```
 
@@ -356,7 +356,7 @@ Bit 0 (0x01): __managed__          managed (unified) memory
 
 A pointer to a separately allocated `launch_config_t` structure (created by `sub_5E52F0`):
 
-```
+```c
 struct launch_config_t {
     uint64_t  maxThreadsPerBlock;          // +0   from __launch_bounds__(N, ...)
     uint64_t  minBlocksPerMultiprocessor;  // +8   from __launch_bounds__(N, M, ...)

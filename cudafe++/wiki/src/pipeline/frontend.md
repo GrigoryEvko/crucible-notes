@@ -189,7 +189,7 @@ wrapup:
 
 ## Execution Flow
 
-```
+```text
 process_translation_unit (sub_7A40A0)
   |
   |-- [1] Debug trace: "Processing translation unit %s"
@@ -308,7 +308,7 @@ Additional variables are registered by other subsystem initializers (trans_corre
 
 Translation units are linked in processing order through the `next_tu` field at offset [0]:
 
-```
+```text
 qword_106B9F0 (primary_translation_unit)
   |
   v
@@ -331,7 +331,7 @@ The TU stack tracks the active compilation context. Each stack entry is a 16-byt
 
 Stack entries are allocated from a free list (`qword_12C7AB8`); when the free list is empty, a new 16-byte block is allocated via `sub_6B7340` (permanent allocator).
 
-```
+```text
 qword_106BA18 (tu_stack_top)
   |
   v
@@ -608,7 +608,7 @@ The kind codes (0, 2, 6, 7, 8, 11, 28, 58) correspond to EDG declaration kinds: 
 
 The control flow diverges based on `dword_106C29C` (preprocessing-only mode) and the presence of `module_info`:
 
-```
+```text
                           module_info?
                          /            \
                        YES             NO
@@ -678,7 +678,7 @@ Note: `sub_6FDDF0` is the module compilation driver (59 lines, `lower_il.c`). It
 
 These counters are reported by `sub_7A45A0` (`print_trans_unit_statistics`), which prints formatted memory usage:
 
-```
+```text
 trans. unit corresps          N x 24 bytes
 translation units             N x 424 bytes
 trans. unit stack entry       N x 16 bytes

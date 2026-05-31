@@ -69,7 +69,7 @@ The outer backend at `context+0x640` dispatches:
 
 ### Phase 5 -- ConvertUnsupportedOps
 
-```
+```text
 Factory index:  5
 Vtable:         off_22BD690
 execute():      sub_C60A20  (thunk -> context+0x640 dispatch)
@@ -83,7 +83,7 @@ This is the earliest legalization pass, running at phase 5 before any optimizati
 
 **Two-level dispatch mechanism.** The execute function (`sub_C60A20`, 40 bytes) implements a two-level dispatch through the outer backend at `context+0x640`:
 
-```
+```c
 backend = *(ctx + 0x640)            // outer backend object
 vtable  = *backend                   // read vtable pointer
 fn      = vtable[0]                  // slot 0: ConvertUnsupportedOps handler
@@ -119,7 +119,7 @@ The outer backend at `ctx+0x640` wraps the SM backend at `ctx+0x630`. In the def
 
 ### Phase 45 -- MidExpansion
 
-```
+```text
 Factory index:  51
 Vtable:         off_22BDDC0
 execute():      sub_C5EFB0  (thunk -> context+0x630 vtable+0xB0)
@@ -133,7 +133,7 @@ MidExpansion runs after the CTA/mbarrier/barrier expansion passes (phases 42-44)
 
 **Dispatch mechanism.** The execute body (`sub_C5EFB0`, 13 bytes) is a direct tail-call thunk:
 
-```
+```c
 backend = *(ctx + 0x630)            // SM backend object (no outer wrapper)
 vtable  = *backend                   // read vtable pointer
 jmp     vtable[0xB0]                 // tail call offset +0xB0 (176)
@@ -147,7 +147,7 @@ There is no default-check-and-unwrap pattern here. The SM backend provides the h
 
 ### Phase 55 -- LateExpansion
 
-```
+```text
 Factory index:  63
 Vtable:         off_22BDFA0
 execute():      sub_C60AA0  (thunk -> context+0x640 dispatch)
@@ -167,7 +167,7 @@ LateExpansion is the primary post-optimization legalization pass. It runs after 
 
 ### Phase 78 -- LateExpansionUnsupportedOps
 
-```
+```text
 Factory index:  90
 Vtable:         off_22BE3D8
 execute():      sub_C5EA50  (thunk -> context+0x630 vtable+0x178)
@@ -191,7 +191,7 @@ The first of three "late unsupported ops" catches. It runs after all optimizatio
 
 *Setup (one-time initialization).* When the function table is null, four setup calls execute in sequence:
 
-```
+```c
 sub_785E20(ctx, 0)          // CFG rebuild: recompute RPO, predecessor lists
 sub_781F80(ctx, 1)          // Block preparation: 8335B, builds per-block metadata
 sub_7E6090(ctx, 0, 0, 0, 0) // Pattern scanner: 2614B, populates match table
@@ -200,7 +200,7 @@ sub_7E6AD0(ctx, 0, ...)     // Chain setup: 33B, links pattern entries
 
 *Per-block convergence loop.* The outer loop walks blocks 1 through `context+520` (block count) in RPO order, indexing through the RPO permutation array at `context+512` into the block table at `context+296`:
 
-```
+```c
 for i = 1 to block_count:
     block = block_table[ rpo_index[i] ]
 
@@ -230,7 +230,7 @@ The inner loop is the convergence mechanism. `sub_753600` (1351 bytes) attempts 
 
 ### Phase 93 -- LateExpansionUnsupportedOps2
 
-```
+```text
 Factory index:  109
 Vtable:         off_22BE6D0
 execute():      sub_C5E790  (thunk -> context+0x630 vtable+0xD8)
@@ -246,7 +246,7 @@ The second late catch, positioned after the GMMA/WGMMA passes (85-87), register 
 
 **Dispatch.** The thunk at `sub_C5E790` dispatches through the SM backend (`ctx+0x630`) at vtable offset `+0xD8` (216). The implementation installed there (`sub_C60B30`, 62 bytes) performs a secondary dispatch through the outer backend (`ctx+0x640`):
 
-```
+```c
 outer   = *(ctx + 0x640)              // outer backend object
 vtable  = *outer                       // read vtable pointer
 fn      = vtable[12]                   // slot 12 (offset +0x60)
@@ -266,7 +266,7 @@ Architectures that override slot 12 with a custom function replace both steps wi
 
 ### Phase 137 -- LateExpansionUnsupportedOpsMid
 
-```
+```text
 Factory index:  93
 Vtable:         off_22BE450
 execute():      sub_C607E0  (thunk -> context+0x630 vtable+0x180)
@@ -287,7 +287,7 @@ The final legalization catch, positioned between the two conditional flow merge 
 
 ### Phase 95 -- SetAfterLegalization
 
-```
+```text
 Factory index:  111
 Vtable:         off_22BE720
 execute():      sub_C5F8A0
@@ -299,7 +299,7 @@ Not a legalization pass per se. It marks the compilation context as post-legaliz
 
 ### Phase 132 -- UpdateAfterConvertUnsupportedOps
 
-```
+```text
 Factory index:  8
 Vtable:         off_22BD708
 execute():      sub_C5F570  (rep ret -- NOP)
@@ -407,7 +407,7 @@ Downstream passes compare against these thresholds: `sub_A11060` checks `> 4` to
 
 ## Pipeline Position Summary
 
-```
+```text
 Phase 0-4:   Initial setup, FP16 promotion, CFG analysis
 Phase 5:     ConvertUnsupportedOps          <-- LEGALIZATION #1
 Phase 6-44:  Optimization passes (branch, loop, strength reduction, GVN, barrier expansion)
@@ -609,7 +609,7 @@ The operand legalization dispatcher operates at a different abstraction level th
 
 The dispatcher runs as part of the SASS encoding pipeline (called from `sub_A29220`), well after all six Ori-level legalization passes have completed. It is invoked per-instruction during the encoding walk, not as a standalone pass.
 
-```
+```text
 Ori legalization passes (phases 5-137)
   Replace unsupported OPERATIONS with legal sequences
          |

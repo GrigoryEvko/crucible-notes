@@ -106,7 +106,7 @@ Members are iterated by advancing through the container data region. The stride 
 
 The extraction flow is a five-stage pipeline orchestrated by `sub_4BD0A0`, which calls each stage in sequence and bails out on any failure:
 
-```
+```text
 sub_4BD0A0 (pipeline orchestrator)
     |
     +-- sub_4CDD60  (1. parse wrapper header)
@@ -324,7 +324,7 @@ For **NVVM (type 8)** members, the version is also upgraded via `sub_487220` to 
 
 When a member passes both the type gate and the compatibility check and a `best_match` already exists, the function applies a cascade of five tie-breaking rules to decide whether to replace the current best. The rules are evaluated in order; the first rule that produces a decisive winner ends the comparison.
 
-```
+```c
 best_match_selection(candidate, current_best, request_mode, target_arch):
     // RULE 0 (pre-check): Request mode 10 (obfuscated PTX) resets best on each match
     if request_mode == 10:

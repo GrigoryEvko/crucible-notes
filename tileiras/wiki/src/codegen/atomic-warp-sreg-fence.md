@@ -45,7 +45,7 @@ The printer concatenates tokens in a fixed order so a reimplementation can read 
 
 For an atomic add on shared memory with relaxed memory order and CTA scope, the printer reads `op = ADD`, `order = RELAXED`, `scope = CTA`, `addrspace = SHARED`, `type = U32` from the operand record and emits:
 
-```
+```ptx
 atom.relaxed.cta.add.u32.shared %r0, [%r1], %r2;
 ```
 
@@ -53,13 +53,13 @@ The token order is `atom` (stem) → `.relaxed` (order) → `.cta` (scope) → `
 
 Reductions reuse the same order without a return register:
 
-```
+```ptx
 red.gpu.add.f32.global [%rd0], %f1;
 ```
 
 Atomic compare-and-swap doubles the operand count but keeps the same token order:
 
-```
+```ptx
 atom.acquire.gpu.cas.b64.global %rd0, [%rd1], %rd2, %rd3;
 ```
 
@@ -84,7 +84,7 @@ to the same warp-level family and emits `bar.warp.sync mask`.
 
 The selector dispatches each warp collective by intrinsic-ID plus operand types. The intrinsic ID picks the family (`redux`, `shfl`, `vote`, `match`); the kind enum on the SDNode picks the operation within the family; and the operand element type picks the PTX type suffix. Four representative emissions:
 
-```
+```ptx
 redux.sync.add.s32     %r0, %r1, 0xFFFFFFFF;     // signed-int reduction over the full warp
 shfl.sync.bfly.b32     %r0|%p0, %r1, 0x10, 0x1F, 0xFFFFFFFF;
 vote.sync.ballot.b32   %r0, %p1, 0xFFFFFFFF;     // ballot returns i32

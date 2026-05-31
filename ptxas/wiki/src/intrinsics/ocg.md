@@ -204,7 +204,7 @@ Notable validation strings from the tcgen05 MMA handler:
 
 The full end-to-end flow that takes a PTX `call.uni __nv_ptx_builtin_ocg_*` intrinsic and produces a binary SASS instruction passes through five stages. Three are data-structure manipulation (matching, cleanup), two are instruction encoding (operand assembly, SASS emission).
 
-```
+```text
 sub_6B5F30 (intrinsic lowering driver)
   |
   ├─ sub_6B40C0 ── pre-processing
@@ -339,7 +339,7 @@ sub_6D9690 (master SASS encoder, 94KB)
 
 ## OCG Lookup Flow
 
-```
+```text
 PTX source: call.uni __nv_ptx_builtin_ocg_tcmma, (%args...);
                     |
                     v

@@ -25,7 +25,7 @@ The combined argv vector is passed to `sub_1104950`, which calls `sub_1103030` t
 
 `sub_1103030` creates a fresh option parser instance via `sub_42DFE0(0)` and registers all options via `sub_42F130`. Each `sub_42F130` call passes:
 
-```
+```c
 sub_42F130(parser, long_name, short_name, type, multiplicity, flags, context,
            allowed_keywords, reserved, default_value, reserved2,
            value_placeholder, help_text)
@@ -36,7 +36,7 @@ Multiplicity: 0 = flag-only (bool), 1 = single value, 2 = multi-value (accumulat
 
 After registering all options, `sub_1103030` invokes `sub_42E5A0` to parse the passed argc/argv against the table, then checks for `--trap-into-debugger` (calls `sub_42FA60` to install signal handlers), `--tool-name` (updates the internal program name), `--help` (prints help and exits), and `--version` (prints version banner and exits). The version banner reads:
 
-```
+```text
 ptxas: NVIDIA (R) Ptx optimizing assembler
 Copyright (c) 2005-2025 NVIDIA Corporation
 Built on Wed_Aug_20_01:55:12_PM_PDT_2025

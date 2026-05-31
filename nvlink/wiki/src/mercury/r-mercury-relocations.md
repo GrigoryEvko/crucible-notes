@@ -100,7 +100,7 @@ The action-type range check `(action_type - 12) <= 3` catches types with action 
 
 R_MERCURY type names follow a simpler pattern than R_CUDA:
 
-```
+```text
 R_MERCURY_<category>[<bits>][_<byte_offset>]
 ```
 
@@ -371,7 +371,7 @@ The PC-relative byte-level family (`R_MERCURY_PROG_REL8_*`) is unique to Mercury
 
 The Mercury descriptor table at `off_1D3CBE0` has the same 64-byte-per-entry format as the CUDA table at `off_1D3DBE0`. Each entry encodes up to three patching actions:
 
-```
+```text
 Entry (64 bytes):
   +0   Header (12 bytes)
        +0   uint32_t  field_0;      // extraction spec for --preserve-relocs
@@ -456,7 +456,7 @@ In post-link mode (`sub_4275C0` with `a5 == 1`), FNLZR runs after the merge phas
 
 The FNLZR diagnostic output shows the relocation interaction:
 
-```
+```text
 FNLZR: Input ELF: <filename>
 FNLZR: Post-Link Mode
 FNLZR: Flags [ 1 | 0 ]           // capmerc=1, sass-only=0
@@ -640,7 +640,7 @@ Based on the type semantics and their positions in the table, the following relo
 
 A Mercury `BRA` instruction targeting function `_Z6kernelPf` generates a `R_MERCURY_PROG_REL32` relocation:
 
-```
+```text
 Section .rela.text, offset 0x180:
   r_offset = 0x00000050    (byte offset of the BRA instruction in .text)
   r_info   = 0x0003 10008  (symbol index 3, type 0x10008 = R_MERCURY_PROG_REL32)
@@ -661,7 +661,7 @@ The descriptor for type 8 (PROG_REL32) specifies:
 
 A global variable address `0x00007FFF12345678` must be written byte-by-byte into a descriptor table entry at offset 0x40:
 
-```
+```text
 8 relocation entries, one per byte:
   R_MERCURY_G8_0   at offset 0x40: writes 0x78 (byte 0)
   R_MERCURY_G8_8   at offset 0x41: writes 0x56 (byte 1)

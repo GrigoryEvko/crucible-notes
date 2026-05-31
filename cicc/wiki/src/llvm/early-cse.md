@@ -36,7 +36,7 @@ The pass performs a stack-driven iterative DFS over the dominator tree. At each 
 
 The dominator tree walk is **not recursive**. It uses an explicit growable stack (initial capacity 8 entries, 64 bytes) with `DomTreeScope` nodes that record per-scope hash table insertions. On scope exit all insertions are tombstoned. This matters for deeply-nested GPU kernel CFGs where stack overflow from recursion is a real risk.
 
-```
+```c
 function EarlyCSE(ctx):
     root = ctx.Function.DomTree.root
     stack.push(DomTreeScope(root))
@@ -133,7 +133,7 @@ At address `0x2781BB6`, the pass checks `byte [rdx+8] == 7` on the store's point
 
 The motivation: shared memory is written by one thread and potentially read by a *different* thread after a barrier. Forwarding a stored value to a subsequent load in the same thread is only safe if no barrier intervenes -- but even then, a reimplementor must be careful because the CUDA memory model permits a thread to read its own store without a barrier, while other threads cannot. The shared-memory path in EarlyCSE conservatively disables forwarding for shared-memory stores to avoid the case where a load is CSE'd to the stored value, but the actual runtime value has been modified by another thread's post-barrier store to the same location.
 
-```
+```c
 processStore(ctx, store_inst):
     ptr_type = store_inst.pointer_operand.type
     if ptr_type.address_space == 7:                 // NVPTX shared memory
@@ -172,7 +172,7 @@ The check at `0x2783890` tests for intrinsic ID 228 and at `0x27839BC` for intri
 
 At address `0x2781BED`, the pass checks:
 
-```
+```c
 if PHINode.getNumIncomingValues() > 5:
     skip CSE analysis for this PHI
 ```
@@ -211,7 +211,7 @@ The classification dispatches to these helper predicates:
 
 The most complex code path (`0x2781B48`--`0x2781F32`) handles load CSE and store-to-load forwarding:
 
-```
+```c
 processLoad(ctx, load_inst):
     key = computeLoadCSEKey(load_inst, ctx.DataLayout)    // sub_2779A20
     if key.status != 0:

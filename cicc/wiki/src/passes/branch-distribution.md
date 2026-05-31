@@ -80,7 +80,7 @@ The `branch-dist-norm` knob modifies the dataflow meet operator: the default (0)
 
 After propagation, the main function (`sub_1C47810`) iterates over all blocks and instructions. For each synchronization intrinsic, it looks up the four per-instruction flags:
 
-```
+```c
 ra = inst_read_above[I]    wa = inst_write_above[I]
 rb = inst_read_below[I]    wb = inst_write_below[I]
 ```

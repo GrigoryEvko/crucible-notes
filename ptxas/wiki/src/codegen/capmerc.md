@@ -49,7 +49,7 @@ The Mercury mode flag `*(DWORD*)(context+385) == 2` is shared between Mercury an
 
 A capmerc-mode compilation produces a CUBIN ELF with two layers of content: standard CUBIN sections (`.text.<func>`, `.nv.constant0`, `.nv.info.<func>`, etc.) and a parallel set of `.nv.merc.*` sections carrying the metadata needed for deferred finalization.
 
-```
+```text
 CUBIN ELF (capmerc mode)
 ├── Standard sections
 │   ├── .shstrtab, .strtab, .symtab, .symtab_shndx
@@ -101,7 +101,7 @@ The KNOBS embedding allows the finalizer to reproduce exact compilation settings
 
 #### Construction Algorithm (`sub_1C9C300`)
 
-```
+```c
 function BuildCapsuleDescriptor(func_markers, context):
     if func_markers == NULL or func_markers.active == 0:
         return 0                                  // nothing to emit
@@ -252,7 +252,7 @@ function BuildCapsuleDescriptor(func_markers, context):
 
 The descriptor is heap-allocated via `sub_424070(allocator, 328)` and zero-filled before field initialization. The constructor also creates a companion `.merc<funcname>` descriptor (same 328-byte layout) when merc section mirroring is active.
 
-```
+```text
          Capsule Descriptor (328 bytes = 0x148)
          ======================================
 
@@ -395,7 +395,7 @@ Selected marker sub-types and the descriptor fields they populate:
 
 Four functions cooperate to construct the `.nv.merc.*` section namespace:
 
-```
+```text
 sub_1C9F280 (97KB, Master ELF emitter)
   │
   ├─ sub_1C9B110 (23KB) ── Mercury capsule builder
@@ -455,7 +455,7 @@ The eight `R_MERCURY_8_*` types enable patching individual bytes within a 64-bit
 
 The master resolver (22KB, 17 callees) walks the relocation linked list at `elfw+376` and applies five major stages per entry. Reconstructed pseudocode from the decompiled binary:
 
-```
+```c
 resolve_relocations(elfw):
     for each rela in linked_list(elfw+376):
         sym    = lookup_symbol(elfw, rela.r_sym)
@@ -572,7 +572,7 @@ ELF section header:
 
 Section data is organized as four consecutive regions:
 
-```
+```text
          .nv.capmerc<funcname> Section Data
          ====================================
 
@@ -626,7 +626,7 @@ ELF section header:
 
 Section data is standard DWARF `.debug_info` format:
 
-```
+```text
          .nv.merc.debug_info Section Data
          ==================================
 
@@ -670,7 +670,7 @@ Section names are constructed by `sub_1C980F0` as `".nv.merc.rela"` + suffix (e.
 
 On-disk entry layout (standard `Elf64_Rela`, 24 bytes):
 
-```
+```text
          .nv.merc.rela Entry (24 bytes on disk)
          ========================================
 
@@ -687,7 +687,7 @@ On-disk entry layout (standard `Elf64_Rela`, 24 bytes):
 
 During resolution (`sub_1CD48C0`), the 24-byte on-disk entries are loaded into a 32-byte in-memory representation that adds two section index fields:
 
-```
+```text
          In-Memory Relocation Entry (32 bytes)
          =======================================
 
@@ -726,7 +726,7 @@ The `.nv.merc.*` debug sections reuse the same `sh_type` values as their non-mer
 
 The `--self-check` flag activates a roundtrip verification that validates the capmerc encoding by reconstituting SASS from the capsule data and comparing it against the original:
 
-```
+```text
 Phase 122 output (SASS) ──────────────────────────> reference SASS
          │
          └─ capmerc packaging ─> .nv.capmerc<func>
@@ -773,7 +773,7 @@ Off-target finalization converts a capmerc binary compiled for SM X into native 
 
 ### Compatibility checker (`sub_60F290`)
 
-```
+```c
 fn can_finalize_offtarget(ctx, source_sm, target_sm, cross_family_ok) -> bool:
     // Phase 1: normalize SM number to family code (ASCII-range integer)
     family_of(sm) :=
@@ -812,13 +812,13 @@ The `CAN_FINALIZE_DEBUG` environment variable enables verbose tracing of the dec
 
 When the check passes, the finalizer patches the capsule in-place rather than re-running phases 117--122. On success ptxas emits:
 
-```
+```text
 "[Finalizer] fastpath optimization applied for off-target %u -> %u finalization"
 ```
 
 The 5-step fastpath sequence (lines 830--879 of the decompilation):
 
-```
+```c
 fn finalizer_fastpath(capsule_buf, source_sm, target_sm, out_ptr, out_size):
     // 1. Parse capsule -- extract .text byte count from capsule descriptor
     text_size = get_capsule_text_size(capsule_buf)          // sub_1CAFC60

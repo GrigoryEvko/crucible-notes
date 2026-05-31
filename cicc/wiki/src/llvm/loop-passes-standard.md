@@ -79,7 +79,7 @@ Splits a loop into pre/main/post regions so that inductive range checks (bounds 
 
 Each candidate is classified into one of four kinds:
 
-```
+```text
 RANGE_CHECK_UNKNOWN = 0   (skip)
 RANGE_CHECK_LOWER   = 1   (indvar >= lower_bound)
 RANGE_CHECK_UPPER   = 2   (indvar < upper_bound)

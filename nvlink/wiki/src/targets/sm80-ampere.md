@@ -214,7 +214,7 @@ From the [ptxas wiki: Turing/Ampere](../../ptxas/targets/turing-ampere.html), th
 
 The Ampere family linked list built by `sub_484F50` chains all four sub-architectures through `compat_list_1` (offset +56) and `compat_list_0` (offset +48):
 
-```
+```text
 sm_80.compat_list_1 -> { sm_80, sm_86, sm_87, sm_88 }
 sm_86.compat_list_1 -> { sm_86 }
     also: sm_86 appended to sm_80's compat_list_0 and compat_list_1
@@ -279,7 +279,7 @@ Every IR instruction processed by this backend passes through three phases in se
 
 **Phase 1: Instruction Selection.** The mega-hub `sub_D5FD70` iterates all 259 pattern matcher functions. Each matcher receives `(ctx, ir_node, &pattern_id, &priority)` and tests a single candidate encoding. The highest-priority match wins.
 
-```
+```c
 for each pattern_matcher in sm80_pattern_table[0..258]:
     pattern_matcher(ctx, ir_node, &pattern_id, &priority)
     if priority > best_priority:

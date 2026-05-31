@@ -52,7 +52,7 @@ The SE object also contains the `ValueExprMap` (primary SCEV cache mapping `Valu
 
 `sub_DD8400` (`getSCEV`) is the single entry point for obtaining a SCEV expression for any LLVM `Value*`. Every consumer -- LoopVectorize, LoopUnroll, LSR, IndVarSimplify, LoopInterchange -- calls this function. The algorithm:
 
-```
+```c
 SCEV* getSCEV(SE *se, Value *V) {
     // 1. Memo-table check
     SCEV *cached = lookupSCEV(se, V);      // sub_D98300
@@ -114,7 +114,7 @@ When `scalar-evolution-complexity-control` is true (the default), the SE constru
 
 **Stage 2 -- Expression size scoring.** The scorer `sub_DB3670` (`expressionComplexity`, 35KB binary, self-recursive) estimates how large the resulting SCEV expression tree would be. It walks the instruction's def-use chain bottom-up, counting nodes and weighting by expression kind:
 
-```
+```c
 uint64_t expressionComplexity(SE *se, Value *V) {
     // sub_DB3670 -- self-recursive, calls sub_CF4090 for SCEV node size
     if (V is Constant)     return 1;
@@ -159,7 +159,7 @@ If the total score exceeds `scalar-evolution-max-expr-size` (global `dword_4F884
 
 **Stage 3 -- Mode toggle.** When an instruction passes the size check (score <= 384), `simple_mode` is temporarily set to 0 and the recursion counter reset to 0 before calling `createSCEV`:
 
-```
+```c
 se->simple_mode = 0;        // disable complexity gating
 se->recursion_count = 0;    // reset upstream counter for this sub-tree
 SCEV *result = createSCEV(se, V);
@@ -333,7 +333,7 @@ for (int i = threadIdx.x; i < N; i += warpSize) { ... }
 
 The PHI decomposer (`sub_D94080`) recognizes the increment value as the constant 32 (warpSize is a compile-time constant on all NVIDIA architectures). The resulting SCEV:
 
-```
+```text
 {threadIdx.x, +, 32}<nuw><loop>
 ```
 
@@ -341,7 +341,7 @@ The PHI decomposer (`sub_D94080`) recognizes the increment value as the constant
 - **Step**: `SCEVConstant(32)`.
 - **Flags**: NUW (no-unsigned-wrap) is set because the start is non-negative and the step is positive. The PHI decomposer sets this flag when the incoming value (intrinsic ID 372 = warpSize) resolves to a constant and the start range has a non-negative lower bound.
 - **Trip count**: The backedge-taken count (`sub_DB9E00`) computes:
-  ```
+  ```text
   BTC = udiv(N - threadIdx.x + 31, 32)
       = udiv(sext(N) - sext(start) + step - 1, step)
   ```
@@ -357,7 +357,7 @@ for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < N; i += blockDim.x * gri
 
 The instruction decomposer traces through the PHI's increment chain. The addition `blockDim.x * gridDim.x` is recognized as two calls to special register intrinsics (IDs 312 for blockDim.x and 312 again for gridDim.x) combined in a multiply. The resulting SCEV:
 
-```
+```text
 {blockIdx.x * blockDim.x + threadIdx.x, +, blockDim.x * gridDim.x}<loop>
 ```
 
@@ -369,7 +369,7 @@ Decomposition detail:
   - The combined start range is `[0, gridDim.x * blockDim.x)` = `[0, total_threads)`.
 - **Step**: `SCEVMulExpr(SCEVUnknown(blockDim.x), SCEVUnknown(gridDim.x))` -- this is the total grid size. Both operands are `SCEVUnknown` values with ranges from the builtin table.
 - **Trip count**: `computeBackedgeTakenCount` (`sub_DB9E00`) produces:
-  ```
+  ```text
   BTC = udiv(N - start + step - 1, step)
   ```
   where `start` and `step` are symbolic. The trip count itself is `SCEVUnknown` (the exact value depends on runtime launch configuration), but the *maximum* trip count can be bounded using the range constraints.
@@ -466,7 +466,7 @@ The N-ary constructors (`getAddExpr`, `getMulExpr`, min/max) canonicalize operan
 
 The primary SCEV cache (`ValueExprMap`) maps `Value*` to `SCEV*` using an open-addressed hash table with the standard hash function used throughout cicc's SCEV subsystem:
 
-```
+```c
 slot = ((uint32_t)key >> 9) ^ ((uint32_t)key >> 4)
 slot &= (capacity - 1)
 ```

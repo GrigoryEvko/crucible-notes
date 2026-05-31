@@ -47,7 +47,7 @@ Key properties from binary analysis:
 
 Tensor memory addresses are computed through a standardized pattern visible in the TMEM address generator functions (`sub_70E740`, `sub_70E940`, `sub_70EB00`):
 
-```
+```ptx
 cvt.u32.u64 __cuda_sm_100_tcgen05_tmem_addr_base, %s;
 add.u32 %s, __cuda_sm_100_tcgen05_tmem_addr_base, %s;
 ```
@@ -453,7 +453,7 @@ The TCGen05 MMA handler (`sub_6D7AF0`, 19KB) and validator (`sub_6D69B0`, 12KB) 
 
 The TMEM address generator cluster (`sub_70E740`, `sub_70E940`, `sub_70EB00`) generates PTX parameter passing code for tensor memory addresses:
 
-```
+```ptx
 st.param.b32 [%s + %d], %s;
 ld.param.b32 %s, [%s + %d];
 ```

@@ -245,7 +245,7 @@ The fixpoint loop is the algorithm that drives all template instantiation in cud
 
 ### Algorithm
 
-```
+```python
 template_and_inline_entity_wrapup (sub_78A9D0):
 
     assert(tu_stack_top == 0)          // qword_106BA18: not nested in another TU
@@ -520,7 +520,7 @@ The global parser state variables are ordinary integers, pointers, and flags lai
 
 `instantiate_template_function_full` (`sub_775E00`) saves and restores 4 SSE registers covering 64 bytes of parser state at addresses `0x106C380`--`0x106C3B0`.
 
-```
+```text
 Save on entry (before any parser re-entry):
     local[0] = xmmword_106C380      // 16 bytes: parser scope context
     local[1] = xmmword_106C390      // 16 bytes: token stream state
@@ -550,7 +550,7 @@ The save is conditional on the current token kind (`word_126DD58`). If the token
 
 **Primary state block** (always saved when token is 2--8): 11 SSE registers from `xmmword_126DC60`--`xmmword_126DD00`, covering 176 bytes of declaration parser state, plus `qword_126DD10` (8 bytes).
 
-```
+```text
 Save:
     local[0]  = xmmword_126DC60     // declaration context
     local[1]  = xmmword_126DC70     // access specifier state
@@ -568,7 +568,7 @@ Save:
 
 **Extended state block** (saved only when token kind == 8, class definition in progress): 12 more SSE registers from `xmmword_126DBA0`--`xmmword_126DC40`, covering 192 bytes, plus `qword_126DC50`.
 
-```
+```text
     local[11] = xmmword_126DBA0     // class body parse state
     local[12] = xmmword_126DBB0     // virtual function table context
     local[13] = xmmword_126DBC0     // constructor/destructor tracking
@@ -621,7 +621,7 @@ void update_instantiation_required_flag(
 
 ### High-Level Flow
 
-```
+```python
 update_instantiation_required_flag(inst, setting, options):
 
     // 1. Resolve owning type entry (for toggle counter)

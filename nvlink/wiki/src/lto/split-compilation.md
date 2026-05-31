@@ -23,7 +23,7 @@ Split-compile values originate from the input objects, not the command line. Eac
 | 3 | N | Modules disagree on presence (some have it, some do not), but the value N is consistent |
 | 4 | (conflict) | Two modules declared different split-compile values. Treated as a warning |
 
-```
+```c
 for each input module's embedded option string:
     val = parse "-split-compile " from option string
     if val found:
@@ -42,7 +42,7 @@ If the final state is 4 (conflict), nvlink emits a warning diagnostic about inco
 
 The option builder (`sub_426CD0` at `0x426CD0`) constructs the argument array passed to `nvvmCompileProgram`. The split-compile forwarding logic:
 
-```
+```c
 if split_compile_extended != 1:
     append "-split-compile-extended=<dword_2A5B514>"
     if split_compile_value == 1:
@@ -64,7 +64,7 @@ After libnvvm compilation completes (via `sub_4BC6F0`), nvlink chooses one of th
 
 When `-device-c` is not set and `split_compile_extended == 1`:
 
-```
+```c
 dword_2A5B528 = byte_2A5F225 ? 6 : 0;   // SASS=6, normal=0
 options = build_ptxas_options();           // sub_429BA0
 result  = ptxas_compile_whole(             // sub_4BD4E0
@@ -78,7 +78,7 @@ result  = ptxas_compile_whole(             // sub_4BD4E0
 
 When `-device-c` is set and `split_compile_extended == 1`:
 
-```
+```c
 options = build_ptxas_options();           // sub_429BA0
 result  = ptxas_compile_split(             // sub_4BD760
               &output, ptx_data, sm_version,
@@ -91,7 +91,7 @@ result  = ptxas_compile_split(             // sub_4BD760
 
 When `split_compile_extended > 1`:
 
-```
+```c
 // Allocate work items: 40 bytes per split
 work_items = arena_alloc(40 * num_splits);       // sub_426AA0
 options    = build_ptxas_options();               // sub_429BA0
@@ -279,7 +279,7 @@ The return value of `sub_4BD760` is an elfLink error code (0--13), written direc
 
 Inside `sub_4BD760`, the compilation proceeds through the embedded ptxas API:
 
-```
+```text
 sub_4CDD60(&ctx)              create compiler context
 sub_4CE3B0(ctx, mode)         set compilation mode (0 or 6)
 sub_4CE2F0(ctx, sm_version)   set target SM architecture
@@ -351,7 +351,7 @@ Steps 3--5 run serially in the main thread. The `validate_and_add` function (`su
 
 ### Lifecycle Diagram
 
-```
+```text
 main thread                          worker threads (N)
 ===========                          ==================
 
@@ -618,7 +618,7 @@ Push (`sub_44DD10`) inserts at the end and sifts up. Pop (`sub_44DE20`) moves th
 
 After all tasks complete:
 
-```
+```c
 for (i = 0; i < num_splits; i++) {
     sub_4297B0(work_items[i].result, "<lto ptx>");  // check error code
     output = outputs[i];

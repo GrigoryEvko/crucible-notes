@@ -22,7 +22,7 @@ The `DUMPIR` knob is a string-valued OCG knob that takes one or more phase names
 
 ### Usage
 
-```
+```bash
 ptxas -knob DUMPIR=AllocateRegisters input.ptx -o output.cubin
 ```
 
@@ -36,7 +36,7 @@ The DUMPIR knob exists in two instantiations:
 
 The DUMPIR knob is referenced in register allocation error diagnostics. When a register allocation verification failure occurs, `sub_A55D80` and `sub_A76030` emit:
 
-```
+```text
 Please use -knob DUMPIR=AllocateRegisters for debugging
 ```
 
@@ -124,7 +124,7 @@ Each comma-separated token in the NamedPhases string is parsed by `sub_798280` i
 
 The `+` character acts as an entry separator (analogous to how the DisablePhases string uses `+` to delimit multiple phase names). This allows:
 
-```
+```bash
 -knob NamedPhases=PhaseA,param1+PhaseB,param2+PhaseC
 ```
 
@@ -231,7 +231,7 @@ The literal `0x2065726F666542` decomposes as bytes `42 65 66 6F 72 65 20` = ASCI
 
 These strings appear in diagnostic output when `--stat=phase-wise` is enabled:
 
-```
+```text
 Before GeneralOptimize  ::  [Total 1234 KB]  [Freeable 567 KB]  [Freeable Leaked 12 KB] (2%)
 After GeneralOptimize   ::  [Total 1456 KB]  [Freeable 789 KB]  [Freeable Leaked 23 KB] (3%)
 ```
@@ -249,7 +249,7 @@ The string addresses in the binary are:
 
 The `--stat` CLI option (processed in `sub_432A00` at `0x432E5A`) accepts a comma-separated list of report modes:
 
-```
+```bash
 ptxas --stat=phase-wise input.ptx -o output.cubin
 ```
 
@@ -268,7 +268,7 @@ The DUMPIR dump emits a per-function statistics header (using `#` comment prefix
 
 ### Per-Function Statistics Header
 
-```
+```text
 # 142 instructions, 24 R-regs
 # [inst=142] [texInst=0] [tepid=0] [rregs=24]
 # [FP16 inst=0] [FP16 VectInst=0] [Percentage Vectorized=0.00]

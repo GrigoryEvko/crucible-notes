@@ -102,7 +102,7 @@ Three mechanisms address the generic pointer problem:
 
 cicc configures the AA chain with NVVM AA running first, as confirmed by the `NVPTXExternalAAWrapper` which passes `RunEarly=true` to `ExternalAAWrapperPass`. The full chain:
 
-```
+```text
 NVVM AA  -->  BasicAA  -->  TBAA  -->  ScopedNoAliasAA  -->  GlobalsAA
   |              |            |              |                    |
   |              |            |              |                    +-- Module-level: which globals
@@ -165,7 +165,7 @@ The `!noalias.addrspace` metadata (kind 42, registered in `sub_B6EEA0`) is a sep
 
 The restrict pipeline activates through a chain of flag translations:
 
-```
+```text
 User:   nvcc --restrict kernel.cu
           |
 nvcc:   cicc -restrict             (offset +1096 in flag struct)
@@ -183,7 +183,7 @@ The pass operates in two modes controlled by the `propagate-only` parameter:
 
 **Full mode (default).** The pass performs both annotation and propagation:
 
-```
+```cpp
 ProcessRestrictPass::run(Function &F):
 
   // Phase 1: Identify restrict-qualified pointer arguments
@@ -242,7 +242,7 @@ ProcessRestrictPass::run(Function &F):
 
 The `ScopedNoAliasAA` provider (registered as `scoped-noalias-aa` in `sub_233BD40`, enabled by default via `enable-scoped-noalias` at `ctor_060`, global at `0x4B0000`) processes the metadata as follows:
 
-```
+```cpp
 ScopedNoAliasAA::alias(LocA, LocB):
 
   // Extract !noalias sets from the instructions that produced LocA and LocB
@@ -307,7 +307,7 @@ Without this flag, only the outermost pointer level receives `noalias` treatment
 
 The AA chain in cicc is queried through `AAResults::alias()` at `sub_134CB50`. This function dispatches through the registered AA providers in registration order. The chain ordering observed in cicc v13.0 is:
 
-```
+```text
 NVVM AA  ->  BasicAA  ->  TBAA  ->  ScopedNoAliasAA  ->  GlobalsAA
 ```
 
@@ -315,7 +315,7 @@ This ordering is confirmed by `sub_233BD40` (the AA chain builder, 4.8KB) which 
 
 ### The Query Dispatch Path
 
-```
+```text
 User pass (GVN, DSE, LICM, MemorySSA)
   |
   v
@@ -382,7 +382,7 @@ The cross-address-space NoAlias decision is the cheapest and most impactful alia
 
 The decision algorithm implemented in `NVPTXAAResult::alias`:
 
-```
+```text
 if AS1 == 0 or AS2 == 0:          -> MayAlias   (generic escapes all reasoning)
 if AS1 == AS2:                     -> MayAlias   (same space, need deeper AA)
 if {AS1,AS2} == {3,7}:            -> MayAlias   (shared/cluster overlap)
@@ -396,7 +396,7 @@ When MemorySpaceOpt or IR generation determines that a generic-space pointer pro
 
 The AA evaluator at `sub_13549C0` detects this metadata during pointer collection (Phase 2 of the evaluator). When it encounters an instruction with opcode byte `0x4E` (78, ASCII 'N'), it tags the pointer value with bit 2 set (OR with 4):
 
-```
+```c
 // At 0x1356170, 0x1356180, 0x1356190 in the AA evaluator:
 if opcode_byte == 0x4E:          // noalias.addrspace annotation
     tagged_ptr = raw_ptr | 4     // set bit 2 as disambiguation flag

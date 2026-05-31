@@ -24,7 +24,7 @@ Minimum header size is 24 bytes. Total node allocation: `24 + 8 * num_operands` 
 
 Operands are stored as 8-byte QWORD pointers at negative offsets from the header. The stride is exactly 8 bytes per operand. Access follows this pattern (decompiled from `sub_162D4F0`):
 
-```
+```c
 operand[k] = *(_QWORD *)(a1 + 8 * (k - num_ops))
 ```
 
@@ -44,7 +44,7 @@ The `context_ptr` at offset +16 uses low-bit tagging to encode indirection:
 
 The decompiled dereferencing pattern:
 
-```
+```c
 v = *(a1 + 16) & 0xFFFFFFFFFFFFFFF8;  // mask off tag bits
 if (*(a1 + 16) & 4)                    // bit 2 set = indirect
     v = *v;                             // one extra dereference
@@ -109,13 +109,13 @@ Opcodes 0x1C, 0x1D, and 0x1E read the `subopcode` field at `*(unsigned __int16 *
 
 Every DenseMap in the uniquing tables uses the same hash:
 
-```
+```c
 hash(ptr) = (ptr >> 9) ^ (ptr >> 4)
 ```
 
 Hash computation for multi-operand nodes (`sub_15B3480`) extends this by combining the hash of each operand pointer with a mixing step. The hash seed is the opcode byte, then each operand is folded in:
 
-```
+```c
 seed ^= hash(operand[i]) + 0x9E3779B9 + (seed << 6) + (seed >> 2);
 ```
 
@@ -233,7 +233,7 @@ The context object referenced by `context_ptr` is a large structure (**~3,656 by
 
 The 18 entries for opcodes 0x04 through 0x15 (plus a few extras) are 32-byte structures at fixed offsets:
 
-```
+```c
 struct SimpleOpcodeTable {
     void  *buckets;       // +0:  heap-allocated bucket array
     int32  num_items;     // +8:  live entry count
@@ -250,7 +250,7 @@ Byte offsets increase monotonically: +496, +528, +560, +592, +624, +656, +688, +
 
 Each DenseMap for a complex opcode occupies 4 qwords plus associated dword counters:
 
-```
+```c
 struct OpcodeUniqueMap {
     int64  num_entries;    // qw[N]:   includes tombstones
     void  *buckets;        // qw[N+1]: heap-allocated bucket array

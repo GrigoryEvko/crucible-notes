@@ -167,7 +167,7 @@ The decompilation shows the switch cases use literal integers 1073–1079. The
 registry IDs are 0x12–0x18 (= 18–24). The offset is exactly 1055 between the
 two:
 
-```
+```text
 case_number = intrinsic_id + 1055
 ```
 
@@ -179,7 +179,7 @@ substitute their own ID/case mapping.
 
 ### Memory Layout of an Emitted Declaration
 
-```
+```c
 struct ptx_decl_record {
     /*  0 */ char *text;          // pointer returned by sub_14932E0
     /*  8 */ uint32_t length;     // strcpy'd byte count, excluding NUL
@@ -358,7 +358,7 @@ generic "unrecognised option value" diagnostic.
 CUDA 13.0 introduced a hard check that prevents linking sanitized objects
 across toolkit major versions. The error message lives at `0x1D393D8`:
 
-```
+```text
 Cannot link sanitized object '%s' from version %d with sanitized object from
 a different toolkit version (%d)
 ```
@@ -398,7 +398,7 @@ sound way to catch this without changing the weak declarations themselves.
 Indexed format means the attribute records a function index rather than a
 range of offsets. The encoding in the `.nv.info` section is:
 
-```
+```text
 +0:  uint8_t  format     = 0x04  (EIFMT_HVAL_INDEXED)
 +1:  uint8_t  attribute  = 0x5C  (EIATTR_SANITIZE)
 +2:  uint16_t value      = func_index   // 1-based into .symtab
@@ -413,7 +413,7 @@ omit the attribute even when the compilation unit was sanitized.
 
 Free format means a variable-length list of 32-bit offsets:
 
-```
+```text
 +0:  uint8_t  format     = 0x03  (EIFMT_HVAL_FREE)
 +1:  uint8_t  attribute  = 0x57  (EIATTR_STACK_CANARY_TRAP_OFFSETS)
 +2:  uint16_t length     = sizeof(uint32_t) * N
@@ -430,7 +430,7 @@ preserves the attribute verbatim across the merge.
 The two attributes typically appear together in a single `.nv.info.<funcname>`
 section emitted per-instrumented function:
 
-```
+```text
 Offset  Size  Contents
 ------  ----  ----------------------------------------
 +0      4     EIATTR_REGCOUNT (id 0x12, sized)

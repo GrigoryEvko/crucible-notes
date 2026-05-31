@@ -25,7 +25,7 @@ The NVVM IR Verifier (`nvvm-verify`) is NVIDIA's three-layer correctness gate th
 
 The pass operates as three nested verification functions. The module verifier is the entry point; it calls the function verifier once per function, and the function verifier dispatches to the intrinsic verifier for every intrinsic call instruction.
 
-```
+```text
 sub_2C80C90 (NVVM module verifier)
   |
   +-- Validate data layout string
@@ -132,7 +132,7 @@ The unsupported instructions -- `indirectbr`, `invoke`, `resume`, `landingpad` -
 
 The `addrspacecast` validation enforces NVIDIA's GPU address space model:
 
-```
+```text
 Rule: At least one operand of addrspacecast must be AS 0 (generic).
       Non-generic-to-non-generic casts are illegal.
 
@@ -226,7 +226,7 @@ Many NVVM intrinsics require one or more arguments to be compile-time constants 
 
 ### B. Rounding Mode Validation
 
-```
+```text
 Rounding mode encoding: bits[2:0] of the mode word
 Valid range: 1..4 (round-to-nearest-even, round-down, round-up, round-to-zero)
 Reject: value == 0 or value > 4
@@ -237,7 +237,7 @@ Message: "rounding mode not a valid value"
 
 For conversion intrinsics that operate on sub-word portions:
 
-```
+```text
 Source subword mode:  bits[9:7], valid range 0..2
 Dest subword mode:    bits[12:10], valid range 0..2
 Messages: "src subword mode not a valid value"
@@ -367,7 +367,7 @@ Mbarrier / arrive-wait synchronization objects live exclusively in `addrspace(3)
 
 For math intrinsics with saturation control (IDs 0x2281-0x229C, covering fma/mul/add variants):
 
-```
+```text
 Message: "satf operand must be a constant zero"
 ```
 
@@ -396,7 +396,7 @@ For IDs 0x2319-0x231B:
 
 For ID 0x231C:
 
-```
+```text
 Validation: (value & 7) must be <= 2
 Message: "invalid load bounds check type"
 Also: "pointer address space not global"
@@ -406,7 +406,7 @@ Also: "pointer address space not global"
 
 For IDs 8282 (`llvm.nvvm.branch.if.all.convergent`) and 8283 (`llvm.nvvm.branch.if.convergent`):
 
-```
+```text
 Message: "result of llvm.nvvm.branch.if.convergent and
           llvm.nvvm.branch.if.all.convergent can only be
           used by exactly one branch instruction"
@@ -458,7 +458,7 @@ The most complex validation category (ID 0x2366 = 9062). Validates WMMA/MMA intr
 
 For IDs 0x2106 and 0x2107:
 
-```
+```text
 Conversion type: bits[3:1], must be 1..4
 Messages: "conversion type not a valid value"
           "Invalid dst type" / "Invalid src type"
@@ -559,7 +559,7 @@ Several "unexpected"-prefixed messages indicate the verifier detected an MMA var
 
 The module verifier enforces strict constraints on `cmpxchg`:
 
-```
+```text
 Allowed types:  i32, i64, i128
 Allowed spaces: generic (AS 0), global (AS 1), shared (AS 3)
 
@@ -574,7 +574,7 @@ This rules out i8/i16 atomics (hardware does not support sub-word CAS) and atomi
 
 Load and store instructions targeting address space 6 (tensor memory) are rejected at the IR level:
 
-```
+```text
 Message: "Tensor Memory loads/stores are not supported"
 ```
 

@@ -343,7 +343,7 @@ This flag is referenced in 7 decompiled functions (`sub_430920`, `sub_42FE50`, `
 
 The host compiler version globals are initialized in `proc_command_line` and propagated to the dialect system during TU initialization:
 
-```
+```text
 proc_command_line (CLI parsing, sub_459630):
   case 184 (--gnu_version=X):   qword_126EF98 = X   // GCC version
   case 188 (--clang_version=X): qword_126EF90 = X   // Clang version
@@ -417,7 +417,7 @@ The full parsing grammar:
 
 Debug trace requests are stored as a singly-linked list rooted at `qword_1065870`. Each node is 28 bytes, allocated via `sub_6B7340` (the IL allocator):
 
-```
+```c
 struct debug_trace_node {           // 28 bytes (32 allocated)
     struct debug_trace_node* next;  // +0:  linked list link
     char*  name_string;             // +8:  entity name to trace (heap copy)
@@ -485,7 +485,7 @@ This layer does not check GPU architecture at all -- instead, it gates the **out
 
 ### Interaction Between Layers
 
-```
+```text
 nvcc (driver)
   |
   | --target=<sm_code>  --gnu_version=<ver>  --clang_version=<ver>

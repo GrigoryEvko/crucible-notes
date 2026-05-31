@@ -123,7 +123,7 @@ No error. Returned when module loading, compilation, or linking completes withou
 
 **Special handling:** Code 7 receives unique treatment parallel to code 4. In `sub_4297B0`, `sub_42A2D0`, and `sub_42AF40`, when the error code is 7 the handler checks `byte_2A5F298` (the `-lto-allow-unresolved` flag at `0x2A5F298`) and whether the filename contains `"cudadevrt"`. If the flag is set or the input is libcudadevrt, the error is silently suppressed. Otherwise, a fatal diagnostic is emitted via descriptor `unk_2A5B660`:
 
-```
+```text
 nvvm IR for arch <target_arch> not found in <filename>
 ```
 
@@ -200,7 +200,7 @@ nvvm IR for arch <target_arch> not found in <filename>
 
 The generic error handler `sub_4297B0` at `0x4297B0` implements a three-way dispatch:
 
-```
+```c
 sub_4297B0(error_code, filename):
     if error_code == 0:
         return                          // success, nothing to report
@@ -391,7 +391,7 @@ Several CLI options control diagnostic emission:
 
 ## Error Flow Architecture
 
-```
+```text
 Input Processing (sub_42AF40 / sub_42A2D0)
     |
     +-- sub_4BD0A0  (NVVM IR compilation)    --> codes 0, 5, 7

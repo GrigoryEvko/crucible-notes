@@ -43,7 +43,7 @@ The encoding context object has this layout:
 
 SASS instructions use a 3-level opcode hierarchy packed into the first 32 bits of the encoding buffer. The format code in bits [0:3] determines instruction width:
 
-```
+```text
 128-bit instruction word:
   bits [0:3]     = 0x2       (format code: 128-bit)
   bits [4:6]     = 0x0       (scheduling group slot 0)
@@ -452,7 +452,7 @@ Opcode classes: 0x00--0x09, 0x10, 0x12, 0x14--0x1E, 0x26, 0x28, 0x2A.
 
 The 128-bit format sets the extended opcode flag at bit offset 0x84, which the 64-bit format does not:
 
-```
+```c
 128-bit (6 initial sub_7B9B80 calls):
   sub_7B9B80(a1, 0,    4, 2)     // format code = 2
   sub_7B9B80(a1, 4,    3, 0)     // sched group slot
@@ -642,7 +642,7 @@ The SASS instruction encoder uses a two-stage pipeline to convert abstract virtu
 
 `sub_1B6B250` (2965 bytes, 254 callers, 0 callees) is a fully unrolled lookup table that implements the mapping:
 
-```
+```text
 hardware_reg = register_class * 32 + sub_index
 ```
 
@@ -691,7 +691,7 @@ The index-16 gap is not speculation -- it is an explicit, deliberate skip in the
 
 The architectural reason is a half-bank boundary in the register file hardware. Each 32-entry class stride divides into two 16-entry halves:
 
-```
+```text
 Lower half:  indices  0 -- 15   (hw numbers  N*32+0  through  N*32+15)
 Upper half:  indices 16 -- 31   (hw numbers  N*32+16 through  N*32+31)
 ```
@@ -720,7 +720,7 @@ __int64 write_register_field(__int64 a1, int encoded_reg) {
 
 Bit-level layout within the DWORD at `*(instruction_buffer + 12)`:
 
-```
+```text
 DWORD bits:  31 30 29 28 27 26 25 24 23 22 21 20 19 18 17 16 15 14 13 12 11 10  9  8  7 ..  0
                       [  h2:h0  ]                                      [ l4:l3:l2:l1:l0 ]
                       hw[7:5]                                          hw[4:0]
@@ -760,7 +760,7 @@ Additional encoding variants for different operand positions include `sub_1B6D59
 
 The complete register encoding pipeline from virtual register to instruction bits:
 
-```
+```text
 Virtual Register (vreg+64 = reg_type, vreg+68 = physical_reg)
   |
   v
@@ -805,7 +805,7 @@ Virtual Register (vreg+64 = reg_type, vreg+68 = physical_reg)
 
 The table spans 0x22E6380--0x22E67C0 (1,088 bytes). It is a flat array of 68 entries, one per instruction type word (0--67), each 16 bytes:
 
-```
+```c
 struct TopEntry {       // 16 bytes
     SubEntry *subtable; // pointer to binary-search subtable
     uint64_t  count;    // number of entries in subtable
@@ -814,7 +814,7 @@ struct TopEntry {       // 16 bytes
 
 Each subtable entry is 24 bytes, sorted by `key0` for binary search:
 
-```
+```c
 struct SubEntry {       // 24 bytes
     uint8_t  key0;      // *(a2+14) -- primary search key (opcode variant)
     uint8_t  key1;      // *(a2+15) -- secondary match key (format class)
@@ -1054,7 +1054,7 @@ The format descriptor writes these fields into the Encoding Context object. All 
 
 The format descriptors bridge ISel pattern matching and per-SM encoding:
 
-```
+```text
 ISel Pattern Matcher (sub_1731440, FNV-1a hash on *(a2+12))
   |
   v  (virtual dispatch via vtable)
@@ -1137,7 +1137,7 @@ hardcoded offset constants passed as the fourth argument to `sub_7BC030`
 
 The bit layout that produces these offsets:
 
-```
+```text
 64-bit instruction (format code 1):
 
   bits[0:31]   fixed header (format code, sched slot, major/minor/format ID)
@@ -1298,7 +1298,7 @@ Populates full IR records before low-level packing. Uses `sub_9B3C20(a1, a2, slo
 **Layer 2: Binary encoders (0x10EE900--0x1134160, ~400 functions)**
 Reads operand fields from IR via `sub_10BDxxx` extractors, transforms through `sub_10Bxxx` lookup tables, and packs results into the 128-bit output word at `*(QWORD*)(a1+40)`:
 
-```
+```c
 // Generalized Layer 2 encoder pipeline (sub_10F91D0 pattern):
 //
 // State:  a1+32 = lookup_tables_base,  a1+40 = ptr to 128-bit output word
@@ -1338,7 +1338,7 @@ output_128[0..15] |= format_descriptor_xmmword   // e.g. xmmword_231C170
 
 Register pair encoder (`sub_112CDA0`): maps even/odd register pairs to a 6-bit index packed at bits [25:30] of `word[0]`. The 40 valid combinations and their encoding:
 
-```
+```c
 // pair_index = reg_lo / 2,  where reg_lo in {0,2,4,...,78} and reg_hi = reg_lo+1
 // Validation: both regs present AND reg_hi == reg_lo + 1 (consecutive pair)
 // Encoding:   word[0] |= (pair_index << 25)
@@ -1379,7 +1379,7 @@ Maximum observed variant value is 0x2F (47), giving up to 48 sub-operations per 
 
 The final stage of the encoding pipeline operates at the instruction-word level: 11 per-instruction-form bitfield packers at addresses 0x1B79940--0x1B9C220 take a pre-decoded instruction descriptor and pack all fields into a 128-bit SASS instruction word. These functions sit at Level 2 of a 4-level emission hierarchy:
 
-```
+```text
 Level 0: SM-target dispatch    (0xC4DF70, 0xC53330, 0xC54090, 0xC59610, 0xC5ABE0, 0xC5B5C0)
 Level 1: Emission orchestrators (Zone C: 0x1BA0000-0x1BE5000, ~150 functions)
 Level 2: Per-form bit packers   (Zone B: 0x1B79940-0x1B9C220, 11 functions, THIS SECTION)
@@ -1511,7 +1511,7 @@ The `hi_pfx` parameter is the only value that differs across the 11 functions:
 
 ### Combinator Mask Bit-Field Decomposition
 
-```
+```text
 result[3] bit layout for combinator-generated masks:
   bits [28:26] = axis0 prefix     (3-bit: 0→000, 1→001, 2→010, 3→011, 4→100, 5→101)
   bits [19:14] = 0x3F             (always set -- the BASE 0xFC000)
@@ -1556,7 +1556,7 @@ SM89 (Ada Lovelace) and SM90 (Hopper) share a pre-encoding instruction reorderin
 
 ### Call Chain
 
-```
+```text
 sub_C60910 / sub_C5FEF0   SM-target dispatch (Level 0, 0xC5xxxx range)
   |
   v
@@ -1607,7 +1607,7 @@ Each bitvector is sized to the function's total register count (`*(ctx+224)`). P
 
 The single switch at line 2578 dispatches on the instruction category:
 
-```
+```c
 case 4 (ALU):     merge load + store + ALU vectors into main
 case 3 (branch):  merge load vector only
 case 0 (uncategorized): merge store vector only
@@ -1622,7 +1622,7 @@ Knob-derived flags control reordering aggressiveness:
 
 **Floating-point cost heuristic.** The orchestrator (`sub_1233D70`, lines 178--225) computes four weight parameters from the target descriptor and passes them to Pass B as doubles. The base weights are hardcoded; two knob-controlled overrides can replace them:
 
-```
+```c
 // Orchestrator weight setup (sub_1233D70):
 //
 // Weight pair 1 -- memory instruction priority
@@ -1647,7 +1647,7 @@ Knob-derived flags control reordering aggressiveness:
 
 Pass B stores the normalized weights in the state object at double offsets +13 through +19 (byte offsets +104 through +152) and evaluates a quadratic-in-N cost at two call sites to decide whether an instruction group should be emitted or deferred:
 
-```
+```c
 // Cost function (sub_122F650, lines 3329-3330 and 3233-3236):
 //
 //   cost(N) = N * ((N - min_regs) * slope + intercept)

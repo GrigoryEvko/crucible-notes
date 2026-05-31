@@ -22,7 +22,7 @@ The state object maintains 18 linked lists (9 head/tail pairs at offsets 368--51
 
 ## Architecture
 
-```
+```text
 PTX source text
      |
      v
@@ -357,7 +357,7 @@ This 4,937-byte function validates variable declarations across all state spaces
 
 The parser maintains 18 linked list heads (9 head/tail pairs) at state offsets 368--512 to track declared symbols per state space:
 
-```
+```text
 Offset    Pair   State Space
 368/376   0      .global
 384/392   1      .shared

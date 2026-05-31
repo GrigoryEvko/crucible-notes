@@ -62,7 +62,7 @@ The decision communicates its result through a struct passed by pointer (`a12` /
 
 Every decision in the cascade uses the same linear cost model to estimate unrolled loop size:
 
-```
+```c
 estimated_size = FixedCost + Count * (LoopBodySize - FixedCost)
 ```
 
@@ -70,7 +70,7 @@ estimated_size = FixedCost + Count * (LoopBodySize - FixedCost)
 
 For full unrolls, an additional dynamic cost simulation (`sub_19B9A90`) constant-folds through the unrolled body. If the loop contains iteration-dependent simplifications (constant array indices, strength-reduced expressions), the simulation reports a cost lower than worst-case. The effective budget for this check is boosted:
 
-```
+```c
 dynamic_budget = Threshold * MaxPercentThresholdBoost / 100
 ```
 
@@ -400,7 +400,7 @@ CICC invokes LoopUnroll with six distinct configurations at different pipeline s
 
 Call site: `sub_12DE330`
 
-```
+```c
 LoopUnroll(2, -1, -1, -1, -1, -1, -1)
 ```
 
@@ -410,7 +410,7 @@ All parameters at defaults. Standard unrolling with default thresholds at optimi
 
 Call site: `sub_12DE8F0`, when `*(a3+4480) < 0` (NVIDIA code-size flag set)
 
-```
+```c
 LoopUnroll(a2, -1, -1, 0, 0, 0, 0)
 ```
 
@@ -420,7 +420,7 @@ All unrolling features disabled: partial, runtime, upper-bound, and profile-base
 
 Call site: `sub_12DE8F0`, when `*(a3+4480) >= 0` (normal mode)
 
-```
+```c
 LoopUnroll(a2, -1, -1, -1, -1, -1, -1)
 ```
 
@@ -430,7 +430,7 @@ Fully aggressive unrolling with all defaults. The optimization level is passed t
 
 Call site: `sub_12DE8F0`, late pipeline position
 
-```
+```c
 LoopUnroll(a2, -1, -1, 0, 0, -1, -1)
 ```
 
@@ -440,7 +440,7 @@ Partial and runtime unrolling disabled, but upper-bound and profile-based unroll
 
 Call site: `sub_12E54A0`
 
-```
+```c
 LoopUnroll(3, -1, -1, 0, 0, -1, 0)
 ```
 
@@ -450,7 +450,7 @@ Optimization level 3 with aggressive thresholds, but partial, runtime, and profi
 
 Call site: `sub_12EA3A0`
 
-```
+```c
 LoopUnroll(a1[4], a1[5], a1[6], a1[7], a1[8], a1[9], a1[10])
 ```
 

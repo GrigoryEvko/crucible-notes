@@ -34,7 +34,7 @@ The secondary array accumulates a separate cost metric used for tie-breaking. It
 
 Before the pressure scan begins, the allocator computes the maximum physical register count for the current class:
 
-```
+```c
 v231 = hardware_limit + 7                   // alloc+756, with headroom
 if allocation_mode == 6 (CSSA paired):
     v231 *= 4                               // quad range for paired allocation
@@ -51,7 +51,7 @@ The register budget at `alloc+1524` interacts with `--maxrregcount` and `--regis
 
 After computing the budget, the allocator initializes an occupancy bitvector (`sub_957020` + `sub_94C9E0`) that tracks which physical register slots are already assigned. The bitvector is sized to `ceil(budget / 64)` 64-bit words. For each VR being allocated, `sub_94C9E0` sets bits covering the VR's footprint in the bitvector using a word-level OR with computed masks:
 
-```
+```c
 function mark_occupancy(bitvec, range, alignment):
     lo_word = alignment >> 6
     hi_word = min(alignment + 64, range) >> 6
@@ -75,7 +75,7 @@ The per-VR pressure computation is the core of the fat-point allocator. For each
 
 For each VR, the allocator computes the physical register footprint via `sub_7DAFD0`:
 
-```
+```c
 function aligned_width(vreg):
     stride = 1 << vreg.alignment                // vreg+72, uint8
     size   = vreg.width                          // vreg+74, uint16
@@ -101,7 +101,7 @@ The pair mode is extracted from `(vreg+48 >> 20) & 3`:
 
 The scan range defines which physical register slots are candidates:
 
-```
+```c
 function compute_scan_range(alloc, vreg):
     max_slot = alloc.budget                          // alloc+1524
     if vreg.flags & 0x400000:                        // per-class ceiling override
@@ -123,7 +123,7 @@ The `+4` on scan_width provides padding beyond the register file limit. For pair
 
 Before accumulating interference for this VR, both arrays are zeroed over `scan_width` DWORDs:
 
-```
+```c
 function zero_pressure(primary[], secondary[], scan_width):
     if scan_width > 14 and arrays_dont_overlap:
         // SSE2 vectorized path: zero 4 DWORDs per iteration
@@ -148,7 +148,7 @@ Before the pressure walk, the constraint list at `vreg+144` must already be popu
 
 Each operand in the Ori IR is an 8-byte (two-DWORD) value. The low DWORD encodes the operand kind and register identity:
 
-```
+```text
 Low DWORD (operand[0]):
   bits 31       sign/direction flag (1 = negated or descending)
   bits 28--30   operand_type (3 bits, 0--7)
@@ -165,7 +165,7 @@ High DWORD (operand[1]):
 
 The extraction idiom recurring throughout `sub_926A30`:
 
-```
+```c
 operand_type = (operand[0] >> 28) & 7     // 3-bit kind
 reg_id       =  operand[0] & 0xFFFFFF     // 24-bit VR index
 is_register  = (operand_type - 2) <= 1    // types 2,3 = VR operands
@@ -190,7 +190,7 @@ Operand type values observed in the decompiled code (cross-referenced with `isel
 
 The full constraint builder is `sub_926A30` (4005 lines). Lines 521--803 implement a per-instruction operand normalization pre-pass; lines 803--1058 perform opcode-specific rewriting (merged pairs, constant materialization, dead-operand elimination); constraint extraction proper begins at line 1058. The pseudocode below covers the core three-phase structure.
 
-```
+```c
 function build_constraints(ctx, opcode, isel_desc, num_ops, operands):
     // ---- Phase 0: operand normalization (lines 521--803) ----
     // Strip the 0x1000 flag: base_opcode = opcode & 0xFFFFCFFF
@@ -329,7 +329,7 @@ The allocator iterates the constraint list at `vreg+144`. For VRs with alias cha
 
 The constraint type dispatches to different accumulation patterns:
 
-```
+```c
 function accumulate_pressure(primary[], secondary[], constraint_list, scan_width,
                              base_offset, pair_mode, half_width_mode, iteration):
     soft_count = 0
@@ -443,7 +443,7 @@ Three inner loops use SSE2 intrinsics:
 
 On retry iterations (iteration > 0), the allocator progressively relaxes soft constraints to reduce pressure:
 
-```
+```c
 function should_skip_soft_constraint(soft_count, iteration, knob_weight,
                                      knob_ceiling, bank_aware):
     threshold = iteration * knob_weight           // more skipped each retry
@@ -462,7 +462,7 @@ The relaxation formula means: on iteration N, the first `N * knob_weight` soft c
 
 After pressure accumulation, the allocator scans for the physical register slot with the lowest cost:
 
-```
+```c
 function select_fatpoint(primary[], secondary[], start, ceiling, budget,
                          step_size, shift, occupancy_bv, threshold,
                          first_pass, bank_mode, bank_mask, prev_assignment):
@@ -536,7 +536,7 @@ Key design decisions in the fatpoint scan:
 
 The selected slot is committed via `sub_94FDD0`:
 
-```
+```c
 alloc.cumulative_pressure += best_primary       // alloc+788
 sub_94FDD0(alloc, ctx, iteration, vreg, &local_state, best_slot, best_primary)
 vreg = vreg.next                                 // vreg+128, advance worklist
@@ -548,7 +548,7 @@ The cumulative pressure counter at `alloc+788` tracks the total interference wei
 
 After all VRs are processed, the allocator computes the result (lines 1594--1641):
 
-```
+```c
 peak_usage = alloc+1580                          // max physical register used
 class_slot = ctx+1584 + 4 * mode + 384
 *class_slot = peak_usage
@@ -606,7 +606,7 @@ The interference builder iterates this list for every VR being assigned, accumul
 
 Program points are assigned per-block during the fatpoint scan (`sub_925BB0`). Each block maintains a monotonic counter at `block+160`, incremented once per instruction. The resulting index is stored into the instruction node at `instr+68`:
 
-```
+```c
 function assign_program_points(block):
     counter = *(block + 160)            // current point, initially -1
     for instr in block.instruction_list:
@@ -623,7 +623,7 @@ Constraint types 0 (point interference) and 3 (below-point) reference program po
 
 The pair alignment mode is encoded in two places: bits 26--27 of the operand descriptor dword\[0\], and bits 20--21 of the VR flags at `vreg+48`. The per-operand field is checked first by `sub_91A0F0` to determine the constraint type:
 
-```
+```c
 function compute_constraint_type(opcode, operand_desc, operand_index):
     desc = operand_desc[2 * operand_index]      // dword[0] of 8-byte slot
     op_type = (desc >> 28) & 7                   // operand type field
@@ -653,7 +653,7 @@ This feeds constraint types 5--7 (paired-low, paired-high, aligned-pair) during 
 
 After the pressure arrays are populated for a given VR, the allocator scans physical register candidates and selects the one with minimum cost:
 
-```
+```c
 function select_register(primary[], secondary[], maxRegs, threshold, pair_mode):
     best_slot = -1
     best_primary_cost = MAX_INT
@@ -699,7 +699,7 @@ Once a physical register slot is selected, `sub_94FDD0` (155 lines) commits the 
 
 The physical register number is written to `vreg+68`. The register consumption counter (`sub_939CE0`, 23 lines) computes how many physical slots this VR occupies:
 
-```
+```c
 consumption = slot + (1 << (pair_mode == 3)) - 1
 ```
 
@@ -709,7 +709,7 @@ For single registers, this is just `slot`. For double-width pairs (pair_mode 3),
 
 For predicate registers (class 2, type 3), the allocator performs a half-width division. The physical slot is divided by 2, and the odd/even bit is stored at `vreg+48` bit 23 (the `0x800000` flag):
 
-```
+```c
 physical_reg = slot / 2
 if slot is odd:
     vreg.flags |= 0x800000    // hi-half of pair
@@ -723,7 +723,7 @@ This maps two virtual predicate registers to one physical predicate register, si
 
 If `slot >= regclass_info.max_regs` and the VR is not already marked as spilled (flag `0x4000` at `vreg+48`), the allocator sets the needs-spill flag:
 
-```
+```c
 vreg.flags |= 0x40000         // needs-spill flag (bit 18)
 ```
 
@@ -732,7 +732,7 @@ When the needs-spill flag is later detected, the allocator calls:
 2. `sub_94F150` -- spill code generation (561 lines, emits spill/reload instructions)
 
 The spill cost is accumulated:
-```
+```c
 alloc.total_spill_cost += vreg.spill_cost     // double at alloc+1568
 alloc.secondary_cost   += vreg.secondary_cost  // float at alloc+1576
 ```
@@ -741,7 +741,7 @@ alloc.secondary_cost   += vreg.secondary_cost  // float at alloc+1576
 
 After writing the physical register, the function follows the alias chain at `vreg+36` (coalesced parent pointer). Every VR in the chain receives the same physical assignment:
 
-```
+```c
 alias = vreg.alias_parent                    // vreg+36
 while alias != NULL:
     alias.physical_register = slot           // alias+68
@@ -774,7 +774,7 @@ When enabled and the allocation mode is 3, 5, or 6, the pass:
 
 The scanner checks each instruction for pair-preassignment opportunities. It runs under two independent flags: `alloc+441` (coalescing-aware scan, gated by knob 569) and `alloc+440` (uniform-MAC scan). The core logic finds the destination operand, then walks subsequent operands looking for pair linkage:
 
-```
+```c
 function scan_block_for_prealloc(alloc, insn):
     ctx = alloc->code_obj->ctx
     coalesce_scan = *(alloc + 441) AND knob_match(ctx, 569, insn)
@@ -824,7 +824,7 @@ tail_checks:
 
 Iterates operands finding register-typed candidates, uses the opcode switch to classify each as read-side or write-side:
 
-```
+```c
 function pre_assign_operands(alloc, insn, block_idx):
     if insn == NULL OR insn->num_operands == 0: return
     operands = &insn->operand[0]
@@ -881,7 +881,7 @@ The per-class allocation driver (355 lines) wraps the core allocator in a two-ph
 
 The first attempt runs the core allocator without spill permission. The debug log emits:
 
-```
+```text
 "-CLASS NOSPILL REGALLOC: attemp N, used M, target T"
 ```
 
@@ -889,7 +889,7 @@ The first attempt runs the core allocator without spill permission. The debug lo
 
 The call sequence for each NOSPILL attempt:
 
-```
+```c
 sub_93FBE0(alloc, ctx, iteration)       // reset state for attempt
 if iteration == 0:
     sub_956130(alloc, class)            // build interference masks (first attempt only)
@@ -921,7 +921,7 @@ If all NOSPILL attempts fail, the driver records the last NOSPILL result (`sub_9
 
 If spill instructions have not been generated for this class (flag at `alloc+865`), `sub_9714E0` calls `sub_939BD0` (spill strategy init) and `sub_94F150` (spill codegen to LMEM), then records the starting register count:
 
-```
+```c
 function spill_phase(alloc, max_attempts, class, best):
     if alloc.prev_reg_count + 1 >= max_attempts:
         return {spilled=false}
@@ -935,7 +935,7 @@ function spill_phase(alloc, max_attempts, class, best):
 
 The target vtable (slot 848) determines how many extra registers the architecture offers. With a nonzero spill budget, VRs are marked with the spill sentinel:
 
-```
+```c
     spill_budget = vtable[856](target, alloc.spill_start)
     alloc.spill_count = spill_budget               // alloc+1520
     if spill_budget > 0:
@@ -949,7 +949,7 @@ The target vtable (slot 848) determines how many extra registers the architectur
 
 The validation gate (vtable slot 280) checks viability. On rejection, markings are unwound:
 
-```
+```c
     if spill_budget > 0 and not vtable[280](alloc):
         alloc.spill_count = 0
         for vreg in alloc.class_list:
@@ -961,7 +961,7 @@ The validation gate (vtable slot 280) checks viability. On rejection, markings a
 
 `sub_940EF0` (503 lines) resets allocation state for the current class. It walks six priority buckets at `alloc+72..184`, clearing `vreg+104` for every VR, then re-triages each:
 
-```
+```c
 function rebuild_interference(alloc, ctx):
     alloc.cost_array = arena_alloc(num_regs + 1)   // alloc+856, zeroed
     alloc.available  = spill_start - class_base     // alloc+56
@@ -990,7 +990,7 @@ function rebuild_interference(alloc, ctx):
 
 The core allocator runs via `sub_957160` with attempt=99 (spill-mode sentinel). The architecture vtable (slot 168) adjusts the result:
 
-```
+```c
     result = sub_957160(alloc, ctx, 99)
     result = vtable[168](alloc, class, result, alloc.prev_reg_count)
     if alloc.prev_reg_count + 1 >= result:          // fits budget
@@ -1003,7 +1003,7 @@ The core allocator runs via `sub_957160` with attempt=99 (spill-mode sentinel). 
 
 If still over budget, the driver calls `sub_96D940` (2983 lines) for refined spill candidates:
 
-```
+```c
     if result > budget and spill_count == 0:
         sub_93D070(&best, class, 99, result, pressure, alloc, cost)
         if not best.has_valid:
@@ -1019,7 +1019,7 @@ The guidance engine allocates an 11112-byte structure with 7 priority queues (qw
 
 On success (high byte == 0), VRs with bit 18 of `vreg+48` (`0x40000`, "must-spill") lacking bit 9 (`0x200`, "materialized") are counted at `ctx+1584 + 4*class + 412`. On failure (high byte != 0), physical assignments are cleared:
 
-```
+```c
     if failed:
         for vreg in alloc.class_list:
             if not (vreg.flags & 0x20) and vreg.reg_type != 8:
@@ -1033,7 +1033,7 @@ The outer loop in `sub_9721C0` retries `sub_971A90` while nonzero, with arena cl
 
 For allocation modes 3 or 6 when the compilation target is device type 5, shared-memory spilling is activated before the retry loop:
 
-```
+```c
 if (class == 3 || class == 6) and device_type == 5:
     if num_variables > 0:
         sub_939BD0(alloc)                  // spill allocator setup
@@ -1047,7 +1047,7 @@ This path generates spill/reload instructions targeting shared memory instead of
 
 The top-level entry point (`sub_9721C0`, 1086 lines) drives allocation for all register classes sequentially:
 
-```
+```c
 for class_id in 1..6:
     if class_list[class_id] is empty:
         continue
@@ -1071,7 +1071,7 @@ Class 0 (unified/cross-class) is skipped in the main loop. It is used for cross-
 
 Before the per-class loop, virtual registers are distributed into class-specific linked lists (lines 520--549 of `sub_9721C0`):
 
-```
+```c
 for each vreg in function_vreg_list:       // from ctx+104
     if vreg.id in {41, 42, 43, 44}:        // skip architectural predicates
         continue
@@ -1099,7 +1099,7 @@ The interference builder (4005 lines) is the largest single function in the allo
 
 ### Operand Descriptor Bit-Field Layout (low DWORD of 8-byte operand)
 
-```
+```text
   31  30 29 28  27 26 25 24  23 ............ 0
  +---+--------+--+--+--+---+------------------+
  |DEF| op_type|  modifiers |      reg_id      |
@@ -1119,7 +1119,7 @@ Sentinel test:          op_type == 7          // end of operand list
 
 ### Main Loop Pseudocode
 
-```
+```c
 function sub_926A30(ctx, opcode, op_category, operand_count, operands, flags, ...):
     // --- Phase 0: early exit & opcode canonicalization ---
     if opcode == 109:  return opcode              // NOP, nothing to process
@@ -1243,7 +1243,7 @@ Special register IDs 41--44 (PT, P0--P3) and 39 are always skipped. The skip pre
 
 The best-result recorder (155 lines) compares the current allocation result against the best seen across all retry attempts. It maintains state at offsets `best[10..20]`:
 
-```
+```c
 best[10] = register_count                   // best count so far
 best[13] = 128 / register_count             // inverse density metric
 best[16] = max_pressure                     // peak live registers
@@ -1281,7 +1281,7 @@ The function then builds the **assigned** bitvector (`alloc+1342..1345`, 256 bit
 
 Before entering the main loop, the function scans operands of the block's header instruction in reverse order (last to first). For each operand of type 1 (register) whose physical index is not 41--44 (architectural predicates):
 
-```
+```c
 for operand_idx = num_operands-1 downto 0:
     op = insn.operands[operand_idx]
     if op.type != REG or (op.phys_index - 41) <= 3:
@@ -1302,7 +1302,7 @@ A vtable call on the strategy object (`alloc[1]`) detects rematerialization. Whe
 
 ### Main Instruction Loop
 
-```
+```c
 pressure = 0; assign_count = 0        // v86, v558
 first_spill = NULL                     // alloc+1355: set when assign_count > 3
 fallback_spill = NULL                  // alloc+1356: set when assign_count > 30
@@ -1344,7 +1344,7 @@ while insn != NULL:
 
 After the loop exits, the function selects a spill point and attempts to commit:
 
-```
+```c
 if remat_candidate:       spill_insn = remat_candidate
 elif spill_point:         spill_insn = spill_point
 else:                     spill_insn = first_spill
@@ -1370,7 +1370,7 @@ The verification runs inside the post-regalloc scheduling pass (`sub_A8B680`), a
 
 ### Verification Call Flow
 
-```
+```text
 sub_A8B680 (PostAllocPass::run)
   +-- sub_A5B1C0   build pre/post def-use chains (48KB, all instructions)
   +-- sub_A76030   MemcheckPass::run -- entry point
@@ -1420,7 +1420,7 @@ The reporter (`sub_A55D80`) dispatches on the error code at `record+24`:
 
 When `DUMPIR=AllocateRegisters` is enabled (knob ID 266), the reporter (`sub_A55D80`) prints a structured diagnostic per mismatch:
 
-```
+```text
 === ... (110 '=' banner) ===
 REMATERIALIZATION PROBLEM. New Instruction [N] Old Instruction [M]   // only if instruction changed
 INSTRUCTION: [N]
@@ -1446,7 +1446,7 @@ Removals
 
 If `DUMPIR=AllocateRegisters` is not enabled and mismatches exist, the verifier prints a one-shot suggestion:
 
-```
+```text
 Please use -knob DUMPIR=AllocateRegisters for debugging
 ```
 
@@ -1517,7 +1517,7 @@ An optional override through the function-object vtable at `context+1584` (vtabl
 
 The piecewise array stores 7 `(value, x-coordinate)` pairs that define a step function mapping register counts to scale factors:
 
-```
+```c
 interpTable[0] = coeffA    interpTable[1] = maxThreads
 interpTable[2] = coeffA    interpTable[3] = pressureThresh
 interpTable[4] = coeffA    interpTable[5] = adjustedLimit     // 255 or (255 - override)
@@ -1530,7 +1530,7 @@ This means: for register counts up to `maxThreads` (default 119), the budget sca
 
 A separate linear model provides continuous interpolation for the spill guidance decision. Two more vtable queries establish the domain:
 
-```
+```c
 x_min = target->getMaxOccupancy()    // vtable slot 90 on target descriptor via context+1584
 x_max = target->getMinOccupancy()    // vtable slot 96 (offset +768) on function-object via context+1584
 y_min = coeffC                       // 0.3
@@ -1544,7 +1544,7 @@ The slope is stored at `alloc+1736`. Since `x_max` (minimum occupancy, meaning f
 
 The spill guidance function `sub_96D940` (line 1520 in the decompiled output) uses the linear model to compute a dynamic spill threshold:
 
-```
+```c
 budget_fraction = (current_reg_count - x_min) * slope + y_min
 spill_threshold = budget_fraction * (class_budget - class_floor + 1)
 ```
@@ -1556,7 +1556,7 @@ Where:
 
 The comparison at line 1527:
 
-```
+```c
 if (spill_count + unspilled_need_spill + current_reg_count) > spill_threshold:
     trigger_spill(sub_948B80)
 ```
@@ -1578,7 +1578,7 @@ For a Blackwell SM100 kernel with default knobs:
 
 If the current GPR class has a budget of 128 and floor of 0 (range = 129), and the function currently uses 300 registers:
 
-```
+```c
 budget_fraction = (300 - 240) * 0.00292 + 0.3 = 0.475
 spill_threshold = 0.475 * 129 = 61.3
 ```

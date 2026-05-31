@@ -58,7 +58,7 @@ These 4 sections carry NVIDIA-proprietary debug data that has no standard DWARF 
 
 Every Mercury section uses an `Elf64_Shdr` (64 bytes) with NVIDIA-specific `sh_type` values and the Mercury flag in `sh_flags`. The section header layout is standard ELF64:
 
-```
+```text
 Offset  Size  Field          Mercury usage
 ------  ----  -------------- ------------------------------------------
 0x00    4     sh_name        Offset into section-local .shstrtab
@@ -106,7 +106,7 @@ The suffix appended is the original kernel section name (e.g., `.text.mykernel`)
 
 When `ELF_BuildSectionTable` (`sub_1CEE030`) creates a per-kernel Mercury section, it constructs the section with this layout:
 
-```
+```text
 +0x00  uint32_t  symbol_index   Output ELF symbol table index for this kernel.
                                 Written by sub_464DB0() lookup against the
                                 output symbol-to-section mapping (ctx+416).
@@ -194,7 +194,7 @@ The extended index array is a flat `uint32_t[]` parallel to the symbol table. En
 
 The function `ELF_EmitMercSharedReserved` at `0x1CEC390` handles both standard and Mercury-prefixed shared memory reservation sections. Its logic:
 
-```
+```c
 sub_1CEC390(ctx, section_name, is_merc_mode, section_hdr, elf_handle):
     if (!is_merc_mode):
         if starts_with(".nv", section_name):
@@ -297,7 +297,7 @@ Note that `.nv.merc.debug_line` is emitted by the SASS debug function rather tha
 
 The function `ELF_EmitSpecialSections` at `0x1CEDD50` routes debug section content to cached internal representations when available, falling back to the generic content lookup if not. It operates by testing section names against a priority list:
 
-```
+```c
 sub_1CEDD50(ctx, section_hdr, section_index):
     name = get_name(ctx->elf_sections, section_hdr)
 
@@ -417,7 +417,7 @@ The function does NOT skip (returns 0) when `a2` (the Mercury mode flag) is fals
 
 The complete emission path from the ptxas backend to the final cubin:
 
-```
+```text
 ELF_WriteCompleteObject (sub_1CF3720, 99KB)
   |
   +-- Phase 1: Copy Elf64_Ehdr (64 bytes, 4x SSE load/store)
@@ -453,7 +453,7 @@ When `ELF_WriteCompleteObject` encounters an NV_INFO section (`sh_type == 0x7000
 
 The EIATTR entry format is a 4-byte header followed by optional payload:
 
-```
+```text
 byte[0]  size_type:  2 = 2-byte immediate, 4 = variable-length payload
 byte[1]  eiattr_code: identifies the attribute
 byte[2..3] for size_type=2: 2-byte immediate value
@@ -582,7 +582,7 @@ The relocation application phase uses two 64-byte-per-entry dispatch tables to a
 
 Each table entry (64 bytes, 16 `int32` fields) encodes up to three cascading fixup operations. For each operation, four fields describe the action:
 
-```
+```text
 int32 fields[16]:
   [1]  op1_type     0=nop, 1=write, 18=write, 19=zero, 22-29=masked shift
   [2]  op1_shift    Shift amount for masked operations

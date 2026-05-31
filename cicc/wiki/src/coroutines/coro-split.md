@@ -31,7 +31,7 @@ cicc v13.0 carries the complete LLVM coroutine lowering pipeline -- CoroEarly, C
 
 Five passes run in a fixed sequence across the optimizer pipeline. The first and last are module-level bookends; the middle three do the real work inside the CGSCC (Call Graph SCC) pipeline where inlining decisions interact with coroutine splitting.
 
-```
+```text
 CoroEarly (module)         Lowers coroutine setup intrinsics.
                            Materializes the NoopCoro.Frame global.
                            Replaces llvm.coro.resume, llvm.coro.destroy,
@@ -501,7 +501,7 @@ CoroAnnotationElide runs as CGSCC pass #155, meaning it fires before CoroSplit (
 
 This is the sole NVIDIA-proprietary coroutine intrinsic. The NVVM verifier enforces:
 
-```
+```text
 llvm.nvvm.coro.create.suspend must have exactly one argument,
 which must be a constant integer
 ```

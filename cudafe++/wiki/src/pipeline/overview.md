@@ -4,7 +4,7 @@ cudafe++ is a source-to-source compiler. It reads a `.cu` file, parses it as C++
 
 ## Pipeline Diagram
 
-```
+```text
   input.cu
      |
      v
@@ -364,7 +364,7 @@ In SARIF mode (`dword_106BBB8`), text messages are suppressed but exit codes rem
 
 When `dword_106C0A4` is set (via `--timing` or equivalent flag), three timing regions are printed:
 
-```
+```text
 Front end time                     12.34 (CPU)     15.67 (elapsed)
 Back end time                       3.45 (CPU)      4.56 (elapsed)
 Total compilation time             15.79 (CPU)     20.23 (elapsed)

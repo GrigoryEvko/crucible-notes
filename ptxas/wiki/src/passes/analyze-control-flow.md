@@ -358,7 +358,7 @@ The phase-3 wrapper is fundamentally a knob-honoured no-op gate around the impl.
 
 The fields written by `sub_781F80` cluster around two contiguous regions of the 40-byte BasicBlock record. The layout reproduced here is reconstructed from accesses in `sub_781F80` itself (every offset has a corresponding `*(_DWORD*)(v?+OFF)` or `*(_BYTE*)(v?+OFF)` access in the decompilation):
 
-```
+```text
                        BasicBlock record (per-BB, allocated by parser)
   offset           bit 7  6  5  4  3  2  1  0
    +0      …  intrusive list pointer (BB->next)
@@ -403,7 +403,7 @@ Confidence per field: **HIGH** for `+144`, `+152`, `+280` bits 4/5/23, and `+292
 
 ## Pipeline Position
 
-```
+```text
 Phase 0   OriCheckInitialProgram        ┐
 Phase 1   ApplyNvOptRecipes             │  PTX-to-Ori bridge
 Phase 2   PromoteFP16                   │

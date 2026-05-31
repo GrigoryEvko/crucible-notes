@@ -280,7 +280,7 @@ Each `.nv.info` section contains a flat sequence of EIATTR (Entry Information At
 
 ### TLV Record Format
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    1     format      Format byte (determines payload structure)
@@ -526,7 +526,7 @@ The bitmask `0x800800060000` (seen at line 716) encodes which attribute codes us
 
 When a device function uses barriers or a high register count, those requirements must propagate upward through the call graph to each entry kernel. The propagator `sub_1CC8950` handles this:
 
-```
+```text
 "Creating new EIATTR_NUM_BARRIERS and moving barcount %d
     from section flags of %s to nvinfo for entry symbol %s"
 "Propagating higher barcount %d to the section flags
@@ -661,7 +661,7 @@ The propagator emits `EIATTR_REGCOUNT` (0x2F) records via `sub_1CC85F0(_, 0x2F, 
 
 The `.nv.compat` section (`SHT_CUDA_COMPAT` = `0x70000086`) stores forward-compatibility attributes. Its records use a different format from EIATTR -- each is a small TLV with:
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    1     format (always 0x02 = value)
@@ -750,7 +750,7 @@ When a CUDA program declares multiple `extern __shared__` variables used by diff
 
 For each global shared object, walk all referencing functions. A kernel "uses" a shared object if it directly references it or transitively calls a device function that does (traced via `sub_1CBD800`). Objects used by exactly one kernel are **privatized** -- moved into a per-entry `.nv.shared.<func>` section. Unused objects are removed entirely (symbol flags set to mark deleted).
 
-```
+```text
 "global shared %s only used in entry %d"    -- privatize
 "remove unused global shared %s"             -- delete
 ```
@@ -768,7 +768,7 @@ Objects are processed in sorted order. For each object:
 3. Update the color's alignment requirement (max of all objects in that color group).
 4. Update the color's size requirement (max of all objects in that color group).
 
-```
+```text
 "  allocate to group %d"    -- color assignment
 ```
 
@@ -785,7 +785,7 @@ total_size = group_offset[last] + group_size[last];
 
 Each shared object's final offset is `group_offset[its_color]`. The total extern shared size is written to the section descriptor. Per-entry shared sections are expanded if a referenced object's offset + size exceeds their current size.
 
-```
+```text
 "esh %s size = %lld"
 "for shared object (%d) %s:"
 "  offset = 0x%llx, size = 0x%llx"

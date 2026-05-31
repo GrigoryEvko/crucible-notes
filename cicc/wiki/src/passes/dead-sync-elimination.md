@@ -25,7 +25,7 @@ This pass is distinct from the lightweight [`basic-dbe`](./dead-barrier-elim.md)
 
 The helper `sub_2C83D20` classifies whether a given instruction is a synchronization barrier. The check is a conjunction of five conditions:
 
-```
+```c
 function isSyncBarrier(inst) -> bool:
     if inst.opcode != 85:                       // internal call opcode
         return false
@@ -92,7 +92,7 @@ Each map is a `std::map`-style red-black tree (48-byte nodes: left/right/parent 
 
 The analysis loop is implemented as a goto-based iteration between labels `LABEL_2` and `LABEL_178` in the decompiled output:
 
-```
+```c
 function analyzeBarriers(F, state):
     LABEL_2:  // restart point after barrier removal
 
@@ -202,7 +202,7 @@ For call instructions (opcode 85) where the callee's intrinsic ID satisfies `(ID
 When a barrier is identified as dead, the pass:
 
 1. Emits a diagnostic string (if the controlling dump flag is enabled):
-   ```
+   ```text
     Removed dead synch: [filename:line] in function <name>
    Read above: N, Write above: N, Read below: N, Write below: N
    ```
@@ -253,7 +253,7 @@ In the worst case, each iteration may set one new bit, and there are 4 * |BB| bi
 
 The most expensive aspect of the algorithm is the complete restart after each barrier removal. Consider a function with N barriers:
 
-```
+```text
 B0 -- barrier_1 -- B1 -- barrier_2 -- B2 -- barrier_3 -- B3
 ```
 
@@ -292,7 +292,7 @@ The diagnostic output is gated by an internal condition in the caller, not by a 
 
 ## Diagnostic Strings
 
-```
+```text
 " Removed dead synch: "
 "Read above: "
 ", Write above: "
@@ -304,7 +304,7 @@ The diagnostic output is gated by an internal condition in the caller, not by a 
 
 The complete diagnostic message, assembled from these fragments:
 
-```
+```text
  Removed dead synch: [filename:line] in function <name>
 Read above: 0, Write above: 0, Read below: 1, Write below: 1
 ```

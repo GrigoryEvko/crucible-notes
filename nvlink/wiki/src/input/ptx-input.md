@@ -208,7 +208,7 @@ The wiki previously mis-labeled `a4` as `is_64bit` and `a5` as `debug`. The corr
 
 ### Flow (sub\_4BD760)
 
-```
+```text
  1. sub_4CDD60      -- allocate 168-byte container, write magic
  2. sub_4CE3B0      -- set +12 = fatbin_version
  3. sub_4CE2F0      -- set +8 = target_arch, validate via sub_44E530/sub_486EA0 arch DB
@@ -511,7 +511,7 @@ The `--input-as-string` flag tells the embedded ptxas to read the PTX source dir
 
 Extracted directly from the binary at `.rodata+0x1D48AC0`:
 
-```
+```c
 dword_1D48AC0 = { 0, 4, 4, 6, 6, 6, 5, 7, 8 }
 ```
 
@@ -634,7 +634,7 @@ See [LTO Integration](../lto/libnvvm-integration.md) and [LTO Overview](../lto/o
 
 When `byte_2A5F29B` is set by `-vkeep` / `--verbose-keep`, `main()` writes intermediate files to disk and logs the equivalent standalone commands to stderr before each internal step. For PTX extraction:
 
-```
+```bash
 nvlink -extract kernel.ptx -m64 -arch=sm_90 -o kernel_extracted.ptx
 ```
 

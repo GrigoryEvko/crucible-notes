@@ -23,7 +23,7 @@ nvlink replaces libc `malloc`/`free` with a custom two-tier arena allocator that
 
 ### Two-Tier Design
 
-```
+```text
                     +-----------------------+
                     |   mmap / OS pages     |   Fallback for arena_alloc(NULL, size)
                     +-----------+-----------+
@@ -68,7 +68,7 @@ Child arenas store a parent pointer at offset +16 of the arena control block. On
 
 `arena_create_named` allocates a 7,136-byte control block via `arena_alloc` from the global arena. The block is zeroed on creation.
 
-```
+```text
 Arena Control Block (7,136 bytes)
 ================================================================
 Offset   Size   Field                 Description
@@ -105,7 +105,7 @@ Offset   Size   Field                 Description
 
 Small-block sizes are 8-byte aligned. The free-list array at offset 2128 is indexed by `(size & ~7)`, giving 625 buckets covering sizes from 16 bytes to 4,999 bytes. Each bucket is a singly-linked list of free blocks. Each free block stores:
 
-```
+```text
 Free Block (small, in free list)
 ================================
 Offset  Size  Field
@@ -118,7 +118,7 @@ Offset  Size  Field
 
 Each page allocation (whether for small blocks or large blocks) is tracked by a metadata record. Small-block pages use a 56-byte record; large-block pages use an 88-byte record.
 
-```
+```text
 Small-Block Page Metadata (56 bytes)
 =====================================
 Offset  Size  Field
@@ -135,7 +135,7 @@ Offset  Size  Field
  52       4   (padding)
 ```
 
-```
+```text
 Large-Block Page Header (in-band, 64 bytes before data)
 ========================================================
 Offset  Size  Field
@@ -413,7 +413,7 @@ The OCG (Optimizing Code Generator) memspace is a second-tier allocator built on
 
 Created by `ocg_memspace_create` (`sub_488470`), which allocates a 1,048-byte block (131 QWORDs) from the arena system and zeroes it. A 40-byte wrapper object holds a function pointer to `sub_4882A0` and a backpointer to the memspace array, enabling polymorphic dispatch from the OCG object system.
 
-```
+```text
 OCG Memspace (131 x 8 = 1,048 bytes)
 =============================================
 Index    Content                  Description
@@ -446,7 +446,7 @@ The class index is computed as `(requested + 7) >> 3` -- the requested size roun
 
 **Class index formula** (verified from decompiled code at `0x4882A0`):
 
-```
+```text
 class_index = (requested_size + 7) >> 3
 aligned_size = (requested_size + 7) & ~7
 ```
@@ -457,7 +457,7 @@ Any allocation whose aligned size exceeds 1,016 bytes (class > 127) bypasses the
 
 Every chunk (whether in a size-class bucket or the overflow list) carries a 24-byte in-band header at its start. The header sits immediately before the usable data region:
 
-```
+```text
 Chunk Header (24 bytes, in-band)
 ======================================
 Offset  Size  Field
@@ -620,7 +620,7 @@ The core insight is that chunks are **not permanently bound to a size class**. A
 
 **Lifecycle of a typical 1 MB page**:
 
-```
+```text
 1. Page allocated: 1,048,576 bytes usable
    -> Inserted into overflow_list (remaining >> 3 = 131072, > 127)
 
@@ -645,7 +645,7 @@ The core insight is that chunks are **not permanently bound to a size class**. A
 
 Each page obtained from the OS has a 24-byte chunk header prepended by the allocator. The usable region follows immediately:
 
-```
+```text
 +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
 | Chunk Header (24 bytes)       | Usable Data (page_size bytes)   |
 | next | remaining | data_ptr   |                                 |
@@ -680,7 +680,7 @@ The call to `arena_alloc(NULL, page_size + 24)` obtains `page_size + 24` bytes v
 
 When invoked (typically at cleanup or via debug flags), `arena_dump_stats` prints per-arena memory accounting:
 
-```
+```text
 Page size: 0x10000 bytes
 Nrof small block pages: 47
 Nrof large block pages: 12
@@ -699,7 +699,7 @@ The format includes per-size-class breakdowns showing allocated/total bytes, blo
 
 ### OCG Memspace Statistics (sub_489140)
 
-```
+```text
 Memory space statistics for 'OCG mem space'
 ===========================================
 Page size : 0x100000 bytes
@@ -709,7 +709,7 @@ Total available : 0x1A0000 bytes
 
 ## Arena Lifecycle in main()
 
-```
+```text
 main()
   |
   +-- arena_create_named("nvlink option parser", NULL, 0)    // v338
@@ -747,7 +747,7 @@ The error state is tracked in the arena metadata byte at offset +1 (accessible v
 
 When `arena_alloc` cannot satisfy a request, it calls `sub_45CAC0` (`arena_alloc_fail`), which produces:
 
-```
+```text
 An allocation failure occurred; heap memory may be exhausted.
 ```
 

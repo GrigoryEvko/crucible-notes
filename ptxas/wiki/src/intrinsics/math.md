@@ -253,7 +253,7 @@ The master registration function `sub_5D1660` registers 70 math helper functions
 
 The intrinsic name encodes the complete variant specification:
 
-```
+```text
 __cuda_sm{gen}_{op}_{rounding}_{ftz}_{type}_{suffix}
 ```
 
@@ -272,7 +272,7 @@ The `slowpath` suffix indicates a handler for denormalized inputs or edge cases 
 
 The prototype generator `sub_5FF700` (354 KB) emits `.weak .func` PTX declarations for every registered intrinsic. Example prototypes:
 
-```
+```ptx
 .weak .func (.reg .s32 %d) __cuda_sm20_div_s16
     (.reg .s32 %a0, .reg .s32 %a1)
 
@@ -294,7 +294,7 @@ For FP64 operations, ptxas emits multi-instruction SASS sequences inline rather 
 
 ### Template Hierarchy
 
-```
+```text
 sub_AED3C0 (Master Lowering Dispatcher, 28 KB)
   |
   +-- sub_170E8B0 (DDIV handler)        -- FP64 division
@@ -362,7 +362,7 @@ The most complex template handler (`sub_17276C0`). Dispatches based on a hardwar
 
 Integer division by variable values also uses MUFU.RCP as a starting point. The algorithm for unsigned 32-bit `a / b`:
 
-```
+```text
 I2F(b) -> MUFU.RCP -> F2I -> IMAD.HI -> correction
 ```
 
@@ -417,7 +417,7 @@ The `HADD2`, `HMUL2`, `HFMA2` instructions operate on packed FP16x2 values and a
 
 The largest math codegen handler at 1,466 decompiled lines. Its dispatch tree:
 
-```
+```text
 sub_70CA60(instr, 0) -> operand type
   |
   +-- type 58 (f32)

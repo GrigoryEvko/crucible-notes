@@ -534,7 +534,7 @@ The error is emitted through `sub_467460` with the error record at `unk_2A5B990`
 
 The symbol arrays and extended section index arrays all use the same dynamic array type, a 24-byte header:
 
-```
+```c
 struct dyn_array {
     void**   data;       // [0:8]   pointer to backing allocation (8 bytes per element)
     uint64_t count;      // [8:16]  number of elements currently stored

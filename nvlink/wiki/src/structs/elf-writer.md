@@ -56,7 +56,7 @@ The layout below is derived from the decompiled constructor (`sub_4438F0`), dest
 
 The first bytes overlay the standard ELF header. The constructor writes the magic number and identification bytes directly:
 
-```
+```text
 +0    uint32_t  e_ident[0..3]      = 0x464C457F  (ELF magic: 7F 45 4C 46)
 +4    uint8_t   EI_CLASS           = (is_64bit != 0) + 1  (1=ELF32, 2=ELF64)
 +5    uint8_t   EI_DATA            = 1  (ELFDATA2LSB, little-endian)
@@ -227,7 +227,7 @@ The polymorphic writer is a small strategy-pattern object that decouples the ser
 
 ### Struct Layout
 
-```
+```c
 struct elf_writer {              // 40 bytes
     int32_t   mode;              // +0:  backend selector (0..4)
     int32_t   flags;             // +4:  always 0 in observed paths
@@ -336,7 +336,7 @@ Mode 2 uses `sub_44FC10` (vector_append) to write into a growable arena-backed c
 
 The vector is a 40-byte header at `dest`:
 
-```
+```c
 struct vec_header {
     int64_t   default_chunk_size;  // +0:  minimum allocation for new chunks
     int64_t   total_written;       // +8:  cumulative bytes appended
@@ -350,7 +350,7 @@ Each chunk linked through the chain is held by a separate 16-byte wrapper alloca
 
 Each chunk itself is a 24-byte header:
 
-```
+```c
 struct chunk_t {
     int64_t   capacity;     // +0:  total bytes this chunk can hold
     int64_t   remaining;    // +8:  bytes still available
@@ -364,7 +364,7 @@ When a write exceeds the current chunk's remaining capacity, the function fills 
 
 The serialization pipeline follows a strict three-step pattern at both entry points:
 
-```
+```text
 1. Create writer  -->  sub_45B950 (file) or sub_45BA30 (memory)
 2. Serialize ELF  -->  sub_45BF00 (13,258 bytes -- walks the entire elfw)
 3. Destroy writer -->  sub_45B6A0

@@ -71,7 +71,7 @@ void nv_emit_host_reference_array(
 
 The flag decoding for selecting which global list, section name, and array name to use works as follows:
 
-```
+```python
 if is_kernel (a2 != 0):
     if is_internal (a4 != 0):  list = unk_12868C0, section = ".nvHRKI", name = "hostRefKernelArrayInternalLinkage"
     else:                       list = unk_1286880, section = ".nvHRKE", name = "hostRefKernelArrayExternalLinkage"
@@ -178,7 +178,7 @@ For `static` functions, anonymous-namespace entities, or entities with forced in
 2. **Hash computation** (`sub_6BD1C0`): The scope-qualified name is hashed using `vsnprintf` with format string at address `8573734` (likely `"%s%lu"` or similar) and a 32-byte buffer. This produces a deterministic hash of the scope path.
 
 3. **Static prefix construction**: The full prefix is assembled as:
-   ```
+   ```c
    snprintf(buf, size, "%s%lu_%s_", off_E7C768, strlen(module_id), module_id)
    ```
    where `off_E7C768` is a fixed prefix string (likely `"__nv_static_"` or similar) and `module_id` comes from `sub_5AF830` (the CRC32-based module identifier). The result is cached in `qword_1286760` so it is computed only once per TU.
@@ -268,7 +268,7 @@ The strings use SSO (Small String Optimization): if the mangled name is 15 bytes
 
 `qword_1286760` caches the internal-linkage prefix string computed by `nv_get_full_nv_static_prefix`. The format is:
 
-```
+```text
 <off_E7C768><module_id_length>_<module_id>_
 ```
 

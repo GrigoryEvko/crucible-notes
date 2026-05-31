@@ -6,7 +6,7 @@ Tileiras consumes a `builtin.module` carrying one or more `gpu.module` payloads 
 
 ## Full cascade
 
-```
+```text
    MLIR bytecode (input)
      ↓
    cuda_tile dialect (public surface)

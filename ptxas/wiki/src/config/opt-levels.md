@@ -248,7 +248,7 @@ The scoreboard generation subsystem has two mutually exclusive paths, selected b
 
 Phase 116 (`ProcessO0WaitsAndSBs`) inserts maximum-safety scheduling metadata:
 
-```
+```c
 For every instruction:
     stall_count = 15            // maximum stall (15 cycles)
     wait_mask   = 0x3F          // wait on all 6 barriers

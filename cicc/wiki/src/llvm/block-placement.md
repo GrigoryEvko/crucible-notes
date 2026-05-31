@@ -55,7 +55,7 @@ The pass object at `a1` is populated during `runOnMachineFunction`:
 
 Chain nodes are 64 bytes each, allocated from the bump allocator:
 
-```
+```c
 struct ChainNode {          // 64 bytes
     MachineBasicBlock** bb_array;   // +0:  pointer to BB array (initially +16)
     uint32_t count;                 // +8:  number of BBs in chain
@@ -71,7 +71,7 @@ struct ChainNode {          // 64 bytes
 
 The entry point `sub_3521FF0` dispatches to one of two layout algorithms: the standard chain-based placement, or the ext-TSP layout when explicitly enabled. The overall flow:
 
-```
+```c
 runOnMachineFunction(MF):
     if MF.empty(): return 0
 
@@ -181,7 +181,7 @@ When the standard chain-based path is selected (not ext-TSP), and the function h
 
 #### Activation Gate
 
-```
+```c
 if (byte_503C568 is set AND MF.size() > 3):
     evaluator = sub_34BEDF0(state, profile_flag, MBFI, TII, MBPI)
     changed   = sub_34C7080(evaluator, MF, chain_data, ...)
@@ -195,7 +195,7 @@ The gate variable `byte_503C568` corresponds to the `branch-fold-placement` knob
 
 `sub_34BEDF0` is a constructor that initializes a 0x100-byte evaluator state object. It takes six arguments: `(rdi=state, rsi=profile_available, rdx=?, rcx=MBFI*, r8=TII*, r9=MBPI*)`. The initialization zeroes the majority of the structure and sets up internal storage pointers:
 
-```
+```c
 struct LayoutEvaluatorState {      // 0x100 bytes, initialized by sub_34BEDF0
     void*    bb_array_ptr;         // +0x00: BB ordering array (initially null)
     uint64_t bb_array_size;        // +0x08: count
@@ -257,7 +257,7 @@ For the first BB in the chain, check bit 2 of the flags at `BB[0]+0x158`. If set
 **Step 4 -- Main evaluation loop.**
 Call `sub_34BA1B0` to snapshot the current chain state into a temporary structure on the stack. Then enter the main loop:
 
-```
+```c
 while (true):
     status = sub_34C4890(state, MF)   // advance to next BB in evaluation order
     changed_bit = (state->profile_available XOR 1) OR status
@@ -339,7 +339,7 @@ Having a separate NVPTX instance allows NVIDIA to control pass ordering independ
 
 The tail-dup threshold (how many instructions a tail block can have before duplication is rejected) is determined by a multi-level decision:
 
-```
+```c
 default_threshold = 2                               // tail-dup-placement-threshold
 aggressive_threshold = 4                            // tail-dup-placement-aggressive-threshold
 

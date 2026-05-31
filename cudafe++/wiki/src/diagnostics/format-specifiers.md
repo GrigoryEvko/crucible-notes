@@ -180,7 +180,7 @@ The index is a single digit 0--9. Index 0 behaves identically to index 1 (the co
 
 **Real template example** (CUDA cross-space call, error 3499):
 
-```
+```text
 calling a __device__ function(%sq1) from a __host__ function(%sq2) is not allowed
 ```
 
@@ -350,7 +350,7 @@ Any entity kind value outside 0--24 (excluding the gaps that trigger assertions)
 
 For entity kinds that produce a fully-formatted name (most non-trivial cases), the rendering proceeds through these stages:
 
-```
+```text
 1. Write entity kind label string (e.g., "function ")
    └── sub_6B9EA0(buffer, kind_label_string)
    └── sub_6B9CD0(buffer, " ", 1)

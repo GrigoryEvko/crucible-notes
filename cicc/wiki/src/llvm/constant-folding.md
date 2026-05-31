@@ -156,7 +156,7 @@ Total across all three name forms: approximately 112 distinct recognized strings
 
 The evaluator's name matching is a hand-tuned trie-like dispatch optimized for the specific set of math function names. It avoids hash tables or sorted arrays in favor of cascading character comparisons:
 
-```
+```c
 nameMatch(name, length):
     // Strip C++ mangling prefix
     if name[0] == '_' and name[1] == 'Z':

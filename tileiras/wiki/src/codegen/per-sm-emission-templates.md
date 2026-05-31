@@ -39,7 +39,7 @@ Volta and Turing need no Tileiras-owned inline-assembly templates for their base
 
 The PTX spelling produced by the NVPTX backend matches the SM tier:
 
-```
+```ptx
 mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32
     {%fd0, %fd1, %fd2, %fd3},
     {%r0, %r1, %r2, %r3},
@@ -63,7 +63,7 @@ Ampere is the first tier where Tileiras builds the PTX template directly inside 
 
 Dense `m16n8k16.f32.f16.f16.f32` emits:
 
-```
+```ptx
 mma.sync.aligned.m16n8k16.row.col.f32.f16.f16.f32
     {%fd0, %fd1, %fd2, %fd3},
     {%r0, %r1, %r2, %r3},
@@ -75,7 +75,7 @@ The dense INT8 `m16n8k32.s32.s8.s8.s32` form emits the same shape with `s32`/`s8
 
 Sparse `m16n8k16.f32.f16.f16.f32` emits the same operand list plus a metadata register and a selector immediate:
 
-```
+```ptx
 mma.sp.sync.aligned.m16n8k16.row.col.f32.f16.f16.f32
     {%fd0, %fd1, %fd2, %fd3},
     {%r0, %r1},
@@ -89,7 +89,7 @@ The metadata operand is logically two `i16` values packed into one `i32` registe
 
 The INT8 ordered-metadata fast path swaps `.sp` for `.sp::ordered_metadata` and elides the explicit selector:
 
-```
+```ptx
 mma.sp::ordered_metadata.sync.aligned.m16n8k32.row.col.s32.s8.s8.s32
     {%r0, %r1, %r2, %r3},
     {%r4, %r5, %r6, %r7},
@@ -104,7 +104,7 @@ Dense integer forms can request `.satfinite`; floating forms have no such modifi
 
 Ada extends the SM80 dynamic builders with FP8 types. The shape is `m16n8k32`, the accumulator is `f32`, and the input type product is one of `e4m3 x e4m3`, `e4m3 x e5m2`, `e5m2 x e4m3`, `e5m2 x e5m2`. The emitted PTX form is:
 
-```
+```ptx
 mma.sync.aligned.m16n8k32.row.col.f32.e4m3.e4m3.f32
     {%fd0, %fd1, %fd2, %fd3},
     {%r0, %r1, %r2, %r3},
@@ -129,7 +129,7 @@ Hopper introduces WGMMA. Tileiras emits `wgmma.mma_async.sync.aligned` inside a 
 
 The four-part protocol for one tile of `m64n128k16.f32.f16.f16` is:
 
-```
+```ptx
 wgmma.fence.sync.aligned;
 
 wgmma.mma_async.sync.aligned.m64n128k16.f32.f16.f16
@@ -157,7 +157,7 @@ Datacenter Blackwell uses tensor memory and emits `tcgen05.mma` through the `Mac
 
 A dense `tcgen05.mma` for one tile emits:
 
-```
+```ptx
 tcgen05.mma.cta_group::1.kind::f16.f32.f16.f16
     [%r0],                      // TMEM destination (D)
     [%r1],                      // TMEM source (A)
@@ -167,14 +167,14 @@ tcgen05.mma.cta_group::1.kind::f16.f32.f16.f16
 
 The control-word operand encodes scale-vector size, MMA kind, scale-input-accumulator, and block-scale bits. A sparse variant adds a metadata operand:
 
-```
+```ptx
 tcgen05.mma.sp.cta_group::1.kind::f16.f32.f16.f16
     [%r0], [%r1], %rd2, [%r3], %r4;
 ```
 
 A block-scaled variant adds two TMEM scale operands and a scale-vec modifier:
 
-```
+```ptx
 tcgen05.mma.cta_group::1.kind::mxf8f6f4.scale_vec::1X.f32.e4m3.e4m3
     [%r0], [%r1], %rd2,
     [%r3],                      // SFA scale (TMEM)
@@ -202,7 +202,7 @@ Dense and sparse forms share one set of operand families: A fragment, B fragment
 
 A dense `m16n8k32` MXFP8 block-scale tile emits:
 
-```
+```ptx
 mma.sync.aligned.m16n8k32.row.col.kind::mxf8f6f4.scale_vec::1X.block_scale.f32.e4m3.e4m3.f32
     {%fd0, %fd1, %fd2, %fd3},
     {%r0, %r1, %r2, %r3},
@@ -216,7 +216,7 @@ The NVFP4 `m16n8k64.scale_vec::4X` form emits the same operand layout with `e2m1
 
 Sparse variants prepend `.sp::ordered_metadata` and add a metadata register slot:
 
-```
+```ptx
 mma.sp::ordered_metadata.sync.aligned.m16n8k64.row.col.kind::mxf4nvf4.scale_vec::4X.block_scale.f32.e2m1.e2m1.f32
     {%fd0, ..., %fd3},
     {%r0, %r1},

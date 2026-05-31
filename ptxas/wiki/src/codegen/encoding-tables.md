@@ -127,7 +127,7 @@ The lack of a length field is critical for reverse engineering: knowing `N` requ
 
 ### Representative entry (ASCII bit-layout)
 
-```
+```text
 .rodata, 8 bytes per slot:
 +-----------------------------------------------------------------+
 | 63                                                              0

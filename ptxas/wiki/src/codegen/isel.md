@@ -20,7 +20,7 @@ Instruction selection in ptxas is a two-phase process that converts PTX virtual 
 
 ## Architecture
 
-```
+```text
 PTX source text
      |
      v
@@ -271,7 +271,7 @@ The larger handlers implement non-trivial conversion logic:
 
 Most PTX operations map 1:1 to a single SASS opcode. When they do not, the handlers in `sub_9E6600` and related functions create multi-instruction sequences:
 
-```
+```text
 PTX                                    Ori IR (after Phase 1)
 -----------------------------------    -----------------------------------
 add.f32  %r1, %r2, %r3          -->   FADD  R1, R2, R3                [1:1]
@@ -619,7 +619,7 @@ The mega-selector encodes operands into a stack-allocated 256-byte output buffer
 
 The marshalling pipeline for a typical case:
 
-```
+```text
 1. sub_C01840(ctx, instr, operand_list, output_buf, max_count, ...)
    -> Iterates source operands, writes tagged words to output_buf
    -> Returns: number of operand words written
@@ -655,7 +655,7 @@ The marshalling pipeline for a typical case:
 
 The 5 arch dispatch thunks (`sub_B128E0`--`sub_B12920`, each 13 bytes setting `esi` to an SM-family code: `0x5004`, `0x5003`, `0x5001`, `0x5000`, `0x4000`) are **not** called from the mega-selector. They tail-jump to a shared handler at `loc_1C38C00` and operate at the Mercury encoder level:
 
-```
+```text
 Mega-selector (sub_C0EB10)
   -> Produces (encoding_index, operand_buffer) pairs
   -> Calls sub_9314F0 to package into instruction nodes
@@ -712,7 +712,7 @@ The `priority` parameter is read-then-conditionally-written: the matcher checks 
 
 **Matching pipeline** (invariant across all 801 matchers):
 
-```
+```text
  1. OPCODE PROPERTY CHECKS      sub_10AE5C0(ctx, node, field_id)
     Check 1-12 instruction properties against expected values.
     Any mismatch -> return immediately (early exit).
@@ -755,7 +755,7 @@ Template IDs range from 1 to 152. Multiple matchers can target the same template
 
 The matchers are **not** called directly from a single dispatch function. Instead, they are registered as virtual methods on per-instruction-class descriptor objects. The dispatch chain is:
 
-```
+```text
 sub_B285D0 (ISel driver, 9 KB)
   -> opcode switch on (instruction[18] & 0xFFFFCFFF)
      -> selects builder variant (sub_B1FA20 / sub_B20E00 / sub_B1EC10 / ...)
@@ -980,7 +980,7 @@ Observed register class values in matchers:
 
 **`sub_B30160`** -- simple 2-source, 4-result pattern (68 lines, priority 9, template 12):
 
-```
+```text
 1. field 480 == 2481                    -> opcode/subclass check
 2. source_count == 2                    -> expects 2 source operands
 3. operand[0].type == 1 (immediate)     -> first source is a constant
@@ -997,7 +997,7 @@ Observed register class values in matchers:
 
 **`sub_B33F00`** -- medium 2-source, 5-result pattern (4,166 bytes, priority 21, template 22):
 
-```
+```text
 1. field 7 == 21                            -> major opcode class
 2. field 163 in {705, 706}                  -> addressing mode variant
 3. field 203 in {1113..1117}                -> encoding format (5 values)
@@ -1018,7 +1018,7 @@ Observed register class values in matchers:
 
 **`sub_B44CA0`** -- complex 0-source, 7-result pattern (6,214 bytes, priority 11, template varies):
 
-```
+```text
 1.  field 5 == 12                           -> opcode class 12
 2.  field 220 == 1206                       -> encoding property
 3.  field 595 in {2937, 2938}               -> extended field (high range)
@@ -1040,7 +1040,7 @@ This pattern has the most field checks (12) of the representative examples, vali
 
 **`sub_B28FE0`** -- minimal matcher in the preamble zone (31 lines, priority 8, template 42):
 
-```
+```text
 1. field 211 == 1182
 2. field 201 == 1109
 3. field 348 in {1912, 1915}   -> precision qualifier
@@ -1087,7 +1087,7 @@ The largest ISel function in the binary (137 KB, 4,225 lines, 570+ locals). It i
 
 #### Position in the ISel Pipeline
 
-```
+```text
 sub_B285D0 (ISel driver, 9 KB)
   -> selects builder variant by SM version
      -> Builder variant vtable dispatch
@@ -1323,7 +1323,7 @@ Two specialized variant selectors handle the final opcode-to-encoding mapping fo
 
 Full switch on `a2` with 255 sequential cases plus default. The function unpacks `ctx = *(a1+8)`, `inst = *(a1+16)`, then dispatches:
 
-```
+```text
 default  -> sub_10AE590(ctx, inst, 194,  826)
 case   1 -> sub_10AE590(ctx, inst, 194,  827)
 case   2 -> sub_10AE590(ctx, inst, 194,  828)
@@ -1459,7 +1459,7 @@ The OCG (Optimized Code Generation) intrinsic pipeline on SM100+ does not use th
 
 `sub_C3F490` is a pure lookup function (184 bytes) that takes a routing value plus 7 boolean modifier flags and returns a pointer to an operand gathering template in `.data` at `0x22B8960`--`0x22BB460`. The function is a nested if-else tree: the first-level switch selects on the routing value, then inner branches refine the template based on the modifier flags.
 
-```
+```text
 sub_C3F490(routing_value, a2..a8) -> template_ptr
     a2: has pre-existing-value operand (used only by value 257)
     a3: SM generation > sm_7x (SM80+)

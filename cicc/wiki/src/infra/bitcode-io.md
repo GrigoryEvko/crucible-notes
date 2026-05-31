@@ -321,7 +321,7 @@ CICC gates bitcode acceptance on two version checks:
 
 After parsing the module, this function reads the `"nvvmir.version"` named metadata node. The metadata contains a pair of integers `(major, minor)`. The check enforces:
 
-```
+```text
 major == 3  AND  minor <= 2
 ```
 

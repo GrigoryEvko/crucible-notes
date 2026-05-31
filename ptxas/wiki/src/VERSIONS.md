@@ -44,7 +44,7 @@ defaulting to a Turing-class GPU.
 The full set of architecture strings referenced in the front-end validators
 (addresses 0x460000-0x4D5000) includes:
 
-```
+```text
 sm_20  sm_30  sm_35  sm_50  sm_60  sm_75  sm_80  sm_86  sm_89  sm_90
 ```
 
@@ -74,7 +74,7 @@ The SM-version-to-code-object mapping lives in the ELF emitter at
 The source path leaked through `__FILE__` macros in the knobs infrastructure
 reveals the NVIDIA internal build tree layout:
 
-```
+```text
 /dvs/p4/build/sw/rel/gpgpu/toolkit/r13.0/compiler/
   drivers/common/utils/generic/impl/generic_knobs_impl.h
 ```

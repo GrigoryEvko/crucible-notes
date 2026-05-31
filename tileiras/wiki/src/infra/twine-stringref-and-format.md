@@ -33,7 +33,7 @@ The canonical diagnostic-formatting pipeline in `tileiras` is a `raw_svector_ost
 
 The chain is invoked from HH02 line-by-line as:
 
-```
+```c
 out << "unimplemented variant for MMA shape <";
 out << multiplicand_a;
 out.write(", ", 2);

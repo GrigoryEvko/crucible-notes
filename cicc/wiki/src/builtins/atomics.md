@@ -80,13 +80,13 @@ For `fetch_sub` with floating-point types (IDs 437, 440), the lowering negates t
 The atomic codegen handler at `sub_12AE930` (address `0x12AE930`, 41KB) generates PTX inline assembly strings at compile time. The generated instruction format depends on the target SM:
 
 **Pre-SM 70** (volatile mode, `unk_4D045E8 <= 0x45`):
-```
+```ptx
 ld.volatile.b32 $0, [$1];
 atom.add.volatile.u32 $0, [$1], $2;
 ```
 
 **SM 70+** (explicit memory model):
-```
+```ptx
 ld.acquire.gpu.b32 $0, [$1];
 st.release.sys.b32 [$0], $1;
 atom.add.acq_rel.cta.u32 $0, [$1], $2;
@@ -99,7 +99,7 @@ Both the EDG-side handler (`sub_12AE930`, 0x12AE930) and its NVVM-side twin (`su
 
 #### Phase 1: SM Version Check and Path Selection
 
-```
+```c
 v186 = (unk_4D045E8 <= 0x45)    // SM <= 69 -> volatile mode
 ```
 
@@ -111,7 +111,7 @@ When `v186` is false (SM 70+), the handler enters the memory model path, which c
 
 The handler extracts between 2 and 5 operands from the call argument list (pointer, value, compare-value for CAS, plus the ordering and scope parameters encoded as compile-time constants). The builtin ID selects the PTX mnemonic via a switch:
 
-```
+```c
 switch (builtin_id) {
     case 417..422:  mnemonic = "ld";          // atomic load
     case 423..428:  mnemonic = "st";          // atomic store
@@ -155,7 +155,7 @@ Sequential consistency (value 5) is *downgraded*: loads get `acquire`, stores ge
 
 The scope parameter is extracted from the second constant operand via `sub_620EE0`. The value (0--4) maps to a PTX scope qualifier:
 
-```
+```c
 switch (scope_value) {
     case 0:  // fall through
     case 1:  scope_str = "cta";      break;   // thread block
@@ -177,7 +177,7 @@ The cluster scope fallback is the critical SM gate at line 255 / 424 of `sub_12A
 
 The type suffix is built from two components: a type-class letter and a byte-width number. The type-class lookup uses a 4-entry table stored in local variable `v196`:
 
-```
+```c
 v196[0] = 'b'    // bitwise   (for exch, and, or, xor, cas)
 v196[1] = 'u'    // unsigned  (for add, inc, dec, max, min on unsigned)
 v196[2] = 's'    // signed    (for max, min on signed)
@@ -193,7 +193,7 @@ The type-class index is derived from the LLVM type of the atomic operand:
 
 The byte-width is the size of the atomic operand in bytes. Valid sizes are validated against the bitmask `0x10116`:
 
-```
+```c
 valid = ((1LL << byte_size) & 0x10116) != 0
 ```
 
@@ -206,7 +206,7 @@ The resulting suffix is the letter concatenated with the bit width (byte_size * 
 The handler assembles the final PTX string by concatenating the components. Two string buffers are maintained throughout: `v190` (ordering string) and `v193` (scope string), set during phases 3 and 4.
 
 **For SM 70+ (memory model mode):**
-```
+```c
 // Loads:
 sprintf(buf, "ld.%s.%s.%c%d $0, [$1];", v190, v193, type_letter, bit_width);
 // Stores:
@@ -218,7 +218,7 @@ sprintf(buf, "%s.%s.%s.%c%d $0, [$1], $2, $3;", mnemonic, v190, v193, type_lette
 ```
 
 **For pre-SM 70 (volatile mode):**
-```
+```c
 // Loads:
 sprintf(buf, "ld.volatile.%c%d $0, [$1];", type_letter, bit_width);
 // RMW atomics:
@@ -253,7 +253,7 @@ When the memory ordering is sequential consistency (value 5) and the SM version 
 The fence scope matches the atomic operation's scope. The decision to emit membar vs fence depends on the SM version and the specific ordering level: membar is used for the pre-SM 70 path (though that path should not reach this code), and fence.sc / fence.acq_rel for SM 70+.
 
 The pre/post-fence logic is gated by two conditions in the NVVM-side handler:
-```
+```c
 PRE-FENCE:  if (v186 && (v187 - 3) <= 2)    // v187 is ordering; range [3,5] = release, acq_rel, seq_cst
 POST-FENCE: if (!v175 && v169 == 5)          // v175 = is_store; v169 = ordering = seq_cst
 ```
@@ -262,7 +262,7 @@ POST-FENCE: if (!v175 && v169 == 5)          // v175 = is_store; v169 = ordering
 
 For thread fence on SM <= 69, `sub_12AE0E0` emits a volatile memory barrier. The function takes an ASM buffer and fence configuration parameters. It produces:
 
-```
+```ptx
 membar.{scope};
 ```
 
@@ -312,7 +312,7 @@ The type suffix is built from a 4-entry table: `b` (bitwise), `u` (unsigned), `s
 
 The PTX emission layer at `sub_21E5E70` (base) and `sub_21E6420` (L2-hinted) implements the final encoding from the NVPTX MachineInstr opcode to the PTX text. The instruction operand word at this stage encodes both scope and operation:
 
-```
+```text
 bits[7:4]    — scope:  0 = gpu (default), 1 = cta, 2 = sys
 bits[23:16]  — atomic operation opcode (BYTE2)
 ```
@@ -341,7 +341,7 @@ Opcodes 0x02 and 0x04 are unoccupied. There is no signed atomic add in PTX (sign
 
 The scope prefix is emitted before the operation suffix:
 
-```
+```text
 bits[7:4] & 0xF:
     0  ->  (nothing; implicit .gpu scope)
     1  ->  ".cta"
@@ -350,7 +350,7 @@ bits[7:4] & 0xF:
 
 Full PTX emission format:
 
-```
+```ptx
 atom[.scope].{op}.{type}{size}
 ```
 
@@ -360,7 +360,7 @@ Example: `atom.cta.add.u32`, `atom.sys.cas.b64`, `atom.exch.b32`.
 
 `sub_21E6420` (address `0x21E6420`) is a parallel version of the base atomic emitter `sub_21E5E70`. It inserts `.L2::cache_hint` between the operation and type suffix for all 13 atomic operations:
 
-```
+```ptx
 atom[.scope].{op}.L2::cache_hint.{type}{size}
 ```
 
@@ -413,7 +413,7 @@ The CAS loop (`sub_20CBD50`, 1646 bytes) then:
 
 For operations that cannot be handled natively, the pass builds a compare-and-swap loop with three basic blocks:
 
-```
+```text
 entry -> "atomicrmw.start" -> (CAS failure) -> "atomicrmw.start" (retry)
                            -> (CAS success) -> "atomicrmw.end"
 ```
@@ -520,7 +520,7 @@ Within each pair, the odd ID is the "generic" overload that enters the renaming 
 
 **Step 1 -- Base name.** Copy the EDG source name, then overwrite with the canonical base for the seven fetch-op builtins:
 
-```
+```text
 v165     Base name
 ------   ---------------------------
 0x6250   "__nv_atomic_fetch_add"
@@ -549,7 +549,7 @@ Bitwise operations (and/or/xor) omit the type suffix entirely.
 
 ### Naming Pattern Summary
 
-```
+```text
 __nv_atomic_fetch_{op}_{width}[_{type}]
 
 {op}    = add | sub | and | xor | or | max | min

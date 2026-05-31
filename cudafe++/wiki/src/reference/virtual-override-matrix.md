@@ -264,7 +264,7 @@ done_nvidia_checks:
 
 ### Decision Tree (Simplified)
 
-```
+```text
 overriding byte_177 & 0x10?
   YES (implicitly HD) --> propagate, skip mismatch check
   NO  --> extract base_es = overridden byte_182
@@ -335,7 +335,7 @@ The diagonal (same space in base and derived) is always legal. The last column (
 
 Tracing the LABEL\_83 code path with the two entry points reveals that `dword_106BFF0` does NOT gate error 3547. In the critical device-only-override path (Entry A), `v40` is set to 1 before reaching LABEL\_83 regardless of the relaxed flag. The flag only changes the assignment to `a1` and `v40` via conditional moves (cmovz/cmovnz in the disassembly), but the net effect is identical for all input combinations:
 
-```
+```c
 LABEL_83 internals (decompiled, annotated):
   a2 = 3542;                          // tentative error
   if (!dword_106BFF0) a1 = v39;       // strict: a1 = v39
@@ -478,7 +478,7 @@ struct Derived5 : Base5 {
 
 Each recorded override is stored as a 40-byte linked list node:
 
-```
+```text
 Override entry (40 bytes):
   +0x00 (0):   next pointer
   +0x08 (8):   base_class_symbol (entity in base class vtable)

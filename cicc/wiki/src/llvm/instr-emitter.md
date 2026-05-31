@@ -33,7 +33,7 @@ The driver, `ScheduleDAGSDNodes::EmitSchedule` (`sub_2EE0CF0`), iterates the sch
 
 The combined EmitNode function proceeds through fourteen phases. The condensed flow:
 
-```
+```c
 EmitNode(InstrEmitter *self, SDNode *node):
     // Phase 1: Early exit for dead nodes
     if !self->forceEmit && node->useCount <= 1:
@@ -182,7 +182,7 @@ There are exactly two call sites within `sub_2EDDF20`:
 
 **Site 1 -- Generic emission path (`0x2EDE50A`--`0x2EDE523`)**
 
-```
+```asm
 0x2EDE4EF: mov  eax, [r13+2Ch]          ; load SDNode property flags
 0x2EDE4F3: test eax, 0x20000            ; bit 17 = hasDebugValue?
 0x2EDE4F8: jnz  skip_flag_check         ; if set, skip the bit-36 test
@@ -200,7 +200,7 @@ There are exactly two call sites within `sub_2EDDF20`:
 
 **Site 2 -- CopyFromReg-adjacent path (`0x2EDEE5D`--`0x2EDEE86`)**
 
-```
+```asm
 0x2EDEE5D: test al, 4                   ; bit 2 = isTied
 0x2EDEE5F: jnz  loc_2EDEFA2             ; tied -> sub-register path
 0x2EDEE65: test al, 8                   ; bit 3 = hasGlue
@@ -256,7 +256,7 @@ All three use LLVM's DenseMap implementation with open addressing and linear pro
 
 Each emitted result is recorded in a 40-byte (0x28) structure:
 
-```
+```c
 struct EmitResultRecord {  // 40 bytes
     SDNode *producer;         // +0x00: SDNode that produced this result
     int32_t src_vreg;         // +0x08: source virtual register (-1 if physical)
@@ -293,7 +293,7 @@ After the main emission loop completes, a dedicated cleanup pass (Phase 12 in th
 
 The algorithm walks the emitted result record array (0x28-byte stride, accumulated during Phases 4--11) and classifies each record for deletion or preservation.
 
-```
+```c
 DeadCopyElimination(InstrEmitter *self, ResultRecord *records, int count):
     // records is at [rbp-0x250], count at [rbp-0x248]
     // stride = 0x28 (40 bytes per record)
@@ -421,7 +421,7 @@ When an SDNode produces multiple results (e.g., a `div`+`rem` pair or a load-wit
 
 During the dead copy scan (Phase 12, offset `0x2EE08A0`--`0x2EE08BA`), the emitter checks if the MI's opcode is 1 or 2 (COPY or REG_SEQUENCE). For these opcodes, it reads the first operand's byte at `[operand_array + 0x40]` and tests bit 4 (`0x10`). This bit indicates the result was consumed via an inline fold -- the consumer instruction selected a pattern that folds the copy directly into its own operand. When this bit is set, the COPY MI is marked dead regardless of its use count, because the consuming instruction no longer references it.
 
-```
+```asm
 0x2EE08A0: movzx eax, word ptr [rdi+44h]   ; MI->opcode
 0x2EE08A4: sub   eax, 1                     ; opcode - 1
 0x2EE08A7: cmp   eax, 1                     ; is it 1 (COPY) or 2 (REG_SEQUENCE)?

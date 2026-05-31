@@ -33,7 +33,7 @@ The main entry point is `sub_1851DC0` (85 KB, 2,938 lines) -- `ScheduleInstructi
 
 The driver hierarchy is:
 
-```
+```text
 ScheduleInstructions_main_driver  (0x1851DC0, 85 KB)
   -> ScheduleInstructions_per_function_driver  (0x1860A40, 47 KB)
        -> ScheduleInstructions_per_block_driver  (0x185B870, 28 KB)
@@ -71,7 +71,7 @@ The scheduler operates on a per-basic-block dependency DAG. Key data structures:
 
 **184-byte per-BB scheduling records.** Stored in a growable array at context offset `+832`. Each record contains:
 
-```
+```text
 Offset  Size    Field
 +0      8B      basic block pointer
 +4      4B      scheduling latency / timing info
@@ -116,7 +116,7 @@ The `HoistInvariants` pass is invoked from the scheduling driver before the main
 
 ### Driver Hierarchy
 
-```
+```text
 HoistInvariants_analysis_driver  (0x186EE80, 41 KB)
   -> HoistInvariants_per_function  (0x186D520, 38 KB)
        -> HoistInvariants_core  (0x186C7A0, 24 KB)
@@ -272,7 +272,7 @@ The dual-issue checker at `0x16FB800` (6 KB) and dual-issue optimizer at `0x170E
 
 The latency hiding analyzer at `0x16F9980` (15 KB) computes and reports scheduling quality metrics:
 
-```
+```text
 LDS latency hiding: Num=..., Avg=..., Min=...
 LDG latency hiding: Num=..., Avg=..., Min=...
 Xu64 latency hiding: Num=..., Avg=..., Min=...
@@ -338,7 +338,7 @@ The barrier optimizer at `0x1A64080` (15 KB) post-processes assignments to reduc
 
 SASS instructions are grouped into bundles of three instructions plus one control word. The control word encodes scheduling information for each of the three instructions in the bundle:
 
-```
+```text
 Control word (64 bits per instruction slot):
   Bits [3:0]   = stall count (0-15 cycles)
   Bit  [4]     = yield hint (1 = suggest warp switch)
@@ -353,7 +353,7 @@ The control-word builder at `0x1B44940` (13 KB) assembles these fields. The stal
 
 The scoreboard pressure analyzer at `0x1A8A5B0` (11 KB) produces diagnostic output under the heading `"SCOREBOARD PRESSURE GUIDANCE"`:
 
-```
+```text
 SCOREBOARD PRESSURE GUIDANCE (N SBs):
   All Insts: ...
   All Unordered-VQ Insts: ...
@@ -396,7 +396,7 @@ The following pseudocode is reconstructed from the decompiled binary. Addresses 
 
 Before the scheduling loop runs, the list-scheduler core performs per-basic-block initialization. Each instruction in the block is assigned a scheduling record, classified, and linked into the dependency DAG.
 
-```
+```c
 function list_scheduler_init(sched_ctx):
     // sched_ctx is the 840+ byte scheduling context
 
@@ -480,7 +480,7 @@ function list_scheduler_init(sched_ctx):
 
 After initialization, the scheduler computes scheduling heights (critical path from each instruction to the block exit), builds predecessor/successor bitsets, and propagates dependency weights.
 
-```
+```c
 function compute_dag_heights(sched_ctx):
     // Phase 2: compute scheduling height for each instruction.
     // Height = (target_max_latency - instruction_latency) accounting for
@@ -607,7 +607,7 @@ function compute_dag_heights(sched_ctx):
 
 The ready-queue selector picks the next instruction to issue from the ready set. It uses a batch-window heuristic to avoid excessive scheduling granularity.
 
-```
+```c
 function select_next_instruction(sched_ctx, schedule_state):
     // Reset batch window state
     sched_ctx.min_batch_height = INT_MAX            // +488
@@ -716,7 +716,7 @@ function select_next_instruction(sched_ctx, schedule_state):
 
 When an instruction is issued, its scheduling record is updated and all successor dependency counts are decremented.
 
-```
+```c
 function issue_instruction(sched_ctx, instruction):
     // Look up the instruction's scheduling record
     dag_node = instruction.dag_info
@@ -749,7 +749,7 @@ REMOVE_FROM_READY:
 
 The latency calculator computes the expected completion time for an instruction, considering the target architecture's pipeline model.
 
-```
+```c
 function compute_latency(sched_ctx, instruction):
     dag_node = instruction.dag_info
     isa_encoding = dag_node.encoding_bits & 0x1FF    // 9-bit opcode class
@@ -825,7 +825,7 @@ function compute_latency(sched_ctx, instruction):
 
 The per-block scheduling pass is the workhorse called for each basic block. It drives the list-scheduling loop that picks instructions from the ready set and emits them in scheduled order.
 
-```
+```c
 function schedule_basic_block(sched_ctx, strategy_callback, bb_offset, init_flag):
     // Initialize timing infrastructure
     reset_timing(sched_ctx.compilation_ctx)
@@ -917,7 +917,7 @@ function schedule_basic_block(sched_ctx, strategy_callback, bb_offset, init_flag
 
 The block scheduler core selects between the three scheduling strategies and wraps the per-block pass.
 
-```
+```c
 function block_scheduler_core(sched_ctx):
     compilation_ctx = sched_ctx.compilation_ctx
     isa_model = compilation_ctx.isa_model_ptr          // offset [198]
@@ -996,7 +996,7 @@ function block_scheduler_core(sched_ctx):
 
 The register pressure tracker scans each instruction's operands and records which physical register ranges are defined or consumed. This drives the pressure-aware scheduling decisions.
 
-```
+```c
 function track_register_operands(sched_ctx, instruction, out_lo, out_hi):
     // Walk operands in reverse order (last operand to first)
     num_ops = instruction.operand_count - 1
@@ -1063,7 +1063,7 @@ function track_register_operands(sched_ctx, instruction, out_lo, out_hi):
 
 In ReduceReg mode, the priority function penalizes instructions that would increase register pressure beyond a configurable threshold.
 
-```
+```c
 function pressure_aware_priority(sched_ctx, instruction, reg_info):
     // Query knob 780 for pressure tracking granularity
     // (auto-incremented on each call)

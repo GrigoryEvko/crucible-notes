@@ -70,7 +70,7 @@ The import process runs in two major stages. Stage 1 (`sub_1853180`) builds a pr
 
 Address range: `0x1853180`--`0x1854543` (5,059 bytes). Six parameters, 0xB8-byte stack frame. Uses a jump table at `dword_42BA140` for the 11-case linkage-type dispatch.
 
-```
+```c
 // sub_1853180 -- Threshold computation with GUID dedup and priority-class multipliers
 //
 // Evaluates every candidate in summary_ctx against base_threshold adjusted by
@@ -308,7 +308,7 @@ Address range: `0x1854A20`--`0x1855B06` (4,326 bytes). Four parameters, 0x278-by
 
 The driver processes candidates across three priority-ordered linked lists embedded in the `guid_import_map` structure. Each list covers a different import priority class. The three passes guarantee that high-priority candidates are imported (and consume budget) before lower-priority ones get a chance.
 
-```
+```c
 // sub_1854A20 -- Triple-pass import driver
 //
 // Materializes cross-module function bodies for candidates that pass
@@ -545,7 +545,7 @@ The different offsets in pass 3 (`-0x30` instead of `-0x38`, `-0x19` instead of 
 
 The gate function takes two arguments -- `hot_count` (rdi) and `cost` (rsi) -- and returns nonzero if the candidate qualifies for import. The driver calls it at three points (once per pass). This function encapsulates the final accept/reject decision after the per-priority-class threshold adjustment has already been applied by `sub_1853180`.
 
-```
+```c
 // sub_18518A0 -- Threshold comparison gate
 // Returns: nonzero if candidate should be imported, zero otherwise
 //
@@ -649,7 +649,7 @@ The typical flow for a template-heavy CUDA library like CUB or cutlass:
 
 Address: `0x1855B10`, 10,503 bytes. This is the `runOnModule` entry for the `"function-import"` pass (pipeline slot 43). It orchestrates the entire import flow:
 
-```
+```c
 fn function_import_pass_entry(module):
     // Parse required options
     if summary_file_path is empty:

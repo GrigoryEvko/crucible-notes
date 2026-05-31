@@ -45,7 +45,7 @@ Entry point: `0x42333C` (ELF `e_entry`), which is inside `.text` (the CRT startu
 
 The `.text` section decomposes into three subsystems with distinct coding styles, data structures, and origins:
 
-```
+```text
   .text linear address map (26.2 MB)
   0x403520                 0x67F000        0xC52000                          0x1CE2DE2
   |--- PTX Frontend 2.9 MB ---|-- Ori Optimizer 5.8 MB --|---- SASS Backend 17.6 MB ----|

@@ -22,7 +22,7 @@ Because the binary is statically linked, libc, libpthread, and libm are all embe
 
 The binary's `.text` section spans roughly `0x400000` to `0x3C00000`. Within that 56 MB range, subsystems occupy contiguous, non-overlapping regions. The map below is the primary orientation tool for IDA Pro navigation.
 
-```
+```text
 0x400000 ┌─────────────────────────────────────────┐
          │  CRT startup + libc stubs               │  ~52 KB
 0x40D000 ├─────────────────────────────────────────┤
@@ -90,7 +90,7 @@ The coarse map above partitions the binary into ~18 zones. The following map ref
 
 ### Zone 1: CRT, libc, jemalloc stats (0x400000 - 0x42FFFF)
 
-```
+```text
 0x400000   _start / CRT entry (ELF entry point)
 0x40D5CA   sub_40D5CA   vsnprintf (jemalloc stats formatting)
 0x420000   libc math/string helpers (memcpy, memset, strlen, etc.)

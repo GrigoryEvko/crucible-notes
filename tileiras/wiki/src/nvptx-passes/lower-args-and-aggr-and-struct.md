@@ -99,7 +99,7 @@ Opcode `101` always precedes opcode `80` in the materialized sequence: read the 
 
 Take the struct
 
-```text
+```llvm
 %S = type {f64, i8, [4 x i32]}
 ```
 
@@ -107,7 +107,7 @@ On the standard NVPTX target the `DataLayout` places `f64` at offset 0, `i8` at 
 
 Input function:
 
-```text
+```llvm
 define ptx_kernel void @k(%S byval(%S) align 8 %s) {
 entry:
   %p_f = getelementptr %S, ptr %s, i32 0, i32 0
@@ -124,7 +124,7 @@ The rewriter seeds a work list with the byval argument `%s` and walks each user 
 
 Output function:
 
-```text
+```llvm
 define ptx_kernel void @k(ptr addrspace(101) align 8 %s.param) {
 entry:
   %f   = call double @llvm.nvvm.ldparam.f64(ptr addrspace(101) %s.param, i64 0)
@@ -142,7 +142,7 @@ When no field of the byval struct is ever loaded — only the struct's address f
 
 Input function: the byval address flows directly into a generic-pointer callee.
 
-```text
+```llvm
 declare void @consume(ptr %p)
 
 define ptx_kernel void @k(%S byval(%S) align 8 %s) {
@@ -154,7 +154,7 @@ entry:
 
 The walker visits the single call-site use of `%s` and notes that the consumer takes a generic (`addrspace(0)`) pointer. Rather than materializing a scalar load chain, the materializer emits a `CVT_PARAM_TO_GENERIC` (opcode `49`) at the call site and rewires the operand:
 
-```text
+```llvm
 define ptx_kernel void @k(ptr addrspace(101) align 8 %s.param) {
 entry:
   %s.gen = call ptr @llvm.nvvm.cvt.param.to.generic(ptr addrspace(101) %s.param)

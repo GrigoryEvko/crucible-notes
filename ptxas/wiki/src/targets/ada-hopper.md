@@ -136,7 +136,7 @@ The WGMMA pipeline optimizer is the largest single-architecture compiler subsyst
 
 **Call chain:**
 
-```
+```text
 sub_AE4F70  (coordinator -- outside primary range)
  +-- sub_ACE480   (22.7KB)  WGMMA serialization warning emitter
  +-- sub_ADEB40   (43.1KB)  warpgroup.arrive/wait fence insertion
@@ -181,7 +181,7 @@ All messages are prefixed with `"Potential Performance Loss: wgmma.mma_async ins
 
 The live range limiter (`sub_ADAD60`) enforces a maximum on simultaneously active live ranges within GMMA sequences:
 
-```
+```text
 "GMMA sequence has too many active live ranges (%d), reduce it to bring it under (%d)"
 ```
 
@@ -195,7 +195,7 @@ Hopper introduces the concept of a **thread-block cluster** -- a group of cooper
 
 The directive validator (`sub_4CE6B0`, 48KB) enforces mutual exclusivity of cluster configuration:
 
-```
+```text
 ".reqnctapercluster and .maxclusterrank cannot both be specified"
 ```
 
@@ -336,7 +336,7 @@ The binary uses the encoded SM version (codegen factory value) for feature gatin
 
 The register file descriptor at `sub_8E4400` uses the encoded value to select warp geometry. The full cascade:
 
-```
+```text
 encoded <= 20479  ->  4 warps,  96 slots   (pre-Maxwell)
 encoded <= 24575  ->  6 warps, 176 slots   (Pascal)
 encoded <= 28672  ->  7 warps, 192 slots   (Volta)

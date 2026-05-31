@@ -164,7 +164,7 @@ The 6 Mercury-specific pipeline stages run in the post-register-allocation, post
 
 The complete late-pipeline sequence from `PostSchedule` through the Mercury stages:
 
-```
+```text
 PostSchedule                    (0x24443A8)
 AdvancedPhasePostFixUp          (0x24443B0)
 PlaceBlocksInSourceOrder        (0x24443B8)
@@ -217,7 +217,7 @@ Three pipeline stages that run before the Mercury-specific block handle Mercury-
 
 The Mercury passes are invoked through the FNLZR (Finalizer) subsystem, documented in [fnlzr.md](fnlzr.md). The invocation chain:
 
-```
+```text
 main() / sub_42AF40() / sub_52DD50()
   -> sub_4275C0     (FNLZR front-end dispatcher, 3,989 bytes)
     -> sub_4748F0   (FNLZR core engine, 48,730 bytes / 1,830 lines)
@@ -401,7 +401,7 @@ The Mercury option byte offsets are concentrated in a tight range (`0x3D40`--`0x
 
 [V] The Mercury pass name strings and their paired hex offset strings occupy a contiguous region in the string pool from `0x23F2AF5` to `0x23F2E9C`. The layout alternates between hex offset strings and name strings, with each pair stored as (hex offset, name) in increasing address order:
 
-```
+```text
 0x23F2AF5: "0k3r40"                             (hex offset for pass 1)
 0x23F2B00: "ZrephelHfrNpgvirGuernqPbyyrpgvirVafgf" (name for pass 1)
 0x23F2B26: "0k3r30"                             (hex offset for pass 2)

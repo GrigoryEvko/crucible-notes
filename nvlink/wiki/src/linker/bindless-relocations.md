@@ -29,7 +29,7 @@ The constant memory bank holding bindless descriptors is identified by `sw-bindl
 
 ## Position in the Pipeline
 
-```
+```text
 Merge Phase (sub_45E7D0, per-object)
   |
   v
@@ -478,7 +478,7 @@ When a relocation matches a bindless type, the handler executes five steps:
 
 **Step 1: Symbol Lookup and Type Check**
 
-```
+```c
 sym = get_symbol_record(elfw, reloc.symbol_index)    // sub_440590
 sym_type = sym->st_info & 0x0F
 
@@ -498,7 +498,7 @@ Only relocations targeting these three symbol types proceed to bindless processi
 
 **Step 2: Create Synthetic Symbol**
 
-```
+```c
 name_len = strlen(sym->name)
 synth_name = arena_alloc(name_len + 20)               // sub_4307C0
 sprintf(synth_name, "$NVLINKBINDLESSOFF_%s", sym->name)
@@ -515,7 +515,7 @@ The allocation size is `strlen + 20` (19 bytes for the prefix + 1 for the NUL te
 
 **Step 3: Rewrite Relocation Target**
 
-```
+```c
 reloc.info = (new_sym_idx << 32) | original_reloc_type
 ```
 
@@ -523,7 +523,7 @@ This is a 64-bit rewrite of the relocation info field. The upper 32 bits encode 
 
 **Step 4: Build Section Bitmask**
 
-```
+```c
 bitmask_byte = byte_1D391A0[4 * (sym_type - 10)]
 section_bitmask[reloc.section_index] |= bitmask_byte
 ```
@@ -540,7 +540,7 @@ A VLA-sized bitmask (`alloca(num_sections + 1)` at function entry) tracks which 
 
 If the section containing the relocation is a function section (section flags bit 2 set), the bitmask is propagated to all callers:
 
-```
+```c
 section_record = get_section_by_rela(elfw, reloc.section_index)
 if section_record.flags & 0x04:   // is a function section
     if specific_constant_section:
@@ -828,7 +828,7 @@ The distinction between types 8 and 9 for surfaces is determined by comparing th
 
 After emitting relocations for each per-entry section, the function checks whether the resource counts exceed architecture limits:
 
-```
+```c
 entry_name = get_section_type_name(per_entry.type)
 
 if texture_count > max_textures():        // vtable+40
@@ -1136,7 +1136,7 @@ Sorting groups all relocations for the same section together, which enables the 
 
 The synthetic symbol name follows a strict pattern:
 
-```
+```text
 $NVLINKBINDLESSOFF_ + <original_symbol_name>
 ```
 
@@ -1397,7 +1397,7 @@ The function finds two per-entry constant bank sections:
 
 ### Phase C-D: Bitmask Initialization
 
-```
+```text
 bitmask[] = all zeros, one byte per section
 specific_section_idx = 0  (multi-entry mode)
 ```
@@ -1466,7 +1466,7 @@ specific_section_idx = 0  (multi-entry mode)
 
 `sub_4325A0` assigns offsets within the constant bank to each `$NVLINKBINDLESSOFF_*` symbol:
 
-```
+```text
 $NVLINKBINDLESSOFF_tex_shared   -> offset 0,   size 4
 $NVLINKBINDLESSOFF_samp_shared  -> offset 4,   size 4
 $NVLINKBINDLESSOFF_tex_private  -> offset 8,   size 4
@@ -1626,7 +1626,7 @@ if ( (_DWORD)v19 == 115 )
 
 Assume this is the only object given to `nvlink -arch=sm_90 tex_sample.o -o tex_sample.cubin`. After merge (`sub_45E7D0`), the output ELF wrapper `elfw` has the following relevant state:
 
-```
+```text
 elfw + 7    = 'H' (0x48)        ; not 'A' -- not Mercury, uses 0x80000000 flag mask
 elfw + 48   = 0x80000000        ; wide_reloc_flag bit 31 set
 elfw + 272  = [ ]               ; per_entry_const_list, empty at this point
@@ -1673,7 +1673,7 @@ Here `1879048198 = 0x70000006`, `1879048292 = 0x70000084`, and the range check `
 
 **Phase A (lines 99-114):** Detect architecture variant.
 
-```
+```text
 v3 = elfw->section_count             = 10       ; line 99
 v4 = parent_desc->sh_type            = 0x70000086 ; line 101
 is_mercury = (elfw[7] == 0x41)       = false    ; line 106
@@ -1695,7 +1695,7 @@ Wait -- re-reading the decompiled code: `v89` stores the result of `elfw[48] & a
 
 **Phase B (lines 115-142):** Collect per-entry constant bank sections.
 
-```
+```text
 loop i = 0..9:
     i=8: section 8 sh_type = 0x70000086, matches parent; sh_link=0 -> skip (line 121-123)
     i=9: section 9 sh_type = 0x70000086, matches parent; sh_link=4; linked sec has data -> append
@@ -1706,7 +1706,7 @@ loop i = 0..9:
 
 **Phase C-D (lines 143-152):** Bitmask init, specific-section check.
 
-```
+```text
 s = alloca(11)                 ; num_sections + 1 = 11 bytes
 memset(s, 0, 11)               ; all zeros
 v15 = elfw[568] = 0            ; no specific entry
@@ -1715,7 +1715,7 @@ v92 (specific_section_idx) = 0
 
 **Phase E (lines 153-294):** Main relocation scan. Only one relocation exists: `R_CUDA_BINDLESSOFF_115` (type 115, symbol 7 = `myTex`, target section 5 which is `.rela.text.sample_kernel`).
 
-```
+```text
 v17 = elfw[376]                ; reloc list head (line 151)
 iteration 1:
     v18 = reloc[1]             ; reloc record address
@@ -1732,7 +1732,7 @@ Line 172: `v23 = sub_440590(a1, HIDWORD(v19))` -> symbol record for index 7 (`my
 Line 173: Type check. `(*(v23+4) & 0xF) - 10 = 10 - 10 = 0`, not `> 2`, so proceed.
 
 Line 175-182: Build synthetic name.
-```
+```text
 v24 = myTex.name               = "myTex"
 v88 = strlen("myTex")          = 5
 allocate 5 + 20 = 25 bytes
@@ -1743,7 +1743,7 @@ sprintf(v88, "$NVLINKBINDLESSOFF_%s", "myTex")
 Line 184: `v31 = sub_4411B0(a1, v88)` -> creates or finds symbol. Returns new symbol index, say 42.
 
 Line 185-191: Verbose diagnostic. If `elfw[64] & 2` is set:
-```
+```text
 fprintf(stderr, "change reloc symbol from %d to %d\n", 8, 42);
                                                         ^    ^
                                                         |    new: $NVLINKBINDLESSOFF_myTex
@@ -1751,31 +1751,31 @@ fprintf(stderr, "change reloc symbol from %d to %d\n", 8, 42);
 ```
 
 Line 194: Rewrite the relocation's info field.
-```
+```text
 reloc->r_info = (42 << 32) | 115     ; symbol 42, type still 115
              = 0x0000002A00000073
 ```
 
 Line 197-198: Bitmask lookup.
-```
+```text
 byte_1D391A0[4 * (10 - 10)] = byte_1D391A0[0] = 0x01
 v33 = 0x01                                 ; texture bit
 ```
 
 Line 193-200: Mark the bitmask.
-```
+```text
 v32 = *(v18 + 24)              ; reloc.rela_section_index = 5 (.rela.text.sample_kernel)
 v34 = sub_442270(a1, 5)->sh_link ; resolves to section 4 (.text.sample_kernel)
 s[4] |= 0x01                   ; bitmask[4] = 0x01
 ```
 
 Line 201-203: Is section 4 a function section?
-```
+```text
 section_4.flags & 0x04 != 0 -> yes, propagate through callgraph
 ```
 
 Line 204-219: Callgraph walk.
-```
+```text
 v92 (specific_section_idx) = 0 -> multi-entry path (line 205)
 v79 = sub_44C740(a1, (section_4.sh_link << 8) >> 8)
                   ; function ID from sh_link, sign-extended from 24 bits
@@ -1786,7 +1786,7 @@ goto LABEL_19                  ; advance reloc list
 ```
 
 At the end of the reloc scan:
-```
+```text
 bitmask[]:
   [0] = 0x00    [5] = 0x00
   [1] = 0x00    [6] = 0x00
@@ -1812,7 +1812,7 @@ The propagation in Phase E marks the kernel text section, not the constant bank 
 
 **Phase F (lines 295-306):** Section pruning.
 
-```
+```text
 for (v20 = per_entry_list; v20; v20 = v20->next)
     v22 = v20->data = section_9
     bitmask[section_9.sh_link] = bitmask[4] = 0x01
@@ -1820,7 +1820,7 @@ for (v20 = per_entry_list; v20; v20 = v20->next)
 ```
 
 **Phase G (line 307-312):** Layout.
-```
+```text
 v38 = 0 % 4 = 0
 v39 = 0                        ; no padding needed
 sub_4325A0(elfw, section_9, 0, 4, ...)
@@ -1828,7 +1828,7 @@ sub_4325A0(elfw, section_9, 0, 4, ...)
 
 `sub_4325A0` walks the descriptor list for section 9 and assigns offsets. For this example, there is one descriptor (`$NVLINKBINDLESSOFF_myTex`) with alignment 4 and size 4:
 
-```
+```text
 offset = 0
 align up to 4 -> offset = 0
 assign $NVLINKBINDLESSOFF_myTex -> st_value = 0
@@ -1837,20 +1837,20 @@ section_9.sh_size = 4
 ```
 
 The debug trace (with `-v`) prints:
-```
+```text
 variable $NVLINKBINDLESSOFF_myTex at offset 0
 ```
 
 **Phase H (lines 313-432):** Emit resolved relocations.
 
-```
+```text
 v84 = 6                        ; texture reloc type (v89 == 0 path)
 v85 = 7                        ; sampler reloc type
 v41 = per_entry_list head      ; section 9 wrapper
 ```
 
 Inner loop for section 9:
-```
+```text
 v42 = section_9
 v44 = parent_desc->descriptor_list (a2[9])
     -> single-node list: [$NVLINKBINDLESSOFF_myTex descriptor]
@@ -1877,7 +1877,7 @@ Hmm -- that would prune every descriptor. Let me re-read: the per-entry section'
 
 Revising Step 4: `myTex` has `st_shndx = 0` (undefined / pending resolution) because its final location depends on the linker-assigned descriptor slot. So `v48 = 0`, and line 343's guard `v48 && v50 != v48` is false (because `v48 == 0`), so the descriptor proceeds.
 
-```
+```text
 v51 = myTex.st_info & 0xF = 10        ; texture
 switch (10):
     v37 = v84 = 6                      ; R_CUDA_TEX_APPLY (resolved texture type)
@@ -1897,7 +1897,7 @@ sub_438CE0(a1, 6, 42, section_9.section_index, 0, desc->original_reloc)
 
 From `decompiled/sub_438CE0_0x438ce0.c`:
 
-```
+```text
 Line 20: v19 = sub_4402D0(a1, a4)    ; get_section_name(section_9)
          v19 = ".nv.constant3.sample_kernel"
 Line 22: if (elfw[89] != 0)          ; is_rela flag
@@ -1918,7 +1918,7 @@ Wait -- line 40 reads `*((_QWORD *)v13 + 1) = v17 + (v7 << 32)`. `v17 = v20 = a2
 
 After `sub_438CE0` returns:
 
-```
+```text
 Relocation list now contains:
   R1': type=115, sym=42, target_section=.text.sample_kernel, r_offset=0x30
   R2:  type=6,   sym=42, target_section=.nv.constant3.sample_kernel, r_offset=0x30
@@ -1930,7 +1930,7 @@ R2 is the **descriptor-writing relocation** (type 6 = `R_CUDA_TEX_APPLY`). It te
 
 **Phase I (lines 397-421):** Resource limit checks.
 
-```
+```text
 texture_count = 1 <= vtable->max_textures()   ; vtable+40, usually 128 on Hopper
 sampler_count = 0 <= vtable->max_samplers()   ; vtable+48, usually 128
 surface_count = 0 <= vtable->max_surfaces()   ; vtable+56, usually 128
@@ -1939,7 +1939,7 @@ surface_count = 0 <= vtable->max_surfaces()   ; vtable+56, usually 128
 
 **Phase J (lines 433-449):** Cleanup.
 
-```
+```text
 sub_464520(v94)                    ; free per_entry_list
 free each descriptor in a2[9]      ; free myTex descriptor record
 a2[4] = 0                          ; clear parent size
@@ -1950,7 +1950,7 @@ return a2
 
 ### Step 6: State After `sub_438DD0`
 
-```
+```text
 Symbol table:
     index 7  : myTex                     (st_info=0x0A, section=8, value=0)
     index 42 : $NVLINKBINDLESSOFF_myTex  (st_info=0x0D, section=9, value=0, size=4)
@@ -1978,7 +1978,7 @@ count = sub_43CDA0(elfw, entry_index=3, sym_type=10);
 From `decompiled/sub_43CDA0_0x43cda0.c`:
 
 **Lines 59-66:** Entry symbol lookup and bindless gate.
-```
+```text
 v5  = sub_444720()                 ; returns sample_kernel symbol index = 3
 v6  = sub_440590(a1, 3)            ; sample_kernel symbol record
 supports_bindless() = true         ; line 66: vtable+296
@@ -1987,14 +1987,14 @@ supports_bindless() = true         ; line 66: vtable+296
 
 **Lines 118-133:** Type dispatch. `a3 = 10` (texture) so `a3 < 0xA` is false, `a3 > 0xB` is false, and we fall through to the texture/sampler path at line 142:
 
-```
+```text
 v17 = 0
 v42 = sub vtable+304 -> 0x70000086  ; bindless_texture_bank_type()
 v18 = 0x70000086
 ```
 
 **Lines 145-152 (texture/sampler sort check):**
-```
+```text
 if elfw[82] != 0 && elfw[4] == 1:     ; compact mode
     if elfw[37] & 2:                  ; compact wide-reloc bit
         v17 = 1 (needs sort)
@@ -2006,12 +2006,12 @@ else (non-compact 64-bit):
 For our sm_90 64-bit non-compact ELF with the wide-reloc bit cleared, `v17 = 0` -> no sort needed.
 
 **Line around 170:** Resolved type selection.
-```
+```text
 resolved_type = (a3 != 10) + 6 = 0 + 6 = 6
 ```
 
 **Line around 190:** Construct the per-entry section name.
-```
+```text
 bank_name  = "nv.constant3"              ; from sub_4401F0(0x70000086)
 entry_name = "sample_kernel"
 sprintf(section_name, "%s.%s", bank_name, entry_name)
@@ -2019,13 +2019,13 @@ sprintf(section_name, "%s.%s", bank_name, entry_name)
 ```
 
 **Line around 200:** Look up section by name.
-```
+```text
 target_sec_idx = find_section_by_name(elfw, "nv.constant3.sample_kernel") = 9
 target_shlink  = elfw->section_map[9] = 4   ; resolves to text section index
 ```
 
 **Lines 210-260 (counting loop, unsorted path):**
-```
+```text
 reloc = elfw[376]
 count = 0
     R1' (type=115, section=5 (.rela.text.sample_kernel)):
@@ -2043,7 +2043,7 @@ Actually this is a hint: the matching logic in `sub_43CDA0` uses the `.rela` sec
 
 So actually `target_shlink` must be 9, not 4. Revising: `target_shlink = elfw->section_map[9]` gives the canonical section index of the per-entry constant bank, which is 9 itself. Then the matching reloc is R2.
 
-```
+```text
 reloc = elfw[376]
 count = 0
     R1' (type=115, rela_sec=5): sub_442270(5)->sh_link = 4 (patches .text)
@@ -2088,7 +2088,7 @@ There is no explicit `r_offset` field -- the first 8 bytes at `rec+0` play that 
 
 Revised R2:
 
-```
+```text
 R2: type=6, sym=42, r_offset=0 (within section 9), rela_sec_idx=15
 ```
 
@@ -2103,7 +2103,7 @@ Now the relocation application for R2:
 
 ptxas originally emitted SASS similar to the following (addresses are the `.text.sample_kernel` offsets):
 
-```
+```asm
 /*0020*/  IMAD R2, R0, c[0x0][0x0], R1
 /*0030*/  LDC R3, c[0x3][0x0]          ; <-- the myTex handle load
 /*0040*/  TEX.B.LL R4, R4, R3, 0x2d, 2D, 0x1  ; bindless tex fetch
@@ -2114,19 +2114,19 @@ The `LDC R3, c[0x3][0x0]` instruction at offset 0x30 loads 4 bytes from constant
 
 Before nvlink, the offset field `0x0` in `LDC R3, c[0x3][0x0]` is a placeholder containing the symbol index reference. After `sub_438DD0` rewrites R1' to point at `$NVLINKBINDLESSOFF_myTex` (symbol 42, offset 0), the relocation engine patches the `0x0` in the encoded `LDC` instruction to the actual descriptor offset. Since myTex was laid out at offset 0 in the per-entry bank, the patched instruction is byte-identical to the original:
 
-```
+```asm
 /*0030*/  LDC R3, c[0x3][0x0]          ; patched: offset 0 (myTex descriptor)
 ```
 
 If the kernel had used a second texture `myTex2` at offset 4, the patched instruction for that second load would be:
 
-```
+```asm
 /*0034*/  LDC R4, c[0x3][0x4]          ; patched: offset 4 (myTex2 descriptor)
 ```
 
 ### Step 10: End-to-End State Diagram
 
-```
+```text
 Source:
     texture<float, 2> myTex;
     tex2D(myTex, x, y);
@@ -2293,7 +2293,7 @@ The deferral path solves this by keeping the bindless relocation records alive *
 
 ### Path A: Eager Resolution (sm_30..sm_99, and sm_100+ for non-tcgen05 sections)
 
-```
+```text
 sub_438DD0 (this page)
     |
     | rewrites .rela.text bindless entries to target $NVLINKBINDLESSOFF_<name>
@@ -2314,7 +2314,7 @@ This is the path described in detail in [§ Position in the Pipeline](#position-
 
 ### Path B: FNLZR-Deferred Resolution (sm_100+, capmerc sections only)
 
-```
+```text
 sub_438DD0 (this page)
     |
     | identical processing: rewrite symbol targets to $NVLINKBINDLESSOFF_<name>,

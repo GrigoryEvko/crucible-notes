@@ -44,7 +44,7 @@ Textual layout descriptors use basis-vector entries of the form `N@dim`. A
 descriptor is a parenthesized list; entries may nest, and one basis may name
 more than one output dimension.
 
-```ebnf
+```text
 layout       ::= group ;
 group        ::= "(" ws [ entry { ws "," ws entry } ] ws ")" ;
 entry        ::= group | basis ;

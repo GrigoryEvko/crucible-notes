@@ -65,7 +65,7 @@ The following ASCII diagram shows the complete virtual address layout of nvlink 
 
 ### Full ELF Virtual Address Layout
 
-```
+```text
  Address         Section / Region                                       Size
  ──────────────────────────────────────────────────────────────────────────────
  0x400000       ┌──────────────────────────────────────────────────┐
@@ -116,7 +116,7 @@ The following ASCII diagram shows the complete virtual address layout of nvlink 
 
 The 25.2 MB `.text` section decomposes into 16 zones. The diagram uses one line per major zone, with bar width proportional to byte size. The `[====]` bars indicate relative size (1 `=` per ~100 KB).
 
-```
+```text
   0x4038C0                                                             0x1D32172
   |                         .text  (25.2 MB, 40,532 functions)                 |
   |                                                                            |
@@ -194,7 +194,7 @@ The 25.2 MB `.text` section decomposes into 16 zones. The diagram uses one line 
 
 The following diagram groups the `.text` section by subsystem identity rather than address, showing where each logical component's code resides. Non-contiguous ranges for the same subsystem are combined.
 
-```
+```text
   .text subsystem view (25.2 MB)
   ┌──────────────────────────────────────────────────────────────────────────────┐
   │ Linker Core        ░░░                                                │1.2MB│

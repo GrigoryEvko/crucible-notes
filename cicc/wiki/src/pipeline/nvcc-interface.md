@@ -21,7 +21,7 @@ The flag translation is split into two stages. Stage 1 (`sub_8FE280`) translates
 
 nvcc invokes cicc as a subprocess with a single input file and a set of translated flags. The general invocation form is:
 
-```
+```bash
 cicc [mode-flags] [translated-flags] [pass-through-flags] -o <output> <input>
 ```
 
@@ -97,7 +97,7 @@ The cookie affects multiple behaviors:
 
 ### Red-Black Tree Structure
 
-```
+```text
 qword_4F6D2A0  -- tree root pointer (std::_Rb_tree)
 dword_4F6D2A8  -- sentinel node (tree.end())
 qword_4F6D2B0  -- root node pointer
@@ -230,7 +230,7 @@ Unrecognized arguments (those failing both tree lookup and sequential matching, 
 
 If no input file is found after parsing all arguments:
 
-```
+```text
 Missing input file
 Recognized input file extensions are: .bc .ci .i .cup .optixir
 ```

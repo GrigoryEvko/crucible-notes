@@ -24,7 +24,7 @@ ptxas is not built on LLVM. Its loop infrastructure is a custom, non-SSA represe
 
 ## Pipeline Placement
 
-```
+```text
 Phase   3  AnalyzeControlFlow              ── builds CFG, identifies loops, computes dominators
 Phase  13  GeneralOptimizeEarly            ── const fold + copy prop (feeds loop analysis)
 Phase  15  OriBranchOpt                    ── branch simplification (may change loop shape)
@@ -87,7 +87,7 @@ Canonicalizes loop structure to simplify downstream analysis. Ensures each natur
 
 ### Entry Point
 
-```
+```text
 sub_C5FB00 (34 bytes)          ── vtable execute(), calls sub_7DDB50
   └─ sub_78B430 (1,172 bytes)  ── LoopMakeSingleEntry core
        ├─ sub_7753F0            ── pre-pass: loop peeling setup
@@ -98,7 +98,7 @@ sub_C5FB00 (34 bytes)          ── vtable execute(), calls sub_7DDB50
 
 ### Algorithm
 
-```
+```c
 function LoopSimplification(code_object):
     if code_object.flags[1368] & 1 == 0:          // optimization disabled
         return
@@ -183,7 +183,7 @@ The unrolling decision is a multi-stage pipeline implemented in `sub_1390B30`. T
 
 #### Entry Guard (`sub_1392E30`)
 
-```
+```c
 function OriLoopUnrolling_Execute(code_object):
     if code_object.flags[1368] & 1 == 0:           // optimization disabled
         return
@@ -244,7 +244,7 @@ Returns true (suppress unrolling) when **any** of these conditions hold:
 
 #### Main Decision Flowchart (`sub_1390B30`)
 
-```
+```c
 function RunUnrolling(ctx):
     code_object = ctx.code_object
 
@@ -788,7 +788,7 @@ The unrolling decision is controlled by a rich set of OCG knobs. All knob names 
 
 When diagnostics are enabled, the pass outputs:
 
-```
+```text
 # [partially unrolled loops=N] [non-unrolled loops=M]
 ```
 
@@ -854,7 +854,7 @@ For rsqrt and rcp, when the result would be infinity (divisor is zero), the func
 
 For each instruction in the loop body, `sub_92C0D0` calls `sub_926A30` to annotate operands:
 
-```
+```c
 function AnnotateOperandLatencies(code_object, instruction):
     opcode = instruction.word & 0xFFFFCFFF      // strip modifier bits (bits 12-13)
     secondary_opcode = instruction.secondary_opcode
@@ -880,7 +880,7 @@ function AnnotateOperandLatencies(code_object, instruction):
 
 Each instruction is checked by `sub_9202D0`:
 
-```
+```c
 function CheckPipelineFeasibility(code_object, instruction):
     // Reject instructions with special operand flags
     if (operand_array[1] & 0x603FFFF) != 0 or (operand_array[3] & 0xF8000000) != 0:
@@ -912,7 +912,7 @@ function CheckPipelineFeasibility(code_object, instruction):
 
 The minimum initiation interval is computed as:
 
-```
+```text
 MII = max(RecMII, ResMII)
 ```
 
@@ -939,7 +939,7 @@ Two structural observations constrain the implementation:
 
 **Correction (LOOP-11):** The function map (line 672) lists `sub_9203A0` as the ResMII cost calculator. Decompilation reveals `sub_9203A0` (4,881 bytes) is a constant-folding engine for FP type conversions (FP32/FP64/FP16/integer with IEEE 754 rounding modes -- see LOOP-12). The ResMII accumulation is performed inline by the pipelining driver that iterates over the loop body, calling `sub_91E610`/`sub_91E900` per instruction and accumulating into a 7-element FP64 cost vector.
 
-```
+```c
 function ComputeResMII(loop_body, code_object):
     pipe_counts[0..6] = {0.0}              // FP64 accumulators
     for each instruction in loop_body:
@@ -991,7 +991,7 @@ ResMII is the ceiling of the maximum ratio `pipe_counts[i] / pipe_width[i]` acro
 
 `sub_8B9390` takes three parameters: the scheduling context (`ctx`), a loop descriptor (`loop_desc`), and a per-stage bitmask (`stage_mask`). The algorithm has three phases:
 
-```
+```c
 function SoftwarePipelineSchedule(ctx, loop_desc, stage_mask):
     block_id    = *(loop_desc+28)                     // basic block index
     prologue_sz = block_id * 24                       // offset into stage arrays
@@ -1111,7 +1111,7 @@ The classifier is a 5.5KB, 1372-line switch statement mapping approximately 350 
 
 `sub_91E900` computes the stall penalty for an instruction by mapping latency classes through the pipe assignment function (`vtable+904`):
 
-```
+```c
 function ComputeStallCycles(code_object, instruction):
     lat0 = ClassifyLatency(instruction, operand=0)
     pipe0 = PipeAssignment(code_object, lat0)         // vtable+904
@@ -1214,7 +1214,7 @@ All four instances share the same core implementation:
 
 ### Execute Flow
 
-```
+```text
 sub_C5FExxx(phase_obj)                         // 34-byte vtable dispatch
   └─ sub_8FFDE0(code_object, pass_id)          // orchestrator
        ├─ sub_7DDB50(code_object)              // guard: returns block count, checks knob 499
@@ -1289,7 +1289,7 @@ The invariance detection pipeline runs inside `sub_8FF2D0` (1,186 bytes), which 
 
 #### Stage 1: Budget Computation (sub_8FF2D0)
 
-```
+```c
 function ComputeHoistBudget(context, block, is_simple, num_preds, hoist_mode, is_inner):
     // Base budget from knob 483 (HoistBudget)
     if QueryKnob(483):
@@ -1329,7 +1329,7 @@ function ComputeHoistBudget(context, block, is_simple, num_preds, hoist_mode, is
 
 The forward pass iterates every instruction in the basic block and marks each register operand's invariance status based on where it was defined.
 
-```
+```c
 function MarkInvariants_Forward(context, block_index):
     block = blocks[block_index]
     header_depth = context.header_depth
@@ -1416,7 +1416,7 @@ When `UseNewLoopInvariantRoutineForHoisting` (knob 934, default **false**) is en
 
 **Phase A -- Fixpoint set construction (`sub_768BF0`):**
 
-```
+```c
 function BuildInvariantSet(co, block_idx, hdr_depth, max_depth, inv_set, filter, regclass):
     mem_alias_mask = 0
     do:
@@ -1466,7 +1466,7 @@ The net effect: Stage 2 (forward) optimistically marks registers whose definitio
 
 After the two marking passes, `sub_8F7DD0` propagates invariance transitively through the instruction chain. This handles the case where instruction A is invariant and defines register R, and instruction B uses R and is otherwise invariant -- the forward pass may have marked B as non-invariant because R's definition was in the loop, but A (the definer) is itself invariant.
 
-```
+```c
 function PropagateInvariance(context, block_index):
     block = blocks[block_index]
     side_effect_mask = 0
@@ -1498,7 +1498,7 @@ function PropagateInvariance(context, block_index):
 
 The final gate before hoisting. Computes a cost-benefit ratio and rejects hoisting if the ratio is unfavorable.
 
-```
+```c
 function IsProfitable(context, block_index, budget, is_hoist_safe):
     header_weight = context.header_insn_count            // from sub_8F8BC0
     body_weight = context.body_insn_count
@@ -1562,7 +1562,7 @@ An additional behavioral difference: when the candidate block contains no invari
 
 The leaf-level invariance test used by stages 4 and 5 is a simple definition-site check:
 
-```
+```c
 function IsInvariant(instruction, current_block_index):
     num_operands = instruction.operand_count             // inst+80
     if num_operands == 0:
@@ -1644,7 +1644,7 @@ For loops with nesting depth > 1 (inner loops within the hoisting target), `sub_
 
 Multi-depth permission is gated by knob 220 (queried at `allocator[9]+15840` for the fast path) and the `DisableNestedHoist` knob. When hoisting from an inner loop to the header of an outer loop, an additional constraint applies:
 
-```
+```c
 allow_nested = allow_nested_hoist AND is_simple_loop
                AND body_insn_count > 1
                AND num_predecessors == 1
@@ -1657,7 +1657,7 @@ This prevents hoisting from inner loops where the cost (extended live range acro
 
 The complete outer driver that iterates over all loop nests:
 
-```
+```c
 function HoistInvariantsCore(context):
     code_object = context.code_object
     pass_id = context.pass_id
@@ -1800,7 +1800,7 @@ Fuses adjacent loops with compatible bounds and no inter-loop data dependencies 
 
 ### Entry Gate (sub_1397CB0)
 
-```
+```c
 function LoopFusionEntry(code_object):
     allocator = code_object.allocator
     if allocator.knob_table[37368] != 1:          // knob 519 = PerformLoopFusion type check
@@ -1820,7 +1820,7 @@ function LoopFusionEntry(code_object):
 
 ### Core Driver Algorithm (sub_1397360)
 
-```
+```c
 function RunFusionPipeline(ctx):
     co = ctx.code_object
     RebuildInsnList(co)                            // sub_7B52B0, sub_785E20, sub_781F80
@@ -1907,7 +1907,7 @@ Two adjacent loops `L1` followed by `L2` are candidates for fusion when:
 
 ### ApplyFusion Transform (sub_1389940)
 
-```
+```c
 function ApplyFusion(ctx, candidate):
     body_start = candidate.header.first_insn
     body_end   = candidate.latch.successor.first_insn

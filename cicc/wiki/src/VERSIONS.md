@@ -104,7 +104,7 @@ See [NVVM Container](./structs/nvvm-container.md) for the full binary format spe
 
 How versions flow through the pipeline:
 
-```
+```text
                     EDG 6.6 Frontend
                          |
                          v

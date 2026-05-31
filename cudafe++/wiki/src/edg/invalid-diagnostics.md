@@ -46,7 +46,7 @@ for (constexpr int i = 0; i < 10; ++i) { /* ... */ }
 
 `constexpr` is not one of the storage-class specifiers the standard whitelists for the init-statement. The declaration parser inside `sub_5C2D40` flags this and routes through the diagnostic engine:
 
-```
+```text
 error #29 [invalid_storage_class_in_for_init]:
     "constexpr" cannot be used as a storage class in a for-init-statement
     for (constexpr int i = 0; i < 10; ++i) {

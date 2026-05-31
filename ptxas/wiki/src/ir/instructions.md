@@ -51,7 +51,7 @@ Every Ori instruction is a 296-byte C++ object allocated from the Code Object's 
 
 Instructions form a doubly-linked list within each basic block. The Code Object stores the global list head at offset +272 and tail at offset +280:
 
-```
+```text
 Code Object +272  -->  head instruction (prev = nullptr)
                             |
                             v  (+8 = next)
@@ -81,7 +81,7 @@ The opcode field at offset +72 is a 32-bit word with a structured layout.
 
 ### Opcode Word Format
 
-```
+```text
  31              16  15  14  13  12  11            0
 +------------------+---+---+---+---+---------------+
 |    upper flags   |   |   | M | M |  base opcode  |
@@ -185,7 +185,7 @@ This gives a clear partitioning: opcodes 0-136 are the base sm_70+ ISA, 137-171 
 
 Each operand occupies 8 bytes (two 32-bit words) in the operand array starting at instruction offset +84. The first word carries the type, modifier bits, and index. The second word carries additional data (extended flags, immediate bits, etc.).
 
-```
+```text
 Word 0 (at instr + 84 + 8*i):
 
  31  30  29  28  27  26  25  24  23  22  21  20  19                  0
@@ -362,7 +362,7 @@ All SASS opcode mnemonic strings in the binary are ROT13-encoded. This is lightw
 
 ### Table Structure
 
-```
+```text
 InstructionInfo object:
   +0       vtable pointer (off_233ADC0)
   +8       parent pointer
@@ -921,7 +921,7 @@ The 1288-byte block at +9336 is a 322-element `int32` array that maps each opcod
 
 Binary extraction of all 322 entries at VA `0x21C0E00` confirms a pure identity mapping:
 
-```
+```c
 encoding_category_map[i] = i    for all i in 0..321
 ```
 
@@ -976,7 +976,7 @@ The hash table at `+10672` stores entries of the form `{encoding_category, arch_
 
 Allocated by the derived constructor and stored at `+10656`. The block is `10288 / 8 = 1286` QWORD entries, partitioned into three sections:
 
-```
+```text
 +--------------------+  block + 0
 | Section 0 header   |  QWORD[0] = 0
 +--------------------+  block + 8

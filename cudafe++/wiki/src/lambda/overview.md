@@ -22,7 +22,7 @@ Two wrapper types exist. `__nv_dl_wrapper_t` handles device-only lambdas (annota
 
 The extended lambda system spans the entire cudafe++ pipeline -- from parsing through backend emission. Five major functions form the chain:
 
-```
+```text
   FRONTEND (class_decl.c)              BACKEND (cp_gen_be.c + nv_transforms.c)
   ========================             ========================================
 
@@ -137,7 +137,7 @@ Rather than generating all 1024 possible capture-count specializations for each 
 
 ### Bitmap Layout
 
-```
+```text
 unk_1286980 (device lambda bitmap):
   128 bytes = 16 x uint64 = 1024 bits
   Bit N set  =>  __nv_dl_wrapper_t specialization for N captures is needed
@@ -179,7 +179,7 @@ Note that bit 0 is never emitted as a specialization -- the zero-capture case is
 
 `__nv_parent` is a NVIDIA-specific capture-list extension that provides closure-to-parent class linkage. It appears in the lambda capture list as a special identifier:
 
-```cpp
+```cuda
 auto lam = [__nv_parent = ParentClass, x, y]() __device__ { /* ... */ };
 ```
 
@@ -286,7 +286,7 @@ cudafe++ exposes several option keys that gate the lambda parser independently o
 
 Consider a user writing this CUDA code with `--extended-lambda`:
 
-```cpp
+```cuda
 // user.cu
 #include <cstdio>
 __global__ void kernel(int *out) {

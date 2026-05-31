@@ -28,7 +28,7 @@ A faithful reimplementation has to satisfy three constraints that the numeric ID
 
 Every identifier in the catalogue obeys a uniform grammar that downstream parsers can rely on:
 
-```
+```text
 identifier := family_prefix "_" descriptor_tail
 family_prefix := "abi" | "align" | "ambig" | "ambiguous" | "attr" | "attribute"
               |  "bad" | "c11" | "c23" | "cli" | "cl"

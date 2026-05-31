@@ -83,7 +83,7 @@ On SM 70+, `v2f16` operations marked `Legal` or `Custom` in the action table map
 
 The core data structure is a 2D array inside `NVPTXTargetLowering`:
 
-```
+```c
 action = *(uint8_t *)(TLI + 259 * VT + opcode + 2422)
 ```
 
@@ -113,7 +113,7 @@ A second structure at `TLI + 8*VT + 120` is a pointer array: non-null means the 
 
 A 1D table indexed by opcode only (no VT dimension):
 
-```
+```c
 action = *(uint8_t *)(TLI + opcode + 2681)
 ```
 
@@ -123,7 +123,7 @@ Used for four specific opcodes: `BSWAP` (43), `CTLZ` (44), `CTTZ` (45), and `BIT
 
 Another 1D table for `FSINCOS` (opcode 211):
 
-```
+```c
 action = *(uint8_t *)(TLI + opcode + 3976)
 ```
 
@@ -133,7 +133,7 @@ FSINCOS has unique legalization requirements because it produces two results (si
 
 A packed 4-bit nibble table for condition-code-dependent operations (`FP_TO_SINT`, `FP_TO_UINT`, `SELECT_CC`, `BR_CC`):
 
-```
+```c
 base   = (VT_id >> 3) + 15 * condcode_type + 18112
 action = (*(uint32_t *)(TLI + base * 4 + 12) >> (4 * (VT_id & 7))) & 0xF
 ```
@@ -199,7 +199,7 @@ This switch implements `getVectorElementType()` on the decompiled SimpleVT enum.
 
 Promotion widens a narrow type to the nearest legal register width. The pattern is consistent across integer and FP promotion:
 
-```
+```c
 promoted_vt = TLI.getTypeToPromoteTo(opcode, VT)       // sub_1F40B60
 extended    = DAG.getNode(ANY_EXTEND, DL, promoted_vt, input)   // opcode 143
 result      = DAG.getNode(original_op, DL, promoted_vt, extended, ...)
@@ -208,7 +208,7 @@ truncated   = DAG.getNode(TRUNCATE, DL, original_vt, result)   // opcode 145
 
 For integer promotion, `ANY_EXTEND` (opcode 143) or `ZERO_EXTEND` (opcode 144) widens the input depending on whether the high bits need defined values (unsigned operations use `ZERO_EXTEND`). For FP promotion, the pattern uses `FP_EXTEND`/`FP_ROUND` instead:
 
-```
+```c
 ext0 = DAG.getNode(FP_EXTEND, DL, promoted_vt, op0)
 ext1 = DAG.getNode(FP_EXTEND, DL, promoted_vt, op1)
 res  = DAG.getNode(FADD, DL, promoted_vt, ext0, ext1)
@@ -221,7 +221,7 @@ The `promote` path in `sub_1FFB890` contains approximately 30 opcode-specific ex
 
 Expansion splits a wide type into two halves and reassembles the result:
 
-```
+```c
 // i128 ADD expansion (simplified)
 lo_a = DAG.getNode(EXTRACT_ELEMENT, DL, i64, a, 0)   // low half
 hi_a = DAG.getNode(EXTRACT_ELEMENT, DL, i64, a, 1)   // high half
@@ -248,7 +248,7 @@ The FADD/FMUL cases (74/75 in the main switch) compute twice the bit width, find
 
 Vector legalization proceeds through recursive halving:
 
-```
+```text
 v8f32  -> split -> 2x v4f32
 v4f32  -> split -> 2x v2f32
 v2f32  -> scalarize -> 2x f32    (v2f32 is NOT legal on NVPTX)
@@ -391,7 +391,7 @@ The `WidenVector` path uses the MVT lookup table at `word_4305480` to determine 
 
 After type legalization, operation legalization processes each node through a per-opcode action lookup. The same primary action table is used:
 
-```
+```c
 action = *(uint8_t *)(TLI + 259 * VT + opcode + 2422)
 ```
 

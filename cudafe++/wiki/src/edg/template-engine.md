@@ -63,7 +63,7 @@ Each pending instantiation is represented as a linked-list node. The function/va
 
 `sub_78A9D0` is the top-level entry point, called at the end of each translation unit from `fe_wrapup`. It implements a fixpoint loop that keeps running until no new instantiations are discovered.
 
-```
+```text
 template_and_inline_entity_wrapup (sub_78A9D0)
   |
   +-- Assert: qword_106BA18 == 0  (not nested in another TU)
@@ -195,7 +195,7 @@ The depth limit at `qword_106BD10` is the configurable maximum instantiation nes
 
 The function saves and restores 4 SSE registers (`xmmword_106C380`--`xmmword_106C3B0`) that hold critical parser/scope state. These 128-bit registers store packed parser context (scope indices, token positions, flags) that must be preserved across instantiation because the parser is stateful and re-entrant:
 
-```
+```text
 Save on entry:
     saved_state[0] = xmmword_106C380    // parser scope context
     saved_state[1] = xmmword_106C390    // token stream state
@@ -213,7 +213,7 @@ The use of SSE registers for state save/restore is a compiler optimization -- th
 
 ### Instantiation Flow
 
-```
+```text
 instantiate_template_function_full (sub_775E00)
   |
   +-- Save 4 SSE registers (parser state)
@@ -268,7 +268,7 @@ The 255 limit is a safety valve against infinite recursive template instantiatio
 
 ### SSE State Save/Restore (12 Registers)
 
-```
+```text
 Save on entry:
     saved[0]  = xmmword_106C380
     saved[1]  = xmmword_106C390
@@ -313,7 +313,7 @@ Class instantiation operates on a type entry with the following relevant fields:
 
 ### Instantiation Flow
 
-```
+```text
 f_instantiate_template_class (sub_777CE0)
   |
   +-- Walk to canonical type entry: follow kind==12 chain at +144
@@ -359,7 +359,7 @@ Unlike function instantiation (which uses a single global counter `qword_12C76E0
 
 ### Instantiation Flow
 
-```
+```text
 instantiate_template_variable (sub_774C30)
   |
   +-- Extract master instance: a1[3]=symbol, a1[4]=decl
@@ -434,7 +434,7 @@ The precompile mode (`dword_106C094 == 3`) skips the fixpoint loop entirely and 
 
 `sub_76D860` (1,229 lines) is the core type substitution function. It takes a type node and a set of template-parameter-to-argument bindings, and produces a new type with all template parameters replaced by their concrete values.
 
-```
+```text
 copy_type_with_substitution(type, bindings) -> type
   |
   +-- Dispatch on type->kind:
@@ -504,7 +504,7 @@ The deduction subsystem determines template argument values from function call a
 
 When multiple partial specializations match, the engine must select the "most specialized" one. This implements C++ [temp.class.order] and [temp.func.order]:
 
-```
+```text
 check_partial_specializations (sub_774470)
   |
   +-- For each partial specialization of the template:
@@ -542,7 +542,7 @@ The declaration side handles parsing `template<...>` prefixes and setting up tem
 
 Explicit instantiation (`template class Foo<int>;` or `template void f<int>();`) is handled by a dedicated path:
 
-```
+```text
 explicit_instantiation (sub_791C70, 105 lines)
   |
   +-- Parse 'extern' flag: a2 & 1 = is_extern_instantiation

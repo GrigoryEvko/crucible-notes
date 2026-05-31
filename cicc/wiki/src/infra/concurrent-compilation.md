@@ -40,7 +40,7 @@ The phase counter `qword_4FBB3B0` is a TLS variable accessed via `sub_16D40E0` (
 
 When verbose logging is disabled and the module contains only one defined function, the orchestrator takes a fast path:
 
-```
+```c
 // Single-function fast path: no phase counter set at all
 if (!verbose && num_defined_functions <= 1) {
     sub_12E54A0(ctx, input, output, opts, errCb);  // single un-phased call
@@ -50,7 +50,7 @@ if (!verbose && num_defined_functions <= 1) {
 
 This means the optimizer runs both phases in a single invocation -- passes see no phase counter and run unconditionally. For multi-function modules or when verbose logging is active, the full two-phase protocol engages:
 
-```
+```c
 // Phase I
 int *phase = malloc(4);
 *phase = 1;
@@ -80,7 +80,7 @@ The diagnostic string construction between phases is notable: `v46 = 3LL - (v41 
 
 When the thread count exceeds 1, the orchestrator dispatches to `sub_12E7B90` instead of running Phase II sequentially:
 
-```
+```text
 sub_12E7B90(ctx, module_ptr, thread_count, opts, ...)
     |
     |-- Phase I: *phase=1, sub_12E54A0(...)        // whole-module, single thread
@@ -101,7 +101,7 @@ Phase I always runs single-threaded on the whole module because interprocedural 
 
 `sub_12D4250` (161 bytes native) determines whether the module qualifies for concurrent compilation. The check is straightforward:
 
-```
+```c
 int sub_12D4250(Module *mod, Options *opts) {
     int defined_count = 0;
     for (Function &F : mod->functions()) {
@@ -208,7 +208,7 @@ When `cicc` is invoked by GNU Make with `-j`, it can participate in the make job
 
 The jobserver init function allocates a 296-byte state structure and calls `sub_1682BF0` to parse the `MAKEFLAGS` environment variable:
 
-```
+```c
 int sub_16832F0(JobserverState *state, int reserved) {
     memset(state, 0, 296);
     state->flags[8] = 1;                    // initialized marker
@@ -240,7 +240,7 @@ The pipe format uses comma-separated read/write file descriptors inherited from 
 
 ### Error Handling
 
-```
+```c
 if (jobserver_init_error) {
     if (error_code == 5 || error_code == 6) {
         // Warning: jobserver pipe not accessible (probably not in make context)
@@ -261,7 +261,7 @@ Error codes 5 and 6 are non-fatal (the jobserver pipe may not be available if ci
 
 The thread pool is LLVM's standard `ThreadPool` (the binary contains `"llvm-worker-{0}"` thread naming at `sub_23CE0C0`). Creation occurs at line 799 of `sub_12E1EF0`:
 
-```
+```c
 int actual_threads = min(requested_threads, num_functions);
 sub_16D4AB0(thread_pool, actual_threads);
 ```
@@ -272,7 +272,7 @@ The thread count is clamped to the number of functions -- there is no point spaw
 
 Thread count is resolved through a fallback chain in `sub_12E7E70`:
 
-```
+```c
 int thread_count = opts[1026];    // NVVMPassOptions slot 203 (offset 4104), default -1
 if (thread_count < 0)
     thread_count = opts[1036];    // NVVMPassOptions slot 205 (offset 4144), default -1
@@ -304,7 +304,7 @@ Each function gets its own independent copy of the options struct and module -- 
 
 Each function is submitted to the thread pool with two callbacks:
 
-```
+```c
 v373 = sub_12E8D50;    // completion callback (runs the optimizer)
 v372 = sub_12D4D90;    // destructor callback (cleanup)
 sub_16D5230(work_item, thread_pool, context);  // enqueue
@@ -314,7 +314,7 @@ sub_16D5230(work_item, thread_pool, context);  // enqueue
 
 The completion callback extracts the module from the packaged context and calls the Phase II per-function optimizer:
 
-```
+```c
 void sub_12E8D50(Context *ctx) {
     Module *mod = extract_module(ctx);
     sub_12E86C0(ctx, function_index, opts, module_name);
@@ -325,7 +325,7 @@ void sub_12E8D50(Context *ctx) {
 
 This function sets the TLS phase counter to 2 and runs the pass pipeline on the individual function's module:
 
-```
+```c
 void sub_12E86C0(Context *ctx, int func_idx, Options *opts, StringRef name) {
     int *phase = malloc(4);
     *phase = 2;
@@ -378,7 +378,7 @@ After all worker threads complete (`sub_16D4EC0` joins the thread pool):
 
 ### Phase State Machine
 
-```
+```text
   START
     |
     v

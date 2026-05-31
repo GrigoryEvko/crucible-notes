@@ -142,7 +142,7 @@ Global address relocations target `.nv.global` and `.nv.global.init` sections. T
 
 PC-relative relocations resolve branch and call targets. The resolver enforces a critical constraint:
 
-```
+```text
 "PC relative branch address should be in the same section"
 ```
 
@@ -165,7 +165,7 @@ This means intra-function branches use PC-relative relocations, but cross-functi
 
 Constant field relocations patch `.nv.constant0.<func>` bank offsets into load constant (`LDC`) instructions. The field width (19, 21, or 22 bits) determines the maximum addressable constant bank size: 19-bit supports 512 KB, 21-bit supports 2 MB, 22-bit supports 4 MB. During resolution, the constant bank deduplication pass (`sub_1CA6890`) may adjust the relocation offset:
 
-```
+```text
 "optimize ocg constant reloc offset from %lld to %lld"
 ```
 
@@ -218,7 +218,7 @@ These relocations connect texture/sampler/surface operations to their runtime-al
 
 Bindless texture/surface relocations are handled by `sub_1CAB300`, which creates `$NVLINKBINDLESSOFF_<name>` symbols for each bindless reference. During resolution:
 
-```
+```text
 "change reloc symbol from %d to %d"
 "no bindless ref in section %s"
 "unexpected usage of non-unified surface descriptors"
@@ -251,7 +251,7 @@ The `R_CUDA_INSTRUCTION64` and `R_CUDA_INSTRUCTION128` types replace entire inst
 
 The `R_CUDA_YIELD_*` types handle YIELD-to-NOP conversion. When a kernel has forward-progress requirements that prevent yielding, the resolver converts YIELD instructions to NOPs:
 
-```
+```text
 "Ignoring the reloc to convert YIELD to NOP due to forward progress requirement."
 ```
 
@@ -496,7 +496,7 @@ if (is_mercury && sym_value != 0) {
 
 If the relocation targets an alias symbol (ELF type `STT_NOTYPE` with section index pointing to another symbol), redirect the relocation to the canonical target:
 
-```
+```text
 "change alias reloc %s to %s"
 ```
 
@@ -506,7 +506,7 @@ The resolver follows the alias chain through `sub_1CB1E00` (get section index) a
 
 If the relocation's target symbol has local binding (`st_other & 3 == 1`) and is in a deleted section, the relocation is zeroed out:
 
-```
+```text
 "ignore reloc on dead func %s"
 ```
 
@@ -527,7 +527,7 @@ Relocations targeting special synthetic symbols are intercepted:
 
 The resolver checks if a symbol name starts with `"__UFT_OFFSET"` (exact 13-character comparison in the decompiled code). If matched:
 
-```
+```text
 "ignore reloc on UFT_OFFSET"
 ```
 
@@ -546,7 +546,7 @@ if (reloc_desc->patch_mode == 16 && reloc->section != target_section)
 
 If the relocation type is `R_CUDA_YIELD_OPCODE9_0` or `R_CUDA_YIELD_CLEAR_PRED4_87`, and the kernel has forward-progress requirements, the resolver skips the NOP conversion:
 
-```
+```text
 "Ignoring the reloc to convert YIELD to NOP due to forward progress requirement."
 ```
 
@@ -592,7 +592,7 @@ bool apply_reloc(reloc_desc_table, index, is_addend, instruction_data,
 
 If the NVRS (NVIDIA Register Spill) check fails during patching, the resolver emits:
 
-```
+```text
 "unexpected NVRS"
 ```
 
@@ -656,7 +656,7 @@ The UFT manager (1,979 bytes, 10 KB decompiled) processes UFT/UDT entries across
 
 Validates consistency between `.nv.uft` (jump slots) and `.nv.uft.entry` (metadata):
 
-```
+```text
 "missing nv.uft.entry"
 "Number of .nv.uft jump slots != Number of entries in .nv.uft.entry"
 "size of uidx window != nv.uft"
@@ -681,7 +681,7 @@ The resolver recognizes these synthetic symbol names:
 
 Extern shared memory variables (declared with `extern __shared__`) are handled specially because their addresses are not known until kernel launch. The resolver tracks these through dedicated strings:
 
-```
+```text
 "extern shared variable %s at offset %lld"
 "reloc of extern shared %d replaced with symbol %d"
 "new extern shared instance %d"
@@ -693,7 +693,7 @@ Multiple kernels may reference the same extern shared variable. The linker creat
 
 When `nvlink` encounters a weak symbol that conflicts with a strong definition:
 
-```
+```text
 "Could not replace weak symbol '%s'"
 ```
 
@@ -707,14 +707,14 @@ This occurs during the relocation pre-scan (`sub_1CD43A0`) when processing reloc
 
 When ptxas produces a relocatable object (`.o`), all relocations are preserved in `.rela.text.<func>` sections. The call graph is written to `.nv.callgraph`. Symbols retain their binding information for nvlink to resolve.
 
-```
+```text
 "No relocatable objects found. Did not generate callgraph."
 "Generate relocatable object"
 ```
 
 The `--preserve-relocs` flag additionally preserves relocations that would normally be resolved internally:
 
-```
+```text
 "This option will make PTXAS to generate relocatable references for variables and preserve ..."
 ```
 

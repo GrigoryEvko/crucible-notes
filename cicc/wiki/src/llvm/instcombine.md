@@ -191,7 +191,7 @@ At lines 6557--6567 of the main visitor, the code iterates over operand bundles 
 
 The GEP case (opcode `0x99` = 153) is significantly expanded compared to upstream. The global `dword_4F901A8` controls a depth-limited chain walk for nested GEP simplification:
 
-```
+```c
 v729 = getOperand(0) of GEP
 if (dword_4F901A8) {
     v730 = 0;

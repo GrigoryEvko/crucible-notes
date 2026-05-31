@@ -22,7 +22,7 @@ Activation is via the `il_display` CLI flag (flag index 10 in the boolean flag t
 
 ## Top-Level Control Flow
 
-```
+```text
 display_il_file (sub_5F7DF0)
 │
 │  printf("Display of IL file \"%s\", produced by the compilation of \"%s\"\n",
@@ -90,7 +90,7 @@ After printing the header, `display_il_header` calls `walk_file_scope_il` (`sub_
 
 The first switch handles kinds that are displayed inline by their parent and should not appear as standalone entries. These return immediately without output:
 
-```
+```text
 Transparent kinds (early return):
   4   routine_type_supplement      15  (reserved)
   5   routine_type_extra           19  try_supplement
@@ -107,7 +107,7 @@ Transparent kinds (early return):
 
 For non-transparent kinds, the dispatcher prints a scope-annotated header:
 
-```
+```text
 file-scope type@7f3a4b200100
 func-scope variable@7f3a4b300200
 ```
@@ -202,7 +202,7 @@ Displayed inline in the dispatcher. Fields:
 
 All named entities (variable, routine, type, field, label, namespace, template_param) share a `source_corresp` sub-record, printed by `display_source_corresp` (`sub_5EDF40`, 170 lines). This is the first thing displayed for each such entity:
 
-```
+```text
 source_corresp:
   name:                    foo
   unmangled_name_or_mangled_encoding: _Z3foov
@@ -480,7 +480,7 @@ Every expression case ends with `dump_source_position("position", ...)` to recor
 
 **Coroutine statement (case 9)** displays the full C++20 coroutine lowering structure:
 
-```
+```text
 traits, handle, promise, init_await_resume, this_param_copy,
 paramter_copies, final_suspend_label, initial_suspend_call,
 final_suspend_call, unhandled_exception_call, get_return_object_call,
@@ -614,7 +614,7 @@ Common fields: `next`, `variable`, `destructor`, `lifetime`, `next_in_destructio
 
 `dump_field_label` (`sub_5EB2A0`, 22 lines) is the universal field label formatter. It prints `"field_name:"` then pads with spaces to column 25. If the label plus colon exceeds 24 characters, it prints a newline first to avoid misalignment:
 
-```
+```text
 storage_class:           static
 alignment:               16
 is_constexpr:            TRUE
@@ -626,7 +626,7 @@ This produces the consistent columnar output visible in all IL dumps.
 
 `dump_field_bool` (`sub_5EB450`, 25 lines) prints a label and `"TRUE"` or `"FALSE"`:
 
-```
+```text
 is_virtual:              TRUE
 pure_virtual:            FALSE
 ```
@@ -635,7 +635,7 @@ pure_virtual:            FALSE
 
 `dump_source_position` (`sub_5EB4E0`, 82 lines) prints position as two sub-fields when the position is non-zero (seq != 0 or column != 0):
 
-```
+```text
 position.seq:            42
 position.column:         5
 ```
@@ -657,7 +657,7 @@ Reads a 32-bit sequence number at `*position` and a 16-bit column at `*(position
    - Kind 0x40 (seq_number_lookup): prints qualified name from offset +0
    - Kind with bit 36 set: prints qualified name from offset +40, plus `"in"` context from +56
 
-```
+```text
 primary_source_file:     file-scope source_file_entry@7f3a4b100020 "test.cu"
 main_routine:            file-scope routine@7f3a4b200100 "main"
 ```
@@ -668,7 +668,7 @@ The variant `dump_il_string_pointer` (`sub_5EB670`) prints the same format but i
 
 `display_entity_list` (`sub_5EC450`, 87 lines) walks a linked list of entity pointers and prints each with scope/kind/address annotations:
 
-```
+```text
 entities:                file-scope variable@7f3a... "x"
                          func-scope variable@7f3a... "y"
 ```
@@ -684,7 +684,7 @@ It follows the `next` link at offset 0 of each list node until NULL.
 - Backslash and double-quote are backslash-escaped (`\\`, `\"`)
 - The octal mask width is controlled by `dword_126E49C` (CHAR_BIT equivalent, typically 8)
 
-```
+```text
 file_name:               "test.cu"
 full_name:               "/home/user/project/test.cu"
 ```
@@ -836,7 +836,7 @@ The coroutine statement display (case 9 in `display_statement`) prints the field
 
 ## Complete Call Graph
 
-```
+```text
 display_il_file (sub_5F7DF0) ─── TOP LEVEL
 ├── display_il_header (sub_5F76B0)
 │   ├── init_output_context (sub_5F9040)

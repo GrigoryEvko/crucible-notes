@@ -77,7 +77,7 @@ Four subsystems cooperate to configure feature flags from the SM version. The ma
 
 ### Feature Configuration Pipeline
 
-```
+```text
 CLI parser (sub_617BD0)              Sets byte_4CF8* override flags
     |
 sub_60DFC0 (secondary)               Sets unk_4D041B8 at sm_80+ (__VA_OPT__)

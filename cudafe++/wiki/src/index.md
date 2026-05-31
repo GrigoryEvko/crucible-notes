@@ -29,7 +29,7 @@ This wiki documents the complete internals of the `cudafe++` binary from CUDA To
 
 ## Role in the CUDA Toolchain
 
-```
+```text
   input.cu
      |
      v

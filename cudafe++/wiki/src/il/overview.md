@@ -116,7 +116,7 @@ There are 85 defined entry kind values (0-84). Some are primary node types with 
 
 The IL header lives in the BSS segment at `0x126EB60` and is printed by `display_il_header_and_file_scope` (`sub_5F76B0`). It records translation-unit-level metadata:
 
-```
+```c
 struct il_header {                        // at xmmword_126EB60
     il_entry*   primary_source_file;      // +0x00  head of source file list
     scope*      primary_scope;            // +0x08  file-scope root
@@ -188,7 +188,7 @@ Every IL node has a multi-qword prefix preceding the node body. The prefix size 
 
 Normal file-scope mode (`dword_106BA08 == 0`, `dword_126F694 = 24`):
 
-```
+```text
 Raw allocation layout (normal file-scope, 24-byte prefix):
 Offset  Size  Field
 ------  ----  -----
@@ -206,7 +206,7 @@ ptr + 0   = first byte of node body
 
 TU-copy mode (`dword_106BA08 != 0`, `dword_126F694 = 16`):
 
-```
+```text
 Raw allocation layout (TU-copy mode, 16-byte prefix):
 +0      8     next_in_list                    (no TU copy slot)
 +8      8     prefix flags qword
@@ -215,7 +215,7 @@ Raw allocation layout (TU-copy mode, 16-byte prefix):
 
 Function-scope allocations (`dword_126F68C = 8`):
 
-```
+```text
 Raw allocation layout (function-scope, 8-byte prefix):
 +0      8     prefix flags qword              (no TU copy, no orphan slot)
 +8      ...   node body starts here           (returned pointer)

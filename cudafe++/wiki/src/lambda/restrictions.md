@@ -153,7 +153,7 @@ The parent function's template parameter list must satisfy naming and variadic c
 
 After parsing the capture list and annotations (Phases 1--3), `scan_lambda` enters the extended lambda validation block. This block is guarded by `dword_106BF38` (extended lambda mode) and the annotation bits at `lambda_info + 25`. The validation proceeds as:
 
-```
+```text
 sub_447930 (scan_lambda), Phase 4 entry:
   |
   +-- Call sub_6BCDD0 (nv_find_parent_lambda_function)
@@ -186,7 +186,7 @@ sub_447930 (scan_lambda), Phase 4 entry:
 
 For each captured variable, `make_field_for_lambda_capture` runs targeted checks:
 
-```
+```text
 sub_42EE00 (make_field_for_lambda_capture):
   |
   +-- If byte+25 bit 3 set (device wrapper):
@@ -214,7 +214,7 @@ sub_42EE00 (make_field_for_lambda_capture):
 
 `sub_41A3E0` is the outer wrapper that validates the per-capture annotation context. `sub_41A1F0` performs the recursive array dimension walk and element-type validation.
 
-```
+```text
 sub_41A3E0 (validate_type_hd_annotation):
   |
   +-- Determine context string: "__device__" or "__host__ __device__"

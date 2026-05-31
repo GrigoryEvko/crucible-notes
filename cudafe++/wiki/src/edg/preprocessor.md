@@ -31,7 +31,7 @@ Unlike GCC's libcpp or Clang's `Lex`, EDG's preprocessor is not a separate phase
 
 ## Architecture
 
-```
+```text
 Parser / lexer cache (sub_676860)
         │  encounters token '#' (word_126DD58 == 1)
         ▼

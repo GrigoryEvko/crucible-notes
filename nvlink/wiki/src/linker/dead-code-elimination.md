@@ -23,7 +23,7 @@ DCE is the primary mechanism by which nvlink avoids bloating the final cubin wit
 
 DCE is controlled by three interacting CLI options and one internal flag:
 
-```
+```text
 byte_2A5F214  -- mark-used          (composite: set if any liveness source is active)
 byte_2A5F213  -- use-host-info      (host compiler provided reference lists)
 byte_2A5F212  -- ignore-host-info   (force-disable host info)
@@ -119,7 +119,7 @@ void add_referenced_symbols(ctx, set_ptr, ref_list, category_name) {
 ```
 
 When verbose mode is active, each insertion prints a diagnostic:
-```
+```text
 add referenced external kernel: my_kernel
 add referenced internal constant: my_const
 ```
@@ -236,7 +236,7 @@ The pass operates in two phases within a single function. Phase 1 iterates every
 
 Phase 1 iterates all entries in the callgraph vector (`ctx+408`) from index 1 through `count - 1` (index 0 is reserved). For each entry it applies seven liveness tests in order; the first matching test determines the disposition:
 
-```
+```c
 deferred_list = empty
 
 for i = 1 to callgraph_count - 1:
@@ -302,7 +302,7 @@ The `entry.caller_list` field at offset `+40` is a singly-linked list of `(calle
 
 After Phase 1 completes, `sub_464740` counts the deferred list. If it is empty, the pass returns immediately. Otherwise Phase 2 iterates the deferred entries and performs a more expensive liveness check:
 
-```
+```c
 if list_length(deferred_list) == 0:              // sub_464740
     return
 
@@ -394,7 +394,7 @@ The deferred list is implemented as a singly-linked list of `(next_ptr, callgrap
 
 When Phase 1 determines a function is dead, it removes not just the function's code section but all associated sections in a six-stage cascade. Phase 2 does not perform this cascade (see above). The full removal sequence:
 
-```
+```c
 function remove_dead_function(ctx, entry, cg_index, section):
     func_id   = entry.section_id
     func_name = section.name                         // offset +32
@@ -518,7 +518,7 @@ Four device functions survive the merge phase and land in the callgraph vector a
 
 After the merge phase, the section table (stored in the section array at `ctx+360`, accessed via `sub_442270`) contains the following entries. Column meanings: **Idx** is the section index (slot into the `ctx+360` vector); **sh_type** is the raw ELF type; **Flags** is the `section+5` byte (internal); **Sym** is the section-symbol index (`section+24`, later remapped via `ctx+456`); **Info** is the `sh_info` linkage used by `sub_442760`:
 
-```
+```text
    Idx  Section name                sh_type      Flags  Sym  Info  Notes
    ───  ──────────────────────────  ───────────  ─────  ───  ────  ─────────────────────────
     1   .text.main_kernel           PROGBITS     0x10    1    0    SHF_EXECINSTR, entry
@@ -538,7 +538,7 @@ The flag byte on `.text.main_kernel` has bit `0x10` set by the front end to mark
 
 The callgraph vector at `ctx+408` holds one node per function. Each node is 64 bytes; the fields read by `sub_44AD40` are:
 
-```
+```text
    offset   field                 type   notes
    ──────   ───────────────────   ─────  ─────────────────────────────────────
       +0    section_id            i32    negative => from ctx+352, positive => ctx+344
@@ -555,7 +555,7 @@ The callgraph vector at `ctx+408` holds one node per function. Each node is 64 b
 
 Before liveness propagation runs, `sub_44C030` performs an O(N x M x K) resolution pass that ties `-3` alt_call records to their concrete address-taken targets. The structure is three nested loops over the callgraph at `ctx+408`:
 
-```
+```c
 for src in callgraph[1 .. node_count]:                       # outer: each potential caller
     head = *(src + 8)                                         # alt_call_list head built by sub_44BAA0
     for entry in linked-list(head, next=entry[0]):            # walk -3 entries hung off src
@@ -571,7 +571,7 @@ The remainder of `sub_44C030` is a DFS over the augmented graph: bytes `+48` (vi
 
 For our four functions the post-merge callgraph looks like this (callee edges on the left, caller edges in brackets):
 
-```
+```text
    cg[1]  main_kernel  (sym 1)    callees -> helper_a            [callers: —       ]  addr_taken=0
    cg[2]  helper_a     (sym 2)    callees -> helper_b            [callers: main_kernel ]  addr_taken=0
    cg[3]  helper_b     (sym 3)    callees -> —                   [callers: helper_a    ]  addr_taken=0
@@ -580,7 +580,7 @@ For our four functions the post-merge callgraph looks like this (callee edges on
 
 Four string-interner hashes are live at this point. These come from `sub_449A80` which looks up an `int*` keyed on the name. For this example the hashes resolve to the displayed section-symbol IDs:
 
-```
+```text
    sub_449A80(ctx+288, ".text.main_kernel")     -> int*  =  1
    sub_449A80(ctx+288, ".text.helper_a")        -> int*  =  2
    sub_449A80(ctx+288, ".text.helper_b")        -> int*  =  3
@@ -595,7 +595,7 @@ The liveness seeder (`sub_426AE0`) has already processed host info and inserted 
 
 **Iteration 1 -- `cg[1] = main_kernel`**
 
-```
+```text
 v7      = sub_464DB0(ctx+408, 1)            = cg[1] node ptr
 v12     = sub_440590(ctx, *v7 = 1)          = section record for idx 1 (.text.main_kernel)
 v13     = *(ctx+568)                        = 0                (no forced root)
@@ -607,7 +607,7 @@ v6      = sub_44A520(ctx, 1)                = TRUE             (flags 0x10 ⇒ e
 
 **Iteration 2 -- `cg[2] = helper_a`**
 
-```
+```text
 v7      = cg[2] node ptr
 v12     = section record for idx 5 (.text.helper_a)
 v6      = sub_44A520(ctx, 2)                = FALSE            (flags 0x00)
@@ -622,7 +622,7 @@ Same shape as iteration 2: `sub_44A520` returns false, but the caller list (hold
 
 **Iteration 4 -- `cg[4] = dead_fn`**
 
-```
+```text
 v7      = cg[4] node ptr
 v12     = section record for idx 8 (.text.dead_fn)
 v6      = sub_44A520(ctx, 4)                = FALSE
@@ -638,7 +638,7 @@ All seven tests have now failed to keep `dead_fn` alive. The removal cascade beg
 
 With `-v` active (`ctx+64` low bit), the first diagnostic is printed:
 
-```
+```text
 dead function 4(dead_fn)
 ```
 
@@ -646,7 +646,7 @@ dead function 4(dead_fn)
 
 **Stage 2.** The code section itself is neutralized:
 
-```
+```text
 v34 = sub_440350(ctx, v12, ...)             = 4      (resolved sym idx)
 v162 = sub_440590(ctx, 4)                   = section record for idx 8
 v40 = sub_440350(ctx, v162, ...)            = 4      (self-resolution for sanity)
@@ -658,24 +658,24 @@ walk *(v46+72) reloc list, sub_431000 each, sub_464520 head
 ```
 
 Verbose output:
-```
+```text
 removed un-used section .text.dead_fn (4)
 ```
 
 **Stage 3.** `sub_442760(ctx, 4, 0x70000000)` walks the sh_info chain looking for the NVIDIA info section whose `+44` field equals 4. It finds idx 10 (`.nv.info.dead_fn`), and the same zero+sentinel pattern applies:
-```
+```text
 removed un-used section .nv.info.dead_fn (17)
 ```
 
 **Stage 4.** `sub_442760(ctx, 4, 9)` finds idx 9 (`.rela.text.dead_fn`):
-```
+```text
 removed un-used section .rela.text.dead_fn (16)
 ```
 
 **Stage 5.** `sub_442760(ctx, 4, 4)` (SHT_NOTE) returns 0 -- `dead_fn` had no per-function note, so nothing happens here.
 
 **Stage 6.** The OCG constant section is located by name rather than sh_info. The writer vtable at `*(ctx+488) + 136` yields the OCG prefix (`".nv.constant"` in this build); `sprintf(s, "%s.%s", prefix, "dead_fn")` gives `".nv.constant.dead_fn"`. `sub_4411D0(ctx, s)` returns 11. `sub_442270(ctx, 11)` pulls the record; its `+44 (sh_info)` is 8, matching our code section idx, so the single-instance path runs and prints:
-```
+```text
 removed un-used section .nv.constant.dead_fn (18)
 ```
 
@@ -689,7 +689,7 @@ No entries were deferred (`v165` is still NULL -- `sub_464740(NULL)` returns 0),
 
 The callgraph vector now holds:
 
-```
+```text
    cg[0]  (reserved)
    cg[1]  main_kernel     (untouched)
    cg[2]  helper_a        (untouched)
@@ -707,7 +707,7 @@ Before Phase 1 runs, both remap pointers are NULL -- `sub_4411F0` and `sub_44035
 
 For our example the forward remap table `*(ctx+456)` ends up as:
 
-```
+```text
    old idx   new idx   comment
    ───────   ───────   ────────────────────────────────────
       0         0      reserved slot
@@ -734,7 +734,7 @@ The `ctx+472` "secidx virtual" guard array -- consulted whenever `*(ctx+82)` is 
 
 When the layout phase completes, the output ELF contains exactly seven sections derived from the four original kept sections, in the dense post-remap order:
 
-```
+```text
    [ 1] .text.main_kernel        PROGBITS    AX      sym 1
    [ 2] .nv.info.main_kernel     0x70000000  —       sym 2
    [ 3] .rela.text.main_kernel   RELA        I       sym 3 → (1)
@@ -748,7 +748,7 @@ The symbol table has had `dead_fn` and its section symbols stripped; because the
 
 Full verbose transcript for this example:
 
-```
+```text
 add referenced external kernel: main_kernel
 use host info
 dead function 4(dead_fn)
@@ -764,7 +764,7 @@ No `dead function` line is emitted for `main_kernel`, `helper_a`, or `helper_b` 
 
 The `--keep-system-libraries` flag (`byte_2A5F2C2`) interacts with DCE through the `cudadevrt` handling path. Normally, when full LTO is active and all translation units were compiled to IR, `main()` detects that `cudadevrt` is unnecessary and removes it from the input list:
 
-```
+```text
 LTO on everything so remove libcudadevrt from list
 ```
 
@@ -847,7 +847,7 @@ This can be visualized with `dot -Tpng callgraph.dot -o callgraph.png` to inspec
 
 With `-v`, the DCE pass produces detailed diagnostics. A typical verbose run:
 
-```
+```text
 add referenced external kernel: _Z10my_kernelPfi
 add referenced internal constant: _ZN6detail9my_constE
 use host info
@@ -862,12 +862,12 @@ removed un-used section .nv.local.another_dead_func (22)
 ```
 
 When a function has its address taken but no callers, the pass logs:
-```
+```text
 function 9(callback_func) has address taken but no call to it
 ```
 
 When host info is incomplete across input objects:
-```
+```text
 incomplete so ignore host info
 ```
 

@@ -29,7 +29,7 @@ Every NVPTX machine opcode has an entry in the global constraint table at `word_
 
 The access pattern, decompiled from `sub_B612D0`:
 
-```
+```c
 uint16_t entry = word_3F3E6C0[opcode - 1];
 uint8_t constraint_class = entry & 0xFF;         // low byte
 uint8_t register_class   = (entry >> 8) & 0xFF;  // high byte
@@ -99,7 +99,7 @@ The mapping function `sub_3494EA0` contains a switch statement that classifies i
 
 The `byte_444C4A0` operand-type classification table (16-byte entries, indexed by MVT enum) feeds the coalescer's type check:
 
-```
+```c
 struct OperandTypeEntry {    // 16 bytes at byte_444C4A0[16 * mvt - 16]
     uint8_t type_code;       // +0: 12=i32, 13=i64, 15=f32, etc.
     uint8_t size_class;      // +1: size in register-width units
@@ -138,7 +138,7 @@ These opcodes implement the PTX `.param`-space calling convention. They are emit
 
 The call sequence follows a strict emission order:
 
-```
+```c
 CallSeqBegin(315)
   for each argument:
     DeclareParam(505) or DeclareScalarParam(506)
@@ -168,7 +168,7 @@ These opcodes handle vectorized `.param`-space data movement, emitted during arg
 
 The vector width selection logic in `LowerCall` (`sub_3040BF0`, lines 1429--1440):
 
-```
+```text
 accumulated_operand_count == 3  ->  StoreV1 (571), width=1
 accumulated_operand_count == 4  ->  StoreV2 (572), width=2
 accumulated_operand_count == 6  ->  StoreV4 (573), width=4
@@ -383,7 +383,7 @@ Direction is determined by a separate operand: value 0 emits `"a"` (to-generic),
 
 The full path from opcode to emitted constraint:
 
-```
+```c
 sub_B612D0(emitter_state, opcode):
     // Step 1: Table lookup
     entry = word_3F3E6C0[opcode - 1]

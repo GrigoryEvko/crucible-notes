@@ -100,7 +100,7 @@ If the call had passed a `struct Pt { int x, y, z, w, u; }` through `%p` instead
 
 Output IR:
 
-```text
+```llvm
 @.str = private addrspace(4) constant [10 x i8] c"x=%d y=%f\00"
 
 define ptx_kernel void @k(i32 %i, float %f) {

@@ -331,7 +331,7 @@ void rewriteCallToDirectCall(
 
 This is the simplest and most common optimization: the `call.reg` becomes `call.direct`, enabling downstream inlining. On GPU this is by far the dominant strategy. Consider a CUDA kernel with a virtual method call inside a loop:
 
-```
+```ptx
 ; Before devirtualization (PTX):
 ld.global.u64  %rd1, [%rd0];     // load vtable ptr
 ld.global.u64  %rd2, [%rd1+16];  // load function ptr at vtable slot 2

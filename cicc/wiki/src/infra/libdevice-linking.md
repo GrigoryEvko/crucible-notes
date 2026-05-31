@@ -23,7 +23,7 @@ Upstream LLVM has no equivalent of this embedded-library mechanism. Clang relies
 
 The cicc binary contains two byte-identical copies of the libdevice bitcode at different virtual addresses. Each compilation path uses its own copy, avoiding any shared-state coordination between Path A (nvcc-invoked) and Path B (standalone/LibNVVM):
 
-```
+```text
 Binary offset         Path   Referenced by          Size
 ─────────────────────────────────────────────────────────────
 unk_3EA0080           A      sub_905EE0 (9 KB native)   455,876 bytes
@@ -43,7 +43,7 @@ The duplication exists because the two compilation paths (`sub_905EE0` for Path 
 
 In both paths, the embedded bitcode is passed to `sub_12BCB00` (the `nvvmCUAddModuleFromBuffer` API wrapper) with a hardcoded size constant:
 
-```
+```c
 // Path A (sub_905EE0, line ~167):
 v19 = sub_12BCB00(compilation_unit, &unk_3EA0080, 455876, 0);
 
@@ -112,7 +112,7 @@ For each module in the input list (from `a1[0]` to `a1[1]`, stepping by 4 qwords
 3. Determines the buffer name (falls back to `"Unknown buffer"` if the vtable function is `sub_12BCB10`)
 4. Parses bitcode into an LLVM Module via `sub_15099C0`
 
-```
+```c
 for each entry in modules[a1[0] .. a1[1]]:
     buffer = open_and_read(entry.data, entry.size, entry.name)
     magic = read_4_bytes(buffer)
@@ -129,7 +129,7 @@ for each entry in modules[a1[0] .. a1[1]]:
 
 After parsing all modules, the linker enforces that every module's target triple starts with `nvptx64-`. The comparison uses a prefix match against the global string at `off_4CD49B0`:
 
-```
+```c
 for each parsed_module:
     triple = get_triple(parsed_module)   // offset +240
     if triple.length == 0:
@@ -146,7 +146,7 @@ The libdevice bitcode has triple `nvptx64-nvidia-gpulibs`, which passes this pre
 
 For each module, the linker calls `sub_12BFF60` (the version checker -- see next section). If the check fails, the linker emits a diagnostic and returns error code 3:
 
-```
+```c
 for each parsed_module:
     result = nvvm_ir_version_check(modules, parsed_module, flags)  // sub_12BFF60
     if result != 0:
@@ -168,7 +168,7 @@ For N > 1 user modules, the linker:
 2. Copies the primary module's triple and data layout to all secondary modules (ensuring consistency)
 3. Calls `sub_12F5610` -- NVIDIA's wrapper around LLVM's `Linker::linkModules` -- to merge all user modules into a single module
 
-```
+```c
 if module_count > 1:
     primary = modules[v57]
     for each secondary in modules where index != v57:
@@ -184,7 +184,7 @@ if module_count > 1:
 
 After user modules are merged, the linker processes builtin modules from `a1[3]` to `a1[4]` (this is where libdevice lives). Each builtin module goes through the same bitcode validation and parsing as user modules, then is linked into the main module using `sub_1CCEBE0` -- a different linking function than the user-module linker, likely `Linker::linkModules` with `Linker::OverrideFromSrc` flags for builtin definitions:
 
-```
+```c
 for each builtin in modules[a1[3] .. a1[4]]:
     validate_and_parse(builtin)
     set_triple(builtin, get_triple(main_module))
@@ -215,7 +215,7 @@ The final validation phase walks every global symbol in the linked module and ch
 | 0xF | named type | resolved recursively |
 | 0x10 | vector | element_size * count |
 
-```
+```c
 for each global_symbol in linked_module:
     name = get_name(global_symbol)
     if name in size_tree:
@@ -279,7 +279,7 @@ The constant folding engine (`sub_14D90D0`, 27KB) has special knowledge of libde
 
 This creates an important ordering constraint:
 
-```
+```text
 LNK stage:  link libdevice → user module now has __nv_sinf definitions
 OPT stage:  NVVMReflect  → resolve __CUDA_FTZ, __CUDA_ARCH queries
             ConstantFold → fold __nv_sinf(0.0) → 0.0 (if eligible)
@@ -306,7 +306,7 @@ The fold eligibility checker (`sub_14D90D0`) uses three dispatch mechanisms to i
 
 **Name-based matching** (ID = 0): When the call target is not a recognized LLVM or NVVM intrinsic, the checker falls back to string matching on the function name. It dispatches on the first character, then uses DWORD integer comparisons for 4-byte names and `memcmp` for longer names:
 
-```
+```text
 Foldable C library names:
   sin, sinf, cos, cosf, tan, tanf, acos, acosf, asin, asinf,
   atan, atanf, atan2, atan2f, ceil, ceilf, cosh, coshf,
@@ -337,7 +337,7 @@ Foldable C library names:
 
 When `-keep` is active, the LNK stage serializes its output to a `.lnk.bc` file alongside the input:
 
-```
+```text
 input.cu  →  input.lnk.bc  (linked: user + libdevice)
           →  input.opt.bc  (optimized: after OPT stage)
           →  input.ptx     (final: after LLC stage)

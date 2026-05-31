@@ -90,7 +90,7 @@ During backend code generation, `gen_lambda` produces the per-lambda wrapper spe
 
 When `dword_106BF38 == 0`, any lambda with `__host__` or `__device__` annotations triggers error 3612:
 
-```
+```text
 error #20155-D: __host__ or __device__ annotation on lambda requires --extended-lambda nvcc flag
 ```
 

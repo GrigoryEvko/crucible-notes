@@ -39,7 +39,7 @@ The top-level per-alloca entry point. Validates the alloca as a candidate, build
 
 ### Phase 1: Candidate Validation
 
-```
+```c
 runOnAlloca(state, alloca):
     if alloca has no users:
         eraseFromParent(alloca)
@@ -69,7 +69,7 @@ The size threshold at `qword_50056C8` is a global tuning knob, likely controlled
 
 ### Phase 2: Use Analysis and Slice Building
 
-```
+```c
     metadata = buildMetadataTable(alloca)   // sub_D5F1F0
 
     if qword_50055E8:                       // two-pass mode
@@ -95,7 +95,7 @@ The two-pass flag (`qword_50055E8`) enables a pre-analysis pass that runs `build
 
 After building slices, `runOnAlloca` scans for contiguous ranges that share the same base type and can be merged:
 
-```
+```c
     for each group of contiguous slices:
         if all loads/stores in group use the same type:
             if none are volatile (isVolatile check via sub_B46500):
@@ -107,7 +107,7 @@ This optimizer/merger reduces redundant slices before the splitting phase. For e
 
 ### Phase 4: Dead Instruction Processing
 
-```
+```c
     for each dead instruction found during analysis:
         for each operand:
             addToWorklist(operand)         // sub_29220F0
@@ -119,7 +119,7 @@ Dead instructions identified during slice building (stores to never-loaded range
 
 ### Phase 5: Recursive Splitting
 
-```
+```c
     if slices is non-empty:
         splitAlloca(state, alloca, slices)  // sub_2930B90 — recursive
 ```
@@ -157,7 +157,7 @@ For each partition `[start, end)`:
 
 ### Phase 4: Size and Alignment Check
 
-```
+```c
     alloc_size = getTypeAllocSize(partition_type)    // sub_9208B0
     if alloc_size > 0x800000:                        // 8 MB sanity limit
         skip partition
@@ -189,7 +189,7 @@ Then `rewritePartition` (`sub_29197E0`) is called twice: first for inside slices
 
 ### Phase 6: New Sub-Alloca Creation
 
-```
+```c
     // Compute alignment
     align_log2 = _BitScanReverse64(alloca_alignment)
     abi_align = getABITypeAlignment(type)            // sub_AE5020
@@ -332,7 +332,7 @@ The `.fca` suffix stands for "first-class aggregate" -- LLVM's term for structs 
 
 ### Slice Entry (24 bytes)
 
-```
+```c
 struct SROASlice {
     uint64_t start;     // +0:  byte offset into alloca (inclusive)
     uint64_t end;       // +8:  byte offset into alloca (exclusive)
@@ -344,7 +344,7 @@ The `splittable` bit indicates whether the slice can be split across partition b
 
 ### Sub-Alloca Record (56 bytes)
 
-```
+```c
 struct SubAllocaRecord {
     void* alloca_ptr;       // +0:  pointer to the new AllocaInst
     void* slice_list;       // +8:  pointer to slice list for this sub-alloca

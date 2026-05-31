@@ -79,7 +79,7 @@ The entry point `sub_1864060` takes four arguments: `a1` = function/callsite nod
 
 **Linkage check.** Reads the byte at `a1+32`. The low nibble encodes linkage class: values 7 (`linkonce_odr`) and 8 (`weak_odr`) are eligible for inlining. Bits [7:6] encode visibility: `0x2` = hidden (OK), `0x1` = protected (bail). The function also requires byte at `a1+16` == 3 (function definition, not declaration), bit 0 of byte at `a1+80` == 0 (no `noinline` attribute), and `sub_15E4F60(a1)` returning false (no `optnone`).
 
-```
+```c
 function shouldInline(callsite):
     name = getName(callsite.callee)
     if name starts with LLVM_INTRINSIC_PREFIX:
@@ -119,7 +119,7 @@ The loads and stores are accumulated into two `SmallVector`s (`v357`, `v360`) wi
 
 Before proceeding to the expensive type-size computation, the function checks:
 
-```
+```c
 if (num_loads * num_stores > 100):
     return BAIL_OUT  // Too expensive argument copy pattern
 ```
@@ -153,13 +153,13 @@ The engine walks NVVM IR type nodes and computes byte sizes for each argument at
 
 The byte-size formula applied uniformly is:
 
-```
+```c
 byte_size = (multiplier * bit_width + 7) >> 3
 ```
 
 The core comparison at the heart of the cost model:
 
-```
+```c
 if callee_arg_size > callee_formal_size:
     // Argument is being widened at the call boundary
     // This costs extra st.param + ld.param instructions
@@ -273,7 +273,7 @@ The ML inference path extracts features from the callsite and callee (instructio
 
 Model D at `sub_38576C0` modifies inline costs based on NVPTX-specific opcode analysis. The key logic:
 
-```
+```c
 for each instruction in callee:
     tag = getOpcodeTag(instruction)
     if ((tag >> 4) & 0x3FF) == 9:
@@ -317,7 +317,7 @@ The +2000 bonus for tag 9 opcodes encourages inlining of functions containing sp
 
 The complete inlining decision flow through Model A:
 
-```
+```text
                      CallSite arrives at sub_186CA00
                               |
                    sub_186B510: check remarks
@@ -381,7 +381,7 @@ The complete inlining decision flow through Model A:
 
 ## Call Graph
 
-```
+```text
 sub_186CA00  Inliner::inlineCallsImpl (CGSCC SCC walk)
   +-> sub_186B510  Inline decision with remarks
       +-> sub_1864060  shouldInline / cost computation (THIS)

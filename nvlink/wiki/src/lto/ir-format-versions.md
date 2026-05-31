@@ -110,7 +110,7 @@ The `xmmword_1D40F10` through `xmmword_1D40F70` constants are 16-byte SSE values
 
 When nvlink encounters an `lto_`-tagged input object:
 
-```
+```text
 Input: fatbin containing lto_100 bitcode section
                     |
                     v

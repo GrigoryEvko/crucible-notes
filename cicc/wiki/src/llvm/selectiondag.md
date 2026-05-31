@@ -286,7 +286,7 @@ PTX does not use registers for argument passing. Instead, all arguments flow thr
 
 ### Call Sequence DAG Structure
 
-```
+```c
 CallSeqBegin(315, seq_id, 0)
   DeclareScalarParam(506, align=4, idx=0, size=32)   // scalar arg
   DeclareParam(505, align=4, idx=1, size=N)           // struct arg (byval)
@@ -385,7 +385,7 @@ The DAG combiner runs three times during the SelectionDAG pipeline: once after i
 
 The combiner orchestrator (`sub_F681E0`, 65KB) manages the worklist-driven iteration over all DAG nodes:
 
-```
+```c
 function DAGCombine(dag):
     worklist = dag.allNodes()    // linked list iteration
     visited = SmallPtrSet()

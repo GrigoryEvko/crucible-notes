@@ -55,7 +55,7 @@ specific SM ID requires inspecting the call-site that loads the vtable column at
 
 ## Pipeline Position
 
-```
+```text
  IR instruction stream
        |
        v
@@ -85,7 +85,7 @@ All three mega-dispatchers follow the same algorithm.
 
 ### Entry and primary switch
 
-```
+```asm
 push callee-saves
 sub  rsp, 10h
 mov  rbp, rdi            ; ctx
@@ -840,7 +840,7 @@ bit adjustments (bits 25-31 can transform -2 to -3/-1), and removes entries wher
 both resolve to -1.  The loop repeats until no further removals (fixed-point).
 The rewrite loop then dispatches by opcode:
 
-```
+```c
 for each instr on expansion_worklist (linked via instr+56):
   opc = instr[72]; dst = &instr[84]; src0 = &instr[92]
   src1 = &instr[100]; src2 = &instr[108]; reg = regArray[dst & 0xFFFFFF]

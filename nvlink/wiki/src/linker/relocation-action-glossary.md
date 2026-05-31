@@ -131,7 +131,7 @@ The bitmask `0x3FFFE002C6` in `sub_469620` line 46 -- the symbol-resolution gate
 
 The two enumerations relate as follows:
 
-```
+```text
 catalog action  dispatcher opcode   notes
 --------------  -----------------   ---------------------------------------------
        0        0x00                exact match
@@ -175,7 +175,7 @@ Five gaps appear in the dispatcher's switch space; each has a documented reason:
 
 The four 128-bit SSE registers loaded at function entry of `sub_468760` form a 64-byte constant table used by the masked-shift family. The decoded contents are:
 
-```
+```text
 xmmword_1D3F8E0:  0x000000FF_00000000_000000FF_00000000
                   -> mask_table[0] = 0xFF                  (G8_0)
                      mask_table[1] = 0xFF00                (G8_8)

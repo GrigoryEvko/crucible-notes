@@ -23,7 +23,7 @@ cudafe++ determines the target GPU architecture through a five-stage pipeline: n
 
 The architecture value flows through five distinct stages before it is available for feature gate checks. Each stage adds a layer of processing: parsing, validation, type model configuration, dialect routing, and per-TU state replication.
 
-```
+```text
 Stage 1: nvcc                         Stage 2: CLI parsing
   --gpu-architecture=sm_90    --->      case 245 (--target)
   translates to --target=<idx>          sub_7525E0(<arg>) -> dword_126E4A8
@@ -562,7 +562,7 @@ At higher verbosity levels (5+), the compiler logs IL tree walking with messages
 
 ## Complete Call Graph
 
-```
+```text
 main (sub_585EE0)
   |
   +-> proc_command_line (sub_459630)

@@ -524,7 +524,7 @@ The execution mode fundamentally determines which runtime functions appear in ge
 
 ### Generic Mode Kernel (mode byte = 1)
 
-```
+```c
 entry:
     ret = __kmpc_target_init(KernelEnv, LaunchEnv)   // [155]
     if (ret == -1) goto worker_loop                   // worker threads
@@ -547,7 +547,7 @@ worker_loop:
 
 After successful Generic-to-SPMD transformation:
 
-```
+```c
 entry:
     __kmpc_target_init(KernelEnv, LaunchEnv)          // [155], returns 0 for all
     tid = __kmpc_get_hardware_thread_id_in_block()    // [6]
@@ -563,7 +563,7 @@ exit.threads:
 
 ### SPMD Mode Kernel -- Complex (guarded regions, multiple parallel regions)
 
-```
+```c
 entry:
     __kmpc_target_init(...)                           // [155]
 region.check.tid:

@@ -13,7 +13,7 @@ The constraint table is a statically allocated array of 16-bit words in the `.da
 
 The access pattern from `sub_B612D0`:
 
-```
+```c
 // sub_B612D0(a1, a2)  where a2 = MachineInstr opcode
 v4 = HIBYTE(word_3F3E6C0[a2 - 1]);    // register class for output
 switch (LOBYTE(word_3F3E6C0[a2 - 1]))  // constraint class -> switch case
@@ -112,7 +112,7 @@ The 179-case switch in `sub_B612D0` is the heart of the pattern database. Each c
 
 These are the simplest constraints: one input operand and one result. Two descriptor entries (32 bytes on stack). Representative constraint classes:
 
-```
+```c
 // Constraint class 0x01 — Unary ALU, same type in/out
 // Example: MOV, NEG, NOT, ABS for Int32Regs
 // Opcode lookup: word_3F3E6C0[opcode - 1] = 0x0E01  (class=0x01, regclass=14=Int32)
@@ -128,7 +128,7 @@ Constraint classes in this family include 0x01 through approximately 0x08, cover
 
 The most common family. Three descriptor entries (48 bytes on stack). Covers all two-operand arithmetic and logic instructions:
 
-```
+```c
 // Constraint class 0x09 — Binary ALU, all same type
 // Example: ADD, SUB, MUL, AND, OR, XOR for Int32Regs
 // Opcode lookup: word_3F3E6C0[opcode - 1] = 0x0E09  (class=0x09, regclass=14=Int32)
@@ -141,7 +141,7 @@ case 0x09:
 
 Variants within this family differ in whether inputs are constrained to the same class as the output or to a different class. For instance, shift instructions constrain the shift amount (input[1]) to Int32 regardless of the data type of input[0]:
 
-```
+```c
 // Constraint class 0x0C — Binary with mixed types (shift-like)
 // Example: SHL.b64, SHR.b64  (data=Int64, shift_amount=Int32)
 // Opcode lookup: word_3F3E6C0[opcode - 1] = 0x320C  (class=0x0C, regclass=50=Int64)
@@ -156,7 +156,7 @@ case 0x0C:
 
 Comparison instructions produce a predicate register result regardless of the input type. Three descriptor entries:
 
-```
+```c
 // Constraint class 0x10 — Compare, predicate output
 // Example: SETP.EQ.s32, SETP.LT.f32
 // Opcode lookup: word_3F3E6C0[opcode - 1] = 0x4E10  (class=0x10, regclass=78=Pred)
@@ -173,7 +173,7 @@ The input register class is determined by the instruction variant (integer compa
 
 Fused multiply-add and select instructions require four descriptor entries (64 bytes on stack):
 
-```
+```c
 // Constraint class 0x18 — Ternary FMA, all same float type
 // Example: FMA.RN.f32 (a * b + c)
 // Opcode lookup: word_3F3E6C0[opcode - 1] = 0x2818  (class=0x18, regclass=40=Float32)
@@ -187,7 +187,7 @@ case 0x18:
 
 Select/conditional-move instructions also fall here, with one predicate input and two data inputs:
 
-```
+```c
 // Constraint class 0x1A — Select (pred, trueval, falseval)
 // Example: SELP.b32 (predicated select)
 case 0x1A:
@@ -202,7 +202,7 @@ case 0x1A:
 
 Load instructions produce a data result from an address operand. Store instructions consume both data and address. These constraint classes handle the different address space qualifiers and vector widths:
 
-```
+```c
 // Constraint class 0x20 — Scalar load from address
 // Example: LD.GLOBAL.b32 (global memory load)
 // Opcode lookup: word_3F3E6C0[opcode - 1] = 0x0E20  (class=0x20, regclass=14=Int32)
@@ -214,7 +214,7 @@ case 0x20:
 
 Vector load variants (LoadV2, LoadV4) use additional output entries for each vector lane:
 
-```
+```c
 // Constraint class 0x22 — Vector load V2 (two-element)
 // Example: LD.GLOBAL.V2.b32 (load 2x Int32)
 case 0x22:
@@ -227,7 +227,7 @@ case 0x22:
 
 Store instructions have no result output (kind = -1 carries a sentinel value or void class):
 
-```
+```c
 // Constraint class 0x28 — Scalar store
 // Example: ST.GLOBAL.b32 (global memory store)
 case 0x28:
@@ -241,7 +241,7 @@ case 0x28:
 
 Conversion instructions have an input class that differs from the output class. The constraint class encodes the specific pair:
 
-```
+```c
 // Constraint class 0x30 — CVT from Int32 to Float32
 // Example: CVT.RN.f32.s32
 // Opcode lookup: word_3F3E6C0[opcode - 1] = 0x2830  (class=0x30, regclass=40=Float32)
@@ -251,7 +251,7 @@ case 0x30:
     sub_A78010(a1, desc, 2)
 ```
 
-```
+```c
 // Constraint class 0x32 — CVT from Float64 to Int64
 // Example: CVT.RTZ.s64.f64
 // Opcode lookup: word_3F3E6C0[opcode - 1] = 0x3232  (class=0x32, regclass=50=Int64)
@@ -267,7 +267,7 @@ Widening/narrowing conversions between integer sizes and float-to-half conversio
 
 The copy family (opcodes 440-503) maps to constraint classes that encode same-class and cross-class register transfers:
 
-```
+```c
 // Constraint class 0x40 — Same-class copy
 // Example: MOV.b32  (Int32 -> Int32)
 // Used by opcodes 440-443 (type-preserving moves)
@@ -277,7 +277,7 @@ case 0x40:
     sub_A78010(a1, desc, 2)
 ```
 
-```
+```c
 // Constraint class 0x42 — Cross-class copy (Int32 <-> Float32)
 // Example: MOV from Int32Regs to Float32Regs (bitcast-level move)
 // Used by opcodes 444+ (cross-class moves)
@@ -293,7 +293,7 @@ Cross-class copies are never coalesced by the register coalescer (they remain as
 
 The NVPTX calling convention uses special opcodes for `.param` space management. These have unique constraint classes with no data register operands:
 
-```
+```c
 // Constraint class 0x50 — DeclareParam (opcode 505)
 // Declares a .param space allocation for function argument passing
 case 0x50:
@@ -308,7 +308,7 @@ Call sequence opcodes (315=CallSeqBegin, 514=CallStart, 517=CallSeqEnd, 518=Call
 
 Atomic operations require an address, a data operand, and produce a result of the same data type:
 
-```
+```c
 // Constraint class 0x60 — Atomic RMW (read-modify-write)
 // Example: ATOM.ADD.s32 (atomic add on Int32)
 // Opcodes 294-297 (atom.add family)
@@ -321,7 +321,7 @@ case 0x60:
 
 Atomic compare-and-swap (opcode 462 = atom.cas) requires four operands (address, expected, desired, result):
 
-```
+```c
 // Constraint class 0x62 — Atomic CAS
 // Example: ATOM.CAS.b32 (compare-and-swap)
 case 0x62:
@@ -336,7 +336,7 @@ case 0x62:
 
 The most complex constraint classes handle tensor core matrix operations. These instructions consume multiple register-pair or register-quad operands and produce multiple results. Constraint class 0xB0 is the extreme case with 17 input operands:
 
-```
+```c
 // Constraint class 0xB0 — Complex MMA (17 inputs, 1+ outputs)
 // Example: tcgen05.mma variants (Blackwell, opcodes 4905-4940)
 // This is the maximum-operand constraint class.
@@ -354,7 +354,7 @@ HMMA/IMMA/BMMA instructions (the SM70+ tensor core families at `sub_21E0360`-`su
 
 Many NVPTX instructions support predication, where execution is conditional on a predicate register. Predicated variants append an extra Pred-class input:
 
-```
+```c
 // Constraint class 0x70 — Predicated binary ALU
 // Example: @%p0 ADD.s32 %r1, %r2, %r3  (conditional add)
 case 0x70:
@@ -369,7 +369,7 @@ case 0x70:
 
 Barrier and synchronization instructions have no data operands. They operate purely on the chain token for ordering:
 
-```
+```c
 // Constraint class 0x80 — Barrier/Fence (chain-only)
 // Example: BAR.SYNC (opcodes 287-290)
 case 0x80:

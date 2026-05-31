@@ -6,7 +6,7 @@ nvlink executes as a single-pass linear pipeline with 14 phases, two optional co
 
 The diagram below shows all 14 phases for the full device-link path (mode 3), including both optional compiler detours (PTX JIT and LTO) and the Mercury/FNLZR post-link transform. Phases are numbered and labeled with their timing tag strings. Arrows show data flow between phases. The ASCII box edges show which phases execute conditionally.
 
-```
+```text
                            nvlink v13.0.88 pipeline
                       Full device-link path (mode 3)
                       ================================
@@ -370,7 +370,7 @@ nvlink's mode dispatch (Phase 3) selects one of three fundamentally different co
 
 The default and most complex path. Runs the full 14-phase pipeline from Phase 1 through Phase 14. This is the path taken when `nvcc` invokes nvlink to combine separately compiled `.cubin` files into a final device executable.
 
-```
+```text
 Input cubins --> merge --> layout --> relocate --> finalize --> write cubin
                                                      |
                                               sm>=100? --> FNLZR --> capsule mercury
@@ -387,12 +387,12 @@ Key characteristics:
 
 When `--gen-host-linker-script=lcs-abs` is specified, nvlink skips the core linking pipeline entirely and generates a host linker script containing `.nvFatBinSegment` section definitions. This script is consumed by the host `ld` to embed fat binaries into the host executable.
 
-```
+```text
 Phases 1-3 --> write fixed SECTIONS { .nvFatBinSegment ... } --> exit(0)
 ```
 
 The generated script:
-```
+```text
 SECTIONS
 {
     .nvFatBinSegment : { *(.nvFatBinSegment) }
@@ -412,7 +412,7 @@ Key characteristics:
 
 When `--gen-host-linker-script=lcs-aug` is active, nvlink generates a host linker script by running `ld --verbose` to extract the system linker's default script, then appending NVIDIA-specific sections. A validation step ensures the generated script is syntactically correct.
 
-```
+```text
 Phases 1-3 --> construct gcc/collect2 flag extraction pipeline
            --> run ld --verbose to extract default script
            --> append .nvFatBinSegment sections
@@ -435,7 +435,7 @@ Key characteristics:
 
 ### Path Selection Logic
 
-```
+```text
 dword_2A77DC0 value    Condition                              Code path
 ---------------------------------------------------------------------------
 0                      (default)                               Full device link
@@ -449,7 +449,7 @@ The dispatch at line 385 uses `(unsigned int)(dword_2A77DC0 - 1) > 1` which is t
 
 The pipeline communicates through a small set of global data structures that accumulate state as phases execute. The diagram below traces the producer-consumer relationships.
 
-```
+```text
 Phase 1-2  INIT/CLI
     |
     |  Produces:
@@ -580,7 +580,7 @@ For architectures with SM >= 100 (Blackwell and later), nvlink invokes the FNLZR
 
 ### FNLZR Invocation Points
 
-```
+```text
   Point 1: Per-input cubin (Phase 7, lines 726-727, 834-835)
   +-----------------------------------------------+
   | Triggered when: sm > 0x59 AND byte_2A5F225    |
@@ -632,7 +632,7 @@ The pre-link/post-link architecture means that for Mercury targets, the merge an
 
 When `--verbose-keep` (`byte_2A5F29B`) is active, Point 3 additionally extracts the pre-FNLZR ELF and writes it to a side file. The code at lines 1463-1479 saves the serialized buffer before FNLZR runs:
 
-```
+```c
 printf("nvlink -extract %s -m%d -arch=%s -o %s\n", ...)
 fwrite(filenameb, 1, v328, v334)    // pre-FNLZR cubin
 sub_4275C0(&v367, filename, sm, ptr, 1)  // FNLZR transform
@@ -643,7 +643,7 @@ fwrite(v367, 1, ptr[0], v155)       // post-FNLZR mercury capsule
 
 When `-lto` is active, Phase 8 expands into a multi-step sub-pipeline that involves loading an external shared library and optionally spawning threads:
 
-```
+```text
 Phase 8 LTO sub-pipeline
 =========================
 
@@ -772,7 +772,7 @@ These globals are read throughout the pipeline to gate code paths. For example, 
 
 Not all phases run in every invocation. The table below shows which phases execute in each mode:
 
-```
+```text
 Phase      Device link   Host script    Augmented     Cond. in
            (mode 0)      (mode 1)       (mode 2)      device link
 ------     -----------   -----------    ---------      -----------

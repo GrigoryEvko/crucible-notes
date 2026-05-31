@@ -79,7 +79,7 @@ void dispatch(PhaseManager* pm, int* phase_indices, int count) {
 ```
 
 Timing output format (to stderr when `--stat=phase-wise`):
-```
+```text
   <phase_name>  ::  [Total 42 KB ]   [Freeable 8 KB ]   [Freeable Leaked 0 KB ] (0%)
 ```
 
@@ -382,7 +382,7 @@ void orchestrate(CompilationUnit* cu) {
 
 Option 298 is set via a knob string (environment variable or command-line). The string is stored at compilation context offset 21464 with a type indicator at offset 21456. The parser (`sub_798B60`, NamedPhases::ParsePhaseList) tokenizes the comma-delimited string:
 
-```
+```text
 "phase_name1,phase_name2=param,shuffle,swap1,..."
 ```
 
@@ -426,7 +426,7 @@ This check is called from 16+ sites across the codebase, guarding passes like `L
 
 ### PhaseManager Object (~112 bytes)
 
-```
+```text
 Offset  Type       Field
 ------  ----       -----
 +0      int64      compilation_unit pointer
@@ -451,7 +451,7 @@ Offset  Type       Field
 
 ### Timing Record (32 bytes)
 
-```
+```text
 Offset  Type       Field
 ------  ----       -----
 +0      int32      phase_index (-1 = sentinel)

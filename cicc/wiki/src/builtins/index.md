@@ -17,7 +17,7 @@
 
 ## Architecture
 
-```
+```text
 sub_913450 (public API: name -> builtin ID)
   |
   +-- Guard: context+492 == 0?

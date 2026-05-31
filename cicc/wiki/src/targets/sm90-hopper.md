@@ -183,7 +183,7 @@ The compiler serializes this into the NVVM container (`sub_CDD2D0`) so ptxas can
 
 The EDG frontend detects TMA descriptor parameters during kernel registration stub generation. The detection function `sub_8D4C10` (`edg::get_tma_descriptor_flags`) checks:
 
-```
+```c
 if (unk_4F068E0
     && arch > 0x9EFB
     && type_is_struct_or_class(type)

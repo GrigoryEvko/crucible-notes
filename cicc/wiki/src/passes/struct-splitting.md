@@ -27,7 +27,7 @@ The pass walks every instruction in a function, looking for operations whose res
 
 For each struct type encountered, the pass retrieves the struct layout from the DataLayout and enumerates its elements:
 
-```
+```c
 function decomposeStructType(struct_type, data_layout):
     layout = sub_1643350(data_layout, struct_type)  // GetStructLayout
     element_types = []
@@ -45,7 +45,7 @@ The element types accumulate in a local array `v505[]` with the count tracked in
 
 The pass creates a new multi-output instruction with NVVM opcode 32:
 
-```
+```c
 function createSplitStruct(original_inst, element_types, count):
     composite_ty = sub_15F9F50(element_types, count)     // ComputeCompositeType
     aligned_ty   = sub_1646BA0(composite_ty, data_layout) // SetAlignmentFromDL
@@ -68,7 +68,7 @@ The `splitStruct` instruction is the NVVM-specific multi-result node that repres
 
 For each element of the decomposed struct, the pass creates an indexed load from the `splitStruct` result:
 
-```
+```c
 for i in 0..count:
     ptr = sub_15FD590(split_inst, element_types[i],
                       operand=i, name="ptr", insertion_point)
@@ -81,7 +81,7 @@ for i in 0..count:
 
 For the actual memory access that feeds the `splitStruct`, the pass creates a split load instruction:
 
-```
+```c
 function createSplitLoad(original_load, element_types):
     alignment = computeAlignment(original_load)
     split_load = sub_15F90A0(element_types, alignment, ...)
@@ -96,7 +96,7 @@ The resulting instruction carries the `"split"` name prefix. The alignment compu
 
 After creating all scalar operations, `sub_164D160` (RAUW -- Replace All Uses With) replaces every use of the original aggregate operation with the corresponding scalar element extraction:
 
-```
+```c
 sub_164D160(original_aggregate_inst, split_inst)
 ```
 
@@ -110,7 +110,7 @@ The pass must preserve memory alignment when splitting aggregate loads/stores in
 
 The decompiled alignment calculation is:
 
-```
+```c
 aligned_value = 1 << (alignment_field >> 1) >> 1
 ```
 
@@ -126,7 +126,7 @@ For example, if `alignment_field = 9`, then `9 >> 1 = 4`, `1 << 4 = 16`, `16 >> 
 
 `sub_1CCB4A0` provides a DataLayout-aware alignment computation for the element type. The final alignment is the minimum of the original alignment and the element's natural alignment, computed via:
 
-```
+```c
 final_align = original_align & (-element_natural_align)
 ```
 
@@ -181,7 +181,7 @@ SROA runs during the standard LLVM optimization pipeline and eliminates alloca-b
 
 After struct splitting, every value in the IR is scalar-typed. During instruction selection and register allocation, each scalar maps to a PTX virtual register of the corresponding type:
 
-```
+```llvm
 // Before struct splitting:
 %result = load {i32, f32, i64}, ptr %p, align 8
 
@@ -206,7 +206,7 @@ Without struct splitting, the register allocator would need to handle aggregate-
 
 The pass runs as part of the NVVM lowering phase, after the main LLVM optimization pipeline has completed. It is registered as `lower-aggr-copies` in the New PM pipeline parser at index 417 (`sub_2342890`), with parameter `lower-aggr-func-args` controlling whether function argument aggregates are also lowered.
 
-```
+```text
 Pipeline position:
   LLVM Optimizer (SROA, GVN, DSE, etc.)
     -> NVIDIA NVVM Lowering Phase
@@ -250,7 +250,7 @@ The companion pass `lower-struct-args` (pass index 418) handles byval-attributed
 
 ## Diagnostic Strings
 
-```
+```text
 "splitStruct"     -- Name prefix for the opcode-32 multi-output node
 "srcptr"          -- Source pointer in aggregate copy lowering
 "dstptr"          -- Destination pointer in aggregate copy lowering

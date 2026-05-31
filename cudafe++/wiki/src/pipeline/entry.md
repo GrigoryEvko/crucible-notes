@@ -332,7 +332,7 @@ The output file ID 1513 is one of three output file slots used during compilatio
 
 The total initialization sequence before parsing begins involves **80+ subsystem init calls** across three layers:
 
-```
+```text
 main()
  ├─ sub_585D60()  fe_pre_init           9 subsystem pre-inits
  │   ├─ sub_48B3C0   error              4 globals zeroed

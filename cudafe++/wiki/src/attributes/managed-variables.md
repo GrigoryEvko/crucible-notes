@@ -277,7 +277,7 @@ The `__attribute__((unused))` prefix is conditionally added when `dword_106BF6C`
 
 The full initialization flow spans the compilation and runtime startup pipeline:
 
-```
+```text
 Compile time (cudafe++ emits into .int.c):
   1. __nv_save_fatbinhandle_for_managed_rt() -- defined, stores fatbin handle
   2. __nv_init_managed_rt_with_module()      -- forward-declared only
@@ -328,7 +328,7 @@ For a managed variable named `managed_var`, the emitter produces:
 ```
 
 The prefix string lives at `0x839570` (65 bytes):
-```
+```text
 "(*( (__nv_inited_managed_rt ? (void)0: __nv_init_managed_rt()), ("
 ```
 
@@ -338,7 +338,7 @@ After emitting the variable name, the suffix `)))` closes the expression.
 
 Reading from inside out:
 
-```
+```text
 (*( (__nv_inited_managed_rt ? (void)0 : __nv_init_managed_rt()), (managed_var)))
      ^--- ternary: lazy init guard ----^                          ^--- value ---^
      ^--- comma operator: init side-effect, then yield value --------------------------^

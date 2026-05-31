@@ -21,7 +21,7 @@ This page documents all three layers in reimplementation-grade detail. For the s
 
 ## Architecture Overview
 
-```
+```text
 sub_469D60 (apply_relocations)                       MAIN LOOP
  |
  |  for each reloc_node in linked list at ctx+376:
@@ -77,7 +77,7 @@ v163 = _mm_loadu_si128(v5 + 1);    // bytes [16:32] of reloc record
 
 The record layout:
 
-```
+```text
 Offset  Size    Field             Access in decompiled code
 ------  ------  ----------------  ---------------------------------
 +0      int64   addend            v5->m128i_i64[0]
@@ -256,7 +256,7 @@ Symbol resolution in `sub_469D60` is a multi-step process:
 
 Section data in nvlink is not stored as a flat buffer. Instead, each section record has a linked list of data chunks at offset +72. Each chunk node has the structure:
 
-```
+```text
 chunk_node:
     [0]  next pointer     (chunk_node* or NULL)
     [1]  data descriptor  (chunk_data*)
@@ -300,7 +300,7 @@ The descriptor table is selected based on the architecture flag at `ctx+7`:
 
 Each descriptor entry is located at `table_base + (reloc_type_index << 6)`, yielding a 64-byte record. The `<< 6` shift is equivalent to multiplying by 64 (the entry size). The 64-byte layout is:
 
-```
+```text
 Byte offset  Size    Field
 -----------  ------  -----------------------------------------------
 +0           12 B    Header (3 x uint32: flags, mode, reserved)
@@ -818,7 +818,7 @@ void bitfield_write(uint64_t* words, uint64_t value, int bit_offset, int bit_wid
 
 The mask formula `(-1ULL << (64 - W)) >> (64 - (O + W))` constructs a window of `W` ones starting at bit position `O`:
 
-```
+```text
 Step 1: (-1ULL << (64 - W))   -> W ones in the top bits
         Example (W=8): 0xFF00_0000_0000_0000
 
@@ -829,7 +829,7 @@ Step 2: >> (64 - (O + W))     -> shift the window down to start at bit O
 
 The value insertion `(value << (64 - W)) >> (64 - (O + W))` performs the same alignment:
 
-```
+```text
 Step 1: (value << (64 - W))   -> left-align value in the register
 Step 2: >> (64 - (O + W))     -> shift down to the target position
 ```

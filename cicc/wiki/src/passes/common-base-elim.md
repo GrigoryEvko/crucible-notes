@@ -29,7 +29,7 @@ The pass has four major phases: address decomposition, base pointer grouping, do
 
 For every memory operation (load, store, GEP-based address) in the function, the pass calls `sub_1C53170` to decompose the address into a structured form:
 
-```
+```c
 struct AddressExpr {
     Value *base_ptr;          // The root pointer (alloca, global, argument)
     Operand  operands[];      // List of (index, constant_offset) pairs
@@ -69,7 +69,7 @@ For each base pointer group containing two or more uses, the pass:
 
 In pseudocode:
 
-```
+```rust
 fn run_common_base_elimination(F: &Function):
     let dom_tree = F.dominator_tree    // a1[23]
     let data_layout = F.module.data_layout
@@ -173,7 +173,7 @@ The global `dword_4FBCAE0` controls aggressiveness for negative-offset handling 
 
 ## Diagnostic Strings
 
-```
+```text
 "Common Base Elimination"
 ```
 

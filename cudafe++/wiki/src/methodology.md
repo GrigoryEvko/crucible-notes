@@ -84,7 +84,7 @@ The central assert handler is `sub_4F2930`, located in `error.c`. It is a `__nor
 
 The highest-density callers are the **235 assert stubs** in the region `0x403300`--`0x408B40`. Each stub is exactly 29 bytes: three register loads (source file path via `lea rdi`, line number via `mov esi`, function name via `lea rdx`) followed by a `call` to `sub_4F2930`:
 
-```
+```asm
 sub_403300:         ; assert stub for is_aliasable (attribute.c:10897)
   lea  rdi, aAttributeC    ; "/dvs/p4/.../EDG_6.6/src/attribute.c"
   mov  esi, 10897           ; line number (integer, not string)
@@ -112,7 +112,7 @@ This technique attributed 2,209 functions (34.0% of the binary) to specific sour
 
 The full build path embedded in the binary is:
 
-```
+```text
 /dvs/p4/build/sw/rel/gpgpu/toolkit/r13.0/compiler/drivers/compiler/edg/EDG_6.6/src/
 ```
 
@@ -257,7 +257,7 @@ The P1.11 sweep was subdivided into six sub-sweeps (11a through 11f) because the
 
 Each sweep report follows a consistent format:
 
-```
+```text
 ================================================================================
 P1.XX SWEEP: Address range 0xNNNNNN - 0xMMMMMM
 ================================================================================

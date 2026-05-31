@@ -606,7 +606,7 @@ The embedded ptxas backend exposes its own argv-style option surface, separate f
 
 Quick reference sorted by address for binary navigation. All addresses verified against decompiled files in `nvlink/decompiled/`.
 
-```
+```text
 0x404827  sub_404827  debug_line_info_builder
 0x406377  sub_406377  peephole_pattern_match
 0x406DC0  sub_406DC0  peephole_optimizer_main

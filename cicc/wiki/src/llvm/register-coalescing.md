@@ -66,7 +66,7 @@ The return value is an `__m128i` pair encoding both the copy semantics and the r
 
 Operand-type classification happens via `sub_34961A0`, which reads operands and classifies them through a lookup table at `byte_444C4A0`. Each entry in this table is 16 bytes:
 
-```
+```c
 struct OperandTypeEntry {
     uint8_t type_code;        // +0: 12=i32, 13=i64, 15=f32, etc.
     uint8_t size_class;       // +1: size in register-width units
@@ -114,7 +114,7 @@ Build the interval tree via `sub_2DACB60` and `sub_C8CD80`. Cross-compare forwar
 
 This is the core loop. Candidates are extracted from a min-heap ordered by register number (lowest first -- a standard LLVM heuristic that processes defs before uses in reverse postorder).
 
-```
+```c
 function CoalesceWorklistDriven(heap, intervals, hash_map):
     while heap is not empty:
         candidate = heap.extract_min()
@@ -169,7 +169,7 @@ Destroy interval trees (`sub_349E8A0`), perform final range rebuild (`sub_34A46B
 
 The interference check is the critical decision point. Given two intervals (identified by their register keys), it determines whether merging them would create a conflict -- that is, whether both registers are simultaneously live at any program point.
 
-```
+```c
 function CheckInterference(interval_A, interval_B) -> {0 = safe, 1 = interfering}:
     for each instruction I in interval_A.instruction_vector:
         if I is in the "already-coalesced" set:
@@ -191,7 +191,7 @@ The coalescing priority determines the order in which candidates are processed w
 
 **Weight computation** (`sub_34B7280`):
 
-```
+```c
 weight = instruction_count + spill_weight[offset+240] + use_count[offset+252]
 ```
 

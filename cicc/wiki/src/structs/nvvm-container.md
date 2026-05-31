@@ -49,7 +49,7 @@ Global state: `qword_4F87148` holds the NVVM options global state pointer, check
 
 Every binary container begins with a fixed 24-byte header. The header is self-describing: `HeaderSize` at offset `0x0E` stores its own length (always 24), and two size fields partition the remainder into a scalar tag region and a blob data region.
 
-```
+```text
  0                   1                   2                   3
  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -87,7 +87,7 @@ struct NvvmContainerBinaryHeader {
 
 The three data regions in order:
 
-```
+```text
 [0 .. 24)                         -- Header (fixed)
 [24 .. scalar_fields_end)         -- Scalar tag/value pairs
 [scalar_fields_end .. blob_data_end) -- Blob data region
@@ -111,7 +111,7 @@ The `llvm_major` and `llvm_minor` bytes encode the LLVM version as a combined in
 
 Immediately after the 24-byte header, a sequence of (tag, value) pairs encodes every container field that differs from its default value. The encoding is a variable-length scheme optimized for small values:
 
-```
+```text
 Case 1 -- value fits in 16 bits (0x0000..0xFFFE):
   [tag : int16] [value : int16]          -- 4 bytes total
 
@@ -627,7 +627,7 @@ The fast-math configuration occupies two bytes at Options offset +200 and +201, 
 
 ### Byte +200 (tags 8--15)
 
-```
+```text
   Bit 7   Bit 6   Bit 5   Bit 4   Bit 3   Bit 2   Bit 1   Bit 0
 +-------+-------+-------+-------+-------+-------+-------+-------+
 |  Fmad | Fast  |  Ftz  |Reorder|Reorder|Ignore | Ignore|Ignore |
@@ -638,7 +638,7 @@ The fast-math configuration occupies two bytes at Options offset +200 and +201, 
 
 ### Byte +201 (tags 16--17, 26, 31, 33)
 
-```
+```text
   Bit 7   Bit 6   Bit 5   Bit 4   Bit 3   Bit 2   Bit 1   Bit 0
 +-------+-------+-------+-------+-------+-------+-------+-------+
 |       |       |       | Lax   | No    |Reassoc|CanReor| Allow |
@@ -716,7 +716,7 @@ struct MemoryWindowEntry {
 
 Version checking is the first operation performed on a container buffer, implemented in `NvvmContainer_check_versions` (`0xCD41B0`). The logic is conservative on major versions and lenient on minor versions:
 
-```
+```text
 1. Verify magic == 0x7F4E5C7D
    Fail: return NULL (not a container)
 
@@ -795,7 +795,7 @@ The serializer (`0xCDD2D0`) has two modes controlled by parameter `a3`: binary (
 
 ### Binary Serialization (`a3=1`)
 
-```
+```text
  1. Compute version fields (use defaults if not set):
       Version        = {1, 0x41}
       NvvmIRVersion  = {2, 0x62}
@@ -828,7 +828,7 @@ The serializer (`0xCDD2D0`) has two modes controlled by parameter `a3`: binary (
 
 ### Deserialization (`0xCD1D80`)
 
-```
+```text
  1. Verify magic == 0x7F4E5C7D
  2. Allocate 248-byte NvvmContainerHeader
  3. Allocate 440-byte Options struct with defaults
@@ -854,7 +854,7 @@ The serializer (`0xCDD2D0`) has two modes controlled by parameter `a3`: binary (
 
 A minimal container targeting SM 89 (Ada Lovelace) with default options (only `SmMajor` and `SmMinor` differ from defaults):
 
-```
+```text
 Offset  Hex                                        Decoded
 ------  -----------------------------------------  ---------------------------------
 0x0000  7D 5C 4E 7F                                Magic: 0x7F4E5C7D
@@ -886,7 +886,7 @@ This example shows the efficiency of delta encoding: only 4 tag/value pairs (16 
 
 A container with a 32-bit value would look like:
 
-```
+```text
 0x00XX  13 00 FF FF  00 04 00 00                   Tag 19 (MaxRRegsAllowed) = 1024
                                                    (0xFFFF sentinel, then 0x0400 LE)
 ```

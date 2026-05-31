@@ -61,7 +61,7 @@ Inside `sub_448E70`, line 218 computes `v84 = (*(hash_fn))(name_copy)` -- for mo
 
 **State after Step 2**:
 
-```
+```text
 pos_symbols (ctx+344):  [sentinel, ...]
 neg_symbols (ctx+352):  [sentinel, main_kernel]        // index -1 = main_kernel
 name_map (ctx+288) buckets [mask 0x3F]:
@@ -125,7 +125,7 @@ Inside `sub_448E70`: hash function returns `0x3BA6AA63`, bucket = `35`. Bucket 3
 
 **State after Step 4**:
 
-```
+```text
 pos_symbols (ctx+344): [sentinel, ..., helper_fn@17]
 neg_symbols (ctx+352): [sentinel, main_kernel]
 name_map buckets:
@@ -157,7 +157,7 @@ Inside `sub_448E70`: hash = `0xBCFBED0E`, bucket = `14`. Empty, bucket allocatio
 
 **State after Step 5**:
 
-```
+```text
 pos_symbols (ctx+344): [sentinel, ..., helper_fn@17]
 neg_symbols (ctx+352): [sentinel, main_kernel, __nv_sqrt(UND)]
 name_map buckets:
@@ -189,7 +189,7 @@ So `__nv_sqrt` at negative index `-2` is **upgraded in place** from UND to a str
 
 **State after Step 6**:
 
-```
+```text
 pos_symbols (ctx+344): [sentinel, ..., helper_fn@17]
 neg_symbols (ctx+352): [sentinel, main_kernel, __nv_sqrt(RESOLVED)]
 name_map buckets:
@@ -223,7 +223,7 @@ For `libdevice.a(helper.o)` providing a strong `helper_fn`, the sequence is:
 
 **State after Step 7**:
 
-```
+```text
 pos_symbols (ctx+344): [sentinel, ..., helper_fn@17(ZEROED)]
 neg_symbols (ctx+352): [sentinel, main_kernel, __nv_sqrt, helper_fn(strong)]
 name_map buckets:
@@ -256,7 +256,7 @@ The internal negative indices `-1`, `-2`, `-3` have been linearized to output in
 
 All four states of bucket 35 (where the `helper_fn` contention played out) across the walkthrough:
 
-```
+```text
 After Step 2:  bucket 35 -> NULL
 After Step 4:  bucket 35 -> [count=1, entries=[42(helper_fn weak, idx=17)], -1]
 After Step 6:  bucket 35 -> [count=1, entries=[42(helper_fn weak, idx=17)], -1]  (unchanged)
@@ -281,7 +281,7 @@ When `sub_448E70` inserts `"my_kernel"` at Step 2.5:
 
 After the collision-resolving insertion:
 
-```
+```text
 bucket 60 -> [capacity=2, entries=[29(main_kernel, -1), N(my_kernel, -2)], -1]
 ```
 

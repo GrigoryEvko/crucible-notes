@@ -34,7 +34,7 @@ nvlink maintains a compile-time database of every GPU architecture it can target
 
 Each profile is a 136-byte heap allocation. `sub_484DB0` takes seven arguments and fills the struct as follows:
 
-```
+```text
 ArchProfile (136 bytes, 8-byte aligned)  [summary -- see structs/arch-profile.md]
 ===================================================================================
 Offset  Size  Field                 Description
@@ -240,7 +240,7 @@ The profile struct holds **three** hash-set compatibility lists at offsets +48, 
 
 This list connects a real profile to its virtual counterpart and vice versa. For suffix variants, it additionally links back to the base architecture. Example for the sm_100 family:
 
-```
+```text
 sm_100.compat_0 -> { compute_100, sm_100 }
 compute_100.compat_0 -> { sm_100 }
 sm_100a.compat_0 -> { compute_100a, sm_100a, sm_100 }
@@ -253,7 +253,7 @@ This list links all architectures in the same generation/family. For the Ampere 
 
 For the Blackwell generation, the `compat_list_1` on sm_120/sm_121 also accumulates cross-links to sm_120 from sm_121 and vice versa:
 
-```
+```text
 sm_120.compat_1 -> { ..., sm_121, sm_121a }
 sm_121.compat_1 -> { ..., sm_120 }  (via final append block)
 ```
@@ -262,7 +262,7 @@ sm_121.compat_1 -> { ..., sm_120 }  (via final append block)
 
 For `compute_` profiles, this list links to the corresponding real (`sm_`) profile; for `sm_` profiles, it links to the corresponding `compute_`. Example:
 
-```
+```text
 sm_75.compat_2      -> { compute_75 }
 compute_75.compat_2 -> { sm_75 }
 ```
@@ -362,7 +362,7 @@ The 13-byte buffer limit accommodates the longest valid name: `"compute_121f"` (
 5. **Handle 'a' suffix fallback**: If the lookup failed and the name has an `'a'` suffix, try stripping the suffix and looking up the base name. If the base name exists, mark this as a synthetic 'a' variant but continue. If still not found, check the deprecated list.
 6. **Deprecated architecture check**: If the SM number matches any of these values, the architecture is recognized but deprecated:
 
-   ```
+   ```text
    10, 11, 12, 13, 20, 21, 30, 32, 35, 37, 50, 52, 53, 60, 61, 62, 69, 70
    ```
 
@@ -370,7 +370,7 @@ The 13-byte buffer limit accommodates the longest valid name: `"compute_121f"` (
 
 7. **Build result record**: Allocate a 12-byte result struct:
 
-```
+```text
 ArchParseResult (12 bytes)
 =======================================================
 Offset  Size  Field               Description

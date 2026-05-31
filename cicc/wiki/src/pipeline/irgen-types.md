@@ -52,7 +52,7 @@ The type translation pass operates on a context structure initialized by `sub_91
 
 The entry point `sub_91AED0` recovers pass infrastructure objects by iterating a `vector<pair<void*, void*>>` at `context+8`. Each element is 16 bytes: a vtable pointer identifying the pass, and a pass instance pointer. The function compares vtable pointers against 8 known globals to extract the data layout, reflect pass, target transform info, module context, dominator tree, and alias analysis results. It then calls `sub_91AB30`, the actual iteration driver.
 
-```
+```rust
 // sub_91AB30: TypeTranslationPass driver
 fn translate_all_types(ctx: &mut TypeTransCtx, module: &EDGModule) {
     // Optional pre-processing (gated by byte_3C34E60)
@@ -145,7 +145,7 @@ Diamond inheritance is detected by the reference count exceeding 1, which preven
 
 The function `sub_911D10` is the core workhorse for comparing and replacing type pairs. It takes `(context, type_a, type_b, scope_pair, is_recursive_flag)` and maintains a local worklist of `(type_a, type_b)` pairs:
 
-```
+```rust
 fn compare_and_replace(ctx, type_a, type_b, scope, is_recursive) {
     let mut worklist = vec![(type_a, type_b)];
 
@@ -459,7 +459,7 @@ After categorization, a topological sort (using the same `sub_3FEBB0`/`sub_3FED6
 
 The function `sub_916430` (482 bytes) examines EDG IL node attribute bytes to determine the NVPTX address space for a global variable:
 
-```
+```rust
 fn determine_address_space(edg_node: &EDGNode) -> u32 {
     let storage_class = edg_node[0x88];
     let flags_9c      = edg_node[0x9C];
@@ -665,7 +665,7 @@ Each accessor first checks the function-level metadata (post-transplant), then f
 
 The complete flow from CUDA source to PTX directives:
 
-```
+```text
 CUDA:  __global__ void kern() __launch_bounds__(256, 2) __cluster_dims__(2, 1, 1)
 
 EDG:   LaunchAttr { cluster_config[12]=256, [11]=1, [10]=1, [7]=1, [6]=1, [5]=2 }
@@ -784,7 +784,7 @@ The instruction selector (`sub_36E4040`) validates that the intrinsic declaratio
 
 The EDG frontend includes a diagnostic at `sub_6A49A0` that detects writes to predefined read-only variables. When a store target matches any of the five built-in names, it emits diagnostic `0xDD0`:
 
-```
+```text
 error: cannot assign to variable 'threadIdx' with predefined meaning in CUDA
 ```
 

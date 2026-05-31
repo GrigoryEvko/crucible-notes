@@ -20,7 +20,7 @@ The entry point region (`0x8F0000`–`0x96FFFF`, ~520 KB) handles CLI parsing, a
 
 ## Architecture
 
-```
+```text
 main (0x4396A0, 16B thunk)
   │
   └─ sub_8F9C90 (10KB, REAL MAIN)
@@ -174,7 +174,7 @@ The `v253` variable is the single most important dispatch control in the entire 
 
 When `v253` remains at 2 after argument parsing (the common case), cicc resolves it through the obfuscated environment variable `NV_NVVM_VERSION` (decrypted from `byte_3C23A9F`). The resolution has two sub-cases depending on the target architecture:
 
-```
+```c
 if (v253 == 2) {
     env = getenv(decrypt(byte_3C23A9F));   // NV_NVVM_VERSION
     if (env matches decrypt(byte_3C23A82))       // "nvvm-latest"
@@ -516,7 +516,7 @@ The hex IDs are deliberately memorable patterns used as a form of internal docum
 
 The two compilation paths (Path A and Path B) use independent initialization sequences, creating a **dual-path initialization** architecture where the same underlying LLVM infrastructure is bootstrapped through different entry points. This is why two copies of libdevice, two LLVM options tables, and two sets of verbose callbacks exist.
 
-```
+```text
 Path A initialization (EDG → LibNVVM):
   sub_B6EEA0  — Creates LLVMContext + registers 42+ metadata kinds
                  (dbg=1, tbaa=2, prof=3, ... noalias.addrspace=42)
@@ -567,7 +567,7 @@ When `byte_4F92D70 == 1` (concurrent API disabled), the pipeline operates in sin
 
 The complete sequence of dispatch table calls during a standard Path A compilation (from `sub_905EE0`):
 
-```
+```text
 1.  sub_12BC0F0(2151)   → nvvmCreateCU(&handle)
     Creates compilation unit. Calls nvvmInit via pthread_once on first use.
 
@@ -660,7 +660,7 @@ When the user provides `-nvvmir-library <path>`, the external file is used inste
 
 Phase 2.9 registers callback functions that fire at pipeline stage boundaries. When verbose mode is active, these callbacks produce reconstructed command-line output for each stage:
 
-```
+```text
 [ "<src>" -lnk -nvvmir-library "<path>" "<input>" -o "<file>.lnk.bc" <opts> -nvvm-version=nvvm-latest ]
 [ "<src>" -llc "<llc_path>" -o "<output>" <opts> -nvvm-version=nvvm-latest ]
 ```
@@ -803,14 +803,14 @@ For single-function modules, the optimizer skips the two-phase protocol entirely
 
 After the LLC stage but before returning, the orchestrator validates the module's data layout string. If the module has no data layout:
 
-```
+```text
 "DataLayoutError: Data Layout string is empty"
 → return 9
 ```
 
 On layout mismatch, it produces a detailed diagnostic:
 
-```
+```text
 "<error details>\nExample valid data layout:\n64-bit: <reference_layout>"
 ```
 
@@ -911,7 +911,7 @@ The global constructor at `0x4A5810` checks `LIBNVVM_DISABLE_CONCURRENT_API`. Wh
 
 Compilation timing is implemented through a hierarchical timer system. Timer creation (`sub_C996C0`) takes a label and context string; timer stop (`sub_C9AF60`) records the elapsed time. The timer hierarchy is:
 
-```
+```text
 "CUDA C++ Front-End"     ← EDG parsing + IL-to-IR conversion (Path A only)
   └─ "LibNVVM"           ← Full optimization + codegen pipeline
        ├─ "LNK"          ← Module linking (sub_12C06E0)

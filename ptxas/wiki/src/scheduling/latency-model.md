@@ -24,7 +24,7 @@ The ptxas instruction scheduler uses a static hardware performance model to esti
 
 The model has three layers:
 
-```
+```text
 Layer 1: Per-Opcode Classification
   sub_89FBA0 reads each instruction's Ori opcode (field at instr+72,
   masked with 0xFFFFCFFF) and assigns:
@@ -55,7 +55,7 @@ Layer 3: Runtime Query
 
 Each instruction carries a scheduling descriptor at offsets 196--200 within the 296-byte Ori instruction object (not the SchedNode). The descriptor is a packed bit-field:
 
-```
+```text
 Descriptor at a3+196 (DWORD, 32 bits):
   [8:0]   9-bit latency index -- indexes into HW latency table
   [14:9]  reserved
@@ -203,7 +203,7 @@ The scheduling class IDs span a wide range (0--772+). Classes below 256 correspo
 
 The low 9 bits of the descriptor at `a3+196` encode a latency index that maps directly into the per-architecture HW table. The index is formed by combining the descriptor's low byte with a pipe mask:
 
-```
+```c
 latency_index = *(WORD*)(a3+196) & 0x1FF
 ```
 
@@ -282,7 +282,7 @@ Resource tracking uses an 84-byte per-BB slot at `*(scheduler+672) + 84 * slot_i
 
 The resource vector layout within each 84-byte slot:
 
-```
+```text
 Offset  Size       Content
  0..39  10 x int32  Current resource usage per FU (pipe 0..9)
 40..79  10 x int32  Resource pressure delta (change from scheduling)
@@ -326,7 +326,7 @@ The function dispatches on `*(config+372) >> 12` (the SM architecture selector) 
 
 The HW latency tables are built during scheduler initialization by a chain of constructors:
 
-```
+```text
 sub_8E4400(profile, sm_id, sched_mode)     // Warp-level parameters
   |
   v
@@ -351,7 +351,7 @@ Each SM-specific function populates entries in the 96-byte-per-record output arr
 
 Each record in the HW table occupies 96 bytes (6 x 16-byte XMM slots). Records are stored in a growable array at `*(context+56)` with count at `*(context+64)` and capacity at `*(context+68)`. The array grows by 1.5x when full. Records are copied using three `_mm_loadu_si128` operations (offsets 0, 16, 32) plus manual field-by-field copy for offsets 48--95; the string at +48 is reference-cloned via `sub_714160` when the string-backed flag is set.
 
-```
+```text
 Offset  Size   Field               Content
 ------  ----   -----               -------
  0..1   WORD   type_code           Record type (see type table below)
@@ -419,7 +419,7 @@ Scheduling class 2 (predicate operations with flag clear -- PSETP, PLOP3) provid
 
 **72-byte HW latency entry** (at `0x2297C00 + 0 * 72 = 0x2297C00`):
 
-```
+```text
 Offset  Bytes                       Field           Decoded
 ------  -----                       -----           -------
  0..1   02 00                       unit_id         2 (predicate ops, flag-clear)
@@ -445,7 +445,7 @@ The `pipe_masks_a` value of `[3,3,0xFF,...]` means the instruction can issue on 
 
 **40-byte dependency rule** (from `sm_80` table, entry 0, matching unit\_id 2):
 
-```
+```text
 Offset  Bytes       Field               Decoded
 ------  -----       -----               -------
  0..1   02 00       unit_id             2 (must match latency entry)
@@ -463,7 +463,7 @@ Offset  Bytes       Field               Decoded
 
 **How this populates the 96-byte scheduling record.** When `sub_8E6B40` creates a type-23 record for this class, it fills the 96-byte structure as:
 
-```
+```text
 +0   type_code       = 23            (standard scheduling entry)
 +4   aux_size        = 0             (standard entries carry no aux block)
 +16  cost_product    = 17 * 4 = 68   (latency=17 x throughput_class=4 from sched_params[1])
@@ -481,7 +481,7 @@ The `cost_product` at offset +16 is the scheduler's primary sorting key: higher 
 
 The complete path from "I have an instruction" to "its latency in cycles on this SM" involves four pointer dereferences and one vtable dispatch. The following pseudocode traces the exact chain, with byte offsets matching the binary.
 
-```
+```c
 // resolve_latency(instr, sched_ctx) -> int
 //   instr:     296-byte Ori instruction object
 //   sched_ctx: scheduling context (carries SM backend + oracle)
@@ -546,7 +546,7 @@ Records with `string_backed_flag=1` carry variable-length sub-records in the gro
 
 Created by `sub_8E5310` iterating the variant list at `config+536`:
 
-```
+```text
 Sub-record layout (20 bytes):
   +0   DWORD   source_data       Variant source identifier
   +4   WORD    flags             Variant flags
@@ -562,7 +562,7 @@ The main record additionally stores: `+16 = start_index` (from `config+544`), `+
 
 Created by `sub_8E5530` traversing the BST at `config+592`:
 
-```
+```text
 Sub-record layout (12 bytes):
   +0   WORD    node_flags        BST node flags (from node+38)
   +2   WORD    zero              Reserved
@@ -574,7 +574,7 @@ Sub-record layout (12 bytes):
 
 Created by `sub_8E8480` and other SM-specific builders, followed by a call to `sub_8E3AD0` which appends packed bitmask DWORDs:
 
-```
+```text
 Initial 16-byte descriptor:
   +0   DWORD   class_flags = 2   Fixed flag value
   +4   WORD    zero              Reserved
@@ -731,7 +731,7 @@ a speculative-rollback pattern: run the full operand scan to populate the output
 vector, then undo every side effect on the persistent state so that only the
 caller-visible output survives.
 
-```
+```c
 function ResourceCost_Mode2(state, ctx, instr_data, bitmask, output, FU_vec):
     // --- snapshot persistent counters before mutation ---
     saved_add_count     = state.add_count        // state[0]
@@ -814,7 +814,7 @@ The cost accumulation uses a 9-bit field in the instruction's scheduling word at
 
 `sub_A08910` (39 lines) returns the register index and cost for a single operand:
 
-```
+```c
 function GetRegisterLatency(context, reg_desc, operand, out_count, out_cost):
     pipeline_bits = (reg_desc.field_48 >> 20) & 3
     count = 1
@@ -912,7 +912,7 @@ The 337 scheduling classes with non-zero `pipe_masks_b` in `sm_7x_shared` use va
 
 ### Pairing Decision Pseudocode
 
-```
+```c
 function CheckDualIssueEligibility(scheduler):            // sub_8CF5D0
     target = scheduler.func.target
     scheduler.dualIssueBenefit = 0                         // +328
@@ -956,7 +956,7 @@ Each SASS instruction carries a stall count in its control word:
 
 The stall/barrier encoding pipeline (`sub_8D7760`, 41 KB) computes stalls by walking the dependency DAG backward from each instruction:
 
-```
+```c
 function ComputeStallCycles(sched, instr):
     max_wait = 0
     for each predecessor of instr:
@@ -971,7 +971,7 @@ function ComputeStallCycles(sched, instr):
 
 `sub_8BF3A0` resolves the edge latency from a predecessor via three priority-ordered sources:
 
-```
+```c
 function LookupLatency(sched, pred, instr):           // sub_8BF3A0
     profile = *(sched+16)                              // scheduler profile object
     node    = *(pred+40)                               // SchedNode for predecessor
@@ -993,7 +993,7 @@ Path 2 is the common case. Path 1 fires for scoreboard-tracked instructions (glo
 
 `sub_8D0640` initializes `sched+404` (maxStallCycles) during scheduler setup. The scheduling mode selects which knob applies:
 
-```
+```c
 function MaxStallFromKnob(sched):                     // returns *(sched+404)
     mode = GetSchedulingMode(context)                  // 0=ILP, 1=ReduceReg, 2=DynBatch
     if context+507 != 0:                               // special "short stall" flag
@@ -1037,7 +1037,7 @@ The scheduling system uses several sentinel values:
 
 `sub_8C67A0` (ComputeResourceCost, 3.7 KB) drives the per-instruction resource accounting. It calls the resource model `sub_A08A00` three times per instruction:
 
-```
+```c
 function ComputeResourceCost(sched, instr):
     slot = GetResourceSlot(sched, instr)
     slot.bb_entered |= 1
@@ -1067,7 +1067,7 @@ The SSE-optimized accumulation uses `_mm_add_epi32` to add 4 resource counters a
 
 `sub_94A020` (scheduling setup) reads the flag into the per-function scheduling context:
 
-```
+```c
 sched->is_cutlass = 0                             // sched+440
 if ctx->flags[1414] & 0x10:                       // matrix-instruction feature gate
     sched->is_cutlass = (ctx->flags[1381] & 0x40) != 0
@@ -1114,7 +1114,7 @@ The two classification systems operate at different pipeline stages and converge
 
 The two values are consumed at different points in the stall/barrier computation pipeline:
 
-```
+```c
 function EmitControlWord(sched, instr):
     // --- Phase 1: scheduling_class drives latency and barrier selection ---
     // sub_8D7760 walks the dependency DAG backward from instr
@@ -1155,7 +1155,7 @@ The critical asymmetry: `scheduling_class` controls *how long* to wait (latency 
 
 Before dispatching on the opcode, the function initializes the scheduling descriptor at `a3+196..202` to the "all-pipes" default:
 
-```
+```c
 *(DWORD*)(a3+196) |= 0xF8000     // pipe mask = all (bits 15..19)
 *(BYTE*)(a3+200)  |= 0x1F        // read barrier mask = all
 *(WORD*)(a3+198)   = HIWORD | 0x1F0  // throughput class = max

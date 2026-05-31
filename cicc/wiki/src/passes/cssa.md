@@ -30,7 +30,7 @@ NVIDIA GPUs execute threads in warps of 32 under the [SIMT model](../gpu-executi
 
 Consider a diamond CFG:
 
-```
+```text
          entry
         /     \
      then     else
@@ -44,7 +44,7 @@ On a CPU, the PHI at `join` works correctly: execution came from exactly one pre
 
 CSSA transforms the IR so that the PHI web has non-interfering live ranges. Concretely, it inserts copy instructions at the end of each predecessor block so that each thread's value is written into a dedicated copy *before* the warp reconverges:
 
-```
+```text
          entry
         /     \
      then     else
@@ -403,7 +403,7 @@ Set via `-opt "-do-cssa=0"` to disable the pass entirely.
 
 ## Diagnostic Strings
 
-```
+```text
 "IR Module before CSSA:\n"          -- Module dump header (dump-before-cssa)
 "pcp"                               -- PHI copy propagation instruction name prefix
 ```

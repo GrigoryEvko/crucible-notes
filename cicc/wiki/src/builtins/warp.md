@@ -53,7 +53,7 @@ Warp vote builtins aggregate a boolean predicate across all participating lanes.
 
 The handler `sub_12ABB90` (EDG) / `sub_94D570` (NVVM) takes parameters:
 
-```
+```text
 (result, ctx, vote_op, args, is_ballot, is_sync)
 ```
 

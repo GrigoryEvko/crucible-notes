@@ -23,13 +23,13 @@ SASS text generation produces output compatible with `cuobjdump --dump-sass`. Th
 
 ### Instruction Line Format
 
-```
+```asm
 /*ADDR*/  {CTRL} OPCODE{.MODIFIERS}  DST, SRC0{, SRC1{, SRC2}} ;  /* LINE */
 ```
 
 Concrete examples of the format ptxas produces:
 
-```
+```asm
 /*0000*/                   MOV R1, c[0x0][0x28] ;                /* 0x00000a0004017802 */
 /*0010*/                   S2R R0, SR_CTAID.X ;                  /* 0x0000000000007919 */
 /*0020*/              @P0  IMAD.MOV.U32 R4, RZ, RZ, c[0x0][0x168] ;
@@ -45,7 +45,7 @@ Concrete examples of the format ptxas produces:
 
 For architectures with explicit scheduling control (SM 50--SM 70), the control word is printed in a dedicated line before each group of three instructions:
 
-```
+```asm
       /* 0x001c4400fe2007f6 */
 /*0008*/                   MOV R1, c[0x0][0x20] ;
 /*0010*/                   S2R R0, SR_TID.X ;
@@ -68,7 +68,7 @@ For SM 75+ architectures (Turing and later), scheduling information is embedded 
 
 Phase 130 (`DumpNVuCodeHex`) emits the raw encoding bytes as hex values:
 
-```
+```text
 /*0000*/  0x00000a0004017802
 /*0008*/  0x0000000000007919
 /*0010*/  0x000000ff0aff7824
@@ -84,7 +84,7 @@ The text generation subsystem has two levels: a PTX-level pretty-printer that fo
 
 This is the primary text generation system. The 580 formatter functions convert internal instruction representations (accessed via the instruction object at `*(a1+1096)`) into PTX assembly text strings.
 
-```
+```text
 sub_5D4190 (12.9 KB, dispatcher)
   ├─ First: calls sub_5D1660 to initialize intrinsic ID table (608 entries)
   ├─ Registers 121 named opcodes at a1+808 via sub_426150()
@@ -101,7 +101,7 @@ The dispatcher uses a two-level dispatch strategy:
 
 Both maps use the same MurmurHash3-based hash map infrastructure (`sub_427630` for bucket hashing, `sub_426150` for insert, `sub_426D60` for lookup). The variant-ID keys are structured -- bits 8-15 encode a PTX type discriminator (16 unique values spanning 9--24, corresponding to type codes like `.s32`, `.f32`, `.f64`), and related variants (e.g., same opcode with different types) cluster with small numeric deltas. Pairs differing only in layout produce a fixed hi16 delta of 76, confirming the ID encodes multiple orthogonal fields rather than being a hash of the opcode name string.
 
-```
+```text
 Variant ID structure (32-bit, approximate field boundaries):
   bits 0-7:    sub-variant / modifier discriminator (203 unique values)
   bits 8-15:   PTX type code (16 values: 9=.pred .. 24=.bf16x2)
@@ -112,7 +112,7 @@ Variant ID structure (32-bit, approximate field boundaries):
 
 The SASS printer at `0x17F8000`--`0x181FFFF` operates on binary-encoded SASS instructions and produces text through a builder/visitor pattern. This is used for the `--self-check` roundtrip verification and `--out-sass` output.
 
-```
+```text
 SASS instruction (binary-encoded)
   │
   ├─ Read opcode at instruction+72, mask BYTE1 &= 0xCF
@@ -278,7 +278,7 @@ The operand encoder `sub_9D12F0` (1,423 bytes, 289 callers) is the core serializ
 
 Memory operands are formatted with address space qualifiers and offset expressions:
 
-```
+```text
 [R4.64]              — register indirect, 64-bit
 [R4+0x10]            — register + offset
 c[0x0][0x168]        — constant buffer bank 0, offset 0x168
@@ -327,7 +327,7 @@ All ~123 entry points have zero static callers, confirming they are virtual meth
 
 Every SASS printer receives `(a1, a2)` where `a1` is the printer context (builder pointer at `a1+24`) and `a2` is the binary-encoded instruction. The rendering follows a fixed protocol:
 
-```
+```text
 1. vtable[0](builder, instruction_kind_id)     // begin_instruction
 2. vtable[3760](builder, sync_mode)            // set_sync_type (if applicable)
 3. vtable[3768](builder)                       // begin_operand_list
@@ -481,7 +481,7 @@ Printer functions for each format class:
 
 The texture/surface printer `sub_18189C0` is the largest at 45.2 KB. It handles the complete texture and surface instruction families:
 
-```
+```text
 sub_18189C0 (45.2 KB, 1361 lines)
   ├─ Read opcode at +72, mask to canonical form
   ├─ Giant switch on opcodes:
@@ -673,7 +673,7 @@ The remaining 473 opcode variants (arithmetic, logic, load/store, control flow, 
 
 ## Instruction Data Flow
 
-```
+```text
                     ┌──────────────────────────────────┐
                     │  Ori IR Instruction Object        │
                     │  (instruction data at *(a1+1096)) │

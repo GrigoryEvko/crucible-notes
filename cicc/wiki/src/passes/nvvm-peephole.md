@@ -44,7 +44,7 @@ The IR-level peephole (`sub_1CEF8F0`) is invoked from the legacy pipeline assemb
 
 **Path A -- "ptx" language** (lines 580--638 in `sub_12E54A0`):
 
-```
+```text
 sub_1CEF8F0()    NVVMPeephole
 sub_215D9D0()    NVVMAnnotationsProcessor
 sub_1857160()    NVVMReflect (conditional)
@@ -56,7 +56,7 @@ sub_18DEFF0()    DCE
 
 **Path B -- "mid" language** (Ofcmid, lines 814--1075):
 
-```
+```text
 sub_184CD60()    ConstantMerge / GlobalDCE
 sub_1CB4E40(0)   NVVMIntrinsicLowering
 sub_1B26330()    MemCpyOpt
@@ -71,7 +71,7 @@ sub_1C6E800()    GVN / LICM
 
 **Path C -- default/general** (O2/O3, lines 1077--1371):
 
-```
+```text
 sub_1A62BF0(4)   LLVM standard pipeline #4
 sub_1857160()    NVVMReflect
 sub_1CB4E40(0)   NVVMIntrinsicLowering
@@ -85,7 +85,7 @@ sub_1A62BF0(5)   LLVM standard pipeline #5
 
 **Late position** (O3 tier finalization):
 
-```
+```text
 sub_1B7FDF0(n)   BranchFolding / CFGSimplify
 sub_1CEF8F0()    NVVMPeephole                   <<<
 sub_215D9D0()    NVVMAnnotationsProcessor
@@ -101,7 +101,7 @@ In every path, the peephole runs **after** `NVVMIntrinsicLowering` (`sub_1CB4E40
 
 The machine-level peephole (`sub_21DB090`) runs in `addPreRegAlloc()` (`sub_2166ED0`):
 
-```
+```text
 EarlyTailDuplicate
 codegen DCE
 Machine LICM + CSE + Sinking        (conditional on enable-mlicm, enable-mcse)
@@ -138,7 +138,7 @@ Based on pipeline position (after NVVMReflect + NVVMIntrinsicLowering, before si
 
 After `memory-space-opt` and `ipmsp` resolve generic pointers to specific address spaces, redundant `addrspacecast` chains remain in the IR. The peephole rewrites these:
 
-```
+```llvm
 ; Before:
 %p1 = addrspacecast ptr addrspace(3) %src to ptr        ; shared -> generic
 %p2 = addrspacecast ptr %p1 to ptr addrspace(3)         ; generic -> shared
@@ -148,7 +148,7 @@ store i32 %val, ptr addrspace(3) %p2
 store i32 %val, ptr addrspace(3) %src                   ; chain eliminated
 ```
 
-```
+```llvm
 ; Before:
 %p = addrspacecast ptr addrspace(1) %src to ptr addrspace(1)  ; identity cast
 
@@ -170,7 +170,7 @@ The validation function `sub_21BEE70` (`"Bad address space in addrspacecast"`, 4
 
 After NVVMIntrinsicLowering has expanded NVVM intrinsics, some expansion sequences can be further simplified:
 
-```
+```llvm
 ; Before (after intrinsic lowering, launch_bounds known):
 %tid = call i32 @llvm.nvvm.read.ptx.sreg.tid.x()
 %cmp = icmp ult i32 %tid, 256       ; blockDim.x known = 256
@@ -179,7 +179,7 @@ After NVVMIntrinsicLowering has expanded NVVM intrinsics, some expansion sequenc
 %cmp = i1 true                      ; always true for valid threads
 ```
 
-```
+```llvm
 ; Before:
 call void @llvm.nvvm.barrier0()
 ; (no shared memory operations between barriers)
@@ -193,7 +193,7 @@ call void @llvm.nvvm.barrier0()     ; redundant barrier removed
 
 GPU-specific type representations (`bf16`, `tf32`, `fp8`) produce conversion chains not present in standard LLVM IR:
 
-```
+```llvm
 ; Before (roundtrip through wider type):
 %wide = fpext half %x to float
 %back = fptrunc float %wide to half
@@ -202,7 +202,7 @@ GPU-specific type representations (`bf16`, `tf32`, `fp8`) produce conversion cha
 ; (use %x directly — roundtrip eliminated when no precision loss)
 ```
 
-```
+```llvm
 ; Before (bf16 roundtrip):
 %f32 = call float @llvm.nvvm.bf16.to.f32(i16 %bf)
 %bf2 = call i16 @llvm.nvvm.f32.to.bf16(float %f32)
@@ -215,7 +215,7 @@ GPU-specific type representations (`bf16`, `tf32`, `fp8`) produce conversion cha
 
 The companion pass `nvvm-reflect-pp` (`SimplifyConstantConditionalsPass`) runs immediately before the peephole in the pipeline. It resolves `__nvvm_reflect()` calls and simplifies constant conditionals:
 
-```
+```llvm
 ; Before (after nvvm-reflect-pp resolves __nvvm_reflect("__CUDA_FTZ") = 1):
 %ftz = call i32 @__nvvm_reflect(ptr @"__CUDA_FTZ")     ; resolved to 1
 %cmp = icmp ne i32 %ftz, 0                              ; always true
@@ -240,7 +240,7 @@ The machine-level peephole operates on `MachineInstr` objects after instruction 
 
 The `cvta` (convert address) instruction converts between generic and specific address spaces. Address space lowering often inserts redundant conversions:
 
-```
+```ptx
 // Before:
 cvta.to.global %rd1, %rd2        ; convert global -> generic
 cvta.global %rd3, %rd1           ; convert generic -> global (redundant pair)
@@ -251,7 +251,7 @@ mov.b64 %rd3, %rd2               ; direct copy, cvta pair eliminated
 
 The companion pass `sub_21DA810` (`"NVPTX optimize redundant cvta.to.local instruction"`) handles the remaining `cvta.to.local` instructions that survive to late post-RA:
 
-```
+```ptx
 // Before (late pipeline):
 cvta.to.local %rd1, %rd2         ; redundant when %rd2 is already local-space
 
@@ -263,7 +263,7 @@ cvta.to.local %rd1, %rd2         ; redundant when %rd2 is already local-space
 
 PTX uses predicate registers for conditional execution. The peephole simplifies predicate sequences:
 
-```
+```ptx
 // Before:
 setp.ne.s32 %p1, %r1, 0;
 @%p1 bra target;
@@ -276,7 +276,7 @@ setp.ne.s32 %p1, %r1, 0;
 
 `sub_2204E60` (`"Remove redundant moves"`) eliminates identity moves:
 
-```
+```ptx
 // Before:
 mov.b32 %r5, %r5;               ; identity move
 
@@ -298,7 +298,7 @@ Three additional machine-level passes perform specialized peephole transformatio
 
 Optimizes parameter load patterns. In PTX, kernel parameters are loaded via `ld.param` instructions into registers. When the same parameter is loaded multiple times (e.g., after inlining or loop unrolling), `param-opt` consolidates them:
 
-```
+```ptx
 // Before:
 ld.param.u32 %r1, [_param_0];
 ...
@@ -320,7 +320,7 @@ mov.b32 %r7, %r1;                ; reuse previous load
 
 Eliminates redundant `AND` operations on b16 (16-bit) registers. When type legalization widens a sub-16-bit value to 16 bits, it inserts an AND with a mask to preserve the original width. If the value is already correctly masked (e.g., from a load that zero-extends), the AND is redundant:
 
-```
+```ptx
 // Before:
 ld.u8 %rs1, [%rd1];              ; loads 8-bit, zero-extended to 16
 and.b16 %rs2, %rs1, 0xFF;        ; redundant mask — already 8-bit clean
@@ -371,7 +371,7 @@ At `-O0`, the peephole is likely skipped along with most optimization passes. Th
 
 The complete peephole optimization flow through cicc, from IR to PTX:
 
-```
+```text
 Source CUDA
     |
     v

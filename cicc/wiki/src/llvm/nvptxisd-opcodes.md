@@ -32,7 +32,7 @@ Every NVPTXISD opcode has a constructor in `NVPTXTargetLowering` that calls `DAG
 
 The full enumeration of strings was extracted via:
 
-```
+```bash
 jq -r '.[] | select(.value | test("^NVPTXISD::")) | .value' \
   cicc_strings.json | sort -u
 ```

@@ -20,7 +20,7 @@ This page focuses on the CUDA-specific fields that NVIDIA grafted onto the EDG e
 
 ## Visual Layout (Routine Entity, 288 Bytes)
 
-```
+```text
 Offset   0         8        16        24        32        40        48        56
        +=========+=========+=========+=========+=========+=========+=========+=========+
   0x00 | next_entity_ptr   | name_string_ptr   |            (EDG internal)             |
@@ -101,7 +101,7 @@ The table below documents every entity node offset touched by CUDA attribute han
 
 This is the most frequently read field in CUDA-specific code paths. Every function entity carries a single byte that encodes which execution spaces the function belongs to.
 
-```
+```text
 Byte at entity+182:
 
   bit 0  (0x01)   device_capable     Function can execute on device
@@ -156,7 +156,7 @@ Code throughout cudafe++ extracts execution space category using bitmask tests:
 
 For variable entities (kind 7), byte `+148` encodes the CUDA memory space:
 
-```
+```text
 Byte at entity+148:
 
   bit 0  (0x01)   __device__     Variable resides in device global memory
@@ -178,7 +178,7 @@ The `__device__` attribute on a function (kind 11) does NOT touch byte `+148`. I
 
 ### Extended Memory Space (Byte +149)
 
-```
+```text
 Byte at entity+149:
 
   bit 0  (0x01)   __managed__    Unified memory, accessible from both host and device
@@ -195,7 +195,7 @@ Set by `apply_nv_managed_attr` (`sub_40E0D0`). The handler also sets bit 0 of `+
 
 ### Byte +176: Member Function Flags
 
-```
+```text
 Byte at entity+176:
 
   bit 7  (0x80)   static_member   Function is a static class member
@@ -205,7 +205,7 @@ Tested by `apply_nv_global_attr` to detect `static __global__` functions. The ch
 
 ### Byte +179: Constexpr / Kernel Property Flags
 
-```
+```text
 Byte at entity+179:
 
   bit 1  (0x02)   kernel_body        Function has a kernel body (used for stub generation)
@@ -250,7 +250,7 @@ if ( *(char *)(a2 + 176) < 0         // static member (bit 7 set)
 
 ## Operator Function Kind (Byte +166)
 
-```
+```text
 Byte at entity+166:
 
   Value 5:  operator function (operator(), operator+, etc.)
@@ -289,7 +289,7 @@ while (v10) {
 
 ## CUDA Extended Flags (Byte +183)
 
-```
+```text
 Byte at entity+183:
 
   bit 3  (0x08)   __nv_register_params__   Function uses register parameter passing
@@ -349,7 +349,7 @@ Offset `+256` holds a pointer to a lazily-allocated 56-byte launch configuration
 
 ### Launch Config Layout
 
-```
+```c
 struct launch_config_t {           // 56 bytes, allocated by sub_5E52F0
     int64_t  maxThreadsPerBlock;   // +0   from __launch_bounds__(arg1)
     int64_t  minBlocksPerMP;       // +8   from __launch_bounds__(arg2)

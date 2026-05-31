@@ -48,7 +48,7 @@ Overload resolution is not a simple "find the best match" operation. The C++ sta
 
 ## Architecture: Three-Phase Pipeline
 
-```
+```text
                           PHASE 1                    PHASE 2                   PHASE 3
                      Candidate Collection        Viability Check         Best-Viable Selection
                     ┌───────────────────┐     ┌──────────────────┐     ┌──────────────────────┐
@@ -77,7 +77,7 @@ Candidates are collected into an overload set -- a linked list of entries alloca
 
 `determine_function_viability` (`sub_6E2040`, 2,120 lines) is the core viability checker. For each candidate function, it determines whether all arguments can be implicitly converted to the corresponding parameter types.
 
-```
+```c
 determine_function_viability (sub_6E2040, 2120 lines)
     Input:  candidate function F, argument list A[0..n-1]
     Output: viability flag, per-argument conversion summaries
@@ -142,7 +142,7 @@ The function implements a two-pass approach visible in the debug trace output: p
 
 `select_overloaded_function` (`sub_6E6400`, 1,483 lines, 20 parameters) performs the final selection. It is the master entry point for overload resolution -- called from the expression parser, from CTAD, and from special member function selection.
 
-```
+```c
 select_overloaded_function (sub_6E6400, 1483 lines, 20 params)
     Input:  overload_set, arg_list, context_flags, ...
     Output: best_function or AMBIGUOUS or NO_MATCH
@@ -198,7 +198,7 @@ select_overloaded_function (sub_6E6400, 1483 lines, 20 params)
 
 The pairwise comparison between two viable candidates F1 and F2 follows [over.match.best]. The result is one of: F1-better, F2-better, or indistinguishable.
 
-```
+```c
 compare_candidates(F1, F2):
     // Rule 1: Compare implicit conversion sequences argument-by-argument
     f1_better_count = 0
@@ -270,7 +270,7 @@ When no standard conversion exists, `try_conversion_function_match_full` (`sub_6
 
 For each candidate conversion, it checks:
 
-```
+```c
 try_conversion_function_match_full (sub_6D0F50, 1085 lines)
     Input:  source_class_type, dest_type, context_flags
     Output: selected conversion function/constructor, or AMBIGUOUS, or NONE
@@ -306,7 +306,7 @@ try_conversion_function_match_full (sub_6D0F50, 1085 lines)
 
 The `conversion_from_class_possible` functions (`sub_6D28C0` 252 lines, `sub_6D2ED0` 293 lines) emit full debug traces with entry/exit messages:
 
-```
+```text
 Entering conversion_from_class_possible, dest_type = <type>
 Candidate functions list: ...
 Leaving conversion_from_class_possible: <result>
@@ -316,7 +316,7 @@ Leaving conversion_from_class_possible: <result>
 
 `sub_6CE6E0` (1,246 lines) is the central driver function -- "THE MONSTER" -- that coordinates the overload resolution pipeline. It is called from `determine_selector_match_level` and from the candidate evaluation logic, acting as the type-comparison and scoring backbone that feeds the higher-level selection functions.
 
-```
+```c
 overload_resolution_driver (sub_6CE6E0, 1246 lines)
     // This function performs the detailed type comparison and conversion
     // sequence computation that determines how well a candidate matches.
@@ -366,7 +366,7 @@ overload_resolution_driver (sub_6CE6E0, 1246 lines)
 
 `sub_6C4C00` (1,044 lines) is the candidate evaluation function -- it scores each candidate by computing the full set of implicit conversion sequences across all arguments and produces the data that `compare_candidates` uses.
 
-```
+```c
 evaluate_candidate (sub_6C4C00, 1044 lines)
     Input:  candidate F, argument list args[], match_context
     Output: per-argument ICS array, overall viability
@@ -397,7 +397,7 @@ evaluate_candidate (sub_6C4C00, 1044 lines)
 
 `try_overloaded_function_match` (`sub_6E4FA0`, 633 lines, and variant `sub_6E5B20`, 367 lines) iterates the overload set and calls `determine_function_viability` for each candidate.
 
-```
+```c
 try_overloaded_function_match (sub_6E4FA0, 633 lines)
     Input:  overload_set, arg_list, context
     Output: viable_candidates[]
@@ -435,7 +435,7 @@ Operator overloading resolution follows a specialized path because it must consi
 
 `sub_6EF7A0` (2,174 lines) is the master entry point for operator overloading. It is called from the expression parser whenever an operator expression involves a class-type operand.
 
-```
+```c
 select_overloaded_operator / check_for_operator_overloading
     (sub_6EF7A0, 2174 lines)
     Input:  operator_kind, lhs_operand, rhs_operand (if binary), context
@@ -506,7 +506,7 @@ The function `matches_type_code` (`sub_6BECA0`) dispatches on these codes to che
 
 `try_builtin_operands_match` (`sub_6ED2A0`, 812 lines) matches operands against built-in operator patterns. The patterns are encoded as strings like `"A;P"` where each character is a type code and `;` separates operand positions.
 
-```
+```c
 try_builtin_operands_match (sub_6ED2A0, 812 lines)
     Input:  operator_kind, pattern_string, operand types
     Output: match result
@@ -532,7 +532,7 @@ Overload resolution for special member functions uses dedicated entry points tha
 
 ### Copy/Move Constructor Selection
 
-```
+```c
 select_overloaded_copy_constructor (sub_6DBEA0, 625 lines)
     Input:  class_type, source_operand, context_flags
     Output: selected constructor symbol, or NULL
@@ -572,7 +572,7 @@ The value category check (`sub_6BE5D0`, `copy_function_not_callable_because_of_a
 
 ### Default Constructor Selection
 
-```
+```c
 select_overloaded_default_constructor (sub_6E9080, 358 lines)
     Input:  class_type
     Output: selected constructor symbol
@@ -591,7 +591,7 @@ select_overloaded_default_constructor (sub_6E9080, 358 lines)
 
 ### Assignment Operator Selection
 
-```
+```c
 select_overloaded_assignment_operator (sub_6DD600, 492 lines)
     Input:  class_type, rhs_operand
     Output: selected assignment operator symbol
@@ -620,7 +620,7 @@ C++17 guaranteed copy elision is handled by `handle_elided_copy_constructor_no_g
 
 `prep_list_initializer` (`sub_6D7C80`, 2,119 lines) implements C++11 brace-enclosed initializer list resolution. It is one of the largest functions in overload.c, reflecting the combinatorial complexity of list initialization.
 
-```
+```c
 prep_list_initializer (sub_6D7C80, 2119 lines)
     Input:  init_list (braced expression list), target_type, context
     Output: converted initializer expression
@@ -677,7 +677,7 @@ The `find_initializer_list_constructor` / `make_initializer_list_object` functio
 
 C++17 CTAD is implemented by `deduce_class_template_args` (`sub_6E8300`, 285 lines). CTAD works by synthesizing a set of "deduction guides" -- function-like entities derived from the class template's constructors -- and running overload resolution on them.
 
-```
+```c
 deduce_class_template_args (sub_6E8300, 285 lines)
     Input:  class_template, constructor_arguments, context
     Output: deduced template arguments
@@ -746,7 +746,7 @@ When overload resolution fails due to ambiguity, dedicated diagnostic functions 
 
 The diagnostic output uses `sub_4F59D0`, `sub_4F5C10`, `sub_4F5CF0`, and `sub_4F5D50` for type-to-string formatting, producing messages in the format:
 
-```
+```text
 ambiguous overload for 'operator+(A, B)':
   candidate: operator+(int, int)
   candidate: operator+(A::operator int(), int)
@@ -801,7 +801,7 @@ A template-instantiation variant (`sub_505B40`, `check_cross_space_call_in_templ
 
 Overload resolution includes extensive debug tracing controlled by `dword_126EFC8`. When enabled, functions emit trace output via `sub_48AFD0` / `sub_48AE00` to the stream at `qword_106B988`:
 
-```
+```text
 Entering select_overloaded_function with ...
   try_overloaded_function_match: considering foo(int)
     determine_function_viability: arg 0

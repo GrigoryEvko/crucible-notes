@@ -26,7 +26,7 @@ The scheduler consumes a dependency DAG built over the instruction list and prod
 
 The orchestrator `sub_8D0640` executes the following sequence. All three scheduling phases invoke the same unified engine `sub_688DD0` -- the only difference is the mode byte passed as the second argument.
 
-```
+```c
 function ScheduleInstructions(sched):
     // 1. Build dependency graph
     BuildDependencyGraph(sched, func)         // sub_8CF880
@@ -87,7 +87,7 @@ The three mode bytes 0x39, 0x49, 0x41 serve a dual purpose: they encode a C++ vi
 
 The vtable at `off_21DBC80` (77 entries; see `scheduling_vtable.json`) has slots [0..7] as core methods shared by all modes, followed by three 23-method pipeline groups A/B/C that provide SM-family-specific priority scoring backends. The member function pointer resolves through the object's vtable pointer, so derived classes (constructed per-SM from `sm_scheduling_seeds.json` variant codes) can override individual pipeline methods without affecting the core dispatch.
 
-```
+```c
 // sub_8D0640 -- mode configuration before each ScheduleEngine call
 //
 // Phase 1: ReduceReg
@@ -210,7 +210,7 @@ The bulk of the DynBatch working state lives directly in the scheduler context, 
 | +536+ | var | `ptr[]` | -- | batchSlots | Array of instruction pointers in the current batch; `sched+536 + 8*i` for slot `i` |
 
 The batch target adjustment algorithm in `sub_8C1BA0`:
-```
+```c
 adjustedTarget = maxStallCycles           // from sched+404
 if maxStallCycles > batchTargetCount:
     adjustedTarget = batchTargetCount     // cap to target
@@ -230,7 +230,7 @@ Vtable[8] enters the common priority evaluator (`sub_8C9320`) with `mode_field =
 
 **Batch slot accumulation** (`sub_8C1BA0`, re-invoked when `batchSlotCount < 0`):
 
-```
+```c
 function InitDynBatchState(sched, funcCtx):               // sub_8C1BA0
     batchWindow = 0xFFFFFFFF; batchDepthLimit = -1; regBaseCount = regLiveCount
     for instr in ReadyList:
@@ -257,7 +257,7 @@ function InitDynBatchState(sched, funcCtx):               // sub_8C1BA0
 
 **WGMMA/HMMA bonus and batch-membership bits** (8-bit priority vector):
 
-```
+```c
     opcode = candidate.opcode & 0xCFFF
     hmmaFree   = (opcode == 39) and (operandSlot[adj] & 3) == 0  // HMMA free slot
     wgmmaBonus = (opcode == 96) and wgmmaCommitFlag               // WGMMA.COMMIT
@@ -275,7 +275,7 @@ function InitDynBatchState(sched, funcCtx):               // sub_8C1BA0
 
 **Post-selection batch state update**:
 
-```
+```c
     if winner.isBarrier:
         if not batchCountdown: batchCountdown = ComputeBatchWindow(readyCount, ...)
         batchTargetCount--; batchCountdown--
@@ -297,7 +297,7 @@ function InitDynBatchState(sched, funcCtx):               // sub_8C1BA0
 2. **Rebuild flag** (argument `a4`): when true, reconstructs the dependency DAG via `sub_6833F0`.
 3. **Vtable dispatch**: uses `*(a1+40)` and `*(a1+48)` for polymorphic pre/post scheduling hooks.
 
-```
+```c
 function ScheduleEngine(sched, mode, arg3, rebuild):
     if rebuild:
         InitScheduleRegion(sched)               // sub_6833F0
@@ -326,7 +326,7 @@ function ScheduleEngine(sched, mode, arg3, rebuild):
 
 The `mode` argument to `sub_688DD0` is not a simple integer -- it is a **tagged pointer** (low bit = 1). The engine uses this encoding to resolve the polymorphic `SelectBestInstruction` call at runtime without an explicit switch statement:
 
-```
+```c
 // Decompiled dispatch at lines 477-480 of sub_688DD0:
 selectFn = (function_ptr) mode                          // raw value: 0x39, 0x41, or 0x49
 if (mode & 1) != 0:                                    // low bit set -> indirect dispatch
@@ -346,7 +346,7 @@ Slots 8 and 9 are interior labels of the shared dispatcher `sub_8E0DB0` (~700 B)
 
 The orchestrator `sub_8D0640` invokes the engine three times with these modes:
 
-```
+```c
 // Phase 1: ReduceReg -- minimize register pressure
 sched.mode_field = 1                                    // *(DWORD*)(sched+240) = 1
 sched.reduceReg_flag = 1                                // *(BYTE*)(sched+484) = 1
@@ -380,7 +380,7 @@ The engine manages **10 register pressure counters** at scheduler context offset
 
 `sub_6820B0` (1.5 KB) builds the initial ready list by scanning the instruction linked list for nodes with zero unsatisfied dependencies.
 
-```
+```c
 function BuildReadyList(sched):
     for instr in sched.instruction_list:
         if instr.opcode == 52:         // NOP/BB boundary
@@ -466,7 +466,7 @@ SSE intrinsics (`_mm_add_epi32`) are used for vector accumulation.
 
 `sub_8CEE80` (8.7 KB) computes the occupancy-aware register budget that the scheduler respects during instruction ordering.
 
-```
+```c
 function ComputeRegisterBudget(sched):
     hw = sched.func.sm_backend          // at func+1584 (provides hw latency profiles)
     maxRegs = hw[154]                   // architecture register limit
@@ -499,7 +499,7 @@ function ComputeRegisterBudget(sched):
 
 **Seed initialization.** A seed object at `func[223]` (byte offset +1784) configures the curve. Default: `seed.SetBreakpoints(4, 2, 6)` via vtable+16 -- the three arguments are `windowSize`, `minIssueWidth`, `maxIssueWidth`, defining the piecewise linear occupancy-to-issue-width mapping. When `KnobIsSet(750)` is true, calls `seed.ParseString(KnobGetString(750))` via vtable+24 instead -- the `SchedEstimatedLoopIterations` string encodes custom per-loop iteration hints replacing the (4,2,6) defaults. If the function has no loops (`sched[668] == 0`), returns 0.0 with `usePressure = 0`.
 
-```
+```c
 function ComputePressureCurve(sched, regLimit):       // sub_8CE520
     seed = sched.func[223]
     if KnobIsSet(750): seed.ParseString(KnobGetString(750))   // vtable+24
@@ -561,7 +561,7 @@ Uses operand analysis from `sub_894290` (27 KB) which processes 16-bit operand d
 
 #### Edge node layout (32 bytes, allocated via `sub_6805C0`/`sub_680B60`)
 
-```
+```text
 Offset  Size   Field
  +0     QWORD  next            Singly-linked list pointer (head at producer+56)
  +8     QWORD  target          Pointer to consumer instruction
@@ -586,7 +586,7 @@ A single edge can carry multiple type bits (e.g., bits 0+2 when a register has b
 
 The stall/barrier pipeline (`sub_8D7760`, 41 KB) computes per-edge latency when walking the DAG backward from each consumer. The latency depends on the edge type and the producer's scheduling class, which indexes into `per_sm_dependency_rules` (40-byte records):
 
-```
+```c
 function GetEdgeLatency(sm_backend, producer, consumer, edge):
     rule = LookupRule(sm_backend, producer.sched_class)
     //  per_sm_dependency_rules fields (40-byte record):
@@ -711,7 +711,7 @@ The region 0x89C550--0x8BE320 contains 17+ specialized scheduling strategies, ea
 
 The scheduler selects strategies based on code features detected during pre-scheduling analysis (`sub_8CBAD0`). The decision cascades as follows:
 
-```
+```c
 function SelectStrategy(BB, scheduler, arch):
     if BB.is_loop_body AND scheduler.opt_level >= 3:
         if BB.has_tensor_ops (scheduler+384 == 1):
@@ -742,7 +742,7 @@ The backtracking, dual-issue, tensor, and software pipelining strategies are the
 
 Extends standard list scheduling with depth-bounded rollback. When a scheduled instruction causes a resource conflict or pressure spike, the scheduler undoes previous decisions and tries alternatives.
 
-```
+```c
 function ScheduleWithBacktrack(BB, dag, ready_list):
     // Phase 1: Allocate state snapshots -- 64-byte slots x 773 max depth
     snapshot_buf = Alloc(773 * 64)         // 49408 bytes
@@ -792,7 +792,7 @@ Pairs compatible instructions into dual-issue slots on the Maxwell family (sm\_5
 
 `sub_8B77C0` orchestrates the per-slot search; the actual pair-record bookkeeping (rejection set, partner commit, cross-slot dependency flag) lives in `sub_8BDC40` (7.9 KB), which `sub_8B77C0` calls once per candidate. Compatibility predicates `sub_A9CDE0` (`IsHotMemory`) and `sub_A9CF90` (`IsColdMemory`) drive the partner choice -- see [Dual-Issue Rules](latency-model.md#dual-issue-rules) for the memory-space classification and the `pipe_masks_b` pairing matrix.
 
-```
+```c
 function DualIssueSchedule(scheduler, slot_start, slot_end, phase_mask):
     for slot in slot_start..slot_end:
         if not (phase_mask & (1 << slot)):
@@ -819,7 +819,7 @@ function DualIssueSchedule(scheduler, slot_start, slot_end, phase_mask):
 
 Groups HMMA/BMMA/BGMMA tensor core instructions into contiguous blocks, respecting accumulator register lifetimes. Iterates over scheduling slots using a bitmask of active tensor groups.
 
-```
+```c
 function TensorSchedule(ctx, group_mask, instr):
     phase_count = ctx+120                      // number of tensor phases
     if phase_count < 0:
@@ -855,7 +855,7 @@ function TensorSchedule(ctx, group_mask, instr):
 
 Overlaps successive loop iterations by interleaving instructions from different iterations into a single schedule. Computes the initiation interval (II) and maps instructions to pipeline stages.
 
-```
+```c
 function SoftwarePipeline(ctx, loop_desc, stage_mask):
     trip_count = loop_desc+28                  // extracted from loop analysis
     prologue_start = trip_count * 24
@@ -1033,7 +1033,7 @@ The iterative solver runs until convergence, updating per-BB liveness sets. This
 
 After instruction ordering is determined, the scheduling output pipeline (0x8F1EB0--0x8FDD60, ~57 KB) converts the abstract schedule into SASS control words:
 
-```
+```c
 // Stage 0 -- Per-function entry (sub_8F6530, ~10 KB)
 // Manages a circular buffer of 6 barrier slots, one per HW barrier register.
 // Each slot: 56-byte record {active:u8, count:u32, instr[2]:ptr, pad}.
@@ -1070,7 +1070,7 @@ function EmitScheduleForFunction(func, bb_index):
             instr = instr.next
 ```
 
-```
+```c
 // Stage 1 -- ComputeStallCycles (sub_8F3130 + sub_A09530)
 // Walks source operands, accumulates stall per scoreboard entry.
 function ComputeStallCycles(func, instr, slots, slot_idx):
@@ -1099,7 +1099,7 @@ function ComputeStallCycles(func, instr, slots, slot_idx):
     sched_node.stall_field &= ~0x200               // clear dirty bit
 ```
 
-```
+```c
 // Stage 2 -- ComputeYieldHint (sub_8F3650 + sub_8F3EA0)
 // Yield is set for long-latency ops that consume barrier registers.
 function ComputeYieldHint(func, instr):
@@ -1138,7 +1138,7 @@ function ComputeYieldHint(func, instr):
     return (dest.last_word & 7) == 0               // yield only if no read deps
 ```
 
-```
+```c
 // Stage 3 -- AssignBarrier (sub_8F31F0) + ScoreboardDeps (sub_8F3860)
 // Allocates HW barrier, then encodes scoreboard tag into operand descriptor.
 function AssignBarrier(func, instr, slots):
@@ -1196,7 +1196,7 @@ function ComputeScoreboardDeps(func, instr, slots, slot_idx):
     *dep &= 0xFF000000                             // zero bits [23:0]
 ```
 
-```
+```c
 // Stage 4 -- EncodeControlWord (sub_8F4140)
 // Reuse-flag eligibility check + 23-bit SASS control word packing.
 function EncodeControlWord(func, instr):
@@ -1314,7 +1314,7 @@ Each instruction has a pointer at `instr+40` (`sched_slot`) to a separate heap-a
 
 ### Relationship to the Instruction Object
 
-```
+```text
  Ori Instruction (296 bytes)              SchedNode (>= 240 bytes)
  +--------------------------+             +---------------------------+
  | +0:  prev (BB list)      |   instr+40  | +0:  nextInList           |
@@ -1386,7 +1386,7 @@ Functions exceeding 16383 instructions (`*(a1+372) > 0x3FFF`) trigger chunk-base
 
 At the start of each BB's scheduling pass, `sub_A091C0` (InitResourceTracking) copies the 10 DWORDs at record offsets +4 through +40 into the scheduler context at context offsets +48 through +87. The scheduling engine then updates the context counters as instructions are scheduled. When cross-block scheduling produces a new pressure snapshot, the engine writes it back with SSE bulk stores:
 
-```
+```c
 *(OWORD*)(record + 4)  = pressure[0..3]    // 16 bytes via _mm_store_si128
 *(OWORD*)(record + 20) = pressure[4..7]    // 16 bytes via _mm_store_si128
 *(QWORD*)(record + 36) = pressure[8..9]    // 8 bytes
@@ -1413,7 +1413,7 @@ The opcodes that set bit 5 (`hasLongLatencyOp`): 18 (with knob 62 gate), 23, 26,
 
 After per-BB initialization, `sub_6833F0` walks the CFG to identify cross-block scheduling opportunities, with the master gate being knob 744 (`SchedCrossBlockLimit`): when its boolean form is true the integer value supplies the speculative distance threshold; when disabled the default threshold is 2. (The per-BB walk also stores `sched+177` from knob 742 (`SchedCrossBlock`): byte 0 = enabled, byte 1 = conditional on `options+53648 != 0`, byte >= 2 = disabled.)
 
-```
+```c
 // Phase 1: compute speculative distance threshold (sub_6833F0, LABEL_49 block)
 crossblock_enabled = ReadKnobBool(744)              // options+53568
 if crossblock_enabled:
@@ -1490,7 +1490,7 @@ for each bb in RPO_order(func):                      // bb_array[ctx+296]
 
 Pointers stored at `record[pred_rpo].regionContext` (+48) and `record[succ_rpo].regionContext2` (+56). The instruction scan inside `sub_682F10` classifies each instruction into barrier-class (bit 6 of `sub_7DF3A0`), arch long-latency (`vtable[228]`), or default, accumulating the counter rows. For branch variants (`(opcode & 0xFFFFCFFD) == 0xBC`), it checks operand encoding to set bit 3 and record branch stall cost at `+4`.
 
-```
+```text
 +0                  +4                                           +44  +48              +56              +64  +72
 | crossBlockId (4B) | pressure[0..9] (40B = 10 x i32)           |pad | regionCtx (8B) | regionCtx2 (8B)| fl | pad  |
 +-------------------+----+----+----+----+----+----+----+----+----+----+----------------+----------------+----+------+
@@ -1644,7 +1644,7 @@ Set early in `sub_A95DC0` based on `*(a1+372) >> 12` (architecture class). Three
 
 ### Memory Layout Diagram
 
-```
+```text
 SchedulerContext (~1600 bytes)
 +--------+--------+--------+--------+--------+--------+--------+--------+
 |+0  vtable       |+8  funcContext   |+16 allocator    |+24 (padding)    |

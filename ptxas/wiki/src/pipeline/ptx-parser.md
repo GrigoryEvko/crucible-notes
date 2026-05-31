@@ -22,7 +22,7 @@ The ptxas front-end parses PTX assembly text into internal IR using a classic tw
 
 ## Architecture
 
-```
+```text
 PTX source text
      │
      ▼
@@ -518,7 +518,7 @@ The following constants were recovered by cross-correlating the five hardcoded s
 
 The main parser loop (decompiled lines 1354--1507) follows the textbook Bison deterministic-LALR skeleton:
 
-```
+```c
 for ( state = 0; ; yypact_val = yypact[state] )  // line 1354
 {
     if ( yypact_val == YYPACT_NINF )  goto yydefault;  // line 1357
@@ -548,7 +548,7 @@ for ( state = 0; ; yypact_val = yypact[state] )  // line 1354
 
 After a reduction the goto computation (lines 2392--2403) is:
 
-```
+```c
 nt_idx = yyr1[reduced_rule] - YYNTOKENS;  // line 2398 (- 193)
 new_state = yypgoto[nt_idx] + current_state;
 if ( new_state > YYLAST || yycheck[new_state] != current_state )
@@ -714,7 +714,7 @@ Each call passes four distinguishing arguments in the System V AMD64 calling con
 
 Concretely, an `add.f32` registration looks like this in the raw disassembly (addresses from `disasm/sub_46E000_0x46e000.asm`):
 
-```
+```asm
 0x472fe9: b9 13 92 ce 01   mov     ecx, (offset a10000+3); "000"     ; a4 = type suffixes "000"
 0x472fee: ba 39 81 d0 01   mov     edx, offset aAdd_0; "add"          ; a3 = opcode name "add"
 0x472ff3: be 35 b8 02 02   mov     esi, (offset aNanNotAllowedW+18h); "F32"  ; a2 = encoding "F32"
@@ -1748,7 +1748,7 @@ The table covers the entire PTX ISA vocabulary -- hundreds of opcodes. A separat
 
 The parser is invoked from the top-level compilation driver `sub_446240` (11 KB), which orchestrates the full pipeline:
 
-```
+```text
 Parse  →  CompileUnitSetup  →  DAGgen  →  OCG  →  ELF  →  DebugInfo
 ```
 

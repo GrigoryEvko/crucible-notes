@@ -177,7 +177,7 @@ The special variable recognition pipeline (`sub_127F7A0`) checks five preconditi
 
 Every local variable and parameter copy uses the same pattern:
 
-```
+```c
 sub_127FC40(ctx, type, name, alignment, addrspace)
   -> sub_921B80(ctx, type, name, arraySize=0)
      -> insert AllocaInst BEFORE the allocapt sentinel
@@ -191,7 +191,7 @@ The critical detail: when `arraySize == 0` (the common case), the alloca is inse
 
 After creating any instruction, the same 15-line pattern inserts it into the current basic block and attaches debug metadata:
 
-```
+```c
 bb = ctx[1][1];              // current BB
 sentinel = ctx[1][2];        // insertion sentinel
 sub_157E9D0(bb + 40, inst);  // update BB instruction list

@@ -187,7 +187,7 @@ The stack is pushed and popped lexically by `#pragma push_macro`/`#pragma pop_ma
 
 After EDG produces NVVM IR, all surviving per-function attributes are encoded into a single named metadata node `nvvm.annotations` (string at `0x3F256xx`, written by every per-attribute path under `sub_A84F90`). Each tuple is one MDNode of the form:
 
-```
+```text
 !{ <Function*> | <GlobalVariable*>,  <Tag-String>,  <Operand>... }
 ```
 
@@ -208,7 +208,7 @@ The full tag inventory recovered from string xrefs (HIGH — every key is a stri
 
 ### Bit-Layout of the MDNode Header
 
-```
+```text
   ┌─────────────────────────────────────────────────────────────────────┐
   │ MDNode header (16-byte aligned)                                     │
   ├──────────┬──────────┬──────────┬──────────┬──────────┬──────────────┤
@@ -309,7 +309,7 @@ The transplant sentinel `"nvvm.annotations_transplanted"` is the inliner's bookk
 
 ## 9. End-to-End Dataflow
 
-```
+```text
         SOURCE                       EDG FRONT-END                          NVVM IR                          LLVM PIPELINE
    ────────────────             ──────────────────────                ──────────────────────              ────────────────────
    __launch_bounds__   ──┐

@@ -125,7 +125,7 @@ Tileiras is 88 MB despite carrying a full MLIR runtime, a 9-dialect cascade, the
 
 ## Architectural sketch (side-by-side)
 
-```
+```text
                 cicc                                          tileiras
                 ────                                          ────────
   CUDA C++ source (.cu / .ci / .i)                  MLIR bytecode (.ctir / .ctb)

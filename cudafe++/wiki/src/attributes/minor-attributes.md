@@ -170,7 +170,7 @@ cudafe++ provides three inline control attributes that interact with EDG's inlin
 
 ### Entity Node Fields
 
-```
+```text
 entity+177  cuda_flags (byte):
     bit 4 (0x10) = __forceinline__
 
@@ -455,7 +455,7 @@ Additionally, if Clang compatibility mode is active (`dword_126EFA4` set, `qword
 
 ### Entity Node Field Summary
 
-```
+```text
 entity+177  bit 4 (0x10): __forceinline__
 entity+179  bit 4 (0x10): __inline_hint__
 entity+179  bit 5 (0x20): __noinline__ (EDG path)

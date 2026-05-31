@@ -47,7 +47,7 @@ The following table maps the full address range of the embedded ptxas backend. A
 
 The IR node structure is accessed through 22 leaf functions that constitute the most-called code in the entire binary. `sub_530FB0` (get operand by index) at 31,399 callers and `sub_A49150` (get instruction attribute) at 30,768 callers form the universal accessor layer. The IR node layout:
 
-```
+```text
 Offset  Size   Field
   0     1B     operand type tag (1=immediate, 2=register, 6=memref, ...)
   4     4B     register class / encoding field (1023 = wildcard "any")

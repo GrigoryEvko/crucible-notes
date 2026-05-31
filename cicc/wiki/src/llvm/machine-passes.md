@@ -32,7 +32,7 @@ In upstream LLVM for x86 or AArch64, the machine pass pipeline assigns physical 
 
 ## Pipeline Flow
 
-```
+```text
 SelectionDAG ISel
     │
     ▼
@@ -181,7 +181,7 @@ This pass runs pre-RA and performs pattern-matching rewrites on `MachineInstr` s
 
 3. **Address space conversion simplification.** When `generic-to-nvvm` inserts `addrspacecast` and the consuming instruction directly emits the correct address qualifier (`.global`, `.shared`, `.local`, `.const`), the intermediate cast is redundant.
 
-```
+```rust
 // Pseudocode: NVPTXPeephole main loop
 fn nvptx_peephole(MF: &mut MachineFunction) -> bool {
     let mut changed = false;
@@ -242,7 +242,7 @@ This is NVIDIA's custom register-pressure-reduction pass. It re-computes values 
 
 **Algorithm pseudocode (`sub_2186D90`):**
 
-```
+```rust
 fn nvptx_block_remat(MF: &mut MachineFunction) -> bool {
     // (A) INITIALIZATION
     let target = max_reg_override.unwrap_or(nv_remat_default_max_reg);  // default 70
@@ -353,7 +353,7 @@ The MRPA system has two modes:
 
 **Incremental update algorithm (`sub_2E5A4E0`):**
 
-```
+```rust
 fn mrpa_incremental_update(context, bb, instruction_delta) {
     // DenseMap hash: (ptr >> 9) ^ (ptr >> 4)
     // Empty sentinel: -8, Tombstone: -16
@@ -395,7 +395,7 @@ This pass transforms qualifying global memory loads into `ld.global.nc` (LDG) in
 
 **Algorithm:**
 
-```
+```rust
 fn ldgxform(MF: &mut MachineFunction) -> bool {
     let mut changed = false;
     for mi in MF.all_instrs() {
@@ -438,7 +438,7 @@ Standard LLVM `mem2reg` operates on LLVM IR `alloca` instructions. This NVIDIA-c
 
 **Algorithm:**
 
-```
+```rust
 fn nvptx_machine_mem2reg(MF: &mut MachineFunction) -> bool {
     if nv_disable_mem2reg { return false; }  // byte_4FD25C0
 
@@ -480,7 +480,7 @@ CUDA and LLVM IR use address space 0 (generic) as the default for globals, but N
 
 **Algorithm:**
 
-```
+```rust
 fn generic_to_nvvm(M: &mut Module) -> bool {
     let mut gv_map = DenseMap::new(128);     // old -> new Value mapping
     let mut const_map = DenseMap::new(128);  // old -> new Constant mapping
@@ -634,7 +634,7 @@ Address: `sub_35B1110` (68KB, 2388 decompiled lines). Stack frame: `0x490` bytes
 
 **Stack layout algorithm (Phase 4):**
 
-```
+```rust
 fn assign_frame_offsets(MF: &MachineFunction, frame: &mut FrameInfo) {
     let grows_neg = frame.stack_direction == 1;
     let mut offset = frame.initial_offset;

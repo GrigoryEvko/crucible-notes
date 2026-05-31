@@ -64,7 +64,7 @@ The sorted suffix array is then scanned by `sub_3532120` (`findIllegalInRange`),
 
 The outliner accepts a candidate only if the net benefit exceeds the threshold. The formula:
 
-```
+```c
 Benefit = NumOccurrences * PerOccurrenceCost - FrameOverheadCost
 ```
 
@@ -151,7 +151,7 @@ CICC defines calling convention 95 (0x5F) as an NVPTX-specific calling conventio
 
 The CC assignment happens in Phase 5 of `sub_3537010` (lines 838--877 of the decompilation), after the outlined MachineFunction is created and before its body is populated. The algorithm:
 
-```
+```rust
 fn assign_outlined_cc(candidate_group, outlined_fn):
     max_cc = 0
     for entry in candidate_group:
@@ -234,7 +234,7 @@ The only function-level metadata the outlined function receives is the `isOutlin
 
 The candidate finder (`sub_3539E80`) applies three gates before considering a function's basic blocks for outlining:
 
-```
+```rust
 fn is_eligible(func, cost_mode):
     // Gate 1: explicit opt-out
     if sub_B2D620(func, "nooutline"):       // has "nooutline" attribute?

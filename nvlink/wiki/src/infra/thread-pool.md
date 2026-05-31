@@ -15,7 +15,7 @@ All threads are created with the default `pthread_attr_t` (NULL), which means th
 
 `thread_pool_create` (`sub_43FDB0` at `0x43FDB0`) allocates the pool as a 184-byte (0xB8) structure via `calloc(1, 0xB8)`. The structure holds all synchronization state, the worker thread handles, and the task queue.
 
-```
+```text
 thread_pool_t (184 bytes, heap-allocated via calloc)
 =========================================================
 Offset  Size  Field              Description
@@ -81,7 +81,7 @@ The task queue comparator is `sub_43FC70` at `0x43FC70`, an 8-byte function that
 
 Enqueues a `(function, argument)` pair. Each task is a 24-byte heap-allocated node:
 
-```
+```text
 task_node_t (24 bytes, heap-allocated via malloc)
 =================================================
 Offset  Size  Field    Description
@@ -221,7 +221,7 @@ The task queue is a binary min-heap backed by a dynamic pointer array. It is a g
 
 ### Queue Structure
 
-```
+```text
 pqueue_t (32 bytes, arena-allocated)
 =========================================
 Offset  Size  Field         Description
@@ -308,7 +308,7 @@ void split_compile_worker(work_item_t *item) {
 
 ### LTO Work Item Layout (40 bytes)
 
-```
+```text
 split_work_item_t (40 bytes, arena-allocated via sub_426AA0)
 ================================================================
 Offset  Size  Field          Description
@@ -373,7 +373,7 @@ if (qword_2A64430 && jobserver_cleanup(&qword_2A64430))
 
 ### Per-Kernel Work Item Layout (48 bytes)
 
-```
+```text
 kernel_work_item_t (48 bytes, arena-allocated via sub_4307C0)
 ================================================================
 Offset  Size  Field          Description
@@ -467,7 +467,7 @@ ptxas has an identical jobserver client at `sub_1CC7300` (see [ptxas: Threading 
 
 This traces a concrete execution of the LTO split-compile path with 4 PTX chunks and 2 worker threads:
 
-```
+```text
 Thread 0 (main)                     Thread 1 (worker)       Thread 2 (worker)
 ═══════════════                     ═════════════════       ═════════════════
 dword_2A5B514 = 2

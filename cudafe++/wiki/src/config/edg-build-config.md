@@ -4,7 +4,7 @@ cudafe++ is built from Edison Design Group (EDG) C/C++ front end source code, ve
 
 The function `dump_configuration` (`sub_44CF30`, 785 lines) prints all 747 constants as C preprocessor `#define` statements when invoked with `--dump_configuration`. Of these, 613 are defined and 134 are explicitly listed as "not defined." The output is written to `qword_126EDF0` (the configuration output stream, typically stderr) in alphabetical order.
 
-```
+```bash
 $ cudafe++ --dump_configuration
 /* Configuration data for Edison Design Group C/C++ Front End */
 /* version 6.6, built on Aug 20 2025 at 13:59:03. */
@@ -165,7 +165,7 @@ These constants control the default formatting and behavior of compiler error me
 
 The `DEFAULT_EDG_COLORS` constant encodes ANSI SGR (Select Graphic Rendition) color codes for diagnostic categories:
 
-```
+```text
 "error=01;31:warning=01;35:note=01;36:locus=01:quote=01:range1=32"
 ```
 

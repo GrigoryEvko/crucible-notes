@@ -19,7 +19,7 @@ The timing infrastructure brackets this work with `sub_4279C0("finalize")`. For 
 
 ## Position in the Pipeline
 
-```
+```text
 Layout Phase (sub_439830 -- address assignment)
   |
   v
@@ -139,7 +139,7 @@ The core of finalization begins with symbol table reconstruction. The function r
 
 ### Positive Symbol Array (elfw+344)
 
-```
+```c
 // Allocate new index-to-symbol mapping array
 new_sec_map = arena_alloc(elfw_arena, 8 * (elfw->sec_count + 1));  // elfw+312
 memset(new_sec_map, 0, 8 * (elfw->sec_count + 1));
@@ -280,7 +280,7 @@ The largest function in the linker operates in five internal phases:
 
 **Phase C -- Callgraph propagation** (lines 1523-1972):
 
-```
+```c
 sub_44CE00(a1, v731)    // Propagate REGCOUNT through callgraph (if byte a1+96)
 sub_44C940(a1)          // Finalize callgraph internal state
 sub_450C50(a1, sym, s, src)  // Propagate stack/CRS per entry
@@ -584,7 +584,7 @@ The finalization system operates at two distinct granularities:
 
 The interaction path is:
 
-```
+```text
 main()
   |
   +-- sub_445000 (per-module finalize)
@@ -620,7 +620,7 @@ When `--verbose` is set (`byte_2A5F2D8`), `sub_43D2A0` (5,530 bytes / 213 lines)
 
 ### Global Summary
 
-```
+```text
 <N> bytes gmem, <N> bytes cmem[0], <N> bytes cmem[2], ...
 ```
 
@@ -629,7 +629,7 @@ When `--verbose` is set (`byte_2A5F2D8`), `sub_43D2A0` (5,530 bytes / 213 lines)
 
 ### Per-Function Properties
 
-```
+```text
 Function properties for '<name>':
 used <N> registers, used <N> barriers, <N> stack, <N> bytes smem, <N> bytes cmem[<N>], <N> bytes lmem
 ```

@@ -27,7 +27,7 @@ The pass is fundamentally at odds with PTX's requirement for reducible control f
 
 Consider a CUDA kernel containing:
 
-```
+```cuda
 if (threadIdx.x < threshold)
     val = computeA();
 else
@@ -103,7 +103,7 @@ The pass enforces a multi-level cost model that bounds total code growth per fun
 
 At `0x2DC4887`, the pass initializes a global instruction budget:
 
-```
+```asm
 mov ebx, 200h    ; 512 instructions total budget
 ```
 
@@ -113,7 +113,7 @@ Each block duplication charges the duplicated block's instruction count against 
 
 When threading involves multiple predecessors, the per-predecessor cost is the block instruction count divided by the number of predecessors being threaded, with ceiling rounding:
 
-```
+```c
 cost_per_pred = block_instr_count / num_predecessors
 ; ceiling via: sbb eax, -1 (adds 1 if remainder was nonzero)
 ```
@@ -162,7 +162,7 @@ On exit, if LVI was used, three cleanup calls occur:
 
 The pass iterates over the function's basic block list via a linked-list traversal (`BB->next` chain at `[BB+8]`):
 
-```
+```c
 run(result_ptr, function, lvi_ptr, tli, ...):
     if lvi_ptr != null:
         initialize_lvi_cache(lvi_ptr)
@@ -221,7 +221,7 @@ The pass contains four specialized threading strategies:
 
 Four sites (`0x2DC71B0`, `0x2DC71CA`, `0x2DC7380`, `0x2DC74DA`) check for all-ones constants as PHI incoming values:
 
-```
+```asm
 or rax, -1          ; create all-ones mask
 shr rax, cl         ; cl = 64 - bitwidth, shift to match width
 cmp [rdx+18h], rax  ; compare against actual constant value
@@ -234,7 +234,7 @@ For an `i1` type, all-ones means `true`. This handles the common pattern where a
 
 Two nearly identical loops at `0x2DC7206`--`0x2DC726E` and `0x2DC7456`--`0x2DC74CD` iterate PHI operands to determine if all incoming values from relevant predecessors resolve to the same constant:
 
-```
+```c
 for pred_idx in range(phi.num_operands):    // var_668
     incoming = phi.getIncomingValueForBlock(pred)  // sub_AD69F0
     type_tag = incoming.type_byte

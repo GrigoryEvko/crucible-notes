@@ -25,7 +25,7 @@ The types are organized into two global descriptor tables baked into the nvlink 
 
 Every R_CUDA type name follows a systematic pattern:
 
-```
+```text
 R_CUDA_<category><bits>_<bitposition>
 ```
 
@@ -94,7 +94,7 @@ The maximum valid relocation index varies by architecture class. The function `s
 
 Each relocation type has a 64-byte descriptor in the application engine's table (`off_1D3DBE0` for CUDA, `off_1D3CBE0` for Mercury). The descriptor is divided into a 12-byte header followed by three 16-byte action slots and a 4-byte sentinel:
 
-```
+```text
 Descriptor (64 bytes total):
   +0   Header (12 bytes)
        +0   uint32_t  field_0;      // Used by resolved-rela emitter (sub_46ADC0)
@@ -403,7 +403,7 @@ The mask formula `(-1ULL << (64 - W)) >> (64 - E)` where `E = offset + W` create
 
 **Scenario**: A `MOV` instruction at offset `0x100` in `.text` references a global symbol `_Z10my_kernelPi` resolved to address `0x0000_0000_DEAD_BEEF`. The `.rela.text` section contains:
 
-```
+```c
 Elf64_Rela {
     r_offset = 0x100,        // instruction offset within .text
     r_info   = (sym << 32) | 5,  // type = 5 (R_CUDA_ABS32_26)
@@ -413,13 +413,13 @@ Elf64_Rela {
 
 **Step 1: Descriptor lookup.** The relocation engine selects the CUDA descriptor table at `off_1D3DBE0` and computes the descriptor address:
 
-```
+```text
 descriptor = off_1D3DBE0 + (5 << 6) = off_1D3DBE0 + 320
 ```
 
 The 64-byte descriptor for type 5 contains (reconstructed from the type semantics):
 
-```
+```text
 Offset  Bytes (hex)                           Interpretation
 ------  -----------                           --------------
 +0      xx xx xx xx xx xx xx xx xx xx xx xx   Header (12 bytes, used by sub_46ADC0)
@@ -451,13 +451,13 @@ This is not the fast path (`bit_offset != 0 || bit_width != 64`), so the engine 
 
 **Step 4: Extract old value.** Since `is_absolute == false`, the engine extracts the existing 32-bit field from the instruction word. Assume the instruction word at `patch_ptr` is `0x0000_0000_0000_0000` (field pre-initialized to zero):
 
-```
+```c
 old = bitfield_extract(patch_ptr, 26, 32)
 ```
 
 With `end_bit = 26 + 32 = 58 <= 64`, this is the single-word case:
 
-```
+```text
 old = *patch_ptr << (64 - 58) >> (64 - 32)
     = 0 << 6 >> 32
     = 0
@@ -467,7 +467,7 @@ The engine computes `value = value + old = 0xDEAD_BEEF + 0 = 0xDEAD_BEEF` and st
 
 **Step 5: Write new value.** The engine constructs a mask and writes the value into the instruction word. With `bit_offset = 26`, `bit_width = 32`, `end_bit = 58`:
 
-```
+```text
 mask = (-1ULL << (64 - 32)) >> (64 - 58)
      = 0xFFFF_FFFF_0000_0000 >> 6
      = 0x03FF_FFFF_FC00_0000
@@ -483,7 +483,7 @@ value_positioned = (0xDEAD_BEEF << (64 - 32)) >> (64 - 58)
 
 The 32 bits of `0xDEAD_BEEF` now occupy bits [26:58) of the instruction word:
 
-```
+```text
 Bit layout of patched instruction word:
   bits [63:58] = 0b000000       (unchanged)
   bits [57:26] = 0xDEAD_BEEF    (patched value)

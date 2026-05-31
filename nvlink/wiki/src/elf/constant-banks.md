@@ -44,7 +44,7 @@ In the ELF representation, each bank gets its own section and section type:
 
 The type encoding formula is:
 
-```
+```text
 SHT_CUDA_CONSTANT0 + bank_number = 0x70000064 + N
 ```
 
@@ -62,7 +62,7 @@ There is also a generic base type `SHT_CUDA_CONSTANT` (`0x70000006`) used for th
 
 nvlink maintains a static pointer table at address `0x1D3A8E0` that maps bank indices to their section name strings. The table contains 18 entries for the numbered banks at 8-byte stride, followed by entries for the specialized banks:
 
-```
+```text
 Address      Index  String pointer target
 ---------    -----  ----------------------
 0x1D3A8E0    [0]    -> "0x1D3A4C0: .nv.constant0"
@@ -131,7 +131,7 @@ Contains per-entry indices into the image header array. This bank maps kernel en
 
 Constant bank sections can be either global (shared across all kernels in the linked cubin) or per-entry (specific to a single kernel entry point). Per-entry sections follow a naming convention that appends the kernel name:
 
-```
+```text
 <bank_section_name>.<kernel_name>
 ```
 
@@ -238,7 +238,7 @@ __global__ void vectorAdd(float* out) {
 
 The compiler (ptxas) generates a SASS instruction that loads from constant bank 0. At compile time, `myConst` is at offset 0x0 within `b.cu`'s local `.nv.constant0` section. The compiler encodes the bank index (0) directly in the instruction, but marks the offset field with a relocation because linking will change the offset:
 
-```
+```asm
 ; Before relocation (from b.o):
 ; Instruction loads from c[0][0x0] -- offset not yet resolved
 ;
@@ -254,7 +254,7 @@ The compiler (ptxas) generates a SASS instruction that loads from constant bank 
 
 The compiler emits a `.rela.text.vectorAdd` entry:
 
-```
+```c
 Elf64_Rela {
     r_offset = 0x080,                    // byte offset of target instruction in .text
     r_info   = ELF64_R_INFO(sym, 24),    // symbol index + type 24 (R_CUDA_CONST_FIELD19_28)
@@ -268,7 +268,7 @@ The symbol referenced by `sym` points to `myConst` in the `.nv.constant0` sectio
 
 During the merge phase, `sub_438640` merges constant bank data from both TUs into a single output `.nv.constant0` section:
 
-```
+```text
 Input a.o:  .nv.constant0  256 bytes (params[64])    -> output offset 0x000
 Input b.o:  .nv.constant0    4 bytes (myConst)        -> output offset 0x100
                                                           (aligned to 256-byte boundary)
@@ -286,7 +286,7 @@ The relocation engine (`sub_469D60`) processes the relocation record. It perform
 
 **3c. Section type computation**: The parent section's `sh_type` is `0x70000064` (`SHT_CUDA_CONSTANT0`). The section type delta is:
 
-```
+```text
 section_type_delta = 0x70000064 - 0x70000064 = 0  (bank 0)
 ```
 
@@ -296,7 +296,7 @@ This value is passed as parameter `a9` to the application engine but is not used
 
 **3e. Verbose trace** (when `--verbose` is active):
 
-```
+```text
 resolve reloc 24 for sym=<N>+0 at <section=<M>,offset=0x80>
 ```
 
@@ -304,13 +304,13 @@ resolve reloc 24 for sym=<N>+0 at <section=<M>,offset=0x80>
 
 The engine calls `sub_468760` with relocation type index 24. The descriptor is at:
 
-```
+```text
 descriptor = off_1D3DBE0 + (24 << 6) = off_1D3DBE0 + 1536
 ```
 
 The 64-byte descriptor for `R_CUDA_CONST_FIELD19_28` contains:
 
-```
+```text
 Offset  Bytes (hex)                           Interpretation
 ------  -----------                           --------------
 +0      xx xx xx xx xx xx xx xx xx xx xx xx   Header (12 bytes, used by sub_46ADC0)
@@ -347,7 +347,7 @@ The DWORD offset `0x40` is the value that will be written into the instruction. 
 
 Since `is_absolute == false`, the engine first extracts the existing 19-bit field from the instruction word. Assume the pre-relocation instruction word is:
 
-```
+```text
 patch_ptr -> 0x0000_0000_0000_F900
 ```
 
@@ -393,7 +393,7 @@ value_positioned = (0x40ULL << (64 - 19)) >> (64 - 47)
 
 The instruction word before and after relocation:
 
-```
+```text
 BEFORE:  0x0000_0000_0000_F900   MOV R0, c[0x0][0x0]
 AFTER:   0x0000_0004_0000_F900   MOV R0, c[0x0][0x100]
 
@@ -421,7 +421,7 @@ The hardware interprets the 19-bit field as a DWORD offset: `0x40 * 4 = 0x100` b
 
 The end-to-end chain can be verified:
 
-```
+```text
 Source:      __constant__ float myConst          (in b.cu)
 Section:     .nv.constant0 (bank 0, sh_type = 0x70000064)
 Merge:       a.cu contributes 256 bytes -> myConst lands at byte offset 0x100
@@ -455,7 +455,7 @@ The optimization is orchestrated by the layout phase (`sub_439830`) and executed
 
 Triggered when the used-set filter is active (`elfw+97`, raised by the `--kernels-used` / `--variables-used` loaders) AND `elfw+80` (debug_flag) is clear. Creates a `TEMP_MERGED_CONSTANTS` temporary section and calls the dedup engine with `copy_all=1`, meaning all constants are copied (even unreferenced ones). This mode deduplicates the standard constant bank (`.nv.constant0`) contents:
 
-```
+```text
 Verbose: "layout and merge section %s"
          "found duplicate value 0x%x, alias %s to %s"
          "found duplicate 64bit value 0x%llx, alias %s to %s"
@@ -474,7 +474,7 @@ Triggered automatically when any OCG constant section exceeds `max_constant_bank
 4. If the optimized size fits within the bank limit, replace all OCG section contents.
 5. If optimization does not help: `"ocg const optimization didn't help so give up"`.
 
-```
+```text
 Verbose: "optimize OCG constants for %s, old size = %lld"
          "new OCG constant size = %lld"
 ```
@@ -483,14 +483,14 @@ Verbose: "optimize OCG constants for %s, old size = %lld"
 
 When a kernel is removed by dead code elimination (`sub_44AD40`), its per-entry constant sections are also removed. If the OCG constant section has multiple instances (the parent section has additional copies for other kernels), the pass iterates all sections to find every instance sharing the same parent:
 
-```
+```text
 Verbose: "dead ocg constant section %s has multiple instances"
          "removed un-used section %s (%d)"
 ```
 
 During weak function resolution (`sub_45D180`), if a weak function is replaced by a preferred definition, its OCG constants are cleaned up:
 
-```
+```text
 Verbose: "remove weak ocg constants"
 ```
 
@@ -509,7 +509,7 @@ When the merged constant bank exceeds its limit and optimization fails to shrink
 
 The linker tracks per-bank sizes in the verbose output:
 
-```
+```text
 %lld bytes gmem, %lld bytes cmem[0], %lld bytes cmem[2], ...
 ```
 

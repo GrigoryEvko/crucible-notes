@@ -36,7 +36,7 @@ nvlink uses two distinct hash table implementations that serve different subsyst
 
 `LinkerHash::init` (`sub_448840`) allocates a 112-byte structure from the arena allocator. The initial capacity is computed by `sub_45CB00` (ceiling log2): if the caller requests `n` slots, the actual capacity is `2^ceil_log2(n)`, rounded up to the next power of two. The load-factor threshold is set to `4 * capacity` entries before resize.
 
-```
+```text
 LinkerHash (112 bytes, 8-byte aligned)
 =======================================================
 Offset  Size  Field                Description
@@ -99,7 +99,7 @@ LinkerHash *LinkerHash_create(hash_fn_t hash, compare_fn_t compare, uint32_t hin
 
 Entries are stored in a flat array of 16-byte key-value pairs:
 
-```
+```text
 Entry (16 bytes)
 ================
 Offset  Size  Field
@@ -113,7 +113,7 @@ The entry array is indexed by a global slot number. Free slots are tracked by a 
 
 Each bucket in the `buckets` array is either `NULL` (empty bucket) or a pointer to a dynamically allocated index chain. The chain is a variable-length array of `uint32_t` slot indices terminated by `0xFFFFFFFF`:
 
-```
+```text
 BucketChain (variable length)
 =============================
 Offset  Size  Field
@@ -276,7 +276,7 @@ The finalization avalanche step is applied after XOR-ing in the total byte lengt
 
 The decompiled code expresses `fmix32` as a single deeply nested return expression. Expanding `v2 = len`, `v3 = h` (pre-finalization):
 
-```
+```c
 t0 = v2 ^ v3                               // h ^= len
 t1 = t0 ^ (t0 >> 16)                       // h ^= h >> 16
 t2 = t1 * 0x85EBCA6B   (= -2048144789)     // h *= fmix1
@@ -339,7 +339,7 @@ uint32_t fnv1a_hash(const void *key, size_t len) {
 
 In `sub_A4B770`, the FNV-1a is applied to an 8-byte `uint64_t` key. The decompiler unrolls this into 8 nested XOR-multiply operations:
 
-```
+```c
 h = 0x811C9DC5
 h = (h ^ byte0) * 16777619
 h = (h ^ byte1) * 16777619
@@ -354,7 +354,7 @@ For the `uint32_t` variants (`sub_A4C360`, `sub_A4C7C0`), only 4 bytes are proce
 
 The FNV hash table control structure lives at a fixed offset within a parent object (e.g., `NVInstrFormat` at offset +120). It is accessed through pointer arithmetic rather than having a standalone allocation:
 
-```
+```text
 FNVHashTable control block (32 bytes)
 =====================================
 Offset  Size  Field
@@ -369,7 +369,7 @@ Offset  Size  Field
 
 Each bucket is a 24-byte structure containing a singly-linked list of nodes:
 
-```
+```text
 FNVBucket (24 bytes)
 ====================
 Offset  Size  Field
@@ -385,7 +385,7 @@ Bucket index is computed as: `hash % bucket_count`. The use of modulus (not bitm
 
 For `sub_A4B770` (opcode-to-descriptor lookups), each node is a 168-byte allocation:
 
-```
+```text
 FNVNode<uint64_t> (168 bytes)
 =============================
 Offset  Size  Field
@@ -402,7 +402,7 @@ The value data is copied in bulk using SSE `movdqu` instructions (16 bytes at a 
 
 For `sub_A4C360` and `sub_A4C7C0`, nodes are 32 bytes:
 
-```
+```text
 FNVNode<uint32_t> (32 bytes)
 ============================
 Offset  Size  Field

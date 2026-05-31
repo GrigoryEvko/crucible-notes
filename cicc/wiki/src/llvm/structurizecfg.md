@@ -41,7 +41,7 @@ The StructurizeCFG pass converts reducible-but-unstructured flow into structured
 
 `sub_35CF930` is the `runOnFunction` entry. It implements a multi-stage filter before committing to the expensive structurization:
 
-```
+```c
 sub_35CF930(pass, function):
     // 1. Early-out for trivially uninteresting functions
     if sub_BB98D0(pass, function) fails:
@@ -93,7 +93,7 @@ Called early in `sub_35CC920` (line ~743 of the decompiled output), this functio
 
 The function receives the RPO-ordered basic block list from the SCC decomposition phase and iterates backwards:
 
-```
+```c
 sub_35CA2C0(result, domtree_data, bb_list, bb_count):
     for each BB in reverse(bb_list):
         for each successor S of BB:
@@ -115,7 +115,7 @@ The core invariant: in a reducible CFG, every back-edge target dominates its sou
 
 When `sub_35CA2C0` returns 1 (irreducible detected), the main pass emits:
 
-```
+```text
 remark: UnsupportedIrreducibleCFG
         "Irreducible CFGs are not supported yet."
 ```
@@ -128,7 +128,7 @@ This is a critical design choice. LLVM upstream provides a separate `FixIrreduci
 
 During the per-block iteration in the main loop, each basic block is checked for funclet status at offset `BB+235` (a boolean flag indicating the block is a `catchpad`, `cleanuppad`, or `catchret` target):
 
-```
+```c
 if BB->isEHFunclet():   // *(BB + 235) != 0
     emit_diagnostic("UnsupportedEHFunclets",
                      "EH Funclets are not supported yet.")
@@ -146,7 +146,7 @@ This function (~500 decompiled lines) classifies whether a branch instruction is
 
 ### Classification logic
 
-```
+```c
 sub_35CB4A0(pass_state, BB, ...):
     terminator_opcode = BB->opcode_category   // BB + 68, unsigned short
 
@@ -185,7 +185,7 @@ The `structurizecfg-relaxed-uniform-regions` knob relaxes the uniformity check f
 
 This is the heart of the transformation. When a non-uniform, non-EH block is identified, `sub_35CBCD0` processes its region:
 
-```
+```c
 sub_35CBCD0(pass_state, BB, context):
     // 1. Manage region boundaries
     head = pass_state[67]   // current region head
@@ -220,7 +220,7 @@ The main pass body executes in four phases.
 
 ### Phase 1: Initialization (lines 433-648)
 
-```
+```c
 // Store analysis results in pass object fields
 pass[65] = DivergenceAnalysis + 200
 pass[66] = LoopInfo + 200
@@ -246,7 +246,7 @@ if sub_35CA2C0(scc_order, domtree, ...):
 
 Iterates blocks in reverse RPO order (bottom-to-top):
 
-```
+```c
 for each BB in reverse_rpo(scc_order):
 
     // (a) Reject EH funclets
@@ -284,7 +284,7 @@ for each BB in reverse_rpo(scc_order):
 
 After the per-block loop, if a split point was identified (`pass[67] != 0` and `pass[68] != 0`):
 
-```
+```c
 // Walk domtree from split point upward
 current = split_point
 while current != null:
@@ -315,7 +315,7 @@ When a non-uniform divergent region is identified between a head block and a tai
 
 ### Step 1: Dominance validation
 
-```
+```c
 // Head must dominate tail
 if not sub_2E6D360(domtree, head, tail):
     skip  // invalid region, cannot structurize
@@ -335,7 +335,7 @@ The strategy object (`vtable+344`) classifies each edge to determine if restruct
 
 ### Step 3: Flow block creation
 
-```
+```c
 // Create new "Flow" basic block
 new_block = sub_2E7AAE0(function, 0, ...)  // BasicBlock::Create
 sub_2E33BD0(new_block, insert_point)       // insert into BB list
@@ -348,7 +348,7 @@ for each phi in original_target:
 
 ### Step 4: Edge rerouting
 
-```
+```c
 // Reroute edges from old target to new Flow block
 sub_2E337A0(old_target, new_block)         // replaceAllUsesWith
 sub_2E33F80(new_block)                     // finalize successors
@@ -369,7 +369,7 @@ Consider a function with a divergent if-then-else:
 
 **Before structurization:**
 
-```
+```text
     Entry
     /    \
   Then   Else
@@ -383,7 +383,7 @@ If the branch at `Entry` is divergent (some threads go to `Then`, others to `Els
 
 **After structurization:**
 
-```
+```text
     Entry
     / T
    |    \
@@ -406,7 +406,7 @@ For a divergent loop:
 
 **Before:**
 
-```
+```text
     Entry
       |
     Header <--+
@@ -420,7 +420,7 @@ For a divergent loop:
 
 **After:**
 
-```
+```text
     Entry
       |
     Header <------+
@@ -458,7 +458,7 @@ The algorithm processes the function bottom-to-top (reverse RPO), which ensures 
 
 This is the complete algorithm for the main pass body, including the Flow block insertion logic interleaved with the classification phases already described above.
 
-```
+```c
 sub_35CC920(pass, function):
     // ---- Phase 1: Analysis setup ----
     div_info    = getAnalysis<DivergenceAnalysis>(function) + 200
@@ -565,7 +565,7 @@ sub_35CC920(pass, function):
 
 This function (inlined within the Phase 2/Phase 3 loops of `sub_35CC920`, approximately decompiled lines 980--2027) performs the actual CFG transformation for a single region.
 
-```
+```c
 insertFlowBlocks(pass, head, tail, function):
     // Step 1: Validate region boundaries via dominator/post-dominator trees
     if not dominates(pass[69], head, tail):
@@ -663,7 +663,7 @@ When multiple Flow blocks are created for a chain of if-then-else regions, the P
 
 Consider a three-way branch (implemented as nested if-then-else):
 
-```
+```text
 Before:                          After:
     Entry                            Entry
     / | \                            |
@@ -688,7 +688,7 @@ Before:                          After:
 
 The PHI cascade at each Flow block:
 
-```
+```llvm
 Flow1:
     %path_A = phi i1 [ true, %A ], [ false, %Entry ]
     br i1 %path_A, <continue to cond_B>, <skip to Merge via Flow3>
@@ -711,7 +711,7 @@ Each Flow block carries exactly one `i1` PHI and one conditional branch. The cha
 
 For divergent loops, Flow blocks serve double duty: they both gate the loop body and control the back-edge. The algorithm handles loops specially:
 
-```
+```c
 insertLoopFlowBlock(pass, header, latch, exit, function):
     // The loop has structure: header -> body -> latch -> {header, exit}
     // After structurization:
@@ -763,7 +763,7 @@ The pass rejects irreducible CFGs rather than attempting to restructure them. Th
 
 A CFG is irreducible if it contains a cycle with multiple entry points -- that is, there exist two blocks A and B in the cycle such that neither dominates the other, yet both can be reached from outside the cycle. The classic example is a `goto` into the middle of a loop:
 
-```
+```text
 Irreducible:
     Entry
     / \
@@ -785,7 +785,7 @@ CICC v13.0 links `FixIrreduciblePass` at `sub_29D33E0` (registered as `"fix-irre
 
 However, the NVPTX pipeline in CICC v13.0 does **not** schedule `FixIrreduciblePass` before `StructurizeCFG`. The pipeline ordering is:
 
-```
+```text
 ... -> SimplifyCFG -> Sink -> StructurizeCFG -> CSSA -> ISel -> ...
                               ^
                               |
@@ -806,7 +806,7 @@ Three factors explain this decision:
 
 When `sub_35CA2C0` detects irreducibility, it emits a diagnostic remark:
 
-```
+```text
 remark: UnsupportedIrreducibleCFG
         "Irreducible CFGs are not supported yet."
 ```
@@ -960,7 +960,7 @@ The core structurization algorithm is identical: topological ordering of region 
 
 StructurizeCFG runs late in the NVPTX backend pipeline, after most IR-level optimizations and before machine code generation:
 
-```
+```text
 ... -> SimplifyCFG -> Sink -> StructurizeCFG -> CSSA -> ISel -> ...
 ```
 

@@ -52,7 +52,7 @@ The `off_1D3B7A8` pointer references the ANSI color-reset/error-color token (red
 
 ### Severity Dispatch Logic
 
-```
+```c
 diag_emit(descriptor, ...):
     severity = descriptor->level          // DWORD at offset 0
     if descriptor->suppressed:            // BYTE at offset 4
@@ -83,7 +83,7 @@ Each diagnostic site calls `diag_emit` with a pointer to a static descriptor obj
 
 ### Descriptor Structure
 
-```
+```text
 DiagDescriptor (16 bytes)
 =======================================================
 Offset  Size  Field         Description
@@ -334,7 +334,7 @@ The sentinel descriptor `unk_2A5BB70` is special: it is the "catch-all fatal" us
 
 ### TLS State Layout
 
-```
+```text
 TlsState (0x118 = 280 bytes)
 =======================================================
 Offset  Size  Field              Description
@@ -588,7 +588,7 @@ When `diag_format` is invoked with a source location that has the "show source" 
 
 Example output with source snippet:
 
-```
+```text
 # __global__ void kernel(int *data) {
 input.cu, line 5; error   : undefined reference to 'missing_symbol'
 ```
@@ -601,7 +601,7 @@ The `0x0FFFFFFF` sentinel in the line field means "no line number available" and
 
 Diagnostic output is routed through a 5-element channel table at `qword_2A5F8A0`:
 
-```
+```text
 qword_2A5F8A0[0]  --  Info channel (severity 1-2)
 qword_2A5F8A0[1]  --  Warning channel (severity 3-4)
 qword_2A5F8A0[2]  --  Error channel (severity 5)
@@ -729,7 +729,7 @@ The diagnostic formatter does not use fixed-size `char[]` buffers. Instead, it a
 
 ### strbuf Layout
 
-```
+```text
 strbuf (40 bytes)
 =======================================================
 Offset  Size  Field         Description
@@ -749,7 +749,7 @@ The chunk wrappers themselves (16 bytes each, allocated by `sub_464460`) carry t
 
 Each chunk is a 24-byte header followed by a data buffer:
 
-```
+```text
 strbuf_chunk (24 bytes + data)
 =======================================================
 Offset  Size  Field        Description

@@ -130,7 +130,7 @@ The `FN` suffix means "finite": no infinity encoding, only NaN; the `UZ` suffix 
 
 Cast semantics matter because FP8's narrow range makes overflow common. Tileiras supports four rounding modes on f16→f8 and f32→f8 casts: round-to-nearest-even (default), round-to-nearest-tied-away-from-zero, round-toward-zero, and round-toward-positive-infinity. Saturation is independent: a `satf` modifier clamps overflowing values to ±max-finite instead of producing NaN or infinity (the latter is impossible on `FN` types).
 
-```text
+```mlir
 nv_tileaa.cast %x : tile<128x128 x f32> to tile<128x128 x f8E4M3FN>
     {rounding = #rne, satf = true}
 ```
@@ -139,7 +139,7 @@ FP8 MMA is available on SM89 (Ada) for the small-tile WMMA family and on SM90 (H
 
 A worked dot product mixing precisions:
 
-```text
+```mlir
 %a : tile<128x64 x f8E4M3FN>
 %b : tile<64x128 x f8E4M3FN>
 %c : tile<128x128 x f32>
@@ -171,7 +171,7 @@ The scale factor lives in its own MLIR operand (`sf_a`, `sf_b` on the MMA op) an
 
 The two `kind::mxf4` variants differ only in scale type: OCP-standard MX-FP4 uses `e4m3` scales (4-bit exponent, 3-bit mantissa, finite-only), and NVIDIA-defined NV-FP4 uses `e8m0` scales (8-bit exponent, no mantissa). The dispatcher reads the scale element type to pick the opcode group; mismatched scale types across `sf_a` and `sf_b` are a verifier error. The MMA atom registry in [tcgen05 Tensor Memory Model](tcgen05-tensor-memory-model.md) enumerates the legal `(atom_K, vecSize)` triples per variant.
 
-```text
+```mlir
 %d = nv_tileaa.dot %a, %b, %c
     sfa(%sa) sfb(%sb)
     : tile<M x K x f4E2M1FN>, tile<K x N x f4E2M1FN>, tile<M x N x f32>

@@ -273,7 +273,7 @@ The apply handler reads and writes specific fields within the entity node. Compl
 
 The OR mask `0x61` sets three bits in the execution space byte:
 
-```
+```text
 0x61 = 0b01100001
 
   bit 0 (0x01):  device_capable     -- function can run on device

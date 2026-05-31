@@ -49,7 +49,7 @@ The six pseudo-opcodes the rest of this page references repeatedly are summarize
 
 `ParamCallStart` and `ParamCallEnd` exist for a structural reason. PTX wraps every call in a `.param` block:
 
-```
+```ptx
 {
     .param .u32 _Zarg0;
     .param .u32 _Zarg1;
@@ -755,7 +755,7 @@ A concrete walk-through makes the scorer's behavior easier to verify. Consider t
 
 After type-legalization and the `fast` attribute propagates onto each SDNode's flag word, the SelectionDAG holds three nodes:
 
-```
+```text
        SDNode #3: FADD f32, flags=0x208 (fast | NoFPExcept)
         /             \
    SDNode #2: FADD     SDNode #6: Argument d
@@ -778,7 +778,7 @@ The dispatcher invokes `SelectCodeCommon(self, N=#3, Depth=0, ctx)`. Three calls
 
 Scoring `P_FADD_R` for the root `FADD`:
 
-```
+```text
 running_cost = 0
 Mult         = 1                          /* Depth=0 */
 charge OPC_CheckOpcode(FADD)              -> sat_add(0, 1)        = 1
@@ -792,7 +792,7 @@ charge OPC_CompleteMatch                  -> commit running_cost  = 33
 
 Scoring `P_FMA_FADD` for the same root:
 
-```
+```text
 running_cost = 0
 Mult         = 1                          /* Depth=0 */
 charge OPC_CheckOpcode(FADD)              -> sat_add(0, 1)        = 1
@@ -827,14 +827,14 @@ The pipeline-lattice predicate matters. Row 164 (the FMA pattern row) reads `pip
 
 After the scorer commits `P_FMA_FADD`, the residual DAG holds:
 
-```
+```text
    SDNode #7: FMA f32 (a, b, c), flags=0x208
    SDNode #3': FADD f32 (#7, d), flags=0x208
 ```
 
 The second `FADD` is still in the DAG. The scorer reruns on `SDNode #3'` with the FMA result feeding the add. This time only `P_FADD_R` matches (no further FMA fold available because `#7` is already a FMA, not an FMUL), and the bare-add pattern commits at the original cost 33. The final MIR after instruction selection is two machine instructions:
 
-```
+```text
 %vreg2:f32 = FMA_f32 %vreg_a, %vreg_b, %vreg_c, flags=NoFPExcept
 %vreg3:f32 = FADD_f32 %vreg2, %vreg_d
 ```

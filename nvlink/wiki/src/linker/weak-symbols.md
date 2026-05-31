@@ -56,13 +56,13 @@ When `merge_weak_function` encounters a weak function symbol that already has a 
 
 The primary criterion. The linker extracts the register count for both the existing and incoming definitions and prefers the one using fewer registers:
 
-```
+```text
 Verbose trace: "replace weak function %s with weak that uses fewer registers"
 ```
 
 Register counts are stored in the `.nv.info` section as EIATTR attribute code 47 (`0x2F`). This is a per-function property encoded as a 4-byte TLV record in the nvinfo format:
 
-```
+```text
 [04] [2F] [size:2] [sym_index:4] [reg_count:4]
 ```
 
@@ -74,7 +74,7 @@ The incoming definition's register count is carried inside the section header re
 
 If this cached byte is zero (indicating the register count was not populated during the initial section header copy), the function emits a verbose trace and falls back to scanning the raw `.nv.info` section data in the input ELF:
 
-```
+```text
 Verbose trace: "no new register count found for %s, checking .nv.info"
 ```
 
@@ -137,7 +137,7 @@ uint32_t existing_reg_count = *(uint8_t *)(callgraph_record + 47);
 
 If this byte is zero (the existing definition's register count was never cached -- possible if the first definition's `.nv.info` was malformed or empty), the function emits a verbose trace and falls back to scanning the output ELF's nvinfo linked list:
 
-```
+```text
 Verbose trace: "no original register count found for %s, checking .nv.info"
 ```
 
@@ -236,7 +236,7 @@ if (new_reg_count == existing_reg_count
 }
 ```
 
-```
+```text
 Verbose trace: "replace weak function %s with weak from newer PTX"
 ```
 
@@ -248,7 +248,7 @@ If the incoming definition uses more registers than the existing one, or if both
 
 #### Complete Decision Tree
 
-```
+```c
 merge_weak_function(incoming, existing):
     new_regs = extract_reg_count(incoming)     // cached byte, else input ELF scan
     old_regs = extract_reg_count(existing)     // callgraph byte +47, else output list scan
@@ -270,7 +270,7 @@ merge_weak_function(incoming, existing):
 
 A separate path handles the case where a `STB_GLOBAL` symbol replaces a `STB_WEAK` symbol. This follows standard ELF semantics -- a strong definition always overrides a weak one, with no comparison:
 
-```
+```text
 Verbose trace: "replace weak function %s"
 ```
 
@@ -339,7 +339,7 @@ The function walks the output's nvinfo list (linked list at `ctx+392`) and clear
 
 **Direct nvinfo entries**: Entries whose function reference (offset +4 in the nvinfo record) matches the old function's section ID are zeroed:
 
-```
+```text
 Verbose trace: "remove weak nvinfo"
 ```
 
@@ -388,7 +388,7 @@ uint32_t ocg_sec = find_section(ctx, buf);       // sub_4411D0
 
 If this section exists, its relocation list and size record are cleared:
 
-```
+```text
 Verbose trace: "remove weak ocg constants"
 ```
 

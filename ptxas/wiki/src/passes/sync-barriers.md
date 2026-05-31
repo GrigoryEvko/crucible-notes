@@ -30,7 +30,7 @@ Thread block barriers synchronize all threads within a cooperative thread array 
 
 In SASS, these map to the `BAR` instruction family (opcode 61 in the ROT13 name table). The Ori IR uses opcode 130 (`HSET2` in the ROT13 name table) as an internal barrier/sync marker. The `EIATTR_NUM_BARRIERS` metadata records the maximum barrier index used, which the hardware uses to partition the convergence barrier file.
 
-```
+```text
 PTX:     bar.sync 0;
 SASS:    BAR.SYNC 0x0;
          // stalls warp until all CTASize threads arrive at barrier 0
@@ -113,7 +113,7 @@ StageAndFence inserts memory fence and staging instructions to enforce coherence
 
 ### Execution Flow
 
-```
+```c
 sub_1392E30(compilation_unit):
     // Guard: must have loops and bit flags set
     if !(context+1368 bit 0) or (context+1397 & 0xC0) == 0x40:
@@ -146,7 +146,7 @@ The main pass (8,956 bytes, 97 callees) iterates over loops in reverse postorder
 2. **Cross-iteration coherence check.** The architecture backend vtable (slot at `ctx+1784`) is queried; if the loop body already has sufficient coherence guarantees (`sub_7E5120` returns true), rejection code 11 is recorded and the loop is skipped. For high-iteration loops (count > 999) with a predecessor count > 0, the ratio `iter_count / pred_count > 3` further gates insertion.
 
 3. **Budget computation.** The remaining instruction budget determines whether the loop has enough ILP to tolerate the coherence hazard without an explicit fence:
-   ```
+   ```c
    budget_scale = QueryKnobDouble(knob 900, 0.5)  // 0x3FE0000000000000
    budget = total_insns + head_insns - overhead - floor(budget_scale * iter_count)
    ```
@@ -187,7 +187,7 @@ OriRemoveRedundantBarriers performs dataflow-driven elimination of provably redu
 
 The execute wrapper `sub_C60BD0` is a multi-function dispatch pattern: when a compilation unit contains multiple functions, it creates two reference-counted list objects, stores the current phase chain pointer, and calls `sub_790A40` for cross-function barrier analysis. For single-function units, it returns directly.
 
-```
+```c
 sub_C60BD0(phase, compilation_unit):
     func_count = sub_7DDB50(compilation_unit)
     if func_count <= 1: return
@@ -235,7 +235,7 @@ The main analysis function (2,288 bytes) operates through several stages:
 
 The per-operand proof (`sub_1245740`, 380 bytes) decides whether operand `a4` in instruction `a3` is dominated by a prior barrier in `a2`. Returns `true` = redundant (safe to eliminate). Arguments: `(ctx, dom_insn, insn, operand_idx)`.
 
-```
+```c
 can_eliminate_barrier_operand(ctx, dom_insn, insn, op_idx):
     word = insn->operands[op_idx]                       // insn + 84 + 8*idx
     if (word >> 28) & 7 != 1: return true               // non-register operand, trivially safe
@@ -325,7 +325,7 @@ The architecture backend at `ctx+1584` provides the actual expansion logic. This
 
 A typical async copy pattern in the Ori IR and its expansion:
 
-```
+```text
 Before expansion (pseudo-ops):
     MBARRIER_INIT  %mbar, count
     MBARRIER_ARRIVE_EXPECT_TX  %mbar, bytes
@@ -363,7 +363,7 @@ OptimizeSyncInstructions performs redundancy elimination and simplification of s
 
 The pass has elaborate gating controlled by `sub_18F6930`, which evaluates:
 
-```
+```c
 sub_18F6930(ctx, mode):
     // Check architecture-specific sync flags
     flags = *(ctx+1398)
@@ -386,7 +386,7 @@ The value 28673 corresponds to sm70/sm72/sm73/sm75 architecture IDs. The predica
 
 ### Main Algorithm -- `sub_90A340`
 
-```
+```c
 sub_90A340(ctx):
     if opt_level <= 2: return
     if !CheckKnob(ctx+1664, 487, 1): return
@@ -496,7 +496,7 @@ LateExpandSyncInstructions performs the final expansion of synchronization pseud
 
 The entry function shares structural similarity with the [Predication](predication.md) pass entry (`sub_1381DA0`) because both operate within the same address range (`0x1381000`--`0x1382000`) and share infrastructure for walking the instruction list within the partial-SSA window.
 
-```
+```c
 sub_1381DA0(ctx):
     if context+1376 bit 5: return      // disabled by phase flag
 
@@ -572,7 +572,7 @@ OriDoSyncronization reuses the DAG scheduler's infrastructure (`sub_A0F020`) rat
 
 ### Execution Flow
 
-```
+```c
 sub_A0F020(ctx):
     while true:
         if *(ctx+1648) == 0: break
@@ -742,7 +742,7 @@ Phase 91 (`OriCalcDependantTex`) runs during late optimization to compute per-in
 
 The dispatch traverses two vtable levels to reach a scheduling subsystem object owned by the architecture backend:
 
-```
+```c
 sub_C60600(ctx, func):
     if get_opt_level(func) <= 1:        // sub_7DDB50
         return
@@ -879,7 +879,7 @@ Reconstructed subop value map (shared by all three functions):
 
 All three functions enforce the PTX 8.0 scoped memory model rules through a three-way decision tree. The logic (taken from `sub_6C0D90` and `sub_6C4DA0` where the strings appear verbatim; `sub_6C1CF0` enforces equivalent constraints via positional subop checks) is:
 
-```
+```c
 if scope_qualifier_present:
     if memory_order NOT present:
         ERROR 7308: "Required scope with memory order semantics"
@@ -989,7 +989,7 @@ Two diagnostic functions handle these errors: `sub_895530` emits directly when s
 
 The eight sync phases are distributed across the pipeline to operate at the appropriate abstraction level:
 
-```
+```text
 Phase 25  StageAndFence               ─── Early: after loop unrolling (24)
 Phase 26  OriRemoveRedundantBarriers   ─── Early: before GeneralOptimize (29)
     ... (mid-level optimization) ...

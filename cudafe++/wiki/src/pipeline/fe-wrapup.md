@@ -20,7 +20,7 @@ The five passes transform the raw IL tree into a finalized, pruned representatio
 
 ## Architecture Overview
 
-```
+```text
 sub_588F90 (fe_wrapup)
   |
   |-- Preamble: debug trace, assertion, C++ wrapup, diagnostic hooks
@@ -106,7 +106,7 @@ Operations per TU:
 
 After all secondary TUs are processed, the primary TU itself gets the same treatment:
 
-```
+```c
 for (tu = *primary_tu; tu != NULL; tu = *tu)
     set_current_tu(tu);
     file_scope_il_wrapup();           // sub_588C60
@@ -431,7 +431,7 @@ Each function prints its own detailed allocation table to stderr in a standardiz
 
 The cumulative sum is passed to `sub_6B95C0` (`print_memory_management_statistics` at `0x6B95C0`), which prints the grand total accounting report:
 
-```
+```text
 Memory management table use:
                     Table   Number     Each    Total
              text buffers      NNN       40     NNNN

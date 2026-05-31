@@ -4,7 +4,7 @@ cudafe++ is built on top of Edison Design Group's (EDG) commercial C++ frontend,
 
 The build path embedded in the binary is:
 
-```
+```text
 /dvs/p4/build/sw/rel/gpgpu/toolkit/r13.0/compiler/drivers/compiler/edg/EDG_6.6/src/
 ```
 
@@ -118,7 +118,7 @@ Counts below give main-body function totals derived from `__FILE__` cross-refere
 
 EDG implements a textbook multi-pass compiler frontend. cudafe++ drives it in a single-threaded, sequential pipeline from `main()` at `0x408950`:
 
-```
+```text
   source.cu
      |
      v

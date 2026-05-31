@@ -49,7 +49,7 @@ Each `.nv.info` section contains a flat sequence of 4-byte-aligned TLV (Type-Len
 
 ### On-Disk Record Layout
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    1     format      Format byte (determines payload structure)
@@ -64,7 +64,7 @@ Total record size = 4 + `size`, padded to 4-byte alignment. The maximum theoreti
 
 nvlink stores parsed TLV records as 16-byte linked-list nodes in an arena-allocated chain at `elfw+392`. Each node has:
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    1     format       Format byte (0x01--0x04)
@@ -160,7 +160,7 @@ nvlink v13.0.88 defines 97 EIATTR (ELF Info ATTRibute) codes, numbered 0 through
 
 The EIATTR name table is a contiguous array of 97 x 16-byte entries at VA `0x1D37D60`. Each entry:
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    8     name_ptr          Pointer to null-terminated string (e.g., "EIATTR_REGCOUNT")
@@ -282,7 +282,7 @@ This section provides detailed format information for the EIATTR entries that ar
 
 The single most important occupancy-determining attribute. The GPU driver computes `max_warps_per_SM = total_registers / (regcount * warp_size)` to determine how many warps can execute concurrently.
 
-```
+```text
 Format: 0x04 (Indexed)
 On-disk layout (12 bytes total):
   Byte 0:     0x04    (indexed format)
@@ -308,7 +308,7 @@ nvlink creates REGCOUNT records via `sub_450B70(elfw, 0x2F, 8, payload_ptr, sym_
 
 Controls how many named barrier slots the CTA hardware allocates. Most architectures support up to 16 barriers per CTA.
 
-```
+```text
 Format: 0x04 (Indexed) when read from input cubins
         0x02 (Value) when synthesized by the linker during finalization
 On-disk layout (indexed, 12 bytes):
@@ -327,7 +327,7 @@ Linker-synthesized layout (internal node):
 
 **Barrier migration from section flags:** The barrier count is also encoded in the section flags of `.text` sections as bits 26:20 (7 bits, mask `0x07F00000`). During finalization, if a kernel has no `EIATTR_NUM_BARRIERS` record but its section flags carry a non-zero barrier count, the linker synthesizes one. The verbose message is:
 
-```
+```text
 "Creating new EIATTR_NUM_BARRIERS and moving barcount %d
  from section flags of %s to nvinfo for entry symbol %s"
 ```
@@ -338,7 +338,7 @@ After creating the nv.info record, the section flags are cleared: `sh_flags &= 0
 
 ### EIATTR_FRAME_SIZE (0x11) -- Per-Thread Local Memory Frame
 
-```
+```text
 Format: 0x04 (Indexed)
 Payload: [sym_idx:4][frame_size:4]
 frame_size: bytes of local memory per thread (register spills + local arrays)
@@ -348,7 +348,7 @@ One of the three resource attributes stripped during weak symbol replacement (bi
 
 ### EIATTR_MAX_STACK_SIZE (0x23) -- Maximum Stack Size
 
-```
+```text
 Format: 0x04 (Indexed)
 Payload: [sym_idx:4][max_stack_bytes:4]
 ```
@@ -359,7 +359,7 @@ One of the three resource attributes stripped during weak replacement (bitmask b
 
 ### EIATTR_MIN_STACK_SIZE (0x12) -- Minimum Stack Size
 
-```
+```text
 Format: 0x04 (Indexed)
 Payload: [sym_idx:4][min_stack_bytes:4]
 ```
@@ -368,7 +368,7 @@ The non-recursive stack size minimum. Used when the callgraph has no recursion a
 
 ### EIATTR_CRS_STACK_SIZE (0x1E) -- Call-Return Stack Size
 
-```
+```text
 Format: 0x04 (Indexed)
 Payload: [sym_idx:4][crs_bytes:4]
 ```
@@ -377,7 +377,7 @@ Size of the call-return stack for nested function calls. Propagated through the 
 
 ### EIATTR_SAM_REGION_STACK_SIZE (0x3B) -- SAM Region Stack
 
-```
+```text
 Format: 0x04 (Indexed)
 Payload: [sym_idx:4][sam_stack_bytes:4]
 ```
@@ -386,7 +386,7 @@ SAM (Streaming Asynchronous Memory) region stack size. Processed by `sub_44C880`
 
 ### EIATTR_MAX_THREADS (0x05) -- Maximum Threads Per Block
 
-```
+```text
 Format: 0x04 (Indexed)
 Payload: [sym_idx:4][max_threads:4]
 max_threads: maximum threads per block (from .maxntid PTX directive)
@@ -394,7 +394,7 @@ max_threads: maximum threads per block (from .maxntid PTX directive)
 
 ### EIATTR_REQNTID (0x10) -- Required Thread Count
 
-```
+```text
 Format: 0x04 (Indexed)
 Payload: [sym_idx:4][reqntid:4]
 reqntid: required thread count per dimension (from .reqntid PTX directive)
@@ -402,7 +402,7 @@ reqntid: required thread count per dimension (from .reqntid PTX directive)
 
 ### EIATTR_MAXREG_COUNT (0x1B) -- Maximum Register Hint
 
-```
+```text
 Format: 0x03 (Sized)
 On-disk layout (4 bytes total, no payload):
   Byte 0:     0x03    (sized format)
@@ -414,7 +414,7 @@ This is a compiler hint, not an absolute limit. The value comes from `--maxrregc
 
 ### EIATTR_NUM_MBARRIERS (0x38) -- Memory Barrier Count
 
-```
+```text
 Format: 0x04 (Indexed)
 Payload: [sym_idx:4][num_mbarriers:4]
 ```
@@ -423,7 +423,7 @@ Number of `mbarrier` objects used by the kernel. Processed in `compute_entry_pro
 
 ### EIATTR_PARAM_CBANK (0x0A) -- Parameter Constant Bank
 
-```
+```text
 Format: 0x04 (Indexed)
 Payload: [sym_idx:4][bank_offset:4]
 bank_offset: packed {bank_number:16, offset:16}
@@ -433,14 +433,14 @@ Identifies which constant bank and at what offset kernel parameters begin. Durin
 
 ### EIATTR_CBANK_PARAM_SIZE (0x19) -- Constant Bank Parameter Size
 
-```
+```text
 Format: 0x03 (Sized)
 Value: uint16 in the size field = parameter constant bank size in bytes
 ```
 
 ### EIATTR_KPARAM_INFO (0x17) -- Kernel Parameter Info
 
-```
+```text
 Format: 0x01 (Free)
 Payload: variable-length array of parameter descriptors
   Each descriptor: [ordinal:2][offset:2][size:2][?:2] (8 bytes per param)
@@ -450,7 +450,7 @@ Describes the type, size, and alignment of each kernel parameter. The v2 variant
 
 ### EIATTR_EXTERNS (0x0F) -- External Symbol References
 
-```
+```text
 Format: 0x01 (Free)
 Payload: array of uint32 symbol indices
   Each 4-byte entry is one external symbol reference
@@ -460,7 +460,7 @@ During merge, every 4-byte entry in the payload is remapped through the symbol i
 
 ### EIATTR_CUDA_API_VERSION (0x37) -- CUDA API Version
 
-```
+```text
 Format: 0x04 (Indexed)
 Payload: [sym_idx:4][api_version:4]
 api_version: encoded CUDA version (e.g., 0x83 = CUDA 13.1)
@@ -470,7 +470,7 @@ During merge, this attribute triggers a version compatibility check (case 55). I
 
 ### EIATTR_AT_ENTRY_FRAGMENTS (0x4F) -- Entry Fragments (Blackwell)
 
-```
+```text
 Format: 0x01 (Free)
 Payload: array of uint32 fragment type descriptors
 ```
@@ -479,7 +479,7 @@ During merge, each 4-byte entry is analyzed for fragment types: values 4--5 indi
 
 ### EIATTR_RESERVED_SMEM_USED (0x41) -- Reserved Shared Memory
 
-```
+```text
 Format: 0x04 (Indexed)
 Payload: [sym_idx:4][flags:4]
 ```
@@ -488,7 +488,7 @@ Processed in `compute_entry_properties` at case `0x41`. The linker resolves the 
 
 ### EIATTR_SHARED_SCRATCH (0x32) -- Shared Scratch Space
 
-```
+```text
 Format: 0x04 (Indexed)
 Payload: [sym_idx:4][scratch_size:4]
 ```
@@ -753,7 +753,7 @@ If no REGCOUNT record exists for an entry function (e.g., it was a leaf function
 
 **4c. Barrier count creation and propagation**: When a kernel's section flags contain a barrier count (bits 26:20 of `sh_flags`) but no `EIATTR_NUM_BARRIERS` record exists, the function creates one:
 
-```
+```text
 "Creating new EIATTR_NUM_BARRIERS and moving barcount %d
  from section flags of %s to nvinfo for entry symbol %s"
 ```
@@ -762,7 +762,7 @@ The linker then clears the barrier bits from section flags (`sh_flags &= 0xF80FF
 
 If a callee's barrier count exceeds the entry kernel's:
 
-```
+```text
 "Propagating higher barcount %d to the section flags of %s of entry symbol %s"
 "Propagating higher barcount %d to the section %s of entry symbol %s"
 ```
@@ -794,7 +794,7 @@ The master emitters use an FNV-1a hash table (offset basis `0x811C9DC5`, prime 1
 
 **Layer 3: Per-attribute handlers** (~190 functions at `0x15CF070`--`0x160FFFF`). Each function is 4--8 KB and handles exactly one EIATTR type. They follow a uniform template:
 
-```
+```text
 1. Read attribute descriptor pointer from a2
 2. Read sub-attribute fields from known offsets (m128i-based, 32-byte descriptors)
 3. Call sub_A4CBB0 to create attribute IR node
@@ -846,7 +846,7 @@ A corrected variant `EIATTR_AT_ENTRY_FRAGMENTS` also exists at `0x245E8D9`, sugg
 
 ### Diagnostic Strings
 
-```
+```text
 "nvinfo <fmt=%d,attr=%d,size=%d>, secidx=%d"            (sub_4478F0 debug dump)
 "no new register count found for %s, checking .nv.info"  (0x1D3BA68)
 "no original register count found for %s, checking .nv.info" (0x1D3BAA0)

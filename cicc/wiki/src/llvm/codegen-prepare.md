@@ -62,7 +62,7 @@ The sinking decision is controlled by a cache called `ValueToSunkAddr` (a `Dense
 
 The core sinking algorithm:
 
-```
+```c
 for each basic block BB in function:
     for each instruction I in BB:
         if I is a memory instruction (load/store/atomic):

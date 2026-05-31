@@ -24,7 +24,7 @@ cicc constructs the TargetMachine through two independent code paths depending o
 
 **Path 1 -- cicc standalone** (`sub_12F7D90` -> `sub_12F4060`):
 
-```
+```c
 sub_12F7D90 — CLI parser:
     parse "-arch=compute_XX" → SM version (multiplied by 10)
     parse "-opt=N"           → optimization level
@@ -59,7 +59,7 @@ sub_12F4060 — TargetMachine creation (4 KB native):
 
 The master pipeline assembly function (50KB, called from both Phase I and Phase II) constructs the target independently:
 
-```
+```c
 sub_12E54A0:
     ptrSize = Module::getDataLayout().getPointerSizeInBits(0)
     if (8 * ptrSize == 64):
@@ -176,7 +176,7 @@ The TTI is the interface through which all LLVM optimization passes query target
 
 The 32-bit register width return from `sub_DFE640` is the single most consequential TTI hook for GPU compilation. The standard LLVM VF formula is:
 
-```
+```text
 VF = registerBitWidth / elementBitWidth
 ```
 
@@ -200,7 +200,7 @@ In practice, the SLP vectorizer's profitability model can override this limit wh
 
 The `getMaxInterleaveFactor` hook (`sub_DFB120`, queried at `TTI+448`) caps the interleave count (IC) for loop unroll-and-jam. The interleave selection algorithm in `sub_2AED330` reads this value and combines it with scheduling info at `TTI+56`:
 
-```
+```c
 maxIC    = TTI.getMaxInterleaveFactor(VF)
 issueWidth = *(TTI + 56 + 32)              // scheduling model: issue width
 latency    = *(TTI + 56 + 36)              // scheduling model: latency
@@ -228,7 +228,7 @@ The processor table at `qword_502A920` is a flat array of 90 entries (45 SM vari
 
 Populated by `ctor_605` at `0x584510` (2.6KB), called during static initialization before `main`. The table is read-only after construction.
 
-```
+```c
 qword_502A920[2*i + 0] = const char* sm_name    // e.g., "sm_100"
 qword_502A920[2*i + 1] = uint64_t   ptx_version // 5, 6, or 7
 ```
@@ -254,21 +254,21 @@ The NVPTX data layout string follows LLVM's standard format with three variants 
 
 ### 64-bit with shared memory specialization (most common)
 
-```
+```text
 e-p:64:64:64-p3:32:32:32-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-
 i128:128:128-f16:16:16-f32:32:32-f64:64:64-v16:16:16-v32:32:32-n16:32:64
 ```
 
 ### 64-bit without shared memory specialization
 
-```
+```text
 e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-
 i128:128:128-f16:16:16-f32:32:32-f64:64:64-v16:16:16-v32:32:32-n16:32:64
 ```
 
 ### 32-bit mode
 
-```
+```text
 e-p:32:32:32-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-
 i128:128:128-f16:16:16-f32:32:32-f64:64:64-v16:16:16-v32:32:32-n16:32:64
 ```
@@ -296,7 +296,7 @@ Data layout validation is performed at multiple points:
 
 The target triple is constructed at module creation time by checking the pointer width:
 
-```
+```c
 if (unk_4F06A68 == 8)                    // 64-bit data model
     triple = "nvptx64-nvidia-cuda"       // 19 chars
 else

@@ -37,7 +37,7 @@ Five diagnostics are specific to whole-program mode or are closely tied to the i
 
 **1. Inline device/constant/managed variables must have internal linkage.**
 
-```
+```text
 An inline __device__/__constant__/__managed__ variable must have
 internal linkage when the program is compiled in whole program
 mode (-rdc=false)
@@ -47,7 +47,7 @@ In whole-program mode, the device runtime has no linker step to resolve external
 
 **2. Extern `__global__` function templates are forbidden (with `-static-global-template-stub=true`).**
 
-```
+```text
 when "-static-global-template-stub=true", extern __global__ function
 template is not supported in whole program compilation mode ("-rdc=false").
 To resolve the issue, either use separate compilation mode ("-rdc=true"),
@@ -59,7 +59,7 @@ The `-static-global-template-stub` flag causes template kernel stubs to receive 
 
 **3. `__global__` template instantiations must have local definitions (with `-static-global-template-stub=true`).**
 
-```
+```text
 when "-static-global-template-stub=true" in whole program compilation
 mode ("-rdc=false"), a __global__ function template instantiation or
 specialization (%sq) must have a definition in the current translation
@@ -72,7 +72,7 @@ Both template-related diagnostics recommend either switching to `-rdc=true` or s
 
 **4. Kernel launch from `__device__` or `__global__` functions requires separate compilation.**
 
-```
+```text
 kernel launch from __device__ or __global__ functions requires
 separate compilation mode
 ```
@@ -81,7 +81,7 @@ Dynamic parallelism -- launching a kernel from device code (a `__device__` or `_
 
 **5. Address of internal linkage device function (bug mitigation).**
 
-```
+```text
 address of internal linkage device function (%sq) was taken
 (nv bug 2001144). mitigation: no mitigation required if the
 address is not used for comparison, or if the target function
@@ -180,14 +180,14 @@ The module ID generator has three source modes, tried in order:
 
 The final string is assembled in the format:
 
-```
+```text
 {options_crc}_{output_name_len}_{output_name}_{source_or_crc}[_{extra}][_{pid}]
 ```
 
 All non-alphanumeric characters in the result are replaced with underscores. The string is allocated permanently and cached in `qword_126F0C0`.
 
 Debug tracing (gated by `dword_126EFC8`) emits:
-```
+```text
 make_module_id: str1 = %s, str2 = %s, pid = %ld
 make_module_id: final string = %s
 ```

@@ -38,7 +38,7 @@ predicate.
 
 A valid producer should build modules with this shape:
 
-```c
+```mlir
 cuda_tile.module {
     cuda_tile.entry @kernel(%arg0 : !cuda_tile.tensor_view<...>) {
         %tok0 = cuda_tile.make_token : !cuda_tile.token

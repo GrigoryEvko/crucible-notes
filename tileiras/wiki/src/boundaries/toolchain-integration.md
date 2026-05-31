@@ -8,7 +8,7 @@ The goal is operational. A reimplementation of the nvcc dispatcher, an MLIR-emit
 
 ## Position in the CUDA toolchain
 
-```
+```text
         ┌─────────────────────────────────┐
         │  Source-level inputs (any form) │
         └──────────────┬──────────────────┘
@@ -88,7 +88,7 @@ Three format details matter operationally. First, TileIR bytecode begins with th
 
 The harness is two-level. Top level: nvcc (or an integrator) spawns tileiras. Bottom level: tileiras spawns ptxas and optionally nvdisasm.
 
-```
+```text
 nvcc (parent)
 │
 │ posix_spawn(tileiras, argv, envp, file_actions)
@@ -117,7 +117,7 @@ The control-flow model has one important property: tileiras's process lifetime b
 
 The subprocess harness sets no explicit `envp` override at spawn time, so tileiras inherits the full nvcc environment, and ptxas inherits the full tileiras environment in turn. The chain is therefore:
 
-```
+```text
 nvcc environment
    └── tileiras environment (inherited)
           └── ptxas environment (inherited)

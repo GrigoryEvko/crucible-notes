@@ -319,7 +319,7 @@ The constructor derives `lbo` and `sbo` byte counts from the abstract tile shape
 
 `sub_17DD6A0` ends by emitting an inline-asm fragment whose PTX body has the canonical WGMMA form. For `m64n128k16.f32.f16.f16` the emitted string is:
 
-```
+```ptx
 wgmma.mma_async.sync.aligned.m64n128k16.f32.f16.f16
     { %f0, %f1, ... },
     %r2, %r3, %p4

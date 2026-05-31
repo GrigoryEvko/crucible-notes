@@ -79,7 +79,7 @@ bool is_spmd_amenable(void *func_ptr, void *table_base, uint64_t capacity) {
 
 Functions are pre-populated in this set if they have been analyzed as side-effect free (from the caller's perspective in SPMD context), or if the programmer annotated them with `[[omp::assume("ompx_spmd_amenable")]]`. When a callee fails this check, the pass takes Path A (non-SPMD candidate path, lines 1692-1806) and emits OMP121 for each offending call:
 
-```
+```text
 warning: Value has potential side effects preventing SPMD-mode execution.
          Add `[[omp::assume("ompx_spmd_amenable")]]` to the called function
          to override [OMP121]
@@ -93,7 +93,7 @@ The kernel must not contain operations that are inherently unsafe when executed 
 
 ### Legality Pseudocode
 
-```
+```c
 function is_spmd_eligible(kernel, module_ctx):
     // Check current execution mode
     mode = read_exec_mode(kernel.attributes)
@@ -124,7 +124,7 @@ Once eligibility is confirmed, `sub_26968A0` takes Path B (lines 407-1691). The 
 
 When `*(a1+160) == 0` and `*(a1+224) == 0`, the kernel has a single parallel region with no intervening serial code. This is the fast path (lines 432-672).
 
-```
+```c
 function transform_simple_spmd(kernel, module_ctx):
     entry_bb = get_entry_block(kernel)
     func_scope = get_function_scope(kernel)
@@ -158,7 +158,7 @@ function transform_simple_spmd(kernel, module_ctx):
 
 The resulting CFG is straightforward:
 
-```
+```llvm
 entry:
     %tid = call i32 @__kmpc_get_hardware_thread_id_in_block()
     %is_main = icmp eq i32 %tid, 0
@@ -180,7 +180,7 @@ When the kernel contains multiple parallel regions with serial code between them
 
 Multiple parallel regions may call the same outlined function. The pass deduplicates by function pointer using an inline hash set:
 
-```
+```c
 function dedup_regions(parallel_regions):
     seen = HashSet()  // inline small-buffer optimization
     unique = []
@@ -196,7 +196,7 @@ function dedup_regions(parallel_regions):
 
 For each parallel region, the pass walks the CFG successor chain and identifies instructions with side effects that are not SPMD-compatible:
 
-```
+```c
 function find_guarded_ranges(region, module_ctx):
     ranges = []
     first_unsafe = null
@@ -255,7 +255,7 @@ The map stores 24-byte keys (module pointer, name pointer, auxiliary pointer) wi
 
 For each `(first_instr, last_instr)` pair identified in Phase 2, the pass creates five new basic blocks and rewires the CFG:
 
-```
+```c
 function create_guarded_region(first_instr, last_instr, module_ctx):
     parent_bb = first_instr.parent
 
@@ -313,7 +313,7 @@ function create_guarded_region(first_instr, last_instr, module_ctx):
 
 The resulting CFG for a complex kernel with serial code between two parallel regions:
 
-```
+```llvm
 entry:
     ...
 
@@ -445,7 +445,7 @@ The generator has two modes:
 
 **Mode 2: Rewrite with customized dispatch (OMP131).**  When the kernel has N known parallel regions, the generator builds a switch/cascade of direct-call comparisons in `.parallel_region.check` and `.parallel_region.execute`, avoiding the overhead of indirect calls through `__kmpc_kernel_parallel`'s function pointer. It emits: `"Rewriting generic-mode kernel with a customized state machine."` (OMP131).
 
-```
+```c
 // Customized state machine pseudocode (sub_2678420 output)
 function build_custom_state_machine(kernel, parallel_regions):
     // Create the 6 basic blocks with labels above
@@ -513,7 +513,7 @@ The eligibility flag at `*(a1+241)` -- which gates whether `sub_26968A0` attempt
 
 The analysis pipeline:
 
-```
+```text
 sub_269F530 (OpenMP Attributor Driver, 63 KB)
   |
   +-- sub_251BBC0 (AbstractAttribute infrastructure)
@@ -549,7 +549,7 @@ The fixed-point analysis in `sub_251CD10` converges by iterating over all abstra
 
 The Attributor driver at `sub_269F530` also feeds into `sub_2678420` (state machine generator) for kernels that fail SPMD eligibility, and into `sub_2680940` (parallel region merging) for kernels that pass. The decision tree:
 
-```
+```text
 sub_269F530 analysis complete
   |
   +-- a1+241 == 1 (SPMD-eligible)

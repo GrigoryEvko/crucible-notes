@@ -273,7 +273,7 @@ For each `-l` library, `main` performs two search passes with the same `lib<name
 
 **Pass 2 (archive validation):** `path_search(ctx, filename, 1, 0, archive_validate_callback, lib_name)`. Invoked only when Pass 1 returns NULL. The function finds the file via `stat()`, then invokes `sub_42A2D0` to open it as an archive and verify that at least one member has the correct CPU architecture. The callback returns 0 to accept, or non-zero to continue searching the next directory.
 
-```
+```c
 search_for("-lcudadevrt"):
     filename = "libcudadevrt.a"
 

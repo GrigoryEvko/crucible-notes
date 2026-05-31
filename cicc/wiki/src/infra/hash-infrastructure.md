@@ -24,7 +24,7 @@ Bucket array size: `NumBuckets * 8` bytes. Each bucket holds either a valid poin
 
 Same 28-byte header. Each bucket holds a key-value pair at a 16-byte stride:
 
-```
+```c
 v30 = (_QWORD *)(buckets + 16LL * slot);   // sub_163D530 line 561
 *v30 = key;                                  // +0: key
 v30[1] = value;                              // +8: value
@@ -48,7 +48,7 @@ Variant B is used by the SelectionDAG builder (context offsets +120 and +152), t
 
 Every DenseMap/DenseSet instance in cicc that uses pointer keys employs the same hash:
 
-```
+```text
 hash(ptr) = (ptr >> 9) ^ (ptr >> 4)
 ```
 
@@ -56,7 +56,7 @@ This is LLVM's `DenseMapInfo<void*>::getHashValue`, unchanged. The right-shift b
 
 Representative decompiled evidence (appears identically in dozens of functions):
 
-```
+```c
 v9 = (v12 - 1) & (((unsigned int)v11 >> 9) ^ ((unsigned int)v11 >> 4));
 ```
 
@@ -64,7 +64,7 @@ v9 = (v12 - 1) & (((unsigned int)v11 >> 9) ^ ((unsigned int)v11 >> 4));
 
 A separate hash function is used for `DenseMap<unsigned, T>` instances (integer keys rather than pointers):
 
-```
+```text
 hash(key) = key * 37
 ```
 
@@ -88,7 +88,7 @@ The NVVM builtin name table uses a separate, NVIDIA-original hash function for s
 
 ### Pseudocode (length 1--3, the most common case for short builtins)
 
-```
+```rust
 fn wyhash_short(data: &[u8], len: usize) -> u32 {
     let a = data[0] as u64;
     let b = data[len / 2] as u64;
@@ -104,7 +104,7 @@ fn wyhash_short(data: &[u8], len: usize) -> u32 {
 
 ### Pseudocode (length 17--128, covering most `__nvvm_*` names)
 
-```
+```rust
 fn wyhash_medium(data: &[u8], len: usize) -> u32 {
     let pairs = [
         (0x1CAD21F72C81017C, 0xBE4BA423396CFEB8),  // pair 0
@@ -131,7 +131,7 @@ The final return value is always a `uint32` -- the high dword of the 64-bit resu
 
 All DenseMap instances use quadratic probing with triangular-number increments:
 
-```
+```text
 slot = hash & (capacity - 1)      // initial probe
 step = 1
 loop:
@@ -144,7 +144,7 @@ loop:
 
 The probe sequence for initial position `h` visits:
 
-```
+```text
 h, h+1, h+3, h+6, h+10, h+15, h+21, ...
 h + T(k) where T(k) = k*(k+1)/2   (triangular numbers)
 ```
@@ -171,7 +171,7 @@ Some analysis reports describe the probing as "linear" because the `step` variab
 
 After every successful insertion, the map checks whether to grow:
 
-```
+```c
 if (4 * (NumItems + 1) >= 3 * NumBuckets)
     // load factor > 75% -> double capacity
     new_capacity = 2 * NumBuckets
@@ -181,7 +181,7 @@ if (4 * (NumItems + 1) >= 3 * NumBuckets)
 
 If the load factor is acceptable but tombstones have accumulated:
 
-```
+```c
 elif (NumBuckets - NumTombstones - NumItems <= NumBuckets >> 3)
     // fewer than 12.5% of slots are truly empty
     // rehash at same capacity to clear tombstones
@@ -262,7 +262,7 @@ SmallVector is the universal dynamic array throughout cicc, with two growth impl
 
 ### Layout
 
-```
+```text
 [BeginPtr, Size:Count:Capacity, InlineData...]
 ```
 
@@ -288,7 +288,7 @@ When `size == capacity` on insertion, the vector grows.
 
 The standard LLVM SmallVector growth: double the current capacity, with a minimum of 1. If the current buffer is the inline buffer, `malloc` a new heap buffer and `memcpy` the contents. If the buffer is already on the heap, `realloc` it (for POD types) or `malloc` + copy + `free` (for non-POD types).
 
-```
+```c
 new_capacity = max(2 * old_capacity, required_capacity)
 if (data_ptr == &inline_buffer)
     heap_buf = malloc(new_capacity * elem_size)
@@ -328,7 +328,7 @@ The builtin name table at `context+480` is a specialized variant that does not u
 
 ### Memory Layout
 
-```
+```text
 [0 .. 8*cap-1]                    bucket_array: cap QWORD pointers
 [8*cap .. 8*cap+7]                sentinel: value 2 (end-of-table)
 [8*cap+8 .. 8*cap+8+4*cap-1]     hash_cache: uint32 per slot

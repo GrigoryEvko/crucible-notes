@@ -187,7 +187,7 @@ The decompiled `sub_6BB790` reveals the emission is entirely printf-based, build
 
 **Branch 2: `a1 > 0` (N captures)** -- Generates the N-ary specializations through seven sequential loops:
 
-```
+```text
 Loop 1:  Emit template parameter list    ", typename F1, ..., typename FN"
 Loop 2:  Emit partial specialization      ", F1, ..., FN"
 Loop 3:  Emit field declarations          "typename __nv_lambda_field_type<Fi>::type fi;\n"

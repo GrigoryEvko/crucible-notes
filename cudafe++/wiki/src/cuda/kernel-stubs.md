@@ -178,7 +178,7 @@ sub_468190("return;}");
 ### Complete Output Example
 
 For a kernel:
-```cpp
+```cuda
 namespace my_ns {
 template<typename T>
 __global__ void my_kernel(T* data, int n) { /* device code */ }
@@ -462,7 +462,7 @@ This deferred list (`qword_1065840`) is later consumed during the breakpoint pla
 
 Given this input CUDA source:
 
-```cpp
+```cuda
 __global__ void add_one(int *data, int n) {
     int idx = threadIdx.x + blockIdx.x * blockDim.x;
     if (idx < n)
@@ -525,7 +525,7 @@ The original body appears in `#if 0` in both outputs because both code paths rea
 
 For a template kernel:
 
-```cpp
+```cuda
 template<typename T>
 __global__ void scale(T *data, T factor, int n) { /* ... */ }
 
@@ -554,7 +554,7 @@ The `__specialization_` prefix is emitted only when the entity is a template spe
 
 For a non-kernel `__device__` function with a body:
 
-```cpp
+```cuda
 __device__ int device_helper(int x, int y) {
     return x + y;
 }

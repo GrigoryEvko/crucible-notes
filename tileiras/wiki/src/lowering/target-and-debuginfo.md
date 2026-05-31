@@ -108,7 +108,7 @@ Every operation in Tileiras carries an MLIR `Location`. When debug info is enabl
 
 Each `gpu.func` participates in a `DISubprogram` scope. The translation builds the scope hierarchy bottom-up:
 
-```
+```text
 DICompileUnit (per module, attached to llvm.module)
   └── DIFile (per source file referenced)
        └── DISubprogram (per gpu.func, attached to the llvm.func)

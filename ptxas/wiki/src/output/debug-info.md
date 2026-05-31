@@ -75,7 +75,7 @@ ptxas generates three tiers of debug sections depending on compilation mode. Sta
 
 For Capsule Mercury binaries (SM 100+), every debug section is cloned into the `.nv.merc.*` namespace. The Mercury debug classifier `sub_1C98C60` recognizes 15 Mercury-namespaced debug sections:
 
-```
+```text
 .nv.merc.debug_abbrev      .nv.merc.debug_aranges
 .nv.merc.debug_frame        .nv.merc.debug_info
 .nv.merc.debug_loc          .nv.merc.debug_macinfo
@@ -89,7 +89,7 @@ These sections carry the PTX-level debug information that travels inside the Mer
 
 Debug data flows through three pipeline stages. Each stage operates on a different intermediate representation and produces output at a different abstraction level.
 
-```
+```text
 STAGE 1: PTX PARSING  (0x45A-0x45C)
   PTX source --> .loc directives --> DWARF line number program
   sub_45C3A0: Reads .loc directives from PTX input
@@ -156,7 +156,7 @@ The DWARF `.debug_line` section generator `sub_866BB0` is the central function f
 
 ### Debug Line Context Structure
 
-```
+```text
 debug_line_context (at a1, ~460 bytes):
   +0:     vtable pointer
   +16:    SASS line info pointer (nonzero triggers second pass)
@@ -289,7 +289,7 @@ Maps DWARF attribute IDs to string names. The function recognizes a comprehensiv
 
 Parses the abbreviation table that defines the schema for each DIE tag. The dump mode output header is:
 
-```
+```text
 Contents of the .debug_abbrev section:
   Number  TAG
 ```
@@ -306,7 +306,7 @@ The function includes a safety check: `"unexpectedly too many dwarf attributes f
 
 Walks the DIE tree, printing entries with nesting depth indentation:
 
-```
+```text
  <%d><%x>:  Abbrev Number: %d   (0x%02x %s)
 ```
 
@@ -316,7 +316,7 @@ Format: `<nesting_depth><byte_offset>: Abbrev Number: <n> (<tag_hex> <tag_name>)
 
 Parses and prints CU headers, and creates the NVIDIA extension `.nv_debug_info_ptx` section:
 
-```
+```text
  Compilation Unit @ offset 0x%zx:
   Length: %d
   Version: %d
@@ -353,14 +353,14 @@ Three classifier functions map section names to internal type IDs. The type IDs 
 
 Recognizes standard DWARF sections by comparing the section name (obtained via `sub_1CB9E50`) against hardcoded strings. Returns 1 (is-debug-section) for:
 
-```
+```text
 .debug_abbrev    .debug_aranges   .debug_frame
 .debug_info      .debug_loc       .debug_macinfo
 .debug_pubnames  .debug_str       .debug_line
 ```
 
 Plus the NVIDIA extension:
-```
+```text
 .nv_debug_info_reg_sass
 ```
 

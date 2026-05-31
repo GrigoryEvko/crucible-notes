@@ -18,7 +18,7 @@ nvlink identifies itself through three string constants stored in `.rodata`:
 
 The `--version` (`-V`) flag triggers `sub_427AE0` (nvlink_parse_options) to print the combined version and build strings. The binary stores the version and build as a single two-line string at `0x1D33D18`:
 
-```
+```text
 Cuda compilation tools, release 13.0, V13.0.88
 Build cuda_13.0.r13.0/compiler.36424714_0
 ```
@@ -172,7 +172,7 @@ Mercury mode changes the output format from traditional cubin (SASS in `.text` s
 
 The architecture name parser at `sub_486FF0` and the format strings `sm_%2d%s` / `compute_%2d%s` / `sass_%2d%s` can parse any numeric architecture value. However, the option parser enforces a minimum:
 
-```
+```text
 SM Arch ('%s') must be >= 20
 ```
 
@@ -215,7 +215,7 @@ nvlink performs several version compatibility checks during linking:
 
 Input cubin objects carry an ABI version in their ELF headers. nvlink validates that the ABI version of each input matches the target:
 
-```
+```text
 Input file '%s' ABI version '%u' is incompatible with target ABI version '%u'
 ```
 (string at `0x1D34CF0`)
@@ -224,7 +224,7 @@ Input file '%s' ABI version '%u' is incompatible with target ABI version '%u'
 
 The `--cuda-api-version` option is validated against the toolkit version:
 
-```
+```text
 --cuda-api-version major number must be == toolkit version
 ```
 (string at `0x1D33DF0`)
@@ -235,14 +235,14 @@ The option value is parsed as `%u.%u` (major.minor) and the major version must e
 
 Objects compiled with the sanitizer must be linked with objects from the same toolkit version:
 
-```
+```text
 Cannot link sanitized object '%s' from version %d with sanitized object from a different toolkit version (%d)
 ```
 (string at `0x1D393D8`)
 
 ### CUDA API Forward Compatibility Check
 
-```
+```text
 Object '%s' has cuda-api-version of %d which is greater than version on link line (%d)
 ```
 (string at `0x1D39638`)
@@ -251,7 +251,7 @@ Object '%s' has cuda-api-version of %d which is greater than version on link lin
 
 The function at `sub_468560` generates version strings dynamically using the format:
 
-```
+```text
 Cuda compilation tools, release %d.%d,
 ```
 (string at `0x1D3C778`)
@@ -272,14 +272,14 @@ The `%2d` portion extracts the numeric SM version. The `%s` suffix captures opti
 
 Profile lookup is performed via hash map access at `qword_2A5F8D8`. The parsed name is used as the hash key. If the name is not found in the profile database, the error is:
 
-```
+```text
 Arch 'sm_%d' not supported
 ```
 (string at `0x1E5C353`, in the embedded ptxas region)
 
 For nvlink specifically:
 
-```
+```text
 Link target of '%s' is virtual target that is not JIT-able; use 'sm_' target instead
 ```
 (string at `0x1D347F8`)

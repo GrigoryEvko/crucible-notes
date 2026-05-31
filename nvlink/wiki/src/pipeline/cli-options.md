@@ -85,7 +85,7 @@ The flags field at offset 24 controls parser behavior:
 
 The `nvlink_parse_options` function (`0x427AE0`, 30272 bytes, 1299 lines) follows a strict sequence:
 
-```
+```c
 1. parser = option_parser_create(0)                    // 0x42DFE0
 2. For each of 68 options:
      option_register(parser, long, short, type,        // 0x42F130
@@ -160,7 +160,7 @@ The `cpu-arch` option accepts keywords: `unknown`, `X86`, `X86_64`, `ARMv7`, `AA
 
 **Architecture validation logic** (post-extraction):
 
-```
+```c
 sm = parse_sm_number(arch_string)         // sub_44E3E0
 if sm <= 19:
     fatal_error("unsupported arch")
@@ -363,13 +363,13 @@ The `time` option enables CSV timing output (used by NVIDIA's build infrastructu
 | `trap-into-debugger` | *(immediate action)* | type=bool, mult=0, flags=8 |
 
 `--help` output format:
-```
+```text
 Usage  : nvlink [options] <objects>
 ```
 followed by formatted help for all non-hidden options.
 
 `--version` output format:
-```
+```text
 nvlink: NVIDIA (R) Cuda linker
 Copyright (c) 2005-2025 NVIDIA Corporation
 Built on Wed_Aug_20_01:58:59_PM_PDT_2025
@@ -603,7 +603,7 @@ Twelve globals in the `0x2A5F1FC`--`0x2A5F330` window are computed by `sub_427AE
 
 ### `byte_2A5F1FC` -- *device-stack-protector-frame-size-threshold was specified*
 
-```
+```c
 byte_2A5F1FC = option_was_specified(parser, "device-stack-protector-frame-size-threshold")
 ```
 
@@ -611,7 +611,7 @@ Pure presence query (`sub_42E580`, line 271). Read by `sub_429BA0` to decide whe
 
 ### `byte_2A5F1FF` -- *device-stack-protector was specified*
 
-```
+```c
 byte_2A5F1FF = option_was_specified(parser, "device-stack-protector")
 ```
 
@@ -619,7 +619,7 @@ Same pattern as the frame-size flag (line 270). Read by `sub_429BA0` for the tki
 
 ### `qword_2A5F200` -- *tkinfo data pointer*
 
-```
+```c
 qword_2A5F200 = (int64)option_generate_tkinfo(parser, ...)            // line 497
 ```
 
@@ -629,7 +629,7 @@ Set by the parser's serializer (`sub_42F640`) at the tail end of `sub_427AE0`. C
 
 Three-way decision tree at lines 349-364, after extracting `byte_2A5F212` (`ignore-host-info`) and `byte_2A5F213` (`use-host-info`):
 
-```
+```c
 if (use_host_info && ignore_host_info):
     fatal_error("-use-host-info", "-ignore-host-info")
 
@@ -653,7 +653,7 @@ elif (!ignore_host_info):                         # line 360 (default branch)
 
 Computed at lines 296-326 after `sub_44E3E0(arch_string)` returns the parsed SM number into `dword_2A5F314`:
 
-```
+```c
 sm = dword_2A5F314                                # line 296
 byte_2A5F224 = (sm > 0x48)                        # new-style ELF: sm > 72 (line 302)
 
@@ -680,7 +680,7 @@ Note that `byte_2A5F222` can be set *before* this code path executes -- `sub_426
 
 ### `byte_2A5F2C0` and `byte_2A5F2C1` -- *arch capability / output-is-archive*
 
-```
+```c
 byte_2A5F2C1 = sub_44E490(arch_string)            # line 293: output-is-archive flag
 byte_2A5F2C0 = sub_44E4F0(arch_string)            # line 295: arch capability flag
 byte_2A5B52C = sub_44E4D0(arch_string)            # line 294: arch-supported flag
@@ -690,7 +690,7 @@ All three are pure functions of the parsed `--arch` string. `byte_2A5F2C1` selec
 
 ### `byte_2A5F2CD` -- *reserve-null-pointer effective flag*
 
-```
+```c
 v15 = 0
 if (src):                                         # line 335: reserve-null-pointer was passed
     v15 = (v26 == 0)                              # v26 is dont-reserve-null-pointer
@@ -703,7 +703,7 @@ The "dont-" form wins outright if specified; reserve-null is only effective when
 
 Set inside the LTO validation cascade at line 427 (LABEL_68):
 
-```
+```c
 if (link_time_opt):                               # line 371: byte_2A5F288 == 1
     if (!nvvmpath): fatal("-nvvmpath should be specified with -lto")
     if (relocatable_link):                        # line 375
@@ -725,7 +725,7 @@ if (link_time_opt):                               # line 371: byte_2A5F288 == 1
 
 ### `dword_2A5F314` -- *parsed SM number*
 
-```
+```c
 sm = sub_44E3E0(qword_2A5F318, 0, ...)            # line 290: parse "sm_75" -> 75
 if (sm <= 0x13):                                  # line 291: sm <= 19 (deprecated)
     fatal_error("unsupported arch", arch_string)
@@ -738,7 +738,7 @@ The single most heavily-consumed derived global (31 read sites) -- it drives alm
 
 These three live in the option-globals region but are written by `sub_426570` (the per-module link iterator), not by the CLI parser. Their decision trees fire while ingesting each input object:
 
-```
+```c
 # sub_426570 (per-module iteration), lines 93-240
 if (!byte_2A5F221 || !sub_43E610(...) || sub_4709E0(...)):
     ...
@@ -757,7 +757,7 @@ byte_2A5F221 = 1                                  # marks the first module that 
 
 Owned by `sub_42AF40` (the merge-consistency tracker called for each input module). Each `dword_2A5F26C/268/264/260/270` field implements the same state machine used to detect cross-module flag disagreement:
 
-```
+```c
 # Per scalar option that must match across all input modules:
 #   state 0: unset
 #   state 1: every module read so far had value V (recorded in companion field)

@@ -107,13 +107,13 @@ The same `0x20` bit controls other verbose diagnostics such as the `"link input 
 
 When active, each phase transition produces a single line on stderr:
 
-```
+```text
 <phase_name> time: <elapsed_ms>
 ```
 
 The format string is `"%s time: %f\n"` (verified verbatim at `0x1D32413`) using default `%f` precision (6 decimal places). The unit is always milliseconds. A typical LTO link with `-edbg 32` produces:
 
-```
+```text
 cicc-lto time: 2456.789063
 ptxas-lto time: 1234.567017
 read time: 45.678001
@@ -147,7 +147,7 @@ The help text for the option (at `0x1D33380`, xref from `0x428190`) reads verbat
 
 The CSV header is written by `sub_432270` at `0x432270`. The exact header string (length `0x63` = 99 bytes, at `0x1D38698`) is:
 
-```
+```text
 source file name , phase name , phase input files , phase output file , arch , tool, metric , unit
 ```
 
@@ -174,7 +174,7 @@ The unit column is a literal `ms` appended by the format string rather than pass
 
 A full CSV file produced by `nvlink -time build.csv ... -arch sm_90a foo.ptx` looks like:
 
-```
+```text
 source file name , phase name , phase input files , phase output file , arch , tool, metric , unit
 foo.ptx , ptxas , foo.ptx ,  , sm_90a , nvlink , 1234.5678 , ms
 lto.nvvm , cicc , lto.nvvm , lto.ptx , sm_90a , nvlink , 2345.6789 , ms
@@ -291,7 +291,7 @@ The order depends on the link mode:
 
 The timing checkpoints appear at the boundaries between major pipeline stages inside `main()` at `0x409800`:
 
-```
+```c
 main() {
     parse_options();
     create_arenas();

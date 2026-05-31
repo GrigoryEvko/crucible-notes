@@ -158,7 +158,7 @@ The value is cached in global `qword_2A5F338` on first access. Subsequent calls 
 
 Temporary filenames follow the pattern:
 
-```
+```text
 <TMPDIR>/tmpxft_<PID>_<COUNTER><suffix>
 ```
 
@@ -344,7 +344,7 @@ All status updates use `_InterlockedCompareExchange(a1, new, 0)`, which atomical
 
 The environment variables operate independently with one exception: `CUDA_DEVCODE_PATH` and `CUDA_DEVCODE_CACHE` are always read together in the same guarded block. All other variables are consumed by unrelated subsystems at different pipeline stages.
 
-```
+```text
 Pipeline phase          Variables read
 ─────────────────────   ────────────────────────────────
 Init / option parse     (none)

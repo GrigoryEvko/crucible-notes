@@ -27,7 +27,7 @@ ptxas maintains two separate intrinsic subsystems that together cover every CUDA
 
 ## System Overview
 
-```
+```text
 sub_451730 (intrinsic lowering context constructor)
   │
   ├── sub_5D4190(ctx)  ── register PTX opcode & MMA handlers ──────────────┐
@@ -213,7 +213,7 @@ The sm70 WMMA group itself expands from 204 to 249 templates because the prototy
 
 The three "tmpl-only" WMMA rows (sm7x/sm72/sm8x) are the single largest contributor to the expansion. They represent ~416 templates with zero logical ID counterparts. These families use `.FORCE_INLINE .func` linkage in their prototypes instead of the `.weak .func` used by the original sm70 WMMA entries:
 
-```
+```ptx
 sm70 (original):   .weak .func (...) __cuda_sm70_wmma_m16n16k16_load_a_col (...)
 sm72 (integer):    .FORCE_INLINE .func (...) __cuda_sm72_Integer_wmma_m16n16k16_load_a_row (...)
 sm7x (sub-byte):   .FORCE_INLINE .func (...) __cuda_sm7x_sub_byte_wmma_m8n8k32_load_a_row (...)
@@ -233,7 +233,7 @@ The function contains zero string references because it constructs all 1,079 nam
 
 The 533 unique .rodata prefix addresses fan out through multiple suffixes per prefix:
 
-```
+```text
 .rodata prefix (16B)       suffix (4B)     result (20B buffer)
 ───────────────────────    ───────────     ──────────────────────
 "__cuda_sm20_div_"    +    "s16\0"    =   "__cuda_sm20_div_s16"
@@ -322,7 +322,7 @@ The function is a single `switch(a1)` with 1,080 case labels (0--1079) plus a de
 
 ### Prototype Generator Architecture
 
-```
+```text
 sub_5FF700(template_id, allocator)
   │
   │  switch(template_id)     ← 1,080 cases, 0--1079
@@ -366,7 +366,7 @@ The `.weak` linkage supports user-supplied replacements: if the user provides th
 
 A subset of `.weak` prototypes (~410) carry the `.unique` qualifier:
 
-```
+```ptx
 .weak .func (.reg .b32 dst) __cuda_sm70_barrier_sync (.reg .b32 arg0) .unique ;
 ```
 
@@ -376,7 +376,7 @@ A subset of `.weak` prototypes (~410) carry the `.unique` qualifier:
 
 Every emitted prototype follows one of these structural patterns:
 
-```
+```ptx
 <linkage> .func (<return_params>) <name> (<input_params>) [.unique] ;
 ```
 
@@ -399,20 +399,20 @@ Five distinct parameter-passing ABIs appear across the 1,080 prototypes:
 
 **Convention A -- Register-only (`.reg`):** Used by math operations, barriers, warp sync, redux sync, video emulation. Return and input parameters are individual `.reg` declarations with typed names. This is the simplest and most common convention.
 
-```
+```ptx
 .weak .func (.reg .f32 %fv1) __cuda_sm20_div_rn_f32 (.reg .f32 %fa1, .reg .f32 %fa2) ;
 ```
 
 **Convention B -- Param-array with alignment (`.param .align N .b32 name[K]`):** Used by WMMA load/mma, MMA, Hopper sub-byte MMA, Blackwell MMA. Returns an aligned array of `.b32` elements. Array sizes: `dst[2]`, `dst[3]`, `dst[4]`, `dst[5]`, `dst[8]`, `mma_dst[2]`, `mma_dst[4]`, `mma_dst[8]`, `ret_dst[3]`, `ret_dst[5]`. 326 prototypes use `.align 16`; 1 prototype (`mma_shfl_f16`) uses `.align 8`.
 
-```
+```ptx
 .weak .func (.param .align 16 .b32 d[8]) __cuda_sm70_wmma_m16n16k16_mma_row_col_f32_f32
   (.param .align 16 .b32 a[8], .param .align 16 .b32 b[8], .param .align 16 .b32 c[8]) ;
 ```
 
 **Convention C -- Param-scalar (`.param .b64`):** Used exclusively by the 7 compute-sanitizer hooks. Parameters use fully-qualified names (`__cuda_sanitizer_memcheck_malloc_param_0`).
 
-```
+```ptx
 .weak .func (.param .b64 func_retval0) __cuda_sanitizer_memcheck_malloc
   (.param .b64 __cuda_sanitizer_memcheck_malloc_param_0,
    .param .b64 __cuda_sanitizer_memcheck_malloc_param_1) ;
@@ -420,14 +420,14 @@ Five distinct parameter-passing ABIs appear across the 1,080 prototypes:
 
 **Convention D -- Void return `()`:** Used by WMMA store_d, tcgen05 guardrail traps, sanitizer_free. ~140 prototypes (45 `.weak` + 95 `.FORCE_INLINE`).
 
-```
+```ptx
 .weak .func () __cuda_sm70_wmma_m16n16k16_store_d_row_f32
   (.reg .b64 ptr, .reg .b32 ldm, .reg .b32 sreg0, .reg .b32 sreg1, ...) ;
 ```
 
 **Convention E -- Multi-register return (`.FORCE_INLINE` only):** Used by extended WMMA load operations (SM7x/SM72/SM8x). Returns 1--4 registers in the return position (never 8 -- 8-element returns use Convention B's `.param` arrays instead).
 
-```
+```ptx
 .FORCE_INLINE .func (.reg .b32 dst0, .reg .b32 dst1, .reg .b32 dst2, .reg .b32 dst3)
   __cuda_sm8x_tf32_wmma_m16n16k8_load_a_row (.reg .u64 ptr, .reg .u32 ldm) ;
 ```
@@ -647,7 +647,7 @@ Three `createpolicy` intrinsics for L2 cache management: `createpolicy_fractiona
 
 The lookup path from a function call in PTX source to the codegen handler follows this sequence:
 
-```
+```text
 PTX source: call.uni __cuda_sm70_warpsync, (%mask);
                     |
                     v

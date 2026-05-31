@@ -18,7 +18,7 @@ The SASS code generation subsystem converts optimized Ori IR into executable GPU
 
 ## Pipeline
 
-```
+```text
  Optimized Ori IR (register-allocated, scheduled)
       |
       v

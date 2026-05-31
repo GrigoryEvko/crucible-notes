@@ -30,7 +30,7 @@ ptxas replaces `malloc`/`free` with a custom hierarchical pool allocator for the
 
 The pool object is at least 7,136 bytes. It contains pool metadata at low offsets, large-block free lists indexed by power-of-2 order in the middle range, small-block free lists indexed by size class starting at offset +2128, and a mutex pointer at the end.
 
-```
+```text
 Pool Object (~7136 bytes)
   +0        ptr      large_block_list     singly-linked list of large-block slab descriptors
   +32       u32      min_slab_size        minimum slab allocation (default from pool creator)
@@ -48,7 +48,7 @@ Pool Object (~7136 bytes)
 
 Small allocations (up to 4,999 bytes) are served from 625 free-list bins. Each bin holds blocks of exactly one size class. The bin index is computed from the 8-byte-aligned allocation size:
 
-```
+```c
 aligned_size = max(16, (requested + 7) & ~7)
 bin_index    = aligned_size >> 3
 bin_head     = *(pool + 8 * bin_index + 2128)
@@ -247,7 +247,7 @@ void pool_free(void* ptr) {
 
 Each free block in a small bin stores two pointers in the returned memory region itself (since the block is not in use):
 
-```
+```text
 Small Free Node (aligned_size bytes, minimum 16)
   +0    ptr    next       next free node in this bin, or NULL
   +8    ptr    slab_desc  back-pointer to owning slab descriptor
@@ -259,7 +259,7 @@ On allocation, the node is popped from the head. On deallocation, the node is pu
 
 Large blocks use a classic Knuth-style boundary tag scheme. Every allocated or free block has a 32-byte header before the user payload and a 32-byte footer at the end. The sentinel field distinguishes allocated blocks (`-1`) from free blocks (pointer to next free block, or `0`).
 
-```
+```text
                               Large Block Layout
   ┌──────────────────────────────────────────────────────────────────┐
   │ Header (32 bytes)                                                │
@@ -291,7 +291,7 @@ Every slab (contiguous memory region backing allocations) is tracked by a descri
 
 ### Small Slab Descriptor (56 bytes)
 
-```
+```text
 SlabDesc (56 bytes)
   +0    ptr    chain_link       next descriptor in pool's slab chain
   +8    u64    total_size       total slab memory in bytes
@@ -311,7 +311,7 @@ Large slab descriptors extend the base 56 bytes with fields for boundary-tag fre
 
 Pools form a tree. The root is a global fallback that wraps `malloc`/`free`. Below it are named pools created by the compilation driver. Each named pool allocates its slab memory from its parent pool.
 
-```
+```text
     ┌─────────────────────────────────┐
     │  Global Fallback (a1 = NULL)    │
     │  sub_427A10 -> malloc           │
@@ -381,7 +381,7 @@ There is also a global mutex at `qword_29FDC08` that protects the global slab co
 
 ### Locking Sequence
 
-```
+```text
 1. Lock pool->mutex  (per-pool, offset +7128)
 2. Perform allocation or deallocation
 3. If new slab was created:
@@ -464,7 +464,7 @@ int64_t pool_consumption(PoolState* ps) {
 
 The pool reporter (`sub_C62200`) prints to stderr:
 
-```
+```text
 [Pool Consumption = 45.678 MB]
 ```
 
@@ -475,7 +475,7 @@ Size formatting follows the same thresholds used throughout ptxas:
 
 The per-phase reporter (`sub_C64310`) prints one line per phase:
 
-```
+```text
   <phase_name>  ::  [Total 1234 KB]  [Freeable 567 KB]  [Freeable Leaked 12 KB] (2%)
 ```
 
@@ -489,7 +489,7 @@ ptxas contains a detailed memory-space statistics subsystem for debugging the po
 
 The entry point is `sub_425AB0`, which acquires the pool mutex, builds a stack-local stats-context struct, and calls `sub_425020`. The stats context is 28 bytes:
 
-```
+```text
 StatsContext (28 bytes, on stack)
   +0    ptr    output_stream     FILE* for sub_42BB30 (formatted output)
   +8    u8     verbosity_flag    enables/disables output
@@ -509,7 +509,7 @@ The three output metrics are `in_use = total_available - total_allocated`, all f
 
 **Detail level 1 (standard) output:**
 
-```
+```text
 Memory space statistics for 'Top level ptxas memory pool'            
 ==========================================================
 Page size                 : 0x10000 bytes
@@ -524,14 +524,14 @@ Average free list size    : 0
 
 **Detail level 2** adds per-page breakdowns:
 
-```
+```text
 @@ large block page    0 : 0x1234/0x10000, #=2  max=0x5000
 @@ small block size  24: 0x600/0x1800 (64/128 blocks) 3 pages
 ```
 
 **Detail level 0** (compact) prints a single line:
 
-```
+```text
 	 available= 	     0x1ffffff, allocated= 	     0x1a2b3c4, used= 	     0x05d4c3b
 ```
 
@@ -541,7 +541,7 @@ When `recurse_flag` is set, `sub_425020` calls `sub_42D4C0(child_chain, sub_4250
 
 The OCG (Optimizing Code Generator) uses a separate fixed-page allocator tracked in a 1048-byte hash-table object with 128 buckets. `sub_6936B0` prints its statistics to stderr via `sub_427540`:
 
-```
+```text
 Memory space statistics for 'OCG mem space'
 ===========================================
 Page size                 : 0x100000 bytes

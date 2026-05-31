@@ -10,7 +10,7 @@ The peephole infrastructure is unusual relative to standard LLVM: rather than a 
 
 The peephole passes execute at the following pipeline stages:
 
-```
+```text
 ISel pattern match  ->  MercConverter (with ORI passes)  ->  HoistInvariants
      |                        |                                    |
      |                   swap1-6, cpy1-3,                     OptimizeNaNOrZero
@@ -107,7 +107,7 @@ The MercConverter calls into ORI sub-passes directly (string evidence shows `"sw
 
 `sub_197A120` (49 KB, 1,850 lines) is the ORI named-phase **sequence builder**. It does not execute passes directly; instead it constructs an opcode array that the pass executor (`sub_1AEECD0`) then iterates. The architecture has three layers:
 
-```
+```text
 sub_197C4B0  (entry: allocates opcode array, calls sub_197A120 + sub_1AEECD0)
   |
   +-- sub_197A120  (reads option strings, maps names to opcode IDs, builds array)
@@ -305,7 +305,7 @@ When not in shuffle mode, the swap opcodes in the base pass table perform actual
 
 The three DCE phases remove instructions whose definitions are never used. Each phase is parameterized by an iteration count that controls when `OriPerformLiveDead` is injected before it:
 
-```
+```text
 Round 1 (dce1):  OriPerformLiveDead -> [base passes] -> DCE scan
 Round 2 (dce2):  OriPerformLiveDead -> [base passes] -> DCE scan
 Round 3 (dce3):  OriPerformLiveDead -> [base passes] -> DCE scan
@@ -317,7 +317,7 @@ The DCE pass itself iterates over all instructions in the function. For each ins
 
 **Example (before/after dce1):**
 
-```
+```asm
 // Before: R5 is computed but never read
 IADD3 R5, R2, R3, RZ ;   // dead definition
 IMAD  R7, R4, R6, R8 ;   // live
@@ -334,7 +334,7 @@ STG   [R0], R7       ;
 
 The three copy propagation phases replace uses of a register that holds a copy of another register with the original source. Like DCE, each phase has its own injection point for `OriCopyProp`:
 
-```
+```text
 Round 1 (cpy1):  OriCopyProp -> [base passes] -> copy forward
 Round 2 (cpy2):  OriCopyProp -> [base passes] -> copy forward
 Round 3 (cpy3):  OriCopyProp -> [base passes] -> copy forward
@@ -353,7 +353,7 @@ The three rounds handle chains of copies: `R3 <- R2`, `R5 <- R3` becomes `R5 <- 
 
 **Example (before/after cpy1 + dce1):**
 
-```
+```asm
 // Before: chain of copies
 MOV   R3, R2         ;   // copy
 IADD3 R5, R3, R4, RZ ;   // uses copy
@@ -374,7 +374,7 @@ This pass computes per-basic-block live-in and live-out register sets using back
 
 The opcode for `OriPerformLiveDead` is resolved at runtime via `sub_1AEDF30(table, "OriPerformLiveDead")` (line 1556 of `sub_197A120`). The pass walks basic blocks in reverse postorder, computing:
 
-```
+```text
 live_out[B] = union(live_in[S]) for all successors S of B
 live_in[B]  = (live_out[B] - def[B]) | use[B]
 ```
@@ -468,7 +468,7 @@ return base_count;
 
 The default ordering interleaves the passes as:
 
-```
+```text
 [OriPerformLiveDead] [swap passes...] [OriCopyProp] [cpy1 passes...]
 [dce1 passes...] [OriPerformLiveDead] [OriCopyProp] [cpy2 passes...]
 [dce2 passes...] [OriPerformLiveDead] [OriCopyProp] [cpy3 passes...]
@@ -551,7 +551,7 @@ The `"cutlass"` string reference indicates CUTLASS workload detection gates this
 
 OptimizeNaNOrZero runs as a sub-pass of the scheduling infrastructure. The scheduling pipeline flow:
 
-```
+```text
 ScheduleInstructions_main_driver (sub_1851DC0, 85 KB)
   -> Strategy selection (sub_1857990) -- choose default/ReduceReg/DynBatch
   -> Per-function driver (sub_1860A40, 47 KB)

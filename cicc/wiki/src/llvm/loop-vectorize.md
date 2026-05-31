@@ -42,7 +42,7 @@ The main function `sub_2AF1970` implements eight phases, closely following upstr
 
 ### Phase 1: Legality Pre-Check
 
-```
+```c
 sub_31A4FD0(legalityCtx, Loop, Function, ORE, SE)    // init legality scratch
 TTI = *(**(Loop+32) + 72)                             // Loop->getHeader()->getParent()->getTTI()
 if (!sub_31A91F0(legalityCtx, TTI, Loop, LoopInfo))   // canVectorize() quick check
@@ -54,7 +54,7 @@ sub_31AF060(costCtx, ForceVectorization)              // canVectorize() full che
 
 The legality checker (`sub_31AF060`) performs standard LLVM legality analysis: loop simplify form, single exit, computable backedge-taken count, no irreducible control flow. The NVIDIA-specific addition is early-exit loop handling:
 
-```
+```c
 if (hasUncountableEarlyExit && !byte_500CDA8)         // -enable-early-exit-vectorization
     emit "UncountableEarlyExitLoopsDisabled"
     return false
@@ -64,7 +64,7 @@ This knob (`byte_500CDA8`) gates an LLVM 20 feature that NVIDIA includes but dis
 
 ### Phase 2: Outer vs Inner Loop Dispatch
 
-```
+```c
 if (Loop->getSubLoops().size() > 0)
     goto outerLoopPath                                // PATH A (rarely taken on GPU)
 else
@@ -75,7 +75,7 @@ Outer loop vectorization is controlled by `byte_500D208` (`-force-vector-width-o
 
 ### Phase 3: Trip Count and Safety Checks
 
-```
+```c
 tripCount = getSmallBestKnownTC(PSE, Loop)            // sub_2AA7EC0
 if (tripCount < VectorizerMinTripCount                // dword_500EAE8
     && !isForceVectorize(legalCtx)
@@ -128,7 +128,7 @@ The cost accumulation uses **saturating arithmetic** -- `__OFADD__` overflow det
 
 The cost model object (`sub_2AB2780`, 16 parameters) assembles all analysis results into a single context:
 
-```
+```c
 CostModel = {
     Loop*, DominatorTree*, LoopBlocksRPO*, ScalarEvolution*,
     TargetLibraryInfo*, AssumptionCache*, PredicatedScalarEvolution*,

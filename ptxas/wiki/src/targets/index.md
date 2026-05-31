@@ -83,7 +83,7 @@ Target name validation uses three sorted arrays searched via `bsearch()`. The CL
 
 Contains all valid base SM names without suffix, sorted by numeric SM ID. Includes legacy architectures no longer supported for active compilation but retained for validation, plus two internal/alias entries. Each entry is 12 bytes: `{uint32 sm_id, uint32 ptx_major, uint32 ptx_minor}`. The bsearch comparison (`sub_484B70`) compares the numeric `sm_id` extracted from the `--gpu-name` string via `sscanf`.
 
-```
+```text
 sm_10, sm_11, sm_12, sm_13,                    // Tesla (legacy, PTX 1.0--1.2)
 sm_20, sm_21,                                  // Fermi (legacy, PTX 2.0)
 sm_30, sm_32, sm_35, sm_37,                    // Kepler (legacy, PTX 3.0--4.1)
@@ -102,7 +102,7 @@ sm_100, sm_101, sm_103, sm_110, sm_120, sm_121 // Blackwell (active, PTX 8.6--9.
 
 ### Accelerated Table -- `unk_1D161C0` (7 entries)
 
-```
+```text
 sm_90a, sm_100a, sm_101a, sm_103a, sm_110a, sm_120a, sm_121a
 ```
 
@@ -110,7 +110,7 @@ One Hopper entry, six Blackwell entries. `sm_101a` is the legacy alias for `sm_1
 
 ### Feature-Reduced Table -- `unk_1D16160` (6 entries)
 
-```
+```text
 sm_100f, sm_101f, sm_103f, sm_110f, sm_120f, sm_121f
 ```
 
@@ -229,7 +229,7 @@ These values appear in feature-gating checks. For example, FMA/DFMA combining in
 
 Related encoded values seen in the binary:
 
-```
+```text
 12288  = sm_30 (Kepler)       // 3 << 12
 16385  = sm_50 (Maxwell)      // 4 << 12 | 1
 20481  = sm_50 alt (Maxwell)  // 5 << 12 | 1
@@ -313,7 +313,7 @@ ptxas stores configurable shared memory sizes as a pointer + count pair at profi
 
 `sub_8688F0` sets the sm\_75 configuration:
 
-```
+```c
 *(a1+1488) = &unk_21D9168    // pointer to shared memory size table
 *(a1+1496) = 3               // 3 valid configurations
 ```
@@ -337,7 +337,7 @@ The register allocation unit directly affects occupancy. With 256-register granu
 
 The formula the GPU driver uses (from EIATTR\_REGCOUNT documentation):
 
-```
+```text
 effective_regs = ceil(regcount / alloc_granularity) * alloc_granularity
 regs_per_warp  = effective_regs * warp_size
 max_warps      = min(registers_per_SM / regs_per_warp, hw_max_warps)
@@ -368,7 +368,7 @@ These are the functions that downstream code calls (through the dispatch table) 
 
 Three levels of SM profile information cooperate:
 
-```
+```text
 Level 1: sub_607DB0                    // Capability dispatch (7 hash maps)
     |                                  //   -> feature flags, handler functions
     v
@@ -486,7 +486,7 @@ Every SM's intrinsic table initializer (Map 3 handler) calls `sub_917990` to all
 
 ### Construction Sequence
 
-```
+```text
 1. sub_71BDE0(1936, a1)     heap allocate 1936 bytes
 2. sub_C1B7A0(profile)      zero-fill + structural defaults (8 SSE blocks, 5 scalars)
 3. sub_917990(a3)           overlay: codegen factory default, tail constants
@@ -589,7 +589,7 @@ The profile's own `+348` stores the codegen factory value at construction time. 
 
 ### Object Region Map
 
-```
+```text
 Offset Range   Size    Content
 -----------    ----    -------
 [0..111]       112B    Object header, vtable chain, zeroed bulk

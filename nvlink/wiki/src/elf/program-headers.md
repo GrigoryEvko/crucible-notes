@@ -186,7 +186,7 @@ For 64-bit ELFs, the table is constructed as an array of 56-byte `Elf64_Phdr` st
 
 **Entry 0: PT_PHDR (always present)**
 
-```
+```c
 Elf64_Phdr {
     p_type   = 6    (PT_PHDR)
     p_flags  = 5    (PF_R | PF_X)
@@ -203,7 +203,7 @@ This self-referential segment points to the program header table itself. Its fil
 
 **Entry 1: PT_LOAD for data (only if `data_base != 0`)**
 
-```
+```c
 Elf64_Phdr {
     p_type   = 1    (PT_LOAD)
     p_flags  = 5    (PF_R | PF_X)
@@ -220,7 +220,7 @@ Data sections are marked with `PF_R | PF_X` (5). On a GPU, these flags do not ca
 
 **Entry 2: PT_LOAD for code (only if `code_base != 0`)**
 
-```
+```c
 Elf64_Phdr {
     p_type   = 1    (PT_LOAD)
     p_flags  = 6    (PF_R | PF_W)
@@ -239,7 +239,7 @@ The `p_filesz` and `p_memsz` fields differ structurally: `p_filesz` receives `co
 
 **Entry 3: PT_LOAD for program header table (always present)**
 
-```
+```c
 Elf64_Phdr {
     p_type   = 1    (PT_LOAD)
     p_flags  = 5    (PF_R | PF_X)
@@ -290,7 +290,7 @@ The entry semantics are identical to the ELF64 case, only the field widths and `
 
 **ELF32 PT_PHDR:**
 
-```
+```c
 Elf32_Phdr {
     p_type   = 6
     p_offset = e_phoff       // 32-bit: elfw+28
@@ -365,7 +365,7 @@ When program headers ARE emitted (post-FNLZR Mercury executables or standard SAS
 
 The program header table occupies the final bytes of the output cubin file. The overall file layout order is:
 
-```
+```text
 Offset 0:                    ELF header (52 or 64 bytes)
                              Padding (1 byte)
                              .shstrtab data (section name strings)
@@ -385,7 +385,7 @@ Where `e_phoff = e_shoff + e_shnum * e_shentsize`. This tail placement means the
 
 ### Typical sm\_90 cubin (ELF64, 3 kernels, constants + code)
 
-```
+```text
 e_type    = ET_EXEC (2)
 e_shoff   = 0x5000
 e_shnum   = 18
@@ -403,7 +403,7 @@ Note: Phdr[0] and Phdr[3] describe the same byte range (the program header table
 
 ### Minimal cubin (ELF64, no loadable sections)
 
-```
+```text
 e_type    = ET_EXEC (2)
 e_shoff   = 0x200
 e_shnum   = 5
@@ -417,7 +417,7 @@ Phdr[1]: PT_LOAD   flags=5  offset=0x340  vaddr=0  filesz=112        align=8  [p
 
 ### Relocatable object (no program headers)
 
-```
+```text
 e_type    = ET_REL (1)
 e_phnum   = 0
 e_phoff   = 0
@@ -428,7 +428,7 @@ e_phentsize = 0
 
 A concrete example showing the complete computation for a simple executable with two kernels and one constant bank:
 
-```
+```text
 Sections (ordered by section index):
   [ 0] NULL              addr=0x0000  size=0x0000  flags=0x0  (neither)
   [ 1] .shstrtab         addr=0x0041  size=0x0120  flags=0x0  (neither)

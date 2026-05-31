@@ -8,7 +8,7 @@ This page is a flat lookup table. For the diagnostic pipeline architecture (seve
 
 ## Numbering and Display Format
 
-```
+```text
 User-visible:  file.cu(42): error #20042-D: calling a __device__ function from ...
                                     ^^^^^
                                     display code = internal + 16543

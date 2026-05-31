@@ -8,7 +8,7 @@ The embedded ptxas compiler in nvlink v13.0.88 contains a complete PTX assembler
 
 PTX parsing is organized into seven subsystems that form a pipeline from raw text to internal IR:
 
-```
+```text
 PTX source text
     |
     v
@@ -635,7 +635,7 @@ Approximately 250 functions in the `0x14A0000`--`0x15C0000` range follow an iden
 
 **Common pattern** (verified across `sub_14A4770`, `sub_14AAA30`, `sub_14C3C10`):
 
-```
+```text
 1. arena = sub_44F410(a1, a2) + offset[3]     // get memory arena
 2. buf   = sub_4307C0(arena, 50000)            // allocate 50KB temp buffer
 3. // Build PTX text via successive sprintf() calls:
@@ -716,7 +716,7 @@ Each builtin is registered with a sequential index (1--608) mapping the name to 
 
 A giant switch on builtin index (608 cases). For each case, allocates a string via `sub_14932E0(length, arena)` and writes the PTX prototype. Returns a string of the form:
 
-```
+```ptx
 .weak .func (.param .b32 retval) __cuda_sm20_div_s16 (.param .b32 a, .param .b32 b) ;
 ```
 
@@ -726,7 +726,7 @@ Covers all SM generations (sm20 through sm10x) and all function families: div, r
 
 Instruction validation follows a consistent protocol across all validators:
 
-```
+```text
 1. sub_12B3090(context)       // Check "relaxed mode" -- if true, skip all checks
 2. sub_12B3CA0(major, minor)  // Check PTX version requirement
 3. sub_1441FB0(context, ...)  // Emit error if PTX version too low
@@ -790,7 +790,7 @@ Top-level PTX statement handler. Processes kernel/function declarations includin
 
 `sub_14871D0` (3,400 bytes, 54 lines) initializes the modifier group enum. Registers bidirectional group mappings via `sub_465720` and `sub_448E70`:
 
-```
+```text
 GUARD  <-> PRED     (bidirectional)
 TYPES, POSTOP, COMPARE, APRX, FTZ, SAT, SHAMT, ORDER, NC, ROUND,
 TESTP, FLOW, TEXTURE, QUERY, CLAMP, SHR, VMAD, PRMT, SHFL,
@@ -949,7 +949,7 @@ The entire PTX frontend is built on a consistent set of utility primitives:
 
 The main compiler context is accessed via `*(a1 + 1096)` throughout the frontend. Key fields in the instruction structure pointed to by this offset:
 
-```
+```text
 Offset  Size  Field
   +88    8B   scope/function pointer
  +104    8B   modifier enum table

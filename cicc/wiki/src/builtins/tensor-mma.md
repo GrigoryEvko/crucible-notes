@@ -210,7 +210,7 @@ The full WGMMA ID range spans 745--770, subdivided into four functional groups:
 
 `sub_953BA0` (NVVM) / `sub_12B1C20` (EDG) builds a red-black tree on first call with 7 entries keyed by builtin ID. Each entry packs:
 
-```
+```c
 struct wgmma_fence_entry {
     uint32_t id;           // builtin ID (745--751)
     uint32_t trans_a;      // transpose A flag
@@ -292,7 +292,7 @@ This is the primary WGMMA lowering path. It lives inline in the mega-switch of `
 
 The handler walks the argument chain 7 levels deep from the call expression:
 
-```
+```text
 v263 = M dimension              (first constant argument)
 v512 = accumulator fragments    (pointer to fragment array)
 v528 = A descriptor             (64-bit matrix descriptor or register fragments)
@@ -305,7 +305,7 @@ v540 = element type info        (integer type tag from AST)
 
 Each constant argument is validated through `sub_620FD0` (EDG) / `sub_620FD0` (shared), which extracts the integer value and sets an overflow flag. On overflow:
 
-```
+```text
 "unexpected constant overflow in __wgmma_mma_async operand"
 ```
 
@@ -363,7 +363,7 @@ The even/odd intrinsic ID pairing encodes the distinction between integer-elemen
 
 **N dimension validation:**
 
-```
+```c
 if ((N & (N - 1)) != 0)
     error("N only supported for powers of two");
 ```
@@ -453,7 +453,7 @@ All constant arguments pass through `sub_620FD0`, which extracts the integer val
 
 The MMA PTX string builder at `sub_21E74C0` (AsmPrinter) / `sub_35F_range` (NVPTX backend) reads a packed 64-bit descriptor for all MMA instruction emission. The descriptor is stored at:
 
-```
+```c
 v22 = *(QWORD *)(*(QWORD *)(a1 + 16) + 16 * a2 + 8)
 ```
 

@@ -46,7 +46,7 @@ When CUDA source code takes the address of a device function or uses a virtual m
 
 The PTX-level representation of a stub function is:
 
-```
+```ptx
 .func .attribute(.unified_func_stub) __cuda_uf_stub_myFunc( ) {
   _jcall myFunc;
 }
@@ -63,7 +63,7 @@ The diagnostic string `"Syscall compilation of Indirect function calls"` indicat
 
 ## Pipeline Position
 
-```
+```text
 Merge Phase (sub_45E7D0, per-object)
   |
   +-- sub_442820: merge symbols including __cuda_uf_stub_* and .nv.uft sections
@@ -121,7 +121,7 @@ The relationship between jump slots and entries is 1:1 -- each `.nv.uft.entry` r
 
 Validation pseudocode from `sub_463F70`:
 
-```
+```c
 uft_sec  = find_section(ctx, ".nv.uft")
 if (!uft_sec) goto process_udt;
 
@@ -190,7 +190,7 @@ The naming depends on the input file type:
 
 This naming split is handled by `sub_469230` at `0x469230`, which checks `e_type == 2` and whether the section name starts with `.nv.uft.rel`. When it detects a per-function `.nv.uft.rel.<funcname>` in a relocatable object, it strips the function suffix and redirects the relocation processing to the parent `.nv.uft` section:
 
-```
+```c
 if (e_type == ET_EXEC && starts_with(section_name, ".nv.uft.rel")):
     // Redirect to the base .nv.uft section for relocation processing
     section_name = ".nv.uft"
@@ -216,7 +216,7 @@ The `.nv.uft.entry` section is a structured array where each record identifies o
 
 Each 32-byte entry record has the following layout, confirmed by pointer arithmetic in `sub_4637B0`, `sub_4633A0`, and `sub_464240`:
 
-```
+```text
 Offset  Size  Field         Description
 ------  ----  -----------   ------------------------------------------
  0x00     4   symidx        Symbol table index of the real function
@@ -233,7 +233,7 @@ The `flags` field's bit 31 is used as a "not yet placed" marker during the reord
 
 The `symidx` field initially holds the virtual symbol index from the input object's local symbol table. After merge, `sub_4633A0` patches it to the real symbol index in the merged symbol table. The verbose trace shows both:
 
-```
+```text
 Patching real symidx in UFT Entry with UUID 0x%llx-0x%llx
   Virtual symidx = %d
   Real symidx    = %d
@@ -245,7 +245,7 @@ The linker processes entries through five stages:
 
 **Stage 1: Addition** (`sub_464240` at `0x464240`). When a new indirect-call target is discovered, the linker calls this function to append an entry record:
 
-```
+```c
 sub_464240(ctx, entry_record):
     if (ctx->uft_entry_section_idx == 0):
         // First entry -- create the .nv.uft.entry section
@@ -270,7 +270,7 @@ sub_464240(ctx, entry_record):
 
 **Stage 2: Merge** (`sub_45CF00` at `0x45CF00`). During ELF merge, `.nv.uft.entry` sections from each input object are processed:
 
-```
+```c
 sub_45CF00(ctx, input_obj, ...):
     entry_data = (is_64bit) ? load_64(obj, entry_header)
                             : load_32(obj, entry_header)
@@ -295,7 +295,7 @@ sub_45CF00(ctx, input_obj, ...):
 
 **Stage 3: Symbol index patching** (`sub_4633A0` at `0x4633A0`). After all objects are merged, this function iterates every entry in `.nv.uft.entry` and replaces virtual symbol indices with real ones:
 
-```
+```c
 sub_4633A0(ctx, uft_entry_section_idx):
     sec_data = get_section_data(ctx, uft_entry_section_idx)
     for each chunk in sec_data->chunk_list:
@@ -328,7 +328,7 @@ The function `sub_4637B0` builds a hash map from `uuid_lo XOR uuid_hi` to entry 
 
 During merge, the linker matches `__cuda_uf_stub_<name>` symbols to their corresponding UFT entries via `sub_463660` at `0x463660`:
 
-```
+```c
 sub_463660(ctx, stub_sym):
     func_name = stub_sym->name                 // e.g. "myFunc"
     prefix = <16-byte constant>                // "__cuda_uf_stub_" prefix
@@ -365,7 +365,7 @@ The reorder function `sub_4637B0` (10,141 bytes at `0x4637B0`) is the core of th
 
 ### Phase 1: Hash Map Construction
 
-```
+```c
 uft_reorder_entries(ctx, table_sec, entry_sec, uidx_entries, uidx_count, is_udt):
 
     // Determine if Mercury interleaving is needed
@@ -430,7 +430,7 @@ The XOR hash `uuid_hi ^ uuid_lo` reduces the 128-bit UUID to a 64-bit key for th
 
 After the hash map is built, the function allocates a contiguous output buffer for the reordered table data, then iterates the UIDX entries in order:
 
-```
+```c
     // Allocate output buffer matching the table section size
     output_buf = allocate(table_sec->sh_size)
 
@@ -517,7 +517,7 @@ After the hash map is built, the function allocates a contiguous output buffer f
 
 For Mercury architectures (`ctx->dpc_mode == 2`) processing UFT (not UDT), the reordered table undergoes an additional interleaving step. Each 128-byte jump slot is expanded by inserting `padding_size` bytes of scheduling data after every 128 bytes of instruction data:
 
-```
+```c
     if (interleave):
         // Allocate expanded buffer: uidx_count * (128 + padding_size)
         expanded_buf = allocate(expanded_size)
@@ -541,7 +541,7 @@ The copy loop uses eight consecutive 128-bit SSE loads/stores (`_mm_loadu_si128`
 
 ### Phase 4: Finalization
 
-```
+```c
     // Write the reordered data back to the section
     replace_section_data(ctx, table_sec, output_buf, max_written)
 
@@ -597,7 +597,7 @@ The first 8 bytes must be the little-endian value `0x58444E495446557F`, which de
 
 #### Header Layout (48 bytes)
 
-```
+```text
 Offset  Size  Field             Description
 ------  ----  ---------------   -------------------------------------------
  0x00     8   magic             0x58444E495446557F ("\x7fUFTINDX")
@@ -616,7 +616,7 @@ Immediately after the 48-byte header, the file contains two contiguous arrays:
 
 1. **UFT entries** (N_uft entries, each 24 bytes):
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----------
  0x00     8   uuid_lo       Low 64 bits of the 128-bit UUID
@@ -632,7 +632,7 @@ If `version > 1`, an additional block of `16 * N_uft` bytes appears between the 
 
 The parser validates the expected file size as:
 
-```
+```text
 expected_size = 48                              // header
               + 24 * (N_uft + N_udt)           // entry arrays
               + (version > 1 ? 16 * N_uft : 0) // optional conflict block
@@ -644,7 +644,7 @@ If the actual file size does not match, the error `"malformed uidx input"` is ra
 
 `sub_463490` processes the UIDX file in the following steps:
 
-```
+```c
 sub_463490(ctx, uidx_data, file_size):
     // Step 1: Magic validation
     if (*(uint64_t*)uidx_data != 0x58444E495446557F):
@@ -758,7 +758,7 @@ Note: Types 106-113 all map to the same base value (81) in the decompiled switch
 
 **Step 3: Synthetic symbol resolution.** After type remapping, if the relocation symbol is one of the eight synthetic unified symbols, the relocation is resolved to type 0 (no-op):
 
-```
+```c
 // Check if the relocation targets a UFT/UDT synthetic symbol
 sym_name = reloc->symbol->name
 if (sym_name matches any of: __UFT_OFFSET, __UFT_CANONICAL, __UDT_OFFSET,
@@ -781,7 +781,7 @@ In relocatable link mode (`-r`), the unified relocation remapping converts all 1
 
 The function `sub_12AF8A0` at `0x12AF8A0` in the ptxas subsystem generates UFT stubs at the PTX level when the linker needs to create a new indirect-call trampoline (e.g., during LTO relinking). The function constructs a PTX source string and feeds it to the embedded PTX compiler:
 
-```
+```c
 sub_12AF8A0(func_name, ptx_context):
     // Build a PTX module string containing the stub
     buf = create_buffer(128, ptx_context)
@@ -839,7 +839,7 @@ When multiple input objects contain `.nv.uft.entry` sections, the linker must me
 
 The function `sub_442820` at `0x442820` (5,371 bytes) processes each symbol during ELF merge. When it encounters a symbol with the `__cuda_uf_stub_` prefix, it takes a special path:
 
-```
+```c
 sub_442820(ctx, sym_name, bind_flags, sym_idx):
     // Check if this is a UFT stub symbol
     if ((bind_flags & 0x14) == 0 && starts_with(sym_name, "__cuda_uf_stub_")):

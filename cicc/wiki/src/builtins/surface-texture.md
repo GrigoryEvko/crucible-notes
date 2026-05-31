@@ -6,7 +6,7 @@ Surface and texture builtins form the largest contiguous block in the builtin ta
 
 The 165 `sust` (surface store) builtins encode the dimensionality, data type, and out-of-bounds behavior directly in the builtin name. They follow the pattern:
 
-```
+```text
 __nvvm_sust_b_{dim}_{type}_{oob_mode}
 ```
 
@@ -50,7 +50,7 @@ The total 5 x 11 x 3 = 165 entries are registered as a contiguous block. IDA sho
 
 Within each OOB-mode block of 55 entries, the ordering is dimension-major, type-minor:
 
-```
+```text
 base + 0..10:  1d       x {i8,i16,i32,i64,v2i8,v2i16,v2i32,v2i64,v4i8,v4i16,v4i32}
 base + 11..21: 1d_array x {i8,i16,i32,i64,v2i8,v2i16,v2i32,v2i64,v4i8,v4i16,v4i32}
 base + 22..32: 2d       x {i8,i16,i32,i64,v2i8,v2i16,v2i32,v2i64,v4i8,v4i16,v4i32}
@@ -60,7 +60,7 @@ base + 44..54: 3d       x {i8,i16,i32,i64,v2i8,v2i16,v2i32,v2i64,v4i8,v4i16,v4i3
 
 Given a surface store builtin ID, the decomposition is:
 
-```
+```c
 mode_offset = (id - 474)
 oob_block   = mode_offset / 55          // 0=clamp, 1=trap, 2=zero
 within_block = mode_offset % 55
@@ -107,7 +107,7 @@ The `long`/`ulong` width follows the host ABI convention (32-bit on NVPTX).
 
 **Step 3 -- Intrinsic name construction.** Concatenates the operation base name with the element type suffix using underscore separation:
 
-```
+```text
 intrinsic_name = "{operation_string}_{element_type_suffix}"
 ```
 
@@ -169,7 +169,7 @@ These 12 entries span the following texture fetch modes:
 
 ### Map Lookup and Dispatch (sub_954F10)
 
-```
+```c
 function TexSurfSampleHandler(retval, ctx, builtin_id, arglist):
     // Determine surface vs texture path
     is_surface = (v8 flag != 0)
@@ -242,7 +242,7 @@ The 50 consecutive intrinsic IDs `0x5D` through `0x8D` all delegate to a single 
 
 The intrinsic-to-opcode mapping encodes:
 
-```
+```text
 dimension:    1d / 2d / 3d / 1d_array / 2d_array / cubemap
 data_type:    u32 / s32 / f32 / f32f32 (filtered)
 return_width: scalar / v2 / v4

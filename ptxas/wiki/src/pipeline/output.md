@@ -27,7 +27,7 @@ The output phase handles three binary kinds: **SASS** (raw resolved SASS, legacy
 
 The ELF output pipeline runs as a single-threaded sequence after all per-kernel OCG passes have completed (multi-kernel compilation may be parallel, but ELF emission is serialized). The flow is orchestrated by `sub_612DE0`, which reads compilation flags, constructs the ELFW central object, then drives 11 phases to produce the final `.cubin` or `.o` file.
 
-```
+```text
 sub_446240 (compilation driver -- "real main")
   |  all per-kernel OCG passes complete
   v
@@ -219,7 +219,7 @@ Each kernel's `.nv.info.<funcname>` section contains a sequence of EIATTR (Entry
 
 Each EIATTR record is a TLV (type-length-value) structure:
 
-```
+```text
 +--------+--------+------------------+
 | type   | length | value            |
 | 2 bytes| 2 bytes| length bytes     |
@@ -290,7 +290,7 @@ Additional EIATTR codes for textures/surfaces, barriers, cooperative groups, ten
 
 The EIATTR builder runs a cross-function propagation pass via `sub_1CC8950` (2,634 bytes). When a device function uses barriers or a high register count, these requirements must propagate upward to the entry kernel that calls it:
 
-```
+```text
 "regcount %d for %s propagated to entry %s"
 "Creating new EIATTR_NUM_BARRIERS and moving barcount %d
     from section flags of %s to nvinfo for entry symbol %s"
@@ -414,7 +414,7 @@ The capmerc path is integrated into the master ELF emitter. The sequence:
 
 The cubin entry `sub_612DE0` implements a "fastpath optimization" for off-target finalization:
 
-```
+```text
 "[Finalizer] fastpath optimization applied for off-target %u -> %u finalization"
 ```
 
@@ -442,7 +442,7 @@ The call graph builder (`sub_1CBE1B0`) emits a `.nv.callgraph` section that enco
 
 Dead functions are eliminated by `sub_1CBC090`:
 
-```
+```text
 "dead function %d(%s)"
 "removed un-used section %s (%d)"   (x8 -- once per section type)
 "function %d(%s) has address taken but no call to it"

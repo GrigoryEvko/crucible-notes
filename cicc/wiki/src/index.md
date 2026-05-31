@@ -72,7 +72,7 @@ Runtime selection is controlled by `v253` in `sub_8F9C90` (the real main functio
 
 Both paths converge on the same 5-stage pipeline:
 
-```
+```text
 CUDA C++ Source (.cu / .ci / .i)
   │
   ├─ EDG 6.6 Frontend (sub_5D2A80)

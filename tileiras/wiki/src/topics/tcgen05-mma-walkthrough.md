@@ -24,7 +24,7 @@ The MMA itself does not specify TMEM, the kind word, the collector mode, or the 
 
 The 9-bit kind word that this MMA encodes:
 
-```
+```text
 mma_kind         = f16   (value 3)   bits 6..8
 block_scale      = 0                  bit 5
 scale_input_acc  = 0                  bit 4

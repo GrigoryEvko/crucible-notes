@@ -37,7 +37,7 @@ The core property exploited by NVVM AA is hardware address space disjointness: p
 
 The NVVM AA algorithm (pseudocode from `NVPTXAAResult::alias` in cicc):
 
-```
+```c
 AliasResult alias(Loc1, Loc2):
     AS1 = getAddressSpace(Loc1.Ptr, TraverseLimit)  // walk through casts
     AS2 = getAddressSpace(Loc2.Ptr, TraverseLimit)
@@ -74,7 +74,7 @@ MemorySpaceOpt (`sub_1C70910`) encodes address spaces as single-bit positions in
 | 4 | `0x10` | 101 | Param |
 | 0-3 | `0x0F` | N/A | Unknown (union of global + shared + constant + local) |
 
-```
+```c
 // sub_1CA8CD0 — address space to bitmask
 switch (addrspace) {
     case 1:   return 0x01;   // global
@@ -131,21 +131,21 @@ The NVPTX data layout string encodes pointer widths and alignment for each addre
 
 ### 64-bit with shared memory specialization (most common production mode)
 
-```
+```text
 e-p:64:64:64-p3:32:32:32-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-
 i128:128:128-f16:16:16-f32:32:32-f64:64:64-v16:16:16-v32:32:32-n16:32:64
 ```
 
 ### 64-bit without shared memory specialization
 
-```
+```text
 e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-
 i128:128:128-f16:16:16-f32:32:32-f64:64:64-v16:16:16-v32:32:32-n16:32:64
 ```
 
 ### 32-bit mode
 
-```
+```text
 e-p:32:32:32-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-
 i128:128:128-f16:16:16-f32:32:32-f64:64:64-v16:16:16-v32:32:32-n16:32:64
 ```

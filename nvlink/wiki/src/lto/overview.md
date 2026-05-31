@@ -6,7 +6,7 @@ This page is the definitive entry point for understanding nvlink's LTO implement
 
 ## Architecture: The Delegation Model
 
-```
+```text
   nvlink (orchestrator)
     |
     |  1. Collect NVVM IR from inputs
@@ -39,7 +39,7 @@ The key insight is that nvlink does not embed LLVM. It delegates IR optimization
 
 The following diagram traces the LTO pipeline from the first IR input to the final merged ELF output, annotated with exact function addresses and the globals that control each decision point.
 
-```
+```text
  ============================================================================
  PHASE 7: INPUT LOOP  (main @ 0x409800, lines 600-920)
  ============================================================================
@@ -535,7 +535,7 @@ The state machine is implemented in `sub_42AF40` at `0x42AF40` and runs once per
 
 For each module processed, the state machine receives one of two inputs: **HAS(value)** (the module's IR contains the option with a specific value) or **ABSENT** (the option is not present in this module's IR).
 
-```
+```text
 Current State     Input HAS(v)              Input ABSENT
 ─────────────     ────────────              ────────────
 0 (UNSEEN)        -> 2 (PRESENT), save v    -> 1 (ABSENT)
@@ -588,7 +588,7 @@ When the input loop finds IR for libcudadevrt specifically (`v365` in main, line
 
 After whole-program LTO compilation succeeds (main lines 1346--1366), if the LTO compiled everything (`byte_2A5F288 && !byte_2A5F286`), nvlink strips libcudadevrt from the module list entirely:
 
-```
+```text
 fwrite("LTO on everything so remove libcudadevrt from list\n")
 verify: strstr(module_name, "cudadevrt")  // else fatal
 free cubin data, module name, module node
@@ -601,7 +601,7 @@ This is safe because whole-program LTO has already incorporated all device runti
 
 The choice between whole-program, relocatable, and split-compile paths is determined by a cascade of flag checks after `sub_4BC6F0` returns.
 
-```
+```text
 sub_4BC6F0 returns:
   v351 = number of output modules from nvvm
   byte_2A5F286 = 0 (whole) or 1 (partial)
@@ -652,7 +652,7 @@ sub_4BC6F0 returns:
 
 The complete sequence of libnvvm API calls made by nvlink during a successful LTO compilation. Each call is annotated with the function that makes it and the error handling path.
 
-```
+```text
 === Phase 1: Library Loading (sub_4BC4A0 @ 0x4BC4A0) ===
 
   dlopen(nvvmpath, RTLD_LAZY)             -- load libnvvm.so
@@ -918,7 +918,7 @@ These appear in the debug trace alongside the standard phase names: `"init"`, `"
 
 `lto_report_resource_usage` at `0x140A6B0` prints per-kernel statistics after LTO compilation:
 
-```
+```text
 Used %d registers, %lld bytes smem, %lld bytes lmem
 %lld bytes gmem, %lld bytes cmem[0..17]
 %d barriers, %d samplers, %d surfaces, %d textures

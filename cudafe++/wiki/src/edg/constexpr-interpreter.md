@@ -30,7 +30,7 @@ The interpreter exists because C++ constexpr evaluation requires the compiler to
 
 The interpreter is structured as a tree-walking evaluator with arena-based memory, memoization caching, and a call stack that mirrors C++ function invocation. The rest of the compiler invokes it through `interpret_expr`, which sets up interpreter state, calls the recursive evaluator, and converts the result back to an IL constant.
 
-```
+```text
   AST expression node
         |
         v
@@ -110,7 +110,7 @@ The interpreter uses a dual-tier memory system: an arena allocator for small obj
 
 Arena blocks are 64KB (`0x10000` bytes) each, linked together at offset `+24`:
 
-```
+```text
 Block layout:
   +------------------+
   | next_block (+0)  |---> previous block (or null)
@@ -150,7 +150,7 @@ Objects larger than 1,024 bytes (`0x400`) bypass the arena and are allocated ind
 
 Every interpreter object has a header preceding the value bytes:
 
-```
+```text
   offset -10  [-10]  bitmap byte 2 (validity tracking)
   offset  -9  [ -9]  bitmap byte 1 (initialization tracking)
   offset  -8  [ -8]  type pointer (8 bytes, points to type_node)

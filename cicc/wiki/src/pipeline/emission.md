@@ -132,7 +132,7 @@ Fatal: `"Unhandled cluster info operand"` on invalid value.
 
 The atomic instruction word packs scope and operation into a single integer read from the operand array at `*(operand_array + 16*a2 + 8)`:
 
-```
+```text
 Bit layout:
   [3:0]   — reserved
   [7:4]   — scope: 0=gpu (implicit), 1=cta, 2=sys
@@ -170,7 +170,7 @@ The type width suffix (`.b32`, `.b64`, `.u32`, `.u64`, `.s32`, `.s64`, `.f32`, `
 
 A parallel emission function that inserts `L2::cache_hint` between the operation and type suffix to produce the extended format:
 
-```
+```ptx
 atom[.scope].op.L2::cache_hint.type
 ```
 
@@ -378,7 +378,7 @@ For aggregate or large types, the emitter uses `.b8 NAME[SIZE]` (byte array). Fo
 
 If a global has an initializer in an address space that does not support static initialization:
 
-```
+```c
 fatal("initial value of 'NAME' is not allowed in addrspace(N)");
 ```
 
@@ -405,7 +405,7 @@ Global variables with initializers can reference other globals. If global `A`'s 
 
 4. **Cycle detection.** If the DFS encounters a gray node, a back-edge has been found, which means a circular dependency. The pass emits the fatal diagnostic:
 
-```
+```text
 "Circular dependency found in global variable set"
 ```
 

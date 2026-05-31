@@ -58,7 +58,7 @@ Reads from the StmtNode: condition expression at offset +48, then-body at +72, e
 
 ### BB Layout: if/else
 
-```
+```text
     ┌─────────────────────┐
     │    current BB        │
     │  %cond = ...         │
@@ -82,7 +82,7 @@ Reads from the StmtNode: condition expression at offset +48, then-body at +72, e
 
 ### BB Layout: if without else
 
-```
+```text
     ┌─────────────────────┐
     │    current BB        │
     │  %cond = ...         │
@@ -144,7 +144,7 @@ C++17 `if constexpr` is fully resolved during EDG frontend semantic analysis. By
 
 ## While Loop -- `sub_937180`
 
-```
+```text
     ┌─────────────────────┐
     │    current BB        │
     │  br label %while.cond│
@@ -200,7 +200,7 @@ The backedge branch (`br label %while.cond` from `while.body`) always receives `
 
 The key structural difference from `while`: the body executes before the condition. The condition BB follows the body.
 
-```
+```text
     ┌─────────────────────┐
     │    current BB        │
     │  br label %do.body   │
@@ -253,7 +253,7 @@ The backedge is the conditional branch in `do.cond` (true edge back to `do.body`
 
 The most complex loop handler. Reads four components from the StmtNode: init statement at offset +80 field [0], condition at +48, increment expression at +80 field [1], and body at +72. Any of init, condition, and increment may be NULL.
 
-```
+```text
     ┌─────────────────────┐
     │    current BB        │
     │  <init statement>    │    ← emitted in current BB if non-null

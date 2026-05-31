@@ -8,7 +8,7 @@ The function is 633 bytes across 35 basic blocks (`0x4ce070`–`0x4ce2e9`) and i
 
 The compile driver maintains a context object (272+ bytes, allocated by `sub_4CDD60`) whose first qword is the signature `0x1464243BC`. Every API entry validates this magic before touching the object. The standard call sequence enforced by `sub_4BD0A0` is:
 
-```
+```text
 sub_4CDD60(&ctx)              create context
 sub_4CE3B0(ctx, mode)         set compilation mode (0/2/4/6)
 sub_4CE2F0(ctx, sm_version)   set target architecture

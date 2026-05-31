@@ -21,7 +21,7 @@ These phases operate on the Ori IR before register allocation and scheduling. At
 
 ## Pipeline Placement
 
-```
+```text
 Phase   3  AnalyzeControlFlow              ── builds CFG (predecessors, successors, RPO, dominators)
 Phase   6  SetControlFlowOpLastInBB        ── ensures branches are last in each block
 Phase  13  GeneralOptimizeEarly            ── const fold + copy prop (feeds branch info)
@@ -103,7 +103,7 @@ After classification, the handler scans forward through operands checking regist
 
 The pass scans each basic block for a characteristic pattern:
 
-```
+```asm
 // Input: cascading if-else for switch(x)
 BB0:
     ISETP.EQ P0, x, #case_0      // compare selector against constant
@@ -180,7 +180,7 @@ The exact default values of these knobs are set by the OCG knob initialization s
 
 For jump-table-eligible switches, the pass produces:
 
-```
+```asm
 // Output: jump table lowering
 BB_switch:
     IADD3 Rtmp, Rselector, -min_val, RZ    // normalize to 0-based index
@@ -198,7 +198,7 @@ Phase 80 (`ExpandJmxComputation`) runs much later (after legalization) to expand
 
 The jump table is embedded inline in the `.text` section, immediately after the `BRX` instruction that references it. `BRX` is a 64-bit (8-byte) format instruction (format code `0x1`), so the table begins at the next 4-byte-aligned position after the instruction word. The `.text` layout around a jump table:
 
-```
+```text
 .text offset    contents
 ────────────    ─────────────────────────────────────────────
 base            [ctrl]  LEA Raddr, Rtmp, #table_base, 2
@@ -223,7 +223,7 @@ base + 0x10 + 4*(range-1)   i32 offset -> case max_val target
 
 Before BST emission, `sub_77CF40` builds a sorted set of case block indices using a red-black tree with 256-bit bitmap leaves (`BitsetRBTree`, managed by `sub_7436F0`). Each RBT node is 64 bytes:
 
-```
+```text
 BitsetRBTreeNode (64 bytes):
     +0   left child pointer
     +8   right child pointer
@@ -240,7 +240,7 @@ The BST emission driver (LABEL_46 in `sub_77CF40`) iterates the sorted set in **
 
 The entry of `sub_77CF40` checks three code-object fields before proceeding:
 
-```
+```c
 if code_obj[1404] != 0        // PGO profile data is attached
    && code_obj[1400] == 0     // instrumentation pass counter = 0 (complete)
    && (code_obj[1377] & 0x08) == 0:   // scheduling-mode bit 3 is clear
@@ -255,7 +255,7 @@ Inside the main loop, PGO also affects the block reachability check (`sub_76ABE0
 
 For BST-eligible switches:
 
-```
+```c
 function emit_bst(cases[], lo, hi, selector, default_target):
     if lo > hi:
         emit: BRA default_target
@@ -309,7 +309,7 @@ For GPU code, jump tables are strongly preferred when density permits, because t
 
 When a basic block ends with an unconditional `BRA` to the block that immediately follows in layout order, the branch is redundant and is deleted:
 
-```
+```text
 // Before:                        // After:
 BB_A:                             BB_A:
     ...                               ...
@@ -334,7 +334,7 @@ The erase function operates on a CFG context object that contains three parallel
 | +64 (`a1[8]`) | `int*` | `rpo_number[]` -- RPO position per block |
 | `*a1 + 720` | `int*` | `rpo_to_bix[]` -- maps RPO position to block index |
 
-```
+```c
 function erase_block(ctx, bix, counter):       // sub_BDE6C0
     if pred_count[bix] == 0:                   // already removed
         return
@@ -380,7 +380,7 @@ Two sub-cases:
 
 **Constant condition.** If copy propagation or constant folding (in the preceding `GeneralOptimizeEarly`, phase 13) has determined that a predicate register always holds a known value at the branch point, the conditional branch is replaced:
 
-```
+```text
 // Before: condition always true      // After:
 BB:                                   BB:
     ISETP.EQ PT, R0, R0              //   (deleted -- tautology)
@@ -390,7 +390,7 @@ BB:                                   BB:
 
 **Equivalent targets.** If both the taken and not-taken paths of a conditional branch go to the same block, the condition test is dead and the branch becomes unconditional:
 
-```
+```text
 // Before: both targets identical     // After:
 BB:                                   BB:
     @P0 BRA target                        BRA target   // unconditional
@@ -401,7 +401,7 @@ BB:                                   BB:
 
 When a branch targets a block whose only content is another unconditional branch, the pass redirects the original branch directly to the final target:
 
-```
+```text
 // Before:                            // After:
 BB_A:                                 BB_A:
     @P0 BRA BB_B                          @P0 BRA BB_C   // threaded
@@ -417,7 +417,7 @@ The pass applies threading iteratively, following chains of single-branch blocks
 
 The execute body (`sub_7917F0`) drives the four transformations through a two-level loop over the RPO block ordering. The algorithm from the decompiled 529-byte body:
 
-```
+```c
 function OriBranchOpt_execute(ctx):
     // --- gate checks (knobs 214, 487; CFG validity bit at ctx+1382) ---
 
@@ -516,7 +516,7 @@ When the intermediate chain passes eligibility, `sub_91C840` maps each compariso
 
 The combined truth table for two predicates is assembled by the caller into an 8-bit LOP3 immediate. For AND-chains (`if (a && b)`), the per-input truth tables are ANDed: `TT_combined = TT_outer & TT_inner`, producing `0xC0` for two simple boolean inputs. For OR-chains (`if (a || b)`), they are ORed: `TT_combined = TT_outer | TT_inner`, producing `0xFC`. Mixed chains compose naturally through repeated application:
 
-```
+```text
 AND:  if (a && b)        -->  LOP3 Ptmp, P0, P1, 0xC0   // TT = 0b11000000
 OR:   if (a || b)        -->  LOP3 Ptmp, P0, P1, 0xFC   // TT = 0b11111100
 XOR:  if (a ^ b)         -->  LOP3 Ptmp, P0, P1, 0x3C   // TT = 0b00111100
@@ -539,7 +539,7 @@ The pass applies these transformations only when:
 
 Phase 38 is a stepping stone toward phase 63 (`OriDoPredication`). By reducing nested branches to single-level branches, it creates more opportunities for if-conversion:
 
-```
+```text
 Phase 38: nested {if(a) { if(b) { ... }}}  -->  if(a AND b) { ... }
 Phase 63: if(a AND b) { x = y; }           -->  @(a AND b) MOV x, y
 ```
@@ -554,7 +554,7 @@ On NVIDIA GPUs, branch optimization has a direct impact on warp execution effici
 
 The `BSSY` (branch sync stack push) / `BSYNC` (branch sync) mechanism on modern NVIDIA architectures (sm_75+) manages reconvergence:
 
-```
+```asm
 BSSY B0, reconvergence_point     // push reconvergence point onto sync stack
 @P0 BRA taken_path               // diverge
     ... not-taken path ...
@@ -627,7 +627,7 @@ All four `isNoOp` methods return false unconditionally -- gating is performed in
 
 **Phase 30 -- `sub_C5FC80` (34 bytes).** After the gate, calls `sub_791F00(ctx, 1)`. The second argument `1` indicates this is the second switch optimization pass. `sub_791F00` (587B) performs lazy initialization of a 152-byte `SwitchOptContext` cached at `code_object+1288`:
 
-```
+```text
 SwitchOptContext (152 bytes, allocated at code_object+1288):
     +0   back-pointer to code object
     +8   allocator reference (from code_object+16)
@@ -673,7 +673,7 @@ Two late-pipeline passes perform tail merging -- identifying basic blocks with i
 
 ## Algorithmic Summary
 
-```
+```text
 Pass                           Algorithm                    Complexity    CFG Changes
 ─────────────────────────────  ───────────────────────────  ────────────  ──────────────────────
 DoSwitchOpt (14, 30)           Pattern match + decision     O(N log N)    Rewrites blocks, adds

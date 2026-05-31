@@ -21,7 +21,7 @@ The key architectural consequence of this design: there is no separate "lowering
 
 ## Architecture
 
-```
+```text
 PTX source text
      |
      v
@@ -135,7 +135,7 @@ Applies NvOptRecipe transformations controlled by option 391. When enabled, the 
 
 The string `"Invalid nvopt level : %d."` in `sub_C173E0` confirms the valid range. The recipe data lives at `NvOptRecipe+312` with per-phase records at stride 584 bytes. The sub-manager maintains its own sorted array (`+376`) and hash table (`+400`..`+416`) for fast recipe lookup by phase index.
 
-```
+```text
 NvOptRecipe Sub-Manager (440 bytes, at PhaseManager+56)
   +0      compilation_unit
   +8      phase_manager back-reference
@@ -214,7 +214,7 @@ The fused macro instructions carry composite semantics in a single IR node. They
 
 Dumps the Ori IR state for debugging, active when `DUMPIR` or `--ftrace` diagnostics are enabled. The stats emitter at `sub_A3A7E0` prints a per-function profile:
 
-```
+```text
 # 142 instructions, 24 R-regs
 # [inst=142] [texInst=0] [tepid=0] [rregs=24]
 # [est latency = 87] [LSpillB=0]
@@ -243,7 +243,7 @@ The MercConverter (`sub_9F1A90`, 35 KB) is the instruction conversion engine at 
 
 ### Call Chain
 
-```
+```text
 sub_9F3340 (orchestrator, 7KB)
   |
   +-- sub_9F1A90 (MercConverter main pass, 35KB)
@@ -550,7 +550,7 @@ The table below lists the primary SASS opcode(s) each PTX instruction lowers to 
 Phase legend: **P** = parser (Bison reduction action, measured by DAGgen-time). **2** = Phase 2 PromoteFP16. **5** = Phase 5 ConvertUnsupportedOps (MercConverter). **45** = Phase 45 MidExpansion. **78** = Phase 78 LateExpansionUnsupportedOps. Entries marked 45/78 are kept as single Ori instructions through optimization and expanded late to preserve optimization opportunities (LICM, CSE, strength reduction can operate on the unexpanded form).
 
 ROT13 encoding in the binary:
-```
+```text
 SNQQ  = FADD       VZNQ  = IMAD       SSZN  = FFMA
 VNQQ3 = IADD3      QZHY  = DMUL       YQT   = LDG
 FGT   = STG        OEN   = BRA        RKVG  = EXIT
@@ -627,7 +627,7 @@ The bridge phases include two error detection mechanisms:
 
 ### Instruction Node
 
-```
+```text
 Instruction (variable size, linked list node)
   +0     prev_ptr           // doubly-linked list: previous instruction
   +8     next_ptr           // doubly-linked list: next instruction
@@ -641,7 +641,7 @@ Instruction (variable size, linked list node)
 
 ### Operand Encoding
 
-```
+```text
 Each operand is a packed 32-bit value:
   Bits 28-30: operand kind ((value >> 28) & 7)
     1 = register operand
@@ -653,7 +653,7 @@ Each operand is a packed 32-bit value:
 
 ### Register Descriptor
 
-```
+```text
 Register descriptor (accessed via *(ctx+88) + 8*regId)
   +12    register number (int)
   +48    flags (bit 5 = "defined", other bits for liveness state)

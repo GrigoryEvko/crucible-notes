@@ -123,7 +123,7 @@ bool tryInstructionTransform(Pass *P, MachineInstr *MI,
 }
 ```
 
-```
+```c
 for each MBB in MF:
     clear DistanceMap, SrcRegMap, DstRegMap, SrcEqClassMap, DstEqClassMap, Processed
     dist = 0
@@ -225,7 +225,7 @@ Each `MachineOperand` occupies 40 bytes in memory (stride 40 per operand in the 
 
 The subreg index is extracted by the formula:
 
-```
+```c
 subregIdx = (*(uint32_t*)(operand + 0) >> 8) & 0xFFF
 ```
 
@@ -233,7 +233,7 @@ This 12-bit field encodes which sub-register of the source to extract: sub0, sub
 
 ### Decomposition Pseudocode
 
-```
+```c
 // sub_1F53550 lines 821-994: EXTRACT_SUBREG handler (opcode == 14)
 decomposeExtractSubreg(MI):
     numOps = MI.getNumOperands()              // v405
@@ -317,7 +317,7 @@ The earlyTied optimization is a critical performance path. Consider a `v4f32` te
 
 The earlyTied flag (bit 6 of operand flags byte +3) is set during instruction emission when the emitter knows that consecutive extract results target adjacent sub-registers of a contiguous super-register. When detected, the pass marks the COPY's def operand with the isTied bit, creating a chain of tied constraints:
 
-```
+```llvm
 // Without earlyTied (4 independent COPYs, coalescer must work harder):
 %dst0 = COPY %src.sub0
 %dst1 = COPY %src.sub1
@@ -399,7 +399,7 @@ After ISel, the tied operand from inline asm appears as a regular tied constrain
 
 This 63KB / 2,209-line function is the heavyweight tied-operand resolver. It is called from the main loop whenever `collectTiedOperands` finds constraints that the fast path (`tryInstructionTransform`) could not resolve.
 
-```
+```c
 processTiedPairs(MI, tiedPairs, distance):
     for each (srcIdx, dstIdx) in tiedPairs:
         srcReg = MI.getOperand(srcIdx).getReg()
@@ -483,7 +483,7 @@ processTiedPairs(MI, tiedPairs, distance):
 
 After all tied pairs are processed for an `INSERT_SUBREG` instruction (opcode 8), the pass converts it into a plain `COPY`:
 
-```
+```c
 if MI.getOpcode() == INSERT_SUBREG:
     // Propagate subreg encoding from operand[3] into operand[0]
     subregBits = MI.getOperand(3).getSubRegIdx()
@@ -503,7 +503,7 @@ The pass builds two maps (`SrcEqClassMap` at offset +552, `DstEqClassMap` at +58
 
 The `collectRegCopies` algorithm:
 
-```
+```c
 collectRegCopies(startReg):
     chain = SmallVector()
     reg = startReg
@@ -563,7 +563,7 @@ Entry stride: 56 bytes. Hash function: `37 * key`, linear probing, load factor 3
 
 The `collectTiedOperands` logic iterates all operands of an instruction checking for tied constraints. The inner loop (at STEP 7 in the raw analysis) contains a special-case direct resolution path:
 
-```
+```c
 for opIdx in 0..numOps-1:
     // Skip defs, already-tied, and operands with no subreg class
     if operand.isDef():           continue     // byte +0 != 0

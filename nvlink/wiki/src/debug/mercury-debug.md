@@ -449,7 +449,7 @@ The prefix stripping uses `sub_44E3A0` (starts-with predicate) with the 9-byte s
 
 When any self-check fails, the detailed error message is emitted:
 
-```
+```text
 Failure of '%s' section in self-check for capsule mercury.
 See the Jira confluence page 'MERCSW-125' for more information
 that includes some debugging steps.
@@ -496,7 +496,7 @@ The FNLZR uses this stripped name in 4 code paths within `sub_4748F0`:
 
 The complete emission path from the ptxas backend to the final cubin:
 
-```
+```text
 ELF_WriteCompleteObject (sub_1CF3720, 15.3 KB)
   |
   +-- ELF_BuildSectionTable (sub_1CEE030, 26 KB)

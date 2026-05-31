@@ -939,7 +939,7 @@ These mnemonics represent SASS instructions with a 32-bit immediate operand pack
 
 The single largest category. These are **not** real SASS instructions -- they are internal pseudo-instructions representing Mercury IR operations that need mnemonic-string identity for diagnostic and dump output. They follow a rigid naming convention:
 
-```
+```text
 MERCURY_{operation}_{srcs|dests}_{regclass}_{variant_index}
 ```
 

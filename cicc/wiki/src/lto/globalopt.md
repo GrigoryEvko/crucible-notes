@@ -511,7 +511,7 @@ void decompose_malloc_free(Global *global, Module *module, Function *fn,
 
 The generated CFG for a 2-field struct `{ i32, float }`:
 
-```
+```llvm
 entry:
   br i1 %tmp1, label %malloc_ret_null, label %malloc_cont
 

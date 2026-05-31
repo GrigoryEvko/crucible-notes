@@ -48,7 +48,7 @@ The table below documents every field in the 424-byte TU descriptor. Offsets are
 
 ### Layout Diagram
 
-```
+```text
 Translation Unit Descriptor (424 bytes)
 ===========================================
 
@@ -116,7 +116,7 @@ In total, approximately 217 calls to `f_register_trans_unit_variable` are made a
 
 When `process_translation_unit` (`sub_7A40A0`) is called for each source file:
 
-```
+```c
 process_translation_unit(filename, is_recompilation, module_info_ptr)
 ```
 
@@ -145,7 +145,7 @@ The descriptor is linked into two structures simultaneously:
 - Free list: `qword_12C7AB8` (stack entries are recycled, not freed)
 - Depth counter: `dword_106B9E8` (counts non-primary TUs on the stack)
 
-```
+```text
 TU Chain:                    TU Stack:
                              qword_106BA18
 primary_tu --> tu_2 --> tu_3    |
@@ -187,7 +187,7 @@ The registered variable mechanism is the save/restore system that makes TU switc
 
 During frontend initialization, each subsystem calls `f_register_trans_unit_variable` to declare global variables that contain per-TU state. Each call creates a 40-byte registration record:
 
-```
+```text
 Registered Variable Entry (40 bytes)
   [0]   8   next               linked list pointer
   [8]   8   variable_address   pointer to the global variable
@@ -411,7 +411,7 @@ int push_entity_translation_unit(entity *ent) {
 
 ## TU Stack Entry Layout
 
-```
+```text
 TU Stack Entry (16 bytes)
   [0]   8   next            next entry in stack (toward bottom) or free list
   [8]   8   tu_desc_ptr     pointer to the TU descriptor
@@ -423,7 +423,7 @@ Stack entries are recycled through a free list (`qword_12C7AB8`). They are alloc
 
 When processing multiple TUs in RDC mode, the frontend must track structural equivalence between types and declarations across TUs. Each correspondence is a 24-byte node:
 
-```
+```text
 Trans Unit Correspondence (24 bytes)
   [0]   8   next            linked list pointer
   [8]   8   ptr             pointer to the corresponding entity/type

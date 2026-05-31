@@ -105,7 +105,7 @@ form.
 `nv_tileaa` is the central waypoint of the three-dialect tile
 lowering. Conceptually:
 
-```
+```text
 cuda_tile
     -> nv_tileaa
     -> nv_tileas

@@ -28,7 +28,7 @@ Name mangling occurs at two distinct points in the cudafe++ pipeline:
 
 2. **Reverse demangling** (diagnostics): A statically linked demangler at `sub_7CABB0` converts mangled names back to human-readable form for error messages and debug output. This demangler is not EDG code -- it is NVIDIA's custom implementation that wraps the standard Itanium ABI demangling algorithm with CUDA-specific extensions for device lambda wrapper types.
 
-```
+```text
 Entity Node (IL)
   |
   +-- sub_69FF70 (check_mangling_special_cases)
@@ -391,7 +391,7 @@ The key NVIDIA extensions are triggered when the demangler encounters the vendor
 
 Pattern: `Unvdl<arity><encoding><type>...`
 
-```
+```text
 Input:  "Unvdl" + <numeric_arity> + <function_encoding> + <captured_types>...
 Output: "__nv_dl_wrapper_t<__nv_dl_tag<(& :: <scope>), <arity>, <type1>, ...> >"
 ```
@@ -410,7 +410,7 @@ Decoded step by step:
 
 Pattern: `Unvdtl<arity><return_type><encoding><captured_types>...`
 
-```
+```text
 Input:  "Unvdtl" + <arity> + <type> + <func_encoding> + <captured_types>...
 Output: "__nv_dl_wrapper_t<__nv_dl_trailing_return_tag<...>, <return_type>, ...>"
 ```
@@ -426,7 +426,7 @@ Same as `Unvdl` except:
 
 Pattern: `Unvhdl<bool1><bool2><bool3><arity><encoding><captured_types>...`
 
-```
+```text
 Input:  "Unvhdl" + <IsMutable> + <HasFuncPtrConv> + <NeverThrows> + <arity> + ...
 Output: "__nv_hdl_wrapper_t<true/false, true/false, true/false,
           __nv_dl_tag<(& :: <scope>), <arity>, <type1>, ...> >"

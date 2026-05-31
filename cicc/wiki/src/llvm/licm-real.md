@@ -50,7 +50,7 @@ LICM's hoist mode is the upstream LLVM 20.0.0 algorithm with no visible NVIDIA p
 
 The algorithm processes each loop from innermost to outermost:
 
-```
+```c
 for each loop L in post-order (innermost first):
     preheader = L.getLoopPreheader()
     if preheader is null: skip
@@ -88,7 +88,7 @@ The LoopSink pass (`"loop-sink"`, registered at pipeline parser entry 271) is th
 
 The decision to sink is driven by block frequency analysis:
 
-```
+```c
 for each instruction I in preheader:
     if I has uses only in cold blocks of the loop:
         coldest_block = argmin(blockFreq(B) for B where I is used in B)
@@ -107,7 +107,7 @@ MachineLICM operates on `MachineInstr` after instruction selection. The pre-RA v
 
 The machine-level algorithm differs from the IR level in that it has concrete register pressure information:
 
-```
+```c
 for each machine loop ML (innermost first):
     preheader = ML.getLoopPreheader()
     for each MachineInstr MI in ML:

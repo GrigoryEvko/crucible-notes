@@ -22,7 +22,7 @@ Mercury is NVIDIA's intermediate encoding layer between the optimizer's Ori IR a
 
 ## Architecture
 
-```
+```text
 Phase 113  PostFixForMercTargets          Late Ori fixups for Mercury targets
 Phase 114  FixUpTexDepBarAndSync          Texture dependency bars + sync fixups
 Phase 115  AdvancedScoreboardsAndOpexes   Arch hook point (noop by default)
@@ -139,7 +139,7 @@ The stride of 32 reflects the operand index encoding: `index = register_number *
 
 **3. Conversion node construction.** Allocates a 168-byte conversion node per instruction, inserts it into a per-record BST sorted by `(block_id, sub_block_id)`, and links the two operand sublists:
 
-```
+```text
 Conversion Node (168 bytes):
   +0     8B    BST left child
   +8     8B    BST right child
@@ -182,7 +182,7 @@ if (result == -1) {
 
 `sub_7BFC30` walks the conversion node's BST, accumulates a bit-budget for all operand partitions, and returns an encoding-unit index (0 or 1) or -1 on overflow:
 
-```
+```c
 validate_encoding(record):                    // sub_7BFC30
     node = record->bst_root          (+32)    // first conversion node
     if node == NULL: return 1                  // empty -> trivially valid
@@ -533,7 +533,7 @@ For severity 3 or 4, `sub_6FA430` inserts `(severity - counter)` additional stal
 
 The emission pass maintains a hash map that caches previously emitted byte sequences keyed by `(instr_offset, block_base_addr)`.  When emitting the same logical instruction at the same block-relative position, the cache returns the prior encoded result and avoids redundant encoding work.  The cache lives in the emitter context at offsets `+128` (entry count), `+136` (bucket array pointer), `+144` (bucket count, always a power of two).
 
-```
+```c
 // --- FNV-1a hash over (instr_offset, block_addr) ---
 // instr_offset = *(DWORD*)(instr+144)    // 4 bytes: assigned byte position
 // block_addr   = current block base addr  // 8 bytes
@@ -615,7 +615,7 @@ Two entry paths exist, both calling the same `sub_6FFDC0` body:
 
 This 66KB function (200+ locals, ~0x7A0 bytes stack frame) is the core of Mercury scheduling. It walks every basic block, computes latencies, allocates scoreboards, inserts waits and barriers, and sets stall counts. The six algorithmic steps execute in sequence within a per-block loop.
 
-```
+```c
 OpexBody(ctx):                                         // sub_6FFDC0
   // ── Initialization ────────────────────────────────
   func_obj    = *ctx
@@ -740,7 +740,7 @@ The final stage converts the fully expanded, WAR-resolved, scoreboard-annotated 
 
 `sub_6E4110` takes 8 parameters (context, instruction list, descriptors, format info, ...) and dispatches to the per-instruction encoding pipeline:
 
-```
+```text
 sub_6E4110 (24KB, final SASS emission)
   ├─ sub_735290 — per-instruction encoding pipeline
   │    ├─ sub_733FA0 (5.1KB)  — encode instruction operands
@@ -859,7 +859,7 @@ The separate scheduling vtable at `0x21DBC80` (77 entries, 32 unique functions) 
 
 ### Mercury Instruction Word
 
-```
+```text
 Offset  Size    Field
 ------  ------  --------------------------------------------------
 +0      8B      vtable pointer (encoder object)
@@ -876,7 +876,7 @@ Output of `sub_6D9690`. Contains the encoded instruction words, operand data, an
 
 ### Pipeline Context
 
-```
+```text
 Offset  Size    Field
 ------  ------  --------------------------------------------------
 +52     4B      Architecture ID (20481 = sm100a)
@@ -888,7 +888,7 @@ Offset  Size    Field
 
 ### Scheduling Control Word (per SASS instruction)
 
-```
+```text
 Offset  Size    Field
 ------  ------  --------------------------------------------------
 +48     4B      Control bits (barrier flags at bits 17:13)
@@ -955,7 +955,7 @@ Each Mercury instruction node points (via +128) to a separately allocated 60-byt
 
 The `control_bits` field at sched+48 is the primary target of WAR pass modifications:
 
-```
+```text
 Bits 17:13  — barrier type (masked via 0xFFF83FFF then OR'd with type << 13)
 Bit  4      — barrier-needed flag (in byte at sched+50)
 Bits  7:5   — barrier sub-type (in byte at sched+50)
@@ -970,7 +970,7 @@ WAR insertion functions modify this field with specific patterns:
 
 Mercury nodes form a doubly-linked list per basic block, managed through the `next` (+0) and `prev` (+8) pointers:
 
-```
+```text
            head (ctx+40)                          tail (ctx+32)
               |                                      |
               v                                      v
@@ -1146,7 +1146,7 @@ Visibility-wise, knob names never reach `strings(1)` output of the unmodified bi
 
 ### Pipeline-Stage Interaction Map
 
-```
+```text
 Phase 113 PostFixForMercTargets ──── MercuryDisableLegalizationOfTexToURBound
 Phase 114 FixUpTexDepBarAndSync
 Phase 117 MercEncodeAndDecode ─────── MercuryEncodeDecode, MercuryDumpInstsAsBinary,

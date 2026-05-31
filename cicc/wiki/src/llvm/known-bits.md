@@ -80,7 +80,7 @@ Unlike upstream LLVM where `InstCombiner::SimplifyDemandedBits` calls `computeKn
 
 ### Core Algorithm
 
-```
+```c
 // sub_11A7600 — merged computeKnownBits + SimplifyDemandedBits
 // Returns: replacement instruction pointer, or NULL if no simplification
 Instruction* computeKnownBitsAndSimplify(
@@ -178,7 +178,7 @@ Instruction* computeKnownBitsAndSimplify(
 
 The trampoline `sub_11AE940` is the per-operand demand propagation entry point. It increments depth, checks the depth limit (`depth > 6` returns all-unknown), and dispatches between the big handler (`sub_11A7600`) and the binary-arithmetic-specific helper (`sub_11A1430`) based on opcode class:
 
-```
+```c
 // sub_11AE940 — per-operand demand propagation trampoline
 Instruction* propagateDemandToOperand(
     AnalysisCtx *ctx, IRNode *parent, unsigned opIdx,
@@ -206,7 +206,7 @@ The secondary helper `sub_11A1430` handles Add/Sub/Xor/Mul/BitCast/ExtractElemen
 
 For binary operators (Add, Sub, Xor), cicc maintains four APInt accumulators (two per operand) and performs a three-tier check:
 
-```
+```c
 // Three-tier demand satisfaction check (sub_11A1430 pattern)
 // More aggressive than upstream single-check approach
 KnownBits kb0, kb1;
@@ -245,7 +245,7 @@ The DemandedBits analysis is the backward complement to KnownBits' forward analy
 
 The core optimization check appears approximately 15 times across the analysis functions:
 
-```
+```c
 // Inline version (width <= 64):
 uint64_t unknown = ~(knownZero | knownOne);
 if ((demanded & unknown) == 0) {
@@ -300,7 +300,7 @@ Cases 0x152--0x161 encode the known bit-width of texture and surface fetch resul
 
 Both the IR-level and DAG-level implementations use the same 32-byte struct:
 
-```
+```c
 struct KnownBits {                      // 32 bytes total
     union {
         uint64_t  val;                  // +0x00: inline storage (width <= 64)
@@ -353,7 +353,7 @@ The `nvvm-intr-range` pass emits:
 
 The KnownBits analysis traverses IR nodes using cicc's internal representation. Each node is 32 bytes:
 
-```
+```c
 struct IRNode {             // 32 bytes (0x20)
     uint8_t  opcode;        // +0x00: single-byte opcode tag (ASCII-based)
     uint8_t  flags;         // +0x01: bit 1, bit 2 = nsw/nuw flags

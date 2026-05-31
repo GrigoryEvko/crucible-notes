@@ -6,7 +6,7 @@ This page maps the complete end-to-end flow of a PTX assembly through ptxas v13.
 
 ## Pipeline Diagram
 
-```
+```text
 nvcc / cicc
   |  (PTX text file or --input-as-string)
   v
@@ -113,7 +113,7 @@ The compilation driver `sub_446240` measures six timed phases per compile unit a
 
 Additional aggregate stats:
 
-```
+```text
 CompileTime = %f ms (100%)
 PeakMemoryUsage = %.3lf KB
 ```
@@ -147,7 +147,7 @@ The thread pool is used throughout the OCG and ELF phases (stages 5-9 in the dia
 
 ### Thread-Local Context Layout
 
-```
+```c
 struct ThreadLocalContext {  // 280 bytes (0x118), per-thread via pthread_getspecific
     uint64_t error_flags;          // +0:   error/warning state flags
     uint64_t has_error;            // +8:   nonzero if error occurred
@@ -168,7 +168,7 @@ Accessed by `sub_4280C0` (3,928 callers -- the single most-called function in th
 
 The top-level control flow from program entry to ELF output:
 
-```
+```text
 main (0x409460, 84 bytes)
   |  setvbuf(stdout/stderr, unbuffered)
   v
@@ -307,7 +307,7 @@ ptxas uses `setjmp`/`longjmp` as its sole error recovery mechanism -- there are 
 
 ### Recovery Point Hierarchy
 
-```
+```text
 sub_446240 (top-level driver)
   setjmp(jmp_buf_global)         // Level 1: catches any fatal anywhere
     |
@@ -360,7 +360,7 @@ The register allocator has its own retry mechanism that operates *within* the no
 
 **On allocation failure** (all retry attempts exhausted):
 
-```
+```text
 Register allocation failed with register count of '%d'.
 Compile the program with a higher register target
 ```
@@ -373,7 +373,7 @@ A dedicated DUMPIR hook exists: `"Please use -knob DUMPIR=AllocateRegisters for 
 
 The complete chain from any error site to process termination:
 
-```
+```text
 [any function, 2,350 call sites]
   sub_42FBA0(descriptor, location, ...)   // central diagnostic emitter
     |  checks descriptor[0] for severity

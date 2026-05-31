@@ -33,7 +33,7 @@ void __fastcall __noreturn main(unsigned int argc, char **argv, char **envp);
 
 ### Phase 0: Initialization (lines 373--425)
 
-```
+```text
 arena_create("nvlink option parser")     --> v338
 arena_create("nvlink memory space")      --> v339
 arena_snapshot(v339)                     --> v340
@@ -69,7 +69,7 @@ A secondary gate at line 426 checks `qword_2A5F1D0`. When non-NULL (set by `--ge
 
 Reached via `LABEL_24`. Creates the output ELF wrapper (`elfw`) via `sub_4438F0`:
 
-```
+```c
 elfw_create(
     type           = (byte_2A5F1E8 == 0) + 1,   // 2=ET_EXEC (default), 1=ET_REL (when -r is set)
     is_64bit       = (dword_2A5F30C == 64),
@@ -138,7 +138,7 @@ For each input, 56 bytes are read and the file type is determined by extension (
 
 #### cubin (lines 639--677)
 
-```
+```c
 if s1 == "cubin":
     validate_elf_magic(header)            // sub_43D970, checks ELF
     check_e_machine(header) == 190        // EM_CUDA
@@ -158,7 +158,7 @@ if s1 == "cubin":
 
 #### PTX (lines 679--736)
 
-```
+```c
 if s1 == "ptx":
     mmap_file(filename) --> ptx_data
     if timing_enabled: start_timer()
@@ -183,7 +183,7 @@ PTX inputs trigger the embedded ptxas backend (`sub_4BD760`). The compiled cubin
 
 #### fatbin (lines 737--759)
 
-```
+```c
 if s1 == "fatbin":
     validate_magic(header) == 0xBA55ED50
     mmap_file(filename) --> fatbin_data
@@ -194,7 +194,7 @@ Fatbin processing is delegated to `sub_42AF40`, which iterates archive members a
 
 #### NVVM IR / LTO IR (lines 761--778)
 
-```
+```c
 if s1 == "nvvm" or s1 == "ltoir":
     assert(byte_2A5F288)    // "should only see nvvm files when -lto"
     mmap_file(filename) --> ir_data
@@ -205,7 +205,7 @@ NVVM and LTO IR inputs are only accepted when `-lto` is active. They are registe
 
 #### bc (Bitcode) (lines 780--787)
 
-```
+```c
 if s1 == "bc":
     fatal_error("should never see bc files")    // always aborts
 ```
@@ -214,7 +214,7 @@ Raw LLVM bitcode is explicitly rejected.
 
 #### Archives (.a) (lines 849--901)
 
-```
+```c
 if s1 is an archive:
     for each library-path pattern in qword_2A5F2F0:
         if filename matches pattern: process archive
@@ -237,7 +237,7 @@ Files with extension `"so"` or unrecognized ELF files that are not device ELFs a
 
 After the input loop, if LTO is enabled (`byte_2A5F288`) and IR modules were collected:
 
-```
+```c
 if byte_2A5F288 and no_ir_collected:
     warn_and_disable_lto()
     byte_2A5F288 = 0
@@ -272,7 +272,7 @@ The LTO compilation has three dispatch paths depending on the result:
 
 3. **Split-compile** (multiple modules): A thread pool is created via `sub_43FDB0`. Each PTX module is dispatched to `sub_4264B0` for parallel compilation. The thread pool uses `sub_43FF50` (enqueue), `sub_43FFE0` (wait), and `sub_43FE70` (join). After all threads complete, each compiled cubin is merged into the output ELF.
 
-```
+```c
 // Split compile path
 thread_pool = create_thread_pool(cpu_count)    // sub_43FDB0
 for i in 0..module_count:
@@ -296,7 +296,7 @@ If `--register-link-binaries` is set (`qword_2A5F2E0`), module-ID records from t
 
 After all inputs are processed and LTO compilation is complete:
 
-```
+```c
 trace("read")
 v353 = reverse_list(v353)          // sub_4649E0
 
@@ -330,7 +330,7 @@ The merge loop calls `sub_45E7D0` (`merge_elf`, 89,156 bytes) for each input cub
 
 After all inputs are merged:
 
-```
+```c
 trace("merge")
 
 // Dead code elimination (optional)
@@ -378,7 +378,7 @@ For Mercury targets (SM >= 100), the serialized ELF is passed through `sub_4275C
 
 ### Phase 7: Cleanup and Exit (lines 1609--1688)
 
-```
+```c
 // Cleanup module list
 for each module in v353:
     free(module->cubin_data)
@@ -420,7 +420,7 @@ else:          exit(0)
 When `dword_2A77DC0` is 1 or 2, main skips device linking entirely:
 
 **Mode 1** (simple script): Writes a fixed linker script directly to the output file or stdout:
-```
+```text
 SECTIONS
 {
     .nvFatBinSegment : { *(.nvFatBinSegment) }
@@ -430,7 +430,7 @@ SECTIONS
 ```
 
 **Mode 2** (ld-derived script): Constructs a shell pipeline to extract the system linker's default script, then appends the NVIDIA sections:
-```
+```bash
 gcc -v 2>&1 | grep collect2 | grep -wo -e -pie -e "-z ..." -e "-m ..." | tr "\n" " "
 ld --verbose $(flags) | grep -Fvx -e "$(ld -V)" | sed '1,2d;$d' > output_file
 ld -T output_file 2>&1 | grep 'no input files' > /dev/null   // validation
@@ -440,7 +440,7 @@ The `collect2` detection pipeline extracts host linker flags (PIE, machine model
 
 ## Overall Pseudocode Structure
 
-```
+```c
 main(argc, argv, envp):
     // Phase 0: Init
     option_arena  = arena_create("nvlink option parser")

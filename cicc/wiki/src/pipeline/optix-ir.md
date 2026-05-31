@@ -145,7 +145,7 @@ When the NVVM container format wraps an OptiX IR payload, the `IRLevel` field in
 
 In the binary header, this is stored as a `uint16_t` at offset `0x0C`:
 
-```
+```text
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 |  IRLevel = 0x0002 (OPTIX)    |   0x0C in NvvmContainerBinaryHeader
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -235,7 +235,7 @@ When `--emit-optix-ir` is specified, the following configuration is implicitly a
 
 The `0x43` mode value preserves the 64/32-bit mode bits (mask `0x300`) from any previously-set `a13` value:
 
-```
+```text
 a13 = (a13 & 0x300) | 0x43
 
 Bit field:

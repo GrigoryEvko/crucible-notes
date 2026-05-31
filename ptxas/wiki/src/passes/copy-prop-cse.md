@@ -67,7 +67,7 @@ The ptxas GVN-CSE operates on the Ori IR basic block list with dominator-tree-gu
 
 Every value table lookup hashes a 32-bit key (the block-relative instruction index stored at `instr+144`) through byte-at-a-time FNV-1a. From the disassembly at `0xBEECB6`--`0xBEECE1`:
 
-```
+```c
 FNV1a_32(key: uint32) -> uint32:
     h = 0x811C9DC5                          // FNV offset basis
     h = (h ^ byte0(key)) * 0x01000193       // FNV prime = 16777619
@@ -104,7 +104,7 @@ Lookup: `bucket = hash & (capacity - 1)`, then linear chain walk comparing `node
 
 For instruction `I` with masked opcode `op = I.opcode & 0xFFFFCFFF`, data type `ty = *(I+76)`, and operand count `n = *(I+80)`:
 
-```
+```text
 VN(I) =
   | not ELIGIBLE(I)                        -> fresh vn, no table entry
   | op = 145 (barrier) AND not SAFE(I)     -> scope break, no CSE
@@ -134,7 +134,7 @@ The expression key is `*(I+144)`, a 32-bit index assigned during def-chain const
 2. **Dominator-tree scoping.** Values defined in block B are only visible to blocks dominated by B. The Full GVN (`sub_BED7E0`) maintains a **scope tree** -- a red-black BST of 64-byte bitset nodes -- that tracks which blocks have been processed within the current dominator subtree. The protocol has three phases:
 
    **Scope push** (`sub_6B4520`, called at `0xBEDDF5` and `0xBEDFC9`). When the dominator-chain walk discovers that a value's dominator is in a previously-processed block, the current block's index is inserted into the scope tree. The block index is decomposed into a group key and an intra-node bit position:
-   ```
+   ```c
    group_key    = block_index >> 8        // BST sort key, stored at node+0x18
    word_index   = (block_index >> 6) & 3  // which of 4 qwords in the 256-bit bitset
    bit_position = block_index & 0x3F      // bit within the selected qword
@@ -171,7 +171,7 @@ The GVN-CSE body was located by reading SM backend vtable slot 23 (offset `+0xB8
 
 #### Call Chain
 
-```
+```text
 GvnCse::execute (0xC5F000)
   -> sm_backend->vtable[23]  (indirect dispatch)
      -> sub_BEE590           (GVN entry, SM60/70/90)
@@ -215,7 +215,7 @@ Before the standard GVN (`sub_BEAD00`), the mode dispatcher may invoke `sub_BED4
 
 Mode 1 provides the lightest GVN variant -- single-scope CSE without cross-dominator lookup. Reconstructed pseudocode:
 
-```
+```c
 procedure SimpleGvn(gvn_state S):
     context = S.context
     first_reg = operand_24bit(first_instr(context+272))
@@ -253,7 +253,7 @@ This variant does not examine the immediate-dominator chain at `instruction+148`
 
 Mode 2 extends the simple GVN with cross-dominator CSE. After finding an eligible instruction and reaching the end of a block, it follows the immediate-dominator chain:
 
-```
+```c
 procedure StandardGvn(gvn_state S, char cross_block_flag):
     // ... (same entry and block walk as SimpleGvn) ...
 
@@ -308,7 +308,7 @@ The dominance check is guarded by `context+1377` bit 5 (`0x20`). When this flag 
 
 When the flag is set, the function implements a single-entry global cache to accelerate repeated dominator queries:
 
-```
+```c
 procedure DominanceCheck(gvn_state S, value_record vr):
     if not (context+1377 & 0x20): return 0           // no extended scope
 
@@ -337,7 +337,7 @@ The cache stores a single `(key, result)` pair in global statics `qword_2A12A08`
 
 The Extended Basic Block (EBB) pre-pass runs before mode 2 GVN when the SM version and knob conditions are met. It identifies cross-block CSE opportunities within single-entry CFG regions.
 
-```
+```c
 procedure EbbPrePass(gvn_state S):
     // Phase 1: Clear previous markings
     for each block B in linked order:
@@ -382,7 +382,7 @@ The EBB propagation engine (`sub_BED0A0`) is a fixed-point iteration that propag
 
 This is the most complete GVN variant (modes 3-6). Reconstructed pseudocode:
 
-```
+```c
 procedure FullGvnCse(gvn_state S):
     context = S.context
     mode_flags = S.mode & ~0x02            // strip bit 1
@@ -472,7 +472,7 @@ procedure FullGvnCse(gvn_state S):
 
 **Block index recovery formula.** A block index is split on insertion and reassembled during traversal:
 
-```
+```text
 Insertion (sub_6B4520):
     key       = block_idx >> 8           stored at node+24
     qword_idx = (block_idx >> 6) & 3    selects bitset[0..3]
@@ -608,7 +608,7 @@ Reassociation operates in two phases: an expression-normalization walk that rewr
 
 **Phase 1 -- Expression normalization.**  The pass walks each basic block in RPO and inspects every instruction whose opcode is associative and commutative (ADD, MUL, AND, OR, XOR) or is SUB.
 
-```
+```c
 procedure ReassociateAndCommon(function F):
     for each basic block B in RPO(F):
         for each instruction I in B (budget-limited by ReassociateCSEBudget):
@@ -662,7 +662,7 @@ The SUB rewriting criterion is conservative: converting `a - b` to `a + NEG(b)` 
 
 The reassociation and commoning phases are tightly coupled because reassociation's primary goal is to enable commoning:
 
-```
+```text
 BB0:  R5 = (R2 + R3) + R4
       GvnCse hash: H(ADD, H(ADD, vn(R2), vn(R3)), vn(R4))
 BB1:  R6 = (R2 + R4) + R3
@@ -737,7 +737,7 @@ char execute(phase* self, compilation_context* ctx) {
 
 Algorithm, reconstructed from the decompilation:
 
-```
+```c
 procedure LateCommoning(working_set WS):
     S = *WS                                    // Code Object
     if not knob_enabled(487):  return
@@ -806,7 +806,7 @@ The three infrastructure functions called at the beginning are shared with the G
 
 The pairwise equivalence check invoked by `sub_8F46F0` on each candidate is `sub_8F4510(S, block_existing, I_cand, I_cur)`. Two instructions are structurally equivalent -- written **EQUIV(I1, I2)** where I1 is the existing candidate and I2 is the current instruction -- iff all seven conditions hold simultaneously:
 
-```
+```text
 EQUIV(I1, I2)  :=
     C1  ∧  C2  ∧  C3  ∧  C4  ∧  C5  ∧  C6  ∧  C7
 
@@ -932,7 +932,7 @@ The `BackCopyPropBudget` knob (index 808, address `0x21BFDF0`) limits the number
 
 The backward copy propagation algorithm is reconstructed from the phase name, the infrastructure it shares with forward copy propagation (`sub_781F80`, `sub_763070`), the `BackCopyPropBudget` knob, and the pipeline position constraints. The actual algorithm body resides in architecture-specific SM backend code, not in the generic binary.
 
-```
+```c
 procedure BackCopyPropagate(function F):
     budget = knob(808)     // BackCopyPropBudget
     count = 0
@@ -973,7 +973,7 @@ procedure BackCopyPropagate(function F):
 
 The backward walk direction is essential for cascading chain collapse:
 
-```
+```text
 Before:    R1 = expr;    R2 = R1;    R3 = R2
                                       ^^^^^^ processed first (backward)
 Step 1:    R1 = expr;    R3 = R1;    (deleted R3=R2, renamed R2→R3 in "R2=R1")
@@ -1077,7 +1077,7 @@ Three flag bits on instruction field `[6]` (byte offset 24) track propagation st
 
 The eligibility function checks whether a copy can be safely propagated, with an SM-version-dependent constraint:
 
-```
+```c
 function isEligibleForPropagation(instr, ctx):
     sm_version = *(ctx + 372)
     operand_type = instr.operand_type & 0xF
@@ -1100,7 +1100,7 @@ The execute body (`sub_908EB0`, 217 lines) walks the flat instruction list in a 
 
 Initialization calls `sub_781F80(ctx, 1)` to rebuild per-instruction def-chain flags, then enters a single `do-while` over the linked list at `*(ctx+272)`.
 
-```
+```c
 procedure OriCopyProp(ctx):
     arch_pred = *(*(*(ctx+1584))+1312)(...)   // arch supports predicate marking?
     sub_781F80(ctx, 1)                         // rebuild def chains
@@ -1236,7 +1236,7 @@ All 24 knobs controlling copy propagation and CSE:
 
 The copy propagation and CSE passes interact with each other and with the rest of the pipeline in a specific sequence designed to maximize redundancy elimination:
 
-```
+```text
 Phase 46: GeneralOptimizeMid2
   |-- OriCopyProp (forward copy propagation)
   |-- constant folding, algebraic simplification, DCE
@@ -1359,7 +1359,7 @@ Hash-related functions identified in the binary:
 
 The code-caching hash at `sub_9B1200` uses a different algorithm from FNV-1a:
 
-```
+```c
 hash = (1025 * (value + hash)) ^ ((1025 * (value + hash)) >> 6)
 ```
 

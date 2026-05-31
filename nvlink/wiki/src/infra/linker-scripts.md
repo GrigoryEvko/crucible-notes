@@ -25,7 +25,7 @@ This feature exists because `nvcc`'s driver needs a linker script at host link t
 
 All code paths share a single hardcoded 130-byte string that defines three CUDA-specific host ELF sections:
 
-```
+```text
 SECTIONS
 {
 	.nvFatBinSegment : { *(.nvFatBinSegment) }
@@ -224,7 +224,7 @@ Mode 2 (`lcs-abs`) is implemented as two sequential shell commands whose combine
 
 ### Data Flow Diagram
 
-```
+```text
                  +---------------------------------------------------+
                  |  main() mode dispatch (dword_2A77DC0 == 2)         |
                  +---------------------------------------------------+
@@ -340,7 +340,7 @@ ld -T <output_file> 2>&1 | grep 'no input files' > /dev/null
 
 nvlink does not parse the `ld --verbose` output itself -- all parsing is delegated to `grep`, `sed`, and `tr`. The effective state machine that the shell pipeline implements is a three-stage line filter. Each stage reads lines from stdin and writes accepted lines to stdout; a line that survives all three stages lands in the output file.
 
-```
+```text
 stdin (ld --verbose output)
          |
          |  S0 (line 1):  "GNU ld (GNU Binutils for <distro>) <version>"

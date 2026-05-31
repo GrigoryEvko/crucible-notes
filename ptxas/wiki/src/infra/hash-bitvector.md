@@ -39,7 +39,7 @@ Mode detection is a compile-time optimization: the insert and lookup fast paths 
 
 ### Object Layout (112 bytes)
 
-```
+```text
 GeneralHashMap (112 bytes, allocated by sub_425B20)
   +0    ptr     hash_fn          // Hash function pointer (or NULL for mode 1/2)
   +8    ptr     compare_fn       // Compare function pointer
@@ -68,7 +68,7 @@ GeneralHashMap (112 bytes, allocated by sub_425B20)
 
 Each entry in the entries array at +88 is 16 bytes:
 
-```
+```text
 Entry (16 bytes, at entries + 16 * index)
   +0    ptr/u64   key            // Key (string pointer, raw pointer, or integer)
   +8    ptr/u64   value          // Associated value
@@ -197,7 +197,7 @@ The CFG edge hash map is a completely separate implementation from the general h
 
 ### Object Layout
 
-```
+```text
 CFGHashMap (40 bytes header)
   +0    ptr     first_free_node   // Free list for node recycling
   +8    ptr     node_arena        // Pool allocator for new nodes
@@ -213,7 +213,7 @@ Two distinct hash map configurations exist for different node sizes:
 
 Used by `sub_BDED20` (12KB) for the successor edge hash map at Code Object +648. Each node represents a block's successor edge set with an optional sub-hash table for multi-successor blocks:
 
-```
+```text
 FullNode (64 bytes)
   +0    ptr     next              // Chain link within bucket
   +8    i32     key               // Block index (bix)
@@ -232,7 +232,7 @@ FullNode (64 bytes)
 
 Used by `sub_BDF480` (10KB) for the backedge hash map at Code Object +680. Each node is a minimal key-hash pair for set membership testing:
 
-```
+```text
 SimpleNode (16 bytes)
   +0    ptr     next              // Chain link within bucket
   +8    i32     key               // Block index
@@ -243,7 +243,7 @@ SimpleNode (16 bytes)
 
 Both full and simple node maps use the same bucket header:
 
-```
+```text
 Bucket (24 bytes)
   +0    ptr     head              // First node in collision chain
   +8    ptr     tail              // Last node in collision chain
@@ -500,7 +500,7 @@ The `isSubsetOf` operation tests whether bitvector A is a subset of B, i.e. `(A 
 
 The iterative fixed-point solver runs in reverse post-order, computing LiveIn and LiveOut bitvectors per basic block:
 
-```
+```text
 LiveOut(B) |= LiveIn(S)                    -- for each successor S: orIfChanged
 LiveIn(B)  = gen(B) | (LiveOut(B) - kill(B))  -- orWithAndNotIfChanged
 ```
@@ -511,7 +511,7 @@ Six dedicated phases (10, 16, 19, 33, 61, 84) perform liveness + DCE. The `orWit
 
 The iterative dominator computation (`sub_BE2330`, 4KB) uses bitvector intersection:
 
-```
+```text
 dom[entry] = {entry}
 dom[b] = {b} union (intersection of dom[p] for all predecessors p)
 ```

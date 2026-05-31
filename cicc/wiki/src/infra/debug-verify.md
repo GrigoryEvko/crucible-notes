@@ -185,13 +185,13 @@ if (flags & 0x02) {          // distinct metadata
 Iterates every function in the module. For each, looks up its `DISubprogram` in the hash table and cross-references `dbg.value()` / `dbg.declare()` intrinsics against the pre-snapshot. Two diagnostic levels:
 
 **ERROR** (pass dropped a subprogram entirely):
-```
+```text
 ERROR: <pass> dropped DISubprogram of <function> from <file>
 ERROR: <pass> did not generate DISubprogram for <function> from <file>
 ```
 
 **WARNING** (pass dropped individual variable tracking):
-```
+```text
 WARNING: <pass> drops dbg.value()/dbg.declare() for <var> from function <func> (file <file>)
 ```
 
@@ -401,7 +401,7 @@ DWARF for PTX differs fundamentally from DWARF for x86. PTX is a virtual ISA -- 
 
 The AsmPrinter (`sub_31D55F0`) emits DWARF `.loc` directives before each PTX instruction that has a valid `DebugLoc`:
 
-```
+```ptx
 .loc 1 42 0          // file 1, line 42, column 0
 ld.param.u64 %rd1, [_Z6kernelPf_param_0];
 .loc 1 43 5
@@ -420,7 +420,7 @@ The `-line-info-inlined-at` LLVM knob (registered at `ctor_043` / `0x48D7F0`, ex
 
 The `-show-src` CLI flag (stored at flag struct offset `+808`, routed to the backend as `-nvptx-emit-src`) enables source line interleaving in PTX output. When active, the AsmPrinter annotates each `.loc` directive with the corresponding source line as a PTX comment:
 
-```
+```ptx
 // kernel.cu:42    float val = input[idx];
 .loc 1 42 0
 ld.global.f32 %f1, [%rd2];

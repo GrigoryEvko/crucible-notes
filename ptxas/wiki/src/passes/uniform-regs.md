@@ -79,14 +79,14 @@ Replaces uniform register reads with immediate constants when the value is known
 
 Kernel launch parameters are passed through constant memory. After PTX-to-Ori lowering, a kernel parameter access looks like:
 
-```
+```asm
 LDC  R3, c[0x0][0x160]     // load parameter from constant bank
 IMAD R4, R3, R5, RZ        // use the parameter
 ```
 
 If the compiler can prove that the constant bank address contains a known immediate (e.g., from `.param` directives with known offsets), the `LDC` is dead and the use can be folded:
 
-```
+```asm
 IMAD R4, 42, R5, RZ        // parameter replaced with immediate 42
 ```
 
@@ -277,7 +277,7 @@ Both passes execute the same forward dataflow procedure. The analysis is an **it
 
 Binary analysis of `sub_90E620` (1,919 bytes, called from `sub_90EDA0`) confirms this structure. The function contains an outer `do { ... } while (worklist)` loop driven by a bitvector of pending registers. Within the loop body, `sub_90C180` (2,093 bytes) propagates varying status to each register and returns a non-zero changed flag when the status was updated. When changes are detected and the affected register belongs to a callee function (checked via the call-graph edge list at `codeobj+128`), `sub_90E3F0` resolves the callee's divergence through FNV-1a hash lookups on the function-local state at offsets `+288`/`+328`. If the callee function itself was newly marked varying (comparing the callee's function record against the changed record), the loop restarts from the beginning via `goto LABEL_24`, re-processing all pending registers with the updated information.
 
-```
+```c
 PropagateVarying(code_object):
   // Step 1 -- seed: clear all flags, then mark intrinsic divergence roots
   for each vreg: clear bit 2 of vreg+49
@@ -361,7 +361,7 @@ The Code Object maintains several fields related to UR state:
 The scheduling dependency builder at `sub_A0D800` (39 KB) tracks UR pressure separately. When `+1376` bit 4 is set, the control word computation at `sub_A09850` doubles the register count for uniform operands (`v15 = type==3 ? 2 : 1`) and writes a 9-bit register count to the control word bits [0:8].
 
 The scheduling statistics printer (`sub_A3A7E0`) reports texture binding mode as "UR-bound" when textures are accessed via uniform-register-based descriptors:
-```
+```text
 # [inst=142] [texInst=0] [tepid=0] [rregs=24]
 ```
 
@@ -369,7 +369,7 @@ The scheduling statistics printer (`sub_A3A7E0`) reports texture binding mode as
 
 The function `sub_A465F0` (`CodeObject::buildCodeObjectHeader`, 2.6 KB binary) checks whether UR registers were used despite being disallowed. The diagnostic:
 
-```
+```text
 "Uniform registers were disallowed, but the compiler required (%d) uniform
  registers for correct code generation."
 ```
@@ -387,7 +387,7 @@ This fires on pre-sm_75 targets where the UR file does not exist, or when a CLI 
 
 The `LDCU` (Load Constant Uniform) instruction is gated by architecture capability. The validation at `sub_B28400` (345 bytes) checks:
 
-```
+```text
 "SM does not support LDCU. On SM90 -knob EmitLDCU is only supported when
  options '-forcetext' and '-sso out.sass' are provided."
 ```

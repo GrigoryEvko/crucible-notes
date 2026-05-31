@@ -57,7 +57,7 @@ Only after this chain completes does phase 115 walk the now-frozen instruction l
 
 ## Execute Body Disassembly
 
-```
+```asm
 ; sub_C60640 -- PostSchedule::execute(this, ctx)
 ;                a1 = `this` (16-byte phase object, unused)
 ;                a2 = compilation context (rsi/rbx)
@@ -166,7 +166,7 @@ If RA decides to spill a frequently-live register, PostSchedule will see a seque
 
 When the sub-target vtable slot `+0x90` installs the Backend C entry, the call chain that runs inside PostSchedule is:
 
-```
+```text
 sub_C60640 (PostSchedule::execute)
   -> [tail-jmp via subtarget.vtable[+0x90]]
        sub_1908D90 (RBTScheduleOrchestrator, mode=0 post-schedule)

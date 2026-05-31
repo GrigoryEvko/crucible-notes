@@ -37,7 +37,7 @@ The path is **not** used for normal device-link flows where nvlink receives cubi
 
 The host ELF path sits at the bottom of the input file classification cascade in `main()`. The dispatch evaluates, in order:
 
-```
+```text
 For each input file:
   1. Read a 56-byte header probe from the start of the file
   2. If extension == ".a"                                     -> archive handler
@@ -334,7 +334,7 @@ The payload size is computed from the wrapper header: `data_size` at offset 8 gi
 
 ### Detection Flow Diagram
 
-```
+```text
                    [host .o file]
                          |
                          v
@@ -547,7 +547,7 @@ void extract_module_ids(void *elf_buf, const char *filename, void *list) {
 
 Each entry's format is:
 
-```
+```text
 "def " <module-name> "\0"
  4 B    variable       1 B
 ```

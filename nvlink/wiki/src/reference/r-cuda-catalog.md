@@ -229,7 +229,7 @@ The 117 standard and 65 attribute descriptors are stored as 64-byte fixed record
 
 ### Verified byte layout
 
-```
+```text
 offset  size  field             role
 ------  ----  ----------------  ----------------------------------------------
  0..7    8    name_ptr          LE pointer to type-name string in .rodata
@@ -248,7 +248,7 @@ The 12-byte header in [`r-cuda-relocations.md` § Descriptor Format](../linker/r
 
 ### ASCII byte map
 
-```
+```text
 byte:   0  1  2  3  4  5  6  7   8  9  A  B   C  D  E  F  10 11 12 13  14 15 16 17
        [ name_ptr (qword)     ] [apply_class] [slot0.boff] [slot0.bwid] [slot0.act ]
 

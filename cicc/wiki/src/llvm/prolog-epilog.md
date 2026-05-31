@@ -21,7 +21,7 @@ NVIDIA GPUs have no hardware stack pointer. There is no `push`, no `pop`, no `%r
 
 Every PTX function that needs local storage declares a `.local` byte array:
 
-```
+```ptx
 .local .align 16 .b8  __local_depot0[256];
 ```
 
@@ -33,7 +33,7 @@ There is no call stack in the CPU sense. GPU threads have a fixed local memory a
 
 PTX declares two pseudo-register pairs for frame access:
 
-```
+```ptx
 .reg .b64  %SP;     // generic address space pointer to the frame
 .reg .b64  %SPL;    // local address space (AS 5) pointer to the frame
 ```
@@ -46,7 +46,7 @@ In 32-bit mode these are `.reg .b32`. The distinction exists because NVIDIA GPUs
 
 The prologue sequence is:
 
-```
+```ptx
 mov.u64   %SPL, __local_depot0;     // MOV_DEPOT_ADDR_64
 cvta.local.u64  %SP, %SPL;          // cvta_local_64
 ```
@@ -90,7 +90,7 @@ When callee-saves exist and optimization level is not 20 (a special threshold), 
 
 This is the heart of PEI. It assigns byte offsets within `__local_depot` to every frame object.
 
-```
+```text
 MachineFrameInfo layout:
   StackDirection:    1 = grows-negative (toward lower addresses)
                      0 = grows-positive (toward higher addresses)
@@ -283,7 +283,7 @@ The upstream pass explicitly disables LLVM's standard `PrologEpilogCodeInserterI
 
 ### MachineFrameInfo (at MachineFunction+48)
 
-```
+```text
 Offset  Type   Field
 +8      ptr    Objects array base pointer (40-byte records)
 +16     ptr    Objects array end pointer
@@ -306,7 +306,7 @@ Offset  Type   Field
 
 ### PEI State (pass object, offset from `a1`)
 
-```
+```text
 Offset  Type   Field
 +8      ptr    Analysis list (tagged analysis pointers)
 +200    ptr    Callee-save info (0xA8-byte struct, or null)
@@ -323,7 +323,7 @@ Offset  Type   Field
 
 ### Frame Object Record (40 bytes each)
 
-```
+```text
 Offset  Type   Field
 +0      i64    Byte offset in __local_depot (assigned by PEI)
 +8      i64    Object size in bytes

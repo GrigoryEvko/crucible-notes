@@ -21,7 +21,7 @@ This page covers the top-level compilation orchestration layer of ptxas: the cod
 
 ## Architecture
 
-```
+```text
 sub_446240 (top-level driver)
   |
   v
@@ -151,7 +151,7 @@ for (node = kernel_list; node; node = node->next) {
 
 The CU builder (`v293`) constructs a linked list of 72-byte compile-unit descriptors. Each descriptor contains:
 
-```
+```c
 struct CompileUnitDescriptor {  // 72 bytes
     int32   index;              // +0:  CU ordinal (monotonic counter)
     // +4..7: alignment hole (OWORD zero-init covers it)
@@ -345,7 +345,7 @@ The vtable call at `a1+96` is the entry point into `sub_64BAF0` (the 1,006-line 
 
 This 64-line function accumulates per-kernel timing results into the master timing array at `a1+256`. Each entry in this array is a 112-byte record:
 
-```
+```c
 struct KernelTimingRecord {  // 112 bytes, at a1->timing_array + 112*index
     char*   kernel_name;     // +0
     float   ocg_time;        // +20
@@ -427,7 +427,7 @@ The timing lock at index 6 (`sub_607D70(6)` / `sub_607D90(6)`) serializes access
 
 ## Data Flow Summary
 
-```
+```text
 PTX text
   |
   v (parsed by sub_451730 into AST at parser_state+88)

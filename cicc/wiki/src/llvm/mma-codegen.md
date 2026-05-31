@@ -23,7 +23,7 @@ This page documents the code generation mechanics: how MMA operations flow from 
 
 MMA code generation follows a three-stage pipeline. The first two stages exist in parallel copies; the third is shared.
 
-```
+```text
 CUDA source:  __hmma_m16n16k16_mma_f32f32(d, a, b, c, 0)
                 │
     ┌───────────┴───────────┐
@@ -53,7 +53,7 @@ All MMA operations are encoded as a single 64-bit descriptor word stored at `*(Q
 
 ### Bit Layout
 
-```
+```text
 Bits     Field       Query key   Values
 ───────  ──────────  ─────────   ──────
 [0]      rowcol      "rowcol"    0=row, 1=col
@@ -251,7 +251,7 @@ else
 
 The code generation sequence is:
 
-```
+```text
 1. LOAD  A fragments: v100 iterations of sub_94B510 (extract from ptr v7)
 2. LOAD  B fragments: v95  iterations (extract from ptr v93)
 3. LOAD  C fragments: v101 iterations (extract from ptr v92)
@@ -299,7 +299,7 @@ WGMMA operates on a warp group (4 warps, 128 threads) instead of a single warp. 
 
 The lowering handler (in `sub_955A70`, cases 0x2FD--0x300, ~800 lines) extracts 7 levels of chained operands:
 
-```
+```text
 v263 -- M dimension (constant)
 v512 -- accumulator fragments
 v528 -- A descriptor
@@ -325,12 +325,12 @@ The N dimension (extracted via `sub_620FD0` as a constant integer) maps to one o
 For intermediate N values (multiples of 8 from 8 to 256), the mapping continues at stride +4 per N increment. Even intrinsic IDs encode integer-element variants; odd IDs encode float-element variants. The element type is determined by checking whether the LLVM type is an integer with width 10 (i.e., tf32 or bf16 packed as i10 -- a quirk of the NVVM type system).
 
 If constant extraction overflows, the compiler emits:
-```
+```text
 "unexpected constant overflow in __wgmma_mma_async operand"
 ```
 
 If N is not a power of two: `(N & (N - 1)) != 0` triggers:
-```
+```text
 "N only supported for powers of two"
 ```
 
@@ -348,7 +348,7 @@ The full WGMMA intrinsic table (`sub_12B2E10`) uses a 144-entry grid spanning ID
 
 Each WGMMA call packs mode bits into a single integer:
 
-```
+```text
 bit 0:  accumulate flag     (from operand v433)
 bit 1:  transpose flag      (from operand v445)
 bit 2:  negate-C flag       (from operand v433)
@@ -373,7 +373,7 @@ On first call, `sub_953BA0` lazily initializes a red-black tree at `ctx+560` wit
 
 The output is packed into a 64-bit value:
 
-```
+```text
 bits[3:0]    = trans_a
 bits[7:4]    = shape << 4
 bits[15:8]   = a_nregs << 8
@@ -449,7 +449,7 @@ All handled by `sub_30462A0`:
 
 Commit operations validate multicast mask size -- only 16-bit and 32-bit masks are supported:
 
-```
+```text
 "tcgen05.commit.* supports only 16-bit and 32-bit multicast mask size."
 ```
 

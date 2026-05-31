@@ -25,7 +25,7 @@ Mercury is not a single monolithic format. It has two deployment tiers tied to G
 
 The `--binary-kind` CLI flag at `0x1D41D94` (xref `0x4ACC47`) selects the output format:
 
-```
+```text
 --binary-kind <mercury|capmerc|sass>
 
 Specify the type of target ELF binary kind.
@@ -166,7 +166,7 @@ Before entering the main loop, the dispatch function performs three setup steps:
 
 2. **CFG group allocation**: Allocates two CFG group objects, each 64 bytes, via the arena allocator at `***context+16`. Each CFG group has a doubly-linked list structure:
 
-```
+```text
 CFG Group (64 bytes):
   +0:   prev pointer (or NULL for head)
   +8:   sentinel (points to self+16)
@@ -184,7 +184,7 @@ CFG Group (64 bytes):
 
 #### The Main Iteration Loop
 
-```
+```c
 MercExpand_Dispatch(pass_state):
     context       = pass_state->context          // at +24
     func_body     = context->func_body           // at +312
@@ -289,7 +289,7 @@ MercExpand_Dispatch(pass_state):
 
 The switch statement at the heart of `sub_5FDDB0` dispatches on 30 distinct opcode tag values. Each case either calls a direct handler function or dispatches through a vtable. The vtable is at `*pass_state` (the first pointer in the pass state object).
 
-```
+```c
 switch (opcode_tag):  // node->word_28
     case 0:     vtable[48/8=6]  (pass_state, node)     // Generic expansion
     case 5:     register_width_clamp(node, max=15)      // Clamp register width
@@ -333,7 +333,7 @@ switch (opcode_tag):  // node->word_28
 
 Case 11 is the most complex case. It checks three capabilities to select a handler:
 
-```
+```c
 case 11:
     target = context->ptr_416
     if call_vtable(target, cap_584, node+16):
@@ -352,7 +352,7 @@ case 11:
 
 Case 27 handles load/store instructions with the richest attribute-based dispatch:
 
-```
+```c
 case 27:
     // Check expansion state attribute (348)
     if has_attr(348):
@@ -398,7 +398,7 @@ case 27:
 
 Case 120 handles metadata nodes, particularly inline constants and PHI inputs:
 
-```
+```c
 case 120:
     metadata = node->metadata_ptr              // at +112
     kind = *metadata                           // first dword
@@ -428,7 +428,7 @@ case 120:
 
 After processing all instructions, the dispatch function performs final bookkeeping:
 
-```
+```c
     // After all nodes processed:
     func_info = context->ptr_1280              // at context[160]
     if func_info:
@@ -451,7 +451,7 @@ After processing all instructions, the dispatch function performs final bookkeep
 
 The function initializes a 144-byte local state structure on the stack:
 
-```
+```c
 HandleInstruction(state, context, bb_list, is_predicated, pass_number):
     // Zero the local state
     state->ptr_24   = &input_operands
@@ -478,7 +478,7 @@ HandleInstruction(state, context, bb_list, is_predicated, pass_number):
 
 For each IR instruction, the handler looks up the corresponding **target instruction descriptor** -- a 184-byte structure that defines the Mercury encoding constraints:
 
-```
+```c
     // Get descriptor index from instruction metadata
     desc_index = *(inst->metadata_ptr + 20)    // metadata[5]
     
@@ -515,7 +515,7 @@ The descriptor at pointer `v19` has this layout:
 
 After descriptor lookup, the handler applies register constraints in a strict order. The constraint system has four layers, each with source (`operand_index=0`) and destination (`operand_index=4`) variants, plus bidirectional variants (`operand_index=2,3`):
 
-```
+```c
     // Layer 1: Simple operand constraints (sub_5F1C50)
     if descriptor->has_src_constraint:         // byte at +164
         sub_5F1C50(context, operands, &offset, node+16, 0, &descriptor[+8])
@@ -555,7 +555,7 @@ The `sub_5F0180` function (14.2 KB) is the core register constraint propagation 
 
 After register constraints, the handler computes scheduling distances -- the minimum number of cycles between dependent instructions:
 
-```
+```c
     // Query scheduling distance from target capabilities
     target_caps = sub_4FBCF0(target->desc_312, node+16, 0)
     if target_caps:
@@ -588,7 +588,7 @@ After register constraints, the handler computes scheduling distances -- the min
 
 The function tracks seven categories of instruction dependencies for scheduling:
 
-```
+```c
     // Track dependencies by memory space / operation type
     state->ptr_88   -- last instruction using scheduling class (general dep)
     state->ptr_96   -- last texture/sampler operation
@@ -639,7 +639,7 @@ These bit flags directly control the Mercury encoder: they select between compac
 
 After constraints and scheduling, two final calls emit the expanded instruction:
 
-```
+```c
     // 1. Branch expansion
     sub_5EEB20(state, node+16)                // HandleBranch -- resolves branch targets
     
@@ -666,7 +666,7 @@ After constraints and scheduling, two final calls emit the expanded instruction:
 
 After the main loop exits, the handler performs a final pass on the last instruction in the block:
 
-```
+```c
     // Compute final scheduling distance for the block
     last_meta = last_instruction->metadata_ptr
     max_offset = state->dword_32
@@ -722,7 +722,7 @@ After the main loop exits, the handler performs a final pass on the last instruc
 
 The instruction dispatch for case 11 / vtable+584 uses an FNV-1a hash map to find pre-computed expansion templates:
 
-```
+```c
 sub_5F80E0(pass_state, node):
     context = pass_state[3]                    // ptr at index 3
     
@@ -772,7 +772,7 @@ sub_5F80E0(pass_state, node):
 
 After certain expansions, the engine runs a cleanup pass that removes unnecessary NOP-like instructions:
 
-```
+```c
 sub_5F7A00(pass_state):
     target_info = *(context->ptr_312 + 72)
     if target_info->byte_1008 != 1:
@@ -823,7 +823,7 @@ sub_5F7A00(pass_state):
 
 `sub_5EA4F0` (MercExpand_InvalidateRegisterState, 4.3 KB) manages a generation-counter-based register cache. The cache tracks 13 physical register file partitions, each with a value slot and a generation counter:
 
-```
+```c
 sub_5EA4F0(state, is_predicated):
     // Bump 15 generation counters (different register file partitions)
     state->gen_64++                            // general purpose registers (even)
@@ -1047,7 +1047,7 @@ Finalization also appears in the capsule mercury code region with thread-level p
 
 The `--opportunistic-finalization-lvl` flag (string at `0x1D41F70`) controls cross-architecture finalization behavior:
 
-```
+```text
 --opportunistic-finalization-lvl <0|1|2|3>
 
 0 = default behavior

@@ -442,7 +442,7 @@ Similarly, in `sub_426CD0` (lines 184--196), if marking is enabled and partial m
 
 ## Complete Decision Flowchart
 
-```
+```text
 Option parse (sub_427AE0)
   byte_2A5F286 = 0  (default: whole-program)
   byte_2A5F285 = --force-partial-lto   (or 1 if -r + -lto)

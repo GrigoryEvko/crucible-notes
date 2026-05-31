@@ -32,7 +32,7 @@ Turing is architecturally significant as the first SM generation to introduce th
 
 For each NVVM IR instruction to be lowered to SM75 machine code, `sub_FBB810` executes the following protocol:
 
-```
+```text
 1. sub_FBB810 iterates through all 276+ pattern matchers
 2. Each matcher calls sub_A49150(ctx, node, field_id) to read instruction attributes
 3. Each matcher calls sub_530FD0(node) to check explicit operand count
@@ -112,7 +112,7 @@ Kind 10 (`UREG`) is the defining Turing addition. It reflects the Uniform Regist
 
 Eighteen functions at `0xF10080`--`0xF15A50` implement the "emit" phase of instruction selection. Each takes an emitter context (`a1`, 576+ bytes) and an instruction node (`a2`) and produces the SM75 128-bit instruction encoding. All share a common structure:
 
-```
+```text
 Phase 1: Set instruction opcode at a2+12 (e.g., 126, 18, 104)
 Phase 2: Load register class descriptor from rodata into a1+8 (SSE load)
 Phase 3: Populate 10-slot operand descriptor arrays at a1+24..a1+140
@@ -244,7 +244,7 @@ Thirty-eight functions at `0xFFFDF0`--`0x100BBF0` combine pattern matching with 
 
 ### Encoding Protocol
 
-```
+```text
 1. Pack opcode bits:     sub_4C28B0(a1, 0, 4, 2)   -- 4 bits at offset 0
 2. Pack sub-opcode:      sub_4C28B0(a1, 4, 3, 0)   -- 3 bits at offset 4
 3. Pack encoding fields from rodata tables
@@ -287,7 +287,7 @@ Opcode distribution among emit+encode functions: 11 for FP32 (opcode 104), 8 for
 
 The 576-byte emitter context is the central data structure threading through all emitter and emit+encode functions. It accumulates the operand bindings and bitfield encodings for one SM75 SASS instruction.
 
-```
+```text
 Offset  Size   Field
 +0      8      Reserved / vtable pointer
 +8      16     XMM register class descriptor (SSE-loaded from rodata)

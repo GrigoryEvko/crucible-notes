@@ -13,7 +13,7 @@ those contracts.
 
 The useful model is:
 
-```
+```text
 MLIR llvm/nvvm dialect
     -> llvm::Module
     -> linked device-library module

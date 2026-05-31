@@ -54,7 +54,7 @@ Called by `main()` for Mercury targets (sm >= 100). The buffer is pre-allocated 
 
 Both factory functions allocate a 40-byte context object from the memory arena. The context drives the polymorphic dispatch in `sub_45B6D0`.
 
-```
+```c
 struct elf_writer {                // 40 bytes
     int32_t   mode;                // +0:  backend selector (0..4)
     int32_t   flags;               // +4:  always 0 in observed paths
@@ -204,7 +204,7 @@ The serializer reads these fields from the ELF wrapper:
 
 ### Complete Write Sequence
 
-```
+```text
 Phase 1:  ELF header (52 or 64 bytes)
 Phase 2:  1 byte null padding
 Phase 3:  .shstrtab contents (null-terminated section name strings)
@@ -368,7 +368,7 @@ Combined with `SHT_NOBITS` (8), these five types produce no bytes in the seriali
 
 For sections with data, the content is stored as a singly-linked list of fragment nodes rooted at `sec+72`. This linked list represents the section's data as a series of possibly non-contiguous fragments, each with an offset within the section and a data pointer. The fragment list is built during the merge phase as section data from multiple input objects is concatenated.
 
-```
+```text
 Fragment linked list (rooted at sec+72):
 
   node -> [next_ptr | descriptor_ptr]
@@ -569,7 +569,7 @@ Note: the first entry is `PT_PHDR` (type 6), which identifies the program header
 
 When `elf_class == 1`, each entry is 32 bytes (`sizeof(Elf32_Phdr)`). The structure differs in field ordering -- note that `p_flags` is at offset +24 in ELF32 (after `p_filesz`/`p_memsz`), not at offset +4 as in ELF64:
 
-```
+```text
 Elf32_Phdr: { p_type(+0), p_offset(+4), p_vaddr(+8), p_paddr(+12),
               p_filesz(+16), p_memsz(+20), p_flags(+24), p_align(+28) }
 ```
@@ -663,7 +663,7 @@ The string tables are serialized _before_ any section data because their content
 
 This trace illustrates the byte-level output for a minimal ELF64 `ET_EXEC` binary with 6 sections (null, `.shstrtab`, `.strtab`, `.symtab`, `.text`, `.data`), 2 symbols, `.shstrtab` totaling 40 bytes of strings, `.strtab` totaling 20 bytes, `e_shoff = 0x200`, and `e_shentsize = 64`.
 
-```
+```text
 Preamble (before Phase 1):
   Iterate sections -> find strtab_base, shstrtab_base
   e_phnum = 4  (both bases non-zero)

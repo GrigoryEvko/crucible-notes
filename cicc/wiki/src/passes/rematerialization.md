@@ -74,7 +74,7 @@ After cloning, both variants update use-def chains via `sub_1648780` and set deb
 
 The cost model evaluates each candidate for rematerialization by computing:
 
-```
+```c
 pull_in_cost = base_cost * use_factor
 ```
 
@@ -125,7 +125,7 @@ The algorithm identifies PHI nodes at loop headers, checks whether the IV's valu
 
 The IR-level rematerialization pass (`nvvmrematerialize`) contains three cooperating sub-passes that execute in a fixed sequence within a single pass invocation. The following diagram shows the data each sub-pass produces and consumes, and the feedback loop that drives iterative pressure reduction.
 
-```
+```text
                Live Variable Analysis (prerequisite)
                +------------------------------------+
                | Builds per-block live-in/live-out   |
@@ -402,7 +402,7 @@ The `do-remat` master control (default 3) enables all rematerialization sub-phas
 
 ## Diagnostic Strings
 
-```
+```text
 "Skip rematerialization on <funcname>"
 "Block %s: live-in = %d"
 "Total pull-in cost = %d"

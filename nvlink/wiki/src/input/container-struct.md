@@ -8,7 +8,7 @@ The struct is the *only* mutable state shared between the input-detection layer 
 
 ## Lifecycle Overview
 
-```
+```text
                        allocate                      populate              read                  free
                   ┌─────────────────┐   ┌────────────────────────────┐   ┌──────────┐   ┌────────────────┐
   4BD0A0/4BD240   │                 │ ▶ │ 4CE3B0  set version  (+12) │ ▶ │  4BDB90  │ ▶ │     4BE400     │

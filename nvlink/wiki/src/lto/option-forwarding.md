@@ -38,7 +38,7 @@ Split compilation is controlled by two independent option variables:
 
 The forwarding logic has three cases:
 
-```
+```c
 if split_compile_extended == 1:
     // Not specified -- check split_compile
     if split_compile != 1:
@@ -73,7 +73,7 @@ Note: the CLI parser also accepts `"0"` as a valid Ofast-compile value (meaning 
 
 If `dword_2A5F22C` (the `--maxrregcount` value) is greater than zero, the function emits:
 
-```
+```text
 -maxreg=<N>
 ```
 
@@ -107,7 +107,7 @@ The guard on `byte_2A5F285` means that in partial-LTO mode (relocatable compilat
 
 The `-Xnvvm` mechanism allows users to pass arbitrary options directly to cicc. These options are accumulated during CLI parsing into `qword_2A5F230` (a linked list of strings). The forwarding logic processes them as follows:
 
-```
+```c
 if qword_2A5F230 != NULL:
     // Phase 1: Tokenize all -Xnvvm strings
     // Each -Xnvvm value may contain spaces; split on spaces
@@ -199,7 +199,7 @@ The `-variables` string is loaded via an SSE constant (`xmmword_1D48A60`) into a
 
 The final option array passed to `nvvmCompileProgram` can contain up to `option_count + 8` entries:
 
-```
+```text
 slots [0 .. option_count-1]:   options from sub_426CD0
 slots [option_count .. +5]:    up to 6 host-ref-{ek,ik,ec,ic,eg,ig} options
 slot  [option_count+6]:        "-variables" (if active)
@@ -224,7 +224,7 @@ The consensus mechanism uses a **5-state** machine per tracked option. State tra
 
 The transition table for integer options (`-ftz`, `-prec_div`, `-prec_sqrt`, `-fmad`, `-maxreg`, `-split-compile`):
 
-```
+```text
 Current State  |  Module HAS option            |  Module LACKS option
 -------------------------------------------------------------------
 0 (UNINIT)     |  -> 2, record value            |  -> 1
@@ -274,7 +274,7 @@ The space-delimited format for `-maxreg` and `-split-compile` in the fatbin stri
 
 When the state reaches `VALUE_CONFLICT` (4), the linker emits a warning diagnostic (via `sub_467460`) indicating that modules disagree on the option value. The first value seen is used as the forwarded value. This is the origin of the nvlink warning messages:
 
-```
+```text
 nvlink warning: module compiled with different -ftz setting
 nvlink warning: module compiled with different -prec-div setting
 ```
@@ -388,7 +388,7 @@ Note the `--force-partial-lto` to `--force-device-c` mapping: nvlink's user-faci
 
 The complete data flow from CLI to cicc compilation, including the compile-time augmentation:
 
-```
+```text
 nvlink CLI
    |
    v

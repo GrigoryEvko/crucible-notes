@@ -55,7 +55,7 @@ For pointer-type bases, `sub_1CCDC20` further extracts the underlying global var
 
 Hash map insertion uses `sub_1C50900`. If the base pointer is new (not yet in the map), the instruction list is initialized and the base is appended to the corresponding worklist. Otherwise, the instruction is appended to the existing list for that base.
 
-```
+```c
 for each instruction I in target BBs:
     addr_info = classify_address(I)          // sub_1C57390
     alignment = compute_alignment(addr_info)  // sub_1CCB2B0
@@ -84,7 +84,7 @@ For each candidate base:
    - For offsets wider than 64 bits: reads from extended-precision word arrays and compares word-by-word.
 3. The minimum-offset use becomes the anchor.
 
-```
+```c
 function find_anchor(base_ptr, use_list):
     min_offset = +INF
     anchor = null
@@ -112,7 +112,7 @@ Once the anchor is identified:
 2. For every other instruction sharing the same base, the pass computes the relative offset: `relative_offset = original_offset - anchor_offset`.
 3. `sub_14806B0` creates a new address expression `(new_base + relative_offset)` and replaces the original address operand.
 
-```
+```c
 function rewrite_addresses(anchor, anchor_offset, use_list):
     new_base = create_base_instruction(anchor)  // sub_13A5B00
 
@@ -128,7 +128,7 @@ function rewrite_addresses(anchor, anchor_offset, use_list):
 
 After this transformation, a loop body that previously contained:
 
-```
+```text
 load (base + tid*stride + 0)    // original: full GEP chain
 load (base + tid*stride + 16)   // original: full GEP chain
 store (base + tid*stride + 32)  // original: full GEP chain
@@ -137,7 +137,7 @@ store (base + tid*stride + 48)  // original: full GEP chain
 
 Becomes:
 
-```
+```text
 anchor = base + tid*stride + 0  // hoisted once
 load anchor                     // offset 0: use anchor directly
 load (anchor + 16)              // cheap add
@@ -151,7 +151,7 @@ The three 64-bit multiply-add chains are replaced by three 64-bit immediate addi
 
 When `dword_4FBCAE0 > 1` (the aggressiveness knob is set above default), the pass also considers address groups where the maximum offset has a negative sign bit. These represent patterns like:
 
-```
+```text
 load (base + tid*stride - 32)
 load (base + tid*stride + 0)
 load (base + tid*stride + 32)
@@ -231,7 +231,7 @@ Related SCEV-CGP knobs that interact with BASR:
 
 ## Diagnostic Strings
 
-```
+```text
 "BaseAddressStrengthReduce"   -- Pass identification (line 457)
 "baseValue"                   -- Bitcast helper: base value operand name (sub_1C637F0)
 "bitCastEnd"                  -- Bitcast helper: end-of-chain marker (sub_1C637F0)

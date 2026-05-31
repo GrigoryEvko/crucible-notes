@@ -44,7 +44,7 @@ The flag system is implemented in three functions within `cmd_line.c`:
 
 Each flag occupies a 40-byte entry in a contiguous array beginning at `dword_E80060`, with a maximum capacity of 552 entries (overflow triggers a panic via `sub_40351D`). The current count is tracked in `dword_E80058`.
 
-```
+```c
 struct flag_entry {                    // 40 bytes per entry
     int32_t   case_id;                 // dword_E80060[idx*10]    -- switch dispatch ID
     char*     name;                    // qword_E80068[idx*5]     -- long flag name string
@@ -97,7 +97,7 @@ Some flags are registered as **paired toggles** -- `--flag` and `--no_flag` shar
 
 Users never invoke cudafe++ directly. The intended usage path is:
 
-```
+```bash
 nvcc --some-option -Xcudafe --diag_suppress=1234 source.cu
 ```
 
@@ -468,7 +468,7 @@ When a C++ standard is selected, the post-parsing dialect resolution logic autom
 
 The five `diag_*` flags (IDs 39--43) accept comma-separated lists of diagnostic numbers. The parser strips whitespace, splits on commas, and calls `sub_4ED400(number, severity, 1)` for each number:
 
-```
+```bash
 --diag_suppress=1234,5678       # suppress errors 1234 and 5678
 --diag_warning=20001            # demote CUDA error 20001 to warning
 --diag_error=111                # promote diagnostic 111 to error
@@ -586,7 +586,7 @@ Case 21 in the dispatch switch writes the cudafe++ version banner to `stdout` vi
 
 Banner format (lines emitted in order):
 
-```
+```text
 cudafe: NVIDIA (R) Cuda Language Front End
 Portions Copyright (c) 2005, 2024-YYYY NVIDIA Corporation
 Portions Copyright (c) 1988-2018, 2024 Edison Design Group Inc.
@@ -602,7 +602,7 @@ Case 92 in the dispatch switch writes a single EDG-portion copyright line to `st
 
 Banner string (single line):
 
-```
+```text
 Portions Copyright (c) 1988-2016 Edison Design Group Inc.
 ```
 

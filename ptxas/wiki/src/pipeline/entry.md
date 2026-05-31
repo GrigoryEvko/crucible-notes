@@ -21,7 +21,7 @@ The same binary doubles as an in-process library. When nvcc loads ptxas as a sha
 
 ## Architecture
 
-```
+```text
 main (0x409460, 84B)
   │
   ├─ nullsub_1(*argv)          // store program name (no-op)
@@ -184,7 +184,7 @@ and then sequences: DAGgen (PTX-to-Ori lowering), OCG (optimization and code gen
 
 When `--compiler-stats` is active, `sub_446240` prints per-phase timing and peak memory after all compile units complete:
 
-```
+```text
 CompileTime = 42.3 ms (100%)
 Parse-time            : 12.1 ms (28.61%)
 CompileUnitSetup-time :  1.4 ms ( 3.31%)
@@ -304,7 +304,7 @@ This implements the `--Werror` equivalent: when the Werror flag is active in the
 
 ### Output Format
 
-```
+```text
 <filename>, line <N>; <severity>: <message>
 ```
 

@@ -19,7 +19,7 @@
 
 ## Position in the Pipeline
 
-```
+```text
 sub_5D7430(ctx)        ─── populates body-template name → ID hash map
    │ id 0 = "__cuda_sm20_div_s16"
    │ id 1 = "__cuda_sm20_div_u16"
@@ -50,7 +50,7 @@ The body-template ID assigned by `sub_5D7430` and the switch value consumed by `
 
 The switch is implemented with the System V jump-table idiom: a 32-bit base pointer in `.rodata`, indexed by the helper ID, producing the target block address. Every case body is a 3-instruction sequence -- `lea buffer_ptr`, `lea string_literal_ptr`, `call sub_4DA340` -- which is why the function is so large: 1,080 such bodies inflate to ≈ 34 KiB even though no real logic lives in any individual case.
 
-```
+```text
 0x5FF700: <prologue, load id into edi, range-check>
 0x5FF711: switch dispatch (indirect jmp through jump table)
 0x5FF718: case 1078 body (str_sm20_div_s16)

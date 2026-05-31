@@ -61,7 +61,7 @@ The decompiled code contains explicit unsigned-to-double conversion handling for
 
 **Output format:** `"%-30s %10.2f (CPU) %10.2f (elapsed)\n"`
 
-```
+```text
 Front end time                     12.34 (CPU)     15.67 (elapsed)
 Back end time                       3.45 (CPU)      4.56 (elapsed)
 Total compilation time             15.79 (CPU)     20.23 (elapsed)
@@ -260,11 +260,11 @@ void write_text_signoff(void)     // text-mode path of sub_5AEE00
 
 **Example output:**
 
-```
+```text
 2 errors and 1 warning in compilation of "kernel.cu"
 ```
 
-```
+```text
 3 errors (of which 1 was suppressed error) in compilation of "main.cu"
 ```
 
@@ -369,7 +369,7 @@ exit_with_status(exit_code);
 
 **Decision tree:**
 
-```
+```text
 qword_126ED90 != 0  (errors present)
   └── exit_code = 8  →  exit(2)   "warnings only" path
       NOTE: This is counterintuitive. When errors exist, the exit
@@ -513,7 +513,7 @@ This prevents normal compilations from hitting SIGXCPU. The handler at `sub_5AF2
 
 The full sequence from compilation completion to process termination:
 
-```
+```text
 1.  sub_6B8B20(0)           Reset source file manager state
 2.  sub_589530()            Write signoff + free memory
     ├── sub_5AEE00()        Print error/warning summary (or close SARIF JSON)

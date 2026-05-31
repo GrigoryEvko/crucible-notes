@@ -30,7 +30,7 @@ The range evaluator `sub_DBB9F0` takes a SCEV expression, a signedness flag (`is
 
 Two separate hash tables store signed and unsigned ranges:
 
-```
+```c
 if (is_signed) {
     table    = scev_ctx[+1008];   // signed range cache
     capacity = scev_ctx[+1024];
@@ -130,7 +130,7 @@ The block dimension intrinsics `@llvm.nvvm.read.ptx.sreg.ntid.{x,y,z}` are bound
 
 SCEV delinearization (`sub_DE9D10`) specifically recognizes the grid-stride pattern:
 
-```
+```c
 // CUDA:  for (int i = tid + bid * bdim; i < N; i += bdim * gdim)
 // SCEV:  {threadIdx.x + blockIdx.x * blockDim.x, +, blockDim.x * gridDim.x}
 ```
@@ -179,7 +179,7 @@ The two primary solvers are:
 
 **howFarToZero** (`sub_DBA850`, 1.7 KB) -- handles `x != 0` exit conditions. The exit condition is normalized to `V = LHS - RHS`, so the loop exits when `V == 0`. For affine AddRec `{Start, +, Step}`:
 
-```
+```c
 // The loop exits when: Start + Step * N = 0 (mod 2^BW)
 // Solving: N = -Start / Step (mod 2^BW)
 // For positive step (counting up to overflow): N = -Start / Step
@@ -190,7 +190,7 @@ For quadratic AddRec `{L, +, M, +, N}`, it solves the quadratic equation via `So
 
 **howManyLessThans** (`sub_DCE310`, 317 lines) -- handles `x < bound` (signed or unsigned) exit conditions. For affine `IV = {Start, +, Step}` with loop-invariant `Bound`:
 
-```
+```c
 // Unsigned: count = ceil_div(max(Bound, Start) - Start, Step)
 // Signed:   count = ceil_div(max_signed(Bound, Start) - Start, Step)
 // With overflow checks based on NUW/NSW flags

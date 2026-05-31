@@ -22,7 +22,7 @@ The scheduling engine implements a classical priority list scheduling algorithm 
 
 The unified scheduling engine executes the following sequence for each basic block. All three phases (ReduceReg mode 0x39, ILP mode 0x49, DynBatch mode 0x41) follow this identical structure; only the priority weight selection differs.
 
-```
+```c
 function ScheduleEngine(sched, mode, arg3, rebuild):
     if rebuild:
         InitScheduleRegion(sched)                 // sub_6833F0
@@ -66,7 +66,7 @@ The mode byte stored at `*(DWORD*)(scheduler+60)` (byte offset 240 from the sche
 
 The engine reads the mode byte at the top of each basic block's scheduling loop to select the per-BB knob gate and the vtable pipeline group (`sub_688DD0` line 281):
 
-```
+```c
 function decode_mode(sched):                                    // sub_688DD0, line 281
     mode = *(DWORD*)(sched + 240)                               // scheduler DWORD index 60
 
@@ -126,7 +126,7 @@ The engine uses vtable dispatch at `*(a1+40)` and `*(a1+48)` for polymorphic pre
 
 `sub_6820B0` (1.5 KB) scans the instruction linked list and collects every instruction with zero unsatisfied dependencies into a sorted ready list.
 
-```
+```c
 function BuildReadyList(sched):
     for instr in sched.instruction_list:          // linked list at sched[20]
         if instr.opcode == 52:                    // NOP / BB boundary marker
@@ -252,7 +252,7 @@ The pre-scan also maintains a depth-threshold table: an array of up to 32 barrie
 
 **Depth-threshold derivation algorithm.** On the first invocation per BB (`scheduler+464 == -1`), the state initializes to `scheduler+464 = 0, scheduler+480 = 0, scheduler+420 = 0`. If the BB has active barriers (`scheduler+396 > 0`) and barrier-target instructions exist in the ready list, the threshold computation runs:
 
-```
+```c
 // Phase 1a: collect barrier-target pointers (during pre-scan)
 barrier_table[32]     // local stack array, max 32 entries
 barrier_table_count = 0
@@ -308,7 +308,7 @@ During Phase 2 candidate evaluation, the critical-path bit activates when `sched
 
 Before the main loop, the function computes two register budgets from `scheduler+432` (target register count):
 
-```
+```c
 budget_base = scheduler[432] - scheduler[412]     // target minus committed
 
 if ReduceReg_mode (scheduler+178):               // ReduceReg tightens budget
@@ -331,7 +331,7 @@ if knob_770_active:
 
 The `RegToHWUnits` conversion (`sub_6818D0`) maps a virtual register count to hardware allocation units:
 
-```
+```c
 fn RegToHWUnits(scheduler, count):
     flags = *(*(scheduler + 8) + 1376)        // scheduling_mode_flags
     if flags & 0x08:                           // bit 3: LivenessCountRegComp
@@ -355,7 +355,7 @@ For each instruction in the ready list, `sub_8C7290` extracts its per-register-c
 
 **Bit 7 -- Yield-related.** Determined by opcode. Only opcode 39 (YIELD instruction variant) can set this bit. The condition checks the last operand's low 2 bits:
 
-```
+```c
 if opcode_masked == 39:
     operand_index = operand_count - 1 - ((opcode >> 11) & 2)
     yield_related = (instr[84 + 8*operand_index] & 3) == 0
@@ -367,7 +367,7 @@ When set, the instruction is a yield boundary marker and receives absolute highe
 
 **Bit 6 -- Yield flag.** Set only for opcode 96 (CONTROL instruction):
 
-```
+```c
 if opcode_masked == 96:
     yield_flag = scheduler[524]       // current yield state
 else:
@@ -384,7 +384,7 @@ The yield flag propagates the scheduler's warp yield state only through CONTROL 
 
 **Bit 5 -- Hot-cold classification.** Requires hot-cold tracking to be active (`scheduler+523` set, gated by `scheduler+532 > 0`):
 
-```
+```c
 if hot_cold_active:
     is_hot = sub_A9CDE0(target_desc, context, instruction)
 else:
@@ -400,7 +400,7 @@ if sub_A9CF90(target_desc, context, instruction):    // is_cold?
 
 **Bit 4 -- Pressure overflow.** This bit does NOT appear directly in the initial packing as a single variable. Instead, the pressure overflow signal (`v81` in decompiled source) feeds into the candidate comparison logic as an override. The mechanism:
 
-```
+```c
 // For barrier-target instructions:
 budget_in_units = RegToHWUnits(scheduler, scheduler[432])
 headroom        = RegToHWUnits(scheduler, 8)
@@ -446,7 +446,7 @@ All sm_75+ architectures share a 63-entry UR file (UR63 = URZ, the zero register
 
 **Bit 3 -- Same-BB preference.** Output parameter from `sub_8C7290`:
 
-```
+```c
 same_bb = sub_8C7290.output_param_5     // boolean from resource copy
 ```
 
@@ -454,7 +454,7 @@ Set when the instruction belongs to the currently-scheduled basic block. Instruc
 
 **Bit 2 -- Stall-free.** Computed from the earliest-available-cycle field:
 
-```
+```c
 if countdown_active (scheduler[420] != 0):
     if metadata[32] < scheduler[480] AND instr != preferred_instr:
         stall_free = 0
@@ -476,7 +476,7 @@ else:
 
 **Bit 1 -- Critical-path / latency-bound.** Complex multi-path computation:
 
-```
+```c
 if countdown_active (scheduler[420] != 0):
     // Spill mode: almost always critical
     if !(barrier_bits_set_in_priority):
@@ -498,7 +498,7 @@ In spill mode (active when `scheduler+420 > 0`), the critical-path bit is set fo
 
 **Spill mode state machine.** The scheduler tracks three fields that together form a NORMAL/SPILL/NORMAL state machine: `spillModeCountdown` (+420), `spillSequenceCounter` (+396), and `depthThreshold` (+464). The post-processing phase of each `SelectBestInstruction` call updates them:
 
-```
+```c
 // === ENTER SPILL MODE (computed_countdown) ===
 // Triggered when winner is a barrier-target AND countdown == 0.
 // Pre-scan populates: barrierTargetCount (+424), readyBarrierCount (+428).
@@ -552,7 +552,7 @@ The sentinel value `depthThreshold = -1` causes the next `SelectBestInstruction`
 
 **Bit 0 -- Tiebreaker (barrier-target).** Read directly from instruction metadata:
 
-```
+```c
 tiebreaker = metadata[108] & 1      // barrier-target flag
 ```
 
@@ -562,7 +562,7 @@ Barrier-target instructions (those waiting on a hardware barrier) get bit 0 = 1.
 
 The 8 bits are packed into a single byte using shift-and-mask arithmetic:
 
-```
+```c
 priority = (yield_related    << 7)         // bit 7
          | (yield_flag       << 6) & 0x7F  // bit 6
          | (hot_cold         << 5) & 0x3F  // bit 5  (initially yield copy)
@@ -581,7 +581,7 @@ The comparison between the current candidate and the running best is NOT a simpl
 
 1. **Resource vector comparison**: A 4-tuple lexicographic comparison of per-register-class pressure scores. The four classes are compared in fixed order; the first class whose scores differ determines the winner. Lower score wins (ascending), so the instruction that increases register pressure less is preferred:
 
-```
+```c
 // Per-class pressure scores (computed earlier for each candidate):
 //
 //   score_GPR  = max(0, gpr_delta + scheduler[64] - 1)
@@ -638,7 +638,7 @@ The multi-stage comparison explains why the packed byte uses non-obvious bit ord
 
 The contention score (`v216` in decompiled source) quantifies how much scheduling a given instruction would increase register pressure beyond the budget. It has two cases:
 
-```
+```c
 live_after_gpr = scheduler[72] + gpr_delta       // projected GPR live count
 pressure_sum   = pos_pressure_sum + gpr_delta     // v289 + v283
 
@@ -672,7 +672,7 @@ The guard condition `reduced_hw < live_after_gpr` activates the penalty term onl
 
 After selecting the best candidate, the function updates scheduler state:
 
-```
+```c
 // Spill mode countdown
 if winner is barrier-target:
     scheduler[420] = computed_countdown - 1
@@ -776,7 +776,7 @@ Memory dependencies are conservative: all stores are ordered before subsequent l
 
 Despite the "for each pair" description above, the implementation does **not** perform an all-pairs O(N^2) comparison. `sub_68A690` (BuildDependencies) maintains two RB-trees keyed by register ID -- one for the last **writer** of each register, one for the last **reader** set -- and uses bitvector-indexed iteration to touch only the registers an instruction actually references.
 
-```
+```c
 function BuildDependencies(reg_tree, bb, slot_index):
     // reg_tree:     RB-tree  { reg_id -> last_writer_instr }
     // reader_tree:  RB-tree  { reg_id -> last_reader_instr_list }
@@ -839,7 +839,7 @@ These functions handle specific aspects of dependency construction in the 0x6A00
 
 `sub_925510` (341 bytes, 57 lines) is the universal instruction relocation primitive. It moves an instruction to a new position in the doubly-linked instruction list.
 
-```
+```c
 function MoveInstruction(block, instr, insert_before):
     // 1. Unlink from current position
     instr.prev.next = instr.next
@@ -913,7 +913,7 @@ The 10-DWORD resource vectors are copied via `_mm_loadu_si128` and accumulated w
 
 The scheduler tracks register liveness via a bitvector at `scheduler+832`. Each bit represents one register; the pressure is the popcount of the live set.
 
-```
+```c
 function UpdateRegisterPressure(sched, instr):
     for each operand in instr.operands:
         if operand.is_def:
@@ -1011,7 +1011,7 @@ All architectures share 6 HW barriers and raw max stall of 39 (capped to 15 by t
 
 ### Dispatch Pseudocode for `sub_8D7760`
 
-```
+```c
 function EmitScoreboardRecords(sched_ctx, instr, dep_table, out):
     backend = *(sched_ctx + 8)
     profile = *(backend[198] + 16)              // SM profile
@@ -1232,7 +1232,7 @@ The two weights sum to 1.0 and form a weighted combination on a unit scale. The 
 
 Both pairs are overridable. When the configuration byte at the respective offset equals 3, the weight is read from the adjacent double field and the complement is computed as `1.0 - weight`:
 
-```
+```c
 if (*(BYTE*)(options + 7200) == 3):
     pressure_weight = *(double*)(options + 7208)
     ilp_weight = 1.0 - pressure_weight
@@ -1240,7 +1240,7 @@ if (*(BYTE*)(options + 7200) == 3):
 
 After loading, both weight pairs are normalized by dividing by the register range `(float)(max_regs - min_regs)`, producing per-register slopes:
 
-```
+```c
 range = (float)(max_regs) - (float)(min_regs)
 pressure_slope = ilp_weight / range
 secondary_slope = backward_penalty / range
@@ -1252,7 +1252,7 @@ This normalization ensures the scheduling heuristic scales consistently regardle
 
 Both the forward and backward passes evaluate candidate instructions using the same weighted quadratic score. Given a candidate whose scheduling would result in register pressure `P` (an integer from `popcount` of the live-register bitvector):
 
-```
+```text
 score(P) = P * (pressure_slope * (P - min_regs) + pressure_weight)
 ```
 
@@ -1265,32 +1265,32 @@ where:
 
 Expanding the inner expression:
 
-```
+```text
 score(P) = P * ( ilp_weight * (P - min_regs) / range + pressure_weight )
 ```
 
 With defaults (1.8 / -0.8, range = max_regs - min_regs):
 
-```
+```text
 score(P) = P * ( -0.8 * (P - min_regs) / range + 1.8 )
 ```
 
 The backward scheduler uses the secondary pair identically for a second acceptance gate:
 
-```
+```text
 score2(P) = floor( P * (secondary_slope * (P - min_regs) + forward_weight) )
          = floor( P * (backward_penalty / range * (P - min_regs) + forward_weight) )
 ```
 
 With defaults (3.2 / -2.2):
 
-```
+```text
 score2(P) = floor( P * ( -2.2 * (P - min_regs) / range + 3.2 ) )
 ```
 
 Both scores serve as **acceptance thresholds** during list scheduling. After computing `score(P)`, the scheduler evaluates `depth_cost = popcount_sum(live_bv_tree)` via `sub_1229BD0` (BST walk accumulating `__popcnt` across bitvector nodes). A candidate is accepted if:
 
-```
+```text
 Pair 1:  P + depth_cost                 > score(P)      // forward pass (sub_122AD60)
 Pair 2:  P + depth_cost + accum_count   > score2(P)     // backward pass (sub_122F650)
 ```
@@ -1342,7 +1342,7 @@ This three-key comparison provides O(log N) insertion and extraction, a signific
 
 `sub_18FDAF0` produces the double at `scheduling_entry+368` (key 2 in the RBT comparison). It accumulates three components: per-operand pressure cost, an excess live-range penalty, and dependency-depth weighting.
 
-```
+```c
 function ComputeRBTScore(this):                         // sub_18FDAF0
     ctx        = *(this + 0)
     latency_wt = *(double*)(ctx + 472)                  // per-context latency weight
@@ -1390,7 +1390,7 @@ function ComputeRBTScore(this):                         // sub_18FDAF0
 
 #### Core Scheduling Loop (sub_1902B70)
 
-```
+```c
 function RBTListSchedule(context, block, dep_info, bound, constraint):
     InitRegisterPressure(context, block)           // sub_18F8580
     InitRBTree(tree)                               // sub_18F7EC0
@@ -1457,7 +1457,7 @@ The threshold mechanism controls which evaluated solutions proceed to hash table
 
 `sub_18FEE60` (context constructor) initializes both to zero. The gate logic in `sub_1904B70` is:
 
-```
+```c
 function EvaluateAndCache(context, block, ...):           // sub_1904B70, line 820+
     candidate = *(block + 168)                            // current evaluation node
     sched_entry = candidate + 16                          // scheduling entry within node
@@ -1497,7 +1497,7 @@ Each 24-byte bucket header contains: `{chain_head (ptr), chain_tail (ptr), chain
 
 The hash function is FNV-1a on the 4-byte instruction scheduling class ID (at `sched_entry+8`):
 
-```
+```c
 function FNV1a_32(key):                                   // inline in sub_1904B70
     h = 0x811C9DC5                                        // FNV offset basis
     for byte in key[0..3]:
@@ -1660,7 +1660,7 @@ Bits 4 and 5 are mutually exclusive -- only one latency variant is emitted.
 
 Emitted during DUMPIR. All lines prefixed with `# `. Lines marked `[COND]` are gated by the stated condition.
 
-```
+```text
 # 142 instructions, 24 R-regs
 # [inst=142] [texInst=0] [tepid=0] [rregs=24]
 # [urregs=8]                                              [COND: SM > 0x5FFF]
@@ -1697,7 +1697,7 @@ Emitted after scheduling by SM-variant clones dispatched via vtable. Same `# ` p
 
 The unique lines (lines shared with pre-regalloc use the same structure minus commas):
 
-```
+```text
 # [est latency = %d] [LSpillB=%d] [LRefillB=%d] [SSpillB=%d] [SRefillB=%d] [SpillSize=%d]
 # [LNonSpillB=%d] [LNonRefillB=%d] [NonSpillSize=%d]
 # [Occupancy = %f] [est numDivergentBranches=%d] [attributeMemUsage=%d] [programSize=%d]
@@ -1739,7 +1739,7 @@ The post-regalloc format maps abstract functional unit names to hardware executi
 
 Separate from the DUMPIR comment output, `sub_A4B8F0` writes a compact binary record into the SASS code object during emission:
 
-```
+```text
 Format string: "instr/R-regs: %d instructions, %d R-regs"
   instructions = stats[335] - stats[341]     (total minus removed)
   R-regs       = stats[159] + stats[102]     (extra + base allocation)

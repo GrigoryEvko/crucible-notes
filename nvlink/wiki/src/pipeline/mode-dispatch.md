@@ -417,7 +417,7 @@ Not a standalone mode but worth noting: when `byte_2A5F29B` (`--verbose-keep` / 
 
 ## Mode Decision Tree
 
-```
+```text
                         nvlink mode selection
                         =====================
 
@@ -523,7 +523,7 @@ Modes G (archive) and J (verbose-keep) are orthogonal overlays and are not rows 
 
 All three code paths that write the linker script share the same hardcoded 130-byte (`0x82`) constant string:
 
-```
+```text
 SECTIONS
 {
 	.nvFatBinSegment : { *(.nvFatBinSegment) }

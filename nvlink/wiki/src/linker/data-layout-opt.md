@@ -24,7 +24,7 @@ The pass is enabled by `--optimize-data-layout` and disabled by `--no-opt`. Thes
 
 ## Position in the Pipeline
 
-```
+```text
 Phase 9b: Standard constant bank layout (sub_4325A0)
   |
   v
@@ -80,7 +80,7 @@ The function iterates the source section's symbol linked list (rooted at `a2+72`
 
 ### Size-Based Dispatch
 
-```
+```c
 for each symbol node in source_section->symbol_list:
     sym_record = get_symbol(elfw, node->sym_index)
 
@@ -311,7 +311,7 @@ When constant data is copied into a target section, the section data append func
 
 The function maintains a sorted linked list of data records attached to each section (at section header offset +72). Each record is a 40-byte node:
 
-```
+```text
 data_record (40 bytes):
   +0:  void*     data_ptr         -- pointer to raw bytes
   +8:  uint64_t  offset           -- offset within section
@@ -510,7 +510,7 @@ These checks are critical for correctness: when multiple translation units contr
 
 ### Phase 9c: Merge-Constants Mode
 
-```
+```text
 Trigger: elfw+97 (used-set filter active -- set by --kernels-used / --variables-used loaders) is set
          AND elfw+80 (debug_flag) is clear
 Target section: TEMP_MERGED_CONSTANTS
@@ -526,7 +526,7 @@ In this mode, the function copies all constants into a single unified section. T
 
 ### Phase 9d: OCG Constant Optimization
 
-```
+```text
 Trigger: elfw+91 (force-OCG-optimization) OR any OCG section size exceeds
          max_constant_bank_size (vtable+32)
 Target section: TEMP_OCG_CONSTANTS
@@ -535,7 +535,7 @@ Arguments: a13=0, a14=&reloc_list, a15=overlap_set
 
 This is the more aggressive path. The layout phase iterates all per-entry constant bank sections (`elfw+272`), and for each OCG constant section (type matching vtable+136) that has data, it calls `sub_4339A0`. The verbose output is:
 
-```
+```text
 "optimize OCG constants for %s, old size = %lld"
 ```
 
@@ -706,7 +706,7 @@ The hash table header allocated by `sub_448840` has the following layout:
 
 Each bucket slot in the `buckets` array (at header offset +104) is a pointer to a dynamically-sized chain array. The chain array layout is:
 
-```
+```text
 +0:  uint32_t  capacity    -- max number of index entries before realloc
 +4:  uint32_t  idx[0]      -- first entry index
 +8:  uint32_t  idx[1]      -- second entry index
@@ -720,7 +720,7 @@ A NULL bucket pointer means no entries hash to that bucket. When a chain needs t
 
 The entry pool (at header offset +88) is a flat array of 16-byte slots:
 
-```
+```text
 entry[i] = {
     +0: uint64_t  key       -- the constant value (zero-extended for 32-bit)
     +8: uint64_t  value     -- pointer to the canonical symbol record
@@ -824,7 +824,7 @@ So each table starts with 256 buckets and will not rehash until it holds more th
 
 The two relevant CLI options are registered in `sub_427AE0` (option parsing):
 
-```
+```text
 --no-opt                  "Turn off linker optimization of data resources"
                           Type: bool, stored in byte_2A5F2A9
 
@@ -879,7 +879,7 @@ All strings are gated by `(*(_BYTE*)(elfw + 64) & 2) != 0` (verbose layout flag,
 
 Consider two translation units that each define a constant:
 
-```
+```c
 // TU A: .nv.constant0.kernelA
 float c1 = 3.14f;     // 4 bytes, value 0x4048F5C3
 float c2 = 2.71f;     // 4 bytes, value 0x402D70A4
@@ -891,7 +891,7 @@ double c4 = 1.0;      // 8 bytes, value 0x3FF0000000000000
 
 After merge, the per-entry constant sections contain:
 
-```
+```text
 kernelA constants: c1 (0x4048F5C3), c2 (0x402D70A4)  -- 8 bytes total
 kernelB constants: c3 (0x4048F5C3), c4 (0x3FF0...)   -- 12 bytes total
 ```

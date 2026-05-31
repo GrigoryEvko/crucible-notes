@@ -91,7 +91,7 @@ The anonymous namespace is critical: it gives each translation unit its own copy
 
 The following diagram shows how a `void* data` pointer and the `manager<Lambda>` static functions work together to erase the concrete lambda type:
 
-```
+```text
 Construction (concrete Lambda type known):
 ============================================
 
@@ -452,7 +452,7 @@ This differs from the device lambda path where the original lambda body is wrapp
 
 The `IsMutable` decision comes from `byte[24] & 0x02` (mutable keyword present). The `HasFuncPtrConv` decision involves nested conditions, all gated on the capture list head being null (`*(_QWORD *)a1 == 0`):
 
-```
+```c
 HasFuncPtrConv = false;  // default
 if (capture_list_head == NULL) {
     if (dword_126EFAC && !dword_126EFA4 && qword_126EF98 <= 0xEB27) {
@@ -548,7 +548,7 @@ The host-device wrapper is fundamentally more complex because it must produce a 
 ## Concrete Example: Host-Device Lambda with One Capture
 
 User code:
-```cpp
+```cuda
 auto add_n = [n] __host__ __device__ (int x) { return x + n; };
 int result = add_n(42);
 ```
@@ -566,7 +566,7 @@ __nv_hdl_create_wrapper_t< false, false, __nv_dl_tag<...>, int >
 ```
 
 The factory method deduces the wrapper type via `__nv_hdl_helper_trait_outer` and constructs:
-```
+```cpp
 __nv_hdl_wrapper_t<false, false, false, Tag, int(int), int>
 ```
 

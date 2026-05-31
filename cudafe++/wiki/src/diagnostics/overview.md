@@ -66,7 +66,7 @@ The 4-byte stride means each error code occupies a 4-byte slot across all three 
 
 ## 7-Stage Diagnostic Pipeline
 
-```
+```text
   caller emits error
        |
        v
@@ -380,7 +380,7 @@ The largest function in the error subsystem at 1,464 decompiled lines (6.5 KB). 
 
 **Output format:**
 
-```
+```text
 file(line): severity #code-D: message text
 ```
 
@@ -410,7 +410,7 @@ After output, the function iterates the fill-in linked list and asserts that eve
 
 When `qword_106C260` (raw listing file) is open and the diagnostic is not a continuation (kind != 3), a machine-readable line is emitted:
 
-```
+```text
 S "filename" line column message\n
 ```
 
@@ -463,13 +463,13 @@ void __noreturn assertion_handler(
 
 **Message format (with prefix):**
 
-```
+```text
 assertion failed: <prefix> <message> (<file>, line <line> in <func>)
 ```
 
 **Message format (without prefix):**
 
-```
+```text
 assertion failed at: "<file>", line <line> in <func>
 ```
 
@@ -640,7 +640,7 @@ Controlled by `dword_126ECA0` (colorization requested) and `dword_126ECA4` (colo
 
 ## Call Graph
 
-```
+```text
 sub_4F2930 (assertion_handler)  [5,185 callers, __noreturn]
   └── sub_4F21C0 (internal_error)
         ├── sub_4F41C0 (create_diagnostic_entry, error=2656, sev=11)

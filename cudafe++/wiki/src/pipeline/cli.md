@@ -25,7 +25,7 @@ Nobody invokes cudafe++ directly. NVIDIA's driver compiler `nvcc` decomposes its
 
 The flag table is a contiguous array starting at `dword_E80060`. Each of the 552 slots occupies 40 bytes. The current entry count is tracked in `dword_E80058`.
 
-```
+```text
 Offset   Field            Type       Access pattern
 ------   -----            ----       --------------
 +0       case_id          int32      dword_E80060[idx * 10]
@@ -76,7 +76,7 @@ After flag registration, `proc_command_line` performs five sequential setup step
 
 ### Pre-Loop Setup
 
-```
+```text
 Step 1:  Initialize qword_126DD38, qword_126EDE8 (token state / source position)
 Step 2:  Call sub_452010() -- register all 276 flags
 Step 3:  Allocate 4 hash tables (16-byte header + 256-byte data each):
@@ -152,7 +152,7 @@ After a flag is matched, its `case_id` indexes into a giant switch statement occ
 
 Cases 39--43 (`diag_suppress`, `diag_remark`, `diag_warning`, `diag_error`, `diag_once`) share the same value-parsing logic:
 
-```
+```text
 1. Read the value string (after '=')
 2. Strip leading/trailing whitespace
 3. Split on commas
@@ -326,7 +326,7 @@ Eleven memory regions (numbered 1--11) are initialized with default configuratio
 
 The resolver checks GCC version thresholds to decide which extensions to enable:
 
-```
+```text
 GCC version thresholds (stored as integer * 100):
   40299 (0x9D6B)  -- GCC 4.2.99 boundary
   40599 (0x9E97)  -- GCC 4.5.99 boundary
@@ -340,7 +340,7 @@ For each threshold, specific feature flags are conditionally enabled. For exampl
 
 Based on the value of `dword_126EF68` (`__cplusplus`), the resolver enables feature flags in a cascade:
 
-```
+```text
 199711 (C++98):  base features only
 201103 (C++11):  + lambdas, rvalue_refs, auto_type, nullptr,
                    variadic_templates, unrestricted_unions,
@@ -512,7 +512,7 @@ int64_t proc_command_line(int argc, char** argv)
 
 Case 21 (`--version` / `-v`) prints the following banner to stdout (does not exit):
 
-```
+```text
 cudafe: NVIDIA (R) Cuda Language Front End
 Portions Copyright (c) 2005, 2024-YYYY NVIDIA Corporation
 Portions Copyright (c) 1988-2018, 2024 Edison Design Group Inc.
@@ -526,7 +526,7 @@ Case 92 (`--Version` / `-V`) prints a different copyright format and then calls 
 
 `proc_command_line` is called as stage 2 of the pipeline, after `fe_pre_init` (`sub_585D60`) has initialized signal handlers, locale, working directory, and default config:
 
-```
+```text
 main()
   |-- sub_585D60()           [1] fe_pre_init (10 subsystem pre-initializers)
   |-- sub_5AF350()               capture_time (total start)

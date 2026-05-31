@@ -246,7 +246,7 @@ Axis analysis decides whether a vector load, TMA coordinate, or pointer expressi
 
 The clearest way to read the slot model is to walk a loop body small enough to fit in one RRT and rich enough to touch the transport, MMA, and SMEM rows simultaneously. The body below is the steady-state shape of a software-pipelined matmul inner loop:
 
-```text
+```mlir
 %0 = nv_tileas.async.tiled_tma_load %desc, %coord : !smem_ref
 %1 = nv_tileas.async.smem_write     %src        : !smem_ref
 %2 = nv_tileas.async.wgmma          %a, %b, %c  : !tmem_ref

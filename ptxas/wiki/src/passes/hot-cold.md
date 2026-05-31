@@ -33,7 +33,7 @@ On a GPU, three factors make hot/cold partitioning more impactful:
 
 The three phases form a pipeline with increasing scope:
 
-```
+```text
 Phase 41: MarkAdditionalColdBlocks     (mid-optimization, Ori IR)
     |
     |  Sets cold-block flags on basic blocks based on static heuristics
@@ -74,7 +74,7 @@ Phase 41 is an analysis pass that annotates basic blocks with cold flags. The na
 
 The phase 41 execute function is a thin gate-and-dispatch wrapper:
 
-```
+```c
 MarkAdditionalColdBlocks::execute(phase* self, compilation_context* ctx):
     opt_level = sub_7DDB50(ctx)              // gate: knob 499 + opt-level query
     if opt_level <= 1:
@@ -144,7 +144,7 @@ Independent of the block-level cold marking, ptxas classifies individual memory 
 
 Classifies an instruction as a **hot** memory operation. Hot instructions access memory spaces with high latency where early scheduling is beneficial.
 
-```
+```c
 isHotMemoryOp(scheduler, context, instruction):
     opcode = instruction->opcode & 0xFFFFCFFF    // mask modifier bits
     if opcode == 183 or opcode == 288:            // LD.E / ST.E (global load/store)
@@ -165,7 +165,7 @@ isHotMemoryOp(scheduler, context, instruction):
 
 The exact dual of `isHotMemoryOp`. Classifies an instruction as a **cold** memory operation.
 
-```
+```c
 isColdMemoryOp(scheduler, context, instruction):
     opcode = instruction->opcode & 0xFFFFCFFF
     if opcode == 183 or opcode == 288:            // LD.E / ST.E
@@ -200,7 +200,7 @@ For atomic operations (opcodes 91/92 = ATOM/RED), the hot/cold split is on the a
 
 The instruction-level hot/cold classification feeds directly into the scheduler's 8-bit priority encoding (documented in [Scheduling Algorithm](../scheduling/algorithm.md)):
 
-```
+```text
 Bit 7: yield-related
 Bit 6: yield
 Bit 5: hot/cold (1 = hot = higher priority, 0 = cold = lower priority)
@@ -219,7 +219,7 @@ Phase 108 performs **MAC-loop residue reordering** -- reorganizing blocks within
 
 The default execute body (`sub_C5E7C0`, 11 bytes) contains only:
 
-```
+```c
 *(context + 1552) = 15;    // advance pipeline_progress to 15
 ```
 
@@ -239,7 +239,7 @@ The pass operates on each loop independently -- it does not perform any cross-lo
 
 ### Pipeline Context
 
-```
+```text
 Phase 106: AdvancedPhasePostSched   (gate: ctx+1552 = 14)
 Phase 107: OriRemoveNopCode         (NOP removal)
 Phase 108: OptimizeHotColdInLoop    (loop-interior: MAC-loop residue reorder)
@@ -262,7 +262,7 @@ The phase object is 16 bytes, allocated by the factory switch (`sub_C60D30`, cas
 
 Phase 109 implements the **DetectHotColdIfElse** pattern-matching algorithm for function-wide hot/cold block reordering. Its `isNoOp()` (`sub_C5E7B0`) returns 0, so the dispatch loop always calls `execute()`. The execute body (`sub_C5E790`, 16 bytes) dispatches to the SM-backend:
 
-```
+```asm
 mov  rdi, [rsi + 0x630]     // rdi = ctx->sm_backend (at offset +1584)
 mov  rax, [rdi]              // rax = sm_backend->vtable
 jmp  [rax + 0xD8]           // tail-call vtable[27] (offset 216)
@@ -295,7 +295,7 @@ The critical distinction from the previous (incorrect) description: this is **no
 
 Phase 108 (when active) reorders blocks within loop bodies to separate MAC-heavy paths from residue paths. Phase 109 then processes the entire function, matching if/else patterns and reordering hot/cold successors. The combined effect depends on which SM backend is active and whether phase 108 was enabled:
 
-```
+```text
 Function layout after phases 108+109:
   Phase 108 (if active): Within each loop, MAC blocks precede residue blocks.
   Phase 109 (always active): For each if/else pattern, the hot arm is the

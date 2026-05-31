@@ -6,7 +6,7 @@ For the diagnostic-control sub-language (`#pragma nv_diag_suppress`, `nv_diag_pu
 
 ## Architecture at a Glance
 
-```
+```text
                        ┌──────────────────────────────┐
    pragma_init  ──────▶│  Kind registry (linked list) │
    sub_6F8320          │  qword_106B8A8 ─→ kind1 ─→…  │
@@ -50,7 +50,7 @@ The descriptor's `name_index` field is the most important coupling: it indexes s
 
 The bit pattern at offset 17 is the most surprising part of the layout. Selected encodings extracted from `pragma_init`:
 
-```
+```text
    kind_id  name                  off17    off19    binding
    ─────────────────────────────────────────────────────────────
        1   if                     0x01      5       conditional / token

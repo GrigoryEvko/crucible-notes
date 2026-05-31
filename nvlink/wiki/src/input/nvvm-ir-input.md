@@ -619,7 +619,7 @@ This is the only place in nvlink where `sub_4BD760` (relocatable-ptxas driver) i
 
 The NVVM IR path through the linker, from input to compiled output:
 
-```
+```text
 1. INIT
    main() creates LTO context (lto_ctx, 656+ bytes)
    sub_4BC290 creates NVVM program via dlsym("nvvmCreateProgram")

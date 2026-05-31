@@ -39,7 +39,7 @@ The pass scans each function for `llvm.memmove` and `llvm.memcpy` intrinsic call
 
 The pass creates four new basic blocks, splitting the block containing the memmove call:
 
-```
+```text
               +-------+
               | split |   (direction comparison)
               +---+---+
@@ -64,7 +64,7 @@ The pass creates four new basic blocks, splitting the block containing the memmo
 
 The `split` block determines copy direction by comparing the source and destination base addresses:
 
-```
+```llvm
 ; Pseudocode for the split block
 %cmp = icmp ult ptr %dst, ptr %src     ; sub_12AA0C0, opcode 0x22 (34)
 br i1 %cmp, label %forward.for, label %reverse.for   ; sub_15F83E0
@@ -78,7 +78,7 @@ When the copy size is statically known and satisfies `size <= dword_4FBD560` (th
 
 **Reverse copy** (decompiled lines 606--690):
 
-```
+```llvm
 ; Fully unrolled reverse copy, count elements
 ; For i = count-1 downto 0:
 %src.gep.N = getelementptr i8, ptr %src, i64 N     ; named "src.memmove.gep.unroll"
@@ -90,7 +90,7 @@ store i8 %val.N, ptr %dst.gep.N, align A            ; sub_15F9650 (InitStoreInst
 
 **Forward copy** (decompiled lines 1036--1123):
 
-```
+```llvm
 ; Fully unrolled forward copy, count elements
 ; For i = 0 to count-1:
 %src.gep.N = getelementptr i8, ptr %src, i64 N     ; "src.memmove.gep.unroll"
@@ -108,7 +108,7 @@ When the copy size exceeds the threshold or is not statically known, the pass ge
 
 **Forward loop:**
 
-```
+```llvm
 forward.for:
   %iv = phi i64 [ 0, %split ], [ %iv.next, %forward.for ]   ; sub_15F1EA0, opcode 53
   %src.gep = getelementptr i8, ptr %src, i64 %iv
@@ -122,7 +122,7 @@ forward.for:
 
 **Reverse loop:**
 
-```
+```llvm
 reverse.for:
   %iv = phi i64 [ %count.minus1, %split ], [ %iv.next, %reverse.for ]
   %src.gep = getelementptr i8, ptr %src, i64 %iv
@@ -183,7 +183,7 @@ Knobs registered at `ctor_265` (`0x4F48E0`), applicable to the `lower-aggr-copie
 
 The pass can be invoked via the pipeline text interface:
 
-```
+```bash
 -Xcicc "-passes=lower-aggr-copies"
 -Xcicc "-passes=lower-aggr-copies<lower-aggr-func-args>"
 ```
@@ -197,7 +197,7 @@ Related aggregate lowering knobs from `ctor_089` (`0x4A0D60`):
 
 ## Diagnostic Strings
 
-```
+```text
 "split"
 "forward.for"
 "reverse.for"

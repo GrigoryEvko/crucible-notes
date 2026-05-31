@@ -10,7 +10,7 @@ The deobfuscation function `sub_8F98A0` at `0x8F98A0` decrypts variable names an
 
 ### Algorithm: sub\_8F98A0
 
-```
+```c
 // Reconstructed pseudocode — sub_8F98A0 (0x8F98A0)
 // Inputs:
 //   ciphertext  — pointer to encrypted bytes in .rodata
@@ -64,7 +64,7 @@ Additional encrypted copies exist at `0x42812C0` and `0x42812F0` for the two env
 
 A separate obfuscation instance at `~0x48EE80` in `ctor_043` (`0x48D7F0`) decrypts a **4-byte** hidden `cl::opt` name from data at `unk_3F6F7C7`. The algorithm variant uses FNV-1a-like constants:
 
-```
+```c
 v40 = v37 ^ (-109 * ((offset + 97) ^ 0x811C9DC5));
 ```
 

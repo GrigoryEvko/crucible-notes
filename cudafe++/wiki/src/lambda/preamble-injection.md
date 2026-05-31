@@ -88,7 +88,7 @@ Three conditions must all be true for preamble emission:
 
 Before calling `sub_6BCC20`, the trigger emits:
 
-```
+```c
 #line 1 "nvcc_internal_extended_lambda_implementation"
 ```
 

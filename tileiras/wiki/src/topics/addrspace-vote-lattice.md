@@ -33,7 +33,7 @@ The outer algorithm is a fixed-point worklist. A successful clone or signature r
 The concrete address spaces form an antichain. None is more specific than another. The meet of
 two distinct concrete address spaces is `POISON`.
 
-```
+```text
                               TOP = POISON (2000)
                                    |
                +------+------+------+------+------+------+

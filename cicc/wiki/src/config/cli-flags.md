@@ -71,7 +71,7 @@ When the main parsing loop encounters a flag string, it calls `sub_95D600` (stan
 ### Duplicate detection
 
 Each BST node's value pointer points into the options structure. If the value storage already has a non-zero sentinel (the QWORD immediately following the 32-byte STR32 slot), the flag was already set. On duplicate:
-```
+```text
 "libnvvm : error: <flag> defined more than once"
 ```
 
@@ -97,7 +97,7 @@ The following flag categories are handled by hardcoded `strcmp`/prefix-match cha
 - `--nvvm-64`, `--nvvm-32` (handled in `sub_95C230`)
 
 If none of the hardcoded checks match and the BST lookup also fails, the flag falls through to the catchall entry at options structure offset +1256, which triggers:
-```
+```text
 "libnvvm : error: <flag> is an unsupported option"
 ```
 
@@ -140,7 +140,7 @@ Note: the `a` and `f` sub-variants share the base SM number for `__CUDA_ARCH` (e
 ### Architecture validation bitmask
 
 Architecture is validated at `a1+8` using bitmask `0x60081200F821`:
-```
+```c
 offset = SM_number - 75
 if (offset > 0x2E || !_bittest64(&0x60081200F821, offset))
     -> ERROR: "is an unsupported option"

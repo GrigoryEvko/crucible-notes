@@ -53,7 +53,7 @@ All output to the `.int.c` file passes through a small set of character-level em
 
 The backend proceeds through seven sequential phases within `sub_489000`:
 
-```
+```text
 sub_489000 (process_file_scope_entities)
   |
   |-- Phase 1: State initialization (40+ globals zeroed, 4 buffers cleared)
@@ -714,7 +714,7 @@ Each placeholder is numbered sequentially (starting from 0). The `__attribute__(
 
 Putting all phases together, the output `.int.c` file has this structure:
 
-```
+```cpp
 #line 1 "<input>.cu"                          // initial line directive
 #pragma GCC diagnostic ignored "-Wunused-local-typedefs"
 #pragma GCC diagnostic ignored "-Wattributes"

@@ -234,7 +234,7 @@ The keep-in-IL mechanism runs during `fe_wrapup` pass 3 and selects which IL ent
 
 ### Call Chain
 
-```
+```text
 sub_610420 (mark_to_keep_in_il)
   |
   +-- installs pre_walk_check = sub_617310 (prune_keep_in_il_walk)
@@ -255,7 +255,7 @@ sub_610420 (mark_to_keep_in_il)
 
 Every IL entry has an 8-byte prefix. Bit 7 (0x80) of the byte at `entry_ptr - 8` is the keep-in-IL flag:
 
-```
+```text
 Byte at (entry_ptr - 8):
   bit 0  (0x01)  is_file_scope
   bit 1  (0x02)  is_in_secondary_il
@@ -360,7 +360,7 @@ For template kernels, the forwarding stub includes explicit template arguments: 
 
 ## Architectural Diagram
 
-```
+```text
                         .cu source
                             |
                      EDG Frontend (parse once)

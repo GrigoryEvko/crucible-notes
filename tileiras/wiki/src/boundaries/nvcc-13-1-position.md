@@ -8,7 +8,7 @@ CUDA 13.1 is the first toolkit release in which `nvcc` ships with two parallel d
 
 The classical CUDA device-compilation pipeline is unchanged from prior toolkits:
 
-```
+```text
 .cu source
   |
   v
@@ -36,7 +36,7 @@ Inside `cicc`, EDG parses CUDA C++, evaluates constexpr expressions, and produce
 
 The MLIR-rooted pipeline is structurally distinct above the LLVM IR layer:
 
-```
+```text
 MLIR DSL frontend (CUTLASS-on-MLIR, custom DSL, etc.)
   |
   v
@@ -79,7 +79,7 @@ Nothing inside the `tileiras` binary changes between the three cases. The byteco
 
 The driver-facing argv schema is fixed and small. A representative invocation that an nvcc dispatcher (or a reimplementation) constructs for a Blackwell datacenter target at `-O2` with line info looks like:
 
-```text
+```bash
 tileiras \
     --gpu-name=sm_100 \
     --opt-level=2 \
@@ -156,7 +156,7 @@ The producer-side contract — kernel-signature rules, the `tt.*` attribute name
 
 ## Side-by-side architectural diagram
 
-```
+```text
                 Path A: cicc legacy                                  Path B: tileiras new
                 -------------------                                  --------------------
   .cu source                                                MLIR DSL frontend (CUTLASS-on-MLIR /

@@ -41,7 +41,7 @@ Register allocation follows a graph-coloring model with iterative spilling, oper
 
 The register allocation pipeline proceeds through eight stages. Each stage may iterate multiple times if spilling is required and the initial allocation fails.
 
-```
+```text
   AllocateRegisters_main_driver (0x18988D0)
     |
     |  1. Classify register classes for each virtual register
@@ -100,7 +100,7 @@ The graph coloring allocator at `sub_189C3E0` (48 KB, 1,734 lines) implements a 
 
 The following pseudocode is reconstructed from the 1,734-line decompiled function. The function operates as a single-pass instruction-stream walker that simultaneously builds a register-to-physical-register map, attempts coalescing, and detects coloring failures. [Confidence: medium -- control flow is clear, but some field semantics are inferred from offsets.]
 
-```
+```c
 function graph_coloring_core(alloc_state) -> bool:
     func_ir      = alloc_state.func_ir
     config       = func_ir.regalloc_config         // at offset +1600
@@ -457,7 +457,7 @@ The hash map starts at 8 buckets and doubles (to `4 * current`) when the load fa
 
 The coalescing function attempts to merge two virtual registers connected by a MOV/COPY instruction into the same physical register. It is called from the coloring core's case-91 handler when a register definition comes from a copy.
 
-```
+```c
 function try_coalesce(alloc_state, combined_offset, inst, class_table, operand_ptr) -> bool:
     // Only applies to register-class offsets 100 and 104 (R-reg 64-bit pairs)
     if (combined_offset - 100) & ~4 != 0:           // not 100 or 104
@@ -520,7 +520,7 @@ no_coalesce:
 
 The interference graph builder emits IR instructions that represent interference edges. Rather than building a traditional adjacency matrix, ptxas uses an instruction-based representation where interference is encoded as synthetic IR nodes.
 
-```
+```c
 function build_interference_graph(alloc_state):
     func_ir   = alloc_state.func_ir
     config    = func_ir.regalloc_config
@@ -591,7 +591,7 @@ function build_interference_graph(alloc_state):
 
 The actual spill cost computation lives in two functions, not in `sub_189F300` (which is an operand encoder). These functions evaluate each virtual register as a spill candidate.
 
-```
+```c
 function compute_spill_weights_per_block(func_ir, block, reg_class, budget, target) -> void:
     // sub_18C5470: 5 parameters, iterates a block's live set
     config    = func_ir.regalloc_config
@@ -650,7 +650,7 @@ function compute_spill_benefit(func_ir, block, candidate_set) -> vreg:
 
 The outermost allocation loop ties together coloring and spilling. This is the high-level Chaitin-Briggs flow as implemented by the interaction between `AllocateRegisters_main_driver` (`0x18988D0`), the graph coloring core, and the iterative spill functions.
 
-```
+```c
 function allocate_registers_main(func_ir, target_reg_count):
     // ---- Stage 1: Classify and prepare ----
     classify_register_classes(func_ir)               // sub_189B2D0
@@ -783,7 +783,7 @@ The SMEM spilling subsystem spans approximately 15 functions:
 
 The eligibility checker at `0x18D1FF0` enforces a critical constraint: **SMEM spilling is not permitted when the function uses ABI calls** (device function calls with standard calling conventions). The diagnostic string is explicit:
 
-```
+```text
 "Smem spilling should not be enabled when functions use abi."
 ```
 
@@ -822,7 +822,7 @@ When a function contains device calls (ABI calls), the register allocator must a
 
 The ABI pressure report uses the format string:
 
-```
+```text
 "-CLASS ABI CALL PRESSURE for func" ... " at line " ... " regs\n"
 ```
 
@@ -873,7 +873,7 @@ Pragmas must follow a strict alloc-before-dealloc ordering within a function's c
 
 `setmaxnreg_compute_register_budget_A` and `_B` (`0x18FB430`, `0x18FBA60`, each 9 KB) compute the allowed register range for each code region. The `_B` variant emits the diagnostic:
 
-```
+```text
 "setmaxnreg ignored; unable to determine register count at entry"
 ```
 
@@ -889,7 +889,7 @@ Several functions emit the actual SASS `SETMAXNREG` instructions:
 
 The register count in `setmaxnreg.dec` instructions is validated:
 
-```
+```text
 "setmaxnreg.dec has register count..."
 "setmaxreg.dealloc/release has register count..."
 ```
@@ -898,7 +898,7 @@ The register count in `setmaxnreg.dec` instructions is validated:
 
 `setmaxnreg_check_minimum_requirements` (`0x18FE630`) enforces a floor on the register count:
 
-```
+```text
 "setmaxnreg ignored to maintain minimum register requirements"
 ```
 
@@ -908,7 +908,7 @@ Certain register counts are too low for the function to execute correctly (e.g.,
 
 `setmaxnreg_emit_all_warnings` (`0x1906500`) includes:
 
-```
+```text
 "setmaxnreg ignored to allow debugging"
 ```
 
@@ -1039,7 +1039,7 @@ The verifier checks several specific correctness patterns:
 
 The verification subsystem is activated by the knob `-knob DUMPIR=AllocateRegisters`. When enabled, detailed diagnostics are emitted:
 
-```
+```text
 "Please use -knob DUMPIR=AllocateRegisters for debugging"
 "This def [%d] represents uninitialized value..."
 ```
@@ -1077,7 +1077,7 @@ The resource counts are retrieved via dedicated accessor functions:
 
 The metrics emission system at `0x19A1B30` (36 KB) writes a richer statistics header as PTX comments. This is the `# N instructions, M R-regs` comment visible in PTX output:
 
-```
+```text
 # %d instructions, %d R-regs
 # [inst=%d] [texInst=%d] [tepid=%d] [rregs=%d] [urregs=%d] [_lat2inst=%.1f]
 # [est latency = %d] [LSpillB=%d] [LRefillB=%d]...
@@ -1103,7 +1103,7 @@ The metrics include:
 
 The final reporting pass at `0x18F9A60` (`AllocateRegisters_final_reporting`, 30 KB) emits structured guidance data:
 
-```
+```text
 REGALLOC GUIDANCE:
 ALLOCATION: ...
 ```

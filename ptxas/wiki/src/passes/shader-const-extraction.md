@@ -358,7 +358,7 @@ if (is_final_pos)                 // a2
 
 ## Pipeline Position
 
-```
+```text
 Phase 30  DoSwitchOptSecond           ┐
 Phase 31  OriLinearReplacement        │   uniform expressions exposed by switch
 Phase 32  CompactLocalMemory          │   lowering + linearization
@@ -383,7 +383,7 @@ Phase 34 runs immediately after `OriPerformLiveDeadSecond` (33) — so the IR is
 
 The 1,392-byte stack frame is one of the largest in the entire optimizer. The breakdown, from the IDA stack-frame dump:
 
-```
+```text
 +0      16 B  v118 (__m128i)                  — xmm scratch for OR-merging bitvectors
 +24    192 B  scalar locals (v119..v127)      — IR-iterator state, scratch
 +128    72 B  v128..v134                      — eight scratch-record roots:

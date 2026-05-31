@@ -686,7 +686,7 @@ Field interpretation, cross-checked against the three primary consumers:
 
 Size proof: the appender writes exactly `40 * n` bytes, the DOT dumper advances its cursor by literally `v9 += 40` per iteration (`sub_BE21D0:38`), the last-element helper `sub_10AE8E0` computes `base + 40 * num_blocks`, and the grow-path `memcpy` copies `8 * (5*count + 5)` = `40 * (count+1)` bytes. Every independent site agrees on stride 40.
 
-```
+```text
 40-byte block_info entry layout
 
   +0   ptr  insn_head               // scheduling-range first instruction
@@ -700,7 +700,7 @@ Size proof: the appender writes exactly `40 * n` bytes, the DOT dumper advances 
 
 Allocation pseudocode:
 
-```
+```c
 function appendBlockInfo(ctx, insn_head, insn_tail, bix, flags):
     // Grow inline array if needed (sub_10AE800)
     count = ctx[+984]
@@ -777,7 +777,7 @@ Each instruction carries a unique integer ID at `+16`, an opcode at `+72` (the p
 
 ### Packed Operand Format
 
-```
+```text
  31  30  29  28  27       24  23  22  21  20  19                  0
 +---+---+---+---+-----------+---+---+---+---+---------------------+
 |     type      |  modifier bits (8 bits)    |  index (20 bits)    |
@@ -917,7 +917,7 @@ The pool allocator (`sub_424070`, 3,809 callers) is the single most heavily used
 
 Large blocks use boundary tags for coalescing on free:
 
-```
+```text
 Block Header (32 bytes):
   +0    i64      sentinel      // -1 = allocated, else -> next free
   +8    ptr      prev_free     // previous in free list (or 0)
@@ -1030,7 +1030,7 @@ Bucket entry: 24 bytes `{head, tail, count}`. Node: 64 bytes with chain link, ke
 
 The linked list (`sub_42CA60` prepend, 298 callers; `sub_42CC30` length, 48 callers) is a singly-linked list of 16-byte nodes:
 
-```
+```text
 ListNode (16 bytes, pool-allocated)
   +0    ptr      next        // pointer to next node (NULL = end)
   +8    ptr      data        // pointer to payload object
@@ -1042,7 +1042,7 @@ Prepend allocates a 16-byte node from the pool, sets `node->data = payload`, and
 
 Growable arrays appear throughout the PhaseManager and elsewhere. The layout is a triple of `{data_ptr, count, capacity}`:
 
-```
+```text
 PoolVector (24 bytes inline, or embedded in parent struct)
   +0    ptr      data         // pointer to element array
   +8    i32      count        // current element count
@@ -1143,7 +1143,7 @@ Key fields on `a1`:
 
 Each section occupies a 32-byte entry in the table at `*(a1+72) + 32 * section_index`:
 
-```
+```text
 Offset  Type   Field
 +0      u16    type_tag           section type identifier
 +4      u32    data_size          byte size of data payload

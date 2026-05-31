@@ -41,7 +41,7 @@ Approximately **95% of the binary is compiler backend** -- the same ptxas assemb
 
 nvlink operates in a linear pipeline with two optional compiler paths:
 
-```
+```text
 Input Files (cubin, PTX, fatbin, NVVM IR, archives, host ELF)
   |
   +-- [File type detection: 56-byte header read, magic number dispatch]
@@ -403,7 +403,7 @@ nvlink is one component in a four-tool CUDA compilation pipeline. Each tool in t
 
 ### The Pipeline
 
-```
+```text
 CUDA C++ source (.cu)
   |
   v

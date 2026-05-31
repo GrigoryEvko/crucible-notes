@@ -49,7 +49,7 @@ The binary's statistics printer functions (clones at 0x700-byte intervals from `
 
 Format strings from the binary:
 
-```
+```text
 # [est hmma1688=%d] [est hmma1688f16=%d] [est hmmaSp1688=%d] [est hmmaSp1688f16=%d]
 # [est hmma16816=%d] [est hmma16816f16=%d]
 # [est imma16816=%d] [est imma16832=%d] [est immaSp8832=%d] [est immaSp16832=%d]
@@ -148,7 +148,7 @@ The 39 intrinsics registered under `__cuda_sm_8x_mma_*` cover:
 
 Prototype examples from the binary:
 
-```
+```ptx
 .weak .func (.param .align 16 .b32 mma_dst[4])
     __cuda_sm_8x_mma_row_col_f16_f16_f16_f16
     (.reg .b32 a0, .reg .b32 a1, .reg .b32 b0, .reg .b32 b1,
@@ -252,7 +252,7 @@ The `_0` and `_1` suffixes on sparse m16n8k64 represent the two halves of a spli
 
 Prototype example (sparse m16n8k128):
 
-```
+```ptx
 .weak .func (.param .align 16 .b32 mma_dst[4])
     __cuda_sm_9x_mma_sub_byte_internal_sparse_m16n8k128_s4_s4
     (.reg .b32 a0, .reg .b32 a1, .reg .b32 a2, .reg .b32 a3,
@@ -306,7 +306,7 @@ WGMMA (Warp Group Matrix Multiply-Accumulate) operates at warpgroup granularity 
 
 The hardware requires strict sequencing:
 
-```
+```ptx
 wgmma.fence              -- open pipeline stage
 wgmma.mma_async  (1..N)  -- asynchronous MMA operations sharing accumulators
 wgmma.commit_group       -- close pipeline stage
@@ -432,7 +432,7 @@ Eight guardrail PTX instructions are registered in the opcode dispatch table:
 
 The guardrail check functions are `.FORCE_INLINE` and return a boolean `retVal`:
 
-```
+```ptx
 .FORCE_INLINE .func (.reg .b32 retVal)
     __cuda_sm10x_tcgen05_guardrails_check_datapath_alignment
     (.reg .u32 tmemAddr, .reg .u32 iDesc, .reg .u32 cta_group,
@@ -483,7 +483,7 @@ TCGen05 operations are dispatched through the named opcode table, not the numeri
 
 The OCG system at `sub_6C9EB0` registers additional SASS-level MMA operations for SM100+:
 
-```
+```text
 tcmma (2x64dp128bitlw02lw13, 2x64dp128bitlw01lw23, 4x32dp128bit)
 tcbar, mmareadshma
 16dp32bitt0t15, 16dp32bitt16t31

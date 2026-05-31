@@ -46,7 +46,7 @@ The IR generation frontend creates debug metadata when the debug info flag is ac
 
 The metadata hierarchy created during IR generation:
 
-```
+```text
 DICompileUnit
   [ctx+0x170], emission kind: FullDebug or LineTablesOnly
   ├── DIFile (per source file)
@@ -301,7 +301,7 @@ The `write-experimental-debuginfo` default of `true` means cicc v13.0 uses the n
 
 ## End-to-End Flow Diagram
 
-```
+```text
 CUDA Source (.cu / .cup)
     │
     ▼

@@ -24,7 +24,7 @@ The name "Capsule Mercury" comes from the encapsulation metaphor: Mercury-format
 
 The `--binary-kind` flag is registered in `sub_4AC380` with the help text:
 
-```
+```text
 Specify the type of target ELF binary kind. Default on sm100+ is capmerc
 ```
 
@@ -274,7 +274,7 @@ The output filename is selected in `main()` based on architecture and binary-kin
 
 The finalizer supports a fastpath for "off-target" finalization, logged as:
 
-```
+```text
 [Finalizer] fastpath optimization applied for off-target %u -> %u finalization
 ```
 
@@ -284,7 +284,7 @@ This occurs when the driver's target architecture differs from the compilation a
 
 The `--opportunistic-finalization-lvl` option controls when off-target finalization is attempted. The CLI help string at `0x1D41EE2` documents only four values:
 
-```
+```text
 Specify the opportunistic finalization level. 0=default,
 1=no opportunistic finalization, 2=intra family finalization only,
 or 3=intra and inter family finalization
@@ -347,7 +347,7 @@ The `--self-check` flag triggers a validation pass where the linker reconstitute
 
 A more detailed failure message references the internal Jira page:
 
-```
+```text
 Failure of '%s' section in self-check for capsule mercury.
 See the Jira confluence page 'MERCSW-125' for more information
 that includes some debugging steps.
@@ -355,7 +355,7 @@ that includes some debugging steps.
 
 The `--out-sass` option works only through self-check mode. Its help text states:
 
-```
+```text
 Generate output of capmerc based reconstituted sass only through -self-check
 ```
 
@@ -401,7 +401,7 @@ The FNLZR finalization orchestrator (`sub_471700`, 78,516 bytes) is the largest 
 
 A separate JIT finalization entry exists at `sub_52DD50` (781 bytes; `0x52DD50`..`0x52E05C`), the JIT-specific wrapper that owns all five `FNLZR: ... JIT` diagnostic strings (verified xrefs at `0x52DDE1`, `0x52DE07`, `0x52DFB0`, `0x52DFFB`, `0x52E049`). `sub_52DD50` delegates to the same `sub_4748F0` engine used by the AOT path. The byte-adjacent function `sub_52E060` (11,802 bytes; starts at `0x52E060`, immediately after `sub_52DD50` ends at `0x52E05C`) is **not** part of the finalizer -- it is the embedded nvJIT API option parser (the entry point installed at `qword_2A77DD0` by `sub_4FFC30` and dispatched by `sub_4BE350`/`sub_4BDB90`; see [PTX Input Handling](../input/ptx-input.md)). Its decompilation contains no `FNLZR`/JIT/ptxas-internal strings; instead it owns `"nvJIT API"`, `"JIT API Command Line Options"`, `"in-memory-ELF-image"`, and the toolchain version banner, plus a 23-entry option-handler dispatch table at `0x1df8ce0..0x1df8d90` whose every slot lands back inside itself. The 23 paired `_setjmp` buffers are per-option longjmp targets for option-parse failure (not C++ exception machinery). The `sub_52DD50` wrapper handles the CUDA driver's JIT finalization path with its own logging:
 
-```
+```text
 FNLZR: JIT Path
 FNLZR: preLink Mode
 FNLZR: postLink Mode

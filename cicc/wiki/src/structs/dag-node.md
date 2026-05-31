@@ -10,7 +10,7 @@ Every SDNode is allocated as exactly 104 bytes, hardcoded in `sub_163D530`. Afte
 
 The raw 104 bytes are zeroed via a combination of qword and dword stores:
 
-```
+```c
 qw[0..5] = 0, dw[6] = 0, qw[8..10] = 0, dw[11] = 0, byte[96] = 0
 ```
 
@@ -50,7 +50,7 @@ Operands are stored in a contiguous array of `SDUse` structures. Two storage mod
 
 **Mode A -- backward inline** (common for small operand counts). Operands are stored *before* the node in memory, growing toward lower addresses:
 
-```
+```c
 operand[i] = *(qword*)(N + 32*(i - NumOps))
 // or equivalently: N - 32*NumOps = first operand address
 ```
@@ -59,7 +59,7 @@ This 32-byte operand stride is confirmed across `sub_F3D570`, `sub_F20C20`, and 
 
 **Mode B -- indirect pointer** (when `node_flags_byte` bit 6 is set). An 8-byte pointer at `N-8` points to a separately allocated operand array:
 
-```
+```c
 if (*(byte*)(N+7) & 0x40):
     operand_base = *(qword*)(N - 8)
 ```
@@ -80,7 +80,7 @@ Use-list traversal functions: `sub_B43C20` (add to use list), `sub_B43D60` (remo
 
 An SDValue is a lightweight `{SDNode*, unsigned ResNo}` pair identifying a specific result of a specific DAG node. In the decompiled code, SDValues appear as 16-byte pairs at various points:
 
-```
+```c
 struct SDValue {
     SDNode *Node;     // +0: pointer to the defining node
     uint32_t ResNo;   // +8: which result of that node (0-based)
@@ -128,7 +128,7 @@ Total minimum context size: **212 bytes**.
 
 Map A uses 16-byte bucket stride (key + value pairs), confirmed by the decompiled access pattern:
 
-```
+```c
 v30 = (_QWORD *)(v28 + 16LL * v29);   // 16-byte stride
 *v30 = v11;                             // key
 v30[1] = v19;                           // value
@@ -140,7 +140,7 @@ The SelectionDAGBuilder converts LLVM IR to an initial SelectionDAG. The main en
 
 ### Entry and Dispatch
 
-```
+```c
 sub_2081F00(SelectionDAGBuilder *this, BasicBlock *BB):
     // this+552 = SelectionDAG pointer
     // this+560 = DataLayout pointer
@@ -174,7 +174,7 @@ Every memory-touching SDNode carries a *chain* operand (token type) that enforce
 
 **TokenFactor merging.** When multiple independent memory operations can be reordered (e.g., independent loads), the builder creates a `TokenFactor` (opcode 2/55 depending on context) node that merges multiple chains into one:
 
-```
+```c
 // sub_F429C0: merge node creation
 TokenFactor = getNode(ISD::TokenFactor, dl, MVT::Other, chains[])
 ```
@@ -207,7 +207,7 @@ Operations: `sub_163BE40(v381, ptr)` inserts into the +8 array; `sub_163BBF0(con
 
 The `getNode()` family of functions deduplicates SDNodes via a CSE hash table. The primary implementation is `sub_F4CEE0` (41KB):
 
-```
+```c
 sub_F4CEE0(SelectionDAG *DAG, unsigned Opcode, SDVTList VTs, SDValue *Ops, unsigned NumOps):
     // 1. Compute profile hash via sub_F4B360 (SDNode::Profile)
     //    Hash combines: opcode, VTs, all operand node pointers
@@ -350,7 +350,7 @@ Type legalization workers:
 
 After types are legal, the operation legalizer checks whether each *operation* at its now-legal type is supported. The action lookup:
 
-```
+```c
 action = *(uint8_t*)(TLI + 259*VT + opcode + 2422)
 ```
 
@@ -407,7 +407,7 @@ Since every base SDNode is exactly 104 bytes (13 qwords), a single 4096-byte ini
 
 The builder iterates over the function's basic blocks via a linked list rooted at `a2 + 72` (the function parameter). Each list node embeds the data pointer at offset -24 from the node:
 
-```
+```c
 bb_data = node_ptr - 24
 ```
 

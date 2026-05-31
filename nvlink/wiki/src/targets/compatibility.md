@@ -36,7 +36,7 @@ The `arch_number` for multi-digit architectures maps directly to the SM value: s
 
 ### Algorithm
 
-```
+```c
 arch_string_match(input_arch_str, target_arch_str):
     record_a = arch_parse_name_to_number(input_arch_str)
     record_b = arch_parse_name_to_number(target_arch_str)
@@ -181,7 +181,7 @@ The same 104->120, 130->107, 101->110 remapping applies. Both source and target 
 
 ### Algorithm
 
-```
+```c
 can_finalize_capability_mask(record, source_arch, target_arch, flag):
     // Remap both architectures
     source = remap(source_arch)
@@ -243,11 +243,11 @@ Both `sub_4709E0` and `sub_470DA0` check for the environment variable `CAN_FINAL
    - **OSABI == 0x41 (Mercury)**: `sm = (e_flags >> 8) & 0xFF` (second byte)
 
 5. **Arch string construction**: The SM number and the ABI suffix flag (`sub_43E6F0`) are formatted into a 12-byte buffer:
-   ```
+   ```c
    snprintf(buf, 12, "sm_%d%c", sm_version, has_abi ? 'a' : '\0')
    ```
    Or, if the cubin is virtual (`byte_2A5F2C1` set):
-   ```
+   ```c
    snprintf(buf, 12, "compute_%d%c", sm_version, has_abi ? 'a' : '\0')
    ```
 

@@ -31,7 +31,7 @@ EDG's expression parser is entirely hand-written C. There are no parser tables, 
 
 The top-level entry point is `scan_expr_full`, which serves a dual role: (1) it contains the primary-expression scanner as a massive switch on token kind, and (2) after scanning a primary expression, it enters a post-scan binary-operator dispatch loop that routes to the correct precedence-level handler based on the next operator token.
 
-```
+```text
 scan_expr_full (sub_511D40)
   │
   ├─ [token switch] ─────────► Primary expressions
@@ -84,7 +84,7 @@ When `scan_expr_full` encounters a binary operator token whose precedence is low
 
 `scan_expr_full` (`sub_511D40`, 80KB) is the largest function in the entire cudafe++ binary. Its structure follows this pattern:
 
-```
+```c
 function scan_expr_full(result, scan_info, precedence, flags, ...) {
     // 1. Trace entry
     if (debug_trace_flag)
@@ -381,7 +381,7 @@ The master switch in `scan_expr_full` covers approximately 120 distinct token ca
 - **Reference binding**: determines whether the result is an lvalue reference, rvalue reference, or prvalue.
 - **Overloaded operator?**: resolution of user-defined conditional operators.
 
-```
+```c
 function scan_conditional_operator(context, result, flags) {
     // 1. The condition has already been scanned -- it is in 'result'
     //    We are positioned at the '?' token
@@ -447,7 +447,7 @@ The function handles:
 6. **Template argument deduction** for function templates at call sites
 7. **CUDA atomic builtin remapping** -- delegates to `adjust_sync_atomic_builtin` (see below)
 
-```
+```c
 function scan_function_call(callee_operand, flags, context, ...) {
     // 1. Classify the callee
     operand_kind = get_operand_kind(callee_operand)
@@ -508,7 +508,7 @@ function scan_function_call(callee_operand, flags, context, ...) {
 
 The argument scanner called from `scan_function_call`:
 
-```
+```c
 function scan_call_arguments(arg_list_out, ...) {
     // assert "scan_call_arguments"
     // Loop: scan comma-separated expressions until ')'
@@ -546,7 +546,7 @@ function scan_call_arguments(arg_list_out, ...) {
 
 The function processes all forms:
 
-```
+```c
 function scan_new_operator(result, flags, context, ...) {
     // Determine scope: ::new (global) vs. new (class-scope)
     is_global = check_and_consume("::")
@@ -603,7 +603,7 @@ The function contains assert strings revealing its sub-operations:
 | `"make_anonymous_union_field_operand"` | Construct operand for anonymous union member access |
 | `"get_with_hash"` | Hash-based lookup for cached resolution results |
 
-```
+```c
 function scan_identifier(result, flags, precedence, ...) {
     // 1. Preprocessing-expression context
     //    In #if, undefined identifiers evaluate to 0
@@ -660,7 +660,7 @@ Two functions implement the CUDA execution space enforcement that prevents illeg
 
 Called from `scan_function_call` and other call sites. The function extracts execution space information from bit-packed flags at entity offset `+182`:
 
-```
+```c
 function check_cross_execution_space_call(callee, is_must_check, diag_ctx) {
     // Extract callee's execution space from entity flags
     if (callee != NULL) {
@@ -769,7 +769,7 @@ The type suffix ensures correct instruction selection:
 
 ### Pseudocode
 
-```
+```c
 function adjust_sync_atomic_builtin(callee, args, arg_list, builtin_info, result_ptr) {
     // assert "adjust_sync_atomic_builtin" at line 6073
 
@@ -895,7 +895,7 @@ The C++20 three-way comparison operator (`<=>`) triggers rewriting of traditiona
 
 `fill_in_range_based_for_loop_constructs` (`sub_50C510`) generates the desugared components of `for (auto x : range)`:
 
-```
+```cpp
 // Source:     for (auto x : range_expr) body
 // Desugared:  {
 //               auto && __range = range_expr;

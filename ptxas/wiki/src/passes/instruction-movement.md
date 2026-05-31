@@ -235,7 +235,7 @@ Confidence: **HIGH** for the wrapper roles (each is fully decompiled and the onl
 
 ## Pipeline Context
 
-```
+```text
 Bin 76  OriHoistInvariantsLate             ┐  builds the LICM dataflow that the
                                             │  movement engine reuses
 Bin 77  SinkCodeIntoBlock                  │  ⊖ (SKIP-numbered phase; code-sinking
@@ -257,7 +257,7 @@ The movement family runs after `OriHoistInvariantsLate` (binary 76) so the LICM 
 
 The engine's stack frame (122 bytes for the engine itself; 8 bytes for each wrapper) is dominated by the `v26..v38` cluster fed to `sub_8FF780`:
 
-```
+```text
 v25  (offset +1):  disabled flag — written by sub_799250(HoistInvariants)
 v26  (offset +2):  (_QWORD*)ctx — engine forwards the context pointer
 v27  (offset +A):  kind — the discriminator value verbatim
@@ -278,7 +278,7 @@ The flag bytes `v31`, `v33`, `v34` form a 3-bit decision vector that drives the 
 
 Consider a kernel with a TEX instruction whose result is consumed three basic blocks later:
 
-```
+```text
 BB0:                                BB0:
   ...                                 ...
 BB1:                                BB1:

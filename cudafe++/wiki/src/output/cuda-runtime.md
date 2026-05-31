@@ -37,7 +37,7 @@ static char __nv_init_managed_rt_with_module(void **);
 
 These are emitted verbatim from a single string at `0x83AAC8`:
 
-```
+```text
 "static char __nv_inited_managed_rt = 0; static void **__nv_fatbinhandle_for_managed_rt;
  static void __nv_save_fatbinhandle_for_managed_rt(void **in)
  {__nv_fatbinhandle_for_managed_rt = in;} static char __nv_init_managed_rt_with_module(void **);"
@@ -91,7 +91,7 @@ This is a lazy initialization pattern. On first call, `__nv_inited_managed_rt` i
 
 The complete managed memory initialization sequence spans the compilation pipeline:
 
-```
+```text
 1. cudafe++ emits __nv_save_fatbinhandle_for_managed_rt() definition
 2. cudafe++ emits forward decl of __nv_init_managed_rt_with_module()
 3. cudafe++ emits __nv_init_managed_rt() with lazy init pattern
@@ -132,7 +132,7 @@ The combined mask `0x101` matches when both `__device__` and `__managed__` are s
 
 When the condition matches, the emitter outputs a prefix string from `0x839570`:
 
-```
+```text
 (*( (__nv_inited_managed_rt ? (void)0: __nv_init_managed_rt()), (
 ```
 
@@ -225,7 +225,7 @@ The lookup calls `sub_72EEF0` to insert the identifier `__cudaPushCallConfigurat
 
 The error string at `0x88CA48`:
 
-```
+```text
 unable to find __cudaPushCallConfiguration declaration.
 CUDA toolkit installation may be corrupt.
 ```

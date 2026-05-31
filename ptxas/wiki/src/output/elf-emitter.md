@@ -26,7 +26,7 @@ ptxas builds its ELF/cubin output without libelf or any external ELF library. Th
 
 ## Architecture
 
-```
+```text
 sub_446240 (real main -- compilation driver)
   |
   v
@@ -303,7 +303,7 @@ Six hash maps initialized identically with `sub_42D150(sub_427630, sub_4277B0, 0
 
 #### Visual Layout
 
-```
+```text
  ELFW Object (672 bytes = 0x2A0)
  +---------+------+--------------------------------------------------+
  |  0x000  | 64B  | ELF Header Embed (Elf32_Ehdr or Elf64_Ehdr)     |
@@ -535,7 +535,7 @@ The top-level ELF/cubin generation function at 47 KB. Called from the compilatio
 
 Adjusts symbol indices after dead code elimination removes sections from the ELFW. When sections are deleted, all symbol references to those sections become stale and must be renumbered.
 
-```
+```text
 For each section in ELFW:
   If section lacks a STT_SECTION symbol:
     Create one
@@ -556,7 +556,7 @@ Debug-mode function that prints a formatted dump of the ELFW internal state. Tri
 
 Output format:
 
-```
+```text
 elfw structure:
 header: size=%d type=%d abiv=%d, flags=%x
   shnum=%d shoff=%d

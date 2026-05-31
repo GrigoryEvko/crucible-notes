@@ -40,7 +40,7 @@ Concretely, the flag controls:
 
 Per-register state actually lives in **two** distinct bits, on two different bytes:
 
-```
+```text
        vreg + 48                                                vreg + 49
   ┌─────────────────────────┐                              ┌──────────────────────┐
   │ ... bits 20..21 = pair  │                              │ ...                  │
@@ -167,7 +167,7 @@ restart: ;
 
 The pipeline runs `OriPropagateVarying` at phases **53** and **70**, separated by 17 intervening phases that all have the potential to change which registers are varying.
 
-```
+```text
 Phase 49  GvnCse                            ┐
 Phase 50  OriReassociateAndCommon           │
 Phase 51  ExtractShaderConstsFinal          │
@@ -236,7 +236,7 @@ Confidence: **HIGH** for the special-register rows (seed function strictly tests
 
 The varying flag is one bit in a per-virtual-register descriptor. The relevant byte is `vreg+49` (a small flag byte distinct from the larger flag word at `vreg+48`).
 
-```
+```text
                            vreg descriptor (per-register record)
   offset            bit 7  6  5  4  3  2  1  0
    +0      …  intrusive list/next pointer
@@ -332,7 +332,7 @@ The two analyses interact: `OriHoistInvariantsLate` (phase 66) combines the phas
 
 Consider this fragment after lowering (registers are virtual, before allocation):
 
-```
+```asm
 B0:  R10 = S2R SR_TID_X            // seed: R10 varying
      R11 = MOV.IMM 1024             // R11 uniform
      R12 = IMUL.WIDE R10, 4         // R10 varying → R12 varying

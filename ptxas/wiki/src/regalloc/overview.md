@@ -44,7 +44,7 @@ A secondary live-range-based infrastructure (98 functions at `0x994000`--`0x9A10
 
 The register allocator runs in the late pipeline, after all optimization passes and instruction scheduling preparation, but before final SASS encoding:
 
-```
+```text
 ... optimization passes ...
   Late Legalization / Expansion
   AdvancedPhaseAllocReg gate         <-- pipeline entry guard
@@ -91,7 +91,7 @@ Pair modes (`vreg+48`, bits 20--21): `0` = single, `1` = lo-half of pair, `3` = 
 
 The top-level register allocation driver (1086 lines). Called once per function after the `AdvancedPhaseAllocReg` pipeline gate.
 
-```
+```c
 function regalloc_entry(alloc_state, compilation_ctx):
     // 1. Rebuild liveness
     rebuild_basic_blocks(compilation_ctx, 1)          // sub_781F80
@@ -135,7 +135,7 @@ The outer retry loop (355 lines) that wraps the core allocator with a two-phase 
 
 **Phase 2 -- SPILL:** If NOSPILL fails, invoke spill guidance (`sub_96D940`) and retry with spilling enabled.
 
-```
+```c
 function alloc_with_spill_retry(alloc_state, ctx, class_id):
     no_retarget = query_knob(638)                     // RegAllocNoRetargetPrefs (bool)
     num_trials  = query_knob(639)                     // RegAllocNumNonSpillTrials (int)
@@ -183,7 +183,7 @@ Both arrays are zeroed with SSE2 vectorized loops at the start of each allocatio
 
 ### Algorithm
 
-```
+```c
 function fatpoint_allocate(alloc_state, ctx, mode):
     // sub_957160 lines 421-435
     maxRegs = max(alloc_state.hw_limit + 7,           // alloc+756 + headroom
@@ -239,7 +239,7 @@ The interference threshold (`RegAllocThresholdForDiscardConflicts`, knob 684, de
 
 The assignment function (155 lines) writes the physical register and propagates through alias chains:
 
-```
+```c
 function assign_register(alloc, ctx, mode, vreg, regclass_info, slot, cost):
     max_regs = regclass_info.max_regs                 // at +16
 
@@ -319,7 +319,7 @@ The retry driver `sub_9714E0` (290 lines) triggers `sub_96D940` on each failed a
 
 **Phase B -- Guidance extraction** (`sub_93C0B0`, 582 lines): after the walk completes, the allocator reads the guidance output and marks VRs for spilling on the next attempt.
 
-```
+```c
 // sub_93C0B0 -- consume guidance to mark spill candidates
 function extract_spill_marks(ctx, guidance, class_id):
     if ctx[32 * ctx.alloc_mode + 893]:             // fast-path class: skip
@@ -407,7 +407,7 @@ function extract_spill_marks(ctx, guidance, class_id):
 
 The outer retry loop in `sub_9714E0` reads the updated `queue_base[3]` pressure values. If pressure remains positive, it invokes `sub_96D940` recursively with `alloc+1560 = target - 1`, iterating until either (a) allocation succeeds within budget, (b) the retry count (knob 638/639) is exhausted, or (c) the fatal error fires:
 
-```
+```c
 // sub_9714E0 lines 99-264 -- recursive descent with guidance feedback
 function finalize_with_spill(alloc, max_attempts, class_id):
     alloc.attempt_counter++                          // alloc+1524
@@ -461,7 +461,7 @@ Entry: `sub_910840` (327 lines). Promotes stack variables to registers or unifor
 
 **Eligibility check** (`sub_8F3EA0`, 96 lines) -- determines whether mem-to-reg is profitable:
 
-```
+```c
 is_promotable(code_obj):
   mode   = code_obj->ctx->options[33120]    // promotion mode byte
   budget = code_obj->ctx->options[33128]    // promotion budget (mode 1 only)
@@ -488,7 +488,7 @@ is_promotable(code_obj):
 
 **Orchestrator** (`sub_910840`):
 
-```
+```c
 ConvertMemoryToRegisterOrUniform(code_obj):
   if NOT is_promotable(code_obj): return
   if NOT consume_budget(ctx, knob=487): return   // NumOptPhasesBudget
@@ -504,7 +504,7 @@ ConvertMemoryToRegisterOrUniform(code_obj):
 
 Entry: `sub_94A020` (331 lines). Assigns physical registers to high-priority operands before the main allocator runs.
 
-```
+```c
 pre_allocate(alloc):
   code_obj = alloc->code_obj
   ctx      = code_obj->ctx
@@ -546,7 +546,7 @@ pre_allocate(alloc):
 
 **Opcode eligibility bitmask** (constant `0x2080000010000001`, from `sub_94A020` lines 284/315):
 
-```
+```c
 PREALLOC_MASK = 0x2080000010000001    // 64-bit; bits {0, 28, 55, 61} set
 
 // Narrow test: bitmask + two explicit opcodes (6 opcodes).
@@ -630,7 +630,7 @@ Cross-calls into the subsystem from the four large engines below confirm the clu
 
 Eliminates register-to-register copies by merging live ranges. Lines 1-100 compute an FNV-1a-variant hash (multiplier 1025, XOR-shift-6) over the operand stream, stored at `range_ctx+80` for dedup. Dispatches on mode at `range_ctx+8`:
 
-```
+```c
 coalesce_pass(alloc, range_ctx):
   hash = fnv1a_fold(alloc->code_obj)          // operand stream hash
   range_ctx->hash = hash                       // +80: dedup key
@@ -672,7 +672,7 @@ coalesce_pass(alloc, range_ctx):
 
 Inserts a vreg index into the appropriate worklist. List A (+1280) serves mode-6 (paired); list B (+1344) all others. Nodes are 24-byte `{prev, next, vreg_idx}` from the arena at +1336/+1400.
 
-```
+```c
 insert_coalesce_candidate(alloc, vreg_idx):
   if alloc->alloc_mode == 6:                     // +1508
     list = alloc+1280; arena = alloc+1336; count = alloc+1328  // list A
@@ -703,7 +703,7 @@ Evaluates whether an instruction is a coalesceable copy. Rejection uses bits on 
 | 5 | `0x20` | CSSA mode (phi-web coalescing) | `sub_67FC80` |
 | 7 | `0x80` | Encoding-pinned (Mercury constraint) | `sub_6D9690` |
 
-```
+```c
 eval_coalesce_candidate(ctx, instr):
   flags = get_instr_flags(instr, code_obj)       // sub_7DF3A0
   REJECT if: flags & 0x01                        // bit 0: pre-colored
@@ -724,7 +724,7 @@ eval_coalesce_candidate(ctx, instr):
 
 FNV-1a hash table with open chaining at +1408..+1432. Buckets: 24-byte `{chain_ptr, tail_ptr, local_count:u32}`. Nodes: 24-byte `{next_ptr, vreg_idx:u32, hash:u32, degree:u32}`. Grows at `count > capacity/2`.
 
-```
+```c
 query_or_insert_interference(alloc, vreg_idx, weight):
   if alloc->ig_base == NULL:                     // +1424
     grow_table(alloc+1408, 8)                    // sub_950570, initial 8 slots
@@ -752,7 +752,7 @@ At allocation start the drain loop (`sub_95DC10` line 1327) walks every bucket, 
 
 Iterative fixed-point splitter, bounded by `alloc+45` (max iterations) and `alloc+46` (max rounds). Each round clears interference flags, drains prior worklists, then scans the vreg-to-physical bitvector for split candidates. Uses `sub_9AEC60` for profitability analysis and materializes splits as new 192-byte range nodes stored in an 8-bucket hash table keyed on `(range_id & 7)`.
 
-```
+```c
 split_ranges(alloc):
   flags = alloc->field_156
   alloc->split_uniform = (flags & 8) != 0      // +161
@@ -826,7 +826,7 @@ split_ranges(alloc):
 
 Merges coalesced live ranges by walking the coalesce hash table, checking interference BST for conflicts, and relinking nodes. Returns a pointer to merge statistics.
 
-```
+```c
 merge_ranges(alloc, a2, a3, budget_lo, budget_hi, stats, ...):
   ctx = alloc + 83                              // coalesce context at +664
   ctx->field_936 = 0                            // reset merge counter
@@ -1157,7 +1157,7 @@ Occupancy-aware register budget interpolation. Computes a dynamic register budge
 
 The interpolation table at +1664 through +1712 encodes a 4-segment piecewise linear function mapping physical register count to a budget fraction in [0.0, 1.0]. The table stores (x, y) pairs as interleaved doubles: odd indices are x-coordinates (thread-count breakpoints), even indices are y-coordinates (fraction values). During initialization (`sub_947150`), points [0], [2], [4] are set to coefficient A (default 0.2) and point [6] is set to coefficient B (default 1.0), while the x-breakpoints come from the max-threads knob, the pressure-threshold knob, and a vtable-derived limit.
 
-```
+```c
 // sub_937E90 -- piecewise interpolation lookup (lines 112-136 of decompiled)
 // Inputs: alloc = allocator context, reg_count = physical regs for this class
 // Returns: fraction in [coeffA, coeffB], typically [0.2, 1.0]
@@ -1189,7 +1189,7 @@ double evaluate_budget_fraction(alloc, reg_count):
 
 The caller in `sub_937E90` uses this fraction to decide whether to trigger a spill round. It computes `(available_regs + 1) * fraction` and compares against the sum of demanded registers plus a pair-widening penalty, returning true (needs-spill) when demand exceeds the fractional budget:
 
-```
+```c
 needs_spill = (pair_penalty + demanded + live_count)
             > (phys_range_end - phys_range_start + 1) * fraction
 ```
@@ -1211,7 +1211,7 @@ The half-regfile value (128 for sm90, 256 for sm53--sm62) is `total_regs / 256` 
 
 **Occupancy formula** (`sub_A99FE0`, 7 instructions). The maximum warp occupancy for a given register count is:
 
-```
+```c
 // Profile fields (set by sub_AAFCF0 from the arch profile vtable):
 //   profile[+1440] = granularity_mask   (e.g. 63 for sm90)
 //   profile[+1460] = half_reg_file_size (e.g. 128 for sm90 = 32768/256)

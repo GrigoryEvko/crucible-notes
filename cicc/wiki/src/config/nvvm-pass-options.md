@@ -21,7 +21,7 @@ The struct is populated by a single 27 KB native function (`sub_12D6300`, ~4,786
 
 The struct is heap-allocated as a single 4,512-byte block. The first 16 bytes contain header fields, followed by 221 option slots packed contiguously, and a 32-byte zero trailer:
 
-```
+```text
 Offset  Size   Field
 ──────  ────   ─────
 0       4      int opt_level (copied from registry+112)
@@ -144,7 +144,7 @@ The hash table uses open addressing. The lookup computes `hash(option_index)` an
 
 Resolves a boolean option with a default value. This is the critical function for all 100 boolean slots -- it performs a three-step resolution:
 
-```
+```text
 sub_12D6240(registry, option_index, default_string):
     1. Call sub_12D6170(registry, option_index)
     2. If found AND has value:
@@ -215,7 +215,7 @@ Integer slot defaults:
 
 The path from a user-visible flag to an NVVMPassOptions slot traverses four stages:
 
-```
+```text
 nvcc -Xcicc -opt "-do-licm=0"          ← user invocation
     │
     ▼

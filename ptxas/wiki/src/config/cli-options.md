@@ -17,7 +17,7 @@ ptxas v13.0.88 accepts approximately 160 command-line options: 51 documented in 
 
 ## Architecture
 
-```
+```text
           argv
            │
            ▼
@@ -385,7 +385,7 @@ The `-knob` flag is the primary CLI mechanism for setting internal knob values -
 
 ### Syntax
 
-```
+```text
 -knob NAME=VALUE         Set a typed knob (int, float, double, string, range)
 -knob NAME               Set a boolean knob (presence = true)
 -knob "A=1~B=2~C=3"     Multiple knobs in one argument, separated by ~ (tilde)

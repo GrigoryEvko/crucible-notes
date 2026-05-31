@@ -20,7 +20,7 @@ All five functions are too large for static decompilation. Their internal struct
 
 Every mega-hub follows an identical protocol, regardless of target architecture:
 
-```
+```c
 best_priority = 0
 best_id = -1
 

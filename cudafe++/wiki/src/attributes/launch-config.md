@@ -39,7 +39,7 @@ Kinds 92--94 are part of the original dense block (86--95). Kinds 107 and 108 we
 
 The struct is allocated by `sub_5E52F0` and returned with a 16-byte offset from the raw allocation base. All handlers access the struct through the pointer stored at `entity+256`. The allocator initializes all int32 fields to `-1` (sentinel for "not set") and zeroes the two leading int64 fields and the flags byte.
 
-```
+```c
 struct launch_config_t {                  // 56 bytes (offsets from entity+256 pointer)
     int64_t  maxThreadsPerBlock;          // +0   from __launch_bounds__ arg 1 (init: 0)
     int64_t  minBlocksPerMultiprocessor;  // +8   from __launch_bounds__ arg 2 (init: 0)

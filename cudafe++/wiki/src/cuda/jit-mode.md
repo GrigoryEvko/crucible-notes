@@ -42,7 +42,7 @@ The practical effect: when JIT mode is active, the entire implicit-host-annotati
 
 NVRTC (`libnvrtc.so` / `nvrtc64_*.dll`) is NVIDIA's runtime compilation library. Application code calls `nvrtcCreateProgram` with CUDA C++ source text, then `nvrtcCompileProgram` to compile it. Internally, NVRTC embeds a complete CUDA compilation pipeline including cudafe++ and cicc, invoking them with JIT-appropriate flags:
 
-```
+```text
 Application
     |
     v
@@ -100,7 +100,7 @@ This means the downstream subsystems -- keep-in-IL marking, cross-space validati
 
 In normal nvcc workflows, `--default-device` is passed through `-Xcudafe`:
 
-```
+```bash
 nvcc -Xcudafe --default-device source.cu
 ```
 
@@ -120,7 +120,7 @@ Five error messages enforce JIT mode restrictions. All five are emitted during s
 **Tag:** `no_host_in_jit`
 
 **Message:**
-```
+```text
 A function explicitly marked as a __host__ function is not allowed in JIT mode
 ```
 
@@ -129,7 +129,7 @@ A function explicitly marked as a __host__ function is not allowed in JIT mode
 **No `--default-device` suggestion:** This is the only JIT diagnostic that does not suggest `--default-device`. The flag only affects unannotated entities. An explicit `__host__` annotation overrides the default. The fix must be a source code change: remove `__host__`, change it to `__device__`, or change it to `__host__ __device__`.
 
 **Example:**
-```cpp
+```cuda
 // JIT mode: error no_host_in_jit
 __host__ void setup() { /* ... */ }
 
@@ -143,7 +143,7 @@ __host__ __device__ void setup() { /* ... */ }  // if needed in both contexts
 **Tag:** `unannotated_function_in_jit`
 
 **Message:**
-```
+```text
 A function without execution space annotations (__host__/__device__/__global__)
 is considered a host function, and host functions are not allowed in JIT mode.
 Consider using -default-device flag to process unannotated functions as __device__
@@ -155,7 +155,7 @@ functions in JIT mode
 **Fix:** Either add `__device__` to the function declaration, or compile with `--default-device`.
 
 **Example:**
-```cpp
+```cuda
 // JIT mode without --default-device: error unannotated_function_in_jit
 int compute(int x) { return x * x; }
 
@@ -170,7 +170,7 @@ __device__ int compute(int x) { return x * x; }
 **Tag:** `unannotated_variable_in_jit`
 
 **Message:**
-```
+```text
 A namespace scope variable without memory space annotations
 (__device__/__constant__/__shared__/__managed__) is considered a host variable,
 and host variables are not allowed in JIT mode. Consider using -default-device flag
@@ -186,7 +186,7 @@ The check applies to the memory-space bitfield at entity+148, not the execution-
 **Fix:** Add a memory-space annotation, or compile with `--default-device`.
 
 **Example:**
-```cpp
+```cuda
 // JIT mode without --default-device: error unannotated_variable_in_jit
 int table[256] = { /* ... */ };
 
@@ -202,7 +202,7 @@ __constant__ int table[256] = { /* ... */ };
 **Tag:** `unannotated_static_data_member_in_jit`
 
 **Message:**
-```
+```text
 A class static data member with non-const type is considered a host variable,
 and host variables are not allowed in JIT mode. Consider using -default-device flag
 to process such data members as __device__ variables in JIT mode
@@ -213,7 +213,7 @@ to process such data members as __device__ variables in JIT mode
 **Why non-const only:** `const` and `constexpr` static members with compile-time-constant initializers can be folded into device code by cicc without requiring an actual global variable in host memory. Non-const static members require mutable storage that must be explicitly placed in device memory.
 
 **Example:**
-```cpp
+```cuda
 struct Config {
     // JIT mode without --default-device: error unannotated_static_data_member_in_jit
     static int max_iterations;
@@ -236,7 +236,7 @@ struct Config {
 **Tag:** `host_closure_class_in_jit`
 
 **Message:**
-```
+```text
 The execution space for the lambda closure class members was inferred to be __host__
 (based on context). This is not allowed in JIT mode. Consider using -default-device
 to infer __device__ execution space for namespace scope lambda closure classes.
@@ -249,7 +249,7 @@ This diagnostic interacts with the extended lambda system (documented in [Extend
 **Fix:** Either annotate the lambda with `__device__` (requires extended lambdas: `--expt-extended-lambda`), or pass `--default-device` to change the inference to `__device__`.
 
 **Example:**
-```cpp
+```cuda
 // JIT mode without --default-device: error host_closure_class_in_jit
 auto fn = [](int x) { return x * 2; };
 
@@ -271,7 +271,7 @@ auto fn = [] __device__ (int x) { return x * 2; };
 
 All five diagnostics use the standard cudafe++ diagnostic system. They can be controlled via CLI flags or source pragmas:
 
-```
+```bash
 --diag_suppress=unannotated_function_in_jit
 --diag_warning=no_host_in_jit
 #pragma nv_diag_suppress unannotated_variable_in_jit
@@ -324,7 +324,7 @@ Relaxed constexpr mode (`--expt-relaxed-constexpr`, flag 104, sets `dword_106BFF
 
 ### Pattern 1: Minimal JIT Kernel
 
-```cpp
+```cuda
 // Source passed to nvrtcCreateProgram -- no --default-device needed
 extern "C" __global__ void add(float* a, float* b, float* c, int n) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -336,7 +336,7 @@ No annotations needed beyond `__global__` on the kernel. All code within the ker
 
 ### Pattern 2: JIT-Compiling Library Code with --default-device
 
-```cpp
+```cuda
 // Header-only math library, no CUDA annotations
 template <typename T>
 T clamp(T val, T lo, T hi) {
@@ -353,7 +353,7 @@ Without `--default-device`, `clamp` triggers `unannotated_function_in_jit`. With
 
 ### Pattern 3: Guarding Host Code with Preprocessor
 
-```cpp
+```cuda
 // Use __CUDACC_RTC__ to guard host-only code
 #ifndef __CUDACC_RTC__
 __host__ void cpu_fallback(float* data, int n) {
@@ -371,7 +371,7 @@ __global__ void gpu_process(float* data, int n) {
 
 ### Pattern 4: Static Data Members in JIT
 
-```cpp
+```cuda
 struct Constants {
     static constexpr int BLOCK_SIZE = 256;        // OK: constexpr, folded at compile time
     static const float EPSILON;                    // Error without --default-device (non-constexpr const)

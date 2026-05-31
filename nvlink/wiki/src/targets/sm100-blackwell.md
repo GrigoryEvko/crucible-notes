@@ -24,7 +24,7 @@ All SM100 SASS instructions are 128 bits (16 bytes) wide. The instruction word i
 
 The first 32 bits encode the instruction identity through five fields set by the first five calls to the bitfield insertion primitive `sub_4C28B0`:
 
-```
+```text
 127                              64 63                                0
 +----------------------------------+----------------------------------+
 |     Modifier / Operand Fields    |  Fmt2 | Mod | SubOp | Minor | EF | MajOp |
@@ -99,7 +99,7 @@ Combined totals: **1,975 encoder functions**, **648 decoder functions**, **1,613
 
 Every encoder follows an identical structural template:
 
-```
+```c
 __int64 __fastcall encode_XXX(__int64 buf, __int64 ir_instr)
 {
     sub_4C2A60(buf);                          // Initialize encoding buffer
@@ -147,7 +147,7 @@ __int64 __fastcall encode_XXX(__int64 buf, __int64 ir_instr)
 
 Decoders mirror encoders -- each unpacks a 128-bit instruction word into the internal IR:
 
-```
+```c
 __int64 __fastcall decode_XXX(__int64 buf, __int64 ir_out)
 {
     sub_4C5F90(buf, ir_out);                       // Finalize init
@@ -561,12 +561,12 @@ A sixth function at `sub_16E2D70` (93 lines) handles `__cuda_sm10x_tcgen05_mma_s
 Each function follows the same two-path pattern:
 
 1. **32-bit tmem address** (when the address operand type is `sub_12B5850` or `sub_12B56C0`, internal type 6): Emits a simple `add.u32`:
-   ```
+   ```ptx
    add.u32 %s, <symbol>, %s, %s;
    ```
 
 2. **64-bit tmem address** (all other types): Wraps in a scoped register block with 64-to-32-bit conversion:
-   ```
+   ```ptx
    {.reg .b32 __cuda_sm_100_tcgen05_tmem_addr_base;
    cvt.u32.u64 __cuda_sm_100_tcgen05_tmem_addr_base, %s;
    add.u32 %s, __cuda_sm_100_tcgen05_tmem_addr_base, %s;
@@ -714,7 +714,7 @@ The universal operand descriptor at `xmmword_1F460E0`/`xmmword_1F460F0` (32 byte
 
 The `a1` parameter across all encoder/decoder functions points to:
 
-```
+```text
 Offset  Size   Description
 ------  ----   -----------
   0       4    Flags / instruction ID
@@ -743,7 +743,7 @@ Offset  Size   Description
 
 ### Encoder Dispatch Table Entry (24 bytes)
 
-```
+```text
 Offset  Size  Description
 ------  ----  -----------
   0       1   Opcode byte 0 (minor opcode low)

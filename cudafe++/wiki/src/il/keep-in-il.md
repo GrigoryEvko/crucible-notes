@@ -23,7 +23,7 @@ The entire mechanism lives in `il_walk.c` (the mark/walk side) and `il.c` (the e
 
 Every IL entry is preceded by an 8-byte prefix. The byte at offset -8 from the entry pointer contains per-entry flags:
 
-```
+```text
 Byte at (entry_ptr - 8):
   bit 0  (0x01)  is_file_scope          Entry belongs to file-scope IL region
   bit 1  (0x02)  is_in_secondary_il     Entry is in the secondary IL (second TU)
@@ -45,7 +45,7 @@ The `keep_definition_in_il` flag is stronger than the base `keep_in_il` flag. A 
 
 ## Pipeline Context
 
-```
+```text
 fe_wrapup (sub_588F90)
   |
   +-- Pass 1:  sub_588C60   per-file IL wrapup

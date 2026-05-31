@@ -67,7 +67,7 @@ void forgetLoop(
 
 **Phase 3 -- Expression dependency analysis** (`0xDE2BC5`). The core invalidation loop. Iterates the collected values in **reverse order** and builds a transitive closure of all dependent SCEV expressions. Uses a stack-based worklist (SmallVector, inline capacity 8) and a SmallDenseSet for visited tracking. The dependency walk dispatches on expression type:
 
-```
+```text
 Type 0x52 ('R' = AddRec):  Follow Start and Step operands via getSCEV,
                             compare ranges with getRangeRef
 Type 0x56 ('V' = variant):  Check function pointer equality at [-0x60]
@@ -132,7 +132,7 @@ float val = A[blockIdx.x * BLOCK_H + threadIdx.y][blockIdx.y * BLOCK_W + threadI
 
 By the time this reaches LLVM IR, the address computation has been flattened:
 
-```
+```llvm
 %addr = getelementptr float, ptr %A, i64 %flat_idx
 ; where %flat_idx = (blockIdx.x * BLOCK_H + threadIdx.y) * N + (blockIdx.y * BLOCK_W + threadIdx.x)
 ```

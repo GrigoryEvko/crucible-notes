@@ -45,7 +45,7 @@ However, cicc compensates with three safety mechanisms that upstream does not ne
 
 The pass entry `sub_2F36310` calls `OptimizeFunction`, which runs a fixed-point loop:
 
-```
+```c
 OptimizeFunction(MF):
     repeat:
         changed  = TailMergeBlocks(MF)
@@ -68,7 +68,7 @@ TailMergeBlocks operates in two phases.
 
 Then call `TryTailMergeBlocks(IBB, PredBB, MinCommonTailLength)`:
 
-```
+```c
 TryTailMergeBlocks(SuccBB, PredBB, MinTail):
     sort MergePotentials by hash
     for each group of candidates sharing a hash:
@@ -95,7 +95,7 @@ TryTailMergeBlocks(SuccBB, PredBB, MinTail):
 
 The hash function at `sub_2F26260` computes a 32-bit hash of a block's tail for fast merge-candidate matching. The algorithm:
 
-```
+```c
 HashEndOfMBB(MBB):
     iter = MBB.rbegin()        // last instruction
     // skip debug instructions
@@ -113,7 +113,7 @@ HashEndOfMBB(MBB):
 
 `HashMachineInstr` (at `sub_2E89C70`) hashes the instruction's opcode, number of operands, and the first two operands' register/immediate values. It does not hash memory operands or metadata -- this is intentional, because the hash is only used to bucket candidates for pairwise comparison. False collisions are resolved by the subsequent `ComputeCommonTailLength` call. The hash uses a simple multiply-and-XOR scheme:
 
-```
+```c
 HashMachineInstr(MI):
     h = MI.getOpcode()
     h = h * 37 + MI.getNumOperands()
@@ -130,7 +130,7 @@ The `* 37` constant is standard LLVM hashing (the same multiplier used in `Dense
 
 The comparison loop at `0x2F33B0F` proceeds as follows:
 
-```
+```c
 ComputeCommonTailLength(MBB1, MBB2):
     iter1 = MBB1.rbegin()     // walk backwards from end
     iter2 = MBB2.rbegin()
@@ -237,13 +237,13 @@ For a reserved register, there is no concrete definition. The value is implicitl
 
 The function takes three arguments:
 
-```
+```c
 sub_2E88A90(context_ptr, register_or_operand, flag_mask) -> bool
 ```
 
 For the BranchFolding call at `0x2F3427B`, the calling convention is:
 
-```
+```asm
 ; rdi = TargetRegisterInfo*  (from MachineFunction->getSubtarget().getRegisterInfo())
 ; esi = register ID           (physical register number from live-in set)
 ; edx = 0x200                 (isReservedReg flag)
@@ -275,7 +275,7 @@ The environment registers (`ENVREG0`--`ENVREG31`) are used internally by the CUD
 
 The reserved-register check is the third of four gates in the merge decision path. The complete sequence at `0x2F33B0F`--`0x2F34300` is:
 
-```
+```c
 MergeDecision(MBB1, MBB2, MinTail):
     // Gate 1: Instruction comparison
     tail_len = ComputeCommonTailLength(MBB1, MBB2)
@@ -308,7 +308,7 @@ Gate 3 iterates every register that would be live-in to the proposed `CommonTail
 
 After a merge is accepted and the `CommonTail` block is created, `sub_2E16F10` (`computeLiveIns`) populates the new block's live-in set. This function must agree with the pre-merge reserved-register check: if the check passed (no reserved registers), then `computeLiveIns` will produce a live-in set containing only virtual registers and non-reserved physical registers. The function at `sub_2E16F10` performs its own filtering:
 
-```
+```c
 computeLiveIns(CommonTail):
     for each reg in upward_exposed_uses(CommonTail):
         if isReserved(reg):

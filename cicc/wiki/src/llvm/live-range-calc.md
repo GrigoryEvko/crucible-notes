@@ -33,7 +33,7 @@ These appear throughout the segment hash table, the pending-def table, and the V
 
 Each live range segment in CICC is 296 bytes (`0x128`), substantially larger than upstream's `LiveRange::Segment` (which is 24 bytes). The inflation comes from four inlined SmallVector buffers that avoid separate heap allocations for the common case:
 
-```
+```text
 Segment (296 bytes / 0x128):
   +0x00   u64   status / SlotIndex start (sentinel if free)
   +0x08   ptr   endpoint buffer (or inline at +0x18)
@@ -55,7 +55,7 @@ Each pointer field follows the LLVM SmallVector convention: if the pointer equal
 
 Value numbers are tracked via 120-byte (`0x78`) VNInfo nodes, allocated from a bump-pointer allocator at `[this+0x4A0]`:
 
-```
+```text
 VNInfo (120 bytes / 0x78):
   +0x00   ptr   endpoint buffer (inline at +0x10)
   +0x08   u64   capacity (initial: 0x200000000 = inline cap 2)
@@ -133,7 +133,7 @@ Calls `sub_2FC1A70` (ensureCapacity) to prepare per-block storage, then loops ov
 
 This is the core computation -- a standard backward-dataflow fixed-point iteration, operating on 64-bit word bitvectors. It implements the classic liveness equation:
 
-```
+```text
 LiveIn(B) = (LiveOut(B) \ Kill(B)) | Def(B)
 LiveOut(B) = Union over all successors S of LiveIn(S)
 ```
@@ -142,7 +142,7 @@ The iteration continues until no bitvector word changes across a complete pass o
 
 #### Detailed dataflow pseudocode
 
-```
+```rust
 // Phase 5 reconstructed from sub_2FC4FC0 at 0x2FC5656--0x2FC5CC6
 //
 // State:
@@ -347,7 +347,7 @@ The instruction-count threshold of 15 and the block-count threshold of 1 are har
 
 The `LiveRangeCalc` object (`this` pointer passed in `rdi`) is reconstructed from register offsets observed throughout `sub_2FC4FC0`:
 
-```
+```text
 LiveRangeCalc (approx 0x4C0 bytes):
   +0x00   ptr    SlotIndex base (set from [rsi+0x30] in Phase 1)
   +0x08   ptr    VNInfo* / MBB* parameter (set from rsi in Phase 1)

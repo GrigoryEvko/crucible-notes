@@ -51,7 +51,7 @@ The `-` sentinel enables piping cudafe++ output to stdout for debugging or toolc
 
 A fully-generated `.int.c` file follows this fixed section ordering, top to bottom:
 
-```
+```text
 +------------------------------------------------------------------+
 | 1. #line directive (initial source position)                     |
 +------------------------------------------------------------------+

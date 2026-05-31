@@ -223,7 +223,7 @@ The `pthread_mutexattr_t *` type for `a2` is a decompiler artifact -- the caller
 
 The function implements a loop that may skip multiple internal members (the `/` symbol table, the `//` long-name table, and any `__.LIBDEP` entries) before yielding a real member to the caller:
 
-```
+```text
 archive_next_member(content_out, size_out, ctx):
     |
     +-- Validate: return 3 if ctx==NULL, size_out==NULL, or content_out==NULL
@@ -466,7 +466,7 @@ This design has several implications:
 
 Consider the canonical CUDA device runtime archive `libdevice.a` (which in CUDA installations is actually shipped as `libdevice.10.bc`, but users can also pass archive-packaged variants via `-L` / `-l`). Suppose the archive contains:
 
-```
+```text
 libdevice.a:
     / (symbol table, 512 bytes)
     // (long-name table, 96 bytes)          -- contains "__nv_sqrt_device_impl.o/\n__nv_fma_device_rounding.o/\n..."

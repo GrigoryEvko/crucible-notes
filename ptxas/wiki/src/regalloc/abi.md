@@ -27,7 +27,7 @@ The reservation is unconditional across all SM generations. Any `.maxreg` direct
 
 The ABI engine determines the target SM generation by reading a field from the SM target descriptor:
 
-```
+```c
 generation = *(int*)(sm_target + 372) >> 12
 ```
 
@@ -45,7 +45,7 @@ The minimum register count varies by generation. For generations 3--4 (sm\_35 th
 
 The top-level ABI entry point (5608 bytes), called once per function by the per-function compilation driver `sub_98F430`. It orchestrates the full ABI pipeline in 10 steps:
 
-```
+```c
 function abi_master_setup(func, sm_target, abi_spec):
     // 1. Validate register count vs. ABI minimums
     generation = *(sm_target + 372) >> 12
@@ -100,7 +100,7 @@ Parameters are passed in consecutive R registers starting from a configurable ba
 
 The core parameter allocator (2277 bytes, 98% confidence). It uses a 256-byte free-list array (`v103[]`) where each byte represents one register slot: `0xFF` = free, `0x00` = occupied.
 
-```
+```c
 function abi_alloc_params(func):
     // Initialize 256-byte free-list (one byte per register slot)
     bitmap[256] = {0xFF...}                      // all slots free
@@ -133,7 +133,7 @@ function abi_alloc_params(func):
 
 The `find_contiguous_free` call in the pseudocode above is not a separate function -- it is inlined directly in `sub_19CA730`. The algorithm scans the 256-byte free-list for `count` contiguous free slots starting at an aligned offset. Each candidate start position is forced to the next alignment boundary using a negative-mask trick.
 
-```
+```c
 // Inlined in sub_19CA730 (lines ~395-421 of decompiled output).
 // bitmap: byte[256], 0xFF = free, 0x00 = occupied.
 // count:  registers needed = ceil(param_bytes / 4).
@@ -227,7 +227,7 @@ Registers not reserved by the ABI and not used for parameters or return values m
 
 The scratch/preserved classification feeds into the register allocator's spill decisions. Registers marked as scratch across a call boundary must be saved by the caller; preserved registers must be saved by the callee. The spill codegen (`sub_94F150`) adjusts per-vreg spill costs at every CALL instruction (opcode 97 used here as an internal CALL-like marker; `STG` in the 322-entry ROT13 SASS name table -- the actual SASS `CALL` is opcode 71) based on this classification:
 
-```
+```c
 function adjust_spill_cost_for_abi(alloc, func, instr):
     // Called within sub_94F150's instruction walk when opcode == 97.
     // Epoch counter tracks call boundaries for liveness segmentation.
@@ -308,7 +308,7 @@ The instruction stream is scanned linearly. For CALL instructions (Ori opcode 10
 
 Runs when the callee has no explicit ABI spec (`*(callee_desc+24) == 0`) and `abi_spec+1105 & 0x01`. Rewrites operands referencing the ABI parameter base R41 (`0x29`) to point at a freshly allocated frame-local copy.
 
-```
+```c
 lower_call_params(ctx, call_insn):
     bitmap = alloc_bitmap(ctx, call_insn.operand_count)      // sub_BDBAD0
     for i = call_insn.operand_count-1 downto 0:
@@ -333,7 +333,7 @@ lower_call_params(ctx, call_insn):
 
 Runs after parameter fixup when the CALL has operands with type 5 (callee-save reference) or the `0x1000000` needs-save flag. Walks operands in reverse and rewrites non-stack-save operands into frame MOVs.
 
-```
+```c
 lower_call_saves(ctx, call_insn):
     if (get_flags(call_insn) ^ 0x70000000) & 0x70000000 == 0:
         return 0                                     // no ABI operands
@@ -411,7 +411,7 @@ Two functions enforce convergent allocation boundaries for function calls annota
 
 **Convergent boundary checker** (`sub_19D13F0`, 4.3 KB):
 
-```
+```c
 check_convergent_boundaries(func, call_insn):
     num_words = (func.reg_count + 64) >> 6       // 64-bit bitmask words
     bitmask   = alloc(num_words * 8)              // one bit per register slot
@@ -436,7 +436,7 @@ check_convergent_boundaries(func, call_insn):
 
 **CONV.ALLOC insertion** (`sub_19D7A70`, 3313 bytes):
 
-```
+```c
 insert_conv_alloc(func, allow_reorder) -> int:
     num_words  = (func.reg_count + 64) >> 6       // field +376
     live_mask  = alloc(num_words * 8)              // convergent-live bitmask
@@ -496,7 +496,7 @@ The ABI engine validates that the scratch/preserved classification is consistent
 
 ### handle\_suspend\_point (sub\_19D5F10)
 
-```
+```c
 handle_suspend_point(func_ctx):
     func = *func_ctx
     if !(func[+1369] & 0x01): return              // not a coroutine
@@ -544,7 +544,7 @@ handle_suspend_point(func_ctx):
 
 ### build\_coroutine\_frame (sub\_19D4B80)
 
-```
+```c
 build_coroutine_frame(func_ctx) -> int:
     frame_count = 0;  anchor = NULL
     warp_group = -1;  seen_local = false
@@ -587,7 +587,7 @@ Two functions implement a shared-memory-based workaround for a hardware bug on t
 
 **Body variant** (`sub_19DA2A0`, 95% confidence): Generates a 7-instruction SASS sequence:
 
-```
+```asm
 1. MOV.C  temp_reg, <constant>           // opcode 195, class 3
 2. LD.S   temp_reg, [__nv_reservedSMEM_gb10b_war_var]  // opcode 98
 3. AND    temp_reg, temp_reg, 4           // opcode 214
@@ -605,7 +605,7 @@ The limit propagator (`sub_19CE590`) handles inter-procedural ABI attribute forw
 
 ### propagate\_abi\_limits (sub\_19CE590)
 
-```
+```c
 propagate_abi_limits(compilation_ctx):
     target = compilation_ctx[+8]
     sm_gen = target[+896]
@@ -659,7 +659,7 @@ Uniform registers (type 3) are only available on sm\_75 and later. Attempting to
 
 The ABI engine sits between the optimization passes and the register allocator in the ptxas pipeline:
 
-```
+```text
 ... optimization passes ...
   Late Legalization / Expansion
   ABI Master Setup              <-- sub_19D1AF0 (per-function)
@@ -755,7 +755,7 @@ The total byte size is `element_count * element_size`. The register count is `ce
 
 The parameter allocator (`sub_19CA730`) constructs a 2048-bit free-list bitmap as a **stack-local** variable (not stored in the engine context). It is declared as `v103[31]` (248 bytes of QWORD array) plus `v104` (4 bytes), `v105` (2 bytes), and `v106` (1 byte), totaling 255 bytes.
 
-```
+```c
 Initialization:
   memset(v103, 0xFF, 248)     // 248 bytes all-ones
   v104 = 0xFFFFFFFF           // 4 bytes
@@ -824,7 +824,7 @@ The ABI engine uses three diagnostic emitters:
 
 The ABI master setup (`sub_19D1AF0`) invokes validators in this order:
 
-```
+```text
 1. regcount vs. abi_minimum       -> 7016
 2. register reservation overflow  -> 7017
 3. return address setup           -> 7006, 7012  (sub_19D1720)

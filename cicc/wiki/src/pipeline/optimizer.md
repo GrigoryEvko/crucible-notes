@@ -25,7 +25,7 @@ Address range `0x12D0000`–`0x16FFFFF` (~4.2 MB of code).
 
 ## Architecture
 
-```
+```text
 sub_12E1EF0 (10 KB native, concurrent compilation entry)
   │
   ├─ GNU Jobserver init (sub_16832F0, --jobserver-auth=R,W from MAKEFLAGS)
@@ -80,7 +80,7 @@ The two-phase model exists because certain optimization passes (e.g., inter-proc
 
 Both phases call the **same** `sub_12E54A0`. The difference: `qword_4FBB3B0` (TLS variable) is set to 1 or 2 before each call. Individual passes read this counter and skip themselves if the current phase doesn't match their intended execution phase. When the module contains only a single defined function, the phase mechanism is bypassed entirely — a single unphased call handles everything.
 
-```
+```text
 Phase State Machine:
 
   START → [phase=1] → sub_12E54A0 (Phase I)
@@ -310,7 +310,7 @@ The registration function also handles **parameterized pass parsing**: when the 
 
 The 4,512-byte NVVMPassOptions struct is allocated on the heap via `sub_22077B0(4512)` at the start of each compilation. The layout divides into four regions:
 
-```
+```text
 Offset 0x000 [8B]  : int32 opt_level (from config+112) + 4B padding
 Offset 0x008 [8B]  : qword ptr to PassOptionRegistry (hash table source)
 Offset 0x010 [4464B]: 221 option slots (indices 1-221)
@@ -400,7 +400,7 @@ The first six slots are all string types at a uniform 24-byte stride, starting a
 
 Users interact with NVVMPassOptions via the `-opt` flag, which appends key=value pairs to the PassOptionRegistry before `sub_12D6300` flattens them:
 
-```
+```bash
 cicc -opt "-do-ip-msp=0"            # disable memory space propagation
 cicc -opt "-do-licm=0"              # disable LICM
 cicc -opt "-remat-max-live-limit=50" # set rematerialization threshold
@@ -662,7 +662,7 @@ Tier 0 (`sub_12DE330`) is the most comprehensive sub-pipeline at ~40 passes. Its
 
 The full pass list for `sub_12DE8F0` (all tiers combined, with tier-specific gates):
 
-```
+```text
 sub_1CB4E40(1) [!opts[2000]]            NVVMIntrinsicLowering (level=1)
 sub_1A223D0()  [!opts[2600]]            NVVMIRVerification
 sub_1CB4E40(1) [!opts[2000]]            NVVMIntrinsicLowering (barrier=1)
@@ -750,7 +750,7 @@ A notable pattern occurs only in Tier 3: if `BYTE4(qword_4FBB370[2])` is zero (n
 
 The new-PM driver `sub_226C400` selects pipeline name strings based on config flags:
 
-```
+```text
 byte[888]  set  →  "nvopt<O0>"
 byte[928]  set  →  "nvopt<O1>"
 byte[968]  set  →  "nvopt<O2>"
@@ -798,7 +798,7 @@ Ofcmax is architecturally distinct: it forces `-lsa-opt=0` and `-memory-space-op
 
 NVIDIA replaces LLVM's standard `default<O2>` pipeline naming with a proprietary `nvopt<>` prefix. The new-PM driver `sub_226C400` (35KB, at `0x226C400`) selects one of exactly seven pipeline name strings based on optimization level and fast-compile flags. These strings are passed verbatim to `sub_2277440` (60KB, at `0x2277440`) -- NVIDIA's equivalent of LLVM's `PassBuilder::buildDefaultPipeline()`.
 
-```
+```text
 nvopt<O0>       Optimization disabled. ~5-8 infrastructure passes only.
 nvopt<O1>       Standard optimization, Tier 1 (conservative).
 nvopt<O2>       Standard optimization, Tier 2 (full).
@@ -840,7 +840,7 @@ The `nvopt` prefix is registered as a pipeline element in `sub_225D540` (new PM,
 
 Combining `-O#` with `--passes=` or `--foo-pass` is an error:
 
-```
+```text
 Cannot specify -O#/-Ofast-compile=<min,mid,max> and --passes=/--foo-pass,
 use -passes='default<O#>,other-pass' or -passes='default<Ofcmax>,other-pass'
 ```
@@ -1212,7 +1212,7 @@ The three language paths in Phase 1/4 represent fundamentally different IR matur
 
 PTX text input has already been lowered by an earlier compilation stage. This path applies only light cleanup and canonicalization:
 
-```
+```text
 sub_1CEF8F0()               NVVMPeephole
 sub_215D9D0()               NVVMAnnotationsProcessor
 sub_1857160()  [!a4[880]]   NVVMReflect
@@ -1232,7 +1232,7 @@ Key difference: no SROA, no GVN, no loop transformations, no CGSCC inlining. The
 
 The primary path for standard CUDA compilation. The IR comes from the EDG frontend through IR generation and is at "mid-level" maturity (high-level constructs lowered, but not yet optimized).
 
-```
+```text
 sub_184CD60()  [!a4[1960]]    ConstantMerge
 sub_1CB4E40(0) [!a4[2000]]    NVVMIntrinsicLowering (1st of 4)
 sub_1B26330()  [!a4[2040]]    MemCpyOpt
@@ -1285,7 +1285,7 @@ Key pattern: NVVMIntrinsicLowering runs 4 times, NVVMReflect runs 3 times, NVVMI
 
 Used for bitcode from external sources (not marked as "ptx" or "mid"). Balances optimization breadth with conservative assumptions about IR maturity.
 
-```
+```text
 sub_1A62BF0(4,0,0,1,0,0,1)    LLVM standard pipeline #4
 sub_1857160()  [!a4[880]]     NVVMReflect (1st)
 sub_1CB4E40(0) [!a4[2000]]    NVVMIntrinsicLowering

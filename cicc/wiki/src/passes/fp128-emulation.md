@@ -172,7 +172,7 @@ The predicate naming follows the standard LLVM `fcmp` convention: `o` prefix = o
 
 The `trunc`/`zext`/`sext` opcode path requires special logic because it must distinguish between genuine 128-bit truncation/extension and other type conversions that happen to use the same opcode.
 
-```
+```c
 sub_1C8C170::handle_trunc_ext(inst):
     if sub_1642F90(*operand, 128):      // Is the operand type 128-bit?
         // Determine source and dest bit-widths from DataLayout
@@ -205,7 +205,7 @@ The "name length" column refers to the string length passed to the call construc
 
 Each helper follows the same pattern:
 
-```
+```c
 helper(module, instruction, name_string, name_length):
     // 1. Get or create function declaration in module
     func = module.getOrInsertFunction(name_string, return_type, param_types...)
@@ -244,7 +244,7 @@ There are no knobs in `knobs.txt` specific to `fp128` or `i128` lowering. The pa
 
 The pass itself emits no diagnostic messages or debug prints. All diagnostic information comes from the embedded function name strings:
 
-```
+```text
 "__nv_add_fp128"         "__nv_sub_fp128"         "__nv_mul_fp128"
 "__nv_div_fp128"         "__nv_rem_fp128"
 "__nv_udiv128"           "__nv_idiv128"

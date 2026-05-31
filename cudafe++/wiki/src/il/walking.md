@@ -605,7 +605,7 @@ The external declarations list (`qword_126EBE0`) is notable: it walks entries as
 
 ## Walk Order Diagram
 
-```
+```text
 walk_file_scope_il(callbacks...)
   |
   +-- [save 5 callbacks + 4 state vars]

@@ -150,7 +150,7 @@ bool is_class_or_struct_or_union_type(type_t *type) {
 
 In x86-64 machine code, this compiles to a 3-instruction loop:
 
-```
+```asm
 .loop:
     cmp  byte [rdi+132], 12       ; type->type_kind == tk_typeref?
     jne  .done

@@ -26,7 +26,7 @@ The pass resolves generic (AS 0) pointers to specific address spaces: global (AS
 
 The pass operates as a worklist-driven inter-procedural fixed-point analysis. The top-level loop:
 
-```
+```c
 function IPMSP_Run(Module M):
     worklist = deque<Function*>{}
     argSpaceMap = map<Value*, int>{}        // formal arg -> resolved AS
@@ -74,7 +74,7 @@ The pass iterates all functions in the module. A function enters the worklist if
 
 Specifically, `sub_2CBA650` checks:
 
-```
+```c
 function shouldProcess(this, F):
     if F has no users (F[16] == 0): return false
 
@@ -110,7 +110,7 @@ For each function popped from the worklist:
 
 3. **Count resolved arguments**: any arg where all call sites agree on a single address space is a candidate for specialization.
 
-```
+```c
 function analyzeArgSpaces(F, argSpaceMap, calleeSpaceMap):
     numArgs = F.arg_size()
     spaces[numArgs] = {1000, ...}     // 1000 = unresolved
@@ -161,7 +161,7 @@ The pass chooses between two strategies based on linkage:
 
 The decision at line 1114 in `sub_2CBBE90`:
 
-```
+```c
 if (F.linkage & 0xF) - 7 <= 1:
     // Internal/Private: specialize in place
     for each resolved arg:
@@ -211,7 +211,7 @@ The inference engine is the core analysis that determines what address space a g
 
 ### Entry Point: `sub_2CE96D0`
 
-```
+```c
 function inferAddressSpace(calledFn, actualArg, &result, module, symtab, argSpaceMap):
     as = actualArg.type.addrspace
     if as != 0:
@@ -257,7 +257,7 @@ The walker traces the pointer's provenance backward through the SSA def chain. I
 
 The engine collects candidate address spaces from all reachable definitions. The resolution follows these rules:
 
-```
+```c
 // All sources agree:     resolved to that space
 // Sources disagree:      unresolvable (return false)
 // param bit set + param-always-point-to-global:  resolve to global (AS 1)
@@ -294,7 +294,7 @@ This function is the heavy-weight driver called from the worklist loop for each 
 
 5. For single-entry results (exactly 1 callee entry in the vector): special fast path via `sub_2CE2F10` that commits directly through a vtable dispatch.
 
-```
+```c
 function perCalleePropagate(this, F):
     if this.firstVisit:
         // Reset tracking vectors
@@ -344,7 +344,7 @@ When multiple call instructions target the same callee, this function determines
 
 After the per-callee analysis produces a list of `(instruction, resolved_space)` entries:
 
-```
+```c
 function mergeAndCommit(this, F):
     entries = this.resultVector
     if entries.size() > 1:

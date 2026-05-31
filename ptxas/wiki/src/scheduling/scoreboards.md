@@ -40,7 +40,7 @@ Total: 26 bits of scheduling metadata per instruction in the internal representa
 
 In the final SASS binary, the control word is packed into 23 bits per instruction slot within a 128-bit scheduling control instruction. Three instruction slots share one control instruction, yielding a 4:3 instruction-to-encoding ratio. (MED -- per-field widths confirmed against `sub_A36360` encoder shifts; the 3-slot packing layout is inferred from cuobjdump output and the encoder loop structure rather than a single literal in the binary.)
 
-```
+```text
 128-bit scheduling control instruction:
   ┌─────────┬─────────┬─────────┬──────────────────┐
   │ Slot 0  │ Slot 1  │ Slot 2  │ Reserved / flags │
@@ -60,7 +60,7 @@ The reuse flags (6 bits per instruction) are encoded separately in the instructi
 
 ### Bit-Field Diagram
 
-```
+```text
   22  21  20  19  18  17  16  15  14  13  12  11  10   9   8   7   6   5   4   3   2   1   0
  ┌───┬───┬───┬───┬───┬───┬───┬───┬───┬───┬───┬───┬───┬───┬───┬───┬───┬───┬───┬───┬───┬───┬───┐
  │  rsvd  │         wait mask         │        read mask          │  wr_bar   │ Y │  stall    │
@@ -154,7 +154,7 @@ The scheduler:
 
 The core decision lives in `sub_A220A0` (9 KB), called once per source operand that requires dependency tracking. This is the single most critical algorithm in the scoreboard pass -- it decides whether a dependency is expressed as a stall count in the control word or as a barrier register allocation with a wait bit.
 
-```
+```c
 function AssignOperandScoreboard(backend, func, instr, operand_idx, insert_pt, sched_state):
     operand_slot = &instr.operands[operand_idx]          // instr+84 + 8*idx
     operand_desc = *operand_slot                          // 32-bit packed descriptor
@@ -265,7 +265,7 @@ Phase 116 implements the conservative scoreboard insertion path for `-O0` (no op
 
 The `-O0` path does not perform dependency analysis. Instead, it applies maximum-safety defaults:
 
-```
+```c
 function ProcessO0WaitsAndSBs(func):
     for each bb in func.basic_blocks:
         for each instr in bb.instructions:
@@ -317,7 +317,7 @@ The master switch at the entry of `sub_A36360` routes instructions by opcode cla
 
 For the default path, `sub_A36360` calls these encoders in sequence:
 
-```
+```c
 function GenerateControlWord(ctx, instr):
     // 1. Initialize operand analysis
     sub_7E19E0(&operand_info, ctx.func, instr)
@@ -368,7 +368,7 @@ The barrier allocator manages the 6 hardware barrier registers as a resource poo
 
 ### Allocation State Machine
 
-```
+```text
 State per barrier register (6 entries):
   barrier[i].status     ∈ {FREE, PENDING, COMPLETED}
   barrier[i].producer   = instruction pointer (or NULL)
@@ -386,7 +386,7 @@ State transitions:
 
 The orchestrator (`sub_A356A0`, EncodeScoreboardFields) drives the three-phase allocation. Phase 1 resolves operand-to-register mappings and extracts the pipe class. Phase 2 selects a barrier index. Phase 3 applies conflict correction when the `ctx+1415` bit 5 flag is set (enabled for non-texture long-latency classes).
 
-```
+```c
 function AllocateBarrier(ctx, producer_instr):
     pipe_class = LookupPipeClass(producer_instr)       // from dep_rules[unit_id]
     barrier_lat = dep_rules[pipe_class].barrier_latency // typically 56 cycles
@@ -491,7 +491,7 @@ The object has three regions: 35 reference-counted counter slots, a linked-list/
 
 35 QWORD pointer slots, each pointing to an externally-allocated 24-byte counter node. Each counter node has the layout:
 
-```
+```text
 Counter node (24 bytes):
   +0   QWORD   refcount (initialized to 1)
   +8   QWORD   value (initialized to 0)
@@ -591,7 +591,7 @@ Total: 14 records x 40 bytes = 560 bytes + 8 byte tail = 568 bytes.
 
 ### Memory Layout Diagram
 
-```
+```text
 ScoreboardObject (952 bytes)
 +--------+--------+--------+--------+--------+--------+--------+--------+
 |+0 slot0 (R bar) |+8 slot1 (R stl) |+16 slot2 (P bar)|+24 slot3 (P stl)|
@@ -632,7 +632,7 @@ The scoreboard object is a passive state store; three scheduling-time operations
 
 **Counter slot usage.** Slots 0--17 are organized as `(barrier_state, stall_counter)` pairs for each of the 9 register classes (R, P, UR, UP, B, plus 4 arch-specific). The barrier\_state half tracks which hardware barrier index, if any, is currently live for that register class. The stall\_counter half accumulates the minimum stall cycles computed from dependency distances. Slots 18--34 are auxiliary scoreboard counters used by the linked-list node (Region 2) and the 14 barrier records (Region 3) as shared refcounted storage for cross-context state propagation.
 
-```
+```c
 // Called from sub_A342E0 (EncodeWriteBarrierIndex) when a long-latency
 // producer is issued and requires a dependency barrier.
 function on_instruction_issued(sb, ctx, producer, reg_class, latency):
@@ -656,7 +656,7 @@ function on_instruction_issued(sb, ctx, producer, reg_class, latency):
     return idx
 ```
 
-```
+```c
 // Called from sub_A356A0 (EncodeScoreboardFields) / sub_A34B70
 // (EncodeWaitBarrierMask) to bind a barrier to a register class.
 // Executes when the allocator assigns barrier idx to a producer.
@@ -680,7 +680,7 @@ function on_barrier_set(sb, idx, producer, reg_class_mask):
         sb.region2.active_flag   = idx | 0x1   // mark active + barrier index
 ```
 
-```
+```c
 // Called from sub_A356A0 (EncodeScoreboardFields) when a consumer
 // instruction needs the result protected by barrier idx.
 // Produces wait_mask bits and manages barrier lifecycle.
@@ -730,7 +730,7 @@ The stall count is the minimum number of cycles the warp scheduler must wait bef
 
 ### Algorithm
 
-```
+```c
 function ComputeStallCount(ctx, instr):
     max_stall = 0
     for each source_operand in instr:
@@ -761,7 +761,7 @@ The stall count computation uses the SM backend at `*(func+1584)` (`sm_backend`)
 
 The yield flag is computed by `sub_8F3650` (`EncodeYieldField`, 2.7 KB). The function resolves the predecessor instruction from the control word array and decides whether the warp scheduler should switch to another warp after issuing this instruction.
 
-```
+```c
 function EncodeYieldField(out, cw_array):
     prev = resolve_predecessor(cw_array)          // cw_array[20] - offset - 4
     if (prev.ctrl_word ^ 0x70000000) & 0x70000000:
@@ -881,7 +881,7 @@ Pre-scheduling (`sub_8D7760`) and post-scheduling (`sub_A36360` / `sub_A23CF0`) 
 
 **Post-scheduling re-evaluation.** When `sub_A36360` processes each instruction in final order, it does not blindly copy pre-scheduling barrier indices. Instead, it runs a full three-step reconciliation:
 
-```
+```c
 function reconcile_barriers(pre_sched_state, phys_reg_distances) -> final:
     // Step 1: Release stale barriers using physical instruction distances.
     //   sub_A32C70 resolves phys reg IDs via *(func+88) + 8*reg_id.

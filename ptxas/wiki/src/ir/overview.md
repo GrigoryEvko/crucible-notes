@@ -25,7 +25,7 @@ The key design decision that distinguishes Ori from PTX: **Ori uses SASS opcode 
 
 ## Architecture Overview
 
-```
+```text
   PTX source
       |
       v
@@ -106,14 +106,14 @@ The register counts and instruction counts live in the **SM backend object** at 
 
 Register count formula (from `sub_A4B8F0`, where `v5 = *(_DWORD **)(ctx + 1584)`):
 
-```
+```c
 total_R_regs      = v5[159] + v5[102]   // reserved + allocated
 instruction_count = v5[335] - v5[341]   // upper - lower
 ```
 
 The stats emitter at `sub_A3A7E0` prints a detailed per-function profile:
 
-```
+```text
 # 142 instructions, 24 R-regs
 # [inst=142] [texInst=0] [tepid=0] [rregs=24]
 # [est latency = 87] [LSpillB=0]
@@ -140,7 +140,7 @@ Blocks are additionally accessible via a sub-block array at Code Object +368, in
 
 The debug dumper (`sub_BE21D0`) emits Graphviz DOT output for the CFG:
 
-```
+```text
 digraph f {
   node [fontname="Courier" ...]
   bix0 -> bix1
@@ -169,7 +169,7 @@ All CFG hash lookups use the same parameters, confirmed across 50+ call sites:
 
 Each hash map uses chained hashing with 24-byte bucket entries:
 
-```
+```text
 Bucket (24 bytes):
   +0   node* head      // first node in chain
   +8   node* tail      // last node in chain
@@ -203,7 +203,7 @@ Growth policy: rehash when `total_elements > num_unique_keys` (load factor excee
 
 The RPO dump (`sub_BDEA50`) produces output like:
 
-```
+```text
 Showing RPO state for each basic block:
   bix0 -> RPONum: 0
   bix1 -> RPONum: 1
@@ -242,7 +242,7 @@ Each instruction is a 296-byte object (see [instructions.md](instructions.md) fo
 
 Each operand occupies 8 bytes in the operand array starting at instruction offset +84:
 
-```
+```text
  31  30  29  28  27       24  23  22  21  20  19                  0
 +---+---+---+---+-----------+---+---+---+---+---------------------+
 |     type      |  modifier bits (8 bits)    |  index (20 bits)    |
@@ -259,7 +259,7 @@ type field (bits 28-30):
 
 Each 8-byte operand slot has two DWORDs. Word 0 (documented above) carries type/modifier/index. Word 1 carries extended flags:
 
-```
+```text
 Word 1 (at instr + 84 + 8*i + 4):
 
  31  30  29  28  27  26  25  24  23                             0
@@ -445,7 +445,7 @@ Destructs SSA form by lowering every `MovPhi` into a plain `MOV` instruction. Ru
 
 The partial-SSA window spans phases 23 through 73, covering the bulk of the optimization pipeline:
 
-```
+```text
 Phase 23  GenerateMovPhi         <-- SSA construction
 Phase 24  OriPipelining
 Phase 25  StageAndFence
@@ -472,7 +472,7 @@ All optimizations between these two phases can rely on the single-definition pro
 
 A `MovPhi` is not a distinct opcode -- it reuses the MOV opcode (19) with a distinguishing flag in the instruction's auxiliary fields. Phase 73 (`ConvertAllMovPhiToMov`) converts MovPhi to plain MOV by clearing this flag, without changing the opcode value.
 
-```
+```text
 MovPhi operand layout:
   +72  opcode         = 19 (MOV)
   +76  opcode_aux     = flag distinguishing MovPhi from plain MOV
@@ -487,7 +487,7 @@ MovPhi operand layout:
 
 This is the operational equivalent of an SSA phi node. For a CFG merge with two predecessors:
 
-```
+```text
 ;; PTX-level CFG:            ;; Ori MovPhi:
 ;;   bix1 defines R7         ;;
 ;;   bix2 defines R9         ;;   MovPhi R3, R7, bix1, R9, bix2
@@ -559,13 +559,13 @@ This traces a single PTX instruction through the Ori representation, showing exa
 
 ### PTX Input
 
-```
+```ptx
 add.f32 %f3, %f1, %f2
 ```
 
 After MercConverter (`sub_9F1A90`), this becomes the Ori instruction:
 
-```
+```asm
 FADD R3, R1, R2
 ```
 
@@ -575,7 +575,7 @@ The type qualifier `.f32` disappears -- the "F" in FADD encodes the float type. 
 
 FADD is opcode 12 in the ROT13 name table (ROT13: `SNQQ`, at `InstructionInfo+4184+16*12`). The 296-byte instruction object:
 
-```
+```text
 Offset  Value              Field
 ------  -----------------  ---------------------
 +0      prev_ptr           Linked-list prev
@@ -595,7 +595,7 @@ Offset  Value              Field
 
 Take operand[0] word0 = `0x90000003` (destination):
 
-```
+```text
   0x90000003 in binary:
     bit 31     = 1       (DEF marker -- this operand is written)
     bits 28-30 = 001     (type = 1 = register operand)

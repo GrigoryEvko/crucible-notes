@@ -97,7 +97,7 @@ The Mid and Late variants operate at a higher level: they construct a multi-fiel
 2. Checks option 487 (general optimization enable) via the same vtable fast-path pattern
 3. Calls `sub_799250` with the string `"ConvertMemoryToRegisterOrUniform"` (at `0x21DD228`) -- a named phase gate that allows the pass to be selectively disabled via `--no-phase`
 4. Constructs a **0x408-byte context object** on the stack with vtable pointer `off_21DBEF8` at offset 0. The layout is:
-   ```
+   ```text
    GeneralOptimizeMid Context (0x408 bytes)
      +0x000  vtable_ptr     = off_21DBEF8
      +0x008  allocator      = *(ctx + 16)
@@ -118,7 +118,7 @@ After `sub_90FBA0` returns, the function destroys three RAII-style bitvector con
 
 The 653-line function walks the entire instruction linked list in a single forward pass, classifying each instruction for memory-to-register promotion eligibility. It accumulates per-candidate cost metrics into 40-byte descriptor records and builds an FNV-1a hash table of fold-pair observations. Two convergence flags (`can_continue`, `allow_promote`) gate the final call to `sub_90EF70`.
 
-```
+```c
 function sub_90FBA0(state):
     ctx         = state[0]
     budget      = 80                                   // instruction-count ceiling
@@ -232,7 +232,7 @@ POST:
 
 This function decides which memory-resident candidates (identified by the main loop) should be promoted to registers or uniform registers. It operates in three stages: threshold configuration, candidate filtering, and per-instruction rewriting.
 
-```
+```c
 function ConvertMemoryToRegisterOrUniform(state):
     // --- Stage 1: early exit and threshold configuration ---
     if vtable_query(ctx + 1784) and state.total_weight == 0.0:
@@ -334,7 +334,7 @@ function ConvertMemoryToRegisterOrUniform(state):
 
 4. Evaluates the final entry gate: `sub_7DC0E0(*(ctx+1584)) || v7`. `sub_7DC0E0` returns `true` when `profile[+12] == 4` (dual-issue architecture family, i.e. Maxwell sm_50). The pass body executes if the target is dual-issue OR `v7` was set by step 3.
 5. Constructs a **0x168-byte context** on the stack with 7 sub-pass tracking groups. Each group occupies 56 bytes (three `__int128` values + a boolean changed-flag + a counter):
-   ```
+   ```text
    GeneralOptimizeLate Context (0x168 bytes)
      +0x000  ctx_ptr     = ctx (the compilation context)
      +0x008  flag_a      -- initialized from (ctx+1396 & 4)
@@ -431,7 +431,7 @@ Two distinct copy propagation algorithms exist across the GeneralOptimize varian
 
 Phase 13's copy propagation operates by matching structurally equivalent instruction pairs connected through single-use def-use chains. The 253-line function `sub_753600` uses a **state structure** (8 `int64_t` fields, allocated on the stack at `rbp-0x88` in `sub_7917F0`) that accumulates matched chain endpoints:
 
-```
+```text
 sub_753600 State Layout (8 qwords)
   state[0] = ctx           -- Code Object pointer (set by caller)
   state[1] = match_start   -- first matched instruction in chain
@@ -444,7 +444,7 @@ sub_753600 State Layout (8 qwords)
 
 The algorithm proceeds in eight steps:
 
-```
+```c
 // sub_753600 -- Phase 13 copy propagation (decompiled pseudocode)
 function copy_prop_early(state, basic_block):
     ctx = state[0]
@@ -508,7 +508,7 @@ apply:
 
 The **chain walker** `sub_753480` (43 lines) is the core of this algorithm. It follows single-use, single-def chains within a basic block:
 
-```
+```c
 // sub_753480 -- def-use chain walker (at 0x753480)
 function follow_chain(ctx, entry, &skip_flag):
     skip_flag = false
@@ -557,7 +557,7 @@ Phase 29's copy propagation walks the instruction linked list sequentially from 
 | `v11` | `int64_t` | Current definition tracking entry (BB array pointer, from opcode 97) |
 | `v21` | `char` | Architecture-allows-predicate-marking flag (from vtable at `**(ctx+1584)+1312`) |
 
-```
+```c
 // sub_908EB0 -- Phase 29 forward copy propagation (decompiled pseudocode)
 function copy_prop_forward(ctx):
     // Gate checks: option 487, option 231, option 461, function count,
@@ -940,7 +940,7 @@ The `limit-fold-fp` knob controls **Level 1 only** -- specifically whether float
 
 The SM version at `comp_unit->profile[+372]` is not a direct sm_XX number. It uses a packed encoding:
 
-```
+```c
 encoded_sm = (generation << 12) | variant
 ```
 
@@ -1022,7 +1022,7 @@ When the eligibility check passes for opcode 124 but the conservative path is re
 
 **Invocation pattern in `sub_908EB0`:**
 
-```
+```c
 // Forward pass first
 sub_908A60(ctx, bb_id, instr, 1, &hit, &partial);
 if (hit) goto mark_propagated;
@@ -1157,7 +1157,7 @@ The depth limit of 2 (fourth argument to `sub_1245740`) prevents exponential blo
 
 After finding one matching pair, the function extends the search down the chain. It calls `sub_753520` and `sub_753570` on subsequent entries, accumulating the full matching sequence in the state array at `a1[1]` through `a1[6]`. The state layout is:
 
-```
+```text
 State array (passed as a1, 7 qword slots):
   a1[0] = ctx (compilation context)
   a1[1] = first matched instruction (start of sequence)
@@ -1273,7 +1273,7 @@ The helper `sub_8F29C0` at `0x8F29C0` performs predicate-specific analysis, dete
 
 The 550-line function `sub_8F6530` is the core of Variant B (phase 58). It processes a single basic block using a **6-slot circular buffer** of instruction pairs, tracked at 56-byte intervals:
 
-```
+```text
 sub_8F6530 Context (passed as a1)
   +0x000  ctx_ptr                 -- compilation context
   +0x008  flag_ctrl_flow_4        -- from ctx+1396 bit 2 (opcode-7 enable)
@@ -1297,7 +1297,7 @@ The slot index increments with `(slot_index + 1) % 6` after each insertion. When
 
 **Algorithm pseudocode** (derived from decompiled `sub_8F6530`, 550 lines):
 
-```
+```c
 sub_8F6530(state, block_id):
   for i in 0..6:                              // zero all 6 slots
     state.slots[i] = {count=0, changed=false}
@@ -1367,7 +1367,7 @@ Key binary details:
 
 All GeneralOptimize variants use a per-block convergence model: they iterate over basic blocks in linear order (following the block ordering table at `ctx+512`), and for each block, run the sub-passes repeatedly until convergence. This differs from the global worklist model used by other optimizers (GVN-CSE at phase 49 uses a global worklist).
 
-```
+```c
 for each block B in reverse postorder:
     repeat:
         changed = run_sub_passes(B)
@@ -1505,7 +1505,7 @@ These bitvectors are destroyed by RAII-style cleanup after `sub_90FBA0` returns,
 
 The six instances are positioned to clean up after specific groups of transformations:
 
-```
+```text
 Phase 0-12:  Initial setup, FP16 promotion, unsupported op conversion
   --> Phase 13: GeneralOptimizeEarly  (clean up after lowering artifacts)
 

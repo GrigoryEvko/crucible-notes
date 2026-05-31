@@ -25,7 +25,7 @@ The type node is a discriminated union. The `type_kind` byte at offset `+132` se
 
 Like all IL entries, the raw allocation includes a 16-byte prefix that is hidden from the returned pointer. The allocator returns `raw + 16`, so all field offsets documented below are relative to this returned pointer.
 
-```
+```text
 Raw allocation (192 bytes total):
   raw+0   [8 bytes]   TU copy address (zeroed, ptr[-2])
   raw+8   [8 bytes]   next-in-list link (zeroed, ptr[-1])
@@ -42,7 +42,7 @@ Prefix flags byte at ptr[-8]:
 
 The 176 bytes of the type node body divide into three regions: the common IL header (bytes 0-95), the type discriminator and qualifier zone (bytes 96-135), and the type-kind-specific payload (bytes 136-175).
 
-```
+```text
 Offset  Size  Field                  Description
 ------  ----  -----                  -----------
 +0      96    common_il_header       Shared with all IL entry types (see below)
@@ -113,7 +113,7 @@ Offset  Size  Field                  Description
 
 The first 96 bytes are copied verbatim from the template globals (`xmmword_126F6A0` through `xmmword_126F6F0`) during allocation. This template captures the current source file, line, and column position, and is refreshed as the parser advances. The header contains:
 
-```
+```text
 xmmword_126F6A0  [+0..+15]    scope/class pointer, name pointer (zeroed)
 xmmword_126F6B0  [+16..+31]   declaration metadata (high qword zeroed)
 xmmword_126F6C0  [+32..+47]   reserved (zeroed)
@@ -158,7 +158,7 @@ The type kind byte at offset `+132` holds one of 22 values. The `set_type_kind` 
 
 ### set_type_kind Dispatch Summary
 
-```
+```c
 switch (type_kind) {
   case 0, 1, 17..21:   // tk_none, tk_void, alt-pack, auto, rvalue_ref, nullptr, reserved
     break;             // no-op: simple types with no extra state
@@ -366,7 +366,7 @@ Counter: `qword_126F8F8`, stats label `"templ param supplement"`.
 
 CV-qualifiers are not stored as separate type nodes (unlike some compiler designs). Instead, they are encoded as bit flags within the type node itself. The primary qualifier storage is at offset `+134`:
 
-```
+```text
 Byte at type+134 (type_qual_flags):
   bit 0 (0x01)   const
   bit 1 (0x02)   volatile
@@ -494,7 +494,7 @@ The last function in `types.c`. Checks if two integer types are compatible for M
 
 Pointers use type kind 6 (`tk_pointer`), with member-pointer status distinguished by flag bits at offset `+152`:
 
-```
+```text
 tk_pointer (kind 6):
   +144  referenced_type   The pointed-to / referenced type
   +152  bit 0 = 0         Object pointer (T*)
@@ -519,7 +519,7 @@ The `pm_class_type` (`sub_7A9A10`) and `pm_member_type` (`sub_7A99D0`) access `+
 
 Array types (kind 8) store bounds inline in the type node:
 
-```
+```text
 tk_array (kind 8):
   +120  type_size          Total array size in bytes (0 if unknown)
   +128  alignment          Element alignment
@@ -592,7 +592,7 @@ Type nodes are referenced from virtually every other IL entity:
 
 In a typical CUDA compilation, the stats dump (`sub_5E99D0`) reports type node counts in the thousands. The supplement allocation counts track closely:
 
-```
+```text
 type                    176 bytes each   (qword_126F8E0)
 integer type supplement  32 bytes each   (qword_126F8E8)
 routine type supplement  64 bytes each   (qword_126F958)

@@ -765,7 +765,7 @@ The source and destination type tags are compared directly. If the destination t
 
 ### Cast control flow summary
 
-```
+```text
 EmitCast(ctx, expr, is_unsigned, destTy, is_unsigned2, skip, diag)
   |
   +-- skip_flag set          --> return 0

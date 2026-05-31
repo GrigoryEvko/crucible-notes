@@ -32,7 +32,7 @@ On GPUs, the cost-benefit tradeoff is skewed much further toward remat than on C
 
 ## Pipeline Position
 
-```
+```text
 Phase 23   GenerateMovPhi          SSA phi nodes -> MOV instructions
 Phase 24   OriPipelining           Software pipelining
 Phase 25   StageAndFence           Memory fence insertion
@@ -66,7 +66,7 @@ The three-phase design is deliberate:
 
 The execute function (`sub_C5FC20`) applies two layers of gating:
 
-```
+```c
 function SinkRemat_execute(phase, ctx):
     opt_level = getOptLevel(ctx)           // sub_7DDB50
     if opt_level <= 1:
@@ -84,7 +84,7 @@ function SinkRemat_execute(phase, ctx):
 
 When the cutlass flag (`ctx+1381` bit 6) is set, the pass enters an iterative mode:
 
-```
+```c
 function sub_913A30(ctx):
     if opt_level <= 4:
         return
@@ -136,7 +136,7 @@ function sub_913A30(ctx):
 
 `sub_A0F020` (494 lines) is the main workhorse of phase 28. It wraps the entire function body in an outer fixed-point loop that alternates four stages until quiescence.
 
-```
+```c
 function sink_remat_driver(ctx):                   // sub_A0F020
     loop:                                          // outer fixed-point
         changed = false
@@ -214,7 +214,7 @@ The block visitor (`sub_A06A60`) manages per-block liveness bitvectors:
 
 The execute function (`sub_C5F910`) checks the optimization level and delegates:
 
-```
+```c
 function OriDoRemat_execute(phase, ctx):
     opt_level = getOptLevel(ctx)           // sub_7DDB50
     if opt_level <= 1:
@@ -226,7 +226,7 @@ function OriDoRemat_execute(phase, ctx):
 
 `sub_A112C0` first initializes a rematerialization state object (88+ bytes) via `sub_A0C310`:
 
-```
+```c
 struct RematState {
     +0    compilation_ctx*  ctx
     +8    RefCountedObj*    block_worklist     // refcounted allocator object
@@ -247,7 +247,7 @@ The pass ID `-1` distinguishes OriDoRemat from OriDoRematEarly. When the hardwar
 
 The late remat pass runs in a convergence loop:
 
-```
+```c
 function sub_A112C0(ctx, pass_id):
     init_remat_state(&state, ctx, pass_id)
 
@@ -264,7 +264,7 @@ function sub_A112C0(ctx, pass_id):
 
 Each iteration of `sub_A11060` (155 lines) processes the entire instruction list:
 
-```
+```c
 function sub_A11060(state):
     ctx = state->ctx
     sub_7E6090(ctx, 0, 1, 0, 0)           // rebuild use-def chains
@@ -327,7 +327,7 @@ function sub_A11060(state):
 
 `sub_A107B0` (316 lines) is the core per-instruction decision function called from both phases 28 and 69. It determines whether a specific instruction should be sunk, rematerialized, or left alone.
 
-```
+```c
 function sub_A107B0(state, instr, sink_flag_out, changed_out, remat_flag_out,
                      allow_remat):
     // Quick rejection: check if instruction is sinkable
@@ -390,7 +390,7 @@ The eligibility check spans multiple functions. An instruction is rematerializab
 
 From `sub_911030`, all three eligibility-check sites use identical logic (decompiled from the first site at offset +0x447):
 
-```
+```c
 masked = raw_opcode & 0xFFFFCFFF      // clear bits 12-13 (variant/subop)
 result = 0
 if (masked - 22) <= 0x3D:             // unsigned: masked in [22, 83]
@@ -424,7 +424,7 @@ After the eligibility check passes, IMAD (opcode 77) receives extra handling: th
 
 `sub_90C010` (70 lines) checks that all source operands are still available (live) at the proposed remat point:
 
-```
+```c
 function check_sources_available(state, instr, operand_idx, cost_out):
     operand = &instr->operands[operand_idx]
 
@@ -460,7 +460,7 @@ function check_sources_available(state, instr, operand_idx, cost_out):
 
 `sub_90B790` (`a1`=state, `a2`=def_instr, `a3`=cost_set_out, `a4`=force_deep) returns a non-negative integer cost where 0 = reject, 1+ = profitable (higher = cheaper remat). The function performs a BFS over the source operand tree of the defining instruction, accumulating the maximum per-node cost:
 
-```
+```c
 function remat_cost(state, def_instr, cost_set, force_deep):
     ctx       = *(state + 8)
     bb_array  = *(ctx + 296)                    // basic block pointer array
@@ -562,7 +562,7 @@ assign_cost_0:  best_cost = 0;  goto cleanup_and_return
 
 The `is_cheap_alu` predicate encodes the compile-time bitmask `0x2080000010000001`:
 
-```
+```c
 is_cheap_alu(opcode) :=
     opcode in {22, 50, 77, 83}           // IADD3, SHF, IMAD, ISETP via bitmask
     or opcode == 297                     // LOP3, explicit check
@@ -580,7 +580,7 @@ Key properties of the cost function:
 
 `sub_A0C540` (228 lines) handles rematerialization across basic block boundaries, invoked in the second pass of `sub_A11060`. It processes definitions that are used in different blocks:
 
-```
+```c
 function cross_block_remat(state, instr, changed_out):
     // Walk operands in reverse order (destinations first)
     for i in (instr->operand_count - 1) downto 0:
@@ -628,7 +628,7 @@ function cross_block_remat(state, instr, changed_out):
 
 `sub_91E860` (10 bytes of logic, 2-step composition) computes the pipe-mapped execution cost for one operand of an instruction. It calls `sub_91E610` to classify the operand into a latency class code, then maps that code through `vtable+904` (`PipeAssignment`) to obtain a pipe index that serves as the cost value returned to the caller.
 
-```
+```c
 function cross_block_remat_cost(ctx, instr, operand_idx):     // sub_91E860
     latency_class = classify_operand_latency(ctx, instr, operand_idx)  // sub_91E610
     return PipeAssignment(ctx->backend, latency_class)                 // vtable+904
@@ -636,7 +636,7 @@ function cross_block_remat_cost(ctx, instr, operand_idx):     // sub_91E860
 
 **Operand latency classification (`sub_91E610`, 58 lines)** has four paths by priority:
 
-```
+```c
 function classify_operand_latency(ctx, instr, op_idx):        // sub_91E610
     operand = instr->operands[op_idx]
 
@@ -687,7 +687,7 @@ The rematerialization flags set during phases 28 and 69 are consumed by the fat-
 
 During per-instruction register assignment (`sub_9680F0`, 3722 lines), the allocator calls `sub_93AC90` (29 lines) to check if a virtual register is a rematerialization candidate:
 
-```
+```c
 function check_remat_opportunity(alloc, vreg_index, reg_class):
     if alloc->vreg_count == 0:
         BUG()
@@ -706,7 +706,7 @@ The live-range infrastructure at `0x994000`--`0x9A1000` includes remat-aware cos
 
 The live range splitting engine (`sub_9AEF60`, 1415 lines) implements a three-way decision for each interference graph node: **keep** the current assignment, **spill** to local memory, or **rematerialize** the value. The algorithm iterates over split candidates extracted from a bitvector scan and classifies each via `sub_9AEC60` profitability analysis:
 
-```
+```c
 // Three-way decision per interference node (decompiled lines 1076-1127)
 for node in interference_hash_iter(alloc+89):       // alloc+89 = IG hash table
     flags = node->field_3 & 0xF3                     // mask bits 2-3, preserve 0-1

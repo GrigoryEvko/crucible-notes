@@ -77,7 +77,7 @@ Each layer is initialized by `sub_16CCEE0` (SmallVector move-assign). Temporary 
 
 The main loop visits each basic block in DFS order over the dominator tree. For every instruction, the builder reads the opcode byte at `[instruction-8]` and classifies it:
 
-```
+```c
 opcode_tag = *(uint8_t*)(instr - 8);
 
 switch (opcode_tag) {
@@ -147,7 +147,7 @@ For kind==1, `sub_16A57B0` (countLeadingZeros) determines whether the access is 
 
 After the DFS walk, the builder post-processes all MemoryPhi nodes. Any MemoryPhi whose operands all resolve to the same MemoryDef is trivial -- it can be replaced with that single reaching definition. The loop at 0x1A6B9DE iterates the result vector `[this+0xD8..this+0xE0]`:
 
-```
+```cpp
 for (auto *Phi : result_vector) {
     unsigned count = Phi->operand_count & 0x0FFFFFFF;
     if (all_operands_identical(Phi)) {
@@ -175,7 +175,7 @@ The MemorySSA builder itself contains no explicit GPU logic. The GPU awareness c
 
 **Practical effect.** Consider a kernel that loads from global memory, operates on shared memory, and stores back to global memory:
 
-```c
+```cuda
 __global__ void kernel(float *out, float *in) {
     __shared__ float smem[256];
     smem[threadIdx.x] = in[threadIdx.x];        // global load + shared store

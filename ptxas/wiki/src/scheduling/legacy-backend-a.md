@@ -47,7 +47,7 @@ The exact SM mapping is not in RTTI (the typeinfo and offset-to-top fields above
 
 `a1` is the target's `this` pointer (and through `*(QWORD*)a1` its own vtable); `a2` is a pointer to the 32-bit instruction-word stream of a single ptxInstr; `a3` is an operand index. The function dispatches on the masked primary-opcode field:
 
-```
+```c
 opcode32 = *(uint32_t *)(a2 + 72)        // primary opcode + flags word
 masked   = opcode32 with byte 1 ANDed by 0xCF
                                           // strips out the two "extension-class"

@@ -87,7 +87,7 @@ void* region_alloc(int region_id, int64_t requested_size) {
 
 ### Region Architecture
 
-```
+```text
 dword_126EC90  = file_scope_region_id   (region 1, persistent)
 dword_126EB40  = current_region_id      (file-scope or per-function)
 dword_126F690  = file-scope base offset (typically 0)
@@ -112,7 +112,7 @@ Every IL node allocator follows a consistent protocol. The prefix size varies by
 
 **File-scope allocation (normal mode, `dword_126F694 = 24`):**
 
-```
+```text
  1. if (dword_126EFC8) trace_enter(5, "alloc_<name>")
  2. raw = region_alloc(file_scope_region, entry_size + 24)
  3. ptr = raw + dword_126F690                       // base offset (typically 0)
@@ -135,7 +135,7 @@ Every IL node allocator follows a consistent protocol. The prefix size varies by
 
 **Function-scope allocation (`dword_126F68C = 8`):**
 
-```
+```text
  1. raw = region_alloc(current_region, entry_size + 8)
  2. ptr = raw + dword_126F688                       // function-scope base offset
  3. *(ptr+0) = flags_byte:                          // prefix flags (8-byte qword)
@@ -152,7 +152,7 @@ The returned pointer skips the prefix, so all field offsets documented in the IL
 
 Every IL node contains a 96-byte common header, copied from six `__m128i` template globals initialized by `init_il_alloc` (`sub_5EAD80`):
 
-```
+```text
 xmmword_126F6A0  [+0..+15]    16 bytes, zeroed
 xmmword_126F6B0  [+16..+31]   16 bytes (high qword zeroed)
 xmmword_126F6C0  [+32..+47]   16 bytes, zeroed
@@ -168,7 +168,7 @@ This template captures the current source position and language state at the mom
 
 Every IL entry has a variable-size raw prefix preceding the node body. The prefix is 24 bytes in normal file-scope mode, 16 bytes in TU-copy file-scope mode, and 8 bytes in function-scope mode.
 
-```
+```text
 Normal file-scope (24-byte prefix, ptr = raw + 24):
 +0   [8 bytes]  TU copy   ptr - 24   translation_unit_copy_address
 +8   [8 bytes]  next      ptr - 16   next_in_list link
@@ -520,7 +520,7 @@ The template parameter constant kind has its own sub-dispatch (`sub_5E0B40`, `il
 
 `dump_il_table_stats` (`sub_5E99D0`) prints a formatted table of all IL allocation counters. It is invoked when tracing is enabled or on explicit request. The output format:
 
-```
+```text
 IL table use:
    Table                    Number    Each     Total
    -----                    ------    ----     -----

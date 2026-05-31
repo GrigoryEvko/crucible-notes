@@ -29,7 +29,7 @@ The LTO line table pipeline has three phases:
 
 3. **Serialization** (`sub_181A320`): The header builder assembles the final `.debug_line` or `.nv_debug_line_sass` section by concatenating the DWARF header (version, prologue length, header fields), directory table, file name table, and the encoded line program. It registers the section in the output ELF via `sub_4411B0`/`sub_434BC0` and emits relocations as needed.
 
-```
+```text
 sub_12D2010 (master)
   |
   +---> iterate functions in module
@@ -151,7 +151,7 @@ for (each file entry) {
 
 The directory table is a sequence of null-terminated strings written into the directory buffer:
 
-```
+```text
 directory_1\0 directory_2\0 ... directory_N\0 \0
 ```
 
@@ -161,7 +161,7 @@ The trailing `\0` marks the end of the directory table (DWARF convention). If on
 
 The file name table encodes each file as:
 
-```
+```text
 filename\0  dir_index(ULEB128)  mod_time(ULEB128)  file_size(ULEB128)
 ```
 
@@ -174,7 +174,7 @@ Each filename is the basename (without directory), and `dir_index` references th
 
 After the directory and file tables are built, the function assembles the complete DWARF `.debug_line` section header:
 
-```
+```text
 Offset  Size    Field
 ------  ------  -----
 0       4       total_length (entire section minus 4 bytes)
@@ -476,7 +476,7 @@ Sets the inline context for subsequent line table rows. This opcode tracks which
 
 **Encoding:**
 
-```
+```text
 Byte 0:      0x00        (extended opcode escape)
 Byte 1:      length      (ULEB128 = context_leb_len + offset_leb_len + 1)
 Byte 2:      0x90        (sub-opcode: DW_LNE_NV_set_context)
@@ -521,7 +521,7 @@ Sets the `is_stmt` (is-statement) flag for subsequent line table rows. While sta
 
 **Encoding:**
 
-```
+```text
 Byte 0:    0x00        (extended opcode escape)
 Byte 1:    length      (ULEB128 = is_stmt_leb_len + 1)
 Byte 2:    0x92        (sub-opcode: DW_LNE_NV_set_stmt)
@@ -569,7 +569,7 @@ Sub-opcodes 0x01 and 0x02 are standard DWARF. Sub-opcodes 0x90 and 0x92 are NVID
 ### Wire Format Examples
 
 **Set inline context to index 3, function offset 0x100:**
-```
+```text
 00              extended escape
 04              length = 4 bytes (1 sub-opcode + 1 context_id + 2 func_offset)
 90              DW_LNE_NV_set_context
@@ -578,7 +578,7 @@ Sub-opcodes 0x01 and 0x02 are standard DWARF. Sub-opcodes 0x90 and 0x92 are NVID
 ```
 
 **Set is_stmt to 1 (mark as statement):**
-```
+```text
 00              extended escape
 02              length = 2 bytes (1 sub-opcode + 1 value)
 92              DW_LNE_NV_set_stmt
@@ -586,7 +586,7 @@ Sub-opcodes 0x01 and 0x02 are standard DWARF. Sub-opcodes 0x90 and 0x92 are NVID
 ```
 
 **Set is_stmt to 0 (mark as non-statement / prologue):**
-```
+```text
 00              extended escape
 02              length = 2 bytes
 92              DW_LNE_NV_set_stmt
@@ -594,7 +594,7 @@ Sub-opcodes 0x01 and 0x02 are standard DWARF. Sub-opcodes 0x90 and 0x92 are NVID
 ```
 
 **End of sequence:**
-```
+```text
 00              extended escape
 01              length = 1 byte
 01              DW_LNE_end_sequence
@@ -623,7 +623,7 @@ In practice, the encoder only emits opcodes 1--4 and special opcodes 10--255. Op
 
 The header declares 9 standard opcodes (opcode_base - 1) with the following operand counts, initialized at `sub_12D1990` offset +82 as the packed value `0x101010100`:
 
-```
+```c
 std_opcode_lengths[0] = 0   // DW_LNS_copy:            no operands
 std_opcode_lengths[1] = 1   // DW_LNS_advance_pc:      1 ULEB128
 std_opcode_lengths[2] = 1   // DW_LNS_advance_line:    1 SLEB128
@@ -651,7 +651,7 @@ nvlink uses the following DWARF line number program parameters, confirmed by the
 
 The special opcode formula follows the DWARF standard exactly:
 
-```
+```text
 special_opcode = (line_delta - line_base) + (line_range * addr_delta) + opcode_base
                = (line_delta + 5) + (14 * addr_delta) + 10
 ```

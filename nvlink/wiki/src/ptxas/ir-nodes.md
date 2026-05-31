@@ -81,7 +81,7 @@ Four massive switch-on-opcode functions that implement per-instruction read/writ
 
 The minimal IR node structure is accessed by the 22 leaf functions at `0x530E80`--`0x530FD0`. This is the structure passed to ISel pattern matchers and MercExpand handlers -- a lightweight view of any instruction or operand.
 
-```
+```text
 IRNode (minimum 96 bytes, exact total size unknown)
 ============================================================
 Offset  Size  Field                  Description
@@ -109,7 +109,7 @@ The `+1` in the source operand formula means `total_operand_count` stores the in
 
 Each operand occupies exactly 32 bytes within the operand array. The slot format is used both by the lightweight IR node accessors and by the giant dispatch switches.
 
-```
+```text
 OperandSlot (32 bytes)
 ============================================================
 Offset  Size  Field                  Description
@@ -227,7 +227,7 @@ The instruction descriptor init table uses 10 specialized initializer functions.
 
 The full NVInst instruction object is a ~1,550-byte structure initialized by the 11 KB constructor at `sub_A4AB10`. This constructor takes 31 parameters including an allocator, architecture ID, format ID, name string, mnemonic string, and various configuration values. The object is organized as ~97 x 16-byte (m128i) slots, many holding ref-counted pointers to sub-lists.
 
-```
+```text
 NVInst (~1550 bytes, 16-byte aligned)
 ============================================================
 Offset   Size   Field                  Description
@@ -315,7 +315,7 @@ The four giant switch functions at `0xA5B6B0`--`0xA67910` are the read/write int
 
 ### setOperandField (sub_A5B6B0, 180 KB)
 
-```
+```c
 void setOperandField(NVInst *inst, uint32_t field_id, uint32_t value);
 ```
 
@@ -332,7 +332,7 @@ Some fields are set via a normalized subtraction pattern: `setter(inst, value - 
 
 ### setOperandImm (sub_A62220, 65 KB)
 
-```
+```c
 void setOperandImm(NVInst *inst, uint32_t slot_idx, uint32_t field_id, uint64_t value);
 ```
 
@@ -346,7 +346,7 @@ Dispatches to per-opcode `sub_5195xx`--`sub_519Axx` setter functions.
 
 ### getOperandField (sub_A65900, 67 KB)
 
-```
+```c
 uint32_t getOperandField(NVInst *inst, uint32_t slot_idx, uint32_t field_id);
 ```
 
@@ -361,7 +361,7 @@ Returns `0xFFFFFFFF` if the field is not present for the given opcode.
 
 ### getDefaultOperandValue (sub_A67910, 141 KB)
 
-```
+```c
 uint32_t getDefaultOperandValue(NVInst *inst, uint32_t field_id);
 ```
 
@@ -488,7 +488,7 @@ The NVInst object provides a set of classification methods that other passes que
 
 The use-def chain structure (`sub_A49F80`, constructor at `0xA49F80`) is allocated as part of the NVInst's register file state. It initializes:
 
-```
+```text
 NVUseDefChain (104+ bytes)
 ============================================================
 Offset  Size  Field

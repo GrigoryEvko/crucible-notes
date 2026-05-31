@@ -8,7 +8,7 @@ For narrative discussion of these files and their roles in the compilation pipel
 
 All source files share the build prefix:
 
-```
+```text
 /dvs/p4/build/sw/rel/gpgpu/toolkit/r13.0/compiler/drivers/compiler/edg/EDG_6.6/src/
 ```
 
@@ -239,7 +239,7 @@ Note that `floating.c` is followed immediately by its private header `float_type
 
 ## Binary Region Map
 
-```
+```text
 0x402A18 +--------------------------+
          | PLT stubs / init (283)   |  3 KB
 0x403300 +--------------------------+

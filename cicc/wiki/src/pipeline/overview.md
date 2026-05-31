@@ -4,7 +4,7 @@ This page maps the complete end-to-end flow of a CUDA compilation through cicc v
 
 ## Pipeline Diagram
 
-```
+```text
 nvcc
   |
   v

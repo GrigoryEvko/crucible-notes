@@ -6,7 +6,7 @@ Despite the sweep identifying this function as "shared\_memory\_layout," the dec
 
 ## Position in the Pipeline
 
-```
+```text
 Merge Phase (sub_45E7D0, per-object)
   |
   v
@@ -82,7 +82,7 @@ The function proceeds through ten sequential phases. Each phase handles one memo
 
 ### Phase 1: Global Data Merge (`.nv.global`)
 
-```
+```c
 if (elfw->pending_globals != NULL):
     section = find_or_create_section(".nv.global", SHT_CUDA_GLOBAL=0x70000007)
     walk symbol linked list at section+72 to find tail
@@ -109,7 +109,7 @@ This phase is skipped entirely in relocatable link mode (`link_mode == 1`).
 
 ### Phase 3: Global Init Section Layout
 
-```
+```c
 if (elfw+216 has a section index):
     section = get_section_header(elfw, index)
     sub_4325A0(elfw, section, 0)    // lay out at offset 0
@@ -121,7 +121,7 @@ if (elfw+220 has a section index):
 
 The function `sub_4325A0` is the **general-purpose section layout engine**. It sorts the section's symbol list (via `sub_4647D0` with comparator `sub_432440`), then iterates symbols computing aligned offsets:
 
-```
+```c
 for each symbol in section's symbol list:
     if symbol has explicit alignment:
         offset = roundup(current_offset, alignment)
@@ -200,7 +200,7 @@ If the architecture is not an a-variant (i.e., `elfw+7 != 'A'`), and reserved sh
 
 ### Phase 7: Local Data Section Layout
 
-```
+```c
 for each entry in per-entry local data list (elfw+280):
     // verbose: "local entry %s:"
     section = get_section_header(elfw, entry_index)
@@ -213,7 +213,7 @@ Each per-entry local data section is laid out independently starting at offset 0
 
 If the overlapped-constant hash table (`elfw+576`) is populated (from the merge phase's constant dedup analysis), this phase rewrites relocations that target constants which were identified as overlapping with larger constants:
 
-```
+```c
 for each relocation in elfw+376:
     dup_sym = lookup(overlap_table, reloc.symbol)
     if found:
@@ -286,7 +286,7 @@ This phase is skipped entirely in relocatable link mode.
 
 This is the workhorse function called repeatedly throughout the layout phase. It implements a sorted linear allocator:
 
-```
+```c
 sub_4325A0(elfw, section, initial_offset):
     assert(section != NULL, "section not found")
 
@@ -319,7 +319,7 @@ sub_4325A0(elfw, section, initial_offset):
 
 This function appends a data contribution to a section:
 
-```
+```c
 sub_433760(elfw, section_index, source_sym, alignment, data_ptr):
     section = get_section_header(elfw, section_index)
     if section is NULL: return
@@ -455,7 +455,7 @@ The a-variant architectures (sm\_90a, sm\_100a, sm\_103a) are detected via `elfw
 
 ## Data Flow Summary
 
-```
+```text
 Input state (after merge):
   .nv.global           -- merged global data, possibly with pending entries
   .nv.shared.*         -- per-entry shared memory sections, sizes known
@@ -496,7 +496,7 @@ Both kernels contain `R_CUDA_ABS32_LO_20` relocations into `.nv.shared` (global 
 
 The relevant `elfw` field state at the start of layout:
 
-```
+```text
 elfw+90  (no_opt_flag)     = 0     -- optimizer enabled
 elfw+80  (EWP flag)        = 0     -- no early-write-pass
 elfw+16  (link_mode)       = 0     -- final link, not -r
@@ -523,7 +523,7 @@ Symbol list after merge (in insertion order):
 
 `sub_4325A0` first calls `sub_4647D0(section+72, sub_432440)` to stable-sort by alignment (decreasing). The list becomes `{ptr_out, count, scale, bias, mode}` (unchanged here -- insertion was already sorted). It then walks the list:
 
-```
+```text
 current = 0
 ptr_out: align=8   -> roundup(0,8)=0    -> value=0,  current=0+8=8
 count:   align=4   -> roundup(8,4)=8    -> value=8,  current=8+4=12
@@ -546,7 +546,7 @@ Symbol list:
 
 Walk:
 
-```
+```text
 current = 0
 ptr_in:  align=8 -> value=0,  current=8
 ptr_out: align=8 -> value=8,  current=16
@@ -569,7 +569,7 @@ This section is referenced by **both** kernels, so it is laid out as a single un
 
 Walk:
 
-```
+```text
 current = 0
 lookup_table: align=16 -> roundup(0,16)=0       -> value=0,    current=2048
 coeffs:       align=16 -> roundup(2048,16)=2048 -> value=2048, current=3072
@@ -582,7 +582,7 @@ thresholds:   align=4  -> roundup(3968,4)=3968  -> value=3968, current=3984
 
 Verbose trace for this section:
 
-```
+```text
 constant entry .nv.constant2:
 variable lookup_table at offset 0
 variable coeffs at offset 2048
@@ -597,7 +597,7 @@ Both kernels reference the globals in `.nv.shared`. The shared memory optimizer 
 
 **Step 2a: scan relocations and build reachability sets.** `sub_439830` walks `elfw+376` (the relocation list) and for each relocation that targets a `.nv.shared` symbol, identifies which entry function owns the referencing `.text.*` section. This produces:
 
-```
+```text
 g_tmp   -> {kernel_a, kernel_b}   (both kernels call a helper that touches g_tmp)
 g_hist  -> {kernel_a}             (only kernel_a updates the histogram)
 s_local -> {kernel_a}             (from .nv.shared.kernel_a, per-entry)
@@ -605,7 +605,7 @@ s_local -> {kernel_a}             (from .nv.shared.kernel_a, per-entry)
 
 **Step 2b: build interference graph.** Two shared vars interfere iff their entry-sets overlap:
 
-```
+```text
               g_tmp    g_hist   s_local
     g_tmp     --       X        X       (both share kernel_a)
     g_hist    X        --       X       (both live in kernel_a)
@@ -614,7 +614,7 @@ s_local -> {kernel_a}             (from .nv.shared.kernel_a, per-entry)
 
 An edge means "cannot share an address." In ASCII:
 
-```
+```text
            +--------+
            | g_tmp  |
            +--------+
@@ -630,7 +630,7 @@ Every pair interferes because `kernel_a` touches all three. Result: no aliasing 
 
 **Step 2c: lay out `.nv.shared` globals.** `sub_4325A0` is called (via the optimized path in `sub_436BD0` which reduces to the plain layout here since no merging is possible):
 
-```
+```text
 current = 0
 g_hist: align=16 -> roundup(0,16)=0   -> value=0,  current=96
 g_tmp:  align=8  -> roundup(96,8)=96  -> value=96, current=160
@@ -646,7 +646,7 @@ Per-entry symbols in `.nv.shared.kernel_a`:
 |---|---|---|
 | `s_local` (shared tile) | 128 | 16 |
 
-```
+```text
 initial = 160
 s_local: align=16 -> roundup(160,16)=160 -> value=160, current=160+128=288
 ```
@@ -666,7 +666,7 @@ Final per-kernel shared memory footprints:
 
 After Phase 9 completes, the final per-bank picture is:
 
-```
+```text
 cbank0 / kernel_a:
     +0    +---------------------+
           | __cudaparm_ptr_out  |  (8 B)

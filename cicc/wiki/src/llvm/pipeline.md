@@ -47,7 +47,7 @@ Extension callbacks for target-specific pipeline customization are stored at `[P
 
 The pipeline text parser accepts a nesting grammar where each level specifies the pass manager scope:
 
-```
+```text
 module(
   function(
     instcombine<max-iterations=1>,

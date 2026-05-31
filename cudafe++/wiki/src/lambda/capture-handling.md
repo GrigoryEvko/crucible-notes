@@ -124,7 +124,7 @@ The function has two major loops, each iterating rank from 2 to 8.
 
 **Loop 1 -- Array wrapper specializations:**
 
-```
+```python
 for rank = 2 to 8:
     emit "template<typename T"
     for d = 1 to rank-1:
@@ -153,13 +153,13 @@ for rank = 2 to 8:
 **Loop 2 -- Field type specializations:**
 
 First emits the primary `__nv_lambda_field_type`:
-```
+```python
 emit "template <typename T>\nstruct __nv_lambda_field_type {\ntypedef T type;};"
 ```
 
 Then for each rank from 2 to 8, emits two specializations (non-const and const):
 
-```
+```python
 for rank = 2 to 8:
     // Non-const specialization
     emit "template<typename T"
@@ -310,7 +310,7 @@ Rather than generating wrapper specializations for all possible capture counts (
 
 ### Memory Layout
 
-```
+```text
 unk_1286980 (device lambda bitmap):
     Address: 0x1286980
     Size:    128 bytes = 16 x uint64_t = 1024 bits

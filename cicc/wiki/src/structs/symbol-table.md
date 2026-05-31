@@ -236,7 +236,7 @@ The full enumeration recovered from `sub_7386E0`:
 
 Before any type comparison, both sides are canonicalized by stripping non-template typedef aliases:
 
-```
+```rust
 fn edg_canonicalize_type(type) -> type:
     while type.type_kind == 2:               // tk_elaborated
         scope = type.payload_at_56
@@ -308,7 +308,7 @@ Each entry at `qword_4F04C68[0] + 776 * index`:
 
 ### Push / Pop Operations
 
-```
+```c
 sub_854590(0)   // push_scope -- increments dword_4F04C64, initializes new entry
 sub_854430()    // pop_scope  -- decrements dword_4F04C64, restores parent
 sub_854AB0(...) // pop_declarator_scope (context-specific cleanup)
@@ -325,7 +325,7 @@ The declaration-specifier resolver `sub_7C0F00` performs scope chain traversal t
 
 ### Unqualified Name Lookup
 
-```
+```rust
 fn lookup_unqualified(name, scope_index) -> entity:
     // Phase 2 of sub_7C0F00
     // Try each lookup strategy in priority order:
@@ -346,7 +346,7 @@ fn lookup_unqualified(name, scope_index) -> entity:
 
 The scope iteration loop at LABEL_282/283/285/288 walks the scope chain:
 
-```
+```rust
 fn lookup_qualified(base_entity, remaining_name) -> entity:
     current = base_entity
     while true:
@@ -393,7 +393,7 @@ This handles arbitrarily deep qualified names like `A::B::C::D`. Recursion depth
 
 `sub_868D90` (ADL / instantiation lookup) walks the scope chain upward:
 
-```
+```rust
 fn walk_scope_chain(start_index) -> entity:
     index = start_index
     while index >= 0:
@@ -413,7 +413,7 @@ fn walk_scope_chain(start_index) -> entity:
 
 ### Calling Convention
 
-```
+```rust
 sub_7386E0(packed_pair: __int128, flags: int) -> bool
     packed_pair.low  = type_A pointer
     packed_pair.high = type_B pointer
@@ -425,7 +425,7 @@ sub_7386E0(packed_pair: __int128, flags: int) -> bool
 
 ### Comparison Algorithm
 
-```
+```rust
 fn compare_types(type_A, type_B, flags) -> bool:
     // 1. Null handling
     if both null: return true
@@ -509,7 +509,7 @@ The generic IL tree walker visits every node in the EDG intermediate representat
 
 **Linked-list traversal pattern** (60+ lists walked):
 
-```
+```c
 for cursor = node.field; cursor; cursor = cursor.next:
     if list_node_rewrite_fn:
         cursor = list_node_rewrite_fn(cursor, child_kind)
@@ -563,7 +563,7 @@ Entry: `sub_91AED0` -> `sub_91AB30`. Uses a worklist-driven fixed-point iteratio
 
 ### Fixed-Point Algorithm
 
-```
+```rust
 fn translate_all_types(ctx, module):
     // Phase 1: iterate module members
     for member in module.member_list:

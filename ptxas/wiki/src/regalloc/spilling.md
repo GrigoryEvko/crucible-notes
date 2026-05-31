@@ -20,7 +20,7 @@ When the fat-point register allocator cannot fit all simultaneously-live virtual
 
 The spill trigger fires inside the per-virtual-register assignment function `sub_94FDD0` (155 lines). When the fat-point allocator (`sub_957160`) selects a physical slot for a virtual register, it calls `sub_94FDD0` to commit the assignment. If the chosen slot index equals or exceeds the per-class register budget, the function does not commit -- instead it marks the virtual register for spilling.
 
-```
+```c
 function assign_register(alloc, ctx, mode, vreg, regclass_info, slot, cost):
     max_regs = regclass_info.max_regs           // at regclass_info+16
 
@@ -67,7 +67,7 @@ Register consumption (`sub_939CE0`, 23 lines) accounts for paired registers. For
 
 The outer allocation driver `sub_971A90` (355 lines) wraps the core allocator in a two-phase strategy: first attempt allocation without spilling, then retry with progressively more aggressive spill guidance.
 
-```
+```c
 function alloc_with_spill_retry(alloc, ctx, class_id):
     // Phase 1: NOSPILL
     pre_allocation_pass(alloc)                        // sub_94A020
@@ -111,7 +111,7 @@ The debug string `"-CLASS NOSPILL REGALLOC: attemp "` (note the typo -- present 
 
 For SMEM spilling (modes 3/6 when `ctx+896 == 5`), the driver activates spill setup before entering the retry loop:
 
-```
+```c
 if (class_id == 3 or class_id == 6) and device_type == 5:
     if vreg_count > 0:
         setup_spill_allocator(alloc)      // sub_939BD0
@@ -277,7 +277,7 @@ Three phases: (A) stack-local queue init, (B) structure alloc + instruction walk
 
 #### Phase A -- Per-class bitvector copy and sort
 
-```
+```c
 function compute_spill_guidance(ctx, alloc, attempt):
     // Zero two 127-DWORD bitmask arrays (SSE2, 16B/iter, 0x1F iters).
     // Sentinel 0x80 at offsets +284 and +808.
@@ -305,7 +305,7 @@ function compute_spill_guidance(ctx, alloc, attempt):
 
 #### Phase B -- Structure init and instruction walk
 
-```
+```c
     g = arena_alloc(ctx+16, 11112)                     // guidance structure
     g[0] = ctx; g[3] = alloc+16; g[4..6] = 0          // back-ptrs + counters
     // Init circular doubly-linked list [1324]--[1329] (self-referential).
@@ -355,7 +355,7 @@ function compute_spill_guidance(ctx, alloc, attempt):
 
 #### Phase C -- Finalization
 
-```
+```c
     if ctx.class_nospill[ctx.active_class]:
         sub_96CFA0(g); arena_free(arena, g)            // cleanup only
     else:
@@ -412,7 +412,7 @@ The allocator uses a multi-level cost model to evaluate which registers are chea
 
 ### Unified spill cost formula
 
-```
+```c
 function compute_spill_cost(alloc, vreg, regclass):
     // Step 1: Select base weight from register pressure state
     if alloc.high_pressure_flag[regclass]:          // byte at alloc + 32*regclass + 893
@@ -441,7 +441,7 @@ function compute_spill_cost(alloc, vreg, regclass):
 
 Before a vreg enters the spill candidate set, it must pass two knob-controlled thresholds and a density check. The knobs reside in the options block reachable through `ctx->pipeline->options + offset`:
 
-```
+```c
 function is_spill_eligible(alloc, vreg, num_candidates):
     // Threshold 1: primary cost floor (default 0.9, knob at opts+38952)
     primary_floor = 0.9
@@ -494,7 +494,7 @@ Called after every allocation attempt to decide whether the current result impro
 | `(QWORD)(best+32)` | backup array ptr | arena-allocated on first call |
 | `best+24` (byte) | improved flag | 0 = no improvement, 1 = improved |
 
-```
+```c
 function record_best_result(best, ctx, attempt, reg_count, max_pressure, arena, cost):
     // Step 0: class-specific register count remapping via vtable slot 89
     v7 = reg_count
@@ -586,7 +586,7 @@ Walks the hash table rooted at `alloc+712` (populated by `sub_995110`). Each buc
 
 #### Constraint-aware interference check (`sub_999950`)
 
-```
+```c
 function check_constrained_interference(alloc, block_range):
     setup_live_state(alloc, block_range)                 // sub_998450
     if not has_constrained_vreg(alloc):                  // sub_9998A0
@@ -623,7 +623,7 @@ For opcode 96 (phi/merge nodes), traces through coalesced operand chains to find
 
 #### Per-block cost array builder (`sub_999F00`)
 
-```
+```c
 function build_block_cost_array(alloc):
     block_info = *(alloc+8) -> +72                       // current block descriptor
     if not block_info:  return
@@ -654,7 +654,7 @@ Each entry is a 12-byte record indexed by basic block ID. The 1.5x growth policy
 
 The largest spill cost function (580 lines, 14 KB). Four phases:
 
-```
+```c
 function drive_live_range_spills(alloc, loop_info, result_ptr):
     // Phase 1 -- drain 3 worklists (at alloc+123/+138/+156) into free pools
     //   via sub_69DD70 pop; recycle interval nodes (alloc[144..150]) via vtable+32.
@@ -712,7 +712,7 @@ The function allocates a tracking array: 12 bytes per virtual register, initiali
 
 ### Execution flow
 
-```
+```c
 function generate_spill_code(alloc, ctx, mode):
     // 1. Allocate per-block tracking
     tracking = arena_alloc(12 * (numBlocks + 1))
@@ -807,7 +807,7 @@ The vtable provides two initialization methods and one allocator:
 
 ### Slot allocation algorithm
 
-```
+```c
 function init_spill_pool(pool, bucket_size, alignment, max_size):
     pool.bucket_size = bucket_size          // 8 or 16
     pool.alignment   = alignment            // 4 or 16
@@ -852,7 +852,7 @@ Slot reuse occurs when `sub_93FBE0` resets per-iteration state: it walks all vir
 
 **Spill store sequence:**
 
-```
+```asm
 IADD  addr, spill_base, offset       // compute slot address
 IMAD  addr, addr, stride, 0          // scale by slot stride
 ST    [addr], value                   // store to local memory
@@ -860,7 +860,7 @@ ST    [addr], value                   // store to local memory
 
 **Refill load sequence:**
 
-```
+```asm
 IADD  addr, spill_base, offset       // compute slot address
 IMAD  addr, addr, stride, 0          // scale by slot stride
 LD    value, [addr]                   // load from local memory
@@ -893,7 +893,7 @@ Shared memory (SMEM) spilling is an alternative to local memory spilling. Shared
 
 ### Hard restriction
 
-```
+```text
 "Smem spilling should not be enabled when functions use abi."
 ```
 
@@ -926,7 +926,7 @@ Both paths read `smem_sym = *(ctx+104)->qword[0]`. The runtime SMEM pool availab
 
 ### Algorithm (full path)
 
-```
+```c
 function smem_spill_allocate(alloc, ctx):
     // Step 1 -- ABI guard
     if ctx.device_type == 4 and ctx.flags_1368 & 0x4:
@@ -1123,7 +1123,7 @@ The statistics object stores spill counters at fixed DWORD offsets:
 
 The statistics printing subsystem (`sub_A3A7E0`) emits two lines for spill metrics:
 
-```
+```text
 # [est latency = %d] [LSpillB=%d] [LRefillB=%d], [SSpillB=%d],
   [SRefillB=%d], [LowLmemSpillSize=%d] [FrameLmemSpillSize=%d]
 # [LNonSpillB=%d] [LNonRefillB=%d], [NonSpillSize=%d]
@@ -1131,7 +1131,7 @@ The statistics printing subsystem (`sub_A3A7E0`) emits two lines for spill metri
 
 The function properties string (used in verbose output):
 
-```
+```text
 Function properties for %s
     %d bytes stack frame, %d bytes spill stores, %d bytes spill loads
 ```
@@ -1140,7 +1140,7 @@ Function properties for %s
 
 When `--warn-on-spills` is active, the following warning is emitted for any function with spills:
 
-```
+```text
 Registers are spilled to local memory in function '%s',
     %d bytes spill stores, %d bytes spill loads
 ```
@@ -1151,7 +1151,7 @@ The flag is registered in `sub_432A00` / `sub_434320` and stored at `compilation
 
 When all spill retry attempts are exhausted and the allocator still cannot fit within the register budget, a fatal error is emitted:
 
-```
+```text
 Register allocation failed with register count of '%d'.
 Compile the program with a higher register target
 ```
@@ -1186,7 +1186,7 @@ Debug strings include `" spill-regill bug "` and `" bit-spill bug "` (both with 
 
 The memcheck verifier (`sub_A73F30`, 806 lines) drives the matching. For each post-allocation instruction whose reaching definitions changed, it classifies the instruction and dispatches to one of three pattern-specific matchers:
 
-```
+```c
 // sub_A73F30 -- simplified dispatch for spill/refill verification
 match_spill_refill_pairs(verifier, post_insn, operand_idx):
 

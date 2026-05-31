@@ -384,7 +384,7 @@ These are `.nv.info` section attribute names processed alongside relocations dur
 
 The Mercury descriptor table's last entry (`R_MERCURY_NONE_LAST` at index 64, address `0x1D3DBE0`) occupies the same 64 bytes as the CUDA descriptor table's first entry (`R_CUDA_NONE` at index 0, address `0x1D3DBE0`). Both are sentinel no-op entries with identical all-zero descriptors. The binary exploits this by sharing the memory:
 
-```
+```text
 Mercury table:  [entry 0 ... entry 63] [entry 64 == CUDA entry 0]
                 0x1D3CBE0              0x1D3DBE0
 CUDA table:                            [entry 0 ... entry 116]
@@ -397,7 +397,7 @@ This saves 64 bytes in `.rodata` by overlapping the Mercury end-sentinel with th
 
 Each entry in the name table at `off_1D371E0` is 16 bytes (2 qwords = `v7[2 * index]` in `sub_42F6C0`):
 
-```
+```text
 +0  char*    name_ptr      // pointer to null-terminated name string
 +8  uint32_t field_0       // metadata (used in validation: v8[2] == max_elf_class)
 +12 uint32_t field_1       // metadata

@@ -45,7 +45,7 @@ In practice, NVIDIA's toolchain (`nvcc` + `nvlink`) uses **regular LTO** as the 
 
 The LTO pipeline executes five major passes in a fixed order. Each pass consumes the output of its predecessor:
 
-```
+```text
  ┌────────────────────────────────────────────────────────────────────────┐
  │                    NVVM Container (IRLevel=1)                         │
  │                    LLVM Bitcode + Module Flags                        │
@@ -109,7 +109,7 @@ The function's argument list is reconstructed from the LTO output vector `v330` 
 
 ### Pseudocode: `sub_12F5F30` Top-Level
 
-```
+```c
 function sub_12F5F30(module, lto_args, options, error_cb):
     # ---- Phase A: Parse LTO-specific arguments ----
     mode = NONE
@@ -218,7 +218,7 @@ This pass cannot exist on CPU. A CPU linker must preserve all non-hidden externa
 
 ### Pseudocode: `dead_kernel_elimination`
 
-```
+```c
 function dead_kernel_elimination(module, preserved_set, trace):
     # Walk all functions in the module via sub_1C13840 iterator
     worklist = []
@@ -266,7 +266,7 @@ function dead_kernel_elimination(module, preserved_set, trace):
 
 When `-optimize-unused-variables` is enabled, the same logic extends to `__device__` and `__constant__` global variables:
 
-```
+```c
 function dead_variable_elimination(module, preserved_set,
                                    host_constants, host_globals, trace):
     worklist = []
@@ -308,7 +308,7 @@ Before `sub_12F5F30` can perform dead-kernel elimination or any LTO optimization
 
 ### Two-Level Linking Architecture
 
-```
+```text
 nvlink extracts .nv_fatbin bitcode sections
          |
          v
@@ -354,7 +354,7 @@ nvlink extracts .nv_fatbin bitcode sections
 
 ### Pseudocode: Module Merge (`sub_12F5610` + `sub_12C06E0`)
 
-```
+```c
 function module_merge(module_list, llvm_ctx, options):
     # ---- Step 1: Load and validate all modules (sub_12C06E0) ----
     modules = []

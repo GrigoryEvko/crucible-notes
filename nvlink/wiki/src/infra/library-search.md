@@ -32,7 +32,7 @@ This page documents the infrastructure components at reimplementation depth. For
 
 `search_context_create` allocates a 16-byte structure that serves as the anchor for a singly-linked list of search directories. The structure uses a tail-pointer idiom for O(1) append.
 
-```
+```text
 search_context_t (16 bytes)
 =======================================
 Offset  Size  Field   Description
@@ -62,7 +62,7 @@ search_context_t* search_context_create(arena_t* arena) {
 
 Each directory in the search path is represented by a 16-byte linked-list node:
 
-```
+```text
 search_dir_node_t (16 bytes)
 =======================================
 Offset  Size  Field   Description

@@ -39,7 +39,7 @@ Although SM89 and SM90 share the same 1.9 MB backend, the binary distinguishes t
 
 The profile registration function `sub_484F50` builds a 136-byte descriptor per SM target via `sub_484DB0`. After constructing the sm_89 descriptor, the code sets:
 
-```
+```c
 v47->m128i_i8[3] = 1;   // byte[3] of the sm_89 profile descriptor
 ```
 
@@ -183,7 +183,7 @@ None of these conditions distinguish sm_89 from sm_90 specifically -- they both 
 
 The 750 functions in this region are template-instantiated instruction encoding initializers. Each function initializes one SASS instruction variant -- a specific opcode with a specific operand pattern. All share an identical structure:
 
-```
+```text
 1. sub_4C28B0(a1, offset, fieldlen, value)   // 5-8 calls setting bitfield params
 2. SSE load from xmmword_1F46xxx             // 16-byte instruction signature
 3. memcpy loop: 3 parallel arrays (10 entries each)
@@ -220,7 +220,7 @@ The transition-region encoders at `0x10D0000`--`0x10FFFFF` reference constant ta
 
 Each encoder is parameterized by a read-only constant table in `.rodata` at addresses `0x1F460E0` through `0x1F47400`. Each table contains:
 
-```
+```text
 Offset  Size    Content
   0     16B     SSE header: instruction signature
  16     400B    10 source-register-class entries (40-byte stride)
@@ -427,7 +427,7 @@ The largest function in the SM89/90 backend and the fourth-largest in the entire
 
 This function is the main instruction selection dispatch. Its structure is a massive switch/jump-table on the IR primary opcode, with each case calling one or more of the ~160 pattern-matching helpers from the `0x1120000`--`0x119BF40` range. The ISel protocol is:
 
-```
+```c
 for each pattern_matcher in pattern_table:
     matched = pattern_matcher(ctx, ir_node, &pattern_id, &priority)
     if matched && priority > best_priority:
@@ -446,7 +446,7 @@ The final 16 functions form a cohesive list-scheduling subsystem for SASS instru
 
 All scheduling functions operate on a common per-basic-block data structure:
 
-```
+```text
 State object layout (offsets from base):
   +832    pointer   Growable array of 184-byte per-BB records
   +840    uint32    Array capacity
@@ -456,7 +456,7 @@ State object layout (offsets from base):
 
 Each 184-byte per-BB record contains:
 
-```
+```text
 Offset  Size    Content
   +0     8B     Scheduling state pointer
   +4     4B     Instruction timing data
@@ -505,7 +505,7 @@ Implements the `--fdevice-time-trace` feature for generating Chrome trace format
 
 The complete SM89/90 backend call graph, starting from the ELF output entry point:
 
-```
+```text
 sub_1116890 (ELF output + metadata)
   +-- sub_432020 (create option parser)
   +-- sub_1104950 (parse options)

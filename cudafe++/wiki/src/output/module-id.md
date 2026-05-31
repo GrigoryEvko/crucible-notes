@@ -66,7 +66,7 @@ When no caller-provided string is available, the function `stat()`s the output f
 
 ## Complete Generation Pseudocode
 
-```
+```python
 function make_module_id(src_arg):
     // Check cache
     if qword_126F0C0 != NULL:
@@ -162,13 +162,13 @@ function make_module_id(src_arg):
 
 The final module ID string follows this structure:
 
-```
+```text
 _{options_crc}_{basename_len}_{basename}_{source_or_crc}[_{extra}][_{pid}]
 ```
 
 All non-alphanumeric characters are replaced with underscores after assembly. A concrete example for a file `kernel.cu` compiled with `nvcc -arch=sm_89 -rdc=true`:
 
-```
+```text
 _a1b2c3d4_9_kernel_cu_5e6f7890_1234
   |          |  |        |         |
   |          |  |        |         +-- PID (getpid())
@@ -188,7 +188,7 @@ The algorithm is the standard bit-by-bit reflected CRC-32 used by ISO 3309, ITU-
 
 ### CRC32 Pseudocode
 
-```
+```python
 function crc32(data: byte_string) -> uint32:
     crc = 0xFFFFFFFF                    // initialization vector
 
@@ -270,7 +270,7 @@ The original C source almost certainly had a single `crc32_string()` helper func
 
 ## Module ID Source Modes -- Decision Tree
 
-```
+```text
 make_module_id(src)
     |
     +-- qword_126F0C0 set? --> return cached
@@ -508,7 +508,7 @@ Writes the raw module ID string to a file for consumption by fatbinary and nvlin
 
 The module ID is computed at multiple points during compilation, but only the first computation persists (all subsequent calls return the cached value):
 
-```
+```text
 Pipeline stage                    Module ID action
 --------------------------------------------------------------
 CLI parsing                       Flags 83/87 set qword_106BF80

@@ -28,7 +28,7 @@ On a GPU, a divergent conditional branch forces the warp to serialize: the hardw
 
 Predication eliminates this divergence penalty entirely. Both paths still execute, but without the overhead of stack-based reconvergence (`BSSY`/`BSYNC` pairs on sm_70+), without the branch instruction itself, and with the ability for the scheduler to interleave the predicated instructions with other independent work. For short regions (a few instructions per side), predication is strictly superior to branching.
 
-```
+```text
 Branching (divergent):               Predicated:
 
   ISETP.NE P0, R4, R5               ISETP.NE P0, R4, R5
@@ -55,7 +55,7 @@ The pass operates in three layers:
 
 ### Entry Point -- `sub_1381DA0`
 
-```
+```c
 sub_1381DA0(compilation_unit):
     if context+1376 bit 5 set:
         return                       // phase disabled by flag
@@ -89,7 +89,7 @@ The `context+1385` byte has bit 0 set during predication execution, which signal
 
 ### Iterative Driver -- `sub_1381CD0`
 
-```
+```c
 sub_1381CD0(state):
     // Initialize via SM backend
     sm_backend = *(context+1584)
@@ -134,7 +134,7 @@ sub_1381CD0(state):
 
 **Effect of `last_iteration` (state offset +232).** This flag is true only when `max_extra == 1`. In `sub_1380BF0` (the profitability gate), the flag adds a narrowing filter before the normal cost check:
 
-```
+```c
 // sub_1380BF0, line 66
 if last_iteration:
     if !(candidate_bb+282 bit 3) or !state.byte[76]:
@@ -147,7 +147,7 @@ Bit 3 of `candidate_bb+282` is a "retry-eligible" marker set during earlier pass
 
 The main loop walks basic blocks in RPO order (via the block index array at `context+512`), identifies candidate branch regions, and decides whether to if-convert each one.
 
-```
+```c
 sub_1381010(state):
     // Rebuild liveness and CFG
     sub_781F80(context, 1)          // rebuild liveness
@@ -199,7 +199,7 @@ The pass recognizes three CFG shapes for if-conversion:
 
 One arm of the branch is empty (falls through directly to the merge point).
 
-```
+```text
          [header]
         /    \
        /      \
@@ -220,7 +220,7 @@ Requirements:
 
 Both arms contain instructions.
 
-```
+```text
          [header]
         /    \
        /      \
@@ -239,7 +239,7 @@ Requirements (same as triangle, plus):
 
 The pass can also handle diamonds where one or both arms chain through a successor block before merging. The `sub_137FE10` function implements this extended analysis, walking forward through fall-through blocks until it reaches a merge point or encounters a block that fails the candidate check.
 
-```
+```text
          [header]
         /    \
        /      \
@@ -398,7 +398,7 @@ The profitability decision (`sub_1380BF0`, 1,055 bytes) is the most complex part
 
 ### Decision Flow
 
-```
+```c
 sub_1380BF0(state, true_side, false_side, is_reverse, result):
     result = false
 
@@ -470,7 +470,7 @@ sub_1380BF0(state, true_side, false_side, is_reverse, result):
 
 The profitability decision is a static estimate of whether eliminating a branch saves more cycles than the predicated instructions waste. The underlying comparison is:
 
-```
+```text
 Cost_branch  = C_bssy + C_branch + C_reconverge + C_serialize
 Cost_pred(N) = N * C_issue
 ```
@@ -498,7 +498,7 @@ When the true side has memory loads (`has_primary_memory_load`), the 2x2 matrix 
 
 The SM backend populates the threshold fields via `vtable(sm_backend)[1296]`. The dispatch in `sub_1381CD0` (lines 15-29) has a fast-path check:
 
-```
+```c
 sm_backend = *(context + 1584)
 init_fn    = vtable(sm_backend)[1296]
 if init_fn == sub_7D82C0:          // default backend
@@ -540,7 +540,7 @@ For a non-branch instruction with opcode `op`:
 6. **Transfer debug info**: `*new_instr+32 = *old_instr+32` (debug location).
 7. **Delete the original** instruction via `sub_9253C0`.
 
-```
+```c
 // Predicate guard is appended as TWO consecutive operands (each operand =
 // 8 bytes = word0 + word1). sub_9324E0 lines 71-74 write:
 //
@@ -569,7 +569,7 @@ When `sub_9324E0` encounters an instruction with bit 12 already set (predicated 
 
 **Extracting the existing guard.** The function reads the operand count at `instr[20]` and indexes backward by 2 to locate the existing guard pair. Each operand is 8 bytes = (word0, word1):
 
-```
+```c
 // instr[+84] is the operand-array base; slot k occupies DWORDs [2k, 2k+1].
 // Predicate guard occupies the LAST TWO slots:
 //   slot (count-2)  -- the predicate-register operand (type 1)
@@ -603,7 +603,7 @@ When `sub_9324E0` encounters an instruction with bit 12 already set (predicated 
 
 6. **Strips the old guard** from the original instruction (clears bit 12, decrements operand count by 2), then calls `sub_9324E0` to re-predicate with the combined predicate register.
 
-```
+```asm
 // Example: @P3 FADD R0, R1, R2  (already predicated by P3)
 //          new if-conversion guard = P5
 //
@@ -763,7 +763,7 @@ The `context+1392` bit 0 flag set by `sub_137EE50` persists through these passes
 
 NVIDIA SASS provides 7 usable predicate registers (P0--P6) plus the hardwired always-true register PT. Every instruction in the SASS ISA can optionally carry a predicate guard:
 
-```
+```asm
 @P0  IADD3 R0, R1, R2, RZ    // executes only if P0 is true
 @!P2 FMUL  R3, R4, R5         // executes only if P2 is false
      FADD  R6, R7, R8          // unconditional (implicit @PT)
@@ -771,7 +771,7 @@ NVIDIA SASS provides 7 usable predicate registers (P0--P6) plus the hardwired al
 
 Predicate conditions are set by comparison instructions:
 
-```
+```asm
 ISETP.GT.AND P0, PT, R1, R2, PT   // P0 = (R1 > R2) AND PT
 FSETP.LT.AND P1, P2, R3, R4, PT   // P1 = (R3 < R4), P2 = !(R3 < R4)
 ```

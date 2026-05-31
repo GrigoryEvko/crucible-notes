@@ -138,7 +138,7 @@ NVIDIA added two device/host scope tracking bits to the scope entry, grafted ont
 
 ### Byte +6, Bit 1: Device Scope Context
 
-```
+```text
 scope_entry+6, bit 1 (0x02):
 
   When set: code in this scope is compiled for the device execution space.
@@ -155,7 +155,7 @@ The bit is set when entering `__device__` or `__global__` function scopes and cl
 
 ### Byte +14, Bit 2: In Device Code
 
-```
+```text
 scope_entry+14, bit 2 (0x04):
 
   Secondary device-code marker. Set when the parser is inside a device
@@ -173,7 +173,7 @@ When `push_template_instantiation_scope` (`sub_709DE0`) sets up a template insta
 
 If the same template scope is re-entered for a nested instantiation (e.g., recursive template), `+576` is incremented rather than pushing a full new scope entry. On pop, `pop_template_instantiation_scope` (`sub_708EE0`) checks `+576`:
 
-```
+```c
 if (scope_entry[576] > 0) {
     scope_entry[576]--;     // just decrement, don't pop
     return;
@@ -409,7 +409,7 @@ The scope stack provides infrastructure for variadic template parameter pack exp
 
 95 lines. Prints scope stack statistics when debug tracing is enabled. Output format:
 
-```
+```text
 Scope stack statistics
 Stack entry size: 784
 Max. stack depth: <N>

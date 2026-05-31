@@ -44,7 +44,7 @@ These 65,536 registers are **shared among all resident threads**. The hardware p
 
 The relationship between per-thread register count and achievable occupancy is a step function with sharp discontinuities:
 
-```
+```text
 Registers/thread    Max warps/SM    Max threads/SM    Occupancy
       32                64              2048            100%
       33-40             48              1536             75%
@@ -116,7 +116,7 @@ The 200-800 cycle range for global DRAM access is the defining constraint of GPU
 
 The GPU memory subsystem services warp-wide requests in **128-byte transactions** (or 32-byte sectors on some architectures). When 32 threads in a warp access 32 consecutive 4-byte values (128 bytes total), the hardware coalesces the 32 individual requests into a single transaction. This is the **stride-1 access pattern** -- the ideal case.
 
-```
+```text
 Thread 0  loads addr+0    ┐
 Thread 1  loads addr+4    │
 Thread 2  loads addr+8    │  One 128-byte transaction
@@ -152,7 +152,7 @@ Function calls on NVIDIA GPUs are expensive in a way that has no CPU equivalent.
 
 ### Call Sequence
 
-```
+```ptx
 // Caller side:
 .param .align 8 .b8 param0[16];           // DeclareParam
 st.param.b64 [param0+0], %rd1;            // Store arg 0, field 0

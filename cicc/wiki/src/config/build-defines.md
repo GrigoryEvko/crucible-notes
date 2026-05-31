@@ -379,7 +379,7 @@ diff <(cicc-13.0 --gen_config ...) <(cicc-12.6 --gen_config ...)
 
 A clean output looks like:
 
-```
+```c
 /* Configuration data for Edison Design Group C/C++ Front End */
 /* version 6.6, built on <date> at <time>. */
 

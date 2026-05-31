@@ -4,7 +4,7 @@ The symbol record is nvlink's internal representation of an ELF symbol during li
 
 ## Record Layout
 
-```
+```c
 struct symbol_record {                 // 48 bytes, 8-byte aligned
     /*  0 */ uint32_t  st_name;        // string table offset for the symbol name
     /*  4 */ uint8_t   st_info;        // high nibble = binding, low nibble = type
@@ -163,7 +163,7 @@ Index zero in the positive array is the null symbol (`STN_UNDEF`), which the ELF
 
 Every symbol name is registered in a hash map at `elfw+288`. The hash map implementation (`sub_449A80`) uses string-based hashing for mode-0 lookups, with buckets at `map+104` and entries as 16-byte key-value pairs (8-byte string pointer + 8-byte value). The value is the 4-byte signed symbol index stored in a 12-byte node structure:
 
-```
+```c
 struct name_map_entry {
     uint64_t  unused;       // 8 bytes, zeroed
     uint32_t  sym_index;    // 4 bytes, signed symbol index

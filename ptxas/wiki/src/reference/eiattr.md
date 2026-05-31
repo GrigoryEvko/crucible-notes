@@ -25,7 +25,7 @@ Each `.nv.info` section contains a flat sequence of 4-byte-aligned TLV records. 
 
 ### Record Layout
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    1     format      Format byte (determines payload structure)
@@ -423,7 +423,7 @@ For Indexed-format (`0x04`) attributes the first 4 payload bytes are always a u3
 
 All Indexed attributes in this group share the same 8-byte payload layout: `[sym_index:4][value:4]`. The builder's first switch (line 722) routes all of these through the same symbol-index resolution path.
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     sym_index     Per-function symbol table index
@@ -443,14 +443,14 @@ Offset  Size  Field
 
 **Code 14 (`0x0E`) -- `EIATTR_TEXID_SAMPID_MAP`**: Free format. Variable-length array of u32 pairs mapping texture IDs to sampler IDs.
 
-```
+```text
 Payload: repeating [tex_id:4][samp_id:4] pairs
 Size:    N * 8 bytes (N = number of tex-sampler bindings)
 ```
 
 **Code 20 (`0x14`) -- `EIATTR_BINDLESS_IMAGE_OFFSETS`**: Free format. Array of u32 byte offsets for bindless image descriptor references in the kernel's constant bank. Each u32 is a symbol index that gets resolved during link.
 
-```
+```text
 Payload: u32[] symbol indices (resolved to byte offsets at link)
 Size:    N * 4 bytes
 ```
@@ -459,7 +459,7 @@ Size:    N * 4 bytes
 
 **Code 3 (`0x03`) -- `EIATTR_JUMPTABLE_RELOCS`**: Free format. Array of u32 byte offsets into the `.text` section where jump table relocations are needed.
 
-```
+```text
 Payload: u32[] byte offsets into .text
 Size:    N * 4 bytes
 ```
@@ -468,7 +468,7 @@ Size:    N * 4 bytes
 
 **Code 4 (`0x04`) -- `EIATTR_CTAIDZ_USED`**: Indexed format, zero-value flag attribute. Presence of the record signals the kernel reads `%ctaid.z`. SM-version gated via `sub_1C97840(0x04, sm_version)`.
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     sym_index     Per-function symbol
@@ -494,14 +494,14 @@ The builder creates this record with two different format bytes depending on con
 
 **Code 25 (`0x19`) -- `EIATTR_CBANK_PARAM_SIZE`**: Sized format (`0x03`). Value encoded directly in the 16-bit size field. No separate payload bytes.
 
-```
+```text
 TLV header: [fmt=0x03][code=0x19][param_bank_size:2]
 Total record: 4 bytes (header only)
 ```
 
 **Code 27 (`0x1B`) -- `EIATTR_MAXREG_COUNT`**: Sized format (`0x03`). Value encoded in the low byte of the 16-bit size field (range 0--255). Per-compilation-unit hint, not per-function. Set by `--maxrregcount` CLI flag or `.maxnreg` PTX directive.
 
-```
+```text
 TLV header: [fmt=0x03][code=0x1B][maxreg:2]
 Total record: 4 bytes (header only)
 Effective range: low byte only (0--255), high byte 0
@@ -511,7 +511,7 @@ Binary evidence: second switch case `0x1B` (line 1094) reads `*(u8*)(v150+2)` --
 
 **Code 30 (`0x1E`) -- `EIATTR_CRS_STACK_SIZE`**: Indexed format, 4-byte value payload. Emitted by `sub_1CC86D0` with `sub_1CC85F0(a1, 0x1E, 4, buf, sym_index)`.
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     sym_index     Per-function symbol
@@ -524,7 +524,7 @@ Total record: 12 bytes (4 header + 8 payload). Diagnostic `"conflicting crs_stac
 
 **Code 10 (`0x0A`) -- `EIATTR_PARAM_CBANK`**: Indexed format, packed value.
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     sym_index
@@ -536,13 +536,13 @@ Typical value: bank=0, offset=`0x160` (standard CUDA kernel parameter ABI).
 **Codes 11 (`0x0B`) and 12 (`0x0C`)** -- Free format, variable-length u32 arrays:
 
 `EIATTR_SMEM_PARAM_OFFSETS` (`0x0B`):
-```
+```text
 Payload: u32[] byte offsets within shared memory, one per parameter
 Size:    N * 4 bytes
 ```
 
 `EIATTR_CBANK_PARAM_OFFSETS` (`0x0C`):
-```
+```text
 Payload: u32[] packed entries, one per parameter
          Each u32: lo16 = byte offset in cbank, hi16 = parameter size
 Size:    N * 4 bytes
@@ -550,7 +550,7 @@ Size:    N * 4 bytes
 
 **Code 23 (`0x17`) -- `EIATTR_KPARAM_INFO`**: Free format, complex per-parameter descriptors. This is the only attribute in codes 0--32 with a multi-field sub-record structure.
 
-```
+```text
 Payload: repeating 12-byte per-parameter entries:
   Offset  Size  Field
   ------  ----  -----
@@ -570,7 +570,7 @@ Special behavior: the builder exempts `KPARAM_INFO` from being zeroed when its s
 
 **Code 13 (`0x0D`) -- `EIATTR_SYNC_STACK`**: Indexed format.
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     sym_index
@@ -583,7 +583,7 @@ Binary evidence: case `0x0D` (line 1038) reads `*(u16**)(v150+8)` as a pointer t
 
 **Code 15 (`0x0F`) -- `EIATTR_EXTERNS`**: Free format, most complex processing of any attribute in the 0--32 range.
 
-```
+```text
 Payload: u32[] symbol table indices
 Size:    N * 4 bytes (N = size_field / 4)
 ```
@@ -603,7 +603,7 @@ The builder handles EXTERNS in both switches:
 Both attributes are Free format carrying arrays of u32 byte offsets into the `.text` section.
 
 **Code 28 (`0x1C`) -- `EIATTR_EXIT_INSTR_OFFSETS`**:
-```
+```text
 Payload: u32[] byte offsets of EXIT instructions
 Size:    N * 4 bytes
 ```
@@ -611,7 +611,7 @@ Size:    N * 4 bytes
 Confirmed by the builder's loop (line 2011): code 28 is explicitly checked and skipped past the symbol-resolution path, confirming the payload is a simple offset array with no embedded symbol indices.
 
 **Code 29 (`0x1D`) -- `EIATTR_S2RCTAID_INSTR_OFFSETS`**:
-```
+```text
 Payload: u32[] byte offsets of S2R SR_CTAID.* instructions
 Size:    N * 4 bytes
 ```
@@ -623,7 +623,7 @@ At line 2001, code 29 triggers CNP (CUDA Nested Parallelism) wrapper generation.
 Both are Indexed-format flag attributes with no value payload. They are always emitted as a pair.
 
 **Code 31 (`0x1F`) -- `EIATTR_NEED_CNP_WRAPPER`**:
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     sym_index
@@ -633,7 +633,7 @@ Offset  Size  Field
 SM-version gated: `sub_1C97840(0x1F, sm_version)`. Builder constructs with internal format `0x01` (magic `0x1F01` = 7937). Emitted for every function that the S2RCTAID analysis identified as needing a CNP wrapper.
 
 **Code 32 (`0x20`) -- `EIATTR_NEED_CNP_PATCH`**:
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     sym_index
@@ -688,7 +688,7 @@ Continuation of the per-attribute wire-format documentation. Same sources and co
 
 **Code 33 (`0x21`) -- `EIATTR_EXPLICIT_CACHING`**: Indexed format, flag-only. Signals the kernel uses explicit cache control directives (`ld.ca`, `ld.cg`, etc.). SM-gated via `sub_1C97840(0x21, sm_version)`.
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     sym_index
@@ -699,7 +699,7 @@ Binary evidence: magic `0x2101` (line 1733). Emitted when cache-on flag (`v648`)
 
 **Code 34 (`0x22`) -- `EIATTR_ISTYPEP_USED`**: Indexed format, flag-only. Signals the kernel uses `isspacep` (type predicate) instructions.
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     sym_index
@@ -710,7 +710,7 @@ No special builder logic -- passes through the default path.
 
 **Code 36 (`0x24`) -- `EIATTR_SUQ_USED`**: Indexed format, flag-only. Signals the kernel uses surface query instructions.
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     sym_index
@@ -721,7 +721,7 @@ No special builder logic.
 
 **Code 43 (`0x2B`) -- `EIATTR_WMMA_USED`**: Indexed format, flag-only. Signals the kernel uses Warp Matrix Multiply-Accumulate instructions. First attribute introduced in the Volta era (`meta=2`).
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     sym_index
@@ -734,7 +734,7 @@ No special builder logic.
 
 **Code 35 (`0x23`) -- `EIATTR_MAX_STACK_SIZE`**: Indexed format, 4-byte value. Maximum per-thread stack size for recursive call chains, computed via call-graph propagation in `sub_1CC8950`.
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     sym_index
@@ -745,7 +745,7 @@ Binary evidence: second switch case `0x23` (line 1128) reads `v354[1]` as the st
 
 **Code 47 (`0x2F`) -- `EIATTR_REGCOUNT`**: Indexed format, 4-byte value. Physical register count per thread. The single most important attribute for GPU occupancy: `max_warps_per_SM = total_registers / (regcount * warp_size)`.
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     sym_index
@@ -756,7 +756,7 @@ Binary evidence: second switch case `0x2F` (line 1176) resolves the symbol and s
 
 **Code 50 (`0x32`) -- `EIATTR_SHARED_SCRATCH`**: Indexed format, 4-byte value. Shared memory scratch space allocated for register spilling.
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     sym_index
@@ -767,7 +767,7 @@ No special builder logic.
 
 **Code 55 (`0x37`) -- `EIATTR_CUDA_API_VERSION`**: Indexed format, 4-byte value. Records the CUDA API version the kernel was compiled for.
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     sym_index
@@ -778,7 +778,7 @@ No special builder logic -- passes through the default path.
 
 **Code 56 (`0x38`) -- `EIATTR_NUM_MBARRIERS`**: Sized format (`0x03`), value encoded in the TLV size field. Number of memory barrier (`mbarrier`) objects used by the kernel.
 
-```
+```text
 TLV header: [fmt=0x03][code=0x38][mbar_count:2]
 Total record: 4 bytes (header only)
 ```
@@ -789,7 +789,7 @@ Accumulative semantics: the builder sums mbarrier counts from callees during cal
 
 **Code 59 (`0x3B`) -- `EIATTR_SAM_REGION_STACK_SIZE`**: Indexed format, 8-byte payload. SAM (Streaming Asynchronous Memory) region stack size.
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     sym_index
@@ -802,7 +802,7 @@ Binary evidence: emitted by `sub_1CC86D0` at line 114: `sub_1CC85F0(a1, 0x3B, 8,
 
 **Code 38 (`0x26`) -- `EIATTR_LOAD_CACHE_REQUEST`**: Indexed format, 4-byte value. Per-kernel cache mode configuration. Controls whether the driver enables explicit caching for this kernel.
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     sym_index
@@ -815,7 +815,7 @@ Binary evidence: second switch case `0x26` (line 1134) is the most complex handl
 
 **Code 44 (`0x2C`) -- `EIATTR_HAS_PRE_V10_OBJECT`**: Value format (`0x02`), global scope. Signals the compilation unit contains pre-CUDA 10 compiled code.
 
-```
+```text
 TLV header: [fmt=0x02][code=0x2C][size:2]
 Payload:    [flags:4]
 Total record: 8 bytes
@@ -827,7 +827,7 @@ Binary evidence: top-level gating at line 686--688 checks three conditions: link
 
 All attributes in this group use Free format (`0x01`) carrying variable-length arrays of u32 byte offsets into the kernel's `.text` section. None have explicit switch cases in the builder -- they pass through the default path. The payload layout for all is identical:
 
-```
+```text
 Payload: u32[] byte offsets into .text section
 Size:    N * 4 bytes (N = size_field / 4)
 ```
@@ -846,7 +846,7 @@ Size:    N * 4 bytes (N = size_field / 4)
 
 **Code 46 (`0x2E`) -- `EIATTR_ATOM16_EMUL_INSTR_REG_MAP`**: Free format, but NOT a simple offset array. Carries a register map for 16-bit atomic emulation with a structured per-entry layout rather than flat offsets. The exact sub-record layout is not fully determined from the builder alone (constructed by a separate pass).
 
-```
+```text
 Payload: structured register-map entries (not flat u32[] offsets)
 Size:    variable
 ```
@@ -868,7 +868,7 @@ All use Free format (`0x01`) with u32 offset arrays. The driver patches the inst
 
 **Code 41 (`0x29`) -- `EIATTR_COOP_GROUP_MASK_REGIDS`**: Indexed, 4-byte value.
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     sym_index
@@ -877,7 +877,7 @@ Offset  Size  Field
 
 **Code 61 (`0x3D`) -- `EIATTR_CTA_PER_CLUSTER`**: Indexed, 4-byte value.
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     sym_index
@@ -886,7 +886,7 @@ Offset  Size  Field
 
 **Code 62 (`0x3E`) -- `EIATTR_EXPLICIT_CLUSTER`**: Indexed, flag-only.
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     sym_index
@@ -895,7 +895,7 @@ Offset  Size  Field
 
 **Code 63 (`0x3F`) -- `EIATTR_MAX_CLUSTER_RANK`**: Indexed, 4-byte value.
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     sym_index
@@ -906,21 +906,21 @@ Offset  Size  Field
 
 **Code 51 (`0x33`) -- `EIATTR_STATISTICS`**: Free format. Variable-length compilation statistics (instruction counts, etc.). Internal diagnostic data not consumed by the GPU driver.
 
-```
+```text
 Payload: structured statistics data (format varies)
 Size:    variable
 ```
 
 **Code 60 (`0x3C`) -- `EIATTR_PER_REG_TARGET_PERF_STATS`**: Free format. Per-register-target performance statistics for the profiler.
 
-```
+```text
 Payload: structured performance data (format varies)
 Size:    variable
 ```
 
 **Code 64 (`0x40`) -- `EIATTR_INSTR_REG_MAP`**: Free format. Instruction-to-register mapping for profiling and debugging tools.
 
-```
+```text
 Payload: structured register-map data
 Size:    variable
 ```
@@ -970,7 +970,7 @@ Continuation of the per-attribute wire-format documentation. Same sources and co
 
 **Code 65 (`0x41`) -- `EIATTR_RESERVED_SMEM_USED`**: Indexed format, flag-only. Signals the kernel uses reserved shared memory. SM-gated via `sub_1C97840(0x41, sm_version)`.
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     sym_index
@@ -981,7 +981,7 @@ Binary evidence: magic `0x4101` (16641) at lines 1511 and 2219 of `sub_1CC9800`.
 
 **Code 66 (`0x42`) -- `EIATTR_RESERVED_SMEM_0_SIZE`**: Indexed format, 4-byte value. Size of reserved shared memory partition 0 in bytes.
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     sym_index
@@ -994,7 +994,7 @@ No explicit switch case in the builder -- passes through the default path.
 
 **Code 67 (`0x43`) -- `EIATTR_UCODE_SECTION_DATA`**: Free format. Opaque microcode section data for internal use. Payload format is architecture-specific and not decoded by the builder.
 
-```
+```text
 Payload: opaque byte array
 Size:    variable
 ```
@@ -1003,7 +1003,7 @@ Size:    variable
 
 All attributes in this group use Free format (`0x01`) carrying variable-length arrays of u32 byte offsets into the kernel's `.text` section.
 
-```
+```text
 Payload: u32[] byte offsets into .text section
 Size:    N * 4 bytes (N = size_field / 4)
 ```
@@ -1024,7 +1024,7 @@ Binary evidence for `sub_60BDC0` (code 71) and `sub_60BEA0` (code 87): identical
 
 **Code 69 (`0x45`) -- `EIATTR_KPARAM_INFO_V2`**: Free format, 12-byte per-parameter entries. Extended version of `KPARAM_INFO` (code 23) with additional type encoding. Emitted by `sub_7FD2B0`.
 
-```
+```text
 Payload: repeating 12-byte per-parameter entries:
   Offset  Size  Field
   ------  ----  -----
@@ -1047,7 +1047,7 @@ First-switch handling: code 69 (`0x45`) appears in the first switch at line 737 
 
 **Code 72 (`0x48`) -- `EIATTR_GRAPHICS_GLOBAL_CBANK`**: Indexed format, 4-byte value. Global constant bank descriptor for graphics shaders.
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     sym_index
@@ -1056,7 +1056,7 @@ Offset  Size  Field
 
 **Code 73 (`0x49`) -- `EIATTR_SHADER_TYPE`**: Indexed format, 4-byte value. Shader type classification.
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     sym_index
@@ -1065,7 +1065,7 @@ Offset  Size  Field
 
 **Code 74 (`0x4A`) -- `EIATTR_VRC_CTA_INIT_COUNT`**: Constructed with internal format byte `0x02` (magic `0x4A02` = 18946), but the value is stored in the TLV size field byte, making the wire behavior Sized-like. The builder takes the maximum across all callees.
 
-```
+```text
 TLV header: [fmt=0x02][code=0x4A][vrc_count:2]
 Payload:    [sym_index:4]
 Total record: 8 bytes
@@ -1077,7 +1077,7 @@ Binary evidence: magic 18946 at lines 1532 and 2344. The maximum-across-callees 
 
 **Code 75 (`0x4B`) -- `EIATTR_TOOLS_PATCH_FUNC`**: Indexed format, 4-byte value. Function patching descriptor for CUDA debugging tools (cuda-gdb, Nsight Compute).
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     sym_index
@@ -1090,7 +1090,7 @@ No explicit switch case -- passes through the default path.
 
 **Code 76 (`0x4C`) -- `EIATTR_NUM_BARRIERS`**: Constructed with internal format byte `0x02` (magic `0x4C02` = 19458), with the barrier count stored in the TLV size field. This is one of the most complex attributes in the 65--96 range, with two distinct code paths.
 
-```
+```text
 TLV header: [fmt=0x02][code=0x4C][bar_count:2]
 Payload:    [sym_index:4]
 Total record: 8 bytes
@@ -1108,7 +1108,7 @@ Propagation in `sub_1CC8950`: the barrier/register propagator (2,634 bytes) also
 
 **Code 77 (`0x4D`) -- `EIATTR_TEXMODE_INDEPENDENT`**: Indexed format, flag-only. Signals the kernel uses independent texture mode.
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     sym_index
@@ -1121,7 +1121,7 @@ No explicit switch case -- passes through the default path.
 
 **Code 78 (`0x4E`) -- `EIATTR_PERF_STATISTICS`**: Free format. Performance statistics for the profiler.
 
-```
+```text
 Payload: structured performance data
 Size:    variable
 ```
@@ -1132,7 +1132,7 @@ No explicit switch case -- passes through the default path. Internal profiler da
 
 **Code 79 (`0x4F`) -- `EIATTR_AT_ENTRY_FRAGEMENTS`**: Free format. The most complex handler in the 65--96 range. Carries fragment offset arrays that describe function entry point fragments. Note: "FRAGEMENTS" is a typo preserved in the binary; corrected variant `EIATTR_AT_ENTRY_FRAGMENTS` exists at `0x2405DA1`.
 
-```
+```text
 Payload: u32[] fragment offsets
 Size:    N * 4 bytes
 ```
@@ -1152,7 +1152,7 @@ Cross-function ownership: when `*(a1+568) != srca` (the current entry's symbol d
 
 **Code 80 (`0x50`) -- `EIATTR_SPARSE_MMA_MASK`**: Sized format (`0x03`). Sparsity bitmask for structured-sparse MMA (Matrix Multiply-Accumulate) operations on Blackwell. SM-gated via `sub_1C97840(0x50, sm_version)`.
 
-```
+```text
 TLV header: [fmt=0x03][code=0x50][mask_bits:2]
 Total record: 4 bytes (header only)
 ```
@@ -1167,7 +1167,7 @@ These two codes are mutually exclusive. The builder enforces that a function can
 
 **Code 81 (`0x51`) -- `EIATTR_TCGEN05_1CTA_USED`**: Indexed format, flag-only. Signals the kernel uses 5th-generation tensor cores in single-CTA mode. SM-gated via `sub_1C97840(0x51, sm_version)` AND requires `v673 > 0x81` (SM code > 129, i.e., sm_130+ / Blackwell).
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     sym_index
@@ -1178,7 +1178,7 @@ Binary evidence: magic `0x5101` (20737) at lines 1559 and 2259. Tracked in `v614
 
 **Code 82 (`0x52`) -- `EIATTR_TCGEN05_2CTA_USED`**: Indexed format, flag-only. Signals the kernel uses 5th-generation tensor cores in two-CTA collaborative mode. SM-gated via `sub_1C97840(0x52, sm_version)` AND requires `v673 > 0x81`.
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     sym_index
@@ -1193,7 +1193,7 @@ Binary evidence: magic `0x5201` (20993) at lines 1582 and 2300. Tracked in `v610
 
 **Code 83 (`0x53`) -- `EIATTR_GEN_ERRBAR_AT_EXIT`**: Indexed format, flag-only. Instructs the driver to generate an error barrier at kernel exit.
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     sym_index
@@ -1206,7 +1206,7 @@ No explicit switch case in the builder -- passes through the default path.
 
 **Code 84 (`0x54`) -- `EIATTR_REG_RECONFIG`**: Indexed format, flag-only with optional value. Signals the kernel uses dynamic register reconfiguration (`setmaxnreg` instruction, sm_100+). SM-gated via `sub_1C97840(0x54, sm_version)`.
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     sym_index
@@ -1219,7 +1219,7 @@ Binary evidence: magic `0x5401` (21505) at lines 1637 and 2395. Tracked in `v616
 
 **Code 85 (`0x55`) -- `EIATTR_ANNOTATIONS`**: Free format with nested TLV-within-TLV sub-records. Emitted by `sub_60C580`. General-purpose annotation container for arbitrary metadata.
 
-```
+```text
 Payload: sequence of sub-records, each starting with a type byte:
   Type 0: [type:4]                                  -- 4 bytes
   Type 1: [type:4][value:4]                         -- 8 bytes
@@ -1244,7 +1244,7 @@ Total allocation: `257 * entry_count` dwords (line 29: `v8 = 257LL * count`), pr
 
 **Code 88 (`0x58`) -- `EIATTR_STUB_FUNCTION_KIND`**: Indexed format, 4-byte value. Classifies the type of stub function.
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     sym_index
@@ -1257,7 +1257,7 @@ No explicit switch case -- passes through the default path.
 
 **Code 90 (`0x5A`) -- `EIATTR_MERCURY_FINALIZER_OPTIONS`**: Free format. Options for the Mercury FNLZR post-link pass. Emitted by `sub_462220`. Contains null-terminated key-value string pairs with a trailing CRC hash.
 
-```
+```text
 Payload: sequence of key-value entries followed by a hash:
   Per-entry:
     Offset  Size    Field
@@ -1278,7 +1278,7 @@ Binary evidence: `sub_462220` at line 656 calls `sub_1CC85F0(v7, 90, v234, v225,
 
 **Code 91 (`0x5B`) -- `EIATTR_BLOCKS_ARE_CLUSTERS`**: Indexed format, flag-only. Signals that CTA blocks are clusters (every block is its own cluster).
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     sym_index
@@ -1291,7 +1291,7 @@ No explicit switch case -- passes through the default path.
 
 **Code 92 (`0x5C`) -- `EIATTR_SANITIZE`**: Indexed format, flag-only. Signals the kernel has been instrumented with address sanitizer.
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     sym_index
@@ -1304,7 +1304,7 @@ No explicit switch case -- passes through the default path.
 
 **Code 93 (`0x5D`) -- `EIATTR_SYSCALLS_FALLBACK`**: Free format. Syscall fallback mechanism data.
 
-```
+```text
 Payload: structured syscall fallback data
 Size:    variable
 ```
@@ -1315,7 +1315,7 @@ No explicit switch case -- passes through the default path.
 
 **Code 94 (`0x5E`) -- `EIATTR_CUDA_REQ`**: Free format. CUDA requirements descriptor specifying minimum runtime capabilities.
 
-```
+```text
 Payload: structured requirements data
 Size:    variable
 ```
@@ -1326,7 +1326,7 @@ No explicit switch case -- passes through the default path.
 
 **Code 95 (`0x5F`) -- `EIATTR_MERCURY_ISA_VERSION`**: Sized format (`0x03`). Mercury ISA version encoded in the TLV size field.
 
-```
+```text
 TLV header: [fmt=0x03][code=0x5F][isa_version:2]
 Total record: 4 bytes (header only)
 ```
@@ -1384,7 +1384,7 @@ Before per-entry attribute emission begins, `sub_1CC8950` (2,634 bytes, called o
 
 2. **Barrier count creation**: When a kernel's section flags contain a barrier count (bits 20--26 of `section_header + 8`) but no `EIATTR_NUM_BARRIERS` record exists, creates one and clears the section flag bits:
 
-```
+```text
 Creating new EIATTR_NUM_BARRIERS and moving barcount %d
 from section flags of %s to nvinfo for entry symbol %s
 ```
@@ -1463,7 +1463,7 @@ The `.nv.info` section is not just metadata for tools -- it is the primary input
 
 The EIATTR name table at VA `0x23FDC20` consists of 97 entries of 16 bytes each (1,552 bytes total):
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    8     name_ptr     Pointer to null-terminated EIATTR name string
@@ -1483,7 +1483,7 @@ A corrected variant `EIATTR_AT_ENTRY_FRAGMENTS` exists at `0x2405DA1`, and `EIAT
 
 ### Diagnostic Strings
 
-```
+```text
 "Creating new EIATTR_NUM_BARRIERS and moving barcount %d
  from section flags of %s to nvinfo for entry symbol %s"       (0x2406960)
 

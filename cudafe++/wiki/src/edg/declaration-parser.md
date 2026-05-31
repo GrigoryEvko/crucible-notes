@@ -28,7 +28,7 @@ The core pipeline processes approximately 22,000 lines of decompiled logic acros
 
 The declaration parsing pipeline operates as a five-stage waterfall. Each stage narrows the interpretation of the token stream until a fully-resolved declaration is inserted into the symbol table:
 
-```
+```text
 Token Stream (from lexer)
   │
   ▼
@@ -89,7 +89,7 @@ The C++ standard resolves these with the "if it can be a declaration, it is a de
 
 This is the top-level disambiguation entry point, called when the parser encounters an ambiguous construct at statement or declaration level. It operates in a non-destructive lookahead mode: it consumes tokens tentatively, classifies the construct, then rewinds.
 
-```
+```python
 prescan_declaration(flags):
     save_lexer_state()
     
@@ -119,7 +119,7 @@ The `skip_mode` is a bitmask encoding which token classes to recognize during pr
 
 Attributes complicate disambiguation because `__attribute__((foo))` can appear almost anywhere in a declaration. This function skips over balanced GNU attribute sequences during prescanning:
 
-```
+```python
 prescan_gnu_attribute():
     assert current_token == 142     # GNU __attribute__ token
     while current_token == 142:
@@ -136,7 +136,7 @@ prescan_gnu_attribute():
 
 A special-purpose disambiguator for `for` loops. In `for(init; cond; incr)`, the parser must find the semicolons that separate the three clauses. This is non-trivial because the `init` clause can contain declarations with complex types, nested parentheses, and template angle brackets.
 
-```
+```python
 find_for_loop_separator():
     create_disambiguation_checkpoint()  # sub_67B4F0
     paren_depth = 0
@@ -196,7 +196,7 @@ Results are accumulated into a stack-allocated structure (parameter `a2`) laid o
 
 #### Pseudocode
 
-```
+```python
 decl_specifiers(context_flags, accumulator, type_chain, ...):
     debug_trace(3, "decl_specifiers")
     
@@ -360,7 +360,7 @@ The switch in `decl_specifiers` handles the following token kinds:
 
 Validates and records a storage class specifier. C++ allows at most one storage class per declaration (with some exceptions for `thread_local`).
 
-```
+```python
 process_storage_class_specifier(auto_flag, ..., context_flags, decl_info,
                                  prev_scope, spec_bits, result, type_out, error_flag):
     # Flag bits in context_flags:
@@ -434,7 +434,7 @@ After `decl_specifiers` accumulates all specifiers, several validation functions
 
 Each follows the same pattern: examine the accumulated specifier bits and the entity kind at offset `+80` of the declaration node, and emit a targeted error if the combination is illegal. For example, `check_use_of_consteval`:
 
-```
+```python
 check_use_of_consteval(decl_info):
     entity = decl_info[0]
     kind = entity[+80]       # symbol kind
@@ -468,7 +468,7 @@ check_use_of_consteval(decl_info):
 
 Declarator parsing uses inside-out construction: the C++ declarator syntax places the declared name in the center, with type constructors radiating outward (pointers to the left, arrays and function parameters to the right). The parser builds a derived-type chain that is later unwound against the base type from `decl_specifiers` to produce the final type.
 
-```
+```text
 Declarator syntax (C++ grammar):
     declarator := pointer-declarator
     pointer-declarator := {*, &, &&, C::*} cv-qualifiers* direct-declarator
@@ -492,7 +492,7 @@ This is the critical function that separates CUDA execution space attributes fro
 
 The function iterates through the attribute list and sorts each attribute by its category byte at offset `+9`:
 
-```
+```python
 scan_declarator_attributes(decl_info, attr_accumulator):
     attr_list = decl_info[+200]    # primary attribute list
     
@@ -538,7 +538,7 @@ The separation into primary (offset `+200`) and secondary (offset `+184`) attrib
 
 The second-largest function in the declarator parser. It handles the complete C++ function declarator grammar including C++11 trailing return types, C++11/17 noexcept specifications, C++23 deducing `this`, and the C++ function qualifier trailer (`const`, `volatile`, `&`, `&&`).
 
-```
+```python
 function_declarator(decl_info, context_flags):
     debug_trace(3, "function_declarator")
     
@@ -600,7 +600,7 @@ function_declarator(decl_info, context_flags):
 
 For a declaration like `const int *(*fp)(double)`:
 
-```
+```text
 Base type: const int
 Derived chain: [function(double)] → [pointer] → [pointer]
 Unwound: pointer to (pointer to function(double) returning const int)
@@ -625,7 +625,7 @@ Variable entries carry a CUDA memory space bitmask at offset `+148`:
 
 These bits are set from the declaration state object (parameter `a2`), which carries the parsed CUDA attribute at offset `+240`:
 
-```
+```python
 decl_variable(decl_specs, decl_state, storage_class, out_entity, out_flags):
     debug_trace(3, "decl_variable")
     assert(decl_state != NULL)              # decls.c:7730
@@ -696,7 +696,7 @@ This is the outermost entry point for processing a variable declaration. It wrap
 
 The function contains a dense block of CUDA error checks for variable declarations:
 
-```
+```python
 variable_declaration(decl_info, ...):
     # Early CUDA checks
     check_constexpr_variable_init(decl_info)    # sub_4DAC80
@@ -815,7 +815,7 @@ After processing, a function entity contains:
 
 #### Pseudocode
 
-```
+```python
 decl_routine(decl_specs, decl_state, func_info, srk_flags, ...):
     debug_trace(3, "decl_routine")
     
@@ -922,7 +922,7 @@ When a CUDA execution space attribute is parsed, it flows through three processi
 
 A safety valve that catches execution space attributes in places where they should not appear (e.g., on type definitions that are not function or variable declarations):
 
-```
+```python
 warn_on_cuda_execution_space_attributes(attr_list):
     warned = false
     for each attr in attr_list:
@@ -972,7 +972,7 @@ The declaration parser relies heavily on the scope chain stored in the global sc
 
 When processing a CUDA variable declaration, the parser walks up the scope chain to determine if the variable is at namespace scope (where `__device__`/`__constant__`/`__managed__` are valid) or inside a function body (where `__shared__` is additionally valid):
 
-```
+```python
 determine_cuda_variable_scope(var_entity):
     scope_idx = dword_126C5E4
     scope_base = qword_126C5E8
@@ -1007,7 +1007,7 @@ determine_cuda_variable_scope(var_entity):
 
 Determines whether an identifier has internal, external, or no linkage. This is called during `decl_variable` and `decl_routine` to set the linkage byte on the entity.
 
-```
+```python
 id_linkage(entity, storage_class, scope):
     debug_trace(3, "id_linkage")
     
@@ -1045,7 +1045,7 @@ id_linkage(entity, storage_class, scope):
 
 The redeclaration detection engine. When a new declaration is processed, this function searches the current and enclosing scopes for a previously-declared symbol with the same name and compatible linkage:
 
-```
+```python
 find_linked_symbol(name, scope, entity_kind):
     debug_trace(3, "find_linked_symbol")
     
@@ -1081,7 +1081,7 @@ find_linked_symbol(name, scope, entity_kind):
 
 Builds the initialization sequence for inheriting constructors (C++11 `using Base::Base;`). The function iterates virtual base member lists to find matching base constructors and constructs the initialization order:
 
-```
+```python
 ctor_inits_for_inheriting_ctor(decl_info):
     class_type = decl_info[+40][+32]    # enclosing class type
     member_list = class_type[+152]       # member list
@@ -1111,7 +1111,7 @@ ctor_inits_for_inheriting_ctor(decl_info):
 
 Builds the destructor initialization (destruction) list for a class. The destruction order is the reverse of construction order -- members are destroyed in reverse declaration order, then base classes in reverse order:
 
-```
+```python
 dtor_initializer(decl_info):
     debug_trace(3, "dtor_initializer")       # decl_inits.c:10153
     
@@ -1149,7 +1149,7 @@ dtor_initializer(decl_info):
 
 Checks whether a variable declaration is missing a required initializer:
 
-```
+```python
 check_for_missing_initializer_full(entity, type, unused, deferred_error):
     kind = entity[+80]       # 7=variable, 9=static member
     
@@ -1197,7 +1197,7 @@ The declaration parser is gated on several CUDA mode flags that control which co
 
 Several CUDA-specific code paths are guarded by version thresholds. The version values are encoded as `major * 1000 + minor * 10 + patch`:
 
-```
+```python
 // CUDA 11.x and later: enable extended constexpr
 if qword_126EF90 > 0x78B3:     // 30899 → CUDA version >= 11.x
     enable_extended_constexpr()

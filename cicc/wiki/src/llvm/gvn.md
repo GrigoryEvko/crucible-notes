@@ -172,7 +172,7 @@ GVN maintains four `ScopedHashTable` instances, pushed on dominator tree entry a
 
 The hash function (`sub_18FDEE0`, approximately 140 lines) is NVIDIA-modified. For binary ops (opcodes 35-52), it hashes the opcode and operand pointers with canonicalization (smaller pointer first for commutative operations). For comparisons, it includes the predicate. For GEPs (opcodes 86/87), it hashes the entire index sequence via `sub_1597510`. Hash mixing uses the formula `(ptr >> 9) ^ (ptr >> 4)` with XOR combining. The 5-element store expression variant (`sub_18FEB70`) computes:
 
-```
+```c
 hash = (v12>>9)^(v12>>4) ^ (v11>>9)^(v11>>4) ^ (v10>>9)^(v10>>4) ^ (37*v13) ^ (v9>>9)^(v9>>4)
 ```
 
@@ -255,7 +255,7 @@ The bitmask `0x1F133FFE23FFFF` classifies opcodes that are safe for value number
 
 These four passes form the core scalar optimization chain in CICC's mid-pipeline. They execute in sequence (often multiple times through the pipeline), with each pass producing IR transformations that create opportunities for the next. The following diagram traces data flow through a single iteration of the chain, showing what each pass produces and what the next pass consumes.
 
-```
+```text
  SROA (Scalar Replacement of Aggregates)
  ========================================
  Input:  IR with aggregate alloca instructions (structs, arrays)

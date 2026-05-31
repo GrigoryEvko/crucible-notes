@@ -97,7 +97,7 @@ operations available.
 
 The grammar accepted by `ptxas` is:
 
-```
+```text
 .target sm_<digits>[<suffix>][, debug][, map_f64_to_f32]
 ```
 

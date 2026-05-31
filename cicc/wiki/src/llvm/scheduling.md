@@ -44,7 +44,7 @@ The MRPA pressure cluster spans the address range `0x1DF0000`--`0x1E0FFFF`:
 
 The incremental update is the core algorithm. Rather than performing a full O(n) pressure recomputation after every MCSE transform, it maintains a running pressure state through delta operations. The pseudocode below is reconstructed from `sub_2E5A4E0`:
 
-```
+```c
 function mrpa_incremental_update(context, basicBlock):
     // Phase 1: Build worklist via DFS
     visited = DenseSet()                        // v292--v295
@@ -198,7 +198,7 @@ MII computation combines two lower bounds:
 - **RecMII** (Recurrence MII): the longest cycle in the DDG, computed by `sub_354CBB0`. Each recurrence (loop-carried dependency cycle) constrains the minimum II because the cycle must fit within one iteration interval. If `pipeliner-ignore-recmii` is set, RecMII is forced to zero so only resource constraints matter.
 - **ResMII** (Resource MII): `ceil(sum of resource usage across all instructions / number of available functional units)`, computed by `sub_35449F0`. This reflects the throughput bottleneck of the hardware.
 
-```
+```c
 function compute_MII():
     recMII = sub_354CBB0()           // max recurrence length
     resMII = sub_35449F0()           // resource throughput limit
@@ -211,7 +211,7 @@ function compute_MII():
 
 The II search algorithm starts at MII and probes upward:
 
-```
+```c
 function ii_search(MII):
     max_ii = MII + pipeliner-ii-search-range      // default: MII + 10
     if pipeliner-force-ii != 0:                    // qword_503EB80
@@ -272,7 +272,7 @@ The placement algorithm follows the Swing Modulo Scheduling strategy:
 
 After a valid schedule is found, the pipeliner builds the kernel, prolog, and epilog. The numStages value (`(lastCycle - firstCycle) / II`) determines how many iterations overlap.
 
-```
+```c
 function build_kernel(schedule, II, numStages):
     // Build instruction-to-stage and instruction-to-cycle DenseMaps
     instrToStage = DenseMap<SUnit*, int>()      // v317/v318/v319
@@ -428,7 +428,7 @@ The target (NVPTX backend) populates this table to express hardware-specific ord
 
 The ready queue is managed by `sub_3553D90`. Pattern matching on ready instructions proceeds through `sub_35540D0` (applicability check) and `sub_35543E0` (pattern application), with validation via `sub_3546B80`. A hash table at `a1+3976` maps instructions to schedule nodes for O(1) lookup during priority comparison.
 
-```
+```c
 function select_next_instruction(ready_set):
     best = null
     for each candidate in ready_set:
@@ -469,7 +469,7 @@ The Texture Group Merge pass (`sub_2DDE8C0`, 74KB, 2382 decompiled lines) groups
 
 The pass uses Fibonacci hashing for candidate bucketing:
 
-```
+```c
 hash = (ptr * 0xBF58476D1CE4E5B9) >> shift
 ```
 

@@ -17,7 +17,7 @@ Unlike a conventional ELF linker that iterates `.rela.*` sections and patches ta
 
 ## Pipeline Position
 
-```
+```text
 Layout Phase (sub_439830)
    |
    v
@@ -33,7 +33,7 @@ Finalization Phase (sub_445000)
 
 All relocations pending resolution are stored in a singly-linked list. Each node is a pair:
 
-```
+```c
 struct reloc_node {
     reloc_node*   next;         // offset +0: pointer to next node (NULL = end)
     reloc_record* reloc;        // offset +8: pointer to the 32-byte relocation record
@@ -42,7 +42,7 @@ struct reloc_node {
 
 The relocation record itself is stored as two SSE-width (128-bit) values, loaded via `_mm_loadu_si128`:
 
-```
+```c
 struct reloc_record {           // 32 bytes total, accessed as two __m128i
     int64_t  addend;            // [0:8]   target addend / offset value
     int64_t  reloc_info;        // [8:16]  low 32 bits = relocation type,
@@ -219,17 +219,17 @@ Several special cases are handled before the general application:
 **Common undefined symbols** (section index `SHN_COMMON` = 0xFFF2 or related): If the section type at offset `+4` matches `0x70000007` (`SHT_CUDA_GLOBAL`, decimal `1879048199`), `0x70000008` (`SHT_CUDA_GLOBAL_INIT`, decimal `1879048200`), or `0x70000012` (`SHT_CUDA_UDT`, decimal `1879048210`), the relocation is deferred to the finalization phase. The node is simply advanced past without removal.
 
 **YIELD-to-NOP suppression** (relocation types 68-69): When the forward-progress-required flag (`ctx+94`) is set, YIELD instructions are not converted to NOP, and the relocation is handled specially:
-```
+```text
 "Ignoring the reloc to convert YIELD to NOP due to forward progress requirement."
 ```
 
 **PC-relative branch validation**: When the descriptor table entry at index `+5` (descriptor mode) equals 16 (PC-relative), the function validates that the relocation target and source are in the same section:
-```
+```text
 "PC relative branch address should be in the same section"
 ```
 
 **UFT\_OFFSET ignoring**: If the target symbol is named `__UFT_OFFSET` and the linker's UDT mode (`ctx+240`) is zero, the relocation is dropped:
-```
+```text
 "ignore reloc on UFT_OFFSET"
 ```
 
@@ -289,7 +289,7 @@ The application engine (`sub_468760`, 14,322 bytes, 582 lines) is the bit-level 
 
 Each entry in the descriptor table (`off_1D3CBE0` / `off_1D3DBE0`) is 64 bytes, organized as an array of up to 4 **relocation actions**. Each action is 16 bytes (4 x uint32):
 
-```
+```c
 struct reloc_action {           // 16 bytes
     uint32_t  bit_offset;       // offset +0: starting bit position in instruction word
     uint32_t  bit_width;        // offset +4: number of bits to patch
@@ -354,7 +354,7 @@ All three examples assume a pre-Mercury target (any of sm_75 / sm_80 / sm_86--89
 
 **a. Symbol being referenced.**
 
-```
+```text
 Symbol name      : g_table
 Section          : .nv.global.data (sh_type = SHT_CUDA_GLOBAL, 0x70000062)
 st_value (post-layout)
@@ -368,7 +368,7 @@ After the layout phase, `sub_440590(ctx, sym_idx)` returns a symbol record whose
 
 **b. Relocation record bytes (32 bytes, loaded as two `__m128i`).**
 
-```
+```text
 Offset  Bytes (little-endian)                            Interpretation
 ------  ---------------------------------                ----------------------------------
 +0      08 00 00 00 00 00 00 00                          addend = 0x08  (target offset within
@@ -387,7 +387,7 @@ The low 32 bits of `reloc_info` give relocation type `33 = 0x21 = R_CUDA_ABS32_L
 
 The target is the second instruction of a HI/LO pair inside `.text.foo` at byte offset `0x08` (reloc addend). The pre-relocation 64-bit instruction word, as stored in the section data buffer:
 
-```
+```text
 patch_ptr (offset 0x08 in .text.foo):
    Byte 0  1  2  3  4  5  6  7
          38 72 00 00 00 00 00 00
@@ -400,7 +400,7 @@ The low 16 bits of the final 32-bit address `0x00C0_FFEE` are `0xFFEE`. The relo
 
 The engine computes the descriptor pointer as `off_1D3DBE0 + (33 << 6) = off_1D3DBE0 + 2112`, then reads action slots starting at `+12`:
 
-```
+```text
 Offset  Bytes          action field              Value
 ------  ------------   ----------------------    ------------------
 +12     14 00 00 00    action[0].bit_offset      0x14 = 20
@@ -451,7 +451,7 @@ old = 0;
 
 Hex dump of the 8 bytes at `.text.foo + 0x08`:
 
-```
+```text
 BEFORE:  38 72 00 00  00 00 00 00          // 0x0000_0000_0000_7238
 AFTER:   38 72 E0 FF  00 00 00 00          // 0x0000_0000_FFE0_7238
 
@@ -467,7 +467,7 @@ Paired with the matching `R_CUDA_ABS32_HI_20` (index 29, action code `7 = ABS_HI
 
 **a. Symbol being referenced.**
 
-```
+```text
 Symbol name      : kernel_launch_helper
 Section          : .text.kernel_launch_helper (sh_type = SHT_CUDA_TEXT)
 st_value         : 0x0000_2340        (function entry PC)
@@ -478,7 +478,7 @@ Because this is a function descriptor relocation, the target symbol is a `STT_FU
 
 **b. Relocation record bytes.**
 
-```
+```text
 Offset  Bytes (little-endian)                            Interpretation
 ------  ---------------------------------                ----------------------------------
 +0      20 01 00 00 00 00 00 00                          addend = 0x0120  (target byte offset
@@ -496,7 +496,7 @@ Relocation type `52 = 0x34 = R_CUDA_FUNC_DESC_32`. Symbol index 19 resolves to `
 
 The target is 4 bytes of uninitialized data inside `.nv.global.functable` at byte offset `0x0120`. Data sections are treated as 64-bit words by `sub_468760` (the engine always addresses through `unsigned __int64 *a4`), but only bits [0:32) are written by this descriptor, leaving the high 32 bits untouched.
 
-```
+```text
 patch_ptr (offset 0x0120 in .nv.global.functable):
    Byte  0  1  2  3  4  5  6  7
          00 00 00 00 00 00 00 00         // zero-initialized slot
@@ -505,7 +505,7 @@ patch_ptr (offset 0x0120 in .nv.global.functable):
 
 **d. Descriptor action slots from off_1D3DBE0.**
 
-```
+```text
 descriptor_ptr = off_1D3DBE0 + (52 << 6) = off_1D3DBE0 + 3328
 
 Offset  Bytes          action field              Value
@@ -556,7 +556,7 @@ The bit-field writer (`sub_4685B0`, lines 35--37):
 
 Hex dump of the 8 bytes at `.nv.global.functable + 0x0120`:
 
-```
+```text
 BEFORE:  00 00 00 00  00 00 00 00          // slot zeroed pre-link
 AFTER:   40 23 00 00  00 00 00 00          // 32-bit descriptor 0x00002340 (little-endian)
 
@@ -572,7 +572,7 @@ Only the first 4 bytes are affected. Bytes 4--7 are the high half of the 64-bit 
 
 **a. Symbol being referenced.**
 
-```
+```text
 Symbol name      : __cuda_local_const_0
 Section          : .nv.constant0 (sh_type = SHT_CUDA_CONSTANT0, 0x70000064)
 st_value (post-merge)
@@ -584,7 +584,7 @@ st_info          : STB_LOCAL | STT_OBJECT
 
 **b. Relocation record bytes.**
 
-```
+```text
 Offset  Bytes (little-endian)                            Interpretation
 ------  ---------------------------------                ----------------------------------
 +0      40 00 00 00 00 00 00 00                          addend = 0x40  (offset of target
@@ -602,7 +602,7 @@ Relocation type `42 = 0x2A = R_CUDA_CONST_FIELD19_20`. Symbol index 43 resolves 
 
 A 64-bit load-constant instruction at `.text.kernel + 0x40`. The compiler has pre-encoded the bank index (bits [14:19) = `0x00` for bank 0) and zeroed the 19-bit offset field:
 
-```
+```text
 patch_ptr (offset 0x40 in .text.kernel):
    Byte 0  1  2  3  4  5  6  7
          B8 79 00 00 00 00 00 00
@@ -611,7 +611,7 @@ patch_ptr (offset 0x40 in .text.kernel):
 
 The bit layout of this pre-relocation word:
 
-```
+```text
   63                    39       20 19  14 13              0
   +----------------------+--------+------+------------------+
   | (scheduling, pred)   | offset | bank |    opcode/dst    |
@@ -622,7 +622,7 @@ The bit layout of this pre-relocation word:
 
 **d. Descriptor action slots from off_1D3DBE0.**
 
-```
+```text
 descriptor_ptr = off_1D3DBE0 + (42 << 6) = off_1D3DBE0 + 2688
 
 Offset  Bytes          action field              Value
@@ -680,7 +680,7 @@ if ( !a3 )                     // a3 = is_absolute = 0
 
 Hex dump of the 8 bytes at `.text.kernel + 0x40`:
 
-```
+```text
 BEFORE:  B8 79 00 00  00 00 00 00          // 0x0000_0000_0000_79B8
 AFTER:   B8 79 00 00  09 00 00 00          // 0x0000_0009_0000_79B8
 

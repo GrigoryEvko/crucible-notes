@@ -106,7 +106,7 @@ Every Blackwell SM has **unique** handler functions in all 7 maps. This contrast
 
 The warp geometry initializer at `sub_8E4400` uses the codegen factory value to select dispatch parameters. All Blackwell targets (codegen factory > 36863) fall into the maximum bucket:
 
-```
+```text
 encoded >  36863  -> 16 warps, 240 dispatch slots
 ```
 
@@ -301,7 +301,7 @@ B100, B200 (datacenter GPU), paired as GB200 NVL72 superchips.
 
 From `sub_6765E0`:
 
-```
+```text
 SM name:       "sm_100"
 Compute name:  "compute_100"
 LTO name:      "lto_100"
@@ -343,7 +343,7 @@ All unique from sm_100:
 
 ### Profile Object
 
-```
+```text
 SM name:       "sm_103"
 Compute name:  "compute_103"
 LTO name:      "lto_103"
@@ -391,7 +391,7 @@ The PTX ISA version difference is notable: sm_101 requires PTX 8.6 (same as sm_1
 
 ### Profile Object
 
-```
+```text
 SM name:       "sm_110"
 Compute name:  "compute_110"
 LTO name:      "lto_110"
@@ -441,7 +441,7 @@ The 5.5KB extended table is larger than any other individual latency table, sugg
 
 ### Profile Object
 
-```
+```text
 SM name:       "sm_120"
 Compute name:  "compute_120"
 LTO name:      "lto_120"
@@ -479,7 +479,7 @@ All unique from sm_120:
 
 ### Profile Object
 
-```
+```text
 SM name:       "sm_121"
 Compute name:  "compute_121"
 LTO name:      "lto_121"
@@ -576,7 +576,7 @@ Blackwell intrinsic availability is cumulative -- all sm_70, sm_80, sm_8x, and s
 
 The OCG builtin name table at `sub_6C9EB0` (13KB) contains the master list of Blackwell+ runtime-generated intrinsic names:
 
-```
+```text
 cp_async_bulk, cp_red_async_bulk, cp_async_tensor,
 cp_async_prefetch_tensor, fence_view_async,
 viaddmax, viaddmin, viadd, vimax, vimin, vimax3, vimin3,

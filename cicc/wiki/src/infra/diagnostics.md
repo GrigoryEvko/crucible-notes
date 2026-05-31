@@ -27,7 +27,7 @@ Understanding these three layers is essential for reimplementation because they 
 
 Every EDG frontend diagnostic passes through `sub_6837D0`, which acts as the single dispatch point. This function performs filtering (severity threshold, duplicate suppression, pragma-based suppression), increments error/warning counters, and then routes to one of two renderers based on the global `unk_4D04198`:
 
-```
+```text
 sub_6837D0(diag_record)
   |
   +-- severity < byte_4F07481[0]?  --> suppress (return)
@@ -111,7 +111,7 @@ The global `qword_4F07468` controls wrap behavior: the low 32 bits disable wrapp
 
 **Machine-readable log.** When `qword_4D04908` (log FILE\*) is set and the diagnostic type is not 3 (continuation), the renderer writes a single-line record:
 
-```
+```text
 <severity-char> "<filename>" <line> <col> <message>\n
 ```
 
@@ -211,7 +211,7 @@ Three `cl::opt<std::string>` knobs are registered at `ctor_152` (`0x4CE3F0`), ea
 | `pass-remarks-analysis` | Enable analysis remarks | Intermediate analysis results and explanations |
 
 These are stock LLVM `cl::opt` registrations. CICC exposes them through the flag catalog (`sub_9624D0`) via the `-inline-info` convenience flag, which routes to the opt phase as:
-```
+```bash
 -Xopt -pass-remarks=inline
 -Xopt -pass-remarks-missed=inline
 -Xopt -pass-remarks-analysis=inline
@@ -256,7 +256,7 @@ The constructor takes a pass name string (e.g., `"coro-split"`, `"wholeprogramde
 
 A typical emission sequence (from CoroSplit at `0x24F05D1`):
 
-```
+```c
 call sub_B17560("coro-split", "CoroSplit")      // create remark
 call sub_B18290("Split '")                       // append prefix
 call sub_B16430("function", fn_name)             // named attribute

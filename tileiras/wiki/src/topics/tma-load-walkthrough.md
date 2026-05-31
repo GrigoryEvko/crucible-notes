@@ -23,7 +23,7 @@ a_tile = load(a_view, (block_m, block_k))   # tile<128x128xbf16>
 
 The transaction-byte arithmetic that runs through every stage:
 
-```
+```text
 tile_bytes = tile_rows * tile_cols * sizeof(bf16)
            = 128 * 128 * 2
            = 32768 bytes

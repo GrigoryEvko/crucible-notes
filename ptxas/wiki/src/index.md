@@ -48,7 +48,7 @@ Additionally, the binary embeds a custom pool allocator (`sub_424070`, 3,809 cal
 
 Both standalone and library-mode invocations converge on the same pipeline, visible in the timing strings emitted by `sub_446240`:
 
-```
+```text
 PTX text (.ptx file or string)
   |
   +-- Flex Scanner (sub_720F00, 64KB)

@@ -30,7 +30,7 @@ At the core engine (`sub_2C63FB0`), the entry check validates that the instructi
 
 The algorithm operates as a worklist-driven rewrite system:
 
-```
+```c
 function lowerIntrinsic(ctx, call, level):
     if not isIntrinsicCall(call): return 0
     if not hasCallee(call): return 0
@@ -97,7 +97,7 @@ Wide vector NVVM intrinsics (operating on `v4f32`, `v2f64`, `v4i32`, etc.) are d
 
 The decomposition pattern:
 
-```
+```llvm
 // Before: single wide-vector intrinsic call
 %result = call <4 x float> @llvm.nvvm.wide.op(<4 x float> %a, <4 x float> %b)
 
@@ -122,7 +122,7 @@ This decomposition enables scalar optimizations (constant folding, CSE) to work 
 
 When an NVVM intrinsic performs pure data reorganization -- lane permutation, broadcast, or subvector extraction -- without any arithmetic, the pass replaces it with an LLVM `shufflevector` instruction. The core lowering for this path goes through `sub_DFBC30`, which takes:
 
-```
+```c
 sub_DFBC30(context, operation=6, type_info, shuffle_indices, count, flags)
 ```
 
@@ -277,7 +277,7 @@ The pass factory `sub_1CB4E40` similarly contains no diagnostic strings.
 
 ## Pipeline Position Summary
 
-```
+```text
 sub_12E54A0 (Master Pipeline Assembly)
   │
   ├─ "mid" path (level 0, 4 invocations):

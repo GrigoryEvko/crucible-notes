@@ -20,7 +20,7 @@ Liveness analysis is the most frequently repeated computation in the ptxas pipel
 
 The six liveness-related phases are distributed across the entire optimization pipeline. Each runs after a group of transformations that may have introduced dead code or invalidated previous liveness information:
 
-```
+```text
 Phase  10  EarlyOriSimpleLiveDead         ── Initial Setup
 Phase  16  OriPerformLiveDeadFirst         ── Early Optimization
 Phase  19  OriSplitLiveRanges             ── Early Optimization
@@ -59,14 +59,14 @@ The gen/kill sets are pre-computed once by scanning each block's instructions in
 
 The dataflow equations over the lattice L = (2^V, subset-eq, union, empty-set):
 
-```
+```text
 LiveOut(B)  =  Union { LiveIn(S) | S in succ(B) }           -- meet (union)
 LiveIn(B)   =  gen(B)  union  ( LiveOut(B) \ kill(B) )      -- transfer
 ```
 
 The transfer function for block B is F_B(X) = gen(B) union (X \ kill(B)), which ptxas implements as a single fused operation `orWithAndNotIfChanged` (`sub_BDD560`):
 
-```
+```text
 dst |= gen | (in & ~kill)     -- SSE2: _mm_or_si128(_mm_or_si128(gen, dst), _mm_andnot_si128(kill, in))
 ```
 
@@ -78,7 +78,7 @@ The solver (`sub_774370`, called via `sub_775010` -> guard at `ctx+1370` bit 6) 
 
 **Stage 1 -- Initialization.** For every block B in RPO order (array at `ctx+512`, computed by `sub_BDE150`):
 
-```
+```text
 LiveIn^0(B)  = empty-set
 LiveOut^0(B) = empty-set          -- bottom of lattice L
 ```
@@ -87,7 +87,7 @@ Each bitvector is allocated via `sub_BDBAD0` with `(ctx+520)+1` bits, then zeroe
 
 **Stage 2 -- Iteration.** Repeat until no set changes (boolean `changed` stays false for an entire pass):
 
-```
+```c
 for each block B in reverse RPO order (ctx+512, index ctx+520 downto 0):
     // Meet: LiveOut(B) = Union { LiveIn(S) | S in succ(B) }
     for each successor S in successor list at block+128:
@@ -229,7 +229,7 @@ The four instances of the full liveness + DCE pass. These perform global iterati
 
 ### Algorithm
 
-```
+```c
 function OriPerformLiveDead(func):
     // 1. Rebuild basic block metadata
     rebuild_basic_blocks(func, mode)        // sub_781F80
@@ -267,7 +267,7 @@ The OriPerformLiveDead pass combines liveness computation with DCE in a single p
 
 The per-block backward walk in `sub_A06A60` maintains a running live set initialized from LiveOut. For each instruction traversed in reverse order, operands are classified by the 3-bit type field `(operand >> 28) & 7`: type 5 identifies predicate registers (tracked separately), type 6 marks the operand-list sentinel (end of operands). The walk applies two updates per instruction:
 
-```
+```c
 // Per-instruction live set update (backward direction):
 for each destination operand d of I:
     reg_id = lookup(ctx+296, d & 0xFFFFFF)   // register table
@@ -385,7 +385,7 @@ The bitvector uses a mixed-width layout: when the declared size (`VR+8`) is odd,
 
 **Phase 5: Cleanup** -- Marks phi/copy chains with the `+245` rewrite flag (triggering opcode mutation from 188 to 93 or 95), frees hash tables and per-block records, clears `ctx+1370 bit 2` to signal liveness invalidation.
 
-```
+```c
 function OriSplitLiveRanges(func):
     // Phase 1: Pre-analysis
     rebuild_basic_blocks(func, 0)           // sub_781F80

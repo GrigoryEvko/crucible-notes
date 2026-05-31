@@ -111,7 +111,7 @@ The script processes functions sequentially and logs progress to stdout every 50
 
 The complete analysis data is organized as follows:
 
-```
+```text
 nvlink/
   analyze_nvlink.py             # IDA Python extraction script
   .gitignore                    # Excludes binary, IDA DB, and large JSON from git
@@ -222,7 +222,7 @@ The 20 sweep reports total 60,899 lines of structured analysis notes. Each repor
 
 Each sweep report follows a standardized template:
 
-```
+```text
 ================================================================================
 NVLINK v13.0.88 REVERSE ENGINEERING SWEEP
 Region: 0xAAAA000 - 0xBBBB000 (~NNN KB)
@@ -429,7 +429,7 @@ To reproduce this analysis from scratch:
 2. **Run IDA auto-analysis.** Open nvlink in IDA Pro 9.x with default x86-64 ELF analysis settings. Allow auto-analysis to complete (typically 10-20 minutes for a 37 MB binary). Accept the detected compiler (GCC).
 
 3. **Run the extraction script.** Execute `analyze_nvlink.py` via IDA's script runner or headless mode:
-   ```
+   ```bash
    idat64 -A -S"analyze_nvlink.py" nvlink.i64
    ```
    This produces all JSON databases, per-function disassembly/decompilation, CFG graphs, and the raw `.rodata` dump. Expected runtime: 4-8 hours, dominated by the Hex-Rays decompilation pass.

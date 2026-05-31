@@ -543,7 +543,7 @@ diagnostic. This is one of the few places in nvlink that uses
 
 The classifier tries formats in this **fixed** order:
 
-```
+```text
 nested fatbin --> cubin --> NVVM IR (with padding variant) --> PTX --> error
 ```
 

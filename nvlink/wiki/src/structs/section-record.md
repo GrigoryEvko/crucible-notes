@@ -22,7 +22,7 @@ The section record is nvlink's internal representation of an ELF section header,
 
 The 104-byte record is allocated by `sub_4307C0` (arena allocator) and zero-initialized with `memset`. Field assignments in `sub_441AC0` map directly to the decompiled offsets on the `_QWORD *v19` pointer (where `v19` is the 104-byte record cast as an array of 8-byte slots).
 
-```
+```text
 Offset  Size  Field              Decompiled           Description
 ------  ----  -----------------  -------------------  ----------------------------------------
   0       4   sh_type            *(_DWORD*)v19        ELF section type (SHT_PROGBITS, SHT_CUDA_*, etc.)
@@ -158,7 +158,7 @@ Sections accumulate data through a singly-linked list of 40-byte **data nodes**.
 
 ### Data Node Layout (40 bytes)
 
-```
+```text
 Offset  Size  Field         Decompiled     Description
 ------  ----  -----------   -----------    ----------------------------------------
   0       8   source_data   v15[0]         Pointer to source data in input ELF (arg a3)
@@ -187,7 +187,7 @@ void section_data_copy(elfw *ctx, uint32_t section_idx,
 
 The algorithm:
 
-```
+```c
 section = get_section_header(ctx, section_idx)   // sub_442270
 if section is NULL:
     return    // silently skip unmapped sections
@@ -303,7 +303,7 @@ During the finalization phase (`sub_445000`), all sections are sorted into canon
 
 The sort runs in two passes over all sections beyond the first 4 (null, `.shstrtab`, `.strtab`, `.symtab`):
 
-```
+```c
 // Pass 1: count sections per bucket
 for each section beyond index 4:
     bucket = classify(section)
@@ -326,7 +326,7 @@ The first 4 sections are always in fixed positions and are not subject to the so
 
 After reordering, sections receive final file offsets in a forward pass:
 
-```
+```c
 running_offset = (after ELF header + standard section headers)
 for idx = first_user_section .. e_shnum:
     section = sorted_sections[idx]

@@ -105,7 +105,7 @@ The three examples below trace one pointer per pattern from the kernel-launch bo
 
 A typical Hopper TMA mainloop loads a GMEM tile into SMEM through `cp.async.bulk.tensor`. The kernel parameter starts in parameter memory and reaches SMEM through one address-space transition and one async copy:
 
-```
+```ptx
 .param u64    A_ptr;                                     // PMEM (LLVM addrspace(101))
 .shared.align 1024 .b8 A_smem[16384];                    // SMEM (LLVM addrspace(3))
 
@@ -125,7 +125,7 @@ The mbarrier object that completes the copy lives in SMEM and the TMA descriptor
 
 A Hopper WGMMA mainloop reads operand A from SMEM (or optionally from registers) and operand B from SMEM, and accumulates into a register-resident fragment. The end-to-end staging pattern is GMEM → SMEM → WGMMA → register → SMEM → GMEM:
 
-```
+```text
                     +---------+    cp.async.bulk.tensor    +---------+
 A in GMEM (AS=1) ---|         |---------------------------->|         |
                     |  TMA    |                             | A SMEM  |
@@ -166,7 +166,7 @@ The address-space transitions in this pattern are entirely between GMEM and SMEM
 
 The Blackwell pattern adds tensor memory between SMEM and the MMA. The accumulator moves from registers to TMEM; operand A optionally moves from registers to TMEM for weight-stationary chains; operand B stays in SMEM (the WGMMA descriptor format is preserved). The full staging pattern is GMEM → SMEM → TMEM → tcgen05.mma → TMEM → SMEM → GMEM:
 
-```
+```text
                     +---------+    cp.async.bulk.tensor    +---------+
 A in GMEM (AS=1) ---|  TMA    |---------------------------->|  SMEM   |
 B in GMEM (AS=1) ---|  desc   |---------------------------->| (AS=3)  |

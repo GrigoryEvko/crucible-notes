@@ -80,7 +80,7 @@ The `.nv.info` section is the most important NVIDIA ELF metadata section. It enc
 
 **Content format.** Each record is a 4-byte-aligned TLV entry:
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    1     format      EIFMT byte (0x01=free, 0x02=value, 0x03=sized, 0x04=indexed)
@@ -130,7 +130,7 @@ The `.nv.callgraph` section records caller-callee relationships between device f
 
 **Content format.** A flat sequence of 8-byte records, each containing two 32-bit symbol indices:
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     field_0    Symbol index (caller, or 0 for sentinel)
@@ -177,7 +177,7 @@ The `.nv.prototype` section describes the parameter layout and launch configurat
 
 **Content format.** A flat sequence of 8-byte records:
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     func_symidx    Symbol index of the entry function
@@ -215,7 +215,7 @@ The entry size and alignment depend on ELF class: for ELF64 (`a1+4 == 2`), `sh_e
 
 **Content format.** Standard `Elf32_Rela` or `Elf64_Rela` records (matching the ELF class), identical in format to `.rela.*` sections but containing relocations that have been partially or fully resolved by the linker. The driver must apply these relocations at load time to account for base address randomization and other runtime adjustments.
 
-```
+```text
 Elf64_Rela:
   Offset  Size  Field
   ------  ----  -----
@@ -260,7 +260,7 @@ The section is created with `sh_info=0` and `sh_link=0` (no associated function)
 
 **Content format.** The section contains a linked list of 12-byte metadata records plus optional raw data blocks. Each metadata record:
 
-```
+```text
 Offset  Size  Field
 ------  ----  -----
 0x00    4     module_id_strtab_idx   Index into .strtab for the __nv_module_id string
@@ -308,7 +308,7 @@ These sections carry structured metadata about kernels and the compilation unit.
 
 Each attribute record in a `.nv.info` section is encoded as a `(format, attribute_id, size)` triple followed by the payload. The linker logs these as:
 
-```
+```text
 nvinfo <fmt=%d,attr=%d,size=%d>, secidx=%d
 ```
 
@@ -458,7 +458,7 @@ The Unified Function Table (UFT) and Unified Descriptor Table (UDT) enable indir
 
 The UFT/UDT management functions (`sub_4637B0`, `sub_463F70`) reorder entries and resolve UUID-based lookups. The linker generates stub functions for unified calls using the template:
 
-```
+```ptx
 .func .attribute(.unified_func_stub)  __cuda_uf_stub_<name>( ) { ... }
 ```
 
@@ -514,7 +514,7 @@ These sections appear in the **host** ELF (not the device cubin) and contain emb
 
 The linker generates a host linker script to ensure these sections are placed correctly:
 
-```
+```text
 SECTIONS
 {
     .nvFatBinSegment : { *(.nvFatBinSegment) }
@@ -606,7 +606,7 @@ A section progresses through the following stages in the nvlink pipeline:
 
 Complete alphabetical list of every NVIDIA-specific section name found in nvlink v13.0.88:
 
-```
+```text
 .note.nv.cuinfo                         SHT_NOTE           Compilation info
 .note.nv.cuver                          SHT_NOTE           CUDA version
 .note.nv.tkinfo                         SHT_NOTE           Toolkit info

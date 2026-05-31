@@ -86,7 +86,7 @@ If either the caller or the callee is implicitly HD, the cross-space check retur
 
 A direct host-from-device call against a non-bypassed callee triggers the canonical 3462 path:
 
-```cpp
+```cuda
 __host__   int   make_value();           // host-only
 __device__ int   square(int x) {
     return make_value() * make_value();  // host call from device context
@@ -95,7 +95,7 @@ __device__ int   square(int x) {
 
 Expected diagnostic from `sub_505720`:
 
-```
+```text
 error: calling a __host__ function ("make_value") from a __device__ function ("square") is not allowed
        (#3462)
 ```

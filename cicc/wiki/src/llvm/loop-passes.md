@@ -20,7 +20,7 @@ Four properties of the [GPU execution model](../gpu-execution-model.md) distingu
 
 The loop passes execute within the main optimization pipeline assembled by `sub_12E54A0`. The ordering below reflects the Tier 1/2/3 optimization path (the normal path for `-O1` and above). Passes marked with **(N)** are NVIDIA-specific or have significant NVIDIA modifications; unmarked passes are stock LLVM with at most threshold overrides.
 
-```
+```text
 LoopSimplify + LCSSA                   (canonicalization)
     |
     v

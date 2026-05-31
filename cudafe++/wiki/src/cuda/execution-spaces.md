@@ -24,7 +24,7 @@ The three CUDA execution-space keywords (`__host__`, `__device__`, `__global__`)
 
 Byte offset `+182` within a routine entity node encodes the execution space as a bitfield. Individual bits carry distinct meanings:
 
-```
+```text
 Byte at entity+182:
 
   bit 0  (0x01)   device_capable     Function can execute on device
@@ -59,7 +59,7 @@ The `__host__` mask `0x15` includes bit 0 (`device_capable`). This is not an err
 
 The critical two-bit extraction `byte & 0x30` classifies a routine into one of four categories:
 
-```
+```text
 (byte & 0x30):
   0x00  ->  no explicit annotation (implicit __host__)
   0x10  ->  __host__ only
@@ -93,7 +93,7 @@ The double-check `(byte & 0x60) == 0x20` ensures the function is device-only and
 
 A secondary extraction `byte & 0x60` distinguishes kernels from plain device functions:
 
-```
+```text
 (byte & 0x60):
   0x00  ->  no device annotation
   0x20  ->  __device__ only (not a kernel)
