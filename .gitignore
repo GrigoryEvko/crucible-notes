@@ -68,3 +68,68 @@ cicc/foundation/
 cicc/decompiled/
 
 workspace/
+
+# ─────────────────────────────────────────────────────────────────────────
+# Reverse-engineering artifacts (IDA Pro exports / extracted vendor binaries).
+# All regenerable from the binaries and never committed. The hand-curated
+# datasets under <tool>/extracted/ ARE tracked and preserved via the negations.
+# ─────────────────────────────────────────────────────────────────────────
+
+# IDA Pro databases
+*.i64
+*.idb
+*.id0
+*.id1
+*.id2
+*.nam
+*.til
+
+# Per-target IDA sidecar exports  (<tool>/<tool>_<kind>.json | .dot | .c | .bin)
+*_functions.json
+*_callgraph.json
+*_callgraph.dot
+*_ctree.json
+*_xrefs.json
+*_rtti.json
+*_structures.json
+*_enums.json
+*_switches.json
+*_segments.json
+*_imports.json
+*_prototypes.json
+*_comments.json
+*_entries.json
+*_fixups.json
+*_frames.json
+*_tryblks.json
+*_data_tables.json
+*_problems.json
+*_metadata.json
+*_full.c
+*_rodata.bin
+*_names.json
+*_strings.json
+# …but keep the curated ptxas extraction datasets (intentionally tracked)
+!ptxas/extracted/*_names.json
+!ptxas/extracted/*_strings.json
+
+# Extracted / decompiled output trees (any tool, any depth)
+context/
+decompiled/
+disasm/
+graphs/
+ida_run_logs/
+
+# Mined research data (local only)
+raw/
+findings/
+firmware/
+firmware_6000/
+some_docs/
+
+# Extracted target binaries (do not commit vendor binaries)
+*.backup
+/cicc/cicc
+/ptxas/ptxas
+/cudafe++/cudafe++
+/tileiras/tileiras
