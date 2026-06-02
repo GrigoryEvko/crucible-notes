@@ -32,6 +32,7 @@ jobs:
           (cd "cudafe++/wiki" && mdbook build)
           (cd nvlink/wiki && mdbook build)
           (cd tileiras/wiki && mdbook build)
+          (cd libtpu/wiki && mdbook build)
 
       - name: Assemble site
         run: |
@@ -44,6 +45,7 @@ jobs:
           cp -r "docs/cudafe++" "_site/cudafe++"
           cp -r docs/nvlink _site/nvlink
           cp -r docs/tileiras _site/tileiras
+          cp -r docs/libtpu _site/libtpu
 
       - name: Inject canonical links and generate sitemap
         run: python3 .github/workflows/seo_postprocess.py _site

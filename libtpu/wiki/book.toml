@@ -1,0 +1,24 @@
+[book]
+title = "libtpu Internals — Reverse-Engineering Reference"
+authors = ["nvopen-tools contributors"]
+description = "Reverse-engineering reference for Google's libtpu.so PJRT plugin (CUDA-equivalent for TPUs). Reconstructed from the stripped 745 MB ELF shipped in the libtpu-0.0.40-cp314 wheel."
+language = "en"
+src = "src"
+
+[build]
+build-dir = "../../docs/libtpu"
+create-missing = true
+
+[output.html]
+default-theme = "navy"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/GrigoryEvko/nvopen-tools"
+edit-url-template = "https://github.com/GrigoryEvko/nvopen-tools/edit/main/libtpu/wiki/{path}"
+
+[output.html.search]
+enable = true
+limit-results = 30
+
+[output.html.fold]
+enable = true
+level = 2
