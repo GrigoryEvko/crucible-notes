@@ -10,14 +10,17 @@ build-dir = "../../docs/libtpu"
 create-missing = true
 
 [output.html]
-default-theme = "navy"
+default-theme = "light"
 preferred-dark-theme = "navy"
 git-repository-url = "https://github.com/GrigoryEvko/nvopen-tools"
 edit-url-template = "https://github.com/GrigoryEvko/nvopen-tools/edit/main/libtpu/wiki/{path}"
+additional-css = ["custom.css"]
+no-section-label = false
 
 [output.html.search]
 enable = true
 limit-results = 30
+use-hierarchical-heading = true
 
 [output.html.fold]
 enable = true
