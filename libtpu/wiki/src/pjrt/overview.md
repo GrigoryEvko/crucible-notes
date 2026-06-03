@@ -61,7 +61,7 @@ The caller then reads `api->struct_size` to learn how many slots this plugin act
 
 > **NOTE —** the table is built on *first call*, not at `dlopen`. `GetTpuPjrtApi`'s `pjrt_api` is a function-local static in `.lbss` (NOBITS), zero until the first `GetPjrtApi`. The 17 `__cxa_guard`-protected blocks (16 extension builders + the final `CreatePjrtApi`) run exactly once; concurrent first-callers serialize through Itanium-ABI `__cxa_guard` semantics, and after the one-shot the struct is immutable for process lifetime — readers take no lock. Static disassembly therefore cannot show populated slot values; the slot→impl mapping is reconstructed from `CreatePjrtApi`'s body, not from the zero-filled `.lbss` image.
 
-> **GOTCHA —** spelling and casing are load-bearing. The exported symbol is `GetPjrtApi` (lowercase `jrt`), matching the public PJRT plugin convention; `GetTpuPjrtApi` is an *internal* helper and is **not** exported. A loader that `dlsym`s `GetTpuPjrtApi`, or a build that exports only the `Tpu`-prefixed name, will fail discovery. The `Tpu*_*` exports that share this binary (~217 symbols) are the *legacy* StreamExecutor C-ABI, linked directly by TF-TPU, never reached through PJRT — see [stream-executor-pjrt-adapter.md](stream-executor-pjrt-adapter.md).
+> **GOTCHA —** spelling and casing are part of the ABI. The exported symbol is `GetPjrtApi` (lowercase `jrt`), matching the public PJRT plugin convention; `GetTpuPjrtApi` is an *internal* helper and is **not** exported. A loader that `dlsym`s `GetTpuPjrtApi`, or a build that exports only the `Tpu`-prefixed name, will fail discovery. The `Tpu*_*` exports that share this binary (194 symbols, all `FUNC GLOBAL @@VERS_1.0`) are the *legacy* StreamExecutor C-ABI, linked directly by TF-TPU, never reached through PJRT — see [stream-executor-pjrt-adapter.md](stream-executor-pjrt-adapter.md).
 
 ---
 
@@ -186,7 +186,7 @@ The remaining 130 function-pointer slots are compile-fixed `pjrt::PJRT_*` wrappe
 | `pjrt::ActualStructSizeIsGreaterOrEqual @ 0xf8a4ec0` | The per-call backward-compat size gate every slot opens with |
 | 17-extension chain (`0x224C3F68` head) | The typed, newest-first capability list reached via `extension_start` |
 | `xla::TpuClient` / `tpu::System` | The runtime the generic slots bottom out in (modern PJRT stack) |
-| `Tpu*_*` C-ABI (~217 exports) | The legacy StreamExecutor surface that shares the binary but is not reached through PJRT |
+| `Tpu*_*` C-ABI (194 exports) | The legacy StreamExecutor surface that shares the binary but is not reached through PJRT |
 
 ## Cross-References
 
