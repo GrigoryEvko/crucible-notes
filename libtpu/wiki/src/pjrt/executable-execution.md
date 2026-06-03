@@ -14,7 +14,7 @@ For reimplementation, the contract is:
 
 - **The `_Args` struct discipline.** Every entry begins with `ActualStructSizeIsGreaterOrEqual(name, min, current, args->struct_size)`; on failure it returns a heap `PJRT_Error*` and reads nothing. `Execute` is the only entry that validates *two* structs (the outer args and the nested `PJRT_ExecuteOptions`).
 - **The handle-wrapping rule.** `GetExecutable` / `DeserializeAndLoad` `operator new` a C-ABI box (`PJRT_Executable` = 0x250 B, `PJRT_LoadedExecutable` = 0x48 B) around a C++ object and store the box pointer into an `_Args` out-field. The host frees it via `PJRT_*_Destroy`.
-- **The Execute dispatch fork.** `execute_device == NULL` → multi-device `xla::PjRtLoadedExecutable::Execute` (returns `vector<vector<unique_ptr<PjRtBuffer>>>`); `execute_device != NULL` → single-device path that **requires `num_devices == 1`** and calls the sharded (vtable +80) or portable (vtable +72) virtual.
+- **The Execute dispatch fork.** `execute_device == NULL` → multi-device `xla::PjRtLoadedExecutable::Execute` (returns `vector<vector<unique_ptr<PjRtBuffer>>>`); `execute_device != NULL` → single-device path that **requires `num_devices == 1`** and calls the portable (vtable +80) or sharded (vtable +72) virtual, keyed on the executable's `compile_portable_executable` flag.
 - **The serialize round-trip.** `Serialize` calls the executable's `SerializeExecutable` virtual into a heap `PJRT_SerializedExecutable` with a deleter callback; `DeserializeAndLoad` parses a `CompileOptionsProto`, reconstructs `CompileOptions`, and reloads through the client.
 
 | | |
@@ -73,7 +73,7 @@ The split mirrors upstream XLA exactly: `PJRT_Executable` is the *ahead-of-launc
 | 56 | PJRT_LoadedExecutable_GetExecutable | `PJRT_LoadedExecutable_GetExecutable` | `0x0F86CFA0` | `+32` `executable()` | CERTAIN |
 | 58 | PJRT_LoadedExecutable_Delete | `PJRT_LoadedExecutable_Delete` | `0x0F869A80` | `Delete()` | CERTAIN |
 | 59 | PJRT_LoadedExecutable_IsDeleted | `PJRT_LoadedExecutable_IsDeleted` | `0x0F869AE0` | `IsDeleted()` | CERTAIN |
-| 60 | PJRT_LoadedExecutable_Execute | `PJRT_LoadedExecutable_Execute` | `0x0F869B40` | `Execute` / `+80` / `+72` | CERTAIN |
+| 60 | PJRT_LoadedExecutable_Execute | `PJRT_LoadedExecutable_Execute` | `0x0F869B40` | `Execute` / `+80` ExecutePortable / `+72` ExecuteSharded | CERTAIN |
 | 61 | PJRT_Executable_DeserializeAndLoad | `PJRT_Executable_DeserializeAndLoad` | `0x0F86CC40` | client deserialize+load | CERTAIN |
 | 95 | PJRT_Executable_OutputElementTypes | `PJRT_Executable_OutputElementTypes` | `0x0F868560` | cached dims/types | CERTAIN |
 | 96 | PJRT_Executable_OutputDimensions | `PJRT_Executable_OutputDimensions` | `0x0F8689E0` | cached dims/types | CERTAIN |
@@ -180,11 +180,12 @@ function PJRT_LoadedExecutable_Execute(args):                 // 0xf869b40
         if opts.has_send_or_recv_callbacks():                 // line 1823
             return new PJRT_Error{Unimplemented(
                 "…doesn't support using send/recv callbacks with `execute_device`.")}
-        assignment = (*exec.vtable[168])(exec)                // device_assignment lookup (line 1672)
-        if assignment.is_portable:                            // v244 == 1
-            out = (*exec.vtable[80])(exec, args->argument_lists[0], opts, …)  // ExecuteSharded
+        copts = (*inner_exec.vtable[168])(inner_exec)         // GetCompileOptions() (line 1671-1672)
+                                                              //   inner_exec = executable() via +32
+        if copts.compile_portable_executable:                 // v244 == 1 (line 1677)
+            out = (*exec.vtable[80])(exec, args->argument_lists[0], opts, …)  // ExecutePortable
         else:
-            out = (*exec.vtable[72])(exec, args->argument_lists[0], opts, …)  // ExecutePortable
+            out = (*exec.vtable[72])(exec, args->argument_lists[0], opts, …)  // ExecuteSharded
         write out -> args->output_lists[0][output]
         if args->device_complete_events:
             args->device_complete_events[0] = new PJRT_Event{future}
@@ -194,7 +195,7 @@ function PJRT_LoadedExecutable_Execute(args):                 // 0xf869b40
 
 ### The dispatch fork
 
-The single most important branch is `execute_device`. When it is `NULL`, the host is asking for the executable's full replica/partition fan-out, and the wrapper calls the multi-device `xla::PjRtLoadedExecutable::Execute` (line 1624), which returns `StatusOr<vector<vector<unique_ptr<PjRtBuffer>>>>` — outer index = device, inner = output. When it is non-`NULL`, the host wants a single device's slice; the wrapper enforces `num_devices == 1`, rejects send/recv callbacks, and routes to either `ExecuteSharded` (vtable +80) or `ExecutePortable` (vtable +72) depending on whether the program carries a device assignment, returning a flat `StatusOr<vector<unique_ptr<PjRtBuffer>>>`.
+The single most important branch is `execute_device`. When it is `NULL`, the host is asking for the executable's full replica/partition fan-out, and the wrapper calls the multi-device `xla::PjRtLoadedExecutable::Execute` (line 1624), which returns `StatusOr<vector<vector<unique_ptr<PjRtBuffer>>>>` — outer index = device, inner = output. When it is non-`NULL`, the host wants a single device's slice; the wrapper enforces `num_devices == 1`, rejects send/recv callbacks, then reads the executable's `CompileOptions` (the inner `PjRtExecutable`'s `GetCompileOptions()` virtual at vtable `+168`, line 1671-1672) and branches on `compile_portable_executable` (line 1677): if set, it calls `ExecutePortable` (vtable +80); otherwise `ExecuteSharded` (vtable +72). Both return a flat `StatusOr<vector<unique_ptr<PjRtBuffer>>>`.
 
 > **QUIRK —** the per-replica / per-partition fan-out is **not** a loop in this wrapper. The wrapper hands the whole 2-D `argument_lists` to the C++ `Execute` and lets the runtime fan out (the runtime's `ExecutePrepare` / `ExecuteLaunch` / `ExecuteSharded`-share path does the per-device dispatch — see [Load Program and Enqueue](../runtime/load-program-enqueue.md)). The C-ABI wrapper's only loops are the marshaling loops that copy buffer pointers in and out. A reimplementer who fans out at the C-ABI layer duplicates work the runtime already does and breaks the single-`Execute`-call completion-event semantics.
 
