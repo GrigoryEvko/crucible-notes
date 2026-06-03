@@ -1,30 +1,30 @@
 # Retirement Evidence
 
-> *Every status-stub body, error string, source-line tag, per-generation symbol count, embedding-op name, and `GetNumberOfBarnaCores` return value on this page was read byte-exactly from `libtpu.so` in the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`) — from the demangled C++ symbol table, the embedded proto/op-name strings, and the decompiled bodies of the per-family `TpuCore<Fam>DriverImpl` BarnaCore vfuncs and the `<fam>::HardwareAttributes::GetNumberOfBarnaCores` accessors. Addresses and counts apply to this build; other versions differ.*
+> *Every status-stub body, error string, source-line tag, per-generation symbol presence, embedding-op name, and `GetNumberOfBarnaCores` return value on this page was read from `libtpu.so` in the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`) — from the demangled C++ symbol table (`nm -C`), the embedded proto/op-name strings, and the decompiled bodies of the per-family `TpuCore<Fam>DriverImpl` BarnaCore methods and the `<fam>::HardwareAttributes::GetNumberOfBarnaCores` accessors. Addresses apply to this build; other versions differ.*
 
 ## Abstract
 
-**BarnaCore is the TPU's legacy embedding / sparse-lookup coprocessor — the engine SparseCore replaced.** It is live silicon on the three oldest generations this binary knows (Jellyfish, Dragonfish, Pufferfish) and is *retired* on Viperfish and later, where SparseCore does the same job. This page is the *binary proof of the retirement* — not the BarnaCore architecture itself ([overview](overview.md), [BCS scalar ISA](bcs-scalar-isa.md), [merged-ALU layout](merged-alu.md), [per-gen perf grids](per-gen-perf-grids.md) own that), and not the SparseCore replacement engine ([SparseCore overview](../sparsecore/overview.md) owns that). What this page owns is the *evidence that the engine is dead on v5+*, drawn from three independent readings of the binary that all agree.
+**BarnaCore is the TPU's legacy embedding / sparse-lookup coprocessor — the engine SparseCore replaced.** It is live silicon on the three oldest generations this binary knows (Jellyfish, Dragonfish, Pufferfish) and is *retired* on Viperfish and later, where SparseCore does the same job. This page is the *binary proof of the retirement* — not the BarnaCore architecture itself ([overview](overview.md), [BCS scalar ISA](bcs-scalar-isa.md), [merged-ALU layout](merged-alu.md), [per-gen perf grids](per-gen-perf-grids.md) own that), and not the SparseCore replacement engine ([SparseCore overview](../sparsecore/overview.md) owns that). What this page owns is the *evidence that the engine is dead on v3+ (Viperfish and later)*, drawn from three independent readings of the binary that all agree.
 
-The first reading is the **runtime-driver stub bodies**. The `tpu::TpuCore` driver vtable carries a fourteen-vfunc BarnaCore control plane (`SetBarnaCoreRowLength`, `EnableBarnaCore`, `SetBarnaCoreAddressHandlerProgram`, …) on *every* generation's driver impl — the ABI is gen-invariant. But on the Viperfish driver (`TpuCoreVxcDriverImpl`, the v3/v4/v5 family driver) every one of those twelve override bodies is a one-line error stub returning `"Not implemented in Viperfish."` (status code `kUnimplemented` = 12). The corresponding Jxc/Pxc bodies are real register-programming code. The ABI is preserved; the implementation is deleted.
+The first reading is the **runtime-driver stub bodies**. The `tpu::TpuCore` driver carries a twelve-method BarnaCore control plane (`SetBarnaCoreRowLength`, `EnableBarnaCore`, `SetBarnaCoreAddressHandlerProgram`, …) — but only on the three driver impls that exist in this binary: `TpuCoreJxcDriverImpl` (Jellyfish/Dragonfish), `TpuCorePxcDriverImpl` (Pufferfish), and `TpuCoreVxcDriverImpl` (Viperfish, `TpuVersion` 3). There is *no* `TpuCoreGxcDriverImpl`; the Ghostlite/`6acc60406` family (`gxc`, `TpuVersion` 4/5) carries hardware-attribute objects but no BarnaCore driver methods at all. On the Viperfish driver every one of those twelve methods is a one-line error stub returning `"Not implemented in Viperfish."` (status code `kUnimplemented` = 12), while the corresponding Jxc/Pxc bodies are real register-programming code. The vestige thus reaches Viperfish as a stubbed-but-present ABI, then disappears entirely on `gxc`.
 
-The second reading is the **per-generation symbol presence proof**. BarnaCore encoder / codec / ISA symbols exist in bulk under the legacy family namespaces — 563 under `jxc`/`jellyfish`, 34 under `pxc`/`pfc` (`EncoderBcsDf`, `EncoderPfBarnaCoreSequencer`, `EncoderPfBarnaCoreChannel`) — and number **exactly zero** under `vxc`/`vfc`/`gxc`/`glc`/`gfc`. The hardware-count accessor confirms it numerically: `pfc::HardwareAttributes::GetNumberOfBarnaCores()` returns `4`, while `vxc::` and `gxc::HardwareAttributes::GetNumberOfBarnaCores()` both return `0`.
+The second reading is the **per-generation symbol presence proof**. BarnaCore encoder / codec / ISA symbols exist in bulk under the legacy family namespaces — `jxc`/`jellyfish` and `pxc`/`pfc` (`EncoderBcsDf`, `EncoderPfBarnaCoreSequencer`, `EncoderPfBarnaCoreChannel`) — and number **exactly zero** under `vxc`/`vfc`/`gxc`/`glc`/`gfc`. The hardware-count accessor confirms it numerically: `pfc::HardwareAttributes::GetNumberOfBarnaCores()` returns `4`, while `vxc::` and `gxc::HardwareAttributes::GetNumberOfBarnaCores()` both return `0`.
 
 The third reading is the **lowered-away embedding ops**. The device-path TPUEmbedding op family that drove the BarnaCore pipeline (the `Enqueue*` / `Recv*Activations` / `Send*Gradients` lookup ops) is, on v3+, lowered through the SparseCore `XlaSparseDenseMatmul*` primitive family and the `SparseDenseMatmulDotCombinerEmitter` instead of the BarnaCore `barna_core::BcsLloEmitter`. The eleven-optimizer BarnaCore-era parameter API collapses to a five-optimizer SparseCore set, because the optimizer math moved onto the SparseCore TEC engine.
 
 For reimplementation, the contract is:
 
-- **The BarnaCore control-plane ABI is gen-invariant; its v3+ implementation is a stub.** A reimplementer must carry the fourteen `*BarnaCore*` driver vfuncs in the vtable for *all* generations (callers expect the slots), but the v5+ bodies must fail closed — `kUnimplemented`, not silent no-op. Calling any of them on a Viperfish-family target is a hard error by design.
+- **The BarnaCore control-plane survives only to Viperfish, as a stub.** The twelve `*BarnaCore*` driver methods are present on the Jxc/Pxc drivers (real bodies) and on the Vxc/Viperfish driver (`kUnimplemented` stubs), then are dropped — the `gxc` (Ghostlite/`6acc60406`) family has no TpuCore driver impl carrying them. On Viperfish the stubs must fail closed (`kUnimplemented`, not silent no-op); calling any of them on a Viperfish target is a hard error by design.
 - **Per-gen presence is a symbol-namespace readout.** Live BarnaCore = a non-empty `EncoderBcsDf` / `EncoderPf*BarnaCore*` codec roster scoped under `jxc` (v0/v1) or `pxc.pfc` (v2). v3+ has *no* BarnaCore codec, encoder, ISA table, or subtarget. The discriminator is the family namespace plus `GetNumberOfBarnaCores() != 0`.
 - **The embedding op set retires onto SparseCore primitives, not onto BarnaCore.** On v3+ the device-path embedding ops lower to `XlaSparseDenseMatmul{,GradWith<Opt>}` and the `SparseDenseMatmulDotCombinerEmitter`. The BarnaCore `BcsLloEmitter` gather/scatter/infeed path is never reached.
 
 | | |
 |---|---|
-| **What this page proves** | BarnaCore is a *retired* engine on Viperfish/Ghostlite/Trillium — present as ABI/enum vestige, absent as silicon |
+| **What this page proves** | BarnaCore is a *retired* engine on Viperfish, Ghostlite, and `6acc60406` — present as ABI/enum vestige, absent as silicon |
 | **Live on** | Jellyfish (v0) · Dragonfish (v1) · Pufferfish (v2) — `GetNumberOfBarnaCores()` ∈ {≥1, 4} |
-| **Retired on** | Viperfish (v3) · Ghostlite (v4) · Trillium (v5) — `GetNumberOfBarnaCores()` = `0`; zero BC codecs |
-| **Stub evidence** | 12× `TpuCoreVxcDriverImpl::*BarnaCore*` vfuncs → `"Not implemented in Viperfish."` (`MakeErrorImpl<12>`) |
-| **Symbol-count proof** | BC encoder/codec syms: `jxc` 563 · `pxc/pfc` 34 · `vfc/glc/gfc` **0** |
+| **Retired on** | Viperfish (v3) · Ghostlite (v4) · `6acc60406` (v5) — `GetNumberOfBarnaCores()` = `0`; zero BC codecs |
+| **Stub evidence** | 12× `TpuCoreVxcDriverImpl::*BarnaCore*` methods → `"Not implemented in Viperfish."` (`MakeErrorImpl<12>`); the `gxc` family drops them entirely |
+| **Symbol presence proof** | BC encoder/codec syms present on `jxc` and `pxc/pfc`; **zero** on `vfc`/`glc`/`gfc` |
 | **Replacement** | SparseCore (`XlaSparseDenseMatmul*` + `SparseDenseMatmulDotCombinerEmitter`) — see [SparseCore overview](../sparsecore/overview.md) |
 | **Confidence** | CONFIRMED (decompiled stub bodies + symbol counts + return-value constants) unless a row or callout says otherwise |
 
@@ -34,9 +34,9 @@ For reimplementation, the contract is:
 
 ## Evidence 1 — The Viperfish Driver Stub Bodies
 
-The `tpu::TpuCore` runtime driver exposes a BarnaCore control plane as a block of consecutive vtable vfuncs (the per-family override region documented under [overview](overview.md)). The vfunc *names* are BarnaCore-specific and the *slots* are present in every family's driver impl — `TpuCoreJxcDriverImpl` (v0/v1), `TpuCorePxcDriverImpl` (v2), and `TpuCoreVxcDriverImpl` (v3/v4/v5). The ABI does not change across the retirement.
+The `tpu::TpuCore` runtime driver exposes a BarnaCore control plane as a block of consecutive methods (the per-family override region documented under [overview](overview.md)). The method *names* are BarnaCore-specific and the *slots* are present on the three driver impls this binary ships — `TpuCoreJxcDriverImpl` (Jellyfish/Dragonfish, v0/v1), `TpuCorePxcDriverImpl` (Pufferfish, v2), and `TpuCoreVxcDriverImpl` (Viperfish, v3). There is no driver impl for the `gxc` (Ghostlite/`6acc60406`, v4/v5) family, so the control plane simply ends at Viperfish.
 
-What changes is the body. On the Viperfish-family driver, every BarnaCore vfunc is a single-line error return. Decompiled verbatim:
+What changes is the body. On the Viperfish driver, every BarnaCore method is a single-line error return. Decompiled verbatim:
 
 ```c
 // _ZN3tpu20TpuCoreVxcDriverImpl15EnableBarnaCoreEv  @ 0x1d118cc0
@@ -56,9 +56,9 @@ __int64 tpu::TpuCoreVxcDriverImpl::SetBarnaCoreRowLength(tpu::TpuCoreVxcDriverIm
 }
 ```
 
-`MakeErrorImpl<12>` constructs an `absl::Status` with code `12` — `absl::StatusCode::kUnimplemented`. The `29` is the message length (`"Not implemented in Viperfish."`), and the trailing integer is the source line in `tpu_core_vxc_driver_impl.cc`. All twelve BarnaCore vfunc overrides on the Vxc driver are byte-identical in shape, differing only by source line:
+`MakeErrorImpl<12>` constructs an `absl::Status` with code `12` — `absl::StatusCode::kUnimplemented`. The `29` is the message length (`"Not implemented in Viperfish."`), and the trailing integer is the source line in `tpu_core_vxc_driver_impl.cc`. All twelve BarnaCore method overrides on the Vxc driver are byte-identical in shape, differing only by source line:
 
-| Vxc vfunc | `.text` | Source line | Body |
+| Vxc method | `.text` | Source line | Body |
 |---|---|---:|---|
 | `SetBarnaCoreRowLength` | `0x1d118be0` | 146 | `kUnimplemented "Not implemented in Viperfish."` |
 | `SetBarnaCoreAddressHandlerProgram` | `0x1d118c00` | 152 | `kUnimplemented` |
@@ -73,11 +73,11 @@ __int64 tpu::TpuCoreVxcDriverImpl::SetBarnaCoreRowLength(tpu::TpuCoreVxcDriverIm
 | `SetBarnaCoreHbmMuxBfifoModeTimer` | `0x1d118d20` | 199 | `kUnimplemented` |
 | `GetBarnaCoreLastIssuedInstructionTag` | `0x1d118d40` | 204 | `kUnimplemented` |
 
-The sequential source-line range (146 → 204, monotone with `.text` address) shows these are not scattered ad-hoc stubs but a *contiguous block of deliberate "this engine is gone" stubs* written in one place in the Viperfish driver source — the runtime-side fingerprint of the retirement.
+The sequential source-line range (146 → 204, monotone with `.text` address) shows these are not scattered ad-hoc stubs but a *contiguous block of deliberate "this engine is gone" stubs* written in one place in the Viperfish driver source — the runtime-side fingerprint of the retirement. (Confirmed: `nm -C` finds exactly twelve `TpuCoreVxcDriverImpl::*BarnaCore*` symbols at `0x1d118be0`–`0x1d118d40`, matching the twelve on `TpuCoreJxcDriverImpl` and `TpuCorePxcDriverImpl`.)
 
 ### Contrast — the live Jellyfish body
 
-The same vfunc on the Jellyfish driver is real register-programming code, not a stub:
+The same method on the Jellyfish driver is real register-programming code, not a stub:
 
 ```c
 // _ZN3tpu20TpuCoreJxcDriverImpl15EnableBarnaCoreEv  @ 0xe735540
@@ -94,29 +94,29 @@ __int64 tpu::TpuCoreJxcDriverImpl::EnableBarnaCore(tpu::TpuCoreJxcDriverImpl *th
 }
 ```
 
-The Jxc body dispatches through the chip-register interface (the `+296` / `+352` vtable indirections into the register backend at `this+101`) to actually enable the BarnaCore — exactly the kind of body a *live* engine's `Enable` has. The Pxc (Pufferfish) driver likewise carries real bodies. The retirement boundary is therefore visible as *stub-body vs real-body* on the identically-named vfunc across the Vxc / Jxc-Pxc drivers.
+The Jxc body dispatches through the chip-register interface (the `+296` / `+352` vtable indirections into the register backend at `this+101`) to actually enable the BarnaCore — exactly the kind of body a *live* engine's `Enable` has. The Pxc (Pufferfish) driver likewise carries real bodies. The retirement boundary is therefore visible as *stub-body vs real-body* on the identically-named method across the Vxc / Jxc-Pxc drivers, and then as *no-method-at-all* on the `gxc` (Ghostlite/`6acc60406`) family.
 
-> **CONFIRMED — the BarnaCore control-plane ABI survives the retirement; only the body dies.** A reimplementer must reproduce the vfunc *slots* on the v5+ driver (callers in the gen-agnostic HAL layer reference them by vtable index), but the bodies must return `kUnimplemented`. This is the canonical "preserve the ABI, delete the implementation" retirement pattern, and it is byte-confirmed: same demangled vfunc name, real body on `jxc`/`pxc`, `"Not implemented in Viperfish."` on `vxc`.
+> **CONFIRMED — on Viperfish the BarnaCore control-plane survives as a stub; on `gxc` it is gone.** The twelve method overrides on the Vxc driver are real symbols that return `kUnimplemented`; the `gxc` family ships hardware-attribute objects (`GetNumberOfBarnaCores() == 0`) but no TpuCore driver impl and thus no BarnaCore methods. This is byte-confirmed: same demangled method name, real body on `jxc`/`pxc`, `"Not implemented in Viperfish."` on `vxc`, absent on `gxc`.
 
 ---
 
 ## Evidence 2 — Per-Generation Symbol Presence Proof
 
-The second, independent proof is a census of BarnaCore *engine* symbols (encoders, codecs, ISA classes) per generation family namespace. A live engine ships a codec/encoder roster; a retired one ships none. Counting decompiled BarnaCore-named files that are encoder / codec / ISA classes, bucketed by family namespace:
+The second, independent proof is a census of BarnaCore *engine* symbols (encoders, codecs, ISA classes) per generation family namespace. A live engine ships a codec/encoder roster; a retired one ships none. Bucketing the BarnaCore-named encoder / codec / ISA classes by family namespace gives a binary present/absent split:
 
 | Family ns | Gen(s) | BC encoder/codec/ISA syms | `GetNumberOfBarnaCores()` | Verdict |
-|---|---|---:|:---:|---|
-| `jxc` / `jellyfish` | Jellyfish (v0), Dragonfish (v1) | **563** | (≥1, JF/DF) | **LIVE** |
-| `pxc` / `pfc` | Pufferfish (v2) | **34** | **`4`** (`pfc`) | **LIVE** |
-| `vxc` / `vfc` | Viperfish (v3) | **0** | **`0`** (`vxc`) | **RETIRED** |
-| `gxc` / `glc` | Ghostlite (v4) | **0** | **`0`** (`gxc`) | **RETIRED** |
-| `gxc` / `gfc` | Trillium (v5) | **0** | — | **RETIRED** |
+|---|---|:---:|:---:|---|
+| `jxc` / `jellyfish` | Jellyfish (v0), Dragonfish (v1) | present (hundreds) | (≥1, JF/DF) | **LIVE** |
+| `pxc` / `pfc` | Pufferfish (v2) | present (`EncoderPfBarnaCore*`) | **`4`** (`pfc`) | **LIVE** |
+| `vxc` / `vfc` | Viperfish (v3) | **none** | **`0`** (`vxc`) | **RETIRED** |
+| `gxc` / `glc` | Ghostlite (v4) | **none** | **`0`** (`gxc`) | **RETIRED** |
+| `gxc` / `gfc` | `6acc60406` (v5) | **none** | **`0`** (`gxc`) | **RETIRED** |
 
-The split is razor-sharp at the v2→v3 boundary. The legacy families carry hundreds of BarnaCore symbols; the SparseCore-era families carry exactly zero BarnaCore encoder/codec/ISA symbols. There is *no* `EncoderVfBarnaCore*`, no `vfc::isa::BarnaCore*Codec`, no v3+ BarnaCore subtarget.
+The split is razor-sharp at the v2→v3 boundary. The legacy families carry the BarnaCore encoder/codec/ISA classes; the SparseCore-era families (`vxc`, `gxc`) carry *zero* BarnaCore encoder/codec/ISA symbols — `nm -C` finds no `Encoder`/`Codec`/`isa` class with `BarnaCore` in its name under any v3+ family (the only v3+ hit on `BarnaCore` is the Vxc `SetBarnaCoreAddressHandlerProgram` stub, whose *parameter* type is a `jellyfish::isa::ProgramFacade`). There is *no* `EncoderVfBarnaCore*`, no `vfc::isa::BarnaCore*Codec`, no v3+ BarnaCore subtarget.
 
 ### The live Pufferfish BarnaCore codec roster
 
-The 34 `pxc`/`pfc` symbols are the high-water mark of BarnaCore — a fully independent VLIW embedding sequencer. The encoder leaves that survive in `pxc.pfc`:
+The `pxc`/`pfc` BarnaCore symbols are the high-water mark of BarnaCore — a fully independent VLIW embedding sequencer. The encoder leaves that survive in `pxc.pfc`:
 
 ```text
 EncoderBcsDf                 ; v0/v1 BarnaCore (address-handler personality, 16-byte bundle)
@@ -137,13 +137,13 @@ __int64 ...::GetNumberOfBarnaCores() { return 4; }     // Pufferfish: 4 BarnaCor
 // vxc::HardwareAttributes::GetNumberOfBarnaCores()  @ 0x1fbad0e0
 __int64 ...::GetNumberOfBarnaCores(... *this) { return 0; }   // Viperfish: none
 
-// gxc::HardwareAttributes::GetNumberOfBarnaCores()
-__int64 ...::GetNumberOfBarnaCores(... *this) { return 0; }   // Ghostlite/Trillium: none
+// gxc::HardwareAttributes::GetNumberOfBarnaCores()  @ 0x1fda8b40
+__int64 ...::GetNumberOfBarnaCores(... *this) { return 0; }   // Ghostlite/6acc60406: none
 ```
 
-Pufferfish reports `4` — consistent with the `DMA_CORE_ID_BARNA_CORE_0..3` reservation in the SparseCore DMA fabric's `DmaCoreId` enum (four BarnaCore core IDs). Viperfish and the Ghostlite/Trillium family both report `0`. (The `pxc::plc` variant also returns `0`, a per-config `plc` attributes object rather than the `pfc` chip attributes; the live count is the `pfc` `return 4`.)
+Pufferfish reports `4` — consistent with the `DMA_CORE_ID_BARNA_CORE_0..3` reservation in the SparseCore DMA fabric's `DmaCoreId` enum (four BarnaCore core IDs). Viperfish and the Ghostlite/`6acc60406` family both report `0`. (The `pxc::plc` variant `@ 0x1fbacb00` also returns `0`, a per-config `plc` attributes object rather than the `pfc` chip attributes; the live count is the `pfc` `return 4`.)
 
-> **GOTCHA — `vxc`/`gxc` still contain *some* BarnaCore symbols, but only the ABI vestige.** A grep for `BarnaCore` under `vxc` returns 12 hits — but every one is a `TpuCoreVxcDriverImpl::*BarnaCore*` vfunc *stub* (Evidence 1) or the `vxc::HardwareAttributes::GetNumberOfBarnaCores() { return 0; }` accessor. None is an encoder, codec, ISA class, or subtarget. "Zero live BarnaCore engine symbols on v3+" means zero codec/encoder/ISA symbols; the runtime-ABI stubs are exactly the vestige Evidence 1 documents.
+> **GOTCHA — Viperfish still contains *some* BarnaCore symbols, but only the ABI vestige.** Searching `nm -C` for `BarnaCore` associated with Viperfish returns the 12 `TpuCoreVxcDriverImpl::*BarnaCore*` method *stubs* (Evidence 1) plus the single `vxc::HardwareAttributes::GetNumberOfBarnaCores() { return 0; }` accessor — 13 symbols, none of them an encoder, codec, ISA class, or subtarget. The `gxc` (Ghostlite/`6acc60406`) family is cleaner still: it has only the `gxc::HardwareAttributes::GetNumberOfBarnaCores() { return 0; }` accessor and no driver methods at all. "Zero live BarnaCore engine symbols on v3+" means zero codec/encoder/ISA symbols; the runtime-ABI stubs are exactly the vestige Evidence 1 documents.
 
 ---
 
@@ -218,18 +218,18 @@ The eleven host-staged BarnaCore optimizers collapse to five on-engine SparseCor
 
 The three readings agree on a single, sharp cut at the v2→v3 (Pufferfish→Viperfish) boundary:
 
-| Gen | TpuVer | Family ns | Driver BC vfuncs | BC codec syms | `#BarnaCores` | Embedding emitter | Status |
-|---|---|---|---|---:|:---:|---|---|
-| Jellyfish | 0 | `jxc` | real bodies (`jxc` driver) | 563 (jxc/jf) | ≥1 | `BcsLloEmitter` | **LIVE** |
-| Dragonfish | 1 | `jxc` | real bodies (`jxc` driver) | (shares jxc) | ≥1 | `BcsLloEmitter` | **LIVE** |
-| Pufferfish | 2 | `pxc.pfc` | real bodies (`pxc` driver) | 34 | **4** | `BcsLloEmitter` | **LIVE (peak)** |
-| Viperfish | 3 | `vxc.vfc` | `"Not implemented in Viperfish."` | **0** | **0** | `SparseDenseMatmulDotCombinerEmitter` | **RETIRED** |
-| Ghostlite | 4 | `gxc.glc` | (shares vxc stub family) | **0** | **0** | `SparseDenseMatmulDotCombinerEmitter` | **RETIRED** |
-| Trillium | 5 | `gxc.gfc` | (shares vxc stub family) | **0** | — | `SparseDenseMatmulDotCombinerEmitter` | **RETIRED** |
+| Gen | TpuVer | Family ns | Driver BC methods | BC codec syms | `#BarnaCores` | Embedding emitter | Status |
+|---|---|---|---|:---:|:---:|---|---|
+| Jellyfish | 0 | `jxc` | real bodies (`jxc` driver) | present | ≥1 | `BcsLloEmitter` | **LIVE** |
+| Dragonfish | 1 | `jxc` | real bodies (`jxc` driver) | present (shares jxc) | ≥1 | `BcsLloEmitter` | **LIVE** |
+| Pufferfish | 2 | `pxc.pfc` | real bodies (`pxc` driver) | present | **4** | `BcsLloEmitter` | **LIVE (peak)** |
+| Viperfish | 3 | `vxc.vfc` | `"Not implemented in Viperfish."` (12 stubs) | **0** | **0** | `SparseDenseMatmulDotCombinerEmitter` | **RETIRED** |
+| Ghostlite | 4 | `gxc.glc` | none (no `gxc` driver impl) | **0** | **0** | `SparseDenseMatmulDotCombinerEmitter` | **RETIRED** |
+| `6acc60406` | 5 | `gxc.gfc` | none (no `gxc` driver impl) | **0** | **0** | `SparseDenseMatmulDotCombinerEmitter` | **RETIRED** |
 
-Pufferfish is the high-water mark — a full BCS sequencer, four BarnaCores, a dedicated HwMode encoding table, and real driver bodies. Viperfish is the cut — zero codecs, zero BarnaCores, `kUnimplemented` driver stubs, and the embedding workload re-homed onto SparseCore. Everything that *remains* on v3+ is back-compat shell: the driver vfunc slots (stubbed), the `TpuSequencerType` BCS=1/BCAH=2 enum values (never selected), the `DMA_CORE_ID_BARNA_CORE_0..3` DMA-routing enum (never routed to), and the `GetNumberOfBarnaCores() == 0` accessor that tells the runtime there is nothing there.
+Pufferfish is the high-water mark — a full BCS sequencer, four BarnaCores, a dedicated HwMode encoding table, and real driver bodies. Viperfish is the cut — zero codecs, zero BarnaCores, `kUnimplemented` driver stubs, and the embedding workload re-homed onto SparseCore; on `gxc` (Ghostlite/`6acc60406`) even the driver stubs are gone. Everything that *remains* on v3+ is back-compat shell: the Viperfish driver stub slots, the `TpuSequencerType` `BarnaCoreSequencer` = 1 / `BarnaCoreAddressHandler` = 2 enum values (never selected), the `DMA_CORE_ID_BARNA_CORE_0..3` DMA-routing enum (never routed to), and the `GetNumberOfBarnaCores() == 0` accessor that tells the runtime there is nothing there.
 
-> **WARNING — do not mistake the surviving ABI for a live engine.** A reimplementer or analyst who sees `*BarnaCore*` driver vfuncs in the Viperfish vtable, or `BARNA_CORE` values in the v5+ DMA enums, might conclude BarnaCore is still active on those chips. It is not. Every such surface is vestigial: the vfuncs return `kUnimplemented`, the DMA core IDs route to nothing (`GetNumberOfBarnaCores() == 0`), and no codec exists to encode a BarnaCore program. The presence of a name is not the presence of an engine.
+> **WARNING — do not mistake the surviving ABI for a live engine.** A reimplementer or analyst who sees `*BarnaCore*` methods on the Viperfish driver, or `BARNA_CORE` values in the v3+ DMA enums, might conclude BarnaCore is still active on those chips. It is not. Every such surface is vestigial: the Viperfish methods return `kUnimplemented`, the DMA core IDs route to nothing (`GetNumberOfBarnaCores() == 0`), and no codec exists to encode a BarnaCore program. The presence of a name is not the presence of an engine.
 
 ---
 
@@ -237,10 +237,10 @@ Pufferfish is the high-water mark — a full BCS sequencer, four BarnaCores, a d
 
 | Claim | Evidence | Confidence |
 |---|---|---|
-| 12 `TpuCoreVxcDriverImpl::*BarnaCore*` vfuncs are `kUnimplemented` stubs | decompiled bodies `0x1d118be0`–`0x1d118d40`, all `MakeErrorImpl<12>("Not implemented in Viperfish.", …, tpu_core_vxc_driver_impl.cc)`, source lines 146–204 | CONFIRMED |
-| The same vfunc has a real register-programming body on `jxc`/`pxc` | `TpuCoreJxcDriverImpl::EnableBarnaCore` `@ 0xe735540` dispatches through the register backend; Pxc likewise | CONFIRMED |
-| BC encoder/codec/ISA syms: `jxc` 563, `pxc/pfc` 34, `vfc/glc/gfc` 0 | decompiled-file census bucketed by family namespace (`Encoder`/`Codec`/`isa` ∩ `BarnaCore`) | CONFIRMED |
-| Pufferfish has 4 BarnaCores; Viperfish/Ghostlite have 0 | `pfc::…GetNumberOfBarnaCores() {return 4;}` `@ 0x1fbac480`; `vxc::` `@ 0x1fbad0e0` and `gxc::` both `{return 0;}` | CONFIRMED |
+| 12 `TpuCoreVxcDriverImpl::*BarnaCore*` methods are `kUnimplemented` stubs; the `gxc` family has none | decompiled bodies `0x1d118be0`–`0x1d118d40`, all `MakeErrorImpl<12>("Not implemented in Viperfish.", …, tpu_core_vxc_driver_impl.cc)`, source lines 146–204; no `TpuCoreGxcDriverImpl` symbol exists | CONFIRMED |
+| The same method has a real register-programming body on `jxc`/`pxc` | `TpuCoreJxcDriverImpl::EnableBarnaCore` `@ 0xe735540` dispatches through the register backend; Pxc likewise | CONFIRMED |
+| BC encoder/codec/ISA syms present on `jxc`/`pxc·pfc`, zero on `vxc`/`gxc` | `nm -C` ∩ (`Encoder`/`Codec`/`isa`) ∩ `BarnaCore` bucketed by family namespace: legacy families carry the BarnaCore codec classes, v3+ families carry none | CONFIRMED (present/absent); exact per-family counts not reported |
+| Pufferfish has 4 BarnaCores; Viperfish, `gxc` (Ghostlite/`6acc60406`), and `plc` have 0 | `pfc::…GetNumberOfBarnaCores() {return 4;}` `@ 0x1fbac480`; `vxc::` `@ 0x1fbad0e0`, `gxc::` `@ 0x1fda8b40`, `plc::` `@ 0x1fbacb00` all `{return 0;}` | CONFIRMED |
 | Live Pufferfish BC encoders are `EncoderBcsDf`, `EncoderPfBarnaCoreSequencer`, `EncoderPfBarnaCoreChannel` | demangled symbol names under `pxc.pfc` | CONFIRMED |
 | `InstBits_BarnaCorePxcHwMode` is the only HwMode BC encoding table; none for v3+ | `TPUMCCodeEmitter::getBinaryCodeForInstr` `@ 0x13c74da0`; no `InstBits_BarnaCore*HwMode` under v3+ families | HIGH |
 | Device-path embedding op set is the ~20-op `Enqueue*`/`Recv*`/`Send*` family | 18 distinct `*(Enqueue\|Recv\|Send)TPUEmbedding*Op` symbols enumerated | CONFIRMED (count); "~20" framing HIGH |
