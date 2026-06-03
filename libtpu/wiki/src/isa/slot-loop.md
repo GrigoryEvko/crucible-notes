@@ -4,7 +4,7 @@
 
 ## Abstract
 
-A TPU loop is counted in one of two places, and the choice is per-sequencer, not per-program. On **BarnaCore** (and the Jellyfish / Pufferfish / Viperfish AddressHandler) the loop is a **true hardware loop**: a dedicated silicon register holds the trip count, the hardware decrements and tests it, and the bundle stream contains explicit loop-setup / loop-start / loop-end ops but **no software induction variable, no compare, no branch**. On the **TensorCore** and **SparseCore** the loop is a **software back-edge** built from the scalar-ALU op set — `ADDri` IV update, a `CMPxx`, and a `BRcond` — with the hardware **Loop Counter (LCC)** register *mirroring* the iteration count so the body can read it (for iteration-dependent addressing) without keeping its own counter. The LCC drives nothing; it is a readable snapshot.
+A TPU loop is counted in one of two places, and the choice is per-sequencer, not per-program. On **BarnaCore** (and the Jellyfish / Pufferfish AddressHandler) the loop is a **true hardware loop**: a dedicated silicon register holds the trip count, the hardware decrements and tests it, and the bundle stream contains explicit loop-setup / loop-start / loop-end ops but **no software induction variable, no compare, no branch**. The AddressHandler hardware loop is live only on v3/v4 — the `ViperfishTarget` override is a dead stub (below) and v5p/v6e have no override at all. On the **TensorCore** and **SparseCore** the loop is a **software back-edge** built from the scalar-ALU op set — `ADDri` IV update, a `CMPxx`, and a `BRcond` — with the hardware **Loop Counter (LCC)** register *mirroring* the iteration count so the body can read it (for iteration-dependent addressing) without keeping its own counter. The LCC drives nothing; it is a readable snapshot.
 
 The loop-counter register is named **LCC** throughout the binary, a 64-bit value read as two 32-bit halves and unified with the global time counter (GTC) under one enum (`CycleCounterType { kLCC, kGTC }`). It is **not** an allocatable register — there is no LCC class in the register file alongside S/V/M/P0..P31; like GTC it is a special control register read into a scalar destination. The number of *addressable* LCC registers is the per-generation count this page pins: Jellyfish exposes none on its TensorCore (loops live only in the AddressHandler `Loop` slot); Pufferfish exposes **two** (LCC0, LCC1) through an indexed read-register enum; Viperfish, Ghostlite, and Trillium expose **one** implicit counter through a pair of dedicated dest-only opcodes.
 
@@ -117,22 +117,24 @@ getCmp()         @ 0x13b86240  ->  return *((void**)this + 2);   // [this+0x10] 
 getTripCount()   @ 0x13b86260  ->  return *((void**)this + 5);   // [this+0x28] = trip-count MI
 ```
 
-The selection happens in `analyzeLoopForTPUPipelining` (`0x13b804c0`). It first tests a subtarget feature bit (`[*subtarget + 0x158] & 1`, the BarnaCore hardware-loop mode); then it walks the loop's terminators. When the feature is set and the terminator is the hardware-loop terminator (`bcLOOP_END`), it allocates the BarnaCore info (the early `operator new(8); vtable = off_2192D4E8; return` arm at the top of the function); otherwise it detects an IV and compare and builds the SparseCore info:
+The selection happens in `analyzeLoopForTPUPipelining` (`0x13b804c0`). It first tests a subtarget feature bit (`[*subtarget + 0x158] & 1` — byte offset `0x158` = 344; the BarnaCore hardware-loop mode); then it walks the loop's terminators looking for one of **three** loop-terminator opcodes (`325`, `403`, `328`). On a match it reads a per-loop HW-mode marker byte at `[loop_header + 0x122]` (= 290); when that byte is `1` it allocates the BarnaCore info via the `operator new(8u)` / `vtable = off_2192D4E8` arm (mid-function, reached only after the terminator match); otherwise it detects an IV and compare and builds the 48-byte SparseCore info (`operator new(0x30u)`):
 
 ```c
-// llvm::TPUInstrInfo::analyzeLoopForTPUPipelining  @ 0x13b804c0  (decoded)
-subtarget = loop->parent_subtarget;
-if ((subtarget->features[0x158] & 1) == 0) return 0;   // not pipelineable on this target
-for (bb in loop terminators) {
-    if (bb.terminator.opcode in {hw_loop_terminator}) {
-        if (bb.flags[+0x122] == 1)                      // BarnaCore HW-mode marker
-            return new TPUBarnaCorePipelinerLoopInfo;   // hardware-counted: no IV/cmp/trip
-        // else: detect IV update + compare, build SparseCore (software) info
+// llvm::TPUInstrInfo::analyzeLoopForTPUPipelining  @ 0x13b804c0  (decoded byte-exactly)
+subtarget = loop_header->parent_subtarget;             // [a3+4]→[+32]
+if ((subtarget->vtable_field[0x158] & 1) == 0) return 0;   // not pipelineable on this target
+for (term in loop terminators) {                       // walk the terminator chain
+    if (term.opcode == 325 || term.opcode == 403 || term.opcode == 328) {
+        if (loop_header.flags[+0x122] == 1)             // BarnaCore HW-mode marker byte == 1
+            return new TPUBarnaCorePipelinerLoopInfo;   // operator new(8); no IV/cmp/trip
+        // else: find predicate operand, detect IV update + compare (analyzeIVUpdateforPipelining)
         ...
-        return new TPUSparseCorePipelinerLoopInfo(iv, cmp, trip, ...);
+        return new TPUSparseCorePipelinerLoopInfo(iv, cmp, ...);  // operator new(0x30)
     }
 }
 ```
+
+> **NOTE —** the three terminator opcodes (`325`, `403`, `328`) and the predicate-operand opcode `540` are the raw MC opcode integers `analyzeLoopForTPUPipelining` matches; their symbolic names were not resolved (the integers are byte-exact from the decompile — the names are not). The function additionally special-cases opcode `540` when extracting the predicate operand index.
 
 So a BarnaCore loop body is: `bcLOOP_SETUP` (load the count) → `bcLOOP_START` (mark the body head; one value operand = the bound) → body → `bcLOOP_END` (the hardware decrement+test+branch-back terminator). A TC/SC loop body is: preheader (`MOV`/`ADDri` to init the IV) → body → `ADDri` (IV += stride) → `CMPxx` → `BRcond` back to the head, with the LCC register mirroring the count for in-body reads.
 
@@ -179,12 +181,16 @@ loop_start_ = kNoLoopActive;                   // reset; loop is closed
 
 So an AddressHandler loop requires a mandatory non-loop preheader instruction (`loop_start_ >= 1`) and a body of at least two instructions (`loop_length >= 2`). `EndLoop` stamps the loop-start flag and the loop-count into the preheader instruction record, then resets `loop_start_`. The identical Pufferfish check string — *"Pufferfish spec requires that loop must have at least two instructions"* — confirms the same minimum-length rule carries to v4.
 
-The loop body offset is encoded as a **signed multiple of 2**, enforced in the per-generation `Target::InsertAddressHandlerLoop` overrides via the diagnostics *"loop end is out of range or not a positive multiple of 2"* and *"loop start is out of range or not a negative multiple of 2"* (with `loop_iterations % 2 == 0`): `loop_start` is a negative even offset back to the body head, `loop_end` a positive even offset, and the body length is even. The AddressHandler loop persists across v3/v4/v5e via `JellyfishTarget` / `PufferfishTarget` / `ViperfishTarget` overrides of `InsertAddressHandlerLoop`; there is **no** Ghostlite or Trillium override, so the AddressHandler-style hardware loop is dropped at v5p (whether the Viperfish override is live or vestigial is not traced — LOW).
+The loop body is **not** an offset field — the per-generation `Target::InsertAddressHandlerLoop` overrides write a **count** into a dedicated `BarnaCoreAddressHandlerScalarSlot_Loop` proto sub-message. `JellyfishTarget::InsertAddressHandlerLoop` (`0x1d490e00`) re-checks `program_in_loop.bundles_size() >= 2` (the same *"Jellyfish spec requires that loop must have at least two instructions"* string, `target_jellyfish.h:90`), then default-constructs the `Loop` sub-message and stores `loop_count = bundles − 1` (`*(loop + 24) = v30 − 1`) — the body-bundle count minus the preheader, identical to the `loop_count = loop_length − 1` that `EndLoop` stamps. `PufferfishTarget::InsertAddressHandlerLoop` (`0x1d495340`) is the same shape with the *"Pufferfish spec requires that loop must have at least two instructions"* string and the same `bundles − 1` count write.
+
+> **CORRECTION (LOOP-EVEN) —** an earlier draft stated the AddressHandler loop body is a *"signed multiple of 2"* offset, citing the strings *"loop end is out of range or not a positive multiple of 2"* / *"loop start is out of range or not a negative multiple of 2"*. Those two diagnostics belong to LLVM's bundled **ARM** backend (`(anon)::ARMAsmParser::matchAndEmitInstruction` @ `0x15185a20`, the Armv8.1-M low-overhead-loop `WLS`/`LE` validation), **not** to any TPU `InsertAddressHandlerLoop` path. The TPU AddressHandler loop carries an iteration **count** (`bundles − 1`), not a signed even byte-offset; there is no even-multiple constraint in the TPU encode path.
+
+The AddressHandler loop persists across **v3/v4 only** (`JellyfishTarget` / `PufferfishTarget` overrides, both live with real proto construction). The `ViperfishTarget::InsertAddressHandlerLoop` override (`0x1d49b980`) exists but is a `__noreturn` stub that fatals *"Deepsea version not supported"* (`target_viperfish.h:320`) — so the AddressHandler-style hardware loop is **dropped at v5e (Viperfish)**, not v5p; there is no Ghostlite or Trillium override at all. CONFIRMED (the Viperfish override is present-but-dead, traced byte-exactly).
 
 | Element | BarnaCore / AddressHandler (HW loop) | TC / SparseCore (SW loop) | Confidence |
 |---|---|---|---|
 | Loop begin | `bcLOOP_SETUP` (load count) + `bcLOOP_START` (1 bound operand); BCAH `BeginLoop` sets `loop_start_` | preheader: init scalar IV (`MOV` / `ADDri`) | CONFIRMED |
-| Body length | signed even offset (multiple of 2), `≥ 2` instr | implicit (basic-block span) | CONFIRMED / HIGH (offset width) |
+| Body length | `loop_count = bundles − 1` in the `ScalarSlot_Loop` proto; body `≥ 2` instr | implicit (basic-block span) | CONFIRMED |
 | Loop end | `bcLOOP_END` — HW decrement+test+branch-back | `ADDri` + `CMPxx` + `BRcond` back-edge | CONFIRMED |
 | Counter | dedicated HW loop register (1; LCC0/LCC1 on PF) | scalar-reg IV; HW LCC mirrors count (readable) | CONFIRMED |
 | Trip source | bound operand (reg / immediate via SETUP) | `CMPxxri` (imm) or `CMPxxrr` (reg, dynamic) | CONFIRMED |
@@ -210,7 +216,7 @@ Hardware-loop nesting is intentionally bounded:
 - **The bcLOOP field bit positions.** The trip-count immediate field of `bcLOOP_SETUP` and the body-offset fields of `bcLOOP_START` / `bcLOOP_END` within the BarnaCore bundle are routed by the LLVM MC encoder (`TPUMCCodeEmitter`) but the per-opcode `InstBits` records were not byte-decoded. HIGH (the ops and their roles are CONFIRMED; the exact field widths are not).
 - **The silicon counter width.** The 64-bit *readback* (lo+hi) is CONFIRMED; whether the down-counter is the full 64 bits or narrower is not separable from the binary. MEDIUM.
 - **PF LCC0 vs LCC1 assignment policy.** Two counters CONFIRMED; which compiler pass picks LCC0 vs LCC1, and whether the choice tracks nest level or issuing engine, is not traced. LOW.
-- **Viperfish AddressHandler loop liveness.** The `ViperfishTarget::InsertAddressHandlerLoop` override exists; whether it is used at runtime or vestigial was not decompiled. LOW.
+- **The three loop-terminator MC opcodes (`325`, `403`, `328`) and the predicate opcode `540`.** The integers `analyzeLoopForTPUPipelining` matches are byte-exact; their symbolic LLVM-MC names (which of `bcLOOP_END` / branch terminators they correspond to) were not individually resolved. MEDIUM.
 
 ---
 

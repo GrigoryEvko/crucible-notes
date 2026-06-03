@@ -4,7 +4,7 @@
 
 ## Abstract
 
-Before the systolic array of the [MXU slot](slot-mxu.md) can clock a single multiply step it must be *fed*. Feeding the array is three distinct jobs that this page covers, all running through the same `VectorExtended` bundle slot the matmul itself uses: **matprep** stages the moving operand (activations) and prepares the stationary gain matrix; the **IAR** (Index-Add Register) is the per-TensorCore index-register file that drives indexed (gather) memory access into the operand pool; and the **latch** ops load the prepared gain matrix into the array's weight banks. The matmul step itself is the visible op, but the latch/matprep/IAR machinery is what makes it correct and cheap.
+Before the systolic array of the [MXU slot](slot-mxu.md) can clock a single multiply step it must be *fed*. Feeding the array is three distinct jobs that this page covers, all running through the same `VectorExtended` bundle slot the matmul itself uses: **matprep** stages the moving operand (activations) and prepares the stationary gain matrix; the **IAR** (Index Address Register) is the per-TensorCore index-register file that drives indexed (gather) memory access into the operand pool; and the **latch** ops load the prepared gain matrix into the array's weight banks. The matmul step itself is the visible op, but the latch/matprep/IAR machinery is what makes it correct and cheap.
 
 If you have read the LLVM NVPTX backend, the closest analog to the latch is the implicit register-file write that precedes a `wgmma` accumulator group, and the closest analog to the IAR is a base+index addressing mode — except the TPU exposes the index register *as an architectural object* (`IAR0`/`IAR1`) that a `SetIar` op explicitly loads and a `VectorLoadIndexed` op implicitly consumes. There is no per-element index operand; the IAR *is* the index. The latch is weight-stationary in the same sense `wgmma` is accumulator-stationary: one latch amortizes across many matmul steps.
 
@@ -32,7 +32,7 @@ For reimplementation, the contract is:
 
 ---
 
-## The IAR — Index-Add Register
+## The IAR — Index Address Register
 
 ### Purpose
 
@@ -107,7 +107,7 @@ The sole writer of `Target+0x4a8` is the shared `Target::Init` (`sub_1D60FC20`) 
 
 ### IAR Cost — the Perf-Row Sentinel Split
 
-The cost classifier keys the indexed-memory perf row on a sentinel `S = ((iar & 0x1ffffffff) == 0x100000000)` — i.e. *IAR present and index value zero* (an aligned base gather, the cheaper row) versus a nonzero index value (the offset-add row). The seven IAR-class arms of the Ghostlite classifier `GetGhostliteInstruction` (`sub_1C8B1740`) are byte-exact below; the ReadIar/SetIar arms additionally `FATAL` unless bit 32 is set, while `LoadIndexed` tolerates a missing IAR.
+The cost classifier keys the indexed-memory perf row on a sentinel `S = ((iar & 0x1ffffffff) == 0x100000000)` — i.e. *IAR present and index value zero* (an aligned base gather, the cheaper row) versus a nonzero index value (the offset-add row). The seven IAR-class arms of the Ghostlite classifier `GetGhostliteInstruction` (`sub_1C8B1740`) are byte-exact below; the four `ReadIar`/`SetIar` arms additionally `FATAL` (`"iar.has_value()"`) unless bit 32 is set, while the three indexed-memory arms (`LoadIndexed`, `StoreIndexed`, `StoreIndexedMsk`) read `iar()` unconditionally and tolerate a missing IAR.
 
 ```c
 // the IAR-class arms of GetGhostliteInstruction, verified in the decompile
@@ -116,8 +116,8 @@ case 0x02 SetIarLane:     if (!(iar & 1<<32)) FATAL;  return 0x1d5 - ((u32)iar =
 case 0x03 SetIarRaw:      if (!(iar & 1<<32)) FATAL;  return 0x1d9 - ((u32)iar == 0);     // 0x1d8 / 0x1d9
 case 0x04 SetIarSublane:  if (!(iar & 1<<32)) FATAL;  return 0x1d7 - ((u32)iar == 0);     // 0x1d6 / 0x1d7
 case 0x32 LoadIndexed:    /* no bit-32 gate */         return 2*((iar & 0x1ffffffff) != S) + 0x188; // 0x188 / 0x18a
-case 0x40 StoreIndexed:   if (!(iar & 1<<32)) FATAL;  return ((iar & 0x1ffffffff) == S) ^ 0x1d1;     // 0x1d0 / 0x1d1
-case 0x44 StoreIndexedMsk:if (!(iar & 1<<32)) FATAL;  return ((iar & 0x1ffffffff) == S) ^ 0x1d3;     // 0x1d2 / 0x1d3
+case 0x40 StoreIndexed:   /* no bit-32 gate */         return ((iar & 0x1ffffffff) == S) ^ 0x1d1;    // 0x1d0 / 0x1d1
+case 0x44 StoreIndexedMsk:/* no bit-32 gate */         return ((iar & 0x1ffffffff) == S) ^ 0x1d3;    // 0x1d2 / 0x1d3
 ```
 
 | LLO op | name | arm `sub_ADDR` | sentinel-S row | non-S row | Confidence |
