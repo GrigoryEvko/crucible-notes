@@ -21,11 +21,11 @@ For reimplementation, the contract is:
 | | |
 |---|---|
 | **Config object** | `xla::HloInputOutputAliasConfig` (output-shape-tree of `Alias`); `GetAliasedParameter` @ `0x1e580200`, `GetAliasedOutput` @ `0x1e5800a0`, `SetUpAlias` @ `0x1e57e140` |
-| **Alias kinds** | `AliasKind::kMayAlias` / `kMustAlias`; proto tokens `MAY_ALIAS` @ `0xc18c237`, `MUST_ALIAS` @ `0xc18c247` |
+| **Alias kinds** | `AliasKind::kMayAlias` / `kMustAlias`; proto tokens `MAY_ALIAS` @ `0xc18c23a`, `MUST_ALIAS` @ `0xc18c249` |
 | **Front-end declaration** | `xla::XlaBuilder::SetUpAlias` @ `0xfb21220`; `PopulateInputOutputAliasAndBufferDonor` (emits `HloModuleProto`) |
 | **Compile-time pass** | `xla::OptimizeInputOutputBufferAlias::Build` @ `0x164d9b00` (builds config + `HloBufferDonorConfig`) |
 | **Must-donate set** | `xla::ComputeParametersThatMustBeDonated(HloInputOutputAliasConfig&, int, bool)` @ `0x1d7f4700` (`xla/pjrt/utils.cc:824`) |
-| **Donation flag** | `ExecuteOptions::non_donatable_input_indices` (string @ `0x87a48c6`, `0xbf85683`) |
+| **Donation flag** | `ExecuteOptions::non_donatable_input_indices` (diagnostic @ `0x87a48c6`; proto field-name @ `0xbf85686`) |
 | **Donation hold** | `CommonPjRtBuffer::ScopedHold::AcquireDonation` @ `0xf93d600`; `ConfirmDonation` @ `0xf93dca0`; `DropDonationHold` @ `0xf93d900` |
 | **Tracked-buffer confirm** | `xla::TrackedTpuDeviceBuffer::ConfirmDonation` @ `0xf840660` (`tracked_tpu_device_buffer.cc:88`) |
 | **Run-time honor (TPU)** | `tfrt::tpu::AllocateOutputBuffersWithInputReuse` @ `0xf7ba9a0` |
@@ -67,7 +67,7 @@ The config is queried two ways, both `const`:
 | input → output | `GetAliasedOutput(param_number, param_index)` | `0x1e5800a0` | `optional<ShapeIndex>` | CONFIRMED |
 | add an alias | `SetUpAlias(output_index, param_number, param_index, kind)` | `0x1e57e140` | mutates the table | CONFIRMED |
 
-> **NOTE —** the two `AliasKind` values are the spine of the safety model. `kMayAlias` is a *performance hint*: if the caller donates the input, reuse it; if not, the runtime allocates a fresh output and copies. `kMustAlias` is a *requirement*: the program was lowered assuming in-place update (it has no copy-in fallback), so the runtime fatals if the matching input is not donated. The literal proto enum strings `MAY_ALIAS` (`0xc18c237`) and `MUST_ALIAS` (`0xc18c247`) sit adjacent in `.rodata`, and the diagnostic `print-must-aliases` (`0x855e010`) dumps only the mandatory set.
+> **NOTE —** the two `AliasKind` values are the spine of the safety model. `kMayAlias` is a *performance hint*: if the caller donates the input, reuse it; if not, the runtime allocates a fresh output and copies. `kMustAlias` is a *requirement*: the program was lowered assuming in-place update (it has no copy-in fallback), so the runtime fatals if the matching input is not donated. The literal proto enum strings `MAY_ALIAS` (`0xc18c23a`) and `MUST_ALIAS` (`0xc18c249`) sit adjacent in `.rodata` (in the serialized `HloInputOutputAliasProto` enum descriptor), and the diagnostic `print-must-aliases` (`0x855e010`) dumps only the mandatory set.
 
 ### Where the config comes from
 
@@ -106,7 +106,7 @@ PJRT does not carry a per-buffer "donate me" bit on the execute call. It carries
 
 > An input index is **donated** iff it is *absent* from `ExecuteOptions::non_donatable_input_indices`.
 
-Evidence: the run-time diagnostic at `0x87a48c6` — *"pinned_host buffers do not support donation denial at runtime via `ExecuteOptions::non_donatable_input_indices`"* — and the field-name string `non_donatable_input_indices` at `0xbf85683`. Default-constructed `ExecuteOptions` has an empty set, so by default every input that the config marks aliasable is donated.
+Evidence: the run-time diagnostic at `0x87a48c6` — *"pinned_host buffers do not support donation denial at runtime via `ExecuteOptions::non_donatable_input_indices`"* — and the proto field-name string `non_donatable_input_indices` at `0xbf85686`. Default-constructed `ExecuteOptions` has an empty set, so by default every input that the config marks aliasable is donated.
 
 > **GOTCHA —** the polarity is opt-*out*, not opt-*in*. A caller that wants to preserve an input it accidentally marked donatable must add that index to `non_donatable_input_indices`; doing nothing donates it. This is the source of the most common in-place-update bug class: a buffer is silently consumed (invalidated) by an execute because the caller relied on a default-empty deny-list. The donor `PjRtBuffer` becomes unusable after the call (its tracked device buffer is moved out — §4).
 
@@ -145,7 +145,7 @@ The runtime cross-checks this set against the effective donation set (inputs abs
 | `ComputeParametersThatMustBeDonated(HloModule, bool)` | `0x1d7f4580` | same, from a module (extracts config first) | CONFIRMED |
 | `TestBufferDonationClashes` | `0x1d7f4be0` | detect two args resolving to one donated buffer | CONFIRMED |
 | `InferDispatchInfo(client, ComputationLayout&, config&, …)` | `0xf90cb40` | plan dispatch (layouts + aliasing) per launch | CONFIRMED |
-| (deny-list field) `ExecuteOptions::non_donatable_input_indices` | string `0xbf85683` | per-execute opt-out donation flag | CONFIRMED |
+| (deny-list field) `ExecuteOptions::non_donatable_input_indices` | string `0xbf85686` | per-execute opt-out donation flag | CONFIRMED |
 
 ---
 
@@ -196,7 +196,7 @@ The decompiled branch is unambiguous: a per-leaf flag (`v77`) set from the `GetA
 | (reuse lambda) `…::$_0::operator()` | `0xf7bb1c0` | move a donated input buffer into the output slot | CONFIRMED |
 | `CommonPjRtClient::AllocateOutputBuffersWithInputReuse` | `0xf91ec20` | generic (ScopedHold-based) sibling | CONFIRMED |
 | `tfrt::tpu::AllocateTpuBufferWithRetry` | (in `0xf7ba9a0`) | fresh HBM alloc w/ OOM→defrag→retry | CONFIRMED |
-| `TransferSizeUtil::ShapeSizeCompact` | `0x1d6aea60` | size the output leaf's padded device shape | CONFIRMED |
+| `TransferSizeUtil::ShapeSizeCompact` | `0x1d6ae8a0` | size the output leaf's padded device shape | CONFIRMED |
 | `HloInputOutputAliasConfig::GetAliasedParameter` | `0x1e580200` | the per-leaf alias query | CONFIRMED |
 
 ---
