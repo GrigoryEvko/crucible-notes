@@ -53,7 +53,7 @@ The size and field offsets are byte-confirmed: `PJRT_Buffer_Destroy` (`0xf86d020
 
 ### PJRT_Memory handle
 
-`PJRT_Memory` is the C handle for an `xla::PjRtMemorySpace*` (HBM / pinned-host / CPU-device). The C wrapper is produced and cached by the client, not by the buffer: `PJRT_Client_FindMemoryWrapper(PjRtMemorySpace*, PJRT_Client*)` @ `0xf8605e0` maps a C++ memory space to its C wrapper. `PJRT_Buffer_Memory` (slot 71) reads the inner buffer's memory space and round-trips it through this finder; if the finder cannot map it, an `absl` Internal error (code 12) is returned. The five memory-space classes and their `kind` strings:
+`PJRT_Memory` is the C handle for an `xla::PjRtMemorySpace*` (HBM / pinned-host / CPU-device). The C wrapper is produced and cached by the client, not by the buffer: `PJRT_Client_FindMemoryWrapper(PjRtMemorySpace*, PJRT_Client*)` @ `0xf8605e0` linear-scans the client's cached memory-wrapper array (count at `client+0x90`, array base at `client+0x88`) for the wrapper whose inner pointer equals the requested C++ memory space, returning NULL on miss. `PJRT_Buffer_Memory` (slot 71, `0xf86dc60`) reads the inner buffer's memory space (inner vtable+0x58 `memory_space()`) and runs that same scan *inlined*; if no wrapper matches, it returns `xla::Unimplemented("PJRT_Buffer_Memory not implemented for platform '%s'")` (absl code 12), not a successful NULL. The five memory-space classes and their `kind` strings:
 
 | Class | `kind` string | `kind()` addr | vtable |
 |---|---|---|---|
@@ -76,7 +76,7 @@ The 18 slots this page covers, all in the 140-slot `PJRT_Api`. Each wrapper vali
 | 64 | 0x200 | ElementType | `PJRT_Buffer_ElementType` | `0xf86d220` | inner vtable+0x10 `element_type()` + `ConvertToPjRtBufferType` | CERTAIN |
 | 65 | 0x208 | Dimensions | `PJRT_Buffer_Dimensions` | `0xf86d280` | inner vtable+0x18 `dimensions()` → `{ptr,count}` | CERTAIN |
 | 69 | — | OnDeviceSizeInBytes | `PJRT_Buffer_OnDeviceSizeInBytes` | `0xf86da80` | inner vtable+0x88 `GetOnDeviceSizeInBytes()` | CERTAIN |
-| 71 | — | Memory | `PJRT_Buffer_Memory` | (see note) | inner memory_space() + `FindMemoryWrapper` | HIGH |
+| 71 | 0x238 | Memory | `PJRT_Buffer_Memory` | `0xf86dc60` | inner vtable+0x58 `memory_space()` + inlined client-side wrapper lookup | CERTAIN |
 | 72 | 0x240 | Delete | `PJRT_Buffer_Delete` | `0xf86dd80` | inner vtable+0xa0 `Delete()` (eager HBM free) | CERTAIN |
 | 73 | 0x248 | IsDeleted | `PJRT_Buffer_IsDeleted` | `0xf86dde0` | inner vtable+0xb0 `IsDeleted()` | CERTAIN |
 | 74 | 0x250 | CopyToDevice | `PJRT_Buffer_CopyToDevice` | `0xf86e360` | dst-device vtable+0x98 (default mem) + src vtable+0xb8 | CERTAIN |
@@ -125,7 +125,7 @@ The `byte_strides` presence test is the `if (*(a1+0x38))` branch in the decompil
 
 ### The PJRT_HostBufferSemantics enum
 
-The public enum value at `+0x48` is mapped to XLA's internal enum by `pjrt::ConvertFromPjRtHostBufferSemantics` (called at three sites in the decompile — one per memory-space dispatch branch). The enum follows upstream `pjrt_c_api.h` ordering; its meaning gates host-buffer lifetime:
+The public enum value at `+0x48` is mapped to XLA's internal enum by `pjrt::ConvertFromPjRtHostBufferSemantics` @ `0xf8a3f20` (called at four sites in the decompile — one per memory-space dispatch branch). The enum follows upstream `pjrt_c_api.h` ordering; its meaning gates host-buffer lifetime:
 
 | Value | Name | Meaning for the staging copy |
 |---|---|---|
@@ -189,7 +189,7 @@ function PJRT_Client_BufferFromHostBuffer(args):          // 0xf8644c0
 |---|---|---|---|
 | `pjrt::PJRT_Client_BufferFromHostBuffer` | `0xf8644c0` | C wrapper, args validation + marshalling | CERTAIN |
 | `pjrt::ConvertFromPjRtBufferType` | `0xf8a3e60` | `PJRT_Buffer_Type` → `xla::PrimitiveType` | CERTAIN |
-| `pjrt::ConvertFromPjRtHostBufferSemantics` | (called, addr not pinned) | public → XLA semantics enum | HIGH |
+| `pjrt::ConvertFromPjRtHostBufferSemantics` | `0xf8a3f20` | public → XLA semantics enum | CERTAIN |
 | `tsl::internal::PromiseMaker<void>::Make` | (inlined) | builds the `done_with_host_buffer` promise | HIGH |
 | inner client vtable+0x120 | (per-platform) | allocate + schedule host→device DMA | HIGH |
 
@@ -218,7 +218,7 @@ function PJRT_Buffer_ToHostBuffer(args):                  // 0xf86e640
     return NULL
 ```
 
-The raw, un-shaped readback variants are `CopyRawToHost` (slot 105) and `CopyRawToHostFuture` (slot 125), both bouncing inner vtable+0x90; they move bytes without de-tiling and are the typed-buffer mirror of the [RawBuffer extension](ext-rawbuffer.md)'s device→host copy. Use `ToHostBuffer` when the host array must match the logical (linear) shape; use the raw variants for byte-exact device dumps.
+The raw, un-shaped readback variants are `CopyRawToHost` (slot 105, inner vtable+0x90 `CopyRawToHost(void*, off, size)`) and `CopyRawToHostFuture` (slot 125, `0xf86dfe0`, inner vtable+0x98 `CopyRawToHostFuture(Future<void*>, off, size)`); they move bytes without de-tiling and are the typed-buffer mirror of the [RawBuffer extension](ext-rawbuffer.md)'s device→host copy. Use `ToHostBuffer` when the host array must match the logical (linear) shape; use the raw variants for byte-exact device dumps.
 
 > **GOTCHA —** skipping the `DeviceShapeToHostShape` step and `memcpy`-ing the on-device bytes straight to the host gives garbage for any tensor whose extents are not already tile-aligned: the device bytes include tile padding the host layout does not expect. The de-tile is mandatory, not an optimization.
 
@@ -313,11 +313,15 @@ A buffer lives in exactly one memory space; these slots query it and copy the bu
 ### Algorithm
 
 ```c
-function PJRT_Buffer_Memory(args):                         // slot 71
+function PJRT_Buffer_Memory(args):                         // 0xf86dc60, slot 71
     inner   = args[+0x10].impl
-    mem_cpp = inner.memory_space()                         // xla::PjRtMemorySpace*
-    mem_c   = PJRT_Client_FindMemoryWrapper(mem_cpp, args[+0x10].client)   // 0xf8605e0
-    if mem_c == NULL: return Internal("...", code 12)
+    mem_cpp = inner.vtable[+0x58].memory_space()           // xla::PjRtMemorySpace*
+    client  = args[+0x10].client                           // inner XLA client at *(client+0x08)
+    // inlined equivalent of PJRT_Client_FindMemoryWrapper(mem_cpp, client):
+    mem_c   = scan client cache (count @+0x90, array @+0x88) for wrapper whose *wrapper == mem_cpp
+    if mem_c == NULL:
+        args[+0x18] = NULL
+        return Unimplemented("PJRT_Buffer_Memory not implemented for platform '%s'", platform_name)
     args[+0x18] = mem_c
 
 function PJRT_Buffer_CopyToMemory(args):                   // 0xf86e500, slot 97
