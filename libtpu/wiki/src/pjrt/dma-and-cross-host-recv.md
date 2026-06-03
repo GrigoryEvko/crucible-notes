@@ -196,8 +196,10 @@ function PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers(args):  // 0xf85
     //    std::function<void(StatusOr<PjRtCrossHostRecvState>)>:
     notifier = CCrossHostRecvNotifierToCpp(args.notifier_info)   // 0xf85d6e0 thunk
 
-    // 3. Call the inner client. device = a1[2] inner @ *device; bounce +0x150:
-    inner = *(*(args + 0x10))                          // TpuClient (a1[2] = device handle)
+    // 3. Call the inner client. Client = a1[2] (args+0x10, double-deref);
+    //    device = a1[8] (args+0x40, single-deref). Bounce +0x150:
+    inner  = *(*(args + 0x10))                          // TpuClient (client wrapper @ a1[2])
+    device = *(args + 0x40)                             // PjRtDevice (a1[8])
     status_or_recv = inner.vtable[+0x150](inner, shapes.data, shapes.size,
                                           device, notifier)      // StatusOr<vector<PjRtBuffer*>>
     if status_or_recv is error: cleanup; return new PJRT_Error{ status }
@@ -221,14 +223,14 @@ Two facts pin this down. First, the per-buffer wrapper is allocated with `operat
 
 ### The C-to-C++ notifier adapter
 
-The recv-descriptor delivery is a callback bridge. The C caller supplies a `PJRT_Transfers_CrossHostRecvNotifierInfo` (function pointer + user data) at `args+0x48`; `pjrt::CCrossHostRecvNotifierToCpp` @ `0xf85d6e0` wraps it in a `std::function<void(StatusOr<PjRtCrossHostRecvState>)>` whose body marshals the C++ `PjRtCrossHostRecvState` (the descriptor set) back into the C `PJRT_Transfers_CrossHostRecvNotifierInfo` callback. The `__policy` thunks at `0xf85dbc0` / `0xf85de00` are the `std::function` clone/destroy machinery for that adapter. When the inner client has gathered the recv descriptors (after the underlying ICI/megascale endpoints are established), it invokes the C++ function, which calls the original C callback with the descriptors the receiver must ship to the sender.
+The recv-descriptor delivery is a callback bridge. The C caller supplies a `PJRT_Transfers_CrossHostRecvNotifierInfo` (function pointer + user data) at `args+0x48`; the adapter `pjrt::(anon)::CCrossHostRecvNotifierToCpp` is realized as the `std::function` `__call_func` invoker at `0xf85d6e0` (`__policy_func<void(StatusOr<PjRtCrossHostRecvState>)>`), whose body marshals the C++ `PjRtCrossHostRecvState` (the descriptor set) back into the C `PJRT_Transfers_CrossHostRecvNotifierInfo` callback. The nested-lambda `__call_func` invokers at `0xf85dbc0` (the C-callback `void(const char*, size_t, PJRT_Error_Code, …)` shape) and `0xf85de00` (the `void(absl::Status)` shape) carry out the inner marshalling steps; the matching `std::function` clone/destroy machinery lives in `__large_clone` @ `0xf85de80` and `__large_destroy` @ `0xf85dee0`. When the inner client has gathered the recv descriptors (after the underlying ICI/megascale endpoints are established), it invokes the C++ function, which calls the original C callback with the descriptors the receiver must ship to the sender.
 
 ### Function Map
 
 | Function | Addr | Role | Confidence |
 |---|---|---|---|
 | `pjrt::PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers` | `0xf85c9a0` | C wrapper; build shapes, call, wrap buffers | CERTAIN |
-| `pjrt::BuildXlaShapeFromC` | (called) | C shape tuple → `xla::Shape` (320 bytes) | HIGH |
+| `pjrt::BuildXlaShapeFromC` | `0xf8a59e0` | C shape tuple → `xla::Shape` (320 bytes) | CERTAIN |
 | `pjrt::(anon)::CCrossHostRecvNotifierToCpp` | `0xf85d6e0` | C notifier → `std::function` adapter | CERTAIN |
 | `xla::TpuClient::MakeCrossHostReceiveBuffers` | `0xf808e60` | TPU inner impl (client vtable `+0x150`) | CERTAIN |
 | `xla::MegaScalePjRtClient::MakeCrossHostReceiveBuffers` | `0xe6ed9e0` | cross-pod inner impl | HIGH |
@@ -270,16 +272,17 @@ The inner `xla::CommonPjRtBufferImpl::CopyToRemoteDevice` @ `0xf91c8c0` does the
 
 ```c
 function CommonPjRtBufferImpl::CopyToRemoteDevice(this, desc_future, on_done):  // 0xf91c8c0
-    dev_event   = this.vtable[+0x68].device_event_or_promise(this)   // +104
+    dev_event   = this.vtable[+0x68](this)                           // +104, device-event obj
     raw_hold    = CommonPjRtBuffer::AcquireScopedRawBuffer(this)      // pin the source bytes
     if raw_hold is error:
-        on_done(raw_hold.status, false); return
+        on_done(raw_hold.status, false); return                      // on_done @ a3+0x10
     transfer_mgr = this.vtable[+0x58](this)                          // +88, the transfer manager
-    // bounce the device-event object's +0x260 slot to issue the actual DCN send:
-    transfer_mgr.vtable[+0x260](transfer_mgr, raw_buffer, desc_future, on_done, dev_event, ...)
+    // bounce the DEVICE-EVENT object's +0x260 slot to issue the actual DCN send;
+    // transfer_mgr is passed as the first argument, not the receiver:
+    dev_event.vtable[+0x260](dev_event, transfer_mgr, raw_buffer, desc_future, on_done, ...)
 ```
 
-`AcquireScopedRawBuffer` pins the source buffer's device bytes for the duration of the send (the same external-reference mechanism the [RawBuffer extension](ext-rawbuffer.md) uses), so the source cannot be `Delete`d mid-flight. The final bounce at device-event vtable `+0x260` (`608`) hands the raw buffer, the descriptor future, and the `on_done` callback to the transfer manager, which schedules the cross-host DMA over the DCN. The actual wire transport — ICI links, megascale routing, the DMA descriptor format — is owned by [`../ici/dma-descriptor.md`](../ici/dma-descriptor.md) and [`../megascale/overview.md`](../megascale/overview.md); this page stops at the C-ABI and the buffer-side pin.
+`AcquireScopedRawBuffer` pins the source buffer's device bytes for the duration of the send (the same external-reference mechanism the [RawBuffer extension](ext-rawbuffer.md) uses), so the source cannot be `Delete`d mid-flight. The final bounce is on the **device-event** object's vtable slot `+0x260` (`608`), with the transfer manager (from buffer vtable `+0x58`) passed as the first argument alongside the raw buffer, the descriptor future, and the `on_done` callback; that call schedules the cross-host DMA over the DCN. (On the raw-buffer-acquisition failure path the wrapper instead invokes `on_done` directly through the callback object at `a3+0x10`, with `bool = false`.) The actual wire transport — ICI links, megascale routing, the DMA descriptor format — is owned by [`../ici/dma-descriptor.md`](../ici/dma-descriptor.md) and [`../megascale/overview.md`](../megascale/overview.md); this page stops at the C-ABI and the buffer-side pin.
 
 > **GOTCHA —** `CopyToRemoteDevice` reports errors **only** through `on_done`, never through its return value (the C wrapper returns `NULL` once the send is *scheduled*, even if the send later fails). A reimplementer that checks the returned `PJRT_Error*` for transfer success will miss every runtime failure. The `bool` second argument to `on_done` distinguishes a completed send from an aborted one; the `absl::Status` carries the failure. Wire your completion logic to the callback, not the call.
 
