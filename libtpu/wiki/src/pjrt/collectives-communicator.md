@@ -8,7 +8,7 @@ A multi-host TPU job has two cooperation problems, and PJRT solves them in two d
 
 This page owns the *PJRT-level distributed-coordination C-ABI surface*: the key/value get/put primitives a host framework (JAX, TF) uses to rendezvous across processes, the coordination agent the plugin bootstraps from, and how client creation threads that agent down into the megascale/ICI bring-up. It is **not** the on-device collective algorithms — those are in [On-Pod Collectives](../collectives/overview.md) — nor the in-process `Collectives` PJRT extension (type 21), which is a CPU-executor-backed surface unrelated to TPU multi-host coordination; that lives in the [PJRT Extension Chain](extension-chain.md). It is also distinct from the chip-fabric rendezvous run by `MegaScaleTransport`, documented in [Megascale Bootstrap](../megascale/bootstrap/overview.md).
 
-The central finding, stated up front so a reimplementer is not misled by the upstream PJRT C header: **this build advertises no `PJRT_KeyValueStore` struct and no `PJRT_KeyValueGetCallback` / `PJRT_KeyValuePutCallback` function-pointer typedefs.** The KV-store surface that the canonical OpenXLA `PJRT_Client_Create` accepts is *not* a discrete extension here. Cross-process coordination is instead reached through the **`tsl::CoordinationServiceAgent`** abstract interface (the XLA distributed-runtime agent), surfaced over a flat C ABI as the `TF_CoordinationService*KeyValue*` thunks and as two plugin-agent classes. The KV semantics are identical to the upstream `xla::KeyValueStoreInterface`; the binding shape is different.
+The central finding, stated up front so a reimplementer is not misled by the upstream PJRT C header: **this build advertises no `PJRT_KeyValueStore` struct and no `PJRT_KeyValueGetCallback` / `PJRT_KeyValuePutCallback` function-pointer typedefs.** The KV-store surface that the canonical OpenXLA `PJRT_Client_Create` accepts is *not* a discrete extension here. Cross-process coordination is instead reached through the **`tsl::CoordinationServiceAgent`** abstract interface (the XLA distributed-runtime agent), reached over a flat C ABI via the `TF_CoordinationService*KeyValue*` calls — present in libtpu only as `WEAK UND` import stubs bound at runtime to the host TF runtime — and through two in-binary plugin-agent classes. The KV semantics are identical to the upstream `xla::KeyValueStoreInterface`; the binding shape is different.
 
 > **GOTCHA —** a reimplementer who drives off the upstream `pjrt_c_api.h` will look for a `kv_get_callback` / `kv_put_callback` pair inside the `PJRT_Client_Create_Args`. They are absent from libtpu's main table and from all 17 extensions. The coordination wiring is supplied to the plugin out-of-band (via the coordination agent installed on the process), not as create-time callbacks. Do not synthesize a KV-store extension to match the header — document the agent surface that is actually present.
 
@@ -70,12 +70,12 @@ The two `InsertKeyValue` overloads (`@0x1dafe660` and `@0x1dafe680`, mangled suf
 
 ### The async callback shape
 
-`GetKeyValueAsync` (and its dir twin) is the load path a non-blocking rendezvous uses. The continuation is a `std::function<void(const absl::StatusOr<std::string>&)>` — confirmed by the mangled type `…NS1_8functionIFvRKN4absl8StatusOrINS1_12basic_stringIcS4_NS1_9allocatorIcEEEEEEEE` at `0x1dafdc20`. The decompiled prologue takes `(this, key_ptr, key_len, function*)` and clones the callable into the agent's pending table (`__policy::__large_clone` thunks at `0x1dafec40` / `0x1dafee80`), so the callback outlives the call frame and fires when the coordinator returns the value. This is the analog of an async `kv_get`.
+`GetKeyValueAsync` (and its dir twin) is the load path a non-blocking rendezvous uses. The continuation is a `std::function<void(const absl::StatusOr<std::string>&)>` — confirmed by the mangled type `…NS1_8functionIFvRKN4absl8StatusOrINS1_12basic_stringIcS4_NS1_9allocatorIcEEEEEEEE` at `0x1dafdc20`. The decompiled prologue takes `(this, key_ptr, key_len, function*)` and clones the callable into the agent's pending table (the `GetKeyValueAsync` lambdas' `__policy::__large_clone` thunks at `0x1dafee80` (`$_0`) and `0x1daff180` (`$_1`)), so the callback outlives the call frame and fires when the coordinator returns the value. This is the analog of an async `kv_get`.
 
 ```c
 // tsl::CoordinationServiceAgent::GetKeyValueAsync   @0x1dafdc20
 function GetKeyValueAsync(key /*string_view*/, done /*function<void(const StatusOr<string>&)>*/):
-    clone done into the agent's pending-request table   // __large_clone @0x1dafec40
+    clone done into the agent's pending-request table   // __large_clone @0x1dafee80
     issue GetKeyValueRequest{ key } over the coordination channel
     // on response: invoke done(StatusOr<string>) from the agent's callback thread
 ```
@@ -90,19 +90,19 @@ Every primitive in §2 is reached through one of three layers, all bottoming out
 
 ### Layer A — C-ABI thunks (`TF_CoordinationService*`)
 
-A flat C ABI mirrors the agent for callers that cannot use C++ name-mangled symbols (the plugin's own C boundary, and any out-of-tree consumer). Each is a PLT thunk at `0x213f0…` forwarding to the real implementation at `0x22860…`:
+A flat C ABI mirrors the agent for callers that cannot use C++ name-mangled symbols (the plugin's own C boundary, and any out-of-tree consumer). Each `TF_CoordinationService*` name is a **`WEAK` `UND` import** in this binary (value `0x0` in `.dynsym`, nm class `w`) — libtpu does *not* define these; it carries only a `.plt` stub per name. The stub at `0x213f0…` does an indirect `jmp *[GOT]` through a `.got.plt` slot that the dynamic loader binds at runtime to the definition supplied by the *host* framework's TF runtime (the same process that installs the coordination agent), or stays unbound if the framework is absent. The thunk and its GOT slot:
 
-| C-ABI entry | Thunk addr | Impl addr | Maps to |
+| C-ABI entry | `.plt` thunk | `.got.plt` slot | Maps to |
 |---|---|---|---|
-| `TF_GetCoordinationServiceAgent` | `0x213f0a10` | `0x22860de8` | obtain the process agent handle |
-| `TF_CoordinationServiceIsInitialized` | `0x213f0bc0` | `0x22860ec0` | `IsInitialized` |
-| `TF_CoordinationServiceInsertKeyValue` | `0x213f0b70` | `0x22860e98` | `InsertKeyValue` |
-| `TF_CoordinationServiceGetKeyValue` | `0x213f0b80` | `0x22860ea0` | `GetKeyValue` (blocking) |
-| `TF_CoordinationServiceGetKeyValueWithTimeout` | `0x213f0b90` | `0x22860ea8` | `GetKeyValue(key, timeout)` |
-| `TF_CoordinationServiceTryGetKeyValue` | `0x213f0ba0` | `0x22860eb0` | `TryGetKeyValue` |
-| `TF_CoordinationServiceDeleteKeyValue` | `0x213f0bb0` | `0x22860eb8` | `DeleteKeyValue` |
+| `TF_GetCoordinationServiceAgent` | `0x213f0a10` | `0x224c2a80` | obtain the process agent handle |
+| `TF_CoordinationServiceInsertKeyValue` | `0x213f0b70` | `0x224c2b30` | `InsertKeyValue` |
+| `TF_CoordinationServiceGetKeyValue` | `0x213f0b80` | `0x224c2b38` | `GetKeyValue` (blocking) |
+| `TF_CoordinationServiceGetKeyValueWithTimeout` | `0x213f0b90` | `0x224c2b40` | `GetKeyValue(key, timeout)` |
+| `TF_CoordinationServiceTryGetKeyValue` | `0x213f0ba0` | `0x224c2b48` | `TryGetKeyValue` |
+| `TF_CoordinationServiceDeleteKeyValue` | `0x213f0bb0` | `0x224c2b50` | `DeleteKeyValue` |
+| `TF_CoordinationServiceIsInitialized` | `0x213f0bc0` | `0x224c2b58` | `IsInitialized` |
 
-The impl half (`0x22860…`) did not yield Hex-Rays pseudocode (`decompile returned no cfunc`) — these are thin status-marshalling wrappers whose body is best read in the disasm sidecar. Their shape is fixed by Layer B below, which calls them.
+There is **no in-binary implementation** to disassemble — the `.plt` stub is the whole of libtpu's footprint for these calls. A reimplementer must supply the definitions out-of-band (they are part of TF's `c_api_coordination` surface), exactly as the runtime that loads libtpu does. The call *shape* is fixed by Layer B below, which is the in-binary caller.
 
 ### Layer B — plugin agents
 
@@ -117,11 +117,11 @@ Both are obtained from an op-kernel context via `GetPluginCoordinationServiceAge
 // tensorflow::CPluginCoordinationServiceAgent::InsertKeyValue   @0xe71e260
 function InsertKeyValue(key /*string_view*/, value /*string_view*/) -> Status:
     status = TF_NewStatus()
-    TF_CoordinationServiceInsertKeyValue(                 // → 0x22860e98
+    TF_CoordinationServiceInsertKeyValue(                 // .plt 0x213f0b70 → host TF runtime
         key.data, key.size, value.data, value.size,
         self->c_agent /* self+8 */, status)
-    result = StatusFromTF_Status(status)                 // 0xF8BB9E0-family
-    TF_DeleteStatus(status)
+    result = StatusFromTF_Status(status)                 // tsl::StatusFromTF_Status @0x10900bc0
+    if (status) TF_DeleteStatus(status)
     return result
 ```
 
@@ -144,7 +144,7 @@ The KV primitives serialize to `xla.coordination` protobuf messages — the same
 | `TryGetKeyValueRequest` | (present in symbol table) | non-blocking get |
 | `GetKeyValueDirRequest` | `Clear` `0x20812ee0` | dir enumeration |
 
-The `tensorflow::` C++ namespace on these protos (vs the `xla.coordination` protobuf *package*) is the historical TF→XLA migration artifact; they are the coordination-service messages. Response handling on the C side runs through `tensorflow::ProcessGetKeyValueResult(TF_Buffer*, TSL_Status*)` @`0xe71e360`.
+The `tensorflow::` C++ namespace on these protos (vs the `xla.coordination` protobuf *package*) is the historical TF→XLA migration artifact; they are the coordination-service messages. Response handling on the C side runs through `tensorflow::(anonymous namespace)::ProcessGetKeyValueResult(TF_Buffer*, TSL_Status*)` @`0xe71e360`.
 
 > **NOTE —** these `xla.coordination.*KeyValue*` messages are a distinct protobuf type tree from the `xla.megascale.runtime.*` messages used by the chip-fabric rendezvous. The two share *names* (e.g. both define a `BarrierRequest`) but never share a wire schema or a barrier ID. See [Megascale Bootstrap §Cross-References](../megascale/bootstrap/overview.md) for the split.
 
@@ -162,7 +162,7 @@ GetPjrtApi  @0xe6a83a0
                    @0x10849c60   (registry singleton: PjrtClientFactoryRegistry::Get @0x10849a60)
 ```
 
-`PjrtClientFactoryOptions` is the struct that carries the per-process distributed identity (process index, process count, and the coordination handle) into the factory. The factory registry pattern — `Get()` returns the singleton, `GetPjrtClient(device_type, options)` dispatches to the registered TPU factory — is the seam where a multi-host build attaches its coordination agent. The TF-side path (`tensorflow::GetPjRtClient` / `GetPjRtClientWrapper` / `PjRtState::GetPjRtClient`, around `0xe7…`) wraps the same factory for the TF runtime.
+`PjrtClientFactoryOptions` is the struct that carries the per-process distributed identity (process index, process count, and the coordination handle) into the factory. The factory registry pattern — `Get()` returns the singleton, `GetPjrtClient(device_type, options)` dispatches to the registered TPU factory — is the seam where a multi-host build attaches its coordination agent. The TF-side path (`tensorflow::GetPjRtClient` @`0x10848a40`, `PjRtState::GetPjRtClient` @`0x10848ca0`, `GetPjRtClientWrapper` @`0xf79caa0`) wraps the same factory for the TF runtime.
 
 ### The bootstrap handoff
 
@@ -193,8 +193,8 @@ The arrows are one-way: the coordination KV rendezvous must converge before mega
 
 | Surface | Status in this build | Evidence |
 |---|---|---|
-| `tsl::CoordinationServiceAgent` KV methods (get/insert/delete/dir/async) | PRESENT | 35 `…CoordinationServiceAgent…KeyValue…` symbols |
-| `TF_CoordinationService*KeyValue*` C-ABI thunks | PRESENT | thunks `0x213f0a10`–`0x213f0bc0` → impls `0x22860…` |
+| `tsl::CoordinationServiceAgent` KV methods (get/insert/delete/dir/async) | PRESENT | 19 KV method symbols across the 3 agent classes (9 `tsl::` base + 5 `CPlugin` + 5 `DirectPlugin`) |
+| `TF_CoordinationService*KeyValue*` C-ABI thunks | PRESENT (as `WEAK UND` imports) | `.plt` stubs `0x213f0a10`–`0x213f0bc0` → `.got.plt` slots `0x224c2a80`/`0x224c2b30`–`0x224c2b58`; definitions resolved from host TF runtime |
 | `CPlugin` / `DirectPlugin` coordination agents | PRESENT | `0xe71e260`-family / `0xe71c5c0`-family |
 | `xla.coordination` KV protos | PRESENT | `Get/Insert/Delete/TryGet/Dir` request/response + `KeyValueEntry` |
 | `PjrtClientFactoryRegistry` + `PjrtClientFactoryOptions` | PRESENT | `0x10849c60`, `0x10849a60` |
