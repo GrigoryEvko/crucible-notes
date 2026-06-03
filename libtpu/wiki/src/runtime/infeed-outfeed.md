@@ -90,7 +90,7 @@ So the queue handle is *ephemeral*: the caller holds a `TpuCoreLocation` and an 
 The host literal cannot go to the queue as-is; the device wants its own tiled layout. The contract, identical on both PJRT entry points:
 
 1. **Host shape → device shape.** `xla::jellyfish::TransferSizeUtil::HostShapeToDeviceShape(out_shape, system, host_shape, 0, 0, 1)` computes the on-device shape (tiling, padding). Infeed: `TpuDevice::TransferToInfeed` line ~`0xf7ff540+…`. Outfeed: `TransferFromOutfeed` @ `0xf7ffca0`.
-2. **Element-type gate.** Outfeed verifies `xla::jellyfish::HardwareLayout::SupportedPrimitiveType(element_type)`; an unsupported dtype returns `Unimplemented("Transferring data with element type %s has not been implemented on TPUs.")` (`outfeed_utils.cc`). Infeed relies on the linearizer's own checks.
+2. **Element-type gate.** Outfeed verifies `xla::jellyfish::HardwareLayout::SupportedPrimitiveType(element_type)`; an unsupported dtype returns `Unimplemented("Attempted to transfer array of shape %s from a TPU device. Transferring data with element type %s has not been implemented on TPUs.")` (`outfeed_utils.cc`). Infeed relies on the linearizer's own checks.
 3. **Linearize (infeed) / delinearize (outfeed).** Infeed calls `xla::jellyfish::LiteralLinearizer::LinearizeToBuffers(system, literal, device_shape, &buffers, …)` producing a vector of device-layout byte buffers; the last argument `v12 = (GetInfeedQueues()[0]+64 == 1)` selects a packing variant. Outfeed allocates a `posix_memalign`-aligned receive buffer, dequeues into it, then `xla::jellyfish::LiteralLinearizer::Delinearize(topology, device_shape, raw_buffer, byte_count/4, layout, system)` reshapes the raw device bytes back into the caller's `MutableBorrowingLiteral`.
 4. **Tuple handling (outfeed).** `TransferFromOutfeed` walks `ShapeUtil::TupleElementCount` and calls `TransferFromOutfeedHelper` once per tuple leaf (each leaf gets its own `MutableBorrowingLiteral` view at index `i`); a non-tuple shape is a single call. Outfeed also has a fast `TransferX64OrX128FromOutfeedHelper` arm for 64-bit and 128-bit element widths (`ElementHasBitWidth(64)` / `(128)`).
 
@@ -210,7 +210,7 @@ fn[384](ctx);                            // slot +384 = free status carrier
 return status;
 ```
 
-Outfeed (`TransferLiteralFromOutfeed` @ `0xe972660`) is identical except it marshals **two** C structs (`ApiConverter::ToC(literal.shape())` into a shape carrier *and* `ApiConverter::ToC(LiteralSlice(literal))` into a literal carrier) and calls **slot +576** instead of +560. The leaf exports `TpuExecutor_EnqueueInfeed` @ `0xeab9680` and `TpuExecutor_DequeueOutfeed` @ `0xeab96c0` forward into `deepsea::executor::DeepseaExecutor::EnqueueInfeed` / `DequeueOutfeed` inside the TPU driver core:
+Outfeed (`TransferLiteralFromOutfeed` @ `0xe972660`) is identical except it marshals **two** C structs (`ApiConverter::ToC(literal.shape())` into a shape carrier *and* `ApiConverter::ToC(LiteralSlice(literal))` into a literal carrier) and calls **slot +576** instead of +560. The leaf exports `TpuExecutor_EnqueueInfeed` @ `0xeab9680` and `TpuExecutor_DequeueOutfeed` @ `0xeab96c0` forward into the `deepsea::executor::DeepseaExecutor::EnqueueInfeed` (@ `0x1d0dbbe0`) / `DequeueOutfeed` (@ `0x1d0dc160`) layer in this same binary:
 
 ```c
 // TpuExecutor_EnqueueInfeed   sub_EAB9680   (the C-ABI export the +560 slot targets)
@@ -218,7 +218,7 @@ result = deepsea::executor::DeepseaExecutor::EnqueueInfeed(*executor);
 // result is an absl::Status; refcount-managed into *out_status
 ```
 
-> **NOTE — slot numbers are the contract.** The legacy path's only libtpu-visible knobs are the `TfTpu_ExecutorApiFn` table offsets: **+560** = infeed enqueue, **+576** = outfeed dequeue, **+360** = status-carrier ctor, **+392/+400/+408/+384** = message/code/ok/destroy. These are part of the TPU-driver C-ABI (a separate task; not the full table). A reimplementer of the *legacy* path reproduces the marshalling and these slot calls, not the linearizer — the driver owns layout. Confidence: CONFIRMED for the slot numbers and call shape; the driver-internal linearization is opaque from `libtpu.so`. (LOW on the exact `DeepseaExecutor::EnqueueInfeed` body — it is in the driver core, not decompiled here.)
+> **NOTE — slot numbers are the contract.** The legacy path's only libtpu-visible knobs are the `TfTpu_ExecutorApiFn` table offsets: **+560** = infeed enqueue, **+576** = outfeed dequeue, **+360** = status-carrier ctor, **+392/+400/+408/+384** = message/code/ok/destroy. These are part of the TPU-driver C-ABI (a separate task; not the full table). A reimplementer of the *legacy* path reproduces the marshalling and these slot calls, not the linearizer — the driver owns layout. Confidence: CONFIRMED for the slot numbers and call shape. The `DeepseaExecutor::EnqueueInfeed(int, Span<uint8>)` body *is* present in this binary (`0x1d0dbbe0`; the callback-carrying overload `0x1d0dbe20`): it takes a `DeepseaPlatform::ScopedRef`, resolves the per-index queue object through the executor's queue table (vtable +48), and calls that queue's enqueue (vtable +48) on the already-marshalled span. What stays opaque from `libtpu.so` is the layout/linearization the driver performs *before* this point and the silicon FIFO write *below* the queue object, not the executor enqueue itself.
 
 ---
 
