@@ -6,7 +6,7 @@
 
 Every TensorCore generation prices its instructions through a per-generation `Performance` object: a flat per-instruction latency array plus a two-dimensional **Instruction × Resource** occupancy grid. The grid is the libtpu analog of an LLVM `SchedMachineModel` — a `ProcResource`/`WriteRes` table — except it is reconstructed by reading the constructor that fills it, not declared in a `.td` file. Given an instruction's row and a resource column, `GetResourceUsage(instr, res)` returns how many cycles that instruction holds that micro-pipeline port; `GetLatency(instr)` returns the instruction's pipeline depth. These two reads feed the scheduler's throughput and dependency models.
 
-Two distinct C++ class families implement this idea across six codenames. The **flat** family — `Jellyfish`/`Dragonfish` (`platforms_deepsea::jellyfish::isa::Performance`) — stores costs in a single 3584-byte inline POD and resolves an instruction to one cell through an offset LUT, with a separate `CycleTable::GetResource` LUT mapping each instruction to one of 7 resource columns; there is no 2D grid and no `GetResourceUsage`. The **grid** family — `Pufferfish`, `Viperfish`, and the two `GhostlitePerformance` variants (`Ghostlite`/v6e and `Trillium`/v7, internally "GhPerf") — heap-allocates a latency array and a 2D grid of `std::vector<int>` rows, read by a byte-identical `GetResourceUsage` across all four. The architecture changed at Pufferfish: the inline-POD-plus-offset-LUT model gave way to the heap-grid model that the rest of the line uses.
+Two distinct C++ class families implement this idea across six codenames. The **flat** family — `Jellyfish`/`Dragonfish` (`platforms_deepsea::jellyfish::isa::Performance`) — stores costs in a single 3584-byte inline POD and resolves an instruction to one cell through an offset LUT, with a separate `CycleTable::GetResource` LUT mapping each instruction to one of 7 resource columns; there is no 2D grid and no `GetResourceUsage`. The **grid** family — `Pufferfish`, `Viperfish`, and the two `GhostlitePerformance` variants (`Ghostlite`/v6e, built by `GlcCycleTable`, and `6acc60406`/v7x, built by `GfcCycleTable`; both internally "GhPerf") — heap-allocates a latency array and a 2D grid of `std::vector<int>` rows, read by a byte-identical `GetResourceUsage` across all four. The architecture changed at Pufferfish: the inline-POD-plus-offset-LUT model gave way to the heap-grid model that the rest of the line uses.
 
 This page is the framing reference for the family. It documents the shared object layout, the `GetResourceUsage`/`GetLatency` read paths, the resource-count progression (7→7→20→28→31→31), the way an opcode reaches a grid row through the per-gen `Get<Gen>Instruction` classifier, and the matrix-result/Xlu deposit column that the convolution cost model reads (the conv `R[2]` cell). The per-generation grids — their populated cells, latency arrays, and column-by-column naming — get their own pages; this page explains the axes those pages dump. A parallel per-opcode metadata table, `opcode_produced_register_type`, classifies every LLO opcode by the register class its destination produces; it is documented here because it is the same kind of per-opcode lookup the grids key on, and because the convolution-window cost path gates a DMA-level merge on it.
 
@@ -21,10 +21,10 @@ For reimplementation, the contract is:
 | | |
 |---|---|
 | **Flat family** | `platforms_deepsea::jellyfish::isa::Performance` — `PerformanceJf` `@0x1d4930c0`, `PerformanceDf` `@0x1d493060` |
-| **Grid family** | `Pufferfish`/`Viperfish`/`GhostlitePerformance` (Ghostlite v6e, Trillium v7 "GhPerf") |
+| **Grid family** | `Pufferfish`/`Viperfish`/`GhostlitePerformance` (Ghostlite v6e via `GlcCycleTable`, `6acc60406` v7x via `GfcCycleTable`; both "GhPerf") |
 | **Flat read path** | `JfCycleTable::GetCyclesForThroughput` `@0x1c89dce0`; `CycleTable::GetResource` LUT `@0xb438aec` |
 | **Grid read path** | `GhostlitePerformance::GetResourceUsage` `@0x1c8d3700`; PF `@0x1c8c3880`; VF `@0x1c8cbc40` |
-| **GF (Trillium) ctor** | GhPerf ctor `@0x1c8d3740` — latency `new 0x744` (465 int32), grid `new 0x2b98` (465 × 24), rows 31 wide |
+| **GF (`6acc60406`) ctor** | GhPerf ctor `@0x1c8d3740` (unnamed/mis-symbolized) — latency `new 0x744` (465 int32), grid `new 0x2b98` (465 × 24), rows 31 wide |
 | **GL (Ghostlite) ctor** | `GhostlitePerformanceC1` `@0x1c8cbc80` — latency `new 0x770` (476), grid `new 0x2ca0` (476 × 24), 31 wide |
 | **Resource progression** | 7 (JF) → 7 (DF) → 20 (PF) → 28 (VF) → 31 (GL) → 31 (GF) |
 | **Xlu deposit column** | PF res 6 (conflict-penalty) · VF res 0x0e · GL res 0x0f · GF res 0x10 — cell = 4 for matrix-result ops |
@@ -68,7 +68,7 @@ The companion `CycleTable::GetResource(instr) @0x1c89ce20` is a plain LUT read, 
 
 > **NOTE —** the `Performance::Instruction` axis is *not* the raw LLO opcode. `CycleTableInstruction @0x1c89ca80` classifies only the MXU band — matmul opcodes `0x8d..0x96` via `latch_mode()`, matprep/matpush `0x9b..0xa5` via `matmul_data_format()` — into the 33-value enum; all other opcodes are priced through other `CycleTable` paths. The MXU throughput cell is 8 cycles uniformly across JF/DF; the JF→DF speedup lives in the matmul base latency (88→66), not the throughput.
 
-### The grid family (Pufferfish, Viperfish, Ghostlite, Trillium)
+### The grid family (Pufferfish, Viperfish, Ghostlite, `6acc60406`)
 
 PF/VF/GL/GF heap-allocate two objects: a flat latency array indexed by `Instruction`, and a 2D grid of one `std::vector<int>` per instruction, each vector being `N` resources wide. The object layout is identical across all four, only the widths differ:
 
@@ -89,7 +89,7 @@ struct GridPerformance {            // built by the per-gen ctor (table below)
 | PF (Pufferfish) | `@0x1c8be080` | `new 0x540` | 336 | `new 0x1f80` (336 × 24) | `new 0x50` = 20 | 265 |
 | VF (Viperfish) | `@0x1c8c4840` | `new 0x600` | 384 | `new 0x2400` (384 × 24) | `new 0x70` = 28 | 378 |
 | GL (Ghostlite, v6e) | `@0x1c8cbc80` | `new 0x770` | 476 | `new 0x2ca0` (476 × 24) | `new 0x7c` = 31 | 358 |
-| GF (Trillium, v7) | `@0x1c8d3740` | `new 0x744` | 465 | `new 0x2b98` (465 × 24) | `new 0x7c` = 31 | 285 |
+| GF (`6acc60406`, v7x) | `@0x1c8d3740` | `new 0x744` | 465 | `new 0x2b98` (465 × 24) | `new 0x7c` = 31 | 285 |
 
 The latency array is memset to `0xff` (255). On PF/VF every slot is subsequently overwritten — the default does not survive. On GL/GF only the priced instructions (~92 GF / ~132 GL rows) are written; the rest keep `0xff = 255`, and those unpriced instructions take their cost from a fallback `CycleTable::GetResource` path rather than the grid.
 
@@ -132,7 +132,7 @@ function LatencyTableGhostlite_GetXluPathReservation(this, value):   // @0x1c8b2
     return GhostlitePerformance::GetResourceUsage(this.perf /*[this+0x1d0]*/, instr, 15)   // res 0x0f
 ```
 
-The VF accessor `@0x1c8a3200` is the same shape with `res = 0x0e` and a hardcoded `8`/`1` for the permute-pattern opcode. PF has no direct Xlu grid column at all: its conv/transpose Xlu cost is priced by a separate `XluConflictPenaltyTable` (`XposeXLUReservationLatency @0x1c8a13e0`), the per-gen structural difference. The Xlu cell (=4) is the missing numeric for the Trillium conv cost triple, whose other two terms come from the [MXU reservation matrix](mxu-latency-gf.md): `R[0]` matpush {2 bf16 / 4 fp8}, `R[1]` matmul {4 bf16 / 8 fp8}, `R[2]` Xlu {4}.
+The VF accessor `@0x1c8a3200` is the same shape with `res = 0x0e` and a hardcoded `8`/`1` for the permute-pattern opcode. PF has no direct Xlu grid column at all: its conv/transpose Xlu cost is priced by a separate `XluConflictPenaltyTable` (`XposeXLUReservationLatency @0x1c8a13e0`), the per-gen structural difference. The Xlu cell (=4) is the missing numeric for the `6acc60406` conv cost triple, whose other two terms come from the [MXU reservation matrix](mxu-latency-gf.md): `R[0]` matpush {2 bf16 / 4 fp8}, `R[1]` matmul {4 bf16 / 8 fp8}, `R[2]` Xlu {4}.
 
 ---
 
@@ -212,7 +212,7 @@ A stride operand that produces a **Scalar** (address/index, type 2) or a **Vecto
 | PF | Pufferfish | 2 (v4) | heap latency[336] + grid 336×20 | 20 | res 6 (conflict-penalty) |
 | VF | Viperfish | 3 (v5p) | heap latency[384] + grid 384×28 | 28 | res 0x0e (`GetXluPathReservation`) |
 | GL | Ghostlite | 4 (v6e) | heap latency[476] + grid 476×31 | 31 | res 0x0f |
-| GF | Trillium | 5 (v7) | heap latency[465] + grid 465×31 | 31 | res 0x10 |
+| GF | `6acc60406` | 5 (v7x) | heap latency[465] + grid 465×31 | 31 | res 0x10 |
 
 The matmul/matprep throughput cells in these grids co-exist with a *separate* per-gen `MxuLatencyTable` (a modifier × `MxuResource` reservation matrix); the two cost tables agree on the per-dtype throughput integers (the GF EUP-prep column carries the same {4 bf16 / 8 fp8} magnitude as the `MxuLatencyTable` matmul cell). The reservation matrix and the back-to-back stall it computes are documented under [MXU Latency Overview](mxu-latency-overview.md) and [MxuOpHoldIssues Stall](mxu-opholdissues-stall.md).
 
@@ -223,8 +223,8 @@ The matmul/matprep throughput cells in these grids co-exist with a *separate* pe
 - [Performance: PF](performance-pf.md) — the 20-column Pufferfish grid and its conflict-penalty Xlu pricing
 - [Performance: VF](performance-vf.md) — the 28-column Viperfish grid and `GetXluPathReservation` res 0x0e
 - [Performance: GL (GhPerf 476×31)](performance-gl-ghperf.md) — the Ghostlite v6e grid, Xlu deposit res 0x0f
-- [Performance: GF (GhPerf 465×31)](performance-gf-ghperf.md) — the Trillium v7 grid, Xlu deposit res 0x10
+- [Performance: GF (GhPerf 465×31)](performance-gf-ghperf.md) — the `6acc60406` v7x grid, Xlu deposit res 0x10
 - [MXU Latency Overview](mxu-latency-overview.md) — the `MxuResource` enum and the reservation-matrix cost model that co-exists with the grid
 - [MxuOpHoldIssues Stall](mxu-opholdissues-stall.md) — the back-to-back matmul stall recurrence and balancing gate
-- [MXU Latency: GF](mxu-latency-gf.md) — the Trillium MXU reservation matrix and the conv `R[0]`/`R[1]`/`R[2]` triple
+- [MXU Latency: GF](mxu-latency-gf.md) — the `6acc60406` MXU reservation matrix and the conv `R[0]`/`R[1]`/`R[2]` triple
 - [MXU Slot](../isa/slot-mxu.md) — the physical MXU sub-units the resource columns reserve
