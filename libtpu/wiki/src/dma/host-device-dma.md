@@ -54,13 +54,14 @@ For reimplementation, the contract is:
 
 ### 2.1 The three trace points
 
-The producer seeds a `GetMerged` trace-point set with the three UHI host-interface events, then iterates the merged, time-ordered stream. The seed is byte-visible in the decompile (the producer loads `0x400000000` = the bitset for ids `{0, 4}`, then grows it to add id 2, final size 3):
+The producer builds a 3-element `TracePoints` list (one packed `{band, id}` entry per UHI host-interface event), passes it to `GetMerged`, then iterates the merged, time-ordered stream. The list is byte-visible in the decompile: each entry is a packed 64-bit `(band << 32) | id`. The first entry is `0x400000000` = `(band 4) | (id 0)` — the STARTED event; entries for ids 2 and 4 are appended, and the list size is set to 3 before the call:
 
 ```c
 // xprof::tpu::ConvertTpuTraceToXPlane<pxc::…TraceEntry>{lambda}{lambda}   sub_F26AFA0
-*v10 = 0x400000000LL;            // @0xf26afee  GetMerged seed = {0, 4}
-//   … grow set to add id 2 …    // @0xf26b03d
-TpuTraceEntries<…pxc…TraceEntry>::GetMerged(&v90, v8, &ptr);  // @0xf26b07f, set = {0, 2, 4}
+*v10        = 0x400000000LL;     // @0xf26afee  entry[0] = (band 4)|(id 0) = STARTED
+v11[2]      = 2;                 // @0xf26b03d  entry[1] id 2  (Read response)
+// + entry[2] id 4 (@0xf26b04e), list size = 3 (@0xf26b063)
+TpuTraceEntries<…pxc…TraceEntry>::GetMerged(&v90, v8, &ptr);  // @0xf26b07f, ids {0, 2, 4}
 ```
 
 | `trace_point_id` | UHI message (`pxc::profiler::`) | oneof case | Role |
@@ -117,7 +118,7 @@ slot.end_present  = 1;     // [slot+0x20]
 
 ## 3. The Tag-6/7 (H2D vs D2H) Selector
 
-The single most load-bearing line of the host-DMA path is the kind-tag computation, byte-exact at `0xf26b5a6` and the **only** such site in `.text`:
+The central line of the host-DMA path is the kind-tag computation, byte-exact at `0xf26b5a6` and the **only** such site in `.text`:
 
 ```c
 // @0xf26b5a6 — the sole tag-6/7 producer in the binary
@@ -138,14 +139,14 @@ So **only the two direct-write queues are bucketed as host→device**; every oth
 
 ### The tag → lane / event-metadata map
 
-The shared renderer's kind switch (jump table @ `0xab589bc`) has explicit arms for tags 6 and 7:
+The shared renderer's kind switch indexes a jump table @ `0xab589bc` by `(kind_tag - 2)` (`add $0xfffffffe,%eax; cmp $5,%eax; ja skip; movslq (r9,rax,4),rax` @ `0xf255041`–`0xf25504c`, so the valid tag range is 2..7), giving distinct arms for tags 6 and 7 at table indices 4 and 5:
 
-| tag | jt arm | `TpuComponent` line | XEvent metadata | Source |
-|---:|---|---|---|---|
-| 6 | `0xf25507e` | 63 `MemcpyH2D` | `"MemcpyH2D"` | `queue_id ∈ {2,3}` (direct-write) |
-| 7 | `0xf255340` | 64 `MemcpyD2H` | `"MemcpyD2H"` | all other `queue_id` |
+| tag | jt idx | jt arm | `TpuComponent` line | XEvent metadata | Source |
+|---:|---:|---|---|---|---|
+| 6 | 4 | `0xf25507e` | 63 `MemcpyH2D` | `"MemcpyH2D"` | `queue_id ∈ {2,3}` (direct-write) |
+| 7 | 5 | `0xf255340` | 64 `MemcpyD2H` | `"MemcpyD2H"` | all other `queue_id` |
 
-The decompile confirms the renderer interns `GetOrCreateEventMetadata(…, "MemcpyH2D", …)` and `"MemcpyD2H"`, with `case 6:` / `case 7:` arms in the kind switch. Confidence: CONFIRMED. (This corrects an earlier sibling note that listed tags 6/7 as "unused on `pxc`" and a transposed tag/lane table: tag 6 = H2D = lane 63, tag 7 = D2H = lane 64.)
+The decompile confirms the renderer interns `GetOrCreateEventMetadata("MemcpyH2D")` (@ `0xf254e5f`, length 9) and `GetOrCreateEventMetadata("MemcpyD2H")` (@ `0xf254e82`, length 9) ahead of the kind switch, then routes tags 6/7 to the H2D/D2H arms. Confidence: CONFIRMED. (This corrects an earlier sibling note that listed tags 6/7 as "unused on `pxc`" and a transposed tag/lane table: tag 6 = H2D = lane 63, tag 7 = D2H = lane 64.)
 
 ### The rendered span
 
@@ -162,7 +163,7 @@ The per-span XStats are the shared `DmaTransfer` set documented on [Intra-Chip D
 
 ### 4.1 The five trace points
 
-`DeriveHostDmaTransfers` is inlined into the `jxc` `ConvertTpuTraceToXPlane` lambda @ `0xf252260`; its static-init block @ `0xf252f00`–`0xf25303b` constructs five function-local `TracePoint` statics (five `__cxa_guard_acquire`/`release` pairs), then merges them via `GetMerged` @ `0xf253080`:
+`DeriveHostDmaTransfers` is inlined into the `jxc` `ConvertTpuTraceToXPlane` lambda @ `0xf252260`; its static-init block @ `0xf252f00`–`0xf25303b` constructs five function-local `TracePoint` statics (five `__cxa_guard_acquire`/`release` pairs), then merges them via a `TpuTraceEntries::GetMerged` call @ `0xf252382` (callee @ `0xf253080`):
 
 | Static | Band / id | Role |
 |---|---|---|
