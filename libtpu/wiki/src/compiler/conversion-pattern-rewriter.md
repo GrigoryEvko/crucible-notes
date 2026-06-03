@@ -8,11 +8,11 @@ The [DialectConversion Legalizer](dialect-conversion-legalizer.md) tries pattern
 
 The reframe a reimplementer needs is this: a `ConversionPatternRewriter` is **not** a `RewriterBase` that mutates IR in place. It is a *recording* rewriter. Every mutation a pattern performs — insert, replace, move, in-place modify, block splice — is intercepted by the Impl's listener interface and appended as one `IRRewrite` record to a `SmallVector<unique_ptr<IRRewrite>>` at `Impl+0x48`. The IR *is* mutated (so recursion sees the new ops), but every change is also logged with enough saved state to reverse it. On a failed legalization the log is replayed backwards (`undoRewrites`, newest-first); on success it is replayed forwards twice (`applyRewrites`: commit-all, then erase-all). The value-replacement records do not rewire SSA uses at record time — they record the *intent* and defer the real `replaceAllUsesWith` to commit, which is what makes 1:N replacement and cast materialization clean.
 
-Hold the upstream MLIR `DialectConversion.cpp` frame: `ConversionPatternRewriterImpl`, the `IRRewrite` class hierarchy, `RewriterState`, `undoRewrites`/`resetState`/`applyRewrites`, `buildUnresolvedMaterialization`, `findOrBuildReplacementValue`. This page is the byte-level recovery of that frame as it ships in `libtpu.so`, with the 12-record hierarchy, the 5-virtual record ABI, and the 0x1e0-byte Impl layout all pinned to relocations and to the three driver functions that read them. Where the recovered behavior is subtle — the deferred two-pass commit, the LIFO/FIFO asymmetry, the `operator new` size split between create- and move-records — it is called out.
+Hold the upstream MLIR `DialectConversion.cpp` frame: `ConversionPatternRewriterImpl`, the `IRRewrite` class hierarchy, `RewriterState`, `undoRewrites`/`resetState`/`applyRewrites`, `buildUnresolvedMaterialization`, `findOrBuildReplacementValue`. This page is the byte-level recovery of that frame as it ships in `libtpu.so`, with the 11-record hierarchy, the 5-virtual record ABI, and the 0x1e0-byte Impl layout all pinned to relocations and to the three driver functions that read them. Where the recovered behavior is subtle — the deferred two-pass commit, the LIFO/FIFO asymmetry, the `operator new` size split between create- and move-records — it is called out.
 
 For reimplementation, the contract is:
 
-- **The rewrite-log.** A `SmallVector<unique_ptr<IRRewrite>>` at `Impl+0x48`; 12 concrete record types under an abstract `IRRewrite` base; each record carries a `{vptr, tag, Impl*, target}` header plus leaf-specific saved state, and is appended by the rewriter's *listener* methods, never by the pattern author.
+- **The rewrite-log.** A `SmallVector<unique_ptr<IRRewrite>, 6>` at `Impl+0x48`; 11 concrete record types under an abstract `IRRewrite` base; each record carries a `{vptr, tag, Impl*, target}` header plus leaf-specific saved state, and is appended by the rewriter's *listener* methods, never by the pattern author.
 - **The record ABI.** A 5-slot vtable `{D1 dtor, D0 dtor, rollback, commit, cleanup}`; the rollback engine dispatches purely through `[vtable+0x10/0x18/0x20]` and never downcasts.
 - **The rollback.** `undoRewrites(numToKeep)` pops the log newest-first, calling `rollback()` on each — so each undo sees the IR exactly as it was just after that record was pushed. `resetState(checkpoint)` layers ignored-op and replaced-op bookkeeping rewind on top.
 - **The commit + 1:N + materialization.** `applyRewrites` replays forward in two passes (commit, then cleanup-erase). `ReplaceOperationRewrite::commit` calls `findOrBuildReplacementValue` per result — which, when a result's mapped replacement still has the wrong type, inserts a `builtin.unrealized_conversion_cast` (an *unresolved materialization*) and logs it. The 1:N replace path (`replaceOp` with `SmallVector<SmallVector<Value>>`) maps each original result to a *vector* of replacements through the `ConversionValueMapping`.
@@ -21,8 +21,8 @@ For reimplementation, the contract is:
 |---|---|
 | **Engine** | `mlir::detail::ConversionPatternRewriterImpl` (private to MLIR's `DialectConversion.cpp`) |
 | **Impl size** | `0x1e0` bytes (heap `operator new(0x1e0)`); built by the `ConversionPatternRewriter` ctor `0x1c9512a0`; stored at outer `this+0x10` and `this+0x28` |
-| **Rewrite-log** | `SmallVector<unique_ptr<(anon)::IRRewrite>,1>` at `Impl+0x48` (data) / `+0x50` (size, u32) / `+0x54` (cap, u32) |
-| **Record hierarchy** | 12 concrete `(anon)::IRRewrite` leaves; abstract bases `IRRewrite`/`BlockRewrite`/`OperationRewrite` carry no own vtable |
+| **Rewrite-log** | `SmallVector<unique_ptr<(anon)::IRRewrite>,6>` at `Impl+0x48` (data) / `+0x50` (size, u32) / `+0x54` (cap, u32; ctor inits cap=6) |
+| **Record hierarchy** | 11 concrete `(anon)::IRRewrite` leaves; abstract bases `IRRewrite`/`BlockRewrite`/`OperationRewrite` carry no own vtable |
 | **Record ABI** | 5-slot vtable: `+0x00` D1 dtor · `+0x08` D0 dtor · `+0x10` rollback · `+0x18` commit · `+0x20` cleanup |
 | **Rollback** | `undoRewrites(unsigned, StringRef)` — `0x1c94d060` (LIFO, calls `[vtable+0x10]`) |
 | **Checkpoint rollback** | `resetState((anon)::RewriterState, StringRef)` — `0x1c95bf60` |
@@ -60,7 +60,7 @@ block splice / signature →  inlineBlockBefore / convertRegionTypes →  push *
 
 > **NOTE — the pattern author never touches the log.** The append path *is* the listener interface; a reimplementer wires the recording into the `RewriterBase::Listener` callbacks, not into the pattern API. A pattern written against a plain `OpBuilder` would mutate the IR but produce no undo records, and the legalizer's rollback would silently do nothing — the single most dangerous reimplementation trap on this page.
 
-> **GOTCHA — recording is gated by the conversion mode.** Every listener checks a byte at `OperationConverter+0x29` (read as `[Impl+0x178][+0x29]`, the field at `*(_BYTE*)(v7+41)` in `notifyOperationInserted`/`replaceOp`). When it is `1` (rollback-enabled conversion), the listener takes the *recording* path (allocate record, append to log). Otherwise it forwards straight to the real listener and skips the log. So the same Impl behaves as a recording rewriter or a pass-through depending on the driver's mode — a reimplementer must thread that flag, or rollback will record nothing.
+> **GOTCHA — recording is gated by the conversion mode.** Every listener checks a byte at `ConversionConfig+0x29` (read as `[Impl+0x178][+0x29]`, the field at `*(_BYTE*)(v7+41)` in `notifyOperationInserted`/`replaceOp`; `Impl+0x178` is the `ConversionConfig*` stored by the ctor as its second argument). When it is `1` (rollback-enabled conversion), the listener takes the *recording* path (allocate record, append to log). Otherwise it forwards straight to the real listener and skips the log. So the same Impl behaves as a recording rewriter or a pass-through depending on the driver's mode — a reimplementer must thread that flag, or rollback will record nothing.
 
 ---
 
@@ -77,7 +77,7 @@ The Impl is a single heap object (`operator new(0x1e0)` at the ctor `0x1c9512da`
 ```text
 ConversionPatternRewriterImpl  (0x1e0 bytes)
   +0x00 .. 0x40   OpBuilder / RewriterBase base (vptr, insertion point, listener)
-  +0x48           rewrite-log: data ptr        } SmallVector<unique_ptr<IRRewrite>,1>
+  +0x48           rewrite-log: data ptr        } SmallVector<unique_ptr<IRRewrite>,6>
   +0x50           rewrite-log: size  (u32)      }   THE ACTION LOG  (drivers read [+0x50])
   +0x54           rewrite-log: capacity (u32)
   +0x58           rewrite-log: inline buffer
@@ -87,8 +87,8 @@ ConversionPatternRewriterImpl  (0x1e0 bytes)
   +0x100 .. 0x120 rootReplacedOps SetVector  (the "produced replaced-root ops" set)
   +0x128 .. 0x150 trackedUnrealizedCasts / appliedRecursivePatterns guard
   +0x140/+0x148/+0x150 unresolvedMaterializations : DenseMap<Operation*>  (cast tracking)
-  +0x178          OperationConverter*  backref (owns this; mode byte at [+0x178]+0x29)
-  +0x180          ConversionConfig*
+  +0x178          ConversionConfig*  (ctor arg 2; mode byte at [+0x178]+0x29)
+  +0x180          OperationConverter*  backref (ctor arg 3; owns this)
   +0x1c0          MLIRContext*
   +0x1c8          context actionHandler
 ```
@@ -98,13 +98,13 @@ The three offsets the rollback machinery touches most are `+0x50` (log size), `+
 ### The log container
 
 ```text
-rewrite-log : llvm::SmallVector<std::unique_ptr<(anon)::IRRewrite>, 1>
+rewrite-log : llvm::SmallVector<std::unique_ptr<(anon)::IRRewrite>, 6>
   +0x48  data    (T* — array of unique_ptr; inline buffer at +0x58 until it spills)
   +0x50  size    (u32 — number of live records; THE log depth)
   +0x54  capacity(u32)
 ```
 
-It is an *append-only stack* during legalization: records are only pushed (by listeners) and popped from the tail (by `undoRewrites`). It is never indexed randomly except by the commit/rollback walks. The `unique_ptr` element means each record's deleting dtor (`[vtable+0x08]`) is what frees it on pop. The inline-buffer-of-1 (`SmallVector<…,1>`) means a single-record conversion never heap-allocates the array.
+It is an *append-only stack* during legalization: records are only pushed (by listeners) and popped from the tail (by `undoRewrites`). It is never indexed randomly except by the commit/rollback walks. The `unique_ptr` element means each record's deleting dtor (`[vtable+0x08]`) is what frees it on pop. The 6-element inline buffer (`SmallVector<…,6>`; the ctor inits capacity to 6 at `[Impl+0x54]` and points data at the inline buffer `Impl+0x58`) means a conversion of up to six records never heap-allocates the array.
 
 > **QUIRK — the log size *is* the checkpoint coordinate.** There is no separate "version counter." A checkpoint is just the triple `(log.size, ignoredOps.count, replacedOps.count)` captured by value; rolling back to a checkpoint means popping the log down to the captured size and shrinking the two side-bookkeeping containers to their captured counts. This is why the legalizer can checkpoint in three `mov`s and roll back without copying any IR.
 
@@ -114,11 +114,11 @@ It is an *append-only stack* during legalization: records are only pushed (by li
 
 ### Purpose
 
-The 12 record types are the alphabet of reversible mutations. This unit inventories them, pins each leaf's vtable and its rollback/commit/cleanup, and fixes the 5-virtual ABI the drivers dispatch through.
+The 11 record types are the alphabet of reversible mutations. This unit inventories them, pins each leaf's vtable and its rollback/commit/cleanup, and fixes the 5-virtual ABI the drivers dispatch through.
 
-### The 12 concrete records
+### The 11 concrete records
 
-Every record is a leaf of an `(anonymous namespace)::IRRewrite` single-base hierarchy. The intermediate abstract bases `BlockRewrite` and `OperationRewrite` carry no own vtable — only the 12 concrete leaves do, and all 12 vtables were verified against `.data.rel.ro` relocations. Each leaf's `{vtable, rollback, commit, cleanup}` addresses:
+Every record is a leaf of an `(anonymous namespace)::IRRewrite` single-base hierarchy. The intermediate abstract bases `BlockRewrite` and `OperationRewrite` carry no own vtable (typeinfo only) — only the 11 concrete leaves do, and all 11 vtables were verified against their `_ZTV` symbols. Each leaf's `{vtable, rollback, commit, cleanup}` addresses:
 
 | IRRewrite leaf | vtable | rollback | commit | cleanup | Confidence |
 |---|---|---|---|---|---|
@@ -136,7 +136,7 @@ Every record is a leaf of an `(anonymous namespace)::IRRewrite` single-base hier
 
 `(base)` = the leaf inherits the no-op `IRRewrite::commit` (`0x1c95b760`, a bare `ret`) or `IRRewrite::cleanup` (`0x1c95b780`). `IRRewrite::~IRRewrite` (D1, slot0) is `0x1c964300`, shared across all leaves. Only `ReplaceOperationRewrite` and `EraseBlockRewrite` carry a non-trivial `cleanup` — the deferred-erase step (below).
 
-The seven operation-level records split into three families:
+The six operation-level records split into three families:
 
 - **Structural-create/move**: `CreateOperationRewrite`, `MoveOperationRewrite` — appended by `notifyOperationInserted`.
 - **Value-replacement**: `ReplaceOperationRewrite` (replace a whole op's results), `ReplaceValueRewrite` (replace one value's uses) — appended by `replaceOp` / `replaceValueUses`. These are the 1:N and 1:1 replacement records.
@@ -149,7 +149,7 @@ The five `*Block*` records cover region signature conversion and SCF structural 
 Slot-walked from the `ReplaceOperationRewrite` vtable relocation set (`0x21c23738`; the address-point used by `unique_ptr` is `vtable+0x10 = 0x21c23748`, which holds slot0):
 
 ```text
-record vptr layout (all 12 leaves share this shape)
+record vptr layout (all 11 leaves share this shape)
   vptr+0x00  slot0  ~IRRewrite()  (complete/D1)        = 0x1c964300  (shared)
   vptr+0x08  slot1  ~Leaf()       (deleting/D0)        = leaf-specific (frees the record)
   vptr+0x10  slot2  rollback()                          ← undoRewrites calls [+0x10]
@@ -162,8 +162,8 @@ The drivers dispatch *purely* through these slots — the rollback engine never 
 ### The common record header
 
 ```text
-IRRewrite record header (offsets common to all 12 leaves)
-  +0x00  vptr            (one of the 12 vtables above)
+IRRewrite record header (offsets common to all 11 leaves)
+  +0x00  vptr            (one of the 11 vtables above)
   +0x08  kind tag (u32)  (RTTI-style discriminator; e.g. Create=8, Move=5, Replace=7)
   +0x10  Impl*           (back-reference to the owning ConversionPatternRewriterImpl)
   +0x18  target          (Operation*  for op-rewrites; Block* for block-rewrites)
@@ -460,8 +460,8 @@ The decompile pins both: the move path (lines 54-95, `operator new(0x30u)`, tag 
 | `ModifyOperationRewrite::rollback` | `0x1c964860` | restore saved loc/attrs/operands/successors/regions | CONFIRMED |
 | `UnresolvedMaterializationRewrite::rollback` | `0x1c95b660` | un-map cast results + prune `unresolvedMaterializations` + erase cast | CONFIRMED |
 | `IRRewrite::~IRRewrite` (D1, shared slot0) | `0x1c964300` | record dtor | CONFIRMED |
-| `IRRewrite::commit` (base no-op) | `0x1c95b760` | bare `ret` (inherited by 8 leaves) | CONFIRMED |
-| `IRRewrite::cleanup` (base no-op) | `0x1c95b780` | bare `ret` (inherited by 10 leaves) | CONFIRMED |
+| `IRRewrite::commit` (base no-op) | `0x1c95b760` | bare `ret` (inherited by 2 leaves: UnresolvedMaterialization, InlineBlock) | CONFIRMED |
+| `IRRewrite::cleanup` (base no-op) | `0x1c95b780` | bare `ret` (inherited by 9 leaves; only EraseBlock + ReplaceOperation override) | CONFIRMED |
 | `ConversionValueMapping::erase` | `0x1c95b7a0` | drop a value→replacement mapping (used by rollbacks) | HIGH |
 | `mallocForGrow` (SmallVector) | `0x208d1820` | log realloc-down on pop | HIGH |
 
