@@ -66,7 +66,8 @@ uint32 TpuTopology_HostCount(void* topo):
     return *(uint32*)(topo + 108)
 
 // (B) coordinate-triple out-param — TpuCoreLocation_ChipCoordinates / _HostCoordinates.
-//     Three int32* out-params; the (redundant) scalar return is the z coordinate.
+//     Three int32* out-params plus a redundant scalar return: _HostCoordinates returns
+//     the x read (loc+8), _ChipCoordinates returns the last-written triple element (z).
 //     e.g. TpuCoreLocation_HostCoordinates @ 0xEABC300
 int32 TpuCoreLocation_HostCoordinates(void* loc, int32* x, int32* y, int32* z):
     *x = *(uint32*)(loc + 8); *y = *(uint32*)(loc + 12); *z = *(uint32*)(loc + 16)
@@ -103,7 +104,7 @@ The 14 canonical accessors form a contiguous block `0xEABBFC0`–`0xEABC2A0`; th
 | `TpuTopology_AvailableCoresPerChip` | `0xF6A1DE0` | `*(uint32*)(GetTpuTopology() + 12*type + 124)` | scalar | HIGH |
 | `TpuTopology_MaybeAvailableSparseCoresPerLogicalDevice` | `0xF6A1EA0` | `xla::jellyfish::NumEmbeddingDevices(...)` (StatusOr<int>) | StatusOr | MEDIUM |
 
-> **QUIRK —** the roster mixes pure field reads with member thunks, and the distinction is load-bearing for a reimplementer. `ChipBounds_X/Y/Z`, `HostCount`, `ChipsPerHost` are flat `*(uint32*)(topo+off)` reads — the bounds and counts are pre-materialised scalars on the topology object. But `HasChip`, `Core`, `IdForHost`, `CoreForId` call into `tpu::TpuTopology` member functions that walk the chip/core layout. Copying only the field offsets reproduces the cheap accessors but not the lookups; copying only the thunks misses that the common geometry is a flat read with no computation.
+> **QUIRK —** the roster mixes pure field reads with member thunks, and the distinction is critical for a reimplementer. `ChipBounds_X/Y/Z`, `HostCount`, `ChipsPerHost` are flat `*(uint32*)(topo+off)` reads — the bounds and counts are pre-materialised scalars on the topology object. But `HasChip`, `Core`, `IdForHost`, `CoreForId` call into `tpu::TpuTopology` member functions that walk the chip/core layout. Copying only the field offsets reproduces the cheap accessors but not the lookups; copying only the thunks misses that the common geometry is a flat read with no computation.
 
 ### The geometry-field map
 
