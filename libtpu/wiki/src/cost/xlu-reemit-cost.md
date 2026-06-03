@@ -178,10 +178,10 @@ The two opcode-band floors (`0x84`/`0x82` bands → minimum-latency clamps) are 
 // xla::jellyfish::(anon)::ReemitReorderedCombinedXluOperations @ 0x126d5460
 absl::Status Reemit(
     LloDependencyGraph* graph,             // a1
-    LloInstruction*     from_instr,        // a2 (WORD*) — cross-region boundary "from"
-    LloInstruction*     to_instr,          // a3 (WORD*) — cross-region boundary "to"
-    LloValue*           from_val,          // a4
-    LloValue*           to_val,            // a5
+    LloInstruction*     from_instr,        // a2 (WORD*) — cross-region boundary "from" instruction
+    LloValue*           from_val,          // a3 (WORD*) — boundary "from" value
+    LloInstruction*     to_instr,          // a4 — boundary "to" instruction
+    LloValue*           to_val,            // a5 — boundary "to" value
     vector<variant>*    reordered,         // a6 — the ReorderToShortenCriticalPath output (stride 0x48)
     vector<pair<variant*,variant*>>* pairs // a7 — the combinable-pair vector (stride 0x10)
 );
@@ -191,7 +191,7 @@ The boundary `from`/`to` threaded into `Reemit` is the *same* boundary pair `Cyc
 
 ### How the Per-Op Cost Maps to Emitted Cycles
 
-`Reemit` opens with a `RET_CHECK` (line `0x35f`) that `reordered` is non-empty iff `pairs` is non-empty, then builds a fresh emission `LloRegionBuilder` and a per-XLU `PerXluState` array (stride `0x20`) — the "currently-set pattern" cache (`[+0x00]`/`[+0x08]` permute source/result, `[+0x10]`/`[+0x18]` segment source/result; full mechanism in [`xlu-op-roster`](../isa/xlu-op-roster.md)). For each combinable pair it emits **one** fused op. The cost-accounting consequence:
+`Reemit` opens with a `RET_CHECK` (line 863) that `reordered` is non-empty iff `pairs` is non-empty, then builds a fresh emission `LloRegionBuilder` and a per-XLU `PerXluState` array (stride `0x20`) — the "currently-set pattern" cache (`[+0x00]`/`[+0x08]` permute source/result, `[+0x10]`/`[+0x18]` segment source/result; full mechanism in [`xlu-op-roster`](../isa/xlu-op-roster.md)). For each combinable pair it emits **one** fused op. The cost-accounting consequence:
 
 | Pair kind | What the cost charged | What Reemit emits | Cycle correspondence |
 |---|---|---|---|
