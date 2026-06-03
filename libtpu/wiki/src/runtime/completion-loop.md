@@ -56,7 +56,7 @@ function AsyncValue_DropRef(av):                 // e.g. SetReady 0xf837920 line
 
 Three reimplementation-critical facts. (1) The 32-bit word at offset `+0` is the atomic refcount; release is `_InterlockedDecrement` with a fast-path that skips the atomic when the count is already 1. (2) The byte at `+4` carries flags; **bit 3 (`& 8`) means "heap-allocated"** — a statically-owned async value (a process-singleton ready event) is recognised by a clear bit and is *never* destroyed, so the same drop-ref code is safe to call on both. (3) Acquiring a ref before handing the value to a logger or waiter list is `_InterlockedIncrement` guarded by the same `& 8` test (`SetReady` line 26). A reimplementation that frees a non-heap async value, or that polls instead of registering a waiter, breaks the model.
 
-> **NOTE —** the concrete waiter-list machinery (`tsl::AsyncValue::EnqueueWaiter<Lambda>` minting per-call `Node` types with `RunWaiterAndDeleteWaiterNode`) is generated once per closure type — the functions JSON carries dozens of `EnqueueWaiter<…::$_0>` instantiations under `tpu::System::Execute` and `SetExecuteEvent`. The shape is always the same: a node holding the moved closure, threaded onto the value's waiter list under a `WaitersAndState` CAS, and run-then-deleted on fulfilment.
+> **NOTE —** the concrete waiter-list machinery (`tsl::AsyncValue::EnqueueWaiter<Lambda>` minting per-call `Node` types with `RunWaiterAndDeleteWaiterNode`) is generated once per closure type; the binary carries a distinct instantiation per closure (dozens across the runtime), including the `EnqueueWaiter<…::$_0>` waiters under `tpu::System::Execute` and `SetExecuteEvent` (each emitting its own typeinfo, vtable, `Node` ctor/dtor, and `RunWaiterAndDeleteWaiterNode`). The shape is always the same: a node holding the moved closure, threaded onto the value's waiter list under a `WaitersAndState` CAS, and run-then-deleted on fulfilment.
 
 ---
 
@@ -184,7 +184,7 @@ tpu::System::Execute(
 `wait_events` is the input-dependency set (the program does not start until those events resolve — input H2D copies, prior launches). `define_events` is the output set — the events *this* launch makes available when it retires. The per-launch event from `CreateLinkedUserPromise` rides in `define_events`. The completion edge is a lambda (`$_0`) registered inside `Execute` that runs on device completion and invokes `tpu::TpuEventIssuer::FulfillArgs`:
 
 ```c
-// the completion lambda registered inside tpu::System::Execute       Execute::$_0
+// the completion lambda registered inside tpu::System::Execute       Execute::$_1
 function on_device_complete(fulfill_args):           // FulfillArgs, run by the TpuEventIssuer
     // success path:
     issuer.Fulfill(fulfill_args) -> {                // resolves each define_event
@@ -229,7 +229,7 @@ The user half of the linked pair is wrapped into a `tsl::Future<void>` by `xla::
 | `PJRT_Event_IsReady` | `pjrt::PJRT_Event_IsReady` | `0xf86f9e0` | non-blocking: is the async value available? |
 | `PJRT_Event_Await` | `pjrt::PJRT_Event_Await` | `0xf86fa80` | block the caller until available (the only *blocking* path) |
 | `PJRT_Event_OnReady` | `pjrt::PJRT_Event_OnReady` | `0xf86fc60` | register a callback to run *on* fulfilment — the push done-callback |
-| `PJRT_Event_Error` | `pjrt::PJRT_Event_Error` | — | read the error status if the value resolved to an error |
+| `PJRT_Event_Error` | `pjrt::PJRT_Event_Error` | `0xf86fba0` | read the error status if the value resolved to an error |
 
 `PJRT_Event_OnReady` is the canonical completion delivery: it enqueues a waiter on the underlying async value. When `SetReady`'s `ForwardTo` makes the value available (§2), the waiter runs the user's callback on a runtime thread. `PJRT_Event_Await` is the blocking fallback — it is the *only* place the host thread parks on completion, and most callers avoid it in favour of `OnReady`.
 
