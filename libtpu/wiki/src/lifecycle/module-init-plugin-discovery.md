@@ -54,7 +54,7 @@ framework PJRT plugin registry (Python side)
               └─ pjrt::tpu_plugin::GetTpuPjrtApi  0xe6aa440   (lazy 140-slot build — §1.2)
 ```
 
-> **GOTCHA —** spelling and casing are load-bearing. The exported symbol is `GetPjrtApi` (lowercase `jrt`), matching the public PJRT plugin convention, versioned `GetPjrtApi@@VERS_1.0`. It is the *only* `GLOBAL FUNC` export matching `/Pjrt/`. `GetTpuPjrtApi` is an internal helper and is **not** exported. A loader that `dlsym`s `GetTpuPjrtApi`, or a build that exports only `Tpu`-prefixed names, fails discovery silently. The ~217 `Tpu*_*` exports that share this binary are the *legacy* StreamExecutor C-ABI (`TpuExecutor_*`, `TpuPlatform_*`, `TpuStream_*`, …), all `@@VERS_1.0`, linked directly by `tensorflow/core/tpu/` — never reached through PJRT.
+> **GOTCHA —** spelling and casing are load-bearing. The exported symbol is `GetPjrtApi` (lowercase `jrt`), matching the public PJRT plugin convention, versioned `GetPjrtApi@@VERS_1.0`. It is the *only* `GLOBAL FUNC` export matching `/Pjrt/`. `GetTpuPjrtApi` is an internal helper and is **not** exported. A loader that `dlsym`s `GetTpuPjrtApi`, or a build that exports only `Tpu`-prefixed names, fails discovery silently. The 194 `Tpu*_*` exports that share this binary are the *legacy* StreamExecutor C-ABI (`TpuExecutor_*` ×25, `TpuTransferManager_*` ×19, `TpuProgram_*` ×18, `TpuTopology_*` ×17, `TpuPlatform_*` ×11, …), all `@@VERS_1.0`, linked directly by `tensorflow/core/tpu/` — never reached through PJRT.
 
 ### The entry contract
 
@@ -167,15 +167,17 @@ function cpu_feature_fail_fast():                 // 0x2110abc0
 
 ### 2.2 The constructor storm registers; it does not run TPU bring-up
 
-`INIT_ARRAY @ 0x215f26f0` is 23200 bytes = 2900 entries, every one an `R_X86_64_RELATIVE` reloc (in-file slots zero, linker-filled). The first entries are `__cpu_indicator_init`, then the Rust runtime's `std::sys::args::unix::imp::ARGV_INIT_ARRAY` (libtpu statically links a Rust component), then ~2898 C++ static constructors. By symbol category:
+`INIT_ARRAY @ 0x215f26f0` is 23200 bytes = 2900 entries, every one an `R_X86_64_RELATIVE` reloc (in-file slots zero, linker-filled). The first entries are `__cpu_indicator_init`, then the Rust runtime's `std::sys::args::unix::imp::ARGV_INIT_ARRAY` (libtpu statically links a Rust component), then the remaining 2898 C++ static constructors. By symbol category (counts byte-exact over all 2900 slots):
 
-| Constructor kind | Count (approx) | What it does | Confidence |
+| Constructor kind | Count | What it does | Confidence |
 |---|---|---|---|
-| `_GLOBAL__sub_I_<file>.cc/.cpp` | 1885 | per-translation-unit static init | HIGH |
-| `_GLOBAL__I_NNNNNN` | ~778 | grouped C++ ctors | HIGH |
-| `__cxx_global_var_init[.N]` | ~223 | single global-var inits | HIGH |
+| `_GLOBAL__sub_I_<file>.cc/.cpp` | 1885 | per-translation-unit static init | CONFIRMED |
+| `_GLOBAL__I_NNNNNN` | 759 | grouped C++ ctors | CONFIRMED |
+| `__cxx_global_var_init[.N]` | 221 | single global-var inits | CONFIRMED |
+| anon / no-symbol ctors + `__do_init` + `upb_GeneratedRegistry_Constructor` | 33 | remaining C++ ctors | CONFIRMED |
 | `__cpu_indicator_init` | 1 | GCC ifunc support (first slot) | CONFIRMED |
-| Rust `ARGV_INIT_ARRAY` | 1 | Rust std args bootstrap | HIGH |
+| Rust `ARGV_INIT_ARRAY` | 1 | Rust std args bootstrap | CONFIRMED |
+| **Total** | **2900** | matches `INIT_ARRAYSZ`/8 | CONFIRMED |
 
 These constructors register, but do not execute, the order-critical TPU stack. They populate: absl command-line flag tables (`_GLOBAL__sub_I_*_flags.cc`, `commandlineflags.cc`) and absl logging; protobuf descriptors (7 `*proto/descriptor` TUs + the upb `linkarr_upb_AllExts` mini-table array `@ 0x224c2480..0x224c2920`); LLVM target backends (X86/AArch64/AMDGPU/ARM `*TargetMachine.cpp`, `AsmPrinter.cpp`); MLIR dialect/pass registrations (mhlo/stablehlo/`mlir_bridge_pass`); and — the discovery-critical part — the `GoogleInitializer` **module descriptors** plus their dependency edges.
 
@@ -282,7 +284,7 @@ function RegisterTpuPlatform():                     // 0xe99a3a0
     return 1
 ```
 
-This installs the legacy StreamExecutor `TpuPlatform` beneath the PJRT `PjRtClient`. The ~217 `TpuPlatform_*` C-ABI exports (§1) wrap this same object — it is the device layer the modern PJRT stack sits on top of.
+This installs the legacy StreamExecutor `TpuPlatform` beneath the PJRT `PjRtClient`. The 194 `Tpu*_*` C-ABI exports (§1) — `TpuPlatform_*` among them — wrap this same object family — it is the device layer the modern PJRT stack sits on top of.
 
 ### Once-guard discipline
 
@@ -335,7 +337,7 @@ libtpu also provides `atexit` / `__cxa_thread_atexit` shims (`@ 0x21217360` / `0
 | `PJRT_Plugin_Initialize @ 0xe6a9d00` | The one-time bootstrap gate (PJRT slot 8) |
 | `TryAcquireTpuLock @ 0x20ccbc40` | The cross-process TPU acquisition lock |
 | `RegisterTpuPlatform @ 0xe99a3a0` | Installs the StreamExecutor `TpuPlatform` beneath PJRT |
-| `Tpu*_*` C-ABI (~217 exports) | The legacy StreamExecutor surface that shares the binary, never reached through PJRT |
+| `Tpu*_*` C-ABI (194 exports) | The legacy StreamExecutor surface that shares the binary, never reached through PJRT |
 
 ## Cross-References
 
