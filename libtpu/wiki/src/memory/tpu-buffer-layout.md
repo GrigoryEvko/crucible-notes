@@ -6,7 +6,7 @@
 
 A PJRT device buffer on a TPU is a flat run of HBM bytes whose internal arrangement is *not* row-major. Between the logical `xla::Shape` a user hands to the runtime (a `(element_type, dimensions[], layout)` triple) and the bytes that actually land in HBM sits one translation, `xla::jellyfish::TransferSizeUtil::HostShapeToDeviceShape`, which (a) chooses a minor-to-major dimension order, (b) pads the two minor-most dimensions up to the chip's `(sublane, lane)` tile, (c) packs sub-byte and splits >32-bit element types, and (d) stamps an `xla::Tile` list onto the layout describing the physical tiling. The padded *device shape* is what the allocator sizes, what a DMA descriptor addresses, and what `ShapeSizeBytesRaw` measures. This page documents that translation: the shape↔layout data model, the tile-padding arithmetic, the element-packing rules, and the on-device buffer residency record (`xla::ShapedBuffer` → `XLA_ShapedBuffer`) that names which HBM addresses hold a buffer's leaves.
 
-The reader who knows XLA on GPU should hold one analogy and immediately complicate it. On a GPU an `xla::Layout` is a `minor_to_major` permutation and little else; the bytes are dense row-major-after-permutation. On TPU the layout *additionally* carries a tile (`xla::Layout::tiles()`, a vector of `xla::Tile`), and the physical buffer is the logical array reshaped into `(sublane, lane)` tiles laid out tile-major. The lane dimension is 128 across every generation; the sublane dimension is `8` on this Trillium/v5+ build (`16` on jellyfish v4) — the *same* `(SublaneCount, LaneCount)` tile [layout assignment](../compiler/layout-assignment.md) stamps onto every leaf shape. The hardware reads a tile as one contiguous chunk, so a `[3, 5]` f32 array does not occupy 60 bytes: it pads to `[8, 128]` (one tile) and occupies one granule, with the trailing lanes/sublanes filled (with `0xFF` on the pad path). Wasted padding is real HBM, and minimising it is exactly why the [layout-assignment chooser](../compiler/layout-assignment.md#per-tensor-chooser--findmemoryminimizinglayout) optimises for compact byte size.
+The reader who knows XLA on GPU should hold one analogy and immediately complicate it. On a GPU an `xla::Layout` is a `minor_to_major` permutation and little else; the bytes are dense row-major-after-permutation. On TPU the layout *additionally* carries a tile (`xla::Layout::tiles()`, a vector of `xla::Tile`), and the physical buffer is the logical array reshaped into `(sublane, lane)` tiles laid out tile-major. The lane dimension is 128 across every generation; the sublane dimension is `8` on this v5+/v6e/TPU7x build (an earlier generation used `16`) — the *same* `(SublaneCount, LaneCount)` tile [layout assignment](../compiler/layout-assignment.md) stamps onto every leaf shape. The hardware reads a tile as one contiguous chunk, so a `[3, 5]` f32 array does not occupy 60 bytes: it pads to `[8, 128]` (one tile) and occupies one granule, with the trailing lanes/sublanes filled (with `0xFF` on the pad path). Wasted padding is real HBM, and minimising it is exactly why the [layout-assignment chooser](../compiler/layout-assignment.md#per-tensor-chooser--findmemoryminimizinglayout) optimises for compact byte size.
 
 This page owns the *on-device tiled buffer*: the shape→device-shape mapping (`HostShapeToDeviceShape` / `SetPaddedShape`), the tile-padding rules (`Pad2ndMinorCompact`, `GetCompactTiles`), the element-packing factors, the byte-size functions (`ShapeSizeBytesRaw` / `ShapeSizeCompact` / `ShapeWithMetadataSizeBytes`), and the residency record. It does **not** reproduce the compile-time *choice* of `minor_to_major` (that is [layout-assignment.md](../compiler/layout-assignment.md)), the HBM free-list allocator that hands out the offset (that is [hbm-allocator.md](hbm-allocator.md)), the DMA wire alignment (that is [hbm-dma-alignment.md](hbm-dma-alignment.md)), or the PJRT `PJRT_Buffer` ABI and external refcounting (that is [pjrt/buffer-and-memory.md](../pjrt/buffer-and-memory.md)).
 
@@ -26,12 +26,12 @@ For reimplementation, the contract is:
 | **2nd-minor pad** | `TransferSizeUtil::Pad2ndMinorCompact` @ `0x1d6af5c0` |
 | **Element packing** | `TransferSizeUtil::ElementPackingFactor` @ `0x1d6b03e0` (table-driven, `kPackingFactors[35]`) |
 | **Padded byte size** | `TransferSizeUtil::ShapeSizeBytesRaw` @ `0x1d6add40`; with metadata `ShapeWithMetadataSizeBytes` (via `HardwareLayout::ShapeSize` @ `0xeab0ec0`) |
-| **Compact byte size** | `TransferSizeUtil::ShapeSizeCompact` @ `0x1d6aea60` (via `HardwareLayout::ShapeSizeCompact` @ `0xeab0f20`) |
+| **Compact byte size** | `TransferSizeUtil::ShapeSizeCompact` @ `0x1d6ae8a0` (via `HardwareLayout::ShapeSizeCompact` @ `0xeab0f20`) |
 | **Tile stamp** | `xla::jellyfish::HardwareLayout::PopulateShape`; per-leaf `TransferSizeUtil::UpdateLeafLayout` @ `0x1d6b08c0` |
 | **Linearizer** | `TransferSizeUtil::LinearIndex` @ `0x1d6b0600` → `xla::LayoutUtil::LinearIndex` when tiled |
 | **HBM repacker** | `RepackToHardwareLayout<sublane,128>` @ `0x1d5c3b40` (`<16,128>`), `0x1d5c2880` (`<2,128>`), `0x1d5c3f80` (`<32,128>`) |
 | **Residency record** | `xla::ShapedBuffer` → `XLA_ShapedBuffer` (`ApiConverter::ToC` @ `0xfcb8580`) |
-| **Default tile** | `(SublaneCount, LaneCount)` = `(8, 128)` this build; `(16, 128)` on v4 |
+| **Default tile** | `(SublaneCount, LaneCount)` = `(8, 128)` this build; `(16, 128)` on an earlier generation |
 | **Confidence** | CONFIRMED (byte-anchored) unless a row or callout says otherwise |
 
 ---
@@ -80,7 +80,7 @@ XLA_Shape (536 bytes per element in a tuple array):
 |---|---|---|---|
 | `ApiConverter::ToC(const xla::Layout&, XLA_Layout*)` | `0xfcb7ca0` | `xla::Layout` → C ABI; pins layout offsets | CONFIRMED |
 | `ApiConverter::ToC(const xla::Shape&, XLA_Shape*)` | `0xfcb7940` | `xla::Shape` → C ABI; recurses tuple shapes | CONFIRMED |
-| `ApiConverter::FromC(XLA_Shape*)` | (inverse) | C ABI → `xla::Shape` for runtime calls | HIGH |
+| `ApiConverter::FromC(XLA_Shape*)` | `0xfcb7400` | C ABI → `xla::Shape` for runtime calls | CONFIRMED |
 | `xla::jellyfish::TransferSizeUtil::HasLinearLayout(const Layout&)` | `0x1d6b0160` | tile list empty ⇒ linear | CONFIRMED |
 
 ---
@@ -158,12 +158,12 @@ function SetPaddedShape(topology, shape /*buffer leaf*/, out_shape):   // 0x1d6a
 |---|---|---|---|
 | `HardwareLayout::HostShapeToDeviceShape` | `0xeab0e20` | C-ABI host→device shape | CONFIRMED |
 | `TransferSizeUtil::SetPaddedShape` | `0x1d6ae0e0` | Per-leaf pad + tile stamp | CONFIRMED |
-| `TransferSizeUtil::GetUnpackedShape` | `0x1d6b2100` | Widen a packed dtype for the recursion | HIGH |
-| `TransferSizeUtil::ShouldPackPREDAsSingleBit` | (inlined) | PRED 1-bit packing predicate | HIGH |
-| `TransferSizeUtil::ChunkBound` | `0x1d6b22e0` | Per-dim chunk bound used in the pad round-up | HIGH |
-| `HardwareLayout::PopulateShape` | (in `0x1d6ae…`) | Stamp dims + tile + `memory_space` | HIGH |
+| `TransferSizeUtil::GetUnpackedShape` | `0x1d6b2100` | Widen a packed dtype for the recursion | CONFIRMED |
+| `TransferSizeUtil::ShouldPackPREDAsSingleBit` | `0x1d6b0080` | PRED 1-bit packing predicate | CONFIRMED |
+| `TransferSizeUtil::ChunkBound` | `0x1d6b22e0` | Per-dim chunk bound used in the pad round-up | CONFIRMED |
+| `HardwareLayout::PopulateShape` | `0x1d6da360` | Stamp dims + tile + `memory_space` | CONFIRMED |
 | `XlaShapeToTpuPaddedShape` (C shim) | `0xeabf0e0` | `tensorflow::XlaTpuPaddedShapeFn` boundary | CONFIRMED |
-| `XlaShapeToTpuShapeRepresentation` (C shim) | `0xeabefa0` | Shape-representation boundary | HIGH |
+| `XlaShapeToTpuShapeRepresentation` (C shim) | `0xeabefa0` | Shape-representation boundary | CONFIRMED |
 
 ---
 
@@ -178,7 +178,7 @@ A device buffer's physical bytes are the logical array reshaped into `(sublane, 
 The default leaf tile is `(SublaneCount, LaneCount)`, the same `xla::Tile` [layout assignment stamps onto every leaf](../compiler/layout-assignment.md#depth-aware-layout-cost-and-the-tile):
 
 - **`LaneCount` = 128** across every generation (topology field `*((qword*)topology+52)`, used as the minor-dim bound).
-- **`SublaneCount`** = topology field `*((qword*)topology+51)` — **8** on this Trillium/v5+ build, **16** on jellyfish v4 (the 2nd-minor bound).
+- **`SublaneCount`** = topology field `*((qword*)topology+51)` — **8** on this v5+/v6e/TPU7x build, **16** on an earlier generation (the 2nd-minor bound).
 - **`granule_bytes`** = `*(qword*)(topology->[1] + 200)` — the hardware DMA granule. `GetCompactTiles` and `Pad2ndMinorCompact` both `CHECK(granule_bytes % sublane_bytes == 0)` at line 77, where `sublane_bytes = 4 * topology->[51]` (4 bytes × sublane count).
 
 A leaf's physical run is therefore: tiles tiled over the two minor dims, each tile `SublaneCount × LaneCount` 4-byte slots, padded out. For sub-byte dtypes an extra *subtile* is appended (§3.3).
@@ -230,9 +230,9 @@ The `kPackingFactors[35]` tables are per-`tc_max` (`<2>`, `<4>`, `<8>`, `<16>`, 
 | `TransferSizeUtil::GetCompactTiles` | `0x1d6b11c0` | Build the `inlined_vector<xla::Tile,3>` for a leaf | CONFIRMED |
 | `TransferSizeUtil::Pad2ndMinorCompact` | `0x1d6af5c0` | 2nd-minor pad + per-tile rows | CONFIRMED |
 | `TransferSizeUtil::ElementPackingFactor` | `0x1d6b03e0` | Logical elements per 4-byte slot (table-driven) | CONFIRMED |
-| `TransferSizeUtil::GetSubtileForPacking` | `0x1d6b1f20` | Sub-byte subtile | HIGH |
-| `TransferSizeUtil::GetSubtileForBreakingMinorDimensionForPacking` | (in `0x1d6b11c0`) | Subtile when minor extent == 1 | MEDIUM |
-| `TransferSizeUtil::DoesShapeRequireMultiChunkPacking` | (in `0x1d6b11c0`) | Multi-chunk packing predicate | MEDIUM |
+| `TransferSizeUtil::GetSubtileForPacking` | `0x1d6b1f20` | Sub-byte subtile | CONFIRMED |
+| `TransferSizeUtil::GetSubtileForBreakingMinorDimensionForPacking` | `0x1d6b1fe0` (called in `0x1d6b11c0`) | Subtile when minor extent == 1 | CONFIRMED |
+| `TransferSizeUtil::DoesShapeRequireMultiChunkPacking` | `0x1d6b0720` | Multi-chunk packing predicate | CONFIRMED |
 | `Target::LaneCount` / `SublaneCount` | `0x1d60f400` / `0x1d60f300` | Tile dims from chip descriptor | CONFIRMED |
 
 ---
@@ -289,11 +289,11 @@ function ShapeSizeBytesRaw(topology, shape):                      // 0x1d6add40
 | Function | Address | Role | Confidence |
 |---|---|---|---|
 | `TransferSizeUtil::ShapeSizeBytesRaw` | `0x1d6add40` | Padded data bytes (family dispatch) | CONFIRMED |
-| `TransferSizeUtil::ShapeSizeCompact` | `0x1d6aea60` | Compact-tiled byte size | CONFIRMED |
-| `TransferSizeUtil::ShapeSizeCompactRaw` | (sibling) | Compact bytes w/o metadata | HIGH |
-| `TransferSizeUtil::ShapeWithMetadataSizeBytes` | (via `0xeab0ec0`) | Data + per-buffer metadata | HIGH |
+| `TransferSizeUtil::ShapeSizeCompact` | `0x1d6ae8a0` | Compact-tiled byte size | CONFIRMED |
+| `TransferSizeUtil::ShapeSizeCompactRaw` | `0x1d6aea60` | Compact bytes w/o metadata | CONFIRMED |
+| `TransferSizeUtil::ShapeWithMetadataSizeBytes` | `0x1d6aea00` (via `0xeab0ec0`) | Data + per-buffer metadata | CONFIRMED |
 | `HardwareLayout::ShapeSize` / `ShapeSizeCompact` | `0xeab0ec0` / `0xeab0f20` | C-ABI byte-size wrappers | CONFIRMED |
-| `HardwareLayout::ComponentShape<64>` / `<128>` | (in `0x1d6add40`) | 64/128-bit element split | CONFIRMED |
+| `HardwareLayout::ComponentShape<64>` / `<128>` | `0x1d6d9cc0` / `0x1d6d9e40` | 64/128-bit element split | CONFIRMED |
 | `xla::ShapeUtil::ArraySize` | (OSS) | Tiled-array byte size | CONFIRMED |
 
 ---
@@ -345,8 +345,8 @@ function RepackToHardwareLayout<S,128>(dst, size_bytes, src, pad_flag):  // e.g.
 | Function | Address | Role | Confidence |
 |---|---|---|---|
 | `TransferSizeUtil::LinearIndex` | `0x1d6b0600` | Tiled/linear multi-index → flat offset | CONFIRMED |
-| `TransferSizeUtil::UpdateLayout` | `0x1d6b05a0` | Stamp default device layout (per-subshape) | HIGH |
-| `TransferSizeUtil::UpdateLeafLayout` | `0x1d6b08c0` | Stamp tile on a single leaf | HIGH |
+| `TransferSizeUtil::UpdateLayout` | `0x1d6b05a0` | Stamp default device layout (per-subshape) | CONFIRMED |
+| `TransferSizeUtil::UpdateLeafLayout` | `0x1d6b08c0` | Stamp tile on a single leaf | CONFIRMED |
 | `RepackToHardwareLayout<2,128>` | `0x1d5c2880` | SIMD host→tile repack, sublane 2 | CONFIRMED |
 | `RepackToHardwareLayout<16,128>` | `0x1d5c3b40` | SIMD host→tile repack, sublane 16 | CONFIRMED |
 | `RepackToHardwareLayout<32,128>` | `0x1d5c3f80` | SIMD host→tile repack, sublane 32 | CONFIRMED |
