@@ -13,7 +13,7 @@ This page owns the config proto, the async descriptor record, the runtime drain 
 For reimplementation, the contract is:
 
 - **The config proto** — the 10-field `ContinuationQueue` message (field #2 is a numbered gap), its `PerCore` sub-message, the `SharedMemoryRegion`, and the `asic_sw.deepsea.SyncFlag` consumer-flag handle — with field numbers, types, and C++ member offsets.
-- **The async descriptor record** — the flat `int32` SMEM control block, which `TpuMemoryReservationType` slot holds each field, the value sources, the poison fills, and the record byte size `max(0x200, count) + reserved*4`.
+- **The async descriptor record** — the flat `int32` SMEM control block, which `TpuMemoryReservationType` slot holds each field, the value sources, the poison fills, and the record byte size = `reserved_words*4` rounded **up** to a multiple of `max(0x200, count)`.
 - **The runtime drain** — the `tpu::ContinuationQueue` object layout, the ring-window arithmetic, and the `Enqueue` → `WorkerLoop` → `WriteMemory` → `Completed` path; plus the device-side producer ring-advance `EmitContinuationTailcall`.
 - **The scalar-halt map** — the five `ShaltInternal` program-end emit sites, the `Target+0x628` bit-0 suppression in `CompileInternal`, the richer per-sequencer gate in `LowerHloModuleImpl`, and the continuator's own closing halt.
 
@@ -62,7 +62,7 @@ The field map is carved byte-exact from the embedded `FileDescriptorProto` (`pro
 
 ### The `PerCore` sub-message
 
-`ContinuationQueue.PerCore` (`DescriptorProto` @ `0xc18e329`, len 138; `_table_` @ `0x2200cab8`) carries exactly two message-typed fields:
+`ContinuationQueue.PerCore` (`DescriptorProto` @ `0xc18e326`, len 138; `_table_` @ `0x2200cab8`) carries exactly two message-typed fields:
 
 | Field # | Name | Proto type | C++ off | Confidence |
 |---:|---|---|---:|---|
@@ -149,17 +149,18 @@ The `kProgramDescriptorState` / `kProgramEntryPointAddress` / `kProgramEntryPoin
 ```c
 // tpu::ReservedSmemFiller::GetRequiredDescriptorBytes   sub_1D4C2A20
 function GetRequiredDescriptorBytes(core, run_config):
-    count = chip_config.producer_sync_flag_count          // [chipcfg+0xc8]
-    min_bytes = max(count, 0x200)                          // floor at 512
-    reserved = filler.user_words + run_config.reserved_words   // [filler+0x20] + [run_config+0x28]
-    if reserved != 0:
-        return min_bytes + reserved * 4                    // int32 words
-    return min_bytes
+    count    = chip_config.producer_sync_flag_count        // [chipcfg+0xc8]
+    granule  = (count >= 513) ? count : 512                // alignment granule, floored at 512
+    reserved = run_config[+0x28] + user_region.word_count  // reserved int32 word count
+               - user_region.word_offset_pair             //   (GetUserRegion offsets)
+    bytes    = reserved * 4                                 // int32 words -> bytes
+    rem      = bytes % granule
+    return (rem == 0) ? bytes : bytes + (granule - rem)     // round bytes UP to a multiple of granule
 ```
 
 The image is allocated by the `MaybeMappedBuffer` functor: first `PremappedMemoryManager::Allocate` (a pinned, DMA-mappable region — returns the device byte offset `[cont+0xc0]-[[cont+0xb8]+8]`), falling back to `ContinuationDescriptor::DefaultAllocator` @ `0x1d6272e0` (`posix_memalign(&p, 0x20, size)`, 32-byte aligned, `free` deleter). The `ContinuationDescriptor` ctor `memset`s the whole image to 0, then the `fill` functor (`FillCoreBuffer` bound via `__bind_front`) writes the fields.
 
-> **QUIRK —** the constant `0x200`=512 recurs three times: as the byte-size floor here, as the runtime max-in-flight cap (`obj+0x58`, [§3](#3-the-runtime-ring)), and as the clamp in `ContinuationDescriptor::Terminator(int)` @ `0x1d627260`. The queue caps at 512 in-flight descriptors; the `Terminator` descriptor (the one that ends the chain) inherits the same cap. Treat 512 as the architectural in-flight limit, not three independent magic numbers.
+> **QUIRK —** the constant `0x200`=512 recurs three times, always as a **floor**, never an in-flight cap: as the byte-size alignment granule here (`max(count, 512)`); as the runtime `min_descriptor_size_` floor (`obj+0x58 = max(descsize, 512)`, [§3](#3-the-runtime-ring)); and as the `if (a2 < 513) a2 = 512;` clamp in `ContinuationDescriptor::Terminator(int)` @ `0x1d627260`. So a descriptor image is never smaller than 512 bytes, and the `Terminator` descriptor (the one that ends the chain) inherits the same 512-byte minimum. Treat 512 as the minimum descriptor-image size, not three independent magic numbers — and **not** an in-flight descriptor count limit.
 
 ---
 
@@ -180,9 +181,9 @@ From the ctor `tpu::ContinuationQueue::ContinuationQueue(...)` @ `0x1d160ae0` (t
 | `+0x28`/`+0x30`/`+0x38` | `per_core` vector `{begin, size, cap}` | heap copy of descriptor `per_core` | CONFIRMED |
 | `+0x40` | ring window **START** byte | `per_core[core]+0x10(word_offset) * wordsize` | CONFIRMED |
 | `+0x48` | ring window **END** byte | `(per_core[core]+0x8(word_count) + +0x10) * wordsize` | CONFIRMED |
-| `+0x50` | descriptor size | ctor arg | CONFIRMED |
-| `+0x58` | max-in-flight | `min(arg, 0x200=512)` | CONFIRMED |
-| `+0x60` | ring capacity | `(END − START)/2 − descsize` | CONFIRMED |
+| `+0x50` | `granule_bytes_` | raw descriptor-size ctor arg (the divisor in all three `% granule_bytes_` CHECKs) | CONFIRMED |
+| `+0x58` | `min_descriptor_size_` | `max(arg, 0x200=512)` — 512-byte floor (CHECK `"min_descriptor_size_ % granule_bytes_ == 0"`) | CONFIRMED |
+| `+0x60` | `max_descriptor_size_` | `(END − START)/2 − descsize` (CHECK `"max_descriptor_size_ % granule_bytes_ == 0"`) | CONFIRMED |
 | `+0x68` | `TpuHostWorkQueue*` | ctor arg | CONFIRMED |
 | `+0x70` | core_type / completion interrupt | descriptor `+0xc` | CONFIRMED |
 | `+0x78` | user dispatch function | the `std::function` arg | CONFIRMED |
@@ -201,8 +202,8 @@ The ctor's ring-window arithmetic is the byte-exact proof that `per_core+0x10` i
 ```c
 // the host-side producer/consumer drain
 function Enqueue(descriptor, device_byte_offset, completion_cb):     // sub_1D161160
-    // bounds-check the ring offset against [max_in_flight, capacity)
-    if descriptor[+0x28] not in [obj+0x58, obj+0x60):
+    // bounds-check the descriptor byte offset against [min_descriptor_size_, max_descriptor_size_]
+    if descriptor[+0x28] > obj[+0x60] || descriptor[+0x28] < obj[+0x58]:
         completion_cb(OutOfRange status); return                      // failure path
     append Request{descriptor, completion_cb, buffer functors} to in-flight deque
     obj[+0x100]++                                                     // producer count
@@ -297,7 +298,7 @@ The `__popcnt(cfg[+0x8]) != 1` check with the assertion string `"absl::has_singl
 
 The device-side `ContinuationDescriptor::State` word (SMEM at `Target+0x860`) is a 2-value handshake:
 
-- `SetProgramDescriptorState(State, rb)` @ `0x1271a5e0` `Sst`s a `SimmU32(State)` into the slot. All three callers (in `BarrierCoresWithIdVerificationInternal`, and `SynchronizeProgramDescriptorStatesMegacore` @ `0x1c697540`) pass **State=2**.
+- `SetProgramDescriptorState(tpu::ContinuationDescriptor::State, rb)` @ `0x1271a5e0` `Sst`s a `SimmU32(State)` into the slot. All three call sites (whole-binary) are inside `BarrierCoresWithIdVerificationInternal` @ `0x12715c00` (`0x12717828`/`0x12718183`/`0x1271825b`) and each passes `mov $0x2,%edi` — i.e. **State=2**. Separately, `SynchronizeProgramDescriptorStatesMegacore` @ `0x1c697540` does **not** call `SetProgramDescriptorState`; it reads the State word at `ProgramDescriptorStateWordOffset` and `EnqueueRemoteSst`s it to the twin core — propagating (not setting) the State across the Megacore pair.
 - `GetProgramDescriptorState(rb)` @ `0x1271a580` `Sld`s it. `LowerHloModuleImpl` reads it and predicates the next block on `(State SeqS32 1)`.
 
 So **State 1 = first/initial run**, **State 2 = continuation/next-program-ready** (the Megacore barrier synchronizes both twin cores' `State` to 2 before the tailcall). The enumerator *names* have no standalone descriptor in this build; only the literals 1 and 2 are observed.
