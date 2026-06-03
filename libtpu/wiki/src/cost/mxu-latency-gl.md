@@ -8,7 +8,7 @@
 
 Ghostlite's resource set is narrower than Viperfish's: the reservation vector is `std::array<int,11>`, against Viperfish's `array<int,19>`. The bounds-check literal is correspondingly `11` (`MxuResource::kNumMxuResources`) rather than `19`. The lookup `GetResourceUsage @0x1c8b7560` keys two families — `MatmulModifier` (the matmul map at `this+0x20`) and `MatpushModifier` (the latch/matprep map at `this+0x00`) — by the Ghostlite-specific opcode set, builds the modifier key from the three shared `GainLatchMode` helpers, `find`s the row, and returns `array[resource]`. Two per-resource defaults short-circuit the lookup: `resource==4 → 3` and `resource==9 → 9` seed the latch/matmul-issue slots before any map read.
 
-The defining structural fact of this page is the **GL-vs-GF constructor split**. Ghostlite (v6e) and Trillium (v7, `6acc60406`) share the `array<int,11>` *shape*, the four modifier *types*, and the three `GainLatchMode` key helpers — but they are two distinct objects built by two distinct constructors with two distinct base-latency value sets. GL's ctor `@0x1c8b2920` is **data-driven**: it fills the maps with templated `SetReservations<Modifier>` calls that densify a sparse `flat_hash_map<MxuResource,int>` into the `array<int,11>`. GF's ctor `@0x1c8bb1c0` is **inline**: it writes `array[res & 0xf] = cy` directly and builds no `Matres` map at all. The base matmul latencies differ — GL prices bf16/F32 at **192** and fp8 at **182**; GF at **211/204** — so the two generations are *not* a shared instance. This page documents GL; the GF twin is on [`mxu-latency-gf`](mxu-latency-gf.md).
+The defining structural fact of this page is the **GL-vs-GF constructor split**. Ghostlite (v6e) and `6acc60406` (the GF generation) share the `array<int,11>` *shape*, the four modifier *types*, and the three `GainLatchMode` key helpers — but they are two distinct objects built by two distinct constructors with two distinct base-latency value sets. GL's ctor `@0x1c8b2920` is **data-driven**: it fills the maps with templated `SetReservations<Modifier>` calls that densify a sparse `flat_hash_map<MxuResource,int>` into the `array<int,11>`. GF's ctor `@0x1c8bb1c0` is **inline**: it writes `array[res & 0xf] = cy` directly and builds no `Matres` map at all. The base matmul latencies differ — GL prices bf16/F32 at **192** and fp8 at **182**; GF at **211/204** — so the two generations are *not* a shared instance. This page documents GL; the GF twin is on [`mxu-latency-gf`](mxu-latency-gf.md).
 
 For reimplementation, the contract is:
 
@@ -25,7 +25,7 @@ For reimplementation, the contract is:
 | **Reservation vector** | `std::array<int,11>` (`MxuResource::kNumMxuResources` = 11) |
 | **Owning CycleTable** | `GlcCycleTable` `@0x1c89e7e0` — MXU table at `this+0x18` (`new 0xA0`) |
 | **MXU twin** | `MxuLatencyTable1` (MXU1, second instance) — same class, distinct map set |
-| **GF counterpart** | GF (Trillium) ctor `@0x1c8bb1c0`, lookup `@0x1c8bdb20` — inline build, `211/204` |
+| **GF counterpart** | GF (`6acc60406`) ctor `@0x1c8bb1c0`, lookup `@0x1c8bdb20` — inline build, `211/204` |
 | **Source file** | `…/target/ghostlite/mxu_latency_table_gl.cc` (CHECK/LogFatal anchors) |
 
 ---
@@ -167,8 +167,8 @@ The `MatpushKey` is `{ byte[0]=GainLatchModeToMatmulDataFormat(mode), byte[1]=La
 | `GainLatchModeToMatmulDataFormat` | `0x1d629260` | matpush key byte[0] — shared with VF/GF | CERTAIN |
 | `LatchModeIsTranspose` | `0x1d628ea0` | matpush key byte[1] — shared | HIGH |
 | `LatchOpcodeToMsr` | `0x1c8a1300` | matpush key byte[3] — GL arg `0x95` | HIGH |
-| GF (Trillium) ctor | `0x1c8bb1c0` | the divergent twin — inline build, 211/204 | CERTAIN |
-| GF (Trillium) `GetResourceUsage` | `0x1c8bdb20` | GF lookup — `mxu_latency_table_gf.cc`, no res4/res9 remap | CERTAIN |
+| GF (`6acc60406`) ctor | `0x1c8bb1c0` | the divergent twin — inline build, 211/204 | CERTAIN |
+| GF (`6acc60406`) `GetResourceUsage` | `0x1c8bdb20` | GF lookup — `mxu_latency_table_gf.cc`, no res4/res9 remap | CERTAIN |
 
 ---
 
@@ -176,12 +176,12 @@ The `MatpushKey` is `{ byte[0]=GainLatchModeToMatmulDataFormat(mode), byte[1]=La
 
 ### Purpose
 
-Ghostlite (v6e) and Trillium (v7, `6acc60406`) look like one family — same `array<int,11>` shape, same four modifier types, same `GainLatchMode` key helpers — but they are two distinct objects built by two distinct constructors with two distinct value sets. A reimplementation that treats them as one shared instance prices every Trillium matmul wrong.
+Ghostlite (v6e) and `6acc60406` (the GF generation) look like one family — same `array<int,11>` shape, same four modifier types, same `GainLatchMode` key helpers — but they are two distinct objects built by two distinct constructors with two distinct value sets. A reimplementation that treats them as one shared instance prices every `6acc60406` matmul wrong.
 
 ### What they share, what diverges
 
 ```text
-                       GL (Ghostlite, v6e)          GF (Trillium, v7)
+                       GL (Ghostlite, v6e)          GF (`6acc60406`)
   owning CycleTable    GlcCycleTable @0x1c89e7e0     GfcCycleTable @0x1c89eec0
   MxuLatency ctor      @0x1c8b2920                   @0x1c8bb1c0
   GetResourceUsage     @0x1c8b7560                   @0x1c8bdb20
@@ -198,7 +198,7 @@ The divergences are byte-confirmed:
 - **Base op-latency** (`matmul_latencies_`, the per-`MatmulDataFormat` total latency at `this+0x80`). GL's ctor emits a loop-keyed `matmul_latencies_.try_emplace(format, 192)` and `try_emplace(format, 182)` (`@0x1c8b3092/3205`). GF's ctor names the formats explicitly — `try_emplace(MatmulDataFormat::kF32, 211)`, `(kBf16, 211)`, `(kF8E5M2, 204)`, `(kF8E4M3Fn, 204)` (`@0x1c8bb486/592/699/804`). So GL prices bf16/F32 at **192** and fp8 at **182**; GF at **211/204**.
 - **Opcode set + default handling.** GL keys off opcodes `292/298/310` (matmul) and `347/349/356/358` (matpush), seeds `res4→3`/`res9→9` before the lookup, and reads `array[resource]` (with the seed-default short-circuit). GF keys off `289/295/301/307` (matmul, formats `1/2/9/10`) and `324..327` (matpush, with pre-transforms `|0x32`, `^0xB`, `|0x30`), CHECK-bounds `mxu_resource_idx < 11` up front (`gf.cc:415`), and reads `array[a4]` directly with **no** res4/res9 seed remap.
 
-| | GL (Ghostlite) | GF (Trillium) |
+| | GL (Ghostlite) | GF (`6acc60406`) |
 |---|---|---|
 | bf16 / F32 base latency | 192 | 211 |
 | fp8 (E5M2 / E4M3Fn) base latency | 182 | 204 |
@@ -233,7 +233,7 @@ The same throughput integers surface in the base grid: the `GhostlitePerformance
 | Name | Relationship |
 |---|---|
 | `mxu-latency-overview` | the shared model, modifier-key construction, and the issue-stall consumer |
-| `mxu-latency-gf` | the Trillium (v7) twin — inline build, `211/204` base latencies |
+| `mxu-latency-gf` | the `6acc60406` (GF) twin — inline build, `211/204` base latencies |
 | `mxu-latency-vf` | the Viperfish (v5p) `array<int,19>` instance with the `res3→15`/`res11→0` defaults |
 | `performance-gl-ghperf` | the 476×31 base grid whose EUP-prep column agrees on the throughput integers |
 | `matmul-mode-modifiers` | the `MatmulMode` ordinals, `MatmulDataFormat` codes, and family→reservation bindings |
@@ -242,7 +242,7 @@ The same throughput integers surface in the base grid: the `GhostlitePerformance
 ## Cross-References
 
 - [MXU Latency Overview](mxu-latency-overview.md) — the shared per-gen reservation model, the four modifier families, the `find → array[resource]` read
-- [MXU Latency: GF (6acc60406)](mxu-latency-gf.md) — the Trillium twin; the inline ctor and `211/204` divergence
+- [MXU Latency: GF (6acc60406)](mxu-latency-gf.md) — the `6acc60406` twin; the inline ctor and `211/204` divergence
 - [MXU Latency: VF](mxu-latency-vf.md) — the Viperfish `array<int,19>` instance and the `res3→15`/`res11→0` defaults
 - [Performance: GL (GhPerf 476×31)](performance-gl-ghperf.md) — the Ghostlite base grid; Xlu deposit res 0x0f; EUP-prep throughput agreement
 - [MatmulMode & Modifiers](matmul-mode-modifiers.md) — the `MatmulMode` ordinals, `MatmulDataFormat` codes, modifier arrays
