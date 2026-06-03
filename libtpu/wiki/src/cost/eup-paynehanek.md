@@ -21,7 +21,7 @@ For reimplementation, the contract is:
 | **Constant loader** | `LloModule::VectorU32Constant` `@0x1d506400` (one LLO op per `imm32`) |
 | **Table form** | 6 × `u32`, MSB-first, as `.text` immediates — **not** a `.rodata` pool |
 | **Reconstructs to** | `Σ wᵢ·2^(−32(i+1)) = 0.15915494309189535 = 1/(2π)` (exact to fp64) |
-| **High-product helper** | `VshllU64High` `@0x1d583ac0` + `VmulU64` (windowed 64-bit multiply) |
+| **High-product helper** | `VshllU64High` `@0x1d583ac0`; `VmulU64`/`VmulU32` on the wide-multiply path (`@lines 855–858`) |
 | **Binary-point offset** | `0xffffffe2` (−30) → `SimplifySubS32` → `CreateVectorBinop(0x121)` |
 | **π/2 significand** | `0x00c90fdb` (24-bit significand of float `π/2 = 0x3fc90fdb`) |
 | **Reconstruction** | `VcomposeF32` `@0x1d555860`; final `VmulF32` `r = k_frac·(π/2)` |
@@ -112,11 +112,17 @@ cshift   = SimplifySubS32(0x20, shift)                   // 32 - shift  (CreateV
 //   window_limb = SimplifyOrU32(hi, lo)   (CreateVectorBinop 0x15e = OR)
 // → six assembled limbs (w0..w5) realigned to the binary point
 
-prod_hi = VshllU64High(builder, x_mantissa, window, ...) // @0x1d583ac0 : 64-bit high product
-prod    = VmulU64(builder, x_mantissa, window)           // low 64 bits of the product
+// wide-multiply path (target supports VmulU64, @line 838 capability query):
+prod_lo = VmulU64(builder, x_mantissa, window_lo)        // @line 855 : low product
+prod_hi = VmulU64(builder, x_mantissa, window_hi)        // @line 856
+prod_x  = VmulU32(builder, x_mantissa, window_mid)       // @line 858, + AddCarryU32 @line 872
+// limb-by-limb path otherwise: VshllU64High (@0x1d583ac0, lines 982/1052/1592)
+//   feeds the 8-iteration SimplifyMulF32/VcvtF32ToS32 accumulation loop (@lines 1194-1337)
 ```
 
-`VshllU64High` (`@0x1d583ac0`) is the unsigned 64×64→high-64 multiply that keeps the integer-turn bits; `VmulU64` keeps the fractional-turn bits. The integer-turn bits are the quadrant count; the fractional bits become the reduced argument. The `Shrl`/`Shll`/`Or` chain (LLO binops `0x19a`/`0x19c`/`0x15e`) appears once per limb — six times — to realign each `1/(2π)` limb against the exponent-selected binary point before the multiply.
+`VshllU64High` (`@0x1d583ac0`) is the unsigned 64×64→high-64 multiply that keeps the high product bits; the integer part of the turn-count is the quadrant carrier and the fractional part becomes the reduced argument. The `Shrl`/`Shll`/`Or` chain (LLO binops `0x19a`/`0x19c`/`0x15e`) appears once per limb to realign each `1/(2π)` limb against the exponent-selected binary point before the multiply.
+
+> **NOTE —** the function carries two product paths gated by a target capability query (`@line 838`, the dispatch `(*vtbl+1568)(...,8)`). When the target supports the wide multiply, the windowed product is formed by two `VmulU64` calls plus a `VmulU32` (`@lines 855–858`) with explicit `AddCarryU32` carry propagation (`@line 872`). Otherwise the fraction is assembled limb-by-limb through `VshllU64High` (`@lines 982, 1052, 1592`) and the eight-iteration `SimplifyMulF32`/`VcvtF32ToS32` accumulation loop (`@lines 1194–1337`) that multiplies the float-converted mantissa nibbles against the window limbs. Both paths produce the same windowed `x · (1/2π)` product; the high/low integer-vs-fraction split of that product is **INFERRED** from the surrounding reconstruction, not an opcode flag.
 
 ### Quadrant Index and Reconstruction
 
@@ -203,7 +209,7 @@ A faithful reimplementation must therefore hard-code the eight constants into th
 |---|---|---|---|
 | `PayneHanekRangeReduction` | `0x1d5819c0` | the full trig argument reduction (emits the windowed multiply + reconstruction) | CERTAIN |
 | `LloModule::VectorU32Constant` | `0x1d506400` | materializes each `imm32` (the six `1/(2π)` words + control constants) as an LLO op | CERTAIN |
-| `VshllU64High` | `0x1d583ac0` | unsigned 64×64 → high-64 product (the integer-turn extraction) | CERTAIN |
+| `VshllU64High` | `0x1d583ac0` | unsigned 64×64 → high-64 product (limb-by-limb windowed multiply) | CERTAIN |
 | `LloRegionBuilder::VcomposeF32` | `0x1d555860` | assembles the reduced argument float from (exponent, π/2 significand) | CERTAIN |
 | `SimplifyConvertS32ToF32` | (inline) | `s32 → f32` for turn-count `k` and the fraction | CERTAIN |
 | `LloRegionBuilder::VcmpHelper` | (inline) | the four window comparisons (`<= 1,2,3,4`) feeding the selects | HIGH |
