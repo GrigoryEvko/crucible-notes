@@ -183,7 +183,7 @@ SmallVector<Value> expandTiledIndices(ValueRange logical, ArrayRef<Tile> tiles,
                 k0 = arith::ConstantOp::create(b, loc, i32, i32Attr(t))  // @0x1cb002e0
                 c  = vector::BroadcastOp::create(b, loc, vecTy, k0)      // @0x178d98c0
             else:
-                return emitError("... must be index or i32 vector")     // @0x134e2400
+                return emitError("Unsupported index type: " + ty)       // @0x134e2400
             div_block.append( arith::DivUIOp::create(b, loc, idx, c, /*isExact=*/false) )  // @0x1cb06d00
             rem_block.append( arith::RemUIOp::create(b, loc, idx, c) )                     // @0x1cb20800
         // replace the last tile_rank indices with 2*tile_rank values:
@@ -240,7 +240,7 @@ LogicalResult issueContiguousTransfer(b, op, srcBase, dstBase, length, sflag,
             srcBase, srcZeroIdx, dstBase, dstZeroIdx,
             /*off=*/streamLen, /*IntegerAttr=*/null, sflag, sflagIdx)  // @0x145e3440 → Stream Linear slot 0x3b
       default:
-        return emitOpError("unsupported transfer ...")  // @0x1350aecb
+        return emitOpError("Unsupported transfer kind: %d", kind)  // @0x1350aecb
 ```
 
 | issuer (kind) | `sparse_core::…::create` (`@VA`) | slot | operand binding |
@@ -270,12 +270,12 @@ LogicalResult getDMATiling(b, op, src, dst, &srcLayout, &dstLayout,
                            &outStrides, &outElemsPerStride):
     // GATE 1: both layouts must be tiled
     if src.getTiles().empty() or dst.getTiles().empty():        // @0x14a9dac0
-        return emitOpError("... layout must be tiled")          // @0x135186db
+        return emitOpError("DMA source and target must have tiled layout.")   // @0x135186db
 
     // GATE 2: tile ranks match AND rank in {1,2}
     tile_rank = src.tile_dims >> 1
     if tile_rank != dst.tile_rank or tile_rank not in {1,2}:    // lea ecx,[rbx-3]; cmp ecx,0xfffffffd
-        return emitOpError("... only supports 1-D and 2-D tiling")
+        return emitOpError("Not implemented: DMA with tiling that is not 1 or 2D. ...")
 
     if leading tile dims MATCH:                                  // contiguous reshape
         getElementTypeBitwidth() gate                            // @0x11233400
@@ -286,7 +286,7 @@ LogicalResult getDMATiling(b, op, src, dst, &srcLayout, &dstLayout,
                   {SublaneCount, LaneCount}, false)              // @0x14b74480 — flatten to sublane×lane
         require elementBitwidth == 32 and leadingDim == 1
         outStrides = contiguousSide.getTileStrides() / untiledElemStride   // idiv, divisibility-checked
-            // nonzero remainder -> emitOpError "... stride not divisible"  @0x13518f95
+            // nonzero remainder -> emitOpError "Failed to update target tile strides."  @0x13518f95
         retiled = TiledLayoutAttr::get(ctx, tiles, dividedStrides)         // @0x14a9d980
         *outLayoutRef = retiled                                  // write *[rbp+0x10]
         outElemsPerStride = 1                                    // write *[rbp+0x20]
