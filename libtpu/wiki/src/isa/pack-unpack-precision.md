@@ -56,7 +56,7 @@ function VpackBf16Inst(a, b):                           // 0x1d565940
 
 The decompile shows `VpackBf16Inst` calling `CreateVectorPack(294, 7u, …)` — `294` = `0x126` = `kVectorPack`, format `7` = `InterleavedBf16` — after the gate `(*(…+1224))(v7, 7)` where `1224` = `0x4c8` is the target sub-object vtable slot for `SupportsVectorPackOps`. `CreateVectorPack` (`0x1d4d3140`) builds a two-operand `New(0x126, {a,b})` and calls `set_pack_format_sublane(7, nullopt)`.
 
-> **NOTE —** the bf16 pair-pack is **not** `kVectorWeird` (`0xae`). The `0xae` op is the *distinct one-operand* `VweirdBf16` factory (`0x1d5546e0` → `CreateVectorWeird` `0x1d4d4e20`), a single-input cross-lane op gated on `SupportsBf16AluInstructions` (vtable `+0x780`) that dispatches on the result `PrimitiveType` (`0xb` BF16 / `0x10` F16). An earlier reading that routed `VpackBf16` through `CreateVectorWeird`/`0xae` was wrong; the two share no factory.
+> **NOTE —** the bf16 pair-pack is **not** `kVectorWeird` (`0xae`). The `0xae` op is the *distinct one-operand* `VweirdBf16` factory (`0x1d5546e0` → `CreateVectorWeird` `0x1d4d4e20`), a single-input cross-lane op gated on `SupportsBf16AluInstructions` (vtable `+0x780`); the decompile passes a fixed result `PrimitiveType` `0x10` (F16) to `CreateVectorWeird`, which builds `New(0xae, {in}, 1)`. An earlier reading that routed `VpackBf16` through `CreateVectorWeird`/`0xae` was wrong; the two share no factory.
 
 ### Function Map
 
