@@ -25,7 +25,7 @@ For reimplementation, the orientation contract is:
 | **OSS pass driver** | `MemorySpaceAssignment::Run` @ `0x1dc2e200` (vtable `0x21d1b5d8`) |
 | **HeapSimulator entry** | `MsaAlgorithm::Finish` @ `0x1dc5b560` (vtable `0x21d1b8f0`) |
 | **Heap base class** | `xla::GlobalDecreasingSizeBestFitHeap<xla::HloValue>` (multi-space best-fit) |
-| **"ILP" sub-pass** | `MemoryBoundLoopOptimizer` @ entry `0x1dc4b520` / `Optimize` `0x1dcb9760` (496-byte object) |
+| **"ILP" sub-pass** | `MemoryBoundLoopOptimizer`; driven from `MsaAlgorithm::IdentifyAndOptimizeMemoryBoundLoops` `0x1dc4b520`, runs `MemoryBoundLoopOptimizer::Optimize` `0x1dcb9760` (496-byte object, `operator new(0x1f0)`) |
 | **Even/odd heap** | `LoopOptimizerBestFitHeap::FindEvenAndOddAllocationBetween` @ `0x1dcb5580` |
 | **External solver** | **None on the MSA hot path** — no CpSolver/MPSolver/glop reachable from any MSA symbol |
 | **IR level** | XLA HLO (`HloModule`/`HloInstruction`), HLO logical time |
@@ -44,7 +44,7 @@ MSA assigns each `HloValue` a memory space for each segment of its live range, a
 
 The vocabulary the binary's verifier accepts is wider than this two-way split — `kHbm`, `kPinnedHbm`, `kVmem`, `kSmem`, `kCmem`, `kSflag`, `kHost`, plus several SparseCore- and BarnaCore-private spaces — but the core decision is always "scarce tier or not." `kPinnedHbm` is a distinct space from `kHbm` for buffers the runtime must lock (peer-DMA inputs); the repacker may never relocate them. `kHost` is the host-RAM spill target, reached through host-offload custom calls rather than the heap. The detailed per-space capacity and constraint matrix lives on [msa-reservation-hbm-policy.md](msa-reservation-hbm-policy.md).
 
-> **NOTE —** "Alternate" is the algorithm's name for the scarce tier; "VMEM" / "CMEM" are the physical realizations. The greedy heap never sees "VMEM" — it sees a single `[0, max_size_in_bytes)` byte range that the [jellyfish driver](#the-jellyfish-driver) sized from the chip's VMEM word count. On v7 (Trillium) that range is 64 MiB per TensorCore, 512-byte word-aligned; CMEM is absent (`CmemSize == 0`), so the CMEM tier is dormant. See [msa-per-version-defaults.md](msa-per-version-defaults.md).
+> **NOTE —** "Alternate" is the algorithm's name for the scarce tier; "VMEM" / "CMEM" are the physical realizations. The greedy heap never sees "VMEM" — it sees a single `[0, max_size_in_bytes)` byte range that the [jellyfish driver](#the-jellyfish-driver) sized from the chip's VMEM word count. On the latest TensorCore generation (top jump-table entry, `tpu_version == 5`) that range is 64 MiB per TensorCore, 512-byte word-aligned; CMEM is absent (`CmemSize == 0`), so the CMEM tier is dormant. See [msa-per-version-defaults.md](msa-per-version-defaults.md).
 
 ### The two outputs
 
@@ -104,7 +104,7 @@ Status RunMemorySpaceAssignment(MsaOptions opts, Target target,
                                       alias_analysis, alias_info, options);
 ```
 
-> **QUIRK —** the per-version gate maps internal `TpuVersion` 0 and 1 both to the Jellyfish flag, and the AUTO rule "`tpu_version >= 2`" disables MSA for those lowest two. MSA is effectively on from Pufferfish-class generations up. v5 (Trillium) *shares* Ghostlite's `gf` flag namespace — there is no separate Trillium flag family. A reimplementer who assumes one flag family per codename will mis-gate Trillium. The exact version→flag table is on [msa-per-version-defaults.md](msa-per-version-defaults.md).
+> **QUIRK —** the per-version gate maps internal `TpuVersion` 0 and 1 both to the Jellyfish flag, and the AUTO rule "`tpu_version >= 2`" disables MSA for those lowest two. MSA is effectively on from Pufferfish-class generations up. The two newest generations (`tpu_version` 4 and 5) *both* route to the Ghostlite `gf` flag namespace — the jump table at `0xae09ac8` sends both indices to the same family. A reimplementer who assumes exactly one flag family per generation will mis-gate the newest chip. The exact version→flag table is on [msa-per-version-defaults.md](msa-per-version-defaults.md).
 
 ### Function Map
 
@@ -286,7 +286,7 @@ The "stored solution" is therefore just a **packed permutation of buffer-interva
 |---|---|---|
 | **msa-overview.md** *(this page)* | Role, jellyfish driver, greedy `Finish`, ILP-vs-greedy framing | `0x12fc3080`, `0x1dc5b560`, `0x1dcb9760` |
 | [msa-allocate-segment.md](msa-allocate-segment.md) | The 6-stage per-buffer cascade (required-assign → pin → no-copy → prefetch → evict → default); `AllocationRequest` (~0x210 B) layout; `AllocationResult` 11-bit failure bitmask | `0x1dc73ca0`, `0x1dc72820`, `0x1dc7bc80` |
-| [msa-per-version-defaults.md](msa-per-version-defaults.md) | Version→flag gating matrix (v5/v7 share `gf`), the 5-variant per-family override scheme, overlap ratios / outstanding-copy caps per generation, the v7 64-MiB VMEM / 512-B-word budget | `0x12fc1280`, `0x12fc1440`, table `0xae09ac8` |
+| [msa-per-version-defaults.md](msa-per-version-defaults.md) | Version→flag gating matrix (`tpu_version` 4 and 5 share `gf`), the 5-variant per-family override scheme, overlap ratios / outstanding-copy caps per generation, the 64-MiB VMEM / 512-B-word budget on the newest generation | `0x12fc1280`, `0x12fc1440`, table `0xae09ac8` |
 | [msa-reservation-hbm-policy.md](msa-reservation-hbm-policy.md) | Per-memory-space capacity & constraint matrix, scoped + cross-program-prefetch reservations, `kPinnedHbm`/`kHost` policy, the HBM-allocator handoff | `0x1dc5b460`, `0x1dc62280` |
 
 The prefetch interval picker (`CostAnalysisPrefetchIntervalPicker`, ctor `0x1dcd6b60`; `Begin` `0x1dcd7a00` / `Next` `0x1dcd7e20`), the async-copy time-bucket resource model (`AsynchronousCopyResource::HasEnoughResource` `0x1dc78d40`), and the cost model (`CostAnalysis::Create` `0x1dceafc0`) are consulted by `AllocateSegment` and documented on [msa-allocate-segment.md](msa-allocate-segment.md).
