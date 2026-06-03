@@ -4,7 +4,7 @@
 
 ## Abstract
 
-`TpuTransferManager_*` is the C-ABI cluster that backs `xla::TransferManager` across the [TfTpu C-API shim](overview.md). It is the host↔device *data-movement* surface: marshal an `xla::Literal` from the host into a TPU `xla::ShapedBuffer` (and back), push/pull streaming infeed/outfeed literals, ask the byte size of a shape on-device, linearize a literal into raw device-layout buffers, and answer the two "can I touch this buffer right now" predicates. Nineteen `extern "C"` free functions, recovered by IDA from `.rodata` references and call targets, all named `TpuTransferManager_<Method>` and all living in one tight `0xeaba0a0`–`0xeabb8?? ` band of `.text` (one outlier, `GetInfeedLayout @ 0xf6a1a80`, sits in a different translation unit). The IDA source-path string `learning/45eac/tfrc/executor/stream_executor/tpu_transfer_manager_c_api.cc` (`GetInfeedLayout` line 28) pins the cluster's origin file.
+`TpuTransferManager_*` is the C-ABI cluster that backs `xla::TransferManager` across the [TfTpu C-API shim](overview.md). It is the host↔device *data-movement* surface: marshal an `xla::Literal` from the host into a TPU `xla::ShapedBuffer` (and back), push/pull streaming infeed/outfeed literals, ask the byte size of a shape on-device, linearize a literal into raw device-layout buffers, and answer the two "can I touch this buffer right now" predicates. Nineteen `extern "C"` free functions, recovered by IDA from `.rodata` references and call targets, all named `TpuTransferManager_<Method>` and all living in one tight `0xeaba0a0`–`0xeabb827` band of `.text` (one outlier, `GetInfeedLayout @ 0xf6a1a80`, sits in a different translation unit). The IDA source-path string `learning/45eac/tfrc/executor/stream_executor/tpu_transfer_manager_c_api.cc` (`GetInfeedLayout` line 28) pins the cluster's origin file.
 
 The defining structural fact — and the one that separates this roster from [`TpuExecutor_*`](tpu-executor-roster.md) — is **how the C function reaches the real implementation**. `TpuExecutor_*` functions receive an opaque `SE_StreamExecutor*` and dispatch through *its* vtable into the deepsea driver. `TpuTransferManager_*` functions receive **no** executor handle; instead each one resolves the *singleton* `xla::TransferManager` for the TPU platform on the fly — `GetRegisteredDeepseaPlatform()` (cached behind a `GetUnderlyingDeepseaPlatform::platform` Meyers-static guard) → `xla::TransferManager::GetForPlatform(platform)` @ `0x1342f180` (a `StatusOr<TransferManager*>`) — and then bounces the call through that manager's C++ vtable at a fixed byte offset. So the whole cluster is a *resolve-then-bounce* shim: marshal the C structs into C++ via `ApiConverter::FromC`, look up the per-platform `TransferManager` singleton, invoke one vtable slot, marshal results back with `ApiConverter::ToC`, and destroy the temporaries.
 
@@ -14,13 +14,13 @@ For reimplementation, the contract is:
 
 - **The resolve-then-bounce idiom** — no `SE_*` handle is passed; each function resolves the per-platform `xla::TransferManager` singleton (`GetForPlatform @ 0x1342f180`) and calls one vtable slot. The C++ `TransferManager` vtable offset *is* the dispatch key.
 - **The marshalling discipline** — every C argument that is a shape / layout / literal / shaped-buffer is `ApiConverter::FromC`'d into a stack C++ object before the bounce and `~Dtor`'d after; out-params come back through `ApiConverter::ToC`; `absl::Status` results are returned as a refcounted `StatusRep*` written into a caller out-pointer.
-- **The vtable-slot map** — the table below pins each C function to its `xla::TransferManager` virtual offset (`+24`, `+32`, `+40`, `+56`, `+64`, `+80`, `+104`, `+112`, `+120`), which is the single thing a reimplementer must keep byte-stable.
+- **The vtable-slot map** — the table below pins each C function to its `xla::TransferManager` virtual offset (`+16`, `+24`, `+32`, `+40`, `+48`, `+56`, `+64`, `+72`, `+80`, `+88`, `+104`, `+112`, `+120`, `+136`), which is the single thing a reimplementer must keep byte-stable.
 - **The two non-vtable members** — `New`/`Free` are trivial heap ops, and `LinearizeToBuffers` / `GetInfeedLayout` bypass the manager vtable entirely and call `xla::jellyfish` linearizer / `TransferSizeUtil` directly off the resolved `TpuTopology`.
 
 | | |
 |---|---|
 | **Roster size** | 19 `extern "C"` `TpuTransferManager_*` free functions (matches overview count) |
-| **Address band** | `0xeaba0a0`–`0xeabb8b3` contiguous (18 fns) + `GetInfeedLayout @ 0xf6a1a80` (outlier TU) |
+| **Address band** | `0xeaba0a0`–`0xeabb827` contiguous (18 fns; `ReadDynamicShapes` ends at `0xeabb827`, then `TpuComputationPlacer_New @ 0xeabb840`) + `GetInfeedLayout @ 0xf6a1a80` (outlier TU) |
 | **Backing C++ class** | `xla::TransferManager` (TPU subclass; resolved per call, not held) |
 | **Singleton resolve** | `GetRegisteredDeepseaPlatform` → `xla::TransferManager::GetForPlatform @ 0x1342f180` (`StatusOr`) |
 | **Platform cache** | `GetUnderlyingDeepseaPlatform::platform` (function-local static, `__cxa_guard`-protected) |
@@ -39,7 +39,7 @@ For reimplementation, the contract is:
 
 ### Purpose
 
-Every non-trivial `TpuTransferManager_*` function has the *same* skeleton, and a reimplementer who internalises it once can read all seventeen vtable-backed members by inspecting only their slot offset and argument marshalling. There is no per-call executor handle to thread; the platform is a process-global singleton.
+Every non-trivial `TpuTransferManager_*` function has the *same* skeleton, and a reimplementer who internalises it once can read all fourteen vtable-backed members by inspecting only their slot offset and argument marshalling. There is no per-call executor handle to thread; the platform is a process-global singleton.
 
 ### Algorithm
 
@@ -113,7 +113,7 @@ Move a host `xla::Literal` into device memory (`ShapedBuffer`), and answer the l
 | `TpuTransferManager_TransferLiteralToDeviceAsync` | `0xeaba240` | 287 | `+40` | `m->TransferLiteralToDevice(stream, LiteralSlice(lit), shaped_buf, opts=0)` | CERTAIN |
 | `TpuTransferManager_GetByteSizeRequirement` | `0xeaba4c0` | 165 | `+80` | `m->GetByteSizeRequirement(host_shape)` → `int64` | CERTAIN |
 | `TpuTransferManager_HostShapeToDeviceShape` | `0xeaba160` | 207 | `+24` | `m->HostShapeToDeviceShape(host_shape)` → `Shape` (out via `ToC`) | CERTAIN |
-| `TpuTransferManager_ChooseCompactLayoutForShape` | `0xeaba580` | 339 | `+88` (HIGH) | `m->ChooseCompactLayoutForShape(host_shape)` → `StatusOr<Shape>` | HIGH |
+| `TpuTransferManager_ChooseCompactLayoutForShape` | `0xeaba580` | 339 | `+88` | `m->ChooseCompactLayoutForShape(host_shape)` → `StatusOr<Shape>` | CERTAIN |
 
 ### Algorithm — `TransferLiteralToDeviceAsync`
 
@@ -132,7 +132,7 @@ write_status_out(a5, status)            // *a5 = status; Unref(old) unless alias
 
 The `XLA_Literal` arrives as a `MutableBorrowingLiteral` (it borrows host memory the caller still owns) and is re-wrapped as a `LiteralSlice` for the transfer call — the transfer reads, never writes, the host literal. The `SE_Stream` is passed raw (`*a2`), the only place this cluster touches a stream handle; it is the async-ordering token, the transfer enqueues against it.
 
-> **NOTE —** `GetByteSizeRequirement` (`+80`) and `HostShapeToDeviceShape` (`+24`) are pure shape→scalar / shape→shape queries: they `FromC` only the host `Shape` (320-byte stack object), bounce, and (for `HostShapeToDeviceShape`) `ToC` the resulting device `Shape` into the out-param. They allocate no device memory and touch no stream. `ChooseCompactLayoutForShape` is the third shape-only query; its `+88` slot is inferred from its position in the vtable (LOW→HIGH) and the `StatusOr<Shape>` return shape, not independently disassembled at byte level.
+> **NOTE —** `GetByteSizeRequirement` (`+80`) and `HostShapeToDeviceShape` (`+24`) are pure shape→scalar / shape→shape queries: they `FromC` only the host `Shape` (320-byte stack object), bounce, and (for `HostShapeToDeviceShape`) `ToC` the resulting device `Shape` into the out-param. They allocate no device memory and touch no stream. `ChooseCompactLayoutForShape` is the third shape-only query; its `+88` slot was read directly from the `(*(*m + 88))(…)` bounce (out `StatusRep**` first arg, `StatusOr<Shape>` shape).
 
 ---
 
@@ -147,7 +147,7 @@ Pull a device `ShapedBuffer` back into a host literal, and read the dynamic dime
 | Function | Address | Size | Vtable slot | C++ call (unwrapped) | Confidence |
 |---|---|---|---|---|---|
 | `TpuTransferManager_TransferLiteralFromDevice` | `0xeaba360` | 352 | `+32` | `m->TransferLiteralFromDevice(stream, shaped_buf, MutableBorrowingLiteral, done_cb, opts=0)` | CERTAIN |
-| `TpuTransferManager_ReadDynamicShapes` | `0xeabb660` | 455 | `+72` (HIGH) | `m->ReadDynamicShapes(stream, shaped_buf, &out_shape)` | HIGH |
+| `TpuTransferManager_ReadDynamicShapes` | `0xeabb660` | 455 | `+48` | `m->ReadDynamicShapes(stream, shaped_buf, &out_shape)` | CERTAIN |
 
 ### Algorithm — `TransferLiteralFromDevice`
 
@@ -169,7 +169,7 @@ if done_cb.policy.dtor: done_cb.policy.dtor(captured)        // tear down closur
 
 Unlike the host→device path, this one builds a real `std::function<void(absl::Status)>` completion callback (the `$_0` lambda + a `__policy_func` thunk; both lambda thunks survive in the symbol table as `_ZNSt3__u…TransferLiteralFromDeviceE3$_0E…`). The callback writes the final status into the caller's `StatusRep*` slot when the async device read completes. The double `MutableBorrowingLiteral` copy is the closure capturing the destination literal by value-of-borrow so it outlives the synchronous return.
 
-> **NOTE —** `ReadDynamicShapes` (`+72`, HIGH) reads the runtime-resolved dimensions of a dynamic-shape device buffer; it `FromC`s the `ShapedBuffer`, bounces, and `ToC`s an out `Shape`. Slot `+72` is inferred from vtable ordering between `TransferLiteralFromDevice` (`+32`) and the predicates (`+104`/`+112`); it was not byte-verified independently.
+> **NOTE —** `ReadDynamicShapes` (`+48`) reads the runtime-resolved dimensions of a dynamic-shape device buffer; it `FromC`s the `ShapedBuffer`, bounces, and `ToC`s an out `Shape`. Slot `+48` was read directly from the `call *0x30(%rax)` (`*(*m + 48)`) bounce — it sits just above `TransferLiteralToDevice` (`+40`), not between the predicates as a naïve roster ordering would suggest.
 
 ---
 
@@ -184,7 +184,7 @@ The streaming host↔device channels: enqueue a host literal into the on-chip in
 | Function | Address | Size | Vtable slot | C++ call (unwrapped) | Confidence |
 |---|---|---|---|---|---|
 | `TpuTransferManager_TransferLiteralToInfeed` | `0xeabafa0` | 241 | `+56` | `m->TransferLiteralToInfeed(executor, LiteralSlice(lit))` | CERTAIN |
-| `TpuTransferManager_TransferBuffersToInfeed` | `0xeabb0a0` | 638 | `+56`/buffers arm (MEDIUM) | infeed of pre-linearized device buffers | MEDIUM |
+| `TpuTransferManager_TransferBuffersToInfeed` | `0xeabb0a0` | 638 | `+136` | infeed of pre-linearized device buffers | CERTAIN |
 | `TpuTransferManager_TransferLiteralFromOutfeed` | `0xeabb320` | 260 | `+64` | `m->TransferLiteralFromOutfeed(executor, MutableBorrowingLiteral)` | CERTAIN |
 | `TpuTransferManager_GetInfeedLayout` | `0xf6a1a80` | 163 | (no vtable — see §7) | `TransferSizeUtil::ChooseGoodInfeedLayout(topology, shape)` | CERTAIN |
 
@@ -214,7 +214,7 @@ Both pass the `SE_StreamExecutor*` (`*a2`) into the vtable call — here the exe
 
 > **CORRECTION (none) —** the [Infeed / Outfeed page](../runtime/infeed-outfeed.md) anchors the *host-side `TpuTransferManager::TransferLiteralToInfeed` C++ shim* at `0xe9721c0` and `FromOutfeed` at `0xe972660`, reached through `ExecutorApiFn()+560`/`+576`. Those are the **caller** half (the SE shim that forwards into a `*ApiFn` slot). The `0xeabafa0`/`0xeabb320` functions documented here are the **callee** half — the C-ABI implementations that slot points at. Both halves live in this binary because XLA is statically linked; do not conflate the two addresses.
 
-> **NOTE —** `TransferBuffersToInfeed` (`0xeabb0a0`, 638 bytes, MEDIUM) is the pre-linearized variant: instead of a literal it takes an array of already-device-layout buffers and enqueues them, skipping the linearizer. Its argument shape (a buffer pointer/length array, like `LinearizeToBuffers`' output) was confirmed; the exact vtable slot/arm was not byte-isolated, hence MEDIUM.
+> **NOTE —** `TransferBuffersToInfeed` (`0xeabb0a0`, 638 bytes) is the pre-linearized variant: instead of a literal it takes an array of already-device-layout buffers and enqueues them, skipping the linearizer. It bounces through vtable slot `+136` (`call *0x88(%rax)`) — a *separate, higher* slot than `TransferLiteralToInfeed`'s `+56`, not a shared infeed arm. The buffer pointer/length array argument (like `LinearizeToBuffers`' output) is `FromC`'d in a loop before the bounce.
 
 ---
 
@@ -232,7 +232,7 @@ The synchronous metadata side: write a tuple index table into a device buffer (s
 | `TpuTransferManager_CanShapedBufferBeAccessedNow` | `0xeaba6e0` | 174 | `+104` | `m->CanShapedBufferBeAccessedNow(executor, shaped_buf)` → `bool` | CERTAIN |
 | `TpuTransferManager_CanBufferBeAccessedNow` | `0xeaba7a0` | 141 | `+112` | `m->CanBufferBeAccessedNow(executor, device_addr)` → `bool` | CERTAIN |
 | `TpuTransferManager_PlatformId` | `0xeaba0e0` | 117 | `+16` | `m->PlatformId()` → `se::Platform::Id` | CERTAIN |
-| `TpuTransferManager_ResetDevices` | `0xeabb440` | 525 | `+48` (MEDIUM) | `m->ResetDevices(executors[])` | MEDIUM |
+| `TpuTransferManager_ResetDevices` | `0xeabb440` | 525 | `+72` | `m->ResetDevices(executors[])` | CERTAIN |
 
 ### Algorithm — the predicates and `WriteSingleTupleIndexTable`
 
@@ -259,7 +259,7 @@ m  = GetForPlatform(platform).value()
 
 `PlatformId` (`+16`) is the simplest vtable member — no marshalling, just resolve and return the platform id integer. The two `CanBe...AccessedNow` predicates are the cheap host-side checks XLA uses to decide whether a host pointer into device-visible memory is coherent without forcing a stream sync; both take the `SE_StreamExecutor*` plus the buffer/address and return a bool. `WriteSingleTupleIndexTable` is the heaviest vtable member (689 bytes) because it builds a heap `std::vector<DeviceAddressBase>` from the C array (each element `FromC`'d into a 24-byte slot) before the `+120` bounce.
 
-> **GOTCHA —** `CanBufferBeAccessedNow` (`+112`) takes a *single* `SE_DeviceAddressBase` (24 bytes); `CanShapedBufferBeAccessedNow` (`+104`) takes a whole `XLA_ShapedBuffer` (784 bytes) and must `~ShapedBuffer` it after the call. They are adjacent vtable slots with swapped numeric order (the shaped-buffer variant is the *lower* offset `+104`); a reimplementer who assumes monotonic naming↔offset will mis-wire the table. `ResetDevices` (`+48`, MEDIUM) takes an array of executors and was not byte-isolated for its exact slot.
+> **GOTCHA —** `CanBufferBeAccessedNow` (`+112`) takes a *single* `SE_DeviceAddressBase` (24 bytes); `CanShapedBufferBeAccessedNow` (`+104`) takes a whole `XLA_ShapedBuffer` (784 bytes) and must `~ShapedBuffer` it after the call. They are adjacent vtable slots with swapped numeric order (the shaped-buffer variant is the *lower* offset `+104`); a reimplementer who assumes monotonic naming↔offset will mis-wire the table. `ResetDevices` (`+72`) takes an array of executors; its `call *0x48(%rax)` (`*(*m + 72)`) bounce was read directly from the disassembly.
 
 ---
 
@@ -324,7 +324,7 @@ void TpuTransferManager_FreeBuffers(void** ptrs, void* sizes, int64 count):
 
 ## 8. Complete Vtable-Slot Map
 
-The single table a reimplementer needs: each C function, its address, and the `xla::TransferManager` vtable byte offset it bounces through. Offsets marked HIGH/MEDIUM are inferred from vtable ordering + call signature rather than byte-isolated; CERTAIN rows were read directly from the decompiled `(*(*m + N))(…)` expression.
+The single table a reimplementer needs: each C function, its address, and the `xla::TransferManager` vtable byte offset it bounces through. Every offset was read directly from the decompiled `(*(*m + N))(…)` expression and cross-checked against the `call *0xNN(%rax)` disassembly, so all rows are CERTAIN.
 
 | C function | Address | Vtable off | C++ method (inferred) | Conf |
 |---|---|---|---|---|
@@ -334,21 +334,19 @@ The single table a reimplementer needs: each C function, its address, and the `x
 | `HostShapeToDeviceShape` | `0xeaba160` | `+24` | `HostShapeToDeviceShape(Shape)` | CERTAIN |
 | `TransferLiteralFromDevice` | `0xeaba360` | `+32` | `TransferLiteralFromDevice(…, cb)` | CERTAIN |
 | `TransferLiteralToDeviceAsync` | `0xeaba240` | `+40` | `TransferLiteralToDevice(…)` | CERTAIN |
-| `ResetDevices` | `0xeabb440` | `+48` | `ResetDevices(executors)` | MEDIUM |
+| `ReadDynamicShapes` | `0xeabb660` | `+48` | `ReadDynamicShapes(…)` | CERTAIN |
 | `TransferLiteralToInfeed` | `0xeabafa0` | `+56` | `TransferLiteralToInfeed(exec, LiteralSlice)` | CERTAIN |
-| `TransferBuffersToInfeed` | `0xeabb0a0` | `+56`† | infeed of device buffers | MEDIUM |
 | `TransferLiteralFromOutfeed` | `0xeabb320` | `+64` | `TransferLiteralFromOutfeed(exec, MBL)` | CERTAIN |
-| `ReadDynamicShapes` | `0xeabb660` | `+72` | `ReadDynamicShapes(…)` | HIGH |
+| `ResetDevices` | `0xeabb440` | `+72` | `ResetDevices(executors)` | CERTAIN |
 | `GetByteSizeRequirement` | `0xeaba4c0` | `+80` | `GetByteSizeRequirement(Shape)` | CERTAIN |
-| `ChooseCompactLayoutForShape` | `0xeaba580` | `+88` | `ChooseCompactLayoutForShape(Shape)` | HIGH |
+| `ChooseCompactLayoutForShape` | `0xeaba580` | `+88` | `ChooseCompactLayoutForShape(Shape)` | CERTAIN |
 | `CanShapedBufferBeAccessedNow` | `0xeaba6e0` | `+104` | `CanShapedBufferBeAccessedNow(exec, buf)` | CERTAIN |
 | `CanBufferBeAccessedNow` | `0xeaba7a0` | `+112` | `CanBufferBeAccessedNow(exec, addr)` | CERTAIN |
 | `WriteSingleTupleIndexTable` | `0xeaba840` | `+120` | `WriteSingleTupleIndexTable(…)` | CERTAIN |
+| `TransferBuffersToInfeed` | `0xeabb0a0` | `+136` | infeed of device buffers | CERTAIN |
 | `LinearizeToBuffers` | `0xeabab00` | — (direct) | `jellyfish::LiteralLinearizer::LinearizeToBuffers` | CERTAIN |
 | `FreeBuffers` | `0xeabaf20` | — (free) | n/a | CERTAIN |
 | `GetInfeedLayout` | `0xf6a1a80` | — (direct) | `jellyfish::TransferSizeUtil::ChooseGoodInfeedLayout` | CERTAIN |
-
-† `TransferBuffersToInfeed` shares the infeed slot region but its exact arm/offset was not byte-isolated; MEDIUM.
 
 > **QUIRK —** the vtable offsets are *not* contiguous-by-roster-order. The C functions are emitted in source order (`New`, `Free`, `PlatformId`, …) but their slots track the `xla::TransferManager` base-class vtable layout (`+16`, `+24`, `+32`, …), which interleaves base-class virtuals the C shim does not expose. A reimplementer building the C++ `TransferManager` subclass must reproduce the *base-class* vtable order, not the C-roster order, or every slot offset above is wrong by a frame.
 
