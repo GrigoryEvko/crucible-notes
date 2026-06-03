@@ -99,7 +99,7 @@ function RegisterTpuPlatform():
         tpu_registered_platform = p                            // stash in a process global
         st = PlatformManager::RegisterPlatform(p)              // 0x1d0fe120  (moves the unique_ptr)
         if (st != OkStatus):                                   // st != 1
-            LOG(FATAL) "PlatformManager::RegisterPlatform(std::move(platform)) is OK"
+            LOG(FATAL) "stream_executor::PlatformManager::RegisterPlatform( std::move(platform)) is OK"
                        @ tpu_platform.cc:178                   // brings the process down
         tpu_platform_registered = 1
     return 1                                                    // always returns true
@@ -136,7 +136,7 @@ The `+360 / +408 / +400 / +392 / +384` slot pattern — *get a status scratch ob
 | `TpuPlatform::Initialize` | `0xe999ac0` | Driver bring-up via `ExecutorApiFn()+16`; status @ `status_helper.h:38` | CERTAIN |
 | `TpuPlatform::GetRegisteredPlatform` | `0xe999aa0` | `return tpu_registered_platform` | CERTAIN |
 | `TpuPlatform::FindExisting(int)` | `0xe99a4a0` | Per-ordinal cached executor lookup (no build) | HIGH |
-| `TpuPlatform::VisibleDeviceCount` | `0xeab8e40` | Device count via shim | HIGH |
+| `TpuPlatform::VisibleDeviceCount` | `0xe999d20` | Device count via shim (`ExecutorApiFn()+48`) | HIGH |
 | `TpuPlatform::Insert/Lookup/EraseEvent` | `0xe999fa0`/`0xe99a100`/`0xe99a160` | `Event*` ↔ `SE_Event*` registry (used by `WaitFor`/`RecordEvent`) | HIGH |
 | `TpuPlatform::TpuMemoryLimit` | `0xe99a2c0` | HBM size query | MEDIUM |
 | `TpuPlatform::GetTopologyPtr` | `0xe999f40` | Device topology handle | MEDIUM |
@@ -257,7 +257,7 @@ stream_executor::Stream                          (abstract base)
 |---|---|---|---|
 | `StreamExecutor` | Abstract device executor; vtable `off_21FDAD98` | ctor `0x208193e0`, D2 `0x20819440` | HIGH |
 | `StreamExecutorCommon` | Concrete intermediate; holds `const Platform*` | ctor `0x1d0f03e0`, `GetDeviceDescription 0x1d0f04a0` | HIGH |
-| `Platform` | Abstract platform; `FindExisting(int)` | `FindExisting 0x718b60` | HIGH |
+| `Platform` | Abstract platform; `FindExisting(int)` | `FindExisting 0xe718b60` | HIGH |
 | `ExecutorCache` | Per-ordinal executor cache | `GetOrCreate 0x1d0fd2e0`, `Get 0x1d0fd580` | CERTAIN |
 | `DeviceDescription` | Copyable device-info bag | copy-ctor `0xe6b5ee0` | MEDIUM |
 | `RuntimeAbiVersionManager` | Singleton ABI guard | `GetInstance 0xe6b8040` | MEDIUM |
