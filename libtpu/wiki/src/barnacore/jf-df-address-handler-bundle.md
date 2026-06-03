@@ -4,7 +4,7 @@
 
 ## Abstract
 
-The **BarnaCore Address Handler (BCAH)** is the Jellyfish/Dragonfish embedding-address personality — `TpuSequencerType` = 2, the v3-era counterpart to Pufferfish's full BCS sequencer. Its instruction word is a **23-byte / 184-bit VLIW bundle** filled by **direct struct-field writes**: each per-slot encoder does a read-modify-write of the bundle's qwords/dword/word/byte with hard-coded `shl N; and MASK; or` constants. This is a *fundamentally different* mechanism from the Pufferfish BCS path, which packs every field through a shared `BitCopy` primitive against an absolute-bit `Span` (see [BCS 32-Byte Bundle](bcs-32byte-bundle.md)). The two encodings reach the same embedding datapath family across silicon generations by independent means; the JF/DF direct-write codec pre-dates the BCS `BitCopy` codec.
+The **BarnaCore Address Handler (BCAH)** is the Jellyfish/Dragonfish embedding-address personality — `tpu::TpuSequencerType` = `BarnaCoreAddressHandler` = 2 (the C++ enum `TpuSequencerTypeToString` `@0x20b362e0` indexes: TC=0, BCS=1, BCAH=2, SCS=3, TAC=4, TEC=5; the proto wire enum `TpuSequencerTypeProto` carries an extra `INVALID`=0, so its values are +1), the v3-era counterpart to the full BarnaCore Sequencer (BCS = 1). Its instruction word is a **23-byte / 184-bit VLIW bundle** filled by **direct struct-field writes**: each per-slot encoder does a read-modify-write of the bundle's qwords/dword/word/byte with hard-coded `shl N; and MASK; or` constants. This is a *fundamentally different* mechanism from the Pufferfish BCS path, which packs every field through a shared `BitCopy` primitive against an absolute-bit `Span` (see [BCS 32-Byte Bundle](bcs-32byte-bundle.md)). The two encodings reach the same embedding datapath family across silicon generations by independent means; the JF/DF direct-write codec pre-dates the BCS `BitCopy` codec.
 
 The bundle is a **3-way VLIW**: a `Common` header (iteration state + operand selectors + two immediates), a `ScalarSlot` (control lane), and a `VectorSlot` (a 5-wide vector datapath). All three regions are live simultaneously at dedicated, non-overlapping bit positions; only the sub-forms *within* `ScalarSlot` (`Loop`/`ShiftMask`/`Push`/`Branch`/`prog_end`) and *within* `VectorSlot` (`Store`/`Load`/`Alu0`/`Alu1`/`Result`) are mutually exclusive. One bundle therefore expresses, in a single cycle: advance the feature-length loop, branch or end the program, run two vector-ALU ops, store the previous embedding row, load the next, drain an EUP result, apply per-operand index overrides, and carry two 16-bit literals.
 
@@ -20,7 +20,7 @@ For reimplementation, the contract is:
 
 | | |
 |---|---|
-| **Personality** | BCAH — BarnaCore Address Handler; `TpuSequencerType` = 2 (Jellyfish / Dragonfish) |
+| **Personality** | BCAH — BarnaCore Address Handler; `tpu::TpuSequencerType` = 2 (C++ enum: TC=0, BCS=1, BCAH=2) (Jellyfish / Dragonfish) |
 | **Bundle size** | **23 bytes / 184 bits**, direct struct write; DMA stride `23*N`, 32-byte aligned |
 | **Bit packer** | none — per-slot read-modify-write (`shl N; and MASK; or`) of the 23-byte struct |
 | **Top encoders** | `tpu::EncodeBarnaCoreAddressHandler<EncoderJf,…>` `@0x1e841640`; `<EncoderDf,…>` `@0x1e836ea0` |
@@ -30,7 +30,7 @@ For reimplementation, the contract is:
 | **Immediate model** | 2 × 16-bit `ImmSlot` (`imm_0`/`imm_1`) allocated by `YIsImm` `@0x14169c20` |
 | **Confidence** | CONFIRMED (decompiled shift/mask extraction + 23-byte stride proof + proto string decode) unless a row says otherwise |
 
-> **GOTCHA — the bundle is 23 bytes, not 16.** The [Overview](overview.md) `TpuSequencerType` table and the sibling-page navigation label the BCAH bundle "16 B", a figure inferred from the sequencer-type enumeration before this codec was disassembled. The byte-exact encoder evidence contradicts it: the DMA stride is `23*N` and the highest written bit is 180 (`imm_1`), so the bundle is **23 bytes / 184 bits**. The 16-byte figure is the `xmm0` store width (qword0+qword1) the top encoder uses for the *low half* of the struct — it is followed by separate dword/word/byte stores that carry the bundle to 23 bytes. Treat 23 as authoritative for the byte layout; the "16 B" label survives on the enum-presence pages as a coarse personality tag. [Confidence: CONFIRMED — `23*N` stride + per-slot bit offsets reaching 180.]
+> **GOTCHA — the BCAH struct is 23 bytes, even though `BundleSizeBytes` reports 16 for the BarnaCore component.** The Jellyfish codec-metadata sizer `JellyfishCodecMetadata::BundleSizeBytes` `@0x1ecf7460` returns **16** for its BarnaCore component (component 0 = TensorCore → 41; component 1 = BarnaCore → 16; both DMA and HBM, `BundleSizeBytesForHbm` `@0x1ecf74c0` agrees), and the [Overview](overview.md) personality table and sibling-page navigation carry that "16 B" figure. The byte-exact BCAH *encoder* evidence is larger: the top encoder allocates `23*N`, advances the pointer by **23** per bundle, and the highest written bit is 180 (`imm_1`), so the `BarnaCoreAddressHandlerBundleBits` struct image is **23 bytes / 184 bits**. The 16-byte codec figure matches the `xmm0` (qword0+qword1) low half the top encoder stores first; that store is followed by separate dword/word/byte stores carrying the struct to 23 bytes. Treat 23 as authoritative for the address-handler struct layout; the "16 B" label is the codec-metadata BarnaCore-component size used as a coarse personality tag on the enum-presence pages. [Confidence: CONFIRMED — `23*N` stride + per-slot bit offsets reaching 180; the 16 is `BundleSizeBytes`'s BarnaCore-component return.]
 
 ---
 
@@ -83,7 +83,7 @@ function WriteField(struct_member, value, shift, clear_mask):
 
 > **QUIRK —** the top encoder stores the struct as a 16-byte `vmovups xmm0` (qword0+qword1) *plus* three scalar stores (dword@16, word@20, byte@22), then advances the pointer by **23**. The 16-byte SIMD store covers only bits 0..127; the dword/word/byte stores carry bits 128..183. The DMA buffer is 32-byte *aligned* (so the SIMD store is legal), but the per-bundle *stride* is 23, not 16 or 32 — confirmed by `_R14 += 23` in the encoder loop and the `23*N` allocation size. [Confidence: CONFIRMED.]
 
-> **NOTE —** the address-handler encode path appends **no** check byte. The `EncodeBundleInternal` / framing-byte machinery of the TensorCore (`TpuSequencerType` = 0) and the BCS sequencer is not used here; the 23 raw struct bytes are the entire DMA payload per bundle. `EncoderJf::BundleSizeBytes` routes through `codec_metadata::BundleSizeBytes(TpuVersion, seqtype)`, but the address-handler path writes 23 bytes directly.
+> **NOTE —** the address-handler encode path appends **no** check byte. The framing-byte machinery of the TensorCore (`tpu::TpuSequencerType` = 0, 41-byte HardwareBundleBits) is not used as the BCAH DMA payload; the 23 raw struct bytes are the entire payload per bundle. (The per-lane vector-ALU body *does* call `EncoderJf::EncodeBundleInternal` to build the 41-byte TensorCore encoding, then extracts and merges its instruction bits into qword1 — see §2 — but no check byte reaches the BCAH buffer.) The codec sizer `JellyfishCodecMetadata::BundleSizeBytes` `@0x1ecf7460` reports 41 for its component-0 (TensorCore) / 16 for component-1 (BarnaCore), but the address-handler top encoder writes 23 bytes directly.
 
 ### Function Map
 
@@ -153,10 +153,10 @@ byte:  0        8        16       20   22
 | `Store` slot | 110..125 | `VectorSlot.store` (TABLE B) | embedding-row store | CONFIRMED |
 | `Load` slot | 126..140 | `VectorSlot.load` (TABLE C) | embedding-row load | CONFIRMED |
 | `Result` slot | 141..146 | `VectorSlot.result` (TABLE D) | EUP-result drain | CONFIRMED |
-| `imm_0` | 149..164 | `Common.imm_0` (f11, 16b) | 16-bit literal slot 0 | HIGH |
-| `imm_1` | 165..180 | `Common.imm_1` (f12, 16b) | 16-bit literal slot 1 | HIGH |
+| `imm_0` | 149..164 | `Common.imm_0` (f11, 16b) | 16-bit literal slot 0 (`<<21` into dword, gated by has-bit `0x400`) | CONFIRMED |
+| `imm_1` | 165..180 | `Common.imm_1` (f12, 16b) | 16-bit literal slot 1 (`<<37` into dword, gated by has-bit `0x800`) | CONFIRMED |
 
-The `Common` header fields above are recovered from the dispatcher `@0x1e86fd80`: `compared_feature_id` at `v7 |= v12<<13`; the six `indexed_*` bools at `<<18/19/20/22/21/23`; `vs0/vs1/vs2` at `<<24/26/28`; `branch_target_pc` at `<<37`.
+The `Common` header fields above are recovered from the dispatcher `@0x1e86fd80`: `compared_feature_id` at `v7 |= v12<<13`; the six `indexed_*` bools at `<<18/19/20/22/21/23`; `vs0/vs1/vs2` at `<<24/26/28`; `imm_0` as a 16-bit field `<<21` into the dword (bundle bit 149, has-bit `0x400`) and `imm_1` `<<37` into the dword (bundle bit 165, has-bit `0x800`). The DF `branch_target_pc` is written `<<37` into **qword0** (bundle bit 37) by the DF scalar-slot encoder `@0x1e85e8a0` — a distinct Branch sub-form field that happens to share the literal shift 37 but lands in qword0, not the dword `imm_1`.
 
 > **NOTE — the VectorAlu instruction body is the standard JF vector-ALU ISA, merged into qword1.** `EncodeBarnaCoreAddressHandlerVectorAlu(lane,…)` `@0x1e86f5c0` builds a temporary `isa::Bundle`, calls `EncoderJf::EncodeBundleInternal` (the regular JF vector-ALU encoder), then extracts the instruction bits and merges them into qword1 with mask `0xffffc000000fffff` (shifts `0x29`/`0x20`/`0x10`). So the *opcode/operand space* of an address-handler ALU op equals the main JF vector-ALU ISA; only the lane predication (lane-0 has-bit `0x4` → pred @48; lane-1 has-bit `0x8` → pred @79) is address-handler-specific. The per-field landing positions of the merged opcode/Vx/YSrc bits inside qword1 are a separate JF-ISA decode (see [Cross-References](#cross-references)). [Confidence: HIGH for the merge mechanism; the merged-field positions are not isolated here.]
 
@@ -197,7 +197,7 @@ Load extent: bits 126..140 (15 bits). Has-bit test `~hasword & 0x12`.
 |---|---|---|---|---|---|
 | `predication` | 141 | 5 | `Result.predication` | dword window `<<13` | CONFIRMED |
 | result-valid | 146 | 1 | (slot-present) | dword bit 18 (= byte18 bit 2) | HIGH |
-| `which_destination` | (sub-form) | — | `Result.which_destination` (f2) | `cmp 1/2` selects EUP target form (`@0x1e86ec30`) | HIGH |
+| `which_destination` | (sub-form) | — | `Result.which_destination` (f2) | `cmp 1/2` inside `@0x1e86eb40` selects EUP target form | HIGH |
 | `destination` (`VectorRegister`) | (in merge) | 5 | `Result.destination` (f4) | EUP result target vreg | HIGH |
 
 Bit 146 (dword bit 18) is the EUP-result-present bit that `ApplyEupResultTargetWorkaround` `@0x1e8478a0` re-targets on Jellyfish silicon (it tests the result region — dword bits 13..17 = `Result.predication`, dword bits 19..20 = the 2-bit result-target it patches).
@@ -297,8 +297,8 @@ function YIsImm(v, slot):
 
 | Field | Bundle bits | Width | Proto field | Allocator | Conf. |
 |---|---|---|---|---|---|
-| `imm_0` | 149..164 | 16 | `Common.imm_0` (f11, uint32) | `YIsImm` `@0x14169c20` | HIGH |
-| `imm_1` | 165..180 | 16 | `Common.imm_1` (f12, uint32) | `YIsImm` `@0x14169c20` | HIGH |
+| `imm_0` | 149..164 | 16 | `Common.imm_0` (f11, uint32) | `YIsImm` `@0x14169c20` | CONFIRMED (position) |
+| `imm_1` | 165..180 | 16 | `Common.imm_1` (f12, uint32) | `YIsImm` `@0x14169c20` | CONFIRMED (position) |
 
 > **NOTE —** the encoder writes the full 16-bit literal into each slot (`YIsImm` enforces a 16-bit fit). The two literals occupy bits 149..180, entirely within the 184-bit struct. Whether the *hardware* immediate field is the full 16 bits or a narrower sub-field is INFERRED — the encode side writes 16; no decode-side reader was found to cross-validate the consumed width. [Confidence: CONFIRMED the struct holds 16 bits per slot; INFERRED the hardware reads all 16.]
 
@@ -345,7 +345,7 @@ So the Dragonfish address-handler bundle is a **superset** of the Jellyfish one:
 
 ## What We Do Not Yet Have
 
-1. **`VectorResultDestination` (`Result.which_destination`, f2) value table** — the field bit position is exact (the `cmp edx,1/2` sub-form selector `@0x1e86ec30`; result-valid bit @146; the 2-bit result-target at dword bits 19..20 that `ApplyEupResultTargetWorkaround` patches), but the value→name roster is not decoded.
+1. **`VectorResultDestination` (`Result.which_destination`, f2) value table** — the field bit position is exact (the `cmp 1/2` sub-form selector inside the Result encoder `@0x1e86eb40`; result-valid bit @146; the 2-bit result-target at dword bits 19..20 that `ApplyEupResultTargetWorkaround` patches), but the value→name roster is not decoded.
 2. **`BaseAddressEncoding` (`Store.base`/`Load.base`, 2-bit) value table** — a shared JF-ISA enum (`< 4`-checked); the value→name roster is not address-handler-specific and was not decoded here.
 3. **The merged `VectorAluInstruction` opcode/operand bit-layout inside qword1** — `EncodeBarnaCoreAddressHandlerVectorAlu` delegates to `EncoderJf::EncodeBundleInternal` and merges via mask `0xffffc000000fffff` + shifts `0x29`/`0x20`/`0x10`; the per-field opcode/Vx/YSrc landing positions of the merged form were not isolated (the address-handler-specific predication + lane are exact; the opcode body is the JF ISA, a separate decode).
 4. **The decode-side inverse** — no symmetric `BarnaCoreAddressHandler*Decoder` was found in this build; the encode-side 184-bit map is authoritative but not cross-validated by an independent reader (`ApplyEupResultTargetWorkaround` reads only the result region).
@@ -366,7 +366,7 @@ So the Dragonfish address-handler bundle is a **superset** of the Jellyfish one:
 
 ## Cross-References
 
-- [Overview](overview.md) — BarnaCore, the legacy embedding accelerator; the BCS / BCAH personality split and the `TpuSequencerType` = BCS=1 / BCAH=2 enum (note the coarse "16 B" label there — see the GOTCHA above for the byte-exact 23 B reconciliation)
+- [Overview](overview.md) — BarnaCore, the legacy embedding accelerator; the BCS / BCAH personality split and the C++ `tpu::TpuSequencerType` enum (TC=0, BCS=1, BCAH=2; note the coarse "16 B" codec-component label there — see the GOTCHA above for the byte-exact 23 B reconciliation)
 - [BCS 32-Byte Bundle](bcs-32byte-bundle.md) — the Pufferfish BCS Sequencer / Channel bundle, the `BitCopy` absolute-bit packing path this page contrasts with; the BCS 4×16-bit immediate region the 2-slot model here mirrors
 - [BCS Scalar0/Scalar1 ISA](bcs-scalar-isa.md) — the Pufferfish dual-scalar control + memory opcode roster
 - [Merged-ALU Bit Layout](merged-alu.md) — `VectorResultDestination` / `BaseAddressEncoding`, the shared-JF vector-ALU operand enums referenced (but not value-decoded) in §2 TABLES B/C/D
