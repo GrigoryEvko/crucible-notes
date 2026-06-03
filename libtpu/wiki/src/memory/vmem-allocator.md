@@ -113,7 +113,7 @@ __int64 PufferfishTarget::VmemAlignmentBoundaryInBytes(PufferfishTarget *this) {
 }
 ```
 
-CONFIRMED for Pufferfish (`0x1d4952e0`) and Ghostlite (`0x1d4985c0`) by decompile; Viperfish (`0x1d49b8e0`) shares the same mangled body per the symbol table (HIGH — not separately re-read, but the source-identical bodies and matching address are conclusive). `GranuleBytes` (`0x1d617f80`) is itself a per-generation virtual (`vtable[+0x5C0]`); `VmemWordSizeBytes` (`0x1d617300`) is a direct field read at `Target +0x50C`.
+CONFIRMED for Pufferfish (`0x1d4952e0`), Viperfish (`0x1d49b8e0`), and Ghostlite (`0x1d4985c0`) — all three decompiled bodies are byte-identical. `GranuleBytes` (`0x1d617f80`) is itself a per-generation virtual (`vtable[+0x5C0]`); `VmemWordSizeBytes` (`0x1d617300`) is a direct field read at `Target +0x50C`.
 
 ### The granule and the word
 
@@ -131,9 +131,9 @@ CONFIRMED — `323 * 4 = 0x50C`. Both the word size and `GranuleBytes` are fille
 | Generation | Alignment formula | Tile quantum (`ChunkBytes`) | Granule (`VmemWordSizeBytes`) |
 |---|---|---|---|
 | Jellyfish (v2) | `ChunkBytes` | `4 * topology.word_count` | chip-parts |
-| Pufferfish (v3) | `max(GranuleBytes, VmemWordSizeBytes)` | `4 * topology.word_count` | chip-parts |
-| Viperfish (v4) | `max(GranuleBytes, VmemWordSizeBytes)` | `4 * topology.word_count` | chip-parts |
-| Ghostlite (v5 / Trillium) | `max(GranuleBytes, VmemWordSizeBytes)` | `4 * topology.word_count` | chip-parts |
+| Pufferfish (v4) | `max(GranuleBytes, VmemWordSizeBytes)` | `4 * topology.word_count` | chip-parts |
+| Viperfish (v5) | `max(GranuleBytes, VmemWordSizeBytes)` | `4 * topology.word_count` | chip-parts |
+| Ghostlite (v6e) | `max(GranuleBytes, VmemWordSizeBytes)` | `4 * topology.word_count` | chip-parts |
 
 > **NOTE —** The arena's **granule** (the `Config.granule_in_bytes_` the runtime allocator quantizes to) is `VmemWordSizeBytes`, whereas the **alignment** is the larger formula above. On the newer generations these can differ: a value's start offset is rounded to the alignment boundary, but its size is rounded to the granule. The base `Target::VmemAlignmentBoundaryInBytes` (`0x1d61e940`) is a pure-virtual error path that never returns — a `Target` with no codename subclass is a bug.
 
@@ -156,7 +156,7 @@ The arena is parameterized entirely by the active `Target` subclass. The numeric
 // qword_B5305C8[MS-3]  for MS ∈ {3,4,5}  → {16, 32, 8} ;  else LogFatal
 ```
 
-CONFIRMED for Jellyfish, Pufferfish, Ghostlite. Pufferfish indexes a 3-entry rodata table at `0xb5305c8` (`{16, 32, 8}`) for the contiguous range `MS ∈ {3..5}`. Viperfish (`0x1d4999c0`) returns VMEM=32, MS=5→8 per the symbol-table body (HIGH — same shape as Ghostlite, not separately re-read).
+CONFIRMED for Jellyfish, Pufferfish, Viperfish, Ghostlite. Pufferfish indexes a 3-entry rodata table at `0xb5305c8` (`{16, 32, 8}`) for the contiguous range `MS ∈ {3..5}`. Viperfish (`0x1d4999c0`) returns VMEM=32, MS=5→8 (decompile-confirmed, same shape as Ghostlite).
 
 | Target | VMEM banks (MS=3) | `kSmem` (MS=5) | Cross-slot bank conflicts |
 |---|---:|---:|:---:|
@@ -176,7 +176,7 @@ Banking is an *access-scheduling* property, not an allocation property — the a
 // GhostliteTarget::DefaultPlatformScopedMemoryBytes  @ 0x1d497540  →  0x2000000  (32 MiB)
 ```
 
-CONFIRMED. Pufferfish (`0x1d494520`) and Viperfish (`0x1d49a720`) both return `0x1000000` (16 MiB) per the symbol table (HIGH). The base `Target` version is a `LogMessageFatal` — every concrete generation must override it.
+CONFIRMED. Pufferfish (`0x1d494520`) and Viperfish (`0x1d49a720`) both return `0x1000000` (16 MiB) — decompile-confirmed. The base `Target` version (`0x1d61d200`) is a `LogMessageFatal` — every concrete generation must override it.
 
 | Target | DefaultPlatformScopedMemoryBytes |
 |---|---:|
@@ -222,7 +222,7 @@ __int64 GhostliteTarget::OverlayReservedVmemBytes(GhostliteTarget *this) {
 }
 ```
 
-CONFIRMED for Ghostlite. The base `Target::OverlayReservedVmemBytes` is `xor eax,eax; ret` (`0`); Jellyfish and Pufferfish inherit it. Viperfish (`0x1d49a6c0`) gates on the codename: production Viperfish reserves `16 * ChunkSizeBytes`, but **viperfish-lite disables the overlay** (returns `0`) — selected by a `cmpl $0x6574696c` ("lite", little-endian) test on the first four bytes of `TpuChipParts::variant_name()` (HIGH — the lite branch is reported by the symbol-level analysis; the production formula matches Ghostlite's confirmed body).
+CONFIRMED for Ghostlite. The base `Target::OverlayReservedVmemBytes` (`0x1d48fc20`) returns `0`; Jellyfish and Pufferfish inherit it. Viperfish (`0x1d49a6c0`) gates on the codename: production Viperfish reserves `16 * ChunkSizeBytes`, but **viperfish-lite disables the overlay** (returns `0`) — selected by a `cmpl $0x6574696c` ("lite", little-endian) test on the first four bytes of the variant string (CONFIRMED by decompile and disassembly: the body branches on whether the inline-vs-heap string bit is set, then compares the leading dword against `0x6574696c`).
 
 | Target | OverlayReservedVmemBytes |
 |---|---|
@@ -278,7 +278,7 @@ The allocator class, free-list, coalescing, and best-fit algorithm are **identic
 
 VMEM exhaustion at compile time is a **hard error, not a spill** — there is nowhere on-chip to spill *to*. Three failure modes touch the arena:
 
-- **Requested scoped VMEM exceeds the limit.** `IsRequestedScopedVmemValid` (`0x12fcbec0`) returns a `Status` built from rodata at `0xa215530`: *"\<N\> bytes of scoped Vmem requested (via \<op\>), but the max valid bytes is \<ScopedVmemLimitBytes()\>. See go/scoped-vmem for more details."* — i.e. the request exceeded the usable arena computed above.
+- **Requested scoped VMEM exceeds the limit.** `IsRequestedScopedVmemValid` (`0x12fcbec0`) returns a `Status` `CatPieces`-assembled from three rodata literals — `" bytes of scoped Vmem requested (via "` (`0xa215531`), `"), but the max valid bytes is "`, and `". See go/scoped-vmem for more details."` — interpolating the request size, the offending op, and `ScopedVmemLimitBytes()`, i.e. the request exceeded the usable arena computed above.
 - **MSA cannot place a value.** MSA retries up to `xla_jf_vmem_max_retries`, then falls the value back to `kDefault` (HBM-resident). If the value *must* stay in alternate memory, the compile fails hard via `xla::error::CompileTimeScopedVmemOom` (`0x1c62e5a0`).
 - **Runtime OOM.** Matches HBM: `BestFitAllocator::Allocate` returns `absl::ResourceExhaustedError` with the fragmentation dump (see [hbm-allocator.md](hbm-allocator.md)). Rarely exercised for VMEM because offsets are static.
 
@@ -288,9 +288,9 @@ Fusion-overflow rejection (`CostModel::FusionWouldExceedVmemCapacity` @ `0x130c4
 
 ## Caveats and Open Items
 
-- **Numeric per-codename VMEM byte sizes are not in `.text`.** `VmemSizeBytes`, `VmemWordSizeBytes`, and `GranuleBytes` all read fields the boot-time `chip_parts.binarypb` decode fills. The *formulas* on this page are byte-exact; the *literal byte counts* per codename (Jellyfish, Pufferfish, Viperfish, viperfish-lite, Ghostlite, Trillium-class) await the proto decode and are not asserted here.
-- **The "v1–v5" labels are `TpuVersion` enum ints** observed in switch tables (`kJellyfish == 2`, …). Trillium-class chips are serviced by `GhostliteTarget` with a different `variant_name()` codename string; there is no separate `GhostfishTarget`/`TrilliumTarget` class in 0.0.40 — the `xla_gf_vmem_*` flag family reconfigures the same `MsaAlgorithm`.
-- **Viperfish entries marked HIGH** (alignment body, MemBanks, default scoped, overlay lite-branch) were confirmed via the symbol table and source-identical sibling bodies (Pufferfish/Ghostlite), not by separately re-reading the Viperfish decompile — graded HIGH rather than CONFIRMED.
+- **Numeric per-codename VMEM byte sizes are not in `.text`.** `VmemSizeBytes`, `VmemWordSizeBytes`, and `GranuleBytes` all read fields the boot-time `chip_parts.binarypb` decode fills. The *formulas* on this page are byte-exact; the *literal byte counts* per codename (Jellyfish, Pufferfish, Viperfish, viperfish-lite, Ghostlite) await the proto decode and are not asserted here.
+- **The "vN" labels are `TpuVersion` enum ints** observed in switch tables (`kJellyfish == 2`, …). The newest production part is serviced by `GhostliteTarget` selected via a different `variant_name()` codename string; there is no separate `GhostfishTarget` class in 0.0.40 — the `xla_gf_vmem_*` flag family reconfigures the same `MsaAlgorithm`.
+- **All four Viperfish bodies are decompile-confirmed** — the alignment virtual (`0x1d49b8e0`), `MemBanks` (`0x1d4999c0`), `DefaultPlatformScopedMemoryBytes` (`0x1d49a720`), and the overlay lite-branch (`0x1d49a6c0`) were each read directly from the Viperfish decompile and cross-checked against the disassembly, not merely inferred from the sibling bodies.
 
 ---
 
