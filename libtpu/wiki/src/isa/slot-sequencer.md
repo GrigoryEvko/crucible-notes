@@ -27,6 +27,10 @@ For reimplementation, the contract is:
 | **JF call classifier** | `ProtoUtils::IsCall` @ `0x1e876140` (`op & ~3 == 12` → 12..15) |
 | **V5+ SCS branch encoder** | `isa_emitter::EmitBranchOp<…BranchRelative>` @ `0x13a5d3e0` |
 | **V5+ SCS call encoder** | `isa_emitter::EmitCallOp<…CallAbsolute>` @ `0x13a5d4c0` |
+| **`gfc` TC seq dispatch** | `gfc::isa::TensorCoreScalarAlu0Encoder::Encode` @ `0x1f87b420` |
+| **`gfc` TC opcode-HIGH / family** | bit 483, width 6 (= `0` for branch/call-immediate) |
+| **`gfc` TC opcode-LOW / discriminator** | bit 478, width 5 (`BranchAbsolute=4`/`Rel=5`/`CallAbs=6`/`Rel=7`) |
+| **`gfc` TC seq predicate selector** | bit 489, width 2 (`*(scalar_alu+28)`) |
 | **Branch/call target** | signed 20-bit, immediate slot 0 (`EmitImmediate<SparseCoreImmediates>`) |
 | **Call link register** | `sreg #5` written into `dest` (SCS path) |
 | **Delay-slot field** | 0..5 (3-bit); verifier `delay_slots_op.getImm() >= 0 && <= 5` |
@@ -141,6 +145,31 @@ The indirect forms read a computed target from a register: `BranchSreg` has an `
 | indirect target (`x()`) | `BranchSreg`/`CallSreg` reg field; GF bit 472 | 6 (GF) | compact ref `x()` accessors | CONFIRMED |
 
 > **GOTCHA — the branch target does not live in the sequencer slot bytes.** Both abs and rel write a 20-bit value into a *shared immediate slot* (slot 0) of the bundle, and only an opcode bit in the sequencer slot says how to interpret it. A decoder that searches the sequencer-slot byte window for a 20-bit offset finds nothing; the offset is in the bundle's immediate region. This is the same immediate slot the sync ops reuse for the sflag id/threshold.
+
+On the V5+ TensorCore lane the abs/rel/call discriminator is written **inside** the sequencer slot — the SCS *emitter* path above is the SparseCore engines; the TensorCore engine has its own per-op `BitCopy` populators. The `gfc` TensorCore slot is decoded byte-exactly from the per-op encoders and the dispatching `TensorCoreScalarAlu0Encoder::Encode` (`0x1f87b420`). Every absolute bit position below is **LSB-first** — bit 0 is the least-significant bit of byte 0, matching the universal `BitCopy(dst, dst_bit, src, src_bit, nbits)` packer (`0x1fa0a900`) the [bundle model](bundle-model-overview.md) documents. Every TC sequencer op begins by writing a **6-bit opcode-HIGH "family" field at bit 483** and a **5-bit opcode-LOW "discriminator" at bit 478**; the branch/call-immediate family pins opcode-HIGH to `0` and selects the op via the LOW field:
+
+```c
+// EncodeTensorCoreScalarAlu0BranchAbsolute @ 0x1f87f5c0 (decoded byte-exactly)
+BitCopy(slot, 483, 0, 6);              // opcode-HIGH "family" = 0 (branch/call-immediate)
+BitCopy(slot, 478, 4, 5);              // opcode-LOW discriminator = 4 → BranchAbsolute
+// …if x() present:
+BitCopy(slot, 472, x_reg, 6);          // 6-bit operand / 2nd-source field
+```
+
+The four immediate branch/call discriminators are field-identical except for the LOW value; the register-indirect forms (`BranchSreg`/`CallSreg`) instead carry their opcode in the **HIGH** field. A call's return-address sreg lands in a **5-bit field at bit 467** and the indirect target / link-source sreg in the **6-bit field at bit 472**:
+
+| Op | `oneof` case | opcode-HIGH @483 (w6) | opcode-LOW @478 (w5) | Encoder | Confidence |
+|---|---:|---:|---:|---|---|
+| `BranchAbsolute` | 62 | 0 | **4** | `0x1f87f5c0` | CONFIRMED |
+| `BranchRelative` | 63 | 0 | **5** | `0x1f87f660` | CONFIRMED |
+| `CallAbsolute` | 65 | 0 | **6** | `0x1f87f7e0` | CONFIRMED |
+| `CallRelative` | 66 | 0 | **7** | `0x1f87f8e0` | CONFIRMED |
+| `BranchSreg` | 64 | **4** | (x at 472, dest n/a) | `0x1f87f700` | CONFIRMED |
+| `CallSreg` | 67 | **5** | (x at 472, dest at 467) | `0x1f87f9e0` | CONFIRMED |
+
+`CallAbsolute`/`CallRelative` additionally write the return-address sreg into a **5-bit field at bit 467** (`BitCopy(slot, 467, dest, 5)`) and the call-target / link-source sreg into the 6-bit field at bit 472 — confirming the SCS-path return-address mechanism is present byte-for-byte on the TensorCore lane too. The opcode-HIGH `0` family is shared by the non-control sequencer ops as well (`ScalarFence` LOW=0, `Delay` LOW=3, `SetTag` LOW=8, `ReadRegisterLccLow` LOW=10), so the LOW discriminator alone identifies a branch/call only within the HIGH=0 family. This map matches [Bundle GF §Sequencer Slot](bundle-gf.md#sequencer-slot-and-the-20-bit-branch-offset).
+
+> **NOTE — the SCS and TC lanes share the *encoding contract* but not the *code path*.** The SparseCore (SCS/TAC/TEC) sequencer reaches its bytes through the LLVM-MC-driven `isa_emitter::EmitBranchOp` / `EmitCallOp` templates; the TensorCore sequencer reaches its bytes through the proto-bundle `gfc::isa::Encode*` populators dispatched by `TensorCoreScalarAlu0Encoder::Encode`. Both land a 20-bit signed target in immediate slot 0 and an abs/rel/call discriminator in the sequencer slot, but a reimplementation must not assume one function emits both — they are separate populator families keyed by `TpuSequencerType`.
 
 The Jellyfish branch/call discriminators are the contiguous `ScalarOpcode` ranges decoded byte-exactly:
 

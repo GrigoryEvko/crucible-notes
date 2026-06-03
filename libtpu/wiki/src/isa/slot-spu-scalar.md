@@ -278,13 +278,26 @@ The SPU and vector engine exchange values through FIFOs, never a direct register
 | HW call/return | inlined (none) | yes (lane 0) | yes | yes | yes |
 | HW loop counter (`ReadRegLcc`) | no | no | yes | yes | yes |
 | `HaltYield` | no | no | yes + Conditional | Conditional only | none |
-| `ScalarStoreXToSmemSumDestAndY` | no | no | no | no | yes (scatter-add) |
-| `LogicalShiftLeftOnesXByYPlaces` | no | no | yes | yes | yes |
+| `ScalarStoreXToSmemSumDestAndY` (lane 1) | no | no | no | no | yes (scatter-add) |
+| `LogicalShiftLeftOnesXByYPlaces` (lane 0) | no | no | no | no | yes |
 | FIFO bridge | V2S, Hmf | V2S | V2S,Drf,Sfrf,Sccf | V2S,Drf,Sfrf | V2S,Drf,Sfrf |
 
-The Trillium TensorCore scalar slot differs from Ghostlite by two binary-confirmed deltas: it **adds** `LogicalShiftLeftOnesXByYPlaces` (the GF switch has 65 distinct mnemonics vs GL's 64) and `ScalarStoreXToSmemSumDestAndY`, and **drops** the in-slot predicate (no predicate `BitCopy` in `0x1f87b420`; the opcode-class is read from `[instr+0x1c]` as 2 bits, not `[instr+0x20]` as 4). The dropped predicate routes to the dedicated dual-`pred_0`/`pred_1` slot; the exact wiring from the scalar slot into that slot was not traced (see *Limits*).
+The Trillium TensorCore scalar slot differs from Ghostlite by two binary-confirmed deltas: it **adds** `LogicalShiftLeftOnesXByYPlaces` to the lane-0 op set (the GF lane-0 switch `0x1f87b420` has 65 distinct `Encode…` mnemonics vs GL's 64, the single new case at `0x18`) and adds `ScalarStoreXToSmemSumDestAndY` to the **lane-1** op set (a scatter-add store; present in the GF `TensorCoreScalarAlu1` family — e.g. `0x1f64dc60` — but absent from the VF/GL TensorCore lane-1 store set, which stops at `ScalarStoreXToSmemY`). The lane-0 65-vs-64 count therefore reflects `LogicalShiftLeftOnesXByYPlaces` alone; the scatter-add store is a separate lane-1-only addition and does not appear in the lane-0 switch. Trillium also **drops** the in-slot predicate (no predicate `BitCopy` in `0x1f87b420`; the opcode-class is read from `[instr+0x1c]` as 2 bits, not `[instr+0x20]` as 4). The dropped predicate routes to the dedicated dual-`pred_0`/`pred_1` slot; the exact wiring from the scalar slot into that slot was not traced (see *Limits*).
 
 > **GOTCHA — Trillium reads the opcode class from a different proto offset.** The VF/GL/SCS encoders read the class from `[instr+0x20]` (4 bits); Trillium reads it from `[instr+0x1c]` (2 bits). A decoder that hardcodes the `+0x20` offset and a 4-bit class will misread every Trillium scalar slot. The slot also starts ~13 bits lower in the bundle (sub-opcode @483 vs GL @496) precisely because the predicate bit no longer lives in the slot.
+
+### Branch/call discriminators (lane 0)
+
+The control-flow ops share the sub-opcode/operand grid but disambiguate through a value written into the **opcode-LOW** field — the same 5-bit field the table calls "sub-opcode discriminator", at the per-gen position below. On Trillium (`0x1f87b420`) the immediate branch/call family pins the 6-bit `sub-opcode` (opcode-HIGH) at **483** to `0` and selects the op via the 5-bit field at **478**:
+
+| Op | opcode value (`[instr+0x50]`) | sub-opcode @483 (w6) | discriminator @478 (w5) | leaf encoder | Confidence |
+|---|---:|---:|---:|---|---|
+| `BranchAbsolute` | 62 | 0 | **4** | `0x1f87f5c0` | CONFIRMED |
+| `BranchRelative` | 63 | 0 | **5** | `0x1f87f660` | CONFIRMED |
+| `CallAbsolute` | 65 | 0 | **6** | `0x1f87f7e0` | CONFIRMED |
+| `CallRelative` | 66 | 0 | **7** | `0x1f87f8e0` | CONFIRMED |
+
+The register-indirect forms (`BranchSreg`/`CallSreg`) instead carry their opcode in the opcode-HIGH (`@483`) field, and a `CallSreg` writes its return-address SREG into the 5-bit field at **467** and the link/target SREG into the 6-bit field at **472**. This is the same discriminator grid the [Sequencer Slot](slot-sequencer.md) documents from the same encoders; the SPU page's "sub-opcode" is that page's "opcode-HIGH", and the @478 field is its "opcode-LOW". On Viperfish (`0x1eecb900`) the equivalent fields sit at the VF positions (sub @493, dst @477), on Ghostlite at VF+3 (sub @496, dst @480).
 
 ---
 
