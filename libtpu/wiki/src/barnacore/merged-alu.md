@@ -186,10 +186,11 @@ step (decompiled)                                   -> address-handler bundle
 ((out[0x11] >> 5) & 0x3F) << 53                      OPCODE 6b  -> qword0 bits53..58  (ABS 53..58)
 out[0x11] << 59                                      low 5b     -> qword0 bits59..63  (ABS 59..63)
 ((W >> 14) & 0xFFFFFFE0) | ((W >> 14) & 0x1F)        operand    -> qword1 bits0..14   (ABS 64..78)
+2 * (out[0xe] & 0x3E00)                               Dest 5b    -> qword1 bits10..14  (ABS 74..78)  [<<1]
    (W = out[0xe] | out[0x10]<<16 ; clear 0xffffffffffff8000)
 ```
 
-qword0 is cleared with `0x1FFFFFFFFFFFFF` (preserving bits 0..52, writing 53..63); qword1 is cleared with `0xFFFFFFFFFFFF8000` (writing bits 0..14). The Alu0 5-bit dest sub-field lands at qword1 bits 10..14 (ABS 74..78) via the `<<10` seen at line 342 in the Result-routing path (§6).
+qword0 is cleared with `0x1FFFFFFFFFFFFF` (preserving bits 0..52, writing 53..63); qword1 is cleared with `0xFFFFFFFFFFFF8000` (writing bits 0..14). The trailing `2 * (out[0xe] & 0x3E00)` term (a `<<1` of word bits 9..13) places the Alu0 5-bit dest sub-field at qword1 bits 10..14 (ABS 74..78) — the same sub-field the Result-routing path's `<<10` (line 342, §6) targets for an EUP V0 result.
 
 > **QUIRK —** the `2 *` multiply in the Alu1 path (and the `lea [reg+reg*2]` it compiles from) is a 1-bit left shift folded into the merge: the 5-bit `Vx` window sits one bit above its source position, so the encoder shifts it left by 1 while masking. A naive reimplementation that masks without the `<<1` will place `Vx` at the wrong bit. The shift is part of the field placement, not an optimization.
 
@@ -197,7 +198,7 @@ qword0 is cleared with `0x1FFFFFFFFFFFFF` (preserving bits 0..52, writing 53..63
 
 ## 4. `VectorAluOpcode` — the 56-Value Opcode Enum
 
-The ALU opcode is a 6-bit field carrying one of 56 `VectorAluOpcode` values, decoded byte-exact from its `EnumDescriptorProto @0xc01e7d3` (the `0a <len> name (12 <l> 0a <nl> NAME 10 <num>)*` serialized pattern). The symbol roster is confirmed present (`VectorAluOpcode` appears 163× in the symbol table). The same op set is the [BCS Channel](bcs-32byte-bundle.md) `VectorAlu` roster and the [Scalar0/Scalar1 ISA](bcs-scalar-isa.md) shared ALU tail, here numbered at the enum-value level rather than the hardware-opcode or proto-oneof level.
+The ALU opcode is a 6-bit field carrying one of 56 `VectorAluOpcode` values, decoded byte-exact from its `EnumDescriptorProto @0xc01e7d3` (the `0a <len> name (12 <l> 0a <nl> NAME 10 <num>)*` serialized pattern). The symbol roster is confirmed present in the symbol table. The same op set is the [BCS Channel](bcs-32byte-bundle.md) `VectorAlu` roster and the [Scalar0/Scalar1 ISA](bcs-scalar-isa.md) shared ALU tail, here numbered at the enum-value level rather than the hardware-opcode or proto-oneof level.
 
 | Opcode | Name | Opcode | Name |
 |---|---|---|---|
@@ -235,7 +236,7 @@ The ALU opcode is a 6-bit field carrying one of 56 `VectorAluOpcode` values, dec
 
 ## 5. `VectorAluYEncoding` — the 32-Value Y-Operand Selector
 
-The ALU's Y operand is not a raw register index but a 5-bit **selector** naming one of: a vector register, a baked hardware constant, an address-handler immediate slot, or a scalar register. Decoded byte-exact from `EnumDescriptorProto @0xc01dc38` (symbol confirmed, 96× in the symbol table). The selector is read at `VectorAluInstruction` proto offset `+0x54`; `EncodeVectorAluYEncoding` (`@0x1e864be0`) jump-tables on it (`@0xb83450c`) and copies the selected `Common.imm_*` into the bundle's immediate region.
+The ALU's Y operand is not a raw register index but a 5-bit **selector** naming one of: a vector register, a baked hardware constant, an address-handler immediate slot, or a scalar register. Decoded byte-exact from `EnumDescriptorProto @0xc01dc38` (symbol confirmed in the symbol table). The selector is read at `VectorAluInstruction` proto offset `+0x54`; `EncodeVectorAluYEncoding` (`@0x1e864be0`) jump-tables on it (`@0xb83450c`) and copies the selected `Common.imm_*` into the bundle's immediate region.
 
 | Value | Name | Group |
 |---|---|---|
@@ -283,13 +284,13 @@ function EncodeVectorResult(result, bits):
 | `1` | `V1_DEST` | EUP result → vector ALU lane 1 destination register (ABS 105..109) |
 | `2` | `VLD_DEST` | EUP result → vector-load destination (the loaded-row register) |
 
-> **NOTE —** the `VectorResultDestination` symbol appears only once in the symbol table (the enum descriptor itself), but the three value names `V0_DEST`/`V1_DEST`/`VLD_DEST` and the `cmp 2/1/0` routing are byte-pinned from the descriptor and the encoder's branch ladder. The result-target placement (`<<0xa` for V0, `<<0x29` for V1, confirmed at decompile lines 334/337/342) re-uses the same Alu0/Alu1 dest sub-fields the per-lane body would otherwise write — the EUP path simply writes them from the Result slot instead.
+> **NOTE —** `VectorResultDestination` surfaces only as its `EnumDescriptorProto` name in `.rodata` (no mangled C++ symbol of its own), but the three value names `V0_DEST`/`V1_DEST`/`VLD_DEST` and the `cmp 2/1/0` routing are byte-pinned from the descriptor and the encoder's branch ladder. The result-target placement (`<<0xa` for V0, `<<0x29` for V1, confirmed at decompile lines 334/337/342) re-uses the same Alu0/Alu1 dest sub-fields the per-lane body would otherwise write — the EUP path simply writes them from the Result slot instead.
 
 ---
 
 ## 7. `BaseAddressEncoding` — the Store/Load Base-Address Mode
 
-The Store and Load slots each carry a 2-bit base-address mode: the embedding-row address is either zero or one of three scalar base pointers. `BaseAddressEncoding` is byte-pinned from `EnumDescriptorProto @0xc01f977` (symbol confirmed, 20× in the table). It is the `<4`-checked value at `Store.base` (ABS 121..122) and `Load.base` (ABS 137..138) in the parent JF/DF bundle map.
+The Store and Load slots each carry a 2-bit base-address mode: the embedding-row address is either zero or one of three scalar base pointers. `BaseAddressEncoding` is byte-pinned from `EnumDescriptorProto @0xc01f977` (descriptor name confirmed in `.rodata`). It is the `<4`-checked value at `Store.base` (ABS 121..122) and `Load.base` (ABS 137..138) in the parent JF/DF bundle map.
 
 | Value | Name | Role |
 |---|---|---|
@@ -384,7 +385,7 @@ The compiler sets `prog_end = 1` in the **final** bundle's scalar control slot; 
 
 - **The internal sub-splits inside the harvested windows.** The Alu1 10-bit Y-region (ABS 95..104) and the Alu0 20-bit operand body (ABS 59..78) are harvested as contiguous windows; the merge does not isolate the `{y_reg / y_encoding-driven}` and `{Vx / Y / dest}` sub-fields bit-by-bit. The window extents are byte-exact; the within-window boundaries follow the JF `EncodeVectorAluInstruction` per-field shifts but were not individually pinned (**INFERRED**).
 - **The decode side.** No `BarnaCoreAddressHandler` ALU decoder reading the 23-byte bundle back into a `VectorAluInstruction` exists in this build — the address-handler path is encode-only. The encode-side merge map is authoritative but not cross-validated by an independent reader.
-- **The `MakeInstruction<Slot...>` VLIW-packing constructors.** Which tuples of `{ScalarSlot, VectorLoad, VectorStore, VectorAluSlot, EupResultRead}` are legal in one instruction (the `address_handler_program_constructors` family, ~10 template overloads `@0xfa961c0..0xfa96680`) and their slot-conflict rules — the scheduling layer above this byte map — were not traced.
+- **The `MakeInstruction<Slot...>` VLIW-packing constructors.** Which tuples of `{ScalarSlot, VectorLoad, VectorStore, VectorAluSlot, EupResultRead}` are legal in one instruction (the `address_handler_program_constructors::MakeInstruction<…>` family, 9 template overloads `@0xfa96040..0xfa96680`) and their slot-conflict rules — the scheduling layer above this byte map — were not traced.
 - **`consumes_scalar_register` (proto field 11) in the merged body.** `x_reg` / `consumes_vector_register` / `produces_register` map to the Vx/dest body fields; the scalar-register operand path was not isolated in the merge (it may ride the Common vs0/vs1/vs2 scalar selectors rather than the ALU body) (**INFERRED**).
 - **Whether the HW decoder reads all 26 body bits per lane.** The encoder writes the full standard-JF body; the silicon field widths are **INFERRED** to match (no decode-side reader; the harvested window is 26 bits and fits the 31-bit slot).
 
