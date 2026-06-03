@@ -12,21 +12,21 @@ For reimplementation, the contract is:
 
 - **TileKind is a layout tag, not a tile size.** `TpuTilingAssignment` walks the module after layout assignment and stamps each shape's `Layout` with a `TileKind`. For a `kCopy` it computes a packed `(input,output)` pair from four `TransferSizeUtil` layout predicates; every other opcode inherits the layout-assignment tile via `HardwareLayout::GetDefaultLayout`. There is no rich per-opcode tile-shape solver on this path.
 - **The unroll factor a SparseCore loop carries lives in the `LoopConfig` proto.** Field 3 (`unrolled_loops`, repeated `LoopUnrollConfig`) keys each entry on a `loop_dim` (field 1) and carries either an explicit `unroll_factor` or an "auto" sentinel (a oneof). The normalizer resolves "auto" by dividing the loop bound by the `vectorizing_shape` (field 4) element count, with an exact-divisibility CHECK.
-- **The per-arch SparseCore copy unroll factor is a two-template switch.** `CustomLoopUnrollPolicy<5>` (Ghostlite/Trillium) vs `<3>` (Pufferfish and below), dispatched on `Target::tpu_version`. v3 emits 16 (elementwise) / 8 (structured); v5 emits transpose `{16,8}`, general 32/16, or MD-vectorizing `16/pack`.
+- **The per-arch SparseCore copy unroll factor is a two-template switch.** `CustomLoopUnrollPolicy<5>` (template constant `tpu::TpuVersion 5` = 6acc60406, marketing "Ironwood") vs `<3>` (template constant `tpu::TpuVersion 3` = viperfish, the fallback for every version that is not 6acc60406), dispatched on `Target::tpu_version`. The `<3>` template emits 16 (elementwise) / 8 (structured); `<5>` emits transpose `{16,8}`, general 32/16, or MD-vectorizing `16/pack`.
 - **While-loop unrolling and software-pipelining are independent, additive transforms.** `WhileLoopUnroller` (full / double-buffer / auto) and `WhileLoopPipelineUnroller` (loop-carry-depth pipelining) are gated by two separate env knobs and can both run on the same module. The pipeliner clones the body into `depth` chained call stages and decrements the trip count by `depth-1`.
 
 | | |
 |---|---|
-| **TileKind stamp (HLO)** | `xla::jellyfish::TpuTilingAssignment` : `HloPassInterface`; name `"tpu-tiling-assignment"` |
+| **TileKind stamp (HLO)** | `xla::jellyfish::TpuTilingAssignment` : `HloPassInterface`; `name()` returns `"tiling-assignment"` |
 | **TileKind decision** | `TpuTilingAssignment::GetCopyTileKind` @ `0x13dd0ca0` (decompiled, byte-anchored) |
 | **TileKind driver** | `VerifyOrAssignTiling` @ `0x10922a20`; `RunImpl` @ `0x13dd10a0`; `Verify` @ `0x13dd2900` |
-| **Post-fusion special tiling** | `TpuPostFusionTilingAssignment` @ `RunImpl 0x13dd85a0`; name `"tpu-post-fusion-tiling-assignment"` |
+| **Post-fusion special tiling** | `TpuPostFusionTilingAssignment` @ `RunImpl 0x13dd85a0`; `name()` returns `"post-fusion-tiling-assignment"` |
 | **LoopConfig proto** | `xla::jellyfish::LoopConfig` (serializer `0x1d6eade0`); `LoopUnrollConfig` (serializer `0x1d6f2680`) |
 | **Unroll arithmetic** | `LoopConfigWrapper::GetNormalizedUnrollFactor` @ `0x13d6c1c0` (decompiled) |
-| **Per-arch SC copy factor** | `GetCustomLoopUnrollPolicy` @ `0x13916ec0`; `CustomLoopUnrollPolicy<5>::GetConfig<44>` @ `0x13916fe0`; `<3>` @ `0x139173a0` |
-| **While-loop unroller** | `xla::WhileLoopUnroller`; `IsLoopUnrollable` @ `0x12ee8620`; name `"while-loop-unroller"` |
-| **Pipeline unroller** | `xla::WhileLoopPipelineUnroller::RunImpl` @ `0x12ee2200`; `ComputeWhileLoopPipelineDepth` @ `0x12ee0fc0`; name `"while-loop-pipeline-unroller"` |
-| **SC window selector** | `WindowUnrollFactorSelector::Select` @ `0x1385c360`; name `"window-unroll-factor-selector"` |
+| **Per-arch SC copy factor** | `GetCustomLoopUnrollPolicy` @ `0x13916ec0`; `CustomLoopUnrollPolicy<(tpu::TpuVersion)5>::GetConfig<(HloOpcode)44>` @ `0x13916fe0`; `<(tpu::TpuVersion)3>` @ `0x139173a0` |
+| **While-loop unroller** | `xla::WhileLoopUnroller`; `IsLoopUnrollable` @ `0x12ee8620`; `name()` returns `"while_loop_unroller"` |
+| **Pipeline unroller** | `xla::WhileLoopPipelineUnroller::RunImpl` @ `0x12ee2200`; `ComputeWhileLoopPipelineDepth` @ `0x12ee0fc0`; `name()` returns `"while_loop_pipeline_unroller"` |
+| **SC window selector** | `WindowUnrollFactorSelector::Select` @ `0x1385c360`; `name()` returns `"window-unroll-factor-selector"` |
 | **Pipeline host** | `PostOptimizationPipeline` @ `0x1093fd40` (HLO loop passes); `RunBackendWithBufferAssignment` @ `0x13070bc0` (SC selector) |
 | **Confidence** | CONFIRMED (byte-anchored) unless a row or callout says otherwise |
 
@@ -56,26 +56,26 @@ Three things this page deliberately does **not** own, with their homes:
 
 ### Driver and mode (`VerifyOrAssignTiling`, `0x10922a20`)
 
-`xla::jellyfish::DeepseaCompilerBase::VerifyOrAssignTiling(const Target&, HloModule*)` is the single entry that decides whether — and how — `TileKind` tags are committed. It reads a tri-state enum at `TpuCompilationEnvironment + 0xDFC` (the flag `xla_tpu_verify_or_assign_tiling_before_lowering`, with per-arch `...3`/`...8` variants for v3 and v6/Trillium):
+`xla::jellyfish::DeepseaCompilerBase::VerifyOrAssignTiling(const Target&, HloModule*)` is the single entry that decides whether — and how — `TileKind` tags are committed. It reads a tri-state int at `TpuCompilationEnvironment + 0xDFC` (3580 decimal; the flag `xla_tpu_verify_or_assign_tiling_before_lowering`, which has two additional suffixed variants `...lowering3` / `...lowering8` present as separate flag strings):
 
 ```cpp
 absl::Status DeepseaCompilerBase::VerifyOrAssignTiling(
     const Target& target, HloModule* module) {
-  int mode = GetTpuCompEnv(module)->verify_or_assign_tiling_mode();  // env + 0xDFC
+  int mode = *(int*)(GetTpuCompEnv(target) + 3580);            // env + 0xDFC
 
-  if (mode == 1) {                                  // VERIFY-ONLY
-    TpuTilingAssignment pass(target, /*verify_only=*/false);
-    return pass.Verify(module, /*exec_threads=*/{});           // deepsea_compiler.cc:3053
+  if (mode == 1) {                                  // VERIFY
+    TpuTilingAssignment pass(target, /*ctor_bool=*/false);     // ctor arg = 0
+    return pass.Verify(module, /*exec_threads=*/{});           // deepsea_compiler_base.cc:3053
   }
   if (mode == 2) {                                  // ASSIGN
-    TpuTilingAssignment pass(target, /*verify_only=*/true);
-    return pass.Run(module, /*exec_threads=*/{}).status();     // deepsea_compiler.cc:3056
+    TpuTilingAssignment pass(target, /*ctor_bool=*/true);      // ctor arg = 1
+    return pass.Run(module, /*exec_threads=*/{}).status();     // deepsea_compiler_base.cc:3056
   }
   return absl::OkStatus();                          // mode == 0: leave tiling as-is
 }
 ```
 
-The `TpuTilingAssignment(const Target&, bool)` ctor (`0x13dd1080`) selects verify-vs-assign internally; the `bool` is the mode. So the manual override is one tri-state flag: `0` skip, `1` verify, `2` assign.
+The `TpuTilingAssignment(const Target&, bool)` ctor (`0x13dd1080`) selects verify-vs-assign internally; the decompile shows `mode == 1` constructs with `bool = 0` and calls `Verify()`, while `mode == 2` constructs with `bool = 1` and calls `Run()`. So the ctor `bool` is *not* a "verify_only" flag — `1` is the assign/Run path. The manual override is one tri-state int: `0` skip, `1` verify, `2` assign.
 
 ### The per-copy TileKind algorithm (`GetCopyTileKind`, `0x13dd0ca0`)
 
@@ -156,22 +156,22 @@ A SparseCore kernel carries its loop-tiling and unroll directives in a `LoopConf
 
 | Fld | Wire tag | Type | Struct off | Name (inferred) | Semantics |
 |---|---|---|---|---|---|
-| 1 | `0x0A` | repeated int64 (packed) | `+0x18` (cnt `+0x38`) | `loop_bounds` | per-dim trip / index space |
-| 2 | `0x10` | int64 | `+0x58` | (scalar) | aux scalar (trip/total) |
-| 3 | `0x1A` | repeated message | `+0x30` (cnt `+0x70`) | `unrolled_loops` | repeated `LoopUnrollConfig` |
-| 4 | `0x22` | repeated int64 (packed) | `+0x48` (cnt `+0x88`) | `vectorizing_shape` | per-dim native vector shape |
+| 1 | `0x0A` | repeated int64 (packed) | RepeatedField `+0x18`, cnt int `+0x1C`, data ptr `+0x20`; has-bit `&1` | `loop_bounds` | per-dim trip / index space |
+| 2 | `0x10` | int64 | `+0x58`; has-bit `&8` | (scalar) | aux scalar (trip/total) |
+| 3 | `0x1A` | repeated message | RepeatedPtrField `+0x30`, cnt int `+0x38`; has-bit `&2` | `unrolled_loops` | repeated `LoopUnrollConfig` |
+| 4 | `0x22` | repeated int64 (packed) | RepeatedField `+0x40`, cnt int `+0x50`, data ptr `+0x48`; has-bit `&4` | `vectorizing_shape` | per-dim native vector shape |
 
 ### `xla::jellyfish::LoopUnrollConfig` (serializer `0x1d6f2680`)
 
 | Fld | Wire tag | Type | Struct off | Name (inferred) | Semantics |
 |---|---|---|---|---|---|
-| 1 | `0x08` | int64 | `+0x18` | `loop_dim` | the dim this entry keys on (join key) |
-| 2 | `0x10` | int64 (1 byte stored) | `+0x30` | `auto_kind` | "auto/full" sentinel — **oneof case 2** |
-| 3 | `0x18` | int64 | `+0x38` | `unroll_factor` | explicit factor — **oneof case 3** |
-| 4 | `0x20` | bool | `+0x28` | `pipeline_remainder` | remainder-loop pipelining flag |
-| 5 | `0x28` | int64 | `+0x20` | (aux) | auxiliary value |
+| 1 | `0x08` | int64 | `+0x18` | `loop_dim` | the dim this entry keys on (join key); has-bit `_has_[0]&1` |
+| 2 | `0x10` | int64 (1 byte stored) | `+0x30` | `auto_kind` | "auto/full" sentinel — **oneof case 2** (shared union slot) |
+| 3 | `0x18` | int64 | `+0x30` | `unroll_factor` | explicit factor — **oneof case 3** (shared union slot) |
+| 4 | `0x20` | bool | `+0x28` | `pipeline_remainder` | remainder-loop pipelining flag; has-bit `_has_[0]&4` |
+| 5 | `0x28` | int64 | `+0x20` | (aux) | auxiliary value; has-bit `_has_[0]&2` |
 
-Fields 2 and 3 form a **oneof** (`oneof_case` at entry `+0x40`: `2`=auto, `3`=explicit). `loop_dim` (field 1) is the join key: `GetLoopUnrollConfig(dim)` (`0x13d6c080`) linearly scans `unrolled_loops` for the entry whose field-1 == `dim`.
+Fields 2 and 3 form a **oneof**: their payloads share the same union slot at `+0x30`, and the discriminator `oneof_case` is the dword at `+0x38` (`2`=auto, `3`=explicit). This is confirmed twice: the serializer at `0x1d6f2680` reads case `*((uint32*)this+14)` (byte +0x38) and writes either field-2 byte `+0x30` or field-3 qword `+0x30`; and `GetLoopUnrollFactor` (`0x13d6c100`) reads the copied-out `oneof_case` from +0x38 and the payload from +0x30. `loop_dim` (field 1) is the join key: `GetLoopUnrollConfig(dim)` (`0x13d6c080`) linearly scans `unrolled_loops` for the entry whose field-1 == `dim`.
 
 > **NOTE — the proto field names are inferred from wire-format reverse engineering, not symbol strings.** The tags, types, and offsets are byte-anchored from the serializers; the human-readable names (`loop_bounds`, `unrolled_loops`, `vectorizing_shape`, `loop_dim`, `unroll_factor`) are the most consistent reading of the surrounding code and CHECK strings. MEDIUM confidence on the *names*; CONFIRMED on the *layout*.
 
@@ -226,20 +226,20 @@ LoopUnrollPolicy GetCustomLoopUnrollPolicy(const SmallVector<long,6>& bounds,
   const HloInstruction* copy = lowering_util::GetCopyInstruction(hlo);
   if (!copy) return {};                                     // empty policy
   LoopUnrollPolicy p =
-      (version == 5)                                        // Ghostlite v5p / Trillium v6e
+      (version == 5)                                        // tpu::TpuVersion 5 = 6acc60406 ("Ironwood")
         ? CustomLoopUnrollPolicy<5>::GetConfig<kCopy>(bounds, *copy, target)
-        : CustomLoopUnrollPolicy<3>::GetConfig<kCopy>(bounds, *copy, target);  // v2/v3/v4
+        : CustomLoopUnrollPolicy<3>::GetConfig<kCopy>(bounds, *copy, target);  // every other version
   // CHECK each returned unroll_dimension ∈ [0, bounds.size())  (perf_utils.cc:151/152)
   return p;
 }
 ```
 
-There are exactly two arch templates: `<5>` (Ghostlite/Trillium) and `<3>` (the catch-all for Pufferfish and below).
+The C++ `tpu::TpuVersion` enum is the proto enum minus one — `kJellyfish=0, kDragonfish=1, kPufferfish=2, kViperfish=3, kGhostlite=4, k6acc60406=5` — so the dispatch literal `5` is 6acc60406 (the `TPU_VERSION_*` proto descriptor numbers these 1..6, confirming the −1 offset). There are exactly two arch templates: `<(tpu::TpuVersion)5>` (6acc60406, marketing "Ironwood") taken only when `version == 5`, and `<(tpu::TpuVersion)3>` (template constant viperfish) used as the fallback for every other version (jellyfish through ghostlite).
 
-**`CustomLoopUnrollPolicy<3>::GetConfig<kCopy>` (`0x139173a0`, Pufferfish & below)** — decompiled, byte-anchored:
+**`CustomLoopUnrollPolicy<(tpu::TpuVersion)3>::GetConfig<kCopy>` (`0x139173a0`, the fallback template)** — decompiled, byte-anchored:
 
 ```cpp
-LoopUnrollPolicy CustomLoopUnrollPolicy<3>::GetConfig<kCopy>(
+LoopUnrollPolicy CustomLoopUnrollPolicy</*tpu::TpuVersion*/3>::GetConfig<kCopy>(
     const SmallVector<long,6>& bounds, const HloInstruction& hlo, const Target&) {
   CHECK(hlo.opcode() == HloOpcode::kCopy);                  // perf_utils.cc:43
   int inner = bounds.back();
@@ -251,10 +251,10 @@ LoopUnrollPolicy CustomLoopUnrollPolicy<3>::GetConfig<kCopy>(
 
 The decompile shows `*(v5+8) = 8 * IsElementwiseCopy + 8` and `*(v5) = v3 - 1` — i.e. factor **16** for an elementwise copy, **8** for a structured copy, on the innermost dim.
 
-**`CustomLoopUnrollPolicy<5>::GetConfig<kCopy>` (`0x13916fe0`, Ghostlite v5p / Trillium v6e)** — confirmed present at the named address; the body (per P-3-237) is:
+**`CustomLoopUnrollPolicy<(tpu::TpuVersion)5>::GetConfig<kCopy>` (`0x13916fe0`, 6acc60406 / "Ironwood")** — decompiled byte-for-byte:
 
 ```cpp
-LoopUnrollPolicy CustomLoopUnrollPolicy<5>::GetConfig<kCopy>(
+LoopUnrollPolicy CustomLoopUnrollPolicy</*tpu::TpuVersion*/5>::GetConfig<kCopy>(
     const SmallVector<long,6>& bounds, const HloInstruction& hlo, const Target& target) {
   CHECK(hlo.opcode() == HloOpcode::kCopy);                  // perf_utils.cc:76
   int rank = bounds.size(); int inner = bounds.back();
@@ -282,16 +282,16 @@ LoopUnrollPolicy CustomLoopUnrollPolicy<5>::GetConfig<kCopy>(
 }
 ```
 
-| Arch (template) | Case | Unroll factor |
+| Template | Case | Unroll factor |
 |---|---|---|
-| **v3** (Pufferfish & below) | elementwise copy | **16** |
-| **v3** | structured copy | **8** |
-| **v5** (Ghostlite/Trillium) | narrow transpose copy (inner < 32) | `{16, 8}` (two dims) |
-| **v5** | MD-vectorizing shape | `16 / pack` |
-| **v5** | general, `inner % (32·scs_tc) == 0` | **32** |
-| **v5** | general, otherwise | **16** |
+| **`<3>`** (fallback: every version != 6acc60406) | elementwise copy | **16** |
+| **`<3>`** | structured copy | **8** |
+| **`<5>`** (6acc60406 / "Ironwood") | narrow transpose copy (inner < 32) | `{16, 8}` (two dims) |
+| **`<5>`** | MD-vectorizing shape | `16 / pack` |
+| **`<5>`** | general, `inner % (32·scs_tc) == 0` | **32** |
+| **`<5>`** | general, otherwise | **16** |
 
-> **WARNING — these factor values correct an earlier reading.** The v3 factors are 16/8 (not 8/1) and the v5 general factors are 32/16 (not 2/1). The v3 case is decompiled byte-for-byte at `0x139173a0` (`8 * elementwise + 8`); the v5 case is read from the decompile per P-3-237. CONFIRMED for v3 from the binary at hand; the v5 transpose/MD-vectorizing arithmetic is HIGH-confidence (named template, factor values from the decompiled body).
+> **NOTE — the template constants are not marketing chip names.** `CustomLoopUnrollPolicy<5>` is the C++ template parameter `tpu::TpuVersion 5` = 6acc60406 (the proto descriptor numbers it `TPU_VERSION_6acc60406 = 6`, so the C++ enum is proto−1); `<3>` is the viperfish constant used as the catch-all for every version the dispatch does not route to `<5>`. Both `GetConfig<kCopy>` bodies are decompiled byte-for-byte: `<3>` at `0x139173a0` (`8 * IsElementwiseCopy + 8` → 16/8), `<5>` at `0x13916fe0` (transpose `{16,8}`; general `16 * (inner % (32·scs_tc) == 0) + 16` → 32/16; MD-vectorizing `16 / pack`). CONFIRMED.
 
 ---
 
@@ -358,7 +358,7 @@ On all-pass it stores `{while, init_value, trip_count, iv_tuple_idx, is_unrollab
 
 Gated by `EnablePipelinedLoopUnrolling(env)` (`0x1d6b71a0`), which reads an `AutoProto` at `TpuCompEnv + 752` (`xla_tpu_enable_pipelined_loop_unrolling`): "set" iff `(~AutoOr<bool>::FromProtoOrDie(proto) & 0x101) == 0`. In `PostOptimizationPipeline` it is wrapped by `TpuAnnotateTraceableLoops(true)` before and `(false)` after.
 
-**`ComputeWhileLoopPipelineDepth(const HloInstruction&)` (`0x12ee0fc0`)** — the loop-carry depth = number of pipeline stages = number of iterations a value lives before consumption. It CHECKs `kWhile` (line 44) and that the `while_body` root is a `kTuple` (line 52, `"While Instruction has not been canonicalized to have a tuple shape"`), then walks the root tuple's operands: a `kGetTupleElement` (0x40) reading `parameter(0)` at a tuple index `≠ i` is a *carry edge* (slot rotation), recorded in a `flat_hash_map<int64,int64>` (the swiss-table SIMD probe is visible as the `_mm_crc32_u64`/`vpcmpeqb` inner loops). A deque-BFS over the carry-edge graph plus a binary-GCD reduction over chain lengths yields the depth. Depth `< 2` ⇒ the caller skips the loop.
+**`ComputeWhileLoopPipelineDepth(const HloInstruction&)` (`0x12ee0fc0`)** — the loop-carry depth = number of pipeline stages = number of iterations a value lives before consumption. It CHECKs `kWhile` (line 44, `"while_instruction.opcode() == HloOpcode::kWhile"`) and that the while-body root's *shape* is a tuple (line 52, `CHECK(while_root->shape().IsTuple())`, `"While Instruction has not been canonicalized to have a tuple shape"`), then walks the root tuple's operands: a `kGetTupleElement` (0x40) reading `parameter(0)` at a tuple index `≠ i` is a *carry edge* (slot rotation), recorded in a `flat_hash_map<int64,int64>` (the swiss-table SIMD probe is visible as the `_mm_crc32_u64`/`vpcmpeqb` inner loops). A deque-BFS over the carry-edge graph plus a binary-GCD reduction over chain lengths yields the depth. Depth `< 2` ⇒ the caller skips the loop.
 
 **`RunImpl` (`0x12ee2200`)** — the transform. For each loop with `depth >= 2`, it clones the body into `depth` chained call stages and decrements the trip count by `depth-1`:
 
@@ -415,9 +415,9 @@ The one genuinely cost-driven tiling search is the convolution MXU window tiling
 
 ---
 
-## Worked example: a SparseCore gather loop on Ghostlite (v5)
+## Worked example: a SparseCore gather loop on 6acc60406 ("Ironwood")
 
-Given a SparseCore custom-fusion that gathers a window into VMEM inside `while (i < 512)`, on a Ghostlite (v5p) target, window slice sizes `[1, 8, 128]` (BF16, 2 B), loop-carry rotation depth 3:
+Given a SparseCore custom-fusion that gathers a window into VMEM inside `while (i < 512)`, on a 6acc60406 target (`tpu::TpuVersion 5`, the only version that takes the `<5>` copy policy), window slice sizes `[1, 8, 128]` (BF16, 2 B), loop-carry rotation depth 3:
 
 1. **TileKind** (`TpuTilingAssignment`, post-fusion): each VMEM buffer's layout already carries its compact tile; the fusion's `kCopy` outputs get `GetCopyTileKind` → `0x0000` (compact in, compact out), or `0x0303` if SparseCore-laid-out.
 2. **Window unroll** (`WindowUnrollFactorSelector`): `window_elems = 1·8·128 = 1024`; `bytes = 2048`; per-factor size `= 8·((2048>>2)+1)·f = 4104·f`. Pick the largest `f` with `4104·f ≤ S` (e.g. `S = 64 KiB` → `f ≤ 15` → `f = 8`). The `CustomLoopUnrollPolicy<5>` copy factor for BF16 (`pack=1`): MD-vectorizing → `16/1 = 16`; else `inner=128`, `32·scs_tc` (say `scs_tc=4` → 128) → `128 % 128 == 0` → 32. The selector clamps the copy unroll to what the scratchpad allows.
@@ -454,11 +454,12 @@ Given a SparseCore custom-fusion that gathers a window into VMEM inside `while (
 | TileKind is a `(input,output)` 16-bit pair packed by `GetCopyTileKind` | decompiled `0x13dd0ca0`: `v18\|v23`, error lines 66/77, mem-space byte 312, has-bit byte 304 | CONFIRMED |
 | Four `TransferSizeUtil` predicates gate compact-vs-SparseCore | called in `GetCopyTileKind`; addrs `0x1d6af220/110b7440/1d6af3e0/1d6af2e0` | CONFIRMED |
 | Non-`kCopy` ops inherit layout via `GetDefaultLayout`; only kOutfeed/tuple/async-SC are special | `RunImpl 0x13dd10a0`, subshape visitors `0x13dd26a0/27e0`, dtype CHECK `:233` | CONFIRMED |
-| `VerifyOrAssignTiling` tri-state at env `+0xDFC` | decompiled `0x10922a20`; lines 3053/3056 | CONFIRMED |
+| `VerifyOrAssignTiling` tri-state at env `+0xDFC` (3580); mode 1→ctor(0)+Verify, mode 2→ctor(1)+Run | decompiled `0x10922a20`; `deepsea_compiler_base.cc:3053/3056` | CONFIRMED |
 | `LoopConfig`/`LoopUnrollConfig` field layout (tags, offsets, oneof) | wire serializers `0x1d6eade0`/`0x1d6f2680` | CONFIRMED (layout); MEDIUM (field names) |
 | Auto unroll factor = `loop_bound / vectorizing_shape` with divisibility CHECK | decompiled `0x13d6c1c0`; CHECK `loop_config_wrapper.cc:358` | CONFIRMED |
-| v3 SC copy factor 16 (elementwise) / 8 (structured) | decompiled `0x139173a0`: `8*elementwise + 8` | CONFIRMED |
-| v5 SC copy factors (transpose {16,8}; general 32/16; MD 16/pack) | named template `0x13916fe0`; body per cross-check | HIGH |
+| `<3>` (viperfish, fallback) SC copy factor 16 (elementwise) / 8 (structured) | decompiled `0x139173a0`: `8*elementwise + 8` | CONFIRMED |
+| `<5>` (6acc60406) SC copy factors (transpose {16,8}; general 32/16; MD 16/pack) | decompiled `0x13916fe0` byte-for-byte | CONFIRMED |
+| `tpu::TpuVersion` C++ enum = proto−1; dispatch `version==5` ⇒ 6acc60406 | `GetCustomLoopUnrollPolicy 0x13916ec0`; `TPU_VERSION_*` proto descriptor numbers 1..6 | CONFIRMED |
 | Window selector picks largest scratchpad-fitting factor; writes `LoopConfig` | `Select 0x1385c360`, fit test `0x1385c240` (`8·((bytes>>2)+1)·f`) | CONFIRMED |
 | While-loop unroll thresholds 64/800/10000; gate at env `+4904` | `AddPass 0x1096ee60` object fields; `IsLoopUnrollable 0x12ee8620` | CONFIRMED |
 | `IsLoopUnrollable` 9-step gate; Send/Recv family forbidden | `0x12ee8620`, src lines 1222–1299 | CONFIRMED (gate); LOW (byte-exact opcode set) |
