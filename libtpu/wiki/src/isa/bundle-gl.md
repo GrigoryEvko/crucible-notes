@@ -70,7 +70,7 @@ LLO op ──(EmitX, proto population)──▶ glc proto sub-message (present-b
 glc proto sub-message ──(<Slot>Encoder::Encode, BitCopy)──▶ absolute bit window in 64-B buffer
 ```
 
-`EncoderGlTensorCore::EncodeBundle` @ `0x1d331d00` is the orchestrator: it invokes each slot's `glc::isa::...Encoder::Encode` against the shared 64-byte buffer in template-argument order. Every field write is a `BitCopy(buffer, dst_bit, &field, 0, width)` call to `0x1fa0a900` — bit-granular, LSB-first, where `dst_bit` is the absolute bit in the bundle (byte = `dst_bit >> 3`, bit-in-byte = `dst_bit & 7`). The tables below give the `(dst_bit, width)` triple for every field, each verified from the literal `mov esi,<dst_bit>` / `mov r8d,<width>` immediates preceding the `BitCopy` call in the named encoder.
+`EncoderGlTensorCore::EncodeBundle` @ `0x1d331d00` is the orchestrator: it invokes each slot's `glc::isa::...Encoder::Encode` against the shared 64-byte buffer in template-argument order. Every field write is a `BitCopy(buffer, dst_bit, &field, 0, width)` call to `0x1fa0a900` — bit-granular, **LSB-first** (bit 0 is the least-significant bit of byte 0, the universal v5+ convention stated on the [Bundle Model](bundle-model-overview.md#abstract); there is no MSB-first ordering anywhere in the encode path), where `dst_bit` is the absolute bit in the bundle (byte = `dst_bit >> 3`, bit-in-byte = `dst_bit & 7`). The tables below give the `(dst_bit, width)` triple for every field, each verified from the literal `mov esi,<dst_bit>` / `mov r8d,<width>` immediates preceding the `BitCopy` call in the named encoder.
 
 ---
 
@@ -97,15 +97,15 @@ The bundle partitions into the standard V5+ slot classes. The table below is the
 | VEx0 MXU-id (unit) | 66 | 0x42 | 4 | (same) | CONFIRMED |
 | VEx0 control (matpush target) | 49 | 0x31 | 3 | `…MatrixMultiplyBf16` @ `0x1f333ce0` | CONFIRMED |
 | VEx0 done-gains / latch flag | 56 | 0x38 | 1 | (same) | CONFIRMED |
-| VEx0 primary operand (matmul) | 183 | 0xb7 | 6 | (same) | CONFIRMED |
-| VEx0 src vreg #1 (proto +0x20) | 160 | 0xa0 | 6 | (same) | CONFIRMED |
+| VEx0 systolic src vreg #1 (proto +0x20) | 160 | 0xa0 | 6 | (same) | CONFIRMED |
+| VEx0 systolic src vregs #2..#8 (proto +0x24..+0x3c) | 285/296/251/262/217/228/183 | — | 6 ea | (same) | CONFIRMED |
 | **EUP push** (VALU slot 3) VALU-opcode | 200 | 0xc8 | 7 | `…VectorAlu3F32Tanh` @ `0x1f2f4f40` (family) | CONFIRMED |
 | EUP function selector | 189 | 0xbd | 5 | (same) | CONFIRMED |
 | EUP push src vreg | 194 | 0xc2 | 6 | (same) | CONFIRMED |
 | **Result slot** result-type discriminator | 24 | 0x18 | 4 | `TensorCoreVectorResult0Encoder::Encode` @ `0x1f3bc160` | CONFIRMED |
 | result dest vreg | 14 | 0x0e | 6 | (same) | CONFIRMED |
 
-> **NOTE — the VALU slot rows are HIGH, not CONFIRMED.** The VALU0/VALU3 opcode and predicate offsets (302/309 for VALU0) are carried from the cross-confirmed VALU-slot trace (the `TensorCoreVectorAlu0Encoder` family) rather than re-walked field-by-field on this page; they are reported HIGH. The MXU, sequencer, immediate, EUP, and result offsets above were each re-walked from the named `glc::isa` encoder's `BitCopy` immediates and are CONFIRMED. The MXU source-vreg region beyond src #1 (bit 160) follows the proto `+0x24..+0x3c` sequence; only src #1 was re-walked on `glc` (the full 8-field set is dumped on the [6acc60406 page](bundle-gf.md#slot-map--absolute-bit-offsets-64-byte--512-bit-buffer)).
+> **NOTE — the VALU slot rows are HIGH, not CONFIRMED.** The VALU0/VALU3 opcode and predicate offsets (302/309 for VALU0) are carried from the cross-confirmed VALU-slot trace (the `TensorCoreVectorAlu0Encoder` family) rather than re-walked field-by-field on this page; they are reported HIGH. The MXU, sequencer, immediate, EUP, and result offsets above were each re-walked from the named `glc::isa` encoder's `BitCopy` immediates and are CONFIRMED. All eight MXU systolic source-vreg fields (proto `+0x20..+0x3c`) were re-walked from `MatrixMultiplyBf16` @ `0x1f333ce0`: they land at bits **160 / 285 / 296 / 251 / 262 / 217 / 228 / 183** (w6 each), in proto-field order — note the offsets are *non-monotone* in the buffer (160 then jumps to 285, descends, and the last field +0x3c lands at 183). The corresponding `gfc` pool is documented on the [6acc60406 page](bundle-gf.md#slot-map--absolute-bit-offsets-64-byte--512-bit-buffer).
 
 ---
 
@@ -203,13 +203,14 @@ Ghostlite names its two FP8 formats `If8` / `Bf8` (vs 6acc60406's explicit `E4m3
 
 ```text
 glc MatrixMultiplyBf16 @ 0x1f333ce0 (VEx0):
-  opcode-HIGH (literal 0x1)  -> bit 58 (0x3a) w8   ; mov esi,0x3a ; mov r8d,0x8
+  opcode-HIGH (literal 0x1)  -> bit 58 (0x3a) w8   ; BitCopy(buf, 58, &1, 0, 8)
   data-format (literal 0x1)  -> bit 52 (0x34) w4   ; bf16 = 1 (push-format enum)
-  primary operand            -> bit 183 (0xb7) w6
   control (matpush target)   -> bit 49 (0x31) w3
   done-gains / latch flag    -> bit 56 (0x38) w1
-  MXU-id (unit)              -> bit 66 (0x42) w4   ; addresses up to 16 (2 used)
-  src vreg #1 (proto +0x20)  -> bit 160 (0xa0) w6  ; (+ further 6-bit systolic-feed vregs)
+  MXU-id (unit)              -> bit 66 (0x42) w4   ; written by VectorExtended0Encoder
+                                                   ;   dispatcher @ 0x1f32fd00, not the leaf
+  8 systolic src vregs       -> bits 160/285/296/251/262/217/228/183 (w6 each)
+    (proto +0x20..+0x3c, in proto-field order; offsets non-monotone in the buffer)
 ```
 
 The MXU draws an **8-vreg systolic operand feed** (the proto `+0x20..+0x3c` source-vreg fields, all 6-bit) shared between both MXUs — this is the contracting-depth feed: the 256×256 systolic array is fed one operand column per cycle from the shared vector read ports, and the eight source-vreg fields stream the contracting dimension into the array. The weight latch is the `LoadMatrixRegister{Gmr,Lmr}{Msra,Msrb}[Bf16Conversion]` opcode family (`LoadMatrixRegisterGmrMsra` @ `0x1f33f140`, opcode-HIGH @ bit 58 w8 — the same unified 8-bit opcode region as the matmul, 4-bit sub-discriminator @ bit 52); the moving-operand push is `PushMatrix<fmt>[Masked]` (`PushMatrixBf16` @ `0x1f33fe00`, opcode-HIGH `0xe`=14 @ bit 60 w6, sub @ bit 58 w2, dtype @ bit 54 w2, 3-bit `MatpushTarget` MSRA/MSRB control). The K>128 multi-pass accumulate has a dedicated result op on Ghostlite (`PopAddMxu01Result`, below) rather than a separate `VaddF32`.
@@ -222,11 +223,13 @@ The result slot (`TensorCoreVectorResult0Encoder::Encode` @ `0x1f3bc160`) reads 
 
 ```text
 glc TensorCoreVectorResult0Encoder::Encode @ 0x1f3bc160:
-  result-type discriminator -> bit 24 (0x18) w4
+  result-type discriminator -> bit 24 (0x18) w4   ; always written (proto +0x1c)
   dest vreg                 -> bit 14 (0x0e) w6
-  result jump table @ 0xb862ed0 ; cmp 0x8 (9 result-opcodes)
-    op 6 = PopMxuResult (matres pop)   op 7 = PopEupResult (EUP pop)
-    op 5 = TransposeResult             op 8 = PopAddMxu01Result (GL-only fused accumulate)
+  switch on proto oneof tag (a2+0x50); cmp bound 0x8 (cases 0,5,6,7,8):
+    tag 5 = PopEupResult        -> writes sub-disc 0 @ bit 20 w4
+    tag 6 = PopMxuResult        -> writes sub-disc 2 @ bit 21 w3 (matres pop)
+    tag 7 = PopAddMxu01Result   -> writes sub-disc 1 @ bit 20 w4 (GL-only fused accumulate)
+    tag 8 = TransposeResult     -> writes sub-disc 4 @ bit 21 w3
 ```
 
 | Result-slot axis | Viperfish (`vxc`) | Ghostlite (`glc`) | 6acc60406 (`gfc`) | Confidence |
@@ -236,7 +239,9 @@ glc TensorCoreVectorResult0Encoder::Encode @ 0x1f3bc160:
 | result-opcode bound | 0x8 (9) | 0x8 (9) | 0x7 (8) | CONFIRMED |
 | fused-accumulate op | `PopCcrfResult` (scalar) | **`PopAddMxu01Result`** | (none) | CONFIRMED |
 
-`PopAddMxu01Result` (proto globals @ `0x2244b170`, present in the `glc::isa` namespace as a named proto type) is the in-result matres-add accumulate of the multi-pass (K>128) matmul path — a Ghostlite-specific fusion. Where Viperfish uses a scalar `PopCcrfResult` and 6acc60406 uses a separate VALU `VaddF32`, Ghostlite folds the accumulate into the result pop itself.
+> **CORRECTION (GL-RESULT-MAP) —** an earlier reading listed the result jump-table arms as `op 5 = TransposeResult, op 6 = PopMxuResult, op 7 = PopEupResult, op 8 = PopAddMxu01Result`. Direct disassembly of `TensorCoreVectorResult0Encoder::Encode` @ `0x1f3bc160` refutes the 5/7/8 assignments: the `switch` is over the proto oneof tag at `a2+0x50`, and the fallback default-instance globals each arm references pin the correct pairing — **tag 5 → `PopEupResult`** (writes sub-disc `0` @ bit 20 w4), **tag 6 → `PopMxuResult`** (sub-disc `2` @ bit 21 w3), **tag 7 → `PopAddMxu01Result`** (sub-disc `1` @ bit 20 w4), **tag 8 → `TransposeResult`** (sub-disc `4` @ bit 21 w3). `PopMxuResult` (tag 6) is the only arm unchanged. The fused-accumulate op is still GL-only; only its tag (7, not 8) and the EUP/Transpose tags were mislabeled.
+
+`PopAddMxu01Result` (referenced as `TensorCoreVectorResult_PopAddMxu01Result_globals_`, the proto default-instance the tag-7 arm falls back to, in the `glc::isa` namespace) is the in-result matres-add accumulate of the multi-pass (K>128) matmul path — a Ghostlite-specific fusion. Where Viperfish uses a scalar `PopCcrfResult` and 6acc60406 uses a separate VALU `VaddF32`, Ghostlite folds the accumulate into the result pop itself.
 
 ---
 
@@ -305,8 +310,7 @@ VectorExtended0Encoder::Encode (the MatrixMultiplyBf16 helper @ 0x1f333ce0):
   opcode-HIGH (0x1)     -> bit 58 (w8)
   data-format (bf16=1)  -> bit 52 (w4)
   control               -> bit 49 (w3) ; done-gains -> bit 56 (w1)
-  primary operand       -> bit 183 (w6)
-  systolic src vreg #1  -> bit 160 (w6) ; (+ the rest of the 8-vreg contracting feed)
+  8 systolic src vregs  -> bits 160/285/296/251/262/217/228/183 (w6 each)
 
 VectorResult0Encoder::Encode (PopMxuResult, result-opcode 6):
   result-type disc      -> bit 24 (w4)
