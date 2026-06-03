@@ -13,8 +13,8 @@ The contract for a reimplementer is: tag every SparseCore pointer with the ID fo
 | | |
 |---|---|
 | **ID bands** | `0` (base Smem); `201..225` = `0xc9..0xe1` (SC pools + alias groups); `501/502` = `0x1f5/0x1f6` (CB windows) |
-| **Named IDs** | 21 (18 in the 201-band + ID 0 + 501 + 502); 8 reserved/gap slots |
-| **MemorySpace enum** | 22 values, 1-based (value 8 is an unused gap) |
+| **Named IDs** | 22 (19 in the 201-band + ID 0 + 501 + 502); 6 reserved/gap slots (206, 207, 209, 210, 221, 222) |
+| **MemorySpace enum** | 22 enum slots (1-based, max `0x16`); **21 valid**, value 8 is an unused gap (empty name, no AS) |
 | **Forward (ID→name)** | `mlir::sparse_core::LlvmTpuDialect::AddressSpaceDescription(int)` @ `0x135462c0` |
 | **Forward (ID→MS)** | `mlir::sparse_core::AddressSpaceToMemorySpace(uint)` @ `0x14b78800` |
 | **Inverse (MS→ID)** | `mlir::sparse_core::MemorySpaceToAddressSpace(MemorySpace)` @ `0x14b78780` |
@@ -60,6 +60,8 @@ The contract for a reimplementer is: tag every SparseCore pointer with the ID fo
 | 501 | 0x1f5 | tile_spmem_cb | 18 | KB | **ON** | CBREG-windowed `TILE_SPMEM` ✓ · CONFIRMED |
 | 502 | 0x1f6 | smem_cb | 19 | KB | off | CBREG-windowed `SMEM` ✓ · CONFIRMED |
 
+A `†` on a row marks an ID whose pool name comes only from `stringifyMemorySpace`, not from `AddressSpaceDescription` (see the GOTCHA below).
+
 The `desc` (`AddressSpaceDescription`) strings for the named IDs are, in `case` order: `TileSpmem`, `Spmem`, `HBM`, `Sflag`, `Vmem`, `Dreg`, `SflagAny`, `SmemAny`, `HBMAny`, `Timem`, `IOVA`, `SflagTile`, `SpmemAny`, `TileSmem`, `SflagScs`, `SmemScs`, `SflagAnySynctile`; ID 0 returns `Smem`; 501/502 return `"TileSpmem Circular Buffer"` / `"Smem Circular Buffer"`; everything else returns `"Unknown"`.
 
 > **GOTCHA —** IDs **215** (`simem`) and **220** (`mar`) carry a real `MemorySpace` (12 and 17) but `AddressSpaceDescription` returns the empty default for them — they fall into the same `case 206/207/209/210/215/220/221/222: return result` arm as the true reserved gaps. The pool names `simem`/`mar` come from `stringifyMemorySpace`, not from the description switch. A reader that derives names only from `AddressSpaceDescription` will wrongly treat 215/220 as reserved.
@@ -77,7 +79,7 @@ ScDialect op (memref with MemorySpace attr)
   → DMA/stream lowering dispatch on (srcAS, dstAS)         (selects tpu_* intrinsic)
 ```
 
-`AddressSpaceToMemorySpace(uint)` is a jump table over IDs `201..224` plus explicit `501→18` / `502→19` arms; the low 32 bits of its `0x1_0000000N` return value are the `MemorySpace` enum. `MemorySpaceToAddressSpace(MemorySpace)` is the exact inverse, gated by a validity mask `0x3fff7f` (the bit set of the 22 valid MemorySpace values, with the value-8 gap clear). `stringifyMemorySpace` and `TpuVersionToString` are both pointer-table lookups (`off_219AF590[ms]` and `off_22011BF0[ver]`) whose string pointers live in `.data.rel.ro` and are filled by `R_X86_64_RELATIVE` relocations at load — they read as zero in the on-disk image.
+`AddressSpaceToMemorySpace(uint)` is a jump table over IDs `201..224` plus explicit `501→18` / `502→19` arms; the low 32 bits of its `0x1_0000000N` return value are the `MemorySpace` enum. `MemorySpaceToAddressSpace(MemorySpace)` is the exact inverse: it indexes `dword_AF36CE8[ms-1]`, gated by the range check `ms-1 > 0x15` (rejects `ms > 22`) and the validity mask `0x3fff7f` tested as `(0x3fff7f >> (ms-1)) & 1` — `0x3fff7f` has **21 bits set** (the 21 valid MemorySpace values; bit 7 is clear, i.e. value 8 is rejected). `stringifyMemorySpace` and `TpuVersionToString` are both pointer-table lookups (`off_219AF590[ms-1]` and `off_22011BF0[ver]`, both 1-based) whose string pointers live in `.data.rel.ro` and are filled by `R_X86_64_RELATIVE` relocations at load — they read as zero in the on-disk image (confirmed: every slot of `off_219AF590` is `0x0` on disk; resolving the RELATIVE relocs yields `smem`, `tile_spmem`, … `sflag_tc`).
 
 ---
 
@@ -97,13 +99,13 @@ Clearing bit 4 (`0x10`) folds MS 2 (`tile_spmem`) and MS 18 = `0x12` (`tile_spme
 
 When a pointer's exact tile or core is statically unknown, the SparseCore LLVM backend widens it to a wildcard `*Any` space for alias analysis. `GetAnyTypeFromAddressSpace(int)` is the canonicaliser:
 
-| concrete ID (name) | → canonical ID (name) |
-|---|---|
-| 201 `TileSpmem`, 202 `Spmem` | 218 `SpmemAny` |
-| 203 `HBM` | 213 `HBMAny` |
-| 204 `Sflag` | 211 `SflagAny` |
-| 205 `Vmem` | 205 `Vmem` (self — no separate wildcard) |
-| 219 `TileSmem`, 0 `Smem` | 212 `SmemAny` |
+| concrete ID (name) | → canonical ID (name) | Confidence |
+|---|---|---|
+| 201 `TileSpmem`, 202 `Spmem` | 218 `SpmemAny` | CONFIRMED |
+| 203 `HBM` | 213 `HBMAny` | CONFIRMED |
+| 204 `Sflag` | 211 `SflagAny` | CONFIRMED |
+| 205 `Vmem` | 205 `Vmem` (self — no separate wildcard) | CONFIRMED |
+| 219 `TileSmem`, 0 `Smem` | 212 `SmemAny` | CONFIRMED |
 
 The `*Any` IDs (211/212/213/218) carry a description but **no** `MemorySpace` pool — they are alias-analysis groupings, not physical pools. Calling `GetAnyTypeFromAddressSpace` on an already-wildcard or leaf space (`Dreg`, `Timem`, `IOVA`, `SflagTile`, the `*Any` IDs themselves) hits the `LogFatal("Unsupported address space: ")` arm (`llvm_tpu_dialect_only.h:100`), so the canonicaliser is total only over the concrete spaces above.
 
@@ -138,6 +140,9 @@ The forward and inverse ID↔MS maps are exact inverses for all 21 named IDs (ve
 ## Cross-References
 
 - [Memory Hierarchy](memory-hierarchy.md) — the HBM/VMEM/SMEM/SFLAG/CMEM tier model these pools populate
-- [Memory-Space Enum](../isa/memory-space-enum.md) — the `MemorySpace` enum and its 22 values
+- [Memory-Space Enum](../isa/memory-space-enum.md) — the `MemorySpace` enum: 22 slots, 21 valid (value 8 gap)
 - [Fat Pointers (AS 7/8/9)](../sparsecore/fat-pointers-as789.md) — the SparseCore fat-pointer encoding and the `*Any` superset relation
 - [addrspacecast ISel](../sparsecore/addrspacecast-isel.md) — the elide-or-emit rule for `llvm.addrspacecast` over these IDs
+- [Tile-ID Cast](../sparsecore/tile-id-cast.md) — how a concrete tile-local AS is widened to its `*Any` canonical form
+- [SC Type Converter](../compiler/sc-type-converter.md) — the `SCTypeConverter` mapping `MemorySpace` memref attrs to `!llvm.ptr<AS#>`
+- [Lower To SparseCore LLVM](../compiler/lower-to-sparsecore-llvm.md) — the pass that consumes these IDs to route memref operands to `tpu_*` intrinsics
