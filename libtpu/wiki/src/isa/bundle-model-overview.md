@@ -4,7 +4,9 @@
 
 ## Abstract
 
-A TPU TensorCore is a VLIW machine: the sequencer fetches one fixed-width **bundle** per cycle and issues every slot in it simultaneously to a distinct execution unit. There is no runtime dependency tracking — the bundle word *is* the issue packet, and the compiler is responsible for proving that the slots in a bundle are independent. The bundle word is a flat byte buffer of a width fixed per silicon generation: **41 bytes** for Jellyfish (TPU v3), **51 bytes** for Pufferfish (TPU v4), and **64 bytes** for Viperfish / Ghostlite / Trillium (TPU v5e / v5p / v6e). These three widths are not free parameters — they are returned as inline constants from the per-generation `BundleSizeBytes` methods and from a `(TpuVersion, TpuSequencerType)`-keyed codec-metadata table, and the encode path lays slots into the buffer at generation-fixed byte offsets.
+A TPU TensorCore is a VLIW machine: the sequencer fetches one fixed-width **bundle** per cycle and issues every slot in it simultaneously to a distinct execution unit. There is no runtime dependency tracking — the bundle word *is* the issue packet, and the compiler is responsible for proving that the slots in a bundle are independent. The bundle word is a flat byte buffer of a width fixed per silicon generation: **41 bytes** for Jellyfish (TPU v2), **51 bytes** for Pufferfish (TPU v4), and **64 bytes** for Viperfish (TPU v5), Ghostlite (TPU v6 lite), and 6acc60406 (TPU7x). These widths are not free parameters. Jellyfish is the extreme case — its 41-byte buffer is hard-pinned by the `operator new(0x29)` allocation inside `EncoderJf::EncodeBundleInternal` itself. Pufferfish returns 51 as an inline constant from `EncoderPfTensorCore::BundleSizeBytes`, and the 64-byte v5+ widths come back through a `(TpuVersion, TpuSequencerType)`-keyed codec-metadata table (with Viperfish/Ghostlite computing the size through a vtable call rather than an inline literal in the *encoder* `BundleSizeBytes`). The encode path then lays slots into the buffer at generation-fixed byte/bit offsets.
+
+> **NOTE — bit-numbering convention.** Every absolute bit position on this page and the slot pages it links is **LSB-first**: bit 0 is the least-significant bit of byte 0, and the universal v5+ packer `BitCopy(dst, dst_bit, src, src_bit, nbits)` (`0x1fa0a900`) writes `nbits` starting at the LSB-numbered `dst_bit`. The Jellyfish direct-pack encoder uses the same convention via `shl`/`or` shift constants. There is no MSB-first / big-endian bit ordering anywhere in the encode path.
 
 The bundle is the wire form, not the compiler IR. Above it sits the [LLO instruction stream](llo-opcode-enum.md): a sequence of typed `LloInstruction`s, each one opcode + operands + memory-space + predicate. The [bundle packer](../sched/llo-bundle-packing.md) groups independent LLO ops into a `Bundle` object whose typed sub-fields (`ScalarInstruction`, `VectorAluInstruction`, `VectorExtendedInstruction`, `VectorLoadInstruction`, `VectorStoreInstruction`, `VectorResultInstruction`, `MiscInstruction`, plus the bundle header) map one-to-one onto the hardware slots; the per-generation `Encoder<gen>::EncodeBundleInternal` then serializes that `Bundle` into the fixed-width byte buffer. This page documents the model: what a bundle is, how wide each generation's bundle is and how that width is determined in the binary, the slot taxonomy and which engine each slot drives, the empty-slot (`kNeverExecute`) convention, and the encode/decode round-trip at a high level. The per-slot bit layouts live on the [individual slot pages](slot-mxu.md); the per-generation full slot maps live on the [per-gen bundle pages](bundle-jf-41b.md).
 
@@ -20,13 +22,16 @@ For reimplementation, the contract is:
 |---|---|
 | **Bundle object** | `platforms_deepsea::jellyfish::isa::Bundle` (typed slot sub-fields) |
 | **Wire form** | flat byte buffer, width fixed per `TpuVersion` |
-| **Jellyfish (v3)** | **41 B** — `JellyfishCodecMetadata::BundleSizeBytes` @ `0x1ecf7460` returns `41` |
-| **Pufferfish (v4)** | **51 B** — `EncoderPfTensorCore::BundleSizeBytes` @ `0x1d227740` returns `51` |
-| **Viperfish (v5e)** | **64 B** — `ViperfishCodecMetadata::BundleSizeBytes` @ `0x1ee71320` returns `64` |
-| **Ghostlite (v5p)** | **64 B** — `GhostliteCodecMetadata::BundleSizeBytes` @ `0x1eeb7640` returns `64` |
-| **Trillium (v6e / 6acc60406)** | **64 B** — registered codec metadata (registry, not a fixed switch) |
+| **Jellyfish (v2)** | **41 B** — hard-pinned by `operator new(0x29)` in `EncoderJf::EncodeBundleInternal` @ `0x1e86c7c0`; `JellyfishCodecMetadata::BundleSizeBytes` @ `0x1ecf7460` also returns `41` |
+| **Dragonfish (v3)** | **41 B** — shares the Jellyfish/`EncoderDf` codec path (`CreateEncoderJfDf` @ `0x1e835b80`) |
+| **Pufferfish (v4)** | **51 B** — `EncoderPfTensorCore::BundleSizeBytes` @ `0x1d227740` returns `51`; `PufferfishCodecMetadata::BundleSizeBytes` @ `0x1ecf7ac0` returns `51` |
+| **Viperfish (v5)** | **64 B** — `ViperfishCodecMetadata::BundleSizeBytes` @ `0x1ee71320` returns `64`; `EncoderVfTensorCore::BundleSizeBytes` @ `0x1d2f8520` reaches it via a vtable+48 call |
+| **Ghostlite (v6 lite)** | **64 B** — `GhostliteCodecMetadata::BundleSizeBytes` @ `0x1eeb7640` returns `64`; `EncoderGlTensorCore::BundleSizeBytes` @ `0x1d332540` reaches it via a vtable+48 call |
+| **6acc60406 (TPU7x)** | **64 B** — registered codec metadata; the `gfc` TensorCore codec built by `CreateEncoderGlGf` @ `0x1e831020` (case `version==5`) |
 | **Width dispatch** | `codec_metadata::BundleSizeBytes(TpuVersion, TpuSequencerType)` @ `0x1ecf7180` → `GetMetadataOrDie` → vtable +16 |
-| **TpuVersion enum** | 6 values, `0`..`5` (`TpuVersionToString` @ `0x20b3a480` traps on `≥ 6`) |
+| **Encoder factories** | `CreateEncoderJfDf` @ `0x1e835b80` (JF+DF), `CreateEncoderPf` @ `0x1e835cc0`, `CreateEncoderVf` @ `0x1e835dc0`, `CreateEncoderGlGf` @ `0x1e831020` (GL+GF) |
+| **TpuVersion enum** | 6 values, `0`..`5` (`TpuVersionToString` @ `0x20b3a480` traps on `≥ 6`); external names from [Codename Matrix](../targets/tpu-version-codename-matrix.md) |
+| **Bit numbering** | LSB-first; `BitCopy` packer @ `0x1fa0a900` |
 | **Empty-slot mark** | `HardwareBundleBits::kNeverExecute` predicate, written to the bundle header |
 | **Encode entry** | `Encoder<gen>::EncodeBundleInternal` (e.g. Jellyfish @ `0x1e86c7c0`) |
 | **Confidence** | CONFIRMED (byte-anchored) unless a row says otherwise |
