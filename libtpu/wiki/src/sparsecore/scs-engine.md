@@ -4,7 +4,7 @@
 
 ## Abstract
 
-**SCS — the SparseCore Scalar sequencer** — is the control CPU of a SparseCore. Where the [TEC](tec-engine.md) is the wide vector engine that reduces embedding tiles and the [TAC](tac-engine.md) is the tile-fetch DMA issuer, SCS is the scalar machine that runs the program counter, computes the gather/scatter addresses, manages the circular buffers, reads the chip's hardware registers (GTC clocks, tile id, sparse-core id, DMA credits), and issues the sync-flag and atomic operations that coordinate the SC tiles with each other and with the [TensorCore](../isa/overview.md). It is the narrowest of the three SparseCore engines — a **32-byte (256-bit) VLIW bundle** against TAC/TEC's 64 — and the only one whose bundle layout is *byte-identical across all three SparseCore generations* (Viperfish, Ghostlite, Trillium). The closest familiar analog is a small in-order scalar core driving a co-processor: SCS is the host loop, and `TileTaskOp`/`LaunchTileTaskOp` launches into the TEC are its "kernel launches."
+**SCS — the SparseCore Scalar sequencer** — is the control CPU of a SparseCore. Where the [TEC](tec-engine.md) is the wide vector engine that reduces embedding tiles and the [TAC](tac-engine.md) is the tile-fetch DMA issuer, SCS is the scalar machine that runs the program counter, computes the gather/scatter addresses, manages the circular buffers, reads the chip's hardware registers (GTC clocks, tile id, sparse-core id, DMA credits), and issues the sync-flag and atomic operations that coordinate the SC tiles with each other and with the [TensorCore](../isa/overview.md). It is the narrowest of the three SparseCore engines — a **32-byte (256-bit) VLIW bundle** against TAC/TEC's 64 — and the only one whose bundle layout is *byte-identical across all three SparseCore generations* (Viperfish, Ghostlite, 6acc60406). The closest familiar analog is a small in-order scalar core driving a co-processor: SCS is the host loop, and `TileTaskOp`/`LaunchTileTaskOp` launches into the TEC are its "kernel launches."
 
 The SCS bundle is a fixed stack of slots packed by a generic little-endian bit packer. Each slot is encoded by a dedicated `<Slot>Encoder::Encode` that the codec dispatcher (`SparseCoreScsCodecBase::Encode`, gfc `0x1391ef60`) calls in turn, handing every slot encoder the *same* output buffer `Span` — so every slot writes at an absolute bundle-relative bit position. The bundle carries **no check trailer** (unlike the TensorCore's `0x55` byte): an all-zero bundle means "all slots inactive." Above a 7-bit reserved prefix sit four 20-bit immediate slots, a 24-bit scalar→vector bridge, and three 27-bit scalar slots — `ScsScalarMisc`, `ScalarAlu1`, `ScalarAlu0` — whose opcode fields land at bundle bits 127, 154, and 181. The DMA and Stream "slots" are not separate physical regions; they are `oneof` alternatives of a scalar lane that reuse the same opcode field and borrow the lower payload region for their descriptors.
 
@@ -26,7 +26,7 @@ For reimplementation, the contract is:
 | **Bit packer** | `BitCopy(dst, dst_bitoff, src, src_bitoff, nbits)` `0x1fa0a900` (little-endian) |
 | **Scalar slots** | `ScsScalarMisc` (base 111, op `@127`) · `ScalarAlu1` (base 138, op `@154`) · `ScalarAlu0` (base 165, op `@181`) |
 | **Scalar slot width** | 27 bits; 6-bit primary opcode `@+16` |
-| **Opcode counts (gfc)** | ScalarAlu 99 · ScsScalarMisc 82 · Dma 3 · Stream 4 · Immediates 1 · VectorScalar 1 |
+| **Opcode counts (gfc)** | ScalarAlu 95 (union; Alu0 78 / Alu1 82) · ScsScalarMisc 82 · Dma 3 forms · Stream 3 forms · Immediates 1 · VectorScalar 1 |
 | **Cross-gen layout** | Bundle + slot bases byte-identical on VF / GL / GF |
 | **Confidence** | CONFIRMED (decompile-anchored) unless a row or callout says otherwise |
 
@@ -42,13 +42,13 @@ SCS is the SparseCore's scalar control plane. In the embedding datapath ([Archit
 
 ### Engine roster
 
-SCS exists on every generation that ships SparseCore. TAC is the engine that varies: present on Viperfish and Ghostlite, dropped on Trillium (which folds tile-fetch issuance into the SCS+TEC pair). SCS itself is constant.
+SCS exists on every generation that ships SparseCore. TAC is the engine that varies: present on Viperfish and Ghostlite, dropped on 6acc60406 (which folds tile-fetch issuance into the SCS+TEC pair). SCS itself is constant. Marketing-name / codename / family-namespace mapping follows the sibling [SparseCore Overview](overview.md).
 
-| Gen | Codename | Family ns | SCS | bundle | Notes |
+| Marketing | Codename | Family ns | SCS | bundle | Notes |
 |---|---|:---:|:---:|---|---|
-| v5e | Viperfish | `vxc.vfc` | Y | 32 B | three-engine split SCS+TAC+TEC |
-| v5p | Ghostlite | `gxc.glc` | Y | 32 B | full SCS+TAC+TEC; widened TEC |
-| v6e | Trillium (`6acc60406`) | `gxc.gfc` | Y | 32 B | no TAC; SCS gains rotating-preg ops |
+| TPU v5e | Viperfish | `vxc.vfc` | Y | 32 B | first three-engine split SCS+TAC+TEC |
+| TPU v6 lite | Ghostlite | `gxc.glc` | Y | 32 B | full SCS+TAC+TEC; widened TEC |
+| TPU7x | 6acc60406 | `gxc.gfc` | Y | 32 B | no TAC; SCS gains rotating-preg ops |
 
 > **CORRECTION (SCS-ENUM) —** two enum spaces number the SparseCore sequencers and they are off by one. This page and [SparseCore Overview](overview.md) use the **codec-template** enum that the encoder instantiations carry as a non-type parameter — `TpuSequencerType` = 3 SCS / 4 TAC / 5 TEC — confirmed in the demangled `EncoderBase<… SparseCoreScsCodecBase …, LN3tpu16TpuSequencerTypeE3E>` symbol (the `3E` suffix is the literal 3). The [Architecture](architecture.md) page documents a *second*, internal `SparseCoreTarget`-keyed enum where the tile-execute geometry is read at sequencer type 5 (so SCS=4 there). Use the codec-template `{3,4,5}` values when selecting an engine encoder; use the `SparseCoreTarget`-internal value only when indexing `TpuCoreParts`. Do not mix the two.
 
@@ -58,7 +58,7 @@ SCS exists on every generation that ships SparseCore. TAC is the engine that var
 
 ### Layout
 
-The bundle is 256 bits. No slot encoder writes below bit 7 or above bit 191; bits `0..6` are a reserved/header prefix and `192..255` are padding. The byte layout was recovered from the `BitCopy` destination-bit immediates inside each per-slot encoder (the dispatcher passes every encoder the same buffer `Span`, so the bit offsets are absolute), and is byte-identical on Viperfish, Ghostlite, and Trillium.
+The bundle is 256 bits. No slot encoder writes below bit 7 or above bit 191; bits `0..6` are a reserved/header prefix and `192..255` are padding. The byte layout was recovered from the `BitCopy` destination-bit immediates inside each per-slot encoder (the dispatcher passes every encoder the same buffer `Span`, so the bit offsets are absolute), and is byte-identical on Viperfish, Ghostlite, and 6acc60406.
 
 ```text
 SCS bundle — 32 bytes / 256 bits (VF / GL / GF identical)
@@ -137,7 +137,7 @@ So the absolute opcode bits fall out as `base + 16`: `ScsScalarMisc` opcode `@12
 | `ScalarAlu1` | 138 | 138 | 143 | 149 | **154** | 160/163/164 |
 | `ScalarAlu0` | 165 | 165 | 170 | 176 | **181** | 187/190/191 |
 
-> **NOTE — the predication header is a 3-bit/4-bit overlap, not two fields.** `normal_predication` (3 bits) and `rotate_predication` (4 bits) share the same starting bit `@+22`; the 1-bit `is_rotate_predication` `@+26` selects which interpretation applies. When rotating predication is active the 4-bit field indexes a 16-entry rotating-predicate ring (Trillium adds `SetRotatingPredicateRegister` and `BranchRelativeRotatingPreg` to drive it). A reimplementer must not allocate 3+4 distinct bits — it is 4 bits with two meanings.
+> **NOTE — the predication header is a 3-bit/4-bit overlap, not two fields.** `normal_predication` (3 bits) and `rotate_predication` (4 bits) share the same starting bit `@+22`; the 1-bit `is_rotate_predication` `@+26` selects which interpretation applies. When rotating predication is active the 4-bit field indexes a 16-entry rotating-predicate ring (6acc60406 adds `SetRotatingPredicateRegister` and `BranchRelativeRotatingPreg` to drive it). A reimplementer must not allocate 3+4 distinct bits — it is 4 bits with two meanings.
 
 > **GOTCHA — the two 5-bit operand fields are operand selectors, not a result selector (HIGH confidence).** The opcode and predication-header positions are bit-exact; the precise operand-vs-result role of x0/x1 was inferred from the scalar-ALU operand model (`ScalarY @+5` is the operand-or-immediate selector documented in the ScalarY field work). Treat x0/x1 as register-source selectors; the destination encoding was not independently bit-traced here.
 
@@ -223,19 +223,19 @@ Verified anchors: `Halt` `(word15 & 0x7FF) == 0` → control 0x00; `BranchAbsolu
 
 `ScsScalarMisc` also carries flat 6-bit ops mirrored from the ALU set: `IntegerAdd=0x0a`, `BitwiseAnd=0x0e`, the integer compare block `0x1e..0x27`, plus `ReadSyncStateValue=0x2a`, `ReadSyncStateDone=0x2b`, `SetTracemark=0x2d`, `Trace=0x2e`, `SetSyncFlagPublicAccess=0x2f`, `SmemFetchAndAdd=0x38`. (`AtomicTileAdd` confirmed base 8 / sub 1; `IntegerAdd` confirmed `==0x0a`.)
 
-> **NOTE — Trillium simplified the sync model.** Ghostlite's `ScalarMisc` carries 100 ops including the dual-channel sync family (`Set{Both,Other}Sync*`, `Add{Both,Other}SyncFlag`) and 12 `Yieldable*` sync ops; Trillium's drops both families (down to 82 ops) and adds the single `SetPOrTState`. The interpretation is a non-yielding tile scheduler: fewer sync primitives, deterministic latency. A reimplementer targeting Trillium must not emit the `Yieldable*` or `*Both*`/`*Other*` sync ops — they have no encoder in gfc.
+> **NOTE — 6acc60406 simplified the sync model.** Ghostlite's `ScalarMisc` carries 100 ops including the dual-channel sync family (`Set{Both,Other}Sync*`, `Add{Both,Other}SyncFlag`) and the `Yieldable*` sync ops; 6acc60406 drops both families (down to 82 ops) and adds the single `SetPOrTState`. Confirmed by symbol count: glc carries 272 `Yieldable*` and 126 `Set/Add{Both,Other}*` SparseCore symbols against **zero** in gfc, while `SetPOrTState` appears only in gfc. The interpretation is a non-yielding tile scheduler: fewer sync primitives, deterministic latency. A reimplementer targeting 6acc60406 must not emit the `Yieldable*` or `*Both*`/`*Other*` sync ops — they have no encoder in gfc.
 
 ### Per-generation deltas
 
 The scalar ISA is gen-invariant for shared ops; the deltas are small and concentrated in halt/yield and the rotating-predicate ring.
 
-| Aspect | Viperfish | Ghostlite | Trillium |
+| Aspect | Viperfish | Ghostlite | 6acc60406 |
 |---|---|---|---|
 | Bundle / slot layout | 32 B, bases 111/138/165 | identical | identical |
 | Primary opcode width | 6-bit | 6-bit | 6-bit |
-| `ScalarAlu` op count | 100 | 100 | 99 |
+| `ScalarAlu` op count (union) | 96 | 95 | 95 |
 | `ScsScalarMisc` op count | 100 | 100 | 82 |
-| Halt/yield ops | `HaltYield`, `HaltYieldConditional`, `ReadRegisterYieldRequest`, `ScalarFenceScmf` | `HaltYieldConditional`, yieldable sync | (dropped) |
+| Halt/yield ops | `HaltYield`, `HaltYieldConditional`, `ReadRegisterYieldRequest`, `ScalarFenceScmf` | same family present | (dropped) |
 | Rotating-preg ops | — | — | `BranchRelativeRotatingPreg`, `LogicalShiftLeftOnesXByYPlaces`, `SetRotatingPredicateRegister`, `MoveCbreg`, `ScalarStoreXToSmemSumDestAndY` |
 | `IntegerAdd` value | `0x0a` | `0x0a` | `0x0a` |
 
@@ -253,21 +253,21 @@ sc_tpu.tile_task region                         (the per-tile compute body)
    │    per-op callback                            0x136066e0
    ▼
 func.func(  live-in memrefs )  sc.sequencer = "execute"   ← the TEC body
-   ▲                                  StringAttr "execute" @0x8681624 (7 chars)
+   ▲                                  qmemcpy(…, "execute", 7) in the outliner callback 0x136066e0
    │  LaunchTileTaskOp::create        0x145dd0e0
 enclosing func  sc.sequencer = "scs"                       ← the SCS control program
    │
    ▼  read back at lowering
 LowerSequencerFunctionsPass::runOnOperation     0x13532120
-   │   ScDialect::HasCoreSequencerTypeAttribute   0x14599ec0  (value=="scs", len 3)
-   │   ScDialect::HasExecuteSequencerTypeAttribute 0x1459a020 (value=="execute", len 7)
+   │   ScDialect::HasCoreSequencerTypeAttribute   0x14599ec0  (reads "sc.sequencer", 12; "scs" path)
+   │   ScDialect::HasExecuteSequencerTypeAttribute 0x1459a020 ("execute" path)
    ▼
 per-engine codec selected by TpuSequencerType {3=SCS, 4=TAC, 5=TEC}
 ```
 
 The outliner (`TileTaskOutliningPass`, `0x13606220`) walks each `sc_tpu.tile_task`, collects the region's live-in `mlir::Value`s as the outlined func's arguments (`getUsedValuesDefinedAbove`), builds a `FunctionType` from the live-in memref shapes, clones the region into a new `func.func` (`Region::cloneInto`), wires the entry with a `cf.BranchOp`, replaces the `tile_task` with a `LaunchTileTaskOp`, erases the original, and stamps the new func `sc.sequencer="execute"`. The enclosing function — the SCS control program that issues the launches — carries `sc.sequencer="scs"`. The downstream `LowerSequencerFunctionsPass` reads the string back through the `ScDialect` predicates and selects the SCS/TAC/TEC encoder by the codec-template `TpuSequencerType` ({3,4,5}).
 
-> **QUIRK — on Trillium the outliner stamps only "scs" and "execute"; "access" disappears.** On Viperfish/Ghostlite the same Target-parameterized pass also produces an `"access"` (TAC) function; on Trillium TAC is gone, so the tile-fetch work folds into the `"execute"` (TEC) function and the only boundary the SCS program crosses is SCS↔TEC. A reimplementer producing a Trillium program must not emit an `"access"` func — there is no `SparseCoreTac*` encoder in gfc.
+> **QUIRK — the only `sc.sequencer` string values the binary carries are `"scs"` and `"execute"`.** Both string literals are present (`"execute"` at 5 sites, `"scs"` at 1; verified by `qmemcpy(…, "execute", 7)` in the outliner callback and a `"scs", 3` literal elsewhere). There is **no `"access"` string** anywhere in the binary — the SCS↔TEC partition is the only one the attribute model expresses, and TileTaskOp carries the `ParentFuncHasCoreSequencerTypeAttribute` trait rather than a per-engine string. TAC's presence on Viperfish/Ghostlite is a codec-namespace fact (`vxc.vfc`/`gxc.glc` ship `SparseCoreTacCodecBase`), not an outliner-string fact; on 6acc60406 the `gfc` namespace ships zero `SparseCoreTac*` symbols, so tile-fetch folds into the `"execute"` (TEC) function. UNVERIFIED: that any pass ever stamps a distinct `"access"` attribute for TAC.
 
 ### The control / sync primitives SCS uses to issue
 
@@ -279,7 +279,7 @@ The SCS-side mechanics of a launch and handoff are built from the scalar roster 
 - **The handshake** — `ScsScalarMisc` issues `SetSyncFlag`/`AddSyncFlag` (base 0x05) and the `Sync*` compare-and-set family (base 0x01) so the TEC and the TensorCore wait on / signal completion through the shared sync-flag pool; the `Atomic*` family (base 0x08) does tile/remote atomic write/add with optional set-done.
 - **The fence** — `ScalarFence=0x09`, `ScalarFenceStreamHbm=0x1c`, `ScalarFenceStreamSpmem=0x1d` order the outstanding stream/DMA traffic before the launch returns.
 
-> **NOTE — SCS issues the *control* of a gather, not the gather itself.** The actual indirect HBM traffic is a Stream/DMA op (a `oneof` form of an SCS scalar lane, opcode `@181/154`) consumed by the TAC stream engine on VF/GL or the TEC stream slot on Trillium. SCS computes the indices/addresses and issues the descriptor; the bytes move on TAC/TEC. The `STREAM_OPCODE_SCATTER_FLOAT_ADD` atomic-into-HBM primitive that justifies SparseCore is one of these forms. See [Stream Gather/Scatter](stream-gather-scatter.md).
+> **NOTE — SCS issues the *control* of a gather, not the gather itself.** The actual indirect HBM traffic is a Stream/DMA op (a `oneof` form of an SCS scalar lane, opcode `@181/154`) consumed by the TAC stream engine on VF/GL or the TEC stream slot on 6acc60406. SCS computes the indices/addresses and issues the descriptor; the bytes move on TAC/TEC. The `STREAM_OPCODE_SCATTER_FLOAT_ADD` atomic-into-HBM primitive that justifies SparseCore is one of these forms. See [Stream Gather/Scatter](stream-gather-scatter.md).
 
 ---
 
@@ -315,8 +315,8 @@ Cross-gen anchors: vfc SCS `ScalarAlu0` `0x1ee82ce0` (op `@181`), `ScsScalarMisc
 ## Considerations
 
 - **No FP and no branch in the Misc slot.** `ScsScalarMisc` is sync/atomic + integer-ALU only; FP arithmetic, FP compare, branches, calls, and SMEM load/store live in the ALU lanes. A scheduler must not place a sync op into an ALU lane or an FP op into Misc.
-- **Lane asymmetry.** `ScalarAlu1` holds the SMEM load/store, CBREG, Dreg, FP add/sub, and task-request ops; `ScalarAlu0` holds the branch/call/convert/divide-push ops. The two lanes are not interchangeable despite sharing the opcode namespace.
-- **Trillium's non-yielding scheduler.** The dropped `Yieldable*` and dual-channel sync families mean a Trillium SCS program cannot express cooperative yield-on-sync; it relies on the rotating-predicate ring and deterministic latency instead.
+- **Lane asymmetry.** `ScalarAlu1` holds the SMEM load/store, CBREG, and task-request ops (`ScalarLoadSmemY`, `AddCbreg`/`WriteCbreg`/`ReadCbreg`, `TaskRequest`, `DescriptorBasedDma` — each present only in the Alu1 namespace, Alu0=0); `ScalarAlu0` holds the branch/call and divide-push ops (`BranchAbsolute`, `CallAbsolute`, `DivideWithRemainderXYPushQuotient` — Alu0-only). Many ops (`IntegerAdd`, `Halt`, `ConvertInt32ToFloat32`) appear in *both* lanes. The two lanes are not interchangeable despite sharing the opcode namespace.
+- **6acc60406's non-yielding scheduler.** The dropped `Yieldable*` and dual-channel sync families mean a 6acc60406 SCS program cannot express cooperative yield-on-sync; it relies on the rotating-predicate ring and deterministic latency instead.
 - **Unmapped regions (LOW/inferred).** The 7-bit bundle prefix (`@0..6`) and the `192..255` padding are unwritten by any slot encoder; whether the codec sets a version/valid nibble in an epilogue is not decoded (the bundle carries no `0x55` trailer). The absolute bundle bit of each composite `ScsScalarMisc` sub-opcode field (the sync/atomic mode at struct-relative bit 47/58) is recovered as a within-struct offset but was not re-derived to its absolute bundle bit for all 50 composite Misc ops.
 
 ---
