@@ -59,12 +59,12 @@ The bundle byte-width is fixed per `TpuVersion` and is the single most load-anch
 
 | `TpuVersion` | Codename | Public name | Bundle bytes | Width source | Confidence |
 |---|---|---|---:|---|---|
-| 0 | Jellyfish | TPU v3 | **41** | `JellyfishCodecMetadata::BundleSizeBytes` @ `0x1ecf7460` `return 41` | CONFIRMED |
-| 1 | Dragonfish | (v3 variant) | 41 | shares Jellyfish codec metadata (component 0) | HIGH |
+| 0 | Jellyfish | TPU v2 | **41** | `JellyfishCodecMetadata::BundleSizeBytes` @ `0x1ecf7460` `return 41` | CONFIRMED |
+| 1 | Dragonfish | TPU v3 | 41 | shares Jellyfish codec metadata (component 0) | HIGH |
 | 2 | Pufferfish | TPU v4 | **51** | `EncoderPfTensorCore::BundleSizeBytes` @ `0x1d227740` `return 51`; `PufferfishCodecMetadata::BundleSizeBytes` @ `0x1ecf7ac0` `return 51` | CONFIRMED |
-| 3 | Viperfish | TPU v5e | **64** | `ViperfishCodecMetadata::BundleSizeBytes` @ `0x1ee71320` `return 64` | CONFIRMED |
-| 4 | Ghostlite | TPU v5p | **64** | `GhostliteCodecMetadata::BundleSizeBytes` @ `0x1eeb7640` `return 64` | CONFIRMED |
-| 5 | 6acc60406 | TPU v6e / Trillium | 64 | registered codec metadata; same 64-B class as v5+ | MEDIUM |
+| 3 | Viperfish | TPU v5 | **64** | `ViperfishCodecMetadata::BundleSizeBytes` @ `0x1ee71320` `return 64` | CONFIRMED |
+| 4 | Ghostlite | TPU v6 lite | **64** | `GhostliteCodecMetadata::BundleSizeBytes` @ `0x1eeb7640` `return 64` | CONFIRMED |
+| 5 | 6acc60406 | TPU7x | 64 | registered codec metadata; same 64-B class as v5+ | MEDIUM |
 
 The dispatch from a `TpuVersion` to its width is a two-step indirection, not a `switch`:
 
@@ -74,11 +74,11 @@ metadata = GetMetadataOrDie(v);            // 0x1ecf6f60 — abseil flat_hash_ma
 return metadata->vtable[+16](t);           // virtual BundleSizeBytes(t) on the per-gen class
 ```
 
-`GetMetadataOrDie` (`0x1ecf6f60`) keys a process-wide `CodecMetadataRegistry` — an `absl::flat_hash_map<tpu::TpuVersion, CodecMetadata const*>` built once via the `StaticMapBase` singleton — and dies with "Codec metadata not registered for TpuVersion" if the version was never registered. Each registered `CodecMetadata` is a per-generation class (`JellyfishCodecMetadata`, `PufferfishCodecMetadata`, `ViperfishCodecMetadata`, `GhostliteCodecMetadata`) whose `BundleSizeBytes` virtual returns the inline constant above. There is no separate `TrilliumCodecMetadata` symbol; v6e is served by a registered entry reusing the 64-byte v5+ class shape.
+`GetMetadataOrDie` (`0x1ecf6f60`) keys a process-wide `CodecMetadataRegistry` — an `absl::flat_hash_map<tpu::TpuVersion, CodecMetadata const*>` built once via the `StaticMapBase` singleton — and dies with "Codec metadata not registered for TpuVersion" if the version was never registered. Each registered `CodecMetadata` is a per-generation class (`JellyfishCodecMetadata`, `PufferfishCodecMetadata`, `ViperfishCodecMetadata`, `GhostliteCodecMetadata`) whose `BundleSizeBytes` virtual returns the inline constant above. There is no separate `6acc60406`-named metadata symbol; the `k6acc60406` (TPU7x) version is served by a registered entry reusing the 64-byte v5+ class shape.
 
 > **QUIRK — width is keyed by `(version, sequencer-type)`, and the second argument matters.** `BundleSizeBytes` takes a `TpuSequencerType`. For the TensorCore sequencer (component `0`) Jellyfish returns 41; for the BarnaCore sequencer (component `1`) the *same* `JellyfishCodecMetadata` returns **16** (`0x1ecf7460`: `if (t==1) return 16`), and any other component triggers a fatal "Unhandled component". The Pufferfish BarnaCore sub-cores have their own 32-byte bundles (`EncoderPfBarnaCoreSequencer::BundleSizeBytes` @ `0x1d229220` `return 32`, `EncoderPfBarnaCoreChannel` @ `0x1d22bb00` `return 32`). A reimplementation that treats "bundle width" as a per-chip scalar misses that one chip has several sequencer types with different bundle widths.
 
-The widths are mutually incompatible wire formats. A 41-byte Jellyfish bundle does not survive being read as a 51-byte Pufferfish bundle even after byte-extension: each generation has its own `Encoder<gen>` / `Decoder<gen>` pair and its own slot-offset map. The width grows across generations because the slot count grows (more vector-ALU lanes, more vector-load ports, a dedicated cmem-load slot at Pufferfish, a predicate slot at Trillium), not because fields were padded.
+The widths are mutually incompatible wire formats. A 41-byte Jellyfish bundle does not survive being read as a 51-byte Pufferfish bundle even after byte-extension: each generation has its own `Encoder<gen>` / `Decoder<gen>` pair and its own slot-offset map. The width grows across generations because the slot count grows (more vector-ALU lanes, more vector-load ports, a dedicated cmem-load slot at Pufferfish, a predicate slot at 6acc60406), not because fields were padded.
 
 ---
 
