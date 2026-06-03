@@ -110,10 +110,10 @@ Latency-hiding scheduler, annotation-range checks, the `--xla_fuel` budget, and 
 | `0xa02bf0c` | `Conflicting schedule type requirements in computation rooted at %s.` | `%s`=computation | Internal | HIGH |
 | `0xa086733` | `Reference instruction %s was not found in the schedule.` | `%s`=instruction | Internal | HIGH |
 | `0x862868f` | `GVN: Not replacing %s because GVN is out of fuel` | `%s`=instruction | (LOG, not Status) | MEDIUM |
-| `0x862865f` | `halt before %s because lowering is out of fuel` | `%s`=instruction | (LOG, not Status) | MEDIUM |
+| `0x8628660` | `halt before %s because lowering is out of fuel` | `%s`=instruction | (LOG, not Status) | MEDIUM |
 | `0xa03ca6a` | `Illegal value for --xla_fuel. Saw %s, but expected token %s to be an integer.` | `%s`/`%s`=value/token | InvalidArgument | CERTAIN |
 
-> **NOTE —** `0xa03ca6a` ("Illegal value for --xla_fuel…") was confirmed inside the `xla::MakeDebugOptionsFlags` flag-parsing closure — it is a flag-value validator, the error counterpart to the `--xla_fuel` flag documented on the flag-name side. The two "out of fuel" strings at `0x862865f`/`0x862868f` are diagnostic LOG output, not Status payloads (no factory wraps them); they are catalogued for completeness but should not be assumed to be recoverable as a Status code.
+> **NOTE —** `0xa03ca6a` ("Illegal value for --xla_fuel…") was confirmed inside the `xla::MakeDebugOptionsFlags` flag-parsing closure — it is a flag-value validator, the error counterpart to the `--xla_fuel` flag documented on the flag-name side. The two "out of fuel" strings at `0x8628660`/`0x862868f` are diagnostic LOG output, not Status payloads (no factory wraps them); they are catalogued for completeness but should not be assumed to be recoverable as a Status code.
 
 ---
 
@@ -224,7 +224,7 @@ The driver state machine, device/ordinal validation, firmware-queue transitions,
 | `0xa1a96ba` | `executable is built for device %s of type "%s"; cannot run it on device %s of type "%s"` | `%s`×4=device/type | InvalidArgument | HIGH |
 | `0xa00ab4b` | `Expected %d chips per tray, actually found a tray with %d chips.` | `%d`/`%d`=expected/found | FailedPrecondition | HIGH |
 | `0x858a3de` | `failed initializing StreamExecutor for device ordinal %d: %s` | `%d`=ordinal, `%s`=reason | Internal | HIGH |
-| `0x721616` | `Failed to convert multipod chip id %d to single-pod chip id.` | `%d`=chip id | Internal | HIGH |
+| `0xa09b555` | `Failed to convert multipod chip id %d to single-pod chip id.` | `%d`=chip id | Internal | HIGH |
 
 > **NOTE —** `0x8679159` ("device ordinal value (%d) must be non-negative") was confirmed in `stream_executor::StreamExecutorAddressAllocator::GetStreamExecutor`. Many runtime templates feed the executor's async stream path; see [`execute-async-on-stream.md`](execute-async-on-stream.md) for where these surface during enqueue.
 
@@ -363,7 +363,7 @@ The prose itself signposts the audience. **User-facing** (operator / JAX-user ac
 | `0xa0c9452` | `Encountered unexpected layout … This should not happen - please file a bug against XLA.` | "should not happen" + "file a bug" |
 | `0x99e1405` | `Close() appears to be hanging, this might be a deadlock see b/147787375` | `b/<id>` |
 
-> **NOTE —** `b/<id>` and `go/<link>` tokens are the strongest internal signal. They also tag known-gap TODOs (`"TODO(b/157237781) support VFIO device %s"`, `"TODO: b/475913712 - Expected Gather indices to be bitpacked …"`), which are not live errors but become Unimplemented messages when their guarded path is hit.
+> **NOTE —** `b/<id>` and `go/<link>` tokens are the strongest internal signal. They also tag known-gap TODOs (`"TODO(b/157237781) support VFIO device %s"`, `"TODO: b/475913712 -  Expected Gather indices to be bitpacked …"`), which are not live errors but become Unimplemented messages when their guarded path is hit.
 
 ---
 
