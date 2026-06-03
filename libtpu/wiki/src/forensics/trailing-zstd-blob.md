@@ -1,10 +1,10 @@
 # Trailing zstd Blob
 
-> *All offsets, addresses, and section names on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel (PJRT plugin version 0.103, build-id `89edbbe81c5b328a958fe628a9f2207d`, 781,691,048 bytes). Other builds will differ.*
+> *All offsets, addresses, and section names on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel (package version `0.0.40`, build-id `89edbbe81c5b328a958fe628a9f2207d`, 781,691,048 bytes). Pin to the build-id; it is the only unambiguous identifier. Other builds will differ.*
 
 ## Abstract
 
-An earlier binwalk-style carve reported a ~4.1 MB **zstd-dictionary-compressed blob appended to `libtpu.so` past the ELF section headers**, at file offset `0x20F99BEF`, supposedly decoded through a recovered dictionary into a per-codename hardware-constants bundle. That finding is **wrong on every load-bearing claim**, and the correction is the whole point of this page. There is no trailing payload, no embedded dictionary, and no `ZSTD_DCtx_loadDictionary` call site to recover one from. The byte sequence the carve anchored on is an **x86-64 instruction immediate** sitting deep inside `.text`.
+An earlier binwalk-style carve reported a ~4.1 MB **zstd-dictionary-compressed blob appended to `libtpu.so` past the ELF section headers**, at file offset `0x20F99BEF`, supposedly decoded through a recovered dictionary into a per-codename hardware-constants bundle. That finding is **wrong on every material claim**, and the correction is the whole point of this page. There is no trailing payload, no embedded dictionary, and no `ZSTD_DCtx_loadDictionary` call site to recover one from. The byte sequence the carve anchored on is an **x86-64 instruction immediate** sitting deep inside `.text`.
 
 The mechanics are simple once the binary is read directly. The four bytes `28 b5 2f fd` are the little-endian encoding of `ZSTD_MAGICNUMBER` (`0xFD2FB528`, RFC 8878 §3.1.1.1). `libtpu.so` statically links the **entire** libzstd source — compressor and decompressor, 309 `ZSTD_*` symbols, full symbols preserved as local (`t`) entries — so that constant appears five times, every time as a `mov`/`cmp` immediate in a libzstd function that either *writes* a frame header into a caller-supplied output buffer or *checks* it against an input buffer. None of the five sit in a data section; none are referenced by a pointer or relocation; all five are reachable only by program execution flowing through libzstd code.
 
@@ -52,7 +52,7 @@ The section-header table runs to the **exact** last byte of the file. There is n
 
 > **GOTCHA —** the section-header table ending at EOF is the cleanest possible disproof of an "appended payload" story, and it is one `readelf -h` away. Any future "trailing blob past the sections" claim against this binary should be checked against `e_shoff + e_shnum × e_shentsize` *first*; in this build that sum is the file size to the byte.
 
-### The anchor offset is 1.2 MB inside `.text`
+### The anchor offset is ~2.6 MB before the end of `.text`
 
 The carve anchor `0x20F99BEF` (file offset 553,229,295) is **not** at or past EOF. It lands inside section `[21] .text`:
 
@@ -62,7 +62,7 @@ The carve anchor `0x20F99BEF` (file offset 553,229,295) is **not** at or past EO
 | `[11] .rodata` (PROGBITS, R) | `0x84A0000 .. 0xBE8AF28` | CERTAIN |
 | `[51] .strtab` (last data section) | `0x23DF76C3 .. 0x2E979BA1` | CERTAIN |
 | Section-header table | `0x2E979BA8 .. 0x2E97A8A8` (= EOF) | CERTAIN |
-| Anchor `0x20F99BEF` | inside `.text`, ~1.2 MB before its end | CERTAIN |
+| Anchor `0x20F99BEF` | inside `.text`, ~2.6 MB before its end | CERTAIN |
 
 `.text` ends at `0xE63C000 + 0x12BDB484 = 0x21217484`. The anchor sits `0x21217484 − 0x20F99BEF = 0x27D895 ≈ 2.6 MB` before the end of the code section — squarely in executable code, not in any data region and not appended anywhere.
 
@@ -94,12 +94,12 @@ Each occurrence is an immediate operand of a libzstd instruction. None is data. 
 | File offset | Containing function | Function base | Instruction | Role | Confidence |
 |---|---|---|---|---|---|
 | `0x20F99BEF` | `ZSTD_compressEnd_public` | `0x20F99AC0` | `movl $0xfd2fb528,(%r14)` (at `0x20F99BEC`, +0x12C) | Emit magic into output buffer (empty-frame epilogue) | CERTAIN |
-| `0x20F9B2FE` | `ZSTD_writeFrameHeader` | `0x20F9B200` | `movl $0xfd2fb528,...` (+0x159) | Emit magic at the start of every written frame | CERTAIN |
-| `0x2100C714` | `ZSTD_getFrameHeader_advanced` | `0x2100C6C0` | immediate in a stack-local store (+0x97) | Sentinel/scratch value before header parse | HIGH |
-| `0x2100C72A` | `ZSTD_getFrameHeader_advanced` | `0x2100C6C0` | immediate (+0x97 region) | Magic-compare constant material | HIGH |
-| `0x2100C77D` | `ZSTD_getFrameHeader_advanced` | `0x2100C6C0` | `cmp $0xfd2fb528,%ecx` (at `0x2100C77B`, +0xD1) | Verify input frame magic; `jne` to error on mismatch | CERTAIN |
+| `0x20F9B2FE` | `ZSTD_writeFrameHeader` | `0x20F9B200` | `movl $0xfd2fb528,(%rdi)` (at `0x20F9B2FC`, +0xFC) | Emit magic at the start of every written frame | CERTAIN |
+| `0x2100C714` | `ZSTD_getFrameHeader_advanced` | `0x2100C6C0` | `movl $0xfd2fb528,-0x1c(%rbp)` (at `0x2100C711`, +0x51) | Sentinel write to a stack-local before the header `memcpy` | CERTAIN |
+| `0x2100C72A` | `ZSTD_getFrameHeader_advanced` | `0x2100C6C0` | `cmpl $0xfd2fb528,-0x1c(%rbp)` (at `0x2100C727`, +0x67) | Compare the copied stack-local against the magic | CERTAIN |
+| `0x2100C77D` | `ZSTD_getFrameHeader_advanced` | `0x2100C6C0` | `cmp $0xfd2fb528,%ecx` (at `0x2100C77B`, +0xBB) | Verify input frame magic; `jne` to error on mismatch | CERTAIN |
 
-The third and fourth rows are two bytes apart within the same basic block of `ZSTD_getFrameHeader_advanced`; they participate in the same header-validation logic and are not independent finds.
+The third and fourth rows are 22 bytes apart (`0x2100C711`/`0x2100C727`) within the same basic block of `ZSTD_getFrameHeader_advanced`: the first writes the magic into a stack-local as a sentinel, then a `memcpy` copies the candidate header over it, and the second compares the result back against the magic. They participate in the same header-validation logic and are not independent finds.
 
 > **QUIRK —** the constant appears on both sides of the codec. `ZSTD_writeFrameHeader` and `ZSTD_compressEnd_public` *emit* it; `ZSTD_getFrameHeader_advanced` *checks* it. A naive "search for the magic to find the payload" treats an encoder writing a header and a decoder validating one as if both were stored frames. Neither is.
 
@@ -113,7 +113,7 @@ The clearest single proof that these are code, not data, is the magic-verificati
                                                             ; jne -> "not a zstd frame" error path
 ```
 
-`%rsi` is the caller-supplied source pointer. The constant is the *expected* magic the decoder demands of *external* input — exactly the opposite of a stored frame. The bytes `28 b5 2f fd` at file offset `0x2100C77D` are the tail three bytes of this `cmp`'s immediate (the immediate starts at `0x2100C77C`; the carve anchored on `0x2100C77D`).
+`%rsi` is the caller-supplied source pointer. The constant is the *expected* magic the decoder demands of *external* input — exactly the opposite of a stored frame. The 4-byte `cmp` immediate `28 b5 2f fd` begins at file offset `0x2100C77D` (opcode `81` at `0x2100C77B`, ModR/M `f9` at `0x2100C77C`, then the immediate); the carve anchored on that immediate.
 
 ---
 
@@ -121,7 +121,7 @@ The clearest single proof that these are code, not data, is the magic-verificati
 
 ### Why this function writes the magic
 
-`ZSTD_compressEnd_public` (`0x20F99AC0`, size `0x280` = 640 bytes; next symbol `ZSTD_createCDict_advanced` at `0x20F99D40`) is upstream zstd's stream finalizer. It flushes the last block, and in the degenerate "compress 0 bytes / stream never started" case it synthesizes a complete **empty zstd frame** directly into the caller's output buffer. That synthesis is where the `movl $0xfd2fb528,(%r14)` lives. `%r14` holds the `dst` pointer — a heap buffer the caller owns, never a region of the ELF image.
+`ZSTD_compressEnd_public` (`0x20F99AC0`, size `0x27F` = 639 bytes; next symbol `ZSTD_createCDict_advanced` at `0x20F99D40`) is upstream zstd's stream finalizer. It flushes the last block, and in the degenerate "compress 0 bytes / stream never started" case it synthesizes a complete **empty zstd frame** directly into the caller's output buffer. That synthesis is where the `movl $0xfd2fb528,(%r14)` lives. `%r14` holds the `dst` pointer — a heap buffer the caller owns, never a region of the ELF image.
 
 ### Algorithm
 
