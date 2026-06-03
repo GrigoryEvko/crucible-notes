@@ -6,9 +6,9 @@
 
 This page is the **physical-core-selection policy** the SparseCore back-end runs when it assigns an embedding/collective async op to a concrete set of physical SparseCore cores. It is owned by two member functions of `xla::jellyfish::SparseCoreQueueAssignment`: **`GetAllowedCores`** (`0x10FDA3C0`), which computes the *candidate-core mask* for one collective, and **`SelectCores`** (`0x10FDC4E0`), which turns that mask into an *ordered* core list. The product is the `absl::Span<long const>` that the caller numerically sorts and writes into the op's `physical_core_indices` backend-config field through `AddCollectivePhysicalCoreIndices` (`0x1C868500`).
 
-The mental model a reimplementer needs is that **`SelectCores` is not a numeric scorer** — there is no closed-form `score(core)` and no core→queue bijection arithmetic anywhere in its `0x28E0`-byte body. It is a **deterministic greedy priority filter**: it materializes the allowed btree-set into a flat vector, sorts that vector once into *ascending per-core cost* order (the only place the `double cost` argument is consumed), then runs **five ordered passes** over the cost-sorted candidates. Each pass appends a candidate the first time it satisfies that pass's predicate, where the predicate is evaluated against the running `vector<Info>` of *already-assigned* async collectives. A candidate's final rank is therefore `(pass index 1..5)` major, `(ascending cost)` minor. The five predicates, in order: (P1) the core already runs a collective on the **same ND plane**; (P2) an assigned op holding the core has a **data dependency** with this op (probed through an `HloReachabilityMap`); (P3) the op is a member of a **pre-determined assignment group** whose other members hold the core; (P4) the core is **not** running a collective on a **different** ND plane; (P5) **fallback** — append every remaining allowed core. P5 guarantees the selected set covers the whole allowed set; P1–P4 only fix the *order*, which determines membership after the caller truncates to the device/megachip count.
+The mental model a reimplementer needs is that **`SelectCores` is not a numeric scorer** — there is no closed-form `score(core)` and no core→queue bijection arithmetic anywhere in its `0x28C1`-byte body (`nm -S`). It is a **deterministic greedy priority filter**: it materializes the allowed btree-set into a flat vector, sorts that vector once into *ascending per-core cost* order (the only place the `double cost` argument is consumed), then runs **five ordered passes** over the cost-sorted candidates. Each pass appends a candidate the first time it satisfies that pass's predicate, where the predicate is evaluated against the running `vector<Info>` of *already-assigned* async collectives. A candidate's final rank is therefore `(pass index 1..5)` major, `(ascending cost)` minor. The five predicates, in order: (P1) the core already runs a collective on the **same ND plane**; (P2) an assigned op holding the core has a **data dependency** with this op (probed through an `HloReachabilityMap`); (P3) the op is a member of a **pre-determined assignment group** whose other members hold the core; (P4) the core is **not** running a collective on a **different** ND plane; (P5) **fallback** — append every remaining allowed core. P5 guarantees the selected set covers the whole allowed set; P1–P4 only fix the *order*, which determines membership after the caller truncates to the device/megachip count.
 
-`GetAllowedCores` builds the candidate mask from two inputs intersected through two Swiss tables: the **megachip per-axis chip IDs** (`GetChipIDsFromParallelismConfig` → `GetMegaChipParallelism`) and the **per-collective scheduling resource-type IDs** `{0, 23, 24, 25, 26, 27, 28}` (`GetSparseCoreResources`, derived from the offload-config collective-type enum or `AsyncTracker::GetResourceTypeForOp`). A per-resource **thread-local reservation budget** (read via `__tls_get_addr`, decremented per assignment, gated `>= 2`) excludes cores whose reservation for that resource is exhausted — this is the embedding-device / reserved-core effect. The output is a `btree_set<long>` of allowed SC core IDs.
+`GetAllowedCores` builds the candidate mask from two inputs intersected through two Swiss tables: the **megachip per-axis chip IDs** (`GetChipIDsFromParallelismConfig` → `GetMegaChipParallelism`) and the **per-collective scheduling resource-type IDs** `{0, 23, 24, 25, 26, 27, 28}` (`GetSparseCoreResources`: a 7-arm switch on the offload-config collective-type enum, where six arms insert a fixed constant and the enum-4 arm instead returns `AsyncTracker::GetResourceTypeForOp` on the unwrapped async op's root opcode). A per-resource **thread-local reservation budget** (read via `__tls_get_addr`, decremented per assignment, gated `>= 2`) excludes cores whose reservation for that resource is exhausted — this is the embedding-device / reserved-core effect. The output is a `btree_set<long>` of allowed SC core IDs.
 
 The page is four units: the **end-to-end pipeline** (where selection sits between the candidate mask and the proto write), **`GetAllowedCores`** (the candidate-mask build and the reservation budget), **`SelectCores`** (the five-phase filter, the `Info` struct, the cost tie-break), and the **`tensor_split_factor` interaction** (how the *count* of selected cores is consumed downstream by the collective ring strategy). The 4:1 SC:TC ratio that bounds the per-chip core count is stated on [SparseCore Hardware Architecture](architecture.md).
 
@@ -25,7 +25,7 @@ For reimplementation, the contract is:
 | **Candidate mask** | `SparseCoreQueueAssignment::GetAllowedCores(HloInstruction*)` (`0x10FDA3C0`) → `btree_set<long,…,256>` |
 | **Ordered selection** | `SparseCoreQueueAssignment::SelectCores(hlo, allowed, devcount, cost, assigned, reach, assign_groups)` (`0x10FDC4E0`) → `StatusOr<vector<long>>` |
 | **Mask inputs** | `GetChipIDsFromParallelismConfig` (`0x10FDBF40`) ∩-by `GetSparseCoreResources` (`0x10FDC0A0`) |
-| **Resource-type set** | `{0, 23, 24, 25, 26, 27, 28}` (`.rodata 0xAC0A8E0..0xAC0A910`, byte-read) |
+| **Resource-type set** | `{0, 23, 24, 25, 26, 27, 28}` (`.rodata 0xAC0A8E0..0xAC0A910`, byte-read; jump table @`0xAC0A82C`) |
 | **Reservation budget** | per-resource thread-local `long` (`__tls_get_addr(&qword_22048D78)`), decremented, gated `>= 2` |
 | **Selection passes** | P1 same-plane · P2 data-dep (`HloReachabilityMap`) · P3 assign-group · P4 not-different-plane · P5 fallback |
 | **Tie-break** | cost-ascending `stable_sort` comparator `$_0` (`vucomisd`, `0x10FE8AE0`) |
@@ -89,7 +89,7 @@ AddCollectivePhysicalCoreIndices(hlo, span(selected))  // long -> int32, write p
 GetAllowedCores (0x10FDA3C0)                           ── sret = btree_set<long>; rdx = hlo
   ├─ GetChipIDsFromParallelismConfig(hlo) (0x10FDBF40) ── vector<long> megachip per-axis chip IDs
   │    └─ GetMegaChipParallelism (0x1C867B00)          ── StatusOr<InlinedVector<long,4>>; per-axis split
-  ├─ walk device-assignment / replica-group structure  ── [hlo+0x90]/[hlo+0x98] (RepeatedPtrField, stride 0x68)
+  ├─ walk device-assignment member set                  ── Swiss-table SOO: control [hlo+0x90], slots [hlo+0x98], slot stride 0x68 (13 qwords)
   │    └─ GetSparseCoreResources(member-op) (0x10FDC0A0)── btree_set<long> resource-type IDs {0,23..28}
   ├─ flat_hash_map<resource_id, btree_set<chip_id>>     ── @ policy global 0x2181D940 (group chips by resource)
   ├─ flat_hash_map<chip_id, refcount>                   ── @ policy global 0x21639C10 (per-chip occupancy)
@@ -107,20 +107,26 @@ GetAllowedCores (0x10FDA3C0)                           ── sret = btree_set<l
 function GetSparseCoreResources(op):                   // 0x10FDC0A0
     if op.opcode == 0x11 /* custom-call */:
         cfg = GetSparseCoreConfig(op)                  // 0x1C868D20 (backend_config_util)
-        if (cfg[0x98] & 4):                            // config "type" hasbit
-            switch (cfg[0x84] - 1) of {0..6}:          // collective-type enum (jump table @0xAC0A82C)
-                // each arm inserts ONE resource-type long, read from .rodata:
-                //   0xAC0A8E0 = 0 | 0xAC0A8E8 = 23 | 0xAC0A8F0 = 24 | 0xAC0A8F8 = 25
-                //   0xAC0A900 = 26 | 0xAC0A908 = 27 | 0xAC0A910 = 28
-                insert constant into result btree_set  // insert_hint_unique
+        if (cfg.has_type() /* type hasbit */):         // byte-exact: `(cfg_byte[0x10] & 4) != 0`
+            switch (collective_type_enum - 1) of {0..6}:  // `dec eax; cmp 6; ja default`, jump table @0xAC0A82C
+                case 0 (enum 1): insert 28 (.rodata 0xAC0A910)
+                case 1 (enum 2): insert 23 (.rodata 0xAC0A8E8)
+                case 2 (enum 3): insert 24 (.rodata 0xAC0A8F0)
+                case 3 (enum 4):                       // NOT a constant — derive from the wrapped op:
+                    body = op.async_wrapped_instruction()  // 0x1E5AA300
+                          .called_computations()           // 0x1E5885A0  (root instruction)
+                    insert AsyncTracker::GetResourceTypeForOp(root.opcode)  // 0x13612240
+                case 4 (enum 5): insert 25 (.rodata 0xAC0A8F8)
+                case 5 (enum 6): insert 26 (.rodata 0xAC0A900)
+                case 6 (enum 7): insert 27 (.rodata 0xAC0A908)
+                default:         insert 0  (.rodata 0xAC0A920)
+        // else (type hasbit clear): insert 0 (.rodata 0xAC0A920)
     else:  // not a custom-call
-        body = op.async_wrapped_instruction()          // 0x1E5AA300
-              .called_computations()                   // 0x1E5885A0
-        result = { AsyncTracker::GetResourceTypeForOp(body op) }  // 0x13612240
-    return result
+        insert 0 (.rodata 0xAC0A8E0)                   // single resource-type 0
+    return result                                      // btree_set<long>, insert_hint_unique
 ```
 
-The seven resource-type `long` values were read directly out of `.rodata` (VMA == file offset): `0xAC0A8E0 = 0`, `0xAC0A8E8 = 23`, `0xAC0A8F0 = 24`, `0xAC0A8F8 = 25`, `0xAC0A900 = 26`, `0xAC0A908 = 27`, `0xAC0A910 = 28`. Each is a distinct AsyncTracker scheduling resource; a core can hold one collective per resource per budget unit, which is what restricts the candidate set.
+The resource-type `long` constants were read directly out of `.rodata` (VMA == file offset): `0xAC0A8E0 = 0`, `0xAC0A8E8 = 23`, `0xAC0A8F0 = 24`, `0xAC0A8F8 = 25`, `0xAC0A900 = 26`, `0xAC0A908 = 27`, `0xAC0A910 = 28`, and the all-zero slots `0xAC0A918 = 0` / `0xAC0A920 = 0` (the `default` / hasbit-clear arm). Each non-zero value is a distinct AsyncTracker scheduling resource; a core can hold one collective per resource per budget unit, which is what restricts the candidate set. Note the structure: **six** switch arms (enum 1,2,3,5,6,7) insert a fixed constant `{28,23,24,26,27}` ∪ `{25}`; the **enum-4 arm** does *not* insert a constant — it unwraps the async op (`async_wrapped_instruction` → `called_computations` root) and inserts whatever `AsyncTracker::GetResourceTypeForOp(root.opcode)` returns. The **not-a-custom-call** path and the **default / hasbit-clear** paths insert the single resource-type `0`.
 
 ### Algorithm — the mask build and the reservation budget
 
@@ -131,15 +137,15 @@ function GetAllowedCores(hlo):                         // 0x10FDA3C0
     chips     = GetChipIDsFromParallelismConfig(hlo)   // megachip per-axis chip IDs
     by_res    = flat_hash_map<long, btree_set<long>>{} // resource_id -> chip_set   (policy @0x2181D940)
     occupancy = flat_hash_map<long, long>{}            // chip_id     -> refcount   (policy @0x21639C10)
-    budget    = *__tls_get_addr(&qword_22048D78)       // per-resource thread-local reservation budget
+    budget    = __tls_get_addr(&qword_22048D78)        // &(per-resource thread-local reservation budget)
 
-    for assignment in device-assignment ([hlo+0x90]/[hlo+0x98], stride 0x68):
+    for assignment in device-assignment (Swiss-table SOO @[hlo+0x90]/[hlo+0x98], slot stride 0x68):
         resources = GetSparseCoreResources(member-op)  // {0,23..28}
         for (res, chip) in (resources × chips):
-            if budget >= 2:                            // gate: chip still reservable for this resource
+            v = (*budget)--                            // post-decrement the in-place TLS long
+            if v >= 2:                                 // gate (pre-decrement value): chip still reservable
                 by_res[res].insert(chip)               // insert_hint_unique
                 occupancy[chip] += 1                   // inc [slot+8]
-                budget -= 1                            // decrement per assignment
 
     // second pass re-applies the budget over [hlo+0xC0]
     result = btree_set<long>{}
@@ -148,7 +154,7 @@ function GetAllowedCores(hlo):                         // 0x10FDA3C0
     return result
 ```
 
-> **NOTE —** the budget gate is byte-confirmed as the comparison `if (v >= 2)` at three sites in the decompile (the `cmp budget,2; jge` shape) and the decrement is byte-confirmed, but the **writer that seeds** the thread-local `long` — and therefore its initial value — was **not** traced to its initialization site. The reservation is the embedding-device / reserved-core knob: it is the mechanism by which cores reserved for embedding devices (the `sc_dev − num_embedding_devices` split) are excluded from the candidate pool, but whether the seed is `NumEmbeddingDevices`, a fixed cores-per-resource cap, or `LogicalDevicesPerChip(SC)` is **LOW confidence** here. See [SC Queue Assignment & Reservation](sc-queue-assignment-reservation.md) for the resource→limit map this budget is part of.
+> **NOTE —** the budget gate is byte-confirmed as the **post-decrement-then-compare** pattern `v = (*budget)--; if (v >= 2)` at two sites in the decompile (one per map-fill pass; the TLS `long` is loaded via `__tls_get_addr(&qword_22048D78)`, post-decremented, then tested `>= 2`), but the **writer that seeds** the thread-local `long` — and therefore its initial value — was **not** traced to its initialization site. The reservation is the embedding-device / reserved-core knob: it is the mechanism by which cores reserved for embedding devices (the `sc_dev − num_embedding_devices` split) are excluded from the candidate pool, but whether the seed is `NumEmbeddingDevices`, a fixed cores-per-resource cap, or `LogicalDevicesPerChip(SC)` is **LOW confidence** here. See [SC Queue Assignment & Reservation](sc-queue-assignment-reservation.md) for the resource→limit map this budget is part of.
 
 > **GOTCHA —** the two map globals are *policy* singletons, not per-call state: `flat_hash_map<long, btree_set<long,…,256>>::GetPolicyFunctions()::value` at `0x2181D940` and `flat_hash_map<long, long>` at `0x21639C10`. The btree empty-node sentinel is `0x2181D930`. A reimplementer instantiating these maps must match the `btree_set<...,256>` node fan-out (256) for the resource→chip-set value type; the `256` is part of the type and the btree-node walk stride depends on it.
 
@@ -161,7 +167,7 @@ function GetAllowedCores(hlo):                         // 0x10FDA3C0
 | `(anon)::GetSparseCoreResources` | `0x10FDC0A0` | per-collective resource-type IDs `{0,23..28}` | CONFIRMED |
 | `GetMegaChipParallelism` | `0x1C867B00` | `StatusOr<InlinedVector<long,4>>` per-axis split | CONFIRMED |
 | `backend_config_util::GetSparseCoreConfig` | `0x1C868D20` | offload-config read (type enum + hasbit) | CONFIRMED |
-| `AsyncTracker::GetResourceTypeForOp` | `0x13612240` | non-custom-call resource-type derivation | CONFIRMED |
+| `AsyncTracker::GetResourceTypeForOp` | `0x13612240` | enum-4 switch arm: resource-type from unwrapped async-op root opcode | CONFIRMED |
 | reservation budget | `__tls_get_addr(&qword_22048D78)` | per-resource exclusion counter | CONFIRMED (gate); seed LOW |
 
 ---
@@ -212,7 +218,7 @@ function SelectCores(hlo, allowed, devcount, cost, assigned, reach, assign_group
     stable_sort(allowed_vec, $_0)        // $_0(a,b): vucomisd weight[a], weight[b]  (0x10FE8AE0 / cmp @0x10FE8B34)
     // d) get THIS collective's ND plane (the target plane the predicates test against)
     target_plane = TryGetNDPlaneInfoForSparseCoreCollectives(hlo, this->target_)  // 0x10FDEDC0
-    if !target_plane.ok(): return Error(line 0x10D)
+    if !target_plane.ok(): return Error(src line 269)   // AddSourceLocationImpl(..., 269, "…sparse_core_queue_assignment.cc")
     selected = []
     for phase in [P1, P2, P3, P4, P5]:
         for core in allowed_vec:          // ascending cost
@@ -292,7 +298,7 @@ P5  FALLBACK FILL          (no VLOG):
 
 ### Purpose
 
-The task's `tensor_split_mode` is, in this build, the **`tensor_split_factor`** field of the collective offload-config. It does **not** appear inside `SelectCores` or `GetAllowedCores`. Instead it is consumed *downstream*, in the collective ring-strategy layer, where it governs how the *selected* cores partition a collective's tensor. Its relationship to core selection is therefore a count constraint, not a selection input.
+The relevant field is the **`tensor_split_factor`** of the collective offload-config (there is no `tensor_split_mode` field in this build — the "mode" is implied by whether `tensor_split_factor() > 1`). It does **not** appear inside `SelectCores` or `GetAllowedCores`. Instead it is consumed *downstream*, in the collective ring-strategy layer, where it governs how the *selected* cores partition a collective's tensor. Its relationship to core selection is therefore a count constraint, not a selection input.
 
 ### Where it lives
 
@@ -342,7 +348,7 @@ Nothing in `SelectCores` or `GetAllowedCores` is generation-branched in code. Th
 | `AssignQueueIDsToAsyncStart` (`0x10FDF480`) | the driver that calls `GetAllowedCores` + `SelectCores`, then sorts the result |
 | `AddCollectivePhysicalCoreIndices` (`0x1C868500`) | the sink that writes the sorted core list into `physical_core_indices` |
 | `GetSparseCoreConfig` (`0x1C868D20`) | the offload-config reader shared by the resource-type enum and `tensor_split_factor` |
-| `AsyncTracker::GetResourceTypeForOp` (`0x13612240`) | the non-custom-call resource-type derivation feeding `GetSparseCoreResources` |
+| `AsyncTracker::GetResourceTypeForOp` (`0x13612240`) | the enum-4 switch-arm resource-type derivation (from the unwrapped async-op root opcode) feeding `GetSparseCoreResources` |
 
 ## Cross-References
 
@@ -350,6 +356,7 @@ Nothing in `SelectCores` or `GetAllowedCores` is generation-branched in code. Th
 - [SparseCore Hardware Architecture](architecture.md) — the geometry source (`SparseCoreTarget`), the 4:1 SC:TC ratio, and the physical core count this policy selects from.
 - [SC Backend Pipeline](sc-backend-pipeline.md) — the SC-MLO pass pipeline the queue-assignment pass runs inside (and the MEGACORE barrier).
 - [SC Queue Assignment & Reservation](sc-queue-assignment-reservation.md) — the resource→limit reservation map the `GetAllowedCores` per-resource budget is part of.
+- [Physical-Core Placement](../collectives/physical-core-placement.md) — the collective-side consumer of `physical_core_indices`, where the selected core list maps onto the ring/megachip topology.
 - [GetSparseCoreConfig](getsparsecoreconfig.md) — the offload op-type configuration the resource-type enum and `tensor_split_factor` are read from.
 - [OneSlot Router](oneslot-router.md) — the per-slot routing the selected cores feed into.
 - [getSequencerType](getsequencertype.md) — the SCS/TAC/TEC engine-selection function and the sequencer-type enum.
