@@ -6,7 +6,7 @@
 
 The MXU is weight-stationary: before a matmul step can clock, the stationary gain (weight) matrix must be *latched* into one of the array's per-quadrant weight banks, and one latch amortizes across many matmul steps. Stage 2 of the [scheduling pipeline](overview.md) — the MXU/MRB assignment pass — is where the compiler decides, for each accumulation chain, **which latch op gets which index in its `MxuSequence`** and **whether the first latch of a sequence needs an overrun-protection index at all**. That decision is `MxuAssigner::SetLatchIndices` (`sub_10F3B4C0`), and it is gated by a single per-generation virtual predicate, `Target::GainLatchModeHasOverrunChecks` (vtable `+0x358`).
 
-The reason a "latch index in sequence" exists is a hazard the systolic array cannot express in cycles alone. A latch pushes a new weight matrix into a bank while a *previous* matmul may still be draining gains out of that bank through the array. If the new load lands too early it **overruns** the in-flight matmul's gains — the hardware corrupts the still-reading weights. Most generations sidestep this entirely (their first-latch index is never assigned and the scheduler relies on the bundle packer's slot legality), but Viperfish (TPU v5p) carries an explicit MSR/first-latch overrun *handshake* at the gen level, and only for the wide non-bf16 weight formats whose wider reservation footprint makes the overrun reachable.
+The reason a "latch index in sequence" exists is a hazard the systolic array cannot express in cycles alone. A latch pushes a new weight matrix into a bank while a *previous* matmul may still be draining gains out of that bank through the array. If the new load lands too early it **overruns** the in-flight matmul's gains — the hardware corrupts the still-reading weights. Most generations sidestep this entirely (their first-latch index is never assigned and the scheduler relies on the bundle packer's slot legality), but Viperfish (TPU v5) carries an explicit MSR/first-latch overrun *handshake* at the gen level, and only for the wide non-bf16 weight formats whose wider reservation footprint makes the overrun reachable.
 
 This page is the scheduling-side authority on three things. First, the `SetLatchIndices` walk and its first-latch gate — the algorithm. Second, the per-gen `GainLatchModeHasOverrunChecks` truth table and its coupled gen-level sibling `HasMsrOverrunChecks` — the policy. Third, the `CreateVectorLatchLsf` latch-op field layout, viewed as the data contract that `SetLatchIndices` reads (`latch_mode @+0x40`) and writes (`latch_index_in_sequence @+0x42`). The bit-level *encoding* of the latch op into the bundle word is the [Matprep / IAR / Latch ISA page](../isa/slot-matprep-iar-latch.md)'s job; this page treats the op fields only as far as the assignment pass touches them.
 
@@ -101,11 +101,11 @@ The gate is a per-generation virtual on `Target`. The base body is an `Unimpleme
 
 | Gen (TPU) | `GainLatchModeHasOverrunChecks` (`+0x358`) | body | Confidence |
 |---|---|---|---|
-| Jellyfish (v2/v3) | `sub_1D4925E0` | `return 0` ⇒ always FALSE | CERTAIN |
-| Dragonfish (v3 pod) | `sub_1D4901C0` | `return 0` ⇒ always FALSE | CERTAIN |
+| Jellyfish (v2) | `sub_1D4925E0` | `return 0` ⇒ always FALSE | CERTAIN |
+| Dragonfish (v3) | `sub_1D4901C0` | `return 0` ⇒ always FALSE | CERTAIN |
 | Pufferfish (v4) | `sub_1D494880` | `return 0` ⇒ always FALSE | CERTAIN |
-| Viperfish (v5p) | `sub_1D49AB20` | non-trivial (below) | CERTAIN |
-| Ghostlite (v5e/v6e) | `sub_1D497940` | `return 0` ⇒ always FALSE | CERTAIN |
+| Viperfish (v5, v5e+v5p) | `sub_1D49AB20` | non-trivial (below) | CERTAIN |
+| Ghostlite (v6e) | `sub_1D497940` | `return 0` ⇒ always FALSE | CERTAIN |
 | base `Target` | `sub_1D61D8C0` | `LogFatal "Unimplemented"` (`target.h:2472`) | CERTAIN |
 
 The Viperfish body (`sub_1D49AB20`) is byte-exact:
@@ -166,7 +166,7 @@ The per-GLM predicate above is the refinement of a coarser, no-argument gen-leve
 | Ghostlite | `sub_1D4978E0` | `return 0` (FALSE) |
 | base `Target` | `sub_1D61D800` | `LogFatal "Unimplemented"` |
 
-> **NOTE — Viperfish (TPU v5p) is the sole generation with the MSR/first-latch overrun handshake.** This is exactly why its per-GLM `+0x358` override is the only non-trivial body: the gen-level `HasMsrOverrunChecks` being `TRUE` is the *enabling* condition, and `GainLatchModeHasOverrunChecks` is the per-format *refinement* of when the handshake actually has to fire. The extra reservation cost of the indexed first latch is charged in the Viperfish cost model — see [MatmulMode and Modifiers](../cost/matmul-mode-modifiers.md), whose `AddOverrunCheckReservations` (`{Msr:2/6}`) lives in the Viperfish namespace and is the cost-side consumer of this same gate. The wide fmt-3..8 NO_XPOSE formats that fire here are precisely the formats whose matpush draws the widest reservation value-sets, making the overrun reachable.
+> **NOTE — Viperfish (TPU v5) is the sole generation with the MSR/first-latch overrun handshake.** This is exactly why its per-GLM `+0x358` override is the only non-trivial body: the gen-level `HasMsrOverrunChecks` being `TRUE` is the *enabling* condition, and `GainLatchModeHasOverrunChecks` is the per-format *refinement* of when the handshake actually has to fire. The extra reservation cost of the indexed first latch is charged in the Viperfish cost model — see [MatmulMode and Modifiers](../cost/matmul-mode-modifiers.md), whose `AddOverrunCheckReservations` (`{Msr:2/6}`) lives in the Viperfish namespace and is the cost-side consumer of this same gate. The wide fmt-3..8 NO_XPOSE formats that fire here are precisely the formats whose matpush draws the widest reservation value-sets, making the overrun reachable.
 
 ---
 
