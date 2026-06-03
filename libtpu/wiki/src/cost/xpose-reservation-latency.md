@@ -10,7 +10,7 @@ The reference frame is the same `MCSchedModel`-style reservation idea the [MXU l
 
 This page documents three byte-anchored pieces:
 
-1. **`XposeXLUReservationLatency`** — the dynamic transpose-reservation formula, for all three latency-table shapes (base Jellyfish / GhostLite / Trillium, Viperfish, Pufferfish), including the high-level dispatcher that selects it and feeds it the transpose's shape.
+1. **`XposeXLUReservationLatency`** — the dynamic transpose-reservation formula, for all three latency-table shapes (base Jellyfish / GhostLite, Viperfish, Pufferfish), including the high-level dispatcher that selects it and feeds it the transpose's shape.
 2. **`VxposeMode`** — the 5-ordinal transpose-mode enum, its `ElementCount` packing factors, the `LloInstruction` byte that stores it, the `VxposeMode → XluInstrType` subtable, and the per-`Target` `SupportsVectorXpose` masks.
 3. **`MxuStat`** — the per-MXU running-state record the greedy min-makespan bin-packer reads and writes. `MxuStat` records the busy-interval state that the transpose/latch sequences occupy; its layout and the interval-extension cost function are pinned here.
 
@@ -23,7 +23,7 @@ For reimplementation, the contract is:
 
 | | |
 |---|---|
-| **Dynamic reservation (base/GL/Trillium)** | `xla::jellyfish::XluConflictPenaltyTable::XposeXLUReservationLatency` `@0x1c8a0640` |
+| **Dynamic reservation (base/GL)** | `xla::jellyfish::XluConflictPenaltyTable::XposeXLUReservationLatency` `@0x1c8a0640` |
 | **Dynamic reservation (Viperfish)** | `xla::viperfish::LatencyTableViperfish::XposeXLUReservationLatency` `@0x1c8a4e60` (vtable `+0x10`) |
 | **Dynamic reservation (Pufferfish)** | `xla::pufferfish::LatencyTablePufferfish::XposeXLUReservationLatency` `@0x1c8a13e0` (vtable `+0x10`) |
 | **Dispatcher** | `XluConflictPenaltyBetween(LloValue*, LloValue*)` `@0x1c8a01c0` |
@@ -94,7 +94,7 @@ return *((u32*)this + 18*fromType + 3*toType + mxuIdx + 2);   // == base + 72*fr
 All three latency-table subclasses override the vtable `+0x10` slot. They share the static-cell read and differ only in how they shape the hold term. Byte-exact from the decompile:
 
 ```c
-// base Jellyfish / GhostLite / Trillium  @0x1c8a0640
+// base Jellyfish / GhostLite  @0x1c8a0640
 long XposeXLUReservationLatency(vx, from, to, mxuIdx, height, width) {
     if ((unsigned)(from - 2) >= 3)  FATAL("IsTranspose(earlier)", latency_table.cc:335);
     if (to     >= 6)  ud1;                       // bound check
@@ -129,7 +129,7 @@ The bounds (`to < 6`, `mxuIdx < 3`) and the cell address arithmetic are byte-ide
 
 | gen | shape term | constant | floor |
 |---|---|---|---|
-| base / GL / Trillium | `max(0, (width − height) / (2·ElementCount(vx)))` | none | implicit `≥ 0` from `max(0,·)` |
+| base / GL | `max(0, (width − height) / (2·ElementCount(vx)))` | none | implicit `≥ 0` from `max(0,·)` |
 | Viperfish | `max(0, width − height)` | `+7` | `≥ 7` |
 | Pufferfish | `(width − height)` (no clamp) | `+7` | `≥ 1` (via `tmp ≥ −6`) |
 
@@ -205,10 +205,10 @@ Whether a generation can emit a given `VxposeMode` is gated by `Target::Supports
 
 | Target (gen) | `SupportsVectorXpose(vx)` | accepts | Confidence |
 |---|---|---|---|
-| `JellyfishTarget` (v3) `@0x1d48f780` | `vx == 0` | `B32` only | CONFIRMED |
-| `GhostliteTarget` (v6e) `@0x1d497160` | `vx < 3` | `B32`, `Compressed B16`, `Compressed B8` | CONFIRMED |
-| `ViperfishTarget` (v5p) `@0x1d49a000` | `vx != 2` | everything except `Compressed B8` | CONFIRMED |
-| `PufferfishTarget` (v4) `@0x1d4940a0` | `vx != 2` | everything except `Compressed B8` | CONFIRMED |
+| `JellyfishTarget` `@0x1d48f780` | `vx == 0` | `B32` only | CONFIRMED |
+| `GhostliteTarget` `@0x1d497160` | `vx < 3` | `B32`, `Compressed B16`, `Compressed B8` | CONFIRMED |
+| `ViperfishTarget` `@0x1d49a000` | `vx != 2` | everything except `Compressed B8` | CONFIRMED |
+| `PufferfishTarget` `@0x1d4940a0` | `vx != 2` | everything except `Compressed B8` | CONFIRMED |
 | `Target` (base) `@0x1d61ce00` | abstract | — | CONFIRMED |
 
 > **CORRECTION (cost-VII).** The [XLU op roster](../isa/xlu-op-roster.md) tagged the PF/VF `SupportsVectorXpose` mask LOW, reading it as `mode == 2` from an ICF-folded `cmp esi,2; ret` thunk. The decompiled bodies are `return a2 != 2` — PF/VF support **every mode except `Compressed B8`** (`vx == 2`), not only `B8`. This is consistent with the Pufferfish transpose emitter, which rejects `Compressed B8` with `InvalidArgument("compressed B8 format is not supported on PxC")`. The mask is `mode != 2`, CONFIRMED.
@@ -296,7 +296,7 @@ A second-pass rebalance, `MxuStat::LatencyChangeIfMoveTo` `@0x10f7fb40`, re-scor
 
 | Function | Address | Role | Confidence |
 |---|---|---|---|
-| `jellyfish::…::XposeXLUReservationLatency` | `0x1c8a0640` | base/GL/Trillium dynamic reservation; `cell + max(0, shape/(2·EC))` | CONFIRMED |
+| `jellyfish::…::XposeXLUReservationLatency` | `0x1c8a0640` | base/GL dynamic reservation; `cell + max(0, shape/(2·EC))` | CONFIRMED |
 | `viperfish::…::XposeXLUReservationLatency` | `0x1c8a4e60` | VF override; `cell + max(0, w−h) + 7` (thunk `0x1c8a4f00`) | CONFIRMED |
 | `pufferfish::…::XposeXLUReservationLatency` | `0x1c8a13e0` | PF override; floor-1, `+7`, no divisor (thunk `0x1c8a1480`) | CONFIRMED |
 | `XluConflictPenaltyBetween(LloValue*, LloValue*)` | `0x1c8a01c0` | dispatcher; selects dynamic path on `IsFinalTransposeInSequence` | CONFIRMED |
