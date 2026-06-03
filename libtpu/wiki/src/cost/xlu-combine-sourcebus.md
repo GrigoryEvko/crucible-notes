@@ -94,10 +94,10 @@ long LatencyBetweenInternal(LloValue* from, LloValue* to) {
 ```c
 IsXluOp(op) =
     op ∈ {0x8b, 0x8c, 0xa6, 0xa7, 0xf5..0x101, 0x14f, 0x150, 0x154, 0x155}   // 21 XLU opcodes (switch cases)
-  | (op <= 0x3b && _bittest64(0x0C40000000000000, op))                        // = {0x32, 0x36, 0x37, 0x3a, 0x3b}
+  | (op <= 0x3b && _bittest64(0x0C40000000000000, op))                        // = {0x36, 0x3a, 0x3b}
 ```
 
-The 21 opcodes are the cross-lane reduce / permute / transpose family; the bit-mask band adds `kVectorPermute`/`kVectorRotate`/`kVectorBroadcastLane` and two more. Any other opcode (the entire matmul/push/EUP band `{0x8d..0x153}` minus the XLU cases, and everything outside `[0x32, 0x155]`) takes the pass-through arm.
+The 21 opcodes are the cross-lane reduce / permute / transpose family. The bit-mask band `0x0C40000000000000` (bits 54, 58, 59) adds exactly three more — `{0x36, 0x3a, 0x3b}` = `kVectorPermute`/`kVectorRotate`/`kVectorBroadcastLane` — so `IsXluOp` covers **24** opcodes. Any other opcode (the entire matmul/push/EUP band `{0x8d..0x153}` minus the XLU cases, and everything outside `[0x36, 0x155]`) takes the pass-through arm.
 
 The `ceil` is integer arithmetic with sign correction (byte-exact `@0x126e0e8b..0x126e0ed0`):
 
@@ -421,7 +421,7 @@ for node in NodesInTopologicalOrder():
 {0x155}                   transpose-clear
 ```
 
-This is the `IsXluOp` 21-op set ∪ `{0x36, 0x3a, 0x3b}` ∪ the 8 matmul-push ops; the matmul-push ops route operands through the source bus *into* the MXU, the rest through the XLU/RPU read ports.
+Relative to the 21-op `IsXluOp` set this is `IsXluOp` minus the three EUP ops `{0x14f, 0x150, 0x154}` (which use the XLU edge model but not a VEX source bus), plus the three permute/rotate/broadcast ops `{0x36, 0x3a, 0x3b}`, plus the 8 matmul-push ops `{0x8f..0x96}`. The matmul-push ops route operands through the source bus *into* the MXU; the rest go through the XLU/RPU read ports.
 
 ### Critical-Path Depth — $_0
 
