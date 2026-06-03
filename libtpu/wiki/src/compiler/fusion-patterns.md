@@ -13,7 +13,7 @@ The structure below: the predicate model first (how `ShouldFuse` → `ShouldFuse
 For reimplementation, the contract is:
 
 - **The decision pipeline:** `ShouldFuse(consumer, operand_index)` → `ShouldFuseImpl` → a `FusionDecision` (fuse / reason-string-rejected), gated first by hard legality predicates, then by the priority queue's cost rank.
-- **The predicate set:** the ~31 `$_*` lambda predicates inside `ShouldFuseImpl` and the named legality methods (`FusionFitsInVmem`, `ProducerCanBeLoopFused`, `CheckReduceBroadcastIntoReduceWindowFusionRequirements`, the MOF `TooMany*`/`TooMuch*` family).
+- **The predicate set:** the `$_0`–`$_30` `$_*` lambda predicates inside `ShouldFuseImpl` (30 distinct lambda symbols emitted; `$_12` is not present in the symbol table) and the named legality methods (`FusionFitsInVmem`, `ProducerCanBeLoopFused`, `CheckReduceBroadcastIntoReduceWindowFusionRequirements`, the MOF `TooMany*`/`TooMuch*` family).
 - **The recognized shapes:** the HLO match expressions the pass rewrites, keyed by recognizing method and target lowering, and which generation each shape is available on.
 - **The op-fuser dispatch:** how a recognized subgraph is carried as an `OutputFusionOp`/`InputFusionOp` via the anonymous-namespace `OutputFusionOp::Create<MlirOp>` template, and why transcendental activations bypass that path.
 
@@ -22,9 +22,9 @@ For reimplementation, the contract is:
 | **Pass class** | `xla::jellyfish::TpuInstructionFusion : public xla::InstructionFusion` |
 | **`RunImpl`** | `0x13080dc0` |
 | **Decision entry** | `ShouldFuse` `0x13089b20` → `ShouldFuseImpl` `0x13086660` (~1779 decompiled lines) |
-| **Predicate lambdas** | `$_0`–`$_30` referenced inside `ShouldFuseImpl` (raw count ~29; decompile shows refs up to `$_30`) |
+| **Predicate lambdas** | `$_0`–`$_30` defined inside `ShouldFuseImpl` (30 distinct lambda symbols in `nm -C`; `$_12` not emitted) |
 | **Fusion queue** | `GetFusionQueue` `0x13083c40` → `TpuPriorityFusionQueue` (anon namespace) |
-| **VMEM gate** | `FusionFitsInVmem` `0x13084b40`; budget `xla_jf_fusion_max_vmem_mib` (default 8 MiB) |
+| **VMEM gate** | `FusionFitsInVmem` `0x13084b40`; budget `xla_jf_fusion_max_vmem_mib` (default 15; stored as `double`, byte pattern `0x402E000000000000`) |
 | **Pipeline phase** | "Main fusion" (Phase 5), see [compile-phases.md](compile-phases.md) |
 | **Cost scoring (linked)** | `CalculateProducerPriorityWith{Current,BundleAware}CostModel` — [fusion-cost-model.md](fusion-cost-model.md) |
 | **Source file** | `platforms/xla/service/jellyfish/tpu_instruction_fusion.cc` (string in `.rodata`) |
@@ -135,7 +135,7 @@ function ShouldFuseImpl(consumer, operand_index):          // 0x13086660
     return Fuse("Fusing producer: ... into consumer: ...")
 ```
 
-> **NOTE — the lambdas, not the named methods, carry most of the logic.** `ShouldFuseImpl` references `$_0`–`$_30` (28 distinct refs survive in the decompile; the raw count is "~29"). Several are tiny structural predicates with no log string of their own (e.g. `$_29` at `0x130899c0`, which takes `(producer, consumer, consumer, Target&, HloReachabilityMap*)` and is the fusion-boundary test). The named methods (`FusionFitsInVmem`, `ProducerCanBeLoopFused`, `CheckReduceBroadcastIntoReduceWindowFusionRequirements`) are the heavyweight gates; the lambdas are the cheap structural filters that run first. [Confidence: HIGH — call sites and strings are in the decompile; the exact per-lambda body of each `$_*` was not individually unwound.]
+> **NOTE — the lambdas, not the named methods, carry most of the logic.** `ShouldFuseImpl` defines `$_0`–`$_30` (30 distinct lambda symbols survive in `nm -C`; the index `$_12` is not emitted). Several are tiny structural predicates with no log string of their own (e.g. `$_29` at `0x130899c0`, which takes `(producer, consumer, consumer, Target&, HloReachabilityMap*)` and is the fusion-boundary test). The named methods (`FusionFitsInVmem`, `ProducerCanBeLoopFused`, `CheckReduceBroadcastIntoReduceWindowFusionRequirements`) are the heavyweight gates; the lambdas are the cheap structural filters that run first. [Confidence: HIGH — call sites and strings are in the decompile; the exact per-lambda body of each `$_*` was not individually unwound.]
 
 > **CORRECTION (FUSE-01) — the HardSwish anti-fuse string is NOT in the TPU fusion pass.** The string `" HardSwish pattern was found, so fusion failed."` resolves to `tensorflow::grappler::Remapper::Optimize` (`0x105aa960`), a CPU TensorFlow graph rewriter compiled into the same `.so`, not to `TpuInstructionFusion`. The functional claim still holds on the TPU side — HardSwish has no direct ACT ALU opcode and so is not output-fusable (see [the activation discussion below](#why-some-activations-never-fuse)) — but the *string* is mis-attributed in the raw notes. Do not key a TPU reimplementation off that log line. [Confidence: CONFIRMED by symbol resolution.]
 
@@ -148,7 +148,7 @@ function ShouldFuseImpl(consumer, operand_index):          // 0x13086660
 | `ShouldFuseImpl` | `0x13086660` | The predicate cascade (~1779 lines) | CONFIRMED |
 | `ShouldFuseIntoMultiOutput` | `0x13089ce0` | MOF variant of the decision | CONFIRMED |
 | `FusionFitsInVmem` | `0x13084b40` | VMEM capacity gate | CONFIRMED |
-| `NonBroadcastOperandsSize` | `0x13084d80` | Aux measure for the VMEM gate | HIGH |
+| `NonBroadcastOperandsSize` | `0x13084d80` | Operand-size measure called inside `ShouldFuseImpl` (line ~895) | CONFIRMED |
 | `ProducerCanBeLoopFused` | `0x1307f800` | kLoop-fusion legality | HIGH |
 | `CheckReduceBroadcastIntoReduceWindowFusionRequirements` | `0x1307ee60` | RWB window legality | HIGH |
 | `RwbPreliminaryCandidateCheck` | `0x13085700` | RWB pre-filter | HIGH |
@@ -165,7 +165,7 @@ function ShouldFuseImpl(consumer, operand_index):          // 0x13086660
 | `xla_jf_conv_output_fusion` | BOOL | **true** | Enables the output-side (below-conv) chain; trips the "output fusion is disabled" reject when off |
 | `xla_jf_conv_reshape_fusion` | BOOL | **true** | Allows `ReshapeFuser` to absorb reshapes into a conv fusion |
 | `xla_tpu_keep_slice_like_instructions_unfused` | BOOL | **false** | When true, slice-like producers are vetoed (predicate 7) |
-| `xla_jf_fusion_max_vmem_mib` | INT | **8** | VMEM budget the `FusionFitsInVmem` gate enforces (MiB) |
+| `xla_jf_fusion_max_vmem_mib` | DOUBLE | **15** | VMEM budget the `FusionFitsInVmem` gate enforces (MiB). Default `15.0` confirmed in `AbslFlagDefaultGenForxla_jf_fusion_max_vmem_mib::Gen` (`0x402E000000000000`) |
 | `xla_jf_enable_final_priority_fusion` | BOOL | **true** | Drives the `TpuPriorityFusionQueue` priority walk |
 
 ---
@@ -198,7 +198,7 @@ Some checks are unconditional: even a candidate the priority queue ranks first i
 | HBM pressure high if fused | `TpuMultiOutputFusion::IsHBMPressureHighIfFused` `0x110de640` | (no string) | CONFIRMED |
 | Already has `must_fuse` (CCF) | `TpuUserGuidedFusionVerifier::VerifyMustFuseCalls` | `" already has must-fuse attribute, skipping ..."` | HIGH |
 
-> **GOTCHA — VMEM is the gate that surprises a port.** The TPU has no general-purpose register file the way a GPU SM does; fusion materializes the whole fused region into VMEM scratch, and the union of *operand windows* (not just the output) must fit. `FusionFitsInVmem` calls `EstimateFusionCost` on that union and rejects if it exceeds `xla_jf_fusion_max_vmem_mib` minus already-used scratch. A naive port that only checks output size will accept fusions that overflow VMEM and miscompile. The scavenging flags (`xla_tpu_scavenge_vmem_for_fusions`) let the queue *retry* a rejected fusion after other fusions free VMEM — so VMEM rejection is not necessarily final within one pass. The cycle-budget mechanics of that retry are owned by [fusion-cost-model.md](fusion-cost-model.md).
+> **GOTCHA — VMEM is the gate that surprises a port.** The TPU has no general-purpose register file the way a GPU SM does; fusion materializes the whole fused region into VMEM scratch, and the union of *operand windows* (not just the output) must fit. `FusionFitsInVmem` (`0x13084b40`) sums the operand-window bytes directly — `Target::TileBytes` × tile count, plus `fusion_util::MinFusedOperandBytes`, `GetUnalignedDUSMinimumVmemOperandBytes` per DUS operand, and `ReduceEmitter::EvaluateReduceOutput` for reduce outputs — and rejects if that total (scaled against `DefaultScopedVmemBytes`, the `xla_jf_fusion_max_vmem_mib` budget) overflows; it also hard-rejects when the combined operand count exceeds `0x100` (256). A naive port that only checks output size will accept fusions that overflow VMEM and miscompile. The scavenging flags (`xla_tpu_scavenge_vmem_for_fusions`) let the queue *retry* a rejected fusion after other fusions free VMEM — so VMEM rejection is not necessarily final within one pass. The cycle-budget mechanics of that retry are owned by [fusion-cost-model.md](fusion-cost-model.md).
 
 ### Considerations
 
@@ -265,14 +265,14 @@ These are recognized by dedicated passes that run in the "Pre main fusion" phase
 | Pattern | HLO shape | Recognizing pass / gate | Confidence |
 |---|---|---|---|
 | **Async collective** | `AllGatherStart → … → AllGatherDone` | `AsyncCollectiveFusion::RunImpl` `0x109b4ec0` | HIGH |
-| **AllReduce+Scatter** | `AllReduce(x) → Slice(x, my_shard)` | `TpuAllReduceScatterFusion::RunImpl` `0x127acd40` → `__tpu$AllReduceScatter` | HIGH |
-| **Mosaic kernel** | `CustomCall(target="XlaMosaic")` + neighbours | `MosaicFusion` (in `HloPassFix`) `0x10f12500` → `tpu_custom_call` | HIGH |
+| **AllReduce+Scatter** | `AllReduce(x) → Slice(x, my_shard)` | `TpuAllReduceScatterFusion::RunImpl` `0x127acd40` → internal `FusionOp::kAllReduceScatter` (emitted by `AsyncPincerFusionEmitter::EmitAllReduceScatterFusion`) | HIGH |
+| **Mosaic kernel** | `CustomCall(target="tpu_custom_call")` + neighbours | `MosaicFusion::RunImpl` `0x10f12500` (driven by `HloPassFix<MosaicFusion>`) | HIGH |
 | **Megacore conv+AR** | `Conv` paired with `AllReduce` across cores | `MegacoreFusion::RunImpl` `0x110d8f00` | HIGH |
 | **Copy (data-format)** | layout-only `Copy` ≥ `xla_tpu_copy_fusion_threshold` bytes | `TpuInstructionFusion` + `xla_tpu_enable_copy_fusion` | HIGH |
 | **Copy-permute-minor** | `Copy` swapping the 2nd-minor dim | + `xla_tpu_enable_copy_permute_minor_fusion` | HIGH |
 | **Pad/Unpad copy** | `Copy(Pad(x))` with ratio < `xla_tpu_copy_fusion_pad_unpad_ratio` | `TpuInstructionFusion` | MEDIUM |
-| **Bf16-packed matmul** | two bf16 ops sharing an operand | `FusedSpatialMajorConvolution::EmitPackedBf` | MEDIUM |
-| **Int8 (x8)-packed matmul** | two int8 matmuls sharing an operand | `ConvolutionLoweringStrategy.x8_packed` | MEDIUM |
+| **Bf16-packed matmul** | two bf16 ops sharing an operand | `FusedSpatialMajorConvolution::EmitPackedBf16Chunk` `0x130e3120` | MEDIUM |
+| **Int8 (x8)-packed matmul** | two int8 matmuls sharing an operand | conv lowering-strategy `ls_.generate_*_x8_packed_*` flags (e.g. `generate_x8_packed_vmatmuls`) | MEDIUM |
 | **DS_CC_DUS** | `DynamicSlice → CustomCall → DynamicUpdateSlice` | `TpuInstructionFusion-AdvancedDS_CC_DUS` (log string) | MEDIUM |
 
 > **NOTE — collective and Mosaic shapes are recognized before the main pass.** `AsyncCollectiveFusion`, `TpuAllReduceScatterFusion`, and `MosaicFusion` run in the "Pre main fusion" pipeline (Phase B2), so by the time `TpuInstructionFusion` runs in "Main fusion" (B3) these are already `kFusion`/`tpu_custom_call` nodes it treats as opaque. Per-pass placement is owned by [compile-phases.md](compile-phases.md); this page owns only the match shapes.
@@ -344,7 +344,7 @@ Which *transcendental* opcodes a given generation has (and thus which activation
 | `TpuPriorityFusionQueue` | Ranks the candidates this page's predicates admit; numeric formula on [fusion-cost-model.md](fusion-cost-model.md) |
 | `DotCanonicalizer` / `ConvolutionFolding` | Run before fusion; turn every `kDot` into the `kConvolution` this pass matches — see [dot-conv-mxu-lowering.md](dot-conv-mxu-lowering.md) |
 | `LayoutAssignment` | Runs before fusion; fusion legality depends on settled tile layouts — see [layout-assignment.md](layout-assignment.md) |
-| `MxuLmrTransform` | Post-lowering; collapses (matprep+matmul+matres)→LMR, freeing the ACT VLIW slots that make PE+ACT bundle-packing physically possible |
+| MXU LMR transform (`mxu_lmr_transform.cc`; `ReplaceMatmulsWithMatmulLmrs`, gated by `xla_tpu_use_interleaving_lmr_transform`) | Post-lowering; collapses (matprep+matmul+matres)→LMR, freeing the ACT VLIW slots that make PE+ACT bundle-packing physically possible |
 | `TpuLoopFusionEnhancer` | Runs after the main pass; extends existing `kLoop` fusion boundaries to absorb more elementwise leaves |
 
 ## Cross-References
