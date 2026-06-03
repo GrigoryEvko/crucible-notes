@@ -8,7 +8,7 @@ This page is the **consolidated slot-base index** for the three SparseCore seque
 
 The recovery method is uniform across all three engines and is what makes the bit positions *absolute*. Each engine's codec dispatcher (`SparseCore{Scs,Tac,Tec}CodecBase<…>::Encode`) calls every per-slot `<Slot>Encoder::Encode` in turn and hands every one of them the *same* output-buffer `absl::Span<uchar>` (the `rdx=buf.ptr`, `rcx=buf.len` pair is constant across all calls; only the `rdi` member-encoder pointer differs). Each slot encoder then writes its fields with the generic packer `BitCopy(dst, dst_bitoff, src, src_bitoff, nbits)` (`0x1fa0a900`), and the `dst_bitoff` immediate (`mov esi, IMM`) is therefore the *absolute* bundle bit, not a slot-relative one. A slot's bit extent is `[min dst_bitoff, max dst_bitoff + width)` over all its `BitCopy` calls; the opcode bit is the field at slot-relative `+16` (scalar) or `+24` (vector). The bundle byte size is read from `EncoderBase::BundleSizeBytes` (codec-metadata vtable slot 6, `vtable[+0x30]`): SCS 32, TAC 64, TEC 64.
 
-The three maps share a **common low region**. SCS, TAC, and TEC all place the same slot stack in bits 7..191 — four 20-bit immediates, a 24-bit vector-scalar bridge, and three 27-bit scalar slots (`ScalarMisc`/`ScalarAlu1`/`ScalarAlu0` at bases 111/138/165, opcodes at 127/154/181). Above bit 191 the engines diverge: SCS pads to 256 bits, TAC pads its remaining 320 bits empty (no vector path), and TEC fills a vector compute region (bits 195..474 on Trillium) that the other two leave blank. The Dma and Stream "slots" are not separate physical regions on any engine — they are `oneof` forms of a scalar lane (opcode `@181`/`@154`) that borrow lower payload bits (and, on TEC, reach up into bits 283/322). This page presents the unified partition; the field-level templates and opcode rosters live on the engine pages and the [scalar](scalar-opcode-enum.md)/[vector](vector-opcode-enum.md) opcode-enum pages.
+The three maps share a **common low region**. SCS, TAC, and TEC all place the same slot stack in bits 7..191 — four 20-bit immediates, a 24-bit vector-scalar bridge, and three 27-bit scalar slots (`ScalarMisc`/`ScalarAlu1`/`ScalarAlu0` at bases 111/138/165, opcodes at 127/154/181). Above bit 191 the engines diverge: SCS pads to 256 bits, TAC pads its remaining 320 bits empty (no vector path), and TEC fills a vector compute region (bits 195..474 on gfc) that the other two leave blank. The Dma and Stream "slots" are not separate physical regions on any engine — they are `oneof` forms of a scalar lane (opcode `@181`/`@154`) that borrow lower payload bits (and, on TEC, reach up into bits 283/322). This page presents the unified partition; the field-level templates and opcode rosters live on the engine pages and the [scalar](scalar-opcode-enum.md)/[vector](vector-opcode-enum.md) opcode-enum pages.
 
 This is a reference index page, not a reimplementable algorithm; the reimplementation contract for the bundles themselves lives on the engine pages. What this page guarantees:
 
@@ -68,7 +68,7 @@ The table below is the cross-engine partition: one row per slot, with the absolu
 
 ## SCS Bundle Map (32 bytes / 256 bits)
 
-The narrowest bundle and the only one byte-identical across all three SC generations (Viperfish, Ghostlite, Trillium). No slot encoder writes below bit 7 or above bit 191; bits 0..6 are a reserved/header prefix and 192..255 are padding. Documented in full on [SCS (Scalar) Engine](scs-engine.md); the slot bases:
+The narrowest bundle and the only one byte-identical across all three SC generations (Viperfish/vfc, Ghostlite/glc, gfc). No slot encoder writes below bit 7 or above bit 191; bits 0..6 are a reserved/header prefix and 192..255 are padding. Documented in full on [SCS (Scalar) Engine](scs-engine.md); the slot bases:
 
 ```text
 SCS bundle — 32 bytes / 256 bits (VF / GL / GF identical)
@@ -99,7 +99,7 @@ Decompile cross-check — gfc `SparseCoreScalarAlu0Encoder::Encode` (`0x1eb693c0
 
 ## TAC Bundle Map (64 bytes / 512 bits, VF/GL only)
 
-A 64-byte bundle that **reuses the SCS low region (bits 7..191) and leaves the upper 320 bits empty** — TAC has no vector path, so its width buys concurrent scalar address-op parallelism, not vector compute. Present only on Viperfish (`vxc.vfc`) and Ghostlite (`gxc.glc`); **absent on Trillium**. Documented in full on [TAC Engine](tac-engine.md); the slot bases:
+A 64-byte bundle that **reuses the SCS low region (bits 7..191) and leaves the upper 320 bits empty** — TAC has no vector path, so its width buys concurrent scalar address-op parallelism, not vector compute. Present only on Viperfish (`vxc.vfc`) and Ghostlite (`gxc.glc`); **absent on gfc** (the TAC codec survives there only as a standalone legacy path — see the [TEC-ACCESS correction](#per-generation-deltas)). Documented in full on [TAC Engine](tac-engine.md); the slot bases:
 
 | Slot | Base | End | Width | Opcode bit | Confidence |
 |---|---:|---:|---:|---:|---|
@@ -120,10 +120,10 @@ Decompile cross-check — glc `TacScalarAlu0Encoder::Encode` (`0x1ea17e40`) writ
 
 ## TEC Bundle Map (64 bytes / 512 bits, GF)
 
-The only SC engine with a vector path. The low region (bits 7..191) is the *same* slot stack as SCS; above bit 191 sits a vector compute region (bits 195..474 on Trillium) that SCS and TAC leave empty: two more 20-bit immediate slots, then `VectorResult`, `VectorExtended`, `VectorLoad`, `VectorStore`, and the three stacked vector-ALU lanes. Documented in full on [TEC (Vector) Engine](tec-engine.md); the slot bases (Trillium / gfc):
+The only SC engine with a vector path. The low region (bits 7..191) is the *same* slot stack as SCS; above bit 191 sits a vector compute region (bits 195..474 on gfc) that SCS and TAC leave empty: two more 20-bit immediate slots, then `VectorResult`, `VectorExtended`, `VectorLoad`, `VectorStore`, and the three stacked vector-ALU lanes. Documented in full on [TEC (Vector) Engine](tec-engine.md); the slot bases (gfc):
 
 ```text
-TEC bundle — 64 bytes / 512 bits (gfc / Trillium)
+TEC bundle — 64 bytes / 512 bits (gfc)
 bit: 0   7          87   111 138 165  195    239   261       283    328   364  401  438     475   511
      ┌───┬──────────┬────┬───┬───┬───┬──────┬─────┬─────────┬──────┬─────┬────┬────┬───────┬──────┐
      │rsv│Immed.(low│Vec │Sc │Sc │Sc │Immed.│Vec  │ Vector  │Vector│Vec  │Vec │Vec │Vector │rsvd/ │
@@ -221,7 +221,7 @@ The opcode bits fall out as `base + 16`: `ScalarMisc` `@127`, `ScalarAlu1` `@154
 
 ### The 37-bit TEC vector-ALU slot template (GF)
 
-The three TEC vector-ALU lanes share one template; only the slot base differs. Slot-relative offsets (Trillium / gfc):
+The three TEC vector-ALU lanes share one template; only the slot base differs. Slot-relative offsets (gfc):
 
 ```text
 37-bit vector-ALU slot (gfc)
@@ -268,7 +268,7 @@ The low region (bits 7..191) and the scalar template are byte-identical across a
 
 ## What Is Not Mapped
 
-- **The 7-bit reserved prefix (bits 0..6) of every SC bundle** is unwritten by any slot encoder. Whether the codec sets a version/valid nibble in an epilogue is undecoded (SC bundles carry no `0x55` check trailer, unlike TensorCore bundles). MEDIUM/LOW. One analysis notes a Trillium NOP-bundle last byte of `0x50` that *might* be a 4-bit framing field — unconfirmed, LOW.
+- **The 7-bit reserved prefix (bits 0..6) of every SC bundle** is unwritten by any slot encoder. Whether the codec sets a version/valid nibble in an epilogue is undecoded (SC bundles carry no `0x55` check trailer, unlike TensorCore bundles). MEDIUM/LOW. One analysis notes a gfc NOP-bundle last byte of `0x50` that *might* be a 4-bit framing field — unconfirmed, LOW.
 - **The trailing padding** (SCS 192..255; TAC 192..511; TEC 475..511) is confirmed unwritten by any slot encoder; whether a codec epilogue touches it is unconfirmed (HIGH that it is unwritten by slots).
 - **The bit-exact field labels inside `VectorScalar` (87..110) and `VectorExtended` (261..461)** — the slot bases and extents are recovered, but the per-op operand-to-selector binding inside these regions is not exhaustively named (HIGH).
 - **The full VF TEC vector-region slot map** — only `VectorAlu0` was bit-confirmed on VF (`0x1e954ae0`, base 432, pinning the 36-bit / 7-bit-opcode delta); the VF `VectorLoad`/`Store`/`Extended`/`Result` bases are inferred as the −6-bit shift of GF (LOW for the exact VF bases of those four slots).
@@ -303,7 +303,7 @@ The low region (bits 7..191) and the scalar template are byte-identical across a
 ## Cross-References
 
 - [SCS (Scalar) Engine](scs-engine.md) — the 32-byte bundle, the scalar opcode roster, and the launch-by-attribute issue model the SCS column draws from.
-- [TAC Engine](tac-engine.md) — the VF/GL-only 64-byte bundle that reuses the SCS low region; per-gen presence and the Trillium-drops-TAC evidence.
+- [TAC Engine](tac-engine.md) — the VF/GL-only 64-byte bundle that reuses the SCS low region; per-gen presence and the gfc-drops-TAC evidence.
 - [TEC (Vector) Engine](tec-engine.md) — the 64-byte vector bundle, the 37-bit vector-ALU template, immediate-slot indexing, and the access/execute split correction.
 - [Scalar Opcode Enum](scalar-opcode-enum.md) — the `SparseCoreScalarAlu` / `SparseCoreScalarMisc` roster carried in the 6-bit opcode field at `@127/154/181`.
 - [Vector Opcode Enum](vector-opcode-enum.md) — the per-slot, per-gen TEC vector op roster carried in the 8-bit opcode field at `@239/283/347/388/425/462`.
