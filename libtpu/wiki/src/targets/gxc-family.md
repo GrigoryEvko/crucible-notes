@@ -16,6 +16,7 @@ For reimplementation, the contract is:
 - The `gxc::gfc` (fetch-core) / `gxc::glc` (load-core) sub-namespaces, each with its own `isa` and `profiler` — the reason GXC is a family despite sharing the VXC HAL.
 - The codename↔sub-core pairing: **Ghostlite (v4) = glc**, **6acc60406 (v5) = gfc** (a corrected mapping, see callout).
 - The named-vs-anonymous codec asymmetry: `TpuCodecGhostlite` is fully symbol-named; the v5 codec is symbol-stripped.
+- The **shared GlGf bundle encoder**: `ProgramProtoUtil::BundleCount` (`0x1e830e80`) routes both v4 and v5 to one `CreateEncoderGlGf` path, so 6acc60406 reuses Ghostlite's encoder — the reason the two `gxc` sub-core ISA namespaces are near-equal in size despite the named/anonymous split.
 
 | | |
 |---|---|
@@ -89,13 +90,13 @@ The GXC story is the driver layer. `asic_sw::driver::deepsea::gxc::` has exactly
 | `gxc::gfc` | CERTAIN | **general fetch-core** — the 6acc60406 (v5) sub-core |
 | `gxc::glc` | CERTAIN | **general load-core** — the Ghostlite (v4) sub-core |
 | `gxc::gfc::isa` | CERTAIN | v5 ISA (270K symbols) — e.g. `TensorCoreBundleCompact`, SparseCore Tec codecs |
-| `gxc::glc::isa` | CERTAIN | v4 ISA (293K symbols) — e.g. `TensorCoreBundleCompact`, SparseCore codecs |
-| `gxc::gfc::profiler` | CERTAIN | v5 profiler (48K symbols), with named `TraceEntry` class (4458) |
-| `gxc::glc::profiler` | CERTAIN | v4 profiler (29K symbols), with named `TraceEntry` class (4267) |
+| `gxc::glc::isa` | CERTAIN | v4 ISA (294K symbols) — e.g. `TensorCoreBundleCompact`, SparseCore codecs |
+| `gxc::gfc::profiler` | CERTAIN | v5 profiler (48K symbols), with named `TraceEntry` class (4781 token occ.) |
+| `gxc::glc::profiler` | CERTAIN | v4 profiler (29K symbols), with named `TraceEntry` class (4590 token occ.) |
 
-> **CORRECTION (GXC-ISA) —** an earlier roster note held that GXC has "no own isa/profiler" and "sits inside the VXC family". The first half is wrong: the symbol table shows `gxc::gfc::isa` (270K symbols), `gxc::glc::isa` (293K), `gxc::gfc::profiler`, and `gxc::glc::profiler` all exist, each holding substantial ISA and profiler machinery. There is no *family-level* `gxc::isa` (the search for `deepsea3gxc3isa` returns zero), so the ISA lives one level deeper than PXC's/VXC's — under the sub-cores. The "sits inside VXC family" half is correct only at the HAL-object layer (the shared factory/impl); the ISA layer is wholly GXC-specific.
+> **CORRECTION (GXC-ISA) —** an earlier roster note held that GXC has "no own isa/profiler" and "sits inside the VXC family". The first half is wrong: the symbol table shows `gxc::gfc::isa` (270K symbols), `gxc::glc::isa` (294K), `gxc::gfc::profiler`, and `gxc::glc::profiler` all exist, each holding substantial ISA and profiler machinery. There is no *family-level* `gxc::isa` (the search for `deepsea3gxc3isa` returns zero), so the ISA lives one level deeper than PXC's/VXC's — under the sub-cores. The "sits inside VXC family" half is correct only at the HAL-object layer (the shared factory/impl); the ISA layer is wholly GXC-specific.
 
-> **QUIRK —** the naming pairing is counter-intuitive and was a documented off-by-one source. **Ghostlite (v4) binds to `gxc::glc`** (load-core) and **6acc60406 (v5) binds to `gxc::gfc`** (fetch-core). The codec walks confirm this at the symbol level: `TpuCodecGhostlite` dispatches exclusively to `gxc::glc::isa` + `ghostlite::isa::EncoderGl*`; the anonymous v5 codec dispatches exclusively to `gxc::gfc::isa`. Ghostlite is the marketing-name "Trillium" (TPU v6e); 6acc60406 is "TPU7x". A reimplementation that reads `gfc` as "the v6e fetch core" is one generation off.
+> **QUIRK —** the naming pairing is counter-intuitive and was a documented off-by-one source. **Ghostlite (v4) binds to `gxc::glc`** (load-core) and **6acc60406 (v5) binds to `gxc::gfc`** (fetch-core). The codec walks confirm this at the symbol level: `TpuCodecGhostlite` dispatches exclusively to `gxc::glc::isa` + `ghostlite::isa::EncoderGl*`; the anonymous v5 codec dispatches exclusively to `gxc::gfc::isa`. By the binary's own naming axes (`TpuVersionToExternalName` @ `0x20b3a500`), Ghostlite displays as `"TPU v6 lite"` (Cloud `accelerator_type` `v6e`) and 6acc60406 as `"TPU7x"` (Cloud `tpu7x`) — a full generation apart. A reimplementation that reads `gfc` as "the v6e fetch core" is one generation off. (Public marketing names for these generations are not embedded in the binary and are deliberately not cited here — see [Marketing / Cloud Naming](marketing-cloud-naming.md).)
 
 ---
 
@@ -149,28 +150,30 @@ The asymmetry between v4 and v5 is sharpest here. Ghostlite has a *named* compil
 
 ## Per-Codename Differentiation
 
-Ghostlite and 6acc60406 share the VXC HAL product chain (impl 216 B, `TpuVxcDriver`, V2 descriptor) but diverge sharply at the codec/ISA layer. The clearest divergence is symbol visibility and the TensorCore bundle encoding.
+Ghostlite and 6acc60406 share the VXC HAL product chain (impl 216 B, `TpuVxcDriver`, V2 descriptor) and one bundle encoder (the shared `CreateEncoderGlGf` path that `ProgramProtoUtil::BundleCount` at `0x1e830e80` selects for both v4 and v5), but diverge sharply at the codec/ISA layer. The clearest divergence is symbol visibility and the TensorCore bundle encoding.
 
-| Axis | Ghostlite (v4 / glc) | 6acc60406 (v5 / gfc) | Source |
-|---|---|---|---|
-| TpuVersion enum | kGhostlite = 4 | k6acc60406 = 5 | `TpuVersionToString` 0x20b3a480 |
-| ToString | "ghostlite" (0x86864e0) | "6acc60406" (0x863f0cf) | rodata |
-| External / Cloud name | "TPU v6 lite" / v6e (Trillium) | "TPU7x" | naming path |
-| Init module | glc 0x213eb9e0 | gfc 0x213e9f60 | symtab |
-| Sub-core | `gxc::glc` (load-core) | `gxc::gfc` (fetch-core) | symtab |
-| Codec class | `TpuCodecGhostlite` (NAMED, `_ZTV` 0x21d35c00) | anonymous (no codec `_ZTV`/`_ZTI`) | P-codec walks |
-| Codec creator | `CreateTpuCodecGhostlite` 0x1e83bce0 (named) | `sub_1E838380` (inline, anon) | disasm |
-| Named workers | `ghostlite::isa::EncoderGl{TC,Scs,Tac,Tec}` | gfc `EncoderBase` templates (no `EncoderGf*`) | symtab |
-| LLVM subtarget | `TPUGlcSubtarget` | `TPUGfcSubtarget` | symtab |
-| Cost-model table | `GlcCycleTable` (`_ZTV` 0x21c20148) | `GfcCycleTable` (`_ZTV` 0x21c201c8) | symtab |
-| Codec metadata | `GhostliteCodecMetadata` (NAMED, `_ZTV` 0x21d647a8) | anonymous registry entry | disasm |
-| Codec platform tag (cmp) | `$0x5` (TPU v6 lite) | `$0x6` (TPU7x) | Encode body |
-| Entry-point opcodes | 0x11/0x12/0x13/0x14 (TC/Scs/Tac/Tec) | 0x15/0x16/0x17 (+4 shift) | Encode body |
-| TensorCore bundle | 64 B; 4 VALU; 7-bit opcode @302; 4-bit pred @309 | 64 B; 4 VALU; 8-bit opcode @293; 2-bit dual pred @301 | VALU0 encoder bytes |
-| TC CodecBase object | 240 B (1 `Predication` param) | 248 B (4 predication params) | EncodeBundle `new()` |
-| PCI chip DID | 0x00d1 (named `kGhostliteChip*`) | 0x00f2 (anonymous gfc) | DeviceIdentifiers |
-| Device-type byte | 0xd (`IsGlc`) | 0xc (`IsGfc`) | `DeviceTypeFromDeviceIdentifiers` |
-| Flag prefix | `xla_gf_` (44), `xla_sc_` | `xla_gf_`, `xla_sc_` | flag scan |
+> **NOTE —** the shared GlGf encoder is why the two `gxc` sub-core ISA namespaces are near-equal in token weight (`gxc::glc::isa` 294K, `gxc::gfc::isa` 270K) despite the named-vs-anonymous codec split: 6acc60406 inherits Ghostlite's encoder machinery rather than carrying a wholly independent one. The same pairing shows on the version-dispatch side — `BundleCount`'s switch collapses the six generations to four encoder families (`JfDf`, `Pf`, `Vf`, `GlGf`), with v4+v5 sharing `GlGf` exactly as v0+v1 share `JfDf` (see the [Codename Matrix](tpu-version-codename-matrix.md#codec-selection-confirms-the-ordering)).
+
+| Axis | Ghostlite (v4 / glc) | 6acc60406 (v5 / gfc) | Source | Confidence |
+|---|---|---|---|---|
+| TpuVersion enum | kGhostlite = 4 | k6acc60406 = 5 | `TpuVersionToString` 0x20b3a480 | CERTAIN |
+| ToString | "ghostlite" (0x86864e0) | "6acc60406" (0x863f0cf) | rodata | CERTAIN |
+| External / Cloud name | "TPU v6 lite" / `v6e` | "TPU7x" / `tpu7x` | naming path | CERTAIN |
+| Init module | glc 0x213eb9e0 | gfc 0x213e9f60 | symtab | CERTAIN |
+| Sub-core | `gxc::glc` (load-core) | `gxc::gfc` (fetch-core) | symtab | CERTAIN |
+| Codec class | `TpuCodecGhostlite` (NAMED, `_ZTV` 0x21d35c00) | anonymous (no codec `_ZTV`/`_ZTI`) | codec walks | CERTAIN |
+| Codec creator | `CreateTpuCodecGhostlite` 0x1e83bce0 (named) | `sub_1E838380` (inline, anon) | disasm | HIGH |
+| Named workers | `ghostlite::isa::EncoderGl{TC,Scs,Tac,Tec}` | gfc `EncoderBase` templates (no `EncoderGf*`) | symtab | CERTAIN |
+| LLVM subtarget | `TPUGlcSubtarget` | `TPUGfcSubtarget` | symtab | CERTAIN |
+| Cost-model table | `GlcCycleTable` (`_ZTV` 0x21c20148) | `GfcCycleTable` (`_ZTV` 0x21c201c8) | symtab | CERTAIN |
+| Codec metadata | `GhostliteCodecMetadata` (NAMED, `_ZTV` 0x21d647a8) | anonymous registry entry | disasm | HIGH |
+| Codec platform tag (cmp) | `$0x5` (proto value for Ghostlite) | `$0x6` (proto value for 6acc60406) | Encode body | HIGH |
+| Entry-point opcodes | 0x11/0x12/0x13/0x14 (TC/Scs/Tac/Tec) | 0x15/0x16/0x17 (+4 shift) | Encode body | HIGH |
+| TensorCore bundle | 64 B; 4 VALU; 7-bit opcode @302; 4-bit pred @309 | 64 B; 4 VALU; 8-bit opcode @293; 2-bit dual pred @301 | VALU0 encoder bytes | HIGH |
+| TC CodecBase object | 240 B (1 `Predication` param) | 248 B (4 predication params) | EncodeBundle `new()` | HIGH |
+| PCI chip DID | 0x00d1 (named `kGhostliteChip*`) | 0x00f2 (anonymous gfc) | DeviceIdentifiers | CERTAIN |
+| Device-type byte | 0xd (`IsGlc`) | 0xc (`IsGfc`) | `DeviceTypeFromDeviceIdentifiers` | CERTAIN |
+| Flag prefix | `xla_gf_` (44), `xla_sc_` | `xla_gf_`, `xla_sc_` | flag scan | HIGH |
 
 > **GOTCHA —** v5 (6acc60406 / gfc) is the **only fully symbol-stripped codename**. Its codec class, vtable, typeinfo, and creator carry no demangled names; v0..v4 all retain `_ZTV`/`_ZTI`/`_ZTS` symbols (only the RTTI name-string *content* is obfuscated to `s_NNNNN` tags for all six codecs). A reimplementer cross-checking by symbol will find Ghostlite by name but will recover the v5 codec only structurally (8-byte object, 6-slot vtable, `gxc::gfc::isa` dispatch). The v4→v5 codec delta — opcode widens 7→8 bits, per-slot predicate shrinks 4→2 bits into a dedicated dual-predicate slot, entry-point opcodes shift +4, TC CodecBase grows 240→248 B — is the structural fingerprint to match.
 
@@ -185,3 +188,6 @@ Ghostlite and 6acc60406 share the VXC HAL product chain (impl 216 B, `TpuVxcDriv
 - [HAL Families](hal-families.md) — the shared `TpuHalFactory` base chain
 - [Codename Matrix](tpu-version-codename-matrix.md) — v4/v5 routed to VXC family; the Ghostlite/6acc60406 enum entries
 - [HAL Factory Override Matrix](hal-factory-override-matrix.md) — the VXC impl override table v4/v5 share
+- [Per-Codename HW Constants](per-codename-hw-constants.md) — the v6e/v7x chip-parts constants (256×256 MXU, SparseCore sequencer deltas) behind the bundle/ISA divergence
+- [PCI Device IDs](pci-device-ids.md) — the source for the chip-DID (`0x00d1`/`0x00f2`) and device-type (`0xd`/`0xc`) rows in the differentiation table
+- [Marketing / Cloud Naming](marketing-cloud-naming.md) — the `v6e`/`tpu7x` Cloud names and why public marketing names are external-only, not binary facts

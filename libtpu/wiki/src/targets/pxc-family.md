@@ -78,13 +78,13 @@ PXC's factory vtable is byte-identical in shape to JXC's: two family-specific ov
 
 ### Vtable Layout
 
-| vaddr | slot | resolves to | base/override |
-|---|---|---|---|
-| 0x216085d8 | 0 — `~TpuHalFactory()` D2 | 0x0e723a80 (`ret`) | INHERITED |
-| 0x216085e0 | 1 — `~TpuHalPxcHardwareFactory()` D0 | 0x0e7f8260 | **OVERRIDE** |
-| 0x216085e8 | 2 — `HardwareFactoryBase::Create(wq)` | 0x1e80f560 | INHERITED |
-| 0x216085f0 | 3 — `HardwareFactoryBase::CanCreate()` | 0x1e80f520 | INHERITED |
-| 0x216085f8 | 4 — `TpuHalPxcHardwareFactory::CreateImpl(wq)` | 0x0e7f8280 | **OVERRIDE** |
+| vaddr | slot | resolves to | base/override | Confidence |
+|---|---|---|---|---|
+| 0x216085d8 | 0 — `~TpuHalFactory()` D2 | 0x0e723a80 (`ret`) | INHERITED | CERTAIN |
+| 0x216085e0 | 1 — `~TpuHalPxcHardwareFactory()` D0 | 0x0e7f8260 | **OVERRIDE** | CERTAIN |
+| 0x216085e8 | 2 — `HardwareFactoryBase::Create(wq)` | 0x1e80f560 | INHERITED | CERTAIN |
+| 0x216085f0 | 3 — `HardwareFactoryBase::CanCreate()` | 0x1e80f520 | INHERITED | CERTAIN |
+| 0x216085f8 | 4 — `TpuHalPxcHardwareFactory::CreateImpl(wq)` | 0x0e7f8280 | **OVERRIDE** | CERTAIN |
 
 Slot 1 encodes `operator delete(this, 0x10)` — the factory is 16 bytes, like all four families.
 
@@ -148,9 +148,9 @@ The PXC `CommonHelper` is 48 bytes (vs JXC's 24) because it owns a `std::vector<
 | `pxc::profiler` | CERTAIN | family-level profiler (8125 symbols), holds the `TraceEntry` class |
 | `pxc::internal` | CERTAIN | internal driver helpers |
 
-Below the fetch-core sit further namespaces: `pxc::pfc::isa` (42K symbols — includes `pxc::pfc::isa::BarnaCoreChannelBundle`, `VectorBase`), `pxc::pfc::profiler`, and `pxc::pfc::b0` (a register-block namespace). The load-core carries `pxc::plc::profiler`. BarnaCore bundle types living under the fetch-core's ISA confirm Pufferfish is the last family to ship BarnaCore — it is retired in VXC.
+Below the fetch-core sit further namespaces: `pxc::pfc::isa` (46K symbols — includes `pxc::pfc::isa::BarnaCoreChannelBundle`, `VectorBase`), `pxc::pfc::profiler`, and `pxc::pfc::b0` (a register-block namespace). The load-core carries `pxc::plc::profiler`. BarnaCore bundle types living under the fetch-core's ISA confirm Pufferfish is the last family to ship BarnaCore — it is retired in VXC.
 
-> **QUIRK —** the named `profiler::TraceEntry` event class lives at the **family** level (`pxc::profiler::TraceEntry`, 2762 symbols), **not** under `pfc` or `plc`. The `pxc::pfc::profiler` / `pxc::plc::profiler` sub-namespaces instead hold control-interface and limits-factory classes (`TracemarkLimitsFactory`, `EveryoneTraceControlFactory`). This is unlike VXC/GXC, whose `TraceEntry` classes are per-sub-core. PXC is therefore one of the [sub-core taxonomy](sub-core-taxonomy.md)'s trace-entry families, but with the trace entry at family granularity.
+> **QUIRK —** the named `profiler::TraceEntry` event class lives at the **family** level (`pxc::profiler::TraceEntry`, 3087 token occurrences), **not** under `pfc` or `plc`. The `pxc::pfc::profiler` / `pxc::plc::profiler` sub-namespaces instead hold control-interface and limits-factory classes (`TracemarkLimitsFactory`, `EveryoneTraceControlFactory`). This is unlike VXC/GXC, whose `TraceEntry` classes are per-sub-core. PXC is therefore one of the [sub-core taxonomy](sub-core-taxonomy.md)'s trace-entry families, but with the trace entry at family granularity.
 
 ---
 
@@ -158,15 +158,15 @@ Below the fetch-core sit further namespaces: `pxc::pfc::isa` (42K symbols — in
 
 Pufferfish has chip variants (B0 Mfg / B0 Water / B0 Air) multiplexed inside the same impl via `TpuChipParts::variant_name()` (0x20b1eb40). They are not separate `TpuVersion` values and do not change the factory or vtable — the variant name is read only for census reporting and human-readable naming (`TpuVersionAndVariantToHumanReadableName`, 0x20b3b040), with no per-variant code branch observed in `CreateAndInitializeChips`.
 
-| Axis | Pufferfish (v2) | Source |
-|---|---|---|
-| TpuVersion enum | kPufferfish = 2 | `TpuVersionToString` 0x20b3a480 |
-| ToString | "pufferfish" | rodata |
-| External name | "TPU v4" (lite variant: "TPU v4 lite") | naming path |
-| Codec class | `TpuCodecPufferfish` (named) | symtab |
-| TensorCore / BarnaCore | yes / yes (last BarnaCore gen) | TpuChipParts |
-| SparseCore | no | TpuChipParts |
-| Flag prefix | `xla_pf_` (only 3 flags; mostly shares `xla_jf_`) | flag scan |
+| Axis | Pufferfish (v2) | Source | Confidence |
+|---|---|---|---|
+| TpuVersion enum | kPufferfish = 2 | `TpuVersionToString` 0x20b3a480 | CERTAIN |
+| ToString | "pufferfish" | rodata | CERTAIN |
+| External name | "TPU v4" (lite variant: "TPU v4 lite") | naming path | CERTAIN |
+| Codec class | `TpuCodecPufferfish` (named) | `TpuCodec::Create` 0x1e835fa0 case 2 | CERTAIN |
+| TensorCore / BarnaCore | yes / yes (last BarnaCore gen) | TpuChipParts | CERTAIN |
+| SparseCore | no | TpuChipParts | CERTAIN |
+| Flag prefix | `xla_pf_` (only 3 flags; mostly shares `xla_jf_`) | flag scan | HIGH |
 
 > **NOTE —** the tiny `xla_pf_` count (3 flags) shows Pufferfish is still close to the Jellyfish flag base; it shares most of `xla_jf_`. The architectural break (fetch/load split, DMA-in-driver, V2 descriptor) is structural, not flag-surfaced.
 

@@ -80,13 +80,13 @@ VXC's factory vtable has the same 5-slot shape as JXC and PXC; only the namespac
 
 ### Vtable Layout
 
-| vaddr | slot | resolves to | base/override |
-|---|---|---|---|
-| 0x21cabf80 | 0 — `~TpuHalFactory()` D2 | 0x0e723a80 (`ret`) | INHERITED |
-| 0x21cabf88 | 1 — `~TpuHalVxcHardwareFactory()` D0 | 0x1d110e80 | **OVERRIDE** |
-| 0x21cabf90 | 2 — `HardwareFactoryBase::Create(wq)` | 0x1e80f560 | INHERITED |
-| 0x21cabf98 | 3 — `HardwareFactoryBase::CanCreate()` | 0x1e80f520 | INHERITED |
-| 0x21cabfa0 | 4 — `TpuHalVxcHardwareFactory::CreateImpl(wq)` | 0x1d110e00 | **OVERRIDE** |
+| vaddr | slot | resolves to | base/override | Confidence |
+|---|---|---|---|---|
+| 0x21cabf80 | 0 — `~TpuHalFactory()` D2 | 0x0e723a80 (`ret`) | INHERITED | CERTAIN |
+| 0x21cabf88 | 1 — `~TpuHalVxcHardwareFactory()` D0 | 0x1d110e80 | **OVERRIDE** | CERTAIN |
+| 0x21cabf90 | 2 — `HardwareFactoryBase::Create(wq)` | 0x1e80f560 | INHERITED | CERTAIN |
+| 0x21cabf98 | 3 — `HardwareFactoryBase::CanCreate()` | 0x1e80f520 | INHERITED | CERTAIN |
+| 0x21cabfa0 | 4 — `TpuHalVxcHardwareFactory::CreateImpl(wq)` | 0x1d110e00 | **OVERRIDE** | CERTAIN |
 
 Slot 1 encodes `operator delete(this, 0x10)` — the factory is 16 bytes, like all four families.
 
@@ -137,16 +137,19 @@ TpuHalVxcHardwareImpl::CreateAndInitializeChips (0x1d110f20)
 
 ```c
 function TpuHalVxcCommonHelper::InitializeDrivers(options, skip):   // 0x1d111a80
-    chip_parts = options-chain pointer
+    chip_parts = *(options + 8)               // chip-parts proto pointer
     version    = *(u32*)chip_parts            // first u32 of chip-parts proto
-    variant    = TpuChipParts::variant_name() // 0x20b1eb40
+    variant    = TpuChipParts::variant_name() // 0x20b1eb40 (sv: ptr in rax, len in rdx)
     switch (version):                          // inline cmp $5 / $4 / $3
-        case 5 (6acc60406): validate variant; else error "6acc60406 unsupported variant " (0xa1d990c)
-        case 4 (Ghostlite): validate variant; else error "ghostlite unsupported variant " (0xa1d992b)
+        case 5 (6acc60406): if variant non-empty: InvalidArgument "6acc60406 unsupported variant " (0xa1d990c)
+                            else if platform==0: scanner = sub_1FBA82A0 / CreateMultiVfScannerAdapter
+        case 4 (Ghostlite): if variant non-empty: InvalidArgument "ghostlite unsupported variant " (0xa1d992b)
+                            else if platform==0: scanner = asic_sw::deepsea::DeepseaDeviceScanner (0x1fba7a20)
         case 3 (Viperfish): scanner = vxc::vfc::VfDeviceScanner (0x1d1b0e20)
-                            /* or vxc::vlc::VfDeviceScanner (0x1d1b0be0) for Viperlite */
-        default:            error "TPU Platform Type ... is not supported."
-    // generic fallback: asic_sw::deepsea::DeepseaDeviceScanner (0x1fba7a20)
+                            /* or vxc::vlc::VfDeviceScanner (0x1d1b0be0) when variant=="lite"
+                               and FLAGS_vxc_virtual_function / qword_22398620 is set */
+        default:            LogMessageFatal "TpuVersion <N> not supported." (line 501)
+    // a nonzero platform type in any case → MakeError "TPU Platform Type `%s` is not supported."
 ```
 
 > **NOTE —** this is the *only* genuine per-`TpuVersion` switch in the whole HAL tree, and it lives in the `CommonHelper`, not the factory or the impl. The factory layer is class-uniform; the impl methods carry no version switch. The dispatch is driver-init-level and data-fed from the chip-parts proto's first u32 — it selects the per-codename device scanner, it does not branch HAL-object construction.
@@ -175,17 +178,17 @@ Below the fetch-core sit `vxc::vfc::isa` (67K symbols), `vxc::vfc::profiler` (40
 
 The three codenames behind VXC differ in data (chip-parts) and in their *codec* classes, but share one HAL impl, one `TpuVxcDriver`, one V2 descriptor. Viperfish has its own named workers under `viperfish::isa` (`EncoderVfTensorCore`, `DecoderVfTensorCore`); Ghostlite and 6acc60406 are detailed on the [GXC page](gxc-family.md).
 
-| Axis | Viperfish (v3) | Ghostlite (v4) | 6acc60406 (v5) | Source |
-|---|---|---|---|---|
-| TpuVersion enum | kViperfish = 3 | kGhostlite = 4 | k6acc60406 = 5 | `TpuVersionToString` 0x20b3a480 |
-| ToString | "viperfish" | "ghostlite" | "6acc60406" | rodata |
-| External name | "TPU v5"/v5e | "TPU v6 lite" (v6e) | "TPU7x" | naming path |
-| Init module | vxc 0x213eed20 | glc 0x213eb9e0 | gfc 0x213e9f60 | symtab |
-| Codec class | `TpuCodecViperfish` (named) | `TpuCodecGhostlite` (named) | anonymous codec | symtab |
-| TensorCore / BarnaCore | yes / no | yes / no | yes / no | TpuChipParts |
-| SparseCore | yes (first gen) | yes | yes | TpuChipParts |
-| Driver sub-core ISA | `vxc::vfc/vlc::isa` | `gxc::glc::isa` | `gxc::gfc::isa` | symtab |
-| Flag prefixes | `xla_vf_` (50), `xla_sc_` (164) | `xla_gf_` (44), `xla_sc_` | `xla_gf_`, `xla_sc_` | flag scan |
+| Axis | Viperfish (v3) | Ghostlite (v4) | 6acc60406 (v5) | Source | Confidence |
+|---|---|---|---|---|---|
+| TpuVersion enum | kViperfish = 3 | kGhostlite = 4 | k6acc60406 = 5 | `TpuVersionToString` 0x20b3a480 | CERTAIN |
+| ToString | "viperfish" | "ghostlite" | "6acc60406" | rel.ro table 0x22011BF0 | CERTAIN |
+| External name | "TPU v5" (v5p / v5e) | "TPU v6 lite" (v6e) | "TPU7x" (tpu7x) | `TpuVersionToExternalName` 0x20b3a500 | CERTAIN |
+| Init module | vxc 0x213eed20 | glc 0x213eb9e0 | gfc 0x213e9f60 | symtab | CERTAIN |
+| Codec (case in `TpuCodec::Create` 0x1e835fa0) | `CreateTpuCodecViperfish` (case 3) | `CreateTpuCodecGhostlite` (case 4) | anonymous `sub_1E838380` (case 5) | symtab | CERTAIN (v3/v4); MEDIUM (v5 anon) |
+| TensorCore / BarnaCore | yes / no | yes / no | yes / no | TpuChipParts | CERTAIN |
+| SparseCore | yes (first gen) | yes | yes | TpuChipParts | CERTAIN |
+| Driver sub-core ISA | `vxc::vfc/vlc::isa` | `gxc::glc::isa` | `gxc::gfc::isa` | symtab | CERTAIN |
+| Flag prefixes | `xla_vf_` (50), `xla_sc_` (164) | `xla_gf_` (44), `xla_sc_` | `xla_gf_`, `xla_sc_` | flag scan | HIGH |
 
 > **GOTCHA —** Ghostlite and 6acc60406 register into *this* (VXC) factory, but their driver-layer ISA lives under the **`gxc`** namespace (`gxc::glc::isa`, `gxc::gfc::isa`), not `vxc`. Only Viperfish's ISA is under `vxc`. The HAL family and the driver sub-namespace are decoupled for v4/v5 — the reason both pages cross-link. See [GXC Family](gxc-family.md).
 

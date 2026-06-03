@@ -8,7 +8,7 @@ A TPU TensorCore sees a flat, software-managed scratchpad hierarchy, not a trans
 
 Every tier's runtime size and word geometry is one field of the single per-device `xla::jellyfish::Target` object. `Target::Init` fills those fields at boot from the embedded `<codename>_chip_parts.binarypb` proto (see [Per-Codename Constants](per-codename-hw-constants.md)), and the rest of the compiler reads them through trivial accessors — `Target::HbmSizeBytes()` is literally `return *(int64_t*)(this + 0x450)`. The same `Target` carries the bank counts (a separate set of C++ `MemBanks` literals, not proto fields) and the per-tier word size used to convert byte offsets to hardware word addresses. So the hierarchy is not an abstraction layered over the silicon constants — it *is* those constants, indexed by tier.
 
-The tier set is named twice in the binary, by two distinct enumerations that a reimplementer must keep separate. The compiler-side `xla::jellyfish::MemorySpace` enum (`MemorySpaceToString` table at `0x21CE6B08`, 18 entries) names every space a buffer can live in, including the BarnaCore and SparseCore sub-spaces and `host`/`pinned_hbm`/`absolute`. The LLVM-level **address-space IDs** ([Address-Space IDs](address-space-ids.md)) are the numbers the LLO/LLVM IR carries in `addrspace(N)`. The two are related but not identical, and the cost-model DMA dispatcher uses yet a third, narrower numbering (Hbm=1, Vmem=3, Cmem=4, Smem=5) for the same physical tiers. This page anchors the physical tiers to all three.
+The tier set is named twice in the binary, by two distinct enumerations that a reimplementer must keep separate. The compiler-side `xla::jellyfish::MemorySpace` enum (decoded by `MemorySpaceToString` reading the pointer table at `0x21CE6B08`, **17 region values**, indices `0`..`16`) names every space a buffer can live in, including the BarnaCore and SparseCore sub-spaces and `host`/`pinned_hbm`. The `0x21CE6B08` string array is physically *longer* than 17 — indices 17/18/19 resolve to `absolute`/`heap_relative`/`stack_relative` — but those are `LloAddress` pointer-relativity tags, not region-enum members, so the canonical enum is 17 (see [MemorySpace Enum](../isa/memory-space-enum.md)). The LLVM-level **address-space IDs** ([Address-Space IDs](address-space-ids.md)) are the numbers the LLO/LLVM IR carries in `addrspace(N)`. The two are related but not identical, and the cost-model DMA dispatcher uses yet a third, narrower numbering (Hbm=1, Vmem=3, Cmem=4, Smem=5) for the same physical tiers. This page anchors the physical tiers to all three.
 
 For orientation, the contract is:
 
@@ -20,9 +20,9 @@ For orientation, the contract is:
 | | |
 |---|---|
 | **Runtime carrier** | `xla::jellyfish::Target` object (one per device); tiers at `Target+0x450..+0x510` |
-| **Boot population** | `Target::Init` (region `0x1d610c20..`) from `TpuChipParts::FromProto` (`0x20b1b400`) |
+| **Boot population** | `Target::Init` (`0x1d60fc20`) from `TpuChipParts::FromProto` (`0x20b1b400`) |
 | **Tier accessors** | `HbmSizeBytes 0x1d615320`, `VmemSizeBytes 0x1d615e00`, `SmemSizeBytes 0x1d615e40`, `CmemSizeBytes 0x1d615e20`, `SflagSizeBytes 0x1d615e60` |
-| **Space enum** | `MemorySpaceToString` table `0x21CE6B08` (18 entries, indices 0..17) |
+| **Space enum** | `MemorySpaceToString` (`0x1d6ffae0`) → table `0x21CE6B08` (17 region values, indices 0..16; table over-long with relativity tags at 17+) |
 | **DMA bandwidth dispatcher** | `Target::LocalDmaBandwidth(MemorySpace,MemorySpace)` `0x1d6168e0` |
 | **Tiers** | HBM · VMEM · SMEM · SFLAG · CMEM (v4-only) |
 | **Generations** | jellyfish v2 / dragonfish v3 / pufferfish v4 / viperfish v5p·v5e / ghostlite v6e / `6acc60406` v7x |
@@ -37,7 +37,7 @@ Each tier is a physically distinct on-chip (or, for HBM, on-package) memory with
                        off-package / per-die
             +-------------------------------------------+
             |                  HBM                      |  Target+0x450 (int64)
-            |   16..96 GiB · word 32..1024 B · MS=1     |  HbmSizeBytes 0x1d615320
+            |   8..190 GiB · word 32..1024 B · MS=1     |  HbmSizeBytes 0x1d615320
             +----+--------------------+-----------------+
                  | DMA                | DMA (v4: staged via VMEM)
                  v                    v
@@ -52,7 +52,7 @@ Each tier is a physically distinct on-chip (or, for HBM, on-package) memory with
   +-----------------------+   +-----------------------+
   |   SMEM                |   |   SFLAG               |  Target+0x468 (int32)
   |  16 KiB..1 MiB        |   |  1..16 KiB            |  SflagSizeBytes 0x1d615e60
-  |  word 4 B · MS=5      |   |  word 4 B · MS=6/7    |  (sync-flag words;
+  |  word 4 B · MS=5      |   |  word 4 B · MS=6      |  (sync-flag words;
   |  Target+0x470 (int32) |   |  polled by DMA/barrier)  BarnaCore SFLAG @+0x478)
   +-----------------------+   +-----------------------+
         scalar operands           completion / sync
@@ -149,7 +149,7 @@ The word-size pairs (`WordSizeBytes` + `WordSizeLog2`) exist because every tier 
 
 ## Tiers, `MemorySpace`, and Address Spaces
 
-A reimplementer hits three distinct numberings for the same five physical tiers. Keeping them straight is the single most error-prone part of the memory model, so they are tabulated together here; the full enum and the LLVM address-space band live on their own pages.
+A reimplementer hits three distinct numberings for the same physical tiers. Keeping them straight is the single most error-prone part of the memory model, so the tiers (the five TensorCore data tiers plus the BarnaCore / SparseCore sub-spaces that share the enum) are tabulated together here against the `MemorySpace` int and the narrower DMA-dispatcher int; the full 17-value enum and the LLVM address-space band live on their own pages.
 
 ### The three numberings
 
@@ -158,17 +158,20 @@ The compiler-side `xla::jellyfish::MemorySpace` enum is the string table at `0x2
 | Physical tier | `MemorySpace` name | enum int | DMA-dispatcher int | Confidence |
 |---|---|---|---|---|
 | HBM | `hbm` (also `kDefault`) | 1 | 1 | CONFIRMED |
+| HIB (host-interface) | `hib` | 2 | — | CONFIRMED |
 | VMEM | `vmem` | 3 | 3 | CONFIRMED |
 | CMEM | `cmem` | 4 | 4 | CONFIRMED |
 | SMEM | `smem` | 5 | 5 | CONFIRMED |
-| SFLAG | `sflag` | 6 (string table) / 7 (dispatcher refs) | — | HIGH |
-| IMEM (instr.) | `imem` | 7 (string table) | — | HIGH |
+| SFLAG | `sflag` | 6 | — | CONFIRMED |
+| IMEM (instr.) | `imem` | 7 | — | CONFIRMED |
 | BarnaCore SMEM | `barna_core_smem` | 9 | — | CONFIRMED |
 | BarnaCore SFLAG | `barna_core_sflag` | 10 | — | CONFIRMED |
 | SC sequencer SFLAG | `sparse_core_sequencer_sflag` | 12 | — | CONFIRMED |
-| host / pinned / absolute | `host` / `pinned_hbm` / `absolute` | 13 / 16 / 17 | — | CONFIRMED |
+| host | `host` | 13 | — | CONFIRMED |
+| SC sequencer SMEM | `sparse_core_sequencer_smem` | 14 | — | CONFIRMED |
+| pinned HBM | `pinned_hbm` | 16 | — | CONFIRMED |
 
-> **CORRECTION (MEM-HIER-1) —** the SFLAG / IMEM enum *index* is not perfectly pinned across the sources. The `MemorySpaceToString` string table at `0x21CE6B08` (consumed by `MemorySpaceToString(e) = off_21CE6B08[e]`) places `sflag` at index 6 and `imem` at index 7, while the DMA-dispatcher cross-references and the SFLAG-protocol analysis read `sflag` as enum int 7. The two differ by the presence of an extra slot near `hib` (index 2). The *data-tier* values (Hbm 1, Vmem 3, Cmem 4, Smem 5) are unambiguous — they are confirmed by the `LocalDmaBandwidth` XOR constants — so a reimplementation that hardcodes those four is safe; the exact SFLAG/IMEM index should be re-pinned against the `0x21CE6B08` table before relying on it (marked HIGH, not CONFIRMED).
+> **CORRECTION (MEM-HIER-1) —** an earlier reading of this page treated the SFLAG / IMEM enum *index* as not perfectly pinned — `sflag` at index 6 in the `0x21CE6B08` string table, but read as 7 by a DMA-dispatcher cross-reference, supposedly differing "by an extra slot near `hib`". That ambiguity is resolved and was the error: there is no extra slot, `hib` is a real region at index 2, and the canonical assignment is `sflag = 6`, `imem = 7`, both CONFIRMED. Four independent byte-exact probes pin it — the `MemorySpaceToString` flat lookup, the `MemorySpaceToDriverResource` (`0x1d6223e0`) per-case switch, `MakeCmemConstant`/`MakeSparseCoreSequencerSmemConstant` ctors, and the `MemBanks` overrides (see [MemorySpace Enum](../isa/memory-space-enum.md) and [Memory-Space Master Table](../appendix/memory-space-table.md)). The earlier "enum int 7" for `sflag` was a stale numbering (the same one superseded by `CORRECTION (MST-1)` on the master table). The *data-tier* values (Hbm 1, Vmem 3, Cmem 4, Smem 5) were never in doubt — they are independently confirmed by the `LocalDmaBandwidth` XOR constants.
 
 ### SFLAG's sub-spaces
 
@@ -194,7 +197,7 @@ From v5p the SparseCore brings its own memory family — SPMEM, TILESPMEM, and p
 
 - [Per-Codename Constants](per-codename-hw-constants.md) — the authoritative, fully-sourced master table these sizes are drawn from (bandwidth, clocks, MXU geometry, SparseCore tiers)
 - [Address-Space IDs](address-space-ids.md) — the LLVM `addrspace(N)` numbering for these tiers, incl. the SparseCore fat-pointer bands
-- [MemorySpace Enum](../isa/memory-space-enum.md) — the full 18-entry `MemorySpace` enum and its string table
+- [MemorySpace Enum](../isa/memory-space-enum.md) — the full 17-value `MemorySpace` region enum (`0`..`16`), its string table, and the proto↔enum remap
 - [MemorySpace Table](../appendix/memory-space-table.md) — the same enum as a reference appendix
 - [Memory Subsystem Overview](../memory/overview.md) — Part X entry point: how the tiers are allocated and managed
 - [HBM Allocator](../memory/hbm-allocator.md) — the device-global store allocator
