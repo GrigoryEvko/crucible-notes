@@ -286,7 +286,7 @@ Each `TpuDevice` attaches three memory spaces (the per-device `AttachMemorySpace
 - `xla::TpuHbmMemorySpace` (kind `"tpu_hbm"`) — device HBM.
 - `xla::PinnedHostMemorySpace` / `xla::UnpinnedHostMemorySpace` — host staging.
 
-The canonical kind constants are `xla::kBuiltinTpuMemorySpace` / `kTpuHbmMemorySpace`. The slot-level memory accessors and the buffer objects that live in these spaces are owned by [Buffer & Memory](buffer-and-memory.md).
+The canonical kind constants are `xla::kBuiltinTpuMemorySpaces` / `xla::kTpuHbmMemorySpaceKind`. The slot-level memory accessors and the buffer objects that live in these spaces are owned by [Buffer & Memory](buffer-and-memory.md).
 
 ### Function Map
 
@@ -297,7 +297,7 @@ The canonical kind constants are `xla::kBuiltinTpuMemorySpace` / `kTpuHbmMemoryS
 | `TpuDevice::ExecutablesStart` | `0xF800300` | Acquire the in-flight semaphore before launch | HIGH |
 | `TpuDevice::ExecutablesComplete` | `0xF800740` | Release the in-flight semaphore on completion | HIGH |
 
-> **NOTE —** the `TpuDeviceDescription` (vtable `0x21787C38`) is the PjRt device description carrying id / process_index / device_kind / Attributes / memory. The SE-flavoured `PjRtStreamExecutorDeviceDescription` (`0x2177D9B0`) is GPU-only dead code in this binary — its presence is the *only* residual SE-PjRt symbol, and it is never reached on the TPU path. Do not confuse the two when reading the binary.
+> **NOTE —** the `TpuDeviceDescription` (vtable `0x21787AC0`, typeinfo `0x21787C38`) is the PjRt device description carrying id / process_index / device_kind / Attributes / memory. The SE-flavoured `PjRtStreamExecutorDeviceDescription` (vtable `0x2177D950`, typeinfo `0x2177D9B0`) is GPU-only dead code in this binary — its presence is the *only* residual SE-PjRt symbol, and it is never reached on the TPU path. Do not confuse the two when reading the binary.
 
 ---
 
