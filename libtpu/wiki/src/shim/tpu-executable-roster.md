@@ -25,7 +25,7 @@ For reimplementation, the contract is:
 | **Marshaling base** | `xla::legacy::TpuExecutableInterface::ExecuteAsyncOnStream` @ `0x1342cd20` |
 | **Concrete leaf** | `xla::jellyfish::DeepseaExecutable` (`LoadProgram` @ `0x13426260`, `ToProto` @ `0x134282e0`, `FromProto` @ `0x134283e0`, `fingerprint` @ `0x13428a80`) |
 | **Serialization proto** | `xla::DeepseaExecutableProto` (`operator new(0x28)` = 40 bytes) |
-| **Handle marshalling** | `ApiConverter::ToC(const xla::HloModule*)` for `HloModule` |
+| **Handle marshalling** | `ApiConverter::ToC(xla::HloModule const&)` for `HloModule` |
 | **Evidence grade** | Reimplementation-grade / byte-confirmed against IDA decompile |
 
 > **Scope —** the opaque-handle + `*ApiFn()` accessor model that *frames* this roster (how the host reaches `TpuExecutable_Fingerprint` through a function-pointer slot rather than by symbol) is on [The TfTpu C-API Shim](overview.md). The compiled-program handle this executable wraps is on [TpuProgram Roster](tpu-program-roster.md). The *runtime execution algorithm* behind the two big entries is owned by [Execute Async on Stream](../runtime/execute-async-on-stream.md) and [Load Program & Enqueue](../runtime/load-program-enqueue.md) — this page is the *C-ABI roster over* those entries, not a second copy of them. The PJRT executable lifecycle that coexists with (and does **not** route through) this legacy path is on [PJRT Executable Execution](../pjrt/executable-execution.md).
@@ -43,7 +43,7 @@ The nine functions, grouped by area, with the impl symbol (always the C-ABI free
 | `Serialize` | `0xeabea80` | 178 | `xla::jellyfish::DeepseaExecutable::ToProto` @ `0x134282e0` | Serialization | CERTAIN |
 | `Deserialize` | `0xeabede0` | 288 | `xla::jellyfish::DeepseaExecutable::FromProto` @ `0x134283e0` | Serialization | CERTAIN |
 | `Fingerprint` | `0xeabea40` | 54 | `DeepseaExecutable::fingerprint` @ `0x13428a80` (cached field at `obj+96` → `+648/+656`) | Metadata | CERTAIN |
-| `HloModule` | `0xeabef00` | 86 | `ApiConverter::ToC(const xla::HloModule*)` over `executable.hlo_module_` | Metadata | CERTAIN |
+| `HloModule` | `0xeabef00` | 86 | `ApiConverter::ToC(xla::HloModule const&)` over `executable.hlo_module_` | Metadata | CERTAIN |
 | `Free` | `0xeabef60` | 51 | C++ virtual destructor via vtable `+8`, then `free()` | Lifecycle | CERTAIN |
 | `FreeXlaShapeIndexArray` | `0xeabea00` | 10 | bare `free(ptr)` | Lifecycle | CERTAIN |
 | `FreeMaybeOwningDeviceAddressArray` | `0xeabea20` | 10 | bare `free(ptr)` | Lifecycle | CERTAIN |
@@ -64,7 +64,7 @@ The two execution functions are the only large bodies in the roster (4496 B and 
 
 ```text
 TpuExecutable_LoadProgramAndEnqueueToStream   0xeaafba0   (tpu_execute_c_api.cc)
-  └─ xla::TpuExecutable::LoadProgramAndEnqueueToStream  (legacy SE marshal, same body)
+  └─ un-marshal C structs → dispatch through the handle vtable
        └─ vtable+96 ──► xla::jellyfish::DeepseaExecutable::LoadProgramAndEnqueueToStream
                           0x13426260  (deepsea_executable.cc) ── real load+enqueue
 
@@ -212,7 +212,7 @@ function TpuExecutable_HloModule(out /*a1*/, handle /*a2*/):
 
 ### Considerations
 
-`Fingerprint` returns *borrowed* pointers into the executable; there is no paired free, and the data is valid only while the handle lives. `HloModule` is the lone allocator: `ApiConverter::ToC(XLA_HloModule*, const HloModule*)` fills a caller-provided struct with heap-owned interior (the marshalling convention on [the shim overview](overview.md#3-the-opaque-handle-convention)), so the host must run the matching `Destroy`/free for the `XLA_HloModule`. The related richer metadata accessors (`GetCompiledMemoryStats`, `GetCostAnalysis`, `GetOutputLayouts`, …) are C++ methods on `xla::TpuExecutable` (`0xf8a7560`–`0xf8aab40`) reached through the *PJRT* extension surface, not through this C-ABI roster — see the note in [§1](#1-the-roster-at-a-glance).
+`Fingerprint` returns *borrowed* pointers into the executable; there is no paired free, and the data is valid only while the handle lives. `HloModule` is the lone allocator: `ApiConverter::ToC(xla::HloModule const&)` writes into a caller-provided `XLA_HloModule` out-struct (passed as the leading sret argument) and fills it with heap-owned interior (the marshalling convention on [the shim overview](overview.md#3-the-opaque-handle-convention)), so the host must run the matching `Destroy`/free for the `XLA_HloModule`. The related richer metadata accessors (`GetCompiledMemoryStats`, `GetCostAnalysis`, `GetOutputLayouts`, …) are C++ methods on `xla::TpuExecutable` (`0xf8a7560`–`0xf8aab40`) reached through the *PJRT* extension surface, not through this C-ABI roster — see the note in [§1](#1-the-roster-at-a-glance).
 
 ---
 
@@ -265,7 +265,7 @@ function TpuExecutable_FreeMaybeOwningDeviceAddressArray(p):  if p: free(p)
 | `xla::legacy::TpuExecutableInterface::ExecuteAsyncOnStream` @ `0x1342cd20` | the marshaling base that `TpuExecutable_ExecuteAsyncOnStream` dispatches into (vtable+24) |
 | `xla::jellyfish::DeepseaExecutable` (leaf) | concrete impl: `LoadProgram` `0x13426260`, `ToProto` `0x134282e0`, `FromProto` `0x134283e0`, `fingerprint` `0x13428a80` |
 | `xla::DeepseaExecutableProto` (40 bytes) | the serialization wire form behind `Serialize` / `Deserialize` |
-| `ApiConverter::ToC(const xla::HloModule*)` | marshals `hlo_module_` into the `XLA_HloModule` C struct for `TpuExecutable_HloModule` |
+| `ApiConverter::ToC(xla::HloModule const&)` | marshals `hlo_module_` into the `XLA_HloModule` C struct for `TpuExecutable_HloModule` |
 | `TpuProgram_*` roster | the serializable *compiled-program* handle this *running* executable wraps |
 
 ## Cross-References
