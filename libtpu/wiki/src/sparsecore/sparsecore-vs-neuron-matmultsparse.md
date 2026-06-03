@@ -37,7 +37,7 @@ For orientation, the contract is:
 
 ### TPU SparseCore — a coprocessor that gathers
 
-SparseCore is a separate piece of silicon, not a mode of the matmul engine. A SC-bearing chip carries a fixed **4:1 SC:TC ratio** (`xla::jellyfish::lowering_util::SparseCoreCountPerTensorCore` @ `0x1c6cb760`, which asserts `sparse_core_count % tensor_core_count == 0` and returns the integer 4 on every SC gen — see [SC ↔ MXU Handshake](sc-mxu-handshake.md#partition-assignment--which-sc-feeds-which-mxu)). Each SC is itself split into three VLIW sub-engines selected by `tpu::TpuSequencerType` — SCS (scalar/addressing, type 3), TAC (tile-access/DMA, type 4, removed on Trillium), TEC (vector compute, type 5) — established in [SparseCore Overview](overview.md#the-three-engine-classes).
+SparseCore is a separate piece of silicon, not a mode of the matmul engine. A SC-bearing chip carries a fixed **4:1 SC:TC ratio** (`xla::jellyfish::lowering_util::SparseCoreCountPerTensorCore` @ `0x1c6cb760`, which computes `sparse_core_count_per_chip / tensor_core_count_per_chip` and asserts both `sparse_core_count_per_chip >= tensor_core_count_per_chip` and `sparse_core_count_per_chip % tensor_core_count_per_chip == 0` — the 4:1 ratio held across all SC-bearing gens — see [SC ↔ MXU Handshake](sc-mxu-handshake.md#partition-assignment--which-sc-feeds-which-mxu)). Each SC is itself split into three VLIW sub-engines selected by `tpu::TpuSequencerType` — SCS (scalar/addressing, type 3), TAC (tile-access/DMA, type 4, present on Viperfish and Ghostlite, removed on 6acc60406), TEC (vector compute, type 5) — established in [SparseCore Overview](overview.md#the-three-engine-classes).
 
 What it accelerates is the **memory-access side** of sparse computation: the DLRM / recommender embedding-lookup pattern, where the cost is random HBM access to a multi-GB table, not arithmetic. Its defining primitive is the in-HBM atomic floating-point scatter-add (`STREAM_OPCODE_SCATTER_FLOAT_ADD`, paired with the DMA destination opcode `DMA_DEST_OPCODE_READ_AND_ADD`), which the MXU cannot do — see [Stream Gather/Scatter](stream-gather-scatter.md). SparseCore does **not** do the dense matmul. After it has gathered and reduced the embedding rows into a tile, the TensorCore's MXU consumes that tile and runs the dense MLP matmul. SC is the *feeder*; the MXU is the *consumer*.
 
@@ -148,12 +148,12 @@ On the TPU there is **no FLOPS speedup** — SC does little arithmetic; its job 
 
 SparseCore presence and the engine roster are read directly from the codec-class family namespaces and the `SparseCore<Engine>*` decompiled function counts ([SparseCore Overview](overview.md#per-generation-presence)):
 
-| TPU gen | Codename | SparseCore | Engines | Notes |
-|---|---|:--:|---|---|
-| v3 / v4 | Jellyfish / Pufferfish | **NO** | — | BarnaCore era; `Target::SupportsSparseCore` = false |
-| v5e | Viperfish | **YES** | SCS + TAC + TEC | first three-engine split |
-| v5p | Ghostlite | **YES** | SCS + TAC + TEC | widened vector set; `MxuContractingSize` 256 |
-| v6e | Trillium | **YES** | SCS + TEC (no TAC) | TAC folded into SCS+TEC; 0 `gfc::*SparseCoreTac*` symbols |
+| TPU gen | Codename | Family ns | SparseCore | Engines | Notes |
+|---|---|---|:--:|---|---|
+| v2 / v3 / v4 | Jellyfish / Dragonfish / Pufferfish | — | **NO** | — | BarnaCore era; `Target::SupportsSparseCore` = false |
+| v5e / v5p | Viperfish | `vxc.vfc` | **YES** | SCS + TAC + TEC | first three-engine split |
+| v6e ("Trillium") | Ghostlite | `gxc.glc` | **YES** | SCS + TAC + TEC | all three engines; `GhostliteTarget::MxuContractingSize` = 256 |
+| TPU7x ("Ironwood") | 6acc60406 | `gxc.gfc` | **YES** | SCS + TEC (no TAC) | TAC folded into SCS+TEC; 0 `gfc::*SparseCoreTac*` symbols |
 
 ### Neuron MatmultSparse availability (ARCHITECTURAL — no binary analyzed)
 
