@@ -22,10 +22,10 @@ For reimplementation, the contract is:
 | **Tile-cost search** | `SpatialMajorConvolution::IterateThroughWindowConfigs` — `0x13167f20` (23877 B, 939 BB) |
 | **Cost freeze** | `SpatialMajorConvolution::SetupBestConfig` — `0x13172580` (1770 B) |
 | **MXU codegen** | `MatrixMultiplyAccumulateFunctor::operator()` — `0x1310cd80` (5398 B) |
-| **Strategy selector** | `GetEmitFunctorEnumAndLoweringDecisions` — `0x1310c720` (1632 B) → 16-bit `(decision<<8)\|ord` |
+| **Strategy selector** | `GetEmitFunctorEnumAndLoweringDecisions` — `0x1310c720` (1312 B) → 16-bit `(decision<<8)\|ord` |
 | **Strategy dispatch** | `GetEmitFunctorFromEmitFunctorEnum` — `0x130e8de0` (`switch`, 19 cases) |
 | **Mode comparator** | `ConvMatmulModes::operator<` — `0x130e12a0` (39 B; weight table `0xae0f480`) |
-| **Latch packer** | `xla::jellyfish::PackLatches` — `0x10f726c0` (8576 B; `mxu_latch_packer.cc`) |
+| **Latch packer** | `xla::jellyfish::PackLatches` — `0x10f726c0` (8559 B; `mxu_latch_packer.cc`) |
 | **LLO ops emitted** | `vmatprep.subr` / `vmatprep.mubr` (+ `.msk`), per-gen `vmatmul`, `vmatres`, fused `kVectorMatmulLmr` |
 | **MXU geometry** | 128×128 systolic array; `LaneCount`=128 (`0x1d60f400`), `SublaneCount`=8 (`0x1d60f300`); 2 MXUs/TC on v5+ |
 
@@ -90,7 +90,7 @@ SpatialMajorConvolution::Emit (0x13178340)
 
 ### Algorithm — the cost formula
 
-The primary key is MXU cycles for the window. The core formula is recovered from `CalculateWindowMxuCycles` (the `vmulsd`/`vdivsd`/`vaddsd` chain at `0x131605bd`):
+The primary key is MXU cycles for the window. The core formula is recovered from `CalculateWindowMxuCycles` (the `vmulsd`/`vdivsd` chain at `0x131605cf`, immediately after the `GetConvPrecision` call at `0x131605a9`):
 
 ```c
 // CalculateWindowMxuCycles — 0x1315fe60 (classic at 0x131626c0, depthwise at 0x13161d80)
@@ -138,20 +138,20 @@ The visitor callback is handed `(window6, cycles, MemUnit, granules, WindowConfi
 
 `SetupBestConfig` logs the frozen choice: `"Chosen kernel window: <…> output window: <…> cycles <N> hlo <name> best_granules <G> max vmem: <M>"`.
 
-> **NOTE —** the cost *components* (cycles, MemUnit, granules, CostModelType) are recovered from the callback signature and the producer; the consumer's own min-selection lambda (`ComputeWindowConfigs` / `InitEmitterGenerateWindowConfigAndReturnCost`) was not separately disassembled, so the rank-2..4 ordering is inferred from which fields are passed and the `best_granules` log field (MEDIUM). Rank 1 (cycles) is HIGH.
+> **NOTE —** the cost *components* (cycles, MemUnit, granules, CostModelType) are recovered from the callback signature (the `IterateThroughWindowConfigs` `std::function<void(...)>` visitor type) and the producer; the conv consumer is `ConvolutionEmitter::ComputeWindowConfig` (`0x130dbf60`) and the `$_0` min-selection lambda inside `SpatialMajorConvolution::ComputeWindowConfigInternal`, which were not separately disassembled, so the rank-2..4 ordering is inferred from which fields are passed and the `best_granules` log field (MEDIUM). Rank 1 (cycles) is HIGH.
 
 ### Data Tables
 
 | Knob / table | Address | Value / role | Confidence |
 |---|---|---|---|
 | `precision_mult_table` | `0xa2c6050` | `{2.0, 1.0}` doubles; index = `GetConvPrecision` | HIGH |
-| `WindowConfig_CostModelType` | proto enum | `INVALID`(0), `CLASSIC`(1), `ML_PGN_V`(2) | HIGH |
+| `WindowConfig_CostModelType` | proto enum | `COST_MODEL_TYPE_INVALID`(0), `COST_MODEL_TYPE_CLASSIC`(1), `COST_MODEL_TYPE_ML_PGN_V1`(2) | HIGH |
 | `Target::LaneCount` | `0x1d60f400` | 128 | HIGH |
 | `Target::SublaneCount` | `0x1d60f300` | 8 | HIGH |
 | `Target::MemUnitFromBytes` | `0x1d61bfe0` | bytes → quantized `MemUnit` | HIGH |
 | `xla::Product(Span<long>)` | `0x20cf5200` | tile-byte product | CERTAIN |
 
-> **QUIRK —** the callback carries a `WindowConfig_CostModelType` so the consumer knows whether to rank on the classic cycle/VMEM model or the `ML_PGN_V` learned-model field. In this build the learned path is a data-table fallback: no `LearnedCostModelClient` is shipped (see [Learned Cost Model Client](../cost/learned-cost-model-client.md)), so `ML_PGN_V` resolves to the same classic numbers. A reimplementation can implement only `CLASSIC` and be behaviourally exact for this binary.
+> **QUIRK —** the callback carries a `WindowConfig_CostModelType` so the consumer knows whether to rank on the classic cycle/VMEM model or the `COST_MODEL_TYPE_ML_PGN_V1` learned-model field. In this build the learned path is a data-table fallback: no `LearnedCostModelClient` is shipped (see [Learned Cost Model Client](../cost/learned-cost-model-client.md)), so `ML_PGN_V1` resolves to the same classic numbers. A reimplementation can implement only `CLASSIC` and be behaviourally exact for this binary.
 
 ---
 
@@ -163,7 +163,7 @@ Once the tiling is frozen, `MatrixMultiplyAccumulateFunctor::operator()` must pi
 
 ### The 19-value enum
 
-`GetEmitFunctorFromEmitFunctorEnum` (`0x130e8de0`) is a `switch (ord)` with `case 0..18`; the out-of-range default FATALs at `matrix_multiply_accumulate_functor.cc` line `0x24a`. The decompile confirms `case 18` is the highest ordinal (19 strategies). The companion `EmitFunctorToString` (`0x130e88a0`) uses a parallel jump table whose ordinal-3/4 string fragments (`"...wSublane"`, `"...Lane"`) match the table below byte-for-byte. Both jump tables are byte-exact in `.rodata` (member-fn `0xae0f50c`, string `0xae0f4c0`).
+`GetEmitFunctorFromEmitFunctorEnum` (`0x130e8de0`) is a `switch (ord)` with `case 0..18`; the out-of-range default FATALs at `matrix_multiply_accumulate_functor.cc` line `586`. The decompile confirms `case 18` is the highest ordinal (19 strategies). The companion `EmitFunctorToString` (`0x130e88a0`) is a parallel `switch (ord)` whose `case 0..18` build the debug names from inline `.rodata` constants — its ordinal-3/4 string fragments (`"...wSublane"`, `"...Lane"`) match the table below byte-for-byte, and its default FATALs at `matrix_multiply_accumulate_functor.cc` line `495`. Both are plain switches, not table-indexed dispatch; the member-function pointers in the table below are the `case`-arm targets read straight from the dispatch decompile.
 
 | Ord | `EmitFunctor` value | member fn | MXU strategy | Confidence |
 |----:|---|---|---|---|
@@ -187,7 +187,7 @@ Once the tiling is frozen, `MatrixMultiplyAccumulateFunctor::operator()` must pi
 | 17 | `kInputBatchInSublanesOutputBatchInSublanesPacked` | `0x131064c0` | in+out batch both in sublanes, packed | HIGH |
 | 18 | `kOutputBatchInSublanes` | `0x13108b60` | output batch in sublanes (the broad default) | HIGH |
 
-> **QUIRK —** the enum's *ordinal* order and its *grouping* are unrelated. Ordinals 0–7 are the depthwise / grouped / reduce-window family, 8–18 are the dense dot/conv core — but the selector reaches them out of ordinal order (it can pick ord 18 before ever testing ord 8). Drive a reimplementation off the **decision tree**, not the ordinal sequence; the ordinals exist only to index the two jump tables.
+> **QUIRK —** the enum's *ordinal* order and its *grouping* are unrelated. Ordinals 0–7 are the depthwise / grouped / reduce-window family, 8–18 are the dense dot/conv core — but the selector reaches them out of ordinal order (it can pick ord 18 before ever testing ord 8). Drive a reimplementation off the **decision tree**, not the ordinal sequence; the ordinals exist only to select the `case` arm in the two parallel switches (`GetEmitFunctorFromEmitFunctorEnum` → member fn, `EmitFunctorToString` → debug name).
 
 ### Algorithm — the selector
 
@@ -385,7 +385,7 @@ LLO post-emission MXU stack (after MatrixMultiplyAccumulateFunctor):
 
 ```c
 // xla::jellyfish::PackLatches(Span<unique_ptr<MxuSequence>>, Target, CycleTable,
-//                             PackLatchesOptions) — 0x10f726c0 (8576 B), mxu_latch_packer.cc
+//                             PackLatchesOptions) — 0x10f726c0 (8559 B), mxu_latch_packer.cc
 void PackLatches(sequences, target, cycle_table, opts):
   for each MxuSequence run, walk latch instructions in pairs (cur, nxt):
     m_cur = cur.latch_mode()                 // LloInstruction::latch_mode  @0x1d4e7500
@@ -462,7 +462,7 @@ int GetMatmulDataFormat(prim, s, hlo, target):
         F8E4M3Fn -> 3 (native) / 9 (converted)
         fp8 fnuz -> 10
         F32      -> 4
-        default  -> FATAL (matmul_data_format.cc line 0x129)
+        default  -> FATAL (convolution_util.h line 297)
 ```
 
 | dtype | `MatmulDataFormat` | packed-VLATCH path | latch GainLatchMode group | Confidence |
@@ -503,4 +503,4 @@ int GetMatmulDataFormat(prim, s, hlo, target):
 - [Matprep, IAR, and Latch Sub-Slots](../isa/slot-matprep-iar-latch.md) — slot encoding of the latch/matprep ops and the MSR/GMR fields
 - [MXU Latency Overview](../cost/mxu-latency-overview.md) — the per-format base-cycle table the tile-cost formula layers the ×1/×2 precision multiplier onto
 - [Matmul Mode Modifiers](../cost/matmul-mode-modifiers.md) — the cost-side view of the `MatmulMode` axis the `ConvMatmulModes` comparator sorts on
-- [Learned Cost Model Client](../cost/learned-cost-model-client.md) — why the `ML_PGN_V` cost-model type falls back to the classic data tables in this build
+- [Learned Cost Model Client](../cost/learned-cost-model-client.md) — why the `ML_PGN_V1` cost-model type falls back to the classic data tables in this build
