@@ -38,7 +38,7 @@ std::string LloOpcodeName(uint32_t opcode) {
 
 The bound `0x1CD` is the contract: the valid domain is `0x000`..`0x1CC` inclusive, 461 values. `opcode_name` is a `char*` table in `.data.rel.ro`; each slot is stored as `0` in the file and filled by an `R_X86_64_RELATIVE` relocation pointing into `.rodata`. All 461 slots are relocated and all 461 strings are non-empty. This same 461-bound appears verbatim in every consumer of the two per-opcode metadata tables (`cmp opcode, 0x1CE; jae <fatal>` — the `< 0x1CE` form), and the metadata tables (`opcode_info`, `opcode_info_big`) are each sized `461 × stride`.
 
-> **QUIRK — the enum has 461 members, not 462.** The "462" figure that floats around the LLO docs is the `LloOpcodeProto` *wire* enum, which is 1-based and reserves a value-0 sentinel; its live (mappable) value count is 461 and its nominal range is wider still (max 499 with 38 gaps). The in-memory `LloOpcode` a reimplementer's compiler manipulates is exactly 461 dense values. Drive a switch off 462 and the last index reads past the table; off the proto's 499 and you index garbage. See [LloOpcode↔Proto](llo-opcode-to-proto.md).
+> **QUIRK — the enum has 461 members, not 462.** The "462" figure the [ISA overview](overview.md) quotes is the *nominal* member count of the `LloOpcodeProto` *wire* enum: 1-based with a value-0 sentinel, so 461 live (mappable) wire values + 1 sentinel = 462 nominal. Its addressable range is wider still (max 499, with 38 reserved gaps; `499 − 38 = 461` live — see [LloOpcode↔Proto](llo-opcode-to-proto.md)). The in-memory `LloOpcode` a reimplementer's compiler manipulates is exactly 461 dense values (`LloOpcodeName` bound `0x1CD`, verified at `0x1d631280`). Drive a switch off 462 and the last index reads past the table; off the proto's 499 and you index garbage.
 
 ### Two metadata tables ride alongside the enum
 
@@ -292,7 +292,7 @@ The 33 highest opcodes are the BarnaCore (SparseCore) instruction set — embedd
 
 ## Per-Generation Additions
 
-`LloOpcode` is gen-invariant in its *numbering* — the same enum value means the same opcode on every TPU generation — but the *valid subset* grows with each silicon. The compaction encoders' vtable slot counts track this growth (`vxc` Viperfish ≈ 403, `gxc::glc` Ghostlite ≈ 623, `gxc::gfc` ≈ 674 slots), reflecting more legal (opcode × data-format) combinations on later gens.
+`LloOpcode` is gen-invariant in its *numbering* — the same enum value means the same opcode on every TPU generation — but the *valid subset* grows with each silicon. The compaction encoders' vtable slot counts track this growth (`vxc` Viperfish ≈ 403, `gxc::glc` Ghostlite ≈ 623, `gxc::gfc` ≈ 674 slots), reflecting more legal (opcode × data-format) combinations on later gens. The codenames below are the binary's own internal strings (`Jellyfish`, `Pufferfish`, `Viperfish`, `Ghostlite` all appear verbatim in `libtpu.so`); the newest generation is named only by its hashed family tag `6acc60406` — the marketing names "Trillium"/"Ironwood" have **zero** byte occurrences in this build.
 
 | Generation | Codename | LloOpcode additions | Confidence |
 |---|---|---|---|
@@ -300,7 +300,7 @@ The 33 highest opcodes are the BarnaCore (SparseCore) instruction set — embedd
 | TPU v4 | Pufferfish | F8 converts (`0x061`..`0x063`), S4/U4 int↔Bf16 (`0x067`/`0x069`/`0x06B`/`0x06D`), `kCmemFence` (`0x01E`), CMEM DMA/load opcodes | HIGH |
 | TPU v5e | Viperfish | stochastic-rounding converts (`0x070`..`0x074`) | HIGH |
 | TPU v5p | Ghostlite | `vector_misc` slot ops | MEDIUM |
-| TPU v6e | Trillium | dual matrix staging (MATPUSH target MSRA/MSRB); v6e-only opcodes `kVectorToScalarPush` (0x0A) / `kSyncFlagToScalarPush` (0x0B) map to the highest `GhPerf` rows (0x1DA) only valid on the 476-row grid | MEDIUM |
+| TPU7x | `6acc60406` | dual matrix staging (MATPUSH target MSRA/MSRB); newest-gen-only opcodes `kVectorToScalarPush` (0x0A) / `kSyncFlagToScalarPush` (0x0B) map to the highest `GhPerf` rows (0x1DA) only valid on the 476-row grid | MEDIUM |
 
 > **NOTE — the enum is append-and-insert, not append-only, which is why proto and in-memory numbering diverge.** New opcodes are inserted into the in-memory `LloOpcode` at their family's natural position (keeping families contiguous), but appended to the *end* of the `LloOpcodeProto` wire enum (to preserve wire compatibility). The result is the non-monotonic tail of the [LloOpcode↔Proto](llo-opcode-to-proto.md) map: proto value 499 (the newest wire slot) maps to in-memory `0x197` (`kVectorMaskPackCompressedEven`), and proto value 498 maps to `0x084` (`kVectorTraceArg`).
 

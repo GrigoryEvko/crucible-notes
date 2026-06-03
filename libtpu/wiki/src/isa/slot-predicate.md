@@ -26,7 +26,7 @@ For reimplementation, the contract is:
 | **Never-execute sentinel** | `kNeverExecute = 31` @ `0xb834cfc` (empty-slot mark) |
 | **Legacy field encode/decode** | `DecoderJf::GetPredicateRegister` @ `0x1e84eae0` (`val & 15`), `GetPredicateValue` @ `0x1e84eb00` (`(val & 16)==0`) |
 | **V5+ field encoder** | `TPUMCCodeEmitter::encodePredicateOperand` @ `0x13c77c40` (4+1+2 = 7-bit) |
-| **Rotating predicates** | Trillium-only — `TPUGfcSubtarget::hasRotatingPredicates()` @ `0x13c62c20` = `1`; all others `0` |
+| **Rotating predicates** | `6acc60406`-only — `TPUGfcSubtarget::hasRotatingPredicates()` @ `0x13c62c20` = `1`; all others `0` |
 | **Native predicate-AND** | none — `*Subtarget::hasPredicateAnd()` = `0` on every subtarget |
 | **Confidence** | CONFIRMED (byte-anchored) unless a row says otherwise |
 
@@ -84,7 +84,7 @@ The base `llvm::TPUSubtarget` provides no override — JF/DF/PF-TensorCore inher
 | Pufferfish | 2 | PXC | TC 15 (base) / BC 16 (`TPUBcSubtarget`) | P0..P14 (TC) / P0..P15 (BC) | BC subtarget bumps to 16-index | CONFIRMED |
 | Viperfish | 3 | VXC | 16 (`TPUVfcSubtarget`) | P0..P15 | full 16-index namespace | CONFIRMED |
 | Ghostlite | 4 | GXC/GLC | 16 (`TPUGlcSubtarget`) | P0..P15 | | CONFIRMED |
-| Trillium | 5 | GXC/GFC | 16 (`TPUGfcSubtarget`) | P0..P15 | + rotating predicates, + dual-slot pool | CONFIRMED |
+| `6acc60406` (TPU7x) | 5 | GXC/GFC | 16 (`TPUGfcSubtarget`) | P0..P15 | + rotating predicates, + dual-slot pool | CONFIRMED |
 
 > **NOTE —** the always-execute register appears as index `15` in the proto/`HardwareBundleBits` view but as LLVM register `#6` in the MC printer (`printPredicateOperandAux` @ `0x13c73c80` tests `reg == 6` and emits no `@Pn`). The two numbering schemes are different register-ID spaces for the same architectural "unpredicated" register; a decoder must not assume the LLVM register number equals the hardware index.
 
@@ -116,7 +116,7 @@ So the Jellyfish per-slot predicate field is **5 bits**:
 
 The BarnaCore vector-load decode path additionally extracts the full 5-bit field (`shld $0x2; and $0x1f`) and compares against `kNeverExecute = 31` to skip a slot.
 
-### V5+ 7-bit field (Viperfish / Ghostlite / Trillium)
+### V5+ 7-bit field (Viperfish / Ghostlite / `6acc60406`)
 
 `TPUMCCodeEmitter::encodePredicateOperand` (`0x13c77c40`) builds the field with three deposits — confirming the `4 + 1 + 2` layout that [MC-Emitter](mc-emitter.md) documents:
 
