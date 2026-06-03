@@ -6,13 +6,13 @@
 
 Compiling a TPU program is expensive — the full HLO→MLIR→LLO descent, MSA, scheduling, and bundle packing run end to end (see [compile-phases.md](compile-phases.md)). libtpu therefore never recompiles a program it has already built if it can recognize the request as identical. Recognition is a **cache-key** problem: the runtime must reduce the entire compilation request — the program text, the compiler flags, and the physical target — to a short comparable token, look that token up, and on a miss compile once and store the result under it. This page owns that machinery: **what hashes into the key, the lookup/store paths, and the cache-entry lifecycle.** The serialized executable that ends up *inside* a hit entry — the `TpuExecutable` / `TpuProgram` wire format — is owned by [tpu-program-serialization.md](tpu-program-serialization.md) and is treated here as an opaque payload.
 
-There are **three distinct cache layers**, and conflating them is the first reimplementation trap. The outermost is the XLA JIT cache, `tensorflow::DeviceCompilationCache<T>` (from `device_compilation_cache.h`): an in-process `flat_hash_map` keyed by a `DeviceCompilationClusterSignature` — a function name plus the *canonicalized argument shapes/values* — that decides whether an XLA cluster needs (re)compilation at all. Beneath it sits the **TPU C-API key**, `tensorflow::tpu::TpuCompilationCacheKey`, built by `TpuCompile_CreateCompilationCacheKey` (0xf6a2080) in `tpu_util_c_api.cc`: a `Fingerprint2011` digest over a `StrCat`-assembled string of fourteen named inputs (HLO/MLIR fingerprints, replica count, topology bounds, guaranteed-constants size, embedding-partitions fingerprint). The innermost is the TFRT group cache, `tensorflow::tfrt_tpu::TpuCompilationCache` (`tpu_compilation_cache.cc`): the layer that actually *holds* compiled programs, resolves a key through a three-tier lookup (in-memory → coordination service → on-disk persistent cache), and manages entry refcounts and eviction.
+There are **three distinct cache layers**, and conflating them is the first reimplementation trap. The outermost is the XLA JIT cache, `tensorflow::DeviceCompilationCache<T>` (from `device_compilation_cache.h`): an in-process `flat_hash_map` keyed by a `DeviceCompilationClusterSignature` — a function name plus the *canonicalized argument shapes/values* — that decides whether an XLA cluster needs (re)compilation at all. Beneath it sits the **TPU C-API key**, `tensorflow::tpu::TpuCompilationCacheKey`, built by `TpuCompile_CreateCompilationCacheKey` (0xf6a2080) in `tpu_util_c_api.cc`: a `Fingerprint2011` digest over a `StrCat`-assembled string of thirteen named inputs (HLO/MLIR fingerprints, replica count, topology bounds, guaranteed-constants size, shapes prefix, embedding-partitions fingerprint) plus a conditional device-assignment tail. The innermost is the TFRT group cache, `tensorflow::tfrt_tpu::TpuCompilationCache` (`tpu_compilation_cache.cc`): the layer that actually *holds* compiled programs, resolves a key through a three-tier lookup (in-memory → coordination service → on-disk persistent cache), and manages entry refcounts and eviction.
 
 The page is organized by layer, outermost first. Each layer gets the same `### Purpose / ### Cache Key / ### Lookup & Store / ### Algorithm / ### Function Map` grammar, so a reader can compare the three keys side by side. The closing units cover the persistent on-disk path format and the entry lifecycle (refcount, eviction, restore-from-serialized).
 
 For reimplementation, the contract is:
 
-- **The TPU cache key is a `Fingerprint2011` over a deterministic, ordered string** of exactly fourteen fields in a fixed `StrCat` order. Reproduce the field set, the separators (`:` and `,`), and the two-stage hash (fingerprint the embedding-partitions proto first, then fingerprint the whole prefix). Any field omitted or reordered silently changes the key and causes spurious misses.
+- **The TPU cache key is a `Fingerprint2011` over a deterministic, ordered string** of thirteen named fields plus a conditional device-assignment tail. Reproduce the field set, the *concatenation* order (which differs from the `dump_vars` label order — `shapes_prefix` is appended last), the separators (`:` and `,`), and the two-stage hash (fingerprint the embedding-partitions proto first, then fingerprint the whole prefix). Any field omitted or reordered silently changes the key and causes spurious misses.
 - **The XLA-side key is a *signature*, not a hash** — `DeviceCompilationClusterSignature` stores the function name plus a per-argument canonical form (constant tensors carried by value, non-constants carried as `(dtype, shape)`), compared by a custom `Hash`/`==`. It gates *whether* `TpuCompile_CreateCompilationCacheKey` is even called.
 - **Lookup is three-tiered.** `TpuCompilationCache::LookUpInternal` (0xf7a72c0) tries the in-memory map first, then the coordination service, then the persistent on-disk cache; a miss at every tier is the only path that triggers a real compile.
 - **Entries are reference-counted and LRU-evictable.** The cache holds `CompiledSubgraph`/`TpuCompilationCacheEntry` objects with explicit `Release`/`DiscardEntryRef`/`MarkOldestEntryForEviction`; an executing program pins its entry.
@@ -61,10 +61,11 @@ function Build(canonical_function, args):
 `LookupOrCreate` (0xe9932e0) and `Store` (0xe994a60) both run under a single `absl::Mutex` guarding the map. `LookupOrCreate` emplaces a fresh empty `Entry` (allocated `operator new(0x30)`, 48 bytes) only if the signature is absent, then returns a snapshot of the entry's current state. `Store` re-finds the entry by signature and writes back whichever of the four optional fields the compiler produced.
 
 ```c
-// Entry layout (48 bytes, allocated in LookupOrCreate / Store)
-//   +0   : DeviceCompileState   compile_state   (kUncompiled / kCompiling / kCompiled)
-//   +8   : absl::Status         compilation_status  (StatusRep*, refcounted; LSB=inline-ok tag)
-//   +16  : int64                request_count   (bumped on each LookupOrCreate)
+// Entry layout (48 bytes, operator new(0x30); offsets from the Entry base, byte-confirmed in Store)
+//   +0   : absl::Mutex          mu              (per-entry lock; Store locks Entry+0)
+//   +8   : DeviceCompileState   compile_state   (DWORD; kUncompiled / kCompiling / kCompiled)
+//   +16  : int64                request_count   (bumped on each LookupOrCreate; init 0)
+//   +24  : absl::Status         compilation_status  (StatusRep*, refcounted; init 1 = inline OK)
 //   +32  : XlaCompilationResult* compilation_result  (owned; deleted on overwrite)
 //   +40  : T*                   executable      (owned; vtable-deleted on overwrite)
 ```
@@ -75,8 +76,8 @@ function LookupOrCreate(signature) -> EntrySnapshot:
     lock(mutex_)
     entry = map_.try_emplace(signature, new Entry{})    // EmplaceDecomposable
     entry.request_count += 1                            // +16
-    snapshot.compile_state = entry.compile_state        // +0
-    snapshot.status        = entry.compilation_status   // +8, Ref()'d
+    snapshot.compile_state = entry.compile_state        // +8
+    snapshot.status        = entry.compilation_status   // +24, Ref()'d
     snapshot.request_count = entry.request_count
     snapshot.{result,exe}  = entry.{result,exe}         // +32,+40 (aliased, not owned)
     unlock(mutex_)
@@ -87,7 +88,7 @@ function Store(signature, opt_state, opt_status, opt_result, opt_exe):
     lock(mutex_)
     entry = map_.try_emplace(signature, new Entry{})    // re-find or create
     unlock(mutex_)
-    lock(entry.mutex)                                   // per-entry, at entry[60]
+    lock(entry.mutex)                                   // per-entry mutex at Entry+0
     if opt_state.has_value():   entry.compile_state = *opt_state
     if opt_status.has_value():  entry.compilation_status = *opt_status  // swap+Unref old
     if opt_result.has_value():  delete entry.result; entry.result = release(*opt_result)
@@ -122,20 +123,20 @@ When Layer 1 misses and the compiler reaches the TPU backend, the request is red
 
 ### Cache Key
 
-The key is a decimal string: the `Fingerprint2011` of a `StrCat`-assembled **prefix** string, itself a `to_string` of that 64-bit fingerprint. The prefix concatenates fourteen fields in a fixed order, recovered verbatim from the `dump_vars` label table the builder carries for its `VLOG` dump (`tpu_util_c_api.cc`, the `$_1` lambda):
+The key is a decimal string: the `Fingerprint2011` of a `StrCat`-assembled **prefix** string, itself a `to_string` of that 64-bit fingerprint. The builder carries a 13-entry `dump_vars` label table for its `VLOG` dump (`tpu_util_c_api.cc`, the `$_1` lambda, `dump_vars<13ul, 13ul, …>`); those thirteen labels name the program-identity inputs, and a fourteenth (`device_assignment`) is appended conditionally but is **not** in the dump table. The table below lists the inputs by name; the **#** column is the dump-table label order, which is *not* identical to the concatenation order (see the note after the pseudocode).
 
-| # | Field | StrCat source | Sep | Confidence |
-|---|---|---|---|---|
-| 1 | `function_name` | `std::string(property.function_name)` | — | HIGH |
-| 2 | `function_library_fingerprint` | `property.function_library_fingerprint` | `:` | HIGH |
-| 3 | `mlir_module_fingerprint` | `property.mlir_module_fingerprint` | `:` | HIGH |
-| 4 | `num_replicas` | `property.num_replicas` | `:` | HIGH |
-| 5–7 | `chip_bounds.{x,y,z}` | `topology.chip_bounds().{x,y,z}` | `,` | HIGH |
-| 8–10 | `wrap.{x,y,z}` | `topology.wrap().{x,y,z}` | `,` | HIGH |
-| 11 | `shapes_prefix` | `std::string(property.shapes_prefix)` | `:` | HIGH |
-| 12 | `guaranteed_constants_size` | `property.guaranteed_constants_size` | `:` | HIGH |
-| 13 | `embedding_partitions_fingerprint` | `Fingerprint2011(embedding_partitions_proto)` | `:` | HIGH |
-| 14 | `device_assignment` (optional) | `:device_assignment:` + joined ids, **or** `:default_device_assignment` | — | HIGH |
+| # | Field (dump_vars label) | Source | Confidence |
+|---|---|---|---|
+| 1 | `function_name` | `std::string(property.function_name)` | HIGH |
+| 2 | `function_library_fingerprint` | `property.function_library_fingerprint` | HIGH |
+| 3 | `mlir_module_fingerprint` | `property.mlir_module_fingerprint` | HIGH |
+| 4 | `num_replicas` | `property.num_replicas` | HIGH |
+| 5–7 | `chip_bounds.{x,y,z}` | `topology.chip_bounds().{x,y,z}` (topo+0x58 region) | HIGH |
+| 8–10 | `wrap.{x,y,z}` | `topology.wrap().{x,y,z}` (topo+0xA0/+0xA2) | HIGH |
+| 11 | `shapes_prefix` | `std::string(property.shapes_prefix)` | HIGH |
+| 12 | `guaranteed_constants_size` | `property.guaranteed_constants_size` | HIGH |
+| 13 | `embedding_partitions_fingerprint` | `Fingerprint2011(embedding_partitions_proto)` | HIGH |
+| — | `device_assignment` (conditional, not in dump table) | `:device_assignment:` + joined ids, **or** `:default_device_assignment` | HIGH |
 
 ```c
 // TpuCompile_CreateCompilationCacheKey  (sub_0xf6a2080, tpu_util_c_api.cc:149)
@@ -148,21 +149,23 @@ function CreateCompilationCacheKey(property, mesh) -> TpuCompilationCacheKey:
     eb_fp  = Fingerprint2011(eb_str)
     topo   = mesh.tpu_topology()
     // (b) assemble the ordered prefix string
-    prefix = StrCat(property.function_name,                     // field 1
-                ":", property.function_library_fingerprint,    // 2
-                ":", property.mlir_module_fingerprint,         // 3   (FastIntToBuffer)
-                ":", property.num_replicas,                    // 4
-                ":", topo.chip_bounds.x, ",", .y, ",", .z,     // 5-7  (topo+0x58 region)
-                ",", topo.wrap.x, ",", .y, ",", .z,            // 8-10 (topo+0xA0..0xA2)
-                ":", property.shapes_prefix,                   // 11
-                ":", to_string(eb_fp))                         // 13 (field 12 appended below)
+    //     (StrCat<...,int,...,int,...,int,...,int,...,bool,...,bool,...,bool,
+    //             ...,char const*,...,string> in the decompile)
+    prefix = StrCat(property.function_name,                     // field 1 (string, v103/a10)
+                ":", property.function_library_fingerprint,    // 2  (FastIntToBuffer)
+                ":", property.mlir_module_fingerprint,         // 3  (FastIntToBuffer)
+                ":", property.num_replicas,                    // 4  (int, a16)
+                ":", topo.chip_bounds.x, ",", .y, ",", .z,     // 5-7  (3×int, topo+0x58 region)
+                ",", topo.wrap.x, ",", .y, ",", .z,            // 8-10 (3×bool, topo+0xA0/+0xA2)
+                ":", property.guaranteed_constants_size,       // 12 (int, a9)
+                ":", to_string(eb_fp))                         // 13 (embedding fp, v87)
     // (c) device-assignment tail (field 14): explicit ids vs. default
     if device_grid_matches_replicas(property):                 // line ~220 shape check
         if property.device_assignment == nullptr:
             StrAppend(prefix, ":default_device_assignment")
         else:
             StrAppend(prefix, ":device_assignment:", Join(ids, ","))
-    StrAppend(prefix, property.guaranteed_constants_size)      // field 12
+    StrAppend(prefix, property.shapes_prefix)                  // field 11 (string, a8) — appended last
     VLOG(1) << "prefix_raw = " << prefix                       // line 178
     // (d) the key proper is the fingerprint of the whole prefix
     key.fingerprint  = to_string(Fingerprint2011(prefix))
@@ -170,6 +173,10 @@ function CreateCompilationCacheKey(property, mesh) -> TpuCompilationCacheKey:
     VLOG(1) << "CompilationCacheKey:" << key                   // line 193
     return key                                                  // {fingerprint, prefix} pair
 ```
+
+> **CONCATENATION ORDER —** the `dump_vars` label table is the builder's *display* order, which is not the *concatenation* order. From the decompile, the main `StrCat` runs `function_name`, then `:`-joined `function_library_fingerprint`, `mlir_module_fingerprint`, `num_replicas`, then `,`-joined `chip_bounds.{x,y,z}` and `wrap.{x,y,z}`, then `:`-joined `guaranteed_constants_size` and the embedding-partitions fingerprint. The device-assignment tail is `StrAppend`ed next, and `shapes_prefix` is `StrAppend`ed **last** of all (it is the final `StrAppend` after the device-assignment block). A reimplementation must match this concatenation order, not the dump-label order, or the fingerprint diverges.
+>
+> The exact int-vs-bool rendering of individual `chip_bounds`/`wrap` components (the decompiled `StrCat` template instantiates four `int` and three `bool` AlphaNum slots) is a Hex-Rays artifact and was not pinned per-component; the field *names* and the overall order above are byte-anchored to the `dump_vars` labels and the `StrCat`/`StrAppend` control flow.
 
 The guaranteed-constants contribution is itself a fingerprint, computed separately by `TpuCompile_CreateGuaranteedConstFingerprint` (0xf6a2040) and combined with `FingerprintCat2011`:
 
@@ -179,9 +186,9 @@ function CreateGuaranteedConstFingerprint(running_fp, const_bytes) -> uint64:
     return FingerprintCat2011(running_fp, Fingerprint2011(const_bytes))
 ```
 
-> **GOTCHA —** the key folds *both* a content fingerprint (HLO/MLIR module fp, field 3; constants, field 12) *and* the physical target (topology chip bounds + wrap, fields 5–10; device assignment, field 14). Two byte-identical programs compiled for different topologies or device assignments get different keys — correct, because the compiled `TpuProgram` is target-specific. A reimplementation that keys on program text alone will serve a v4-2x2x1 binary to a v5e-2x2 request and crash at load.
+> **GOTCHA —** the key folds *both* a content fingerprint (HLO/MLIR module fp, field 3; constants size, field 12; embedding-partitions fp, field 13) *and* the physical target (topology chip bounds + wrap, fields 5–10; the device-assignment tail). Two byte-identical programs compiled for different topologies or device assignments get different keys — correct, because the compiled `TpuProgram` is target-specific. A reimplementation that keys on program text alone will serve a v4-2x2x1 binary to a v5e-2x2 request and crash at load.
 
-> **QUIRK —** the device-assignment tail is gated by a grid-size check (`chip_grid == num_cores || replicas ∈ {1, num_cores}`, around line 220). When the replica count does not span the grid, the explicit/default-assignment field is **omitted entirely**, not defaulted — so the key length is variable. Reproduce the guard, or single-replica and multi-replica runs of the same program will collide or diverge unexpectedly.
+> **QUIRK —** the device-assignment tail is gated by a check at decompile line 220. The tail is **appended** when `(replicas.lo × replicas.hi == num_cores) || (replicas.lo ∉ {1, num_cores})`, where `num_cores` is read from `topology+0x80` and the two `replicas` halves come from the 64-bit replica field; otherwise the explicit/default-assignment field is **omitted entirely**, not defaulted — so the key length is variable. Reproduce the predicate exactly, or single-replica and multi-replica runs of the same program will collide or diverge unexpectedly. (The grid/replica field identities here are inferred from the arithmetic shape of the guard, not from labeled symbols — MEDIUM confidence on which field is which; the predicate structure itself is byte-anchored.)
 
 ### Function Map
 
@@ -251,8 +258,8 @@ The store/compile path is `CompileGroup` (0xf7a4f60) → `MaybeCompileGroup` (0x
 | Function | Address | Role | Confidence |
 |---|---|---|---|
 | `TpuCompilationCache::LookUpInternal` | `0xf7a72c0` | Three-tier lookup (mem→coord→disk) | CERTAIN |
-| `TpuCompilationCache::LookUpWithCoordService` | (called) | Tier-2 multi-host lookup | HIGH |
-| `TpuCompilationCache::LoadGroupFromPersistentCache` | (called) | Tier-3 on-disk read | HIGH |
+| `TpuCompilationCache::LookUpWithCoordService` | `0xf7a74a0` | Tier-2 multi-host lookup | HIGH |
+| `TpuCompilationCache::LoadGroupFromPersistentCache` | `0xf7a7de0` | Tier-3 on-disk read | HIGH |
 | `TpuCompilationCache::CompileGroup` | `0xf7a4f60` | Miss path: compile a group | HIGH |
 | `TpuCompilationCache::MaybeCompileGroup` | `0xf7a6200` | Re-check under lock, dedup compiles | HIGH |
 | `TpuCompilationCache::EmplaceGroupEntry` | `0xf7a3a00` | Insert compiled group into map | HIGH |
@@ -340,7 +347,7 @@ PJRT_Client_Compile(program, options)
    │                                  │ miss → compile_state=kCompiling, fall through
    │            ▼
    ├─ Layer 2: TpuCompile_CreateCompilationCacheKey(property, mesh) // 0xf6a2080
-   │            key = to_string(Fingerprint2011(prefix_of_14_fields))
+   │            key = to_string(Fingerprint2011(prefix_of_13_fields + device_assignment))
    │            ▼
    ├─ Layer 3: TpuCompilationCache::LookUpInternal(ConvertToBaseKey(key))  // 0xf7a72c0
    │            tier1 in-mem ─ tier2 coord-svc ─ tier3 persistent("CL<fp>_<base>")
