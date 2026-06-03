@@ -49,7 +49,7 @@ The `EncoderJf::EncoderJf(this, 1)` call is the literal IS-A: a Dragonfish encod
 
 **4 — the factory and bundle restrictions pair 0+1.** The encoder factory routes versions 0 and 1 to one shared `CreateEncoderJfDf`, and Dragonfish reuses `JellyfishBundleRestrictions` rather than a Dragonfish-specific class. The pairing is direct binary evidence of the shared codec — see the [Codename Matrix](../targets/tpu-version-codename-matrix.md) and the [JXC Family](../targets/jxc-family.md) page, where one `TpuHalJxcHardwareFactory` and one shared compiler-side `xla::jellyfish::isa` namespace serve both generations.
 
-> **NOTE — `TpuCodecDragonfish` exists, but it is not a separate *bundle* codec.** `TpuCodec::Create` has a case 1 that builds a named `TpuCodecDragonfish` object, and `TpuCodecDragonfish::EncodeBundle` (`0x1e8369a0`) exists. But that codec wrapper delegates bundle assembly to the shared `CreateEncoderJfDf` encoder — the named codec is a dispatch/RTTI wrapper, not a distinct 41-byte layout. A reimplementation should model one 41-byte bundle codec for both generations, dispatched by a `TpuVersion` argument, not two.
+> **NOTE — `TpuCodecDragonfish` exists, but it is not a separate *bundle* codec.** `TpuCodec::Create` has a case 1 that builds a named `TpuCodecDragonfish` object (`CreateTpuCodecDragonfish` @ `0x1e8360e0`), and `TpuCodecDragonfish::EncodeBundle` (`0x1e8369a0`) exists. But that wrapper does no bit-packing itself: it `switch`es on `TpuSequencerType` and forwards to `EncodeSequencerBundle<EncoderDf>` for the TensorCore sequencer (type 0), `EncodeSequencerBundle<EncoderBcsDf>` for the BarnaCore sequencer (type 1), and `EncodeBarnaCoreAddressHandlerBundle<EncoderJf>` for the address handler (type 2); sequencer types 3–5 return `Unimplemented`. The TensorCore path therefore lands in `EncoderDf`, whose `EncodeBundleInternal` is the inherited `EncoderJf` one — the named codec is a dispatch/RTTI wrapper, not a distinct 41-byte layout. A reimplementation should model one 41-byte bundle codec for both generations, dispatched by a `TpuVersion` argument, not two.
 
 ---
 
@@ -71,26 +71,31 @@ return ok;
 `CheckMxuValid<T>` is a pure legality gate — it never writes the bundle:
 
 ```c
-// EncoderDf::CheckMxuValid<T>(inst, mxu_num)  @ 0x1e85e5c0 / 0x1e85e420 / (Misc template)
+// EncoderDf::CheckMxuValid<T>(inst, mxu_num)
+//   <VectorExtendedInstruction> @ 0x1e85e5c0
+//   <VectorResultInstruction>   @ 0x1e85e420
+//   <MiscInstruction>           @ 0x1e85e7a0
 function CheckMxuValid(inst, mxu_num):
     if mxu_num >= 2:
         return InvalidArgument("invalid mxu_num for " + inst.ShortDebugString());  // encoder_df.cc:36
     return ok;
 ```
 
+`CheckMxuValid` is a function template, instantiated once per slot type; all three instantiations share the identical body (`mxu_num >= 2` → `MakeErrorImpl<3>` at `encoder_df.cc:36`, message `"invalid mxu_num for " + ShortDebugString`).
+
 The three overrides and the slot whose `mxu_num` they validate:
 
-| Slot encoder (`EncoderDf`) | Address | Validates `mxu_num` of | After calling | Confidence |
-|---|---|---|---|---|
-| `EncodeVectorExtendedInstruction` | `0x1e85e520` | the vector-extended / matmul / latch op (`inst+0x70`) | `EncoderJf::EncodeVectorExtendedInstruction` @ `0x1e869f00` | CONFIRMED |
-| `EncodeVectorResultInstruction` | `0x1e85e380` | the matres / result-FIFO op (`inst+0x4C`) | `EncoderJf::EncodeVectorResultInstruction` @ `0x1e865ae0` | CONFIRMED |
-| `EncodeMiscInstruction` | `0x1e85e6c0` | the misc op's MXU operand (e.g. `ClearResultFifoOperands`) | `EncoderJf::EncodeMiscInstruction` @ `0x1e86be80` | CONFIRMED |
+| Slot encoder (`EncoderDf`) | Address | Validates `mxu_num` of | Delegates to (JF base) | `CheckMxuValid<T>` | Confidence |
+|---|---|---|---|---|---|
+| `EncodeVectorExtendedInstruction` | `0x1e85e520` | the vector-extended / matmul / latch op (`inst+0x70`) | `EncoderJf::EncodeVectorExtendedInstruction` @ `0x1e869f00` | `0x1e85e5c0` | CONFIRMED |
+| `EncodeVectorResultInstruction` | `0x1e85e380` | the matres / result-FIFO op (`inst+0x4C`) | `EncoderJf::EncodeVectorResultInstruction` @ `0x1e865ae0` | `0x1e85e420` | CONFIRMED |
+| `EncodeMiscInstruction` | `0x1e85e6c0` | the misc op's MXU operand — the `ClearResultFifoOperands` sub-message (or its `_globals_` default), `mxu_num` at sub-message `+0x1C` | `EncoderJf::EncodeMiscInstruction` @ `0x1e86be80` | `0x1e85e7a0` | CONFIRMED |
 
 These are precisely the three slots that name an MXU. The vector-ALU, scalar, vector-load, and vector-store slots have *no* `EncoderDf` override at all — they are encoded by the inherited Jellyfish writers without any Dragonfish-specific check, because they do not address the matrix unit.
 
-> **QUIRK — the Dragonfish delta is a *validity* delta, not a *layout* delta.** A reimplementer must encode the Dragonfish bundle bytes with the Jellyfish slot map (the bit positions are byte-identical), and additionally reject any matmul / matres / misc op that names `mxu_num >= 2`. The check changes *which programs encode*, not *where bits land*. Skipping the check produces a bit-identical-but-illegal bundle for an out-of-range MXU; adding a layout difference where there is none corrupts every Dragonfish bundle.
+> **QUIRK — the Dragonfish delta is a *validity* delta, not a *layout* delta.** A reimplementer must encode the Dragonfish bundle bytes with the Jellyfish slot map — same **LSB-first** bit numbering, same per-slot `shl`/`or` shift constants (see [Jellyfish 41B Bundle](bundle-jf-41b.md) and [Bundle Model](bundle-model-overview.md#what-a-bundle-is)); the bit positions are byte-identical — and additionally reject any matmul / matres / misc op that names `mxu_num >= 2`. The check changes *which programs encode*, not *where bits land*. Skipping the check produces a bit-identical-but-illegal bundle for an out-of-range MXU; adding a layout difference where there is none corrupts every Dragonfish bundle.
 
-The internal `this+12` state update (OR a bit when `mxu_num == 1`) is encoder bookkeeping — it tracks which MXU a bundle has already committed to so a later slot in the same bundle cannot claim a conflicting MXU. It lives in the encoder object, not the bundle word, and is invisible on the wire.
+The internal `this+12` state update is encoder bookkeeping — it tracks which MXU a bundle has already committed to so a later slot in the same bundle cannot claim a conflicting MXU. Each of the three overrides uses its own mask over the same `this+12` qword: the vector-extended override tests `& 0x600000000` and sets `| 2` (decompile shows the `mxu_num == 1` branch), `EncodeVectorResultInstruction` tests `& 0x300000 == 0x100000` and sets `| 0x300000`, and `EncodeMiscInstruction` clears the low-5-bit field and conditionally sets `| 0x60` for its `ClearResultFifoOperands` form. This state lives in the encoder object, not the bundle word, and is invisible on the wire.
 
 ---
 
