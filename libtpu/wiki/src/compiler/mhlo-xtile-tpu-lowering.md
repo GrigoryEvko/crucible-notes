@@ -6,7 +6,7 @@
 
 This page documents the `MHLO/StableHLO → XTile → tpu` lowering as it actually exists in the binary — and the most important fact about it is structural and corrective. The phrase "MHLO → XTile → tpu" describes **two different lowering trees that share `libtpu.so` but never connect**:
 
-- **`MHLO/StableHLO → XTile` is real.** XTile (`xla::xtile::XTileDialect`) is a tiled-tensor MLIR dialect with seven registered ops, a four-pass front-end lowering, and a verbatim StableHLO→`arith` pattern table. It lives under `third_party/.../xla/codegen/xtile/` and lowers to the **CPU/LLVM** stack via a `xtile-cpu-*` pipeline.
+- **`MHLO/StableHLO → XTile` is real.** XTile (`xla::xtile::XTileDialect`) is a tiled-tensor MLIR dialect with six registered ops, a four-pass front-end lowering, and a verbatim StableHLO→`arith` pattern table. It lives under `third_party/.../xla/codegen/xtile/` and lowers to the **CPU/LLVM** stack via a `xtile-cpu-*` pipeline.
 - **`XTile → tpu` is not real.** No pass produces the `tpu` dialect from XTile. The binary contains **zero** `*ToTpuPass` / `MhloToTpu` / `StablehloToTpu` conversion-pass functions. XTile's dependent-dialect set is the CPU/LLVM set (`xla::cpu::XlaCpuDialect`, `memref`, `vector`, `LLVM`) — `tpu`, `llo`, and `sparse_core` appear nowhere in any XTile pass.
 
 The `tpu` dialect that the [compiler overview](overview.md) names as Level 2 is therefore **not** produced by lowering general MHLO. On the TPU device path, general HLO is emitted straight to LLO by ~3225 `xla::jellyfish::*Emitter` classes; the `tpu` dialect is only ever *imported* — authored by the Pallas/Mosaic frontend, embedded in an HLO `kCustomCall("tpu_custom_call")`, and extracted by `xla::jellyfish::mlir_utils::GetMlirModuleOpFromCustomCall`. This page documents Tree B (XTile, in full) and pins down where Tree A's `tpu` dialect actually originates.
@@ -16,8 +16,8 @@ The `tpu` dialect that the [compiler overview](overview.md) names as Level 2 is 
 For reimplementation, the contract this page fixes is:
 
 - **The two trees and their boundary.** Tree A (TPU device: HLO → jellyfish `*Emitter` → LLO; `tpu` only via Mosaic custom-call import) versus Tree B (XLA CPU/GPU codegen: StableHLO/MHLO → XTile → memref/vector → LLVM). Why "XTile → `tpu`" has no pass.
-- **The four XTile front-end passes** — `stablehlo-lower-to-xtile`, `stablehlo-lower-to-arith`, `convert-elementwise-0d-tensor-to-scalar`, `verify-legal-xtile-ops` — their CLI names, create-functions, dependent dialects, and ordering inside the `xtile-cpu-*` pipeline.
-- **The seven registered XTile ops** with recovered `build()` signatures, plus the two attributes (`xtile.layout`, `xtile.tiling_info`) and `TiledBufferInterface`.
+- **The four XTile front-end passes** — `stablehlo-lower-to-xtile`, `stablehlo-lower-to-arith`, `convert-elementwise-0d-tensor-to-scalar`, `xtile-verify-legal-ops` — their CLI names, create-functions, dependent dialects, and ordering inside the `xtile-cpu-*` pipeline.
+- **The six registered XTile ops** with recovered `build()` signatures, plus the two attributes (`xtile.layout`, `xtile.tiling_info`) and `TiledBufferInterface`.
 - **The per-op MHLO/StableHLO → XTile mapping** — the verbatim StableHLO→`arith` template table, the `Emit*` fusion-emitter helpers, and worked lowerings for elementwise, dot, block-scaled dot, transpose, reshape, and constant.
 - **Where the `tpu` dialect actually comes from** — the Mosaic import seam (`GetMlirModuleOpFromCustomCall` / `RunMLIRPasses`), so a reimplementer does not waste effort building an MHLO→`tpu` legalizer that does not exist.
 
@@ -27,7 +27,7 @@ For reimplementation, the contract this page fixes is:
 | **Front-end passes** | `StablehloLowerToXtilePass` `0x150602c0` · `StablehloLowerToArithPass` `0x1505a880` · `ConvertElementwise0DTensorToScalarPass` `0x15059440` · `VerifyLegalXTileOpsPass` `0x15062300` |
 | **Terminal CPU pass** | `xla::cpu::LowerXTileEntryPass` (`xtile-cpu-lower-xtile-entry`; create @ `0x14d905c0`) |
 | **Top-level emitter** | `xla::xtile::EmitXTileModule` @ `0x14c1c9e0` (HLO fusion → `xtile.entry_func` module) |
-| **Registered ops (7)** | `entry_func`, `return`, `extract`, `insert`, `mask`, `dot`, `dot_scaled` |
+| **Registered ops (6)** | `entry_func`, `return`, `extract`, `insert`, `mask`, `dot_scaled` (from `XTileDialect::initialize`'s `addOperations<>`) |
 | **Attributes (2)** | `xtile.layout` (`LayoutAttr`) · `xtile.tiling_info` (`TilingInfoAttr`) |
 | **XTile lowering target** | CPU/LLVM (`memref`/`vector`/`scf`/`LLVM`) — **not** `tpu` or `llo` |
 | **`tpu`-dialect origin** | imported only: `GetMlirModuleOpFromCustomCall` @ `0x13e327a0`; pipeline `RunMLIRPasses` @ `0x111fefa0` |
@@ -60,7 +60,7 @@ TREE B — XLA CPU/GPU codegen (bundled, off the TPU device path)
 │  StableHLO/MHLO  ──[stablehlo-lower-to-xtile]──►  XTile (+arith/math)     │
 │       ──[stablehlo-lower-to-arith]──►  XTile + arith/math                 │
 │       ──[convert-elementwise-0d-tensor-to-scalar]──►  scalarized          │
-│       ──[verify-legal-xtile-ops]──►  (gate)                               │
+│       ──[xtile-verify-legal-ops]──►  (gate)                               │
 │       ──[xtile-cpu-bufferization → memref]──►                            │
 │       ──[xtile-cpu-*-to-vector / -to-loops]──►  vector/scf/memref         │
 │       ──[xtile-cpu-lower-xtile-entry]──►  func/LLVM  ──►  CPU kernel       │
@@ -89,10 +89,10 @@ The MHLO/StableHLO → XTile front-end is four passes in `xla::xtile::(anonymous
 
 | Pass class | create() | `runOnOperation` | CLI argument | role |
 |---|---|---|---|---|
-| `StablehloLowerToXtilePass` | `0x150602c0` | `0x15060560` | `stablehlo-lower-to-xtile` | structural/tensor-shaped StableHLO → `xtile.extract`/`insert`/`dot`/`mask`/`transpose`/`reshape` |
+| `StablehloLowerToXtilePass` | `0x150602c0` | `0x15060560` | `stablehlo-lower-to-xtile` | structural/tensor-shaped StableHLO → `xtile.extract`/`insert`/`mask`/`dot_scaled` tile ops + the `Emit*` tile-dot/transpose/reshape helpers |
 | `StablehloLowerToArithPass` | `0x1505a880` | `0x1505aa60` | `stablehlo-lower-to-arith` | scalar/elementwise StableHLO → `arith`/`math` |
 | `ConvertElementwise0DTensorToScalarPass` | `0x15059440` | `0x15059620` | `convert-elementwise-0d-tensor-to-scalar` | `tensor<f32>` (rank-0) → scalar `f32` |
-| `VerifyLegalXTileOpsPass` | `0x15062300` | `0x150624c0` | `verify-legal-xtile-ops` | gate: only XTile/`arith`/`math`/`tensor`/`func` legal |
+| `VerifyLegalXTileOpsPass` | `0x15062300` | `0x150624c0` | `xtile-verify-legal-ops` | gate: only XTile/`arith`/`math`/`tensor`/`func` legal |
 
 The `StablehloLowerToXtilePass` description string is recovered verbatim: `"Lowers stablehlo ops to Xtile."`
 
@@ -103,17 +103,17 @@ The `StablehloLowerToXtilePass` description string is recovered verbatim: `"Lowe
 - `ConvertElementwise0DTensorToScalarPass` — a `mlir::TypeConverter`-driven *full conversion* mapping rank-0 ranked tensors to scalars, with source+target materialization callbacks and `addDynamicallyLegalOp<arith::ConstantOp>` to keep 0-D constants legal until the materializers fire.
 - `VerifyLegalXTileOpsPass` — a verifier that walks the module (`walk<Operation*>`) and fails with `"Could not legalize op: "` if any op outside the legal XTile/`arith`/`math`/`tensor`/`func` set survives. This is the "must be gone before XTile codegen" gate.
 
-> **NOTE — `lower-to-xtile` and `lower-to-arith` run together over the tiled fusion body.** `StablehloLowerToXtilePass` handles the *shape-level* ops (the ones that become tile reads/writes/dot/transpose/reshape), while `StablehloLowerToArithPass` handles the *scalar/elementwise* ops over the already-extracted tiles. They are complementary halves of one legalization, not sequential phases that fully legalize independently.
+> **NOTE — `lower-to-xtile` and `lower-to-arith` run together over the tiled fusion body.** `StablehloLowerToXtilePass` handles the *shape-level* ops (the ones that become tile reads/writes, tile dot, transpose, and reshape), while `StablehloLowerToArithPass` handles the *scalar/elementwise* ops over the already-extracted tiles. They are complementary halves of one legalization, not sequential phases that fully legalize independently.
 
 ### Position inside the `xtile-cpu-*` pipeline
 
 The four front-end passes are stages 1–4 of the full CPU codegen pipeline, in lowering order (all CLI names recovered verbatim from the string pool):
 
 ```text
- 1  stablehlo-lower-to-xtile                 shape ops → xtile.extract/insert/dot/mask/transpose/reshape
+ 1  stablehlo-lower-to-xtile                 shape ops → xtile.extract/insert/mask/dot_scaled + Emit* tile-dot/transpose/reshape helpers
  2  stablehlo-lower-to-arith                 scalar/elementwise → arith/math
  3  convert-elementwise-0d-tensor-to-scalar  tensor<f32> → f32
- 4  verify-legal-xtile-ops                   gate (only XTile/arith/math/tensor/func legal)
+ 4  xtile-verify-legal-ops                   gate (only XTile/arith/math/tensor/func legal)
  5  xtile-cpu-fuse-elementwise               fuse adjacent elementwise tile ops
  6  xtile-cpu-shlo-to-vector / -linalg-elementwise-to-vector   → vector dialect
  7  xtile-cpu-tensor-ops-to-bufferizable     normalize stray tensor.* ops
@@ -129,23 +129,22 @@ The four front-end passes are stages 1–4 of the full CPU codegen pipeline, in 
 
 ---
 
-## The Seven Registered XTile Ops
+## The Six Registered XTile Ops
 
-The XTile dialect registers **seven** ops (each has `build`/`verify`/`print`/`parse` and an `xtile.<name>` op-name string). Earlier inventories that counted "12 ops" conflated registered ops with verifier helpers and attributes — the helpers (`CanonicalizeDotOp`, `CheckConcatenateOp`, `VerifyBufferOp`) and the two attributes are *not* ops.
+`XTileDialect::initialize` (`0x1507ec20`) registers **six** ops via a single `addOperations<DotScaledOp, EntryFuncOp, EntryFuncReturnOp, ExtractTileOp, InsertTileOp, MaskOp>()`. Each has `build`/`verify`/`print`/`parse` and an `xtile.<name>` op-name string (`xtile.entry_func`, `.return`, `.extract`, `.insert`, `.mask`, `.dot_scaled` all recovered from the string pool). There is **no `xtile.dot` op** — see the GOTCHA below.
 
 | op-name | C++ class | recovered `build()` signature | role |
 |---|---|---|---|
 | `xtile.entry_func` | `xla::xtile::EntryFuncOp` | `(StringRef name, ArrayRef<Type> argTypes, ArrayRef<NamedAttribute>, ArrayRef<DictionaryAttr>)` | tiled-fusion entry function (`FunctionOpInterface`) |
-| `xtile.return` | `xla::xtile::EntryFuncReturnOp` | terminator (no operands in std build) | `entry_func` terminator |
+| `xtile.return` | `xla::xtile::EntryFuncReturnOp` | `create(OpBuilder&, Location)` — terminator, no operands | `entry_func` terminator |
 | `xtile.extract` | `xla::xtile::ExtractTileOp` | `(Type result, Value source, ValueRange offsets, ArrayRef<long> staticOffsets, ArrayRef<long> staticSizes)` | read a tile out of a tiled buffer/tensor (`BufferizableOpInterface`, `TiledBufferInterface`) |
 | `xtile.insert` | `xla::xtile::InsertTileOp` | `(Value tile, Value dest, ValueRange offsets, ArrayRef<long> staticOffsets, ArrayRef<long> staticSizes)` | write a tile back into a tiled buffer/tensor (`BufferizableOpInterface`, `TiledBufferInterface`) |
 | `xtile.mask` | `xla::xtile::MaskOp` | `(Value source, ArrayRef<long> maskedDims, Value padValue)` | predicate/pad partial boundary tiles; has `fold()` + `inferReturnTypes` |
-| `xtile.dot_scaled` | `xla::xtile::DotScaledOp` (a.k.a. `ScaledDotOp`) | `(Type, Value lhs, Value rhs, Value lhsScale, Value rhsScale, bool, bool, bool)` | block-scaled (MXFP) tile dot; custom print/parse |
-| `xtile.dot` | `xla::xtile::DotOp` | (no printed op-name; emitted via `EmitSingleTileDot`) | plain tile dot; folded to `linalg`/`vector` by the dot algorithms |
+| `xtile.dot_scaled` | `xla::xtile::DotScaledOp` | `(Type, Value lhs, Value rhs, Value lhsScale, Value rhsScale, bool, bool, bool)` | block-scaled (MXFP) tile dot; custom print/parse |
 
 > **NOTE — `xtile.extract`/`xtile.insert` use the canonical mixed static/dynamic slice form.** Their operands are static-offset + dynamic-offset (`ValueRange`) + static-size — exactly the shape of `tensor.extract_slice`/`tensor.insert_slice`. That is precisely why they bufferize cleanly to `memref.subview`-style reads and in-place tile stores under One-Shot Bufferize.
 
-> **QUIRK — `xtile.dot` has no op-name string.** `DotOp` carries no `xtile.dot` string and no print/parse symbols, so it is either generic-printed or immediately folded by the dot-algorithm emitter (`EmitSingleTileDot`, `dot_algorithms.cc`). The block-scaled `DotScaledOp` *does* have a custom printed form (`xtile.dot_scaled`). Per-algorithm dot instruction sequences (f32×f32, bf16×bf16→f32, tf32, x3/x6 high-precision) live in `dot_algorithms.cc` and are not enumerated here — LOW confidence on the exact per-algorithm bodies.
+> **GOTCHA — there is NO plain `xtile.dot` op.** `addOperations<>` registers only the six ops above; no `xla::xtile::DotOp` class, no `xtile.dot` op-name string, and no `DotOp::build/print/parse` symbols exist in the binary. A plain (un-scaled) tile dot is *not* an XTile op — it is emitted directly into `linalg`/`vector` by the dot-algorithm emitter `EmitSingleTileDot` (`0x14c277a0`, `dot_algorithms.cc`). Only the block-scaled `DotScaledOp` is a first-class op. Per-algorithm dot instruction sequences (f32×f32, bf16×bf16→f32, tf32, x3/x6 high-precision) live in `dot_algorithms.cc` and are not enumerated here — LOW confidence on the exact per-algorithm bodies.
 
 ### XTile attributes and interfaces
 
@@ -157,7 +156,7 @@ The XTile dialect registers **seven** ops (each has `build`/`verify`/`print`/`pa
 | `xla::xtile::TiledBufferInterface` | op interface implemented by `ExtractTileOp` + `InsertTileOp` |
 | `xla::xtile::DotOperands` / `ScaledDotOperands` / `DotOperandSide` | helper structs for dot operand routing |
 
-The `tiles_per_workgroup` field, together with the `xla.cpu.KernelThunkProto.NumWorkGroups` anchor, confirms the **CPU/GPU workgroup-parallel** model: a dimension is split into `tile_count` tiles, and `tiles_per_workgroup` are assigned to each parallel workgroup. This is a CPU/GPU codegen concept; the TPU side uses sublane/lane vreg tiling instead ([Mosaic Layout Inference](mosaic-layout-inference.md)).
+The `tiles_per_workgroup` field, together with the CPU-thunk workgroup strings (`NumWorkGroups{%d, %d, %d}`, `XLA_CPU_NumWorkGroups`, `xla.cpu.KernelThunkProto`), confirms the **CPU/GPU workgroup-parallel** model: a dimension is split into `tile_count` tiles, and `tiles_per_workgroup` are assigned to each parallel workgroup. This is a CPU/GPU codegen concept; the TPU side uses sublane/lane vreg tiling instead ([Mosaic Layout Inference](mosaic-layout-inference.md)).
 
 ---
 
@@ -288,7 +287,7 @@ The chosen `Tiling` + `GpuComputeCapability` are passed into `EmitXTileModule`, 
 
 ## Failing / Unsupported Ops at the XTile Boundary
 
-`verify-legal-xtile-ops` and the two lower-to-* full conversions reject anything outside the legal set. Recovered failure anchors:
+`xtile-verify-legal-ops` and the two lower-to-* full conversions reject anything outside the legal set. Recovered failure anchors:
 
 | anchor string | trigger |
 |---|---|
@@ -327,16 +326,16 @@ The `tpu` dialect is therefore **authored upstream and imported**, never produce
 | Claim | Evidence | Confidence |
 |---|---|---|
 | Four XTile front-end passes with the listed CLI names/create-functions | `StablehloLowerToXtilePass` `0x150602c0`, `StablehloLowerToArithPass` `0x1505a880`, `ConvertElementwise0DTensorToScalarPass` `0x15059440`, `VerifyLegalXTileOpsPass` `0x15062300`; CLI strings recovered | HIGH |
-| Seven registered XTile ops with the listed classes | `EntryFuncOp`, `EntryFuncReturnOp`, `ExtractTileOp`, `InsertTileOp`, `MaskOp`, `DotScaledOp`, `DotOp` symbols; op-name strings `xtile.entry_func/return/extract/insert/mask/dot_scaled` | HIGH |
+| Six registered XTile ops with the listed classes | `addOperations<DotScaledOp, EntryFuncOp, EntryFuncReturnOp, ExtractTileOp, InsertTileOp, MaskOp>` in `XTileDialect::initialize`; op-name strings `xtile.entry_func/return/extract/insert/mask/dot_scaled` | HIGH |
 | StableHLO→`arith` table (10 binary-op rows) | `LowerStableHloOpToArith<…>` template instantiations recovered from demangled names | HIGH |
 | `Emit*` fusion-emitter helper map + `EmitXTileModule` signature | `EmitXTileModule` `0x14c1c9e0`, `EmitSingleTileDot` `0x14c277a0`, `EmitTiledTranspose` `0x15069860`, … ; log anchor "Emitting XTile IR for fusion" | HIGH |
-| XTile attributes `xtile.layout`/`xtile.tiling_info` and the workgroup model | `minor_to_major`, `tile_count`, `tiles_per_workgroup`, `XTile_LayoutAttr`, `TilingInfoAttr` strings; `KernelThunkProto.NumWorkGroups` | HIGH |
+| XTile attributes `xtile.layout`/`xtile.tiling_info` and the workgroup model | `XTile_LayoutAttr`/`minor_to_major` and `XTile_TilingInfoAttr`/`tile_count`/`tiles_per_workgroup` parse-error strings; CPU-thunk `NumWorkGroups{%d, %d, %d}`/`XLA_CPU_NumWorkGroups`/`xla.cpu.KernelThunkProto` strings | HIGH |
 | `tensor`→`memref` via One-Shot Bufferize on `BufferizableOpInterface` | `ExtractTileOp`/`InsertTileOp` implement `BufferizableOpInterface` + `TiledBufferInterface`; `xtile-cpu-bufferization` CLI string | HIGH |
 | Failure anchors at the XTile boundary | all 10 anchor strings recovered in the decompiled output | HIGH |
 | **XTile is NOT on the TPU MXU path** (CORRECTION) | XTile dep-set = `XlaCpuDialect`/`memref`/`vector`/`LLVM` (no `tpu`/`llo`); `xtile-cpu-*` pipeline; `codegen/xtile/` source paths | HIGH |
 | **No MHLO/HLO→`tpu` conversion pass exists** | grep of functions table: 0 hits for `*ToTpuPass`/`MhloToTpu`/`StablehloToTpu`/`LegalizeToTpu` | HIGH |
 | `tpu` dialect is imported only, via `tpu_custom_call` | `GetMlirModuleOpFromCustomCall` `0x13e327a0`, `RunMLIRPasses` `0x111fefa0`, `MosaicSerdePass`, `tpu_custom_call` all present | HIGH |
-| Plain `xtile.dot` printed form + per-algorithm dot bodies | `DotOp` has no op-name string; `dot_algorithms.cc` bodies not decompiled per-algorithm | LOW |
+| Plain tile dot is emitted to `linalg`/`vector`, not an `xtile.dot` op | no `DotOp` class / `xtile.dot` string in binary; `EmitSingleTileDot`/`dot_algorithms.cc` bodies not decompiled per-algorithm | LOW (per-algorithm bodies only) |
 | Full `LowerConvertOp` ext/trunc/itofp/fptoi type-pair table | `LowerConvertOp` class present (119 refs); per-pair mapping inferred, not enumerated | LOW |
 
 ---
