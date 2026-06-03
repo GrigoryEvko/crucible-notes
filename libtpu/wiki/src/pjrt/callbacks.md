@@ -126,7 +126,7 @@ function send_error_to_status(code, msg, msg_len):       // sub_F876680
     return rep                                            // StatusOr<chunk-ack> holding the Status
 ```
 
-> **NOTE — the canonical status encoding is `4*code + 1`.** `absl::Status::MakeRep` is called with `4*code + 1`; this is the absl tagged-pointer convention (`code` in the low bits, the inline-vs-heap flag in bit 0). The reverse direction — `absl::Status` → `PJRT_Error_Code` — uses `pjrt::StatusCodeToPjrtErrorCode` (seen in the prefatal trampoline, §3) and its inverse `pjrt::PjrtErrorCodeToStatusCode` (seen in `InvokeCallback`). A reimplementer must round-trip codes through these two functions, not assume the integer values match between the C enum and `absl::StatusCode`.
+> **NOTE — the canonical status encoding is `4*code + 1`.** `absl::Status::MakeRep` is called with `4*code + 1`; this is the absl tagged-pointer convention (`code` in the low bits, the inline-vs-heap flag in bit 0). The reverse direction — `absl::Status` → `PJRT_Error_Code` — uses `pjrt::StatusCodeToPjrtErrorCode` (`0xf8a3cc0`, seen in the prefatal trampoline, §3) and its inverse `pjrt::PjrtErrorCodeToStatusCode` (`0xf8a3ca0`, seen in `InvokeCallback`). Both are **identity maps** over the valid `0..16` range — the `PJRT_Error_Code` enum and `absl::StatusCode` share the same integer values, so the numbers do coincide. The converters exist only to police the boundary: `PjrtErrorCodeToStatusCode` is a bare `return a1`, and `StatusCodeToPjrtErrorCode` is `return a1` guarded by a `LOG(FATAL)` on the `INT_MIN/INT_MAX/DO_NOT_USE` sentinel codes (`pjrt_c_api_helpers.cc:251-256`). A reimplementer can pass the code through unchanged but must reject those sentinels.
 
 ### Algorithm — the recv shim and `CopyToDeviceStream`
 
@@ -313,8 +313,8 @@ function InvokeCallbacks(this, status):                        // sub_F95DC80
 | `xla::PreFatalErrorCallbackState` ctor | `0xf95dbe0` | Zero-init the 32-byte registry (vxorps/vmovups) | CONFIRMED |
 | `xla::SliceBuilderCallbackState::AddCallback` | `0xf95df80` | Slice-builder analogue (`type==1`) | CONFIRMED |
 | `xla::SliceBuilderCallbackState::InvokeCallbacks` | `0xf95e000` | Slice-builder fire | CONFIRMED |
-| `pjrt::StatusCodeToPjrtErrorCode` | — | absl code → `PJRT_Error_Code` | HIGH |
-| `pjrt::PjrtErrorCodeToStatusCode` | — | `PJRT_Error_Code` → absl code | HIGH |
+| `pjrt::StatusCodeToPjrtErrorCode` | `0xf8a3cc0` | absl code → `PJRT_Error_Code` (identity for 0–16; `LOG(FATAL)` on the `INT_MIN/INT_MAX/DO_NOT_USE` sentinels, `pjrt_c_api_helpers.cc:251-256`) | CERTAIN |
+| `pjrt::PjrtErrorCodeToStatusCode` | `0xf8a3ca0` | `PJRT_Error_Code` → absl code (pure identity: `return a1`) | CERTAIN |
 
 ---
 
@@ -322,7 +322,7 @@ function InvokeCallbacks(this, status):                        // sub_F95DC80
 
 - **Two surfaces, no overlap.** Send/recv callbacks are arguments to `Execute` (per launch); the pre-fatal hook is an extension method (per client). A reimplementation must expose both: the `PJRT_ExecuteOptions.send_callbacks`/`recv_callbacks` arrays *and* a type-14 extension with `RegisterCallback`/`InvokeCallback`.
 - **The chunk struct is the wire contract.** `PJRT_Chunk` is `{data, size, deleter, deleter_arg}` = 32 bytes. The deleter is a C function pointer; libtpu wraps it (`ConvertToCppChunk` @ `0xf8a5280`) in a C++ closure that calls it on drop. Get the field order and the deleter signature `void(void* data, void* arg)` exactly right, or buffers leak or double-free.
-- **Errors cross the boundary as codes, not exceptions.** A `SendCallback` returns a `PJRT_Error*`; libtpu turns its `PJRT_Error_Code` + message into `absl::Status` via `4*code + 1` (`pjrt_c_api_wrapper_impl.cc:2190`). Pre-fatal callbacks travel the other way through `StatusCodeToPjrtErrorCode`. Round-trip both directions through the two converter functions; never assume the integer enum values coincide.
+- **Errors cross the boundary as codes, not exceptions.** A `SendCallback` returns a `PJRT_Error*`; libtpu turns its `PJRT_Error_Code` + message into `absl::Status` via `4*code + 1` (`pjrt_c_api_wrapper_impl.cc:2190`). Pre-fatal callbacks travel the other way through `StatusCodeToPjrtErrorCode` (`0xf8a3cc0`). The two converters (`0xf8a3cc0` / `0xf8a3ca0`) are identity maps — the enum values coincide — but `StatusCodeToPjrtErrorCode` `LOG(FATAL)`s on the `INT_MIN/INT_MAX/DO_NOT_USE` sentinels, so a reimplementation must still reject those.
 - **Channel id keys the send/recv path; a missing channel is fatal.** Register every channel the compiled program uses before launch. The keying and the `LOG(FATAL)`-on-miss live in [Host Callbacks](../runtime/host-callbacks.md); the C-ABI layer's job is to deliver a complete `PJRT_SendCallbackInfo`/`PJRT_RecvCallbackInfo` set in `ExecuteOptions`.
 - **Gate registration on the backend id.** `RegisterCallback`/`InvokeCallback` no-op unless `client->tpu_id() == 0x83D71ADBA77968AA`. Reproduce the gate, or cross-backend registration silently does nothing.
 - **The pre-fatal hook is append-only and fires under a lock on the dying thread.** No de-registration; closures fire in registration order while the registry mutex is held, on the thread that hit the error. Keep them short and non-reentrant.
