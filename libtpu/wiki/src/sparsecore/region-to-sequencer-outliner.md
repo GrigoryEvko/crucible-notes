@@ -6,9 +6,9 @@
 
 The SparseCore back-end runs every offload computation across three sub-engines — **SCS** (scalar control), **TAC** (tile-access / DMA), **TEC** (vector compute) — and represents that split as ordinary MLIR functions, one per engine, each tagged with an `sc.sequencer` StringAttr. The pass that *creates* those functions is `TileTaskOutliningPass`. It is a classic region-outliner in the [`getUsedValuesDefinedAbove`](#the-per-op-callback-0x136066e0) → `FuncOp::create` → `Region::cloneInto` → replace-with-launch mould — the same shape LLVM/MLIR uses to outline a parallel region into a kernel — specialized for SparseCore by what it captures (only static memrefs), what it stamps (`sc.sequencer = "execute"`), and what it leaves behind (a `sc_tpu.launch_tile_task` op plus, on the overlayer path, a `PrefetchTileTaskOp` and an overlay `memref.alloc`).
 
-This page owns the **pass mechanics and the launch emission**: how a `sc_tpu.tile_task` region becomes a standalone `func.func`, how its live-ins become the function's arguments, how the body is cloned, how the original op is replaced by a launch, and which attributes the outlined function carries. It deliberately does **not** re-derive the per-op→engine *selection predicate* — the rule that decides whether a given lowered op is Stream-vs-DMA and which TileTask region it lands in. That predicate is owned by [getSequencerType](getsequencertype.md) (`GetTransferKind` + the `sc.sequencer` read-back); here the engine string is treated as the pass *output*, byte-confirmed as `"execute"` on Trillium.
+This page owns the **pass mechanics and the launch emission**: how a `sc_tpu.tile_task` region becomes a standalone `func.func`, how its live-ins become the function's arguments, how the body is cloned, how the original op is replaced by a launch, and which attributes the outlined function carries. It deliberately does **not** re-derive the per-op→engine *selection predicate* — the rule that decides whether a given lowered op is Stream-vs-DMA and which TileTask region it lands in. That predicate is owned by [getSequencerType](getsequencertype.md) (`GetTransferKind` + the `sc.sequencer` read-back); here the engine string is treated as the pass *output*, byte-confirmed as `"execute"` on 6acc60406 (`gfc`).
 
-The single structural fact a reimplementer must internalize: **`TileTaskOutliningPass` produces exactly one outlined function per `sc_tpu.tile_task` op, tagged `"execute"` (TEC), and replaces the op with a `sc_tpu.launch_tile_task` whose `execute_func` symbol points at it.** The enclosing function — the one that issued the `tile_task` — is the SCS control program (`sc.sequencer = "scs"`). On Viperfish/Ghostlite the same Target-parameterized pass additionally splits off an `"access"` (TAC) function; on Trillium there is no TAC, so the tile-fetch work folds into `"execute"`. The page documents the gfc (Trillium) single-`"execute"` path, which is what the decompiled callback emits, and flags the TAC split as LOW.
+The single structural fact a reimplementer must internalize: **`TileTaskOutliningPass` produces exactly one outlined function per `sc_tpu.tile_task` op, tagged `"execute"` (TEC), and replaces the op with a `sc_tpu.launch_tile_task` whose `execute_func` symbol points at it.** The enclosing function — the one that issued the `tile_task` — is the SCS control program (`sc.sequencer = "scs"`). On Viperfish/Ghostlite the same Target-parameterized pass additionally splits off an `"access"` (TAC) function; on 6acc60406 there is no TAC, so the tile-fetch work folds into `"execute"`. The page documents the gfc (6acc60406) single-`"execute"` path, which is what the decompiled callback emits, and flags the TAC split as LOW.
 
 For reimplementation, the contract is:
 
@@ -24,7 +24,7 @@ For reimplementation, the contract is:
 | **Base class** | `mlir::sparse_core::impl::TileTaskOutliningBase<…>` (TableGen pass base) |
 | **Per-op callback** | `walk<TileTaskOp>` callback `@0x136066e0`; nested terminator walk `@0x136071c0` |
 | **Outlined op** | `sc_tpu.tile_task` (`mlir::sparse_core::TileTaskOp`) → outlined `func::FuncOp` |
-| **Launch op** | `sc_tpu.launch_tile_task` (`mlir::sparse_core::LaunchTileTaskOp`); `create` `@0x145dcfa0`, `build` `@0x1459c060` |
+| **Launch op** | `sc_tpu.launch_tile_task` (`mlir::sparse_core::LaunchTileTaskOp`); `create` (FuncOp overload, called here) `@0x145dd0e0`, `build` `@0x1459c060` |
 | **Engine tag** | `setAttr("sc.sequencer", StringAttr "execute")` — name 12 chars, value 7 chars |
 | **Downstream reader** | `LowerSequencerFunctionsPass::runOnOperation` `@0x13532120` |
 | **Confidence** | CONFIRMED (decompile-verified) unless a row or callout says otherwise |
@@ -103,7 +103,7 @@ void runOnOperation(TileTaskOutliningPass *this):
 Two driver-level facts that a reimplementer must reproduce:
 
 - **The Timem gate is a hard error, not a skip.** A module that both reads/writes Timem *explicitly* and launches tile tasks is rejected with a two-fragment diagnostic (`"programs that launch tile tasks while also explicitly accessing "` + `"Timem are not supported"`). The check is two `walk`s: `ContainsExplicitTimemAccess` (`@0x1395bb60`) for the Timem side and a `ContainsTileTask` walk lambda for the launch side; only their conjunction errors. This protects the tile-overlay machinery (below), which reuses the Timem region.
-- **The target is resolved once, before the walk.** `SparseCoreTargetForModule` (`@0x14a8b5c0`) maps the module to a `SparseCoreTarget` and the result is cached on the pass object (`this+43`). The per-op callback reads it back to drive the overlayer decision. The target is what parameterizes Trillium-vs-VF/GL behaviour (single `"execute"` vs the `"access"`+`"execute"` split).
+- **The target is resolved once, before the walk.** `SparseCoreTargetForModule` (`@0x14a8b5c0`) maps the module to a `SparseCoreTarget` and the result is cached on the pass object (`this+43`). The per-op callback reads it back to drive the overlayer decision. The target is what parameterizes 6acc60406-vs-VF/GL behaviour (single `"execute"` vs the `"access"`+`"execute"` split).
 
 ### Function Map
 
@@ -190,8 +190,8 @@ WalkResult outline_one(TileTaskOp op):
 
     // 12. Replace the original op with a launch of the outlined func, then erase it.
     Value task = op.getOperand(0);                     // the tile-task descriptor operand
-    LaunchTileTaskOp::create(builder, loc, /*execute=*/fn /*sym*/, overlayAlloc,
-                             /*captures=*/liveIns, /*clear_ibuf=*/true);   // @0x145dcfa0
+    LaunchTileTaskOp::create(builder, loc, /*execute=*/fn /*FuncOp*/, overlayAlloc, task,
+                             /*captures=*/liveIns, /*clear_ibuf=*/true);   // @0x145dd0e0 (FuncOp overload)
     op.erase();                                        // @0x1d8ccd20
     return advance;
 ```
@@ -228,8 +228,9 @@ The numbered steps each carry a reimplementation subtlety worth calling out.
 | `overlayer::IsTileOverlayerEnabled` | `0x1395d880` | gate the overlay path | CONFIRMED |
 | `overlayer::GetTileOverlaysSize` | `0x1395ba20` | i32 size for `sc.func_size_limit` | CONFIRMED |
 | `overlayer::GetTileOverlayMemRefType` | `0x1395b960` | overlay-buffer memref type | CONFIRMED |
-| `memref::AllocOp::create` | — | overlay buffer allocation | CONFIRMED |
-| `sparse_core::PrefetchTileTaskOp::create` | — | overlay prefetch before launch | CONFIRMED |
+| `memref::AllocOp::create` | `0x183015a0` | overlay buffer allocation | CONFIRMED |
+| `sparse_core::PrefetchTileTaskOp::create` | `0x145f4cc0` | overlay prefetch before launch | CONFIRMED |
+| `LaunchTileTaskOp::create` (FuncOp overload) | `0x145dd0e0` | the launch the callback emits | CONFIRMED |
 
 ---
 
@@ -241,23 +242,24 @@ The op left in place of the outlined `tile_task`. It names the outlined `"execut
 
 ### Op shape (from `build` / `create`)
 
-The canonical builder `LaunchTileTaskOp::build` (`@0x1459c060`, signature `build(OpBuilder&, OperationState&, Value, Value, UnitAttr, FlatSymbolRefAttr, ValueRange)`) and the convenience `create` (`@0x145dcfa0`) fix the op's surface:
+Two `create` overloads exist: the `func::FuncOp`-taking one (`@0x145dd0e0`, signature `create(OpBuilder&, Location, func::FuncOp, Value, Value, ValueRange, bool)`) — **the one the outliner callback calls** (verified at the call site `136070ec → 0x145dd0e0`) — and a pre-formed-`Value` variant (`@0x145dcfa0`, signature `create(OpBuilder&, Location, Value, Value, ValueRange, bool)`). The FuncOp overload forwards to the canonical builder `LaunchTileTaskOp::build` (`@0x1459c060`, signature `build(OpBuilder&, OperationState&, Value, Value, UnitAttr, FlatSymbolRefAttr, ValueRange)`), which resolves the func to its `FlatSymbolRefAttr` and sets `clear_ibuf` as a `UnitAttr`. Both overloads fix the same op surface:
 
 ```c
-// LaunchTileTaskOp::create(builder, loc, task, alloc, captures, clear_ibuf)  @0x145dcfa0
+// LaunchTileTaskOp::create(builder, loc, fn /*FuncOp*/, alloc, task, captures, clear_ibuf)  @0x145dd0e0
 op = OperationState("sc_tpu.launch_tile_task", 23);   // op-name literal, 23 chars
-op.addOperands(task);          // 1 — the tile-task descriptor Value
-op.addOperands(alloc);         // 1 — the overlay-alloc Value (overlayer path)
+// forwards to build(@0x1459c060):
+op.addOperands(alloc);         // the overlay-alloc Value (overlayer path)
+op.addOperands(task);          // the tile-task descriptor Value
 op.addOperands(captures);      // N — the ValueRange of region live-ins
 if (clear_ibuf)
     properties.clear_ibuf = builder.getUnitAttr();    // UnitAttr present ⇔ true
-// execute_func : FlatSymbolRefAttr is set in the build() overload (the symbol of the outlined func)
+properties.execute_func = FlatSymbolRefAttr(fn.getSymName());  // symbol of the outlined func
 return builder.create(op);     // verified TypeID == LaunchTileTaskOp::id
 ```
 
 | Element | Kind | Source | Confidence |
 |---|---|---|---|
-| op name | string `"sc_tpu.launch_tile_task"` (23) | `create` `@0x145dcfa0` | CONFIRMED |
+| op name | string `"sc_tpu.launch_tile_task"` (23) | `create` `@0x145dd0e0` / `@0x145dcfa0` | CONFIRMED |
 | `execute_func` | `FlatSymbolRefAttr` | `build` `@0x1459c060`; accessor `getExecuteFunc` `@0x145dcf40` | CONFIRMED |
 | `clear_ibuf` | `UnitAttr` (present ⇔ true) | `create` `bool` arg; accessor `getClearIbuf` `@0x145dcf20` | CONFIRMED |
 | operand 0 (`task`) | `Value` | `addOperands` site 1 | CONFIRMED |
@@ -274,7 +276,7 @@ The launch does not embed the function — it references it by symbol. `LaunchTi
 
 ## Engine Assignment — What the String Means
 
-The pass writes only `"execute"` on Trillium. The full three-value mapping (`"scs"` / `"access"` / `"execute"`) and the per-op rule that decides which region an op lands in are owned by [getSequencerType](getsequencertype.md); this section records only what the *outliner* produces and the per-generation shape.
+The pass writes only `"execute"` on 6acc60406 (`gfc`). The full three-value mapping (`"scs"` / `"access"` / `"execute"`) and the per-op rule that decides which region an op lands in are owned by [getSequencerType](getsequencertype.md); this section records only what the *outliner* produces and the per-generation shape.
 
 | `sc.sequencer` | Engine | Produced by | Present on | This pass emits |
 |---|---|---|---|---|
@@ -282,7 +284,7 @@ The pass writes only `"execute"` on Trillium. The full three-value mapping (`"sc
 | `"access"` | TAC (tile-access / DMA) | the VF/GL TAC split of the same pass | VF · GL only | not in the gfc callback |
 | `"execute"` | TEC (vector compute) | this callback (`fn.setAttr`, value 7 chars) | VF · GL · GF | **yes — every task** |
 
-> **CORRECTION — the Trillium callback stamps only `"execute"`.** The decompiled per-op callback (`@0x136066e0`) sets `sc.sequencer = "execute"` and nothing else; there is no `"access"`-emitting branch in this `gfc` build. On Viperfish/Ghostlite the same `Target`-parameterized pass produces an `"access"` (TAC) function in addition, but that split was not bit-traced and the gfc binary cannot reach it (no `SparseCoreTacCodecBase` on Trillium — see [getSequencerType](getsequencertype.md#codec-base-presence-confirms-trilliums-missing-tac)). The per-op Access-vs-Execute rule is owned upstream and flagged **LOW** here.
+> **CORRECTION — the 6acc60406 callback stamps only `"execute"`.** The decompiled per-op callback (`@0x136066e0`) sets `sc.sequencer = "execute"` and nothing else; there is no `"access"`-emitting branch in this `gfc` build. On Viperfish/Ghostlite the same `Target`-parameterized pass produces an `"access"` (TAC) function in addition, but that split was not bit-traced and the gfc binary cannot reach it (no `SparseCoreTacCodecBase` on 6acc60406 — see [getSequencerType](getsequencertype.md#codec-base-presence-confirms-the-missing-tac-on-gfc)). The per-op Access-vs-Execute rule is owned upstream and flagged **LOW** here.
 
 > **NOTE — the parent function's `"scs"` tag is not set by this pass.** The outlined `"execute"` function is created here; the `"scs"` tag on the *enclosing* control program is attached separately (it is the function the `sc_tpu.launch_tile_task` ops live in after this pass runs). A reimplementer must ensure the control program carries `sc.sequencer = "scs"` so the launches and their surrounding sync/addressing code lower onto the SCS codec.
 
@@ -325,11 +327,11 @@ To reproduce the SparseCore region→sequencer outliner:
 | `sc.sequencer` stamped `"execute"` (12-char name, 7-char value) via `setAttr` | `setAttr` `@0xea37860` with `StringAttr "sc.sequencer"`/`"execute"` | CONFIRMED |
 | Budget attr read from `sc.execute_alloc_high_water_mark` (32), written as `sc.alloc_high_water_mark` (24) | callback `getInherentAttr(…,32)` read + `setAttr(…,24)` write | CONFIRMED |
 | Overlayer path adds `sc.func_size_limit` (18) + `memref.alloc` + `PrefetchTileTaskOp` | `IsTileOverlayerEnabled`/`GetTileOverlaysSize`/`GetTileOverlayMemRefType` + create calls | CONFIRMED |
-| Launch op name `"sc_tpu.launch_tile_task"` (23 chars); `execute_func` FlatSymbolRef; `clear_ibuf` UnitAttr | `create` `@0x145dcfa0` op-name literal; `build` `@0x1459c060` signature; `getExecuteFunc`/`getClearIbuf` accessors | CONFIRMED |
+| Launch op name `"sc_tpu.launch_tile_task"` (23 chars); `execute_func` FlatSymbolRef; `clear_ibuf` UnitAttr | both `create` overloads (`@0x145dd0e0` / `@0x145dcfa0`) carry the op-name literal; `build` `@0x1459c060` signature; `getExecuteFunc`/`getClearIbuf` accessors | CONFIRMED |
 | Outliner always sets `clear_ibuf = true` | callback passes `bool=1` to `create` | CONFIRMED |
 | `GetExecuteFunc` resolves the symbol via `SymbolTable::lookup`, asserts non-null | `@0x136054e0` `tile_task_arguments_spill.cc:70` | CONFIRMED |
-| Trillium callback emits only `"execute"`; VF/GL also emit `"access"` | gfc callback has no `"access"` branch; cross-gen pass is Target-parameterized (not traced) | CONFIRMED (gfc); LOW (VF/GL split) |
-| `LaunchTileTaskOp::create` VA is `0x145dcfa0` (not `0x145dd0e0`) | symbol-table file name + decompile header | CONFIRMED |
+| 6acc60406 callback emits only `"execute"`; VF/GL also emit `"access"` | gfc callback has no `"access"` branch; cross-gen pass is Target-parameterized (not traced) | CONFIRMED (gfc); LOW (VF/GL split) |
+| Callback calls the `func::FuncOp` `LaunchTileTaskOp::create` overload `0x145dd0e0` (the `Value`-only overload `0x145dcfa0` is a sibling, not the call here) | disasm call site `136070ec → 0x145dd0e0`; `0x145dd0e0` forwards to `build` `@0x1459c060` | CONFIRMED |
 | Terminator fix-up walk `@0x136071c0` (`OutlineSequencerFunction` lambda) reshapes the cloned region | callback nested `walk` call site; lambda name in symbol | HIGH |
 | Per-op Access-vs-Execute region-selection rule | not bit-traced; owned by getSequencerType | LOW |
 
@@ -341,7 +343,7 @@ To reproduce the SparseCore region→sequencer outliner:
 - [SC Backend Pipeline](sc-backend-pipeline.md) — the twelve-pass codegen pipeline that runs *after* this outliner on the `func.func`s it produces.
 - [SparseCore Overview](overview.md) — the three engine classes (SCS/TAC/TEC), per-gen presence, and the SCv0 deprecation context.
 - [SCS (Scalar) Engine](scs-engine.md) — the `"scs"` control program that issues the `sc_tpu.launch_tile_task` ops.
-- [TAC Engine](tac-engine.md) — the `"access"` tile-fetch engine and its Trillium removal (why the gfc callback emits only `"execute"`).
+- [TAC Engine](tac-engine.md) — the `"access"` tile-fetch engine and its 6acc60406 removal (why the gfc callback emits only `"execute"`).
 - [TEC (Vector) Engine](tec-engine.md) — the `"execute"` vector engine the outlined functions target.
 - [Per-Engine Bundle Slot-Base Map](bundle-slot-base-map.md) — the per-engine bundle the outlined, lowered functions ultimately encode into.
 - **Binary:** `extracted/libtpu-0.0.40-cp314-cp314-manylinux_2_31_x86_64/libtpu/libtpu.so` (build-id `89edbbe81c5b328a958fe628a9f2207d`)
