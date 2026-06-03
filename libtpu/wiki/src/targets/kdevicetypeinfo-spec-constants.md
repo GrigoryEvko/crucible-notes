@@ -72,10 +72,12 @@ GtcSpanConverter::GtcSpanConverter(DeviceType dt):     // sub_F2CB6E0
 | `+0x340` | i32 | `sc_lane_count` | 16 on SC gens; read at 18 SparseCore subscriber sites | C |
 | `+0x348`/`+0x350`/`+0x358` | i32 | perf-counter-set masks | `GetPerformanceCounterNames<28>` (v7x) | C |
 | `+0x360`..`+0x378` | f64 | power/thermal coeffs | `ConvertFirmwareTraceEntriesToXPlane` → `FirmwareEventBuilder` → "power"/"temperature" stats | C |
-| `+0x388`/`+0x390`/`+0x398` | i32 | firmware-event counts | `FirmwareEventBuilder` ulong args | C |
-| `+0x438`/`+0x440` | f64 | `tail_v7x` | DT12-only small packed sub-fields | I |
+| `+0x380`..`+0x398` | u64 | firmware-event ulongs | `FirmwareEventBuilder` `m m m m` args (`+0x380` first GP arg) | C |
+| `+0x438`/`+0x440` | i32 | perf-counter-set bases | `+0x438` = ICR set → `GetPerformanceCounterNames<12>`; `+0x440` = CMNUR/HBM set → `<3>` (v7x; nonzero DT12 only) | C |
 
 > **NOTE —** the table carries **no pointer fields** (zero relocations across `[0x1C60480, 0x1C64D48)`). The device codename string and the trace-codec factory are keyed *separately* by the same captured device identity: `DeviceTypeString`'s pointer array at `0x21772F00` (indexed by ordinal) for the name, and the per-family `DeviceIdentifiers` `std::map` factory for the codec. The ordinal selects the clock/spec (this struct); the PCI tuple selects the codec.
+
+> **CORRECTION (KDTI-SC-1) —** the `+0x438`/`+0x440` tail was previously read as `tail_v7x` "small packed sub-fields." Mapping the six `GetPerformanceCounterNames` call-site GOT displacements back through `base + ordinal*0x448` resolves them to the v7x perf-counter-set enum bases: `+0x438` is the `<12>`-set (ICR/router) base and `+0x440` is the `<3>`-set (CMNUR/HBM) base — nonzero on `DeviceType` 12 only, high dword zero (no pointer). They are **not** roofline doubles. The four `<28>` (TensorCore/SparseCore) sets are at `+0x2C8`/`+0x348`/`+0x350`/`+0x358`.
 
 ### DVFS Ladders
 
@@ -112,7 +114,7 @@ The profiler does not evaluate a roofline in-binary; it *stamps the roofline inp
 - **Clocks → device-info.** `GetJobInfoFromResponse` (`0xF2C9AC0`) checks `core_multi_flag` (`+0x00`), then lifts `gtc_freq_khz` (`+0x04`), `tensorcore_clk_khz` (`+0x50`), and `sparsecore_clk_khz` (`+0x2F8`) ×1000 into the `Task` proto's `gtc_freq_hz`/`tensor_core_freq_hz`/`sparse_core_freq_hz` fields. The decompiled site reads `[base + 1096*ord + col]` with `col[1]`=+0x04, `col[20]`=+0x50, `col[190]`=+0x2F8, each `1000LL *`.
 - **Peak compute → cost model.** `XProfTpuCostAnalysis::HandleConvolution` (`0xF58E7C0`) starts at `DBL_MAX`, maps each conv operand's `Shape::element_type` through a 28-entry jump table to load `+0x60` (bf16), `+0x78` (int8/fp8), or `+0x80` (int4/fp4), takes the running `vminsd` (the slowest operand precision dominates), then divides by the core count. This is the byte-exact proof that `+0x60`/`+0x78`/`+0x80` are the per-precision peak-FLOPS table.
 - **Geometry → ordinal / cost.** `HostCoreId::ToDeviceOrdinal` (`0xF69C580`) divides `logical_devices_a/b` (`+0x10`/`+0x14`) by `cores_per_chip` (`+0x0C`) to map `(host, core)` to a device ordinal. `GetCostAdjustmentFunction` (`0xF58EFC0`) reads `megacore_flag` (`+0x2C4`, `cmp BYTE,1`) to enable `AdjustCostForMegacoreFunction` and `cores_per_chip` (`+0x0C`).
-- **Device-capability XStats → XPlane.** `ConvertTpuTraceToXPlaneV2` stamps `+0x60` (peak TFLOP/s, stat `0x62`), `+0xD0`/`+0x100`/`+0x108`/`+0x120`/`+0x128` (per-memory-space bandwidth, stats `0x63`–`0x67`, each ×1.073741824 to convert base-10 GB/s to GiB/s), and `+0x2C4` (`has_megacore`, stat `0x6B`). `ConvertTpuTraceToXPlane` feeds the `+0x2C8`/`+0x348`/`+0x350`/`+0x358` masks to `GetPerformanceCounterNames<28>`; `ConvertFirmwareTraceEntriesToXPlane` feeds the `+0x360`..`+0x378` doubles and `+0x388`/`+0x390`/`+0x398` ints into `FirmwareEventBuilder`, which stamps "power"/"temperature" stats.
+- **Device-capability XStats → XPlane.** `ConvertTpuTraceToXPlaneV2` stamps `+0x60` (peak TFLOP/s, stat `0x62`), `+0xD0`/`+0x100`/`+0x108`/`+0x120`/`+0x128` (per-memory-space bandwidth, stats `0x63`–`0x67`, each ×1.073741824 to convert base-10 GB/s to GiB/s), and `+0x2C4` (`has_megacore`, stat `0x6B`). `ConvertTpuTraceToXPlane` feeds six perf-counter-set bases to `GetPerformanceCounterNames<N>`: `+0x2C8`/`+0x348`/`+0x350`/`+0x358` as the four `<28>` (TensorCore/SparseCore) sets, `+0x438` as the `<12>` (ICR/router) set, and `+0x440` as the `<3>` (CMNUR/HBM) set. `ConvertFirmwareTraceEntriesToXPlane` feeds the `+0x360`..`+0x378` doubles and the `+0x380`..`+0x398` ulongs into `FirmwareEventBuilder`, which stamps "power"/"temperature" stats.
 
 > **QUIRK —** the `+0xD0` HBM-bandwidth member, after the ×1.073741824 conversion, is byte-exact to the `chip_parts` HBM bandwidth (v7x 3433 → 3686.2 GiB/s = 3.686 TB/s; v6e 1525.5 → 1638.0 GiB/s = 1.638 TB/s). The `+0xB8` group is *not* the authoritative HBM-bandwidth stamp — it is a separate effective-bandwidth spec with no in-binary reader. A reimplementation reading `+0xB8` as the HBM peak would be reading the wrong field.
 
@@ -122,16 +124,16 @@ The profiler does not evaluate a roofline in-binary; it *stamps the roofline inp
 
 The `kDeviceTypeInfo` index is the 1-based `xprof::DeviceType` enum. `DeviceTypeFromDeviceIdentifiers` (`0xF6993A0`) maps a captured 12-byte PCI tuple (all `vendor_id == 0x1AE0`, Google) to the ordinal, and `DeviceTypeString` (`0xF69C7C0`) maps the ordinal to the public name (`return DeviceTypeString[ord-1]`, default `"Cloud TPU"` for `ord-1 > 0xC`). The eight real silicon generations:
 
-| ordinal | public name | codename | family | GTC clk (kHz) | ts width | Confidence |
-|---:|---|---|---|---:|---:|---|
-| 3 | TPU v2 | Jellyfish | jxc | 700000 | 48 | CONFIRMED |
-| 5 | TPU v3 | Dragonfish | jxc | 700000 | 48 | CONFIRMED |
-| 7 | TPU v4 | Pufferfish | pxc/pfc | 700000 | 48 | CONFIRMED |
-| 8 | TPU v4 Lite | Puffylite | pxc/plc | 700000 | 48 | CONFIRMED |
-| 10 | TPU v5 | Viperfish (v5p) | vxc/vfc | 800000 | 45 | CONFIRMED |
-| 11 | TPU v5 Lite | Viperlite (v5e) | vxc/vlc | 800000 | 45 | CONFIRMED |
-| 12 | TPU v7x | Ghostfish (gfc) | gxc | 833000 | 45 | CONFIRMED |
-| 13 | TPU v6 Lite | Ghostlite (v6e) | gxc/glc | 800000 | 45 | CONFIRMED |
+| ordinal | public name | codename | family | GTC clk (kHz) | ts width | compute clk (kHz) | Confidence |
+|---:|---|---|---|---:|---:|---:|---|
+| 3 | TPU v2 | Jellyfish | `jxc` | 700000 | 48 | 700000 | CERTAIN |
+| 5 | TPU v3 | Dragonfish | `jxc` | 700000 | 48 | 940000 | CERTAIN |
+| 7 | TPU v4 | Pufferfish | `pxc::pfc` | 700000 | 48 | 1050000 | CERTAIN |
+| 8 | TPU v4 Lite | Puffylite | `pxc::plc` | 700000 | 48 | 1050000 | CERTAIN |
+| 10 | TPU v5 | Viperfish (v5p) | `vxc::vfc` | 800000 | 45 | 1750000 | CERTAIN |
+| 11 | TPU v5 Lite | Viperlite (v5e) | `vxc::vlc` | 800000 | 45 | 1500000 | CERTAIN |
+| 12 | TPU v7x | Ghostfish (gfc) | `gxc::gfc` | 833000 | 45 | 1900000 | CERTAIN |
+| 13 | TPU v6 Lite | Ghostlite (v6e) | `gxc::glc` | 800000 | 45 | 1750000 | CERTAIN |
 
 `DeviceTypeFromDeviceIdentifiers` matches each codename's `kXxxChipIdentifiers` tuple in turn (Jellyfish→3, Dragonfish→5, Puffylite→8, the three Pufferfish B0 SKUs→7, the four Viperlite SKUs→11, the two Viperfish SKUs→10) and dispatches the two Ghost families via `IsGlc`→13 and `IsGfc`→12. Ordinals 1/2/4/6/9/14..16 are the host-GPU plane and "Cloud TPU" placeholder/reserved slots (DeviceType 9 is a reserved 64-bit-timestamp, 1.333 GHz slot with no PCI tuple). `DeviceTypeToHardwareType` (`0xF69C7A0`) confirms the split: the eight named gens map to hardware-type 3 (TPU), the placeholders to 0/1, the GPU plane to 2.
 
@@ -154,3 +156,5 @@ The `kDeviceTypeInfo` index is the 1-based `xprof::DeviceType` enum. `DeviceType
 - [Codename Matrix](tpu-version-codename-matrix.md) — reconciles the `DeviceType` ordinal with `TpuVersion` and the codename roster
 - [Per-DeviceType Struct](../profiling/per-devicetype-struct.md) — the full `0x448` field dump and unit/wrap-period proof
 - [kDeviceTypeInfo Producer / Readers](../profiling/kdevicetypeinfo-producer-readers.md) — the compile-time-const producer argument and the XPlane device-capability stamp path
+- [v7x Perf-Counters](../profiling/v7x-perf-counters.md) — owns the `+0x2C8`/`+0x348`/`+0x350`/`+0x358`/`+0x438`/`+0x440` perf-counter-set fields and the `DeviceType == 12` gate
+- [chip_parts.binarypb](chip-parts-binarypb.md) — the parallel compiler-side per-gen spec source; `FlopsPerSecond` cross-validated against `+0x60`/`+0x78`/`+0x80`

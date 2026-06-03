@@ -8,6 +8,8 @@ The TPU codename model was reconstructed in several passes, and the early passes
 
 The corrections fall into three buckets: **count errors** (an early pass undercounted `TpuVersion` values and HAL families), **off-by-one naming errors** (Cloud names slid one generation too high, mislabeling Ghostlite as `v5p` and 6acc60406 as `v6e`/Trillium), and **invented codenames** (the "Ghostfish" gloss that has zero occurrences in the binary). Every authoritative value below was re-verified byte-for-byte against the binary in this analysis, including two facts an earlier pass left unpinned.
 
+The reimplementation payoff is direct: a clone that adopts any superseded label here routes silicon to the wrong factory, codec, or external name. Trusting "Ghostlite = v5p" hands Ghostlite's `TpuVersion` 4 the display string and Cloud type that belong to Viperfish (`TpuVersion` 3); trusting "2 HAL families" forks the VXC class a generation early; trusting "Ghostfish" or "`TpuCodec6acc60406`" invents a symbol the binary never declares. Each row below names the binary fact that keeps the integer dispatch, the factory key, and the emitted name consistent across generations.
+
 | | |
 |---|---|
 | **Authoritative `TpuVersion` count** | 6 (enum `0..5`), bounded in `TpuVersionToString` @ `0x20b3a480` (`a1 >= 6` → fatal) |
@@ -75,16 +77,16 @@ Two facts that an earlier pass left as cross-references rather than byte-level e
 
 ## Superseded-Label Quick Table
 
-| Stale label | Where it came from | Authoritative value | Evidence |
-|---|---|---|---|
-| "5 TpuVersions" | early enumeration | 6 (`0..5`) | `TpuVersionToString` bound `>= 6`; 6 relocs @ `0x22011BF0` |
-| "2 HAL families" | early enumeration | 3 (JXC / PXC / VXC) | three factory typeinfos |
-| "Ghostlite = v5p" | off-by-one Cloud name | `v6e` / "TPU v6 lite" | `TpuVersionToExternalName` case 4 |
-| "6acc60406 = Trillium / v6e" | off-by-one marketing name | "TPU7x" / `tpu7x` | `TpuVersionToExternalName` case 5 |
-| "v5 codec = TpuCodec6acc60406" | inferred class name | anonymous codec (`sub_1E838380`) | no class symbol; only `tpu_codec_6acc60406.cc` path |
-| "Ghostfish" (gfc codename) | analogy gloss | `6acc60406` (obfuscated tag) | `ghostfish` = 0 occurrences |
-| "chip_parts internal version 6" | proto/internal conflation | proto 6 = internal 5 | `08 06` blob byte; `TpuVersionFromProto` `−1` |
-| "v5 PCI DID not recovered" | absent symbol | chip DID `0x00f2` (anon records) | bytes `0xbdf3cc4`+; `IsGfc` immediates |
+| Stale label | Where it came from | Authoritative value | Evidence | Confidence |
+|---|---|---|---|---|
+| "5 TpuVersions" | early enumeration | 6 (`0..5`) | `TpuVersionToString` bound `>= 6`; 6 relocs @ `0x22011BF0` | CERTAIN |
+| "2 HAL families" | early enumeration | 3 (JXC / PXC / VXC) | three factory typeinfos | CERTAIN |
+| "Ghostlite = v5p" | off-by-one Cloud name | `v6e` / "TPU v6 lite" | `TpuVersionToExternalName` case 4 | CERTAIN |
+| "6acc60406 = Trillium / v6e" | off-by-one marketing name | "TPU7x" / `tpu7x` | `TpuVersionToExternalName` case 5 | CERTAIN |
+| "v5 codec = TpuCodec6acc60406" | inferred class name | anonymous codec (`sub_1E838380`) | no class symbol; only `tpu_codec_6acc60406.cc` path | CERTAIN |
+| "Ghostfish" (gfc codename) | analogy gloss | `6acc60406` (obfuscated tag) | `ghostfish` = 0 occurrences | CERTAIN |
+| "chip_parts internal version 6" | proto/internal conflation | proto 6 = internal 5 | `08 06` blob byte; `TpuVersionFromProto` `−1` | CERTAIN |
+| "v5 PCI DID not recovered" | absent symbol | chip DID `0x00f2` (anon records) | bytes `0xbdf3cc4`+; `IsGfc` immediates | CERTAIN |
 
 ---
 
