@@ -1,6 +1,6 @@
 # ELF Anatomy
 
-> *All offsets, virtual addresses, and counts on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel (plugin version 0.103, build-id `89edbbe81c5b328a958fe628a9f2207d`). Other builds will differ in every address.*
+> *All offsets, virtual addresses, and counts on this page apply to `libtpu.so` from the `libtpu-0.0.40` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`, build tag `libtpu_lts_20260413_b_RC00`). The wheel, its `dist-info/METADATA`, and `libtpu/__init__.py` all report wheel version `0.0.40`; the build-id is the only unambiguous anchor and is the field every page pins to. Other builds will differ in every address.*
 
 ## Abstract
 
@@ -55,7 +55,7 @@ Three header facts shape everything below.
 - **The section header table sits at the very end of the file** (offset `0x2e979ba8`, ~745 MiB in), after the colossal `.symtab`/`.strtab`. The section headers, the symbol table, and the string tables are *not* part of any `PT_LOAD`; they exist on disk but are never mapped at runtime.
 - **52 sections including the `NULL` section `[0]`.** Tools that enumerate "real" sections report 51; both counts describe the same table.
 
-> **NOTE —** the binary is `not_stripped` in the `.symtab` sense: a full `.symtab` of `1,232,970` entries plus an `0xab824de`-byte (~172 MiB) `.strtab` is present on disk. These give every internal function a name for static analysis, but they are non-`SHF_ALLOC` and contribute nothing to the runtime image. The runtime sees only the 741-entry `.dynsym`.
+> **NOTE —** the binary is `not_stripped` in the `.symtab` sense: a full `.symtab` of `1,233,710` entries (size `0x1c3cc50` ÷ 24) plus an `0xab824de`-byte (~172 MiB) `.strtab` is present on disk. These give every internal function a name for static analysis, but they are non-`SHF_ALLOC` and contribute nothing to the runtime image. The runtime sees only the 741-entry `.dynsym`.
 
 | | | Confidence |
 |---|---|---|
@@ -205,7 +205,7 @@ The `filewrapper_toc`, `__rseq_cs`/`__rseq_cs_ptr_array` (restartable-sequences 
 
 | `[Nr]` Name | Type | Offset | Size | Confidence |
 |---|---|---|---|---|
-| `[49] .symtab` | SYMTAB | `0x221ba830` | `0x1c3cc50` (~28.4 MiB, 1,232,970 entries) | High |
+| `[49] .symtab` | SYMTAB | `0x221ba830` | `0x1c3cc50` (~28.2 MiB, 1,233,710 entries) | High |
 | `[50] .shstrtab` | STRTAB | `0x23df7480` | `0x243` | High |
 | `[51] .strtab` | STRTAB | `0x23df76c3` | `0xab824de` (~172 MiB) | High |
 
@@ -272,7 +272,7 @@ The runtime-visible symbol surface is tiny relative to the binary; the relocatio
 | Metric | Value | Confidence |
 |---|---|---|
 | `.dynsym` entries | 741 (size `0x4578` / 24) | High |
-| of which imports (`UND`) | ~1,028 across the wheel; this object's `.dynsym` resolves to a few hundred undefined + a few hundred defined exports | Medium |
+| of which imports (`UND`) | 515 with `Ndx == UND` (the index-0 `NULL` + imports) and 226 with a defined section index (the exports) | High |
 | Exported symbol families | `Tpu*` C API (`TpuExecutor`, `TpuCompiler`, `TpuProgram`, …), plus `GetPjrtApi`, `TfTpu_Initialize`, Abseil internal entry points | High |
 | Symbol versions | `GLIBC_2.x` (libc/libm/librt), `VERS_1.0` (the object's own definition) | High |
 
