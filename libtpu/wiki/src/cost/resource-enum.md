@@ -14,7 +14,7 @@ For reimplementation, the contract is:
 
 - The 23-slot `Resource` enum value→name→offset table and the `Acc` bound that fixes the count at 23.
 - The `MaxResourceCycles` reduction: which slots overlap (plain MAX), which blend at 50% (the vector-ALU port balance), and which serialize (the memory group).
-- The per-gen slot counts (PF=20, VF=28, GL=31, GF=31) and how the wider gens extend the enum past `R[22]`.
+- The per-gen slot counts (PF=20, VF=28, GL=31 from named `kResources` symbols; a fourth 31-slot table is present but its gen attribution is unconfirmed) and how the wider gens extend the enum past `R[22]`.
 - The gen-invariant `CycleTable::GetResource` op→slot table.
 - The boundary between this enum and the scheduler's `ResourceType` enum.
 
@@ -27,7 +27,7 @@ For reimplementation, the contract is:
 | **Deposit** | `ResourceVector::Acc(Resource, double)` @ `0x1c89adc0` |
 | **Reduction** | `ResourceVector::MaxResourceCycles()` @ `0x1c89b9e0` |
 | **Op→slot map** | `CycleTable::GetResource(Instruction)` @ `0x1c89ce20` (table @ `0xb438aec`) |
-| **Per-gen counts** | PF=20, VF=28, GL=31, GF=31 (`kResources` permutations) |
+| **Per-gen counts** | PF=20, VF=28, GL=31 (named symbols); GF=31 (inferred, UNVERIFIED) (`kResources` permutations) |
 
 ---
 
@@ -134,16 +134,18 @@ Each LLO instruction's throughput cycles are deposited into one named slot. The 
 
 ## Per-Gen Slot Counts
 
-The 23-slot enum is the TensorCore `ResourceVector` print surface, but the per-gen `Performance::GetResources()::kResources` arrays declare how many slots each gen actually populates — and in what iteration order. Each `kResources` is a 1-byte-per-entry **permutation** of the contiguous range `[0..N-1]`, with `N` = the per-gen resource count:
+The 23-slot enum is the TensorCore `ResourceVector` print surface, but the per-gen `Performance::GetResources()::kResources` arrays declare how many slots each gen actually populates — and in what iteration order. Each `kResources` is a 1-byte-per-entry **permutation** of the contiguous range `[0..N-1]`, with `N` = the per-gen resource count. The first three rows are byte-anchored to named symbols (`nm -C` resolves each address to a `…Performance::GetResources() const::kResources` symbol); the decoded bytes are permutations of exactly `[0..N-1]`:
 
-| Gen | `kResources` address | slot count `N` | extends past R[22]? |
-|---|---|---|---|
-| Pufferfish | `0xb43cd94` | 20 | no (no SparseCore / extra-ICI slots) |
-| Viperfish | `0xb43cda8` | 28 | yes (adds ICI / Sc sub-slots) |
-| Ghostlite | `0xb43cdc4` | 31 | yes |
-| 6acc60406 (GF) | `0xb43cde3` | 31 | yes |
+| Gen | `kResources` address | slot count `N` | extends past R[22]? | Confidence |
+|---|---|---|---|---|
+| Pufferfish | `0xb43cd94` (named `PufferfishPerformance` symbol) | 20 | no (no SparseCore / extra-ICI slots) | CERTAIN |
+| Viperfish | `0xb43cda8` (named `ViperfishPerformance` symbol) | 28 | yes (adds ICI / Sc sub-slots) | CERTAIN |
+| Ghostlite | `0xb43cdc4` (named `GhostlitePerformance` symbol) | 31 | yes | CERTAIN |
+| 6acc60406 (GF) | `0xb43cde3` (unnamed; inferred) | 31 | yes | UNVERIFIED |
 
-Pufferfish's 20-slot permutation never references `R[20]`/`R[21]`/`R[22]` — it has no SparseCore or extra-ICI resources. The wider gens (VF/GL/GF) extend the enum past `R[22]` with additional ICI sub-links and SparseCore sub-units; those high-index slots have **no name** in the TensorCore `ResourceVectorToString` (it only prints 22). Naming them would require a SparseCore-side print path that this build does not expose through the TensorCore estimator (LOW / not recovered).
+Pufferfish's 20-slot permutation never references `R[20]`/`R[21]`/`R[22]` — it has no SparseCore or extra-ICI resources. The wider gens (VF/GL) extend the enum past `R[22]` with additional ICI sub-links and SparseCore sub-units; those high-index slots have **no name** in the TensorCore `ResourceVectorToString` (it only prints 22). Naming them would require a SparseCore-side print path that this build does not expose through the TensorCore estimator (LOW / not recovered).
+
+> **UNVERIFIED —** the fourth row (`0xb43cde3`) is **not** a symbol-anchored gen. `nm` resolves exactly three `Performance::GetResources()::kResources` symbols (PF/VF/GL); the next named symbol after Ghostlite is `kProgramSharedRegistryInitialized` @ `0xb43ce10`. The 31 bytes at `0xb43cde3` are a real second permutation of `[0..30]` (immediately following Ghostlite's 31-byte table, both under the single Ghostlite symbol — i.e. `kResources` is a `[2][31]` array Ghostlite indexes by a sub-version discriminant), but no symbol or `TpuVersion` reference in this build attributes it to 6acc60406 / TPU7x. The 6acc60406 label is a plausible inference from the adjacency and slot count, not a recovered fact.
 
 ---
 
