@@ -20,7 +20,8 @@ The contract a reimplementer must honor:
 
 | | |
 |---|---|
-| **Abstract base** | `xla::jellyfish::CycleTable` — vtable `0x21c1ffb8` |
+| **Abstract base** | `xla::jellyfish::CycleTable` (pure-virtual `GetCyclesForThroughput`) |
+| **`JfCycleTable` vtable** | `0x21c1ffb8` — slots: dtor pair, `GetCyclesForThroughput` @ `0x1c89dce0`, `EstimateSinCosCost`, `EstimateTanCost` |
 | **Factory** | `CycleTable::Create(const Target&)` @ `0x1c89cc00` — dispatches on `target.tpu_version()` |
 | **Registration** | `_GLOBAL__sub_I_cycle_table.cc` @ `0x21353460` — 6 × `FunctionRegistry::Register(version, λ)` |
 | **Cycle-class enum** | `CycleTable::Instruction` — dense `0x00..0x20` (33 values); per-gen priced subset |
@@ -48,27 +49,27 @@ A reimplementer should not try to merge the two levels. The `Performance` grid i
 ## The Class Hierarchy And Per-Version Dispatch
 
 ```text
-                 xla::jellyfish::CycleTable          (abstract base, vtable 0x21c1ffb8)
+                 xla::jellyfish::CycleTable          (abstract base; JfCycleTable vtable @ 0x21c1ffb8)
                           |
    +----------+-----------+-----------+-------------+--------------+
    |          |           |           |             |              |
 JfCycleTable (TpuVersion 0 + 1)   PfCycleTable     VfCycleTable   GlcCycleTable   GfcCycleTable
   flat offset-LUT                  (TpuVersion 2)   (TpuVersion 3) (TpuVersion 4)  (TpuVersion 5)
-  Jellyfish v3 / Dragonfish        Pufferfish v4    Viperfish v5e  Ghostlite v6L   Trillium v6e
+  jellyfish v2 / dragonfish v3     pufferfish v4    viperfish v5   ghostlite v6L   6acc60406 (TPU7x)
 ```
 
 The six factories are registered once by the `cycle_table.cc` static initializer (`_GLOBAL__sub_I_cycle_table.cc` @ `0x21353460`), each as a `FunctionRegistry<TpuVersion, unique_ptr<CycleTable>(const Target&)>` entry. Selection happens in `CycleTable::Create` @ `0x1c89cc00`, which reads the version off the `Target`, looks up the lambda, and invokes it; a missing registration is a fatal log (`"No cycle table registered for platform: "`, `cycle_table.cc:960`).
 
 | `TpuVersion` | Codename            | Subclass        | `GetCyclesForThroughput` | Read strategy | Confidence |
 |-------------:|---------------------|-----------------|--------------------------|---------------|------------|
-| 0            | (pre-Jellyfish, v2) | `JfCycleTable`  | `0x1c89dce0`             | flat offset-LUT | CONFIRMED |
-| 1            | Jellyfish (v3)      | `JfCycleTable`  | `0x1c89dce0`             | flat offset-LUT (2nd registry entry) | CONFIRMED |
-| 2            | Pufferfish (v4)     | `PfCycleTable`  | `0x1c89de60`             | `switch` → `GetResourceUsage(instr,res)` | CONFIRMED |
-| 3            | Viperfish (v5e)     | `VfCycleTable`  | `0x1c89e2c0`             | `switch` → `GetResourceUsage(instr,res)` | CONFIRMED |
-| 4            | Ghostlite (v6 lite) | `GlcCycleTable` | `0x1c89e980` (wrapper)   | helper `0x1c89ed20` + `CHECK(ok)` | CONFIRMED |
-| 5            | Trillium (v6e)      | `GfcCycleTable` | `0x1c89f060` (wrapper)   | helper `0x1c89f400` + `CHECK(ok)` | CONFIRMED |
+| 0            | jellyfish (v2)      | `JfCycleTable`  | `0x1c89dce0`             | flat offset-LUT (`kUnusedRegisterJfCycleTable`) | CONFIRMED |
+| 1            | dragonfish (v3)     | `JfCycleTable`  | `0x1c89dce0`             | flat offset-LUT (`kUnusedRegisterDfCycleTable`) | CONFIRMED |
+| 2            | pufferfish (v4)     | `PfCycleTable`  | `0x1c89de60`             | `switch` → `GetResourceUsage(instr,res)` | CONFIRMED |
+| 3            | viperfish (v5)      | `VfCycleTable`  | `0x1c89e2c0`             | `switch` → `GetResourceUsage(instr,res)` | CONFIRMED |
+| 4            | ghostlite (v6 lite) | `GlcCycleTable` | `0x1c89e980` (wrapper)   | helper `0x1c89ed20` + `CHECK(ok)` | CONFIRMED |
+| 5            | `6acc60406` (TPU7x) | `GfcCycleTable` | `0x1c89f060` (wrapper)   | helper `0x1c89f400` + `CHECK(ok)` | CONFIRMED |
 
-> **NOTE — `TpuVersion` 0 and 1 share one class.** Both the pre-Jellyfish and Jellyfish-v3 factories produce a `JfCycleTable`. The Jellyfish/Dragonfish *throughput* table is byte-identical between the two; Dragonfish differs only in its `Performance` grid by two cells (the matmul/matprep base-latency cells `[+0x28]`/`[+0x2c]`), and neither of those is a throughput-LUT target — so `GetCyclesForThroughput` is identical for JF and DF. See [JfCycleTable](jf-cycletable.md).
+> **NOTE — `TpuVersion` 0 and 1 share one class.** Both the jellyfish (v0) and dragonfish (v1) factories produce a `JfCycleTable` — the two registry entries bind the symbols `kUnusedRegisterJfCycleTable` and `kUnusedRegisterDfCycleTable` respectively, both to the same `JfCycleTable` factory lambda. Both read `GetCyclesForThroughput` @ `0x1c89dce0` over the same throughput offset-LUT; the gens differ only in their `Performance` grids, and the cells that differ are not throughput-LUT targets — so `GetCyclesForThroughput` is identical for JF and DF. See [JfCycleTable](jf-cycletable.md).
 
 The two later gens (`Glc`, `Gfc`) wrap a `…Helper` that returns an `absl::Status`-style result; the public `GetCyclesForThroughput` calls the helper and `CHECK`s success (`MakeCheckFailString(..., "cycles is OK")`, fatal at `cycle_table.cc:817`) before returning the cycle integer. A reimplementation can flatten this into a direct return; the wrapper exists only to surface "unschedulable class" as a fatal rather than a silent default.
 
@@ -84,14 +85,14 @@ The two later gens (`Glc`, `Gfc`) wrap a `…Helper` that returns an `absl::Stat
 | `0x01`–`0x04` | matprep variants (bf16/fp8 family) | default 1 | CONFIRMED |
 | `0x05` | Latch / push gains, bf16 | 8 | CONFIRMED |
 | `0x06` | Latch, int4 | default 1 | CONFIRMED |
-| `0x07`,`0x08` | Trillium new latch paths 48/50 | default 1 | CONFIRMED |
+| `0x07`,`0x08` | `6acc60406` new latch paths (latch_mode 48/50) | default 1 | CONFIRMED |
 | `0x09` | Latch, fp8 | default 1 | CONFIRMED |
-| `0x0a` | `PushGainsS4` — fatal on PF/VF (`"Unsupported PushGainsS4."`) | default 1 | CONFIRMED |
+| `0x0a` | `PushGainsS4` — fatal on PF/VF (`"Unsupported PushGainsS4."`, `cycle_table.cc:682`) | default 1 | CONFIRMED |
 | `0x0b` | Transposed bf16 latch | 8 | CONFIRMED |
 | `0x0c` | Transposed int8 latch | default 1 | CONFIRMED |
-| `0x0d`,`0x0e` | Trillium transposed latch 49/51 | default 1 | CONFIRMED |
+| `0x0d`,`0x0e` | `6acc60406` transposed latch (latch_mode 49/51) | default 1 | CONFIRMED |
 | `0x0f` | Transposed fp8 latch | default 1 | CONFIRMED |
-| `0x10` | `PushGainsS4t` — fatal, same as `0x0a` | default 1 | CONFIRMED |
+| `0x10` | transposed `PushGainsS4` — fatal on PF/VF, same `"Unsupported PushGainsS4."` string as `0x0a` | default 1 | CONFIRMED |
 | `0x11` | Vector EUP class | default 1 | CONFIRMED |
 | `0x12`,`0x13` | XLU rotate in/out (RotIn/RotOut) | 1 | CONFIRMED |
 | `0x14` | Shuffle / permute | 1 | CONFIRMED |
@@ -126,7 +127,7 @@ uint32_t CycleTableInstruction(const LloInstruction *insn) {
         uint8_t f = insn->matmul_data_format() - 1;
         if (f >= 0xA)
             LogFatal("Unsupported matmul data format ", /*cycle_table.cc:464*/);
-        return unk_B438AC4[f];                         // fmtLUT @ 0xb438ac4, first 11 × int32
+        return unk_B438AC4[f];                         // fmtLUT @ 0xb438ac4, indices 0..9 read
     }
     LogFatal("Unsupported instruction ", /*cycle_table.cc:470*/);
 }
@@ -137,11 +138,11 @@ Two `.rodata` lookup tables turn the MXU modifier into a cycle class:
 | Table | Address | Shape | Maps | Confidence |
 |-------|---------|-------|------|------------|
 | `latchLUT` (`unk_B4389F4`) | `0xb4389f4` | 52 × `int32`, valid mask `0xF000003FFFC3F` | `GainLatchMode` → `Instruction` | CONFIRMED |
-| `fmtLUT` (`unk_B438AC4`) | `0xb438ac4` | first 11 × `int32` (JF/DF read), `matmul_data_format()-1` index | `MatmulDataFormat` → `Instruction` | CONFIRMED |
+| `fmtLUT` (`unk_B438AC4`) | `0xb438ac4` | `int32[]`, indexed by `matmul_data_format()-1`; classifier reads indices `0..9` only (`< 0xA` guard) | `MatmulDataFormat` → `Instruction` | CONFIRMED |
 
-The latch LUT (mask bits verified against the raw table): `0x00/0x02/0x04 → 5`, `0x01/0x03/0x05 → 11`, `0x0a → 12`, `0x0b/0x0e/0x10 → 6`, `0x0c → 9`, `0x0d → 15`, `0x0f/0x11 → 12`, `0x12/0x14/0x16/0x18 → 9`, `0x13/0x15/0x17/0x19 → 15`, `0x30 → 7`, `0x31 → 13`, `0x32 → 8`, `0x33 → 14`. The fmt LUT (index = `format-1`) reads `[0,1,1,1,4,4,4,4,2,3,1]`, i.e. `fmt 1 → 0`, `fmt 2/3/4 → 1`, `fmt 5/6/7/8 → 4`, `fmt 9 → 2`, `fmt 10 → 3`, `fmt 11 → 1`. The vector/EUP/matrix-result classes (`0x11`..`0x20`) are produced by non-MXU emitter paths, not by `CycleTableInstruction`.
+The latch LUT (mask bits verified against the raw table): `0x00/0x02/0x04 → 5`, `0x01/0x03/0x05 → 11`, `0x0a → 12`, `0x0b/0x0e/0x10 → 6`, `0x0c → 9`, `0x0d → 15`, `0x0f/0x11 → 12`, `0x12/0x14/0x16/0x18 → 9`, `0x13/0x15/0x17/0x19 → 15`, `0x30 → 7`, `0x31 → 13`, `0x32 → 8`, `0x33 → 14`. The fmt LUT (index = `format-1`) reads `[0,1,1,1,4,4,4,4,2,3,1]`; the `< 0xA` guard means only indices `0..9` are reachable, i.e. `fmt 1 → 0`, `fmt 2/3/4 → 1`, `fmt 5/6/7/8 → 4`, `fmt 9 → 2`, `fmt 10 → 3`. The 11th entry (`fmt 11 → 1`) exists in `.rodata` but is rejected by this classifier as a fatal `"Unsupported matmul data format "` (`cycle_table.cc:464`); it is read only by later-gen paths. `CycleTableInstruction` itself is gen-independent — the same classifier produces MXU cycle classes for every gen. The vector/EUP/matrix-result classes (`0x11`..`0x20`) are produced by non-MXU emitter paths, not by `CycleTableInstruction`.
 
-> **NOTE — the format LUT is wider than the JF reader.** The `matmul_data_format()-1` validity check is `< 0xA`, so the `JfCycleTable` path reads only the first 11 fmt entries. The packed-int8/int4 format values (beyond the JF set) are used by the later-gen paths and are documented with [matmul mode modifiers](matmul-mode-modifiers.md); they are flagged INFERRED for JF/DF here because the JF classifier rejects them.
+> **NOTE — the format LUT is wider than the classifier reads.** The `matmul_data_format()-1` validity check is `< 0xA`, so `CycleTableInstruction` reads only the first 10 fmt entries (formats 1..10). The 11th-and-beyond format values (packed int8/int4) are used by later-gen `Performance`/`MxuLatency` paths and are documented with [matmul mode modifiers](matmul-mode-modifiers.md); the shared classifier rejects them as fatal.
 
 ---
 
