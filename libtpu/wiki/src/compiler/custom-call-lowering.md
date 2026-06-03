@@ -11,7 +11,7 @@ The most important structural fact: `xla::jellyfish::CustomCallRegistration` is 
 For reimplementation, the contract this page fixes is:
 
 - **The five-facet registry** — its five `Register*` entry points, their exact callback signatures, the `CompilationProperties` declarative-metadata struct, and the `google_init_module_*` seeding mechanism via `.init_array`.
-- **The target catalog** — 54 HIGH-confidence target strings across five categories, each with the handler/namespace constant that registers it and the lowering action it triggers.
+- **The target catalog** — ~52 HIGH-confidence target strings across five categories, each with the handler/namespace constant that registers it and the lowering action it triggers.
 - **The six lowering-action kinds** — pre-pass HLO rewrite, marker strip, emit-helper → LLO, Mosaic cached-MLIR-body, runtime/host-action passthrough, and SPMD-partition-only — and which targets take which.
 - **The Mosaic import seam** — how `tpu_custom_call` (the escape hatch) carries a serialized `tpu`-dialect module in `backend_config.custom_call_config.mlir_module`, is parsed/cached as a `MosaicMlirCacheEntry`, and routed through `CustomCallEmitter::Emit`. (The downstream `tpu`-dialect pipeline is documented in [MHLO → XTile → tpu Lowering](mhlo-xtile-tpu-lowering.md) and [Mosaic Overview](mosaic-overview.md) — linked, not duplicated.)
 - **The validation layers and error paths** — `HloVerifier` → `TpuHloSupportChecker` (where `__cudnn$…`/`__triton$…` targets are rejected) → `TpuCustomCallLegalizer`, and the recovered DCHECK/status strings each emits.
@@ -26,7 +26,7 @@ For reimplementation, the contract this page fixes is:
 | **Mosaic escape target** | `"tpu_custom_call"` → `CustomCallEmitter::Emit` @ `0x111ef740`, body via `GetCachedCustomCallBody` @ `0x13e31860` |
 | **Mosaic cache** | `MosaicMlirCacheEntry`, keyed by `tsl::Fprint128`, stored on `HloModule` |
 | **Validation** | `HloVerifier` → `xla::TpuHloSupportChecker` → `TpuCustomCallLegalizer::RunImpl` @ `0x11036080` |
-| **Catalog size** | 54 distinct HIGH-confidence target strings |
+| **Catalog size** | ~52 distinct HIGH-confidence target strings |
 | **Confidence** | HIGH (symbol/string-anchored) unless a row or callout says otherwise |
 
 ---
@@ -86,7 +86,7 @@ Recovered registrations (verbatim from `.rodata`) show how sparse these usually 
 | `IciSdcTestEmitter::kKey` | `{ .has_communication = true, .supports_hlo_dedup = true }` |
 | `SdcCheckerGetStatsEmitter::kKey`, `SdcCheckerReportSdcEventEmitter::kKey`, `SdcCheckerStartWithAlternativeCoresEmitter::kKey` | `{ .has_communication = false, .supports_hlo_dedup = true }` |
 
-> **NOTE — `tpu_custom_call` cannot use a static `CompilationProperties`.** Unlike the fixed-target handlers above, the Mosaic escape has no compile-time-known properties — its behavior is the user's serialized MLIR. Its `RegisterCompilationProperties` callback therefore *queries the cached body at lookup time* (`MosaicMlirCacheEntry::RequiresMxuAssigner` / `EmitsSdcChecksums` / `IsSparseCoreKernel`) to populate the struct dynamically. See [The Mosaic Import Seam](#the-mosaic-import-seam).
+> **NOTE — `tpu_custom_call` cannot use a static `CompilationProperties`.** Unlike the fixed-target handlers above, the Mosaic escape has no compile-time-known properties — its behavior is the user's serialized MLIR. Its `RegisterCompilationProperties` callback therefore *queries the cached body at lookup time* to populate the struct dynamically. The recovered callback body (verbatim source-quote in `.rodata`) reads `has_communication` from the proto and queries `MosaicMlirCacheEntry::EmitsSdcChecksums` (→ `supports_internal_checksums`) and `MosaicMlirCacheEntry::RequiresMxuAssigner` (→ both `requires_mxu_assigner` and `check_fifos_are_empty`), with `supports_hlo_dedup = true` and `instruction_can_change_layout = true` fixed. See [The Mosaic Import Seam](#the-mosaic-import-seam).
 
 ### Registry seeding — `google_init_module_*`
 
@@ -99,11 +99,11 @@ Each handler ships a `google_init_module_<handler>()` function wired through the
 | `google_init_module_assume_handler` | `0x213ed5e0` | `AssumeGatherIndicesInBound` |
 | `google_init_module_qr_handler` | `0x213edd80` | `QrDecompositionBlock`, `CompactWyHelper`, `InvertDiagBlocks*` |
 | `google_init_module_resize_handler` | `0x213edee0` | `ResizeBilinear[Grad]`, `ResizeNearest[Grad]` |
-| `google_init_module_topk_handler` | `0x213ee300` | `TopK`, `TopkWithUnique` |
+| `google_init_module_topk_handler` | `0x213ee300` | `TopK`, `TopKWithUnique` |
 | `google_init_module_x64_handler` | `0x213ee500` | `X64Combine`, `X64SplitLow/High` |
 | `google_init_module_sliceid_handler` | `0x213ee260` | `SliceId` |
 | `google_init_module_xla_llo_log_emitter` | `0x213ed920` | `kTpuLogCustomCallTarget` |
-| `google_init_module_xla_sdc_checker_emitters` | `0x213ed220` | `xla-sdc-checker-*`, `xla-sdc-ici-test` |
+| `google_init_module_xla_sdc_checker_emitters` | `0x213ed220` | `xla-sdc-checker-get-stats`, `xla-sdc-checker-report-sdc-event`, `xla-sdc-checker-ici-sdc-test`, `xla-sdc-checker-start-with-alt-cores` |
 | `megascale_custom_call_handler::google_init_module_…` | `0x213ed440` | `xla.megascale.provide_metadata` |
 
 Plus per-emitter `google_init_module_*_emitter` initializers (`partial_reduce_emitter`, `window_prefetch_emitter`, `mosaic_broadcast_emitter`, `cholesky_emitter`, `qr_emitter`, `eigh_emitter`, `lu_emitter`, `invert_diag_blocks_emitters`, `compact_wy_emitter`, `padding_emitters`, `barrier_start_emitter`, `async_collective_{start,done}_emitter`, `barna_core_address_handler_emitter`, `topk_batch_major_small_k_emitter`). A reimplementation must guarantee the registry is fully populated before the HLO→LLO loop runs — the `.init_array` ordering achieves this at process start, before any compilation.
@@ -116,8 +116,8 @@ The `custom_call_target` field on `HloCustomCallInstruction` is a plain `std::st
 
 | Convention | Meaning | Examples |
 |---|---|---|
-| **Bare CamelCase** | built-in TPU primitive lowerings | `Cholesky`, `QrDecompositionBlock`, `EighTpu`, `LuDecompositionBlock`, `TopK`, `ResizeBilinear`, `Pin`, `Unpin`, `WindowPrefetch`, `AllocateBuffer`, `PadToStatic`, `SliceToDynamic`, `X128Combine`, `X64Combine`, `MaskAggregatorBlock`, `AssumeGatherIndicesInBound`, `MoveToHost`, `MoveToDevice`, `Sharding`, `SPMDFullToShardShape`, `RngBitGenerator`, `FlashAttention`, `Recover` |
-| **lowercase_underscore** | generic dispatch containers | `tpu_custom_call` (Mosaic body in `backend_config`), `mosaic_kernel` (alternate), `inspect_sharding` (debug), `single_tpu_custom_call` (legalizer sentinel) |
+| **Bare CamelCase** | built-in TPU primitive lowerings | `Cholesky`, `QrDecompositionBlock`, `EighTpu`, `LuDecompositionBlock`, `TopK`, `TopKWithUnique`, `ResizeBilinear`, `Pin`, `Unpin`, `WindowPrefetch`, `AllocateBuffer`, `PadToStatic`, `SliceToDynamic`, `X128Combine`, `X64Combine`, `MaskAggregatorBlock`, `AssumeGatherIndicesInBound`, `MoveToHost`, `MoveToDevice`, `Sharding`, `SPMDFullToShardShape`, `BarrierStart`, `InspectSharding` |
+| **lowercase_underscore** | generic dispatch containers | `tpu_custom_call` (Mosaic body in `backend_config`), `single_tpu_custom_call` (legalizer sentinel), `recover_custom_call` (debug-replay), `annotate_device_placement` (device-placement marker) |
 | **Dotted namespace** | SDY / MegaScale escape | `xla.sdy.Sharding`, `xla.sdy.ShardingGroup`, `xla.sdy.FuncResultSharding`, `xla.sdy.GlobalToLocalShape`, `xla.sdy.LocalToGlobalShape`, `xla.sdy.PropagationBarrier`, `xla.megascale.provide_metadata` |
 
 Two parsing rules are anchored:
@@ -129,7 +129,7 @@ Two parsing rules are anchored:
 
 ## Custom-Call Target Catalog
 
-54 distinct HIGH-confidence target strings. Categorized; each row lists the namespace constant that registers it (recovered as a `k…` rodata anchor) and the lowering action. Action codes (A)–(F) are defined in [The Six Lowering Actions](#the-six-lowering-actions).
+~52 distinct HIGH-confidence target strings. Categorized; each row lists the namespace constant that registers it (recovered as a `k…` rodata anchor) and the lowering action. Action codes (A)–(F) are defined in [The Six Lowering Actions](#the-six-lowering-actions).
 
 ### Sharding markers
 
@@ -138,7 +138,6 @@ Two parsing rules are anchored:
 | `Sharding` | `sharding_handler::kSharding` | (B) consumed by `ShardingPropagation`; bracket removed by `HloDomainRemover("sharding", …)` |
 | `SPMDFullToShardShape` | (no handler; SpmdPartitioner) | (F) global→per-shard shape boundary; becomes a `Reshape` in the partitioned graph |
 | `SPMDShardToFullShape` | (no handler; SpmdPartitioner) | (F) inverse; error if no sharding annotation present |
-| `Sharding-mhlo` | mhlo importer | rewritten to `Sharding` during MHLO→HLO |
 
 ### SDY round-trip (Shardy)
 
@@ -150,7 +149,7 @@ Two parsing rules are anchored:
 | `xla.sdy.GlobalToLocalShape` | `kGlobalToLocalShapeCallTargetName` | reshape boundary for `sdy::ManualComputationOp` round-trip |
 | `xla.sdy.LocalToGlobalShape` | `kLocalToGlobalShapeCallTargetName` | inverse of above |
 | `xla.sdy.PropagationBarrier` | PropagationBarrier importer | → `mlir::sdy::PropagationBarrierOp`; needs `allowed_direction` attr |
-| `inspect_sharding` | `RemoveInspectShardingCustomCall` | (B) removed unconditionally (JAX `inspect_array_sharding`) |
+| `InspectSharding` | `RemoveInspectShardingCustomCall` | (B) removed unconditionally (JAX `inspect_array_sharding`); registered as a partitioner via `RegisterCustomCallPartitioner("InspectSharding")` |
 
 ### Memory placement
 
@@ -161,7 +160,7 @@ Two parsing rules are anchored:
 | `Pin` | `memory_annotations::kPinToDeviceCustomCallTarget` | (C) tensor→memref pin; "Pin custom_call should have a memref output" |
 | `Pin` (SRAM) | `memory_annotations::kPinToDeviceSramCustomCallTarget` | (C) forces SRAM/VMEM placement |
 | `Unpin` | memory_annotations_handler | (C) memref→tensor |
-| `DevicePlacement` | `memory_annotations::kDevicePlacement` | forces device placement; `instruction_can_change_layout=false` |
+| `annotate_device_placement` | `memory_annotations::kDevicePlacement` / `device_placement_handler::kDevicePlacement` | forces device placement; `instruction_can_change_layout=false` (the `kDevicePlacement` constant resolves to the string `"annotate_device_placement"`) |
 
 ### Linear-algebra block primitives
 
@@ -181,8 +180,8 @@ Two parsing rules are anchored:
 | Target | Registers via | Action / lowering |
 |---|---|---|
 | `TopK` | `topk_handler::kTopk` | (C) emit + (CanFuse=`true`) + cost + properties |
-| `TopkWithUnique` | `topk_handler::kTopkWithUnique` | (C) same family |
-| `TopkBatchMajorSmallK` | `topk_batch_major_small_k_handler::k…` | (C) specialised; CanFuse=`false` (recovered verbatim) |
+| `TopKWithUnique` | `topk_handler::kTopkWithUnique` | (C) same family |
+| `TopKBatchMajorSmallK` | `topk_batch_major_small_k_handler::kTopkBatchMajorSmallK` | (C) specialised; CanFuse=`false` (recovered verbatim) |
 | `ApproxTopK` | open-source XLA | verifier: even operand count, exactly 1 called_computation |
 | `PartialReduce` | `partial_reduce_handler::kPartialReduce` | (C)+(F) `PartialReduceEmitter`; CanFuse=`true`; cost analysis registered |
 
@@ -196,7 +195,7 @@ Two parsing rules are anchored:
 | `SliceToDynamic` | `dynamic_padding_handler::kSliceToDynamic` | (C) `dynamic_padding_emit_helper` |
 | `ResizeBilinear` / `Grad` | `resize_handler::kResizeBilinear[Grad]` | (C)+(F) custom HLO cost analysis per variant |
 | `ResizeNearest` / `Grad` | `resize_handler::kResizeNearest[Grad]` | (C)+(F) `ResizeNearestHloCostAnalysis` |
-| `RngBitGenerator` | `TpuRngBitGeneratorExpander` | (A) rewritten to Philox/ThreeFry HLO; does not survive into MLIR |
+| `RngBitGenerator` (HLO opcode, **not** a custom-call target) | `TpuRngBitGeneratorExpander` | (A) the `kRngBitGenerator` opcode is rewritten to Philox/ThreeFry HLO by the expander; listed here only because it is sometimes mistaken for a custom-call target — it never reaches the registry |
 
 ### Runtime intrinsics / precision / async / host / SDC
 
@@ -216,7 +215,7 @@ Two parsing rules are anchored:
 | `HostExecute` | host_callback flow | (E) host execute; must have exactly one called computation |
 | `xla.megascale.provide_metadata` | `runtime::kXlaMegaScaleCustomCallMetadataName` | (E) MegaScale collective metadata; `instruction_can_change_layout=false` |
 | `xla-sdc-checker-start-with-alt-cores` | `SdcCheckerStartWithAlternativeCoresEmitter::kKey` | (C)/(E) SDC checker start |
-| `xla-sdc-ici-test` / `…-get-stats` / `…-report-event` | `IciSdcTestEmitter`/`SdcCheckerGetStatsEmitter`/`SdcCheckerReportSdcEventEmitter::kKey` | (C)/(E) SDC instrumentation |
+| `xla-sdc-checker-ici-sdc-test` / `xla-sdc-checker-get-stats` / `xla-sdc-checker-report-sdc-event` | `IciSdcTestEmitter`/`SdcCheckerGetStatsEmitter`/`SdcCheckerReportSdcEventEmitter::kKey` | (C)/(E) SDC instrumentation |
 | `kTpuLogCustomCallTarget` | `LogEmitter::kTpuLogCustomCallTarget` | (C) `OpEmitter::Emit<LogEmitter>` (recovered lambda) |
 
 ### The Mosaic escape
@@ -225,7 +224,7 @@ Two parsing rules are anchored:
 |---|---|---|
 | `tpu_custom_call` | `CustomCallEmitter` + `MosaicMlirCacheEntry` | (D) **the escape hatch** — `backend_config` carries the serialized `tpu`-dialect MLIR module; see below |
 
-**Targets recognized but consumed silently** (rewritten into a CustomCall as an internal marker by another pass, then removed/expanded): `mosaic_kernel`, `tf.XlaCallModule` (→ `XlaCallModule` MLIR op), `single_tpu_custom_call` (legalizer sentinel), `recover_custom_call` / `Recover` (debug-replay provenance). The keys `xla.sdy.in_shardings` / `out_shardings` are **frontend-attribute names, not target strings**.
+**Targets recognized but consumed silently** (rewritten into a CustomCall as an internal marker by another pass, then removed/expanded): `tf.XlaCallModule` (the MLIR-op-backed module-call carrier), `single_tpu_custom_call` (legalizer sentinel), `recover_custom_call` (debug-replay provenance). The keys `xla.sdy.in_shardings` / `xla.sdy.out_shardings` are **frontend-attribute names, not target strings**.
 
 **Explicitly rejected** (never reach the registry): any `__<vendor>$…` target — filtered by `TpuHloSupportChecker` on the reserved `$` prefix.
 
@@ -233,12 +232,12 @@ Two parsing rules are anchored:
 
 ## The Six Lowering Actions
 
-Across all 54 targets, dispatch resolves to one of six action *kinds*. A single target may take more than one (e.g. `PartialReduce` is both (C) and (F)).
+Across all catalog targets, dispatch resolves to one of six action *kinds*. A single target may take more than one (e.g. `PartialReduce` is both (C) and (F)).
 
 | Code | Action | When applied | Example targets |
 |---|---|---|---|
 | **(A)** | Rewrite to other HLO at pre-pass time | HLO PreOptimization | `Cholesky`→`TpuCholeskyExpander`, `RngBitGenerator`, Qr/Eigh/Lu/TriangularSolve/Fft opcodes |
-| **(B)** | Strip marker after consumption | HLO mid-pipeline | `Sharding`→`ShardingPropagation`, `inspect_sharding`→`RemoveInspectShardingCustomCall`, `MoveTo*`→`HostOffloader` |
+| **(B)** | Strip marker after consumption | HLO mid-pipeline | `Sharding`→`ShardingPropagation`, `InspectSharding`→`RemoveInspectShardingCustomCall`, `MoveTo*`→`HostOffloader` |
 | **(C)** | Lower to MLIR/LLO via emit-helper | HLO→LLO lowering loop | `TopK`, `PartialReduce`, `Resize*`, `AllocateBuffer`, `WindowPrefetch`, `PadToStatic`, `SliceToDynamic`, `DeviceId`, `SliceId`, `X64*`, the linalg blocks |
 | **(D)** | Lower via cached MLIR module body | Mosaic path | `tpu_custom_call` (sole target) |
 | **(E)** | Preserved to runtime as host-action marker | runtime emission | `xla.megascale.provide_metadata`, `HostExecute`, `xla-sdc-checker-*` |
@@ -258,13 +257,14 @@ Targets in this class never reach the registry's emit-helper — an HLO pre-pass
 | `Fft` opcode | `xla::FftExpander` |
 | `RngBitGenerator` | `xla::jellyfish::TpuRngBitGeneratorExpander` |
 | `Gather` / `Scatter` | `xla::TpuGatherExpander` / `xla::TpuScatterExpander` |
-| `XlaMosaic` | `xla::jellyfish::MosaicFusion` (lifts HLO into Mosaic-eligible kernels) |
 | `RaggedAllToAll` | `xla::jellyfish::RaggedAllToAllExpander` |
+
+`xla::jellyfish::MosaicFusion` also runs at this stage, but it is **not** triggered by a custom-call target — it lifts ordinary HLO sub-graphs into Mosaic-eligible kernels (emitting fresh `tpu_custom_call` instructions), so it has no entry in the registry catalog.
 
 ### (B) Marker strip
 
 - `ShardingPropagation` consumes `Sharding`/`SPMDFullToShardShape`/`SPMDShardToFullShape`, emits `kDomain` brackets, then `HloDomainRemover("sharding", ApplyDomainSharding)` drops the brackets while retaining the sharding attribute ([Sharding Propagation](sharding-propagation.md)).
-- `RemoveInspectShardingCustomCall::RunImpl` (`0x1278a040`) erases every `inspect_sharding`, forwarding the operand.
+- `RemoveInspectShardingCustomCall::RunImpl` (`0x1278a040`) erases every `InspectSharding`, forwarding the operand.
 - `HostOffloader::HandleMoveToHostCustomCall` (`0x110778a0`) / `HandleMoveToDeviceCustomCall` (`0x11078b00`) reset producer `memory_space` and delete the call.
 
 ### (C) Emit-helper path — the registry default
@@ -321,22 +321,24 @@ The `CustomCallConfig` proto is confirmed present (`CustomCallConfig::{ByteSizeL
 ```
 message CustomCallConfig {
   bytes  mlir_module;          // serialized tpu-dialect module (bytecode or textual)
-  string kernel_name;
-  repeated InputMemorySpaceColor  input_memory_colors;   // per operand
-  repeated OutputMemorySpaceColor output_memory_colors;  // per result (tuple-arity must match)
+  string host_mlir_module;     // host computation used for shape inference; "" if shapes static
+  string kernel_name;          // recovered from the ",kernel_name=" descriptor fragment
+  repeated InputMemorySpaceColor  input_memory_space_colors;   // per operand
+  repeated OutputMemorySpaceColor output_memory_colors;        // per result (accessor confirmed; tuple-arity must match)
   bool   has_communication;    // survives async-fusion as a comm boundary if true
   int64  collective_id;        // required for tpu.get_barrier_semaphore in the body
-  CustomCallCost cost_estimate;        // {double flops, transcendentals, bytes_accessed}
-  CustomCallMetadata metadata;         // opaque user metadata (xprof/trace)
+  CustomCallCost cost_estimate;        // {flops, transcendentals, bytes_accessed} — proto type confirmed
 }
 ```
+
+> The `input_memory_space_colors` / `output_memory_colors` field-name pair is recovered from descriptor strings and `custom_call_config.output_memory_colors()` accessor call sites; the asymmetric naming (`_space_` on input only) is as observed in the binary, not a transcription artifact. The submessage types are `CustomCallConfig_InputMemorySpaceColor` / `CustomCallConfig_OutputMemorySpaceColor`. A standalone `metadata` field is **not** confirmed; metadata is attached via `SetCustomCallMetadata` on the instruction rather than a named proto field — that earlier claim is removed.
 
 ### Pipeline: HLO entry → cached body → LLO
 
 1. **HLO entry.** The frontend emits one `kCustomCall("tpu_custom_call")` per `pl.kernel`, with `custom_call_config.mlir_module` filled.
 2. **`MosaicFusion`** (`RunImpl` `0x10f12500`, wrapped in `HloPassFix`) lifts surrounding HLO sub-graphs into Mosaic-eligible kernels, to fixed point.
 3. **`TpuCustomCallLegalizer::RunImpl`** (`0x11036080`) classifies each call (TensorCore vs SparseCore vs Megachip) via `ConfigureSparseCoreConfig` (`0x110355e0`) / `ConfigureMegachipParallelism` (`0x11035a20`); SparseCore kernels are offloaded in-place via `OffloadOneSparseCoreCustomCall` (`0x11035700`). See [Lower to SparseCore LLVM](lower-to-sparsecore-llvm.md).
-4. **`TpuCustomCallMemorySpacePolicy::RunImpl`** (`0x110364a0`) assigns `input_memory_colors`/`output_memory_colors` via `RunHbmPolicy` (`0x11038120`) or `RunMsaReservationPolicy` (`0x110367c0`), driven by the `--xla_tpu_tpu_custom_call_memory_space_spec` proto. See [MSA Reservation / HBM Policy](msa-reservation-hbm-policy.md).
+4. **`TpuCustomCallMemorySpacePolicy::RunImpl`** (`0x110364a0`) assigns `input_memory_space_colors`/`output_memory_colors` via `RunHbmPolicy` (`0x11038120`) or `RunMsaReservationPolicy` (`0x110367c0`), driven by the `--xla_tpu_tpu_custom_call_memory_space_spec` proto. See [MSA Reservation / HBM Policy](msa-reservation-hbm-policy.md).
 5. **`TpuCustomCallScopedVmemAdjuster::RunImpl`** (`0x1104de40`) runs a trial `BufferAssignment` (via the `absl::AnyInvocable<StatusOr<…BufferAssignment…>(HloModule*, Target const&)>` captured at construction) and rewrites the scoped-VMEM byte count to the actual requirement.
 6. **HLO→LLO lowering** via `CustomCallEmitter::Emit` (`0x111ef740`):
    - `GetCustomCallAndConfig(HloInstruction const*)` (`0x111fe020`) extracts the `(HloCustomCallInstruction*, CustomCallConfig)` pair.
@@ -403,7 +405,7 @@ Representative recovered status/DCHECK strings (verbatim in `.rodata` / decompil
 | Five-facet registry with the listed `Register*` entry points/signatures | `FunctionRegistry<std::string, CompilationProperties(HloInstruction const*)>::Register` + `RegisterCanFuse`/`RegisterSpmdPartitioningVisitor` demangled signatures; `Register*` source-quotes in `.rodata` | HIGH |
 | `LoweringEmitter` callback signature incl. `BackendConfigMap = flat_hash_map<HloInstruction const*, unique_ptr<BackendConfig>>` | recovered from `__policy_func` thunk + verbatim lambda bodies | HIGH |
 | `CompilationProperties` six-field struct + per-target values | designated-initializer source-quotes (`kSharding`, `WindowPrefetch`, SDC keys, …) | HIGH |
-| 54-target catalog with handler constants | `k…` rodata anchors + per-handler `google_init_module_*` symbols | HIGH |
+| ~52-target catalog with handler constants | `k…` rodata anchors + per-handler `google_init_module_*` symbols; each verbatim string confirmed present in the binary | HIGH |
 | Mosaic import seam (`GetCachedCustomCallBody`/`GetMlirModule`/`MosaicMlirCacheEntry`/`CustomCallEmitter::Emit`) | all symbols present at listed addresses; `Fprint128`-keyed `HloModule::{Set,Get}CacheEntry<MosaicMlirCacheEntry>`; ctor param list recovered | HIGH |
 | Three legalization passes + signatures | `TpuCustomCallLegalizer`/`MemorySpacePolicy`/`ScopedVmemAdjuster` `RunImpl` and helper signatures demangled; ctor `AnyInvocable<…BufferAssignment…>` recovered | HIGH |
 | Error/DCHECK strings | reserved-`$` and unimplemented strings confirmed in decompiled output; remainder from `.rodata` quoted source | HIGH |
