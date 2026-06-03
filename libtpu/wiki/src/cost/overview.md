@@ -114,7 +114,7 @@ Six `Register` calls run from five translation-unit initializers:
 
 Five subclasses serve six versions: `LatencyTableJellyfish` is registered twice (slots 0 and 1), differing only by the `TpuVersion` it forwards to its ctor. The Jellyfish object is small — `0x58` bytes — because the v2/v3 latency model is 15 inline fields with no heap `MxuLatencyTable`. The PF/VF/GL/GF objects are `0x1e0` (480 bytes): they carry a heap table layer including the `+0x1d8` `MxuLatencyTable` (VF/GL) and a `~30`-entry XLU conflict penalty table.
 
-> **NOTE —** the v7 (`Gf/Gfc`) `LatencyTable` subclass is an **anonymous-namespace** type in `latency_table_gf.cc` — it has no named typeinfo symbol, so its exact C++ class name is unrecoverable from the symbol table (MEDIUM confidence on the *name*; its vtable @ `0x21c20920`, ctor @ `0x1c8b9520`, and `GhostlitePerformance` delegation are CERTAIN). Its `VectorRawHazardCycles` returns the constant `7`, and its `LatencyBetweenInternal` @ `0x1c8bab40` reuses `GhostlitePerformance::GetResourceUsage` — the v6e/v7 latency backend is shared behind distinct wrapper classes.
+> **NOTE —** the v7 (`Gf/Gfc`) `LatencyTable` subclass is an **anonymous-namespace** type in `latency_table_gf.cc` — it has no named typeinfo symbol, so its exact C++ class name is unrecoverable from the symbol table (MEDIUM confidence on the *name*; its vtable @ `0x21c20930` (offset-to-top at `0x21c20930`, typeinfo at `0x21c20938`, first slot/vptr at `0x21c20940` — the ctor installs `*obj = 0x21c20940`), ctor @ `0x1c8b9520`, and `GhostlitePerformance` delegation are CERTAIN). Its `VectorRawHazardCycles` returns the constant `7`, and its `LatencyBetweenInternal` @ `0x1c8bab40` reuses `GhostlitePerformance::GetResourceUsage` — the v6e/v7 latency backend is shared behind distinct wrapper classes.
 
 ### Function Map
 
@@ -197,7 +197,7 @@ The authoritative per-gen table fuses the execution-unit counts (read from the p
 | 2 | pufferfish | v4 | 4 | 2 | 2 | `LatencyTablePufferfish` | `PfCycleTable` | `PufferfishPerformance` | 0x1e0 | `0x21c20320` |
 | 3 | viperfish | v5p | 4 | 3 | 2 | `LatencyTableViperfish` | `VfCycleTable` | `ViperfishPerformance` | 0x1e0 | `0x21c203f0` |
 | 4 | ghostlite | v6e | 2 | 2 | 2 | `LatencyTableGhostlite` | `GlcCycleTable` | `GhostlitePerformance` | 0x1e0 | `0x21c20698` |
-| 5 | 6acc60406 | v7 | 2 | 2 | 2 | (Gf/Gfc anon-ns) | `GfcCycleTable` | `GhostlitePerformance` (shr) | 0x1e0 | `0x21c20920` |
+| 5 | 6acc60406 | v7 | 2 | 2 | 2 | (Gf/Gfc anon-ns) | `GfcCycleTable` | `GhostlitePerformance` (shr) | 0x1e0 | `0x21c20930` |
 
 > **QUIRK —** the cost model collapses six `TpuVersion`s onto **five** class boundaries at the silicon-architecture seams. v2/v3 share the Jellyfish latency class + `JfCycleTable` + the `isa::Performance` family (split only by `DeviceIdentifiers` → Jf/Df). v4 and v5p each get a dedicated class trio. v6e/v7 share `GhostlitePerformance` behind distinct wrapper classes. This is why the v6e/v7 `VectorIsa` is byte-identical (mxu=2, xlu=2, iar=2) and the GL/GF transcendental estimates match (142 / 151): they are the same backend behind two wrappers. A reimplementation keyed on six versions will allocate two objects where the binary allocates one shared backend — functionally fine, but it will not reproduce the shared-pointer identity the binary relies on.
 
