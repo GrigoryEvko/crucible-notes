@@ -24,7 +24,7 @@ For reimplementation, the phase-sequence contract is:
 | **Separate-compilation phase fns** | `Phase0` @ `0xf84de60` · `Phase1` @ `0xf84ee00` · `Phase2a` @ `0xf850840` · `Phase2b` @ `0xf852180` · `Phase3` @ `0xf852f40` |
 | **Pipeline builders** | `CreateHloPipeline` @ `0x1093efe0` · `PreOptimizationPipeline` (in `0x10948840` AddPass thunk) · `HloOptimizeThroughLayoutAssignment` @ `0x1094ad80` · `PostOptimizationPipeline` @ `0x1093fd40` · `MaybeAddInvariantCheckers` @ `0x10944600` |
 | **Sharding / SPMD** | `AddAutoShardingAndRelatedPasses` @ `0x10939c40` · `AddTpuPartitioningPasses` @ `0x1278a440` · `TpuSpmdPartitioner` (AddPass `0x1278b8a0`) |
-| **Acceptance test** | `xla::TpuHloSupportChecker::RunImpl` @ `0x11071480` (`name()` @ `0x11071780`, returns `"tpu-hlo-support-checker"`) |
+| **Acceptance test** | `xla::TpuHloSupportChecker::RunImpl` @ `0x11071480` (`name()` @ `0x11071780`, returns `"tpu_hlo_support_checker"`) |
 | **Layout** | `Phase2PreLayoutAssignment` @ `0x1094e0e0` · `TpuLayoutAssignment` (subclass of `xla::LayoutAssignment`) |
 | **MLIR handoff** | `mlir::mhlo::HloLegalizeToStablehloPass::runOnOperation` @ `0x16adcea0`; final pre-MLIR HLO pass `ConvertFrontendAttributesToBackendConfig::RunImpl` @ `0x10a148a0` |
 | **MSA** | `xla::jellyfish::RunMemorySpaceAssignment` @ `0x12fc3080` |
@@ -131,8 +131,8 @@ HLO module
    ▼
 ┌───────────────────────────────────────────────────────────────────────────┐
 │ PHASE 8 — SCHEDULING                          RunHloScheduler                 │   0x1096fac0
-│   final_scheduler (base order) → async_scheduling (LatencyHidingScheduler)   │
-│   + LLO-level MXU/MRB assignment (see sched/overview.md)                     │
+│   base order (HloMemorySchedulerWithBrkgaFallback) → async_scheduling        │
+│     pipeline (LatencyHidingScheduler) + LLO MXU/MRB (see sched/overview.md)  │
 └───────────────────────────────────────────────────────────────────────────┘
    │
    ▼
@@ -168,7 +168,7 @@ The recovered front-of-pipeline pass set (the `name()`-anchored, pipeline-confir
 | early | `xla::BatchNormExpander(true,true,true)` | lower batch-norm to primitive arithmetic | CONFIRMED |
 | expanders | `xla::TpuCholeskyExpander` / `TpuQrExpander` / `TpuEighExpander` / `TpuTriangularSolveExpander` | decompose linalg custom-calls to dot/triangular-solve graphs | CONFIRMED (TPU subclasses) |
 | expanders | `xla::FftExpander(Target const&)` / `xla::LuDecompositionExpander` | FFT (TPU-aware radix-2) / LU decomposition | CONFIRMED |
-| rng | `xla::jellyfish::TpuRngBitGeneratorExpander` (+ `TupleDecomposer`) | Philox/ThreeFry; un-tuple `(state,output)` | CONFIRMED |
+| rng | `xla::jellyfish::TpuRngBitGeneratorExpander` (+ `TpuRngBitGeneratorTupleDecomposer`) | Philox/ThreeFry; un-tuple `(state,output)` | CONFIRMED |
 | dtype | `xla::jellyfish::TpuInt2AutoUpDownCaster` | bracket int2 arith with `Convert`↔int8 (MXU wire min is int8) | CONFIRMED |
 | inline | `xla::jellyfish::TpuCallInliner(MustFuseInlineMode)` | inline `must_fuse`-marked callees early | CONFIRMED |
 | fusion-prep | `xla::jellyfish::UserGuidedFusionIdAssigner` | turn `frontend_attribute: fusion_id` strings into integer backend-config | CONFIRMED |
@@ -178,7 +178,7 @@ The recovered front-of-pipeline pass set (the `name()`-anchored, pipeline-confir
 | cleanup | `xla::HloDCE` (re-run between most stages) | drop dead instructions/computations | CONFIRMED |
 | boundary | `xla::HloDomainRemover("sharding", ...)` | strip `kDomain`, keep sharding as attribute — always runs before Phase 2 | CONFIRMED |
 
-> **NOTE — fixed-point loops.** Several passes are wrapped in `xla::HloPassFix<P>` and re-run to convergence. The `RunToFixPoint` method is present in the binary for `HloPassFix<ReduceWindowRewriter>` and `HloPassFix<HloDCE>` (vtable-confirmed). Non-convergence is reportedly gated by a `--xla_tpu_crash_if_hlo_pass_fix_did_not_converge` flag; the flag string was **not** located in the sampled strings table, so the crash-behavior claim is [Confidence: LOW] while the `HloPassFix` fixed-point mechanism itself is CONFIRMED.
+> **NOTE — fixed-point loops.** Several passes are wrapped in `xla::HloPassFix<P>` and re-run to convergence. `RunToFixPoint` is present in the binary for `HloPassFix<xla::ReduceWindowRewriter>` (@ `0x14bd0980`), `HloPassFix<xla::jellyfish::TpuReduceWindowRewriter>` (@ `0x109589e0`), and `HloPassFix<xla::HloDCE>` (@ `0x1d6d7a60`). Iteration limit and crash-on-non-convergence are gated by real flags whose strings are present: `xla_tpu_hlo_pass_fix_pipeline_iteration_limit` (the per-pipeline cap), `xla_unsupported_crash_on_hlo_pass_fix_max_iterations` (abort if the cap is hit), and `xla_hlo_pass_fix_detect_cycles`. The `HloPassFix` fixed-point mechanism and these flag strings are CONFIRMED; the exact runtime behavior on cap-hit was not traced beyond the flag wiring.
 
 > **GOTCHA — `TpuHloSupportChecker` is the acceptance gate, and it runs in Phase 4, not Phase 1.** A reimplementation that wants to reject unsupported ops early will be tempted to put the support check at the front. libtpu does not: `TpuHloSupportChecker::RunImpl` (`0x11071480`) runs inside `HloOptimizeThroughLayoutAssignment` *after* sharding and SPMD prep, because the pre-passes legitimately *introduce* ops (expander outputs, partitioned collectives) that must themselves pass the check. Checking before expansion would reject programs that are actually compilable. The checker never mutates the module — it walks every `HloComputation` and validates each result `Shape` with `ShapeUtil::ValidateShapeWithOptionalLayout`, returning an error `Status` on the first unsupported shape.
 
@@ -204,7 +204,7 @@ The partitioner — `xla::jellyfish::TpuSpmdPartitioner` (AddPass thunk `0x1278b
 
 `HloOptimizeThroughLayoutAssignment` (`0x1094ad80`) runs the bulk of HLO optimization — algebraic simplification (`TpuAlgebraicSimplifier`, a superset of the open-source `AlgebraicSimplifier`), CSE, constant folding, collective simplification, convolution folding, and the TPU shape-rewriter family (`TpuBroadcastRewriter`, `TpuDegenerateDimensionRewriter`, `TpuReduceRewriter`, `HloPassFix<TpuReduceWindowRewriter>`) — and then hands off to **layout assignment** (`Phase2PreLayoutAssignment` @ `0x1094e0e0` driving `TpuLayoutAssignment`, a subclass of `xla::LayoutAssignment`). See [layout-assignment.md](layout-assignment.md).
 
-`PostOptimizationPipeline` (`0x1093fd40`) then refines the now-laid-out graph: post-layout `HloCSE(false)`, provenance tagging via `xla::AddOriginalValue`, the **main fusion** (documented on [fusion-patterns.md](fusion-patterns.md) and [fusion-cost-model.md](fusion-cost-model.md)), and finally `xla::jellyfish::ConvertFrontendAttributesToBackendConfig::RunImpl` (`0x10a148a0`) — the **last HLO-domain pass**. It parses known TPU `frontend_attribute` keys (`tpu.precision`, `tpu.fusion_id`, `tpu.collective_group_id`, `tpu.memory_space`, `tpu.scheduling_group`) into typed `backend_config` protobuf, leaving unknown keys untouched so the downstream MLIR import sees nothing TPU-private.
+`PostOptimizationPipeline` (`0x1093fd40`) then refines the now-laid-out graph: post-layout `HloCSE(false)`, provenance tagging via `xla::AddOriginalValue`, the **main fusion** (documented on [fusion-patterns.md](fusion-patterns.md) and [fusion-cost-model.md](fusion-cost-model.md)), and finally `xla::jellyfish::ConvertFrontendAttributesToBackendConfig::RunImpl` (`0x10a148a0`) — the **last HLO-domain pass**. It parses known TPU `frontend_attribute` keys into typed `backend_config` protobuf, leaving unknown keys untouched so the downstream MLIR import sees nothing TPU-private. The specific keys it handles were not all recovered; the `fusion_id` attribute (assigned earlier by `UserGuidedFusionIdAssigner`, whose source path `user_guided_fusion_id_assigner.cc` is present) and `scheduling_group_id` are the two attribute strings confirmed in the binary. [Confidence: CONFIRMED that the pass exists @ `0x10a148a0` and converts frontend attributes; LOW on the full key set.]
 
 > **NOTE — invariant checkers re-run continuously.** `MaybeAddInvariantCheckers` (`0x10944600`) re-adds `HloVerifier` (+ `TpuVerifierMetadata`), `LegalizeSchedulingAnnotations` (as checker), and `HloCycleDetection` at the head of every nested pipeline via `AddInvariantChecker<T>`, so they re-validate after each pass rather than once. A reimplementation that runs verification only at phase boundaries will accept malformed intermediates that libtpu rejects mid-phase. [Confidence: CONFIRMED.]
 
@@ -221,7 +221,7 @@ Once `ConvertFrontendAttributesToBackendConfig` has run, the HLO module is hande
 These phases operate post-lowering and are owned by other pages; this page fixes only their position in the ordering and their entry symbols.
 
 - **Phase 7 — Memory-Space Assignment.** `xla::jellyfish::RunMemorySpaceAssignment` (`0x12fc3080`) places tensors across HBM / VMEM / SMEM and runs live-range allocation (LSRAv2). It precedes scheduling because the scheduler prices spill/refill against assigned spaces. See [msa-overview.md](msa-overview.md), [msa-allocate-segment.md](msa-allocate-segment.md), [msa-reservation-hbm-policy.md](msa-reservation-hbm-policy.md).
-- **Phase 8 — Scheduling.** `(anon)::RunHloScheduler` (`0x1096fac0`) runs the two-pipeline HLO scheduler — `final_scheduler` (memory-minimizing base order) then `async_scheduling` (the `LatencyHidingScheduler` overlap rewrite) — followed downstream by LLO-level MXU-sequence/MRB assignment. The whole scheduling stack, including the second LLO-level scheduler and the cost model that prices it, is documented on [../sched/overview.md](../sched/overview.md).
+- **Phase 8 — Scheduling.** `(anon)::RunHloScheduler` (`0x1096fac0`) runs the two-pipeline HLO scheduler — a memory-minimizing base order (`HloMemorySchedulerWithBrkgaFallback`, anchored by the `hlo-memory-scheduler-with-brkga-fallback` string) then the `async_scheduling` pipeline (the `LatencyHidingScheduler` overlap rewrite) — followed downstream by LLO-level MXU-sequence/MRB assignment. The whole scheduling stack, including the second LLO-level scheduler and the cost model that prices it, is documented on [../sched/overview.md](../sched/overview.md).
 - **Phase 9 — LLO Bundle Packing.** `GlobalBundlePacker::PackInstruction` (`0x10a875a0`) is the forward-greedy earliest-legal-bundle VLIW packer; inner hardware loops are software-pipelined by a separate modulo scheduler. See [../sched/llo-bundle-packing.md](../sched/llo-bundle-packing.md) and [../sched/bundle-modulo-scheduling.md](../sched/bundle-modulo-scheduling.md).
 - **Phase 10 — Serialization / Link.** `CompilePhase3Linking` (`0xf852f40`) links the LLO program and emits a `TpuExecutable`; the C-ABI export `TpuExecutable_Serialize` (`0xeabea80`) and `TpuExecutableSerialize_WriteToArray` (`0xeabeba0`) write the bytes. The separate-compilation flow additionally re-serializes each phase boundary into a `PjRtPartialProgramProto`. See [tpu-program-serialization.md](tpu-program-serialization.md).
 
