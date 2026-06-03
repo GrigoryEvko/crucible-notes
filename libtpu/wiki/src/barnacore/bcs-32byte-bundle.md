@@ -99,7 +99,7 @@ function EncodeField(buf, op):                                 // per-op helper
 
 ### Purpose
 
-The Sequencer bundle is a 2-wide dual-scalar VLIW carrying the control-flow and SMEM-access ISA: branches, calls, fences, sync/done, DMA descriptors, SMEM load/store, and the scalar integer/float ALU. Two 27-bit scalar slots (`Scalar0`, `Scalar1`) stack 27 bits apart and share a region of four 16-bit immediate slots in the bundle's low bits. The symbol `InstBits_BarnaCorePxcHwMode` names the bit-layout descriptor for this hardware-mode bundle (confirmed present in `…_names.json`).
+The Sequencer bundle is a 2-wide dual-scalar VLIW carrying the control-flow and SMEM-access ISA: branches, calls, fences, sync/done, DMA descriptors, SMEM load/store, and the scalar integer/float ALU. Two 27-bit scalar slots (`Scalar0`, `Scalar1`) stack 27 bits apart and share a region of four 16-bit immediate slots in the bundle's low bits. The symbol `InstBits_BarnaCorePxcHwMode` (`@0x33931f0`, a static `.rodata` table inside the LLVM backend's `TPUMCCodeEmitter::getBinaryCodeForInstr` — the per-instruction bit-pattern table for this hardware-mode bundle) is the independent compiler-side ground truth for the layout decoded below from the proto encoders.
 
 ### Encoding
 
@@ -147,7 +147,7 @@ bit:  15      31      47      63        79 ............ 105   106 ........... 13
 | `Imm2Field` | 47 | 16 |
 | `Imm3Field` | 63 | 16 |
 
-> **GOTCHA —** DMA ops are a **oneof-of-lane**: `ScalarDmaSimple`/`ScalarSingleStridedDma`/`ScalarGeneralDma` do not fit a single scalar slot. Their opcode rides the Scalar0 opcode field (@122), but the descriptor (source/dest address, core id, memory id, length, dest sync flag, dma type — names from the `ScalarDmaSimple{Source,Dest}{Address,CoreId,MemoryId}/Length/DestSyncFlag/DmaType0` field accessors) spills through the Scalar1 region, the four immediate slots, and extra low bits. `ScalarGeneralDma` (`@0x1ee55120`) is the widest, spanning bits 5..127. A reimplementer must treat a DMA bundle as consuming the entire dual-scalar capacity, not one lane.
+> **GOTCHA —** DMA ops are a **oneof-of-lane**: `ScalarDmaSimple`/`ScalarSingleStridedDma`/`ScalarGeneralDma` do not fit a single scalar slot. Their opcode rides the Scalar0 opcode field (@122), but the descriptor (source/dest address, core id, memory id, length, dest sync flag, dma type — names from the `ScalarDmaSimple{Source,Dest}{Address,CoreId,MemoryId}/Length/DestSyncFlag/DmaType0` field accessors) spills through the Scalar1 region, the four immediate slots, and extra low bits. `ScalarGeneralDma` (`@0x1ee55120`) is the widest, spanning bits 0..127 (the entire lower 16 bytes). A reimplementer must treat a DMA bundle as consuming the entire dual-scalar capacity, not one lane.
 
 ### Function Map
 
@@ -156,7 +156,7 @@ bit:  15      31      47      63        79 ............ 105   106 ........... 13
 | `BarnaCoreSequencerScalar0Encoder::Encode` | `0x1ee51ec0` | Scalar0 slot encoder; base 106, jump table `@0xb84559c` (bound ≤0x3e) | CERTAIN |
 | `BarnaCoreSequencerScalar1Encoder::Encode` | `0x1ee69000` | Scalar1 slot encoder; base 79, jump table `@0xb845698` (bound ≤0x3c) | CERTAIN |
 | `ScalarIntAdd` (Scalar0) | `0x1ee55ee0` | op=0x20; Sy@106/Sx@111/Dest@117 | HIGH |
-| `ScalarGeneralDma` (Scalar0) | `0x1ee55120` | widest op; spans bits 5..127 | HIGH |
+| `ScalarGeneralDma` (Scalar0) | `0x1ee55120` | widest op; spans bits 0..127 | HIGH |
 | `ScalarStoreSmemAbsolute` (Scalar1) | `0x1ee6ace0` | op=0x6 | HIGH |
 
 ---
@@ -301,7 +301,7 @@ The type number for each accessor comes from the `mov esi,N; call MetadataSmemWo
 
 Each `MigrateInstruction` body is a proto round-trip: `SerializeToString` (`@0x210580c0`) the source-lane message, then `ParseFromString` (`@0x21057460`) into the destination-lane message type. The two lane types share their field layout, so the round-trip is lossless. The op message types live in `asic_sw::deepsea::pxc::pfc::isa::BarnaCoreChannelVectorAlu{0,1}_<Op>`.
 
-There are **108 instances = 54 ops × 2 directions** (`@0x140d17c0..0x140d6c00`; `<Alu0_Noop,Alu1_Noop>` `@0x140d17c0`, `<Alu0_VectorTanh,Alu1_VectorTanh>` `@0x140d4c80`). The 54 migratable ops (all confirmed as `BarnaCoreChannelVectorAlu0_<Op>` ↔ `Alu1_<Op>` template pairs in symbols):
+There are **108 instances = 54 ops × 2 directions** (`@0x140d1400..0x140d6c00`; `<Alu0_Noop,Alu1_Noop>` `@0x140d17c0`, `<Alu0_VectorTanh,Alu1_VectorTanh>` `@0x140d4c80`). The 54 migratable ops (all confirmed as `BarnaCoreChannelVectorAlu0_<Op>` ↔ `Alu1_<Op>` template pairs in symbols):
 
 ```text
 Noop, VectorIntAdd, VectorIntSub, VectorAnd, VectorOr, VectorXor,
@@ -330,7 +330,7 @@ The 7 lane-locked ops have **no** `Migrate` template — the scheduler cannot mo
 
 > **QUIRK —** the asymmetry is real hardware structure: float-**mul** is Alu0-only, float-**add/sub** and all four shifts are Alu1-only. A scheduler that assumes the two lanes are interchangeable will mis-place these seven ops. The presence/absence of a `Migrate` template *is* the lane-capability table.
 
-> **NOTE —** there are **zero** `Scalar0`↔`Scalar1` `Migrate` instances. Scalar dual-issue is resolved statically at schedule time by the `FindFreeScalarSlot<Scalar0_X, Scalar1_Y>` template instantiations, never by a runtime message migration. (The whole-binary `MigrateInstruction` symbol count of 681 includes other emitters' instances; the BarnaCore-channel set is the 108 in the address range above.)
+> **NOTE —** there are **zero** `Scalar0`↔`Scalar1` `Migrate` instances. Scalar dual-issue is resolved statically at schedule time by the `FindFreeScalarSlot<Scalar0_X, Scalar1_Y>` template instantiations, never by a runtime message migration. (The whole-binary `MigrateInstruction<…>` template-instance count is 222 — the 108 BarnaCore-channel pairs above plus 114 from `PufferfishTensorCoreEmitter`; the BarnaCore-channel set is the 108 in the address range above.)
 
 ---
 
