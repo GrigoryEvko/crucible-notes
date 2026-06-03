@@ -6,15 +6,15 @@
 
 `MsaAlgorithm::AllocateSegment` (`0x1dc73ca0`) is the inner loop body of memory-space assignment. The driver — the buffer-interval sort, the colocation grouping, and the autotuner "IOR" replay surface — lives on [msa-overview.md](msa-overview.md); this page documents the per-segment placement *attempt* that the driver calls once for every `(AllocationValue, use)` pair, in sorted order. A "segment" is the live range of one value between its definition (or a prior allocation's end) and a single use; `AllocateSegment` decides where that segment's buffer physically sits — in alternate memory (VMEM) with or without a copy, or back in default memory (HBM) — and emits the `Allocation` objects (and any async `CopyStart`/`CopyDone` pair) that realize the decision.
 
-The reader who knows the upstream XLA `MsaAlgorithm::AllocateSegment` will recognise the shape: reconcile required assignments, then run a fixed cascade of placement primitives that each return an `AllocationResult` bitmask, short-circuiting on the first `kSuccess`. What this build pins down byte-exactly is (1) the **six-stage cascade** order and its short-circuit/uncommit semantics, (2) the `~0x210`-byte **`AllocationRequest`** struct the cascade reads, recovered from the writer `CreateAllocationRequest` (`0x1dc72820`) cross-checked against every field read in the body, and (3) the **11-bit `AllocationResult`** failure bitmask, recovered from `SingleFailureResultToString` (`0x1dc7bc80`). The greedy character is concrete here: there is no backtracking inside `AllocateSegment` — a failed prefetch or evict that leaves pending chunks ORs in `FailRequiresUncommit` (`0x40`) so the *driver* rolls back, and the segment is retried only on a later driver retry with a widened window.
+The reader who knows the upstream XLA `MsaAlgorithm::AllocateSegment` will recognise the shape: reconcile required assignments, then run a fixed cascade of placement primitives that each return an `AllocationResult` bitmask, short-circuiting on the first `kSuccess`. What this build pins down byte-exactly is (1) the **six-stage cascade** order and its short-circuit/uncommit semantics, (2) the `~0x210`-byte **`AllocationRequest`** struct the cascade reads, recovered from the writer `CreateAllocationRequest` (`0x1dc72820`) cross-checked against every field read in the body, and (3) the **`AllocationResult`** failure bitmask — 10 named failure bits spanning `0x001..0x200` — recovered from `SingleFailureResultToString` (`0x1dc7bc80`). The greedy character is concrete here: there is no backtracking inside `AllocateSegment` — a failed prefetch or evict that leaves pending chunks ORs in `FailRequiresUncommit` (`0x40`) so the *driver* rolls back, and the segment is retried only on a later driver retry with a widened window.
 
 This page documents three things a reimplementer must reproduce: the cascade body and its stage gating, the alternate-memory fit check (`AllocateInAlternateMemoryNoCopy` and the prefetch chunk-candidate search), and the prefetch/eviction insertion (`Prefetch`/`Evict` and the `find_if` that supplies them their predecessor allocation). The interval-picker sweep that prefetch consults, the async-copy resource model, and the per-version numeric defaults are summarized here and detailed on sibling pages.
 
 For reimplementation, the contract is:
 
-- **The cascade.** Six stages — required-assignment reconcile → direct pin → free coloring-reserved + force-min-time → alternate no-copy → prefetch → evict → default fallback — each returning an `AllocationResult`, short-circuiting on `kSuccess`.
+- **The cascade.** Required-assignment reconcile → direct pin → free coloring-reserved + alternate no-copy → force-min-time (when `+0x208 == 1`) → prefetch → evict → default fallback — each returning an `AllocationResult`, short-circuiting on `kSuccess`.
 - **The request.** The `AllocationRequest` field layout the cascade reads; in particular the four trailing state bytes at `+0x208..+0x20b` that gate which stages run.
-- **The result.** The 11-bit failure bitmask, its byte-exact bit→name map, and the `|0x40` (`FailRequiresUncommit`) rule that hands rollback to the driver.
+- **The result.** The failure bitmask (10 named bits, `0x001..0x200`), its byte-exact bit→name map, and the `|0x40` (`FailRequiresUncommit`) rule that hands rollback to the driver.
 - **The fit check + insertion.** How the no-copy path and the prefetch path each query the best-fit heap for a chunk, and how prefetch/evict find their predecessor allocation.
 
 | | |
@@ -27,7 +27,7 @@ For reimplementation, the contract is:
 | **Prefetch / evict** | `Prefetch` @ `0x1dc7e4a0` · `Evict` @ `0x1dc7d660` |
 | **Predecessor `find_if`** | `AllocateSegment::$_2` @ `0x1dc7e420` |
 | **IR level** | XLA HLO (`HloValue` / `HloUse`), heap-simulator timeline (logical times) |
-| **Memory spaces** | `kDefault` = HBM (`0`), `kAlternate` = VMEM (`1`); v7 VMEM budget 64 MiB / 512-B word |
+| **Memory spaces** | `kDefault` = HBM (`0`), `kAlternate` = VMEM (`1`); VMEM byte budget and word size are per-version — see [msa-reservation-hbm-policy.md](msa-reservation-hbm-policy.md) |
 | **Confidence** | CONFIRMED (byte-anchored) unless a row or callout says otherwise |
 
 ---
@@ -64,7 +64,7 @@ For reimplementation, the contract is:
 | `+0x209` | *allow-prefetch-window flag* | passed as `Prefetch`'s `bool window` | CONFIRMED |
 | `+0x20a`, `+0x20b` | *uncommit / retry state bits* | consulted to gate retry/evict/bail | HIGH |
 
-The four trailing bytes at `+0x208..+0x20b` are the "already-attempted / requires-uncommit" state. `+0x208` (cmp 1) gates the `ForceAlternateMemoryAllocationForMinTime` path and is the `force` argument to `Evict`; `+0x209` is the `window` argument to `Prefetch`; `+0x20a|+0x20b` OR'd together gate the colored-reserved free path. The `kCopy` opcode (`0x28`) referenced inside `CreateAllocationRequest` is the sync-copy match that lets MSA convert an already-scheduled synchronous `kCopy` into an MSA-managed async copy (see [Async-copy resource and sync replacement](#async-copy-resource-and-sync-replacement)).
+The four trailing bytes at `+0x208..+0x20b` are the "already-attempted / requires-uncommit" state. `+0x208` (cmp 1) gates the `ForceAlternateMemoryAllocationForMinTime` path and is the `force` argument to `Evict`; `+0x209` is the `window` argument to `Prefetch`; `+0x20a|+0x20b` OR'd together gate the colored-reserved free path. The sync-copy candidate test that `CreateAllocationRequest` reaches (through `IsAsyncConversionSliceCandidate` → `IsAsyncConversion{Copy,Slice}Candidate`) matches HLO opcode `44` (`kCopy`) for copies and `119`/`54` (`kSlice`/`kDynamicSlice`) for slices, letting MSA convert an already-scheduled synchronous `kCopy`/`kSlice` into an MSA-managed async copy (see [Async-copy resource and sync replacement](#async-copy-resource-and-sync-replacement)).
 
 > **NOTE — `~0x210` not exact.** The struct size is bounded below (`≥0x210`) by the highest observed store; padding past `+0x20b` is not enumerated. Offsets `+0x68/+0xc0/+0x200` and the two packed-time fields are decoded from store widths and the conditional `Shape` ctor at `0x20cd6660`, hence HIGH rather than CONFIRMED.
 
@@ -72,7 +72,7 @@ The four trailing bytes at `+0x208..+0x20b` are the "already-attempted / require
 
 ## The `AllocationResult` bitmask
 
-The return type is not an enum — it is an 11-bit failure bitset where `0` is success and each set bit is one failure reason. `SingleFailureResultToString` (`0x1dc7bc80`) masks the low byte (`0x7f`) through a 65-entry jump table at `0xb564d94` and tests the three high bits (`0x80/0x100/0x200`) with explicit compares; each arm stores its result string. `Success`, `FailOutOfMemory`, and `UnknownResult` are inline string literals in the decompile; the remaining names are stored via rodata pointers (so they do not surface as inline string args), consistent with the jump-table-plus-rodata structure.
+The return type is not an enum — it is a failure bitset (10 named bits, `0x001..0x200`) where `0` is success and each set bit is one failure reason. `SingleFailureResultToString` (`0x1dc7bc80`) range-checks the value against `0x7f` (`cmp 0x7f`), routing values `≤0x7f` through a 65-entry jump table at `0xb564d94` (indexed by the single-bit value `0..0x40`) and the three high bits (`0x80/0x100/0x200`) through explicit compares; each arm stores its result string. `Success`, `FailOutOfMemory`, and `UnknownResult` are inline `strcpy` string literals in the decompile; the remaining names are loaded from rodata (so they do not surface as inline string args), consistent with the jump-table-plus-rodata structure.
 
 | Bit | Name | Confidence |
 |---|---|---|
@@ -84,9 +84,9 @@ The return type is not an enum — it is an 11-bit failure bitset where `0` is s
 | `0x010` | `FailOutOfAsyncCopies` | CONFIRMED |
 | `0x020` | `FailViolatesAsyncCopyResource` | CONFIRMED |
 | `0x040` | `FailRequiresUncommit` | CONFIRMED |
-| `0x080` | `FailConflictingPreferredOffsets` | CONFIRMED |
-| `0x100` | `FailSyncDataMoveReplacement` | CONFIRMED |
-| `0x200` | `AllSlicesHaveTheSameStartTime` | CONFIRMED |
+| `0x080` | `AllSlicesHaveTheSameStartTime` | CONFIRMED |
+| `0x100` | `FailConflictingPreferredOffsets` | CONFIRMED |
+| `0x200` | `FailSyncDataMoveReplacement` | CONFIRMED |
 | else | `UnknownResult` | CONFIRMED |
 
 A result with multiple bits set is decomposed and joined name-by-name by `ResultToString` (`0x1dc68c80`). Two predicate helpers read the mask: `result_requires_uncommit()` tests bit `0x40`; `result_failed_because_of_async_copy()` tests `0x10|0x20`. The semantics that matter for the cascade:
@@ -122,19 +122,19 @@ function AllocateSegment(req):
 
     result = kSuccess                                              // sentinel cleared
 
-    // ---- STAGE 2: free coloring-reserved + dual-live + force-min-time ----
-    if req.allow_no_copy_alternate_mem        // +0x28
-       or req.no_copy_chunk_required          // +0x2b
-       or req.require_no_copy_alternate_mem:  // +0x29
-        FreeAlternateMemoryColoringReservedAllocations(req)        // 0x1dc7c640
-        if req.require_copy_allocation:        // +0x2a
-            CheckAndUpdateForDualLiveAllocationValues(prev, req)   // 0x1dc7bf20
-            if ForceAlternateMemoryAllocationForMinTime(req):      // 0x1dc7d460
-                return result                  // non-zero -> propagate
+    // ---- STAGE 2: free coloring-reserved, then dual-live + no-copy fit ----
+    FreeAlternateMemoryColoringReservedAllocations(req)            // 0x1dc7c640 (line 717)
+    if alternate_mem_allowed(req):            // gate over +0x29/+0x2a/+0x2b/+0x20a/+0x20b
+        CheckAndUpdateForDualLiveAllocationValues(prev, req)       // 0x1dc7bf20 (line 722)
 
         // ---- STAGE 3: ALTERNATE NO-COPY (the fit check) ----
-        result = AllocateInAlternateMemoryNoCopy(req)              // 0x1dc7ca80
+        result = AllocateInAlternateMemoryNoCopy(req)              // 0x1dc7ca80 (line 723)
         if result == kSuccess: return kSuccess
+
+    // ---- STAGE 3b: FORCE-MIN-TIME (only when +0x208 == 1) ----
+    if req[+0x208] == 1:                                           // line 738
+        if ForceAlternateMemoryAllocationForMinTime(req):          // 0x1dc7d460 (line 749)
+            return result                  // non-zero -> propagate
 
     // ---- STAGE 4: PREFETCH (insert async copy) ----
     prev_alloc = *find_if(value.allocation_sequence, $_2)          // 0x1dc7e420
@@ -156,7 +156,7 @@ function AllocateSegment(req):
     return result   // may carry residual fail bits (also OR'd 0x40 on a fail path)
 ```
 
-The decompile confirms the call order directly: `FreeAlternateMemoryColoringReservedAllocations` at line 717, `AllocateInAlternateMemoryNoCopy` at 723, `ForceAlternateMemoryAllocationForMinTime` at 749, `Evict(..., a2[+0x208])` at 829 (with `| 0x40` immediately after at 832), and `Prefetch(..., a2[+0x209])` at 988. The `PinnedAllocation` ctor (`0x1dcdc400`) and `AddUse` (`0x1dcda700`) each appear four times — twice for Stage 1's direct alternate pin and twice for the Stage 6 default fallback.
+The decompile confirms the call order directly: `FreeAlternateMemoryColoringReservedAllocations` at line 717, `AllocateInAlternateMemoryNoCopy` at 723, `ForceAlternateMemoryAllocationForMinTime` at 749, `Evict(..., a2[+0x208])` at 829 (with `| 0x40` immediately after at 832), and `Prefetch(..., a2[+0x209])` at 988. The `PinnedAllocation` ctor (`0x1dcdc400`) appears twice in the body — once for Stage 1's direct alternate pin, once for the Stage 6 default fallback — while `AddUse` (`0x1dcda700`) appears four times across the segment's allocation-emitting and use-attachment paths.
 
 > **NOTE — no in-function backtracking.** Stages 3–6 do not undo each other's side effects. Once a primitive commits chunks to the heap, only the driver's uncommit path (triggered by `FailRequiresUncommit`) reclaims them. This is the difference between "greedy with retry" (what MSA is) and a true backtracking search.
 
@@ -168,21 +168,23 @@ Three required-assignment lookups run first. `RequiredMemoryAssignmentAt(value, 
 
 If `required == kAlternate`, the value *must* live in VMEM (it was colored or carries a required alternate pin), so there is nothing to decide: build a `PinnedAllocation` over `[def_time, use_time]` in `kAlternate`, attach the use, push it onto the value's allocation sequence, and thread the `AliasedOffset` through `CreateOrAddToAliasedOffset` so every member of the colocation group shares one VMEM offset. Returns `kSuccess` unconditionally — the chunk reservation happened during coloring.
 
-### Stage 2 — free reserved + force-min-time
+### Stage 2 — free reserved, then dual-live + no-copy
 
-Reached only if the request allows alternate memory at all (`+0x28 || +0x2b || +0x29`). `FreeAlternateMemoryColoringReservedAllocations` releases VMEM that coloring had reserved but that this segment may now claim. When the request *requires* a copy allocation (`+0x2a`), `CheckAndUpdateForDualLiveAllocationValues` handles the case where the value is simultaneously live in two places, then `ForceAlternateMemoryAllocationForMinTime` attempts to force the buffer into VMEM for at least its minimum live interval; if that returns non-zero it propagates straight out (no further stages).
+`FreeAlternateMemoryColoringReservedAllocations` runs unconditionally at the top of this region (line 717), releasing VMEM that coloring had reserved but that this segment may now claim. A gate then computed from the trailing state bytes (`+0x20a | +0x20b | …`) together with the `require_no_copy_alternate_mem` flag (`+0x29`) decides whether to attempt alternate placement; when it does, `CheckAndUpdateForDualLiveAllocationValues` handles the case where the value is simultaneously live in two places, then Stage 3's `AllocateInAlternateMemoryNoCopy` runs and short-circuits to `kSuccess` if it places the buffer.
+
+The `ForceAlternateMemoryAllocationForMinTime` path is **separate and later** (decompile line 749, after the no-copy attempt at 723): it is reached only when `+0x208 == 1`, and forces the buffer into VMEM for at least its minimum live interval; if it returns non-zero, that propagates straight out (no further stages).
 
 ---
 
 ## The fit check — `AllocateInAlternateMemoryNoCopy`
 
-Stage 3 is the cheapest placement: keep the buffer in VMEM across `[def, use]` with **no copy at all**, which is possible only if a free VMEM chunk of the requested size persists for the whole interval. `AllocateInAlternateMemoryNoCopy` (`0x1dc7ca80`) queries the best-fit heap for that chunk (the decompile shows one `FindChunkCandidate`-class call). The heap is the `GlobalDecreasingSizeBestFitHeap` that MSA maintains over the VMEM byte budget; on v7 that budget is 64 MiB (`67,108,864` B) minus any scoped reservation, and every chunk offset/size aligns to the 512-byte VMEM word — see [msa-reservation-hbm-policy.md](msa-reservation-hbm-policy.md) and the allocator detail on [../memory/vmem-allocator.md](../memory/vmem-allocator.md).
+Stage 3 is the cheapest placement: keep the buffer in VMEM across `[def, use]` with **no copy at all**, which is possible only if a free VMEM chunk of the requested size persists for the whole interval. `AllocateInAlternateMemoryNoCopy` (`0x1dc7ca80`) queries the best-fit heap for that chunk via a single `FindBestChunkCandidate` (`0x1dc7fb00`) call, which in turn wraps `GlobalDecreasingSizeBestFitHeap::FindChunkCandidate` (`0x1e48f960`). The heap is the `GlobalDecreasingSizeBestFitHeap` that MSA maintains over the VMEM byte budget, minus any scoped reservation, with chunk offsets/sizes aligned to the VMEM word; the per-version budget and word size are documented on [msa-reservation-hbm-policy.md](msa-reservation-hbm-policy.md) and the allocator detail on [../memory/vmem-allocator.md](../memory/vmem-allocator.md).
 
 ```c
 // AllocateInAlternateMemoryNoCopy(req)                            // 0x1dc7ca80
 result = kSuccess
-chunk  = heap.FindChunkCandidate(/*size=*/req.size,               // best-fit over the
-                                 /*interval=*/[def, use])         //   VMEM byte budget
+chunk  = FindBestChunkCandidate(req, /*interval=*/[def, use])     // 0x1dc7fb00 -> best-fit
+                                                                  //   over VMEM byte budget
 if not chunk:
     return FailOutOfMemory            // 0x01 (no persistent free chunk)
 heap.Commit(chunk)
@@ -202,11 +204,11 @@ If the buffer cannot live in VMEM for free across the whole interval, MSA tries 
 
 ### Prefetch (Stage 4)
 
-`Prefetch` (`0x1dc7e4a0`) decides whether copying the buffer from HBM into VMEM ahead of the use is profitable and feasible:
+`Prefetch` (`0x1dc7e4a0`) decides whether copying the buffer from HBM into VMEM ahead of the use is profitable and feasible. The body sketched below is the prefetch *path*, not a literal transcription of the 122-line `Prefetch` function: the alternate-memory-benefit weighting is computed up in `AllocateSegment` itself (it calls both the `HloPosition` and `HloUse` overloads of `GetAlternateMemoryBenefit`), the picker sweep and fit/resource loop live in `Prefetch` + `CheckPrefetchFit` (`0x1dc820e0`), and the sliced emission is in `AddAsyncSlicesForPrefetch` (`0x1dc7ea40`).
 
 ```c
-// Prefetch(req, prev_allocation, window)                          // 0x1dc7e4a0
-benefit = CostAnalysis::GetAlternateMemoryBenefit(use)            // 0x1dcec480
+// prefetch path: AllocateSegment + Prefetch (0x1dc7e4a0) + CheckPrefetchFit (0x1dc820e0)
+benefit = CostAnalysis::GetAlternateMemoryBenefit(use)            // 0x1dcec480 (in AllocateSegment)
         // weighed against OperandBytesAccessed / OutputBytesAccessed
         //   (0x1dceb340 / 0x1dceb360)
 picker.Begin(use, earliest_prefetch, latest_prefetch, preferred)  // 0x1dcd7a00
@@ -219,7 +221,8 @@ while not picker.Done():
         result |= FailViolatesAsyncCopyResource  // 0x20
         continue
     emit CopyAllocation(kCopyStart @ t_start, kCopyDone @ use_time)
-    //   or SlicedCopyAllocation (make_unique @ 0x1dc7f7e0) on the sliced path
+    //   or SlicedCopyAllocation (make_unique @ 0x1dc7f7e0, via AddAsyncSlicesForPrefetch
+    //   @ 0x1dc7ea40) on the sliced path
     return kSuccess
 return result   // accumulated fail bits
 ```
@@ -254,18 +257,18 @@ If the value never had a prior VMEM allocation (so evict is not applicable) and 
 
 Both prefetch and evict gate their copies through `AsynchronousCopyResource`, a per-logical-time free-resource bucket model (not a simple counter). `HasEnoughResource(start, end, resource)` (`0x1dc78d40`) walks the buckets over `[start, end)` checking the copy's cost can be drawn from the available DMA-bandwidth windows; `ConsumeResource` (`0x1dc77540`) debits them; `AddCopy`/`RemoveCopy` (`0x1dc78580` / `0x1dc787c0`) commit/undo. A copy that fits no bucket window yields `FailViolatesAsyncCopyResource` (`0x20`); exceeding the configured outstanding-copy *cap* yields `FailOutOfAsyncCopies` (`0x10`).
 
-The `kCopy` opcode (`0x28`) match inside `CreateAllocationRequest` feeds the sync-copy-replacement path: an already-scheduled synchronous `kCopy` (or `kSlice`) can be converted into an MSA-managed async copy when alternate-memory benefit justifies it, gated by `xla_msa_enable_sync_copy_replacement` / `_sync_slice_replacement` and bounded by `copies_limit_for_sync_mem_op_conversion`. A failed conversion surfaces as `FailSyncDataMoveReplacement` (`0x100`). The resource-model loop body and the sync-replacement state machine are not fully decoded at the basic-block level (see [Limits](#limits)).
+The `kCopy` opcode (`44`, `0x2c`) match reached from `CreateAllocationRequest` feeds the sync-copy-replacement path: an already-scheduled synchronous `kCopy` (or `kSlice`/`kDynamicSlice`, opcodes `119`/`54`) can be converted into an MSA-managed async copy when alternate-memory benefit justifies it, gated by `xla_msa_enable_sync_copy_replacement` / `_sync_slice_replacement` and bounded by `copies_limit_for_sync_mem_op_conversion`. A failed conversion surfaces as `FailSyncDataMoveReplacement` (`0x200`). The resource-model loop body and the sync-replacement state machine are not fully decoded at the basic-block level (see [Limits](#limits)).
 
 ---
 
 ## Worked example — one while-body activation buffer
 
-Trace one while-body activation `%act` (size 2 MiB, defined by a matmul at logical `t=100`, consumed at `t=160`) through the v7 pipeline (VMEM = 64 MiB, 512-B word):
+Trace one while-body activation `%act` (size 2 MiB, defined by a matmul at logical `t=100`, consumed at `t=160`) through the cascade (the VMEM byte budget and word size are per-version — see [msa-reservation-hbm-policy.md](msa-reservation-hbm-policy.md)):
 
 1. **Driver sort.** The buffer-interval comparator ranks `%act` by `memory_boundedness_score × size`; the producing matmul is bandwidth-bound, so the score is high and `%act` is visited early (see [msa-overview.md](msa-overview.md)).
 2. **Request.** `CreateAllocationRequest` builds the `AllocationRequest`: `+0x00` start = `earliest_prefetch`, `+0x08` end = `160`, `+0x20` size = 2 MiB, `+0x2c` `allow_prefetch = 1`, `+0x58` use = `%act@160`.
 3. **Stage 3 fit check.** `AllocateInAlternateMemoryNoCopy` asks the heap for a 2-MiB chunk free across `[100, 160]`. If one persists, a `kAlternate` `PinnedAllocation` is placed → `kSuccess`, done.
-4. **Stage 4 prefetch.** Otherwise `picker.Begin(use=%act@160, earliest, latest)`; `Next()` sweeps candidate copy-start times; for each, `FindBestChunkCandidate` asks for a 2-MiB chunk over `[t_start, 160]` (only needs to be free from the copy's arrival), and `AsyncCopyResource.HasEnoughResource(t_start, 160, cost)` verifies the copy's DMA window. On success a `CopyAllocation` (`kCopyStart @ t_start`, `kCopyDone @ 160`) is emitted → `kSuccess`. Both chunks are 512-B-aligned.
+4. **Stage 4 prefetch.** Otherwise `picker.Begin(use=%act@160, earliest, latest)`; `Next()` sweeps candidate copy-start times; for each, `FindBestChunkCandidate` asks for a 2-MiB chunk over `[t_start, 160]` (only needs to be free from the copy's arrival), and `AsyncCopyResource.HasEnoughResource(t_start, 160, cost)` verifies the copy's DMA window. On success a `CopyAllocation` (`kCopyStart @ t_start`, `kCopyDone @ 160`) is emitted → `kSuccess`. Both chunks are aligned to the VMEM word.
 5. **Stage 5 evict / Stage 6 fallback.** If prefetch fails and an older `kAlternate` allocation exists, `Evict` copies an older buffer out; if that fails, `result |= 0x40` and the driver rolls back pending chunks. If no prior VMEM allocation exists, `%act` stays in HBM (`kDefault` `PinnedAllocation`).
 6. **Handoff.** The chosen `Chunk{offset, size}` rides in the `Allocation`; after the driver's `Process()` it becomes a static program-memory offset that the on-device allocator pins and never relocates — see [../memory/on-device-compaction.md](../memory/on-device-compaction.md).
 
