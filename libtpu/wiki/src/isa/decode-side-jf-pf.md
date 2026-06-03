@@ -4,9 +4,9 @@
 
 ## Abstract
 
-This page documents the **disassembler inverse** of the two oldest TensorCore MXU encoders: the Jellyfish (TPU v3) `VectorExtended` slot and the Pufferfish (TPU v4) dual-MXU slots. Where the [Jellyfish 41B Bundle](bundle-jf-41b.md) and [Pufferfish 51B Bundle](bundle-pf-51b.md) pages map how a `VectorExtendedInstruction` proto is *packed* into a wire bundle, this page maps how a wire bundle is *parsed back* into that proto — the path a TPU program disassembler, a bundle validator, or a round-trip golden test takes. The decode side is the independent confirmation of the encode side: a decoder that reads bit `N` to recover a field the encoder wrote at bit `N` proves both readings are correct.
+This page documents the **disassembler inverse** of the two oldest TensorCore MXU encoders: the Jellyfish (TPU v2) `VectorExtended` slot and the Pufferfish (TPU v4) dual-MXU slots. Where the [Jellyfish 41B Bundle](bundle-jf-41b.md) and [Pufferfish 51B Bundle](bundle-pf-51b.md) pages map how a `VectorExtendedInstruction` proto is *packed* into a wire bundle, this page maps how a wire bundle is *parsed back* into that proto — the path a TPU program disassembler, a bundle validator, or a round-trip golden test takes. The decode side is the independent confirmation of the encode side: a decoder that reads bit `N` to recover a field the encoder wrote at bit `N` proves both readings are correct.
 
-The two generations decode with two structurally different mechanisms, and the split is the central fact of this page. **Jellyfish** packs its MXU op into a single contiguous 6-bit `VectorExtendedOpcode` field at absolute bits 29..34, so its decoder (`DecoderJf::DecodeVectorExtendedSlot` @ `0x1e854000`) is a **two-level nested dispatch**: the top three bits (32..34) select an opcode *family*, and the low three bits (29..31) select the sub-opcode within it, mapping the 6-bit value to a `VectorExtendedOpcode` enumerator and writing it to the proto. **Pufferfish** abandons the contiguous-opcode model: its MXU op is recognized by a **linear `Opcode::Matches` sweep** — the decoder (`TensorCoreVectorExtended0Decoder::Decode` @ `0x1ed76f20`) stages the bundle bytes into a scratch struct, then tries each per-opcode predicate (`Noop`, `MatrixMultiply…`, `PushGains…`, `Transpose…`) in a fixed order until one matches. This `Matches`-sweep shape is the v4 origin of the codec design that carries through every later generation; the [VF / GXC decode-side](decode-side-vf-gxc.md) page documents its v5–v7 descendants.
+The two generations decode with two structurally different mechanisms, and the split is the central fact of this page. **Jellyfish** packs its MXU op into a single contiguous 6-bit `VectorExtendedOpcode` field at absolute bits 29..34, so its decoder (`DecoderJf::DecodeVectorExtendedSlot` @ `0x1e854000`) is a **two-level nested dispatch**: the top three bits (32..34) select an opcode *family*, and the low three bits (29..31) select the sub-opcode within it, mapping the 6-bit value to a `VectorExtendedOpcode` enumerator and writing it to the proto. **Pufferfish** abandons the contiguous-opcode model: its MXU op is recognized by a **linear `Opcode::Matches` sweep** — the decoder (`TensorCoreVectorExtended0Decoder::Decode` @ `0x1ed76f20`) stages the bundle bytes into a scratch struct, then tries each per-opcode predicate (`Noop`, `MatrixMultiply…`, `PushGains…`, `Transpose…`) in a fixed order until one matches. This `Matches`-sweep shape is the v4 origin of the codec design that carries through every later generation; the [VF / GXC decode-side](decode-side-vf-gxc.md) page documents its v5–TPU7x descendants.
 
 The closest LLVM analog is the difference between a `switch`-on-opcode disassembler (Jellyfish: extract the opcode field, jump) and a `MatcherTable`-style predicate cascade (Pufferfish: test each pattern's mask/value pair in priority order). The TPU twist is that the Pufferfish predicate cascade is *generated per-opcode* — there is no single opcode field to switch on, because matmul, push-gains, and transpose occupy overlapping bit windows of different widths that only the per-op mask disambiguates.
 
@@ -32,7 +32,7 @@ For reimplementation, the contract is:
 
 ---
 
-## Jellyfish (v3) — The Two-Level Jump-Table Decode
+## Jellyfish (v2) — The Two-Level Jump-Table Decode
 
 ### Purpose
 
@@ -76,15 +76,16 @@ function DecodeVectorExtendedSlot(this, bundle, out_bundle, errors):
               SetVectorRegisterForData(qword_ptr, ve, errors)
       case 1:                                                       // latch / PushGains group
           i = sub - 1
-          if (((0x77 >> i) & (i < 7)) == 0) { errors.set_…; return Error }   // sub 0,1,2,4,5,6 valid
+          if (((0x77 >> i) & (i < 7)) == 0) { errors.set_…; return Error }   // valid i={0,1,2,4,5,6} → sub={1,2,3,5,6,7}
           ve[0x60] = asc_B833FA0[i]                                 // {7,8,9,0,10,11,12}[i]
           ve[0x10] |= 0x20;  SetVectorRegisterForData(…)
-      case 2: ve[0x60] = sub + 13;  …; SetVectorRegisterForData(…)  // {13..20}
+      // families 2,5,6,7 guard sub<=4 (qword0 >= 0xA0000000 → sub>=5 is invalid-opcode error)
+      case 2: if (sub>=5) error; ve[0x60] = sub + 13;  …; SetVectorRegisterForData(…)  // {13..17}
       case 3: ve[0x60] = 18;        …; SetRotateCountForVectorExtended(…); SetVectorRegisterForData(…)
       case 4: ve[0x60] = 19;        …; SetRotateCountForVectorExtended(…); SetVectorRegisterForData(…)
-      case 5: ve[0x60] = sub + 20;  …; SetVectorRegisterForData(…)  // {20..27}
-      case 6: ve[0x60] = sub + 25;  …; SetVectorRegisterForData(…)  // {25..32}
-      case 7: ve[0x60] = sub + 30;  …; SetVectorRegisterForData(…)  // {30..37}
+      case 5: if (sub>=5) error; ve[0x60] = sub + 20;  …; SetVectorRegisterForData(…)  // {20..24}
+      case 6: if (sub>=5) error; ve[0x60] = sub + 25;  …; SetVectorRegisterForData(…)  // {25..29}
+      case 7: if (sub>=5) error; ve[0x60] = sub + 30;  …; SetVectorRegisterForData(…)  // {30..34}
     return Ok
 ```
 
@@ -92,7 +93,7 @@ The opcode field is the same 6-bit window the encoder cleared with mask `0xFFFFF
 
 > **QUIRK — the sub-opcode is offset by one, not zero-based.** For family 0 the decoder maps sub-opcode `1..7` to `VectorExtendedOpcode 0..6`, and sub-opcode `0` is an *invalid-opcode* error, not opcode 0. The latch family (1) does the same: it indexes `asc_B833FA0` with `sub−1`. A reimplementation that treats the sub-opcode as a direct opcode index will be off by one on every family-0/1 op and will silently accept the reserved sub-opcode 0. The on-wire value 0 in the sub-field is the encoder's way of reserving the all-zero slot.
 
-> **NOTE —** families 3 and 4 carry no sub-opcode in the proto opcode (they decode to the fixed values 18 and 19), but they *do* read a rotate operand via `SetRotateCountForVectorExtended` (`0x1e854e00`) — these are the RPU rotate/permute ops whose shift count is a separate operand, not part of the opcode. Families 2, 5, 6, 7 form the rest of the `{13..37}` RPU/transpose range and read only the data-source vreg.
+> **NOTE —** families 3 and 4 carry no sub-opcode in the proto opcode (they decode to the fixed values 18 and 19), but they *do* read a rotate operand via `SetRotateCountForVectorExtended` (`0x1e854e00`) — these are the RPU rotate/permute ops whose shift count is a separate operand, not part of the opcode. Families 2, 5, 6, 7 form the rest of the `{13..34}` transpose/RPU range (each guards `sub<=4`) and read only the data-source vreg.
 
 ### The VectorExtendedOpcode Classifier Ranges
 
@@ -132,7 +133,7 @@ function SetVectorRegisterForData(qword_ptr, ve, errors):
     ve[0x6c] = reg;  append reg to ve.repeated_field;  ve[0x10] |= 0x141
 ```
 
-> **QUIRK — abs 27..28 is the data-*source* selector, not a physical MXU id.** The encoder writes this 2-bit field from proto `+0x64` (which the [Jellyfish bundle page](bundle-jf-41b.md#vector-extended--mxu-struct-0x0c--encodevectorextendedinstruction--0x1e869f00) labels "mxu-id"), but the decoder names it `vex_source` and uses it to pick *which vector-source port* (vs0/vs1/vs2) the systolic-feed register is read relative to — value 3 is an invalid-source error. On plain Jellyfish there is only one MXU (`MatrixStagingRegisterCount` @ `0x1d490340` returns 1), so this field's "which MXU" reading collapses; on Dragonfish (v3') it is live. The register number itself is read from a different bit window per source value, so a decoder cannot recover the data vreg without first decoding this 2-bit selector. See [MXU Slot](slot-mxu.md#jellyfish-v3--the-direct-pack-vectorextended-slot) for the encode-side view.
+> **QUIRK — abs 27..28 is the data-*source* selector, not a physical MXU id.** The encoder writes this 2-bit field from proto `+0x64` (which the [Jellyfish bundle page](bundle-jf-41b.md#vector-extended--mxu-struct-0x0c--encodevectorextendedinstruction--0x1e869f00) labels "mxu-id"), but the decoder names it `vex_source` and uses it to pick *which vector-source port* (vs0/vs1/vs2) the systolic-feed register is read relative to — value 3 is an invalid-source error. On plain Jellyfish there is only one MXU (`MatrixStagingRegisterCount` @ `0x1d490340` returns 1), so this field's "which MXU" reading collapses; on Dragonfish (v3) it is live. The register number itself is read from a different bit window per source value, so a decoder cannot recover the data vreg without first decoding this 2-bit selector. See [MXU Slot](slot-mxu.md#jellyfish-v3--the-direct-pack-vectorextended-slot) for the encode-side view.
 
 ---
 
@@ -178,7 +179,7 @@ function Decode(span):
     …
 ```
 
-> **NOTE —** the staged-copy-then-`Matches` shape is uniform from v4 through v7; only the abs bit positions in the masks shift per generation. The [VF / GXC decode-side](decode-side-vf-gxc.md) page documents the same `GetConcatenatedValue` + `Opcode::Matches` mechanism for Viperfish, Ghostlite, and Trillium, where it is the only decode path. Pufferfish is the v4 origin.
+> **NOTE —** the staged-copy-then-`Matches` shape is uniform from v4 through TPU7x; only the abs bit positions in the masks shift per generation. The [VF / GXC decode-side](decode-side-vf-gxc.md) page documents the same `GetConcatenatedValue` + `Opcode::Matches` mechanism for Viperfish, Ghostlite, and the `6acc60406` family, where it is the only decode path. Pufferfish is the v4 origin.
 
 ### MXU0 Opcode Predicates — the Mask/Value Table
 
@@ -219,7 +220,7 @@ The arithmetic confirms the −20 offset exactly: `0x3FE0` is bits 5..13 of the 
 | non-matmul opcode | 91..97 | 71..77 | −20 | CONFIRMED |
 | predication | 98..102 | 78..82 | −20 | CONFIRMED |
 
-> **QUIRK — two MXU control slots, four physical MXUs.** Pufferfish has two `VectorExtended` *control* slots (MXU0/MXU1, the −20 twin) and four physical arrays. The slot picks the control lane; the matmul opcode's low two bits pick the array. The −20 twin here is the v4 origin of the same dual-MXU geometry that becomes −20 on Viperfish, −21 on Ghostlite, and −25 on Trillium — see [VF / GXC decode-side](decode-side-vf-gxc.md) and the [MXU Slot](slot-mxu.md#cross-generation-field-summary) cross-generation summary.
+> **QUIRK — two MXU control slots, four physical MXUs.** Pufferfish has two `VectorExtended` *control* slots (MXU0/MXU1, the −20 twin) and four physical arrays. The slot picks the control lane; the matmul opcode's low two bits pick the array. The −20 twin here is the v4 origin of the same dual-MXU geometry that becomes −20 on Viperfish, −21 on Ghostlite, and −25 on the `6acc60406` family — see [VF / GXC decode-side](decode-side-vf-gxc.md) and the [MXU Slot](slot-mxu.md#cross-generation-field-summary) cross-generation summary.
 
 ---
 
@@ -229,11 +230,11 @@ The five-generation decode reference, this page (JF, PF) plus its [VF / GXC](dec
 
 | Gen | Codename | Bundle | Decode mechanism | MXU opcode field | Twin | Confidence |
 |---|---|---|---|---|---|---|
-| v3 | jellyfish | 41 B | two-level nested `switch` on 6-bit opcode (family abs 32..34 + sub abs 29..31) | abs 29..34 (single VE slot) | n/a | CONFIRMED |
+| v2 | jellyfish | 41 B | two-level nested `switch` on 6-bit opcode (family abs 32..34 + sub abs 29..31) | abs 29..34 (single VE slot) | n/a | CONFIRMED |
 | v4 | pufferfish | 51 B | staged copy + linear `Opcode::Matches` sweep | MXU0 abs 89/91; MXU1 abs 69/71 | −20 | CONFIRMED |
-| v5p | viperfish | 64 B | staged copy + `Opcode::Matches` sweep | MXU0 op@59 mm@57; MXU1 op@39 | −20 | [VF/GXC](decode-side-vf-gxc.md) |
-| v6e | ghostlite | 64 B | staged copy + `Opcode::Matches` sweep | MXU0 op@60 mm@58; MXU1 op@39 | −21 | [VF/GXC](decode-side-vf-gxc.md) |
-| v7 | trillium | 64 B | staged copy + `Opcode::Matches` sweep | MXU0 op@64 mm@62; MXU1 op@39 | −25 | [VF/GXC](decode-side-vf-gxc.md) |
+| v5 | viperfish | 64 B | staged copy + `Opcode::Matches` sweep | MXU0 push@59 mm@57 | −20 | [VF/GXC](decode-side-vf-gxc.md) |
+| v6e | ghostlite | 64 B | staged copy + `Opcode::Matches` sweep | MXU0 unified op@58 (w8) | −21 | [VF/GXC](decode-side-vf-gxc.md) |
+| TPU7x | `6acc60406` | 64 B | staged copy + `Opcode::Matches` sweep | MXU0 unified op@62 (w8) | −25 | [VF/GXC](decode-side-vf-gxc.md) |
 
 Jellyfish is the only generation with a single VE issue slot (no twin) and a jump-table-style opcode decode, because its opcode is one contiguous 6-bit field. Every generation from Pufferfish onward uses the staged-copy + `Opcode::Matches` codec; Pufferfish is the v4 origin of both the codec design and the −N dual-MXU twin.
 
@@ -253,9 +254,9 @@ Jellyfish is the only generation with a single VE issue slot (no twin) and a jum
 ## Cross-References
 
 - [Bundle Model](bundle-model-overview.md) — the VLIW bundle, slot dispatch, and `kNeverExecute` convention the MXU slot lives inside.
-- [Jellyfish 41B Bundle](bundle-jf-41b.md) — the v3 `VectorExtended` encode side; the 12-byte-strip law that makes the JF shift constants equal their absolute bits.
+- [Jellyfish 41B Bundle](bundle-jf-41b.md) — the v2 `VectorExtended` encode side; the 12-byte-strip law that makes the JF shift constants equal their absolute bits.
 - [Pufferfish 51B Bundle](bundle-pf-51b.md) — the v4 dual-MXU `BitCopy`-packed slot map this page's decode confirms byte-for-byte.
-- [Decode-Side: VF / GXC](decode-side-vf-gxc.md) — the v5–v7 counterpart: the same staged-copy + `Opcode::Matches` codec, the −20/−21/−25 twins, and the abs57/58 Transpose/Target fields.
+- [Decode-Side: VF / GXC](decode-side-vf-gxc.md) — the v5–TPU7x counterpart: the same staged-copy + `Opcode::Matches` codec, the −20/−21/−25 twins, and the abs57/58 Transpose/Target fields.
 - [MXU Slot](slot-mxu.md) — the cross-generation MXU op family, opcode roster, and the matmul/PushGains/transpose semantics this page decodes.
 - [V5+ EmitX Bit Positions](v5plus-emitx-bit-positions.md) — the `EmitX` → `BitCopy` chain whose decode inverse this page documents for the older JF/PF gens.
 - [MC Emitter](mc-emitter.md) — the parallel LLVM-MC encoding path for the same vmatmul/vmatprep MachineInstrs.

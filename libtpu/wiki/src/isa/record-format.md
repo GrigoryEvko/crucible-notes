@@ -4,20 +4,20 @@
 
 ## Abstract
 
-The TPU MC layer encodes one LLO machine instruction into a fixed-width `llvm::APInt` of **239 bits** — a 4-word (`4 × uint64`, 32-byte) value, of which the top 17 bits are unused padding. This is the intermediate record the LLVM-MC emitter (`TPUMCCodeEmitter::getBinaryCodeForInstr`, `0x13c74da0`) fills before the bytes are sliced into a per-generation VLIW bundle. The width is not a free choice: the emitter constructs the `APInt` with `BitWidth = 0xEF = 239` and `NumWords = 4` directly from a per-opcode base-bits table (`InstBits`), then overwrites operand-shaped *holes* in that base with `APInt::insertBits(value, pos, width)`. The 239-bit window is wide enough to hold the widest single BarnaCore VLIW slot (the vector-load slot reaches bit 223) and is the same width regardless of opcode, generation, or HwMode.
+The TPU MC layer encodes one LLO machine instruction into a fixed-width `llvm::APInt` of **239 bits** — a 4-word (`4 × uint64`, 32-byte) value, of which the top 17 bits are unused padding. This is the intermediate record the LLVM-MC emitter (`TPUMCCodeEmitter::getBinaryCodeForInstr`, `0x13c74da0`) fills before the bytes are sliced into a per-generation VLIW bundle. The width is not a free choice: the emitter constructs the `APInt` with `BitWidth = 0xEF = 239` and `NumWords = 4` directly from a per-opcode base-bits table (`InstBits`), then overwrites operand-shaped *holes* in that base with `APInt::insertBits(value, pos, width)`. The 239-bit window is sized to the widest single BarnaCore VLIW slot: the highest field deposits in `getBinaryCodeForInstr` are a 16-bit field at `insertBits(…, /*pos=*/0xDF=223, /*width=*/16)` and a 64-bit field at `insertBits(…, /*pos=*/0xAF=175, /*width=*/64)`, both of which end at bit **238** — the highest bit the emitter ever writes, which is exactly one below the 239-bit width. The window is the same width regardless of opcode, generation, or HwMode.
 
 Three facts drive the page, and a reimplementer needs all three:
 
 - **The record is a wide-instruction `APInt`, not a `uint64`.** `getBinaryCodeForInstr` carries *two* trailing `APInt&` outputs — LLVM's wide-instruction emitter form for instructions wider than 64 bits. The first (`a3`) is the assembled 239-bit record; the second (`a4`) is a per-operand scratch `APInt` the emitter zeroes and reuses between fields. A reimplementation that returns a single 64-bit code word cannot represent a TPU MC instruction.
 - **The record is base-bits plus insertBits holes.** The 239-bit value starts as a copy of `InstBits[opcode−499]` (a 32-byte row). The set bits are the fixed opcode discriminator and default field values; the *zero holes* are exactly the `(pos, width)` windows the operand encoders fill. Every populated field is written by an `insertBits(value, pos, width)` call whose `(pos, width)` is fixed per encoding class.
-- **The default base is all-zero for TensorCore and V5+.** On disk the default `InstBits` table is entirely zero with no relocations. Only the `InstBits_BarnaCorePxcHwMode` variant carries real base bits. For every TensorCore and Viperfish/Ghostlite/Trillium opcode the record arrives at the emitter all-zero, no `insertBits` runs, and the actual bundle bytes are produced by the separate proto-bundle `EmitX` → `<Slot>Encoder::Encode` path. See [V5+ EmitX Bit Positions](v5plus-emitx-bit-positions.md).
+- **The default base is all-zero for TensorCore and V5+.** On disk the default `InstBits` table (`0x3366d90`, `0x2c460` B) is entirely zero — verified byte-for-byte, zero non-zero bytes and no relocations. Only the `InstBits_BarnaCorePxcHwMode` variant (`0x33931f0`) carries real base bits. For every TensorCore and Viperfish/Ghostlite/`6acc60406` opcode the record arrives at the emitter all-zero, no `insertBits` runs, and the actual bundle bytes are produced by the separate proto-bundle `EmitX` → `<Slot>Encoder::Encode` path. See [V5+ EmitX Bit Positions](v5plus-emitx-bit-positions.md).
 
 | | |
 |---|---|
 | **Record type** | `llvm::APInt`, `BitWidth = 0xEF = 239`, `NumWords = 4` (32 B) |
 | **Filled by** | `TPUMCCodeEmitter::getBinaryCodeForInstr` @ `0x13c74da0` |
 | **Base-bits table** | `InstBits` @ `0x3366d90` (default, all-zero) / `InstBits_BarnaCorePxcHwMode` @ `0x33931f0` (populated) |
-| **Records per table** | 5667 (`0x588d / 4`); stride 32 B; index `opcode − 499` |
+| **Records per table** | 5667 rows (`0x2c460` table size `/ 32` B stride); index `opcode − 499`; the bound test is `4·index < 0x588D` |
 | **First real opcode** | `0x1f3 = 499` (`ADDri`); opcodes `≤ 498` are pseudo/target-independent |
 | **Operand primitive** | `APInt::insertBits(value, pos, width)` |
 | **Padding** | bits `[239:255]` (top 17 of the 256-bit storage) unused |
@@ -51,7 +51,7 @@ if ((uint32_t)v8 >= 0x588D)            // bound: index*4 < 22669 -> 5667 records
 APInt(&record, /*BitWidth=*/239, &GLOBAL_OFFSET_TABLE_ + v8 - 65189758, /*NumWords=*/4);
 ```
 
-Two derived constants are worth pinning. The record stride is **32 bytes** (`4 × uint64`), so `(opcode − 499) × 4` words advance one row. The bound `index*4 < 0x588D` gives `0x588D / 4 = 0x1623 = 5667` records, and `5667 × 32 = 0x2c460 = 181344` bytes — exactly the on-disk size of the `InstBits` symbol. The first row (index 0) belongs to opcode `0x1f3 = 499` (`ADDri`); the named-mnemonic database (`TPUInstrNameIndices` / `TPUInstrNameData`) confirms `[499] = ADDri`, `[505] = BRabs`, `[571] = HALT`, `[3978] = bcLOOP_START`. See [InstBits DB](instbits-master-db.md).
+Two derived constants are worth pinning. The record stride is **32 bytes** (`4 × uint64`), so `(opcode − 499) × 4` words advance one row. The on-disk `InstBits` symbol is `0x2c460 = 181344` bytes = `5667 × 32`, so the table holds **5667 rows** (valid indices `0 … 5666`). The bound test `index·4 < 0x588D` (= `22669`) admits `index·4 ≤ 22668`, i.e. `index ≤ 5667` — one slot wider than the 5667-row table; index 5667 would read 32 bytes past the symbol. The trap protects against opcodes far above the valid range, not against this single boundary index. The first row (index 0) belongs to opcode `0x1f3 = 499` (`ADDri`); the named-mnemonic database (`TPUInstrNameIndices` @ `0x3435d30` / `TPUInstrNameData` @ `0x33f2be0`) confirms, byte-exactly, `[499] = ADDri`, `[505] = BRabs`, `[571] = HALT`, `[3978] = bcLOOP_START` (with `[0] = PHI` among the pseudo opcodes below 499). See [InstBits DB](instbits-master-db.md).
 
 > **NOTE —** the 256-bit storage minus the 239-bit logical width leaves bits `[239:255]` as dead padding. A reimplementation must mask field writes to the 239-bit window; an `insertBits` that runs off the high end is a silent encoding bug because the `APInt` storage tolerates the spill.
 
@@ -77,7 +77,7 @@ For the **default** (TensorCore / V5+) opcodes the base row is all-zero and the 
 | Opcode group | Base row | insertBits in `getBinaryCodeForInstr` | Where the bytes come from | Confidence |
 |---|---|---|---|---|
 | BarnaCore-Pxc (`_V0/_V1/_V2/_VM`, `bc*`) | populated (`InstBits_BarnaCorePxcHwMode`) | yes — per encoding class | the 239-bit record | CONFIRMED |
-| TensorCore / Viperfish / Ghostlite / Trillium | all-zero (`InstBits` default) | none (default case) | proto-bundle `EmitX` + `<Slot>Encoder::Encode` | CONFIRMED |
+| TensorCore / Viperfish / Ghostlite / `6acc60406` | all-zero (`InstBits` default) | none (default case) | proto-bundle `EmitX` + `<Slot>Encoder::Encode` | CONFIRMED |
 | pseudo / target-independent (`opcode ≤ 498`) | n/a | n/a — `reportUnsupportedInst` | expanded before MC emission | CONFIRMED |
 
 ---
@@ -129,15 +129,16 @@ The descriptor consult ties the record format to the descriptor table: a reimple
 
 The 239-bit record is wider than any single per-generation bundle slot but narrower than a whole bundle. It is a *per-instruction* intermediate, not a *per-bundle* one: one LLO machine instruction → one 239-bit record → (via the bundle packer) one slot's worth of bytes in the gen-specific bundle word. The bundle widths it feeds are fixed per generation:
 
-| Generation | Codename | Bundle bytes | Bundle bits | MC record path | Confidence |
+| Codename (ordinal) | Public name | Bundle bytes | Bundle bits | MC record path | Confidence |
 |---|---|---|---|---|---|
-| TPU v3 | Jellyfish | 41 | 328 | proto-direct (no Compact encoder) | CONFIRMED |
-| TPU v4 | Pufferfish (BarnaCore) | 51 | 408 | **239-bit record + insertBits** (`InstBits_BarnaCorePxcHwMode`) | CONFIRMED |
-| TPU v5e | Viperfish | 64 | 512 | zero base → proto-bundle `EmitX` | CONFIRMED |
-| TPU v5p | Ghostlite | 64 | 512 | zero base → proto-bundle `EmitX` | CONFIRMED |
-| TPU v6e | Trillium | 64 | 512 | zero base → proto-bundle `EmitX` | CONFIRMED |
+| Jellyfish (0) | TPU v2 | 41 | 328 | proto-direct (no `insertBits` record) | CONFIRMED |
+| Dragonfish (1) | TPU v3 | 41 | 328 | shares the Jellyfish codec path | CONFIRMED |
+| Pufferfish (2, BarnaCore) | TPU v4 | 51 | 408 | **239-bit record + insertBits** (`InstBits_BarnaCorePxcHwMode`) | CONFIRMED |
+| Viperfish (3) | TPU v5p (+v5e lite) | 64 | 512 | zero base → proto-bundle `EmitX` | CONFIRMED |
+| Ghostlite (4) | TPU v6e | 64 | 512 | zero base → proto-bundle `EmitX` | CONFIRMED |
+| `6acc60406` (5) | TPU v7 | 64 | 512 | zero base → proto-bundle `EmitX` | CONFIRMED |
 
-The single generation whose bundle bytes actually flow through this 239-bit record is the **Pufferfish BarnaCore** HwMode: its vector-ALU lanes (`_V0/_V1/_V2/_VM`) and native ops (`bcVLD*`, `bcVST*`, `bcLOOP_START`, `bcHALT`, `bcNOP`, `bcVSHIFT`) are the 704 populated rows of `InstBits_BarnaCorePxcHwMode`, and their field positions are recoverable from the record. The widest field reaches bit 223 (a 16-bit immediate displacement at `[207:223]` in the load slot), which is why the 239-bit window is sized as it is — it must hold the largest single BarnaCore slot with room for the opcode discriminator below it. For the V5+ generations the record is a formality: it is built, found all-zero, and bypassed in favour of the bundle byte buffer the proto-bundle encoders write directly. See [Bundle Model](bundle-model-overview.md) for the per-generation bundle word layout and slot map.
+The single generation whose bundle bytes actually flow through this 239-bit record is the **Pufferfish BarnaCore** HwMode: its vector-ALU lanes (`_V0/_V1/_V2/_VM`) and native ops (`bc*`) are the **704 populated rows** of `InstBits_BarnaCorePxcHwMode` (verified by counting non-zero 32-byte rows; the first is opcode `2855`), and their field positions are recoverable from the record. The highest-positioned deposits seen in `getBinaryCodeForInstr` are a 16-bit field at `pos = 0xCF = 207` (bits `[207:222]`), a 16-bit field at `pos = 0xDF = 223` (bits `[223:238]`), and a 64-bit field at `pos = 0xAF = 175` (bits `[175:238]`) — all ending at **bit 238**, the highest bit the emitter writes. That bit-238 ceiling is why the 239-bit window is sized as it is: it must hold the largest single BarnaCore slot with room for the opcode discriminator below it. For the V5+ generations the record is a formality: it is built, found all-zero, and bypassed in favour of the bundle byte buffer the proto-bundle encoders write directly. See [Bundle Model](bundle-model-overview.md) for the per-generation bundle word layout and slot map.
 
 > **NOTE —** the bundle width is *not* the record width. The 239-bit record is the MC-emitter's working unit for one instruction; the bundle packer is what places (a slice of) that record into the 41/51/64-byte bundle word at a slot-relative offset. Conflating the two — assuming a 64-byte V5+ bundle is "two and a half 239-bit records" — does not hold, because on V5+ the record contributes zero bits and the bundle is assembled entirely by `BitCopy`.
 
@@ -148,3 +149,5 @@ The single generation whose bundle bytes actually flow through this 239-bit reco
 - [Bundle Model](bundle-model-overview.md) — the per-generation 41/51/64-byte VLIW bundle word and slot map the record feeds.
 - [MC-Emitter](mc-emitter.md) — `getBinaryCodeForInstr`, the per-opcode dispatch, and the full emit pipeline that fills this record.
 - [InstBits DB](instbits-master-db.md) — the `InstBits` / `InstBits_BarnaCorePxcHwMode` base-bits tables, `TPUDescs`, `TPUInstrNameData`, and `TPURegEncodingTable` that the record is built from.
+- [Kisatable Data Sections](kisatable-data-sections.md) — the on-disk addresses and byte sizes of `TPUDescs`, `TPUStages`, `TPUInstrNameData`, and `TPUInstrNameIndices` this record's tables sit beside.
+- [V5+ EmitX Bit Positions](v5plus-emitx-bit-positions.md) — the proto-bundle `EmitX` → `<Slot>Encoder::Encode` path that produces the real bytes when this record is all-zero (every TensorCore / V5+ opcode).
