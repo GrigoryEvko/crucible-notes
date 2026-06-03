@@ -134,10 +134,10 @@ function RegisterNumbering::Init(this, class_count_map):   // sub_1d622520
             AddRegister(this, type, regno=k, arch_regno=next_arch_regno + k, is_pseudo)
         next_arch_regno += class_count_map.at(type).count
 
-    // post-conditions (assertions in the binary):
-    assert idx_to_regno_[kNoRegister].first == RegisterType::kNone
+    // post-conditions (assertion strings in the binary):
+    assert index_to_regno_[kNoRegister].first == RegisterType::kNone
     assert GetMask(RegisterType::kNone).count() == 0
-    assert total_registers_ == next_arch_regno
+    assert total_registers_ == reg_num   // reg_num = final next_arch_regno
 ```
 
 The assignment order is fixed by `kAllocatableRegisterTypes` @ `0xadf7f54` (four `int32`s = `{1, 2, 3, 4}`): the arch-register space is laid out as `[sentinel] [Preg block] [Sreg block] [Vmreg block] [Vreg block]`, each block sized by its class count.
@@ -183,10 +183,10 @@ The four count fields the numbering consumes are populated from the chip-parts s
 
 | Generation (codename) | `TpuVersion` | SREG (`0x498`) | VREG (`0x49c`) | VMREG (`0x4a0`) | PREG (`0x4a4`) | Arch regs (approx) |
 |---|---|---|---|---|---|---|
-| v3 / v4 (Jellyfish / Pufferfish) | `kJellyfish`=0, `kPufferfish`=2 | 32 | 32 | 8 | 15 | ~87 (+1 sentinel) |
-| v5p / v6e (Viperfish / Ghostlite-Trillium) | `kViperfish`=3, `kGhostlite`=4 | 32 | 64 | 16 | 14 | ~126 (+1 sentinel) |
+| v2 / v3 / v4 (jellyfish / dragonfish / pufferfish) | `kJellyfish`=0, `kDragonfish`=1, `kPufferfish`=2 | 32 | 32 | 8 | 15 | ~88 (+1 sentinel) |
+| v5p (+v5e lite) / v6e / v7 (viperfish / ghostlite / `6acc60406`) | `kViperfish`=3, `kGhostlite`=4, gen-5=5 | 32 | 64 | 16 | 14 | ~127 (+1 sentinel) |
 
-The `TpuVersion` enum is `{kJellyfish=0, kDragonfish=1, kPufferfish=2, kViperfish=3, kGhostlite=4}`. The total arch-register count is `1 + SREG + VREG + VMREG + PREG` (the +1 is `arch_regno 0`). The assignment order is always `Preg → Sreg → Vmreg → Vreg`, so the Preg block occupies `arch_regno [1, PREG]`, the Sreg block `[1+PREG, 1+PREG+SREG)`, and so on.
+The `TpuVersion` enum has **six** values: `{kJellyfish=0, kDragonfish=1, kPufferfish=2, kViperfish=3, kGhostlite=4, <gen-5>=5}` (the sixth, the v7 generation, has codename `6acc60406` in this binary). The total arch-register count is `1 + PREG + SREG + VMREG + VREG` (the +1 is `arch_regno 0`). The assignment order is always `Preg → Sreg → Vmreg → Vreg`, so the Preg block occupies `arch_regno [1, 1+PREG)`, the Sreg block `[1+PREG, 1+PREG+SREG)`, and so on.
 
 | | | Confidence |
 |---|---|---|
@@ -194,7 +194,7 @@ The `TpuVersion` enum is `{kJellyfish=0, kDragonfish=1, kPufferfish=2, kViperfis
 | Prefix-sum total, `Preg→Sreg→Vmreg→Vreg` block order | `Init` decompile | CERTAIN |
 | Numeric counts per generation | Chip-parts sequencer descriptor (not re-read from this build) | MEDIUM |
 
-> **QUIRK —** VREG doubles from 32 (v3/v4) to 64 (v5p/v6e), VMREG doubles 8→16, while PREG actually *shrinks* 15→14. A reimplementer numbering registers for a v5+ target who assumes the v3 file sizes will mis-place every Sreg, Vmreg, and Vreg `arch_regno`, because the block bases shift with the per-class counts.
+> **QUIRK —** VREG doubles from 32 (v2/v3/v4) to 64 (v5p/v6e/v7), VMREG doubles 8→16, while PREG actually *shrinks* 15→14. A reimplementer numbering registers for a v5+ target who assumes the v2-era file sizes will mis-place every Sreg, Vmreg, and Vreg `arch_regno`, because the block bases shift with the per-class counts.
 
 ---
 
