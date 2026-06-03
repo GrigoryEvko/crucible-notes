@@ -1,6 +1,6 @@
 # Per-Generation Function Dispatcher
 
-> *All addresses on this page apply to `libtpu.so` v0.103 from the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`, 745 MB, not stripped). VMA == file offset in `.text`/`.rodata`/`.lrodata`. Other builds will differ.*
+> *All addresses on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`, 745 MB, not stripped). VMA == file offset in `.text`/`.rodata`/`.lrodata`. Other builds will differ.*
 
 ## Abstract
 
@@ -150,7 +150,7 @@ Every per-generation table is indexed by the `tpu::TpuVersion` enum. The ordinal
 | 2 | Pufferfish | pxc / plc | CERTAIN |
 | 3 | Viperfish | vfc / vlc | CERTAIN |
 | 4 | Ghostlite | glc | CERTAIN |
-| 5 | (anon, `6acc60406` / TPU7x) | gfc (Trillium) | HIGH |
+| 5 | (anon, `6acc60406` / TPU7x) | gfc (mktg "Ironwood") | HIGH |
 
 > **GOTCHA —** the `TpuVersion` enum used to *index the per-generation tables* is **not** the same axis as the `DeviceType`/`DeviceIdentifiers` ordinals returned by `DeviceTypeFromDeviceIdentifiers` (`0xf6993a0`). That function maps external device identifiers onto a *different* numbering (one axis places Jellyfish at 3 and Ghostlite at 13). The registries are keyed on the dense internal `TpuVersion` (0..5), reached after the device-identifier layer has normalized to it. Conflating the two will index the wrong table. The internal `TpuVersion` is the canonical index for everything on this page; treat `DeviceTypeFromDeviceIdentifiers` as an upstream normalizer, not the table index.
 
@@ -186,7 +186,7 @@ CreateFromTopology(topology, l, l)          0x1d48e520
   return StatusOr{t}
 ```
 
-There are exactly **five** `Target` factories registered — versions 0..4. There is no v5 module and no `GhostfishTarget`/`6acc60406Target` class: the v5 (`gfc`/TPU7x) silicon **reuses the v4 Ghostlite `Target` descriptor**. This mirrors the HAL factory sharing one VXC class across v3/v4/v5 and the codec's anonymous v5 path.
+There are **six** `Target` factories registered — versions 0..5. Five are the named `…Target::Create` modules (jellyfish..ghostlite); the sixth is a v5 (`gfc`/TPU7x) registration thunk that lives in the `google_init_cold` section with no own module symbol. Its `__invoke` (`0x1d49f100`) does not tail-call any of the five named `…Target::Create` functions — it runs an outlined factory body (`0x1d49c9c0`) that `new`s and `Target::Init`s a **`ViperfishSparseCoreTarget`** (typeinfo `_ZTIN…25ViperfishSparseCoreTargetE`, `0x21cc9080`), constructed via `Target::Init(…, unique_ptr<SparseCoreTarget>, …)` (`0x1d60fc20`). So v5 has its own (anonymous, SparseCore-derived) `Target`, not a reuse of the v4 Ghostlite descriptor — the same full-population as `CycleTable` (`GfcCycleTable`) and the codec's distinct v5 case.
 
 | `TpuVersion` | Codename | `…Target::Create` @ | `GoogleInitializer` module @ | Confidence |
 |---|---|---|---|---|
@@ -195,7 +195,7 @@ There are exactly **five** `Target` factories registered — versions 0..4. Ther
 | 2 | pufferfish | `0x1d493620` | `xla_target_pufferfish` `0x213eeec0` (edi=2) | CERTAIN |
 | 3 | viperfish | `0x1d4995a0` | `xla_target_viperfish` `0x213eef00` (edi=3) | CERTAIN |
 | 4 | ghostlite | `0x1d496640` | `xla_target_ghostlite` `0x213eeee0` (edi=4) | CERTAIN |
-| 5 | (anon) | — (reuses v4 Ghostlite) | (no module) | HIGH |
+| 5 | (anon, `gfc`/TPU7x) | `ViperfishSparseCoreTarget` via `0x1d49f100`→`0x1d49c9c0` | thunk in `google_init_cold` `0x213eef20` (edi=5) | HIGH |
 
 Each module's `$_0::__invoke` thunk (e.g. ghostlite `__invoke` `0x1d499040`) `lea`s itself into `%rsi`, sets the version in `%edi`, and tail-calls `RegisterTargetCreationFunctor`; `__invoke` in turn tail-calls the named `…Target::Create`. The `Target` registry's singleton lives at `target_registry` (`0x2257e170`, guard `0x2257e178`), and a miss produces the graceful string `"No Target registered for "` (`0xa1e75db`).
 
@@ -242,7 +242,7 @@ if *(u32*)(slot)     == version &&        // first int32: TpuVersion
 
 `Get` is `0x140af4e0`, `Register` is `0x140c2360`. The registry is populated by ~28 `google_init_module_*_emitter` static-init modules. Some are per-codename-per-sequencer (the `MakeIsaEmitter<…>` lambdas for `jellyfish`, `pufferfish` tensor-core and barna-core, `viperfish` tensor-core, `ghostlite` tensor-core, the barna-core address-handler); the rest are op-specific (cholesky, qr, lu, eigh, topk, resize, padding, alloc, window-prefetch, async-collective start/done) that register their emitter under specific sequencer-type cells. The full `(version × sequencer-type) → IsaEmitter-leaf` cell census was not exhaustively enumerated (it requires decoding each module's `__invoke` thunk and its embedded pair); the registry *mechanism* and signature are CERTAIN, the per-cell matrix is not traced.
 
-> **GOTCHA —** the `IsaEmitter` key is a *pair*, and the SOO (small-object) path compares the 8-byte key as a single `vpcmpeqd` against the inline slot. A reimplementer who keys this registry on `TpuVersion` alone will collide every sequencer type within a generation onto one slot and silently return the wrong emitter. The sequencer-type half is load-bearing for selection, not a tie-breaker.
+> **GOTCHA —** the `IsaEmitter` key is a *pair*, and the SOO (small-object) path compares the 8-byte key as a single `vpcmpeqd` against the inline slot. A reimplementer who keys this registry on `TpuVersion` alone will collide every sequencer type within a generation onto one slot and silently return the wrong emitter. The sequencer-type half is part of the selection key, not a tie-breaker.
 
 ### Sibling mechanism M2 — the codec switch-jump
 
