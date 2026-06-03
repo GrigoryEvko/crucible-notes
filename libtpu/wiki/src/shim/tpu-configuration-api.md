@@ -54,7 +54,7 @@ Three areas, one table. "Impl symbol + address" is the `extern "C"` bridge in `l
 | `TpuConfigurationApi_TpuMemoryLimit` | `0xe8cdc40` | `TpuMemoryLimit` (`0xe974440`) | Out-param `int64` (a `tsl::gtl::IntType<Bytes_tag_>`): per-core HBM byte budget | CERTAIN |
 | `TpuConfigurationApi_RemoteCompilationCacheSizeInBytes` | `0xe8cdcc0` | reads `FLAGS_tpu_remote_compilation_cache_size_bytes` | Out-param `int64`: remote compile-cache max size; `CHECK`s ptr non-null and value `>= 0` | CERTAIN |
 | `TpuConfigurationApi_CompilationCacheServerAddressFromConfig` | `0xe8cdda0` | parses `tensorflow::tpu::TPUHostConfiguration` proto | Decode the compile-cache server address from a serialized `TPUHostConfiguration`; emit a `char[]` | CERTAIN |
-| `TpuConfigurationApi_GetServerAddressAndPort` | `0xe8cdf80` | `GetServerAddressAndPort` (not separately traced) | Resolve the compile-cache server `host:port` from `FLAGS_uberdriver_port` + `FLAGS_tpu_hostname_override`; emit a `char[]` | HIGH |
+| `TpuConfigurationApi_GetServerAddressAndPort` | `0xe8cdf80` | `GetServerAddressAndPort` (`0xe975a60`) | Resolve the compile-cache server `host:port` from `FLAGS_uberdriver_port` + `FLAGS_tpu_hostname_override`; emit a `char[]` | CERTAIN |
 
 ### Free helpers
 
