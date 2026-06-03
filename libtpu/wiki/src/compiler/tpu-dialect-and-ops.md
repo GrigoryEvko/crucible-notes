@@ -6,27 +6,27 @@
 
 The `tpu` dialect is the TPU's *machine dialect* — the MLIR target dialect that the optimizer path (HLO → MHLO → `tpu`) and the Mosaic side channel (`tpu_custom_call` → `tpu`) both converge on before the descent into LLO (see [Compiler Overview](overview.md)). This page documents the dialect from the angle that survives in a stripped-but-symbol-bearing binary: not the source-level ODS `.td` files (which are not in the wheel), but the **runtime op-registration ABI** that every op in every MLIR dialect is compiled into.
 
-Concretely, MLIR registers an op not by C++ inheritance but by instantiating a type-erased concept class — `mlir::RegisteredOperationName::Model<Op>` — once per op, and inserting it as the op's `OperationName::Impl`. Each `Model<Op>` is a vtable with a fixed **23-slot contract**: a shared base destructor, a per-op deleting destructor, and 21 dispatch slots (fold, canonicalize, verify, parse/print, the four inherent-attribute accessors, and nine property-management methods). The binary holds **6,050** such `Model<Op>` vtables — one per registered op across 62 dialect namespaces — of which the `tpu` dialect owns **86**.
+Concretely, MLIR registers an op not by C++ inheritance but by instantiating a type-erased concept class — `mlir::RegisteredOperationName::Model<Op>` — once per op, and inserting it as the op's `OperationName::Impl`. Each `Model<Op>` is a vtable with a fixed **23-slot contract**: a shared base destructor, a per-op deleting destructor, and 21 dispatch slots (fold, canonicalize, verify, parse/print, the four inherent-attribute accessors, and nine property-management methods). The binary holds **6,050** such `Model<Op>` vtables — one per registered op across 60-plus dialect namespaces — of which the `tpu` dialect owns **86**.
 
 This page owns three things, because the sibling [MLIR Op-Model Contract](mlir-op-model-contract.md) page is presently a stub:
 
 - **The `Model<Op>` 23-slot contract** — every slot labelled to its demangled `Model<Op>::<method>` symbol, the 1-shared + 22-per-op layout, and what each slot does. (Verified on `Model<mlir::tpu::IotaOp>`: all 21 dispatch-slot symbols present.)
 - **The Op↔Model binding** — how a concrete `tpu` op fills its 23 slots: the `Dialect::addOperations<…>` registrar, the single `RegisteredOperationName::insert`, and the three-level delegation from the type-erased Model thunk to the op's ODS-generated statics.
-- **The `tpu` op-family taxonomy** — the 86 ops grouped by their `OpInterface` signature, the fold/canonicalize census (the dialect's entire in-dialect rewrite surface is 15 methods), and the 9 ops that carry a non-trivial `Properties` struct.
+- **The `tpu` op-family taxonomy** — the 86 ops grouped by their `OpInterface` signature, the fold/canonicalize census (the dialect's entire in-dialect rewrite surface is 15 methods), and the 9 ops that carry a variadic `AttrSizedOperandSegments` size array (a subset of the 53 ops whose `Properties` struct is non-trivial).
 
 | | |
 |---|---|
 | **Op-registration concept** | `mlir::RegisteredOperationName::Model<Op>` (one per registered op) |
-| **Model vtable count (all dialects)** | **6,050** across 62 namespaces (= total registered-op count) |
+| **Model vtable count (all dialects)** | **6,050** across 60-plus namespaces (= total registered-op count) |
 | **`tpu` dialect Model count** | **86** (exact `addOperations<>` arity; reconciles the overview's "157" estimate below) |
 | **Vtable slots per Model** | **23** = slot 0 shared base dtor + slot 1 per-op dtor + slots 2–22 dispatch |
 | **Shared slot-0 dtor** | `mlir::OperationName::Impl::~Impl` (addend `0xfea8820`, identical across all 6,050 Models) |
 | **`tpu` op registrar** | `Dialect::addOperations<mlir::tpu::AllReduceOp, …>` @ `0x14aa2c40` (86 args) |
 | **Registration sink** | `RegisteredOperationName::insert(unique_ptr<OperationName::Impl>, ArrayRef<StringRef>)` @ `0x1d8c57a0` |
-| **Dialect ctor** | `mlir::tpu::TPUDialect::TPUDialect(MLIRContext*)` @ `0x14a96d40` (ops added in `initialize`) |
+| **Dialect ctor** | `mlir::tpu::TPUDialect::TPUDialect(MLIRContext*)` @ `0x14a96d40` (registers `"tpu"`, dialect-id 3, then calls `addAttributes<13>`/`addType<3>`/`addOperations<86>` inline — no separate `initialize()`) |
 | **`tpu` MemoryEffect interface fan-out** | 59 ops (cross-checked two ways) |
 | **`tpu` in-dialect rewrite surface** | 6 real `fold()` + 9 real `getCanonicalizationPatterns()` = 15 methods |
-| **`tpu` property-carrying ops** | 9 (AttrSizedOperandSegments ⇒ `getOpPropertyByteSize` > 0) |
+| **`tpu` ops with non-trivial `Properties`** | 53 (slot 14 `getOpPropertyByteSize` > 0); 9 of those carry an `AttrSizedOperandSegments` size array |
 | **Confidence** | CONFIRMED (byte-anchored) unless a row or callout says otherwise |
 
 ---
@@ -97,7 +97,7 @@ A concrete op is bound to its 23-slot Model not by overriding virtuals in a hand
 
 ### Level 1 — registration: `addOperations` → `insert`
 
-Each dialect registers its ops with a single variadic `Dialect::addOperations<Op…>` template instantiation, called from the dialect's `initialize()`. For `tpu` this is:
+Each dialect registers its ops with a single variadic `Dialect::addOperations<Op…>` template instantiation. For `tpu`, this is called directly from the dialect constructor body (`TPUDialect::TPUDialect` @ `0x14a96d40` — there is no separate `initialize()` symbol; the constructor runs `Dialect::Dialect(this, "tpu", 3, …)`, then `addAttributes<…>`, `addType<…>` ×3, then `addOperations<…>`):
 
 ```text
 mlir::Dialect::addOperations<mlir::tpu::AllReduceOp, mlir::tpu::AllocaSemaphoreOp,
@@ -112,7 +112,7 @@ mlir::RegisteredOperationName::insert(
     llvm::ArrayRef<llvm::StringRef>)                  @ 0x1d8c57a0
 ```
 
-The `Model<Op>` *is* the `OperationName::Impl` — registration is "intern this Impl under the op's name(s)." The `TPUDialect` constructor (`mlir::tpu::TPUDialect::TPUDialect(MLIRContext*)` @ `0x14a96d40`) wires up attributes and types in its body; the ops arrive via `initialize()` → `addOperations`. Binary-wide there are 224 `addOperations` instantiations (one per registered dialect, some split into batches); the TPU-path registrars are `tpu` `0x14aa2c40` (86), `llo` `0x13e5f940` (325), `sparse_core` ScDialect `0x14594f60` (115), and `mosaic_sc` `0x132f9ec0` (1, `RelayoutOp`).
+The `Model<Op>` *is* the `OperationName::Impl` — registration is "intern this Impl under the op's name(s)." The `TPUDialect` constructor (`mlir::tpu::TPUDialect::TPUDialect(MLIRContext*)` @ `0x14a96d40`) wires up attributes (`addAttributes<13>`) and types (`addType<…>` ×3) and the ops (`addOperations<86>`) all in its own body — `initialize()` is fully inlined into the constructor, so there is no standalone `TPUDialect::initialize` symbol. Binary-wide there are 224 distinct `addOperations<…>` symbols — 205 unique after demangling (19 collapse to identical demangled signatures) — one per registered dialect (some split into batches); the TPU-path registrars are `tpu` `0x14aa2c40` (86), `llo` `0x13e5f940` (325), `sparse_core` ScDialect `0x14594f60` (115), and `mosaic_sc` `0x132f9ec0` (1, `RelayoutOp`).
 
 ### Level 2 — per-slot delegation to ODS statics
 
@@ -204,13 +204,15 @@ The op families read as the TPU's machine-instruction classes: **MXU matmul** (`
 
 ### Properties-carrying ops
 
-Nine `tpu` ops have a non-trivial `Properties` struct (`AttrSizedOperandSegments` ⇒ slot 14 `getOpPropertyByteSize > 0`, slots 15–22 active): **EnqueueDMA, MemRefSlice, SemaphoreSignal, Store, VectorLoad, VectorLoadIdx, VectorStore, VectorStoreIdx, WaitDMA2**. These manage variadic operand-segment size arrays. `IotaOp` is a separate case: its 8-byte `Properties` is the single inherent `dimensions` `DenseArrayAttr` handle, confirmed by the demangled `mlir::tpu::IotaOp::getDimensions`, `readProperties`, and `writeProperties` statics.
+Reading slot 14 (`getOpPropertyByteSize`) across all 86 ops, **53 `tpu` ops carry a non-trivial `Properties` struct** (slot 14 returns a non-zero `sizeof`; the remaining 33 return 0 via `xor %eax,%eax;ret`). The `Properties` sizes range from 8 to 40 bytes — most are the inline storage for an op's inherent attributes (e.g. `IotaOp`'s 8-byte `dimensions` `DenseArrayAttr` handle, confirmed by the demangled `mlir::tpu::IotaOp::getDimensions`, `readProperties`, and `writeProperties` statics).
+
+A distinguished **subset of 9 ops** additionally carries an `AttrSizedOperandSegments` variadic operand-segment size array (verified by the `AttrSizedOperandSegments` trait on the demangled `Op<…>` signature): **EnqueueDMA, MemRefSlice, SemaphoreSignal, Store, VectorLoad, VectorLoadIdx, VectorStore, VectorStoreIdx, WaitDMA2**. The largest `Properties` structs — `EnqueueDMA` and `Store` at 40 bytes, then `Matmul`/`Rotate`/`UnpackSubelements`/`VectorStore`/`WaitDMA2` at 32 bytes — combine several inherent attributes (and, for the segment-bearing ops, the size array) in one inline blob.
 
 ### The in-dialect rewrite surface is 15 methods
 
 The fold and canonicalize slots (2 and 3) are present on all 86 ops, but each wraps a no-op unless the op *defines* the method. By demangled-symbol presence of `Op::fold` / `Op::getCanonicalizationPatterns`, the entire in-dialect rewrite surface of the `tpu` dialect is:
 
-- **6 real `fold()`:** `BitcastVregOp`, `EraseLayoutOp`, `ExtFOp`, `MemRefSliceOp`, `ReshapeOp`, `TruncFOp`. (All six confirmed by symbol; `TruncFOp::fold` appears twice — an overload pair.)
+- **6 real `fold()`:** `BitcastVregOp`, `EraseLayoutOp`, `ExtFOp`, `MemRefSliceOp`, `ReshapeOp`, `TruncFOp`. (All six confirmed by symbol; `TruncFOp::fold` shows two symbols — the fold method plus an inner `operator()(APFloat const&, bool&)` lambda doing the per-element conversion.)
 - **9 real `getCanonicalizationPatterns()`:** `FPToSIOp`, `MatmulOp`, `MemRefBitcastOp`, `MemRefSliceOp`, `MemRefSqueezeOp`, `ShuffledLoadOp`, `ShuffledStoreOp`, `UnpackSubelementsOp`, `UnrollVectorsOp`.
 
 Everything else in the `tpu` dialect is transformed *structurally* by the dialect-conversion lowering ([tpu → LLO Lowering](tpu-to-llo-ods.md)), not rewritten in place. The fold/canonicalize *bodies* (the rewrite algebra inside, e.g., `MatmulOp::getCanonicalizationPatterns`) are not decompiled on this page — only the census (which ops rewrite) is established here.
@@ -221,7 +223,7 @@ Everything else in the `tpu` dialect is transformed *structurally* by the dialec
 
 ## The tpu Dialect in the 6,050-Model Census
 
-The `tpu` dialect's 86 ops sit inside a binary-wide census of 6,050 `Model<Op>` instances across 62 dialect namespaces, where each dialect's Model count equals its registered-op count. The TPU-relevant dialects:
+The `tpu` dialect's 86 ops sit inside a binary-wide census of 6,050 `Model<Op>` instances across 60-plus dialect namespaces (the exact dialect count depends on how the `xla` sub-namespaces — `xla`, `xla::cpu`, `xla::xtile` — are partitioned), where each dialect's Model count equals its registered-op count. The TPU-relevant dialects:
 
 ```text
 dialect             Models   role on the TPU path
@@ -257,7 +259,7 @@ The other 50-odd namespaces (TF 834, spirv 376, ROCDL 350, NVVM 197, the HLO inp
 | `getOpPropertyByteSize` is an inlined `sizeof(Properties)` | `Model<IotaOp>` = `mov $0x8;ret`; `Model<BarrierOp>` @ `0x14ab1960` = `xor %eax,%eax;ret` | CONFIRMED |
 | `tpu` MemoryEffect fan-out = 59 ops | `Op<>` trait scan = 59; independent `MemoryEffectOpInterfaceTraits::Model<mlir::tpu::*>` distinct count = 59 | CONFIRMED |
 | `tpu` in-dialect rewrite surface = 6 fold + 9 canon | demangled `mlir::tpu::*Op::fold` (6) and `*Op::getCanonicalizationPatterns` (9) present | CONFIRMED |
-| 9 `tpu` ops carry non-trivial Properties | the 9 `AttrSizedOperandSegments` ops; `IotaOp` carries an 8-byte `dimensions` property | CONFIRMED |
+| 53 `tpu` ops carry non-trivial `Properties`; 9 of those carry `AttrSizedOperandSegments` | slot 14 `getOpPropertyByteSize` non-zero on 53/86 ops (read directly: `mov $0xN;ret` vs `xor;ret`); the 9 segment-bearing ops carry the `AttrSizedOperandSegments` trait; `IotaOp` = 8-byte `dimensions` property | CONFIRMED |
 | `tpu` op interface signatures (family grouping) | read from `Op<OpName,Traits…>` template args in each op's `getFoldHookFn` holder symbol | HIGH (per-op trait set from one symbol source; aggregate cross-checked) |
 | Overview's "157 ops" vs 86 registered | 86 = registrar arity; the ~71 extra are unregistered Pass/helper `*Op` symbols with no Model | CONFIRMED |
 
