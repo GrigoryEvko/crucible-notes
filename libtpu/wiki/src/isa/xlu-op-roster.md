@@ -104,7 +104,7 @@ All factories are in namespace `xla::jellyfish::LloRegionBuilder::`. The emitted
 | `VpermuteSlane` @`1d52d220` | `CreateVectorBinop` @`1d4d27c0` | (opcode arg-driven) | — | LOW (op arg-driven) |
 | `VpackiB16` @`1d553380` / `VpackcB16` @`1d562700` | `CreateVectorPack` @`1d4d3140` | (opcode arg-driven) | 2 | LOW (op arg-driven) |
 
-The secondary `New` calls inside `VxposeBinaryCompressedB16` — `0x158` `kVectorMultiplyF32`, `0x159` `kVectorMultiplyU32`, `0x156` `kVectorPowF32` — are the B16 compression scale/multiply sub-ops appended after the primary `0xa7` op, not XLU ops themselves.
+> **CORRECTION (XPOSE-B16) —** An earlier draft claimed `VxposeBinaryCompressedB16` appends secondary `0x158`/`0x159`/`0x156` multiply/pow sub-ops after the primary `0xa7`. The factory (`@0x1d550220`) and its constructor (`@0x1d4dd7e0`) emit **only** the single `0xa7` op (3 operands); the third operand is a `LloModule::ScalarU32ConstantImpl` scale value, not a multiply chain. The factory's one extra action is a `target().SupportsVsupp()` gate (CHECK string byte-visible at `llo_region_builder.cc:8617`). No `New(0x156/0x158/0x159)` call exists on the XLU path.
 
 ---
 
@@ -354,7 +354,7 @@ long LatencyBetweenInternal(LloValue* from, LloValue* to) {
 }
 ```
 
-`IsXluOp(op)` is the union of the 21 XLU opcodes `{0x8b, 0x8c, 0xa6, 0xa7, 0xf5..0x101, 0x14f, 0x150, 0x154, 0x155}` (the `case` labels in the decompile) and the bit-mask band `op <= 0x3b && bt(0xc40000000000000, op) = {0x32, 0x36, 0x37, 0x3a, 0x3b}`.
+`IsXluOp(op)` is the union of the 21 XLU opcodes `{0x8b, 0x8c, 0xa6, 0xa7, 0xf5..0x101, 0x14f, 0x150, 0x154, 0x155}` (the `case` labels in the decompile) and the low-band bit-mask `op <= 0x3b && bt(0xc40000000000000, op) = {0x36, 0x3a, 0x3b}` — `Vpermute` / `Vrotate` / `Vbroadcastlane`.
 
 > The XLU↔XLU edge is the per-generation base latency **divided across the available cross-lane units**: the more XLUs, the cheaper a single XLU↔XLU edge — the parallelism discount the whole optimizer prices against. `xlu_count = Target::XlusPerTensorCore() = VectorIsa.xlu_count = DWORD[Target+0x4b0]`.
 
