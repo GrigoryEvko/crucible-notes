@@ -1,24 +1,24 @@
 # RTTI / Vtable Census
 
-> *All addresses, counts, and symbol names on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel: a 781,691,048-byte ELF64 shared object, build-id `89edbbe81c5b328a958fe628a9f2207d`, reported runtime version `0.103`. Other wheels will differ in every address.*
+> *All addresses, counts, and symbol names on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel: a 781,691,048-byte ELF64 shared object, build-id `89edbbe81c5b328a958fe628a9f2207d` (the wheel/`METADATA`/`__init__` version is `0.0.40`; pin to the build-id, which is unambiguous). Other wheels will differ in every address.*
 
 ## Abstract
 
-`libtpu.so` ships **un-stripped with full RTTI**. That single fact turns the binary's 745 MiB of statically-linked C++ into a self-describing object graph: every polymorphic class left an Itanium-ABI `type_info` record (`_ZTI`), a type-name string (`_ZTS`), and — if it is concrete — a vtable group (`_ZTV`). The RTTI sidecar holds **160,566** such records. Walking them reconstructs the entire C++ class forest of the compiler, runtime, and every vendored dependency without ever disassembling a function: the inheritance edges live in the `type_info` structs, and the typeinfo↔vtable binding ties each class to its dispatch table.
+`libtpu.so` ships **un-stripped with full RTTI**. That single fact turns the binary's 745 MiB of statically-linked C++ into a self-describing object graph: every polymorphic class left an Itanium-ABI `type_info` record (`_ZTI`), a type-name string (`_ZTS`), and — if it is concrete — a vtable group (`_ZTV`). The RTTI sidecar holds **160,351** such records. Walking them reconstructs the entire C++ class forest of the compiler, runtime, and every vendored dependency without ever disassembling a function: the inheritance edges live in the `type_info` structs, and the typeinfo↔vtable binding ties each class to its dispatch table.
 
-This page is the census. It establishes the headline counts (how the 160,566 records split into `_ZTI` / `_ZTV` / `_ZTS`, and how the typeinfos divide into the three Itanium `type_info` flavors), ranks the dominant polymorphic hierarchies by width and depth (the protobuf message universe, the two MLIR "Operation" structures, `llvm::Pass`, `xla::HloInstruction`, the TPU per-lane-cluster trees), and documents the cross-validation method that maps each `_ZTI` to its `_ZTV` and reads base-class chains out of `__class_type_info` / `__si_class_type_info` / `__vmi_class_type_info`. That binding is what makes the [dispatch-table taxonomy](dispatch-table-taxonomy.md) trustworthy: a recovered dispatch table is only as good as the class identity attached to it, and here every class identity is checkable against the type forest.
+This page is the census. It establishes the headline counts (how the 160,351 records split into `_ZTI` / `_ZTV` / `_ZTS`, and how the typeinfos divide into the three Itanium `type_info` flavors), ranks the dominant polymorphic hierarchies by width and depth (the protobuf message universe, the two MLIR "Operation" structures, `llvm::Pass`, `xla::HloInstruction`, the TPU per-lane-cluster trees), and documents the cross-validation method that maps each `_ZTI` to its `_ZTV` and reads base-class chains out of `__class_type_info` / `__si_class_type_info` / `__vmi_class_type_info`. That binding is what makes the [dispatch-table taxonomy](dispatch-table-taxonomy.md) trustworthy: a recovered dispatch table is only as good as the class identity attached to it, and here every class identity is checkable against the type forest.
 
 The frame to carry through the page: this is the **Itanium C++ ABI** as Clang/libstdc++ emit it. A reader who knows how `g++ -frtti` lays out a vtable group — `[offset-to-top][typeinfo-ptr][fn0][fn1]…]` with the address point at `+0x10` — already knows the data model. The only twist is that the binary was prelinked for a non-PIE-like image: the typeinfo pointers, base pointers, and function pointers are **zero in the file bytes** and are supplied by `R_X86_64_RELATIVE` relocation addends, so the inheritance graph is reconstructed from the relocation table, not from the raw `.data.rel.ro` image.
 
 For reimplementation — i.e. to rebuild this census from the binary — the contract is:
 
-- **The record taxonomy:** how 160,566 RTTI records partition into typeinfo structs, vtable groups, and name strings, and how a typeinfo's first word identifies its `type_info` flavor.
+- **The record taxonomy:** how 160,351 RTTI records partition into typeinfo structs, vtable groups, and name strings, and how a typeinfo's first word identifies its `type_info` flavor.
 - **The edge-recovery rule:** how to read a single base out of `__si_class_type_info+0x10` and a base array out of `__vmi_class_type_info+0x18`, given that the base pointers are relocation addends.
 - **The typeinfo↔vtable binding:** the `_ZTV+8 → _ZTI` invariant, how multiple-inheritance secondary sub-vtables repeat the own-class typeinfo, and what "abstract = has `_ZTI` but no `_ZTV`" means structurally.
 
 | | |
 |---|---|
-| **RTTI sidecar records** | 160,566 (`_ZTI` 60,471 · `_ZTV` 39,246 · `_ZTS` 60,847 · 2 demangler-prefix strings) |
+| **RTTI sidecar records** | 160,351 (`_ZTI` 60,457 · `_ZTV` 39,244 · `_ZTS` 60,650 · 2 demangler-prefix strings) |
 | **`type_info` flavors** | `__class_type_info` 16,754 · `__si_class_type_info` 42,447 · `__vmi_class_type_info` 680 |
 | **Inheritance edges** | ~43,807 (42,440 single-base + 1,367 multi/virtual-base) |
 | **Class roots / real hierarchies** | 16,761 roots · 2,094 with ≥2 descendants |
@@ -33,39 +33,39 @@ For reimplementation — i.e. to rebuild this census from the binary — the con
 
 ### The record split
 
-The RTTI sidecar is an array of 160,566 records, each a `(struct-address, mangled-symbol, name-string)` tuple harvested from `.rodata` / `.data.rel.ro`. Grouping by the three-letter Itanium prefix of the mangled symbol gives the top-level shape of the type system:
+The RTTI sidecar is an array of 160,351 records, each a `(struct-address, mangled-symbol, name-string)` tuple harvested from `.rodata` / `.data.rel.ro`. Grouping by the three-letter Itanium prefix of the mangled symbol gives the top-level shape of the type system:
 
 | Record kind | Prefix | Count | Meaning | Confidence |
 |---|---|---:|---|---|
-| Typeinfo struct | `_ZTI` | 60,471 | one per polymorphic *type* (class/si/vmi + pointer/pbase/fundamental) | CERTAIN |
-| Vtable group | `_ZTV` | 39,246 | one per *concrete* polymorphic class (has at least one instantiable object) | CERTAIN |
-| Typeinfo-name string | `_ZTS` | 60,847 | the human-readable mangled type name a `_ZTI` points at | CERTAIN |
+| Typeinfo struct | `_ZTI` | 60,457 | one per polymorphic *type* (class/si/vmi + pointer/pbase/fundamental) | CERTAIN |
+| Vtable group | `_ZTV` | 39,244 | one per *concrete* polymorphic class (has at least one instantiable object) | CERTAIN |
+| Typeinfo-name string | `_ZTS` | 60,650 | the human-readable mangled type name a `_ZTI` points at | CERTAIN |
 | Demangler-prefix strings | (none) | 2 | the literals `"typeinfo for "` / `"typeinfo name for "` used by the in-binary demangler | CERTAIN |
 
-The arithmetic closes exactly: `60,471 + 39,246 + 60,847 + 2 = 160,566`. The three counts are independent measurements — `_ZTI` and `_ZTV` are *struct* addresses in `.data.rel.ro`, `_ZTS` are *string* addresses in `.rodata` — and they are internally consistent: there are more typeinfos than vtables (60,471 vs 39,246) precisely because **20,638 typeinfos are abstract** — pure-virtual interface bases that carry identity but own no vtable (see [§ Cross-Validation](#crossvalidation-rtti--vtable)). There are slightly more `_ZTS` strings than `_ZTI` structs (60,847 vs 60,471) because a handful of name strings are shared or were emitted for types whose `_ZTI` was folded.
+The arithmetic closes exactly: `60,457 + 39,244 + 60,650 + 2 = 160,351`. The three counts are independent measurements — `_ZTI` and `_ZTV` are *struct* addresses in `.data.rel.ro`, `_ZTS` are *string* addresses in `.rodata` — and they are internally consistent: there are more typeinfos than vtables (60,457 vs 39,244) precisely because **20,638 of the 59,881 class-kind typeinfos are abstract** — pure-virtual interface bases that carry identity but own no vtable (see [§ Cross-Validation](#crossvalidation-rtti--vtable)). There are slightly more `_ZTS` strings than `_ZTI` structs (60,650 vs 60,457) because a handful of name strings are shared or were emitted for types whose `_ZTI` was folded.
 
-> **NOTE —** the 160,566 figure is the *record* count, not the *distinct-class* count. A C++ template instantiated N times produces N distinct `_ZTI`/`_ZTS` pairs (e.g. every `std::__shared_count<...>` specialization, every `RegisteredOperationName::Model<Op>`), so the population is dominated by template explosion. The "distinct logical classes" number is far smaller; this census counts the instantiated types as the ABI emits them.
+> **NOTE —** the 160,351 figure is the *record* count, not the *distinct-class* count. A C++ template instantiated N times produces N distinct `_ZTI`/`_ZTS` pairs (e.g. every `std::__shared_count<...>` specialization, every `RegisteredOperationName::Model<Op>`), so the population is dominated by template explosion. The "distinct logical classes" number is far smaller; this census counts the instantiated types as the ABI emits them.
 
-> **CORRECTION (RTTI-CENSUS-1) —** an earlier symbol-table walk reported 60,457 `_ZTI` and 39,244 `_ZTV` symbols. The authoritative RTTI sidecar — which harvests typeinfo/vtable *structures* directly rather than relying on `.symtab` name coverage — gives **60,471** `_ZTI` and **39,246** `_ZTV`. The gaps (14 typeinfos, 2 vtables; both < 0.03%) are records the structure-walk resolves but the bare symbol scan missed, and they do not move any hierarchy width/depth. All counts on this page use the sidecar figures.
+> **CORRECTION (RTTI-CENSUS-1) —** an earlier draft reported an inflated "structure-walk" census of 60,471 `_ZTI` / 39,246 `_ZTV` / 60,847 `_ZTS` (total 160,566), on the premise that a direct `.data.rel.ro` walk resolves records the symbol table missed. That is backwards: `libtpu.so` ships un-stripped, so every `_ZTI`/`_ZTV`/`_ZTS` carries a local `d` symbol and the symbol-table walk is the authoritative, exhaustive count. Direct `nm` over the binary gives **60,457** `_ZTI`, **39,244** `_ZTV`, **60,650** `_ZTS` (total **160,351**) — no structure-walk can find *more* records than there are symbols. The inflated figures are retracted; all counts on this page are the byte-exact `nm` symbol counts. (Reproduce: `nm libtpu.so | rg -c '_ZTI'`, etc.)
 
 ### Per-namespace population
 
-Tokenizing each named typeinfo by its leading namespace gives the demographic of the type forest — and confirms that the compiler/runtime core, not the vendored support libraries, dominates the polymorphic surface:
+Bucketing each typeinfo by the **leading namespace token of its mangled `_ZTIN<len><namespace>` symbol** gives the demographic of the type forest — and confirms that the compiler/runtime core, not the vendored support libraries, dominates the polymorphic surface. (These are leading-namespace buckets, *not* demangled top-token counts: the latter over-credit `xla`/`tensorflow` for every `absl::StatusOr<xla::…>` / `std::unique_ptr<…>` wrapper whose owning class lives elsewhere. The [namespace census appendix](../appendix/rtti-namespace-census.md) owns the full breakdown.)
 
 | Namespace | Typeinfos | Role | Confidence |
 |---|---:|---|---|
-| `mlir` | 13,479 | MLIR dialects, ops, passes, patterns, interfaces | HIGH |
-| `asic_sw` | 11,591 | TPU driver / profiler / ISA event-control trees | HIGH |
-| `xla` | 5,291 | HLO, thunks, HLO passes, jellyfish codegen | HIGH |
-| `dnnl` | 4,236 | oneDNN primitive descriptors / JIT kernels | HIGH |
-| `llvm` | 3,871 | embedded LLVM backend (codegen, Attributor, VPlan) | HIGH |
-| `tensorflow` | 3,590 | TF op-kernels, graph, TFRT TPU | HIGH |
-| `std` | 2,565 | libstdc++ template plumbing | HIGH |
-| *(anon ns)* | 2,560 | translation-unit-local classes | MEDIUM |
-| `grpc_core` | 1,505 | gRPC ref-counted / orphanable object trees | HIGH |
-| `platforms_deepsea` | 678 | TPU ISA encoders, debugger services | HIGH |
+| `mlir` | 13,091 | MLIR dialects, ops, passes, patterns, interfaces | CERTAIN |
+| `asic_sw` | 11,379 | TPU driver / profiler / ISA event-control trees | CERTAIN |
+| `tensorflow` | 3,108 | TF op-kernels, graph, TFRT TPU | CERTAIN |
+| `xla` | 3,036 | HLO, thunks, HLO passes, jellyfish codegen | CERTAIN |
+| `llvm` | 2,940 | embedded LLVM backend (codegen, Attributor, VPlan) | CERTAIN |
+| *(anon ns)* | 2,352 | translation-unit-local classes (`_GLOBAL__N_`) | CERTAIN |
+| `dnnl` | 1,888 | oneDNN primitive descriptors / JIT kernels | CERTAIN |
+| `std` | 1,787 | libstdc++ template plumbing | CERTAIN |
+| `grpc_core` | 1,502 | gRPC ref-counted / orphanable object trees | CERTAIN |
+| `platforms_deepsea` | 576 | TPU ISA encoders, debugger services | CERTAIN |
 
-The sum `mlir + xla + llvm + tensorflow + tpu + asic_sw + platforms_deepsea` is the compiler/runtime core; `std`, `absl`, `dnnl`, `Eigen`, `grpc`, OR-tools are vendored support. The single largest *tree*, however, lives under `proto2` (the protobuf message universe) — wide but shallow, and not the largest *namespace*.
+Of the 60,457 `_ZTI` structs, 46,078 carry a leading namespace and 14,379 are global-scope or compound types (pointer/function/substitution). The sum `mlir + xla + llvm + tensorflow + asic_sw + platforms_deepsea` is the compiler/runtime core; `std`, `absl`, `dnnl`, `Eigen`, `grpc`, OR-tools are vendored support. The single largest *tree*, however, lives under `proto2` (the protobuf message universe) — wide but shallow, and not the largest *namespace*.
 
 ---
 
@@ -150,7 +150,7 @@ The deepest chain (depth 4) is `HloInstruction → HloChannelInstruction → Hlo
 
 ## RTTI Record Kinds
 
-Every `_ZTI` is one of the Itanium ABI's `type_info` flavors, and the flavor is encoded in the **first word** of the typeinfo struct: it is a pointer into the address point of the *metatype* vtable (the vtable of the `type_info` subclass itself), which is one of a tiny fixed set. Histogramming the word at `_ZTI+0` therefore classifies all 60,471 typeinfos with no parsing of names:
+Every `_ZTI` is one of the Itanium ABI's `type_info` flavors, and the flavor is encoded in the **first word** of the typeinfo struct: it is a pointer into the address point of the *metatype* vtable (the vtable of the `type_info` subclass itself), which is one of a tiny fixed set. Histogramming the word at `_ZTI+0` therefore classifies all 60,457 typeinfos with no parsing of names:
 
 | Metatype vtable @`_ZTI+0` | Count | `type_info` flavor | Base info | Confidence |
 |---|---:|---|---|---|

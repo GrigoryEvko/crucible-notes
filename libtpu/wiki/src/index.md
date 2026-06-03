@@ -12,7 +12,7 @@ Everything here was reconstructed **purely from static analysis of the binary** 
 
 - **884,832 functions** in the analysis database (the disassembler's materialized count; a near-but-unequal 884,843 manifest figure is reconciled to 884,832 per CORRECTION FOR-02 in [Binary Forensics Overview](forensics/overview.md)); 1,249,324 strings; ~52 GB of extracted IDA sidecars.
 - **40,313 dispatch tables** (≈100× ptxas's 409), classified into 19 taxonomy classes.
-- **160,566 RTTI records** (`_ZTI` 60,471 · `_ZTV` 39,246 · `_ZTS` 60,847 · 2), the 60,471 typeinfos led by `mlir::` (13,091), `asic_sw::` (11,379), `tensorflow::` (3,108), `xla::` (3,036), `llvm::` (2,940), with `dnnl::` / `std::` / `grpc_core::` and a long vendored tail behind them.
+- **160,351 RTTI records** (`_ZTI` 60,457 · `_ZTV` 39,244 · `_ZTS` 60,650 · 2), the 60,457 typeinfos led by `mlir::` (13,091), `asic_sw::` (11,379), `tensorflow::` (3,108), `xla::` (3,036), `llvm::` (2,940), with `dnnl::` / `std::` / `grpc_core::` and a long vendored tail behind them.
 - **~2,900 static constructors** in `.init_array`; **1,069,006 relocations**.
 - The section-header table ends **exactly at EOF** — there is **no** trailing payload past it; the carved "4.1 MB zstd-dictionary blob" was a false positive (a `zstd` magic immediate inside `.text`, not a stored frame — see Part I).
 - Custom ELF sections (`google_malloc`, `malloc_hook`, `protodesc_cold`, `filewrapper_toc`, `__rseq_cs`, `__lcxx_override`).
@@ -1112,7 +1112,7 @@ Reference tables, the source-traceability index, and the open-frontier register.
 - `appendix/protodesc-cold-catalog.md` — **protodesc_cold Catalog (760)** · `C`  
   Every embedded FileDescriptorProto. _src: P-3-12, P-2-07_
 - `appendix/rtti-namespace-census.md` — **RTTI Namespace Census** · `C`  
-  The full 160,566-entry breakdown. _src: P-3-127, P-3-265_
+  The full 160,351-entry breakdown. _src: P-3-127, P-3-265_
 - `appendix/reconstructed-proto-index.md` — **Reconstructed-Proto Index** · `C`  
   Every proto recovered from the descriptor pool. _src: P-3-90, P-3-12_
 - `appendix/error-status-codes.md` — **Error / Status Codes** · `C`  

@@ -1,10 +1,10 @@
 # RTTI Namespace Census
 
-> *All counts, addresses, and symbol names on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel: a 781,691,048-byte ELF64 shared object, build-id `89edbbe81c5b328a958fe628a9f2207d`, reported runtime version `0.103`. Other wheels will differ in every address.*
+> *All counts, addresses, and symbol names on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel: a 781,691,048-byte ELF64 shared object, build-id `89edbbe81c5b328a958fe628a9f2207d` (the wheel/`METADATA`/`__init__` version is `0.0.40`; pin to the build-id). Other wheels will differ in every address.*
 
 ## Abstract
 
-`libtpu.so` ships un-stripped with full Itanium-ABI RTTI: every polymorphic class left a `type_info` struct (`_ZTI`), a type-name string (`_ZTS`), and — if concrete — a vtable group (`_ZTV`). The [RTTI / Vtable Census](../forensics/rtti-vtable-census.md) establishes the headline counts (**160,566** records: `_ZTI` 60,471 · `_ZTV` 39,246 · `_ZTS` 60,847 · 2 demangler-prefix strings) and ranks the dominant *hierarchies* by width and depth. This appendix asks a different question of the same 160,566 records: **which C++ namespace owns the type system?** It buckets the 60,471 distinct `type_info` structs by their leading namespace token and ranks the libraries by how many polymorphic classes each contributes.
+`libtpu.so` ships un-stripped with full Itanium-ABI RTTI: every polymorphic class left a `type_info` struct (`_ZTI`), a type-name string (`_ZTS`), and — if concrete — a vtable group (`_ZTV`). The [RTTI / Vtable Census](../forensics/rtti-vtable-census.md) establishes the headline counts (**160,351** records: `_ZTI` 60,457 · `_ZTV` 39,244 · `_ZTS` 60,650 · 2 demangler-prefix strings) and ranks the dominant *hierarchies* by width and depth. This appendix asks a different question of the same 160,351 records: **which C++ namespace owns the type system?** It buckets the 60,457 distinct `type_info` structs by their leading namespace token and ranks the libraries by how many polymorphic classes each contributes.
 
 The answer is a two-empire split. MLIR (`mlir::`, 13,091 typeinfos) and the TPU driver stack (`asic_sw::`, 11,379 typeinfos) together own **40%** of every polymorphic class in the binary — MLIR because every registered op, pattern, pass, and dialect interface is a distinct C++ type, and `asic_sw::` because the per-codename / per-lane-cluster hardware driver instantiates a separate class for every chip generation × functional block. Behind them sit the framework cores (`tensorflow::` 3,108, `xla::` 3,036, `llvm::` 2,940) and a long tail of vendored support libraries (`dnnl::` 1,888, `std::` 1,787, `grpc_core::` 1,502). The TPU *codename* namespaces a reader might expect to see at the top — `jellyfish`, `pufferfish`, `viperfish`, `ghostlite`, `sparse_core` — are **not** top-level namespaces at all; they are sub-namespaces nested inside `xla::`, `mlir::`, and `platforms_deepsea::`, and their classes are counted under those parents.
 
@@ -13,14 +13,14 @@ The census is computed two ways, and the two disagree, which is the single most 
 For reproduction — to rebuild this census from the binary — the contract is:
 
 - **The bucketing rule:** a `type_info` struct's owning namespace is the leading `N<len><name>` token of its `_ZTI` mangled symbol; a `_ZTI` with no leading `N` is a global-scope or compound (pointer / function / template-substitution) type.
-- **The denominator:** the 60,471 `_ZTI` structs, *not* the full 160,566 (which triple-counts each class as `_ZTI`+`_ZTV`+`_ZTS`). 46,082 of the 60,471 carry a leading namespace; 14,389 are global-scope or compound types.
+- **The denominator:** the 60,457 `_ZTI` structs, *not* the full 160,351 (which triple-counts each class as `_ZTI`+`_ZTV`+`_ZTS`). 46,078 of the 60,457 carry a leading namespace; 14,379 are global-scope or compound types.
 - **The template-wrapper trap:** never bucket by the demangled top token, or `absl`/`Eigen`/`std` template wrappers inflate libraries that own almost no polymorphic classes of their own.
 
 | | |
 |---|---|
-| **Denominator** | 60,471 `_ZTI` (typeinfo) structs |
-| **Namespaced `_ZTI`** | 46,082 (leading `N` token) |
-| **Global / compound `_ZTI`** | 14,389 (`_ZTIP…`, `_ZTIF…`, `_ZTI1X`, template substitutions) |
+| **Denominator** | 60,457 `_ZTI` (typeinfo) structs |
+| **Namespaced `_ZTI`** | 46,078 (leading `N` token) |
+| **Global / compound `_ZTI`** | 14,379 (`_ZTIP…`, `_ZTIF…`, `_ZTI1X`, template substitutions) |
 | **Top namespace** | `mlir::` — 13,091 typeinfos (~21.6% of all `_ZTI`) |
 | **Two-empire share** | `mlir::` + `asic_sw::` = 24,470 = 40.5% of `_ZTI` |
 | **Bucketing key** | leading `_ZTIN<len><name>` mangled prefix |
@@ -29,7 +29,7 @@ For reproduction — to rebuild this census from the binary — the contract is:
 
 ## The Census Table
 
-The 60,471 `type_info` structs bucketed by leading namespace, ranked by typeinfo count. "Typeinfos" is the count of `_ZTI` structs whose mangled symbol begins `_ZTIN<len><namespace>`. "~Classes" is the same number read as a class population — a `_ZTI` struct *is* one polymorphic class identity, so the two are equal except where template instantiations of one logical class inflate the count (called out per row). "Dominant hierarchy" is the widest/deepest tree rooted in that namespace, with its root `_ZTI` struct VA. Counts are byte-exact greps over the RTTI sidecar; hierarchy widths/depths carry the parent census's confidence.
+The 60,457 `type_info` structs bucketed by leading namespace, ranked by typeinfo count. "Typeinfos" is the count of `_ZTI` structs whose mangled symbol begins `_ZTIN<len><namespace>`. "~Classes" is the same number read as a class population — a `_ZTI` struct *is* one polymorphic class identity, so the two are equal except where template instantiations of one logical class inflate the count (called out per row). "Dominant hierarchy" is the widest/deepest tree rooted in that namespace, with its root `_ZTI` struct VA. Counts are byte-exact greps over the RTTI sidecar; hierarchy widths/depths carry the parent census's confidence.
 
 | Namespace | Typeinfos | ~Classes | Dominant hierarchy (width / depth, root `_ZTI`) | Confidence |
 |---|---:|---:|---|---|
@@ -54,7 +54,7 @@ The 60,471 `type_info` structs bucketed by leading namespace, ranked by typeinfo
 | `Xbyak` | 4 | ~551 | `Xbyak::CodeArray` (551 / 5, `0x21b6d738`) — see GOTCHA | HIGH |
 | `Eigen` | 4 | ~4 | `Eigen::ThreadPoolInterface` (`0x2163bd98`) — see CORRECTION | CERTAIN |
 
-> **NOTE —** the table rows sum to ~43,500; with the long tail of single-digit namespaces (boringssl, re2, nsync, farmhash, snappy, zlibwrapper, …) the namespaced total is 46,082, and the remaining 14,389 `_ZTI` are global-scope classes and compound types (`_ZTIPF…` pointer-to-function, `_ZTIN…` template substitutions whose substitution resolves below the leading token). Together: 60,471.
+> **NOTE —** the table rows sum to ~43,500; with the long tail of single-digit namespaces (boringssl, re2, nsync, farmhash, snappy, zlibwrapper, …) the namespaced total is 46,078, and the remaining 14,379 `_ZTI` are global-scope classes and compound types (`_ZTIPF…` pointer-to-function, `_ZTIN…` template substitutions whose substitution resolves below the leading token). Together: 60,457.
 
 > **GOTCHA — typeinfo count is not class-tree size.** Two rows show the trap in opposite directions. `proto2` owns only **152** typeinfo structs, but `proto2::MessageLite` roots an **8,013**-class tree — because the 8,000-odd generated message classes (`xla::HloProto`, `tensorflow::GraphDef`, …) live in *their own* namespaces and inherit *from* `proto2::Message`; they count under `xla`/`tensorflow`, not `proto2`. Conversely `Xbyak` owns 4 leading-namespace typeinfos but `Xbyak::CodeArray` roots 551 descendants — the oneDNN JIT emitters that derive from it. **Bucket-by-namespace counts where a class is *defined*; hierarchy width counts where it is *used*.** The two never coincide for a base class whose subclasses live elsewhere.
 
@@ -145,14 +145,14 @@ A reader hunting for `jellyfish`, `pufferfish`, `viperfish`, `ghostlite`, or `sp
 
 ## Reproduction
 
-The census is byte-exact and rebuildable from the RTTI sidecar with a dozen greps. The denominator is the 60,471 `_ZTI` structs (each `_ZTI` mangled record's `string_addr` *is* the typeinfo struct VA — verified against the parent census: `xla::HloInstruction` `_ZTI` resolves to `0x21d2ce88`, matching the hierarchy table).
+The census is byte-exact and rebuildable from the RTTI sidecar with a dozen greps. The denominator is the 60,457 `_ZTI` structs (each `_ZTI` mangled record's `string_addr` *is* the typeinfo struct VA — verified against the parent census: `xla::HloInstruction` `_ZTI` resolves to `0x21d2ce88`, matching the hierarchy table).
 
 ```text
-# total records (160,566) and flavor split:
-count "string_addr"                 -> 160,566
-count mangled ^_ZTI                 ->  60,471   (typeinfo structs = denominator)
-count mangled ^_ZTV                 ->  39,246   (vtable groups)
-count mangled ^_ZTS                 ->  60,847   (type-name strings)
+# total records (160,351) and flavor split (nm libtpu.so | rg -c '_ZTI' etc.):
+count mangled ^_ZTI                 ->  60,457   (typeinfo structs = denominator)
+count mangled ^_ZTV                 ->  39,244   (vtable groups)
+count mangled ^_ZTS                 ->  60,650   (type-name strings)
+# 60,457 + 39,244 + 60,650 + 2          = 160,351 (records)
 
 # per-namespace bucket (leading prefix; <len> is the namespace name length):
 count mangled ^_ZTIN3xla            ->   3,036
@@ -165,8 +165,8 @@ count mangled ^_ZTIN9grpc_core      ->   1,502
 count mangled ^_ZTIN6proto2         ->     152
 
 # total namespaced vs global/compound:
-count mangled ^_ZTIN                 ->  46,082   (leading-namespace)
-60,471 - 46,082                      =  14,389   (global / pointer / function / substitution)
+count mangled ^_ZTIN                 ->  46,078   (leading-namespace)
+60,457 - 46,078                      =  14,379   (global / pointer / function / substitution)
 ```
 
 > **GOTCHA — get the `<len>` prefix right.** Itanium mangling encodes each namespace component as its byte length followed by the name: `xla` is `3xla`, `mlir` is `4mlir`, `operations_research` is `19operations_research` (19, not 20 — counting the underscore but not a leading digit). A grep for `_ZTIN20operations_research` returns **zero**; the correct length-19 prefix returns 483. An off-by-one in the length token silently drops an entire namespace from the census.
