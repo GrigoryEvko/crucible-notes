@@ -4,7 +4,7 @@
 
 ## Abstract
 
-This page dumps the Viperfish (v5/v5e) `ViperfishPerformance` object: the per-instruction latency array plus the **Instruction × Resource** occupancy grid that prices how many cycles each LLO instruction holds each intra-op micro-pipeline port. It is the VF concretization of the grid family documented in [`performance-overview`](performance-overview.md) — the heap latency-array + heap 2D `vector<int>` grid that Pufferfish, Viperfish, Ghostlite, and Trillium all share, read by a byte-identical `GetResourceUsage`. Viperfish sits in the middle of the resource-count progression (7 → 7 → 20 → **28** → 31 → 31): it widens Pufferfish's 20-column grid by 8 columns, chiefly the 4-stage matprep throughput group and the transpose-binary result sub-stages.
+This page dumps the Viperfish (v5/v5e) `ViperfishPerformance` object: the per-instruction latency array plus the **Instruction × Resource** occupancy grid that prices how many cycles each LLO instruction holds each intra-op micro-pipeline port. It is the VF concretization of the grid family documented in [`performance-overview`](performance-overview.md) — the heap latency-array + heap 2D `vector<int>` grid that Pufferfish, Viperfish, Ghostlite, and `6acc60406` all share, read by a byte-identical `GetResourceUsage`. Viperfish sits in the middle of the resource-count progression (7 → 7 → 20 → **28** → 31 → 31): it widens Pufferfish's 20-column grid by 8 columns, chiefly the 4-stage matprep throughput group and the transpose-binary result sub-stages.
 
 The reference frame is an LLVM `SchedMachineModel`: `GetLatency(instr)` returns the instruction's pipeline depth (the value the scheduler raises a true-dependency edge to), and `GetResourceUsage(instr, res)` returns how many cycles `instr` occupies functional-unit port `res`. The VF grid is reconstructed by reading the constructor that fills it — `ViperfishPerformance::ViperfishPerformance` `@0x1c8c4840`, a `new 0x600` latency array (384 int32) and a `new 0x2400` grid (384 rows × 24-byte `vector<int>`, each row `new 0x70` = 28 int32) — not from a `.td` file. Both the latency array (memset to `0xff`, then *every* slot overwritten) and the 378 populated grid cells are byte-exact from the ctor's 762 DWORD-immediate stores (384 latency + 378 grid).
 
@@ -55,7 +55,7 @@ struct ViperfishPerformance {       // built by ctor @0x1c8c4840
 };
 ```
 
-The ctor emits exactly **762 DWORD-immediate stores** = 384 latency + 378 grid cells. The store-count is the integrity proof: every `mov DWORD PTR [rax+off], imm` is classified by the base it loaded — `[rbx]` (latency base) or `[r12]` (grid base, `r12 = [rbx+0x18]`) — with zero non-`rax`-base DWORD-imm stores. Unlike Ghostlite/Trillium, where the `0xff` memset default survives on unpriced rows, **every** VF latency slot (0..383) is explicitly overwritten; the `0xff = 255` default does not survive.
+The ctor emits exactly **762 DWORD-immediate stores** = 384 latency + 378 grid cells. The store-count is the integrity proof: every `mov DWORD PTR [rax+off], imm` is classified by the base it loaded — `[rbx]` (latency base) or `[r12]` (grid base, `r12 = [rbx+0x18]`) — with zero non-`rax`-base DWORD-imm stores. Unlike Ghostlite/`6acc60406`, where the `0xff` memset default survives on unpriced rows, **every** VF latency slot (0..383) is explicitly overwritten; the `0xff = 255` default does not survive.
 
 > **QUIRK —** the VF Performance ctor `@0x1c8c4840` does not produce Hex-Rays pseudocode (it is too large / mixes VEX stores), so the cell values here are read from the byte-exact objdump decode of its 762 DWORD-immediate stores, cross-checked by the store-count identity (`762 = 384 + 378`). The *read path* `GetResourceUsage` and `GetResources` decompile cleanly and confirm the 28-wide / 384-row shape; the cell integers are objdump-grade, not Hex-Rays-grade — HIGH confidence by the store-count method.
 
@@ -192,7 +192,9 @@ The grid OUTER index *is* the opcode for the priced rows (every populated row re
 
 ### Co-existence with the MxuLatencyTable
 
-The matmul/matprep throughput cells in this grid (res r3 = `{8,16,32}` = the bf16/fp8/int4-class matmul widths; r4..r7 the 4-stage matprep holds) are the **Performance-grid analog** of the per-format cells in the separate [`MxuLatencyTable`](mxu-latency-vf.md) reservation matrix. The two cost tables co-exist and price different things: this grid prices the intra-op micro-pipeline-port holds keyed on the `Instruction` ordinal; the `MxuLatencyTable` prices the MXU sub-resource occupancy keyed on the `MatmulDataFormat`/`GainLatchMode` modifier. The base op latency (121/131) lives in this latency array; the per-`MxuResource` hold-cycle vector lives in the `array<int,19>`.
+The matmul throughput cells in this grid (res r3 = `{8,16,32}` per `MatmulDataFormat` — fmt1=8, fmt2=16, fmt6/int8-x8=32; r4..r7 the 4-stage matprep holds) **duplicate** the matmul-rate magnitudes that also live in the separate [`MxuLatencyTable`](mxu-latency-vf.md) reservation matrix. The two cost tables co-exist and price different things: this grid prices the intra-op micro-pipeline-port holds keyed on the `Instruction` ordinal; the `MxuLatencyTable` prices the MXU sub-resource occupancy keyed on the `MatmulDataFormat`/`GainLatchMode` modifier. The base op latency (121/131) lives in this latency array; the per-`MxuResource` hold-cycle vector lives in the `array<int,19>`.
+
+> **NOTE — the `{8,16,32}` matmul rate is byte-confirmed in *both* tables, and the throughput route reads the `MxuLatencyTable`, not this grid.** The grid col-r3 cells `{8,16,32}` are byte-anchored in the `ViperfishPerformance` ctor `@0x1c8c4840` (`mov DWORD PTR [data+0xc], 8/0x10/0x20`, 51 cells across the matmul band). The *same* triple is independently byte-anchored in the `MxuLatencyTable` ctor `@0x1c8a52c0` as `{MxuResource 15 (MatmulAccA) → 8/16/32}` per format (lines emitting `key=15, value=8`, then `=16`, then `=32`). The cost model's matmul-throughput route, `VfCycleTable::GetCyclesForThroughput(CT 0)` → `MxuLatencyTable::GetResourceUsage(0xd4, res 3, 0)`, remaps `res 3 → array[15]` and returns that reservation cell — so the *consumed* `{8,16,32}` is read from the `MxuLatencyTable`, while this grid's r3 holds a mirror that the matmul/matprep throughput path does **not** read for CT-class 0/1/4. A reimplementer must populate both, but wire the matmul-rate consumer to the `MxuLatencyTable` `array[15]`.
 
 > **NOTE —** the parallel `opcode_produced_register_type` table (`@0x223a16c0`, byte[461]) and the convolution-window DMA-level merge gate it drives are gen-invariant — they are documented on [`performance-overview`](performance-overview.md) and apply to VF unchanged, since they key on the raw LLO opcode, not the per-gen `Instruction` ordinal.
 
@@ -207,7 +209,7 @@ VF's 28 columns sit in the cross-gen progression:
 | PF | Pufferfish | 20 | 336 | 265 | 180 | 7 | res 6 (conflict-penalty) |
 | **VF** | **Viperfish** | **28** | **384** | **378** | **128** | **6** | **res 0x0e** (`GetXluPathReservation`) |
 | GL | Ghostlite | 31 | 476 | 358 | 132 | 13/14 | res 0x0f |
-| GF | Trillium | 31 | 465 | 285 | 92 | 12 | res 0x10 |
+| GF | `6acc60406` | 31 | 465 | 285 | 92 | 12 | res 0x10 |
 
 The enum widened 20 → 28 → 31 across PF → VF → GL: VF added the 4-stage matprep group (r4..r7) + transpose-binary result sub-stages (r15..r17) + CCF push/pop; GL/GF added the BF16-EUP AndPop FIFO depth + the BarnaCore tail. The matmul throughput port moved (res 9 PF single col → res 3 VF over a 4-stage group), and the Xlu deposit column tracks MXU geometry (res 6 → 0x0e → 0x0f → 0x10).
 
@@ -232,7 +234,7 @@ The enum widened 20 → 28 → 31 across PF → VF → GL: VF added the 4-stage 
 - [MXU Latency Overview](mxu-latency-overview.md) — the `MxuResource` reservation model that co-exists with this grid
 - [Performance: PF](performance-pf.md) — the 20-column Pufferfish grid VF widens, and its conflict-penalty Xlu pricing
 - [Performance: GL (GhPerf 476×31)](performance-gl-ghperf.md) — the Ghostlite v6e grid, Xlu deposit res 0x0f
-- [Performance: GF (GhPerf 465×31)](performance-gf-ghperf.md) — the Trillium v7 grid, Xlu deposit res 0x10
+- [Performance: GF (GhPerf 465×31)](performance-gf-ghperf.md) — the `6acc60406` (TPU7x) grid, Xlu deposit res 0x10
 - [Resource Enum (23-slot)](resource-enum.md) — the per-bundle `ResourceVector`, distinct from this 28-column `Resource` micro-pipeline enum
 - [MatmulMode & Modifiers](matmul-mode-modifiers.md) — the `MatmulDataFormat` codes the MXU band rows fan out on
 - [MXU Slot](../isa/slot-mxu.md) — the physical MXU sub-units the matmul/matprep columns reserve
