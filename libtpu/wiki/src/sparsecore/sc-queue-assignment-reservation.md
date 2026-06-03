@@ -152,6 +152,8 @@ So `obj[+0x18] = Config[+0x00]`, …, `obj[+0x58] = Config[+0x40]` (the overlap 
 
 ### The full field table
 
+The `TCE _impl_ off` column and the `TCE field name` column are CONFIRMED (the byte-offset from `RunHloScheduler`, the name from the matching `AbslFlagDefaultGenFor<name>` symbol). The `TCE field #` column is the proto-source label (MEDIUM — see the note after the table).
+
 | Map key | obj off | Config off | TCE `_impl_` off | TCE field # | TCE field name | Proto type | AUTO fallback (here) |
 |---|---|---|---|---|---|---|---|
 | 2 | `+0x18` | `+0x00` | `0xF78` | 288 | `xla_max_concurrent_async_all_gathers` | int32 (raw) | proto3-zero `0` |
@@ -164,7 +166,7 @@ So `obj[+0x18] = Config[+0x00]`, …, `obj[+0x58] = Config[+0x40]` (the overlap 
 | 27 | `+0x50` | `+0x38` | `0x960` | 1092 | `xla_tpu_sparse_core_sort_overlap_limit` | `AutoOr<long>` | `1` (cmove) |
 | 28 | `+0x58` | `+0x40` | — | — | (hardcoded `INT64_MAX`; not a TCE field) | constant | `0x7FFFFFFFFFFFFFFF` |
 
-Field numbers were decoded byte-exact from `TpuCompilationEnvironment::_InternalSerialize` (`0x1DB41DC0`) — the `WireFormatLite::InternalWriteMessage(field#, …)` `mov $imm,%edi` immediates (`0x39C`=924, `0x39D`=925, `0x440`=1088 … `0x444`=1092) and the int32 `movw $0x1280` wire tag (`0x1280` varint → 2304 → field 288, wire-type 0). Field names were confirmed twice: the carved `FileDescriptorProto` (`0a<len><name> 18<varint number>`) and the field dictionary.
+Each field's `_impl_` byte-offset is byte-confirmed from the `RunHloScheduler` Config-build region (the `GetTpuCompEnv(…) + N` loads: `+3960`, `+1120`, `+1128`, `+2368`, `+2376`, `+2384`, `+2392`, `+2400` — see Hop A), and each offset binds to a distinct `AutoOr<long>` proto field whose flag-symbol name (`AbslFlagDefaultGenFor<name>`) matches the table below. The proto **field numbers** are recorded from `TpuCompilationEnvironment::_InternalSerialize` (`0x1DB41DC0`); that function does not produce Hex-Rays pseudocode and its serializer tags are mostly pre-shifted varints rather than bare `mov $imm` immediates, so treat the field-*number* column as MEDIUM confidence — the offset↔name binding (CONFIRMED) is what a reimplementer needs, the number is the proto-source label. The `925` tag (`0x39D`) is observable in the serializer body; the int32 key 2 carries wire tag `0x1280` (varint `0x1280` → 2304 → field 288, wire-type 0).
 
 > **NOTE — AUTO polarity is call-site-local.** The seven `AutoOr<long>` reads here resolve an *unset* (AUTO) oneof to **`1`** (the `test $1,%dl ; cmove $1` shape). This is the polarity for the `AddPass` Config-build site only. The *live* scheduler reads the **same** five SC overlap knobs (`1088..1092`) in `GetTpuAsyncTracker` (`0x10975520`) with AUTO → **`INT64_MAX`** (no cap) instead — same fields, opposite default, different call site. A reimplementer must not assume one global default for these knobs. The semantic default in the enforcing path is "no cap"; the `1` here is moot because this map has no reader.
 
@@ -232,7 +234,7 @@ The candidate-core exclusion that *does* run in `GetAllowedCores` is the Swiss-t
 The reservation map is dead, but the per-resource caps it stages are **enforced elsewhere** — in the `LatencyHidingScheduler`'s `AsyncTracker` resource-limit table, built from the **same** TCE fields under the **same** resource IDs:
 
 - **Base collectives `{2,3,6}` ← fields `{288,924,925}`** via `GetSchedulerConfig` → `SchedulerConfig[+0x20/+0x28/+0x30]` → `TpuAsyncTracker` ctor → `tracker[+0x68/+0x70/+0x78]` → `AsyncTracker::SetConcurrentResourceLimits` (`0x13615800`) keys `{2,3,6}`.
-- **SC categories `{23..27}` (+ 22) ← fields `{1088..1092}` (+1130)** via `GetTpuAsyncTracker` (`0x10975520`) → `TpuAsyncTracker::Create` args → `tracker[+0x148..+0x168]` → `TpuAsyncTracker::GetNumAvailableResources` (`0x10FFF600`) per resource id.
+- **SC categories `{23..27}` ← the same offsets `+2368..+2400` (fields `{1088..1092}`)** read again in `GetTpuAsyncTracker` (`0x10975520`, lines 118–151) — but here with AUTO → `INT64_MAX`, byte-confirmed — plus one further `AutoOr<long>` knob at TCE offset `+2696` (`0xA88`); these flow through `TpuAsyncTracker::Create` (line 179) into the tracker and out via `TpuAsyncTracker::GetNumAvailableResources` (`0x10FFF600`) per resource id.
 
 The scheduler refuses to co-issue more than `limit` async ops of a given resource type. The field-1202 gate (the 10th Config bool) controls a *second* LHS pass after SparseCore queue assignment, which builds a fresh `TpuAsyncTracker` reading the **same** overlap limits — so the caps are applied before *and* after queue assignment. This page documents only the dead `SparseCoreQueueAssignment` map; the live table is on [ResourceType Taxonomy](../sched/scheduler-resourcetype-model.md) and [LatencyHidingScheduler Core](../sched/latency-hiding-scheduler-core.md).
 
