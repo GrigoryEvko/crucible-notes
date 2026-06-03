@@ -15,7 +15,7 @@ For reimplementation, the contract is:
 - **The priority key is a 3-tuple `(double primary, double secondary, long tie)`** inserted into a `std::map`; the queue dequeues the **largest** key (highest priority first). Both `double`s are NaN-trapped with a fatal `CHECK` before insertion.
 - **Current-model score: `priority = mem_reduce − compute × conv_rw_count`.** `mem_reduce` is HBM bytes saved in TC cycles; `compute` is the opcode-weight ladder result; `conv_rw_count` is the number of Conv + ReduceWindow ops the fusion duplicates, so duplicating an expensive op is penalised proportionally.
 - **Bundle-aware score: `priority = total_unfused − total_fused`**, both in bundle cycles from the `ResourceVector` machinery; this is the only model that sees VLIW packing.
-- **Three priority sentinels:** `-1.0` = do-not-fuse; `FLT_MAX` (current) / `×100.0` boost (bundle) = must-fuse; the `long` tie-break is `0x3ffffffffffffffe` (current) / `INT64_MAX` (bundle).
+- **Three priority sentinels:** `-1.0` = do-not-fuse; `FLT_MAX` (current) / `100.0` boost (bundle) = must-fuse; the must-fuse `long` tie-break is `0x3ffffffffffffffe` (current) / `100` (bundle).
 - **VMEM is a hard gate, not a score term.** Any user whose fusion would exceed VMEM forces the producer's priority to `-1.0`.
 - **The compute-weight ladder is a coarse opcode `switch`** to a handful of scalar tiers (`1.0` default, `4.0`, `10.0`, `42.0`, plus conv-flop and fusion-recurse escapes), each multiplied by `Target::ChunksIn(shape)`.
 - **Multi-output (sibling) fusion has its own profit number** = bytes of the shared operand read once instead of once-per-sibling, ranked in a separate priority queue and gated by a 4 MiB per-reduce-output cap, a max-operands cap, and an HBM-pressure cap.
@@ -81,7 +81,7 @@ __asm { vucomisd xmm0, xmm0 }                    // get<1>(key) NaN-check (secon
 |---|---|---|---|
 | `get<0>` *(primary)* | `double` | the priority score (current- or bundle-model formula below); the ranking key | CONFIRMED |
 | `get<1>` *(secondary)* | `double` | a re-stored copy of the priority value (a stability re-score); used as a same-primary discriminator | HIGH — re-stored from the same `priority` slot at several `rbp` offsets; exact role not byte-pinned |
-| `get<2>` *(tie)* | `long` | deterministic tie-break: `InputSizeAt` accumulation / chunk count (current); `INT64_MAX` for must-fuse; ensures stable order across runs | CONFIRMED structurally; exact long composition spans the 0x1d8-byte frame (PARTIAL) |
+| `get<2>` *(tie)* | `long` | deterministic tie-break: `InputSizeAt` accumulation / chunk count (current); `0x3ffffffffffffffe` for the current-model must-fuse boost, `100` for the bundle-model must-fuse boost; ensures stable order across runs | CONFIRMED structurally; exact long composition spans the 0x1d8-byte frame (PARTIAL) |
 
 The NaN guard is a hard `CHECK` at `tpu_instruction_fusion.cc:1678` (and a second `vucomisd` for the second `double`). Any formula that can produce `NaN` — e.g. a `0/0` in a bytes-per-cycle conversion — aborts compilation rather than corrupting the map order. A reimplementer must therefore guarantee finite scores or assert likewise.
 
@@ -159,7 +159,7 @@ if (priority < 0.0)
   priority = ActualCostReduction(producer, users);                  // 0x1309a060
 ```
 
-The two `.text` sites pin the arithmetic byte-exactly: `vmulsd xmm0, xmm0, [rbp+var_88]` then `vsubsd xmm0, xmm1, xmm0` (mem_reduce − compute×multiplier) at `0x130967c1..`; the PRED multiply `vmulsd xmm1, xmm1, xmm0`; the `ActualCostReduction` call.
+The two `.text` sites pin the arithmetic byte-exactly: `vmulsd xmm0, xmm0, [rbp-0x88]` (`0x13096b32`) then `vsubsd xmm0, xmm1, xmm0` (`0x13096b3f`) — `mem_reduce(var_50) − compute(var_40)×multiplier(var_88)`; the PRED multiply `vmulsd xmm1, xmm1, xmm0` at `0x13096b97`; then the `ActualCostReduction` fallback call.
 
 **Interpretation of the terms.** Both terms are in **cycle** units, so they are directly comparable:
 
@@ -228,7 +228,7 @@ For a convolution the cost is the `flop_count`-based estimate (`HloCostAnalysis:
 // CalculateProducerPriorityWithBundleAwareCostModel(producer)  @ 0x130954c0 (decompiled, condensed)
 users = GetFusibleUsers(producer);
 if (fusion_util::IsMustFuseProducer(producer))               // 0x14559400
-  return /* boosted: see the 100.0 constant */;
+  return {priority = 100.0, long = 100};   // set directly to the 100.0 constant (qword_A2DF5C0)
 
 // (A) UNFUSED: producer's own bundle cycles × #users, plus each user's own cycles.
 total_unfused = GetHloCycles(producer) * producer.user_count;   // 0x13097a00 ; vmulsd
@@ -250,7 +250,7 @@ The `vsubsd xmm0, xmm0, [rbp+var_48]` at `0x13095d38` and the VLOG strings confi
 
 `GetHloCycles` (@ `0x13097a00`) = `CostModel::GetCycles` (@ `0x130aade0`) = the `ResourceVector::MaxResourceCycles` bundle cost, cached per `unique_id`. `GetCyclesIfFused` (@ `0x130aba40`) prices the same `max`-reduction on the merged producer+consumer bundle. Both are documented in full on [Bundle-Aware Cost](../cost/bundle-aware-cost.md); the fused-merge driver (`ScaleAndSumOutputFusionResourceVectors`, the slot-9/11 `max`-combine) is on [NormalizedComputationCost](../cost/normalized-computation-cost.md). This page owns only the *priority subtraction* that consumes them.
 
-The must-fuse boost is the constant `qword_A2DF5C0 = 100.0` (`vmovsd xmm0, cs:qword_A2DF5C0` when `IsMustFuseProducer` is true) — a user-pinned fusion sorts above any cost-derived score. The bundle model's `long` tie-break is `INT64_MAX` (`0x7fffffffffffffff`).
+The must-fuse boost sets the priority **directly to** the constant `qword_A2DF5C0 = 100.0` (`vmovsd xmm0, cs:qword_A2DF5C0` when `IsMustFuseProducer` is true — not a multiply of a computed score) with the `long` tie-break set to `100` (`_R14 = 100`); a user-pinned fusion sorts above any cost-derived score. There is no `INT64_MAX` sentinel in this model.
 
 ### Model comparison
 
@@ -260,8 +260,8 @@ The must-fuse boost is the constant `qword_A2DF5C0 = 100.0` (`vmovsd xmm0, cs:qw
 | compute penalty | `NormComputeCost × conv_rw_count` (explicit) | folded into `total_fused` |
 | VLIW bundle packing | **not** modelled | modelled (`GetCyclesIfFused`) |
 | VMEM / register pressure | hard gate (same) | hard gate (same) |
-| must-fuse score | `FLT_MAX` | `×100.0` boost |
-| tie-break `long` | input-size accumulation | `INT64_MAX` sentinel |
+| must-fuse score | `FLT_MAX` | `100.0` (direct set) |
+| tie-break `long` | input-size accumulation | `100` (with the `100.0` must-fuse boost) |
 | default? | **yes** | only when flagged / per-edge |
 
 ---
@@ -274,9 +274,9 @@ Three `.rodata` doubles and two `long`s carry out-of-band ranking signals. All C
 |---|---|---|---|
 | `-1.0` | `qword_A2DE728` | `0xbff0000000000000` | do-not-fuse — producer is not an output-fusion root, or a user's fusion would exceed VMEM |
 | `FLT_MAX` | `qword_A2E0530` | `0x47efffffe0000000` (`3.4028e+38`) | must-fuse, current model (collective with must-fuse attribute) — sorts to the top |
-| `100.0` | `qword_A2DF5C0` | — | must-fuse boost, bundle model (`IsMustFuseProducer`) |
+| `100.0` | `qword_A2DF5C0` | `0x4059000000000000` | must-fuse priority, bundle model (`IsMustFuseProducer`) — set directly, not a multiplier |
 | must-fuse `long` (current) | — | `0x3ffffffffffffffe` | tie-break paired with `FLT_MAX` |
-| must-fuse `long` (bundle) | — | `0x7fffffffffffffff` | `INT64_MAX` |
+| must-fuse `long` (bundle) | — | `100` (`0x64`) | tie-break paired with the `100.0` boost |
 | µs conversion | `qword_A2E0208` | `1.0e6` | cycles↔microsecond factor in the memory/tie-break math |
 
 ---
@@ -299,22 +299,22 @@ The design intent: VMEM is a correctness/feasibility constraint (the fused regio
 profit = Σ Target::ShapeSize(shared_operand)      // bytes read once instead of once-per-sibling
 ```
 
-via `Target::ShapeSize` (@ `0x1d61a8a0`) and `ShapeUtil::TrueNumDimensions` (@ `0x1d6dde20`); the `imul` forms `ShapeSize × count` and compares against a per-`Target` threshold at `Target[+0x13c0]`. A must-fuse attribute (`UserDirectedFuseInfo::IsMustFuse`) forces the pair regardless of profit. The profit feeds `MultiOutputFusion::AddToWorkList(p, c, profit)` (@ `0x14bdf6e0`) → a base-class `priority_queue<ToBeFused>` ordered by profit. VLOG: `"Fusing instr1="` / `" instr2="` / `", the profit is ="`.
+via `Target::ShapeSize` (@ `0x1d61a8a0`) and `ShapeUtil::TrueNumDimensions` (@ `0x20cdde20`); the `imul` forms `ShapeSize × count` and compares against a threshold read from the `TpuCompilationEnvironment` at byte offset `0x13c0` (`GetTpuCompEnv(...)[+0x13c0]`, decompiled `*(qword*)(TpuCompEnv + 5056)`). A must-fuse attribute (`UserDirectedFuseInfo::IsMustFuse`) forces the pair regardless of profit. The profit feeds `MultiOutputFusion::AddToWorkList(p, c, profit)` (@ `0x14bdf6e0`) → a base-class `priority_queue<ToBeFused>` ordered by profit. VLOG: `"Fusing instr1="` / `" instr2="` / `", the profit is ="`.
 
 The legality and budget gates reject before a merge commits (CONFIRMED unless noted):
 
 | guard | function | rule |
 |---|---|---|
 | cycle check | `MultiOutputFusion::Perform` @ `0x14bdb5a0` | reject if merge creates a cycle → `"multi-output fusion creates a cycle"` (`0x86cc9cf`) |
-| max operands | `TooManyResultOperands` @ `0x110ddec0` | `TotalBufferCount(p, siblings) > Target[+0xc8]` (the ctor `long` arg = `xla_tpu_multioutput_fusion_max_operands`) → reject |
+| max operands | `TooManyResultOperands` @ `0x110ddec0` | `TotalBufferCount(p) > this[+0xc8]` — the cap is a `long` field on the `TpuMultiOutputFusion` object (the ctor `long` arg, from `xla_tpu_multioutput_fusion_max_operands`), not a `Target` field → reject |
 | reduce-output cap | `TooMuchReduceOutputMultiOutput` @ `0x110e1060` | per-output reduce byte cap **`0x400000` = 4 MiB** (decompiled `> 0x400000` at two sites); `CHECK "num_outputs >= instructions.size()"` (`0xa163eb7`) |
-| reduce-output cap (pair) | `TooMuchReduceOutput` @ `0x110de000` | pairwise variant of the same 4 MiB cap |
+| reduce-output cap (pair) | `TooMuchReduceOutput` @ `0x110de000` | pairwise reduce check, but **not** the 4 MiB cap: compares the merged reduce-output bytes (via `ReduceEmitter::EvaluateReduceOutput`, `Target::TileBytes`, `MinFusedOperandBytes`) against `0.8 × DefaultScopedVmemBytes` (factor `qword_A2E0738 = 0.8`); short-circuits to "not too much" when combined operand count `> 0x100` |
 | HBM pressure | `IsHBMPressureHighIfFused` @ `0x110de640` | `Σ ShapeSizeRecursive(outputs) × count > UserAllocationSharedMemoryLimitBytes(...)` (@ `0x1d616680`) → reject |
 | structural legality | `LegalToFuse` @ `0x110ddc20`; `ShapesCompatibleForFusion` @ `0x110dcca0`; `IsFusible` @ `0x110dce20` | shapes tile-align for a shared iteration space; no in-place conflict; fusible op class |
 
 The 4 MiB reduce cap prevents merging reductions whose individual outputs are large enough that the merged tuple would blow the on-chip budget; the max-operands cap bounds the fan-in of a single multi-output `kFusion`; the HBM-pressure cap bounds the total output footprint against the per-`Target` shared-memory limit. The pass is bounded by `xla_tpu_multi_output_fusion_limit` (flag string `0x84f98d5`) — a cap on how many multi-output fusions form per pass — and gated by `xla_jf_enable_multi_output_fusion` / `_advanced_…` / `_producer_consumer_…`.
 
-> **NOTE — `Target[+0x13c0]` (MOF profit threshold) and `Target[+0xc8]` (max-operands default) are per-gen / flag-derived** and not constant-folded into `.text`; their absolute values live in the per-gen `chip_parts` resources. Confidence on those two specific integers: LOW. The *rules* that consume them are CONFIRMED.
+> **NOTE — the MOF profit threshold (`TpuCompEnv[+0x13c0]`) and the max-operands cap (`TpuMultiOutputFusion` object field `+0xc8`, the ctor `long` arg) are runtime/flag-derived** and not constant-folded into `.text`; their absolute values come from the compilation environment / flag (`xla_tpu_multioutput_fusion_max_operands`), not from a `Target` constant. Confidence on those two specific integers: LOW. The *rules* and *load offsets* that consume them are CONFIRMED.
 
 ---
 
@@ -322,7 +322,7 @@ The 4 MiB reduce cap prevents merging reductions whose individual outputs are la
 
 There is **exactly one** `TpuInstructionFusion` scoring path in the binary — one `CalculateProducerPriority`, one current model, one bundle model, one `NormalizedComputationCost` `switch`, one `TpuMultiOutputFusion::GetProfit`. No per-codename (viperfish / ghostlite / gfc / pufferfish) override of the cost functions exists. Per-generation behaviour enters the score **only through data**:
 
-1. **`Target` constants** — `ChunksIn` (MXU geometry: different chunk counts per gen → different `NormalizedComputationCost`), `HbmFullChipBytesPerSecond`, `TensorCoreFrequencyInMegaHertz`, `GranuleBytes`, `ShapeSize`, `UserAllocationSharedMemoryLimitBytes`, `Target[+0xc8]`, `Target[+0x13c0]`. Same formulas, per-gen numbers.
+1. **`Target` constants and runtime fields** — `ChunksIn` (MXU geometry: different chunk counts per gen → different `NormalizedComputationCost`), `HbmFullChipBytesPerSecond`, `TensorCoreFrequencyInMegaHertz`, `GranuleBytes`, `ShapeSize`, `UserAllocationSharedMemoryLimitBytes`, plus the MOF caps (`TpuCompEnv[+0x13c0]` profit threshold, the `TpuMultiOutputFusion` `+0xc8` max-operands field). Same formulas, per-gen / per-flag numbers.
 2. **Per-gen `CycleTable` latencies** — what `GetHloCycles` / `GetCyclesIfFused` deposit per op (a bf16 matmul varies ~26× across generations), so the bundle-aware priority of a matmul-bound fusion scales with the chip while the subtraction is identical.
 3. **Flag defaults** — `xla_tpu_use_bundle_aware_cost_model_for_fusions`, nested-dot / fp8 / packing-fusion enables. These gate *which model runs* and *which predicate branches admit*, but the scoring code is shared.
 
@@ -333,7 +333,7 @@ This mirrors the bundle-cost finding (see [Bundle-Aware Cost](../cost/bundle-awa
 ## What Is Not Byte-Pinned
 
 - **The secondary `double` of the priority tuple** (current model): re-stored from the same `priority` slot at several `rbp` offsets; whether it is a stability re-score or a re-stored `ActualCostReduction` is not byte-confirmed. The `long` tie *is* the input-size/chunk accumulation. (PARTIAL)
-- **The absolute per-gen integers** `Target[+0x13c0]` (MOF profit threshold) and `Target[+0xc8]` (max-operands), and the `HbmFullChipBytesPerSecond` / TC-frequency values that convert the memory term to absolute bytes — per-gen, not constant-folded. (LOW for the numbers; CONFIRMED for the formulas that consume them.)
+- **The absolute runtime integers** `TpuCompEnv[+0x13c0]` (MOF profit threshold) and the `TpuMultiOutputFusion` `+0xc8` max-operands field, and the `HbmFullChipBytesPerSecond` / TC-frequency values that convert the memory term to absolute bytes — runtime/per-gen, not constant-folded. (LOW for the numbers; CONFIRMED for the formulas/load offsets that consume them.)
 - **The exhaustive opcode→weight assignment** inside `NormalizedComputationCost` — the four weight constants the priority formula uses are confirmed; the full 106-entry jump-table decode (including the `0.0`/`2.0` tiers and the `dot`-fatal) is owned by [NormalizedComputationCost](../cost/normalized-computation-cost.md).
 - **The full body of `GetCyclesIfFused`** — confirmed to return a `MaxResourceCycles` bundle cost on the merged op; its two-`ResourceVector` merge is documented on the cost pages.
 
