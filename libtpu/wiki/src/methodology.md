@@ -1,6 +1,6 @@
 # Methodology
 
-> *Every fact in this book is recovered by static reverse engineering of `libtpu.so` from the freely-redistributed `libtpu-0.0.40-cp314` PyPI wheel (`manylinux_2_31_x86_64`): a 781,691,048-byte ELF64 shared object, build-id `89edbbe81c5b328a958fe628a9f2207d`, reported runtime version `0.103`. Another wheel will differ in every address.*
+> *Every fact in this book is recovered by static reverse engineering of `libtpu.so` from the freely-redistributed `libtpu-0.0.40-cp314` PyPI wheel (`manylinux_2_31_x86_64`): a 781,691,048-byte ELF64 shared object, build-id `89edbbe81c5b328a958fe628a9f2207d`. The build-id is the unambiguous pin; the wheel's package metadata reports version `0.0.40`. Another wheel will differ in every address.*
 
 ## Abstract
 
@@ -114,7 +114,7 @@ The sidecar family, with verified presence and the count or size each carries:
 
 > **NOTE —** the per-function artifact count (884,843) is slightly higher than the function-record count in the metadata (884,832). The directory count includes a small number of thunk/alias/data-stub entries that receive an artifact file without being counted as a full function record. When a page cites a function *count*, it cites 884,832; when it cites artifact *coverage*, the per-function directories hold one file per analyzed entry.
 
-> **CORRECTION (METH-02) —** the extraction manifest for the primary pass records `decompiled: 0` and `ctree: 0`. That is an artifact of a two-phase extraction, **not** a claim that nothing was decompiled. The first pass ran in a *fast* mode (boundaries, names, tables, xrefs) and deliberately deferred Hex-Rays; the decompiled bodies and control-flow trees were produced by subsequent split passes, yielding the 884,843 per-function `decompiled/*.c` files and control-flow-tree coverage over 884,332 of them. A reader who only inspects the manifest's `decompiled` counter will draw the wrong conclusion — the bodies exist on disk.
+> **CORRECTION (METH-02) —** the extraction manifest for the primary pass records `decompiled: 0` and `ctree: 0`. That is an artifact of a two-phase extraction, **not** a claim that nothing was decompiled. The first pass ran in a *fast* mode (boundaries, names, tables, xrefs) and deliberately deferred Hex-Rays; the decompiled bodies and control-flow trees were produced by subsequent split passes, yielding the 884,843 per-function `decompiled/*.c` files and control-flow-tree coverage over 884,332 of them (a 511-function gap). A reader who only inspects the manifest's `decompiled` counter will draw the wrong conclusion — the bodies exist on disk.
 
 ---
 
