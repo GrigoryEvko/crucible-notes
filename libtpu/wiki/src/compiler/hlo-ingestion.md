@@ -14,7 +14,7 @@ For reimplementation, the ingestion contract is:
 
 - **Three serializations, two conversions.** StableHLO/CHLO/VHLO bytecode → (legalize + `ConvertMlirHloToHlo`) → `HloModuleProto` → (`CreateFromProto`) → `HloModule`. A reimplementer who treats ingestion as one step will miss that the proto is a real intermediate the runtime can dump and cache.
 - **The opcode is a string, not an enum.** On the HLO-proto wire, `HloInstructionProto.opcode` is `string opcode = 2`. There is no `xla.HloOpcode` proto enum. This is what makes the format forward-compatible.
-- **`HloInstructionProto` is one 70-field union.** Every op-specific attribute is an optional field on a single wide message; the opcode string selects which subset is meaningful.
+- **`HloInstructionProto` is one ~83-field union.** Every op-specific attribute is an optional field on a single wide message; the opcode string selects which subset is meaningful.
 - **The graph is a flat id-indexed DAG.** No nested instruction objects: data edges are `operand_ids` int64 references, call edges are `called_computation_ids` references, `root_id` names each computation's output.
 - **CHLO and the StableHLO↔MHLO legalizers run inside Phase 0, before HLO exists.** A reimplementer who builds CHLO handlers into the HLO optimizer is at the wrong layer; CHLO is gone by the time Phase 1 sees the module.
 
@@ -74,7 +74,7 @@ The serialized module carried across the boundary is the payload of an **`XLACal
 
 ### Purpose
 
-This is the core of Phase 0: turn a `mlir::ModuleOp` holding StableHLO/CHLO/VHLO into an `xla::HloProto`. It is implemented as a conventional MLIR `PassManager` run followed by a single MHLO-walking emitter. Two near-identical drivers exist — `xla::MlirToXlaComputation` (`0xf907d40`, the Phase-0 path, producing an `XlaComputation`) and `xla::ConvertStablehloToHloProtoInternal` (`0x16a3d400`, producing a bare `HloProto`). They share the same pass set; the difference is the output container.
+This is the core of Phase 0: turn a `mlir::ModuleOp` holding StableHLO/CHLO/VHLO into an `xla::HloProto`. It is implemented as a conventional MLIR `PassManager` run followed by a single MHLO-walking emitter. Two related drivers exist — `xla::MlirToXlaComputation` (`0xf907d40`, the Phase-0 path, producing an `XlaComputation`) and `xla::(anonymous namespace)::ConvertStablehloToHloProtoInternal` (`0x16a3d400`, producing a bare `HloProto`). They share the *shape* of the pipeline (CHLO recompose → SymbolDCE → CHLO legalize → normalize → run → emit) but **do not share the exact pass set**: `MlirToXlaComputation` adds `StablehloComplexMathExpander` and runs the verifier at its default; `ConvertStablehloToHloProtoInternal` instead adds (conditionally) `StablehloTargetIndependentOptimization` + `StablehloSanitizeDiscardableAttributes` and explicitly calls `enableVerifier(false)`. Both end by walking the normalized module into a proto — `MlirToXlaComputation` routes through `ConvertStablehloToHloWithOptions` → `ConvertStablehloToHloInternal` (`0x16a3d220`) → `ConvertStablehloToHloProtoInternal`, so the proto emitter is shared even though the front pass chain differs. [Confidence: CONFIRMED both pipelines from the decompiled bodies.]
 
 ### Entry Point
 
@@ -91,44 +91,42 @@ xla::MlirToXlaComputation(ModuleOp, XlaComputation&, bool, bool,        0xf907d4
 
 ### Algorithm
 
-The conversion builds one `mlir::PassManager`, adds an ordered chain of MLIR passes, runs it, and then emits the proto. The pass set below is recovered from the call targets in `MlirToXlaComputation` (`0xf907d40`) and `ConvertStablehloToHloProtoInternal` (`0x16a3d400`).
+The conversion builds one `mlir::PassManager`, adds an ordered chain of MLIR passes (most nested under `func.func`), runs it, and then emits the proto. The pass chain below is recovered from the call targets in the decompiled body of `MlirToXlaComputation` (`0xf907d40`); the `ConvertStablehloToHloProtoInternal` (`0x16a3d400`) variant differs as noted under Purpose, above.
 
 ```c
 function MlirToXlaComputation(module, out_computation, chlo_opts):   // 0xf907d40
-    pm = PassManager(module.getContext())                            // mlir::PassManager
-    pm.enableVerifier(true)                                          // re-verify after each pass
+    pm = PassManager(module.getContext(), "any")                     // mlir::PassManager (verifier left at default)
 
-    // --- 1. CHLO recompose + legalize (CHLO is the "Customer HLO" high-level layer) ---
-    pm.addPass(stablehlo_ext::createChloRecomposeOpsPass())          // rebuild fused CHLO ops
-    pm.nest("func").addPass(
+    // --- 0. Shardy fallback (only when GSPMD attrs/ops coexist with Shardy) ---
+    if module has GSPMD attrs but Shardy is enabled:
+        ExportShardyForGSPMD(module)                                 // disable Shardy, fall back to GSPMD propagation
+
+    // --- 1. CHLO recompose, then SymbolDCE, then CHLO legalize ---
+    pm.nest("func.func").addPass(stablehlo_ext::createChloRecomposeOpsPass())  // rebuild fused CHLO ops
+    pm.addPass(createSymbolDCEPass())                                // drop unreferenced symbols (module-level)
+    pm.nest("func.func").addPass(
         mhlo::createChloLegalizeToHighLevelMhloPass(chlo_opts))      // CHLO → high-level MHLO (top_k, erf, ragged…)
-    pm.addPass(stablehlo::createChloLegalizeToStablehloPass())       // remaining CHLO → StableHLO primitives
+    pm.nest("func.func").addPass(
+        stablehlo::createChloLegalizeToStablehloPass())              // remaining CHLO → StableHLO primitives
 
     // --- 2. StableHLO normalization ---
-    pm.addPass(stablehlo::createStablehloComplexMathExpanderPass())  // expand complex arithmetic
-    pm.addPass(stablehlo_ext::createStablehloSanitizeDiscardableAttributesPass())
-    pm.addPass(stablehlo::createStablehloTargetIndependentOptimizationPass())
-    pm.addPass(stablehlo_ext::createSinkConstantsToControlFlowPass()) // push consts into while/case regions
-    pm.addPass(createSymbolDCEPass())                                // drop unreferenced symbols
-
-    // --- 3. Shardy export (only when Shardy/sdy ops are present) ---
-    if module has sdy dialect ops:
-        ExportShardyForGSPMD(module)                                 // sdy sharding → HLO sharding attrs
+    pm.nest("func.func").addPass(
+        stablehlo::createStablehloComplexMathExpanderPass())         // expand complex arithmetic
+    pm.nest("func.func").addPass(
+        stablehlo_ext::createSinkConstantsToControlFlowPass())       // push consts into while/case regions
 
     status = pm.run(module)                                          // BaseScopedDiagnosticHandler captures errors
     if !status.ok(): return status                                  // module now lives in MHLO + builtin dialects
 
-    // --- 4. MHLO → HloProto: the actual graph emission ---
-    hlo_proto = HloProto()
-    ConvertMlirHloToHlo(module, &hlo_proto, /*use_tuple_args=*/…,    // 0x16a64920
-                        /*return_tuple=*/…, MlirToHloConversionOptions{...})
+    // --- 3. StableHLO → HloProto via the shared emitter (wraps ConvertMlirHloToHlo, 0x16a64920) ---
+    hlo_proto = ConvertStablehloToHloWithOptions(module, …)          // → ConvertStablehloToHloProtoInternal → ConvertMlirHloToHlo
     out_computation = XlaComputation(hlo_proto.hlo_module())          // wrap proto in XlaComputation
     return out_computation
 ```
 
-Two structural notes. The legalization is *staged top-down*: CHLO (the highest-level dialect, e.g. `chlo.top_k`, `chlo.erf`, `chlo.ragged_dot`) is recomposed and lowered first, partly into high-level MHLO ops (which have direct HLO equivalents) and partly into StableHLO primitives; then the StableHLO layer is normalized; then the whole thing is walked into proto. The `ConvertMlirHloToHlo` walk is where the actual MHLO-op → `HloInstructionProto` mapping happens — this is the boundary at which the program leaves MLIR and becomes an XLA HLO proto.
+Two structural notes. The legalization is *staged top-down*: CHLO (the highest-level dialect, e.g. `chlo.top_k`, `chlo.erf`, `chlo.ragged_dot`) is recomposed and lowered first, partly into high-level MHLO ops (which have direct HLO equivalents) and partly into StableHLO primitives; then the StableHLO layer is normalized; then the whole thing is walked into proto. The `ConvertMlirHloToHlo` walk (reached through `ConvertStablehloToHloProtoInternal`) is where the actual MHLO-op → `HloInstructionProto` mapping happens — this is the boundary at which the program leaves MLIR and becomes an XLA HLO proto.
 
-> **GOTCHA — `enableVerifier(true)` runs the MLIR verifier after *every* pass in this pipeline.** A reimplementation that legalizes CHLO→StableHLO→MHLO without re-verifying between passes will accept malformed intermediates (e.g. a partially-recomposed CHLO op) that libtpu rejects immediately. The cost is paid deliberately: ingestion is the one place where a malformed module must be caught with a clean diagnostic rather than crashing a downstream legalizer. The `mlir::BaseScopedDiagnosticHandler` (constructed in both drivers) is what turns an MLIR diagnostic into an `absl::Status`.
+> **GOTCHA — verifier policy differs between the two drivers, and is *not* "on after every pass" in the proto path.** The proto-emitting driver `ConvertStablehloToHloProtoInternal` (`0x16a3d400`) explicitly calls `pm.enableVerifier(false)` — it does *not* re-verify between passes. `MlirToXlaComputation` (`0xf907d40`) constructs its `PassManager` without an explicit `enableVerifier` call (it inherits the MLIR default). Both drivers construct a `mlir::BaseScopedDiagnosticHandler`, which is what turns an MLIR diagnostic raised during `pm.run` into an `absl::Status` (via `ConsumeStatus`). A reimplementer should not assume per-pass verification is enabled on the ingestion path; the diagnostic handler — not the verifier — is the mechanism that surfaces a malformed module as a clean error.
 
 ### The per-op converter table
 
@@ -156,8 +154,9 @@ The StableHLO→MHLO op mapping is implemented by the templated pattern `mlir::s
 | `xla::ParseMlirModuleString` | `0xf908580` | StableHLO text/bytecode → `mlir::ModuleOp` | CONFIRMED |
 | `xla::MlirToXlaComputation` | `0xf907d40` | the conversion driver (PassManager + emit) | CONFIRMED |
 | `xla::ConvertStablehloToHlo` | `0x16a3d200` | thin wrapper, default options | CONFIRMED |
-| `xla::ConvertStablehloToHloWithOptions` | `0x16a3d3a0` | wrapper exposing the two bool flags | CONFIRMED |
-| `xla::ConvertStablehloToHloProtoInternal` | `0x16a3d400` | proto-output variant of the conversion | CONFIRMED |
+| `xla::ConvertStablehloToHloWithOptions` | `0x16a3d3a0` | wrapper exposing the two bool flags; tail-calls `ConvertStablehloToHloInternal` | CONFIRMED |
+| `xla::(anon)::ConvertStablehloToHloInternal` | `0x16a3d220` | wraps `ConvertStablehloToHloProtoInternal`, returns `XlaComputation` | CONFIRMED |
+| `xla::(anon)::ConvertStablehloToHloProtoInternal` | `0x16a3d400` | the real pass-pipeline + `ConvertMlirHloToHlo` emit (verifier disabled) | CONFIRMED |
 | `xla::ConvertStablehloWithManyArgsToHloProto` | `0x16a3d7c0` | multi-argument-bundle variant | CONFIRMED |
 | `mlir::ConvertMlirHloToHlo` | `0x16a64920` | MHLO module walk → `HloProto` | CONFIRMED |
 | `mlir::mhlo::getDefaultChloToHighLevelMhloOptions` | `0x16ad78e0` | default CHLO-legalization options | CONFIRMED |
@@ -199,7 +198,7 @@ The program graph is a **flat instruction list with id edges**: there are no nes
 
 ### The universal instruction record
 
-`HloInstructionProto` is a single message with ~70 live fields running to field number 99. Every op-specific attribute is its own optional field; the `opcode` string selects which subset is meaningful. The table below describes the *axes* of this union (the full field list is too wide to dump; these are the dimensions a reimplementer must reproduce).
+`HloInstructionProto` is a single message with ~83 declared fields running to field number 99 (parsed from the descriptor in `protodesc_cold`). Every op-specific attribute is its own optional field; the `opcode` string selects which subset is meaningful. The table below describes the *axes* of this union (the full field list is too wide to dump; these are the dimensions a reimplementer must reproduce).
 
 | Field group | Representative fields (number) | Read by opcode(s) |
 |---|---|---|
@@ -207,13 +206,13 @@ The program graph is a **flat instruction list with id edges**: there are no nes
 | Leaf payloads | `literal`(8), `parameter_number`(9), `delta`(66), `distribution`(23), `rng_algorithm`(70) | constant, parameter, iota, rng, rng-bit-generator |
 | Shape ops | `dimensions`(14), `slice_dimensions`(17), `dynamic_slice_sizes`(20), `padding_config`(21), `is_reverse`(94) | reshape, transpose, slice, pad, reverse, … |
 | Matmul / conv | `dot_dimension_numbers`(30), `ragged_dot_dimension_numbers`(90), `convolution_dimension_numbers`(16), `window`(15), `feature_group_count`(50), `precision_config`(51), `conv_kind`(97) | dot, ragged-dot, convolution |
-| Collectives | `channel_id`(26), `replica_groups`(49), oneof `replica_group_list`(87/92/93), `use_global_device_ids`(71), `source_target_pairs`(52) | all-reduce, all-gather, all-to-all, collective-permute, … |
+| Collectives | `channel_id`(26), `replica_groups`(49), oneof {`collective_device_list`(87), `iota_collective_device_list`(92), `mesh_axes_replica_group_list`(93)}, `use_global_device_ids`(71), `source_target_pairs`(52) | all-reduce, all-gather, all-to-all, collective-permute, … |
 | Custom-call | `custom_call_target`(28), `backend_config`(43), `backend_config_payload`(99), `custom_call_api_version`(77), `output_operand_aliasing`(74) | custom-call (incl. `tpu_custom_call`) |
 | Precision control | `result_accuracy`(91), `is_associative`(96), `exponent_bits`(18), `mantissa_bits`(19) | transcendentals, reduce-precision |
 | Sharding | `sharding`(40), `domain_entry_sharding`(54), `domain_exit_sharding`(55) | any sharded op, domain |
 | Provenance | `metadata`(7), `original_value`(88), `frontend_attributes`(68) | all |
 
-> **QUIRK — `HloInstructionProto.opcode` is a string (`string opcode = 2`), not a proto enum.** An exhaustive scan of all 760 descriptor records finds **no `xla.HloOpcode` descriptor anywhere** in the pool. The C++ `HloOpcode` enum is serialized through the `HloOpcodeString` ↔ `StringToHloOpcode` pair into a lowercase text mnemonic: `"add"`, `"dot"`, `"convolution"`, `"fusion"`, `"all-reduce"`, `"dynamic-update-slice"`, `"custom-call"`. This is the single most important serialization detail: it is *why* the format is forward/backward compatible across XLA versions — a new opcode is a new string, with no enum-number coordination between front-end and backend. A reimplementation that defines a numeric opcode enum on the wire will silently diverge from every real dumped module. [Confidence: CONFIRMED — definitive negative result from the descriptor pool.]
+> **QUIRK — `HloInstructionProto.opcode` is a string (`string opcode = 2`), not a proto enum.** An exhaustive scan of the entire `protodesc_cold` descriptor pool (≈770 embedded `.proto` files) finds **no `xla.HloOpcode` descriptor anywhere** — the substring `HloOpcode` does not appear once in the pool. The C++ `HloOpcode` enum is serialized through the `HloOpcodeString` ↔ `StringToHloOpcode` pair into a lowercase text mnemonic: `"add"`, `"dot"`, `"convolution"`, `"fusion"`, `"all-reduce"`, `"dynamic-update-slice"`, `"custom-call"`. This is the single most important serialization detail: it is *why* the format is forward/backward compatible across XLA versions — a new opcode is a new string, with no enum-number coordination between front-end and backend. A reimplementation that defines a numeric opcode enum on the wire will silently diverge from every real dumped module. [Confidence: CONFIRMED — definitive negative result from the descriptor pool.]
 
 > **NOTE — `backend_config` has two encodings, and the new one interns.** The legacy `bytes backend_config = 43` is still present, but field 99 `backend_config_payload` (`xla.Payload`) is the new path: `Payload` is a oneof of `bytes value = 1` OR `int64 id = 2`, where the int64 id indexes into `HloModuleProto.payloads` (field 22, `repeated bytes`). This is an interning side-channel so duplicate backend configs are stored once per module. For TPU, `ConvertFrontendAttributesToBackendConfig` (the last HLO pass, see [compile-phases.md](compile-phases.md)) is what populates these just before the MLIR descent.
 
@@ -236,8 +235,10 @@ Once `ConvertMlirHloToHlo` has produced the `HloModuleProto`, the live `HloModul
 ```text
 xla::HloModule::CreateFromProto(HloModuleProto const&,                 0x1e5dbe60
                                 HloModuleConfig const&, bool,
-                                unique_ptr<CompilationEnvironments>)
-  ├─ overload with BufferAssignmentProto*                              0x1e5dbe20
+                                unique_ptr<CompilationEnvironments>,
+                                bool, BufferAssignmentProto*)
+  ├─ overload (HloModuleProto const&, HloModuleConfig const&,          0x1e5dbe20
+  │            BufferAssignmentProto*, bool)
   └─ xla::HloModule::CreateFromProtoWithConfig(                        0x1e5e07e0
          HloModuleProtoWithConfig const&, …)
 
