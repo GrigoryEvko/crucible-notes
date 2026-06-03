@@ -83,7 +83,8 @@ The two halves of XLA's two-phase compile. `RunHloPasses` runs the target-indepe
 
 ```text
 xla::TpuCompiler::RunHloPasses(...)            (host-side shim, not in this binary)
-  └─ ExecutorApiFn()->slot[RunHloPasses]       0x20819360 → fn-ptr slot
+  └─ ExecutorApiFn()->slot[RunHloPasses]       0x20819360 = ExecutorApiFn() accessor
+       (returns &executor_api_fn @ 0x2258c818; the RunHloPasses fn-ptr lives in that struct)
        └─ TpuCompiler_RunHloPasses             0xeabcd80   — C-ABI impl
             └─ DeepseaCompiler vtable[+24]      xla::Compiler::RunHloPasses override
 ```
@@ -106,7 +107,7 @@ int TpuCompiler_RunHloPasses(a1, a2, cfg, exec, out, status):
     // build a CompileOptions whose device allocator wraps the SE executor, if given
     opts = {}
     if exec && exec->allocator:
-        opts.device_allocator = new DeepseaAllocatorAdapter{           // off_21616EF8 vtable
+        opts.device_allocator = new WrapperDeviceMemoryAllocator{      // vtable off_21616EF8
             platform = GetUnderlyingDeepseaPlatform(),                 // Meyers singleton
             executor = exec }
     opts.layout_canonicalization_callback = empty                      // default-constructed std::function
@@ -136,7 +137,7 @@ cleanup:
 
 > **QUIRK —** `RunHloPasses` returns a re-serialized `HloModuleProto` (a byte buffer the caller frees), but `RunBackend` returns a *live* `xla::Executable*` boxed in an 8-byte allocation — the backend result never crosses the seam as a proto. The asymmetry is deliberate: optimized HLO is portable and cacheable, so it is serialized; an `Executable` holds device-resident state and is consumed in-process, so only its pointer (an opaque [TpuExecutable](tpu-executable-roster.md) handle) is handed back.
 
-> **GOTCHA —** both functions take an optional `SE_StreamExecutor*` (`a4`). When non-null, the impl lazily constructs a `DeepseaAllocatorAdapter` (vtable `off_21616EF8`) bound to the process-wide `DeepseaPlatform` singleton (`GetUnderlyingDeepseaPlatform`, guarded by a `_cxa_guard`) and threads it into `CompileOptions.device_allocator`. A reimplementer that ignores `a4` will compile without a device allocator and silently disable allocation-aware passes (e.g. memory-space assignment that needs real HBM sizing).
+> **GOTCHA —** both functions take an optional `SE_StreamExecutor*` (`a4`). When non-null, the impl lazily constructs a `WrapperDeviceMemoryAllocator` (vtable `off_21616EF8`, `Allocate`/`Deallocate`/`GetStream` over a `stream_executor::DeviceMemoryAllocator`) bound to the process-wide `DeepseaPlatform` singleton (`GetUnderlyingDeepseaPlatform`, guarded by a `_cxa_guard`) and threads it into `CompileOptions.device_allocator`. A reimplementer that ignores `a4` will compile without a device allocator and silently disable allocation-aware passes (e.g. memory-space assignment that needs real HBM sizing).
 
 ### Function Map
 
@@ -178,7 +179,7 @@ void TpuCompiler_Compile(a1, group, ..., out_array, status):
 
     // flatten the per-module vector<StreamExecutor*> (loop-unrolled by 8)
     execs = copy_stream_executors(...)
-    opts  = CompileOptions{ device_allocator = DeepseaAllocatorAdapter(platform, execs) if present }
+    opts  = CompileOptions{ device_allocator = WrapperDeviceMemoryAllocator(platform, execs) if present }
     result = xla::Compiler::Compile(compiler, module, execs, opts)  // StatusOr<vector<unique_ptr<Executable>>>
     if ok:
         for i in result:                                           // box each Executable*, transfer ownership
@@ -345,6 +346,7 @@ The cache-key cluster is the data path for XLA's TPU compilation cache: `CreateC
 | `ApiConverter::ToC` / `FromC` | marshals `XLA_Shape` / `XLA_HloModuleConfig` across the seam (see overview) |
 | `stream_executor::tpu::DeserializeProto<…>` | unpacks the `TpuSerializedProto` (ptr+len) blobs the compile entries take |
 | `deepsea::executor::DeepseaPlatform` | the process-wide platform singleton bound into `CompileOptions.device_allocator` |
+| `WrapperDeviceMemoryAllocator` | the `DeviceMemoryAllocator` subclass (vtable `off_21616EF8`) the compile entries wrap around an `SE_StreamExecutor*` |
 | `tensorflow::tpu::TpuCompileOpKernelCommon` | the TF op core that `TpuCompile_CompileAndBuild` drives |
 | `XLA_TpuProgram` | the serialized-program handle `CompileAndBuild` emits and `RunBackend` does *not* |
 
