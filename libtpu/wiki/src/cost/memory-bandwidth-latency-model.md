@@ -11,7 +11,7 @@ dma_cycles = init_latency_cycles  +  transferred_bytes / bytes_per_cycle
              └─ fixed startup ─┘     └────── bandwidth-proportional ──────┘
 ```
 
-The startup term is a flat per-(destination-tier) constant — the `InitialDmaLatencyInNs` virtual, scaled to cycles by `DefaultHbmInitLatency`. The bandwidth term is `bytes / bytes_per_cycle`, where `bytes_per_cycle` is derived once from the full-chip HBM (or CMEM) byte rate divided by the TensorCore clock and core count. On v5p and newer, the bandwidth term is computed **twice** — once for the HBM lane and once for the VMEM lane — and the slower lane wins. That per-lane `max`, plus the `max` against the startup term, is the model's **roofline**: a transfer is *latency-bound* when the fixed startup dominates and *bandwidth-bound* when `bytes / bytes_per_cycle` dominates.
+The startup term is a flat per-(destination-tier) constant — the `InitialDmaLatencyInNs` virtual, scaled to cycles by `DefaultHbmInitLatency`. The bandwidth term is `bytes / bytes_per_cycle`, where `bytes_per_cycle` is derived once from the full-chip HBM (or CMEM) byte rate divided by the TensorCore clock and core count. The two terms are deposited into two independent [`ResourceVector`](resource-enum.md) lanes and the scheduler maxes the lanes: a transfer is *latency-bound* when the fixed startup dominates and *bandwidth-bound* when `bytes / bytes_per_cycle` dominates. This per-lane `max` is the model's **roofline**. On v5p and newer there is a *second*, separate two-lane computation inside `WindowCycles` itself — the bandwidth is priced **twice**, once for an HBM byte count and once for a VMEM byte count, and the slower of the two wins — but that block is opt-in (only the convolution classic-window path supplies both byte counts); the generic priced DMA leaves it dormant.
 
 The familiar reference frame is a textbook roofline: `time = max(latency, size / bandwidth)`. The divergences a reimplementer must respect are (1) the unit is *TensorCore cycles*, not seconds — both terms are pre-multiplied by TC frequency so they compose with the [CycleTable](cycletable-family.md) throughput integers; (2) the startup latency is charged **once per resource lane**, not once per transfer, so a chain of DMAs into the same lane pays one startup; and (3) the per-tier rate constants are *per-generation virtual overrides* returning `std::optional<double>`, where an absent value means "this tier pair is not modelled" rather than "zero bandwidth."
 
@@ -21,7 +21,7 @@ For reimplementation, the contract is:
 - `DefaultHbmInitLatency = InitialDmaLatencyInNs(elem, bytes) · (TC_MHz / 1000.0)` — the ns→cycle conversion, and the `MemUnitFromKiB(0)` sentinel that short-circuits a no-transfer `MemUnit`.
 - The byte→cycle conversion: `MemUnitFromKiB` (KiB→granule-unit shift) and `ChunkGranules` (`(ChunkCellCount·4) / ChunkGranuleBytes`), the granule that `windowing_util::Size` rounds up to.
 - `bytes_per_cycle = FullChipBytesPerSecond / (TC_MHz · 1e6) / CoresPerChip`, from `GetBytesPerCycle`, including the `kHbm`/`kCmem`-only CHECK and the two env/backend-config overrides.
-- The roofline assembly in `WindowCycles`: the once-per-lane startup add, the per-direction HBM/VMEM `max`, and the v5p+ gate.
+- The roofline assembly in `WindowCycles`: the startup `init` add, the `(hbm_b | vmem_b)` opt-in gate around the per-direction HBM/VMEM `max`, and the inner v5p+ (`Target+0x398 >= 5`) gate.
 - The per-tier `LocalDmaBandwidth<Src>To<Dst>` GB/s matrix that feeds the *copy-mode* decision (`ShouldUseAsyncLocalCopy`), distinct from the cycle-cost `bytes_per_cycle`.
 
 | | |
@@ -56,7 +56,7 @@ transfer_bytes = raw_bytes / (Compact2ndMinorRatio · ElementPackingFactor)
 if rv[latency_lane] == 0.0:                                        // charged ONCE per lane
     rv.Acc(latency_lane, DefaultHbmInitLatency(MemUnit, wd, Target))   // @0x14552ca0
 bytes_per_cycle = GetBytesPerCycle(hlo, Target, MemSpace)          // @0x1454dd00
-rv.Acc(bw_lane, WindowCycles(MemUnit, wd, Target, bytes_per_cycle, 0, 0, -1))  // @0x14552660
+rv.Acc(bw_lane, WindowCycles(MemUnit, wd, Target, bytes_per_cycle, 0, 0, 0))  // @0x14552660
 ```
 
 The `rv[latency_lane] == 0.0` guard is the **once-per-lane** rule: the DMA startup is billed only the first time a lane is touched in this op's cost, so N transfers into the same lane pay one startup, not N. The bandwidth deposit always accumulates. The input/output lane split (`R9`/`R10` for input, `R11`/`R12` for output) belongs to [WindowDescription Byte-Cost](window-description-cost.md), which prices the byte count this page consumes.
@@ -133,7 +133,7 @@ function DefaultHbmInitLatency(MemUnit mu, WindowDescription wd, Target t):  // 
     return init_ns * tc_ghz                                           // ns · GHz = cycles
 ```
 
-The conversion is exactly `ns · GHz`: dividing `TC_MHz` by `1000.0` yields GHz, and `nanoseconds · gigahertz` is dimensionless cycles. The `/1000.0` divisor was confirmed at `.rodata 0xa2e0430 = 1000.0`. For a non-VMEM destination on v6e (`InitialDmaLatencyInNs = 1200 ns`, `TC = 1900 MHz`): `1200 · 1.9 = 2280` cycles deposited once into the latency lane.
+The conversion is exactly `ns · GHz`: dividing `TC_MHz` by `1000.0` yields GHz, and `nanoseconds · gigahertz` is dimensionless cycles. The `/1000.0` divisor was confirmed at `.rodata 0xa2e0430 = 1000.0`. For a non-VMEM destination on v6e (`InitialDmaLatencyInNs = 1200 ns`, illustratively `TC ≈ 1900 MHz`): `1200 · 1.9 = 2280` cycles deposited once into the latency lane. (The 1200 ns is byte-exact; the 1900 MHz is illustrative — the TC frequency is a chip-parts field, not a `.rodata` constant.)
 
 > **GOTCHA —** the `MemorySpace` argument to `InitialDmaLatencyInNs` here is **not** the literal tier enum — it is the operand's *element-type* field re-extracted from the shape pointer (`(WORD[shape+0xb] >> 2) & 0x1f`). For the per-tier latency this is benign because every override either ignores the argument (JF) or branches on a small set of values, but a reimplementation that passes the tier enum where the binary passes the element type will diverge on any future override that actually reads it.
 
@@ -204,7 +204,7 @@ The geometry is `bytes_per_cycle = FullChipBytesPerSecond / (TC_MHz · 1e6) / Co
 
 | Source | Address | Meaning | Confidence |
 |---|---|---|---|
-| `TensorCoreFrequencyInMegaHertz` | `0x1d615b60` | TC clock (MHz); v7 chip parts = 1900 | HIGH |
+| `TensorCoreFrequencyInMegaHertz` | `0x1d615b60` | TC clock (MHz); `Target+0x90C` `uint` field, populated from chip parts (UNVERIFIED: 1900) | MEDIUM |
 | `HbmFullChipBytesPerSecond` | `0x1d6172a0` | `Target+0x4f0` field (full-chip HBM B/s) | CERTAIN |
 | `CmemFullChipBytesPerSecond` | `0x1d6172c0` | full-chip CMEM B/s (kCmem path) | CERTAIN |
 | `CoresPerChip` | `0x1d615b40` | per-`TpuCoreType` core count from topology | CERTAIN |
@@ -223,7 +223,8 @@ The geometry is `bytes_per_cycle = FullChipBytesPerSecond / (TC_MHz · 1e6) / Co
 ### Algorithm
 
 ```c
-function WindowCycles(MemUnit mu, wd, Target t, double bytes_per_cycle, a, b, c):  // @0x14552660
+function WindowCycles(MemUnit mu, wd, Target t, double bpc, long c, long hbm_b, long vmem_b):  // @0x14552660
+    // source order is (mu, wd, t, bpc, c, hbm_b, vmem_b); bpc rides xmm0, the three longs r8/r9/stack
     if mu == t.MemUnitFromKiB(0): return 0.0           // sentinel — no transfer
 
     // startup-latency term (cycles)
@@ -231,24 +232,27 @@ function WindowCycles(MemUnit mu, wd, Target t, double bytes_per_cycle, a, b, c)
                      : (t.TensorCoreFrequencyInMegaHertz() / 1000.0) * c   // freq-scaled override
 
     count_desc = (t.vtable[+0x590]() == 1)             // per-gen "count descriptors" predicate
-    base = WindowCyclesGenericTargetAgnostic(mu, wd, count_desc, bytes_per_cycle)  // @0x14552180
-    cycles = base + init
+    base = WindowCyclesGenericTargetAgnostic(mu, wd, count_desc, bpc)  // @0x14552180 — the bytes/bpc divide
+    cycles = base + init                               // VLOG-6 "original:" (fusion_util.cc:3435)
 
+    if (hbm_b | vmem_b) == 0:                          // roofline OFF — the memory-xfer path (c=0)
+        return cycles                                  // pure startup + bandwidth, single lane
+
+    // roofline ON — only the conv classic-window path passes non-zero hbm_b/vmem_b
+    CHECK(mu.amount_ != INT64_MAX)                     // target.h:211
+    {hbm_lat, vmem_lat} = {t.InitialDmaLatencyInNs(kHbm=1,..), t.InitialDmaLatencyInNs(kVmem=3,..)}  // vtable[+0x20]
     if t[+0x398] < 5:                                  // < v5p (TpuVersion at Target+0x398)
-        // single-lane: per-direction max already folded into `base`
-        return max(dir0, dir1) + init
+        return (vmem_lat_scaled + hbm_lat_scaled) + max(dir0, dir1)   // single-lane shuffle/max
     else:                                              // v5p+ two-lane HBM/VMEM roofline
-        hbm_lat  = t.InitialDmaLatencyInNs(kHbm,  ...) // vtable[+0x20], arg = 1
-        vmem_lat = t.InitialDmaLatencyInNs(kVmem, ...) // vtable[+0x20], arg = 3
         // {hbm_bytes, vmem_bytes} / 1000.0 (xmmword_A2CE650), * TC_MHz, gated by >0.01
-        hbm_cyc  = (hbm_bytes  / 1000.0) * TC_MHz
-        vmem_cyc = (vmem_bytes / 1000.0) * TC_MHz
-        return max(hbm_cyc, vmem_cyc) + (hbm_lat + vmem_lat-blend) + init
+        hbm_cyc  = (hbm_b  / 1000.0) * TC_MHz
+        vmem_cyc = (vmem_b / 1000.0) * TC_MHz
+        return (vmem_lat_scaled + hbm_lat_scaled) + max(hbm_cyc, vmem_cyc)
 ```
 
-The core divide `transferred_bytes / bytes_per_cycle` happens inside `WindowCyclesGenericTargetAgnostic` (the `vdivsd` against the `bytes_per_cycle` passed in `xmm0`) — see [WindowDescription Byte-Cost](window-description-cost.md) for the fragment-ratio detail. `WindowCycles` adds the startup `init` on top and, on v5p+, replaces the single bandwidth term with a two-lane computation.
+The core divide `transferred_bytes / bytes_per_cycle` happens inside `WindowCyclesGenericTargetAgnostic` (the `vdivsd` against the `bytes_per_cycle` passed in `xmm0`) — see [WindowDescription Byte-Cost](window-description-cost.md) for the fragment-ratio detail. `WindowCycles` always adds the startup `init` on top; the two-lane roofline is an **opt-in** block gated by `(hbm_b | vmem_b) != 0` — when both byte counts are zero (the memory-xfer cost path, which passes `0, 0`), `WindowCycles` returns `base + init` directly and the roofline block is skipped entirely.
 
-The v5p+ two-lane block (confirmed at `@0x1455282e`) is the explicit roofline:
+The two-lane block (confirmed at `@0x1455282e`) is the explicit roofline; on v5p+ (`Target+0x398 >= 5`) it computes each direction independently:
 
 - It loads an `{hbm_bytes, vmem_bytes}` pair and divides each by `1000.0` (the `xmmword_A2CE650` pair, confirmed `[1000.0, 1000.0]`), then multiplies by TC frequency — converting each direction's byte count to its own cycle estimate.
 - A `vcmpnlepd` against `xmmword_A2D8020` (`[0.01, 0.01]`) gates each direction by a 1% percentage floor, `vandpd`-selecting whether that direction's latency contributes.
@@ -263,7 +267,7 @@ The VLOG-6 trace at `fusion_util.cc:3474` names every intermediate, confirming t
 | `vtable[+0x590]` | `== 1` | per-gen count-descriptors predicate | HIGH |
 | `Target+0x398` | `>= 5` | v5p+ two-lane gate (`TpuVersion`) | CERTAIN |
 
-> **NOTE —** the `c` (7th) argument selects the startup source: `c == -1` (the value `RecordMemXferCyclesImpl` always passes) uses `DefaultHbmInitLatency`; a non-`-1` `c` uses `TC_GHz · c` as an explicit per-call startup count. The shipping cost path always passes `-1`, so the live startup is always the per-tier `InitialDmaLatencyInNs`; the `c` hatch exists for callers that supply a precomputed startup.
+> **NOTE —** the `c` (5th) argument selects the startup source: `c == -1` uses `DefaultHbmInitLatency`; any other `c` uses `TC_GHz · c` as an explicit per-call startup count (so `c == 0` yields a zero startup *inside* `WindowCycles`). `RecordMemXferCyclesImpl` passes `c == 0` — it deposits the per-tier `DefaultHbmInitLatency` into a *separate* latency lane itself (see [§The arithmetic](#the-arithmetic)) and uses `WindowCycles` only for the bandwidth term. The callers that pass `c == -1` are `permutation_util::IterateThroughWindowConfigs @0x145350c0` and `SelectAndScatterEmitter::EmitR3plus @0x10e71320`, where the startup is folded into the single returned cycle value. The conv classic-window path (`SpatialMajorConvolution::CalculateClassicWindowCost @0x131626c0`) is the only caller that passes non-zero `hbm_b`/`vmem_b` and so the only one that reaches the two-lane roofline block.
 
 ---
 
