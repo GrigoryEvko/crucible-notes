@@ -20,10 +20,10 @@ For a reimplementer the C++ skeleton is not the contract. The contract is the co
 | **Signature** | `(MCInst&, SmallVectorImpl<MCFixup>&, APInt& record, APInt& scratch, MCSubtargetInfo&) const` |
 | **Record** | `APInt`, 239 bits, 4 words — see [Record Format](record-format.md) |
 | **Base tables** | `InstBits` @ `0x3366d90` / `InstBits_BarnaCorePxcHwMode` @ `0x33931f0` (HwMode-selected) |
-| **Dispatch** | jump table @ `0xaed7dac` (5667 × int32 self-relative); 22 distinct case bodies |
-| **Default arm** | `0x13c74e9d` — zero base, no `insertBits`, return (4956 opcodes) |
+| **Dispatch** | self-relative jump table @ `0xaed7dac` (int32, indexed by raw opcode, added to the table base); 22 distinct case bodies |
+| **Default arm** | `0x13c74e9d` — zero base, no `insertBits`, return (4457 opcodes) |
 | **Operand encoders** | `encodePredicateOperand` @ `0x13c77c40`, `getMachineOpValue` @ `0x13c777e0` |
-| **Trap** | `MCCodeEmitter::reportUnsupportedInst` @ `0x13c77750` (pseudo guard + default) |
+| **Trap** | `MCCodeEmitter::reportUnsupportedInst` @ `0x1a31c420`, reached via two in-function stubs (`0x13c77750` `ud1`, `0x13c7775d` `int3`) |
 | **Confidence** | CONFIRMED (byte-anchored) unless a row says otherwise |
 
 ---
@@ -56,17 +56,17 @@ uint64_t emit(MCInst *inst, MCFixup_vec *fixups,
     // step 5: per-opcode operand fill
     switch (opc) {
         // ... 21 real BarnaCore encoding cases (insertBits sequences) ...
-        default:                                       // 4956 opcodes: TC + V5+
+        default:                                       // 4457 opcodes: TC + V5+
             return record_normalize(record);           //   zero base, no insertBits
     }
 }
 ```
 
-Steps 1 and 3 are the two bounds checks. Opcodes `≤ 498` are MC pseudo / target-independent forms (`PHI`, `INLINEASM`, the pre-expanded `BR`/`BRcond`/`BRret` pseudo branches) that never reach a real encoding and trap on the pseudo guard. Opcodes `≥ 499 + 5667 = 6166` are out of table range and trap on the `ud1`. Everything in between indexes the base-bits table at `(opcode − 499) × 32` bytes.
+Steps 1 and 3 are the two bounds checks. Opcodes `≤ 498` are MC pseudo / target-independent forms (`PHI`, `INLINEASM`, the pre-expanded `BR`/`BRcond`/`BRret` pseudo branches) that never reach a real encoding and trap on the pseudo guard (`cmp $0x1f2; jbe`). Opcodes `≥ 499 + 5667 = 6166` are out of table range and trap on the `ud1`. Everything in between indexes the base-bits table at `(opcode − 499) × 32` bytes — `InstBits` is `0x2c460` bytes = 5667 rows of 32-byte stride.
 
 Step 2 is a width guard on the scratch `APInt`: if the caller handed in a scratch that is not already 239 bits, the emitter `zext`s it (freeing any heap storage from a wider prior use). After this point both `APInt`s are 239 bits wide.
 
-Step 4 builds the record from the base row. Step 5 is the per-opcode `switch`, expanded by the decompiler into 5667 individual `case` labels that share 22 bodies. The overwhelming majority (the TensorCore and V5+ opcodes) fall to the `default` body, which does nothing — the record is already correct because its base is zero and those instructions are encoded by the proto-bundle path, not here.
+Step 4 builds the record from the base row. Step 5 is the per-opcode `switch`, expanded by the decompiler into one `case` label per live opcode (`499..5666`, 5168 labels) that share 22 bodies. The overwhelming majority (the TensorCore and V5+ opcodes) fall to the zero-base default body, which does nothing — the record is already correct because its base is zero and those instructions are encoded by the proto-bundle path, not here.
 
 ---
 
@@ -82,7 +82,7 @@ APInt(&record, 239, &GLOBAL_OFFSET_TABLE_ + index4 - 65189758, 4);
 APInt(&record, 239, &GLOBAL_OFFSET_TABLE_ + index4 - 65167090, 4);
 ```
 
-The two offsets differ by `65189758 − 65167090 = 22668` table-index units, which is the `0x2c460`-byte gap between the two back-to-back arrays. The case body that re-reads the base from the BarnaCore table does so after querying the subtarget's HwMode (the `BarnaCorePxcHwMode` feature, a virtual feature query on the `MCSubtargetInfo`): when that mode is active, the BarnaCore base supplies real opcode-discriminator bits; otherwise the default zero base stands. Because the default table is all-zero, the practical effect is binary — either the instruction is a BarnaCore-Pxc op (real base bits, real `insertBits` sequence) or it is a TensorCore / V5+ op (zero base, no `insertBits`).
+The two offsets are in 8-byte (`_QWORD`) GOT units and differ by `65189758 − 65167090 = 22668` qwords = `0x2c460` bytes — exactly the size of each array, confirming the two are back-to-back (`InstBits` `0x3366d90` + `0x2c460` = `InstBits_BarnaCorePxcHwMode` `0x33931f0`). The case body that re-reads the base from the BarnaCore table does so after querying the subtarget's HwMode via `(*(vtable + 0x28))(MCSubtargetInfo, 3)` — feature index 3, the `BarnaCorePxcHwMode` query: when that mode is active, the BarnaCore base supplies real opcode-discriminator bits; otherwise the default zero base stands. Because the default table is all-zero, the practical effect is binary — either the instruction is a BarnaCore-Pxc op (real base bits, real `insertBits` sequence) or it is a TensorCore / V5+ op (zero base, no `insertBits`).
 
 | HwMode | Base table | On disk | Opcodes encoded here | Confidence |
 |---|---|---|---|---|
@@ -95,23 +95,23 @@ The two offsets differ by `65189758 − 65167090 = 22668` table-index units, whi
 
 ## Per-Opcode Dispatch
 
-The `switch` is implemented as a jump table at `0xaed7dac`: 5667 signed `int32` self-relative offsets indexed by `(opcode − 499)`, dispatched via `jmp *(table_base + table[index])`. The decompiler renders it as 5667 `case` labels collapsing onto **22 distinct case bodies**. The histogram below is the structural contract — which opcode classes carry a real `insertBits` sequence and which return the zero base unchanged.
+The `switch` is implemented as a self-relative jump table at `0xaed7dac`. The dispatch sequence is byte-exact: `lea -0x8d9d0e8(%rip),%rcx` (table base `0xaed7dac`), `movslq (%rcx,%rbx,4),%rdx` (load the signed `int32` at `table[raw_opcode]`), `add %rcx,%rdx` (relocate against the table base), `jmp *%rdx`. The index is the **raw opcode** (`%rbx`), not `opcode − 499`, and the entry is an offset relative to the table base — the default value `0x08d9d0f1` resolves to `0xaed7dac + 0x08d9d0f1 = 0x13c74e9d`, the zero-base default arm. The first 499 entries (opcodes `0..498`) are dead padding never reached past the pseudo guard; a separate `cmp $0x1622; ja` (opcode `> 5666`) caps the index. The decompiler renders the live range as 5168 `case` labels collapsing onto **22 distinct case bodies**, byte-confirmed by reading all 5667 table entries. The histogram below is the structural contract — which opcode classes carry a real `insertBits` sequence and which return the zero base unchanged.
 
 | Case body | #opcodes | Role | Confidence |
 |---|---:|---|---|
-| `0x13c74e9d` | 4956 | DEFAULT — zero base, no `insertBits`, return (all TensorCore + V5+) | CONFIRMED |
+| `0x13c74e9d` | 4457 | DEFAULT — zero base, no `insertBits`, return (all TensorCore + V5+) | CONFIRMED |
 | `0x13c74eb9` | 384 | BarnaCore `_V1`/`_V2` vector-ALU lanes | CONFIRMED |
 | `0x13c74f47` | 195 | BarnaCore `_V0` vector-ALU lane (predicate + operand `insertBits`) | CONFIRMED |
 | `0x13c754d1` | 34 | BarnaCore compose/sub `_V1`/`_V2` | CONFIRMED |
 | `0x13c75559` | 18 | BarnaCore `VIMM*`/`VMOV*` `_V1`/`_V2`/`_VM` | CONFIRMED |
-| `0x13c75723` … `0x13c75d77` | 8+12+10+9+6+6+5 | seven smaller BarnaCore vector classes | CONFIRMED |
+| `0x13c75723` … `0x13c75d77` | 17+12+10+9+6+6+5 | seven smaller BarnaCore vector classes | CONFIRMED |
 | `0x13c765a0` / `0x13c76628` / `0x13c766b0` / `0x13c76738` | 2 each | BarnaCore store-slot classes (`bcVST*`) | CONFIRMED |
 | `0x13c767c0` | 2 | `bcVLDi`/`bcVLDr` load slot (26 `insertBits`) | CONFIRMED |
 | `0x13c770f8` | 1 | `bcLOOP_START` loop slot | CONFIRMED |
 | `0x13c77180` / `0x13c77208` / `0x13c77290` / `0x13c77318` | 1 each | BarnaCore singletons (ops 3789/3787/3786/3588) | CONFIRMED |
-| `default` (`reportUnsupportedInst`) | — | out-of-range opcode fell through the jump table | CONFIRMED |
+| `default` (`reportUnsupportedInst`) | — | out-of-range opcode trapped before the jump table (`> 5666`) | CONFIRMED |
 
-The asymmetry is the point. 4956 of the 5667 opcodes — every concrete branch/call/halt, every load/store, and every compute op on the TensorCore and V5+ side — route to the zero-base default. Their bytes are *not* emitted here; they are produced by the proto-bundle `EmitX` populators and the per-slot `<Slot>Encoder::Encode` `BitCopy` calls. Only 711 opcodes (all in the BarnaCore range `2855..3991`) carry a real `insertBits` sequence in this function. A reimplementation that treats the default arm as an error path would mis-diagnose 4956 legal opcodes; a reimplementation that tries to encode V5+ instructions through this function would emit all-zero bundles.
+The asymmetry is the point. 4457 of the 5168 live opcodes — every concrete branch/call/halt, every load/store, and every compute op on the TensorCore and V5+ side — route to the zero-base default. Their bytes are *not* emitted here; they are produced by the proto-bundle `EmitX` populators and the per-slot `<Slot>Encoder::Encode` `BitCopy` calls. Only 711 opcodes (all in the BarnaCore range `2855..3991`) carry a real `insertBits` sequence in this function. A reimplementation that treats the default arm as an error path would mis-diagnose 4457 legal opcodes; a reimplementation that tries to encode V5+ instructions through this function would emit all-zero bundles.
 
 > **QUIRK — the sequencer branch/call opcodes reach the switch but encode to zero.** `BRabs` (505), `BRind` (507), `BRrel` (508), `BRrelrot` (509), `CALLabs` (514), `CALLrel` (515), and `HALT` (571) are real MC opcodes that index the jump table — but they route to the zero-base default. Their 20-bit offsets, destination/x registers, and predication are written by the proto-bundle `EmitBranchOp` / `EmitCallOp` / `EmitImmediate` / `EmitPredicationToSlot` path, not by `getBinaryCodeForInstr`. The MC emitter contributes literally nothing to a V5+ branch's bits. See [V5+ EmitX Bit Positions](v5plus-emitx-bit-positions.md).
 
@@ -125,16 +125,18 @@ Inside a real case body the operand fill is a sequence of `insertBits` deposits,
 
 ```c
 // encodePredicateOperand @ 0x13c77c40 (decompiled, exact)
-__int64 encodePredicateOperand(RegEncTable *tbl, MCInst_ops *ops, uint32_t slot, APInt *dst) {
-    uint64_t flags = ops[slot].flags;                       // operand flags word
-    insertBits(dst, tbl[ ops[slot].preg ], /*pos=*/0, /*width=*/4);  // reg index (P0..P14)
+// a1 = MCInst&, a2 = the per-operand array base, a3 = slot index (1/2/3/4), a4 = dst APInt
+__int64 encodePredicateOperand(MCInst *inst, MCInst_ops *ops, uint32_t slot, APInt *dst) {
+    uint64_t flags = ops[slot].flags;                       // *(a2 + 16*slot + 24): operand flags word
+    uint32_t reg   = ops[slot].preg;                        // *(a2 + 16*slot + 8): predicate-register operand
+    insertBits(dst, *(uint16_t *)(inst + 2*reg), /*pos=*/0, /*width=*/4);  // reg index (P0..P14)
     if (flags & 1)
         dst->word0 |= 0x10;                                 // bit 4: negate / inversion
     return insertBits(dst, (flags >> 5) & 3, /*pos=*/5, /*width=*/2);// bits 5:6: mode
 }
 ```
 
-`getMachineOpValue` (`0x13c777e0`) is the generic operand lowering. It locates the operand's index within the `MCInst`, calls `getSpecialOpEncoding(MCInstrDesc&, opno)` (`0x13c63a80`) to read the operand's encoding class out of the per-opcode descriptor (`TPUDescs`), and produces a register encoding (`uint16` lookup in `TPURegEncodingTable` @ `0x34469b0`), an immediate, an expression value, or an `MCFixup`. The result is staged in the scratch `APInt`, and the case body reads back the relevant low bits and deposits them at the class-fixed position.
+`getMachineOpValue` (`0x13c777e0`) is the generic operand lowering. It locates the operand's index within the `MCInst`, calls `llvm::getSpecialOpEncoding(MCInstrDesc&, opno)` (`0x13c63a80`, confirmed) to read the operand's encoding class out of the per-opcode descriptor (`TPUDescs`), and produces a register encoding (a `uint16` register-index lookup — UNVERIFIED specific table address), an immediate, an expression value, or an `MCFixup`. The result is staged in the scratch `APInt`, and the case body reads back the relevant low bits and deposits them at the class-fixed position.
 
 The general per-operand pattern in a case body is therefore: zero the scratch, lower the operand into it, extract the needed bits, deposit them into the record. The store-slot tail shows three such deposits from a single lowered operand (a 16-bit displacement at bit 207, a 2-bit qualifier at bit 141, a 6-bit field at bit 35):
 
@@ -155,10 +157,10 @@ The `(pos, width)` constants are fixed per encoding class — bit 35 (base regis
 
 On a normal exit the emitter normalizes the record `APInt` (an `assignSlowCase` when the value is wider than one inline word) and returns it. Two paths trap instead of returning:
 
-- The **pseudo guard** (`opcode ≤ 498`) calls `reportUnsupportedInst` before any table access — these opcodes are expanded before MC emission and should never reach the emitter.
-- The **default `switch` arm** also calls `reportUnsupportedInst`. This is reached only when the jump-table index lands outside the dense BarnaCore case set in a way the table cannot dispatch; the common V5+ default is the separate zero-base body at `0x13c74e9d`, not this trap.
+- The **pseudo guard** (`opcode ≤ 498`, `cmp $0x1f2; jbe 0x13c77750`) calls `reportUnsupportedInst` before any table access — these opcodes are expanded before MC emission and should never reach the emitter. This stub ends in `ud1`.
+- The **out-of-range / `switch` `default` arm** also calls `reportUnsupportedInst`. It is reached when the opcode exceeds the table bound: the index check `cmp $0x588d; jae 0x13c77758` on the word index `v8 = 4·opcode − 1996` (i.e. opcode ≥ 6166, since `0x588d/4 ≈ 5667.25` rows) and the dispatch cap `cmp $0x1622; ja 0x13c7775d` (raw opcode > 5666) both route here, *before or instead of* the jump-table read. The common V5+ default is the separate zero-base body at `0x13c74e9d`, not this trap.
 
-Both traps lower to `reportUnsupportedInst` (`0x13c77750` / `0x13c7775d`) followed by `ud1`/`int3`. A reimplementation must distinguish the two "default"-looking paths: the `0x13c74e9d` body is the legitimate zero-base return for 4956 opcodes; the `switch` `default` is the genuine error trap. Conflating them turns every TensorCore and V5+ instruction into an unsupported-instruction crash.
+Both stubs call the shared `MCCodeEmitter::reportUnsupportedInst` (`0x1a31c420`), followed by `ud1` (`0x13c77758`) or `int3` (`0x13c7775d`). A reimplementation must distinguish the two "default"-looking paths: the `0x13c74e9d` body is the legitimate zero-base return for 4457 opcodes; the trap stub is the genuine error path for opcodes outside `499..5666`. Conflating them turns every TensorCore and V5+ instruction into an unsupported-instruction crash.
 
 ---
 
