@@ -40,12 +40,14 @@ The registry is a two-dimensional table: `(TpuVersion) × (TpuSequencerType) →
 
 | `TpuVersion` | Codename | Public name | Confidence |
 |---|---|---|---|
-| 0 | jellyfish | TPU v3 | CONFIRMED |
-| 1 | dragonfish | (v3 variant) | CONFIRMED |
+| 0 | jellyfish | TPU v2 | CONFIRMED |
+| 1 | dragonfish | TPU v3 | CONFIRMED |
 | 2 | pufferfish | TPU v4 | CONFIRMED |
-| 3 | viperfish | TPU v5e | CONFIRMED |
-| 4 | ghostlite | TPU v5p | CONFIRMED |
-| 5 | 6acc60406 | TPU v6e / Trillium | CONFIRMED |
+| 3 | viperfish | TPU v5p (+ v5e lite) | CONFIRMED |
+| 4 | ghostlite | TPU v6e | CONFIRMED |
+| 5 | 6acc60406 | TPU v7 | CONFIRMED |
+
+The codename strings are read straight from the `tpu::TpuVersionToString` table (`off_22011BF0`): ordinals 0..5 resolve to `jellyfish`, `dragonfish`, `pufferfish`, `viperfish`, `ghostlite`, `6acc60406`. The public-name column follows the canonical codename → marketing-name mapping in the [per-gen comparison matrix](../appendix/per-gen-comparison-matrix.md); `6acc60406` is the only generation whose binary carries no public-name string (the literal `Trillium`/`Ironwood` appears **nowhere** in `libtpu.so` — `6acc60406` is the sole codename for that generation).
 
 **Axis 2 — `TpuSequencerType`** is which sequencer in the chip the bundle targets. `tpu::TpuSequencerTypeToString` (`0x20b362e0`) is a single instruction — `return off_22010DE0[ordinal]` — an ordinal-indexed pointer table with eight entries:
 
@@ -134,22 +136,22 @@ The whole-section scan finds exactly twelve `Register` call sites feeding this r
 | 3 | `0x200000000` | (0 jellyfish, 2 BarnaCoreAddressHandler) | `barna_core_address_handler_emitter` | `BarnaCoreAddressHandlerEmitter` | CONFIRMED |
 | 4 | `0x000000001` | (1 dragonfish, 0 TensorCore) | `jellyfish_emitter` | `JellyfishEmitter` | CONFIRMED |
 | 5 | `0x100000001` | (1 dragonfish, 1 BarnaCoreSequencer) | `jellyfish_emitter` | `JellyfishEmitter` | CONFIRMED |
-| 6 | `0x200000001` | (1 dragonfish, 2 BarnaCoreAddressHandler) | `barna_core_address_handler_emitter` | `BarnaCoreAddressHandlerEmitter` | HIGH |
+| 6 | `0x200000001` | (1 dragonfish, 2 BarnaCoreAddressHandler) | `barna_core_address_handler_emitter` | `BarnaCoreAddressHandlerEmitter` | CONFIRMED |
 | 7 | `0x000000002` | (2 pufferfish, 0 TensorCore) | `pufferfish_tensorcore_emitter` | `PufferfishTensorCoreEmitter` | CONFIRMED |
 | 8 | `0x100000002` | (2 pufferfish, 1 BarnaCoreSequencer) | `pufferfish_barnacore_sequencer_emitter` | `PufferfishBarnaCoreSequencerEmitter` | CONFIRMED |
 | 9 | `0x200000002` | (2 pufferfish, 2 BarnaCoreAddressHandler) | `pufferfish_barnacore_channel_emitter` | `PufferfishBarnaCoreChannelEmitter` | CONFIRMED |
 | 10 | `0x000000003` | (3 viperfish, 0 TensorCore) | `viperfish_tensorcore_emitter` | `ViperfishTensorCoreEmitter` | CONFIRMED |
 | 11 | `0x000000004` | (4 ghostlite, 0 TensorCore) | `ghostlite_tensorcore_emitter` | `GhostliteTensorCoreEmitter` | CONFIRMED |
-| 12 | `0x000000005` | (5 6acc60406, 0 TensorCore) | `6acc60406_tensorcore_emitter` | `GhostliteTensorCoreEmitter` (reused) | CONFIRMED |
+| 12 | `0x000000005` | (5 6acc60406, 0 TensorCore) | `6acc60406_tensorcore_emitter` (`sub_213ED1C0`) | `GhostliteTensorCoreEmitter` (reused) | CONFIRMED |
 
 The shape of the table is the silicon story:
 
-- **v0/v1 (Jellyfish/Dragonfish)** each get three cells — a TensorCore plus the chip's two BarnaCore sequencer roles — all served by two leaf classes (`JellyfishEmitter` for TC + BarnaCoreSequencer; `BarnaCoreAddressHandlerEmitter` for the address-handler).
+- **v0/v1 (Jellyfish/Dragonfish)** each get three cells — a TensorCore plus the chip's two BarnaCore sequencer roles — all served by two leaf classes (`JellyfishEmitter` for TC + BarnaCoreSequencer; `BarnaCoreAddressHandlerEmitter` for the address-handler). The `barna_core_address_handler_emitter` module (`0x213ed040`) installs cells 3 and 6 as two explicit key constants in one body — `0x200000000` then `0x200000001`, both with the same `$_0` closure — so both address-handler cells are byte-confirmed, not inferred.
 - **v2 (Pufferfish)** also gets three cells, but its BarnaCore is split into a *sequencer* emitter and a *channel* emitter (cells 8 and 9), each a distinct leaf.
-- **v3/v4/v5 (Viperfish/Ghostlite/Trillium)** get only a TensorCore cell. There is no BarnaCore on v5p+; their SparseCore goes through a separate path.
-- **Cell 12 reuses cell 11's leaf.** The v7 / 6acc60406 TensorCore cell installs the *same* `GhostliteTensorCoreEmitter` factory as v6e — mirroring the runtime fact that v7 reuses `GhostliteTarget`. The generation merge happens at the leaf-class layer; the gfc-vs-glc encoder split happens downstream inside the codec.
+- **v3/v4/v5 (Viperfish/Ghostlite/6acc60406)** get only a TensorCore cell. There is no BarnaCore on v5p+; their SparseCore goes through a separate path.
+- **Cell 12 reuses cell 11's leaf.** The 6acc60406 (TPU v7) TensorCore cell installs the *same* `GhostliteTensorCoreEmitter` factory as Ghostlite (TPU v6e) — mirroring the runtime fact that the v5-ordinal generation reuses `GhostliteTarget`. The generation merge happens at the leaf-class layer; the gfc-vs-glc encoder split happens downstream inside the codec.
 
-> **CORRECTION (REG-1) —** cells 11 and 12 are not two registrations inside one translation unit. The decompile shows the named `ghostlite_tensorcore_emitter` init function (`0x213ed160`) registers only cell 11 (key 4) and returns; cell 12 (key 5) is registered by an adjacent static-init block compiled from a *separate* source file (`.../target/6acc60406/6acc60406_tensorcore_emitter.cc`) that installs the same `GhostliteTensorCoreEmitter` factory. The two cells share a leaf but come from two TUs. Cell 6 (Dragonfish BarnaCoreAddressHandler) is marked HIGH rather than CONFIRMED: the `barna_core_address_handler_emitter` module is byte-confirmed to register the v0 and v1 address-handler cells, but only the v0 register was walked instruction-by-instruction in the decompile; the v1 cell follows the identical `inc`-the-version idiom.
+> **CORRECTION (REG-1) —** cells 11 and 12 are not two registrations inside one translation unit. The decompile shows the named `ghostlite_tensorcore_emitter` init function (`0x213ed160`) registers only cell 11 (key 4, from `.../target/ghostlite/ghostlite_tensorcore_emitter.cc:3598`) and returns; cell 12 (key 5) is registered by an adjacent static-init function (`sub_213ED1C0`) compiled from a *separate* source file (`.../target/6acc60406/6acc60406_tensorcore_emitter.cc:3649`) that installs the same `GhostliteTensorCoreEmitter` factory (its `__call_func` `sub_14398B60` and cell 11's `__call_func` at `0x142a04c0` both `operator new(0x2A0u)` then call the one `GhostliteTensorCoreEmitter::GhostliteTensorCoreEmitter` ctor). The two cells share a leaf but come from two TUs.
 
 ---
 
@@ -169,25 +171,25 @@ The version axis is backed by a `Target` class hierarchy: `IsaEmitterFactory::Cr
 
 ```text
   xla::jellyfish::Target  (abstract root, __class_type_info)
-    ├── JellyfishTarget (v0)
-    │     └── DragonfishTarget (v1)        ← the ONLY two-level chain
-    ├── PufferfishTarget (v2)              ← direct
-    ├── ViperfishTarget  (v3)              ← direct
-    └── GhostliteTarget  (v4; reused by v5/6acc60406, no v7 class)
+    ├── JellyfishTarget (ordinal 0)
+    │     └── DragonfishTarget (ordinal 1) ← the ONLY two-level chain
+    ├── PufferfishTarget (ordinal 2)       ← direct
+    ├── ViperfishTarget  (ordinal 3)       ← direct
+    └── GhostliteTarget  (ordinal 4; reused by ordinal 5 / 6acc60406, no separate class)
 
   xla::jellyfish::SparseCoreTarget  (parallel abstract root)
     ├── ViperfishSparseCoreTarget
     └── GhostLiteSparseCoreTarget
 ```
 
-| Class | ZTI @ | base class | object size | gen | Confidence |
+| Class | ZTI @ | base class | object size | ordinal / public | Confidence |
 |---|---|---|---|---|---|
 | `Target` (root) | `0x21ccef00` | — | — | — | CONFIRMED |
-| `JellyfishTarget` | `0x21cc7420` | `Target` | `0x958` (2392 B) | 0 / v3 | CONFIRMED |
+| `JellyfishTarget` | `0x21cc7420` | `Target` | `0x958` (2392 B) | 0 / v2 | CONFIRMED |
 | `DragonfishTarget` | `0x21cc6ba8` | `JellyfishTarget` | `0x958` | 1 / v3 | CONFIRMED |
 | `PufferfishTarget` | `0x21cc7d38` | `Target` | `0x950` (2384 B) | 2 / v4 | CONFIRMED |
-| `ViperfishTarget` | `0x21cc8f78` | `Target` | `0x950` | 3 / v5e | CONFIRMED |
-| `GhostliteTarget` | `0x21cc85f8` | `Target` | `0x950` | 4 / v5p (+5/v7 reuse) | CONFIRMED |
+| `ViperfishTarget` | `0x21cc8f78` | `Target` | `0x950` | 3 / v5p | CONFIRMED |
+| `GhostliteTarget` | `0x21cc85f8` | `Target` | `0x950` | 4 / v6e (+5/v7 reuse) | CONFIRMED |
 | `SparseCoreTarget` (root) | `0x21ccef10` | — | — | — | CONFIRMED |
 | `ViperfishSparseCoreTarget` | `0x21cc9080` | `SparseCoreTarget` | — | v5p SC | CONFIRMED |
 | `GhostLiteSparseCoreTarget` | `0x21cc8700` | `SparseCoreTarget` | — | v6e SC | CONFIRMED |
@@ -239,3 +241,4 @@ Layer 1 (this page) selects *which* leaf emitter handles a `(gen, seq)`. Layer 2
 - [MC-Emitter](mc-emitter.md) — `getBinaryCodeForInstr`; the complementary LLVM-MC path that returns all-zero for every opcode this registry's leaves encode.
 - [Bundle Model](bundle-model-overview.md) — the per-generation fixed-width bundle word the encode path lays slots into.
 - [TpuHal Class Hierarchy](../targets/tpuhal-class-hierarchy.md) — the `tpu::TpuVersion` axis all the target/codec/cost-model trees dispatch on, including the `Target+0x398` field this registry keys on.
+- [Per-Gen Comparison Matrix](../appendix/per-gen-comparison-matrix.md) — the canonical codename ↔ `TpuVersion` ordinal ↔ public-name mapping (jellyfish v2 … 6acc60406 v7) the version axis on this page resolves against.
