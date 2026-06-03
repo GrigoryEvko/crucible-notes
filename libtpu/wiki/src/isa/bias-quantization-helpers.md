@@ -249,7 +249,7 @@ On the device codegen path quantization is symmetric and the granularity is the 
 | `UniformQuantizedSubChannelType` | `getScales()[]` | `getZeroPoints()[]` | `getBlockSizes()[]`, `getQuantizedDimensions()[]` | Block-wise | HIGH |
 | `CalibratedQuantizedType` | `getMin()`/`getMax()` | — | (no scale yet) | Calibration | HIGH |
 
-These lower through `mlir::quant::stablehlo::ConvertUniform{Quantize,Dequantize,Requantize,QuantizedDot,QuantizedConvolution,...}Op` (120 `QuantizedStablehloOpConversion` instantiations) to integer dot/conv + affine requant `round((scale_in/scale_out)·(acc - zp_in)) + zp_out`. The guard string `"Cannot requantize while changing quantization_axis"` confirms a requantize cannot move the per-channel axis. A TPU dynamic per-column int8 quantizer (`convert_dynamic_quantize_ops` → `damax_output` → per-column scale) is flag-gated by `xla_tpu_experimental_enable_dynamic_int8_quantization`.
+These lower through `mlir::quant::stablehlo::ConvertUniform{Quantize,Dequantize,Requantize,QuantizedDotGeneral,QuantizedConvolution,QuantizedAdd,QuantizedClipByValue,...}Op` (ten distinct `ConvertUniform*Op` families, exposed as 40 `QuantizedStablehloOpConversion::matchAndRewrite` instantiations) to integer dot/conv + affine requant `round((scale_in/scale_out)·(acc - zp_in)) + zp_out`. The guard string `"Cannot requantize while changing quantization_axis"` confirms a requantize cannot move the per-channel axis. A TPU dynamic per-column int8 quantizer (`convert_dynamic_quantize_ops` → `damax_output` → per-column scale) is flag-gated by `xla_tpu_experimental_enable_dynamic_int8_quantization`.
 
 ---
 
