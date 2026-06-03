@@ -24,9 +24,9 @@ For reimplementation, the contract is:
 | **Cost function** | `OperationLegalizer::applyCostModelToPatterns(...)` — `0x1c960940` (returns min depth, sorts patterns) |
 | **Sort comparator** | `applyCostModelToPatterns::$_0` inside `__stable_sort_move` — `0x1c9614a0` (primary depth, tie-break benefit) |
 | **Legalize driver** | `OperationLegalizer::legalize(Operation*)` — `0x1c953820`; `legalizeWithFold` — `0x1c95baa0` |
-| **Legality query** | `ConversionTarget::isLegal` — `0x1c957ce0`; `setOpAction` — `0x1c957780`; `markOpRecursivelyLegal` confirmed |
+| **Legality query** | `ConversionTarget::isLegal` — `0x1c957ce0`; `setOpAction` — `0x1c957780`; `markOpRecursivelyLegal` — `0x1c9580a0` |
 | **Legality enum** | `ConversionTarget::LegalizationAction {Legal=0, Dynamic=1, Illegal=2}` |
-| **Drivers** | `mlir::applyFullConversion` (mode=1) · `mlir::applyPartialConversion` (mode=0) — both confirmed symbols |
+| **Drivers** | `mlir::applyFullConversion` (mode=1) — `0x1c958ac0` · `mlir::applyPartialConversion` (mode=0) — `0x1c958a60` |
 | **Confidence** | CONFIRMED (byte-anchored) for the depth recurrence + legality model; HIGH where a row says so |
 
 ---
@@ -43,7 +43,7 @@ Both the greedy rewriter and the conversion legalizer drive the *same* `PatternA
 
 | Dispatcher | Cost fn passed to `applyCostModel` | Bucket sort order | Tie-break | Engine |
 |---|---|---|---|---|
-| `GreedyPatternRewriteDriver` | `applyDefaultCostModel` (raw `PatternBenefit` at `Pattern+0xc`) | **descending** raw benefit | stable | `0x1c968400` |
+| `GreedyPatternRewriteDriver` | `applyDefaultCostModel` (raw `PatternBenefit` at `Pattern+0xc`) | **descending** raw benefit | stable | `mlir::applyPatternsGreedily` `0x1c968400` (drives the `(anon)::GreedyPatternRewriteDriver` class) |
 | `OperationLegalizer` (conversion) | `computeLegalizationGraphBenefit::$_0` | **ascending** legalization depth | `PatternBenefit` at `Pattern+0xc` | `0x1c953820` |
 
 > **NOTE — the legalizer's preference inverts the greedy driver's.** Greedy: try the *most beneficial* pattern first, single pass. Legalizer: try the *shortest chain to fully-legal IR* first, then recurse on whatever that pattern produced. A reimplementer who reuses the greedy cost model for a conversion pass will produce correct IR (any complete path legalizes) but will explore deeper sub-trees first, blowing up the recursion the [legalize driver](#the-legalization-driver) depends on. The depth model is a *performance* invariant of the conversion engine, not a correctness one — but the TPU passes' pattern sets were built assuming it.
@@ -217,7 +217,7 @@ LegalizationInfo (48 bytes, per op)
 | `ConversionTarget::getOpAction(OperationName)` | `0x1c9579a0` | read an op's action |
 | `ConversionTarget::getOpInfo(OperationName)` | `0x1c957a20` | fetch the `LegalizationInfo` (also packs the recursively-legal flag) |
 | `ConversionTarget::isLegal(Operation*)` | `0x1c957ce0` | the 16-bit packed legality query (below) |
-| `ConversionTarget::markOpRecursivelyLegal(OperationName, std::function<optional<bool>(Operation*)>)` | confirmed symbol | mark recursively legal + optional callback |
+| `ConversionTarget::markOpRecursivelyLegal(OperationName, std::function<optional<bool>(Operation*)>)` | `0x1c9580a0` | mark recursively legal + optional callback |
 | `ConversionTarget::setLegalityCallback(ArrayRef<StringRef>, std::function<optional<bool>(Operation*)>)` | `0x1c9583c0` | install the dynamic-legality predicate |
 | `ConversionTarget::addLegalOp<...>` / `addIllegalOp<...>` | many (variadic templates) | sugar over `setOpAction` for a fixed op pack |
 
@@ -277,7 +277,7 @@ Type converter: a shared `populateTypeConverter` with 10 `registerConversion` en
 | `scf.{for,if,parallel,while,index_switch}` | Recursively-Legal | `markOpRecursivelyLegal` ×5 (op-name strings read byte-exact: `scf.for`, `scf.if`, `scf.parallel`, `scf.while`, `scf.index_switch`) | HIGH |
 | `scf.{If,Parallel,While,IndexSwitch}` | Dynamic | `addDynamicallyLegalOp<scf::IfOp, ParallelOp, WhileOp, IndexSwitchOp>` | HIGH |
 | 4× `setOpAction` + 2× `setLegalityCallback` | mixed | per-op overrides | MEDIUM |
-| arith/math packed-operand ops (40+) | Dynamic | `PackedOperandsLowering::AddDynamicallyLegalAluEpOps` / `AddDynamicallyLegalCmp<Op, UnpackXOp, PackXOp>` — legal iff operands already unpacked | HIGH |
+| arith/math packed-operand ops (40+) | Dynamic | `PackedOperandsLowering::AddDynamicallyLegalAluEpOps<Op, UnpackFOp, PackFOp>` / `AddDynamicallyLegalCmp<Op, {UnpackFOp,PackFOp} or {UnpackSIOp,PackSIOp}>` — legal iff operands already unpacked | HIGH |
 
 Type converter: `mlir::LLVMTypeConverter(ctx, LowerToLLVMOptions)` + custom `registerConversion` for SparseCore types: `I32PairType` (1:N → 2×i32), `TupleType` (1:N → element types), `VectorType`, `Float8E4M3B11FNUZ`/`Float8E4M3FN`/`Float8E5M2`, `WordType`, plus `registerTypeAttributeConversion` `BaseMemRefType` ↔ `sparse_core::MemorySpaceAttr`. Patterns: `populateSCFToControlFlowConversionPatterns` + `populateFinalizeMemRefToLLVMConversionPatterns` + the 115 `SCConvertOpToLLVMPattern<Op>`. Detail: [LowerToSparseCoreLlvm](lower-to-sparsecore-llvm.md).
 
@@ -326,7 +326,7 @@ The three lambdas are the meat of `legalizeWithPattern` (their mangled symbols �
 
 - **`$_0` canApply (`0x1c95c100`)** — tests `Pattern+0x10` bit `0x4` (`hasBoundedRewriteRecursion`) and maintains a `SmallPtrSet` of in-flight patterns to detect and reject unbounded recursive application of the same pattern to the same op.
 - **`$_1` onSuccess (`0x1c95c1a0`)** — rewriter-state bookkeeping after a successful match: `Operation::erase`, `resetState` (`0x1c95bf60`), clearing the `DenseSet<UnrealizedConversionCastOp>` and `DenseMap<Operation*>` tracking maps.
-- **`$_2` onRecurse (`0x1c95c6e0`)** — walks the *new* ops the pattern produced (`mlir::detail::walk` with a `ForwardDominanceIterator`) and **recursively calls `legalize` on each** (two call sites back into `0x1c953820`); reports `reportNewIrLegalizationFatalError` ("failed to legalize generated operation") on a produced op that cannot be legalized. Returns `success` iff **every** produced op is itself legalized.
+- **`$_2` onRecurse (`0x1c95c6e0`)** — walks the *new* ops the pattern produced (`mlir::detail::walk<ForwardIterator>`, `0x0ea2c5e0`) and **recursively calls `legalize` on each** (two call sites back into `0x1c953820`); on a produced op that cannot be legalized it routes to `reportNewIrLegalizationFatalError` (confirmed symbol; the failure message is assembled by an `llvm::join` over the offending op names rather than emitted as a single static string). Returns `success` iff **every** produced op is itself legalized.
 
 ### `legalizeWithFold`
 
@@ -344,7 +344,7 @@ The pass driver selects the mode the legalizer reads:
 | `mlir::applyPartialConversion(op, target, patterns, config)` | `Partial = 0` | leaves unlegalized ops in place, records them |
 | (internal) Analysis | `Analysis = 2` | analyzes legalizability without committing |
 
-`applyConversion` stores the `OpConversionMode` into the `OperationConverter` frame (the field `legalize` reads as `rewriterImpl[+0x178][+0x2c]`) and wraps the whole run in `MLIRContext::executeActionInternal<ApplyConversionAction>` when an action handler is registered. **All three TPU lowering passes use `applyFullConversion`** — a leftover `tpu.*` / `mlo.*` op aborts the pass. Both `mlir::applyFullConversion(Operation*, ConversionTarget const&, FrozenRewritePatternSet const&, ConversionConfig)` and `mlir::applyPartialConversion(...)` are confirmed symbols; the `applyConversion(ArrayRef<Operation*>, ConversionTarget const&, FrozenRewritePatternSet const&, ConversionConfig, (anon)::OpConversionMode)` internal driver is confirmed at `0x1c958840` with the `OpConversionMode` as its trailing argument.
+`applyConversion` stores the `OpConversionMode` into the `OperationConverter` frame (the field `legalize` reads as `rewriterImpl[+0x178][+0x2c]`) and wraps the whole run in `MLIRContext::executeActionInternal<ApplyConversionAction>` when an action handler is registered. **All three TPU lowering passes use `applyFullConversion`** — a leftover `tpu.*` / `mlo.*` op aborts the pass. `mlir::applyFullConversion(Operation*, ConversionTarget const&, FrozenRewritePatternSet const&, ConversionConfig)` (`0x1c958ac0`) and `mlir::applyPartialConversion(...)` (`0x1c958a60`) are both thin wrappers over the `applyConversion(ArrayRef<Operation*>, ConversionTarget const&, FrozenRewritePatternSet const&, ConversionConfig, (anon)::OpConversionMode)` internal driver at `0x1c958840`, which carries the `OpConversionMode` as its trailing argument.
 
 ---
 
@@ -365,8 +365,8 @@ The pass driver selects the mode the legalizer reads:
 | `ConversionTarget::getOpInfo` | `0x1c957a20` | fetch `LegalizationInfo` (+ recursively-legal pack) | HIGH |
 | `ConversionTarget::isLegal` | `0x1c957ce0` | 16-bit packed legality (bit0 legal, bit8 recursive) | CONFIRMED |
 | `ConversionTarget::setLegalityCallback` | `0x1c9583c0` | install dynamic legality predicate | CONFIRMED |
-| `mlir::applyFullConversion` | confirmed symbol | mode=1 driver (errors on leftover) | CONFIRMED |
-| `mlir::applyPartialConversion` | confirmed symbol | mode=0 driver (records leftover) | CONFIRMED |
+| `mlir::applyFullConversion` | `0x1c958ac0` | mode=1 driver (errors on leftover) | CONFIRMED |
+| `mlir::applyPartialConversion` | `0x1c958a60` | mode=0 driver (records leftover) | CONFIRMED |
 | `applyConversion` (internal) | `0x1c958840` | mode-carrying conversion entry | CONFIRMED |
 | `MloConversionTarget` ctor / `insertLegalDialects` | confirmed symbols | LowerToMlo legal-dialect set | HIGH |
 | `LowerToSparseCoreLlvmPass::runOnOperation` | `0x13566d00` | SparseCore → LLVM driver (2× full conversion) | CONFIRMED |
