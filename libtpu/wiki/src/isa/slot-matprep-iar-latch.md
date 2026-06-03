@@ -71,6 +71,8 @@ So `iar() == (1u64 << 32) | iar_value`. The "IAR present" bit is bit 32; the ind
 
 At the ISA level the three `SetIar` forms differ only in a 5-bit opcode subfield of `word@0x18`; their operand accessors are byte-identical. The IAR register select is a single bit, which is what fixes `IarsPerTensorCore` at 2.
 
+> **NOTE — bit numbering.** Every absolute bit position on this page is **LSB-first**, matching the universal v5+ packer convention documented on [Bundle Model](bundle-model-overview.md#abstract): bit 0 is the least-significant bit of byte 0, so `word@0x18 bit 13` is bit 13 of the 8-byte little-endian word at byte `0x18`, and the predicate-mask `word@0x18 & 0x3e0000000` selects the five bits 33..37 of that same word. There is no MSB-first ordering anywhere in the encode/decode path.
+
 | Form | Matches predicate (`word@0x18 & 0x3e0000000`) | slot opcode | accessor `sub_ADDR` | Confidence |
 |---|---|---|---|---|
 | `SetIarLane` | `== 0x40000000` | 2 | `sub_1EE390E0` | CERTAIN |
@@ -292,7 +294,7 @@ On Ghostlite/GF the matprep opcodes are not in the classifier jump table (`opcod
 | `0xa5` | `kVectorMatmulLmr` | `0x154` | −1 default (grid-priced) | HIGH |
 | `0xa8`/`0xa9` | `kVectorDoneWithGains` / `kVectorLoadGmr` | `0x157` (shared) | −1 default | HIGH |
 
-The matprep band `0x11c..0x121` sits just below the matmul band `0x124..`; the rows carry flat latency 1 and are throughput-priced through the resource grid (cross-checked against the GF perf constructor `sub_1C8D3740`: `lat[0x11c]=lat[0x120]=1`).
+The matprep band `0x11c..0x121` sits just below the matmul band `0x124..`; the rows carry flat latency 1 and are throughput-priced through the resource grid. The flat-latency-1 reading is from the GF perf constructor `sub_1C8D3740` (which Hex-Rays does not decompile — read at the disassembly level only, hence the HIGH rather than CERTAIN grade on this band).
 
 ### VF — Folded into the Matmul-Format Table + Modifier Reservation
 

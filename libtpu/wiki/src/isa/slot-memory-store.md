@@ -6,9 +6,9 @@
 
 The memory-store slot is the bundle slot that moves a compute register **out** to on-chip memory inside a single VLIW issue word — the write-side mirror of the [Memory-Load Slot](slot-memory-load.md). It is distinct from intra-chip DMA: the store *slot* moves one vector register into VMEM (or one scalar register into SMEM) in one bundle cycle, whereas DMA moves tier→tier blocks via descriptors. Like the load slot it carries no tier-selector bit — the destination tier is a function of `(slot, sub-opcode)`.
 
-A store slot is a discriminated union whose sub-opcode selects both the destination tier and the addressing mode. The per-gen `<Bundle><Slot>StoreEncoder::Encode(<msg> const&, absl::Span<uint8_t>)` is the canonical byte codec, and on Pufferfish and all V5+ generations each field is written with one call to the universal bit packer `BitCopy(dst, bit_offset, src, 0, width)` — the literal `bit_offset` argument *is* the absolute bundle bit, so the store-slot field map is read off the encoder disassembly with no shift arithmetic to invert. The store-data source register is always written first; the sub-opcode discriminator (read from the proto at `+0x50`/`+0x4c`) then selects which addressing fields follow.
+A store slot is a discriminated union whose sub-opcode selects both the destination tier and the addressing mode. The per-gen `<Bundle><Slot>StoreEncoder::Encode(<msg> const&, absl::Span<uint8_t>)` is the canonical byte codec, and on Pufferfish and all V5+ generations each field is written with one call to the universal bit packer `BitCopy(dst, bit_offset, src, 0, width)`. Every bit position on this page is **LSB-first** (matching [Bundle Model](bundle-model-overview.md)): bit 0 is the least-significant bit of byte 0, and the literal `bit_offset` argument *is* the absolute, LSB-numbered bundle bit, so the store-slot field map is read off the encoder disassembly with no shift arithmetic to invert. The store-data source register is always written first; the sub-opcode discriminator (read from the proto at `+0x50` on the TensorCore store, `+0x50`/`+0x58` on the V5e/V6e SparseCore-TEC store) then selects which addressing fields follow.
 
-Two structural facts dominate the per-generation story. First, the store slot is the read-and-write twin of the load slot — same dedicated bundle slot, same paired Encoder/Decoder in the same `TensorCoreCodecBase` template, same addressing-mode taxonomy (base+offset, base-register NoOffset, strided, indexed/scatter) — but with three write-only additions: a sublane/vmask write-enable, the SparseCore reduce-add (read-modify-write) family, and the vector-store fence ordering barrier. Second, the per-gen deltas are concrete: the bundle grows 41 → 51 → 64 bytes; Pufferfish adds CMEM-store and 8 hardware vmask registers; Viperfish shrinks the store-data field 5 → 4 bits while growing base/offset 5 → 6 bits and adds the SparseCore TEC tile-SPMEM store with reduce-add; Ghostlite doubles the write ports 1 → 2; Trillium moves the store-fence into the misc slot and reaches a 34-sub-op SparseCore store family with atomic SMEM stores.
+Two structural facts dominate the per-generation story. First, the store slot is the read-and-write twin of the load slot — same dedicated bundle slot, same paired Encoder/Decoder in the same `TensorCoreCodecBase` template, same addressing-mode taxonomy (base+offset, base-register NoOffset, strided, indexed/scatter) — but with three write-only additions: a sublane/vmask write-enable, the SparseCore reduce-add (read-modify-write) family, and the vector-store fence ordering barrier. Second, the per-gen deltas are concrete: the bundle grows 41 → 51 → 64 bytes; Pufferfish adds CMEM-store and 8 hardware vmask registers; Viperfish shrinks the store-data field 5 → 4 bits while growing base/offset 5 → 6 bits and adds the SparseCore TEC tile-SPMEM store with reduce-add; Ghostlite doubles the write ports 1 → 2; `6acc60406` moves the store-fence into the misc slot and reaches a 34-sub-op SparseCore store family with atomic SMEM stores.
 
 For reimplementation, the contract is: the `LloOpcodeIsVectorStore` opcode window, the per-gen store Encoder/Decoder address table, the `BitCopy` absolute-bit field maps for PF/VF/GFC, the slot-selects-tier model, the two orthogonal masking mechanisms (bundle predicate vs vmask), and the per-gen deltas.
 
@@ -48,7 +48,7 @@ The store family in the `LloOpcode` enum (internal `k`-prefixed names; proto `Ll
 
 The classifier `xla::jellyfish::LloOpcodeIsVectorStore` (@ `0x14024920`) is byte-exact: it returns true when `(opcode - 63) <= 7 && _bittest(0xE7, opcode - 63)` **or** `opcode == 460`. `0xE7 = 0b1110_0111` selects offsets `{0,1,2,5,6,7}`, i.e. internal opcodes `{63,64,65,68,69,70}` plus `460`. Scalar-store, CMEM-store and BarnaCore-store are classified by separate predicates.
 
-> **NOTE —** the vector-store fence is **not** a store; it is an ordering barrier. On Trillium it is encoded in the **VectorMisc** slot (`gxc::gfc::isa::TensorCoreVectorMisc0Compact::vector_store_fence` accessor), not the store slot. The bundle packer's `RequiresVectorStoreFence` (@ `0x14020900`) gates it behind `Target::SupportsVectorStoreFence()`. See [Per-Gen Deltas](#per-gen-deltas).
+> **NOTE —** the vector-store fence is **not** a store; it is an ordering barrier. On `6acc60406` it is encoded in the **VectorMisc** slot (`gxc::gfc::isa::TensorCoreVectorMisc0Compact::vector_store_fence` accessor), not the store slot. The bundle packer's `RequiresVectorStoreFence` (@ `0x14020900`) gates it behind `Target::SupportsVectorStoreFence()`. See [Per-Gen Deltas](#per-gen-deltas).
 
 ---
 
@@ -64,7 +64,7 @@ Each gen has a `<Bundle><Slot>StoreEncoder::Encode` and a matching `<…>StoreDe
 | Pufferfish | `pxc::isa::TensorCoreVectorStore{En,De}coder` | `0x1ee3b440` | `0x1ee2dae0` | CONFIRMED |
 | Viperfish | `vxc::isa::TensorCoreVectorStore{En,De}coder` | `0x1f01ff60` | `0x1f01a560` | CONFIRMED |
 | Ghostlite | `gxc::glc::isa::TensorCoreVectorStore{En,De}coder` | `0x1f3c3200` | `0x1f3bd780` | CONFIRMED |
-| Trillium | `gxc::gfc::isa::TensorCoreVectorStore{En,De}coder` | `0x1fa08920` | `0x1fa02f00` | CONFIRMED |
+| `6acc60406` | `gxc::gfc::isa::TensorCoreVectorStore{En,De}coder` | `0x1fa08920` | `0x1fa02f00` | CONFIRMED |
 
 Jellyfish's TensorCore store is not a standalone codec class; it is the monolithic `EncoderJf::EncodeVectorStoreInstruction(VectorStoreInstruction const&, Bundle const&)` (@ `0x1e868c40`) that fills the slot bits inline.
 
@@ -74,13 +74,13 @@ Jellyfish's TensorCore store is not a standalone codec class; it is the monolith
 |-----|-----------|----------|----------|------------|
 | Viperfish | `vxc::vfc::isa::SparseCoreTecVectorStore{En,De}coder` | `0x1e9c2760` | `0x1e9bbf40` | CONFIRMED |
 | Ghostlite | `gxc::glc::isa::SparseCoreTecVectorStore{En,De}coder` | `0x1eb50ac0` | `0x1eb42300` | CONFIRMED |
-| Trillium | `gxc::gfc::isa::SparseCoreTecVectorStore{En,De}coder` | `0x1eccbe20` | `0x1ecbd7a0` | CONFIRMED |
+| `6acc60406` | `gxc::gfc::isa::SparseCoreTecVectorStore{En,De}coder` | `0x1eccbe20` | `0x1ecbd7a0` | CONFIRMED |
 
 There is no Jellyfish/Pufferfish SparseCore TEC store — the SparseCore TEC sequencer exists only from Viperfish onward. The **BarnaCore** channel vector-store (Pufferfish only) is `pxc::pfc::isa::BarnaCoreChannelVectorStore{En,De}coder` (Encode `0x1e8c5640`, Decode `0x1e8c4d40`).
 
 ### Scalar-store slot (SREG → SMEM)
 
-Routed through the scalar-slot encoder, not the vector-store slot. Jellyfish: `ScalarStoreOperands` proto, emitted by `EncoderJf::EncodeScalarInstruction` (@ `0x1e862060`). Pufferfish: `TensorCoreScalar1_ScalarStoreSmemAbsolute` via `ScalarYEncode` (@ `0x1c471c60`) + `SetImmOrDie` (@ `0x1c550660`); BarnaCore-sequencer variant via `0x1c471fc0`/`0x1c550e00`. Viperfish/Ghostlite: `…ScalarAlu_ScalarStoreXToSmemY`. Trillium adds `…ScalarStoreXToSmemSumDestAndY` (atomic add), `…ScalarStoreCircularBuffer`, and `SmemFetchAndAdd` (via `EmitFetchAndAddOp` @ `0x13a3a300`).
+Routed through the scalar-slot encoder, not the vector-store slot. Jellyfish: `ScalarStoreOperands` proto, emitted by `EncoderJf::EncodeScalarInstruction` (@ `0x1e862060`). Pufferfish: `TensorCoreScalar1_ScalarStoreSmemAbsolute` via `ScalarYEncode` (@ `0x1c471c60`) + `SetImmOrDie` (@ `0x1c550660`); BarnaCore-sequencer variant via `0x1c471fc0`/`0x1c550e00`. Viperfish/Ghostlite: `…ScalarAlu_ScalarStoreXToSmemY`. `6acc60406` adds `…ScalarStoreXToSmemSumDestAndY` (atomic add), `…ScalarStoreCircularBuffer`, and `SmemFetchAndAdd` (via `EmitFetchAndAddOp` @ `0x13a3a300`).
 
 ---
 
@@ -139,7 +139,7 @@ Byte-exact (`BitCopy(a3, 170, …, 4)` etc.):
 
 The data-vreg @170 w4 and base @157 w6 match the [Viperfish 64B Bundle](bundle-vf-64b.md) page exactly. Sub-opcode dispatch (proto `+0x50`): `0`=Noop, `5`=VectorStore, `6`=VectorStoreBase, `7`=VectorStoreMasked, `8`=VectorStoreBaseMasked, `9`=VectorStoreShuffled, `0xA`=VectorStoreShuffledBase, `0xB`=VectorStoreShuffledMasked, `0xC`=VectorStoreShuffledBaseMasked, `0xD`=VectorStoreIndexed0, `0xE`=VectorStoreIndexed1, `0xF`=VectorStoreIndexed0Masked, `0x10`=VectorStoreIndexed1Masked, `0x11-0x16`=SetLaneIar0/1·SetSublaneIar0/1·SetRawIar0/1, `0x17`=PushV2s, `0x18`=SetPrng. 25 sub-ops.
 
-### Trillium (GFC) `TensorCoreVectorStore` — Encode @ `0x1fa08920` (64-B bundle)
+### `6acc60406` (GFC) `TensorCoreVectorStore` — Encode @ `0x1fa08920` (64-B bundle)
 
 Byte-exact (`BitCopy(a3, 169, …, 2)` etc.):
 
@@ -156,7 +156,7 @@ Byte-exact (`BitCopy(a3, 169, …, 2)` etc.):
 
 Sub-opcode dispatch is identical to Viperfish. Ghostlite's `TensorCoreVectorStoreEncoder` (@ `0x1f3c3200`) is structurally identical to VXC/GFC (same sub-op set, same template) with gen-shifted bit offsets; its field map was not separately dumped — **HIGH** by template identity.
 
-### Trillium (GFC) `SparseCoreTecVectorStore` — Encode @ `0x1eccbe20` (64-B TEC bundle)
+### `6acc60406` (GFC) `SparseCoreTecVectorStore` — Encode @ `0x1eccbe20` (64-B TEC bundle)
 
 Byte-exact (`BitCopy(a3, 359, …, 3)` etc.), store slot in the upper bit region — the richest store family:
 
@@ -265,7 +265,7 @@ Structural deltas:
 - **v5e→v5p (VF→GL)**: `MaxVectorStoreSlots` 1→2 (two VMEM write ports); `CanOverlayInMiscSlot` fully true — the store slot can overlay the misc slot, sharing the vmask (`CheckVectorStoreSlotAndMiscSlotShareVmsk` in `TensorCoreCodecBase`).
 - **v5p→v6e (GL→GFC)**: store-fence moves into the VectorMisc compact message; scalar SMEM stores gain atomic add (`ScalarStoreXToSmemSumDestAndY`, `SmemFetchAndAdd`); SparseCore TEC store reaches 34 sub-ops (full reduce-add + circular-buffer + indexed + return-value matrix).
 
-(*) Trillium gfc store reuses the gxc `EncoderBase` template; the V5+ property values are confirmed for VF/GL via the Target overrides, and the gfc-specific values marked `*` follow from the shared template plus the verified gfc store-encoder bit map (`0x1fa08920`).
+(*) The `6acc60406` (gfc) store reuses the gxc `EncoderBase` template; the V5+ property values are confirmed for VF/GL via the Target overrides, and the gfc-specific values marked `*` follow from the shared template plus the verified gfc store-encoder bit map (`0x1fa08920`).
 
 ---
 

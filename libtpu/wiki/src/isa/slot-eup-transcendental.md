@@ -27,7 +27,7 @@ For reimplementation, the contract is:
 | **Pop LLO opcode** | `0x14e` `kVectorEupResultValue` (hardcoded in `CreateVectorEupResult` @ `0x1d4d9820`) |
 | **Fused pseudo-op** | `0x13b`..`0x14d` `kVector*AndPop` (the MLIR-emitted form, split by the late decomposer) |
 | **Function selector** | 5-bit field; gfc/glc @ bit 183, vxc @ bit 186; F32 + BF16 value map (verified) |
-| **Pop result** | `VectorResult` slot, `PopEupResult` opcode (result-opcode 7 on gfc), dest vreg @ bit 11 (gfc) |
+| **Pop result** | `VectorResult` slot, `PopEupResult` opcode (result-opcode 5 on gfc), dest vreg @ bit 11 (gfc) |
 | **Push→pop latency** | JF/DF 4 (clamp); PF 7; VF 6; GL 13 (F32) / 14 (BF16); pop drains at latency 1 |
 | **Issue rate** | `VectorEupReservationCycles`: JF/VF/GL 1, PF 2 (half-rate EUP) — orthogonal to latency |
 | **Result FIFO** | `EupResultFifoEntry` — a runtime `repeated`-message list, not a fixed compile-time depth |
@@ -42,7 +42,7 @@ The transcendental enters the EUP through a VALU-slot-3 push. There is exactly o
 
 ### Encoding
 
-Two layouts exist, one per opcode width. On Trillium (`gfc`) and Ghostlite (`glc`) the VALU opcode is 8 bits at bit 194; on Viperfish (`vxc`) it is 7 bits at bit 197. The function selector is always 5 bits, at bit 183 on gfc/glc and bit 186 on vxc. The source vreg is 6 bits. Every field is written by the universal `BitCopy(dst, dst_bit, src, src_bit, nbits)` packer (`@0x1fa0a900`).
+Two layouts exist, one per opcode width. On 6acc60406 (`gfc`, the v6e TC bundle; external name TPU7x) and Ghostlite (`glc`) the VALU opcode is 8 bits at bit 194; on Viperfish (`vxc`) it is 7 bits at bit 197. The function selector is always 5 bits, at bit 183 on gfc/glc and bit 186 on vxc. The source vreg is 6 bits. Every field is written by the universal `BitCopy(dst, dst_bit, src, src_bit, nbits)` packer (`@0x1fa0a900`). **All bit positions on this page are LSB-first** — bit 0 is the least-significant bit of byte 0 (byte = `dst_bit >> 3`, bit-in-byte = `dst_bit & 7`), matching the `BitCopy` convention used throughout [Bundle Model](bundle-model-overview.md) and the [VPU Slot](slot-vpu.md); the packer writes `nbits` upward from the LSB-numbered `dst_bit`.
 
 ```c
 function EncodeTensorCoreVectorAlu3F32Tanh(bundle, alu_proto):   // gfc @0x1f96ae40
@@ -90,6 +90,7 @@ The 5-bit function selector (gfc/glc @ bit 183, vxc @ bit 186) takes a distinct 
 | `gfc::EncodeTensorCoreVectorAlu3F32Tanh` | `0x1f96ae40` | gfc Tanh push (sel `0x13` @183, op@194 w8, src@188) | CERTAIN |
 | `gfc::EncodeTensorCoreVectorAlu3F32Reciprocal` | `0x1f96afc0` | gfc Reciprocal push (sel `0x15`) | CERTAIN |
 | `gfc::EncodeTensorCoreVectorAlu3F32ReciprocalSqrt` | `0x1f96ac00` | gfc Rsqrt push (sel `0x10`) | CERTAIN |
+| `gfc::EncodeTensorCoreVectorAlu3F32Erf` | `0x1f96b200` | gfc Erf push (sel `0x0e`) | CERTAIN |
 | `gfc::EncodeTensorCoreVectorAlu3Bf16Reciprocal` | `0x1f96b680` | gfc BF16 Reciprocal push (sel `0x1d`) | CERTAIN |
 | `gfc::EncodeTensorCoreVectorAlu3Bf16Tanh` | `0x1f96b500` | gfc BF16 Tanh push (sel `0x1b`) | CERTAIN |
 | `vxc::EncodeTensorCoreVectorAlu3EupPush` | `0x1ef6e400` | vxc generic EUP push (sel `0x16` @186, op@197 w7, src@191) | CERTAIN |
@@ -105,16 +106,19 @@ The push's VALU-opcode field is `0` on all three v5+ gens, which means the EUP-p
 
 ### Purpose
 
-The EUP result is drained one or more bundles after the push, in the `VectorResult` slot — the same slot that drains the MXU matmul result (`PopMxuResult`). A single result-opcode value selects which: on Trillium the result-opcode jump table maps `6 → PopMxuResult` and `7 → PopEupResult`. The pop names only a destination vreg; it carries no function (the function was decided at push time and travels with the FIFO entry).
+The EUP result is drained one or more bundles after the push, in the `VectorResult` slot — the same slot that drains the MXU matmul result (`PopMxuResult`). A single result-opcode value selects which: on 6acc60406 (`gfc`) the `TensorCoreVectorResult0Encoder::Encode` switch (`@0x1fa01820`) maps `5 → PopEupResult`, `6 → TransposeResult`, and `7 → PopMxuResult` — the `case 7` arm is the only one that writes the 8-bit accum-mode/format at bit 323. The pop names only a destination vreg; it carries no function (the function was decided at push time and travels with the FIFO entry).
 
 ### Encoding
 
-`PopEupResult` writes a result-tag into the result-type discriminator and a 6-bit destination vreg through the common `VectorResult` tail. On Trillium the discriminator is 2 bits at bit 20 and the dest vreg is 6 bits at bit 11; on Viperfish/Ghostlite the discriminator is 4 bits at bit 24 and dest vreg 6 bits at bit 14.
+`PopEupResult` writes a result-tag into the result-type discriminator and a 6-bit destination vreg through the common `VectorResult` tail. On 6acc60406 (`gfc`) the encoder first writes a 2-bit top-level result-tag at bit 20 (common to every result sub-message, value = proto field `+0x1c`), then — in the `case 5` (EUP) arm — a 3-bit EUP sub-tag literal `0` at bit 17, and finally the 6-bit dest vreg at bit 11. On Viperfish/Ghostlite the discriminator is 4 bits at bit 24 and the dest vreg 6 bits at bit 14.
 
 ```c
-function PopEupResult_gfc(bundle, result_proto):     // gfc result-opcode 7
-    BitCopy(bundle, 18, &2, 0, 2)            // result-tag literal 0x2
-    BitCopy(bundle, 11, &dest_vreg, 0, 6)    // common dest-vreg tail
+function PopEupResult_gfc(bundle, result_proto):     // gfc, result-opcode 5 (case 5 @0x1fa01820)
+    BitCopy(bundle, 20, &result_proto.tag, 0, 2)  // common 2-bit result-tag (proto +0x1c)
+    BitCopy(bundle, 17, &0, 0, 3)                 // EUP sub-tag literal 0 (case-5 arm)
+    BitCopy(bundle, 11, &dest_vreg, 0, 6)         // common dest-vreg tail
+    // (contrast case 7 / PopMxuResult, which writes tag literal 0x2 @ bit 18
+    //  and the 8-bit accum-mode/format @ bit 323)
 ```
 
 At the LLO level the pop is `kVectorEupResultValue`, opcode `0x14e`. The builder `CreateVectorEupResult` (`@0x1d4d9820`) hardcodes it — there is no width or function variant of the pop:
@@ -131,7 +135,7 @@ function CreateVectorEupResult(eup_push, region):    // @0x1d4d9820
 | Function | Address | Role | Confidence |
 |---|---|---|---|
 | `CreateVectorEupResult` | `0x1d4d9820` | builds the `0x14e` pop; asserts push ∈ [0x128,0x13a] | CERTAIN |
-| `gfc::TensorCoreVectorResult0Encoder::Encode` | `0x1fa01820` | result slot; jt `0xb8aabac`: op6=PopMxu, op7=PopEup | CERTAIN |
+| `gfc::TensorCoreVectorResult0Encoder::Encode` | `0x1fa01820` | result slot switch: op5=PopEup, op6=Transpose, op7=PopMxu | CERTAIN |
 | `vxc::TensorCoreVectorResult0Encoder::Encode` | `0x1f018f40` | vxc result slot (disc @bit24 w4, dest @bit14 w6) | HIGH |
 | `glc::TensorCoreVectorResult0Encoder::Encode` | `0x1f3bc160` | glc result slot; adds `PopAddMxu01Result` | HIGH |
 
@@ -456,6 +460,7 @@ The Pufferfish `kVectorSigShftF32` (0x12d) Instruction ordinal falls to the clas
 - [VPU Slot](slot-vpu.md) — the VALU slot family; the EUP push is `Alu3`-only (slot-3 restriction, op@197/194 sel@186/183 src@191/188)
 - [Viperfish 64-bit Bundle](bundle-vf-64b.md) — the Alu3 EUP push in the full 64-byte bundle context
 - [Ghostlite Bundle](bundle-gl.md) — the glc bundle layout and its 8-bit VALU opcode
+- [6acc60406 Bundle](bundle-gf.md) — the gfc result-slot map (`5`=PopEup, `6`=Transpose, `7`=PopMxu) and the full 64-byte slot layout
 - [Pack/Unpack Precision](pack-unpack-precision.md) — the vpack-format model behind `IsDynamicallyLegal` and the AluEp unpack
 - [EUP Latency Overview](../cost/eup-latency-overview.md) — the cost-model framing of the push→pop latency edge and reservation
 - [EUP Correction Coefficients](../cost/eup-correction-coeffs.md) — the full coefficient catalog for the no-EUP fallbacks and Newton/rational refinements

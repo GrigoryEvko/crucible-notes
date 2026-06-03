@@ -6,12 +6,12 @@
 
 A TPU VLIW bundle has no inline immediate operands. Every literal an instruction needs — a branch/call target, a sync-flag id or threshold, a vector-ALU constant, a DMA segment size — is written into one of a small, fixed pool of **immediate slots** that sit in a dedicated region of the bundle word and are *shared* across every slot in the bundle. A slot encoder never embeds a constant in its own bit window; it routes the value to an immediate-slot index, and a single per-generation encoder lays that index down at a generation-fixed absolute bit. This page documents the immediate-slot pool as a reimplementation target: the per-gen slot count and width, the byte-exact bit ladders, how a value is chosen and split across slots, how the sequencer's 20-bit branch target reaches immediate-slot 0, and how the overlay-fetch DMA descriptor consumes an immediate sync-flag.
 
-The immediate region is the single piece of the bundle most often misread, because it is *not* inside any functional slot. Three facts make it tractable. (1) The slot **width** is a subtarget virtual, `TPUSubtarget::getImmediateSizeInBits()` at vtable slot `+0x340`: 16 bits on the BarnaCore (v4) path, 20 bits on every V5+ generation (Viperfish / Ghostlite / Trillium). (2) The slot **bit positions** are a flat list of `(absolute-bit, width)` pairs written by `<gen>ImmediatesEncoder::Encode` through the universal packer `BitCopy(dst, dst_bit, src, src_bit, nbits)` (`0x1fa0a900`), so the position of immediate slot *i* is the literal `dst_bit` argument of the *i*-th `BitCopy` call. (3) Which immediate slot a value lands in is decided upstream by a runtime `ResourceSolver` slot-pool walk (`getFullImmediate` @ `0x13be79a0`), not by a static per-encoding table — a value wider than one slot is split lo/hi across two slots.
+The immediate region is the single piece of the bundle most often misread, because it is *not* inside any functional slot. Three facts make it tractable. (1) The slot **width** is a subtarget virtual, `TPUSubtarget::getImmediateSizeInBits()` at vtable slot `+0x340`: 16 bits on the BarnaCore (v4) path, 20 bits on every V5+ generation (Viperfish / Ghostlite / 6acc60406). (2) The slot **bit positions** are a flat list of `(absolute-bit, width)` pairs written by `<gen>ImmediatesEncoder::Encode` through the universal packer `BitCopy(dst, dst_bit, src, src_bit, nbits)` (`0x1fa0a900`), so the position of immediate slot *i* is the literal `dst_bit` argument of the *i*-th `BitCopy` call. (3) Which immediate slot a value lands in is decided upstream by a runtime `ResourceSolver` slot-pool walk (`getFullImmediate` @ `0x13be79a0`), not by a static per-encoding table — a value wider than one slot is split lo/hi across two slots.
 
 For reimplementation, the contract is:
 
-- The **per-gen immediate-slot width** is `getImmediateSizeInBits()` (vtable `+0x340`): BarnaCore = 16, Viperfish/Ghostlite/Trillium = 20. The same width governs both the value-fit test in `getPackedImm` and the lo/hi split in `getFullImmediate`.
-- The **TensorCore (64-byte V5+) bundle has 6 immediate slots** written by `TensorCoreImmediatesEncoder::Encode` from proto fields `+0x18 + 4*i` (i = 0..5). The base ladder is Viperfish `430/410/390/370/350/330` (stride −20); Ghostlite is that ladder `+3`, Trillium is that ladder `−7`.
+- The **per-gen immediate-slot width** is `getImmediateSizeInBits()` (vtable `+0x340`): BarnaCore = 16, Viperfish/Ghostlite/6acc60406 = 20. The same width governs both the value-fit test in `getPackedImm` and the lo/hi split in `getFullImmediate`.
+- The **TensorCore (64-byte V5+) bundle has 6 immediate slots** written by `TensorCoreImmediatesEncoder::Encode` from proto fields `+0x18 + 4*i` (i = 0..5). The base ladder is Viperfish `430/410/390/370/350/330` (stride −20); Ghostlite is that ladder `+3`, 6acc60406 is that ladder `−7`.
 - The **SparseCore (32-byte) bundle has 4 immediate slots** at `67/47/27/7` on all V5+ gens; Ghostlite's SCS encoder adds two more (`215/195`) for a 6-slot wide variant.
 - The **Jellyfish (41-byte) and Pufferfish (51-byte) bundles each carry 6 immediate slots at 16 bits**; Pufferfish places them at `256/272/288/304/320/338` in the shared operand pool, Jellyfish carries them as proto fields `+0x68..+0x7C`. These pre-V5 codecs are *not* subtarget-virtual.
 - A **value ≤ width occupies one slot; a wider value splits** into a low half and a high half across two slots, recorded as a `SmallVector<pair<slot_id, ImmediateSlot>, 4>` by `getFullImmediate`.
@@ -21,11 +21,11 @@ For reimplementation, the contract is:
 | | |
 |---|---|
 | **Per-gen width fn** | `TPUSubtarget::getImmediateSizeInBits()` @ vtable `+0x340` (reloc-walked `R_X86_64_RELATIVE`) |
-| **Width values** | BarnaCore = 16 (`0x13c596a0`); Viperfish / Ghostlite / Trillium = 20 (`0x13c5f5a0` / `0x13c61480` / `0x13c62fa0`) |
+| **Width values** | BarnaCore = 16 (`0x13c596a0`); Viperfish / Ghostlite / 6acc60406 = 20 (`0x13c5f5a0` / `0x13c61480` / `0x13c62fa0`) |
 | **Universal packer** | `BitCopy(dst, dst_bit, src, src_bit, nbits)` @ `0x1fa0a900` — LSB-first; `dst_bit` == absolute bundle bit |
 | **TC imm encoder** | `TensorCoreImmediatesEncoder::Encode` — VXC `0x1eebee40`, GLC `0x1f20d520`, GFC `0x1f86de20` |
 | **SCS imm encoder** | `SparseCoreImmediatesEncoder::Encode` — VFC `0x1ee75ee0`, GLC `0x1eb563c0`, GFC `0x1eb5bd20` |
-| **TC imm ladder** | VXC `430/410/390/370/350/330` (slot 0..5, stride −20, each w20); GLC = VXC+3; GFC = VXC−7 |
+| **TC imm ladder** | VXC `430/410/390/370/350/330` (slot 0..5, stride −20, each w20); GLC = VXC+3 (`433..333`); GFC = VXC−7 (`423..323`) |
 | **SCS imm ladder** | `67/47/27/7` (all V5+); GLC adds `215/195` (wide 6-slot variant) |
 | **Slot allocator** | `ResourceSolver::getFullImmediate` @ `0x13be79a0` (pool walk: `+0xd8` records, `+0x118` candidate list, `+0x120` count) |
 | **Value chooser** | `getPackedImm` @ `0x13bec4e0` (`call [vtable+0x340]` ×4 = value-fit test) |
@@ -47,9 +47,9 @@ return 16;   // BarnaCore (v4 path) — 16-bit immediate slot
 // TPUVfcSubtarget::getImmediateSizeInBits  @ 0x13c5f5a0
 return 20;   // Viperfish (v5e)
 // TPUGlcSubtarget::getImmediateSizeInBits  @ 0x13c61480
-return 20;   // Ghostlite (v5p)
+return 20;   // Ghostlite (v6e)
 // TPUGfcSubtarget::getImmediateSizeInBits  @ 0x13c62fa0
-return 20;   // Trillium (v6e)
+return 20;   // 6acc60406 (v7x / TPU7x)
 ```
 
 The abstract base `TPUSubtarget`'s `+0x340` slot is `__cxa_pure_virtual`; there is no `TPUPfSubtarget` or `TPUJfSubtarget` class, so the pre-V5 generations do not expose their immediate width through this virtual at all (see [Pre-V5 Generations](#pre-v5-generations-pufferfish-and-jellyfish)).
@@ -77,9 +77,9 @@ v17[0] = a2[10]; BitCopy(buf, 350, v17, 0, 20);   // imm slot 4
 v17[0] = a2[11]; BitCopy(buf, 330, v17, 0, 20);   // imm slot 5
 ```
 
-The ladder is a uniform stride of −20 bits, slot 0 highest. Ghostlite (`0x1f20d520`) and Trillium (`0x1f86de20`) are field-identical structurally — same six proto reads, same width 20 — but shifted by a constant per generation:
+The ladder is a uniform stride of −20 bits, slot 0 highest. Ghostlite (`0x1f20d520`) and 6acc60406 (`0x1f86de20`) are field-identical structurally — same six proto reads, same width 20 — but shifted by a constant per generation:
 
-| imm slot | proto field | Viperfish (VXC) bit | Ghostlite (GLC) bit | Trillium (GFC) bit | width | Confidence |
+| imm slot | proto field | Viperfish (VXC) bit | Ghostlite (GLC) bit | 6acc60406 (GFC) bit | width | Confidence |
 |---|---|---|---|---|---|---|
 | 0 | `+0x18` | 430 | 433 | 423 | 20 | CONFIRMED |
 | 1 | `+0x1c` | 410 | 413 | 403 | 20 | CONFIRMED |
@@ -88,7 +88,7 @@ The ladder is a uniform stride of −20 bits, slot 0 highest. Ghostlite (`0x1f20
 | 4 | `+0x28` | 350 | 353 | 343 | 20 | CONFIRMED |
 | 5 | `+0x2c` | 330 | 333 | 323 | 20 | CONFIRMED |
 
-The per-generation delta is exact: **Ghostlite = Viperfish + 3**, **Trillium = Viperfish − 7**, applied uniformly to every slot. The shift reflects a different layout of the slots *above* the immediate region (the scalar/sequencer slots at the top of the 512-bit word differ per gen); the immediate ladder itself keeps its −20 internal stride. Slot 0 is the home of the sequencer branch/call target — on Trillium it is bit 423, matching the [Sequencer Slot](slot-sequencer.md) page's branch-target observation.
+The per-generation delta is exact: **Ghostlite = Viperfish + 3**, **6acc60406 = Viperfish − 7**, applied uniformly to every slot. The shift reflects a different layout of the slots *above* the immediate region (the scalar/sequencer slots at the top of the 512-bit word differ per gen); the immediate ladder itself keeps its −20 internal stride. Slot 0 is the home of the sequencer branch/call target — on 6acc60406 it is bit 423, matching the [Sequencer Slot](slot-sequencer.md) page's branch-target observation.
 
 > **NOTE —** the proto-field-to-slot binding is rigid: immediate slot *i* is always `TensorCoreImmediates` field `+0x18 + 4*i`, identical across all three V5+ generations. The only thing that changes per gen is the absolute bit the value is laid down at. A decoder built for one V5+ gen ports to the others by applying the `+3` / `−7` offset.
 
@@ -96,7 +96,7 @@ The per-generation delta is exact: **Ghostlite = Viperfish + 3**, **Trillium = V
 
 ## SparseCore Immediate Ladder (V5+, 32-byte bundle)
 
-The SparseCore scalar (SCS) bundle is 32 bytes and carries **4 immediate slots** on Viperfish and Trillium, written by `SparseCoreImmediatesEncoder::Encode` (VFC `0x1ee75ee0`; the GFC variant is named `SparseCoreScalarImmediatesEncoder`, `0x1eb5bd20`):
+The SparseCore scalar (SCS) bundle is 32 bytes and carries **4 immediate slots** on Viperfish and 6acc60406, written by `SparseCoreImmediatesEncoder::Encode` (VFC `0x1ee75ee0`; the GFC variant is named `SparseCoreScalarImmediatesEncoder`, `0x1eb5bd20`):
 
 ```c
 // asic_sw::deepsea::vxc::vfc::isa::SparseCoreImmediatesEncoder::Encode  @ 0x1ee75ee0

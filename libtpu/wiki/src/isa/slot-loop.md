@@ -29,6 +29,7 @@ For reimplementation, the contract is:
 | **HW loop-info class** | `(anon)::TPUBarnaCorePipelinerLoopInfo` — `getIVUpdate`=NULL @ `0x13b86560`, `getTripCount`=−1 @ `0x13b865a0` |
 | **SW loop-info class** | `(anon)::TPUSparseCorePipelinerLoopInfo` — `getTripCount`=`[this+0x28]` @ `0x13b86260` |
 | **AddressHandler builder** | `AddressHandlerProgramBuilder::BeginLoop` @ `0xfa90d40` / `EndLoop` @ `0xfa91300` |
+| **AddressHandler per-gen insert** | `JellyfishTarget::InsertAddressHandlerLoop` @ `0x1d490e00` (live) / `PufferfishTarget` @ `0x1d495340` (live) / `ViperfishTarget` @ `0x1d49b980` (`__noreturn` stub) |
 | **BarnaCore HW opcodes** | `bcLOOP_SETUP` (0x194), `bcLOOP_START` (0xf8a), `bcLOOP_END` (0x193) |
 | **LLO loop kinds** | `LloLoopKindProto { LOOP_KIND_NONE, LOOP_KIND_WHILE, LOOP_KIND_DOWHILE }` |
 | **Confidence** | CONFIRMED (byte-anchored) unless a row says otherwise |
@@ -47,7 +48,7 @@ int dest = a2;                               // the scalar destination index
 return BitCopy(buf, /*dst_bit=*/467, &dest, /*src_bit=*/0, /*width=*/5);   // 5-bit dest, abs bit 467
 ```
 
-`BitCopy(buf, 467, &dest, 0, 5)` writes the 5-bit destination at absolute bundle bit 467 (`0x1d3`) — and it is the **only** field this op writes. There is no loop-counter-index operand, which is the structural proof that V5+ exposes a single implicit counter (see [Per-Generation Count](#per-generation-count-and-read-mechanism)). The maximum trip count the counter can represent is `2^64 − 1`; whether the silicon down-counter is the full 64 bits or narrower is not separable from the binary (the 64-bit *readback* is certain, the counter width is inferred — MEDIUM).
+`BitCopy(buf, 467, &dest, 0, 5)` writes the 5-bit destination at absolute bundle bit 467 (`0x1d3`) — and it is the **only** field this op writes. All bit positions on this page are **LSB-first** (bit 0 = least-significant bit of byte 0), matching the universal `BitCopy(dst, dst_bit, src, src_bit, nbits)` packer (`0x1fa0a900`) and the convention pinned in [Bundle Model §bit-numbering](bundle-model-overview.md). This is the same 5-bit dest at bit 467 that the [Sequencer Slot](slot-sequencer.md#branch--jump--call-encoding) call/return-address encoder writes. There is no loop-counter-index operand, which is the structural proof that V5+ exposes a single implicit counter (see [Per-Generation Count](#per-generation-count-and-read-mechanism)). The maximum trip count the counter can represent is `2^64 − 1`; whether the silicon down-counter is the full 64 bits or narrower is not separable from the binary (the 64-bit *readback* is certain, the counter width is inferred — MEDIUM).
 
 > **NOTE —** the LLVM-generic `hardware-loop-counter-bitwidth` `cl::opt` ("Set the loop counter bitwidth") belongs to the target-independent `HardwareLoops` pass, not to the silicon LCC. The TPU LCC is fixed at 64-bit per the lo/hi read structure; do not conflate the two.
 
