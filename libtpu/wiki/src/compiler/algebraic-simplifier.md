@@ -4,11 +4,11 @@
 
 ## Abstract
 
-The **algebraic simplifier** is the TPU compiler's peephole rewriter — the HLO pass that walks every computation and replaces locally-recognizable instruction patterns with cheaper equivalents: identity elimination (`add x 0`, `multiply x 1`, `x AND true`), reciprocal-fold (`a/b → a * (1/b)` when `b` is constant), `min/max → clamp` strength reduction, broadcast/reshape/transpose canonicalization and folding, dot/convolution operand-transpose absorption, dead tuple-leg pruning through `GetTupleElement`, and a long tail of arithmetic canonicalizations. On the TPU backend it is **pass #60** of the HLO pre-pass pipeline (see [hlo-pre-passes.md](hlo-pre-passes.md)), instantiated not as the open-source `xla::AlgebraicSimplifier` but as `xla::jellyfish::TpuAlgebraicSimplifier` — a subclass whose visitor (`TpuAlgebraicSimplifierVisitor`) **overrides 16 opcode handlers** with TPU-layout-aware variants on top of the **55 handlers** the base `AlgebraicSimplifierVisitor` provides.
+The **algebraic simplifier** is the TPU compiler's peephole rewriter — the HLO pass that walks every computation and replaces locally-recognizable instruction patterns with cheaper equivalents: identity elimination (`add x 0`, `multiply x 1`, `x AND true`), reciprocal-fold (`a/b → a * (1/b)` when `b` is constant), `min/max → clamp` strength reduction, broadcast/reshape/transpose canonicalization and folding, dot/convolution operand-transpose absorption, dead tuple-leg pruning through `GetTupleElement`, and a long tail of arithmetic canonicalizations. On the TPU backend it is **pass #60** of the HLO pre-pass pipeline (see [hlo-pre-passes.md](hlo-pre-passes.md)), instantiated not as the open-source `xla::AlgebraicSimplifier` but as `xla::jellyfish::TpuAlgebraicSimplifier` — a subclass whose visitor (`TpuAlgebraicSimplifierVisitor`) emits **17 `Handle*` methods** (16 overriding base handlers with TPU-layout-aware variants, plus one TPU-only `HandleRngBitGenerator`) on top of the **56 handlers** the base `AlgebraicSimplifierVisitor` provides.
 
 The reader who knows LLVM should think of this as `InstCombine` for the HLO graph, with two structural differences. First, dispatch is **not benefit-ordered pattern matching** (the MLIR `PatternApplicator` machinery documented in the [rewrite-dispatch pages](#cross-references) is a *separate* engine on a *different* IR). It is plain C++ **virtual dispatch keyed on opcode**: the base class `xla::DfsHloVisitorBase<HloInstruction*>` is a ~140-slot vtable with one `Handle<Op>` slot per `HloOpcode`, a rewrite pass overrides only the slots for opcodes it cares about, and `HloInstruction::Visit` issues exactly one indirect call per instruction. The "registry" of rules *is* the C++ class hierarchy. Second, the simplifier is wrapped in a **run-to-fixpoint loop**: each computation is re-visited until a full pass makes no change, capped at 50 iterations with a circular-loop diagnostic.
 
-This page documents three things, each byte-anchored: (1) the **visitor dispatch** — the opcode-vtable mechanism, the two override sets (base XLA vs the TPU subclass), and the per-computation `Run` entry; (2) a **representative rewrite-rule catalog** — the handlers that carry the bulk of the simplifications, with the helper functions each calls; and (3) the **run-to-fixpoint driver** `TpuAlgebraicSimplifier::RunImpl` and the **`AlgebraicSimplifierOptions`** gates (the TPU-specific knobs that enable/disable rule families). It does **not** re-derive every handler body (the rule arithmetic of all 55 base handlers is upstream XLA), the MLIR-side `PatternApplicator`, or the fusion priority queue — those have their own pages.
+This page documents three things, each byte-anchored: (1) the **visitor dispatch** — the opcode-vtable mechanism, the two override sets (base XLA vs the TPU subclass), and the per-computation `Run` entry; (2) a **representative rewrite-rule catalog** — the handlers that carry the bulk of the simplifications, with the helper functions each calls; and (3) the **run-to-fixpoint driver** `TpuAlgebraicSimplifier::RunImpl` and the **`AlgebraicSimplifierOptions`** gates (the TPU-specific knobs that enable/disable rule families). It does **not** re-derive every handler body (the rule arithmetic of all 56 base handlers is upstream XLA), the MLIR-side `PatternApplicator`, or the fusion priority queue — those have their own pages.
 
 | | |
 |---|---|
@@ -16,8 +16,8 @@ This page documents three things, each byte-anchored: (1) the **visitor dispatch
 | **TPU run-to-fixpoint driver** | `TpuAlgebraicSimplifier::RunImpl(HloModule*, execution_threads)` @ `0x13443f40` |
 | **Base run driver** | `xla::AlgebraicSimplifier::RunImpl(HloModule*, …)` @ `0x1dd488c0` |
 | **Per-computation entry** | `AlgebraicSimplifierVisitor::Run(HloComputation*, AlgebraicSimplifierOptions const&, AlgebraicSimplifier*)` @ `0x1dd010e0` → `bool` (changed) |
-| **TPU visitor** | `xla::jellyfish::TpuAlgebraicSimplifierVisitor` (vtable `0x2190bcc8`); 16 `Handle*` overrides |
-| **Base visitor** | `xla::AlgebraicSimplifierVisitor` (vtable `0x21d1d1e8`, 147 slots); 55 `Handle*` overrides |
+| **TPU visitor** | `xla::jellyfish::TpuAlgebraicSimplifierVisitor` (vtable `0x2190bcc8`); 17 `Handle*` (16 overrides + 1 TPU-only) |
+| **Base visitor** | `xla::AlgebraicSimplifierVisitor` (vtable `0x21d1d1e8`, 147 slots); 56 `Handle*` overrides |
 | **Dispatch base** | `xla::DfsHloVisitorBase<HloInstruction*>` (vtable `0x21d2c320`, 140 virtual slots = one `Handle<Op>` per opcode) |
 | **Options struct** | `xla::AlgebraicSimplifierOptions` (dtor `0x1343ba00`); stored inline in the pass at `+8` |
 | **Pass-add (TPU)** | `HloPassPipeline::AddPass<TpuAlgebraicSimplifier, Target const&, AlgebraicSimplifierOptions&>` @ `0x10954400` |
@@ -91,7 +91,7 @@ The practical consequence: there is no way to "register an extra rule" for the a
 
 A rewrite pass's *surface* is exactly the set of vtable slots it overrides. Two override sets matter here, both enumerated directly from the decompile (each `Handle<Op>` is its own emitted function).
 
-**Base — `xla::AlgebraicSimplifierVisitor` (vtable `0x21d1d1e8`, 147 slots): 55 overrides.**
+**Base — `xla::AlgebraicSimplifierVisitor` (vtable `0x21d1d1e8`, 147 slots): 56 overrides.**
 
 ```text
 Abs Add AllGather AllReduce AllReduceOrReduceScatter AllToAll And Bitcast
@@ -103,16 +103,16 @@ ReduceWindow Remainder Reshape Reverse Rsqrt Scatter Select Slice Sort Sqrt
 Subtract Transpose
 ```
 
-**TPU — `xla::jellyfish::TpuAlgebraicSimplifierVisitor` (vtable `0x2190bcc8`): 16 overrides** (each TPU handler takes a `Target const*` so it can query the per-generation layout model):
+**TPU — `xla::jellyfish::TpuAlgebraicSimplifierVisitor` (vtable `0x2190bcc8`): 17 `Handle*`** — 16 overriding base handlers + the TPU-only `HandleRngBitGenerator` (each TPU handler takes a `Target const*` so it can query the per-generation layout model):
 
 ```text
 Add Bitcast Broadcast Compare Concatenate Convert Convolution Copy Dot
 DynamicSlice DynamicUpdateSlice Pad Reshape RngBitGenerator Slice Sort Transpose
 ```
 
-> **NOTE — decompile cross-check on the override counts.** The base set is **55** distinct `AlgebraicSimplifierVisitor::Handle*` symbols and the TPU set is **16** distinct `TpuAlgebraicSimplifierVisitor::Handle*` symbols, enumerated by listing the emitted handler functions. The RTTI vtable widths corroborate: base = `0x4a8/8 = 149` entries (≈147 virtual slots), TPU subclass vtable at `0x2190bcc8`. Note `HandleRngBitGenerator` is **TPU-only** — the base `AlgebraicSimplifierVisitor` has no `RngBitGenerator` override (no such base symbol is emitted); the TPU subclass *adds* it (`0x13443440`). [Confidence: CONFIRMED on both override sets and the TPU-only `RngBitGenerator` fact.]
+> **NOTE — decompile cross-check on the override counts.** The base set is **56** distinct `AlgebraicSimplifierVisitor::Handle*` symbols (top-level `Handle<Op>(HloInstruction*)` methods) and the TPU set is **17** distinct `TpuAlgebraicSimplifierVisitor::Handle*` symbols, enumerated by listing the emitted handler functions (`nm -C | rg`). Of the 17 TPU handlers, 16 override a base handler of the same opcode and one — `HandleRngBitGenerator` — is **TPU-only**: the base `AlgebraicSimplifierVisitor` emits no `HandleRngBitGenerator` symbol, the TPU subclass *adds* it (`0x13443440`). The RTTI vtable widths corroborate the *slot* count (independent of the override count): base vtable `0x21d1d1e8` spans to its typeinfo at `0x21d1d690` = `0x4a8/8 = 149` entries (≈147 virtual slots after offset-to-top + RTTI); TPU subclass vtable at `0x2190bcc8` is the same width. [Confidence: CONFIRMED on both handler sets and the TPU-only `RngBitGenerator` fact.]
 
-Every TPU override is a refinement: the dispatch reaches the *most-derived* slot, so for the 16 TPU-overridden opcodes the TPU body runs (it may delegate to or replace the base logic), and for the other 39 the base body runs unchanged. The match logic *inside* each handler is written with the `xla::match::` combinator EDSL (`Op()`, shape and operand matchers — the HLO analogue of LLVM's `m_*`), evaluated inline, not benefit-ranked.
+Every TPU override is a refinement: the dispatch reaches the *most-derived* slot, so for the 16 TPU-overridden opcodes the TPU body runs (it may delegate to or replace the base logic), for `RngBitGenerator` the TPU-only handler runs, and for the other 40 base handlers the base body runs unchanged. The match logic *inside* each handler is written with the `xla::match::` combinator EDSL (`Op()`, shape and operand matchers — the HLO analogue of LLVM's `m_*`), evaluated inline, not benefit-ranked.
 
 ---
 
@@ -188,7 +188,7 @@ The base `xla::AlgebraicSimplifier::RunImpl` (`0x1dd488c0`) is the same shape wi
 
 The rule **bodies** are largely upstream XLA; this section catalogs the handlers that carry the bulk of the work and the helper functions each calls, so a reimplementer knows the rule *surface* and where the TPU specializations diverge. Every address below is an emitted function in this build.
 
-### Base-XLA handlers (39 run unchanged on TPU)
+### Base-XLA handlers (40 run unchanged on TPU)
 
 | Handler | Addr | Representative simplifications (recovered surface) |
 |---|---|---|
@@ -212,7 +212,7 @@ The rule **bodies** are largely upstream XLA; this section catalogs the handlers
 
 `AlgebraicSimplifierVisitor::HandleOptimizationBarrier` (`0x1dd27360`) is the only handler that rewrites *around* an opaque op without crossing it. When the barrier wraps a tuple, it walks the barrier's users while they are `GetTupleElement` (opcode 64), marks each index live (GTE has >1 user, indexes the entry root, or is side-effecting), drops dead legs, rebuilds a smaller `kTuple` operand, and re-indexes the surviving GTEs — a defensive `CHECK(use->opcode() == kGetTupleElement)` at `algebraic_simplifier.cc:5302` guards the walk. This is documented end-to-end on [optimization-barrier.md](optimization-barrier.md) (handler #6); it proves the simplifier can do dead-code-style cleanup of tuple legs but never reorders or merges compute across the fence.
 
-### TPU-overridden handlers (16, layout-aware)
+### TPU handlers (17 — 16 layout-aware overrides + 1 TPU-only)
 
 The TPU subclass overrides handlers whose open-source bodies could produce a tensor with a layout the TPU codegen cannot tile. Each TPU handler takes `Target const*` and guards rewrites with `TpuAlgebraicSimplifierVisitor::IsValidLayout(Shape const&)` (`0x13443660`) and re-stamps layouts via `TpuAlgebraicSimplifier::UpdateLayout(Shape*)` (`0x13444860`).
 
@@ -232,7 +232,7 @@ The TPU subclass overrides handlers whose open-source bodies could produce a ten
 
 Two shared TPU helpers underpin these: `SetupDerivedInstruction(HloInstruction*, HloInstruction*, bool)` (`0x134445c0`) propagates metadata/layout to a newly-created replacement, and `UpdateLayout` (`0x13444860`) stamps the chosen tiled layout so the rewritten op is immediately legal for the post-layout pipeline.
 
-> **NOTE — why a TPU subclass at all.** The simplifier runs **after** layout assignment ([layout-assignment.md](layout-assignment.md)), so every instruction already carries a committed tiled layout. The open-source `HandleReshape`/`HandleTranspose`/`HandleCopy` can rewrite to a shape whose layout is undefined or untileable for the MXU's 128×128 geometry; the TPU overrides add the `IsValidLayout` guard and the `UpdateLayout` re-stamp so a peephole rewrite never breaks the layout invariant the `tpu`→LLO legalizer ([tpu-to-llo-ods.md](tpu-to-llo-ods.md)) depends on. The 39 non-overridden handlers (e.g. `HandleAdd` on already-elementwise ops, `HandleGetTupleElement`) are layout-transparent, so the base body is sound as-is.
+> **NOTE — why a TPU subclass at all.** The simplifier runs **after** layout assignment ([layout-assignment.md](layout-assignment.md)), so every instruction already carries a committed tiled layout. The open-source `HandleReshape`/`HandleTranspose`/`HandleCopy` can rewrite to a shape whose layout is undefined or untileable for the MXU's 128×128 geometry; the TPU overrides add the `IsValidLayout` guard and the `UpdateLayout` re-stamp so a peephole rewrite never breaks the layout invariant the `tpu`→LLO legalizer ([tpu-to-llo-ods.md](tpu-to-llo-ods.md)) depends on. The 40 non-overridden handlers (e.g. `HandleGetTupleElement`, the collective and reduce-family handlers) are layout-transparent, so the base body is sound as-is.
 
 ---
 
@@ -257,7 +257,7 @@ The pass is configured by an `xla::AlgebraicSimplifierOptions` struct passed by 
 ## What Is Not Recovered
 
 - **Full per-field layout of `AlgebraicSimplifierOptions`.** Only `ReshapeIsBitcast` (accessor `0x1dd0e0c0`) and `run_to_fixed_point` (pass `+135`) are byte-pinned; the remaining boolean gates are known to exist (upstream struct, constructed and copied by the `AddPass` trampoline) but their offsets and flag-string bindings were not individually traced. [Confidence: LOW on offsets.]
-- **Every base handler body.** The 39 non-overridden handlers run the upstream `algebraic_simplifier.cc` logic; their full rule arithmetic is not re-derived here (it is open-source). The TPU-override surface and the helpers are byte-anchored; the *contents* of each TPU `Handle*` body are sketched from the helper calls, not exhaustively decompiled. [Confidence: HIGH on the override set and helpers; MEDIUM on per-handler rewrite detail.]
+- **Every base handler body.** The 40 non-overridden handlers run the upstream `algebraic_simplifier.cc` logic; their full rule arithmetic is not re-derived here (it is open-source). The TPU-override surface and the helpers are byte-anchored; the *contents* of each TPU `Handle*` body are sketched from the helper calls, not exhaustively decompiled. [Confidence: HIGH on the override set and helpers; MEDIUM on per-handler rewrite detail.]
 - **The complete 140-slot `DfsHloVisitorBase` opcode map.** ~24 slots are labelled from the reloc-addend walk; the remaining slots and the exact pure-virtual set (the opcodes every visitor *must* implement, e.g. `HandleParameter`/`HandleConstant`/`HandleReduce`) need the full vtable walk. [Confidence: HIGH on the labelled slots, LOW on the unlabelled remainder.]
 - **The `xla::match::` EDSL grammar.** The match expressions inside each `Handle*` are built from the `xla::match::` combinators (1,117 instantiations binary-wide); the combinator ABI is a separate decode and is not reproduced here.
 
@@ -269,7 +269,7 @@ The pass is configured by an `xla::AlgebraicSimplifierOptions` struct passed by 
 |---|---|---|
 | TPU pass is `jellyfish::TpuAlgebraicSimplifier`, subclass of `AlgebraicSimplifier` | symbols `TpuAlgebraicSimplifier::RunImpl` `0x13443f40`, `AddPass<TpuAlgebraicSimplifier,Target const&,AlgebraicSimplifierOptions&>` `0x10954400` | CONFIRMED |
 | Dispatch is opcode-keyed virtual table, not benefit pattern matching | `DfsHloVisitorBase<HloInstruction*>` vtable `0x21d2c320`, 140 slots; per-`Handle<Op>` emitted functions | CONFIRMED |
-| Base visitor overrides 55 opcodes; TPU subclass overrides 16 | 55 `AlgebraicSimplifierVisitor::Handle*` + 16 `TpuAlgebraicSimplifierVisitor::Handle*` emitted functions | CONFIRMED |
+| Base visitor emits 56 `Handle*`; TPU subclass emits 17 (16 overrides + 1 TPU-only) | 56 `AlgebraicSimplifierVisitor::Handle*` + 17 `TpuAlgebraicSimplifierVisitor::Handle*` emitted functions | CONFIRMED |
 | `HandleRngBitGenerator` is TPU-only | TPU `0x13443440`; no base `AlgebraicSimplifierVisitor` RngBitGenerator symbol emitted | CONFIRMED |
 | Per-computation entry `Run` returns a changed-bool | `AlgebraicSimplifierVisitor::Run` `0x1dd010e0`, signature recovered | CONFIRMED |
 | Run-to-fixpoint loop, cap 50, non-fatal log on stuck | `RunImpl` `0x13443f40`; cap `0x32`; `tpu_algebraic_simplifier.cc:985` log string | CONFIRMED |
