@@ -50,7 +50,7 @@ Field numbers and presence bits are read directly from `TpuExecutableProto::_Int
 | `host_executions` | 8 | repeated `HostExecutionProto` | `0x02` | array @ `+2640`, count @ `+2648`, stride 80 B | HIGH |
 | `source_uri` | 9 | `string` (UTF-8 verified) | `0x04` | `TpuExecutable::GetSourceUri`, copied to proto `+56` | HIGH |
 
-> **QUIRK —** the field numbers are not contiguous. The serializer jumps 1, 2, 3, 5, 4, 8, 9 in emission order (the writer groups by the `has_bits` it tests, not by tag), and there is no field 6 or 7 in the populated set. A reimplementation that assumes a dense `1..N` schema will mis-tag `host_executions` (8) and `source_uri` (9). The tag for `source_uri` is observed as the raw byte `74` (`0x4A` = field 9, wire type 2) in the inline string writer at `0xf8d0c00` line 167.
+> **QUIRK —** the field numbers are not contiguous. The serializer emits in ascending-tag order 1, 2, 3, 4, 5, 8, 9 — there is no field 6 or 7 in the populated set, so a reimplementation that assumes a dense `1..N` schema will mis-tag `host_executions` (8) and `source_uri` (9). The tag for `source_uri` is observed as the raw byte `74` (`0x4A` = field 9, wire type 2) in the inline string writer at `0xf8d0c00` line 167.
 
 ### `target_arguments` (field 5) sub-assembly
 
@@ -111,13 +111,13 @@ Tags and presence read from the serializer at `0x1e82ea40`. The `has_bits` are a
 |---|---|---|---|---|---|
 | (field 2) | `16` = `0x10` | varint | `0x10` | scalar selector / count (4-byte field @ `+64` low word) | MEDIUM |
 | (field 3) | `26` = `0x1A` | LEN | `0x02` | byte/string blob (the raw program image) | HIGH |
-| (field 4) | `32` = `0x20` | varint | `0x08` | varint (`this+28`) | MEDIUM |
+| (field 4) | `32` = `0x20` | varint | `0x08` | varint (`this+56`) | MEDIUM |
 | `TensorCore`/`BarnaCore`/`SparseCore` | 5 / 6 / 7 | LEN (message) | oneof @ `+88` | the core-program oneof; case = `field_88` ∈ {5,6,7} | HIGH |
 | (field 9) | int64 | varint | `0x40` | int64 (`this+72`) — see `WriteInt64ToArrayWithField<9>` | HIGH |
 | (field 10) | `80` = `0x50` | varint (bool) | `0x20` | bool (`this+68`, emitted only when value == 1) | HIGH |
 | (field 9, msg) | `byte_9[3]` | LEN (message) | `0x04` | trailing sub-message (`this+48`) | MEDIUM |
 
-> **QUIRK —** the oneof is dispatched by `v20 = *((_DWORD*)this + 22)` and the test `(unsigned)(v20 - 5) <= 2` at `0x1e82ea40` line 135 — i.e. the active arm is whichever of tags 5/6/7 the discriminant holds, and exactly one of `TpuCoreProgramProto_TensorCore` (`0x1e82dae0`), `_BarnaCore` (`0x1e82dde0`), `_SparseCore` (`0x1e82e240`) is written. A reimplementation must treat 5/6/7 as mutually exclusive, not three independent optional messages.
+> **QUIRK —** the oneof is dispatched by `v20 = *((_DWORD*)this + 22)` and the test `(unsigned)(v20 - 5) <= 2` at `0x1e82ea40` lines 134-137 — i.e. the active arm is whichever of tags 5/6/7 the discriminant holds, and exactly one of `TpuCoreProgramProto_TensorCore` (`0x1e82dae0`), `_BarnaCore` (`0x1e82dde0`), `_SparseCore` (`0x1e82e240`) is written. A reimplementation must treat 5/6/7 as mutually exclusive, not three independent optional messages.
 
 The repeated message at sub-loop (tag `byte_8`, `this+24`) and the raw blob at field 3 together carry the actual instruction stream; the surrounding varints carry the core-type discriminant and sizes. The blob is *not* re-parsed during PJRT deserialize — it is the opaque LLO/ISA image handed to `TpuChip::NewProgramLoaded` (`0xe72b320`) at load time.
 
@@ -240,7 +240,7 @@ A serialized executable is only loadable on hardware that matches the chip gener
 
 These flags select the `Target` the compiler builds against, and the resolved values land in `TpuConfiguredProperties` → `target_arguments`. They are the upstream source of the stamp, not a separate field in the wire format.
 
-> **NOTE —** no standalone magic number, format-version integer, or build-id field was found inside `TpuExecutableProto` itself. Compatibility is enforced structurally — by the embedded topology/properties block and by protobuf's own version handshake (the linker emits the standard "Version verification failed" / "make sure that your headers are from the same version of Protocol Buffers" guard at `sdk.so` `0xca2758`). A reimplementation should treat the `target_arguments` block as the compatibility stamp; there is no separate single-integer version field to check. (Absence confirmed across the serialize/deserialize functions surveyed; **MEDIUM** confidence that no such field exists anywhere in the schema, since not every nested proto was exhaustively traced.)
+> **NOTE —** no standalone magic number, format-version integer, or build-id field was found inside `TpuExecutableProto` itself. Compatibility is enforced structurally — by the embedded topology/properties block and by protobuf's own generated-code version handshake. A reimplementation should treat the `target_arguments` block as the compatibility stamp; there is no separate single-integer version field to check. (Absence confirmed across the serialize/deserialize functions surveyed; **MEDIUM** confidence that no such field exists anywhere in the schema, since not every nested proto was exhaustively traced.)
 
 > **GOTCHA —** because the stamp is the topology/properties block and not a cheap integer, a fast "is this blob loadable here?" check cannot be done by reading a header word. The reader must parse the reduced-envelope frame far enough to reach `target_arguments`. The cheap pre-serialization compatibility gate is the cache key, not the serialized blob — see [`compilation-cache.md`](compilation-cache.md).
 
