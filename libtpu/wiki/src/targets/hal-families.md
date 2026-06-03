@@ -19,11 +19,13 @@ For reimplementation, the contract is:
 | | |
 |---|---|
 | **Factory interface** | `tpu::TpuHalFactory` (`_ZTI` @ 0x21d34410; no standalone vtable) |
-| **Factory base** | `tpu::TpuHalHardwareFactoryBase` (`Create` @ 0x1e80f560, `CanCreate` @ 0x1e80f520) |
+| **Factory base** | `tpu::TpuHalHardwareFactoryBase` — vtable slots: 2 `Create` (0x1e80f560), 3 `CanCreate` (0x1e80f520), 4 `CreateImpl` (pure, per-family) |
 | **Leaf factory classes** | 3 — Jxc (anon ns), Pxc (anon ns), Vxc (global ns) |
+| **Factory object** | 16 B (`operator new(0x10)`): vtable ptr at +0, `TpuVersion` dword at +8 |
 | **Init modules** | 5 — jxc, pxc, vxc, glc, gfc |
 | **Registered TpuVersion keys** | 6 — 0..5 |
-| **Registry lookup** | `TpuHalFactory::Get(version)` @ 0x1fbb19c0 (under mutex) |
+| **Registry** | `g_hal_factories_by_type` (platform-type-indexed), guarded by `g_hal_factories_mutex` |
+| **Registry lookup** | `TpuHalFactory::Get(version, opt<platform>)` @ 0x1fbb19c0 (under mutex) |
 | **Construction entry** | `TpuHal::Create(opt<platform>, version, profiler, wq)` @ 0x1e814180 |
 
 ---
@@ -52,18 +54,20 @@ Each module is an internal-linkage (`_ZL44...`) static initializer that allocate
 
 ### Registration Table
 
-The platform argument is `TpuPlatformType::kHardware` (0) in every call. The version is the second `Register` argument (an immediate). The codename names below are the exact `tpu::TpuVersion::k*` enumerators the source strings spell.
+The platform argument is `TpuPlatformType::kHardware` (0) in every call. The version is the second `Register` argument (an immediate). The codenames below are the exact `tpu::TpuVersion::k*` enumerators the source strings spell; the parenthetical external name in the last column is the canonical `TpuVersionToExternalName` (`0x20b3a500`) output, reproduced here only as a reader aid and verified against the [codename matrix](tpu-version-codename-matrix.md). The non-mnemonic codenames (`6acc60406`) and the external names that are *not* in the binary (`Trillium`, `Ironwood`) are kept off this page deliberately — every token here is a literal in `libtpu.so`.
 
-| Init module | Addr | Factory class | TpuVersion | Enum name | Codename | Confidence |
+| Init module | Addr | Factory class | TpuVersion | Enum name | Codename (external) | Confidence |
 |---|---|---|---|---|---|---|
-| `google_init_module_tpu_hal_jxc_hardware_impl` (1st `Register`) | 0x213e9d80 | `TpuHalJxcHardwareFactory` | 0 | `kJellyfish` | Jellyfish (TPU v2) | CERTAIN |
-| `google_init_module_tpu_hal_jxc_hardware_impl` (2nd `Register`) | 0x213e9d80 | `TpuHalJxcHardwareFactory` | 1 | `kDragonfish` | Dragonfish (TPU v3) | CERTAIN |
-| `google_init_module_tpu_hal_pxc_hardware_impl` | 0x213e9ec0 | `TpuHalPxcHardwareFactory` | 2 | `kPufferfish` | Pufferfish (TPU v4) | CERTAIN |
-| `google_init_module_tpu_hal_vxc_hardware_impl` | 0x213eed20 | `TpuHalVxcHardwareFactory` | 3 | `kViperfish` | Viperfish (TPU v5e) | CERTAIN |
-| `google_init_module_tpu_hal_glc_hardware_impl` | 0x213eb9e0 | `TpuHalVxcHardwareFactory` | 4 | `kGhostlite` | Ghostlite (TPU v6 lite / Trillium) | CERTAIN |
-| `google_init_module_tpu_hal_gfc_hardware_impl` | 0x213e9f60 | `TpuHalVxcHardwareFactory` | 5 | `k6acc60406` | 6acc60406 (TPU7x next-gen) | CERTAIN |
+| `google_init_module_tpu_hal_jxc_hardware_impl` (1st `Register`) | 0x213e9d80 | `TpuHalJxcHardwareFactory` | 0 | `kJellyfish` | jellyfish (`TPU v2`) | CERTAIN |
+| `google_init_module_tpu_hal_jxc_hardware_impl` (2nd `Register`) | 0x213e9d80 | `TpuHalJxcHardwareFactory` | 1 | `kDragonfish` | dragonfish (`TPU v3`) | CERTAIN |
+| `google_init_module_tpu_hal_pxc_hardware_impl` | 0x213e9ec0 | `TpuHalPxcHardwareFactory` | 2 | `kPufferfish` | pufferfish (`TPU v4`) | CERTAIN |
+| `google_init_module_tpu_hal_vxc_hardware_impl` | 0x213eed20 | `TpuHalVxcHardwareFactory` | 3 | `kViperfish` | viperfish (`TPU v5`) | CERTAIN |
+| `google_init_module_tpu_hal_glc_hardware_impl` | 0x213eb9e0 | `TpuHalVxcHardwareFactory` | 4 | `kGhostlite` | ghostlite (`TPU v6 lite`) | CERTAIN |
+| `google_init_module_tpu_hal_gfc_hardware_impl` | 0x213e9f60 | `TpuHalVxcHardwareFactory` | 5 | `k6acc60406` | 6acc60406 (`TPU7x`) | CERTAIN |
 
 Every row was read directly from the decompiled init module: the immediate `Register(0, N, ...)` operand and the `tpu::TpuVersion::k*` token inside the `make_unique<...>` `CHECK` string.
+
+> **QUIRK —** the PXC `make_unique` is the lone version-less constructor. The JXC, VXC, GLC, and GFC source strings spell `make_unique<...HardwareFactory>(tpu::TpuVersion::k<Codename>)`, but PXC's is bare — `std::make_unique<tpu::TpuHalPxcHardwareFactory>()` — because Pufferfish is the only generation that factory services, so the version need not be passed to the constructor. The version dword is still stamped into the factory object at +8 (`*(int*)(obj+8) = 2`) and still supplied as the `Register` key; only the *constructor argument* is omitted. The matrix and overview both record this asymmetry; it is the one binary-visible difference in the otherwise-uniform five registrations.
 
 > **CORRECTION (HAL-A3) —** earlier mid-knowledge notes placed `TpuVersion 0` as a pre-Jellyfish "TPU v2" variant and called Jellyfish version 1. The JXC init module's own source strings refute this: the first `Register` (version 0) names `tpu::TpuVersion::kJellyfish` and the second (version 1) names `tpu::TpuVersion::kDragonfish`. The JXC family is therefore Jellyfish (0) + Dragonfish (1), with no separate pre-Jellyfish key. Likewise the v5 enum is literally `k6acc60406`, not a "Ghostfish" name — that label never appears in the binary.
 
@@ -119,15 +123,20 @@ TpuHalFactory::Get(v, opt<platform>)                    0x1fbb19c0   (registry l
    |
    v  &factory  (one of Jxc / Pxc / Vxc factory instance)
    |
-factory->Create(wq) = HardwareFactoryBase::Create       0x1e80f560
-   |- if (wq->vtable[CanCreate]) ...                     workqueue availability probe
-   |- else build NotFound "No <device> device found."
-   |- on success: this->CreateImpl(wq)                   factory vtable slot 4 (per-family)
+factory->Create(wq) via factory-vtable slot 2           0x1e80f560 = HardwareFactoryBase::Create
+   |- this->CanCreate()                                  factory-vtable slot 3 (0x1e80f520) — hardware probe
+   |    └─ ScanHardwareDevices(); ok iff scanned version == factory's registered TpuVersion (factory+8)
+   |- if !CanCreate: build NotFound "No <device> device found."
+   |- if  CanCreate: this->CreateImpl(wq)                factory-vtable slot 4 (per-family)
    v
 new TpuHal{Jxc,Pxc,Vxc}HardwareImpl                      (208 B Jxc/Pxc, 216 B Vxc)
 ```
 
-`HardwareFactoryBase::Create` (0x1e80f560) is the shared template method: it probes the work-queue for device availability through the work-queue's own vtable, and on success delegates to the leaf `CreateImpl`. On failure it constructs a `NotFound` status carrying the message `"No <device> device found."` built via `util::NotFoundErrorBuilder` from `tpu_hal_hardware_factory_base.cc`. `CanCreate` (0x1e80f520) is the inherited concrete predicate the base advertises.
+`HardwareFactoryBase::Create` (0x1e80f560) is the shared template method, reached through factory-vtable slot 2. It dispatches twice on the **factory's own** vtable — not the work-queue's: slot 3 is the `CanCreate` probe and, on success, slot 4 is the per-family `CreateImpl`.
+
+> **GOTCHA —** the decompiler types `Create`'s second register argument as `TpuHostWorkQueue*`, which makes the two indirect calls look like work-queue vtable dispatches. They are not. The caller (`TpuHal::Create`, 0x1e814180) invokes `factory_vtable[2](ret_slot, factory, wq)`; inside `Create` that `factory` pointer is what slots 3 and 4 dispatch through, with the work-queue passed on as the trailing argument. A reimplementation that routes availability through a work-queue method instead of the factory's own `CanCreate` will not match the binary.
+
+`CanCreate` (0x1e80f520) is the inherited concrete predicate the base advertises: it calls `tpu::ScanHardwareDevices`, then returns true only when the scanned hardware version equals the factory's registered `TpuVersion` (the dword at factory+8 stamped by the init module) and at least one device was found. On a failed probe `Create` constructs a `NotFound` status carrying the message `"No <device> device found."` built via `util::NotFoundErrorBuilder` from `tpu_hal_hardware_factory_base.cc`.
 
 The per-family `CreateImpl` is a small allocator stub — its layout is documented on the [TpuHal Class Hierarchy](tpuhal-class-hierarchy.md) page. The factory-vtable slot map and the impl-vtable override matrix live on the [HAL Factory Override Matrix](hal-factory-override-matrix.md) page.
 
@@ -136,7 +145,7 @@ The per-family `CreateImpl` is a small allocator stub — its layout is document
 ## Cross-References
 
 - [Part IV Overview](overview.md) — the Silicon & Codename hub; where HAL routing sits in the `TpuVersion` dispatch pipeline
-- [6-Codename Authoritative Reconciliation](tpu-version-codename-matrix.md) — the canonical `TpuVersion` → codename → marketing-name table this page's registration keys index into
+- [6-Codename Authoritative Reconciliation](tpu-version-codename-matrix.md) — the canonical `TpuVersion` → codename → external-name cross-walk this page's registration keys index into
 - [HAL Factory Override Matrix](hal-factory-override-matrix.md) — per-factory virtual-method override matrix and the dispatch mechanism
 - [TpuHal Class Hierarchy](tpuhal-class-hierarchy.md) — the `TpuHal` → `TpuHalHardwareImpl` → per-family object tree the factories construct
 - [JXC Family](jxc-family.md) — Jellyfish (v0) + Dragonfish (v1) silicon detail
