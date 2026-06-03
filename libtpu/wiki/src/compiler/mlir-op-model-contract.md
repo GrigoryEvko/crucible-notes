@@ -6,7 +6,7 @@
 
 Every MLIR dialect in `libtpu` — `tpu`, `llo`, `sparse_core`, `mosaic_sc`, `xtile`, and the 57 input/off-path dialects — registers its operations through one shared, version-pinned ABI. This page documents that ABI generically: the `OperationName::Impl` interned-op record, the `RegisteredOperationName::Model<Op>` type-erasure concept that fills it, the **23-slot vtable contract** every `Model<Op>` exposes, and how an op-dispatch call (`fold`, `verify`, `getInherentAttr`) resolves through that vtable into a concrete op's ODS-generated statics. It is the contract; the per-dialect op rosters that *instantiate* it live on their own pages — the [tpu Dialect](tpu-dialect-and-ops.md) page owns the 86 `tpu` ops, their interface fan-out, and the fold/canonicalize census, and cites this page as the owner of the 23-slot contract.
 
-The mechanism is classic C++ type erasure, recognisable to anyone who has read MLIR upstream. `OperationName` is a handle into an interned, per-op-kind `OperationName::Impl`. `Impl` is an abstract interface — a vtable of operation hooks (fold, verify, parse/print, attribute and property management) — with **two** concrete implementations in the binary: `RegisteredOperationName::Model<Op>`, a CRTP template instantiated once per *registered* op that forwards each hook to the op's compiler-generated statics, and `OperationName::UnregisteredOpModel`, the single fallback for ops parsed from text without a dialect declaration. The binary holds **6,050** distinct `Model<Op>` instantiations — exactly the total registered-op count across 62 dialect namespaces.
+The mechanism is classic C++ type erasure, recognisable to anyone who has read MLIR upstream. `OperationName` is a handle into an interned, per-op-kind `OperationName::Impl`. `Impl` is an abstract interface — a vtable of operation hooks (fold, verify, parse/print, attribute and property management) — with **two** concrete implementations in the binary: `RegisteredOperationName::Model<Op>`, a CRTP template instantiated once per *registered* op that forwards each hook to the op's compiler-generated statics, and `OperationName::UnregisteredOpModel`, the single fallback for ops parsed from text without a dialect declaration. The binary holds **6,050** distinct `Model<Op>` instantiations — exactly the total registered-op count across 61 dialect namespaces.
 
 The page proceeds: the `OperationName::Impl` record and the `Concept`/`Model<Op>` CRTP pair; the 23-slot vtable walked symbol-by-symbol; how a concrete op binds to its Model (the `addOperations` → `insert` registration path and the three-level delegation from Model thunk to ODS static); how an interface call resolves — including the **second** type-erasure layer (`<Iface>InterfaceTraits::Model<Op>`) that the 23-slot vtable only *gates* into; and the caller-side dispatch site. Throughout, the reference op is `xla::PureCallOp`, reproduced on `tpu::IotaOp`, `llo::ConstantOp`, and `mosaic_sc::RelayoutOp` — three dialects, one ABI.
 
@@ -22,11 +22,11 @@ For reimplementation, the contract is:
 | **Interned-op record** | `mlir::OperationName::Impl` — abstract op-hook interface base |
 | **Registered concrete impl** | `mlir::RegisteredOperationName::Model<Op>` (CRTP, one per registered op) |
 | **Unregistered fallback impl** | `mlir::OperationName::UnregisteredOpModel` (single, text-parsed ops) |
-| **Model vtable count (all dialects)** | **6,050** across 62 namespaces (= total registered-op count) |
+| **Model vtable count (all dialects)** | **6,050** across 61 namespaces (= total registered-op count) |
 | **Vtable slots per Model** | **23** = slot 0 shared base dtor + slot 1 per-op dtor + slots 2–22 dispatch |
 | **Shared slot-0 dtor** | `mlir::OperationName::Impl::~Impl` @ `0xfea8820` (D2; identical addend ∀ Models) |
 | **Registration sink** | `RegisteredOperationName::insert(unique_ptr<OperationName::Impl>, ArrayRef<StringRef>)` @ `0x1d8c57a0` |
-| **Per-dialect registrars** | `mlir::Dialect::addOperations<Op…>` — **224** instantiations binary-wide |
+| **Per-dialect registrars** | `mlir::Dialect::addOperations<Op…>` — **205** instantiations binary-wide |
 | **Reference Model walk** | `Model<xla::PureCallOp>` slots @ `0x150d56c0…0x150d5c20` |
 | **Caller-side dispatch** | `mlir::Operation::fold` @ `0x1d8cd480` → `call *0x10(vptr)` = slot 2 |
 | **Second interface layer** | `mlir::detail::<Iface>InterfaceTraits::Model<Op>` (`Concept`-based) |
@@ -146,7 +146,7 @@ mlir::RegisteredOperationName::insert(
     llvm::ArrayRef<llvm::StringRef>)                  @ 0x1d8c57a0
 ```
 
-The `Model<Op>` *is* the `OperationName::Impl` — registration is "intern this Impl under the op's name(s)." Binary-wide there are **224** `addOperations` instantiations — one per registered dialect (some split into batches). A reimplementer's dialect-init path is: build a `Model<Op>` per op, `insert` each under its mnemonic; the `Impl` ownership transfers via `unique_ptr` into the context's interning map.
+The `Model<Op>` *is* the `OperationName::Impl` — registration is "intern this Impl under the op's name(s)." Binary-wide there are **205** `addOperations` instantiations — one per registered dialect (some split into batches). A reimplementer's dialect-init path is: build a `Model<Op>` per op, `insert` each under its mnemonic; the `Impl` ownership transfers via `unique_ptr` into the context's interning map.
 
 ### Level 2 — per-slot delegation to ODS statics
 
@@ -241,7 +241,7 @@ The `+0x10` offset from the address point is exactly slot index 2 (`0x10 / 8`), 
 
 ## The Contract Across Dialects
 
-The 23-slot contract is dialect-agnostic: the same vtable shape backs every registered op in the binary. The `Model<Op>` instantiation count therefore *equals* the registered-op count, and summing across the 62 dialect namespaces gives **6,050**. The TPU-relevant dialects and where their rosters are owned:
+The 23-slot contract is dialect-agnostic: the same vtable shape backs every registered op in the binary. The `Model<Op>` instantiation count therefore *equals* the registered-op count, and summing across the 61 dialect namespaces gives **6,050**. The TPU-relevant dialects and where their rosters are owned:
 
 ```text
 dialect             Models   contract owner / roster page
@@ -251,7 +251,7 @@ llo                   325    LLO — TensorCore low-level machine ops
 tpu                    86    tpu Dialect — TensorCore high-level (Mosaic) target
 xtile                   6    XLA CPU/GPU tile IR (off the TPU device path)
 mosaic_sc               1    SparseCore Mosaic — RelayoutOp only
-(+ 57 more: TF 834, spirv 376, ROCDL 350, … — input/off-path dialects)
+(+ 56 more: TF 834, spirv 376, ROCDL 350, … — input/off-path dialects)
 ```
 
 This page owns the *contract*; the dialect pages own the *instantiations* — the op rosters, the per-op interface fan-out, the fold/canonicalize census, and which ops carry non-trivial `Properties`. The [tpu Dialect](tpu-dialect-and-ops.md) page is the worked example: it walks `Model<mlir::tpu::IotaOp>` against this contract, lists the 86 `tpu` ops grouped by interface signature, and ties the 9 property-carrying ops to slots 14–22. Each of `Model<llo::ConstantOp>` (@ slots near `0x13e71420`), `Model<mosaic_sc::RelayoutOp>` (@ `0x132faba0…`), and the 1356 `sparse_core::tpu_*` Models was confirmed to carry the identical 23-slot layout.
@@ -269,7 +269,7 @@ This page owns the *contract*; the dialect pages own the *instantiations* — th
 | `Model<Op>` is a 23-slot vtable; 6,050 instances binary-wide | count of distinct `Model<…>::~Model` (D0) symbols = 6,050; reference walk on `Model<xla::PureCallOp>` slots `0x150d56c0…0x150d5c20` | CONFIRMED |
 | All 21 dispatch-slot symbols present per op, same order across dialects | `Model<{PureCallOp, tpu::IotaOp, llo::ConstantOp, mosaic_sc::RelayoutOp}>::<method>` resolve identically | CONFIRMED |
 | Slot 0 is one shared base dtor across all Models | `OperationName::Impl::~Impl` (D2) = addend `0xfea8820`; 30-Model stratified sample shares it | CONFIRMED |
-| Registration sink is `RegisteredOperationName::insert` | demangled `insert(unique_ptr<OperationName::Impl,…>, ArrayRef<StringRef>)` @ `0x1d8c57a0`; 224 `addOperations` instantiations | CONFIRMED |
+| Registration sink is `RegisteredOperationName::insert` | demangled `insert(unique_ptr<OperationName::Impl,…>, ArrayRef<StringRef>)` @ `0x1d8c57a0`; 205 `addOperations` instantiations | CONFIRMED |
 | Inherent-attr slots tail-call ODS statics via inline-prop unpack | `Model<IotaOp>::getInherentAttr` body computes `op + ((flags>>19)&0x10) + 64` then calls `IotaOp::getInherentAttr(...)` @ `0x14b220e0` | CONFIRMED |
 | Indirect hooks (2,3,4,7,8) wrapped in `UniqueFunction` callback-holders carrying the `Op<…>` trait list | `Model<IotaOp>::hasTrait` holder names `Op<tpu::IotaOp, …, MemoryEffectOpInterface::Trait>::getHasTraitFn()::lambda` | CONFIRMED |
 | `getOpPropertyByteSize` is an inlined `sizeof(Properties)` | `Model<IotaOp>::getOpPropertyByteSize` @ `0x14ac19c0` decompiles to `return 8;`; zero-prop ops return 0 | CONFIRMED |
