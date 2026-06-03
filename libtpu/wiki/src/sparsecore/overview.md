@@ -83,7 +83,7 @@ The discriminator is the codec class family. SparseCore codecs are scoped under 
 | TPU v6 lite | Ghostlite | `gxc.glc` | **Y** | **Y** | **Y** | – | Full SCS+TAC+TEC; widened vector set |
 | TPU7x | 6acc60406 | `gxc.gfc` | **Y** | **–** | **Y** | – | **TAC removed**; TEC widened (FP8/FP4 pack/unpack) |
 
-> **NOTE — codename-to-marketing-name mapping.** SparseCore appears in the binary under the silicon codenames Viperfish, Ghostlite, and `6acc60406` — never under any marketing string. The marketing-name column above (`v5e`/`v5p`/`v6e`; the v6e marketing name *Trillium* maps to codename `6acc60406`) follows the convention used by the sibling [ISA Overview](../isa/overview.md); the binary itself keys everything on the codename family namespace and the `TpuVersion` ordinal carried inside the SC codec templates, not on the marketing name. Treat the codename + family namespace as the authoritative discriminator.
+> **NOTE — codename-to-marketing-name mapping.** SparseCore appears in the binary under the silicon codenames Viperfish, Ghostlite, and `6acc60406` — never under any marketing string. The marketing-name column above follows the convention used by the sibling [ISA Overview](../isa/overview.md); the binary itself keys everything on the codename family namespace and the `TpuVersion` ordinal carried inside the SC codec templates, not on the marketing name. (For the record, Google's *Trillium* marketing name is TPU v6e, i.e. codename Ghostlite — **not** `6acc60406`, which is TPU7x.) Treat the codename + family namespace as the authoritative discriminator.
 
 ### Decompile cross-check — engine roster and TAC absence
 
