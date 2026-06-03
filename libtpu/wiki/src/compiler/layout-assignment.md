@@ -20,15 +20,15 @@ For reimplementation, the contract is:
 | | |
 |---|---|
 | **Pass class** | `xla::jellyfish::TpuLayoutAssignment : xla::LayoutAssignment : HloPassInterface` |
-| **Driver** | `TpuLayoutAssignment::RunImpl` @ `0x110ace00` (~12 KB) |
-| **Seed constraints** | `TpuLayoutAssignment::AddBackendConstraints` @ `0x110b19a0` (~19 KB, largest method) |
+| **Driver** | `TpuLayoutAssignment::RunImpl` @ `0x110ace00` (0x37c4 ≈ 14 KB) |
+| **Seed constraints** | `TpuLayoutAssignment::AddBackendConstraints` @ `0x110b19a0` (0x546d ≈ 21 KB; `ModuleLayoutIsValid` @ 0x585a ≈ 22 KB is marginally larger) |
 | **Per-tensor chooser** | `(anon)::FindMemoryMinimizingLayout` @ `0x1109dfe0` |
 | **Compact-layout chooser** | `Target::ChooseCompactLayoutForShape` @ `0x1d61bd00` |
 | **OSS base RunImpl / AssignLayouts** | `0x169bf440` / `0x169bb0e0` |
 | **Pipeline slot** | Phase 4 tail (`HloOptimizeThroughLayoutAssignment`), after SPMD, before fusion |
 | **IR level** | XLA HLO (`HloModule` / `HloInstruction`), pre-MLIR |
 | **Source file** | `platforms/xla/service/jellyfish/tpu_layout_assignment.cc` (rodata) |
-| **MXU tile** | `(SublaneCount, LaneCount)` = `(8, 128)` this build (Trillium/v5+); `(16, 128)` on v4 |
+| **MXU tile** | `(SublaneCount, LaneCount)` = `(8, 128)` this build (v5+/ghostlite v6); `(16, 128)` on pufferfish v4 |
 | **Confidence** | CONFIRMED (byte-anchored) unless a row or callout says otherwise |
 
 ---
@@ -138,7 +138,7 @@ When constraint propagation never reaches a buffer — typically a floating-poin
 ```c
 function FindMemoryMinimizingLayout(target, shape /*in/out*/, out_bytes, cap):  // 0x1109dfe0
     // ---- Guard 1: element-type must be in the searchable set ----
-    // mask = 0x2FFF91FFE ; only proceed if primitive-type bit is set.   @0x1109e00a
+    // mask = 0x2FFF91FFE ; only proceed if primitive-type bit is set.   movabs @0x1109e014
     et = shape.element_type()
     if et > 0x21 or not bittest64(0x2FFF91FFE, et):
         return                                  // type not layout-searchable; keep incoming
@@ -163,13 +163,13 @@ function FindMemoryMinimizingLayout(target, shape /*in/out*/, out_bytes, cap):  
         cand_bytes = target->ShapeSizeCompact(shape)    // @0x1109e504
         if cap.has_value() and cand_bytes > cap: continue
 
-        // KEY 1 (primary): strictly fewer bytes wins.       @0x1109e75e (cmp ; jl accept)
+        // KEY 1 (primary): strictly fewer bytes wins.       jl @0x1109e77c (accept)
         if cand_bytes < best_bytes:
             best = perm; best_bytes = cand_bytes; continue
 
         // KEY 2 (tie-break, equal bytes): lower fill-waste wins.
         //   cost = (per-dim utilization fractions, built via vcvtsi2sd/vdivsd/vmulsd)
-        //   @0x1109e262 and @0x1109e73a, compared @0x1109e784 (vucomisd ; jbe reject)
+        //   @0x1109e262 and @0x1109e73a, compared @0x1109e78c (vucomisd ; jbe @0x1109e790 reject)
         if cand_bytes == best_bytes and cand_cost < best_cost:
             best = perm; best_cost = cand_cost
 
@@ -232,7 +232,9 @@ function AddBackendConstraints(constraints):              // 0x110b19a0
 
     // Collective ops -> packed-lane layout, replicas must agree.
     for inst where CollectiveOpsNeedPackedLayout(inst):                    // 0x1109ef40
-        // tests collective-permute(34), ragged-all-to-all(86), reduce-scatter(93)
+        // switch on opcode: all-gather(6), all-gather-start(8), all-reduce(9),
+        //   all-reduce-start(11), all-to-all(12), collective-broadcast(33),
+        //   collective-permute(34), ragged-all-to-all(86), reduce-scatter(93)
         SetInstructionLayout(inst, compact, pin=1, allow=1, default=1)
 
     // LOOP 4 — the bulk: per-op layout choosers.
@@ -249,7 +251,7 @@ function AddBackendConstraints(constraints):              // 0x110b19a0
           case ragged-dot(87):
             AssignRaggedDotLayout(inst, this, target)                                     // 0x1109a060
           case reduce-window(94):
-            // max window dim over operand; if 2nd-minor extent >= SublaneCount(16 cmp)
+            // max window dim over operand; if 2nd-minor extent >= SublaneCount() (runtime call)
             // allocate new optimal layout; window bound/stride must be 1 in 2 minor dims
           case concatenate(39):
             CreateShapeWithOptimalLayoutForConcat(target, inst); pin concat layout        // 0x110b1320
@@ -273,7 +275,7 @@ The handlers above enforce a small set of hard rules. These are what a reimpleme
 |---|---|---|---|
 | MXU feed | dot(52), convolution(43) | Contracting (input-feature) dim reaches the MXU as the inner reduction; output-feature/batch tiled to the lane/sublane MXU tile via `TwoMinorSize` (`0x110bd3a0`) | `AssignConvolutionLayout` (`0x11096160`) |
 | HBM transfer | recv(89), send(110), rng-bit-generator(100) | Compact tiled layout with tiles cleared (linear at the transfer boundary) | LOOP 1 inline |
-| Collective | collective-permute(34), ragged-all-to-all(86), reduce-scatter(93) | Packed-lane layout; all replicas agree | `CollectiveOpsNeedPackedLayout` (`0x1109ef40`) |
+| Collective | all-gather(6/8), all-reduce(9/11), all-to-all(12), collective-broadcast(33), collective-permute(34), ragged-all-to-all(86), reduce-scatter(93) | Packed-lane layout; all replicas agree | `CollectiveOpsNeedPackedLayout` (`0x1109ef40`) |
 | Gather/Scatter | gather(62), scatter(107) | Indices operand pinned at `index_vector_dim` (packed); scatter updates pinned via `GetScatterUpdatesLayout` | `Add…ForScatterGather` (`0x110b7080`) |
 | Window | reduce-window(94), select-and-scatter(109) | Window bound & stride must be 1 in the two minor-most dims; pass tries to make the window dim outer | `AssignSelectAndScatterLayout` (`0x1109b400`) + inline |
 | Concat | concatenate(39) | Single optimal layout chosen across all operands | `CreateShapeWithOptimalLayoutForConcat` (`0x110b1320`) |
@@ -294,11 +296,11 @@ The handlers above enforce a small set of hard rules. These are what a reimpleme
 | `TpuLayoutAssignment::AssignRaggedDotLayout` | `0x1109a060` | RaggedDot (variable-batch matmul) layout | HIGH |
 | `TpuLayoutAssignment::GatherLayoutIsValid` | `0x110a2d80` | Gather validator | HIGH |
 | `TpuLayoutAssignment::ScatterLayoutIsValid` | `0x110a12a0` | Scatter validator | HIGH |
-| `TpuLayoutAssignment::CollectiveOpsNeedPackedLayout` | `0x1109ef40` | Collective packed-lane test (34/86/93) | CONFIRMED |
+| `TpuLayoutAssignment::CollectiveOpsNeedPackedLayout` | `0x1109ef40` | Collective packed-lane test (opcodes 6/8/9/11/12/33/34/86/93) | CONFIRMED |
 | `TpuLayoutAssignment::GetLayoutConfig` | `0x110a5940` | Load autofdo proposed layouts into decision caches | HIGH |
 | `(anon)::AddIndicesLayoutConstraintForScatterGather` | `0x110b7080` | Pin indices operand layout | HIGH |
 | `(anon)::CreateShapeWithOptimalLayoutForConcat` | `0x110b1320` | Concat optimal layout | HIGH |
-| `convolution_util::TwoMinorSize` | `0x110bd3a0` | Two-minor MXU tile sizing (×10 in conv) | HIGH |
+| `(anon)::TwoMinorSize` | `0x110bd3a0` | Two-minor MXU tile sizing (8 call sites in conv) | CONFIRMED |
 
 ---
 
@@ -337,7 +339,7 @@ function InstructionCanChangeLayoutDeepsea(inst):                       // 0x110
       case fusion(61):       can-change iff fusion_kind == kCustom (else cmps 40/120/49)
       case custom-call(49):  look up CompilationProperties in the global custom-call
                              registry (0x10a87cc0); use its instruction_can_change_layout
-      case batch-norm 21/22/23: FATAL (must have been expanded in phase 1)
+      case batch-norm-grad/inf/training 21/22/23: FATAL "!IsInvalidInstructionDuringLayoutAssignment" (src:3811)
       default:               return OSS::InstructionCanChangeLayout(inst)     // 0x169c19c0
 ```
 
@@ -381,11 +383,11 @@ The per-op dispatches above are byte tests against the upstream `HloOpcode` enum
 
 Every assigned `xla::Layout` carries a physical HBM tile whose dims are `(SublaneCount, LaneCount)`. The values are read from the runtime chip descriptor at `target->[0x3b8]`, not hard-coded:
 
-- `Target::LaneCount()` (`0x1d60f400`) = `target->[0x3b8]->[0x198]` — `128` across all generations.
-- `Target::SublaneCount()` (`0x1d60f300`) = chip-descriptor sublane count — `8` on this Trillium/v5+ build, `16` on jellyfish v4.
-- `Target::ChunksPerTile()` (`0x1d60f2c0`) = `[0x198] / [0x1a0]` (lane_count / chunk-divisor).
+- `Target::LaneCount()` (`0x1d60f400`) = `target->[+0x3b8]->[+0x198]` — `128` across all generations.
+- `Target::SublaneCount()` (`0x1d60f300`) = `target->[+0x3b8]->[+0x1a0]` — `8` on this v5+/v6 build, `16` on jellyfish v4.
+- `Target::ChunksPerTile()` (`0x1d60f2c0`) = `[+0x198] / [+0x1a0]` (lane_count / sublane_count, off the same descriptor).
 
-So the default tile is `(8, 128)` for this build and `(16, 128)` for v4. The tile is stamped onto every leaf subshape post-layout by the single canonical fixup helper `(anon)::UpdateLayout(target, Layout, Shape&)` (`0x110f66a0`), which runs `HardwareLayout::PopulateDefaultLayout` (`0x1d6da120`) to fill the tile and the `memory_space`. All six pass-side `UpdateLayout(Shape*)` overrides (TpuSpmdPartitioner, TpuBFloat16Propagation/Normalization, TpuConditionalSimplifier, TpuReduceWindowRewriter, TpuAlgebraicSimplifier) funnel through this one helper so layout metadata stays consistent after any later pass mutates a shape.
+So the default tile is `(8, 128)` for this build and `(16, 128)` for v4. The tile and `memory_space` are stamped onto leaf subshapes by `HardwareLayout::PopulateDefaultLayout` (`0x1d6da120`) / `HardwareLayout::PopulateShape` (`0x1d6da360`). A separate per-shape fixup, `(anon)::UpdateLayout(target, Layout, Shape&)` (`0x110f66a0`), copies a chosen `Layout` onto a shape and then delegates to `Target::UpdateLayout` (`0x1d618aa0`), which runs `TransferSizeUtil::UpdateLayout` (`0x1d6b05a0`) to recompute the tile/packing after a dtype change. Several `jellyfish` passes expose their own `UpdateLayout(Shape*)` shim (`TpuSpmdPartitioner` `0x127a4100`, `TpuBFloat16Propagation` `0x110128e0`, `TpuBFloat16Normalization` `0x11012980`, `TpuReduceWindowRewriter` `0x109589c0`, others) so that layout metadata is refreshed after a pass mutates a shape; these are independent shims that each call into the `Target`/`TransferSizeUtil` layout path rather than one shared helper.
 
 ### Where "depth" enters
 
@@ -398,9 +400,10 @@ The cost in `FindMemoryMinimizingLayout` is per-tensor and tile-aware, not graph
 | Function | Address | Role | Confidence |
 |---|---|---|---|
 | `Target::LaneCount` / `SublaneCount` / `ChunksPerTile` | `0x1d60f400` / `0x1d60f300` / `0x1d60f2c0` | Tile dims from chip descriptor | CONFIRMED |
-| `Target::Compact2ndMinorRatio` | `0x1d61a4e0` | 2nd-minor packing ratio (scatter validity) | HIGH |
-| `(anon)::UpdateLayout(target, Layout, Shape&)` | `0x110f66a0` | Canonical post-pass tile/memory-space fixup | HIGH |
-| `HardwareLayout::PopulateDefaultLayout` | `0x1d6da120` | Stamp tile + memory_space on leaf subshapes | HIGH |
+| `Target::Compact2ndMinorRatio` | `0x1d61a4e0` | 2nd-minor packing ratio (called by `ScatterLayoutIsValid`) | CONFIRMED |
+| `(anon)::UpdateLayout(target, Layout, Shape&)` | `0x110f66a0` | Per-shape fixup: set Layout, then `Target::UpdateLayout` | CONFIRMED |
+| `Target::UpdateLayout` | `0x1d618aa0` | Recompute tile/packing via `TransferSizeUtil::UpdateLayout` | CONFIRMED |
+| `HardwareLayout::PopulateDefaultLayout` | `0x1d6da120` | Stamp tile + memory_space on leaf subshapes | CONFIRMED |
 | `HardwareLayout::PopulateShape` | `0x1d6da360` | Tile-kind selection (Default/X64/X128) | MEDIUM |
 
 ---
@@ -417,7 +420,7 @@ The `memory_space` integer routes physical placement. `MemorySpaceColorMap::Upda
 
 Fusion (Phase 5) runs *after* layout assignment because fusion legality depends on physical tile layouts — see [fusion-patterns.md](fusion-patterns.md). The scheduler runs after MSA, in the [scheduling pipeline](../sched/overview.md), and prices each op in cycles against the assigned memory spaces; a layout that forces an HBM round-trip is more expensive than one that keeps a buffer in VMEM, which is precisely why minimising bytes (and thus tile padding / HBM footprint) at this stage matters to the eventual schedule.
 
-> **NOTE —** the SparseCore has its own downstream layout pass, `xla::tpu::sparse_core::RunLayoutAssignment` (`0x12e02140`), that runs in the post-layout pipeline over instructions whose output `memory_space == kSparseCoreMem`. The TensorCore-side `TpuLayoutAssignment` documented here is what seeds those `memory_space` tags (LOOP 1 / the copy→SparseCore path), so the two passes are coupled through the layout's memory space.
+> **NOTE —** the SparseCore has its own downstream layout pass, `xla::tpu::sparse_core::RunLayoutAssignment` (`0x12e02140`, src `sparse_core_layout_assignment.cc`), that runs in the post-layout pipeline over the SparseCore custom-call instructions (driven by `sparse_core_compiler_util`, stamping per-leaf `HardwareLayout::TileKind`). The TensorCore-side `TpuLayoutAssignment` documented here is what seeds the SparseCore-side `memory_space` tags (LOOP 1 / the copy→SparseCore path via `HasSparseCoreLayout`), so the two passes are coupled through the layout's memory space. (The named SparseCore memory spaces in this build are `kSparseCorePrivateStackHbm`, `kSparseCoreSequencerSmem`, `kSparseCoreSequencerSflag` — there is no flat `kSparseCoreMem` enumerator.)
 
 ---
 
