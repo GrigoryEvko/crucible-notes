@@ -20,8 +20,8 @@ For reimplementation, the contract is:
 | **`ResultFifo` instance resolver** | `internal::FifoInstance` @ `0x14446040` — 5 banked arms + pass-through |
 | **`ResultFifo` depth** | `ResultFifoEntryCount` @ `0x1d631520` — 25 arms, `TpuVersion < 6` gate |
 | **`RegisterType` stringifiers** | `RegisterTypeToString` @ `0x1d640560`, `RegisterTypeToMnemonic` @ `0x1d640600` |
-| **`ArchRegister` instance resolver** | `internal::ArchRegisterInstance` @ `0x126b3240` — 50-arm switch |
-| **Per-opcode metadata** | `opcode_info_big` @ `0x227b5570` — `LloOpcodeBigInfo[461]`, 28-byte stride |
+| **`ArchRegister` instance resolver** | `internal::ArchRegisterInstance` @ `0x126b3240` — 12 banked arms + default pass-through |
+| **Per-opcode metadata** | `opcode_info_big` @ `0x227b5570` — `LloOpcodeBigInfo[462]`, 28-byte stride |
 | **XLU consumer** | `LloXluGraphOptimizer::ComputeXluOperations` @ `0x126d9780` |
 
 ---
@@ -55,7 +55,7 @@ The string immediates are byte-confirmed: case 1 stores the DWORD `"preg"` then 
 
 ## ArchRegister and its Physical Numbering
 
-`ArchRegister` is a 50-member enum (ordinals 1..0x32) that is **not** a name set. It is a physical numbering: `internal::ArchRegisterInstance(ArchRegister, optional<int> instance)` @ `0x126b3240` maps an `(enum, instance-index)` pair to a flat physical arch-register slot. The function is a 50-arm `switch` with a bound `(arch_reg - 1) <= 0x31`; the default arm returns the ordinal unchanged.
+`ArchRegister` is a 50-member enum (ordinals 1..0x32) that is **not** a name set. It is a physical numbering: `internal::ArchRegisterInstance(ArchRegister, optional<int> instance)` @ `0x126b3240` maps an `(enum, instance-index)` pair to a flat physical arch-register slot. The function is a `switch` with twelve explicit arms — one per banked ordinal — over the value space `1..0x32`; every other ordinal hits the default arm and is returned unchanged.
 
 ### Banked versus single registers
 
@@ -80,9 +80,9 @@ The two count-3 banks (0x01, 0x05) assert `*unit_id < 3`; the ten count-4 banks 
 
 | | | Confidence |
 |---|---|---|
-| 50-member enum, bound `(reg-1) <= 0x31` | Switch bound check | CERTAIN |
-| 12 banked ordinals, counts 3/3 then 4×10 | Per-arm `*unit_id < N` + `+base` | CERTAIN |
-| 38 single registers | Default arm returns ordinal | CERTAIN |
+| Enum value space 1..0x32 (50 ordinals) | Banked arms span 0x01..0x32; default pass-through | CERTAIN |
+| 12 banked ordinals, counts 3/3 then 4×10 | Per-arm `*unit_id < N` + `return ordinal + instance` | CERTAIN |
+| 38 single (non-banked) ordinals | Default arm returns ordinal unchanged | CERTAIN |
 | Per-ordinal symbolic name (which is a loop counter vs sync-flag bank, etc.) | No static `ArchRegister->ToString` exists | LOW |
 
 > **GOTCHA —** there is no static `ArchRegister`-to-name table. The printable name of any arch register is produced one level up by `RegisterNumbering::ToArchRegString` @ `0x1275e2a0`, which prints `"<RegisterTypeToMnemonic(type)><regno>"` (e.g. `v3`, `s12`, `vm5`, `p2`) *after* resolving the slot through the per-`Target` numbering table built by `Target::InitRegisterNumbering`. So "ArchRegister 23" does not have a fixed name — it prints as `vN` / `sN` / etc. only once the target's numbering is bound. See [ArchRegno Numbering](archregno-numbering.md).
@@ -160,7 +160,7 @@ function ResultFifoEntryCount(fifo, version):        // sub_1d631520
 
 ## opcode_info_big — Where the Enums Are Consumed
 
-Both enums are referenced from the per-opcode metadata table `opcode_info_big` @ `0x227b5570` (`LloOpcodeBigInfo[461]`, 28-byte stride, indexed by `LloOpcode`). Each record carries three sentinel-terminated `int8` lists:
+Both enums are referenced from the per-opcode metadata table `opcode_info_big` @ `0x227b5570` (`LloOpcodeBigInfo[462]`, 28-byte stride, indexed by `LloOpcode`; `ComputeXluOperations` bounds the index with `opcode < 0x1CE` and traps otherwise). Each record carries three sentinel-terminated `int8` lists:
 
 ```c
 struct LloOpcodeBigInfo {              // sizeof 28 (0x1c)
