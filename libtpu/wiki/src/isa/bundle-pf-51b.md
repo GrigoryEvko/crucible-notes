@@ -22,6 +22,7 @@ This page documents the complete 51-byte slot map at absolute-bit precision, the
 | **Codec engine** | `TensorCoreCodecBase<…, Predication>::Encode` @ `0x1d224300` (12-slot dispatch) |
 | **Bit primitive** | `BitCopy(void*, int dst_bit, void const*, int src_bit, int nbits)` @ `0x1fa0a900` — `dst_bit` == absolute bundle bit |
 | **Wire width** | **51 bytes / 408 bits** (`EncoderPfTensorCore::BundleSizeBytes` @ `0x1d227740` returns `0x33`) |
+| **Bit numbering** | **LSB-first** — bit 0 is the LSB of byte 0; `BitCopy`'s `dst_bit` is an LSB-first absolute index (matches [Bundle Model](bundle-model-overview.md)) |
 | **Buffer model** | `operator new(51)` + `memset(buf,0,51)`; **output byte N == buffer byte N** (no header strip) |
 | **Slot has-mask** | 12-bit word at `TensorCoreBundle` proto `+0x10`; one bit per slot |
 | **Dispatchable slots** | 12 (scalar ×2, vector-ALU ×2, vstore, vload, **cmem_load**, vextended/MXU ×2, vresult ×2, misc) |
@@ -54,7 +55,7 @@ There is no `+0x0C` advance and no overlapping `vmovups` copy-out — the buffer
 BitCopy(/*dst=*/buf, /*dst_bit=*/ABS_BIT, /*src=*/&proto_field, /*src_bit=*/0, /*nbits=*/WIDTH);
 ```
 
-`BitCopy` (`0x1fa0a900`, mangled `_Z7BitCopyPviPKvii`) takes the destination buffer in `rdi`, the **absolute destination bit in `esi`**, the source field pointer in `rdx`, the source start bit in `ecx` (always 0 for a fresh field), and the width in `r8d`. There is nothing to invert.
+`BitCopy` (`0x1fa0a900`, mangled `_Z7BitCopyPviPKvii`) takes the destination buffer in `rdi`, the **absolute destination bit in `esi`**, the source field pointer in `rdx`, the source start bit in `ecx` (always 0 for a fresh field), and the width in `r8d`. The bit index is **LSB-first**: bit 0 is the least-significant bit of buffer byte 0, bit 8 the LSB of byte 1, and so on — the same convention used everywhere in the encode path (see [Bundle Model §bit-numbering](bundle-model-overview.md)). There is no MSB-first ordering and nothing to invert.
 
 > **NOTE —** this is the single fact that makes the whole bundle decodable. To recover any field's position, disassemble its per-slot encoder and read the `mov esi,0xNN` (absolute bit) and `mov r8d,0xNN` (width) immediates that precede each `call 0x1fa0a900`. The slot map below is the harvest of every such pair across the twelve per-slot encoders. The encode side is authoritative; the decode-side `TensorCore{Slot}Decoder::Decode` functions read the same bits as the inverse confirmation (see [Decode-Side: JF / PF](decode-side-jf-pf.md)).
 
@@ -80,14 +81,17 @@ The compiler-side `TensorCoreBundle` proto carries a 12-bit slot has-mask in the
 
 ```c
 // TensorCoreCodecBase<...>::Encode dispatch  @ 0x1d224300 (decompiled)
-mask = *(uint16_t*)(bundle + 0x10);                 // 12-bit slot has-mask
-for each slot in dispatch order:
-    sub = (mask & slot.bit) ? bundle->[slot.proto_off]   // present submessage
-                            : slot.globals_default;       // _globals_ default (cmove)
+mask = *(uint16_t*)(proto + 0x10);                  // 12-bit slot has-mask @ proto+0x10
+for each slot in dispatch order:                    // scalar_0 (0x1) .. misc (0x800)
+    sub = (mask & slot.bit) ? *(proto + slot.proto_off)  // present submessage ptr
+                            : slot.globals_default;       // _globals_ default
+    if (sub == nullptr) sub = slot.globals_default;  // null-ptr also falls back to default
     slot.encoder->Encode(sub, buf);                  // per-slot BitCopy writes
 ```
 
-The twelve `test [r12+0x10],N` immediates appear in strict ascending order — `0x1, 0x2, 0x4, 0x8, 0x10, 0x20, 0x40, 0x80, 0x100, 0x200, 0x400, 0x800` — confirming a dense 12-bit mask with no gaps. Each slot's encoder writes into a disjoint dedicated bit region, so all twelve slots can co-exist in one bundle; operand-pool conflicts (more register/immediate operands than the 3 Y-reg / 6 imm slots can hold) are resolved earlier, at proto-build time, by the SlotMap packer (see [The Five Shared Operand Sub-Encoders](#the-five-shared-operand-sub-encoders)).
+The twelve `test [proto+0x10],N` immediates appear in strict ascending order — `0x1, 0x2, 0x4, 0x8, 0x10, 0x20, 0x40, 0x80, 0x100, 0x200, 0x400, 0x800` — confirming a dense 12-bit mask with no gaps. Each slot's encoder writes into a disjoint dedicated bit region, so all twelve slots can co-exist in one bundle; operand-pool conflicts (more register/immediate operands than the 3 Y-reg / 6 imm slots can hold) are resolved earlier, at proto-build time, by the SlotMap packer (see [The Five Shared Operand Sub-Encoders](#the-five-shared-operand-sub-encoders)).
+
+> **QUIRK — scalar_1 is encoded conditionally on scalar_0's opcode, not purely on its own has-bit.** The dispatch tests the scalar_1 has-bit (`0x2`) as expected, but the codec gates the entire scalar_1 encode behind `(scalar0.opcode_field − 17) >= 3` (the codec reads scalar_0's opcode oneof at submessage dword `+0x50` and skips scalar_1 when it falls in `{17,18,19}`). Those three scalar_0 opcodes are the wide forms that consume the scalar_1 bit window themselves; emitting a second scalar op alongside them would overwrite bits. Every other slot is gated purely on its own has-bit. A reimplementer must reproduce this scalar_0→scalar_1 interlock, not treat the two SPU slots as fully independent.
 
 | Has-bit | `proto+` | `_globals_` default @ | Slot (role) | Per-slot encoder @ | Abs bits (region) | Confidence |
 |---|---|---|---|---|---|---|
@@ -209,14 +213,14 @@ The first-class constant-memory load slot, new in Pufferfish. Its addressing ope
 
 | Field | abs bit | Width | Confidence |
 |---|---|---|---|
-| (sub-field) | 103 | 3 | CONFIRMED |
+| sublane-mask | 103 | 3 | CONFIRMED |
 | base-address | 106 | 2 | CONFIRMED |
 | offset | 108 | 2 | CONFIRMED |
 | stride | 110 | 3 | CONFIRMED |
 | has-bit | 113 | 1 | CONFIRMED |
 | predicate | 114 | 5 | CONFIRMED |
 
-The harvest reads `BitCopy(buf,0x72,…,5)` (pred @114), `BitCopy(buf,0x71,…,1)` (has @113), `BitCopy(buf,0x6e,…,3)` (stride @110), `BitCopy(buf,0x6c,…,2)` (offset @108), `BitCopy(buf,0x6a,…,2)` (base @106), `BitCopy(buf,0x67,…,3)` (@103). The index/destination registers come from the shared Y-register selectors (abs 241/246/251) and up to four 16-bit immediates (abs 256/272/288/304) from the shared pool. Full coverage of the addressing modes and the constant-memory path is on the [cmem_load Slot](slot-cmem-load-pf.md) page.
+The harvest reads `BitCopy(buf,0x72,…,5)` (pred @114), `BitCopy(buf,0x71,…,1)` (has @113), `BitCopy(buf,0x6e,…,3)` (stride @110), `BitCopy(buf,0x6c,…,2)` (offset @108), `BitCopy(buf,0x6a,…,2)` (base @106), `BitCopy(buf,0x67,…,3)` (sublane-mask @103). The field names match the [cmem_load Slot](slot-cmem-load-pf.md) page byte-for-byte. The index/destination registers come from the shared Y-register selectors (abs 241/246/251) and up to four 16-bit immediates (abs 256/272/288/304) from the shared pool. Full coverage of the addressing modes and the constant-memory path is on the [cmem_load Slot](slot-cmem-load-pf.md) page.
 
 ### vector_load (abs 119..140) — `0x1ee287e0`, vector_store (abs 142..166) — `0x1ee3b440`, misc (abs 17..40) — `0x1ed03500`
 
