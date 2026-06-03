@@ -1,6 +1,6 @@
 # The TfTpu C-API Shim
 
-> *All addresses on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel (build `libtpu_lts_20260413_b_RC00`, build-id md5 `89edbbe81c5b328a958fe628a9f2207d`, 781,691,048 bytes, ELF x86-64 DYN, not stripped; demangled C++ symbols and IDA-recovered C names quoted verbatim). `.text` VMA equals file offset. Other versions will differ.*
+> *All addresses on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel (build `libtpu_lts_20260413_b_RC00`, build-id md5 `89edbbe81c5b328a958fe628a9f2207d`, 781,691,048 bytes, ELF x86-64 DYN, not stripped; demangled C++ symbols and exported C-ABI symbol names quoted verbatim). `.text` VMA equals file offset. Other versions will differ.*
 
 ## Abstract
 
@@ -52,7 +52,7 @@ The two sides are wired together not by the dynamic linker resolving `TpuExecuto
 
 The IDA decompile makes the split visible. The **callee** half — the implementation that actually touches the TPU driver — lives in `libtpu.so` as `extern "C"` free functions whose IDA-recovered names are the roster prefixes: `TpuExecutor_Allocate @ 0xeab9120`, `TpuCompiler_New @ 0xeabc4a0`, `TpuProgram_New @ 0xe8bda60`, `TpuTransferManager_CanBufferBeAccessedNow @ 0xeaba7a0`, and ~150 more. The **caller** half — the thin C++ shim that forwards each SE virtual method into a slot of the `*ApiFn` table — is *also* present in this binary as the mangled `stream_executor::tpu::TpuExecutor::*` / `tensorflow::tpu::TpuTransferManager::*` / `xla::TpuCompiler::*` methods, because XLA is statically linked into `libtpu.so`. A reimplementer reproducing the *host* side reproduces the second half; reproducing a *plugin* reproduces the first.
 
-> **NOTE —** the C-ABI free functions do not appear in the demangled symbol roster as `TfTpu_Compiler_*`; IDA names them `TpuCompiler_*`, `TpuExecutor_*`, etc., recovered from `.rodata` reference strings and call targets. The `TfTpu_` prefix survives only on the table type names (`TfTpu_ExecutorApiFn`) and a few public init entry points (`TfTpu_Initialize`). Treat `Tpu<Class>_<Method>` as the canonical C-ABI roster name in this build.
+> **NOTE —** the C-ABI free functions are exported, version-tagged dynamic symbols named `TpuCompiler_*`, `TpuExecutor_*`, etc. (each `@@VERS_1.0`, type `T`/`DF .text`), not `TfTpu_Compiler_*` — no `TfTpu_<Class>_*` symbol exists. The `TfTpu_` prefix survives only on the table type names (`TfTpu_ExecutorApiFn`) and the three public init/server entry points (`TfTpu_Initialize`, `TfTpu_InitializeTpuModelServer`, `TfTpu_GetTpuPartitionedCallParams`). Treat `Tpu<Class>_<Method>` as the canonical C-ABI roster name in this build.
 
 ---
 
@@ -116,7 +116,7 @@ The accessor returns a *pointer* to the singleton, so callers can both read slot
 
 Every C++ object that must cross the seam has a flattened C twin. The naming is consistent: a `stream_executor::Foo` becomes `SE_Foo`, an `xla::Foo` becomes `XLA_Foo`, and the TPU-specific handles keep their `Tpu*` names. The C side treats these as opaque — it holds the pointer, passes it to the next call, and never reads a field. The marshalling between rich and flat forms is `ApiConverter`, with three verbs:
 
-- **`ToC`** — serialise a C++ object into its C struct (out-param or by-value handle). 18 overloads observed.
+- **`ToC`** — serialise a C++ object into its C struct (out-param or by-value handle). 9 overloads observed (plus two lambda thunks inside `ToC(DeviceAddressAllocator*)`).
 - **`FromC`** — reconstruct the C++ object from its C struct. 6 overloads observed.
 - **`Destroy`** — free the heap-owned interior of a C struct (`XLA_Shape`, `XLA_Literal`, `XLA_ShapedBuffer`). 3 overloads observed.
 
@@ -132,8 +132,8 @@ The concrete C++↔C pairs recovered from the symbol table:
 | `xla::HloModuleConfig` | `XLA_HloModuleConfig` | `ToC(const HloModuleConfig&)`, `FromC(const XLA_HloModuleConfig&)` | CERTAIN |
 | `xla::ShapeIndex` | (C index) | `ToC(const ShapeIndex&)` | HIGH |
 | `stream_executor::DeviceAddressBase` | `SE_DeviceAddressBase` | `ToC(const DeviceAddressBase&)`, `FromC(const SE_DeviceAddressBase&)` | CERTAIN |
-| `stream_executor::ScopedDeviceAddress<uint8>` | `SE_DeviceAddressBase` (raw) | `ToC(ScopedDeviceAddress<uchar>*)` | HIGH |
-| `stream_executor::DeviceAddressAllocator` | `SE_DeviceAddressAllocator` | `ToC(DeviceAddressAllocator*)` | HIGH |
+| `stream_executor::ScopedDeviceAddress<uint8>` | `SE_ScopedDeviceAddress` | `ToC(ScopedDeviceAddress<uchar>*)` | HIGH |
+| `stream_executor::DeviceAddressAllocator` | (allocate/free callback pair) | `ToC(DeviceAddressAllocator*)` — `$_0::__invoke` emits `SE_ScopedDeviceAddress*`, `$_1::__invoke` frees `SE_DeviceAddressBase*` | HIGH |
 
 ### The ownership rule
 
