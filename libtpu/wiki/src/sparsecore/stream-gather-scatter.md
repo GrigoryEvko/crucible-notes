@@ -1,10 +1,10 @@
 # Stream Gather/Scatter
 
-> *Every address, field offset, opcode value, and enum value on this page was read from `libtpu.so` in the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`; build `libtpu_lts_20260413_b_RC00`). `.text` VA equals file offset at `0xe63c000`, `.rodata` at `0x84a0000` — both identity-mapped. Addresses are from the **gfc** (Trillium) instances unless tagged otherwise; the **glc** (Ghostlite) and **vfc** (Viperfish) siblings carry the same schema at different addresses. Other versions differ.*
+> *Every address, field offset, opcode value, and enum value on this page was read from `libtpu.so` in the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`; build `libtpu_lts_20260413_b_RC00`). `.text` VA equals file offset at `0xe63c000`, `.rodata` at `0x84a0000` — both identity-mapped. Addresses are from the **gfc** (6acc60406 / TPU7x) instances unless tagged otherwise; the **glc** (Ghostlite, v6e) and **vfc** (Viperfish, v5) siblings carry the same schema at different addresses. Other versions differ.*
 
 ## Abstract
 
-The SparseCore **Stream engine** is the indirect-DMA datapath: the hardware that turns a list of embedding ids into a stream of HBM gather (table → tile) or scatter (tile → table) transactions, optionally with an atomic read-modify-add at the destination. It is one VLIW slot — the **Stream sub-bundle** — encoded from a single proto message, `SparseCoreStream`, that appears identically in the SCS, TAC (Viperfish/Ghostlite only), and TEC bundles. The slot is what the [overview](overview.md)'s host-table → HBM → SC gather path actually executes: where the overview says "TAC/TEC stream slot issues tile-fetch DMA," this page is the bit layout of that slot, the descriptor the compiler builds for it, and the per-element address arithmetic the hardware runs.
+The SparseCore **Stream engine** is the indirect-DMA datapath: the hardware that turns a list of embedding ids into a stream of HBM gather (table → tile) or scatter (tile → table) transactions, optionally with an atomic read-modify-add at the destination. It is one VLIW slot — the **Stream sub-bundle** — encoded from a single proto message, `SparseCoreStream`, that appears identically in the SCS, TAC (vfc/glc only), and TEC bundles. The slot is what the [overview](overview.md)'s host-table → HBM → SC gather path actually executes: where the overview says "TAC/TEC stream slot issues tile-fetch DMA," this page is the bit layout of that slot, the descriptor the compiler builds for it, and the per-element address arithmetic the hardware runs.
 
 `SparseCoreStream` is a shared header plus a four-way `oneof` of *addressing forms*: `LinearStream` (contiguous), `StridedStream` (one stride dimension), `IndirectStream` (the embedding gather/scatter — an id list drives the addresses), and `IndirectVregStream` (id list streamed from a vector register instead of memory; see [IndirectVregStream](indirect-vreg-stream.md)). All four share an identical tail of stream-control fields — sync flag, tile-local stride, filter, length-type, the `StreamOpcode` accumulate mode, the `OffTileMemoryType` pool selector, and two scalar operands. Only the leading operand group differs. The `oneof` discriminator becomes a 6-bit slot opcode: `LinearStream=0x3b`, `StridedStream=0x3a`, `IndirectStream=0x39`, `IndirectVregStream=0x38`.
 
@@ -12,7 +12,7 @@ The reimplementation surface has three layers, each documented here as its own u
 
 For reimplementation, the contract is:
 
-- **One proto, three bundle slots.** `SparseCoreStream` is encoded by `SparseCoreStreamEncoder::Encode` (SCS bundle, 32 B), `SparseCoreTecStreamEncoder::Encode` (TEC bundle, 64 B), and `SparseCoreTacStreamEncoder::Encode` (TAC bundle, 64 B — Viperfish/Ghostlite only). All three take `SparseCoreStream const&`. Field *semantics* are identical across engines; only the slot's bit position inside the bundle differs.
+- **One proto, three bundle slots.** `SparseCoreStream` is encoded by `SparseCoreStreamEncoder::Encode` (SCS bundle, 32 B), `SparseCoreTecStreamEncoder::Encode` (TEC bundle, 64 B), and `SparseCoreTacStreamEncoder::Encode` (TAC bundle, 64 B — vfc/glc only). All three take `SparseCoreStream const&`. Field *semantics* are identical across engines; only the slot's bit position inside the bundle differs.
 - **The `oneof` is the opcode.** Selecting form `#8…#11` selects 6-bit opcode `0x3b/0x3a/0x39/0x38`. There is no separate opcode field beyond the form discriminator; the encoder writes the opcode at bundle bit 181.
 - **`StreamOpcode` is the accumulate mode, orthogonal to the form.** GATHER/SCATTER move rows; the `*_INTEGER_ADD`/`*_FLOAT_ADD` variants do an atomic read-modify-add at the destination. `SCATTER_FLOAT_ADD` (6) into HBM is the embedding-gradient accumulation primitive the TensorCore MXU cannot do.
 - **The descriptor is the MLIR op's operand groups.** The id list is the `OffsetIndices` group; the contiguous `Linear`/`Strided` forms drop it. The per-element row-stride multiply is intrinsic to the hardware Stream engine — there is no per-element `imul` in the lowering; the compiler only assigns the operand groups and the `indirect_list_stride` attribute.
@@ -22,13 +22,13 @@ For reimplementation, the contract is:
 | **Proto message** | `SparseCoreStream` — shared header (`#1…#7`) + 4-form `oneof` (`#8…#11`) |
 | **SCS encoder** | `SparseCoreStreamEncoder::Encode` @ `0x1eb9b4c0` (gfc; 32 B bundle) |
 | **TEC encoder** | `SparseCoreTecStreamEncoder::Encode` @ `0x1ebe33e0` (gfc; 64 B bundle) |
-| **TAC encoder** | `SparseCoreTacStreamEncoder::Encode` @ `0x1e8ee040` (vfc only; absent in gfc) |
+| **TAC encoder** | `SparseCoreTacStreamEncoder::Encode` @ `0x1e8ee040` (vfc; also glc @ `0x1ea338e0`; absent in gfc) |
 | **Form opcodes (6-bit @ bit 181)** | Linear `0x3b` · Strided `0x3a` · Indirect `0x39` · IndirectVreg `0x38` |
 | **Accumulate mode** | `StreamOpcode` (3-bit) — GATHER=0…SCATTER_FLOAT_ADD=6 |
 | **Off-tile pool** | `OffTileMemoryType` (3-bit) — SPMEM=0, TILE_SPMEM_N=1, HBM=2, HBM_4B=3 |
 | **Descriptor op** | `sc_tpu.indirect_stream_start` / `.indirect_stream_add_start` (`AtLeastNOperands<6>`) |
 | **Per-element address** | `addr_i = table_base + offset_list[i] * indirect_list_stride` (HW; row-stride scaling intrinsic) |
-| **Per-gen presence** | SCS+TEC Stream all 3 SC gens; TAC Stream vfc/glc only (Trillium has no TAC) |
+| **Per-gen presence** | SCS+TEC Stream all 3 SC gens; TAC Stream vfc/glc only (gfc has no TAC) |
 | **Confidence** | CONFIRMED (encode-offset / decode-shift / opcode-value double-checked vs decompile) unless a row says otherwise |
 
 ---
@@ -185,10 +185,10 @@ Common control tail (selected fields):
   indirect_filter_mode      @ bit 141, width 1
   indirect_length_type      @ bit 142, width 1
   s0_x                      @ bit 143, width 6
-  s0_y                      @ bit 149, width 6
+  s0_y                      @ bit 149, width 5   (encode narrows the 6-bit ScalarY to 5)
   indirect_offset_source    @ bit 155, width 1
   post_update_indirect_offset_cb @ bit 156, width 1
-  stream_opcode             @ bit 162, width 6   (slot opcode mirror region)
+  trace/mask region         @ bit 157, width 3   then bit 160, width 1 / 161, width 1 / 162, width 6
   tile_local_memory_type    @ bit 168, width 1
   tile_local_stream_type    @ bit 169, width 1
   s1_y                      @ bit 170, width 6
@@ -230,7 +230,7 @@ The `IndirectStream` `…Field::GetConcatenatedValue()` accessors are the author
 | `IndirectLengthType` | `+0x10` | 63 | 1 | `0x1eb9b300` | CONFIRMED |
 | `S0X` | `+0x1e` (u16) | 0 | 5 | `0x1eb9b440` | CONFIRMED |
 
-The form opcode itself is a 6-bit field at `+0x18` bit 53 (a contiguous part of the decode word). The opcode matcher `SparseCoreStreamIndirectStreamOpcode::Matches` @ `0x1eb9aaa0` reads `(*(QWORD*)(this+3) & 0x07E0000000000000) == 0x0720000000000000`, i.e. bits 53–58 == `0x39`.
+The form opcode itself is a 6-bit field at `+0x18` bit 53 (a contiguous part of the decode word). The opcode matcher `SparseCoreStreamIndirectStreamOpcode::Matches` @ `0x1eb9aaa0` reads `(*((QWORD*)this + 3) & 0x7E0000000000000) == 0x720000000000000`, i.e. bits 53–58 == `0x39`.
 
 > **GOTCHA — `indirect_list_stride` is 6 bits in the decoded struct but 4 bits in the SCS encode slot.** The decode accessor masks `& 0x3F` (6-bit) at `+0x18>>34`; the SCS `BitCopy` writes only 4 bits at bundle bit 133. The proto field is `uint32`. The narrowest physical width seen is 4 bits in the SCS bundle. A reimplementer must treat the stride as range-limited at encode time, not assume the full proto `uint32` reaches hardware. The exact physical counter width per generation was not pinned (LOW — see Limits).
 
@@ -354,13 +354,13 @@ The backward pass needs to add a gradient slice into an embedding row. Two paths
 | `Cbreg` | 23 | 4 | `0x1eccabe0` | which CBREG (→ 16 CBREGs) |
 | `Source` | 27 | 6 | `0x1eccaba0` | source VREG being scatter-added |
 
-The op exists per accumulate dtype — `Add{Bf16,F32,S16,S32}` — across the store-form family (plain, `CircularBuffer`, `CircularBufferPostUpdate`, `Indexed`, …). The `Cbreg` 4-bit width (16 CBREGs) at slot `+0x30` matches the Viperfish layout, confirming it for Trillium. See [VectorStore Slot](vectorstore-slot.md) for the full store-slot family and [VectorLoad Slot](vectorload-slot.md) for the gather-load counterpart.
+The op exists per accumulate dtype — `Add{Bf16,F32,S16,S32}` — across the store-form family (plain, `CircularBuffer`, `CircularBufferPostUpdate`, `Indexed`, …). The `Cbreg` 4-bit width (16 CBREGs) at slot `+0x30` matches the vfc (Viperfish) layout, confirming it for gfc (6acc60406). See [VectorStore Slot](vectorstore-slot.md) for the full store-slot family and [VectorLoad Slot](vectorload-slot.md) for the gather-load counterpart.
 
 ### Gradient Flow
 
 ```text
 TEC vector-loads gathered rows (TileSpmemLoadCircularBuffer[PostUpdate])
-  -> applies optimizer math (stochastic round-to-bf16 / FP8 pack on Trillium TEC)
+  -> applies optimizer math (stochastic round-to-bf16 / FP8 pack on gfc TEC)
   -> EITHER (a) TileSpmemStoreCircularBufferPostUpdateAdd{dt}   (CBREG-windowed TILE_SPMEM)
      OR     (b) Stream SCATTER_FLOAT_ADD into HBM               (StreamOpcode=6, OffTileMemoryType=HBM)
 ```
@@ -382,7 +382,7 @@ The Stream slot lives in all three engine bundles, but a given gather/scatter is
    stride, window CBREG triple) and publishes them to SMEM.
 2. ACCESS engine issues the indirect gather Stream op:
      VF/GL:    TAC bundle Stream slot  (SparseCoreTacStreamEncoder @ 0x1e8ee040 vfc)
-     Trillium: TEC bundle Stream slot  (no TAC; SparseCoreTecStreamEncoder @ 0x1ebe33e0)
+     gfc:      TEC bundle Stream slot  (no TAC; SparseCoreTecStreamEncoder @ 0x1ebe33e0)
                gated by TileWaitScsSmemOp  (TEC waits for SCS's SMEM value)
    The gather reads offset_list[i] (SREG or CBREG window),
    computes HBM[table_base + offset*stride], DMAs the row -> TILE_SPMEM,
@@ -400,7 +400,7 @@ Cross-sub-engine (xla::tpu::sparse_core::collective::OffloadFactory):
   SyncScsWithTec(builder, value, CoreKind)        @ 0x133e9260
   SyncTecWithScs(builder, v1, v2, CoreKind)       @ 0x133e8fe0
   CoreKind {kScs, kTec, kTac(VF/GL)}
-Trillium TAC-replacement:
+gfc TAC-replacement:
   TileWaitScsSmemOp / sc_tpu.tile_wait_scs_smem   (TEC waits until SCS writes a
     designated SMEM value, then proceeds with fetch+compute — collapses the
     SCS<->TAC<->TEC three-way sync to a single SCS<->TEC boundary)
@@ -412,13 +412,13 @@ Tile-task program model:
   prefetch_tile_task / tile_task_wait.
 ```
 
-> **NOTE — on Trillium the gather migrates from TAC to TEC.** With TAC removed (zero `SparseCoreTac*` functions in the gfc namespace, against 68/71 in vfc/glc), the access engine's role — issuing the indirect gather Stream op — folds into the TEC, synchronized through `TileWaitScsSmemOp` instead of the three-way SCS/TAC/TEC handshake. The Stream slot's *encoding* is unchanged; only the issuing engine and the sync topology differ. Which engine carries a given Stream op is decided in `LowerMemrefToMlo::getSequencerType`; the exact per-shape decision was not bit-traced (see [getSequencerType](getsequencertype.md)).
+> **NOTE — on gfc (6acc60406) the gather migrates from TAC to TEC.** With TAC removed (zero `SparseCoreTacStream*` functions in the gfc namespace, against 68 in vfc / 71 in glc), the access engine's role — issuing the indirect gather Stream op — folds into the TEC, synchronized through `TileWaitScsSmemOp` instead of the three-way SCS/TAC/TEC handshake. The Stream slot's *encoding* is unchanged; only the issuing engine and the sync topology differ. Which engine carries a given Stream op is decided in `LowerMemrefToMlo::getSequencerType`; the exact per-shape decision was not bit-traced (see [getSequencerType](getsequencertype.md)).
 
 ---
 
 ## Per-Generation Presence
 
-| Mechanism | VF (vfc, v5e) | GL (glc, v5p) | GF (gfc, v6e) |
+| Mechanism | VF (vfc, Viperfish v5) | GL (glc, Ghostlite v6e) | GF (gfc, 6acc60406 / TPU7x) |
 |---|:---:|:---:|:---:|
 | SCS-bundle Stream slot (`SparseCoreStream`) | yes | yes | yes |
 | TAC-bundle Stream slot (`TacStream`) | yes | yes | **— (no TAC)** |
