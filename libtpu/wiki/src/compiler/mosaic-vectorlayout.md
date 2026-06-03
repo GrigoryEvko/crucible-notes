@@ -66,7 +66,7 @@ The constructor `CHECK`-fails on six conditions, each tagged with its `layout.h`
 
 | line | condition | rationale |
 |----|----|----|
-| 205 | `llvm::has_single_bit(bitwidth_) && bitwidth_ <= 32` | bitwidth must be a power of two no wider than a register lane word |
+| 205 | `llvm::has_single_bit<unsigned>(bitwidth_) && bitwidth_ <= 32` | bitwidth must be a power of two no wider than a register lane word |
 | 206 | `tiling_[0] > 0` | sublane tile is positive |
 | 207 | `tiling_[1] > 0` | lane tile is positive |
 | 208 | `offsets_[0].value_or(0) >= 0` | sublane offset non-negative |
@@ -110,7 +110,7 @@ Confidence: Confirmed — print/parse symbols exist at the cited VAs; `printImpl
 | 2 | `SECOND_MINOR` | `-2` | second-minor (sublane) logical dim is implicit |
 | 3 | `MINOR_AND_SECOND_MINOR` | `-2,-1` | both implicit; a scalar promoted to a vreg |
 
-`implicitShape(shape)` @ `0x14a94080` (and the `insertImplicit<>` helpers @ `0x132458a0`) re-insert `popcount(implicit_dim_bits)` size-1 dims at the implicit positions, so all tile math runs on a `≥2-D` "implicit shape" regardless of the value's logical rank. Confidence: HIGH — the enum values are recovered from `printImplicitDim`'s output tokens; the `implicitShape`/`insertImplicit` mechanism is symbol-anchored but the per-helper unrolling was not individually decompiled.
+`implicitShape(shape)` @ `0x14a94080` (and the `insertImplicit<>` helpers — `insertImplicit<long>` @ `0x132958a0`, `insertImplicit<bool>` @ `0x13295a40`) re-insert `popcount(implicit_dim_bits)` size-1 dims at the implicit positions, so all tile math runs on a `≥2-D` "implicit shape" regardless of the value's logical rank. Confidence: HIGH — the enum values are recovered from `printImplicitDim`'s output tokens; the `implicitShape`/`insertImplicit` mechanism is symbol-anchored but the per-helper unrolling was not individually decompiled.
 
 ---
 
@@ -156,7 +156,7 @@ A replicated axis forces its tile-count to 1 (the `*(…)=1` branch in the decom
 
 ## 3. applyLayoutOp — the Per-Op Dispatch
 
-`mlir::tpu::applyLayoutOp(ApplyVectorLayoutContext&, Operation&)` @ `0x1325bca0` is the driver invoked once per op by `applyLayoutFunc` @ `0x1325cc80` (which requires a single-region/single-block `FuncOp` — "Expected FuncOp to have a single region/block" — and walks every op). For each op, `applyLayoutOp`:
+`mlir::tpu::applyLayoutOp(ApplyVectorLayoutContext&, Operation&)` @ `0x1325bca0` is the driver invoked once per op by `applyLayoutFunc` @ `0x1325cc80` (which requires a single-region, single-block `FuncOp` — two separate checks, byte-exact: "Expected FuncOp to have a single region" and "Expected FuncOp to have a single block" — and walks every op). For each op, `applyLayoutOp`:
 
 1. **Read the attached layouts.** `getOutLayouts(op)` then `getInLayouts(op)` read the per-op `out_layout` / `in_layout` array-of-`VectorLayoutAttr` that the inference pass attached. The decompile guards `if (v79 != 1) return 0;` — i.e. it returns early when no out-layouts are present.
 
@@ -164,7 +164,9 @@ A replicated axis forces its tile-count to 1 (the `*(…)=1` branch in the decom
 
    > `Invariant violation: Input layout does not match output layout - did you forget to run relayout-insertion?`
 
-   This is the architectural seam: inference picks one layout per value, the *separate* relayout-insertion pass bridges disagreements, so the applier never has to reconcile. The check is **skipped** for the ops that may legally change layout — `tpu.truncf`, `tpu.relayout`, `tpu.reshape`/`vector.shape_cast`, `tpu.concatenate`, `vector.extract_strided_slice`, `vector.broadcast`, `arith.trunci`, `arith.extsi`. The same set is exempt from the offset-in-first-tile guard ("Not implemented: Input offsets outside of the first tile", byte-exact in the decompile).
+   This is the architectural seam: inference picks one layout per value, the *separate* relayout-insertion pass bridges disagreements, so the applier never has to reconcile. The per-operand in==out loop is gated on the op *not* being `tpu.assume_layout` (the only op for which the consumer in-layout is permitted to disagree with the producer out-layout).
+
+   A **separate** exemption applies to the offset-in-first-tile guard ("Not implemented: Input offsets outside of the first tile", byte-exact). That guard is **skipped** for the nine ops that may legally consume an operand whose offset is not inside the first tile — `tpu.truncf`, `tpu.relayout`, `tpu.reshape`, `tpu.concatenate`, `vector.shape_cast`, `vector.extract_strided_slice`, `vector.broadcast`, `arith.trunci`, `arith.extsi` (the exact `TypeIDResolver` set in the decompile). These are two distinct exemptions in the binary, not one shared list.
 
 3. **Dispatch by op-name.** Look the op-name up in the lazily-built `rules()` StringMap (`xxh3_64bits` + `StringMapImpl::FindKey`). On hit, call the rule fn-ptr (vtable `+24`). On miss: if the op has `hasElementwiseMappableTraits` → `elementwise_op_rule` @ `0x1325c900`; otherwise emit "Not implemented: Unsupported operation: <op> in apply-vector-layout pass".
 
@@ -202,7 +204,7 @@ Built by `rules()::$_0::operator()` @ `0x1325b100` (49 base entries), then merge
 | `tpu.vector_store` | `tpu_vector_store_rule` | `0x132718e0` |
 | `tpu.matmul` | `tpu_matmul_rule` | `0x132727a0` |
 | `tpu.region` | `tpu_region_rule` | `0x13274480` |
-| `tpu.bitcast` | `tpu_bitcast_rule` | `0x13275040` |
+| `tpu.bitcast` | `tpu_bitcast_rule` | `0x132750a0` |
 | `tpu.trace` | `tpu_trace_rule` | `0x132755c0` |
 | `tpu.assume_layout` | `tpu_assume_layout_rule` | `0x13275840` |
 | `tpu.prng_random_bits` | `tpu_prng_random_bits_rule` | `0x13275ec0` |
