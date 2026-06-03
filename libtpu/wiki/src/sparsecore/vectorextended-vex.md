@@ -242,12 +242,12 @@ ConsumeOneTecVexBundleInstruction  (glc 0x13a15ba0)
     └─ scan ops  → FindAndEmitToUnusedPort<…SparsecoreVregReadPort, …VectorExtended_<Op>>
        sort ops  → EmitVectorSort<…SparsecoreVectorMask, …VregReadPort, …VectorExtended_Sort{…}>
     VresMove (opcode 0x10de) → EmitVectorResultMove   ── a VectorResult op, not VEX
-  default arm → MakeError "Unsupported VEX opcode"
+  default arm → MakeError "Unsupported Vector Extended or Vector Result opcode: $0 : $1"
 ```
 
-`EmitVectorSort` is templated over `{SparsecoreVectorMask, SparsecoreVregReadPort, SparseCoreTecVectorExtended_Sort{Integer,Float}{Ascending,Descending}}` — confirmed present in the decompile (e.g. vfc `0x139d2dc0`/`0x139d2b80`). `FindAndEmitToUnusedPort` has 169 per-op-typed instantiations across the engines. The orchestrator also hosts one [VectorResult](vector-opcode-enum.md) op (`VresMove`, opcode `0x10de`) inline; the rest of the `VectorResult` family (`EupResult`, `PopXrf*`) is dispatched from the *other* TEC orchestrator.
+`EmitVectorSort` is templated over `{SparsecoreVectorMask, SparsecoreVregReadPort, SparseCoreTecVectorExtended_Sort{Integer,Float}{Ascending,Descending}}` — confirmed present in the decompile (e.g. vfc `0x139d2dc0`/`0x139d2b80`). `FindAndEmitToUnusedPort` has 111 per-op-typed `…VregReadPort`/`…VectorExtended_<Op>` instantiations across the engines. The orchestrator also hosts one [VectorResult](vector-opcode-enum.md) op (`VresMove`, opcode `0x10de`) inline; the rest of the `VectorResult` family (`EupResult`, `PopXrf*`) is dispatched from the *other* TEC orchestrator.
 
-> **GOTCHA — the VEX `Matches` roster (52/53 ops) is larger than the set the glc jump table dispatches (36).** The proto/`Matches` op family is the full per-gen declared set (glc 52, gfc 53), but the glc VEX jump table reaches only **36** of them; the rest land on the `MakeError "Unsupported VEX opcode"` default. A reimplementer building a *decoder* needs the full `Matches` roster (any of these opcodes can appear in a bundle and must decode); building an *emitter* needs only the reachable set its lowering produces. The two counts measure different things — do not conflate them. The reachable-set census and the jump-table layout are owned by the code-gen pages; this page owns the `Matches` roster and the field decode.
+> **GOTCHA — the VEX `Matches` roster (52/53 ops) is larger than the set the glc jump table dispatches (36).** The proto/`Matches` op family is the full per-gen declared set (glc 52, gfc 53), but the glc VEX jump table reaches only **36** of them (32 scan/dedup arms via `FindAndEmitToUnusedPort` + 4 `Sort` arms via `EmitVectorSort`); the rest land on the `MakeError "Unsupported Vector Extended or Vector Result opcode"` default. A reimplementer building a *decoder* needs the full `Matches` roster (any of these opcodes can appear in a bundle and must decode); building an *emitter* needs only the reachable set its lowering produces. The two counts measure different things — do not conflate them. The reachable-set census and the jump-table layout are owned by the code-gen pages; this page owns the `Matches` roster and the field decode.
 
 ---
 
@@ -255,7 +255,7 @@ ConsumeOneTecVexBundleInstruction  (glc 0x13a15ba0)
 
 The slot exists on all three wired generations with the *same* operand frame and orchestrator structure, but the op roster and opcode-field position differ. The delta is the same dtype-merged → dtype-split ISA evolution the [VectorStore](vectorstore-slot.md#the-vfgf-generic-to-typed-evolution) and [VectorAlu](vector-opcode-enum.md) slots show.
 
-| Quantity | Viperfish (vfc, v5e) | Ghostlite (glc, v5p) | Trillium (gfc, v6e) |
+| Quantity | Viperfish (vfc, v5) | Ghostlite (glc, v6e) | 6acc60406 (gfc, TPU7x) |
 |---|---:|---:|---:|
 | `VectorExtended` op count (`Matches` symbols) | **28** | **52** | **53** |
 | Ops dispatched in the VEX jump table | 28 | **36** | (full emitter set) |
@@ -265,7 +265,7 @@ The slot exists on all three wired generations with the *same* operand frame and
 | `VectorMoveConstrained` (53rd op) | — | — | yes |
 | Operand frame (`SourceOne`/`Vmask`/`VstSource`/`V0..V2`) | same | same | same |
 
-Viperfish uses **coarse Float/Integer-merged names** — `FloatAddScan`, `IntegerMaxScan`, `SegmentedFloatMinScan`, `IntegerMinIndexScan` — folding every dtype into `Float` or `Integer` (28 ops). Ghostlite splits each into per-dtype variants (`AddScanF32` / `AddScanS32` / `MaxScanU32` / `MaxScanU16` / `MaxScanBf16` …) and adds the `PartialSum` widening forms (52 ops). Trillium adds the 53rd op, `VectorMoveConstrained`. The gfc opcode field is 6-bit @ `word0x28` bit 16; the **glc field is at bit 15** (the base-op predicate masks `0x1F80` of the 16-bit at byte 41 — a 1-bit-lower position than gfc). The decode VALUES and the operand-frame semantics are otherwise gen-stable.
+Viperfish uses **coarse Float/Integer-merged names** — `FloatAddScan`, `IntegerMaxScan`, `SegmentedFloatMinScan`, `IntegerMinIndexScan` — folding every dtype into `Float` or `Integer` (28 ops). Ghostlite splits each into per-dtype variants (`AddScanF32` / `AddScanS32` / `MaxScanU32` / `MaxScanU16` / `MaxScanBf16` …) and adds the `PartialSum` widening forms (52 ops). 6acc60406 adds the 53rd op, `VectorMoveConstrained`. The gfc opcode field is 6-bit @ `word0x28` bit 16; the **glc field is at bit 15** (the base-op predicate masks `0x1F80` of the 16-bit at byte 41 — a 1-bit-lower position than gfc). The decode VALUES and the operand-frame semantics are otherwise gen-stable.
 
 > **QUIRK — the glc opcode field is one bit lower than gfc.** glc `AddScanS32::Matches` masks `(*(uint16_t*)(this+41)) & 0x1F80` (bits 15..20 of word `0x28`); gfc masks `byte+0x2a & 0x3f` (bits 16..21). A glc-targeted decoder must read `(word0x28 >> 15) & 0x3f`, not the gfc `>> 16` — a 1-bit shift the field width hides if you only check the op count. The 1-bit shift was confirmed from the base-op predicate immediates; what occupies gfc bit 15 / glc bit 21 was not separately traced (`LOW` for the adjacent-bit reassignment).
 
