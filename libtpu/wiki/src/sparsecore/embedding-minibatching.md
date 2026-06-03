@@ -70,10 +70,10 @@ CreateDynamicSliceCsr (0x13489ea0)  — decompile-confirmed op DAG, in order
   0  padded = GetPaddedRowCount(target, num)         // 0x13c90280  — granule clamp (see below)
   1  C_pad  = CreateConstant( LiteralUtil::CreateR0<int>(padded) )   // s32 scalar
   2  GCI    = CreateCustomCall(s32[1], "GetCoreIndex", {})           // op-type 0xc; runtime per-core index
-  3  mul1   = CreateBinary(s32[1], MULTIPLY/*0x4b*/, b,     C_pad)   // b * padded
-  4  mul2   = CreateBinary(s32[1], MULTIPLY/*0x4b*/, GCI,   mul1)    // GCI * b * padded
-  5  mul3   = CreateBinary(s32[1], MULTIPLY/*0x4b*/, C_pad, GCI)     // padded * GCI
-  6  base   = CreateBinary(s32[1], ADD/*0x3*/,       mul2,  mul3)    // per-core CSR base offset
+  3  mul1   = CreateBinary(s32[1], MULTIPLY/*0x4b*/, a6,    C_pad)   // a6 * padded
+  4  mul2   = CreateBinary(s32[1], MULTIPLY/*0x4b*/, GCI,   mul1)    // GCI * a6 * padded
+  5  mul3   = CreateBinary(s32[1], MULTIPLY/*0x4b*/, C_pad, a7)      // padded * a7
+  6  base   = CreateBinary(s32[1], ADD/*0x3*/,       mul2,  mul3)    // per-core CSR base offset = padded·(GCI·a6 + a7)
   7  dsc    = CreateCustomCall(…, "DynamicSliceCsr", {csr, base, C_pad})  // op-type 0x10; 3 operands
   8  gte    = CreateGetTupleElement(shape, dsc, 0)
   9  tuple  = CreateTuple({ gte, base, C_pad })       // StatusOr<HloInstruction*> 3-tuple
