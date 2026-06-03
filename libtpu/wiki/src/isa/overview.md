@@ -8,7 +8,7 @@ Part VI documents the TPU TensorCore instruction set and how the compiler encode
 
 The encoding problem has two faces, and this Part keeps them separate. There is the **LLVM-MC layer** — `TPUMCCodeEmitter::getBinaryCodeForInstr` (`0x13c74da0`) lowering one `MCInst` into a [239-bit `APInt` record](record-format.md) via a per-opcode base-bits table and `insertBits` holes — which actually carries bits only for the BarnaCore-Pxc (Pufferfish) HwMode. And there is the **proto-bundle layer** — the per-generation `Encoder<gen>::EncodeBundleInternal` and the [IsaEmitter](isa-emitter-registry.md) `EmitX` / `<Slot>Encoder::Encode` path — which encodes every TensorCore and V5+ opcode the MC layer returns all-zero for. A reimplementer needs to know which path owns which opcodes; the [MC-Emitter](mc-emitter.md) page draws that line precisely (4956 of 5667 MC opcodes route to the zero-base default).
 
-This page is navigational. It orients the reader in the VLIW model, names the per-generation bundle widths (41 B Jellyfish → 51 B Pufferfish → 64 B Viperfish / Ghostlite / Trillium), sketches the slot taxonomy, and then routes to the page that owns each piece. The deep mechanics live elsewhere: the [bundle model](bundle-model-overview.md) for the slot/issue semantics, the per-slot pages for bit layouts, the per-gen bundle pages for full slot maps, and the [record format](record-format.md) / [MC-emitter](mc-emitter.md) / [InstBits DB](instbits-master-db.md) trio for the LLVM-MC wire path.
+This page is navigational. It orients the reader in the VLIW model, names the per-generation bundle widths (41 B Jellyfish → 51 B Pufferfish → 64 B Viperfish / Ghostlite / 6acc60406), sketches the slot taxonomy, and then routes to the page that owns each piece. The deep mechanics live elsewhere: the [bundle model](bundle-model-overview.md) for the slot/issue semantics, the per-slot pages for bit layouts, the per-gen bundle pages for full slot maps, and the [record format](record-format.md) / [MC-emitter](mc-emitter.md) / [InstBits DB](instbits-master-db.md) trio for the LLVM-MC wire path.
 
 For reimplementation, the contract is:
 
@@ -22,7 +22,7 @@ For reimplementation, the contract is:
 | **Memory spaces** | `MemorySpaceProto` — 17 values — [MemorySpace Enum](memory-space-enum.md) |
 | **MC record** | `llvm::APInt`, 239 bits, 4 words — [Record Format](record-format.md) |
 | **MC emitter** | `TPUMCCodeEmitter::getBinaryCodeForInstr` @ `0x13c74da0` — [MC-Emitter](mc-emitter.md) |
-| **Bundle widths** | 41 B (Jellyfish) / 51 B (Pufferfish) / 64 B (Viperfish, Ghostlite, Trillium) — [Bundle Model](bundle-model-overview.md) |
+| **Bundle widths** | 41 B (Jellyfish) / 51 B (Pufferfish) / 64 B (Viperfish, Ghostlite, 6acc60406) — [Bundle Model](bundle-model-overview.md) |
 | **`TpuVersion`** | 6 values (`TpuVersionToString` @ `0x20b3a480` traps on `≥ 6`) |
 | **Proto-bundle encode** | `Encoder<gen>::EncodeBundleInternal` (Jellyfish @ `0x1e86c7c0`) |
 | **Confidence** | CONFIRMED (byte-anchored) unless a row says otherwise |
@@ -41,7 +41,7 @@ Within Level 2 there are *two* encoders, and which one carries an opcode's bits 
 | Encoder | Owns | Page |
 |---|---|---|
 | LLVM-MC `insertBits` record | BarnaCore-Pxc (Pufferfish) lanes + native ops only | [MC-Emitter](mc-emitter.md), [Record Format](record-format.md) |
-| proto-bundle `EmitX` / `<Slot>Encoder::Encode` | every TensorCore + Viperfish / Ghostlite / Trillium opcode | [IsaEmitter Registry](isa-emitter-registry.md), [V5+ EmitX Bit Positions](v5plus-emitx-bit-positions.md) |
+| proto-bundle `EmitX` / `<Slot>Encoder::Encode` | every TensorCore + Viperfish / Ghostlite / 6acc60406 opcode | [IsaEmitter Registry](isa-emitter-registry.md), [V5+ EmitX Bit Positions](v5plus-emitx-bit-positions.md) |
 
 > **NOTE —** the MC `getBinaryCodeForInstr` returns an all-zero 239-bit record for the overwhelming majority of opcodes (4956 of 5667). That is not a bug or a stub — those opcodes are encoded by the proto-bundle path. A reimplementation that treats the MC layer as the sole encoder will emit all-zero bundles for every V5+ instruction. See [MC-Emitter](mc-emitter.md#per-opcode-dispatch).
 
@@ -49,15 +49,18 @@ Within Level 2 there are *two* encoders, and which one carries an opcode's bits 
 
 ## The VLIW Bundle and Its Slots
 
-The bundle is a fixed-width VLIW word issued in one cycle; the compiler proves slot independence because the hardware does not. The width is fixed per generation and selected by a `(TpuVersion, TpuSequencerType)` codec-metadata lookup:
+The bundle is a fixed-width VLIW word issued in one cycle; the compiler proves slot independence because the hardware does not. The width is fixed per generation and selected by a `(TpuVersion, TpuSequencerType)` codec-metadata lookup. The codename ↔ external-name mapping below is the one the [Codename Matrix](../targets/tpu-version-codename-matrix.md) pins from the `TpuVersionToString` / `TpuVersionToExternalName` pair; `6acc60406` (`TpuVersion` 5) is the binary's literal codename, not the marketing name (`Trillium`/`Ironwood` appear **zero** times in `libtpu.so`).
 
-| Generation | Codename | Bundle bytes | Bundle bits |
-|---|---|---:|---:|
-| TPU v3 | Jellyfish | 41 | 328 |
-| TPU v4 | Pufferfish | 51 | 408 |
-| TPU v5e | Viperfish | 64 | 512 |
-| TPU v5p | Ghostlite | 64 | 512 |
-| TPU v6e | Trillium (6acc60406) | 64 | 512 |
+| `TpuVersion` | Codename | External name | Bundle bytes | Bundle bits | Confidence |
+|---:|---|---|---:|---:|---|
+| 0 | Jellyfish | TPU v2 | 41 | 328 | CONFIRMED |
+| 1 | Dragonfish | TPU v3 | 41 | 328 | HIGH (shares JF codec) |
+| 2 | Pufferfish | TPU v4 | 51 | 408 | CONFIRMED |
+| 3 | Viperfish | TPU v5e | 64 | 512 | CONFIRMED |
+| 4 | Ghostlite | TPU v6 lite | 64 | 512 | CONFIRMED |
+| 5 | 6acc60406 | TPU7x | 64 | 512 | MEDIUM (registered codec) |
+
+The 41-byte Jellyfish width is the hardest-pinned: it is the literal `operator new(0x29)` (= 41) allocation inside `EncoderJf::EncodeBundleInternal` (`0x1e86c7c0`), not a metadata read. The 51-byte and 64-byte widths are computed at runtime — `EncoderPfTensorCore::BundleSizeBytes` returns 51 inline, while the v5+ codecs reach 64 through a `(TpuVersion, TpuSequencerType)` vtable call (and the SparseCore overlayer's `GetTileInstructionBundleSizeInBytes` derives a per-tile size as `field[32] / field[31]`). The full byte-source accounting per generation is on the [Bundle Model](bundle-model-overview.md#per-generation-bundle-widths) page.
 
 The slots partition across the execution units. Each slot class is a typed sub-instruction in the compiler-side `Bundle` object and has its own page:
 
