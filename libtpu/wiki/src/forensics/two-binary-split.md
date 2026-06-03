@@ -1,21 +1,21 @@
 # The libtpu.so / sdk.so Two-Binary Split
 
-> *All facts on this page apply to the `libtpu` 0.0.40 wheel, tagged `cp314-cp314-manylinux_2_31_x86_64` (libtpu.so version string 0.103). libtpu.so build-id `89edbbe81c5b328a958fe628a9f2207d`; sdk.so build-id `4e9025466f71009fccb46a803806411c63744a0a`. Other wheel builds will differ.*
+> *All facts on this page apply to the `libtpu` 0.0.40 wheel, tagged `cp314-cp314-manylinux_2_31_x86_64`. The build is pinned by build-id, not by any internal version string: libtpu.so build-id `89edbbe81c5b328a958fe628a9f2207d`; sdk.so build-id `4e9025466f71009fccb46a803806411c63744a0a`. Other wheel builds will differ.*
 
 ## Abstract
 
 The `libtpu` wheel ships **two** ELF shared objects side by side in one directory: `libtpu.so` (745 MiB — the PJRT/XLA-TPU plugin) and `sdk.so` (21 MiB — its smaller sibling). The natural assumption is that these are two halves of one system, with `sdk.so` providing a runtime layer that `libtpu.so` loads at startup. **That assumption is wrong, and the page corrects it up front.** The two objects are independently linked, share no symbols, and neither names the other in `DT_NEEDED`. `sdk.so` is a self-contained **CPython extension module** — it exports `PyInit_sdk` and imports the Python C-API, so it is reached only by `import libtpu.sdk` from a Python interpreter. `libtpu.so` is a native PJRT plugin reached only by `dlopen` from a host runtime (JAX, the XLA TPU client); it imports **zero** Python symbols. They co-reside in the wheel for packaging convenience, not because of any link-time or load-time dependency.
 
-The contrast that matters for a reimplementer is the *symbol-population shape*, not the dependency edge. `libtpu.so` is a near-closed object: 918,698 `FUNC` symbols in its full `.symtab` but only **225 defined exports** in its `.dynsym`, every one a versioned C-ABI thunk (`@@VERS_1.0`). It statically embeds its entire C++ world — it does **not** link `libstdc++`. `sdk.so` is the mirror image: 78,311 `FUNC` symbols but **36,789 dynamic symbols**, no symbol versioning at all, and it *does* link `libstdc++`/`libgcc_s` like an ordinary extension. One object hides everything behind a 225-entry stable ABI; the other is a normal, openly-linked Python module. The "split" in the wheel is a split between *two delivery vehicles for the same vendor's code*, not a host/device or compiler/runtime decomposition.
+The contrast that matters for a reimplementer is the *symbol-population shape*, not the dependency edge. `libtpu.so` is a near-closed object: 918,698 `FUNC` symbols in its full `.symtab` but only **226 defined exports** in its 741-entry `.dynsym` (218 versioned C-ABI thunks carrying `@@VERS_1.0`, plus 8 `__start_*`/`__stop_*` linker-set bounds). It statically embeds its entire C++ world — it does **not** link `libstdc++`. `sdk.so` is the mirror image: 78,311 `FUNC` symbols but **36,787 dynamic symbols**, no symbol versioning at all, and it *does* link `libstdc++`/`libgcc_s` like an ordinary extension. One object hides everything behind a 226-entry stable ABI; the other is a normal, openly-linked Python module. The "split" in the wheel is a split between *two delivery vehicles for the same vendor's code*, not a host/device or compiler/runtime decomposition.
 
-This page establishes the side-by-side ELF facts, proves the no-shared-symbols / no-`DT_NEEDED` relationship from the dynamic tables, identifies the 225-entry C-ABI surface of `libtpu.so` (including `GetPjrtApi` and `GetLibtpuSdkApi`), explains the `sdk.so` Python-module nature, and records how the larger object's address space was made navigable for analysis. Where the raw layout reasoning treated the two as a single tonnage to be windowed, the binaries say they are two unrelated link units; that correction is filed below.
+This page establishes the side-by-side ELF facts, proves the no-shared-symbols / no-`DT_NEEDED` relationship from the dynamic tables, identifies the 226-entry C-ABI surface of `libtpu.so` (including `GetPjrtApi` and `GetLibtpuSdkApi`), explains the `sdk.so` Python-module nature, and records how the larger object's address space was made navigable for analysis. Where the raw layout reasoning treated the two as a single tonnage to be windowed, the binaries say they are two unrelated link units; that correction is filed below.
 
 For reimplementation, the contract is:
 
 - **The packaging contract:** what the wheel actually contains, which file the Python loader resolves, and which file the C runtime `dlopen`s.
 - **The link relationship:** that the two objects are independent — no `DT_NEEDED` edge, no symbol re-export, disjoint dynamic-symbol roles (PJRT C-ABI vs CPython module).
-- **The exported-surface model of `libtpu.so`:** a 225-symbol versioned C ABI (`@@VERS_1.0`) of thin thunks over a statically-linked C++ core, with `GetPjrtApi` and `GetLibtpuSdkApi` as the two roots.
-- **The analysis-navigation model:** why a 745 MiB object with 884,843 functions is audited by address window and segment, not by symbol name.
+- **The exported-surface model of `libtpu.so`:** a 226-symbol C ABI (218 `@@VERS_1.0` thunks plus 8 linker-set bounds) of thin thunks over a statically-linked C++ core, with `GetPjrtApi` and `GetLibtpuSdkApi` as the two roots.
+- **The analysis-navigation model:** why a 745 MiB object with 884,832 functions is audited by address window and segment, not by symbol name.
 
 | | |
 |---|---|
@@ -46,16 +46,16 @@ Every row is read directly from the two ELF files; the version pin fixes the bui
 | `DT_NEEDED` list | `libm libpthread libdl librt libc ld-linux` | `libpthread libm libstdc++ libgcc_s libc ld-linux` | CERTAIN |
 | Links `libstdc++`? | **no** (statically embedded) | **yes** | CERTAIN |
 | Symbol versioning | `VERS_1.0` (`@@VERS_1.0`) | **none** | CERTAIN |
-| `.dynsym` entries | 743 | 36,789 | CERTAIN |
-| Defined global exports | 225 | ~36,600 (module symbols) | HIGH |
+| `.dynsym` entries | 741 | 36,787 | CERTAIN |
+| Defined global exports | 226 (218 `@@VERS_1.0` FUNC + 8 linker-set bounds) | ~36,600 (module symbols) | CERTAIN |
 | `.symtab` `FUNC` count | 918,698 | 78,311 | CERTAIN |
-| IDA function count | 884,843 | 94,732 | CERTAIN |
+| IDA function count | 884,832 (record) / 884,843 (artifact coverage) | 94,732 | CERTAIN |
 | `DT_FLAGS` | absent | `BIND_NOW` (`FLAGS_1: NOW`) | CERTAIN |
 | `RELACOUNT` (RELATIVE relocs) | 1,069,006 | 618 | CERTAIN |
 | Loaded by | host runtime via `dlopen` | CPython via `import` | HIGH |
 | Module entry | `GetPjrtApi`, `GetLibtpuSdkApi`, … | `PyInit_sdk` | CERTAIN |
 
-> **CORRECTION (SPLIT-1) —** The two objects were earlier reasoned about as a single "binary layout split" — one body of ~979k functions to be carved into address windows, with `sdk.so` implicitly a second face of the same system. The dynamic tables overturn that framing. `libtpu.so` and `sdk.so` are **independent link units**: neither lists the other in `DT_NEEDED`, neither defines a symbol the other imports, and their dynamic-symbol roles are categorically different (a 225-entry versioned PJRT C-ABI versus a CPython extension exporting `PyInit_sdk`). The combined "function total" is an artifact of summing two unrelated IDA databases, not evidence of one binary. Treat them as two binaries that happen to share a directory.
+> **CORRECTION (SPLIT-1) —** The two objects were earlier reasoned about as a single "binary layout split" — one body of ~979k functions to be carved into address windows, with `sdk.so` implicitly a second face of the same system. The dynamic tables overturn that framing. `libtpu.so` and `sdk.so` are **independent link units**: neither lists the other in `DT_NEEDED`, neither defines a symbol the other imports, and their dynamic-symbol roles are categorically different (a 226-entry PJRT C-ABI versus a CPython extension exporting `PyInit_sdk`). The combined "function total" is an artifact of summing two unrelated IDA databases, not evidence of one binary. Treat them as two binaries that happen to share a directory.
 
 > **GOTCHA —** The wheel is documented as a "stripped 745 MB plugin," but both objects are **`not stripped`** per `file(1)`. Their full `.symtab` survives (918,698 `FUNC` symbols in `libtpu.so`), which is why IDA recovers ~884k named functions instead of `sub_` blanks. The "stripped" intuition fails here; analysis depth is governed by the surviving `.symtab`, not by the `.dynsym`.
 
@@ -78,7 +78,7 @@ configure_library_path():
 
 ### Exported C ABI
 
-`libtpu.so` exposes a deliberately tiny surface: **225 defined global symbols** in `.dynsym`, every functional one carrying the `@@VERS_1.0` version tag from the object's single `VERS_1.0` version definition (`VERDEFNUM 2` — the base plus `VERS_1.0`). Against 918,698 `FUNC` symbols in the full `.symtab`, this is an export ratio under 0.025% — the object is a sealed C++ monolith presenting a hand-curated C door.
+`libtpu.so` exposes a deliberately tiny surface: **226 defined global symbols** in its 741-entry `.dynsym` (741 − 515 `UND`/null = 226 defined). Of these, 218 are `FUNC` exports — every one carrying the `@@VERS_1.0` version tag from the object's single `VERS_1.0` version definition (`VERDEFNUM 2` — the base plus `VERS_1.0`) — and the remaining 8 are `NOTYPE` `__start_*`/`__stop_*` linker-set bounds. Against 918,698 `FUNC` symbols in the full `.symtab`, this is an export ratio under 0.025% — the object is a sealed C++ monolith presenting a hand-curated C door.
 
 The exports cluster into named C-ABI families, every member a `*_DoWork` / `Tpu*_*` / `TfTpu_*` style entry:
 
@@ -96,7 +96,7 @@ The exports cluster into named C-ABI families, every member a `*_DoWork` / `Tpu*
 | `TF_InitKernel`, `TFNPD_InitPlugin` | TensorFlow kernel / next-pluggable-device init | MEDIUM |
 | `__start_*` / `__stop_*` | Linker-set bounds (`google_malloc`, `malloc_hook`, `pb_defaults`, `linkarr_upb_AllExts`) | HIGH |
 
-> **QUIRK —** `GetPjrtApi@@VERS_1.0` is a **5-byte** `FUNC` at `0x0e6a83a0`, and `GetLibtpuSdkApi@@VERS_1.0` is likewise 5 bytes at `0x109028c0`. Five bytes is a single `jmp rel32` — these are tail-call thunks, not the implementations. The exported name is a stable trampoline into a statically-linked interior function whose own symbol is internal. A reimplementer must not look for the real PJRT-API constructor *at* the exported address; follow the jump. The thunk indirection is what lets the 745 MiB interior churn build-to-build while the 225-entry door stays binary-stable. (The `GetPjrtApi` thunk and the object it returns are detailed on its own page.)
+> **QUIRK —** `GetPjrtApi@@VERS_1.0` is a **5-byte** `FUNC` at `0x0e6a83a0`, and `GetLibtpuSdkApi@@VERS_1.0` is likewise 5 bytes at `0x109028c0`. Five bytes is a single `jmp rel32` — these are tail-call thunks, not the implementations. The exported name is a stable trampoline into a statically-linked interior function whose own symbol is internal. A reimplementer must not look for the real PJRT-API constructor *at* the exported address; follow the jump. The thunk indirection is what lets the 745 MiB interior churn build-to-build while the 226-entry door stays binary-stable. (The `GetPjrtApi` thunk and the object it returns are detailed on its own page.)
 
 > **NOTE —** `libtpu.so` carries `RELACOUNT 1069006` — over a million `R_X86_64_RELATIVE` relocations — and an `INIT_ARRAY` of 23,200 bytes (2,900 init pointers) plus a 16-byte `PREINIT_ARRAY`. The relative-reloc tonnage and the large constructor array are the load-time cost of statically linking the entire C++ runtime and protobuf/Abseil machinery into one PIE object. `sdk.so`, linking `libstdc++` dynamically, needs only 618 relative relocations.
 
@@ -129,7 +129,7 @@ The relationship between the two objects is **none**, and that is provable three
 
 2. Symbol re-export / import:
      sdk.so UND set has ZERO Tpu*/Pjrt*/GetLibtpu*/HardwareLayout*/SparseCore* names.
-     -> sdk.so does not consume libtpu.so's 225-entry ABI.
+     -> sdk.so does not consume libtpu.so's 226-entry ABI.
      libtpu.so UND set has ZERO Py* symbols.
      -> libtpu.so does not consume CPython, so it is not loaded as a Python module.
 
@@ -143,7 +143,7 @@ The relationship between the two objects is **none**, and that is provable three
 
 ### Symbol-population shape
 
-`sdk.so`'s shape is the inverse of `libtpu.so`'s. It has **36,789 dynamic symbols** — roughly 50× `libtpu.so`'s 743 — because a Python extension exposes its bound C++ classes and protobuf message types broadly across its `.dynsym` rather than hiding them behind a versioned C door. It carries **no symbol versioning** (`grep VERS_1.0` over its `.dynsym` returns 0); the `@@VERS_1.0` discipline is a `libtpu.so`-only convention. Its `STRSZ` is 4.5 MiB of dynamic-string-table — the demangled-symbol cost of that wide export surface. `BIND_NOW` / `FLAGS_1: NOW` requests eager binding, normal for an extension that should fail fast at import if a `Py*` symbol is missing.
+`sdk.so`'s shape is the inverse of `libtpu.so`'s. It has **36,787 dynamic symbols** — roughly 50× `libtpu.so`'s 741 — because a Python extension exposes its bound C++ classes and protobuf message types broadly across its `.dynsym` rather than hiding them behind a versioned C door. It carries **no symbol versioning** (`grep VERS_1.0` over its `.dynsym` returns 0); the `@@VERS_1.0` discipline is a `libtpu.so`-only convention. Its `STRSZ` is 4,544,547 bytes (~4.3 MiB) of dynamic-string-table — the demangled-symbol cost of that wide export surface. `BIND_NOW` / `FLAGS_1: NOW` requests eager binding, normal for an extension that should fail fast at import if a `Py*` symbol is missing.
 
 > **NOTE —** `sdk.so` reports `94,732` functions to IDA but only `78,311` `FUNC` entries in `.symtab`; the difference is IDA-recovered functions with no surviving symbol (thunks, outlined cold paths, compiler-generated helpers). The `45,156` strings and `164` switches in its database are an order of magnitude below `libtpu.so`'s (`1,249,324` strings, `33,016` switches), consistent with a 21 MiB module versus a 745 MiB monolith.
 
@@ -188,10 +188,10 @@ The wheel declares **no `Requires-Dist`** — it pulls in no Python packages. It
 
 ### Why address windows, not symbol names
 
-A 745 MiB object with **884,843** IDA functions cannot be decompiled in one pass — IDA caps and decompiler limits force a windowed strategy. The object was made navigable two ways:
+A 745 MiB object with **884,832** IDA functions (the function-record count; artifact coverage spans 884,843 entries — see [Overview](overview.md) FOR-02) cannot be decompiled in one pass — IDA caps and decompiler limits force a windowed strategy. The object was made navigable two ways:
 
 - **By segment.** The loadable map is dominated by one enormous `.text` (`0x0e63c000`–`0x21217484`, ~300 MiB of code) plus large read-only constant pools: `.lrodata` (108 MiB), `.rodata` (58 MiB), and a 28 MiB `.eh_frame`. Writable data is comparatively tiny (`.data.rel.ro` ~10 MiB, `.data` 2.4 MiB, `.bss` 853 KiB). The segment map is the first-order coordinate system: a finding at an address is placed by which segment owns it. (The full ELF section map is owned by the ELF-Anatomy page.)
-- **By function window.** The 884,843-function space was decompiled in offset/limit chunks of ~10,000 functions each (`off=…  lim=10000`), ~97 windows spanning offsets 56,102 → 876,102. Each window records its own decompiled/ctree counts and failure tally; aggregate decompilation failures across the object total **511** (~0.06%), and analysis problems peak at **7,915**. This is how a target too large for a single database is audited deterministically — every function lives in a known, reproducible window.
+- **By function window.** The artifact space (884,843 manifest entries; 884,832 booked function records) was decompiled in offset/limit chunks of ~10,000 functions each (`off=…  lim=10000`), ~97 windows spanning offsets 56,102 → 876,102. Each window records its own decompiled/ctree counts and failure tally; aggregate decompilation failures across the object total **511** (~0.06%), and analysis problems peak at **7,915**. This is how a target too large for a single database is audited deterministically — every function lives in a known, reproducible window.
 
 ```text
 libtpu.so loadable-segment skeleton (selected, by size):
@@ -207,7 +207,7 @@ libtpu.so loadable-segment skeleton (selected, by size):
 
 > **NOTE —** `sdk.so`'s database is small enough that no windowing is needed — its `.text` is `0x7394a0`–`0xb6b7a2` (~4.4 MiB) inside a single 6.6 MiB `LOAD`, and IDA decompiled essentially all of its 94,732 functions in one pass. The windowed strategy is a `libtpu.so`-only necessity born of its three-orders-of-magnitude larger code segment.
 
-> **GOTCHA —** Do not read the IDA "total function" figures (`libtpu.so` ~884,843; the summed cross-object `~979,575`) as a measure of distinct source functions. They include thunks, template instantiations, outlined cold blocks, and per-window overlaps in the selection metadata. The numbers are useful as *relative scale* (one object is ~9× the other) and as *navigation indices*, not as a source-function census.
+> **GOTCHA —** Do not read the IDA "total function" figures (`libtpu.so` 884,832 records / 884,843 artifact entries; the summed cross-object `~979,575`) as a measure of distinct source functions. They include thunks, template instantiations, outlined cold blocks, and per-window overlaps in the selection metadata. The numbers are useful as *relative scale* (one object is ~9× the other) and as *navigation indices*, not as a source-function census.
 
 ---
 
