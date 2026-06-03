@@ -71,24 +71,26 @@ function RankAndPermuteComputeFunction(...):              // sub_134039c0
 
     // --- KEY DERIVATION: digit = (key >> shift) & mask ----------------
     et   = operand(0).Shape::element_type()               // 0x134040ad / b6 — key element type
-    mk   = GetMappedKeysForRadixSort(et, [this+0x28], …)  // 0x133fe8c0 — bucket-map the key
-    digit = GetDigits([this+0x40] shift bits, [this+0x34], // 0x133fe480 → [rbp-0xa8]
-                      key, mk)                             //   ShRUIOp + AndIOp + ConstantIntOp
-    //                                                     //   + MulIOp + BroadcastI32ToVector
+    mk   = GetMappedKeysForRadixSort(et, …)               // 0x133fe8c0 — bucket-map the key
+    digit = GetDigits([this+0x28], [this+0x34],            // 0x133fe480 → [rbp-0xa8]
+                      key, mk)                             //   the two i32 scalars are the only
+    //   ↑ decompile line 493: GetDigits(this, *(u32*)(this+0x28), *(u32*)(this+0x34), key, mk)
+    //   GetDigits body: ConstantIntOp + MulIOp + BroadcastScalarToVector + ShRUIOp + AndIOp ( + opt SubIOp )
     vecTy = VectorType::get(getI32Type(), …)              // 0x1340411f/35 → [rbp-0xa0]
 
     // --- DEDUP: select Unique vs UniqueWithLaneIds by a capability query
-    if  builder.target.caps[+0x88]() and …caps[+0x80]()    // 0x13404... query at line 497
-        and …caps[+0x88]() :                               //   → with-lane-ids path
+    if  target.caps[+0x88]()                               // 0x13404... line 497
+        and target.SupportsSparseCore()                    //   line 499 (vtable slot 76)
+        and target.caps[+0x80]() :                         //   line 501 → with-lane-ids path
         u = UniqueWithLaneIdsOp::create(builder, loc,       // 0x146231a0
                                         sorted_key, digit)  //   (a19, digit) — SAME two operands
-        unique_vals = u.getNextResultAtOffset(0)            // [rbp-0x98]
-        unique_idx  = u.getNextResultAtOffset(1,0)          // rbx (result2)
-        lane_id     = u.getNextResultAtOffset(2,0)          // [rbp-0x90] (result4 = multiplicity)
+        unique_vals = u.getNextResultAtOffset(0)            // result0 → [rbp-0x98]
+        unique_idx  = u.getNextResultAtOffset(1)            // result1 → rbx
+        lane_id     = u.getNextResultAtOffset(2)            // result2 → [rbp-0x90] (multiplicity)
     else:
         u = UniqueOp::create(builder, loc, sorted_key, digit) // 0x14622400, op "sc_tpu.unique"
-        unique_vals = u.getNextResultAtOffset(0)            // [rbp-0x98]
-        unique_idx  = u.getNextResultAtOffset(1,0)          // rbx (result2)
+        unique_vals = u.getNextResultAtOffset(0)            // result0 → [rbp-0x98]
+        unique_idx  = u.getNextResultAtOffset(1)            // result1 → rbx
         lane_id     = NULL                                  // [rbp-0x90] = 0 → no PermuteOp
 
     // --- RANK: indexed scatter-add over a sliced values window --------
@@ -116,14 +118,14 @@ function RankAndPermuteComputeFunction(...):              // sub_134039c0
 
 ### The Unique SSA Shape
 
-The two dedup primitives share the exact same two operands and differ only in result count. `getNextResultAtOffset` walks the op's result list; the offsets `(0)`, `(1,0)`, `(2,0)` index successive results.
+The two dedup primitives share the exact same two operands and differ only in result count. `getNextResultAtOffset(base, n)` (`0x1d8e9700`) returns the op's `n`-th result; the decompile reads offsets `0`, `1`, `2` — i.e. the first three results `result0`/`result1`/`result2`, contiguous indices, *not* every-other-result.
 
 | Op | `::create` | Results | Extracted (this fn) | Lowers to | Confidence |
 |---|---|---:|---|---|---|
-| `UniqueOp` | `0x14622400` | 3 | `result0` = unique values, `result2` = unique index/marker | `tpu_uniquei`/`tpu_uniquef` (3-field LLVM struct) | CONFIRMED |
-| `UniqueWithLaneIdsOp` | `0x146231a0` | 5 | `result0` = unique values, `result2` = index, `result4` = lane-id / multiplicity | same 3-field struct + 2 `ReplaceOpWithExtracts` | CONFIRMED |
+| `UniqueOp` | `0x14622400` | 3 | `result0` = unique values, `result1` = unique index/marker | `tpu_uniquei`/`tpu_uniquef` (3-field LLVM struct) | CONFIRMED |
+| `UniqueWithLaneIdsOp` | `0x146231a0` | 5 | `result0` = unique values, `result1` = index, `result2` = lane-id / multiplicity | same 3-field struct + 2 `ReplaceOpWithExtracts` | CONFIRMED |
 
-Both lower through the shared `DuplicateCountUniqueOpLowering<T>` template (`UniqueOp` at `0x1359b280`, `UniqueWithLaneIdsOp` at `0x1359bd20`), which builds a literal `LLVMStructType` whose 3-field header is `0x600000003` (read from `LLVMStructType::getLiteral`). The lane-id form does two extra extracts for its two added results. The per-field meaning of the struct (unique-values vs write-mask vs segment-marker) is inferred from the extract order, not from a field-name table (LOW). The `result4` lane-id is the per-unique *multiplicity* — the count of original ids that collapsed into each unique entry — and it is the second operand of `PermuteOp`.
+Both lower through the shared `DuplicateCountUniqueOpLowering<T>` template (`UniqueOp` at `0x1359b280`, `UniqueWithLaneIdsOp` at `0x1359bd20`), which builds a 3-field literal struct via `LLVMStructType::getLiteral(ctx, types, 3, 0)` (decompile `0x1359b280` line 46; the `0x600000003` word is the size-3/capacity-6 SmallVector header of the field-type list). The lane-id form does two extra extracts for its two added results. The per-field meaning of the struct (unique-values vs write-mask vs segment-marker) is inferred from the extract order, not from a field-name table (LOW). The `result2` lane-id is the per-unique *multiplicity* — the count of original ids that collapsed into each unique entry — and it is the third operand (the second Value) of `PermuteOp`.
 
 > **GOTCHA —** the selection between `UniqueOp` (3 results) and `UniqueWithLaneIdsOp` (5 results) is a target capability/flag query (`builder.target.caps`, decompile line 497), not a config field with a named accessor (LOW). In the plain `UniqueOp` path, `lane_id` is set to `0` (line 573) and the `PermuteOp` step is skipped entirely — the rank from `VectorLoadStoreIdxAddOp` is stored directly. A reimplementation that always emits `PermuteOp` will crash on a null operand in the no-lane-ids path.
 
@@ -135,7 +137,7 @@ The rank build is the heart of the pass and the place a reimplementer most often
 // VectorLoadStoreIdxAddOp::create(builder, loc, vecTy, unique_idx, win, unique_vals, {digit})
 //   0x1340456c — decompile: create(&a8, loc, v192, v83, v104, NextResultAtOffset, {Digits})
 //     vecTy        = i32 VectorType            [rbp-0xa0]
-//     unique_idx   = Unique result2  (v83)     — where each id writes
+//     unique_idx   = Unique result1  (v83)     — where each id writes
 //     win          = SliceBuffer SubViewOp     — the values gather window
 //     unique_vals  = Unique result0            — the values being ranked
 //     {digit}      = ValueRange{digit}         — the ranked-by digit
@@ -203,7 +205,7 @@ function RankAndPermute(target, builder, …, range, values_in, values_out):  //
 
 ### Purpose
 
-`SparseMapRow` (SparseCore op-type `0x4`) is the dedup-and-collapse primitive the HLO `ReduceDuplicates` custom-call lowers to (alongside `DynamicBoundedSlice`, op `0x11`). Structurally it is a descending lexicographic sort of a row's `(token, sample)` keys followed by a scan: sorting brings duplicate token-ids adjacent, and the carried reduce-fn (e.g. `add`) collapses each adjacent run into one ELL row — the CSR→ELL row collapse that realises the duplicate multiplicity. See [Dedup Multiplicity](dedup-multiplicity.md) for the multiplicity-weighting side and [Scan Datapath](scan-datapath.md) for the `ScanOp` / `SegmentedScanOp` lowering.
+`SparseMapRow` (SparseCore op-type `0x4`, confirmed by `IsSparseMapRowHlo` `0x13d7efe0` testing `SparseCoreOperationTypeFromString(...) == 4`) is the dedup-and-collapse primitive the `reduce_duplicates` custom-call emits — `SparseDenseMatmulOpDecomposer::ReduceDuplicates` `0x136722e0` builds it alongside a `DynamicBoundedSlice` (op `0x11` = 17). Structurally it is a descending lexicographic sort of a row's `(token, sample)` keys followed by a scan: sorting brings duplicate token-ids adjacent, and the carried reduce-fn (e.g. `add`) collapses each adjacent run into one ELL row — the CSR→ELL row collapse that realises the duplicate multiplicity. See [Dedup Multiplicity](dedup-multiplicity.md) for the multiplicity-weighting side and [Scan Datapath](scan-datapath.md) for the `ScanOp` / `SegmentedScanOp` lowering.
 
 ### Algorithm — The Window Emitter
 
@@ -248,7 +250,7 @@ The 4-character sort-direction StringAttr is byte-confirmed against the intrinsi
 
 | # | Op / call | Address | Role | Confidence |
 |---|---|---|---|---|
-| 0 | `IsSparseMapRowHlo` + `GetRootInstruction` | `0x13890d71`/`d81` | recognise the op | CONFIRMED |
+| 0 | `IsSparseMapRowHlo` (`0x13d7efe0`) + `GetRootInstruction` | `0x13890d71`/`d81` | recognise the op (`...FromString == 4`) | CONFIRMED |
 | 1 | `operand(0)` | `0x13890da3` | the row input | CONFIRMED |
 | 2 | `BroadcastBoolToVector` / `…I32…` + `GetCurrentState` | `0x13890ede`/`ef4` | per-row segment state | CONFIRMED |
 | 3 | `ConstantIndexOp` + `AddIOp` ×2 | `0x13891136`+ | window-bound arithmetic | CONFIRMED |
@@ -283,7 +285,7 @@ Composing the per-digit permutations across all digits yields the globally sorte
 | `RadixSortEmitter::EmitSort` `0x131c5fa0` | the `SortOp` lowering entry; calls `SingleDigitRadixSort` per digit |
 | `HistogramKeysComputeFunction` `0x133feca0` | the count half of the radix sort (not decoded here) |
 | `ScanBucketsComputeFunction` `0x13400120` | the bucket prefix-sum that feeds the rank pass |
-| `ReduceDuplicates` `0x136722e0` | the HLO dedup op that lowers to `SparseMapRow` + `DynamicBoundedSlice` |
+| `SparseDenseMatmulOpDecomposer::ReduceDuplicates` `0x136722e0` | the decomposer that emits the `reduce_duplicates` `SparseMapRow` + `DynamicBoundedSlice` (op `0x11`) custom-calls |
 
 ## Cross-References
 
