@@ -1,6 +1,6 @@
 # Polymorphic Dispatch Entry Points
 
-> *All addresses on this page apply to `libtpu.so` v0.103 from the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`). Every VA is a load address in the un-relocated image; the executable sections satisfy `VA == file-offset`. Other builds will differ.*
+> *All addresses on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`). Every VA is a load address in the un-relocated image; the executable sections satisfy `VA == file-offset`. Other builds will differ.*
 
 ## Abstract
 
@@ -8,7 +8,7 @@ This is the navigation page for control-flow fan-out. A 745 MB stripped C++ bina
 
 There are **two C++ dispatch shapes** in this binary, plus a third that is not a C++ vtable at all. (a) **Vtable-slot dispatch** — `mov (obj),%vptr ; call *0xNN(%vptr)` — is the overwhelming majority; the slot index is `0xNN / 8`. (b) **Function-pointer dispatch** — `call *%reg` — where the callee was loaded into a register first; this is how `mlir::PatternApplicator`, `llvm::function_ref`, and the `std::function`/`AnyInvocable` pools dispatch, and a navigator grepping only for `call *[reg+off]` will miss it entirely. (c) The **PJRT C-ABI surface** is a *flat function-pointer struct* (`PJRT_Api`), a C dispatch table populated once at first call — structurally distinct from a C++ vtable and resolved by reading the struct's initializer, not by RTTI.
 
-The mechanism differs by IR layer, and the difference is the point. The XLA HLO layer dispatches the classic **visitor pattern**: `HloInstruction::Visit` is a 132-way opcode switch where each case tail-calls a different `Handle<Opcode>` slot of the `DfsHloVisitor` vtable. MLIR does *not* use one vtable per op — it uses a **concept-based Op Model**, a per-op generated dispatch object whose `foldHook`/`hasTrait` slots `mlir::Operation::fold` reads indirectly. The pass managers (`HloPassInterface::Run`, `OpToOpPassAdaptor::run`) are thin trampolines that tail-jump a single slot. The TPU codegen (`CodeGenerator::EmitInstruction`) fans out across ~94 slots of a 152-slot `IsaEmitter` vtable filled per hardware generation.
+The mechanism differs by IR layer, and the difference is the point. The XLA HLO layer dispatches the classic **visitor pattern**: `HloInstruction::Visit` is a 132-way opcode switch where each case tail-calls a different `Handle<Opcode>` slot of the `DfsHloVisitor` vtable. MLIR does *not* use one vtable per op — it uses a **concept-based Op Model**, a per-op generated dispatch object whose `foldHook`/`hasTrait` slots `mlir::Operation::fold` reads indirectly. The pass managers (`HloPassInterface::Run`, `OpToOpPassAdaptor::run`) are thin trampolines that tail-jump a single slot. The TPU codegen (`CodeGenerator::EmitInstruction`) fans out across 81 slots of a 152-slot `IsaEmitter` vtable filled per hardware generation.
 
 For navigation, the contract is:
 
@@ -44,7 +44,7 @@ Each hub is one indirect-call site that a navigator will hit repeatedly. `slot =
 | MLIR pass body | `0x1cb6dc20` (`OpToOpPassAdaptor::run`) | `mlir::Pass` | 7 / `0x38` (`runOnOperation`) | every MLIR pass | CERTAIN |
 | MLIR Op-Model fold | `0x1d8cd480` (`Operation::fold`) | Op `Model` concept | 2 / `0x10` (`foldHook`) | every registered MLIR op | CERTAIN |
 | CPU thunk execute | `0x1c0f0320` (`TracedExecute`) | `xla::cpu::Thunk` | 5 / `0x28` (`Execute`) | every thunk kind | CERTAIN |
-| TPU ISA emit | `0x14043a40` (`EmitInstruction`) | `IsaEmitter` (152-slot) | ~94 slots, off `0xf0`–`0x478` | per-gen `{Pf,Vf,Gl,Gf}` emitters | HIGH |
+| TPU ISA emit | `0x14043a40` (`EmitInstruction`) | `IsaEmitter` (152-slot) | 81 slots, off `0x50`–`0x490` | per-gen `{Pf,Vf,Gl,Gf}` emitters | HIGH |
 | TpuHal hardware bring-up | `0x1e811ea0` (`InitializeInternal`) | `TpuHal`/`HardwareImpl` | 19 / `0x98`, 20 / `0xa0` | per-gen `HardwareImpl` | CERTAIN |
 | TPU codec factory | `0x1e835fa0` (`TpuCodec::Create`) | `TpuVersion` switch | n/a (factory) | 6 per-gen `CreateTpuCodec<X>` | CERTAIN |
 | TF op-kernel dispatch | `0xe99b000` (`Device::Compute`) | `OpKernel` | 2 / `0x10` (`Compute`) | every TF op kernel | CERTAIN |
@@ -159,7 +159,7 @@ The pipeline driver `HloPassPipeline::RunPassesInternal<HloModule*>` (`0x1c83ddc
 
 | Off | Slot | Method | Use |
 |---|---|---|---|
-| `0x10` | 2 | `name()` | logging / dump (called ×5 in the driver) |
+| `0x10` | 2 | `name()` | logging / dump (called ×6 in the driver) |
 | `0x18` | 3 | `RunOnChangedComputations` | once per pass |
 | `0x20` | 4 | `IsPassPipeline()` | once per pass (×2) |
 | `0x30` | 6 | `RunImpl(uptr&)` | nested-pipeline path (×2) |
@@ -182,22 +182,23 @@ function OpToOpPassAdaptor_run(pass, op, am, ...):   // 0x1cb6dc20
         emitOpError("trying to schedule a pass on an unregistered operation")
         return failure
     ...
-    (*pass.vtable[0x10])(pass)                        // slot 2 = getName()  (logging)
+    (*pass.vtable[0x10])(pass)                        // call *0x10(%rax) = slot 2 = getName()  (logging)
+    (*pass.vtable[0x20])(pass, IsIsolatedFromAbove)   // call *0x20(%rax) = slot 4 = hasTrait query
+    (*pass.vtable[0x50])(pass, op)                    // call *0x50(%rax) = slot 10 = canScheduleOn
     ...
     (*pass.vtable[0x38])(pass)                        // call *0x38(%rax) = slot 7 = runOnOperation
-    ...                                               // also *0x30 initializeOptions, *0x50 canScheduleOn
 ```
 
-The confirmed dispatch sites inside the adaptor: `*0x38` (slot 7, `runOnOperation` — the per-pass body), `*0x10` (slot 2, `getName`), `*0x50` (slot 10, `canScheduleOn(Operation*)`), `*0x30` (slot 6, `initializeOptions`). Slot 7 is the only one that runs user pass logic; the rest are the auto-generated `*PassBase` CRTP metadata.
+The dispatch sites inside the adaptor that read the **pass** vtable (`mov (pass),%rax ; call *0xNN(%rax)`): `*0x10` (slot 2, `getName`), `*0x20` (slot 4, the `hasTrait<IsIsolatedFromAbove>` query that gates scheduling), `*0x50` (slot 10, `canScheduleOn(Operation*)`), and `*0x38` (slot 7, `runOnOperation` — the per-pass body, reached via `runOnOperationImpl`/`runOnOperationAsyncImpl`). Slot 7 is the only one that runs user pass logic; the rest are the auto-generated `*PassBase` CRTP metadata.
 
 | Off | Slot | Method | Confidence |
 |---|---|---|---|
 | `0x38` | 7 | `runOnOperation()` — the pass body | CERTAIN |
 | `0x10` | 2 | `getName()` | CERTAIN |
-| `0x30` | 6 | `initializeOptions(StringRef,…)` | HIGH |
-| `0x50` | 10 | `canScheduleOn(Operation*)` | HIGH |
+| `0x20` | 4 | `hasTrait<IsIsolatedFromAbove>()` query | CERTAIN |
+| `0x50` | 10 | `canScheduleOn(Operation*)` | CERTAIN |
 
-> **CORRECTION (PEP-1) —** an earlier hypothesis listed `getArgument()` (slot 4 / `0x20`) and `getDescription()` (slot 5 / `0x28`) as additional dispatch sites inside `OpToOpPassAdaptor::run`. The decompilation of `0x1cb6dc20` shows only `0x10`, `0x30`, `0x38`, and `0x50` dispatched directly in this driver; the `0x20`/`0x28` metadata slots are read elsewhere (pass registration / pipeline printing), not here. The slot *labels* stand; the claim that this driver reads them does not.
+> **NOTE —** the driver also contains `call *0x20`, `*0x28`, and `*0x30` sites that dispatch on a *different* object — the `PassInstrumentation` list it iterates (`mov (list[i]),%rax ; call *0xNN(%rax)`), the per-pass `runBeforePass`/`runAfterPass`/`runAfterPassFailed` callbacks — not the pass vtable. A sweep that attributes every indirect call in this function to the pass vtable will mislabel those instrumentation slots; only the four sites above read the pass object itself.
 
 ---
 
@@ -255,26 +256,26 @@ Both the traced and untraced paths dispatch the same slot — `0x28` = slot 5 = 
 
 ### Purpose
 
-`xla::jellyfish::CodeGenerator::EmitInstruction` (`0x14043a40`) is the per-`LloInstruction` codegen dispatcher. It is the densest single polymorphic dispatch region: one large function (3,652 decompiled lines) that fans out across ~94 distinct slots of the 152-slot `IsaEmitter` vtable. The concrete per-generation emitters fill those slots.
+`xla::jellyfish::CodeGenerator::EmitInstruction` (`0x14043a40`) is the per-`LloInstruction` codegen dispatcher. It is the densest single polymorphic dispatch region: one large function (3,652 decompiled lines) that fans out across 81 distinct slots of the 152-slot `IsaEmitter` vtable. The concrete per-generation emitters fill those slots.
 
 ### Algorithm
 
 ```c
 function EmitInstruction(codegen, llo_instr, bundle):   // 0x14043a40
     emitter = codegen.isa_emitter                         // the per-gen IsaEmitter object
-    switch (llo_instr.kind):                               // ~94 reachable kinds
+    switch (llo_instr.kind):                               // 81 reachable emitter slots
         ...
-        case VectorMatmul:
-            (*emitter.vtable[0x418])(emitter, ...)          // off 0x418 = slot 131 = EmitVectorMatmul
+        case VectorMatmulMsk:
+            (*emitter.vtable[0x418])(emitter, ...)          // off 0x418 = slot 131 = EmitVectorMatmulMsk
         case AccumulatorBinop:
-            (*emitter.vtable[0x478])(emitter, ...)          // off 0x478 = slot 143
+            (*emitter.vtable[0x478])(emitter, ...)          // off 0x478 = slot 143 = EmitVectorAccumulatorBinop
         ...                                                 // EmitVectorMove/Pack, transpose, Cmem,
                                                             // BarnaCore sync/wait, event/program hooks
 ```
 
-The dispatch is real virtual dispatch through the emitter's vptr: `(*(...)(*(_QWORD *)emitter_obj + 0x418LL))(IsaEmitter*, ...)`. Confirmed sites include `0x418` (slot 131, `EmitVectorMatmul`) and `0x478` (slot 143). The slots are the per-generation ISA-encoder hooks filled by the `{Pf, Vf, Gl, Gf}` concrete emitter classes; see [per-generation function dispatch](per-gen-function-dispatcher.md) for how each generation's emitter is selected.
+The dispatch is real virtual dispatch through the emitter's vptr: `(*(...)(*(_QWORD *)emitter_obj + 0x418LL))(IsaEmitter*, ...)`. Confirmed sites include `0x418` (slot 131, `EmitVectorMatmulMsk`) and `0x478` (slot 143, `EmitVectorAccumulatorBinop`). The slots are the per-generation ISA-encoder hooks filled by the `{Pf, Vf, Gl, Gf}` concrete emitter classes; see [per-generation function dispatch](per-gen-function-dispatcher.md) for how each generation's emitter is selected.
 
-> **CORRECTION (PEP-2) —** the fan-out is **~94** distinct `IsaEmitter` vtable-slot offsets, not 96. Counting the distinct `+0xNNLL)` slot operands in the decompilation of `0x14043a40` yields 94 unique IsaEmitter slots (in the `0xf0`–`0x478` band); a couple of small-offset dispatches in the same function target the `LloInstruction`/helper objects, not the emitter, and are excluded. The order of magnitude — "the densest dispatch region in the binary" — is unaffected.
+> **CORRECTION (PEP-2) —** the fan-out is **81** distinct `IsaEmitter` vtable-slot offsets, not ~94 or 96. Counting the distinct dispatch operands whose receiver IDA types as `xla::jellyfish::IsaEmitter *` in the decompilation of `0x14043a40` yields 81 unique emitter slots, spanning offsets `0x50`–`0x490` (not the `0xf0`–`0x478` band an earlier note assumed). A handful of other indirect calls in the same function target `LloInstruction`/helper objects, not the emitter, and are excluded. The order of magnitude — "the densest dispatch region in the binary" — is unaffected.
 
 ---
 
