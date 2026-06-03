@@ -15,7 +15,7 @@ For orientation, the contract is:
 - **The two-stack model** — which front door (`TpuClient`/`tpu::System` vs `TpuExecutableInterface`/`TpuExecutor`) a given client drives, and that they share only the driver core.
 - **The execution lifecycle** — the PJRT `Execute` → prepare/launch/raw → load → enqueue → device run → completion → outputs chain, in both spellings, and where the layer boundaries fall.
 - **The SE-concept → TPU-runtime mapping** — the table a reader who knows GPU/StreamExecutor uses to translate `StreamExecutor`/`Stream`/`Event`/`DeviceMemoryBase` into `tpu::System`/`TpuEventIssuer`/`TpuEvent`/`TpuSharedMemoryLocation`.
-- **The sub-area map** — the eight runtime pages and what each owns, so the reader can navigate by reflex.
+- **The sub-area map** — the ten runtime pages and what each owns, so the reader can navigate by reflex.
 
 | | |
 |---|---|
@@ -150,7 +150,7 @@ A reader who knows GPU/StreamExecutor needs a translation table to read the mode
 
 ### Purpose
 
-The runtime section is eight detail pages plus this opener. Each owns one coherent slice of the lifecycle and is written to reimplementation grade; this map is the index a reader scans to find the right one. The four execution-flow pages (this section's core) are listed first, then the supporting reference pages.
+The runtime section is ten detail pages plus this opener. Each owns one coherent slice of the lifecycle and is written to reimplementation grade; this map is the index a reader scans to find the right one. The four execution-flow pages (this section's core) are listed first, then the supporting reference pages.
 
 ### The execution-flow pages
 
