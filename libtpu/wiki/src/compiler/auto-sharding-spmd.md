@@ -20,7 +20,7 @@ For reimplementation, the contract is:
 | | |
 |---|---|
 | **Auto-sharding entry** | `xla::TpuAutoSharding::RunImpl` @ `0x1118d3a0` → `xla::AutoSharding::RunImpl` @ `0x1280a180` |
-| **Auto-sharding core** | `xla::AutoShardingImplementation::RunAutoSharding` @ `0x128055a0` (12.5 KB) |
+| **Auto-sharding core** | `xla::AutoShardingImplementation::RunAutoSharding` @ `0x128055a0` (12.4 KB) |
 | **MIP solver entry** | `xla::spmd::FormulateAndSolveMIPFromProblem` @ `0x128407c0` (22.5 KB) |
 | **Solver backend** | OR-Tools `operations_research::MPSolver` — CP-SAT (`SatInterface`) integer + GLOP (`GLOPInterface`) LP |
 | **Partitioner entry** | `xla::jellyfish::TpuSpmdPartitioner::RunImpl` @ `0x127a2a80` (4.8 KB) → base `xla::spmd::SpmdPartitioner::RunImpl` @ `0x1c7fe400` |
@@ -69,19 +69,19 @@ RunHloPasses
 
 ### Purpose
 
-`TpuAutoSharding` ("auto-sharding-automatic-partition", vtable `0x10946aa0`) is the auto path: when the user supplies no shardings, it *derives* the best one by formulating the choice as a discrete optimization. It is a thin TPU wrapper around the open-source `xla::AutoSharding`; the wrapper adds `ApplyShardingConfig` (`0x1118c100`, load a stashed config) and `ExtractShardingConfig` (`0x1118c820`, serialize the chosen shardings for replay), then `RunImpl` (`0x1118d3a0`) dispatches into the base. Entered only when `xla_tpu_spmd_auto_partitioning` is set (default false).
+`TpuAutoSharding` ("auto-sharding-automatic-partition", vtable `0x21822a80`) is the auto path: when the user supplies no shardings, it *derives* the best one by formulating the choice as a discrete optimization. It is a thin TPU wrapper around the open-source `xla::AutoSharding`; the wrapper adds `ApplyShardingConfig` (`0x1118c100`, load a stashed config) and `ExtractShardingConfig` (`0x1118c820`, serialize the chosen shardings for replay), then `RunImpl` (`0x1118d3a0`) dispatches into the base. Entered only when `xla_tpu_spmd_auto_partitioning` is set (default false).
 
 ### Entry Point
 
 ```text
 TpuAutoSharding::RunImpl                 0x1118d3a0 (0.85 KB)  ── apply config, dispatch
-  AutoSharding::RunImpl                  0x1280a180 (11.3 KB)
-    AutoShardingImplementation::RunAutoSharding  0x128055a0 (12.5 KB)  ── the 12-phase core
+  AutoSharding::RunImpl                  0x1280a180 (11.0 KB)
+    AutoShardingImplementation::RunAutoSharding  0x128055a0 (12.4 KB)  ── the multi-phase core
 ```
 
 ### Algorithm
 
-`RunAutoSharding` (`0x128055a0`) registers 12 numbered status-fold lambdas (`$_0`..`$_11` at `0x2230c9c0`..`0x2230cb88`); each marks one phase. The phase order, recovered from those fold points and the helper symbols around them:
+`RunAutoSharding` (`0x128055a0`) carries ten source-location `::site` data objects (`$_2`..`$_11`, at `0x2230c9c0`..`0x2230ca98`, 24 bytes apart) — the status-annotation sites that tag each phase's error path. The phase order, recovered from those sites and the helper symbols around them:
 
 ```c
 function RunAutoSharding(module, exec_threads):              // 0x128055a0
@@ -132,7 +132,7 @@ The two windowed-einsum appenders are confirmed as their own TU-private function
 | `CreateReshapeStrategies` | `0x127f1ce0` | reshape relayouts |
 | `GenerateOutfeedStrategy` | `0x127e7780` | outfeed |
 | `HandlePartialReduce` | `0x127e1e00` | TPU `partial_reduce_handler::kPartialReduce` custom-call |
-| `MaybeFollowInsStrategyGroup` | — | tuple / get-tuple-element (inherit followed op's set) |
+| `MaybeFollowInsStrategyGroup` | `0x127e4340` | tuple / get-tuple-element (inherit followed op's set) |
 
 ### Cost Model — Alpha-Beta over the ICI Mesh
 
@@ -157,7 +157,7 @@ These per-strategy costs become two cost arrays: a **node cost** (compute + the 
 | `TpuAutoSharding::ApplyShardingConfig` | `0x1118c100` | apply stashed config | HIGH |
 | `TpuAutoSharding::ExtractShardingConfig` | `0x1118c820` | serialize chosen shardings | HIGH |
 | `AutoSharding::RunImpl` | `0x1280a180` | base entry | HIGH |
-| `AutoShardingImplementation::RunAutoSharding` | `0x128055a0` | 12-phase core | HIGH |
+| `AutoShardingImplementation::RunAutoSharding` | `0x128055a0` | multi-phase core | HIGH |
 | `SaveAndRemoveShardingAnnotation` | `0x128020a0` | stash + clear user shardings | HIGH |
 | `BuildAliasSet` | `0x12e174a0` | force aliased params/outputs equal | HIGH |
 | `DotHandler::RegisterStrategies` | `0x12825140` | matmul strategy enumeration | CONFIRMED |
@@ -177,7 +177,7 @@ The strategy choice is solved as a genuine mixed-integer program, not a greedy h
 
 ### Algorithm — the integer program
 
-The model is the Alpa formulation: one one-hot strategy vector per node, one one-hot resharding vector per edge, a peak-memory constraint, and a linear objective. The intermediate representation is `iopddl::Problem` (nodes, edges, strategies), confirmed as the formal parameter type of the solver entry.
+The model is the Alpa formulation: one one-hot strategy vector per node, one one-hot resharding vector per edge, a peak-memory constraint, and a linear objective. The intermediate representation is `iopddl::Problem` (nodes, edges, strategies), confirmed as the first formal parameter of the solver entry — its full signature is `FormulateAndSolveMIPFromProblem(const iopddl::Problem&, const xla::spmd::AutoShardingSolverParams&)`.
 
 ```text
 DECISION VARIABLES
@@ -200,7 +200,7 @@ OBJECTIVE  (minimize)
 
 Two TPU-relevant preprocessing steps shrink the program before the solve. `CheckDominance` (`0x12850cc0`, ~2 KB) removes strategies dominated on every cost axis; `StrategyShaverForProblem::FindShavedStrategies` (`0x12851a60`) — a Google-internal extension — removes strategies that cannot appear in any feasible solution; and `ReduceMemoryTerms` folds the peak-memory constraint into fewer variables. After solving, `Evaluate` (`0x128473c0`, ~7.7 KB) re-prices the chosen assignment for reporting.
 
-The request crossing into the solver is the `AutoShardingSolverRequest` proto (descriptor `0x218f17c0`): nested `Nodes` (per-node strategy lists), `Edges` (endpoint pairs), `Costs`/`Coeff` (cost vectors and coefficient matrices), `Pair` ((i,j) entries), `Group` (shard-group constraints), `SolverTimeout`, and `Names` (debug). `solver_type` selects the backend (`SOLVER_TYPE_CP_SAT` is the default), and `solver_specific_parameters` carries a text-format `SatParameters` or `GlopParameters` proto.
+The request crossing into the solver is the `AutoShardingSolverRequest` proto (parse table `AutoShardingSolverRequest::_table_` @ `0x218f17c0`, vtable `0x218f13e8`): nested `Nodes` (per-node strategy lists), `Edges` (endpoint pairs), `Costs`/`Coeff` (cost vectors and coefficient matrices), `Pair` ((i,j) entries), `Group` (shard-group constraints), `SolverTimeout`, and `Names` (debug). `solver_type` selects the backend (`SOLVER_TYPE_CP_SAT` is the default), and `solver_specific_parameters` carries a text-format `SatParameters` or `GlopParameters` proto.
 
 ### Function Map
 
@@ -262,7 +262,7 @@ The TPU subclass overrides exactly four base methods; everything else, including
 
 | Override | Address | What it changes |
 |---|---|---|
-| `AllGatherShards` | `0x127a2880` | 25-byte stub → base `AllGatherShardsInternal` with `per_dim_communication=true` |
+| `AllGatherShards` | `0x127a2880` | 37-byte (`0x25`) stub → forwards to base `AllGatherShardsInternal`, passing the trailing per-dim-communication bool through |
 | `AllReduceAlongShardingDims` | `0x127a28c0` (0.43 KB) | F32-vs-BF16 accumulation choice via `MayIncreaseBF16AllReduceAccumulationAccuracy` (`0x127a22c0`) |
 | `CreateVisitor` | `0x127a2520` | constructs the base `SpmdPartitioningVisitor` (no TPU visitor subclass) |
 | `UpdateLayout` | `0x127a4100` (0.42 KB) | rewrites per-partition shapes to TPU-canonical (sublane/lane) layouts |
@@ -397,7 +397,7 @@ Beyond the standard GSPMD primitives, the TPU partitioner adds several sharding-
 
 - **`partial_reduce_handler::kPartialReduce`.** The only TPU custom-call with non-trivial sharding propagation; it registers its own `SpmdPartitioningVisitor` and emits a `Sort+TopK` skeleton governed by `kReductionDimKey`, `kLog2ReductionKey`, `kRecallTargetKey`.
 
-- **Hierarchical SparseCore partitioning.** For embedding-heavy models the entry computation is partitioned at two granularities — TensorCore and SparseCore. `SparseCoreHierarchicalSpmdPartitioner` (`RunImpl` `0x13c7ee20`, ~10.6 KB) pads SC inputs (`PadSparseCoreProgramInputs`), unpads outputs, and explicitly partitions the SC entry computation; the inner `SparseCoreSpmdPartitioner` (`0x13c818a0`) and `SparseCorePartitioningVisitor` override `HandleSort`/`HandleScatter`/`HandleAllToAll` and add `PartitionSharedMemoryParallelScatter`. Source: `platforms/xla/sparse_core/hlo/sparse_core_spmd_partitioning.cc`.
+- **Hierarchical SparseCore partitioning.** For embedding-heavy models the entry computation is partitioned at two granularities — TensorCore and SparseCore. `SparseCoreHierarchicalSpmdPartitioner` (`RunImpl` `0x13c7ee20`, ~10.6 KB) pads SC inputs (`PadSparseCoreProgramInputs`), unpads outputs, and explicitly partitions the SC entry computation; the inner `SparseCoreSpmdPartitioner` (ctor `0x13c818a0`) and `SparseCorePartitioningVisitor` override `HandleSort`/`HandleScatter`/`HandleAllToAll` and add `PartitionSharedMemoryParallelScatter`. Source: `platforms/xla/sparse_core/hlo/sparse_core_spmd_partitioning.cc`.
 
 - **Shard-barriers & custom-call helpers.** `ShardBarrierFromPartitioner` / `ShardBarrierToPartitioner`, `TpuLogCustomCallPartitioner` (`_xla_log` debug), and the megascale `MetadataCustomCallPartitioner` are `CustomCallShardingHelper` subclasses; they freeze or pass through sharding for specific custom-call targets (consulted during propagation — see [Custom-Call Lowering](custom-call-lowering.md)).
 
