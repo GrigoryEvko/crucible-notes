@@ -171,7 +171,7 @@ Every other one of the 419 populated slots is byte-identical JF vs DF. Because n
 ```c
 // xla::jellyfish::LatencyTableJellyfish::LatencyTableJellyfish  @ 0x1c8a0c20  (verified)
 v2 = TpuPerformanceTable(version)::table;          // = Performance::CreateTensorCore(...)
-LT[+0x18] = v2[68];   // Performance[+0x44]
+LT[+0x18] = *(int32*)(v2+0x44); // Performance[+0x44]  (raw byte add, not v2[17])
 LT[+0x1c] = v2[12];   // Performance[+0x30]   ← EUP push→pop edge
 LT[+0x20] = v2[9];    // Performance[+0x24]
 LT[+0x24] = v2[7];    // Performance[+0x1c]
@@ -192,7 +192,7 @@ The resolved values (JF / DF), with the role inferred from the `LatencyBetweenIn
 
 | `LatencyTable` off | ← `Performance` off | JF | DF | role | Confidence |
 |---|---|---|---|---|---|
-| `+0x18` | `+0x44` | 2 | 2 | matres-result FIFO floor | HIGH |
+| `+0x18` | `+0x44` | 1 | 1 | matres-result FIFO floor (UNVERIFIED role) | HIGH |
 | `+0x1c` | `+0x30` | 4 | 4 | **EUP push→pop edge** | CERTAIN |
 | `+0x20` | `+0x24` | 92 | 92 | RPU-result floor | HIGH |
 | `+0x24` | `+0x1c` | 105 | 105 | RPU op→op / matres-self conflict | HIGH |
@@ -208,7 +208,7 @@ The resolved values (JF / DF), with the role inferred from the `LatencyBetweenIn
 | `+0x4c` | `+0x2c` | **8** | **13** | **MXU matprep base** | CERTAIN |
 | `+0x50` | `+0x28` | **88** | **66** | **MXU matmul base** | CERTAIN |
 
-The first four columns (`+0x18..+0x24`) come from the head block `@0xa2c8a30 = {4,105,7,92}` (note the `105`/`92`/`7` reorder through the copy indices); the last two (`+0x4c`/`+0x50`) come from `@0xa2dcd30 = {88,8,4,1}` and are the only two the DF override touches. The version guard at the top of the constructor `CHECK`s `tpu_version_ ∈ {kJellyfish, kDragonfish}`, confirming this table serves only v2/v3.
+Three of the first columns (`+0x20`/`+0x24`/`+0x28` ← `Performance[+0x24]`/`[+0x1c]`/`[+0x20]`) come from the head block `@0xa2c8a30 = {4,105,7,92}` (note the `92`/`105`/`7` reorder through the copy indices, with the leading `4` at `Performance[+0x18]` left uncopied); `+0x18` (← `Performance[+0x44]` = `1`) is the second cell of the `@0xa2c8a40 = {2,1,1,1}` block, not the head block. The last two (`+0x4c`/`+0x50`) come from `@0xa2dcd30 = {88,8,4,1}` and are the only two the DF override touches. The version guard at the top of the constructor `CHECK`s `tpu_version_ ∈ {kJellyfish, kDragonfish}`, confirming this table serves only v2/v3.
 
 > **GOTCHA — the matmul base and matprep base are *swapped* in field order vs struct order.** `Performance[+0x28]` (matmul base) copies to the *higher* `LatencyTable[+0x50]`, and `Performance[+0x2c]` (matprep base) to the *lower* `LatencyTable[+0x4c]`. A reimplementation that copies the `{88,8,...}` block linearly into the latency-table tail will transpose the matmul/matprep base latencies.
 
