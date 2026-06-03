@@ -4,36 +4,37 @@
 
 ## Abstract
 
-This page documents the **disassembler inverse** of the three V5+ TensorCore MXU encoders: Viperfish (TPU v5p, namespace `vxc`), Ghostlite (v6e, `gxc::glc`), and Trillium (v7, `gxc::gfc`). It is the V5+ counterpart of the [JF / PF decode-side](decode-side-jf-pf.md) page: where Jellyfish decodes with a two-level opcode `switch` and Pufferfish introduces the staged-copy `Opcode::Matches` sweep, all three V5+ generations use that same sweep with no other decode path. The page proves every encode-side bit position from the decode side, names the two previously-inferred Viperfish latch control fields, and corrects the cross-generation MXU1 twin geometry.
+This page documents the **disassembler inverse** of the three V5+ TensorCore MXU encoders: Viperfish (TPU v5, namespace `vxc`), Ghostlite (TPU v6 lite / cloud v6e, `gxc::glc`), and the `6acc60406` family (cloud TPU7x, `gxc::gfc`). It is the V5+ counterpart of the [JF / PF decode-side](decode-side-jf-pf.md) page: where Jellyfish decodes with a two-level opcode `switch` and Pufferfish introduces the staged-copy `Opcode::Matches` sweep, all three V5+ generations use that same sweep with no other decode path. The page proves every encode-side bit position from the decode side, names the two previously-inferred Viperfish latch control fields, and corrects the cross-generation MXU1 twin geometry.
 
-The decode mechanism is uniform and inverse to the [V5+ `BitCopy` encode model](v5plus-emitx-bit-positions.md). `TensorCoreVectorExtended0Decoder::Decode` stages up to 13 bundle bytes into a scratch struct (a size-tag at offset 0, bundle bytes at offset 8), reads the predication field first via `…PredicationField::GetConcatenatedValue`, then sweeps a fixed sequence of per-opcode `Opcode::Matches` predicates. Each `Matches` is a mask/value test over the staged quadword; each operand `…Field::GetConcatenatedValue` is a `shift & mask` accessor. Because the bundle bytes sit at staged offset 8, an accessor that reads the staged quadword at struct offset 8 and shifts right by `S` is reading absolute bundle bit `S` directly — which is why the decode-side shifts equal the encode-side `BitCopy dst_bit` arguments one-for-one.
+The decode mechanism is uniform and inverse to the [V5+ `BitCopy` encode model](v5plus-emitx-bit-positions.md). `TensorCoreVectorExtended0Decoder::Decode` stages up to 9 bundle bytes into a scratch struct (a size-tag `1` at offset 0, bundle bytes at offset 8 — `v10 = 9; if (len < 9) v10 = len`), reads the predication field first via `…PredicationField::GetConcatenatedValue`, then sweeps a fixed sequence of per-opcode `Opcode::Matches` predicates. Each `Matches` is a mask/value test over the staged quadword; each operand `…Field::GetConcatenatedValue` is a `shift & mask` accessor. Because the bundle bytes sit at staged offset 8, an accessor that reads the staged quadword at struct offset 8 and shifts right by `S` is reading absolute bundle bit `S` directly — which is why the decode-side shifts equal the encode-side `BitCopy dst_bit` arguments one-for-one.
 
-The single most important V5+ structural fact is the **−N MXU1 twin**: the two `VectorExtended` slots' control regions are a fixed bit-offset apart, and the decode side proves the offset and corrects it. Viperfish's MXU1 is **−20** vs MXU0; Ghostlite's is **−21**; and Trillium's is **−25** — not −21 as an earlier cross-generation table carried over from Ghostlite. The reason is that Trillium's MXU0 control region drifts +4 bits higher than Ghostlite's while MXU1 stays anchored at the same absolute bit 39 in both GXC generations, so the inter-slot delta grows by 4. The decode side also resolves the two Viperfish latch control bits the encode-side analysis left inferred: abs 57 is the `Transpose` field and abs 58 is the `Target` (matrix-staging-register select) field — both named directly by the decoder's `…TransposeField` / `…TargetField` accessors and traced to their MLIR producers.
+The single most important V5+ structural fact is the **−N MXU1 twin**: the two `VectorExtended` slots' control regions are a fixed bit-offset apart, and the decode side proves the offset and corrects it. Viperfish's MXU1 is **−20** vs MXU0; Ghostlite's is **−21**; and the `6acc60406` family's is **−25** — not −21 as an earlier cross-generation table carried over from Ghostlite. The reason is that the `6acc60406` MXU0 control region drifts +4 bits higher than Ghostlite's while MXU1 stays anchored at the same absolute bit 39 in both GXC generations, so the inter-slot delta grows by 4. The decode side also resolves the two Viperfish latch control bits the encode-side analysis left inferred: abs 57 is the `Transpose` field and abs 58 is the `Target` (matrix-staging-register select) field — both named directly by the decoder's `…TransposeField` / `…TargetField` accessors and traced to their MLIR producers.
 
 For reimplementation, the contract is:
 
 - The **V5+ decode mechanism**: `Decoder::Decode` → staged copy (`stage[0]=1`, bundle bytes at `stage+8`) → `GetConcatenatedValue` predication read → linear `Opcode::Matches` sweep, the byte-exact inverse of the encode-side `BitCopy`.
 - The **Viperfish per-field bit map** and its **−20 twin**: every control field and the predication field shift exactly −20 from MXU0 to MXU1; the eight register-operand selectors do not move (shared pool).
 - The **`Transpose` (abs 57) / `Target` (abs 58)** latch fields and their producer→encoder→decoder chain.
-- The **GXC dtype-class decode**: the glc unified-8-bit-opcode latch discriminator, the float/int dtype-class matrices, the float-only Trillium set, and the corrected **−21 (glc) / −25 (gfc)** twins.
+- The **GXC dtype-class decode**: the glc unified-8-bit-opcode latch discriminator, the float/int dtype-class matrices, the float-only `6acc60406` (gfc) set, and the corrected **−21 (glc) / −25 (gfc)** twins.
 
 | | |
 |---|---|
 | **VF decoder entry** | `TensorCoreVectorExtended0Decoder::Decode` @ `0x1ef6e4c0` (MXU0), `…Extended1Decoder::Decode` @ `0x1efb9760` (MXU1) |
-| **VF stage** | `memcpy(stage+8, span, min(len,N))`; predication read first, bound `< 0x10` |
+| **VF stage** | `*(qword)stage = 1`; `memcpy(stage+8, span, min(len,9))`; predication read first, bound `< 0x10` |
 | **VF latch opcode** | abs 59 w5 (`Pushmatrix*`, value 14 for all dtypes), data-format abs 51 w4 |
 | **VF matmul opcode** | abs 57 w7 (`MatrixMultiply*`, `0x2` Msra / `0x3` Msrb), `MatmulDataFormat` abs 51 w4 |
 | **VF Transpose / Target** | abs 57 / abs 58 (`…PushmatrixBf16TransposeField` `0x1ef9db00` / `…TargetField` `0x1ef9db20`) |
 | **VF twin** | −20 (control fields + predication; the 8 operand selectors are delta-0) |
 | **glc decoder** | `…Extended0Decoder::Decode` @ `0x1f2f69a0`; opcode abs 60 w6, dtype-class abs 54 w2 |
-| **gfc decoder** | `…Extended0Decoder::Decode` @ `0x1f96d020`; opcode abs 64 w6, dtype-class abs 59 w2, bit-62 guard |
+| **gfc decoder** | `…Extended0Decoder::Decode` @ `0x1f96d020` (`gxc::gfc` = `6acc60406` / cloud TPU7x); opcode abs 64 w6, dtype-class abs 59 w2, bit-62 guard |
 | **GXC twins** | glc −21, gfc −25 (MXU0 drifts +4 glc→gfc; MXU1 anchors at abs 39 in both) |
-| **MSR count** | JF 1, PF 1, VF 2, glc 2 (`*Target::MatrixStagingRegisterCount` `0x1d490340`/`…4949e0`/`…49ace0`/`…497ae0`) |
+| **MSR count** | JF 1, PF 1, VF 2, glc 2 (`xla::jellyfish::*Target::MatrixStagingRegisterCount` `0x1d490340`/`…4949e0`/`…49ace0`/`…497ae0`) |
+| **Encode-side check** | GXC encoder `CreateEncoderGlGf` @ `0x1e831020` (GL/GF share); VF/GL/GF bundle = 64B, runtime `field[32]/field[31]` via `GetTileInstructionBundleSizeInBytes` @ `0x1395b8e0` |
 | **Confidence** | CONFIRMED (byte-anchored) unless a row says otherwise |
 
 ---
 
-## Viperfish (v5p) — The Per-Field Decode and the −20 Twin
+## Viperfish (TPU v5) — The Per-Field Decode and the −20 Twin
 
 ### Purpose
 
@@ -47,7 +48,7 @@ TensorCoreVectorExtended0Decoder::Decode @0x1ef6e4c0     ── MXU0 (control re
   ├─ …NoopOpcode::Matches
   ├─ …MatrixMultiply<fmt>Lgmr{Msra,Msrb}Opcode::Matches    @0x1ef98580..  (mask 0xFE78…)
   ├─ …Pushmatrix<fmt>[Masked]Opcode::Matches               @0x1ef98b80..  (mask 0xF878…)
-  └─ … (94 Extended0 op families)
+  └─ … (98 Extended0 op families)
 TensorCoreVectorExtended1Decoder::Decode @0x1efb9760     ── MXU1 (control region abs 28..44, −20)
 ```
 
@@ -57,8 +58,9 @@ TensorCoreVectorExtended1Decoder::Decode @0x1efb9760     ── MXU1 (control re
 // TensorCoreVectorExtended0Decoder::Decode @ 0x1ef6e4c0 (decompiled, verified)
 function Decode(span):
     ve = arena.DefaultConstruct<TensorCoreVectorExtended0>()
-    stage[0] = 1                                            // size-tag
-    memcpy(stage + 8, span.data, min(span.len, N))          // bundle bytes at stage+8 (abs 0..)
+    *(qword*)stage = 1                                      // size-tag at offset 0
+    n = min(span.len, 9)                                    // v10 = 9; if (a5 < 9) v10 = a5
+    memcpy(stage + 8, span.data, n)                         // bundle bytes at stage+8 (abs 0..)
     pred = TensorCoreVectorExtended0PredicationField::GetConcatenatedValue(stage)
     if (pred >= 0x10) return Error                          // 4-bit predicate bound on VF
     ve.predication = pred
@@ -89,7 +91,7 @@ The latch (`Pushmatrix<fmt>`) `Opcode::Matches` predicates read the staged quadw
 | `PushmatrixRounded` (`0x1ef98b80`) | 14 | 0 | `& 0xF878… == 0x7000000000000000` | CONFIRMED |
 | `PushmatrixBf16` (`0x1ef98c00`) | 14 | 3 | `== 0x7018000000000000` | CONFIRMED |
 | `PushmatrixBf8` (`0x1ef98c40`) | 14 | 4 | `== 0x7020000000000000` | CONFIRMED |
-| `PushmatrixU8` (`0x1ef98c80`) | 14 | 5 | `…` | CONFIRMED |
+| `PushmatrixU8` (`0x1ef98c80`) | 14 | 5 | `== 0x7028000000000000` | CONFIRMED |
 | `PushmatrixU8Masked` (`0x1ef98ca0`) | 20 | — | `>> 59 == 20` | CONFIRMED |
 | `PushmatrixS4` / `…Masked` | 14 / 23 | 8 / — | per fmt | CONFIRMED |
 
@@ -115,7 +117,7 @@ The matmul (`MatrixMultiply<fmt>`) predicates use mask `0xFE78000000000000` (bit
 
 The MXU1 accessors confirm the offset byte-for-byte: `…Extended1PushmatrixBf16TransposeField` (`0x1efe8bc0`) reads `>> 37 & 1` and `…TargetField` (`0x1efe8be0`) reads `>> 38 & 1`; the MXU1 matmul predicate (`0x1efe3700`) masks `0xFE780000000` (opcode abs 37, format abs 31). The predication field is part of the twin too: MXU0 predication is read via `Extended0PredicationField` (bound `< 0x10`, abs 64) and MXU1 via `Extended1PredicationField` (abs 44) — a −20 detail the encode-side analysis did not isolate, since predication is written by a separate template.
 
-> **NOTE —** two `VectorExtended` issue slots is confirmed on the decode side too: the binary has 94 `Extended0` and 94 `Extended1` per-op decode helpers and zero `Extended2/3`. The physical `mxu_count` (4 on VF) is the systolic-array count addressed by the unit_id quadrant, not extra bundle slots — see [MXU Slot](slot-mxu.md#viperfish-v5p--named-opcode-families-and-the-latch-control-bits).
+> **NOTE —** two `VectorExtended` issue slots is confirmed on the decode side too: the binary has 98 `Extended0` and 98 `Extended1` per-op `Opcode::Matches` decode helpers (`vxc::isa::TensorCoreVectorExtended{0,1}*Opcode::Matches`) and no `Extended2`/`Extended3` `Decoder::Decode`. The physical `mxu_count` (4 on VF) is the systolic-array count addressed by the unit_id quadrant, not extra bundle slots — see [MXU Slot](slot-mxu.md#viperfish-v5p--named-opcode-families-and-the-latch-control-bits).
 
 ---
 
@@ -145,24 +147,24 @@ The producer lambda (`0x14204700`) writes the `bool` transpose argument to proto
 
 ### Target (abs 58)
 
-`Target` is the `staging_register` attribute = the **MatrixStagingRegister (MSR)** bank select. The per-generation `*Target::MatrixStagingRegisterCount` confirms why this field exists only from v5p:
+`Target` is the `staging_register` attribute = the **MatrixStagingRegister (MSR)** bank select. The per-generation `*Target::MatrixStagingRegisterCount` confirms why this field exists only from Viperfish (TPU v5) onward:
 
 | Generation | `MatrixStagingRegisterCount` | @ addr | Target field? |
 |---|---|---|---|
-| Jellyfish (v3) | 1 | `0x1d490340` | none (1 MSR, nothing to select) |
-| Pufferfish (v4) | 1 | `0x1d4949e0` | none |
-| Viperfish (v5p) | 2 | `0x1d49ace0` | abs 58 (picks MSR0 / MSR1) |
-| Ghostlite (v6e) | 2 | `0x1d497ae0` | (GXC unified-opcode scheme, below) |
+| Jellyfish (TPU v2) | 1 | `0x1d490340` | none (1 MSR, nothing to select) |
+| Pufferfish (TPU v4) | 1 | `0x1d4949e0` | none |
+| Viperfish (TPU v5) | 2 | `0x1d49ace0` | abs 58 (picks MSR0 / MSR1) |
+| Ghostlite (TPU v6e) | 2 | `0x1d497ae0` | (GXC unified-opcode scheme, below) |
 
-Viperfish has two MSR banks, so the 1-bit Target field at abs 58 selects one. JF/PF have a single MSR and therefore carry no Target bit, consistent with the [JF](bundle-jf-41b.md) / [PF](bundle-pf-51b.md) slot maps having no such field.
+All four are `xla::jellyfish::*Target::MatrixStagingRegisterCount`. Viperfish has two MSR banks, so the 1-bit Target field at abs 58 selects one. JF/PF have a single MSR and therefore carry no Target bit, consistent with the [JF](bundle-jf-41b.md) / [PF](bundle-pf-51b.md) slot maps having no such field.
 
 > **GOTCHA — the latch `transpose` bit is not the standalone transpose op.** Transpose @ abs 57 transposes the weight matrix as it is pushed into the array (a Pushmatrix-latch attribute). A separate `EmitVectorTranspose<viperfish>` (`0x141c3f00`) family emits `TransposeStart`/`Continue`/`End`/`Packed`/`Segmented` opcodes that route data through the XLU/transpose unit. They are two different transpose mechanisms — the latch bit is a free repurpose of the matmul-opcode-LSB bit on the latch path, not the transpose-op opcode. A reimplementer must not fold them. See [MXU Slot](slot-mxu.md#the-transpose-and-target-latch-fields).
 
-> **NOTE —** the decoded Transpose / Target bits feed the cost model `SetReservations<MatpushModifier>` (`0x1c8abde0`, an `array<int,19>` keyed on `{dtype × transpose}`) and the transpose-load latency `LatencyTableViperfish::XposeXLUReservationLatency` (`0x1c8a4f00`). The exact `MatpushTarget` ordinal → physical MSR-bank label is not isolated (value 0 = MSR0 / 1 = MSR1 is the natural reading; LOW confidence on the per-value hardware-bank mapping). The `transpose` field's downstream systolic transpose-load is the modeled latency; the bit itself is CONFIRMED.
+> **NOTE —** the decoded Transpose / Target bits feed the cost model `SetReservations<MatpushModifier>` (`0x1c8abde0`, building a `flat_hash_map<MatpushModifier, array<int,19>>` — the `MatpushModifier` key encodes `{dtype × transpose}`, the 19-wide value is the per-`MxuResource` reservation vector; the body bounds-checks `resource_index < MxuResource::kNumMxuResources` = 19, from `mxu_latency_table_vf.cc`) and the transpose-load latency `LatencyTableViperfish::XposeXLUReservationLatency` (`0x1c8a4f00`). The exact `MatpushTarget` ordinal → physical MSR-bank label is not isolated (value 0 = MSR0 / 1 = MSR1 is the natural reading; LOW confidence on the per-value hardware-bank mapping). The `transpose` field's downstream systolic transpose-load is the modeled latency; the bit itself is CONFIRMED.
 
 ---
 
-## GXC (v6e Ghostlite / v7 Trillium) — Wider Opcodes and the Corrected Twins
+## GXC (Ghostlite v6e / `6acc60406` TPU7x) — Wider Opcodes and the Corrected Twins
 
 The GXC generations keep the V5+ codec shape — staged copy, linear `Opcode::Matches` — but widen the opcode field 7→8 bits, fold the latch discriminator into the opcode low bits, and shift the dtype set.
 
@@ -194,9 +196,9 @@ The MXU1 twin is **−21**, confirmed from the MXU1 predicates: `Extended1PushMa
 | matmul opcode (w8) | 58 | 37 | −21 | CONFIRMED |
 | matmul format | 52 | 31 | −21 | CONFIRMED |
 
-### Trillium (v7 / gfc)
+### `6acc60406` (cloud TPU7x / gfc)
 
-Trillium is **float-only**: it drops the integer matmul group and supports four dtypes `{F32, E4m3, Bf16, E5m2}` — the two FP8 formats named explicitly (vs Ghostlite's `If8`/`Bf8`). The gfc decoder (`…Extended0Decoder::Decode` @ `0x1f96d020`) reads the opcode-high at abs 64 (w6), the dtype-class at abs 59 (w2), and a single-bit latch valid-guard at abs 62.
+The `6acc60406` family is **float-only**: it drops the integer matmul group and supports four dtypes `{F32, E4m3, Bf16, E5m2}` — the two FP8 formats named explicitly (vs Ghostlite's `If8`/`Bf8`). The gfc decoder (`…Extended0Decoder::Decode` @ `0x1f96d020`) reads the opcode-high at abs 64 (w6), the dtype-class at abs 59 (w2), and a single-bit latch valid-guard at abs 62.
 
 ```c
 // gfc PushMatrixBf16Opcode::Matches @ 0x1f98fd20 (verified)
@@ -219,7 +221,7 @@ The dtype-class at abs 59 is `{F32 0, E4m3 1, Bf16 2, E5m2 3}`. The MXU1 twin is
 | matmul opcode (w8) | 62 | 37 | −25 | CONFIRMED |
 | matmul format | 57 | 32 | −25 | CONFIRMED |
 
-> **CORRECTION (DEC-GXC-1) —** an earlier cross-generation table listed the Trillium inter-MXU twin as **−21** (carried over from Ghostlite). Decode-side disassembly of the gfc `MatrixMultiplyBf16Lgmr*` and `PushMatrix*Opcode::Matches` shows the twin is **−25**: MXU0 opcode @ abs 64, MXU1 @ abs 39; matmul @ 62 vs 37; format @ 57 vs 32. The +4 MXU0 drift (glc 60 → gfc 64) compounds the offset because MXU1 anchors at abs 39 across both GXC generations.
+> **CORRECTION (DEC-GXC-1) —** an earlier cross-generation table listed the `6acc60406` (gfc) inter-MXU twin as **−21** (carried over from Ghostlite). Decode-side disassembly of the gfc `MatrixMultiplyBf16Lgmr*` and `PushMatrix*Opcode::Matches` shows the twin is **−25**: MXU0 opcode @ abs 64, MXU1 @ abs 39; matmul @ 62 vs 37; format @ 57 vs 32. The +4 MXU0 drift (glc 60 → gfc 64) compounds the offset because MXU1 anchors at abs 39 across both GXC generations.
 
 > **NOTE —** the glc latch valid-guard is read here as a 2-bit field at abs 58/59 in the cross-generation analysis, but the decompiled `glc PushMatrixBf16` body tests `(~v1 & bits{58,59}) != 0` (at least one of the two clear) together with the dtype-class at abs 54 — the exact guard polarity and the gfc 1-bit `bt 62` equivalent width are read as confirmed *single-bit/two-bit tests* but their full latch-vs-matmul boundary semantics are the [MXU Slot](slot-mxu.md#ghostlite-v6e--glc) page's territory (LOW confidence on the unified-opcode boundary value). The opcode, dtype-class, and matmul-format positions above are all CONFIRMED byte-exact.
 
@@ -229,13 +231,13 @@ The dtype-class at abs 59 is `{F32 0, E4m3 1, Bf16 2, E5m2 3}`. The MXU1 twin is
 
 The V5+ decode reference (this page) completing the [JF / PF](decode-side-jf-pf.md) older-gen counterpart:
 
-| Gen | Codename | Decoder @ | MXU0 opcode | MXU1 opcode | Twin | dtype set | Confidence |
-|---|---|---|---|---|---|---|---|
-| v5p | viperfish | `0x1ef6e4c0` | matmul abs 57 / push abs 59 | abs 37 / 39 | −20 | 8 (int + float) | CONFIRMED |
-| v6e | ghostlite (glc) | `0x1f2f69a0` | unified abs 58 (w8) | abs 37 | −21 | 8 (int + float) | CONFIRMED |
-| v7 | trillium (gfc) | `0x1f96d020` | unified abs 62 (w8) | abs 37 | −25 | 4 (float only) | CONFIRMED |
+| TpuVersion | Codename (binary) | Cloud | Decoder @ | MXU0 opcode | MXU1 opcode | Twin | dtype set | Confidence |
+|---|---|---|---|---|---|---|---|---|
+| 3 | viperfish (`vxc`) | TPU v5 (v5e/v5p) | `0x1ef6e4c0` | matmul abs 57 / push abs 59 | abs 37 / 39 | −20 | 8 (int + float) | CONFIRMED |
+| 4 | ghostlite (`gxc::glc`) | TPU v6e | `0x1f2f69a0` | unified abs 58 (w8) | abs 37 | −21 | 8 (int + float) | CONFIRMED |
+| 5 | `6acc60406` (`gxc::gfc`) | TPU7x | `0x1f96d020` | unified abs 62 (w8) | abs 37 | −25 | 4 (float only) | CONFIRMED |
 
-All three use the staged-copy + linear `Opcode::Matches` codec; the per-generation deltas are the opcode widening (7→8 bits), the dtype-set shift (Trillium drops integers, names FP8 explicitly), and the inter-MXU twin (−20 → −21 → −25). The encode side ([V5+ EmitX](v5plus-emitx-bit-positions.md), [Viperfish bundle](bundle-vf-64b.md)) wrote each of these bits with a `BitCopy(buf, abs_bit, …)`, and the decode `Opcode::Matches` masks recover them at the same abs_bit — the round-trip is closed for all three generations.
+All three use the staged-copy + linear `Opcode::Matches` codec; the per-generation deltas are the opcode widening (7→8 bits), the dtype-set shift (`6acc60406` drops integers, names FP8 explicitly), and the inter-MXU twin (−20 → −21 → −25). The encode side ([V5+ EmitX](v5plus-emitx-bit-positions.md), [Viperfish bundle](bundle-vf-64b.md)) wrote each of these bits with a `BitCopy(buf, abs_bit, …)`, and the decode `Opcode::Matches` masks recover them at the same abs_bit — the round-trip is closed for all three generations.
 
 ---
 
@@ -247,9 +249,9 @@ All three use the staged-copy + linear `Opcode::Matches` codec; the per-generati
 | `TensorCoreVectorExtended1Decoder::Decode` `0x1efb9760` | VF MXU1 decoder (the −20 twin) |
 | `…PushmatrixBf16TransposeField` `0x1ef9db00` / `…TargetField` `0x1ef9db20` | VF abs 57 / abs 58 latch field accessors |
 | `ViperfishTensorCoreEmitter::EmitVectorLatchCommon` lambda `0x14204700` | the Transpose/Target producer (proto +0x20/+0x24) |
-| `gxc::glc::…Extended0Decoder::Decode` `0x1f2f69a0` | Ghostlite decoder (unified 8-bit opcode, −21 twin) |
-| `gxc::gfc::…Extended0Decoder::Decode` `0x1f96d020` | Trillium decoder (float-only, bit-62 guard, −25 twin) |
-| `*Target::MatrixStagingRegisterCount` `0x1d490340`..`497ae0` | per-gen MSR count (1/1/2/2) — why Target exists only from v5p |
+| `gxc::glc::…Extended0Decoder::Decode` `0x1f2f69a0` | Ghostlite (v6e) decoder (unified 8-bit opcode, −21 twin) |
+| `gxc::gfc::…Extended0Decoder::Decode` `0x1f96d020` | `6acc60406` (TPU7x) decoder (float-only, bit-62 guard, −25 twin) |
+| `xla::jellyfish::*Target::MatrixStagingRegisterCount` `0x1d490340`..`497ae0` | per-gen MSR count (1/1/2/2) — why Target exists only from Viperfish (TPU v5) onward |
 
 ## Cross-References
 
