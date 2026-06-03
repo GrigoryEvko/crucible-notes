@@ -12,7 +12,7 @@ The page is structured as the three passes in pipeline order — `InferMemRefLay
 
 For reimplementation, the contract is:
 
-- **The memref tiling formula.** `getTilingFactor` — the sublane-tile chooser: `packing = 32/bw`, the `leading_tile_rows` override, the "large 2nd-minor" multiplier table, and the divisibility/power-of-two fallback. This is the producer of the tiling the load/store vector rules later match.
+- **The memref tiling formula.** `getTilingFactor` — the sublane-tile chooser: `packing = 32/bw`, the `(32/bw)*sublanes` "large 2nd-minor" multiplier table, and the divisibility/power-of-two fallback — plus the `leading_tile_rows` arg-attr override that `inferLayout` applies one level up (bypassing `getTilingFactor` entirely). This is the producer of the tiling the load/store vector rules later match.
 - **The propagation fixpoint.** `propagateTiling`'s worklist over a 26-entry op-name→rule `StringMap`, the see-through-`erase_layout` consumer rule, the `memref_slice` tile-stride folding, and the deferred `EraseLayoutOp` removal.
 - **The vector op-TypeID dispatch.** `inferBlock`'s ≈35-case TypeID switch (the producer analogue of the apply `StringMap`), the bitwidth-cast pre-dispatch, and the elementwise/extension fallback.
 - **The per-op rules.** The shared `bitwidth → native-tiling` skeleton, and the matmul / elementwise / load-store / broadcast / rotate rule bodies to reimplementation grade.
@@ -23,7 +23,7 @@ For reimplementation, the contract is:
 | **Pass 1 (stage 4)** | `mlir::tpu::InferMemRefLayoutPass::runOnOperation` @ `0x132c1820` (create: `0x132c0f00`) |
 | **Pass 2 (stage 9)** | `mlir::tpu::TilingPropagationPass::runOnOperation` @ `0x132e0dc0` (create: `0x132e0900`) |
 | **Pass 3 (stage 10)** | `mlir::tpu::InferVectorLayoutPass::runOnOperation` @ `0x132c3600` (create: `0x132c2c20`) |
-| **Vector dispatch core** | `(anon)::VectorLayoutInferer::inferBlock` @ `0x132c3dc0` (1409 lines; ≈35-case TypeID switch) |
+| **Vector dispatch core** | `(anon)::VectorLayoutInferer::inferBlock` @ `0x132c3dc0` (~1400 lines decompiled; ≈35-case TypeID switch) |
 | **Memref tiling core** | `inferLayout` @ `0x132bef00` → `getTilingFactor` @ `0x132bed80` |
 | **Propagation fixpoint** | `propagateTiling` @ `0x132e10a0`; rule map `rules()` @ `0x132e15e0` (26 entries) |
 | **Lattice** | `mlir::tpu::VectorLayout::join` @ `0x14a957c0`; `generalizes` (≤); source `layout.h:320` |
@@ -133,28 +133,31 @@ function inferLayout(memref, ctx, target_shape, flags, is_arg, lead_rows):  // 0
         if bw < 32: append packing tile (32/bw, 1)
         return single-tile layout along the minor axis
     else:                                                     // rank >= 2
-        sublane = getTilingFactor(shape[-2], gen, lead_rows, flags, bw, is_arg, /*1d=*/0)
+        if lead_rows != 0:                                    // leading_tile_rows arg-attr overrides
+            sublane = lead_rows
+        else:
+            sublane = getTilingFactor(shape[-2], gen, target_shape[0], flags, bw, is_arg, /*1d=*/0)
         L = TiledLayoutAttr::getContiguous(ctx, {sublane, lane}, shape)   // computes tile strides
         if bw < 32: append packing tile (32/bw, 1)
         return L
     // non-power-of-2 or bw > 32 → "Unsupported bitwidth: <bw>"
 ```
 
-`getTilingFactor` chooses the sublane tile. The packing factor `32/bw` is the floor; the `leading_tile_rows` arg-attr can raise it; a per-bitwidth "large 2nd-minor" multiplier (gated by three `TpuTilingFlags` bytes, `is_arg`, and `gen`) can raise it further; and divisibility/size fallbacks keep it legal for the actual dimension:
+`getTilingFactor` chooses the sublane tile. Its third parameter is the **target sublane count** (`target_shape[0]`, normally 8) — `inferLayout` passes `*a3` here, *not* `leading_tile_rows`. The packing factor `32/bw` is the floor; a per-bitwidth "large 2nd-minor" multiplier (the packing factor times the target sublane, gated by three `TpuTilingFlags` bytes, `is_arg`, and `gen`) can raise it; and divisibility/size fallbacks keep it legal for the actual dimension. The `leading_tile_rows` arg-attr is handled one level up in `inferLayout` — when present it sets the sublane tile directly and `getTilingFactor` is never called for that arg:
 
 ```c
-function getTilingFactor(dim, gen, lead_rows, flags, bw, is_arg, is_1d):   // 0x132bed80
+function getTilingFactor(dim, gen, sublanes, flags, bw, is_arg, is_1d):   // 0x132bed80
     require isPowerOf2_32(bw)                                 // infer_memref_layout.cc:53
     require 2 <= bw <= 32                                     // :54 / :55
     packing = 32 / bw
-    base    = max(packing, lead_rows)
+    base    = max(packing, sublanes)
     factor  = base
     if not is_1d:                                             // "large 2nd-minor" multiplier
-        switch tzcnt(bw):                                     // 1→bw2, 2→bw4, 3→bw8, 4→bw16
-            case bw==16: candidate = 16 * lead_rows
-            case bw==8 : candidate =  8 * lead_rows  if flags[2]
-            case bw==4 : candidate =  4 * lead_rows  if flags[1]
-            case bw==2 : candidate =  2 * lead_rows  if (flags[0] or is_arg or gen < 6)
+        switch tzcnt(bw):                                     // bw2→1, bw4→2, bw8→3, bw16→4
+            case bw==2 : candidate = 16 * sublanes            // unconditional
+            case bw==4 : candidate =  8 * sublanes  if flags[2]
+            case bw==8 : candidate =  4 * sublanes  if flags[1]
+            case bw==16: candidate =  2 * sublanes  if (flags[0] or (not is_arg and gen >= 6))
         if candidate set: factor = candidate
     if dim % factor != 0: factor = base                       // divisibility fallback
     if dim < factor:                                          // walk powers of two up
@@ -164,7 +167,9 @@ function getTilingFactor(dim, gen, lead_rows, flags, bw, is_arg, is_1d):   // 0x
     return factor
 ```
 
-> **GOTCHA — the memref tiling is generation- and arg-dependent, not just bitwidth-dependent.** `getTilingFactor` reads `gen`, three `TpuTilingFlags` bytes, the `is_arg` flag, and the consumed `leading_tile_rows` arg-attr. A reimplementation that derives the sublane tile from `32/bw` alone will produce the right answer for f32 (factor 8) but the wrong one for bf16/int8/int4, where the "large 2nd-minor" arm widens the tile (bf16 → `16*lead_rows`) when the flags and divisibility permit. The flags are recovered as `flags[0..2]`; their human names (likely `allow_2nd_minor_{2x,4x,8x}`) are inferred from use (MEDIUM).
+The multiplier is `(32/bw) * sublanes` in every arm — i.e. it widens the sublane tile so the tile holds a full vreg's worth of packed sub-elements. For the common `sublanes == 8`: bw=2 → 128, bw=4 → 64, bw=8 → 32, bw=16 → 16; for f32 (bw=32) the switch is not entered and the tile stays at `base = max(1, 8) = 8`.
+
+> **GOTCHA — the memref tiling is generation- and arg-dependent, not just bitwidth-dependent.** `getTilingFactor` reads `gen`, three `TpuTilingFlags` bytes, the `is_arg` flag, and the target sublane count. A reimplementation that derives the sublane tile from `32/bw` alone will produce the right answer for f32 (factor 8) but the wrong one for bf16/int8/int4, where the "large 2nd-minor" arm widens the tile (bf16 with `sublanes=8` → `2*8 = 16`) when the flags and divisibility permit. The gating differs per bitwidth: the bw=2 arm is unconditional, bw=4 needs `flags[2]`, bw=8 needs `flags[1]`, and bw=16 takes the wide tile when `flags[0]` is set *or* when the memref is a non-arg on `gen >= 6` (i.e. `flags[0] or (not is_arg and gen >= 6)`). The flags are recovered as `flags[0..2]`; their human names are inferred from use (MEDIUM).
 
 > **QUIRK — `erase_layout` vs `reinterpret_cast` is decided by an un-decompiled predicate.** `inferFunc` inserts a `tpu.reinterpret_cast` (collapsing tiles into a linear-strided untiled view) when `canReinterpretToUntiledMemref` holds, else a `tpu.erase_layout` (a typed-but-untiled alias). The predicate's call sites are recovered; its body (the 2-D/32-bit/contiguous eligibility test) was not decompiled. Treat the choice as: reinterpretable contiguous 32-bit 2-D → `reinterpret_cast`; everything else → `erase_layout` (LOW on the exact predicate).
 
@@ -372,7 +377,8 @@ The switch has ≈35 cases. The producer-side parallel of the apply pass's 49 re
 |---|---|---|---|
 | `arith.constant` | `infer(arith::ConstantOp)` | `0x132c78c0` | |
 | `cf.assert` | inline | — | `setInLayout = kNoLayout` |
-| `memref.load` / `tpu.load` | `infer(LoadOp)` | `0x132cb6c0` | shared |
+| `memref.load` | `infer(memref::LoadOp)` | `0x132c7de0` | distinct from `tpu.load` |
+| `tpu.load` | `infer(LoadOp)` | `0x132cb6c0` | |
 | `tpu.store` | `infer(StoreOp)` | `0x132cbb20` | |
 | `tpu.strided_load` / `tpu.strided_store` | `infer(Strided{Load,Store}Op)` | `0x132cbd80` / `0x132cc240` | |
 | `tpu.matmul` (+ `push_rhs`/`acc_lhs`/`pop`) | `infer(Matmul*Op)` | `0x132cc740` / `0x132cccc0` / `0x132cce00` / `0x132ccf40` | |
@@ -380,7 +386,8 @@ The switch has ≈35 cases. The producer-side parallel of the apply pass's 49 re
 | `tpu.concatenate` | `infer(ConcatenateOp)` | `0x132cacc0` | |
 | `tpu.erase_layout` | inline | — | `setLayout = kNoLayout` (in+out) |
 | `tpu.iota` | `infer(IotaOp)` | `0x132cd0a0` | |
-| `tpu.gather` / `tpu.dynamic_gather` | `infer(DynamicGatherOp)` | `0x132cd3e0` | shared |
+| `tpu.gather` | `infer(GatherOp)` | `0x132cd380` | distinct from dynamic |
+| `tpu.dynamic_gather` | `infer(DynamicGatherOp)` | `0x132cd3e0` | |
 | `tpu.reduce_index` | `infer(ReduceIndexOp)` | `0x132cd6e0` | |
 | `tpu.bitcast` | `infer(BitcastOp)` | `0x132cdb40` | |
 | `tpu.trace` | `infer(TraceOp)` | `0x132ce020` | |
@@ -395,7 +402,7 @@ The switch has ≈35 cases. The producer-side parallel of the apply pass's 49 re
 | `tpu.vector_load` / `tpu.vector_store` | `infer(Vector{Load,Store}Op)` | `0x132cf2c0` / `0x132d2340` | → `inferLoadStoreVectorLayout` |
 | `tpu.transpose` | `infer(TransposeOp)` | `0x132d26c0` | |
 
-The load/store family (`memref.load`, `tpu.load`/`store`, `strided_*`, `vector_load`/`vector_store`) all funnel through the shared `inferLoadStoreVectorLayout` (`0x132d48c0`).
+Only the two *vector* memory ops — `tpu.vector_load` and `tpu.vector_store` — funnel through the shared `inferLoadStoreVectorLayout` (`0x132d48c0`); the scalar `memref.load` / `tpu.load` / `tpu.store` and the `strided_*` ops each have their own `infer(...)` body and do not call it.
 
 ### Function Map
 
@@ -403,7 +410,7 @@ The load/store family (`memref.load`, `tpu.load`/`store`, `strided_*`, `vector_l
 |---|---|---|---|
 | `InferVectorLayoutPass::runOnOperation` | `0x132c3600` | pass entry; constructs the `VectorLayoutInferer` | HIGH |
 | `createInferVectorLayoutPass` | `0x132c2c20` | factory (`gen`, `{sublane,lane}`, `TpuTilingFlags`, bool) | HIGH |
-| `VectorLayoutInferer::inferBlock` | `0x132c3dc0` | per-op TypeID dispatch (1409 lines) | HIGH |
+| `VectorLayoutInferer::inferBlock` | `0x132c3dc0` | per-op TypeID dispatch (~1400 lines decompiled) | HIGH |
 | `getLayoutFromOperands` | `0x132c59a0` | collects each operand's producer `out_layout` | HIGH |
 | `getLayout` | `0x132d3260` | reads a value's `out_layout` at the result index | HIGH |
 | `inferExt` / `inferTrunc` | `0x132c5be0` / `0x132c6600` | widening / narrowing cast layout | HIGH |
@@ -580,7 +587,7 @@ The kernel (`{sublane=8, lane=128}`):
        tpu.vector_store %acc, %o
 ```
 
-**Stage 4 — infer-memref-layout.** Each arg memref gets a `TiledLayoutAttr`. For bf16 (`bw=16`), `getTilingFactor(512, gen, lead_rows=1, …, 16)`: `packing=2`, the `bw==16` "large 2nd-minor" arm yields `16*lead_rows = 16` (divisible into 512), plus the packing tile `(2,1)`:
+**Stage 4 — infer-memref-layout.** Each arg memref gets a `TiledLayoutAttr`. With no `leading_tile_rows` arg-attr, for bf16 (`bw=16`) `getTilingFactor(512, gen, sublanes=8, …, is_arg=1, 16)`: `packing=2`, and (assuming `flags[0]` is set, since these are kernel args) the `bw==16` "large 2nd-minor" arm yields `2*sublanes = 16` (divisible into 512), plus the packing tile `(2,1)`:
 
 ```text
 %a  →  tiles [(16,128),(2,1)], contiguous strides          (512x256 bf16)
