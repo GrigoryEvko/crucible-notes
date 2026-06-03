@@ -12,7 +12,7 @@ This page documents the two placement functions byte-for-byte, the two struct la
 
 For reimplementation, the contract is:
 
-- **The FIFO discipline** — two `int32` cursor arrays sized by `num_mxus`, per-MXU select `matmul_program_order & 3`, advance by `MxuResultEntriesPushed`/`Popped`, round up to `MinMrbWriteBlockSize`, wrap modulo `ResultFifoEntryCount(kMrf0, version)`, committed by `set_mrb_address`.
+- **The FIFO discipline** — two `int32` cursor arrays sized by `num_mxus`, per-MXU select `unit_id & 3`, advance by `MxuResultEntriesPushed`/`Popped`, round up to `MinMrbWriteBlockSize`, wrap modulo `ResultFifoEntryCount(kMrf0, version)`, committed by `set_mrb_address`.
 - **The MSR bounce** — the `0xa5` early-out pre-scan, the per-sequence `msr ^= 1` toggle, and `set_matrix_staging_register`'s per-op-family destination byte (`+0x46`/`+0x44`/`+0x42`/`+0x41`).
 - **The two struct layouts** — the `0x70`-byte per-MXU timeline element vs the `0x40`-byte per-chunk free-pool record, and the `0x70`-byte `AccumulationChainAfterSplit`, all keyed by `MrbEntry.chunk_id`.
 - **The per-gen accessor surface** — six `Target` vtable slots that price the placement, and *why* the path is gen-gated off in v0.0.40 (every shipped TensorCore target returns `MatmulResultBufferEntries() == 0`).
@@ -53,7 +53,7 @@ MxuAssigner::VisitRegion                          0x10f3a640
         BounceBetweenMsrs(target, quadrant[q]) × 4        0x10f40f91…
 ```
 
-> **QUIRK — the FIFO cursors are per-MXU *inside one quadrant call*, not global.** `AllocateMrbEntriesAsFifo` allocates its two cursor arrays at function entry and frees them at function return, so each of the four quadrant calls starts both cursors at zero. The arrays are sized `num_mxus`, and the per-element index comes from `matmul_program_order & 3`, so within one call the cursors are independent per MXU. A reimplementation that hoists the cursors to region scope (carrying the FIFO write position across quadrants) will diverge — the binary resets them per call. Whether the hardware actually expects a fresh FIFO per quadrant region or a cross-region carry is **not traced** (the cursor lifetime is strictly intra-call here).
+> **QUIRK — the FIFO cursors are per-MXU *inside one quadrant call*, not global.** `AllocateMrbEntriesAsFifo` allocates its two cursor arrays at function entry and frees them at function return, so each of the four quadrant calls starts both cursors at zero. The arrays are sized `num_mxus`, and the per-element index comes from `unit_id & 3` (the per-op MXU instance, `HIBYTE(WORD[+0xb]) & 3`), so within one call the cursors are independent per MXU. A reimplementation that hoists the cursors to region scope (carrying the FIFO write position across quadrants) will diverge — the binary resets them per call. Whether the hardware actually expects a fresh FIFO per quadrant region or a cross-region carry is **not traced** (the cursor lifetime is strictly intra-call here).
 
 ---
 
@@ -96,7 +96,7 @@ function AllocateMrbEntriesAsFifo(target, span):
         matres_index = 0
         for matmul in seq->matmuls:                 // [seq+0x48] ptr, [seq+0x50] count
             fmt  = matmul.matmul_data_format()      // @0x1d4e8440
-            push = target.MxuResultEntriesPushed(matpush_op, fmt)   // vtbl[+0x5f0]
+            push = target.MxuResultEntriesPushed(matmul_op, fmt)    // vtbl[+0x5f0]
             unit = matmul->unit_id()
             RET_CHECK(unit.has_value())             // mxu_assigner.cc:890
             RET_CHECK(unit == seq_unit)             // mxu_assigner.cc:893 "same unit id"
@@ -179,7 +179,7 @@ if a2 != 0xa5 /*vector-matmul-lmr*/:
     CHECK(a3-1 < 8)                                      // valid MatmulDataFormat
     return push_table[a3-1]   // @0xa2e6180 = {2,4,8,8,4,4,4,4}
 else:
-    CHECK((a3-2) in {1,3,4,5,6})                         // 0xa5 valid-format mask 0x79
+    CHECK((a3-2) in {0,3,4,5,6})                         // 0xa5 valid-format mask 0x79 (bits 0,3,4,5,6)
     return lmr_push_table[a3-2] // @0xb5307c0 = {2,0,0,1,1,1,1,0}
 
 // ViperfishTarget::MxuResultEntriesPopped @0x1d499ba0
@@ -227,14 +227,14 @@ function BounceBetweenMsrs(target, span):
     msr = 1
     for seq in span:
         msr ^= 1                                         // alternate: msra(0) ↔ msrb(1)
-        for push in seq->matpushes:                      // [seq+0x18] ptr, [seq+0x20] count
-            set_matrix_staging_register(push, msr)       // @0x1d4d7d40
+        for latch in seq->latches:                       // [seq+0x18] ptr, [seq+0x20] count (0x8d..0x96)
+            set_matrix_staging_register(latch, msr)      // @0x1d4d7d40
         // first matmul of the sequence also carries the bank
         set_matrix_staging_register(seq->matmuls[0], msr)   // [seq+0x48][0]
     return OK
 ```
 
-> **CORRECTION (MRB-BOUNCE-OFFSETS) —** the bounce stamps the bank onto the sequence's **matpushes** (`[seq+0x18]`/`[seq+0x20]`) and onto **`matmuls[0]`** (`[seq+0x48][0]`), not onto a matres. The `[seq+0x48]`/`[seq+0x50]` array is the *matmuls* vector — pinned by the `RET_CHECK(!sequence->matmuls.empty())` string at `mxu_assigner.cc:1063` guarding `[seq+0x50]`. The full `MxuSequence` sub-vector map confirmed across both functions is: matpushes `+0x18`/`+0x20`, matmuls `+0x48`/`+0x50`, matreses `+0x60`/`+0x68`. (Earlier raw notes labeled `+0x48`/`+0x50` as matreses; the check string corrects it.)
+> **CORRECTION (MRB-BOUNCE-OFFSETS) —** the bounce stamps the bank onto the sequence's **latch** list (`[seq+0x18]`/`[seq+0x20]`, the stationary-operand staging ops `0x8d..0x96`) and onto **`matmuls[0]`** (`[seq+0x48][0]`), not onto a matres. The `[seq+0x48]`/`[seq+0x50]` array is the *matmuls* vector — pinned by the `RET_CHECK(!sequence->matmuls.empty())` string at `mxu_assigner.cc:1063` guarding `[seq+0x50]`. The full `MxuSequence` sub-vector map (cross-checked against the [MxuSequence struct](mxu-sequence-struct.md) deleter and `SetLatchIndices`) is: latches `+0x18`/`+0x20`, matmuls `+0x48`/`+0x50`, matreses `+0x60`/`+0x68`. (Earlier raw notes labeled `+0x48`/`+0x50` as matreses; the check string corrects it.)
 
 ### Why `0xa5` Aborts the Whole Pass
 
@@ -250,7 +250,7 @@ The bank byte is written into a different per-op-family field depending on opcod
 // LloInstruction::set_matrix_staging_register(Msr) @0x1d4d7d40  (a2 = msr byte 0/1)
 op = *a1;                                       // LloOpcode (uint16)
 if      ((uint16)(op - 0x9b) <= 0xA):  a1[+0x46] = msr;   // 0x9b..0xa5  vector-matmul / -lmr
-else if ((uint16)(op - 0x8d) <= 0x9):  a1[+0x44] = msr;   // 0x8d..0x96  vector-matpush family
+else if ((uint16)(op - 0x8d) <= 0x9):  a1[+0x44] = msr;   // 0x8d..0x96  vector-latch family (kVectorLatch*)
 else if ((op & 0xFFFE) == 0xAA):       a1[+0x42] = msr;   // 0xaa/0xab   vector-load-lmr / -bf16
 else if (op == 0xA8):                  a1[+0x41] = msr;   // 0xa8        vector-done-with-gains
 else:  FATAL("msr unsupported for opcode: ");             // llo_instruction.cc:3414
@@ -259,7 +259,7 @@ else:  FATAL("msr unsupported for opcode: ");             // llo_instruction.cc:
 | `LloOpcode` range | Op family | Destination field | Confidence |
 |---|---|---|---|
 | `0x9b..0xa5` | vector-matmul / vector-matmul-lmr | `+0x46` | CONFIRMED |
-| `0x8d..0x96` | vector-matpush family | `+0x44` | CONFIRMED |
+| `0x8d..0x96` | vector-latch family (`kVectorLatch*`) | `+0x44` | CONFIRMED |
 | `0xaa`, `0xab` | vector-load-lmr / -lmr-bf16 | `+0x42` | CONFIRMED |
 | `0xa8` | vector-done-with-gains | `+0x41` | CONFIRMED |
 | else | — | FATAL | CONFIRMED |
@@ -379,7 +379,7 @@ So the placed slot lands in a 16-bit field at `LloInstruction+0x42`, valid for t
 | `0xa5` pre-scan aborts the whole quadrant bounce | `0x10f3fb34` (`cmp …,165`) | CONFIRMED |
 | Per-sequence `msr ^= 1` toggle from initial `msr = 1` | `0x10f3fb60` | CONFIRMED |
 | MSR byte written to `+0x46`/`+0x44`/`+0x42`/`+0x41` by op family | `set_matrix_staging_register` `0x1d4d7d40` decompiled | CONFIRMED |
-| Bounce stamps matpushes (`+0x18`) and `matmuls[0]` (`+0x48`), not matres | `[seq+0x50]` guarded by "!sequence->matmuls.empty()" `:1063` | CONFIRMED |
+| Bounce stamps latches (`+0x18`) and `matmuls[0]` (`+0x48`), not matres | `[seq+0x50]` guarded by "!sequence->matmuls.empty()" `:1063` | CONFIRMED |
 | `Msr{0}="msra"`, `Msr{1}="msrb"` | `MsrToString` `0x1d629720` arithmetic | CONFIRMED |
 | Per-MXU timeline element stride `0x70`; per-chunk free-pool record stride `0x40` | `0x10f59941` (`×0x70`), `0x10f5fa18` (`<<6`) | CONFIRMED |
 | `AccumulationChainAfterSplit` `0x70`-byte field map; AWOC stride `0x60` | `SplitAccumulationChain` `0x10f598e0`; `0x10f59ab6` | CONFIRMED |
@@ -397,20 +397,20 @@ So the placed slot lands in a 16-bit field at `LloInstruction+0x42`, valid for t
 | `MrbChainAllocator::SplitAccumulationChain` `0x10f598e0` | source of the `0x70`-byte split record + per-MXU timeline index |
 | `MrbChainAllocator::ReleaseMrbReservation` `0x10f5f9e0` | the `0x40`-byte free-pool record and MrbEntry recycle |
 | `MxuAssigner::VisitRegion` `0x10f3a640` | the per-quadrant `array<Span,4>` dispatch of both functions |
-| `MxuAssigner::SetLatchIndices` `0x10f3b4c0` / `LatchLhs` `0x10f3b791` | the LHS gain-matrix latch side (runs before this) |
+| `MxuAssigner::SetLatchIndices` `0x10f3b4c0` / `LatchLhs` `0x10f3b5e0` (`num_mxus` read `@0x10f3b791`) | the LHS gain-matrix latch side (runs before this) |
 | `LloInstruction::mrb_address` `0x1d4e8860` | reads back the `+0x42` field this writes |
 | `ViperfishTarget::MxuResultEntriesPushed`/`Popped` `0x1d499ae0`/`0x1d499ba0` | the per-gen push/pop counts the cursors advance by |
 
 ## Cross-References
 
 - [MRB Chain Allocator](mrb-chain-allocator.md) — the program-order reservation timeline that hands each chain the `MrbEntry` this page turns into a physical FIFO slot + MSR bank; owns the per-MXU `boost::multi_index` carried in the `0x70`-byte timeline element.
-- [MxuSequence / SequenceInfo](mxu-sequence-struct.md) — the per-sequence record whose matpushes (`+0x18`), matmuls (`+0x48`), and matreses (`+0x60`) these two functions index.
+- [MxuSequence / SequenceInfo](mxu-sequence-struct.md) — the per-sequence record whose latches (`+0x18`), matmuls (`+0x48`), and matreses (`+0x60`) these two functions index.
 - [MXU Assignment Bin-Packer](mxu-assignment-binpacker.md) — `AssignMxusForSequenceGroup`, which builds the `MxuSequence`s placed here.
 - [Latch Assignment & Overrun](latch-assignment-overrun.md) — the `SetLatchIndices`/`LatchLhs` gain-latch side that runs before the FIFO/MSR placement in `VisitRegion`.
 - [TPU Scheduling Pipeline](overview.md) — Stage 2's place in the four-stage scheduler stack; this page is the result-FIFO/MSR row of Stage 2.
 - [MXU Slot](../isa/slot-mxu.md) — the bundle slot whose `mrb_address` (`+0x42`) and matrix-staging-register fields are serialized from the values placed here; the `GainLatchMode` MSR-A/MSR-B bank model.
-- [Matprep / IAR / Latch](../isa/slot-matprep-iar-latch.md) — the matpush/latch ops the MSR bounce stamps.
-- [LLO Opcode Enum](../isa/llo-opcode-enum.md) — the `0x9b..0xa5` matmul, `0x8d..0x96` matpush, `0xaa`/`0xab` load-lmr, `0xa8` done-with-gains, `0x152` matres numeric space.
+- [Matprep / IAR / Latch](../isa/slot-matprep-iar-latch.md) — the latch ops (`0x8d..0x96`) the MSR bounce stamps.
+- [LLO Opcode Enum](../isa/llo-opcode-enum.md) — the `0x9b..0xa5` matmul, `0x8d..0x96` latch (`kVectorLatch*`), `0xaa`/`0xab` load-lmr, `0xa8` done-with-gains, `0x152` matres numeric space.
 - [MXU Latency Overview](../cost/mxu-latency-overview.md) — the cost model that consumes the placed MSR bank (the `MatpushModifier` staging-register key) to charge per-bank reservation cycles.
 - [MatmulMode & Modifiers](../cost/matmul-mode-modifiers.md) — the `MatmulDataFormat`/`GainLatchMode` ordinals keying `MxuResultEntriesPushed`/`Popped`.
 - [MXU Latency: VF](../cost/mxu-latency-vf.md) — the Viperfish reservation matrix indexed by the bank/format the bounce assigns.
