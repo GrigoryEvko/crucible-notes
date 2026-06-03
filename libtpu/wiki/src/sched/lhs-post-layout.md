@@ -62,7 +62,7 @@ DeepseaCompilerBase::RunHloPasses (0x1093a420)        [Phase 7 / final]
         TpuCopyInsertion / HloSchedule::Update / set_schedule (lines 1722-1971)
 ```
 
-> **QUIRK —** neither pipeline name survives as a `.rodata` C-string. Both are built by an inline 16-byte SSO store: `final_scheduler` via an immediate xmmword move at line 373, and `async_scheduling` via `vmovups xmm0, cs:xmmword_865DCAB` at line 682 (the constant lives at VA `0x865dcab`; its 16 raw bytes decode to `async_scheduling`). Verified: `grep -a -c final_scheduler` over the binary returns 0, while every other LHS diagnostic string is present. A reimplementer grepping for the pipeline name will not find it — it is a stack-built `std::string`.
+> **QUIRK —** neither pipeline name survives as a null-terminated `.rodata` C-string usable as a pass argument. Both are built as an inline 16-byte SSO `std::string` on the stack: `final_scheduler` via `strcpy(ptr, "final_scheduler")` with the SSO length byte `ptr[23] = 15` (line 373), the buffer then copied field-ward by `vmovdqu` at lines 379–380; `async_scheduling` via length byte `ptr[23] = 16` (line 679) then `vmovups xmm0, cs:xmmword_865DCAB` (line 682). Verified by byte-anchor: VA `0x865dcab` in `.rodata` holds the 16 raw bytes `async_scheduling` (the xmmword immediate), while `rg -a -c final_scheduler` over the binary returns 0 — `final_scheduler` exists only as the `strcpy` source inlined into the function body. A reimplementer grepping the binary for `final_scheduler` will not find it as a discrete diagnostic string; `async_scheduling` appears exactly once, as that immediate.
 
 ### Two pipelines, not one nested pipeline
 
@@ -234,7 +234,7 @@ In the post_layout path the estimator is built twice — at line 828 for the LHS
 
 > **NOTE —** the distinctive post_layout behaviour is the **reserved-SparseCore set**. RunHloScheduler lines 869–983 build a `flat_hash_set<int64_t>` from `GetReservedSparseCores` (line 873) and pass it as the final `Create` argument. These are the SparseCore IDs withheld from the overlap pool — information that only exists *after* SparseCore assignment, so the pre-fusion slot (running earlier) would pass an empty set. This is the AsyncTracker delta between the two variants.
 
-> **GOTCHA (LOW) —** the per-physical-resource mapping of the numeric `TpuAsyncTracker::Create` env-offset arguments (env+4576 bandwidth scalar, env+4568 / +5320 resource limits, the `AutoOr<long>(env+{2368…2400})` per-kind limits) was recovered by offset but **not** named 1:1 to ICI vs HBM vs megacore queue. A reimplementer must treat the specific resource each limit gates as inferred.
+> **GOTCHA (LOW) —** the per-physical-resource mapping of the numeric arguments `GetTpuAsyncTracker` (`0x10975520`) reads from the env and forwards into `TpuAsyncTracker::Create` was recovered by offset but **not** named 1:1 to ICI vs HBM vs megacore queue. The observed reads are the two `_QWORD` resource limits at env+4568 / +5320, the byte flags at env+4867 / +5086, a `_DWORD` at env+5412, and the five `AutoOr<long>(env+{2368, 2376, 2384, 2392, 2400})` per-kind limits (plus env+2696). A reimplementer must treat the specific resource each limit gates as inferred.
 
 ---
 
