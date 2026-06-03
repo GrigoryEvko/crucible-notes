@@ -20,7 +20,7 @@ For reimplementation, the contract is:
 
 | | |
 |---|---|
-| **Class** | `tpu::BestFitAllocator` : `tpu::MemoryAllocator` (208-byte instance) |
+| **Class** | `tpu::BestFitAllocator` : `tpu::MemoryAllocator` (200-byte instance, `operator new(0xC8)`) |
 | **Constructor** | `0x1e817500` (`Config const&`, `Policy`); typeinfo `0x21d346e8`, vtable `0x21d34630` |
 | **Allocate** | `0x1e817820` (vt+0x30) → `StatusOr<int64_t>` (returns `base + offset`) |
 | **Deallocate** | `0x1e819dc0` (vt+0x38) |
@@ -48,7 +48,7 @@ This page is the runtime/driver HBM allocator. Three closely-related concerns li
 
 What this page owns: the **free-list structure**, the **best-fit search**, the **coalescing**, the **split / fragmentation policy**, and the **alignment quantum** — i.e. the in-place free-list math of one `BestFitAllocator` instance.
 
-> **NOTE —** the same `BestFitAllocator` class backs VMEM, SMEM, CMEM, and SFLAG. The algorithm is identical across tiers and across chip generations (Dragonfish through Trillium); there are no `switch (TpuVersion)` branches inside any allocator method. Per-tier and per-generation variation is carried entirely in the `Config` triple, sourced from the embedded `chip_parts.binarypb` resource at boot. See [vmem-allocator.md](vmem-allocator.md) and [cmem-pool.md](cmem-pool.md) for the sibling tiers.
+> **NOTE —** the same `BestFitAllocator` class backs VMEM, SMEM, CMEM, and SFLAG. The algorithm is identical across tiers and across chip generations (Dragonfish through 6acc60406); there are no `switch (TpuVersion)` branches inside any allocator method. Per-tier and per-generation variation is carried entirely in the `Config` triple, sourced from the embedded `chip_parts.binarypb` resource at boot. See [vmem-allocator.md](vmem-allocator.md) and [cmem-pool.md](cmem-pool.md) for the sibling tiers.
 
 ---
 
@@ -62,7 +62,7 @@ The allocator keeps two structures, not one free list. This is the central desig
 It is therefore an **address-indexed boundary-tag scheme for coalescing** layered with a **size-ordered tree for the best-fit search**. This is *not* the size-bucketed bin scheme of `tsl::BFCAllocator` (host-only).
 
 ```c
-// 208-byte instance; ctor 0x1e817500 sets these fields. Offsets byte-confirmed.
+// 200-byte instance (operator new(0xC8)); ctor 0x1e817500 sets these fields. Offsets byte-confirmed.
 struct tpu::MemoryAllocator::Config {            // 32 B, passed by const&
     int64_t base_offset_in_bytes_;     // +0   >= 0  (validated; else fatal)
     int64_t allocatable_range_end_;    // +8   > 0   (capacity = end - base)
@@ -73,7 +73,7 @@ struct tpu::MemoryAllocator::Config {            // 32 B, passed by const&
 enum class Policy     : int32_t { kBestFit = 0, kFirstFit = 1 };
 enum class BlockState : int32_t { kFree = 0, kAllocated = 1, kReserved = 2 };
 
-struct tpu::BestFitAllocator {                    // sizeof = 0xC8 (208)
+struct tpu::BestFitAllocator {                    // sizeof = 0xC8 (200)
     void*    vptr;                     // +0x00  -> vtable+0x10
     flat_hash_map<int64_t,HashTableEntry,OffsetHash>
              blocks_by_offset_;        // +0x08  boundary-tag map (ALL blocks)
@@ -93,8 +93,8 @@ struct tpu::BestFitAllocator {                    // sizeof = 0xC8 (208)
     int64_t  peak_bytes_in_use_;       // +0x90
     int64_t  peak_block_bytes_in_use_; // +0x98
     int64_t  bytes_allocatable_init_;  // +0xA0  = end (init mirror)
-    int64_t  reserved_bottom_limit_;   // +0xA8  ReserveBottomOfMemory watermark
-    int64_t  pad_b0_;                  // +0xB0
+    int64_t  reserved_bottom_limit_;   // +0xA8  ReserveBottomOfMemory current limit
+    int64_t  peak_reserved_bottom_;    // +0xB0  max() watermark of reserved-bottom limit
     int64_t  capacity_in_bytes_;       // +0xB8  = end
     int64_t  reservation_count_;       // +0xC0
 };
@@ -183,7 +183,7 @@ The first-fit branch walks the tree in *offset* order? No — it walks in *in-or
 | `__lower_upper_bound_unique_impl<FreeBlock>` | `0x1e824960` | the `lower_bound` over the size-ordered tree | CONFIRMED |
 | `ReserveBottomOfMemory` | `0x1e81b0c0` | sets the `+0xA8` watermark | CONFIRMED |
 | `GetBlockIf` | `0x1e818f20` | SwissTable H2 probe → 48-B `Block` (or null-slot Block) | CONFIRMED |
-| `BytesAllocatable` / `BytesAvailable` | `0x1e819b80` / `0x1e81dd60` | largest-free-run / total-free for the OOM diagnostic | HIGH |
+| `BytesAllocatable` (vt+0x70) / `BytesAvailable` (vt+0x68) | `0x1e819b80` / `0x1e81dd60` | largest-free-run / total-free; supply the OOM diagnostic's $largest$ / $free$ values | CONFIRMED |
 
 ---
 
@@ -202,12 +202,15 @@ StatusOr<int64_t> Allocate(int64_t size) {
 
     auto it = FindAllocatableBlock(aligned);               // 0x1e818540
     if (it == free_tree_.end())                            // == this+0x48
-        return ResourceExhaustedError(
-          "Attempting to allocate $0 at the bottom of memory. That was not "
-          "possible. There are $1 free. The largest contiguous region of free "
-          "memory is $2 due to fragmentation.",
-          HR(size), HR(BytesAvailable()), HR(LargestFreeChunkBytes()));
-          // line 129; if FLAGS_tpu_log_allocations_on_oom, also dumps the map.
+        // message streamed (not a Substitute template), pieces verbatim:
+        //   "Attempting to allocate " << HR(size)
+        //   << ". That was not possible. There are " << HR(BytesAvailable())  // vt+0x68
+        //   << " free. The largest contiguous region of free memory is "
+        //   << HR(BytesAllocatable())                                         // vt+0x70
+        //   << " due to fragmentation.";
+        // ResourceExhaustedErrorBuilder, line 129; if FLAGS_tpu_log_allocations_on_oom,
+        // also dumps the map.
+        return ResourceExhaustedError(...);
 
     Block found = GetBlockIf(it->lo, kFree);               // materialise the free block
     int64_t split_offset = found.end - aligned;            // PLACE AT TOP of the block
@@ -252,7 +255,7 @@ void SplitBlock(const Block& orig, int64_t split_off, BlockState left, BlockStat
 
 This matters for fragmentation analysis. A min-remainder threshold (like `dlmalloc`'s `MINSIZE`) trades a small amount of internal fragmentation to avoid creating unusably-small free blocks. This allocator makes the opposite choice: it never refuses to split, so it never inflates an allocation, but it can leave arbitrarily small free blocks in the tree. That is acceptable here because the **remainder is always an alignment multiple** (see below), so the smallest possible free block is one alignment quantum — 1024 B for HBM — never a sub-quantum sliver.
 
-> **GOTCHA —** because there is no min-remainder, a long-lived workload that allocates and frees buffers of slightly varying sizes can accumulate many one-quantum free blocks scattered across the region. That is *external* fragmentation, and it is precisely what the OOM diagnostic's "largest contiguous region of free memory is $2 due to fragmentation" message reports, and what [compaction](on-device-compaction.md) reclaims. The free *tree* never wastes the space — the bytes are available — but no single allocation larger than the largest gap can be satisfied without a defrag.
+> **GOTCHA —** because there is no min-remainder, a long-lived workload that allocates and frees buffers of slightly varying sizes can accumulate many one-quantum free blocks scattered across the region. That is *external* fragmentation, and it is precisely what the OOM diagnostic's "The largest contiguous region of free memory is &lt;N&gt; due to fragmentation." message reports, and what [compaction](on-device-compaction.md) reclaims. The free *tree* never wastes the space — the bytes are available — but no single allocation larger than the largest gap can be satisfied without a defrag.
 
 ### Internal vs external fragmentation
 
@@ -379,7 +382,7 @@ The only arena-like layer in the whole memory stack is the **host** `PremappedMe
 
 ## OOM and Defragmentation (Pointer)
 
-When `FindAllocatableBlock` returns `end()`, `Allocate` returns the `ResourceExhausted` "…at the bottom of memory…due to fragmentation" status. The runtime's response — the bounded (≤ 2 attempt) retry, program eviction, and the `Compact` defrag that emits a `TpuMemmoves` relocation plan and rewrites the block map + free tree to the post-compaction layout — is **owned by [on-device-compaction.md](on-device-compaction.md)**. The one fact that belongs here: `Compact` (`0x1e81c360`) takes a `flat_hash_set<int64_t>` of **pinned** addresses (MSA-static and DMA/aliasing-held buffers) that it must never relocate, and rewrites *this allocator's* `blocks_by_offset_` and `free_tree_` to the new layout so live `tpu::TpuBuffer` handles resolve to the new offsets automatically. The pinned set is the precise mechanism enforcing "MSA owns the static layout; the runtime owns the dynamic layout in the remaining space."
+When `FindAllocatableBlock` returns `end()`, `Allocate` returns the `ResourceExhausted` "…That was not possible. There are &lt;N&gt; free. The largest contiguous region of free memory is &lt;M&gt; due to fragmentation." status. (The superficially-similar "…at the bottom of memory…" diagnostic belongs to `ReserveBottomOfMemory`, not this path.) The runtime's response — the bounded (≤ 2 attempt) retry, program eviction, and the `Compact` defrag that emits a `TpuMemmoves` relocation plan and rewrites the block map + free tree to the post-compaction layout — is **owned by [on-device-compaction.md](on-device-compaction.md)**. The one fact that belongs here: `Compact` (`0x1e81c360`) takes a `flat_hash_set<int64_t>` of **pinned** addresses (MSA-static and DMA/aliasing-held buffers) that it must never relocate, and rewrites *this allocator's* `blocks_by_offset_` and `free_tree_` to the new layout so live `tpu::TpuBuffer` handles resolve to the new offsets automatically. The pinned set is the precise mechanism enforcing "MSA owns the static layout; the runtime owns the dynamic layout in the remaining space."
 
 ---
 
