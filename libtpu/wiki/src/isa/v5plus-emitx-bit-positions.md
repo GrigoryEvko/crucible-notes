@@ -79,7 +79,7 @@ function EmitImmediate(slot_index, value, immediates_msg):    // 0x139f7060
     return Ok
 ```
 
-Stage 2, the per-slot encoder, reads each populated sub-message and emits a sequence of `BitCopy` calls. The encoder body is a `switch` on the proto opcode at `proto+0x50`; each arm is one op family's field layout. The generic shape (from the immediates encoders) is:
+Stage 2, the per-slot encoder, reads each populated sub-message and emits a sequence of `BitCopy` calls. The encoder body is a `switch` on the proto opcode discriminator — at `proto+0x50` on the Viperfish/Ghostlite scalar encoders and on the `gfc` TC sequencer, at `proto+0x58` on the `gfc` SCS sequencer and `gfc` predicates encoder (the `gfc` proto grows a wider header); each arm is one op family's field layout. The generic shape (from the immediates encoders) is:
 
 ```c
 function <Slot>Encoder::Encode(this, proto, out_buf):
@@ -141,8 +141,8 @@ The branch/call/sync target offset and all other immediates live in the immediat
 | 1 | `+0x1c` | `0x2f` | 47 | 20 | CERTAIN |
 | 2 | `+0x20` | `0x1b` | 27 | 20 | CERTAIN |
 | 3 | `+0x24` | `0x07` | 7 | 20 | CERTAIN |
-| 4 | `+0x28` | `0xd7` | 215 | 20 | HIGH |
-| 5 | `+0x2c` | `0xc3` | 195 | 20 | HIGH |
+| 4 | `+0x28` | `0xd7` | 215 | 20 | CERTAIN |
+| 5 | `+0x2c` | `0xc3` | 195 | 20 | CERTAIN |
 
 Encoder addresses: `vfc` `0x1ee75ee0`, `glc` `0x1eb563c0`, `gfc` `0x1ecd1760`. Slots 4 and 5 (bits 215/195) appear in the full `SparseCoreImmediatesEncoder`; the SCS branch/call path uses only slots 0..3. A second class, `SparseCoreScalarImmediatesEncoder` (`gfc` `0x1eb5bd20`), packs only slots 0..3 at the same bits 67/47/27/7 — it is the encoder the `gfc` SCS codec template names (see [Correction](#corrections)).
 
@@ -190,7 +190,7 @@ The branch offset range is signed 20-bit (`−0x80000..+0x7FFFF`) for absolute, 
 
 ### SCS Sequencer (`SparseCoreScalarAlu0Encoder::Encode`)
 
-The encoder writes a common predication header, then dispatches `jmp *jt[proto+0x50]` (bound 0x56 = 86 entries) to a per-op helper. Confirmed from `glc` `0x1e9d2140` and the `BranchAbsolute` helper `0x1e9d67c0`; Viperfish (`vfc` `0x1ee873c0`) is byte-identical.
+The encoder writes a common predication header, then dispatches `jmp *jt[proto+0x50]` (bound 0x56 = 86 entries) to a per-op helper. Confirmed from `glc` `0x1e9d2140` and the `BranchAbsolute` helper `0x1e9d67c0`; Viperfish (`vfc` encoder `0x1ee82ce0`, `BranchAbsolute` helper `0x1ee873c0`) is byte-identical.
 
 | field | dst_bit | hex | width | Source / written by | Confidence |
 |---|---|---|---|---|---|
@@ -198,7 +198,7 @@ The encoder writes a common predication header, then dispatches `jmp *jt[proto+0
 | predication inversion | 191 | `0xbf` | 1 | proto +0x18 (byte), main encoder | CERTAIN |
 | opcode-HIGH / family | 181 | `0xb5` | 6 | per-op helper (=0 for branch/call) | CERTAIN |
 | opcode-LOW / discriminator | 176 | `0xb0` | 5 | per-op helper (4/5/6/7/0x18) | CERTAIN |
-| x-target / 2nd operand | 170 (`gfc`) / 176 (`vfc`/`glc`) | `0xaa` / `0xb0` | 6 / 5 | `BranchSreg`/aux | HIGH |
+| x-target / 2nd operand | 170 (`gfc`) / 176 (`vfc`/`glc`) | `0xaa` / `0xb0` | 6 / 5 | `BranchSreg`/aux (`gfc` `0x1eb6dd40`, `vfc` `0x1ee87480`) | CERTAIN |
 | call dest (return-addr) sreg | 165 | `0xa5` | 5 | `CallAbsolute`/`CallRelative` | CERTAIN |
 | rotating-preg index (`gfc`) | 165 | `0xa5` | 4 | `BranchRelativeRotatingPreg` | CERTAIN |
 
@@ -206,19 +206,19 @@ On 6acc60406 (`gfc` encoder `0x1eb693c0`) the SCS predication narrows: a 3-bit s
 
 ### TC Sequencer (`TensorCoreScalarAlu0Encoder::Encode`)
 
-The slot `InstBits` could not hold. Confirmed from `vxc` `0x1eecb900` (and helper `0x1eecf960`) and `gfc` `0x1f87b420`.
+The slot `InstBits` could not hold. Confirmed from `vxc` `0x1eecb900` (and helper `0x1eecf960`), `glc` `0x1f219b40` (and helper `0x1f21da40`), and `gfc` `0x1f87b420`.
 
 | field | `vxc` (VF) | `glc` (GL) | `gfc` (GF) | Confidence |
 |---|---|---|---|---|
-| predication reg index | bit 499 w4 | = `vxc` | — (2-bit selector) | CERTAIN |
-| predication inversion | bit 503 w1 | = `vxc` | — | CERTAIN |
+| predication reg index | bit 499 w4 | bit 502 w4 | — (2-bit selector) | CERTAIN |
+| predication inversion | bit 503 w1 | bit 506 w1 | — | CERTAIN |
 | predication 2-bit selector | — | — | bit 489 w2 | CERTAIN |
-| opcode-HIGH / family | bit 493 w6 | = `vxc` | bit 483 w6 | CERTAIN |
-| opcode-LOW / discriminator | bit 488 w5 | = `vxc` | bit 478 w5 | CERTAIN |
-| x-target / 2nd operand | bit 482 w6 | = `vxc` | bit 472 w6 | CERTAIN |
-| call dest (return-addr) sreg | bit 477 w5 | = `vxc` | bit 467 w5 | CERTAIN |
+| opcode-HIGH / family | bit 493 w6 | bit 496 w6 | bit 483 w6 | CERTAIN |
+| opcode-LOW / discriminator | bit 488 w5 | bit 491 w5 | bit 478 w5 | CERTAIN |
+| x-target / 2nd operand | bit 482 w6 | bit 485 w6 | bit 472 w6 | CERTAIN |
+| call dest (return-addr) sreg | bit 477 w5 | bit 480 w5 | bit 467 w5 | CERTAIN |
 
-Ghostlite reuses the Viperfish TC sequencer offsets verbatim within the scalar slot (the +3 shift documented for Ghostlite applies to the immediate block, not these scalar-slot bits — the scalar fields already sit in the same window). 6acc60406's TC scalar slot is the widest: it adds the 6-bit operand at bit 472 and shrinks per-slot predication to a 2-bit selector at bit 489, with the actual 16-register predicate pool moved to the dedicated `TensorCorePredicates` slot.
+Ghostlite shifts the entire TC scalar/sequencer region **+3 bits** above Viperfish, in lockstep with the +3-bit TC immediate-block shift (433 vs 430) — the whole TC scalar/sequencer/immediate block translates as one rigid window to absorb the 7→8-bit opcode widening. (This corrects an earlier reading that asserted the Ghostlite TC sequencer was byte-identical to Viperfish; see [CORRECTION (EMITX-4)](#corrections).) 6acc60406's TC scalar slot is the widest: it adds the 6-bit operand at bit 472 and shrinks per-slot predication to a 2-bit selector at bit 489, with the actual 16-register predicate pool moved to the dedicated `TensorCorePredicates` slot.
 
 > **CORRECTION (EMITX-1) —** the raw sequencer trace summarized the TC `vxc` x-target as "bit 488 w5". Decompilation of the `vxc` encoder body (`0x1eecb900`) shows that bit 488 (w5) is the opcode-LOW discriminator (shared with the `BranchSreg` x-target *value*), while the distinct secondary-operand / LCC-read aux field is a **6-bit** field at **bit 482** (`0x1da`). The 488-vs-482 distinction matters: a `BranchSreg` overwrites the discriminator window with the x() sreg, but an LCC read uses both the 5-bit discriminator at 488 and the 6-bit aux at 482.
 
@@ -237,7 +237,8 @@ Every populated functional slot carries its own predicate: a 4-bit register inde
 | Slot | reg index | inversion | Encoder | Confidence |
 |---|---|---|---|---|
 | TC `ScalarAlu0` (`vxc`) | bit 499 w4 | bit 503 w1 | `0x1eecb900` | CERTAIN |
-| SCS `ScalarAlu0` (`glc`/`vfc`) | bit 187 w4 | bit 191 w1 | `0x1e9d2140` / `0x1ee873c0` | CERTAIN |
+| TC `ScalarAlu0` (`glc`) | bit 502 w4 | bit 506 w1 | `0x1f219b40` | CERTAIN |
+| SCS `ScalarAlu0` (`glc`/`vfc`) | bit 187 w4 | bit 191 w1 | `0x1e9d2140` / `0x1ee82ce0` | CERTAIN |
 
 ### 6acc60406 — Dedicated Dual-Predicate Slot
 
@@ -344,11 +345,11 @@ The consolidated reference cited by the per-generation bundle pages. All positio
 |---|---|---|---|
 | branch/call offset (imm 0) | 430 w20 | 433 w20 | 423 w20 |
 | imm slots 1..5 | 410/390/370/350/330 | 413/393/373/353/333 | 403/383/363/343/323 |
-| seq opcode-HIGH | 493 w6 | 493 w6 | 483 w6 |
-| seq opcode-LOW (discriminator) | 488 w5 | 488 w5 | 478 w5 |
-| seq x-target / 2nd operand (aux) | 482 w6 | 482 w6 | 472 w6 |
-| seq call dest sreg | 477 w5 | 477 w5 | 467 w5 |
-| seq per-slot predicate | reg 499 w4 + inv 503 w1 | = `vxc` | 2-bit selector @ 489 |
+| seq opcode-HIGH | 493 w6 | 496 w6 | 483 w6 |
+| seq opcode-LOW (discriminator) | 488 w5 | 491 w5 | 478 w5 |
+| seq x-target / 2nd operand (aux) | 482 w6 | 485 w6 | 472 w6 |
+| seq call dest sreg | 477 w5 | 480 w5 | 467 w5 |
+| seq per-slot predicate | reg 499 w4 + inv 503 w1 | reg 502 w4 + inv 506 w1 | 2-bit selector @ 489 |
 | dual predicate pred_0 | — | — | reg 501 w4 + inv 505 w1 |
 | dual predicate pred_1 | — | — | reg 496 w4 + inv 500 w1 |
 | MXU opcode-HIGH (VEx0) | 57 w7 | 58 w8 | 62 w8 |
@@ -359,7 +360,7 @@ The consolidated reference cited by the per-generation bundle pages. All positio
 | EUP-push VALU opcode (Alu3) | 197 w7 | 194 w8 | 194 w8 |
 | EUP-function selector | 186 w5 | 183 w5 | 183 w5 |
 
-The generation deltas, in one line: **Ghostlite shifts the TC immediate block +3 bits** (bit 430 → 433) to absorb the 7→8-bit opcode widening; **6acc60406 shifts the TC immediate block −7 bits** (bit 430 → 423) and the scalar/sequencer region down to clear room for the dedicated dual-predicate slot at bits 496..505 and the wider scalar operand at bit 472.
+The generation deltas, in one line: **Ghostlite shifts the entire TC scalar/sequencer/immediate window +3 bits** (immediate slot 0 bit 430 → 433; sequencer opcode-HIGH 493 → 496) as one rigid block to absorb the 7→8-bit opcode widening; **6acc60406 shifts the TC immediate block −7 bits** (bit 430 → 423) and the scalar/sequencer region down to clear room for the dedicated dual-predicate slot at bits 496..505 and the wider scalar operand at bit 472.
 
 ---
 
@@ -379,6 +380,8 @@ Two fields a stock LLVM-MC mental model expects to be encoded are *not* in-bundl
 > **CORRECTION (EMITX-2) —** the raw immediates trace attributed the `gfc` SCS `SparseCoreImmediatesEncoder::Encode` to `0x1eb5bd20`. The function at `0x1eb5bd20` is `SparseCoreScalarImmediatesEncoder::Encode` (a distinct class that packs only slots 0..3, all at bits 67/47/27/7); the full `gfc SparseCoreImmediatesEncoder::Encode` is at `0x1ecd1760` (slots 0..5, including bits 215/195). The `gfc` SCS codec template (confirmed in the `EncodeBundle` `0x1e838cc0` `case 3` `SparseCoreScsCodecBase<…>` argument list) names `SparseCoreScalarImmediatesEncoder` — so `0x1eb5bd20` is the one actually invoked for the SCS branch path. The branch/call offset (imm slot 0 = bit 67) is unaffected; both encoders agree.
 
 > **CORRECTION (EMITX-3) —** `EncodeBundle` `0x1e838cc0` is more precisely the **6acc60406** codec dispatcher: its `default` arm reports "EncodeBundle not implemented for sequencer type" from `learning/45eac/tpu/runtime/utility/tpu_codec_6acc60406.cc`, and its three live cases construct `gfc::isa::{TensorCore,SparseCoreScs,SparseCoreTec}CodecBase<…>`. Ghostlite uses its own `EncoderGlTensorCore::EncodeBundle` (`0x1d331d00`). The raw's "v5 codec" label is correct in spirit (the slot-walk mechanism is shared) but the symbol is generation-specific.
+
+> **CORRECTION (EMITX-4) —** an earlier reading asserted the Ghostlite TC sequencer was byte-identical to Viperfish (the `glc` column read "= `vxc`"). Decompilation of `glc::isa::TensorCoreScalarAlu0Encoder::Encode` (`0x1f219b40`) and its `BranchAbsolute` helper (`0x1f21da40`) refutes this: the Ghostlite TC scalar/sequencer region is uniformly **+3 bits** above Viperfish (predicate reg @ 502 not 499, inversion @ 506 not 503; opcode-HIGH @ 496 not 493; opcode-LOW @ 491 not 488; x-target aux @ 485 not 482; call dest @ 480 not 477). The +3 shift matches the already-confirmed TC immediate-slot +3 (433 vs 430), so the whole TC scalar/sequencer/immediate block translates as one rigid window. The SCS sequencer is *not* shifted — there `glc` is byte-identical to `vxc` (`0x1e9d2140`). This aligns the page with [Ghostlite Bundle](bundle-gl.md)'s `CORRECTION (GL-TC-SHIFT)`.
 
 ---
 
