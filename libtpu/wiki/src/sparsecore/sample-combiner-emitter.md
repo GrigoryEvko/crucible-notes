@@ -23,7 +23,7 @@ For reimplementation, the contract is:
 | **Emitter class** | `xla::tpu::sparse_core::SparseDenseMatmulDotCombinerEmitter` |
 | **Source file** | `platforms/xla/sparse_core/sparse_dense_matmul_dot_combiner_emitter.cc` (from `GetCurrentLocation` strings) |
 | **Entry / nest** | `Emit` `0x1332bda0` ⊃ `EmitSampleCombiner` `0x1332c640` ⊃ `EmitValencyLoop` `0x1332cee0` ⊃ `EmitVectorizedLoop` `0x1332e1c0` |
-| **Dispatcher** | `LoweringEmitter::EmitSparseDenseMatmulDotCombiner` `0x131a7ca0` (builds 3 `FoldAllDimensions` values → ctor → `Emit`) |
+| **Dispatcher** | `LoweringEmitter::EmitSparseDenseMatmulDotCombiner` `0x131a7ca0` (builds 2 `FoldAllDimensions` values → ctor → `Emit`) |
 | **Combiner reduction** | fixed weighted-sum FMA `acc += emb · gain`; `MulFOp` + `AddFOp`, `FastMathFlags = none` |
 | **Combiner roster** | `sum` / `mean` / `sqrtn` = one path, distinguished by the front-end gain scale (NOT a code path, NOT a config field) |
 | **Weight source** | `sorted_gains` operand; per-id scalar via `UnalignedLoadScalarFromHbm` → `arith::BitcastOp` i32→f32 |
@@ -42,10 +42,10 @@ For reimplementation, the contract is:
 The `DotCombiner` emitter performs a single arithmetic reduction: a **gain-weighted sum** of the gathered embedding rows. In the decompiled `EmitVectorizedLoop` body the core is exactly two arith ops, in order:
 
 ```text
-EmitVectorizedLoop core (0x1332e1c0, src lines 250 / 252 / 254)
+EmitVectorizedLoop core (0x1332e1c0, src lines 250 / 252)
   mul = MulFOp(emb_chunk, broadcast_gain)   ; src ln 250 — emb · gain
   acc = AddFOp(mul, accumulator_chunk)       ; src ln 252 — + running accumulator
-        StoreChunk(accumulator, acc)         ; src ln 254 — write back to acc buffer
+        StoreChunk(accumulator, acc)         ; no .cc line tag — inherits AddFOp location
 ```
 
 Both `MulFOp::create` and `AddFOp::create` are emitted with `FastMathFlags = none` (the flags byte register is xor-zeroed before the call). There is no division, no square-root, and no conditional in this body — the reduction is unconditionally `acc += emb · gain`.
@@ -67,7 +67,7 @@ The `DotCombiner` is one of three embedding-combine lowerings the binary carries
 | Emitter / decomposer | Address | Reduction form | Confidence |
 |---|---|---|---|
 | `SparseDenseMatmulDotCombinerEmitter::Emit` | `0x1332bda0` | fixed weighted-sum FMA (this page) | CONFIRMED |
-| `LoweringEmitter::EmitSparseDenseMatmulDotCombiner` | `0x131a7ca0` | dispatcher: 3 `FoldAllDimensions` operands → ctor → `Emit` | CONFIRMED |
+| `LoweringEmitter::EmitSparseDenseMatmulDotCombiner` | `0x131a7ca0` | dispatcher: 2 `FoldAllDimensions` operands → ctor → `Emit` | CONFIRMED |
 | `XlaSparseDenseMatmulCustomCombinerOnTc{,Grad}WithCsrInputOp` (+ `…GradWith{Sgd,Adagrad,AdagradMomentum,…}AndCsrInputOp`) | `0xe653640` (Compile) ff. | user reduce computation inlined in place of the FMA | CONFIRMED (symbol-anchored) |
 | `GatherMulScatterSparseDenseMatmulOpDecomposer` (`AddPass`) | `0x1306d740` | non-minibatch HLO decomposition (no CSR-window decomposition) | CONFIRMED (pass + symbol) |
 | `SparseGatherEmitter::Emit` | `0x133f9120` | standalone SC gather (the gather half the non-minibatch path lowers through) | CONFIRMED (symbol) |
@@ -85,9 +85,9 @@ The `CustomCombiner` family is the generalization: instead of the fixed `acc += 
 The combiner weight is the `sorted_gains` operand of the `SparseDenseMatmul` op — one f32 gain per (sample, id) pair, laid out parallel to the sorted-id list the CSR segment indexes. In `EmitValencyLoop` the per-id gain is fetched and converted in two ops:
 
 ```text
-EmitValencyLoop gain load (0x1332cee0, src lines 181 / 195)
-  g_i32 = UnalignedLoadScalarFromHbm(gains_base, token_offset)   ; src ln 181 — raw 32-bit word
-  g_f32 = arith::BitcastOp(f32, g_i32)                           ; getF32Type + BitcastOp — reinterpret bits
+EmitValencyLoop gain load (0x1332cee0, inside the per-id scf::ForOp body)
+  g_i32 = UnalignedLoadScalarFromHbm(gains_base, token_offset)   ; raw 32-bit word (no .cc line tag)
+  g_f32 = arith::BitcastOp(f32, g_i32)                           ; getF32Type + BitcastOp — reinterpret bits (LocationGenerator variant loc, no integer line)
 ```
 
 The load returns an *integer* scalar; the bit pattern is reinterpreted as `f32` with `arith::BitcastOp` (`mlir::Builder::getF32Type` immediately precedes the `BitcastOp::create` in the decompile). This is a **bit reinterpretation, not a numeric conversion** — the HBM word holds the IEEE-754 bits of the gain directly. A reimplementer who emits an integer-to-float numeric convert here produces wrong activations.
@@ -98,13 +98,14 @@ The scalar gain is broadcast to a feature-width vector once per id, *outside* th
 
 ```text
 EmitVectorizedLoop weight application (0x1332e1c0)
-  bcast = BroadcastScalarToVector(lane_width, g_f32)   ; src ln 234 — gain → vector, hoisted out of the loop
-  for chunk in [0, feature_width):                     ; scf::ForOp, iter_arg = accumulator chunk
+  ConstantIndexOp(chunk_count)                         ; src ln 223 / 225 / 226 — loop bounds setup
+  bcast = BroadcastScalarToVector(lane_width, g_f32)   ; gain → vector, hoisted out of the loop
+  for chunk in [0, feature_width):                     ; scf::ForOp (src ln 234), iter_arg = accumulator chunk
     emb   = LoadChunk(gathered_row,  chunk)            ; the gathered embedding chunk (operand v3 base)
     a_cur = LoadChunk(accumulator,   chunk)            ; the running accumulator chunk
     mul   = MulFOp(emb, bcast)                         ; src ln 250
     a_new = AddFOp(mul, a_cur)                         ; src ln 252
-            StoreChunk(accumulator, chunk, a_new)      ; src ln 254
+            StoreChunk(accumulator, chunk, a_new)      ; inherits AddFOp location
 ```
 
 `BroadcastScalarToVector` is invoked once with the per-id gain (`lowering_util::BroadcastScalarToVector`, `0x13d94460`); the resulting vector is the second `MulFOp` operand for every chunk. This is the entire per-combiner weight application: a single broadcast of the (already combiner-scaled) gain, fused-multiply-added into the accumulator chunk by chunk. The `mean`/`sqrtn` divisor, if present, was baked into `g_f32` before it ever reached HBM — this loop is combiner-agnostic.
@@ -132,18 +133,18 @@ The emission is a three-level nest. Top to bottom: a per-sample-tile `scf::ForOp
 Emit outer loop (0x1332bda0)
   if !Target::SupportsSparseCore(): FATAL("SparseCore is not supported by this target")  ; target.h:1709
   lane_cfg = Target[0x948]->[0x94]                       ; per-target max-row / lane config
-  n_samples = operand(0).dim                             ; src ln 69
-  (operand(1).dim idiv lane_cfg) RetCheck                ; alignment check (remainder != 0 → fail)
-  lo   = ConstantIndexOp(0)                              ; src ln 73
-  hi   = ConstantIndexOp(n_samples)                      ; src ln 75
-  step = ConstantIndexOp(this[+0x60] = ctor-arg n)       ; src ln 78 — tile count (ForOp STEP)
+  n_samples = operand(0).dim                             ; read before first loc tag
+  (operand(1).dim mod lane_cfg) RetCheck                 ; src ln 67 "kFeatureWidth % kChunkSize == 0" (remainder != 0 → fail)
+  lo   = ConstantIndexOp(0)                              ; src ln 69
+  hi   = ConstantIndexOp(n_samples)                      ; src ln 71
+  step = ConstantIndexOp(this[+0x60] = ctor-arg n)       ; src ln 73 — tile count (ForOp STEP)
   scf::ForOp(lo, hi, step):                              ; src ln 78 — per-sample-tile loop
     tid     = TileIdOp()                                 ; src ln 86 — SC physical tile id
     s_index = AddIOp(loop_iv, tid-derived)               ; src ln 88 — global sample index
     in_range= CmpIOp(ult, s_index, n_samples)            ; src ln 90 — predicate 6 (ult)
-    scf::IfOp(in_range, then = $_0, else = ∅):           ; src ln 103 — bounds guard
+    scf::IfOp(in_range, then = $_0, else = ∅):           ; src ln 95 — bounds guard
       then: EmitSampleCombiner(...) ; YieldOp            ; src ln 98 (lambda $_0 @0x1332ea80)
-  SfenceOp("all", 3) ; InsertTileBarrier                 ; inter-tile synchronization
+  SfenceOp("all", 3) ; InsertTileBarrier                 ; src ln 103 — inter-tile synchronization
 ```
 
 The `scf::IfOp` `then` region runs `EmitSampleCombiner`; the `else` region is empty (the `IfOp` is created with a null `else` builder). This makes the `IfOp` a **tile bounds guard**, not a two-way dispatch: it executes the combiner for in-range samples and does nothing for the padding lanes of the last partial tile. After the loop, `SfenceOp::create(…, "all", 3)` and `lowering_util::InsertTileBarrier` provide the inter-tile synchronization.
@@ -175,13 +176,15 @@ The accumulator is scoped by a `memref::AllocaScopeOp` so its lifetime is exactl
 
 ```text
 EmitValencyLoop (0x1332cee0)
-  valency = UnalignedLoadScalarFromHbm(csr_row_ptr)     ; src ln 151 — segment length
-  v_idx   = IndexCastOp(valency)                         ; src ln 160 — to index type
-  base    = MulIOp(...); MulIOp(...)                     ; src ln 161/164/165 — per-id base offset
+  lo      = ConstantIndexOp(0)                           ; src ln 151 — loop lower bound
+  step    = ConstantIndexOp(1)                           ; src ln 152 — loop step
+  valency = UnalignedLoadScalarFromHbm(csr_row_ptr)     ; segment length (no .cc line tag)
+  v_idx   = IndexCastOp(valency)                         ; src ln 158 — to index type
+  base    = ConstantIndexOp + MulIOp; ConstantIndexOp + MulIOp  ; src ln 160/161 + 164/165 — per-id base offset
   inner   = AllocaScopeOp + getF32Type + AllocateScopedMemory   ; lowering_util_alloc.h:71
   scf::ForOp(0, v_idx, 1) iter_arg = acc:                ; loop over ids in the CSR segment
     id      = AddIOp(loop_iv, ...)                       ; advance the id index
-    g_i32   = UnalignedLoadScalarFromHbm(gains_base, id) ; src ln 181 — per-id gain word
+    g_i32   = UnalignedLoadScalarFromHbm(gains_base, id) ; per-id gain word (no .cc line tag)
     g_f32   = BitcastOp(f32, g_i32)                      ; reinterpret as float
     tok_off = ConstantIndexOp; MulIOp; AddIOp            ; per-id embedding token offset
     InitiateSynchronousStreamOperation(tok_off)          ; GATHER this id's embedding row
@@ -214,7 +217,7 @@ The valency loop bound comes from `UnalignedLoadScalarFromHbm` of the CSR row po
 | `::EmitSampleCombiner` (`0x1332c640`) | the per-sample SPMEM accumulator scope + zero-init + drain (level 1) |
 | `::EmitValencyLoop` (`0x1332cee0`) | the per-id CSR loop: gain load, gather, FMA call (level 2) |
 | `::EmitVectorizedLoop` (`0x1332e1c0`) | the per-chunk FMA core: `BroadcastScalarToVector` + `MulFOp` + `AddFOp` + `StoreChunk` |
-| `LoweringEmitter::EmitSparseDenseMatmulDotCombiner` (`0x131a7ca0`) | the dispatcher that builds the `FoldAllDimensions` operands and runs `Emit` |
+| `LoweringEmitter::EmitSparseDenseMatmulDotCombiner` (`0x131a7ca0`) | the dispatcher that builds the 2 `FoldAllDimensions` operands and runs `Emit` |
 | `lowering_util::BroadcastScalarToVector` (`0x13d94460`) | fans the per-id gain to a lane-width vector |
 | `lowering_util::{LoadChunk,StoreChunk}` (`0x13d97620` / `0x13d99960`) | the SPMEM chunk read/write the FMA fuses across |
 | `lowering_util::InitializeTileSpmemBuffer` (`0x13d93440`) | zeroes the accumulator (`ZeroMemOp` + chunk-iterator loop) |
