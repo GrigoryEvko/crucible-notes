@@ -153,7 +153,7 @@ Every arm is byte-anchored to a specific `tpu_*_seg_scan*::create` call site in 
 
 `i16` and `bf16` share the single `tpu_add_half_seg_scan2xN` arm (the packed-pair `PartialSum` widen). `min` and `max` have **no** `i16`/`bf16` emitted arm: `tpu_{min,max}_seg_scan2xN` are registered as dialect ops with the `NOperands<2>` trait but carry **no `::create`/`::build`** — declared-but-uncodegen'd. The lowering never produces a 2xN min/max segmented scan; only `add` has the half/2xN widen.
 
-> **NOTE — only `add` has the half-precision segmented widen, and it is target-gated.** The `i16`/`bf16` segmented-sum arm is the *only* path that touches the `2xN` packed form, and it is legal only when the target's vtable slot `+0x780` (the bf16-ALU / EUP lane-width capability) returns true. The subobject pointer at `(ctx+0x68)` is set by `LowerToSparseCoreLlvmPass::lowerFunc` (`0x13568280`) to the codegen target's `+0x8` sub-object. On a generation without the native bf16 lane the lowering emits `"Currently seg scan add for bf16 is only supported"` (`.rodata` `0x87036bf`, 49 bytes) and fails — so the SC bf16 segmented sum is restricted to the gen that owns the bf16 ALU. This gate is the segmented-scan twin of the plain scan's identical `+0x780` check in [Scan Datapath](scan-datapath.md).
+> **NOTE — only `add` has the half-precision segmented widen, and it is target-gated.** The `i16`/`bf16` segmented-sum arm is the *only* path that touches the `2xN` packed form, and it is legal only when the target's vtable slot `+0x780` (the bf16-ALU / EUP lane-width capability) returns true. The subobject pointer at `(ctx+0x68)` is set by `LowerToSparseCoreLlvmPass::lowerFunc` (`0x13568280`) to the codegen target's `+0x8` sub-object. On a generation without the native bf16 lane the lowering emits `"Currently seg scan add for bf16 is only supported"` (`.rodata` `0x87036bf`, 49 bytes) — at runtime a second fragment `" for GXC"` (8 bytes) is appended into the diagnostic stream, so the user-visible message reads `…only supported for GXC` — and fails, so the SC bf16 segmented sum is restricted to the gen that owns the bf16 ALU. This gate is the segmented-scan twin of the plain scan's identical `+0x780` check in [Scan Datapath](scan-datapath.md).
 
 ### Why no `i1` count path
 
@@ -200,8 +200,9 @@ switch (port):                                        // line 29
     case 4:  inst[0x2c] = vregno; inst[0x10] |= 0x20; break;   // line 53
     case 5:  inst[0x30] = vregno; inst[0x10] |= 0x40; break;
     case 6:  inst[0x34] = vregno; inst[0x10] |= 0x80; break;
-    // (>6 is impossible: btree only holds 0..6)
-if (unused_ports.empty()):                            // out of ports
+    default: return MakeError("Unsupported Port Value: $0");  // line 68 (isa_emitter_utils.h:3114)
+// (the pre-switch guard rejects an empty pool before the pop)
+if (unused_ports.empty()):                            // out of ports — pre-switch RET_CHECK
     RetCheckFailSlowPath("!port_is_free.empty()");    // line 98 (isa_emitter_utils.h:3025)
 statusor.port = port;                                 // returned port enum
 ```
