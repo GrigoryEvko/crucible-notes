@@ -44,7 +44,7 @@ This is the **compute penalty** half of the bundle-aware fusion priority (`prior
 NormalizedComputationCost (0x130989a0)                 ── double, computes a scalar weight
   ├─ (operand_index>0 + binary + iota/broadcast op0)   ── recursion guard → flop/return tail
   ├─ LoopFusion pre-path (0x13098a13)                  ── multi-operand elementwise estimate
-  │     └─ Target::ChunksIn (0x1d619900) × (1 + #narrower-operands)
+  │     └─ Target::ChunksIn (0x1d619900) × (1 + #non-zero-minor operands)
   └─ per-opcode switch (0x13098b62)                    ── jump table @ .rodata 0xae0dcdc
         ├─ 0.0  block  0x130995ee   (layout/metadata ops)
         ├─ 1.0  block  0x13098e2f   (DEFAULT — cheap elementwise)
@@ -79,7 +79,7 @@ double NormalizedComputationCost(this /*rbx*/, inst /*r14*/, operand_index /*r15
         if inst.operand_count >= 2:                       // [inst+0x10] >= 2
             for each operand i:
                 op_minor   = operand(i).shape.dimensions()[0] >> 1;   // minor dim, halved
-                multiplier += 1.0;                        // +1 per operand
+                if op_minor != 0: multiplier += 1.0;      // +1 per NON-zero-minor operand (gated)
                 root_minor = root.shape.dimensions()[0] >> 1;
                 if op_minor >= root_minor: break;         // operand as-wide-or-wider → abandon
             else:
@@ -163,10 +163,10 @@ if inst.IsLoopFusion()
    and fused_instructions_computation().instruction_count() <= 254:   // 0xFE cap, [comp+88]
     multiplier = 1.0;
     if inst.operand_count >= 2:
-        root_minor = root.shape.dimensions()[0] >> 1;
         for each operand i in [0 .. operand_count):
-            op_minor = operand(i).shape.dimensions()[0] >> 1;
-            multiplier += 1.0;
+            op_minor   = operand(i).shape.dimensions()[0] >> 1;     // [operand.shape+8] >> 1
+            if op_minor != 0: multiplier += 1.0;                    // gated: skip zero-minor operands
+            root_minor = root.shape.dimensions()[0] >> 1;           // re-read [inst.shape+8] each iter
             if op_minor >= root_minor:
                 goto per_opcode_switch;          // operand as-wide-or-wider → abandon estimate
         return Target::ChunksIn(root.shape) * multiplier;
@@ -175,7 +175,7 @@ if inst.IsLoopFusion()
 
 The numeric element-type gate is the same mask used throughout the cost model: `_bittest64(0x2FFF91FFE, et)` for `et ≤ 0x21`, OR `(et & ~1) == 0x20`, OR `_bittest64(0x400048000, et)` for `et ≤ 0x22` — covering the numeric and packed types the bundle model can price (the same mask appears in `GetHloResourcesImpl` and `GetCyclesIfFused`). The `≤ 254` instruction-count cap bounds the estimate to small fusions.
 
-> **GOTCHA —** the loop reads `dimensions()[0] >> 1` for *both* the operand and the root minor dimension, and the comparison is `op_minor >= root_minor`. The `>> 1` (halving) applies symmetrically, so it cancels in the comparison — it is the *minor* dimension in chunk units. The estimate is abandoned (falls to the switch on the fusion-root opcode, i.e. case `0x3D`) the instant any operand is as wide as the output; only "all operands strictly narrower than the output" keeps the `ChunksIn(root) × (1 + #operands)` estimate. A reimplementer who returns the estimate unconditionally will over-cost fusions whose operands are already full-width.
+> **GOTCHA —** the loop reads `dimensions()[0] >> 1` for *both* the operand and the root minor dimension, and the comparison is `op_minor >= root_minor`. The `>> 1` (halving) applies symmetrically, so it cancels in the comparison — it is the *minor* dimension in chunk units. The estimate is abandoned (falls to the switch on the fusion-root opcode, i.e. case `0x3D`) the instant any operand is as wide as the output; only "all operands strictly narrower than the output" keeps the estimate. Two further byte-level subtleties: (1) the `multiplier += 1.0` increment is **gated on `op_minor != 0`** — an operand whose halved minor dim is zero is counted in the loop but does *not* bump the multiplier (the `vaddsd` result is discarded when `v17 == 0` at `0x13098…`/decompile line 732); (2) `root_minor` is re-read from `inst.shape` on every iteration rather than hoisted. The kept estimate is therefore `ChunksIn(root) × (1 + #non-zero-minor operands)`, not `(1 + #operands)`. A reimplementer who returns the estimate unconditionally, or who bumps the multiplier for every operand, will over-cost fusions whose operands are already full-width or zero-minor.
 
 ---
 
