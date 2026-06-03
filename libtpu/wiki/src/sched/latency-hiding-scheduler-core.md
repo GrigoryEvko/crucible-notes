@@ -70,7 +70,7 @@ ScheduleComputation(const HloComputation *comp, shared_ptr<SchedulingState> st) 
                                  ModulePressureState::GetPressureStateForComputation(...));
 
     // seed the ready set with the DAG roots; bottom-up by default, top-down if
-    // st->scheduling_instruction_crosses_overlap_limit (byte +440) == 1.
+    // st->schedule_top_down (byte +440) == 1.
     if (st->schedule_top_down /*byte+440*/) g->FindTopRoots(&roots);     // src ~3700
     else                                    g->FindBottomRoots(&roots);
     for (HloGraphNode *r : roots) {
@@ -255,7 +255,7 @@ double remaining = max(0.0, st->current_time - node->ready_time);
 //   vmaxsd  xmm1, xmm2, xmm1        ; clamp at 0
 ```
 
-`ready_time` (`node[+0x28]`) is the earliest cycle a node *can* be scheduled given its operands; `current_time` (`state+0x138`) is the clock at the current step. When `current_time` has already passed the node's `ready_time`, `remaining` is 0 — the node's inputs are retired and it can issue with no stall. When `ready_time` is still ahead of the clock, the node would stall, and the comparator uses this term (together with the async height key 16) to prefer issuing a *different* node now and the stalling one later. This is exactly the dependency stall from `GetLatencyBetween` ([Bundle-Aware Cost](../cost/bundle-aware-cost.md)) re-surfacing at scheduling time. The async-height key additionally takes an absolute difference of two candidates' `[+0x40]` values against the clock, masked by `qword_A2DF238` (`0x7FFF...FF`, the IEEE abs-value mask) at line 1212.
+`ready_time` (`node[+0x28]`) is the earliest cycle a node *can* be scheduled given its operands; `current_time` (`state+0x138`) is the clock at the current step. When `current_time` has already passed the node's `ready_time`, `remaining` is 0 — the node's inputs are retired and it can issue with no stall. When `ready_time` is still ahead of the clock, the node would stall, and the comparator uses this term (together with the async height key 16) to prefer issuing a *different* node now and the stalling one later. This is exactly the dependency stall from `GetLatencyBetween` ([Bundle-Aware Cost](../cost/bundle-aware-cost.md)) re-surfacing at scheduling time. When neither the async-height (`[+0x40]`) nor async-depth (`[+0x38]`) keys separate the pair, the comparator falls to a clock-distance tie-break (lines 1207–1218): it forms `first_root.ready_time − current_time − candidate[+0x30]` for each candidate, takes the absolute value via `vandpd` against `qword_A2DF238` (`0x7FFFFFFFFFFFFFFF`, the IEEE abs-value mask, byte-confirmed) at line 1212, and prefers the smaller magnitude — the candidate whose `[+0x30]` estimate lands closest to the current clock.
 
 > **GOTCHA — the memory-peak gate (key 5) can override every later key.** `kMemoryPeakOverLimit` adds the candidate's `MemoryPressureTracker::MemoryPressureDifference` to the live peak and compares the result against `memory_limit` (the `SchedulerConfig` copy at `state→config + 672`). If only one candidate keeps the peak `≤ limit`, it wins *regardless of async depth, height, or any latency-hiding key below it.* A reimplementation that places the memory keys after the async keys will hide latency at the cost of OOM. The gate sits at position 5, above all overlap heuristics, on purpose.
 
@@ -367,7 +367,7 @@ The peak-footprint estimate's fragmentation term comes from `EstimateFragmentati
 
 ## Worked Example — Overlap vs Stall
 
-A 4-op fragment on Trillium (TensorCore clock `f` MHz), base schedule already laid by the memory scheduler:
+A 4-op fragment on `6acc60406` (TensorCore clock `f` MHz), base schedule already laid by the memory scheduler:
 
 ```text
 %ar   = all-reduce-start(...)      ; collective on ICI X+  (resource 16, hazard 1)
