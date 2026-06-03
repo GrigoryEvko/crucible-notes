@@ -72,7 +72,7 @@ The base constructor `Performance::Performance(DeviceIdentifiers&, bool)` `@0x1d
 ```c
 // platforms_deepsea::jellyfish::isa::PerformanceDf::PerformanceDf  @0x1d493060  (verified)
 PerformanceJf::PerformanceJf(this, dev);          // build the full JF image first
-*(uint64_t*)this        = off_21CC7478;           // swap the vtable (PerformanceDf)
+*(uint64_t*)this        = off_21CC7478;           // PerformanceDf vtable ptr = sym @0x21cc7468 + 0x10
 *((uint64_t*)this + 5)  = 0xD00000042uLL;         // store at this+0x28 (= int32[5..6])
 ```
 
@@ -207,7 +207,7 @@ The 15 distinct 16-byte blocks, all read byte-exact out of `.rodata`:
 |---|---|---|---|---|
 | `@0xa2c8a30` | `{4, 105, 7, 92}` | `Performance[+0x18]` | RPU producer / matres-self conflict floors (latency-table head) | CERTAIN |
 | `@0xa2dcd30` | `{88, 8, 4, 1}` | `Performance[+0x28]` | matmul base (`+0x28`), matprep base (`+0x2c`), **EUP push→pop edge** (`+0x30`=4) | CERTAIN |
-| `@0xa2db650` | `{1, 1, 2, 2}` | `Performance[+0x3c]`, `[+0x114]` | vector-result floors | CERTAIN |
+| `@0xa2db650` | `{1, 1, 2, 2}` | `Performance[+0x3c]`, `[+0x10c]` | vector-result floors | CERTAIN |
 | `@0xa2c8a40` | `{2, 1, 1, 1}` | `Performance[+0x4c]`, `[+0x178]` | vector-result floors | CERTAIN |
 | `@0xa2d2df0` | `{1, 1, 1, 2}` | `Performance[+0xbc]` | vector-result floors | CERTAIN |
 | `@0xa2cea00` | `{2, 2, 1, 1}` | `Performance[+0xcc]` | vector-result floors | CERTAIN |
@@ -238,7 +238,7 @@ The flat one-cell-per-`Instruction` model is unique to v2/v3. From Pufferfish on
 | PF | Pufferfish | 2 (v4) | heap `latency[336]` + grid 336×20 | 20 | 265 | architecture change | HIGH |
 | VF | Viperfish | 3 (v5p) | heap `latency[384]` + grid 384×28 | 28 | 378 | — | HIGH |
 | GL | Ghostlite | 4 (v6e) | heap `latency[476]` + grid 476×31 | 31 | 358 | — | HIGH |
-| GF | Trillium | 5 (v7) | heap `latency[465]` + grid 465×31 | 31 | 285 | — | HIGH |
+| GF | `6acc60406` | 5 (v7) | heap `latency[465]` + grid 465×31 | 31 | 285 | — | HIGH |
 
 The resource-column progression is **7 → 7 → 20 → 28 → 31 → 31** (JF→DF→PF→VF→GL→GF). The architecture changed at Pufferfish: the inline-POD-plus-offset-LUT model (no 2-D grid, no `GetResourceUsage`) gave way to the heap latency-array-plus-grid model the rest of the line uses. The per-generation grids — populated cells, latency arrays, column-by-column naming — get their own pages; see [Performance Family Overview](performance-overview.md) for the framing and the per-gen page index.
 
