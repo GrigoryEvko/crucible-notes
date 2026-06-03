@@ -6,9 +6,9 @@
 
 `xla::jellyfish::windowing_util::WindowDescription` is the cost model's **window object**: the per-axis dimensions of a convolution or pooling window — its chunk counts, strides, dilation, and padding — packaged so the memory-transfer pricer can turn the window into a byte count, and the byte count into HBM/VMEM bandwidth cycles. A reimplementer should picture it as the cost-model analogue of XLA's `Window` proto, but flattened into one heap object whose six `absl::inlined_vector<long,6>` dimension arrays each hold one `long` per logical axis. Every TensorCore operand DMA, every conv kernel transfer, and every reduce-window tile is priced by building a `WindowDescription` from the operand `Shape` plus the op's `Window`, computing the transferred bytes with `windowing_util::Size`, and depositing `bytes / bytes_per_cycle` (corrected by a DMA-fragmentation ratio) into the bandwidth lane of the [`ResourceVector`](resource-enum.md).
 
-The familiar reference frame is LLVM's `TargetTransformInfo::getMemoryOpCost`: a load/store is priced by its access size divided by the unit's bytes-per-cycle, with a penalty for misalignment or scatter. `WindowCycles` is the same idea, specialised to a strided multi-dimensional DMA. The "access size" is `ElementSize · align_up(Product(window_strides), ChunkGranules)`, divided by an element-packing factor (bf16 packs 1:1; int8/PRED pack tighter) and a 2nd-minor-tile compaction ratio. The "scatter penalty" is a **DMA-fragment ratio**: the transfer is decomposed into contiguous descriptor runs, and a run count in `{1, 2-3, 4-7, 8-31, >31}` selects a multiplier in `{1.0, 1.6/1.3, 1.1, 1.05, large-penalty}`. The startup latency (`DefaultHbmInitLatency`) is `InitialDmaLatencyInNs · TC_GHz`, deposited once into a separate latency lane.
+The familiar reference frame is LLVM's `TargetTransformInfo::getMemoryOpCost`: a load/store is priced by its access size divided by the unit's bytes-per-cycle, with a penalty for misalignment or scatter. `WindowCycles` is the same idea, specialised to a strided multi-dimensional DMA. The "access size" is `ElementSize · align_up(Product(window_strides), ChunkGranules)`, divided by an element-packing factor (bf16 packs 1:1; int8/PRED pack tighter) and a 2nd-minor-tile compaction ratio. The "scatter penalty" is a **DMA-fragment ratio**: the transfer is decomposed into contiguous descriptor runs, and a run count in `{1, 2-3, 4-7, 8-31, >31}` selects a multiplier in `{1.0, 1.6/1.3, 1.1, 1.05, 1.0}` — the `>31` bucket falls back to `1.0` (no penalty), as does a single-DMA-level transfer. The startup latency (`DefaultHbmInitLatency`) is `InitialDmaLatencyInNs · TC_GHz`, deposited once into a separate latency lane.
 
-This page documents the byte-cost model end to end: the `WindowDescription` field layout (recovered byte-exact from the copy constructor and both builders), the `windowing_util::Size` byte primitive, the `WindowCyclesGenericTargetAgnostic` fragment-aware byte→cycle core, the `WindowCycles` bandwidth deposit with its v5p+ two-direction blend, and the `RecordMemXferCyclesImpl` wiring that routes the latency and bandwidth into the resource vector. The matmul/matpush *throughput* integers this cost path multiplies in (the `VfCycleTable` CT values) are framed in [`vf-cycletable`](vf-cycletable.md); the conv-deposit arithmetic that consumes them is in [`convolution-cost-state`](convolution-cost-state.md) and [`reduce-window-pooling-cost`](reduce-window-pooling-cost.md).
+This page documents the byte-cost model end to end: the `WindowDescription` field layout (recovered byte-exact from the copy constructor and both builders), the `windowing_util::Size` byte primitive, the `WindowCyclesGenericTargetAgnostic` fragment-aware byte→cycle core, the `WindowCycles` bandwidth deposit with its newer-generation (`Target+0x398 >= 5`) two-direction blend, and the `RecordMemXferCyclesImpl` wiring that routes the latency and bandwidth into the resource vector. The matmul/matpush *throughput* integers this cost path multiplies in (the `VfCycleTable` CT values) are framed in [`vf-cycletable`](vf-cycletable.md); the conv-deposit arithmetic that consumes them is in [`convolution-cost-state`](convolution-cost-state.md) and [`reduce-window-pooling-cost`](reduce-window-pooling-cost.md).
 
 For reimplementation, the contract is:
 
@@ -48,7 +48,7 @@ The layout below is recovered byte-exact from three independent sources that mus
 | valid flag | `+0x00` | byte | "is-default"/valid flag; ctors set 0 | HIGH |
 | name string | `+0x08` | `std::string` (libc++ SSO, 0x18 B) | debug/name string; `__init_copy_ctor_external` `@0xfaa9de5` | MEDIUM |
 | string-present | `+0x18` | byte | flag: name string populated | MEDIUM |
-| **operand shape** | `+0x20` | `const void*` (`Shape*`/`HloInstruction*`) | the operand shape pointer; element type read as `WORD[ptr+0xb] >> 2 & 0x1f` | CERTAIN |
+| **operand pointer** | `+0x20` | `const void*` (`LloValue*` / element-type-bearing ptr) | written from the builder's `LloValue*` arg (`null` on the cost-model path); the byte/cycle readers treat it as an element-type-bearing pointer, reading the type as `WORD[ptr+0xb] >> 2 & 0x1f` (and gating the F16 divisor on `WORD[ptr+0xb] & 0x7c == 0x10`) | HIGH |
 | index LloValues | `+0x28` | `inlined_vector<LloValue*,8>` | per-axis window-iteration index variables | HIGH |
 | **window sizes** | `+0x70` | `inlined_vector<long,6>` | per-axis chunk count of the window = `ChunkCountsWithTmp(Shape)` | CERTAIN |
 | layout order | `+0xa8` | `inlined_vector<long,6>` | the `Shape`'s minor-to-major physical dim order | HIGH |
@@ -113,15 +113,16 @@ The cost-model builder first delegates to the from-`LloValue` builder to lay dow
 ```c
 function MakeWindowDescription(CycleTable, Window, Shape):   // @0x138456c0
     MakeWindowDescription(Target, /*shape_val=*/null, Shape)         // @0x1c86c1c0 — defaults
-    CHECK(window.base_bounds.size()   == shape.dimensions().size())  // line 0x11f
-    CHECK(window.window_bounds.size() == shape.dimensions().size())  // line 0x120
-    variant = BYTE[CycleTable + 0x138]                               // ∈ {3, 5}
-    win_dims = (variant == 5) ? *(Window + 8) + 8 : Window           // indirect vs direct
-    wd.window_sizes = Assign(win_dims.window_bounds)   // +0x70  (Storage this+14)
-    wd.strides      = Assign(win_dims.base_bounds)     // +0xf8  (Storage this+31)
+    CHECK(window.base_bounds.size()   == shape.dimensions().size())  // cost_model_util.cc:287
+    CHECK(window.window_bounds.size() == shape.dimensions().size())  // cost_model_util.cc:288
+    tag      = BYTE[Shape + 0x138]                                   // shape kind ∈ {3=array, 5=tuple/boxed}
+    dim_vec  = (tag == 3) ? &Shape.dimensions : *(Shape + 8) + 8     // shape rank source
+    rank     = dim_vec.size                                          // shape.dimensions().size()
+    wd.window_sizes = Assign(window.window_bounds, rank)   // +0x70  (Storage this+14)
+    wd.strides      = Assign(window.base_bounds,   rank)   // +0xf8  (Storage this+31)
 ```
 
-> **GOTCHA —** the `Window` inner-vector dereference is gated by the variant byte at `CycleTable+0x138`. When it is `5` the cost model holds a *boxed* `Window` and must chase one extra pointer (`*(Window+8)+8`) before reading the dimension arrays; when it is `3` the `Window` is inline. A reimplementation that hardcodes the direct read will dereference garbage on the v5-class cost table. The two CHECK strings (`"window.base_bounds.size() == shape.dimensions().size()"`, `"window.window_bounds.size() == shape.dimensions().size()"`) are the rank-equality guards — the window must have exactly one entry per shape dimension.
+> **GOTCHA —** the rank used by the two `Assign`s and by both CHECKs is read from the `Shape`, gated by a shape-kind tag byte at `Shape+0x138` (the same `BYTE[a4+312]` the from-`LloValue` builder reads): when it is `3` the dimensions vector is inline in the `Shape`; when it is `5` the `Shape` is a boxed array and the rank source is chased through `*(Shape+8)+8`. (A mismatched tag aborts with `CHECK(buffer != nullptr)` from `shape.h:843`.) A reimplementation that hardcodes the inline read will dereference garbage on a boxed shape. The two CHECK strings (`"window.base_bounds.size() == shape.dimensions().size()"`, `"window.window_bounds.size() == shape.dimensions().size()"`) are the rank-equality guards — the window must have exactly one entry per shape dimension.
 
 ---
 
@@ -179,9 +180,9 @@ This function converts a byte count into a fragment-corrected cycle value: it co
 
 ```c
 function WindowCyclesGenericTargetAgnostic(MemUnit, wd, count_descriptors, bytes):  // @0x14552180
-    // 1. Element-type divisor. The operand shape pointer is at wd+0x20.
-    shape = *(wd + 0x20)
-    if shape != null and (WORD[shape + 0xb] & 0x7c) == 0x10:   // F16-class element type
+    // 1. Element-type divisor. The element-type-bearing pointer is at wd+0x20.
+    elem_ptr = *(wd + 0x20)
+    if elem_ptr != null and (WORD[elem_ptr + 0xb] & 0x7c) == 0x10:   // F16-class element type
         div = 2003.0                          // @0xa2df1b0 — fixed F16 unpack penalty
     else:
         div = (bytes != 0) ? bytes : 1.0      // @0xa2df230 — default, no extra penalty
@@ -206,7 +207,9 @@ function WindowCyclesGenericTargetAgnostic(MemUnit, wd, count_descriptors, bytes
     else:                ratio = 1.05                      // @0xa2df2a8  (frag in 8..31)
 
     // 4. Return (NOT yet divided by bytes_per_cycle — that is WindowCycles' job).
-    return contiguous_chunk_count · ratio / div + residual_bytes   // @0x14552402
+    //    div is `bytes` itself on the non-F16 path, so the ratio term is normalised by
+    //    the byte count; the trailing addend is a carried-in count term (UNVERIFIED label).
+    return contiguous_chunk_count · ratio / div + addend
 ```
 
 The fragment count is the cost model's scatter estimate: a window whose stride equals its span with no dilation and no padding is one contiguous run (`frag` small, ratio near 1.0); a window that strides past gaps, dilates, or pads fragments into many descriptors, and the ratio climbs. The VLOG-6 trace inside this function names the intermediates — `"stride_levels.size"`, `"contiguous_chunk_count"`, `"access multiplier"` — confirming `frag` is the contiguous-chunk count and `ratio` the access multiplier.
@@ -215,7 +218,7 @@ The fragment count is the cost model's scatter estimate: a window whose stride e
 
 ### The element-type divisor
 
-The F16-class test masks the operand-shape element-type bits (`WORD[shape+0xb] & 0x7c == 0x10`) and, when set, divides by a fixed `2003.0`. This is the only special-cased element-type divisor; every other type takes the default `1.0`-blended path (the divisor degenerates to the byte count itself, cancelling). The full `PrimitiveType → divisor` enumeration beyond the F16-class cell was not swept — only the `2003.0` case is pinned (LOW confidence that no other type takes a special cell).
+The F16-class test masks the element-type bits of the `wd+0x20` pointer (`WORD[ptr+0xb] & 0x7c == 0x10`) and, when set, replaces the divisor with a fixed `2003.0` (`@0xa2df1b0`) instead of the incoming `bytes_per_cycle`. On every other (non-F16) type the divisor stays the `bytes_per_cycle` argument the caller passed (`vblendvpd` keeps `xmm0` when it is non-zero, falling back to `1.0` at `@0xa2df230` only when `bytes_per_cycle == 0`). So F16 is the one element type whose access cost is *not* normalised by the per-cycle byte budget but by the constant `2003.0`. The full `PrimitiveType → divisor` enumeration beyond the F16-class cell was not swept — only the `2003.0` case is pinned (LOW confidence that no other type takes a special cell).
 
 ---
 
@@ -223,7 +226,7 @@ The F16-class test masks the operand-shape element-type bits (`WORD[shape+0xb] &
 
 ### Purpose
 
-`WindowCycles` is the public entry: it adds the startup latency, calls the target-agnostic core, divides by `bytes_per_cycle`, and — on v5p and newer — blends the two transfer directions (HBM and VMEM) by TC frequency. Its return is the bandwidth-cycle value deposited into the R10/R12 lane.
+`WindowCycles` is the public entry: it adds the startup latency, calls the target-agnostic core, divides by `bytes_per_cycle`, and — when the `Target` generation field `+0x398` is `>= 5` — blends the two transfer directions (HBM and VMEM) by TC frequency. Its return is the bandwidth-cycle value deposited into the R10/R12 lane.
 
 ### Algorithm
 
@@ -241,16 +244,17 @@ function WindowCycles(MemUnit, wd, Target, bytes_per_cycle, a, b, c):  // @0x145
     base = WindowCyclesGenericTargetAgnostic(MemUnit, wd, count_desc, bytes_per_cycle) + init
 
     if Target[+0x398] >= 5:                                 // v5p+ (a4[230] >= 5)
-        // two-direction TC-freq blend: divide {dir0,dir1} fragment bytes by 1000.0 (@0xa2ce650),
-        // multiply by TC freq, take per-direction MAX, add init term  (@0x1455282e)
-        return max(dir0_cycles, dir1_cycles) + init
+        // two-direction TC-freq blend: read the {HBM,VMEM} TC-freq pair, divide it by
+        // 1000.0 (the xmmword pair @0xa2ce650), multiply the per-direction byte rates by it,
+        // take the per-direction MAX, then add the bandwidth + init terms
+        return max(dir0_cycles, dir1_cycles) + (hbm_term + init)
     else:                                                   // < v5p
-        return max(dir0_cycles, dir1_cycles) + init         // simple add path (@0x14552888)
+        return max(dir0_cycles, dir1_cycles) + (hbm_term + init)   // simple add path
 ```
 
-The core divide `transfer_bytes / bytes_per_cycle` happens via the `vdivsd` against the `bytes_per_cycle` that `RecordMemXferCyclesImpl` passes in `xmm0` (`@0x145527f0`). `bytes_per_cycle` itself is `HbmFullChipBytesPerSecond / (TC_freq_MHz · 1e6) / CoresPerChip` — the per-core, per-cycle byte budget — computed by `GetBytesPerCycle` and cross-checked against the same geometry in [`memory-bandwidth-latency-model`](memory-bandwidth-latency-model.md).
+The core divide is the `vdivsd` at the tail of `WindowCyclesGenericTargetAgnostic`: `WindowCycles` forwards the incoming `bytes_per_cycle` (the `xmm0` it received from `RecordMemXferCyclesImpl`) straight into the core as its `bytes` argument, so on the non-F16 path the core's `div` *is* `bytes_per_cycle`, and the `contiguous_chunk_count · ratio / div` term is exactly `chunks · ratio / bytes_per_cycle`. `bytes_per_cycle` itself is `HbmFullChipBytesPerSecond / (TC_freq_MHz · 1e6) / CoresPerChip` — the per-core, per-cycle byte budget — computed by `GetBytesPerCycle` and cross-checked against the same geometry in [`memory-bandwidth-latency-model`](memory-bandwidth-latency-model.md).
 
-On v5p+ the function prices both transfer directions and takes the slower one: it loads the `{HBM, VMEM}` byte pair, divides each by `1000.0` (the `xmmword_A2CE650` pair), multiplies by TC frequency, and takes the per-direction maximum. The VLOG-6 trace names the directions explicitly — `"hbm_percentage"`, `"vmem_percentage"`, `"hbm_bytes"`, `"vmem_bytes"`, `"hbmbw"`, `"vmembw"`, `"hbmlatency"`, `"vmemlatency"`, `"next_gen"` — confirming the v5p+ model is a two-lane (HBM vs VMEM) max, not a single transfer.
+On the newer-generation path (`Target+0x398 >= 5`) the function prices both transfer directions and takes the slower one: it splits the byte volume into an `{HBM, VMEM}` percentage pair, reads the `{HBM, VMEM}` TC-frequency pair and divides *it* by `1000.0` (the `xmmword_A2CE650` MHz→GHz pair), multiplies the per-direction byte rates by that frequency, and takes the per-direction maximum. The VLOG-6 trace names the directions explicitly — `"hbm_percentage"`, `"vmem_percentage"`, `"hbm_bytes"`, `"vmem_bytes"`, `"hbmbw"`, `"vmembw"`, `"hbmlatency"`, `"vmemlatency"`, `"next_gen"` — confirming the newer-generation model is a two-lane (HBM vs VMEM) max, not a single transfer.
 
 ### Startup latency — DefaultHbmInitLatency
 
@@ -261,7 +265,7 @@ function DefaultHbmInitLatency(MemUnit, wd, Target):   // @0x14552ca0
     return init_ns · (TC_freq_MHz / 1000.0)             // ns · GHz = cycles
 ```
 
-This is the fixed cost of starting a DMA, paid once per transfer regardless of size. `InitialDmaLatencyInNs · TC_GHz` converts nanoseconds to cycles. For an HBM read on v5/v6 (`InitialDmaLatencyInNs ≈ 1200 ns`, `TC ≈ 1.75 GHz`) this is `≈ 2100` cycles deposited into the latency lane.
+This is the fixed cost of starting a DMA, paid once per transfer regardless of size. `InitialDmaLatencyInNs · TC_GHz` converts nanoseconds to cycles: the `InitialDmaLatencyInNs` virtual call returns a per-generation, per-element-type, per-byte-count nanosecond figure, and `TC_freq_MHz / 1000.0` is the GHz conversion the binary applies (`@0xa2e0430 = 1000.0`). The concrete latency depends entirely on the target generation's `InitialDmaLatencyInNs` table, which was not swept here.
 
 ---
 
