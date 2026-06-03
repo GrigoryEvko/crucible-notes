@@ -19,10 +19,10 @@ For reimplementation, the orientation contract is:
 
 | | |
 |---|---|
-| **Memory-space enum** | `xla::jellyfish::MemorySpace` (`kNone … kAlternate`); name table @ `0x21ce6b08` (`MemorySpaceToString`, 17 entries) |
+| **Memory-space enum** | `xla::jellyfish::MemorySpace` (17 values, `kNone`=0 … `kPinnedHbm`=16); decoder `MemorySpaceToString` @ `0x1d6ffae0`, string-pointer table @ `0x21ce6b08` |
 | **Managed space-id array** | `ProgramMemoryAllocator::kAllocatedMemorySpaces` @ `0xb42ff10` (.rodata) |
-| **Universal runtime allocator** | `tpu::BestFitAllocator` (208-byte instance, ctor `0x1e817500`); one per tier; typeinfo `0x21d346e8` |
-| **Allocator base class** | `tpu::MemoryAllocator` (abstract; typeinfo `0x21d34700`, vtable `0x21d34700`) |
+| **Universal runtime allocator** | `tpu::BestFitAllocator` (200-byte instance, `operator new(0xC8)`; ctor `0x1e817500`); one per tier; typeinfo `0x21d346e8`, vtable `0x21d34630` |
+| **Allocator base class** | `tpu::MemoryAllocator` (abstract; typeinfo `0x21d34700`) |
 | **Compile-time placer** | `xla::jellyfish::ProgramMemoryAllocator::AllocateBytes` @ `0x1c629e40` (one entry, branches on `MemorySpace`) |
 | **MSA (HBM↔VMEM coloring)** | `xla::memory_space_assignment::MsaAlgorithm::Finish` @ `0x1dc5b560` — see [msa-overview.md](../compiler/msa-overview.md) |
 | **Hand-off proto** | `platforms_deepsea::jellyfish::xdb::ProgramMemoryMetadata_Allocation` |
@@ -57,7 +57,7 @@ There are six addressable regions a TPU program names. Five are on the chip (per
 
 Three facts cut across all tiers and a reimplementer must internalize them before reading any per-tier page:
 
-1. **There is no per-tier allocator class.** `tpu::BestFitAllocator` (208-byte instance, ctor `0x1e817500`) is the *single* concrete `tpu::MemoryAllocator` subclass in libtpu. The TpuHal binds one instance per tier through an `AllocatorFactory` (5 callbacks at `0x1e815600 … 0x1e8156c0`, all default to `Policy::kBestFit`). The only thing distinguishing the HBM allocator from the VMEM allocator is the 32-byte `Config` triple each is constructed with.
+1. **There is no per-tier allocator class.** `tpu::BestFitAllocator` (200-byte instance — every factory does `operator new(0xC8)` then the ctor `0x1e817500`) is the *single* concrete `tpu::MemoryAllocator` subclass in libtpu. The TpuHal binds one instance per tier through an `AllocatorFactory` (5 callbacks `$_0..$_4` at `0x1e815600 … 0x1e815700`, all default to a `kBestFit` policy). The only thing distinguishing the HBM allocator from the VMEM allocator is the 32-byte `Config` triple each is constructed with.
 
 2. **There is no per-`TpuVersion` branch in the allocator.** Every per-codename divergence (HBM byte size, VMEM word size, alignment, granule) is data, carried in the embedded `*chip_parts.binarypb` resource and surfaced at boot as the `Config` triple. The allocator code is family-agnostic.
 
@@ -73,27 +73,29 @@ One C++ enumeration, `xla::jellyfish::MemorySpace`, labels every region througho
 
 ### Encoding — the compile-time `MemorySpace` enum
 
-Recovered from `ProgramMemoryAllocator::kAllocatedMemorySpaces` (.rodata `0xb42ff10`) and the `MemorySpaceToString` name table (rodata `0x21ce6b08`, 17 entries). The two abstract MSA aliases (`kDefault`, `kAlternate`) sit at the tail; they are *not* distinct physical tiers but names the MSA algorithm uses for "HBM" and "the scarce on-chip tier."
+Recovered byte-exactly from the `MemorySpaceToString` string-pointer table at rodata `0x21ce6b08` — `MemorySpaceToString` (`0x1d6ffae0`) is a one-instruction lookup `mov rax, [0x21ce6b08 + ms*8]`, so the integer *is* the table index and each slot's C-string is the canonical lowercase region name (resolved through its `R_X86_64_RELATIVE` reloc). The region enum is **17 values** (`0`..`16`). The two MSA aliases `kDefault`/`kAlternate` belong to a *separate* two-value enum, `xla::memory_space_assignment::MemorySpace` (decoded by `0x1dcda1c0`, values `kDefault`=0 / `kAlternate`=1) — they are the colors MSA assigns ("abundant"=HBM vs. "scarce" on-chip tier), **not** members of `xla::jellyfish::MemorySpace`.
 
-| `MemorySpace` | Value | Physical tier | Owner | Confidence |
-|---:|---:|---|---|---|
-| `kNone` | 0 | — (no space) | — | CONFIRMED |
-| `kHbm` | 1 | HBM (off-chip) | per-chip | CONFIRMED |
-| `kPinnedHbm` | 2 | HBM, runtime-locked (peer-DMA inputs; repacker may not relocate) | per-chip | HIGH |
-| `kVmem` | 3 | VMEM | per-TensorCore | CONFIRMED |
-| `kSmem` | 5 | SMEM | per-SPU | CONFIRMED |
-| `kCmem` | 4 | CMEM | per-TensorCore (PF) | CONFIRMED |
-| `kSflag` | 7 | SFLAG (chip sync-flag tier) | per-engine banks | CONFIRMED |
-| `kBarnaCoreBmem` | 8 | BarnaCore buffer memory | BarnaCore | HIGH |
-| `kBarnaCoreSflag` | 11 | BarnaCore sync-flag tier | BarnaCore | CONFIRMED |
-| `kBarnaCoreSmem` | 9/10 | BarnaCore scalar memory | BarnaCore | MEDIUM |
-| `kSparseCoreSequencerSflag` | 13 | SC sequencer sync-flag region | SparseCore | CONFIRMED |
-| `kSparseCoreSequencerSmem` | 12 | SC sequencer scalar memory | SparseCore | HIGH |
-| `kHost` | — | Host RAM (offload spill target) | host | HIGH |
-| `kDefault` | — | alias of HBM (MSA "abundant" tier) | MSA | CONFIRMED |
-| `kAlternate` | — | alias of VMEM/CMEM (MSA "scarce" tier) | MSA | CONFIRMED |
+| `MemorySpace` | Value | String | Physical tier | Owner | Confidence |
+|---:|---:|---|---|---|---|
+| `kNone` | 0 | `<no memory space>` | — (no space) | — | CONFIRMED |
+| `kHbm` | 1 | `hbm` | HBM (off-chip) | per-chip | CONFIRMED |
+| `kHib` | 2 | `hib` | HBM↔host interface-buffer staging tier | per-chip | CONFIRMED |
+| `kVmem` | 3 | `vmem` | VMEM | per-TensorCore | CONFIRMED |
+| `kCmem` | 4 | `cmem` | CMEM | per-TensorCore (PF) | CONFIRMED |
+| `kSmem` | 5 | `smem` | SMEM | per-SPU | CONFIRMED |
+| `kSflag` | 6 | `sflag` | SFLAG (chip sync-flag tier) | per-engine banks | CONFIRMED |
+| `kImem` | 7 | `imem` | instruction memory | per-core | CONFIRMED |
+| `kBarnaCoreBmem` | 8 | `barna_core_bmem` | BarnaCore buffer memory | BarnaCore | CONFIRMED |
+| `kBarnaCoreSmem` | 9 | `barna_core_smem` | BarnaCore scalar memory | BarnaCore | CONFIRMED |
+| `kBarnaCoreSflag` | 10 | `barna_core_sflag` | BarnaCore sync-flag tier | BarnaCore | CONFIRMED |
+| `kBarnaCoreImem` | 11 | `barna_core_imem` | BarnaCore instruction memory | BarnaCore | CONFIRMED |
+| `kSparseCoreSequencerSflag` | 12 | `sparse_core_sequencer_sflag` | SC sequencer sync-flag region | SparseCore | CONFIRMED |
+| `kHost` | 13 | `host` | Host RAM (offload spill target) | host | CONFIRMED |
+| `kSparseCoreSequencerSmem` | 14 | `sparse_core_sequencer_smem` | SC sequencer scalar memory | SparseCore | CONFIRMED |
+| `kSparseCorePrivateStackHbm` | 15 | `sparse_core_private_stack_hbm` | SC private-stack HBM region | SparseCore | CONFIRMED |
+| `kPinnedHbm` | 16 | `pinned_hbm` | HBM, runtime-locked (peer-DMA inputs; repacker may not relocate) | per-chip | CONFIRMED |
 
-> **QUIRK —** the enum ordering is *not* a clean physical-tier ordering, and the value-set the verifier accepts (`MemorySpaceToString`, 17 entries) is wider than the spaces any one generation uses. `kCmem`(=4) sits *before* `kSmem`(=5) numerically even though SMEM is the more universal tier; CMEM is alive only on Pufferfish. A reimplementer who drives a tier table off contiguous enum integers will misalign CMEM and SMEM. Use the named constants. The per-codename byte sizes that populate each tier's `Config` are absent from the C++ (they live in `chip_parts.binarypb`); the enum is the label, not the size.
+> **QUIRK —** the string-pointer table at `0x21ce6b08` is **longer than the 17-value region enum**: slots `17`/`18`/`19` resolve to `absolute` (`0x868144c`), `heap_relative` (`0x8678cad`), and `stack_relative` (`0x8678cbb`). Those three are pointer-*relativity* tags of the `LloAddress` relocation model that share storage with the region-name array — they are **not** memory pools. A reimplementation that sizes the `MemorySpace` enum by the string-table length, or treats `absolute`/`heap_relative`/`stack_relative` as tiers, is wrong: the region enum is exactly 17 values (`0`..`16`). The ordering is also *not* a clean physical-tier ordering and is wider than the spaces any one generation uses (CMEM is alive only on Pufferfish). Drive tier tables off the named constants, never off contiguous integers. The per-codename byte sizes that populate each tier's `Config` are absent from the C++ (they live in `chip_parts.binarypb`); the enum is the label, not the size. The full enum↔`MemorySpaceProto` field-number remap lives on [memory-space-enum.md](../isa/memory-space-enum.md).
 
 ### Correction — the DMA-driver-resource numbering is a *different* integer space
 
@@ -118,7 +120,7 @@ function MemorySpaceToDriverResource(ms):
         case 12..16 (sparse_core_*): FATAL("Unsupported memory space")
 ```
 
-> **CORRECTION (MEM-1) —** the DMA-render numbering at `0x1d6223e0` is a *distinct* enumeration from the compile-time `MemorySpace` enum in [§2 table](#encoding--the-compile-time-memoryspace-enum). In the render path the operand-space ordering is `hbm=1, hib=2, vmem=3, cmem=4, smem=5, sflag=6, imem=7, …` and the *returned resource id* is `sflag→0, hbm→2, vmem→4, smem→6, …`. Neither the input ordering nor the output id matches the `kHbm=1, kCmem=4, kSmem=5, kSflag=7` constants the placer uses. A reimplementer must carry the `MemorySpace` enum end-to-end and convert to a driver-resource id *only* at the descriptor boundary via this explicit switch — deriving the id from the enum integer is wrong for every tier. The full resource-id table and the off-by-one trap that earlier confused the two live on [intra-chip-descriptor.md](../dma/intra-chip-descriptor.md#3-endpoint-rendering).
+> **CORRECTION (MEM-1) —** the switch *consumes* the very `MemorySpace` enum of [§2 table](#encoding--the-compile-time-memoryspace-enum) (its `case` labels are `hbm=1, hib=2, vmem=3, cmem=4, smem=5, sflag=6, imem=7, …`, identical to the placer constants), but it *returns* a **different integer space** — the hardware driver-resource id — and that id is permuted and non-monotone: `sflag(6)→0`, `barna_core_sflag(10)→1`, `hbm(1)→2`, `hib(2)→3`, `vmem(3)→4`, `imem(7)→5`, `smem(5)→6`, `barna_core_bmem(8)→7`, `barna_core_imem(11)→8`, `barna_core_smem(9)→9`, `kNone(0)→10`; `cmem(4)` and every SparseCore space (`12`..`16`) `LogMessageFatal("Unsupported memory space")`. The returned id therefore never equals the `MemorySpace` integer for any tier. A reimplementer must carry the `MemorySpace` enum end-to-end and convert to a driver-resource id *only* at the descriptor boundary via this explicit switch — deriving the id by reusing the enum integer is wrong for every tier. The full resource-id table lives on [intra-chip-descriptor.md](../dma/intra-chip-descriptor.md#3-endpoint-rendering).
 
 ---
 
@@ -151,7 +153,7 @@ The ctor (`0x1e817500`) asserts, as `LogMessageFatal` checks: `base_offset_in_by
 | **SMEM** | 0 | `Target::SmemSizeBytes()` (`Target+0x470`) | `SmemWordSizeBytes()` | `SmemWordSizeBytes()` (`Target+0x508`) | CONFIRMED |
 | **SFLAG** | 0 | `Target::SflagSizeBytes()` (`Target+0x468`) | `SflagWordSizeBytes()` (`Target+0x504`) | `SflagWordSizeBytes()` | CONFIRMED |
 | **Host (premapped)** | per-partition `partition_size * i` | `partition_size` | 4 KiB if size ≤ 2 MiB, else 2 MiB (`PickPageAlignment`) | = alignment | CONFIRMED |
-| **Host (BFC offload)** | 0 | 256 GiB cap (`0x4000'0000'0000`) | ≥ 16 B (`posix_memalign`) | 2 MiB region growth | CONFIRMED |
+| **Host (BFC offload)** | 0 | 256 GiB cap (`0x40'0000'0000`, the `tsl::BFCAllocator` ctor size arg) | ≥ 16 B (`posix_memalign`) | 2 MiB region growth | CONFIRMED |
 
 > **GOTCHA —** HBM has **two** alignment numbers, and confusing them silently corrupts a DMA. `kHbmMinimumDmaAlignment` = 1024 B is the *hardware* floor: every DMA issue site masks size and address with `& 0x3FF` and `LogMessageFatal`s on a non-zero remainder (`byte_offset % jf_driver::kHbmMinimumDmaAlignment == 0`, `size % … == 0`, in `WritePremappedHbm` @ `0xe73db80`). The 16 KiB compile-time figure (`xla_jf_program_hbm_alignment_in_kib`) is *stricter* — it rounds every program-level HBM tensor up to 16 KiB before MSA places it, to accommodate XLA's stride/sub-tile addressing and slice-prefetch boundaries. A reimplementer who aligns HBM allocations to 1024 B at compile time will produce a layout MSA's slice machinery cannot address; one who enforces 16 KiB at DMA-issue time wastes nothing but is needlessly strict. The 1024-B floor is the wire contract; the 16-KiB rule is the placement contract. See [hbm-dma-alignment.md](hbm-dma-alignment.md).
 
@@ -193,7 +195,7 @@ Deallocation:
   BestFitAllocator::Deallocate(offset) — eager coalescing on every free
 ```
 
-> **QUIRK —** MSA only colors the HBM↔VMEM (and, on Pufferfish, HBM↔CMEM) axis. SMEM and SFLAG flow through the *same* `ProgramMemoryAllocator` → proto → `BestFitAllocator` spine but are **never** seen by MSA's `kAlternate`/`kDefault` decision: SMEM is committed wherever a scalar-load/store opcode declares `MemorySpace=kSmem`, and SFLAG is allocated out of a fixed *number-space partition* (`GetStartReservedSyncFlagNumber` `0x1d6178e0`, barriers at `Target+0x8c0/+0x8c4`), not the byte heap. A reimplementer who routes SMEM/SFLAG through the MSA cost model will mis-place them; MSA's tier-balancing is a VMEM/CMEM-only concern. See [smem-scalar-memory.md](smem-scalar-memory.md) and [sflag-protocol.md](sflag-protocol.md).
+> **QUIRK —** MSA only colors the HBM↔VMEM (and, on Pufferfish, HBM↔CMEM) axis. SMEM and SFLAG flow through the *same* `ProgramMemoryAllocator` → proto → `BestFitAllocator` spine but are **never** seen by MSA's `kAlternate`/`kDefault` decision: SMEM is committed wherever a scalar-load/store opcode declares `MemorySpace=kSmem`, and SFLAG is allocated out of a fixed *number-space partition* (`GetStartReservedSyncFlagNumber` `0x1d6178e0` reads `Target+0x530`; the overlay-reserved ceiling `GetOverlayReservedSyncFlagNumber` `0x1d617900` reads `Target+0x534`), not the byte heap. A reimplementer who routes SMEM/SFLAG through the MSA cost model will mis-place them; MSA's tier-balancing is a VMEM/CMEM-only concern. See [smem-scalar-memory.md](smem-scalar-memory.md) and [sflag-protocol.md](sflag-protocol.md).
 
 ---
 
