@@ -20,14 +20,14 @@ For reimplementation, the contract is:
 | | |
 |---|---|
 | **Pass name** | `"sharding-propagation"` (`name()` @ `0x1c8615a0`) |
-| **Pass entry** | `xla::ShardingPropagation::RunImpl(HloModule*, exec_threads)` @ `0x213aa140` (34.5 KB — largest `RunImpl` in the file) |
-| **Fixed-point loop** | `ShardingPropagation::RunToFixPoint` @ `0x1c85ae60` (22.9 KB) |
-| **Forward sweep** | `InferShardingFromOperands` @ `0x1c856780` (10.1 KB) |
-| **Backward sweep** | `InferShardingFromUsers` @ `0x1c859fa0` (2.2 KB) + `GetShardingFromUser` @ `0x1c8531e0` (7.4 KB) |
+| **Pass entry** | `xla::ShardingPropagation::RunImpl(HloModule*, exec_threads)` @ `0x213aa140` (33.6 KB — largest `RunImpl` in the file) |
+| **Fixed-point loop** | `ShardingPropagation::RunToFixPoint` @ `0x1c85ae60` (22.4 KB) |
+| **Forward sweep** | `InferShardingFromOperands` @ `0x1c856780` (9.9 KB) |
+| **Backward sweep** | `InferShardingFromUsers` @ `0x1c859fa0` (2.2 KB) + `GetShardingFromUser` @ `0x1c8531e0` (7.3 KB) |
 | **Commit gate** | `(anonymous)::MaybeImproveInstructionSharding` @ `0x1c84e980`; sub-shape variant `MaybeImproveInstructionSubSharding` @ `0x1c850820` |
 | **Source path** | `third_party/tensorflow/compiler/xla/service/sharding_propagation.cc` (rodata) |
 | **Custom-call helper** | `xla::jellyfish::TpuCustomCallShardingHelper` (`InferShardingFromOperands` @ `0x1278bf80`) over base `xla::CustomCallShardingHelper` @ `0x1c864120` |
-| **Primary gate flag** | `xla_tpu_sharding_metadata` (default **true**) |
+| **Related flag** | `xla_tpu_sharding_metadata` — registered command-line flag in `tpu_compilation_environment.cc`; governs the constructor's `propagate_metadata` (op-name provenance carried with shardings). Default value not pinned in the decompile (LOW). |
 | **Confidence** | HIGH (symbols byte-anchored; key bodies decompile-verified) unless a row/callout says otherwise |
 
 ---
@@ -42,7 +42,7 @@ The TPU pipeline runs this pass **three times** inside the partitioning pipeline
 
 ### Constructor
 
-The pass carries the configuration that shapes its rules. Recovered from the `AddPass<ShardingPropagation>` template instantiations at `0x1094a180` / `0x1093a300` and the constructor `ShardingPropagationC2` at `0x1094a2c0`:
+The pass carries the configuration that shapes its rules. There is a single constructor (`xla::ShardingPropagation::ShardingPropagation` @ `0x1094a2c0`); the call sites are `AddPass<ShardingPropagation>` template instantiations at `0x1094a180` / `0x1093a300` (the latter passing the spans as `absl::InlinedVector<bool, 1>`):
 
 ```c
 // xla::ShardingPropagation::ShardingPropagation  @ 0x1094a2c0
@@ -57,21 +57,21 @@ ShardingPropagation(
 
 > **NOTE —** `cse_prevention_only` is a restricted mode where the pass does *not* attempt full inference; it only attaches shardings whose sole purpose is to prevent the CSE pass from merging two ops that must stay distinct per partition. The CSE-prevention annotation is tagged with the rodata suffix `"_sharding_propagation_cse_prevention"` (seen in `RunImpl`). A reimplementer who skips this mode will get *correct* shardings but may see later CSE collapse partition-distinct computations.
 
-The TPU pipeline always constructs the pass with `std::make_unique<TpuCustomCallShardingHelper>()`. A 6-argument variant (`0x14bbc2e0`) drops the `InlinedVector<bool>` form of the spans and is used on the Shardy import path.
+The TPU pipeline always constructs the pass with `std::make_unique<TpuCustomCallShardingHelper>()`. A four-template-argument `AddPass` instantiation (`0x14bbc2e0`, `<ShardingPropagation, bool, bool, Span<bool>, Span<bool>>`) passes only the first four constructor arguments — `cse_prevention_only` and the helper take their defaults — and uses plain `absl::Span<const bool>` for both span arguments rather than the `InlinedVector` form.
 
 ### Entry Point
 
 ```text
-ShardingPropagation::RunImpl                 0x213aa140 (34.5 KB)  ── driver: scan + fixpoint
+ShardingPropagation::RunImpl                 0x213aa140 (33.6 KB)  ── driver: scan + fixpoint
   ├─ (pre-pass linear scan, inline)                                ── gather annotations, domains, groups
-  └─ RunToFixPoint                           0x1c85ae60 (22.9 KB)  ── iterate forward+backward to convergence
-       ├─ InferShardingFromShardGroup        0x1c856420 (0.85 KB)  ── shard_as / shard_like group seeding
-       ├─ InferShardingFromOperands          0x1c856780 (10.1 KB)  ── FORWARD: operand → instr
+  └─ RunToFixPoint                           0x1c85ae60 (22.4 KB)  ── iterate forward+backward to convergence
+       ├─ InferShardingFromShardGroup        0x1c856420 (0.83 KB)  ── shard_as / shard_like group seeding
+       ├─ InferShardingFromOperands          0x1c856780 (9.9 KB)   ── FORWARD: operand → instr
        │     └─ MaybeImproveInstructionSharding  0x1c84e980        ── commit gate (forward)
        ├─ InferShardingFromUsers             0x1c859fa0 (2.2 KB)   ── BACKWARD driver
-       │     └─ GetShardingFromUser          0x1c8531e0 (7.4 KB)   ── BACKWARD: user → operand sharding
+       │     └─ GetShardingFromUser          0x1c8531e0 (7.3 KB)   ── BACKWARD: user → operand sharding
        ├─ MaybeComputationPropagation        0x1c85a860 (0.2 KB)   ── cross-computation (call/while/cond)
-       ├─ GetRelatedInstructions             0x1c861140 (0.86 KB)  ── shard-group reachability
+       ├─ GetRelatedInstructions             0x1c861140 (0.84 KB)  ── shard-group reachability
        └─ NormalizeDomain                    0x1c852dc0 (1.0 KB)   ── domain-boundary conflict resolution
 ```
 
@@ -316,20 +316,22 @@ The decompiled control flow shows the nested `do { … } while (changed)` over t
 
 ### Purpose
 
-`kCustomCall` instructions are opaque to the generic per-op rules, so both sweeps delegate them to a `CustomCallShardingHelper` virtual table threaded through the pass. The base `xla::CustomCallShardingHelper::InferShardingFromOperands` (`0x1c864120`) defaults to *replicated*. The TPU pipeline injects `xla::jellyfish::TpuCustomCallShardingHelper` (`InferShardingFromOperands` @ `0x1278bf80`), which overrides the rule for the TPU custom calls it knows.
+`kCustomCall` instructions are opaque to the generic per-op rules, so both sweeps delegate them to a `CustomCallShardingHelper` virtual table threaded through the pass. The base `xla::CustomCallShardingHelper::InferShardingFromOperands` (`0x1c864120`) returns **no sharding** (`std::nullopt` — its body sets the result's presence byte to 0 and returns), leaving the instruction for the rest of the dataflow to handle. The TPU pipeline injects `xla::jellyfish::TpuCustomCallShardingHelper` (`InferShardingFromOperands` @ `0x1278bf80`), which overrides the rule for the TPU custom calls it recognizes.
 
-### The TPU helper's known targets
+### The TPU helper's handled targets
 
-The decompiled `TpuCustomCallShardingHelper::InferShardingFromOperands` references these target strings; non-listed targets fall through to the replicated base default:
+The decompiled `TpuCustomCallShardingHelper::InferShardingFromOperands` (`0x1278bf80`) tests `IsCustomCall` against a fixed set of targets, in this order; any target it does not match returns `std::nullopt` (the no-sharding sentinel, same as the base). The matched branches:
 
 | Custom-call target | Sharding rule | Confidence |
 |---|---|---|
-| `PartialReduce` (`partial_reduce_handler::kPartialReduce`) | Non-trivial: consults `reduction_dim` from the backend config (`"PartialReduce backend config cannot be null."` guard); the reduced dim drops, the rest pass through | HIGH |
-| `MoveToHost` / `MoveToDevice` | Sharding follows the operand (host-offload markers are transparent to tiling) | HIGH |
-| `xla-sdc-checker-get-checksums` | Operand-following (SDC-checker debug custom call) | HIGH |
-| `XlaMosaic` / `mosaic_kernel` / `tpu_custom_call` | Delegated to base — replicated, since the kernel body is opaque | MEDIUM |
+| `xla-sdc-checker-get-checksums` | Returns `std::nullopt` — the SDC-checker debug custom call is left unsharded (falls to the same exit as an unmatched target) | HIGH |
+| `QrDecompositionBlock` | Non-trivial: when operand 0 carries a sharding, builds a **two-element tuple sharding** — the operand's sharding plus a derived block sharding (`(anonymous)::DeriveQrBlockShardingFromOtherSharding`); otherwise `nullopt` | HIGH |
+| `MoveToHost` | Operand-following: result takes operand 0's sharding — **unless** the instruction's own sharding is already replicated, in which case it returns `nullopt` | HIGH |
+| `PartialReduce` | Non-trivial: when operand 0 is sharded, consults `reduction_dim` from the backend config (`"PartialReduce backend config cannot be null."` guard); the reduced dim drops, the rest pass through | HIGH |
 
-> **CORRECTION (SP-1) —** the recovered findings named `PartialReduce` as "the only TPU CustomCall with non-trivial sharding propagation." Decompilation of `TpuCustomCallShardingHelper::InferShardingFromOperands` (`0x1278bf80`) shows it also handles the operand-following targets `MoveToHost`, `MoveToDevice`, and `xla-sdc-checker-get-checksums`. These are *trivial* (sharding equals the operand's), so the original claim is right about *non-trivial* propagation — `PartialReduce` is the only target with a dimension-changing rule — but the helper's target set is larger than just `PartialReduce`.
+The function also matches one further target compared with length 7 (via a float-taking `IsCustomCall` overload) whose branch is operand-following; its literal was not recovered from the decompile (the comparison reads through a `.data` pointer, not a `.rodata` string), so it is omitted here.
+
+> **CORRECTION (SP-1) —** an earlier recovered claim named `PartialReduce` as "the only TPU CustomCall with non-trivial sharding propagation," and a prior revision of this page listed the handled set as `{PartialReduce, MoveToHost, MoveToDevice, xla-sdc-checker-get-checksums}`. Decompilation of `0x1278bf80` corrects both: (1) there is **no `MoveToDevice` branch** — it does not appear in this function; (2) `xla-sdc-checker-get-checksums` returns `nullopt`, it does **not** follow the operand; (3) besides `PartialReduce`, the `QrDecompositionBlock` branch is also *dimension/shape-changing* (it synthesizes a tuple sharding), so `PartialReduce` is not the only non-trivial rule.
 
 The sibling helpers `ShardBarrierFromPartitioner` / `ShardBarrierToPartitioner` (`InferShardingFromOperands` @ `0x1c863740` / `0x1c863800`) and `InspectShardingCallPartitioner` (`jax::…` @ `0xe8b8cc0`) implement the barrier-fence and debug-inspect behaviors referenced above.
 
