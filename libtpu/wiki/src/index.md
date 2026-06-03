@@ -6,15 +6,15 @@
 
 A reimplementation-grade reverse-engineering reference for **Google's `libtpu.so`** — the PJRT plugin that exposes Cloud TPU hardware to JAX, PyTorch/XLA, and TensorFlow. It is the functional equivalent of NVIDIA's `libcuda.so` + `libnvrtc.so` + the device-specific half of `nvcc`/`ptxas`, compressed into a single 745 MB monolithic shared object that statically links the entire XLA compiler, every TPU MLIR dialect, the per-generation LLVM backends, oneDNN, tcmalloc, Abseil, gRPC, protobuf, Eigen, the TPU runtime, the device-driver shim, and the ICI/DCN fabric stack.
 
-Everything here was reconstructed **purely from static analysis of the binary** — `objdump`, `nm`, `readelf -rW`, raw byte reads, and `protoc --decode_raw` of carved descriptors. The binary ships unstripped (884,843 named functions), which is why reconstruction reached byte-exact / reimplementation grade across most of the surface.
+Everything here was reconstructed **purely from static analysis of the binary** — `objdump`, `nm`, `readelf -rW`, raw byte reads, and `protoc --decode_raw` of carved descriptors. The binary ships unstripped — 884,832 disassembler-recovered functions, 881,784 of them (99.66 %) carrying a real symbol name — which is why reconstruction reached byte-exact / reimplementation grade across most of the surface.
 
 ## Why it is hard
 
-- **884,843 functions** in the analysis database; 1,249,324 strings; ~52 GB of extracted IDA sidecars.
-- **40,313 dispatch tables** (≈100× ptxas's 409), classified into 17 taxonomy classes.
-- **160,566 RTTI entries** spanning `mlir::` (95k), `asic_sw::deepsea::` (77k), `xla::` (36k), `llvm::` (30k), `dnnl::` (44k), and ~150 smaller namespaces.
+- **884,832 functions** in the analysis database (the disassembler's materialized count; a near-but-unequal 884,843 manifest figure is reconciled to 884,832 per CORRECTION FOR-02 in [Binary Forensics Overview](forensics/overview.md)); 1,249,324 strings; ~52 GB of extracted IDA sidecars.
+- **40,313 dispatch tables** (≈100× ptxas's 409), classified into 19 taxonomy classes.
+- **160,566 RTTI records** (`_ZTI` 60,471 · `_ZTV` 39,246 · `_ZTS` 60,847 · 2), the 60,471 typeinfos led by `mlir::` (13,091), `asic_sw::` (11,379), `tensorflow::` (3,108), `xla::` (3,036), `llvm::` (2,940), with `dnnl::` / `std::` / `grpc_core::` and a long vendored tail behind them.
 - **~2,900 static constructors** in `.init_array`; **1,069,006 relocations**.
-- A trailing **25.8 MB zstd blob** past `.strtab` (the "4.1 MB dictionary blob" was a false positive — see Part I).
+- The section-header table ends **exactly at EOF** — there is **no** trailing payload past it; the carved "4.1 MB zstd-dictionary blob" was a false positive (a `zstd` magic immediate inside `.text`, not a stored frame — see Part I).
 - Custom ELF sections (`google_malloc`, `malloc_hook`, `protodesc_cold`, `filewrapper_toc`, `__rseq_cs`, `__lcxx_override`).
 - Six TPU silicon generations under a Google-internal codename ladder: `jellyfish → dragonfish → pufferfish → viperfish → ghostlite → 6acc60406`, each with its own ISA encoding, cost model, and HAL family.
 
@@ -25,7 +25,7 @@ Everything here was reconstructed **purely from static analysis of the binary** 
                           │
                           ▼  PJRT C-API (v0.103)
               ┌──────────────────────────────┐
-              │   PJRT layer  (444 exports)  │   ← outer ABI  (Part II)
+              │   PJRT layer (outer C-API)   │   ← outer ABI  (Part II)
               │   GetPjrtApi @ 0xe6a83a0     │
               │   140-slot PJRT_Api struct   │
               │   17 extensions chained      │
@@ -161,7 +161,7 @@ How the 745 MB ELF is laid out and navigated. Analysis and orientation only; the
 - `forensics/elf-anatomy.md` — **ELF Anatomy** · `C`  
   52 sections, segments, the VA==offset rule, `.lrodata`/`.rodata`/`.text` extents. _src: W023, W030, P-3-212_
 - `forensics/two-binary-split.md` — **libtpu.so + sdk.so** · `C`  
-  The 884,843-fn main object and the 94,732-fn sdk; symbol-population shape. _src: W001, W026_
+  The 884,832-fn main object and the 94,732-fn sdk; symbol-population shape. _src: W001, W026_
 - `forensics/custom-sections.md` — **Custom Sections** · `C`  
   google_malloc, protodesc_cold, filewrapper_toc, __rseq_cs, __lcxx_override. _src: P-2-07, W030_
 - `forensics/embedded-library-atlas.md` — **Embedded-Library Atlas** · `C`  
@@ -171,9 +171,9 @@ How the 745 MB ELF is laid out and navigated. Analysis and orientation only; the
 - `forensics/static-init.md` — **Static-Init Pipeline** · `I`  
   ~2,900 ctors, init ordering, the plugin-discovery hooks. _src: P-3-185_
 - `forensics/trailing-zstd-blob.md` — **Trailing zstd Blob** · `C`  
-  The 25.8 MB payload and the "4.1 MB dictionary blob" false-positive correction. _src: P-3-01, P-2-30_
+  Why no trailing payload exists: the "4.1 MB dictionary blob" false-positive correction (ZSTD-01). _src: P-3-01, P-2-30_
 - `forensics/dispatch-table-taxonomy.md` — **Dispatch-Table Taxonomy** · `C`  
-  40,313 tables → 17 classes (MLIR Op-Model, UFB pools, libpfm4, dnnl/Xbyak…). _src: P-3-112, P-2-06_
+  40,313 tables → 19 classes (MLIR Op-Model, UFB pools, libpfm4, dnnl/Xbyak…). _src: P-3-112, P-2-06_
 - `forensics/rtti-vtable-census.md` — **RTTI ↔ Vtable Cross-Validation** · `C`  
   Every typeinfo mapped to its vtable; the namespace census. _src: P-3-265, P-3-127_
 - `forensics/per-gen-function-dispatcher.md` — **Per-Generation Function Dispatcher** · `C`  
@@ -1106,7 +1106,7 @@ Reference tables, the source-traceability index, and the open-frontier register.
 - `appendix/memory-space-table.md` — **MemorySpace Table (17)** · `C`  
   The full enumeration. _src: P-2-01_
 - `appendix/dispatch-table-taxonomy-full.md` — **Dispatch-Table Taxonomy (full)** · `C`  
-  All 17 classes + the 40,313-table TSV. _src: P-3-112, P-2-06_
+  All 19 classes + the 40,313-table TSV. _src: P-3-112, P-2-06_
 - `appendix/filewrapper-toc-catalog.md` — **filewrapper_toc Catalog (61)** · `C`  
   Every embedded runtime resource. _src: P-3-98, P-2-07_
 - `appendix/protodesc-cold-catalog.md` — **protodesc_cold Catalog (760)** · `C`  
