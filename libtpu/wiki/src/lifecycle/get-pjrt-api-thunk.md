@@ -234,7 +234,7 @@ The four TPU slots are bound here but not *run* here. `PJRT_Plugin_Initialize` i
 | `GetTpuPjrtApi()::pjrt_api @ 0x227BA840` | The `.lbss` singleton the builder returns |
 | `pjrt::tpu_plugin` object (5 injected slots) | The TPU specialization wired into slots 8/9/15/87/103 |
 | 16-node `__cxa_guard` extension chain | The guards 1..16 in the same builder; owned by `../pjrt/extension-chain.md` |
-| `Tpu*_*` C-ABI (~217 exports) | The legacy StreamExecutor surface that shares the binary but is not reached through PJRT |
+| `Tpu*_*` C-ABI (194 exports) | The legacy StreamExecutor surface that shares the binary but is not reached through PJRT |
 
 ## Cross-References
 
