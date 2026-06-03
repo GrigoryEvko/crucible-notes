@@ -11,7 +11,7 @@ The reader who knows LLVM should hold one analogy: this is a TableGen `Intrinsic
 This page owns the **family taxonomy, the representative per-family signatures, and the ID-table organisation** (the 10-batch registrar). It does not re-derive the per-cast address-space ISel (that is [addrspacecast ISel](../sparsecore/addrspacecast-isel.md)), the `tpu`-dialect ODS (that is [tpu → LLO ODS Lowering](tpu-to-llo-ods.md)), or the SparseCore back-end engine encodings (those are the [SparseCore ISA slot pages](#cross-references)). For reimplementation, the contract is:
 
 - **The Model↔printed-name correspondence** — the mechanical `tpu_X_Y` ↔ `llvm.tpu.X.Y` map and why it is 1:1 with zero mismatch.
-- **The 20-class functional taxonomy** — every one of the 1356 assigned to exactly one class; the classes sum to 1356; each class mapped to its SparseCore engine or LLO/EmitX target.
+- **The 20-class functional taxonomy** — a name-family grouping covering 1349 of the 1356 by prefix (each class size byte-confirmed individually; see [LLVMTPU-3](#the-20-classes)); each class mapped to its SparseCore engine or LLO/EmitX target.
 - **The ID-table organisation** — the 10-batch `registerLlvmTpuDialectOperations0..9` registrar, why it is split, and how it differs from the 115-op ScDialect path.
 - **The ODS shape recovery rule** — how the typed `tpu_*::create` arg list *is* the operand/result declaration, with the verified per-family arities.
 
@@ -69,7 +69,7 @@ So each registered op has exactly one printed `llvm.tpu.*` name and vice-versa. 
 
 ### Purpose
 
-The 1356 intrinsics partition into 20 functional classes; each op belongs to exactly one class and the classes sum to 1356. This is the page's central reimplementation artifact: it tells a reader *which SparseCore hardware unit* each named intrinsic drives, without dumping 1356 rows. The taxonomy is recovered by name-family grouping cross-checked against the printed-name string set; the per-class hardware target is joined to the SparseCore engine pages and the V5+ EmitX bit-position work.
+The 1356 intrinsics group into 20 functional classes by name-family prefix. The large clean-prefix classes (stream 834, pack/unpack 87, vld/vst 74, wait 47, dma 40, scan 32, vcvt 28, sync 26, alloca 24, rdreg/setreg 21, addrspacecast 16, sort 10, i1 5) are byte-confirmed by `rg -c` over the printed-name string set; the smaller boundary classes (transcendental/EUP, scalar-ALU, ptr/addressing, shuffle, trace, CBREG, task) are name-family estimates whose exact membership is not cleanly grep-isolable. The 20 sizes are **not** an exact partition — they cover 1349 of 1356 (see [LLVMTPU-3](#the-20-classes) for the seven-op shortfall). This is the page's central reimplementation artifact: it tells a reader *which SparseCore hardware unit* each named intrinsic drives, without dumping 1356 rows. The taxonomy is recovered by name-family grouping cross-checked against the printed-name string set; the per-class hardware target is joined to the SparseCore engine pages and the V5+ EmitX bit-position work.
 
 ### The 20 classes
 
@@ -84,9 +84,9 @@ The 1356 intrinsics partition into 20 functional classes; each op belongs to exa
 | 40 | DMA descriptor (`dma_*_sc_*`) | SparseCore DMA engine cmd (simple/single_strided/general tiers); 8/10/16-operand descriptor; cf ScDialect DmaSimpleStart | C |
 | 32 | scan / segment-scan / reduce (`{add,min,max}_*scan*`) | SparseCore scan unit (add/max/min × full/half/1xN/2xN × seg × index) — embedding-aggregation primitives | I |
 | 28 | vector convert (`vcvt*`, `cvt*`) | VPU convert slot → `llo.vcvt.*`; f32↔bf16/bf8/hf16/if8/s4/s8/u4/u8; `_sr`=stochastic-round, `_pr`=probabilistic | C |
-| 26 | semaphore set/add (`syncadd*`, `syncset*`, `sfence`) | sflag VSync slot → `llo.vsync.{add,set}[.done,.remote]`; `_remote`=ICI peer, `_tile`/`_pa`=tile/public bank, `_doneinv`=invert done | C |
+| 26 | semaphore set/add (`syncadd*`, `syncset*`, `sfence`, `sync{donemov,pamov,readpa,setpa}`) | sflag VSync slot → `llo.vsync.{add,set}[.done,.remote]`; `_remote`=ICI peer, `_tile`/`_pa`=tile/public bank, `_doneinv`=invert done | C |
 | 24 | transcendental / EUP (`rcp`,`rsqrt`,`tanh`,`sin`,`cos`,`erf`,`log2`,`pow2`,`sigshft`) | EUP VALU3 push (Alu3 op0 + 5-bit selector) + PopEupResult; each bare + `_macro` push+pop pair | C |
-| 23 | alloca / allocate (`alloca*`, `allocate*`) | SparseCore allocator (smem/spmem/vmem/sflag/hbm/iova/timem/tilespmem/dreg/cbreg + `_dyn` + `_any`); cf ScDialect Alloca | C |
+| 24 | alloca / allocate (`alloca*`, `allocate*`) | SparseCore allocator (smem/spmem/vmem/sflag/hbm/iova/timem/tilesmem/tilespmem/dreg/cbreg + `_dyn` + `_any`); cf ScDialect Alloca | C |
 | 21 | control register rd/set (`rdreg_*`, `setreg_*`) | scalar RdReg/SetReg → SCS scalar slot; cycle counters, tid/scid/tag id regs, fsr/ddr/dmacrdt/sflagrange | C |
 | 19 | pointer / addressing / loop-bc (`inttoptr`,`ptrtoint`,`bc_*`,…) | LLVM inttoptr/ptrtoint/addrspace + loop bytecode (`bc_loop_*`, `bc_load/store_aliaddr`, `bc_select_predicate`, `make_restrict_ptr`) | C |
 | 16 | addrspacecast (`addrspacecast*`) | LLVM addrspacecast → SparseCore address-space ID (base 201; AddressSpaceDescription @ `0x135462c0`) | C |
@@ -94,15 +94,17 @@ The 1356 intrinsics partition into 20 functional classes; each op belongs to exa
 | 14 | lane / sublane shuffle / permute (`vrot_sublane`,`vperm`,`sc_permute`) | VPU cross-lane slot → `llo.vrot.slane`/`llo.vperm.sublane`/`llo.vslaneseq`/`vshift_insert`/`sc_mask_permute` | C |
 | 12 | CBREG / circular-buffer (`rdcbreg`,`wrcbreg`,`cbreg_add`,…) | scalar CBREG ops: rd/wr/add/copy CBREG {base,offset,size}; 16 CBREGs/bank, dual smem/tilespmem base, allocate_cbreg | C |
 | 12 | trace / telemetry / sc-control (`sc_*`,`strace`,`event`,`read_*cycle`) | SparseCore control/trace: strace/event/spill_debug/log/mprefix, read_{global,local}_cycle_count, ssetpstate/ssettm | C |
-| 11 | sort / unique / dupcount (`sort*`,`uniquef`,`dupcntf`,`vmpcnt`) | SparseCore sort/unique unit: sort_{asc,dsc}d{f,i}, uniquef/i, dupcntf/i, vmctz/vmpcnt_ones (embedding dedup) | I |
+| 10 | sort / unique / dupcount (`sort*`,`uniquef`,`dupcntf`,`vmpcnt`) | SparseCore sort/unique unit: sort_{asc,dsc}d{f,i}, uniquef/i, dupcntf/i, vmctz/vmpcnt_ones (embedding dedup) | I |
 | 10 | task / control / structural (`task_*`,`loop_*`,`barrier`,`nop`,…) | SparseCore tile-task + structural: task_dispatch, loop_{name,parallel}, barrier, nop, delay, clear_ibuf, halt_trap, tileid | C |
 | 5 | i1-mask width conversion (`*i1_to_*i1`) | VPU mask slot: `tpu_{8,16,32}i1_to_{8,16,32}i1` — vector-mask width re-pack | C |
 
 ```text
-834+87+74+47+40+32+28+26+24+23+21+19+16+14+14+12+12+11+10+5  =  1356
+834+87+74+47+40+32+28+26+24+24+21+19+16+14+14+12+12+10+10+5  =  1349   (of 1356)
 ```
 
-> **QUIRK —** the seven largest classes (stream, pack/unpack, vld/vst, wait, dma) are 1082 of 1356 — 80 % of the surface is SparseCore *data movement*, not compute. The transcendental/EUP class is 24 ops and the scalar-ALU class 14; SparseCore is a gather/scatter/sflag machine that does very little arithmetic of its own. A reimplementer budgeting effort should expect the stream-engine descriptor to dominate the work, not the math.
+> **CORRECTION (LLVMTPU-3) —** the large clean-prefix class sizes above are byte-confirmed *individually* (`rg -c` over the `llvm.tpu.*` string set), but the 20 rows are **not** an exact partition: they sum to **1349**, seven short of the 1356 total. The shortfall is in the soft boundary classes (transcendental/EUP, scalar-ALU, ptr/addressing, trace, task) where a handful of ops — e.g. `exponent`, `*_macro` pairs, and miscellaneous control/structural intrinsics — were not assigned a row. Treat the taxonomy as a name-family *grouping* that covers 1349 of 1356 by prefix, not as a verified 1:1 partition. The two largest revisions from the original draft: alloca/allocate is **24** (not 23 — `allocate_tilesmem` was missed) and sort/unique is **10** (not 11).
+
+> **QUIRK —** the five largest classes (stream, pack/unpack, vld/vst, wait, dma) are 834+87+74+47+40 = 1082 of 1356 — 80 % of the surface is SparseCore *data movement*, not compute. The transcendental/EUP class is 24 ops and the scalar-ALU class 14; SparseCore is a gather/scatter/sflag machine that does very little arithmetic of its own. A reimplementer budgeting effort should expect the stream-engine descriptor to dominate the work, not the math.
 
 ---
 
@@ -121,7 +123,7 @@ llvm.tpu.stream.<pattern>.[vreg.]{gather|scatter}.[cb.][add.]<dtype>.<src>.to.<d
   --------------------------------------------------------------------------------------
   pattern         linear (180) · strided (114) · indirect (540)   address-generation mode
   verb            vreg (360) · gather (246) · scatter (228)        direction / lane-spread
-  dtype           bf16 · e4m3 · e5m2 · f32 · s16 · s32 (6)         ~111 ops each (6×111=666 dtyped)
+  dtype           bf16 · e4m3 · e5m2 · f32 · s16 · s32 (6)         exactly 111 ops each (6×111=666 dtyped)
   transfer        _to_tilespmem 399 · _to_spmem 210 · _to_smem 27  src→dst memspace pair
                   · _to_hbm4b 15 · _to_hbm 15
   modifier        _cb_ (CBREG-windowed, 556) · _add (scatter-add) · _np (no-predicate)
@@ -221,7 +223,7 @@ LlvmTpuDialect::initialize
        ├─ registerLlvmTpuDialectOperations6   @0x148dc3c0
        ├─ registerLlvmTpuDialectOperations7   @0x1492d5c0
        ├─ registerLlvmTpuDialectOperations8   @0x14982d00
-       └─ registerLlvmTpuDialectOperations9   (last batch)
+       └─ registerLlvmTpuDialectOperations9   @0x149d88e0   (last batch)
                                                 ── 10 × ~135 ops  =  1356
 ```
 
