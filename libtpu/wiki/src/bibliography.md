@@ -1,6 +1,6 @@
 # Bibliography
 
-> *Every page in this book is a reconstruction of `libtpu.so` from the freely-redistributed `libtpu-0.0.40-cp314` PyPI wheel (`manylinux_2_31_x86_64`): a 781,691,048-byte ELF64 shared object, build-id `89edbbe81c5b328a958fe628a9f2207d`, reported runtime version `0.103`. This page records the artifact analyzed, the legal basis for analyzing it, the tools that read it, and the external standards and public references the reconstruction relies on. Another wheel will differ in every address.*
+> *Every page in this book is a reconstruction of `libtpu.so` from the freely-redistributed `libtpu-0.0.40-cp314` PyPI wheel (`manylinux_2_31_x86_64`): a 781,691,048-byte ELF64 shared object, build-id `89edbbe81c5b328a958fe628a9f2207d`. This page records the artifact analyzed, the legal basis for analyzing it, the tools that read it, and the external standards and public references the reconstruction relies on. Another wheel will differ in every address.*
 
 ## Abstract
 
@@ -21,7 +21,7 @@ The contract for this page:
 | **Artifact** | `libtpu-0.0.40-cp314-cp314-manylinux_2_31_x86_64.whl` |
 | **Primary object** | `libtpu/libtpu.so` — 781,691,048 B, build-id `89edbbe81c5b328a958fe628a9f2207d` |
 | **Secondary object** | `libtpu/sdk.so` — 22,541,240 B, build-id `4e9025466f71009fccb46a803806411c63744a0a` |
-| **Runtime version** | `0.103` (reported); wheel version `0.0.40` |
+| **Wheel version** | `0.0.40` (from the wheel `METADATA`; surfaced by `__init__.py` as `__version__`) |
 | **Embedded toolchain** | LLVM/MLIR 23-dev (trunk), monorepo commit `8918319853fbdf9e6f6cb69e96848f913a22bc31` |
 | **Analysis tool** | IDA Pro 9.x (Hex-Rays decompiler + FLIRT) |
 | **Method** | Static reverse engineering of stripped-but-symbol-bearing x86-64 ELF — no source, no debugger, no running TPU |
@@ -46,7 +46,7 @@ libtpu-0.0.40-cp314-cp314-manylinux_2_31_x86_64.whl
    +-- distribution: libtpu (Google Cloud TPU PJRT plugin)
 ```
 
-A wheel is a ZIP archive; extracting it yields a `libtpu/` package directory containing the two shared objects plus packaging metadata (`__init__.py`, `LICENSE`, `THIRD_PARTY_NOTICES.txt`, `SDK_THIRD_PARTY_NOTICES.txt`). The package `LICENSE` identifies the software as `Copyright [2026] Google LLC`, made available under the Google Cloud Platform agreement; the runtime version `0.103` is read from package metadata at import time, distinct from the `0.0.40` wheel version.
+A wheel is a ZIP archive; extracting it yields a `libtpu/` package directory containing the two shared objects plus packaging metadata (`__init__.py`, `LICENSE`, `THIRD_PARTY_NOTICES.txt`, `SDK_THIRD_PARTY_NOTICES.txt`). The package `LICENSE` identifies the software as `Copyright [2026] Google LLC`, made available under the Google Cloud Platform agreement. The package's `__init__.py` derives `__version__` from `importlib.metadata.version("libtpu")` — i.e. the `0.0.40` wheel version recorded in the wheel's `METADATA`. (No separate "runtime version" string is observable in either ELF object or in the extracted package text files; any distinct internal version number is a runtime query, not a fact reproducible from the static artifact, and is not relied on below.)
 
 ### Facts Table
 
