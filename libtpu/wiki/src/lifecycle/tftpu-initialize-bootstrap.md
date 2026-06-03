@@ -6,7 +6,7 @@
 
 `PJRT_Plugin_Initialize` (PJRT slot 8) is the framework's one button to press, but the work it triggers is the TPU driver bootstrap: parse a flag string, acquire a cross-process lock, and run the Google module-init DAG that finally *executes* the HAL/platform registrations the `dlopen`-time constructor storm only *recorded*. That bootstrap is a small, sharp call chain — `TryAcquireTpuLock` → `GetLibTpuInitArguments` → `InitializeDriver` → `InitGoogleExceptChangeRootAndUser` → `RealInitGoogle` → `GoogleInitializer::RunInitializers` — and it is fully idempotent: a single function-static `has_initialized` byte inside `InitializeDriver` makes every call after the first a no-op. This page owns that chain. The PJRT-side gate (the `struct_size` compat check, the `kPjRtCApiTpuInitType` selector, the error-wrapper boxing) is on [module-init-plugin-discovery.md](module-init-plugin-discovery.md) §3 and only summarized here; what this page adds is the *interior* of `InitializeDriver`, the *interior* of the option ingest, and the role of the `TfTpu_*ApiFn()` C-API function-pointer tables.
 
-The decisive structural fact for a reimplementer is that there is **no single `TfTpu_Initialize` orchestrator that builds the runtime in one body**. The name `TfTpu_Initialize` is a real exported-style C symbol — at `0xe6f54a0` — but it is a five-line shim that forwards straight to `tpu::driver::InitializeDriver @ 0x204cecc0`, and the binary actually reaches `InitializeDriver` through the PJRT path (`PJRT_Plugin_Initialize`), not through `TfTpu_Initialize`. `InitializeDriver` itself does only three things: fold default Cloud-TPU flags into an argv, hand that argv to Google's `InitGoogle` flag-parse-and-run-modules machinery, and register a handful of telemetry gauges. Everything order-critical happens *inside* `RunInitializers`, in topological dependency order, decoupled from C++ static-init order. This is the classic Google `base/init_google` pattern: register at load, run at first init.
+The decisive structural fact for a reimplementer is that there is **no single `TfTpu_Initialize` orchestrator that builds the runtime in one body**. The name `TfTpu_Initialize` is a real exported C symbol — at `0xe6f54a0`, exported `@@VERS_1.0`, 10 bytes — but it is a two-instruction tail-shim that forwards straight to `tpu::driver::InitializeDriver @ 0x204cecc0`, and the binary actually reaches `InitializeDriver` through the PJRT path (`PJRT_Plugin_Initialize`), not through `TfTpu_Initialize`. `InitializeDriver` itself does only three things: fold default Cloud-TPU flags into an argv, hand that argv to Google's `InitGoogle` flag-parse-and-run-modules machinery, and register a handful of telemetry gauges. Everything order-critical happens *inside* `RunInitializers`, in topological dependency order, decoupled from C++ static-init order. This is the classic Google `base/init_google` pattern: register at load, run at first init.
 
 The third subject — the `TfTpu_*ApiFn()` tables — is the reason the bootstrap matters to the rest of the runtime. libtpu carries a *second*, older C-ABI surface beside PJRT: the StreamExecutor TPU shim, dispatched through structs of raw C function pointers (`stream_executor::tpu::ExecutorApiFn()`, `OpsApiFn()`, `ProfilerApiFn()`). Each is a leak-on-exit Meyers singleton holding the `TfTpu_*Fn` roster. The bootstrap's `RunInitializers` is what runs `RegisterTpuPlatform`, which *reads* `ExecutorApiFn()` (via `IsStreamExecutorEnabled`) and, if the table's first slot is non-null, installs the StreamExecutor `TpuPlatform` beneath PJRT. So the bootstrap is the moment the two C-ABI surfaces are wired together.
 
@@ -20,11 +20,11 @@ For reimplementation, the contract is:
 |---|---|
 | **Bootstrap gate** | `pjrt::tpu_plugin::PJRT_Plugin_Initialize @ 0xe6a9d00` (303 B), PJRT slot 8 |
 | **Driver bring-up** | `tpu::driver::InitializeDriver @ 0x204cecc0` (1764 B) |
-| **`TfTpu_Initialize` symbol** | `@ 0xe6f54a0` — 5-line shim → `InitializeDriver` (alternate entry, not the PJRT path) |
+| **`TfTpu_Initialize` symbol** | `@ 0xe6f54a0` (10 B, `@@VERS_1.0`) — 2-instruction tail-shim → `InitializeDriver` (alternate entry, not the PJRT path) |
 | **Option ingest** | `tensorflow::tpu::GetLibTpuInitArguments @ 0x20ccca20` (851 B), env `LIBTPU_INIT_ARGS` |
 | **Lock gate** | `tensorflow::tpu::TryAcquireTpuLock @ 0x20ccbc40` (3531 B), env `TPU_LOAD_LIBRARY` |
 | **Flag parse + DAG run** | `RealInitGoogle @ 0x210ae860` → `ParseCommandLineNonHelpFlags` + `GoogleInitializer::RunInitializers @ 0x210b2d20` |
-| **Idempotence guard** | `InitializeDriver::has_initialized` (function-static byte) |
+| **Idempotence guard** | `InitializeDriver::has_initialized` (function-static byte `@ 0x225899e0`, `.bss`) |
 | **Init-type selector** | `kPjRtCApiTpuInitType` (statically `= 2`) `@ 0x22255b40` (`.data`) |
 | **ApiFn tables** | `ExecutorApiFn @ 0x20819360`, `OpsApiFn @ 0x10900e80`, `ProfilerApiFn @ 0x10900ea0` (Meyers singletons) |
 | **Confidence** | CONFIRMED (byte-anchored vs decompile) unless a row or callout says otherwise |
@@ -51,16 +51,17 @@ PATH A — the PJRT path (the one the framework drives)
     └─ else: return NULL  (init-type 0 → no-op)
 
 PATH B — the TfTpu_Initialize alternate entry
-  TfTpu_Initialize  0xe6f54a0
-    └─ tpu::driver::InitializeDriver(a1, a2, a3, argv, a5)    0x204cecc0   (tail-forward)
+  TfTpu_Initialize  0xe6f54a0   (10 B, 2 instructions)
+    mov $0x1, %ecx                                            (hardcodes 4th arg init_type_is_2 = true)
+    jmp tpu::driver::InitializeDriver                         0x204cecc0   (tail-jump; rdi/esi/rdx from caller)
 ```
 
-> **NOTE —** the page title names `TfTpu_Initialize`, but the live path is Path A. `TfTpu_Initialize @ 0xe6f54a0` is genuinely a five-instruction forwarding shim — its whole body is `return tpu::driver::InitializeDriver(a1, a2, a3, &"\x01"+..., a5)`. It exists so legacy `tensorflow/core/tpu/` callers (which spell driver bring-up as `TfTpu_Initialize`, the same way the legacy StreamExecutor C-ABI spells everything `TfTpu_*`) reach the same body the PJRT gate reaches. A reimplementation can ship either or both spellings; both must funnel to one `InitializeDriver` guarded by one `has_initialized` byte, or a process that touches *both* surfaces double-initializes.
+> **NOTE —** the page title names `TfTpu_Initialize`, but the live path is Path A. `TfTpu_Initialize @ 0xe6f54a0` is genuinely a 10-byte forwarding shim — its whole body is two instructions, `mov $0x1, %ecx` then `jmp InitializeDriver`. The only work it does is hardcode the 4th argument (the `bool init_type_is_2` of `InitializeDriver(bool, int, char const**, bool)`, passed in `%ecx`) to `1`; the other three arguments (`rdi`/`esi`/`rdx` = driver_flag, argc, argv) pass through untouched from the caller, and the `jmp` (not `call`) makes this a tail-shim with no own frame. (The IDA C reconstruction renders the hardcoded `%ecx` as a bogus `&dword_0+1` argv pointer; the disassembly is authoritative — `%ecx` is the trailing `bool`, not argv.) It exists so legacy `tensorflow/core/tpu/` callers (which spell driver bring-up as `TfTpu_Initialize`, the same way the legacy StreamExecutor C-ABI spells everything `TfTpu_*`) reach the same body the PJRT gate reaches. A reimplementation can ship either or both spellings; both must funnel to one `InitializeDriver` guarded by one `has_initialized` byte, or a process that touches *both* surfaces double-initializes.
 
 ### Algorithm
 
 ```c
-function InitializeDriver(driver_flag, argc, argv_vec, init_type_is_2):   // 0x204cecc0
+function InitializeDriver(bool driver_flag, int argc, char const** argv_in, bool init_type_is_2):   // 0x204cecc0
     // (a) hard idempotence gate — first instruction
     if driver_flag == 0 || (has_initialized & 1) != 0:    // function-static byte
         return                                             // already up, or disabled
@@ -68,7 +69,7 @@ function InitializeDriver(driver_flag, argc, argv_vec, init_type_is_2):   // 0x2
     // (b) synthesize argv[0] and fold in Cloud-TPU defaults
     args = new vector<string>()
     args[0] = "./tpu_driver"                               // 24-B std::string, SSO inline
-    AppendNewCloudTPUArgs(&args, argc, argv_vec)           // 0x204c7340 — append Cloud-TPU flags
+    AppendNewCloudTPUArgs(&args, argc, argv_in)            // 0x204c7340 — append Cloud-TPU flags + caller argv
 
     // (c) flatten vector<string> -> char**  (SSO-aware: byte-23 sign bit = heap/inline)
     n   = args.size()
@@ -103,9 +104,9 @@ function InitializeDriver(driver_flag, argc, argv_vec, init_type_is_2):   // 0x2
 | Function | Address | Size | Role | Confidence |
 |---|---|---|---|---|
 | `tpu::driver::InitializeDriver` | `0x204cecc0` | 1764 B | the bootstrap body (guard, argv, InitGoogle, telemetry) | CONFIRMED |
-| `TfTpu_Initialize` | `0xe6f54a0` | ~24 B | 5-line shim → `InitializeDriver` (legacy/alternate entry) | CONFIRMED |
+| `TfTpu_Initialize` | `0xe6f54a0` | 10 B | 2-instruction tail-shim (`mov $1,%ecx; jmp`) → `InitializeDriver` (legacy/alternate entry) | CONFIRMED |
 | `tpu::driver::AppendNewCloudTPUArgs` | `0x204c7340` | — | folds Cloud-TPU default flags into the argv `vector<string>` | CONFIRMED |
-| `InitGoogleExceptChangeRootAndUser` | `0x210b0180` | ~12 B | thin wrapper → `RealInitGoogle(…, change_root=0)` | CONFIRMED |
+| `InitGoogleExceptChangeRootAndUser` | `0x210b0180` | 8 B | thin wrapper → `RealInitGoogle(…, change_root=0)` | CONFIRMED |
 | `RealInitGoogle` | `0x210ae860` | large | flag parse + `RunInitializers` + process-wide init | CONFIRMED |
 | `GoogleInitializer::RunInitializers` | `0x210b2d20` | — | the topological module-DAG run (PHASE B) | CONFIRMED |
 | `RegisterLibtpuGaugeTelemetry` | — | — | registers a named telemetry gauge | CONFIRMED |
@@ -193,7 +194,7 @@ RealInitGoogle  0x210ae860
 
 ### Purpose
 
-Beside PJRT, libtpu carries the legacy StreamExecutor TPU C-ABI: ~217 exported `Tpu*_*` symbols (`TpuExecutor_*`, `TpuStream_*`, `TpuTransferManager_*`, …) dispatched through structs of raw C function pointers. The dispatch indirection is a small family of accessor functions, each returning a process-global table. The bootstrap is where these tables become relevant: the `RunInitializers` step runs `RegisterTpuPlatform`, which *reads* the executor table to decide whether to install the StreamExecutor platform. The tables' *contents* (the per-roster `TfTpu_*Fn` slot-by-slot map) are owned by the shim overview — [../shim/overview.md](../shim/overview.md); this section owns only their shape, their storage, and how the bootstrap probes them.
+Beside PJRT, libtpu carries the legacy StreamExecutor TPU C-ABI: 194 exported `Tpu<Class>_<Method>` symbols (`@@VERS_1.0`; e.g. `TpuExecutor_*` ×25, `TpuTransferManager_*` ×19, `TpuStream_*` ×8, …) dispatched through structs of raw C function pointers. The dispatch indirection is a small family of accessor functions, each returning a process-global table. The bootstrap is where these tables become relevant: the `RunInitializers` step runs `RegisterTpuPlatform`, which *reads* the executor table to decide whether to install the StreamExecutor platform. The tables' *contents* (the per-roster `TfTpu_*Fn` slot-by-slot map) are owned by the shim overview — [../shim/overview.md](../shim/overview.md); this section owns only their shape, their storage, and how the bootstrap probes them.
 
 ### The accessors are Meyers singletons
 
@@ -266,7 +267,7 @@ The bootstrap is re-entrant-safe by stacking three independent once-mechanisms. 
 | Guard | Where | Address / token | What re-calling skips | Confidence |
 |---|---|---|---|---|
 | `absl::Mutex` once-lock | `TryAcquireTpuLock::mu` | guard `0x225925d0` / obj `0x225925c8` | the cross-process acquisition; second call sees the lock held | CONFIRMED |
-| function-static byte | `InitializeDriver::has_initialized` | inside `0x204cecc0` | the entire `InitializeDriver` body (argv build, InitGoogle, telemetry) | CONFIRMED |
+| function-static byte | `InitializeDriver::has_initialized` | `0x225899e0` (`.bss`) | the entire `InitializeDriver` body (argv build, InitGoogle, telemetry) | CONFIRMED |
 | `absl::Mutex` + per-module run-state | `GoogleInitializer::RunInitializers` | inside `0x210b2d20` | re-running any module whose state is already `DONE` | HIGH |
 | function-static byte | `RegisterTpuPlatform::tpu_platform_registered` | `0x224c5388` | re-installing the StreamExecutor `TpuPlatform` | CONFIRMED |
 | `__cxa_guard` for `InitGoogleDoneNotification` | inside `RealInitGoogle` | guard in `.bss` | re-arming the init-done notification | HIGH |
@@ -284,7 +285,7 @@ The bootstrap is re-entrant-safe by stacking three independent once-mechanisms. 
 |---|---|
 | `PJRT_Plugin_Initialize @ 0xe6a9d00` | The PJRT-side gate; calls into this bootstrap (full gate on `module-init-plugin-discovery.md` §3) |
 | `tpu::driver::InitializeDriver @ 0x204cecc0` | The bootstrap body this page owns |
-| `TfTpu_Initialize @ 0xe6f54a0` | Legacy/alternate 5-line entry into the same `InitializeDriver` |
+| `TfTpu_Initialize @ 0xe6f54a0` | Legacy/alternate 10-byte tail-shim entry into the same `InitializeDriver` |
 | `GetLibTpuInitArguments @ 0x20ccca20` | The `LIBTPU_INIT_ARGS` option ingest |
 | `RealInitGoogle @ 0x210ae860` | The flag parse + module-DAG run + process bring-up |
 | `GoogleInitializer::RunInitializers @ 0x210b2d20` | The DAG run that executes the registered modules (PHASE B) |
