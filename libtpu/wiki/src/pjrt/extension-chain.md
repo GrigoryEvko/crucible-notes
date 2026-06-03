@@ -6,7 +6,7 @@
 
 The PJRT C-API has a fixed-width vtable — 140 function-pointer slots, frozen at the version the plugin was built against (here v0.103). A plugin that wants to expose capabilities *beyond* that frozen surface cannot add slots without bumping the version, so the API carries a second, open-ended channel: a singly-linked list of **extension** nodes hung off `PJRT_Api.extension_start`. Each node begins with a common header — `{ size_t struct_size; uint32 type; uint32 _pad; PJRT_Extension_Base* next; }` — and a framework discovers a feature by walking `next` until it finds a node whose `type` matches a known `PJRT_Extension_Type` id, or hits `NULL`. This is the same pattern LLVM uses for pass-plugin registries and that COM uses for `QueryInterface`: a stable ABI spine plus a self-describing, version-tolerant side table.
 
-libtpu publishes **17 extensions**. Sixteen of them live in `.lbss`/`.bss` as zero-initialized function-local statics inside `pjrt::tpu_plugin::GetTpuPjrtApi` @ `0xE6AA440`; each is populated exactly once, under a C++ `__cxa_guard`, by a flat table-initializer `pjrt::Create<Name>Extension(node, next, ...)` that writes `struct_size`, `type`, `next`, and a fixed run of fn-ptr slots, then returns. The 17th, Profiler (type 1), lives in `.data` with static-init relocations and serves as the chain *seed* — RawBuffer's `next` points at it, and its own `next` is `NULL`. Because each new node's `next` points at the previously-built node, the list is built tail-first; `extension_start` is set to the *last*-built node, so a consumer walking the chain sees the extensions newest-first. The order carries no meaning to consumers — discovery is a type-id linear scan — but it mirrors the source-level declaration order inside `GetTpuPjrtApi`.
+libtpu publishes **17 extensions**. Sixteen of them live in `.bss` as zero-initialized function-local statics inside `pjrt::tpu_plugin::GetTpuPjrtApi` @ `0xE6AA440`; each is populated exactly once, under a C++ `__cxa_guard`, by a flat table-initializer `pjrt::Create<Name>Extension(node, next, ...)` that writes `struct_size`, `type`, `next`, and a fixed run of fn-ptr slots, then returns. The 17th, Profiler (type 1), lives in `.data` with static-init relocations and serves as the chain *seed* — RawBuffer's `next` points at it, and its own `next` is `NULL`. Because each new node's `next` points at the previously-built node, the list is built tail-first; `extension_start` is set to the *last*-built node, so a consumer walking the chain sees the extensions newest-first. The order carries no meaning to consumers — discovery is a type-id linear scan — but it mirrors the source-level declaration order inside `GetTpuPjrtApi`.
 
 This page owns the **node layout**, the **`PJRT_Extension_Type` enum**, the **complete ordered extension inventory**, and the **walk algorithm**. The per-extension deep dives live on dedicated pages (linked in the inventory table). The 140 *non-extension* function-pointer slots — a separate structure entirely — are reconstructed on [API Vtable Reconstruction](api-vtable-reconstruction.md).
 
@@ -26,7 +26,7 @@ For reimplementation, the contract is:
 | **Type ids present** | 1, 4, 6, 8, 9, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23 |
 | **Type ids absent** | 0, 2, 3, 5, 7, 10, 11 (incl. canonical FFI, Custom_Partitioner, Stream, Triton) |
 | **Builder** | `pjrt::tpu_plugin::GetTpuPjrtApi` @ `0xE6AA440` (16 `__cxa_guard` blocks + a 17th for `pjrt_api`) |
-| **Largest node** | Megascale (type 18) @ `0x224C3D08`, 248 bytes (0xF8), 24 live + 5 reserved slots |
+| **Largest node** | Megascale (type 18) @ `0x224C3D08`, 248 bytes (0xF8), 23 live + 5 reserved slots |
 | **Smallest node** | HostMemoryAllocator (type 23) @ `0x224C3F68`, 32 bytes, 1 method |
 
 ---
@@ -74,7 +74,7 @@ function CreateShardingsExtension(node, next):
 
 ### Fn-ptr Tail and Args-Struct Convention
 
-Slots from `+0x18` are method pointers. `struct_size` is the *full* node size including this tail, so `(struct_size - 0x18) / 8` gives the method count (e.g. HostMemoryAllocator `(32 - 24)/8 = 1`; Shardings `(40 - 24)/8 = 2`; Megascale `(248 - 24)/8 = 28`, of which 24 are live and 5 are reserved NULL — see [Remaining Extensions](ext-remaining.md)). Each method takes a single `PJRT_<API>_Args*`; like the main vtable, every method body's first action is a backward-compat size check via `pjrt::ActualStructSizeIsGreaterOrEqual("<API>_Args", min, current, args->struct_size)` @ `0xF8A4EC0`. Wrapper-handle args place the opaque handle at `+0x08` (no `priv` field).
+Slots from `+0x18` are method pointers. `struct_size` is the *full* node size including this tail, so `(struct_size - 0x18) / 8` gives the method count (e.g. HostMemoryAllocator `(32 - 24)/8 = 1`; Shardings `(40 - 24)/8 = 2`; Megascale `(248 - 24)/8 = 28`, of which 23 are live and 5 are reserved NULL — see [Remaining Extensions](ext-remaining.md)). Each method takes a single `PJRT_<API>_Args*`; like the main vtable, every method body's first action is a backward-compat size check via `pjrt::ActualStructSizeIsGreaterOrEqual("<API>_Args", min, current, args->struct_size)` @ `0xF8A4EC0`. Wrapper-handle args place the opaque handle at `+0x08` (no `priv` field).
 
 ---
 
@@ -109,7 +109,7 @@ The type id is the discovery key. libtpu's ids match the public `xla/pjrt/c/pjrt
 | 22 | MultiSlice | present (TPU) | [Remaining Extensions](ext-remaining.md) |
 | 23 | HostMemoryAllocator | present | [Remaining Extensions](ext-remaining.md) |
 
-> **NOTE —** the **absences are load-bearing for a reimplementer**. The canonical PJRT C-API registers FFI (5), Custom_Partitioner (2), Stream (3), and Triton ids that libtpu does **not** advertise. libtpu delivers what an FFI / custom-call extension would otherwise provide through two TPU-specific channels: the **Callback** extension (type 14) `RegisterCallback` path installs `xla::SliceBuilderCallbackState` host callbacks, and the **TpuExecutable** extension (type 17) `SetTpuCompilationEnv` path installs a serialized `xla::CompilationEnvironmentsProto` (the TPU compilation-backend/XLA-flags surface). `ExecuteContext` is exposed only through main-table slots 103/104, not as an extension. A framework that *requires* the FFI extension to be present will feature-detect a `NULL` on TPU and must fall back to these channels.
+> **NOTE —** the **absences are decisive for a reimplementer**. The canonical PJRT C-API registers FFI (5), Custom_Partitioner (2), Stream (3), and Triton ids that libtpu does **not** advertise. libtpu delivers what an FFI / custom-call extension would otherwise provide through two TPU-specific channels: the **Callback** extension (type 14) `RegisterCallback` path installs `xla::SliceBuilderCallbackState` host callbacks, and the **TpuExecutable** extension (type 17) `SetTpuCompilationEnv` path installs a serialized `xla::CompilationEnvironmentsProto` (the TPU compilation-backend/XLA-flags surface). `ExecuteContext` is exposed only through main-table slots 103/104, not as an extension. A framework that *requires* the FFI extension to be present will feature-detect a `NULL` on TPU and must fall back to these channels.
 
 > **GOTCHA —** there are **two** distinct host-memory allocators with near-identical names. `HostMemoryAllocator` (type **23**, 32 bytes, one `Allocate` method) is the generic XLA host-staging allocator at the chain head. `HostAllocator` (type **15**, 48 bytes, three methods, all TPU-injected) is the TPU pinned-host allocator for device-host DMA staging. They have different layouts and serve different layers; matching on the wrong type id gets you the wrong allocator.
 
@@ -126,7 +126,7 @@ The complete chain, in the order a consumer encounters it when walking `next` fr
 | 3 | `0x224C3EB8` | Collectives (21) | 96 | 9 | `CreateCollectivesExtension` @ `0xE6F19A0` | [Remaining](ext-remaining.md) |
 | 4 | `0x224C3E38` | AbiVersion (20) | 120 | 12 | `CreateTpuAbiVersionExtension` @ `0xE6B7340` → `CreateAbiVersionExtension` @ `0xE6B8960` | [Remaining](ext-remaining.md) |
 | 5 | `0x224C3E08` | Shardings (19) | 40 | 2 | `CreateShardingsExtension` @ `0xF874980` | [Remaining](ext-remaining.md) |
-| 6 | `0x224C3D08` | Megascale (18) | 248 | 24 (+5 reserved) | `CreateMegascaleExtension` @ `0xE6B97C0` | [Remaining](ext-remaining.md) |
+| 6 | `0x224C3D08` | Megascale (18) | 248 | 23 (+5 reserved) | `CreateMegascaleExtension` @ `0xE6B97C0` | [Remaining](ext-remaining.md) |
 | 7 | `0x224C3CA8` | TpuExecutable (17) | 88 | 7 (+1 reserved) | `CreateTpuExecutableExtension` @ `0xE6DC6E0` | [Remaining](ext-remaining.md) |
 | 8 | `0x224C3B90` | TopologyDescription / TpuTopology (16) | 272 | 31 | `CreateTpuTopologyExtension` @ `0xE6DE5E0` | [Topology](ext-topology-description.md) |
 | 9 | `0x224C3B60` | Callback (14) | 40 | 2 | `CreateCallbackExtension` @ `0xE6B91E0` | [Remaining](ext-remaining.md) |
@@ -137,7 +137,7 @@ The complete chain, in the order a consumer encounters it when walking `next` fr
 | 14 | `0x224C3A40` | MemoryDescriptions (6) | 40 | 2 | `CreateMemoryDescriptionsExtension` @ `0xF874940` | [Remaining](ext-remaining.md) |
 | 15 | `0x224C39E8` | Layouts (4) | 80 | 7 | `CreateLayoutsExtension` @ `0xF8748C0` | [Remaining](ext-remaining.md) |
 | 16 | `0x224C3990` | RawBuffer (8) | 80 | 7 | `CreateRawBufferExtension` @ `0xE6F52C0` | [RawBuffer](ext-rawbuffer.md) |
-| 17 | `0x22255B98` | Profiler (1) | 40 | 8 | static `.data` init (no `Create*` call) | [Profiler](ext-profiler.md) |
+| 17 | `0x22255B98` | Profiler (1) | 40 | 0 (1 ptr → 8-slot vtable) | static `.data` init (no `Create*` call) | [Profiler](ext-profiler.md) |
 
 Total = 17 nodes. Profiler (type 1) is the terminator (`next = NULL`). The five TPU-specialized nodes whose creators receive TPU function pointers as parameters — AbiVersion (two `FromProto` factories), ExecutableMetadata (`GetExecutableMetadata`), HostAllocator (all three slots), PhaseCompile (`Get_Compiler`/`Destroy_Compiler`), plus the fully-TPU Megascale/TpuExecutable/MultiSlice/Callback/TpuTopology — are detailed on their deep-dive pages; this page is concerned only with their place in the chain.
 
