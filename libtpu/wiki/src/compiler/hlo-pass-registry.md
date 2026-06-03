@@ -6,9 +6,9 @@
 
 Every HLO-level transformation on the TPU backend runs inside one container class — `xla::HloPassPipeline` — and one driver method: `RunPassesInternal`. There is no TPU-private pipeline type. The TPU compiler reuses the *same* upstream-XLA `HloPassPipeline` that the CPU and GPU backends use, instantiated and populated by the Jellyfish pipeline-builder functions ([`compile-phases.md`](compile-phases.md) owns those builders and the phase ordering). This page owns the *machinery* underneath that ordering: the `Run` driver loop, the `HloPassInterface` ABI every pass implements, the `AddPass`/`AddInvariantChecker` registration API that the builders call, the flag-gated pass-disable/enable filter (`GetEnabledPasses`), and the invariant-checker re-validation loop that runs after every mutating pass.
 
-The reader who knows LLVM should map this onto the LLVM legacy `PassManager` — but the differences are load-bearing. An `HloPassPipeline` is itself an `HloPassInterface`, so pipelines nest as passes (an `HloPassFix<HloPassPipeline>` re-runs a whole sub-pipeline to a fixed point). Passes do not declare analysis dependencies and there is no analysis cache; each pass re-derives what it needs and returns a single `StatusOr<bool>` "did I change the module" bit. Invariant checkers are a second pass list that runs the *identical* `Run` ABI but must not mutate, and they re-validate after every pass that reported a change — not once at pipeline end. The whole driver is written defensively: it cross-checks each pass's self-reported change bit against an independent hash of the module and `CHECK`-fails the compiler if a pass lies about whether it mutated.
+The reader who knows LLVM should map this onto the LLVM legacy `PassManager` — but the differences are central. An `HloPassPipeline` is itself an `HloPassInterface`, so pipelines nest as passes (an `HloPassFix<HloPassPipeline>` re-runs a whole sub-pipeline to a fixed point). Passes do not declare analysis dependencies and there is no analysis cache; each pass re-derives what it needs and returns a single `StatusOr<bool>` "did I change the module" bit. Invariant checkers are a second pass list that runs the *identical* `Run` ABI but must not mutate, and they re-validate after every pass that reported a change — not once at pipeline end. The whole driver is written defensively: it cross-checks each pass's self-reported change bit against an independent hash of the module and `CHECK`-fails the compiler if a pass lies about whether it mutated.
 
-This page is the ABI-and-driver reference. The *enumeration* of which passes are added and in what order is on [`compile-phases.md`](compile-phases.md) (the ten-phase spine) and [`hlo-pre-passes.md`](hlo-pre-passes.md) (the front pre-pass table); the *class catalog* of all 322 passes is [`hlo-pre-passes.md`](hlo-pre-passes.md); and individual pass algorithms live on their own pages ([`algebraic-simplifier.md`](algebraic-simplifier.md), [`layout-assignment.md`](layout-assignment.md), [`fusion-patterns.md`](fusion-patterns.md), [`msa-overview.md`](msa-overview.md)). Here we document only the container, the interface, and the add/gate/check mechanism.
+This page is the ABI-and-driver reference. The *enumeration* of which passes are added and in what order is on [`compile-phases.md`](compile-phases.md) (the ten-phase spine) and [`hlo-pre-passes.md`](hlo-pre-passes.md) (the front pre-pass table); the 372-entry `name()` RTTI surface (the `_ZNK3xla*4nameEv` symbols) is enumerated on [`hlo-pre-passes.md`](hlo-pre-passes.md); and individual pass algorithms live on their own pages ([`algebraic-simplifier.md`](algebraic-simplifier.md), [`layout-assignment.md`](layout-assignment.md), [`fusion-patterns.md`](fusion-patterns.md), [`msa-overview.md`](msa-overview.md)). Here we document only the container, the interface, and the add/gate/check mechanism.
 
 For reimplementation, the contract is:
 
@@ -31,7 +31,7 @@ For reimplementation, the contract is:
 | **`passes_` vector** | offset +40 (ptr) / +48 (count) inside the pipeline object |
 | **`invariant_checkers_` vector** | offset +56 (ptr) / +64 (count) |
 | **`run_called_` latch** | offset +80 (byte) |
-| **Pass count** | 372 `_ZNK3xla*4nameEv` symbols → 322 actual passes (see [`hlo-pre-passes.md`](hlo-pre-passes.md)) |
+| **`name()` symbols** | 372 `_ZNK3xla*4nameEv` symbols — 137 `xla::jellyfish::*`, 24 `xla::tpu::sparse_core::*`, 211 other `xla::*` (not all are HLO passes; e.g. `xla::Executable::name()` is in the set) |
 | **Confidence** | CONFIRMED (byte-anchored) unless a row or callout says otherwise |
 
 ---
@@ -40,7 +40,7 @@ For reimplementation, the contract is:
 
 ### Purpose
 
-`HloPassInterface` is the single abstract base every HLO pass derives from. It is the contract the driver dispatches against: the driver never knows a pass's concrete type, only its vtable. The TPU backend adds 137 `xla::jellyfish::*` passes and 24 `xla::tpu::sparse_core::*` passes on top of the 161 open-source `xla::*` passes, but all 322 share this one vtable shape, which is why the `RunPassesInternal` loop can be type-agnostic.
+`HloPassInterface` is the single abstract base every HLO pass derives from. It is the contract the driver dispatches against: the driver never knows a pass's concrete type, only its vtable. The TPU backend adds 137 `xla::jellyfish::*` and 24 `xla::tpu::sparse_core::*` `name()`-overriding classes on top of 211 other `xla::*` classes (372 `_ZNK3xla*4nameEv` symbols total — not all are HLO passes; the set also includes non-pass `name()` overrides such as `xla::Executable`), but every concrete pass shares this one vtable shape, which is why the `RunPassesInternal` loop can be type-agnostic.
 
 ### Vtable layout
 
@@ -50,9 +50,9 @@ Three slots matter to the driver, recovered from the call sites in `RunPassesInt
 |---|---|---|---|
 | `name()` | vtable+16 | `string_view name() const` | `GetEnabledPasses` (filter key), driver VLOG, dump filenames |
 | `Run()` | dispatched via `xla::HloPassInterface::Run` | `StatusOr<bool> Run(HloModule*, const flat_hash_set<string_view>& execution_threads)` | driver per-pass call, checker call |
-| `is_pass_pipeline()` | vtable+32 | `bool is_pass_pipeline() const` | driver — decides whether to record the module fingerprint for change verification |
+| `is_pass_pipeline()` | vtable+32 | `bool is_pass_pipeline() const` | discriminates pipeline-as-pass from a leaf pass; the vtable+32 slot was not exercised on the change-verification path of `RunPassesInternal` (hash recording is gated on `DebugOptions+928\|+911`, not on this slot) [Confidence: MEDIUM on the +32 offset] |
 
-The `name()` slot is the reverse-engineering anchor for the whole surface: the 372 `_ZNK3xla*4nameEv` symbols *are* the pass enumeration, because every concrete pass overrides `name()`. The string it returns is the dashed-lowercase pass name (`"tpu-int2-auto-up-down-caster"`, `"latency-hiding-scheduler"`, `"sharding-propagation"`) that the `--xla_disable_hlo_passes` flag matches against.
+The `name()` slot is the reverse-engineering anchor for the whole surface: the 372 `_ZNK3xla*4nameEv` symbols are the near-complete enumeration of `name()`-overriding XLA classes, because every concrete pass overrides `name()` — though the set also catches a handful of non-pass `name()` overrides (`xla::Executable`, the PjRt executables), so it is an over-set of the pass list, not an exact count. The string a pass returns is its dashed-lowercase name (`"tpu-int2-auto-up-down-caster"`, `"sharding-propagation"`, `"legalize-scheduling-annotations"` — all byte-confirmed) that the `--xla_disable_hlo_passes` flag matches against.
 
 > **NOTE — `Run`'s boolean is the only signal a pass returns.** `Run` returns `StatusOr<bool>`: a non-OK `Status` aborts the pipeline; an OK `true` means "I changed the module," an OK `false` means "no change." There is no richer result — no list of modified computations, no invalidated-analysis set. The driver's entire change-tracking is built on this one bit, which is exactly why it independently audits the bit against a module hash (see [§The Driver Loop](#the-driver-loop)).
 
@@ -87,12 +87,12 @@ Recovered from the field offsets the driver and the `AddInvariantChecker` instan
 | Field | Offset | Type | Meaning |
 |---|---|---|---|
 | vtable | +0 | `HloPassInterface` vptr | the pipeline-as-pass dispatch |
-| `name_` | +8…+32 | inlined `std::string` (SSO) | pipeline name, e.g. `"pre-optimization"`, `"Layout assignment"`, `"final_scheduler"` |
+| `name_` | +8…+32 | inlined `std::string` (SSO) | pipeline name, e.g. `"pre-optimization"`, `"Layout assignment"`, `"async_scheduling"` (all byte-confirmed) |
 | `passes_` | +40 / +48 | `vector<unique_ptr<HloPassInterface>>` ptr / count | the ordered pass list, read by `GetEnabledPasses` (as `v15+4`/`v15+5`) |
 | `invariant_checkers_` | +56 / +64 | `vector<unique_ptr<HloPassInterface>>` ptr / count | the checker list, read by `RunInvariantCheckers` (as `a1+56`/`a1+64`) and appended by `AddInvariantChecker` |
 | `run_called_` | +80 | `bool` | latch — set true at `Run` entry; further `AddPass`/`AddInvariantChecker` `CHECK`-fail |
 
-The pipeline name doubles as the change-verification fingerprint key and appears in the FATAL diagnostics ("Pass '%s' in pipeline '%s' …"). The capitalized names (`"Layout assignment"`, `"Pre main fusion"`) are the `HloPassPipeline` ctor strings the Jellyfish builders pass; [`compile-phases.md`](compile-phases.md) maps each to its stage.
+The pipeline name appears in the FATAL diagnostics ("Pass '%s' in pipeline '%s' …"). The mixed-case names (`"Layout assignment"`, `"pre-optimization"`, `"async_scheduling"`) are the `HloPassPipeline` ctor strings the Jellyfish builders pass; [`compile-phases.md`](compile-phases.md) maps each to its stage.
 
 > **QUIRK — the checker list is separate from the pass list and runs on a different cadence.** A naive reimplementation merges verifiers into the pass sequence as ordinary passes. libtpu keeps `invariant_checkers_` in a second vector and runs the *entire* checker list before the first pass and after every changing pass — a quadratic-in-checkers, linear-in-passes validation schedule. Merging them into `passes_` would run each checker once per its own slot, not after every other pass, and would miss the malformed intermediates that the continuous schedule catches.
 
@@ -161,7 +161,7 @@ function GetEnabledPasses(pipeline, debug_options) -> vector<HloPassInterface*>:
     return out
 ```
 
-> **GOTCHA — disable and enable-only are mutually exclusive, and disabling a *pipeline* name silences the whole stage.** Two traps. First, setting both `--xla_disable_hlo_passes` and `--xla_enable_hlo_passes_only` is a hard `CHECK`-fail (`cc:247`), not a merge — a reimplementation that lets both coexist diverges immediately. Second, the disable/enable check runs against the *pipeline's* name first: because every nested pipeline (`"Pre main fusion"`, `"Layout assignment"`) is itself a named pass, disabling that name returns an empty pass list and the entire stage is skipped, not just one pass. The byte-confirmed VLOG strings `"Passes disabled by --xla_disable_hlo_passes: "` (`cc:238`), `"Passes enabled by --xla_enable_hlo_passes_only: "` (`cc:243`), `"Disable the full pass: "` (`cc:251`), and `"Enable the full pass: "` (`cc:256`) anchor each branch.
+> **GOTCHA — disable and enable-only are mutually exclusive, and disabling a *pipeline* name silences the whole stage.** Two traps. First, setting both `--xla_disable_hlo_passes` and `--xla_enable_hlo_passes_only` is a hard `CHECK`-fail (`cc:247`), not a merge — a reimplementation that lets both coexist diverges immediately. Second, the disable/enable check runs against the *pipeline's* name first: because every nested pipeline (`"Layout assignment"`, `"async_scheduling"`) is itself a named pass, disabling that name returns an empty pass list and the entire stage is skipped, not just one pass. The byte-confirmed VLOG strings `"Passes disabled by --xla_disable_hlo_passes: "` (`cc:238`), `"Passes enabled by --xla_enable_hlo_passes_only: "` (`cc:243`), `"Disable the full pass: "` (`cc:251`), and `"Enable the full pass: "` (`cc:256`) anchor each branch.
 
 > **NOTE — this is name-based gating, not the `xla_jf_*`/`xla_tpu_*` feature flags.** `GetEnabledPasses` only honors the two debug-options *pass-name lists*. The per-feature flags (`xla_jf_*`, `xla_tpu_*`, `xla_msa_*`) that turn passes on or off are read *inside each builder function* — `if (env->flag) AddPass<T>(...)` — before the pass ever reaches the pipeline. So a flag-disabled pass is simply never added, while a name-disabled pass is added then filtered out here. The two mechanisms compose; [`compile-phases.md`](compile-phases.md) owns the builder-level flag gating, this page owns the name-level filter. The flag→pass binding predicate was not individually traced. [Confidence: HIGH on the name filter; the feature-flag gating is documented on the builder pages.]
 
@@ -292,7 +292,7 @@ CreateHloPipeline (0x1093efe0)                 ── allocates the top HloPassP
   ├─ AddInvariantChecker<HloCycleDetection>
   ├─ AddInvariantChecker<LegalizeSchedulingAnnotations>
   ├─ AddPass<...> × N             ── the pre-opt / sharding / layout / fusion passes, flag-gated
-  └─ AddPass<HloPassPipeline>     ── nested named sub-pipelines ("Pre main fusion", …)
+  └─ AddPass<HloPassPipeline>     ── nested named sub-pipelines ("Layout assignment", "async_scheduling", …)
         └─ (each nested pipeline re-runs MaybeAddInvariantCheckers at its own head)
 ```
 
@@ -324,10 +324,10 @@ CreateHloPipeline (0x1093efe0)                 ── allocates the top HloPassP
 
 - [Compile Phases 0–3](compile-phases.md) — the ten-phase spine and the Jellyfish builder functions (`CreateHloPipeline`, `PreOptimizationPipeline`, `MaybeAddInvariantCheckers`) that populate this container.
 - [The TPU Compiler](overview.md) — Part V orientation; where the HLO pass pipeline (Family 1) sits in the five compile phases and the IR-layer stack.
-- [HLO Pre-Passes](hlo-pre-passes.md) — the enumerated pass catalog (372 `name()` classes / 322 passes) this driver runs, with per-pass HLO invariants.
+- [HLO Pre-Passes](hlo-pre-passes.md) — the enumerated pass catalog (the 372-entry `name()` RTTI surface) this driver runs, with per-pass HLO invariants.
 - [Algebraic Simplifier](algebraic-simplifier.md) — a representative leaf pass (`TpuAlgebraicSimplifier`) implementing the `HloPassInterface` ABI.
 - [Layout Assignment](layout-assignment.md) — the codegen-gating analysis run as an `HloPassInterface` inside the through-layout pipeline.
-- [Fusion Patterns](fusion-patterns.md) — `TpuInstructionFusion`, the main fusion pass added to the "Main fusion" nested pipeline.
+- [Fusion Patterns](fusion-patterns.md) — `TpuInstructionFusion`, the main fusion pass added in the Phase 5 fusion stage.
 - [MSA Overview](msa-overview.md) — memory-space assignment, driven post-pipeline by `RunMemorySpaceAssignment`.
 - [back to index](../index.md)
 - **Binary:** `extracted/libtpu-0.0.40-cp314-cp314-manylinux_2_31_x86_64/libtpu/libtpu.so` (build-id `89edbbe81c5b328a958fe628a9f2207d`)
