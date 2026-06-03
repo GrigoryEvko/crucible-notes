@@ -1,6 +1,6 @@
 # Evidence & Confidence Conventions
 
-> *Every fact in this book is recovered by static reverse engineering of `libtpu.so` from the `libtpu-0.0.40-cp314` wheel: a 781,691,048-byte ELF64 shared object, build-id `89edbbe81c5b328a958fe628a9f2207d`, reported runtime version `0.103`. All addresses are absolute virtual addresses in that one binary; another wheel will differ in every address.*
+> *Every fact in this book is recovered by static reverse engineering of `libtpu.so` from the `libtpu-0.0.40-cp314` wheel: a 781,691,048-byte ELF64 shared object, build-id `89edbbe81c5b328a958fe628a9f2207d` (the unambiguous anchor — the reported `0.103` is package metadata, not a literal string in the binary). All addresses are absolute virtual addresses in that one binary; another wheel will differ in every address.*
 
 ## Abstract
 
@@ -124,9 +124,9 @@ The book uses four blockquote markers — bold text, never an emoji — to pull 
 | `> **QUIRK —**` | A counter-intuitive fact. | Something true that contradicts the obvious assumption; a reimplementer who assumes the obvious gets it wrong. |
 | `> **GOTCHA —**` | A trap. | A place where the naive implementation is *silently* wrong — it compiles, runs, and produces incorrect results. |
 | `> **NOTE —**` | A clarification. | An important point that is not a trap and not counter-intuitive, but easy to miss. |
-| `> **CORRECTION (tag) —**` | An overturned claim. | A prior assertion that later analysis disproved, recorded in place with a provenance tag rather than silently edited out. |
+| `> **CORRECTION (tag) —**` | An overturned claim. | A prior assertion that later analysis disproved, recorded in place — usually with a provenance tag — rather than silently edited out. |
 
-The first three carry no tag; `CORRECTION` always carries a short provenance tag (e.g. `EVID-03`, `FOR-01`) so a specific reversal can be referenced and audited. A correction is never a silent edit — when analysis changes a conclusion, the old conclusion stays visible with the correction beside it, so a reader who memorized the old claim is actively warned.
+The first three carry no tag; `CORRECTION` normally carries a short provenance tag (e.g. `EVID-03`, `FOR-01`) so a specific reversal can be referenced and audited, and the deep pages tag the overwhelming majority of theirs. A few self-contained, page-local corrections — ones that merely overturn an earlier reading of the same passage and need no cross-page handle — appear as a bare `> **CORRECTION —**` instead; the tag is the norm, not an inviolable requirement. Either way a correction is never a silent edit — when analysis changes a conclusion, the old conclusion stays visible with the correction beside it, so a reader who memorized the old claim is actively warned.
 
 > **QUIRK —** a `CORRECTION` block is *evidence of trustworthiness*, not a defect. A reverse-engineering book with zero corrections has either analyzed nothing hard or is hiding its mistakes. Treat the presence of in-place corrections as a signal that the surrounding claims were genuinely re-examined.
 
