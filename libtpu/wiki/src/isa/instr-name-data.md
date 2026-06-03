@@ -7,7 +7,7 @@
 Three opcode-indexed tables sit beside [InstBits](instbits-master-db.md) in the TPU back end's `.lrodata` and supply everything the bit-layout database does not: the mnemonic of each opcode, the descriptor metadata (`MCInstrDesc`) that says how many operands an opcode has and how each is encoded, and the register-encoding map that turns a virtual register number into the hardware bits an instruction field carries. They are the standard LLVM `TPUGenInstrInfo` / `TPUGenRegisterInfo` TableGen outputs, embedded verbatim:
 
 - **`TPUInstrNameData`** (`0x33f2be0`, 274764 B) — a flat, null-terminated mnemonic string pool, indexed indirectly through **`TPUInstrNameIndices`** (`0x3435d30`, `6166 × u32` byte offsets). `mnemonic(op) = TPUInstrNameData + TPUInstrNameIndices[op]`.
-- **`TPUDescs`** (`0x33bf650`, 210320 B) — the per-opcode `MCInstrDesc` array, `6166` entries at a `32`-byte stride, holding `{NumOperands, NumDefs, Size, SchedClass, Flags, TSFlags}` and the operand-info index the operand encoders consult.
+- **`TPUDescs`** (`0x33bf650`, 210320 B = `0x33590`) — the per-opcode `MCInstrDesc` array: `6166` records at a `32`-byte stride (`6166 × 32 = 197312` B), holding `{NumOperands, NumDefs, Size, SchedClass, Flags, TSFlags}` and the operand-info index the operand encoders consult. The remaining `13008` B of the symbol (`210320 − 197312`) hold the trailing operand-info / implicit-operand arrays the descriptors index into; the symbol size is *not* `6166 × 32`.
 - **`TPURegEncodingTable`** (`0x34469b0`, `889 × u16`) — register number → hardware encoding bits, the `movzwl (table, reg, 2)` lookup behind every register operand.
 
 All three are wired into the MC layer by `createTPUMCInstrInfo` (`0x13c7a500`), which allocates a 64-byte `MCInstrInfo`, stores `NumOpcodes = 6166`, and points it at `TPUInstrNameIndices` and `TPUInstrNameData`. This page documents each table's record layout, its index space, and the accessor that reads it — the metadata side of the encoder, where [InstBits](instbits-master-db.md) is the bit side and the [239-bit record](record-format.md) is what they jointly produce.
@@ -78,7 +78,7 @@ The two-level form (offset array + pooled strings) is the standard LLVM `getInst
 
 ### Verified opcode → mnemonic samples
 
-These rows are the load-bearing anchors that pin the index space; they are read directly from the two tables, not inferred:
+These rows are the primary anchors that pin the index space; they are read directly from the two tables, not inferred:
 
 | Opcode | Hex | Mnemonic | Note | Confidence |
 |---:|---|---|---|---|
@@ -108,7 +108,7 @@ These rows are the load-bearing anchors that pin the index space; they are read 
 
 ### Record layout
 
-`TPUDescs` is the LLVM `MCInstrDesc` array: one descriptor per opcode, `6166` entries, decoding cleanly at a **32-byte stride** (`0x33590 / 32 ≈ 6166`). Each entry carries the standard `MCInstrDesc` payload — `{NumOperands, NumDefs, Size, SchedClass, Flags, TSFlags}` plus an operand-info index. The first three entries, viewed as `uint16` tuples:
+`TPUDescs` is the LLVM `MCInstrDesc` array: one descriptor per opcode, `6166` entries, decoding cleanly at a **32-byte stride** (`6166 × 32 = 197312` B of descriptor records; the leading `uint16` decrements `6165, 6164, …` and reaches `0` exactly at entry `6165`, the `6166`th record — a byte-anchored confirmation of the entry count). The `0x33590` (`210320`-B) symbol is larger than `197312` B; the trailing `13008` B are the operand-info / implicit-operand arrays the descriptors index into. Each descriptor record carries the standard `MCInstrDesc` payload — `{NumOperands, NumDefs, Size, SchedClass, Flags, TSFlags}` plus an operand-info index. The first three entries, viewed as `uint16` tuples:
 
 ```text
 entry0:  (6165, 0, 7, 3, 117, 0, 1504, 0)
@@ -118,7 +118,7 @@ entry2:  (6163, 0, 7, 3, 115, 0, 1504, 0)
 
 The leading `uint16` decrements (`6165, 6164, 6163, …`) — it is an operand-info / implicit-ops index, not the opcode itself. The descriptor is the source of the per-operand encoding decisions the bit emitter makes: `(pos, width)` of a deposit is fixed by the instruction class, but *which encoding* a given operand takes (register vs special-immediate vs expression) is read here.
 
-> **CORRECTION (INST-NAME-1) —** an earlier reading treated the `TPUDescs` stride as the LLVM `MCInstrDesc` historical `24`-byte size (which would give `0x33590 / 24 ≈ 8800` entries, more than `NumOpcodes`). The byte-exact decode is a **32-byte** stride yielding exactly `6166` entries, matching `createTPUMCInstrInfo`'s `NumOpcodes`. The `24`-byte reading is wrong for this LLVM struct version; use `32`. *(The exact uint16 field-offset binding to the struct version — which `uint16` is `NumOperands` vs the operand-info index — remains MEDIUM confidence; the `32`-byte stride and `6166` count are CONFIRMED.)*
+> **CORRECTION (INST-NAME-1) —** an earlier reading treated the `TPUDescs` stride as the LLVM `MCInstrDesc` historical `24`-byte size. The byte-exact decode is a **32-byte** stride: the leading `uint16` decrements by one every `32` bytes (`6165, 6164, …`) and hits `0` at entry `6165`, the `6166`th record — matching `createTPUMCInstrInfo`'s `NumOpcodes`. The `24`-byte reading is wrong for this LLVM struct version; use `32`. Note that the descriptor *array* is `6166 × 32 = 197312` B, not the full `0x33590` (`210320`-B) symbol — neither `0x33590 / 32` (`= 6572.5`) nor `0x33590 / 24` (`≈ 8763`) yields the entry count, because the symbol bundles trailing operand-info data after the descriptor records. *(The exact uint16 field-offset binding to the struct version — which `uint16` is `NumOperands` vs the operand-info index — remains MEDIUM confidence; the `32`-byte stride and `6166` count are CONFIRMED.)*
 
 ### The descriptor consult
 
