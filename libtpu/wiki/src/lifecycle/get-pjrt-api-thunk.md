@@ -69,7 +69,7 @@ Because it is a `jmp` and not a `call`, `GetPjrtApi` consumes no stack frame and
 | `GetPjrtApi` | `0xe6a83a0` | 5 B | Exported `jmp` thunk → builder | CONFIRMED |
 | `pjrt::tpu_plugin::GetTpuPjrtApi` | `0xe6aa440` | 1336 B | The builder it forwards to (internal) | CONFIRMED |
 
-> **GOTCHA —** spelling and casing are part of the ABI. The exported symbol is `GetPjrtApi` (lowercase `jrt`); `GetTpuPjrtApi` is internal and **not** in the dynamic symbol table. A loader that `dlsym`s `GetTpuPjrtApi`, or a build that exports only the `Tpu`-cased name, fails discovery. The ~217 `Tpu*_*` symbols that *are* exported are the legacy StreamExecutor C-ABI, never reached through PJRT — see [tftpu-initialize-bootstrap.md](tftpu-initialize-bootstrap.md).
+> **GOTCHA —** spelling and casing are part of the ABI. The exported symbol is `GetPjrtApi` (lowercase `jrt`); `GetTpuPjrtApi` is internal and **not** in the dynamic symbol table. A loader that `dlsym`s `GetTpuPjrtApi`, or a build that exports only the `Tpu`-cased name, fails discovery. The 194 `Tpu*_*` symbols that *are* exported (`FUNC GLOBAL`, all `@@VERS_1.0`) are the legacy StreamExecutor C-ABI, never reached through PJRT — see [tftpu-initialize-bootstrap.md](tftpu-initialize-bootstrap.md).
 
 > **NOTE —** `GetPjrtApi` is the only `GLOBAL FUNC` export matching `/Pjrt/`, versioned `GetPjrtApi@@VERS_1.0`. The signature is the canonical PJRT plugin entry: `const PJRT_Api* GetPjrtApi(void)` — no arguments, returns the table pointer.
 
@@ -132,7 +132,7 @@ The 16 extension builders and their exact construction order, `next`-linking, an
 
 > **QUIRK —** the table constructor `CreatePjrtApi` is gated by the *same kind* of guard as the 16 extension nodes — it is the 17th `__cxa_guard` block, sharing the `pjrt_api` guard byte, not a separate mechanism. So "build the extensions" and "build the table" are seventeen peers in one function, not two phases. A reimplementer who builds the table eagerly (at `dlopen`, or outside a guard) loses the lazy-on-first-call and concurrent-serialization semantics the framework relies on.
 
-> **GOTCHA —** the guard variables are libtpu's **own** libc++abi `__cxa_guard_acquire/release/abort @ 0x213e9ac0 / 0x213e9be0 / 0x213e9c20`, not glibc's. They are 17 distinct guard bytes in `.bss` (e.g. the `raw_buffer_extension` guard `@ 0x224C3980` region). Concurrent first-callers serialize through Itanium-ABI guard semantics: the loser blocks until the winner releases, then sees the satisfied byte and skips. After the one-shot the bytes stay set for process lifetime and readers take no lock.
+> **GOTCHA —** the guard variables are libtpu's **own** libc++abi `__cxa_guard_acquire/release/abort @ 0x213e9ac0 / 0x213e9be0 / 0x213e9c20`, not glibc's. They are 17 distinct guard bytes in `.bss` (e.g. the `raw_buffer_extension` guard `@ 0x224C39E0`, with its node static at `0x224C3990`). Concurrent first-callers serialize through Itanium-ABI guard semantics: the loser blocks until the winner releases, then sees the satisfied byte and skips. After the one-shot the bytes stay set for process lifetime and readers take no lock.
 
 ### Function Map
 
