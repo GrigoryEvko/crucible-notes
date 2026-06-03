@@ -8,14 +8,14 @@
 
 The reader who knows LLVM should hold one analogy and two divergences. The analogy: this is classic Lam-style **iterative modulo scheduling** — pick a minimum II from resource and recurrence lower bounds, try to place every node into a cyclic schedule of that II, and if placement fails grow the II and retry. The first divergence: the per-II legality test is a **modulo reservation table** (`ModuloHazardRecognizer`) that maps each scheduled cycle `c` to the column `c mod II` and rejects two ops that would book the same functional unit in the same column — the divergence from upstream `MachinePipeliner` is that the TPU recognizer reuses the same `MCWriteProcResEntry` proc-resource table the bundle packer and the [bundle-aware cost model](../cost/bundle-aware-cost.md) read, at per-cycle rather than per-bundle granularity. The second divergence: there are **two** TPU modulo DAGs (a greedy *swing* scheduler and a force-based *slack* fallback) and **six** expanders, and the choice of expander is gated on whether the loop is a hardware-counted BarnaCore loop or a software back-edge (see the [hardware loop-counter](../isa/slot-loop.md)).
 
-This page is the Part VIII anchor for the II search and the modulo reservation check: the `min-II = max(5 calculators)` composition in `initialize`, the `for (II = lower; II < upper; ++II)` increment loop in `findSchedule`, the `slot = cycle mod II` reservation test in `ModuloHazardRecognizer`, the `checkPostModuloSchedule` structural verifier and its return-code-driven `++II`, and how the accepted II flows into `emitScheduleForLoop`'s expander dispatch. The per-cycle bundle that each scheduled cycle becomes is owned by the [bundle packer](llo-bundle-packing.md); the proc-resource cycle counts the calculators consume come from the [bundle-aware cost model](../cost/bundle-aware-cost.md).
+This page is the Part VIII anchor for the II search and the modulo reservation check: the `min-II = max(5 calculators)` composition in `initialize`, the `for (II = lower; II < upper; ++II)` increment loop in `findSchedule`, the `slot = cycle mod II` reservation test in `ModuloHazardRecognizer`, the `checkPostModuloSchedule` structural verifier and its return-code-driven `++II` (and the single-stage `rc=2` case, which abandons pipelining for that loop), and how the accepted II flows into `emitScheduleForLoop`'s expander dispatch. The per-cycle bundle that each scheduled cycle becomes is owned by the [bundle packer](llo-bundle-packing.md); the proc-resource cycle counts the calculators consume come from the [bundle-aware cost model](../cost/bundle-aware-cost.md).
 
 For reimplementation, the contract is:
 
 - **`min-II = max(ResourceMII, FillResourceMII, SuperPassMII, LargestLatencyMII, per-gen-floor, RecurrenceMII)`** — computed once per loop in `initialize` (`0x13c36160`). The resource bound is `ceil(busiest-FU cycles / units)`; the recurrence bound is `ceil(cycle-latency / iteration-distance)`. These accumulate into `[dag+0xebc]` (the lower bound). The upper bound `[dag+0xeb8]` is the bundle-packing-cost estimate from `fastBundlePackingCost`, overridable to `IIUpperBound + 1`.
 - **The II search is `for (II = lowerII; II < upperII; ++II)`** (`findSchedule`, `0x13c367c0`). For each II it resets the hazard recognizer (`setII(II)`), schedules every SU in priority order, runs the structural verifier, and accepts the first II that passes resource, stage-count, FIFO, and register-pressure checks. A node that fails reordering can retry the same II up to `swing-modulo-retry-same-node` (=64) times before the II grows.
 - **The per-II legality test is the modulo reservation table** — `ModuloHazardRecognizer::canEmitInstructionResourceInternal` (`0x13c14d60`) computes `slot = cycle mod II` (`idiv` by `II = [hr+0x40]`), walks the op's proc-resource entries, and rejects (`return 0`) if the FU bit is already set in the per-slot reservation bitmap `DenseMap<int,uint>` keyed by `slot`.
-- **`checkPostModuloSchedule` (`0x13c149c0`) returns a code that drives the loop** — `2` = single-stage (no overlap, trivially done), `3` = stage count exceeds `pipeliner-max-stages` → `++II`, `4` = split-live-range retry, `1` = FIFO check passed → proceed to the register-pressure gate; a clean pass accepts the II.
+- **`checkPostModuloSchedule` (`0x13c149c0`) returns a code that drives the loop** — `2` = single-stage (no cross-iteration overlap, so nothing to pipeline; `findSchedule` returns the no-schedule sentinel and the loop is left un-pipelined), `3` = stage count exceeds `pipeliner-max-stages` → `++II`, `4` = split-live-range retry, `1` = FIFO check passed → proceed to the register-pressure gate; a clean pass accepts the II.
 - **The accepted II flows to `emitScheduleForLoop` (`0x13ba0ac0`)**, which builds a `ModuloSchedule` and dispatches one of six expanders: `expandScheduleForBarnaCore` for hardware-counted loops, a rotating-predicate expander on V5+ (gated on `EnableRotatingPredicate`), or a peeling / predicated-epilogue expander otherwise.
 
 | | |
@@ -69,9 +69,15 @@ this[946] = calculateRecurrenceMII(dag, MBB, recurrences);  // [dag+0xec8] RecMI
 this[945] = calculateResourceMII(dag, MBB, /*flag=*/0);     // [dag+0xec4] scratch = ResMII
 this[945] = calculateFillResourceMII(dag, MBB, ResMII);     // [dag+0xec4] scratch = FillResMII
 
-this[943] = max(this[943], getSuperPassMII(dag, MBB));      // [dag+0xebc] += SuperPassMII
-this[943] = max(this[943], calculateLargestLatencyMII(...)); // += LargestLatencyMII
-this[943] = max(this[943], <virtual subtarget MII floor>);  // += per-gen floor
+this[943] = max(FillResMII, RecMII);                        // [dag+0xebc] lower-bound seed
+this[943] = max(this[943], getSuperPassMII(dag, MBB));      // [dag+0xebc] max= SuperPassMII
+if (!subtarget_is_barnacore /* [subtarget+290]==0 */) {     // largest-latency + gen-floor are NOT-BarnaCore-only
+    this[943] = max(this[943], calculateLargestLatencyMII(...));  // max= LargestLatencyMII
+    if (unk_224E34D0 == 1)                                  // per-gen virtual floor: (*subtarget+0x308)()+2
+        this[943] = max(this[943], subtargetMIIFloor() + 2);
+}
+if (unk_224E3518)                                           // second optional floor (dword_224E3588)
+    this[943] = max(this[943], dword_224E3588);
 // this[943] (0xebc) is the LOWER bound; this[942] (0xeb8) is the UPPER bound.
 ```
 
@@ -111,7 +117,7 @@ return RecMII;                              // 0 if no recurrences
 
 The byte evidence: the SIMD path strides `88` bytes per element and reads the DWORD at offset `+40` (`0x28`), reducing with `vpmaxsd`; the tail loop does the same scalar max. The recurrence struct is `0x58` bytes; the per-recurrence MII lives at `[Recurrence+0x28]`.
 
-So `min-II = max(ResMII, FillResMII, SuperPassMII, LargestLatencyMII, per-gen-floor, RecMII)`. The largest-latency bound (`calculateLargestLatencyMII`, `0x13c0b840`) is `max over all SDep edges of getEdgeLatency` — the single longest dependency latency must fit inside one kernel window unless it is hidden across stages; the super-pass bound (`getSuperPassMII`, `0x13c0ba40`) is the cross-function shared II if the super-pass discovered one, else `-1`.
+So `min-II = max(ResMII, FillResMII, SuperPassMII, RecMII, [if not BarnaCore: LargestLatencyMII, per-gen-floor])`. The accumulation is byte-exact in `initialize`: `[dag+0xebc]` is seeded with `max(FillResMII, RecMII)`, then `getSuperPassMII` is folded in unconditionally, and only **on non-BarnaCore subtargets** (`[subtarget+290]==0`) are `calculateLargestLatencyMII` and the per-generation virtual floor (`unk_224E34D0` path, a subtarget virtual call `+2`) added — a second optional floor (`unk_224E3518` → `dword_224E3588`) folds in last. The largest-latency bound (`calculateLargestLatencyMII`, `0x13c0b840`) is `max over all SDep edges of getEdgeLatency` — the single longest dependency latency must fit inside one kernel window unless it is hidden across stages; the super-pass bound (`getSuperPassMII`, `0x13c0ba40`) is the cross-function shared II if the super-pass discovered one, else `-1`.
 
 ---
 
@@ -162,7 +168,7 @@ while (II < upperArg) {
         if (rc == 4) {                                        // split-live-range retry
             if (sameNodeRetry != 4) { --this[944]; sameNodeRetry = 4; } else sameNodeRetry = 0;
         } else if (rc == 2) {
-            return 0;                                          // single-stage: accepted/done
+            return 0;                                          // single-stage: nothing to pipeline → no-schedule sentinel (loop left un-pipelined)
         } else {                                               // rc == 1: FIFO passed
             // BarnaCore live-register-pressure gate (prolog + epilog windows):
             if (subtarget_is_barnacore) {
@@ -216,9 +222,9 @@ char canEmit(SU *su, int cycle, DenseMap<int,uint> &reservation) {
     MCWriteProcResEntry *e   = procResBegin(su);          // 6-byte records {idx, cycles}
     MCWriteProcResEntry *end = procResEnd(su);
     for (; e != end; ++e) {
-        int FU      = e->ProcResourceIdx;                 // *e (the FU index)
-        int cycles  = e->Cycles;                          // *((u16*)e + 1)
-        if (II < e->StartAtCycle) continue;               // resource starts later than II window
+        int FU      = e->ProcResourceIdx;                 // *e (the FU index, a byte)
+        int cycles  = *((u16*)e + 1);                     // record +2: occupancy-cycle count
+        if (II < cycles) continue;                        // skip if II < that same field (occupancy > II)
         int slot = cycle;
         do {
             uint booked = reservation.lookupOrInsert(slot).value;  // FU bitmask at this column
@@ -287,7 +293,7 @@ The return codes and their effect in `findSchedule`:
 | Code | Meaning | `findSchedule` action |
 |---|---|---|
 | `1` | stage count within bounds, FIFO check passed | proceed to the register-pressure gate; pass → **accept II** |
-| `2` | single stage (the loop did not pipeline but is legal) | **accept** (trivial result; the loop runs without overlap) |
+| `2` | single stage — no cross-iteration overlap to exploit | `findSchedule` returns the **no-schedule sentinel** (`v18 = 0`, same value as window exhaustion) and the loop is left un-pipelined |
 | `3` | stage count exceeds `pipeliner-max-stages` or the stage cap, or FIFO overflowed | reset same-node retry, **`++II`** |
 | `4` | `manualSplitLiveRange` succeeded — retry this II with split live ranges | decrement II once, set split-retry flag, re-attempt |
 
