@@ -279,20 +279,20 @@ The descriptor fields are populated from an LLO `Dma*StartOp` op's operands and 
 
 ## 5. What the Renderer Keeps vs Drops
 
-The single intra-chip DMA-timeline pass, `xprof::tpu::ConvertDmaTransfersToXPlane` @ `0xf254bc0`, renders one paired DMA into one device `XEvent`. It is the only consumer that reads the descriptor for display, and it **decodes the endpoints into the proto but never copies them into the rendered span**. The eight stats it attaches per span are:
+The single intra-chip DMA-timeline pass, `xprof::tpu::ConvertDmaTransfersToXPlane` @ `0xf254bc0`, renders one paired DMA into one device `XEvent`. It is the only consumer that reads the descriptor for display, and it **decodes the endpoints into the proto but never copies them into the rendered span**. The span's begin/duration are the `XEvent`'s own offset/duration fields, stamped directly by `TpuXLineBuilder::AddEvent(event, begin, end−begin)` from the pre-decoded `DmaTransfer` timespan — they are *not* `XStat`s and carry no `StatType` id. On top of that the pass attaches **six `XStat`s** per span, all via `GetStatTypeStr(N)` (numeric) or a literal stat-metadata name (string):
 
-| XStat | StatType | Source | Confidence |
+| Span field / XStat | StatType | Source | Confidence |
 |---|---:|---|---|
-| `device_offset_ps` | 147 | `round(begin_gtc & ~0xf · 1e9 / (clk<<4))` | CONFIRMED |
-| `device_duration_ps` | 148 | `round((end−begin)&~0xf · 1e9 / (clk<<4))` | CONFIRMED |
-| `bytes_transferred` | 78 | `length << granule_shift` (`+0x58`/`+0x5c`) | CONFIRMED |
-| `queue` | 79 | string @ span`+0x28` — **empty on pxc** | CONFIRMED |
-| `details` | (string) | std::string @ span`+0x40` — **empty on pxc** | CONFIRMED |
+| event offset (begin) | — (XEvent field) | `AddEvent(begin)` — `DmaTransfer` begin timespan | CONFIRMED |
+| event duration | — (XEvent field) | `AddEvent(end−begin)` — `DmaTransfer` end−begin | CONFIRMED |
+| `bytes_transferred` | 78 | `DmaTransfer.byte_count` (producer-decoded `length << granule_shift`) | CONFIRMED |
+| `queue` | 79 | string from `DmaTransfer` — **empty on pxc** | CONFIRMED |
+| `details` | (string `"details"`) | string from `DmaTransfer` — **empty on pxc** | CONFIRMED |
 | `_a` | 42 | constant 1 (per-DMA aggregate marker) | CONFIRMED |
-| `flow` | 56 | `XFlow::next_flow_id_` (begin↔end arrow) | CONFIRMED |
-| `bandwidth` | (string) | `StrFormat(unit, bytes/(dur_ps/1e12))`, 5-rung B/KB/MB/GB/TB ladder | CONFIRMED |
+| `flow` | 56 | `XFlow::next_flow_id_` via `4·(id & 0xff_ffff_ffff_ffff)+3` (begin↔end arrow) | CONFIRMED |
+| `bandwidth` | (string `"bandwidth"`) | `FormatPack(unit, bytes/(dur/1e12))`, 5-rung B/KB/MB/GB/TB ladder | CONFIRMED |
 
-> **GOTCHA —** the `src_mem_*` / `dst_mem_*` / `*_opcode` / `*_sync_flag_*` fields (descriptor `+0x24`..`+0x50`) are parsed by `DecodeOciDescriptorCommonIssuedFromTcs` but the rendering pass reads **only** `length` (`+0x58`), `length_granule` (`+0x5c`), and the `trace_id_header` (`+0x18`, for begin/end pairing). The `queue` and `details` string stats are attached on every span but their backing strings are zero-initialized and never written by the pxc producer, so a captured pxc trace shows them empty. An `nm -C` scan finds **no** `MemMemId/MemCoreId → tier` or endpoint→stat symbolizer in `libtpu.so`. So the endpoint enums of [§1](#1-the-two-memory-space-enums-srcmem--dstmem) / [§2](#2-the-opcode-enums-srcopcode--dstopcode) are fully decodable but have no display renderer inside this unit — a downstream xprof/TensorBoard symbolizer, if any, would have to re-read the proto fields the pass discards.
+> **GOTCHA —** the `src_mem_*` / `dst_mem_*` / `*_opcode` / `*_sync_flag_*` fields (descriptor `+0x24`..`+0x50`) are parsed by `DecodeOciDescriptorCommonIssuedFromTcs` but the only descriptor fields that survive into the `DmaTransfer` the producer hands this pass are `length` (`+0x58`), `length_granule` (`+0x5c`, decoded to the byte count), and the `trace_id_header` (`+0x18`, for begin/end pairing). The `queue` and `details` string stats are attached on every span but their backing strings are empty on the pxc producer, so a captured pxc trace shows them blank (the pass skips the `SetStatValue` call when the `DmaTransfer` string length is zero). An `nm -C` scan finds **no** `MemMemId/MemCoreId → tier` or endpoint→stat symbolizer in `libtpu.so`. So the endpoint enums of [§1](#1-the-two-memory-space-enums-srcmem--dstmem) / [§2](#2-the-opcode-enums-srcopcode--dstopcode) are fully decodable but have no display renderer inside this unit — a downstream xprof/TensorBoard symbolizer, if any, would have to re-read the proto fields the pass discards.
 
 ---
 
