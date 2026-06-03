@@ -17,7 +17,7 @@ The part is organized in three layers. The **identity** layer (this overview, th
 | **Canonical map** | `tpu::TpuVersionToString` @ `0x20b3a480` → `off_22011BF0` rel.ro pointer table |
 | **HAL families** | 3 factory classes — JXC, PXC, VXC |
 | **Sub-core model** | fetch/load core split from Pufferfish onward (`pfc`/`plc`, `vfc`/`vlc`) |
-| **ISA sub-families** | `gxc::glc` (v4), `gxc::gfc` (v5) under the shared VXC family |
+| **ISA sub-families** | `gxc::gfc` (v5, fetch), `gxc::glc` (v4, load) under the shared VXC family |
 
 ---
 
@@ -63,12 +63,12 @@ deepsea (driver umbrella)
   jxc   jellyfish/dragonfish   -- no fetch/load split (fused dataflow)
   pxc   pfc (fetch) / plc (load)      -- Pufferfish; split introduced here
   vxc   vfc (fetch) / vlc (load)      -- Viperfish family
-  gxc   glc (v4 Ghostlite) / gfc (v5 6acc60406)   -- modern ISA sub-families
+  gxc   gfc (fetch) / glc (load)      -- gfc -> 6acc60406 (v5), glc -> Ghostlite (v4)
 ```
 
-The pattern is clear for `pxc` and `vxc`: the `f`/`l` letter marks fetch versus load, and the symbol counts are asymmetric (the fetch core is far larger — it owns most of the ISA), consistent with a decoupled fetch/execute pair within one chip. JXC has no such split: `jxc::jellyfish` is a thin namespace, matching a first-generation fused dataflow design with no separate fetch core.
+The pattern is clear for `pxc` and `vxc`: the `f`/`l` letter marks fetch versus load, and the symbol counts are asymmetric (the fetch core is far larger — `pfc` ~8.0K vs `plc` ~0.9K, `vfc` ~17.4K vs `vlc` ~1.8K mangled-token occurrences), consistent with a decoupled fetch/execute pair within one chip. JXC has no such split: `jxc::jellyfish` is a thin namespace, matching a first-generation fused dataflow design with no separate fetch core.
 
-> **NOTE — the `gxc` family does not cleanly follow the fetch/load reading.** Under `gxc`, both `glc` and `gfc` are full, near-equal-sized ISA namespaces, and each binds to a *different generation* — `glc` to Ghostlite (v4) and `gfc` to 6acc60406 (v5) — rather than to the fetch/load halves of a single chip. For `gxc`, the safer reading is that `glc`/`gfc` are per-version ISA sub-families sharing the VXC HAL family, not a fetch/load split. The fetch/load gloss is HIGH confidence for `pxc`/`vxc` and LOW for `gxc`. The [sub-core taxonomy](sub-core-taxonomy.md) page works this out in detail.
+> **GOTCHA — under `gxc` the `f`/`l` letters mark fetch/load *and* each sub-core is a different generation.** `gfc` is the general fetch-core, `glc` the general load-core — the same f/l convention as `pxc`/`vxc`. The twist is that the two `gxc` sub-cores do not split one chip: `glc` carries Ghostlite (v4) and `gfc` carries 6acc60406 (v5), each a full, near-equal-sized ISA namespace (`gfc` ~63.8K, `glc` ~62.9K token occurrences — not the lopsided fetch/load ratio of `pxc`/`vxc`). The codec walk pins the pairing — `TpuCodecGhostlite` binds `gxc::glc::isa`, the anonymous v5 codec binds `gxc::gfc::isa`. Reading `gfc` as "Ghostlite fetch-core" inverts both facts; the [sub-core taxonomy](sub-core-taxonomy.md) page works the pairing out in detail.
 
 ---
 

@@ -6,7 +6,9 @@
 
 `xla::jellyfish::Target` carries a single 64-bit "has-bits" qword at `Target+0x628`. Despite being read and written as a full `uint64_t`, an entire-`.text` operand scan proves that this build sets and tests exactly **two** of its bits: bit-0 (mask `0x1`) and bit-2 (mask `0x4`). Every other bit — bit-1, bit-3, and all higher bits — has zero set sites and zero test sites; the qword is a feature word with room to grow that this build uses only two slots of.
 
-The qword sits immediately after a two-entry inline array of *continuation-queue scoped-memory-region* descriptors (`Target+0x580` and `Target+0x5F0`). Each bit is the presence flag of one descriptor: bit-0 records that the TensorCore region was appended, bit-2 records that the BarnaCore region was appended. Both appends run under the same megachip / SparseCore-offload feature-detect predicate, so bit-2 ends up being the operative term of `Target::IsMegachip()` — the gate that 102 inlined `testb $0x4,0x628` sites across the SparseCore lowering and Deepsea compiler driver read.
+The qword sits immediately after a two-entry inline array of *continuation-queue scoped-memory-region* descriptors (`Target+0x580` and `Target+0x5F0`). Each bit is the presence flag of one descriptor: bit-0 records that the TensorCore region was appended, bit-2 records that the SparseCore region was appended. Both appends run under the same megachip / SparseCore-offload feature-detect predicate, so bit-2 ends up being the operative term of `Target::IsMegachip()` — the gate that 102 inlined `testb $0x4,0x628` sites across the SparseCore lowering and Deepsea compiler driver read.
+
+> **QUIRK —** entry-B is `GetContinuationQueues(2)`, and `2` is **`kSparseCore`** in the runtime `TpuCoreType` enum (`{kTensorCore=0, kBarnaCore=1, kSparseCore=2}`, the alternative order of the `tpu::TpuCoreProgram` variant; corroborated by `IsMegacore`'s fatal-log on `core==2 → "Megacore SparseCore is not supported"`). Do **not** confuse this with the *protobuf* `nProto` ordering `{TENSOR_CORE=1, BARNA_CORE=2, SPARSE_CORE=3}` used inside `chip_parts.binarypb` — there, `2` is BarnaCore. The has-bits field is built from the runtime enum, so bit-2 is the SparseCore region.
 
 This page documents:
 
@@ -28,11 +30,13 @@ This page documents:
 
 ## Bit Layout
 
-The qword is a `_has_bits_`-style flags member. The set sites are two load-or-store sequences in `Target::Init` (`or $0x1` and `or $0x4`); the test sites are `testb $imm,0x628(reg)`. An exhaustive scan of offset `0x628` across `.text` (VMA span `0xE63C000`..`0x21217490`) found *only* these immediates: `or $0x1` once, `or $0x4` once, `testb $0x1` three times, `testb $0x4` 102 times. No `$0x2`, `$0x8`, or higher mask appears anywhere.
+The qword is a `_has_bits_`-style flags member. **Bit numbering is LSB-first**: bit-`n` is mask `1 << n`, so bit-0 = `0x1`, bit-2 = `0x4` — the convention every `or`/`testb` immediate on this page uses. The set sites are two load-or-store sequences in `Target::Init` (`or $0x1,%rcx` then `mov %rcx,0x628(%r12)` at `0x1D611D52`; `or $0x4,%rcx` then `mov %rcx,0x628(%r12)` at `0x1D612121`); the test sites are `testb $imm,0x628(reg)`. An exhaustive operand scan of offset `0x628` across `.text` found *only* these immediates against a `Target`-pointer base register: `or $0x1` once, `or $0x4` once, `testb $0x1` twice, `testb $0x4` 102 times. No `$0x2`, `$0x8`, or higher mask appears anywhere.
+
+> **GOTCHA —** a raw operand grep for `testb $0x1,0x628` returns *three* hits, but one (`0xFE3B600`, inside `PostorderDFSVisitor::PostOrderDFSVisit`) is `testb $0x1,0x628(%rsp)` — a stack local that coincidentally lives at frame offset `0x628`, not the `Target` field. Only the two `%r12`/`%r14`-based reads (`0x10928083`, `0x1090EB6E`) are genuine bit-0 tests. The 102 `testb $0x4` sites are all pointer-register-based, with no `%rsp`/`%rbp` false positive in the set.
 
 | bit | mask | semantic / name | set site (`Target::Init`) | consumers (test sites) | Confidence |
 |---:|------|---|---|---|---|
-| 0 | `0x1` | TensorCore continuation-queue scoped-memory region present (entry-A) | `0x1D611D52` (`or $0x1`), after the entry-A append | `testb $0x1,0x628` ×3; operative reader `DeepseaCompilerBase::CompileInternal` @ `0x10928083` → gate `LloRegionBuilder::ShaltInternal` | CONFIRMED |
+| 0 | `0x1` | TensorCore continuation-queue scoped-memory region present (entry-A) | `0x1D611D52` (`or $0x1`), after the entry-A append | 2 genuine `testb $0x1,0x628` reads; operative reader `DeepseaCompilerBase::CompileInternal` @ `0x10928083` → gate `LloRegionBuilder::ShaltInternal` | CONFIRMED |
 | 1 | `0x2` | reserved / unused in v0.0.40 | (never set) | (never tested) | CONFIRMED (absent) |
 | 2 | `0x4` | megachip / SparseCore-offload capability has-bit — the operative term of `Target::IsMegachip()` | `0x1D612121` (`or $0x4`), after the entry-B append | `testb $0x4,0x628` ×102 = inlined `IsMegachip()`; SC lowering, `CompileSparseCorePrograms`, `EmitSparseCoreAsyncStart/Done`, `IsValidReduceScatterForSparseCoreOffload`, Deepsea `Lower`/`RunBackend`/`MakeAot` | CONFIRMED |
 | 3+ | `0x8+` | reserved / unused in v0.0.40 | (never set) | (never tested) | CONFIRMED (absent) |
@@ -47,9 +51,9 @@ The 102 `testb $0x4,0x628` sites are all inlined copies of `Target::IsMegachip`.
 
 ```c
 char Target::IsMegachip(Target *this):                 // sub_10914F60
-    cfg = *((TpuChipConfig**)this + 119);              // via Target+0x3B8 -> +0x18 chip config
+    cfg = *(TpuChipConfig**)(*(void**)(this+0x3B8) + 0x18);  // Target+0x3B8 -> deref -> +0x18 chip config
     if (!cfg->Megachip()                               //  TpuChipConfig+0x9  (byte)
-        || cfg->CoresPerChip(kSparseCore) <= 0)        //  TpuChipConfig+0x94 (int32) > 0
+        || *(int32*)(cfg+0x94) <= 0)                   //  TpuChipConfig+0x94 = CoresPerChip(kSparseCore)
         return 0
     if ((this[0x628] & 4) == 0)                         //  bit-2 of the has-bits qword
         return this[0x540]                              //  platform_type == iss fallback byte
@@ -71,11 +75,11 @@ bool TpuChipConfig::Megachip(TpuChipConfig *this):     // sub_20AFCC00
 bool Target::IsMegacore(Target *this, TpuCoreType core):   // sub_13699EE0
     if (core == kSparseCore=2)
         LOG(FATAL) << "Megacore SparseCore is not supported."  // target.h:1210
-    cfg = *((TpuChipConfig**)(this + 952/8));               // Target+0x3B8
+    cfg = *(TpuChipConfig**)(*(void**)(this+0x3B8) + 0x18);  // Target+0x3B8 -> deref -> +0x18 (same chain as IsMegachip)
     if (!cfg->Megacore())                                    // TpuChipConfig+0x8 (byte)
         return 0
     if (core >= 3) BUG()
-    return cfg->CoresPerChip(core) >= 2                      // TpuChipConfig+0x7C + core*12
+    return *(int32*)(cfg + 0x7C + core*12) >= 2              // per-core count: TpuChipConfig+0x7C + core*12
 ```
 
 It reads the *Megacore* flag at `TpuChipConfig+0x8` and a per-core count at `+0x7C+core*12`, with no reference to the has-bits qword. Bit-2 belongs to megachip alone; bit-0 belongs to neither — it is the TensorCore continuation-queue presence flag described below.
@@ -94,7 +98,7 @@ The two bits are the presence flags of a two-entry inline array of continuation-
 | entry | presence bit | `name` (`std::string`) | `MemorySpace` (int32) | `std::vector<MemoryPart>` `{begin,end,cap}` | source |
 |---|---|---|---|---|---|
 | A | bit-0 (`0x1`) | `Target+0x580` | `Target+0x59C` | `+0x5A0` / `+0x5A8` / `+0x5B0` | `GetContinuationQueues(kTensorCore=0)` |
-| B | bit-2 (`0x4`) | `Target+0x5F0` | `Target+0x60C` | `+0x610` / `+0x618` / `+0x620` | `GetContinuationQueues(kBarnaCore=2)` |
+| B | bit-2 (`0x4`) | `Target+0x5F0` | `Target+0x60C` | `+0x610` / `+0x618` / `+0x620` | `GetContinuationQueues(kSparseCore=2)` |
 
 Each entry is built by copying the per-core continuation-queue list — a `0x30`-byte-stride source array returned by `TpuChipConfig::GetContinuationQueues` — into a `0x1C`-byte-stride `MemoryPart` vector, mapping each element's shared-memory type through `TpuSharedMemoryTypeToMemorySpace` (`0x1D6224E0`). After each append the corresponding bit is OR'd into `Target+0x628`. `GetContinuationQueues` is a small presence-gated lookup:
 
@@ -114,7 +118,7 @@ The append predicate (for both entries) is the megachip / SparseCore-offload fea
 
 ## Bit-0: The TensorCore Continuation-Queue Presence
 
-Bit-0 is set in `Target::Init` (`0x1D611D52`) when entry A — the region built from `GetContinuationQueues(kTensorCore=0)` — is appended. It is read at exactly three `testb $0x1,0x628` sites; the operative one is in `DeepseaCompilerBase::CompileInternal` (`0x10928083`), where a set bit-0 skips emission and a clear bit-0 calls `LloRegionBuilder::ShaltInternal` (`0x1D520D20`). In other words, bit-0 gates whether a stall/halt region is emitted for the TensorCore continuation-queue capability. The other two read sites include `TpuCompactionIsaEmitterCodegen::Create` (`0x1090EB6E`).
+Bit-0 is set in `Target::Init` (`0x1D611D52`) when entry A — the region built from `GetContinuationQueues(kTensorCore=0)` — is appended. It is read at exactly two genuine `testb $0x1,0x628` sites (a third syntactic match at `0xFE3B600` is a `%rsp` stack local, not this field — see the GOTCHA in [Bit Layout](#bit-layout)). The operative reader is `DeepseaCompilerBase::CompileInternal` (`0x10928083`): the test is followed by `jne` over a `call LloRegionBuilder::ShaltInternal` (`0x1D520D20`), so a **set bit-0 skips** the shalt-region emission and a **clear bit-0 calls** `ShaltInternal`. Bit-0 thus gates whether a stall/halt region is emitted for the TensorCore continuation-queue capability. The second read site is `TpuCompactionIsaEmitterCodegen::Create` (`0x1090EB6E`), where it likewise guards the same emission, immediately after an inlined `TpuChipConfig::Megachip` check.
 
 ---
 
@@ -125,14 +129,14 @@ Two compile-time knobs in `TpuCompilationEnvironment` (TCE) override the hardwar
 ```c
 char ShouldEnableConcurrentSparseCoreOffloading(ObjectView<TCE> env,            // sub_1D6B6F80
                                                 TpuTopology &topo, bool force_off):
-    hw  = (topo.chip_parts->version == 5) & ~force_off    //  TpuChipParts[+0] == 5
+    hw  = (topo.chip_parts->version == 5) & ~force_off    //  chip_parts+0 == TpuVersionProto 5 (ghostlite/v6e)
     p   = env[0x458] ?: &AutoProto_globals_               //  TCE +0x458 = field 923
     v   = AutoOr<bool>::FromProtoOrDie(p)                 //  ret = AUTO?0 : (value | 0x100)
     if ((v & 0x100) == 0) v = hw                          //  no explicit value -> hw default
     return v & 1
 
 char EnableSparseCoreOffloadQueuingInLhs(ObjectView<TCE> env, TpuTopology &topo):  // sub_1D6B81E0
-    hw  = (topo.chip_parts->version == 5)                 //  TpuChipParts[+0] == 5
+    hw  = (topo.chip_parts->version == 5)                 //  chip_parts+0 == TpuVersionProto 5 (ghostlite/v6e)
     p   = env[0x730] ?: &AutoProto_globals_               //  TCE +0x730 = field 1021
     v   = AutoOr<bool>::FromProtoOrDie(p)
     if ((v & 0x100) == 0) v = hw
@@ -150,10 +154,10 @@ int64 AutoOr<bool>::FromProtoOrDie(AutoProto *a1):     // sub_F795300
 
 | getter (`xla::jellyfish::`) | VA | TCE offset | field # | TCE field name | hardware default |
 |---|---|---|---:|---|---|
-| `ShouldEnableConcurrentSparseCoreOffloading` | `0x1D6B6F80` | `+0x458` | 923 | `xla_tpu_enable_concurrent_sparse_core_offloading` | `(version==5) && !force_off` |
-| `EnableSparseCoreOffloadQueuingInLhs` | `0x1D6B81E0` | `+0x730` | 1021 | `xla_tpu_enable_sparse_core_offload_queuing_in_lhs` | `(version==5)` |
+| `ShouldEnableConcurrentSparseCoreOffloading` | `0x1D6B6F80` | `+0x458` | 923 | `xla_tpu_enable_concurrent_sparse_core_offloading` | `(proto_version==5: ghostlite/v6e) && !force_off` |
+| `EnableSparseCoreOffloadQueuingInLhs` | `0x1D6B81E0` | `+0x730` | 1021 | `xla_tpu_enable_sparse_core_offload_queuing_in_lhs` | `proto_version==5` (ghostlite/v6e) |
 
-> **NOTE —** the field numbers (923, 1021) come from the `InternalWriteMessage(field#, …)` immediates in `TpuCompilationEnvironment::_InternalSerialize` (`0x1DB41DC0`), where the same `+0x458`/`+0x730` struct offsets are written. The `version == 5` comparison is read literally off `TpuChipParts+0` (the chip-parts version field); because the proto enum is 1-based while the internal `TpuVersion` enum is 0-based, see the [Codename Matrix](tpu-version-codename-matrix.md) before binding `5` to a display name. Four sibling SC-offload knobs share the identical `AutoOr<bool>` pattern: field 930 (`disable_sparse_core_collective_offload_remover`, `+0x490`), 853 (`enable_hbm_test_buffer_for_sc_collective_offload`, `+0x2E0`), 857 (`enable_outfeed_sanity`, `+0x2E8`), 959 (`xla_shardy_options`, `+0x568`).
+> **NOTE —** the field numbers (923, 1021) come from the `mov $field#,%edi` immediate that precedes each `InternalWriteMessage` call in `TpuCompilationEnvironment::_InternalSerialize` (`0x1DB41DC0`): `0x1DB50028` loads `0x458` then writes field `0x39B` (923), and `0x1DB50DBE` loads `0x730` then writes field `0x3FD` (1021), so the struct-offset ↔ field-number binding is direct, not inferred. The `version == 5` comparison disassembles to `cmpl $0x5,(%rax)` against `TpuTopology+8 -> chip_parts+0` (`0x1D6B6F8C`). That field carries the **`TpuVersionProto`** (1-based, the proto's field-1 value the `chip_parts.binarypb` blob leads with), **not** the 0-based internal `TpuVersion`; so `5` resolves to **ghostlite (TPU v6e)**, and `6` would be `6acc60406`. See the [Codename Matrix](tpu-version-codename-matrix.md) for the 0-based↔1-based reconciliation. Four sibling SC-offload knobs share the identical `AutoOr<bool>` pattern, each confirmed by its `0xNNN(%r14)` load + `mov $field#,%edi` pair in the same serializer: field 930 (`disable_sparse_core_collective_offload_remover`, `+0x490` → `0x3A2`), 853 (`enable_hbm_test_buffer_for_sc_collective_offload`, `+0x2E0` → `0x355`), 857 (`enable_outfeed_sanity`, `+0x2E8` → `0x359`), 959 (`xla_shardy_options`, `+0x568` → `0x3BF`).
 
 ---
 
@@ -172,3 +176,4 @@ int64 AutoOr<bool>::FromProtoOrDie(AutoProto *a1):     // sub_F795300
 - [TpuChipConfig](tpu-chip-config.md) — the chip-config object whose `Megachip`/`CoresPerChip`/`GetContinuationQueues` fields the gate reads
 - [Codename Matrix](tpu-version-codename-matrix.md) — `TpuVersion` ↔ codename mapping; disambiguates the `version == 5` SC-offload default
 - [TPU Compilation Environment](../config/tpu-compilation-environment.md) — the TCE proto whose fields 923 / 1021 override the bit-2 hardware default
+- [chip_parts.binarypb Decode](chip-parts-binarypb.md) — the proto `nProto` core ordering (`TENSOR_CORE=1, BARNA_CORE=2, SPARSE_CORE=3`) that the runtime `TpuCoreType` enum (`kSparseCore=2`) must not be confused with; also the `version==5 → ghostlite/v6e` mapping

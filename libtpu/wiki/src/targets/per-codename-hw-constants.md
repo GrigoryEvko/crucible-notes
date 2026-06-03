@@ -45,7 +45,7 @@ All values are per TensorCore unless noted. "std" is the full part; "lite" is th
 | **MXU count / TensorCore** | 1 | 2 | 4 | 4 | 2 | 2 | `VectorIsa.mxu_count` f5 · CONFIRMED |
 | XLU count / TensorCore | 1 | 1 | 2 | 3 | 2 | 2 | `VectorIsa.xlu_count` f6 · CONFIRMED |
 | IAR count / TensorCore | 2 | 2 | 2 | 2 | 2 | 2 | `VectorIsa.iar_count` f7 · CONFIRMED |
-| MXU systolic dim | 128×128 | 128×128 | 128×128 | 128×128 | 256×256 | 256×256 | `*Target` C++ override · HIGH |
+| MXU systolic dim | 128×128 | 128×128 | 128×128 | 128×128 | 256×256 | 256×256 | `*Target` C++ override · CONFIRMED |
 | **TensorCore freq** | 700 MHz | 940 MHz | 1050 MHz | 1750 / 1500 MHz | 1750 MHz | 1900 MHz | `Core[TC].frequency_mhz` f5 · CONFIRMED |
 | TensorCores / chip (std/lite) | 2 | 2 | 2 / 1 | 2 / 1 | 1 | 1 / 2 | `Core[TC].count` f3 · CONFIRMED |
 | **Reg file SREG/VREG/PREG/VMREG** | 32/32/15/8 | 32/32/15/8 | 32/32/15/8 | 32/64/14/16 | 32/64/14/16 | 32/64/14/16 | `Register.count` · CONFIRMED |
@@ -83,7 +83,9 @@ The exact byte products behind the headline HBM and VMEM cells: Jellyfish HBM `1
 
 ### The BarnaCore → SparseCore pivot
 
-The accelerator-core row is the generational hinge. v2/v3/v4 carry `BARNA_CORE` cores (the pre-SparseCore embedding/dedup engine) with `BC_SEQ` + 16× `BC_ADDR` sequencers; v5p/v6e/v7 carry `SPARSE_CORE` cores with `SC_SEQ` + (16× `SC_TAC` on v5p/v6e only) + 16× `SC_TEC` sequencers, plus the SPMEM/TILESPMEM/TEC memory family. `6acc60406` drops the separate `SC_TAC` sequencer (its SparseCore has `SC_SEQ` + `SC_TEC×16` only) and widens the `SC_TEC` VectorIsa lane from 8 to 16. The lite parts (pufferfish_lite, viperfish_lite) carry *neither* BarnaCore nor SparseCore — they are TensorCore-only single-core dies.
+The accelerator-core row is the generational hinge. v2/v3/v4 carry `BARNA_CORE` cores (the pre-SparseCore embedding/dedup engine); v5p/v6e/v7 carry `SPARSE_CORE` cores with `SC_SEQ` + (16× `SC_TAC` on v5p/v6e only) + 16× `SC_TEC` sequencers, plus the SPMEM/TILESPMEM/TEC memory family. `6acc60406` drops the separate `SC_TAC` sequencer (its SparseCore has `SC_SEQ` + `SC_TEC×16` only) and widens the `SC_TEC` VectorIsa lane from 8 to 16. The lite parts (pufferfish_lite, viperfish_lite) carry *neither* BarnaCore nor SparseCore — they are TensorCore-only single-core dies.
+
+The BarnaCore sequencer composition is not uniform across v2/v3/v4: Jellyfish's BarnaCore carries `BC_ADDR ×16` *only* (no `BC_SEQ` entry in its blob), while Dragonfish and Pufferfish add a `BC_SEQ ×1` master sequencer alongside the 16 `BC_ADDR` handlers. A reimplementer enumerating Jellyfish BarnaCore sequencers must not assume a `BC_SEQ` that is absent from the v2 proto.
 
 ### The register-file widening at v5p
 
@@ -91,7 +93,7 @@ v2/v3/v4 TensorCore sequencers report SREG 32, VREG 32, PREG 15, VMREG 8. From V
 
 ### MXU count vs systolic dimension
 
-`mxu_count` rises 1→2→4→4 across v2..v5p, then *drops* to 2 for v6e/v7. The drop is compensated by the systolic-array dimension: v6e/v7 use 2 × 256×256 arrays (the `GhostliteTarget` C++ override `MxuContractingSize`/`Noncontracting` = 256), where v2..v5p use up-to-4 × 128×128. The proto carries only `lane_count=128` and `mxu_count`; the 256 dimension is the one MXU geometry value that is a C++ literal, not a proto field — hence the HIGH (not CONFIRMED) confidence on the systolic-dim row. The 128×128 generations cross-validate: peak BF16 = `2 × mxu_count × 128² × frequency_mhz` reproduces the published per-chip FLOPS for v2 (22.9 T at 1 MXU × 700 MHz), v3 (61.6 T at 2 × 940), and v4 (137.6 T at 4 × 1050) to within 1%.
+`mxu_count` rises 1→2→4→4 across v2..v5p, then *drops* to 2 for v6e/v7. The drop is compensated by the systolic-array dimension: v6e/v7 use 2 × 256×256 arrays (the `GhostliteTarget` C++ override `MxuContractingSize`/`MxuNoncontractingSize` = 256, byte-confirmed at `0x1D497840`/`0x1D497860`; base `Target` returns 128), where v2..v5p use up-to-4 × 128×128. The 256 dimension is the one MXU geometry value that is a C++ literal, not a proto field — the proto carries only `lane_count=128` and `mxu_count` — but the literal itself is byte-exact, so the systolic-dim row is CONFIRMED, flagged as a C++-override source rather than a proto field. The 128×128 generations cross-validate: peak BF16 = `2 × mxu_count × 128² × frequency_mhz` reproduces the published per-chip FLOPS for v2 (22.9 T at 1 MXU × 700 MHz), v3 (61.6 T at 2 × 940), and v4 (137.6 T at 4 × 1050) to within 1%.
 
 > **GOTCHA —** the proto's `sublane_count` is 8 for *every* generation, including v4. An older topology-descriptor analysis reported a (16,128) tile for jellyfish-class v4; the `chip_parts` `VectorIsa.sublane_count` field is unambiguously 8. The tile dimension a tiling pass consumes is `Tile(SublaneCount, LaneCount) = (8, 128)` on every gen in this build (the `Target::SublaneCount` accessor reads exactly this proto value). A reimplementation that hardcodes a 16-sublane v4 tile diverges from the loaded geometry.
 

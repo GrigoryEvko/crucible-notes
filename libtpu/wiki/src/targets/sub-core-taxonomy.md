@@ -216,6 +216,7 @@ The taxonomy is recovered from the demangled symbol roster in the IDA `*_functio
 
 ## Cross-References
 
+- [Part IV Overview](overview.md) — the Silicon & Codename hub; where the fetch/load split sits in the `TpuVersion` dispatch model
 - [JXC Family](jxc-family.md) — the fused-dataflow family; the no-split baseline and `xla::jellyfish::isa`
 - [PXC Family](pxc-family.md) — origin of the fetch/load split; `pfc`/`plc`; family-level ISA and profiler
 - [VXC Family](vxc-family.md) — `vfc`/`vlc`; first SparseCore family; the per-codename `InitializeDrivers` switch

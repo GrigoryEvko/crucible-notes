@@ -135,6 +135,7 @@ The per-family `CreateImpl` is a small allocator stub — its layout is document
 
 ## Cross-References
 
+- [Part IV Overview](overview.md) — the Silicon & Codename hub; where HAL routing sits in the `TpuVersion` dispatch pipeline
 - [6-Codename Authoritative Reconciliation](tpu-version-codename-matrix.md) — the canonical `TpuVersion` → codename → marketing-name table this page's registration keys index into
 - [HAL Factory Override Matrix](hal-factory-override-matrix.md) — per-factory virtual-method override matrix and the dispatch mechanism
 - [TpuHal Class Hierarchy](tpuhal-class-hierarchy.md) — the `TpuHal` → `TpuHalHardwareImpl` → per-family object tree the factories construct

@@ -6,7 +6,7 @@
 
 `libtpu.so` is the PJRT plugin that XLA loads to compile and run programs on Google TPU silicon. Every code path that depends on which generation of TPU it is targeting — HAL factory routing, ISA codec selection, bundle encoding, chip-constant lookup — keys off a single 6-value C++ enum, `tpu::TpuVersion`. The enumerators, recovered from CHECK strings and mangled symbol names, are `kJellyfish=0`, `kDragonfish=1`, `kPufferfish=2`, `kViperfish=3`, `kGhostlite=4`, and `k6acc60406=5`. This page is the authoritative reconciliation of that enum against the four other identity spaces it touches: the on-wire protobuf enum, the internal codename string, the external "TPU vN" display name, and the HAL family that services it.
 
-The structure mirrors the LLVM target-triple problem. Just as a triple like `nvptx64-nvidia-cuda` resolves to a `Triple::ArchType` integer that gates every backend decision, `TpuVersion` is the integer that gates every TPU-specific decision in libtpu — but unlike a triple, it is never spelled in user text. Users supply an `accelerator_type` string (`v5p`, `v6e`, `tpu7x`); the library translates that to `TpuVersion` through a parser, and from there everything is integer dispatch. The complication this page exists to settle is that the integer the runtime uses internally (`TpuVersion`, 0-based, chronological) is **not** the integer that travels on the wire (`TpuVersionProto`, 1-based, with `TPU_VERSION_UNSPECIFIED=0` reserved). The two are off by one, and conflating them is the single most common error in reading this binary.
+The structure mirrors the LLVM target-triple problem. Just as a triple like `nvptx64-nvidia-cuda` resolves to a `Triple::ArchType` integer that gates every backend decision, `TpuVersion` is the integer that gates every TPU-specific decision in libtpu — but unlike a triple, it is never spelled in user text. Users supply an `accelerator_type` string (`v5p`, `v6e`, `tpu7x`); the library translates that to `TpuVersion` through a parser, and from there everything is integer dispatch. The complication this page exists to settle is that the integer the runtime uses internally (`TpuVersion`, 0-based, chronological) is **not** the integer that travels on the wire (`TpuVersionProto`, 1-based, with `TPU_VERSION_INVALID=0` reserved). The two are off by one, and conflating them is the single most common error in reading this binary.
 
 The page opens with the one compiled artifact that pins the enum-to-codename mapping beyond dispute — the `.data.rel.ro` pointer table behind `TpuVersionToString` — then the three source-of-truth functions that read it, then the full five-axis cross-walk, then a per-codename feature matrix, and closes with the confidence accounting that says which rows are pinned by guard code and which rest on declaration order.
 
@@ -94,12 +94,12 @@ That two independent functions read the identical compiled table is the stronges
 ```c
 StatusOr<TpuVersion> TpuVersionFromProto(TpuVersionProto proto) {  // sub_20B3A8C0
     switch (proto) {
-        case 1: result.value = 0; result.ok = 1; break;   // TPU_V2       -> kJellyfish
-        case 2: result.value = 1; result.ok = 1; break;   // TPU_V3       -> kDragonfish
-        case 3: result.value = 2; result.ok = 1; break;   // TPU_V4       -> kPufferfish
-        case 4: result.value = 3; result.ok = 1; break;   // TPU_V5       -> kViperfish
-        case 5: result.value = 4; result.ok = 1; break;   // TPU_V6_LITE  -> kGhostlite
-        case 6: result.value = 5; result.ok = 1; break;   // TPU_V7X      -> k6acc60406
+        case 1: result.value = 0; result.ok = 1; break;   // TPU_VERSION_JELLYFISH  -> kJellyfish
+        case 2: result.value = 1; result.ok = 1; break;   // TPU_VERSION_DRAGONFISH -> kDragonfish
+        case 3: result.value = 2; result.ok = 1; break;   // TPU_VERSION_PUFFERFISH -> kPufferfish
+        case 4: result.value = 3; result.ok = 1; break;   // TPU_VERSION_VIPERFISH  -> kViperfish
+        case 5: result.value = 4; result.ok = 1; break;   // TPU_VERSION_GHOSTLITE  -> kGhostlite
+        case 6: result.value = 5; result.ok = 1; break;   // TPU_VERSION_6acc60406  -> k6acc60406
         default:                                            // 0 / >6
             result.status = MakeError("Invalid TPU version: " + proto,
                                       ".../tpu_version.cc", 421);
@@ -108,7 +108,7 @@ StatusOr<TpuVersion> TpuVersionFromProto(TpuVersionProto proto) {  // sub_20B3A8
 }
 ```
 
-The relationship is uniformly `internal = proto − 1` across all six valid cases. `proto = 0` (`TPU_VERSION_UNSPECIFIED`) and `proto > 6` fall to the default arm and produce a non-OK `Status` with the message `"Invalid TPU version: <N>"` from line 421. `tpu::TpuVersionFromProtoOrDie` (`0x20b3aa20`) wraps it: it calls `FromProto`, checks the status, and on failure raises `LogMessageFatal` at line 428 with `"Could not read TPU version from protobuf."`. The "OrDie" variant is what most internal call sites use when the proto is known well-formed — for example `ProgramProtoUtil::BundleCount` reads a proto-side version field and feeds it straight through `FromProtoOrDie` before switching on the internal value.
+The relationship is uniformly `internal = proto − 1` across all six valid cases. `proto = 0` (`TPU_VERSION_INVALID`) and `proto > 6` fall to the default arm and produce a non-OK `Status` with the message `"Invalid TPU version: <N>"` from line 421. `tpu::TpuVersionFromProtoOrDie` (`0x20b3aa20`) wraps it: it calls `FromProto`, checks the status, and on failure raises `LogMessageFatal` at line 428 with `"Could not read TPU version from protobuf."`. The "OrDie" variant is what most internal call sites use when the proto is known well-formed — for example `ProgramProtoUtil::BundleCount` reads a proto-side version field and feeds it straight through `FromProtoOrDie` before switching on the internal value.
 
 > **CORRECTION (CODE-FORM) —** an earlier reading described `FromProto` as the arithmetic idiom `lea -0x1(%rsi),%eax ; cmp $0x5 ; ja fail ; jmp *table[eax]` — i.e. compute `proto-1` once, range-check, then jump-table on the result. The decompiled body is instead an explicit six-arm `switch(proto)` where each arm independently stores its `proto-1` value. The two are semantically identical (`internal = proto - 1`, default = error) and a compiler may lower either to the other; the byte-accurate source-level form is the per-case switch shown above. Either way the contract — proto N maps to internal N−1, proto 0 and >6 are errors — holds.
 
@@ -120,12 +120,14 @@ The relationship is uniformly `internal = proto − 1` across all six valid case
 
 | `TpuVersion` (int) | Enum tag | Codename (`ToString`) | `TpuVersionProto` (wire) | External name (`ToExternalName`) | HAL family / factory | Confidence |
 |---:|---|---|---:|---|---|---|
-| 0 | `kJellyfish` | `jellyfish` | 1 (`TPU_V2`) | `TPU v2` | JXC / `TpuHalJxcHardwareFactory` | HIGH |
-| 1 | `kDragonfish` | `dragonfish` | 2 (`TPU_V3`) | `TPU v3` | JXC / `TpuHalJxcHardwareFactory` | HIGH |
-| 2 | `kPufferfish` | `pufferfish` | 3 (`TPU_V4`) | `TPU v4` (`… lite`) | PXC / `TpuHalPxcHardwareFactory` | HIGH |
-| 3 | `kViperfish` | `viperfish` | 4 (`TPU_V5`) | `TPU v5` (`… lite`) | VXC / `TpuHalVxcHardwareFactory` | HIGH |
-| 4 | `kGhostlite` | `ghostlite` | 5 (`TPU_V6_LITE`) | `TPU v6 lite` | VXC / `TpuHalVxcHardwareFactory` | HIGH |
-| 5 | `k6acc60406` | `6acc60406` | 6 (`TPU_V7X`) | `TPU7x` | VXC / `TpuHalVxcHardwareFactory` | HIGH |
+| 0 | `kJellyfish` | `jellyfish` | 1 (`TPU_VERSION_JELLYFISH`) | `TPU v2` | JXC / `TpuHalJxcHardwareFactory` | HIGH |
+| 1 | `kDragonfish` | `dragonfish` | 2 (`TPU_VERSION_DRAGONFISH`) | `TPU v3` | JXC / `TpuHalJxcHardwareFactory` | HIGH |
+| 2 | `kPufferfish` | `pufferfish` | 3 (`TPU_VERSION_PUFFERFISH`) | `TPU v4` (`… lite`) | PXC / `TpuHalPxcHardwareFactory` | HIGH |
+| 3 | `kViperfish` | `viperfish` | 4 (`TPU_VERSION_VIPERFISH`) | `TPU v5` (`… lite`) | VXC / `TpuHalVxcHardwareFactory` | HIGH |
+| 4 | `kGhostlite` | `ghostlite` | 5 (`TPU_VERSION_GHOSTLITE`) | `TPU v6 lite` | VXC / `TpuHalVxcHardwareFactory` | HIGH |
+| 5 | `k6acc60406` | `6acc60406` | 6 (`TPU_VERSION_6acc60406`) | `TPU7x` | VXC / `TpuHalVxcHardwareFactory` | HIGH |
+
+> **NOTE — proto enumerator names are codename-based, not marketing-based.** The `TpuVersionProto` enumerators are spelled `TPU_VERSION_<CODENAME>` (`TPU_VERSION_INVALID`=0, then `TPU_VERSION_JELLYFISH`=1 … `TPU_VERSION_6acc60406`=6), confirmed as a contiguous descriptor string block at `0xC1928DB`–`0xC19297D`. There is **no** `TPU_V2`/`TPU_V3`/`TPU_V7X` enumerator anywhere in the binary — the `TPU v2…TPU7x` strings are the separate *external/marketing* axis emitted by `TpuVersionToExternalName` (`0x20b3a500`). Do not conflate the wire enumerator name with the external name: `TPU_VERSION_JELLYFISH` (wire) and `TPU v2` (external) name the same silicon on two different axes.
 
 The axes line up cleanly because every consumer indexes the same integer. Some axis details are worth pinning:
 
@@ -168,7 +170,7 @@ StatusOr<TpuCodec*> TpuCodec::Create(TpuVersion version) {   // sub_1E835FA0
 }
 ```
 
-Cases 0-4 each call a demangled `CreateTpuCodec<Codename>` factory; the names match the pointer-table codenames one-for-one. Case 5 is the tell: there is **no** `CreateTpuCodec6acc60406` symbol. The v5 codec is constructed by an anonymous factory (`sub_1E838380`) that installs a vtable with no named `_ZTV` / `_ZTI` symbol. The named codec for generation 4 is `TpuCodecGhostlite` (130 cross-references; vtable at `0x21d35c00`); the generation 5 codec is reified only through string registrations (`6acc60406BundleRestrictions`, `6acc60406TensorcoreEmitter`, `6acc60406HardwareScanner`), never as a `TpuCodec6acc60406` C++ class. This asymmetry — Ghostlite fully named, 6acc60406 obfuscated and anonymous — recurs across every axis and is the binary's own signal that generation 5 is the newest, least-exposed silicon in this build.
+Cases 0-4 each call a demangled `CreateTpuCodec<Codename>` factory; the names match the pointer-table codenames one-for-one. Case 5 is the tell: there is **no** `CreateTpuCodec6acc60406` symbol. The v5 codec is constructed by an anonymous factory (`sub_1E838380`) that installs a vtable with no named `_ZTV` / `_ZTI` symbol. The named codec for generation 4 is `TpuCodecGhostlite` (130 cross-references; vtable at `0x21d35c00`); the generation 5 codec is reified only through string registrations (`6acc60406BundleRestrictions`, `6acc60406HardwareScanner`, `6acc60406RouteCacheSet`), never as a `TpuCodec6acc60406` C++ class. This asymmetry — Ghostlite fully named, 6acc60406 obfuscated and anonymous — recurs across every axis and is the binary's own signal that generation 5 is the newest, least-exposed silicon in this build.
 
 The bundle-encoder dispatch (`tpu::ProgramProtoUtil::BundleCount`, `0x1e830e80`) confirms the same grouping from a third angle. It reads a proto-side version field, runs it through `TpuVersionFromProtoOrDie`, then switches on the internal value:
 
@@ -202,7 +204,7 @@ Reading the matrix:
 - **TensorCore is universal.** Every generation has a TensorCore; it is the constant.
 - **BarnaCore is the early-generation embedding engine.** Present on Jellyfish through Pufferfish (the `platforms_deepsea::jellyfish::barna_core` namespace is populated and a `ComputeThreadCountPerBarnaClump` function takes a `TpuVersion` argument), retired from Viperfish onward.
 - **SparseCore arrives with Viperfish.** Viperfish, Ghostlite, and 6acc60406 carry SparseCore support; the rodata string `"FusionDebugger supports Viperfish and later platforms"` corroborates the Viperfish-and-later boundary, and the `xla_sc_` flag prefix family (SparseCore flags) is gated to these three generations.
-- **Bundle restrictions are per-codename except for the shared pairs.** Five named `*BundleRestrictions` classes exist; Dragonfish shares Jellyfish's. The `6acc60406BundleRestrictions` row is MEDIUM because it is registered by string only — there is no demangled C++ class of that name, consistent with the anonymous-codec pattern for generation 5.
+- **Bundle restrictions are per-codename except for the shared pairs.** Four named codename `*BundleRestrictions` classes exist — `JellyfishBundleRestrictions`, `PufferfishBundleRestrictions`, `ViperfishBundleRestrictions`, `GhostliteBundleRestrictions` (each with its own `_ZTV`/`_ZTI`/`_ZTS` triple) over the `TpuBundleRestrictions` base; Dragonfish shares Jellyfish's. The `6acc60406BundleRestrictions` row is MEDIUM because it is registered by string only — there is no demangled C++ class of that name, consistent with the anonymous-codec pattern for generation 5.
 
 ---
 
