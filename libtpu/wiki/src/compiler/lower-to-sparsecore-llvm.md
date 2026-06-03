@@ -12,7 +12,7 @@ The pieces this page deliberately does **not** re-derive, because a sibling owns
 
 For reimplementation, the contract is:
 
-- **The three-substage driver.** `scf→cf` (module-wide, untyped) → per-func `ScDialect→llvm`/`llvm_tpu` (typed) → per-func assert/memref-finalize. The order is load-bearing — `scf` ops must be control-flow before the typed conversion runs, and `cf.assert` must survive into the LLVM-func substage.
+- **The three-substage driver.** `scf→cf` (module-wide, untyped) → per-func `ScDialect→llvm`/`llvm_tpu` (typed) → per-func assert/memref-finalize. The order is mandatory — `scf` ops must be control-flow before the typed conversion runs, and `cf.assert` must survive into the LLVM-func substage.
 - **The uniform rewrite shape.** Every `*OpLowering::matchAndRewrite` is "resolve operands to LLVM values → `FilterLLVMAttributes` (drop `access_groups`) → select the leaf `tpu_*` intrinsic by dtype/memspace/predicate → `tpu_X::create(b, loc, …)` → `replaceOp`". Six representative bodies are byte-decoded.
 - **The dispatch keys per class.** DMA = (srcMemSpaceID, dstMemSpaceID) tuple table; stream = (dtype, off-tile memspace, verb) lambda table; wait = comparison-predicate attr; sync = local/tile/remote attr; addrspacecast = `convertType(src) == convertType(dst)` elide-or-fail.
 
@@ -186,7 +186,7 @@ The attribute filter is uniform: `FilterLLVMAttributes` (`0x135b7a20`) forwards 
 
 Operand mapping is uniform too: an `ScDialect` `memref`+`index` operand becomes a single raw `!llvm.ptr`/offset `Value` via the SC-specialised `getStridedElementPtr` (or `ConvertToLLVMPattern::getStridedElementPtr`); scalar operands pass through. The "1:N" character of some classes is **op-identity selection**, not operand explosion: the SC type system encodes each HW variant as a *distinct intrinsic*, and the dispatch key picks which one.
 
-> **GOTCHA —** "the rewrite is 1:1" and "the class lowers to N intrinsics" are both true and not contradictory. A single `matchAndRewrite` call emits exactly one intrinsic (plus any helper ops); the "N" is the *static* number of candidate intrinsics the dispatch can choose among. `DmaSimpleStartOp` has one rewrite body but a table of ~8 candidate `tpu_dma_<src>_to_<dst>_sc_simple` intrinsics; the body picks one per call. A reimplementer building a 1:1 op-to-intrinsic map will miss the dispatch and emit the wrong DMA.
+> **GOTCHA —** "the rewrite is 1:1" and "the class lowers to N intrinsics" are both true and not contradictory. A single `matchAndRewrite` call emits exactly one intrinsic (plus any helper ops); the "N" is the *static* number of candidate intrinsics the dispatch can choose among. `DmaSimpleStartOp` has one rewrite body but a 12-entry table of candidate `tpu_dma_<src>_to_<dst>_sc_simple` intrinsics (out of 16 such `_sc_simple` intrinsics registered in the binary); the body picks one per call. A reimplementer building a 1:1 op-to-intrinsic map will miss the dispatch and emit the wrong DMA.
 
 ### Table 1 — the six representative rewrite bodies
 
@@ -198,7 +198,7 @@ One representative per functional class, byte-decoded from `matchAndRewrite`. `�
 | CBREG read | `ReadCbOffsetOpLowering` `0x1353c400` | `tpu_rdcbreg_offset::create` `0x14734820` | none (1:1) | read OFFSET sub-register from cbreg → `replaceOp` |
 | sync add | `SyncAddOpLowering` `0x13591660` | `tpu_syncadd` / `_tile` / `_remote` | `SflagCoreType`/`SflagLocal` + sequencer attr | local (V,V) / tile (V,V) / remote (V×5) |
 | sync wait | `SyncWaitOpLowering` `0x13593040` | `tpu_wait{ge,eq,ne,lt,le,gt}` / `waitdone` / `waitnotdone` | comparison-predicate attr | predicate → pick wait intrinsic → `replaceOp` |
-| DMA simple | `DmaSimpleStartOpLowering` `0x135a9100` | `tpu_dma_<src>_to_<dst>_sc_simple` (×8) | `(srcMemSpaceID, dstMemSpaceID)` tuple | `vector<tuple<u32,u32,fn>>` dispatch (below) |
+| DMA simple | `DmaSimpleStartOpLowering` `0x135a9100` | `tpu_dma_<src>_to_<dst>_sc_simple` (12-lambda table) | `(srcMemSpaceID, dstMemSpaceID)` tuple | `vector<tuple<u32,u32,fn>>` dispatch (below) |
 | stream gather/scatter | `LinearStreamStartOpLowering::rewriteSparseCoreStreamOpToLLVM` `0x13542000` | `tpu_stream_linear_<verb>_<src>_to_<dst>[_add]` | `(dtype, off-tile memspace, verb)` lambda table | 16-entry dispatch (below) |
 | addrspacecast | `MemorySpaceCastOpLowering` `0x135a5c20` | none (elide) **or** generic `llvm.addrspacecast` | `convertType(src) == convertType(dst)` | elide-or-fail (below) |
 
@@ -228,9 +228,9 @@ The HW semantics (offset wraps modulo the buffer size, the `{base, offset, size}
 
 ### DMA — the memspace-pair tuple table
 
-`DmaSimpleStartOpLowering` (`0x135a9100`) builds a `std::vector<std::tuple<u32, u32, std::function<void()>>>` of `(srcMemSpaceID, dstMemSpaceID, create-lambda)` rows, reads `getSrcBufferMemorySpace`/`getDstBufferMemorySpace` off the op, and runs the lambda whose `(src, dst)` pair matches. Each lambda creates the specific `tpu_dma_<src>_to_<dst>_sc_simple` intrinsic. The decompile of this body carries **18 `std::function` thunk symbols** (`__call_func`/`__large_clone`/`__large_destroy` at `0x135ac0c0`…`0x135acb20`) — the materialized lambda closures of that tuple table, confirming the table is built inline rather than as a static dispatch array. Before the dispatch, `CastTileSmemPointerToSmem` normalises any tile-resident endpoint to generic SMEM and the result feeds the `CheckAddressSpaces` legality gate (the "simple DMA on SMEM ⇒ SCS only" contract) — both owned by [SCTypeConverter](sc-type-converter.md) and the [LowerToMlo DMA bridge](lower-to-mlo-dma-bridge.md).
+`DmaSimpleStartOpLowering` (`0x135a9100`) builds a `std::vector<std::tuple<u32, u32, std::function<void()>>>` of `(srcMemSpaceID, dstMemSpaceID, create-lambda)` rows, reads `getSrcBufferMemorySpace`/`getDstBufferMemorySpace` off the op, and runs the lambda whose `(src, dst)` pair matches. Each lambda creates the specific `tpu_dma_<src>_to_<dst>_sc_simple` intrinsic. The decompile of this body carries **12 distinct lambda closures** (lambdas `#1`…`#12`), each materialized as a `__call_func`/`__large_clone`/`__large_destroy` triple — **36 `std::function` thunk symbols** in the range `0x135ac0c0`…`0x135acb20` — confirming the table is built inline rather than as a static dispatch array. Before the dispatch, `CastTileSmemPointerToSmem` normalises any tile-resident endpoint to generic SMEM and the result feeds the `CheckAddressSpaces` legality gate (the "simple DMA on SMEM ⇒ SCS only" contract) — both owned by [SCTypeConverter](sc-type-converter.md) and the [LowerToMlo DMA bridge](lower-to-mlo-dma-bridge.md).
 
-> **NOTE —** the create arity encodes the descriptor tier: `tpu_dma_*_sc_simple` takes 8 `Value`s, `_single_strided` takes 11, `_general` takes 16 (`tpu_dma_hbm_to_hbm_sc_simple` `0x146dafa0`/`0x146d8c60`; `_general` `0x146d8820`). The per-field role of those operands (base vs offset vs size vs stride vs sflag) is **not** decoded here — only the count and the memspace-pair dispatch are confirmed. The field semantics are charged to the descriptor-encoder analysis, not this lowering.
+> **NOTE —** the create arity encodes the descriptor tier: `tpu_dma_*_sc_simple` takes 8 `Value`s, `_single_strided` takes 11, `_general` takes 16 (`tpu_dma_hbm_to_hbm_sc_simple` `0x146d8c60`; `tpu_dma_hbm_to_hbm_sc_single_strided` `0x146d9080`; `tpu_dma_hbm_to_hbm_sc_general` `0x146d8820`). The per-field role of those operands (base vs offset vs size vs stride vs sflag) is **not** decoded here — only the count and the memspace-pair dispatch are confirmed. The field semantics are charged to the descriptor-encoder analysis, not this lowering.
 
 ### Stream — the (dtype, memspace, verb) lambda table
 
