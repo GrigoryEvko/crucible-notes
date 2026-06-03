@@ -6,13 +6,13 @@
 
 `LoadProgramAndEnqueueToStream` is the lower half of a TPU execution: given a compiled program and a fully resolved set of input/output HBM addresses, it (a) binds the compiled `TpuCoreProgram` to a physical TPU core — getting back a per-core `TpuCoreProgramHandle` — and (b) builds a device request from the run options plus the buffer-address arrays and pushes it onto the core's command stream. The PJRT-facing entry that produces those resolved addresses and decides *which* replicas run is [`execute-async-on-stream.md`](execute-async-on-stream.md); this page owns everything from "the executable and its buffers are ready" down to "the request is in the driver queue."
 
-`LoadProgramAndEnqueueToStream` is a real symbol in this binary, and there are **two** of them, because libtpu ships two parallel device stacks. The legacy StreamExecutor wrapper `xla::TpuExecutable::LoadProgramAndEnqueueToStream` (`0xeaafba0`, source `tpu_execute_c_api.cc`) marshals an `xla::ExecutableRunOptions` from a C-ABI launch struct and forwards through a virtual call to the jellyfish core. That core is `xla::jellyfish::DeepseaExecutable::LoadProgramAndEnqueueToStream` (`0x13426260`, source `deepsea_executable.cc`), which does the actual `DeepseaExecutor::LoadProgram` → `DeepseaStream::EnqueueRequest`. The modern PJRT path (`xla::TpuClient` over `tpu::System`, see [`overview.md`](overview.md)) reaches the *same* device runtime through a TFRT-async-value spelling: program load is `tpu::System::LoadProgram` (`0x1d0b2240`, source `system.cc:1804`) and enqueue is `tpu::System::Execute` (`0x1d0b33e0`), both ordered by [`TpuEventIssuer`](stream-semantics.md) sequence points rather than a StreamExecutor FIFO.
+`LoadProgramAndEnqueueToStream` is a real symbol in this binary, and there are **two** of them, because libtpu ships two parallel device stacks. The legacy C-ABI shim `TpuExecutable_LoadProgramAndEnqueueToStream` (`0xeaafba0`, source `tpu_execute_c_api.cc`) — a free `T`-exported function registered at index 7 of the TF-TPU executable-API function struct, not a method of class `xla::TpuExecutable` — marshals an `xla::ExecutableRunOptions` from a C launch struct and forwards through a virtual call (vtable+96) to the jellyfish core. That core is `xla::jellyfish::DeepseaExecutable::LoadProgramAndEnqueueToStream` (`0x13426260`, source `deepsea_executable.cc`), which does the actual `DeepseaExecutor::LoadProgram` → `DeepseaStream::EnqueueRequest`. The modern PJRT path (`xla::TpuClient` over `tpu::System`, see [`overview.md`](overview.md)) reaches the *same* device runtime through a TFRT-async-value spelling: program load is `tpu::System::LoadProgram` (`0x1d0b2240`, source `system.cc:1804`) and enqueue is `tpu::System::Execute` (`0x1d0b33e0`), both ordered by [`TpuEventIssuer`](stream-semantics.md) sequence points rather than a StreamExecutor FIFO.
 
 The reader who knows XLA-on-GPU should hold the analogy that `LoadProgramAndEnqueueToStream` is the moral equivalent of `Executable::ExecuteOnStream` → `gpu::GpuExecutable::ExecuteThunks` → `stream->ThenLaunch(kernel, args)`, but with three TPU-specific twists worth stating up front. First, "load" is not a no-op: a compiled `TpuCoreProgram` must be *loaded onto a core* (DMA'd to its instruction memory and ref-counted in a per-core program cache) before it can run, and the load returns a `TpuCoreProgramHandle` that the enqueue addresses. Second, a single launch fans out to one program-handle *per physical core* — Megacore chips host two cores per chip and the loop must place a handle on each. Third, the buffer "arguments" are not pointers in a kernel-arg buffer; they are `stream_executor::DeviceAddressBase` records (HBM `(opaque_ptr, size)` pairs) carried in side vectors, marshalled from the C ABI by `ApiConverter::FromC`.
 
 For reimplementation, the contract is:
 
-- **The launch-struct → run-options marshal** — how `TpuExecutable::LoadProgramAndEnqueueToStream` rebuilds an `HloModule` shape signature, resolves the device ordinal, and fills an `xla::ExecutableRunOptions` (`set_stream` / `set_device_assignment` / `set_rng_seed` / `set_allocator`).
+- **The launch-struct → run-options marshal** — how `TpuExecutable_LoadProgramAndEnqueueToStream` rebuilds an `HloModule` shape signature, resolves the device ordinal, and fills an `xla::ExecutableRunOptions` (`set_stream` / `set_device_assignment` / `set_rng_seed` / `set_allocator`).
 - **The buffer binding** — input/output/aliased `DeviceAddressBase` arrays via `ApiConverter::FromC`, plus the `uint32` argument-index vector, handed to the core executable's virtual launch slot.
 - **The program load** — `DeepseaExecutor::LoadProgram` (legacy) / `tpu::System::LoadProgram` (modern): chip resolution from `TpuCoreLocation`, per-core program-handle creation, the per-core fan-out gated by `TpuChipConfig::Megacore`, and the fingerprint logged on completion.
 - **The enqueue** — `DeepseaStream::EnqueueRequest` (legacy) / `tpu::System::Execute` + `TpuEventIssuer::IssueArgs/FulfillArgs` (modern): the device `Request` object, the per-replica core selection (`TpuCoreProgramHandle::core` → `TpuCoreLocation::LogicalDeviceId`), and the completion event.
@@ -20,7 +20,7 @@ For reimplementation, the contract is:
 
 | | |
 |---|---|
-| **Legacy SE entry (C-ABI marshal)** | `xla::TpuExecutable::LoadProgramAndEnqueueToStream` @ `0xeaafba0` (867 decompiled lines, `tpu_execute_c_api.cc`) |
+| **Legacy SE entry (C-ABI marshal)** | `TpuExecutable_LoadProgramAndEnqueueToStream` @ `0xeaafba0` (867 decompiled lines, `tpu_execute_c_api.cc`) |
 | **Jellyfish core (load + enqueue)** | `xla::jellyfish::DeepseaExecutable::LoadProgramAndEnqueueToStream` @ `0x13426260` (1360 lines, `deepsea_executable.cc`) |
 | **Modern program load** | `tpu::System::LoadProgram(TpuCoreLocation, shared_ptr<const TpuCoreProgram>)` @ `0x1d0b2240` (`system.cc:1804`) |
 | **Modern enqueue** | `tpu::System::Execute(AsyncValueRef<ProgramHandle>, ExecuteOptions, inputs, outputs, wait, define)` @ `0x1d0b33e0` |
@@ -46,8 +46,8 @@ There are two code paths that both bear the name, and a reimplementer must know 
 
 ```text
 LEGACY (StreamExecutor / LocalClient / TF-TPU op kernels):
-  Tpu_ExecuteProgram (C ABI, tpu_execute_c_api.cc)
-    └─ xla::TpuExecutable::LoadProgramAndEnqueueToStream   0xeaafba0
+  TfTpu_ExecutableApiFn[7]  (C ABI fn ptr, tpu_execute_c_api.cc)
+    └─ TpuExecutable_LoadProgramAndEnqueueToStream   0xeaafba0
          ├─ rebuild HloModule shape sig  (xla::Shape::FromProto x N)
          ├─ resolve device_ordinal via TPUNodeInterfaces::Get
          ├─ build xla::ExecutableRunOptions (stream/assignment/seed/alloc)
@@ -69,7 +69,7 @@ MODERN (PJRT / TpuClient over tpu::System, TFRT async-values):
                         └─ TpuEventIssuer::IssueArgs / FulfillArgs (sequence points)
 ```
 
-> **NOTE —** the two stacks are not alternatives a reimplementer chooses between at run time; they are two front doors compiled into the same image. The legacy `TpuExecutable` path is driven by `xla::LocalClient` / `xla::Service` and the TF-TPU op kernels through the `Tpu*_*` C-ABI; the modern path is driven by every PJRT client (JAX, PyTorch-XLA). They share the `deepsea` driver core but never share host-side objects — there is no StreamExecutor `Stream` anywhere on the PJRT path. If you reimplement the PJRT front door, model `tpu::System::LoadProgram` + `tpu::System::Execute`; if you reimplement the TF-TPU op kernel path, model `TpuExecutable::LoadProgramAndEnqueueToStream`.
+> **NOTE —** the two stacks are not alternatives a reimplementer chooses between at run time; they are two front doors compiled into the same image. The legacy `TpuExecutable` path is driven by `xla::LocalClient` / `xla::Service` and the TF-TPU op kernels through the `Tpu*_*` C-ABI; the modern path is driven by every PJRT client (JAX, PyTorch-XLA). They share the `deepsea` driver core but never share host-side objects — there is no StreamExecutor `Stream` anywhere on the PJRT path. If you reimplement the PJRT front door, model `tpu::System::LoadProgram` + `tpu::System::Execute`; if you reimplement the TF-TPU op kernel path, model `TpuExecutable_LoadProgramAndEnqueueToStream`.
 
 ### Inputs the lower half receives
 
@@ -89,7 +89,7 @@ Both spellings take, in effect, the same five things — the legacy version unpa
 
 ### Purpose
 
-`xla::TpuExecutable::LoadProgramAndEnqueueToStream` (`0xeaafba0`) is the C-ABI marshalling layer. Its job is to turn the flat launch struct that the `Tpu_ExecuteProgram` C shim received into the typed C++ objects the jellyfish core expects: an `HloModule` (for its shape signature only), an `xla::ExecutableRunOptions`, a deserialized `xla::DeviceAssignment`, and two `DeviceAddressBase` vectors. It is a long function (867 lines) mostly because every `absl::Status` and `xla::Shape` move is spelled out, but the algorithm is linear.
+`TpuExecutable_LoadProgramAndEnqueueToStream` (`0xeaafba0`) is the C-ABI marshalling layer. Its job is to turn the flat launch struct that the TF-TPU op kernel passes through the executable-API function struct into the typed C++ objects the jellyfish core expects: an `HloModule` (for its shape signature only), an `xla::ExecutableRunOptions`, a deserialized `xla::DeviceAssignment`, and two `DeviceAddressBase` vectors. It is a long function (867 lines) mostly because every `absl::Status` and `xla::Shape` move is spelled out, but the algorithm is linear.
 
 ### Algorithm
 
@@ -165,7 +165,7 @@ function TpuExecutable_LoadProgramAndEnqueueToStream(launch /*a1*/):   // 0xeaaf
 
 | Function | Address | Role | Confidence |
 |---|---|---|---|
-| `TpuExecutable::LoadProgramAndEnqueueToStream` | `0xeaafba0` | C-ABI marshal → jellyfish core | CONFIRMED |
+| `TpuExecutable_LoadProgramAndEnqueueToStream` | `0xeaafba0` | C-ABI marshal → jellyfish core | CONFIRMED |
 | `xla::Shape::FromProto` | (OSS) | Rebuild each `Shape` from its proto | CONFIRMED |
 | `tensorflow::TPUNodeInterfaces::Get` | (in `0xeaafba0`) | ordinal → `{backend, ...}` | CONFIRMED |
 | `tensorflow::TpuHostTransferManagerImpl` ctor | (in `0xeaafba0`) | Outside-compilation host transfers | HIGH |
@@ -280,7 +280,7 @@ With the program loaded and the buffer addresses bound, the final step assembles
         // logical_id picks the device-assignment row for this replica
 
         // ---- build the device request ---------------------------------
-        req = new deepsea::executor::Request               // line ~479 (16 B node)
+        req = new deepsea::executor::Request               // line 572: operator new(0xD0) = 208 B
         req.program_handle = h
         req.fingerprint    = h.fingerprint()                // line 665
         req.inputs         = inputs                          // DeviceAddressBase span
@@ -395,7 +395,7 @@ stream->DoHostCallback( FreeHostTransferManager(stream, htm) )   // anon $_0
 
 | Component | Relationship |
 |---|---|
-| `xla::TpuExecutable` (`0xeaafba0`) | The legacy C-ABI marshal that builds run-options and forwards to the jellyfish core |
+| `TpuExecutable_LoadProgramAndEnqueueToStream` (`0xeaafba0`) | The legacy C-ABI shim that builds run-options and forwards (vtable+96) to the jellyfish core |
 | `xla::jellyfish::DeepseaExecutable` (`0x13426260`) | The core that loads program handles per core and enqueues the request |
 | `tpu::System` (`LoadProgram` `0x1d0b2240`, `Execute` `0x1d0b33e0`) | The modern TFRT-native runtime the PJRT path uses for load + enqueue |
 | `deepsea::executor::DeepseaStream` / `DeepseaRequestQueue` | The legacy command-stream + request queue |
