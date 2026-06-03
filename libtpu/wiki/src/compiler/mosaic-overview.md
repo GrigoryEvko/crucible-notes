@@ -110,7 +110,7 @@ GetMlirModuleOpFromCustomCall (0x13e327a0)
 
 `MosaicSerdePass::runOnOperation` (`0x145307a0`) is **not** a generic bytecode codec — it is a per-op version upgrade/downgrade engine. It runs in two modes: `serialize=false` (deserialize/**upgrade**, used on import) and `serialize=true` (serialize/**downgrade**, used when writing the kernel into the persistent compilation cache). It lazily builds two `StringMap`s keyed by op-name (`upgrade_rules`, `downgrade_rules`), dispatched by `jaxlib::mosaic::RunSerde` (`0x14533b20`).
 
-`RunSerde` reads the module's `stable_mosaic.version` IntegerAttr, bounds-checks it (`"Unsupported version: expected <= <cur> but got <stored>"`, with the hint to upgrade the compiler binary), removes the attr, then walks every op applying the matching migration lambda. Eight ops carry per-version rules:
+`RunSerde` reads the module's `stable_mosaic.version` IntegerAttr, bounds-checks it (`"Unsupported version: expected <= <cur> but got <stored>"`), removes the attr, then walks every op applying the matching migration lambda. Eight ops carry per-version rules:
 
 | op (key) | schema evolution the rule encodes |
 |---|---|
@@ -123,7 +123,7 @@ GetMlirModuleOpFromCustomCall (0x13e327a0)
 | `tpu.store` | v11 added the fused store-and-accumulate `add` flag |
 | `arith.constant` | v10 generalized vector-of-i1 constants (pre-v10 must be splat) |
 
-The current dialect version is **11**. An out-of-tree compiler reading a JAX-emitted persistent cache must replay the matching downgrade lambdas down to its pinned version. The string constants resolve to `kMangledDialect = "stable_mosaic"` (the bytecode dialect tag, 11 chars) and `kVersionAttrName = "stable_mosaic.version"`. The per-version field-migration bodies are documented on [Mosaic VectorLayout](mosaic-vectorlayout.md) alongside the layout serialization.
+The current dialect version is **11**. An out-of-tree compiler reading a JAX-emitted persistent cache must replay the matching downgrade lambdas down to its pinned version. The string constants resolve to `kMangledDialect = "stable_mosaic"` (the bytecode dialect tag, 13 chars) and `kVersionAttrName = "stable_mosaic.version"`. The per-version field-migration bodies are documented on [Mosaic VectorLayout](mosaic-vectorlayout.md) alongside the layout serialization.
 
 > **NOTE — the bytecode magic is upstream MLIR; the TPU-specific part is the version attr + the 8 rules.** Parsing handles standard MLIR text/bytecode; the only TPU-specific deserialization work is reading/removing `stable_mosaic.version` and replaying the eight per-op upgrade lambdas.
 
