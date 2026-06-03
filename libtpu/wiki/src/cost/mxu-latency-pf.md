@@ -4,7 +4,7 @@
 
 ## Abstract
 
-This page documents how **Pufferfish (v4)** prices MXU pipeline occupancy — and the headline finding is a structural one: **Pufferfish has no separate `MxuLatencyTable`.** The reservation-matrix object that Viperfish, Ghostlite, and Trillium each heap-allocate at their `LatencyTable` `+0x1d8` slot — a `flat_hash_map<Modifier, array<int,N>>` per MXU op family, indexed by a modifier key built from `MatmulDataFormat` — does **not** exist in the Pufferfish cost model. There is no `xla::pufferfish::MxuLatencyTable` class in the binary; the only `MxuLatencyTable` types are `xla::viperfish::`, `xla::ghostlite::`, and the anonymous-namespace Trillium variant. Pufferfish therefore behaves like Jellyfish/Dragonfish: it folds MXU occupancy into its other cost objects rather than into a dedicated reservation table.
+This page documents how **Pufferfish (v4)** prices MXU pipeline occupancy — and the headline finding is a structural one: **Pufferfish has no separate `MxuLatencyTable`.** The reservation-matrix object that Viperfish, Ghostlite, and `6acc60406` each heap-allocate at their `LatencyTable` `+0x1d8` slot — a `flat_hash_map<Modifier, array<int,N>>` per MXU op family, indexed by a modifier key built from `MatmulDataFormat` — does **not** exist in the Pufferfish cost model. There is no `xla::pufferfish::MxuLatencyTable` class in the binary; the only `MxuLatencyTable` types are `xla::viperfish::`, `xla::ghostlite::`, and the anonymous-namespace `6acc60406` variant (lookup `@0x1c8bdb20`, `gf.cc`). Pufferfish therefore behaves like Jellyfish/Dragonfish: it folds MXU occupancy into its other cost objects rather than into a dedicated reservation table.
 
 Concretely, Pufferfish prices MXU occupancy in two places. First, the **matmul throughput** lives as a column in the `PufferfishPerformance` grid: res 9, a single 96-cell column carrying value-set `{8, 16}` across the entire matmul band (`Instruction` 0x7a..0xd9), read by the byte-identical grid `GetResourceUsage` `@0x1c8c3880`. Second, the **transpose / cross-lane (Xlu) reservation** is priced by a separate `XluConflictPenaltyTable` — a 3-axis integer table embedded in `LatencyTablePufferfish` at `+0x18`, read through `XposeXLUReservationLatency` `@0x1c8a13e0`. This is exactly the split the [`performance-pf`](performance-pf.md) page describes from the grid side; this page describes it from the MXU-occupancy side and states why the per-`(MatmulMode × MatmulDataFormat)` reservation-matrix bodies the task brief asks for do not exist for v4.
 
@@ -32,7 +32,7 @@ For reimplementation, the contract is:
 
 ## The Correction
 
-> **CORRECTION (cost-VII) —** an earlier synthesis (carried in [`mxu-latency-overview`](mxu-latency-overview.md)) listed Pufferfish among the four generations that own an `MxuLatencyTable` at `LatencyTable + 0x1d8`. The decompile overturns this for Pufferfish. `LatencyTablePufferfish` (ctor `@0x1c8a1960`) allocates **no** `MxuLatencyTable`: it stores `GetSharedPufferfishPerformance` at `[this+0x1d0]` and `GetSharedPufferfishBarnaCorePerformance` at `[this+0x1d8]` (two `Performance` grids, not a reservation map), and builds an inline `XluConflictPenaltyTable` at `[this+0x18]`. No `xla::pufferfish::MxuLatencyTable` class, ctor, or `GetResourceUsage` exists anywhere in the symbol table. The reservation-matrix model (matpush map at `this+0x00`, matmul map at `this+0x20`, `array<int,19>` bodies, the `{2,1,1}/{4,3,2}/{8,7,6}` value-sets) is the **Viperfish** model ([`mxu-latency-vf`](mxu-latency-vf.md)); it first appears at v5p, not v4. Viperfish, Ghostlite, and Trillium carry the table; Jellyfish, Dragonfish, **and Pufferfish** do not.
+> **CORRECTION (cost-VII) —** an earlier synthesis (carried in [`mxu-latency-overview`](mxu-latency-overview.md)) listed Pufferfish among the four generations that own an `MxuLatencyTable` at `LatencyTable + 0x1d8`. The decompile overturns this for Pufferfish. `LatencyTablePufferfish` (ctor `@0x1c8a1960`) allocates **no** `MxuLatencyTable`: it stores `GetSharedPufferfishPerformance` at `[this+0x1d0]` and `GetSharedPufferfishBarnaCorePerformance` at `[this+0x1d8]` (two `Performance` grids, not a reservation map), and builds an inline `XluConflictPenaltyTable` at `[this+0x18]`. No `xla::pufferfish::MxuLatencyTable` class, ctor, or `GetResourceUsage` exists anywhere in the symbol table. The reservation-matrix model (matpush map at `this+0x00`, matmul map at `this+0x20`, `array<int,19>` bodies, the `{2,1,1}/{4,3,2}/{8,7,6}` value-sets) is the **Viperfish** model ([`mxu-latency-vf`](mxu-latency-vf.md)); it first appears at v5p, not v4. Viperfish, Ghostlite, and `6acc60406` carry the table; Jellyfish, Dragonfish, **and Pufferfish** do not.
 
 ### What the decompile shows
 
@@ -43,7 +43,7 @@ function LatencyTablePufferfish(this, version):              // @0x1c8a1960
     LatencyTable_base(this, version)                          // zero 0x1e0 body, set vptr off_21C20330
     [this+0x1d0] = GetSharedPufferfishPerformance()           // TensorCore grid (pf_shared @0x22579a10)
     [this+0x1d8] = GetSharedPufferfishBarnaCorePerformance()  // BarnaCore grid (pf_bc_shared)
-    // inline std::vector<int>-shaped scratch at +0x20/+0x74/+0xC8/+0x11C/+0x168/+0x1B4 (size/cap 1 or 9)
+    // inline std::vector<int>-shaped scratch at +0x20/+0x74/+0xC8/+0x11C/+0x168/+0x1BC (size/cap 1 or 9)
     InitializeConflictLatency(this)
     SetXluConflictPenaltyBetween(this, 0, 2, 0, 56)           // 10 penalty installs into the +0x18 table
     SetXluConflictPenaltyBetween(this, 5, 2, 0, 46)
@@ -59,7 +59,7 @@ function LatencyTablePufferfish(this, version):              // @0x1c8a1960
 
 Compare the Viperfish ctor (`@0x1c8a52c0`, ~27 KB), which `new`s an `MxuLatencyTable` and fills four `flat_hash_map`s via `SetReservations<MatpushModifier>`/`<MatmulModifier>`/`<MatresModifier>`/`<VlxmrModifier>`. Pufferfish's ctor is two orders of magnitude smaller because it has no such maps to build. The MXU occupancy is already baked into the `PufferfishPerformance` grid the ctor merely points at.
 
-> **NOTE —** the inline `std::vector<int>`-shaped fields the PF ctor zero-fills at `+0x20`, `+0x74`, `+0xC8`, `+0x11C`, `+0x168`, `+0x1B4` (each set to `{ptr=0, size=cap=1}` or `{..=9}`) are the base `LatencyTable`'s per-XLU scratch vectors, not MXU reservation maps. They hold `{1,1,1,9,1,1}` size/cap seeds — the `xlu_count=2` Pufferfish XLU-edge scratch — and are unrelated to the matmul/matpush reservation families of the v5p+ `MxuLatencyTable`.
+> **NOTE —** the inline `std::vector<int>`-shaped fields the PF ctor zero-fills at `+0x20`, `+0x74`, `+0xC8`, `+0x11C`, `+0x168`, `+0x1BC` (each set to `{ptr=0, size=cap=1}` or `{..=9}`) are the base `LatencyTable`'s per-XLU scratch vectors, not MXU reservation maps. They hold `{1,1,1,9,1,1}` size/cap seeds — the `xlu_count=2` Pufferfish XLU-edge scratch — and are unrelated to the matmul/matpush reservation families of the v5p+ `MxuLatencyTable`.
 
 ---
 
@@ -77,7 +77,7 @@ The matmul throughput that Viperfish stores in its `MatmulModifier` reservation 
 | transpose / permute result B | res 12 | 34 | `{1, 8, 16}` | second transpose/permute result stage |
 | matrix-result (Xlu) deposit | res 6 | 1 | `8` | `kVectorMatres` (0x77) — the conv `R[2]` analog |
 
-The single value-set `{8, 16}` on res 9 is the PF counterpart of the VF `{2,1,1}/{4,3,2}/{8,7,6}` reservation triplets: the narrow (bf16-class) matmul holds the throughput port 8 cycles, the wide (int8/x8-class) matmul holds it 16. There are no separate matpush/matmul/matres/vlxmr maps because the grid's outer `Instruction` axis already fans the matmul/matprep opcode out across the band per data format (via the latch-mode WORD table in `GetPufferfishInstruction`). The matmul base **latency** (83 narrow / 101 wide, from the latency array) is the total op depth; the res-9 cell (8 / 16) is the throughput hold that gates back-to-back issue.
+The single value-set `{8, 16}` on res 9 is the PF counterpart of the VF `{2,1,1}/{4,3,2}/{8,7,6}` reservation triplets: the narrow (bf16-class) matmul holds the throughput port 8 cycles, the wide (int8/x8-class) matmul holds it 16. There are no separate matpush/matmul/matres/vlxmr maps because the grid's outer `Instruction` axis already fans the matmul/matprep opcode out across the band per data format (via the latch-mode WORD table in `GetPufferfishInstruction`). The matmul base **latency** (the two byte-confirmed format depths 83 and 101 at the head of the band, `latency[0x7A]=83`; the narrow/wide assignment of the two is inferred, not byte-enumerated — see [`performance-pf`](performance-pf.md)) is the total op depth; the res-9 cell (8 / 16) is the throughput hold that gates back-to-back issue.
 
 > **QUIRK —** the matmul-throughput representation widens generation by generation, and Pufferfish is the narrowest: a single res-9 column (96 cells) on PF, a res-3 column plus a 4-stage matprep group (res 4..7) on VF, the wider EUP-AndPop FIFO on GL/GF. The same physical occupancy is one column on PF and seven on VF. A reimplementation that ports the VF multi-stage matprep group onto PF will model resource ports that PF's 20-column grid does not have.
 
@@ -119,7 +119,7 @@ So the resource-count answer for Pufferfish is: the MXU occupancy lives in the *
 | **Pufferfish** | **no** | **n/a** | **`PufferfishPerformance` grid res 9 + `XluConflictPenaltyTable`** |
 | Viperfish | yes | 19 (`array<int,19>`) | `MxuLatencyTable` `@this+0x1d8` |
 | Ghostlite | yes | 11 (`array<int,11>`) | `MxuLatencyTable` `@this+0x1d8` |
-| Trillium (6acc60406) | yes | 11 (`array<int,11>`) | `MxuLatencyTable` `@this+0x1d8` (anon-ns) |
+| `6acc60406` (TPU7x) | yes | 11 (`array<int,11>`) | `MxuLatencyTable` `@this+0x1d8` (anon-ns, lookup `@0x1c8bdb20`) |
 
 ---
 
@@ -157,7 +157,7 @@ So the resource-count answer for Pufferfish is: the MXU occupancy lives in the *
 - [Performance: PF](performance-pf.md) — the `PufferfishPerformance` grid (res 9 matmul throughput, res 6 matrix-result) and the `XluConflictPenaltyTable` that together carry PF MXU occupancy
 - [MXU Latency: VF](mxu-latency-vf.md) — the Viperfish `array<int,19>` reservation matrix and the `{2,1,1}/{4,3,2}/{8,7,6}` value-sets first introduced at v5p
 - [MXU Latency: GL (Ghostlite)](mxu-latency-gl.md) — the Ghostlite `array<int,11>` reservation matrix
-- [MXU Latency: GF (6acc60406)](mxu-latency-gf.md) — the Trillium `array<int,11>` reservation matrix
+- [MXU Latency: GF (6acc60406)](mxu-latency-gf.md) — the `6acc60406` `array<int,11>` reservation matrix (lookup `@0x1c8bdb20`)
 - [MatmulMode & Modifiers](matmul-mode-modifiers.md) — the `MatmulDataFormat` codes; on later gens they build the reservation-map key, on PF they pick the grid band ordinal
 - [MXU Slot](../isa/slot-mxu.md) — the LLO MXU instruction slot whose ops PF prices through the grid
 - [Matprep / IAR / Latch](../isa/slot-matprep-iar-latch.md) — the latch/matprep ops behind the matpush family the later-gen tables key on
