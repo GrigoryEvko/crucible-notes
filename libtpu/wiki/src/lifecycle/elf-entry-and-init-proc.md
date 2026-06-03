@@ -45,8 +45,8 @@ For reimplementation, the contract is:
 | **`DT_PREINIT_ARRAY`** | `0x22048b30`, `DT_PREINIT_ARRAYSZ` 16 B (2 entries) |
 | **`DT_INIT_ARRAY`** | `0x215f26f0`, `DT_INIT_ARRAYSZ` 23200 B (2900 entries) |
 | **`DT_FINI_ARRAY`** | `0x215f8190`, `DT_FINI_ARRAYSZ` 16 B (2 entries) |
-| **CRT init stub** | `__do_init @ 0xe63c000` (17 B), guard `__do_init___initialized` |
-| **CRT fini stub** | `__do_fini @ 0xe63c020` (39 B), guard `__do_fini___finalized` → `__cxa_finalize(__dso_handle)` |
+| **CRT init stub** | `__do_init @ 0xe63c000` (17 B), guard `__do_init.__initialized` |
+| **CRT fini stub** | `__do_fini @ 0xe63c020` (39 B), guard `__do_fini.__finalized` → `__cxa_finalize(__dso_handle)` |
 | **GOT / PLT** | `.got @ 0x22048d50` (50256 B), `.got.plt @ 0x224c2980` (3808 B), `.plt @ 0x213f0830` (7584 B) |
 | **CRT flavor** | LLVM/clang — **no** `frame_dummy` / `register_tm_clones` / `__do_global_ctors_aux`; `.tm_clone_table` is zero-length |
 | **Confidence** | CONFIRMED (byte-anchored vs `readelf -d`, segment table, and disassembly) unless a row says otherwise |
@@ -100,9 +100,10 @@ dlopen("libtpu.so")  →  ld-linux-x86-64.so.2
   ├─ (3) DT_INIT          @ 0xe635524    (_init)        ── __gmon_start__ check-and-call stub
   │
   ├─ (4) DT_INIT_ARRAY    @ 0x215f26f0   [2900 entries] ── the static-constructor storm
-  │        [0] __cpu_indicator_init  →  Rust ARGV init  →  __do_init (set-once guard)
-  │        └─ … 2898 _GLOBAL__sub_I_* / _GLOBAL__I_* / __cxx_global_var_init …
-  │                                                       (owned by do-init-do-fini.md)
+  │        [0] __cpu_indicator_init  0x21211240   ── GCC ifunc CPU-feature resolver (slot 0)
+  │        [1] Rust ARGV_INIT_ARRAY  0x20a0d2b0   ── std::sys::args::unix init_wrapper
+  │        └─ … 2898 more: _GLOBAL__sub_I_* / _GLOBAL__I_* / __cxx_global_var_init,
+  │              with __do_init (0xe63c000) among them — slot order owned by static-init.md
   ▼
   libtpu mapped & constructed; nothing TPU-specific has RUN yet
   ───────────────────────────── at unload / process exit ─────────────────────────────
@@ -136,7 +137,7 @@ The entire `.init` section is 23 bytes (`0xe635524`–`0xe63553b`):
 
 ```asm
 0xe635524: 48 83 ec 08         sub  rsp, 8
-0xe635528: 48 8b 05 31 38 a1 13 mov  rax, cs:__gmon_start___ptr   ; weak GOT slot
+0xe635528: 48 8b 05 31 38 a1 13 mov  rax, [rip+0x13a13831]        ; __gmon_start__ GOT slot @ 0x22048d60
 0xe63552f: 48 85 c0            test rax, rax
 0xe635532: 74 02               jz   loc_E635536                  ; skip if unbound
 0xe635534: ff d0               call rax                          ; __gmon_start__()
@@ -156,7 +157,7 @@ function _init():                       // .init_proc @ 0xe635524 (DT_INIT)
     // in this binary; constructor iteration is the loader's DT_INIT_ARRAY walk.
 ```
 
-> **NOTE —** `__gmon_start__` resolves to an internal weak stub (`0x22860d40`) that Hex-Rays cannot decompile; the GOT slot is bound only if a profiling runtime is present, which it is not in this wheel. The `test rax,rax` guard makes the call a no-op in production. The 8-byte `sub`/`add` of `rsp` is pure stack-alignment boilerplate from `crti.o`'s `_init` prologue. A reimplementer can treat `_init` as "does nothing" without behavioral loss.
+> **NOTE —** `__gmon_start__` is a **weak undefined import** (`readelf --dyn-syms`: `NOTYPE WEAK DEFAULT UND __gmon_start__`, value `0`); `_init` reads its GOT slot at `0x22048d60` (an `R_X86_64_GLOB_DAT` reloc). The slot is bound only if a profiling runtime is present, which it is not in this wheel. The `test rax,rax` guard makes the call a no-op in production. The 8-byte `sub`/`add` of `rsp` is pure stack-alignment boilerplate from `crti.o`'s `_init` prologue. A reimplementer can treat `_init` as "does nothing" without behavioral loss.
 
 ---
 
@@ -196,24 +197,24 @@ tables), and a `__do_global_ctors_aux` trampoline that *loops* over the
 `.ctors` list. libtpu, built with the **LLVM/clang CRT**, ships **none of
 these**. The only CRT artifacts left are two minimal array-entry functions:
 
-- **`__do_init` @ `0xe63c000`** — the *first non-runtime* entry placed into `DT_INIT_ARRAY` (after `__cpu_indicator_init` and the Rust ARGV init), a set-once byte guard. It does **not** iterate anything.
+- **`__do_init` @ `0xe63c000`** — one of the `DT_INIT_ARRAY` entries (a `_GLOBAL__sub_I_*`-peer slot, *not* slot 0 — its constructor-ordering position is owned by [static-init.md](../forensics/static-init.md)), a set-once byte guard. It does **not** iterate anything.
 - **`__do_fini` @ `0xe63c020`** — a `DT_FINI_ARRAY` entry that runs the guarded `__cxa_finalize(__dso_handle)` that GCC's `__do_global_dtors_aux` would normally run.
 
 ### Disassembly — `__do_init` (17 bytes)
 
 ```asm
-0xe63c000: 80 3d 79 78 e8 13 00  cmp  cs:__do_init___initialized, 0
+0xe63c000: 80 3d 79 78 e8 13 00  cmp  cs:__do_init.__initialized, 0
 0xe63c007: 75 07                 jnz  locret_E63C010          ; already done → return
-0xe63c009: c6 05 70 78 e8 13 01  mov  cs:__do_init___initialized, 1
+0xe63c009: c6 05 70 78 e8 13 01  mov  cs:__do_init.__initialized, 1
 0xe63c010: c3                    ret
 ```
 
 ### Disassembly — `__do_fini` (39 bytes)
 
 ```asm
-0xe63c020: 80 3d 5a 78 e8 13 00     cmp  cs:__do_fini___finalized, 0
+0xe63c020: 80 3d 5a 78 e8 13 00     cmp  cs:__do_fini.__finalized, 0
 0xe63c027: 75 1d                    jnz  locret_E63C046        ; already done → return
-0xe63c029: c6 05 51 78 e8 13 01     mov  cs:__do_fini___finalized, 1
+0xe63c029: c6 05 51 78 e8 13 01     mov  cs:__do_fini.__finalized, 1
 0xe63c030: 48 83 3d 30 cd a0 13 00  cmp  cs:__cxa_finalize_ptr, 0  ; weak null-check
 0xe63c038: 74 0c                    jz   locret_E63C046
 0xe63c03a: 48 8b 3d 7f 91 c1 13     mov  rdi, cs:__dso_handle
@@ -225,17 +226,17 @@ these**. The only CRT artifacts left are two minimal array-entry functions:
 
 ```c
 function __do_init():                   // 0xe63c000  (a DT_INIT_ARRAY entry)
-    if (__do_init___initialized)        // 1-byte guard in .bss
+    if (__do_init.__initialized)        // 1-byte guard in .bss
         return;                         // idempotent: re-entry is a fast no-op
-    __do_init___initialized = 1;
+    __do_init.__initialized = 1;
     // That is the entire body. No frame_dummy, no ctor loop, no atexit().
     // GCC's __do_global_ctors_aux would loop .ctors here; clang's CRT leaves
     // constructor iteration entirely to the loader's DT_INIT_ARRAY walk.
 
 function __do_fini():                   // 0xe63c020  (a DT_FINI_ARRAY entry)
-    if (__do_fini___finalized)          // 1-byte guard in .bss
+    if (__do_fini.__finalized)          // 1-byte guard in .bss
         return;
-    __do_fini___finalized = 1;
+    __do_fini.__finalized = 1;
     if (&__cxa_finalize != NULL)        // weak — present here
         __cxa_finalize(__dso_handle);   // run libtpu's registered atexit/dtor list
 ```
@@ -267,8 +268,9 @@ because they do not exist in this binary:
 
 Before *any* init code runs (step 1 of the firing order), the loader applies the
 binary's relocations. The init stubs above already depend on this: `_init`
-reads `__gmon_start___ptr` from a relocated GOT slot, `__do_fini` reads
-`__cxa_finalize_ptr` and `__dso_handle` from relocated data, and every one of
+reads the `__gmon_start__` GOT slot (`0x22048d60`, an `R_X86_64_GLOB_DAT`),
+`__do_fini` reads the `__cxa_finalize` slot and `__dso_handle` (`0x222551c0`)
+from relocated data, and every one of
 the 2900 `DT_INIT_ARRAY` slots is itself an `R_X86_64_RELATIVE` target the
 loader must write. So GOT/PLT relocation is the true *first* event of the
 lifecycle, logically prior to `DT_PREINIT_ARRAY`.
@@ -300,10 +302,10 @@ are the symbols the framework's discovery handshake later rides on.
 | `cpu_feature_fail_fast @ 0x2110abc0` | `DT_PREINIT_ARRAY[0]` — the first thing the loader runs; CPU ISA hard gate |
 | `setup_dl_debug_hook @ 0x2114eec0` | `DT_PREINIT_ARRAY[1]` — dynamic-linker debug rendezvous hook |
 | `__cpu_indicator_init @ 0x21211240` | `DT_INIT_ARRAY[0]` — GCC ifunc CPU-feature resolver, runs before constructors |
-| `__do_init @ 0xe63c000` | CRT init-array entry; set-once byte guard `__do_init___initialized` |
+| `__do_init @ 0xe63c000` | CRT init-array entry; set-once byte guard `__do_init.__initialized` |
 | `__do_fini @ 0xe63c020` | `DT_FINI_ARRAY[0]` — guarded `__cxa_finalize(__dso_handle)` |
 | `rand_thread_state_clear_all @ 0x2063df60` | `DT_FINI_ARRAY[1]` — per-thread BoringSSL/RNG cleanup at unload |
-| `__gmon_start__ @ 0x22860d40` | Weak gmon hook called by `_init`; unbound (no-op) in this wheel |
+| `__gmon_start__` (weak UND, GOT slot `0x22048d60`) | Weak gmon hook called by `_init`; unbound (no-op) in this wheel |
 
 ## Cross-References
 
