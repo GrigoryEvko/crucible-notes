@@ -4,7 +4,7 @@
 
 ## Abstract
 
-SFLAG is the TPU's atomic synchronisation tier: a small, word-granular register file (`MemorySpace::kSflag` = 7, distinct from HBM/VMEM/CMEM/SMEM — see the [memory hierarchy overview](overview.md)) that every engine spins on to coordinate DMAs, cross-engine handoffs, collectives, and barriers. A flag is addressed by a flat **sync-flag number** within a per-core table; the compiler never touches SFLAG bytes directly — it builds an `LloValue` pointer with `LloRegionBuilder::SflagImmPtr(number, name)` and then actuates it through a fixed family of `Vsync*` / `Vwait*` region-builder primitives that lower to the `mlir::llo` `VSync*Op` / `VWaitGeOp` instruction classes.
+SFLAG is the TPU's atomic synchronisation tier: a small, word-granular register file (`MemorySpace::kSflag` = 6, distinct from HBM/VMEM/CMEM/SMEM — see the [memory hierarchy overview](overview.md)) that every engine spins on to coordinate DMAs, cross-engine handoffs, collectives, and barriers. A flag is addressed by a flat **sync-flag number** within a per-core table; the compiler never touches SFLAG bytes directly — it builds an `LloValue` pointer with `LloRegionBuilder::SflagImmPtr(number, name)` and then actuates it through a fixed family of `Vsync*` / `Vwait*` region-builder primitives that lower to the `mlir::llo` `VSync*Op` / `VWaitGeOp` instruction classes.
 
 This page owns four things and only those. **(1) The memory model:** SFLAG is a flat array of 32-bit words; `SflagImmPtr` turns a flag number `n` into a `kSflag`-tagged pointer at `byte_offset = 4·n` over a 1-element S32 shape, so flag-number arithmetic is exact and word-granular. **(2) The flag-value semantics:** a flag carries a saturating counter *or* a one-shot done-bit, selected per write by the `0x100` done bit and gated per generation by `Target::HasExtraDoneBitInSyncFlags()`; whether the hardware *interprets* the word as a counter or a boolean is the `SyncFlagCountModeBitOffset` (bit 272 on Viperfish-non-lite/Ghostlite, 0 elsewhere). **(3) The actuation primitives:** `VsyncSet` (write), `VsyncAdd` / `VsyncAddDone` (atomic increment, with/without done), `VwaitGeSV` (block until ≥ threshold) and its `Eq`/`Ne`/`Lt`/`Done` siblings, `VsyncRead` (pop the counter into a scalar), plus the remote and public-access variants. **(4) `SflagImmPtr`** itself and the per-gen dummy/count constants it consumes.
 
@@ -12,7 +12,7 @@ Out of scope and owned elsewhere: *which* flag number a barrier binds to is [Bar
 
 | | |
 |---|---|
-| **Memory space** | `xla::jellyfish::MemorySpace::kSflag` = 7 (operand-tag); render id 6 in `SflagImmPtr` |
+| **Memory space** | `xla::jellyfish::MemorySpace::kSflag` = 6 (operand-space tag, baked into the pointer by `SflagImmPtr`) |
 | **Word** | 32-bit (S32); `byte_offset = 4 · sync_flag_number` |
 | **Pointer ctor** | `LloRegionBuilder::SflagImmPtr(int number, string_view name)` @ `0x1d5185a0` |
 | **BarnaCore pointer ctor** | `LloRegionBuilder::BarnaCoreSflagImmPtr(int, string_view)` @ `0x1d538400` |
@@ -36,24 +36,24 @@ A reimplementer needs exactly one fact to address SFLAG: a sync-flag number is a
 
 ### `SflagImmPtr` — number → pointer
 
-`LloRegionBuilder::SflagImmPtr` @ `0x1d5185a0` is the sole constructor of an SFLAG `LloValue` pointer. Decompiled, it builds a validated 1-element S32 shape and calls the generic `ImmPtr` with the byte offset and the SFLAG render space id:
+`LloRegionBuilder::SflagImmPtr` @ `0x1d5185a0` is the sole constructor of an SFLAG `LloValue` pointer. Decompiled, it builds a validated 1-element S32 shape and calls the generic `ImmPtr` with the byte offset and the SFLAG operand-space id:
 
 ```c
 function SflagImmPtr(builder, int number, string_view name):    // 0x1d5185a0
     shape = ShapeUtil::MakeValidatedShape(/*element_type=*/4,    //   4 == S32 (xla::PrimitiveType)
                                           /*dims=*/0, /*minor_to_major=*/0)
     //                  byte_offset       shape  space  name
-    return builder.ImmPtr(4 * number,     shape, 6,     name)    //   space 6 == sflag (render id)
+    return builder.ImmPtr(4 * number,     shape, 6,     name)    //   space 6 == MemorySpace::kSflag
 ```
 
-Two numbers are load-bearing and both are confirmed byte-exact:
+Two numbers are central and both are confirmed byte-exact:
 
 - **Element type `4` = S32.** Every sync flag is a 32-bit integer word. The shape is rank-0 (a scalar), so an SFLAG pointer names exactly one word.
 - **`byte_offset = 4 · number`** (the `4LL * a2` argument). The factor of four *is* the word stride; it is why `SflagWordSizeBytes()` (`Target+0x504`, see the [overview's allocator matrix](overview.md#3-the-per-space-allocator--alignment-matrix)) is the SFLAG granule and alignment, and why `SflagWordSizeLog2()` (`Target+0x4c8`) is cached so the address arithmetic can be a shift rather than a multiply.
 
-The space argument `6` is the **render-side** SFLAG id, not the `MemorySpace::kSflag` = 7 operand-tag — the two numbering schemes differ (the same `sflag → 6` ordering the overview documents for `MemorySpaceToDriverResource`; see the [enum correction](overview.md#2-the-memoryspace-enum)). A reimplementer must keep the two apart: the *operand tag* on the resulting `LloValue` is `kSflag` (7), checked by every primitive in §3; the *render id* baked into the pointer is 6.
+The space argument `6` **is** `MemorySpace::kSflag` itself — `SflagImmPtr` stamps the operand-space tag directly into the pointer. This is the same `6` every primitive in §3 checks for (`(*((_BYTE*)sf+11)>>2)&0x1F == 6`), and it is byte-confirmed against the structurally identical `BarnaCoreSflagImmPtr` @ `0x1d538400`, which passes space `0xA` (= `kBarnaCoreSflag` = 10). There is no separate "render id" baked here: the *DMA driver-resource* id that the descriptor path renders for sflag is a different number entirely (`sflag(6) → 0`), produced only at the descriptor boundary by `MemorySpaceToDriverResource`, never by this constructor (see the [enum correction](overview.md#2-the-memoryspace-enum)).
 
-> **NOTE —** `BarnaCoreSflagImmPtr` @ `0x1d538400` is the structurally identical constructor for the **BarnaCore** sync-flag tier (`MemorySpace::kBarnaCoreSflag` = 11). It is a physically separate register file with its own size accessor (`Target::BarnaCoreSflagSizeBytes()`, `Target+0x478`, guarded by the `HasBarnaCore` vtable predicate). Code that targets BarnaCore flags must use this constructor; the two pointer families are never interchangeable.
+> **NOTE —** `BarnaCoreSflagImmPtr` @ `0x1d538400` is the structurally identical constructor for the **BarnaCore** sync-flag tier (`MemorySpace::kBarnaCoreSflag` = 10; the constructor passes space `0xA` to `ImmPtr`). It is a physically separate register file with its own size accessor (`Target::BarnaCoreSflagSizeBytes()`, `Target+0x478`, guarded by the `HasBarnaCore` vtable predicate). Code that targets BarnaCore flags must use this constructor; the two pointer families are never interchangeable.
 
 ### Why a pointer, not a number
 
@@ -98,12 +98,12 @@ Whether the *hardware* register treats a flag word as a counter or a done-bit is
 
 | Generation | `SyncFlagCountModeBitOffset()` | Addr | Interpretation |
 |---|---:|---|---|
-| Jellyfish (v2) | **0** (`xor eax,eax`) | `0x1d491380` | count-mode bit not used; mode implicit |
-| Pufferfish (v3) | **0** | `0x1d495860` | mode implicit |
-| Viperfish (v4) | **272** non-lite / **0** lite | `0x1d49bca0` | `version==4 && codename!="lite" ? 0x110 : 0` |
-| Ghostlite (v5) / Trillium | **272** (`0x110`) | `0x1d4988c0` | count-mode bit at register bit 272 |
+| Jellyfish (v2) | **0** | `0x1d491380` | count-mode bit not used; mode implicit |
+| Pufferfish (v4) | **0** | `0x1d495860` | mode implicit |
+| Viperfish (v5) | **272** non-lite / **0** lite | `0x1d49bca0` | `version==4 && codename!="lite" ? 272 : 0` |
+| Ghostlite (v6e) | **272** (`0x110`) | `0x1d4988c0` | count-mode bit at register bit 272 |
 
-The Viperfish accessor matches the codename literal `cmpl $0x6574696c` (`"lite"`, little-endian) to disable the bit on viperfish-lite — the same lite-codename branch the VMEM and barrier pages observe. The value `272` is a bit index, not a byte offset: it selects "count mode vs. done mode" within the wider hardware register that backs each flag.
+The Viperfish accessor (`0x1d49bca0`) decodes as: return `272` unless the stored version ordinal is `4` **and** the codename dword equals `1702127980` (= `0x6574696c`, `"lite"` little-endian), in which case it returns `0`. So viperfish-lite disables the count-mode bit and viperfish-std keeps it — the same lite-codename string-compare fork the VMEM and barrier pages observe. The value `272` is a bit index, not a byte offset: it selects "count mode vs. done mode" within the wider hardware register that backs each flag.
 
 > **[LOW]** The full bit-field map of the multi-word SFLAG register where bit 272 sits — the counter width, the done bit, the public-access bit — is **not** decoded here. Bit 272 is CONFIRMED as the count-mode selector returned by the per-gen accessor; the surrounding fields are not enumerated and would require decoding the LLO→ISA lowering of the `VSync*Op` register encoders.
 
@@ -222,7 +222,7 @@ The actuation primitives consume a handful of per-generation constants — the d
 
 ### The constants
 
-| Constant / capability | Accessor | JF (v2) | PF (v3) | VF (v4) | GL (v5)/Trillium |
+| Constant / capability | Accessor | JF (v2) | PF (v4) | VF (v5) | GL (v6e) |
 |---|---|---:|---:|---:|---:|
 | Dummy flag number | `GetDummySyncFlagNumber()` | **7** | 0 | 0 | 0 |
 | Count-mode bit offset | `SyncFlagCountModeBitOffset()` | 0 | 0 | **272** (lite: 0) | **272** |
