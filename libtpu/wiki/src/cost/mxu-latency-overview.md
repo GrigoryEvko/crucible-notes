@@ -26,13 +26,13 @@ For reimplementation, the contract is:
 | **TPU7x lookup** | `MxuLatencyTable::GetResourceUsage` `@0x1c8bdb20` · `array<int,11>` |
 | **Issue-stall consumer** | `MxuOpHoldIssues` `@0x1c8ad3a0`, `MxuOpResourceReservations` `@0x1c8ad080` |
 | **Resource count** | `MxuResource::kNumMxuResources` = 19 (VF) / 11 (GL, GF) — CHECK-anchored |
-| **Where the table lives** | heap, at `LatencyTable` `this+0x1d8` (PF/VF/GL/GF only) |
+| **Where the table lives** | pointer at `LatencyTable` `this+0x1d8` (= `+472`), set from a process-wide `GetSharedMxuLatencyTable()` singleton (PF/VF/GL/GF only) |
 
 ---
 
 ## The Generation Split
 
-Of the six TPU generations the cost model serves, only **four** carry an `MxuLatencyTable`. The JF/DF latency class (`LatencyTableJellyfish`, the v2/v3 subclass, object size 0x58) prices MXU occupancy directly inside its inline 15-field latency table — there is no separate reservation object. Pufferfish (v4), Viperfish (v5/v5e), Ghostlite (v6e), and TPU7x each get a 0x1e0-byte heap `LatencyTable` whose `+0x1d8` slot holds an `MxuLatencyTable`. See [`cycletable-family`](cycletable-family.md) for the per-gen cost-model subclass selection.
+Of the six TPU generations the cost model serves, only **four** carry an `MxuLatencyTable`. The JF/DF latency class (`LatencyTableJellyfish`, the v2/v3 subclass, object size 0x58) prices MXU occupancy directly inside its inline 15-field latency table — there is no separate reservation object. Pufferfish (v4), Viperfish (v5/v5e), Ghostlite (v6e), and TPU7x each get a `LatencyTable` whose `+0x1d8` (`+472`) slot holds a pointer to an `MxuLatencyTable`; the `LatencyTableViperfish` ctor `@0x1c8a3f20` sets this slot from the `GetSharedMxuLatencyTable()` process-wide singleton (`a1 + 472 = mxu_latency_shared`), so the reservation maps are built once and shared, not rebuilt per `LatencyTable`. See [`cycletable-family`](cycletable-family.md) for the per-gen cost-model subclass selection.
 
 | Gen | TpuVer | `MxuLatencyTable` | Array width `N` | Lookup `@addr` | Source file |
 |---|---|---|---|---|---|
@@ -40,7 +40,7 @@ Of the six TPU generations the cost model serves, only **four** carry an `MxuLat
 | Pufferfish | 2 | yes | (PF page) | — | `mxu_latency_table_pf.cc` |
 | Viperfish | 3 | yes | 19 | `@0x1c8ae5c0` | `mxu_latency_table_vf.cc` |
 | Ghostlite | 4 | yes | 11 | `@0x1c8b7560` | `mxu_latency_table_gl.cc` |
-| TPU7x (6acc60406) | 5 | yes | 11 | `@0x1c8bdb20` | (anon-ns, shares Ghostlite backend) |
+| TPU7x (6acc60406) | 5 | yes | 11 | `@0x1c8bdb20` | `6acc60406/mxu_latency_table_gf.cc` (own file; matmul opcodes 289/295/301/307) |
 
 > **NOTE —** the array width is the **resource count**, not a row count. `MxuResource` is a per-gen enum; `kNumMxuResources` widens to 19 on Viperfish (the most XLU-rich gen, `xlu_count=3`) and narrows to 11 on Ghostlite/TPU7x. The two generations therefore use *different resource indices for the same physical sub-unit*, and a reimplementation must keep one enum per gen — not a shared one. This is confirmed by the bounds-check CHECK string (below), which differs only in the literal it compares against (`0x13`=19 vs `0xB`=11).
 
@@ -50,14 +50,14 @@ Of the six TPU generations the cost model serves, only **four** carry an `MxuLat
 
 ### Purpose
 
-The table is built once, at `LatencyTable` construction, by a ~27 KB constructor that fills several `flat_hash_map`s, one per MXU op family. The maps are the only per-instance state the lookup reads.
+The table is built once per process, lazily by `GetSharedMxuLatencyTable`, via the `MxuLatencyTable` constructor (`viperfish` `@0x1c8a52c0`, ~27 KB of straight-line `try_emplace`s) that fills several `flat_hash_map`s, one per MXU op family. The maps are the only state the lookup reads.
 
 ### Structure
 
 Each `MxuLatencyTable` is a small set of Abseil flat hash maps. The lookup distinguishes families by the key *type* (the C++ template argument to `find`), not by a discriminator field, so the maps sit at fixed offsets:
 
 ```text
-MxuLatencyTable (heap, reachable at owning LatencyTable + 0x1d8)
+MxuLatencyTable (shared singleton, pointer stored at owning LatencyTable + 0x1d8)
   this + 0x00   flat_hash_map<MatpushModifier, array<int,N>>   ── latch / matprep ops
   this + 0x20   flat_hash_map<MatmulModifier,  array<int,N>>   ── matmul ops
   this + ...    flat_hash_map<MatresModifier,  array<int,N>>   ── matrix-result-read ops
@@ -152,11 +152,11 @@ The default fallback (step 1) is what makes the table sparse-by-default: for the
 | `viperfish::MxuLatencyTable::GetResourceUsage` | `0x1c8ae5c0` | VF lookup — family dispatch + `find` + `array[resource]` | CERTAIN |
 | `ghostlite::MxuLatencyTable::MxuLatencyTable` | `0x1c8b2920` | GL ctor — `array<int,11>` | CERTAIN |
 | `ghostlite::MxuLatencyTable::GetResourceUsage` | `0x1c8b7560` | GL lookup — defaults `res4→3`, `res9→9` | CERTAIN |
-| TPU7x `MxuLatencyTable::GetResourceUsage` | `0x1c8bdb20` | TPU7x lookup — `array<int,11>`, shares Ghostlite backend | HIGH |
+| TPU7x `MxuLatencyTable::GetResourceUsage` | `0x1c8bdb20` | TPU7x lookup — `array<int,11>`; own `gf.cc`, CHECK `mxu_resource_idx < kNumMxuResources` (11) at gf.cc:415 | CERTAIN |
 | `viperfish::SetReservations<MatpushModifier>` | `0x1c8abde0` | densify `{resource→cycles}` → `array<int,19>`, `try_emplace` | CERTAIN |
 | `viperfish::SetReservations<VlxmrModifier>` | `0x1c8accc0` | vlxmr family row builder | CERTAIN |
 | `viperfish::SetReservations<MatresModifier>` | `0x1c8acea0` | matres family row builder | CERTAIN |
-| `viperfish::AddOverrunCheckReservations` | `0x1c8abfe0` | adds `{Msr: 2}`(fmt1) / `{Msr: 6}`(wide) overrun-stall cycles | HIGH |
+| `viperfish::AddOverrunCheckReservations` | `0x1c8abfe0` | inserts the four `kMsr{A,B}OverrunCheck0..3` slots (cycles `5/13/21/29`); `Msr` arg selects the A-set vs B-set | CERTAIN |
 | `GainLatchModeToMatmulDataFormat` | `0x1d629260` | matpush key byte[0] — `GainLatchMode` → format code | CERTAIN |
 | `LatchModeIsTranspose` | `0x1d628ea0` | matpush key byte[1..2] — transpose flag | HIGH |
 | `LatchOpcodeToMsr` | `0x1c8a1300` | matpush key byte[3] — staging-register selector | HIGH |
@@ -169,9 +169,9 @@ The default fallback (step 1) is what makes the table sparse-by-default: for the
 
 The table is read by two methods that turn per-resource hold-cycles into an issue cursor. `MxuOpResourceReservations` `@0x1c8ad080` accumulates, for an instruction window, the per-`MxuResource` reservation each op imposes (calling `GetResourceUsage` per resource). `MxuOpHoldIssues` `@0x1c8ad3a0` then computes how many cycles the *next* MXU op must wait before it can issue, given the resources still held by ops already in flight — the stall recurrence detailed on [`mxu-opholdissues-stall`](mxu-opholdissues-stall.md).
 
-The division of labour mirrors `MCSchedModel`: the base `Performance` grid supplies the *latency* (when the result is ready), and `MxuLatencyTable` supplies the *occupancy* (when the unit is free to accept the next op). For a back-to-back matmul stream the throughput is gated by the smallest free resource, not by the per-op latency: a bf16 matpush that holds its staging register for only 1–2 cycles pipelines at near-issue-rate while the multi-hundred-cycle systolic latency is hidden across the array depth; an int8-x8 push that holds the same register for 6–8 cycles (the `{8,7,6}` value-set) throttles the stream to a quarter of that rate. The per-gen integers that set these rates are on the per-gen pages.
+The division of labour mirrors `MCSchedModel`: the base `Performance` grid supplies the *latency* (when the result is ready), and `MxuLatencyTable` supplies the *occupancy* (when the unit is free to accept the next op). For a back-to-back matmul stream the throughput is gated by the longest-held resource, not by the per-op latency: a low-precision push that holds its staging register for only a cycle or two pipelines at near-issue-rate while the multi-hundred-cycle systolic latency is hidden across the array depth, whereas a wide/high-precision push that holds the same register for several cycles throttles the stream proportionally. The overrun-check ladder above (`5/13/21/29`) is the concrete in-binary expression of that growing hold; the full per-gen reservation integers are on the per-gen pages.
 
-> **NOTE —** `AddOverrunCheckReservations` `@0x1c8abfe0` adds a small extra reservation (`{Msr: 2}` on the format-1 path, `{Msr: 6}` on the wide path) modelling the stall when a matpush overruns the matrix-staging register and must wait for it to drain. It is folded into the same maps `SetReservations` builds, so the consumer sees it as part of the normal reservation array.
+> **NOTE —** `AddOverrunCheckReservations` `@0x1c8abfe0` does not add a single cell — it inserts a **bank of four** overrun-check reservations into the per-op `flat_hash_map<MxuResource,int>` before it is densified. For its `Msr` argument it picks one of two banks: `Msr==0` → `kMsrAOverrunCheck0..3`, `Msr==1` → `kMsrBOverrunCheck0..3` (any other value is a `CHECK`-fatal "Invalid MSR." at vf.cc:95). Both banks carry the same cycle ladder `5 / 13 / 21 / 29` (byte-confirmed `try_emplace` literals in `@0x1c8abfe0`, vf.cc:78–93). These slots model the staircase of stall as a matpush overruns the matrix-staging register and the drain depth grows; they are folded into the same map `SetReservations` densifies, so the consumer reads them as ordinary array cells. `kMsrAOverrunCheck0..3` occupy `MxuResource` indices 2–5 and `kMsrBOverrunCheck0..3` occupy 6–9.
 
 ---
 
