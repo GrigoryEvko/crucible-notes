@@ -4,7 +4,7 @@
 
 ## Abstract
 
-Memory-Space Assignment (MSA) — the TPU compiler's Phase-7 alternate-memory placement pass (see [msa-overview.md](msa-overview.md)) — is not driven by a single hard-coded option struct. Its tuning knobs (overlap-to-async-copy ratios, outstanding-copy caps, repack/retry counts, the inefficient-use skip threshold, cross-program-prefetch enables, and the alternate-memory byte budget) are resolved **per TPU version** from a layered set of `absl` command-line flags. Each `tpu_version` is mapped to one of five *codename families* — `jf` (Jellyfish, v0/v1), `cmem` (the CMEM tier, v2/Pufferfish), `vf` (Viperfish, v3), `gf` (Ghostlite, v4/v5) — plus a global `xla_msa_*` fallback applied last. The effective value of any knob is therefore the cross product of *(version → family selection)* × *(family flag default)*.
+Memory-Space Assignment (MSA) — the TPU compiler's Phase-7 alternate-memory placement pass (see [msa-overview.md](msa-overview.md)) — is not driven by a single hard-coded option struct. Its tuning knobs (overlap-to-async-copy ratios, outstanding-copy caps, repack/retry counts, the inefficient-use skip threshold, cross-program-prefetch enables, and the alternate-memory byte budget) are resolved **per TPU version** from a layered set of `absl` command-line flags. Each `tpu_version` (the `tpu::TpuVersion` enum value: 0=Jellyfish, 1=Dragonfish, 2=Pufferfish, 3=Viperfish, 4=Ghostlite, 5=6acc60406) is mapped to one of four *flag-prefix families* — `jf` (covers Jellyfish 0 + Dragonfish 1), `cmem` (the CMEM tier, Pufferfish 2), `vf` (Viperfish 3), `gf` (covers Ghostlite 4 + 6acc60406 5) — plus a global `xla_msa_*` fallback applied last. The effective value of any knob is therefore the cross product of *(version → family selection)* × *(family flag default)*.
 
 A reimplementer's natural assumption — stated in the task that generated this page — is that the per-version numbers live in a `*_compilation_environment.binarypb` overlay shipped alongside the chip-config resources. **They do not.** No such overlay resource exists in this build; the filewrapper table-of-contents and `.rodata` carry only `chip_parts`, `chip_configs`, bootloaders, accuracy tables, route caches, ICI-resiliency, CSR/error blobs, and one timezone blob. The literal defaults instead live in the `absl::flags_internal::Flag<T>` objects in `.data`, and the runtime materializes them into a default `TpuCompilationEnvironment` proto at first use. Because both `memory_space_assignment.proto` and `tpu_compilation_environment.proto` are **proto3** in this build, neither descriptor stores `default_value` strings — which is exactly why the editions/text-format printer path shows no defaults.
 
@@ -12,7 +12,7 @@ This page owns the **byte-exact per-family numeric table** and the **two-stage r
 
 For reimplementation, the contract is:
 
-- The **version→family jump table** (`tpu_version` at `Target+0x398`, cases 0..5 → `jf`/`cmem`/`vf`/`gf`), and the `OverwriteFieldIfNotDefault(family_flag, msa_fallback)` resolution rule.
+- The **version→family jump table** (`tpu_version` at `Target+0x398`, cases 0/1→`jf`, 2→`cmem`, 3→`vf`, 4/5→`gf`), and the `OverwriteFieldIfNotDefault(family_flag, msa_fallback)` resolution rule.
 - The **literal per-family defaults**: the three overlap ratios (min/preferred uniform, max split 32×-jf vs 8×-rest), the outstanding-copy caps (4-jf vs 40-rest), repacks=4, retries=2, inefficient-use=0.5, cross-program-prefetch=1.
 - The fact that the **alternate-memory byte budget is not a flag** — the byte-cap flags all default to `-1` ("derive from `Target`"), so `Options.max_size_in_bytes` comes from `chip_parts`, not a literal.
 - The `absl::flags_internal::Flag<T>` object layout (`+0x48` default-value union: `kGenFunc` for floats/bools, `kOneWord` inline literal for the int caps).
@@ -38,14 +38,14 @@ The first decision MSA makes is whether it runs at all, and — by the same code
 
 ### Family Prefixes
 
-| Prefix | Codename | `tpu_version` | Role |
+| Prefix | Codename(s) | `tpu_version` | Role |
 |---|---|---|---|
-| `jf` | Jellyfish | 0, 1 | Oldest family; the only one with non-default ratio/cap values |
-| `cmem` | CMEM tier | 2 (Pufferfish) | Selected for v2; carries the inverse `min_async_copy_to_overlap_ratio` twin |
+| `jf` | Jellyfish + Dragonfish | 0, 1 | Oldest family; the only one with non-default ratio/cap values. Dragonfish (1) shares Jellyfish's `jf` flags, matching its shared encoder/bundle-restrictions |
+| `cmem` | Pufferfish | 2 | The CMEM tier selected for Pufferfish; carries the inverse `min_async_copy_to_overlap_ratio` twin |
 | `vf` | Viperfish | 3 | |
-| `gf` | Ghostlite | 4, 5 | |
+| `gf` | Ghostlite + 6acc60406 | 4, 5 | Both gens share the `gf` flags, matching the shared `gxc` ISA family (`gxc::glc` for Ghostlite, `gxc::gfc` for 6acc60406) |
 | `msa` | global fallback | — | `xla_msa_*` flags applied last by `OverwriteFieldIfNotDefault` |
-| `zf` | forward stub | — (not gated) | `xla_zf_vmem_max_outstanding_*` exist but `zf` is absent from the v0..v5 table |
+| `zf` | forward stub | — (not gated) | `xla_zf_vmem_max_outstanding_*` exist but `zf` is absent from the 0..5 table |
 
 > **QUIRK —** `zf` is a real flag prefix in this binary (`xla_zf_vmem_max_outstanding_prefetches` HelpGen @ `0x1d72ef40`, `_evictions` @ `0x1d72f000`, both defaulting to 40) but it is **not** in the 0..5 version gate and has no overlap-ratio / repack / retry variants. It is a forward-family stub not yet wired into any `tpu_version`. A reimplementer should carry the flag names but must not route any current version to it.
 
@@ -60,7 +60,7 @@ function IsMemorySpaceAssignmentEnabled(out, Target, env_view, HloModule):  // 0
 
     TpuCompilationEnvironment local;                            // built from defaults
     switch (*(int32*)(Target + 0x398)):                         // tpu_version
-        case 0: case 1:                                         // jf — Jellyfish
+        case 0: case 1:                                         // jf — Jellyfish + Dragonfish
             OverwriteFieldIfNotDefault("xla_msa_enable",
                 "xla_jf_vmem_memory_space_assignment", local)
         case 2:                                                 // cmem — Pufferfish
@@ -69,7 +69,7 @@ function IsMemorySpaceAssignmentEnabled(out, Target, env_view, HloModule):  // 0
         case 3:                                                 // vf — Viperfish
             OverwriteFieldIfNotDefault("xla_msa_enable",
                 "xla_vf_vmem_memory_space_assignment", local)
-        case 4: case 5:                                         // gf — Ghostlite
+        case 4: case 5:                                         // gf — Ghostlite + 6acc60406
             OverwriteFieldIfNotDefault("xla_msa_enable",
                 "xla_gf_vmem_memory_space_assignment", local)
         default:                                                // unknown version
@@ -112,7 +112,7 @@ The three floats feed the `PrefetchIntervalPicker` constructor (P-3-220 #5, `@0x
 | `preferred_overlap_to_async_copy_ratio` | 2.0 | 2.0 | 2.0 | 2.0 | 2.0 | CERTAIN |
 | `max_overlap_to_mem_size_async_copy_ratio` | **32.0** | 8.0 | 8.0 | 8.0 | 8.0 | CERTAIN |
 
-> **QUIRK —** only the **max** ratio differs by family, and only Jellyfish stands apart: on `jf` a buffer may be prefetched up to **32×** its own async-copy elapsed time ahead of the use; on every later family only **8×**. `min` (1.0) and `preferred` (2.0) are uniform across all families. Byte evidence: `jf` max default-gen @ `0x1d72cae0` writes `0x42000000` (=32.0f); `gf` max @ `0x1d72dfa0` and `vf` max @ `0x1d72d4a0` both write `0x41000000` (=8.0f); `jf` min @ `0x1d72cc80` writes `0x3F800000` (=1.0f); `jf` preferred @ `0x1d72cd60` writes `0x40000000` (=2.0f). `cmem` additionally carries an inverse twin `xla_tpu_cmem_min_async_copy_to_overlap_ratio` = 1.0.
+> **QUIRK —** only the **max** ratio differs by family, and only Jellyfish stands apart: on `jf` a buffer may be prefetched up to **32×** its own async-copy elapsed time ahead of the use; on every later family only **8×**. `min` (1.0) and `preferred` (2.0) are uniform across all families. Byte evidence: `jf` max default-gen @ `0x1d72cae0` writes `0x42000000` (=32.0f); `gf` max @ `0x1d72dfa0` and `vf` max @ `0x1d72d4a0` both write `0x41000000` (=8.0f); `jf` min @ `0x1d72cc80` writes `0x3F800000` (=1.0f); `jf` preferred @ `0x1d72cd60` writes `0x40000000` (=2.0f). `cmem` additionally carries an inverse twin `xla_tpu_cmem_min_async_copy_to_overlap_ratio` = 1.0 (Gen @ `0x1d72fb20` writes `0x3F800000`).
 
 ### Outstanding-copy caps and repack/retry counts
 
@@ -174,7 +174,7 @@ Several MSA knobs have no per-family variant — a single global flag governs al
 
 `xla_tpu_msa_inefficient_use_to_copy_ratio` (0.5) is the alt-mem skip threshold: if the ratio of in-alt-mem idle time to copy time exceeds 0.5, the buffer is **not** placed in alternate memory. Verified byte-exact: default-gen @ `0x1d721c60` writes `0x3F000000` = 0.5f.
 
-> **GOTCHA —** the alternate-memory byte budget (`Options.max_size_in_bytes`) is **not** read from any flag. Every `*_max_vmem/cmem_used_by_memory_space_assignment` flag and `xla_tpu_scoped_vmem_limit_kib` default to `-1`, signalling "derive from `Target`." The budget is the VMEM hardware size (64 MiB = 67,108,864 B on v7 — see [tpu-chip-config.md](../targets/tpu-chip-config.md)) minus any scoped reservation, filled from [chip-parts-binarypb.md](../targets/chip-parts-binarypb.md), not from a flag literal. A reimplementation that looks for a "MSA budget" flag will find only `-1` and must fall back to the chip config.
+> **GOTCHA —** the alternate-memory byte budget (`Options.max_size_in_bytes`) is **not** read from any flag. Every `*_max_vmem/cmem_used_by_memory_space_assignment` flag and `xla_tpu_scoped_vmem_limit_kib` default to `-1`, signalling "derive from `Target`." The budget is the VMEM hardware size (64 MiB = 67,108,864 B on v7x / 6acc60406 — see [tpu-chip-config.md](../targets/tpu-chip-config.md)) minus any scoped reservation, filled from [chip-parts-binarypb.md](../targets/chip-parts-binarypb.md), not from a flag literal. A reimplementation that looks for a "MSA budget" flag will find only `-1` and must fall back to the chip config.
 
 ### `copies_limit_for_sync_mem_op_conversion` is computed, not a flag
 
@@ -260,14 +260,14 @@ STAGE 2 — per-version selection (per compile)
 
 ---
 
-## Worked Chain — `max_overlap` on Ghostlite (v5)
+## Worked Chain — `max_overlap` on 6acc60406 (v5)
 
-End-to-end, for the single knob `max_overlap_to_mem_size_async_copy_ratio` on a v5 (Ghostlite) target:
+End-to-end, for the single knob `max_overlap_to_mem_size_async_copy_ratio` on a v5 (6acc60406) target:
 
 ```c
 // 1. version → family
 tpu_version = *(int32*)(Target + 0x398);              // = 5
-family = jump_table_0xae09ac8[5];                     // → gf (Ghostlite)
+family = jump_table_0xae09ac8[5];                     // → gf (shared by Ghostlite + 6acc60406)
 
 // 2. per-version selection
 OverwriteFieldIfNotDefault(
@@ -288,7 +288,7 @@ PrefetchIntervalPicker.ctor(...)                      // @ 0x1dcd6b60 (P-3-220 #
     // Begin: latest_prefetch_time = use_time − ⌈min(1.0) × async_copy_elapsed⌉
 ```
 
-So on Ghostlite a buffer may be prefetched at most ~8× its own copy time ahead of the use; the picker sweeps candidate start times between that bound and the use. On Jellyfish the same knob resolves to 32×, the only family with a non-default `max` ratio.
+So on a v5 (6acc60406) target a buffer may be prefetched at most ~8× its own copy time ahead of the use; the picker sweeps candidate start times between that bound and the use. The same 8× applies to Ghostlite (v4), which shares the `gf` flags. On Jellyfish the same knob resolves to 32×, the only family with a non-default `max` ratio.
 
 ---
 
