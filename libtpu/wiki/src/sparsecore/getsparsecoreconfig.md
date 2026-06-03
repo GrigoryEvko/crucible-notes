@@ -252,9 +252,9 @@ flag = tce[+0x730] ? tce[+0x730] : &AutoProto_globals_;   // a1 + 1840 = 0x730
 | 2 | `pufferfish` | 3 | CONFIRMED |
 | 3 | `viperfish` | 4 | CONFIRMED |
 | 4 | `ghostlite` | 5 | CONFIRMED |
-| 5 | (codename obfuscated in v0.0.40) | 6 ← SC-offload concurrency default ON | CONFIRMED |
+| 5 | `6acc60406` | 6 ← SC-offload concurrency default ON | CONFIRMED |
 
-The five readable codenames are present in `.rodata`; the value-5 codename is obfuscated in this build. See [TPU Version Codename Matrix](../targets/tpu-version-codename-matrix.md) for the full generation map.
+All six codenames are present verbatim in `.rodata` (init-list `off_220117B0`; the value-5 string `"6acc60406"` lives at `.rodata` VMA `0x863f0cf`, `len 9`, paired with `TpuVersion == 5`). See [TPU Version Codename Matrix](../targets/tpu-version-codename-matrix.md) for the full generation map.
 
 > **NOTE — the override flag field numbers were not decoded.** Both knobs read an `AutoOr<bool>` at TCE `_impl_` offsets `0x458` (concurrency) / `0x730` (offload-queuing-in-LHS), falling back to `AutoProto_globals_` when unset; the offsets and the `0x100`-bit override are byte-exact, but the two proto **field numbers** (the `_InternalSerialize` tags at those offsets) were not isolated. **Confidence: offsets + override mechanism CONFIRMED; field numbers PARTIAL.** See [TpuCompilationEnvironment](../config/tpu-compilation-environment.md) and [TCE Field Offsets & Defaults](../config/tce-field-offsets-defaults.md).
 
@@ -329,7 +329,7 @@ This is exactly why `offload` is the SC op-type classifier: it is the one proto 
 | `platform_type` value→name pairing `{0 hardware, 1 grm, 2 iss}` | descriptor-string order + `ToProto = type+1`; `== 2` comparison byte-exact | INFERRED (pairing) / CONFIRMED (`== 2`) |
 | Per-gen default `TpuVersion == 5`; `AutoOr<bool>` 0x100 override at TCE `+0x458`/`+0x730` | `0x1d6b6f80` (`*(topo+8)==5`, `a1+1112`); `0x1d6b81e0` (`a1+1840`) | CONFIRMED |
 | TCE override field numbers for the two SC-offload knobs | offsets + override byte-exact; field numbers not decoded | PARTIAL |
-| TpuVersion 0..5 = jellyfish/dragonfish/pufferfish/viperfish/ghostlite/(obfuscated); proto = +1 | `TpuVersionFromString` init-list @ `0x220117b0`; `TpuVersionToProto` body `v+1` | CONFIRMED |
+| TpuVersion 0..5 = jellyfish/dragonfish/pufferfish/viperfish/ghostlite/`6acc60406`; proto = +1 | `TpuVersionFromString` init-list @ `0x220117b0` (v5 string `"6acc60406"` @ `.rodata 0x863f0cf`); `TpuVersionToProto` body `v+1` | CONFIRMED |
 | Plain `SparseCoreAsyncTracker` keys on opcode `{0xc, 0x11/0x10, 0x31}` + `SparseCoreOperationType == 8` | `IsSupportedAsyncStart/Done` @ `0x134964c0`/`0x13496520`; `FromString` @ `0x14b7f060` | CONFIRMED |
 | `SparseCoreOperationType` values 1..8 = SparseMap..AllToAllDynamic | `0x14b7f060` chained `EqualsIgnoreCase` (decompiled, in order) | CONFIRMED |
 
