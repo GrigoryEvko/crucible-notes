@@ -12,19 +12,19 @@ The SparseCore [VectorExtended (VEX)](vectorextended-vex.md) slot is the scan / 
 
 The central structural finding is that the vector-mask field is **not** a lane bitmask and **not** a sublane count: it is a 5-bit *index* naming one of 32 architectural mask registers `M0..M31`. The selected M-register itself holds the 2D (lane × sublane) active/inactive predicate; the bundle field only chooses which register supplies it. Every scan/sort op is masked — the emit body attaches a mask unconditionally — so the VEX scan datapath is a fully *masked scan*. This per-lane vector mask is **orthogonal** to whole-instruction predication (the last `MCInst` operand, handled by `EmitPredicationToSlot`): a VEX op carries both.
 
-The destination read-port field is **op-family-polymorphic**. For `VresMove` it is the destination vreg; for `Sort` it is the allocated read-port index of the first source operand (and Sort writes a *second* 3-bit port field `@bit0x109` for its second source); for the pure scan ops it is **absent** — the scan result is committed out-of-line by a separate `PopXrf` result-commit op in another bundle slot. The sub-opcode field selects among 48 byte-exact encoders, contiguous `0x04..0x33` with no gaps and no duplicates.
+The destination read-port field `@bit0x10c` is written by the `VectorExtended` encoder and has two real cases: for `Sort` it is the allocated read-port index of the first source operand (and Sort writes a *second* 3-bit port field `@bit0x109` for its second source); for the pure scan ops it is **absent** — the scan result is committed out-of-line by a separate `PopXrf` result-commit op in another bundle slot. The proto `+0x18` slot it reads from is *also* used by the `VresMove` op, but `VresMove` is a separate `SparseCoreTecVectorResult`-slot op encoded to a different bundle region (its dest vreg lands at bundle bit `245`, not `bit0x10c`); the shared *proto offset* is what differs by emit body, not the bundle bit. The sub-opcode field selects among 48 byte-exact encoders, contiguous `0x04..0x33` with no gaps and no duplicates.
 
 For reimplementation, the contract is:
 
 - **The vector mask is a 5-bit M-register selector, not a bitmask.** Decode `bit0x104..0x108` as a register index `m ∈ [0,31]`; the architectural register id is `m + 0x5f` (`M0 = 0x5f .. M31 = 0x7e`). The named M-register supplies the per-(lane,sublane) execution predicate. Mask-*write* destinations (index-scan / uniquify mask results) are restricted to the lower half `M0..M15`.
-- **The dest read-port at `bit0x10c` is routing, not data, and its source depends on the op family.** `VresMove` → dest vreg; `Sort` → first source's allocated port (+ second source at `bit0x109`); pure scans → field absent, result via `PopXrf`. The 3-bit width (0..6) matches the 7-entry read-port allocator `V0..V6`.
+- **The dest read-port at `bit0x10c` (in the `VectorExtended` slot) is routing, not data.** `Sort` → first source's allocated port (+ second source at `bit0x109`); pure scans → field absent, result via `PopXrf`. The 3-bit width (0..6) matches the 7-entry read-port allocator `V0..V6`. (The `VresMove` op reuses the same proto `+0x18` slot for its dest vreg, but is a different *slot* op encoded to bundle bit `245` — see §2.2.)
 - **The sub-opcode at `bit0x10f` (6 bits) selects one of 48 contiguous encoders `0x04..0x33`.** 32 are dispatch-reachable; 16 are present-but-unreachable variants; 4 reachable ops share an F32/U32-sibling encoder (the dtype distinction is carried by the pack-format attribute layer, not by the sub-opcode).
 
 | | |
 |---|---|
 | **Slot** | `VectorExtended` (VEX) — TEC scan/sort/dedup family |
 | **Mask field** | `bit0x104..0x108` (5b) — M-register selector `M0..M31` |
-| **Mask getter** | `GetVectorMask<SparsecoreVectorMask>` `@0x13a33320` (band `[0x5f,0x7e]`, value `id − 0x5f`) |
+| **Mask getter** | `GetVectorMask<glc::isa::SparsecoreVectorMask>` `@0x13a33320` (Ghostlite; band `[0x5f,0x7e]`, value `id − 0x5f`) |
 | **Mask source operand** | `MCInst` operand[1] |
 | **Dest read-port field** | `bit0x10c..0x10e` (3b), proto `+0x18`, present `+0x10 & 0x1`, range 0..6 |
 | **2nd port (Sort only)** | `bit0x109..0x10b` (3b), proto `+0x1c`, present `+0x10 & 0x2` |
@@ -49,7 +49,7 @@ __int64 GetVectorMask(__int64 a1) {              // a1 = &MCOperand
   unsigned int v1 = *(_DWORD *)(a1 + 8);         // the register id
   if ( v1 <= 0x5E ) { /* "regno >= llvm::TPU::M0"  (id < 0x5f) */ LogFatal(...); }
   if ( v1 >= 0x7F ) { /* "regno <= llvm::TPU::M31" (id > 0x7e) */ LogFatal(...); }
-  return v1 - 95;                                // 95 == 0x5f  ⇒  value ∈ [0,0x1f]
+  return v1 - 95;                                // 95 == 0x5f, so value in [0,0x1f]
 }
 ```
 
@@ -57,11 +57,11 @@ Three facts fall out of this:
 
 1. **The operand must be a register.** `*a1 != 1` (the `MCOperand` kind tag) traps with `operand.isReg()` (source `isa_emitter_base.h:555`). A bitmask immediate would never be a register; this is a register *name*.
 2. **Its id must lie in the M-register band `[0x5f, 0x7e]`.** The two range traps cite `regno >= llvm::TPU::M0` (`isa_emitter_base.h:557`) and `regno <= llvm::TPU::M31` (`:558`). That is exactly 32 values: `M0 = 0x5f .. M31 = 0x7e`.
-3. **The returned value is `id − 0x5f ∈ [0,0x1f]`** — a dense 5-bit index, which is exactly the width of the `bit0x104` field. A 5-bit field can name 32 registers; a 5-bit lane bitmask could only mask 5 lanes (the SC VPU has 8), and a sublane count would not be a register operand at all. **The field is an M-register selector.**
+3. **The returned value is `id − 0x5f ∈ [0,0x1f]`** — a dense 5-bit index, which is exactly the width of the `bit0x104` field. A 5-bit field can name 32 registers; a sublane count or lane bitmask would not be a register operand at all (the `isReg()` trap rejects any immediate). **The field is an M-register selector.**
 
-A second instantiation, `GetVectorMask<SparsecoreVmask>` `@0x13a2d900`, is byte-identical (same band, same `id − 0x5f`); both are used interchangeably by the VEX emitters.
+Both instances shown here are the Ghostlite (`gxc::glc`) target; a second instantiation, `GetVectorMask<glc::isa::SparsecoreVmask>` `@0x13a2d900`, is byte-identical (same band, same `id − 0x5f`), and both are used interchangeably by the VEX emitters. (The 6acc60406/`gfc` target carries its own structurally-identical copies at `0x13aa9b60` / `0x13ab1c80`.)
 
-> **NOTE — what an M-register *is*.** The named register holds a 2D (lane-range × sublane-range) active/inactive predicate, constructed by the region builder from four bound arguments checked against `Target::SublaneCount` and `Target::LaneCount` (the SC VPU is 8 lanes). The bundle field selects *which* M-register; the *content* of the predicate word (its (lane,sublane) bit packing and the inactive-lane output disposition) is one layer below this encoding — see [M-register predicate](m-register-predicate.md).
+> **NOTE — what an M-register *is*.** The named register holds a 2D (lane-range × sublane-range) active/inactive predicate, constructed by the region builder from four bound arguments checked against `Target::SublaneCount` and `Target::LaneCount` (the exact lane/sublane counts are a target-table value, not re-derived here). The bundle field selects *which* M-register; the *content* of the predicate word (its (lane,sublane) bit packing and the inactive-lane output disposition) is one layer below this encoding — see [M-register predicate](m-register-predicate.md).
 
 ### 1.2 The proto layout and the unconditional present-bit
 
@@ -89,7 +89,7 @@ if ( (*((_BYTE *)proto + 17) & 2) != 0 ) {       // present  +0x11 & 2
 }
 ```
 
-The corresponding emit body `EmitVectorSort<SortIntegerAscending,...>` `@0x13a4a3a0` reads the mask from `MCInst` operand[1] and sets both present bits in one store:
+The corresponding emit body `EmitVectorSort<SparsecoreVectorMask, SparsecoreVregReadPort, SparseCoreTecVectorExtended_SortIntegerAscending>` `@0x13a4a3a0` (the op is the *third* template arg) reads the mask from `MCInst` operand[1] and sets both present bits in one store:
 
 ```c
 int v4 = GetVectorMask<...SparsecoreVectorMask>(*(operands) + 0x10);  // operand[1] → mask reg
@@ -126,7 +126,7 @@ The per-lane vector mask is independent of instruction-level predication. The la
 |---|---|---|
 | Bundle bits | `bit0x104..0x108` (5 bits) | CONFIRMED |
 | Semantics | index naming one of 32 M-registers `M0..M31` (not a bitmask, not a count) | CONFIRMED |
-| Getter | `GetVectorMask<SparsecoreVectorMask>` `@0x13a33320` (== `<SparsecoreVmask>` `@0x13a2d900`) | CONFIRMED |
+| Getter | `GetVectorMask<glc::isa::SparsecoreVectorMask>` `@0x13a33320` (Ghostlite; == `<glc::isa::SparsecoreVmask>` `@0x13a2d900`) | CONFIRMED |
 | Operand-kind check | `MCOperand.isReg()` (`isa_emitter_base.h:555`) | CONFIRMED |
 | Register band | `[0x5f, 0x7e]` = `M0..M31` (asserts `:557 / :558`) | CONFIRMED |
 | Encoded value | `regid − 0x5f` ∈ `[0,0x1f]` | CONFIRMED |
@@ -140,9 +140,9 @@ The per-lane vector mask is independent of instruction-level predication. The la
 
 ---
 
-## 2. The Destination Read-Port Field `@bit0x10c` — op-family-polymorphic write-back routing
+## 2. The Destination Read-Port Field `@bit0x10c` — write-back routing
 
-The dest read-port field is `bit0x10c..0x10e` (3 bits), sourced from proto `+0x18`, present-bit proto `+0x10 & 0x1`. The 3-bit width gives range 0..6 — exactly the 7-entry read-port set `V0..V6` of the VEX operand allocator (see [VEX operand-port binding](vex-operand-port.md)). What proto `+0x18` *means* differs by op family.
+The dest read-port field is `bit0x10c..0x10e` (3 bits), sourced from proto `+0x18`, present-bit proto `+0x10 & 0x1`. The 3-bit width gives range 0..6 — exactly the 7-entry read-port set `V0..V6` of the VEX operand allocator (see [VEX operand-port binding](vex-operand-port.md)). Within the `VectorExtended` encoder this field has two real cases (Sort writes it, pure scans omit it). The proto `+0x18` slot is *also* read by the separate `VresMove` op, but `VresMove` is a `SparseCoreTecVectorResult`-slot op (oneof tag `13`) whose encoder maps `+0x18` to a *different* bundle bit; what differs across emit bodies is the meaning of the shared proto offset, not the meaning of `bit0x10c`.
 
 ### 2.1 Pure scan ops — the field is absent
 
@@ -158,23 +158,33 @@ if ( (*((_BYTE *)proto + 16) & 1) != 0 ) {       // present  +0x10 & 1
 
 For pure scans the result is **not** written back through an inline dest read-port. It is committed *out-of-line* by a separate `PopXrf` result-commit op (`EmitXrfResultOp` `@0x13a14180`), occupying its own bundle slot. The PopXrf op carries an XRF *write-group* selector — also at proto `+0x18`, but in a **different** submessage (`SparseCoreTecVectorResult`-PopXrf), so it is not the same field as the dest read-port. The inline dest read-port (this field) and the out-of-line PopXrf write-group are the two halves of the VEX result path; the PopXrf write-group encoding itself is documented on the [VEX operand-port binding](vex-operand-port.md) page.
 
-### 2.2 `VresMove` — the dest read-port is the destination vreg
+### 2.2 `VresMove` — a separate `VectorResult`-slot op, NOT `bit0x10c`
 
-`VresMove` (the "move a read-port-held value into a vreg" op, proto oneof tag `13`) routes through `EmitVectorResultMove<...VregReadPort, SparseCoreTecVectorResult>` `@0x13a4a220`:
+`VresMove` (the "move a read-port-held value into a vreg" op, proto oneof tag `13`) is the op that drains a read-port-held value into a named vreg. It does **not** write `bit0x10c`: it is a `SparseCoreTecVectorResult`-slot op, emitted by `EmitVectorResultMove<...VregReadPort, SparseCoreTecVectorResult>` `@0x13a4a220` and encoded by `EncodeSparseCoreTecVectorResultVresMove` `@0x1eb41fa0`, which lands its fields in a *different* bundle region. The emit body:
 
 ```c
 // EmitVectorResultMove<...>  @0x13a4a220
 int  dst = GetVregno(this,        a2);   // operand[0] → destination vreg
 unsigned src = GetVregno(this+16, a2);   // operand[1] → source vreg
 // ... DefaultConstruct<SparseCoreTecVectorResult_VresMove>(...) , oneof tag = 13 ...
-*(_DWORD *)(vresmove + 24) = dst;        // proto +0x18  ← dest vreg
+*(_DWORD *)(vresmove + 24) = dst;        // proto +0x18 gets dest vreg
 *(_BYTE  *)(vresmove + 16) |= 1u;        //       +0x10 & 1   present
-FindAndEmitToUnusedPort<...>(&st, a2, src, vresmove);   // src → an unused read-port
-*(_DWORD *)(vresmove + 28) = port_idx;   // proto +0x1c  ← source's allocated read-port
+FindAndEmitToUnusedPort<...>(&st, a2, src, vresmove);   // src to an unused read-port
+*(_DWORD *)(vresmove + 28) = port_idx;   // proto +0x1c gets source's allocated read-port
 *(_BYTE  *)(vresmove + 16) |= 2u;        //       +0x10 & 2   present
 ```
 
-Here `bit0x10c` (proto `+0x18`) is the *destination vreg number*, and the source's allocated read-port goes to proto `+0x1c` (present `+0x10 & 0x2`). `VresMove` is the op that drains a read-port-held value into a named vreg.
+The `VresMove` encoder maps those proto slots to its own slot's bundle bits, **not** to `bit0x10c`/`bit0x109`:
+
+```c
+// EncodeSparseCoreTecVectorResultVresMove  @0x1eb41fa0
+v13[0] = 7;             BitCopy(a1, 252, v13, 0, 3);   // VectorResult slot opcode 7 @ bit 252, 3b
+v13[0] = proto[+0x18];  BitCopy(a1, 245, v13, 0, 6);   // dest vreg     @ bit 245, 6b  (present +0x10&1)
+v13[0] = proto[+0x1c];  BitCopy(a1, 235, v13, 0, 3);   // source port   @ bit 235, 3b  (present +0x10&2)
+// ... then the V0..V6 vreg-array fields at 346/443/455/406/418/369/381 ...
+```
+
+So `VresMove` shares the proto `+0x18`/`+0x1c` *offsets* with the `VectorExtended` dest read-port, but its bundle position is bit `245` (dest vreg, 6b) and bit `235` (source port, 3b) — it is structurally a `VectorResult`-slot op, not part of the `bit0x10c` field. The only thing the two share is the proto submessage byte layout.
 
 ### 2.3 `Sort` — two 3-bit read-ports, key and value
 
@@ -188,21 +198,30 @@ v14[0] = proto[+0x1c]; BitCopy(a1, 265, v14, 0, 3);   // dest port 2      @ bit 
 // ... then the V0..V6 vreg-array fields and the mask copy (§1.2) ...
 ```
 
-The emit body `EmitVectorSort<...Sort>` `@0x13a4a3a0` fills proto `+0x18` and `+0x1c` from two `FindAndEmitToUnusedPort<Sort>` allocations (the first source's port and the second source's port). Both present bits are set by the `|= 0x203` store shown in §1.2 (`+0x10 & 0x03`). Note that for Sort the two 3-bit fields are *allocated read-port indices*, whereas for `VresMove` `bit0x10c` is a destination vreg — the same bundle bits, different meaning, selected by the op.
+The emit body `EmitVectorSort<...Sort>` `@0x13a4a3a0` fills proto `+0x18` and `+0x1c` from two `FindAndEmitToUnusedPort<Sort>` allocations (the first source's port and the second source's port). Both present bits are set by the `|= 0x203` store shown in §1.2 (`+0x10 & 0x03`). For Sort the two 3-bit fields at `bit0x10c`/`bit0x109` are *allocated read-port indices*; pure scans leave both absent (§2.1). `VresMove` reaches the same proto `+0x18`/`+0x1c` offsets but, being a `VectorResult`-slot op, emits to bundle bits `245`/`235` instead (§2.2).
 
 ---
 
 ### TABLE B — the dest read-port field `@bit0x10c` (3b) by op family
 
-| Op family | proto `+0x18` source | Extra fields | Confidence |
+TABLE B-1 — cases of the `bit0x10c` field (the `VectorExtended`-slot dest read-port):
+
+| Op family | proto `+0x18` source → `bit0x10c` | Extra fields | Confidence |
 |---|---|---|---|
 | Pure scan (`AddScan`/`MinScan`/`MaxScan`/index-scans/`Segmented*`/`DuplicateCount`/`Uniquify`) | not written — field absent; result via `PopXrf` (`EmitXrfResultOp` `@0x13a14180`) | — | CONFIRMED |
-| `VresMove` (oneof tag `13`) | operand[0] **dest vreg** (`GetVregno` `@0x13a659c0`) | source port → `+0x1c` (`bit0x15a`, present `+0x10 & 0x2`) | CONFIRMED |
 | `Sort` (asc/desc × int/float) | first source's **allocated read-port** (`FindAndEmitToUnusedPort<Sort>`) | second source's port → `+0x1c` → `bit0x109` (3b, present `+0x10 & 0x2`) | CONFIRMED |
+
+TABLE B-2 — `VresMove` shares the proto offsets but is a separate `VectorResult`-slot op (NOT `bit0x10c`):
+
+| Op | proto slot | bundle bit | width | source | Confidence |
+|---|---|---|---|---|---|
+| `VresMove` (oneof tag `13`) dest vreg | `+0x18` (present `+0x10 & 0x1`) | `245` | 6b | operand[0] (`GetVregno` `@0x13a659c0`) | CONFIRMED |
+| `VresMove` source read-port | `+0x1c` (present `+0x10 & 0x2`) | `235` | 3b | `FindAndEmitToUnusedPort<...VresMove>` | CONFIRMED |
+| `VresMove` slot opcode | — | `252` | 3b | constant `7` | CONFIRMED |
 
 | Field | Bits | proto | Present | Range | Confidence |
 |---|---|---|---|---|---|
-| Dest read-port 1 | `bit0x10c..0x10e` (3b) | `+0x18` | `+0x10 & 0x1` | 0..6 | CONFIRMED |
+| Dest read-port 1 (`VectorExtended`) | `bit0x10c..0x10e` (3b) | `+0x18` | `+0x10 & 0x1` | 0..6 | CONFIRMED |
 | Dest read-port 2 (Sort) | `bit0x109..0x10b` (3b) | `+0x1c` | `+0x10 & 0x2` | 0..6 | CONFIRMED |
 
 > **NOTE — `bit0x10c` ≠ the PopXrf write-group, even though both are at proto `+0x18`.** The dest read-port lives in the `VectorExtended` / `VectorResult` submessage and names which inline read-port carries the result for write-back. The PopXrf XRF write-group lives in the PopXrf submessage and names which XRF partition the out-of-line scan result commits to. They are distinct fields reached by distinct opcodes; do not conflate them.
@@ -283,7 +302,7 @@ MCInst (VEX scan)
   scan RESULT committed out-of-line by PopXrf (EmitXrfResultOp @0x13a14180), separate bundle slot.
 ```
 
-For `Sort`, the dest read-port (`bit0x10c`) and a second read-port (`bit0x109`) are present (key + value), and the mask sits at proto `+0x3c` (present `+0x11 & 0x2`). For `VresMove`, `bit0x10c` is the destination vreg and the source port goes to `+0x1c`. The sub-opcode field always carries the encoder's constant; the mask field always carries an M-register selector.
+For `Sort`, the dest read-port (`bit0x10c`) and a second read-port (`bit0x109`) are present (key + value), and the mask sits at proto `+0x3c` (present `+0x11 & 0x2`). `VresMove` is a separate `VectorResult`-slot op: its dest vreg goes to bundle bit `245` and its source port to bit `235` (not `bit0x10c`/`bit0x109`). The sub-opcode field always carries the encoder's constant; the mask field always carries an M-register selector.
 
 ---
 
