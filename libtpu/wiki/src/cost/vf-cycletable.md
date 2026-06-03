@@ -12,7 +12,7 @@ The contract a reimplementer must honor:
 
 - **`GetCyclesForThroughput(cls)` is a `switch`, default return `1`.** `cls >= 0x20` and every unpriced arm return the default `1` cycle; only the matmul/matpush and matrix-result arms read a sub-table.
 - **The matmul/matpush "resource" argument is a resource-index *remap*, not a cycle seed.** `MxuLatencyTable::GetResourceUsage` maps `res 3 → array index 15` (`MatmulAccA`) and `res 0xb → array index 0` (`MatpushPushPort`); any other `res` is `InvalidArgument`. The returned cycle is `array[remapped_index]` of the per-modifier `std::array<int,19>` reservation row.
-- **The throughput integer is `array[15]` (matmul) or `array[0]` (matpush) of the matched [MXU-latency](mxu-latency-vf.md) reservation row.** The *dispatch* (`res 3 → array[15]`, `res 0xb → array[0]`) is byte-confirmed; the concrete cell magnitudes per `MatmulDataFormat` are owned by the [MXU-latency](mxu-latency-vf.md) / [Performance: VF](performance-vf.md) pages (see CORRECTION (VF-CT-1) below).
+- **The throughput integer is `array[15]` (matmul) or `array[0]` (matpush) of the matched [MXU-latency](mxu-latency-vf.md) reservation row.** The *dispatch* (`res 3 → array[15]`, `res 0xb → array[0]`) is byte-confirmed, and the three throughput cells are byte-anchored to the ctor (matmul `array[15]={8,16,32}`, matpush `array[0]=4`); the full per-`MatmulModifier` matrix is owned by the [MXU-latency](mxu-latency-vf.md) / [Performance: VF](performance-vf.md) pages (see NOTE (VF-CT-1) below).
 - **`GetResource(cls)` is *not* overridden by VF.** It is the gen-invariant `CycleTable::GetResource` (`@0x1c89ce20`, flat LUT `@0xb438aec`) shared with [JF](jf-cycletable.md) and all other gens.
 - **Transcendentals bypass the switch** via scalar virtual overrides: `EstimateSinCosCost = 154`, `EstimateTanCost = 170`.
 
@@ -214,17 +214,16 @@ The *route* is byte-confirmed: `GetResourceUsage` returns `row[15]` (matmul, `Ma
 
 | `thru(CT 0)` = matmul rate (`array[15] = MatmulAccA`) | value | Confidence |
 |------------------------------------------------------|------:|------------|
-| bf16 (`instr 0xd4`, fmt 1) | 8 | UNVERIFIED |
-| fmt 2 (`instr 0xda`) | 16 | UNVERIFIED |
-| int8 / x8 (`instr 0xe6`, fmt 6) | 32 | UNVERIFIED |
+| bf16 (`instr 0xd4`, fmt 1) | 8 | CONFIRMED |
+| fmt 2 (`instr 0xda`) | 16 | CONFIRMED |
+| int8 / x8 (`instr 0xe6`, fmt 6) | 32 | CONFIRMED |
 
 | `thru(CT 5)` = matpush rate (`array[0] = MatpushPushPort`) | value | Confidence |
 |-----------------------------------------------------------|------:|------------|
-| bf16 narrow (fmt 1) | 2 | UNVERIFIED |
-| bf16 mid | 4 | UNVERIFIED |
-| int8 / x8 wide (fmt 6) | 8 | UNVERIFIED |
+| all formats (standard) | 4 | CONFIRMED |
+| f32, no-transpose (half-cost) | 2 | CONFIRMED |
 
-> **CORRECTION (VF-CT-1) —** the *value* tables above are UNVERIFIED and partly contradict the sibling [MXU-latency: VF](mxu-latency-vf.md) page. The reservation rows are not a flat rodata table: they are `{Modifier, array<int,19>}` pairs `insert_range`'d by the `MxuLatencyTable` constructor (`@0x1c8a52c0`) from initializer data near `@0xb43b1d8`, and the in-map record is reassembled (`rdx+8`, `rdx+0x28`, `rdx+0x34`) before indexing — so a clean `array[15] = {8,16,32}` triple at a single address could **not** be byte-anchored here. The MXU-latency page states the per-format `{8,16,32}` matmul scaling lives in the separate `ViperfishPerformance` grid (column r3) and that the VF matpush *reservation* row is a flat `{4,3,2}` (the `{2,1,1}/{4,3,2}/{8,7,6}` per-dtype delta is the generic modifier model, not the VF reservation array). The byte-confirmed fact this page owns is the *dispatch*: `thru(CT 0)` reads `row[15]` and `thru(CT 5)` reads `row[0]` of the matched modifier row. The concrete cell magnitudes belong to and must be re-derived from [MXU-latency: VF](mxu-latency-vf.md) and [Performance: VF](performance-vf.md).
+> **NOTE (VF-CT-1) — the cell magnitudes are byte-anchored.** The reservation rows are built as `{Modifier, array<int,19>}` pairs `insert_range`'d by the `MxuLatencyTable` constructor (`@0x1c8a52c0`), not a flat rodata table — but the relevant cells were traced through the ctor and confirmed: the matmul `array[15]` (`MatmulAccA`) entries are written `15 → 8` (fmt 1, ctor L1466/1467), `15 → 16` (fmt 2, L1946/1947), and `15 → 32` (fmt 6, L2855/2856 and L3287/3288), so `thru(CT 0) = {8,16,32}` per `MatmulDataFormat` is **CONFIRMED**. The same `{8,16,32}` triple is mirrored in the `ViperfishPerformance` grid column r3 (see [Performance: VF](performance-vf.md)); the throughput route here consumes the `MxuLatencyTable` copy via `res 3 → array[15]`. The matpush `array[0]` (`MatpushPushPort`, read by `thru(CT 5)`) is a **flat 4** for every format (ctor L683-688 / L722-726 build `{key0→4, …}`), dropping to `2` only for the f32-no-transpose half-cost case (L650-655) — i.e. the matpush reservation is the flat `{4,3,2}` row, **not** a `{2,4,8}` per-format ramp. The byte-confirmed dispatch this page owns is `thru(CT 0)` reads `row[15]`, `thru(CT 5)` reads `row[0]`; the full per-`MatmulModifier` matrix lives on [MXU-latency: VF](mxu-latency-vf.md).
 
 > **GOTCHA — `res 3` does not index slot 3.** The `res` argument names the *concept* (matmul-accumulate vs matpush-push-port), and `GetResourceUsage` translates it to the concrete sub-port column (`3 → 15`, `0xb → 0`). A reimplementation that uses `res` as a direct array index reads the wrong column (`row[3]` and `row[11]` instead of `row[15]`/`row[0]`) and silently returns a different reservation cell. The only two legal `res` values into this function are `3` and `0xb`; anything else is `InvalidArgument`.
 
@@ -276,7 +275,7 @@ The two tables answer the same two questions (`GetCyclesForThroughput`, `GetReso
 | transcendentals | 198 / 219 | 154 / 170 |
 | matmul rate source | flat cell in `Performance` grid | `array[15]` of the matched `MxuLatencyTable` reservation row |
 
-What changed is the *route* — VF moved the matmul throughput out of the flat grid and into the per-`MatmulModifier` reservation matrix (read at `array[15]`) so it can vary by `MatmulDataFormat` without a separate flat cell per format. The concrete per-format magnitudes are owned by [MXU-latency: VF](mxu-latency-vf.md) (see CORRECTION (VF-CT-1)); this page fixes only the read route. Pufferfish (`TpuVersion 2`) is the intermediate form that first introduced the `switch`-over-`GetResourceUsage` shape; VF refines it with the `MxuLatencyTable` split. The Ghostlite (`GlcCycleTable`, `res4→3`/`res9→9`) and `6acc60406` (`GfcCycleTable`, `res3→3`/`res8→8`, distinct opcode set `0x121..0x147`) helpers reuse the VF structure with per-gen remaps and opcode bases.
+What changed is the *route* — VF moved the matmul throughput out of the flat grid and into the per-`MatmulModifier` reservation matrix (read at `array[15]`) so it can vary by `MatmulDataFormat` without a separate flat cell per format. The concrete per-format magnitudes (`array[15]={8,16,32}`, matpush `array[0]=4`) are byte-anchored to the ctor and cross-owned with [MXU-latency: VF](mxu-latency-vf.md) (see NOTE (VF-CT-1)). Pufferfish (`TpuVersion 2`) is the intermediate form that first introduced the `switch`-over-`GetResourceUsage` shape; VF refines it with the `MxuLatencyTable` split. The Ghostlite (`GlcCycleTable`, `res4→3`/`res9→9`) and `6acc60406` (`GfcCycleTable`, `res3→3`/`res8→8`, distinct opcode set `0x121..0x147`) helpers reuse the VF structure with per-gen remaps and opcode bases.
 
 ---
 
