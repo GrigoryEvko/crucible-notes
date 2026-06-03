@@ -13,7 +13,7 @@ The contract a reimplementation must honor:
 - **Static pad-to-bound, never runtime-sized allocation.** `Target::ShapeWithMetadataSizeBytes(shape)` is `ShapeSizeBytesRaw(shape) + prefix` for a dynamic shape and `ShapeSizeBytesRaw(shape)` for a static one. `ShapeSizeBytesRaw` uses the static (upper-bound) extents. No code path makes a buffer's physical size a function of a runtime scalar.
 - **The metadata prefix is a compile-time constant: 1024 bytes.** `Target::DynamicShapeMetadataPrefixBytes()` returns `1024` on every TPU generation, asserted divisible by `sizeof(int32_t)` (256 int32 dim-size slots) and `<= ChunkSizeBytes()`.
 - **`DynamicPadder` is the master lowering pass; it runs *before* layout.** It sits at step 21 of the PreOptimization phase (after `DynamicDimensionSimplifier` at step 20, with `DynamicIndexSplitter` earlier at step 4 — see [hlo-pre-passes.md](hlo-pre-passes.md)). After it, only `Set/GetDimensionSize` S32 scalars and the two boundary custom-calls remain.
-- **Dimension sizes are S32 scalars threaded through the HLO graph.** Entry-parameter dynamic dims bind to another S32 entry parameter via `DynamicParameterBinding`; intra-graph the `DynamicDimensionInference` map carries each dim's size SSA value; a 38-handler forward visitor propagates them.
+- **Dimension sizes are S32 scalars threaded through the HLO graph.** Entry-parameter dynamic dims bind to another S32 entry parameter via `DynamicParameterBinding`; intra-graph the `DynamicDimensionInference` map carries each dim's size SSA value; a 37-override forward visitor propagates them.
 - **TPU rejects *unbounded* dynamism.** Only bounded-dynamic dims (a dynamic dim with a static upper bound) compile; `unbounded dynamism is not supported` is the gate.
 
 | | |
@@ -99,13 +99,13 @@ This analysis maintains `map<DynamicDimension{HloInstruction*, ShapeIndex, dim} 
 | `CopyMapping(from, to, replacement_map)` | `0x1e3982c0` |
 | `AnalyzeDynamicDimensions()` | `0x1e39b0a0` |
 
-> **NOTE — decompile cross-check on `Run` signature.** The mangled symbol at `0x1e39ad20` demangles to `Run(HloModule*, std::function<OpDynamismSupport(HloInstruction*)>, std::function<bool(HloInstruction*, OpDynamismSupport)>, ShapeCheckMode, std::function<void(HloInstruction*)> const&, absl::flat_hash_set<string_view> const&)`. The first callback is the per-op dynamism-support query, the third is the `assertion_generator`, the last is the execution-thread set. This matches the call from `DynamicPadder::RunImpl` (line ~1236) exactly. [Confidence: CONFIRMED.]
+> **NOTE — decompile cross-check on `Run` signature.** The mangled symbol at `0x1e39ad20` demangles to `Run(HloModule*, std::function<OpDynamismSupport(HloInstruction*)>, std::function<bool(HloInstruction*, DynamicDimensionInference*)>, ShapeCheckMode, std::function<void(HloInstruction*)> const&, absl::flat_hash_set<string_view> const&)`. The first callback is the per-op dynamism-support query (`OpDynamismSupport`); the second is the `custom_call_handler` (the registered per-custom-call dynamism inferer, taking the instruction and the inference object); the fourth callback is the `assertion_generator`; the final `flat_hash_set<string_view>` is the execution-thread set. This matches the call from `DynamicPadder::RunImpl` (line ~1236) exactly. [Confidence: CONFIRMED.]
 
 `Run` builds a `DynamicParameterBinding` from the entry layout, runs `DynamicDimensionInferenceVisitor` to propagate dim-size SSA values forward across every instruction, then calls `AnalyzeDynamicDimensions`.
 
-### Layer 3 — propagation: `DynamicDimensionInferenceVisitor` (38 handlers)
+### Layer 3 — propagation: `DynamicDimensionInferenceVisitor` (37 visitor overrides + 3 helpers)
 
-The forward visitor (`Run` @ `0x1e3984c0`) computes each output dim-size SSA from operand dim-sizes. Each handler receives a callback of signature `(HloInstruction* inst, ShapeIndex, long dynamic_dim, long operand_dim, HloInstruction* dynamic_size)`. Selected handlers (full set is 38; representative subset with byte anchors):
+The forward visitor (`Run` @ `0x1e3984c0`) computes each output dim-size SSA from operand dim-sizes. Each handler receives a callback of signature `(HloInstruction* inst, ShapeIndex, long dynamic_dim, long operand_dim, HloInstruction* dynamic_size)`. The binary exports **37** single-argument `Handle*(HloInstruction*)` visitor overrides plus **3** multi-argument helpers (`HandleDynamicConvolutionForward(HloInstruction*, long, long, HloInstruction*)`, `HandleDynamicConvolutionInputGrad(HloInstruction*, long, long)`, `HandleDynamicWindowSamePadding(HloInstruction*, HloInstruction*, long, long)`) invoked from `HandleCustomCall` for the three `DynamicConvolution*` custom-calls — 40 `Handle*` member functions total. Representative subset with byte anchors:
 
 | Handler | VA | Propagation rule |
 |---|---|---|
