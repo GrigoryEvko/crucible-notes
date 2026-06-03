@@ -69,7 +69,7 @@ The most common error is to index one table with the other's ordinal. `TpuVersio
 
 ### `DeviceType` — the sparse profiler axis (`1..13`)
 
-`xprof::DeviceType` is the *profiler / trace* axis. `DeviceTypeFromDeviceIdentifiers` (`0xf6993a0`) reads a captured device's 12-byte PCI `DeviceIdentifiers` tuple and assigns a `DeviceType` ordinal directly — and that ordinal set is **sparse**: it skips `1, 2, 4, 6, 9` (those values belong to non-TPU or CPU/host device kinds in the wider `xprof` enum). `DeviceTypeString` (`0xf69c7c0`) computes `index = ordinal − 1` and indexes a 13-entry name table `off_21772F00`, bounding at `ordinal − 1 > 0xC` (i.e. ordinal `1..13`). The eight real TPU silicon generations land on ordinals `{3, 5, 7, 8, 10, 11, 12, 13}`. The ordinal store is a literal `mov` in each branch of `DeviceTypeFromDeviceIdentifiers`:
+`xprof::DeviceType` is the *profiler / trace* axis. `DeviceTypeFromDeviceIdentifiers` (`0xf6993a0`) reads a captured device's 12-byte PCI `DeviceIdentifiers` tuple and assigns a `DeviceType` ordinal directly — and that ordinal set is **sparse**: the eight real TPU silicon generations land on ordinals `{3, 5, 7, 8, 10, 11, 12, 13}`, skipping `1, 2, 4, 6, 9`. The skipped values are not gaps: in the 13-entry name table `off_21772F00`, ordinal `1` is `"GPU"` and ordinals `2, 4, 6, 9` all read the generic `"Cloud TPU"` placeholder string, so the TPU silicon slots are interleaved with a GPU slot and several unassigned/fallback slots. `DeviceTypeString` (`0xf69c7c0`) computes `index = ordinal − 1` and indexes that table, bounding at `ordinal − 1 > 0xC` (i.e. ordinal `1..13`); out-of-range returns `"Cloud TPU"`. The ordinal store is a literal `mov` in each branch of `DeviceTypeFromDeviceIdentifiers`:
 
 ```c
 // xprof::tpu::DeviceTypeFromDeviceIdentifiers(DeviceIdentifiers)  // 0xf6993a0
@@ -89,7 +89,7 @@ else if IsGfc(ids):                          DeviceType = 12    // gxc::gfc, 6ac
 else: error("Unsupported device identifiers")                  // device_identifiers_utils.cc:152
 ```
 
-> **QUIRK —** on the `DeviceType` axis the two newest generations are **numerically inverted** relative to chronology: Ghostlite (older, v6e) is `13`, while `6acc60406` (newer, v7x) is `12`. This is the single fact that trips every analyst — `DeviceType` 12 < 13 does **not** imply v7x is older than v6e. The profiler's perf-counter layer gates on `DeviceType == 12` precisely because v7x is the only generation in this build that exposes named on-device counters (see [v7x Perf-Counters](../profiling/v7x-perf-counters.md)); a reimplementer who gates on `== 13` expecting "the latest chip" silences the entire v7x counter pipeline.
+> **QUIRK —** on the `DeviceType` axis the two newest generations are **numerically inverted** relative to chronology: Ghostlite (older, v6e) is `13`, while `6acc60406` (newer, v7x) is `12`. The name table itself confirms it directly — `off_21772F00` slot 11 (ordinal 12) is `"TPU v7x"` and slot 12 (ordinal 13) is `"TPU v6 Lite"`. This is the single fact that trips every analyst — `DeviceType` 12 < 13 does **not** imply v7x is older than v6e. The profiler's perf-counter layer gates on `DeviceType == 12` precisely because v7x is the only generation in this build that exposes named on-device counters (see [v7x Perf-Counters](../profiling/v7x-perf-counters.md)); a reimplementer who gates on `== 13` expecting "the latest chip" silences the entire v7x counter pipeline.
 
 > **GOTCHA —** `Puffylite` (`pxc::plc`) and `Viperlite` (`vxc::vlc`) exist as **first-class `DeviceType` ordinals** (8 and 11) but have **no `TpuVersion`** of their own — they fold into Pufferfish (`TpuVersion` 2) and Viperfish (`TpuVersion` 3) respectively. So `DeviceType → TpuVersion` is many-to-one. Translating a captured `DeviceType` to a compiler `TpuVersion` must collapse `8→2` and `11→3`; the reverse direction loses the lite/non-lite distinction (which is recovered from the `TpuChipParts` variant, not from `TpuVersion`).
 
@@ -103,14 +103,16 @@ A third enum, `TpuVersionProto`, is the protobuf wire form: `TPU_V2=1` … `TPU_
 
 ### Codec namespace nesting — family vs sub-core
 
-The codec/ISA namespaces are **two levels deep**: a family tag, then a fetch/load sub-core. A symbol search for the family tag alone (`pxc`, `vxc`, `gxc`) lands in the wrong sub-namespace half the time. The nesting, under `asic_sw::driver::deepsea::`:
+The codec/ISA namespaces are **two levels deep**: a family tag, then a sub-core — for the split families (`pxc`, `vxc`, `gxc`) that sub-core is a fetch/load pair; `jxc` is fused and instead nests engine blocks. A symbol search for the family tag alone (`pxc`, `vxc`, `gxc`) lands in the wrong sub-namespace half the time. The nesting, under `asic_sw::driver::deepsea::`:
 
 | Family | Sub-cores (nested namespaces) | Serves | Confidence |
 |---|---|---|---|
-| `jxc` | `jxc::jellyfish`, `jxc::dragonfish`, `jxc::jfc`, `jxc::dfc`, `jxc::bcs`, `jxc::brn` | Jellyfish, Dragonfish (fused, no fetch/load split) | HIGH |
+| `jxc` | `jxc::jfc` (Jellyfish core), `jxc::dfc` (dataflow), `jxc::registers`, `jxc::snap` | Jellyfish, Dragonfish (fused, no fetch/load split) | HIGH |
 | `pxc` | `pxc::pfc` (fetch), `pxc::plc` (load) | Pufferfish, Puffylite | HIGH |
 | `vxc` | `vxc::vfc` (fetch), `vxc::vlc` (load) | Viperfish, Viperlite | HIGH |
 | `gxc` | `gxc::glc` (load), `gxc::gfc` (fetch) | Ghostlite (`glc`), `6acc60406` (`gfc`) | HIGH |
+
+> **GOTCHA —** `jxc::jellyfish`, `jxc::dragonfish`, `jxc::bcs`, and `jxc::brn` are **not** namespaces. The only real nested namespaces under `jxc` are the engine blocks (`jfc`, `dfc`, `registers`, `snap`); the `bcs`/`brn` tokens are prefixes inside `*_trace_entry` type names (`bcs_internal_trace_entry`, `brn_perf1_trace_entry`), and `jellyfish`/`dragonfish` appear only as `*_performance_counters` identifiers. JXC's compiler-side ISA lives in `platforms_deepsea::jellyfish::isa`, not in any `jxc::isa`. See [Sub-Core Taxonomy](../targets/sub-core-taxonomy.md).
 
 > **QUIRK —** the `gxc` family registers its HAL into the **shared `TpuHalVxcHardwareFactory`** (vtable `0x21cabf70`), the same factory class Viperfish uses — there is no `TpuHalGxc` factory. Three internal codenames (Viperfish, Ghostlite, `6acc60406`) share one factory class and one vtable, differing only by the stored `TpuVersion` at `+8`. The per-generation HAL registration is what `google_init_module_tpu_hal_{vxc,glc,gfc}_hardware_impl` injects; the family tag in the *codec* namespace (`gxc`) and the HAL *factory* class (`Vxc`) are deliberately different — don't expect them to match.
 
