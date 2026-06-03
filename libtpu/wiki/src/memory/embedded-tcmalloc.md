@@ -26,7 +26,7 @@ For reimplementation, the orientation contract is:
 | **`google_malloc` section** | [19] @ `0x0e6373c0`, **18,162 B** — `rseq`/experiments/`MallocHook`/crash-printer |
 | **`google_malloc_bss`** | [48] @ `0x2285a180`, **20,736 B** NOBITS — shim state only (no PageMap/CFL) |
 | **`__lcxx_override` section** | [26] @ `0x213f0720`, **261 B**, AX align 32 — 4 throwing `operator new` bodies |
-| **`malloc_hook` section** | [25] @ `0x213efe80`, **2,206–2,764 B** — `mmap`/`munmap`/`sbrk`/`LowLevelAlloc` thunks |
+| **`malloc_hook` section** | [25] @ `0x213efe80`, **2,206 B** (`0x89e`) — `mmap`/`munmap`/`sbrk`/`LowLevelAlloc` thunks |
 | **`__rseq_cs` section** | [39] @ `0x224bf980`, **8,800 B** — 247 `RseqFunction_*` + 28 `CountingMutex` (shared, not tcmalloc-only) |
 | **`operator new(size_t)`** | `0x213f0720` (69 B) → PLT `malloc` `0x213f10a0` → `malloc@GLIBC_2.2.5` |
 | **jemalloc** | absent (0 `je_*`, 0 `mallctl`, 0 `MALLOC_CONF`) |
@@ -74,7 +74,7 @@ The wiring tcmalloc uses to be *optional* is the standard Abseil pattern: `tcmal
 0x224c3628  JUMP_SLOT  TCMalloc_Internal_PossiblyCold               + 0
 0x224c3698  JUMP_SLOT  TCMalloc_Internal_SetProfileSamplingInterval + 0
 0x224c36a0  JUMP_SLOT  TCMalloc_Internal_GetStats                   + 0
-            (each also has a GLOB_DAT at 0x220550xx)
+            (each also has a paired GLOB_DAT in 0x22054ff0..0x22055130)
 ```
 
 The resolution rule is binary:
