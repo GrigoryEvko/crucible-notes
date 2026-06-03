@@ -141,10 +141,11 @@ StatusOr<ResourceVector> GetHloResourcesImpl(inst, opts, fs, isFused):  // sub_1
 ```text
 RecordCyclesIfFused (@0x130cc720)            ── fusion-root kind router
   ├─ IsLoopFusion?    → RecordLoopFusionCycles      @0x130b89a0  (recurse over fused leaves)
-  ├─ IsOutputFusion?  → RecordOutputFusionCycles    @0x130b86c0  (MXU output-fusion)
-  ├─ opcode == 0x2b?  → RecordConvolutionCycles     @0x130ca6c0  (conv → Matmul/Matpush/Xlu)
-  ├─ opcode == 0x5e?  → RecordReduceWindowCycles    @0x130c94e0  (pooling → VectorLoad/AluAny/Xlu)
-  └─ (else)           → RecordHloCycles             @0x130bbfe0  (leaf per-op deposit)
+  ├─ IsConvLowerable? ── builds shared ConvCostState, then:
+  │     ├─ IsOutputFusion? → RecordOutputFusionCycles  @0x130b86c0  (MXU output-fusion)
+  │     ├─ opcode == 0x2b?  → RecordConvolutionCycles   @0x130ca6c0  (conv → Matmul/Matpush/Xlu)
+  │     └─ (else, CHECK 0x5e) → RecordReduceWindowCycles @0x130c94e0 (pooling → VectorLoad/AluAny/Xlu)
+  └─ (not conv-lowerable) → RecordHloCycles         @0x130bbfe0  (leaf per-op deposit)
 ```
 
 ### Algorithm
@@ -153,17 +154,19 @@ RecordCyclesIfFused (@0x130cc720)            ── fusion-root kind router
 Status RecordCyclesIfFused(inst, fs, window, rv, isFused, nesting):  // sub_130CC720
     if IsLoopFusion(inst):                              // line 188
         return RecordLoopFusionCycles(inst, window, rv, …, nesting+1);  // sub_130B89A0
-    if IsOutputFusion(inst):                            // line 434
-        return RecordOutputFusionCycles(inst, …, nesting+1);           // sub_130B86C0
-    if inst.opcode == 0x2b (convolution):               // line 513
-        return RecordConvolutionCycles(inst, &convCostState, rv, nesting+1);  // sub_130CA6C0
-    if inst.opcode == 0x5e (reduce-window):             // line 521; CHECK == kReduceWindow @line 526
-        return RecordReduceWindowCycles(inst, …);                      // sub_130C94E0
-    // everything else: the leaf per-op deposit
+    if IsConvLowerable(inst):                           // line 256 — gates the window arms
+        convCostState = GetConvolutionCostState(inst);  // + CalculateNestedConvolutionWindows
+        if IsOutputFusion(inst):                        // line 434
+            return RecordOutputFusionCycles(inst, &convCostState, …, nesting+1);  // sub_130B86C0
+        if inst.opcode == 0x2b (convolution):           // line 513
+            return RecordConvolutionCycles(inst, &convCostState, rv, nesting+1);  // sub_130CA6C0
+        // else: CHECK(opcode == kReduceWindow) @line 526 (cost_model.cc:6236)
+        return RecordReduceWindowCycles(inst, …);                      // sub_130C94E0 — line 536
+    // not conv-lowerable: drop internal producer edges, then the leaf deposit
     return RecordHloCycles(inst, window, rv, fs, nesting+1);           // sub_130BBFE0 — line 706
 ```
 
-The peel order is fixed and confirmed at the five call sites: loop-fusion and output-fusion are tested first (they recurse over their constituent leaves), then the two window-shaped opcodes (conv, reduce-window) that need a `ConvCostState`, then the leaf fallthrough. The `RecordReduceWindowCycles` arm guards itself with `CHECK(hlo_to_fuse->opcode() == kReduceWindow)` (`MakeCheckOpString` @line 526), so a mis-classified peel aborts rather than mis-prices.
+The peel order is fixed and confirmed at the five call sites. `IsLoopFusion` is tested first (it recurses over its constituent leaves). The remaining heavy arms — output-fusion, then conv (`0x2b`), then reduce-window (`0x5e`) — are nested inside a single `IsConvLowerable(inst)` gate (line 256): when that gate holds, the router materializes a `ConvCostState` (via `GetConvolutionCostState` / `CalculateNestedConvolutionWindows`) shared by all three window arms, dispatched in that order. Only a non-conv-lowerable, non-loop-fusion op reaches the leaf fallthrough. The reduce-window arm is the `else` of the conv test and guards itself with `CHECK(hlo_to_fuse->opcode() == kReduceWindow)` (`MakeCheckOpString` @line 526, `cost_model.cc:6236`), so a mis-classified peel aborts rather than mis-prices.
 
 > **NOTE —** the leaf `RecordHloCycles` itself `CHECK`s `!hlo->IsLoopFusion() && !hlo->IsOutputFusion()` (`cost_model.cc:6609`, `@0x130bbfe0` line 128). A fusion root must never reach the leaf — it is `RecordCyclesIfFused`'s job to peel it first. A reimplementation that calls the leaf on a fusion root trips this assertion. The peel router is the only legal path from a fusion to a deposit.
 
@@ -190,7 +193,7 @@ Before the leaf deposit of a fused `parameter`, `RecordHloCycles` walks the fusi
 
 ### Purpose
 
-`RecordHloCycles` is the leaf per-op deposit: given one HLO instruction, the bundle `Window`, the output `ResourceVector`, and a nesting depth, it deposits that op's throughput cycles into the named `Resource` slot(s) the op occupies. The op→block decision is a `switch` over the opcode byte (`*(byte*)(a2+12)`), compiled to a `0x7f`-entry self-relative jump table at `.rodata 0xae0ebbc`. The dispatch index is `idx = opcode − 3` (`add eax, 0xFFFFFFFD` at `@0x130bc0d7`), and `ja > 0x7e` routes to the default block.
+`RecordHloCycles` is the leaf per-op deposit: given one HLO instruction, the bundle `Window`, the output `ResourceVector`, and a nesting depth, it deposits that op's throughput cycles into the named `Resource` slot(s) the op occupies. The op→block decision is a `switch` over the opcode byte (`*(byte*)(a2+12)`), compiled to a `0x7f`-entry self-relative jump table at `.rodata 0xae0ebbc`. The dispatch index is `idx = opcode − 3` (`add eax, 0xFFFFFFFD` at `@0x130bc0db`), and `ja > 0x7e` routes to the default block.
 
 ### Entry Point
 
