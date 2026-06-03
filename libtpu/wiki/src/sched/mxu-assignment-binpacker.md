@@ -35,7 +35,7 @@ For reimplementation, the contract is:
 
 ## The Public Dispatcher
 
-`AssignMxusForSequenceGroup(int num_mxus, Span<unique_ptr<MxuSequence>> sequences, CycleTable const&, optional<MapView<LloInstruction*, long>>)` @ `0x10f753c0` is the entry point. `num_mxus` arrives as `arg1` — the caller ([`MxuAssigner::LatchLhs`](mrb-fifo-msr-placement.md) / `AccumulateIntoMrb`) resolves it from the `Target` MXU-count getter (vtable `+0x300`, the per-gen physical quadrant count, four on jellyfish). The dispatcher front-loads two `CHECK`s, then branches on the env flag:
+`AssignMxusForSequenceGroup(int num_mxus, Span<unique_ptr<MxuSequence>> sequences, CycleTable const&, optional<MapView<LloInstruction*, long>>)` @ `0x10f753c0` is the entry point. `num_mxus` arrives as `arg1` from the caller ([`MxuAssigner::LatchLhs`](mrb-fifo-msr-placement.md) / [`AccumulateIntoMrb`](mrb-chain-allocator.md), the latter passing it through and validating `num_mxus >= 0` with the `"num_mxus must be non-negative."` error at `mxu_accumulation.cc:1812`); it is the per-gen physical MXU-quadrant count. (UNVERIFIED: the specific `Target` MXU-count getter vtable slot and its jellyfish value of four are not pinned to a byte offset in this call chain — `num_mxus` enters `AssignMxusForSequenceGroup` as an already-resolved `int`.) The dispatcher front-loads two `CHECK`s, then branches on the env flag:
 
 ```c
 double AssignMxusForSequenceGroup(int num_mxus, MxuSequence** seqs, size_t n, ...):  // sub_10F753C0
@@ -142,14 +142,14 @@ The key is that the candidate `cand` is the makespan *if* `S` were added to MXU 
 `MxuStat::LatchLatencyChangeAfterAdding(int idx, long latch_ptr, int latch_latency, long base)` @ `0x10f7f3e0` returns the marginal busy-cycle increase of inserting the new latch/matmul into this MXU's time-sorted sequence map. It locates the insertion neighbour in the `btree<int, SequenceInfo>` (the `a3 < *v7` walk over the 18-`DWORD`/72-byte node stride), reads the neighbour's end/free/busy timestamps, and computes a clamped interval extension. The tail (decompile lines 167–177) is byte-exact:
 
 ```c
-long LatchLatencyChangeAfterAdding(int idx, long latch_ptr, int new_start, long latch_latency):  // sub_10F7F3E0
-    // locate the sorted-by-time neighbour of `new_start` in sequences_ (btree walk);
+// this = MxuStat*; a2 = latch_ptr (u8*); a3 = new_start key (int); a4 = latch_latency; a5 = start
+long MxuStat::LatchLatencyChangeAfterAdding(u8* a2, int a3, long a4, long a5):  // sub_10F7F3E0
+    // locate the sorted-by-time neighbour of key `a3` in sequences_ (btree walk);
     // CHECK(latch_latency == prev_it->second.latch_latency)   if exact key match  (line 236)
-    //   free  = neighbour.free_time     (v15)
-    //   busy  = neighbour.busy_until    (v10)
-    //   start = base / latch_latency arg (a4)
+    //   free  = neighbour slot +10  (v15)
+    //   busy  = neighbour slot  +9  (v10)
     c  = max(0, a4  - free);             // a4 − v15, clamp at 0   → v21
-    x  = max(0, busy - start);           // v10 − a5, clamp at 0   → v22
+    x  = max(0, busy - a5);              // v10 − a5, clamp at 0   → v22
     y2 = max(0, busy - free);            // v10 − v15, clamp at 0  → v23
     return c + x - y2;                   // interval extension
 ```
@@ -230,7 +230,7 @@ Six independent bf16 matmul sequences, four MXUs, each sequence base ≈ 212 cyc
 
 ## Cross-References
 
-- [MxuSequence / SequenceInfo](mxu-sequence-struct.md) — the `MxuSequence` record (latch + matmuls + matreses) the bin-packer places, and the `set_mxu` commit that records the chosen MXU id.
+- [MxuSequence / SequenceInfo](mxu-sequence-struct.md) — the `MxuSequence` record (latch + matmuls + matreses) the bin-packer places, and the `set_mrb_address_unrestricted` writes that commit the chosen placement on the balanced path.
 - [MRB Chain Allocator](mrb-chain-allocator.md) — the next pass down: turns the per-MXU sequence lists into matrix-result-buffer accumulation chains using the MXU ids this pass assigns.
 - [MRB FIFO / MSR Placement](mrb-fifo-msr-placement.md) — `MxuAssigner::LatchLhs` / `AccumulateIntoMrb`, the callers that resolve `num_mxus` from the `Target` and consume the assignment into concrete FIFO/MSR addresses.
 - [LLO Bundle Packing](llo-bundle-packing.md) — the forward bundle scheduler whose latch ordering depends on this placement.
