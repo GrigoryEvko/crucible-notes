@@ -92,12 +92,12 @@ The compiler emitted code into eight distinct sections rather than one, a hot/co
 | Section | Size | Meaning | Confidence |
 |---|---|---|---|
 | `.text` | 299.9 MiB | Main code body | CERTAIN |
-| `.text.startup` | 1.45 MiB | Static-init / constructor code (runs once) | HIGH |
-| `.text.unlikely` | 427 KiB | Cold paths (error/abort/slow) | HIGH |
-| `.text.hot` | 7.7 KiB | Profile-hot inner loops | HIGH |
-| `google_init_cold` | 24.8 KiB | Cold init for the embedded allocator | MEDIUM |
-| `google_malloc` | 18.2 KiB | Embedded malloc implementation (TCMalloc-style) | MEDIUM |
-| `malloc_hook` | 2.2 KiB | Allocation hook trampolines | MEDIUM |
+| `.text.startup` | 1.41 MiB (1,483,860 B) | Static-init / constructor code (runs once) | CERTAIN |
+| `.text.unlikely` | 417 KiB (427,113 B) | Cold paths (error/abort/slow) | CERTAIN |
+| `.text.hot` | 7.5 KiB (7,726 B) | Profile-hot inner loops | CERTAIN |
+| `google_init_cold` | 24.2 KiB (24,817 B) | Cold init for the embedded allocator | MEDIUM |
+| `google_malloc` | 17.7 KiB (18,162 B) | Embedded malloc implementation (TCMalloc-style) | MEDIUM |
+| `malloc_hook` | 2.2 KiB (2,206 B) | Allocation hook trampolines | MEDIUM |
 | `__lcxx_override` | 261 B | libc++ operator-new/delete overrides | MEDIUM |
 
 > **QUIRK —** the allocator is not a dependency loaded at runtime; it is **welded into the object** as named sections (`google_malloc`, `malloc_hook`, `google_malloc_data`, `google_malloc_bss`, `google_init_cold`). A reimplementer who assumes `libtpu.so` calls the system `malloc` will mis-model its heap behavior; the binary overrides `operator new`/`delete` via `__lcxx_override` and routes through its own arena. This is the standard fingerprint of a statically-linked Google TCMalloc.
@@ -115,11 +115,11 @@ The disassembler recovered **884,832 functions** from `libtpu.so`. Because the o
 | Total functions | 884,832 | CERTAIN |
 | Carry a real symbol name | 881,784 (99.66 %) | CERTAIN |
 | Anonymous (`sub_` only, no symbol) | 3,048 (0.34 %) | CERTAIN |
-| C++ name successfully demangled | 822,847 (93.0 %) | HIGH |
-| Thunks | 750 | HIGH |
-| Leaf functions (no callees) | 326,941 (37 %) | HIGH |
-| Median function size | 87 bytes | HIGH |
-| 95th-percentile function size | 1,214 bytes | HIGH |
+| C++ name successfully demangled | 822,847 (93.0 %) | CERTAIN |
+| Thunks | 750 | CERTAIN |
+| Leaf functions (no callees) | 326,941 (37 %) | CERTAIN |
+| Median function size | 72 bytes | HIGH |
+| 95th-percentile function size | 1,256 bytes | HIGH |
 
 The population is dominated by a handful of C++ namespaces, which is the clearest single signal of what this binary *is*:
 
@@ -135,7 +135,7 @@ The population is dominated by a handful of C++ namespaces, which is the cleares
 
 > **NOTE —** the disassembler's per-function `addr_name` field is *always* the address form (`sub_E635524`); the real symbol lives in a separate `name` field. The named/anonymous split above is computed by comparing the two: a function is "anonymous" only when its `name` collapses back to the `sub_` form. Do not read a `sub_`-prefixed name as evidence the function is unnamed — for 99.66 % of this binary there is a real mangled symbol behind it.
 
-> **CORRECTION (FOR-02) —** scratch counts of the function population floated several near-but-unequal totals (e.g. an 884,843 manifest figure). The authoritative count from the disassembler's own function sidecar is **884,832**; the small deltas are accounting differences between the manifest's expected count and the records actually materialized. Where this page needs one number, it uses 884,832.
+> **CORRECTION (FOR-02) —** two near-but-unequal totals appear across the sidecars and must not be conflated. The per-function *manifest* (`function_addresses` sidecar) and the four per-function artifact directories (`context/`, `decompiled/`, `disasm/`, `graphs/`) each carry **884,843** entries; the authoritative function-*record* count from the disassembler's own `functions` sidecar and the extraction `metadata` (`total_functions`) is **884,832**. The difference is exactly 11 — a handful of thunk/alias/data-stub entries that receive an artifact file without being booked as a full function record. Where this page cites a function *count* it uses 884,832; artifact *coverage* is 884,843. See [Methodology](../methodology.md) (METH-02) and [Deep Methodology](../appendix/methodology-deep.md) (METH-D1) for the full ledger.
 
 The named/anonymous mechanics, the namespace concentration, and how 326 K leaf functions interact with the call-graph are developed in [Per-Gen Function Dispatcher](per-gen-function-dispatcher.md) (the per-generation entry fan-out) and the population framing carried forward into [RTTI / Vtable Census](rtti-vtable-census.md).
 
@@ -149,7 +149,7 @@ Beyond the standard ELF sections, the file carries several large *capsules* — 
 |---|---|---|---|---|
 | Code body | `.text` (`0xe63c000`–`0x21217484`) | 300 MiB of x86-64 | [ELF Anatomy](elf-anatomy.md) | CERTAIN |
 | Large read-only data | `.lrodata` (108 MiB) | Constant pools past 32-bit reach | [ELF Anatomy](elf-anatomy.md) | CERTAIN |
-| Protobuf descriptor pool | `protodesc_cold` (3.4 MiB) | Serialized `FileDescriptorProto`s | [Custom Sections](custom-sections.md) | HIGH |
+| Protobuf descriptor pool | `protodesc_cold` (3.2 MiB) | Serialized `FileDescriptorProto`s | [Custom Sections](custom-sections.md) | HIGH |
 | File-wrapper TOC | `filewrapper_toc` (488 B) | Index into embedded file blobs | [Custom Sections](custom-sections.md) | MEDIUM |
 | upb extension registry | `linkarr_upb_AllExts` (1.2 KiB) | Link-array of upb extensions | [Custom Sections](custom-sections.md) | MEDIUM |
 | Restartable-sequence metadata | `__rseq_cs`, `__rseq_cs_ptr_array` | Per-CPU `rseq` critical sections | [Custom Sections](custom-sections.md) | MEDIUM |
@@ -196,7 +196,7 @@ overview (this page)  ── container shape, population, capsule routing
 
 - [ELF Anatomy](elf-anatomy.md) — the full section/segment walk; code model; the hot/cold/large split families.
 - [Two-Binary Split](two-binary-split.md) — `libtpu.so` and `sdk.so` as a pair; what each owns and how they link.
-- [Static Initialization](static-init.md) — `.preinit_array` / `.init_array` (5,792 B of pointers) and `.text.startup`; constructor ordering.
+- [Static Initialization](static-init.md) — `.preinit_array` (16 B / 2 pointers) and `.init_array` (23,200 B / 2,900 pointers) and `.text.startup`; constructor ordering.
 - [Custom Sections](custom-sections.md) — the named non-standard sections: protobuf descriptor pool, file-wrapper TOC, upb extension link-array, `rseq` metadata.
 - [Embedded-Library Atlas](embedded-library-atlas.md) — the statically-linked third-party libraries (libc++, absl, protobuf, MLIR, TensorFlow) identified from the namespace census.
 - [Dispatch-Table Taxonomy](dispatch-table-taxonomy.md) — the jump-table and dispatch-table families in `.rodata` / `.data.rel.ro` (33,016 switch constructs reported).
