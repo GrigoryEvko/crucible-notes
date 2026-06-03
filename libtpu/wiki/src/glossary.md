@@ -1,6 +1,6 @@
 # Glossary
 
-> *All names and addresses on this page apply to `libtpu.so` v0.103 from the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`). The binary is **not** stripped: every C++ symbol survives as a demangled name, so a "term is grounded" claim here means the literal string or symbol is present in the binary's name/string tables. Other builds will differ.*
+> *All names and addresses on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`; wheel/`METADATA`/`__init__` version `0.0.40`). The binary is **not** stripped: every C++ symbol survives as a demangled name, so a "term is grounded" claim here means the literal string or symbol is present in the binary's name/string tables. Other builds will differ.*
 
 ## Abstract
 
@@ -18,7 +18,7 @@ For navigation, the contract is:
 
 | | |
 |---|---|
-| **Plugin** | `libtpu.so` — Google TPU PJRT plugin, version `0.103`, ~745 MB |
+| **Plugin** | `libtpu.so` — Google TPU PJRT plugin, wheel version `0.0.40` (build-id `89edbbe81c5b328a958fe628a9f2207d`), ~745 MB |
 | **Companion** | `sdk.so` — proto/debug-event split-off; see [Two-Binary Split](forensics/two-binary-split.md) |
 | **Codec axis** | `tpu::TpuVersion` `0..5` (dense) — owns the codename binding |
 | **Profiler axis** | `xprof::DeviceType` `1..13` (sparse) — *different numbering* |
