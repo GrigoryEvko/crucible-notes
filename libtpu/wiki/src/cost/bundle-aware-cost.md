@@ -117,13 +117,13 @@ The three rules encode three hardware overlap models:
 | (B) memory | `R[9]`,`R[10]`,`R[11]`,`R[12]` | serial **sum** | input-DMA startup + input bytes + output-DMA startup + output bytes happen in sequence |
 | (C) everything else | `R[0..2]`,`R[6..8]`,`R[13..22]` | plain **max** | independent functional units (MXU pipes, XLU, vector ports, ICI links, SparseCore) overlap fully |
 
-> **GOTCHA — the MXU pipes are in the plain-`max` group.** `R[0]` (Matpush) and `R[1]` (Matmul) overlap, so back-to-back MXU gain-pushes and matmul issues in one bundle cost the max of their cycles, not the sum. A cost model that serializes MXU ops over-prices every matmul-bound bundle by a large factor — on Trillium a single bf16 matmul costs 212 cycles ([Per-Opcode Cycle Constants](per-opcode-cycle-constants.md)); summing two of them yields 424 where the hardware (and this model) charges 212. Trust the max.
+> **GOTCHA — the MXU pipes are in the plain-`max` group.** `R[0]` (Matpush) and `R[1]` (Matmul) overlap, so back-to-back MXU gain-pushes and matmul issues in one bundle cost the max of their cycles, not the sum. A cost model that serializes MXU ops over-prices every matmul-bound bundle by a large factor — on `6acc60406` a single bf16 matmul/latch costs 212 cycles ([Per-Opcode Cycle Constants](per-opcode-cycle-constants.md)); summing two of them yields 424 where the hardware (and this model) charges 212. Trust the max.
 
 > **GOTCHA — only memory transfers serialize.** The single `sum` in the whole reduction is the four `MemXfer*` terms. Everything else is `max`/blend. A reimplementer who serializes any compute lane diverges from the binary immediately.
 
 ### Worked example
 
-A bundle with: one bf16 matmul issue (deposits 212 into `R[1]` on Trillium), one matrix-result read (deposits 127 into `R[2]`), and an input DMA (deposits 30 startup into `R[9]` + 64 bandwidth into `R[10]`).
+A bundle with (all cycle integers are the `6acc60406` column of [Per-Opcode Cycle Constants](per-opcode-cycle-constants.md)): one bf16 matmul/latch issue (class `0x05`, deposits 212 into `R[1]`), one primary matrix-result read (class `0x1b`, deposits 127 into `R[2]`), and an input DMA (deposits 30 startup into `R[9]` + 64 bandwidth into `R[10]`; the DMA terms are illustrative, not byte-pinned).
 
 ```text
 R[1]=212  R[2]=127  R[9]=30  R[10]=64                  (other slots 0)
@@ -232,7 +232,7 @@ int64  cyc    = (int64)bundle;                            // vcvttsd2si
 result->cycles = cyc + compute;                           // bundle bottleneck + compute term
 ```
 
-The deposits fill the memory slots; `MaxResourceCycles` collapses the vector to the bottleneck lane; the result is `(int)max-lane + compute`. The integer conversion is the literal `vcvttsd2si rax, xmm0` immediately after the `MaxResourceCycles` call, and the add (`rax + v62`) stores into the emitter's cycle field. The same `MaxResourceCycles → (int) → + scalar` shape appears in `BaseCostModelMetricCalculator::Calculate` (`0x1304ee00`), `CostModel::GetLoopFusionOrUnfusedHloCycles` (`0x130b2bc0`), `CostModel::GetCyclesIfFused` (`0x130aba40`), `CostModel::GetOutputFusionOrConvolutionCycles` (`0x130aede0`), and `ParamInput::EstimateComputeCycles` (`0x1126ee20`) — these are the complete caller set for `MaxResourceCycles` in the binary.
+The deposits fill the memory slots; `MaxResourceCycles` collapses the vector to the bottleneck lane; the result is `(int)max-lane + compute`. The integer conversion is the literal `vcvttsd2si rax, xmm0` immediately after the `MaxResourceCycles` call, and the add (`rax + v62`) stores into the emitter's cycle field. The same `MaxResourceCycles → (int) → + scalar` shape appears in `BaseCostModelMetricCalculator::Calculate` (`0x1304ee00`), `CostModel::GetLoopFusionOrUnfusedHloCycles` (`0x130b2bc0`), `CostModel::GetCyclesIfFused` (`0x130aba40`), `CostModel::GetOutputFusionOrConvolutionCycles` (`0x130aede0`), and `ParamInput::EstimateComputeCycles` (`0x1126ee20`). The one caller that is *not* a cost emitter is the SDC sequence-checker's `MaybeInjectMxuSequences::$_3` (`0x144fc5c0`), which calls `MaxResourceCycles` to re-derive a candidate bundle's issue cost while validating injected MXU sequences — the same translation unit as the `AccumulateInstructionUsage` deposit lambda above. Those seven functions are the complete caller set for `MaxResourceCycles` in the binary.
 
 ---
 
