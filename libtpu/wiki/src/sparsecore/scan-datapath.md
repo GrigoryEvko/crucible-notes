@@ -15,7 +15,7 @@ For reimplementation, the contract is:
 - **The scan is always masked, and the mask is carried to HW, not pre-applied.** Every scan-emit arm sets `proto+0x38 = GetVectorMask(operand[1])` and `proto+0x11 |= 1` (present) unconditionally. The encoder copies `proto+0x38` to bundle bit `0x104` as a 5-bit field. There is no pre-scan `VectorSelect` masking the input — the bundle hands the hardware the M-register index and the HW gates participating lanes.
 - **The reduction is decoded from a 3-char string by XOR, not a switch on an enum (in the SC dialect).** `getReductionOp()` returns a `StringRef`; the lowering tests `len==3` then `(word0 ^ K0) | (byte2 ^ K1) == 0` with `sum`=`0x7573|0x6d`, `min`=`0x696d|0x6e`, `max`=`0x616d|0x78`. The Mosaic `tpu.scan` dialect instead carries a `ReductionKindAttr` enum (`sum=0`, `max=1`, `min=2`).
 - **The intrinsic is a 3-axis function: reduction × element-type × rank.** `{sum,min,max}` × `{i32,f32,i16/bf16}` → one of `tpu_{add,min,max}_scan{1xNi,1xNf}` / `tpu_*_half_scan2xN` / `tpu_{min,max}_scan2xN`. The `1xN`/`2xN` suffix is rank (`1xN`=rank-1 lane vector, `2xN`=rank-2 packed sublanes); `i`/`f`=int/float.
-- **`i1` (boolean) sum is the count-active path.** An `i1` input with `sum` lowers to `tpu_mprefix` (the population-count prefix) then convert-to-`i32` and `tpu_add_scan1xNi`. An `i1` input forbids a separate mask, forbids non-`sum` reductions, and requires an `i32` output (enforced in verify).
+- **`i1` (boolean) sum is the count-active path.** An `i1` input with `sum` lowers to a SINGLE `tpu_mprefix` (the population-count prefix) whose result is the `i32` count vector — `tpu_mprefix::create` builds an `i32`-vector result type and `replaceOp`s directly; there is no follow-on convert or `tpu_add_scan1xNi`. An `i1` input forbids a separate mask, forbids non-`sum` reductions, and requires an `i32` output (enforced in verify).
 - **Segmented scans bind the boundary as operand[1], a V read-port operand — not the M-register mask.** `SegmentedScanOp::build` adds `(data, segment)` in order; the lowering emits `tpu_*_seg_scan*` (`NOperands<2>`). There is no `i1`/`mprefix` segmented path.
 - **Inactive-OUTPUT lanes are a separate `VectorSelect` `VectorAlu` op** reading a mask from the M0..M15 write/select band, distinct from the scan's M0..M31 read band.
 
@@ -73,7 +73,7 @@ Every VEX scan bundle carries three predication-related fields. They are decoded
 | Field | Emitter | proto / submessage | Scope | Source |
 |---|---|---|---|---|
 | per-lane **VECTOR MASK** (bit `0x104`, 5b) | scan-emit arm (`op[1]`) → `GetVectorMask` (M0..M31) | `proto+0x38`, present `proto+0x11 \|= 1` | which lanes participate in the reduction | `ConsumeOneTecVexBundleInstruction` `0x13a15ba0` |
-| whole-op **PREDICATE** (`Predication` submessage) | `EmitPredicationToSlot` (last MCInst operand) → `GetPregno` (P0..P14) | `Predication` submessage `proto+0x20` | gates the ENTIRE instruction | `EmitPredicationToSlot` `0x13a4a160` |
+| whole-op **PREDICATE** (`Predication` submessage) | `EmitPredicationToSlot` (last MCInst operand) → `GetPregno` (P0..P13) | `Predication` submessage | gates the ENTIRE instruction | `EmitPredicationToSlot` `0x13a4a160` |
 | data **READ-PORT** (V port) | `FindAndEmitToUnusedPort` (`op[2]`) → `GetVregno` | a V read-port slot field | routes the DATA value VREG | `0x13a15ba0` per arm |
 
 > **QUIRK — the mask SELECTS a predicate register; it is not the predicate itself.** `proto+0x38` holds a 5-bit M-register *index* (`regno − 0x5f`), not a lane bitmask. The 8-byte predicate WORD that the M-register holds — `{s_start, l_start, s_end, l_end}` sub-/lane bounds, or a synthesized iota-compare — lives in the [M-Register Predicate](m-register-predicate.md) page. This page only shows that the index is carried into the bundle; the word it points at is decoded there.
@@ -129,12 +129,12 @@ function ScanOpLowering_matchAndRewrite(op):       // 0x1358ab00
     red   = op.getReductionOp()                     // StringRef, 3 chars
 
     // --- i1 (boolean) input: count-active path ---
-    if elt == i1Type:                               // 0x1358abb1  cmp r13,r14
+    if elt == i1Type:                               // cmp r13,r14 (ElementType == I1Type)
         if len(red) != 3 || (red ^ "sum") != 0:     // i1 allows ONLY sum
             return failure
-        cnt = tpu_mprefix::create(builder, i1_input)        // 0x14731a40 — population-count prefix
-        cnt = convert_to_i32_vector(cnt)
-        replaceOp(op, tpu_add_scan1xNi(cnt))                // 0x146d57c0
+        i32vec = vector<i32>                                // built up-front from operand[1] lane count
+        cnt = tpu_mprefix::create(builder, {i32vec}, i1_input)   // 0x14731a40 — population-count prefix, i32 result
+        replaceOp(op, cnt)                                  // SINGLE op: no convert, no add_scan
         return success
 
     // --- sum: (word0 ^ 0x7573) | (byte2 ^ 0x6d) == 0 ---
@@ -174,7 +174,7 @@ The XOR constants are the little-endian byte triples: `"sum"` = `s u`=`0x7573`, 
 
 | reduction | input elt | → intrinsic | create / leaf @ | emit form | Confidence |
 |---|---|---|---|---|---|
-| `sum` | `i1` (count) | `tpu_mprefix` + `tpu_add_scan1xNi` | `0x14731a40` + `0x146d57c0` | direct | CONFIRMED |
+| `sum` | `i1` (count) | `tpu_mprefix` (i32 result, replaces op) | `0x14731a40` | direct (single op) | CONFIRMED |
 | `sum` | `i32` | `tpu_add_scan1xNi` | `0x146d57c0` | direct | CONFIRMED |
 | `sum` | `f32` | `tpu_add_scan1xNf` | `0x146d4fc0` | direct | CONFIRMED |
 | `sum` | `i16`/`bf16` | `tpu_add_half_scan2xN` | `0x146d4400` | direct (GXC-gated) | CONFIRMED |
@@ -194,12 +194,12 @@ Naming: `1xN` = rank-1 lane vector; `2xN` / `half` = rank-2, two sublanes packed
 The `i1`-`sum` case is the SparseCore's population-count-prefix primitive — the count of active lanes up to each position, used for ragged-row offset computation in the embedding pipeline. It is the only place a scan op consumes a boolean vector:
 
 ```text
-i1 vector  ──► tpu_mprefix (OneOperand)  ──► i32 vector  ──► tpu_add_scan1xNi
-              (count-active prefix /                          (i32 prefix sum of the counts)
+i1 vector  ──► tpu_mprefix (OneOperand)  ──► i32 vector (the op result)
+              (count-active prefix /
                DuplicateCount primitive)
 ```
 
-`tpu_mprefix` (`0x14731a40`, trait `OneOperand`, op-name `"tpu.mprefix"`) takes the `i1` input *alone* — it has no separate mask, which is exactly why verify forbids a mask operand on `i1` inputs. The count is converted to an `i32` vector and chained into a normal `i32` add-scan. The VEX sub-opcode `tpu_mprefix` lowers to (whether it reuses `DuplicateCountInteger` or a dedicated mask-prefix encoder) is owned by [VEX](vectorextended-vex.md); LOW here.
+`tpu_mprefix` (`0x14731a40`, trait `OneOperand`, op-name `"llvm_tpu.mprefix"`) takes the `i1` input *alone* — it has no separate mask, which is exactly why verify forbids a mask operand on `i1` inputs. The lowering builds an `i32`-vector result type up-front (from the `operand[1]` lane count), constructs the single `tpu_mprefix` op against that type, and `replaceOp`s the original `ScanOp` directly — there is NO follow-on convert and NO chained `tpu_add_scan1xNi`. The `i1`-sum scan is exactly one intrinsic. The VEX sub-opcode `tpu_mprefix` lowers to (whether it reuses `DuplicateCountInteger` or a dedicated mask-prefix encoder) is owned by [VEX](vectorextended-vex.md); LOW here.
 
 ---
 
@@ -295,15 +295,16 @@ This arm is **byte-identical** in the vfc `EncodeSparseCoreTecVectorExtendedFloa
 
 ### The post-scan VectorSelect
 
-The inactive-OUTPUT-lane disposition is a *separate* `VectorAlu` op, `SparseCoreTecVectorAlu_VectorSelect`, emitted by `EmitVectorSelect` (`0x13a1e000`). It reads three things: the `then` value (the scan result, via the X port), an `else` value, and a mask register via `GetVMDestregno` (the M0..M15 select band):
+The inactive-OUTPUT-lane disposition is a *separate* `VectorAlu` op, `SparseCoreTecVectorAlu_VectorSelect`, emitted by `EmitVectorSelect` (`0x13a1e000`). It reads three things: the `then` value (the scan result, decoded by `GetOperandAndVsEncoding(op, 2)` then `GetVregno` → `proto+0x1c`), a mask register via `GetVMDestregno` (the M0..M15 select band → `proto+0x18`), and an `else` value routed through `UseVectorXPort` (the X read port → `proto+0x20`):
 
 ```c
 // EmitVectorSelect<...VectorSelect>                          (0x13a1e000)
-then_x = GetOperandAndVsEncoding(op);          // X-port = then / scan_result
-GetVregno -> proto+0x18
-mask   = GetVMDestregno(op);                   // M0..M15 select band → proto+0x1c
-else_v = GetVregno(op);                        // → proto+0x20
-proto[0x10] |= 3; proto[0x10] |= 4;            // present flags
+GetOperandAndVsEncoding(op, 2);                // X-port = then / scan_result
+then_v = GetVregno(op);                        // → proto+0x1c   (a4+28)
+mask   = GetVMDestregno(op);                   // M0..M15 select band → proto+0x18 (a4+24)
+proto[0x10] |= 3;                              // present flags for then + mask
+else_v = GetVregno(op);                        // → proto+0x20   (a4+32), via UseVectorXPort
+proto[0x10] |= 4;                              // present flag for else
 // result lane = mask[lane] ? then[lane] : else[lane]
 ```
 
@@ -384,12 +385,12 @@ The reduction enum (`sum=0`, `max=1`, `min=2`) is read from the `ReductionKindAt
 | `ConsumeOneTecVexBundleInstruction` | `0x13a15ba0` | per-arm emit; `proto+0x38 = GetVectorMask(op[1])`, `proto+0x11 \|= 1` | CONFIRMED |
 | `GetVectorMask<SparsecoreVectorMask>` | `0x13a33320` | in-scan mask read; band `[0x5f,0x7e]` = M0..M31, value `regno−0x5f` | CONFIRMED |
 | `GetVMDestregno` | `0x13a65b20` | `VectorSelect` mask select/write; band `[0x5f,0x6e]` = M0..M15 | CONFIRMED |
-| `EmitPredicationToSlot<…VectorExtended>` | `0x13a4a160` | whole-op predicate (last MCInst operand → `Predication` submessage) | CONFIRMED |
+| `EmitPredicationToSlot<…VectorExtended>` | `0x13a4a160` | whole-op predicate (last MCInst operand → `Predication` submessage); `GetPregno` band P0..P13 (`0x139f1bc0`) | CONFIRMED |
 | `EmitVectorSelect<…VectorSelect>` | `0x13a1e000` | post-scan `select(M, then, else)`; mask via `GetVMDestregno` | CONFIRMED |
 | `EncodeSparseCoreTecVectorExtendedAddScanF32` | `0x1eb32380` | encoder; `proto+0x38` → bundle bit `0x104` (5b); glc | CONFIRMED |
 | `EncodeSparseCoreTecVectorExtendedFloatAddScan` | `0x1e9b14a0` | vfc encoder; mask arm byte-identical to glc | CONFIRMED |
 | `BroadcastBoolToVector` | `0x13d9bfa0` | `getBoolAttr(value)` → `BroadcastScalarToVector` — the scan-mask producer | CONFIRMED |
-| `tpu_mprefix::create` | `0x14731a40` | `i1` population-count prefix (`OneOperand`, `"tpu.mprefix"`) | CONFIRMED |
+| `tpu_mprefix::create` | `0x14731a40` | `i1` population-count prefix (`OneOperand`, `"llvm_tpu.mprefix"`) | CONFIRMED |
 | `mlir::tpu::ScanOp::verify` | `0x14af7460` | the typing/mask/reduction contract (10 constraints) | CONFIRMED |
 
 > **NOTE — the prior write-ups cited `tpu::ScanOp::verify` at `0x14af7460` and that is correct; the SC-side `verifyInvariantsImpl` (`0x145f9640`) does NOT carry the constraint strings.** The byte-exact constraint roster (incl. the two NEW mask-shape rules) lives in the Mosaic `tpu::ScanOp::verify`. A reimplementer searching the SC `sparse_core::ScanOp::verifyInvariantsImpl` for the messages will not find them.
