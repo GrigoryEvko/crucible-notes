@@ -70,7 +70,7 @@ The mask `0xFFFFFFFFFFFFFC00` is exactly `~0x3FF`, the canonical round-down-to-1
 
 `kMinimumDmaLengthBytes` is *also* `1024`. The decompile loads the literal `1024` into the comparison operand at every issue site, so the smallest legal HBM transfer is one full alignment quantum — there is no sub-1024-byte DMA.
 
-> **NOTE —** the floor is a *byte* quantum, not a granule count. The DMA chunking arithmetic later in each issue routine divides by `a1[22]` (the per-issuer max-chunk size at issuer offset `+0x110`) to split a large transfer into ring-sized chunks; that chunk size is a separate, larger quantum and is documented with the descriptor on [../dma/intra-chip-descriptor.md](../dma/intra-chip-descriptor.md). The 1024 B floor is the *alignment* every chunk boundary inherits, not the chunk size itself.
+> **NOTE —** the floor is a *byte* quantum, not a granule count. The DMA chunking arithmetic later in each issue routine divides by `a1[22]` (the per-issuer max-chunk size at issuer offset `+0xB0`) to split a large transfer into ring-sized chunks; that chunk size is a separate, larger quantum and is documented with the descriptor on [../dma/intra-chip-descriptor.md](../dma/intra-chip-descriptor.md). The 1024 B floor is the *alignment* every chunk boundary inherits, not the chunk size itself.
 
 ---
 
@@ -126,7 +126,7 @@ The `fail` label is `RetCheckFailSlowPath` against source `learning/45eac/tpu/ru
 
 The three checks are a complete precondition for the chunking arithmetic that follows. Once `byte_offset` and `size` are both 1024-multiples and `size >= 1024`:
 
-- the **fast path** (`size <= a1[22]`, the max chunk size at issuer offset `+0x110`) enqueues a single `{offset, MaybeOwningDmaBuffer, optional<SyncFlag>}` tuple onto the issuer's `BufferedQueue` (`a1[5] + 0x100`);
+- the **fast path** (`size <= a1[22]`, the max chunk size at issuer offset `+0xB0`) enqueues a single `{offset, MaybeOwningDmaBuffer, optional<SyncFlag>}` tuple onto the issuer's `BufferedQueue` (`a1[5] + 0x100`);
 - the **slow path** splits the transfer into `ceil(size / max_chunk)` chunks under an `AsyncTaskGroup`, each chunk inheriting alignment from the aligned `byte_offset` and aligned per-chunk size, with a `slice_offset + slice_size <= base.size()` bounds `CHECK` (a fatal `LogMessageFatal` at `dma_buffer_utils.h:40`) per chunk.
 
 Because the inputs are pre-floored, every chunk boundary is automatically 1024-aligned and the per-chunk descriptor address that eventually reaches `SetHbmAddress` is guaranteed to pass the fatal mask check below. The issue-time `RetCheck`s are the *recoverable* front line; the descriptor-time `CHECK` is the *fatal* backstop.
