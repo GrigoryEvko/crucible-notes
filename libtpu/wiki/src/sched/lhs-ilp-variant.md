@@ -4,26 +4,26 @@
 
 ## Abstract
 
-`libtpu.so` ships a class literally named for an integer-linear-programming schedule — `xla::ILPMemoryScheduler` — together with a flag family named `xla_tpu_enable_ilp_latency_hiding_scheduler` and a six-field protobuf named `xla::jellyfish::IlpLatencyHidingSchedulerOptions`. A reader expecting "the ILP variant of the LatencyHidingScheduler" to be a single solver-backed replacement for the greedy list scheduler will be misled. Static analysis shows the name covers **two structurally unrelated code paths**, gated by the same flag family, and the one that actually contains an ILP formulation is **dead code** in this build.
+`libtpu.so` ships a class literally named for an integer-linear-programming schedule — `xla::ILPMemoryScheduler` — together with a flag family named `xla_tpu_enable_ilp_latency_hiding_scheduler` and a six-field protobuf named `xla::jellyfish::IlpLatencyHidingSchedulerOptions`. A reader expecting "the ILP variant of the LatencyHidingScheduler" to be a single solver-backed replacement for the greedy list scheduler will be misled. Static analysis shows the name covers **two structurally unrelated code paths**, named alike by a shared upstream options message, but wired into two different subsystems.
 
-The first path is a per-computation memory-scheduling MIP — `xla::ILPMemoryScheduler::Run` (`@0x10acd020`) delegating to the worker `ILPMemorySchedulerForComputation::Run` (`@0x10acdf00`). This is a genuine integer program: it builds an `operations_research::math_opt::Model`, declares binary placement/liveness variables and one continuous `peak_memory` variable, emits eleven linear-constraint families, minimizes `peak_memory`, and solves it through OR-Tools `math_opt::Solve` with `SolverType = CP_SAT (4)`. It is fully implemented but **unreachable**: its vtable (`@0x217fa460`) has zero code consumers and the `MemorySchedulerProto::Value` enum dispatched by `xla::GetMemorySchedulerAlgorithm` (`@0x10abd6a0`) has **no `ILP` value** — case 4 is taken by `BrkgaMemoryScheduler`.
+The first path is a per-computation memory-scheduling MIP — `xla::ILPMemoryScheduler::Run` (`@0x10acd020`) delegating to the worker `ILPMemorySchedulerForComputation::Run` (`@0x10acdf00`). This is a genuine integer program: it builds an `operations_research::math_opt::Model`, declares binary placement/liveness variables and one continuous `peak_memory` variable, emits eleven linear-constraint families, minimizes `peak_memory`, and solves it through OR-Tools `math_opt::Solve` with `SolverType = CP_SAT (4)`. It is the memory scheduler selected when the `MemorySchedulerProto::Value` enum dispatched by `xla::GetMemorySchedulerAlgorithm` (`@0x10abd6a0`) is set to `ILP (6)`: case 6 constructs the class (vptr `off_217FA470`), and the dispatcher is called from live pipeline bring-up (`RunHloScheduler`, `PostMainFusionHloOptimize`). It is an on-demand scheduler, not the default — `DEFAULT (0)` selects `DefaultMemoryScheduler` — but it is fully reachable.
 
-The second path is **live** but contains no ILP: inside the canonical scheduler bring-up `RunHloScheduler` (`@0x1096fac0`), `xla::jellyfish::EnableIlpLatencyHidingScheduler` (`@0x1d6b7e00`) selects between two async-op classifier lambdas. When enabled, the wider lambda `$_1` exposes more instruction kinds as async-overlap candidates to the **canonical** `xla::LatencyHidingScheduler` — which is the pass that runs in both cases. The "ILP-LHS" flag, as wired in 0.0.40, means "expose more async candidates," not "switch to an ILP scheduler."
+The other path drives the latency-hiding scheduler and contains no ILP: inside the canonical scheduler bring-up `RunHloScheduler` (`@0x1096fac0`), `xla::jellyfish::EnableIlpLatencyHidingScheduler` (`@0x1d6b7e00`) selects between two async-op classifier lambdas. When enabled, the wider lambda `$_1` exposes more instruction kinds as async-overlap candidates to the **canonical** `xla::LatencyHidingScheduler` — which is the pass that runs in both cases. The "ILP-LHS" flag, as wired in 0.0.40, means "expose more async candidates," not "switch to an ILP scheduler." This flag is independent of the `MemorySchedulerProto::Value::ILP` enum that selects the memory-scheduling MIP: the two share the `IlpLatencyHidingSchedulerOptions` message name but are not the same switch.
 
 For reimplementation, the contract is:
 
 - The `xla::ILPMemoryScheduler` object layout (112 bytes) and its hard-coded `≤ 8 HloValues` fallback to `xla::BacktrackScheduler`, gated additionally by the `use_backtrack_fallback` flag at object offset +104.
 - The full ILP model: three binary variable families (`I_`, `Vs_`, `Ve_`) plus continuous `peak_memory`, eleven `AddLinearConstraint` families, the single-term `min peak_memory` objective, and the CP-SAT solve with default (unbounded) `SolveParameters`.
-- The dispatcher gap: `GetMemorySchedulerAlgorithm` has no `ILP` case, so the MIP path is constructed nowhere.
-- The `EnableIlpLatencyHidingScheduler` gate inside `RunHloScheduler` and the `$_1` vs `$_2` classifier semantics.
+- The dispatcher wiring: `GetMemorySchedulerAlgorithm` constructs `ILPMemoryScheduler` at case `ILP (6)` of the `MemorySchedulerProto::Value` switch; the MIP runs only when the compilation environment selects that enum value.
+- The `EnableIlpLatencyHidingScheduler` gate inside `RunHloScheduler` and the `$_1` vs `$_2` classifier semantics — a separate switch that does not touch the MIP.
 - The `IlpLatencyHidingSchedulerOptions` proto: which of its six fields is read (one) and which five are inert.
 
 | | |
 |---|---|
 | **MIP outer Run** | `xla::ILPMemoryScheduler::Run(HloComputation*, ...)` @ `0x10acd020` |
 | **MIP worker Run** | `(anon)::ILPMemorySchedulerForComputation::Run` @ `0x10acdf00` |
-| **MIP vtable / consumers** | `0x217fa460` — relocation only, **zero** code references |
-| **Dispatcher** | `xla::GetMemorySchedulerAlgorithm` @ `0x10abd6a0` — no `ILP` enum case |
+| **MIP vtable** | `0x217fa460` (vptr `off_217FA470`), typeinfo `0x217fa490` — one consumer: dispatcher case 6 |
+| **Dispatcher** | `xla::GetMemorySchedulerAlgorithm` @ `0x10abd6a0` — case `ILP (6)` builds the MIP |
 | **Live gate** | `xla::jellyfish::EnableIlpLatencyHidingScheduler` @ `0x1d6b7e00` |
 | **Gate caller** | `(anon)::RunHloScheduler` @ `0x1096fac0` (gate at line 1084) |
 | **Async classifiers** | `$_1` (ILP-on) @ `0x10977140`, `$_2` (regular) @ `0x10977420` |
@@ -34,34 +34,36 @@ For reimplementation, the contract is:
 
 ## The Two Paths Behind One Name
 
-The flag family `xla_tpu_enable_ilp_latency_hiding_scheduler` does not select a scheduler. Tracing every reference to the symbols carrying the string `ILP` and `IlpLatencyHiding` lands on two disjoint subsystems:
+The flag family `xla_tpu_enable_ilp_latency_hiding_scheduler` does not select a scheduler. Tracing every reference to the symbols carrying the string `ILP` and `IlpLatencyHiding` lands on two disjoint subsystems, reached by two independent switches:
 
 ```text
-xla_tpu_enable_ilp_latency_hiding_scheduler  (+ IlpLatencyHidingSchedulerOptions)
+two independent "ILP" switches
    │
-   ├── (A) LIVE  : async-op classifier switch in canonical LHS
+   ├── (A) async-op classifier switch in canonical LHS
+   │       flag xla_tpu_enable_ilp_latency_hiding_scheduler / proto +48
    │       EnableIlpLatencyHidingScheduler(env) @0x1d6b7e00
    │          └─ RunHloScheduler @0x1096fac0  →  picks lambda $_1 vs $_2
    │                └─ AddPass<xla::LatencyHidingScheduler>   (canonical, unchanged)
    │
-   └── (B) DEAD  : per-computation memory-scheduling MIP
-           xla::ILPMemoryScheduler::Run @0x10acd020
-              └─ ILPMemorySchedulerForComputation::Run @0x10acdf00
-                    └─ math_opt::Solve(..., CP_SAT, ...) @0x10af9d20
-           reached only via MemorySchedulerProto::Value::ILP  — which does NOT exist
+   └── (B) per-computation memory-scheduling MIP
+           MemorySchedulerProto::Value::ILP (6)   ← env field at +268
+           GetMemorySchedulerAlgorithm @0x10abd6a0  case 6 → constructs ILPMemoryScheduler
+              └─ xla::ILPMemoryScheduler::Run @0x10acd020
+                    └─ ILPMemorySchedulerForComputation::Run @0x10acdf00
+                          └─ math_opt::Solve(..., CP_SAT, ...) @0x10af9d20
 ```
 
-The two paths share no state, no cost model, and no entry point. Path (B) is the only one that contains an integer program; path (A) is the only one that runs. Naming both "ILP latency-hiding scheduler" is a build-time artifact of the upstream source: the proto field that switches path (A) lives in the same options message as the (inert) knobs that would tune path (B).
+The two paths share no state, no cost model, and no entry point. Path (B) is the only one that contains an integer program; path (A) widens the async surface fed to the greedy LHS. Both are reachable, but by *different* knobs: path (A) by the `enable_ilp_latency_hiding_scheduler` flag/proto bool, path (B) by the `MemorySchedulerProto::Value` enum at env offset +268. Naming both "ILP" is a build-time artifact of the upstream source: the proto field that switches path (A) lives in the same options message as the (inert-in-this-build) knobs that would tune path (B).
 
-> **GOTCHA —** the `IlpLatencyHidingSchedulerOptions` proto is a single message whose *only* live consumer is path (A)'s classifier switch. Five of its six fields (`max_solver_deterministic_time`, `computation_size_threshold`, `use_ilp_schedule_sequence`, `also_minimize_total_lifetime`, `min_compute_latency`) describe path (B)'s solver, but path (B) never reads them — and path (B) is itself unreachable. A reimplementer wiring the options proto to a CP-SAT solver would reproduce nothing the binary actually executes.
+> **GOTCHA —** the `IlpLatencyHidingSchedulerOptions` proto is a single message whose *only* live consumer is path (A)'s classifier switch (the bool at +48). Five of its six fields (`max_solver_deterministic_time`, `computation_size_threshold`, `use_ilp_schedule_sequence`, `also_minimize_total_lifetime`, `min_compute_latency`) describe path (B)'s solver, but path (B) reads none of them — it takes its `AliasInfo` and size function from the `GetMemorySchedulerAlgorithm` call args, not from this proto. A reimplementer wiring this options proto to the CP-SAT solver would reproduce nothing the binary connects: the MIP is selected by the `MemorySchedulerProto::Value` enum, not by these fields.
 
 ---
 
 ## Path (B): the `ILPMemoryScheduler` MIP
 
-### Class hierarchy and dispatcher gap
+### Class hierarchy and dispatcher case
 
-`xla::ILPMemoryScheduler` is a subclass of `xla::ComputationSchedulerAlgorithm`, the same base shared by every memory scheduler. Its deleting destructor (`@0x10ad6900`) resets the base vptr to the `ComputationSchedulerAlgorithm` vtable, confirming the inheritance. The base is selected by an enum dispatch in `xla::GetMemorySchedulerAlgorithm` (`@0x10abd6a0`), which switches on the `MemorySchedulerProto::Value` stored at `env + 268`:
+`xla::ILPMemoryScheduler` is a subclass of `xla::ComputationSchedulerAlgorithm`, the same base shared by every memory scheduler. Its deleting destructor (`@0x10ad6900`) resets the base vptr to the `ComputationSchedulerAlgorithm` vtable (`off_21CF7F08`) and frees 112 bytes, confirming the inheritance and object size. The concrete subclass is selected by an enum dispatch in `xla::GetMemorySchedulerAlgorithm` (`@0x10abd6a0`), which switches on the `MemorySchedulerProto::Value` stored at `env + 268`:
 
 ```c
 // sub_10ABD6A0 — verbatim switch structure
@@ -70,12 +72,12 @@ switch ( *(_DWORD *)(a1 + 268) ) {
   case 1: ...  // LIST          → xla::ListMemoryScheduler
   case 2: ...  // DFS           → xla::DFSMemoryScheduler
   case 3: ...  // POST_ORDER    → xla::PostOrderScheduler
-  case 4: ...  // BRKGA         → xla::BrkgaMemoryScheduler   (vptr off_217FA2C0)
-  case 5: ...  // BACKTRACKING  → xla::BFScheduler
-  case 6: ...  // RandomOrderScheduler (no proto string)
-  case 7: ...  // BacktrackMemoryScheduler
+  case 4: ...  // BRKGA         → xla::BrkgaMemoryScheduler    (vptr off_217FA2C0)
+  case 5: ...  // BFS           → xla::BFScheduler
+  case 6: ...  // ILP           → xla::ILPMemoryScheduler      (vptr off_217FA470)
+  case 7: ...  // BACKTRACKING  → xla::BacktrackMemoryScheduler
   case 8: ...  // BRUTE_FORCE   → xla::BruteForceMemoryScheduler
-  case 9: ...  // LOCAL_ORDER   → xla::LocalOrderScheduler
+  case 9: ...  // LOCAL_ORDER   → xla::LocalOrderScheduler (+ inner RandomOrderScheduler)
   default:
     LogMessage("hlo_scheduling_selector.cc", 62);
     CopyToEncodedBuffer("Unexpected memory scheduler: ", 29);
@@ -83,11 +85,11 @@ switch ( *(_DWORD *)(a1 + 268) ) {
 }
 ```
 
-There are cases `0..9`; there is no case that constructs `xla::ILPMemoryScheduler`. The default branch logs *"Unexpected memory scheduler: "* at `hlo_scheduling_selector.cc:62` and falls back to `DefaultMemoryScheduler`.
+The enum names and numeric values are byte-recovered from the embedded proto descriptor (`MemorySchedulerProto.Value`): `DEFAULT=0, LIST=1, DFS=2, POST_ORDER=3, BRKGA=4, BFS=5, ILP=6, BACKTRACKING=7, BRUTE_FORCE=8, LOCAL_ORDER=9`. **Case 6 is `ILP` and constructs `xla::ILPMemoryScheduler`**: it allocates 112 bytes, fills the shared `ComputationSchedulerAlgorithm` layout, then sets the final vptr to `off_217FA470` (the ILP vtable's first virtual slot, `vtable + 0x10`) and the bool at +104 to `1`. The default branch logs *"Unexpected memory scheduler: "* at `hlo_scheduling_selector.cc:62` and falls back to `DefaultMemoryScheduler`.
 
-> **NOTE —** case 4 (`BRKGA`) builds a 112-byte object with the **identical layout** to `ILPMemoryScheduler` — base vptr `off_21CF7F08`, `AliasInfo*` at +8, the size-function `AnyInvocable` at +16/+64, an empty post-process `std::function` hook at +88/+96, and a bool at +104 — then patches the final vptr to `off_217FA2C0`. The two schedulers are siblings sharing one storage shape; only the vptr and the dispatcher wiring differ. The `ILP` scheduler simply has no slot to be built from.
+> **NOTE —** every case `1..8` builds a 112-byte object with the **identical layout** — base vptr `off_21CF7F08`, `AliasInfo*` at +8, the size-function `AnyInvocable` at +16/+64, an empty post-process `std::function` hook at +88/+96, and a bool at +104 — then patches the final vptr to the subclass vtable. `BRKGA` (case 4) patches to `off_217FA2C0`; `ILP` (case 6) patches to `off_217FA470`. The schedulers are siblings sharing one storage shape; only the vptr and the +104 bool value differ.
 
-A file-wide search for the three absolute addresses of the `ILPMemoryScheduler` vtable region (`0x217fa460` vptr, `0x217fa468` typeinfo, `0x217fa470` first virtual slot) finds **one occurrence each — the relocation entry only, no code reference**. The class is constructed nowhere in this build.
+> **CORRECTION (ILP-1) —** an earlier draft of this page claimed `GetMemorySchedulerAlgorithm` had no `ILP` enum case, that the `ILPMemoryScheduler` vtable had zero code consumers, and that the MIP was dead code. Decompilation of `sub_10ABD6A0` shows case 6 (`MemorySchedulerProto::Value::ILP`) constructs the class and stores `off_217FA470`; the proto descriptor assigns `ILP = 6`; and the dispatcher is called from live bring-up (`RunHloScheduler @0x1096fac0`, `PostMainFusionHloOptimize @0x10966560`). The MIP is an on-demand scheduler, fully reachable, not dead code. The earlier draft also mis-mapped cases 5/6/7/9.
 
 ### Object layout and the hard fallback
 
@@ -102,7 +104,7 @@ xla::ILPMemoryScheduler::Run(HloComputation* comp,
 
 | Offset | Field (inferred) | Confidence |
 |-------:|------------------|------------|
-| 0 | vptr → `ILPMemoryScheduler` vtable (`0x217fa460`) | CERTAIN |
+| 0 | vptr → `ILPMemoryScheduler` vtable first slot (`off_217FA470`, vtable base `0x217fa460`) | CERTAIN |
 | 8 | `AliasInfo const*` | HIGH |
 | 16 / 64 | size-function `AnyInvocable<int64_t(BufferValue const&)>` (RAII storage + live callable) | HIGH |
 | 48 | bool — alive marker for the inlined `AnyInvocable` | MEDIUM |
@@ -352,14 +354,14 @@ The five inert fields appear only in generated reflection code (`_table_` `@0x21
 
 ## When Does It Replace the Greedy List Scheduler?
 
-Direct answer for the reimplementer: in `libtpu-0.0.40`, **never as an ILP scheduler**.
+Direct answer for the reimplementer: in `libtpu-0.0.40`, the MIP replaces the greedy memory scheduler **only when the compilation environment sets `MemorySchedulerProto::Value::ILP (6)`** — it is opt-in, not the default.
 
-- The MIP path (B) would replace the greedy memory scheduler only if `MemorySchedulerProto::Value::ILP` were dispatched by `GetMemorySchedulerAlgorithm`. That enum value does not exist; the class is constructed nowhere; its vtable has zero consumers. The greedy `BacktrackScheduler` is reachable from path (B) only as the `≤ 8 HloValues` fallback, and path (B) is itself unreachable.
-- The live path (A) does **not** replace the list scheduler at all. It keeps the canonical `xla::LatencyHidingScheduler` pass and only widens the async-candidate set fed to it. The greedy `DefaultSchedulerCore` walk is unchanged; only its input changes.
+- The MIP path (B) replaces the greedy memory scheduler when `GetMemorySchedulerAlgorithm` dispatches case 6. The default is `DEFAULT (0)` → `DefaultMemoryScheduler`, so an unconfigured build never runs the MIP. The greedy `BacktrackScheduler` is still reachable from path (B), but only as the `≤ 8 HloValues` fallback inside the ILP scheduler's own `Run`.
+- The live path (A) — the `enable_ilp_latency_hiding_scheduler` flag — does **not** replace the list scheduler at all. It keeps the canonical `xla::LatencyHidingScheduler` pass and only widens the async-candidate set fed to it. The greedy `DefaultSchedulerCore` walk is unchanged; only its input changes. Path (A) is orthogonal to the path (B) enum selection.
 
-The MIP code is preserved verbatim in the binary — `Model`, eleven constraints, `min peak_memory`, CP-SAT solve — ready to be re-wired the moment an `ILP` enum value is added to the dispatcher. Until then it is dead weight that documents Google's intended ILP memory scheduler without ever running it.
+The MIP is a complete, reachable scheduler — `Model`, eleven constraints, `min peak_memory`, CP-SAT solve — selected by one enum value. It is not the default and was not observed in a default pipeline run, but it is wired into the dispatcher and constructed by case 6.
 
-> **NOTE —** `xla::ILPMemoryScheduler` is the only memory-scheduling MIP in `libtpu.so` and one of only three OR-Tools `math_opt::Solve` consumers (the others being auto-sharding's `FormulateAndSolveMIPFromProblem`, which is live, and the MSA ILP pass, which is also unreachable). The single scheduling-related solver call reachable from the standard compilation pipeline is the auto-sharding solver, not this one.
+> **NOTE —** `xla::ILPMemoryScheduler` is the only memory-scheduling MIP in `libtpu.so` and one of the OR-Tools `math_opt::Solve` consumers (alongside auto-sharding's `FormulateAndSolveMIPFromProblem` and the MSA ILP pass). Among memory schedulers it is the lone solver-backed option; the greedy `DefaultMemoryScheduler` is the default and the path most compilations take.
 
 ---
 
@@ -370,8 +372,8 @@ The MIP code is preserved verbatim in the binary — `Model`, eleven constraints
 | `xla::ILPMemoryScheduler::Run` | `0x10acd020` | outer Run: layout, `≤8` fallback, model bootstrap | CERTAIN |
 | `(anon)::ILPMemorySchedulerForComputation::Run` | `0x10acdf00` | worker: variables, 11 constraints, objective, solve | CERTAIN |
 | `xla::ILPMemoryScheduler::~ILPMemoryScheduler` | `0x10ad6900` | deleting dtor; resets base vptr | HIGH |
-| vtable `xla::ILPMemoryScheduler` | `0x217fa460` | relocation only; **zero** code consumers | CERTAIN |
-| `xla::GetMemorySchedulerAlgorithm` | `0x10abd6a0` | enum dispatch; **no `ILP` case** | CERTAIN |
+| vtable `xla::ILPMemoryScheduler` | `0x217fa460` | vptr `off_217FA470`, typeinfo `0x217fa490`; one consumer (dispatcher case 6) | CERTAIN |
+| `xla::GetMemorySchedulerAlgorithm` | `0x10abd6a0` | enum dispatch; case `ILP (6)` builds the MIP | CERTAIN |
 | `xla::jellyfish::EnableIlpLatencyHidingScheduler` | `0x1d6b7e00` | live gate; reads proto +48 then flag | CERTAIN |
 | `xla::jellyfish::GetIlpLatencyHidingSchedulerOptions` | `0x1d6b7e60` | options accessor | HIGH |
 | `(anon)::RunHloScheduler` | `0x1096fac0` | gate caller; gate at line 1084 | CERTAIN |
