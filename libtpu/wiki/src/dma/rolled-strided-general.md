@@ -19,9 +19,9 @@ For reimplementation, the contract is:
 
 | | |
 |---|---|
-| **Rolled emitter** | `mlir::tpu::LowerPassBase::issueRolledTransfer` @ `0x13516ca0` (`0x1620` B) |
-| **Strided emitter** | `mlir::tpu::LowerMemrefToMlo::issueStridedTransfer` @ `0x1350cb60` (`0x37e0` B) |
-| **General emitter** | `mlir::tpu::(anonymous namespace)::issueGeneralDma` @ `0x1350b3a0` (`0x1700` B) |
+| **Rolled emitter** | `mlir::tpu::LowerPassBase::issueRolledTransfer` @ `0x13516ca0` (`0x1614` B) |
+| **Strided emitter** | `mlir::tpu::LowerMemrefToMlo::issueStridedTransfer` @ `0x1350cb60` (`0x37cd` B) |
+| **General emitter** | `mlir::tpu::(anonymous namespace)::issueGeneralDma` @ `0x1350b3a0` (`0x16ff` B) |
 | **Source files** | `lower_pass_base.cc` (rolled), `lower_memref_to_mlo.cc` (strided/general) |
 | **Per-tile callback target** | `lowerEnqueueDma::$_0` policy-func `0x13516720` → `issueStridedTransfer` |
 | **Six emitted ops** | `DmaSimpleStart` `0x6`, `DmaSingleStridedStart` `0x7`, `GeneralDma` `0x8`, `LinearStream` `0x3b`, `StridedStream` `0x3a`, + 2 error cells |
@@ -40,7 +40,7 @@ For reimplementation, the contract is:
 
 ```text
 issueRetiledTransfer (0x13519480)             ── tile-grid driver
-  └─ issueRolledTransfer (0x13516ca0, 0x1620 B) ── coalesce + roll
+  └─ issueRolledTransfer (0x13516ca0, 0x1614 B) ── coalesce + roll
        ├─ $_0 (0x135182c0)                     ── per-axis tile-stride product table
        ├─ scf::ForOp::create (0x17866d60)      ── the rolled loop (NULL body builder)
        ├─ $_1 (0x13518480)                     ── arith.constant n : i32
@@ -148,7 +148,7 @@ function coalesceStridingDims(bases, srcStride, dstStride):
             N -= 1                                       // dec all three counts
 ```
 
-A pair is collapsed iff **either** the inner dimension's tile-count is the constant `1` (COND i — always foldable, skips the stride check) **or** the outer base is a constant int and the outer stride equals the inner stride scaled by the outer extent, on *both* sides (COND ii — true row-major contiguity). If neither holds the pair is left intact and the dimension becomes a residual loop/stride dimension. When the VLOG path cannot fold a stride it logs `"Attempted to combine non-constant stride:"` (`@0xa27e800` family) and skips.
+A pair is collapsed iff **either** the inner dimension's tile-count is the constant `1` (COND i — always foldable, skips the stride check) **or** the outer base is a constant int and the outer stride equals the inner stride scaled by the outer extent, on *both* sides (COND ii — true row-major contiguity). If neither holds the pair is left intact and the dimension becomes a residual loop/stride dimension. When the VLOG path cannot fold a stride it logs `"Attempted to combine non-constant stride: "` (`@0xa27e861`) and skips.
 
 | Predicate step | Test (@VA) | Meaning | Confidence |
 |---|---|---|---|
@@ -174,7 +174,7 @@ A pair is collapsed iff **either** the inner dimension's tile-count is the const
 
 ```text
 lowerEnqueueDma::$_0  (policy-func 0x13516720)        ── std::function callback target
-  └─ issueStridedTransfer (0x1350cb60, 0x37e0 B)      ── per-tile emitter
+  └─ issueStridedTransfer (0x1350cb60, 0x37cd B)      ── per-tile emitter
        ├─ DmaSimpleStartOp::create        (0x145b9740, opcode 0x6)
        ├─ DmaSingleStridedStartOp::create (0x145bcd20, opcode 0x7)
        ├─ issueGeneralDma                 (0x1350b3a0, → GeneralDma 0x8)   [§5]
@@ -221,7 +221,7 @@ function issueStridedTransfer(b, op, src, dst, p /*DmaParameters&*/,
         else:      return op.emitOpError("Streams support up to 1 level of striding. Got %d levels of …")  // @0xa092a49
 
       default:
-        return op.emitOpError("Unsupported transfer kind: %d.")   // @0x872e1dd
+        return op.emitOpError("Unsupported transfer kind: %d")   // @0x872e1dd
 ```
 
 ### The form-selection grid
@@ -231,7 +231,7 @@ function issueStridedTransfer(b, op, src, dst, p /*DmaParameters&*/,
 | 0 (contiguous) | `DmaSimpleStart` `0x6` | `LinearStream` `0x3b` |
 | 1 (one stride level) | `DmaSingleStridedStart` `0x7` | `StridedStream` `0x3a` |
 | >1 (multi-stride) | `issueGeneralDma` → `GeneralDma` `0x8` | `emitOpError` (≤1 level only) |
-| (else `TransferKind`) | `emitOpError "Unsupported transfer kind: %d."` | (same) |
+| (else `TransferKind`) | `emitOpError "Unsupported transfer kind: %d"` | (same) |
 
 > **GOTCHA —** kStream tops out at one stride level. The decompile carries **two** distinct "Streams support up to 1 level of striding" diagnostics — one keyed on *source* striding (`src_byte_strides.size() <= 1`, `lower_memref_to_mlo.cc:1189`) and one on *steps per stride* (`:1193`), plus the separate gather/scatter gates. A reimplementation that emits a `StridedStream` for any `n >= 1` will mis-encode any 2+-level stride that a stream path receives; only kDma routes `n > 1` to the `GeneralDma` form.
 
@@ -296,7 +296,7 @@ The `dst_opcode` string-attr → 2-bit code mapping (`write_4b` / `read_and_add`
 
 ```text
 issueStridedTransfer (0x1350cb60)             ── kDma, src_byte_strides.size() > 1
-  └─ issueGeneralDma (0x1350b3a0, 0x1700 B)   ── GeneralDma assembler
+  └─ issueGeneralDma (0x1350b3a0, 0x16ff B)   ── GeneralDma assembler
        ├─ lowering_util::GetRemoteMemBase (0x13d88660)   ── remote target base
        ├─ AllocateAtOffsetOp::create      (0x145a5aa0)   ── local sflag memref
        ├─ TpuChipConfig::Megacore         (0x20afca00)   ── topology gate
