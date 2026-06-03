@@ -398,12 +398,12 @@ Byte-exact from the per-`Target` vtable slots. `NumVexSlots()` is the per-gen `v
 | Target (gen) | `NumVexSlots()` | `SupportsVectorXpose(mode)` | Confidence |
 |---|---|---|---|
 | `JellyfishTarget` (v3) | 1 (`return 1`) | `mode == 0` (B32 only) | CONFIRMED |
-| `PufferfishTarget` (v4) | 2 | `mode == 2` (form) | NumVexSlots CONFIRMED; mask LOW |
+| `PufferfishTarget` (v4) | 2 | `mode != 2` (all except Compressed B8) | CONFIRMED |
 | `GhostliteTarget` (v6e) | 2 | `mode < 3` (B32 / Compressed B16 / B8) | CONFIRMED |
-| `ViperfishTarget` (v5p) | 2 | `mode == 2` (form) | NumVexSlots CONFIRMED; mask LOW |
+| `ViperfishTarget` (v5p) | 2 | `mode != 2` (all except Compressed B8) | CONFIRMED |
 | `Target` (base) | `LogFatal` | abstract | CONFIRMED |
 
-> The PF/VF `SupportsVectorXpose` bodies are `cmp esi, 2; ret` forms that return comparison flags rather than a clean bool (likely an ICF-folded thunk), so the exact PF/VF mode mask is read as `mode == 2` semantically but tagged LOW.
+> **CORRECTION (XPOSE-MASK) —** The PF/VF `SupportsVectorXpose` bodies (`0x1d4940a0` / `0x1d49a000`) are `return a2 != 2;` — they accept *every* `VxposeMode` **except** mode 2 (Compressed B8), not "`mode == 2`" as an earlier draft inferred from the `cmp esi, 2; ret` form. Confirmed byte-exact from the decompiled bodies; see [Transpose Reservation Latency](../cost/xpose-reservation-latency.md) for the `VxposeMode` ordinal roster.
 
 ---
 
