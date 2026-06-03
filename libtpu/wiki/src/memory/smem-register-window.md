@@ -23,7 +23,7 @@ For reimplementation, the contract is:
 | **CBREG (register that holds a memory window)** | banks `SC_{SCS,TAC,TEC}_CBREGS_{BASE,OFFSET,SIZE}`; 16/sequencer; detail → [cbreg.md](../sparsecore/cbreg.md) |
 | **Pipeline OperandWindow (memory sub-tile)** | `xla::jellyfish::SetWindowParams(…OperandWindow&, Shape const&, mlir::MemRefType, …)` @ `0x112658a0`; space tag stored at OperandWindow `+0x4C1` |
 | **OperandWindow space tags** | `0x3` = `kVmem`, `0x5` = `kSmem`, `0xD` = HOST (read from `SetWindowParams`) |
-| **Rotating PREDICATE window (true reg window)** | banks `SC_SCS_ROTATING_PREGS`, `SC_TEC_ROTATING_PREGS`; backend gate `TPUGfcSubtarget::hasRotatingPredicates()` @ `0x13c62c20` = `1` (Trillium-only) |
+| **Rotating PREDICATE window (true reg window)** | banks `SC_SCS_ROTATING_PREGS`, `SC_TEC_ROTATING_PREGS`; backend gate `TPUGfcSubtarget::hasRotatingPredicates()` @ `0x13c62c20` = `1` (`6acc60406`-only) |
 | **SREG overflow handling** | software spill to reserved SMEM (LSRA-v2); **no** hardware window, **no** overflow trap |
 | **Negative search** | 0 hits: `SmemRegisterWindow` / `SregWindow` / `RegisterWindow` / `WindowBase` / `window_base` / `reg_window` / `SmemSpillRegister`; 0 TPU hits: `window_overflow` / `window_underflow` / `register_window_trap` |
 | **Confidence** | CONFIRMED (byte-anchored) unless a row or callout says otherwise |
@@ -43,8 +43,10 @@ The SPU scalar register file is flat. The encoder that turns a `ScalarYEncoding`
 ```c
 // EncodingToScalarRegister @ 0x1e871e40 (decompiled, condensed)
 if ( a2 > 0x1F )                 // index >= 32 is illegal
-    LogFatal(/* "scalar register out of range" */);
-return /* flat index a2 */;
+    return InvalidArgument(      // absl::Status, not a trap; proto_utils.cc:917
+        "Input is not a valid register encoding. "
+        "Input must be in the range [%d, %d]", 0, 31);
+return /* flat index a2 */;       // status OK, payload = flat index a2
 ```
 
 There are exactly 32 architectural SREGs, addressed by a 5-bit field, with no window-base register added to the index and no bank selector multiplying the name space. The SparseCore register-bank taxonomy confirms this from the other direction: the scalar banks `SC_SCS_SREGS`, `SC_TAC_SREGS`, `SC_TEC_SREGS` exist in `.rodata`, and a search for any `SC_*_ROTATING_SREGS` / `SC_*_WINDOWED_SREGS` / `SC_*_BANKED_SREGS` bank returns **zero** hits. The predicate bank *does* have a rotating variant (§4); the scalar bank does not.
@@ -73,7 +75,7 @@ The reimplementer's takeaway is procedural, not just descriptive. Because the SR
 
 ### Purpose
 
-The mechanism that best matches the *intent* of "a register that windows memory" is the SparseCore **CBREG** (circular-buffer register). It inverts the SPARC idea: instead of a window of memory mapped *into* the register name space, a single register *holds* a sliding window *onto* memory and emits a wrapping address stream. This is a v5+ SparseCore feature only (Viperfish `vfc`, Ghostlite `glc`, Trillium `gfc`); JF/DF/PF have no CBREG.
+The mechanism that best matches the *intent* of "a register that windows memory" is the SparseCore **CBREG** (circular-buffer register). It inverts the SPARC idea: instead of a window of memory mapped *into* the register name space, a single register *holds* a sliding window *onto* memory and emits a wrapping address stream. This is a v5+ SparseCore feature only (Viperfish `vfc`, Ghostlite `glc`, `6acc60406` `gfc`); JF/DF/PF have no CBREG.
 
 ### Mechanism
 
@@ -180,14 +182,14 @@ The compiler enables it per-generation through the LLVM backend, gated on the su
 
 | Subtarget | `hasRotatingPredicates()` returns | Codename |
 |---|---|---|
-| `TPUGfcSubtarget` (@ `0x13c62c20`) | **`1`** | Trillium (v6e) |
-| `TPUVfcSubtarget` (@ `0x13c5f1e0`) | `0` | Viperfish (v5e) |
-| `TPUGlcSubtarget` | `0` | Ghostlite (v5p) |
-| `TPUBcSubtarget` | `0` | BarnaCore |
+| `TPUGfcSubtarget` (@ `0x13c62c20`) | **`1`** | `6acc60406` (TPU7x) |
+| `TPUVfcSubtarget` (@ `0x13c5f1e0`) | `0` | Viperfish (v5) |
+| `TPUGlcSubtarget` (@ `0x13c610c0`) | `0` | Ghostlite (v6e) |
+| `TPUBcSubtarget` (@ `0x13c59400`) | `0` | BarnaCore |
 
-So while the rotating-PREG *bank names* are present for SCS/TEC, the backend only *enables* rotation on Trillium. The [Predicate Slot](../isa/slot-predicate.md) page records the same fact ("Rotating predicates — Trillium-only — `TPUGfcSubtarget::hasRotatingPredicates()` = 1; all others 0"). Two flags govern use and emulation: `FLAGS_xla_sc_rotating_predicates` (@ `0x223359d8`) and `FLAGS_xla_sc_emulate_rotating_predicates` (@ `0x22335978`); the LLVM-side toggles are `enable-rotating-predicate` and `enable-rotating-predicate-emulation`, the latter described as folding prolog and epilog into the loop "but not actually using rotating predicate support."
+So while the rotating-PREG *bank names* are present for SCS/TEC, the backend only *enables* rotation on the `gfc`/`6acc60406` subtarget. The [Predicate Slot](../isa/slot-predicate.md) page records the same fact ("Rotating predicates — `6acc60406`-only — `TPUGfcSubtarget::hasRotatingPredicates()` = 1; all others 0"). Two flags govern use and emulation: `FLAGS_xla_sc_rotating_predicates` (@ `0x223359d8`) and `FLAGS_xla_sc_emulate_rotating_predicates` (@ `0x22335978`); the LLVM-side toggles are `enable-rotating-predicate` and `enable-rotating-predicate-emulation`, the latter described as folding prolog and epilog into the loop "but not actually using rotating predicate support."
 
-> **CONFIDENCE — HIGH (refinement over raw evidence).** The raw finding noted gfc/glc-prefixed rotating-PREG op symbols and read "vfc shows the rotating-preg bank name." The decompiled `hasRotatingPredicates()` gate is more precise: only `TPUGfcSubtarget` returns `1`; `vfc`, `glc`, and the BarnaCore subtarget all return `0`. The bank *names* may be present across SCS/TEC, but the compiler emits rotation only on Trillium. Treat the bank-name presence as the ISA schema and the subtarget flag as the per-gen enablement.
+> **CONFIDENCE — HIGH (refinement over raw evidence).** The raw finding noted gfc/glc-prefixed rotating-PREG op symbols and read "vfc shows the rotating-preg bank name." The decompiled `hasRotatingPredicates()` gate is more precise: only `TPUGfcSubtarget` returns `1`; `vfc`, `glc`, and the BarnaCore subtarget all return `0`. The bank *names* may be present across SCS/TEC, but the compiler emits rotation only on the `gfc`/`6acc60406` subtarget. Treat the bank-name presence as the ISA schema and the subtarget flag as the per-gen enablement.
 
 ### Considerations
 
@@ -226,7 +228,7 @@ The MXU "GainLatch register window" deserves a one-line note for completeness: t
 
 ### Definitive answer
 
-There is **no SMEM register-window** in the sense of a windowed or rotating *scalar* register file, and no register-window mapped over SMEM. The SREG file is a flat, hardware-bounded 32-entry file with software (LSRA-v2) spill to SMEM. The phrase points, at most, to: the **CBREG** (a register holding a `{base,offset,size}` memory window — the best fit), the pipeline **OperandWindow** (a memory sub-tile that may be staged *in* SMEM), or the rotating **PREDICATE** file (the only true hardware register window, predicate-only, Trillium-enabled). A reimplementation models all three as distinct mechanisms and leaves the SREG file flat.
+There is **no SMEM register-window** in the sense of a windowed or rotating *scalar* register file, and no register-window mapped over SMEM. The SREG file is a flat, hardware-bounded 32-entry file with software (LSRA-v2) spill to SMEM. The phrase points, at most, to: the **CBREG** (a register holding a `{base,offset,size}` memory window — the best fit), the pipeline **OperandWindow** (a memory sub-tile that may be staged *in* SMEM), or the rotating **PREDICATE** file (the only true hardware register window, predicate-only, enabled only on the `gfc`/`6acc60406` subtarget). A reimplementation models all three as distinct mechanisms and leaves the SREG file flat.
 
 ---
 
@@ -236,7 +238,7 @@ There is **no SMEM register-window** in the sense of a windowed or rotating *sca
 - [SMEM Scalar Memory](smem-scalar-memory.md) — the flat SMEM scalar model and the `ScalarLoad/StoreSmem*` family that backs SREG spills.
 - [SFLAG Sync-Flag Tier](sflag-protocol.md) — the sibling flat on-chip tier; likewise not a register window.
 - [SPU / Scalar Slot](../isa/slot-spu-scalar.md) — the 32-entry flat SREG file, the 5-bit field, and `EncodingToScalarRegister`'s `idx ≤ 0x1F` bound.
-- [Predicate Slot](../isa/slot-predicate.md) — the scalar predicate file and the Trillium-only rotating-predicate gate.
+- [Predicate Slot](../isa/slot-predicate.md) — the scalar predicate file and the `6acc60406`-only rotating-predicate gate.
 - [CBREG Circular-Buffer Register](../sparsecore/cbreg.md) — the CBREG `{base,offset,size}` triple, `CbregMetadata` selector, and scalar-ALU op bit-layout.
 - [SCS Scalar Opcode Enumeration](../sparsecore/scalar-opcode-enum.md) — the CBREG-op opcode values in the SparseCore scalar ISA.
 - [Stream Gather/Scatter](../sparsecore/stream-gather-scatter.md) — the gather/scatter consumer of the CBREG address window.
