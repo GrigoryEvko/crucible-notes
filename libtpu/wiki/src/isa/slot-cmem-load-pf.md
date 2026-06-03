@@ -30,7 +30,7 @@ For reimplementation, the contract is:
 | **Address scale** | `LloRegionBuilder::CmemAddrScaled` @ `0x1d539980` (byte→word by `CmemWordSizeBytes`) |
 | **Constant address** | `LloAddress::MakeCmemConstant` @ `0x1d60ba20` → `LloAddress(MemorySpace=4=kCmem, off)` |
 | **Why v4-only** | `PufferfishTarget::MemBanks(kCmem)` @ `0x1d493900` = 32; JF/VF/GL/GF `LogFatal` |
-| **Has-bit (bundle dispatch)** | `0x040` at `TensorCoreBundle` proto `+0x48` (7th slot) |
+| **Has-bit (bundle dispatch)** | `0x040` in the 12-bit slot has-mask at `TensorCoreBundle` proto `+0x10` (7th slot); the slot submessage pointer is at proto `+0x48` |
 | **Confidence** | CONFIRMED (byte-anchored) unless a row says otherwise |
 
 ---
@@ -81,7 +81,7 @@ if (inner.has[0x11] & 0x04) BitCopy(buf, 256, &inner.Imm, 0, 16);  // shared imm
 
 The decode-side accessors confirm the widths independently: `TensorCoreCmemLoad{Field}::GetConcatenatedValue` (`0x1ecf8820..0x1ecf8980`) read the proto-internal struct with `shr`+`and` masks whose pop-counts match the on-wire `BitCopy` widths exactly — 5-bit predication, 3-bit sublane/stride, 2-bit base/offset, 5-bit Y-regs, 16-bit immediates. Round-trip width agreement is the strongest single-binary confirmation.
 
-> **NOTE —** the field that the [Pufferfish 51B Bundle](bundle-pf-51b.md) page lists as "(sub-field) @103/3" is the **SublaneMask** — this page's encoder decode resolves it. The bundle page's @103..118 region matches this layout bit-for-bit; the difference is only that the per-field roles are named here from the dedicated `TensorCoreCmemLoad{Field}` accessor symbols rather than inferred from position.
+> **NOTE —** the [Pufferfish 51B Bundle](bundle-pf-51b.md) page lists this same @103..118 region (sublane-mask @103/3, stride @110/3, offset @108/2, base @106/2, has @113/1, pred @114/5) and the two pages agree bit-for-bit. The per-field roles are named identically on both pages from the dedicated `TensorCoreCmemLoad{Field}` accessor symbols; this page additionally resolves the shared-pool Y-register and immediate placements.
 
 ---
 
@@ -129,8 +129,9 @@ A CMEM load reaches the slot through `PufferfishTensorCoreEmitter::EmitVectorCme
 bundle = CurrentBundle();                              // @0x140fea80 — the bundle under construction
 slots  = PopulatedSlotsInBundle(bundle);               // @0x1d2ea840 — one-cmem-load-per-bundle legality
 // (rejects a second cmem_load in the same bundle — the "bundle has cmem load instruction already" diagnostic)
-sub = DefaultConstruct<TensorCoreCmemLoad>();          // build the slot submessage
-sub.SetPredication(is_always, is_never);               // 0x1d5b22e0 / 0x1d5b2300
+sub = DefaultConstruct<TensorCoreCmemLoad>();          // build the slot submessage; oneof tag (proto+0x50) := 6
+// predicate value chosen by querying the emitter's Predication state, then stamped into sub[+0x20]:
+//   is_always_execute (0x1d5b22e0) -> 15 ; is_never_execute (0x1d5b2300) -> 31 ; else 16*reg | sub-index
 EmitVectorLoadCommon<TensorCoreCmemLoad_CmemLoad>(sub, base, offset, sublane_mask);   // @0x14120f40
 ```
 
@@ -173,6 +174,6 @@ Because the dedicated cmem_load region (103..118) is disjoint from the vector_lo
 
 ## Cross-References
 
-- [Pufferfish 51B Bundle](bundle-pf-51b.md) — the full 51-byte slot map this slot sits in (region 103..118), the twelve-slot has-bit dispatch (has-bit `0x040`, proto `+0x48`), and the direct-`BitCopy` absolute-bit model.
+- [Pufferfish 51B Bundle](bundle-pf-51b.md) — the full 51-byte slot map this slot sits in (region 103..118), the twelve-slot has-bit dispatch (has-bit `0x040` in the slot has-mask at proto `+0x10`; submessage pointer at proto `+0x48`), and the direct-`BitCopy` absolute-bit model.
 - [Memory-Load Slot](slot-memory-load.md) — the regular VMEM `vector_load` slot (abs 119..140) whose addressing submessage cmem_load mirrors, and the shared `EmitVectorLoadCommon` placement routine.
 - [CMEM Pool](../memory/cmem-pool.md) — the constant-memory pool, the `ProgramMemoryAllocator(MS=kCmem)` / `BestFitAllocator` path, banking, per-generation availability, and why Pufferfish alone models CMEM.

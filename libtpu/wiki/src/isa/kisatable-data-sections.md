@@ -21,7 +21,7 @@ For reimplementation, the contract is:
 | | |
 |---|---|
 | **Literal `kIsaTable` symbol** | none — role split across 5 structures |
-| **Generations** | Jellyfish / Dragonfish / Pufferfish / Viperfish / Ghostlite / Trillium (`TpuVersion 0..5`) |
+| **Generations** | Jellyfish / Dragonfish / Pufferfish / Viperfish / Ghostlite / 6acc60406 (TPU v6e) (`TpuVersion 0..5`) |
 | **Codec registry** | `CodecMetadataRegistry` (`absl::flat_hash_map<TpuVersion, pair<char*, CodecMetadata*>>`, `StaticMapBase` singleton) |
 | **Codec lookup** | `GetMetadataOrDie(TpuVersion)` → dies *"Codec metadata not registered for TpuVersion"* |
 | **MC base-bits** | `InstBits` @ `0x3366d90` (`0x2c460` B) / `InstBits_BarnaCorePxcHwMode` @ `0x33931f0` |
@@ -43,11 +43,13 @@ Every table and encoder symbol is named by a three-axis taxonomy: codename, HAL 
 | Pufferfish | 2 | PXC | `asic_sw::deepsea::pxc::isa` | base + `TPUBcSubtarget` | CONFIRMED |
 | Viperfish | 3 | VXC | `asic_sw::deepsea::vxc::isa` | `TPUVfcSubtarget` | CONFIRMED |
 | Ghostlite | 4 | VXC=GXC | `asic_sw::deepsea::gxc::glc::isa` | `TPUGlcSubtarget` | CONFIRMED |
-| Trillium (v6e) | 5 | VXC=GXC | `asic_sw::deepsea::gxc::gfc::isa` | `TPUGfcSubtarget` | CONFIRMED |
+| 6acc60406 (TPU v6e) | 5 | VXC=GXC | `asic_sw::deepsea::gxc::gfc::isa` | `TPUGfcSubtarget` | CONFIRMED |
 
 The SparseCore sub-namespaces (`vxc::vfc::isa`, `gxc::glc::isa::sparsecore`, `gxc::gfc::isa::sparsecore`) and the Pufferfish BarnaCore (`pxc::pfc::isa`) carry their own encoders. The `(TpuVersion, TpuSequencerType)` pair is the full key into the codec metadata — one chip has several sequencer types with different bundle widths (see [Bundle Model](bundle-model-overview.md)). The eight `TpuSequencerType` values are `TC=0, BCS=1, BCAH=2, SCS=3, TAC=4, TEC=5, SCv0=6, SCv0AH=7`; the presence matrix per gen is documented on [Bundle Model](bundle-model-overview.md#per-generation-bundle-widths).
 
-> **NOTE —** Ghostlite (`glc`) and Trillium (`gfc`) are both the GXC family, which is why their symbols share the `gxc::` prefix. The one structural delta visible in the tables: there is a `SparseCoreTacGL*` SchedModel but **no `SparseCoreTacGF*`** — Trillium has no TAC sequencer (confirmed by symbol absence below).
+> **NOTE —** The v5 generation appears in the binary only as the codename `6acc60406` (the `tpu::TpuVersion::k6acc60406` enumerator, `TPU_VERSION_6acc60406`, `xla_target_6acc60406`, and the `.../target/6acc60406/` source paths); the marketing names "Trillium" and "Ironwood" occur **0 times** in `libtpu.so`. This page uses the binary codename, glossed `(TPU v6e)` once.
+>
+> Ghostlite (`glc`) and 6acc60406 (`gfc`) are both the GXC family, which is why their symbols share the `gxc::` prefix. The one structural delta visible in the tables: there is a `SparseCoreTacGL*` SchedModel but **no `SparseCoreTacGF*`** — 6acc60406 has no TAC sequencer (confirmed by symbol absence below).
 
 ---
 
@@ -67,10 +69,10 @@ The closest thing to a per-gen `kIsaTable` is the `CodecMetadata` class: one sub
 
 ### The Registry and Lookup
 
-The per-gen instances are entered into a process-wide `CodecMetadataRegistry` — an `absl::flat_hash_map<tpu::TpuVersion, pair<char const*, CodecMetadata const*>>` built once via a `util_registration::StaticMapBase` singleton. Four global constructors register the four codec classes; **`GetMetadataOrDie(TpuVersion)`** keys the map and dies with *"Codec metadata not registered for TpuVersion"* on a miss:
+The per-gen instances are entered into a process-wide `CodecMetadataRegistry` — an `absl::flat_hash_map<tpu::TpuVersion, pair<char const*, CodecMetadata const*>>` built once via a `util_registration::StaticMapBase` singleton. Four global constructors register the four codec classes; **`GetMetadataOrDie(TpuVersion)`** (@ `0x1ecf6f60`) keys the map and dies with *"Codec metadata not registered for TpuVersion: "* on a miss. The free-function dispatch wrappers (`codec_metadata::BundleSizeBytes(TpuVersion, TpuSequencerType)` @ `0x1ecf7180`, and the six siblings at `0x1ecf71a0…0x1ecf7240`) call `GetMetadataOrDie`, then index the resolved instance's vtable:
 
 ```c
-// codec_metadata::BundleSizeBytes(TpuVersion v, TpuSequencerType t)  (dispatch)
+// codec_metadata::BundleSizeBytes(TpuVersion v, TpuSequencerType t)  @ 0x1ecf7180  (dispatch)
 md = GetMetadataOrDie(v);          // flat_hash_map lookup; LogFatal on miss
 return md->vtable[+16](t);          // virtual BundleSizeBytes(t) on the per-gen class
 ```
@@ -82,7 +84,7 @@ return md->vtable[+16](t);          // virtual BundleSizeBytes(t) on the per-gen
 | `_GLOBAL__sub_I_codec_metadata_viperfish.cc` @ `0x213674c0` | VF=3 | CONFIRMED |
 | `_GLOBAL__sub_I_codec_metadata_ghostlite.cc` @ `0x21367510` | GL=4 | CONFIRMED |
 
-Jellyfish registers **two** keys (0 and 1) at the *same* `JellyfishCodecMetadata` instance — Dragonfish reuses the v3 codec. There is **no** `_GLOBAL__sub_I_codec_metadata_6acc60406` constructor: Trillium has no registered codec metadata, so a `GetMetadataOrDie(5, …)` would fatally abort. Trillium bundle geometry is reached only through the type-erased `EncoderBase<…>` template vtables in `gxc::gfc::isa` (which forward `BundleSizeBytes` through their own `vtable[+48]`), never via the registry.
+Jellyfish registers **two** keys (0 and 1) at the *same* `JellyfishCodecMetadata` instance — Dragonfish (v1) reuses the Jellyfish (v0) codec. There is **no** `_GLOBAL__sub_I_codec_metadata_6acc60406` constructor: 6acc60406 has no registered codec metadata, so a `GetMetadataOrDie(5, …)` would fatally abort. 6acc60406 bundle geometry is reached only through the type-erased `EncoderBase<…>` template vtables in `gxc::gfc::isa` (which forward `BundleSizeBytes` through their own `vtable[+48]`), never via the registry.
 
 ### Per-Gen Constants
 
@@ -105,7 +107,7 @@ return 64;                             // TensorCore
 | Pufferfish | 51 | `0x55` | 51 | 1 | `0x1ecf7ac0…` | CONFIRMED |
 | Viperfish | 64 | `0x55` | 64 | 1 | `0x1ee71320…` | CONFIRMED |
 | Ghostlite | 64 | `0x55` | — | — | `0x1eeb7640…` | CONFIRMED |
-| Trillium | 64 | (template; no registry) | — | — | (no class) | HIGH |
+| 6acc60406 | 64 | (template; no registry) | — | — | (no class) | HIGH |
 
 The `…ForHbm` virtual fatally aborts for `seq=0` on Pufferfish/Ghostlite (their TensorCore HBM path goes through `EncoderPfTensorCore` / `EncoderGlTensorCore` directly, not this metadata); Jellyfish's `…ForHbm` returns 42 (41 + 1 check byte). The per-gen full geometry — including the HBM `+1` check byte and the `(n/3)*128 + (n%3)*43` Jellyfish chunk layout — is on [Bundle Model](bundle-model-overview.md#the-hbm--dma-chunk-wrapping).
 
@@ -138,17 +140,17 @@ Each non-TensorCore sequencer gets a `SchedClasses` table (`0x79a` = 1946 B each
 
 | Sequencer × gen | SchedClasses @ | ProcResources @ / size | Confidence |
 |---|---|---|---|
-| BarnaCore (PF) | `0x3447630` | `0x21935…` | CONFIRMED |
-| SCS — Trillium (GF) | `0x3448350` | `0x219357e0` / `0x320` (50 PR) | CONFIRMED |
+| BarnaCore (PF) | `0x3447630` | `0x21935740` / `0xa0` (10 PR) | CONFIRMED |
+| SCS — 6acc60406 (GF) | `0x3448350` | `0x219357e0` / `0x320` (50 PR) | CONFIRMED |
 | SCS — Ghostlite (GL) | `0x3449070` | `0x21935b00` / `0x300` (48 PR) | CONFIRMED |
 | SCS — Viperfish (VF) | `0x3449d90` | `0x21935e00` / `0x2a0` (42 PR) | CONFIRMED |
 | TAC — Ghostlite (GL) | `0x344a530` | `0x219360a0` / `0x300` | CONFIRMED |
 | TAC — Viperfish (VF) | `0x344acd0` | `0x219363a0` / `0x2a0` | CONFIRMED |
-| TEC — Trillium (GF) | `0x344b470` | `0x21936640` / `0x320` | CONFIRMED |
+| TEC — 6acc60406 (GF) | `0x344b470` | `0x21936640` / `0x320` | CONFIRMED |
 | TEC — Ghostlite (GL) | `0x344bc10` | `0x21936960` / `0x300` | CONFIRMED |
 | TEC — Viperfish (VF) | `0x344c3b0` | `0x21936c60` / `0x2a0` | CONFIRMED |
 
-The `ProcResources` byte-size grows monotonically — VF `0x2a0` (42 units), GL `0x300` (48), GF `0x320` (50) — so Trillium adds 8 functional units over Viperfish. The **absence of a `SparseCoreTacGF*` symbol** in the names table is the byte-level proof that Trillium has no TAC sequencer (its SparseCore is SCS + TEC only). Each `TPUVfcSubtarget` / `TPUGlcSubtarget` / `TPUGfcSubtarget` overrides `getFifoDepth`, `getVyEncodings`, and `getSyEncodings` per gen.
+The `ProcResources` byte-size grows monotonically — VF `0x2a0` (42 units), GL `0x300` (48), GF `0x320` (50) — so 6acc60406 adds 8 functional units over Viperfish. The **absence of a `SparseCoreTacGF*` symbol** in the names table is the byte-level proof that 6acc60406 has no TAC sequencer (its SparseCore is SCS + TEC only). Each `TPUVfcSubtarget` / `TPUGlcSubtarget` / `TPUGfcSubtarget` overrides `getFifoDepth`, `getVyEncodings`, and `getSyEncodings` per gen.
 
 ---
 
@@ -162,7 +164,7 @@ The V5+ generations carry a static 64-byte NOP-bundle template in `.rodata`; pre
 | `asic_sw::deepsea::gxc::glc::isa` | `0xb862ff4` | 64 B | `0x53` | more compact shift base (`e0 01`, `c0 03`) | CONFIRMED |
 | `asic_sw::deepsea::gxc::gfc::isa` | `0xb88580a` | 64 B | `0x50` | all-zero body (zero-default slots) | CONFIRMED |
 
-The Viperfish template's nonzero pattern (`00 3c`, `00 0f`, `00 f0`, `00 78`) is `0x1F` shifted to each slot's predicate bit offset, with byte 63 = the `0x55` check byte. Ghostlite uses a different (more compact) shift base, so its slot bit layout differs (byte 63 = `0x53`, not the literal check byte — the high bits carry the last slot's predicate ORed with the check field). **Trillium's template is all-zero except byte 63 = `0x50`** — Trillium arranges slots so all-zero means "present but inactive", not "active with an always-false predicate". Jellyfish and Pufferfish have *no* `kNoopBundleBytes` static; their `EncodeBundleInternal` zero-inits the buffer and patches `kNeverExecute = 31` into each predicate field at run time. The `kNeverExecute = 31` / `kAlwaysExecute = 15` / `kPredicateRegisterCount = 15` constants (`0xb834cf4…0xb834cff`) confirm a 5-bit Jellyfish predicate field. See [Bundle Model §Empty-Slot](bundle-model-overview.md#empty-slot-and-nop-convention).
+The Viperfish template's nonzero pattern (`00 3c`, `00 0f`, `00 f0`, `00 78`) is `0x1F` shifted to each slot's predicate bit offset, with byte 63 = the `0x55` check byte. Ghostlite uses a different (more compact) shift base, so its slot bit layout differs (byte 63 = `0x53`, not the literal check byte — the high bits carry the last slot's predicate ORed with the check field). **6acc60406's template is all-zero except byte 63 = `0x50`** — 6acc60406 arranges slots so all-zero means "present but inactive", not "active with an always-false predicate". Jellyfish and Pufferfish have *no* `kNoopBundleBytes` static; their `EncodeBundleInternal` zero-inits the buffer and patches `kNeverExecute = 31` into each predicate field at run time. The `kNeverExecute = 31` / `kAlwaysExecute = 15` / `kPredicateRegisterCount = 15` constants (`0xb834cf4…0xb834cff`) confirm a 5-bit Jellyfish predicate field. See [Bundle Model §Empty-Slot](bundle-model-overview.md#empty-slot-and-nop-convention).
 
 ---
 
@@ -180,7 +182,7 @@ struct { uint16_t llo_opcode; uint16_t glc_instruction; } entries[258];
 - GLC instruction range is `0..475`.
 - The mapping is **many-to-one** — e.g. LLO `10` and `11` both map to GLC `474`; LLO `37` and `39` both map to GLC `0` — so GLC opcodes are coarser-grained than LLO IR opcodes.
 
-Why only Ghostlite is a static array: Jellyfish, Pufferfish, Viperfish, and Trillium implement the LLO→ISA mapping as **switch statements** (e.g. `xla::jellyfish::LloOpcodeToIsaScalarOpcode` @ `0x140bc1e0`, a 162-case switch). Ghostlite's GLC mapping is wide enough (>200 entries) that a sorted-array binary search is preferred over a switch. The inverse LLO direction is the unnamed `LloOpcodeToProto` table @ `0x344cb4c` (`462 × u32`); the LLO opcode numbering itself (proto `1..499` → internal `0..461`) is reconstructed in `ProtoToLloOpcode` (`0x14420040`).
+Why only Ghostlite is a static array: Jellyfish, Pufferfish, Viperfish, and 6acc60406 implement the LLO→ISA mapping as **switch statements** (e.g. `xla::jellyfish::LloOpcodeToIsaScalarOpcode` @ `0x140bc1e0`, a 162-case switch). Ghostlite's GLC mapping is wide enough (>200 entries) that a sorted-array binary search is preferred over a switch. The inverse LLO direction is the unnamed `LloOpcodeToProto` table @ `0x344cb4c` (`462 × u32`); the LLO opcode numbering itself (proto `1..499` → internal `0..461`) is reconstructed in `ProtoToLloOpcode` (`0x14420040`).
 
 ---
 
@@ -189,7 +191,7 @@ Why only Ghostlite is a static array: Jellyfish, Pufferfish, Viperfish, and Tril
 The federation is honest about its bounds:
 
 - **The full per-opcode TensorCore / V5+ encoding bits.** `InstBits` is all-zero for those opcodes (no `.rela.dyn`, proven); the real bits come from per-gen `Encoder<gen>::EncodeBundleInternal` + `<Slot>Encoder::Encode` `BitCopy` calls, whose positions are the per-gen slot ladders ([Immediate Slot](slot-immediate.md), per-gen bundle pages). *(The 5667-case MC encoder switch and the inner per-slot encoder methods were not exhaustively enumerated — too large to enumerate by hand; MEDIUM on the un-walked V5+ slot encoders.)*
-- **The Trillium codec constants from a registry.** Trillium has no registered `CodecMetadata`; its 64-byte geometry is read here from `kNoopBundleBytes` size and the `EncoderBase` template, not from a registry entry. *(HIGH, not CONFIRMED, for the Trillium check byte.)*
+- **The 6acc60406 codec constants from a registry.** 6acc60406 has no registered `CodecMetadata`; its 64-byte geometry is read here from `kNoopBundleBytes` size and the `EncoderBase` template, not from a registry entry. *(HIGH, not CONFIRMED, for the 6acc60406 check byte.)*
 - **The GLC instruction mnemonics.** The `kLloOpcodeToGlcInstruction` IDs (`0..475`) are decoded, but their names require cross-decoding `TPUInstrNameData` under the Ghostlite HwMode — not done here.
 - **Per-gen `TPUFeatureKV` / `TPUSubTypeKV` contents.** Located and sized (~48 features, ~42 subtargets), but the individual feature/CPU strings were not enumerated.
 

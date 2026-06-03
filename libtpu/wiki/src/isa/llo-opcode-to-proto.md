@@ -12,7 +12,7 @@ This page documents the two converters byte-exactly: the forward direction is a 
 
 | | |
 |---|---|
-| **Forward** | `LloOpcodeToProto(LloOpcode)` @ `0x14420020` (24 B) — table lookup |
+| **Forward** | `LloOpcodeToProto(LloOpcode)` @ `0x14420020` (26 B body) — table lookup |
 | **Forward table** | `int32[]` @ VMA `0x344cb4c` (GOT-relative; 461 live entries) |
 | **Reverse** | `ProtoToLloOpcode(LloOpcodeProto)` @ `0x14420040` — 499-arm `switch` |
 | **Reverse out-of-range** | `absl::LogMessageFatal` "Invalid LloOpcodeProto: " (line 1953) |
@@ -26,7 +26,7 @@ This page documents the two converters byte-exactly: the forward direction is a 
 
 ## The Forward Map — `LloOpcodeToProto`
 
-Serialization converts the in-memory opcode to its wire value with a single table read. The whole function is two instructions:
+Serialization converts the in-memory opcode to its wire value with a single table read. The decompiled body is one statement — a `lea` of `_GLOBAL_OFFSET_TABLE_`, the table base added in, then one indexed `mov` and `ret` (26 B of code, padded with `int3` to the next function at `0x14420040`):
 
 ```c
 // xla::jellyfish::LloOpcodeToProto @ 0x14420020 (decompiled, exact)
@@ -159,5 +159,7 @@ The facts a reimplementer needs in one place:
 
 ## Cross-References
 
-- [LloOpcode Enum](llo-opcode-enum.md) — the in-memory 461-value enum these converters map to and from, grouped by family.
+- [LloOpcode Enum](llo-opcode-enum.md) — the in-memory 461-value enum these converters map to and from, grouped by family; its append-and-insert numbering is why proto 498/499 decode to low in-memory opcodes.
+- [LLO Opcode Table (appendix)](../appendix/llo-opcode-table.md) — the exhaustive 461-row value→name→slot dump the forward table indexes.
+- [ISA Overview](overview.md) — places `LloOpcodeProto` in the two-level LLO-IR/VLIW-bundle encoding split; note the "462" figure there counts the wire enum's declared symbols (value-0 sentinel included), versus the 461 live mappable values here.
 - [TpuProgram Serialization](../compiler/tpu-program-serialization.md) — the surrounding `LloModuleProto` / `TpuProgram` wire format the `LloInstructionProto` opcode field lives inside.

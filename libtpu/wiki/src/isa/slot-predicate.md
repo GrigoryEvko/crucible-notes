@@ -134,7 +134,7 @@ return APInt::insertBits(dst, (flags >> 5) & 3, /*pos=*/5, /*width=*/2);    // [
 |---|---|---|
 | `[0:3]` | register index | 4-bit, `0..15` (permuted — see below) |
 | `[4]` | negate / inversion | set via `\|= 0x10` |
-| `[5:6]` | 2-bit mode / extension | predicate-bank / rotating-stage selector; `0` in non-rotating code, drives the rotating-predicate stage on Trillium |
+| `[5:6]` | 2-bit mode / extension | predicate-bank / rotating-stage selector; `0` in non-rotating code, drives the rotating-predicate stage on `6acc60406` |
 
 The four `[5:6]` modes correspond to the `PREDICATION_ALWAYS` / `NEVER` / `OR_NEVER` / `OR_INVERTED_NEVER` enum the [Sequencer Slot](slot-sequencer.md) documents. The printer (`printPredicateOperandAux` @ `0x13c73c80`) confirms the read side: `reg == 6` (LLVM always) emits no `@Pn`; `flags & 1` emits the `!` negation prefix; `flags & 0x7E` (bits 1-6 set) routes to the BarnaCore predicate printer.
 
@@ -162,9 +162,9 @@ V5+ (VXC/GXC) — isa_emitter::EmitPredicationToSlot<PredicateDest, Predication,
 
 Each populated slot independently selects a guarding predicate register plus polarity; the encoder stamps each slot's predicate field, and an empty slot is filled with `kNeverExecute = 31` (the NOP fill — see [Bundle Model §empty-slot convention](bundle-model-overview.md#empty-slot-and-nop-convention)). The def-use of predicates in the LLO IR is tracked by `ScalarInstruction::add_consumes_predicate_register` (`0x1e851be0`) and `add_produces_predicate_register` (`0x1e851c60`), feeding the bundle packer's hazard analysis; `ValidatePacking` re-checks every slot's field is in range `{0..14, 15, 31}`.
 
-### Trillium dual-predicate pool
+### `6acc60406` dual-predicate pool
 
-Trillium (gfc) is the only generation with a dedicated **bundle-level** predicate-encoder slot. Instead of each functional slot carrying a full register index, the bundle carries a `TensorCorePredicates` container holding two references — `pred_0` and `pred_1`, each a `PredicationSlot` enum value (`0..15` register index) plus its own `inversion` bit — and the per-functional-slot fields index into that two-entry pool. The container's opcode descriptor is `NoInstructionsH` (a pure container, not a callable op).
+`6acc60406` (gfc) is the only generation with a dedicated **bundle-level** predicate-encoder slot. Instead of each functional slot carrying a full register index, the bundle carries a `TensorCorePredicates` container (`asic_sw::deepsea::gxc::gfc::isa`, accessed via `TensorCorePredicatesCompactPtr`) holding two references — `pred_0` and `pred_1`, each a `PredicationSlot` enum value (`0..15` register index) plus its own `inversion` bit — placed at bits 496..505 of the 64-byte bundle, and the per-functional-slot fields hold a 2-bit selector (e.g. the sequencer slot's selector @ bit 489) that indexes into that two-entry pool. The container's opcode descriptor is `NoInstructionsH` (a pure container, not a callable op).
 
 The pool is a shared resource: a bundle can reference at most two distinct `(register, inversion)` pairs across all of its sub-slots. A third distinct predicate triggers an encode-time error, with the binary embedding the verbatim strings:
 
@@ -176,7 +176,7 @@ The pool is a shared resource: a bundle can reference at most two distinct `(reg
  attempted to place another predicate: [%s, inversion: %d] in the same bundle."
 ```
 
-`PredicationSlot` is a dense enum `[0, 15]` (16 register indices); the inversion is carried separately per pool entry. This packing is how Trillium fits a wider compute fabric into the same 64-byte bundle — see [Bundle GF §dual-predicate slot](bundle-gf.md#the-dedicated-dual-predicate-slot-gf-vs-ghostlite).
+`PredicationSlot` is a dense enum `[0, 15]` (16 register indices); the inversion is carried separately per pool entry. This packing is how `6acc60406` fits a wider compute fabric into the same 64-byte bundle — see [Bundle GF §dual-predicate slot](bundle-gf.md#the-dedicated-dual-predicate-slot-gf-vs-ghostlite).
 
 ---
 
@@ -219,18 +219,18 @@ The ISA-level `PredicateOr` opcode (what `EmitPredicateOr` lowers to) is present
 
 ---
 
-## Rotating Predicates (Trillium-Only)
+## Rotating Predicates (`6acc60406`-Only)
 
-`hasRotatingPredicates()` is `1` on Trillium and `0` everywhere else:
+`hasRotatingPredicates()` is `1` on `6acc60406` (gfc) and `0` everywhere else:
 
 ```c
 TPUBcSubtarget ::hasRotatingPredicates() @ 0x13c59400 -> 0
 TPUVfcSubtarget::hasRotatingPredicates() @ 0x13c5f1e0 -> 0
 TPUGlcSubtarget::hasRotatingPredicates() @ 0x13c610c0 -> 0
-TPUGfcSubtarget::hasRotatingPredicates() @ 0x13c62c20 -> 1   // Trillium only
+TPUGfcSubtarget::hasRotatingPredicates() @ 0x13c62c20 -> 1   // 6acc60406 only
 ```
 
-Rotating predicates provide a ring of predicate registers the hardware advances one position per loop iteration, used to enable/disable software-pipeline stages (prolog / steady-state / epilog) without explicit guard code. The machinery is the `TPURotatingPredicateModuloExpander` (`expand`, `peelPrologs`, `initializeRotatingPredicatesAndPredicatePrologs`, `propagateRotatingPredicate`, `generateBranchRotate`); on generations *without* the hardware feature (Vfc/Glc), the `TPURotatingPredicateEmuModuloExpander` lowers a rotating-predicate loop into explicit predicate-register moves when `EnableRotatingPredicateEmulation` (`0x224e1148`) is set. The 2-bit `[5:6]` extension in `encodePredicateOperand` is the natural place the rotating-stage offset is encoded; the Trillium-only sequencer ops `SetRotatingPredicateRegister` and `BranchRelativeRotatingPreg` drive the ring (see [Hardware Loop-Counter](slot-loop.md)). The ring depth is computed per software-pipelined loop from the initiation interval and stage count, not a static constant.
+Rotating predicates provide a ring of predicate registers the hardware advances one position per loop iteration, used to enable/disable software-pipeline stages (prolog / steady-state / epilog) without explicit guard code. The machinery is the `TPURotatingPredicateModuloExpander` (`expand`, `peelPrologs`, `initializeRotatingPredicatesAndPredicatePrologs`, `propagateRotatingPredicate`, `generateBranchRotate`); on generations *without* the hardware feature (Vfc/Glc), the `TPURotatingPredicateEmuModuloExpander` lowers a rotating-predicate loop into explicit predicate-register moves when `EnableRotatingPredicateEmulation` (`0x224e1148`) is set. The 2-bit `[5:6]` extension in `encodePredicateOperand` is the natural place the rotating-stage offset is encoded; the `6acc60406`-only sequencer ops `SetRotatingPredicateRegister` and `BranchRelativeRotatingPreg` drive the ring (see [Hardware Loop-Counter](slot-loop.md)). The ring depth is computed per software-pipelined loop from the initiation interval and stage count, not a static constant.
 
 ---
 

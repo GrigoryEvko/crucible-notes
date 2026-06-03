@@ -6,7 +6,7 @@
 
 `InstBits` is the LLVM TableGen per-opcode base-bits database that drives `TPUMCCodeEmitter::getBinaryCodeForInstr`. It is the TPU back end's instance of the array LLVM names `getBinaryCodeForInstr::InstBits` on every target: a dense, opcode-indexed table of fixed instruction bits that the MC emitter copies into a working record before the operand encoders overwrite the operand-shaped holes. On a conventional target this table is the *whole* encoding — the set bits are the opcode discriminator and constant sub-fields, the zero runs are where operands go. On TPU it is that for exactly one HwMode and a formality for every other.
 
-The database is not one table but two, laid out back-to-back in `.lrodata`: the default `InstBits` (`0x3366d90`) and `InstBits_BarnaCorePxcHwMode` (`0x33931f0`). Both are `5667 × 32` bytes — one 4-word (`4 × uint64`) row per opcode, indexed by `opcode − 499`, interpreted as a [239-bit `APInt`](record-format.md). The emitter selects between them by a HwMode query on the `MCSubtargetInfo`. The counter-intuitive finding, byte-verified, is that the **default table is entirely zero on disk** and carries no relocations, while **only the BarnaCore variant is populated** (704 non-zero rows in the opcode range `2855..3991`). For every TensorCore and V5+ (Viperfish / Ghostlite / Trillium) instruction the base contributes nothing; their bytes come from the proto-bundle emitter path, not this table.
+The database is not one table but two, laid out back-to-back in `.lrodata`: the default `InstBits` (`0x3366d90`) and `InstBits_BarnaCorePxcHwMode` (`0x33931f0`). Both are `5667 × 32` bytes — one 4-word (`4 × uint64`) row per opcode, indexed by `opcode − 499`, interpreted as a [239-bit `APInt`](record-format.md). The emitter selects between them by a HwMode query on the `MCSubtargetInfo`. The counter-intuitive finding, byte-verified, is that the **default table is entirely zero on disk** and carries no relocations, while **only the BarnaCore variant is populated** (704 non-zero rows in the opcode range `2855..3991`). For every TensorCore and V5+ (Viperfish / Ghostlite / `6acc60406`) instruction the base contributes nothing; their bytes come from the proto-bundle emitter path, not this table.
 
 This page describes the database's axes — generation/HwMode × instruction-class × field — its in-binary representation as static `.lrodata` arrays plus the emitter-prologue accessor arithmetic, and how a slot's fields map to absolute bit positions in the 239-bit record. It shows the load-bearing rows (the BarnaCore vector-load, vector-store, loop, and predicate slot layouts) rather than dumping the 11,334 rows of the two tables.
 
@@ -38,13 +38,13 @@ The InstBits database is best read as a three-axis cube. A reimplementer must re
 
 | Axis | Values | Source | Confidence |
 |---|---|---|---|
-| HwMode / table | `default` (`InstBits`), `BarnaCorePxcHwMode` (`InstBits_BarnaCorePxcHwMode`) | two GOT-relative base computations in `getBinaryCodeForInstr` (`− 65189758` / `− 65167090`); HwMode query `*0x28(MCSubtargetInfo)` with feature index `3` | CONFIRMED |
-| instruction class | 22 encoder case bodies (1 zero-base default + 21 BarnaCore classes) | jump table @ `0xaed7dac`, 5667 × int32 self-relative, dispatched `jmp *(base + table[index])` | CONFIRMED |
+| HwMode / table | `default` (`InstBits`), `BarnaCorePxcHwMode` (`InstBits_BarnaCorePxcHwMode`) | two GOT-relative base computations in `getBinaryCodeForInstr` (`− 65189758` / `− 65167090`); HwMode query is a virtual call through the `MCSubtargetInfo` vtable slot at `+0x28` with feature index `3` (`(*(*subtarget + 40))(subtarget, 3)`) | CONFIRMED |
+| instruction class | 22 encoder case bodies (1 zero-base default + 21 BarnaCore classes) | the `switch (opcode)` in `getBinaryCodeForInstr`: one default arm (zero base, copy-and-return) plus 21 populated arms over the `2855..3991` opcode band. The 22-arm count is CONFIRMED from the case-body grouping; the lowered dispatch form (jump table vs. range-comparison tree) is not separable from the decompiled `switch` | class count CONFIRMED; dispatch form UNVERIFIED |
 | field | per-class fixed `(pos, width)` windows (e.g. base-reg @ bit 35 w6, dst @ bit 88 w5, imm @ bit 207 w16) | the `insertBits(value, pos, width)` deposits inside each case body | CONFIRMED |
 
 The cube is sparse. The HwMode axis has two values but only one (`BarnaCorePxcHwMode`) carries data. The instruction-class axis has 22 values but one of them — the zero-base default — absorbs `4956` of the `5667` opcodes. The field axis is dense only within the BarnaCore classes; the default class has no fields at all (it copies a zero row and returns). The whole encoding mass lives in the `2855..3991` opcode band, in one HwMode, across 21 case bodies.
 
-> **QUIRK — the default table is not a placeholder waiting for the linker.** Reading all `181344` bytes of `InstBits` @ `0x3366d90` yields `0 / 22668` non-zero 8-byte words, and no `.rela.dyn` relocation targets the `[0x3366d90, 0x3366d90 + 0x2c460)` range (the full `~430k` `Elf64_Rela` entries at file offset `0x9170` were scanned, zero hits). The zero is the actual encoding, not an unrelocated stub. A reimplementation that expects load-time relocation to populate these base bits will encode every TensorCore and V5+ instruction as all-zero — and never see an error, because the proto-bundle path supplies the real bytes downstream. (For contrast, the same extraction against the AArch64 back end's `InstBits` in this binary finds it densely populated, confirming the extraction itself is correct.)
+> **QUIRK — the default table is not a placeholder waiting for the linker.** Reading all `181344` bytes of `InstBits` @ `0x3366d90` yields `0 / 22668` non-zero 8-byte words, and no `.rela.dyn` relocation targets the `[0x3366d90, 0x3366d90 + 0x2c460)` range (all `1069186` `Elf64_Rela` entries in the `0x1878c30`-byte `.rela.dyn` at file offset `0x9170` were scanned, zero hits in either InstBits range). The zero is the actual encoding, not an unrelocated stub. A reimplementation that expects load-time relocation to populate these base bits will encode every TensorCore and V5+ instruction as all-zero — and never see an error, because the proto-bundle path supplies the real bytes downstream. (For contrast, the same extraction against the AArch64 back end's `InstBits` in this binary finds it densely populated, confirming the extraction itself is correct.)
 
 ---
 
@@ -109,9 +109,9 @@ The two tables are structurally identical and semantically opposite. The default
 | Populated opcode range | none | `2855..3991` | CONFIRMED |
 | `.rela.dyn` relocations | none | none | CONFIRMED |
 | Opcodes encoded through it | none (records returned all-zero) | Pufferfish BarnaCore lanes + native ops | CONFIRMED |
-| Selected when | HwMode feature `BarnaCorePxcHwMode` inactive | feature active (query `*0x28(MCSubtargetInfo)`, idx 3) | CONFIRMED |
+| Selected when | HwMode feature `BarnaCorePxcHwMode` inactive | feature active (vtable call `MCSubtargetInfo+0x28`, feature idx 3) | CONFIRMED |
 
-The populated rows of the BarnaCore table fall into a small set of instruction classes. The class taxonomy (recovered from the case-body grouping in the jump table) is the second axis of the database:
+The populated rows of the BarnaCore table fall into a small set of instruction classes. The class taxonomy (recovered from the case-body grouping in the `getBinaryCodeForInstr` `switch`) is the second axis of the database:
 
 | Class | Rows | What it covers | Confidence |
 |---|---:|---|---|
@@ -159,13 +159,21 @@ The second VLD sub-slot repeats the same field shapes shifted up (`+21`), with i
 
 ### `bcVST*` — BarnaCore vector-store slot
 
-The store classes (`bcVST_aliaddri/rr` @ `0x13c765a0`, `bcVSTi/r` @ `0x13c76628`) pack the source register and addressing into one wide window:
+The store classes pack the source register and addressing through one 64-bit window plus several discrete register fields. The deposits below were read from the store case bodies of `getBinaryCodeForInstr` (the four `insertBits(value, 0xAF, 0x40)` cluster sites): a single `insertBits(value, 0xAF, 0x40)` writes the 64-bit packed address/source word at bit 175, then several 5-bit register fields and 2-bit qualifier fields are deposited around it. Exact opcode-to-class binding for the store arms is UNVERIFIED (the decompiled `switch` does not carry inline addresses); the field positions themselves are byte-anchored:
 
-| Field | Position | Width | Confidence |
-|---|---|---:|---|
-| base-address register | bit 35 (`0x23`) | 6 | CONFIRMED |
-| source-Vreg + addressing pack | bit 126 (`0x7E`) | 21 | CONFIRMED |
-| immediate displacement | bit 207 (`0xCF`) | 16 | CONFIRMED |
+| Field | Position | Width | Encoder | Confidence |
+|---|---|---:|---|---|
+| predicate (mode + reg) | bits 60/62 (`0x3C`/`0x3E`) | 2 + 5 | `encodePredicateOperand` | CONFIRMED |
+| source / address register | bit 88 (`0x58`) | 5 | `getMachineOpValue` | CONFIRMED |
+| index register | bit 73 (`0x49`) | 5 | `getMachineOpValue` | CONFIRMED |
+| packed address/source word | bit 175 (`0xAF`) | 64 | `getMachineOpValue` (extract `64@0x20`) | CONFIRMED |
+| register field | bit 83 (`0x53`) | 5 | from packed word | CONFIRMED |
+| register field | bit 78 (`0x4E`) | 5 | from packed word | CONFIRMED |
+| qualifier | bit 39 (`0x27`) | 2 | from packed word | CONFIRMED |
+| qualifier | bit 37 (`0x25`) | 2 | from packed word | CONFIRMED |
+| base-address bits | bit 35 (`0x23`) | 2 | from packed word | CONFIRMED |
+
+The earlier draft of this section listed a single 21-bit "source + addressing pack" at bit 126 (`0x7E`); that is incorrect — no `insertBits` of width 21 (`0x15`) exists anywhere in the emitter body (`0x15` appears only as an *extract* offset). The widest store deposit is the 64-bit window at `0xAF`. The `0x7E`/width-2 deposit is the VLD-class predicate-mode field, not a store window.
 
 ### `bcLOOP_START` — BarnaCore loop slot
 
