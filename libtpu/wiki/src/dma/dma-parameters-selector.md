@@ -145,10 +145,10 @@ So a well-formed bundle has matching source/target stride-vector lengths and exa
 
 Before an op is built, the transfer length is converted from bytes into hardware *granule* units (the descriptor carries a granule count, not a raw byte count — see the `(length, length_granule)` pair on [Intra-Chip DMA Descriptor](intra-chip-descriptor.md)). The two kinds use different granularity sources:
 
-- **`kDma`** divides by `xla::jellyfish::Target::GranuleBytes()` (`0x1d617f80`) using a ceil-division idiom (`(len + gran − 1) / gran`, emitted as an unsigned `idiv`).
-- **`kStream`** divides by `xla::tpu::sparse_core::xla_mlo_util::TransferGranularityInBytes(SparseCoreTarget const&, MemorySpace, bool)` (`0x14a89ea0`), reached through `target()->[+0x948]` — the SPMEM-stripe / DMA-word unit, which depends on the memory space.
+- **`kDma`** divides by `xla::jellyfish::Target::GranuleBytes()` (`0x1d617f80`) using plain truncating integer division (`len / gran`; the `(gran | len) >> 32` test only selects between 64-bit signed and 32-bit unsigned `idiv` width, it is **not** a ceiling). Exact divisibility is guaranteed by an `isGuaranteedDivisible(…, 128, …)` check whose failure raises `emitOpError("Inner DMA transfer size divisible by DMA's inner vector length (%d). Got %s")` (built via `MakeErrorImpl<3>` at `:878`), so no rounding is needed.
+- **`kStream`** divides by `xla::tpu::sparse_core::xla_mlo_util::TransferGranularityInBytes(SparseCoreTarget const&, MemorySpace, bool)` (`0x14a89ea0`), reached through `target()->[+0x948]` — the SPMEM-stripe / DMA-word unit, which depends on the memory space — again as a plain truncating division.
 
-The divisor is materialized as an `arith.ConstantIndexOp` and the division as a `DivUIOp` (or an inlined `idiv`). The HBM endpoint test (`srcSpace == HBM (4)` / `dstSpace == HBM (4)`, computed by an `XOR 4; SETE`) feeds the `dstIsHbm` bool that the Linear/Strided stream `::create` takes.
+The granule value is materialized as an `arith.ConstantIndexOp`; the stream strided path emits the division as a `DivUIOp` (`createOrFold<arith::DivUIOp>`), while the kDma paths inline the quotient as a folded constant. The HBM endpoint test (`srcSpace == HBM (4)` / `dstSpace == HBM (4)`, computed by a compare against `4`) feeds the `dstIsHbm` bool that the Linear/Strided stream `::create` takes.
 
 ---
 
@@ -175,7 +175,7 @@ The single-stride stream emit is itself guarded by `CHECK_EQ(off_tile_byte_strid
 
 ### Gather / scatter side constraints
 
-After classifying the op with `mlir::tpu::isGather` (`0x14afb1e0`), the stream arm runs the per-side stride-level validator lambda `$_0` (`0x13510340`, `operator()(ArrayRef<int>)`) once for the source side and once for the destination side. `$_0` reads `steps_per_stride` (`+0x98`) and probes it through the `LowerPassBase` vtable `+0x20` `getConstantIntValue` fold — the *same* probe the coalescing loop uses (§5) — checking the stride level is `<= 1`. The classifier then rejects the asymmetric cases:
+After classifying the op with `mlir::tpu::isGather` (`0x14afb1e0`), the stream arm runs a per-side contiguity-removal lambda `$_0` (`0x13510340`, `operator()(ArrayRef<int>)`) once for the source side and once for the destination side. `$_0` first asserts `CHECK_EQ(p.steps_per_stride.size(), 2)` (`:1208`), reads `steps_per_stride` (`+0x98`), and folds `steps_per_stride[1]` through the `LowerPassBase` vtable `+0x20` `getConstantIntValue` probe — the *same* probe the coalescing loop uses (§5). It returns true iff that level folds to a compile-time constant equal to the side's passed byte-stride extent — i.e. the single stride level describes a contiguous run and can be dropped. When it returns true the caller zeroes that side's stride count, logging `VLOG(1) "Removing the source striding representing a contiguous access pattern."` (`:1220`) or the target-side variant (`:1225`). The classifier then rejects the asymmetric cases on the *residual* per-side stride count:
 
 | Condition | Diagnostic (`emitOpError`) |
 |---|---|
