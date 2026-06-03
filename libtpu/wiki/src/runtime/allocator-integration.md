@@ -6,7 +6,7 @@
 
 This page documents the **stream-executor allocator bridge** inside the TPU PJRT plugin: the layer that sits between PJRT's device-memory API and the on-core best-fit engine. In a StreamExecutor backend a `se::DeviceMemoryAllocator::Allocate(ordinal, size, …)` call returns a `se::OwningDeviceMemory` (a `ScopedDeviceMemory`) that wraps a `DeviceMemoryBase`. libtpu has no `se::StreamExecutorMemoryAllocator` on the hot path — it ships a bespoke chain that fills the same role. `xla::TpuClient::AllocateRawBuffer` is the `Allocate` entry; the `TpuSharedMemoryLocation` is the `DeviceMemoryBase` identity (ordinal + memory-space tier); the `tpu::TpuBuffer` (wrapped by `xla::TpuRawBuffer`) is the owning handle whose destructor frees, playing the `ScopedDeviceMemory` role; and `tpu::System::Allocate` is the per-ordinal router that dispatches into the right core's allocator.
 
-The bridge is what a StreamExecutor reader must learn to re-map their mental model. `AllocateRawBuffer` routes by `PjRtMemorySpace` *kind* (HBM device, pinned/unpinned host, CPU-resident) to one of three backends — the analogue of a multi-memory-space `Allocate`. The device branch threads through a four-deep indirection: `TpuClient::AllocateBuffer` → `tpu::AllocateBuffer` → `tpu::System::Allocate` (the per-core map lookup, the `ordinal → allocator` step) → a virtual `tpu::TpuAllocator::Allocate` → `tpu::TpuSharedMemory::AllocateLocked` → the HBM best-fit `Allocate`. The `Deallocate` side is symmetric and runs from the `TpuBuffer` destructor through the same `TpuAllocator` vtable. This page owns that chain, the `Allocate`/`Deallocate` ABI, and the memory-space routing; it deliberately stops at the best-fit `Allocate` call boundary.
+The bridge is what a StreamExecutor reader must learn to re-map their mental model. `AllocateRawBuffer` routes by `PjRtMemorySpace::kKindId` (HBM device, pinned host, unpinned-host/CPU staging) to one of three backends — the analogue of a multi-memory-space `Allocate`. The device branch threads through a four-deep indirection: `TpuClient::AllocateBuffer` → `tpu::AllocateBuffer` → `tpu::System::Allocate` (the per-core map lookup, the `ordinal → allocator` step) → a virtual `tpu::TpuAllocator::Allocate` → `tpu::TpuSharedMemory::AllocateLocked` → the HBM best-fit `Allocate`. The `Deallocate` side is symmetric and runs from the `TpuBuffer` destructor through the same `TpuAllocator` vtable. This page owns that chain, the `Allocate`/`Deallocate` ABI, and the memory-space routing; it deliberately stops at the best-fit `Allocate` call boundary.
 
 > **NOTE —** the best-fit-with-coalescing *algorithm* (the free-list structure, the RB-tree search, the eager coalesce, the split policy, the 1024 B HBM quantum) lives on [`../memory/hbm-allocator.md`](../memory/hbm-allocator.md). This page calls into `BestFitAllocator::Allocate` (vt+0x30, `0x1e817820`) and `Deallocate` (vt+0x38, `0x1e819dc0`) and stops there — it does **not** re-derive what that engine does internally.
 
@@ -57,7 +57,7 @@ A reader coming from XLA's StreamExecutor backend should hold this correspondenc
 | `se::DeviceMemoryAllocator::Allocate(ordinal, size, …)` | `xla::TpuClient::AllocateRawBuffer` (memory-space routed) | `0xf7fb1e0` |
 | `Allocate` device-ordinal selection | `tpu::System::Allocate` map lookup `loc → allocator` | `0x1d0aeea0` |
 | `se::DeviceMemoryBase` (opaque base + size) | `tpu::TpuSharedMemoryLocation` (chip, tier, host index) | ctor `0x20ad6ae0` |
-| `se::OwningDeviceMemory` / `ScopedDeviceMemory` (RAII) | `tpu::TpuBuffer` (`xla::TpuRawBuffer` PJRT wrapper) | `TpuBuffer` vtable region `0x21ca8190` |
+| `se::OwningDeviceMemory` / `ScopedDeviceMemory` (RAII) | `tpu::TpuBuffer` (`xla::TpuRawBuffer` PJRT wrapper) | `TpuBuffer` vtable `0x21ca9ae8` |
 | `se::DeviceMemoryAllocator::Deallocate` | `tpu::TpuAllocator::Deallocate` (vt+0x30) | `Deferred` `0x1d0cf460` |
 | The concrete backing allocator | per-core `tpu::TpuAllocator` → `tpu::BestFitAllocator` | router map value |
 
@@ -81,8 +81,8 @@ xla::TpuClient::AllocateRawBuffer (0xf7fb1e0)        ── Allocate ABI; routes
   │              └─ TpuAllocator::Allocate (virtual) ── Reusing (0x1d0d2480) | Deferred (0x1d0ce900)
   │                   └─ TpuSharedMemory::AllocateLocked (0x1d4be920 / inner 0x1d4c0f40)
   │                        └─ BestFitAllocator::Allocate vt+0x30 (0x1e817820)  ── ENGINE (other page)
-  ├─ [HOST] tpu::System::AllocateHostBuffer (0x1d0af180)   ── pinned/unpinned host (separate engine)
-  └─ [CPU]  xla::CpuRawBuffer::Allocate (0xf911680)        ── CPU-resident memory space
+  ├─ [PINNED HOST]   tpu::System::AllocateHostBuffer (0x1d0af180)  ── pinned host (separate engine)
+  └─ [UNPINNED HOST] xla::CpuRawBuffer::Allocate (0xf911680)       ── CPU-resident staging
 ```
 
 ### Algorithm
@@ -91,18 +91,21 @@ The router and the per-ordinal lookup are the two decisions a reimplementer must
 
 ```c
 function TpuClient_AllocateRawBuffer(memspace, size, is_tuple, dep):  // 0xf7fb1e0
-    // The Allocate-ABI entry. Routing is by PjRtMemorySpace KIND, the
+    // The Allocate-ABI entry. Routing is by PjRtMemorySpace::kKindId, the
     // multi-memory-space equivalent of se::DeviceMemoryAllocator::Allocate.
-    switch memspace.kind():
-        case TpuHbmMemorySpace:                       // DEVICE
-            dev = memspace.device()                   // -> TpuDevice*
-            return TpuClient_AllocateBuffer(dev, size, is_tuple, dep)   // 0xf7fc5a0
-        case PinnedHostMemorySpace:
-        case UnpinnedHostMemorySpace:                 // HOST staging
-            return System_AllocateHostBuffer(loc, size, deleter)        // 0x1d0af180
-        case CpuMemorySpace:                          // CPU-resident
-            return CpuRawBuffer_Allocate(memspace, size,
-                                         CpuDeviceMemory_DefaultAllocator())  // 0xf911680
+    // `dep` is the AsyncValueRef<bool> allocate-after gate.
+    // Tested in this order (no default device branch — HBM is the fallthrough):
+    if memspace.kind() == UnpinnedHostMemorySpace::kKindId:   // CPU-resident staging
+        CHECK(!dep)                               // LogFatal: allocate_after unsupported (unpinned host)
+        return CpuRawBuffer_Allocate(memspace, size,
+                                     CpuDeviceMemory_DefaultAllocator())  // 0xf911680
+    if memspace.kind() != TpuHbmMemorySpace::kKindId:
+        if memspace.kind() == PinnedHostMemorySpace::kKindId: // pinned host staging
+            CHECK(!dep)                           // LogFatal: allocate_after unsupported (pinned host)
+            return System_AllocateHostBuffer(loc, size, deleter)         // 0x1d0af180
+        return error("Unsupported memory space: %s.")
+    // else: TpuHbmMemorySpace  -> DEVICE
+    return TpuClient_AllocateBuffer(memspace.device(), size, is_tuple, dep) // 0xf7fc5a0
 
 function TpuClient_AllocateBuffer(dev, size, is_tuple, dep):           // 0xf7fc5a0
     // Build the DeviceMemoryBase-equivalent key: (chip, tier, host index).
@@ -126,7 +129,7 @@ function System_Allocate(this, loc, size):             // 0x1d0aeea0  (byte-conf
 
 ### Decompile Cross-Check — the router tail-call
 
-The single most load-bearing claim — that `System::Allocate` is a map lookup followed by a vtable tail-call to slot `+0x10` — is byte-confirmed:
+The central claim — that `System::Allocate` is a map lookup followed by a vtable tail-call to slot `+0x10` — is byte-confirmed:
 
 ```c
 // _ZN3tpu6System8AllocateERKNS_23TpuSharedMemoryLocationEl @ 0x1d0aeea0
@@ -197,7 +200,7 @@ function TpuAllocator_Create(shared_mem, strategy, tracker):  // 0x1d0ce420 (byt
 ```
 
 - **`ReusingTpuAllocator::Allocate`** (`0x1d0d2480`) → `AllocatorFor(size)` (`0x1d0d2e80`): picks a per-size-class sub-allocator / reuse cache under a shared mutex and hands back a recycled freed buffer when one fits, allocating fresh otherwise. This is the size-class reuse strategy — the closest analogue to a caching `se` allocator.
-- **`DeferredTpuAllocator::Allocate`** (`0x1d0ce900`) → `AllocateImpl(size)` (`0x1d0cf620`): the verified body is a one-line forward to `AllocateImpl` then `return this`. `AllocateImpl` is mutex-protected, tracks the allocation, and on no-room produces a `ResourceExhausted` (`MakeErrorImpl<13>`); physical placement is delegated through indirect vtable calls into the owning `TpuSharedMemory`/driver object. Deferred frees are batched and reaped — the "deferred deallocation" name.
+- **`DeferredTpuAllocator::Allocate`** (`0x1d0ce900`) → `AllocateImpl(size)` (`0x1d0cf620`): the verified body is a one-line forward to `AllocateImpl` then `return this`. `AllocateImpl` takes a mutex (`absl::Mutex::lock` on `this+0x10`), tracks the allocation, and guards against a missing core with `MakeErrorImpl<13>` (`absl::StatusCode::kInternal`, message `"No attached TPU to allocate with."` — string-anchored to `tpu_allocator.cc`); physical placement is delegated through indirect vtable calls into the owning `TpuSharedMemory`/driver object, where the actual no-room `ResourceExhausted`/fragmentation diagnostic is produced (in `AllocateLocked`, below). Deferred frees are batched and reaped — the "deferred deallocation" name.
 
 ```c
 // _ZN3tpu12_GLOBAL__N_120DeferredTpuAllocator8AllocateEl @ 0x1d0ce900 (byte-confirmed)
@@ -221,7 +224,7 @@ function TpuSharedMemory_AllocateLocked(this, size):   // 0x1d4be920 / inner 0x1
     return TpuBuffer(loc, offset, ...)                  // wrap offset into the owning handle
 ```
 
-The decompile confirms the `+ 48` (0x30) dispatch inside the inner `AllocateLocked` body. Everything past that call — the RB-tree best-fit search, `SplitBlock`, coalescing, the alignment round-up — is on [`../memory/hbm-allocator.md`](../memory/hbm-allocator.md).
+The decompile confirms the `+ 48` (0x30) dispatch in the `AllocateLocked` body — `(**(this+192) + 48LL)(…)`, where `this+192` is the per-tier `best_fit_` engine pointer (the inner `$_0` at `0x1d4c0f40` is the OOM-stats diagnostic builder, reading `BytesReserved` vt+0x20, `BytesAllocated` vt+0x18, `BytesAvailable` vt+0x68, `BytesAllocatable` vt+0x78, `GetFragmentation` vt+0x80). Everything past the `+0x30` call — the RB-tree best-fit search, `SplitBlock`, coalescing, the alignment round-up — is on [`../memory/hbm-allocator.md`](../memory/hbm-allocator.md).
 
 ---
 
@@ -259,13 +262,14 @@ The bridge's routing has two axes a StreamExecutor reader collapses into one: th
 
 ### Axis 1 — memory-space kind (the backend switch)
 
-| `PjRtMemorySpace` kind | Backend | Engine | This page? |
+| `PjRtMemorySpace::kKindId` | Backend | Engine | This page? |
 |---|---|---|---|
-| `TpuHbmMemorySpace` | `TpuClient::AllocateBuffer` → `System::Allocate` | `tpu::BestFitAllocator` | OWNS the bridge |
-| `PinnedHostMemorySpace` / `UnpinnedHostMemorySpace` | `tpu::System::AllocateHostBuffer` (`0x1d0af180`) | premapped pool / `HostBufferPool` | adjacent |
-| CPU-resident | `xla::CpuRawBuffer::Allocate` (`0xf911680`) | `CpuDeviceMemory::Allocator` | adjacent |
+| `TpuHbmMemorySpace` (fallthrough) | `TpuClient::AllocateBuffer` → `System::Allocate` | `tpu::BestFitAllocator` | OWNS the bridge |
+| `PinnedHostMemorySpace` | `tpu::System::AllocateHostBuffer` (`0x1d0af180`) | premapped pool / `HostBufferPool` | adjacent |
+| `UnpinnedHostMemorySpace` | `xla::CpuRawBuffer::Allocate` (`0xf911680`) | `CpuDeviceMemory::DefaultAllocator` | adjacent |
+| anything else | `MakeRep` + `"Unsupported memory space: %s."` | — | error |
 
-The device branch is the one this page traces end-to-end. The host and CPU branches are named here because `AllocateRawBuffer` is the shared `Allocate` entry that selects among them; their engines are separate subsystems.
+The device branch is the one this page traces end-to-end. The host and CPU-staging branches are named here because `AllocateRawBuffer` is the shared `Allocate` entry that selects among them by `kKindId`; their engines are separate subsystems. The `allocate_after` async dependency is rejected (`LogFatal`) for both host kinds — only the HBM device branch carries it.
 
 ### Axis 2 — the `TpuSharedMemoryLocation` key (the ordinal/tier)
 
