@@ -74,11 +74,11 @@ This roster is taken directly from the `*_functions.json` symbol table — the s
 | load-core | — (fused) | `plc` | `vlc` | `glc` | CERTAIN |
 | family-level `isa` | — | `pxc::isa` (137K) | `vxc::isa` (170K) | — (absent) | CERTAIN |
 | family-level `profiler` | — | `pxc::profiler` (8K) | — | — | CERTAIN |
-| sub-core `isa` | — | `pfc::isa` (42K) | `vfc::isa` (67K) | `gfc::isa` (270K), `glc::isa` (293K) | CERTAIN |
+| sub-core `isa` | — | `pfc::isa` (46K) | `vfc::isa` (69K) | `gfc::isa` (270K), `glc::isa` (294K) | CERTAIN |
 | sub-core `profiler` | — | `pfc`, `plc` | `vfc`, `vlc` | `gfc`, `glc` | CERTAIN |
 | engine blocks | `dfc`, `jfc`, `registers`, `snap` | `internal`, `pfc::b0` | — | — | CERTAIN |
 
-> **CORRECTION (TAX-NS) —** earlier roster notes listed `jxc::bcs`, `jxc::brn`, `jxc::hbm`, `jxc::hib`, `jxc::ici`, `jxc::isa`, `jxc::jellyfish`, and `jxc::dragonfish` as JXC sub-namespaces. The symbol table refutes all of them. The `bcs`/`brn`/`hbm`/`hib`/`ici` tokens are *prefixes inside `*_trace_entry` type names* (e.g. `bcs_internal_trace_entry`, `ici_packet_trace_entry`), not standalone namespaces. JXC has **no `jxc::isa`** at all — the Jellyfish/Dragonfish compiler-side ISA lives in `xla::jellyfish::isa` (the deepsea umbrella's shared compiler-base namespace, e.g. `jellyfish::isa::BundleSlot`, `MiscOpcode`). And `jellyfish`/`dragonfish` appear only as `jellyfish_performance_counters` / `dragonfish_performance_counters`, not bare namespaces.
+> **CORRECTION (TAX-NS) —** earlier roster notes listed `jxc::bcs`, `jxc::brn`, `jxc::hbm`, `jxc::hib`, `jxc::ici`, `jxc::isa`, `jxc::jellyfish`, and `jxc::dragonfish` as JXC sub-namespaces. The symbol table refutes all of them. The `bcs`/`brn`/`hbm`/`hib`/`ici` tokens are *prefixes inside `*_trace_entry` type names* (e.g. `bcs_internal_trace_entry`, `ici_packet_trace_entry`), not standalone namespaces. JXC has **no `jxc::isa`** at all — the Jellyfish/Dragonfish compiler-side ISA lives in `platforms_deepsea::jellyfish::isa` (the shared compiler-base namespace, e.g. `platforms_deepsea::jellyfish::isa::BundleSlot`, `MiscOpcode`; the demangled-symbol search `xla::jellyfish::isa` returns zero, `platforms_deepsea::jellyfish::isa` returns 3122). And `jellyfish`/`dragonfish` appear only as `jellyfish_performance_counters` / `dragonfish_performance_counters`, not bare namespaces.
 
 > **CORRECTION (TAX-GXC) —** earlier notes said GXC has "no own isa/profiler". The symbol table shows the opposite at the sub-core level: `gxc::gfc::isa`, `gxc::glc::isa`, `gxc::gfc::profiler`, and `gxc::glc::profiler` all exist and are large. What GXC lacks is a *family-level* `gxc::isa`/`gxc::profiler` (PXC and VXC have those; GXC pushes ISA down to the sub-cores). GXC does sit inside the VXC family at the HAL-object level (shared factory and impl — see [GXC Family](gxc-family.md)), but its driver ISA is wholly its own.
 
@@ -98,7 +98,7 @@ The six sub-cores map to silicon codenames as follows. JXC is included for compl
 | `glc` | GXC | general load-core | **Ghostlite** | **4** | CERTAIN |
 | `gfc` | GXC | general fetch-core | **6acc60406** | **5** | CERTAIN |
 
-> **GOTCHA —** the GXC codename pairing is the easiest thing on this page to get wrong, and an earlier analysis did. **Ghostlite (v4) = `glc`** (load-core); **6acc60406 (v5) = `gfc`** (fetch-core). The codec walks pin it at the symbol level: `TpuCodecGhostlite` dispatches only to `gxc::glc::isa` + `ghostlite::isa::EncoderGl*`; the anonymous v5 codec dispatches only to `gxc::gfc::isa`. Ghostlite's marketing name is "Trillium" (TPU v6e); 6acc60406 is "TPU7x". Pairing `gfc` with "v6e" is a generation off-by-one.
+> **GOTCHA —** the GXC codename pairing is the easiest thing on this page to get wrong, and an earlier analysis did. **Ghostlite (v4) = `glc`** (load-core); **6acc60406 (v5) = `gfc`** (fetch-core). The codec walks pin it at the symbol level: `TpuCodecGhostlite` dispatches only to `gxc::glc::isa` + `ghostlite::isa::EncoderGl*`; the anonymous v5 codec dispatches only to `gxc::gfc::isa`. The binary's external-name strings keep the two a generation apart — Ghostlite resolves to `TPU v6 lite` (the `TPU v6e`/`TPU v6 lite` band), 6acc60406 to `TPU7x` — so pairing `gfc` with a "v6" name is a generation off-by-one. The canonical version↔external-name reconciliation is the [Codename Matrix](tpu-version-codename-matrix.md).
 
 ---
 
@@ -106,13 +106,13 @@ The six sub-cores map to silicon codenames as follows. JXC is included for compl
 
 The sub-cores were originally grouped because the profiler emits a per-sub-core `profiler::TraceEntry` event class. The symbol table shows this class exists in **five** namespaces, not six — and not in the obvious one-per-sub-core pattern:
 
-| Namespace holding `profiler::TraceEntry` | Symbols | Granularity |
-|---|---|---|
-| `pxc::profiler::TraceEntry` | 2762 | **family-level** (not split into pfc/plc) |
-| `vxc::vfc::profiler::TraceEntry` | 4015 | sub-core (fetch) |
-| `vxc::vlc::profiler::TraceEntry` | 3001 | sub-core (load) |
-| `gxc::gfc::profiler::TraceEntry` | 4458 | sub-core (fetch) |
-| `gxc::glc::profiler::TraceEntry` | 4267 | sub-core (load) |
+| Namespace holding `profiler::TraceEntry` | Token count | Granularity | Confidence |
+|---|---|---|---|
+| `pxc::profiler::TraceEntry` | 3087 | **family-level** (not split into pfc/plc) | CERTAIN |
+| `vxc::vfc::profiler::TraceEntry` | 4338 | sub-core (fetch) | CERTAIN |
+| `vxc::vlc::profiler::TraceEntry` | 3326 | sub-core (load) | CERTAIN |
+| `gxc::gfc::profiler::TraceEntry` | 4781 | sub-core (fetch) | CERTAIN |
+| `gxc::glc::profiler::TraceEntry` | 4590 | sub-core (load) | CERTAIN |
 
 The `TraceEntry` class consumes a `TpuXPlaneBuilder` and produces `tsl::profiler::XEventBuilder` events (`ProcessTraceEntry`, `UpdateContext` methods), feeding the XLA profiler's XPlane. Each instance is keyed by a `ChipCoreId` and threads `JfTrace_RunDebugInfo` vectors and offload-context lookup maps.
 
@@ -122,23 +122,25 @@ The `TraceEntry` class consumes a `TpuXPlaneBuilder` and produces `tsl::profiler
 
 ## The Deepsea Umbrella and the Compiler-Base Namespace
 
-"deepsea" is the umbrella project; the per-silicon driver families (`jxc`/`pxc`/`vxc`/`gxc`) are children of `asic_sw::driver::deepsea::`. But there is a second, parallel use of "deepsea" and "jellyfish" that a reimplementer must not conflate with the driver tree: the **compiler-base** namespace `xla::jellyfish::`.
+"deepsea" is the umbrella project; the per-silicon driver families (`jxc`/`pxc`/`vxc`/`gxc`) are children of `asic_sw::driver::deepsea::`. But there is a second, parallel use of "deepsea" and "jellyfish" that a reimplementer must not conflate with the driver tree: the **compiler base**. It is split across two top-level namespaces — `platforms_deepsea::jellyfish::isa` holds the shared ISA primitives, and `xla::jellyfish::` holds the codec, the per-codename compiler targets, and the cost models. There is no `xla::jellyfish::isa` (the `isa` sub-namespace lives only under `platforms_deepsea::`).
 
 ```text
 deepsea (umbrella)
-  ├─ xla::jellyfish::               ── compiler-base namespace for ALL generations
-  │    ├─ jellyfish::isa            ── the shared ISA primitives (BundleSlot, MiscOpcode, …)
-  │    ├─ ghostlite::isa            ── named v4 worker encoders/decoders (EncoderGl*, DecoderGl*)
-  │    ├─ viperfish::isa            ── named v3 worker encoders/decoders (EncoderVf*, DecoderVf*)
-  │    ├─ GlcCycleTable / GfcCycleTable / JfCycleTable   ── per-gen cost models
-  │    └─ CompactProgram<...>       ── templated over gxc::{gfc,glc}::isa bundle types
-  └─ asic_sw::driver::deepsea::     ── the DRIVER tree (this page's subject)
+  ├─ COMPILER-BASE (generation-agnostic ISA + codec)
+  │    ├─ platforms_deepsea::jellyfish::isa   ── shared ISA primitives (BundleSlot, MiscOpcode, …)
+  │    ├─ ghostlite::isa                      ── named v4 worker encoders/decoders (EncoderGl*, DecoderGl*)
+  │    ├─ viperfish::isa                      ── named v3 worker encoders/decoders (EncoderVf*, DecoderVf*)
+  │    └─ xla::jellyfish::                     ── codec + targets + cost models
+  │         ├─ CompactProgram<...>            ── templated over gxc::{gfc,glc}::isa bundle types
+  │         ├─ JellyfishTarget / DragonfishTarget   ── per-codename compiler targets
+  │         └─ JfCycleTable / GfcCycleTable / GlcCycleTable   ── per-gen cost models
+  └─ asic_sw::driver::deepsea::                ── the DRIVER tree (this page's subject)
        jxc, pxc, vxc, gxc + their sub-cores
 ```
 
 The two trees meet at the codec layer: a `TpuCodec*` object (compiler-side, under `xla::jellyfish::CompactProgram`) emits bundles whose types live under the driver tree's sub-core ISA — e.g. `xla::jellyfish::CompactProgram<asic_sw::deepsea::gxc::glc::isa::TensorCoreBundleCompact>`. So the compiler base is generation-agnostic and the per-generation specialization is the sub-core ISA bundle type plugged into it.
 
-> **GOTCHA —** because the compiler base is named `jellyfish`, a search for "jellyfish ISA" lands in `xla::jellyfish::isa`, NOT in any `jxc::isa`. JXC's *driver* namespace has no `isa` at all. A reimplementer wiring up JXC must look for the ISA in the compiler-base namespace, not under the JXC driver family. This is the same reason `jxc::jellyfish` and `jxc::dragonfish` do not exist as namespaces — the codename-specific *driver* state is in `*_performance_counters` and `*_trace_entry`, while the codename-specific *compiler* state is `xla::jellyfish::JellyfishTarget` / `DragonfishTarget`.
+> **GOTCHA —** because the compiler base is named `jellyfish`, a search for "jellyfish ISA" lands in `platforms_deepsea::jellyfish::isa`, NOT in any `jxc::isa` (and not in `xla::jellyfish::isa`, which has zero symbols — `xla::jellyfish::` holds the codec, targets, and cost models, but the ISA *primitives* are under `platforms_deepsea::`). JXC's *driver* namespace has no `isa` at all. A reimplementer wiring up JXC must look for the ISA in the compiler-base namespace, not under the JXC driver family. This is the same reason `jxc::jellyfish` and `jxc::dragonfish` do not exist as namespaces — the codename-specific *driver* state is in `*_performance_counters` and `*_trace_entry`, while the codename-specific *compiler* state is `xla::jellyfish::JellyfishTarget` / `DragonfishTarget`.
 
 ---
 
@@ -146,11 +148,11 @@ The two trees meet at the codec layer: a `TpuCodec*` object (compiler-side, unde
 
 The sub-core that matters most for a compiler-backend reimplementation is the one that owns the on-chip bundle ISA. For the split families this is a per-sub-core `isa` namespace, and its central type is a `TensorCoreBundleCompact` (the packed instruction bundle the codec encodes and decodes):
 
-| Sub-core ISA | Bundle-compact type present | Symbols | Confidence |
+| Sub-core ISA | Bundle-compact type present | Token count | Confidence |
 |---|---|---|---|
-| `pxc::pfc::isa` | `BarnaCoreChannelBundle`, `VectorBase` | 42K | CERTAIN |
-| `vxc::vfc::isa` | SparseCore Scs/Tac bundle types | 67K | CERTAIN |
-| `gxc::glc::isa` | `TensorCoreBundleCompact` (Ghostlite/v4) | 293K | CERTAIN |
+| `pxc::pfc::isa` | `BarnaCoreChannelBundle`, `VectorBase` | 46K | CERTAIN |
+| `vxc::vfc::isa` | SparseCore Scs/Tac bundle types | 69K | CERTAIN |
+| `gxc::glc::isa` | `TensorCoreBundleCompact` (Ghostlite/v4) | 294K | CERTAIN |
 | `gxc::gfc::isa` | `TensorCoreBundleCompact` (6acc60406/v5) | 270K | CERTAIN |
 
 The codec for each version binds *exclusively* to one sub-core ISA. The `TpuCodecGhostlite` codec dispatches only to `gxc::glc::isa` (+ the named `ghostlite::isa::EncoderGl*` workers); the anonymous v5 codec dispatches only to `gxc::gfc::isa`; the `TpuCodecViperfish` codec binds to `vxc::vfc`/`vlc` and `viperfish::isa`. This exclusive binding is the surest symbol-level evidence for the codename ↔ sub-core map, because the codec methods are decoded function bodies, not heuristics.
@@ -171,7 +173,7 @@ A single grid relating each family to its split state, sub-cores, ISA placement,
 | Factory class | `TpuHalJxcHardwareFactory` (anon) | `TpuHalPxcHardwareFactory` (anon) | `TpuHalVxcHardwareFactory` (global) | none — uses VXC factory |
 | Factory vtable | 0x215fe530 | 0x216085c8 | 0x21cabf70 | (VXC's 0x21cabf70) |
 | HAL impl size | 208 B | 208 B | 216 B | 216 B (VXC's) |
-| ISA placement | `xla::jellyfish::isa` (compiler-base) | family + sub-core | family + sub-core | sub-core only |
+| ISA placement | `platforms_deepsea::jellyfish::isa` (compiler-base) | family + sub-core | family + sub-core | sub-core only |
 | DMA model | separate `JfDmaIssuer` | in `TpuPxcDriver` | in `TpuVxcDriver` | in `TpuVxcDriver` |
 | DMA descriptor | V1 (32 B) | V2 (≥96 B) | V2 | V2 |
 | TensorCore | yes | yes | yes | yes |
@@ -198,7 +200,7 @@ The four family tags (`jxc`, `pxc`, `vxc`, `gxc`) follow a `_xc` suffix conventi
 
 ## Evidence Method
 
-The taxonomy is recovered from the demangled symbol roster in the IDA `*_functions.json` export, not from any single decompiled function. Each driver namespace appears in Itanium-mangled form as `asic_sw6driver7deepsea3<famlen><fam>3<sublen><sub>...` (e.g. `deepsea3gxc3glc3isa` for `asic_sw::driver::deepsea::gxc::glc::isa`). Counting occurrences of each length-prefixed token, and checking the *character that follows* it, distinguishes a real sub-namespace from a token that is merely the prefix of a longer type name. This is how the JXC `bcs`/`brn`/`hbm`/`hib`/`ici` "namespaces" were shown to be `*_trace_entry` type-name prefixes, and how the absence of a family-level `gxc::isa` (`deepsea3gxc3isa` → zero matches) was established.
+The taxonomy is recovered from the IDA `*_functions.json` export — the symbol names plus their decompiled bodies — not from any single decompiled function. Each driver namespace appears in Itanium-mangled form as `asic_sw6driver7deepsea3<famlen><fam>3<sublen><sub>...` (e.g. `deepsea3gxc3glc3isa` for `asic_sw::driver::deepsea::gxc::glc::isa`). The counts in the tables above are raw occurrences of each length-prefixed token across that export (so they scale with how heavily a namespace is *referenced*, not with its distinct-symbol count — the binary's own symbol table is sparser; the demangled-symbol tally of `gxc::glc::isa`, for instance, is ~68K against the 294K token occurrences). Checking the *character that follows* a token distinguishes a real sub-namespace from a token that is merely the prefix of a longer type name. This is how the JXC `bcs`/`brn`/`hbm`/`hib`/`ici` "namespaces" were shown to be `*_trace_entry` type-name prefixes, and how the absence of a family-level `gxc::isa` (`deepsea3gxc3isa` → zero matches) was established.
 
 ---
 
@@ -206,7 +208,7 @@ The taxonomy is recovered from the demangled symbol roster in the IDA `*_functio
 
 | Concern | Guidance |
 |---|---|
-| Modeling JXC | One fused pipeline per core; no load-core; DMA via a separate `JfDmaIssuer` object; ISA in `xla::jellyfish::isa` |
+| Modeling JXC | One fused pipeline per core; no load-core; DMA via a separate `JfDmaIssuer` object; ISA in `platforms_deepsea::jellyfish::isa` |
 | Modeling PXC/VXC | Two sub-cores (fetch + load) per core; family-level `isa`; DMA folded into the driver; V2 descriptor |
 | Modeling GXC | Two sub-cores with ISA *only* under the sub-cores; reuses the VXC HAL product chain; Ghostlite=glc, 6acc60406=gfc |
 | Profiler | Expect a unified `TraceEntry` class for PXC (family), VFC, VLC, GFC, GLC; JXC uses per-engine `*_trace_entry` types |
@@ -217,7 +219,7 @@ The taxonomy is recovered from the demangled symbol roster in the IDA `*_functio
 ## Cross-References
 
 - [Part IV Overview](overview.md) — the Silicon & Codename hub; where the fetch/load split sits in the `TpuVersion` dispatch model
-- [JXC Family](jxc-family.md) — the fused-dataflow family; the no-split baseline and `xla::jellyfish::isa`
+- [JXC Family](jxc-family.md) — the fused-dataflow family; the no-split baseline and `platforms_deepsea::jellyfish::isa`
 - [PXC Family](pxc-family.md) — origin of the fetch/load split; `pfc`/`plc`; family-level ISA and profiler
 - [VXC Family](vxc-family.md) — `vfc`/`vlc`; first SparseCore family; the per-codename `InitializeDrivers` switch
 - [GXC Family](gxc-family.md) — `gfc`/`glc`; per-sub-core ISA; Ghostlite/6acc60406 codename pairing
