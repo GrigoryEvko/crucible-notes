@@ -13,7 +13,7 @@ The single most important structural fact is that **op selection is split across
 For reimplementation, the contract is:
 
 - **The engine classifier is a static RE2 section-name table.** `ScSection::ComputeKind` (`0x13afefe0`) lazily builds nine `RE2` regexes (`__cxa_guard` `0x224de388`) and `FullMatchN`s the section name in fixed order; the first match returns a `SectionKind` int. `GhostliteEmitter::ConsumeProgram` then `crc32`-probes a `flat_hash_map<SectionKind, ScSection>` and routes on the matched section's engine tag at `slot+0x28`: `8 → Scs`, `7 → Tec`, `6 → Tac`.
-- **The op classifier is the `0xae8db28` jump table.** `ConsumeScalarAluInstruction<glc::SparseCoreTacBundle>` (`0x139f09c0`) reads `DWORD[MCInst]`, subtracts base `0x222`, bound-checks `0x6e` (111 entries), and indirect-jumps. 38 distinct arms select a `SparseCoreScalarAlu` proto op and an `EmitScalar*` / `EmitSetRegister` template; two out-of-block opcodes (`0xb25 → Halt`, `0xf86 → IsInfOrNan`) are handled in the default fall-through; every other opcode hits "Unsupported opcode for Scalar Alu slot."
+- **The op classifier is the `0xae8db28` jump table.** `ConsumeScalarAluInstruction<glc::SparseCoreTacBundle>` (`0x139f09c0`) reads `DWORD[MCInst]`, subtracts base `0x222`, bound-checks `0x6e` (111 entries), and indirect-jumps. 37 distinct in-table arms (20 direct-accessor, 16 two-opcode `EmitX` pairs, 1 `Halt`) select a `SparseCoreScalarAlu` proto op and an `EmitScalar*` / `EmitSetRegister` template; two out-of-block opcodes (`0xb25 → Halt`, sharing the in-table `Halt` arm, and `0xf86 → IsInfOrNan`) are handled in the default fall-through; every other opcode hits "Unsupported opcode for Scalar Alu slot."
 - **Each `(generation, bundle-type)` owns its own jump table over the same opcode block.** `glc::TacBundle` → `0xae8db28`, `glc::ScsBundle` → `0xaea9df8`, `vfc::TacBundle` → `0xae667d8`; all share base `0x222`, bound `0x6e`, and the same op family. Only the `EmitX` bundle-template argument differs (`SparseCoreTacBundle` vs `SparseCoreScsBundle`). The scalar-ALU ISA is shared across the SCS and TAC engines.
 - **EmitX populates proto; it does not pack bits.** Each arm's `EmitScalar*` template fills a `SparseCoreScalarAlu` oneof submessage (discriminator `[proto+0x50]`, active message `[proto+0x48]`). The absolute bundle bit positions are written later by the `<Slot>Encoder::Encode` → `BitCopy` stage, downstream of `ConvertToTpuCoreProgram`.
 
@@ -21,7 +21,7 @@ For reimplementation, the contract is:
 |---|---|
 | **Op jump table (glc TAC)** | `ConsumeScalarAluInstruction<glc::SparseCoreTacBundle>` @ `0x139f09c0`; jt `0xae8db28`, base `0x222`, bound `0x6e` (111 entries) |
 | **Sibling jump tables** | `glc::ScsBundle` @ `0x13a4f7c0` (jt `0xaea9df8`) · `vfc::TacBundle` @ `0x13985100` (jt `0xae667d8`) — same block, same op family |
-| **Op classifier input** | `DWORD[MCInst]` opcode; index `opcode − 0x222`; 38 arms + default + 2 OOB |
+| **Op classifier input** | `DWORD[MCInst]` opcode; index `opcode − 0x222`; 37 in-table arms (20 A + 16 B-pairs + 1 Halt) + default + 2 OOB |
 | **Engine classifier** | `ScSection::ComputeKind` @ `0x13afefe0` — 9 static `RE2` regexes (`__cxa_guard` `0x224de388`), first `FullMatchN` wins → `SectionKind` |
 | **Engine route** | `GhostliteEmitter::ConsumeProgram` @ `0x139ed5e0` — `crc32` `flat_hash_map<SectionKind,ScSection>` probe → engine tag `slot+0x28`: `8`=Scs, `7`=Tec, `6`=Tac |
 | **Proto oneof** | `SparseCoreScalarAlu`; discriminator `[proto+0x50]` (`_oneof_case_[0]`), active msg `[proto+0x48]` |
@@ -54,8 +54,8 @@ if (!kSectionRegexes_guard) {                          // lazy __cxa_guard 0x224
     RE2::RE2(&e[4].re, "\\.(data|bss)\\.sflag");       e[4].kind = 4;   // SFLAG
     RE2::RE2(&e[5].re, "\\.text\\.tile_execute");      e[5].kind = 7;   // TEC code
     RE2::RE2(&e[6].re, "\\.text\\.tile_access");       e[6].kind = 6;   // TAC code
-    RE2::RE2(&e[7].re, "\\.text(\\.scs.*)?$");         e[7].kind = 9;   // SCS code (fallback .text)
-    RE2::RE2(&e[8].re, ".note.GNU-stack");             e[8].kind = 8;   // ELF note marker
+    RE2::RE2(&e[7].re, "\\.text(\\.scs.*)?$");         e[7].kind = 8;   // SCS code (fallback .text)
+    RE2::RE2(&e[8].re, ".note.GNU-stack");             e[8].kind = 9;   // ELF note marker
     kSectionRegexes = e;
 }
 for (i = 0; i < 9; ++i)
@@ -67,9 +67,9 @@ for (i = 0; i < 9; ++i)
 return Error("Unknown section kind for \"...\"");      // no regex matched
 ```
 
-> **GOTCHA — the regex *construction* order is not the kind *ordinal* order.** The table is built `smem(0), tilespmem(1), spmem(2), hbm(3), sflag(4), tile_execute(7), tile_access(6), .text/.scs(9), GNU-stack(8)` — the two `.text.tile_*` entries store kinds `7` and `6` (note `tile_execute=7` is built before `tile_access=6`), and the catch-all `.text` entry stores `9`. The `SectionKind` is the entry's `int` field, **not** its position in the table. A reimplementer who assigns kinds by table index will swap TEC/TAC and mis-tag SCS.
+> **GOTCHA — the regex *construction* order is not the kind *ordinal* order.** The table is built `smem(0), tilespmem(1), spmem(2), hbm(3), sflag(4), tile_execute(7), tile_access(6), .text/.scs(8), GNU-stack(9)` — the two `.text.tile_*` entries store kinds `7` and `6` (note `tile_execute=7` is built before `tile_access=6`), and the catch-all `.text` entry stores `8`. The `SectionKind` is the entry's `int` field (written one DWORD ahead of each regex slot: `*v8=0`, `v8[38]=1`, … `v8[266]=8`, `v8[304]=9` in the decompile), **not** its position in the table. A reimplementer who assigns kinds by table index will swap TEC/TAC and mis-tag SCS.
 
-> **GOTCHA — `.text(\.scs.*)?$` is the SCS *fallback*.** Plain `.text` (no `.tile_access` / `.tile_execute` suffix), with or without a `.scs*` suffix, classifies as SCS (kind 9). The two tile sections must therefore be tested *before* the bare-`.text` regex, which the construction order guarantees (entries 5/6 before entry 7). Any SC text section that is neither tile-access nor tile-execute is SCS by default.
+> **GOTCHA — `.text(\.scs.*)?$` is the SCS *fallback*.** Plain `.text` (no `.tile_access` / `.tile_execute` suffix), with or without a `.scs*` suffix, classifies as SCS (kind 8 — the same value `ConsumeProgram` routes on, so no `9→8` remap exists). The two tile sections must therefore be tested *before* the bare-`.text` regex, which the construction order guarantees (entries 5/6 before entry 7). Any SC text section that is neither tile-access nor tile-execute is SCS by default.
 
 ### The classifier map and the engine route
 
@@ -92,11 +92,11 @@ if (tag == 6) DefaultConstruct<SparseCoreTacProgram>();       // TAC  (seq4)
 |---|---|---|---|---|
 | `6` | `SparseCoreTacProgram` (`gxc::glc::isa`) | 4 TAC | `SparseCoreTacBundle` | `.text.tile_access` |
 | `7` | `SparseCoreTecProgram` | 5 TEC | `SparseCoreTecBundle` | `.text.tile_execute` |
-| `8` | `SparseCoreScsProgram` | 3 SCS | `SparseCoreScsBundle` | `.text` / `.text.scs*` (regex kind 9) |
+| `8` | `SparseCoreScsProgram` | 3 SCS | `SparseCoreScsBundle` | `.text` / `.text.scs*` (regex kind 8) |
 
 The `crc32` probe and the `tag == 7/6/8` dispatch and the `gxc::glc::isa::SparseCore{Tec,Tac,Scs}Program` default-constructs are confirmed in the `ConsumeProgram` decompile. `ViperfishEmitter::ConsumeProgram` (`0x13981d20`) is identical in shape with the `vfc` program types.
 
-> **NOTE — kind 9 (SCS regex) vs engine tag 8 (SCS route): one residual edge.** `ComputeKind` assigns the `.text(\.scs.*)?$` regex `SectionKind = 9`, but `ConsumeProgram` routes SCS on engine tag `8` (and `changeSection` byte-confirms only the `6→7` key remap under the `+0x240` flag). The `9 → 8` normalization site for the SCS engine tag was not isolated in this analysis — the engine-tag SET `{6=TAC, 7=TEC, 8=SCS}` at the `DefaultConstruct` sites is CONFIRMED and the regex kind SET `{…, tile_access=6, tile_execute=7, GNU-stack=8, .text/.scs=9}` is CONFIRMED, but the exact `9↔8` link is **INFERRED**. See [§Confidence Summary](#confidence-summary).
+> **NOTE — the SCS regex kind and the SCS engine tag are the same value (8); no normalization edge.** `ComputeKind` assigns the `.text(\.scs.*)?$` regex `SectionKind = 8` (the `int` stored at `v8[266]` in the decompile), and `ConsumeProgram` routes SCS on engine tag `8` — the regex kind feeds the map key directly and matches the route tag with no `9→8` step. Kind `9` is the `.note.GNU-stack` marker (`v8[304]`), which is not an SC code section and never reaches a `DefaultConstruct`. The only key transform `changeSection` applies is the `6→7` (TAC→TEC) remap under the `+0x240` flag. The full regex kind SET `{smem=0, tilespmem=1, spmem=2, hbm=3, sflag=4, tile_access=6, tile_execute=7, .text/.scs=8, GNU-stack=9}` and the engine-tag SET `{6=TAC, 7=TEC, 8=SCS}` are both CONFIRMED against the decompile. See [§Confidence Summary](#confidence-summary).
 
 ---
 
@@ -113,7 +113,7 @@ opcode = *(u32*)MCInst;                  // DWORD[MCInst]
 idx    = opcode - 0x222;                 // jt base 0x222
 if ((unsigned)idx > 0x6e)                // bound 0x6e (111 entries)
     goto OUT_OF_BLOCK;
-switch jt[idx]:                          // jt @0xae8db28, 111×int32 rel offsets, 38 arms
+switch jt[idx]:                          // jt @0xae8db28, 111×int32 rel offsets, 37 in-table arms
    ... per-arm: select SparseCoreScalarAlu oneof + EmitX template ...
 OUT_OF_BLOCK:
    if (opcode == 0xb25) { ...clear_inst; oneof=6; DefaultConstruct Halt; return OK; }   // 2853
@@ -126,12 +126,12 @@ The decompile renders the jump table as a C `switch (*(_DWORD *)a2)`; the underl
 
 ### Arm shapes
 
-Each of the 38 arms is one of three shapes, byte-confirmed in the decompile:
+Each of the 37 in-table arms is one of three shapes, byte-confirmed in the decompile (the OOB `IsInfOrNan` is a fourth, `EmitScalarWeird`-shaped arm reached only via the `default:` block):
 
 | Shape | What it does | Example |
 |---|---|---|
 | **A — direct accessor** | `p = SparseCoreScalarAlu::mutable_<op>(proto)`, then either tail-`EmitScalarUnop`/`EmitSetRegister` with `p`, or fill the submessage inline and `return OK`. 20 ops. | `0x222`: `mutable_ceiling` → `EmitScalarUnop<…,Ceiling>` |
-| **B — two-opcode EmitX** | Both opcodes of a pair test the oneof discriminator `[proto+0x50] == <tag>`; if not already set, `clear_inst`, set `[proto+0x50] = <tag>`, `Arena::DefaultConstruct<SparseCoreScalarAlu_<Op>>`, store at `[proto+0x48]`; then tail-`EmitScalar*`/`EmitSetRegister<Op,Bundle>`. 15 arm-pairs. | `0x223,0x224`: oneof `37`, `EmitScalarCompareOp<PredicateDest,…,CompareFloatingPointEq>` |
+| **B — two-opcode EmitX** | Both opcodes of a pair test the oneof discriminator `[proto+0x50] == <tag>`; if not already set, `clear_inst`, set `[proto+0x50] = <tag>`, `Arena::DefaultConstruct<SparseCoreScalarAlu_<Op>>`, store at `[proto+0x48]`; then tail-`EmitScalar*`/`EmitSetRegister<Op,Bundle>`. 16 arm-pairs. | `0x223,0x224`: oneof `37`, `EmitScalarCompareOp<PredicateDest,…,CompareFloatingPointEq>` |
 | **H — Halt** | `clear_inst`; set oneof `[proto+0x50] = 6`; `DefaultConstruct<SparseCoreScalarAlu_Halt>`; `return OK`. Reached from `0x23b` (in-table) and `0xb25` (OOB). | `0x23b`: `goto Halt` |
 
 The two opcodes of a B-arm pair are the **predicated and non-predicated MCInst forms** of the same op — both route to the identical oneof tag and EmitX template. (The exact MCInst-operand difference between the two forms was not operand-decoded; **INFERRED** from the shared target.)
@@ -185,7 +185,7 @@ Every row below is read from the `ConsumeScalarAluInstruction<glc::SparseCoreTac
 
 ### EmitX template families (proto-population layer)
 
-The 38 arms reach exactly six `EmitX` template families plus the 20 direct accessors. These templates **populate** the proto submessage; they do not write bundle bits (that is the downstream `<Slot>Encoder::Encode`).
+The arms reach exactly six `EmitX` template families plus the 20 direct accessors (two of which — `Ceiling`, `Floor` — pair a `mutable_<op>` accessor with `EmitScalarUnop`, and `IsInfOrNan`'s `mutable_is_inf_or_nan` feeds the OOB `EmitScalarWeird` arm). These templates **populate** the proto submessage; they do not write bundle bits (that is the downstream `<Slot>Encoder::Encode`).
 
 | Family | Ops reaching it | Notes |
 |---|---|---|
@@ -243,7 +243,7 @@ SC dialect → LowerToSparseCoreLlvmPass → LLVM backend → MCInst (in a named
    │     per-engine: GetScalarAluSlot + EmitPredicationToSlot + ↓
    │
    ▼  ConsumeScalarAluInstruction<gen::Bundle>   ── JUMP TABLE on DWORD[MCInst]  (THIS PAGE)
-   │     idx = opcode - 0x222; bound 0x6e; jt[idx] → 1 of 38 arms (+ 2 OOB + default)
+   │     idx = opcode - 0x222; bound 0x6e; jt[idx] → 1 of 37 in-table arms (+ 2 OOB + default)
    │     arm: select SparseCoreScalarAlu oneof [proto+0x50] + active msg [proto+0x48]
    │
    ▼  EmitScalar{Unop,Binop,CompareOp,YUnop,Weird} / EmitSetRegister<Op,Bundle>
@@ -266,7 +266,7 @@ This page's TABLE A was re-derived directly from the `ConsumeScalarAluInstructio
 - `Max`/`Min` are at `0x231,0x232` / `0x233,0x234` (oneof 29/30), **not** at `0x25d,0x25e` (which is `ConvertInt32ToFloat32`, oneof 16).
 - `0x24d` is **`delay`** (a direct accessor with inline operand write), not part of the Halt arm. `Halt` is reached from in-table `0x23b` and OOB `0xb25` only.
 
-The engine-classifier side (`ComputeKind` regex table, `crc32` map, engine tags `6/7/8`) matched the raw narration exactly. The corrections are confined to the op jump table's opcode→op assignment; the *structure* (111 entries, base `0x222`, bound `0x6e`, 38 arms, the three arm shapes, the EmitX families, the per-`(gen,bundle)` table family) is as the raw narration described.
+On the engine-classifier side, the `crc32` map and the `DefaultConstruct` engine tags `6/7/8` were already correct, but the SCS regex kind was mis-stated: `.text(\.scs.*)?$` stores kind **8** (= the SCS engine tag, read from `v8[266]` in the decompile), not 9, and kind **9** belongs to `.note.GNU-stack` (`v8[304]`). That correction removes the previously-claimed `9↔8` normalization edge — there is none. The op jump table's structure (111 entries, base `0x222`, bound `0x6e`, 37 in-table arms + 2 OOB, the three in-table arm shapes, the EmitX families, the per-`(gen,bundle)` table family) is unchanged by this pass.
 
 ---
 
@@ -274,9 +274,9 @@ The engine-classifier side (`ComputeKind` regex table, `crc32` map, engine tags 
 
 | Claim | Evidence | Confidence |
 |---|---|---|
-| Op selection is a jump table on `DWORD[MCInst]`; base `0x222`, bound `0x6e`, 111 entries, 38 arms | `0x139f09c0` decompile `switch (*(_DWORD*)a2)`; jt `0xae8db28` | CONFIRMED |
+| Op selection is a jump table on `DWORD[MCInst]`; base `0x222`, bound `0x6e`, 111 entries, 37 in-table arms | `0x139f09c0` decompile `switch (*(_DWORD*)a2)`; jt `0xae8db28` | CONFIRMED |
 | Proto oneof discriminator `[proto+0x50]`, active msg `[proto+0x48]` | decompile `*(_DWORD*)(a3+80)` / `*(_QWORD*)(a3+72)` per arm | CONFIRMED |
-| TABLE A opcode→op→EmitX→oneof mappings (all 38 arms) | `0x139f09c0` decompile, per-case `mutable_<op>` / `DefaultConstruct<…>` + `*(a3+80)=tag` + tail `Emit*` | CONFIRMED (re-derived) |
+| TABLE A opcode→op→EmitX→oneof mappings (all 37 in-table arms + 2 OOB) | `0x139f09c0` decompile, per-case `mutable_<op>` / `DefaultConstruct<…>` + `*(a3+80)=tag` + tail `Emit*` | CONFIRMED (re-derived) |
 | TABLE A corrects the raw narration's compare/`Set*`/`Max`/`Min`/`delay`/`Halt` assignments | side-by-side of decompile cases vs raw TABLE A | CONFIRMED (correction) |
 | Two OOB opcodes `0xb25`→Halt, `0xf86`→`EmitScalarWeird<PredicateDest,IsInfOrNan>` | decompile `default:` `v7 == 2853` / `v7 == 3974` | CONFIRMED |
 | Default error `"Unsupported opcode for Scalar Alu slot: $0 : $1"` | decompile `SubstituteAndAppendArray(…, 47, …)` | CONFIRMED |
@@ -284,8 +284,8 @@ The engine-classifier side (`ComputeKind` regex table, `crc32` map, engine tags 
 | `ComputeKind` = 9 static RE2 regexes (`__cxa_guard`), first `FullMatchN` wins → `SectionKind` | `0x13afefe0` decompile: 9 `RE2::RE2(...)` + `FullMatchN` chain + `*v4` kind store | CONFIRMED |
 | The 9 regex literals and their kinds (TABLE in §Engine Classifier) | decompile string literals + per-entry kind store | CONFIRMED |
 | Engine route `crc32` map probe → tag `slot+0x28`: `8`=Scs, `7`=Tec, `6`=Tac | `0x139ed5e0` decompile `_mm_crc32_u64` + `v27 == 7` + `DefaultConstruct<SparseCore{Tec,Tac,Scs}Program>` | CONFIRMED |
-| `TAC(6) → TEC(7)` map-key remap under `SCStreamer+0x240` | `changeSection` `0x13b03e20` (`cmove`); per raw narration, structurally consistent | HIGH |
-| SCS regex kind `9` → engine tag `8` normalization site | `ComputeKind` assigns `9`; `ConsumeProgram` routes `8`; the `9↔8` link not isolated | INFERRED |
+| `TAC(6) → TEC(7)` map-key remap under `SCStreamer+0x240` | `changeSection` `0x13b03e20`: `if (*((_BYTE*)this+576)==1) if (kind==6) key=7` before the `crc32` map insert | CONFIRMED |
+| SCS regex kind = engine tag = `8` (no normalization); kind `9` is GNU-stack | `ComputeKind` stores `v8[266]=8` for `.text/.scs`, `v8[304]=9` for GNU-stack; `ConsumeProgram` routes SCS on tag `8` | CONFIRMED |
 | Pred / non-pred semantics of the two-opcode B-arm pairs | both opcodes share oneof tag + EmitX template; operand-level predicate not decoded | INFERRED |
 | The 58 DEFAULT opcodes are SCS-sequencer / other-slot ops | confirmed they hit the TAC "Unsupported" error; their home consumer not cross-walked here | INFERRED |
 
