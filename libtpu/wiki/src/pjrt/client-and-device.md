@@ -172,12 +172,13 @@ Reconstructed from the field stores in `CreateWrapperClient`; offsets are within
 | Field | Offset | Type | Meaning |
 |---|---|---|---|
 | `client` | `+0x00` | `xla::PjRtClient*` (owned) | The implementation object; vtable drives everything |
-| `devices` | `+0x08` | `vector<PJRT_Device>` (begin/end/cap at qw 1..6) | All wrapper devices; each entry 9 qwords (72 B) |
-| `addressable_devices` | `+0x38` | `vector<PJRT_Device*>` (qw 7..9) | Subset where `device->IsAddressable()` is true |
-| `device_map` | `+0x50` | `flat_hash_map<PjRtDevice*, PJRT_Device*>` (qw 10..13) | O(1) impl→wrapper for device callbacks |
+| (reserved) | `+0x08` | `_QWORD[3]` (qw 1..3) | Scratch/auxiliary fields written during construction; not read by the device accessors |
+| `devices` | `+0x20` | `vector<PJRT_Device>` (begin/end/cap at qw 4..6) | All wrapper devices; each entry 9 qwords (72 B). `PJRT_Client_Devices` reads begin=qw4, end=qw5 |
+| `addressable_devices` | `+0x38` | `vector<PJRT_Device*>` (begin/end/cap at qw 7..9) | Subset where `device->IsAddressable()` is true. `PJRT_Client_AddressableDevices` reads begin=qw7, end=qw8 |
+| `device_map` | `+0x50` | `flat_hash_map<PjRtDevice*, PJRT_Device*>` (qw 10..13) | O(1) impl→wrapper; read by `GetCDevice` at wrapper+0x50 |
 | `memories` | `+0x70` | `vector<PJRT_Memory>` (qw 14..16) | All wrapper memory spaces; entries 5 qwords (40 B) |
 | `addressable_memories` | `+0x88` | `vector<PJRT_Memory*>` (qw 17..19) | Per-device addressable subset |
-| `memory_map` | `+0xA0` | `flat_hash_map<PjRtMemorySpace*, PJRT_Memory*>` (qw 20..23) | O(1) impl→wrapper for memory callbacks |
+| `memory_map` | `+0xA0` | `flat_hash_map<PjRtMemorySpace*, PJRT_Memory*>` (qw 20..23) | O(1) impl→wrapper; read by `GetCMemory` at wrapper+0xA0 |
 
 ### Algorithm
 
@@ -263,7 +264,7 @@ function PJRT_Client_Devices(args):                      // 0xF85F600, slot 20
 
 ### Purpose
 
-A `PJRT_Device` wraps one `xla::PjRtDevice*` (at `PJRT_Device+0x08`); a `PJRT_DeviceDescription` exposes its static identity. The accessor split mirrors upstream PJRT: `PJRT_Device_*` slots are about runtime state (addressability, memory, stats); `PJRT_DeviceDescription_*` slots are about static identity (id, process index, kind, coords). `PJRT_Device_GetDescription` (`0xF8659A0`, slot 34) is the bridge — it returns the description pointer embedded in the device's implementation object.
+A `PJRT_Device` holds the implementation `xla::PjRtDevice*` at `PJRT_Device+0x00`, with an inlined `PJRT_DeviceDescription` sub-object at `PJRT_Device+0x08`; that description in turn holds the `xla::PjRtDeviceDescription*` it dispatches through. The accessor split mirrors upstream PJRT: `PJRT_Device_*` slots are about runtime state (addressability, memory, stats); `PJRT_DeviceDescription_*` slots are about static identity (id, process index, kind, coords). `PJRT_Device_GetDescription` (`0xF8659A0`, slot 34) is the bridge — it simply returns `PJRT_Device+0x08`, a pointer to the inlined description sub-object (`a1[3] = a1[2] + 8`).
 
 ### Algorithm — the accessor idiom
 
@@ -331,7 +332,7 @@ function PJRT_Device_DefaultMemory(args):                // 0xF865B20, slot 38
 
 ### Memory Accessors (slots 40–44)
 
-The `PJRT_Memory_*` slots (`Id`, `Kind`, `Kind_Id`, `DebugString`, `ToString`, `AddressableByDevices`) are generic vtable bounces into `xla::PjRtMemorySpace`, identical in shape to the device-description accessors. `PJRT_Memory_AddressableByDevices` (`0xF8660C0`, slot 44) returns the span of `PJRT_Device*` that can address the memory space, again resolved through the client's `device_map`. These are documented at the slot level on [Buffer & Memory](buffer-and-memory.md); this page owns only the *wiring* — the fact that the maps exist and that every memory↔device cross-reference is a cached lookup, never a live scan.
+The contiguous `PJRT_Memory_*` slots 40–44 (`Id`, `Kind`, `DebugString`, `ToString`, `AddressableByDevices`) are generic vtable bounces into `xla::PjRtMemorySpace`, identical in shape to the device-description accessors. A sixth memory accessor, `PJRT_Memory_Kind_Id` (`0xF865F60`), is a *late addition* and lives at slot **102**, not in the 40–44 cluster. `PJRT_Memory_AddressableByDevices` (`0xF8660C0`, slot 44) returns the span of `PJRT_Device*` that can address the memory space, again resolved through the client's `device_map`. These are documented at the slot level on [Buffer & Memory](buffer-and-memory.md); this page owns only the *wiring* — the fact that the maps exist and that every memory↔device cross-reference is a cached lookup, never a live scan.
 
 ---
 
@@ -348,7 +349,7 @@ A topology description is the device fabric's geometry *without* a live client �
 ```c
 function PJRT_Client_TopologyDescription(args):          // 0xF85F560, slot 100
     if ActualStructSizeIsGreaterOrEqual(
-           "PJRT_Client_TopologyDescription_Args", 24, 32, args[0]) != 1:
+           "PJRT_Client_TopologyDescription_Args", 36, 32, args[0]) != 1:
         return new PJRT_Error{...}
     client = args[2]                                      // PJRT_Client*
     // the topology lives as a StatusOr<topology*> at client+192/+200:
