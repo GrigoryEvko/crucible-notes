@@ -321,7 +321,7 @@ Three operations that do not fit the stream/event/memcpy regulars: compact the H
 | Function | Address | Size | Driver dispatch | Confidence |
 |---|---|---|---|---|
 | `TpuExecutor_EnqueueCompactionOnStreamForHbm` | `0xeab97c0` | 66 | `driver_vtable+432` | HIGH |
-| `TpuExecutor_HostCallback` | `0xeab9c20` | 149 | `*arg2->vtable+128` (on the *stream*), wraps a `std::function` | HIGH |
+| `TpuExecutor_HostCallback` | `0xeab9c20` | 149 | `*arg1->vtable+128` (on the *stream*), wraps a `std::function` | HIGH |
 | `TpuExecutor_UnloadAllPrograms` | `0xeab9780` | 63 | `driver_vtable+424` | CERTAIN |
 
 ### Algorithm
@@ -346,7 +346,7 @@ bool HostCallback(_, Stream** stream, fn_ptr, fn_ctx):
     return rep == OK_SENTINEL
 ```
 
-> **QUIRK —** `HostCallback` heap-allocates a 32-byte closure with `operator new(0x20)` holding `{fn_ptr, fn_ctx, __call_func thunk, __policy ptr}`, wraps it in a `std::function`→`absl::AnyInvocable` (the *non-trivial* `RemoteManager` path, unlike `DequeueOutfeed`'s trivial path), and hands it to the stream's `+128` slot. It is one of three executor functions that dispatch on the stream vtable while *also* allocating — a reimplementer must free the closure (the decompile destroys the any-invocable after the call regardless of the status) or it leaks one allocation per host callback. `EnqueueCompactionOnStreamForHbm` (`+432`) and `UnloadAllPrograms` (`+424`) are the highest driver-vtable offsets in the cluster, sitting just past the memcpy/sync block.
+> **QUIRK —** `HostCallback` heap-allocates a 32-byte closure with `operator new(0x20)` holding `{fn_ptr, fn_ctx, __call_func thunk, __policy ptr}`, wraps it in a `std::function`→`absl::AnyInvocable` (the *non-trivial* `RemoteManager` path, unlike `DequeueOutfeed`'s trivial path), and hands it to the stream's `+128` slot. It is the only one of the five stream-vtable dispatchers that *also* heap-allocates — a reimplementer must free the closure (the decompile destroys the any-invocable after the call regardless of the status) or it leaks one allocation per host callback. `EnqueueCompactionOnStreamForHbm` (`+432`) and `UnloadAllPrograms` (`+424`) are the highest driver-vtable offsets in the cluster, sitting just past the memcpy/sync block.
 
 ---
 
@@ -393,7 +393,7 @@ DeepseaExecutor* driver    ── executor-scoped ops dispatch here:  *(driver_v
    │  *driver
    ▼
 driver vtable  [+32 status][+72 alloc-event][+80/+88 async-memcpy]
-               [+120 (stream)][+136 alloc][+144 dealloc][+168 sync-all]
+               [+136 alloc][+144 dealloc][+168 sync-all]
                [+208/+216 sync-memcpy][+224 dealloc-stream][+256 mem-usage]
                [+272 device-desc][+320 alloc-stats][+424 unload][+432 compact]
 
