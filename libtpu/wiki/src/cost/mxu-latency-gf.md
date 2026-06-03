@@ -1,14 +1,14 @@
-# MXU Latency: GF (6acc60406 / Trillium)
+# MXU Latency: GF (6acc60406)
 
 > *All addresses on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel (build `libtpu_lts_20260413_b_RC00`, BuildID md5 `89edbbe81c5b328a958fe628a9f2207d`). The binary is **not** stripped. Section map: `.text`/`.rodata` VMA == file offset; `.data.rel.ro` VMA − 0x200000 == file offset; `.data` VMA − 0x400000 == file offset. All cell integers were read directly from the GF `MxuLatencyTable` constructor.*
 
 ## Abstract
 
-This page dumps the **Trillium (v7, "GF" / `6acc60406`) `MxuLatencyTable`**: the per-modifier × `MxuResource` reservation matrix that prices how long each MXU op holds each internal sub-unit. It is the Trillium sibling of the Viperfish [`array<int,19>`](mxu-latency-vf.md) and Ghostlite [`array<int,11>`](mxu-latency-gl.md) matrices, read by the byte-identical model documented in [MXU Latency Overview](mxu-latency-overview.md). Trillium and Ghostlite share the *shape* (`array<int,11>`, the same modifier key types, the same `GainLatchMode` key helpers) but **not the instance**: the two generations are built by distinct constructors (`GlcCycleTable` vs `GfcCycleTable`), carry distinct base op-latency costs, and read the cells through distinct accessors. Everything below is the GF instance, allocated by `GfcCycleTable` and built by the constructor whose CHECK strings name `mxu_latency_table_gf.cc`.
+This page dumps the **6acc60406 (v7, "GF") `MxuLatencyTable`**: the per-modifier × `MxuResource` reservation matrix that prices how long each MXU op holds each internal sub-unit. It is the 6acc60406 sibling of the Viperfish [`array<int,19>`](mxu-latency-vf.md) and Ghostlite [`array<int,11>`](mxu-latency-gl.md) matrices, read by the byte-identical model documented in [MXU Latency Overview](mxu-latency-overview.md). 6acc60406 and Ghostlite share the *shape* (`array<int,11>`, the same modifier key types, the same `GainLatchMode` key helpers) but **not the instance**: the two generations are built by distinct constructors (`GlcCycleTable` vs `GfcCycleTable`), carry distinct base op-latency costs, and read the cells through distinct accessors. Everything below is the GF instance, allocated by `GfcCycleTable` and built by the constructor whose CHECK strings name `mxu_latency_table_gf.cc`.
 
-Two facts make Trillium's numbers worth pinning. First, on a 256×256 systolic array the per-matmul hold is *half* Viperfish's: bf16 matmul holds the accumulate port for **4** cycles (VF: 8), so a back-to-back bf16 matmul stream pipelines at twice the VF issue rate. Second, the GF lookup reads the reservation array **directly** by `MxuResource` index — `array[3]` for matmul throughput, `array[8]` for matpush throughput — with **no** Ghostlite-style default-seed remap. The lookup also carries an `fp8-fnuz` (`F8E4M3Fn`, `F8E5M2`) GLM transform path that routes the fp8 latch modes into their own reservation buckets.
+Two facts make the 6acc60406 numbers worth pinning. First, on a 256×256 systolic array the per-matmul hold is *half* Viperfish's: bf16 matmul holds the accumulate port for **4** cycles (VF: 8), so a back-to-back bf16 matmul stream pipelines at twice the VF issue rate. Second, the GF lookup reads the reservation array **directly** by `MxuResource` index — `array[3]` for matmul throughput, `array[8]` for matpush throughput — with **no** Ghostlite-style default-seed remap. The lookup also carries an `fp8-fnuz` (`F8E4M3Fn`, `F8E5M2`) GLM transform path that routes the fp8 latch modes into their own reservation buckets.
 
-The page closes with `windowing_util::ComputeDmaLevels`, decompiled in full, because the Trillium matmul cost is multiplied by a DMA-efficiency factor whose input is the descriptor-fragment count this function computes. The fragment count buckets into one of `{1.6, 1.3, 1.1, 1.05, 2003.0}` (or `1.0` for a single contiguous transfer), and the bucketing is byte-exact.
+The page closes with `windowing_util::ComputeDmaLevels`, decompiled in full, because the 6acc60406 matmul cost is multiplied by a DMA-efficiency factor whose input is the descriptor-fragment count this function computes. The fragment count buckets into one of `{1.6, 1.3, 1.1, 1.05}` (or `1.0` for a single contiguous transfer **or** a product `> 31`), and the bucketing is byte-exact.
 
 For reimplementation, the contract is:
 
@@ -19,7 +19,7 @@ For reimplementation, the contract is:
 
 | | |
 |---|---|
-| **Class** | GF/Trillium `MxuLatencyTable` (mis-symbolized; allocated by `GfcCycleTable`) |
+| **Class** | GF/6acc60406 `MxuLatencyTable` (mis-symbolized; allocated by `GfcCycleTable`) |
 | **Object** | `0xa0` B, at `GfcCycleTable this+0x18`; `array<int,11>` value type |
 | **Ctor** | `@0x1c8bb1c0` — fills Matpush (`+0x00`), Matmul (`+0x20`), Vlxmr (`+0x40`), MatmulDataFormat→cost (`+0x80`) |
 | **Lookup** | `@0x1c8bdb20` — direct `array[3]` (matmul) / `array[8]` (matpush); no remap |
@@ -28,7 +28,7 @@ For reimplementation, the contract is:
 | **Resource count** | `MxuResource::kNumMxuResources` = 11 — CHECK-anchored (`> 0xA` → fatal) |
 | **Throughput (bf16 / fp8)** | matmul `array[3]` = 4 / 8 · matpush `array[8]` = 2 / 4 |
 | **Base op latency** | `kBf16`/`kF32` = 211 · `kF8E5M2`/`kF8E4M3Fn` = 204 |
-| **`ComputeDmaLevels`** | `@0x1c86a9e0` · efficiency buckets `{1.6, 1.3, 1.1, 1.05, 2003.0}`, `1.0` default |
+| **`ComputeDmaLevels`** | `@0x1c86a9e0` · efficiency buckets `{1.6, 1.3, 1.1, 1.05}`, `1.0` default (also for product `> 31`) |
 
 ---
 
@@ -131,18 +131,18 @@ The reservation widens with the format, falling into three value-sets — `narro
 
 | CT | LLO opcode | family | key fmt | res read | cycles | Confidence |
 |---|---|---|---|---|---|---|
-| 0 | 289 (`0x121`) | matmul | 1 (bf16) | `array[3]` | **4** | CERTAIN |
-| 1 | 295 (`0x127`) | matmul | 2 | `array[3]` | **8** | CERTAIN |
-| 2 / 4 | 301 (`0x12d`) | matmul | 9 (F8E5M2) | `array[3]` | **8** | CERTAIN |
-| 3 | 307 (`0x133`) | matmul | 0xa (F8E4M3Fn) | `array[3]` | **8** | CERTAIN |
+| 0 | 289 (`0x121`) | matmul | 1 (bf16) | `array[3]` | **4** | cycles CERTAIN; opcode HIGH |
+| 1 | 295 (`0x127`) | matmul | 2 | `array[3]` | **8** | cycles CERTAIN; opcode HIGH |
+| 2 / 4 | 301 (`0x12d`) | matmul | 9 (F8E5M2) | `array[3]` | **8** | cycles CERTAIN; opcode HIGH |
+| 3 | 307 (`0x133`) | matmul | 0xa (F8E4M3Fn) | `array[3]` | **8** | cycles CERTAIN; opcode HIGH |
 | 5 | 324 (`0x144`) | matpush | 1 (bf16, direct GLM) | `array[8]` | **2** | CERTAIN |
 | 6 | 326 (`0x146`) | matpush | GLM `^0xB` (transpose flip) | `array[8]` | per fmt | HIGH |
 | 7 / 9 | 327 (`0x147`) | matpush | GLM `|0x30` → fmt 9 | `array[8]` | **4** | CERTAIN |
 | 8 | 325 (`0x145`) | matpush | GLM `|0x32` → fmt 0xa | `array[8]` | **4** | CERTAIN |
 
-The matpush transpose CTs (11–15) re-enter `sub_1C8BDB20` with the transpose flag set, which selects the `wide` value-set (`res8 = 8`).
+The matpush transpose CTs (11–15) re-enter `sub_1C8BDB20` as `sub_1C8BDB20(a1, op, opcode, 8, 1)` — resource `8`, `latch_mode = 1` — selecting the transposed (`wide`) value-set (`res8 = 8`). The CT→opcode binding for the matmul CTs (0–4) is inferred from the resource index (`3`) and transpose (`0`) the helper passes plus the opcode the dispatch consumes; the matpush opcodes (324–327) are byte-confirmed in both the helper and `sub_1C8BDB20`.
 
-> **TRILLIUM vs VIPERFISH —** Trillium thru(matmul) bf16 = **4**, fp8 = **8**; thru(matpush) bf16 = **2**, fp8 = **4**. Viperfish (per [VF](mxu-latency-vf.md)) is bf16 = 8 / int8 = 32 for matmul and 2 / 8 for matpush. The Trillium matmul hold is half VF's — the 256×256 systolic array doubles the per-cycle MAC rate, so the same op occupies the accumulate port for fewer cycles. The matpush narrow hold is unchanged (2), and the wide hold (8) equals the VF int8-wide cell.
+> **6acc60406 vs VIPERFISH —** 6acc60406 thru(matmul) bf16 = **4**, fp8 = **8**; thru(matpush) bf16 = **2**, fp8 = **4**. Viperfish (per [VF](mxu-latency-vf.md)) is bf16 = 8 / int8 = 32 for matmul and 2 / 8 for matpush. The 6acc60406 matmul hold is half VF's — the 256×256 systolic array doubles the per-cycle MAC rate, so the same op occupies the accumulate port for fewer cycles. The matpush narrow hold is unchanged (2), and the wide hold (8) equals the VF int8-wide cell.
 
 The base op latency is a separate `MatmulDataFormat → int` map at `this+0x80`, named by the constructor's four `try_emplace` CHECK strings:
 
@@ -189,7 +189,7 @@ The matpush `vmovups [rdx+4]` vs matmul `vmovups [rdx+8]` reflects the differing
 
 ### Vlxmr Rows
 
-The Vlxmr map at `this+0x40` carries two rows, inserted from the rodata pair arrays `@0xb43cd6c` (key `0x0`) and `@0xb43cd74` (key `0x101`): `key0x0 = {res0:2}`, `key0x101 = {res0:2, res1:49}` — the same shape as the Ghostlite Vlxmr rows.
+The Vlxmr map at `this+0x40` carries two rows, inserted by `sub_1C8BC760(0, &unk_B43CD6C, …)` and `sub_1C8BC760(257, &unk_B43CD74, …)` (keys `0x0` and `0x101`, byte-confirmed in the ctor). The insert helper iterates an `(int resource, int cycles)` pair stream, applying the same `resource < 11` bound (CHECK at `mxu_latency_table_gf.cc:50`). The first pair at `@0xb43cd6c` reads `{res0:2}` (byte-confirmed). The full per-row pair set for key `0x101` is **UNVERIFIED** here — the iterator bounds are not statically pinned from rodata alone; see [MXU Latency: GL (Ghostlite)](mxu-latency-gl.md) for the sibling Vlxmr shape.
 
 ### Function Map
 
@@ -261,32 +261,34 @@ The number of emitted `DmaLevel`s equals the number of contiguity breaks; the pr
 
 ### The fragment count → efficiency multiplier
 
-`WindowCyclesGenericTargetAgnostic` `@0x14552180` reads the level vector and buckets the fragment product, byte-exact:
+`WindowCyclesGenericTargetAgnostic` `@0x14552180` reads the level vector and buckets the fragment product `v18` (the running `access_multiplier` from the merge loop), byte-exact:
 
-| fragment product `r12` | multiplier | rodata | Confidence |
+| fragment product `v18` | multiplier | rodata | Confidence |
 |---|---|---|---|
 | `≤ 1` level (no fragmentation) | **1.0** | `@0xa2df230` | CERTAIN |
 | `== 1` | **1.6** | `@0xa2d71a0` | CERTAIN |
 | `∈ [2, 3]` | **1.3** | `@0xa2d71a8` | CERTAIN |
 | `∈ [4, 7]` | **1.1** | `@0xa2df4c8` | CERTAIN |
 | `∈ [8, 31]` | **1.05** | `@0xa2df2a8` | CERTAIN |
-| `> 31` | **2003.0** | `@0xa2df1b0` | CERTAIN |
+| `> 31` | **1.0** (falls through to default) | `@0xa2df230` | CERTAIN |
 
-The `{1.6, 1.3}` pair is a 2-entry table at `@0xa2d71a0` indexed by `setge(r12 ≥ 2)`; `1.1`, `1.05`, and `2003.0` are standalone constants. The bandwidth deposit returned is `(byte_count · elem_size / bytes_per_cycle) · multiplier + residual`. The `2003.0` value is a deliberate penalty — a window that fragments into more than 31 descriptors is priced as catastrophically slow, steering the layout chooser away from it.
+All four read doubles are byte-confirmed in `.rodata`: `1.0` (`@0xa2df230`), `1.6` (`@0xa2d71a0`), `1.3` (`@0xa2d71a8`), `1.1` (`@0xa2df4c8`), `1.05` (`@0xa2df2a8`). The `{1.6, 1.3}` pair is a 2-entry table at `@0xa2d71a0` indexed by `setge(v18 ≥ 2)`; `1.1` and `1.05` are standalone constants. The bandwidth deposit returned is `(byte_count · elem_size / bytes_per_cycle) · multiplier + residual`.
 
-> **QUIRK —** a single contiguous transfer (`≤ 1` level) is multiplier `1.0`, but a fragment product of exactly `1` (one level whose merged element-count product is 1) is `1.6`. The two are distinct paths: the `≤ 1`-level default short-circuits before the bucket table; the `r12 == 1` bucket is reached only when the level vector is non-trivial. A reimplementation must keep both.
+> **CORRECTION —** a fragment product `> 31` does **not** receive a penalty multiplier: that branch (`if (v18 > 31)`) jumps past the bucket table and keeps the `1.0` default. The `2003.0` constant at `@0xa2df1b0` (also byte-confirmed) is **not** a fragment-count bucket — it is selected at function entry by an *element-type* predicate (window descriptor operand present and `(*(int16*)(op+11) & 0x7C) == 0x10`), independent of `ComputeDmaLevels`. It scales the `bytes_per_cycle` divisor, not the fragment multiplier. Do not bind `2003.0` to the fragment count.
+
+> **QUIRK —** a single contiguous transfer (`≤ 1` level) is multiplier `1.0`, but a fragment product of exactly `1` (one level whose merged element-count product is 1) is `1.6`. The two are distinct paths: the `≤ 1`-level default (`v60 <= 1`) short-circuits before the bucket table; the `v18 == 1` bucket is reached only when the level vector is non-trivial. A reimplementation must keep both.
 
 ---
 
-## Worked Example — Trillium bf16 Conv Deposit
+## Worked Example — 6acc60406 bf16 Conv Deposit
 
-For a Trillium bf16 convolution, the per-format MXU reservation reads are now numeric:
+For a 6acc60406 bf16 convolution, the per-format MXU reservation reads are now numeric:
 
 - `R[0]` matpush = matpush_count · thru(CT5)[bf16] = matpush_count · `array[8]` = matpush_count · **2**.
 - `R[1]` matmul = op_count · thru(CT0)[bf16] · 0.5 / Target / EPF = op_count · `array[3]` · 0.5 / … = op_count · **4** · 0.5 / ….
 - `R[2]` Xlu = `4` · ChunksPerTile · rem (the `GhostlitePerformance` grid cell, [Performance: GF](performance-gf-ghperf.md)).
 
-For fp8 (`F8E5M2`/`F8E4M3Fn`), `R[0]` = 4 and `R[1]` = 8 — double the bf16 hold. If the conv input window fragments into 2 DMA levels with a per-level element product of 3 (a 3-tap kernel axis with non-unit stride), `ComputeDmaLevels` returns 2 levels, `r12 = 3`, and the bandwidth deposit is multiplied by `1.3`; a fully contiguous load multiplies by `1.0`; a heavily strided gather (`r12 > 31`) by `2003.0`.
+For fp8 (`F8E5M2`/`F8E4M3Fn`), `R[0]` = 4 and `R[1]` = 8 — double the bf16 hold. If the conv input window fragments into 2 DMA levels with a per-level element product of 3 (a 3-tap kernel axis with non-unit stride), `ComputeDmaLevels` returns 2 levels, `v18 = 3`, and the bandwidth deposit is multiplied by `1.3`; a fully contiguous load multiplies by `1.0`; a fragment product `> 31` also falls back to `1.0` (no fragment-count penalty — the steering away from heavily strided layouts comes from the larger byte count, not a multiplier).
 
 ---
 
@@ -309,7 +311,7 @@ For fp8 (`F8E5M2`/`F8E4M3Fn`), `R[0]` = 4 and `R[1]` = 8 — double the bf16 hol
 - [MXU Latency: GL (Ghostlite)](mxu-latency-gl.md) — the v6e `array<int,11>`; the `res4→3`/`res9→9` seed remap GF lacks
 - [MXU Latency: VF](mxu-latency-vf.md) — the Viperfish `array<int,19>`; the half-VF matmul hold contrast
 - [MatmulMode & Modifiers](matmul-mode-modifiers.md) — the `MatpushModifier`/`MatmulModifier` ordinals and the `GainLatchMode` → format jump table
-- [Performance: GF (GhPerf 465×31)](performance-gf-ghperf.md) — the Trillium occupancy grid and the conv `R[2]` Xlu = 4 cell
+- [Performance: GF (GhPerf 465×31)](performance-gf-ghperf.md) — the 6acc60406 occupancy grid and the conv `R[2]` Xlu = 4 cell
 - [MxuOpHoldIssues Stall Recurrence](mxu-opholdissues-stall.md) — how the reservation arrays become issue stalls
 - [Resource Enum (23-slot)](resource-enum.md) — the higher-level `ResourceVector`, distinct from the MXU-internal `MxuResource`
 - [Window Description Cost](window-description-cost.md) — the windowed-transfer cost path that calls `ComputeDmaLevels`
