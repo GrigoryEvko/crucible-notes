@@ -4,11 +4,11 @@
 
 ## Abstract
 
-This page dumps the **`6acc60406` (TPU7x / "GF", the Trillium-line v7 TensorCore) `GhostlitePerformance` occupancy grid** — the per-generation **Instruction × Resource** 2D table that prices how many cycles each LLO instruction holds each intra-op micro-pipeline port. It is the libtpu analog of an LLVM `WriteRes`/`ProcResource` matrix, except it is reconstructed by reading the constructor that fills it, not declared in a `.td` file. The grid is `465 × 31`: 465 `GhostlitePerformance::Instruction` rows (the per-gen classifier output, == LloOpcode for every priced row) and 31 `GhostlitePerformance::Resource` columns (the EUP / cross-lane / Xlu / matrix-result micro-pipeline stages). Alongside it sits a flat 465-entry latency array indexed by the same `Instruction`. Both are heap objects owned by `GfcCycleTable`.
+This page dumps the **`6acc60406` (TPU7x / "GF" / `gfc`) `GhostlitePerformance` occupancy grid** — the per-generation **Instruction × Resource** 2D table that prices how many cycles each LLO instruction holds each intra-op micro-pipeline port. It is the libtpu analog of an LLVM `WriteRes`/`ProcResource` matrix, except it is reconstructed by reading the constructor that fills it, not declared in a `.td` file. The grid is `465 × 31`: 465 `GhostlitePerformance::Instruction` rows (the per-gen classifier output, == LloOpcode for every priced row) and 31 `GhostlitePerformance::Resource` columns (the EUP / cross-lane / Xlu / matrix-result micro-pipeline stages). Alongside it sits a flat 465-entry latency array indexed by the same `Instruction`. Both are heap objects owned by `GfcCycleTable`.
 
-The GF grid is the Trillium-line sibling of the Ghostlite (GL, v6e, 476-row) grid documented on [Performance: GL](performance-gl-ghperf.md): same `GhostlitePerformance` class, same `0x7c`-byte 31-int rows, same byte-identical `GetResourceUsage` read path. They differ in **row count** (465 vs 476 — Trillium drops 11 v6e shift/saturate and BarnaCore-wait opcodes), in **cell values and base latencies** (GF EUP/transcendental ops latency 212/204 vs GL 192/182), in the **Xlu deposit column** (GF res `0x10` vs GL res `0x0f`), and in being built by a **distinct constructor** (`sub_1C8D3740` vs `GhostlitePerformanceC1`). The two are distinct instances, not one shared object.
+The GF grid is the `gfc` sibling of the Ghostlite (GL, v6e, 476-row) grid documented on [Performance: GL](performance-gl-ghperf.md): they are **two instances of one `GhostlitePerformance` class** — same `0x7c`-byte 31-int rows, same byte-identical `GetResourceUsage`/`GetLatency`/`GetResources` methods, and the **same single `kResources` static** at `@0xb43cdc4` (there is exactly one `GhostlitePerformance::kResources` symbol; GL and GF do not have distinct permutations). They differ in **row count** (465 vs 476 — `6acc60406` drops 11 v6e shift/saturate and BarnaCore-wait opcodes), in **cell values and base latencies** (GF EUP/transcendental ops latency 212/204 vs GL 192/182), and in being built by a **distinct constructor** (`sub_1C8D3740` for the `GfcCycleTable` instance vs `GhostlitePerformanceC1 @0x1c8cbc80` for the `GlcCycleTable` instance). The one runtime divergence in the Xlu read is not in the grid but in the *cost-table helper*: `GfcCycleTable::GetCyclesForThroughputHelper` reads res `0x10` (16) while `GlcCycleTable`'s reads res `0x0f` (15) — both indexing the same shared grid object.
 
-This page is strictly the `GhostlitePerformance` grid. The companion `GfcCycleTable` `MxuLatencyTable` (the per-modifier × `MxuResource` reservation matrix, matmul/matpush throughput, and `ComputeDmaLevels`) is on [MXU Latency: GF](mxu-latency-gf.md); it is referenced here and not duplicated. The single number this grid contributes to the cost model is the convolution `R[2]` Xlu term: `grid[mxres-instr][res 0x10] = 4`, completing the Trillium conv cost triple that [MXU Latency: GF](mxu-latency-gf.md) supplies `R[0]`/`R[1]` for.
+This page is strictly the `GhostlitePerformance` grid. The companion `GfcCycleTable` `MxuLatencyTable` (the per-modifier × `MxuResource` reservation matrix, matmul/matpush throughput, and `ComputeDmaLevels`) is on [MXU Latency: GF](mxu-latency-gf.md); it is referenced here and not duplicated. The single number this grid contributes to the cost model is the convolution `R[2]` Xlu term: `grid[mxres-instr][res 0x10] = 4`, completing the `6acc60406` conv cost triple that [MXU Latency: GF](mxu-latency-gf.md) supplies `R[0]`/`R[1]` for.
 
 For reimplementation, the contract is:
 
@@ -16,7 +16,7 @@ For reimplementation, the contract is:
 - The `GetResourceUsage(instr, res)` read path: two bounds checks, the 24-byte row stride, the direct `row.data[res]` read; byte-identical to the GL accessor and to its inline twin `@0x1c8da1a0`.
 - The 31 resource columns named by occupant LLO class, the row-classification into instruction bands, and the Xlu deposit column (res `0x10` = 4).
 - The `0xff`-default fallback: only ~92 of 465 rows are written; the rest keep `latency = 255` and are priced by the gen-invariant `CycleTable::GetResource` path, not the grid.
-- The GF-vs-GL grid differences (row count, Xlu column index, base latencies, the constructor split).
+- The GF-vs-GL grid differences (row count, base latencies, the constructor split, and the per-helper Xlu res index — *not* a difference in `kResources`, which is shared).
 
 | | |
 |---|---|
@@ -25,7 +25,7 @@ For reimplementation, the contract is:
 | **Ctor** | `@0x1c8d3740` — latency `new 0x744` (465 int32, memset `0xff`), grid `new 0x2b98` (465 × 24), rows `new 0x7c` (31 int32) |
 | **Read path** | `GhostlitePerformance::GetResourceUsage` `@0x1c8d3700`; inline twin `@0x1c8da1a0` |
 | **Latency read** | `GhostlitePerformance::GetLatency` `@0x1c8d36e0` |
-| **Column order** | `GhostlitePerformance::GetResources` `@0x1c8d36c0` → `kResources` `@0xb43cde3` (31 bytes, perm of `0..30`) |
+| **Column order** | `GhostlitePerformance::GetResources` `@0x1c8d36c0` → `kResources` `@0xb43cdc4` (31 bytes, perm of `0..30`) — shared by GL and GF |
 | **Grid shape** | 465 rows (`0x1d1`) × 31 resources (`0x1f`); 285 populated cells across 92 rows |
 | **Xlu deposit column** | res `0x10` (16) — cell = **4** for every matrix-result / Cmem / transpose-result op (conv `R[2]`) |
 | **Default** | unwritten rows: latency `0xff` = 255, grid cells 0 — priced by `CycleTable::GetResource`, not the grid |
@@ -127,16 +127,16 @@ __int64 GetLatency(perf, u32 instr) {
 
 ### Column order — `GetResources`
 
-`GetResources()` `@0x1c8d36c0` returns the static `kResources` byte array `@0xb43cde3`: the 31 resource indices in fill / traversal order. The bytes, read from the binary:
+`GetResources()` `@0x1c8d36c0` returns the static `kResources` byte array `@0xb43cdc4` (the `lea` target, `edx = 0x1f = 31`): the 31 resource indices in fill / traversal order. The bytes, read from the binary:
 
 ```text
-GF kResources @0xb43cde3 (31 B):
-  1d 1c 07 03 04 1b 05 08 09 0a 15 11 19 1e 0c 12 00 13 14 0d 16 0e 17 0f 18 1a 01 02 06 0b 10
+GhostlitePerformance kResources @0xb43cdc4 (31 B) — shared by GL and GF:
+  1d 1c 06 03 04 1a 07 08 09 0a 14 10 18 1e 0b 11 00 19 12 13 0c 15 0d 16 0e 17 1b 01 02 05 0f
 ```
 
-This is a permutation of `{0..30}` (all 31 indices present, no repeats), distinct from the GL order at `@0xb43cdc4`. The Xlu deposit index `0x10` is the **last** entry in GF's traversal order. `GetResourceLatency @0x1c8b1e60` iterates this array to reduce a row into a single per-instruction latency (with a per-column overlap rule — most columns take a plain max, res `2` is a fatal "Did not expect to have MXU resource", and res `0x19`/`0x1b` carry special-cased adjustments).
+This is a permutation of `{0..30}` (all 31 indices present, no repeats). The Xlu deposit index `0x10` is at **traversal position 11** (the array ends in `…02 05 0f`, i.e. res `0x0f` is the last column visited). `GetResourceLatency @0x1c8b1e60` iterates this array — it calls `GetResources()` then loops `GetResourceUsage(instr, kResources[i])` per column — to reduce a row into a single per-instruction latency (with a per-column overlap rule — most columns take a plain max, an MXU resource hits the fatal `"Did not expected to have MXU resource for "` log, and res `0x19` carries a special-cased FIFO-push/pop adjustment).
 
-> **CAUTION —** an earlier reading transcribed the GL byte string (`@0xb43cdc4`, the one that contains `06` at index 2 and ends `…02 05 0f`) as if it were the GF order. The GF order is the distinct array at `@0xb43cde3` quoted above (it contains `07`/`05` and ends `…06 0b 10`). The two are different 31-byte permutations; bind the address per-gen.
+> **NOTE —** there is a single `xla::ghostlite::GhostlitePerformance::GetResources()::kResources` symbol in the binary, at `@0xb43cdc4`. Both the GL (476-row) and GF (465-row) instances are the same class and return this same array from the same `GetResources` method; they do **not** have distinct per-gen permutations. The sibling classes have their own arrays at adjacent addresses: `PufferfishPerformance::kResources @0xb43cd94` (20 B), `ViperfishPerformance::kResources @0xb43cda8` (28 B). The address `0xb43cde3` is simply `0xb43cdc4 + 0x1f` — the byte immediately past the 31-entry GhostlitePerformance array, not a second array. Bind the column order to `@0xb43cdc4`.
 
 ---
 
@@ -174,7 +174,7 @@ The Xlu/matrix-result deposit column (res `0x10`) is the only column the convolu
 
 ### Purpose
 
-One column carries the matrix-result (Xlu) throughput that the convolution cost model reads as its `R[2]` term. On GF this is **res `0x10`** (= 16; on GL it is res `0x0f`, the +1 shift reflecting GF having four EUP-prep columns r3..r6 vs GL's three). The constructor writes `4` into this cell for every matrix-result / Cmem / transpose-result instruction:
+One column carries the matrix-result (Xlu) throughput that the convolution cost model reads as its `R[2]` term. On GF the cost-table helper reads **res `0x10`** (= 16); on GL the corresponding helper reads res `0x0f` (= 15). This is a hardcoded difference between the two `GetCyclesForThroughputHelper` bodies, not a difference in the grid or in `kResources` (which are shared): each helper passes its own literal `res` to the same `GetResourceUsage`. The constructor writes `4` into the res-`0x10` cell for every matrix-result / Cmem / transpose-result instruction:
 
 ```text
 ; per matrix-result row in sub_1C8D3740:
@@ -185,7 +185,7 @@ mov dword ptr [row + 0x40], 4    ; row[0x40] = grid[instr][res 0x10] = 4
 
 ### The cost-table binding
 
-The GF cost path does **not** reach res `0x10` through `GetXluPathReservation` (that accessor reads res `0x0f` and is the GL/Ghostlite path — see the contrast below). It reaches it through the throughput dispatch `GfcCycleTable::GetCyclesForThroughputHelper @0x1c89f400`, whose Xlu-family cases call the inline `GetResourceUsage` twin with `res = 16`:
+The GF cost path does **not** reach res `0x10` through `LatencyTableGhostlite::GetXluPathReservation` (that accessor reads res `0x0f` — see the contrast below). It reaches it through the throughput dispatch `GfcCycleTable::GetCyclesForThroughputHelper @0x1c89f400`, whose Xlu-family cases call the inline `GetResourceUsage` twin with `res = 16`:
 
 ```c
 // GfcCycleTable::GetCyclesForThroughputHelper @0x1c89f400 (Xlu/mxres cases)
@@ -209,11 +209,11 @@ So `thru(CT 0x17/0x1b/0x1c/0x1d/0x1e/0x1f) = grid[instr][0x10] = 4` for all six.
 | `0x159` | `kVectorMultiplyU32` | 114 | r12:35 r13:34 r14:40 r15:18 r16:4 | CERTAIN |
 | `0x15f` | `kVectorXorU32` | 141 | r16:4 r21:21 r22:50 r23:50 r24:32 | CERTAIN |
 
-> **CONTRAST WITH GHOSTLITE —** `LatencyTableGhostlite::GetXluPathReservation @0x1c8b21c0` (the symbol-clean accessor) tail-calls `GetResourceUsage(perf, instr, 15)` — res `0x0f`, the GL Xlu column — after a direct-handled case for `kVectorSetPermutePattern` (opcode `0x8b`, returns `3·is_transpose + 1`). Its CHECK strings name `latency_table_gl.cc`. This is the **v6e** path. The GF path reads res `0x10` through the CT helper above. Bind the Xlu column index per-gen: GF `0x10`, GL `0x0f`.
+> **CONTRAST —** `LatencyTableGhostlite::GetXluPathReservation @0x1c8b21c0` tail-calls `GetResourceUsage(perf, GetGhostliteInstruction(v), 15)` — res `0x0f` — after a direct-handled case for `kVectorSetPermutePattern` (opcode `0x8b` = 139, returns `3·(is_transpose != 0) + 1`). This `LatencyTableGhostlite` accessor (shared `ghostlite` namespace) is *not* the GF convolution path; the GF conv `R[2]` is read by `GfcCycleTable::GetCyclesForThroughputHelper` with res `0x10` (16), while `GlcCycleTable::GetCyclesForThroughputHelper @0x1c89ed20` reads res `0x0f` (15). The Xlu column index is therefore bound per **cost-table helper**, not per `kResources` array: GF helper `0x10`, GL helper `0x0f`, both indexing the one shared 31-column grid.
 
 ### The conv `R[2]` term
 
-The Trillium convolution cost triple is now fully numeric. The other two terms come from the [GF MXU reservation matrix](mxu-latency-gf.md):
+The `6acc60406` convolution cost triple is now fully numeric. The other two terms come from the [GF MXU reservation matrix](mxu-latency-gf.md):
 
 - `R[0]` matpush = matpush_count · `array[8]` = **2** (bf16) / **4** (fp8)
 - `R[1]` matmul = op_count · `array[3]` · 0.5 / Target / EPF, with `array[3]` = **4** (bf16) / **8** (fp8)
@@ -269,7 +269,7 @@ An instruction whose `GhostlitePerformance::Instruction` row is unwritten resolv
 
 ## GF vs GL — the Two GhPerf Grids
 
-The GF (Trillium, v7) and GL (Ghostlite, v6e) grids are the same `GhostlitePerformance` class with the same read path, but distinct instances:
+The GF (`6acc60406`, v7) and GL (Ghostlite, v6e) grids are the **same `GhostlitePerformance` class** with the same methods, the same single `kResources` array, but two distinct heap instances built by two distinct constructors:
 
 | | GF (`6acc60406` / TPU7x) | GL (Ghostlite / v6e) |
 |---|---|---|
@@ -278,18 +278,18 @@ The GF (Trillium, v7) and GL (Ghostlite, v6e) grids are the same `GhostlitePerfo
 | Grid alloc | `new 0x2b98` → 465 × 24 | `new 0x2ca0` → 476 × 24 |
 | Row width | `new 0x7c` = 31 | `new 0x7c` = 31 |
 | Populated | 285 cells / 92 rows | 358 cells / 132 rows |
-| `kResources` | `@0xb43cde3` | `@0xb43cdc4` (distinct permutation) |
-| Xlu deposit column | res `0x10` | res `0x0f` |
+| `kResources` | `@0xb43cdc4` (one shared array) | `@0xb43cdc4` (same array) |
+| Xlu res read by helper | res `0x10` (`GfcCycleTable` helper) | res `0x0f` (`GlcCycleTable` helper) |
 | EUP/transcendental latency | 212 (bf16) / 204 (fp8/F32) | 192 / 182 |
-| Owner | `GfcCycleTable` `@0x1c89eec0` | `GlcCycleTable` `@0x1c89e7e0` |
+| Owner cycle table | `GfcCycleTable` `@0x1c89eec0` | `GlcCycleTable` `@0x1c89e7e0` |
 
-The **+11 rows** GL has (476 vs 465) are the v6e shift/saturate ops (`0x19a..0x1bb`, populating GL res `0x19`, which GF either fuses or routes elsewhere — GF res `0x19` is unused) and the extended BarnaCore-wait opcodes `0x1d0..0x1db`, which lie *past* GF's last valid opcode `0x1cc` (`kBarnaCoreVectorStore`). Trillium drops them. The two share the grid *family* contract (object layout, read path, the 31-wide enum, the EUP/matrix-result band structure) and the conv `R[2]` value of 4, but the cell integers, base latencies, Xlu column index, and instruction set are per-silicon.
+The **+11 rows** GL has (476 vs 465) follow from the GL ctor's `new 0x770`/`new 0x2ca0` (476 entries) vs GF's `new 0x744`/`new 0x2b98` (465); the GL ctor writes `latency[465]` at `[rax+0x744]` — an index that is out of bounds for GF's 465-entry array. The extra opcodes are the v6e shift/saturate and BarnaCore-wait rows that lie past GF's last valid opcode; `6acc60406` drops them. The two share the class contract (object layout, the three accessor methods, the single `kResources`, the 31-wide enum, the EUP/matrix-result band structure) and the conv `R[2]` value of 4; what differs is the cell integers, base latencies, row count, and which `res` literal each cost-table helper passes to the shared `GetResourceUsage`.
 
 ---
 
-## Worked Example — a Trillium bf16 Conv Xlu Deposit
+## Worked Example — a `6acc60406` bf16 Conv Xlu Deposit
 
-A Trillium bf16 convolution prices its matrix-result (Xlu) term by reading `kVectorCmemResult` (`Instruction 0x151`, the conv mxres op for CT `0x1c`):
+A `6acc60406` bf16 convolution prices its matrix-result (Xlu) term by reading `kVectorCmemResult` (`Instruction 0x151`, the conv mxres op for CT `0x1c`):
 
 1. The cost-table dispatch `GfcCycleTable::GetCyclesForThroughputHelper @0x1c89f400` case 28 sets `instr = 0x151`, `res = 16`.
 2. `GetResourceUsage(perf, 0x151, 16)` bounds-checks `0x151 < 465` and `16 < 31`, computes `row = grid + 0x151*24`, and returns `row.data[16] = 4`.
@@ -310,11 +310,11 @@ The op's `GetLatency(0x151) = 127` separately bounds its pipeline depth on depen
 | inline `GetResourceUsage` twin | `0x1c8da1a0` | byte-identical; the CT-throughput call target | CERTAIN |
 | `GhostlitePerformance::GetLatency` | `0x1c8d36e0` | `latency[instr]`, bound `[+0x8]` | CERTAIN |
 | `GhostlitePerformance::GetResources` | `0x1c8d36c0` | returns `kResources` | CERTAIN |
-| `kResources` (GF) | `0xb43cde3` | 31-byte column traversal order | CERTAIN |
+| `GhostlitePerformance::…::kResources` | `0xb43cdc4` | 31-byte column traversal order (shared GL/GF) | CERTAIN |
 | `GfcCycleTable::GetCyclesForThroughputHelper` | `0x1c89f400` | Xlu cases → `GetResourceUsage(instr, 16)` | CERTAIN |
 | `GetGhostliteInstruction` | `0x1c8b1740` | LloOpcode → `GhPerf::Instruction` (binary search) | HIGH |
 | `LatencyTableGhostlite::GetResourceLatency` | `0x1c8b1e60` | iterates all 31 columns, per-column overlap reduce | HIGH |
-| `LatencyTableGhostlite::GetXluPathReservation` | `0x1c8b21c0` | **GL** accessor — reads res `0x0f` | CERTAIN |
+| `LatencyTableGhostlite::GetXluPathReservation` | `0x1c8b21c0` | `ghostlite` accessor — reads res `0x0f`; not the GF conv path | CERTAIN |
 | `CycleTable::GetResource` | `0x1c89ce20` | fallback op→slot table for `0xff`-default rows | CERTAIN |
 
 ---
@@ -323,6 +323,6 @@ The op's `GetLatency(0x151) = 127` separately bounds its pipeline depth on depen
 
 - [Performance Family Overview](performance-overview.md) — the grid-family object layout, the shared `GetResourceUsage` read path, and the resource-count progression
 - [Performance: GL (GhPerf 476×31)](performance-gl-ghperf.md) — the Ghostlite v6e grid; +11 rows, Xlu deposit res `0x0f`, base latency 192/182
-- [MXU Latency: GF (6acc60406 / Trillium)](mxu-latency-gf.md) — the `MxuLatencyTable` reservation matrix, the conv `R[0]`/`R[1]` terms, and `ComputeDmaLevels`
+- [MXU Latency: GF (6acc60406)](mxu-latency-gf.md) — the `MxuLatencyTable` reservation matrix, the conv `R[0]`/`R[1]` terms, and `ComputeDmaLevels`
 - [Resource Enum](resource-enum.md) — the 23-slot per-bundle `ResourceVector`, distinct from the 31-wide `GhostlitePerformance::Resource` micro-pipeline enum
 - [MXU Slot](../isa/slot-mxu.md) — the physical MXU sub-units the matrix-result resource columns reserve
