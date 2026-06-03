@@ -12,7 +12,7 @@ The reader who knows LLVM should hold one analogy and one divergence. The analog
 
 For reimplementation, the contract is:
 
-- **The drain is `GlobalBundlePacker::Pack` over regions in topo order**: `PackPhis` first (SSA resolution into predecessor tail bundles), then per-op `PackInstruction` (regular ops) or `PackBranch` (opcodes `0x87`/`0x88`/`0xEF`), then `ConsumeBundles`.
+- **The drain is `GlobalBundlePacker::Pack` over regions in topo order**: `PackPhis` first (collects the PHI-edge member ops — opcodes `233..236` — and feeds each through `PackInstruction`), then the region body via `PackInstruction`, which itself re-dispatches branch opcodes (`0x87`/`0x88`/`0xEF`) to `PackBranch`, then `ConsumeBundles`.
 - **`BundlePacker::Feed` computes `MinSafeHoistBundleNo`** as the running `max` over every dependency floor (operand producer bundle + `LatencyBetween`, control sources/targets, register/arch-register feasibility, vmem fences), then places the op there or appends NOP bundles until it fits.
 - **`SlotTracker::FindFeasibleBundleAfter` is the resource-conflict check**: it asserts the op's `BundleRequirement` is within the empty-bundle limit, then scans a per-requirement feasible-bundle bitmap for the first index ≥ start whose `CombinationIsWithin(bundle_req, requirement, limits)` holds.
 - **`PlaceInstructionInBundle` commits**: `Bundle::AddInstruction(instr, value_set, multi)`, set `scheduled_bundleno`, add the complement primary (one LLO op → two slots) when `LloOpcodeIsComplement`, and tag the bundle as a terminator on branch opcode `135` with a non-null target.
@@ -45,12 +45,11 @@ StatusOr<vector<Bundle>> Pack() {
     GetOrCreateLastEmptyBundle();                              // seed bundles_ with one empty
     LloRegionVisitHelper visit(module);                        // topo walk of region members
     for (member in region, in IR order) {
-        if (member.kind != kInstruction) continue;             // PHIs / pushes handled via lambdas
+        if (member.kind != kInstruction) continue;             // llo_region.h:161 RET_CHECK
         instr = member.instruction;
         uint16 op = instr->opcode;
-        if (op - 233u >= 4u)                                   // NOT a branch family op
-            PackInstruction(instr);                            // 0x10a875a0
-        // branch family (0x87/0x88/0xEF) routed via PackBranch through the visitor lambdas
+        if (op - 233u >= 4u)                                   // skip opcodes 233..236 (PHI-edge members, handled by PackPhis)
+            PackInstruction(instr);                            // 0x10a875a0; re-dispatches branches to PackBranch internally
     }
     Status st = ConsumeBundles();                              // 0x14026c40 — hand over vector<Bundle>
     // post-walk audit: for each bundle, has_branch_instruction == bundle.has_branch()  (src 79)
@@ -58,7 +57,7 @@ StatusOr<vector<Bundle>> Pack() {
 }
 ```
 
-`PackInstruction` (`0x10a875a0`) reads the monotonic pack-position counter at `packer + 0x6d0` (the `*((_QWORD*)v4 + 436)` field — the "latency" / scheduling clock that advances one per op) and forwards to `Feed(instr, counter)`. `PackBranch` (`0x10a877a0`) does the same but adds the branch-delay-slot count. The branch dispatch test in `Pack`'s post-walk audit reads literally as `(op - 135u) < 2 || op == 239` — opcodes **135** (`0x87`, conditional branch), **136** (`0x88`, jump), **239** (`0xEF`, predicated transfer).
+`PackInstruction` (`0x10a875a0`) first re-tests the branch family `(op - 135u) < 2 || op == 239` and tail-calls `PackBranch` for those; otherwise it reads the monotonic pack-position counter at `packer + 0xDA0` (the `*((_QWORD*)this + 436)` field — the scheduling clock that advances one per op), forwards to `Feed(instr, counter)`, and increments the counter on success. `PackBranch` (`0x10a877a0`) does the same Feed/increment but then appends the branch-delay-slot bundles. The branch dispatch test in `Pack`'s post-walk audit reads literally as `(op - 135u) < 2 || op == 239` — opcodes **135** (`0x87`, conditional branch), **136** (`0x88`, jump), **239** (`0xEF`, predicated transfer).
 
 > **QUIRK — the region walk, not a heuristic, fixes branch placement.** Branches are always the last LLO instruction a region emits, so `PackBranch` runs last and the branch's `scheduled_bundleno` is necessarily the highest in the block. There is no separate "put the terminator last" rule; topological order guarantees it. A reimplementation that reorders ops before this packer must preserve that invariant or the post-walk `has_branch_instruction == bundle.has_branch()` audit (`global_bundle_packer.cc:79`) FATALs.
 
@@ -68,7 +67,7 @@ StatusOr<vector<Bundle>> Pack() {
 |---|---|---|---|
 | `(anon)::PackBundles` | `0x10a30a20` | top-level driver: timer, build `BundlePackerOptions`, construct `GlobalBundlePacker` | CONFIRMED |
 | `GlobalBundlePacker::Pack` | `0x10a86420` | region topo walk; per-op dispatch; `ConsumeBundles` | CONFIRMED |
-| `GlobalBundlePacker::PackPhis` | `0x10a87160` | PHI / SSA resolution into predecessor tail bundles | HIGH |
+| `GlobalBundlePacker::PackPhis` | `0x10a87160` | collect opcodes 233..236, feed each via `PackInstruction` | CONFIRMED |
 | `GlobalBundlePacker::PackInstruction` | `0x10a875a0` | regular op → `Feed(instr, pack_counter)` | CONFIRMED |
 | `GlobalBundlePacker::PackBranch` | `0x10a877a0` | branch op → `Feed` + delay-slot padding + branch barrier | CONFIRMED |
 | `BundlePacker::Feed` | `0x14021f20` | schedule one op: earliest-bundle + place | CONFIRMED |
@@ -154,7 +153,7 @@ The dependency-floor variable is named `MinSafeHoistBundleNo` in the decompile, 
 
 > **GOTCHA — there is no spill-to-next-bundle search.** When the trackers cannot fit the op into any *existing* bundle at or after `n`, the algorithm appends empty bundles (each a 112-byte zeroed `Bundle`, with an out-of-line 160-byte block allocated lazily) and retries — it never re-tries earlier indices or moves already-placed ops. The only failures are the five fatal paths below. A reimplementation that adds an "if it doesn't fit, try the previous bundle" branch diverges from the binary.
 
-> **NOTE — `op - 233u >= 4u` in `Pack` selects non-branch ops; `Feed` re-dispatches.** `GlobalBundlePacker::Pack` filters the branch family (`0x87`/`0x88`/`0xEF`) out of the `PackInstruction` path by the `op - 233 >= 4` test (233 = `0xE9`, the window just below the branch opcodes), but `Feed` itself also special-cases `op == 8`, the redundant-move class, the `219..234` barrier class, and `op == 44` (constant rejection) before reaching the general dependency walk. The exact per-opcode membership of the `219..234` barrier window was not enumerated (PARTIAL).
+> **NOTE — `op - 233u >= 4u` in `Pack` skips the PHI-edge opcode window; `PackInstruction` and `Feed` re-dispatch.** `GlobalBundlePacker::Pack`'s region loop skips opcodes **233..236** (`op - 233 >= 4` is the *keep* condition) because those member ops are handled by `PackPhis` (`global_bundle_packer.cc:104`), which collects them via the inverse test `op - 233 <= 3` and feeds each through `PackInstruction`. `PackInstruction` (`0x10a875a0`) then re-tests the branch family and tail-calls `PackBranch`. `Feed` itself special-cases `op == 8` (drop into last empty bundle + barrier), the redundant-move peephole, a `v5 - 219 <= 0x15` barrier window (opcodes **219..240**, further pruned by two inline bit-test masks), and `op == 44` (constant rejection) before the general dependency walk. The exact per-opcode membership of the bit-test-masked barrier window was not enumerated (PARTIAL).
 
 ### Failure Paths
 
@@ -210,7 +209,7 @@ int FindFeasibleBundleAfter(const BundleRequirement &req, int start) {
 
 The four AND-masks are the bitfield layout of the `BundleRequirement` struct: each `BasicBitmap<uint64>` word carries several slot-type sub-counters, and the per-mask AND isolates the bits that would borrow if `req` exceeded `limit`. The four masks (`0x4925555552A84888`, `0x555555554A508424`, `0x2491515555088AAA`, `0x524`) are the slot-field "carry masks" — they are byte-confirmed but the per-field decomposition (which bits are scalar vs vector-ALU vs immediate vs XLU vs MXU) is downstream work (PARTIAL on the leaf field boundaries).
 
-> **NOTE — "fits the current bundle vs starts a new one" is the set-bit scan in step (3).** `FindNextSetBitBeforeLimit` over `feasible_bitmap` from `start` returns the first bundle the op can join; if that bit is the current (last) bundle it is packed there, otherwise the search jumps to a later already-existing bundle, and if no set bit exists `Feed` grows the vector. The resource accounting that maintains the bitmap is `NoteAddedToBundle` (`0x14035080`, `bundle.consumed += req`) and `NoteRemovedFromBundle` (`0x14035780`, `-= req`); `BundleRequirement::operator+=` (`0x140237a0`) is bitwise-OR on the bitmaps and add on the scalar counters.
+> **NOTE — "fits the current bundle vs starts a new one" is the set-bit scan in step (3).** `FindNextSetBitBeforeLimit` over `feasible_bitmap` from `start` returns the first bundle the op can join; if that bit is the current (last) bundle it is packed there, otherwise the search jumps to a later already-existing bundle, and if no set bit exists `Feed` grows the vector. The resource accounting that maintains the bitmap is `NoteAddedToBundle` (`0x14035080`, `bundle.consumed += req`) and `NoteRemovedFromBundle` (`0x14035780`, `-= req`); `BundleRequirement::operator+=` (`0x140237a0`) is plain 64-bit integer **addition** on each of the four packed words (`*a1 += *a2` for words 0–2 plus the 32-bit word 3), with the same four AND-masks (`0x4925555552A84888`, `0x555555554A508424`, `0x2491515555088AAA`, `0x524`) re-applied after each add as a carry-overflow check that FATALs `"IsValidWord(i)"` (`bundle_requirement.h:629`) if any per-field sub-counter overflows into its neighbor.
 
 ### `BundleRequirement` Fields (shape)
 
@@ -232,7 +231,7 @@ The four AND-masks are the bitfield layout of the `BundleRequirement` struct: ea
 
 ## Per-Slot Legality — `TpuBundleRestrictions`
 
-Per-generation slot rules are encapsulated in polymorphic `TpuBundleRestrictions` subclasses, one per silicon generation, each registered statically and looked up by codename at tracker construction. Five are present: `JellyfishBundleRestrictions`, `PufferfishBundleRestrictions`, `ViperfishBundleRestrictions`, `GhostliteBundleRestrictions`, and the anonymous Trillium/gfc class. Each implements the same virtual interface; the per-gen variation is entirely in the constants and per-opcode tables those virtuals carry.
+Per-generation slot rules are encapsulated in polymorphic `TpuBundleRestrictions` subclasses, one per silicon generation, each registered statically (`TpuBundleRestrictionsRegisterer`, `0x1c457880`) and looked up by codename at tracker construction. Four concrete subclasses are present in `0.0.40`: `JellyfishBundleRestrictions`, `PufferfishBundleRestrictions`, `ViperfishBundleRestrictions`, and `GhostliteBundleRestrictions` (over the abstract base `TpuBundleRestrictions`). Each implements the same virtual interface; the per-gen variation is entirely in the constants and per-opcode tables those virtuals carry.
 
 ### The Virtual Interface
 
@@ -253,14 +252,14 @@ Per-generation slot rules are encapsulated in polymorphic `TpuBundleRestrictions
 
 Slot counts per generation, reconstructed from the `SetLimits` constants, the `BundleRequirement` struct-size growth (`0x80` on JF → `0xe0` on V5+), and the [bundle-model slot inventory](../isa/bundle-model-overview.md#slot-taxonomy). The byte-widths (41/51/64) are CONFIRMED on the bundle-model page; the per-slot counts are the *shape* of the growth.
 
-| Gen | Bundle B | scalar | vec-ALU | imm | vs | XLU | MXU | ttu | Confidence |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| Jellyfish (v3) | 41 | 2 | 2 | 6 | 3 | 1 | 1 | 1 | HIGH |
-| Dragonfish (v3′) | 41 | (alias of Jellyfish — shares the class) | | | | | | | HIGH |
-| Pufferfish (v4) | 51 | 2 | 2 | 6 | 3 | 1 | 1 | – | MEDIUM |
-| Viperfish (v5e) | 64 | 2 | 2 | 6–7 | 4 | 2 | 1–2 | – | MEDIUM |
-| Ghostlite (v5p) | 64 | 2–3 | 2 | 6–7 | 4 | 2 | 2 | – | MEDIUM |
-| Trillium (v6e) | 64 | 2–3 | 2–3 | 6–7 | 4 | 2 | 2–4 | – | LOW |
+Only the four codenames with a concrete `*BundleRestrictions` subclass appear in this build; `dragonfish` (v3) shares the `JellyfishBundleRestrictions` class (no separate subclass is registered). Version labels follow the SM/codename map: jellyfish = v2, dragonfish = v3, pufferfish = v4, viperfish = v5, ghostlite = v6 lite.
+
+| Restriction class | Codename / ver | Bundle B | scalar | vec-ALU | imm | vs | XLU | MXU | ttu | Confidence |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| `JellyfishBundleRestrictions` | jellyfish (v2); also serves dragonfish (v3) | 41 | 2 | 2 | 6 | 3 | 1 | 1 | 1 | HIGH |
+| `PufferfishBundleRestrictions` | pufferfish (v4) | 51 | 2 | 2 | 6 | 3 | 1 | 1 | – | MEDIUM |
+| `ViperfishBundleRestrictions` | viperfish (v5) | 64 | 2 | 2 | 6–7 | 4 | 2 | 1–2 | – | LOW |
+| `GhostliteBundleRestrictions` | ghostlite (v6 lite) | 64 | 2–3 | 2 | 6–7 | 4 | 2 | 2 | – | LOW |
 
 > **NOTE — `MatchScalar` is the immediate-slot legalizer.** When an op carries an immediate operand, `(anon)::RequiredImmSlotCount` (`0x1c625ea0`) and `ImmediateSlotsRequired` (`0x1c626680`) count the immediate-slot contribution, and the per-gen `MatchScalar` (vtable +80) picks which physical immediate/scalar slot can satisfy each. Multiple immediates in one bundle compete; the `SlotTracker` tracks consumption. Constants too wide for any slot are spilled to a constant pool **upstream** of this packer — `Feed`'s `op == 44` rejection confirms the packer assumes per-instruction immediates already fit. See [Immediate Slot](../isa/slot-immediate.md).
 
@@ -345,23 +344,27 @@ Status PackBranch(LloInstruction *instr) {
 
 ## PHI Packing — SSA Resolution
 
-`GlobalBundlePacker::PackPhis(region)` (`0x10a87160`) runs before the region body. PHI nodes are never assigned a bundle; instead they are resolved to copy instructions emitted into the **tail bundle of each predecessor**, just before that predecessor's branch:
+`GlobalBundlePacker::PackPhis(region)` (`0x10a87160`) runs before the region body. It walks the region's members with the same `LloRegionVisitHelper` machinery as `Pack`, but with the *inverse* opcode filter: each member whose opcode satisfies `op - 233u <= 3u` (opcodes **233..236** — the PHI-edge member class that `Pack`'s body loop skips) is appended to a temporary `vector<LloInstruction*>`. After the walk, every collected op is packed through the normal `PackInstruction` path:
 
 ```c
-// GlobalBundlePacker::PackPhis(region)  @ 0x10a87160  (paraphrased)
-void PackPhis(LloRegion *region) {
-    for (phi in region.phis) {
-        for ((value, pred_block) in phi.operand_pairs()) {
-            uint16 op = value->opcode;
-            if (op in {0x18, 0x19, 0x1a, 0x1b})    // mov-class opcodes
-                emit_copy(dst_reg(phi), src_reg(value)) into pred_block.tail_bundle;
-        }
+// GlobalBundlePacker::PackPhis(region)  @ 0x10a87160  (src global_bundle_packer.cc:104)
+Status PackPhis(LloRegion *region) {
+    vector<LloInstruction*> phi_edge_ops;                  // operator new(0x18) — empty vector
+    LloRegionVisitHelper visit(region);                    // same topo walk as Pack()
+    for (member in region) {
+        if (member.kind != kInstruction) continue;         // llo_region.h:161 RET_CHECK
+        if ((uint16)(member.opcode - 233) <= 3u)           // opcodes 233..236 only
+            phi_edge_ops.push_back(member.instruction);
     }
-    // region body packed afterward by Pack()'s instruction loop
+    for (instr in phi_edge_ops) {
+        Status s = PackInstruction(instr);                 // 0x10a875a0
+        if (!s.ok()) return AddSourceLocation(s, /*line=*/104);
+    }
+    return Ok;                                             // region body packed afterward by Pack()
 }
 ```
 
-PHI values are virtual: they carry no `scheduled_bundleno`. The mov-class opcode window (`0x18..0x1b`) is the move family that resolves the SSA edge. (Confidence HIGH; the exact predecessor-tail insertion point is inferred from the move-queue construction.)
+The opcodes `233..236` are exactly the window `Pack`'s body loop excludes (`op - 233u >= 4u`), so the two passes partition the region: `PackPhis` handles the PHI-edge member ops, `Pack` handles everything else. PackPhis does **not** synthesize copies or write to predecessor bundles in this build — it simply re-routes those four opcode values through `PackInstruction` first. (CONFIRMED from the decompile; the *semantic* role of opcodes 233..236 as SSA-edge resolution is inferred — UNVERIFIED.)
 
 ---
 
@@ -420,7 +423,10 @@ A second, structurally identical packer lives in the LLVM TPU backend as a `Mach
 | `GetBundleLimits` seq-type offsets 32 / 128 / 224; 3–5 FATAL | `0x1c6232e0` switch | CONFIRMED |
 | `SetLimits` writes 3 limit vectors via masked AND/OR (`0xFE07FF8000007000`) | `0x1c457a40` | CONFIRMED |
 | Subsystem (B) `canAddMI` order (VRegSrcs, Solver, VResDestPort, Imm, last-in-bundle) | `0x13b2b0e0` | CONFIRMED |
-| PHI resolution into predecessor tail bundles | `0x10a87160` (move-queue construction) | HIGH |
+| `PackPhis` collects opcodes 233..236, feeds via `PackInstruction` | `0x10a87160` (`op-233<=3` filter; AddSourceLocation 104) | CONFIRMED |
+| Semantic role of opcodes 233..236 as SSA-edge resolution | inferred from pass partitioning, not byte-anchored | UNVERIFIED |
+| `BundleRequirement::operator+=` is integer add + carry-mask validity check | `0x140237a0` (`bundle_requirement.h:629` FATAL) | CONFIRMED |
+| Four concrete `*BundleRestrictions` subclasses (JF/PF/VF/Ghostlite) | `nm` symbol roster; dragonfish shares JF class | CONFIRMED |
 | Per-gen slot counts beyond Jellyfish | derived from `BundleRequirement` size growth + bundle widths | MEDIUM/LOW |
 | Seq types 3–5 → SparseCore/TAC/TEC offsets | not wired in `0.0.40` (FATAL) | LOW |
 
