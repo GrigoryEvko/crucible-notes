@@ -8,7 +8,7 @@
 
 The natural reference frame is **linear-scan register allocation over a single physical register class**, with one twist: the "registers" are a FIFO with a fixed retire latency, so eviction is keyed on *time*, not on liveness intervals. The allocator walks the chains in matmul issue order; at each step it advances a monotone clock (`AdvanceTimeTo`), which evicts every chain whose result became available before "now" and recycles that chain's MRB entry into a per-chunk free pool (`ReleaseMrbReservation`); it then reserves an entry for the current chain — either a fresh `insert` or, if the chain already holds an entry from an earlier matmul, a `replace_data` that extends the entry's unevictable-until time. A chain that would have to hold its entry past the available window is cut at the current time (`SplitAccumulationChain`) and its tail is deferred to be re-reserved later. This is the **MRB analog of the [MXU assignment bin-packer](mxu-assignment-binpacker.md)** — but where the MXU packer runs a greedy min-makespan search over N interchangeable lanes, the MRB allocator is a *deterministic program-order sweep* with a time-keyed eviction pool, because the result FIFO is an ordered fixed-retire-latency resource rather than N parallel matmul lanes.
 
-This page documents the timeline algorithm and the chain-assignment logic: the central `chains_unevictable_until_` boost bimap (ProgramOrder-ordered on one side, chain-pointer-hashed on the other), the `AssignMrbEntriesToChains` driver loop, the `AdvanceTimeTo` eviction engine, the `ReleaseMrbReservation` per-chunk recycle pool, and the `SplitAccumulationChain` defer-tail mechanism. The per-step *cost* that advances the reservation end-time — `ExtendMrbReservation`'s `max(throughput, floor) + max(latency, floor)` recurrence — is the cost cell consumed by this timeline; it and the matmul/matprep base latencies are priced by the [`CycleTable`](../cost/jf-cycletable.md) and [`LatencyBetween`](../cost/bundle-aware-cost.md#the-dependency-latency-axis-latencybetween). The second half of this page closes the public edge-latency surface: the **optional `LatencyBetween` jitter** (a flag-gated uniform-random perturbation, off by default) and the **trace-instruction edge clamps**.
+This page documents the timeline algorithm and the chain-assignment logic: the central `chains_unevictable_until_` boost bimap (ProgramOrder-ordered on one side, chain-pointer-hashed on the other), the `AssignMrbEntriesToChains` driver loop, the `AdvanceTimeTo` eviction engine, the `ReleaseMrbReservation` per-chunk recycle pool, and the `SplitAccumulationChain` defer-tail mechanism. The per-step *cost* that advances the reservation end-times — `ExtendMrbReservation`'s two parallel `push_time + min(throughput, cap)` and `push_time + min(latency, cap)` advances — is the cost cell consumed by this timeline; the throughput and edge terms are priced by the [`CycleTable`](../cost/jf-cycletable.md) (`CycleTableInstruction`) and [`LatencyBetween`](../cost/bundle-aware-cost.md#the-dependency-latency-axis-latencybetween), each clamped from above by an option cap (`+0x20`/`+0x28`) and written into *separate* per-MXU timeline arrays, not summed. The second half of this page closes the public edge-latency surface: the **optional `LatencyBetween` jitter** (a flag-gated uniform-random perturbation, off by default) and the **trace-instruction edge clamps**.
 
 For reimplementation, the contract is:
 
@@ -21,7 +21,7 @@ For reimplementation, the contract is:
 | | |
 |---|---|
 | **Driver** | `(anon)::AssignMrbEntriesToChains` `@0x10f4ac60` (`Target&, CycleTable&, LatencyTable&, Span<const AccumulationChain>, int, MrbAccumulationOptions`) |
-| **Per-step cost cell** | `MrbChainAllocator::ExtendMrbReservation` `@0x10f58800` (the throughput+latency recurrence; priced by `CycleTable`/`LatencyBetween`) |
+| **Per-step cost cell** | `MrbChainAllocator::ExtendMrbReservation` `@0x10f58800` (two parallel `push + min(throughput, cap)` / `push + min(latency, cap)` timeline advances; priced by `CycleTable`/`LatencyBetween`) |
 | **Eviction engine** | `MrbChainAllocator::AdvanceTimeTo(StrongInt<ProgramOrder>)` `@0x10f5e9e0` |
 | **Recycle pool** | `MrbChainAllocator::ReleaseMrbReservation(MrbEntry)` `@0x10f5f9e0` |
 | **Split / defer-tail** | `MrbChainAllocator::SplitAccumulationChain` `@0x10f598e0` |
@@ -59,15 +59,15 @@ bimap<
 
 ### Allocator Object Layout
 
-Reconstructed from the field accesses across the four traced methods. Field roles are CONFIRMED; struct-name bindings for the option floors and the chunk arrays are INFERRED (no struct-layout string).
+Reconstructed from the field accesses across the four traced methods. Field roles are CONFIRMED; struct-name bindings for the option caps and the chunk arrays are INFERRED (no struct-layout string).
 
 | Offset | Field | Meaning | Confidence |
 |---|---|---|---|
 | `+0x00` | `Target*` | the JF `Target` (vtable gates `[+0x390]` MRB-support, `[+0x5e0]` FIFO granule) | CONFIRMED |
 | `+0x08` | `CycleTable*` | `GetCyclesForThroughput` source — the throughput axis of `ExtendMrbReservation` | CONFIRMED |
 | `+0x10` | `LatencyTable*` | `LatencyBetween` source — the edge axis | CONFIRMED |
-| `+0x20` | `s64` throughput floor | `max(throughput, floor)` cell — copied from `MrbAccumulationOptions+0x8` | CONFIRMED (offset); name INFERRED |
-| `+0x28` | `s64` latency floor | `max(latency, floor)` cell — copied from `MrbAccumulationOptions+0x10` | CONFIRMED (offset); name INFERRED |
+| `+0x20` | `s64` throughput cap | `min(throughput, cap)` cell — copied from `MrbAccumulationOptions` | CONFIRMED (offset + the `min` direction); name INFERRED |
+| `+0x28` | `s64` latency cap | `min(latency, cap)` cell — copied from `MrbAccumulationOptions` | CONFIRMED (offset + the `min` direction); name INFERRED |
 | `+0x70` | `s64 latest_matmul_` | monotone clock; `AdvanceTimeTo`/`SplitAccumulationChain` RetCheck guard | CONFIRMED |
 | `+0xd8`..`+0xe8` | `chains_unevictable_until_` | the eviction bimap (LEFT-ordered head at `+0xd8`, RIGHT-hashed at `+0xe0`) | CONFIRMED |
 | `+0x7a0` | per-chunk free pool | `flat_hash_set<MrbEntry>` of recycled entries, bucketed by chunk_id (`ReleaseMrbReservation`) | CONFIRMED |
@@ -110,9 +110,9 @@ function AssignMrbEntriesToChains(target, cycles, latency, chains, num_mxus, opt
     introsort(work.accumulations,                // @0x10f4b092
               OrderBy(Accumulation::matmul_program_order, Less))   // ascending
 
-    // 3. Build the allocator; copy the two ExtendMrbReservation floors out of the options.
+    // 3. Build the allocator; copy the two ExtendMrbReservation caps out of the options.
     alloc = MrbChainAllocator(target, cycles, latency, opts, num_mxus)   // @0x10f4b113
-    //   alloc.throughput_floor (+0x20) = opts+0x8 ; alloc.latency_floor (+0x28) = opts+0x10   (16-byte vmovups)
+    //   alloc.throughput_cap (+0x20) and alloc.latency_cap (+0x28) copied from MrbAccumulationOptions
     //   alloc.chunks[max(num_mxus, 8)] = __size_returning_new(...)      // @0x10f4b2cf
 
     // 4. Main loop — one iteration per accumulation, already in program order.
@@ -133,7 +133,7 @@ function AssignMrbEntriesToChains(target, cycles, latency, chains, num_mxus, opt
             granule = target.vtable[+0x5e0]()         // FIFO-push granule (byte) (line 1874)
             push    = ceil(push / granule) * granule  // round up to a granule multiple (idiv)
         size_class = bsr(push)                        // log2 size class   (_BitScanReverse, line 1887)
-        mxu        = now & 3                           // MXU-instance index (line 1864)
+        mxu        = accum.matmul.unit_id() & 3        // MXU-instance index from matmul unit_id (line 1864/1716)
 
         // 4d. Reserve — new entry or extend existing — then price the step.
         it = alloc.chains_unevictable_until_.right.find(&chain)
@@ -153,14 +153,14 @@ The reserve is the inlined `ReserveMrbEntry` (a two-arm `absl::Overload` visitor
 
 | Arm | Condition | Bimap op | `ExtendMrbReservation` site | Source string |
 |---|---|---|---|---|
-| **new reservation** | chain absent (first matmul) | `right.insert({&chain, matres_program_order, next_accum})` | `@0x10f4d9a8` | `"chains_unevictable_until_.right.insert({&chain, curr_accumulation.accumulation.matres_program_order, next_accumulation})"` `@0xa16f73f` |
+| **new reservation** | chain absent (first matmul) | `right.insert({&chain, matres_program_order, next_accum})` | `@0x10f4d9a8` | guarded by `RetCheck("!chain->mrb_entry.has_value()")` cc:1542 — the chain must not already hold an entry |
 | **extend reservation** | chain present (absorbs a matmul) | `right.replace_data(it, matres_program_order)` | `@0x10f4dfca` | `"chains_unevictable_until_.right.replace_data(it, curr_accumulation.accumulation.matres_program_order)"` `@0xa104fb1` |
 
 > **QUIRK —** the two arms differ only in *how* they touch the bimap, not in what they price. Both call `ExtendMrbReservation` to advance the chain's reservation end-time by the per-step cost. The `replace_data` arm overwrites the LEFT key (`matres_program_order`) so the eviction order tracks the *latest* matmul of a multi-matmul chain. A reimplementation that re-`insert`s instead of `replace_data` on the extend path would leave a stale duplicate in the ordered index and free the entry too early.
 
 ### The FIFO-Push Rounding
 
-Confirmed byte-exact in the driver (lines 1869–1887). The number of result-FIFO slots a matmul pushes is `LloInstructionPushesToResultFifo(matmul)` `@0x1d4f3600`; when the target supports MRB (gate `vtable[+0x390]() > 0`, line 1871), the push is rounded up to a multiple of a per-gen granule (`vtable[+0x5e0]()`, a byte, line 1874) via an integer divide; `bsr(push)` then yields a log2 size class. The MXU instance is `matmul_program_order & 3` (line 1864).
+Confirmed byte-exact in the driver (lines 1869–1887). The number of result-FIFO slots a matmul pushes is `LloInstructionPushesToResultFifo(matmul)` `@0x1d4f3600`; when the target supports MRB (gate `vtable[+0x390]() > 0`, line 1871), the push is rounded up to a multiple of a per-gen granule (`vtable[+0x5e0]()`, a byte, line 1874) via an integer divide; `bsr(push)` then yields a log2 size class (with a `RetCheck(absl::has_single_bit(entries_needed))` at cc:875 guarding power-of-two, and `target_level < kLevelsInMrbAllocator`). The MXU instance is `accumulation.matmul->unit_id() & 3` — low 2 bits of the matmul's unit id, **not** its program order (line 1864; the unit id is read at line 1716 and `RetCheck`-guarded by `"accumulation.matmul->unit_id().has_value()"` at cc:1518).
 
 > **NOTE —** the `Target` vtable layer here is **not** the `JellyfishTarget` base `@0x21cc6bc0`; the named accessors for `[+0x390]` (MRB-support count) and `[+0x5e0]` (FIFO-push granule) were not resolved. The slot offsets, the `>0` gate, and the round-up arithmetic are byte-exact; the accessor *names* are INFERRED.
 
@@ -186,9 +186,10 @@ function AdvanceTimeTo(new_time):                        // @0x10f5e9e0
         if front.matres_program_order >= new_time:           // line 175 (cmp [node-0x88], to)
             break                                            // nothing left retires before now
         chain = front.chain
-        if chain.complete /* *(chain+0x2c) holds an MrbEntry */:
-            ReleaseMrbReservation(chain.mrb_entry)            // recycle  @0x10f5ec15 (lines 203-205)
-        // else: chain is now "evictable, next Accumulation is ..." (deferred, not released)
+        if front.complete /* relation-node byte *(node-8) != 1 → chain is done */:
+            ReleaseMrbReservation(chain.mrb_entry)            // recycle  (lines 178-205)
+            // chain+0x2c is RetChecked nonzero here (BUG() if 0) before reading mrb_entry @chain+0x20
+        else: // *(node-8) == 1: chain is now "evictable, next Accumulation is ..." (deferred, not released)
         chains_unevictable_until_.final_erase_(front)         // remove from bimap  @0x10f61d60
 
     // 3. Post-condition: each per-MXU next-accumulation index head is now >= new_time.
@@ -200,7 +201,7 @@ function AdvanceTimeTo(new_time):                        // @0x10f5e9e0
 
 > **GOTCHA —** the guard fires when `latest_matmul_ > new_time` (line 128), i.e. **time must be non-decreasing**. Because the driver feeds accumulations in introsorted program order, `new_time` never regresses and the guard never trips in normal operation; it is a structural invariant check, not a runtime branch. (An earlier synthesis transcribed this guard with the inequality flipped — the decompile is definitive: FATAL on `current > new`, success on `current <= new`.) The eviction comparison in the loop, by contrast, is strict `<`: a chain whose result lands *exactly* at `new_time` is not yet retired and keeps its entry.
 
-> **NOTE —** an evicted chain only calls `ReleaseMrbReservation` if it actually *holds* an MRB entry (`*(chain+0x2c) != 0`, lines 178/189/203). A chain that the loop finds at the front but that does not occupy an entry (it was split, or never reserved) is simply erased and its result logged as "now evictable, next Accumulation is …" (mxu_accumulation.cc:1347). The release path is gated on real occupancy.
+> **NOTE —** the eviction loop branches on the relation-node "complete" byte at `*(node−8)`: when it is **≠ 1** the chain is done, so its MRB entry is recycled via `ReleaseMrbReservation` (VLOG "… releasing MRB entry, as it is complete", cc:1355); when it is **== 1** the chain still has a pending next-accumulation, so it is logged as "Chain holding … is now evictable, next Accumulation is …" (mxu_accumulation.cc:1347) and erased *without* a release. On the release path the chain's own `*(chain+0x2c)` validity byte is asserted nonzero (`BUG()` if 0) before the `MrbEntry` is read from `chain+0x20`/`chain+0x28`.
 
 ---
 
@@ -279,7 +280,7 @@ function SplitAccumulationChain(chain, split_point):     // @0x10f598e0
 
 ## Net Policy and the MXU Contrast
 
-The allocator is a single forward sweep with three time-keyed effects per step: split-if-contended, advance-and-evict, reserve-or-extend. There is **no makespan search and no backtracking**. The per-step end-time advance is exactly `ExtendMrbReservation`'s `max(GetCyclesForThroughput, throughput_floor) + max(LatencyBetween, latency_floor)` recurrence — the throughput axis from the [`CycleTable`](../cost/jf-cycletable.md), the edge axis from [`LatencyBetween`](../cost/bundle-aware-cost.md#the-dependency-latency-axis-latencybetween), both clamped by the two option floors copied into `+0x20`/`+0x28`.
+The allocator is a single forward sweep with three time-keyed effects per step: split-if-contended, advance-and-evict, reserve-or-extend. There is **no makespan search and no backtracking**. The per-step advance is `ExtendMrbReservation`'s two parallel writes — `push_time + min(CycleTableInstruction, cap@+0x20)` into the per-MXU throughput timeline and `push_time + min(LatencyBetween, cap@+0x28)` into the per-MXU result-entry timeline — the throughput axis from the [`CycleTable`](../cost/jf-cycletable.md), the edge axis from [`LatencyBetween`](../cost/bundle-aware-cost.md#the-dependency-latency-axis-latencybetween), each clamped *from above* by an option cap (`+0x20`/`+0x28`). The two are not summed.
 
 | Aspect | MRB Chain Allocator (this page) | [MXU Assignment Bin-Packer](mxu-assignment-binpacker.md) |
 |---|---|---|
@@ -309,7 +310,7 @@ function LatencyBetween(from, to):                       // @0x1c89f820
     // --- OPTIONAL JITTER ---  (line 27)
     bitgen = this->jitter_bitgen  /* this+0x10 */
     if bitgen != null:                                   // null by default → skip
-        raw += Uniform(bitgen, 0, 101)                   // closed [0,101]; absl UniformDistributionWrapper<int>
+        raw += Uniform(bitgen, 0, 101)                   // bounds (0,101) passed to absl UniformDistributionWrapper<int>
                                                          // via DistributionCaller<BitGen> @0xfa7c9a0 (Randen PRNG)
 
     // --- TRACE-EDGE CLAMPS ---  (lines 33-52)
@@ -329,7 +330,7 @@ The jitter `BitGen*` lives at `LatencyTable+0x10` and is **initialized to 0** in
 
 | Knob | Type | Default | Description |
 |---|---|---|---|
-| `xla_jf_random_latency` | BOOL/BitGen install | **off (`+0x10` == null)** | When set, installs a Randen-AES `BitGen*` at `LatencyTable+0x10`; every edge then gains a uniform-random `[0,101]`-cycle perturbation |
+| `xla_jf_random_latency` | BOOL/BitGen install | **off (`+0x10` == null)** | When set, installs a Randen-AES `BitGen*` at `LatencyTable+0x10`; every edge then gains a uniform-random perturbation drawn with bounds `(0, 101)` |
 
 > **QUIRK —** the jitter is a *robustness/fuzzing* knob, not a hardware latency term. With it on, the scheduler is exercised against latency variation so its decisions are stress-tested for sensitivity to edge-latency noise — it does not model any real silicon delay. A reimplementer pricing actual TPU cycles must leave `+0x10` null; the deterministic `LatencyBetweenInternal` is the hardware model.
 
@@ -353,7 +354,7 @@ A trace-arg → trace-arg edge takes a configurable floor (default 16 cycles); a
 | Function | Address | Role | Confidence |
 |---|---|---|---|
 | `(anon)::AssignMrbEntriesToChains` | `0x10f4ac60` | driver: copy → introsort → allocator ctor → main loop | CONFIRMED |
-| `MrbChainAllocator::ExtendMrbReservation` | `0x10f58800` | per-step cost cell (throughput + edge, both floored) | CONFIRMED |
+| `MrbChainAllocator::ExtendMrbReservation` | `0x10f58800` | per-step cost cell (throughput and edge, each capped via `min`, written to separate per-MXU timelines) | CONFIRMED |
 | `MrbChainAllocator::AdvanceTimeTo` | `0x10f5e9e0` | monotone clock + evict-by-`matres_program_order` | CONFIRMED |
 | `MrbChainAllocator::ReleaseMrbReservation` | `0x10f5f9e0` | recycle a freed `MrbEntry` into the per-chunk pool | CONFIRMED |
 | `MrbChainAllocator::SplitAccumulationChain` | `0x10f598e0` | cut a chain at the clock; defer the tail | CONFIRMED |
@@ -364,7 +365,7 @@ A trace-arg → trace-arg edge takes a configurable floor (default 16 cycles); a
 | `Target::vtable[+0x5e0]` | — | FIFO-push rounding granule (byte) | HIGH (slot byte-exact; name INFERRED) |
 | `LatencyTable::LatencyBetween` | `0x1c89f820` | base edge → optional jitter → trace clamps | CONFIRMED |
 | `LatencyTable::LatencyTable(TpuVersion)` | `0x1c89f800` | base ctor — `+0x10 = 0` (jitter off) | CONFIRMED |
-| `DistributionCaller<BitGen>::Impl<UniformDistributionWrapper<int>>` | `0xfa7c9a0` | the `Uniform[0,101]` jitter draw (Randen PRNG) | CONFIRMED |
+| `DistributionCaller<BitGen>::Impl<UniformDistributionWrapper<int>>` | `0xfa7c9a0` | the `Uniform(0,101)` jitter draw (Randen PRNG) | CONFIRMED |
 | `AutoOr<int>::FromProtoOrDie` | `0x10979760` | trace-arg `0x84/0x84` edge config (default 16) | HIGH (default byte-exact; proto field name LOW) |
 | `LloOpcodeString` | `0x1d631360` | opcode → name table `@0x21cd0d60` (0x82/0x83/0x84) | CONFIRMED |
 
