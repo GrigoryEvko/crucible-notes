@@ -8,14 +8,14 @@ This page documents the SparseCore (SC) pointer representation and the two point
 
 The mental model to discard is the one a reader coming from AMDGPU or from the P-3-352 "structured-pointer" hypothesis would bring: that a SparseCore address is a 160-bit struct packing `{descriptor, core/chip, offset}` into the bits of an AS7 fat pointer. It is not. A SparseCore pointer is **at most a 64-bit LLVM pointer carrying a 32-bit word offset as its in-register value** — the `0xCA`/`0xC9`/`0xCB`/`0xCC` address spaces are absent from the `DataLayout` `p`-list, so they take the default `p:64:64` representation, and the `addrspacecast` that re-tags between them lowers to a value-preserving `SDNode` of type `MVT::i32`. The routing that the AS7 reserve *looks* like it should carry — which core/chip, which tile — rides as **separate SSA operands** instead: the destination-id operand for cross-chip remote casts, and the `tpu_tileid` operand for the on-tile TEC casts.
 
-The page is three units. First, **the AS7/8/9 fat-pointer reserve** — what the three formats are, their per-field bit layout as the AMDGPU ABI defines them, and the byte evidence that the TPU build inherits them dead. Second, **the SparseCore address-space ID table** — the 21 named IDs across three numeric bands, each ID's backing memory pool and on-tile/off-tile semantics, recovered from three mutually-inverse switch/table functions. Third, **the actual SparseCore pointer representation** — the 64-bit/32-bit-word-offset model, why the tile and core routing are operands not pointer bits, and how a pointer's address-space integer flows through the lowering. The conversion of an MLIR `MemorySpaceCast` into an `llvm.addrspacecast` lives on [addrspacecast ISel](addrspacecast-isel.md); the on-tile 2-operand tile-id cast lowering lives on [Tile-ID Cast](tile-id-cast.md); this page owns the *representation and the AS-id table*.
+The page is three units. First, **the AS7/8/9 fat-pointer reserve** — what the three formats are, their per-field bit layout as the AMDGPU ABI defines them, and the byte evidence that the TPU build inherits them dead. Second, **the SparseCore address-space ID table** — the 20 description-bearing IDs across three numeric bands, each ID's backing memory pool and on-tile/off-tile semantics, recovered from three mutually-inverse switch/table functions. Third, **the actual SparseCore pointer representation** — the 64-bit/32-bit-word-offset model, why the tile and core routing are operands not pointer bits, and how a pointer's address-space integer flows through the lowering. The conversion of an MLIR `MemorySpaceCast` into an `llvm.addrspacecast` lives on [addrspacecast ISel](addrspacecast-isel.md); the on-tile 2-operand tile-id cast lowering lives on [Tile-ID Cast](tile-id-cast.md); this page owns the *representation and the AS-id table*.
 
 For reimplementation, the contract is:
 
 - **Do not implement an AS7/8/9 constructor.** No SparseCore op materialises a 160/128/192-bit pointer. The reserve is dead in this build; a reimplementation that drives off the `DataLayout` `p7/p8/p9` entries will look for a constructor that does not exist.
 - **The SparseCore pointer is a 64-bit LLVM ptr (default repr) carrying a 32-bit word-offset value.** Allocate your address-space numbers from `{0, 201..225, 501, 502}`, never from `{7, 8, 9}`. These two ranges must stay disjoint.
-- **Reproduce the AS-id table exactly.** ID → human description → `MemorySpace` enum → pool name → on/off-tile, with the seven reserved gaps and the four pool-less "Any" alias supersets, as recovered from `AddressSpaceDescription` / `AddressSpaceToMemorySpace` / `MemorySpaceToAddressSpace`.
-- **Carry tile and core routing as operands, not pointer bits.** The TEC tile-id casts are 2-operand `{base, tileId}`; the SCS/TC/TAC casts are 1-operand `{base}`. The discriminator is the sequencer, not the pointer.
+- **Reproduce the AS-id table exactly.** ID → human description → `MemorySpace` enum → pool name → on/off-tile, with the six reserved gaps (`206,207,209,210,221,222`), the two pool-less "Any" alias supersets (`211 SflagAny`, `225 SflagAnySynctile`), and the two live-but-undescribed IDs (`215 simem`, `220 mar`), as recovered from `AddressSpaceDescription` / `AddressSpaceToMemorySpace` / `MemorySpaceToAddressSpace`.
+- **Carry tile and core routing as operands, not pointer bits.** The TEC and TAC tile-id casts are 2-operand `{base, tileId}` (both declare `NOperands<2>`); the SCS/TC/plain casts are 1-operand `{base}` (`OneOperand`). The discriminator is the sequencer's operand arity, not the pointer.
 
 | | |
 |---|---|
@@ -92,13 +92,13 @@ GetAnyTypeFromAddressSpace(int)                     (0x1357B400)  ── concret
 
 ### The Three Bands
 
-The 21 named IDs fall into three numeric bands, recovered byte-for-byte from the `AddressSpaceDescription` switch:
+The 20 description-bearing IDs fall into three numeric bands, recovered byte-for-byte from the `AddressSpaceDescription` switch:
 
 - **ID 0** — the inherited base `Smem` (scalar memory, `MemorySpace 1`). This is the one SC ID that overlaps the conventional LLVM default-AS region; the switch's `default` arm returns `"Smem"` only for `0`.
-- **IDs 201..225** — the SparseCore-specific band (base `0xC9`). Eighteen of the 25 slots are named pools or alias groups; seven (`206`, `207`, `209`, `210`, `221`, `222`, plus `215`/`220` which carry a `MemorySpace` but no description string) are reserved gaps.
+- **IDs 201..225** — the SparseCore-specific band (base `0xC9`). Of the 25 slots, 17 name a backing pool, 2 (`211`, `225`) name an alias group with no pool, and 6 (`206`, `207`, `209`, `210`, `221`, `222`) are reserved gaps with neither a pool nor a description. Two more (`215`/`220`) carry a live `MemorySpace` (`simem`, `mar`) but no description string, so `AddressSpaceDescription` falls through on them.
 - **IDs 501, 502** — the two circular-buffer spaces (`0x1F5`/`0x1F6`), in a separate high band, backing the CBREG windows.
 
-The `AddressSpaceDescription` body is small enough to confirm exactly: for `ID > 500` it returns `"TileSpmem Circular Buffer"` (501) or `"Smem Circular Buffer"` (502); for `201..225` it switches to the names below; the reserved IDs (`206,207,209,210,215,220,221,222`) `break` with the running `"Unknown"`/empty result; and the `default` arm returns `"Smem"` for ID 0.
+The `AddressSpaceDescription` body is small enough to confirm exactly: for `ID > 500` it returns `"TileSpmem Circular Buffer"` (501) or `"Smem Circular Buffer"` (502); for `201..225` it switches to the names below; the description-less IDs (`206,207,209,210,215,220,221,222`) `return` the running result `"Unknown"`; and the `default` arm returns `"Smem"` for ID 0.
 
 ### Complete Table
 
@@ -121,12 +121,12 @@ The `AddressSpaceDescription` body is small enough to confirm exactly: for `ID >
 | 212 | `0xD4` | SmemAny | 9 | `smem_any` | off | smem may-alias superset | CONFIRMED |
 | 213 | `0xD5` | HBMAny | 10 | `hbm_any` | off | hbm may-alias superset | CONFIRMED |
 | 214 | `0xD6` | Timem | 11 | `timem` | off | per-tile instruction memory | CONFIRMED |
-| 215 | `0xD7` | *(empty desc)* | 12 | `simem` | off | SC instruction memory † | CONFIRMED |
+| 215 | `0xD7` | *(no desc → "Unknown")* | 12 | `simem` | off | SC instruction memory † | CONFIRMED |
 | 216 | `0xD8` | IOVA | 13 | `iova` | off | I/O virtual address | CONFIRMED |
 | 217 | `0xD9` | SflagTile | 14 | `sflag_tile` | off | per-tile sflag bank | CONFIRMED |
 | 218 | `0xDA` | SpmemAny | 15 | `spmem_any` | off | spmem may-alias superset | CONFIRMED |
 | 219 | `0xDB` | TileSmem | 16 | `smem_tile` | off | per-tile SMEM | CONFIRMED |
-| 220 | `0xDC` | *(empty desc)* | 17 | `mar` | off | memory-access-region † | CONFIRMED |
+| 220 | `0xDC` | *(no desc → "Unknown")* | 17 | `mar` | off | memory-access-region † | CONFIRMED |
 | 221 | `0xDD` | *(reserved)* | 0 | — | — | gap | CONFIRMED |
 | 222 | `0xDE` | *(reserved)* | 0 | — | — | gap | CONFIRMED |
 | 223 | `0xDF` | SflagScs | 20 | `sflag_scs` | off | per-SCS sflag bank | CONFIRMED |
@@ -135,7 +135,7 @@ The `AddressSpaceDescription` body is small enough to confirm exactly: for `ID >
 | 501 | `0x1F5` | TileSpmem Circular Buffer | 18 | `tile_spmem_cb` | **ON** | CBREG-windowed TILE_SPMEM | CONFIRMED |
 | 502 | `0x1F6` | Smem Circular Buffer | 19 | `smem_cb` | off | CBREG-windowed SMEM | CONFIRMED |
 
-> **NOTE —** † IDs 215 (`simem`) and 220 (`mar`) carry a valid `MemorySpace` but `AddressSpaceDescription` returns the empty string for them — a description-switch gap in this build. Their pool names are the canonical ones from `stringifyMemorySpace`; the IDs themselves are live and map cleanly through `AddressSpaceToMemorySpace`. `MemorySpace 22` (`sflag_tc`) re-uses ID 204 alongside MS 5, so the reverse table has one ID shared by two `MemorySpace` values.
+> **NOTE —** † IDs 215 (`simem`) and 220 (`mar`) carry a valid `MemorySpace` (12 and 17) but `AddressSpaceDescription` has no arm for them and returns the fall-through `"Unknown"` — a description-switch gap in this build. Their pool names are the canonical ones from `stringifyMemorySpace`; the IDs themselves are live and map cleanly through `AddressSpaceToMemorySpace`. `MemorySpace 22` (`sflag_tc`) re-uses ID 204 alongside MS 5, so the reverse table `dword_AF36CE8` has the one AS (`0xCC`) shared by two `MemorySpace` values (entries 5 and 22).
 
 ### On-Tile vs Off-Tile
 
@@ -143,7 +143,7 @@ The `AddressSpaceDescription` body is small enough to confirm exactly: for `ID >
 
 ### The "Any" May-Alias Supersets
 
-Four IDs — `211 SflagAny`, `212 SmemAny`, `213 HBMAny`, `218 SpmemAny` (and the synthetic `225 SflagAnySynctile`) — carry a description but **no** `MemorySpace` pool. They are alias-analysis groupings, not physical memory: the may-alias superset the SparseCore LLVM backend assigns to a pointer whose exact tile or core is statically unknown. `GetAnyTypeFromAddressSpace` (`0x1357B400`) canonicalises a concrete ID to its wildcard:
+Five IDs — `211 SflagAny`, `212 SmemAny`, `213 HBMAny`, `218 SpmemAny`, and the synthetic `225 SflagAnySynctile` — are the alias-analysis wildcards: the may-alias superset the SparseCore LLVM backend assigns to a pointer whose exact tile or core is statically unknown. Three of them (`212`/`213`/`218`) carry a dedicated `*_any` pool (`MemorySpace` 9/10/15, pools `smem_any`/`hbm_any`/`spmem_any`); the other two (`211 SflagAny` and `225 SflagAnySynctile`) carry **no** `MemorySpace` at all — `AddressSpaceToMemorySpace` returns 0 for them, so they are pure alias groupings with no physical pool. `GetAnyTypeFromAddressSpace` (`0x1357B400`) canonicalises a concrete ID to its wildcard:
 
 ```text
 201 TileSpmem  → 218 SpmemAny        205 Vmem      → 205 Vmem (self; no wildcard)
@@ -162,7 +162,7 @@ Calling `GetAnyTypeFromAddressSpace` on an already-wildcard space, or on a leaf 
 
 None of the SC address-space IDs (`0xC9`/`0xCA`/`0xCB`/`0xCC`/…) appears in the `DataLayout` `p`-list, so each inherits the **default `p:64:64`** — a 64-bit pointer representation. But the *value* a SparseCore pointer carries is a 32-bit SparseCore **word offset**: in the SelectionDAG, `TPUTargetLowering::LowerADDRSPACECAST` (`0x13B70480`) emits a value-preserving custom `SDNode` (opcode `0xF3`, set at `0x13B70592`) with `EVT = MVT::i32` (`ecx = 0x7` at `0x13B70597`, where `0x7` is the `MVT::i32` enum value). The supporting diagnostics agree: `"No GEP instruction on HBM address space allowed. On TPU, HBM pointers are at least full 32-bit."` (`0x9FF4DD5`), and `SpmemAlignment` (`0x13DC5500`) computes a *word* alignment by dividing the per-SC byte count by 4. So a SparseCore pointer is at most a 64-bit LLVM ptr whose meaningful content is a 32-bit word offset — never a 160/128/192-bit struct.
 
-> **QUIRK —** the re-tag is value-preserving. An `addrspacecast` between two SC spaces does not change the offset value; it only changes the address-space integer attached to the 64-bit pointer (and, for the TEC case, attaches a tile-id operand). `LowerADDRSPACECAST` produces `SDNode 0xF3 / MVT::i32` carrying the same word offset in, the same word offset out. A reimplementer must not model the cast as an arithmetic transform of the address — it is a pure tag change plus an out-of-band routing operand.
+> **QUIRK —** the re-tag is value-preserving. An `addrspacecast` between two SC spaces does not change the offset value; it only changes the address-space integer attached to the 64-bit pointer (and, for the tile-indexed TEC/TAC cases, attaches a tile-id operand). `LowerADDRSPACECAST` produces `SDNode 0xF3 / MVT::i32` carrying the same word offset in, the same word offset out. A reimplementer must not model the cast as an arithmetic transform of the address — it is a pure tag change plus an out-of-band routing operand.
 
 ### Per-AS Field Layout — The Routing Is Operands, Not Bits
 
@@ -174,13 +174,13 @@ Because the pointer is a flat 32-bit word offset with no structured fields, the 
 
    routing is NOT in the pointer bits — it rides as paired operands on the cast:
 
-     ┌─ on-tile (TEC, per-tile execute lane) ────────────────────────────────────┐
-     │  cast = tpu_addrspacecast_{spmem,smem,tec,…tec}  →  2 operands             │
+     ┌─ tile-indexed (TEC / TAC, per-tile execute lanes) ─────────────────────────┐
+     │  cast = tpu_addrspacecast_{spmem,smem,tec,…tec,tac}  →  2 operands         │
      │    operand 0 = base ptr (TileSpmem 0xC9 …)                                 │
      │    operand 1 = tpu_tileid  (i32 from the STILEID hardware register read)   │
      └────────────────────────────────────────────────────────────────────────────┘
-     ┌─ singular-per-core (SCS / TC / TAC) ──────────────────────────────────────┐
-     │  cast = tpu_addrspacecast{,_scs,_tc,_tac,…scs}  →  1 operand               │
+     ┌─ singular-per-core (SCS / TC / plain) ─────────────────────────────────────┐
+     │  cast = tpu_addrspacecast{,_scs,_tc,…scs}  →  1 operand                    │
      │    operand 0 = base ptr   (no tile id — these lanes are singular per core) │
      └────────────────────────────────────────────────────────────────────────────┘
      ┌─ cross-chip (remote) ─────────────────────────────────────────────────────┐
@@ -196,13 +196,13 @@ The arity split is the per-AS "field layout" that actually exists: it is encoded
 | `tpu_addrspacecast` (plain) | `0x146D5EA0` | 1 `{base}` | no | generic | CONFIRMED |
 | `tpu_addrspacecast_scs` | `0x146D5F80` | 1 `{base}` | no | SCS | CONFIRMED |
 | `tpu_addrspacecast_tc` | `0x146D68E0` | 1 `{base}` | no | TC | CONFIRMED |
-| `tpu_addrspacecast_tac` | — (`NOperands<1>`) | 1 `{base}` | no | TAC | HIGH |
+| `tpu_addrspacecast_tac` | — (`NOperands<2>`) | 2 `{base, tileId}` | YES | TAC | HIGH |
 | `tpu_addrspacecast_smem` | `0x146D6500` | 2 `{base, tileId}` | YES | TEC | CONFIRMED |
 | `tpu_addrspacecast_spmem` | `0x146D67E0` | 2 `{base, tileId}` | YES | TEC | CONFIRMED |
 | `tpu_addrspacecast_tec` | `0x146D69C0` | 2 `{base, tileId}` | YES | TEC | CONFIRMED |
 | `tpu_tileid` (the i32 source) | `0x149883A0` | 0 (register read) | — | — | CONFIRMED |
 
-> **QUIRK —** the 2-operand-vs-1-operand split is determined entirely by the **sequencer**, not by the source/destination address space. Every TEC-targeting cast (the per-tile execute lane) carries the tile id; every SCS/TC/TAC cast (singular per core) does not. This is because only the TEC lane addresses per-tile `TileSpmem` and therefore needs a runtime tile-select; the singular sequencer lanes address their memory without a per-tile index. The full 16-cast roster, the from→to AS map, and the lowering body live on [addrspacecast ISel](addrspacecast-isel.md) and [Tile-ID Cast](tile-id-cast.md); this page documents only why the routing is an operand and not a pointer bit.
+> **QUIRK —** the 2-operand-vs-1-operand split is determined entirely by the **sequencer**, not by the source/destination address space. Both tile-indexed lanes — TEC and TAC — declare `NOperands<2>` and carry the tile id; the singular-per-core lanes (SCS, TC, and the plain cast) declare `OneOperand` and do not. This is because the tile-indexed lanes address per-tile `TileSpmem` and therefore need a runtime tile-select; the singular sequencer lanes address their memory without a per-tile index. The full 16-cast roster, the from→to AS map, and the lowering body live on [addrspacecast ISel](addrspacecast-isel.md) and [Tile-ID Cast](tile-id-cast.md); this page documents only why the routing is an operand and not a pointer bit.
 
 ### Address-Space Integer Flow
 

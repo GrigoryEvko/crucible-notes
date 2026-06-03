@@ -12,7 +12,7 @@ For reimplementation, the contract is:
 
 - **Two operands, one result.** A TEC-lane addrspacecast is `{base : !ptr<src_as>, tileId : i32} -> !ptr<dst_as>`. Trait set `ZeroRegions, OneResult, OneTypedResult<Type>, ZeroSuccessors, NOperands<2u>, MemoryEffectOpInterface`. Operand 0 is always the base pointer; operand 1 is always the tile id.
 - **The tile id is a register read, not a constant.** Operand 1 is the `i32` SSA result of `tpu_tileid` (`STILEID.VRES` / `stileid.u32`). The lowering synthesises it on demand if the call site does not already supply one.
-- **The sequencer attribute is the gate.** The lowering only injects a tile id when the enclosing `LLVMFuncOp` carries `sc.sequencer == "execute"` (TEC). On any other sequencer (SCS / TC / TAC) the cast is the 1-operand form and the lowering rejects a TileSpmem source with a hard diagnostic.
+- **The sequencer attribute is the gate.** In `CastTileSpmemPointerToSpmem`, the lowering only injects a tile id when the enclosing `LLVMFuncOp` carries `sc.sequencer == "execute"` (TEC). On any other sequencer the TileSpmem source is rejected with a hard diagnostic. (The arity split below is broader than this single driver: the *op-level* tile-id operand is present on the TEC **and** TAC casts — both lanes address per-tile memory — and absent only on the SCS/TC casts; see the arity table for the per-op trait reading.)
 - **The composition is operand pairing, not arithmetic.** No add, no shift, no multiply combines the tile id and the base. "Composition" here means *the two are bound side-by-side as the cast's operands*; the pointer value is re-tagged unchanged and the tile id is threaded separately to the consuming load/store.
 
 | | |
@@ -234,8 +234,11 @@ The lowered TileSpmem access is emitted by the SC `isa_emitter`:
 isa_emitter::EmitVectorLoadOrStore<SparsecoreVectorBase, SparsecoreVectorOffset,
     SparsecoreVectorMask, SparsecoreVectorStride,
     SparseCoreTecVectorLoad_TileSpmemLoad, SparseCoreTecBundle>
-  glc instances @ 0x13a362c0 / 0x13a378c0 / 0x13a36000  (+ gfc twins)
-  proto op types: SparseCoreTecVectorLoad_TileSpmemLoad,
+  plain-load glc instance @ 0x13a33de0  (+ gfc twin)
+  the same EmitVectorLoadOrStore template is instantiated across the
+  TileSpmem op family — e.g. the glc Store/Indexed/CircularBuffer slots
+  at 0x13a378c0 / 0x13a362c0 / 0x13a36000 — proto op types include:
+                  SparseCoreTecVectorLoad_TileSpmemLoad,
                   SparseCoreTecVectorStore_TileSpmemStore (+ Indexed/CircularBuffer/PostUpdate)
 ```
 
@@ -245,53 +248,53 @@ The base flows in as a `SparsecoreVectorBase` `MCOperand` — a scalar base regi
 
 ---
 
-## The Arity Split: TEC Casts Carry a Tile Id, SCS/TC/TAC Do Not
+## The Arity Split: TEC/TAC Casts Carry a Tile Id, SCS/TC Do Not
 
 ### Purpose
 
-The tile-id operand is present on exactly the TEC-lane casts. This unit pins that split from the function *signatures* (the most authoritative source — mangled in the symbol).
+The tile-id operand is present on the TEC- and TAC-lane casts. This unit pins that split from the per-op `NOperands<N>` trait (read from the templated `mlir::Op<…>` instantiation in the symbol table) and corroborates it with the `::create` signature arity where a `::create` body exists.
 
 ### The Discriminator
 
-Each cast's `::create` signature ends in either `…Value` (one operand) or `…ValueValue` (mangled `ValueES6_`, two operands). The two-operand set is exactly the casts targeting the TEC (EXECUTE) lane, which addresses per-tile TileSpmem and needs the runtime tile select. The SCS / TC / TAC lanes are singular per core and address their memory without a per-tile index.
+Each cast op carries a fixed-arity trait — `OpTrait::OneOperand` (one operand) or `OpTrait::NOperands<2u>` (two operands). Where a `::create` body exists its signature ends in either `…Value` (one operand) or `…ValueValue` (mangled `ValueES6_`, two operands), matching the trait. The two-operand set is the casts targeting the per-tile lanes — the TEC (EXECUTE) lane and the TAC lane — which address per-tile memory and need the runtime tile select. The SCS and TC lanes are singular per core and address their memory without a per-tile index.
 
-| `::create` (@VA) | Op name | Arity | Tile-id op? | Sequencer |
+| Op name | Arity trait | `::create` (@VA) | Tile-id op? | Lane |
 |---|---|---|:---:|---|
-| `tpu_addrspacecast` `0x146d5ea0` | `…addrspacecast` | 1 | no | generic |
-| `tpu_addrspacecast_scs` `0x146d5f80` | `…addrspacecast.scs` | 1 | no | SCS |
-| `tpu_addrspacecast_scs_sflag_scs` `0x146d6060` | `…scs.sflag.scs` | 1 | no | SCS |
-| `tpu_addrspacecast_sflag_tile_scs` `0x146d6140` | `…sflag.tile.scs` | 1 | no | SCS |
-| `tpu_addrspacecast_sflag_tile_sflag_scs` `0x146d6220` | `…sflag.tile.sflag.scs` | 1 | no | SCS |
-| `tpu_addrspacecast_sflag_tile_sflag_tec` `0x146d6300` | `…sflag.tile.sflag.tec` | **2** | **YES** | **TEC** |
-| `tpu_addrspacecast_sflag_tile_tac` (NOperands<1>) | `…sflag.tile.tac` | 1 | no | TAC |
-| `tpu_addrspacecast_sflag_tile_tec` `0x146d6400` | `…sflag.tile.tec` | **2** | **YES** | **TEC** |
-| `tpu_addrspacecast_smem` `0x146d6500` | `…addrspacecast.smem` | **2** | **YES** | **TEC** |
-| `tpu_addrspacecast_smem_tile_scs` `0x146d6600` | `…smem.tile.scs` | 1 | no | SCS |
-| `tpu_addrspacecast_smem_tile_tec` `0x146d66e0` | `…smem.tile.tec` | **2** | **YES** | **TEC** |
-| `tpu_addrspacecast_spmem` `0x146d67e0` | `…addrspacecast.spmem` | **2** | **YES** | **TEC** |
-| `tpu_addrspacecast_tac` (NOperands<1>) | `…addrspacecast.tac` | 1 | no | TAC |
-| `tpu_addrspacecast_tc` `0x146d68e0` | `…addrspacecast.tc` | 1 | no | TC |
-| `tpu_addrspacecast_tec` `0x146d69c0` | `…addrspacecast.tec` | **2** | **YES** | **TEC** |
-| `tpu_addrspacecast_tec_sflag_tec` `0x146d6ac0` | `…tec.sflag.tec` | **2** | **YES** | **TEC** |
+| `tpu_addrspacecast` | OneOperand | `0x146d5ea0` | no | generic |
+| `tpu_addrspacecast_scs` | OneOperand | `0x146d5f80` | no | SCS |
+| `tpu_addrspacecast_scs_sflag_scs` | OneOperand | `0x146d6060` | no | SCS |
+| `tpu_addrspacecast_sflag_tile_scs` | OneOperand | `0x146d6140` | no | SCS |
+| `tpu_addrspacecast_sflag_tile_sflag_scs` | OneOperand | `0x146d6220` | no | SCS |
+| `tpu_addrspacecast_sflag_tile_sflag_tec` | NOperands<2u> | `0x146d6300` | **YES** | **TEC** |
+| `tpu_addrspacecast_sflag_tile_tac` | **NOperands<2u>** | (no `::create` body) | **YES** | **TAC** |
+| `tpu_addrspacecast_sflag_tile_tec` | NOperands<2u> | `0x146d6400` | **YES** | **TEC** |
+| `tpu_addrspacecast_smem` | NOperands<2u> | `0x146d6500` | **YES** | **TEC** |
+| `tpu_addrspacecast_smem_tile_scs` | OneOperand | `0x146d6600` | no | SCS |
+| `tpu_addrspacecast_smem_tile_tec` | NOperands<2u> | `0x146d66e0` | **YES** | **TEC** |
+| `tpu_addrspacecast_spmem` | NOperands<2u> | `0x146d67e0` | **YES** | **TEC** |
+| `tpu_addrspacecast_tac` | **NOperands<2u>** | (no `::create` body) | **YES** | **TAC** |
+| `tpu_addrspacecast_tc` | OneOperand | `0x146d68e0` | no | TC |
+| `tpu_addrspacecast_tec` | NOperands<2u> | `0x146d69c0` | **YES** | **TEC** |
+| `tpu_addrspacecast_tec_sflag_tec` | NOperands<2u> | `0x146d6ac0` | **YES** | **TEC** |
 
-The seven 2-operand casts (`_sflag_tile_sflag_tec`, `_sflag_tile_tec`, `_smem`, `_smem_tile_tec`, `_spmem`, `_tec`, `_tec_sflag_tec`) are precisely the TEC-targeting set; their signatures end in `ValueES6_`. The 1-operand casts end in `ValueE`. `_tac` has no separate `::create` body — its arity is read from the name plus the `NOperands<1>` trait.
+The nine 2-operand casts — the seven TEC variants (`_sflag_tile_sflag_tec`, `_sflag_tile_tec`, `_smem`, `_smem_tile_tec`, `_spmem`, `_tec`, `_tec_sflag_tec`) plus the two TAC variants (`_tac`, `_sflag_tile_tac`) — all carry `NOperands<2u>`; the seven SCS/TC/generic casts carry `OneOperand`. Where a `::create` body exists, the 2-op signatures end in `ValueES6_` and the 1-op signatures end in `ValueE`. `_tac` and `_sflag_tile_tac` have no separate `::create` body — their arity is read from the `NOperands<2u>` trait alone, so the *trait* is the authoritative source for those two rows.
 
-> **QUIRK — `sflag.tile.*` exists in both lanes.** The sflag-tile cast appears as `_sflag_tile_tec` (2-op, TEC) and `_sflag_tile_scs` (1-op, SCS). Same logical operation, different sequencer ⇒ different arity. The `CastSflagPointerToSflagAny` driver (`0x135b8a00`) applies the identical `sc.sequencer` gate for the three sflag spaces. A reimplementer must select the cast variant by the enclosing function's sequencer, never by the cast's *name fragment* alone.
+> **QUIRK — `sflag.tile.*` and `addrspacecast.tac` split by lane, not by name.** The sflag-tile cast appears as `_sflag_tile_tec`/`_sflag_tile_tac` (2-op) and `_sflag_tile_scs` (1-op). Same logical operation, different lane ⇒ different arity. The `CastSflagPointerToSflagAny` driver (`0x135b8a00`) reads the enclosing function's `sc.sequencer` and, where present, dispatches to `_scs`/`_tc`/`_tec` (and the `_sflag_scs`/`_sflag_tec` source-AS variants), synthesising a `tpu_tileid` for the tile-bearing branches exactly as `CastTileSpmemPointerToSpmem` does. A reimplementer must select the cast variant by the enclosing function's sequencer, never by the cast's *name fragment* alone.
 
 ---
 
 ## Per-Generation Presence
 
-| Mechanism | VF (vfc, v5e) | GL (glc, v5p) | GF (gfc, v6e) |
+| Mechanism | VF (vfc, Viperfish/v5) | GL (glc, Ghostlite/v6e) | GF (gfc, 6acc60406/TPU7x) |
 |---|:---:|:---:|:---:|
 | `tpu_tileid` / `STILEID.VRES` register read | yes | yes | yes |
-| 2-operand TEC tile-id casts (7 variants) | yes | yes | yes |
-| 1-operand SCS/TC/TAC casts | yes | yes | yes |
+| 2-operand tile-id casts (7 TEC + 2 TAC variants) | yes | yes | yes |
+| 1-operand SCS/TC casts | yes | yes | yes |
 | `CastTileSpmemPointerToSpmem` driver + `sc.sequencer` gate | yes | yes | yes |
 | `IsOffTileMemory` predicate `(ms & ~0x10) != 2` | yes | yes | yes |
 | TileSpmem load/store consumes `SparsecoreVectorBase` reg | yes | yes | yes |
 
-The `tpu_addrspacecast_*` op family and the `CastTileSpmemPointerToSpmem` driver are shared across the SC generations; the tile-id `i32` register read (`STILEID`) is present on all three. The TAC sequencer is absent on gfc (Trillium has no TAC), but the TAC-lane *casts* are 1-operand on every generation regardless, so the arity split is generation-invariant.
+The `tpu_addrspacecast_*` op family and the `CastTileSpmemPointerToSpmem` driver are shared across the SC generations; the tile-id `i32` register read (`STILEID`) is present on all three. The 2-operand/1-operand op definitions are compiled into the dialect regardless of which sequencers a given generation physically ships, so the arity split is generation-invariant. (The TAC *sequencer* is not present on gfc — 6acc60406 ships SCS+TEC only — but the TAC-lane cast *ops* are still defined with `NOperands<2u>` in the dialect.)
 
 ---
 
@@ -303,14 +306,14 @@ The `tpu_addrspacecast_*` op family and the `CastTileSpmemPointerToSpmem` driver
 | `tpu_tileid::create` 0-operand / 1-`i32`-result | body decoded; no `addOperands` | CONFIRMED |
 | `TileIdOp` → `tpu_tileid` lowering (getI32Type + create + replaceOp) | body decoded | CONFIRMED |
 | Operand order op0=base, op1=tileId | two `addOperands(...,1,...)` calls, base then tileId | CONFIRMED |
-| Arity split: 7 TEC casts 2-op, rest 1-op | mangled `::create` signatures (`ValueES6_` vs `ValueE`) | CONFIRMED |
+| Arity split: 9 casts 2-op (7 TEC + 2 TAC), 7 casts 1-op (SCS/TC/generic) | per-op `NOperands<2u>` vs `OneOperand` trait; `::create` signatures (`ValueES6_` vs `ValueE`) where a body exists | CONFIRMED |
 | Sequencer gate == `"execute"` (len 7, `0x63657865`/`0x65747563`) | byte compare in body | CONFIRMED |
 | On-tile predicate `(ms & ~0x10) != 2` | body decoded | CONFIRMED |
 | Dst AS = `0xca` (202) Spmem for the spmem cast | store `@0x135b8639` | CONFIRMED |
 | Tile id is a paired operand, not pointer bits | no pack arithmetic in body; value-preserving re-tag | CONFIRMED (this lowering) / see [addrspacecast ISel](addrspacecast-isel.md) for the ISD half |
 | `%base` SSA result == load's `SparsecoreVectorBase` MCOperand | structural def-use, not single-getter-traced | HIGH |
-| `_tac` arity (1-op) | name + `NOperands<1>` trait; no `::create` body | HIGH |
-| The exact dst AS of the 1-op SCS/TC/TAC casts | only `_spmem`/`_smem`/`_tec` producers re-decoded; others rest on the sflag-promotion table | LOW |
+| `_tac` / `_sflag_tile_tac` arity (2-op) | `NOperands<2u>` trait on the `mlir::Op<…>` instantiation; no `::create` body | CONFIRMED (trait) |
+| The exact dst AS of the SCS/TC casts and the TAC 2-op casts | only `_spmem`/`_smem`/`_tec`/`_scs`/`_tc`/`_tec_sflag_tec`/`_scs_sflag_scs` producers re-decoded; others rest on the sflag-promotion table | LOW |
 | `SparsecoreVectorBase`/`Offset` field bit layout for the non-CB TileSpmem slot | not decoded here | LOW |
 | SelectCode MatcherTable arm threading op#1 into the tile-select MCOperand | not byte-walked here | LOW — see [addrspacecast ISel](addrspacecast-isel.md) |
 
