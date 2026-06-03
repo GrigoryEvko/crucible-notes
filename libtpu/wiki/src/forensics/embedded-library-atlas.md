@@ -41,14 +41,14 @@ The footprint scale, for orientation: **huge** ≳ 25 MB, **large** 5–25 MB, *
 | **Abseil** | `absl::log_internal::SetTimeZone` @ `0x8714E5B`; `absl::AnyInvocable` @ `0x188C785` → **≥ LTS 20240722**, ceiling open | huge (~29 MB) | HIGH |
 | **Intel oneDNN (DNNL)** | path `third_party/intel_dnnl/v3_3/src/common` @ `0x85BEAE8` → **v3.3** | large (~25 MB) | CERTAIN |
 | **libc++** | `std::__u::` ABI tag — google3 libc++, matches the LLVM commit | large (~18 MB) | HIGH |
-| **Eigen** | `Eigen` namespace, 48,153 names; `Eigen::bfloat16` tensor ABI → **3.4.x branch**, exact tag open | large (~12 MB) | HIGH |
+| **Eigen** | `Eigen` namespace, 28,702 names; `Eigen::bfloat16` tensor ABI → **3.4.x branch**, exact tag open | large (~12 MB) | HIGH |
 | **protobuf** | `EDITION_2024` @ `0x5EE8C1E`, `EDITION_2026` @ `0x5EE8C31`; `descriptor_table_protodef` @ `0x23DF7736` → **v32+ editions-era** | medium (~8 MB) | HIGH |
 | **gRPC** | `grpc_core::` @ `0x188C4DE`; `chaotic_good` transport → google3-tip (no tagged release), **≥ v1.66 dev** | medium (~3 MB) | HIGH |
 | **BoringSSL** | `BoringSSL` banner @ `0x857D84C`; `bssl::` / `EVP_`/`SSL_`/`X509_` C symbols | medium (~1.3 MB) | CERTAIN |
 | **Brotli** | `BrotliDecoderDecompress` @ `0xA2869A1`; static-dictionary tables → ≥ 1.1, reached through riegeli | small (~0.85 MB) | HIGH |
 | **zstd** | `ZSTD_compressBound` @ `0x270D623C`, `ZSTD_createDCtx` @ `0x8716BDF`; bundled as `third_party/zippy/` | small (~0.6 MB) | CERTAIN |
 | **ICU** | data file `icudt78` @ `0x83FE04C`; namespace `icu_78` → **ICU 78** | small (~0.5 MB) | CERTAIN |
-| **riegeli** | path `third_party/riegeli/` @ `0x85D26A6`; `riegeli::` namespace | small (~0.3 MB) | CERTAIN |
+| **riegeli** | path `third_party/riegeli/` @ `0x85D7066`; `riegeli::` namespace | small (~0.3 MB) | CERTAIN |
 | **snappy** | `snappy::` namespace @ `0xA1251E5` | trace (~18 KB) | CERTAIN |
 | **RE2** | `re2::` @ `0x86679B9`, `re2::RegexpFlag`, `third_party/re2` | small (~0.12 MB) | CERTAIN |
 | **zlib** | `zlib_rs` Rust-port symbols @ `0x852F25E`; `deflate`/`inflate`/`crc32` C symbols | small (~0.17 MB) | CERTAIN |
@@ -68,14 +68,14 @@ These are the libraries that form the foundation every other google3 component i
 
 ### Abseil
 
-Abseil is the substrate. Its `absl::` namespace appears across 271,942 symbol-table names, the largest non-LLVM/MLIR family in the binary, spanning `absl::Status`/`StatusOr`, `absl::Cord`, `absl::flat_hash_map`, the flags library, and the structured-logging stack.
+Abseil is the substrate. Its `absl::` namespace appears across 109,189 symbol-table names (`nm -C libtpu.so | grep -c 'absl::'`), the largest non-LLVM/MLIR family in the binary, spanning `absl::Status`/`StatusOr`, `absl::Cord`, `absl::flat_hash_map`, the flags library, and the structured-logging stack.
 
 Version is **floored but not ceilinged**. The presence of `absl::log_internal::SetTimeZone` at offset `0x8714E5B` (141,643,355) and `absl::AnyInvocable` at `0x188C785` (25,741,189) places the build at **LTS 20240722 or later** — both are features that landed in or after that cut. No `ABSL_LTS_RELEASE_VERSION` or `ABSL_OPTION_*` literal survives in `.rodata`, so the upper bound cannot be pinned from strings alone. Closing it would require a per-symbol diff against tagged Abseil trees (for example, checking whether the SwissTable container internals match the LTS 20250127 reorganization).
 
 ```text
 absl::log_internal::SetTimeZone          @ 0x8714E5B   →  ≥ LTS 20240722
 absl::AnyInvocable                       @ 0x188C785   →  ≥ LTS 20240722
-absl:: (symbol family)                   271,942 names →  pervasive
+absl:: (symbol family)                   109,189 names →  pervasive
 ```
 
 ### protobuf
@@ -86,14 +86,14 @@ Protobuf is present in its modern **editions** era. The enum literals `EDITION_2
 
 ### tcmalloc
 
-The allocator is google3's TCMalloc, not the system `malloc`. Two pieces of evidence are decisive: the `tcmalloc::` / `tcmalloc_internal::` namespace family (254 names), and a set of **custom ELF sections the build emits specifically for it** — `google_malloc` (the allocator code body), `google_malloc_bss` (its `.bss` state), `malloc_hook` (the `MallocHook` lifecycle thunks), and `__rseq_cs` (restartable-sequence critical-section metadata for the per-CPU caches). The `__rseq_cs` section is the giveaway for the rseq-accelerated per-CPU cache design of post-2024 TCMalloc. The named code footprint is small (~55 KB) because most of the allocator is a compact hot path; the section-level isolation, not the byte count, is what marks it.
+The allocator is google3's TCMalloc, not the system `malloc`. Two pieces of evidence are decisive: the `tcmalloc::` / `tcmalloc_internal::` namespace family (107 names; 110 for the bare `tcmalloc` fragment), and a set of **custom ELF sections the build emits specifically for it** — `google_malloc` (the allocator code body), `google_malloc_bss` (its `.bss` state), `malloc_hook` (the `MallocHook` lifecycle thunks), and `__rseq_cs` (restartable-sequence critical-section metadata for the per-CPU caches). The `__rseq_cs` section is the giveaway for the rseq-accelerated per-CPU cache design of post-2024 TCMalloc. The named code footprint is small (~55 KB) because most of the allocator is a compact hot path; the section-level isolation, not the byte count, is what marks it.
 
 ### riegeli, RE2, farmhash
 
 Three smaller google3 staples round out the core:
 
-- **riegeli** — the record-IO format. Path literal `third_party/riegeli/` at `0x85D26A6` and the `riegeli::` namespace confirm it. Riegeli is the consumer that pulls in Brotli (below) as a block codec.
-- **RE2** — the regex engine. Namespace `re2::` at `0x86679B9` (140,933,561), plus the internal `re2::RegexpFlag` symbol and the `third_party/re2` path. Roughly 19,463 names carry the `re2` fragment, though that count includes generated automaton tables, not just engine code.
+- **riegeli** — the record-IO format. Path literal `third_party/riegeli/` at `0x85D7066` (140,341,350) and the `riegeli::` namespace confirm it. Riegeli is the consumer that pulls in Brotli (below) as a block codec.
+- **RE2** — the regex engine. Namespace `re2::` at `0x86679B9` (140,933,561), plus the internal `re2::RegexpFlag` symbol and the `third_party/re2` path. About 18,722 mangled names carry the `re2` fragment (`nm libtpu.so | grep -c re2`), though that count includes generated automaton tables, not just engine code; the demangled `re2::` namespace itself accounts for only 605 names.
 - **farmhash** — the non-cryptographic hash. The full sub-variant family is present (`farmhashna`, `farmhashuo`, `farmhashte`, `farmhashxo`, `farmhashmk`, `farmhashcc`, starting at `0xFDCE579`), which is decisive: a coincidental string would not reproduce all six dispatch variants. Footprint is a handful of functions (~7 KB).
 
 ---
@@ -104,9 +104,9 @@ This is the numerical core that XLA and the TPU runtime lean on: dense linear al
 
 ### Eigen
 
-Eigen contributes 48,153 symbol-table names — the third-largest C++ family after Abseil and the LLVM/MLIR pair — almost entirely template instantiations of the unsupported `Tensor` module (`Eigen::Tensor`, `ThreadPoolDevice`, the async executor). The presence of `Eigen::bfloat16` as a first-class scalar (rather than only the legacy `Eigen::half`) places the build on the **3.4.x branch or later**. No `EIGEN_WORLD_VERSION` / `EIGEN_MAJOR_VERSION` macro literal survives in `.rodata`, so 3.4.0 cannot be distinguished from a 3.4-series snapshot by string evidence; the pin is to the branch, not the tag.
+Eigen contributes 28,702 symbol-table names (`nm libtpu.so | grep -c Eigen`) — the third-largest C++ family after Abseil and the LLVM/MLIR pair — almost entirely template instantiations of the unsupported `Tensor` module (`Eigen::Tensor`, `ThreadPoolDevice`, the async executor). The presence of `Eigen::bfloat16` as a first-class scalar (rather than only the legacy `Eigen::half`) places the build on the **3.4.x branch or later**. No `EIGEN_WORLD_VERSION` / `EIGEN_MAJOR_VERSION` macro literal survives in `.rodata`, so 3.4.0 cannot be distinguished from a 3.4-series snapshot by string evidence; the pin is to the branch, not the tag.
 
-> **GOTCHA —** Eigen's footprint is almost all template bloat. The 48 K names do not mean 48 K distinct functions of engine logic — they are per-type, per-device instantiations of the same handful of expression templates. A reimplementer sizing the "real" Eigen surface should count the distinct algorithm bodies, not the symbol names.
+> **GOTCHA —** Eigen's footprint is almost all template bloat. The 29 K names do not mean 29 K distinct functions of engine logic — they are per-type, per-device instantiations of the same handful of expression templates. A reimplementer sizing the "real" Eigen surface should count the distinct algorithm bodies, not the symbol names.
 
 ### Intel oneDNN (DNNL)
 
@@ -126,7 +126,7 @@ zstd is present and used in two roles. The runtime-codec role shows up as the fu
 
 ### Brotli and snappy
 
-- **Brotli** is reached through riegeli as a record-block codec. `BrotliDecoderDecompress` at `0xA2869A1` (170,420,641) and the embedded static-dictionary tables (the large `.rodata` arrays Brotli ships) confirm it; the static-dictionary form points at Brotli ≥ 1.1. There are 17 `BrotliDecoder*` names in the symbol table — a thin, decode-leaning surface consistent with read-path use.
+- **Brotli** is reached through riegeli as a record-block codec. `BrotliDecoderDecompress` at `0xA2869A1` (170,420,641) and the embedded static-dictionary tables (the large `.rodata` arrays Brotli ships) confirm it; the static-dictionary form points at Brotli ≥ 1.1. There are 16 `BrotliDecoder*` names in the symbol table — a thin, decode-leaning surface consistent with read-path use.
 - **snappy** is present as the `snappy::` namespace at `0xA1251E5` (168,972,773) — a trace footprint (~18 KB), a legacy fast-compression path.
 
 ### zlib
@@ -135,7 +135,7 @@ zlib is present in an unusual form: the primary implementation is the **Rust por
 
 ### BoringSSL
 
-The crypto and TLS stack is **BoringSSL**, not system OpenSSL. The literal `BoringSSL` banner appears at offset `0x857D84C` (139,974,732), and the C symbol families `EVP_*`, `SSL_*`, `X509_*`, `BN_*`, `RSA_*`, `AES_*`, `SHA256_*`, `ED25519_*`, `X25519_*` are all present (21 names carry the `BoringSSL` fragment directly; the algorithm families are far larger). It is vendored under `third_party/openssl/`, the conventional google3 location for the BoringSSL fork. BoringSSL is the transport-security provider behind the embedded gRPC stack.
+The crypto and TLS stack is **BoringSSL**, not system OpenSSL. The literal `BoringSSL` banner appears at offset `0x857D84C` (139,974,732), and the C symbol families `EVP_*`, `SSL_*`, `X509_*`, `BN_*`, `RSA_*`, `AES_*`, `SHA256_*`, `ED25519_*`, `X25519_*` are all present (9 names carry the `BoringSSL` fragment directly; the algorithm families are far larger). It is vendored under `third_party/openssl/`, the conventional google3 location for the BoringSSL fork. BoringSSL is the transport-security provider behind the embedded gRPC stack.
 
 ---
 
