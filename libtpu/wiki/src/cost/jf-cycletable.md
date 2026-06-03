@@ -263,7 +263,7 @@ The classifier covers only the MXU band (classes `0x00`–`0x10`). The vector/EU
 | `0x0d` | `15` | `0x33` | `14` |
 | `0x0f`, `0x11` | `12` | (all others, mask-rejected) | `0` |
 
-The valid mask `0xF000003FFFC3F` is checked by `_bittest64` *before* the lookup; the four high bits (`0x30`–`0x33`, the `0xF` at bit 48..51) are the Trillium-era new latch paths, still present in the JF table but only reachable on the gens that emit those modes.
+The valid mask `0xF000003FFFC3F` is checked by `_bittest64` *before* the lookup; the four high bits (`0x30`–`0x33`, the `0xF` at bit 48..51) map to classes `{7, 13, 8, 14}` (CONFIRMED from the `.rodata` dump) and are only reachable on the gens that emit those latch modes. Their attribution to a specific later generation is not byte-anchored (INFERRED).
 
 ### fmtLUT — `unk_B438AC4` (first 11 × `int32`)
 
