@@ -23,7 +23,7 @@ This is a reference index page, not a reimplementable algorithm; the reimplement
 | **Bit positions are** | **absolute** — dispatcher passes every slot encoder the same buffer `Span` |
 | **Common low region** | bits 7..191 — 4×20-bit immediates + VectorScalar + Misc/Alu1/Alu0, identical on all three engines |
 | **Scalar opcode bits** | `@127` (Misc) · `@154` (Alu1) · `@181` (Alu0) — base+16; identical on all three engines |
-| **TEC vector opcode bits (GF)** | Result `@239` · Load `@283` · Store `@347` · Alu2/1/0 `@388/425/462` |
+| **TEC vector opcode bits (GF)** | Result `@239` · Load `@283` · Store `@353` · Alu2/1/0 `@388/425/462` |
 | **Bundle sizes** | SCS 32 · TAC 64 · TEC 64 (codec-metadata `vtable[+0x30]`) |
 | **Check trailer** | none on any SC bundle (no `0x55`); all-zero bundle = NOP |
 | **Confidence** | CONFIRMED (`BitCopy`-immediate anchored) unless a row or callout says otherwise |
@@ -52,7 +52,7 @@ The table below is the cross-engine partition: one row per slot, with the absolu
 | `VectorResult` (op `@239`) | — | — | 239..260 | 22 | CONFIRMED |
 | `VectorExtended` (op `@261`) | — | — | 261..461 | ~201 | HIGH |
 | `VectorLoad` (op `@283`) | — | — | 283..321 | 39 | CONFIRMED |
-| `VectorStore` (op `@347`) | — | — | 328..363 | 36 | CONFIRMED |
+| `VectorStore` (op `@353`) | — | — | 328..363 | 36 | CONFIRMED |
 | `VectorAlu2` (lane 2, op `@388`) | — | — | 364..400 | 37 | CONFIRMED |
 | `VectorAlu1` (lane 1, op `@425`) | — | — | 401..437 | 37 | CONFIRMED |
 | `VectorAlu0` (lane 0, op `@462`) | — | — | 438..474 | 37 | CONFIRMED |
@@ -128,7 +128,7 @@ bit: 0   7          87   111 138 165  195    239   261       283    328   364  4
      ┌───┬──────────┬────┬───┬───┬───┬──────┬─────┬─────────┬──────┬─────┬────┬────┬───────┬──────┐
      │rsv│Immed.(low│Vec │Sc │Sc │Sc │Immed.│Vec  │ Vector  │Vector│Vec  │Vec │Vec │Vector │rsvd/ │
      │   │4×20b     │Scal│Mis│Al1│Al0│(high)│Resul│Extended │Load  │Store│Alu2│Alu1│Alu0   │pad   │
-     │   │@7/27/47..│brdg│@12│@15│@18│@195..│@239 │ scan/   │@283  │@347 │@388│@425│@462   │      │
+     │   │@7/27/47..│brdg│@12│@15│@18│@195..│@239 │ scan/   │@283  │@353 │@388│@425│@462   │      │
      └───┴──────────┴────┴───┴───┴───┴──────┴─────┴ sort────┴──────┴─────┴────┴────┴───────┴──────┘
      ◄──────── SCS low region (7..191, identical) ────────►◄──────── TEC vector region (195..474) ────────►
      TecDma   (oneof of lane): scalar opcode @181, high payload @283/@322
@@ -147,7 +147,7 @@ bit: 0   7          87   111 138 165  195    239   261       283    328   364  4
 | `VectorResult` | 239 | 260 | 22 | 239 | CONFIRMED |
 | `VectorExtended` | 261 | 461 | ~201 | 261 | HIGH |
 | `VectorLoad` | 283 | 321 | 39 | 283 | CONFIRMED |
-| `VectorStore` | 328 | 363 | 36 | 347 | CONFIRMED |
+| `VectorStore` | 328 | 363 | 36 | 353 | CONFIRMED |
 | `VectorAlu2` | 364 | 400 | 37 | 388 | CONFIRMED |
 | `VectorAlu1` | 401 | 437 | 37 | 425 | CONFIRMED |
 | `VectorAlu0` | 438 | 474 | 37 | 462 | CONFIRMED |
@@ -161,7 +161,7 @@ Decompile cross-check — the gfc TEC slot encoders write their `BitCopy` destin
 SparseCoreImmediatesEncoder        0x1ecd1760   →  7, 27, 47, 67, 195, 215      (6 × 20-bit)
 SparseCoreTecVectorResultEncoder   0x1ecbc9e0   →  239 (op), 245, 251, 253, 256, 259, 260
 SparseCoreTecVectorLoadEncoder     0x1ecb9ee0   →  283 (op) .. 321
-SparseCoreTecVectorStoreEncoder    0x1eccbe20   →  328 .. 347 (op) .. 363
+SparseCoreTecVectorStoreEncoder    0x1eccbe20   →  328 .. 353 (op) .. 363
 SparseCoreTecVectorAlu2Encoder     0x1ec85ae0   →  364/370/376/382 (sel), 388 (op), 396/399/400 (pred)
 SparseCoreTecVectorAlu0Encoder     0x1ec11100   →  438/444/450/456 (sel), 462 (op), 470/473/474 (pred)
 ```
@@ -192,7 +192,7 @@ TEC:  195   Immediates (high) — 2 × 20-bit (idx5@195, idx4@215)
       239   VectorResult   (opcode @239)
       261   VectorExtended (opcode @261; spans to ~461, overlapping Load/Store/Alu)
       283   VectorLoad     (opcode @283)
-      328   VectorStore    (opcode @347)
+      328   VectorStore    (opcode @353)
       364   VectorAlu2     (opcode @388)
       401   VectorAlu1     (opcode @425)
       438   VectorAlu0     (opcode @462)
@@ -290,7 +290,7 @@ The low region (bits 7..191) and the scalar template are byte-identical across a
 | `SparseCoreImmediatesEncoder::Encode` (gfc) | `0x1ecd1760` | 6 × 20-bit immediates `@7/27/47/67/195/215` | CONFIRMED |
 | `SparseCoreTecVectorResultEncoder::Encode` (gfc) | `0x1ecbc9e0` | XRF-pop slot, opcode `@239` | CONFIRMED |
 | `SparseCoreTecVectorLoadEncoder::Encode` (gfc) | `0x1ecb9ee0` | tile vector load, opcode `@283` .. 321 | CONFIRMED |
-| `SparseCoreTecVectorStoreEncoder::Encode` (gfc) | `0x1eccbe20` | tile vector store, base 328, opcode `@347` | CONFIRMED |
+| `SparseCoreTecVectorStoreEncoder::Encode` (gfc) | `0x1eccbe20` | tile vector store, base 328, opcode `@353` | CONFIRMED |
 | `SparseCoreTecVectorAlu2Encoder::Encode` (gfc) | `0x1ec85ae0` | vector lane 2, base 364, opcode `@388/8` | CONFIRMED |
 | `SparseCoreTecVectorAlu0Encoder::Encode` (gfc) | `0x1ec11100` | vector lane 0, base 438, opcode `@462/8`; sel `@438/444/450/456` | CONFIRMED |
 | `SparseCoreTecVectorAlu0Encoder::Encode` (vfc) | `0x1e954ae0` | narrow VF lane 0, base 432, opcode `@456/7` | CONFIRMED |
@@ -306,7 +306,7 @@ The low region (bits 7..191) and the scalar template are byte-identical across a
 - [TAC Engine](tac-engine.md) — the VF/GL-only 64-byte bundle that reuses the SCS low region; per-gen presence and the gfc-drops-TAC evidence.
 - [TEC (Vector) Engine](tec-engine.md) — the 64-byte vector bundle, the 37-bit vector-ALU template, immediate-slot indexing, and the access/execute split correction.
 - [Scalar Opcode Enum](scalar-opcode-enum.md) — the `SparseCoreScalarAlu` / `SparseCoreScalarMisc` roster carried in the 6-bit opcode field at `@127/154/181`.
-- [Vector Opcode Enum](vector-opcode-enum.md) — the per-slot, per-gen TEC vector op roster carried in the 8-bit opcode field at `@239/283/347/388/425/462`.
+- [Vector Opcode Enum](vector-opcode-enum.md) — the per-slot, per-gen TEC vector op roster carried in the 8-bit opcode field at `@239/283/353/388/425/462`.
 - [Region → Sequencer Outliner](region-to-sequencer-outliner.md) — the `TileTaskOutliningPass` that stamps `sc.sequencer` and thereby selects which engine bundle (and slot map) encodes a function.
 - [SparseCore Overview](overview.md) — the three engine classes, per-gen presence, and the `TpuSequencerType` codec-template enum {3,4,5}.
 - [VectorExtended (VEX)](vectorextended-vex.md) — the field-level detail of the wide `VectorExtended` region (bits 261..461) this page leaves at slot-extent grade.
