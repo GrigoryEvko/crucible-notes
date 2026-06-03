@@ -25,7 +25,7 @@ For reimplementation, the pre-pass contract is:
 | **Builder — phase 1** | `(anon)::PreOptimizationPipeline(Target const&, unique_ptr<HloModule>, long, CompilationStats*)` |
 | **Builder — phase 2** | `xla::jellyfish::AddAutoShardingAndRelatedPasses(...)` @ `0x10939c40` |
 | **Builder — phase 3** | `xla::jellyfish::AddTpuPartitioningPasses(HloModule*, AliasInfo const*, PartitioningPipelineConfig)` @ `0x1278a440` |
-| **Builder — phase 4** | `(anon)::HloOptimizeThroughLayoutAssignment(Target const&, RunHloPassesConfig const&, long, HloModule*, ComputationLayout*, CompilationStats*)` @ `0x1094ad80` |
+| **Builder — phase 4** | `(anon)::HloOptimizeThroughLayoutAssignment(Target const&, RunHloPassesConfig const&, long, HloModule*, ComputationLayout*, CompilationStats*)` — body in `…::$_0::operator()` @ `0x1094ada0` (std::function trampoline `InvokeObject<…$_0>` @ `0x1094ad80`) |
 | **Builder — phase 5/6** | `(anon)::PostOptimizationPipeline(Target const&, AliasInfo const*, HloModule*, long, CompilationStats*, bool, bool)` @ `0x1093fd40` |
 | **Pipeline opener** | `(anon)::CreateHloPipeline(...)` @ `0x1093efe0`; nested variants `CreateNestedHloPipeline` @ `0x1093a180`, `CreateNestedHloPipelineFix` @ `0x10953e20` |
 | **Invariant checkers** | `(anon)::MaybeAddInvariantCheckers(...)` @ `0x10944600` |
@@ -48,7 +48,7 @@ RunHloPasses (0x1093a420)  ==  CompilePhase1HloOptimizations (0xf84ee00)
   ├─ CreateHloPipeline (0x1093efe0)  opens the main pipeline
   │    ├─ AddAutoShardingAndRelatedPasses (0x10939c40) PHASE 2  sharding
   │    ├─ AddTpuPartitioningPasses (0x1278a440) ...... PHASE 3  SPMD prep
-  │    ├─ HloOptimizeThroughLayoutAssignment (0x1094ad80) PHASE 4 pre-layout
+  │    ├─ HloOptimizeThroughLayoutAssignment (0x1094ada0) PHASE 4 pre-layout
   │    │    └─ LayoutAssignment  ........... (see layout-assignment.md)
   │    └─ PostOptimizationPipeline (0x1093fd40) ...... PHASE 5  post-layout
   │                                                    PHASE 6  pre-MLIR HLO
@@ -184,7 +184,7 @@ The **Src** column: `T` = TPU-specific (`xla::jellyfish::`, `xla::tpu::`, or `xl
 | 84 | `xla::jellyfish::OutfeedDecomposer` | `Outfeed` op | DMA + token sequence | T | |
 | 85 | `xla::megascale::compiler::TpuAllReduceMerger(Target, mapper)` | per-slice AllReduce | cross-slice AllReduce merged | T | MegaScale path |
 | 86 | `xla::megascale::compiler::CrossSliceLegalizer(Target const&)` | cross-slice ops | legalized for MegaScale topology | T | MegaScale path |
-| 87 | `xla::jellyfish::TpuGatherScatterFlattener(Target, long)` | high-rank gather/scatter | rank-flattened gather/scatter | T | in `AddGatherScatterExpanderPasses` |
+| 87 | `xla::TpuGatherScatterFlattener(Target, long)` | high-rank gather/scatter | rank-flattened gather/scatter | T | in `AddGatherScatterExpanderPasses` |
 | 88 | `xla::TpuGatherExpander(Target const&)` | `Gather` that can be expanded | `While`-loop of slices | T | |
 | 89 | `xla::TpuScatterExpander(Target const&)` | `Scatter` that can be expanded | `While`-loop of DUS | T | |
 
@@ -212,7 +212,7 @@ The **Src** column: `T` = TPU-specific (`xla::jellyfish::`, `xla::tpu::`, or `xl
 Of the 97 pipeline-mentioned passes, 33 carry an explicit TPU prefix (`xla::jellyfish::`, `xla::tpu::`, or `xla::Tpu*`); the remainder are open-source XLA passes, some parameterized with a TPU `Target`. The TPU-specific ones cluster by role:
 
 - **Custom-call decomposition (expanders):** `TpuCholeskyExpander`, `TpuQrExpander`, `TpuEighExpander`, `TpuTriangularSolveExpander`, `TpuGatherExpander`, `TpuScatterExpander`, `jellyfish::TpuRngBitGeneratorExpander` (+ `TupleDecomposer`), `jellyfish::RaggedAllToAllExpander`, `jellyfish::Infeed/OutfeedDecomposer`.
-- **Shape / canonicalization rewriters:** `jellyfish::TpuBroadcastRewriter`, `TpuDegenerateDimensionRewriter`, `TpuReduceRewriter` (flag + no-flag), `HloPassFix<TpuReduceWindowRewriter>`, `TpuGatherScatterFlattener`, `TpuGatherSplit`, `TpuConvolutionTypeCanonicalizer`.
+- **Shape / canonicalization rewriters:** `jellyfish::TpuBroadcastRewriter`, `jellyfish::TpuDegenerateDimensionRewriter`, `jellyfish::TpuReduceRewriter` (flag + no-flag), `HloPassFix<jellyfish::TpuReduceWindowRewriter>`, `xla::TpuGatherScatterFlattener`, `xla::TpuGatherSplit`, `jellyfish::TpuConvolutionTypeCanonicalizer`.
 - **Algebraic / simplifier:** `jellyfish::TpuAlgebraicSimplifier` (superset of the open-source simplifier — see [algebraic-simplifier.md](algebraic-simplifier.md)), `PostFusionTpuSubgraphSimplifier`, `TpuTrivialFusionRemover`, `TpuTrivialInstructionUnfuser`.
 - **Call-graph / acceptance:** `jellyfish::TpuCallInliner` (must-fuse aware; `name()` → `"tpu-call-inliner"` / `-must-fuse` / `-inner-must-fuse` / `-non-must-fuse`), `TpuHloSupportChecker`.
 - **Sharding / partitioning:** `TpuAutoSharding` (wraps `xla::AutoSharding`), `jellyfish::TpuSpmdPartitioner`, `TpuPartitionAssignment`, `TpuSpmdConcatRewriter`.
@@ -231,15 +231,13 @@ The pre-passes consume / produce HLO `kCustomCall` ops with these target strings
 |---|---|---|
 | `Sharding` | `ShardingPropagation` | sharding boundary marker |
 | `SPMDFullToShardShape` / `SPMDShardToFullShape` | SPMD lowering | sharding lowering helpers |
-| `Sharding-mhlo` | `sdy::ShardyXLA` | Shardy import marker |
+| `mhlo.sharding` / `_XlaSharding` (attrs) | `sdy::ShardyXLA` | Shardy/MHLO import sharding markers — carried as MLIR attributes, not as a `Sharding-mhlo` custom-call target |
 | `RngBitGenerator` | `TpuRngBitGenerator*` | RNG, decomposed by the RNG expander family |
 | `TopK` | — | kept opaque, lowered later |
-| `XlaMosaic` / `mosaic_kernel` | `MosaicFusion` | Pallas/Mosaic kernel entry points |
-| `tpu_custom_call` | Mosaic emit | generic TPU custom-call wrapper |
+| `tpu_custom_call` | `MosaicFusion` / Mosaic emit | the registered Pallas/Mosaic kernel custom-call target (`CustomCallRegistration::RegisterCompilationProperties("tpu_custom_call", …)`); generic TPU custom-call wrapper |
 | `MoveToHost` / `MoveToDevice` | host-offload legalizer | host-offload markers |
 | `Pin` | `jellyfish::PinPrecoloring` | precoloring marker |
-| `BuildArrayStart/DoneCustomCall` | async-collective build | async-collective markers |
-| `inspect_sharding` | `RemoveInspectShardingCustomCall` | debug-only, removed |
+| `inspect_sharding` | `jellyfish::RemoveInspectShardingCustomCall` | debug-only, removed |
 
 `__cudnn$convForward` and similar GPU targets are **not** consumed by any TPU pass — they are rejected by `TpuHloSupportChecker` (#50).
 
@@ -249,7 +247,7 @@ The pre-passes consume / produce HLO `kCustomCall` ops with these target strings
 
 - **Exact ordering of the vtable-only TPU passes.** The SparseCore, async-collective, fusion, FlashAttention, and int4 families appear in RTTI but were not observed in the five decompiled builders; they live in flag-gated branches deeper inside `RunHloPasses` not walked in this pass. [Confidence: LOW on position.]
 - **Per-`TpuVersion` divergence.** The decompilation reflects *one* pipeline that branches on `Target` / `TpuCompilationEnvironment` flags; which passes are skipped for, e.g., TPU v3 vs v6e was not isolated. [Confidence: LOW on per-gen differences.]
-- **Sharding-flow selector logic.** Which of manual / auto / Shardy runs is decided by flags plus frontend-attribute detection inside the builders; the precise dispatch branch was not isolated (the `auto_sharding` flag family — 46 string hits — is CONFIRMED, but the exact selector is LOW). See [auto-sharding-spmd.md](auto-sharding-spmd.md).
+- **Sharding-flow selector logic.** Which of manual / auto / Shardy runs is decided by flags plus frontend-attribute detection inside the builders; the precise dispatch branch was not isolated (the `auto_sharding` flag family is CONFIRMED present in the string table, but the exact selector is LOW). See [auto-sharding-spmd.md](auto-sharding-spmd.md).
 - **Per-pass rewrite algorithms.** This page recovers *names + order + I/O invariants*, not the internal graph rewrites. The simplifier algorithm has its own page ([algebraic-simplifier.md](algebraic-simplifier.md)); the rest are pending.
 - **The `--xla_tpu_crash_if_hlo_pass_fix_did_not_converge` flag string** was not found in the sampled strings table. [Confidence: LOW.]
 
