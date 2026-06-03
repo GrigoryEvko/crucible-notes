@@ -251,16 +251,20 @@ The `+0x170` field is wired from compilation-environment field **1130 = `xla_tpu
 
 ```c
 // GetTpuAsyncTracker @ 0x10975520 — the id-22 (kSparseCore) count, per-gen
+arg11 = 1;                                                       // default fallthrough is 1, not 0
 if (EnableSparseCoreOffloadQueuingInLhs())                       // @0x1d6b81e0
     arg11 = SparseCoreOffloadQueuingOverlapLimit();              // @0x1d6b8320 — a TCE knob
-else if (ShouldEnableConcurrentSparseCoreOffloading())          // @0x1d6b6f80
-    arg11 = Target::CoresPerChip(kSparseCore)                    // @0x1d615b40
-          / Target::LogicalDevicesPerChip(kSparseCore);          // @0x1d615b00  (signed idiv)
-else
-    arg11 = 0;
+else if (ShouldEnableConcurrentSparseCoreOffloading()) {        // @0x1d6b6f80
+    long ldpc = Target::LogicalDevicesPerChip(kSparseCore);      // @0x1d615b00
+    if (ldpc <= 0) arg11 = 0;                                    // guard against div-by-zero
+    else arg11 = Target::CoresPerChip(kSparseCore) / ldpc;       // @0x1d615b40  (idiv)
+}
+// else: arg11 stays 1
 ```
 
-`Target::CoresPerChip(kSparseCore)` reads `Target[+0x3b8]` (the `tpu::TpuTopology*`) at `topo + coreType*0xc + 0x7c` (coreType 2 = SparseCore → offset `0x94`) — a per-core-type `int32` in the topology struct ([TPU Topology Struct](../targets/tpu-topology-struct.md)). `Target::LogicalDevicesPerChip(kSparseCore)` calls `TpuTopology::LogicalDevicesPerChip` → `TpuChipParts::CoreCount` + `TpuChipConfig::Megacore`, so the divisor is the megacore collapse (`ldpc(SC) == 2` on megacore parts). The result — physical SC cores per chip divided by logical devices per chip — is the only target resource whose cap is a hardware count rather than a config knob.
+> **CORRECTION (RT-2) —** an earlier reading gave the third (neither-queuing-nor-concurrent) arm as `arg11 = 0`. The byte-exact `GetTpuAsyncTracker` @ `0x10975520` sets the default to `1` (`v15 = 1`) *before* the concurrent-offload branch, and only writes `0` inside that branch when `LogicalDevicesPerChip(SC) <= 0`. So when SparseCore offload is disabled altogether, id 22's cap is `1`, not `0`.
+
+`Target::CoresPerChip(kSparseCore)` reads `Target[+0x3b8]` (the `tpu::TpuTopology*`, off 952) at `topo + coreType*0xc + 0x7c` (coreType 2 = SparseCore → offset `0x94` = 148) — a per-core-type `int32` in the topology struct ([TPU Topology Struct](../targets/tpu-topology-struct.md)). `Target::LogicalDevicesPerChip(kSparseCore)` calls `TpuTopology::LogicalDevicesPerChip` → `TpuChipParts::CoreCount` + `TpuChipConfig::Megacore`, so the divisor is the megacore collapse (`ldpc(SC) == 2` on megacore parts). The result — physical SC cores per chip divided by logical devices per chip — is the only target resource whose cap is a hardware count rather than a config knob.
 
 > **QUIRK — id 22's cap changes meaning under offload-queuing.** When `EnableSparseCoreOffloadQueuingInLhs` is set (the common embedding production config), id 22's cap becomes a TCE knob (`SparseCoreOffloadQueuingOverlapLimit`) instead of the topology core-count. The three-way select is byte-present; the offload-queuing knob's field number was not decoded (PARTIAL).
 
@@ -368,21 +372,21 @@ long GetNumAvailableResources(long id) {
 
 ## Worked Example — Two Collectives, One Schedule Step
 
-A fragment with two independent async collectives on a megacore Trillium part:
+A fragment with two independent async collectives on a megacore part:
 
 ```text
-%ag   = all-gather-start(%x)        ; ICI ride deposits cost into the +Y slot
+%ag   = all-gather-start(%x)        ; ICI ride deposits cost into one ICI slot
 %ag.d = all-gather-done(%ag)
-%ar   = all-reduce-start(%y)        ; ICI ride deposits cost into the +X slot
+%ar   = all-reduce-start(%y)        ; ICI ride deposits cost into a different ICI slot
 %ar.d = all-reduce-done(%ar)
 ```
 
 Walking the classifier and the cap model:
 
 - `GetResourceTypeForOp` maps `all-gather` (opcode 6) → base id 2 and `all-reduce` (opcode 9) → base id 3.
-- For `%ag`, `MayAddIciLinks` builds a `CostModel`, runs `GetCycles`, finds the +Y ICI slot (`0xe`) nonzero → emits resource id `0xe + 1 = 15` (`kIciYMinus`) — or whichever direction the cost model chose. For `%ar`, the +X slot (`0xf`) is nonzero → resource id `0x10 = 16` (`kIciXPlus`).
-- The two collectives consume *different* resource ids (15 vs 16). `GetResourceHazardType(15) = 1` and `GetResourceHazardType(16) = 1` (serial *per direction*), and `GetNumAvailableResources(15/16) = INT64_MAX` (field 1130 AUTO) — so the scheduler lets both fly **concurrently**: the +Y all-gather and the +X all-reduce overlap because they ride different ICI rings.
-- Had both ridden the *same* axis (both +Y → both resource 15), the serial hazard would force them in sequence, even with the `INT64_MAX` cap, because two ops of a serial resource cannot be in flight together.
+- For `%ag`, `MayAddIciLinks` builds a `CostModel`, runs `GetCycles`, and for each ICI slot `s` in `{0xd..0x12}` with cost ≠ 0 emits resource id `s + 1`. Say the cost model deposited into slot `0xe` → resource id `0xf = 15`. For `%ar`, say it deposited into slot `0xf` → resource id `0x10 = 16`. (Which slot a given collective uses is decided upstream by the cost model; the resource *name* ordering `Y,X,Z` is independent of the slot ordering — see the GOTCHA above.)
+- The two collectives consume *different* resource ids (15 vs 16). `GetResourceHazardType(15) = 1` and `GetResourceHazardType(16) = 1` (serial *per direction*), and `GetNumAvailableResources(15/16) = INT64_MAX` (field 1130 AUTO) — so the scheduler lets both fly **concurrently**: they ride different ICI rings.
+- Had both deposited into the *same* slot (both → resource 15), the serial hazard would force them in sequence, even with the `INT64_MAX` cap, because two ops of a serial resource cannot be in flight together.
 - If `xla_tpu_sparse_core_ici_overlap_limit` (field 1130) were set to a finite N, no more than N ICI-link-bearing async ops (across all six directions and the SC catch-all) could be outstanding at once — the shared budget.
 
 This is exactly why the resource model keys collectives by ICI *direction*, not by a single "collective" class: the physical bottleneck is the per-direction ICI link, and the cost model already knows which link each collective uses.
