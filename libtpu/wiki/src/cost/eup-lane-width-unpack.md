@@ -25,7 +25,7 @@ For reimplementation, the cost model's contract is:
 | **Unpack-count engine** | `UnpackOperand<UnpackFOp>` (`@0x1360fac0`) — recursive halving; deque length = `N` |
 | **Sub-element type** | `GetUnpackResultElementType` (`@0x1360ff20`) — 16→BF16, 32→F32, sub-8-bit → `int(2·src_bw)` |
 | **Split trigger** | `HasEupRestrictions` — VF `0x1c458620`, GL `0x1c458d80` = TRUE; JF `0x1c457b80`, PF `0x1c4580c0` = FALSE |
-| **Decomposer** | `LloLateDecomposer` (`@0x1269cb20`) → `DecomposeEupInstruction` (`@0x126a0340`) → 9 `V*Decomposed` builders |
+| **Decomposer** | `LloLateDecomposer` (`@0x1269cb20`) → `DecomposeEupInstruction` (`@0x126a0340`) → 10 `V*Decomposed` builders across 19 cases |
 | **Bare push / deferred pop** | `CreateVectorEup` (`@0x1d4d78a0`, `0x128`..`0x13a`) + `CreateVectorEupResult` (`@0x1d4d9820`, hardcoded `0x14e`) |
 | **Issue reservation** | `VectorEupReservationCycles` (vtable `+0x480`): JF/VF/GL = 1, PF = 2 (half-rate EUP) |
 
@@ -86,11 +86,11 @@ Before any unpack count exists, the lowering decides whether to unpack at all. A
 
 ```c
 function IsDynamicallyLegal(op, target, operand_idx):   // 0x135ddd20
-    forced = ForceBF16ALUOperationsToUnpack(op, ty)     // @0x135dd6e0 — force-1:1 (LEGAL) flag
+    forced = ForceBF16ALUOperationsToUnpack(op, ty)     // @0x135dd6e0 — force-UNPACK (1:N) flag
     if ty.typeID != mlir::VectorType::id:  return LEGAL  // scalar operand → 1:1
     if !IsPackedVectorType(ty, op):        return LEGAL  // vector but not packed → 1:1
     fmt = GetVpackFormat(ty)                             // @0x13dad800: 0=no-pack,1=bf16,0xb=f16,0x7=sub-byte
-    if fmt == 0 || forced:   return (fmt == 0)           // not packable OR forced → 1:1 (LEGAL)
+    if fmt == 0 || forced:   return (fmt == 0)           // not packable → 1:1; forced+packable → !fmt = ILLEGAL (1:N)
     if !target.SupportsBf16AluInstructions():            // *0x780 FALSE (VF) → 1:N
         return ILLEGAL
     return (ty.element.bitwidth == 16) ? LEGAL : ILLEGAL // native bf16-16 → 1:1, else (f8/s8) → 1:N
@@ -108,14 +108,14 @@ The four arms that matter for cost, as a truth table:
 
 > **QUIRK —** the cheapest path is the *newest* generation on its *native* datatype. A packed `bf16` op is LEGAL (cost 1) only when the generation has the BF16 ALU **and** the element is exactly 16-bit. Viperfish — which lacks the BF16 ALU — marks the same op ILLEGAL and pays the `N`-way unpack to F32. A reimplementer who assumes "packed always unpacks" over-charges Ghostlite by a factor of `N`; one who assumes "transcendentals are always 1:1" under-charges Viperfish by the same factor.
 
-`ForceBF16ALUOperationsToUnpack` (`@0x135dd6e0`) ORs into the result and forces the LEGAL/1:1 path for the force case, so the BF16 ALU runs the op directly without staging — confirmed by the `(fmt == 0) | forced` short-circuit in the decompile (`if ((VpackFormat == 0) | v4) return !VpackFormat`).
+> **CORRECTION (EUP-2) —** `ForceBF16ALUOperationsToUnpack` (`@0x135dd6e0`) forces the *ILLEGAL / 1:N unpack* path, not the 1:1 macro. Its name is literal: when the op carries the `sc.emit_vectorized_alu_operation_in_f32_precision` BoolAttr **true** and its element `isBF16`, the function returns 1, and the `(fmt == 0) | forced` short-circuit in the decompile (`if ((VpackFormat == 0) | v4) return !VpackFormat`) then returns `!fmt`. For a packed bf16 op `fmt == 1`, so `!fmt == 0 == ILLEGAL` — the op is forced to unpack to F32 and run the vectorized ALU in F32 precision, exactly as the attribute name describes. The flag therefore only takes effect on a generation that would otherwise mark the bf16 op LEGAL (Ghostlite, native BF16 ALU): it overrides that to a 1:N F32 unpack. An earlier draft of this page described it as a force-1:1 flag, which is backwards.
 
 ### Function Map
 
 | Function | Address | Role | Confidence |
 |---|---|---|---|
 | `IsDynamicallyLegal` | `0x135ddd20` | 1:1-vs-1:N selector (4-arm truth table) | CERTAIN |
-| `ForceBF16ALUOperationsToUnpack` | `0x135dd6e0` | force-1:1 flag; ORs into the result | CERTAIN |
+| `ForceBF16ALUOperationsToUnpack` | `0x135dd6e0` | force-1:N flag; on the `f32-precision` attr drives a packed bf16 op to ILLEGAL (unpack to F32) | CERTAIN |
 | `IsPackedVectorType` | `0x13611720` | sub-element-packed vector test | CERTAIN |
 | `GetVpackFormat` | `0x13dad800` | pack-format enum (0=none,1=bf16,0xb=f16,0x7=sub-byte) | HIGH |
 
@@ -222,7 +222,7 @@ function LloOpcodeIsPseudoEupInstruction(op):        // 0x1d60c880
         && (0x7fdff >> (op - 0x13b)) & 1  // bitmask clears bit 9 → excludes 0x144 PushErfAndPop
 ```
 
-The `0x7fdff` mask (binary `0111 1111 1101 1111 1111`, bit 9 clear) excludes exactly one of the 19 — `0x144 kVectorPushErfAndPop` — leaving 18 fused ops treated as pseudo-EUP. `LloLateDecomposer` (`@0x1269cb20`) walks these and calls `DecomposeEupInstruction` (`@0x126a0340`), a `switch` on the pseudo-opcode that dispatches to one of nine `V*Decomposed` builders. Each builder is a **bare push + bare pop**, selecting the F32 or BF16 push opcode from the `PrimitiveType` argument:
+The `0x7fdff` mask (binary `0111 1111 1101 1111 1111`, bit 9 clear) excludes exactly one of the 19 — `0x144 kVectorPushErfAndPop` — leaving 18 fused ops treated as pseudo-EUP. `LloLateDecomposer` (`@0x1269cb20`) walks these and calls `DecomposeEupInstruction` (`@0x126a0340`), a `switch` on the pseudo-opcode (19 cases, `0x13b`..`0x14d`) that dispatches to one of ten `V*Decomposed` builders — `Vpow2`, `Vrecp`, `Vlog2`, `Vrsqrt`, `Vsigshft`, `Vsinq`, `Vcosq`, `Vtanh`, `VpushErf`, `Verf` — each chosen by the opcode and handed a `PrimitiveType` of `11` (the BF16-source F32 form) or `16` (the BF16 form). Each builder is a **bare push + bare pop**, selecting the F32 or BF16 push opcode from the `PrimitiveType` argument:
 
 ```c
 function VtanhDecomposed(builder, prim_type, value):  // 0x1d555040 (23 lines, byte-exact)
@@ -234,7 +234,7 @@ function VtanhDecomposed(builder, prim_type, value):  // 0x1d555040 (23 lines, b
     // NO inline correction polynomial, NO refinement, NO second push/pop pair
 ```
 
-`VrsqrtDecomposed` (`@0x1d557b60`) is byte-identical in structure (`push_opcode = (prim_type == 0xb) ? 0x12c : 0x136`), also 23 lines, also bare push + bare pop. `CreateVectorEup` asserts the push opcode is in `[0x128, 0x13a)` (`(opcode - 0x128) < 0x13`, the `LloOpcodeIsVectorEup` check) and that the operand `ProducesVreg`; `CreateVectorEupResult` asserts the same push range and emits `New(0x14e, {push}, 1)` — the pop carries no function or width, only the push handle.
+`VrsqrtDecomposed` (`@0x1d557b60`) is byte-identical in structure (`push_opcode = (prim_type == 0xb) ? 0x12c : 0x136`), also 23 lines, also bare push + bare pop. `CreateVectorEup` asserts the push opcode is a vector-EUP opcode (`(opcode - 0x128) < 0x13`, i.e. inclusive `0x128`..`0x13a`, the `LloOpcodeIsVectorEup` check) and that the operand `ProducesVreg` (its `opcode_produced_register_type[]` entry is the EUP class `4`); `CreateVectorEupResult` asserts the same push range and emits `New(0x14e, {push}, 1)` — the pop carries no function or width, only the push handle.
 
 > **CORRECTION (EUP-1) —** the raw EUP-datapath trace reported that the `V*Decomposed` builders interleave VALU correction arithmetic (`CreateVectorBinop` / `VfastTwoSum` / Newton refinement) between the push and the pop, and that `VrsqrtDecomposed` issues a second push/pop pair for an rsqrt Newton step. Byte-exact decompilation of both builders (`0x1d555040`, `0x1d557b60`) shows they are bare push + bare pop *only* — 23 lines each, with no `CreateVectorBinop`, no `VfastTwoSum`, and no second push. The `VfastTwoSum` helper (`@0x1d5550a0`) that the earlier trace placed "between" them is a stand-alone Dekker two-sum that merely sits physically adjacent to `VtanhDecomposed` in `.text`; the merged trace conflated adjacent functions. The latency-hiding work in the push→pop window is therefore **unrelated VALU instructions the scheduler interleaves**, not correction emitted by the decomposer. The transcendental's own correction math (where it exists) lives in the `*NoEupF32` software fallbacks and the shared Newton/rational helpers — see [EUP Correction Coefficients](eup-correction-coeffs.md) — not inside the split.
 
@@ -253,11 +253,11 @@ The split is **mandatory** on v5+ because `HasEupRestrictions` is TRUE on Viperf
 | Function | Address | Role | Confidence |
 |---|---|---|---|
 | `LloLateDecomposer` | `0x1269cb20` | splits fused AndPop → bare push + deferred pop | CERTAIN |
-| `DecomposeEupInstruction` | `0x126a0340` | `switch` dispatch to 9 `V*Decomposed` builders | CERTAIN |
+| `DecomposeEupInstruction` | `0x126a0340` | `switch` dispatch (19 cases) to 10 `V*Decomposed` builders | CERTAIN |
 | `LloOpcodeIsPseudoEupInstruction` | `0x1d60c880` | classifies fused AndPop (range `[0x13b,0x14d]`, mask `0x7fdff`) | CERTAIN |
 | `VtanhDecomposed` / `VrsqrtDecomposed` | `0x1d555040` / `0x1d557b60` | bare push + bare pop builders (23 lines each) | CERTAIN |
 | `CreateVectorEup` | `0x1d4d78a0` | bare push (`0x128`..`0x13a`, 1 operand, asserts `ProducesVreg`) | CERTAIN |
-| `CreateVectorEupResult` | `0x1d4d9820` | deferred pop, hardcodes `0x14e`, asserts push ∈ `[0x128,0x13a)` | CERTAIN |
+| `CreateVectorEupResult` | `0x1d4d9820` | deferred pop, hardcodes `0x14e`, asserts push ∈ `0x128`..`0x13a` | CERTAIN |
 | `HasEupRestrictions` (VF/GL/JF/PF) | `0x1c458620`/`0x1c458d80`/`0x1c457b80`/`0x1c4580c0` | v5+ separate-bundle constraint (TRUE/TRUE/FALSE/FALSE) | CERTAIN |
 | `DecomposeEupOperationsForBarnacore` | `0x1269c5c0` | BarnaCore EUP split (separate result-drain path) | HIGH |
 
