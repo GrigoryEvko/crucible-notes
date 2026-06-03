@@ -17,7 +17,7 @@ The reimplementation contract:
 - **The op-level engine tag is a string, not a number.** Every op's engine membership is the `sc.sequencer` StringAttr on its enclosing outlined function — one of exactly three byte-confirmed values `"scs"` / `"access"` / `"execute"`. A reimplementer must route on the string; the two numeric `TpuSequencerType` enums never appear *at the op*.
 - **`getSequencerType` is an accessor, not a decision.** `LowerMemrefToMlo::getSequencerType(Operation&)` returns `optional<StringRef>` — it reads `sc.sequencer` (via inherent-attr then dictionary-attr fallback) and returns its value, or `nullopt`. The decision was made upstream by `GetTransferKind` + outlining.
 - **Stream-vs-DMA is decided by memory spaces + one capability bit.** `GetTransferKind` normalizes each `mlir::sparse_core::MemorySpace`, jump-tables on the source space, and sets *kStream* only when the destination space is in the HBM/SPMEM/TILE_SPMEM gather set (bitmasks `0x210018` / `0x210004`) and the target reports the SparseCore-variable capability (`vtable[+0xa0]`, =0 in this wheel); otherwise *kDma*, with an `InvalidArgument` diagnostic for an illegal pair.
-- **Two `TpuSequencerType` enums, off by one.** The runtime proto numbering (the `TpuSequencerTypeToString` table index) is `{INVALID=0, TC=1, BARNA=2, BARNA_ADDR=3, SCS=4, TAC=5, TEC=6, …}`; the codec `EncoderBase` non-type template parameter is `{SCS=3, TAC=4, TEC=5}`. Trillium carries codec params 3 and 5 only — its `SparseCoreTacCodecBase` is entirely absent.
+- **Two `TpuSequencerType` enums, off by one.** The runtime proto numbering (the `TpuSequencerTypeToString` table index) is `{INVALID=0, TC=1, BARNA=2, BARNA_ADDR=3, SCS=4, TAC=5, TEC=6, …}`; the codec `EncoderBase` non-type template parameter is `{SCS=3, TAC=4, TEC=5}`. The `gfc` (6acc60406) family carries codec params 3 and 5 only — its `SparseCoreTacCodecBase` is entirely absent.
 
 | | |
 |---|---|
@@ -29,7 +29,7 @@ The reimplementation contract:
 | **Enum** | `tpu::TpuSequencerType`; `TpuSequencerTypeToString` `@0x20b362e0` over `off_22010DE0` |
 | **Runtime enum** | INVALID=0 · TC=1 · BARNA=2 · BARNA_ADDR=3 · **SCS=4 · TAC=5 · TEC=6** · SCv0=7/8 |
 | **Codec template enum** | **SCS=3 · TAC=4 · TEC=5** (`EncoderBase<…, TpuSequencerType=N>`) |
-| **Trillium** | No TAC: `gfc::…SparseCoreTacCodecBase` = 0 files; only codec params 3 & 5 |
+| **6acc60406 (`gfc`)** | No TAC: `gfc::…SparseCoreTacCodecBase` = 0 files; only codec params 3 & 5 |
 | **Confidence** | CONFIRMED (function-byte / symbol / string-table anchored) unless a row says otherwise |
 
 For the engine roles themselves see [SparseCore Overview](overview.md) and [Architecture](architecture.md); for what the outliner produces see [Region → Sequencer Outliner](region-to-sequencer-outliner.md).
@@ -98,7 +98,7 @@ optional<StringRef> getSequencerType(Operation& op) {
 
 Two structural facts to preserve:
 
-- **The attribute name is the 12-character string `"sc.sequencer"`** (the literal and length `12` are baked into the `getInherentAttr` call — `@0x85b7432` in the binary). The identical name+length pair appears in `HasCoreSequencerTypeAttribute` and `HasExecuteSequencerTypeAttribute` (below), confirming all three read the same attribute.
+- **The attribute name is the 12-character string `"sc.sequencer"`** (the literal and length `12` are baked into the `getInherentAttr(a2, "sc.sequencer", 12)` call in the decompiled body). The identical name+length pair appears in `HasCoreSequencerTypeAttribute` and `HasExecuteSequencerTypeAttribute` (below), confirming all three read the same attribute.
 - **The two-step inherent→dictionary lookup** mirrors MLIR's split between *inherent* attributes (declared on the op definition) and *discardable* dictionary attributes. The accessor accepts either, so the outliner may attach `sc.sequencer` through whichever path is convenient for the op kind.
 
 | Property | Value | Confidence |
@@ -137,7 +137,7 @@ Decoding the little-endian masks:
 | `"execute"` | **TEC** (vector compute) | 7 | `0x63657865`="exec", `0x65747563`="cute" | `HasExecuteSequencerTypeAttribute` `@0x1459a020` |
 | `"access"` | **TAC** (tile-access / DMA) | 6 | — (no dedicated `Has*` predicate) | — |
 
-> **GOTCHA — `"access"` has no dedicated predicate.** SCS and TEC each get a `Has…SequencerTypeAttribute` test because the SC-MLO pipeline operates on the SCS↔TEC boundary; the third value `"access"` (TAC) carries no `Has*` function in this binary. This is consistent with Trillium having dropped TAC altogether — on the newest gen the work that would land in an `"access"` function is folded into the `"execute"` function (see [TAC Engine](tac-engine.md) and [Region → Sequencer Outliner](region-to-sequencer-outliner.md)). A reimplementer that only models the SCS/TEC pair will produce correct Trillium code; the `"access"` value is needed only for Viperfish/Ghostlite.
+> **GOTCHA — `"access"` has no dedicated predicate.** SCS and TEC each get a `Has…SequencerTypeAttribute` test because the SC-MLO pipeline operates on the SCS↔TEC boundary; the third value `"access"` (TAC) carries no `Has*` function in this binary. This is consistent with the 6acc60406 (`gfc`) family having dropped TAC altogether — on the newest gen the work that would land in an `"access"` function is folded into the `"execute"` function (see [TAC Engine](tac-engine.md) and [Region → Sequencer Outliner](region-to-sequencer-outliner.md)). A reimplementer that only models the SCS/TEC pair will produce correct 6acc60406 code; the `"access"` value is needed only for Viperfish/Ghostlite.
 
 ### The parent-function trait
 
@@ -226,11 +226,11 @@ The mapping the outliner produces:
 
 | TileTask region | `sc.sequencer` | Engine | Carries | Present on |
 |---|---|---|---|---|
-| Control / sequencer | `"scs"` | **SCS** | program counter, addressing, sync-flag/atomic issue, SCS Stream/DMA slots | VF · GL · GF |
-| Access | `"access"` | **TAC** | tile-fetch DMA issue, gather-stream issue, address staging | VF · GL only |
-| Execute | `"execute"` | **TEC** | vector reductions, pack/unpack, the TEC Stream slot (incl. IndirectVreg) | VF · GL · GF |
+| Control / sequencer | `"scs"` | **SCS** | program counter, addressing, sync-flag/atomic issue, SCS Stream/DMA slots | vfc · glc · gfc |
+| Access | `"access"` | **TAC** | tile-fetch DMA issue, gather-stream issue, address staging | vfc · glc only |
+| Execute | `"execute"` | **TEC** | vector reductions, pack/unpack, the TEC Stream slot (incl. IndirectVreg) | vfc · glc · gfc |
 
-> **CONFIRMED — Trillium folds "access" into "execute".** On Viperfish/Ghostlite the three regions outline to three engines; on Trillium there is no TAC engine to receive an `"access"` function, so the tile-fetch/gather work that would be tagged `"access"` is instead emitted into the `"execute"` (TEC) function — the TEC Stream slot issues the gather directly. This is the binary-level corollary of [IndirectVregStream](indirect-vreg-stream.md) being TEC-exclusive and of the missing `SparseCoreTacCodecBase` (next section). The absence of a `HasAccessSequencerTypeAttribute` predicate is the structural tell that the pipeline does not need to *query* for `"access"` on the newest gen.
+> **CONFIRMED — 6acc60406 folds "access" into "execute".** On Viperfish/Ghostlite the three regions outline to three engines; on the 6acc60406 (`gfc`) family there is no TAC engine to receive an `"access"` function, so the tile-fetch/gather work that would be tagged `"access"` is instead emitted into the `"execute"` (TEC) function — the TEC Stream slot issues the gather directly. This is the binary-level corollary of [IndirectVregStream](indirect-vreg-stream.md) being TEC-exclusive and of the missing `SparseCoreTacCodecBase` (next section). The absence of a `HasAccessSequencerTypeAttribute` predicate is the structural tell that the pipeline does not need to *query* for `"access"` on the newest gen.
 
 The exact per-op rule that chooses the Access region versus the Execute region for a given lowered op was not bit-traced in this analysis (the `GetTransferKind` result plus the op's tile-data dependencies feed it). It is flagged LOW here and owned by [Region → Sequencer Outliner](region-to-sequencer-outliner.md).
 
@@ -275,17 +275,17 @@ The **codec** layer uses a *different* numbering. The per-engine codecs are temp
 
 > **GOTCHA — never cross the two numberings without the +1.** The runtime proto value (the `TpuSequencerTypeToString` index, used by per-engine resource arrays like the bundle-limit tracker) is one *greater* than the codec template parameter for the same engine. A reimplementer that feeds a runtime `TpuSequencerType` directly into a codec template selector will pick the wrong engine (or `INVALID`). The two values serve different layers; the *op-level* assignment uses neither — it uses the `sc.sequencer` string. The exact conversion site where a numeric value crosses from the runtime proto into codec selection was not located (flagged LOW).
 
-### Codec-base presence confirms Trillium's missing TAC
+### Codec-base presence confirms the missing TAC on `gfc`
 
-Counting decompiled `SparseCore{Scs,Tac,Tec}CodecBase` instantiation files per family namespace directly confirms the TAC-removal that the off-by-one table implies (gfc carries codec params 3 and 5 only, never 4):
+Counting decompiled `SparseCore{Scs,Tac,Tec}CodecBase` instantiation files per family namespace directly confirms the TAC-removal that the off-by-one table implies (`gfc` carries codec params 3 and 5 only, never 4):
 
 | Family ns | Gen | `SparseCoreScsCodecBase` files | `SparseCoreTacCodecBase` files | `SparseCoreTecCodecBase` files |
 |---|---|---:|---:|---:|
 | `vfc` | Viperfish | 13 | 13 | 13 |
 | `glc` | Ghostlite | 30 | 30 | 30 |
-| `gfc` | Trillium | 31 | **0** | 32 |
+| `gfc` | 6acc60406 | 31 | **0** | 32 |
 
-The Trillium (`gfc`) namespace has **zero** `SparseCoreTacCodecBase` files against 13/30 for Viperfish/Ghostlite, while SCS and TEC codec bases are present. There is no codec template parameterized on `TpuSequencerType=4` in `gfc`, so the runtime can never select a TAC engine on Trillium, and the `"access"` sequencer value is unreachable there — exactly the folding documented in Layer 2.
+The 6acc60406 (`gfc`) namespace has **zero** `SparseCoreTacCodecBase` files against 13/30 for Viperfish/Ghostlite, while SCS and TEC codec bases are present. There is no codec template parameterized on `TpuSequencerType=4` in `gfc`, so the runtime can never select a TAC engine on 6acc60406, and the `"access"` sequencer value is unreachable there — exactly the folding documented in Layer 2.
 
 ---
 
@@ -302,7 +302,7 @@ To reproduce SparseCore engine selection:
 1. **Model `sc.sequencer` as a function-scoped StringAttr** with exactly three legal values `"scs"` / `"access"` / `"execute"`. Attach it during outlining; never attach it per-op. Enforce its presence on TileTask ops via a parent-function trait.
 2. **Implement `getSequencerType` as a pure accessor** — inherent-attr lookup with dictionary-attr fallback, StringAttr type guard, returning `optional<StringRef>`. It makes no decisions.
 3. **Implement `GetTransferKind` as the kStream/kDma gate** with the exact memory-space normalization (`1 → 5*(¬cap)+16`), the both-local gate, the `0x210018`/`0x210004` destination bitmasks per source space, the `SupportsScVar` capability call (false on these chips), and the `InvalidArgument` fallback for illegal pairs.
-4. **Outline by region, fold "access" into "execute" when TAC is absent** (Trillium). Gate the existence of an `"access"` function on whether the target ships a `SparseCoreTacCodecBase`.
+4. **Outline by region, fold "access" into "execute" when TAC is absent** (the 6acc60406 / `gfc` family). Gate the existence of an `"access"` function on whether the target ships a `SparseCoreTacCodecBase`.
 5. **Keep the two `TpuSequencerType` numberings separate** — runtime `{SCS=4,TAC=5,TEC=6}` for resource arrays, codec template `{SCS=3,TAC=4,TEC=5}` for codec selection, with a +1 at any boundary that crosses them.
 
 ---
@@ -319,7 +319,7 @@ To reproduce SparseCore engine selection:
 | `SupportsScVar` capability is 0 on these gens (capability-gated Stream routes compiled out) | `vtable[+0xa0]` resolves to `SupportsScVar` (GL `0x1d499340` / VF `0x1d49c7e0`), =0 | HIGH |
 | Feeders: `lowerEnqueueDma` `@0x135105a0`, `lowerEnqueueIndirectDma` `@0x13511da0`, `getTransferKind<…>` `@0x135114a0`/`@0x135145e0` | demangled decompiled symbols present | CONFIRMED |
 | Outliner stamps `sc.sequencer` per region | `LowerSequencerFunctionsPass::runOnOperation` `@0x13532120` + `OutlineSequencerFunction` | HIGH |
-| Trillium folds "access" into "execute" (no TAC) | `gfc::…SparseCoreTacCodecBase` = 0 files vs 13/30; no `HasAccessSequencerTypeAttribute` | CONFIRMED |
+| 6acc60406 (`gfc`) folds "access" into "execute" (no TAC) | `gfc::…SparseCoreTacCodecBase` = 0 files vs 13/30; no `HasAccessSequencerTypeAttribute` | CONFIRMED |
 | `TpuSequencerTypeToString` is a jump table over `off_22010DE0` | decompiled `@0x20b362e0`: `*(&off_22010DE0 + a1)` | CONFIRMED |
 | Runtime enum order {INVALID=0…SCS=4,TAC=5,TEC=6,SCv0=7/8} | nine string-table literals + table index order | CONFIRMED |
 | Codec template enum {SCS=3,TAC=4,TEC=5}, off by one from runtime | `EncoderBase<…, TpuSequencerType=N>` instantiations; gfc carries codec bases for Scs/Tec, none for Tac | HIGH |
@@ -332,7 +332,7 @@ To reproduce SparseCore engine selection:
 - [SparseCore Overview](overview.md) — the three engine classes, per-gen presence, and the SCv0 enum-only story.
 - [Architecture](architecture.md) — engine roles and the embedding datapath that the engine split serves.
 - [SCS (Scalar) Engine](scs-engine.md) — the `"scs"` control sequencer.
-- [TAC Engine](tac-engine.md) — the `"access"` tile-fetch engine and its Trillium removal.
+- [TAC Engine](tac-engine.md) — the `"access"` tile-fetch engine and its removal on the 6acc60406 (`gfc`) family.
 - [TEC (Vector) Engine](tec-engine.md) — the `"execute"` vector compute engine.
 - [Region → Sequencer Outliner](region-to-sequencer-outliner.md) — the pass that partitions a computation into per-engine functions and writes `sc.sequencer`.
 - [IndirectVregStream](indirect-vreg-stream.md) — the TEC-only Stream form whose existence anchors the kStream datapath on TEC.
