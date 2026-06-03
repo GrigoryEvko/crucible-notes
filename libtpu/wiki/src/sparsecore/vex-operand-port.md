@@ -1,6 +1,6 @@
 # VEX Operand-Port Binding
 
-> *Every enum value, switch case, proto offset, present-mask bit, and bundle bit position on this page was read byte-exactly from `libtpu.so` in the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`, build `libtpu_lts_20260413_b_RC00`) — from the `GetVexSourcePortEncoding` switch (gfc `0x1c5ee280`, vfc `0x1c5d2e80`), the `FindAndEmitToUnusedPort` 7-port allocator body (glc `0x13a4b840`), the per-op `SparseCoreTecVectorExtendedEncoder` `BitCopy` immediates, and the `EmitXrfResultOp` PopXrf result-commit (gfc/glc `0x13a14180`). Addresses apply to this build; other versions differ.*
+> *Every enum value, switch case, proto offset, present-mask bit, and bundle bit position on this page was read byte-exactly from `libtpu.so` in the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`, build `libtpu_lts_20260413_b_RC00`) — from the `GetVexSourcePortEncoding` switch (glc/Ghostlite `0x1c5ee280`, vfc `0x1c5d2e80`), the `FindAndEmitToUnusedPort` 7-port allocator body (glc `0x13a4b840`), the per-op `SparseCoreTecVectorExtendedEncoder` `BitCopy` immediates, and the `EmitXrfResultOp` PopXrf result-commit (glc `0x13a14180`, gfc `0x13ab8c60`). Addresses apply to this build; other versions differ. Throughout: `glc` = Ghostlite, `gfc` = 6acc60406/TPU7x, `vfc` = Viperfish.*
 
 ## Abstract
 
@@ -22,12 +22,12 @@ For reimplementation, the contract is:
 |---|---|
 | **Layer** | operand→port binding for the [VEX](vectorextended-vex.md) slot of the 64-byte [TEC bundle](tec-engine.md#the-tec-bundle-64-bytes) |
 | **Logical port space** | `VregReadPort` 0..9 → `VexSourcePortEncoding` 0..7 (resolver, 8 legal) |
-| **Resolver** | `GetVexSourcePortEncoding` — gfc `0x1c5ee280`, vfc `0x1c5d2e80` (`StatusOr`, switch) |
+| **Resolver** | `GetVexSourcePortEncoding` — glc `0x1c5ee280`, vfc `0x1c5d2e80` (`StatusOr`, switch) |
 | **Physical port space** | `SparsecoreVregReadPort` V0..V6 (7 ports) |
 | **Allocator** | `FindAndEmitToUnusedPort` — greedy-first-free btree set; glc `0x13a4b840`, gfc `0x13ab2aa0` |
 | **Proto slot map** | port `p` → vregno `[proto+0x1c+4*p]`, present bit `1<<(p+1)` in `[proto+0x10]` |
 | **Bundle selector bits** | V0=`0x15a` V1=`0x1bb` V2=`0x1c7` V3=`0x196` V4=`0x1a2` V5=`0x171` V6=`0x17d` (6-bit each) |
-| **Result commit** | `PopXrf` via `EmitXrfResultOp` (gfc/glc `0x13a14180`); index∈{0,1,2}, oneof tags 7..0xc |
+| **Result commit** | `PopXrf` via `EmitXrfResultOp` (glc `0x13a14180`, gfc `0x13ab8c60`, vfc `0x139a8240`); index∈{0,1,2}, oneof tags 7..0xc |
 | **Confidence** | CONFIRMED (decompile-anchored) unless a row or callout says otherwise |
 
 > **NOTE — this page owns the operand→port BINDING (the two port spaces, the allocator, the source-port encoding, PopXrf).** The VEX opcode→op dispatch roster lives on [VectorExtended (VEX)](vectorextended-vex.md); the per-op sub-opcode constants, the dest-read-port field, and the vector-mask field live on [VEX Mask / Dest-Port / Sub-Opcode](vex-mask-destport-subopcode.md); the 64-byte bundle geometry lives on [TEC Engine](tec-engine.md). They are linked, not repeated.
@@ -63,10 +63,10 @@ The connection: the logical `VexSourcePortEncoding` names the *bus* a seed reads
 
 ### The resolver
 
-`GetVexSourcePortEncoding(VregReadPort)` is a per-target free function returning `StatusOr<VexSourcePortEncoding>` (here `absl::internal_statusor::Helper*` carrying the int payload at `+0x8` and the status word at `+0x0`). The gfc (Ghostlite) instance at `0x1c5ee280` and the vfc (Viperfish) instance at `0x1c5d2e80` are byte-for-byte the same switch shape; only the error-string suffix and the source-file path differ:
+`GetVexSourcePortEncoding(VregReadPort)` is a per-target free function returning `StatusOr<VexSourcePortEncoding>` (here `absl::internal_statusor::Helper*` carrying the int payload at `+0x8` and the status word at `+0x0`). The glc (Ghostlite) instance at `0x1c5ee280` and the vfc (Viperfish) instance at `0x1c5d2e80` are byte-for-byte the same switch shape; only the error-string suffix and the source-file path differ:
 
 ```c
-// xla::ghostlite::GhostliteProtoUtils::GetVexSourcePortEncoding(VregReadPort port)   (gfc 0x1c5ee280)
+// xla::ghostlite::GhostliteProtoUtils::GetVexSourcePortEncoding(VregReadPort port)   (glc/Ghostlite 0x1c5ee280)
 //   this = StatusOr<VexSourcePortEncoding> out; *(int*)(this+8) = encoding; *(qword)this = 1 (=OK)
 switch (port) {
   case 0: *(int*)(this+8) = 0; *(qword)this = 1; return this;   // VST_SOURCE  → OK
@@ -86,7 +86,7 @@ The legal range is **exactly `[0,7]`**: the resolver returns the identity encodi
 
 > **GOTCHA — the resolver is identity over `[0,7]` but is NOT a no-op.** It exists to *validate* that the requested logical read port is a legal VEX source: `V3_X` (port 8) and `MISC_AUX` (port 9) are valid `VregReadPort` values elsewhere but are unreachable from a VEX seed selector. Skipping the validation lets an illegal `SourceOne` reach the encoder, which silently mis-packs. The check is the gate; reimplement it as a switch returning a `Result`/`StatusOr`, not as `encoding = port`.
 
-> **NOTE — gfc says "GLC", vfc says "VFC".** The `MISC_AUX not supported on …` message is gen-named: the Ghostlite copy at `0x1c5ee280` reads "GLC" (29 bytes), the Viperfish copy at `0x1c5d2e80` reads "VFC" (29 bytes), each pointing at its own `…_proto_utils.cc`. The `V3_X` message (66 bytes) is identical text in both. The legal `{0..7}` set and the two rejection ports are gen-stable; the message string is the only delta. CONFIRMED both gens.
+> **NOTE — Ghostlite's message says "GLC", Viperfish's says "VFC".** The `MISC_AUX not supported on …` message is gen-named: the Ghostlite copy at `0x1c5ee280` reads "MISC_AUX not supported on GLC" (29 bytes), the Viperfish copy at `0x1c5d2e80` reads "MISC_AUX not supported on VFC" (29 bytes), each pointing at its own `…_proto_utils.cc`. The `V3_X` message (66 bytes) is identical text in both. The legal `{0..7}` set and the two rejection ports are gen-stable; the message string is the only delta. CONFIRMED both gens.
 
 ### The 8 source-port encodings
 
@@ -143,10 +143,10 @@ if ( *(qword*)(a2 + 16) ) {                       // RetCheck !port_is_free.empt
 
 Mechanism, step by step:
 
-1. **Empty check.** `port_is_free` is an `absl::btree_set<SparsecoreVregReadPort>`; `[a2+0x10]` is its size. Empty ⇒ `RetCheck` failure at `isa_emitter_base.h:2637` (`"!port_is_free.empty()"`).
+1. **Empty check.** `port_is_free` is an `absl::btree_set<SparsecoreVregReadPort>`; `[a2+0x10]` is its size. Empty → `RetCheck` failure at `isa_emitter_base.h:2637` (`"!port_is_free.empty()"`).
 2. **Lowest free port.** `*(**a2 + 0xc)` reads the value in the btree's first (leftmost) node — the **lowest** free port index. This is the greedy-first-free policy: ports are handed out in ascending V0→V6 order.
 3. **Erase.** `btree_container::erase` removes the chosen port so the next operand cannot reuse it within the bundle.
-4. **Bound + slot write.** The 7-arm switch dispatches `[0,6]`; out-of-range ⇒ `MakeError "Unsupported Port Value: $0"` (`isa_emitter_base.h:2664`). For a valid port `p`, the operand's vregno is stored at `[proto+0x1c+4*p]` and the present bit `1<<(p+1)` is OR'd into `[proto+0x10]`.
+4. **Bound + slot write.** The 7-arm switch dispatches `[0,6]`; out-of-range → `MakeError "Unsupported Port Value: $0"` (`isa_emitter_base.h:2664`). For a valid port `p`, the operand's vregno is stored at `[proto+0x1c+4*p]` and the present bit `1<<(p+1)` is OR'd into `[proto+0x10]`.
 5. **Return.** The allocated port index is returned in the `StatusOr` payload (`[out+0x8]`) with `OK`.
 
 ### The proto port-slot map
@@ -201,7 +201,7 @@ The fields are scattered (`0x15a, 0x1bb, 0x1c7, 0x196, 0x1a2, 0x171, 0x17d` — 
 
 > **NOTE — the dest read-port, the vector mask, and the per-op sub-opcode share this encoder but are documented elsewhere.** The same `SparseCoreTecVectorExtendedEncoder` also BitCopies the dest read-port (`+0x18` → bundle `0x10c`, 3-bit), the vector mask (`+0x38` → bundle `0x104`, 5-bit), and the per-op 6-bit sub-opcode constant (bundle `0x10f`). Those three fields and the full sub-opcode roster are owned by [VEX Mask / Dest-Port / Sub-Opcode](vex-mask-destport-subopcode.md); this page owns only the 7 source-port selectors. They share the encoder, not the page.
 
-> **QUIRK — the same physical sub-opcode `0x1b` is reused outside VEX.** Sub-opcode `0x1b` is `UniquifyFloat` in the VEX slot, but `0x1b` is *also* the primary opcode of the `VectorAlu` `combine_four_lanes` cross-lane fold — they live in different bundle slots (VEX vs VectorAlu0), so no conflict. The `combine_four_lanes` op (glc-only) routes through the same TEC orchestrator *because* its X-source consumes a `SparsecoreVregReadPort` allocation via this allocator; its bit layout is on the [VectorAlu opcode pages](vector-opcode-enum.md), not here.
+> **QUIRK — the same physical sub-opcode `0x1b` is reused outside VEX.** Sub-opcode `0x1b` (decimal 27) is `UniquifyFloat` in the VEX slot (verified: `EncodeSparseCoreTecVectorExtendedUniquifyFloat` glc `0x1eb3c580` writes `27` into the 6-bit sub-opcode field at bundle bit `0x10f`). The `combine_four_lanes` cross-lane fold is a gxc-family `VectorAlu` op (present in glc/gfc, absent on vfc/Viperfish); its opcode value and bit layout are on the [VectorAlu opcode pages](vector-opcode-enum.md), not here. Whether its source operand routes through this same `FindAndEmitToUnusedPort` allocator was not traced — `LOW`.
 
 ---
 
@@ -209,10 +209,10 @@ The fields are scattered (`0x15a, 0x1bb, 0x1c7, 0x196, 0x1a2, 0x171, 0x17d` — 
 
 ### What PopXrf is
 
-`PopXrf` (pop vector-register-file) is the [`VectorResult`](vector-opcode-enum.md) slot's commit op for VEX scan/sort results: it pulls a result out of the extended-result file (XRF) and writes it back to up to three result lanes in the VRF. It is emitted by `EmitXrfResultOp`, one template covering all six commit variants `{WriteAll, Partial0, Partial1, Partial2, Partial3, Partial4}`. The gfc/glc instance is at `0x13a14180` (vfc at `0x139a8240`):
+`PopXrf` (pop vector-register-file) is the [`VectorResult`](vector-opcode-enum.md) slot's commit op for VEX scan/sort results: it pulls a result out of the extended-result file (XRF) and writes it back to up to three result lanes in the VRF. It is emitted by `EmitXrfResultOp`, one template covering all six commit variants `{WriteAll, Partial0, Partial1, Partial2, Partial3, Partial4}`. The glc (Ghostlite) instance is at `0x13a14180`; the gfc (6acc60406) instance is the structural twin at `0x13ab8c60` and vfc (Viperfish) at `0x139a8240`:
 
 ```c
-// EmitXrfResultOp<…PopXrfWriteAll, …Partial0..4, …VectorResult>   (gfc/glc 0x13a14180)
+// EmitXrfResultOp<…PopXrfWriteAll, …Partial0..4, …VectorResult>   (glc/Ghostlite 0x13a14180)
 //   a1 = MCInst* ; a2 = index (vres_unit) ; a3 = VectorResult& slot proto
 if ( (unsigned)a2 >= 3 )                              // RetCheck: vres_unit ∈ {0,1,2}
     return RetCheckFail(…:3171, "vres_unit == 0 || vres_unit == 1 || vres_unit == 2");
@@ -227,20 +227,22 @@ v0 = isVoidOp(&op0, a2);  v1 = isVoidOp(&op1, a2);  v2 = isVoidOp(&op2, a2);
 
 Two independent selectors govern PopXrf, and they must not be swapped:
 
-1. **The `index` (`vres_unit`) is the XRF write-group selector — a per-OPCODE constant.** It is *not* operand-derived: the consuming arm hardcodes it. Opcode `0x10e9` passes `index = 0` (`xor esi,esi`; MCInst descriptor `+0x38 == 0x150`); opcode `0x10ea` passes `index = 1` (`mov esi,1`; descriptor `== 0x151`). The `index < 3` RetCheck permits `2`, but glc wires only `{0,1}` (exactly two call sites). The index lands at `proto+0x18` with present bit `0x01`.
+1. **The `index` (`vres_unit`) is the XRF write-group selector — a per-OPCODE constant.** It is *not* operand-derived: the consuming arm hardcodes it. Opcode `0x10E9` passes `index = 0` after asserting the XRF register operand `getReg() == llvm::TPU::XRF0` (reg-id `0x150`, read at operand `+0x38`; RetCheck `isa_emitter.cc:10302`); opcode `0x10EA` passes `index = 1` after asserting `getReg() == llvm::TPU::XRF1` (reg-id `0x151`; RetCheck `:10318`). The `index < 3` RetCheck permits `2`, but glc wires only `{0,1}` (exactly two call sites, both in `ghostlite::ConsumeOneTecBundleInstruction` glc `0x13a08e00`). The index lands at `proto+0x18` with present bit `0x01`.
 2. **The variant (which lanes are written) is selected by the `isVoidOp` presence pattern of the three result operands.** `isVoidOp` (`0x13a659a0`) returns 1 for a void operand. The pattern of `(op0,op1,op2)` chooses the oneof tag and the fields written:
 
-| op0 | op1 | op2 | variant | oneof tag (`[proto+0x50]`) | fields written (present bit) | Confidence |
+In every row the index (`vres_unit`) is written to `+0x18` with present bit `0x1`; the rows below list only the per-lane result fields. The present operand of each lane is the one written — note that in the `V P …` rows the *first present lane is op1*, so its vregno lands in the `+0x1c` field (the field offset is fixed; the source operand is whichever lane is present):
+
+| op0 | op1 | op2 | variant | oneof tag (`[proto+0x50]`) | result fields written (source operand → proto field, present bit) | Confidence |
 |:---:|:---:|:---:|---|---:|---|---|
 | P | P | P | `WriteAll` | `0x7` | op0→`+0x1c` `GetVregno` (0x2), op1→`+0x20` `GetVregno` (0x4), op2→`+0x24` `GetVMDestregno` (0x8) | CONFIRMED |
 | P | V | V | `PopXrfWritePartial0` | `0x8` | op0→`+0x1c` `GetVregno` (0x2) | CONFIRMED |
-| P | V | P | `PopXrfWritePartial1` | `0x9` | op0→`+0x1c` (0x2), op2→`+0x20` `GetVMDestregno` (0x4) | CONFIRMED |
-| V | P | V | `PopXrfWritePartial2` | `0xa` | op0→`+0x1c` `GetVregno` (0x2) | CONFIRMED |
-| V | P | P | `PopXrfWritePartial3` | `0xb` | op0→`+0x1c` (0x2), op2→`+0x20` `GetVMDestregno` (0x4) | CONFIRMED |
-| (other) | | | `PopXrfWritePartial4` | `0xc` | op0→`+0x1c`, op2→`+0x20`; index→`+0x18` | CONFIRMED |
-| (any other) | | | — | — | `MakeError "Invalid operands for Pop XRF Result."` | CONFIRMED |
+| P | V | P | `PopXrfWritePartial1` | `0x9` | op0→`+0x1c` `GetVregno` (0x2), op2→`+0x20` `GetVMDestregno` (0x4) | CONFIRMED |
+| V | P | V | `PopXrfWritePartial2` | `0xa` | op1→`+0x1c` `GetVregno` (0x2) | CONFIRMED |
+| V | P | P | `PopXrfWritePartial3` | `0xb` | op1→`+0x1c` `GetVregno` (0x2), op2→`+0x20` `GetVMDestregno` (0x4) | CONFIRMED |
+| P | P | V | `PopXrfWritePartial4` | `0xc` | op0→`+0x1c` `GetVregno` (0x2), op1→`+0x20` `GetVregno` (0x4) | CONFIRMED |
+| (any other) | | | — | — | `MakeError "Invalid operands for Pop XRF Result." (len 36, isa_emitter_base.h:3239)` | CONFIRMED |
 
-The proto present-mask `[proto+0x10]` bits are: bit0 (`0x1`) = index/`+0x18`, bit1 (`0x2`) = `+0x1c`, bit2 (`0x4`) = `+0x20`, bit3 (`0x8`) = `+0x24`. `WriteAll` is the full 3-lane commit (two vregs + one VM-dest); the `Partial*` variants are the operand-presence-determined subsets. Each result oneof submessage is lazily `DefaultConstruct`ed into the `SparseCoreTecVectorResult` union (`WriteAll` `0x1fb7be80`, `Partial0..4` `0x1fb7bec0`..`0x1fb7bfc0` for glc) when the `[proto+0x50]` tag does not already match.
+The proto present-mask `[proto+0x10]` bits are: bit0 (`0x1`) = index/`+0x18`, bit1 (`0x2`) = `+0x1c`, bit2 (`0x4`) = `+0x20`, bit3 (`0x8`) = `+0x24`. `WriteAll` is the full 3-lane commit (two vregs + one VM-dest); the `Partial*` variants are the operand-presence-determined subsets. Each result oneof submessage is lazily `DefaultConstruct`ed into the `SparseCoreTecVectorResult` union when the `[proto+0x50]` tag does not already match.
 
 > **GOTCHA — the partial-write "index" is the write-group, not a lane index.** A reimplementer who reads `index` as "which result lane" mis-models PopXrf: the lane subset comes from operand presence, and the index is the XRF partition (write-group 0 or 1). The op name (`WriteAll`/`Partial0..4`) is derived from the *presence pattern*, never from `index`. Treat `index` and the variant as two orthogonal selectors.
 
@@ -274,7 +276,7 @@ Layer 1 (dispatch) selects the op leaf and is the [VectorExtended](vectorextende
 
 | Symbol | Address | Role | Confidence |
 |---|---|---|---|
-| `xla::ghostlite::GhostliteProtoUtils::GetVexSourcePortEncoding` | gfc `0x1c5ee280` | `VregReadPort`→`VexSourcePortEncoding`; identity `[0,7]`, reject 8/9 | CONFIRMED |
+| `xla::ghostlite::GhostliteProtoUtils::GetVexSourcePortEncoding` | glc `0x1c5ee280` | `VregReadPort`→`VexSourcePortEncoding`; identity `[0,7]`, reject 8/9 | CONFIRMED |
 | `xla::viperfish::ViperfishProtoUtils::GetVexSourcePortEncoding` | vfc `0x1c5d2e80` | same switch; "MISC_AUX not supported on VFC" | CONFIRMED |
 | `…isa_emitter::FindAndEmitToUnusedPort<…SparsecoreVregReadPort,…VectorExtended_MinScanU32>` | glc `0x13a4b840` | 7-port greedy-first-free allocator (representative instance) | CONFIRMED |
 | `…isa_emitter::utils::FindAndEmitToUnusedPort<…>` | gfc `0x13ab2aa0` | gen-identical allocator (structural twin) | CONFIRMED |
@@ -283,8 +285,9 @@ Layer 1 (dispatch) selects the op leaf and is the [VectorExtended](vectorextende
 | `EncodeSparseCoreTecVectorExtendedAddScanF32` | `0x1eb32380` | sub-op `0x05`; V0..V6 selector bit anchors | CONFIRMED |
 | `EncodeSparseCoreTecVectorExtendedMaxScanF32` | `0x1eb32a80` | sub-op `0x07`; same port bits (op-invariant proof) | CONFIRMED |
 | `BitCopy(dst,dst_bit,src,src_bit,nbits)` | `0x1fa0a900` | the per-field bit-pack primitive | CONFIRMED |
-| `…isa_emitter::EmitXrfResultOp<…PopXrfWriteAll,…Partial0..4,…VectorResult>` | gfc/glc `0x13a14180` | PopXrf result commit; index + presence selection | CONFIRMED |
-| `EmitXrfResultOp<…>` (vfc) | vfc `0x139a8240` | vfc PopXrf instance | CONFIRMED |
+| `…isa_emitter::EmitXrfResultOp<…PopXrfWriteAll,…Partial0..4,…VectorResult>` | glc `0x13a14180` | PopXrf result commit (Ghostlite); index + presence selection | CONFIRMED |
+| `EmitXrfResultOp<…>` (gfc) | gfc `0x13ab8c60` | 6acc60406 PopXrf instance (structural twin) | CONFIRMED |
+| `EmitXrfResultOp<…>` (vfc) | vfc `0x139a8240` | Viperfish PopXrf instance | CONFIRMED |
 | `…isa_emitter::isVoidOp` | `0x13a659a0` | per-operand void test driving the variant select | CONFIRMED |
 | `…isa_emitter::GetVregno` | `0x13a659c0` | reg band `[0xd0,0x10f]` → vregno `id−0xd0` | CONFIRMED |
 | `…isa_emitter::GetVectorMask` | `0x13a33320` | reg band `[0x5f,0x7e]` → mask `id−0x5f` | CONFIRMED |
@@ -307,10 +310,10 @@ Layer 1 (dispatch) selects the op leaf and is the [VectorExtended](vectorextende
 
 | Name | Relationship |
 |---|---|
-| `GetVexSourcePortEncoding` (`0x1c5ee280` gfc / `0x1c5d2e80` vfc) | the source-port resolver; `VregReadPort`→the 8 `VexSourcePortEncoding` values |
+| `GetVexSourcePortEncoding` (`0x1c5ee280` glc / `0x1c5d2e80` vfc) | the source-port resolver; `VregReadPort`→the 8 `VexSourcePortEncoding` values |
 | `FindAndEmitToUnusedPort` (`0x13a4b840` glc / `0x13ab2aa0` gfc) | the 7-port greedy-first-free physical allocator; gen-independent body |
 | `SparseCoreTecVectorExtendedEncoder` (`0x1eb30ee0`) | the bit-packing layer mapping proto port slots → scattered bundle selector bits |
-| `EmitXrfResultOp` (`0x13a14180` gfc/glc) | the PopXrf result-commit; index = XRF write-group, presence = lane subset |
+| `EmitXrfResultOp` (`0x13a14180` glc / `0x13ab8c60` gfc / `0x139a8240` vfc) | the PopXrf result-commit; index = XRF write-group, presence = lane subset |
 | `SparseCoreTecVectorResult` (oneof tags 7..0xc) | the union the PopXrf variants are constructed into |
 
 ## Cross-References
