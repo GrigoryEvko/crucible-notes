@@ -47,7 +47,7 @@ tpu-dialect SparseCore module (post region→sequencer outlining)
    ▼  RunPasses @0x13202780  — TWELVE single-pass PassManagers, in order:
    │
    1  createConvertIntegerMemrefsPass        addPass   int-memref legalization
-   2  createInferMemRefLayoutPass            addPass   tile/layout inference (X16/X8/X4 flags)
+   2  createInferMemRefLayoutPass            nest      tile/layout inference (X16/X8/X4 flags) (per-func)
    3  createCanonicalizerPass                addPass   generic greedy canonicalization
    4  createCanonicalizeOperationsPass       nest      tpu op canonicalization      (per-func)
    5  createCanonicalizeMemorySpacePass      nest      memory-space canonicalization (per-func)
@@ -70,7 +70,7 @@ The factory addresses, namespaces, and attach mode below are read directly from 
 | # | Factory (VMA) | Namespace | Attach | `mlir::Pass` subclass / role |
 |---|---|---|---|---|
 | 1 | `createConvertIntegerMemrefsPass` @ `0x132bca60` | `mlir::tpu` | `addPass` | `ConvertIntegerMemrefsPass` — integer-memref legalization |
-| 2 | `createInferMemRefLayoutPass` @ `0x132c0f00` | `mlir::tpu` | `addPass` | `InferMemRefLayoutPass` — tile/layout inference; opts = `(int, Span<long const> tiling, TpuTilingFlags)` built from the X16/X8/X4 layout flags |
+| 2 | `createInferMemRefLayoutPass` @ `0x132c0f00` | `mlir::tpu` | `nest` | `InferMemRefLayoutPass` — tile/layout inference; opts = `(int, Span<long const> tiling, TpuTilingFlags)` built from the X16/X8/X4 layout flags |
 | 3 | `createCanonicalizerPass` @ `0x1c941920` | `mlir` (generic) | `addPass` | `Canonicalizer` — generic greedy canonicalization |
 | 4 | `createCanonicalizeOperationsPass` @ `0x132bb260` | `mlir::tpu` | `nest` | `CanonicalizeOperationsPass` — `tpu` op canonicalization |
 | 5 | `createCanonicalizeMemorySpacePass` @ `0x132a2280` | `mlir::tpu` | `nest` | `CanonicalizeMemorySpacePass` — memory-space canonicalization |
@@ -97,7 +97,7 @@ jellyfish::RunPass(pm, module, dump_prefix, ...)  // 0x14514d60 — run this one
 
 Three of the twelve carry a non-trivial options struct, and `RunPasses` materializes those options *between* passes by reading the surrounding configuration:
 
-- **Pass 2 (`InferMemRefLayout`)** — the `Span<long const> tiling` and `TpuTilingFlags` are built from `Target::ShouldEnableLarge2ndMinorLayoutForX16` / `X8` / `X4` (`0x1d6b6920` / `0x1d6b6960` / `0x1d6b6940`); the layout flags differ per generation and per element width, so this option block is the per-gen seam in the pipeline.
+- **Pass 2 (`InferMemRefLayout`)** — the `Span<long const> tiling` and `TpuTilingFlags` are built from `Target::ShouldEnableLarge2ndMinorLayoutForX16` / `X8` / `X4` (`0x1d6b6920` / `0x1d6b6860` / `0x1d6b6840`); the layout flags differ per generation and per element width, so this option block is the per-gen seam in the pipeline.
 - **Passes 7 and 9** — `InferVectorLayoutPassOptions` / `ApplyVectorLayoutPassOptions` are filled from the `SparseCoreConfig` defaults (`SparseCoreConfig_globals_` @ `0x223a99c8`) and the HLO `BackendConfig` (`0xf58e6c0`).
 - **Pass 11 (`LogicalToPhysicalDeviceId`)** — its `optional<DeviceAssignment>` argument is sourced from `HloModuleConfig::static_device_assignment()` (`0x10fb7f60`); the `ChipTopology` and the trailing `bool` come from the emitter's target. See [§Device-Id Remap](#device-id-remap-pass-11).
 
@@ -164,7 +164,7 @@ The emitter reads the HLO `BackendConfig` → `BarrierConfig` (defaulting to `Ba
 
 The decompiled body confirms this exactly: `v11 == 1` calls `EmitGlobalBarrier`, `v11 == 3` calls `EmitCustomBarrierFromConfig`, and the `else` arm `RetCheckFail`s with the message `"backend_config.barrier_config().barrier_type() == jellyfish::BarrierType::CUSTOM"`.
 
-> **CORRECTION — MEGACORE is not a barrier kind.** `BarrierType::MEGACORE(4)` reaching `EmitScsBarrier` is a hard error (`RetCheck`). The enum value is a *producer-side annotation*, not something the SC kernel emitter consumes. The actual megacore behaviour is a topology-gated inner split applied inside **both** the `GLOBAL` and `CUSTOM` arms whenever `LogicalDevicesPerChip(SC) == 2`. A reimplementer must not model "megacore barrier" as a distinct lowering branch.
+> **CORRECTION — MEGACORE is not a barrier kind.** `BarrierType::MEGACORE(4)` reaching `EmitScsBarrier` is a hard error (`RetCheck`). The enum value is a *producer-side annotation*, not something the SC kernel emitter consumes. The actual megacore behaviour is a topology-gated partner cross-core sync (`ToPartnerGlobalCoreId` + partner `SyncAddOp`) shared by **both** the `GLOBAL` and `CUSTOM` arms whenever `LogicalDevicesPerChip(SC) == 2`; the explicit even/odd `Predicated`/`Not` leader/partner predication is materialized in `EmitGlobalBarrier` (the `GLOBAL` arm), while the `CUSTOM` start emitter carries the partner-add without the `Predicated` wrapping. A reimplementer must not model "megacore barrier" as a distinct lowering branch.
 
 ### Megacore split: `EmitGlobalBarrier` (`0x13352820`)
 
@@ -231,9 +231,9 @@ core 0 ($_0 leader):                       core 1 ($_1 partner):
 
 The partner of core `0` is `0 XOR 1 = 1`; the partner of core `1` is `1 XOR 1 = 0`. Each core increments the *other* core's sync flag (the cross-core `SyncAdd` via the `SubsliceToFullSlice` addressing into the partner's sflag window) and waits on its own (the `kCoresOnChip`-tagged `SyncWait`), so the pair rendezvous before either proceeds. This is the structure that is entirely absent on a single-core part — there the partner adds and the even/odd predication are suppressed and the barrier degenerates to a purely local `SyncAdd`/`SyncWait`.
 
-### The CUSTOM arm runs the same split
+### The CUSTOM arm shares the partner cross-core sync
 
-`EmitCustomBarrierStart` (`0x13352fc0`, reached from the `CUSTOM(3)` dispatch) calls `ToPartnerGlobalCoreId`, `GetSyncFlagForBarrierId` (the colored barrier id → SFLAG number), the megacore-partner `SyncAddOp` variant, and `Predicated` — the *same* even↔odd partner cross-core sync as the `GLOBAL` arm. The only difference between `GLOBAL` and `CUSTOM` is the SFLAG-number source (reserved id vs colored id). The megacore split is shared by both.
+`EmitCustomBarrierStart` (`0x13352fc0`, reached from the `CUSTOM(3)` dispatch via the color-id closure thunk `0x13355420`) calls `ToPartnerGlobalCoreId`, `GetSyncFlagForBarrierId` (the colored barrier id → SFLAG number), and the megacore-partner `SyncAddOp` variant (`0x146120c0`, twice — once for the local side, once cross-core via `SubsliceToFullSlice` `0x133e79a0`) — the same partner cross-core sync the `GLOBAL` arm uses. The cross-core SFLAG addressing source is the only first-order difference between `GLOBAL` and `CUSTOM` (reserved id vs colored id). Note that `EmitCustomBarrierStart` itself does **not** call `Predicated`/`Not`: unlike `EmitGlobalBarrier`, the even/odd predication is not materialized inside the CUSTOM start emitter (it carries the partner-add machinery but not the explicit leader/partner predicate split). What is shared between the two arms is the `ToPartnerGlobalCoreId` partner core computation and the partner `SyncAddOp`, not the `Predicated` wrapping.
 
 > **GOTCHA — single-core parts have no partner path.** On a part where `LogicalDevicesPerChip(SC) == 1`, `ToPartnerGlobalCoreId` `RetCheck`s, so the partner-add and the even/odd predication never fire — only the local `SyncAdd` / `SyncWait` remain. A reimplementer must gate the entire partner machinery on `LDPC(SC) == 2`, not emit it unconditionally.
 
@@ -257,7 +257,8 @@ The [TensorCore scheduling stack](../sched/overview.md) is three stages over two
 | `GetPhysicalCoreID` (SC) = `i32(CoreIndex * stride + TileId)`; (TC) = `llo::CoreIndexOp` | `0x132d8de0` op-create chain decompile lines 177–183 | CONFIRMED |
 | `kPassName` / `kArgumentName` strings | `.rodata` reads; decompile string matches | CONFIRMED |
 | `EmitScsBarrier` dispatches `GLOBAL(1)` / `CUSTOM(3)` only; `0/2/4` (incl. MEGACORE) `RetCheck` | `0x13352500` decompile: `v11==1`/`==3`/`else RetCheck` line `0x5f` | CONFIRMED |
-| Megacore even/odd split is an inner path inside `EmitGlobalBarrier` / `EmitCustomBarrierStart`, gated by `LDPC(SC)==2` | `0x13352820` predicate + arms; `0x13352fc0` shares `ToPartnerGlobalCoreId` | CONFIRMED |
+| Megacore even/odd `Predicated` split is an inner path inside `EmitGlobalBarrier`, gated by `LDPC(SC)==2` | `0x13352820` `Predicated`/`Not` predicate (lines 165/171/181) + arms `0x13355b60`/`0x13355f80` | CONFIRMED |
+| `EmitCustomBarrierStart` shares the partner cross-core `SyncAdd` (`ToPartnerGlobalCoreId` + `SubsliceToFullSlice`) but does **not** itself call `Predicated`/`Not` | `0x13352fc0` calls `ToPartnerGlobalCoreId` (line 112), `SyncAddOp::create` (lines 109/135); no `Predicated`/`Not` in `0x13352fc0` or its closures | CONFIRMED |
 | Partner core = current core id `XOR 1`; requires `LDPC(SC)==2` (`RetCheck` otherwise) | `ToPartnerGlobalCoreId` @ `0x133e66e0` decompile lines 35/57/58/60/62/69 | CONFIRMED |
 | Each arm: 1 `SyncWaitOp` (tagged `0x103`=kCoresOnChip) + 1 local `SyncAddOp` + 1 partner `SyncAddOp` | arm thunks `0x13355b60` / `0x13355f80`; `v46 = 259` tag | CONFIRMED |
 | The `$_0` (leader) partner add is wrapped in an `scf::ForOp` over `LDPC(SC)`; `$_1` has no `ForOp` | `ForOp::create` count = 1 in `$_0`, 0 in `$_1` | CONFIRMED |
