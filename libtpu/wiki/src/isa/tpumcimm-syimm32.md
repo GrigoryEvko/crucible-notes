@@ -26,7 +26,7 @@ For reimplementation, the contract is:
 | **Encoding-id field** | `+0x29` `uchar` (`OpEnc::OpEncodings`); `SyImm32 == 0x2c` |
 | **`SyImm32` encoder** | `getFirstSyImm32Encoding` @ `0x13c63a00` (`return 0x2c`) |
 | **Packer entry** | `ResourceSolver::canAddImmInternal` @ `0x13bebce0` → `getPackedImm` @ `0x13bec4e0` / `getFullImmediate` @ `0x13be79a0` |
-| **`OperandType` table** | `ImmediateCompatibilityTable` @ `0xaed36d0` (17 × 12 B); `OperandType 4 → OpEnc class 5` |
+| **`OperandType` table** | `ImmediateCompatibilityTable` @ `0xaed36d0` (17 × 12 B, `{key=OperandType−13, mask, OpEnc class}`); key `4` (`OperandType 17`) → OpEnc class `5`, mask `0x0f` |
 | **Overlay fixup** | `Overlay::PatchOverlay` @ `0x1406a940` (+ per-patch lambda `$_2` @ `0x1406c3e0`) |
 | **Slot positions** | see [Immediate Slot](slot-immediate.md) (16-bit pre-V5, 20-bit V5+) |
 | **Confidence** | CONFIRMED (byte-anchored) unless a row says otherwise |
@@ -125,7 +125,7 @@ The encoding-id stored at `+0x29` is an `OpEnc::OpEncodings` value returned by a
 char getFirstSyZeroExtEncoding(bool) { return 0x20; }   // 0x13c63940
 char getFirstSyOneExtEncoding (bool) { return 0x24; }   // 0x13c63980
 char getFirstSyShlEncoding    (bool) { return 0x28; }   // 0x13c639c0
-char getFirstSyImm32Encoding  (bool) { return 0x2c; }   // 0x13c63a00  ★ SyImm32
+char getFirstSyImm32Encoding  (bool) { return 0x2c; }   // 0x13c63a00  <- SyImm32
 ```
 
 | class | fn @ addr | value | note | Confidence |
@@ -147,18 +147,20 @@ A `TPUMCImmExpr` is the *carrier*; the actual placement into a bundle immediate 
 
 ```c
 // ResourceSolver::canAddImmInternal  @ 0x13bebce0
-opnd_type = MCInstrDesc.operand[i].byte[+0x23];          // TPUOp::OperandType
-rec       = getOperandTypeRecord(opnd_type);             // 0x13c63b80 (binary search)
+opnd_type = MCInstrDesc.operand[opno].optype_byte;       // TPUOp::OperandType (record byte +3)
+rec       = getOperandTypeRecord(opnd_type);             // 0x13c63b80: key = opnd_type-13, binary search
 //          getSpecialOpEncoding(MCInstrDesc&, opno)     // 0x13c63a80
-opclass   = rec.openc_class;                             // ImmediateCompatibilityTable col w
+opclass   = rec.openc_class;                             // ImmediateCompatibilityTable col 3 (OpEnc class)
 // then dispatch to getPackedImm (auto-select) or getFullImmediate (class forced)
 ```
 
-1. **`canAddImmInternal` (`0x13bebce0`)** reads the operand's `TPUOp::OperandType` from the per-opcode `MCInstrDesc` operand record (byte `+0x23`) and maps it through the **`ImmediateCompatibilityTable`** (`0xaed36d0`, 17 entries × 12 B, `{OperandType u32, compat_mask u32, OpEnc class u32}`) via `getOperandTypeRecord` (`0x13c63b80`). `OperandType 4 → OpEnc class 5` (the scalar integer-immediate chooser) with compat mask `0x0f` (all four of `ZeroExt`/`OneExt`/`Shl`/`Imm32` permitted).
+1. **`canAddImmInternal` (`0x13bebce0`)** reads the operand's `TPUOp::OperandType` from the per-opcode `MCInstrDesc` operand record (the operand-type byte) and maps it through the **`ImmediateCompatibilityTable`** (`0xaed36d0`, 17 entries × 12 B, `{key u32, compat_mask u32, OpEnc class u32}`) via `getOperandTypeRecord` (`0x13c63b80`). `getOperandTypeRecord` first subtracts 13 from the `OperandType`, then binary-searches on that key, so the table's `key` column is `OperandType − 13`. The scalar-immediate row is key `4` (i.e. raw `OperandType 17`): `→ OpEnc class 5` (the scalar integer-immediate chooser) with compat mask `0x0f`.
+
+   > **CORRECTION (H4-IMM-3) —** an earlier reading reported this as "`OperandType 4 → OpEnc class 5`". The `4` is the table *key*, and `getOperandTypeRecord`/`getSpecialOpEncoding` both compute `key = OperandType − 13` before the search (byte-anchored: `v1 = (uchar)(a1 - 13)` at `0x13c63b80`). The raw `OperandType` for the scalar-imm row is therefore `17`, not `4`. The `0x0f` mask is the row's compatibility bitmask; mapping its four set bits onto the `ZeroExt`/`OneExt`/`Shl`/`Imm32` classes is plausible but UNVERIFIED (the bits are not the encoding-ids `0x20/0x24/0x28/0x2c`).
 2. **`getPackedImm` (`0x13bec4e0`)** auto-selects the most compact encoding: a jump table on the `OpEnc` class routes class `5` (scalar) / `4` (vector) to the integer chooser, which tests how many high bits of the value are non-zero (the per-encoding width is a subtarget vtable slot) and picks `ZeroExt`/`OneExt`/`Shl`, falling through to **`Imm32 = 0x2c` for a value that needs all 32 bits**. The chosen id is written to `ImmediateEncoding+0x5`.
 3. **`getFullImmediate` (`0x13be79a0`)** is the forced-class path: it asserts the class is in `{4,5,6}`, forces `VyImm32 0x1a` (class 4) or **`SyImm32 0x2c`** (otherwise), then allocates the bundle immediate slot(s) from the per-program slot pool, splitting a value wider than one slot into a low and a high half across two slots.
 
-The slot *positions* a `SyImm32` lands at — the 20-bit V5+ ladder (`TC 430/410/…`, `SCS 67/47/27/7`) and the 16-bit pre-V5 pool — are documented in full on [Immediate Slot](slot-immediate.md#how-a-value-is-chosen-and-placed--the-resourcesolver-walk), which owns the `ResourceSolver` pool model. The handoff is: **`OperandType 4` → `OpEnc` class 5 → encoding-id `0x2c` → a free immediate slot → the per-gen `<gen>ImmediatesEncoder::Encode` bit position.**
+The slot *positions* a `SyImm32` lands at — the 20-bit V5+ ladder (`TC 430/410/…`, `SCS 67/47/27/7`) and the 16-bit pre-V5 pool — are documented in full on [Immediate Slot](slot-immediate.md#how-a-value-is-chosen-and-placed--the-resourcesolver-walk), which owns the `ResourceSolver` pool model. The handoff is: **`OperandType 17` (table key `4`) → `OpEnc` class 5 → encoding-id `0x2c` → a free immediate slot → the per-gen `<gen>ImmediatesEncoder::Encode` bit position.**
 
 > **GOTCHA —** the SparseCore tile-overlay routine (`overlayer::OverlayProgram` @ `0x1395bba0`) *bypasses* the `ResourceSolver` and hand-builds a `SyImm32`: it `movslq`s the tile-overlay sflag, `MCConstantExpr::create`s it, calls `getFirstSyImm32Encoding()` (= `0x2c`), and `TPUMCImmExpr::create(kind=5, expr, h1=0, h2=0x2c, ctx)`, then appends it as an `MCInst` operand-kind-5 in `SLOT_S1`. A reimplementation must support both routes to the same `0x2c` encoding-id: the auto-allocated MachineInstr path and the directly-constructed MCInst path. See [Tile Overlay](tile-overlay.md).
 
@@ -224,14 +226,14 @@ if (patch.overlay_number >= ctx.overlays.size())             // overlay.cc:4740
 // kind 0 (kAddress): recompute the overlay-relative word offset
 word = address_util::ConvertOffsetByteToWord(mem_space,
           program[overlay].entry(+248) + patch.offset, target);
-unit = target.SharedMemoryToImemDmaUnitWords();              // vtable[+360]
+unit = target.SharedMemoryToImemDmaUnitWords();              // vtable[+360] = vtable[0x168]
 if (word % unit != 0)                                        // overlay.cc:4765
     LogFatal("value % target_.SharedMemoryToImemDmaUnitWords() == 0");
 bundle_setter(patch.operand_index, word / unit);             // [setter +264] writes the operand
 // kind 1 (kSize): assert pack.GetEntryOverlay() == patch.overlay_number, then patch size
 ```
 
-For an address patch (`kind 0`), the lambda recomputes `ConvertOffsetByteToWord`, asserts the result is a whole multiple of `SharedMemoryToImemDmaUnitWords()` (the DMA granule, a `Target` vtable slot at `+0x360`), divides to express the offset in DMA units, and writes it into the bundle operand through the setter at vtable `+264`. For a size patch (`kind 1 / kSize`) it asserts `pack.GetEntryOverlay() == patch.overlay_number` (else *"Attempt to patch the size of packed non-entry HLO function"*, overlay.cc:4757) before writing. After all bundles are patched, `PatchOverlay` sets `ctx[+136] = 1` (`trampolines_patched_`) and, if a continuation delay slot is needed, runs the `IsaEmitterFactory::Create` continuation-tail path (the *"No place for the delay slot"* guard at overlay.cc:4794).
+For an address patch (`kind 0`), the lambda recomputes `ConvertOffsetByteToWord`, asserts the result is a whole multiple of `SharedMemoryToImemDmaUnitWords()` (the DMA granule, a `Target` vtable slot at `+360` = `0x168`), divides to express the offset in DMA units, and writes it into the bundle operand through the setter at vtable `+264` (`0x108`). For a size patch (`kind 1 / kSize`) it asserts `pack.GetEntryOverlay() == patch.overlay_number` (else *"Attempt to patch the size of packed non-entry HLO function"*, overlay.cc:4757) before writing. After all bundles are patched, `PatchOverlay` sets `ctx[+136] = 1` (`trampolines_patched_`) and, if a continuation delay slot is needed, runs the `IsaEmitterFactory::Create` continuation-tail path (the *"No place for the delay slot"* guard at overlay.cc:4794).
 
 > **NOTE —** PatchOverlay only *rewrites* address operands; it does not change their encoding-id. A patched address operand that was a `SyImm32` (`0x2c`) stays a `SyImm32`; only its value is recomputed to the overlay-relative DMA-unit word offset. The overlay-fetch DMA descriptor that consumes these segments — and its overlay-reserved sflag, itself a `SyImm32` immediate — is documented on [Immediate Slot §EncodeOverlaysForDma](slot-immediate.md#encodeoverlaysforddmas-use-of-an-immediate-slot).
 
