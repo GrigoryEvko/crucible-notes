@@ -6,7 +6,7 @@
 
 The SCS (SparseCore Scalar) sequencer has three scalar slots per 32-byte bundle — `ScsScalarMisc`, `ScalarAlu1`, `ScalarAlu0` — each a 27-bit field carrying a 6-bit primary opcode at slot-relative bit `+16`, landing at absolute bundle bits 127, 154, and 181. This page is the opcode *roster* companion to the [SCS Engine](scs-engine.md) page, which owns the bundle byte layout and the 27-bit slot template; here we enumerate every operation each slot can encode, with its integer opcode value and the encoding form that carries it. The closest familiar analog is an ISA opcode table recovered not from a manual but from the decoder's match predicates: there is no opcode-name string table to read, so each value is reconstructed from the per-op compare immediate.
 
-The roster is recoverable because libtpu emits **one C++ type per opcode per generation** — `asic_sw::deepsea::<pxc>::<gen>::isa::SparseCore<Slot><OpName>Opcode` — and each type carries a `Matches() const` predicate that masks the decoded opcode field out of the instruction struct and compares it against that op's own signature. The `cmp`/`movabs` immediate inside `Matches()` *is* the opcode value; the slot `Encoder::Encode` writes the same value back into the bundle via `BitCopy(dst, dst_bitoff, src, src_bitoff, nbits)` at the corresponding absolute bit. Because the decode predicate and the encode write agree, the `Matches()` immediate is the authoritative encoding. Every value below was cross-checked against a `Matches()` predicate in the decompiled gfc (Trillium) namespace, with vfc (Viperfish) sampled for gen-invariance.
+The roster is recoverable because libtpu emits **one C++ type per opcode per generation** — `asic_sw::deepsea::<pxc>::<gen>::isa::SparseCore<Slot><OpName>Opcode` — and each type carries a `Matches() const` predicate that masks the decoded opcode field out of the instruction struct and compares it against that op's own signature. The `cmp`/`movabs` immediate inside `Matches()` *is* the opcode value; the slot `Encoder::Encode` writes the same value back into the bundle via `BitCopy(dst, dst_bitoff, src, src_bitoff, nbits)` at the corresponding absolute bit. Because the decode predicate and the encode write agree, the `Matches()` immediate is the authoritative encoding. Every value below was cross-checked against a `Matches()` predicate in the decompiled gfc (6acc60406) namespace, with vfc (Viperfish) sampled for gen-invariance.
 
 The opcode space is **two-level**. A 6-bit primary field selects either a concrete op (`IntegerAdd=0x0a`, `BitwiseAnd=0x0e`) or an op-*class*. When it names a class, the concrete op lives in a wider escape field that overlays the slot: control ops in an 11-bit field, register reads in a 17-bit field (`ReadRegister* = 0x280..0x28d`), config sets in a 16-bit field (`Set* = 0x4001..0x4005`), divide-push in a `0x16xxxx` field. The two ALU lanes share one opcode namespace and differ only in bundle bit position and a handful of lane-exclusive ops; `ScsScalarMisc` carries the sync-flag / atomic / barrier family (encoded as a 6-bit base + a 5-bit sub-opcode mode) plus an integer-ALU subset, with no FP and no branch. This page documents the three predicate shapes, the per-slot rosters with their integer values, the four class escapes, and the per-generation deltas.
 
@@ -252,7 +252,7 @@ The Atomic base `0x08` sub-field is a small product: `{Tile, Remote} × {Write, 
 
 The scalar ISA is gen-invariant for shared ops (vfc `IntegerAdd` decodes `==0x0a`, byte-identical to gfc); the deltas are small and concentrated in halt/yield and the rotating-predicate ring. The presence claims below are confirmed by the existence (or absence) of the corresponding `Matches()` type in each gen namespace: `vfc SparseCoreScalarAlu0HaltYieldOpcode` exists, the gfc one does not; `gfc SparseCoreScalarAlu0SetRotatingPredicateRegisterOpcode` exists, the vfc one does not.
 
-| Aspect | Viperfish (vfc) | Ghostlite (glc) | Trillium (gfc) |
+| Aspect | Viperfish (vfc) | Ghostlite (glc) | 6acc60406 (gfc) |
 |---|---|---|---|
 | Primary opcode width | 6-bit | 6-bit | 6-bit |
 | Opcode bundle bits | 127 / 154 / 181 | identical | identical |
@@ -263,13 +263,13 @@ The scalar ISA is gen-invariant for shared ops (vfc `IntegerAdd` decodes `==0x0a
 | VF-only ops | `HaltYield`, `HaltYieldConditional`, `ReadRegisterYieldRequest`, `ScalarFenceScmf` | — | — |
 | GF-only ops | — | — | `BranchRelativeRotatingPreg`, `LogicalShiftLeftOnesXByYPlaces`, `SetRotatingPredicateRegister`, `MoveCbreg`, `ScalarStoreXToSmemSumDestAndY` |
 
-> **NOTE — Trillium simplified the sync model.** The VF/GL `ScsScalarMisc` carries a dual-channel sync family (`Set{Both,Other}Sync*`, `Add{Both,Other}SyncFlag`) and a `Yieldable*` sync set; the gfc roster drops both (down to 82 forms) and adds the single `SetPOrTState`. The interpretation is a non-yielding tile scheduler — fewer sync primitives, deterministic latency, driven by the rotating-predicate ring instead. A reimplementer targeting Trillium must not emit the `Yieldable*` or `*Both*`/`*Other*` sync ops or the VF halt/yield ops; they have no encoder type in gfc.
+> **NOTE — 6acc60406 simplified the sync model.** The VF/GL `ScsScalarMisc` carries a dual-channel sync family (`Set{Both,Other}Sync*`, `Add{Both,Other}SyncFlag`) and a `Yieldable*` sync set; the gfc roster drops both (down to 82 forms) and adds the single `SetPOrTState`. The interpretation is a non-yielding tile scheduler — fewer sync primitives, deterministic latency, driven by the rotating-predicate ring instead. A reimplementer targeting 6acc60406 must not emit the `Yieldable*` or `*Both*`/`*Other*` sync ops or the VF halt/yield ops; they have no encoder type in gfc.
 
 ---
 
 ## Function Map
 
-All addresses are gfc (Trillium) unless noted; the `Matches()` immediate is the authoritative opcode value.
+All addresses are gfc (6acc60406) unless noted; the `Matches()` immediate is the authoritative opcode value.
 
 | Symbol | Address | Opcode evidence | Confidence |
 |---|---|---|---|
