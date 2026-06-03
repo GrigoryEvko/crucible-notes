@@ -1,6 +1,6 @@
 # Static-Init Surface
 
-> *All addresses on this page apply to `libtpu.so` version 0.103 from the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`). Other builds will differ. This is the binary-forensics census of `.init_array`; the runtime walk that executes these slots lives on the [lifecycle](../lifecycle/do-init-do-fini.md) pages.*
+> *All addresses on this page apply to `libtpu.so` (build-id `89edbbe81c5b328a958fe628a9f2207d`) from the `libtpu-0.0.40-cp314` wheel. Other builds will differ. This is the binary-forensics census of `.init_array`; the runtime walk that executes these slots lives on the [lifecycle](../lifecycle/do-init-do-fini.md) pages.*
 
 ## Abstract
 
@@ -26,7 +26,7 @@ For a reimplementer building a comparable plugin, the contract this page establi
 | **`DT_FINI` thunk** | `0xe63553c` (`.fini`, 0x09 bytes) |
 | **Slot population mechanism** | 2900 × `R_X86_64_RELATIVE` (addend = constructor VA) |
 | **Named TU initializers** | 1885 `_GLOBAL__sub_I_*` + 759 `_GLOBAL__I_*` = 2644 |
-| **Constructor-code span** | `0x21211240` … `0x21380980` (~1.7 MB) |
+| **Constructor-code span** | `.text.startup` `0x21217490` … `0x213818e4` = `0x16a454` (1,483,860 B / 1.41 MiB); named ctors run to `0x21380980`, the 22 CRT/IFUNC ctors sit below at `0x21211240` and lower |
 | **CRT flavor** | LLVM/clang + lld — no GCC `frame_dummy`/`__do_global_ctors_aux` |
 
 ---
@@ -60,7 +60,7 @@ The asymmetry is the first thing to notice: **2900 constructors, but only 2 fina
 
 A naïve `objdump -s -j .init_array` shows all-zeros — every 8-byte slot reads `00000000 00000000` in the file. The constructor addresses are **not stored as literal pointers**; each slot is the target of a base-relative relocation that the dynamic linker applies at load time.
 
-> **GOTCHA —** do not read the `.init_array` bytes off disk and expect function pointers; you will get 2900 zeros. The real constructor addresses live in the relocation *addends*. There are exactly **2900 `R_X86_64_RELATIVE` relocations** whose `r_offset` falls inside `[0x215f26f0, 0x215f8190)` — one per slot — and the addend of each is the load-relative VA of the constructor. Slot 0 has addend `0x21211240`; the last in-range relocation has addend `0x21380980`. Any census that parses the section bytes instead of the relocation table will count 2900 null constructors.
+> **GOTCHA —** do not read the `.init_array` bytes off disk and expect function pointers; you will get 2900 zeros. The real constructor addresses live in the relocation *addends*. There are exactly **2900 `R_X86_64_RELATIVE` relocations** whose `r_offset` falls inside `[0x215f26f0, 0x215f8190)` — one per slot — and the addend of each is the load-relative VA of the constructor. Slot 0 (lowest `r_offset`) has addend `0x21211240` (`__cpu_indicator_init`); the highest addend *value* across all slots is `0x21380980` (it lands at slot 2, not the last slot — addends are not monotone in slot order). Any census that parses the section bytes instead of the relocation table will count 2900 null constructors.
 
 This is the expected encoding for a PIE/`-fPIC` shared object: position independence forces the loader, not the linker, to materialize absolute constructor addresses, and `R_X86_64_RELATIVE` (addend-carrying, symbol-less) is the cheapest form. The 2900 relocations are a non-trivial slice of the binary's total relative-relocation load.
 
@@ -102,7 +102,7 @@ clang emits two distinct shapes of TU initializer, and both appear here:
 
 ### The constructor-code span
 
-All 2644 named constructors, and the ~234 anonymous in-span ones, live in a single contiguous code region from `0x21211240` to `0x21380980` — roughly 1.7 MB of constructor body. clang/lld groups TU initializers together, which is why the `.init_array` slots (at `0x215f26f0`) point into one tight band rather than scattering across the 745 MB text. The 22 low addends (`< 0x21217490`) point *outside* this band, into earlier code — these are the CRT/IFUNC initializers that must run before any C++ object is constructed.
+All 2644 named constructors, and the ~234 anonymous in-span ones, live in the dedicated `.text.startup` section — a single contiguous code region `[0x21217490, 0x213818e4)`, size `0x16a454` = **1,483,860 bytes (1.41 MiB)**. The 2878 in-band addends run from the section base `0x21217490` up to the highest addend at `0x21380980` (which resolves to `_GLOBAL__I_000100`); the remaining bytes up to `0x213818e4` hold non-`.init_array` startup code such as `__cxx_global_array_dtor` thunks. clang/lld groups TU initializers into this section, which is why the `.init_array` slots (at `0x215f26f0`) point into one tight band rather than scattering across the 745 MB `.text`. The 22 low addends (`< 0x21217490`) point *outside* this band, into earlier code — these are the CRT/IFUNC initializers (`__cpu_indicator_init` at `0x21211240`, the upb registry constructor at `0x201e7360`, BoringSSL's power-on self-test, Rust's `ARGV_INIT_ARRAY` wrapper, `__do_init`, `setup_dl_debug_hook`) that must run before any C++ TU object is constructed.
 
 ---
 
@@ -112,11 +112,11 @@ The 2900 slots are not 2900 different *kinds* of work; they are thousands of ins
 
 | Category | TU keyword evidence | What the constructor does | Approx. TUs | Confidence |
 |---|---|---|---|---|
-| Op / kernel registration | `*_ops.cc` (157 TUs) | `REGISTER_OP` / `REGISTER_KERNEL` statics push op definitions into a global op registry | ≥157 | HIGH |
-| Factory / static registry | `*_factory.cc` (79), `*registr*` (45) | Self-registering factories install a `make_*` callback into a name→factory map (driver, codec, kernel-firmware, snap-analyzer, device-scanner) | ≥124 | HIGH |
+| Op / kernel registration | `*_ops.cc` (156 TUs) | `REGISTER_OP` / `REGISTER_KERNEL` statics push op definitions into a global op registry | ≥156 | HIGH |
+| Factory / static registry | `*factory*` (79), `*registr*` (26) | Self-registering factories install a `make_*` callback into a name→factory map (driver, codec, kernel-firmware, snap-analyzer, device-scanner) | ≥79 | HIGH |
 | Flag registration | `flags.cc` / `*flags*` (50) | `ABSL_FLAG`/gflags definitions register a flag descriptor and default into the global flag table | ≥50 | HIGH |
 | Metrics / counters | `metrics.cc` (8), `performance_counters.cc` (6), `*metric*` (17) | Construct metric/counter descriptor singletons and register them | ≥17 | HIGH |
-| Dialect / pass / HLO registration | `mlir_*`, `*_registration.cc`, `*hlo*`, `*pass*` (~21) | Register MLIR dialects/passes and HLO graph-optimization passes into pass-pipeline registries | ≥21 | HIGH |
+| Dialect / pass / HLO registration | `*_registration.cc` (22), plus `mlir_*`/`*hlo*`/`*pass*` siblings | Register MLIR dialects/passes and HLO graph-optimization passes into pass-pipeline registries | ≥22 | HIGH |
 | Codec / static-map registration | `codec_metadata_*` (ghostlite/jellyfish/pufferfish/viperfish), `trace_codec_factory.cc` (×6) | Build per-codec static descriptor maps and register codec factories keyed by ASIC generation | ≥10 | HIGH |
 | Proto / descriptor-pool | `*proto*`, `*descriptor*` (7) | Register generated message descriptors into the protobuf descriptor pool; reflection plugins | ≥7 | MEDIUM |
 | Meyers singletons / RTTI | pervasive (not filename-keyed) | Construct function-local-static and namespace-scope singletons; emit type-info for polymorphic types | — | MEDIUM |
@@ -127,7 +127,7 @@ The 2900 slots are not 2900 different *kinds* of work; they are thousands of ins
 
 Two structural facts drive the 2900 figure, and both matter to anyone estimating a comparable plugin's load cost:
 
-1. **Static self-registration is per-TU and per-symbol.** The op/kernel/flag/factory idioms each emit *one global object per registered entity*. A file with 40 `REGISTER_OP` macros produces 40 namespace-scope objects, all constructed in that file's single `_GLOBAL__sub_I_` — and there are 157 `*_ops.cc` TUs. The registries (op table, flag table, codec map, pass pipeline, descriptor pool) are therefore fully materialized before the plugin answers its first query.
+1. **Static self-registration is per-TU and per-symbol.** The op/kernel/flag/factory idioms each emit *one global object per registered entity*. A file with 40 `REGISTER_OP` macros produces 40 namespace-scope objects, all constructed in that file's single `_GLOBAL__sub_I_` — and there are 156 `*_ops.cc` TUs. The registries (op table, flag table, codec map, pass pipeline, descriptor pool) are therefore fully materialized before the plugin answers its first query.
 
 2. **libtpu statically links a very large tree.** The recurrence of common filenames (`metrics.cc` ×8, `flags.cc` ×6) is the fingerprint of many independent libraries — XLA, the MLIR/HLO compiler stack, the absl runtime, the per-generation `gxc`/`pxc`/`vxc` driver and profiler code — all folded into one `.so`. Each contributes its own TU initializers. The result is a constructor table an order of magnitude larger than a self-contained library would produce.
 
