@@ -4,7 +4,7 @@
 
 ## Abstract
 
-This page answers one question precisely, with binary evidence: **does the libtpu runtime perform HBM defragmentation by relocating live buffers, and how?** The answer is **yes** — and that is the non-obvious result, because the device allocator (`tpu::BestFitAllocator`, see [hbm-allocator.md](hbm-allocator.md)) is a classic non-moving boundary-tag allocator whose `Allocate`/`Deallocate` paths *only* coalesce adjacent free blocks. Live-buffer relocation lives in a single, separate, OOM-triggered method: **`tpu::BestFitAllocator::Compact`** (`0x1e81c360`, vtable slot `vt+0x98`).
+This page answers one question precisely, with binary evidence: **does the libtpu runtime perform HBM defragmentation by relocating live buffers, and how?** The answer is **yes** — and that is the non-obvious result, because the device allocator (`tpu::BestFitAllocator`, see [hbm-allocator.md](hbm-allocator.md)) is a classic non-moving boundary-tag allocator whose `Allocate`/`Deallocate` paths *only* coalesce adjacent free blocks. Live-buffer relocation lives in a single, separate, OOM-triggered method: **`tpu::BestFitAllocator::Compact`** (`0x1e81c360`, vtable slot `vt+0x90`).
 
 The clean way to state the architecture is a three-way split of "where does each buffer sit in HBM":
 
@@ -18,7 +18,7 @@ So the page is a present/absent inventory. **PRESENT:** a full live-buffer reloc
 |---|---|
 | **Compaction performed?** | **YES** — live movable buffers are relocated to consolidate free space |
 | **Trigger** | OOM only (allocation failure → retry); never periodic/background |
-| **Relocation engine** | `tpu::BestFitAllocator::Compact(flat_hash_set<long> pinned)` @ `0x1e81c360` (vt+0x98) |
+| **Relocation engine** | `tpu::BestFitAllocator::Compact(flat_hash_set<long> pinned)` @ `0x1e81c360` (vt+0x90) |
 | **Output** | `std::vector<tpu::TpuMemmoves::Memmove>` — a relocation *plan*; bytes moved by a later codegen step |
 | **Byte movement** | `TpuCompactionIsaEmitterCodegen::Generate` @ `0x1090ece0` (VMEM-staged DMA) → `EnqueueCompactionImpl` @ `0x1d12ed00` → `CompactionRunner` |
 | **Device driver entry** | `tpu::System::CompactMemory` @ `0x1d0b6000` (shrink program stacks → `EnqueueCompaction`) |
@@ -72,7 +72,7 @@ The headline inventory, each line byte-verified in the decompile (see [Evidence]
 
 ## The Relocation Method: `Compact`
 
-`BestFitAllocator::Compact` (`0x1e81c360`, vt+0x98) is the only method in the allocator that produces buffer relocations. Its signature (demangled from the binary symbol) is:
+`BestFitAllocator::Compact` (`0x1e81c360`, vt+0x90) is the only method in the allocator that produces buffer relocations. Its signature (demangled from the binary symbol) is:
 
 ```cpp
 // 0x1e81c360 — returns the relocation plan by value (NRVO into a1).
@@ -112,8 +112,8 @@ Compact(const flat_hash_set<int64_t>& pinned) {
         int64_t size = b.end - b.begin;
         int64_t cand_lo = top - size, cand_hi = top;  // candidate placement against the top
         if (occupied.IsDisjoint({cand_lo, cand_hi})) { // 0x1cc99740 — placement is free
-            moves.push_back(Memmove{ cand_lo / granule_,   // dst, src, size in GRANULE units
-                                     b.begin  / granule_,
+            moves.push_back(Memmove{ b.begin  / granule_,  // +0 src, +8 dst, +0x10 size (GRANULE units)
+                                     cand_lo  / granule_,
                                      size     / granule_ });
             kept.push_back({cand_lo, cand_hi, b.state});
             occupied.Add({cand_lo, cand_hi});
@@ -155,8 +155,8 @@ Compact(const flat_hash_set<int64_t>& pinned) {
 
 ```c
 struct tpu::TpuMemmoves::Memmove {     // 24 B, GRANULE units
-    int64_t dst;     // +0   destination offset / granule
-    int64_t src;     // +8   source offset / granule
+    int64_t src;     // +0   source offset / granule  (the block's current begin)
+    int64_t dst;     // +8   destination offset / granule  (the new top placement)
     int64_t size;    // +0x10  size / granule
 };
 struct Compact::LiveBlock {            // 48 B local helper
@@ -236,15 +236,18 @@ TpuEvent CompactMemory(const TpuSharedMemoryLocation& loc) {
     if (!core)                                        // best_fit_allocator path needs a core
         return MakeError<ResourceExhausted>(          // MakeErrorImpl<13>, system.cc:2410
             "No attached TPU to compact.");
+    int seg = TpuSharedMemoryTypeToTpuSegmentMemoryType(loc.type());  // 0..2
     for (TpuProgramStack* stack : core->program_stacks())
-        stack->MaybeShrink(0);                        // 0x1db0c100 — reclaim dynamic-stack HBM first
+        stack->MaybeShrink(stack->segment_limit(seg));  // 0x1db0c100 — reclaim dynamic-stack HBM first
     return shm(loc)->EnqueueCompaction(/* -> BestFitAllocator::Compact(pinned) */);
 }
 
 // xla::TpuClient::ShouldRetryOnOom (0xf8141a0): the bound + recovery actions.
 bool ShouldRetryOnOom(int attempt, PjRtDevice* dev, PjRtLoadedExecutable* exe, Status s) {
     if (attempt > 1) return attempt < 2;              // <= 2 total attempts
-    LOG(INFO) << "OOM, attempting recovery: " << s;   // line 4441
+    // tpu_pjrt_client.cc:4441 — verbatim LOG prefix
+    LOG(INFO) << "TpuLoadedExecutable::ExecutePrepareWithOomRetries "
+                 "attempting to defragment and retry after seeing error: " << s;
     if (this->evict_programs_on_oom_ /*+0x67*/)
         for (auto& [id, ls] : loaded_executables_)
             if (ls != exe) ls->EvictLoadedPrograms(); // 0xf80d2c0 — free program HBM
