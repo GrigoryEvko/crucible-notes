@@ -8,12 +8,12 @@
 
 The version frame is the central complication. Google's build system rewrites the upstream `LLVM_VERSION_MAJOR` to a rolling sentinel, so the binary carries no `LLVM 23.0.0` banner. What it *does* carry — pinned to byte offsets in `.rodata` — are two monorepo commit SHAs (`clang` and `LLVM` heads), a `g3_____-trunk` revision tag, the `9999.0.0` sentinel, and a build epoch. From those the upstream major is bounded to **LLVM 23-dev (tip-of-trunk, ~April 2026)** by the release-branch calendar, not read directly. Every component claim below is anchored to a defined symbol or a `.rodata` literal recovered from the binary; the version *window* is the one inference, and it is marked as such.
 
-> **NOTE —** the binary is **un-stripped** in this wheel: `.symtab` carries 1,232,970 entries with full Itanium mangling. FLIRT pattern-matching is therefore moot — every component below is confirmed by an exact demangled symbol or rodata string, not a fuzzy signature. A production strip removes `.symtab`/`.strtab` but leaves all the code bytes identified here.
+> **NOTE —** the binary is **un-stripped** in this wheel: `.symtab` carries 1,233,710 entries (`sh_size 0x1c3cc50 ÷ 24`; the `1232970` `readelf` prints in the section's `Inf` column is the first-global index, not the entry count) with full Itanium mangling. FLIRT pattern-matching is therefore moot — every component below is confirmed by an exact demangled symbol or rodata string, not a fuzzy signature. A production strip removes `.symtab`/`.strtab` but leaves all the code bytes identified here.
 
 For reimplementation, the contract is:
 
 - **The version pin** — which LLVM/MLIR commit the toolchain tracks, and how to bound the upstream major from a sentinel-masked build.
-- **The LLVM component set** — Core IR, both ISel paths, MachineCodeGen, the MC layer, the *eight* linked target backends, the analysis/transform pass pipeline, and the two AOT MLGO advisor models.
+- **The LLVM component set** — Core IR, both ISel paths, MachineCodeGen, the MC layer, the *seven* registered target backends, the analysis/transform pass pipeline, and the two AOT MLGO advisor models.
 - **The MLIR component set** — Core IR, the three-tier dialect registry, pass infra, bytecode reader/writer, the conversion framework, and the LLVM-IR translation path (but **no** ExecutionEngine/JIT).
 - **The embedded-library versions** — the key third-party pins (Abseil, protobuf, Eigen, DNNL, ICU, libc++, …) that the toolchain is compiled against, deferring the exhaustive tree to the [Embedded-Library Atlas](embedded-library-atlas.md).
 
@@ -26,7 +26,7 @@ For reimplementation, the contract is:
 | **Build epoch** | `Built on Apr 13 2026 14:17:21 (1776115041)` @ `0x84a1d90` |
 | **Code/data model** | Large code model (`.lrodata` 113.3 MB, `.lbss` present), x86-64, clang/lld |
 | **MLIR provenance** | Same monorepo commit as LLVM — no separate MLIR version |
-| **Linked target backends** | X86, AArch64, ARM, AMDGPU (+R600), PowerPC, NVPTX, Hexagon (MC), **TPU** |
+| **Registered target backends** | X86, AArch64, ARM, AMDGPU (+R600), PowerPC, NVPTX, **TPU** (seven, by `LLVMInitialize*TargetInfo`) |
 | **LLVM + MLIR footprint** | ~84.1 MB LLVM + ~72.2 MB MLIR = ~156 MB of code+rodata symbol bytes (~37% of T+R) |
 
 ---
@@ -39,7 +39,7 @@ Fix the exact toolchain version so every `llvm::`/`mlir::` address on the forens
 
 ### Version Evidence
 
-Three version literals sit in `.rodata`, each recoverable with `strings -t x`. They are the load-bearing anchors for the whole toolchain:
+Three version literals sit in `.rodata`, each recoverable with `strings -t x`. They are the primary anchors for the whole toolchain:
 
 ```text
 0xa12d48e  llvm-mc (based on LLVM g3_____-trunk 8918319853fbdf9e6f6cb69e96848f913a22bc31)
@@ -105,28 +105,29 @@ Every row is a defined-symbol hit (`nm -C libtpu.so | rg …`). Confidence is `C
 | Analysis passes | YES | `llvm::ScalarEvolution`, `llvm::PassBuilder` (NewPM) | CERTAIN |
 | MLGO advisor models | YES (2) | `RegAllocEvictModel`, `InlinerSizeModel` (AOT, see below) | CERTAIN |
 | Embedded LLVM bitcode | YES | `kEigenUnaryLlIr_constant_buffer_contents` @ `0xaf58000` | CERTAIN |
-| MCJIT / ORC | YES | XLA CPU backend links the bitcode into JIT'd `llvm::Module`s | HIGH |
+| MCJIT / ORC | YES | `llvm::MCJIT`, `llvm::orc::*` (LLVM ExecutionEngine — note: distinct from `mlir::ExecutionEngine`, which is absent); XLA CPU backend JITs `llvm::Module`s | CERTAIN |
 
 > **QUIRK —** **both** ISel infrastructures are linked. GlobalISel (`InstructionSelect`/`LegalizerInfo`/`RegisterBankInfo`) is present, but the TPU path's MC-emitter (`TPUMCCodeEmitter::getBinaryCodeForInstr` @ `0x13c74da0`, a 5,667-case switch over `InstBits`) is downstream of `MachineInstr`, consistent with a SelectionDAG-primary backend. Whether the TPU target also has a GlobalISel path for some opcodes is not resolved from the symbol surface alone — it needs a disassembly of the pass-pipeline constructor.
 
 ### The Linked Target Backends
 
-The raw inventory of `LLVMInitialize*Target` initializers proves this binary links **eight** LLVM target backends, not just the custom TPU one:
+The inventory of `LLVMInitialize*TargetInfo` registrations proves this binary registers **seven** LLVM target backends, not just the custom TPU one:
 
 ```text
-LLVMInitializeX86Target        ── host backend (the binary runs on x86-64)
-LLVMInitializeAArch64Target
-LLVMInitializeARMTarget
-LLVMInitializeAMDGPUTarget     ── (+ R600MCCodeEmitter, the legacy AMDGPU sub-target)
-LLVMInitializePowerPCTarget
-LLVMInitializeNVPTXTarget
-LLVMInitializeTPUTarget        ── the out-of-tree Google backend (this page's headline)
-                               ── HexagonMCCodeEmitter present (MC layer, no TargetMachine)
+LLVMInitializeX86TargetInfo        ── host backend (the binary runs on x86-64)
+LLVMInitializeAArch64TargetInfo
+LLVMInitializeARMTargetInfo
+LLVMInitializeAMDGPUTargetInfo     ── (+ R600MCCodeEmitter, the legacy AMDGPU sub-target)
+LLVMInitializePowerPCTargetInfo
+LLVMInitializeNVPTXTargetInfo
+LLVMInitializeTPUTargetInfo        ── the out-of-tree Google backend (this page's headline)
 ```
 
-Each in-tree target carries its own TableGen `InstBits` encoder table — e.g. `AMDGPUMCCodeEmitter::…::InstBits` @ `0x29d8910`, `AArch64MCCodeEmitter::…::InstBits` @ `0x397e980`, `PPCMCCodeEmitter::…::InstBits` @ `0x3c0d770`. They are `registerAllTargets()` fallout (the same build-system over-linking that drags in the unused MLIR target dialects, below).
+The set of `LLVMInitialize*Target` (codegen) initializers is the same seven, and each carries an instantiated `*TargetMachine` class (`llvm::X86TargetMachine`, `llvm::AArch64TargetMachine`, `llvm::ARMBaseTargetMachine`, `llvm::AMDGPUTargetMachine`/`GCNTargetMachine`/`R600TargetMachine`, `llvm::PPCTargetMachine`, `llvm::NVPTXTargetMachine`, `llvm::TPUTargetMachine`). Each in-tree target carries its own TableGen `InstBits` encoder table — e.g. `AMDGPUMCCodeEmitter::…::InstBits` @ `0x29d8910`, `AArch64MCCodeEmitter::…::InstBits` @ `0x397e980`, `PPCMCCodeEmitter::…::InstBits` @ `0x3c0d770`. They are `registerAllTargets()` fallout (the same build-system over-linking that drags in the unused MLIR target dialects, below).
 
-> **CORRECTION (LLVM-MANIFEST-01) —** an earlier reading held that the out-of-tree `TPU` target was effectively the *only* LLVM backend compiled in ("upstream LLVM has no TPU target" → "so only TPU is here"). The symbol surface shows **X86, AArch64, ARM, AMDGPU+R600, PowerPC, NVPTX, and Hexagon (MC) are all statically linked** alongside TPU. The TPU target is the only *custom* backend, but it is one of eight. `X86` is present (the host backend); the question "is an X86 backend compiled in?" is answered **yes** by `llvm::X86TargetMachine`/`llvm::X86Subtarget`/`llvm::X86InstrInfo` and `createX86MCCodeEmitter`.
+> **QUIRK —** Hexagon source TUs are *partially* linked (≈140 `_GLOBAL__sub_I_Hexagon*.cpp` static-init thunks and a handful of `llvm::HexagonSubtarget::*Mutation` symbols survive), but Hexagon is **not** a usable backend: there is **no** `LLVMInitializeHexagon*` initializer, **no** `llvm::HexagonTargetMachine` vtable or constructor, and **no** `HexagonMCCodeEmitter`. It is dead static-init residue from over-linking, not a registered target — do not count it among the seven.
+
+> **CORRECTION (LLVM-MANIFEST-01) —** an earlier reading held that the out-of-tree `TPU` target was effectively the *only* LLVM backend compiled in ("upstream LLVM has no TPU target" → "so only TPU is here"). The symbol surface shows **X86, AArch64, ARM, AMDGPU+R600, PowerPC, and NVPTX are all statically linked and registered** alongside TPU — seven registered backends. The TPU target is the only *custom* backend, but it is one of seven. `X86` is present (the host backend); the question "is an X86 backend compiled in?" is answered **yes** by `llvm::X86TargetMachine`/`llvm::X86Subtarget`/`llvm::X86InstrInfo` and `createX86MCCodeEmitter`. (A separate Hexagon static-init residue is present but is **not** a registered backend; see the QUIRK above.)
 
 ### The TPU Target Backend
 
@@ -138,18 +139,18 @@ The out-of-tree `TPU` target is the single most distinctive LLVM component — a
 | `…::InstBits_BarnaCorePxcHwMode` | `0x33931f0` | BarnaCore (Pufferfish PXC) HwMode encoding variant | CERTAIN |
 | `llvm::TPUDescs` | `0x33bf650` | Per-instr `MCInstrDesc` table | CERTAIN |
 | `llvm::TPUInstrNameData` | `0x33f2be0` | Instr mnemonic string pool | CERTAIN |
-| `llvm::TPUFeatureKV` | `0x21934550` | `SubtargetFeature` key/value (48 features) | CERTAIN |
-| `llvm::TPUSubTypeKV` | `0x21934ca0` | Subtype/CPU key/value (42 CPU variants) | CERTAIN |
+| `llvm::TPUFeatureKV` | `0x21934550` | `SubtargetFeatureKV` key/value (16 features; 1,152 B / 72 B-stride) | CERTAIN |
+| `llvm::TPUSubTypeKV` | `0x21934ca0` | Subtype/CPU key/value (9 CPU variants; 1,008 B / 112 B-stride) | CERTAIN |
 | `TPUMCCodeEmitter::getBinaryCodeForInstr` | `0x13c74da0` | 5,667-case encoder switch (selects `InstBits` per HwMode) | CERTAIN |
 
-Five subtarget classes cover six silicon generations across three HAL families (the codenames map to TPU generations; the SparseCore sequencer split is documented in the [tpu dialect](../compiler/tpu-dialect-and-ops.md) and lowering pages):
+Five silicon subtarget classes (plus a generated `llvm::TPUGenMCSubtarget`) cover the TensorCore generations across the HAL families (the abbreviations map to TPU codenames; the SparseCore sequencer split is documented in the [tpu dialect](../compiler/tpu-dialect-and-ops.md) and lowering pages):
 
 ```text
-llvm::TPUSubtarget      ── base (JF/DF/PF TensorCore)
+llvm::TPUSubtarget      ── base (jellyfish/dragonfish/pufferfish TensorCore)
 llvm::TPUBcSubtarget    ── BarnaCore PXC
-llvm::TPUVfcSubtarget   ── Viperfish (v5e)
-llvm::TPUGlcSubtarget   ── Ghostlite (v5p)
-llvm::TPUGfcSubtarget   ── Trillium (v6e)
+llvm::TPUVfcSubtarget   ── vfc = viperfish (v5)
+llvm::TPUGlcSubtarget   ── glc = ghostlite (gen 4; mktg "Trillium")
+llvm::TPUGfcSubtarget   ── gfc = 6acc60406 / TPU7x (gen 5; mktg "Ironwood")
 ```
 
 The per-generation scheduling models are present as nine `*SchedModelSchedClasses` tables, split by sequencer type (SCS / TAC / TEC) and generation (VF / GL / GF):
@@ -161,7 +162,7 @@ SparseCoreTac{GL,VF}SchedModelSchedClasses              ── TAC sequencer (2 
 SparseCoreTec{GF,GL,VF}SchedModelSchedClasses           ── TEC sequencer (3 gens)
 ```
 
-> **QUIRK —** there is **no** `SparseCoreTacGF` table. Trillium (GF) ships an SCS and a TEC sequencer but **no TAC** sequencer, so its TAC scheduling model is absent by design — not missing by extraction error. A reimplementer iterating generations × sequencer-types and assuming a full 3×3 grid will allocate a table the hardware does not have.
+> **QUIRK —** there is **no** `SparseCoreTacGF` table. The GF generation (`gfc` = 6acc60406 / TPU7x, mktg "Ironwood") ships an SCS and a TEC sequencer but **no TAC** sequencer, so its TAC scheduling model is absent by design — not missing by extraction error. A reimplementer iterating generations × sequencer-types and assuming a full 3×3 grid will allocate a table the hardware does not have.
 
 ### MLGO Advisor Models
 
@@ -198,7 +199,7 @@ Enumerate the MLIR components. MLIR ships from the *same* monorepo commit as LLV
 | MLIR component | Present | Primary evidence | Confidence |
 |---|---|---|---|
 | Core IR | YES | `mlir::MLIRContext`, `mlir::OpBuilder`, `mlir::Operation` (+ `Block`/`Region`/`Value`/`Type`) | CERTAIN |
-| Dialect registry | YES | 231 unique `*Dialect` class tails (`nm -C \| rg '\bDialect$'`) | CERTAIN |
+| Dialect registry | YES | 67 concrete `*Dialect` classes (unique `vtable for …Dialect`, excl. base `mlir::Dialect`) | CERTAIN |
 | Pass infrastructure | YES | `mlir::PassManager`, `mlir::Pass` | CERTAIN |
 | Bytecode reader/writer | YES | `mlir::BytecodeReader`, `mlir::writeBytecodeToFile` | CERTAIN |
 | Conversion framework | YES | `mlir::ConversionTarget`, `mlir::TypeConverter`, `mlir::RewritePatternSet` | CERTAIN |
@@ -207,11 +208,11 @@ Enumerate the MLIR components. MLIR ships from the *same* monorepo commit as LLV
 
 > **NOTE —** the bytecode reader/writer and the LLVM-IR translation path are both present, but `mlir::ExecutionEngine` is **absent**. MLIR is used purely as an AOT translate path: the SparseCore lowering chain runs `translateModuleToLLVMIR` and hands the resulting `llvm::Module` to the LLVM TPU backend ([LowerToSparseCoreLlvm](../compiler/lower-to-sparsecore-llvm.md)). There is no MLIR JIT, which resolves a standing question about whether an MLIR ExecutionEngine is linked: it is not.
 
-> **NOTE —** the directly-verifiable count of unique `*Dialect` class names here is **231** (exact match of `…Dialect`). A broader scan that also counts dialect-registration template instantiations (`addOperations`/`addAttributes` specializations) yields a higher figure; the 231 is the conservative, name-exact number. The [Embedded-Library Atlas](embedded-library-atlas.md) owns the full dialect tree.
+> **NOTE —** the directly-verifiable count of *instantiated* dialect classes is **67** — one `vtable for …Dialect` symbol per concrete dialect, deduped, excluding the base `mlir::Dialect` (counting the base gives 68). Looser regexes over the raw symbol surface inflate this: matching every bare `…Dialect` token double-counts namespaced vs. unqualified spellings (e.g. `xla::xtile::XTileDialect` and `XTileDialect`) and pulls in constructors/typeinfo, yielding figures north of 200. The vtable count is the conservative, one-class-one-hit number. The [Embedded-Library Atlas](embedded-library-atlas.md) owns the full dialect tree.
 
 ### The Three-Tier Dialect Set
 
-The dialects fall into three groups, and the distinction matters for a reimplementer: most of Group A'/B is **linked but unused** by the TPU lowering chain — it is `registerAllDialects()` over-linking, the MLIR analogue of the eight LLVM target backends.
+The dialects fall into three groups, and the distinction matters for a reimplementer: most of Group A'/B is **linked but unused** by the TPU lowering chain — it is `registerAllDialects()` over-linking, the MLIR analogue of the seven LLVM target backends.
 
 | Group | Dialects (verified samples) | Status on TPU path |
 |---|---|---|
@@ -252,7 +253,7 @@ Versions are pinned three ways: a versioned **path literal** (decisive), a **ver
 | libc++ | = LLVM commit | `std::__u::` ABI tag (Google libc++ inline-namespace build) | CERTAIN (provenance), HIGH (point) |
 | Intel oneDNN | **v3.3** | path literal `third_party/intel_dnnl/v3_3/` | CERTAIN |
 | ICU | **icu_78** | versioned namespace `icu_78::` | CERTAIN |
-| Protobuf | v32+ (EDITION_2024 production) | edition enums `EDITION_2023`…`EDITION_2026`, `EDITION_UNSTABLE` | HIGH |
+| Protobuf | v32+ (EDITION_2024 production) | edition enums `EDITION_2023`, `EDITION_2024`, `EDITION_2026`, `EDITION_UNSTABLE` (no `EDITION_2025`) | HIGH |
 | Abseil | >= LTS 20240722 (floor) | `absl::AnyInvocable`, `absl::log_internal::SetTimeZone`, `absl::CordBuilder`, `absl::StatusOr` | HIGH (floor) |
 | Eigen | 3.4.x branch | `Eigen::bfloat16` (modern), `Eigen::half`; no `EIGEN_*_VERSION` literal survives | MEDIUM |
 | gRPC | google3-tip (>= 1.66-dev) | `chaotic_good` transport, `filter_fusion` (trunk-only) | MEDIUM |
@@ -267,7 +268,7 @@ Versions are pinned three ways: a versioned **path literal** (decisive), a **ver
 No behavioural patch to LLVM/MLIR *core* algorithms is visible in the symbol surface. The Google customizations over upstream are all standard vendoring patterns, not core forks:
 
 1. **Version sentinel** — `9999.0.0` / `g3_____-trunk` are build-identity overrides of the upstream version macros (masks `LLVM_VERSION_MAJOR`; not a behavioural change).
-2. **Out-of-tree TPU target** — the entire `llvm::TPU*` backend (5 subtargets, ~4000 MC opcodes, the `InstBits` encoder) is Google-private; upstream has no TPU target.
+2. **Out-of-tree TPU target** — the entire `llvm::TPU*` backend (5 silicon subtargets, 6,166 MC opcodes per `InitMCInstrInfo`, the `InstBits` encoder) is Google-private; upstream has no TPU target.
 3. **AOT MLGO models** — `RegAllocEvictModel` + `InlinerSizeModel` baked in through the upstream release-model mechanism (build-time, not a source patch).
 4. **libc++ `__u` ABI tag** — a Google libc++ build customization.
 5. **TPU MLIR dialects** — `tpu`/`llo`/`sparse_core`/`mosaic_sc`/`xtile` authored against the in-tree MLIR API; out-of-tree dialects layered on stock MLIR, not core modifications.
