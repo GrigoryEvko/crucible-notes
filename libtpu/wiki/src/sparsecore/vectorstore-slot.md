@@ -6,7 +6,7 @@
 
 `VectorStore` is one of the seven vector slots of the [TEC](tec-engine.md) bundle — the slot that writes a VREG back into per-tile SRAM (`TILE_SPMEM`). Unlike a scalar store it is not one op with an address mode; it is a **6-bit opcode field that encodes a two-axis product**, *element-type × store-mode*, and the opcode value *is* the choice of dtype and mode. The slot is the back half of the SparseCore embedding-reduce datapath: where the [VectorLoad](vectorload-slot.md) slot pulls gathered rows out of `TILE_SPMEM` into VREGs and the [VectorExtended](vectorextended-vex.md) slot reduces them, `VectorStore` writes the result — and, crucially, can write it as an *atomic scatter-add*, which is the building block of embedding-table gradient accumulation. A reimplementer who models `VectorStore` as "store a vector to an address" will produce a slot that cannot express the one operation the slot exists for: read-modify-add into a tile location.
 
-The opcode space on Trillium (gfc) is **33 ops, contiguous 0..32**, read byte-exactly from each op's `Matches()` predicate (`opcode = cmp_immediate >> 33`, field 6-bit @ bit 33 of the 8-byte word at struct offset `0x30`). Those 33 values are not a flat list — they are the cells of a matrix whose axes are the four accumulate dtypes (`S32`, `F32`, `S16`, `Bf16`) and the store-mode lattice (plain overwrite · scatter-ADD · circular-buffer-windowed · post-update · per-element indexed · indexed fetch-and-add). The store-mode is decoded not by a mode sub-field but by *which operand fields the op carries*: `+Cbreg` = circular-buffer window, `+Index` = per-element scatter, `+Dest` = fetch-and-add return value, and the `Add` in the name = atomic accumulate rather than overwrite. This page documents the slot field map, enumerates the 33-entry type×mode matrix with its byte-exact opcode values, the per-mode operand field set, the shared `VstSource` fusion path that lets a [VectorExtended](vectorextended-vex.md) reduction stream straight into the store mux, and the Viperfish→Ghostlite generic-to-typed rename that grew the slot from 15 ops to 33.
+The opcode space on 6acc60406 (gfc) is **33 ops, contiguous 0..32**, read byte-exactly from each op's `Matches()` predicate (`opcode = cmp_immediate >> 33`, field 6-bit @ bit 33 of the 8-byte word at struct offset `0x30`). Those 33 values are not a flat list — they are the cells of a matrix whose axes are the four accumulate dtypes (`S32`, `F32`, `S16`, `Bf16`) and the store-mode lattice (plain overwrite · scatter-ADD · circular-buffer-windowed · post-update · per-element indexed · indexed fetch-and-add). The store-mode is decoded not by a mode sub-field but by *which operand fields the op carries*: `+Cbreg` = circular-buffer window, `+Index` = per-element scatter, `+Dest` = fetch-and-add return value, and the `Add` in the name = atomic accumulate rather than overwrite. This page documents the slot field map, enumerates the 33-entry type×mode matrix with its byte-exact opcode values, the per-mode operand field set, the shared `VstSource` fusion path that lets a [VectorExtended](vectorextended-vex.md) reduction stream straight into the store mux, and the Viperfish→Ghostlite generic-to-typed rename that grew the slot from 15 ops to 33.
 
 For reimplementation, the contract is:
 
@@ -18,7 +18,7 @@ For reimplementation, the contract is:
 | | |
 |---|---|
 | **Slot** | `VectorStore` — `TecVectorStore` slot of the 64-byte [TEC bundle](tec-engine.md#the-tec-bundle-64-bytes) |
-| **Bundle base / opcode bit** | base @328, opcode @347 (absolute bundle bit) |
+| **Bundle base / opcode bit** | base @328, opcode @353 (absolute bundle bit; `Source` @347) |
 | **Opcode field** | 6-bit @ bit 33 of word `0x30` (gfc/glc); 4-bit @ bit 31 (vfc) |
 | **Opcode → mnemonic source** | per-op `SparseCoreTecVectorStore<Op>Opcode::Matches()` immediate (`>> 33`) |
 | **Op count (per gen)** | vfc **15** · glc **33** · gfc **33** |
@@ -27,7 +27,7 @@ For reimplementation, the contract is:
 | **Encoder** | `SparseCoreTecVectorStoreEncoder::Encode` (gfc `0x1eccbe20`) |
 | **Confidence** | CONFIRMED (decompile / `Matches`-immediate anchored) unless a row or callout says otherwise |
 
-> **NOTE — this page owns the `VectorStore` opcode roster and field decode; the 64-byte bundle layout lives in [TEC Engine](tec-engine.md).** The bundle byte map, the slot base (@328) and the absolute opcode bit (@347), the encoder-dispatch model, and the no-check-trailer rule are documented there and not repeated. The `VectorExtended` scan family that feeds this slot is [VectorExtended (VEX)](vectorextended-vex.md); the load counterpart is [VectorLoad](vectorload-slot.md).
+> **NOTE — this page owns the `VectorStore` opcode roster and field decode; the 64-byte bundle layout lives in [TEC Engine](tec-engine.md).** The bundle byte map, the slot base (@328) and the absolute opcode bit (@353), the encoder-dispatch model, and the no-check-trailer rule are documented there and not repeated. The `VectorExtended` scan family that feeds this slot is [VectorExtended (VEX)](vectorextended-vex.md); the load counterpart is [VectorLoad](vectorload-slot.md).
 
 ---
 
@@ -196,7 +196,7 @@ function FetchAndAddStore(slot):                  // e.g. TileSpmemStoreIndexedR
     mem[addr] = old + Source[lane]                 // atomic accumulate (word0x30 Source @bit27)
 ```
 
-The returned value is the *pre-add* value because the op is structurally a load-then-add: the `Dest` is written through the same mux a plain load uses, and the lowering targets the LLVM intrinsic `llvm.tpu.vst.msk.idx.ret.add.{np,e4m3,e5m2}` (`ret.add` = return-then-add) versus the plain indexed scatter-add `llvm.tpu.vst.[cb.]msk.idx.add`. At the MLIR level the fetch-and-add is `VectorLoadStoreIdxAddOp` (it *has* a result type) versus `VectorStoreIdxOp` (no result).
+The returned value is the *pre-add* value because the op is structurally a load-then-add: the `Dest` is written through the same mux a plain load uses, and the lowering targets the LLVM intrinsic `llvm.tpu.vst.msk.idx.ret.add.np` (plus the `.e4m3.np`/`.e5m2.np` FP8 forms; `ret.add` = return-then-add) versus the plain indexed scatter-add `llvm.tpu.vst.[cb.]msk.idx.add`. At the MLIR level the fetch-and-add is `VectorLoadStoreIdxAddOp` (it *has* a result type) versus `VectorStoreIdxOp` (no result).
 
 > **NOTE — the in-vector duplicate-index commit order is silicon, but the dedup path makes it moot.** For *concurrent* same-address fetch-and-adds within one vector (true duplicate indices), the per-lane commit order is hardware behavior not present in the C++. In the embedding path it never fires: the [dedup pipeline](dedup-multiplicity.md) (Sort → Uniquify → DuplicateCount) collapses duplicate ids *before* the scatter so each unique row is touched exactly once, with its multiplicity folded into the gradient. The dedup *is* the correctness mechanism; the fetch-and-add ordering only matters for a raw, deduplication-disabled scatter (gated by `xla_tpu_enable_sparse_core_computation_deduplication`).
 
@@ -225,9 +225,9 @@ Because the reduce output and the store source occupy the same field, a [VectorE
 
 ### The growth, in counts
 
-The slot grew from **15 ops on Viperfish to 33 on Ghostlite and Trillium**, and the growth is a dtype split plus a new fetch-and-add family, not new addressing modes:
+The slot grew from **15 ops on Viperfish to 33 on Ghostlite and 6acc60406**, and the growth is a dtype split plus a new fetch-and-add family, not new addressing modes:
 
-| Quantity | Viperfish (vfc, v5e) | Ghostlite (glc, v5p) | Trillium (gfc, v6e) |
+| Quantity | Viperfish (vfc, v5) | Ghostlite (glc, v6e) | 6acc60406 (gfc, TPU7x) |
 |---|---:|---:|---:|
 | `VectorStore` op count | **15** | **33** | **33** |
 | Opcode field | 4-bit @ word `0x30` bit 31 | 6-bit @ bit 33 | 6-bit @ bit 33 |
@@ -254,7 +254,7 @@ VF 15-op roster (generic names) → GL/GF 33-op roster (typed)
       (no fetch-and-add)                           → + IndexedReturnValueAdd family (8 new ops)
 ```
 
-> **QUIRK — the VF opcode field is one bit narrower and two bits lower than GF.** Viperfish packs the opcode in 4 bits @ bit 31; Ghostlite/Trillium in 6 bits @ bit 33. A reimplementer targeting Viperfish must decode `(word0x30 >> 31) & 0xf` (and use the `Float`/`Integer` generic names), not the GF `(word0x30 >> 33) & 0x3f`. The 4-bit field exactly holds 15 ops (0..14); the dtype split and fetch-and-add family overflow it, which is why GF widened the field — the same 4→6 / 7→8 width pressure that grew the [VectorAlu](vector-opcode-enum.md) opcode field.
+> **QUIRK — the VF opcode field is one bit narrower and two bits lower than GF.** Viperfish packs the opcode in 4 bits @ bit 31; Ghostlite/6acc60406 in 6 bits @ bit 33. A reimplementer targeting Viperfish must decode `(word0x30 >> 31) & 0xf` (and use the `Float`/`Integer` generic names), not the GF `(word0x30 >> 33) & 0x3f`. The 4-bit field exactly holds 15 ops (0..14); the dtype split and fetch-and-add family overflow it, which is why GF widened the field — the same 4→6 / 7→8 width pressure that grew the [VectorAlu](vector-opcode-enum.md) opcode field.
 
 ---
 
@@ -289,7 +289,7 @@ The forward sum-lookup reduces gathered rows with a [VectorExtended](vectorexten
 | `…TileSpmemIndexedStoreIndexField::GetConcatenatedValue` | `0x1eccaf00` | `Index` @ word `0x30` >> 2 & 0x3f | CONFIRMED |
 | `…IndexedCircularBufferReturnValueAddS32SourceField` | `0x1eccb780` | densest-form `Source` (same @27) | CONFIRMED |
 | `…IndexedCircularBufferReturnValueAddS32DestField` | `0x1eccb860` | `Dest` @ word `0x28` >> 52 & 0x3f (RVA fetch result) | CONFIRMED |
-| `SparseCoreTecVectorStoreEncoder::Encode` | `0x1eccbe20` | slot encoder; opcode `BitCopy` @ bundle bit 347, slot base @328 | CONFIRMED |
+| `SparseCoreTecVectorStoreEncoder::Encode` | `0x1eccbe20` | slot encoder; opcode `BitCopy(a3, 353, …, 6)` @ bundle bit 353, `Source` `BitCopy(…,347,…,6)`, slot base @328 | CONFIRMED |
 | `…VectorExtendedMinScanU32VstSourceField` | `0x1eca7d80` | `VstSource` @ word `0x30` >> 27 — the fused store-source (== `Source`) | CONFIRMED |
 
 Cross-gen anchors: vfc `VectorStore` opcode field is **4-bit @ word `0x30` bit 31** (base op via `movzwl 0x33`; `CircularBuffer` via `mask 0x780000000 cmp 0x80000000` → 1), generic `Float`/`Integer` names; glc/gfc are 6-bit @ bit 33 with the four-dtype split. The full per-gen counts — vfc 15, glc 33, gfc 33 — were re-confirmed by per-namespace `Matches`-symbol enumeration in the decompile.
@@ -312,7 +312,7 @@ Cross-gen anchors: vfc `VectorStore` opcode field is **4-bit @ word `0x30` bit 3
 
 | Name | Relationship |
 |---|---|
-| `SparseCoreTecVectorStoreEncoder::Encode` (`0x1eccbe20` gfc) | the slot encoder; writes the 6-bit opcode at bundle bit 347 |
+| `SparseCoreTecVectorStoreEncoder::Encode` (`0x1eccbe20` gfc) | the slot encoder; writes the 6-bit opcode at bundle bit 353 (and `Source` at bit 347) |
 | `SparseCoreTecVectorStoreTileSpmemStore*Opcode::Matches` | the 33 per-op predicates that define the matrix opcode values |
 | `SparseCoreTecVectorLoad*` (`0x1ecb9a00+`) | the load counterpart; shares the `Dest` mux (word `0x28` bit 52) the fetch-and-add returns through |
 | `SparseCoreTecVectorExtended*::VstSource` (`0x1eca7d80` gfc) | the fused store-source field, identical bit position to `Source` |
@@ -320,7 +320,7 @@ Cross-gen anchors: vfc `VectorStore` opcode field is **4-bit @ word `0x30` bit 3
 
 ## Cross-References
 
-- [TEC (Vector) Engine](tec-engine.md) — owns the 64-byte bundle, the `VectorStore` slot base (@328) and opcode bit (@347), and the encoder-dispatch model.
+- [TEC (Vector) Engine](tec-engine.md) — owns the 64-byte bundle, the `VectorStore` slot base (@328) and opcode bit (@353), and the encoder-dispatch model.
 - [VectorLoad Slot](vectorload-slot.md) — the load-side mirror; shares the `Dest` mux and the address-mode lattice (plain / CB / PostUpdate / Indexed).
 - [VectorExtended (VEX)](vectorextended-vex.md) — the scan/sort/reduce slot that feeds this one through the shared `VstSource` field; the reduce stage of the embedding pipeline.
 - [TEC Vector Opcode Enumeration](vector-opcode-enum.md) — the `VectorAlu` opcode roster and the opcode-recovery model this page reuses; the `VectorResult` XRF-drain slot.
