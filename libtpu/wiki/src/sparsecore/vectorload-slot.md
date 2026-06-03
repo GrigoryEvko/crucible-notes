@@ -192,20 +192,21 @@ The value is an `asic_sw::deepsea::gxc::gfc::isa::VexSourcePortEncoding`. It is 
 | 6 | `VEX_SOURCE_PORT_ENCODING_V2_X` | V2 operand, `X` sub-port | CONFIRMED |
 | 7 | `VEX_SOURCE_PORT_ENCODING_V3_Y_VREG` | V3 operand, `Y_VREG` sub-port | CONFIRMED |
 
-The enum is cross-confirmed by `xla::ghostlite::GhostliteProtoUtils::GetVexSourcePortEncoding(VregReadPort)` (gfc `0x1c5ee280`), a switch that maps the compiler's logical `VregReadPort` onto these encodings 1:1 — case 0 returns encoding 0 with an OK status, cases 1..7 return encodings 1..7, and out-of-range (port 9) returns `InvalidArgument`:
+The enum is cross-confirmed by `xla::ghostlite::GhostliteProtoUtils::GetVexSourcePortEncoding(common_proto_utils::VregReadPort)` (gfc `0x1c5ee280`), a switch that maps the compiler's logical `VregReadPort` onto these encodings 1:1 — cases 0..7 return encodings 0..7 with an OK status, and the two higher ports are rejected: **case 8 (`V3_X`) returns `InvalidArgument` ("The V3_X slot (port number 8) cannot be used by a VEX instruction.")** and **case 9 (`MISC_AUX`) returns `InvalidArgument` ("MISC_AUX not supported on GLC")**:
 
 ```c
-// xla::ghostlite::GhostliteProtoUtils::GetVexSourcePortEncoding(VregReadPort)   (gfc 0x1c5ee280)
+// xla::ghostlite::GhostliteProtoUtils::GetVexSourcePortEncoding(common_proto_utils::VregReadPort)  (gfc 0x1c5ee280)
 switch (port) {
   case 0: *(int*)(this+2) = 0; *(uint64_t*)this = 1 /*OK*/; return this;  // VST_SOURCE
   case 1: *(int*)(this+2) = 1; goto ok;                                   // V0_Y_VREG
   case 2: *(int*)(this+2) = 2; goto ok;                                   // V0_X
   // … cases 3..7 → encodings 3..7 (V1_Y_VREG, V1_X, V2_Y_VREG, V2_X, V3_Y_VREG)
-  default: /* InvalidArgument */
+  case 8: /* V3_X — InvalidArgument: cannot be used by a VEX instruction */
+  case 9: /* MISC_AUX — InvalidArgument: not supported on GLC */
 }
 ```
 
-The matching `VregReadPort` value names mirror the encodings: `VREG_READ_PORT_{VST_SOURCE, V0_X, V0_Y_VREG, V1_X, V1_Y_VREG, V2_X, V2_Y_VREG, LANE_ID}`.
+The `SparsecoreVregReadPort` proto enum (the descriptor strings are stored in declaration order) is `{VST_SOURCE=0, V0_Y_VREG=1, V0_X=2, V1_Y_VREG=3, V1_X=4, V2_Y_VREG=5, V2_X=6, LANE_ID=7}` — the same `Y_VREG`-before-`X` order as the encoding table. The wider `common_proto_utils::VregReadPort` this function actually accepts extends past that proto: ports 8 (`V3_X`) and 9 (`MISC_AUX`) exist as inputs and are rejected, and input port 7 maps to encoding 7 (`V3_Y_VREG`).
 
 ### Why a selector, not a constant
 
@@ -224,25 +225,26 @@ The reduction stage the load feeds is a [VectorExtended](vectorextended-vex.md) 
 | `sparse_core::ScanOp` | `AtLeastNOperands<1>` (data) | `OneResult` | `reduction_op` attr |
 | `sparse_core::SegmentedScanOp` | `NOperands<2>` (data, segment_ids) | `OneResult` | `reduction_op` attr |
 
-`SegmentedScanOp`'s `mlir::Op<>` template pack reads `OpTrait::ZeroRegions, OneResult, OneTypedResult<Type>, ZeroSuccessors, NOperands…` (the trait holder filename for the op carries `…ZeroRegionsE…OneResultE…NO…` = the `NOperands` trait). `SegmentedScanOp::build(OpBuilder, OperationState, Type result, Value input, Value segment, StringAttr reduction_op)` (gfc `0x145fd4a0`) issues two `addOperands` calls in order: **operand 0 = input (data), operand 1 = segment (the per-lane segment id)**; the `reduction_op` `StringAttr` is stored as a property. So:
+`SegmentedScanOp::build(OpBuilder, OperationState, Type result, Value input, Value segment, StringAttr reduction_op)` (gfc `0x145fd4a0`) issues two `addOperands` calls **unconditionally** (operand 0 = input, operand 1 = segment) — the exact-2 form `NOperands<2>`. The sibling `ScanOp::build(OpBuilder, OperationState, Type, Value, Value, StringAttr)` (gfc `0x145f92e0`/`0x145f9480`) guards its FIRST `addOperands` behind `if (first_value)` and adds the second unconditionally — i.e. the first operand is optional, the `AtLeastNOperands<1>` form. The `reduction_op` `StringAttr` is stored as a property on both. So:
 
 - **operand 0** = the data / value to scan.
 - **operand 1** = the **segment ids** — the scan resets the running accumulator wherever the segment id changes. This is the per-segment boundary the task asks for.
 
-The `reduction_op` string is decoded by byte-comparison in `SegmentedScanOpLowering::matchAndRewrite` (gfc `0x13589…`): `"sum"`, `"max"`, `"min"`. The lowering chain splits on operand count:
+The `reduction_op` string is decoded by byte-comparison in `SegmentedScanOpLowering::matchAndRewrite` (gfc `0x13589d40`): `"sum"`, `"max"`, `"min"`. The lowering chain splits on the segmented-vs-plain op identity, and the segmentation is carried in the intrinsic name as a `.seg.` infix:
 
 ```text
 HLO embedding-sum
   → sparse_core::SegmentedScanOp        (2 operands: data, segment_ids)
-    → SegmentedScanOpLowering / ScanOpLowering<SegmentedScanOp>
-      → LLVM intrinsic tpu_{add,max,min}[_index]_seg_scan2xN   (2 operands — "2xN" counts the operands)
-   vs sparse_core::ScanOp               (1 operand: data)
-      → tpu_{add,max,min}_scan1xN                                (1 operand — "1xN")
+    → SegmentedScanOpLowering (gfc 0x1358 9d40) / ScanOpLowering<SegmentedScanOp,…> (0x135f3000)
+      → LLVM intrinsic llvm.tpu.{add,max,min}[.full/.half][.seg].scan{1x,2x}[.index]   (.seg = segmented)
+   vs sparse_core::ScanOp               (1+ operands: data, optional second)
+      → ScanOpLowering (0x1358 ab00) / ScanOpLowering<ScanOp,…> (0x135f2580)
+      → llvm.tpu.{add,max,min}[.full/.half].scan{1x,2x}[.index]                        (no .seg infix)
 ```
 
 The SC isa_emitter then register-allocates each intrinsic operand to a **free V read port** via `FindAndEmitToUnusedPort<SparsecoreVregReadPort, …>` and writes it into the matching slot V-field (a port→slot jump table). So the **segment-id operand lands on whichever V0/V1/V2 read port is free at allocation time** — a register-ALLOCATED V operand, not a fixed slot. The binding is by SSA operand #1; the placement is by the read-port allocator.
 
-> **NOTE — the `…_seg_scan2xN` vs `…_scan1xN` intrinsic name literally counts operands.** The `2xN`/`1xN` suffix is the operand count baked into the LLVM intrinsic name (segmented = 2, plain = 1). This is the cleanest structural marker distinguishing a plain prefix scan from a per-sample embedding sum: the segmented form carries a second operand, and that operand is the segment-id boundary. The full `reduction_op` attr set is confirmed as `{sum, max, min}`; whether `mean`/`sqrtn` exist as attrs vs being a post-scan divide was not enumerated — `LOW` for that boundary.
+> **NOTE — the `.seg.` infix is the segmentation marker; `scan1x`/`scan2x` is a width/throughput marker, NOT an operand count.** The intrinsic family is `llvm.tpu.{add,max,min}[.full/.half][.seg].scan{1x,2x}[.index]` (all byte-confirmed in the binary: `llvm.tpu.add.seg.scan1x`, `llvm.tpu.add.full.seg.scan2x`, `llvm.tpu.max.seg.index.scan2x`, etc.). The cleanest structural marker that a scan is segmented (a per-sample embedding sum) is the `.seg.` infix together with the second SSA operand (the segment ids) on `SegmentedScanOp`; `scan1x` vs `scan2x` and `.full` vs `.half` are independent throughput/lane-width axes, not the operand count. The full `reduction_op` attr set is confirmed as `{sum, max, min}`; whether `mean`/`sqrtn` exist as attrs vs being a post-scan divide was not enumerated — `LOW` for that boundary.
 
 ---
 
@@ -262,7 +264,7 @@ function FetchAndAddStore(slot):                  // e.g. TileSpmemStoreIndexedR
     mem[addr] = old + Source[lane]                 // atomic accumulate (word0x30 Source @bit27)
 ```
 
-At the MLIR level the fetch-and-add is `sparse_core::VectorLoadStoreIdxAddOp`, which **has a result Type** — confirmed from `VectorLoadStoreIdxAddOp::build(OpBuilder, OperationState, Type, Value, Value, ValueRange, Value)` (gfc `0x1459d840`), whose leading `Type` argument is the result type (the returned pre-add value). The plain scatter-add `sparse_core::VectorStoreIdxOp` has **no result Type**. The lowering (`VectorLoadStoreIdxAddOpLowering`, gfc `0x135c3…`) computes a strided element pointer (`Mul`/`Add`/`InsertElement`) then emits `LLVM::AddOp` (the read-modify-add). The LLVM intrinsic naming confirms: `llvm.tpu.vst.msk.idx.ret.add.{np,e4m3,e5m2}` (`ret.add` = return-then-add) vs `llvm.tpu.vst.[cb.]msk.idx.add` (plain indexed scatter-add, no return).
+At the MLIR level the fetch-and-add is `sparse_core::VectorLoadStoreIdxAddOp`, which **has a result Type** — confirmed from `VectorLoadStoreIdxAddOp::build(OpBuilder, OperationState, Type, Value, Value, ValueRange, Value)` (gfc `0x1459d840`), whose leading `Type` argument is the result type (the returned pre-add value). The plain scatter-add `sparse_core::VectorStoreIdxOp` has **no result Type**. The lowering (`VectorLoadStoreIdxAddOpLowering`, gfc `0x135c3…`) computes a strided element pointer (`Mul`/`Add`/`InsertElement`) then emits `LLVM::AddOp` (the read-modify-add). The LLVM intrinsic naming confirms: `llvm.tpu.vst.msk.idx.ret.add.np` / `…ret.add.e4m3.np` / `…ret.add.e5m2.np` (all byte-confirmed; `ret.add` = return-then-add, all carry the `.np` suffix) vs `llvm.tpu.vst.[cb.]msk.idx.add[.e4m3/.e5m2][.np]` (plain indexed scatter-add, no `ret`, and also available in a `.cb.` circular-buffer form).
 
 ### Scatter ordering and dedup on the load path
 
