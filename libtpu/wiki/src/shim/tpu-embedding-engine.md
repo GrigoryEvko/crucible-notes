@@ -113,7 +113,7 @@ function TpuEmbeddingEngine_ExecutePartitioner(Params* p):   // sub_f6a5b20
     ~TPUEmbeddingConfiguration(cfg)
 ```
 
-`ConfigureMemory` (`0xf6a5d80`) reads a core index (`p+16`) plus a serialized partitions blob (`p+24/+32`) and calls `tensorflow::ConfigureTpuEmbeddingMemory(core, blob, len, &out)`. `CollateMemory` (`0xf6a5fa0`) ingests a *vector* of per-core memory blobs — it loops `p[+16]` times, copying each `{len,ptr}` into a `std::vector<std::string>` (24-byte stride per element) before calling `tensorflow::CollateTpuEmbeddingMemory(vec.data, vec.size, &out)`, then frees the temporary vector element-by-element. `ConfigureHost` (`0xf6a6340`) mirrors `ConfigureMemory`'s string-in/blob-out shape for a host index. `ConnectHosts` dispatches into `tensorflow::ConnectTpu*`, `Finalize` into `tensorflow::Finalize*` — both consume the config and report status only (no large output blob).
+`ConfigureMemory` (`0xf6a5d80`) reads a core index (`p+16`) plus a serialized partitions blob (`p+24/+32`) and calls `tensorflow::ConfigureTpuEmbeddingMemory(core, blob, len, &out)`. `CollateMemory` (`0xf6a5fa0`) ingests a *vector* of per-core memory blobs — it loops `p[+16]` times, copying each `{len,ptr}` into a `std::vector<std::string>` (24-byte stride per element) before calling `tensorflow::CollateTpuEmbeddingMemory(vec.data, vec.size, &out)`, then frees the temporary vector element-by-element. `ConfigureHost` (`0xf6a6340`) mirrors `ConfigureMemory`'s string-in/blob-out shape for a host index, dispatching into `tensorflow::ConfigureTpuEmbeddingHost`. `ConnectHosts` dispatches into `tensorflow::ConnectTpuEmbeddingHosts`, `Finalize` into `tensorflow::FinalizeTpuEmbedding` — both consume the config and report status only (no large output blob).
 
 ### Function Map
 
@@ -122,9 +122,9 @@ function TpuEmbeddingEngine_ExecutePartitioner(Params* p):   // sub_f6a5b20
 | `TpuEmbeddingEngine_ExecutePartitioner` | `0xf6a5b20` | 363 | `tensorflow::ExecuteTpuEmbeddingPartitioner` | CERTAIN |
 | `TpuEmbeddingEngine_ConfigureMemory` | `0xf6a5d80` | 540 | `tensorflow::ConfigureTpuEmbeddingMemory` | CERTAIN |
 | `TpuEmbeddingEngine_CollateMemory` | `0xf6a5fa0` | 908 | `tensorflow::CollateTpuEmbeddingMemory` | CERTAIN |
-| `TpuEmbeddingEngine_ConfigureHost` | `0xf6a6340` | 774 | `tensorflow::ConfigureTpuEmbedding*` (host) | HIGH |
-| `TpuEmbeddingEngine_ConnectHosts` | `0xf6a6660` | 738 | `tensorflow::ConnectTpu*` | HIGH |
-| `TpuEmbeddingEngine_Finalize` | `0xf6a6960` | 549 | `tensorflow::Finalize*` | HIGH |
+| `TpuEmbeddingEngine_ConfigureHost` | `0xf6a6340` | 774 | `tensorflow::ConfigureTpuEmbeddingHost` | CERTAIN |
+| `TpuEmbeddingEngine_ConnectHosts` | `0xf6a6660` | 738 | `tensorflow::ConnectTpuEmbeddingHosts` | CERTAIN |
+| `TpuEmbeddingEngine_Finalize` | `0xf6a6960` | 549 | `tensorflow::FinalizeTpuEmbedding` | CERTAIN |
 | `TpuEmbeddingEngine_IsInitialized` | `0xf6a6ba0` | 385 | `tensorflow::IsTPUEmbeddingInitialized` | CERTAIN |
 
 > **QUIRK —** `ConfigureMemory` → `CollateMemory` is a fan-in. `ConfigureMemory` is called once *per SparseCore* and each returns that core's HBM-layout blob; `CollateMemory` then takes the whole *array* of those blobs and merges them into one pod-wide layout. A reimplementation that calls `CollateMemory` with a single core's output will produce a layout that ignores cross-core table sharding. The 24-byte per-element loop in `CollateMemory` is reconstructing the `std::vector<std::string>` the host flattened into the `*_Params` struct.
@@ -180,7 +180,7 @@ function TpuEmbeddingEngine_WriteParameters(Params* p, TF_Status* status):   // 
 | `TpuEmbeddingEngine_WriteParameters` | `0xf6a6d40` | 750 | `BarnaCoreManager::WriteParameters` | CERTAIN |
 | `TpuEmbeddingEngine_ReadParameters` | `0xf6a7160` | 1000 | `BarnaCoreManager::ReadParameters` | CERTAIN |
 
-> **GOTCHA —** the explicit `"TpuEmbeddingEngine not initialized."` error (string at file line 43) fires when `GetBarnaCoreManager` succeeds but returns a null manager. A reimplementation that only checks `GetBarnaCoreManager`'s status and not the manager pointer will dereference null and crash instead of returning a clean `FAILED_PRECONDITION` (`MakeErrorImpl<3>`).
+> **GOTCHA —** the explicit `"TpuEmbeddingEngine not initialized."` error (string at file line 43) fires when `GetBarnaCoreManager` succeeds but returns a null manager. A reimplementation that only checks `GetBarnaCoreManager`'s status and not the manager pointer will dereference null and crash instead of returning a clean `INVALID_ARGUMENT` (`MakeErrorImpl<3>`).
 
 ### Considerations
 
