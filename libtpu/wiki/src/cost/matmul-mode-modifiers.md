@@ -6,7 +6,7 @@
 
 A matrix-multiply on the TPU MXU is not one operation — it is a *sequence* of feed passes, one per significand slice of the operands. A bf16 matmul at full precision is three int8-emulated passes; an int8 matmul is up to eight byte-plane passes; an int4 matmul is four nibble-plane passes. `xla::jellyfish::MatmulMode` is the **16-ordinal enum that names each pass-role** — the per-slice feed that the lowering picks for one operand, and that the cost model prices distinctly. This page documents that enum, the way operand dtype maps to a candidate mode list, and the `MatmulModifier` / `MatpushModifier` keys that bind a mode (and its data format) to a reservation row in the [`MxuLatencyTable`](mxu-latency-overview.md).
 
-The reference frame is a software-emulated wide multiply: to multiply two bf16 values on hardware that only supports a narrower mantissa, you split each operand into significand slices, multiply the slices, and recombine with shifts — exactly the "bf16x3" / "int8x8" trick. `MatmulMode` enumerates the slices: `{Round, High, Low, Soft Middle Eight, Soft Low_eight}` are the bf16/fp32 precision passes (ordinals 0–4); `{Soft Byte k, Soft Signed Byte k}` are the int8 byte planes (ordinals 5–11); `{Nibble k, Signed Nibble k}` are the int4 nibble planes (12–15). Each ordinal carries a **weight** in a 16-entry table; the lowering forms the cross-product of the LHS and RHS candidate lists and `stable_sort`s the pairs by summed weight, so the cheapest precision pair is consumed first.
+The reference frame is a software-emulated wide multiply: to multiply two bf16 values on hardware that only supports a narrower mantissa, you split each operand into significand slices, multiply the slices, and recombine with shifts — exactly the "bf16x3" / "int8x8" trick. `MatmulMode` enumerates the slices: `{Round, High, Low, Soft Middle Eight, Soft Low Eight}` are the bf16/fp32 precision passes (ordinals 0–4); `{Soft Byte k, Soft Signed Byte k}` are the int8 byte planes (ordinals 5–11); `{Nibble k, Signed Nibble k}` are the int4 nibble planes (12–15). Each ordinal carries a **weight** in a 16-entry table; the lowering forms the cross-product of the LHS and RHS candidate lists and `stable_sort`s the pairs by summed weight, so the cheapest precision pair is consumed first.
 
 The second half of the page is the binding into the cost model. `MatmulDataFormat` is the *data-path width* code (bf16-packed, int8/x8, int4, fp8 variants) that a matmul or latch carries; `GetMatmulDataFormat` derives it from the operand dtype and the convolution lowering strategy. The `MatmulModifier` (matmul family) and `MatpushModifier` (latch / matprep family) are the keys the `MxuLatencyTable` lookup builds from that format, and they pick which reservation group — `{2,1,1}` bf16, `{4,3,2}` transposed, `{8,7,6}` x8 — prices the op. The two secondary tables — the matmul-format key list and the latch/vxpose format ordinals — are how the format byte is laid into the key.
 
@@ -45,12 +45,12 @@ For reimplementation, the contract is:
 | 1 | High | 4 | bf16/fp32 — high-significand pass | HIGH |
 | 2 | Low | 3 | bf16/fp32 — low-significand pass | HIGH |
 | 3 | Soft Middle Eight | 2 | bf16 3-pass split — middle 8 bits | HIGH |
-| 4 | Soft Low_eight | 1 | bf16 3-pass split — low 8 bits | HIGH |
-| 5 | Soft Byte 2 | 40 | int8 ×8 — byte plane 2 | HIGH |
+| 4 | Soft Low Eight | 1 | bf16 3-pass split — low 8 bits | HIGH |
+| 5 | Soft Byte 0 | 40 | int8 ×8 — byte plane 0 | HIGH |
 | 6 | Soft Signed Byte 0 | 40 | int8 ×8 signed — byte plane 0 | HIGH |
 | 7 | Soft Byte 1 | 30 | int8 ×8 — byte plane 1 | HIGH |
 | 8 | Soft Signed Byte 1 | 30 | int8 ×8 signed — byte plane 1 | HIGH |
-| 9 | Soft Byte 0 | 20 | int8 ×8 — byte plane 0 | HIGH |
+| 9 | Soft Byte 2 | 20 | int8 ×8 — byte plane 2 | HIGH |
 | 10 | Soft Byte 3 | 10 | int8 ×8 — byte plane 3 (top) | HIGH |
 | 11 | Soft Signed Byte 3 | 10 | int8 ×8 signed — byte plane 3 | HIGH |
 | 12 | Nibble 0 | 40 | int4 ×4 — nibble plane 0 | HIGH |
@@ -58,12 +58,12 @@ For reimplementation, the contract is:
 | 14 | Nibble 1 | 40 | int4 ×4 — nibble plane 1 | HIGH |
 | 15 | Signed Nibble 1 | 40 | int4 ×4 signed — nibble plane 1 | HIGH |
 
-> **NOTE —** ordinal 4's display string is the literal `"Soft Low_eight"` (length 14): a source-level `"Soft Low" "_eight"` literal join written at overlapping stack offsets, so the space-then-underscore is in the shipping binary, not a decode artefact. Do not "correct" it to `Soft Low Eight`.
+> **NOTE —** ordinal 4's `operator<<` display string is the literal `"Soft Low Eight"` (length 14, three space-separated words). This is the jellyfish C++ enum's print string and is distinct from the MLIR `llo::MatmulMode` attribute spelling `soft_low_eight` (underscores) emitted by `MatmulModeAttr::print` — the two enums print differently; see the second-enum NOTE at the end of this page.
 
 ### The three semantic groups
 
-- **{0–4} bf16/fp32 precision passes** (weights 5,4,3,2,1). `Round` is the single-pass; `High`/`Low` are the 2-pass significand split; `Soft Middle Eight` / `Soft Low_eight` complete the 3-pass int8-emulated bf16 (the high-accuracy bf16×3).
-- **{5,7,9,10,11,6,8} int8 ×8 byte planes** — `Soft Byte k` unsigned, `Soft Signed Byte k` signed; ×8 = 4 byte planes 0–3 latched separately.
+- **{0–4} bf16/fp32 precision passes** (weights 5,4,3,2,1). `Round` is the single-pass; `High`/`Low` are the 2-pass significand split; `Soft Middle Eight` / `Soft Low Eight` complete the 3-pass int8-emulated bf16 (the high-accuracy bf16×3).
+- **{5,6,7,8,9,10,11} int8 ×8 byte planes** — `Soft Byte k` unsigned (ords 5/7/9/10 = byte planes 0/1/2/3), `Soft Signed Byte k` signed (ords 6/8/11 = signed planes 0/1/3); ×8 = 4 byte planes 0–3 latched separately.
 - **{12,13,14,15} int4 ×4 nibble planes** — `Nibble k` / `Signed Nibble k`.
 
 > **QUIRK —** the weights do **not** track ordinal order. The bf16 group is cheap (1–5), the byte planes are mid-to-expensive (10–40), and the int4 nibbles plus signed-byte-0 are pinned at 40. This is deliberate: the comparator sums two weights and sorts ascending, so a bf16 pair always sorts before an int8 pair, and the lowering consumes the cheapest precision combination first.
@@ -96,15 +96,15 @@ function GetMatmulModes(operand):                     // @0x130dfbe0
     if strategy.is_depthwise[+504] or is_batch_group_depthwise[+505]:
         return {Round}                                // mode 0
     switch operand.shape.element_type():              // dtype jump table @0xae0f26c
-        case 1,6,22,27,31:        return {Soft Byte 2}              // mode 5     (byte=0x05)
+        case 1,6,22,27,31:        return {Soft Byte 0}              // mode 5     (byte=0x05)
         case 2,21,26,30:          return {Soft Signed Byte 0}       // mode 6     (byte=0x06)
-        case 3  (S16):            return {Soft Byte 2, Soft Signed Byte 1}  // {5,8} (word=0x0805)
-        case 4  (S32):            return {Soft Byte 2, Soft Byte 1, Soft Byte 0, Soft Signed Byte 3} // {5,7,9,11}
-        case 7  (U16):            return {Soft Byte 2, Soft Byte 1}         // {5,7} (word=0x0705)
-        case 8  (U32):            return {Soft Byte 2, Soft Byte 1, Soft Byte 0, Soft Byte 3} // {5,7,9,10}
+        case 3  (S16):            return {Soft Byte 0, Soft Signed Byte 1}  // {5,8} (word=0x0805)
+        case 4  (S32):            return {Soft Byte 0, Soft Byte 1, Soft Byte 2, Soft Signed Byte 3} // {5,7,9,11}
+        case 7  (U16):            return {Soft Byte 0, Soft Byte 1}         // {5,7} (word=0x0705)
+        case 8  (U32):            return {Soft Byte 0, Soft Byte 1, Soft Byte 2, Soft Byte 3} // {5,7,9,10}
         default:  // bf16 / fp16 / fp32 / fp8 — drive off the convolution precision
             switch GetConvPrecision(operand):         // @0x131916e0 → 0 / 1 / 2
-                case 2: return {Soft Low_eight, Soft Middle Eight, High}   // {4,3,1} bf16×3 hi-acc
+                case 2: return {Soft Low Eight, Soft Middle Eight, High}   // {4,3,1} bf16×3 hi-acc
                 case 1: return {Low, High}                                 // {2,1}   bf16×2
                 else:   return {Round}                                     // {0}     bf16×1
 ```
@@ -147,9 +147,9 @@ The stage-2 dtype targets: `PrimitiveType 2 → 6`, `6 → 5`, `19 → 3 / 9` (n
 | Key | Family | Width | Byte layout | Source helpers |
 |---|---|---:|---|---|
 | `MatmulModifier` | matmul | 8 B | byte[0] = format (1 / 2 / 6 in the VF matmul cases 212 / 218 / 230); byte[1..] = 0 | inline, format-key list `@0x84a2644` |
-| `MatpushModifier` | latch / matprep | 4 B | byte[0] = `GainLatchModeToMatmulDataFormat(latch_mode)`; byte[1..2] = `LatchModeIsTranspose(latch_mode)`; byte[3] = `LatchOpcodeToMsr(0x8F)` | helpers below |
+| `MatpushModifier` | latch / matprep | 4 B | byte[0] = `GainLatchModeToMatmulDataFormat(latch_mode)`; byte[1..2] = `LatchModeIsTranspose(latch_mode)`; byte[3] = `LatchOpcodeToMsr(opcode)` (the `opcode < 0x8F` MSR-select bit) | helpers below |
 
-The matpush key is the format → reservation binding in action. `GainLatchModeToMatmulDataFormat` `@0x1d629260` maps the LLO `GainLatchMode` attribute (the per-pass latch role of [`slot-matprep-iar-latch`](../isa/slot-matprep-iar-latch.md)) to a `MatmulDataFormat` code, which becomes byte[0] of the key; `LatchModeIsTranspose` `@0x1d628ea0` sets the transpose bytes; `LatchOpcodeToMsr(0x8F)` `@0x1c8a1300` selects the matrix-staging register. The opcode that selects the matpush variant also pre-transforms the latch mode — `^0xB` for the xpose pass (VF opcode 271), `|0x14` for the wide pass (VF opcode 277) — routing the same physical latch into the transposed `{4,3,2}` or wide `{8,7,6}` reservation group.
+The matpush key is the format → reservation binding in action. `GainLatchModeToMatmulDataFormat` `@0x1d629260` maps the LLO `GainLatchMode` attribute (the per-pass latch role of [`slot-matprep-iar-latch`](../isa/slot-matprep-iar-latch.md)) to a `MatmulDataFormat` code, which becomes byte[0] of the key; `LatchModeIsTranspose` `@0x1d628ea0` sets the transpose bytes; `LatchOpcodeToMsr` `@0x1c8a1300` returns the matrix-staging-register select bit (`FATAL` unless the opcode is in `[0x8D,0x96]`, then `opcode < 0x8F`). The opcode that selects the matpush variant also pre-transforms the latch mode — `^0xB` for the xpose pass (VF opcode 271), `|0x14` for the wide pass (VF opcode 277) — routing the same physical latch into the transposed `{4,3,2}` or wide `{8,7,6}` reservation group.
 
 ### Format → reservation-group binding
 
@@ -210,7 +210,7 @@ The latch (matpush) and vector-transpose ops feed the format byte through `GainL
 4. MatmulModifier{format=1} → reservation group {2,1,1}: res0 held 2 cy, the two
    matrix-staging registers held 1 cy each. Back-to-back bf16 latches pipeline at
    ~1-cy issue while the multi-hundred-cycle systolic latency hides across array depth.
-5. For int8 (S32 operand): GetMatmulModes → {Soft Byte 2, Soft Byte 1, Soft Byte 0,
+5. For int8 (S32 operand): GetMatmulModes → {Soft Byte 0, Soft Byte 1, Soft Byte 2,
    Soft Signed Byte 3} = modes {5,7,9,11}; GetMatmulDataFormat → format 6; the matpush
    reservation jumps to {8,7,6} — 4× the bf16 hold, the 4-byte-plane x8 latch sequence.
 ```
