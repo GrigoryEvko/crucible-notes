@@ -4,15 +4,15 @@
 
 ## Abstract
 
-The TPU convolution lowering path contains a complete *client-side* hook for an ML-learned cost model, but **no server, no client class, and no predictor ship in this build**. The hook lives inside `SpatialMajorConvolution::ComputeWindowConfigInternal` (@ `0x13172c80`) — the function that searches the window-tiling space for the fastest convolution schedule. The hook reaches a borrowed `EmitterLearnedCostModelBase*` pointer stored on the emitter at `this+0x20d0`; when that pointer is non-null *and* the `enable_learned_cost_model` byte is set, the search consults the learned model through three virtual slots: a per-instruction enable check (`vtable+0x10`), a candidate-window registration call (`vtable+0x18`, `RegisterCandidateWindow`), and a fastest-window query (`vtable+0x30`) whose `absl::Status` result selects between the learned and the analytic answer. The pointer is borrowed all the way down from the 80-parameter `LoweringEmitter` ctor through `ConvolutionEmitter::Create`.
+The TPU convolution lowering path contains a complete *client-side* hook for an ML-learned cost model, but **no server, no client class, and no predictor ship in this build**. The hook lives inside `SpatialMajorConvolution::ComputeWindowConfigInternal` (@ `0x13172c80`) — the function that searches the window-tiling space for the fastest convolution schedule. The hook reaches a borrowed `EmitterLearnedCostModelBase*` pointer stored on the emitter at `this+0x20d0`; when that pointer is non-null *and* the `enable_learned_cost_model` byte is set, the search consults the learned model through four virtual slots: a per-instruction enable check (`vtable+0x10`), a candidate-window registration call (`vtable+0x18`, `RegisterCandidateWindow`), a fastest-window status query (`vtable+0x30`) whose `absl::Status` result selects between the learned and the analytic answer, and — only on a non-error status — a paired value-fetch (`vtable+0x38`) that returns the learned cycle estimate (a float at `+0x138` of the returned object). The pointer is borrowed all the way down from the 80-parameter `LoweringEmitter` ctor through `ConvolutionEmitter::Create`.
 
 The familiar reference frame is XLA's pluggable cost-model interface — an abstract base with virtual `Predict`/`Register` methods, a concrete client that batches features into RPCs to an embedding/inference service, and an `absl::Status`-gated fallback to the analytic model on any RPC failure. libtpu-0.0.40 ships the *interface contract* (proto options, the four-enum mode state machine, the gflag wiring, the call sites, the `CHECK_OK` on the registration result, and the `Failed to get fastest window using learned cost model` failure-log fallback) but **not the implementation**: there is no `xla::jellyfish::EmitterLearnedCostModelBase` vtable, no concrete `LearnedCostModelClient`, no `LearnedCostModelService::Stub`, and no embedded model bytes. The `EmitterLearnedCostModelBase*` is therefore always null in the shipping binary, so every consult is short-circuited and the analytic [TpuHloCostAnalysis](tpu-hlo-cost-analysis.md) / window-search result is used unchanged.
 
-This page documents what is *real and reimplementable* — the wire-level options proto (`LearnedCostModelClientOptions` with its `ServiceType` enum, RPC-endpoint fields, and recovered C++ struct layout), the four-enum mode/validation/DB-query state machine the interface implements, the recovered `EmitterLearnedCostModelBase` vtable shape (three exercised slots), the `MLCostModelWindowInfo` request payload the client receives, the status/error handling at each call site, and the precise null/flag double-gate that drops the whole layer back to the analytic model.
+This page documents what is *real and reimplementable* — the wire-level options proto (`LearnedCostModelClientOptions` with its `ServiceType` enum, RPC-endpoint fields, and recovered C++ struct layout), the four-enum mode/validation/DB-query state machine the interface implements, the recovered `EmitterLearnedCostModelBase` vtable shape (four exercised slots), the `MLCostModelWindowInfo` request payload the client receives, the status/error handling at each call site, and the precise null/flag double-gate that drops the whole layer back to the analytic model.
 
 For reimplementation, the contract is:
 
-- The `EmitterLearnedCostModelBase` vtable: `IsEnabled(HloInstruction*)` @ `+0x10` (returns `bool`), `RegisterCandidateWindow(LcmKey, MLCostModelWindowInfo)` @ `+0x18` (returns `absl::Status`, `CHECK_OK`'d), and the fastest-window query @ `+0x30` (returns `absl::StatusOr`, status-gated fallback).
+- The `EmitterLearnedCostModelBase` vtable: `IsEnabled(HloInstruction*)` @ `+0x10` (returns `bool`), `RegisterCandidateWindow(LcmKey, MLCostModelWindowInfo)` @ `+0x18` (returns `absl::Status`, `CHECK_OK`'d), the fastest-window status query @ `+0x30` (returns `absl::Status`, soft-failed), and the paired value-fetch @ `+0x38` (returns a pointer to a result object holding the learned cycle estimate as a float at `+0x138`).
 - The `MLCostModelWindowInfo` request payload — the eight designated-initializer fields the client receives for every candidate window, including `estimated_cycles_classic` (the analytic answer, always supplied as the floor).
 - The status handling: the `+0x30` query result `absl::Status` selects learned-vs-analytic; on non-OK the layer logs `spatial_major_convolution.cc:4006` and falls through to `SetupBestConfig` with the classic search result.
 - The double-gate to the analytic model: the `this+0x20d0` null check **and** the `TpuCompEnv+0xed6` (`enable_learned_cost_model`) byte; either-false drops to analytic.
@@ -25,7 +25,8 @@ For reimplementation, the contract is:
 | **Client pointer slot** | `this+0x20d0` (`SpatialMajorConvolution`), borrowed `EmitterLearnedCostModelBase*` |
 | **Enable slot** | `vtable+0x10` — `bool IsEnabled(HloInstruction*)` (@ call `0x13173`…) |
 | **Register slot** | `vtable+0x18` — `absl::Status RegisterCandidateWindow(LcmKey, MLCostModelWindowInfo)` |
-| **Query slot** | `vtable+0x30` — `absl::StatusOr<…>` fastest-window prediction |
+| **Query slot** | `vtable+0x30` — `absl::Status` fastest-window status query (soft-failed) |
+| **Value-fetch slot** | `vtable+0x38` — paired fetch of the learned cycle estimate (float @ result `+0x138`) |
 | **Enable flag byte** | `*(byte*)(GetTpuCompEnv(inst)+0xed6)` == `enable_learned_cost_model` |
 | **Options proto / vtable** | `xla::jellyfish::LearnedCostModelClientOptions` @ `0x21cffc10` |
 | **gflag** | `xla_tpu_emitter_learned_cost_model_options` = `AutoOr<EmitterLearnedCostModelOptions>` |
@@ -46,8 +47,8 @@ The learned cost model is a textbook "future-extension hook": the schema, the gf
 | `EmbeddingCacheEntry` / `EmbeddingCacheDB` protos | YES | Reachable | typeinfo `0x21d00068` / `0x21d00080` |
 | `LearnedCostModelMode` / `DbQueryType` / `MLOutputValidationStrategy` / `ServiceType` enums | YES | Decoded | value-name strings present (e.g. `SERVICE_TYPE_REMOTE`) |
 | gflag `xla_tpu_emitter_learned_cost_model_options` | YES | Parsed | `AbslFlagDefaultGenForxla_tpu_emitter_learned_cost_model_options::Gen` @ `0x1d72ac00` |
-| Consumer call sites (3 vtable slots) | YES | Code-present, runtime-dead | `ComputeWindowConfigInternal` @ `0x13172c80` + lambda `0x1317fe00` |
-| `CHECK_OK` on `RegisterCandidateWindow` result | YES | Source `spatial_major_convolution.cc:4020` | literal @ `.rodata` |
+| Consumer call sites (4 vtable slots) | YES | Code-present, runtime-dead | `ComputeWindowConfigInternal` @ `0x13172c80` + lambda `0x1317fe00` |
+| `CHECK_OK` on `RegisterCandidateWindow` result | YES | Source `spatial_major_convolution.cc:3996` | literal @ `.rodata` |
 | `Failed to get fastest window …` analytic fallback | YES | Source `spatial_major_convolution.cc:4006` | literal @ `.rodata` |
 | `EmitterLearnedCostModelBase` vtable / typeinfo | **NO** | Type-only | appears solely in mangled ctor *parameter* names |
 | concrete `LearnedCostModelClient` class | **NO** | Absent | no symbol beyond the `…ClientOptions` proto |
@@ -73,7 +74,8 @@ The learned cost model is a textbook "future-extension hook": the schema, the gf
 | `+0x08` | typeinfo ptr | — | Itanium ABI |
 | `+0x10` | `bool IsEnabled(const HloInstruction*)` | `bool` (in `%al`) | `(*(…)(*v44 + 16))(v44, hlo)` — arg is `*(HloInstruction**)(this+72)`; result drives the consult branch |
 | `+0x18` | `absl::Status RegisterCandidateWindow(const LcmKey&, const MLCostModelWindowInfo&)` | `absl::Status` | `(*(…)(*v52 + 24))(v52, key.first, key.second, &status)` in lambda; `CHECK_OK`'d |
-| `+0x30` | fastest-window query `→ absl::StatusOr<…>` | `absl::StatusOr` (stack-returned) | `(*(…)(**(this+0x20d0) + 48))(&out, this_lcm, fp.first, fp.second)`; status selects fallback |
+| `+0x30` | fastest-window status query | `absl::Status` (stack-returned `StatusRep*`) | `(*(…)(**(this+0x20d0) + 48))(&out, this_lcm, fp.first, fp.second)`; status `!= OK` selects fallback (logs `.cc:4006`) |
+| `+0x38` | paired value-fetch (learned cycle estimate) | pointer to result object | `(*(…)(**(this+0x20d0) + 56))(this_lcm, fp.first, fp.second)`; reached only when `+0x30` is OK, `[1]` is presence-checked, float read at result `+0x138` |
 
 ### Call sequence inside the window search
 
@@ -99,14 +101,17 @@ if (lcm) {                                               // null → analytic (d
 if (consult != true) {                                   // learned model not used
     SetupBestConfig(/* classic search result */);        // analytic answer
 } else {
-    // fastest-window query @ vtable+0x30, keyed by the fingerprint
+    // fastest-window status query @ vtable+0x30, keyed by the fingerprint
     status = (*(Status(**)(…))(*(void**)lcm + 0x30))(&out, lcm, fp.first, fp.second);
     if (!status.ok()) {                                  // analytic fallback
         LOG("Failed to get fastest window using learned cost model "
             "for instruction: ", hlo, " with status: ", status);   // .cc:4006
         SetupBestConfig(/* classic search result */);    // <-- fall through to analytic
     } else {
-        SetupBestConfig(/* learned-selected window  */);
+        // paired value-fetch @ vtable+0x38, same fingerprint key
+        result = (*(void*(**)(…))(*(void**)lcm + 0x38))(lcm, fp.first, fp.second);
+        float learned_cycles = (result[1] ? *(float*)((char*)*result + 0x138) : 0.0f);
+        SetupBestConfig(/* learned-selected window, learned_cycles */);
     }
 }
 ```
@@ -129,7 +134,7 @@ if (*(byte*)(GetTpuCompEnv(hlo) + 0xed6) == 1            // enable_learned_cost_
     //    MLCostModelWindowInfo( {.activations_window = …, .kernel_window = …,
     //    .output_window = …, .iteration_bounds = …, .window_info = …,
     //    .vmem_footprint_granules = estimated_granules, .bundles = estimated_bundles,
-    //    .estimated_cycles_classic = estimated_cycles})) is OK"  // .cc:4020
+    //    .estimated_cycles_classic = estimated_cycles})) is OK"  // .cc:3996
 }
 ```
 
@@ -219,11 +224,11 @@ message LearnedCostModelClientOptions {
   optional ServiceType embedding_service_type                        = 1;
   optional string      remote_embedding_server_address               = 2;  // REMOTE RPC endpoint
   optional string      remote_embedding_model_name                   = 3;  // REMOTE model selector
-  optional int64       inflight_rpc_monitoring_interval_milliseconds = 4;  // RPC liveness poll
+  optional int32       inflight_rpc_monitoring_interval_milliseconds = 4;  // RPC liveness poll (serialized int32)
   optional string      local_embedding_model_path                    = 5;  // LOCAL model file
   optional string      embedding_cache_path                          = 6;  // EmbeddingCacheDB on disk
   optional FusionDataProtoGenerationOptions fusion_data_proto_generation_options = 7;
-  optional int64       max_batch_size                                = 8;  // RPC batch size
+  optional int32       max_batch_size                                = 8;  // RPC batch size (serialized int32)
 }
 
 message EmbeddingCacheEntry { optional bytes fingerprint = 1; optional tensorflow.TensorProto embedding = 2; }
@@ -247,10 +252,11 @@ C++ struct layout, recovered byte-exact from the copy-ctor `LearnedCostModelClie
 | `+0x28` | `TaggedStringPtr local_embedding_model_path` | 8 | |
 | `+0x30` | `TaggedStringPtr embedding_cache_path` | 8 | |
 | `+0x38` | `FusionDataProtoGenerationOptions*` | 8 | copied iff `_has_bits_ & 0x10` |
-| `+0x40` | `int64_t` (RPC interval **or** `max_batch_size`) | 8 | |
-| `+0x48` | `int32_t embedding_service_type` (enum) | 4 | tail integer |
+| `+0x40` | `int32_t embedding_service_type` (enum, field 1) | 4 | serialized first, tag byte `0x08`, from `*((int*)this+16)` |
+| `+0x44` | `int32_t inflight_rpc_monitoring_interval_milliseconds` (field 4) | 4 | `WriteInt32ToArrayWithField<4>` from `*((int*)this+17)` |
+| `+0x48` | `int32_t max_batch_size` (field 8) | 4 | `WriteInt32ToArrayWithField<8>` from `*((int*)this+18)` |
 
-> **NOTE —** the copy-ctor guards the sub-message with `(*(byte*)(this+0x10) & 0x10)` — `_has_bits_` bit 4 governs `fusion_data_proto_generation_options`. The four string fields are `proto2::internal::TaggedStringPtr` and are `ForceCopy`'d when their low tag bits are set (arena-owned vs inline). MEDIUM confidence on the exact assignment of the two `int64` fields to `+0x40`; the proto declares both `inflight_rpc_monitoring_interval_milliseconds` and `max_batch_size`, and the copy-ctor copies one int64 at `+0x40` plus the enum at `+0x48` — the second int64 is presence-packed and not separately visible in the copy path.
+> **NOTE —** the copy-ctor guards the sub-message with `(*(byte*)(this+0x10) & 0x10)` — `_has_bits_` bit 4 governs `fusion_data_proto_generation_options`. The four string fields are `proto2::internal::TaggedStringPtr` and are `ForceCopy`'d when their low tag bits are set (arena-owned vs inline). The three tail integers are pinned by `_InternalSerialize` @ `0x1db65920`: field 1 (`embedding_service_type`) writes from `+0x40`, field 4 (`inflight_rpc_monitoring_interval_milliseconds`) from `+0x44`, field 8 (`max_batch_size`) from `+0x48` — all via `WriteInt32ToArrayWithField`, so the two interval/batch fields are serialized as 32-bit even though the `.proto` text below declares them `int64`. The copy-ctor copies the `+0x40`/`+0x44` pair as one 8-byte word and `+0x48` as a separate dword. MEDIUM confidence on the proto-declared width of the two non-enum integers (the serializer uses the int32 path; the on-wire varint is width-agnostic for small values).
 
 The owning `EmitterLearnedCostModelOptions` adds the top-level switches: `enable_learned_cost_model` (tag 1, the gate byte), `cost_model_mode`, `db_query_type`, `ml_output_validation_strategy`, `db_path`, `max_num_considered_windows`, `dump_fusion_data_proto[_dir]`. Of these, only `enable_learned_cost_model` has a runtime consumer (the `+0xed6` gate); the rest are deserialized but dead because the client they configure is absent.
 
@@ -304,7 +310,7 @@ When a client *is* present and a query fails, the soft fallback at `spatial_majo
 | `LearnedCostModelClient` concrete class | — | **does not exist** | CERTAIN |
 | `LearnedCostModelService::Stub` (gRPC) | — | **does not exist** | CERTAIN |
 
-> **QUIRK —** the failure-log call site reads `spatial_major_convolution.cc:4006` and the `RegisterCandidateWindow` `CHECK_OK` reads `:4020` in this build (`0.0.40`). Source line numbers are build-version-specific; the surrounding VAs and the wire contract are the stable anchors.
+> **QUIRK —** the failure-log call site reads `spatial_major_convolution.cc:4006` and the `RegisterCandidateWindow` `CHECK_OK` reads `:3996` in this build (`0.0.40`). Source line numbers are build-version-specific; the surrounding VAs and the wire contract are the stable anchors.
 
 ---
 
