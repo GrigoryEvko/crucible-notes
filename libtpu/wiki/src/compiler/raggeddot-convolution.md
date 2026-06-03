@@ -23,11 +23,11 @@ For reimplementation, the contract is:
 | **Pass** | `xla::jellyfish::RaggedDotExpander` (HLO pass) |
 | **Pass object** | `0x30` bytes; `+0x08` `use_iteration_mask` bool, `+0x09` `RaggedConvContractionMode`, `+0x10`/`+0x20` `window_bounds` `vector<string>` |
 | **Pass entry** | `RunImpl` `0x10fae060` |
-| **Pass wiring** | `PostMainFusionHloOptimize` `0x109673b3` → `AddPass<…>` `0x1096d2e0` (`make_unique` `0x1096e360`) |
+| **Pass wiring** | `PostMainFusionHloOptimize` `0x10966560` (AddPass call site at `0x109673b3`) → `AddPass<…>` `0x1096d2e0` (`make_unique` `0x1096e360`) |
 | **Geometry builder** | `FromRaggedDot` (error lambda `$_0` `0x10fb2160`); `ExpandShape` `0x10fb2360` |
 | **Expander body** | `ExpandRaggedDot` `0x10fafa20` |
 | **Mask builder** | `CreateOutputMask` `0x10fb2900` |
-| **Conv+select fusion** | `CreateConvolutionSelectFusion` `0x10fb31e0`; `DynamicSliceMaskedConv` (dynamic_slice arm) |
+| **Conv+select fusion** | `CreateConvolutionSelectFusion` `0x10fb31e0`; `DynamicSliceMaskedConv` `0x10fb6a00` (dynamic_slice arm) |
 | **LLO emitter** | `xla::jellyfish::SpatialMajorConvolution` (`SetLoweringStrategy` `0x13167e40`) |
 | **Source file** | `platforms/xla/service/jellyfish/ragged_dot_expander.cc` |
 | **IR level** | HLO (expander); MLO/LLO (`SpatialMajorConvolution`) |
@@ -38,12 +38,12 @@ For reimplementation, the contract is:
 
 ### Purpose
 
-`RaggedDotExpander` is constructed and added in `PostMainFusionHloOptimize` (`0x109673b3`), after the main fusion pass, via `HloPassPipeline::AddPass<RaggedDotExpander, bool, RaggedConvContractionMode, vector<string>, Target&>` (`0x1096d2e0`). Three impure compile knobs feed the constructor; they are read once at pipeline-build time, not per instruction.
+`RaggedDotExpander` is constructed and added in `PostMainFusionHloOptimize` (function entry `0x10966560`, AddPass call site at `0x109673b3`), after the main fusion pass, via `HloPassPipeline::AddPass<RaggedDotExpander, bool, RaggedConvContractionMode, vector<string>, Target&>` (`0x1096d2e0`). Three impure compile knobs feed the constructor; they are read once at pipeline-build time, not per instruction.
 
 ### Entry Point
 
 ```text
-PostMainFusionHloOptimize          0x109673b3
+PostMainFusionHloOptimize          0x10966560  (AddPass block at 0x109673b3)
   ├─ RaggedDotExpanderShouldUseIterationMask  0x1d6b5d60  ── use_iteration_mask arg
   ├─ FLAGS_xla_tpu_impure_contract_ragged_conv_with  0x223a7cf8  ── RaggedConvContractionMode arg
   ├─ FLAGS_xla_tpu_impure_ragged_dot_window_bounds   0x223a7d58  ── vector<string> g/m/k/n arg
@@ -71,7 +71,7 @@ Two distinct gate functions exist because the mask is consulted at two pipeline 
 
 | Gate | Address | Predicate | Consumer | Confidence |
 |---|---|---|---|---|
-| `RaggedDotExpanderShouldUseIterationMask` | `0x1d6b5d60` | v≥3 AND `use_iteration_mask` (AUTO=ON) | `PostMainFusionHloOptimize` (the `+0x08` ctor arg) | CERTAIN |
+| `RaggedDotExpanderShouldUseIterationMask` | `0x1d6b5d60` | v≥3 AND `use_iteration_mask` (AUTO=ON) | `PostMainFusionHloOptimize` `0x10966560` (the `+0x08` ctor arg) | CERTAIN |
 | `ShouldUseIterationMask` | `0x1d6b5dc0` | v≥3 AND (`use_iteration_mask` OR `enable_masked_fusion_iteration_skipper`) | `SpatialMajorConvolution` ctor / Emit (LLO level) | CERTAIN |
 | `ShouldEnableMaskedFusionIterationSkipper` | `0x1d6b5d20` | v≥3 AND plain-bool skipper | (the skipper disjunct above) | CERTAIN |
 
@@ -103,19 +103,19 @@ function ShouldUseIterationMask(env, topology):     // 0x1d6b5dc0
 
 ### Layout
 
-The offsets below are read from the disassembly of the single `CreateConvolve` call site (`0x10fb31e0`, line ~1288) and the surrounding loads. `CreateConvolve(builder, lhs, rhs, feature_group_count, batch_group_count, &window, &dim_numbers, &precision_config, &sparsity, 0)` consumes the spec as:
+The offsets below are read from the disassembly of the single `CreateConvolve` call site (`0x10fb31e0`, line ~1288) and the surrounding loads. The spec pointer is held as a `int64*` (`v108`), so the decompiler renders the conv sub-object pointers as **qword indices** — `v108 + 6`, `v108 + 24`, `v108 + 29`, `v108 + 72` — which are byte offsets `8 ×` the index. The contraction-mode selector is the lone exception: it is read with a byte access `*(int8*)(a7 + 24)`, i.e. genuine **byte offset 24**, not qword index 24. The call is `CreateConvolve(builder, lhs, rhs, feature_group_count, batch_group_count, &window, &dim_numbers, &precision_config, &sparsity, 0)` with `v108+24`, `v108+6`, `v108+72` as the window/dim-numbers/precision args (line 1288) and `Shape::Shape(&v417, v108+29)` as the output shape (line 1272, also `a7+232` at line 453):
 
-| Field | Offset | Type | Role in `CreateConvolve` | Confidence |
-|---|---|---|---|---|
-| contraction-mode byte | `+0x18` (24) | u8 | `0`=reduce arm, `1`=dynamic_slice arm; tested `*(a7+24)` to pick the fold | CERTAIN |
-| `dim_numbers` | `+0x06` (6) | `ConvolutionDimensionNumbers` | `&spec[6]` → conv dim numbers arg | HIGH |
-| `window` | `+0x18` (24) | `Window` | `&spec[24]` → window arg | HIGH |
-| conv `Shape` | `+0x1D` (29) | `Shape` | output/conv shape (`Shape::Shape(&v417, spec+29)`) | HIGH |
-| `feature_group_count` | `+0x46` (70) | i64 | conv feature-group arg | MEDIUM |
-| `batch_group_count` | `+0x47` (71) | i64 | conv batch-group arg | MEDIUM |
-| `precision_config` | `+0x48` (72) | `PrecisionConfig` | `&spec[72]` → precision arg | HIGH |
+| Field | Byte offset | Qword index in decompile | Type | Role in `CreateConvolve` | Confidence |
+|---|---|---|---|---|---|
+| contraction-mode byte | `+0x18` (24) | — (byte access `*(int8*)(a7+24)`) | u8 | `0`=reduce arm, `1`=dynamic_slice arm; tested to pick the fold | CERTAIN |
+| `dim_numbers` | `+0x30` (48) | `v108 + 6` | `ConvolutionDimensionNumbers` | conv dim numbers arg | HIGH |
+| `window` | `+0xC0` (192) | `v108 + 24` | `Window` | window arg | HIGH |
+| conv `Shape` | `+0xE8` (232) | `v108 + 29` | `Shape` | output/conv shape (`Shape::Shape(&v417, a7+232)`) | HIGH |
+| `feature_group_count` | `+0x230` (560) | `v108[70]` | i64 | conv feature-group arg | MEDIUM |
+| `batch_group_count` | `+0x238` (568) | `v108[71]` | i64 | conv batch-group arg | MEDIUM |
+| `precision_config` | `+0x240` (576) | `v108 + 72` | `PrecisionConfig` | precision arg | HIGH |
 
-> **GOTCHA —** the contraction-mode byte and the `Window` both load near offset 24 in the decompiler's view; they are distinct fields (the mode is a one-byte selector tested as `*(a7+24)`, the `Window` is the proto sub-message). Do not conflate them. The decompiler's flat `a7+N` displacement aliasing is an artifact of the spec being passed by `const&`; treat the table as the field *roles*, byte offsets HIGH/MEDIUM where the load is unambiguous.
+> **GOTCHA —** the contraction-mode byte sits at byte 24, but the `Window` proto is at qword index 24 — *byte 192*, not byte 24. The decompiler renders both as a literal `24`, but the mode is a one-byte read (`*(int8*)(a7+24)`) and the window is a qword-indexed sub-object pointer (`v108 + 24` → `a7 + 192`); they are distinct fields ~168 bytes apart. Multiply every qword index by 8 to recover the byte offset. The byte-offset column is HIGH/MEDIUM where the load is unambiguous.
 
 `RunImpl` confirms the spec's component set by its destructors: after each expansion attempt it tears down a `PrecisionConfig`, a `Shape`, a `Window`, and a `ConvolutionDimensionNumbers` (`0x10fae060`, lines ~1408-1419) — exactly the four conv sub-objects above.
 
@@ -199,11 +199,11 @@ The `MaskAggregatorConfig` (a `xla::jellyfish` proto, arena `DefaultConstruct` i
 
 ### Dynamic-Slice Arm (`dynamic_slice`, mode 1)
 
-When `*(spec+24) == 1`, the fold is delegated to `xla::jellyfish::DynamicSliceMaskedConv` (`CreateConvolutionSelectFusion` line ~2003). This arm adds two extra fusion parameters — `group_starts` (`Parameter(3)`) and `update_into` (`Parameter(4)`) — and scatters each group's masked conv result into the running accumulator at the group's start offset rather than reduce-summing windows:
+When `*(spec+24) == 1`, the fold is delegated to `xla::jellyfish::DynamicSliceMaskedConv` (`0x10fb6a00`, called from `CreateConvolutionSelectFusion` line ~2003). This arm adds two extra fusion parameters — `group_starts` (`Parameter(3)`) and `update_into` (`Parameter(4)`) — and scatters each group's masked conv result into the running accumulator at the group's start offset rather than reduce-summing windows:
 
 ```c
 // inside CreateConvolutionSelectFusion, *(spec+24) == 1  (dynamic_slice)
-function DynamicSliceArm(spec, mask, group_starts, update_into, …):    // 0x10fb31e0 -> DynamicSliceMaskedConv
+function DynamicSliceArm(spec, mask, group_starts, update_into, …):    // 0x10fb31e0 -> DynamicSliceMaskedConv 0x10fb6a00
     CHECK(group_starts_param != nullptr)   // "group_starts_param != nullptr"
     CHECK(update_into_param  != nullptr)   // "update_into_param != nullptr"
     // build the conv + select(mask, conv, 0) as in the reduce arm, then:
@@ -350,7 +350,7 @@ function SpatialMajorConvolution::UpdateLoweringStrategyWithWindowInfo(   // 0x1
 | `ExpandShape` | `0x10fb2360` | append the conv spatial dim to operand shapes | HIGH |
 | `CreateOutputMask` | `0x10fb2900` | `Iota + Broadcast + Compare(≥)·Compare(<) + And` mask | CERTAIN |
 | `CreateConvolutionSelectFusion` | `0x10fb31e0` | `Convolve + Select(mask,·,0)` + reduce/dynamic_slice fold | CERTAIN |
-| `DynamicSliceMaskedConv` | (in `0x10fb31e0` chain) | the `dynamic_slice` arm scatter-accumulate | HIGH |
+| `DynamicSliceMaskedConv` | `0x10fb6a00` | the `dynamic_slice` arm scatter-accumulate | CERTAIN |
 | `GetRaggedConvContractionModeParser` | `0x1db15340` | `FixedOptionSetFlag` (`reduce`/`dynamic_slice`) | CERTAIN |
 | `RaggedDotExpanderShouldUseIterationMask` | `0x1d6b5d60` | expander-level mask gate | CERTAIN |
 | `ShouldUseIterationMask` | `0x1d6b5dc0` | LLO-level mask gate | CERTAIN |
@@ -362,7 +362,7 @@ function SpatialMajorConvolution::UpdateLoweringStrategyWithWindowInfo(   // 0x1
 
 ## Diagnostic Strings
 
-All emitted from `platforms/xla/service/jellyfish/ragged_dot_expander.cc`. These are the load-bearing assertions a reimplementation must honor (and a debugging engineer will grep for).
+All emitted from `platforms/xla/service/jellyfish/ragged_dot_expander.cc`. These are the central assertions a reimplementation must honor (and a debugging engineer will grep for).
 
 | String | When | Severity |
 |---|---|---|
