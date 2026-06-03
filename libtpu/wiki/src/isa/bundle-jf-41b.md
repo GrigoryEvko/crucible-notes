@@ -4,7 +4,7 @@
 
 ## Abstract
 
-The Jellyfish TensorCore VLIW bundle is a **41-byte (328-bit)** issue word. It is the oldest TensorCore bundle libtpu still encodes, and the per-generation bundle pages for Pufferfish, Viperfish, Ghostlite, and Trillium are best read as deltas against it. Unlike the V5+ generations — which build an all-zero MC record and assemble the bundle entirely through `BitCopy` into a shared span (see [Record Format](record-format.md)) — Jellyfish is a *direct-pack* encoder: `EncoderJf::EncodeBundleInternal` (`0x1e86c7c0`) builds the bundle as read-modify-write `shl`/`and`/`or` arithmetic on the qwords of a 53-byte internal scratch struct, then strips the first 12 bytes and copies out the 41-byte tail. There is no per-instruction record and no `BitCopy`; every field's position is the literal shift constant in its slot encoder.
+The Jellyfish TensorCore VLIW bundle is a **41-byte (328-bit)** issue word. It is the oldest TensorCore bundle libtpu still encodes, and the per-generation bundle pages for Pufferfish, Viperfish, Ghostlite, and the gen-5 `6acc60406` codec are best read as deltas against it. Unlike the V5+ generations — which build an all-zero MC record and assemble the bundle entirely through `BitCopy` into a shared span (see [Record Format](record-format.md)) — Jellyfish is a *direct-pack* encoder: `EncoderJf::EncodeBundleInternal` (`0x1e86c7c0`) builds the bundle as read-modify-write `shl`/`and`/`or` arithmetic on the qwords of a 53-byte internal scratch struct, then strips the first 12 bytes and copies out the 41-byte tail. There is no per-instruction record and no `BitCopy`; every field's position is the literal shift constant in its slot encoder.
 
 Three properties make the bundle decodable from the binary alone. First, the **12-byte-strip law**: the encoder works in a 53-byte struct, and on success copies `struct[0x0C .. 0x34]` as the wire bundle, so **output byte N == internal-struct byte (0x0C + N)** and the absolute bundle bit of any field is `struct_byte*8 + shift − 96`. Second, the **slot-mask dispatch**: the `Bundle` proto carries a 32-bit `slot_mask` at `proto+0x10`, one bit per slot, and `EncodeBundleInternal` tests each bit to call the matching per-slot `Encode*` writer. Third, the **`kNeverExecute` prefill**: before any slot is filled, the encoder stamps the predicate value 31 into every slot's predicate field, so an absent slot is a defined no-op rather than garbage.
 
@@ -18,8 +18,10 @@ This page documents the complete slot map at absolute bit precision, the `Encode
 
 | | |
 |---|---|
+| **Generation** | `TpuVersion 0` = `kJellyfish`; external display name **TPU v2**; internal codename `jellyfish` (no `Trillium` string exists in the binary) — see [Codename Matrix](../targets/tpu-version-codename-matrix.md) |
 | **Encode entry** | `EncoderJf::EncodeBundleInternal(Bundle const&, bool)` @ `0x1e86c7c0` |
-| **Wire width** | **41 bytes / 328 bits** (`JellyfishCodecMetadata::BundleSizeBytes` @ `0x1ecf7460` returns `41`) |
+| **Encoder factory** | `tpu::internal::CreateEncoderJfDf` @ `0x1e835b80` (builds both the JF and DF encoders) |
+| **Wire width** | **41 bytes / 328 bits** (`JellyfishCodecMetadata::BundleSizeBytes` @ `0x1ecf7460` returns `41`; the buffer is hard-pinned by `operator new(0x29)` in `EncodeBundleInternal`) |
 | **Internal scratch** | 53 bytes; wire = `struct[0x0C..0x34]`; `output_byte N == struct_byte 0x0C+N` |
 | **Slot mask** | 32-bit word at `Bundle` proto `+0x10`; one bit per slot |
 | **Dispatchable slots** | 9 (scalar ×2, vector-ALU ×2, vstore, vload, vextended/MXU, vresult, misc) + 6 imm + TTU |
@@ -47,7 +49,7 @@ result.data = buf;  result.size = 0x29;   // StatusOr<vector<uint8>> of size 41
 
 The two `vmovups` copy bytes `[src .. src+32)` and `[src+9 .. src+41)`; together they cover all 41 bytes (`9 + 32 = 41`). The wire bundle is therefore exactly `struct[0x0C .. 0x34]`.
 
-> **NOTE —** this single fact converts every per-slot shift into an absolute bundle bit. A field written by `(value & mask) << S` into the struct qword at byte offset `B` lands at **absolute bundle bit `B*8 + S − 96`** (because `0x0C * 8 = 96`). When `B == 0x0C` the `−96` cancels and the absolute bit equals the shift directly — which is why the qword-0 prefill constants read as their bundle bit positions verbatim.
+> **NOTE — bit-numbering convention.** Every absolute bit position on this page is **LSB-first**, matching [Bundle Model](bundle-model-overview.md#what-a-bundle-is): bit 0 is the least-significant bit of output byte 0, and a field shifted left by `S` (`(value & mask) << S`) occupies bit `S` and up. The Jellyfish direct-pack encoder uses this convention via its `shl`/`or` shift constants; there is no MSB-first / big-endian ordering anywhere in the encode path. A field written by `(value & mask) << S` into the struct qword at byte offset `B` therefore lands at **absolute bundle bit `B*8 + S − 96`** (because `0x0C * 8 = 96`). When `B == 0x0C` the `−96` cancels and the absolute bit equals the shift directly — which is why the qword-0 prefill constants read as their bundle bit positions verbatim.
 
 The 41 bytes partition into five qwords by absolute bit:
 
