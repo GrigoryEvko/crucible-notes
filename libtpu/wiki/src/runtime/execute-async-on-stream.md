@@ -143,7 +143,7 @@ function TpuExecutable_ExecuteAsyncOnStream(self, c_run_opts, c_args[], n, c_out
     // destroy args, run_options, allocator
 ```
 
-> **GOTCHA —** `SetDynamicShape` is asserted with `TF_CHECK_OK` (interface uses `tpu_executor_c_api.cc:1190`). A malformed dynamic-shape blob from the C side is a hard `LogMessageFatal`, not a returned error. The dynamic shape lives at a fixed `+560` offset from each C argument struct, separate from the static shape at offset `0`.
+> **GOTCHA —** `SetDynamicShape` is asserted with `TF_CHECK_OK` (the shim asserts at `tpu_executor_c_api.cc:1190`). A malformed dynamic-shape blob from the C side is a hard `LogMessageFatal`, not a returned error. The dynamic shape lives at a fixed `+560` offset from each C argument struct, separate from the static shape at offset `0`.
 
 ---
 
@@ -177,7 +177,7 @@ function TpuExecutableInterface::ExecuteAsyncOnStream(self, run_options, args): 
 
 The argument vector element stride is **192 bytes** (an `xla::ExecutionInput`), visible in every destructor loop (`192 * count`, e.g. lines 666, 711, 945 of the C shim and 53 of the wrapper). Each `ExecutionInput` carries a `Shape`, a dynamic `Shape`, and a `ShapeTree<MaybeOwningDeviceAddress>` of leaf buffers indexed through `xla::internal::IndexTable`. The leaf device addresses are 24-byte `DeviceAddressBase` records (opaque pointer + size + memory-space tag); the flatten loop asserts each `AsDeviceAddress().opaque() != nullptr` (`tuple_tree.h:332`).
 
-> **QUIRK —** the flatten array uses a hand-rolled growable vector with the `2*cap` doubling policy and the `0xAAAAAAAAAAAAAAAB` magic (reciprocal of 192/64 = 3, used to recover element counts from byte spans). This is not a `std::vector<DeviceAddressBase>` with default growth — the leaf count is known up front (`24 * n`), so a reimplementation can pre-size exactly and skip the reallocation path entirely (interface lines 191-215).
+> **QUIRK —** the flatten array uses a hand-rolled growable vector with the `2*cap` doubling policy (`v16 = 2*v7`, interface line 195) and a `0xAAAAAAAAAAAAAAAA` length-error guard (interface lines 139, 196 — the max element count for the 24-byte `DeviceAddressBase` stride). This is not a `std::vector<DeviceAddressBase>` with default growth — the leaf count is known up front (`24 * n`, line 142), so a reimplementation can pre-size exactly and skip the reallocation path entirely (interface lines 142–218). (The `0xAAAAAAAAAAAAAAAB` division magic that recovers a /192 element count from a byte span belongs to the *wrapper's* `ExecutionInput` vector teardown at `0x1dad98a0` line 64, not to this 24-byte flat array.)
 
 ---
 
