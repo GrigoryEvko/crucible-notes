@@ -6,7 +6,7 @@
 
 `RecordReduceWindowCycles` is the cost-model emitter that prices an HLO `kReduceWindow` — max-pool, average-pool, or any windowed reduction. It is the **pooling sibling of the convolution emitter** [`RecordConvolutionCycles`](convolution-cost-state.md): both reuse the same per-call `ConvState` dim-product struct, the same `Target` geometry divisors (`SublaneCount`, `ChunksPerTile`), and the same four-`ResourceVector` output protocol. The difference is the *destination*. A convolution lands its compute cost on the MXU pipes (`Matmul`/`Matpush`, priced through [`MxuLatencyTable`](mxu-latency-overview.md)); a reduce-window is a vector reduction, not a matrix multiply, so every compute cycle lands on the **vector / cross-lane pipes** — `VectorLoad`, `VectorAluAny`, and `Xlu`. There is no MXU traffic.
 
-The familiar reference frame is an LLVM `TargetTransformInfo` cost hook for a reduction intrinsic, except that this model is *throughput-shaped*, not latency-shaped: the cost is "how many cycles does the vector unit stay busy reading and combining the window," computed as a per-output-element count multiplied by a per-op throughput drawn from the per-generation `CycleTable`. The window area enters the cost through the `ConvState` dim products, and the *combiner* — the `to_apply` subcomputation that XLA attaches to every reduce-window (the `maximum` of a max-pool, the `add` of an avg-pool) — is priced separately by walking its instructions and charging the dominant op once per window-element per output.
+The familiar reference frame is an LLVM `TargetTransformInfo` cost hook for a reduction intrinsic, except that this model is *throughput-shaped*, not latency-shaped: the cost is "how many cycles does the vector unit stay busy reading and combining the window," computed as a per-output-element count multiplied by a per-op throughput drawn from the per-generation `CycleTable`. The window area enters the cost through the `ConvState` dim products, and the *combiner* — the `to_apply` subcomputation that XLA attaches to every reduce-window (the `maximum` of a max-pool, the `add` of an avg-pool) — is priced separately by walking its instructions and charging each modeled op once per window-element per output.
 
 The shape of the cost is set by which **axis** the window reduces over. `GetReduceWindowType` classifies the reduction into Lane (most-minor axis), Sublane (the sublane axis), or Major (a slow/outer axis), and each gets a distinct leaf emitter with a distinct deposit pattern: Lane adds a cross-lane `Xlu` drain, Sublane adds a sublane-shuffle term, and Major is purely read-plus-combine. This page documents the dispatch, the `ConvState`-driven window-area formula each leaf uses, the per-op throughput it multiplies by, and the combiner-cost helper they share.
 
@@ -15,7 +15,7 @@ For reimplementation, the contract is:
 - The four-`ResourceVector` entry protocol and the trivial-zero short-circuit when the cost model is not live.
 - The `ConvState` build (shared with conv) and the three named `ConvState` dim products each leaf reads: output-volume, window-extent, and kernel-spatial-iteration count.
 - The `GetReduceWindowType` 3-way axis dispatch and the slot deposits each leaf makes (`VectorLoad`, `VectorAluAny`, `Xlu`), including the `Target+0x4b0` Xlu-rate divisor.
-- The combiner cost: walk `to_apply`, classify the combiner opcode → a `CycleTable::Instruction`, and charge `throughput(CT) × (window−1) × output_volume`.
+- The combiner cost: walk `to_apply`, classify each modeled combiner opcode → a `CycleTable::Instruction`, and charge `throughput(CT) × count` where `count` is the per-axis window-element count (`vol·(window−1)` for Lane, `base·(window−1)` plus a `4·base` term for Sublane, the whole `vol` for Major).
 
 | | |
 |---|---|
@@ -27,7 +27,7 @@ For reimplementation, the contract is:
 | **Major leaf** | `RecordMajorReduceWindowCycles` `@0x130c9f00` (cost_model.cc:5033) |
 | **Combiner cost** | `UpdateCostBasedOnReductionFunction` `@0x130c9a20` (fatal @ cost_model.cc:6870) |
 | **Deposit** | `ResourceVector::Acc(Resource, double)` `@0x1c89adc0` |
-| **Throughput source** | per-gen `CycleTable::GetCyclesForThroughput(Instruction)` (vtable `[CycleTable+0x10]`) |
+| **Throughput source** | per-gen `CycleTable::GetCyclesForThroughput(Instruction)` (via `[CostModel+0x8]`=`CycleTable`, then vtable slot `[+0x10]`) |
 | **Compute pipes** | `R[7] VectorLoad`, `R[5] VectorAluAny`, `R[2] Xlu` — **no MXU** |
 | **Input DMA** | `RecordOperandCycles` `@0x130ca140` → `R[9..12] MemXfer` |
 
@@ -147,17 +147,17 @@ function GetReduceWindowType(rw):                    // @0x1454d4a0
     if !IsConvLowerableReduceWindow(rw): return -1   // not modellable via conv path
 
     phys = MakeLogicalToPhysical(operand_layout)
-    for each non-most-minor physical dim d:          // the "outer/major" dims
+    for each non-most-minor physical dim d:          // the "outer/major" dims (the loop)
         if !IsTrivialWindowDimension(window[d]):
             return 2                                  // Major: window on a slow axis
 
-    // window is confined to the two most-minor physical dims
-    if !IsTrivialWindowDimension(window[minor0]):     return 2   // (defensive: still major-classed)
-    if  IsTrivialWindowDimension(window[minor1]):     return 0   // Lane:    minor1 trivial → lane reduce
-    else:                                             return 1   // Sublane: minor1 non-trivial
+    // window is confined to the two most-minor physical dims (minor0 = most-minor / lane axis)
+    if !IsTrivialWindowDimension(window[minor0]):     return 0   // Lane:    lane axis has a window
+    if !IsTrivialWindowDimension(window[minor1]):     return 1   // Sublane: lane trivial, sublane non-trivial
+    return 2                                          // Major:   both most-minor dims trivial
 ```
 
-The master emitter dispatches on the result with `if (type) { if (type != 1) { if (type == 2) Major; } else Sublane; } else Lane;` — so the mapping is **0 → Lane, 1 → Sublane, 2 → Major**, confirmed at the three call sites in `@0x130b5ec0`.
+The master emitter dispatches on the result with `if (type) { if (type != 1) { if (type == 2) Major; } else Sublane; } else Lane;` — so the mapping is **0 → Lane, 1 → Sublane, 2 → Major**, confirmed at the three call sites in `@0x130b5ec0`. (Note the decompile reaches the `return 0`/`return 1`/`return 2` for the most-minor pair via a shared tail: when `window[minor0]` is non-trivial it falls straight through to return `IsTrivial(window[minor0]) == 0` = Lane; when `minor0` is trivial it tests `minor1`, returning `IsTrivial(window[minor0]) == 1` = Sublane if `minor1` is non-trivial, else holding `result = 2` = Major.)
 
 > **GOTCHA —** there are two distinct reduce-window "type −1/2" filters in the cost model and they are not the same gate. The output-fusion *dispatch* (in `GetOutputFusionOrConvolutionCycles`) uses a sentinel to *skip* reduce-windows of type 2 or −1 before any state is built. The emitter here is reached only as a *priced* sub-emitter, and at that point **all three axis types deposit** (Lane, Sublane, Major). Do not carry the upstream skip-logic into the leaf dispatch. A type −1 never reaches this function (it is filtered upstream); the `case −1` branch is therefore not exercised here.
 
@@ -186,7 +186,7 @@ function RecordLaneReduceWindowCycles(rw, axis_minor, st, rv):   // @0x130c97e0
     UpdateCostBasedOnReductionFunction(to_apply(rw), vol * (window - 1), rv)   // combiner cost
 
     drain = GetCyclesForThroughput(CT 0x1b)          // CT 0x1b = Xlu-class throughput
-    rv.Acc(Xlu=2, (drain * <spatial>) / Target[+0x4b0])   // R[2]: cross-lane reduction drain
+    rv.Acc(Xlu=2, drain / Target[+0x4b0])            // R[2]: cross-lane reduction drain
 
     // F16 residual unpack (only when axis_minor == 0 and the *result* is f16):
     if axis_minor == 0 && element_type(result) == F16(16):
@@ -194,7 +194,7 @@ function RecordLaneReduceWindowCycles(rw, axis_minor, st, rv):   // @0x130c97e0
 ```
 
 - `R[7] VectorLoad` = `vol` = `ConvState[+0x20]·[+0x18]·[+0x70]` — the input volume streamed into the vector unit.
-- `R[2] Xlu` = `throughput(CT 0x1b) · spatial / Target[+0x4b0]`. `Target+0x4b0` is the **vector-ISA Xlu/cross-lane rate divisor**, populated in `Target::Init` from `TpuSequencerParts::vector_isa()` — *not* a `ConvCostState` field (see correction below). It is the same divisor the conv emitter uses for its `Xlu` mxres deposit.
+- `R[2] Xlu` = `throughput(CT 0x1b) / Target[+0x4b0]` — the bare CT-0x1b throughput divided by the divisor; there is no additional spatial multiplier in the decompiled deposit (`@0x130c97e0`: `GetCyclesForThroughput(27)` → numerator, `[Target+0x4b0]` → denominator, single `vdivsd`). `Target+0x4b0` is the **vector-ISA Xlu/cross-lane rate divisor**, populated in `Target::Init` from `TpuSequencerParts::vector_isa()` — *not* a `ConvCostState` field (see correction below). It is the same divisor the conv emitter uses for its `Xlu` mxres deposit.
 - The combiner count is `vol · (window − 1)` — the reduction combines `window − 1` times per output element (a tree reduce over the window touches each of the `window` inputs but performs `window − 1` combines).
 
 ### Sublane — `RecordSublaneReduceWindowCycles` `@0x130c9c60`
@@ -252,38 +252,37 @@ function RecordMajorReduceWindowCycles(rw, axis_minor, st, rv):   // @0x130c9f00
 
 ### Purpose
 
-Every reduce-window carries a `to_apply` subcomputation — `maximum` for max-pool, `add` for sum/avg-pool, or an arbitrary user reduction. `UpdateCostBasedOnReductionFunction` (`@0x130c9a20`, shared by all three leaves) prices the *combiner* itself: it walks the subcomputation, finds the dominant combiner instruction, maps its opcode to a `CycleTable::Instruction`, and charges `throughput(CT) × count` into `VectorAluAny`. The `count` is supplied by the caller (the window-element-per-output count computed above).
+Every reduce-window carries a `to_apply` subcomputation — `maximum` for max-pool, `add` for sum/avg-pool, or an arbitrary user reduction. `UpdateCostBasedOnReductionFunction` (`@0x130c9a20`, shared by all three leaves) prices the *combiner* itself: it walks the subcomputation's instruction list, and for **each** modeled combiner op (skipping `parameter`/`get-tuple-element`) it maps the opcode to a `CycleTable::Instruction` and charges `throughput(CT) × count` into `VectorAluAny`. The loop does not stop after the first op — every modeled instruction in `to_apply` contributes a deposit, so a single-op reduction (the common `maximum`/`add`) charges once while a multi-op user reduction charges once per modeled op. The `count` is supplied by the caller (the window-element-per-output count computed above).
 
 ### Algorithm
 
 ```c
 function UpdateCostBasedOnReductionFunction(comp, count, rv):   // @0x130c9a20
-    for inst in comp->instructions():               // skip parameters/get-tuple-element (opcodes 0x29, 0x52)
+    for inst in comp->instructions():               // walks ALL instructions; deposits per modeled op
         switch (inst->opcode()):                     // opcode byte +12
-            case 0x29 ')' , 0x52 'R':  continue      // parameter / get-tuple — no cost
+            case 0x29 ')' , 0x52 'R':  continue      // parameter / get-tuple — no cost, skip
             case 0x49 'I', 0x4a 'J':                 // (min/max-class combiner)
                 Resource = VectorAluAny(5); CT = 0x20
             case 0x4b 'K':                            // multiply-class
-                Resource = VectorAluAny(5)
-                CT = ElementIsFloating(operand) ? 0x14 : <int path>      // float-multiply → CT 0x14
-            default (incl. 0x03 add-class):
-                if (opcode not modeled): FATAL "Reduction Function not modeled: Please file an XLA bug."  // :6870
-                Resource = VectorAluAny(5)
-                CT = ElementIsFloating(operand) ? 0x12 : <int path>      // float-add → CT 0x12
-                if floating: Resource = CycleTable::GetResource(CT)      // remap to the float-op slot
+                Resource = VectorAluAny(5); CT = 0x14                    // CT 0x14 for both int and float
+                if ElementIsFloating(operand): Resource = GetResource(CT)
+            default:
+                if (opcode != 0x03 add): FATAL "Reduction Function not modeled: Please file an XLA bug."  // :6870
+                Resource = VectorAluAny(5); CT = 0x12                    // CT 0x12 (add)
+                if ElementIsFloating(operand): Resource = GetResource(CT)  // remap to the float-op slot
 
         cyc = GetCyclesForThroughput(CT)             // vtable [CycleTable+0x10]
-        rv.Acc(Resource, cyc * count)                // the combiner deposit
-        break   // (one dominant combiner op per reduction)
+        rv.Acc(Resource, cyc * count)                // the combiner deposit, charged for this op
+        // loop continues to the next instruction — every modeled combiner op in `comp` is charged
 ```
 
 The opcode→CT classification (`@0x130c9a20`):
 
 | Combiner opcode | Class | CT (float) | CT (int) | Resource | Confidence |
 |---|---|---|---|---|---|
-| `0x49`/`0x4a` (min/max — the max-pool case) | compare-select | `0x20` (default) | `0x20` | `R[5] VectorAluAny` | CERTAIN |
-| `0x4b` (multiply) | mul | `0x14` | int path | `R[5] VectorAluAny` | CERTAIN |
-| `0x03` add (the avg/sum-pool case) and other modeled ops | add / generic | `0x12` | int path | `R[5] VectorAluAny` | CERTAIN |
+| `0x49`/`0x4a` (min/max — the max-pool case) | compare-select | `0x20` | `0x20` | `R[5] VectorAluAny` (no float remap) | CERTAIN |
+| `0x4b` (multiply) | mul | `0x14` | `0x14` | `R[5]`; float remaps slot via `GetResource(0x14)` | CERTAIN |
+| `0x03` add (the avg/sum-pool case) | add | `0x12` | `0x12` | `R[5]`; float remaps slot via `GetResource(0x12)` | CERTAIN |
 | `0x29` (parameter) / `0x52` (get-tuple-element) | structural | — | — | (no deposit) | CERTAIN |
 | anything else | — | FATAL (`cost_model.cc:6870`) | — | — | CERTAIN |
 
@@ -303,7 +302,7 @@ max-pool / avg-pool cost  (per the three leaves)
   R[5] VectorAluAny = throughput(combiner CT) · combiner_count   (the to_apply op, once per window-elem)
                     + throughput(CT 0x16) · vol                  (F16 unpack, only when operand is f16)
                     + sublane shuffle                            (Sublane axis only, via GetResource(CT 0x15))
-  R[2] Xlu          = throughput(CT 0x1b) · spatial / Target[+0x4b0]   (Lane axis only — cross-lane drain)
+  R[2] Xlu          = throughput(CT 0x1b) / Target[+0x4b0]            (Lane axis only — cross-lane drain)
   R[9..12] MemXfer  = RecordOperandCycles(input)  (+ output DMA when top-level)
 ```
 
