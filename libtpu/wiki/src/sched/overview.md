@@ -160,7 +160,7 @@ The bundle packer takes the LLO instruction list — the last IR before raw bund
 
 ### Two Packers, One Algorithm
 
-libtpu ships two structurally identical packers at different IR levels: the canonical `xla::jellyfish::BundlePacker` operating on `LloInstruction*` (the path straight to the per-gen encoder), and an `llvm::(anonymous)::BundlePacker` `MachineFunctionPass` operating on `MachineInstr*` (the path through LLVM MC). Both produce the same bundle byte layout; they are two implementations of the same earliest-legal-bundle algorithm against two IRs. The per-gen slot legality is encapsulated in five `TpuBundleRestrictions` subclasses (Jellyfish, Pufferfish, Viperfish, Ghostlite, Trillium), each providing `SetLimits`, `AddXluRequirements`, `AddMxuRequirements`, and `MatchScalar` virtuals.
+libtpu ships two structurally identical packers at different IR levels: the canonical `xla::jellyfish::BundlePacker` operating on `LloInstruction*` (the path straight to the per-gen encoder), and an `llvm::(anonymous)::BundlePacker` `MachineFunctionPass` operating on `MachineInstr*` (the path through LLVM MC). Both produce the same bundle byte layout; they are two implementations of the same earliest-legal-bundle algorithm against two IRs. The per-gen slot legality is encapsulated in four `TpuBundleRestrictions` subclasses — `JellyfishBundleRestrictions`, `PufferfishBundleRestrictions`, `ViperfishBundleRestrictions`, and `GhostliteBundleRestrictions` (the only `*BundleRestrictions` subclasses present in the binary; there is no `dragonfish`/`6acc60406` restriction table) — each providing `SetLimits`, `AddXluRequirements`, `AddMxuRequirements`, and `MatchScalar` virtuals.
 
 ### Structure
 
@@ -220,7 +220,8 @@ The cost model itself — the 23-slot `ResourceVector`, the `MaxResourceCycles` 
 | Stage 3 is forward greedy earliest-legal-bundle list scheduling | `PackBundles` @ `0x10a30a20`; `GlobalBundlePacker::Pack` @ `0x10a86420`; `BundlePacker::Feed` @ `0x14021f20` | CONFIRMED |
 | Stage 3b modulo scheduler for hardware loops with RecMII/ResMII II search | `TPUScheduleDAGModulo::findSchedule` @ `0x13b1d7c0`; `calculateResourceMII` @ `0x13c0bee0`; `calculateLargestLatencyMII` @ `0x13c0b840` | CONFIRMED |
 | Stage 1 prices via `MaxResourceCycles` / `LatencyBetween`; gates via `TpuAsyncTracker` | `MaxResourceCycles` @ `0x1c89b9e0`; `LatencyBetween` @ `0x1c89f820`; `GetResourceHazardType` @ `0x110015e0` | CONFIRMED |
-| "ILP-LHS" flag swaps the async classifier only; named ILP MIP is dead code | `EnableIlpLatencyHidingScheduler` gate; `ILPMemoryScheduler` vtable has zero code consumers | HIGH |
+| Per-gen slot legality is four `TpuBundleRestrictions` subclasses (Jellyfish/Pufferfish/Viperfish/Ghostlite) | only four `*BundleRestrictions::SetLimits` symbols exist (`0x1c457a40` / `0x1c457d80` / `0x1c458360` / `0x1c458860`); zero `Trillium`/`dragonfish` restriction symbols | CONFIRMED |
+| "ILP-LHS" flag swaps the async classifier only; named ILP MIP is dead code | `EnableIlpLatencyHidingScheduler` gate; `ILPMemoryScheduler::Run` @ `0x10acd020` has zero code consumers; `GetMemorySchedulerAlgorithm` @ `0x10abd6a0` references only `DFSMemoryScheduler`/`PostOrderScheduler` vtables | HIGH |
 | HLO scheduling annotations do not flow into bundle packing | LLO packer reads no HLO annotation; the two operate on disjoint IRs | HIGH |
 
 ---
