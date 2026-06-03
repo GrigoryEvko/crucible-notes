@@ -11,6 +11,7 @@ This page documents that resolution-and-materialization path and, separately, th
 For reimplementation, the contract is:
 
 - The **`TpuChipConfig::Create` path**: version+variant → `kChipConfigAliases` lookup → `embed://tpu_chip_config/…` → `ReadBinaryProto` → `FromProto`.
+- The **`TpuChipConfig` object header**: the three mode booleans at `+8`/`+9`/`+10` (`Megacore`/`Megachip`/`TcControl`) the HAL branches on, and the per-core `EnumMap<TpuCoreType, …, 3>` tables keyed by the runtime `{kTensorCore=0, kBarnaCore=1, kSparseCore=2}` enum.
 - The **`Target` field block**: which struct offset holds each decoded `chip_parts` constant, and the accessor that reads it.
 - The **consumers**: the geometry accessors (`LaneCount`/`SublaneCount`/`ChunksPerTile`/`VexMatrixWidthToSyU32`) and who calls them (cost model, ISA emitter, topology).
 
@@ -18,8 +19,10 @@ For reimplementation, the contract is:
 |---|---|
 | **Config resolver** | `tpu::TpuChipConfig::Create` @ `0x20AE98E0` |
 | **Config parser** | `tpu::TpuChipConfig::FromProto` @ `0x20AEA100` |
-| **Source file** | `learning/45eac/tpu/runtime/topology/tpu_chip_config.cc:368` |
+| **Config constructor** | `tpu::TpuChipConfig::TpuChipConfig` @ `0x20AF6300` |
+| **Source file** | `learning/45eac/tpu/runtime/topology/tpu_chip_config.cc` (`Create` alias-log line 368) |
 | **Alias map** | `kChipConfigAliases` (`gtl::flat_map<TpuVersionAndVariant, …>`, 4 entries) |
+| **Mode flags** | `Megacore` `+8` (`0x20AFCA00`), `Megachip` `+9` (`0x20AFCC00`), `TcControl` `+10` (`0x20AFCC20`) |
 | **Geometry descriptor** | `Target+0x3B8` → `tpu::TpuTopology*` |
 | **Capability field block** | `Target+0x438..+0x510` (filled by `TpuChipParts::FromProto`) |
 
@@ -29,7 +32,7 @@ For reimplementation, the contract is:
 
 ### Purpose
 
-`Create` obtains the *mode* configuration for a `(version, variant)` pair: the `TpuChipConfigProto` enumerates `SharedMemoryRegion` records and `SyncFlag` records (parsed by `FromProto`) that the driver uses to lay out bounce buffers and sync-flag resources per core. It is the mode-config sibling of `chip_parts`'s capability-geometry path, and it lives in the same source file (`tpu_chip_config.cc`) one resolver down from `DefaultsForVersion`.
+`Create` obtains the *mode* configuration for a `(version, variant)` pair: the `TpuChipConfigProto` enumerates `SharedMemoryRegion` records and `SyncFlag` records (parsed by `FromProto`) that the driver uses to lay out bounce buffers and sync-flag resources per core. It is the mode-config sibling of `chip_parts`'s capability-geometry resolver `TpuChipParts::DefaultsForVersion` (`0x20B1B040`). The two are deliberate parallels — same shape, same `embed://` mechanism — but they live in **different** translation units: `Create` is in `tpu_chip_config.cc`, `DefaultsForVersion` is in `tpu_chip_parts.cc` (its fatal-log strings cite `tpu_chip_parts.cc:341,343,345`).
 
 ### Algorithm
 
@@ -39,11 +42,12 @@ StatusOr<TpuChipConfig> TpuChipConfig::Create(TpuVersion v, string_view variant,
     // 1. Resolve a (version, variant) alias to a config-variant name.
     key = TpuVersionAndVariant{v, variant}
     hit = kChipConfigAliases.find(key)        // 4-entry flat_map of TpuVersionAndVariant
-    if hit and hit->value == config_variant:  // bcmp match
-        VLOG(1) << "Resolved chip config alias " << variant << "->" << hit->value
-        alias = hit->value                    // tpu_chip_config.cc:368
+    if hit and bcmp(hit->value, config_variant) != 0:   // alias differs from requested
+        LOG(INFO) << "Resolved chip config alias " << config_variant << "->" << hit->value
+                  << " for " << v << ", " << variant    // tpu_chip_config.cc:368
+        alias = hit->value                              // (logged only when the alias renames the request)
     else:
-        alias = variant                       // no alias: use the variant verbatim
+        alias = config_variant                // no alias / identity: use config_variant verbatim
 
     // 2. Build the embed:// resource path and read it.
     name     = AsciiStrToLower(TpuVersionToString(v))
@@ -60,7 +64,26 @@ StatusOr<TpuChipConfig> TpuChipConfig::Create(TpuVersion v, string_view variant,
 
 ### What FromProto Materializes
 
-`TpuChipConfig::FromProto` (`0x20AEA100`) walks the `TpuChipConfigProto`, iterating its `SharedMemoryRegion` repeated field and a `SyncFlag` repeated field, inserting each into the `TpuChipConfig`'s `flat_hash_map<TpuSharedMemoryOnChip, BounceBuffer>` and sync-flag-resource tables. The `TpuChipConfig` constructor (`0x20AF6300`) takes that map plus three booleans and the per-core layout. The result is the object `TpuPxcDriver::InitializeCores` (`0xE806500`) and `RegisterContinuationQueueConfigs` (`0xE72B340`) consume to provision hardware queues — it is a *resource* object, not the capability `Target`.
+`TpuChipConfig::FromProto` (`0x20AEA100`) walks the `TpuChipConfigProto`, iterating its `SharedMemoryRegion` repeated field and a `SyncFlag` repeated field, inserting each into the `TpuChipConfig`'s `flat_hash_map<TpuSharedMemoryOnChip, BounceBuffer>` and sync-flag-resource tables. The `TpuChipConfig` constructor (`0x20AF6300`) takes that map plus three leading booleans and the per-core layout. The result is the object `TpuPxcDriver::InitializeCores` (`0xE806500`) and `TpuChipCommonImpl::RegisterContinuationQueueConfigs` (`0xE72B340`) consume to provision hardware queues — it is a *resource* object, not the capability `Target`.
+
+### The TpuChipConfig Object Header
+
+The first 11 bytes of the constructed object are a fixed header the constructor writes from its leading scalar arguments (`0x20AF6300` stores `a2`→`+0`, `a3`→`+8`, `a4`→`+9`, `a5`→`+10`), and three one-line const accessors expose the three mode flags. These are the per-config booleans a reimplementation must reproduce verbatim, because the HAL branches on them at boot:
+
+| Off | Accessor (VA) | Type | Holds | Confidence |
+|---:|---|---|---|---|
+| +0x00 | (constructor `a2`) | int64 | leading scalar word (per-config count) | HIGH |
+| +0x08 | `Megacore` (`0x20AFCA00`) | bool | megacore mode (name CONFIRMED; semantics inferred) | CONFIRMED (offset) |
+| +0x09 | `Megachip` (`0x20AFCC00`) | bool | megachip mode (name CONFIRMED; semantics inferred) | CONFIRMED (offset) |
+| +0x0A | `TcControl` (`0x20AFCC20`) | bool | TensorCore-control mode (name CONFIRMED; semantics inferred) | CONFIRMED (offset) |
+
+Each accessor is literally `return *((uint8_t*)this + N)` — `Megacore` reads `+8` (`0x20AFCA00`), `Megachip` reads `+9` (`0x20AFCC00`), `TcControl` reads `+10` (`0x20AFCC20`). The byte positions and accessor symbols are byte-exact from the disassembly; the *meaning* of each mode (megacore as a two-TensorCore fused topology, megachip as a multi-die-as-one-device topology) is the standard TPU interpretation, inferred rather than proven from this binary. `xla::jellyfish::Target::IsMegachip` (`0x10914F60`) consumes the `+9` byte through the config pointer the `Target` holds at `Target+0x3B8→+0x18` (`*(TpuChipConfig**)([Target+0x3B8]+24)`), and gates its result on a positive `[Target+0x3B8]+148` count — so megachip-parallel compilation requires both the `Megachip` byte set and a non-zero descriptor count.
+
+> **QUIRK —** these three bytes are mode state on the `TpuChipConfig` *resource* object, not capability geometry. They do not live in the `Target` field block this page also maps; do not look for `Megachip` at a `Target` offset. The selector that picks *which* config blob was loaded is the variant string fed to `Create`, and the megacore/megachip booleans inside that blob are what `Megacore()`/`Megachip()` then surface.
+
+### Per-Core Layout Keying
+
+After the header the constructor stores a long tail of per-core-type tables — `EnumMap<TpuCoreType, vector<InfeedQueue>, 3>`, `EnumMap<TpuCoreType, vector<ContinuationQueue>, 3>`, `EnumMap<TpuCoreType, vector<OutfeedQueue>, 3>`, `EnumMap<TpuCoreType, UserInterrupts, 3>`, and so on (visible in the constructor's mangled signature). Every one is an `EnumMap` of arity 3, keyed by the runtime `tpu::TpuCoreType` enum. That enum is `{kTensorCore=0, kBarnaCore=1, kSparseCore=2}` — `TpuCoreTypeFromProto` (`0x20B36840`) maps wire `TENSOR_CORE=1→0`, `BARNA_CORE=2→1`, `SPARSE_CORE=3→2` (proto value minus one, with a fatal `"Invalid core type"` at `tpu_chip_enums.cc:301` for anything else). A reimplementation that wants to index the per-core queue tables must use this 0-based runtime enum, not the 1-based proto enum.
 
 ---
 
@@ -70,18 +93,18 @@ The capability constants from `chip_parts` do not live in `TpuChipConfig`; they 
 
 | Target off | Accessor (VA) | Type | Holds | Confidence |
 |---:|---|---|---|---|
-| +0x398 | inline (many) | int32 | `tpu_version` (0..5 → JF/DF/PF/VF/GL/Trillium) | CONFIRMED |
+| +0x398 | `Target::TpuVersionToString` (`0x12772CC0`) | int32 | `tpu_version` (0..5 → jellyfish/dragonfish/pufferfish/viperfish/ghostlite/`6acc60406`) | CONFIRMED |
 | +0x3B8 | `LaneCount`/`SublaneCount`/… (`0x1D60F400`) | `TpuTopology*` | geometry descriptor pointer | CONFIRMED |
 | +0x3B8→+0x198 | `LaneCount` (`0x1D60F400`) | int64 | `lane_count` (=128 all gens) | CONFIRMED |
 | +0x3B8→+0x1A0 | `SublaneCount` (`0x1D60F300`) | int64 | `sublane_count` (=8 all gens) | CONFIRMED |
-| +0x450 | `HbmSizeBytes` (`0x1D615320`) | int64 | HBM size (v7: 102,005,473,280) | CONFIRMED |
-| +0x458 | `VmemSizeBytes` (`0x1D615E00`) | int32 | VMEM size (v7: 67,108,864) | CONFIRMED |
-| +0x460 | `CmemSizeBytes` (`0x1D615E20`) | int64 | CMEM size (v7: 0) | CONFIRMED |
-| +0x468 | `SflagSizeBytes` (`0x1D615E60`) | int32 | SFLAG size (v7: 16,384) | CONFIRMED |
-| +0x470 | `SmemSizeBytes` (`0x1D615E40`) | int32 | SMEM size (v7: 1,048,576) | CONFIRMED |
-| +0x50C | `VmemWordSizeBytes` (`0x1D617300`) | int32 | VMEM word (v7: 512) | CONFIRMED |
-| +0x90C | `TensorCoreFrequencyInMegaHertz` (`0x1D615B60`) | int32 | TC freq MHz (v7: 1900) | CONFIRMED |
-| +0x910 | `HbmFrequencyInMegaHertz` (`0x1D615BA0`) | int32 | HBM freq MHz (v7: 7200) | CONFIRMED |
+| +0x450 | `HbmSizeBytes` (`0x1D615320`) | int64 | HBM size (v7x: 102,005,473,280) | CONFIRMED |
+| +0x458 | `VmemSizeBytes` (`0x1D615E00`) | int32 | VMEM size (v7x: 67,108,864) | CONFIRMED |
+| +0x460 | `CmemSizeBytes` (`0x1D615E20`) | int64 | CMEM size (v7x: 0) | CONFIRMED |
+| +0x468 | `SflagSizeBytes` (`0x1D615E60`) | int32 | SFLAG size (v7x: 16,384) | CONFIRMED |
+| +0x470 | `SmemSizeBytes` (`0x1D615E40`) | int32 | SMEM size (v7x: 1,048,576) | CONFIRMED |
+| +0x50C | `VmemWordSizeBytes` (`0x1D617300`) | int32 | VMEM word (v7x: 512) | CONFIRMED |
+| +0x90C | `TensorCoreFrequencyInMegaHertz` (`0x1D615B60`) | int32 | TC freq MHz (v7x: 1900) | CONFIRMED |
+| +0x910 | `HbmFrequencyInMegaHertz` (`0x1D615BA0`) | int32 | HBM freq MHz (v7x: 7200) | CONFIRMED |
 
 The offsets resolve directly from the accessor bodies: `LaneCount` returns `*(int64_t*)(*((void**)this + 119) + 408)` — `this+119*8 = Target+0x3B8` is the `TpuTopology*`, and `+408 = +0x198` is `lane_count` inside it. `SublaneCount` reads the same descriptor at `+416 = +0x1A0`. `HbmSizeBytes` is `*((int64_t*)this + 138) = Target+0x450`; `VmemSizeBytes` is `*((int32_t*)this + 278) = Target+0x458`; `SmemSizeBytes` is `+284 = +0x470`; `SflagSizeBytes` is `+282 = +0x468`; `VmemWordSizeBytes` is `+323 = +0x50C`; `TensorCoreFrequencyInMegaHertz` is `+579 = +0x90C`; `HbmFrequencyInMegaHertz` is `+580 = +0x910`. See [TpuTopology Struct](tpu-topology-struct.md) for the `+0x3B8` descriptor's full layout.
 
@@ -136,8 +159,11 @@ The decoded constants fan out to three consumer layers:
 
 | Name | Relationship |
 |---|---|
+| `TpuChipParts::DefaultsForVersion` | the parallel capability resolver in `tpu_chip_parts.cc`; `embed://tpu_chip_parts/…_chip_parts.binarypb`, fatal on miss |
 | `TpuChipParts::FromProto` | fills the `Target+0x438..+0x510` capability block this page's accessors read |
 | `TpuChipConfig::FromProto` | parses the mode config (SharedMemoryRegion / SyncFlag) into the resource object |
+| `TpuChipConfig::Megacore` / `::Megachip` / `::TcControl` | the `+8`/`+9`/`+10` mode-byte accessors on the config object |
+| `Target::IsMegachip` | reads the config's `Megachip` byte (via `Target+0x3B8→+0x18`) to gate megachip-parallel compilation |
 | `TpuPxcDriver::InitializeCores` | consumes the `TpuChipConfig` resource object to provision per-core queues |
 | `xla::jellyfish::Target` | the runtime HAL object whose field block and accessors are mapped here |
 

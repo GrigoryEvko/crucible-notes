@@ -6,13 +6,13 @@
 
 `tpu::TpuTopology` is the chip-geometry and device-mesh descriptor that every `xla::jellyfish::Target` holds at `Target+0x3b8`. It is the single object that answers "how big is one TPU chip, and how are the chips arranged into a slice": the lane/sublane MXU-tile geometry, the per-core-type core counts, the X/Y/Z chip torus extents, and the host/chip mesh products. The XLA-for-TPU backend reads it for every tiling, cost-model, and memory-space decision; the C-API runtime reads the same fields through a parallel set of `TpuTopology_*` wrappers.
 
-The struct is built once, in its constructor at `0x20acee60` (~309 decompiled lines), from a `shared_ptr<TpuChipParts>` plus two `TpuDimensions` triples (host bounds and chips-per-host). The constructor multiplies the two dimension triples into the combined chip bounds, queries `chip_parts` for the per-core-type counts, and then walks `chip_parts->CorePartsForType(TENSOR_CORE)->SequencerParts(...)->vector_isa()` to fill the geometry block at `+0x198..+0x1b0`. If that VectorIsa chain is absent, the constructor falls back to a hard-coded **128 lanes × 8 sublanes** — so 128×8 is the build-in default for any generation. The object is ~`0x3c8` bytes and ends with its own inline-vector tails (a numeric coincidence: `TpuTopology+0x3b8` is the object's HalLocations count, unrelated to the `Target+0x3b8` pointer that names this struct).
+The struct is built once, in its constructor at `0x20acee60` (~309 decompiled lines), from a `shared_ptr<TpuChipParts>` plus two `TpuDimensions` triples (host bounds and chips-per-host). The constructor multiplies the two dimension triples into the combined chip bounds, queries `chip_parts` for the per-core-type counts, and then walks `chip_parts->CoreParts(TENSOR_CORE)->SequencerParts(...)->vector_isa()` to fill the geometry block at `+0x198..+0x1b0`. If that VectorIsa chain is absent, the constructor falls back to a hard-coded **128 lanes × 8 sublanes** — so 128×8 is the build-in default for any generation. The object is exactly `0x3c8` bytes (`operator new(0x3C8u)` at every construction site) and ends with its own HalLocations vector at `+0x3b8..+0x3c8` (a numeric coincidence: `TpuTopology+0x3b8` is the object's own HalLocations count word, unrelated to the `Target+0x3b8` pointer that names this struct).
 
-`Target::Init` (`0x1d60fc20`) installs the pointer: `*((_QWORD *)target + 119) = topology` puts the `TpuTopology*` at `Target+0x3b8`, a second per-subslice view at `Target+0x3c0`, and the SparseCore sub-descriptor at `Target+0x948`. The rest of this page is the byte-exact field layout, the accessors that read each field, and the constructor's geometry-population chain — all read directly from the decompiled constructor and accessor bodies.
+`Target::Init` (`0x1d60fc20`) installs the pointer: `*((_QWORD *)target + 119) = topology` puts the `TpuTopology*` at `Target+0x3b8`, and `*((_QWORD *)target + 297) = sparsecore` puts the SparseCore sub-descriptor at `Target+0x948`. The adjacent `Target+0x3c0` slot (`*((_QWORD *)target + 120)`) is **not** a second topology — `Target::Init` stores the incoming `unique_ptr<CpuTopology>` there and the destructor frees it through a `TargetMachineOptions` member, so it is the host-CPU topology, unrelated to the chip geometry. The rest of this page is the byte-exact field layout, the accessors that read each field, and the constructor's geometry-population chain — all read directly from the decompiled constructor and accessor bodies.
 
 For reimplementation, the contract is:
 
-- The field layout `+0x00..~0x3c8`: scalar mesh dims, per-core-type counts, the `+0x198..+0x1b0` MXU-tile geometry block, and the location-vector tails.
+- The field layout `+0x00..+0x3c8`: scalar mesh dims, per-core-type counts, the `+0x198..+0x1b0` MXU-tile geometry block, and the location-vector tails.
 - The geometry-population chain: how lane/sublane/granules are derived from `chip_parts` VectorIsa, and the 128×8 fallback.
 - The accessor surface: which `Target::` and `TpuTopology_*` methods dereference which offset, so a reimplementation exposes the same scalar contract.
 
@@ -21,11 +21,11 @@ For reimplementation, the contract is:
 | **Struct** | `tpu::TpuTopology` |
 | **Constructor** | `0x20acee60` (~309 lines), `_ZN3tpu11TpuTopologyC1...` |
 | **Destructor** | `0xe6b0080` |
-| **`sizeof`** | ≈ `0x3c8` bytes (from ctor stores + dtor field range) |
-| **Held by** | `xla::jellyfish::Target+0x3b8` (full) and `Target+0x3c0` (subslice view) |
+| **`sizeof`** | `0x3c8` bytes (exact — `operator new(0x3C8u)` at every construction site, e.g. `TpuTopologySerdes::Construct` `0x20805ee0`, `TpuTopology::Subslice` `0x20ad20a0`) |
+| **Held by** | `xla::jellyfish::Target+0x3b8` (the only `TpuTopology*`; `Target+0x3c0` holds `CpuTopology`, not a topology) |
 | **Installed in** | `Target::Init` `0x1d60fc20` (`*((_QWORD*)target+119) = topology`) |
 | **Geometry block** | `+0x198` lane, `+0x1a0` sublane, `+0x1a8` lane·sublane, `+0x1b0` chunk-granules |
-| **Geometry source** | `chip_parts→CorePartsForType(TENSOR_CORE)→SequencerParts→vector_isa()`; fallback 128×8 |
+| **Geometry source** | `chip_parts→CoreParts(TENSOR_CORE)→SequencerParts→vector_isa()`; fallback 128×8 |
 
 ---
 
@@ -41,16 +41,16 @@ The table is the complete `tpu::TpuTopology` layout. Every offset was read byte-
 | `chip_config` (ctrl) | `+0x18` | ptr | `shared_ptr<const TpuChipConfig>` — Megacore / logical-device gating | CERTAIN |
 | `chip_config` (refcnt) | `+0x20` | ptr | `shared_ptr<const TpuChipConfig>` refcount block | HIGH |
 | `flags` | `+0x28` | i64 | `long` flags arg (ctor `*(_QWORD*)(a1+40) = a7`) | HIGH |
-| `host_bounds.x/.y/.z` | `+0x30/+0x34/+0x38` | i32×3 | host-mesh dims (ctor `vmovups` of arg) | HIGH |
-| `host_bounds.w` | `+0x40` | i32 | 4th host-mesh dim | MEDIUM |
-| `chips_per_host.x/.y/.z` | `+0x44/+0x48/+0x4c` | i32×3 | per-host chip-mesh dims (ctor `vmovups` of arg) | HIGH |
-| `chips_per_host.w` / `using_tensornode` | `+0x54` | i32/u8 | low byte read by `UsingTensorNode` (`[+0x54]`) | HIGH |
+| `chips_per_host.x/.y/.z` | `+0x30/+0x34/+0x38` | i32×3 | per-host chip-mesh dims (ctor `vmovups` of first `TpuDimensions` arg; ctor's own assert names it `chips_per_host_bounds()`) | HIGH |
+| `chips_per_host.w` | `+0x40` | i32 | 4th chip-mesh dim | MEDIUM |
+| `host_bounds.x/.y/.z` | `+0x44/+0x48/+0x4c` | i32×3 | host-mesh dims (ctor `vmovups` of second `TpuDimensions` arg; ctor's own assert names it `host_bounds()`) | HIGH |
+| `host_bounds.w` / `using_tensornode` | `+0x54` | i32/u8 | 4th host dim; low byte read by `UsingTensorNode` (`[+0x54]`) | HIGH |
 | **`ChipBounds_X`** | `+0x58` | i32 | `chips_per_host.x · host_bounds.x` (ctor `v22*v24`) | CERTAIN |
 | **`ChipBounds_Y`** | `+0x5c` | i32 | `chips_per_host.y · host_bounds.y` | CERTAIN |
 | **`ChipBounds_Z`** | `+0x60` | i32 | `chips_per_host.z · host_bounds.z` | CERTAIN |
 | `wrap.x` / `wrap.y` | `+0x64/+0x68` | u8×2 | torus-wrap bytes, ctor-init 0 | HIGH |
 | **`HostCount`** | `+0x6c` | i32 | ∏ host-bound dims (ctor `v29*v24*v25`) | CERTAIN |
-| `chips_per_host_product` | `+0x70` | i32 | intermediate ∏ chips-per-host dims | HIGH |
+| `chips_product` | `+0x70` | i32 | ∏ combined chip-bound dims = `ChipBounds_X·Y·Z` (ctor `v31 = v30*v26*v27`); the `chips_product` multiplier for all per-core-type counts | HIGH |
 | **`ChipsPerHost`** | `+0x74` | i32 | ∏ chips-per-host dims (ctor `v28*v22*v23`) | CERTAIN |
 | `total_cores` | `+0x78` | i32 | `chips_product · CoreCount()` (all core types) | HIGH |
 | **`TENSOR_CORE` count/chip** | `+0x7c` | i32 | `CoreCount(chip_parts, 0)`; base of `CoresPerChip(t)` | CERTAIN |
@@ -61,18 +61,18 @@ The table is the complete `tpu::TpuTopology` layout. Every offset was read byte-
 | **`BARNA_CORE` count/chip** | `+0x94` | i32 | `CoreCount(chip_parts, 2)`; `CoresPerChip(2)` | CERTAIN |
 | `core[2] · chips` | `+0x98` | i32 | `CoreCount(...,2) · chips_product`; `SupportsSparseCore` tests `>0` (see note) | HIGH |
 | `(TC+SC) · chips` | `+0x9c` | i32 | sum of the TC·chips and SC·chips products | HIGH |
-| `flags_lo16` / `flags_b16_23` | `+0xa0/+0xa2` | u16/u8 | low bits of the `flags` arg | MEDIUM |
-| `bool_arg` | `+0xa3` | u8 | trailing `bool` ctor arg | MEDIUM |
+| `wrap_proto_lo16` / `wrap_proto_b16` | `+0xa0/+0xa2` | u16/u8 | low bits of the `TpuWrapProto`/`TpuWrapTag` arg (ctor `*(_WORD*)(_RBX+160)=a14`, `*(_BYTE*)(+162)=BYTE2(a14)`); `+0xa0 & 0x101` feeds the `Topology` wrap ctor — distinct from the `flags` long at `+0x28` | MEDIUM |
+| `twisted_bool` | `+0xa3` | u8 | trailing `bool` ctor arg (`a15`); selects `TwistedTorusTopology` (`new 0x138`) vs `Topology` (`new 0x58`) below | MEDIUM |
 | `topology_kind` | `+0xa4` | i32 | TwistedTorus-vs-Topology validity selector | MEDIUM |
 | `topology` | `+0xa8` | ptr | `slice_builder::Topology*` (`new 0x58`) or `TwistedTorusTopology*` (`new 0x138`) | HIGH |
 | `HostLocations` | `+0xb0` | loc | `MakeHostLocations` (`0x20acf5c0`) | HIGH |
 | `ChipLocations` | `+0xc8` | loc | `MakeChipLocations` (`0x20acf800`) | HIGH |
 | `CoreLocations` (primary) | `+0xe0` | ptr | `MakeCoreLocations`; `cores()` base, element stride `0x38` | HIGH |
-| `CoreLocations` (megacore) | `+0xf8` | loc | second `MakeCoreLocations`; `logical_devices` reads `+0xf8/+0x100` | HIGH |
+| `CoreLocations` (megacore) | `+0xf8` | loc | second `MakeCoreLocations`; `logical_devices` (`0x20ad38c0`) returns `[+0xf8]` when `TpuChipConfig::Megacore`, else the primary `[+0xe0]`+stride | HIGH |
 | `SharedMemoryLocations` | `+0x110` | loc | `MakeSharedMemoryLocations` (`0x20ad02c0`) | HIGH |
 | `MemoryLocations` | `+0x128` | loc | `MakeMemoryLocations` (`0x20ad08e0`) | HIGH |
 | `StandardFactoryInfo` | `+0x140` | blob | optional 0x14-byte block; ctor-init 0 | MEDIUM |
-| `subslice` dims | `+0x158..+0x174` | i32×6 | subslice chip-bound / extent fields (consumed by `GetFullSliceDeviceCount`) | MEDIUM |
+| `subslice` dims | `+0x158/+0x15c/+0x160` + `+0x16c/+0x170/+0x174` | i32×6 | subslice chip-bound / extent fields; `GetFullSliceDeviceCount` multiplies exactly these six | MEDIUM |
 | `subslice_valid` | `+0x184` | u8 | subslice-valid flag (`GetFullSliceDeviceCount` `cmpb`) | MEDIUM |
 | `has_subslice` | `+0x190` | u8 | ctor `movb $0/$1`; gates the subslice path | HIGH |
 | **`lane_count`** | `+0x198` | i64 | VectorIsa lane count; `Target::LaneCount` = `[0x3b8]->[0x198]` | CERTAIN |
@@ -80,10 +80,10 @@ The table is the complete `tpu::TpuTopology` layout. Every offset was read byte-
 | **`lane·sublane`** | `+0x1a8` | i64 | MXU-tile element count (ctor `imul`); feeds `ChunkSizeBytes` | CERTAIN |
 | **`chunk_granules`** | `+0x1b0` | i64 | derived (see [Geometry Population](#geometry-population)); `version<2 ? computed : 32` | CERTAIN |
 | `HalLocations` | `+0x1b8` | loc | `MakeHalLocations` (`0x20ad0de0`), gated `popcount(granules)<2` | HIGH |
-| `ChipViewLocations` | `+0x2b8/+0x2c8` | vec | inline ≤9 entries, element stride `0x20`; `MakeChipViewLocations` (`0x20ad1080`) | HIGH |
-| `HalLocations` tail | `+0x3b8/+0x3c0` | vec | object's OWN HalLocations count/ptr, inline ≤6, element `0x30` (dtor `cmp $6,[0x3b8]`) | HIGH |
+| `ChipViewLocations` | `+0x2b8/+0x2c0` | vec | count `[+0x2b8]` / heap ptr `[+0x2c0]`, element stride `0x20` (dtor `<9` gate then `×32`); built by `MakeChipViewLocations` (`0x20ad1080`, writing from `+0x2c8`) | HIGH |
+| `HalLocations` tail | `+0x3b8/+0x3c0` | vec | object's OWN HalLocations: count `[+0x3b8]` / heap ptr `[+0x3c0]` (dtor `cmp $6,[0x3b8]` then `free([+0x3c0])`); the last 16 bytes of the `0x3c8`-byte object | HIGH |
 
-> **GOTCHA —** the numeric offset `0x3b8` appears in both objects with unrelated meanings. In `xla::jellyfish::Target`, `+0x3b8` is the `tpu::TpuTopology*` member. Inside `tpu::TpuTopology` itself, `+0x3b8` is the object's own HalLocations inline-vector count (its tail). Every `[0x3b8]->[X]` on this page means "dereference the `Target`'s `TpuTopology*`, then read field X". A reimplementer who conflates the two reads garbage.
+> **GOTCHA —** the numeric offset `0x3b8` appears in both objects with unrelated meanings. In `xla::jellyfish::Target`, `+0x3b8` is the `tpu::TpuTopology*` member. Inside `tpu::TpuTopology` itself (a `0x3c8`-byte object), `+0x3b8` is the object's own HalLocations count word (its last vector's tail). Every `[0x3b8]->[X]` on this page means "dereference the `Target`'s `TpuTopology*`, then read field X". A reimplementer who conflates the two reads garbage.
 
 > **CORRECTION (B1) —** `Target::CoresPerChip(t)` (`0x1d615b40`) returns `[0x3b8]->[0x7c + 12·t]`, i.e. the per-chip count at `+0x7c` for `t=0` (TENSOR_CORE), `+0x88` for `t=1` (SPARSE_CORE), `+0x94` for `t=2` (BARNA_CORE) — and `BUG()`s for `t≥3`. The `+0x80..+0x9c` neighbours are the corresponding *·chips* products. `Target::SupportsSparseCore` (`0x1d48fd40`) reads `[0x3b8]->[0x98] > 0`, but the constructor stores `[+0x98] = CoreCount(chip_parts, 2) · chips_product` — the type-index-2 (BARNA-slot) product, not the SPARSE_CORE one. Whether index 2 is the SparseCore slot in the runtime `TpuCoreType` enum (distinct from the proto `BARNA_CORE` ordering) was not separately resolved; the literal store is recorded here, the SparseCore-vs-Barna label is MEDIUM.
 
@@ -192,25 +192,25 @@ These take the `TpuTopology*` as their argument, so the offsets are the raw stru
 
 ## Per-Codename Geometry
 
-The geometry fields are CODE-CONSTANT for the populated/fallback split and DEFINITIVE for v7 (`6acc60406`), which is the only chip-parts blob this wheel embeds. Older codenames carry their absolute lane/sublane in a per-codename `<name>_chip_parts.binarypb` that this wheel does not embed; those cells reflect the constructor fallback (128×8) plus the cross-checked tile facts, and are marked accordingly. Codenames follow the [version→codename matrix](tpu-version-codename-matrix.md).
+The geometry fields are CODE-CONSTANT for the populated/fallback split and DEFINITIVE for the embedded `6acc60406` blob (internal `kJellyfish=0 … k6acc60406=5`; external TPU7x), which is the only chip-parts blob this wheel embeds. Older codenames carry their absolute lane/sublane in a per-codename `<name>_chip_parts.binarypb` that this wheel does not embed; those cells reflect the constructor fallback (128×8) plus the cross-checked tile facts, and are marked accordingly. Internal `TpuVersion` is 0-based and chronological (`kJellyfish=0`, `kDragonfish=1`, `kPufferfish=2`, `kViperfish=3`, `kGhostlite=4`, `k6acc60406=5`); the external "TPU vN" axis is separate — see the [version→codename matrix](tpu-version-codename-matrix.md).
 
-The one hard per-codename MXU differentiator recoverable from this wheel is not a `TpuTopology` field at all — it is a C++ literal in the per-codename `Target` subclass: the base `Target::MxuContractingSize` (`0x1d490060`) returns 128, while `GhostliteTarget::MxuContractingSize` (`0x1d497840`) and `MxuNoncontractingSize` (`0x1d497860`) return 256. So the systolic MXU is 128×128 on the Jellyfish-through-Viperfish classes and 256×256 on the Ghostlite / Trillium-class (v6e/v7). This 256 is the systolic depth, distinct from the 128-lane width the VectorIsa reports.
+The one hard per-codename MXU differentiator recoverable from this wheel is not a `TpuTopology` field at all — it is a C++ literal in the per-codename `Target` subclass: the base `Target::MxuContractingSize` (`0x1d490060`) returns 128, while `GhostliteTarget::MxuContractingSize` (`0x1d497840`) and `MxuNoncontractingSize` (`0x1d497860`) return 256. So the systolic MXU is 128×128 on the Jellyfish-through-Viperfish classes and 256×256 on the Ghostlite-and-`6acc60406` class (external TPU v6e / TPU7x). This 256 is the systolic depth, distinct from the 128-lane width the VectorIsa reports.
 
-| Geometry constant | Field / source | v0–v3 (JF/DF/PF/VF) | v6e/v7 (Ghostlite/Trillium) | Confidence |
+| Geometry constant | Field / source | Jellyfish…Viperfish (v0–v3) | Ghostlite / `6acc60406` (v4–v5) | Confidence |
 |---|---|---|---|---|
-| `lane_count` | `[0x3b8]+0x198` | 128 (fallback / chip-parts) | **128** (v7 chip-parts) | HIGH |
-| `sublane_count` | `[0x3b8]+0x1a0` | 8 (v2/v3); 16 on v4 jellyfish | **8** (v7 chip-parts) | HIGH |
-| `lane·sublane` | `[0x3b8]+0x1a8` | 1024 (2048 on v4 jf) | **1024** | HIGH |
-| `chunk_granules` | `[0x3b8]+0x1b0` | computed (v0/v1) / 32 (v2+) | **32** (version ≥ 2 → 0x20) | HIGH |
-| `ChunksPerTile` | `[0x198]/[0x1a0]` | 16 (8 on v4 jf) | **16** | HIGH |
+| `lane_count` | `[0x3b8]+0x198` | 128 (fallback / chip-parts) | **128** (`6acc60406` chip-parts) | HIGH |
+| `sublane_count` | `[0x3b8]+0x1a0` | 8 (all gens) | **8** (`6acc60406` chip-parts) | HIGH |
+| `lane·sublane` | `[0x3b8]+0x1a8` | 1024 | **1024** | HIGH |
+| `chunk_granules` | `[0x3b8]+0x1b0` | computed (`version<2`) / 32 (`version≥2`) | **32** (version ≥ 2 → 0x20) | HIGH |
+| `ChunksPerTile` | `[0x198]/[0x1a0]` | 16 | **16** | HIGH |
 | `TileBytes` | `4·lane²` | 65,536 | **65,536** | CERTAIN |
 | `ChunkSizeBytes` | `4·lane·sublane` | 4096 | **4096** | CERTAIN |
 | MXU contracting / noncontracting | `*Target::Mxu*Size` (CODE) | 128 / 128 | **256 / 256** (Ghostlite override) | CERTAIN |
-| `TENSOR_CORE` / chip | `[0x3b8]+0x7c` | gen-dep | **1** (die) / **2** (full chip) | HIGH |
-| `SPARSE_CORE` / chip | `[0x3b8]+0x88` | 0 (v0/v1) / gen-dep | **2** (die) / **4** (full chip) | HIGH |
-| `BARNA_CORE` / chip | `[0x3b8]+0x94` | gen-dep | **0** (none in v7 chip-parts) | HIGH |
+| `TENSOR_CORE` / chip | `[0x3b8]+0x7c` | gen-dep (2 on v0–v3 std) | **1** (die) / **2** (full chip) | HIGH |
+| `SPARSE_CORE` / chip | `[0x3b8]+0x88` | gen-dep (BarnaCore engine on v0–v2; SparseCore from v3 onward) | **2** (die) / **4** (full chip) | HIGH |
+| `BARNA_CORE` / chip | `[0x3b8]+0x94` | gen-dep (2 on v0/v1, 4 on v2; 0 from v3) | **0** (none in `6acc60406` chip-parts) | HIGH |
 
-> **NOTE —** the per-chip counts at `+0x7c/+0x88/+0x94` reflect whichever chip-parts blob the runtime selected — the half-die tensornode blob or the full two-die chip blob — gated by `UsingTensorNode` (`[+0x54]`). For v7 the tensornode blob reports TC=1, SC=2, HBM=1, and the full-chip blob doubles each (TC=2, SC=4, HBM=2). The `TpuTopology` cells are not a fixed per-codename constant; they track the chosen blob.
+> **NOTE —** the per-chip counts at `+0x7c/+0x88/+0x94` reflect whichever chip-parts blob the runtime selected — the half-die tensornode blob or the full two-die chip blob — gated by `UsingTensorNode` (`[+0x54]`). For `6acc60406` the tensornode blob reports TC=1, SC=2, HBM=1, and the full-chip blob doubles each (TC=2, SC=4, HBM=2). The `TpuTopology` cells are not a fixed per-codename constant; they track the chosen blob.
 
 ---
 
@@ -218,12 +218,12 @@ The one hard per-codename MXU differentiator recoverable from this wheel is not 
 
 `TpuTopology` tracks SparseCore *counts* (`+0x88` per chip, `+0x8c` ·chips), but the SparseCore *geometry* lives in a separate sub-descriptor at `Target+0x948`, installed by `Target::Init` (`*((_QWORD*)target + 297) = sparsecore`) and built by `SparseCoreTarget::Init` (`0x1d612b20`). Its accessors dereference `*((_QWORD*)target + 297) = target + 0x948` and are guarded by the `SupportsSparseCore` vtable predicate at `vtable[+0x260]`, which FATALs ("SparseCore is not supported by this target") if the target has no SparseCore.
 
-| Accessor | VA | Reads | v7 value | Confidence |
+| Accessor | VA | Reads | `6acc60406` value | Confidence |
 |---|---|---|---|---|
 | `Target::SparseCoreLaneCount` | `0xf7906e0` | `[0x948]->[0x94]` | 16 | HIGH |
 | `Target::SparseCoreTiles` | `0xfaafa40` | `[0x948]->[0x90]` | 16 TEC/SC | HIGH |
-| `Target::SparseCoreHbm4bWordSizeBytes` | `0x1320c220` | `[0x948]->[0x58]` | — | MEDIUM |
-| `Target::SparseCoreStreamGranuleSizeBytes` | `0x13886ee0` | `[0x948]->[0xa4]` | 4 | MEDIUM |
+| `Target::SparseCoreHbm4bWordSizeBytes` | `0x1320c220` | `[0x948]->[0x58]` | 4 | HIGH |
+| `Target::SparseCoreStreamGranuleSizeBytes` | `0x13886ee0` | `[0x948]->[0xa4]` | 4 | HIGH |
 
 The full `SparseCoreTarget` field map is a separate object documented in the [SparseCore target descriptor](sparsecore-target-descriptor.md) page; only the four fields above were walked here.
 
@@ -231,7 +231,7 @@ The full `SparseCoreTarget` field map is a separate object documented in the [Sp
 
 ## Not Resolved
 
-- **Absolute lane/sublane for v0–v5.** Their per-codename `<name>_chip_parts.binarypb` is not embedded in this wheel; the table uses the constructor fallback (128×8) plus the cross-checked v4-jellyfish (16×128) tile. A non-v7 wheel would supply the embedded older VectorIsa.
+- **Absolute lane/sublane for v0–v4.** Their per-codename `<name>_chip_parts.binarypb` is not embedded in this wheel (only `6acc60406`'s is); the table uses the constructor fallback (128×8). The fallback is corroborated by the decoded `VectorIsa.sublane_count`, which is 8 on every generation in this build — an older topology-descriptor analysis that reported a (16,128) tile for jellyfish/Pufferfish-class silicon is debunked by the proto, which carries `sublane_count = 8` uniformly (see [Per-Codename HW Constants](per-codename-hw-constants.md)). A wheel that embeds an older blob would supply that generation's VectorIsa directly.
 - **The `+0x158..+0x190` subslice field semantics.** `GetFullSliceDeviceCount` multiplies `+0x158/+0x15c/+0x160/+0x16c/+0x170/+0x174` and gates on `+0x184/+0x190`, but which axis is the subslice base vs extent was not individually pinned. Marked MEDIUM in the layout table.
 - **The location-element structs.** The base offsets and strides of the `+0xb0..+0x2c8` vectors are recovered (Core stride `0x38`, ChipView `0x20`, Hal `0x30`), but the per-element `TpuCoreLocation` / `TpuChipLocation` field packing was not decoded.
 - **`+0x98` SparseCore-vs-Barna label.** The constructor stores `CoreCount(chip_parts, 2) · chips` there and `SupportsSparseCore` reads it; the runtime `TpuCoreType` index-2 → SparseCore-or-Barna mapping was not separately confirmed (see CORRECTION).
