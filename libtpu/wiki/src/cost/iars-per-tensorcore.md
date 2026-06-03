@@ -66,7 +66,7 @@ The per-gen blobs are embedded **uncompressed** in `.rodata`. Parsing the `Vecto
 | v4 Pufferfish | 128 | 8 | 4 | 2 | **2** | CERTAIN |
 | v5p Viperfish | 128 | 8 | 4 | 3 | **2** | CERTAIN |
 | v6e Ghostlite | 128 | 8 | 2 | 2 | **2** | CERTAIN |
-| v7 6acc60406 (Trillium-class) | 128 | 8 | 2 | 2 | **2** | CERTAIN |
+| v7 6acc60406 | 128 | 8 | 2 | 2 | **2** | CERTAIN |
 
 So `IarsPerTensorCore = 2` on every generation — the IAR file does not grow v2→v7. This is exactly consistent with the ISA-encoding ceiling: the `SetIar` slot's `IarField` accessor (`0x1ee3b380`) is `>>13 & 1`, a single bit, which can address only IAR0/IAR1. `VectorIsa.f2 = 128` is constant across all gens (a vector lane/width parameter); `f5`/`f6` vary per gen — INFERRED MXU-count / matrix-unit-geometry parameters, read byte-exact but not semantically named here.
 
