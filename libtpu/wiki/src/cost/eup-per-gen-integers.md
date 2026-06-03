@@ -8,7 +8,7 @@ The Extended Unary Pipeline (EUP) — libtpu's transcendental approximator — i
 
 The mechanism is uniform across the newer gens and is the libtpu analog of reading one cell out of an LLVM `SchedMachineModel`. `LatencyTable<Gen>::LatencyBetweenInternal` resolves the push opcode to a per-gen `Performance::Instruction` ordinal (`Get<Gen>Instruction`), then reads `<Gen>Performance::GetLatency(ordinal) = latencies[ordinal]` — a flat `int32` heap array whose pointer is at `Performance[0]` and whose element count is at `Performance[+0x8]`. The constructor fills that array element-wise with `mov dword ptr [array + Instruction*4], value` stores, after a leading `memset(_, 0xff, _)` that sentinels every unwritten slot. Recovering the per-gen EUP latency is therefore exactly recovering the value at the EUP-push ordinal in each constructor's fill — which this page does, store by store. The legacy Jellyfish/Dragonfish path does *not* use this array; it clamps the edge to a flat constant (`Performance[+0x30]` = 4) and is documented only as a baseline here.
 
-The page is organized one `##` unit per `Performance` class — Pufferfish TensorCore (variant 0), Pufferfish BarnaCore (variant 1), Viperfish, Ghostlite, and the Trillium GhPerf twin — each giving the constructor address, the `new` size that fixes the array cardinality, the EUP push/pop store offsets, and the integer. The grids these same constructors fill (the `GetResourceUsage` occupancy matrix) and the opcode→ordinal classifier tables live on the [`performance-*`](performance-pf.md) siblings and the [slot page](../isa/slot-eup-transcendental.md); this page is only the latency rows.
+The page is organized one `##` unit per `Performance` class — Pufferfish TensorCore (variant 0), Pufferfish BarnaCore (variant 1), Viperfish, Ghostlite, and the `6acc60406` GhPerf twin — each giving the constructor address, the `new` size that fixes the array cardinality, the EUP push/pop store offsets, and the integer. The grids these same constructors fill (the `GetResourceUsage` occupancy matrix) and the opcode→ordinal classifier tables live on the [`performance-*`](performance-pf.md) siblings and the [slot page](../isa/slot-eup-transcendental.md); this page is only the latency rows.
 
 For reimplementation, the contract is:
 
@@ -195,24 +195,25 @@ All rows CERTAIN. F32 has 10 entries (`0x130 kVectorErfF32` *and* `0x131 kVector
 
 ---
 
-## Trillium GhPerf Twin (push ~10 F32 / ~11 BF16 — LOW)
+## 6acc60406 GhPerf Twin (push ~10 F32 / ~11 BF16 — LOW)
 
 ### Purpose
 
-The Trillium-line (GF) GhPerf object is built by a distinct constructor `sub_1C8D3740`, structurally the same `GhostlitePerformance` layout but with a 465-row instruction set (vs GL's 476). It fills its **own** latency array — it does not share GL's instance — and the EUP-shaped block carries different integers from GL.
+The `6acc60406`-line (GF) GhPerf object is built by a distinct constructor `sub_1C8D3740`, structurally the same `GhostlitePerformance` layout but with a 465-row instruction set (vs GL's 476). Its cycle-table twin `GfcCycleTable` is registered immediately after `GlcCycleTable` (ghostlite) in the `cycle_table.cc` `FunctionRegistry`, keyed to the post-ghostlite `TpuVersion`. It fills its **own** latency array — it does not share GL's instance — and the EUP-shaped block carries different integers from GL.
 
 ### Edge Integer
 
 | Block | Byte offsets (same as GL) | Value | Confidence |
 |---|---|---|---|
-| F32 EUP-shaped run (head) | `0x418` | 2 | LOW |
-| F32 EUP-shaped run (rest) | `0x41c`..`0x43c` | `0xa` (10) | LOW |
-| BF16 EUP-shaped run | `0x440`..`0x460` | `0xb` (11) | LOW |
+| F32 EUP-shaped run (head, 3 slots) | `0x410`..`0x418` | 2 | LOW |
+| F32 EUP-shaped run (rest, 9 slots) | `0x41c`..`0x43c` | `0xa` (10) | LOW |
+| BF16 EUP-shaped run (9 slots) | `0x440`..`0x460` | `0xb` (11) | LOW |
+| post-BF16 tail | `0x464`..`0x46c` | 1 | LOW |
 | pop-position slot | `0x710` | 2 | LOW |
 
-`sub_1C8D3740`: `Perf[+8] = 0x1d1` (465); the latency-array stores at `0x418..0x460` are bounds-checked against `[rbx+8]` exactly as GL's are (`cmp [rbx+8], 0x106 ; jbe ; mov rax,[rbx] ; mov [rax+0x418],...`), confirming they are the latency array, not the grid. The values are byte-exact: `[rax+0x418]=2`, `[rax+0x41c..0x43c]=0xa`, `[rax+0x440..0x460]=0xb`, `[rax+0x710]=2`.
+`sub_1C8D3740`: `operator new(0x744)` = 1860 B = **465** `int32` (one row short of GL's 476); `Perf[+8] = Perf[+0x10] = 0x1d1` (465); `memset(_, 0xff, 0x744)`. The latency fill differs from GL's. The stores at `0x410..0x460` are byte-exact and contiguous: three `mov [rax+off],2` at `0x410`/`0x414`/`0x418` (`@0x1c8d5367`..`@0x1c8d539d`), nine `mov [rax+off],0xa` at `0x41c..0x43c` (`@0x1c8d53b8`..`@0x1c8d5490`), nine `mov [rax+off],0xb` at `0x440..0x460` (`@0x1c8d54ab`..`@0x1c8d5583`), then `1`s from `0x464`; the pop-position slot `0x710` is `2` (`@0x1c8d97d1`).
 
-> **GOTCHA —** the GF values are byte-exact *at the offsets*, but the GF opcode→`Instruction` classifier was **not traced** in this analysis, and the `0x418` head value (2) breaks the otherwise-uniform run (`0x41c..0x43c` = 10). That anomaly is evidence the GF `Instruction` enum is *not* 1:1 with GL's (465 vs 476 rows shifts the mapping), so reading `0x418` as "GF rsqrt" is unsound. Do not assume the GF EUP push edge is 10/11 by offset analogy. Until the GF classifier is decoded, the binding of these offsets to the EUP transcendentals is LOW; only `LatencyTableGhostlite` (one instance, `@0x1c8b22e0`) is confirmed to route the *Ghostlite* push→pop edge through `GhostlitePerformance::GetLatency`.
+> **GOTCHA —** the GF values are byte-exact *at the offsets*, but the GF opcode→`Instruction` classifier was **not traced** in this analysis, and the F32 EUP-shaped run is not uniform: the head is **three** slots (`0x410`/`0x414`/`0x418`) of value 2, then nine slots of 10 (`0x41c..0x43c`). That split breaks the single-value-per-datatype shape GL has, which is evidence the GF `Instruction` enum is *not* 1:1 with GL's (465 vs 476 rows shifts the mapping), so reading `0x418` as "GF rsqrt" is unsound. Do not assume the GF EUP push edge is 10/11 by offset analogy. Until the GF classifier is decoded, the binding of these offsets to the EUP transcendentals is LOW; only `LatencyTableGhostlite` (one instance, `@0x1c8b22e0`) is confirmed to route the *Ghostlite* push→pop edge through `GhostlitePerformance::GetLatency`.
 
 ---
 
@@ -232,7 +233,7 @@ The pre-Pufferfish family does not use a per-instruction latency array for the E
 | Pufferfish (BarnaCore) | 6 | (via channel emitter) | `latency[0x77..0x7c]` | `@0x1c8c38c0` | `[rax+0x1dc..0x1f0]=6` |
 | Viperfish | 6 | 1 | `latency[0xcc..0xd2]` | `@0x1c8c4840` | `[rax+0x330..0x348]=6` |
 | Ghostlite | 13 (F32) / 14 (BF16) | 1 | `latency[0x106..0x118]` | `@0x1c8cbc80` | `[rax+0x418..0x43c]=0xd` / `[0x440..0x460]=0xe` |
-| Trillium (GF, LOW) | ~10 / ~11 (offset-only) | ~2 | `latency[0x418..0x460]` | `sub_1C8D3740` | `[rax+0x41c..0x43c]=0xa` / `[0x440..0x460]=0xb` |
+| `6acc60406` (GF, LOW) | ~10 / ~11 (offset-only) | ~2 | `latency[0x410..0x460]` | `sub_1C8D3740` | `[rax+0x41c..0x43c]=0xa` / `[0x440..0x460]=0xb` |
 
 Every value above is the *push* latency — the push→pop dependency-graph edge weight. The pop's own latency (1 on PF/VF/GL) is what the drained EUP result carries downstream once popped.
 
@@ -248,7 +249,7 @@ The EUP push→pop edge is bounded by **two independent quantities read from two
 | pop latency | latency the drained value carries | `latency[pop Instr]` | 1 | 1 | 1 | — |
 | `VectorEupReservationCycles` | min bundles push → *next* push | Target accessor (vtable `+0x480`) | 2 | 1 | 1 | 1 |
 
-`LatencyTable::LatencyBetween` (`@0x1c89f820`) calls the per-gen `LatencyBetweenInternal` (`call [rax+0x18]`), optionally adds a uniform-random jitter, special-cases **only** the matres/transpose opcodes (`0x82`/`0x84`) with an MXU floor, and returns the edge **unchanged** for the EUP push. There is no multiply by any reservation field anywhere on the path. The per-gen `LatencyBetweenInternal` main paths (GL general arm `@+0x1a3`, VF wrapper `@0x1c8a4480`) apply a transpose-latch halving (`sar eax,1`) only to opcodes in the `0x73..0x7c` region — the EUP push (`0x128..0x13a`) is excluded, so `latency[Instruction]` passes through verbatim.
+`LatencyTable::LatencyBetween` (`@0x1c89f820`) calls the per-gen `LatencyBetweenInternal` (`call [rax+0x18]`), optionally adds a uniform-random jitter, special-cases **only** the matres/transpose opcodes (`0x82`/`0x84`) with an MXU floor, and returns the edge **unchanged** for the EUP push. There is no multiply by any reservation field anywhere on the path. The per-gen `LatencyBetweenInternal` main paths (GL general arm, VF wrapper `@0x1c8a4480`) apply a transpose-latch halving (`latency/2`, with a `(lat & 0x80000001)==1` round-up correction) gated on `LatchModeIsTranspose(operand)` — `if (!LatchModeIsTranspose(...)) latency = latency/2 + ...`. The EUP push is not a transpose/latch-mode op, so the halving never applies to it and `latency[Instruction]` passes through verbatim.
 
 `VectorEupReservationCycles` is the orthogonal EUP-unit **issue occupancy**: how many bundles the EUP resource stays reserved after a push, applied by the per-instruction resource model (`GetResourceUsage` matrix + the `SlotTracker` reservation), not by the latency edge. The composition is `max(latency-deadline, resource-availability)`, never a product: a pop is placed no earlier than `push_bundle + latency`; consecutive pushes are no closer than `reservation` bundles.
 
@@ -284,6 +285,6 @@ The EUP push→pop edge is bounded by **two independent quantities read from two
 - [Performance: PF](performance-pf.md) — the 336-row PF grid, the variant dispatch, and the EUP push grid occupancy
 - [Performance: VF](performance-vf.md) — the 384-row VF grid and why VF prices the EUP push via the latency array alone
 - [Performance: GL (GhPerf 476×31)](performance-gl-ghperf.md) — the 476-row GL grid and the EUP-prep band cost magnitudes (192/182)
-- [Performance: GF (GhPerf 465×31)](performance-gf-ghperf.md) — the distinct 465-row Trillium GhPerf instance built by `sub_1C8D3740`
+- [Performance: GF (GhPerf 465×31)](performance-gf-ghperf.md) — the distinct 465-row `6acc60406` GhPerf instance built by `sub_1C8D3740`
 - [EUP Correction Coefficients](eup-correction-coeffs.md) — the Newton/rational refinement coefficients the latency window hides
 - [Payne-Hanek Range Reduction](eup-paynehanek.md) — the trig 1/(2π) reduction that pairs with the sinq/cosq EUP push
