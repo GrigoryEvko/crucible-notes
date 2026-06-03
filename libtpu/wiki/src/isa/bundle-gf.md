@@ -46,7 +46,16 @@ TpuCodec::Create(TpuVersion)  @ 0x1e835fa0  (jump table on version):
   case 5 -> call 0x1e838380  (anonymous; no CreateTpuCodec6acc60406)
 ```
 
-A symbol-table sweep returns exactly five `CreateTpuCodec*` factories — `Jellyfish`, `Dragonfish`, `Pufferfish`, `Viperfish`, `Ghostlite` — and **no** `CreateTpuCodec6acc60406`. The case-5 target `0x1e838380` carries no `CreateTpuCodec` symbol at all; the demangler attributes the address to a neighbouring `pro::v4::details::invoke_dispatch_impl<…proxy_cast_dispatch…>` thunk, i.e. the 6acc60406 codec is constructed inline by an unnamed factory that installs a vtable with no named `_ZTV` / `_ZTI`.
+A symbol-table sweep returns exactly five `CreateTpuCodec*` factories — `Jellyfish`, `Dragonfish`, `Pufferfish`, `Viperfish`, `Ghostlite` — and **no** `CreateTpuCodec6acc60406`. The case-5 target `0x1e838380` carries no `CreateTpuCodec` symbol at all; it is a three-line leaf that `operator new(8)`s an 8-byte object and installs the unnamed vtable `off_21D358A8`:
+
+```text
+sub_1E838380  @ 0x1e838380:
+  result = operator new(8);
+  *result = &off_21D358A8;     ; vtable, no named _ZTV / _ZTI
+  return result;
+```
+
+So the 6acc60406 codec is constructed inline by an unnamed factory whose vtable has no demangled `_ZTV` / `_ZTI` symbol — the structural opposite of Ghostlite's named `TpuCodecGhostlite` (vtable `0x21d35c00`).
 
 The jump-table anchor at `0x1e835fab` is the tell that the case-5 path is genuinely the `gfc` codec and not a stray branch: the `lea` immediately preceding the dispatch references the type string for
 
@@ -82,7 +91,9 @@ The width is byte-anchored. `asic_sw::deepsea::gxc::gfc::isa::...GetBytesPerBund
 0x1d375a45:  ret
 ```
 
-So the 6acc60406 TensorCore bundle is 64 bytes — confirming the [Bundle Model](bundle-model-overview.md) claim that v5p / v6e / v7x all share the 64-byte issue word and differ only in slot layout. The width is reached through the codec-metadata registry (`codec_metadata::BundleSizeBytes` @ `0x1ecf7180` → `GetMetadataOrDie` → vtable), not a fixed `switch` — there is no `Trillium`/`6acc60406CodecMetadata` symbol; the registered entry reuses the 64-byte v5+ class shape.
+So the 6acc60406 TensorCore bundle is 64 bytes — confirming the [Bundle Model](bundle-model-overview.md) claim that Viperfish (v3), Ghostlite (v4), and 6acc60406 (v5) all share the 64-byte issue word and differ only in slot layout. The width is reached through the codec-metadata registry (`codec_metadata::BundleSizeBytes` @ `0x1ecf7180` → `GetMetadataOrDie` → vtable), not a fixed `switch` — there is no `Trillium`/`6acc60406CodecMetadata` symbol; the registered entry reuses the 64-byte v5+ class shape.
+
+The TensorCore encoder itself is built by the **shared** factory `tpu::internal::CreateEncoderGlGf` @ `0x1e831020` — the same factory Ghostlite uses. It branches on `TpuVersionFromProtoOrDie`: `v3 == 4` constructs a `gxc::glc::isa::TensorCoreCodecBase` (object size `0xF0`, vtable `off_21CBFCD0`), while `v3 == 5` constructs a `gxc::gfc::isa::TensorCoreCodecBase` (object size `0xF8`, vtable `off_21CC22E0`); any sequencer type other than the handled TC / SCS / TAC cases hits a `LogMessageFatal("Unsupported sequencer type")`. That single factory housing both generations is the concrete realization of the GL/GF encoder sharing — the `gfc`-vs-`glc` split is a `TpuVersion` branch *inside* `CreateEncoderGlGf`, not two separate factories. See [Ghostlite Bundle](bundle-gl.md) for the `glc` arm.
 
 The encode path is the universal two-stage V5+ chain:
 
@@ -137,7 +148,7 @@ The bundle partitions into the standard V5+ slot classes. The table below is the
 | **Result slot** result-type discriminator | 20 | 0x14 | 2 | `TensorCoreVectorResult0Encoder::Encode` @ `0x1fa01820` | CONFIRMED |
 | result dest vreg | 11 | 0x0b | 6 | (same) | CONFIRMED |
 | result mode/format | 17–19 | 0x11–0x13 | 2/1 | (same) | CONFIRMED |
-| `PopMxuResult` accum-mode/format | 323 | 0x143 | 8 | (same; opcode-6 path) | CONFIRMED |
+| `PopMxuResult` accum-mode/format | 323 | 0x143 | 8 | (same; result-opcode 7 path) | CONFIRMED |
 
 The eight MXU source-vreg fields are **shared** between VEx0 and VEx1 (both MXUs draw the same vector read ports) and are byte-identical across the two slots:
 
@@ -253,7 +264,7 @@ The result slot (`TensorCoreVectorResult0Encoder::Encode` @ `0x1fa01820`) is whe
 | `PopMxuResult` accum-mode/format | (per +0x1c) | **bit 323 w8** | CONFIRMED |
 | result-opcode bound | 0x8 (9 ops) | **0x7 (8 ops)** | CONFIRMED |
 
-The result-opcode map: `6` = `PopMxuResult` (matres pop), `7` = `PopEupResult` (EUP transcendental pop), `5` = `TransposeResult`. 6acc60406 has no `PopAddMxu01Result` (Ghostlite's fused accumulate) and no `PopCcrfResult` (Viperfish's scalar pop) — its result sub-message set is `{TransposeResult, PopMxuResult, PopEupResult}`.
+The result-opcode map (the proto sub-message tag, read from the `switch` in `TensorCoreVectorResult0Encoder::Encode` @ `0x1fa01820`): `5` = `PopEupResult` (EUP transcendental pop), `6` = `TransposeResult`, `7` = `PopMxuResult` (matres pop; the `case 7` arm is the only one that writes the 8-bit accum-mode/format at bit 323). 6acc60406 has no `PopAddMxu01Result` (Ghostlite's fused accumulate) and no `PopCcrfResult` (Viperfish's scalar pop) — its result sub-message set is `{PopEupResult, TransposeResult, PopMxuResult}`.
 
 ---
 
@@ -272,7 +283,7 @@ The 5-bit function selector value map (verified from the per-function `Alu3` hel
 
 | Function | F32 selector | Bf16 selector | Confidence |
 |---|---:|---:|---|
-| `Erf` | 0x0e (14) | 0x0f (15) | HIGH |
+| `Erf` | 0x0e (14) | 0x0f (15) | CONFIRMED |
 | `ReciprocalSqrt` | 0x10 (16) | 0x0c (12) | CONFIRMED |
 | `PowTwo` (2^x) | 0x11 (17) | 0x19 (25) | HIGH |
 | `LogTwo` (log2) | 0x12 (18) | 0x1a (26) | HIGH |
@@ -282,7 +293,7 @@ The 5-bit function selector value map (verified from the per-function `Alu3` hel
 | `Sinq` (sin) | 0x17 (23) | 0x1e (30) | HIGH |
 | `Cosq` (cos) | 0x18 (24) | 0x1f (31) | HIGH |
 
-The push-pop protocol: bundle N issues the VALU3 op with the function selector; bundle N+k issues a result-slot `PopEupResult` (opcode 7) with dest vreg at bit 11. (`Tanh` and `Reciprocal`/`ReciprocalSqrt` are CONFIRMED from disassembled helper immediates; the remaining selectors are HIGH from the helper roster and the contiguous selector ordering.)
+The push-pop protocol: bundle N issues the VALU3 op with the function selector; bundle N+k issues a result-slot `PopEupResult` (result-opcode 5) with dest vreg at bit 11. (`Tanh` and `Reciprocal`/`ReciprocalSqrt` are CONFIRMED from disassembled helper immediates; the remaining selectors are HIGH from the helper roster and the contiguous selector ordering.)
 
 ---
 
@@ -321,7 +332,7 @@ VectorExtended0Encoder::Encode (the MatrixMultiplyBf16 helper):
   primary operand       -> bit 47 (w7)
   8 systolic src vregs  -> bits 156/276/287/243/254/210/221/177 (w6 each)
 
-VectorResult0Encoder::Encode (PopMxuResult, result-opcode 6):
+VectorResult0Encoder::Encode (PopMxuResult, result-opcode 7):
   result-type disc      -> bit 20 (w2)
   accum-mode/format     -> bit 323 (w8)
   dest vreg             -> bit 11 (w6)
@@ -330,7 +341,7 @@ VectorAlu3 F32Tanh (EUP push):
   VALU-opcode (EUP, 0x0) -> bit 194 (w8)
   function selector (0x13)-> bit 183 (w5)
   push src vreg          -> bit 188 (w6)
-  ... one+ bundles later: PopEupResult (result-opcode 7), dest vreg -> bit 11 (w6)
+  ... one+ bundles later: PopEupResult (result-opcode 5), dest vreg -> bit 11 (w6)
 ```
 
 Empty slots stay at the `kNeverExecute` predicate stamp written into the bundle header before any slot is filled (see [Bundle Model](bundle-model-overview.md#empty-slot-and-nop-convention)); a populated slot's 2-bit selector overwrites the default with a pool index.
