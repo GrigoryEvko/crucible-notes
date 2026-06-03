@@ -27,7 +27,7 @@ A reimplementer needs to internalize the following contract:
 | **Constant form** | `LloAddress::MakeCmemConstant(long)` @ `0x1d60ba20` → `LloAddress(MemorySpace=4, off)` |
 | **Placement gate** | `parent->module()->target().CmemSizeBytes() > 0` (asserted in `CreateVectorCmemResult` @ `0x1d4d99a0`) |
 | **Master MSA switch** | `FLAGS_xla_tpu_cmem_memory_space_assignment` @ `0x223c1750` |
-| **Per-gen availability** | Pufferfish (PXC, **TPU v4**) only; `MemBanks(kCmem)` is `LogFatal` on JF/VF/GL/GF |
+| **Per-gen availability** | Pufferfish (PXC, **TPU v4**) only; `MemBanks(kCmem)` is `LogFatal` on DF/JF/VF/GLC/GFC |
 | **Confidence** | CONFIRMED (byte-anchored, decompile-verified) unless a row or callout says otherwise |
 
 ---
@@ -130,8 +130,8 @@ Sizes come from `chip_parts.binarypb` at boot; alignment = granule = `CmemWordSi
 | Jellyfish (JF) | `JellyfishTarget` | `chip_parts` (≈ 0) | `chip_parts` | n/a (`LogFatal`) | none | 0 (base) | 240 (constant) | HIGH |
 | **Pufferfish (PXC, TPU v4)** | `PufferfishTarget` | **`chip_parts` (non-zero)** | **~16** (`Cmq16B`) | **32** | **dedicated PXC slot + VS + Misc** | **1121** | **50** | CONFIRMED (size LOW) |
 | Viperfish (VFC) | `ViperfishTarget` | `chip_parts` (= 0) | `chip_parts` | n/a (`LogFatal`) | emitters only, lower to VL/VS | 0 (base) | 1200 / 0 (lite) | HIGH |
-| Ghostlite (GLC, Trillium) | `GhostliteTarget` | `chip_parts` (= 0) | `chip_parts` | n/a (`LogFatal`) | none (`no gxc::glc::isa::*Cmem*`) | 0 (base) | 1200 | HIGH |
-| Ghostfish (GFC, TPU v7x) | `GhostliteTarget` | `chip_parts` (= 0) | `chip_parts` | n/a (`LogFatal`) | none (`no gxc::gfc::isa::*Cmem*`) | 0 (base) | 1200 | HIGH |
+| Ghostlite (GLC / glc, v6e) | `GhostliteTarget` | `chip_parts` (= 0) | `chip_parts` | n/a (`LogFatal`) | none (`no gxc::glc::isa::*Cmem*`) | 0 (base) | 1200 | HIGH |
+| 6acc60406 (GFC / gfc, TPU7x) | `GhostliteTarget` | `chip_parts` (= 0) | `chip_parts` | n/a (`LogFatal`) | none (`no gxc::gfc::isa::*Cmem*`) | 0 (base) | 1200 | HIGH |
 
 > **GOTCHA (literal byte size is LOW) —** the literal per-codename CMEM byte size lives in the embedded `chip_parts.binarypb` proto's `TpuMemoryParts` record and has *not* been extracted from the binary; the C++ reads it blindly from `Target+0x460`. The word/granule "16 B" for Pufferfish is **inferred** from the `Cmq16BIndirectStateFactory` template-parameter name, not read from the proto. Public Pufferfish materials describe CMEM at the per-TensorCore-MiB scale, but a reimplementer should treat the literal size and word as `chip_parts`-supplied data, not as binary-derived constants.
 
@@ -148,9 +148,9 @@ The Pufferfish CMEM cost-model immediates, re-decoded from the decompiled `movab
 | `LocalDmaBandwidthVmemToCmem` | `0x1d4943e0` | `0x4091840000000000` | **1121.0** | CONFIRMED |
 | `LocalDmaBandwidthCmemToVmem` | `0x1d494440` | `0x40A2460000000000` | **2339.0** | CONFIRMED |
 | `LocalDmaBandwidthCmemToSmem` | `0x1d494480` | `0x4041000000000000` | **34.0** | CONFIRMED |
-| `LocalDmaBandwidthSmemToCmem` | `0x1d4944e0` | (34.0) | **34.0** | HIGH |
-| `LocalDmaBandwidthCmemToHbm` | `0x1d494420` | (override present) | (decode pending) | LOW |
-| `LocalDmaBandwidthCmemToCmem` | `0x1d494460` | (override present) | (decode pending) | LOW |
+| `LocalDmaBandwidthSmemToCmem` | `0x1d4944e0` | `0x4041000000000000` | **34.0** | CONFIRMED |
+| `LocalDmaBandwidthCmemToHbm` | `0x1d494420` | `0x4090E00000000000` | **1080.0** | CONFIRMED |
+| `LocalDmaBandwidthCmemToCmem` | `0x1d494460` | `0x4092A40000000000` | **1193.0** | CONFIRMED |
 | `InitialDmaLatencyInNs(kCmem)` | `0x1d493d00` | table `[555.0, 50.0][ms==4]` | **50 ns** | CONFIRMED |
 
 The asymmetry (read side 2339 GB/s vs. write side 1121 GB/s) reflects a CMEM physical bus whose read path has roughly twice the wire count; the 50 ns startup is an order of magnitude below the 555 ns VMEM/HBM startup, reflecting CMEM's per-tile-resident short bus. There is **no `LocalDmaBandwidthHbmToCmem` accessor** at all — HBM↔CMEM traffic is cost-modelled as the VMEM-bridged formula (HBM→VMEM latency + VMEM→CMEM bandwidth).
@@ -186,14 +186,14 @@ The two-tier tug-of-war (decompile-gated by `CmemSizeBytes() > 0`, see below):
 
 | HloValue characteristic | Wins |
 |---|---|
-| MXU primary operand (matmul A/B), needs VS-slot ports | **VMEM** (`FastMemorySpace() = kVmem` on every Target) |
+| MXU primary operand (matmul A/B), needs VS-slot ports | **the codename's `FastMemorySpace()`** — VMEM on VF/GL, HBM on JF, CMEM on PF (see per-codename breakdown below) |
 | Weight tile for fixed-shape conv; LUT; quant table (read-mostly, small) | **CMEM** (high read BW, dedicated bundle slot) — *Pufferfish only* |
 | Activation tile (changes per batch) | VMEM |
 | All-reduce staging | CMEM if `xla_tpu_scoped_cmem_for_all_reduce` else VMEM |
 | HLO top-level output | HBM default; CMEM if `…cmem_fraction_for_hlo_outputs > 0` |
 | No live-range headroom anywhere | HBM (spill, fetch on demand) |
 
-CMEM never becomes the *fast* tier: `FastMemorySpace()` returns `kVmem`(=3) on `JellyfishTarget`/`PufferfishTarget`/`ViperfishTarget`/`GhostliteTarget` alike. MSA biases a value toward CMEM only when its read/write ratio is high *and* the active Target advertises non-zero `LocalDmaBandwidthCmemToVmem` — i.e. Pufferfish.
+`FastMemorySpace()` is **per-codename and decompile-verified**: `JellyfishTarget::FastMemorySpace()` (`0x1d491a20`) returns **`kHbm`(=1)** (Jellyfish has no on-chip fast operand tier); `ViperfishTarget` (`0x1d49c3c0`) and `GhostliteTarget` (`0x1d499000`) both return **`kVmem`(=3)**; and — the one that makes the whole CMEM datapath exist — `PufferfishTarget::FastMemorySpace()` (`0x1d495f00`) returns **`kCmem`(=4)**. On Pufferfish, CMEM *is* the fast tier: a single `mov $0x4,%al; ret`. MSA therefore biases read-mostly tiles toward CMEM specifically on Pufferfish, where the active Target advertises both the `kCmem` fast space *and* non-zero `LocalDmaBandwidthCmemToVmem`.
 
 > **NOTE (CONFIRMED gate) —** the entire CMEM placement path is short-circuited on any codename that advertises zero CMEM. The decompiled `LloInstruction::CreateVectorCmemResult` (`0x1d4d99a0`) asserts `parent->module()->target().CmemSizeBytes() > 0` and `LogMessageFatal`s otherwise — so a CMEM-result write is unreachable unless the active Target has non-zero CMEM. The same invariant guards MSA, alongside the rodata diagnostic `"CMEM is not supported."`. A reimplementer that omits the `CmemSizeBytes() > 0` precondition will mis-route CMEM placement onto a codename that cannot back it.
 
@@ -207,7 +207,7 @@ CMEM is **populated by program-prologue DMA**, not at NEFF / image load. The com
 | VMEM→CMEM staged fill | `LloRegionBuilder::DmaVmemToCmemInBytes` @ `0x1d576c80` | 1121 GB/s |
 | In-program VPU store | `TensorCoreVectorStore_CmemStore` / `…NoOffset` (folded into the VS slot) | (VS write port) |
 | MXU result direct write | `kVectorCmemResult` (`CreateVectorCmemResult` @ `0x1d4d99a0`) | (result-buffer drain) |
-| SMEM↔CMEM scalar staging | `DmaSmemToCmemInBytes` @ `0x1d577220` / `DmaCmemToSmemInBytes` | 34 GB/s |
+| SMEM→CMEM scalar staging | `DmaSmemToCmemInBytes` @ `0x1d577220` (only this direction has an emitter; no `DmaCmemToSmemInBytes`) | 34 GB/s |
 
 After the bulk fill, the `CmemIndirectState` ctor builds the indirect-state vector at the head of the image so the VPU bundle slot can issue `TensorCoreCmemLoad` against the resident tiles. Eviction back to HBM (the MSA spill path) uses `DmaCmemToHbmInBytes` (`0x1d577040`).
 
