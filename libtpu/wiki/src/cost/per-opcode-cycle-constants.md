@@ -6,7 +6,7 @@
 
 This page is the data sheet for the TensorCore cost model: the actual cycle-cost integers baked into `libtpu.so`'s `.rodata`, grouped by generation and engine, plus the rule by which the bundle-latency cost model sums them. The numbers come from two places that a reimplementer must keep distinct. (1) The **throughput** cycle of a cycle class is the value a per-gen [`CycleTable`](cycletable-family.md) returns from `GetCyclesForThroughput` — for Jellyfish/Dragonfish a flat read `Performance[offsetLUT[class]]`, for Pufferfish and later a `switch` that calls `Performance::GetResourceUsage(instruction_id, resource)`. (2) The **latency** of an op is a separate per-gen `Performance` array entry the `LatencyTable*` reads. Both arrays live in the same per-gen `Performance` object; the cycle constants below are the contents of those arrays.
 
-The oldest gens (JF/DF) are fully byte-pinned here: a 33-entry `int64` offset LUT, the 16-of-33 priced subset, the seven 8-cycle MXU cells, the nine 1-cycle vector cells, and the constructor source blocks that fill them. For Pufferfish through Trillium, the per-class throughput integers are pinned from the `GetResourceUsage(instr,res)` call constants in each gen's `switch`, and the per-gen latency-value *distributions* are pinned from the constructor store stream; the full per-`(instruction × resource)` 2D grids are partially extracted (flagged below).
+The oldest gens (JF/DF) are fully byte-pinned here: a 33-entry `int64` offset LUT, the 16-of-33 priced subset, the seven 8-cycle MXU cells, the nine 1-cycle vector cells, and the constructor source blocks that fill them. For Pufferfish through `6acc60406`, the per-class throughput integers are pinned from the `GetResourceUsage(instr,res)` call constants in each gen's `switch`, and the per-gen latency-value *distributions* are pinned from the constructor store stream; the full per-`(instruction × resource)` 2D grids are partially extracted (flagged below).
 
 The contract this page documents:
 
@@ -137,7 +137,7 @@ switch (cls) {
 }
 ```
 
-The `(instruction_id, resource)` pairs are the load-bearing constants. Resolving each against the Pufferfish `Performance` latency array gives the per-class cost:
+The `(instruction_id, resource)` pairs are the primary constants. Resolving each against the Pufferfish `Performance` latency array gives the per-class cost:
 
 | Class | `(instr, res)` | Perf value | Role | Confidence |
 |------:|----------------|-----------:|------|------------|
@@ -157,13 +157,15 @@ The `(instruction_id, resource)` pairs are the load-bearing constants. Resolving
 
 The resource arguments expose the lane: `9` = matmul-issue (PF only — later gens use `11`), `11` = XLU MRB, `3` = XLU input slot. The `PushGainsS4` cases were declared in the enum but their cost is intentionally a fatal log, keeping those modes out of the schedulable set.
 
+> **NOTE — the `(instr, res)` value differs from the cross-gen throughput column for the same class.** `GetResourceUsage(125, 9)` returns `101` (instruction 125's resource-`9` cell, the bf16-matprep view), whereas the [per-class throughput table](#per-class-throughput-across-generations) below lists Pufferfish class `0x00` as `79`. The two numbers are different columns of the 2D `(instruction × resource)` grid; the throughput row used by the scheduler reads a different resource slot than the `res=9` matmul-issue cell. A reimplementer must not assume the two views are the same number. Both are byte-anchored against the Pufferfish `Performance` array; the per-resource cell that the bundle cost model actually consumes is flagged PARTIAL in the [2D-grid section](#per-gen-latency-array-distributions-confirmed-counts-full-2d-partial).
+
 ---
 
 ## Per-Class Throughput Across Generations
 
 Decoded from each gen's `GetCyclesForThroughput` (or `…Helper`) switch, cross-referenced against the per-gen `Performance` latency arrays. These are per-bundle-issue throughput cycles, not per-instruction latency.
 
-| Class | Role | JF/DF | Puff | Vip | Glite | Trillium | Confidence |
+| Class | Role | JF/DF | Puff | Vip | Glite | `6acc60406` | Confidence |
 |------:|------|------:|-----:|----:|------:|---------:|------------|
 | `0x00` | Vector matprep, bf16 | 8 | 79 | 131 | 192 | 212 | CONFIRMED |
 | `0x05` | Latch, bf16 | 8 | 79 | 131 | 192 | 212 | CONFIRMED |
@@ -191,7 +193,7 @@ Decoded from each gen's `GetCyclesForThroughput` (or `…Helper`) switch, cross-
 | Pufferfish | 198 | 219 | `0x1c89dfc0` / `0x1c89dfe0` |
 | Viperfish | 154 | 170 | `0x1c89e480` / `0x1c89e4a0` |
 | Ghostlite | 142 | 151 | `0x1c89ea00` / `0x1c89ea20` |
-| Trillium | 142 | 151 | `0x1c89f0e0` / `0x1c89f100` |
+| `6acc60406` | 142 | 151 | `0x1c89f0e0` / `0x1c89f100` |
 
 Each value was read from the function body (`return <imm>;`). The trend (sin/cos shrinking ~25 % from PF to GF) tracks the XLU pipeline / issue-throughput speedups across gens.
 
@@ -206,9 +208,9 @@ The per-gen `Performance` object also holds the *latency* array the `LatencyTabl
 | Pufferfish | `xla::pufferfish::PufferfishPerformance` | `0x1c8be080` | 336 | 1344 | 20 | CONFIRMED |
 | Viperfish | `xla::viperfish::ViperfishPerformance` | `0x1c8c4840` | 384 | 1536 | 28 | CONFIRMED |
 | Ghostlite | `xla::ghostlite::GhostlitePerformance` | `0x1c8cbc80` | 476 | 1904 | 31 | CONFIRMED |
-| Trillium | (`gxc::gfc` Performance, unnamed) | `0x1c8d3740` | 465 | 1860 | 31 | CONFIRMED |
+| `6acc60406` | (`gxc::gfc` Performance, unnamed `sub_1C8D3740`) | `0x1c8d3740` | 465 | 1860 | 31 | CONFIRMED |
 
-Notable clusters in the latency histograms (full per-value tables omitted for brevity): Pufferfish concentrates at `1` (144 entries), `83`/`101` (48 each), `126` (16); Viperfish at `1`/`2` (147/113), `121` (25), `131` (27); Ghostlite at `1`/`2` (149/181), `182` (24), `192` (27); Trillium at `1`/`2` (154/198), `204` (12), `212` (15). The 200+ cycle entries cluster at instruction ids 289..330 — the bf16/fp8 MXU latch/matmul/matres ops.
+Notable clusters in the latency histograms (full per-value tables omitted for brevity): Pufferfish concentrates at `1` (144 entries), `83`/`101` (48 each), `126` (16); Viperfish at `1`/`2` (147/113), `121` (25), `131` (27); Ghostlite at `1`/`2` (149/181), `182` (24), `192` (27); `6acc60406` at `1`/`2` (154/198), `204` (12), `212` (15). The 200+ cycle entries cluster at instruction ids 289..330 — the bf16/fp8 MXU latch/matmul/matres ops.
 
 > **PARTIAL — the full `(instruction × resource)` 2D grids are not enumerated here.** Each `Performance` constructor issues 599 (PF) / 759 (VF) / 831 (GL) / 759 (GF) dword stores split between the latency array and the 2D `resource_usage` array; this page pins the per-class throughput constants (the named switch cases, CONFIRMED) and the latency-value distributions (CONFIRMED counts) but not every per-resource cell. Extraction is mechanical against `Performance::GetResources()::kResources` and is left as a follow-up. The per-gen `Performance` pages ([PF](performance-pf.md), [VF](performance-vf.md)) track this.
 
