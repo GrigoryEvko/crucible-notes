@@ -4,9 +4,9 @@
 
 ## Abstract
 
-`xla::ghostlite::GhostlitePerformance` is the Ghostlite (TpuVer 4, v6e) instance of the grid-family `Performance` object framed in [`performance-overview`](performance-overview.md). It is one of two `GhostlitePerformance` constructors internally nicknamed **GhPerf** — the named v6e variant documented here and the mis-symbolized v7 Trillium variant on [`performance-gf-ghperf`](performance-gf-ghperf.md). It prices each LLO instruction two ways: a flat latency array indexed by `GhostlitePerformance::Instruction`, read by `GetLatency` to set the depth of a true-dependency edge; and a 2D **Instruction × Resource** occupancy grid, read by `GetResourceUsage(instr, res)` to charge how many cycles the instruction holds each intra-op micro-pipeline port. The grid is the libtpu analog of an LLVM `SchedMachineModel` `ProcResource`/`WriteRes` table, reconstructed by decoding the constructor that fills it.
+`xla::ghostlite::GhostlitePerformance` is the Ghostlite (TpuVer 4, v6e) instance of the grid-family `Performance` object framed in [`performance-overview`](performance-overview.md). It is one of two `GhostlitePerformance` constructors internally nicknamed **GhPerf** — the named v6e variant documented here and the mis-symbolized v7 (`6acc60406`) variant on [`performance-gf-ghperf`](performance-gf-ghperf.md). It prices each LLO instruction two ways: a flat latency array indexed by `GhostlitePerformance::Instruction`, read by `GetLatency` to set the depth of a true-dependency edge; and a 2D **Instruction × Resource** occupancy grid, read by `GetResourceUsage(instr, res)` to charge how many cycles the instruction holds each intra-op micro-pipeline port. The grid is the libtpu analog of an LLVM `SchedMachineModel` `ProcResource`/`WriteRes` table, reconstructed by decoding the constructor that fills it.
 
-The Ghostlite grid is `476 × 31`: 476 instruction rows (the v6e `GhostlitePerformance::Instruction` cardinality) and 31 resource columns (`GhostlitePerformance::Resource`, the EUP/Xlu/MXU-result micro-pipeline ports). The object layout, the `GetResourceUsage` read path with its two bounds checks and 24-byte row stride, and the resource count 31 are all shared with the Viperfish grid and the GF/Trillium twin; the constructor — `_ZN3xla9ghostlite20GhostlitePerformanceC1Ev @0x1c8cbc80`, the one GhPerf constructor that still carries a clean symbol — and the per-cell integers are v6e-specific. The grid does **not** price the MXU matmul/matpush reservation; that is a separate `MxuLatencyTable` ([`mxu-latency-gl`](mxu-latency-gl.md)). The GhPerf grid and the `MxuLatencyTable` agree on the per-dtype throughput magnitudes ({4 bf16 / 8 fp8}) but are read for different questions and live in different sub-objects of the owning `GlcCycleTable`.
+The Ghostlite grid is `476 × 31`: 476 instruction rows (the v6e `GhostlitePerformance::Instruction` cardinality) and 31 resource columns (`GhostlitePerformance::Resource`, the EUP/Xlu/MXU-result micro-pipeline ports). The object layout, the `GetResourceUsage` read path with its two bounds checks and 24-byte row stride, and the resource count 31 are all shared with the Viperfish grid and the GF (`6acc60406`) twin; the constructor — `_ZN3xla9ghostlite20GhostlitePerformanceC1Ev @0x1c8cbc80`, the one GhPerf constructor that still carries a clean symbol — and the per-cell integers are v6e-specific. The grid does **not** price the MXU matmul/matpush reservation; that is a separate `MxuLatencyTable` ([`mxu-latency-gl`](mxu-latency-gl.md)). The GhPerf grid and the `MxuLatencyTable` agree on the per-dtype throughput magnitudes ({4 bf16 / 8 fp8}) but are read for different questions and live in different sub-objects of the owning `GlcCycleTable`.
 
 This page documents the Ghostlite grid: the object the constructor builds; the byte-identical `GetResourceUsage`/`GetLatency` read paths; how an LLO opcode reaches a grid row through the `GetGhostliteInstruction @0x1c8b1740` classifier and its MXU/permute/transpose latch-mode fan-out; the 31 resource columns described by their occupant instruction class instead of dumped cell-by-cell; the Xlu/matrix-result deposit column (GL res `0x0f`) that the convolution cost model reads as its `R[2]` term; and the `0xff`-default fallback path that the ~344 unpriced rows take. The full per-cell dumps of the populated rows are described by band, not transcribed in full.
 
@@ -76,13 +76,13 @@ function GhostlitePerformanceC1Ev(this):                 // @0x1c8cbc80
 
 After the headers are set, the body issues exactly **834** `mov DWORD PTR [addr], imm` stores: 476 write every latency slot (the first three, `latency[0]=1`, `latency[1]=1`, `latency[2]=2`, are stored at `@0x1c8cbd50/64/79` into `[this+0x00]`), and the remaining 358 write the populated grid cells. The store count being exactly `476 + 358` is the integrity check that every store was classified.
 
-> **QUIRK —** the GL constructor at `@0x1c8cbc80` carries the clean symbol `_ZN3xla9ghostlite20GhostlitePerformanceC1Ev`, but the GF (Trillium) GhPerf constructor at `@0x1c8d3740` is mis-symbolized in the binary; it is the `GfcCycleTable`-allocated variant, structurally the same `GhostlitePerformance` layout (31-wide rows) with a 465-row instruction set instead of 476. The two are distinct constructors with distinct cell values and distinct base latencies (GL EUP/transcendental 192/182 vs GF 212/204), not a shared instance. See [`performance-gf-ghperf`](performance-gf-ghperf.md).
+> **QUIRK —** the GL constructor at `@0x1c8cbc80` carries the clean symbol `_ZN3xla9ghostlite20GhostlitePerformanceC1Ev`, but the GF (`6acc60406`) GhPerf constructor at `@0x1c8d3740` is mis-symbolized in the binary (it carries the placeholder symbol `sub_1C8D3740`); it is the `GfcCycleTable`-allocated variant, structurally the same `GhostlitePerformance` layout (31-wide rows) with a 465-row instruction set instead of 476. The two are distinct constructors with distinct cell values and distinct base latencies (GL EUP/transcendental 192/182 vs GF 212/204), not a shared instance. See [`performance-gf-ghperf`](performance-gf-ghperf.md).
 
 ### The memset-0xff default
 
 The latency array is memset to `0xff` (255) before any cell is written. Unlike Pufferfish and Viperfish — where every latency slot is subsequently overwritten and the default never survives — Ghostlite writes only the ~132 priced rows. The remaining ~344 instructions keep `0xff = 255` in both the latency array and (implicitly) leave their entire 31-wide grid row at the zero-init value. Those unpriced instructions are **not** priced by the grid: their cost comes from the gen-invariant `CycleTable::GetResource` path (`@0x1c89ce20`) or the `JfCycleTable` default of 1 cycle. A reimplementation must keep 255 as a distinguishable sentinel — a caller that reads a `0xff` latency knows to fall back, whereas a zero would be indistinguishable from a real zero-latency op.
 
-> **GOTCHA —** the grid is built per `GlcCycleTable`, and `GlcCycleTable` is constructed from a `tpu::TpuVersion` (the only caller of this ctor besides `GlcCycleTable` is `LatencyTableGhostlite::LatencyTableGhostlite(tpu::TpuVersion)`). The 476-row Ghostlite set and the 465-row Trillium set are selected by which `CycleTable` subclass is instantiated, not by a runtime branch inside one shared object. Do not key the grid by a single global instruction enum across generations.
+> **GOTCHA —** the grid is built per `GlcCycleTable`, and `GlcCycleTable` is constructed from a `tpu::TpuVersion` (the only caller of this ctor besides `GlcCycleTable` is `LatencyTableGhostlite::LatencyTableGhostlite(tpu::TpuVersion)`). The 476-row Ghostlite set and the 465-row `6acc60406` set are selected by which `CycleTable` subclass is instantiated, not by a runtime branch inside one shared object. Do not key the grid by a single global instruction enum across generations.
 
 ---
 
@@ -172,7 +172,7 @@ The grid's INNER axis is the `GhostlitePerformance::Resource` enum: 31 intra-op 
 
 ### The column bands
 
-The 31 columns group into recognizable bands that track the EUP/Xlu/MXU-result micro-pipeline. The table below names each band by its occupant LLO class rather than dumping all 358 cells. Column indices are GL-specific (the GF/Trillium variant has a +1 shift on the result bands because its EUP-prep group is 4 columns wide vs GL's 3):
+The 31 columns group into recognizable bands that track the EUP/Xlu/MXU-result micro-pipeline. The table below names each band by its occupant LLO class rather than dumping all 358 cells. Column indices are GL-specific (the GF (`6acc60406`) variant has a +1 shift on the result bands because its EUP-prep group is 4 columns wide vs GL's 3):
 
 | GL cols | Band | Occupant LLO class | Typical cells | Confidence |
 |---|---|---|---|---|
@@ -232,7 +232,7 @@ function LatencyTableGhostlite::GetResourceLatency(this, producer, consumer):  /
     return result
 ```
 
-The per-column `switch` is the proof that the 31 columns are not interchangeable: columns `0..1`, `0x0f` (Xlu), `0x18`, `0x1c..0x1e` are simple "take the larger hold" columns; column `0x1b` is a FIFO column that only counts when both ops touch the same FIFO (`LloInstructionsPushOrPopSameFifo`); columns `3..0x0a` and `0x1a` are MXU-reservation columns that this path explicitly refuses to handle (`"Did not expect to have MXU resource for …"`, `gl.cc:1066`) — those are priced by the `MxuLatencyTable`, not here. Column `0x19` is the v6e shift/saturate band that adds one extra cycle for a specific consumer opcode range (`opcode - 389 < 14`).
+The per-column `switch` is the proof that the 31 columns are not interchangeable: columns `0..1`, `0x0f` (Xlu), `0x18`, `0x1c..0x1e` are simple "take the larger hold" columns; column `0x1b` is a FIFO column that only counts when both ops touch the same FIFO (`LloInstructionsPushOrPopSameFifo`); columns `3..0x0a` and `0x1a` are MXU-reservation columns that this path explicitly refuses to handle (`"Did not expected to have MXU resource for "`, `gl.cc:1066`) — those are priced by the `MxuLatencyTable`, not here. Column `0x19` is the v6e shift/saturate band that adds one extra cycle for a specific consumer opcode range (`opcode - 389 < 14`).
 
 > **NOTE —** the `LogFatal` on the MXU columns (`3..0x0a`, `0x1a`) is a deliberate assertion, not dead code: a producer/consumer pair that both deposit into an MXU column should never reach `GetResourceLatency`, because the MXU hazard is computed by the separate `MxuOpHoldIssues` recurrence over the `MxuLatencyTable`. The grid columns `3..0x0a` carry cells (the EUP-prep band) but are read by other paths, never by this pairwise hazard sum.
 
@@ -240,7 +240,7 @@ The per-column `switch` is the proof that the 31 columns are not interchangeable
 
 ## The 476-vs-465 Instruction-Set Delta
 
-Ghostlite (v6e) has 476 `Instruction` rows; Trillium (v7) has 465 — a `+11` v6e surplus. The extra v6e opcodes surface in two places in the grid: (a) the GL-only populated **r25** shift/saturate band (14 cells, the shift-right/left and scalar/vector-max overflow-saturate ops `0x19a..0x1bb`, which GF either fuses or routes elsewhere — GF's r25-equivalent has a single cell); and (b) the extended BarnaCore-wait opcodes `0x1d0..0x1db`, which are *past* the 461-entry LLO opcode-name range (the last named LLO opcode is `0x1cc = kBarnaCoreVectorStore`). So the `+11` v6e-extra instructions are the additional shift/saturate plus barnacore-wait variants; Trillium drops them for a smaller 465-row set. The names of the `0x1d0..0x1db` rows are inferred from their value pattern matching the GF barnacore-wait band (MEDIUM); they were not individually resolved.
+Ghostlite (v6e) has 476 `Instruction` rows; `6acc60406` (v7) has 465 — a `+11` v6e surplus. The extra v6e opcodes surface in two places in the grid: (a) the GL-only populated **r25** shift/saturate band (14 cells, the shift-right/left and scalar/vector-max overflow-saturate ops `0x19a..0x1bb`, which GF either fuses or routes elsewhere — GF's r25-equivalent has a single cell); and (b) the extended BarnaCore-wait opcodes `0x1d0..0x1db`, which are *past* the 461-entry LLO opcode-name range (the last named LLO opcode is `0x1cc = kBarnaCoreVectorStore`). So the `+11` v6e-extra instructions are the additional shift/saturate plus barnacore-wait variants; `6acc60406` drops them for a smaller 465-row set. The names of the `0x1d0..0x1db` rows are inferred from their value pattern matching the GF barnacore-wait band (MEDIUM); they were not individually resolved.
 
 ---
 
@@ -254,7 +254,7 @@ opcode kScalarAddS32      (0x172) → GhPerf row 0x172, lat  97 → grid[..][0x0
 opcode kScalarSubtractF32 (0x174) → GhPerf row 0x174, lat 109 → grid[..][0x0f] = 4
 ```
 
-So the GL conv `R[2]` Xlu term is `4 · ChunksPerTile · rem`. The `R[0]` matpush and `R[1]` matmul halves come from the [`mxu-latency-gl`](mxu-latency-gl.md) reservation matrix (matpush {2 bf16 / 4 fp8}, matmul {4 bf16 / 8 fp8}). The per-op base latency (123/97/109 here, and 192/182 for the EUP-prep band) is the v6e silicon's pipeline depth — lower than Trillium's 212/204, the visible silicon-generation divergence. The Xlu cell `4` itself is dtype-independent and matches the Trillium value; only the surrounding latencies differ.
+So the GL conv `R[2]` Xlu term is `4 · ChunksPerTile · rem`. The `R[0]` matpush and `R[1]` matmul halves come from the [`mxu-latency-gl`](mxu-latency-gl.md) reservation matrix (matpush {2 bf16 / 4 fp8}, matmul {4 bf16 / 8 fp8}). The per-op base latency (123/97/109 here, and 192/182 for the EUP-prep band) is the v6e silicon's pipeline depth — lower than `6acc60406`'s 212/204, the visible silicon-generation divergence. The Xlu cell `4` itself is dtype-independent and matches the `6acc60406` value; only the surrounding latencies differ.
 
 ---
 
@@ -279,7 +279,7 @@ So the GL conv `R[2]` Xlu term is `4 · ChunksPerTile · rem`. The `R[0]` matpus
 | Name | Relationship |
 |---|---|
 | `performance-overview` | the family framing: flat vs grid `Performance`, the shared read path, the resource progression |
-| `performance-gf-ghperf` | the Trillium (v7) GhPerf twin — 465×31, Xlu res `0x10`, base latency 212/204 |
+| `performance-gf-ghperf` | the `6acc60406` (v7) GhPerf twin — 465×31, Xlu res `0x10`, base latency 212/204 |
 | `mxu-latency-gl` | the separate Ghostlite `MxuLatencyTable` (matmul/matpush reservation) that co-exists with this grid |
 | `resource-enum` | the 23-slot per-bundle `ResourceVector`, distinct from the 31-wide `GhostlitePerformance::Resource` |
 | `slot-mxu` | the physical MXU sub-units the resource columns reserve |
@@ -287,7 +287,7 @@ So the GL conv `R[2]` Xlu term is `4 · ChunksPerTile · rem`. The `R[0]` matpus
 ## Cross-References
 
 - [Performance Family Overview](performance-overview.md) — the grid-family object layout, the shared `GetResourceUsage`/`GetLatency` read paths, and the 7→7→20→28→31→31 resource progression
-- [Performance: GF (GhPerf 465×31)](performance-gf-ghperf.md) — the Trillium v7 GhPerf twin; Xlu deposit res `0x10`, base latency 212/204, and the 476-vs-465 instruction-set delta
+- [Performance: GF (GhPerf 465×31)](performance-gf-ghperf.md) — the `6acc60406` (v7) GhPerf twin; Xlu deposit res `0x10`, base latency 212/204, and the 476-vs-465 instruction-set delta
 - [MXU Latency: GL (Ghostlite)](mxu-latency-gl.md) — the separate v6e `MxuLatencyTable` reservation matrix; the conv `R[0]`/`R[1]` matpush/matmul halves to this grid's `R[2]`
 - [Resource Enum (23-slot)](resource-enum.md) — the per-bundle `ResourceVector`, distinct from the per-gen `Performance::Resource` micro-pipeline columns
 - [MXU Slot](../isa/slot-mxu.md) — the LLO MXU instruction slot whose latch-mode/format modifiers drive the `GetGhostliteInstruction` fan-out
