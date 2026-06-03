@@ -184,11 +184,12 @@ function PJRT_PhaseCompile_Run_Phase(args):               // 0xe6f42e0
                       ptrs=args[+0x18], count=args[+0x28],
                       sizes=args[+0x20])                  // → vector<PjRtPartialProgramProto>
 
-    // --- the shared compile-options chokepoint (see §Compile-Options Ingest) ---
+    // --- the compile-options chokepoint (see §Compile-Options Ingest) ---
     proto = CompileOptionsProto{}                          // line 134
-    if !proto.ParseFromString(opts_ptr, opts_len):         // line 135
-        return new PJRT_Error{MakeErrorImpl(
-            "PJRT_Client_Compile: failed to deserialize CompileOptionsProto", …)}
+    if !proto.ParseFromString(args[+0x48], args[+0x50]):   // line 135 — ptr +0x48, len +0x50
+        return new PJRT_Error{MakeErrorImpl<3>(
+            "PJRT_Client_Compile: failed to deserialize CompileOptionsProto",
+            …, "…/pjrt_c_api_phase_compile_internal.cc")}   // :46 (NOT wrapper_impl:1113)
     opts = CompileOptions::FromProto(proto)                // line 138
 
     holder = args[+0x10]                                   // args[2]
@@ -227,14 +228,15 @@ The decompiled body reads the following offsets within `PJRT_PhaseCompile_Run_Ph
 | `+0x68` | `out_programs_sizes` | `size_t*` out | HIGH |
 | `+0x70` | `out_programs_count` | count out | HIGH |
 | `+0x88` | `topology` | `*(args+0x88)+8` → `PjRtTopologyDescription` | HIGH |
-| (parsed) | `compile_options` | serialized `CompileOptionsProto` ptr/len fed to `ParseFromString` | HIGH |
+| `+0x48` | `compile_options` | `char*` — serialized `CompileOptionsProto`, fed to `ParseFromString` | HIGH |
+| `+0x50` | `compile_options_size` | `size_t` — proto byte length | HIGH |
 
-> **CORRECTION (PHASE-1) —** an earlier reading of `Run_Phase` placed the input-program span at `+0x18` *and* the phase-name span overlapping at `+0x30/+0x40` with a shared count, and guessed the options blob at `+0x72/+0x80`. The decompiled body (`0xe6f42e0`, lines 84-85) shows the two spans are distinct `(ptr, size, count)` triples — programs read from `(+0x18, +0x20, +0x28)`, phase names from `(+0x30, +0x38, +0x40)` — not a shared count. The exact per-field *names* still depend on the public `pjrt_c_api_phase_compile.h` header order, which is not in the binary; the offsets above are read directly from the body and are HIGH.
+> **CORRECTION (PHASE-1) —** an earlier reading of `Run_Phase` placed the input-program span at `+0x18` *and* the phase-name span overlapping at `+0x30/+0x40` with a shared count, and mislabeled the options blob (the decompiled body reads `*(a1+72)`/`*(a1+80)`, i.e. hex `+0x48`/`+0x50`, not `+0x72`/`+0x80`). The decompiled body (`0xe6f42e0`, lines 84-85, 134-135) shows the two char-buffer spans are distinct `(ptr, size, count)` triples — programs read from `(+0x18, +0x20, +0x28)`, phase names from `(+0x30, +0x38, +0x40)` — not a shared count, and the options proto is `(ptr=+0x48, len=+0x50)`. The exact per-field *names* still depend on the public `pjrt_c_api_phase_compile.h` header order, which is not in the binary; the offsets above are read directly from the body and are HIGH.
 
 ### Considerations
 
 - **The dispatch is `vtable+56`.** The decompiled body calls `(*(holder->base->vtable + 56))(…)`, which is `PjRtPhaseCompiler::RunPhases @ 0x1D16AF20`. This is the same compiler object the monolithic `PJRT_Client_Compile` drives, reached through a different vtable slot — the phased ABI exposes the *intermediate* `PjRtPartialProgramProto` artifacts that the monolithic path discards.
-- **The chokepoint is shared and so is its error string.** The `CompileOptionsProto` parse failure returns `"PJRT_Client_Compile: failed to deserialize CompileOptionsProto"` even though this is `Run_Phase` — the deserialization is a *shared helper* and the diagnostic carries the helper's name (same quirk as `DeserializeAndLoad`; see [Executable Execution](executable-execution.md#serialize-and-deserialize-load)). A reimplementer should not key error handling off the string.
+- **The error string is misleading — it names `PJRT_Client_Compile` even here.** The `CompileOptionsProto` parse failure returns `"PJRT_Client_Compile: failed to deserialize CompileOptionsProto"` even though this is `Run_Phase`. The parse logic is the same two-call sequence every compile entry runs, but `Run_Phase` carries its *own* inlined copy (emitted at `pjrt_c_api_phase_compile_internal.cc:46`, `MakeErrorImpl<3>`), distinct from the `pjrt_c_api_wrapper_impl.cc:1113` site the monolithic entries share — the string was simply copied verbatim (same quirk as `DeserializeAndLoad`; see [Executable Execution](executable-execution.md#serialize-and-deserialize-load)). A reimplementer should not key error handling off the string.
 - **Errors at every step surface as `PJRT_Error*`.** A failed unmarshal, a failed options parse, a null compiler, or a `RunPhases` failure each produces a heap `PJRT_Error` holding the `absl::Status`; success returns `NULL`.
 
 ---
@@ -391,17 +393,18 @@ message PjRtPartialProgramProto {
 
 ### Purpose
 
-Every compile entry in libtpu — `PJRT_Client_Compile`, `PJRT_Compile`, `PJRT_Executable_DeserializeAndLoad`, and PhaseCompile `Run_Phase` — deserializes the *same* `CompileOptionsProto` through the *same* code path. This is the single chokepoint where wire options become live C++ `xla::CompileOptions`. The TPU compiler config (the 1,121-field `xla.jellyfish.TpuCompilationEnvironment`) and the `xla::DebugOptions` / XLA flags all ride inside this one proto.
+Every compile entry in libtpu — `PJRT_Client_Compile`, `PJRT_Compile`, `PJRT_Client_Load`, `PJRT_Executable_DeserializeAndLoad`, and PhaseCompile `Run_Phase` — deserializes the *same* `CompileOptionsProto` through the *same two-call sequence* (`CompileOptionsProto::ParseFromString` → `CompileOptions::FromProto`) and emits the *byte-identical* failure string. The first four share one emission site (`pjrt_c_api_wrapper_impl.cc:1113`); `Run_Phase` re-implements the sequence inline with its own site (`pjrt_c_api_phase_compile_internal.cc:46`) — same logic, same diagnostic, different source line. This is the convergence point where wire options become live C++ `xla::CompileOptions`. The TPU compiler config (the 1,121-field `xla.jellyfish.TpuCompilationEnvironment`) and the `xla::DebugOptions` / XLA flags all ride inside this one proto.
 
 ### The chokepoint
 
 ```c
-// shared by Run_Phase (line 134), PJRT_Client_Compile, PJRT_Compile, DeserializeAndLoad
+// PJRT_Client_Compile / PJRT_Compile / PJRT_Client_Load / DeserializeAndLoad → wrapper_impl.cc:1113
+// PhaseCompile Run_Phase (line 134) → its own inline copy at phase_compile_internal.cc:46
 proto = CompileOptionsProto{}                          // arena = 0
 if !proto2::MessageLite::ParseFromString(&proto, ptr, len):
-    return new PJRT_Error{MakeErrorImpl(
-        "PJRT_Client_Compile: failed to deserialize CompileOptionsProto",  // verbatim, all 4
-        …, pjrt_c_api_wrapper_impl.cc:1113)}
+    return new PJRT_Error{MakeErrorImpl<3>(
+        "PJRT_Client_Compile: failed to deserialize CompileOptionsProto",  // verbatim, all 5
+        …, /* wrapper_impl.cc:1113  | Run_Phase: phase_compile_internal.cc:46 */)}
 opts = xla::CompileOptions::FromProto(proto)           // wire → live C++ options
 ```
 
