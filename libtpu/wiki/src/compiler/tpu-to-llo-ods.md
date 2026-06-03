@@ -4,9 +4,9 @@
 
 ## Abstract
 
-`createLowerToLLOPass` (`0x11203ba0`) is the MLIR `FunctionPass` that drops the `tpu` dialect onto the LLO dialect — the last dialect level before the bundle packer. The companion page [MHLO → XTile → tpu](mhlo-xtile-tpu-lowering.md) covers the *descent into* `tpu`; this page covers the *descent out of it* into LLO, and specifically the three artifacts a reimplementer needs that the pass-shape overview does not carry: **the per-op ODS signatures of the LLO targets** (operand/attribute order), **the gain/staging register table** that the MXU rewrite threads through the matmul-triple ops, and **the per-op emission logic** of the LowerToLLO conversion patterns.
+`createLowerToLLOPass` (`0x11203ba0`) is the MLIR `FunctionPass` that drops the `tpu` dialect onto the LLO dialect — the last dialect level before the bundle packer. The companion page [MHLO → XTile → tpu](mhlo-xtile-tpu-lowering.md) covers the *descent into* `tpu`; this page covers the *descent out of it* into LLO, and specifically the three artifacts a reimplementer needs that the pass-shape overview does not carry, each central to reproducing the lowering: **the per-op ODS signatures of the LLO targets** (operand/attribute order), **the gain/staging register table** that the MXU rewrite threads through the matmul-triple ops, and **the per-op emission logic** of the LowerToLLO conversion patterns.
 
-The central, load-bearing fact is that **each `mlir::llo::FooOp`'s ODS operand/attribute declaration is recoverable verbatim from its generated `build`/`create` factory symbol**. TableGen emits one `build(OpBuilder&, OperationState&, <args>)` static method per declared `OpBuilder`, and the demangled C++ argument list — after the two MLIR-machinery leaders — is exactly the operand+attribute declaration in source order. `Value → operand`, `Type/TypeRange → explicit result`, `<Enum>Attr / unsigned / bool / ArrayRef → attribute`. 322 distinct `mlir::llo::*Op` classes exist; 301 carry a typed `build` *or* `create`, so for the overwhelming majority the ODS shape is not inferred but read off the binary.
+The central fact this page rests on is that **each `mlir::llo::FooOp`'s ODS operand/attribute declaration is recoverable verbatim from its generated `build`/`create` factory symbol**. TableGen emits one `build(OpBuilder&, OperationState&, <args>)` static method per declared `OpBuilder`, and the demangled C++ argument list — after the two MLIR-machinery leaders — is exactly the operand+attribute declaration in source order. `Value → operand`, `Type/TypeRange → explicit result`, `<Enum>Attr / unsigned / bool / ArrayRef → attribute`. 322 distinct `mlir::llo::*Op` classes exist; 301 carry a typed `build` *or* `create`, so for the overwhelming majority the ODS shape is not inferred but read off the binary.
 
 LLO is a register-machine ISA dialect, not a tensor dialect: an `llo.*` SSA value is one native vreg (one VPU/MXU/Vmem slot per bundle), masks are an `llo::VectorMaskType` register file, scalar predicates are `llo::PredicateType`. The reader should hold the familiar MLIR dialect-conversion frame — `RewritePattern`, `ConversionTarget`, `TypeConverter`, `applyFullConversion` — and read this page as the LLO-specific filling of those slots. Where LowerToLLO diverges from a textbook `applyPartialConversion` lowering (it uses **full** conversion, treats the function as a closed leaf, and pushes constant-slot selection *downstream* to the packer) the divergence is called out.
 
@@ -20,13 +20,13 @@ For reimplementation, the contract is:
 | | |
 |---|---|
 | **Pass factory** | `mlir::tpu::createLowerToLLOPass(xla::jellyfish::Target const&)` — `0x11203ba0` |
-| **Pass entry** | `LowerToLLOPass::runOnOperation()` — `0x11204200` (~40 KB body through `~0x1120e300`) |
+| **Pass entry** | `LowerToLLOPass::runOnOperation()` — `0x11204200` (0xa1ef-byte body, ~40 KB, ending at `0x1120e3ef`) |
 | **Pass CLI name** | `lower-to-llo` (`.rodata` anchor) |
 | **Driver** | `mlir::applyFullConversion` (`0x1c958ac0`) — *not* partial |
 | **IR in / out** | `tpu` + `arith`/`math`/`vector`/`memref`/`cf` → `llo` + structural `scf`/`func`/`memref` |
 | **LLO target count** | 322 distinct `mlir::llo::*Op` classes |
 | **ODS source coverage** | 301/322 typed `build` or `create`; 21 default-builder ([SIB]) |
-| **MXU register enums** | `MatmulMode` `mm`/`high`/`low`; `GainMatrixRegister` `gmr0..3`; `MatrixStagingRegister` `MSRA`/`MSRB`; `GainLatchMode` (xpose×dtype) |
+| **MXU register enums** | `MatmulMode` `round`/`high`/`low`; `GainMatrixRegister` `gmr0..3`; `MatrixStagingRegister` `MSRA`/`MSRB`; `GainLatchMode` (xpose×dtype) |
 | **Downstream consumer** | LLO bundle packer — [MXU Slot](../isa/slot-mxu.md), [Immediate Slot](../isa/slot-immediate.md) |
 
 ---
@@ -68,8 +68,8 @@ A builder whose *only* form is the generic `(TypeRange, ValueRange, ArrayRef<Nam
 | Source | Count | What it means | Confidence |
 |---|---|---|---|
 | `mlir::llo::*Op` classes | 322 | distinct LLO targets (matches the `tpu`-dialect inventory's LLO count) | CERTAIN |
-| `*Op::build(` symbols | 231 | 215 typed, 16 generic-only | HIGH |
-| `*Op::create(` symbols | 329 | 301 ops covered by `build` OR `create` | HIGH |
+| `*Op::build(` symbols | 231 | 225 typed + 6 generic occurrences across 215 distinct ops | HIGH |
+| `*Op::create(` symbols | 329 | 301 distinct ops covered by `build` OR `create` (every `build` op also has a `create`) | HIGH |
 | default-builder ops | 21 | no typed factory; signature taken from sibling op ([SIB]) | MEDIUM |
 
 > **QUIRK —** for the ~95 elementwise scalar/vector arithmetic and transcendental ops the builder *omits* the result `Type` because the op declares `SameOperandsAndResultType`. Their result type is therefore not in the factory signature; it is recovered from the `F32`/`BF16`/`S16`/`S32`/`U32` suffix in the op name and confirmed by `verifyInvariantsImpl`. A reimplementer must restore the `let results =` constraint from the name, not the builder.
@@ -181,7 +181,7 @@ The matmul-triple ODS attributes are the densest reimplementation hazard in the 
 
 | Enum | MLIR mnemonic | Members (binary strings) | Role | Confidence |
 |---|---|---|---|---|
-| `llo::MatmulMode` | `mm` / `high` / `low` | mm (normal), high, low | which accumulator half the matmul feeds | HIGH |
+| `llo::MatmulMode` | `round` / `high` / `low` | round (`kRound`, normal/value 0), high (`kHigh`, value 1), low (`kLow`, value 2), plus `soft_low_of_eight`/`soft_middle_of_eight` variants | which precision pass of the f32-on-bf16-MXU emulation (rounded vs high/low mantissa half) the matmul performs | HIGH |
 | `llo::GainLatchMode` | `xpose.*` / `packed_*` | `GAIN_LATCH_MODE_{NONE, NO_XPOSE_F32, NO_XPOSE_HI_F32, XPOSE_F32, XPOSE_HI_F32, XPOSE_LOW_F32, XPOSE_NIBBLE0/1, XPOSE_S4/S8/U4/U8, PACKED_*}` | how the STATIONARY operand is latched (transpose + dtype staging) | HIGH |
 | `llo::GainMatrixRegister` | `gmr` | gmr0, gmr1, gmr2, gmr3 | which of the 4 GMR banks the gains reside in | HIGH |
 | `llo::MatrixStagingRegister` | `msr` | MSRA, MSRB (= `MATPUSH_TARGET_MSRA`/`_MSRB`) | which MSR stages the MOVING operand | HIGH |
@@ -215,7 +215,7 @@ The dialect attributes resolve, at emit time, to the named MXU ISA forms. The `L
 |---|---|
 | `LoadMatrixRegisterGmrMsra` / `GmrMsrb` | `VectorLatch(I)` + `GainLatchMode` + MSR ∈ {A,B} |
 | `LoadMatrixRegisterGmrWithBf16ConversionMsr{a,b}` | `VectorLatchI` + `GAIN_LATCH_MODE_*_TO_BF16` |
-| `MatrixMultiplyBf16Lgmr{Msra,Msrb}[Masked]` | `VectorMatmulMubr` (mode ∈ {mm,high,low}, GMR=gmrN, MSR ∈ {A,B}, fmt=bf16) |
+| `MatrixMultiplyBf16Lgmr{Msra,Msrb}[Masked]` | `VectorMatmulMubr` (mode ∈ {round,high,low}, GMR=gmrN, MSR ∈ {A,B}, fmt=bf16) |
 | `MatrixMultiply{S4,S8,U4,U8}Lgmr{Msra,Msrb}` | `VectorMatmulMubr` (fmt=int) |
 | `MatrixMultiplyF32RoundedLgmr{Msra,Msrb}[Masked]` | `VectorMatmulMubr` (fmt=f32, rounded path) |
 
