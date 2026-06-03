@@ -15,14 +15,14 @@ For reimplementation, the contract is:
 - **Geometry is data-driven through `SparseCoreTarget` (`Target+0x948`).** A reimplementer must populate `SparseCoreTiles` (`[0x948]+0x90`), `SparseCoreLaneCount` (`[0x948]+0x94`), `stream_granule_size` (`[0x948]+0xA4`), and the per-tier capacity/word block (`[0x948]+0x10..+0x54`) from the chip's core-parts before any allocation runs. The four-tier memory sizes are read from there, not hard-coded.
 - **The presence gate is a runtime topology test.** Every `Target::SparseCore*` accessor dispatches the virtual `SupportsSparseCore` (vtable slot `+0x260`, `0x1D48FD40`) and `LOG(FATAL)`s `"SparseCore is not supported by this target"` if the `TpuTopology[+0x98]` SC count is zero. There is no compile-time class test.
 - **On-chip allocation is a bump allocator with a scope stack — never best-fit.** `AllocationAssignmentPass` walks `memref.alloca` ops and bump-reserves words per address space; tile-local buffers get a dedicated sub-frame carved out of the SPMEM bump pointer at a vector-lane-stripe boundary, reclaimed on pop. `Deallocate` is a no-op.
-- **There is exactly one per-gen code branch in the allocator.** The Viperfish circular-buffer-in-last-TILE_SPMEM-entry hardware-bug guard. Everything else — capacities, word widths, tile count, TAC presence — is data-driven.
+- **There is exactly one per-gen code branch in the allocator.** The circular-buffer-in-last-TILE_SPMEM-entry hardware-bug guard, which fires for DeepseaVersion 3 (Viperfish) and 4 (Ghostlite). Everything else — capacities, word widths, tile count, TAC presence — is data-driven.
 
 | | |
 |---|---|
 | **Geometry source** | `std::unique_ptr<SparseCoreTarget>` at `Target+0x948`; built by `SparseCoreTarget::Init` (`0x1D612B20`) from the `SPARSE_CORE` `TpuCoreParts` |
 | **Presence gate** | `Target::SupportsSparseCore` (`0x1D48FD40`, vtable slot `+0x260`) — reads `TpuTopology[+0x98] > 0` |
-| **Per-chip tile count** | `SparseCoreTiles` = `[0x948]+0x90` = `SequencerCount(seq-type 5)` (v7x Trillium = 16) |
-| **Per-tile vector width** | `SparseCoreLaneCount` = `[0x948]+0x94` = `vector_isa(5).lane_count` (v7x = 16) |
+| **Per-chip tile count** | `SparseCoreTiles` = `[0x948]+0x90` = `TpuCoreParts::SequencerCount(seq-type 5 = TEC)` (v7x `6acc60406` = 16) |
+| **Per-tile vector width** | `SparseCoreLaneCount` = `[0x948]+0x94` = `SequencerParts(5).vector_isa().lane_count` (v7x = 16) |
 | **Engines** | SCS (scalar, 32 B bundle) · TAC (tile-fetch DMA, 64 B; VF/GL only) · TEC (vector, 64 B; one TEC = one tile) |
 | **On-chip SRAM tiers** | HBM (GB) · SPMEM (MB, chip-wide) · TILE_SPMEM (KB, per-tile) · TIMEM (per-tile instr); SMEM/SFLAG per scope |
 | **Allocator** | `AllocationAssignmentPass` (`0x134D8240`) — per-address-space bump + scope stack; `Deallocate` elided |
@@ -45,7 +45,7 @@ For reimplementation, the contract is:
 ```text
 Target::Init                                       ── builds + installs the sub-object
   └─ SparseCoreTarget::Init (0x1D612B20)           ── populate geometry from SPARSE_CORE TpuCoreParts
-       ├─ TpuCoreParts::SequencerCount(cp, 5)      ── SparseCoreTiles  → [0x948]+0x90
+       ├─ TpuCoreParts::SequencerCount(cp, 5=TEC)  ── SparseCoreTiles  → [0x948]+0x90
        ├─ SequencerParts(5).vector_isa().lane_count── SparseCoreLaneCount → [0x948]+0x94
        └─ MemoryParts(TILESPMEM/SPMEM/SMEM/SFLAG)  ── per-tier capacity + word-size block [0x948]+0x10..+0x54
 
@@ -73,7 +73,7 @@ function SparseCoreTarget_Init(sc, core_type, topology, target, core_parts):  //
     // barrier sync-flag base/count (+0x1D0/+0x1D4) from a SpecialPurposeSyncFlags sub-object.
 ```
 
-> **QUIRK —** the tile/lane geometry is keyed on **`TpuSequencerType` enum value 5**, not 3, 4, or 5-as-TEC. The authoritative enum order recovered from the binary's strings is `{0 INVALID, 1 TENSOR_CORE, 2 BARNA_CORE, 3 BARNA_CORE_ADDR_HANDLER, 4 SPARSE_CORE_SEQ (SCS), 5 SPARSE_CORE_TILE_ACCESS (TAC), 6 SPARSE_CORE_TILE_EXECUTE (TEC)}`. `Init` reads sequencer type 5 to size tiles and lanes, and the chip_parts proto labels that 16-instance pool as the tile-execute geometry. Some SC-ISA prose numbers the SC sequencers `{3 SCS, 4 TAC, 5 TEC}` — that is off by one. A reimplementer must use the `SparseCoreTarget`-internal enum (read by `Init`) when indexing core-parts, and treat the `{3,4,5}` short labels as engine *names*, not the same index space. See [getSequencerType](getsequencertype.md).
+> **QUIRK — two `TpuSequencerType` numberings; `Init` uses the codec-template one.** The geometry is keyed on **`TpuSequencerType` value 5 = TEC** in the *codec-template* enum `{SCS=3, TAC=4, TEC=5}`. This is the index space that `TpuCoreParts::SequencerCount`/`SequencerParts` (`0x20B2AA20`/`0x20B2AA60`) actually take — both `bittest64` a 6-slot presence mask and `ud1`-trap on `index >= 6`, so the valid range is `0..5` and slot 5 is the tile-execute pool. `Init` reads `SequencerCount(5)`/`SequencerParts(5)` to size tiles and lanes, and the `chip_parts` proto labels that 16-instance pool as the tile-execute geometry. The *separate* runtime proto enum rendered by `TpuSequencerTypeToString` numbers the same engines `{SCS=4, TAC=5, TEC=6}` (with `INVALID=0`); it is one *greater* than the codec-template enum and is used only by per-engine resource arrays, never to index core-parts. A reimplementer must index `TpuCoreParts` with the codec-template `{3,4,5}` enum (the one `Init` uses); feeding it the runtime `{4,5,6}` value reads the wrong pool. See [getSequencerType](getsequencertype.md) for the full off-by-one reconciliation.
 
 ### Accessor Surface and the Presence Gate
 
@@ -111,19 +111,19 @@ The SC compute fabric is three VLIW sub-engines, each a separate machine with it
 ```text
                      ┌──────────────────────── SparseCore (one of SparseCoresPerLogicalDevice) ─────────────┐
                      │                                                                                      │
-  TpuSequencerType 4 │  SCS  (1 control sequencer, 32 B bundle)                                             │
+  codec-tmpl type 3  │  SCS  (1 control sequencer, 32 B bundle)                                             │
   (SPARSE_CORE_SEQ)  │   ├─ program counter, address arithmetic, circular buffers                          │
                      │   ├─ chip-register reads (GTC, tile id, sparse-core id, DMA credits)                 │
                      │   └─ atomic + sync-flag slot (coordinates tiles ↔ tiles, SC ↔ TC)                    │
                      │                                                                                      │
-  TpuSequencerType 5 │  TAC  (tile-access core, 64 B bundle; VF/GL ONLY — absent on Trillium)               │
+  codec-tmpl type 4  │  TAC  (tile-access core, 64 B bundle; VF/GL ONLY — absent on 6acc60406)              │
   (SPARSE_CORE_TILE_ │   └─ stream slot issues tile-fetch DMA  HBM[base + idx·stride] → TILE_SPMEM          │
    ACCESS_CORE_SEQ)  │      (no FPU, no vector ALU, no vector load/store — pure address + DMA)              │
                      │                                                                                      │
-  TpuSequencerType 6 │  TEC  ×SparseCoreTiles  (tile-execute cores, 64 B bundle — one TEC = one tile)       │
+  codec-tmpl type 5  │  TEC  ×SparseCoreTiles  (tile-execute cores, 64 B bundle — one TEC = one tile)       │
   (SPARSE_CORE_TILE_ │   ├─ 3 vector ALU slots + vector load/store + vector-extended + vector-result        │
-   EXECUTE_CORE_SEQ) │   ├─ vector_isa.lane_count lanes (= SparseCoreLaneCount)                             │
-                     │   └─ on Trillium: TEC stream slot also issues tile-fetch DMA (TAC role absorbed)     │
+   EXECUTE_CORE_SEQ) │   ├─ vector_isa.lane_count lanes (= SparseCoreLaneCount, read at SequencerParts(5))  │
+                     │   └─ on 6acc60406: TEC stream slot also issues tile-fetch DMA (TAC role absorbed)    │
                      └──────────────────────────────────────────────────────────────────────────────────── ┘
 ```
 
@@ -137,9 +137,9 @@ The engine roster is *not* constant across silicon. The discriminator is the per
 |---|---|:---:|:---:|:---:|:---:|---|:---:|:---:|
 | v5p | Viperfish | `vxc.vfc` | Y | Y | Y | TAC stream | 4 | 8 |
 | v6e | Ghostlite | `gxc.glc` | Y | Y | Y | TAC stream | 4 | 8 |
-| v7x | Trillium (`6acc60406`) | `gxc.gfc` | Y | **–** | Y | TEC stream (no TAC) | 4 | 4 |
+| v7x | `6acc60406` | `gxc.gfc` | Y | **–** | Y | TEC stream (no TAC) | 4 | 4 |
 
-> **QUIRK —** Trillium collapses the SCS+TAC+TEC three-engine pipeline to SCS+TEC. The `gfc` namespace has **zero** `SparseCoreTac*` symbols; TEC absorbs the address-generation + DMA-issue duties through its own stream slot (`IndirectStream` / `IndirectVregStream` / `LinearStream` / `StridedStream`), and SCS computes gather addresses that TEC reads via `tile_wait_scs_smem`. For tile allocation this changes *who consumes* the tile, not *how it is allocated* — the bump allocator never knew about TAC. See [TAC Engine](tac-engine.md) for the absorbed-role detail and [SCS (Scalar) Engine](scs-engine.md) / [TEC (Vector) Engine](tec-engine.md) for the per-engine bundle surfaces.
+> **QUIRK —** the `6acc60406` (gfc) generation collapses the SCS+TAC+TEC three-engine pipeline to SCS+TEC. The `gfc` namespace has **zero** `SparseCoreTac*` symbols; TEC absorbs the address-generation + DMA-issue duties through its own stream slot (`IndirectStream` / `IndirectVregStream` / `LinearStream` / `StridedStream`), and SCS computes gather addresses that TEC reads via `tile_wait_scs_smem`. For tile allocation this changes *who consumes* the tile, not *how it is allocated* — the bump allocator never knew about TAC. See [TAC Engine](tac-engine.md) for the absorbed-role detail and [SCS (Scalar) Engine](scs-engine.md) / [TEC (Vector) Engine](tec-engine.md) for the per-engine bundle surfaces.
 
 ### Considerations
 
@@ -174,16 +174,16 @@ SPMEM (chip-wide SC SRAM, capacity [0x948]+0x2C)
 │                                                 num_tiles % num_groups == 0
 │
 └─ one tile's TILE_SPMEM window  = a stripe of SPMEM, aligned to a full vector-lane stripe
-       TILE_SPMEM address       = SPMEM offset / spmem_word
+       private tile base        = SPMEM bump offset / SparseCoreTiles   (per-tile partition; 0x134DD340)
        stripe granularity        = 32 bytes   (SparseCoreSpmemStripeGranularityBytes, 0x1D499440)
        allocation alignment       = SpmemAlignment = (SparseCoreTiles × lane_count) / 4 words  (0x13DC5500)
 ```
 
 `SpmemAlignment` (`0x13DC5500`) returns `*(u32*)(Target[0x948] + 0x90) × lane_count / 4` — the `+0x90` tile field times the vector lane count, divided by 4. The intent is that every SPMEM/TILE_SPMEM allocation is rounded to a full vector-lane stripe so the TEC's vector load/store always hits aligned addresses; the matching alignment-in-bits check rejects tile stores whose `numElements × elementBitWidth` is not a multiple of `SpmemAlignmentInBits`.
 
-> **NOTE —** the byte-exact decompile shows `SpmemAlignment` multiplying the `SparseCoreTarget+0x90` field (the tile/`SequencerCount(5)` slot) by the lane count, then dividing by 4. The raw SC-MLO logging refers to this as `(lanes × personality) / 4`; the two are the same arithmetic in this build, where the `personality`/tile factor is the `+0x90` field. A reimplementer should compute the numerator from the *actual two geometry fields* (`+0x90` and the vector lane count), not from a hard-coded constant.
+> **NOTE —** the byte-exact decompile (`0x13DC5500`) computes `*(u32*)(SparseCoreTarget[+0x90]) × lane_count / 4`, where the `+0x90` field is the tile count (the `SequencerCount(5)` slot) and `lane_count` is fetched through the `SparseCoreTarget` virtual at vtable slot `+0xD0`. A reimplementer should compute the numerator from the *actual two geometry fields* (`+0x90` and the vector lane count), not from a hard-coded constant. (The decompile gates the whole accessor on `SupportsSparseCore()` — a `target.h:1704` FATAL — and returns 1 when the lane-count optional is absent.)
 
-`num_tiles` is derived in `Init` from the TEC sequencer's per-tile sflag budget (`tec_sflag_capacity / sflag_word`); the compiler-reserved sync-flag watermarks are `num_tiles − {1,2,3,4}` and reserve the TAC↔TEC (or, on Trillium, SCS↔TEC) handshake flags out of the user pool. See [Memory Hierarchy](../targets/memory-hierarchy.md) for the cross-engine address-space catalog.
+The per-tile sync-flag budget is derived in `Init` as `tec_sflag_capacity_bytes / sflag_bytes_per_word` (byte-confirmed: `[a5+0x18] / [a5+0x40]`, where `[a5+0x18]` is `tec_sflag_parts.word_count × bytes_per_word` and `[a5+0x40]` is `scs_sflag_parts.bytes_per_word`); the four compiler-reserved sync-flag watermarks are that quotient `− {1,2,3,4}` (stored at `[a5]+0x1EC/0x1F0/0x1F4/0x1FC`) and reserve the TAC↔TEC (or, on `6acc60406`, SCS↔TEC) handshake flags out of the user pool. See [Memory Hierarchy](../targets/memory-hierarchy.md) for the cross-engine address-space catalog.
 
 ### Considerations
 
@@ -229,7 +229,7 @@ function MemoryUsage_Reserve(usage, memory_space, size):   // 0x134D9700
     return base                                             // base offset of the new allocation
 ```
 
-### Algorithm — `Allocate` and the VFC guard
+### Algorithm — `Allocate` and the circular-buffer (VF/GL) guard
 
 ```c
 function Allocate(memref, opt_core, is_circular_buffer):    // 0x134DB1E0
@@ -246,8 +246,9 @@ function Allocate(memref, opt_core, is_circular_buffer):    // 0x134DB1E0
     if last > hi:
         error("current allocation offset upper bound ({last} words) exceeds the legitimate "
               "user allocatable offset upper bound ({hi} words) in memory space {space} ...")
-    // THE ONLY PER-GEN CODE BRANCH:
-    if target.DeepseaVersion in VF-range && is_circular_buffer && last > hi - 8:
+    // THE ONLY PER-GEN CODE BRANCH (byte-exact gate at 0x134DB1E0:195):
+    //   guard fires iff (DeepseaVersion − 3) <= 1, i.e. version in {3,4} = Viperfish OR Ghostlite
+    if (uint)(target[+0x398 /*DeepseaVersion*/] - 3) <= 1 && is_circular_buffer && last > hi - 8:
         emitOpError("Attempting to allocate circular buffer into last entry of TileSpmem. "
                     "This will result in an out-of-bounds tile-local stream on VFC due to a HW bug. ...")
     return base
@@ -272,8 +273,10 @@ function PushToStackForTileAllocations(is_shared):          // 0x134DD340
     CHECK(spmem_base % spmem_align == 0)
         // "prev_frame[kSpmemAddressSpace] % LlvmTpuDialect::SpmemAlignment(target_) == 0"  (alloc pass:737)
     if is_shared:  tile_base = top[addrspace 2]             // shared TILE_SPMEM window
-    else:          tile_base = top[addrspace 3] / spmem_word // private tile window = SPMEM offset / word
-    top[addrspace 2] = tile_base                            // set the tile bump pointer
+    else:          tile_base = top[addrspace 3] / SparseCoreTarget[+0x90]
+                                                            // private tile window = SPMEM offset / SparseCoreTiles
+                                                            // (the SPMEM bump ptr divided by the tile count — partitions SPMEM into per-tile windows)
+    top[addrspace 2] = tile_base                            // set the tile bump pointer (MemoryUsage::operator[](…,2))
 ```
 
 > **QUIRK —** "tile fetch" and "tile evict" are not RAM operations — they are bump-and-pop. Fetching the next tile is a bump-allocate into the next free TILE_SPMEM window; evicting is `PopStack`, which rewinds the bump pointer so tile N+1 reuses tile N's freed offsets. There is no separate tile-cache SRAM; TILE_SPMEM *is* the cache, and eviction is implicit in the stack discipline. A reimplementer who models a separate cache with explicit eviction will mis-size the working set.
@@ -294,8 +297,9 @@ Each table is split into `logical_replica_count` row-shards; row `r` lands in sh
 A lookup window's variable-size IDs must fit in TILE_SPMEM. `CalculateVariableSizeWords` (`0x13CA3F20`) computes the fit inequality, byte-confirmed by its error string:
 
 ```c
-max_nz_per_row_partitioned = max(ceil(max_nz_per_row / logical_replicas), sparse_cores_per_chip)
-variable_size_words        = num_variable_size_allocations × max_nz_per_row_partitioned
+// byte-exact at 0x13CA3F20: a3 = max_nz_per_row, a4 = logical_replicas
+max_nz_per_row_partitioned = max(ceil(a3 / a4), SparseCoreLaneCount)   // clamp floor = [0x948]+0x94, the lane count (v7x = 16) — NOT sparse_cores_per_chip
+variable_size_words        = num_variable_size_allocations × max_nz_per_row_partitioned  // num_variable_size_allocations = virtual method (*(estimator+0x38))()
 require variable_size_words <= tile_spmem_words
     // "Variable size allocations (%d * %d = %d words) do not fit in TileSpmem (%d words)."
 ```
@@ -330,7 +334,7 @@ When the on-chip working set exceeds SPMEM/TILE_SPMEM, `PrepareHbmSpillPass` (`0
 
 ### Per-Generation Deltas
 
-| Aspect | Viperfish (VF) | Ghostlite (GL) | Trillium (GF) |
+| Aspect | Viperfish (VF) | Ghostlite (GL) | `6acc60406` (GF) |
 |---|---|---|---|
 | Allocator algorithm | bump + stack | bump + stack | bump + stack (identical) |
 | SCs per TC / per chip | 4 / 8 | 4 / 8 | 4 / 4 |
@@ -339,10 +343,10 @@ When the on-chip working set exceeds SPMEM/TILE_SPMEM, `PrepareHbmSpillPass` (`0
 | TILE_SPMEM / SPMEM word + capacity | chip_parts (`[0x948]+0x48/+0x28`, `+0x4C/+0x2C`) | chip_parts | chip_parts |
 | SPMEM stripe granularity | 32 B | 32 B | 32 B |
 | `SpmemAlignment` (words) | `tiles·lane/4` | `tiles·lane/4` | `tiles·lane/4` |
-| Circular-buffer-in-last-entry | **HW bug — guarded** | OK | OK |
+| Circular-buffer-in-last-entry | **HW bug — guarded** | **HW bug — guarded** | OK |
 | HBM spill | yes (flag) | yes (flag) | yes (flag) |
 
-> **GOTCHA —** the *only* true per-generation code branch in the entire allocator is the Viperfish circular-buffer-in-last-TILE_SPMEM-entry guard (gated on both `is_circular_buffer` and the `SparseCoreTarget` DeepseaVersion being in the VF range). Every other per-gen difference — capacities, word widths, tile count, TAC presence, SCs-per-chip — is data-driven through `SparseCoreTarget`/`TpuCoreParts`, with no code branch. A reimplementer should treat the allocator as generation-agnostic and push all per-gen variation into the geometry descriptor.
+> **GOTCHA —** the *only* true per-generation code branch in the entire allocator is the circular-buffer-in-last-TILE_SPMEM-entry guard. Its gate (byte-exact, `0x134DB1E0:195`) is `(uint)(Target[+0x398 DeepseaVersion] − 3) <= 1`, i.e. it fires for DeepseaVersion **3 (Viperfish) and 4 (Ghostlite)** — *not* Viperfish alone — together with `is_circular_buffer` and `last > hi − 8`. The diagnostic text names "VFC" (the chip where the HW bug was first characterised), but the code path applies the guard on both VF and GL; only `6acc60406` (version 5) is exempt. Every other per-gen difference — capacities, word widths, tile count, TAC presence, SCs-per-chip — is data-driven through `SparseCoreTarget`/`TpuCoreParts`, with no code branch. A reimplementer should treat the allocator as generation-agnostic and push all per-gen variation into the geometry descriptor.
 
 ---
 
