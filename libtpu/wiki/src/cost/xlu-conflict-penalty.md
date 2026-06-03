@@ -272,12 +272,14 @@ The conflict cell is one of several XLU hazard terms `LatencyTableViperfish::Lat
 long LatencyBetweenInternal(LloValue* A, LloValue* B):              // VF sub_1C8A4AC0 (vtable+0x18)
     if ((WORD[A] - 233) < 4)  return 0;                             // ops 0xe9..0xec: no edge
     base = GetLatency(A);                                           // intrinsic op latency
-    if (this->vtable[+0x20](A, B))  return base;                    // IsTrueDependencyBetween → true-dep
-    if (LloOpcodeUsesMxu(A) && LloOpcodeUsesMxu(B))
-        return MxuLatencyTable::GetLatencyBetween(this+0x1d8, A, B);// both-MXU structural → MXU matrix
+    true_dep = this->vtable[+0x20](A, B);                           // IsTrueDependencyBetween (vtable+0x20)
+    if (!true_dep && LloOpcodeUsesMxu(A) && LloOpcodeUsesMxu(B))
+        return MxuLatencyTable::GetLatencyBetween(this+0x1d8, A, B);// not-true-dep ∧ both-MXU → MXU matrix
 
     // --- the XLU arm (this page) ---
-    r = 0;
+    // true-dependency does NOT early-return; it only suppresses the MXU branch.
+    // r seeds at base when true_dep, else at 0 (the not-true-dep, non-both-MXU case).
+    r = (true_dep ? base : 0);
     if (HasSetPermutePatternReservation(A, B)):                     // both involve a set-permute push, same MXU
         rsv = GetXluPathReservation(A);                             // XLU-slot occupancy gate
         r = max(base, rsv);
@@ -293,7 +295,7 @@ long LatencyBetweenInternal(LloValue* A, LloValue* B):              // VF sub_1C
     return max(r, GetResourceLatency(A, B));
 ```
 
-So the XLU conflict penalty is charged exactly when two cross-lane ops on the **same MXU** push the same XLU FIFO and are **not** a true data dependency — the structural-hazard cost between adjacent permute/reduce/transpose ops. It enters the MAX twice: once via the type-indexed cell (under `HasSetPermutePatternReservation`) and once via the `LloValue*` form (under `ArePushesToSameXluFifo`, which dispatches to the final-transpose virtual when the producer ends a transpose sequence). A downstream op that *truly consumes* the result instead waits the base op latency and never sees this penalty.
+So the XLU conflict penalty is charged when two cross-lane ops on the **same MXU** push the same XLU FIFO — the structural-hazard cost between adjacent permute/reduce/transpose ops. It enters the MAX twice: once via the type-indexed cell (under `HasSetPermutePatternReservation`) and once via the `LloValue*` form (under `ArePushesToSameXluFifo`, which dispatches to the final-transpose virtual when the producer ends a transpose sequence). A *true data dependency* (`IsTrueDependencyBetween`, `vtable+0x20`) does **not** short-circuit the XLU arm — it only suppresses the both-MXU branch and seeds the running MAX `r` at `base` instead of `0`, so the conflict cell is still folded in by MAX. The both-MXU MXU-matrix branch is taken only when the edge is **not** a true dependency and both ops use the MXU.
 
 The gating helpers (all byte-confirmed):
 
