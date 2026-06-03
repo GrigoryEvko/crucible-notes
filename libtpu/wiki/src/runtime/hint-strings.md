@@ -109,10 +109,10 @@ The self-service remedy class: an error or log line names a specific `--xla_*` /
 | `0xa06c059` | "Unable to log from the tile because tile log is NOT enabled. Use --xla_tpu_enable_tile_log_recorder=true to enable logging." | `xla_tpu_enable_tile_log_recorder` | HIGH |
 | `0xa06c0d5` | "…was invoked but logging was not enabled. Use --xla_tpu_enable_sc_log_recorder=true to enable logging." | `xla_tpu_enable_sc_log_recorder` | HIGH |
 | `0xb52d9a0` | "You need to set --deepsea_chips_per_host_bounds, --deepsea_host_bounds to match your setup. Contact tfrt-devs@ if you have any questions." | `deepsea_chips_per_host_bounds`, `deepsea_host_bounds` | HIGH |
-| `0x573543` | "…the threadpool for tensorflow operations is too small. Try increasing --45eac_num_operation_threads and please notify barna-core-devs@" | `_45eac_num_operation_threads` (BarnaCore) | HIGH |
+| `0x96c2015` | "…the threadpool for tensorflow operations is too small.  Try increasing --45eac_num_operation_threads and please notify barna-core-devs@" | `_45eac_num_operation_threads` (BarnaCore) | HIGH |
 | `0x9fff409` | "Very slow compile? If you want to file a bug, run with envvar XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results." | `xla_dump_to` | HIGH |
 | `0xa00da29` | "…if you would like to reliably retrieve the error message, try running it again with --notpu_use_continuations." | `tpu_use_continuations` (negated) | HIGH |
-| `0x403731` | "[enable stack trace via --xla_jf_collect_llo_stack_trace]" | `xla_jf_collect_llo_stack_trace` | HIGH |
+| `0x87fb08b` | "[enable stack trace via --xla_jf_collect_llo_stack_trace]" | `xla_jf_collect_llo_stack_trace` | HIGH |
 
 ### Direction-of-default caveat
 
@@ -200,7 +200,7 @@ These pin a limitation to a tracked bug. They are not actionable beyond "comment
 | `b/177274769` | `0xa01af59` "…use --xla_enable_megacore_hbm_spill=true … please update b/177274769 with findings." | megacore HBM spill | CERTAIN |
 | `b/433785288` | `0xa041d37` "…fixed by Shardy partitioner in the future, tracked in b/433785288. Contact Shardy or XLA team for help." | Shardy partitioner | HIGH |
 | `b/36072659` | `0xa0af6ba` "Infeed buffer size … bug in the infeed operation (b/36072659). See the bug for a workaround …" | infeed deadlock | HIGH |
-| `b/147787375` | `0x99e1405` (×2) "Close()/Disable() appears to be hanging, this might be a deadlock see b/147787375" | runtime deadlock | HIGH |
+| `b/147787375` | `0x99e1405` / `0x99e144d` "Close() appears to be hanging, this might be a deadlock see b/147787375" / "Disable() appears to be hanging, …" | runtime deadlock | HIGH |
 | `b/282055166` | `0x9929df3` "Error may indicate firmware queue fullness: b/282055166" | runtime/firmware | HIGH |
 | `b/30481585` | `0xa12ba16` "Device reset is not yet supported on this platform (b/30481585)" | runtime/device-reset | HIGH |
 | `b/488336614` | `0xa0a0fb0` "b/488336614 Only single-SC element scatter add is supported." | SparseCore scatter | HIGH |
