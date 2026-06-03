@@ -13,7 +13,7 @@ Two gates determine *when* this matrix is consulted. The per-edge structural gat
 For reimplementation, the contract is:
 
 - The three-function split: `MxuOpResourceReservations` (hold-cycle vector), `MxuOpHoldIssues` (held-resource set), `GetLatencyBetween` (max-over-shared-resource).
-- The closed-form stall recurrence — the same-MXU guard, the matmul/matres seed, the max-reduction loop, and the per-gen resource-count bound (≤18 VF / ≤10 GL).
+- The closed-form stall recurrence — the same-MXU guard, the vlxmr→matmul availability seed (and the matmul→matres cost-map bypass), the max-reduction loop, and the per-gen resource-count bound (≤18 VF / ≤10 GL).
 - The per-edge structural gate (`IsTrueDependencyBetween` + `LloOpcodeUsesMxu`) that decides whether the matrix fires.
 - The `MxuLatencyBalancing` env-flag gate and the assigner path it selects.
 
@@ -60,10 +60,11 @@ function GetLatencyBetween(A, B):                  // VF @0x1c8ae320 / GL @0x1c8
         return 0
 
     seed = 0
-    // self-latency seed for matmul/matres B; matmul A (opcode 0xa9 / matres B opcode 0x152)
-    if A.opcode == 0xa9 && (B.opcode - 0x9b) < 0xb:  seed = 1   // matmul-class availability flag
-    else if B.opcode == 0x152: ...                              // matres self-seed via cost map
-    // (a matmul A whose opcode is 0x152/0x153 against availability uses the {res1:15}-class seed)
+    // availability seed: a matrix-load A (vlxmr/MSR, opcode 0xa9) feeding a matmul B
+    if A.opcode == 0xa9 && (B.opcode - 0x9b) < 0xb:  seed = 1   // A=0xa9 (vlxmr), B in [0x9b,0xa5]
+    else if A.opcode in [0x9b,0xa5] && B.opcode == 0x152:       // matmul A, matres B
+        return MatmulDataFormat-keyed cost-map[A] (this+0x80)   // direct map lookup, not a seed
+    // (every other pair: seed = 0, fall through to the max-reduction below)
 
     resA   = MxuOpResourceReservations(A)           // A's array<int,N> hold-cycle vector
     heldB  = MxuOpHoldIssues(B)                      // set of MxuResources B holds
@@ -98,36 +99,43 @@ The `MatmulModifier` key is built byte-exactly from the instruction fields: `{by
 
 ### MxuOpHoldIssues — B's issue footprint
 
-`MxuOpHoldIssues(B) @0x1c8ad3a0` returns the *set* of MXU sub-units `B` locks at issue (a `flat_hash_set<MxuResource>`). Same per-opcode dispatch, with one extra wrinkle for matpush: it branches on `latch_index_in_sequence()` (0..3) to pick the per-sequence-step held set.
+`MxuOpHoldIssues(B) @0x1c8ad3a0` returns the *set* of MXU sub-units `B` locks at issue (a `flat_hash_set<MxuResource>`). Same per-opcode dispatch, with one extra wrinkle for matpush: it branches on `latch_index_in_sequence()` (0..3) to pick the per-sequence-step held set. The three opcode ranges and the held set each builds:
 
 ```c
 function MxuOpHoldIssues(B):                         // VF @0x1c8ad3a0
-    if (B.opcode - 0x8d) <= 9:                       // matpush [0x8d,0x96]
-        seed_set = { from .rodata @0xb43b344 }       // kFusedLoadReserved-class
+    if (B.opcode - 0x9b) <= 0xA:                     // matmul [0x9b,0xa5]
+        seed_set = { from .rodata @0xb43b344 }       // kFusedLoadReserved-class seed
         if done_with_gains_mode(B) != 2:
-            insert MsrReservedForLgmr(matrix_staging_register(B))    // kLmrReserved if integer-matmul
+            insert MsrReservedForLgmr(matrix_staging_register(B))    // kLmrReserved (14)
         if B.opcode == 0xa5 || LloInstructionIsIntegerMatmul(B):
-            insert kMatmulAccumulationPipe (16) / kLmrReserved (14)
-        if matmul_data_format-modifier active:        // latch_mode dispatch
-            switch latch_index_in_sequence(B):        // jump table @0xb43b1c8
-                case 0: insert (4*(msr!=0)) | 2       // kMsr{A,B}OverrunCheck0
-                case 1: insert (4*(msr!=0)) | 3       // ...Check1
-                case 2: insert (4*(msr!=0)) + 4       // ...Check2
-                case 3: insert (4*(msr!=0)) + 5       // ...Check3
+            insert kMatmulAccumulationPipe (16)
+        else:
+            insert kLmrReserved (14)
         return set
-    if (B.opcode - 0x9b) <= 0xa:                     // matmul / vlxmr / matres
+    if (B.opcode - 0x8d) > 9:                         // vlxmr / matres (not matpush, not matmul)
         switch B.opcode:
-            case 0xa9: seed = .rodata @0xb43b347      // vlxmr
-            case 0xaa: seed = .rodata @0xb43b345
+            case 0xa9: seed = .rodata @0xb43b347, 2   // vlxmr
+            case 0xaa: seed = .rodata @0xb43b345, 2
             case 0x152: seed = .rodata @0xb43b349, 1  // matres
-            default:   LogMessageFatal("Unsupported MXU op")
+            default:   LogMessageFatal("Unsupported MXU op")  // :508
         return flat_hash_set(seed ...)
-    return set(@0xb43b200 seed)                       // SOO scratch
+    // else: matpush [0x8d,0x96]
+    seed_set = { from .rodata @0xb43b200, 2 }         // SOO scratch seed
+    if !MxuSeqPredicate(latch_mode(B)):               // vtable +0x358 gate
+        return seed_set
+    switch latch_index_in_sequence(B):                // 0..3
+        case 0: insert (4*(msr!=0)) | 2               // kMsr{A,B}OverrunCheck0  (:447)
+        case 1: insert (4*(msr!=0)) | 3               // ...Check1                (:454)
+        case 2: insert (4*(msr!=0)) + 4               // ...Check2                (:461)
+        case 3: insert (4*(msr!=0)) + 5               // ...Check3                (:468)
+    return seed_set
 ```
 
-The held-set elements are the named `MxuResource` enumerators (`kMsrAOverrunCheck0..3` / `kMsrBOverrunCheck0..3`, the transpose bit selecting the A vs B bank via `(4*(msr!=0))`; `kFusedLoadReserved`, `kLmrReserved`, `kMatmulAccumulationPipe`), as confirmed by the CHECK strings in the constructor (`holds.insert(MxuResource::kMatmulAccumulationPipe).second`, etc., `mxu_latency_table_vf.cc:447..491`).
+> **CORRECTION (MXU-STALL-1) —** an earlier revision swapped two of the three opcode ranges, attributing the `kFusedLoadReserved`/`kMatmulAccumulationPipe`/`kLmrReserved` build to matpush and the `OverrunCheck0..3` latch-sequence switch to matmul. The decompile is the reverse: matmul `[0x9b,0xa5]` (`(v6-155)<=0xA`) builds the `@0xb43b344` seed plus the `done_with_gains`/`kMatmulAccumulationPipe`/`kLmrReserved` logic, while matpush `[0x8d,0x96]` is the fall-through `else` that seeds `@0xb43b200` and runs the `latch_index_in_sequence` `OverrunCheck` switch.
 
-> **GOTCHA —** the matpush held set is *sequence-step dependent*. The same matpush opcode holds `kMsr*OverrunCheck0` on sequence step 0 but `...Check3` on step 3, and the transpose flag flips the resource ordinal by `+4` (A-bank vs B-bank). A reimplementation that treats matpush as holding a fixed resource set will mis-price the back-to-back stall for the inner steps of a latch sequence.
+The held-set elements are the named `MxuResource` enumerators (`kMsrAOverrunCheck0..3` / `kMsrBOverrunCheck0..3`, the transpose bit selecting the A vs B bank via `(4*(msr!=0))`; `kFusedLoadReserved`, `kLmrReserved`, `kMatmulAccumulationPipe`), as confirmed by the CHECK strings in the constructor (`holds.insert(MxuResource::kMatmulAccumulationPipe).second` `:491`, `holds.insert(MxuResource::kLmrReserved).second` `:488`, `kMsrAOverrunCheck0..3` `:447/454/461/468`, `kFusedLoadReserved` `:483`, `mxu_latency_table_vf.cc`).
+
+> **GOTCHA —** the matpush held set is *sequence-step dependent*. The same matpush opcode holds `kMsr*OverrunCheck0` on sequence step 0 but `...Check3` on step 3, and the transpose flag flips the resource ordinal by `+4` (A-bank vs B-bank, the `(4*(msr!=0))` term). A reimplementation that treats matpush as holding a fixed resource set will mis-price the back-to-back stall for the inner steps of a latch sequence.
 
 ---
 
@@ -143,7 +151,7 @@ ISSUE (footprints):
 
 STALL (recurrence): GetLatencyBetween(A, B):
   same MXU [yes]
-  seed = matmul availability seed
+  seed = 0   (matmul-matmul pair: A is matmul-class, not 0xa9, so no availability seed)
   for k in {res1, res15, res16, res17}:  stall = max(stall, resA[k])
      = max(15, 8, 14, 7) = 15
   ⇒ B waits 15 cycles after A issues before re-using the MatmulIssue slot.
@@ -158,7 +166,7 @@ For int8/x8 (GLM_*_S8 → fmt6):
   matmul grp4 {res15:32, res17:31, res16:38} → stall 32  (4× bf16 = the x8 4-plane sequence)
 ```
 
-The retire half is separate: a downstream op that *truly* consumes the matmul result waits the full base TOTAL latency (bf16 ≈ 212, fp8 ≈ 204 on v7), routed through the true-dependency edge, not the structural stall. So issue rate is gated by the reservation stall (2/8/15/32) while result availability is gated by `GetLatency`.
+The retire half is separate: a downstream op that *truly* consumes the matmul result waits the full base TOTAL latency (bf16 ≈ 212, fp8 ≈ 204 cycles, from the per-gen Performance array), routed through the true-dependency edge, not the structural stall. So issue rate is gated by the reservation stall (2/8/15/32) while result availability is gated by `GetLatency`.
 
 ---
 
@@ -239,13 +247,13 @@ The single caller is `AssignMxusForSequenceGroup @0x10f753c0`. When the flag is 
 
 - **Resource-count divergence.** VF carries 19 `MxuResource` values, GL/GF 11. The CHECK bound (`≤18` / `≤10`) is the only behavioral difference in the reduction; a reimplementation must size `A`'s reservation array per gen or the bound check fires `LogMessageFatal`.
 - **Direction matters.** `GetLatencyBetween(A, B)` is not symmetric: `A` supplies the reservation vector (how long it holds each port) and `B` supplies the held set (which ports it needs). Swapping arguments prices a different edge.
-- **The seed.** For matmul/matres `B`, a non-zero self-latency seed is applied before the reduction (the `{res1:15}`-class availability cost). For matpush-to-matpush the seed is 0 and the stall is purely the max over the held set.
+- **The seed.** The pre-reduction seed is non-zero in exactly one case: a matrix-load `A` (vlxmr/MSR, opcode `0xa9`) feeding a matmul `B` (`B.opcode ∈ [0x9b,0xa5]`) seeds `stall = 1` (`v14` at `@0x1c8ae320`). A matmul `A` against a matres `B` (`0x152`) bypasses the reduction entirely and returns a `MatmulDataFormat`-keyed cost-map value (`this+0x80`). Every other pair — including matmul-to-matmul and matpush-to-matpush — seeds 0, so the stall is purely the max over the held set.
 - **What is not pinned.** The literal contents of the `MxuOpHoldIssues` SOO-scratch seed (`@0xb43b200`) decode ambiguously at 4-byte stride; the operative held set comes from the modifier-map enumeration, and the seed's functional role (scratch) is confirmed but its literal bytes are **(LOW confidence)**. The default value of the `MxuLatencyBalancing` env flag is likewise unpinned (see above).
 
 ## Cross-References
 
 - [MXU Latency Overview](mxu-latency-overview.md) — the `MxuResource` enum and the reservation-matrix concept this page consumes
-- [MXU Latency: GF](mxu-latency-gf.md) — the Trillium per-format matmul/matpush reservation values and the conv cost triple
+- [MXU Latency: GF](mxu-latency-gf.md) — the `6acc60406` per-format matmul/matpush reservation values and the conv cost triple
 - [MXU Latency: GL](mxu-latency-gl.md) — the Ghostlite reservation matrix (11-resource bound)
 - [Performance Family Overview](performance-overview.md) — `GetLatency` (the retire-half base latency) and the per-gen Performance grid
 - [MXU Slot](../isa/slot-mxu.md) — the physical MXU sub-units the held resources name
