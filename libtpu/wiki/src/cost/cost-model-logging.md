@@ -37,7 +37,7 @@ For reimplementation, the contract is:
 
 ### Purpose
 
-`CostModelLoggingOptions` is a two-field all-bool message. Its only job is to carry, in one `AutoOr` flag, the two switches that govern cost-model logging verbosity. The schema is recovered from the serialized `DescriptorProto` and confirmed independently from the generated `_InternalSerialize` and the `TcParseTable`.
+`CostModelLoggingOptions` is a two-field all-bool message. Its only job is to carry, in one `AutoOr` flag, the two switches that govern cost-model logging verbosity. The schema is recovered from the generated `_InternalSerialize` and the `TcParseTable`; both field names (`enable_analysis_logging`, `log_codegen_and_non_codegen_window_costs_in_analysis`) appear verbatim as `.rodata` descriptor strings.
 
 ```c
 // xla::jellyfish::CostModelLoggingOptions
@@ -61,7 +61,7 @@ function _InternalSerialize(this, out):                 // sub_1DB24760
         emit 0x10, *(u8*)(this + 0x19)                    // tag, value
 ```
 
-The `TcParseTable` `_table_` @ `0x21cfa1e8` reports `has_bits_offset 0x10`, `max_field_number 2` — there are no other fields. `Clear` is at `0x1db24740`.
+The `TcParseTable` `_table_` @ `0x21cfa1e8` (size `0x78`) opens with `has_bits_offset 0x10` (first dword) — there are no fields beyond the two booleans. `Clear` is at `0x1db24740`.
 
 > **NOTE —** the two booleans are independent observability levels, not a count. Field#1 (`enable_analysis_logging`) turns the per-op cost dump ON. Field#2 (`log_codegen_and_non_codegen_window_costs_in_analysis`) is a *widener*: it makes the dump emit BOTH the codegen-window and the good-enough-window cost variants so the per-op delta between window strategies is visible. Field#2 has no effect unless field#1 is also set — see [The Consumer Closure](#the-consumer-closure-per-hlo).
 
@@ -70,8 +70,8 @@ The `TcParseTable` `_table_` @ `0x21cfa1e8` reports `has_bits_offset 0x10`, `max
 | Item | Address | Evidence | Confidence |
 |---|---|---|---|
 | 2-bool schema | `_InternalSerialize` @ `0x1db24760` | wire tags `0x08`/`0x10`, byte reads `+0x18`/`+0x19` | CERTAIN |
-| has-bits offset | `_table_` @ `0x21cfa1e8` | `has_bits_offset 0x10`, `max_field 2` | CERTAIN |
-| field NAMES | serialized `DescriptorProto` | name strings in descriptor blob | HIGH |
+| has-bits offset | `_table_` @ `0x21cfa1e8` (size `0x78`) | `has_bits_offset 0x10` (first dword of table) | CERTAIN |
+| field NAMES | descriptor strings in `.rodata` | `enable_analysis_logging` / `log_codegen_and_non_codegen_window_costs_in_analysis` present verbatim | CERTAIN |
 
 ---
 
@@ -166,24 +166,24 @@ It constructs an `AnyInvocable` closure that captures, **by value**, the `CostMo
 
 ### The Consumer Closure (per-HLO)
 
-The per-`HloInstruction` invoker @ `0x1304ff00` is a `RemoteInvoker` returning `CalculationNode::DelegationInfo` and taking `(HloInstruction const&, bool)`. The bool is an "is-analysis-logging pass" flag — it is the gate that, combined with field#2, triggers the dual push. The decompiled body:
+The per-`HloInstruction` invoker @ `0x1304ff00` is a `RemoteInvoker` returning `CalculationNode::DelegationInfo` and taking `(HloInstruction const&, bool)`. The bool is an "is-analysis-logging pass" flag — it is the gate that, combined with field#2, triggers the dual push. `cap` below is the lambda capture struct (its first qword loaded into `v7 = *a2`): `cap+0x00` is the `CostModelFlagOptions`, `cap+0x48` the `CostModelLoggingOptions`, and `cap+0x68`/`cap+0x70` the two captured child `CalculationNode` pointers. `result` is the returned `DelegationInfo`, two `vector<uint64>` at `result+0x00` (codegen) and `result+0x18` (good-enough). The decompiled body:
 
 ```c
-function WindowSettingClosure(hlo, is_logging_pass):     // sub_1304FF00
-    info = {}                                            // DelegationInfo (two slot vectors)
-    if ShouldUseCodegenWindows(hlo, flag_opts):          // sub_130D3D40
-        info.codegen.push_back(hlo + 0x68)               // charge the codegen-window slot
-        if !is_logging_pass:                  return info
-        if *(u8*)(hlo + 0x61) == 0:           return info // field#2 (captured) clear
-        info.good_enough.push_back(hlo + 0x70)            // ALSO charge good-enough
+function WindowSettingClosure(cap, hlo, is_logging_pass): // sub_1304FF00
+    result = {}                                          // zero two slot vectors @ +0x00,+0x18
+    if ShouldUseCodegenWindows(hlo, cap.flag_opts):      // sub_130D3D40
+        result.codegen.push_back(cap + 0x68)             // charge codegen node ptr
+        if !is_logging_pass:                  return result
+        if *(u8*)(cap + 0x61) == 0:           return result // field#2 clear (cap+0x48 +0x19)
+        result.good_enough.push_back(cap + 0x70)         // ALSO charge good-enough node ptr
     else:
-        info.good_enough.push_back(hlo + 0x70)           // charge the good-enough slot
-        if is_logging_pass && *(u8*)(hlo + 0x61):
-            info.codegen.push_back(hlo + 0x68)            // ALSO charge codegen
-    return info
+        result.codegen.push_back(cap + 0x70)             // charge good-enough node ptr
+        if is_logging_pass && *(u8*)(cap + 0x61):
+            result.good_enough.push_back(cap + 0x68)     // ALSO charge codegen node ptr
+    return result
 ```
 
-> **GOTCHA —** the offsets `+0x68` and `+0x70` in the closure are slots on the *captured DelegationInfo result* the closure is building, not on the `HloInstruction`. The decompiler renders both pushes against the same base register (`v7`), which makes them look like reads from the HLO. They are `vector<uint64>::push_back` of the codegen-window slot (`+0x68`) and the good-enough-window slot (`+0x70`) into the result. The field#2 byte at `+0x61` *is* on the captured `CostModelLoggingOptions` (capture `+0x48` + msg `+0x19`).
+> **GOTCHA —** the decompiler renders `cap+0x68`, `cap+0x70`, and the field#2 byte `cap+0x61` all against the same base register (`v7`), which makes the two `push_back` arguments look like reads off the `HloInstruction`. They are not: `v7` is the *capture* struct, `+0x68`/`+0x70` are the two captured child-node pointers being pushed into the result vectors (`_RDI` and `_RDI+3`), and `+0x61` is field#2 inside the captured `CostModelLoggingOptions` (capture `+0x48` + msg byte `+0x19` = `+0x61`). The `HloInstruction&` arrives as the forwarded parameter and is passed straight into `ShouldUseCodegenWindows`. The capture layout is fixed by `CreateCostModelWindowSettingDelegator` @ `0x1304e100`, which `operator new(0x78)`s the capture and copies `CostModelFlagOptions` to `+0x00`, `CostModelLoggingOptions` to `+0x48`, and the child pointers to `+0x68`.
 
 The net behaviour: with field#2 clear, exactly one window-cost variant is charged per op (the one `ShouldUseCodegenWindows` selects). With field#2 set **and** the logging pass active, both variants are charged, so the analysis log can print the codegen-vs-good-enough cost delta per op.
 
@@ -266,7 +266,7 @@ function UnparseFloatingPointVal<float>(value):          // sub_21113460
 
 `<double>` is identical with precision 15 then 17 (`DBL_DECIMAL_DIG = 17`), the inf/nan test `bits & 0x7FFFFFFFFFFFFFFF >= 0x7FF0000000000000`, and `SimpleAtod` + `vucomisd` for the reparse verify.
 
-> **QUIRK —** the precision constants (6/9 for float, 15/17 for double) are byte-walked from the disassembly. The decompiled C renders the `%.*g` precision argument as the literal `4` because the immediate is materialised through a register the decompiler mislabels; the surrounding structure (single `FormatPack` for the inf/nan path, `SimpleAtof`+`vucomiss` verify, a second `FormatPack` fallback for the slow path) is exactly as decompiled. Trust the round-trip shape over the rendered `4`.
+> **QUIRK —** the precision constants are byte-walked from the disassembly: the float path materialises `movq $0x6,-0x68(%rbp)` @ `0x21113474` for the short try and `movq $0x9,-0x68(%rbp)` @ `0x2111352b` for the fallback; the double path materialises `$0xf` (15) @ `0x211135b4` and `$0x11` (17) @ `0x2111367d`. The decompiled C renders the precision as the literal `4` because that `4` is the `mov $0x4,%edx` *argument count* for `FormatPack`, not the `%.*g` precision — the precision is passed in the format-arg pack on the stack at `-0x68`, which the decompiler folds away. Trust the disassembled `0x6`/`0x9` and `0xf`/`0x11` over the rendered `4`.
 
 The consequence: a `float` whose nearest-6-digit decimal already reparses exactly (e.g. the stored `1.10000002f` whose shortest spelling is `1.1`) prints `"1.1"`. A value that needs all 9 digits falls back to 9 sig-figs. No trailing-zero noise; the canonical `%g` spelling is used, and `inf`/`-inf`/`nan` are emitted directly from libc `%g` via the exponent-all-ones bypass without any reparse attempt.
 
@@ -284,13 +284,16 @@ function SimpleAtod(begin, end, out):                    // sub_21171580
         if length==1 || p[1]=='-':         return false
         p++                                              // skip the '+'
     q = from_chars(p, end, out, /*fmt=*/3)               // @0x2116a340, chars_format = general (3)
-    if errc(q) == 22:                                    // result_out_of_range (overflow)
+    if errc(q) == 22 || q.ptr != end:                    // 22 = invalid_argument; or trailing garbage
+        return false
+    if errc(q) == 34:                                    // 34 = result_out_of_range (overflow)
         clamp *out to ±inf                               // sign via vucomisd vs ±1.0 constants
-        return true
-    return errc(q) == 0 && q.ptr == end                  // full-consume, no trailing garbage
+    return true                                          // full-consume, value (or clamped inf) stored
 ```
 
-`from_chars` is called with `chars_format = 3` = `scientific | fixed` (the **general** format). The hex bit (`0x4`) is clear, so the hex-float branch (`test $0x4,%cl`) is never taken: a `0x`/`0X` prefix leads to a parse failure, not a hex parse.
+`from_chars` is called with `chars_format = 3` = `scientific | fixed` (the **general** format). The hex bit (`0x4`) is clear, so the hex-float branch (`test $0x4,%cl` @ `0x2116a373`/`0x2116a380` inside `from_chars`) is never taken: a `0x`/`0X` prefix leads to a parse failure, not a hex parse.
+
+> **GOTCHA —** the two `errc` codes are easy to transpose. `errc(q) == 22` is `std::errc::invalid_argument` — a hard **reject** (the function returns `false`). `errc(q) == 34` is `std::errc::result_out_of_range` — the **overflow** case, which is *accepted*: `*out` is clamped to `±inf` (sign chosen by `vucomisd` against the `±1.0` constants at `qword_A2DF230`/`qword_A2DE728`) and the function returns `true`. Both `SimpleAtod` @ `0x21171580` and `SimpleAtof` @ `0x21171440` share this exact `!=22 && ptr==end`, then `==34` structure.
 
 ### Edge-Token Table
 
