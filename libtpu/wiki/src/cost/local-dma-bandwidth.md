@@ -6,7 +6,7 @@
 
 `Target::LocalDmaBandwidth(MemorySpace src, MemorySpace dst)` is the cost model's **on-chip DMA bandwidth matrix**: a per-generation table of GB/s figures, one cell per `(source memory space, destination memory space)` pair across HBM, VMEM, CMEM, SMEM (and a single SPMEM→HBM entry). It is *not* the per-byte cycle rate the conv/fusion operand DMA uses — that path goes through `GetBytesPerCycle` and the chip-geometry HBM bytes-per-second (see [`memory-bandwidth-latency-model`](memory-bandwidth-latency-model.md)). Instead, `LocalDmaBandwidth` is the **async-vs-synchronous copy comparator**: the only consumers are the three copy-strategy deciders, which ask "is a local DMA (e.g. a VMEM→VMEM rotate) faster than pushing the same bytes over ICI?" and choose the async local copy iff the ICI ceiling beats the local-DMA estimate.
 
-A reader who knows LLVM should map this to a `TargetTransformInfo` cost hook that returns a *relative* throughput figure for a memory-space-to-memory-space copy, consulted by a transform to decide between two lowerings — not a cycle count fed into the schedule. The matrix lives in the `Target` vtable immediately after the two ICI-rate accessors (`+0x188 ICIPerLinkDataRate`, `+0x190 ICIIngressEgressDataRate`, then `+0x1a8…+0x208` the LocalDmaBandwidth cells), and `LocalDmaBandwidth` itself is a pure `(src,dst)→slot` router that tail-calls the matching accessor or returns the empty optional on no match.
+A reader who knows LLVM should map this to a `TargetTransformInfo` cost hook that returns a *relative* throughput figure for a memory-space-to-memory-space copy, consulted by a transform to decide between two lowerings — not a cycle count fed into the schedule. The matrix lives in the `Target` vtable immediately after the two ICI-rate accessors (`+0x188 ICIPerLinkDataRate`, `+0x190 ICIIngressEgressDataRate`, then `+0x198…+0x208` the LocalDmaBandwidth cells, `+0x210 SpmemToHbm`), and `LocalDmaBandwidth` itself is a pure `(src,dst)→slot` router that tail-calls the matching accessor or returns the empty optional on no match.
 
 This page documents the matrix end to end: the dispatch router and the `(src,dst)→slot` map, the full per-gen GB/s values transcribed from each accessor (Dragonfish, Pufferfish, Viperfish std/lite, Ghostlite — base `Target` returns `0`), the async-copy consumers (`UseAsyncDataCopy`, `ShouldUseAsyncLocalCopy`, the SparseCore AllGather strategy) and their `min(ICIIngressEgress, 2·ICIPerLink)` ICI ceiling, and — for contrast — the **separate** per-byte cycle pricer (`GetBytesPerCycle`/`WindowCycles`/`DefaultHbmInitLatency`) that the operand-DMA scheduling entry actually consumes, with its per-gen `InitialDmaLatencyInNs` startup constants.
 
@@ -21,7 +21,7 @@ For reimplementation, the contract is:
 |---|---|
 | **Dispatch router** | `Target::LocalDmaBandwidth(MemorySpace,MemorySpace)` `@0x1d6168e0` |
 | **MemorySpace enum** | `HBM=1`, `VMEM=3`, `CMEM=4`, `SMEM=5` (SPMEM via its own slot) |
-| **Matrix vtable range** | `+0x1a8` (HbmToHbm) … `+0x208` (SmemToVmem); `+0x190` SpmemToHbm tail |
+| **Matrix vtable range** | `+0x198` (HbmToHbm) … `+0x208` (SmemToSmem); `+0x210` SpmemToHbm tail |
 | **Base default** | `Target::LocalDmaBandwidth*` accessors `@0x1d48fa00…` all return `0` |
 | **Consumer (real)** | `(anon)::UseAsyncDataCopy` `@0x1380a480`; `ShouldUseAsyncLocalCopy` `@0x133eff40` |
 | **ICI ceiling** | `min(ICIIngressEgress[+0x190], 2·ICIPerLink[+0x188])` |
@@ -44,19 +44,19 @@ function LocalDmaBandwidth(Target* this, uint8 src, uint8 dst):   // @0x1d6168e0
     // (src^1 == HBM, src^3 == VMEM, src^4 == CMEM, src^5 == SMEM); the first
     // matching (src,dst) pair leaves `slot` at the table value below.
     slot = (src,dst) -> {
-        HBM ->HBM  : 0x1a8,  HBM ->VMEM : 0x1b0,  HBM ->SMEM : 0x1b8,
-        VMEM->HBM  : 0x1c0,  VMEM->VMEM : 0x1c8,  VMEM->CMEM : 0x1d0,  VMEM->SMEM : 0x1d8,
-        CMEM->HBM  : 0x1e0,  CMEM->VMEM : 0x1e8,  CMEM->CMEM : 0x1f0,  CMEM->SMEM : 0x1f8,
-        SMEM->HBM  : 0x200,  SMEM->VMEM : 0x208,
+        HBM ->HBM  : 0x198,  HBM ->VMEM : 0x1a0,  HBM ->SMEM : 0x1a8,
+        VMEM->HBM  : 0x1b0,  VMEM->VMEM : 0x1b8,  VMEM->CMEM : 0x1c0,  VMEM->SMEM : 0x1c8,
+        CMEM->HBM  : 0x1d0,  CMEM->VMEM : 0x1d8,  CMEM->CMEM : 0x1e0,  CMEM->SMEM : 0x1e8,
+        SMEM->HBM  : 0x1f0,  SMEM->VMEM : 0x1f8,  SMEM->CMEM : 0x200,  SMEM->SMEM : 0x208,
         else       : MISS
     }
-    if slot == MISS: return optional{ value=0, has_value=false }   // @0x1d6169e9
+    if slot == MISS: return optional{ value=0, has_value=false }
     return (*(vtable + slot))(this)                                // tail-call the accessor
 ```
 
-The `MemorySpace` enum is recovered from the XOR comparands: `HBM=1`, `VMEM=3`, `CMEM=4`, `SMEM=5`. SPMEM is not in this router; the single `LocalDmaBandwidthSpmemToHbm` accessor sits at vtable `+0x190`'s neighbourhood and is reached directly (the SparseCore path), not through this `(src,dst)` dispatch.
+The `MemorySpace` enum is recovered from the XOR comparands: `HBM=1`, `VMEM=3`, `CMEM=4`, `SMEM=5`. SPMEM is not in this router; the single `LocalDmaBandwidthSpmemToHbm` accessor sits at vtable `+0x210` (immediately after the `SMEM->SMEM` cell at `+0x208`) and is reached directly (the SparseCore path), not through this `(src,dst)` dispatch.
 
-> **NOTE —** the two ICI-rate accessors are the immediate neighbours of the matrix in the `Target` vtable: `+0x188 = ICIPerLinkDataRate`, `+0x190 = ICIIngressEgressDataRate`, then the LocalDmaBandwidth cells from `+0x1a8`. This adjacency is not cosmetic — the same consumer (`UseAsyncDataCopy`) reads both the LocalDmaBandwidth cell and the two ICI rates to make one decision, so the compiler laid them out contiguously.
+> **NOTE —** the two ICI-rate accessors are the immediate neighbours of the matrix in the `Target` vtable: `+0x188 = ICIPerLinkDataRate`, `+0x190 = ICIIngressEgressDataRate`, then the LocalDmaBandwidth cells from `+0x198` (`HBM->HBM`) through `+0x208` (`SMEM->SMEM`), with `SpmemToHbm` at `+0x210`. This adjacency is not cosmetic — the same consumer (`UseAsyncDataCopy`) reads both the LocalDmaBandwidth cell and the two ICI rates to make one decision, so the compiler laid them out contiguously.
 
 ### Function Map
 
@@ -177,7 +177,7 @@ This is the single most important structural fact about `LocalDmaBandwidth`: it 
 
 | Source | Stored at | Consumer | Units | Used for |
 |---|---|---|---|---|
-| `LocalDmaBandwidth(src,dst)` matrix | per-gen vtable `+0x1a8…` | `UseAsyncDataCopy` / `ShouldUseAsyncLocalCopy` / SparseCore AG | GB/s (relative) | async-vs-ICI **copy-strategy** decision |
+| `LocalDmaBandwidth(src,dst)` matrix | per-gen vtable `+0x198…` | `UseAsyncDataCopy` / `ShouldUseAsyncLocalCopy` / SparseCore AG | GB/s (relative) | async-vs-ICI **copy-strategy** decision |
 | `HbmFullChipBytesPerSecond` (chip_parts) | `Target+0x4f0` | `GetBytesPerCycle` → `WindowCycles` | bytes/sec → bytes/cycle | per-byte operand-DMA **cycle deposit** (R10/R12) |
 
 A reimplementation that routes operand-DMA cycle pricing through the `LocalDmaBandwidth` matrix will be wrong: the matrix is a comparator heuristic, the per-byte cost uses the chip-geometry HBM bytes-per-second. The next section documents that second source for contrast and to anchor the scheduling entry.
