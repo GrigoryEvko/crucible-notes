@@ -1,6 +1,6 @@
 # CBREG Circular-Buffer Register
 
-> *Every opcode value, bit shift, field width, and enum value on this page was read byte-exactly from `libtpu.so` in the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`; build `libtpu_lts_20260413_b_RC00`). `.text` VA equals file offset at `0xe63c000`. Addresses are from the **gfc** (Trillium) instances unless tagged `vfc` (Viperfish) or `glc` (Ghostlite); the three SC generations carry the same schema at different addresses. Other versions differ.*
+> *Every opcode value, bit shift, field width, and enum value on this page was read byte-exactly from `libtpu.so` in the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`; build `libtpu_lts_20260413_b_RC00`). `.text` VA equals file offset at `0xe63c000`. Addresses are from the **gfc** (6acc60406) instances unless tagged `vfc` (Viperfish) or `glc` (Ghostlite); the three SC generations carry the same schema at different addresses. Other versions differ.*
 
 ## Abstract
 
@@ -25,10 +25,10 @@ For reimplementation, the contract is:
 | **Scalar op slot** | `ScalarAlu1` lane; opcode `@bundle bit 154` width 6 (slot-rel 26) |
 | **Operand fields** | Dest `@slot-rel 10/5` · Meta-or-Y `@15/6` · X `@21/5` (decode word `+0x18`) |
 | **Scalar opcodes** | Read `0x36` · Write `0x35` · Add `0x33` · SLD `0x3f`/`0x3e` · SST `0x3d`/`0x3c` · Move `0x00`+`0x1b` |
-| **Vector CBREG selector** | TEC VectorStore/Load `Cbreg` field `>>22 & 0xF` (4-bit → 16) |
+| **Vector CBREG selector** | TEC VectorStore/Load `Cbreg` field `& 0xF` (4-bit → 16); shift gen-variant (vfc `>>21`, glc `>>22`, gfc `>>23`) |
 | **Address spaces** | SMEM base (`wrcbreg.smem.base`) or TILE_SPMEM base (`wrcbreg.tilespmem.base`) |
 | **Wrap** | `offset = (offset + step) mod size`, HW-implicit; no trap, wraps by design |
-| **Per-gen presence** | v5+ only — VF (vfc, v5e), GL (glc, v5p), GF (gfc, v6e); none in jxc/pxc |
+| **Per-gen presence** | v5+ only — VF (vfc, Viperfish), GL (glc, Ghostlite), GF (gfc, 6acc60406); none in jxc/pxc |
 | **Confidence** | CONFIRMED (decompile-anchored) unless a row or callout says otherwise |
 
 > **NOTE — this page owns CBREG semantics, not the opcode roster or the bundle layout.** `AddCbreg=0x33` and its sibling opcode values are catalogued on [Scalar Opcode Enum](scalar-opcode-enum.md); the 32-byte SCS bundle, the slot bases, and the 27-bit scalar-slot template are on [SCS Engine](scs-engine.md). The CBREG-as-Stream-offset-window and the scatter-add slot bit layout are on [Stream Gather/Scatter](stream-gather-scatter.md). This page documents what a CBREG *is*, how it is addressed, how it wraps, and how those ops bind it.
@@ -121,16 +121,16 @@ Each op's `Matches()` predicate masks the 6-bit opcode out of the `ScalarAlu1` s
 
 | Opcode | Mnemonic | `Matches()` evidence (gfc) | Confidence |
 |---:|---|---|---|
-| `0x36` | `ReadCbreg` | `(word6 & 0xFC000000) == 0xD8000000`; `0xD8000000>>26 = 0x36` | CONFIRMED |
+| `0x36` | `ReadCbreg` | `(word6 & 0xFC000000) == 0xD8000000`; `0xD8000000>>26 = 0x36` (gfc `0x1eb7b560`) | CONFIRMED |
 | `0x35` | `WriteCbreg` | `(word6 & 0xFC000000) == 0xD4000000`; `0xD4000000>>26 = 0x35` | CONFIRMED |
 | `0x33` | `AddCbreg` | `(word6 & 0xFC000000) == 0xCC000000`; `0xCC000000>>26 = 0x33` | CONFIRMED |
 | `0x3f` / `0x3e` | `ScalarLoadCircularBuffer` / `…PostUpdate` | opcode field; PostUpdate VF/GL only | HIGH |
 | `0x3d` / `0x3c` | `ScalarStoreCircularBuffer` / `…PostUpdate` | opcode field; PostUpdate VF/GL only | HIGH |
 | `0x00`+`0x1b` | `MoveCbreg` | `(word6 & 0xFFE00000) == 0x3600000`; `>>26 = 0x00` primary, `>>21 = 0x1b` sub; gfc only | CONFIRMED |
 
-> **QUIRK — `MoveCbreg` is a two-level (escape) opcode, not a flat 6-bit value.** Its `Matches()` masks an 11-bit field (`& 0xFFE00000`, bits 21–31) and compares `== 0x3600000`. The primary 6-bit opcode part (`>>26`) is `0x00` and the 5-bit X field (`>>21`) carries the sub-opcode `0x1b` (27). A reimplementer who reads only the 6-bit primary will see `Move` as opcode `0x00` and collide it with the control class; the discriminating bits are the X-field sub-opcode. `Move` exists only in gfc (Trillium); VF/GL have no scalar `MoveCbreg`.
+> **QUIRK — `MoveCbreg` is a two-level (escape) opcode, not a flat 6-bit value.** Its `Matches()` masks an 11-bit field (`& 0xFFE00000`, bits 21–31) and compares `== 0x3600000`. The primary 6-bit opcode part (`>>26`) is `0x00` and the 5-bit X field (`>>21`) carries the sub-opcode `0x1b` (27). A reimplementer who reads only the 6-bit primary will see `Move` as opcode `0x00` and collide it with the control class; the discriminating bits are the X-field sub-opcode. `Move` exists only in gfc (6acc60406); VF/GL have no scalar `MoveCbreg`.
 
-The decoder also reads a slot encoding-mode tag: `0x65` (101) for the plain Read/Write/Add/LD/ST forms and `0x60` (96) for the PostUpdate forms — the mode byte carries the auto-increment bit that tells the hardware to advance OFFSET after the access.
+A slot encoding-mode tag distinguishes the plain Read/Write/Add/LD/ST forms from the PostUpdate forms — the mode byte carries the auto-increment bit that tells the hardware to advance OFFSET after the access. The PostUpdate-vs-plain discriminator is the separate `…PostUpdate` opcode predicate; the exact mode-byte values are not bit-decoded here (HIGH confidence).
 
 ### Function Map
 
@@ -200,9 +200,9 @@ The CBREG file is **16 entries per sequencer bank**. The binding evidence is the
 |---|---:|---|---|
 | `SC_SCS_CBREGS_*` | 16 | 4-bit | scalar X/Dest field 5-bit (low 4 used); vector Cbreg `& 0xF` |
 | `SC_TAC_CBREGS_*` | 16 | 4-bit | same encoder family; TAC present on VF/GL only |
-| `SC_TEC_CBREGS_*` | 16 | 4-bit | `…TileSpmemStoreCircularBuffer…CbregField::GetConcatenatedValue` returns `(word12 >> 22) & 0xF` (glc/gfc) |
+| `SC_TEC_CBREGS_*` | 16 | 4-bit | `…TileSpmemStoreCircularBuffer…CbregField::GetConcatenatedValue` returns `(word12 >> shift) & 0xF`; shift is gen-variant (vfc `>>21` `0x1e9c1d00`, glc `>>22` `0x1eb4f160`, gfc `>>23` `0x1ecca4c0`) — `& 0xF` (16) is invariant |
 
-> **NOTE — the scalar field is 5-bit but the CBREG file is 16, set by the vector path's 4-bit selector.** The scalar-ALU `Dest@10` and `X@21` fields are physically 5-bit (wide enough for 32), but the TEC vector Cbreg field is a hard `& 0xF` (16 entries). The high bit of the scalar 5-bit field is unused for CBREG selection. A reimplementer must size the CBREG file at 16 — the 5-bit scalar slot is not evidence of 32 registers. TAC has CBREGs on VF/GL only (TAC is removed in Trillium).
+> **NOTE — the scalar field is 5-bit but the CBREG file is 16, set by the vector path's 4-bit selector.** The scalar-ALU `Dest@10` and `X@21` fields are physically 5-bit (wide enough for 32), but the TEC vector Cbreg field is a hard `& 0xF` (16 entries). The high bit of the scalar 5-bit field is unused for CBREG selection. A reimplementer must size the CBREG file at 16 — the 5-bit scalar slot is not evidence of 32 registers. TAC has CBREGs on VF/GL only (`EmitWriteCbregOp` is instantiated for Tac under vfc/glc but not gfc).
 
 ---
 
@@ -227,8 +227,9 @@ When `CBREG` is selected, the index/offset list is read *through a CBREG window*
 The embedding-gradient scatter-add writes the accumulated gradient into a CBREG-windowed TILE_SPMEM region. The TEC vector-store family `TileSpmemStoreCircularBuffer[PostUpdate]Add{Bf16,F32,S16,S32}` carries an explicit 4-bit `Cbreg` field that names which of the 16 CBREGs windows the destination tile:
 
 ```text
-// TileSpmemStoreCircularBufferAddS16/S32 CbregField (glc/gfc), decode word +0x30:
-Cbreg = (word12 >> 22) & 0xF;            // which CBREG (16) — confirmed glc 0x..., gfc
+// TileSpmemStoreCircularBufferAdd{Bf16,F32,S16,S32} CbregField, decode word12 (+0x30):
+Cbreg = (word12 >> shift) & 0xF;         // which CBREG (16); & 0xF is gen-invariant
+//   shift gen-variant: vfc >>21 (0x1e9c1d00), glc >>22 (0x1eb4f160), gfc >>23 (0x1ecca4c0)
 ```
 
 The full store-slot field set (`{Mask, Stride, Offset, BaseAddress, Cbreg, Source}`) and the gradient-flow detail are on [Stream Gather/Scatter](stream-gather-scatter.md) and [VectorStore Slot](vectorstore-slot.md). The binding point relevant here: the vector store *names* a CBREG by its 4-bit selector, post-updates its offset, and so streams the gradient tile through the buffer one element at a time.
@@ -290,7 +291,7 @@ MLIR `sc_tpu` op creators back these (`tpu_allocate_cbreg::create` `0x146d6d80`,
 
 CBREG is a v5+ SparseCore feature. No `Cbreg` ops appear under the `jxc` (Jellyfish) or `pxc` (Pufferfish) namespaces — those generations have no SparseCore CBREG. Among the three SC gens, the deltas are concentrated in the scalar PostUpdate (dropped on gfc, moved to the TEC vector path) and the scalar `MoveCbreg` (added on gfc).
 
-| Mechanism | VF (vfc, v5e) | GL (glc, v5p) | GF (gfc, v6e) |
+| Mechanism | VF (vfc, Viperfish) | GL (glc, Ghostlite) | GF (gfc, 6acc60406) |
 |---|:---:|:---:|:---:|
 | CBREG file (16 per SCS/TAC/TEC bank) | yes | yes | yes (no TAC) |
 | `ReadCbreg` / `WriteCbreg` / `AddCbreg` (scalar) | yes (`0x36`/`0x35`/`0x33`) | yes | yes |
@@ -302,7 +303,7 @@ CBREG is a v5+ SparseCore feature. No `Cbreg` ops appear under the `jxc` (Jellyf
 | Stream `IndirectOffsetSource = CBREG` | yes | yes | yes |
 | `smem.base` + `tilespmem.base` CBREG variants | yes | yes | yes |
 
-The gen split is byte-confirmed by namespace presence: `MoveCbreg` files exist only under `gxc/gfc` (17 instances, `EmitMoveCbregOp` for Scs and Tec bundles only); `EmitWriteCbregOp` is instantiated for Scs/Tac/Tec under vfc/glc but only Scs/Tec under gfc (no TAC in Trillium). Zero `Cbreg` files under `jxc`/`pxc`.
+The gen split is byte-confirmed by namespace presence: `MoveCbreg` files exist only under `gxc/gfc` (20 instances, `EmitMoveCbregOp` for Scs and Tec bundles only, e.g. `0x13ac9540` / `0x13a73c80`); `EmitWriteCbregOp` is instantiated for Scs/Tac/Tec under vfc/glc but only Scs/Tec under gfc (no TAC under gfc). Zero `Cbreg` files under `jxc`/`pxc`.
 
 ---
 
@@ -313,7 +314,7 @@ The gen split is byte-confirmed by namespace presence: `MoveCbreg` files exist o
 | `CbregMetadata` enum {BASE=0, SIZE=1, OFFSET=2} | proto + validator agree, body read | CONFIRMED |
 | Scalar-ALU CBREG slot layout (opcode `@154/6`, fields `@138/5`, `@143/6`, `@149/5`) | accessor shifts read; bundle-abs from SCS slot base | CONFIRMED |
 | Opcode values Read `0x36` / Write `0x35` / Add `0x33` / Move `0x00`+`0x1b` | `Matches()` immediates read, gen-invariant | CONFIRMED |
-| 16-CBREG-per-bank (4-bit selector) | TEC vector Cbreg `>>22 & 0xF`, glc/gfc | CONFIRMED |
+| 16-CBREG-per-bank (4-bit selector) | TEC vector Cbreg `& 0xF` (shift gen-variant: vfc/glc/gfc `>>21`/`>>22`/`>>23`) | CONFIRMED |
 | Dual address space (SMEM base / TILE_SPMEM base) | both accessor strings present; two `wrcbreg.*.base` variants | CONFIRMED |
 | `IndirectOffsetSource` SREG=0 / CBREG=1 + scatter-add Cbreg binding | enum + vector-store Cbreg field | CONFIRMED |
 | Per-gen presence (v5+ only; Move gfc-only; PostUpdate not gfc-scalar) | namespace file presence | CONFIRMED |
@@ -344,7 +345,7 @@ The gen split is byte-confirmed by namespace presence: `MoveCbreg` files exist o
 - [SparseCore Architecture](architecture.md) — the embedding datapath end to end; where CBREG windowing sits in the gather/compute/scatter pipeline.
 - [SparseCore Overview](overview.md) — the engine classes, per-gen SC presence, and the host-table → HBM → SC gather path.
 - [TEC Engine](tec-engine.md) — the vector engine that issues `TileSpmemLoad/StoreCircularBuffer` against a CBREG-windowed tile.
-- [TAC Engine](tac-engine.md) — the VF/GL access engine that also carries the CBREG scalar slot (removed in Trillium).
+- [TAC Engine](tac-engine.md) — the VF/GL access engine that also carries the CBREG scalar slot (no TAC CBREG emitter under gfc/6acc60406).
 - [VectorStore Slot](vectorstore-slot.md) / [VectorLoad Slot](vectorload-slot.md) — the full TEC vector circular-buffer slot family the `Cbreg` field belongs to.
 - [M-Register Predicate Word](m-register-predicate.md) — the predication header that overlays each scalar slot above the CBREG-op opcode field.
 - **Binary:** `extracted/libtpu-0.0.40-cp314-cp314-manylinux_2_31_x86_64/libtpu/libtpu.so` (build-id `89edbbe81c5b328a958fe628a9f2207d`)
