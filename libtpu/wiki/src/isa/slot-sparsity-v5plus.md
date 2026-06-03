@@ -22,7 +22,7 @@ The structured-sparsity contract a reimplementer must honour:
 | **Config carrier** | `xla::SparsityConfig` proto (optional `lhs`, optional `rhs`) |
 | **Per-tensor fields** | `num_non_zero`, `block_size`, `dimension`, `stride` |
 | **Sparsity ratio** | 1:N only (`num_non_zero == 1`, `N == block_size`) |
-| **First generation** | v5+ / Viperfish (vfc); SME path absent on v4 (PF) and earlier |
+| **First generation** | v5+ / Viperfish (`kViperfish`=3) onward; SME path absent on Pufferfish (v4) and earlier |
 | **Emission gate** | flag `enable_sme_structured_sparsity_outer_product_instructions` (help @ `0xa00bed8`) |
 | **Owning namespace** | `xla::jellyfish` (TensorCore backend) |
 | **Key validator** | `ConvolutionEmitter::ValidateConvolutionWithSparseKernel` @ `0x130d6300` |
@@ -58,7 +58,7 @@ Inside each `TensorSparsityConfig`, the four `int64` fields and the message's ow
 | `dimension` | `+0x28` | bit 2 (`\|4`) | `vt[5]` | High — parser store @ `0x1e4fb500:294`, reader @ `0x1e5a50c0:118` |
 | `stride` | `+0x30` | bit 3 (`\|8`) | `vt[6]` | High — parser store @ `0x1e4fb500:270`, reader @ `0x1e5a50c0:141` |
 
-> **NOTE (offsets) —** the per-field object offsets above are read off the proto `Clear`/`InternalSerialize`/parser stores (`*(_QWORD*)(cfg + 24)`, `+ 32`, `+ 40`, `+ 48`). The proto-runtime *field numbers* are not recoverable from the binary (proto3 lite drops the field-number → name map), so the wire tags are not pinned; only the in-memory layout and the textual format are. The `ToString` vtable slots `vt[3..6]` are the message's accessor thunks, used here only to confirm field identity.
+> **NOTE (bit numbering / offsets) —** all bit positions on this page are **LSB-first**: `_has_bits_` "bit 0" is the `0x1` mask, "bit 1" is `0x2`, and so on, matching the `|1`/`|2`/`|4`/`|8` ORs the parser actually emits. The per-field object offsets above are read off the proto `Clear`/`InternalSerialize`/parser stores (`*(_QWORD*)(cfg + 24)`, `+ 32`, `+ 40`, `+ 48`). The proto-runtime *field numbers* are not recoverable from the binary (proto3 lite drops the field-number → name map), so the wire tags are not pinned; only the in-memory layout and the textual format are. The `ToString` vtable slots `vt[3..6]` are the message's accessor thunks, used here only to confirm field identity.
 
 ### The textual form
 
@@ -105,7 +105,7 @@ expect '}';
 
 Three details are worth a reimplementer's attention. First, the operand keys are matched by an inlined 3-byte compare against `"lhs"` (`0x686C`,`'s'`) and `"rhs"` (`0x6872`,`'s'`) — there are exactly two, no `out` or `both`. Second, the `sparsity` value is parsed by `ParseDxD` and the error text is *"expects 'num_non_zero:block_size'"* (`0x1e4fb500:329`), confirming the colon-separated `N:M` syntax where the first number is `num_non_zero` and the second is `block_size`. Third, the inner attribute compares are against `"stride"` (`0x69727473`+`0x6564`), `"dimension"` (`0x6F69736E656D6964`+`'n'`), and `"sparsity"` (`0x7974697372617073`) — those three and only those three; `num_non_zero` and `block_size` are *not* independent text attributes, they are the two halves of the `sparsity=` value.
 
-> **GOTCHA (selector) —** there is no `selector` attribute in the TPU grammar. The `sparsitySelector` attribute string and the `InvalidAttributeSparsityselectorInPropertyConversion` error belong to `mlir::nvgpu::MmaSparseSyncOp::setPropertiesFromAttr`, the dead NVGPU path ([§5](#5-what-is-not-the-tpu-mxu-path-nvgpu-and-sparsecore)). A TPU sparse matmul carries no per-instruction selector operand; the kept-lane mask is implicit in how the packed kernel is stored on sublanes ([§4](#4-mxu-threading-the-block_size-packing-factor)).
+> **GOTCHA (selector) —** there is no `selector` attribute in the TPU grammar. The `sparsitySelector` attribute string and the *"Invalid attribute `sparsitySelector` in property conversion:"* error (@ `0xa255171`) belong to `mlir::nvgpu::MmaSparseSyncOp::setPropertiesFromAttr` @ `0x17067b40`, the dead NVGPU path ([§5](#5-what-is-not-the-tpu-mxu-path-nvgpu-and-sparsecore)). A TPU sparse matmul carries no per-instruction selector operand; the kept-lane mask is implicit in how the packed kernel is stored on sublanes ([§4](#4-mxu-threading-the-block_size-packing-factor)).
 
 ---
 
@@ -180,7 +180,7 @@ Three string clusters look relevant and are not. Pinning them down is part of th
 | Symbol | Owner | Why it is not the TPU path | Confidence |
 |---|---|---|---|
 | `getSparsitySelector` | `mlir::nvgpu::MmaSparseSyncOp` @ `0x17052500` | NVGPU dialect op for NVIDIA `mma.sync` sparse; never lowered on TPU | High |
-| `sparsitySelector` attr | `MmaSparseSyncOp::setPropertiesFromAttr` @ `0x17067b40` | the `Invalid attribute 'sparsitySelector'` error @ `0xa255171` is NVGPU property conversion | High |
+| `sparsitySelector` attr | `MmaSparseSyncOp::setPropertiesFromAttr` @ `0x17067b40` | the *"Invalid attribute `sparsitySelector` in property conversion:"* error @ `0xa255171` is NVGPU property conversion | High |
 | *"sparsity selector should be 0 or 1"* | `MmaSparseSyncOp::verify` @ … | NVIDIA's 2-bit metadata selector, not a TPU concept | High |
 | *"sparsity selector must be i32 type"* | `mlir::NVVM::MmaSpOp::verify` @ `0x1658c500` | NVVM intrinsic verifier for `mma.sp`; targets PTX | High |
 
@@ -196,17 +196,17 @@ These ship because libtpu statically links the upstream MLIR `NVGPU`/`NVVM` dial
 
 The availability signal is the SME structured-sparsity outer-product instruction family and its emission flag.
 
-| Gen | Codename | TpuVersion | SME structured sparsity | Confidence |
+| External name | Codename | `TpuVersion` ordinal | SME structured sparsity | Confidence |
 |---|---|---|---|---|
-| v3 / v3′ | Jellyfish / Dragonfish | jf | No | High — no SME path; MXU is the v3 single-slot encoder |
-| v4 | Pufferfish | pf | No | High — SME family absent on the pre-v5 encoder |
-| **v5e** | **Viperfish** | **vfc** | **Yes** | High — first gen with the SME outer-product path |
-| v5p-class | Ghostlite | glc | Yes | Med — v5+ family member; SME path shared with VF |
-| v6 | Trillium | gfc | Yes | Med — v5+ family member; SME path shared |
+| TPU v2 / v3 | Jellyfish / Dragonfish | `kJellyfish`=0 / `kDragonfish`=1 | No | High — no SME path; MXU is the v3 single-slot encoder |
+| TPU v4 | Pufferfish | `kPufferfish`=2 | No | High — SME family absent on the pre-v5 encoder |
+| **TPU v5** | **Viperfish** | **`kViperfish`=3** | **Yes** | Med — first gen with the SME outer-product path; gen boundary inferred (see NOTE below) |
+| TPU v6 lite | Ghostlite | `kGhostlite`=4 | Yes | Med — v5+ family member; SME path shared with Viperfish |
+| TPU7x | 6acc60406 | `k6acc60406`=5 | Yes | Med — v5+ family member; SME path shared |
 
-The gate itself is a compiler flag whose help string *"Enable SME Structured sparsity outer product instructions."* sits at `0xa00bed8` (identifier `aEnableSmeStructuredSparsityOuterProductInstructions`). The string is referenced only from two data sites (`0x21acf278`, `0x21cf36f0`), i.e. a flag-registration table, not from code — confirming it is a **boolean compiler flag** (`enable_sme_structured_sparsity_outer_product_instructions`) that toggles whether the lowering may emit the SME family, rather than a per-call runtime branch.
+The gate itself is a compiler flag whose help string *"Enable SME Structured sparsity outer product instructions."* sits at `0xa00bed8` (identifier `aEnableSmeStructuredSparsityOuterProductInstructions`; the string offset is byte-confirmed in the binary). The help string is reached only from a flag-registration table, not from any decompiled function — a sweep of the decompiled corpus finds **no code reference** to the string or the `enable_sme_structured_sparsity_outer_product_instructions` identifier — confirming it is a **boolean compiler flag** that toggles whether the lowering may emit the SME family, rather than a per-call runtime branch.
 
-> **NOTE (gate vs gen) —** the flag is the *emission* gate; the *hardware* gate is implicit in which gens have an SME unit (v5+). On a gen with no SME unit the flag would have no instructions to emit. The exact `TpuVersion` enum ordinal that first reports SME support was not traced to a single comparison site in this pass; the v5+/Viperfish boundary is established from the SME family being a v5-era addition and the absence of any SME sparsity reference reachable from the v3/v4 MXU encoders.
+> **NOTE (gate vs gen — boundary inferred) —** the flag is the *emission* gate; the *hardware* gate is implicit in which gens have an SME unit (v5+). On a gen with no SME unit the flag would have no instructions to emit. The exact `TpuVersion` enum ordinal that first reports SME support was **not** traced to a single comparison site in this pass; the v5+/Viperfish boundary is an *inference* from the SME family being a v5-era addition and the absence of any SME sparsity reference reachable from the v3/v4 MXU encoders. Consistent with this, [VF 64-bit Bundle](bundle-vf-64b.md) records no `Sparsity` op among the Viperfish `VectorExtended0` families and leaves the VF-specific backing finding explicitly open. Both pages agree on the same fact: the source-level SME/`jellyfish` machinery documented here is generation-agnostic, and the per-gen *availability* (which silicon actually carries the SME unit) is the soft, unconfirmed part.
 
 > **GOTCHA (block_size default) —** the flag has no numeric `block_size` of its own. `block_size` is per-operand, supplied in the `SparsityConfig`, and constrained only by the `num_non_zero == 1`, the multiple-of-`N` batch/input-feature rules, and the sublane-chunk divisibility in [§4](#4-mxu-threading-the-block_size-packing-factor). The common `1x4` is a convention, not a hardware constant; the binary does not pin a fixed `N`.
 
@@ -229,8 +229,9 @@ The gate itself is a compiler flag whose help string *"Enable SME Structured spa
 
 - [MXU Slot](slot-mxu.md) — the `VectorExtended` matmul slot the sparse path re-uses; no sparsity field is added to it.
 - [Matprep, IAR, and Latch Sub-Slots](slot-matprep-iar-latch.md) — the gain-latch machinery whose tiling math takes the `block_size` divisor.
-- [VF 64-bit Bundle](bundle-vf-64b.md) — the Viperfish (v5e) bundle format; first gen with the SME path. There is no per-bundle sparsity field.
-- [GL Bundle](bundle-gl.md) / [GF Bundle](bundle-gf.md) — Ghostlite / Trillium bundle formats; v5+ family members sharing the SME path.
+- [VF 64-bit Bundle](bundle-vf-64b.md) — the Viperfish (TPU v5) bundle format; first gen with the SME path. There is no per-bundle sparsity field, and that page's VF-specific sparsity finding is independently marked open.
+- [GL Bundle](bundle-gl.md) / [GF Bundle](bundle-gf.md) — Ghostlite (TPU v6 lite) / 6acc60406 (TPU7x) bundle formats; v5+ family members sharing the SME path.
+- [TpuVersion / Codename Matrix](../targets/tpu-version-codename-matrix.md) — the authoritative enum↔codename↔external-name reconciliation; why `Trillium`/`Ironwood` have zero binary occurrences.
 - [Instruction-Bits Master Database](instbits-master-db.md) — the per-gen field registry; confirms the absence of a dedicated sparsity slot.
 - [ISA Overview](overview.md) — slot taxonomy and the v3 vs v4/v5+ encoder lineage split.
 - [Dot/Conv → MXU Lowering](../compiler/dot-conv-mxu-lowering.md) — the matmul-lowering pipeline this sparsity attribute rides through.

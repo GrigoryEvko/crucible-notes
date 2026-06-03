@@ -26,7 +26,7 @@ For reimplementation, the contract is:
 | **Oneof tag** | proto `+0x50`: `0`=empty, `5`=Noop (pred=31), `6`=CmemLoad (issue) |
 | **Submessage defaults** | `TensorCoreCmemLoad_globals_` @ `0x223fb410` (outer), `TensorCoreCmemLoad_CmemLoad_globals_` @ `0x223fb3c8` (inner) |
 | **Emit bridge** | `PufferfishTensorCoreEmitter::EmitVectorCmemLoad` @ `0x14120a40` → `EmitVectorLoadCommon<…CmemLoad>` @ `0x14120f40` |
-| **One-per-bundle gate** | `EmitVectorCmemLoad` calls `CurrentBundle` + `PopulatedSlotsInBundle` @ `0x1d2ea840` |
+| **One-per-bundle gate** | `EmitVectorCmemLoad` rejects on `bundle_proto[+0x10] & 0x40` (cmem_load has-bit already set); `PopulatedSlotsInBundle` @ `0x1d2ea840` builds the slot set |
 | **Address scale** | `LloRegionBuilder::CmemAddrScaled` @ `0x1d539980` (byte→word by `CmemWordSizeBytes`) |
 | **Constant address** | `LloAddress::MakeCmemConstant` @ `0x1d60ba20` → `LloAddress(MemorySpace=4=kCmem, off)` |
 | **Why v4-only** | `PufferfishTarget::MemBanks(kCmem)` @ `0x1d493900` = 32; JF/VF/GL/GF `LogFatal` |
