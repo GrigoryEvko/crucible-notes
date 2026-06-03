@@ -179,7 +179,7 @@ And two structural maps for going wide:
 - [Evidence & Confidence Conventions](evidence-conventions.md) — the trust contract: the four Confidence grades, callout markers, citation grammar, and extraction limits. Its companion on *how much to believe*.
 - [Codename Cheat-Sheet](codename-cheatsheet.md) — the silicon naming card; the three-axis enum reconciliation the whole book indexes by.
 - [Methodology](../methodology.md) — the static-analysis pipeline and the sidecar family every page cites.
-- [Subsystem Map](../subsystem-map.md) — the 13-domain dependency web behind the Part ordering.
+- [Subsystem Map](../subsystem-map.md) — the subsystem dependency web behind the Part ordering.
 - [Glossary](../glossary.md) — the TPU/LLO/fabric vocabulary the deep pages assume.
 - [Forensics Overview](../forensics/overview.md) — the canonical headline structural counts, confirmed against the raw binary.
 - [Compile-Flow Walkthrough](compile-flow-walkthrough.md) — one op traced through every Part; the recommended first deep read.
