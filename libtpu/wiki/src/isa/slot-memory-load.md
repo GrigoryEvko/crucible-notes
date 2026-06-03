@@ -18,10 +18,10 @@ For reimplementation, the contract is: the per-gen slot-list (1/2/3 VMEM-load sl
 | **Tier select** | by slot occupied (no tier bit) — VMEM=VectorLoad, SMEM=Scalar*, CMEM=CmemLoad (PF only), SPMEM=SparseCore VectorLoad |
 | **PXC VMEM-load encoder** | `pxc::isa::TensorCoreVectorLoadEncoder::Encode` @ `0x1ee287e0` |
 | **PXC CMEM-load encoder** | `pxc::isa::TensorCoreCmemLoadEncoder::Encode` @ `0x1ecf89a0` |
-| **Sub-opcode discriminator** | `<gen> TensorCoreVectorLoad0VectorLoadOpcode::Matches` (PXC `0x1ee28100`, VXC `0x1f006960`, GLC `0x1f3a2460`, GFC `0x1f9e97e0`) |
+| **Sub-opcode discriminator** | `…VectorLoad…Opcode::Matches` — PXC `TensorCoreVectorLoadVmemLoadOpcode` @ `0x1ee28100`; V5+ `TensorCoreVectorLoad0VectorLoadOpcode` @ VXC `0x1f006960`, GLC `0x1f3a2460`, GFC `0x1f9e97e0` |
 | **Field accessor shape** | `<Field>::GetConcatenatedValue` = `(word@off >> shift) & mask` (the exact bit position) |
 | **Dest field width** | 5-bit on JF/PF, **6-bit on VF/GL/GFC** (vector register file doubled at v5) |
-| **Register files** | V0..V63 (vreg), S0..S31 (sreg), CB0..CB15 (SparseCore), P0..P31 (predicate) |
+| **Register files** | V0..V63 (vreg, 64 on V5+ / 32 on JF–PF), S0..S31 (32 sreg), CB0..CB15 (SparseCore), predicate file 15 entries (JF–PF) / 14 (V5+) — but the slot's Predication *field* is 5-bit, encoding the preg index plus the 15=always / 31=never sentinels |
 | **Confidence** | CONFIRMED (byte-anchored) unless a cell says otherwise |
 
 ---
@@ -39,7 +39,7 @@ Each gen's TensorCore bundle is a struct of fixed-position slots; the slot order
 | Ghostlite | 2 (`VectorLoad0/1`) | 0 | 2 (`ScalarAlu0`/`ScalarAlu1`) | CONFIRMED |
 | Trillium | 2 (`VectorLoad0/1`) | 0 | 2 (`ScalarAlu0`/`ScalarAlu1`) | CONFIRMED |
 
-On Pufferfish the `VectorLoad` slot encodes at absolute bundle bits 119..140 and the new `CmemLoad` slot at 103..118 (see [Pufferfish 51B Bundle](bundle-pf-51b.md)); the two are disjoint regions, so a CMEM load and a VMEM load can issue in the **same** bundle cycle — the only generation with this property. The Viperfish "ErrorEncodingVectorLoadSlot0/1/2" diagnostic strings are the binary's confirmation of the three VMEM-load slots on v5e.
+On Pufferfish the `VectorLoad` slot's control fields land at absolute bundle bits 119..140 (the `VectorLoadEncoder::Encode` body @ `0x1ee287e0` writes Predication via `BitCopy(dst, 136, …, 5)`, Dest `BitCopy(dst, 129, …, 5)`, Stride `…126,3`, Offset `…124,2`, BaseAddress `…122,2`, SublaneMask `…119,3`, Opcode `…134,2`); the `CmemLoad` control fields land at 103..118 (the `CmemLoadEncoder::Encode` body @ `0x1ecf89a0` writes Predication `BitCopy(dst,114,5)`, Opcode `…113,1`, SublaneMask `…110,3`, BaseAddress `…108,2`, Offset `…106,2`, Stride `…103,3`) — see [Pufferfish 51B Bundle](bundle-pf-51b.md). The two control regions are disjoint, so a CMEM load and a VMEM load can issue in the **same** bundle cycle — the only generation with this property (their shared `Vs0/Vs1/Vs2` and `Imm` fields land in higher disjoint bits, 241..256+). The three VMEM-load slots on Viperfish are confirmed by the three distinct per-slot encoder symbols `vxc::isa::TensorCoreVectorLoad{0,1,2}Encoder::Encode`.
 
 > **NOTE —** the architectural reason CMEM needs its own slot on Pufferfish is precisely that a load slot's wire encoding carries no tier selector (see [The Slot-Selects-Tier Model](#the-slot-selects-tier-model)). To read CMEM and VMEM in the same cycle you need two physically distinct slots. When CMEM was dropped at v5, the slot was removed and the width went to extra VMEM-load slots.
 
@@ -58,7 +58,7 @@ Every load slot is a discriminated union; the sub-opcode field selects the addre
 | `10` (`0x80`) | `VmemLoadIndexedIar0` | gather via index-address-register 0 | CONFIRMED |
 | `11` (`0xC0`) | `VmemLoadIndexedIar1` | gather via index-address-register 1 | CONFIRMED |
 
-**PXC TensorCore `CmemLoad` (CMEM → vreg)** — 1-bit sub-opcode at byte `@0x16` bit 1 (`TensorCoreCmemLoadCmemLoadOpcode::Matches` @ `0x1ecf8800`); the `Noop` (slot-idle) variant tests `0x7c000000000000 == 0`.
+**PXC TensorCore `CmemLoad` (CMEM → vreg)** — 1-bit sub-opcode at byte `@0x16` bit 1 (`TensorCoreCmemLoadCmemLoadOpcode::Matches` @ `0x1ecf8800`, body `(*((_BYTE*)this+22) & 2) >> 1`); the `Noop` (slot-idle) variant matches when bits `0x7c000000000000` of word `@0x10` are all set — its `Matches` (@ `0x1ecf87e0`) is `(~word@0x10 & 0x7c000000000000) == 0`.
 
 **PXC TensorCore `Scalar1` `ScalarLoadSmem` (SMEM → sreg)** — 6-bit opcode at word `@0x30` bits 50-55 (mask `0xfc000000000000`). `ScalarLoadSmemOpcode::Matches` (@ `0x1ed27c60`) tests `(word@0x30 & 0xfc000000000000) == 0x10000000000000` (value `0x4` → `ScalarLoadSmem`); value `0x5` → `ScalarLoadSmemOffset` (`Sreg ← SMEM[Sreg+imm]`).
 
@@ -84,7 +84,7 @@ Each per-gen `Field` class exposes `GetConcatenatedValue()` whose body is litera
 |-------|------|------:|------|------:|---------|------------|
 | Opcode | `@0x18` | 6 | `0x3` | 2 | addr-mode discriminator | CONFIRMED |
 | Dest (vreg) | `@0x18` | 1 | `0x1f` | 5 | destination vreg | CONFIRMED |
-| SublaneMask | `@0x10`/`@0x18` (`shld 2`) | — | `0x7` | 3 | sublane-group select | CONFIRMED |
+| SublaneMask | `@0x10` (128-bit) | 62 | `0x7` | 3 | sublane-group select (straddles into `@0x18`) | CONFIRMED |
 | BaseAddress | `@0x10` | 60 | `0x3` | 2 | base-address reg select | CONFIRMED |
 | Offset | `@0x10` | 58 | `0x3` | 2 | immediate-offset slot index | CONFIRMED |
 | Stride | `@0x10` | 55 | `0x7` | 3 | stride select | CONFIRMED |
@@ -92,11 +92,11 @@ Each per-gen `Field` class exposes `GetConcatenatedValue()` whose body is litera
 | Imm2..Imm5 | `@0x2e`/`@0x2c`/`@0x2a`/`@0x28` | — | 16-bit | 16 | immediate displacement slots | CONFIRMED |
 | Predication | (separate Predication slot) | — | — | 5 | 0..14 preg / 15 always / 31 never | CONFIRMED |
 
-The `IndexedIar0`/`IndexedIar1`/`Shuffled` variants share these exact positions; only the 2-bit Opcode value changes. `Shuffled` adds a `ShuffleField` (sublane-shuffle selector); the Indexed variants use `Vs0/Vs1/Vs2` as the per-lane gather indices. Accessor anchors: `Opcode::Matches` @ `0x1ee28100`, `BaseAddressField` @ `0x1ee281e0`, `OffsetField` @ `0x1ee28200`, `StrideField` @ `0x1ee28220`.
+The `IndexedIar0`/`IndexedIar1`/`Shuffled` variants share these exact positions; only the 2-bit Opcode value changes (`VmemLoad`=0, `VmemLoadShuffled`=1, `VmemLoadIndexedIar0`=2, `VmemLoadIndexedIar1` via a dedicated branch). `Shuffled` adds a `ShuffleField` (sublane-shuffle selector); the Indexed variants use `Vs0/Vs1/Vs2` as the per-lane gather indices. Accessor anchors: `Opcode::Matches` @ `0x1ee28100`, `DestField` @ `0x1ee281a0`, `SublaneMaskField` @ `0x1ee281c0`, `BaseAddressField` @ `0x1ee281e0`, `OffsetField` @ `0x1ee28200`, `StrideField` @ `0x1ee28220`, `Vs0Field` @ `0x1ee28240`, `Vs1Field` @ `0x1ee28260`, `Vs2Field` @ `0x1ee28280`. The three source ports (`Vs0/Vs1/Vs2`) are the per-gen-stable count on Pufferfish — the load slot has not yet widened its gather-index port count at v4; the widening visible across v5+ is in the *number of load slots*, not the per-slot port count.
 
 ### Pufferfish (PXC) — TensorCore `CmemLoad` (CMEM → vreg)
 
-CMEM load mirrors VMEM load field-for-field but lives in the separate `CmemLoad` slot/word: Opcode `@0x16` bit 1 (1-bit), Predication `@0x10>>50 &0x1f`, SublaneMask `@0x10>>46 &0x7`, BaseAddress `@0x10>>44 &0x3`, Offset `@0x10>>42 &0x3`, Stride `@0x10>>39 &0x7`, Vs0 `@0x20>>59`, plus the same Imm2..Imm5 16-bit slots. Anchors: `NoopOpcode::Matches` @ `0x1ecf87e0`, `CmemLoadOpcode` @ `0x1ecf8800`, `PredicationField` @ `0x1ecf8820`. All CONFIRMED.
+CMEM load mirrors VMEM load field-for-field but lives in the separate `CmemLoad` slot/word: Opcode `@0x16` bit 1 (1-bit), Predication `@0x10>>50 &0x1f`, SublaneMask `@0x10>>46 &0x7`, BaseAddress `@0x10>>44 &0x3`, Offset `@0x10>>42 &0x3`, Stride `@0x10>>39 &0x7`, and — exactly like VMEM load — three gather index ports Vs0 `@0x20>>59`, Vs1 `@0x20>>54 &0x1f`, Vs2 `@0x20>>49 &0x1f`, plus the same Imm2..Imm5 16-bit slots. Anchors: `NoopOpcode::Matches` @ `0x1ecf87e0`, `CmemLoadOpcode` @ `0x1ecf8800`, `PredicationField` @ `0x1ecf8820`, `Vs0Field` @ `0x1ecf88c0`, `Vs1Field` @ `0x1ecf88e0`, `Vs2Field` @ `0x1ecf8900`. All CONFIRMED.
 
 ### Viperfish (VXC) — TensorCore `VectorLoad0` (VMEM → vreg)
 

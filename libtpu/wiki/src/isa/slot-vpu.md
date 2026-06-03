@@ -41,15 +41,23 @@ The Jellyfish path packs the slot inline. `EncoderJf::EncodeVectorAluInstruction
 
 ```c
 function EncoderJf_EncodeVectorAluInstruction(inst, slot, bundle):  // @0x1e864f00
+    if slot > 1: fatal("slot < kMaxVectorAluSlotsPerBundle")  // only 2 VALU lanes
     pred = inst.predicate & 0x1f                  // 5-bit predicate  (and 0x1f)
     op   = inst.opcode    & 0x3f                   // 6-bit opcode     (and 0x3f)
-    if op == 0x18: ...                             // special-form gate (cmp 0x18)
     if op >= 0x3e: error                           // opcode range 0..62 (cmp 0x3e=62)
-    if IsEupOpcode(op): reserve_xlu()              // ProtoUtils::IsEupOpcode @0x1e875900
-    word  = (op << 0x1e)                           // opcode at bit 30 of the VALU word
-          | (dst << ...) | (src << ...)            // shl 0x20=32 / 0x24=36 build the rest
-          | (yenc & 0x1f) << ...                   // 5-bit Y-encoding
-    bundle[VALU_byte_region(slot)] |= word         // OR-merge, bytes ~0x16..0x1e for VALU0
+    if op == 0x18 or IsEupOpcode(op): reserve_xlu()  // ProtoUtils::IsEupOpcode @0x1e875900
+    if slot == 0:                                  // lane 0 → struct 0x1D window (abs 136..167)
+        bundle[0x1D] |= (Vx  & 0x1f) << 0          // Vx  @ abs 136
+                      | (op  & 0x3f) << 5          // op  @ abs 141  (the "32 *" multiply)
+                      | (pred & 0x1f) << 11         // pred@ abs 147
+    else:                                          // lane 1 → struct 0x16 cross-word (abs 90..127)
+        word  = (yenc & 0x1f) << 10                // Y-enc @ abs 90
+              | (Vx   & 0x1f) << 25                // Vx    @ abs 105 (binary-op path)
+              | (op   & 0x3f) << 30                // op    @ abs 110 (shl 0x1e)
+              | (pred & 0x1f) << 36                // pred  @ abs 116
+              | (dst  & 0x1f) << 41                // dst   @ abs 121
+        bundle[0x16] |= word                        // OR-merge into 56-bit window
+    EncodeVectorAluYEncoding(inst, slot, bundle)   // @0x1e864be0 — resolves Y-operand source
 ```
 
 The Pufferfish and v5+ path instead routes through a per-slot `Encode` dispatcher that jump-tables on the opcode and tail-calls a per-op helper; every field is written by `BitCopy`:
@@ -91,7 +99,7 @@ function VxcTensorCoreVectorAlu0Encoder_Encode(proto, out_span):  // VF @0x1eef8
 
 ### Purpose
 
-This is the byte-level wire format: where each field sits inside the bundle byte buffer (bit 0 = LSB of byte 0). All v5+ offsets below were read directly from the `BitCopy` `mov esi`/`mov r8d` immediates in the representative `VectorFloatAdd` / `VectorF32Add` helpers; the Jellyfish offsets from the `and`/`shl` immediates in `EncodeVectorAluInstruction`.
+This is the byte-level wire format: where each field sits inside the bundle byte buffer. **All bit positions on this page are LSB-first** — bit 0 is the least-significant bit of byte 0, matching the convention used throughout [Bundle Model](bundle-model-overview.md) and enforced by the `BitCopy` packer (which writes `nbits` upward from the LSB-numbered `dst_bit`). There is no MSB-first ordering anywhere in the encode path. All v5+ offsets below were read directly from the `BitCopy` `mov esi`/`mov r8d` immediates in the representative `VectorFloatAdd` / `VectorF32Add` helpers; the Jellyfish offsets from the `and`/`shl` immediates in `EncodeVectorAluInstruction`.
 
 ### Encoding
 
@@ -104,14 +112,17 @@ proto +0x48 : operand descriptor → { dst vreg, src0 vreg, Y-encoding, src1 vre
             : per-slot predicate field source
 ```
 
-**Jellyfish / Dragonfish** (41-byte TC bundle, `EncoderJf::EncodeVectorAluInstruction` @ `0x1e864f00`). Direct `and`/`shl`/`or`, *not* `BitCopy`. Opcode masked `and 0x3f` (6-bit), predicate `and 0x1f` (5-bit), opcode placed at bit 30 of the VALU word (`shl 0x1e`) which is then OR-merged into bundle bytes ~`0x16`..`0x1e` for VALU0. Register fields are 5-bit register-class windows. Dragonfish shares `EncoderJf` and `JellyfishCodecMetadata`, so it is byte-identical.
+**Jellyfish / Dragonfish** (41-byte TC bundle, `EncoderJf::EncodeVectorAluInstruction` @ `0x1e864f00`). Direct `and`/`shl`/`or`, *not* `BitCopy`. The two VALU lanes occupy two *separate* windows in the 328-bit bundle, not a single repeated stride: lane 0 (`slot == 0`) packs into the struct-`0x1D` window (absolute bits 136..167), lane 1 (`slot == 1`) into the struct-`0x16` cross-word window (absolute bits 90..127). Within each lane the fields are placed by the literal shift constants, and because the two windows have different origins the per-field absolute bits differ by lane (the raw shifts share a relative layout). The opcode is masked `and 0x3f` (6-bit, range 0..62 with a `cmp 0x3e` guard) and the predicate `and 0x1f` (5-bit); register and Y-encoding fields are 5-bit windows. Dragonfish shares `EncoderJf` and `JellyfishCodecMetadata`, so it is byte-identical. The cross-checked absolute positions (LSB-first, also tabulated in [Jellyfish 41-bit Bundle](bundle-jf-41b.md)):
 
-| Field | Width | JF placement | Confidence |
-|---|---|---|---|
-| opcode | 6-bit | bit 30 of VALU word (`shl 0x1e`) | CERTAIN |
-| predicate | 5-bit | `and 0x1f` | CERTAIN |
-| dst / src vreg | 5-bit window each | packed via `shl 0x20`/`0x24` | HIGH |
-| Y-encoding | 5-bit | `and 0x1f` | HIGH |
+| Field | Width | Raw shift | Lane 0 bit (struct `0x1D`) | Lane 1 bit (window `0x16`) | Confidence |
+|---|---|---|---|---|---|
+| Y-encoding (src1 vreg) | 5-bit | `<< 10` | — (slot-3 path) | 90 | CERTAIN |
+| Vx (src0 vreg) | 5-bit | `0` / `<< 25` | 136 | 105 | CERTAIN |
+| opcode | 6-bit | `<< 5` / `<< 30` (`shl 0x1e`) | 141 | 110 | CERTAIN |
+| predicate | 5-bit | `<< 11` / `<< 36` | 147 | 116 | CERTAIN |
+| dst vreg | 5-bit | `<< 41` | (in `0x1D` tail) | 121 | CERTAIN |
+
+> **GOTCHA — JF VALU is two distinct windows, not a stride.** Lane 0 writes byte `0x1D`/qword2; lane 1 writes the 56-bit cross-word at byte `0x16` (assembled as `dword[0x16] | word[0x1A]<<32 | byte[0x1C]<<48`). A reimplementation that derives lane 1 by adding a fixed offset to lane 0 — as the v5+ slots permit — will mis-place every lane-1 field. The shift constants in `EncodeVectorAluInstruction` are relative to each lane's window origin (136 for lane 0, 80 for lane 1), which is why the same logical field lands at, e.g., opcode bit 141 in lane 0 and bit 110 in lane 1.
 
 **Pufferfish** (51-byte TC bundle). VALU0 `Encode` @ `0x1ed45060`, VALU1 @ `0x1ed68d80`. `BitCopy`-driven, 6-bit register fields (64-window).
 
@@ -119,8 +130,8 @@ proto +0x48 : operand descriptor → { dst vreg, src0 vreg, Y-encoding, src1 vre
 |---|---|---|---|---|
 | predicate | 5-bit | 236 (`0xec`) | 193 (`0xc1`) | CERTAIN |
 | opcode range | 6-bit | `cmp 0x3e` (0..62) | `cmp 0x43` (0..67) | CERTAIN |
-| dst vreg | 6-bit | 230 (`0xe6`) | — | HIGH |
-| immediate | 16-bit | 256 (`0x100`) | — | HIGH |
+| dst vreg | 6-bit | 230 (`0xe6`) | — | CERTAIN |
+| immediate (per-imm-op) | 16-bit each | 272 / 288 / 304 / 320 / 338 | — | CERTAIN |
 | NOP fill | — | predicate ← `0x1f` (`kNeverExecute`) | same | CERTAIN |
 
 **Viperfish** (64-byte TC bundle). Four slots, shared struct, **34-bit per-slot stride**. VALU0 `Encode` @ `0x1eef8a80`; representative `VectorFloatAdd` helper (op `0x0c`) @ `0x1eefa2c0`:
@@ -155,15 +166,15 @@ The four predicate fields sit at bits 306 / 272 / 238 / 204 (VALU0..3), a unifor
 
 ### Per-Generation Slot Position
 
-| Gen | Bundle | #VALU | VALU0 opcode bit | VALU0 pred bit | Per-slot stride | Confidence |
-|---|---|---|---|---|---|---|
-| Jellyfish (v3) | 41 B | 2 | bit 30 of packed word (bytes ~0x16..0x1e) | 5-bit | direct in-place | HIGH |
-| Dragonfish (v3 var) | 41 B | 2 | alias of Jellyfish | 5-bit | direct in-place | HIGH |
-| Pufferfish (v4) | 51 B | 2 | VALU0 ~230; VALU1 ~193 | 5-bit | distinct structs | HIGH |
-| Viperfish (v5e) | 64 B | 4 | 299 (pred 306) | 4-bit | 34 bits/slot | CERTAIN |
-| Ghostlite (v5p) | 64 B | 4 | 302 (pred 309) | 4-bit | ~34 bits/slot | CERTAIN |
-| Trillium (v6e) | 64 B | 4 | 293 (pred 301) | 2-bit | ~34 bits/slot | CERTAIN |
-| SparseCore TEC | 64 B | 3 | `SparseCoreTecVectorAlu0..2` (same template, SC bundle) | 4/2-bit | not leaf-decoded | MEDIUM |
+| Gen | Bundle | #VALU | Lane-0 opcode bit | Lane-0 pred bit | Pred width | Per-slot stride | Confidence |
+|---|---|---|---|---|---|---|---|
+| Jellyfish (v3) | 41 B | 2 | 141 (lane 1 op @110) | 147 (lane 1 @116) | 5-bit | two windows (136 / 80) | CERTAIN |
+| Dragonfish (v3 var) | 41 B | 2 | alias of Jellyfish | alias of Jellyfish | 5-bit | two windows (136 / 80) | CERTAIN |
+| Pufferfish (v4) | 51 B | 2 | (switch-dispatched) | 236; lane 1 @193 | 5-bit | distinct structs | CERTAIN |
+| Viperfish (v5e) | 64 B | 4 | 299 | 306 | 4-bit | 34 bits/slot | CERTAIN |
+| Ghostlite (v5p) | 64 B | 4 | 302 | 309 | 4-bit | ~34 bits/slot | CERTAIN |
+| Trillium (v6e) | 64 B | 4 | 293 | 301 | 2-bit | ~34 bits/slot | CERTAIN |
+| SparseCore TEC | 64 B | 3 | `SparseCoreTecVectorAlu0..2` (same template, SC bundle) | — | 4/2-bit | not leaf-decoded | MEDIUM |
 
 The generation-to-codename mapping is fixed by the codec-metadata table (see [Bundle Model](bundle-model-overview.md)): `kJellyfish`=v3, `kDragonfish`=v3 variant, `kPufferfish`=v4, `kViperfish`=v5e, `kGhostlite`=v5p, `k6acc60406`/Trillium=v6e. The binary namespaces follow as `jellyfish` (JF/DF, shared proto), `pxc` (PF), `vxc` (VF), `gxc::glc` (GL), `gxc::gfc` (GF).
 
@@ -339,7 +350,7 @@ The lineage is a coherent story of a widening compute fabric, not arbitrary per-
 |---|---|---|---|---|---|
 | VALU slots | 2 | 2 (distinct structs) | 4 | 4 | 4 |
 | Encoder | direct `and`/`shl`/`or` | `BitCopy` | `BitCopy` | `BitCopy` | `BitCopy` |
-| Slot struct | shared | `Alu0` ≠ `Alu1` | shared | shared | shared |
+| Slot struct | shared proto, two windows (136 / 80) | `Alu0` ≠ `Alu1` | shared | shared | shared |
 | Opcode bits | 6 (0..62) | 6 (V0 0..62 / V1 0..67) | 7 (0..128) | 7 (0..131) | **8** (0..131) |
 | Register field | 5-bit window | 6-bit | 6-bit | 6-bit | 6-bit |
 | Y-encoding | 5-bit | 5-bit | 5-bit | 5-bit | 5-bit |

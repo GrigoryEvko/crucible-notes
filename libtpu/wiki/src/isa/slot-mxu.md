@@ -24,7 +24,7 @@ For reimplementation, the contract is:
 | **JF slot home** | latch/matprep/matmul → `VectorExtended` (slot_mask `0x080`, proto `+0x50`); matres → `VectorResult` (`0x100`, `+0x58`) |
 | **JF VE field map** | opcode @ abs 29..34 (6b), mxu-id @ 27..28 (2b), predicate @ 35 (5b) — `EncodeVectorExtendedInstruction` @ `0x1e869f00` |
 | **v5+ MXU slots** | two `VectorExtended` control regions (one per physical MXU), `−N`-bit twin over one shared operand pool |
-| **Systolic array** | 128 × 128 weight-stationary; fed by 8×128 / 4×256 matpush tiles |
+| **Systolic array** | 128 × 128 (JF–VF) / 256 × 256 (Ghostlite, 6acc60406) weight-stationary; fed by 8×128 / 4×256 matpush tiles |
 | **Empty-slot mark** | predicate `kNeverExecute = 31` (`0xB834CFC`) prefilled into the slot |
 
 ---
@@ -72,7 +72,7 @@ The array has two operands, fed by two different ops:
 - **Stationary (weights / gains)** — loaded by the **latch** ops (`vlatch`/`vlatchi`, the v5+ `LoadMatrixRegister*` / `PushGains*` family). The stationary operand stays resident in the array across many matmul steps until re-latched. *How* it is loaded — transpose, packing, dtype staging — is the `GainLatchMode` enum (v3) or the per-dtype `PushGains<fmt>` / `Pushmatrix<fmt>` opcode (v5+).
 - **Moving (activations / multiplicand)** — staged by the **matprep** ops (`vmatprep.subr` = sub-row, `.mubr` = multiplicand-block-row). The moving operand is staged into a matrix-staging register, `MATPUSH_TARGET_MSRA` or `MATPUSH_TARGET_MSRB` (both strings present in `.rodata`), then clocked through the array.
 
-The matpush tile granularity is fixed by the hardware perf-counter help string, byte-exact in the binary: *"This counts the number of 8x128 or 4x256 matrices that are pushed to MXUn by a vmatpush instruction."* So each push delivers an **8×128** (sublanes × lanes) or **4×256** tile; sixteen 8×128 tiles fill the 128×128 array.
+The matpush tile granularity is fixed by the hardware perf-counter help string, byte-exact in the binary: *"This counts the number of 8x128 or 4x256 matrices that are pushed to MXUn by a vmatpush instruction."* So each push delivers an **8×128** (sublanes × lanes) or **4×256** tile; sixteen 8×128 tiles fill a 128×128 array (the JF–VF geometry — Ghostlite/6acc60406 widen the array to 256×256, see [Systolic-Array Geometry](#systolic-array-geometry)).
 
 ---
 
@@ -240,11 +240,12 @@ Viperfish keeps the two-`VectorExtended`-slots-over-one-operand-pool model and t
 | opcode-HIGH (matmul) | 57 | 7 | `MatrixMultiply<fmt>` | `0x1` | CERTAIN |
 | opcode-HIGH (latch/push) | 59 | 5 | `Pushmatrix<fmt>` | `0xe` (14) | CERTAIN |
 | data-format sub-disc | 51 | 4 | per-op | matmul Bf16 = 1 / push Bf16 = 3 | CERTAIN |
+| control (proto `+0x18`) | 48 | 3 | per-op | — | CERTAIN |
 | done-gains / latch flag | 55 | 2 | per-op | — | CERTAIN |
 | **Transpose** | 57 | 1 | `Pushmatrix*` (proto `+0x20`) | — | CERTAIN |
 | **Target** | 58 | 1 | `Pushmatrix*` (proto `+0x24`) | — | CERTAIN |
 
-The latch (`Pushmatrix`) encode reads byte-for-byte as `BitCopy(buf, 59, …, 5)` (opcode), `BitCopy(buf, 51, …, 4)` (format), `BitCopy(buf, 57, …, 1)` (Transpose), `BitCopy(buf, 58, …, 1)` (Target), plus the eight shared operand vregs at abs 157/180/214/225/248/259/282/293. The matmul `Opcode::Matches` predicate is `(qword & 0xFE78000000000000) == 0x408000000000000` — decoding to opcode `0x2` (Msra) @ abs 57 and format `1` (Bf16) @ abs 51, exactly.
+The latch (`Pushmatrix`) encode reads byte-for-byte from `0x1efaf820` as `BitCopy(buf, 59, …, 5)` (opcode = `0xe`), `BitCopy(buf, 51, …, 4)` (format = 3), `BitCopy(buf, 48, …, 3)` (control), `BitCopy(buf, 55, …, 2)` (done-gains/latch flag), `BitCopy(buf, 57, …, 1)` (Transpose, proto `+0x20`), `BitCopy(buf, 58, …, 1)` (Target, proto `+0x24`), plus the eight shared operand vregs at abs 157/282/293/248/259/214/225/180 (w6 each, proto order). The matmul helper `MatrixMultiplyBf16` @ `0x1efa2e40` writes the same control region with `BitCopy(buf, 57, …, 7)` (opcode = `0x1`), `BitCopy(buf, 51, …, 4)` (format = 1), `BitCopy(buf, 48, …, 3)` (control), `BitCopy(buf, 55, …, 2)` (done-gains) over the identical operand pool — so matmul and push share every field position, differing only in opcode width (7 vs 5) and the repurposed bits 57/58. All offsets **LSB-first**, **CONFIRMED**.
 
 > **QUIRK — the opcode field changes position *and* width by op family at the same slot.** `MatrixMultiply<fmt>` writes a 7-bit opcode @ bit 57 (with a 4-bit `MatmulDataFormat` @ bit 51); `Pushmatrix<fmt>` writes a 5-bit opcode-HIGH @ bit 59 (with a 4-bit Pushmatrix format @ bit 51); `LoadMatrixRegister*` reuses the 7-bit @ 57 window with value `0x37`. On the push/latch path, bits 57 and 58 are *repurposed* as the 1-bit **Transpose** and **Target** fields — the same physical bits that on the matmul path are the two high bits of the 7-bit opcode. The decoder distinguishes them by the opcode-HIGH value (push/latch `0xe` vs matmul `0x1`), which frees the LSB region for latch control. Two distinct 4-bit `data_format` enums share abs 51: the **matmul** `MatmulDataFormat` (Bf16 = 1, U8 = 2, S8 = 3, U4 = 4, S4 = 5, Bf8 = 6) and the **latch** Pushmatrix format (Rounded = 0, PackedIf8Conv = 2, Bf16 = 3, Bf8 = 4, U8 = 5, S8 = 6, U4 = 7, S4 = 8). They are different ordinal spaces in the same field.
 
@@ -283,15 +284,15 @@ The GXC generations keep the v5+ codec shape — two `VectorExtended` slots over
 
 The MXU opcode-HIGH widens to **8 bits @ bit 58** (vs Viperfish's 7-bit @ 57), MXU-id moves to bit 66, the done-gains / latch flag to bit 56, and the slot-encoder opcode bound grows to `0x70` (113 ops vs Viperfish's 103). The dtype set is the full **8-format** `{F32, If8, Bf16, Bf8}` (float) + `{U8, S8, U4, S4}` (int). See [Ghostlite Bundle](bundle-gl.md#transformation-2--opcode-fields-widen-78-bits) for the slot map.
 
-The latch / matmul opcode is a *unified* 8-bit field @ abs 58. The decode-side proof: the latch `Opcode::Matches` requires bits 58,59 == 3 (the `latch-class` discriminator), then opcode @ 60 (w6) = 14 (float) / 15 (int), with the dtype-class @ abs 54 (w2) selecting the sub-ordinal within the 4-element class. The matmul opcode @ abs 58 (w8) = `0x2` (Msra) / `0x3` (Msrb), MSR-select = the opcode LSB. So abs 58/59 are the *low two bits* of the matmul's 8-bit opcode, set to 3 on a latch. `GhostliteTarget::MatrixStagingRegisterCount` (`0x1d497ae0`) = 2. The MXU0↔MXU1 twin is **−21** (op 60→39).
+The latch / matmul opcode is a *unified* 8-bit field @ abs 58 — confirmed on the encode side: `MatrixMultiplyBf16` @ `0x1f333ce0` writes `BitCopy(buf, 58, …, 8)` value `0x1`, and `LoadMatrixRegisterGmrMsra` @ `0x1f33f140` writes the *same* `BitCopy(buf, 58, …, 8)` window with the latch value `0x37` (55). The matmul opcode @ abs 58 (w8) = `0x2` (Msra) / `0x3` (Msrb), MSR-select = the opcode LSB; the decode-side `Opcode::Matches` groups the low two bits 58,59 == 3 as the `latch-class` discriminator and reads a 6-bit latch sub-opcode in the same window (14 = float / 15 = int) with the dtype-class @ abs 54 (w2) picking the sub-ordinal within the 4-element class. `GhostliteTarget::MatrixStagingRegisterCount` (`0x1d497ae0`) = 2. The MXU0↔MXU1 twin is **−21**: the matmul opcode-HIGH anchors at abs 58 on MXU0 (VEx0) and abs 37 on MXU1 (VEx1) — `MatrixMultiplyBf16` VEx0 @ `0x1f333ce0` (opcode @ 58, fmt @ 52, control @ 49, done-gains @ 56) vs VEx1 @ `0x1f388440` (opcode @ 37, fmt @ 31, control @ 28, done-gains @ 35), every field offset by exactly 21. All offsets in this paragraph are **LSB-first** and **CONFIRMED** from the encoder `BitCopy` immediates.
 
 ### 6acc60406 (v7 / `gfc`)
 
-The newest generation is **float-only**: it drops the integer matmul group and supports four dtypes `{F32, E4m3, Bf16, E5m2}` — the two FP8 formats named explicitly (vs Ghostlite's `If8`/`Bf8`). The matmul opcode-HIGH is 8-bit @ bit 62, MXU-id @ bit 70 (w2), done-gains / latch flag @ bit 61, primary operand @ bit 47, and a matpush-target control field @ bit 54 (w3). The latch valid-guard is a single `bt` of bit 62. See [6acc60406 Bundle](bundle-gf.md#the-mxu-format-remap-and-fp8-gf-vs-ghostlite).
+The newest generation is **float-only**: it drops the integer matmul group and supports four dtypes `{F32, E4m3, Bf16, E5m2}` — the two FP8 formats named explicitly (vs Ghostlite's `If8`/`Bf8`). From `MatrixMultiplyBf16` VEx0 @ `0x1f99a920` (verified `BitCopy` immediates): matmul opcode-HIGH 8-bit @ bit 62, data-format @ bit 57 (w4), control @ bit 54 (w3), done-gains / latch flag @ bit 61 (w1); MXU-id @ bit 70 (w2), written by the VEx0 dispatcher encoder `TensorCoreVectorExtended0Encoder::Encode` @ `0x1f996940` (`BitCopy(buf, 70, …, 2)`). The eight systolic source vregs land at bits 156 / 276 / 287 / 243 / 254 / 210 / 221 (w6) and 47 (w7) — the last operand widens to 7 bits. The latch valid-guard is a single `bt` of bit 62. See [6acc60406 Bundle](bundle-gf.md#the-mxu-format-remap-and-fp8-gf-vs-ghostlite). All offsets **LSB-first**, **CONFIRMED**.
 
-The MXU0↔MXU1 twin is **−25**, not −21: 6acc60406's MXU0 control region drifted +4 bits higher than Ghostlite's (opcode 60→64), while MXU1 anchors at the *same* abs 39 in both gens, so the inter-MXU delta grows by 4.
+The MXU0↔MXU1 twin is **−25**, not −21: 6acc60406's MXU0 control region drifted +4 bits higher than Ghostlite's (matmul opcode-HIGH 58 → 62), while MXU1 anchors at the *same* abs 37 in both gens, so the inter-MXU delta grows by 4.
 
-> **CORRECTION (MXU-GF-TWIN) —** an earlier cross-gen table listed the 6acc60406 inter-MXU twin as −21 (carried over from Ghostlite). Decode-side disassembly of the `gfc` `MatrixMultiplyBf16Lgmr*` and `PushMatrix*Opcode::Matches` shows the twin is **−25**: MXU0 opcode @ 64, MXU1 @ 39; matmul @ 62 vs 37; format @ 57 vs 32. The +4 MXU0 drift (glc 60 → gfc 64) compounds the offset because MXU1 is pinned at abs 39 across both GXC gens.
+> **CORRECTION (MXU-GF-TWIN) —** an earlier cross-gen table listed the 6acc60406 inter-MXU twin as −21 (carried over from Ghostlite). Encode-side disassembly of the `gfc` `MatrixMultiplyBf16` VEx0 @ `0x1f99a920` and VEx1 @ `0x1f9d77e0` shows the twin is **−25**: matmul opcode-HIGH @ 62 (VEx0) vs @ 37 (VEx1); format @ 57 vs 32; control @ 54 vs 29; done-gains @ 61 vs 36 — every field offset by exactly 25. The +4 MXU0 drift (glc 58 → gfc 62) compounds the offset because MXU1's matmul opcode-HIGH is pinned at abs 37 across both GXC gens.
 
 ### Cross-Generation Field Summary
 
@@ -300,13 +301,13 @@ The MXU control region, synthesized across all five generations (matmul opcode-H
 | Gen | Codename | Bundle | VE slots | Physical MXUs | Matmul opcode bit | Latch opcode bit | Twin | MSR count | dtype set |
 |---|---|---|---|---|---|---|---|---|---|
 | v3 | jellyfish | 41 B | 1 | 1 | (6-bit VEopcode @ 29..34, jump table) | — | n/a | 1 | `GainLatchMode 0..5` subset |
-| v3' | dragonfish | 41 B | 1 | >1 | (same codec; mxu-id live) | — | n/a | 1 | as JF |
+| v3' | dragonfish | 41 B | 1 | 2 | (same codec; mxu-id live) | — | n/a | 1 | as JF |
 | v4 | pufferfish | 51 B | 2 | 4 | 91 (9b w/ mxu-num @ 89..90) | 91 (PushGains `0x20`..`0x34`) | −20 | 1 | 8 (int + float) |
 | v5p | viperfish | 64 B | 2 | 4 | 57 (7b) | 59 (Pushmatrix `0xe`) | −20 | 2 | 8 (int + float) |
 | v6e | ghostlite (`glc`) | 64 B | 2 | 2 | 58 (8b) | 58 (unified 8b, low-2 == 3) | −21 | 2 | 8 (int + float) |
 | v7 | 6acc60406 (`gfc`) | 64 B | 2 | 2 | 62 (8b) | 62 (unified 8b) | −25 | 2 | 4 (float only) |
 
-The evolution is a clean progression: a single 6-bit jump-table opcode (v3) → a dual-slot 7/9-bit opcode carrying the physical MXU in its low bits (v4) → named per-dtype opcode families with standalone Transpose/Target latch bits (v5p) → wider 8-bit unified opcodes with the latch discriminator folded into the opcode low bits (v6e) → a float-only FP8 remap (v7). The systolic contract — weight-stationary 128×128 array, matpush 8×128/4×256 tiles, latch / push / matmul / matres sequence over a shared operand pool — never changes; only the encoding widens and the dtype set shifts.
+The evolution is a clean progression: a single 6-bit jump-table opcode (v3) → a dual-slot 7/9-bit opcode carrying the physical MXU in its low bits (v4) → named per-dtype opcode families with standalone Transpose/Target latch bits (v5p) → wider 8-bit unified opcodes with the latch discriminator folded into the opcode low bits (v6e) → a float-only FP8 remap (v7). The systolic *contract* — weight-stationary array, matpush 8×128/4×256 tiles, latch / push / matmul / matres sequence over a shared operand pool — never changes; only the encoding widens, the dtype set shifts, and the array dimension steps 128×128 (JF–VF) → 256×256 (Ghostlite, 6acc60406).
 
 ---
 
@@ -340,15 +341,17 @@ Both Jellyfish encoders prefill `kNeverExecute = 31` (`0xB834CFC`) into every sl
 
 ## Systolic-Array Geometry
 
-| Quantity | Value | Source |
-|---|---|---|
-| Systolic array | 128 × 128, weight-stationary | arch + `LaneCount` |
-| MXUs per TensorCore | 1 (JF) / 4 (PF, VF) / 2 (Ghostlite, 6acc60406) | `NumVexSlots`, `mxu_count` |
-| MXU-id field width | 2 bits (JF/PF: physical select) / 4 bits (VF MXU-id @ 64) | encoder |
-| matpush / latch tile | 8 × 128 or 4 × 256 | vmatpush perf-counter string |
-| vreg shape | 8 sublanes × 128 lanes | `Target::SublaneCount` @ `0x1d60f300` = 8, `LaneCount` @ `0x1d60f400` = 128 |
+| Quantity | Value | Source | Confidence |
+|---|---|---|---|
+| Systolic array | 128 × 128 (JF/DF/PF/VF) / 256 × 256 (Ghostlite, 6acc60406) | base `Target` `LaneCount`; `GhostliteTarget::MxuContractingSize`/`MxuNoncontractingSize` @ `0x1d497840`/`0x1d497860` = 256 | CONFIRMED |
+| MXUs per TensorCore | 1 (JF) / 2 (Dragonfish) / 4 (PF, VF) / 2 (Ghostlite, 6acc60406) | `NumVexSlots`, `VectorIsa.mxu_count` f5 | CONFIRMED |
+| MXU-id field width | 2 bits (JF/PF: physical select) / 4 bits (VF MXU-id @ 64, glc @ 66) / 2 bits (gfc @ 70) | encoder | CONFIRMED |
+| matpush / latch tile | 8 × 128 or 4 × 256 | vmatpush perf-counter string | CONFIRMED |
+| vreg shape | 8 sublanes × 128 lanes | `Target::SublaneCount` @ `0x1d60f300` = 8, `LaneCount` @ `0x1d60f400` = 128 | CONFIRMED |
 
-The 128×128 array is filled by sixteen 8×128 matpush tiles (or eight 4×256). The moving operand streams through; one `vmatmul` advances one systolic step; the result drains via `vmatres` after the array latency. The per-format matmul latency tables are on the per-gen cost pages — they are *not* a single constant across generations.
+On the 128×128 generations the array is filled by sixteen 8×128 matpush tiles (or eight 4×256); the moving operand streams through, one `vmatmul` advances one systolic step, and the result drains via `vmatres` after the array latency. The per-format matmul latency tables are on the per-gen cost pages — they are *not* a single constant across generations.
+
+> **QUIRK — the array is not 128×128 on every gen.** Ghostlite and 6acc60406 cut `mxu_count` from 4 to 2 but *double* the systolic dimension to **256×256** (the C++ overrides `GhostliteTarget::MxuContractingSize`/`MxuNoncontractingSize` return 256; the base `Target` returns 128). The 256 dimension is a C++ literal, not a proto field — the `VectorIsa` proto carries only `lane_count = 128` and `mxu_count`. A reimplementer who hard-codes a 128×128 array for v6e/v7 will mis-size the latch tile count and the per-step throughput. See [Per-Codename HW Constants](../targets/per-codename-hw-constants.md#mxu-count-vs-systolic-dimension).
 
 ---
 
@@ -378,3 +381,4 @@ The 128×128 array is filled by sixteen 8×128 matpush tiles (or eight 4×256). 
 - [LLO Opcode Enum](llo-opcode-enum.md) — the LloOpcode numeric space the MXU mnemonics live in.
 - [../cost/mxu-latency-overview.md](../cost/mxu-latency-overview.md) — the cost model that consumes the MXU-slot fields, and the per-gen matmul latency tables.
 - [../compiler/dot-conv-mxu-lowering.md](../compiler/dot-conv-mxu-lowering.md) — the HLO kDot / kConvolution descent that fills the MXU slot with the `[matprep, latch, matmul…, matres]` sequence.
+- [Per-Codename HW Constants](../targets/per-codename-hw-constants.md) — the `mxu_count` (1/2/4/4/2/2) and the 256×256 systolic-dimension override for Ghostlite/6acc60406 that the geometry table cites.
