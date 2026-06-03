@@ -119,7 +119,7 @@ The "Core" role is `tpu::TpuCore`: a TensorCore/BarnaCore execution context that
   _ZTV 0x21cad3d8                               _ZTV 0x21cad730
      |  __si                                       |  __si
   tpu::TpuChipDriverCommonImpl                  tpu::TpuCoreDriverCommonImpl
-  _ZTV 0x215fe828                               (_ZTI 0x21cacee0)
+  _ZTV 0x215fe828                               _ZTV 0x21cacd50  (_ZTI 0x21cacee0)
      |  __si (×3)                                   |  __si (×3)
   +--+---+----+                                 +--+----+----+
   Jxc  Pxc  Vxc                                 Jxc  Pxc  Vxc
@@ -181,7 +181,8 @@ The "Encoder" role is two coupled levels, neither of which inherits from any `Tp
   +-- legacy (20 slots): EncoderJf / EncoderDf / EncoderBcsDf
   +-- per-family (14 slots): EncoderPf*/EncoderVf*/EncoderGl* (TensorCore / BarnaCore / SparseCore)
         each COMPOSES (template, non-virtual) a *CodecBase<...> mixin carrying the
-        per-codename bundle bit layout (the 41/51/64-byte wire formats)
+        per-codename bundle bit layout (per-generation wire widths owned by the
+        bundle-model pages; JF output fixed at 41 B / operator new(0x29))
 ```
 
 `TpuCodec::Create` (0x1e835fa0) is a six-case jump-table switch; cases 0..4 call named `CreateTpuCodec<X>` constructors and case 5 calls an anonymous-namespace creator (`sub_1E838380`) — the v=5 / 6acc60406 codec has no named C++ class and no recovered vtable. The codec drives the matching `isa::Encoder` leaf via `tpu::internal::CreateEncoder{JfDf,Pf,Vf,GlGf}`, which dispatch on `TpuSequencerType` (not `TpuVersion`).

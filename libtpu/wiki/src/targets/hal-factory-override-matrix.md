@@ -45,24 +45,28 @@ Dispatch is two stages, each keyed on `TpuVersion`, but realized by two differen
 
 ### Stage 2 — Impl Specialization (Virtual Dispatch)
 
-The selected factory's `Create` (inherited from `TpuHalHardwareFactoryBase` @ 0x1e80f560) probes the work-queue for device availability, then calls the factory's own `CreateImpl` (slot 4). `CreateImpl` allocates the impl object, runs `TpuHal::TpuHal()` with the `TpuVersion` taken from the work-queue at +8, and plants the per-family impl vtable into the new object's slot 0. From that point on, all per-generation behavior is ordinary C++ virtual dispatch on the impl vtable.
+The selected factory's `Create` (inherited from `TpuHalHardwareFactoryBase` @ 0x1e80f560) calls the factory's own `CanCreate` (slot 3) to probe device availability, then — on success — calls the factory's own `CreateImpl` (slot 4). `CreateImpl` allocates the impl object, runs `TpuHal::TpuHal()` with the `TpuVersion` taken from the factory at +8 (the dword stamped at `Register` time), and plants the per-family impl vtable into the new object's slot 0. From that point on, all per-generation behavior is ordinary C++ virtual dispatch on the impl vtable.
+
+> **GOTCHA —** in the decompile of `Create` (0x1e80f560) both indirect calls read their vtable from the **second** argument, which the decompiler types `TpuHostWorkQueue*`. The disassembly resolves the aliasing: the caller `TpuHal::Create` (0x1e814180) invokes `factory_vtable[2](ret, factory, wq)`, so inside `Create` that second argument is the **factory pointer**, not the work-queue, and the work-queue is the third argument. Both probe (`call *0x18(rax)` = slot 3) and build (`call *0x20(rax)` = slot 4) therefore dispatch on the factory's own vtable. A reimplementation that routes `CanCreate`/`CreateImpl` through a work-queue method will not match the binary.
 
 ```c
-function HardwareFactoryBase::Create(this, wq):          // 0x1e80f560
-    if wq->vtable[CanCreate](wq):                        // probe device availability via wq vtable
-        return this->vtable[4](this, wq)                 // CreateImpl — per-family slot 4
+function HardwareFactoryBase::Create(this, factory, wq):  // 0x1e80f560
+    if factory->vtable[3](factory):                       // CanCreate — slot 3 (0x1e80f520)
+        return factory->vtable[4](this, factory, wq)      // CreateImpl — per-family slot 4
     else:
-        return NotFound("No " + wq.device_name + " device found.")   // tpu_hal_hardware_factory_base.cc:22
+        return NotFound("No " + device_name + " device found.")   // tpu_hal_hardware_factory_base.cc:22
 
-function JxcFactory::CreateImpl(this, wq):               // 0x0e723ac0
-    v   = wq[2]                                          // TpuVersion at wq+8
+function JxcFactory::CreateImpl(ret, factory, wq):      // 0x0e723ac0
+    v   = factory[2]                                     // TpuVersion at factory+8 (stamped at Register)
     obj = operator new(0xD0)                             // 208 B JxcImpl
-    TpuHal::TpuHal(obj, v, ...)                          // base ctor
+    TpuHal::TpuHal(obj, v, wq)                           // base ctor — wq is the genuine work-queue arg
     obj[0]  = &JxcImpl_vtable[+0x10]                     // off_215FE590 — plant impl vtable
     obj[25] = 0                                          // helper @ +200 not yet attached
-    this[1] = obj; this[0] = OK
-    return this
+    ret[1] = obj; ret[0] = OK                            // write StatusOr<unique_ptr> result
+    return ret
 ```
+
+> **GOTCHA —** the `TpuVersion` the impl ctor receives is read from `factory+8` (`*((_DWORD*)factory + 2)` in the JXC/VXC stubs), *not* from the work-queue — the decompiler again mistypes the factory pointer as `TpuHostWorkQueue*`. `factory+8` is the dword each init module stamps at `Register` time (see [HAL Families](hal-families.md)). The work-queue is a separate argument and is forwarded only to the base ctor. PXC does not even read its factory pointer for the version: it hardcodes the literal `2`, because the Pxc factory services Pufferfish alone.
 
 PXC and VXC `CreateImpl` are byte-for-byte the same shape; only the allocation size, the planted vtable, and (for PXC) a hardcoded `TpuVersion` literal differ. PXC allocates 0xD0 (208 B) and plants `off_21608628` with version `2`; VXC allocates **0xD8 (216 B)** and plants `off_21CABFD0`, additionally zeroing an extra flag byte at +208. (See [TpuHal Class Hierarchy](tpuhal-class-hierarchy.md) for the object layout.)
 
@@ -131,7 +135,7 @@ Reading the matrix by override delta isolates each family's specialization:
 - **VXC alone** overrides `WaitForCoreDumpComplete` (slot 18 → `TpuHalVxcCommonHelper::WaitForCoreDumpComplete`). JXC and PXC inherit the generic per-chip wait loop. This matches VXC's broader fabric-attached core-dump machinery (visible also in its `TpuChip*` override set).
 - **JXC alone** overrides `PostTearDownChips` (slot 22), even though its body returns `1` identically to the base no-op — the source file places the override explicitly.
 
-> **NOTE —** the override bodies for slots 20/21 carry the family's hardcoded core-count and HBM constraints and its driver wiring. `JxcImpl::CreateAndInitializeChips` (0x0e723c20) rejects more than two TensorCores ("Jellyfish hardware only supports at most 2 Tensorcore"), more than two BarnaCores, and more than two HBMs, then drives the `jxc` deepsea `DriverFactory`. `PxcImpl` and `VxcImpl` carry the analogous, run-time-formatted Pufferfish / Viperfish messages and their `CommonHelper::CreateChips` paths. The constraint detail belongs to the per-family pages; the slot ownership is what this matrix fixes.
+> **NOTE —** the override bodies for slots 20/21 carry the family's hardcoded core-count and HBM constraints and its driver wiring. `JxcImpl::CreateAndInitializeChips` (0x0e723c20) caps the core counts with three run-time-assembled diagnostics — the TensorCore limit (prefix `"Jellyfish Hardware only supports at most "` + count + `" TensorCore."`), the BarnaCore limit (same prefix + count + `" Barnacore."`), and the HBM limit (the standalone literal `"TPU platform only supports up to two HBMs."`) — then drives the `jxc` deepsea `DriverFactory`. `PxcImpl` and `VxcImpl` carry the analogous Pufferfish / Viperfish messages and their `CommonHelper::CreateChips` paths. The constraint detail belongs to the per-family pages; the slot ownership is what this matrix fixes.
 
 `VxcImpl::PreTearDownChips` (0x1d111720) is also where the 216-byte VXC object's extra +208 flag byte is read: if set it returns `1` (mesh already torn down), otherwise it calls `TpuHalVxcCommonHelper::TearDownMesh(this[25])`. JXC and PXC have no such guard byte.
 
