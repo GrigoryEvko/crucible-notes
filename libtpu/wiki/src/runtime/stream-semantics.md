@@ -45,7 +45,7 @@ Every concrete stream descends from `StreamCommon`, the device-agnostic intermed
 ```c
 // StreamCommon::StreamCommon(StreamExecutor* parent)        sub_1D100280
 function StreamCommon_ctor(this, parent):
-    this[0]            = &Stream_vtable             // off_21CA99F8
+    this[0]            = &StreamCommon_vtable       // off_21CA99F8 (vtable for StreamCommon @ 0x21ca99e8 + 0x10)
     this[+0x08]        = 0                          // status rep (OkStatus)
     this[+0x10]        = 1                          // (default count / live flag)
     this[+0x18]        = 0
@@ -118,8 +118,8 @@ function TpuStream_WaitFor_Stream(this, other):
     self_handle = this[16]                                 // SE_Stream*
     self_se     = this[17]                                 // SE_StreamExecutor*
     se          = this[18]                                 // TpuPlatform* owning the map
-    lock(se->mutex @ +144)                                 // absl::Mutex
-    se_other = FlatHashMap<Stream*, SE_Stream*>(se+80).at(other)   // map foreign Stream* -> SE_Stream*
+    lock(se->mutex @ +0x90)                                // absl::Mutex (decompile: se+144)
+    se_other = FlatHashMap<Stream*, SE_Stream*>(se+0x50).at(other)   // map foreign Stream* -> SE_Stream* (decompile: se+80)
         // if absent: ThrowStdOutOfRange("raw_hash_map<>::at")
     unlock(se->mutex)
     ok = create_dep(self_se, self_handle, se_other)        // ExecutorApiFn()+152
@@ -128,7 +128,7 @@ function TpuStream_WaitFor_Stream(this, other):
     return OkStatus
 ```
 
-Two reimplementation-critical details: (1) the executor keeps a `FlatHashMap<Stream*, SE_Stream*>` at `executor+0x80`, guarded by an `absl::Mutex` at `executor+0x144`, that translates a *language-level* `Stream*` into the *driver-level* `SE_Stream*` the C-ABI understands; a `WaitFor` on an unregistered stream throws `out_of_range`. (2) The dependency is created via `TfTpu_ExecutorApiFn` slot `+152`; failure is reported as `INTERNAL` "Failed to create stream dependency" anchored to `tpu_stream.h:108`. Underneath, this becomes the `DeepseaRequestQueue::EnqueueWaitFor` waiter of §2 — the dependency is resolved on-device, the host is not stalled.
+Two reimplementation-critical details: (1) the executor keeps a `FlatHashMap<Stream*, SE_Stream*>` at `executor+0x50`, guarded by an `absl::Mutex` at `executor+0x90`, that translates a *language-level* `Stream*` into the *driver-level* `SE_Stream*` the C-ABI understands; a `WaitFor` on an unregistered stream throws `out_of_range`. (2) The dependency is created via `TfTpu_ExecutorApiFn` slot `+152`; failure is reported as `INTERNAL` "Failed to create stream dependency" anchored to `tpu_stream.h:108`. Underneath, this becomes the `DeepseaRequestQueue::EnqueueWaitFor` waiter of §2 — the dependency is resolved on-device, the host is not stalled.
 
 > **QUIRK —** `WaitFor(Stream*)` waits on the work *enqueued so far*, not on the stream forever. It snapshots: a subsequent op pushed onto A after the `WaitFor` is **not** covered. A reimplementation that treats the call as "B always trails A" is wrong; it is "B waits for A's current tail". This matches CUDA `cudaStreamWaitEvent` semantics applied to a stream's implicit tail rather than a named event.
 
@@ -153,7 +153,7 @@ function TpuStream_WaitFor_Event(this, e):
 
 | Primitive | TPU `ExecutorApiFn` slot | Resolves via | On failure |
 |---|---:|---|---|
-| `WaitFor(Stream*)` | `+152` (create dependency) | `FlatHashMap<Stream*,SE_Stream*>` @ exec`+0x80` | `INTERNAL` "Failed to create stream dependency" (`tpu_stream.h:108`) |
+| `WaitFor(Stream*)` | `+152` (create dependency) | `FlatHashMap<Stream*,SE_Stream*>` @ exec`+0x50` | `INTERNAL` "Failed to create stream dependency" (`tpu_stream.h:108`) |
 | `WaitFor(Event*)` | `+192` (wait event) | `TpuPlatform::LookupEvent` | status via `status_helper.h:38` |
 | `RecordEvent(Event*)` | `+184` (record event) | `TpuPlatform::LookupEvent` | status via `status_helper.h:38` |
 
@@ -202,7 +202,7 @@ Three things to carry across: (1) `WaitFor(Stream*)` is a **no-op returning `tru
 
 XLA does not serialize compute and data movement onto a single stream. An executor allocates a small fixed set of role-specific streams — a **compute** stream for program launches, an **H2D** stream for host→device input copies, and a **D2H** stream for device→host output copies. The reason is concurrency: while the compute stream runs program K, the H2D stream can already be staging the inputs of program K+1 and the D2H stream can be draining the outputs of program K−1. Putting all three on one FIFO would force every copy to block every launch, since intra-stream order is total (§1.3).
 
-The byte-level fingerprint of the split is `DeepseaStream`'s dedicated `H2DTransferState::LaunchAndWait` sub-machine (`H2DTransferState` invoker `0x1d0ea5e0`) — a host→device transfer carries its own launch-and-wait state distinct from the compute path, exactly the structure expected if transfers run on their own stream. The `TpuStream::EnqueueTransferHostToDevice` / `EnqueueTransferDeviceToHost` pair (`0xeab9960` / `0xeab99e0`) are the enqueue entries onto the transfer streams; a program launch is enqueued by [ExecuteAsyncOnStream](execute-async-on-stream.md) onto the compute stream.
+The byte-level fingerprint of the split is `DeepseaStream`'s dedicated `H2DTransferState::LaunchAndWait` sub-machine (`H2DTransferState` invoker `0x1d0ea5e0`) — a host→device transfer carries its own launch-and-wait state distinct from the compute path, exactly the structure expected if transfers run on their own stream. The C-ABI `TpuStream_EnqueueTransferHostToDevice` / `TpuStream_EnqueueTransferDeviceToHost` pair (`0xeab9960` / `0xeab99e0`, each forwarding to the matching `DeepseaStream::EnqueueTransfer*`) are the enqueue entries onto the transfer streams; a program launch is enqueued by [ExecuteAsyncOnStream](execute-async-on-stream.md) onto the compute stream.
 
 ### How the streams are kept consistent
 
