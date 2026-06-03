@@ -6,7 +6,7 @@
 
 **SMEM** (scalar memory) is the on-chip SRAM tier private to each TensorCore's **Scalar Processing Unit (SPU)**. Where VMEM is the wide operand staging pool the MXU and VPU read from, SMEM is the SPU's narrow scratch: a flat, word-granular array that backs scalar-register spills, holds the function-argument (parameter-pointer) table, materializes loop counters and address-calculation results under register pressure, and carries the per-step completion descriptors the SPU writes. It is the rough equivalent of a CPU's stack-plus-spill-slots region — except it is explicitly addressed by dedicated scalar load/store opcodes, never implicitly via a stack pointer the hardware manages.
 
-The reimplementer should hold one analogy and immediately complicate it. SMEM looks like a register-spill area, but it is **not** managed by the HBM↔VMEM cost-balancer. The [memory-space taxonomy](overview.md#1-the-six-region-taxonomy) labels SMEM `kSmem = 5` in the `MemorySpace` enum, and the [overview](overview.md) already established the two-stack story shared by all tiers: a compile-time placer (`xla::jellyfish::ProgramMemoryAllocator`) freezes offsets into a proto, and one `tpu::BestFitAllocator` per tier replays them at runtime. SMEM differs from VMEM in one decisive way: **MSA never colors SMEM**. `FastMemorySpace()` returns `kVmem` on every production Target, so SMEM is a *reserved tier* that XLA writes into by emitting scalar load/store opcodes whose operand `memory_space()` is declared `kSmem`, not by the `kAlternate`/`kDefault` tug-of-war. Placement is opcode-semantics-driven, not cost-driven.
+The reimplementer should hold one analogy and immediately complicate it. SMEM looks like a register-spill area, but it is **not** managed by the HBM↔VMEM cost-balancer. The [memory-space taxonomy](overview.md#1-the-six-region-taxonomy) labels SMEM `kSmem = 5` in the `MemorySpace` enum, and the [overview](overview.md) already established the two-stack story shared by all tiers: a compile-time placer (`xla::jellyfish::ProgramMemoryAllocator`) freezes offsets into a proto, and one `tpu::BestFitAllocator` per tier replays them at runtime. SMEM differs from VMEM in one decisive way: **MSA never colors SMEM**. `FastMemorySpace()` never returns `kSmem` on any Target (it is `kVmem` on Viperfish/Ghostlite, `kCmem` on Pufferfish, `kHbm` on Jellyfish), so SMEM is a *reserved tier* that XLA writes into by emitting scalar load/store opcodes whose operand `memory_space()` is declared `kSmem`, not by the `kAlternate`/`kDefault` tug-of-war. Placement is opcode-semantics-driven, not cost-driven.
 
 This page owns the SMEM **scalar model**: the address space and its per-generation sizing, the byte-flat-vs-word-flat duality, the `Sld`/`Sst` scalar load/store opcode families and their addressing modes, and the `SmemWordImmPtr` immediate-pointer constructor that converts a word index into a kSmem-tagged byte pointer. It does **not** reproduce the (absent) register-window mechanism — that negative result is owned by [smem-register-window.md](smem-register-window.md); nor the SFLAG atomic protocol ([sflag-protocol.md](sflag-protocol.md)); nor the SPU bundle slot encoding ([../isa/slot-spu-scalar.md](../isa/slot-spu-scalar.md)).
 
@@ -19,7 +19,7 @@ For reimplementation, the contract is:
 
 | | |
 |---|---|
-| **MemorySpace value** | `kSmem = 5` (name table @ `0x21ce6b08`; `barna_core_smem = 10`, `sparse_core_sequencer_smem = 14`) |
+| **MemorySpace value** | `kSmem = 5` (name table @ `0x21ce6b08`; `barna_core_smem = 9`, `sparse_core_sequencer_smem = 14`) |
 | **`SmemSizeBytes()`** | `0x1d615e40` — `return *(uint32*)(Target + 0x470)` |
 | **`SmemWordSizeBytes()`** | `0x1d617360` — `return *(uint32*)(Target + 0x508)` |
 | **`SmemWordSizeLog2()`** | `0x1d617540` — `return *(uint32*)(Target + 0x4CC)` |
@@ -28,7 +28,7 @@ For reimplementation, the contract is:
 | **`AllocateScopedSmem(shape, name)`** | `0x1d5182a0` — trampoline → `AllocateScopedMemory(…, 5u, …)` |
 | **Compile-time placer** | `ProgramMemoryAllocator::AllocateBytes` @ `0x1c629e40` (branches on `MemorySpace`) |
 | **Runtime allocator** | `tpu::BestFitAllocator`, `Config{base=0, end=SmemSizeBytes, align=granule=SmemWordSizeBytes}` |
-| **MSA-managed?** | **No** — `FastMemorySpace()` = `kVmem` on all Targets; placed by opcode semantics |
+| **MSA-managed?** | **No** — `FastMemorySpace()` is never `kSmem` on any Target (`kVmem` on VF/GL, `kCmem` on PF, `kHbm` on JF); placed by opcode semantics |
 | **Owner engine** | Scalar Processing Unit (SPU); SREG file is the register source/sink |
 | **Confidence** | CONFIRMED (byte-anchored) unless a row or callout says otherwise |
 
@@ -42,7 +42,7 @@ SMEM is `xla::jellyfish::MemorySpace::kSmem = 5`. It is one of the six addressab
 
 ```text
 5   smem                        ◀── SMEM scalar memory (this page)
-10  barna_core_smem             ◀── BarnaCore SMEM sibling tier (PXC family only)
+9   barna_core_smem             ◀── BarnaCore SMEM sibling tier (PXC family only)
 14  sparse_core_sequencer_smem  ◀── SC sequencer well-known-constant tier
 ```
 
@@ -148,7 +148,7 @@ HBM and shared-memory words are strict multiples of the SMEM word, and strictly 
 
 ### BarnaCore SMEM sibling tier
 
-`BarnaCoreSmem` (`barna_core_smem = 10`) is a **second SMEM tier** with its own size/base/word-size fields (`+0x47C`, `+0x480`, `+0x51C`) and its own accessors gated by `SupportsBarnaCore()` (`vtable[+0x258]`; `BarnaCoreSmemSizeBytes` `LogMessageFatal`s `"BarnaCore is not supported by this target"` otherwise). Only the Pufferfish family carries a non-empty BarnaCore window in this binary; its scalar load/store opcodes use the `BarnaCoreSequencerScalar1_` prefix instead of `TensorCoreScalar1_`. The matching scoped-frame trampoline is `AllocateScopedBarnaCoreSmem` (`0x1d518500`, `MemorySpace = kBarnaCoreSmem`).
+`BarnaCoreSmem` (`barna_core_smem = 9`) is a **second SMEM tier** with its own size/base/word-size fields (`+0x47C`, `+0x480`, `+0x51C`) and its own accessors gated by `SupportsBarnaCore()` (`vtable[+0x258]`; `BarnaCoreSmemSizeBytes` `LogMessageFatal`s `"BarnaCore is not supported by this target"` otherwise). Only the Pufferfish family carries a non-empty BarnaCore window in this binary; its scalar load/store opcodes use the `BarnaCoreSequencerScalar1_` prefix instead of `TensorCoreScalar1_`. The matching scoped-frame trampoline is `AllocateScopedBarnaCoreSmem` (`0x1d518500`, `MemorySpace = kBarnaCoreSmem`).
 
 ---
 
@@ -309,7 +309,7 @@ SMEM overflow is almost entirely a compile-time concern, because MSA does not re
 | Geometry invariant | word-size / granule violations | `"kSharedMemWordSizeBytes > kSmemWordSizeBytes"`, `"hbm_word_size_bytes % smem_word_size_bytes == 0"`, `"available_smem_size >= granule_size"` |
 | SC table overflow | ragged-pointer table exceeds SCS budget | `"Row pointers would exceed available SCS Smem ("` |
 | Trampoline overflow | SCS overlay trampoline reservation too large | `"Reserve extra smem spill area for SCS overlays trampoline."` (`FLAGS_xla_sc_reserve_scs_trampoline_smem`, `0x22335e88`) |
-| Debug poison | use-after-free detector | `"Poisoned Smem value use detected"` (`sdc_checker::RaceAnalyzerStepper::PoisonSmemBuffer`) |
+| Debug poison | use-after-free detector | `"Poisoned Smem value use detected"` (`xla::jellyfish::llo_analysis::RaceAnalyzerStepper::PoisonSmemBuffer`, `0x10bc15c0`) |
 
 Each geometry-invariant message is a hard `LogMessageFatal`. The SCS-budget check (`GetUserAllocatableScsSmemSize`, `0x13db6d80`) reports a compile-time error rather than silently spilling, so a SparseCore lowering that overflows SCS SMEM fails loudly.
 
@@ -321,7 +321,7 @@ SMEM follows the shared hand-off pipeline ([overview §3](overview.md), [hbm-all
 
 ```text
 1. HeapSimulator::Run(GlobalDecreasingSizeBestFitHeap, budget = SmemSizeBytes())
-2. MSA pass — DOES NOT relocate SMEM (SMEM is not kAlternate; FastMemorySpace() = kVmem)
+2. MSA pass — DOES NOT relocate SMEM (SMEM is not kAlternate; FastMemorySpace() is never kSmem — kVmem on VF/GL, kCmem on PF, kHbm on JF)
 3. ProgramMemoryAllocator::AllocateHloBuffer (0x1c62a5a0)
      emits ProgramMemoryMetadata_Allocation{ memory_space = kSmem, offset, size, block_type, name }
 4. proto travels inside the compiled XDB / LLO program
@@ -343,7 +343,7 @@ The decisive divergence is **stage 2**: SMEM is never colored by MSA. A value la
 |---|---|
 | [Memory Hierarchy Overview](overview.md) | Owns the six-region taxonomy and the `MemorySpace` enum; SMEM is `kSmem = 5` |
 | [SMEM Register Window](smem-register-window.md) | The negative result: SMEM has no register window; SREG-file windowing detail |
-| [SFLAG Protocol](sflag-protocol.md) | Sibling `kSflag = 7` tier; its size/word fields neighbour the SMEM fields (`+0x468`, `+0x504`) |
+| [SFLAG Protocol](sflag-protocol.md) | Sibling `kSflag = 6` tier; its size/word fields neighbour the SMEM fields (`+0x468`, `+0x504`) |
 | [CMEM Pool](cmem-pool.md) | Sibling on-chip operand pool (`kCmem`, Pufferfish-only); MSA-managed unlike SMEM |
 | [HBM Allocator](hbm-allocator.md) | The `BestFitAllocator` algorithm SMEM replays at runtime; the shared OOM path |
 | [VMEM Allocator](vmem-allocator.md) | The `kAlternate` MSA-managed tier SMEM is contrasted against |
