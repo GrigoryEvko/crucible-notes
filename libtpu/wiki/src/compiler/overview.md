@@ -20,15 +20,15 @@ For reimplementation, the orientation contract is:
 | | |
 |---|---|
 | **Compiler class** | `xla::jellyfish::DeepseaCompilerBase` (Deepsea = internal TPU backend name) |
-| **HLO pass driver** | `DeepseaCompilerBase::RunHloPasses` @ `0x109152a0`; `xla::TpuCompiler::RunHloPasses` @ `0xeabcd80` |
+| **HLO pass driver** | `xla::jellyfish::DeepseaCompilerBase::RunHloPasses` @ `0x109152a0` (the C `TpuCompiler_RunHloPasses` export @ `0xeabcd80` is its PjRt-side wrapper) |
 | **Phase registry** | `xla::TpuCompiler::RegisterAllPhases` @ `0xf849ec0` |
 | **Phase entry points** | `CompilePhase0StablehloToHlo` `0xf84de60` · `CompilePhase1HloOptimizations` `0xf84ee00` · `CompilePhase2aTlpLowering` `0xf850840` · `CompilePhase2bDedupedLowering` `0xf852180` · `CompilePhase3Linking` `0xf852f40` |
 | **Phase I/O type** | `absl::Span<const xla::PjRtPartialProgramProto>` in / out (PjRt partial-program protocol) |
 | **IR levels** | StableHLO/CHLO/VHLO → XLA HLO → TLP/MHLO + `tpu` dialect → LLO (`jellyfish::Llo*`) → `Bundle` → packed bytes |
 | **MLIR dialects present** | `stablehlo`, `chlo`, `vhlo`, `mhlo`, `tpu` (verified in RTTI: `mlir::{mhlo,tpu,chlo,vhlo,stablehlo}::*`) |
-| **tpu→LLO lowering** | `mlir::tpu::createLowerToLLOPass` @ `0x11203ba0`; `mlir::tpu::LowerPass` family |
+| **tpu→LLO lowering** | `mlir::tpu::createLowerToLLOPass` @ `0x11203ba0` (`LowerToLLOPass`); `mlir::tpu::LowerPassBase` family |
 | **LLO → bundles** | `PackBundles` @ `0x10a30a20` (back end; see Part VIII) |
-| **Mosaic side door** | `tpu_custom_call` HLO → `tpu` dialect via `CanonicalizeMosaicPass`, `MosaicEmitter` |
+| **Mosaic side door** | `tpu_custom_call` HLO → `tpu` dialect via `mlir::tpu::CanonicalizeMosaicPass` / `MosaicSerdePass`; LLO emission via `jellyfish::MosaicEmitter` |
 | **Confidence** | CONFIRMED (byte-anchored) unless a row or callout says otherwise |
 
 ---
@@ -40,14 +40,14 @@ A TPU program is not lowered through one IR but descends through a stack of six,
 ```text
 ┌──────────────────────────────────────────────────────────────────────────┐
 │  LEVEL 0 — PORTABLE WIRE IR (MLIR bytecode, crosses the PjRt boundary)     │
-│    StableHLO (182 ops) · CHLO (77 high-level ops) · VHLO (versioned)       │
+│    StableHLO · CHLO (high-level "client" HLO) · VHLO (versioned)           │
 │    mlir::{stablehlo,chlo,vhlo}::*   — what JAX/the bridge actually ships    │
 └──────────────────────────────────────────────────────────────────────────┘
         │  Phase 0 — CompilePhase0StablehloToHlo  (format crossing, not a pass)
         │  ConvertStablehloToHlo / StablehloLegalizeToHlo / ChloLegalizeToHlo
         ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
-│  LEVEL 1 — XLA HLO   (HloModule / HloInstruction, ~100 HloOpcodes)         │
+│  LEVEL 1 — XLA HLO   (HloModule / HloInstruction, the HloOpcode enum)      │
 │    the optimizer's home: HLO opt passes, layout assignment, fusion, MSA    │
 │    DeepseaCompilerBase::RunHloPasses  0x109152a0                           │
 └──────────────────────────────────────────────────────────────────────────┘
@@ -55,12 +55,12 @@ A TPU program is not lowered through one IR but descends through a stack of six,
         │  TlpLowering → TLPFunction (TPU-Level Program); enters MLIR
         ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
-│  LEVEL 2 — MLIR HIGH/MID   (MHLO 250 ops + TLP) → tpu dialect (157 ops)    │
+│  LEVEL 2 — MLIR HIGH/MID   (MHLO + TLP) → tpu target dialect               │
 │    mlir::mhlo::* → mlir::tpu::*   ;  Mosaic kernels join HERE via          │
-│    tpu_custom_call (CanonicalizeMosaicPass / MosaicEmitter)               │
+│    tpu_custom_call (CanonicalizeMosaicPass / MosaicSerdePass)             │
 └──────────────────────────────────────────────────────────────────────────┘
-        │  mlir::tpu::LowerPass family → createLowerToLLOPass 0x11203ba0
-        │  (DialectConversion legalizers; ApplyVectorLayoutPass; LowerToMlo DMA)
+        │  mlir::tpu::LowerPassBase family → createLowerToLLOPass 0x11203ba0
+        │  (DialectConversion legalizers; ApplyVectorLayoutPass; LowerToMloPass DMA)
         ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
 │  LEVEL 3 — LLO   (jellyfish::LloModule / LloInstruction / LloRegion)       │
@@ -84,11 +84,11 @@ A TPU program is not lowered through one IR but descends through a stack of six,
 
 Levels 0 and 1 are MLIR-bytecode and XLA-HLO respectively; both predate the TPU target and are upstream XLA. StableHLO/CHLO/VHLO are the *portable* wire IRs that the framework bridge (JAX) actually serializes — they are MLIR dialects, but at this point they are payload, not yet under TPU control. Level 1 is classic XLA HLO: the `HloModule`/`HloInstruction` graph that XLA's whole optimizer was written against, with roughly 100 `HloOpcode`s. Phase 0 is the format crossing that imports the portable bytecode into HLO; it is *legalization between equivalent representations*, not an optimization, which is why it is a distinct phase rather than a pass inside Phase 1.
 
-Levels 2 through 5 are TPU-specific. Phase 2a (`CompilePhase2aTlpLowering`, `0xf850840`) is the crossing from `HloInstruction` into MLIR via the TPU-Level Program (TLP) representation — `TlpLowering` builds a `TLPFunction`, and from there the program lives in MLIR dialects (MHLO as the mid-level, then the `tpu` target dialect). The `tpu` dialect (157 ops covering MXU matmul, DMA enqueue/wait, semaphores, vector relayout, pack/unpack, PRNG, and trace) is the TPU's machine dialect. It lowers through `mlir::tpu::LowerPass`/`createLowerToLLOPass` (`0x11203ba0`) into LLO, the `jellyfish::Llo*` family — `LloModule`, `LloInstruction`, `LloRegion`, `LloOpcode`, `LloAllocation`, `LloDependencyGraph` — which is the genuine "machine instruction" level: pre-bundle, post-MLIR, where live-range allocation (LSRAv2) and memory-space placement resolve. The [scheduling back end](../sched/overview.md) then packs LLO into `Bundle`s, and Phase 3 (`CompilePhase3Linking`, `0xf852f40`) finalizes and serializes the `TpuProgram`.
+Levels 2 through 5 are TPU-specific. Phase 2a (`CompilePhase2aTlpLowering`, `0xf850840`) is the crossing from `HloInstruction` into MLIR via the TPU-Level Program (TLP) representation, and from there the program lives in MLIR dialects (MHLO as the mid-level, then the `tpu` target dialect). The `tpu` dialect (covering MXU matmul, DMA enqueue/wait, semaphores, vector relayout, pack/unpack, PRNG, and trace) is the TPU's machine dialect. It lowers through the `mlir::tpu::LowerPassBase` family / `createLowerToLLOPass` (`0x11203ba0`) into LLO, the `jellyfish::Llo*` family — `LloModule`, `LloInstruction`, `LloRegion`, `LloOpcode`, `LloAllocation`, `LloDependencyGraph` — which is the genuine "machine instruction" level: pre-bundle, post-MLIR, where live-range allocation (LSRAv2) and memory-space placement resolve. The [scheduling back end](../sched/overview.md) then packs LLO into `Bundle`s, and Phase 3 (`CompilePhase3Linking`, `0xf852f40`) finalizes and serializes the `TpuProgram`.
 
-> **NOTE — "TLP" and "MHLO" are the same level, not two.** TLP (TPU-Level Program, `TlpLowering`/`TLPFunction`) is the *vehicle* by which the program enters MLIR in Phase 2a; MHLO is the MLIR dialect it is expressed in on arrival. They are not stacked layers — Level 2 is "the MLIR mid-level," and TLP names the import mechanism while MHLO/`tpu` name the dialects. A reimplementer should treat Phase 2a as "HLO → MLIR" and not search for a separate standalone TLP IR with its own op set; the TLP op count was not separately enumerable in the binary (the `tlp.` op-model vtables were not isolated — LOW confidence on TLP having a distinct op enum).
+> **NOTE — "TLP" and "MHLO" are the same level, not two.** TLP (TPU-Level Program) names the Phase 2a import mechanism — its only direct anchors are the phase symbol `CompilePhase2aTlpLowering` (`0xf850840`) and the LLVM-backend predicate `llvm::TPU::isTLPFunction` (`0x13b67a60`); MHLO is the MLIR dialect the program is expressed in on arrival. They are not stacked layers — Level 2 is "the MLIR mid-level," and TLP names the import mechanism while MHLO/`tpu` name the dialects. A reimplementer should treat Phase 2a as "HLO → MLIR" and not search for a separate standalone TLP IR with its own op set; no `tlp.` op-model vtables or a distinct `TlpLowering`/`TLPFunction` type were isolable in the binary (LOW confidence on TLP having a distinct op enum).
 
-> **QUIRK — dialect op counts are deceptively large because the bytecode dialects ship in full.** RTTI shows StableHLO (~182 ops), MHLO (~250 ops, including `mhlo.async_bundle`), CHLO (77 high-level "Customer HLO" ops), and VHLO (~205 versioned ops with `_v1`/`_v2` suffixes) all present as complete op tables. Only a fraction are reachable on the TPU path — VHLO in particular exists purely for *wire-format forward compatibility* (older runtimes ignore newer fields), and most VHLO/CHLO ops are legalized away in Phase 0. A reimplementation that builds handlers for all ~700 combined dialect ops is building for the import surface, not the codegen surface; the codegen surface is the ~100 HLO opcodes plus the 157 `tpu` ops.
+> **QUIRK — the dialect op tables are deceptively large because the bytecode dialects ship in full.** RTTI confirms StableHLO, MHLO (including `mhlo.async_bundle`), CHLO (the high-level "client" HLO), and VHLO (the versioned dialect, with `_v1`/`_v2`-suffixed op names) are all present as complete op tables — each contributes thousands of `mlir::{stablehlo,mhlo,chlo,vhlo}::*` symbols. Only a fraction are reachable on the TPU path — VHLO in particular exists purely for *wire-format forward compatibility* (older runtimes ignore newer fields), and most VHLO/CHLO ops are legalized away in Phase 0. A reimplementation that builds handlers for every dialect op is building for the import surface, not the codegen surface; the codegen surface is the HLO opcodes plus the `tpu` dialect ops. (Exact per-dialect op-enum sizes were not byte-anchored here — string scans of the `<dialect>.` op-name prefixes are contaminated by truncated strings and by type/attribute mnemonics, so no precise op count is asserted.)
 
 ---
 
@@ -116,15 +116,15 @@ Inside the five phases, the actual transformation work clusters into four famili
 
 ### Family 1 — HLO optimization passes (Phase 1)
 
-The classic XLA pass pipeline: algebraic simplification, sharding propagation and SPMD partitioning, dynamic-shape handling, optimization barriers, custom-call lowering, and the long tail of canonicalizations. These run on `HloInstruction` under `RunHloPasses` and are registered/ordered by the HLO pass registry. They are *target-retargeted upstream XLA*: the same pass classes XLA ships for every backend, with TPU-specific enablement driven by the `xla_jf_*` flag family (Jellyfish; ~417 flags), `xla_tpu_*` (pan-TPU codegen), and per-generation prefixes (`xla_sc_*` SparseCore, `xla_vf_*` Viperfish, `xla_gf_*` GXC, `xla_pf_*` Pufferfish). Detail: [HLO Pass Registry](hlo-pass-registry.md), [HLO Pre-Passes](hlo-pre-passes.md), [Algebraic Simplifier](algebraic-simplifier.md), [Sharding Propagation](sharding-propagation.md), [Auto-Sharding / SPMD](auto-sharding-spmd.md), [Dynamic-Shape Support](dynamic-shape-support.md), [Optimization Barrier](optimization-barrier.md), [Custom-Call Lowering](custom-call-lowering.md).
+The classic XLA pass pipeline: algebraic simplification, sharding propagation and SPMD partitioning, dynamic-shape handling, optimization barriers, custom-call lowering, and the long tail of canonicalizations. These run on `HloInstruction` under `RunHloPasses` and are registered/ordered by the HLO pass registry. They are *target-retargeted upstream XLA*: the same pass classes XLA ships for every backend, with TPU-specific enablement driven by the `xla_jf_*` flag family (Jellyfish; the dominant family, hundreds of flags), `xla_tpu_*` (pan-TPU codegen), and per-generation prefixes (`xla_sc_*` SparseCore, `xla_vf_*` Viperfish, `xla_gf_*` 6acc60406, `xla_pf_*` Pufferfish). Detail: [HLO Pass Registry](hlo-pass-registry.md), [HLO Pre-Passes](hlo-pre-passes.md), [Algebraic Simplifier](algebraic-simplifier.md), [Sharding Propagation](sharding-propagation.md), [Auto-Sharding / SPMD](auto-sharding-spmd.md), [Dynamic-Shape Support](dynamic-shape-support.md), [Optimization Barrier](optimization-barrier.md), [Custom-Call Lowering](custom-call-lowering.md).
 
 ### Family 2 — codegen-gating analyses: layout assignment + MSA (Phase 1)
 
-Two analyses commit physical decisions the lowering depends on. **Layout assignment** (`LayoutAssignment`, ~1609 RTTI hits) chooses the tiled memory layout of every tensor — the TPU analogue of choosing data layout for a SIMD machine, except the tiling interacts with the MXU's 128×128 systolic geometry. **MSA** (`MemorySpaceAssignment`, ~549 RTTI hits) is XLA's memory-space assignment: it decides which buffers live in fast VMEM versus HBM and when to prefetch/evict across the tiers, governed by the `xla_msa_*` flag family — it is the TPU's closest analogue to register allocation, but for the memory hierarchy rather than registers. Detail: [Layout Assignment](layout-assignment.md), [MSA Overview](msa-overview.md), [MSA AllocateSegment](msa-allocate-segment.md), [MSA Per-Version Defaults](msa-per-version-defaults.md), [MSA Reservation & HBM Policy](msa-reservation-hbm-policy.md).
+Two analyses commit physical decisions the lowering depends on. **Layout assignment** (`LayoutAssignment`) chooses the tiled memory layout of every tensor — the TPU analogue of choosing data layout for a SIMD machine, except the tiling interacts with the MXU's 128×128 systolic geometry. **MSA** (`MemorySpaceAssignment`) is XLA's memory-space assignment: it decides which buffers live in fast VMEM versus HBM and when to prefetch/evict across the tiers, governed by the `xla_msa_*` flag family — it is the TPU's closest analogue to register allocation, but for the memory hierarchy rather than registers. Detail: [Layout Assignment](layout-assignment.md), [MSA Overview](msa-overview.md), [MSA AllocateSegment](msa-allocate-segment.md), [MSA Per-Version Defaults](msa-per-version-defaults.md), [MSA Reservation & HBM Policy](msa-reservation-hbm-policy.md).
 
 ### Family 3 — fusion (Phase 1)
 
-Fusion clusters elementwise and reduction ops into single kernels to cut memory traffic, priced by a TPU cost model. `HloFusion` (~693 RTTI hits) and the `FusionPipeline` drive it; the profitability decision reads the Part VII cost model. Detail: [Fusion Patterns](fusion-patterns.md), [Fusion Cost Model](fusion-cost-model.md), and the dot/conv → MXU lowering that fusion feeds: [Dot / Conv → MXU Lowering](dot-conv-mxu-lowering.md), [RaggedDot → Convolution](raggeddot-convolution.md).
+Fusion clusters elementwise and reduction ops into single kernels to cut memory traffic, priced by a TPU cost model. `HloFusion` and the `FusionPipeline` drive it; the profitability decision reads the Part VII cost model. Detail: [Fusion Patterns](fusion-patterns.md), [Fusion Cost Model](fusion-cost-model.md), and the dot/conv → MXU lowering that fusion feeds: [Dot / Conv → MXU Lowering](dot-conv-mxu-lowering.md), [RaggedDot → Convolution](raggeddot-convolution.md).
 
 ### Family 4 — MLIR lowering legalizers + schedule/pack back end (Phases 2a/2b/3)
 
@@ -134,11 +134,11 @@ The MLIR-side lowering is a chain of DialectConversion legalizers: MHLO → `tpu
 
 ## The Mosaic Side Channel
 
-Not every `tpu`-dialect program comes from the HLO optimizer. **Mosaic** is a separate kernel compiler that lets hand-written kernels (Pallas/JAX-side) be expressed directly in the `tpu` dialect and embedded into the HLO graph as `tpu_custom_call` ops (294 RTTI hits). On the way down, `CanonicalizeMosaicPass` normalizes the embedded MLIR, `MosaicSerdePass` handles its serialization, and `MosaicEmitter` emits the `tpu`-dialect body that rejoins the main descent at Level 2.
+Not every `tpu`-dialect program comes from the HLO optimizer. **Mosaic** is a separate kernel compiler that lets hand-written kernels (Pallas/JAX-side) be expressed directly in the `tpu` dialect and embedded into the HLO graph as `tpu_custom_call` ops. On the way down, `mlir::tpu::CanonicalizeMosaicPass` normalizes the embedded MLIR and `mlir::tpu::MosaicSerdePass` handles its serialization, so the kernel body rejoins the main descent at the `tpu` dialect (Level 2). The `jellyfish::MosaicEmitter` (`MosaicEmitter::EmitWindow` @ `0xfaadcc0`) is the LLO-level emitter that builds the lowered region (it takes an `LloRegionBuilder`), downstream of that convergence.
 
-The structural point for a reimplementer is that Mosaic is a *second IR producer feeding the same target dialect*, not a parallel back end. A Mosaic kernel skips the entire HLO optimizer (Family 1–3) — it arrives already as `tpu` ops — but it converges with the optimized path at the `tpu` dialect and shares the identical tpu→LLO→bundle descent from there. Mosaic carries its own layout machinery (`mlir::tpu::VectorLayout`, `TiledLayoutAttr`) because its kernels declare their own tiling rather than inheriting layout assignment's choices. `MosaicFusion` lets the surrounding HLO fuse around a custom call, and `MosaicVerificationEnabled` gates an extra verifier. Detail: [Mosaic Overview](mosaic-overview.md), [Mosaic Layout Inference](mosaic-layout-inference.md), [Mosaic VectorLayout](mosaic-vectorlayout.md).
+The structural point for a reimplementer is that Mosaic is a *second IR producer feeding the same target dialect*, not a parallel back end. A Mosaic kernel skips the entire HLO optimizer (Family 1–3) — it arrives already as `tpu` ops — but it converges with the optimized path at the `tpu` dialect and shares the identical tpu→LLO→bundle descent from there. Mosaic carries its own layout machinery (`mlir::tpu::VectorLayout`, `TiledLayoutAttr`) because its kernels declare their own tiling rather than inheriting layout assignment's choices. `MosaicFusion` lets the surrounding HLO fuse around a custom call, and `IsMosaicVerificationEnabled` (`0x14514d40`) gates an extra verifier. Detail: [Mosaic Overview](mosaic-overview.md), [Mosaic Layout Inference](mosaic-layout-inference.md), [Mosaic VectorLayout](mosaic-vectorlayout.md).
 
-> **NOTE — the Mosaic boundary is a real IR seam, and it is where SparseCore also enters.** The SparseCore path (`MosaicSCDialect`, `LowerToSparseCoreLlvm`, `SCTypeConverter`) reuses the same custom-call entry and dialect-conversion machinery to target the SparseCore engines rather than the TensorCore MXU. A reimplementer building only the TensorCore descent will see `tpu_custom_call`s it cannot lower; the custom-call registry routes each call to its emitter by target. See [LowerToSparseCoreLlvm](lower-to-sparsecore-llvm.md) and [SCTypeConverter](sc-type-converter.md), and the [SparseCore Part](../sparsecore/overview.md).
+> **NOTE — the Mosaic boundary is a real IR seam, and it is where SparseCore also enters.** The SparseCore path (`mosaic_sc::MosaicSCDialect`, `LowerToSparseCoreLlvmPass`) reuses the same custom-call entry and dialect-conversion machinery to target the SparseCore engines rather than the TensorCore MXU. Its type lowering is an ordinary `LLVMTypeConverter` augmented with one SC address-space conversion lambda — there is no distinct `SCTypeConverter` symbol, the name is a documentary handle for that augmented converter. A reimplementer building only the TensorCore descent will see `tpu_custom_call`s it cannot lower; the custom-call registry routes each call to its emitter by target. See [LowerToSparseCoreLlvm](lower-to-sparsecore-llvm.md) and [SCTypeConverter](sc-type-converter.md), and the [SparseCore Part](../sparsecore/overview.md).
 
 ---
 
@@ -165,14 +165,14 @@ The remaining Part V pages own the detail this overview only places. Grouped by 
 |---|---|---|
 | Five compile phases named `CompilePhase0..3` (with 2a/2b split) | symbols `CompilePhase0StablehloToHlo` `0xf84de60`, `…1HloOptimizations` `0xf84ee00`, `…2aTlpLowering` `0xf850840`, `…2bDedupedLowering` `0xf852180`, `…3Linking` `0xf852f40` | CONFIRMED |
 | Phases registered by one registry, take/return `PjRtPartialProgramProto` spans | `TpuCompiler::RegisterAllPhases` `0xf849ec0`; phase signatures `absl::Span<const PjRtPartialProgramProto>` | CONFIRMED |
-| HLO pass pipeline driven by `DeepseaCompilerBase::RunHloPasses` | `RunHloPasses` `0x109152a0`; `TpuCompiler::RunHloPasses` `0xeabcd80`; `RunBackendOnModuleInternal`, `LowerHloModuleImpl` | CONFIRMED |
+| HLO pass pipeline driven by `DeepseaCompilerBase::RunHloPasses` | `RunHloPasses` `0x109152a0`; C wrapper `TpuCompiler_RunHloPasses` `0xeabcd80`; `RunBackendOnModuleInternal`, `LowerHloModuleImpl` (seen in `XLA_Timer*` guard variables) | CONFIRMED |
 | IR stack: StableHLO/CHLO/VHLO → HLO → MHLO/`tpu` → LLO → bundles | RTTI `mlir::{stablehlo,chlo,vhlo,mhlo,tpu}::*`; `jellyfish::Llo{Module,Instruction,Region,Opcode}` | CONFIRMED |
 | Phase 0 is a legalization crossing | `ConvertStablehloToHlo`, `StablehloLegalizeToHlo`, `ChloLegalizeToHlo`, `HloLegalizeToStablehlo`, `VhloToVersion` | CONFIRMED |
-| `tpu` dialect lowers to LLO via `LowerPass`/`createLowerToLLOPass` | `mlir::tpu::createLowerToLLOPass` `0x11203ba0`; `mlir::tpu::LowerPass`, `ApplyVectorLayoutPass`, `createLowerToMloPass` | CONFIRMED |
-| Layout assignment, MSA, fusion are the HLO-side codegen families | `LayoutAssignment` (1609), `MemorySpaceAssignment` (549), `HloFusion` (693), `FusionPipeline` | CONFIRMED |
+| `tpu` dialect lowers to LLO via `LowerToLLOPass`/`createLowerToLLOPass` | `mlir::tpu::createLowerToLLOPass` `0x11203ba0`; `mlir::tpu::LowerPassBase`, `ApplyVectorLayoutPass`, `createLowerToMloPass` `0x1322adc0` | CONFIRMED |
+| Layout assignment, MSA, fusion are the HLO-side codegen families | `LayoutAssignment`, `MemorySpaceAssignment`, `HloFusion`, `FusionPipeline` symbols present | CONFIRMED |
 | LLO is packed to bundles by the back end | `PackBundles` `0x10a30a20`; `jellyfish::BundlePacker`, `GlobalBundlePacker` | CONFIRMED |
-| Mosaic enters the `tpu` dialect via `tpu_custom_call` | `tpu_custom_call` (294), `CanonicalizeMosaic`, `MosaicEmitter`, `MosaicSerdePass`, `MosaicFusion` | CONFIRMED |
-| TLP is the HLO→MLIR import vehicle, same level as MHLO (no separate op enum) | `TlpLowering`, `TLPFunction`, `TlpWithCalls`; no isolable `tlp.` op-model vtables | LOW |
+| Mosaic enters the `tpu` dialect via `tpu_custom_call` | `tpu_custom_call` strings, `CanonicalizeMosaicPass`, `MosaicEmitter`, `MosaicSerdePass`, `MosaicFusion` | CONFIRMED |
+| TLP is the HLO→MLIR import vehicle, same level as MHLO (no separate op enum) | phase symbol `CompilePhase2aTlpLowering` `0xf850840`, `llvm::TPU::isTLPFunction` `0x13b67a60`; no isolable `tlp.` op-model vtables or standalone `TlpLowering`/`TLPFunction` type | LOW |
 | Phase 2b key is cross-region lowered-output deduplication | name `CompilePhase2bDedupedLowering` + LLO-in/LLO-out position; dedup key not traced | MEDIUM |
 
 ---
@@ -187,7 +187,7 @@ The remaining Part V pages own the detail this overview only places. Grouped by 
 - [MSA Overview](msa-overview.md) — Family 2: memory-space assignment across the VMEM/HBM tiers.
 - [Fusion Patterns](fusion-patterns.md) — Family 3: kernel clustering and its cost-model profitability gate.
 - [MHLO → XTile → tpu](mhlo-xtile-tpu-lowering.md) — Family 4: the HLO→MLIR mid-level lowering inside Phase 2a.
-- [The tpu MLIR Dialect](tpu-dialect-and-ops.md) — the 157-op TPU target dialect, the convergence point of the optimizer and Mosaic paths.
+- [The tpu MLIR Dialect](tpu-dialect-and-ops.md) — the TPU target dialect, the convergence point of the optimizer and Mosaic paths.
 - [tpu → LLO Lowering](tpu-to-llo-ods.md) — Family 4: the `createLowerToLLOPass` descent into the LLO machine IR.
 - [Mosaic Overview](mosaic-overview.md) — the side-channel kernel compiler that feeds the `tpu` dialect directly via `tpu_custom_call`.
 - [TpuProgram Serialization](tpu-program-serialization.md) — Phase 3: how the packed bundle stream serializes into a `TpuProgram`.
