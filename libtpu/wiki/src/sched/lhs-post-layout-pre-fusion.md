@@ -4,7 +4,7 @@
 
 ## Abstract
 
-The **post_layout_pre_fusion** variant is the `LatencyHidingScheduler` (LHS) as it *would* sit at the `"Pre main fusion"` slot of `HloOptimizeAfterLayoutAssignment` (`0x10962660`) — the scheduler that runs after layout assignment but **before** the dedicated `"Main fusion"` pipeline, so that it schedules still-unfused ops and the resulting overlap profile can inform the fusion pass. The defining finding of this page is negative and load-bearing for any reimplementer: **in v0.0.40 this slot is not wired.** The `"Pre main fusion"` `HloPassPipeline` (built at line 1169 of `HloOptimizeAfterLayoutAssignment`) contains no `AddPass<LatencyHidingScheduler>`, and `HloOptimizeAfterLayoutAssignment` never calls `RunHloScheduler`. Every reachable `AddPass<LatencyHidingScheduler>` lives in `RunHloScheduler` (`0x1096fac0`), which is Phase 7 — *after* main fusion — and is the canonical [`post_layout`](lhs-post-layout.md) pass.
+The **post_layout_pre_fusion** variant is the `LatencyHidingScheduler` (LHS) as it *would* sit at the `"Pre main fusion"` slot of `HloOptimizeAfterLayoutAssignment` (`0x10962660`) — the scheduler that runs after layout assignment but **before** the dedicated `"Main fusion"` pipeline, so that it schedules still-unfused ops and the resulting overlap profile can inform the fusion pass. The defining finding of this page is negative and decisive for any reimplementer: **in v0.0.40 this slot is not wired.** The `"Pre main fusion"` `HloPassPipeline` (built at line 1169 of `HloOptimizeAfterLayoutAssignment`) contains no `AddPass<LatencyHidingScheduler>`, and `HloOptimizeAfterLayoutAssignment` never calls `RunHloScheduler`. Every reachable `AddPass<LatencyHidingScheduler>` lives in `RunHloScheduler` (`0x1096fac0`), which is Phase 7 — *after* main fusion — and is the canonical [`post_layout`](lhs-post-layout.md) pass.
 
 The reason the slot is dead is structural, not accidental. The shared `RunImpl` (`0x136321a0`) opens with a `LogMessageFatal` on `!module->has_schedule()` — *"LatencyHidingScheduler expects a base schedule that minimizes memory pressure."* That base schedule is produced by `HloMemorySchedulerWithBrkgaFallback`, which is added only inside `RunHloScheduler` (line 567). At the pre-fusion slot no prior memory schedule exists, so a live LHS there would abort the compile. The `"Pre main fusion"` pipeline therefore *cannot* host the canonical OSS LHS, and the only collective-/schedule-adjacent work it does run is `CollectivePipeliner` and its cleanups — none of which add the LHS.
 
@@ -51,8 +51,9 @@ DeepseaCompilerBase::RunHloPasses  (0x1093a420)
              CollectivePipeliner + PipeliningCleanups         (collective-adjacent; no AddPass<LHS>)
              (60+ inline AddPass<...> sites — none is LatencyHidingScheduler)
          "Main fusion"             HloPassPipeline   (line 2279)
-         PostMainFusionHloOptimize (0x10966560)               [Phase 6 tail]
-  RunHloScheduler  (0x1096fac0)                               [Phase 7] ← the live LHS
+         PostMainFusionHloOptimize (0x10966560)               [Phase 6 tail; called at line 2614]
+  PostOptimizationPipeline  (0x1093fd40)                      [Phase 7 driver; called from RunHloPasses line 1987]
+    └─ RunHloScheduler  (0x1096fac0)                          [Phase 7] ← the live LHS
 ```
 
 > **NOTE —** the `"Post layout assignment"` pipeline name is not a single `.rodata` C-string; it is assembled by an inline 16-byte SSO store whose tail `"signment"` is the literal at `0x10962660` line 707 (`strcpy(&v342[14], "signment")`). The same stack-built-string idiom hides the pipeline names in `RunHloScheduler` (`final_scheduler` / `async_scheduling`); see [`post_layout`](lhs-post-layout.md). A reimplementer grepping the binary for `"Post layout assignment"` will not find it.
@@ -68,7 +69,7 @@ DeepseaCompilerBase::RunHloPasses  (0x1093a420)
 //   and never invokes RunHloScheduler (Phase 7 is a sibling call, not nested here).
 ```
 
-`RunHloScheduler` is *not* reached from inside `HloOptimizeAfterLayoutAssignment`; it is a separate Phase-7 call in `RunHloPasses`. The canonical `AddPass<LatencyHidingScheduler>` template body (`0x10975c40`) is referenced from exactly one function in the entire decompile — `RunHloScheduler` — at two mutually-exclusive sites (lines 1137 and 1411), both *after* `"Main fusion"`. There is no pre-fusion instantiation to configure.
+`RunHloScheduler` is *not* reached from inside `HloOptimizeAfterLayoutAssignment`; it is a separate Phase-7 call, driven by `PostOptimizationPipeline` (`0x1093fd40`), which `RunHloPasses` invokes at line 1987 — after the Phase-6 `HloOptimizeAfterLayoutAssignment` call returns. The canonical `AddPass<LatencyHidingScheduler>` template body (`0x10975c40`) is referenced from exactly one function in the entire decompile — `RunHloScheduler` — at two mutually-exclusive sites (lines 1137 and 1411), both *after* `"Main fusion"`. There is no pre-fusion instantiation to configure.
 
 ---
 
@@ -280,7 +281,8 @@ The single live LHS in v0.0.40 is `post_layout`. This variant is the same `RunIm
 | Function | Address | Role | Confidence |
 |---|---|---|---|
 | `HloOptimizeAfterLayoutAssignment` | `0x10962660` | Phase-6 driver; builds `"Pre main fusion"` pipeline (line 1169) — no LHS added | HIGH |
-| `RunHloScheduler` | `0x1096fac0` | Phase-7 driver; the only LHS `AddPass` sites (1137 / 1411) | HIGH |
+| `PostOptimizationPipeline` | `0x1093fd40` | Phase-7 driver; calls `RunHloScheduler` (reached from `RunHloPasses` line 1987) | HIGH |
+| `RunHloScheduler` | `0x1096fac0` | The only LHS `AddPass` sites (1137 / 1411); built by `PostOptimizationPipeline` | HIGH |
 | `LatencyHidingScheduler::RunImpl` | `0x136321a0` | Shared pass body; `has_schedule()` FATAL at line 280, retry loop | HIGH |
 | `GetSchedulerConfig` | `0x10974aa0` | 137-byte `SchedulerConfig`; `v45 = env[4097]` at line 29 | HIGH |
 | `GetLatencyEstimator` | `0x10974e00` | Approximate / CostModel / PGLE selection (byte 123) | HIGH |
