@@ -133,7 +133,7 @@ RecordHloCycles(inst, window, rv, fs, nesting):       // sub_130BBFE0
             Acc(R5, elems × 9.0);                                 // VectorAluAny
       case 0x47 logistic:   /* sigmoid micro-sequence */
             Acc(GetResource(CT 0x12)=R4, elems × thru(CT 0x12));
-            Acc(R5, (elems×2) × thru(CT 0x14));                   // via GetResource(CT 0x14)
+            Acc(GetResource(CT 0x14)=R3, (elems×2) × thru(CT 0x14));  // VectorAlu0, same slot as multiply
             Acc(R6, elems × thru(CT 0x1a));                       // VectorEup, lane-cmp
       case 0x38 erf:        if isExtPrecPath(inst):               // vtable+312(11)
                                 Acc(R6, elems × thru(CT 0x11));   // single VectorEup deposit
@@ -147,7 +147,7 @@ RecordHloCycles(inst, window, rv, fs, nesting):       // sub_130BBFE0
                             else: /* no deposit — free */
       case 0x6c select:     Acc(R5, elems × 2.0);                 // read both branches + pred
       case 0x52 parameter:  if IsFused(inst): /* RecordFusionInputCycles → MemXfer */
-                            else: Acc(R5, elems);
+                            else: /* no deposit — non-fused param is free */
       case 0x5b reduce:     if IsFused(inst): Acc(R5, elems);
                             else: w = GetInputWindow(inst); Acc(R5, Product(w));  // operand window
       case 0x18,0x1a,0x27,0x29,0x43,0x61,0x81: /* ZERO — no deposit */
@@ -170,11 +170,11 @@ RecordHloCycles(inst, window, rv, fs, nesting):       // sub_130BBFE0
 | `0x4b` multiply | `0x130bc4dd` | `CT 0x14`→`R3` | `elems × thru(0x14)` | CERTAIN |
 | `0x7b` subtract | `0x130bc4af` | float: `CT 0x13`→`R4`; int: `R5` | `elems × thru(0x13)` | CERTAIN |
 | `0x32` divide | `0x130bc3cf` | `R6` + `CT 0x14`→`R3` + `CT 0x12`→`R4` + `R5` | 4-deposit; `×3.0`(R3), `×2`(R4 elems), `×9.0`(R5) | CERTAIN |
-| `0x47` logistic | `0x130bc17b` | `CT 0x12`→`R4`, `CT 0x14`→`R5`, `CT 0x1a`→`R6` | sigmoid seq; `×2`(R5 elems) | HIGH |
+| `0x47` logistic | `0x130bc17b` | `CT 0x12`→`R4`, `CT 0x14`→`R3`, `CT 0x1a`→`R6` | sigmoid seq; `×2`(R3 elems) | HIGH |
 | `0x38` erf | `0x130bc245` | fast: `CT 0x11`→`R6`; slow: `R6`+`R3`+`R4`+`R5` | gated; slow `×16.0`(R3), `×2`(R4), `×4.0`(R5) | HIGH |
 | `0x2a` convert | `0x130bc293` | 1-bit: `R5`; else none | 1-bit: `elems × 2.0`; wider: 0 | CERTAIN |
 | `0x6c` select | `0x130bc2a9` | `R5` (`LABEL_26` ×2 path) | `elems × 2.0` | CERTAIN |
-| `0x52` parameter | `0x130bc2b8` | fused→`RecordFusionInputCycles`; else `R5` | fused: input-DMA into MemXfer; else `elems` | MEDIUM |
+| `0x52` parameter | `0x130bc2b8` | fused→`RecordFusionInputCycles`; else none | fused: input-DMA into MemXfer; non-fused: `0` | CERTAIN |
 | `0x5b` reduce | `0x130bc2f9` | `R5` over operand window | priced over reduced-OVER input window | HIGH |
 | DEFAULT (most ops) | `0x130bc3c0` | `R5` `VectorAluAny` | `elems × 1.0` | CERTAIN |
 | ZERO-cost | `0x130bc8c2` | (no deposit) | `0` | CERTAIN |
@@ -198,7 +198,7 @@ The routing across the three `VectorAlu` slots is the port-balancing input to th
 
 > **QUIRK —** the bundle model prices a `broadcast` (`0x1a`) at **zero** here, even though [NormalizedComputationCost](normalized-computation-cost.md) may charge a cross-lane-movement weight for the same op on the fusion-priority side. The two models disagree on layout ops by design: the bundle path treats a broadcast as a free register splat (no functional-unit occupancy), while the priority model accounts for the data movement. Do not unify them.
 
-`parameter` and `reduce` route *out* of the ALU lanes. A fused `parameter` is an input-DMA priced by `RecordFusionInputCycles` (@ `0x130ce940`) into the `MemXfer` slots `R9..12`; whether VMEM-resident params instead route to `R7` `VectorLoad` per memory space is not byte-confirmed (MEDIUM). A non-fused `reduce` is priced over its *operand* window via `GetInputWindow` (so cost scales with the large reduced-over tensor, not the small output) — the bundle-side mirror of `HandleReduce`'s `ExtentProduct(operand)` flop formula below.
+`parameter` and `reduce` route *out* of the ALU lanes. A fused `parameter` is an input-DMA priced by `RecordFusionInputCycles` (@ `0x130ce940`) into the `MemXfer` slots `R9..12`; whether VMEM-resident params instead route to `R7` `VectorLoad` per memory space is not byte-confirmed (MEDIUM). A **non-fused** `parameter` deposits nothing — `case 0x52` falls straight to the finish path (`if (!IsFused) goto LABEL_77`), so a top-level argument carries zero functional-unit cost. A non-fused `reduce` is priced over its *operand* window via `GetInputWindow` (so cost scales with the large reduced-over tensor, not the small output) — the bundle-side mirror of `HandleReduce`'s `ExtentProduct(operand)` flop formula below.
 
 ---
 
