@@ -25,7 +25,7 @@ For reimplementation, the contract is:
 | **Common header** | `{ size_t struct_size; uint32 type; uint32 _pad; PJRT_Extension_Base* next; }`, fn-ptrs from `+0x18` — see [Extension Chain](extension-chain.md#the-node-layout) |
 | **Builder** | `pjrt::tpu_plugin::GetTpuPjrtApi` @ `0xE6AA440` (one `__cxa_guard` + `Create*Extension` call per node) |
 | **Per-method compat gate** | `pjrt::ActualStructSizeIsGreaterOrEqual` @ `0xF8A4EC0` |
-| **Largest here** | Megascale (18), 248 bytes, 24 live + 5 reserved-NULL slots |
+| **Largest here** | Megascale (18), 248 bytes, 23 live + 5 reserved-NULL slots |
 | **Smallest here** | HostMemoryAllocator (23), 32 bytes, 1 method |
 | **Deliberately absent** | FFI (5), Stream (3), Custom_Partitioner (2), Triton — roles subsumed by Callback (14) + TpuExecutable (17) |
 
@@ -277,9 +277,9 @@ The largest extension here and the multi-pod data-center-network (DCN) runtime c
 | | |
 |---|---|
 | **Storage VA** | `0x224C3D08` |
-| **struct_size** | 248 (`(248-24)/8 = 28` slots: 24 live + 5 reserved-NULL, less the header overlap) |
+| **struct_size** | 248 (`(248-24)/8 = 28` slots: 23 live + 5 reserved-NULL) |
 | **Reserved slots** | `+0x40`..`+0x60` — zeroed at construction (`vmovups ymm0` over `+0x40..+0x5F`, then `movq $0` at `+0x60`) |
-| **TPU-injected** | all 24 live slots are anon-namespace TPU implementations |
+| **TPU-injected** | all 23 live slots are anon-namespace TPU implementations |
 
 ```text
 +0x18  CreateClientContextFromPjRtClient   0xE6B9920    +0x88  DeviceId_To_MegascaleId            0xE6BA8E0
@@ -336,7 +336,7 @@ The most TPU-specific compiled-executable surface: target-argument and HLO-modul
 
 `IsTpuPredeterminedError` (min 0x2F, cur 0x19) parses a serialized `tensorflow::StatusProto` (args `+0x08`/`+0x10`), converts to `absl::Status` via `tsl::StatusFromProto` @ `0xF8BB9E0`, calls `tpu_executable_extension::IsTpuPredeterminedError(absl::Status)` @ `0xE6DE4A0`, and writes a `bool` to args `+0x18`. It classifies whether a runtime error is "predetermined" (detectable before execution) for fault-tolerant restart logic in megascale training.
 
-> **NOTE —** `SetTpuCompilationEnv` and `IsTpuPredeterminedError` share a TPU compilation-env error string at `.rodata` file offset `0x877CD0F`. Both are the FFI-substitute channels named on [Extension Chain](extension-chain.md#the-pjrt_extension_type-enum): a framework that cannot find an FFI extension uses these to push compiler config and read fault classification.
+> **NOTE —** `SetTpuCompilationEnv` and `IsTpuPredeterminedError` share the same `.rodata` source-location string at VA `0x877CD0F` — the `tpu_executable_extension.cc` source-file path passed as the `absl::SourceLocation` argument to their status constructors, not an error message. Both are the FFI-substitute channels named on [Extension Chain](extension-chain.md#the-pjrt_extension_type-enum): a framework that cannot find an FFI extension uses these to push compiler config and read fault classification.
 
 ---
 
@@ -391,7 +391,7 @@ Host-side callbacks fired on TPU slice-builder fault events — the libtpu host-
 
 ### HostAllocator — type 15, 48 bytes
 
-The TPU pinned-host memory allocator used for device-host DMA staging — distinct from the generic [HostMemoryAllocator](#hostmemoryallocator--type-23-32-bytes) (type 23) at the chain head. All three slots are `tpu_plugin::` TPU implementations injected as creator parameters. Creator `pjrt::CreateHostAllocatorExtension(node, prefalign_fn, alloc_fn, free_fn, next)` @ `0xF8A3C20` — note the creator writes the three TPU pointers from its `a3`/`a4`/`a5` arguments directly.
+The TPU pinned-host memory allocator used for device-host DMA staging — distinct from the generic [HostMemoryAllocator](#hostmemoryallocator--type-23-32-bytes) (type 23) at the chain head. All three slots are `tpu_plugin::` TPU implementations injected as creator parameters. Creator `pjrt::CreateHostAllocatorExtension(node, next, prefalign_fn, alloc_fn, free_fn)` @ `0xF8A3C20` — `node` is the return slot, `next` (`a2`) goes to `+0x10`, and the creator writes the three TPU pointers from its `a3`/`a4`/`a5` arguments to `+0x18`/`+0x20`/`+0x28` directly.
 
 | | |
 |---|---|
