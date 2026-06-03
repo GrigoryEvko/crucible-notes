@@ -28,7 +28,7 @@ For reimplementation, the contract is:
 | **`PJRT_Event_OnReady`** | slot 14 · `pjrt::PJRT_Event_OnReady` @ `0xf86fc60` (args min 18 / cur 40) |
 | **`PJRT_Event_Create`** | slot 131 · `pjrt::PJRT_Event_Create` @ `0xf86fe00` (args min 17 / cur 24) |
 | **`PJRT_Event_Set`** | slot 132 · `pjrt::PJRT_Event_Set` @ `0xf86ffa0` (args min 14 / cur 48) |
-| **Readiness flag** | `AsyncValue` state byte at `av+8`, bit `& 2` = concrete (value available) |
+| **Readiness flag** | `AsyncValue` state qword at `av+8`, bit `& 2` = concrete (value available) |
 | **Allocated flag** | status-rep / async-value low bit (`& 1`) or `byte[+4] & 8` = heap-owned; gates refcount drop |
 | **Evidence grade** | Reimplementation-grade / byte-confirmed against IDA decompile |
 
@@ -201,14 +201,17 @@ function PJRT_Event_OnReady(args):
         while (av->byte[+4] & 3) != 0:               // walk the indirect-value chain
             av = av->qword[+16]                       //   IndirectAsyncValue -> concrete target
         status = av->qword[+64]                       // the resolved StatusRep* (or OK sentinel)
-        if (status & 1) != 0:                         // heap StatusRep
-            AtomicIncrement(status)
+        if (status & 1) != 0:                         // low-tag set: inline/OK-style status (no refcount)
+            if status == OK:                          //   &dword_0 + 1 -> success
+                callback(nullptr, user_arg)
+            else:
+                callback(box_error(status), user_arg) // <-- inline, on THIS thread
+        else:                                         // low-tag clear: heap StatusRep -> manage refcount
+            AtomicIncrement(status)                   // bump for the boxed PJRT_Error*
             err = box_error(status)
-            AtomicIncrement(status)
+            AtomicIncrement(status)                   // bump for the callback's owned ref
             callback(err, user_arg)                   // <-- inline, on THIS thread
-            StatusRep::Unref(status)
-        else:                                         // OK sentinel
-            callback(nullptr, user_arg)
+            StatusRep::Unref(status)                  // drop OnReady's own ref
         return ok
 
     else:                                            // NOT YET -> enqueue a waiter node
@@ -232,7 +235,7 @@ Three reimplementation-critical mechanisms in this one function.
 
 ### Relationship to `FutureBase::AndThen`
 
-The C-ABI `OnReady` is a hand-inlined `xla::PjRtFuture<void>::OnReady`, which upstream is `FutureBase<absl::Status>::AndThen(callback)`. The functions table confirms the linkage: the two `EnqueueWaiter<...FutureBase<absl::Status,false>::AndThen<...PJRT_Event_OnReady::$_0>...>` instantiations (`0xf87a580`, `0xf87a5c0`) are the materialised waiter-node types for the `OnReady` callback closure. The decompile inlines the available-case fast path rather than always calling `AndThen`; the enqueued case is the generic `AndThen` waiter node.
+The C-ABI `OnReady` is a hand-inlined `xla::PjRtFuture<void>::OnReady`, which upstream is `FutureBase<absl::Status>::AndThen(callback)`. The symbol table confirms the linkage: the `tsl::AsyncValue::EnqueueWaiter<...FutureBase<absl::Status,false>::AndThen<...PJRT_Event_OnReady::$_0>...>::Node` type — the waiter node minted in the enqueued path — emits its two out-of-line virtual methods at `0xf87a580` (`~Node`, the deleting destructor) and `0xf87a5c0` (`RunWaiterAndDeleteWaiterNode`, the fire-and-free entry the value's waiter list calls), with its vtable at `0x2177e058` (the stored vptr is `off_2177E068`, +0x10 past the offset-to-top / typeinfo header). The decompile inlines the available-case fast path rather than always calling `AndThen`; the enqueued case allocates exactly this node type.
 
 > **QUIRK —** the callback receives a `PJRT_Error*`, not a bool. On success it is `nullptr`; on error it is a freshly-boxed `StatusRep` the callback **owns and must destroy** with `PJRT_Error_Destroy`. The inline path bumps the status refcount twice and `Unref`s once around the call, leaving exactly one ref for the callback to release — a reimplementation that forgets to box (or that hands the same `StatusRep*` to multiple callbacks without ref-bumping) double-frees the status.
 
