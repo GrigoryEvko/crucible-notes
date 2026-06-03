@@ -1,6 +1,6 @@
 # Dispatch-Table Taxonomy
 
-> *All addresses, section names, strides, and counts on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel: a 781,691,048-byte ELF64 shared object, build-id `89edbbe81c5b328a958fe628a9f2207d`, reported plugin version `0.103`. Other wheels differ in every address.*
+> *All addresses, section names, strides, and counts on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel: a 781,691,048-byte ELF64 shared object, build-id `89edbbe81c5b328a958fe628a9f2207d` (the only unambiguous version anchor — pin to it). The package metadata reports version `0.0.40`; a `0.103` plugin version is carried by surrounding tooling but is **not** observable as a literal string in the binary, so it is not used as a static anchor here. Other wheels differ in every address.*
 
 ## Abstract
 
@@ -20,8 +20,9 @@ structural signature of each class — what a member table looks like in memory
 (stride, entry kind, who indexes it, which section it lives in) — and a
 representative address per class. The single most important structural fact is
 that this is a PIE: in the file image the vtable slots are *zero*, and the real
-targets are the addends of 924,033 `R_X86_64_RELATIVE` relocations the loader
-applies into `.data.rel.ro`. IDA's table sidecar has already resolved each slot
+targets are the addends of the `R_X86_64_RELATIVE` relocations the loader applies
+— 924,033 of the binary's relocations (1,069,006 of them `RELATIVE`) land in
+`.data.rel.ro`. IDA's table sidecar has already resolved each slot
 through its relocation, so the recovered `target_func` names are post-load truth.
 
 The frame of reference is the Itanium C++ ABI. Every "true" table is a vtable
@@ -53,10 +54,10 @@ For reimplementation, the contract is:
 | **Section split** | `.data.rel.ro` 38,664 · `.data` 1,442 · `.rodata` 207 |
 | **Switch jump tables (separate)** | 33,016 / 4,673,757 case targets |
 | **"vtable for" RTTI records** | 39,155 (of 160,566 RTTI records total) |
-| **Relocations (all `R_X86_64_RELATIVE`)** | 1,069,603 (924,033 in `.data.rel.ro`) |
+| **`R_X86_64_RELATIVE` relocations** | 1,069,006 (`DT_RELACOUNT`; 924,033 in `.data.rel.ro`) |
 | **Largest table** | `0x223393a0` — 2,595 entries (`UniqueFunctionBase`, `.data`) |
 | **Op-Model fingerprint** | size-23: 6,129 tables, 6,050 carry a `Model` entry |
-| **Taxonomy classes** | 19, covering 99.6% (157 residual auto-named) |
+| **Taxonomy classes** | 19 rows = 18 attributed classes (99.6%) + 1 residual (157 / 0.4%) |
 
 ---
 
@@ -84,8 +85,8 @@ the table's address point in its hidden vptr field, and a virtual call loads slo
 (40,313 + 33,016) is meaningless.
 
 > **GOTCHA —** the headline "40,313 tables" is the function-pointer count *only*.
-> It is not the switch count (33,016), not the relocation count (1,069,603), and
-> not the "vtable for" RTTI-symbol count (39,155). A reimplementer who reads
+> It is not the switch count (33,016), not the `R_X86_64_RELATIVE` relocation count
+> (1,069,006), and not the "vtable for" RTTI-symbol count (39,155). A reimplementer who reads
 > "40,313 dispatch tables" as "40,313 vtables" is close but wrong by ~1,158: the
 > figure includes type-erasure pools and C-runtime tables that are not vtables.
 
@@ -97,15 +98,23 @@ the loader patches them at load time through `R_X86_64_RELATIVE` relocations who
 addend is the real target VA. The relocation distribution proves where the tables
 live:
 
-| Section | Relocations | Role |
-|---|---:|---|
-| `.data.rel.ro` | 924,033 | const-after-reloc vtables + RTTI thunks | 
-| `.data` | 131,596 | runtime-mutable pools (`UniqueFunctionBase`, libpfm4) |
-| `.got` / `.got.plt` | 6,641 | GOT entries for cross-module indirection |
-| all others | 7,333 | `.ldata`, `.init_array`, `__rseq_cs`, … |
+| Section | Relocs (all types) | of which `RELATIVE` | Role |
+|---|---:|---:|---|
+| `.data.rel.ro` | 924,033 | 924,015 | const-after-reloc vtables + RTTI thunks |
+| `.data` | 131,596 | 131,590 | runtime-mutable pools (`UniqueFunctionBase`, libpfm4) |
+| `.got` / `.got.plt` | 6,698 | 6,069 | GOT entries for cross-module indirection |
+| all others | 7,332 | 7,332 | `.ldata` (3,507), `.init_array` (2,471), `.tbss`/misc |
 
-All 1,069,603 relocations are type `12` (`R_X86_64_RELATIVE`). The Itanium-ABI
-vtable layout, per class `X`, is therefore:
+`R_X86_64_RELATIVE` is the dominant relocation type but not the only one. The
+binary's `.rela.dyn` + `.rela.plt` hold **1,069,659** relocation entries total, of
+which **1,069,006** are `R_X86_64_RELATIVE` (the count `DT_RELACOUNT` reports;
+relocation code `12` in `readelf -rW`) — the loader-fill addends that populate the
+zero-in-file vtable slots. The remaining 653 are non-fill types (473 `JUMP_SLOT`,
+99 `GLOB_DAT`, 57 `DTPMOD64`, 24 `R_X86_64_64`) and do not address dispatch-table
+slots. The 924,033 / 131,596 section anchors are the *all-type* reloc counts (and
+match `index.md`/`overview.md`); only 18 and 6 of those, respectively, are
+non-`RELATIVE`. Every "target" count on this page is post-`RELATIVE`-relocation.
+The Itanium-ABI vtable layout, per class `X`, is therefore:
 
 ```text
 _ZTV<X> + 0x00   offset-to-top   (0 for a primary vtable)
@@ -138,7 +147,7 @@ signature.
 | F  | `mlir::` vtables (non-Op-Model) | 4,270 | 10.6% | 8 | 108 | `.data.rel.ro` | 8 B vtable; pass/dialect/interface objects | HIGH |
 | I  | `llvm::` vtables | 2,611 | 6.5% | 10 | 336 | `.data.rel.ro` | 8 B vtable; TargetLowering/ISel/passes | HIGH |
 | D  | dnnl / Xbyak JIT vtables | 2,289 | 5.7% | 10 | 29 | `.data.rel.ro` | 8 B vtable; JIT primitive + code-gen | HIGH |
-| G  | `xla::` / `stablehlo::` vtables | 2,154 | 5.3% | 6 | 266 | `.data.rel.ro` | 8 B vtable; incl. 7× 266-slot per-gen Target | HIGH |
+| G  | `xla::` / `stablehlo::` vtables | 2,154 | 5.3% | 6 | 266 | `.data.rel.ro` | 8 B vtable; incl. 6× 266-slot per-gen Target | HIGH |
 | H  | `tensorflow::` / `tsl::` vtables | 2,153 | 5.3% | 7 | 89 | `.data.rel.ro` | 8 B vtable; grappler/runtime objects | HIGH |
 | P  | abseil hash-container policy thunks | 2,066 | 5.1% | 7 | 447 | `.data.rel.ro` | 8 B; type-erased `flat/node_hash` policy | HIGH |
 | O  | long-tail named-namespace vtables | 1,866 | 4.6% | 6 | 111 | `.data.rel.ro` | 8 B vtable; ~150 small namespaces | MEDIUM |
@@ -228,8 +237,20 @@ tables with >=1 Model entry (any size) .. 6,070
 
 | Address | Section | Entries | First symbol | Confidence |
 |---|---|---:|---|---|
-| `0xa2c33e0` | `.rodata`/`.data.rel.ro` | 23 | `RegisteredOperationName::Model<…ROCDL…>` | HIGH |
-| `0x215fca68` | `.data.rel.ro` | 23 | `RegisteredOperationName::Model<…>` | HIGH |
+| `0x219bfbe8` | `.data.rel.ro` | 23 | `mlir::RegisteredOperationName::Model<mlir::ROCDL::BlockIdXOp>` | HIGH |
+| `0x219d4e48` | `.data.rel.ro` | 23 | `mlir::RegisteredOperationName::Model<xla::PureCallOp>` | HIGH |
+
+> **CORRECTION (DISP-5) —** the two Class A representative addresses were
+> previously given as `0xa2c33e0` and `0x215fca68`, neither of which is a
+> `Model<Op>` vtable. `0xa2c33e0` falls *inside* the `asic_sw::…profiler` PMU
+> `kCmq_lookup` C-table (`.rodata`, base `0xa2c33c0`); `0x215fca58` is the
+> `_ZTV` for `xla::MegaScalePjRtDevice` — one of the 79 size-23 *non*-Model
+> coincidences this very page flags. The correct anchors are the address points
+> (`_ZTV+0x10`) of confirmed `Model<Op>` vtables: `0x219bfbe8`
+> (`_ZTVN4mlir23RegisteredOperationName5ModelINS_5ROCDL10BlockIdXOpEEE`, 23 slots,
+> `.data.rel.ro`) and `0x219d4e48` (`Model<xla::PureCallOp>`, 23 slots). The
+> binary carries exactly **6,050** `vtable for …RegisteredOperationName::Model<…>`
+> symbols, confirming the size-23/with-Model count below.
 
 The dialect distribution skews hard toward the TPU/sparse-core dialects — the
 top contributors by Op-Model count are `sparse_core`, `TF`, `spirv`, `ROCDL`,
@@ -274,8 +295,8 @@ lane-cluster partition of the 9,932 Class E tables:
 
 | Address | Section | Entries | First symbol | Confidence |
 |---|---|---:|---|---|
-| `0x21e0d0a0` | `.data.rel.ro` | 674 | `asic_sw::deepsea::gxc::gfc::isa::TensorCoreVectorAluCompact` | HIGH |
-| `0x21e0d0a0…` | `.data.rel.ro` | 674/623/620 | per-lane-cluster `TensorCoreVectorAluCompact` encoders | HIGH |
+| `0x21e0d0a0` | `.data.rel.ro` | 674 | `asic_sw::deepsea::gxc::gfc::isa::TensorCoreVectorAlu::Compact` (vtable `_ZTV…+0x10`) | HIGH |
+| `0x21e0d0a0…` | `.data.rel.ro` | 674/623/620 | per-lane-cluster `TensorCoreVectorAlu::Compact` encoders | HIGH |
 
 ---
 
@@ -390,7 +411,8 @@ arity, one per generation/lane-cluster:
 ```text
 5x *CycleTable vtables {Jf,Pf,Vf,Glc,Gfc}   0x21c1ffc8 .. 0x21c201d8, 5 slots each
    TpuCodec{Jellyfish..Ghostlite} 6-slot      0x21d35810 ..
-7x jellyfish Target/JellyfishTarget 266-slot  0x21cc6358 .. 0x21cce6b0  (Class G)
+6x jellyfish 266-slot Target vtables           0x21cc6358 .. 0x21cce6b0  (Class G)
+   {Dragonfish,Jellyfish,Pufferfish,Viperfish,Ghostlite}Target + base Target
 ```
 
 > **QUIRK —** only 12 literal `TpuVersion` switch jump tables exist in the entire
@@ -401,9 +423,15 @@ arity, one per generation/lane-cluster:
 > mechanism.
 
 > **CORRECTION (DISP-3) —** the per-gen `Target` vtable count was originally
-> reported as "9 at size 266". The re-derived count is **7 at exactly 266 slots**
-> (`0x21cc6358…0x21cce6b0`). The per-slot method labelling of these families is
-> owned by the top-vtable / per-gen sibling pages (see Cross-References).
+> reported as "9 at size 266", later "7". Measuring slot counts directly off the
+> symbol table (gap to the next `_ZTV`/`_ZTI` symbol, minus the 2-slot
+> offset-to-top/typeinfo header) shows **6 at exactly 266 slots** in
+> `0x21cc6358…0x21cce6b0`: the five concrete generations
+> (`xla::jellyfish::{Dragonfish,Jellyfish,Pufferfish,Viperfish,Ghostlite}Target`)
+> plus the abstract base `xla::jellyfish::Target`. The two
+> `*SparseCoreTarget` vtables in the same address band are **28**-slot, not 266,
+> and are not part of this family. The per-slot method labelling of these families
+> is owned by the top-vtable / per-gen sibling pages (see Cross-References).
 
 Detail for these families — slot-level method names, the override matrix across
 generations — belongs to the RTTI/vtable census and the per-gen dispatcher pages
@@ -475,9 +503,10 @@ entry total), dominated by the TPU ISA encode/decode opcode switches.
 
 ## Verification Notes
 
-Every count on this page was re-derived from the table, switch, RTTI, and
-relocation sidecars rather than carried from prior analysis. The figures that
-reproduced exactly:
+Every count on this page was re-derived from the table, switch, and RTTI
+sidecars rather than carried from prior analysis; the relocation figures were
+checked directly against the binary with `readelf -dW`/`-rW` (which supersede the
+sidecar's relocation total — see DISP-4). The figures that reproduced exactly:
 
 | Quantity | Value | Status |
 |---|---:|---|
@@ -491,14 +520,22 @@ reproduced exactly:
 | size-23 tables / with Model / without | 6,129 / 6,050 / 79 | CERTAIN |
 | Tables with ≥1 Model entry | 6,070 | CERTAIN |
 | "vtable for" RTTI records | 39,155 | CERTAIN |
-| Relocations (all `R_X86_64_RELATIVE`) | 1,069,603 | CERTAIN |
-| `.data.rel.ro` relocations | 924,033 | CERTAIN |
+| `R_X86_64_RELATIVE` relocations (`DT_RELACOUNT`) | 1,069,006 | CERTAIN |
+| Total relocation entries (all types) | 1,069,659 | CERTAIN |
+| `.data.rel.ro` relocations (all types / `RELATIVE`) | 924,033 / 924,015 | CERTAIN |
 | `0x223393a0` / `0x21c1d590` / `0x21e0d0a0` entries | 2,595 / 447 / 674 | CERTAIN |
 
-> **CORRECTION (DISP-4) —** the "typeinfo for" RTTI-record count was previously
-> stated as 57,854; the sidecar reports **57,855**. A one-record discrepancy,
-> noted for the RTTI census; it does not affect the vtable count (39,155) or any
-> table figure on this page.
+> **CORRECTION (DISP-4) —** the relocation total was previously stated as
+> **1,069,603**, a figure carried from the IDA fixups sidecar (`*_fixups.json`).
+> `readelf -dW` / `readelf -rW` on the binary show the authoritative counts:
+> `DT_RELACOUNT` = **1,069,006** `R_X86_64_RELATIVE` relocations, and **1,069,659**
+> relocation entries across all types. The sidecar's 1,069,603 over-counts the
+> `RELATIVE` set by 597 and under-counts the all-types total by 56; it matches
+> neither and is dropped in favour of the binary figures. The two section anchors
+> the sidecar *did* reproduce — 924,033 relocations in `.data.rel.ro` and 131,596
+> in `.data` (all-type counts; 924,015 / 131,590 of those are `RELATIVE`) — are
+> confirmed against the binary and retained. The vtable count (39,155) and every
+> table figure on this page are unaffected.
 
 Not yet resolved: per-table demangling of the 157 Class Z residual (recoverable by
 `.text` address-band matching, not symbols); slot-level semantic labelling of
@@ -512,7 +549,7 @@ exact Class E encoder↔opcode ratio.
 | Population | Relationship |
 |---|---|
 | 39,155 "vtable for" RTTI records | The C++ vtable backbone — ~97% of all 40,313 tables |
-| 1,069,603 relocations | The loader-fill mechanism that populates the zero-in-file slots |
+| 1,069,006 `R_X86_64_RELATIVE` relocations | The loader-fill mechanism that populates the zero-in-file slots |
 | 33,016 switch jump tables | The separate computed-goto dispatch population |
 | 6,070 Op-Model tables | The MLIR op-registration surface (Class A) |
 
