@@ -6,13 +6,13 @@
 
 This page owns the **C++ static-constructor iteration** libtpu runs at load and the **symmetric destructor teardown** it runs at unload — the part of the lifecycle that lives entirely below the PJRT C-ABI and is driven by the C runtime, not by any framework call. When the dynamic linker walks `.init_array` (`INIT_ARRAY @ 0x215f26f0`, 2900 slots), it calls every translation-unit static-init function in link order; that storm is what fills libtpu's flag registries, protobuf descriptor pools, LLVM/MLIR backend tables, and — the one piece that matters for correctness — the `GoogleInitializer` module descriptors and their dependency edges. At unload the same machinery runs in reverse through `__cxa_finalize`, draining the LIFO list of destructors the constructors registered with `__cxa_atexit`.
 
-The reference frame is the Itanium C++ ABI as any clang/libstdc++ binary implements it: per-TU `_GLOBAL__sub_I_<file>.cc` functions populate `.init_array`; function-local statics are made thread-safe with `__cxa_guard_acquire`/`release`/`abort`; non-trivial-destructor globals register a teardown callback with `__cxa_atexit(dtor, obj, &__dso_handle)`; and `__cxa_finalize(__dso_handle)` drains that list at `dlclose`/exit. libtpu is unusual in three ways. First, it ships its **own** libc++abi — `__cxa_guard_*` at `0x213e9ac0 / 0x213e9be0 / 0x213e9c20` and `__cxa_finalize` are libtpu-internal, not glibc's, so the guard word layout and the finalize list are private to the image. Second, the `.init_array` entry point and exit point are not glibc's `__do_global_ctors`/`__do_global_dtors` but two custom byte-guarded stubs, `__do_init @ 0xe63c000` and `__do_fini @ 0xe63c020`, that are themselves *array slots*. Third — the whole reason the design holds together — **the constructors only register; they run nothing order-critical.** Every cross-TU ordering hazard is deferred to the `GoogleInitializer` DAG, which runs later in topological order (PHASE B, at first `PJRT_Plugin_Initialize`), so the link order the constructors execute in never decides correctness.
+The reference frame is the Itanium C++ ABI as any clang/libstdc++ binary implements it: per-TU `_GLOBAL__sub_I_<file>.cc` functions populate `.init_array`; function-local statics are made thread-safe with `__cxa_guard_acquire`/`release`/`abort`; non-trivial-destructor globals register a teardown callback with `__cxa_atexit(dtor, obj, &__dso_handle)`; and `__cxa_finalize(__dso_handle)` drains that list at `dlclose`/exit. libtpu is unusual in three ways. First, it ships its **own** libc++abi — `__cxa_guard_*` at `0x213e9ac0 / 0x213e9be0 / 0x213e9c20` and `__cxa_finalize` are libtpu-internal, not glibc's, so the guard word layout and the finalize list are private to the image. Second, there is no glibc `__do_global_ctors`/`__do_global_dtors` driver at all — this is an lld-linked clang-CRT image; instead two custom byte-guarded stubs, `__do_init @ 0xe63c000` (`.init_array` slot **761**, not slot 0) and `__do_fini @ 0xe63c020` (`.fini_array` slot 0), are themselves ordinary *array slots* among the rest. Third — the whole reason the design holds together — **the constructors only register; they run nothing order-critical.** Every cross-TU ordering hazard is deferred to the `GoogleInitializer` DAG, which runs later in topological order (PHASE B, at first `PJRT_Plugin_Initialize`), so the link order the constructors execute in never decides correctness.
 
 The page is laid out as the two halves of the runtime's lifetime: §1 the load-time constructor walk (what `.init_array` calls, what the `_GLOBAL__sub_I_*` set constructs, the `__cxa_guard` singleton discipline, the ordering guarantees and where they are weak), and §2 the unload-time teardown (`__do_fini`, the `__cxa_finalize(__dso_handle)` LIFO drain, and what is *not* torn down because it is leaked-on-exit). The ELF `DT_INIT`/`DT_FINI`/`PREINIT_ARRAY` tags and the linker's `init_proc` trampoline live on [elf-entry-and-init-proc.md](elf-entry-and-init-proc.md); the `GoogleInitializer` module DAG and the `PJRT_Plugin_Initialize` bootstrap live on [module-init-plugin-discovery.md](module-init-plugin-discovery.md) and [tftpu-initialize-bootstrap.md](tftpu-initialize-bootstrap.md).
 
 For reimplementation, the static-init/fini contract is:
 
-- **The constructor walk model** — `.init_array` is an array of function pointers the linker calls in array order; `__do_init` is the first guarded slot, and the rest are per-TU `_GLOBAL__sub_I_*` functions. Each constructs file-scope globals and, for any with a non-trivial destructor, registers teardown with `__cxa_atexit(dtor, obj, &__dso_handle)`.
+- **The constructor walk model** — `.init_array` is an array of function pointers the linker calls in array order; slot 0 is `__cpu_indicator_init` (CPU/IFUNC detection), `__do_init` is a guarded stub at slot 761, and the bulk are per-TU `_GLOBAL__sub_I_*` functions. Each constructs file-scope globals and, for any with a non-trivial destructor, registers teardown with `__cxa_atexit(dtor, obj, &__dso_handle)`.
 - **The register-only discipline** — none of the ~2900 constructors runs order-critical TPU bring-up. They fill tables and build the `GoogleInitializer` registry; the order-sensitive work is deferred to the DAG. A reimplementer who runs HAL/platform setup inside a static ctor reintroduces the static-init-order fiasco the design exists to avoid.
 - **The two byte guards** — `__do_init`'s `_do_init___initialized` and `__do_fini`'s `_do_fini___finalized` make the array-bracketing slots idempotent; the per-singleton `__cxa_guard` bytes make each function-local static one-shot and thread-safe.
 - **The symmetric teardown** — `__do_fini` calls `__cxa_finalize(__dso_handle)`, which drains the `__cxa_atexit` list LIFO, calling each registered destructor once. The PJRT surface is deliberately *not* on this list — it is a leaked Meyers singleton.
@@ -22,8 +22,8 @@ For reimplementation, the static-init/fini contract is:
 | **Constructor array** | `INIT_ARRAY @ 0x215f26f0` — 23200 B = 2900 × 8, all `R_X86_64_RELATIVE` |
 | **Constructor entry stub** | `__do_init @ 0xe63c000` — guard byte `_do_init___initialized` |
 | **Destructor entry stub** | `__do_fini @ 0xe63c020` — guard byte `_do_fini___finalized` |
-| **Per-TU ctor symbols** | `_GLOBAL__sub_I_<file>.cc/.cpp` — **1764 distinct** named TUs in the decompile |
-| **Grouped / single-var ctors** | `_GLOBAL__I_NNNNNN` (~778), `__cxx_global_var_init[.N]` (~223+) |
+| **Per-TU ctor symbols** | `_GLOBAL__sub_I_<file>.cc/.cpp` — **1885 distinct** symbols (1764 distinct base names; 71 names recur across statically-linked components) |
+| **Grouped / single-var ctors** | `_GLOBAL__I_NNNNNN` (759), `__cxx_global_var_init[.N]` (89 distinct names / 221 instances) |
 | **Function-local-static guards** | libtpu's own `__cxa_guard_acquire/release/abort @ 0x213e9ac0 / 0x213e9be0 / 0x213e9c20` |
 | **Teardown drain** | `__cxa_finalize(_dso_handle)` (libtpu's own libc++abi) |
 | **Teardown array** | `FINI_ARRAY @ 0x215f8190` — 16 B = 2 × 8: `__do_fini`, `rand_thread_state_clear_all @ 0x2063df60` |
@@ -42,14 +42,14 @@ For reimplementation, the static-init/fini contract is:
 ```text
 dynamic linker (DT_INIT_ARRAY walk)        ── one call per slot, array order
   └─ INIT_ARRAY @ 0x215f26f0   (2900 slots, all R_X86_64_RELATIVE)
-       [0]  __cpu_indicator_init   0x21211240   ── GCC ifunc support (first)
-       [1]  std::sys::args::unix::imp::ARGV_INIT_ARRAY  ── Rust runtime argv capture
-       [.]  __do_init              0xe63c000     ── guarded array-bracket stub (no work)
-       [.]  _GLOBAL__I_000100 / 000101 / 000102  ── grouped early C++ ctors
-       ...  (the long tail) ...
-       [n]  _GLOBAL__sub_I_<file>.cc   × 1764     ── per-TU static init
-            _GLOBAL__I_NNNNNN          × ~778     ── grouped ctors
-            __cxx_global_var_init[.N]  × ~223     ── single-global inits
+       [0]   __cpu_indicator_init  0x21211240    ── clang/GCC ifunc + CPU-feature detector (first; addend of slot-0 reloc @ 0x215f26f0)
+       [1]   ARGV_INIT_ARRAY::init_wrapper  0x20a0d2b0  ── Rust runtime argv capture
+       ...   (slots 2..760 — early CRT/IFUNC + grouped C++ ctors) ...
+       [761] __do_init             0xe63c000     ── guarded array-bracket stub (no work; reloc @ 0x215f3eb8)
+       ...   (the long tail) ...
+       [n]   _GLOBAL__sub_I_<file>.cc   × 1885    ── per-TU static init (1764 distinct base names)
+             _GLOBAL__I_NNNNNN          × 759     ── grouped / priority-tagged ctors
+             __cxx_global_var_init[.N]  × 221     ── single-global inits (89 distinct names)
 ```
 
 > **NOTE —** the relocation step is part of [elf-entry-and-init-proc.md](elf-entry-and-init-proc.md): all 2900 in-file slots are zero on disk, and every slot is an `R_X86_64_RELATIVE` the linker fills with the target VA before the walk begins. This page assumes the array is already relocated and concerns itself only with *what the targets do* when called.
@@ -91,11 +91,11 @@ function some_ctor_with_destructible_global():
     // __cxa_atexit pushes onto libtpu's own __cxa_finalize LIFO list (§2)
 ```
 
-> **QUIRK —** `__do_init` does *nothing* but flip a byte. It is not the dispatcher that calls the other constructors — glibc-style `__do_global_ctors_aux` would be. Here `__do_init` is simply one more entry in `.init_array`, sitting alongside the 1764 real `_GLOBAL__sub_I_*` slots. Its only job is to be idempotent: if the array were ever walked twice (re-`dlopen` of an already-mapped image), the guard makes the second walk of *this slot* a no-op. The real per-TU constructors carry their own `__cxa_guard` bytes for the same reason. A reimplementer who treats `__do_init` as the constructor driver will look for ctor calls inside it and find none — that is correct, not a decompiler failure.
+> **QUIRK —** `__do_init` does *nothing* but flip a byte. It is not the dispatcher that calls the other constructors — glibc-style `__do_global_ctors_aux` would be. Here `__do_init` is simply one more entry in `.init_array` (slot 761), sitting alongside the 1885 real `_GLOBAL__sub_I_*` slots. Its only job is to be idempotent: if the array were ever walked twice (re-`dlopen` of an already-mapped image), the guard makes the second walk of *this slot* a no-op. The real per-TU constructors carry their own `__cxa_guard` bytes for the same reason. A reimplementer who treats `__do_init` as the constructor driver will look for ctor calls inside it and find none — that is correct, not a decompiler failure.
 
 ### What the `_GLOBAL__sub_I_*` set constructs
 
-The 1764 distinct named TU constructors are not a flat list to enumerate — that is the anti-pattern. They are better understood by the *kinds of registries they populate*, all of which share one property: they register into a table or build a descriptor, and run no hardware or order-critical setup. The table below buckets the constructor set by what each TU's globals do, with the count of distinct named TUs matching each bucket (from the decompiled `_GLOBAL__sub_I_*.cc/.cpp` symbol set; buckets overlap, so they do not sum to 1764).
+The 1885 `_GLOBAL__sub_I_*` constructors are not a flat list to enumerate — that is the anti-pattern. They are better understood by the *kinds of registries they populate*, all of which share one property: they register into a table or build a descriptor, and run no hardware or order-critical setup. The table below buckets the constructor set by what each TU's globals do, with the count of TUs matching each bucket (a keyword scan over the `_GLOBAL__sub_I_*.cc/.cpp` symbol set; buckets overlap, so they do not sum to 1885).
 
 | Constructor bucket | What its globals register | Distinct TUs | Confidence |
 |---|---|---|---|
@@ -109,7 +109,7 @@ The 1764 distinct named TU constructors are not a flat list to enumerate — tha
 
 > **NOTE —** the `GoogleInitializer`-descriptor bucket (~41 `*registration*` TUs) is the only one whose registrations are *order-critical at run time*, and it is precisely the one whose execution is deferred. The `_GLOBAL__sub_I_*_registration.cc` ctors run at load (building descriptors), but the `google_init_module_*` functions they point at run later, in the DAG, at first `PJRT_Plugin_Initialize`. See [module-init-plugin-discovery.md](module-init-plugin-discovery.md) for the descriptor → run mapping.
 
-> **CORRECTION (DOINIT-1) —** the raw classification estimated **1885** `_GLOBAL__sub_I_*` TUs and ~778 `_GLOBAL__I_NNNNNN`. The decompiled symbol set yields **1764** *distinct* named `_GLOBAL__sub_I_*.cc/.cpp` functions plus a large body of `_GLOBAL__I_NNNNNN` and `__cxx_global_var_init` symbols (229 `*global_var_init*` decompiled files alone). The 1764 vs 1885 gap is the expected difference between *distinct named TUs* and *total INIT_ARRAY slots* (a TU can appear under multiple aggregated names, and grouped `_GLOBAL__I_` ctors are not per-file). The 2900 total slot count is byte-anchored from `DT_INIT_ARRAYSZ`; the 1764 is the named-TU count this page reports.
+> **CORRECTION (DOINIT-1) —** an earlier draft of this page reported **1764** named `_GLOBAL__sub_I_*` TUs and ~778 `_GLOBAL__I_NNNNNN`. The binary's symbol table (`nm -C libtpu.so`) carries **1885** distinct `_GLOBAL__sub_I_*` symbols, each at its own address, and **759** `_GLOBAL__I_*` symbols. The 1885 vs 1764 gap is *not* TUs-vs-slots: it is duplicate base names. 1764 is the count of distinct base *names*; 71 of those names recur because the same source filename is statically linked from multiple components (`metrics.cc` appears 8×, `trace_codec_factory.cc`/`performance_counters.cc`/`kernel_firmware_factory.cc`/`hardware_attributes_factory.cc` 6× each, etc.), and each recurrence is a genuinely distinct TU initializer at a distinct address. The binary-true population this page reports is therefore **1885** distinct symbols (matching the census in [../forensics/static-init.md](../forensics/static-init.md)). The 2900 total slot count is byte-anchored from `DT_INIT_ARRAYSZ` (0x5aa0 / 8).
 
 ### The `__cxa_guard` singleton discipline
 
@@ -141,7 +141,7 @@ function __cxa_guard_acquire(guard):
 The constructor walk gives exactly one ordering guarantee and no more: **`.init_array` entries run in array order, which is the link order of their translation units.** There is no cross-TU dependency ordering — if TU A's global depends on TU B's global being constructed, the only thing that makes it work is that the linker happened to place B before A. This is the classic static-initialization-order fiasco, and libtpu's design choice is to **not rely on it for anything order-critical**:
 
 - **Within a TU**, declaration order is honored (standard C++).
-- **Across TUs**, only link order is guaranteed. The `__do_init` slot and `__cpu_indicator_init` (the GCC ifunc resolver support) and the Rust `ARGV_INIT_ARRAY` are placed early; everything else is the long tail.
+- **Across TUs**, only link order is guaranteed. `__cpu_indicator_init` (the clang/GCC ifunc + CPU-feature detector, slot 0) and the Rust `ARGV_INIT_ARRAY::init_wrapper` (slot 1) are placed first by the linker because nothing C++ may run before CPU-feature detection; the `__do_init` guard stub sits at slot 761, and the per-TU `_GLOBAL__sub_I_*` constructors fill the long tail.
 - **For the order-critical TPU stack** (HAL factories, XLA targets, the StreamExecutor platform), the constructors register a `GoogleInitializer` *descriptor with explicit dependency edges* and defer execution to the DAG. The DAG runs in topological order at PHASE B regardless of static-ctor order. This is why a `tpu_hal_jxc_hardware_impl` module can depend on `tpu_hal` without any constraint on the link order of their `_GLOBAL__sub_I_*_registration.cc` files.
 
 > **QUIRK —** the reimplementation-critical inversion: the things you would *expect* to be order-critical (platform/HAL/target bring-up) are the things explicitly *removed* from static-init ordering, and the things that genuinely run at load (flag tables, descriptor pools, LLVM/MLIR registries) are order-*insensitive* by construction — each registers into an independent table keyed by name/ID, so the order they register in does not change the result. The design has hollowed out the static-init phase precisely so that its one weak guarantee (link order) never has to be relied upon.
@@ -217,8 +217,8 @@ libtpu also provides its own `atexit` / `__cxa_thread_atexit` shims (`0x21217360
 | Component | Relationship |
 |---|---|
 | `INIT_ARRAY @ 0x215f26f0` | The 2900-slot constructor array the linker walks at `dlopen` |
-| `__do_init @ 0xe63c000` | Guarded array-bracket stub; one `.init_array` slot, sets `_do_init___initialized` |
-| `_GLOBAL__sub_I_*` (1764 TUs) | The per-TU static-init functions that do the actual registration |
+| `__do_init @ 0xe63c000` | Guarded array-bracket stub at `.init_array` slot 761, sets `_do_init___initialized` |
+| `_GLOBAL__sub_I_*` (1885 symbols) | The per-TU static-init functions that do the actual registration |
 | `GoogleInitializer` ctor `@ 0x210b2780` | Constructed by `*_registration.cc` ctors; binds module name → run-later fn |
 | `__cxa_guard_acquire/release/abort @ 0x213e9ac0 / 0x213e9be0 / 0x213e9c20` | libtpu's own libc++abi function-local-static guards |
 | `__cxa_atexit` / `_dso_handle` | The destructor-registration call every non-trivial global ctor emits |
