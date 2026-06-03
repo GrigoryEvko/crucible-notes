@@ -1,6 +1,6 @@
 # EmitValencyLoop
 
-> *Every address, op-create order, `scf::ForOp` bound, stack-slot identity, and `::create` signature on this page was read byte-exactly from `libtpu.so` in the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`; build `libtpu_lts_20260413_b_RC00`). `.text` VA equals file offset at `0xe63c000`; `.rodata` at `0x84a0000`; both identity-mapped. The binary is not stripped — `nm -C` resolves every method. `EmitValencyLoop` is the **gfc/Trillium** namespace instance; the addresses on this page are from that build. Other versions differ.*
+> *Every address, op-create order, `scf::ForOp` bound, stack-slot identity, and `::create` signature on this page was read byte-exactly from `libtpu.so` in the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`; build `libtpu_lts_20260413_b_RC00`). `.text` VA equals file offset at `0xe63c000`; `.rodata` at `0x84a0000`; both identity-mapped. The binary is not stripped — `nm -C` resolves every method. `EmitValencyLoop` is a single generation-agnostic `xla::tpu::sparse_core` emitter — there is exactly one instance, parameterized at runtime by an `xla::jellyfish::Target&`, not a per-generation (vfc/glc/gfc) namespace clone. The addresses on this page are from this build.*
 
 ## Abstract
 
@@ -18,7 +18,7 @@ For reimplementation, the contract is:
 
 | | |
 |---|---|
-| **Function** | `SparseDenseMatmulDotCombinerEmitter::EmitValencyLoop(OpBuilder, Value v1, Value v2)` `@0x1332cee0` (gfc; `0x12e0` B) |
+| **Function** | `xla::tpu::sparse_core::SparseDenseMatmulDotCombinerEmitter::EmitValencyLoop(OpBuilder, Value v1, Value v2)` `@0x1332cee0` (`0x12e0` B) |
 | **Caller** | `…::EmitSampleCombiner` `@0x1332c640` (call site `@0x1332ca82`) |
 | **`v1`** | the CSR/embedding-id operand `Value` — the `UnalignedLoadScalarFromHbm` source (valency + gain) |
 | **`v2`** | the SPMEM outer accumulator `Value` (the tile just zeroed by `InitializeTileSpmemBuffer`) |
@@ -282,19 +282,11 @@ That multiplicity scales the segmented reduce. `SegmentedScanOp(resultType, data
 
 ---
 
-## Per-Generation Presence
+## Generation Coverage
 
-| Mechanism | VF (vfc, v5e) | GL (glc, v5p) | GF (gfc, v6e) |
-|---|:---:|:---:|:---:|
-| `SparseDenseMatmulDotCombinerEmitter::EmitValencyLoop` | yes | yes | yes (decoded here) |
-| Runtime valency load (`UnalignedLoadScalarFromHbm` → `IndexCast`) | yes | yes | yes |
-| No-runtime-division (front-end gain-scale) | yes | yes | yes (byte-confirmed) |
-| Synchronous indirect gather (`InitiateSynchronousStreamOperation`) | yes | yes | yes |
-| HLO `ReduceDuplicates` (CSR→ELL) dedup | yes | yes | yes |
-| SC-dialect `SortOp` / `UniqueOp` / `UniqueWithLaneIdsOp` / `SegmentedScanOp` | yes | yes | yes |
-| `DuplicateCountUniqueOpLowering<T>` (shared multiplicity template) | yes | yes | yes |
+`SparseDenseMatmulDotCombinerEmitter::EmitValencyLoop` is **not** cloned per generation. The binary carries exactly one definition (`@0x1332cee0`, mangled `_ZN3xla3tpu11sparse_core35SparseDenseMatmulDotCombinerEmitter15EmitValencyLoop…`) in the generation-neutral `xla::tpu::sparse_core` namespace; `nm` finds no second copy. Generation selection is a *runtime* parameter — the enclosing `SparseDenseMatmulDotCombinerEmitter` constructor takes an `xla::jellyfish::Target const&` (`@0x1332bd40`), and the helpers it calls (`UnalignedLoadScalarFromHbm`, `AllocateScopedMemory`, `InitiateSynchronousStreamOperation`) all branch on that `Target&` internally. So the same emitter and the same op-create sequence serve every SparseCore-bearing target; there is no vfc/glc/gfc-namespaced sibling to diff against.
 
-The addresses on this page are the gfc/Trillium instances; the vfc/glc siblings carry the same emitter and op set at different addresses. No `SparseDenseMatmul*` emitter appears under the `jxc` (Jellyfish) or `pxc` (Pufferfish) namespaces — those generations have no SparseCore.
+The generation-namespaced families (`gxc`/`glc`/`gfc`, `vxc`/`vfc`) that exist elsewhere in the binary are the backend/datapath layers below this emitter, not copies of it. The SparseCore embedding datapath is absent on the pre-SparseCore generations (jellyfish=v2, pufferfish=v4); the `xla::tpu::sparse_core` namespace and this emitter appear only once.
 
 ---
 
