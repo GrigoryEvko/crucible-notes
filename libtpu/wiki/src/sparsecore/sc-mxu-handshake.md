@@ -86,7 +86,7 @@ The short form skips the SPMEM aggregation stage when a per-tile result is desti
 | `LowerMemrefToMlo::lowerEnqueueIndirectDma` | `0x13511da0` | `tpu.enqueue_indirect_dma` → indirect-stream ops | CONFIRMED |
 | `LowerMemrefToMlo::lowerWaitDma` | `0x135135e0` | `tpu.wait_dma2` → `sc_tpu.dma_wait` | CONFIRMED |
 | `LowerMemrefToMlo::getVerifiedDmaShapes` | `0x13509dc0` | extract + verify the DMA shapes | CONFIRMED |
-| `LowerMemrefToMlo::checkShapeTileAlignment` | (recovered) | verify shape-tile alignment for cross-engine DMA | HIGH |
+| `LowerMemrefToMlo::checkShapeTileAlignment` | `0x135053a0` | verify shape-tile alignment for cross-engine DMA | CONFIRMED |
 | `LowerMemrefToMlo::convertDeviceIdFromSubsliceToFullSlice` | `0x13505a40` | logical → physical core id for the routing key | CONFIRMED |
 
 ---
@@ -149,7 +149,7 @@ sflag_memory_space == mlir::sparse_core::MemorySpace::sflag        // global, cr
 | `MemorySpace::sflag_tile` | per-tile (TEC sub-engine scope) | no — SC-internal |
 | `MemorySpace::sflag_scs` | per-SCS (SCS sub-engine scope) | no — SC-internal |
 
-The region scoping is verifier-enforced, byte-confirmed by two assertion strings present in `AllocationAssignmentPass::Allocate` (`0x134db1e0`):
+The region scoping is verifier-enforced, byte-confirmed by two assertion strings present in `mlir::sparse_core::MloModuleVerifier::Verify(mlir::memref::StoreOp)` (`0x146a9da0`):
 
 ```text
 "on smem_tile/sflag_tile is only allowed inside a tile_task or an execute sequencer function"
@@ -167,7 +167,7 @@ The TC sequencer (`TpuSequencer`) issues four `mlir::tpu` ops that participate i
 | `tpu.sem_wait` | `SemaphoreWaitOp` | 2 | wait on `(sflag_ptr, threshold)` — the MXU-feed gate |
 | `tpu.sem_signal` | `SemaphoreSignalOp` | ≥2 (variadic, `AttrSizedOperandSegments`) | increment a flag, optionally targeting a remote SC partition |
 | `tpu.sem_read` | `SemaphoreReadOp` | 1 → 1 result | read a flag value without blocking |
-| `tpu.fetch_and_add_sync` | `FetchAndAddSyncOp` | ≥3 (variadic) → 1 result | atomic add, returns old value (tile counters) |
+| `tpu.fetch_and_add_sync` | `FetchAndAddSyncOp` | 3 (`NOperands<3>`) → 1 result | atomic add, returns old value (tile counters) |
 
 Both `tpu.enqueue_dma` (`EnqueueDMAOp`) and `tpu.sem_signal` (`SemaphoreSignalOp`) carry a `getRemoteDeviceAndSparseCoreIds<T>()` specialization — confirming that *both DMA and semaphore can address a remote SparseCore by partition id* via the `DeviceAndCoreIds` routing key.
 
@@ -196,7 +196,7 @@ Before SC can raise the cross-CORE flag, its own sub-engines must agree the tile
 | `OffloadFactory::SyncTecWithScs(builder, v1, v2, CoreKind)` | `0x133e8fe0` | TEC waits on a flag set by SCS |
 | `OffloadFactory::AllocateSflag(builder, bool set, long count)` | `0x133e8320` | allocate an SFLAG region (count + initial state) |
 | `OffloadFactory::StartLocalDma(...)` | `0x133eb3a0` | same-chip DMA with src/completion sflags |
-| `OffloadFactory::DmaWait(builder, sflag_idx, wait_size, ...)` | (recovered) | wait for a previously issued DMA |
+| `OffloadFactory::DmaWait(builder, sflag_idx, wait_size, ...)` | `0x133e8180` | wait for a previously issued DMA |
 
 `CoreKind` parametrizes which sub-engine the helper operates on:
 
@@ -206,7 +206,7 @@ Before SC can raise the cross-CORE flag, its own sub-engines must agree the tile
 | `CoreKind::kTec` | Tile-Execute sub-engine |
 | `CoreKind::kTac` | Tile-Access sub-engine (Viperfish / Ghostlite only) |
 
-> **NOTE —** on Trillium there is no TAC, so the SCS↔TEC sync collapses to a single primitive: `sc_tpu.tile_wait_scs_smem` (`TileWaitScsSmemOp`, 3 operands `= {sflag_ptr, expected_value, smem_buf}`). The TEC waits until SCS has written a designated value to SMEM, then reads SMEM and continues — SCS does the address computation that TAC used to do. This is the TAC-replacement primitive; it does not change the *cross-CORE* (SC↔TC) handshake, only the SC-internal access→execute synchronization. See [TAC Engine](tac-engine.md) and the per-gen section below.
+> **NOTE —** on TPU7x (6acc60406, the gfc namespace) there is no TAC, so the SCS↔TEC sync collapses to a single primitive: `sc_tpu.tile_wait_scs_smem` (`TileWaitScsSmemOp`, 3 operands `= {sflag_ptr, expected_value, smem_buf}` — `NOperands<3u>` confirmed). Viperfish and Ghostlite both still carry the full TAC ISA. The TEC waits until SCS has written a designated value to SMEM, then reads SMEM and continues — SCS does the address computation that TAC used to do. This is the TAC-replacement primitive; it does not change the *cross-CORE* (SC↔TC) handshake, only the SC-internal access→execute synchronization. See [TAC Engine](tac-engine.md) and the per-gen section below.
 
 ---
 
@@ -230,7 +230,7 @@ SC-produced VMEM tile  --(matprep.subr/.mubr)-->  MSRA/MSRB  --(vmatmul, K steps
 
 The contracting depth is a per-codename C++ literal in the `Target` subclass — not a `chip_parts` field. The byte-exact values (owned by [SparseCoreTarget (`Target+0x948`)](../targets/sparsecore-target-descriptor.md), reproduced here as the *consumer*):
 
-| MXU constant | v3 Jelly | v4 Puffer | v5p Viperfish | v6e Ghostlite | v7x Trillium | Source · Confidence |
+| MXU constant | v3 Jelly | v4 Puffer | v5p Viperfish | v6e Ghostlite | TPU7x (6acc60406) | Source · Confidence |
 |---|:--:|:--:|:--:|:--:|:--:|---|
 | `MxuContractingSize` | 128 | 128 | 128 | **256** | **256** | base `0x1D490060`; Ghostlite `0x1D497840` · CONFIRMED |
 | `MxuNoncontractingSize` | 128 | 128 | 128 | **256** | **256** | base `0x1D490080`; Ghostlite `0x1D497860` · CONFIRMED |
@@ -239,11 +239,11 @@ The contracting depth is a per-codename C++ literal in the `Target` subclass —
 
 Three facts a reimplementer must encode:
 
-1. **The embedding-feed matmul reduces over the dense contracting dimension** (`MxuContractingSize` — 128 on Jellyfish through Viperfish, 256 on the Ghostlite class which v7x Trillium reuses). The reduction depth is the embedding-dim (or a tile thereof), packed exactly like any other dense activation.
+1. **The embedding-feed matmul reduces over the dense contracting dimension** (`MxuContractingSize` — 128 on Jellyfish through Viperfish, 256 on the Ghostlite class, which TPU7x/6acc60406 reuses — there is no separate `Tpu7xTarget`; only `GhostliteTarget` overrides `MxuContractingSize` to 256). The reduction depth is the embedding-dim (or a tile thereof), packed exactly like any other dense activation.
 2. **`MxuSparseContractingSize` is 0 on every generation** — no `Target` subclass overrides it. The sparse-MXU contracting path is *unused* in this build. The SC/MXU division of labor is at the *engine* level (SC gathers, MXU does dense matmul), not at the level of a sparse contracting mode inside the MXU. A reimplementer should not look for a sparse-MXU latch on the embedding feed.
 3. **The doubling predicate is orthogonal to sparsity.** Both `ViperfishTarget` and `GhostliteTarget` override `MxuContractingSizeIsDoubled` with the identical predicate `(mode - 22) < 4u` — true for raw `GainLatchMode ∈ {22,23,24,25}`, the 4-bit packed-nibble (S4/U4) matmul modes that pack two nibbles into one physical systolic row (doubling effective contracting depth). This is a dtype-packing feature of the dense MXU and applies to embedding-feed matmuls only insofar as the activation dtype is 4-bit — it is not an SC-specific path.
 
-> **GOTCHA —** the SC `SparseCoreLaneCount` (the vector width SC reduces over, = 16 on v7x) is **not** the MXU contracting depth. They are independent: SC's lane count is the TEC vector engine's SIMD width for the *gather/reduce* upstream; the MXU contracting size (128 / 256) is the systolic *row depth* the dense matmul reduces over downstream. The handoff is a reshape boundary — SC produces a `[rows × embedding_dim]` tile in its lane geometry; the MXU re-tiles it into `[contracting × noncontracting]` for the systolic array. Conflating the two will mis-size the VMEM staging buffer. See [SparseCore Architecture](architecture.md) for the SC lane geometry and [MXU Slot](../isa/slot-mxu.md) for the systolic tiling.
+> **GOTCHA —** the SC `SparseCoreLaneCount` (`Target::SparseCoreLaneCount`, `0x0F7906E0` reading the per-gen target descriptor; the runtime `tensorflow::GetSparseCoreLaneCount` is flag-overridable, so the exact per-gen integer is not a fixed literal — LOW confidence on a specific value) is the vector width SC reduces over, and is **not** the MXU contracting depth. They are independent: SC's lane count is the TEC vector engine's SIMD width for the *gather/reduce* upstream; the MXU contracting size (128 / 256) is the systolic *row depth* the dense matmul reduces over downstream. The handoff is a reshape boundary — SC produces a `[rows × embedding_dim]` tile in its lane geometry; the MXU re-tiles it into `[contracting × noncontracting]` for the systolic array. Conflating the two will mis-size the VMEM staging buffer. See [SparseCore Architecture](architecture.md) for the SC lane geometry and [MXU Slot](../isa/slot-mxu.md) for the systolic tiling.
 
 ---
 
@@ -257,14 +257,14 @@ The handshake is created at the HLO level: an `XlaSparseDenseMatmul` custom-call
 
 | HLO op | What it means |
 |---|---|
-| `XlaSparseDenseMatmulOp` | single-step embedding lookup + dense matmul (the base boundary marker) |
-| `XlaSparseDenseMatmulGradOp` | backward: TC computes the gradient, SC scatter-adds into the table |
-| `XlaSparseDenseMatmulWithCsrInputOp` | base, with CSR sparse-input format |
-| `XlaSparseDenseMatmulGradWith{Sgd,Adam,Ftrl,Adagrad}AndCsrInputOp` | backward + optimizer fused |
-| `XlaSparseDenseMatmulWithMinibatchingOp` | mini-batch variant (subdivides a batch into TILE_SPMEM-fitting windows) |
-| `XlaSparseDenseMatmulCustomCombinerTcCombiner{,Megachip}Op` | TC-side custom combiner (and mega-chip cross-chip form) |
-| `GatherMulScatterSparseDenseMatmulOp` | gather-mul-scatter fused form |
-| `XlaSparseDenseMatmulLocalOp` | single-device variant (no SPMD partitioning) |
+| `XlaSparseDenseMatmulOp` (TF op-kernel) / `tf.XlaSparseDenseMatmulWithCsrInput` | single-step embedding lookup + dense matmul (the base boundary marker) |
+| `XlaSparseDenseMatmulGradOp` (TF op-kernel) | backward: TC computes the gradient, SC scatter-adds into the table |
+| `tf.XlaSparseDenseMatmulWithCsrInput` / `…WithStaticBufferSize` | base, with CSR (or static-buffer-size) sparse-input format |
+| `tf.XlaSparseDenseMatmulGradWith{Sgd,Adam,Ftrl,Adagrad,AdagradMomentum}AndCsrInput[Op]` | backward + optimizer fused |
+| `SparseDenseMatmulWithMinibatchingOp` (internal HLO) | mini-batch variant (subdivides a batch into TILE_SPMEM-fitting windows); decomposed by `sparse-dense-matmul-with-minibatching-op-decomposer` |
+| `tf.XlaSparseDenseMatmulCustomCombinerOnTc[Grad]With…CsrInput` / `SparseDenseMatmulCustomCombinerTcCombiner{,Megachip}Op` | TC-side custom combiner (and mega-chip cross-chip form) |
+| `GatherMulScatterSparseDenseMatmulOp` (internal HLO) | gather-mul-scatter fused form |
+| `XlaLocalSparseDenseMatmulOp` (TF op-kernel) / `tf.XlaLocalSparseDenseMatmul` | single-device variant (no SPMD partitioning) |
 
 Each is rewritten by its decomposer (the `sparse_dense_matmul_*` family) into a tuple of `{SC-side gather computation, TC-side dense matmul, cross-engine SFLAG sync}`. The `EmbeddingsPass` / `EmbeddingBackwardPass` recognize the embedding-lookup HLO pattern and produce this custom-call; the `EmbeddingDataFormattingDecomposer` sets `sc.core_type = "sparse"` on the SC computation. After decomposition the SC half is partitioned by `SparseCoreHierarchicalSpmdPartitioner` (with `PadSparseCoreProgramInputs` / `UnPadSparseCoreProgramOutputs` aligning the shard boundary) and handed to the SC-MLO pipeline. See [SC Backend Pipeline](sc-backend-pipeline.md) for the pass sequence and [SparseCore vs Neuron MatmultSparse](sparsecore-vs-neuron-matmultsparse.md) for the cross-vendor comparison.
 
@@ -280,13 +280,13 @@ A chip has several SCs and fewer TCs; the routing key on each TC-side DMA / sema
 
 ### The Ratio
 
-The central constant is `xla::jellyfish::lowering_util::SparseCoreCountPerTensorCore` (`0x1C6CB760`) = `sparse_cores_per_chip / tensor_cores_per_chip`, asserting both `sparse_core_count >= tensor_core_count` and `… % … == 0` (the integer 4:1 ratio):
+The central constant is `xla::jellyfish::lowering_util::SparseCoreCountPerTensorCore(tpu::TpuTopology const*)` (`0x1C6CB760`) = `sparse_core_count_per_chip / tensor_core_count_per_chip`, guarded by two `CHECK`s — `"sparse_core_count_per_chip >= tensor_core_count_per_chip"` and `"sparse_core_count_per_chip % tensor_core_count_per_chip == 0"` (the integer 4:1 ratio):
 
 | Gen | TCs/chip | SCs/chip | SCs per TC |
 |---|:--:|:--:|:--:|
 | Viperfish | 2 | 8 | 4 |
 | Ghostlite | 2 | 8 | 4 |
-| Trillium | 1 | 4 | 4 |
+| TPU7x (6acc60406) | 1 | 4 | 4 |
 
 The 4-SCs-per-TC ratio is preserved across all SC-bearing gens. The four SCs jointly produce the embedding-tile rows consumed by one MXU sequence; each SC's `read_register_sparse_core_id` (SCS scalar opcode) returns its per-chip id, and `IfLocalSparseCore` (`0x1C6CD000`) emits a conditional that runs only when the current SC id matches the designated target (the per-partition gate in SPMD-replicated SC kernels).
 
@@ -298,20 +298,20 @@ The TC-side `DeviceAndCoreIds` struct (the `(logical_device_id, logical_core_id)
 
 ## Per-Generation Variations
 
-| Aspect | Viperfish (VF) | Ghostlite (GL) | Trillium (GF) |
+| Aspect | Viperfish (vfc) | Ghostlite (glc) | TPU7x / 6acc60406 (gfc) |
 |---|---|---|---|
 | TAC sub-engine | yes | yes | **no** |
-| SC-internal access→execute sync | SCS→TAC→TEC three-way | three-way + dual-channel | SCS→TEC two-way via `tile_wait_scs_smem` |
+| SC-internal access→execute sync | SCS→TAC→TEC three-way | SCS→TAC→TEC three-way | SCS→TEC two-way via `tile_wait_scs_smem` |
 | SCs per chip / per TC | 8 / 4 | 8 / 4 | 4 / 4 |
 | DMA channels | 8 SC + 12 TC | 8 SC + 12 TC | 4 SC + 12 TC |
-| `MxuContractingSize` | 128 | **256** | **256** (reuses Ghostlite `Target` subclass) |
+| `MxuContractingSize` | 128 | **256** | **256** (reuses `GhostliteTarget`) |
 | Remote-sflag encoder | `EncodeRemoteSyncFlagAddressViperfish` | `xla::ghostlite::dma_utils::EncodeRemoteSyncFlagAddress` | same Ghostlite helper |
-| Dual-channel sync (`AddBothSyncFlag` …) | no | **yes** | no |
-| Yieldable sync family | no | **12 ops** | no |
+| Dual-channel sync (`AddBothSyncFlag` …) | **yes** | **yes** | **no** |
+| Yieldable sync family | **12 ops** | **12 ops** | **no** |
 
-The cross-CORE handshake *protocol* is identical across the three SC gens — global `sflag`, `tpu.sem_wait`, double-buffer. The deltas are: (1) Trillium drops TAC and folds its address/DMA-issue role into TEC, replacing the three-way SC-internal sync with `tile_wait_scs_smem`; (2) Ghostlite adds a second independent sync channel (`Add/SetBothSyncFlag`, `Add/SetOtherSyncFlag`) for overlapping pipelines; (3) the remote-SFLAG-address bit-encoding is per-gen, dispatched through a `RemoteSyncFlagEncoderRegistry` keyed on `TpuVersion`.
+The cross-CORE handshake *protocol* is identical across the three SC gens — global `sflag`, `tpu.sem_wait`, double-buffer. The deltas are: (1) the gfc generation (TPU7x / 6acc60406) drops TAC and folds its address/DMA-issue role into TEC, replacing the three-way SC-internal sync with `tile_wait_scs_smem`; (2) both Viperfish and Ghostlite carry the dual-channel sync family (`Add/SetBothSyncFlag`, `Add/SetOtherSyncFlag`) and the 12 yieldable-sync ops (`SparseCoreScalarMisc_YieldableSync{Done,NotDone,Equal,NotEqual,Greater,Less,…}`), both of which gfc drops; (3) the remote-SFLAG-address bit-encoding is per-gen, dispatched through a `RemoteSyncFlagEncoderRegistry` keyed on `TpuVersion`.
 
-> **NOTE —** `CoreKind::kTac` is still a registered enum value on Trillium for binary compatibility, but the GF emitter never produces it — confirmed by zero `gxc.gfc.*SparseCoreTac*` symbols (against 68 in vfc / 71 in glc). A reimplementer targeting v7x must route the gather-issue and access→execute sync through TEC + `tile_wait_scs_smem`, not through a TAC path.
+> **NOTE —** `CoreKind::kTac` is still a registered enum value on TPU7x for binary compatibility, but the gfc emitter never produces it — confirmed by zero `gfc::isa::SparseCoreTac*` symbols (against the full TAC ISA surface in both `vfc::isa::SparseCoreTac*` and `glc::isa::SparseCoreTac*`). A reimplementer targeting TPU7x must route the gather-issue and access→execute sync through TEC + `tile_wait_scs_smem`, not through a TAC path.
 
 ---
 
@@ -358,7 +358,7 @@ The verifier can be opted out per-kernel via the `sc.disable_before_use_sync_fla
 | `DeviceAndCoreIds` byte layout (routing key) | recovered as `optional<>`; field widths not decomposed | LOW |
 | Per-gen SFLAG remote-address bit-encoding | encoders located; bit composition not decoded | LOW |
 | `EmbeddingsPassType` enum value list | parameter of `GetLogicalReplicaInfo`; values not exposed as strings | LOW |
-| `TileTaskOp` access-vs-execute region content rules | 2-region split confirmed; per-region legality predicate not decompiled | LOW |
+| `TileTaskOp` access-vs-execute region content rules | op present (`MloModuleVerifier::Verify(TileTaskOp)` `0x146aca00`); exact region count and per-region legality predicate not cleanly decompiled | LOW |
 | Exact `EnqueueDMAOp::getPriority()` value space | getter present; arbitration rules not traced | LOW |
 
 ---
@@ -373,7 +373,7 @@ The verifier can be opted out per-kernel via the `sc.disable_before_use_sync_fla
 - [SC Backend Pipeline](sc-backend-pipeline.md) — the SC-MLO pass pipeline (and the HLO `sparse_dense_matmul_*` decomposers) that builds the two halves of the boundary.
 - [SC Core Selection](sc-core-selection.md) — how a computation is assigned to a physical SparseCore partition (the `DeviceAndCoreIds` routing).
 - [getSequencerType](getsequencertype.md) — the SCS/TAC/TEC selection that picks the engine issuing each transfer.
-- [TAC Engine](tac-engine.md) — the Tile-Access sub-engine absent on Trillium; the `tile_wait_scs_smem` replacement.
+- [TAC Engine](tac-engine.md) — the Tile-Access sub-engine absent on TPU7x (6acc60406); the `tile_wait_scs_smem` replacement.
 - [SparseCore vs Neuron MatmultSparse](sparsecore-vs-neuron-matmultsparse.md) — cross-vendor comparison of the gather-then-matmul boundary.
 - [SparseCore Overview](overview.md) — the navigational entry for Part IX.
 - **Binary:** `extracted/libtpu-0.0.40-cp314-cp314-manylinux_2_31_x86_64/libtpu/libtpu.so` (build-id `89edbbe81c5b328a958fe628a9f2207d`)
