@@ -8,7 +8,7 @@
 
 The encode toolkit is `gloop`'s `bitcoding.cc` writer family: a byte-level `Encoder` growable buffer, a `BitEncoder` accumulator with the inlined `PutBits`/`PutVarInt`/`PutGamma` primitives, the `(1<<k)-1` `mask_` table shared with the reader, and — for the V5+ protobuf-backed slots — a standalone `BitCopy(dst, dst_bit, src, src_bit, nbits)` field-blitter that the V5+ codecs call once per field. The same toolkit serves the route-cache codec and the profiler trace codec; this page documents the half that serializes MXU latches. The reader half (`BitDecoder` `GetBits64`/`GetGamma`/`GetVarInt`/`SkipBits`) is on the [route-cache codec page](../routing/route-cache-codec.md).
 
-There are two distinct encoder shapes across generations. **Jellyfish (v3)** is *monolithic*: `EncoderJf::EncodeVectorExtendedInstruction` is one function that reads the proto's `VectorExtendedOpcode` field and runs a 35-case switch that OR-shifts opcode-field constants directly into `QWORD[bundle+12]`, with the GLM mapped through a 6-entry `{7,10,9,12,8,11}` table first. **Pufferfish (v4), Viperfish (v5p), and Ghostlite/Trillium (v6e/v7)** are *oneof-typed*: `EmitVectorLatch` selects a typed `PushGains*`/`Pushmatrix*`/`PushMatrix*` submessage by GLM, and one generated `Encode…<Variant>` sub-encoder per variant blits its fields with `BitCopy`. Viperfish alone splits its 7-bit MXU opcode field so a latch and a matmul share it, and the matmul opcode's LSB is the **MSR-select bit (bundle bit 57)** — the bundle-level encoding of the MSR-A/MSR-B overrun handshake that only Viperfish has.
+There are two distinct encoder shapes across generations. **Jellyfish (v2)** is *monolithic*: `EncoderJf::EncodeVectorExtendedInstruction` is one function that reads the proto's `VectorExtendedOpcode` field and runs a 35-case switch that OR-shifts opcode-field constants directly into `QWORD[bundle+12]`, with the GLM mapped through a 6-entry `{7,10,9,12,8,11}` table first. **Pufferfish (v4), Viperfish (v5p), and Ghostlite/`6acc60406` (v6e/TPU7x)** are *oneof-typed*: `EmitVectorLatch` selects a typed `PushGains*`/`Pushmatrix*`/`PushMatrix*` submessage by GLM, and one generated `Encode…<Variant>` sub-encoder per variant blits its fields with `BitCopy`. Viperfish alone splits its 7-bit MXU opcode field so a latch and a matmul share it, and the matmul opcode's LSB is the **MSR-select bit (bundle bit 57)** — the bundle-level encoding of the MSR-A/MSR-B overrun handshake that only Viperfish has.
 
 Finally, the page pins the `CreateVectorLatchLsf` entry guard `opcode_produced_register_type[gain_src.opcode] != 4`. Register-type 4 is the *vector* class; the guard requires the gain matrix the LSF latch consumes to come from a vector register, taking a slow `LloModule::UpdateStatus` diagnostic path otherwise. It is the gate that decides which latch ops are even built and is the reason a latch's `register_number` is a Vregno.
 
@@ -118,7 +118,7 @@ Every V5+ latch field is emitted as `local = value; BitCopy(bundle, abs_bit, &lo
 
 ### Purpose
 
-Jellyfish (TPU v3) has no per-variant generated encoders. A single `EmitVectorLatch` maps the GLM to a `VectorExtendedOpcode`, stamps it plus the MXU number into the bundle's `VectorExtendedInstruction` proto, and `EncoderJf::EncodeVectorExtendedInstruction` later bit-packs that proto into the bundle. The slot lives in the JF 41-byte bundle's VectorExtended region (`@abs27-39`); this section adds the latch-specific occupants. (Dragonfish, the v3-pod gen, shares the JF emitter family.)
+Jellyfish (TPU v2) has no per-variant generated encoders. A single `EmitVectorLatch` maps the GLM to a `VectorExtendedOpcode`, stamps it plus the MXU number into the bundle's `VectorExtendedInstruction` proto, and `EncoderJf::EncodeVectorExtendedInstruction` later bit-packs that proto into the bundle. The slot lives in the JF 41-byte bundle's VectorExtended region (`@abs27-39`); this section adds the latch-specific occupants. (Dragonfish, the v3 gen, shares the JF emitter family — though `AddMxuNumToVectorExtended` gates its mxu_num proto write on `TpuVersionToDeviceIdentifiers == kDragonfishIdentifiers`, so on plain Jellyfish the field is left default.)
 
 ### Entry Point
 
@@ -154,19 +154,19 @@ function EncoderJf::EncodeVectorExtendedInstruction(ve, bundle):    // sub_1E869
     word = (word & ~(0x1F << 35)) | ((pred & 0x1F) << 35)           // predication @abs35-39
     word = (word & ~(0x3  << 27)) | ((ve.mxu_num & 3) << 27)        // mxu-id/GMR @abs27-28
     switch (ve.VEopcode):                                           // 35-case opcode→field switch
-        case 0:  word = (word & 0xFFFFFFF81FFFFFFF) | 0x20000000    // has-bit @abs29 (no-op opcode)
-        case 7:  word |= (0x9  << 29)   // ← LATCH GLM0 (bf16 NO_XPOSE)
-        case 8:  word |= (0x9  << 29)   // ← LATCH GLM4 (int8/S8)
-        case 9:  word |= (0xb  << 29)   // ← LATCH GLM2 (packed-bf16)
-        case 10: word |= (0xd  << 29)   // ← LATCH GLM1 (bf16 alt)
-        case 11: word |= (0xd  << 29)   // ← LATCH GLM5 (fp8-conv)
-        case 12: word |= (0xf  << 29)   // ← LATCH GLM3 (fp8 / E5M2)
+        case 0:  word = (word & 0xFFFFFFF81FFFFFFF) | 0x20000000    // field 1 @abs29-34 (no-op opcode)
+        case 7:  word = (word & 0xFFFFFFF81FFFFFFF) | (0x9 << 29)   // ← LATCH GLM0 (bf16 NO_XPOSE)
+        case 8:  word = (word & 0xFFFFFFF81FFFFFFF) | (0xa << 29)   // ← LATCH GLM4 (int8/S8)
+        case 9:  word = (word & 0xFFFFFFF81FFFFFFF) | (0xb << 29)   // ← LATCH GLM2 (packed-bf16)
+        case 10: word = (word & 0xFFFFFFF81FFFFFFF) | (0xd << 29)   // ← LATCH GLM1 (bf16 alt)
+        case 11: word = (word & 0xFFFFFFF81FFFFFFF) | (0xe << 29)   // ← LATCH GLM5 (fp8-conv)
+        case 12: word = (word & 0xFFFFFFF81FFFFFFF) | (0xf << 29)   // ← LATCH GLM3 (fp8 / E5M2)
         … (matmul / matres / EUP VEopcodes 1..6, 13..34) …
         default: LogFatal("Unknown opcode: ")                       // encoder_jf.cc:2570
     QWORD[bundle + 12] = word
 ```
 
-The constants `<< 29` are the opcode-field at `@abs29-34`; bit 29 doubles as the slot's has-bit, set unconditionally by every populated case.
+The constants `<< 29` are the 6-bit opcode-field at `@abs29-34`; every populated case first clears the field (`& 0xFFFFFFF81FFFFFFF`, bits 29–34) then ORs in the case value. The field is *not* uniformly odd — `0xa` (GLM4) and `0xe` (GLM5) have bit 29 clear — so it is a plain 6-bit opcode, not an opcode-plus-fixed-valid-bit.
 
 ### The latch GLM → bundle opcode chain
 
@@ -178,10 +178,12 @@ Running the two tables in series — GLM through `dword_AEF42AC`, then the VEopc
 | 1 | bf16 alt | 10 | `0xd` |
 | 2 | packed-bf16 | 9 | `0xb` |
 | 3 | fp8 / E5M2 | 12 | `0xf` |
-| 4 | int8 / S8 | 8 | `0x9` |
-| 5 | fp8-conv | 11 | `0xd` |
+| 4 | int8 / S8 | 8 | `0xa` |
+| 5 | fp8-conv | 11 | `0xe` |
 
-> **QUIRK — distinct GLMs collapse onto the same JF opcode-field.** GLM 0 (bf16) and GLM 4 (int8) both encode `0x9`; GLM 1 and GLM 5 both encode `0xd`. The JF VectorExtended slot does not carry a separate format field, so the dtype distinction that VF carries in `@abs51` is lost in the JF opcode field — the JF systolic array recovers it from the matmul side, not the latch. A reimplementation that assumes a bijective GLM→opcode map will mis-decode.
+> **CORRECTION (ENC-JF-2) —** an earlier draft claimed two GLM collisions (GLM0/GLM4 both `0x9`, GLM1/GLM5 both `0xd`). Re-reading `EncoderJf::EncodeVectorExtendedInstruction` (`0x1e869f00`) shows this is wrong: the `LABEL_55` cases (VEopcode 8, 11) add `0x20000000` on top of the same base the `LABEL_53` cases use, so VEopcode 8 encodes field `0xa` (not `0x9`) and VEopcode 11 encodes `0xe` (not `0xd`). The six JF latch opcode-fields are `{0x9, 0xd, 0xb, 0xf, 0xa, 0xe}` — **all distinct**. The GLM→opcode-field map is a bijection over the six latch modes.
+
+> **NOTE — the JF VectorExtended slot carries no separate format field.** Although the opcode field distinguishes all six latch GLMs, it is a single 6-bit field with no companion `MatmulDataFormat` like VF's `@abs51`. The dtype is implicit in the opcode value, so a JF decoder reconstructs the data type from the opcode field alone (`0x9`→bf16 NO_XPOSE, `0xa`→int8, …), not from a side field.
 
 ### Function Map
 
@@ -306,7 +308,7 @@ function Encode…0MatrixMultiplyU8LgmrMsrb(bundle, ve):   // sub_1EFA4E00
 | Oneof | op-high `@abs59` | format `@abs51` | Masked oneof | op-high `@abs59` |
 |---|---|---|---|---|
 | PushmatrixRounded | 14 | 0 | RoundedMasked | 15 |
-| PushmatrixPackedIf8 | 14 | 2 | PackedIf8Masked | 17 |
+| PushmatrixPackedIf8Conv | 14 | 2 | PackedIf8ConvMasked | 17 |
 | PushmatrixBf16 | 14 | 3 | Bf16Masked | 18 |
 | PushmatrixBf8 | 14 | 4 | Bf8Masked | 19 |
 | PushmatrixU8 | 14 | 5 | U8Masked | 20 |
@@ -331,18 +333,18 @@ The MXU1 (`VectorExtended1`) slot is the MXU0 layout shifted down 20 bits: opcod
 
 ---
 
-## Ghostlite / Trillium — PushMatrix Oneof
+## Ghostlite / `6acc60406` — PushMatrix Oneof
 
 ### Purpose
 
-Ghostlite (v6e, `glc`) and Trillium (v7, `gfc`) use the same oneof-typed shape as Viperfish with `PushMatrix{Bf16,F32,Bf8,If8,S4,S8,U4,U8}{,Masked}` variants and, like VF, an Msra/Msrb matmul family. Only the bf16 latch opcode bit base and value were traced cell-by-cell.
+Ghostlite (v6e, `glc`) and `6acc60406` (TPU7x, `gfc`) use the same oneof-typed shape as Viperfish with `PushMatrix*{,Masked}` variants and, like VF, an Msra/Msrb matmul family. The dtype roster differs between the two: `glc` names its variants `{F32, Bf16, Bf8, If8, S4, S8, U4, U8}`, while `gfc` names them `{F32, Bf16, E4m3, E5m2, …}` — i.e. the fp8 modes are spelled by encoding (`E4m3`/`E5m2`) on `gfc` rather than by role (`Bf8`/`If8`). Only the bf16 latch opcode bit base and value were traced cell-by-cell.
 
 ### Encoding
 
 | Gen | bf16 latch encoder | opcode bit / width | opcode value (bf16) |
 |---|---|---|---|
 | Ghostlite (v6e, `glc`) | `PushMatrixBf16` `sub_1F33FE00` | `@abs60` (6b) | `14` (`0xe`) |
-| Trillium (v7, `gfc`) | `PushMatrixBf16` `sub_1F9A14E0` | `@abs64` (6b) | `14` (`0xe`) |
+| `6acc60406` (TPU7x, `gfc`) | `PushMatrixBf16` `sub_1F9A14E0` | `@abs64` (6b) | `14` (`0xe`) |
 
 The dtype is the oneof type; the opcode value is the shared matpush constant `14` on both. The `glc`→`gfc` bit base drifts `+4` bits. The full latch-slot field roster (pred, format, MSR positions) beyond the opcode bit base was not traced for either gen. **MEDIUM** beyond the opcode bit/value.
 
@@ -375,7 +377,7 @@ function LloInstruction::CreateVectorLatchLsf(gain_src, glm, unit_id, region):  
     return op
 ```
 
-`opcode_produced_register_type` (`@0x223a16c0`, `.data`, 461 bytes) is indexed by the *producer* opcode and uses the taxonomy `{0=none, 1=predicate, 2=scalar, 3=vector-mask, 4=vector}`. The latch opcodes `0x8d..0x96` themselves map to type 0 — they have no destination register; they push into the systolic array. The guard therefore reads the entry for the *gain source*, not the latch. The same table-read appears in the [Matprep/IAR/Latch ISA page](../isa/slot-matprep-iar-latch.md), which models the matprep source guard as `opcode_produced_register_type[source.opcode] == 4`.
+`opcode_produced_register_type` (`@0x223a16c0`, `.data`; 461 one-byte entries for indices 0..460 — the `>= 0x1CD` bound, within a 464-byte symbol span) is indexed by the *producer* opcode and uses the taxonomy `{0=none, 1=predicate, 2=scalar, 3=vector-mask, 4=vector}`. The latch opcodes `0x8d..0x96` themselves map to type 0 — they have no destination register; they push into the systolic array. The guard therefore reads the entry for the *gain source*, not the latch. The same table-read appears in the [Matprep/IAR/Latch ISA page](../isa/slot-matprep-iar-latch.md), which models the matprep source guard as `opcode_produced_register_type[source.opcode] == 4`.
 
 ### Why register-type 4
 
@@ -388,7 +390,7 @@ Type 4 is the bulk vector register class. The gain matrix a latch loads into the
 | Function | Address | Role | Confidence |
 |---|---|---|---|
 | `LloInstruction::CreateVectorLatchLsf` | `sub_1D4D7AA0` | gain-source bound, type-4 guard, slow path, field stamp | CONFIRMED |
-| `opcode_produced_register_type` | `@0x223a16c0` (`.data`) | 461-byte producer→reg-type table; `4`=vector | CONFIRMED |
+| `opcode_produced_register_type` | `@0x223a16c0` (`.data`) | 461-entry (1 byte each) producer→reg-type table; `4`=vector | CONFIRMED |
 | `set_latch_mode` | `sub_1D4D7C20` | `BYTE[op+0x40] = glm` | CONFIRMED |
 | `set_matrix_staging_register` | `sub_1D4D7D40` | MSR opcode-mux: latch→`+0x44`, matmul→`+0x46`, load-LMR→`+0x42`, dwg→`+0x41` | CONFIRMED |
 | `set_latch_index_in_sequence` | `sub_1D4E7960` | `WORD[op+0x42] = index`, bound `≤ 0xFFFF` | CONFIRMED |
