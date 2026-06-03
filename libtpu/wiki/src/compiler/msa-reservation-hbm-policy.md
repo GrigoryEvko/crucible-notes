@@ -17,8 +17,8 @@ The downstream dispatch (`RunImpl` @ `0x110364a0`) switches on the resolved `one
 |---|---|
 | **Pass class** | `xla::jellyfish::TpuCustomCallMemorySpacePolicy` |
 | **Knob proto** | `TpuCustomCallMemorySpaceSpec` (oneof `policy`), arm 1 `MsaReservationPolicy`, arm 2 `HbmPolicy` |
-| **Knob carrier** | `AutoOr<TpuCustomCallMemorySpaceSpec>` on the comp-env (`AutoProto` slot at comp-env `+0x2992`) |
-| **Resolver** | `ResolveMemorySpaceSpec` @ `0x11036320` (0x180 B) |
+| **Knob carrier** | `AutoOr<TpuCustomCallMemorySpaceSpec>` on the comp-env (`AutoProto*` slot at comp-env `+0xbb0` = `+2992`) |
+| **Resolver** | `ResolveMemorySpaceSpec` @ `0x11036320` (0x16f B) |
 | **Dispatcher** | `RunImpl` @ `0x110364a0` — switch on resolved oneof case |
 | **Gate** | `ShouldEnablePass` @ `0x110362a0` → `IsMemorySpaceAssignmentEnabled` @ `0x12fc1280` |
 | **MSA arm action** | `RunMsaReservationPolicy` @ `0x110367c0` |
@@ -82,7 +82,7 @@ The `MsaReservationPolicy::ByteSizeLong` decompile (@ `0x1db25e60`) corroborates
 
 ## The Resolver: `ResolveMemorySpaceSpec` @ `0x11036320`
 
-`ResolveMemorySpaceSpec(out, Target&, HloModule&, AutoOr<spec>)` is a 0x180-byte sret function. Its defining behavior is that it **always** builds a candidate `MsaReservationPolicy` sized from VMEM — *even when the user supplied a spec* — and only then decides whether to keep that candidate or return the user's spec. The decompile structure:
+`ResolveMemorySpaceSpec(out, Target&, HloModule&, AutoOr<spec>)` is a 0x16f-byte sret function. Its defining behavior is that it **always** builds a candidate `MsaReservationPolicy` sized from VMEM — *even when the user supplied a spec* — and only then decides whether to keep that candidate or return the user's spec. The decompile structure:
 
 ```c
 // 0x11036320 — recovered control flow (cleaned)
@@ -150,7 +150,7 @@ size  = max(size, 0x00a00000)                                    ; cmp $0xa00001
 | term | source | VA / constant |
 |---|---|---|
 | total VMEM | `Target::VmemSizeBytes` (reads `Target+0x458`, i32) | `0x1d615e00` |
-| − overlay reserve | `Target::OverlayReservedVmemBytes` (vtable call `*0x220`) | base `0x1d48fc20` returns 0; Ghostlite / Viperfish-lite = `ChunkSizeBytes() << 4` |
+| − overlay reserve | `Target::OverlayReservedVmemBytes` (vtable call `*0x220`) | base `0x1d48fc20` returns 0; Ghostlite = `ChunkSizeBytes() << 4`; Viperfish = `ChunkSizeBytes() << 4` except the `"lite"` (v5e) SKU which returns 0 |
 | − default scoped VMEM | `scoped_memory_util::DefaultScopedVmemBytes` | `0x1c864e40` |
 | × `0.25f` | `.rodata` float | `0x84a2724` (`0x3e800000`) |
 | trunc → uint64 | `cvttss2si` | — |
@@ -159,19 +159,23 @@ size  = max(size, 0x00a00000)                                    ; cmp $0xa00001
 
 ### The scoped-VMEM working-set term
 
-`DefaultScopedVmemBytes` (@ `0x1c864e40`) is the working set carved out of VMEM before the quarter is taken. With no `HloModule` it tail-calls the per-target cap directly; otherwise it reserves a ring-sum buffer region and clamps to the cap:
+`DefaultScopedVmemBytes` (@ `0x1c864e40`) is the working set carved out of VMEM before the quarter is taken. With no `HloModule` it tail-calls the per-target cap directly; otherwise it reserves a ring-sum buffer region and clamps to the cap. The cap is **not** simply the platform-default vtable call: it is a comp-env field at `TpuCompEnv+0x10f0` interpreted in KiB (`<< 10`), and the `(*vptr)[0x228]` platform default is used only as the fallback when that field reads `-1`:
 
 ```text
-cap     = (*vptr)[0x228]()                              ; DefaultPlatformScopedMemoryBytes()
+capKiB  = *(int64*)(TpuCompEnv + 0x10f0)                ; signed; -1 means "unset"
+cap     = (capKiB == -1) ? (*vptr)[0x228]()             ; DefaultPlatformScopedMemoryBytes() fallback
+                         : (capKiB << 10)                ; else comp-env override, KiB -> bytes
 total   = Target::VmemSizeBytes()
 overlay = (*vptr)[0x220]()                              ; OverlayReservedVmemBytes()
 chunkB  = Target::ChunkBytes()                          ; (*(Target+0x3b8))[0x1a8] * 4
 chunks  = ring_sum_emitter_utils::GetReservedVmemBufferSizeChunks(Target, TpuCompEnv)   ; @0x1c86a820
 scoped  = total − (chunks * chunkB + overlay)
-return    min(scoped, cap)                              ; cmovge → clamp to platform cap
+return    (scoped >= cap) ? cap : scoped                ; min(scoped, cap)
 ```
 
-`GetReservedVmemBufferSizeChunks` (@ `0x1c86a820`) returns `(TpuCompEnv+0x12c0) << 4` when `inference_short_ring_sum_emitter_utils::IsSupported` holds, else 0 — i.e. the ring-sum buffer chunk count is a comp-env field (back-mapping that field to its named TCE knob is **OPEN**, see [Open Items](#open-items)).
+[NOTE] The comp-env scoped-cap override field lives at `TpuCompEnv+0x10f0` and is read as a signed `int64` in KiB; back-mapping it to its named TCE knob is **OPEN** (LOW). When the field is `-1` the per-SKU `DefaultPlatformScopedMemoryBytes` (the `*0x228` vtable slot) supplies the cap.
+
+`GetReservedVmemBufferSizeChunks` (@ `0x1c86a820`) returns `16 · *(TpuCompEnv+0x12c0)` (i.e. `(TpuCompEnv+0x12c0) << 4`) when `inference_short_ring_sum_emitter_utils::IsSupported` holds, else 0 — i.e. the ring-sum buffer chunk count is a comp-env field at `+0x12c0`. Back-mapping that field to its named TCE knob is **OPEN** (LOW).
 
 ### Per-target constants
 
@@ -187,12 +191,12 @@ The vtable slots resolve through the **`vptr = vtable_symbol + 0x10`** ABI offse
 | Target | scoped cap | overlay reserve |
 |---|---|---|
 | `JellyfishTarget` | `0x1000000` = 16 MiB | 0 |
-| `ViperfishTarget` | `0x1000000` = 16 MiB | `ChunkSizeBytes() << 4` on the `lite` SKU, else 0 |
+| `ViperfishTarget` | `0x1000000` = 16 MiB | `0` on the `"lite"` (v5e) SKU, else `ChunkSizeBytes() << 4` (v5p) |
 | `PufferfishTarget` | `0x1000000` = 16 MiB | 0 |
 | `GhostliteTarget` | `0x2000000` = 32 MiB | `ChunkSizeBytes() << 4` |
 | `Target` (base) | string-keyed lookup @ `0x1d61d200` (LOW: not transcribed) | 0 |
 
-So on Jellyfish/Pufferfish the AUTO reservation is `max(free/4, 10 MiB)` with `free = VMEM − (ring-sum reserve, capped at 16 MiB)`; Ghostlite caps the working set at 32 MiB and adds a 16-chunk overlay reserve. See [MSA Per-Version Defaults](msa-per-version-defaults.md) for the per-gen MSA tuning that *spends* this reservation.
+So on Jellyfish/Pufferfish the AUTO reservation is `max(free/4, 10 MiB)` with `free = VMEM − (Overlay + ScopedVmem)`, a zero overlay reserve, and the scoped working set capped at 16 MiB; Ghostlite caps the working set at 32 MiB and adds an overlay reserve of `16 · ChunkSizeBytes()`. See [MSA Per-Version Defaults](msa-per-version-defaults.md) for the per-gen MSA tuning that *spends* this reservation.
 
 ---
 
