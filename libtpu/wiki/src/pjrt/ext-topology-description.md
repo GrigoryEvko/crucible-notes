@@ -8,13 +8,13 @@ A PJRT *topology description* is the device-fabric geometry **without a live cli
 
 The surface is **two-tier**. The first tier is seven generic `PJRT_TopologyDescription_*` slots in the main 140-slot `PJRT_Api` table (Create, Destroy, PlatformName, PlatformVersion, GetDeviceDescriptions, Serialize, Attributes) plus three v0.103 late additions (Deserialize at slot 119, Fingerprint at slot 138, Client_TopologyDescription at slot 100). These expose the XLA-portable abstraction: a platform name, an opaque protobuf serialization, a device-description list, an attribute key/value list, and a 64-bit fingerprint — identical in shape to the CPU and GPU plugins. The second tier is a **TPU-specific extension** (`PJRT_Extension_Base.type == 16`) hung off the extension chain: a 272-byte struct of 31 function pointers carrying torus geometry (`ChipBounds`, `CoreCountPerChip`, `ProcessBounds`, slice configs, ICI routing flags) that the generic surface cannot express.
 
-The defining structural fact is **eager caching in a heap wrapper**. `PJRT_TopologyDescription` is a 112-byte object that owns one `xla::PjRtTopologyDescription*` and pre-materializes three lookup spans at construction. `GetDeviceDescriptions` and `Attributes` therefore degenerate to two-`mov` field reads with no allocation; only the scalar/geometry methods on the TPU extension dispatch through the implementation vtable. A reimplementer who lazily computes the device list on every `GetDeviceDescriptions` call will diverge from the binary's behavior and its lifetime guarantees.
+The defining structural fact is **eager caching in a heap wrapper**. `PJRT_TopologyDescription` is a 112-byte object that owns one `xla::PjRtTopologyDescription*` (held twice — an owned copy at `+0x00` that the destructor virtual-deletes, and a working copy at `+0x08` that every reader dereferences) and pre-materializes three lookup spans at construction. `GetDeviceDescriptions` and `Attributes` therefore degenerate to two-`mov` field reads with no allocation; only the scalar/geometry methods on the TPU extension dispatch through the implementation vtable. A reimplementer who lazily computes the device list on every `GetDeviceDescriptions` call will diverge from the binary's behavior and its lifetime guarantees.
 
 For reimplementation, the contract is:
 
 - **The create path** in `PJRT_TopologyDescription_Create` (slot 87, TPU-overridden): validate struct size, parse `PJRT_NamedValue[]` options, resolve the topology name via `CustomTpuTopologyNameOverride`, build the abstract `xla::PjRtTopologyDescription` via `GetTpuTopologyDescription`, and wrap it with `CreateWrapperDeviceTopology`.
-- **The wrapper layout** (112 bytes): one owned impl pointer plus three pre-built spans (device shared-ptrs, `PJRT_DeviceDescription` array, device-pointer span) and a cached `PJRT_NamedValue` attribute array — so the read slots never allocate.
-- **The TPU extension calling convention**: a non-standard args layout (wrapper at `+0x08`, **no** `priv` field) and a uniform vtable-bouncer body that loads `wrapper->impl`, calls a fixed vtable offset, and copies a scalar or bounds-checked vector back into the args struct.
+- **The wrapper layout** (112 bytes): the impl pointer (owned copy at `+0x00`, working copy at `+0x08`) plus three pre-built spans (device shared-ptrs, `PJRT_DeviceDescription` array, device-pointer span) and a cached `PJRT_NamedValue` attribute array — so the read slots never allocate.
+- **The TPU extension calling convention**: a non-standard args layout (wrapper at `+0x08`, **no** `priv` field) and a uniform vtable-bouncer body that loads `wrapper->impl` from `wrapper+0x08`, calls a fixed vtable offset, and copies a scalar or bounds-checked vector back into the args struct.
 - **The lifetime split**: Create / Deserialize return *owning* wrappers destroyed exactly once via Destroy (slot 88); Client_TopologyDescription returns a *borrowed* one whose lifetime the client owns.
 
 | | |
@@ -22,7 +22,7 @@ For reimplementation, the contract is:
 | **Generic surface** | 7 slots @ `PJRT_Api+0x2B8..+0x2E8` (slots 87–93) + late slots 100 / 119 / 138 |
 | **Create (TPU)** | `pjrt::tpu_plugin::PJRT_TopologyDescription_Create` @ `0xE6A9B20` (slot 87) |
 | **Wrapper build** | `pjrt::CreateWrapperDeviceTopology(unique_ptr<>)` @ `0xF870E60` (body @ `0xF873260`) |
-| **Wrapper size** | 112 bytes (`0x70`), owns `xla::PjRtTopologyDescription*` at `+0x00` |
+| **Wrapper size** | 112 bytes (`0x70`), owns `xla::PjRtTopologyDescription*` (copy at `+0x00`, working ptr at `+0x08`) |
 | **TPU extension** | `type == 16`, 272 bytes (`0x110`), 31 fn-ptrs @ `0x224C3B90` (`.bss`) |
 | **Extension populate** | `pjrt::CreateTpuTopologyExtension` @ `0xE6DE5E0` (35-slot store, no calls) |
 | **Serialization** | protobuf binary of `xla::PjRtTopologyDescriptionProto` (proto2) |
@@ -114,7 +114,7 @@ function PJRT_TopologyDescription_Create(args):          // 0xE6A9B20
 
 > **GOTCHA —** if `platform_name` is empty *and* `create_options` is non-empty, `CustomTpuTopologyNameOverride` returns the error string `"TPU PJRT_TopologyDescription_Create does not support extra create_options if no topology_name is given."` (in `.rodata`). A reimplementer must reject options-without-a-name here; the options table is keyed off the resolved name, so there is no default config to apply them to.
 
-> **NOTE —** the out-param index differs from `Client_Create`. Here the topology is written to `args[6]` (byte offset `+0x30` within the args struct), confirmed by the decompiled `a1[6] = pjrt::CreateWrapperDeviceTopology(...)`. The `_Deserialize` path (slot 119) writes its wrapper to `args[5]` (`+0x28`) instead — the args layouts are not interchangeable.
+> **NOTE —** the out-param index differs from `Client_Create`. Here the topology is written to `args[6]` (byte offset `+0x30` within the args struct), confirmed by the decompiled `a1[6] = pjrt::CreateWrapperDeviceTopology(...)`. The `_Deserialize` path (slot 119) writes its wrapper to `args[4]` (`+0x20`) instead — the args layouts are not interchangeable.
 
 ### Considerations
 
@@ -134,37 +134,40 @@ Reconstructed from the destructor (`~PJRT_TopologyDescription` @ `0xF8700C0`) an
 
 | Field | Offset | Type | Meaning |
 |---|---|---|---|
-| `impl` | `+0x00` | `xla::PjRtTopologyDescription*` (owned) | The implementation topology; its vtable drives every uncached slot |
-| `_error_slot` | `+0x08` | `shared_ptr<absl::Status>` | Unused / padding in this build (LOW: never observed written) |
+| `impl_owned` | `+0x00` | `xla::PjRtTopologyDescription*` (owned) | The owned implementation topology; the destructor runs its virtual destructor (vtable `+0x08`). Set by the `unique_ptr`/const-ref caller after the construction body returns; left `NULL` by the body itself |
+| `impl` | `+0x08` | `xla::PjRtTopologyDescription*` (working ptr) | The pointer every reader and every type-16 extension method dereferences (`*(wrapper+0x08)`); its vtable drives every uncached slot. Same address as `impl_owned` |
 | `cached_device_shared_ptrs` | `+0x10` | `vector<shared_ptr<xla::PjRtDeviceDescription>>` | begin/end/cap; owns the impl device-description refcounts |
-| `cached_device_descriptions` | `+0x28` | `vector<PJRT_DeviceDescription>` | begin/end/cap; one 0x38-byte wrapper per device |
+| `cached_device_descriptions` | `+0x28` | `vector<PJRT_DeviceDescription>` | begin/end/cap; one 0x20-byte (32-byte) wrapper per device |
 | `cached_device_pointer_span` | `+0x40` | `vector<PJRT_DeviceDescription*>` | begin/end/cap; the span returned verbatim by `GetDeviceDescriptions` |
-| `attributes_data` | `+0x58` | `PJRT_NamedValue*` | Cached attribute array (0x38 bytes each) |
+| `attributes_data` | `+0x58` | `PJRT_NamedValue*` | Cached attribute array |
 | `attributes_size` | `+0x60` | `size_t` | Returned by `Attributes` |
 | `attributes_capacity` | `+0x68` | `size_t` | Backing capacity |
 
 ### Algorithm
 
 ```c
-function CreateWrapperDeviceTopology(impl_uptr):         // 0xF870E60 (thin) -> 0xF873260 (body)
+// Construction body (const* overload) @ 0xF873260.
+function CreateWrapperDeviceTopology(impl):              // 0xF870E60 (thin) -> 0xF873260 (body)
     w = operator new(0x70)                                // 112-byte PJRT_TopologyDescription
-    prev = w->impl
-    w->impl = impl_uptr                                   // store owned topology at +0x00
-    if prev != NULL:                                      // defensive: run dtor on any prior occupant
-        prev->vtable[+0x08]( prev )                       // virtual destructor
+    w[+0x00] = 0                                          // owned slot left NULL by the body
+    w->impl = impl                                        // working pointer at +0x08
 
     // (cached at construction by the body @ 0xF873260)
     // (1) DEVICE DESCRIPTIONS: walk impl->DeviceDescriptions() (vtable +0x30),
     //     a vector<shared_ptr<PjRtDeviceDescription>>; for each, allocate a
-    //     PJRT_DeviceDescription wrapper and push into cached_device_descriptions.
+    //     PJRT_DeviceDescription wrapper (0x20 bytes) and push into cached_device_descriptions.
     for sp in impl->DeviceDescriptions():                 // vtable +0x30
         w.cached_device_shared_ptrs.push_back(sp)         // keep the refcount alive
         w.cached_device_descriptions.push_back(PJRT_DeviceDescription{ sp.get() })
         w.cached_device_pointer_span.push_back(&w.cached_device_descriptions.back())
 
-    // (2) ATTRIBUTES: snapshot impl->Attributes() into a PJRT_NamedValue[] once.
+    // (2) ATTRIBUTES: snapshot impl->Attributes() (vtable +0xE8) into a PJRT_NamedValue[] once.
     w.attributes_data, w.attributes_size = PopulatePjrtAttributes(impl->Attributes())
     return w
+
+// Thin overloads (unique_ptr @ 0xF870E60, const-ref deserialize path) then take ownership:
+//   prev = w[+0x00]; w[+0x00] = impl;  if (prev) prev->vtable[+0x08](prev)
+// so the OWNED copy lands at +0x00 and the destructor virtual-deletes it exactly once.
 ```
 
 > **QUIRK —** the device-description span (`+0x40`) and the attribute array (`+0x58`) are built **once** and read directly by slots 91 and 93. The decompiled `GetDeviceDescriptions` is literally `args[3] = *(wrapper+0x40); args[4] = *(wrapper+0x48)` — two `mov`s, no call into the impl topology and no allocation. A reimplementation that calls `impl->DeviceDescriptions()` on every `GetDeviceDescriptions` invocation would re-walk and re-allocate, and would also break the lifetime contract: callers may hold the returned `PJRT_DeviceDescription*` array as long as the wrapper lives, so it must be stable storage, not a per-call temporary.
@@ -222,7 +225,7 @@ _Static_assert(sizeof(PJRT_TpuTopology_Extension) == 0x110, "3*8 header + 31*8 f
 
 ### Calling Convention — the Uniform Body
 
-The 31 methods partition into three categories, but every method opens the same way: validate `struct_size`, then load `wrapper = args[1]` (offset `+0x08`) and `topo = wrapper->impl` (`*(wrapper+0x08)` → the `xla::PjRtTopologyDescription*` at wrapper `+0x00` — note the inner deref). The **vtable-bouncer** majority then calls a fixed vtable offset and copies the result back.
+The 31 methods partition into three categories, but every method opens the same way: validate `struct_size`, then load `wrapper = args[1]` (offset `+0x08`) and `topo = wrapper->impl` (`*(wrapper+0x08)` → the `xla::PjRtTopologyDescription*` working pointer at wrapper `+0x08` — note the inner deref). The **vtable-bouncer** majority then calls a fixed vtable offset and copies the result back.
 
 ```c
 PJRT_Error* method(PJRT_TpuTopology_<Name>_Args* args) {  // uniform template
@@ -231,7 +234,7 @@ PJRT_Error* method(PJRT_TpuTopology_<Name>_Args* args) {  // uniform template
         return new PJRT_Error{returned_status};            // operator new(8)
 
     PJRT_TopologyDescription* wrapper = args[1];            // args+0x08 (NO priv)
-    xla::PjRtTopologyDescription* topo = wrapper->impl;     // wrapper+0x00
+    xla::PjRtTopologyDescription* topo = wrapper->impl;     // wrapper+0x08
     StatusOr<T> r = topo->vtable[<offset>]();               // fixed per-method offset
 
     if (r.ok()) { args->output = move(r.value()); return NULL; }
@@ -362,27 +365,27 @@ function PJRT_TopologyDescription_Serialize(args):       // 0xF870320, slot 92
            "PJRT_TopologyDescription_Serialize_Args", 0x27, 0x38, args[0]) != 1:
         return new PJRT_Error{...}
     topo = (args[2])->impl
-    proto_or = topo->vtable[+0xF8]()                      // StatusOr<xla::PjRtTopologyDescriptionProto>
+    proto_or = topo->vtable[+0xF8]()                      // StatusOr<xla::PjRtTopologyDescriptionProto>  (topo = *(args[2]+8))
     if not proto_or.ok(): return new PJRT_Error{proto_or.status}
-    s = new std::string
-    MessageLite::SerializeToString(&proto_or.value, s)    // 0x210580C0
-    h = operator new(24)                                  // PJRT_SerializedTopology
-    h->data    = s->data();  h->size = s->size()
-    h->deleter = &PJRT_TopologyDescription_Serialize::$_0  // lambda: delete (std::string*)
-    args->serialized_out        = {h->data, h->size}
-    args->serialized_handle_out = h
-    return NULL
+    h = operator new(0x18)                                // 24-byte std::libcpp::string object (the handle)
+    MessageLite::SerializeToString(&proto_or.value, h)    // writes the proto bytes into *h
+    args[5] = h                                           // serialized_handle_out  (+0x28)
+    args[3], args[4] = h->data(), h->size()               // serialized_{data,size} out  (+0x18 / +0x20, SSO-aware)
+    args[6] = &PJRT_TopologyDescription_Serialize::$_0::__invoke  // serialized_deleter out  (+0x30) @ 0xF876F20
+    return NULL                                           // (on serialize failure: PJRT_Error "Failed to serialize PjRtTopologyDescriptionProto.")
 ```
+
+The handle (`args[5]`, `+0x28`) is a plain heap `std::__u::string` of 24 bytes; the deleter is handed back separately in `args[6]` (`+0x30`), not embedded in the handle:
 
 ```c
-struct PJRT_SerializedTopology {                          // sizeof = 24
-    /* +0x00 */ const char* data;                          // heap std::string contents
-    /* +0x08 */ size_t      size;
-    /* +0x10 */ void      (*deleter)(PJRT_SerializedTopology*);  // lambda $_0 -> delete std::string*
-};
+// args struct (out fields):
+//   +0x18 serialized_data    : const char*   (string contents, interior pointer)
+//   +0x20 serialized_size    : size_t
+//   +0x28 serialized_handle  : std::string*  (24-byte heap object, opaque to caller)
+//   +0x30 serialized_deleter : void (*)(std::string* handle)   -> $_0::__invoke @ 0xF876F20
 ```
 
-> **GOTCHA —** the caller **must** invoke `serialized->deleter(serialized)` to reclaim the `std::string` body. The blob is not owned by the wrapper; nothing else frees it. The deleter lambda (`...Serialize::$_0::__invoke`, symbol-only) calls `delete std::string*` (LOW: body identified by symbol, not decompiled).
+> **GOTCHA —** the caller **must** invoke `serialized_deleter(serialized_handle)` to reclaim the heap `std::string`. The bytes are not owned by the wrapper; nothing else frees them. The deleter lambda (`...Serialize::$_0::__invoke` @ `0xF876F20`, symbol-only) calls `delete std::string*` (LOW: body identified by symbol, not decompiled).
 
 ### Deserialize (slot 119)
 
@@ -395,19 +398,18 @@ function PJRT_TopologyDescription_Deserialize(args):     // 0xF870B80, slot 119
         return new PJRT_Error{...}
     proto = xla::PjRtTopologyDescriptionProto{}           // stack-construct
     if not MessageLite::ParseFromString(&proto, {args->bytes, args->size}):  // 0x21057460
-        return new PJRT_Error{InvalidArgument}
-    name = proto.platform_name()                          // SSO string
+        return new PJRT_Error{InvalidArgument("Failed to parse PjRtTopologyDescriptionProto at the C API level, from binary string of size: %d")}
+    name = proto.platform_name()                          // SSO string read directly from the proto
     comp_or = xla::GetDefaultPjRtCompiler(name)           // 0x1D169DA0 -> StatusOr<PjRtCompiler*>
     if not comp_or.ok():
-        return new PJRT_Error{ "Topology platform '%s' not supported by any "
-                               "compiler. Are you missing a compiler library?" }
+        return new PJRT_Error{comp_or.status}             // "no compiler registered for <name>" status raised inside GetDefaultPjRtCompiler
     topo_or = comp_or.value->vtable[+0x20]( serialized_bytes )  // DeserializeTopology
     if not topo_or.ok(): return new PJRT_Error{topo_or.status}
-    args[5] = CreateWrapperDeviceTopology(topo_or.value)  // 0xF873260 (const* overload), out at +0x28
+    args[4] = CreateWrapperDeviceTopology(topo_or.value)  // 0xF873260 (const* overload), out at +0x20
     return NULL
 ```
 
-> **NOTE —** the wire bytes are XLA-portable but the *post-parse* topology depends on a compiler being registered for `platform_name`. libtpu registers its compiler under `"tpu"` and per-generation keys; deserializing a TPU topology on a CPU-only host with no TPU compiler library returns the `"not supported by any compiler"` error. The `PjRtTopologyDescriptionProto` schema is only partly recovered — `platform_name`, `platform_version`, and an opaque `serialized` payload byte-string are confirmed; the full proto field-tag map is **not traced** (the descriptor lives near `.data` `0x1D179E40` and needs a proto-descriptor walk).
+> **NOTE —** the wire bytes are XLA-portable but the *post-parse* topology depends on a compiler being registered for `platform_name`. libtpu registers its compiler under `"tpu"` and per-generation keys; deserializing a TPU topology on a CPU-only host with no TPU compiler library fails inside `GetDefaultPjRtCompiler`, which returns a "no compiler registered" status (the exact "not supported by any compiler / missing a compiler library" wording is **not** a literal in this binary — that message, if any, originates in the compiler-registry library, not here). The `PjRtTopologyDescriptionProto` schema is only partly recovered — `platform_name` is confirmed (read directly in the deserialize path); the full proto field-tag map is **not traced**.
 
 ---
 
@@ -432,7 +434,7 @@ The `SliceConfig` proto (proto2, fields `repeated int32 chip_bounds`, `repeated 
 | Path | Slot | Returns | Destroy responsibility |
 |---|---|---|---|
 | `_Create` | 87 | owning wrapper (112 B, new) at args `+0x30` | caller, via `_Destroy` exactly once |
-| `_Deserialize` | 119 | owning wrapper (112 B, new) at args `+0x28` | caller, via `_Destroy` exactly once |
+| `_Deserialize` | 119 | owning wrapper (112 B, new) at args `+0x20` | caller, via `_Destroy` exactly once |
 | `Client_TopologyDescription` | 100 | **borrowed** handle | the live `PJRT_Client` (do NOT call `_Destroy`) |
 
 ```c
@@ -446,7 +448,7 @@ function PJRT_TopologyDescription_Destroy(args):         // 0xF870040, slot 88
     return NULL                                           // success
 ```
 
-The destructor (`0xF8700C0`) frees, in order: the cached attribute span, the `PJRT_DeviceDescription` vector, the device-pointer span, the device shared-ptr vector, then runs the underlying topology's virtual destructor (vtable `+0x08`). There is **no reference counting and no shared-pointer semantics across the C ABI** — a Create/Deserialize wrapper must be destroyed exactly once.
+The destructor (`0xF8700C0`) frees, in order: the cached attribute span (`+0x58`), the device-pointer span (`+0x40`), the `PJRT_DeviceDescription` vector (`+0x28`, walked back-to-front freeing each element's owned sub-allocation), the device shared-ptr vector (`+0x10`, running each element's virtual destructor), then runs the owned topology's virtual destructor (`*(wrapper+0x00)`, vtable `+0x08`). There is **no reference counting and no shared-pointer semantics across the C ABI** — a Create/Deserialize wrapper must be destroyed exactly once.
 
 > **GOTCHA —** calling `PJRT_TopologyDescription_Destroy` on the handle returned by `PJRT_Client_TopologyDescription` (slot 100) is a use-after-free: that topology is owned by the live client and freed by `PJRT_Client_Destroy`. The C ABI carries no flag distinguishing owned from borrowed handles — the distinction lives only in which slot produced the pointer. See [Client, Device & Topology](client-and-device.md#topology-description) for the borrow path.
 
