@@ -1,6 +1,6 @@
 # Custom Sections
 
-> *All addresses on this page apply to `libtpu.so` version 0.103 from the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`). Other builds will differ. Every section name, address, size, and flag set below was confirmed against `readelf -SW` and `readelf -x`; raw-note figures that disagreed were corrected in place.*
+> *All addresses on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`). Other builds will differ. Every section name, address, size, and flag set below was confirmed against `readelf -SW` and `readelf -x`; raw-note figures that disagreed were corrected in place.*
 
 ## Abstract
 
@@ -24,7 +24,7 @@ For reimplementation / analysis, the contract is:
 | **Largest notable section** | `.lrodata` — `0x6c0e7d0` (108.1 MiB), flags `AMSl` |
 | **PJRT API singleton** | `_ZZN4pjrt10tpu_plugin13GetTpuPjrtApiEvE8pjrt_api` @ `0x227ba840` (`.lbss`, 1120 B) |
 | **build-id** | `89edbbe81c5b328a958fe628a9f2207d` (`.note.gnu.build-id`, 32 B) |
-| **Stripped?** | No — `.symtab` present (1,232,970 symbols, 28.2 MiB) |
+| **Stripped?** | No — `.symtab` present (1,233,710 entries, 28.2 MiB) |
 
 The notable sections, at a glance (textbook `.text`/`.rodata`/`.data`/`.dynsym`/`.plt`/`.got` are omitted — see [ELF anatomy](elf-anatomy.md)):
 
@@ -35,12 +35,12 @@ The notable sections, at a glance (textbook `.text`/`.rodata`/`.data`/`.dynsym`/
 | `[13] .gcc_except_table` | `0xc1bf0b0` | `0x10d584` (1.05 MiB) | `A` | LSDA tables for C++ exception landing pads | CERTAIN |
 | `[14] .eh_frame_hdr` | `0xc2cc634` | `0x6bd684` (6.74 MiB) | `A` | Binary-search index into `.eh_frame` | CERTAIN |
 | `[15] .eh_frame` | `0xc989cb8` | `0x1cab86c` (28.7 MiB) | `A` | DWARF CFI unwind descriptors | CERTAIN |
-| `[19] google_malloc` | `0xe6373c0` | `0x46f2` (18.1 KiB) | `AXo` | tcmalloc per-CPU rseq thunks + check-fail helpers | CERTAIN |
+| `[19] google_malloc` | `0xe6373c0` | `0x46f2` (17.7 KiB) | `AXo` | tcmalloc per-CPU rseq thunks + check-fail helpers | CERTAIN |
 | `[20] .text.split` | `0xe63bab2` | `0x0` (0 B) | `AXo` | Empty split-text marker section | CERTAIN |
 | `[24] google_init_cold` | `0x213e9d80` | `0x60f1` (24.2 KiB) | `AX` | Cold-path static-init code | HIGH |
 | `[25] malloc_hook` | `0x213efe80` | `0x89e` (2.2 KiB) | `AX` | Abseil `LowLevelAlloc` allocation hooks | CERTAIN |
 | `[26] __lcxx_override` | `0x213f0720` | `0x105` (261 B) | `AX` | Overridden libc++ `operator new`/`delete` thunks | CERTAIN |
-| `[30] .init_array` | `0x215f26f0` | `0x5aa0` (23.2 KiB) | `WAo` | 2900 constructor pointers (census → static-init) | CERTAIN |
+| `[30] .init_array` | `0x215f26f0` | `0x5aa0` (22.7 KiB) | `WAo` | 2900 constructor pointers (census → static-init) | CERTAIN |
 | `[31] .fini_array` | `0x215f8190` | `0x10` (16 B) | `WA` | 2 destructor pointers | CERTAIN |
 | `[33] .preinit_array` | `0x22048b30` | `0x10` (16 B) | `WA` | 2 pre-init pointers (rare in a library) | CERTAIN |
 | `[38] filewrapper_toc` | `0x224bf798` | `0x1e8` (488 B) | `WA` | Embedded-file table-of-contents (zero-filled on disk) | MEDIUM |
@@ -51,7 +51,7 @@ The notable sections, at a glance (textbook `.text`/`.rodata`/`.data`/`.dynsym`/
 | `[43] google_malloc_data` | `0x224c2938` | `0x48` (72 B) | `WA` | tcmalloc writable globals | HIGH |
 | `[46] .ldata` | `0x22798c30` | `0x21c00` (135 KiB) | `WAl` | Large-model writable data | CERTAIN |
 | `[47] .lbss` | `0x227ba840` | `0x9f940` (638 KiB) | `WAl` | Large-model zero-init data — **PJRT API singleton** | CERTAIN |
-| `[48] google_malloc_bss` | `0x2285a180` | `0x5100` (20.4 KiB) | `WAl` | tcmalloc large-model zero-init globals | HIGH |
+| `[48] google_malloc_bss` | `0x2285a180` | `0x5100` (20.2 KiB) | `WAl` | tcmalloc large-model zero-init globals | HIGH |
 | `[1] .note.gnu.build-id` | `0x2a8` | `0x20` (32 B) | `A` | GNU build-id note (version anchor) | CERTAIN |
 
 > **NOTE —** the `Flags` column uses `readelf`'s letters: `A` alloc, `W` write, `X` execute, `M` merge, `S` strings, `l` large (`SHF_X86_64_LARGE`), `o` OS-specific (`SHF_GNU_RETAIN` / link-order). The `l` flag on `.lrodata`/`.ldata`/`.lbss`/`google_malloc_bss` is the unambiguous large-code-model fingerprint.
@@ -62,7 +62,7 @@ The notable sections, at a glance (textbook `.text`/`.rodata`/`.data`/`.dynsym`/
 
 ### Why they exist
 
-The x86-64 small/medium code models assume code and data live within a ±2 GiB window reachable by a 32-bit signed `RIP`-relative displacement (`R_X86_64_PC32`). `libtpu.so` is a 745 MiB image whose `.text` alone is `0x12bdb484` ≈ 313 MiB at vaddr `0xe63c000`; the moment rodata and code together exceed the 2 GiB displacement budget, the compiler must emit 64-bit addressing for "large" objects. clang/LLVM's `-mcmodel=large` answer is to *segregate* the large objects into their own sections, flagged `SHF_X86_64_LARGE` (`l`), and place them past the small-data window. That is precisely the layout here: `.rodata` (the small, mergeable read-only data) sits at `0x84a0000`, while the *large* read-only data is a separate `.lrodata` placed earlier at `0x1884a00` and the large writable data is `.ldata`/`.lbss` placed last, above `0x22000000`.
+The x86-64 small/medium code models assume code and data live within a ±2 GiB window reachable by a 32-bit signed `RIP`-relative displacement (`R_X86_64_PC32`). `libtpu.so` is a 745 MiB image whose `.text` alone is `0x12bdb484` ≈ 300 MiB at vaddr `0xe63c000`; the moment rodata and code together exceed the 2 GiB displacement budget, the compiler must emit 64-bit addressing for "large" objects. clang/LLVM's `-mcmodel=large` answer is to *segregate* the large objects into their own sections, flagged `SHF_X86_64_LARGE` (`l`), and place them past the small-data window. That is precisely the layout here: `.rodata` (the small, mergeable read-only data) sits at `0x84a0000`, while the *large* read-only data is a separate `.lrodata` placed earlier at `0x1884a00` and the large writable data is `.ldata`/`.lbss` placed last, above `0x22000000`.
 
 > **QUIRK —** the presence of *both* `.rodata` and `.lrodata` (and `.data`/`.ldata`, `.bss`/`.lbss`) is not a duplication bug — it is the defining signature of an LLVM `-mcmodel=large` build. A small-model `.so` has no `.l*` siblings. A reverse-engineer who only greps for `.rodata` will miss 108 MiB of the most important constant data in the binary.
 
@@ -183,7 +183,7 @@ These live in their own retained section because the `__rseq_cs` descriptors (be
   [48] google_malloc_bss  NOBITS   000000002285a180 221ba830 005100 00 WAl 0   0 16
 ```
 
-`malloc_hook` (`0x89e`, executable) holds Abseil's low-level allocator entry points — `absl::base_internal::LowLevelAlloc::Alloc`/`Free`/`AllocWithArena` — the bootstrap allocator used before tcmalloc is initialized, bracketed by `__start_malloc_hook`/`__stop_malloc_hook`. `google_malloc_data` (72 bytes, writable) and `google_malloc_bss` (`0x5100` = 20.4 KiB, zero-init, large-flagged) hold tcmalloc's mutable globals — per-size-class freelist heads, sampling state, the central cache. `google_malloc_bss` carries the `l` flag, so even the allocator's BSS got pushed into the large-model region.
+`malloc_hook` (`0x89e`, executable) holds Abseil's low-level allocator entry points — `absl::base_internal::LowLevelAlloc::Alloc`/`Free`/`AllocWithArena` — the bootstrap allocator used before tcmalloc is initialized, bracketed by `__start_malloc_hook`/`__stop_malloc_hook`. `google_malloc_data` (72 bytes, writable) and `google_malloc_bss` (`0x5100` = 20,736 B / 20.2 KiB, zero-init, large-flagged) hold tcmalloc's mutable globals — per-size-class freelist heads, sampling state, the central cache. `google_malloc_bss` carries the `l` flag, so even the allocator's BSS got pushed into the large-model region.
 
 ### google_init_cold
 
@@ -268,11 +268,13 @@ A **zero-byte** executable section sitting between `google_malloc` and `.text`. 
 ```text
   [49] .symtab           SYMTAB  0000000000000000 221ba830 1c3cc50 18  51 1232970  8
   [51] .strtab           STRTAB  0000000000000000 23df76c3 ab824de 00   0   0  1
+  # note: the [49] Inf field 1232970 is readelf's "first global" index, not the
+  # entry count; the table holds 1,233,710 entries (size 0x1c3cc50 ÷ 24).
 ```
 
-Despite being a production plugin, `libtpu.so` ships with its **full `.symtab`** — 1,232,970 symbols (28.2 MiB) plus a 171.5 MiB `.strtab` of their mangled names — *in addition to* the load-time `.dynsym` (1118 symbols). It is therefore **not classically stripped**: every local function and object carries a readable mangled name, which is why this wiki can resolve `descriptor_table_protodef_*`, `RseqFunction_PerCpuCmpxchg64`, and the PJRT singleton by name rather than by address alone.
+Despite being a production plugin, `libtpu.so` ships with its **full `.symtab`** — 1,233,710 entries (28.2 MiB; size `0x1c3cc50` ÷ 24) plus a 171.5 MiB `.strtab` of their mangled names — *in addition to* the load-time `.dynsym` (741 symbols). It is therefore **not classically stripped**: every local function and object carries a readable mangled name, which is why this wiki can resolve `descriptor_table_protodef_*`, `RseqFunction_PerCpuCmpxchg64`, and the PJRT singleton by name rather than by address alone.
 
-> **QUIRK —** the `.symtab` + `.strtab` pair is *non-allocated* (vaddr `0x0`, no `A` flag) — it costs zero runtime memory but ~200 MiB of file size. Google ships it for crash-symbolication. For a reverse-engineer this is an enormous gift: the binary is effectively self-documenting. Run `strip --strip-debug` and 200 MiB and all local names vanish, leaving only the 1118 `.dynsym` exports.
+> **QUIRK —** the `.symtab` + `.strtab` pair is *non-allocated* (vaddr `0x0`, no `A` flag) — it costs zero runtime memory but ~200 MiB of file size. Google ships it for crash-symbolication. For a reverse-engineer this is an enormous gift: the binary is effectively self-documenting. Run `strip --strip-debug` and 200 MiB and all local names vanish, leaving only the 741 `.dynsym` exports.
 
 > **CORRECTION (W030-1) —** prior scratch notes tallied the section header count as part of a "sections: 88" aggregate and listed a `.tm_clone_table` of size 0. The aggregate counted two ELF objects (`libtpu.so` + `sdk.so`) together; `libtpu.so` alone has exactly **52** section headers per `readelf -h`/`readelf -S`, and the `.tm_clone_table` and `.tdata`/`.tbss` rows in that aggregate belong partly to the sibling `sdk.so`. This page's tables describe `libtpu.so` only; figures were re-derived directly from `readelf -SW libtpu.so`.
 
