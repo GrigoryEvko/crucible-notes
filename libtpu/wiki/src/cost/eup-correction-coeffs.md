@@ -359,7 +359,7 @@ case kErf:                                  // ResultFifo ordinal 0x12
 | 2 | Pufferfish | 32 | CERTAIN; HIGH |
 | 3 | Viperfish | 16 | CERTAIN; HIGH |
 | 4 | Ghostlite (V5e/V6e-class) | 16 | CERTAIN; HIGH |
-| 5 | (v5 codename) | 16 | CERTAIN; HIGH |
+| 5 | `6acc60406` (TPU7x-class) | 16 | CERTAIN (value); HIGH (gen binding) |
 
 The six depth values `{4, 4, 32, 16, 16, 16}` were read byte-exactly from `0xb53e270`. The `TpuVersion → generation` ordering is not labeled in this function; it is the same `TpuVersion` enum the rest of the cost model indexes (ordinal 0 = Jellyfish, per [ResultFifo / ArchRegister Enums](../isa/resultfifo-archregister.md)). A strong consistency signal supports the binding: the `TpuVersion 0`/`1` depth of `4` exactly equals the Jellyfish/Dragonfish push→pop latency clamp of `4` (below) — on the legacy gens the FIFO holds exactly one latency-window's worth of in-flight EUP results.
 
