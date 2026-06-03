@@ -1,6 +1,6 @@
 # IndirectVregStream — The VREG-Driven Gather Loop
 
-> *Every function address, operand index, struct offset, shift/mask, and opcode value on this page was read from `libtpu.so` in the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`; build `libtpu_lts_20260413_b_RC00`). `.text` VA equals file offset at `0xe63c000`, `.rodata` at `0x84a0000` — both identity-mapped. Addresses are from the **gfc** (Trillium) instances unless tagged otherwise; the **glc** (Ghostlite) and **vfc** (Viperfish) siblings carry the same schema at different addresses. Other versions differ.*
+> *Every function address, operand index, struct offset, shift/mask, and opcode value on this page was read from `libtpu.so` in the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`; build `libtpu_lts_20260413_b_RC00`). `.text` VA equals file offset at `0xe63c000`, `.rodata` at `0x84a0000` — both identity-mapped. Addresses are from the **gfc** (6acc60406) instances unless tagged otherwise; the **glc** (Ghostlite) and **vfc** (Viperfish) siblings carry the same schema at different addresses. Other versions differ.*
 
 ## Abstract
 
@@ -93,7 +93,7 @@ return (*((u32*)this + 12) >> 2) & 0x3F;           // struct +0x30, shift 2, wid
 | `IndirectOffsets` | `+0x28` | 27 | 6 | `0x1ebe30a0` | VREG selector — the offset stream | CONFIRMED |
 | `IndirectAccessLengths` | `+0x30` | 2 | 6 | `0x1ebe30c0` | VREG selector — per-lane access length | CONFIRMED |
 | `OffTileStartOffset` | `+0x10` | 41 | 5 | `0x1ebe3100` | gather base | CONFIRMED |
-| `OffTileStartOffsetValid` | `+0x10` | 46 | 1 | — | base-present bit | CONFIRMED |
+| `OffTileStartOffsetValid` | `+0x10` | 46 | 1 | `0x1ebe30e0` | base-present bit | CONFIRMED |
 | `OffTileMemoryType` | `+0x10` | 47 | 3 | `0x1ebe3340` | HBM / HBM_4B / SPMEM pool | CONFIRMED |
 | `StreamOpcode` | `+0x18` | 9 | 3 | `0x1ebe32c0` | accumulate mode (shared tail) | CONFIRMED |
 | `TileLocalStride` | `+0x18` | 29 | 3 | `0x1ebe3160` | dst write granule (shared tail) | CONFIRMED |
@@ -104,19 +104,20 @@ The two VREG selectors are the entire delta of the *read* side. Everything else 
 
 ### Encode side
 
-The gfc TEC-stream encoder writes opcode `0x38` and places the VREG offset operand in the bundle's high region:
+The gfc TEC-stream encoder writes opcode `0x38` and places the two VREG selector operands in the bundle's high region:
 
 ```text
-SparseCoreTecStreamEncoder::Encode  @0x1ebe33e0
-  oneof bound:  cmp rax, 0xb              (max case 11 — the 4th form)
-  jump table @0xb8387fc:
-     case 8  → opcode 0x3b  LinearStream
-     case 9  → opcode 0x3a  StridedStream
-     case 10 → opcode 0x39  IndirectStream
-     case 11 → opcode 0x38  IndirectVregStream   ← IndirectVreg branch @0x1ebe3d49
-  opcode            @ bundle bit 181, width 6  = 0x38
-  indirect_offsets  @ bundle bit 322, width 6  (TEC bundle high region; 64 B / 512 bits)
+SparseCoreTecStreamEncoder::Encode  @0x1ebe33e0   (oneof switch on *(u32*)(stream+88))
+  case 8   → opcode 0x3b (59)  LinearStream
+  case 9   → opcode 0x3a (58)  StridedStream
+  case 10  → opcode 0x39 (57)  IndirectStream
+  case 0xB → opcode 0x38 (56)  IndirectVregStream   ← case-11 branch
+  opcode            @ bundle bit 181, width 6  = 0x38 (56)   BitCopy(a3,181,…,6)
+  vreg sel #1 (msg member +6) @ bundle bit 283, width 6      BitCopy(a3,283,…,6)
+  vreg sel #2 (msg member +7) @ bundle bit 322, width 6      BitCopy(a3,322,…,6)
 ```
+
+(The TEC bundle is 64 B / 512 bits; both VREG selectors are width-6 and land in the high region. Member +6 is serialized first, member +7 second.)
 
 > **GOTCHA — the TEC encoder's `oneof` bound is `0xb`; the SCS encoder's is `0xa`.** `SparseCoreStreamEncoder::Encode` (SCS, `@0x1eb9b4c0`) bounds its `oneof` switch at `cmp rax, 0xa` (max case 10) — it has only three forms and **no** `IndirectVreg` branch. The TEC encoder bounds at `cmp rax, 0xb` (case 11). The extra case is the entire structural reason `IndirectVregStream` is TEC-only: the SCS and TAC stream encoders cannot reach a 4th form. There are zero `SparseCoreStreamIndirectVregStream*` and `SparseCoreTacStreamIndirectVregStream*` field accessors in any generation; the form's field accessors exist only under the `SparseCoreTecStream` prefix (vfc `0x1e936240`, glc `0x1ea7be20`, gfc `0x1ebe30a0`). (This corrects an earlier per-gen table that listed `IndirectVreg` in all three bundle slots; see [Stream Gather/Scatter](stream-gather-scatter.md) for the form roster.)
 
@@ -277,7 +278,7 @@ Two facts worth preserving: (1) the builder validates that the per-stream byte c
 
 ## Per-Generation Presence
 
-| Mechanism | VF (vfc, v5e) | GL (glc, v5p) | GF (gfc, v6e) |
+| Mechanism | VF (vfc, Viperfish) | GL (glc, Ghostlite) | GF (gfc, 6acc60406) |
 |---|:---:|:---:|:---:|
 | `IndirectVregStream` form (opcode `0x38`) | yes | yes | yes |
 | In the **TEC** Stream slot | yes | yes | yes |
@@ -298,7 +299,7 @@ The discriminator is the field-accessor namespace prefix: every `IndirectVregStr
 |---|---|---|
 | Proto delta `#1…#4` (VREG offsets + mask + base replace 2 SREG operands) | decoded from descriptor; shared `#5…#22` identical to `IndirectStream` | CONFIRMED |
 | `IndirectOffsets` / `IndirectAccessLengths` slot selectors (6-bit, `+0x28>>27` / `+0x30>>2`) | accessor bodies read (`0x1ebe30a0` / `0x1ebe30c0`) | CONFIRMED |
-| Opcode `0x38` @ bundle bit 181; `indirect_offsets` @ bit 322 | TEC encoder branch `@0x1ebe3d49`; `oneof` bound `0xb` | CONFIRMED |
+| Opcode `0x38` @ bundle bit 181; two width-6 VREG selectors @ bits 283 / 322 | `case 0xB` of TEC encoder `@0x1ebe33e0`: `BitCopy(…,181,…,6)`, `(…,283,…,6)`, `(…,322,…,6)` | CONFIRMED |
 | TEC-only (SCS bound `0xa`, no SCS/TAC field accessors) | encoder bounds + zero-accessor counts | CONFIRMED |
 | Op: 3 index groups, no `OffsetIndices`, no `getIndirectListType` | getters located; offset/list-type getters absent | CONFIRMED |
 | Index expansion runs 3 groups (Src/Dst/Sflag), no 4th | `expandSCStreamStart<IndirectVectorStreamStartOp>` `@0x134eb880` body | CONFIRMED |
