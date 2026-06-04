@@ -1,6 +1,6 @@
 # libtpu Internals — Reverse-Engineering Reference
 
-> **Status**: authored (426 pages across 18 parts; all 426 written, Parts 0–XIV reverified through QA batches WXC-39…WXC-53) · **Primary binary**: `libtpu-0.0.40-cp314-cp314-manylinux_2_31_x86_64/libtpu/libtpu.so` — 781,691,048 B, x86-64 ELF64 DYN, **not stripped**, build-id `89edbbe81c5b328a958fe628a9f2207d` · **Secondary**: `sdk.so` (94,732 functions)
+> **Status**: 426 pages across 18 parts · **Primary binary**: `libtpu-0.0.40-cp314-cp314-manylinux_2_31_x86_64/libtpu/libtpu.so` — 781,691,048 B, x86-64 ELF64 DYN, **not stripped**, build-id `89edbbe81c5b328a958fe628a9f2207d` · **Secondary**: `sdk.so` (94,732 functions)
 
 ## What this reference is
 
@@ -10,11 +10,11 @@ Everything here was reconstructed **purely from static analysis of the binary** 
 
 ## Why it is hard
 
-- **884,832 functions** in the analysis database (the disassembler's materialized count; a near-but-unequal 884,843 manifest figure is reconciled to 884,832 per CORRECTION FOR-02 in [Binary Forensics Overview](forensics/overview.md)); 1,249,324 strings; ~52 GB of extracted IDA sidecars.
+- **884,832 functions** in the analysis database (the per-function artifact directories hold a slightly higher 884,843 files, counting thunk/alias/data-stub entries; function *counts* cite 884,832, see [Binary Forensics Overview](forensics/overview.md)); 1,249,324 strings; ~52 GB of extracted IDA sidecars.
 - **40,313 dispatch tables** (≈100× ptxas's 409), classified into 19 taxonomy classes.
 - **160,351 RTTI records** (`_ZTI` 60,457 · `_ZTV` 39,244 · `_ZTS` 60,650 · 2), the 60,457 typeinfos led by `mlir::` (13,091), `asic_sw::` (11,379), `tensorflow::` (3,108), `xla::` (3,036), `llvm::` (2,940), with `dnnl::` / `std::` / `grpc_core::` and a long vendored tail behind them.
 - **~2,900 static constructors** in `.init_array`; **1,069,659 relocations** (of which 1,069,006 are `R_X86_64_RELATIVE`).
-- The section-header table ends **exactly at EOF** — there is **no** trailing payload past it; the carved "4.1 MB zstd-dictionary blob" was a false positive (a `zstd` magic immediate inside `.text`, not a stored frame — see Part I).
+- The section-header table ends **exactly at EOF** — there is **no** trailing payload past it. A `zstd` magic immediate that appears inside `.text` is an inline constant, not a stored compression frame; see [Trailing zstd Blob](forensics/trailing-zstd-blob.md).
 - Custom ELF sections (`google_malloc`, `malloc_hook`, `protodesc_cold`, `filewrapper_toc`, `__rseq_cs`, `__lcxx_override`).
 - Six TPU silicon generations under a Google-internal codename ladder: `jellyfish → dragonfish → pufferfish → viperfish → ghostlite → 6acc60406`, each with its own ISA encoding, cost model, and HAL family.
 
@@ -64,11 +64,11 @@ Each page below carries a grade reflecting how directly its claims are anchored 
 - `I` — **Inferred / synthesis**: foundational, forensic-survey, per-gen-parametric, or connective overview pages.
 - `O` — **Open**: not yet recovered; tracked in the [Open-Frontier Register](appendix/open-frontier-register.md).
 
-All 426 pages are authored; the evidence grade above (`C`/`I`/`O`) is the per-page label that matters. The `O` (open) pages are written but flag a specific not-yet-recovered detail, tracked in the [Open-Frontier Register](appendix/open-frontier-register.md).
+The evidence grade above (`C`/`I`/`O`) is the per-page label that matters. An `O` (open) page flags a specific not-yet-recovered detail, tracked in the [Open-Frontier Register](appendix/open-frontier-register.md).
 
 ### Parts at a glance
 
-All pages are authored; the **Open** column counts the pages still carrying an `O` (not-yet-recovered detail) grade.
+The **Open** column counts the pages still carrying an `O` (not-yet-recovered detail) grade.
 
 | Part | Title | Pages | Open | Depends on | Source domain |
 |------|-------|------:|:----:|-----------|---------------|
@@ -119,8 +119,10 @@ The one-page consolidated constants table is [Per-Gen Master Comparison Matrix](
 
 ## Conventions
 
-- Function addresses are virtual addresses (`@0x…`); for `.lrodata`/`.rodata`, VA == file offset.
+- Function addresses are virtual addresses (`@0x…`); for `.text`/`.rodata`/`.lrodata`, VA == file offset.
 - Each page carries a **References** block: the source binary and the function/symbol virtual addresses it cites.
+
+> **NOTE —** the VA == file-offset rule holds only for `.text`/`.rodata`/`.lrodata`. For `.data` the file offset is VA − `0x400000`, and for `.data.rel.ro` it is VA − `0x200000`; seeking with `xxd`/`objdump` at the raw VA for a struct that resides in those sections reads the wrong bytes. The full section map is in [ELF Anatomy](forensics/elf-anatomy.md).
 - The full page→symbol→VA mapping that backs every claim is the [Evidence-Anchor Index](appendix/evidence-anchor-index.md); the input set those addresses resolve against is catalogued in the [Source-Corpus Map](appendix/source-corpus-map.md).
 
 ## The source corpus

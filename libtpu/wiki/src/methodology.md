@@ -15,7 +15,7 @@ For reproducing the methodology, the contract is:
 - **The acquisition path** — the exact wheel, what it contains, and why redistribution makes it lawful to analyze.
 - **The tool and its passes** — IDA Pro 9.x auto-analysis, the Hex-Rays decompiler, and FLIRT library-signature matching, and which of these actually fired on this binary.
 - **The sidecar family** — the JSON artifacts that hold the recovered facts, with verified counts, so a reimplementer knows what evidence backs the book.
-- **The cross-validation rule** — multiple independent indicators before a claim is trusted; the in-place correction discipline when one is overturned.
+- **The cross-validation rule** — multiple independent indicators before a claim is trusted.
 - **The published floor** — the decompilation failures, analysis problems, and firmware walls that bound what any page can assert.
 
 | | |
@@ -69,7 +69,7 @@ The identity of the analyzed file is pinned three ways so any reader can confirm
 
 > **GOTCHA —** the build-id is in the kernel's md5/uuid form, not the more common SHA-1 form; it is a 16-byte digest, and `file` reports it as `BuildID[md5/uuid]`. Do not expect a 40-hex-character SHA-1 build-id here. The 32-hex-character value above is correct.
 
-> **CORRECTION (METH-01) —** the house README framing speaks of "stripped x86-64 ELF binaries." For *this* artifact that is imprecise: `libtpu.so` retains its full `.symtab` and is reported by `file` as **`not stripped`**. The provenance discipline (static analysis only, no source, no restricted material) holds exactly as stated; only the "stripped" adjective does not apply to this particular binary. Every named function in the book is a *demangled symbol read from the binary*, which is why naming was never the bottleneck.
+> **NOTE —** `libtpu.so` retains its full `.symtab` and is reported by `file` as **`not stripped`**. Every named function in the book is therefore a *demangled symbol read directly from the binary*, not a reconstruction — which is why recovering *names* was never the bottleneck; recovering *behavior* was.
 
 ---
 
