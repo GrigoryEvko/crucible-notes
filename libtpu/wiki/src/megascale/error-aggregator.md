@@ -6,7 +6,7 @@
 
 The Megascale `MegascaleErrorAggregator` is the fleet-wide root that turns a storm of per-host failure reports into a single classified root-cause verdict. When a multi-slice TPU job hangs or crashes, every host's libtpu posts one `MegaScaleRuntimeError` over the `MegaScaleTransport.ReportError` gRPC to the coordinator process. The aggregator fans those reports into one `RapidEyeErrorDigestProto` — a self-describing record that names the suspected culprit hosts, classifies the failure into one of nine `Cause` values, and embeds the temporally-first error verbatim so a human or a downstream batch job can read the verdict without re-deriving it.
 
-The closest familiar analogue is a crash-reporting aggregator (Sentry/Crashpad) wired to a barrier: it is a centralized, single-instance collector keyed by participant identity, with a "did everyone report yet" early-fire and a deadline fallback — but unlike a generic crash sink it is one-shot. The aggregator lives only for the duration of a single error storm: it is lazily created on the first inbound `ReportError`, fans in until `size() == expected_workers` or a 5-minute deadline elapses, emits its digest, and dies. There is no ring buffer, no TTL sweep, and no cross-restart persistence — the design assumes one storm followed by one drain.
+The closest familiar analogue is a crash-reporting aggregator (Sentry/Crashpad) wired to a barrier: it is a centralized, single-instance collector keyed by participant identity, with a "did everyone report yet" early-fire and a deadline fallback — but unlike a generic crash sink it is one-shot. The aggregator lives only for the duration of a single error storm: it is lazily created on the first inbound `ReportError`, fans in until `size() == expected_workers` or a 300 ms idle deadline (rearmed on every report) elapses, emits its digest, and dies. There is no ring buffer, no TTL sweep, and no cross-restart persistence — the design assumes one storm followed by one drain.
 
 This page owns the **wire format** (`RapidEyeErrorDigestProto` and the embedded `MegaScaleRuntimeError`), the **scope** (a single fleet-wide instance on the coordinator, fed by the flat DCN `(slice_id, host_id)` host identity), the **retention model** (in-memory `linked_hash_map`, opt-in on-disk RapidEye log, no eviction), and the **dedup / first-error-wins** logic (per-`(worker, task)` last-write-wins coalescing plus a sticky first-error slot). ICI-level failure *detection* — how a chip fault becomes a `MegaScaleRuntimeError` in the first place — belongs to [ICI failure recovery](../ici/failure-recovery.md), the layer below. The fleet-metadata view of how the aggregator consumes `NumHosts()` and `(slice_id, host_id)` belongs to [barrier-error usage](fleet-metadata/barrier-error-usage.md).
 
@@ -15,7 +15,7 @@ For reimplementation, the contract is:
 - **The wire format** — `RapidEyeErrorDigestProto` (17 live fields, 13 nested messages, a 9-value `Cause` enum) and the embedded per-host `MegaScaleRuntimeError` (13 fields, two enums). The digest embeds the first error verbatim, so the record is self-describing.
 - **The scope model** — a single fleet-wide aggregator instance on the coordinator, lazily allocated, keyed by the flat DCN host identity; workers run no aggregator of their own.
 - **The dedup / retention rules** — the `slice<S>-task<H>/<task_id>` map key, last-write-wins coalescing, the sticky first-error slot, and the absence of any count bound, TTL, or persistence.
-- **The early-fire / deadline drain** — `size() == GetClusterStatus().expected` fires immediately; otherwise a 300 ms (rearmed) deadline plus a 5-minute "missing workers" diff drains a partial digest.
+- **The early-fire / deadline drain** — `size() == GetClusterStatus().expected` fires immediately; otherwise a 300 ms idle deadline (rearmed on every inbound `ReportError`) drains a partial digest with a "missing workers" diff once 300 ms pass with no new report.
 
 | | |
 |---|---|
@@ -46,7 +46,7 @@ The aggregator's scope is the entire multi-slice job, collected at a single poin
 ```text
 ErrorReporter::ReportError (0x1ccb6ea0)        ── coordinator-side gRPC fan-in handler
   ├─ (first hit) operator new(752, 16)         ── lazy-allocate the one aggregator
-  │    └─ MegascaleErrorAggregator(_, "McJax")  ── ctor 0x1ccba600
+  │    └─ MegascaleErrorAggregator(_, "McJax")  ── 1-arg ctor 0x1ccba4c0 (delegates to 4-arg 0x1ccba600)
   ├─ thread::AddCancellableAt(.., this+64)     ── arm 300 ms deadline → ProcessErrorDigest
   ├─ SubstituteAndAppendArray("slice$0-task$1") ── build the (slice_id, host_id) worker key
   ├─ MegascaleErrorAggregator::AddError        ── 0x1ccba940 — upsert into the map
@@ -81,7 +81,7 @@ function ErrorReporter_ReportError(req, resp):       // sub_1ccb6ea0
 
 ### The PJRT parallel surface
 
-A third, independent scope exists: the PJRT C-API exposes the same class to higher-level XLA/JAX clients without any networking. Eight shims under `pjrt::(anonymous)` (`Create` `0xe6bab80`, `Delete` `0xe6bac00`, `AddError` `0xe6bad60`, `ProcessAndShutdown` `0xe6bae40`, `LogErrorDigest` `0xe6baec0`, `Size` `0xe6baf20`, `Active` `0xe6baf80`, plus `ErrorDigestDelete` `0xe6bace0`) let a client `Create` its own aggregator with a caller-supplied `job_name`, drive `AddError` with a caller-supplied `worker_id` and a serialized `MegaScaleRuntimeError` (`ParseFromString`), and pull the digest directly in-process. Each shim is gated by an `ActualStructSizeIsGreaterOrEqual` ABI check against a documented args-struct size (`Create` `0x20`, `ProcessAndShutdown` `0x20`, `Size`/`Active`/`LogErrorDigest` `0x18`, `Delete`/`ErrorDigestDelete` `0x10`). The scope of a PJRT-path aggregator is whatever the client feeds it; no RPC and no coordinator are involved.
+A third, independent scope exists: the PJRT C-API exposes the same class to higher-level XLA/JAX clients without any networking. Eight shims under `pjrt::(anonymous)` (`Create` `0xe6bab80`, `Delete` `0xe6bac00`, `AddError` `0xe6bad60`, `ProcessAndShutdown` `0xe6bae40`, `LogErrorDigest` `0xe6baec0`, `Size` `0xe6baf20`, `Active` `0xe6baf80`, plus `ErrorDigestDelete` `0xe6bace0`) let a client `Create` its own aggregator with a caller-supplied `job_name`, drive `AddError` with a caller-supplied `worker_id` and a serialized `MegaScaleRuntimeError` (`ParseFromString`), and pull the digest directly in-process. Each shim is gated by an `ActualStructSizeIsGreaterOrEqual` ABI check against a documented args-struct size (`Create` `0x20`, `AddError` `0x30`, `ProcessAndShutdown`/`Size`/`LogErrorDigest` `0x18`, `Active` `0x11`, `Delete`/`ErrorDigestDelete` `0x10`). The scope of a PJRT-path aggregator is whatever the client feeds it; no RPC and no coordinator are involved.
 
 ### Function Map
 
@@ -89,8 +89,8 @@ A third, independent scope exists: the PJRT C-API exposes the same class to high
 |---|---|---|---|
 | `ErrorReporter::ReportError` | `0x1ccb6ea0` | gRPC fan-in; lazy alloc, key build, deadline, AddError, early-fire | CERTAIN |
 | `ErrorReporter::ProcessErrorDigest` | `0x1ccb7140` | drain + missing-worker diff + LogErrorDigest + optional abort | HIGH |
-| `MegascaleErrorAggregator` ctor (4-arg) | `0x1ccba600` | class init, FLAG read, `XID` env, `NewGlobalID()` | HIGH |
-| `MegascaleErrorAggregator` ctor (1-arg) | `0x1ccba4c0` | `job_name`-only delegator (empty path, uid=0, xid=0) | HIGH |
+| `MegascaleErrorAggregator` ctor (4-arg) | `0x1ccba600` | class init; stores `job_name`/`log_dir` strings + precomputed `global_id`/`xid`; reads `FLAGS_megascale_error_aggregation_enabled` → `shutdown_` | HIGH |
+| `MegascaleErrorAggregator` ctor (1-arg) | `0x1ccba4c0` | `job_name`-only delegator: reads `FLAGS_megascale_rapideye_error_digest_log_path`, `NewGlobalID()`, `getenv("XM_XID")`, then calls the 4-arg ctor | HIGH |
 | `PJRT ErrorAggregatorCreate` | `0xe6bab80` | in-process aggregator (`operator new(752,16)`) | CERTAIN |
 | `PJRT ErrorAggregatorAddError` | `0xe6bad60` | `ParseFromString` + AddError; `megascale_extension.cc:321` | HIGH |
 | `PJRT ErrorAggregatorProcessAndShutdown` | `0xe6bae40` | returns a 448-byte (`0x1C0`) `ErrorDigest` | HIGH |
@@ -157,7 +157,7 @@ function ProcessAndShutdown() -> ErrorDigest:          // sub_1ccbaba0
     if shutdown_:                                       // line ~817 fast path
         out = cached_digest_; mu_.unlock(); return out  // idempotent / poisoned-by-CANCELLED
     LOG(INFO) "Processing $0 errors", size()            // line 1134
-    digest.local = WorkerInfo(job_name, task_uid)       // identify the coordinator
+    digest.local = WorkerInfo(job_name, global_id, xid) // +0x00/+0x60/+0x68 — identify the coordinator
     for (key, err) in errors_by_worker_launch_:          // arrival order preserved
         st = err.runtime_state.rapid_eye_info            // optional<RapidEyeInfo>
         note chip_config_name == "default"               // 8-byte compare @ 1ccbaf56
@@ -224,7 +224,7 @@ The single serialized artifact the aggregator persists is `xla.megascale.runtime
 | 12 | `error_messages` | repeated | `ErrorMessage` | HIGH |
 | 13 | `graph_consolidater_output` | optional | `GraphConsolidaterOutput` | HIGH |
 | 14 | `event_id` | optional | fixed64 | HIGH |
-| 15 | `xid` | optional | int64 (from `getenv("XID")`) | HIGH |
+| 15 | `xid` | optional | int64 (from `getenv("XM_XID")`) | HIGH |
 | 16 | `executable_by_modules` | repeated | `ExecutableByModules` | HIGH |
 | 17 | `app_type` | optional | string | HIGH |
 | 18 | `faulty_network_links` | repeated | `FaultyNetworkLink` | HIGH |
@@ -332,7 +332,7 @@ default (no flags):   in-memory linked_hash_map  →  LOG(ERROR) on drain  →  
 | Cross-restart | none — no load on ctor; the log is write-only | `RapidEyeLogger` has no `Read` on its vtable |
 | Drain | one-shot; `ProcessAndShutdown` empties and dies | idempotent fast path at `0x1ccbaba0` line ~817 |
 
-> **QUIRK —** the `linked_hash_map` is *unbounded by design*. There is no LRU, no ring buffer, no eviction sweep — the formerly-present `num_workers_to_log_errors` flag that capped logged-error count was retired (visible via `absl::flags_internal::Retire` in `_GLOBAL__sub_I_megascale_error_aggregator.cc` `0x213560a0`). The map is bounded *only* by the dedup key collapsing per-host duplicates plus the `size() == expected` early-fire that drains it the instant every expected worker has reported. A reimplementation that omits the early-fire and relies on the deadline alone will hold the storm in memory for up to the 5-minute window; with one ~112-byte `MegaScaleRuntimeError` plus a 24-byte string per worker, a 1 000-chip pod's worst case is ~150 kB plus message payload — bounded, but only because the map is one-entry-per-worker, not because anything evicts.
+> **QUIRK —** the `linked_hash_map` is *unbounded by design*. There is no LRU, no ring buffer, no eviction sweep — the formerly-present `num_workers_to_log_errors` flag that capped logged-error count was retired (visible via `absl::flags_internal::Retire` in `_GLOBAL__sub_I_megascale_error_aggregator.cc` `0x213560a0`). The map is bounded *only* by the dedup key collapsing per-host duplicates plus the `size() == expected` early-fire that drains it the instant every expected worker has reported. A reimplementation that omits the early-fire and relies on the 300 ms idle deadline alone will hold the storm in memory until 300 ms pass with no new report; with one ~112-byte `MegaScaleRuntimeError` plus a 24-byte string per worker, a 1 000-chip pod's worst case is ~150 kB plus message payload — bounded, but only because the map is one-entry-per-worker, not because anything evicts.
 
 ### The sticky first-error slot
 
@@ -355,18 +355,17 @@ The 752-byte (`0x2f0`) heap object, allocated 16-aligned. Scope-relevant offsets
 
 | Offset | Type | Field | Confidence |
 |---|---|---|---|
-| `+0x00` | `std::string` | `rapideye_log_dir` (FLAG copy) | HIGH |
-| `+0x18` | `std::string` | `job_name` (`"McJax"` on the coordinator) | CERTAIN |
-| `+0x30` | `bool` | `shutdown_` (`active()` = `!this`) | CERTAIN |
-| `+0x38` | `size_t` | `task_uid_` | HIGH |
-| `+0x40` | `int64_t` | `global_id_` (`util::random::NewGlobalID()`) | HIGH |
-| `+0x48` | `int64_t` | `xid_` (`getenv("XID")`) | HIGH |
+| `+0x00` | `std::string` | `job_name` (`"McJax"` on the coordinator) | CERTAIN |
+| `+0x18` | `std::string` | `rapideye_log_dir` (FLAG copy) | HIGH |
+| `+0x30` | `bool` | `shutdown_` (`active()` = `!shutdown_`) | CERTAIN |
 | `+0x50` | `AnyInvocable<void(int,int,MegaScaleRuntimeError const&)>` | per-error unicast callback | MEDIUM |
+| `+0x60` | `int64_t` | `global_id_` (`util::random::NewGlobalID()`) | HIGH |
+| `+0x68` | `int64_t` | `xid_` (`getenv("XM_XID")`) | HIGH |
 | `+0x70` | `MegaScaleRuntimeError` (`0x70`) | `first_recorded_error_` (sticky) | HIGH |
 | `+0xe0` | `bool` | `has_first_recorded_error_` | HIGH |
 | `+0xe8` | `linked_hash_map<string, MegaScaleRuntimeError>` | `errors_by_worker_launch_` (the store) | CERTAIN |
-| `+0x128` | `ErrorDigest` (`0x1c0` = 448 B) | `cached_digest_` (filled on drain) | HIGH |
-| `+0x1a8`..`+0x2b0` | 5 `btree_set` / `btree_map` | indices built during `ProcessAndShutdown` | MEDIUM |
+| `+0x128`..`+0x2e7` | `ErrorDigest` (`0x1c0` = 448 B) | `cached_digest_` (filled on drain); spans up to `mu_`. Standalone `ErrorDigest` confirmed `operator new(0x1C0)` in PJRT `ProcessAndShutdown` `0xe6bae40` | HIGH |
+| `+0x1a8`..`+0x2b0` | 5 `btree_set` / `btree_map` | indices built during `ProcessAndShutdown`; sub-fields *inside* `cached_digest_` (not separate aggregator members) | MEDIUM |
 | `+0x2e8` | `absl::Mutex` | `mu_` — the *only* lock (`this+744`) | CERTAIN |
 
 > **NOTE —** one `absl::Mutex` at `+0x2e8` guards every public method — `AddError`, `ProcessAndShutdown`, `size`, `active` all lock `this+744`. There is no lock-free path. The coordinator's `ErrorReporter` adds a *separate* `TracedMutex` (kind=14) so the lazy-alloc, deadline arm, AddError, and early-fire check are atomic with respect to a concurrent deadline fire; the deadline fiber re-takes that mutex and the `if (!aggregator) return` idempotence guard at `ProcessErrorDigest` (`0x1ccb7140`) handles a late report racing the drain.
