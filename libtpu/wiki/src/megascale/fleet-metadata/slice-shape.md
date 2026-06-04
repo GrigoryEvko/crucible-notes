@@ -2,9 +2,14 @@
 
 A slice's shape — its 3D (occasionally 4D) torus of chips and how they
 distribute across hosts — is described by `tpu.TpuTopologyArgsProto`.
-The same proto is used by tpunetd's in-slice `StartSession` and by the
-Megascale bootstrap request, so the slice shape is computed once during
-in-slice bringup and propagated up.
+The same proto is embedded by every Megascale-runtime message that needs
+the per-slice shape: it is field 3 of `SliceInfo`
+([field decode](field-decode.md)), field 2 of
+`xla.megascale.runtime.NetworkAddressMapping`, and field 6 of
+`TargetArgumentsProto`; the runtime also carries it inside
+`TPUHostConfiguration` (field 8) and `TpuPjRtTopologyDescriptionProto`
+(field 1). The slice shape is computed once during in-slice bringup and
+propagated up as this single, validated blob.
 
 ## TpuTopologyArgsProto
 
@@ -54,8 +59,10 @@ message TpuDegradedAxesProto { bool  x=1; bool  y=2; bool  z=3; }   // axes lost
 ```
 
 `wrap` marks which axes close into a torus (vs an open mesh); `twist`
-selects a twisted torus. The `TwistedTorusShape` enum (in the ICI
-`topology.proto`) enumerates the concrete twist variants.
+(a bool, field 8) selects a twisted torus. The concrete twist variants
+live in a separate `superpod.routing.proto.TwistedTorusShape` enum
+(`TWIST_SHAPE_UNSPECIFIED=0`, `TWIST_SHAPE_K_K_2K=1`,
+`TWIST_SHAPE_K_2K_2K=2`, `TWIST_SHAPE_K_2K_NK=3`).
 
 ## Routing and configured properties
 
@@ -112,9 +119,11 @@ blob. See [Host Identity](host-identity.md#per-slice-consistency).
 ## Provenance
 
 `chip_config_name`, `chips_per_host_bounds`, `host_bounds`, `wrap`, and
-`twist` are derived from the in-slice fabric tpunetd brings up: tpunetd's
-chip-coordinate state (`SetGlobalChipId`, `GetChipCoordinates`,
-`ChipLocationToCoordinate`) defines each chip's position in the slice's
-`ToroidalTopology`, and the slice shape is the bounding box of those
-coordinates. The Megascale layer consumes the shape as an opaque,
-validated blob — see [ICI vs DCN](ici-vs-dcn.md).
+`twist` are derived from the in-slice fabric brought up during slice
+bringup: the driver's global chip-id assignment
+(`asic_sw::driver::deepsea::GlobalConfig::SetGlobalChipId`), tpunetd's
+`GetChipCoordinates` RPC, and the routing layer's
+`superpod::routing::proto::ChipLocationToCoordinate` map together place
+each chip in the slice's `ToroidalTopology`, and the slice shape is the
+bounding box of those coordinates. The Megascale layer consumes the
+shape as an opaque, validated blob — see [ICI vs DCN](ici-vs-dcn.md).
