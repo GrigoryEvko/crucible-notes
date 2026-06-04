@@ -270,5 +270,5 @@ The systolic contract — weight-stationary 128×128 array, matpush 8×128/4×25
 - [IARs Per TensorCore](iars-per-tensorcore.md) — the non-MXU `Instr 0x11..0x20` band producer and the per-gen register/IAR counts.
 - [EUP Latency Overview](eup-latency-overview.md) and [EUP Per-Gen Integers](eup-per-gen-integers.md) — the EUP push→pop edge and the per-gen progression.
 - [MXU Latency: PF](mxu-latency-pf.md), [VF](mxu-latency-vf.md), [GL](mxu-latency-gl.md), [GF](mxu-latency-gf.md) — the later-gen reservation models JF/DF predate.
-- [../isa/slot-mxu.md](../isa/slot-mxu.md) — the MXU slot whose opcodes feed the `CycleTableInstruction` classifier.
-- [../isa/slot-matprep-iar-latch.md](../isa/slot-matprep-iar-latch.md) — the matprep/latch/IAR sub-slots and the per-gen matprep cost divergence.
+- [MXU Slot](../isa/slot-mxu.md) — the MXU slot whose opcodes feed the `CycleTableInstruction` classifier.
+- [Matprep / IAR / Latch](../isa/slot-matprep-iar-latch.md) — the matprep/latch/IAR sub-slots and the per-gen matprep cost divergence.

@@ -223,11 +223,11 @@ On V5+ the predication is a **7-bit field**, encoded byte-exactly by `TPUMCCodeE
 ```c
 // encodePredicateOperand @ 0x13c77c40 (decoded byte-exactly)
 reg = reg_encoding_table[op.reg];      // movzwl (%rdi,%rcx,2)
-APInt::insertBits(out, reg, /*pos=*/0, /*width=*/4);   // bits [3:0] = predicate-reg index
+APInt::insertBits(out, reg, /*pos=*/0, /*width=*/4);   // bits [0:3] = predicate-reg index
 if (flag_byte & 1)                     // test $0x1, %r14b
     out.flags |= 0x10;                 //   bit [4] = predicate sense / present
 mode = (flag_byte >> 5) & 3;           // shr $0x5; and $0x3
-APInt::insertBits(out, mode, /*pos=*/5, /*width=*/2);  // bits [6:5] = predication MODE
+APInt::insertBits(out, mode, /*pos=*/5, /*width=*/2);  // bits [5:6] = predication MODE
 ```
 
 That is `{4-bit reg, 1-bit sense, 2-bit mode}` = a 7-bit field, a superset of Jellyfish's 5-bit field. The four modes correspond to `ALWAYS` / `NEVER` / `OR_NEVER` / `OR_INVERTED_NEVER`. When the branch target is a yet-unresolved label rather than an inline immediate, the operand takes the LLVM-MC fixup path (`getMachineOpValue` @ `0x13c777e0`, 24-bit operand class for label relocations).

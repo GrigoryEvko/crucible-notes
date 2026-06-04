@@ -390,3 +390,9 @@ The success log line `"MegaScale Topology Discovery completed."`
 (`0x1cf54460`, file line 312), immediately before it serializes the
 `MultiSliceTopologyInfo` — not by a separate `ReportStatus()`
 observer.
+
+## Cross-References
+
+- [Bootstrap Overview](overview.md) — where this stage sits in the rendezvous sequence and the `Coordinator<>` template it shares with the barrier flow.
+- [Worker Registration](worker-registration.md) — the `GetMultiSliceTopologyRequest` schema and server-side callback that feed the `ProcessRequest` path documented here.
+- [Convergence](convergence.md) — the generic `Coordinator<>::AddRequest` state machine, pending-callback vector, and `absl::Notification` this page specializes for topology.

@@ -103,3 +103,9 @@ benefits visible in the schema:
    TensorCore, sub-slice vs full-slice) without changing the wire
    schema; the `core_type` argument selects the rule at the point of
    translation.
+
+## Cross-References
+
+- [Fleet Metadata Schema — Overview](overview.md) — the cluster hub: which page owns each level of the fleet → slice → host → chip → core hierarchy.
+- [Fleet Topology Model](topology-model.md) — the fleet → slice → host → chip → core levels this translation chain indexes into.
+- [ICI vs DCN Representation](ici-vs-dcn.md) — the two coordinate systems the (slice, device, core) triple bridges.

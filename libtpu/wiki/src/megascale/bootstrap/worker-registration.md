@@ -264,3 +264,9 @@ drift) and `0x9c14456` (incarnation drift).
   worker "renewing" its registration. HeartBeat runs after
   bootstrap on a separate RPC family and serves only liveness, not
   re-registration.
+
+## Cross-References
+
+- [Bootstrap Overview](overview.md) — where worker registration sits in the rendezvous sequence and the gRPC server machinery behind it.
+- [Topology Exchange](topology-exchange.md) — the `TopologyCoordinator::ProcessRequest` path that consumes the `GetMultiSliceTopologyRequest` this page documents.
+- [Coordinator Election](coordinator-election.md) — how the single coordinator process every worker registers against is selected.

@@ -124,10 +124,10 @@ The BarnaCore vector-load decode path additionally extracts the full 5-bit field
 // encodePredicateOperand @ 0x13c77c40 (decompiled, exact)
 //   a1 = reg-encoding table, a2 = MCInst operands, a3 = per-slot operand index, a4 = dst APInt
 flags = ops[a3].flags;                                  // operand flags word
-APInt::insertBits(dst, regEncTable[ops[a3].preg], /*pos=*/0, /*width=*/4);  // [3:0] reg index
+APInt::insertBits(dst, regEncTable[ops[a3].preg], /*pos=*/0, /*width=*/4);  // [0:3] reg index
 if (flags & 1)
     dst.word0 |= 0x10;                                  // [4] negate / inversion
-return APInt::insertBits(dst, (flags >> 5) & 3, /*pos=*/5, /*width=*/2);    // [6:5] mode/extension
+return APInt::insertBits(dst, (flags >> 5) & 3, /*pos=*/5, /*width=*/2);    // [5:6] mode/extension
 ```
 
 | Bits | Field | Meaning |
