@@ -50,9 +50,9 @@ int64 cfg = *((_QWORD *)a2 + 119);
 CHECK(*(byte*)(cfg + 163) == 1, "target.Topology()->twist() == true");   // chip_cfg+0xa3
 
 // load the three torus dims into dim_sizes_[0..2]  (note the X/Y/Z source order below)
-this->dim_sizes_[0] = *(int*)(cfg + 92);   // this[+0x5b8]   (chip_cfg+0x5c)
-this->dim_sizes_[1] = *(int*)(cfg + 88);   // this[+0x5c0]   (chip_cfg+0x58)
-this->dim_sizes_[2] = *(int*)(cfg + 96);   // this[+0x5c8]   (chip_cfg+0x60)
+this->dim_sizes_[0] = *(int*)(cfg + 92);   // this[+0xb8]    (chip_cfg+0x5c)
+this->dim_sizes_[1] = *(int*)(cfg + 88);   // this[+0xc0]    (chip_cfg+0x58)
+this->dim_sizes_[2] = *(int*)(cfg + 96);   // this[+0xc8]    (chip_cfg+0x60)
 
 // (2) every dim must be >= 1
 CHECK(dim_sizes_[2] >= 1, "dim_sizes_[2] >= 1");
