@@ -94,7 +94,7 @@ These stores are unambiguous in the body but their `set_*` accessors were not in
 | Offset | Store (body line) | Decoded value | Type inferred | Confidence |
 |---|---|---|---|---|
 | 568 (field 123) | `*((_DWORD*)this+142)=4` | 4 | int32 (autotune_level) | CONFIRMED |
-| 588 (field 146 region) | `*((_DWORD*)this+146)=-1` | -1 | int32 | CONFIRMED |
+| 576 (field 132) | `*((_DWORD*)this+144)=-1` | -1 | int32 (`xla_dump_max_hlo_modules`) | CONFIRMED |
 | 644 | `*((_DWORD*)this+161)=5` | 5 | int32 | HIGH |
 | 712 | `*((_QWORD*)this+89)=15` | 15 | int64 | HIGH |
 | 724 | `*((_DWORD*)this+181)=95` | 95 | int32 | HIGH |
