@@ -14,7 +14,7 @@ The deterministic single static path (`GetStaticPath`, singular) and the per-col
 
 For reimplementation, the contract is:
 
-- **The `Paths(src,dst)` dispatch** — self-route short-circuit, the all-ones distance seed, and the split into `PathsWithFaults` / `PathsWithoutFaults`.
+- **The `Paths(src,dst)` dispatch** — self-route short-circuit (builds a trivial all-ones path inline), then the general-case split on the fault set into `PathsWithoutFaults` (empty) / `PathsWithFaults` (non-empty).
 - **The DOR base** — `PathFromDistance` + `AppendHopsToPath`: strict dimension-order traversal of the torus-reduced distance vector.
 - **The wild-first loop** — one non-minimal `Walk` hop, `WildHopToPath` remainder (forward+reverse split), `IsFaultFreePath` validation, and the keep-all-vs-keep-first policy.
 - **The periodic fault model** — `IsFaultFreeLink`: a single physical fault is a *lattice* of logically-faulty links, tested by a per-dimension modular comparison against the symmetry period.
@@ -88,20 +88,19 @@ The `topology` object is accessed only through its vtable. The slots the algorit
 
 ```c
 function Paths(this, src, dst):              // RandomizedToroidalWildFirstPaths::Paths @ 0x1fbe9fc0
-    if Coordinates::operator==(src, dst):    // 0x20c0bac0 — self-route
-        path = trivial 1-element Coordinates path
-        if this.faults != empty:             // this+0x18 != 0
-            return PathsWithFaults(this, ...) // degenerate fault-aware
-        else:
-            return PathsWithoutFaults(this, src, dst)   // tail @ 0x213dc800
-    n = topology->num_dimensions()           // vtable +0x48 (byte 72)
-    seed = Coordinates(filled with 1, length n)  // all-ones distance seed
-    return PathsWithFaults(this, src, dst)   // 0x1fbea380
+    if Coordinates::operator==(src, dst):    // 0x20c0bac0 — self-route (line 43)
+        n    = topology->num_dimensions()    // vtable +0x48 (byte 72, line 56)
+        seed = Coordinates(filled with 1, length n)  // all-ones, length n (line 171)
+        return [ trivial 1-element path ]    // degenerate result built inline; no generator call
+    // general case (src != dst):
+    if this.faults == empty:                 // this+0x18 == 0 (a2+3, line 177)
+        return PathsWithoutFaults(this, src, dst)   // tail @ 0x213dc800 (line 180)
+    return PathsWithFaults(this, src, dst)   // 0x1fbea380 (line 210)
 ```
 
 `PathsWithoutFaults` (`0x213dc800`) is the no-fault path: it builds the single minimal DOR path, identical in cost to the unmodified routing-table generator. It carries the `.rodata` warning **"RandomizedToroidalWildFirstPaths may have degraded performance on non-faulty topologies"** (string lives in this function) — running the resilient generator on a healthy slice is wasteful because it would consider wild detours that are never needed.
 
-> **GOTCHA —** the all-ones seed is **not** the route. It is a distance placeholder that forces `PathsWithFaults` down its general path; the real distance is recomputed inside `PathsWithFaults` via `topology->GetDistances`. A reimplementer who routes the all-ones vector directly produces a one-hop-per-axis nonsense path.
+> **GOTCHA —** the all-ones, length-`n` vector built inside `Paths` is **only** the degenerate self-route case (`src == dst`); it is constructed inline and returned as a trivial one-element path — neither generator is called on the self-route branch. The general case (`src != dst`) never builds an all-ones seed: it dispatches straight on the fault set (`PathsWithoutFaults` when empty, `PathsWithFaults` otherwise), and the real distance is computed inside those via `topology->GetDistances`. A reimplementer must not feed the all-ones vector into the general route generator.
 
 ---
 
@@ -188,13 +187,15 @@ A fault is **not** a single dead link. The fault set the algorithm reasons about
 ### Algorithm
 
 ```c
-function IsFaultFreeLink(this, link, src_coord):     // 0x1fbede40
+function IsFaultFreeLink(this, link, period):        // 0x1fbede40
+    // `period` is the single per-instance symmetry Coordinates passed by the
+    // caller (object field +0x28), NOT a per-fault field — same modulus for every fault.
     for f in this.faults:                            // this+0x10 array, +0x18 count, 0x58 B each
         matches = true
         for i in 0 .. num_dimensions-1:              // topology vtable +0x48
-            a = src_coord.GetCoordinate(i)           // link tail coord
-            b = f.tail_coord.GetCoordinate(i)
-            m = f.symmetry_coord.GetCoordinate(i)    // the per-dim period S[i]
+            a = link.GetCoordinate(i)                // link tail coord            (line 59 -> v12)
+            b = f.coord.GetCoordinate(i)             // this fault's coord         (line 64 -> v15)
+            m = period.GetCoordinate(i)              // per-dim period S[i]        (line 70 -> v29)
             if (a % m) != (b % m):                   // MODULAR REDUCTION
                 matches = false
         matches &= Direction::IsSame(link.dir, f.dir)   // 0x20c025e0
@@ -202,19 +203,19 @@ function IsFaultFreeLink(this, link, src_coord):     // 0x1fbede40
             return NOT-fault-free                    // link coincides with the lattice
     return fault-free
 
-function IsFaultFreePath(this, src, dirs, dst):      // 0x1fbee0c0
+function IsFaultFreePath(this, src, dirs, period):   // 0x1fbee0c0
     pos = src
     for d in dirs:
-        if not IsFaultFreeLink(IciLink{pos, d}, pos): return false
-        pos = topology->Walk(pos, d)                 // vtable +0xa0
+        if not IsFaultFreeLink(IciLink{pos, d}, period): return false  // line 40; period = this+0x28
+        pos = topology->Walk(pos, d)                 // vtable +0xa0 (byte 160)
     return true                                      // every hop avoids the lattice
 ```
 
 Decompile cross-check (`0x1fbede40`, the lattice test): three `GetCoordinate` reads (lines 59/64/70 — `a`, `b`, `m`), then the modular comparison
 
 ```text
-LODWORD(v9) = v15 % v29;            // line 75 — a % m
-v33 &= v12 % v29 == v15 % v29;      // line 76 — AND across dims: (b % m) == (a % m)
+LODWORD(v9) = v15 % v29;            // line 75 — fault_coord % m  (v15=fault, v29=m)
+v33 &= v12 % v29 == v15 % v29;      // line 76 — AND across dims: (link % m) == (fault % m)
 v17 = 4 * (v12 % v29 != v15 % v29); // line 77 — per-dim mismatch advances the loop
 ...
 Direction::IsSame(...)              // line 143 — directions must match too
@@ -222,7 +223,7 @@ Direction::IsSame(...)              // line 143 — directions must match too
 
 The `%` operator reduces each coordinate modulo the symmetry period in every dimension; a candidate link is faulty iff its reduced coordinate equals a fault's reduced coordinate in **all** dimensions **and** the directions match. This is the periodic fault lattice in code, byte-confirmed.
 
-> **GOTCHA —** the modulus is the per-fault `symmetry_coord`, read from the fault link itself (`+0x38`-class field), not a global constant. A reimplementer must store the symmetry period on each `IciLink`, not assume a single pod-wide `S`. (In every shipped cache the period is uniformly `4_4_4`, but the code reads it per fault.)
+> **GOTCHA —** the modulus is **not** read per-fault. It is the single per-instance symmetry `Coordinates` passed as the second `Coordinates&` argument (sourced from object field `+0x28` by `PathsWithFaults`/`IsFaultFreePath`); `v29` is loaded once per dimension from that one period vector, and the same `m` is applied to every fault in the loop. A reimplementer stores the symmetry period **once on the route generator**, not on each `IciLink`. (In every shipped cache the period is uniformly `4_4_4`.)
 
 ---
 
