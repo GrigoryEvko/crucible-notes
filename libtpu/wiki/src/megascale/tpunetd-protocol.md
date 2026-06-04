@@ -53,8 +53,8 @@ For reimplementation, the contract is:
 
 | | |
 |---|---|
-| **Client namespace** | `superpod::tpunetd_client` (306 mangled symbols) |
-| **Daemon namespace** | `superpod::tpunetd` (425 mangled symbols) |
+| **Client namespace** | `superpod::tpunetd_client` (774 mangled-symbol hits, `nm \| rg -c '8superpod14tpunetd_client'`) |
+| **Daemon namespace** | `superpod::tpunetd` (720 mangled-symbol hits, `nm \| rg -c '8superpod7tpunetd'`) |
 | **Source-path prefix** | `platforms/deepsea/software/superpod/routing/` |
 | **Local endpoint (default)** | `/var/google/services/tpunetd/user.socket` (UDS) |
 | **Transport** | plaintext gRPC (`grpc::InsecureChannelCredentials`) |
@@ -291,7 +291,7 @@ controller concern).
 Wire prefix : /libtpu.tpunetd.VBARControl/
 Package     : libtpu.tpunetd                         (note: NOT superpod.tpunetd)
 Stub class  : libtpu::tpunetd::grpc::VBARControl::Stub
-Stub base   : decompiled at 0x1ffd2360
+NewStub     : 0x1ffd2360   (Stub ctor at 0x1ffd23a0)
 Source proto: learning/45eac/tfrc/tpunetd/proto/vbar_control.proto  (TFRC team)
 ```
 

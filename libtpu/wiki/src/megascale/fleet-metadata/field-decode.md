@@ -247,7 +247,7 @@ view into the `HostCommandSchedulerFactory`.
 
 ## Verified presence in libtpu.so
 
-| Type / string | rg -a count |
+| Type / string | occurrences (`rg -a -o <s> \| wc -l`) |
 |---------------|-------------|
 | `MultiSliceTopologyAndLocationProto` (string) | 37 |
 | `MultiSliceTopologyAndLocation` (distinct member fns) | 7 |
