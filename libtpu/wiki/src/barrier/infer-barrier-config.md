@@ -228,12 +228,12 @@ Let `CR_TC = compiler_reserved(TensorCore)` and `CR_SC = compiler_reserved(Spars
 
 | Gen (codename) | TC block (`+0x8c0`/`+0x8c4`) | SC block (`+0x1d0`/`+0x1d4`) | TC top-5 reserved (within block) |
 |---|---|---|---|
-| JF (`kJellyfish`, v0) | `base=CR_TC[0]`, `count=\|CR_TC\|−5` | `base=CR_SC[0]`, `count=\|CR_SC\|` | mega `b+c`, gap `b+c+1`, ar1 `b+c+2`, ar2 `b+c+3`, glob `b+c+4` |
-| DF (`kDragonfish`, v1) | same | same | same 5-slot map |
-| PF (`kPufferfish`, v2) | same | same | same 5-slot map |
-| VF (`kViperfish`, v3) | same | same | same 5-slot map |
-| GL (`kGhostlite`, v4) | same | same | same 5-slot map |
-| GF (`k6acc60406`, v5) | same | same | same 5-slot map |
+| JF (`kJellyfish`, v2) | `base=CR_TC[0]`, `count=\|CR_TC\|−5` | `base=CR_SC[0]`, `count=\|CR_SC\|` | mega `b+c`, gap `b+c+1`, ar1 `b+c+2`, ar2 `b+c+3`, glob `b+c+4` |
+| DF (`kDragonfish`, v3) | same | same | same 5-slot map |
+| PF (`kPufferfish`, v4) | same | same | same 5-slot map |
+| VF (`kViperfish`, v5p) | same | same | same 5-slot map |
+| GL (`kGhostlite`, v6e) | same | same | same 5-slot map |
+| GF (`k6acc60406`, v7) | same | same | same 5-slot map |
 
 Megacore deployments (`megacore*`, `megachip`) are the ones for which `CoresPerChip(TensorCore) == 2` → `BarrierMegacore` is active and the `base+count` megacore slot is consumed; other deployments leave it reserved-unused (the `Megacore()` gate on `GetMegacoreBarrierSyncFlagNumber` fails). The per-gen table is a *structure*, not a value table — the literal `CR_TC[0]` / `|CR_TC|` / `CR_SC[0]` / `|CR_SC|` integers are an embedded-memfile dependency.
 
