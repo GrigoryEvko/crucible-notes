@@ -26,7 +26,7 @@ For reimplementation, the contract is:
 | **Single-axis route table** | `kCaseHopsSignToOffsets` `0xb8f0fb0` (32 × 4 int32), `std::lower_bound` keyed `(routing_case, hop_len, sign)` |
 | **Diagonal route tables** | `y_routing` `0xb8f0e70` · `y_routing_0` `0xb8f0f30` · `x_routing` `0xb8f0ef0` · `x_routing_0` `0xb8f0f70` |
 | **Hop-ladder snap** | `GetHopLength` `0x1fc59c80` → `{1,2,4,8}` (`viperlite_pod/utils.cc:105`) |
-| **Mapper dispatch** | `DmaDestinationRoutingTableEntryMapper::Map` `0x1fc584e0` — `RoutingScheme == 2 ⇒` two-axes else `⇒` n-hop |
+| **Mapper dispatch** | `DmaDestinationRoutingTableEntryMapper::Map` `0x1fc584e0` — `RoutingScheme`: `2 ⇒` two-axes, `1 ⇒` n-hop, `0 ⇒` all-to-all (direct `target_port = dst_chip`), else fatal |
 | **Confidence** | HIGH (fold dispatch + `num_max_dims == 2` CHECK decompile-verified; all five tables byte-exact `.rodata` dumps; lower_bound key build + mod-8 fold + diagonal dispatch decompile-verified) unless a row/callout says otherwise |
 
 ---
@@ -156,7 +156,7 @@ The `24 * v12` / `24 * v14` strides are the 24-byte `std::vector` control block;
 
 ## 4. The n-hop Mapper hop-offset tables
 
-Once the collective knows *who* it reduces with (the replica groups above), the route generator must decide *which physical ICI link* carries each `(src_chip, dst_chip)` transfer. On a limited-ICI (n-hop) topology that decision is a pure table lookup in `DmaDestinationRoutingTableEntryMapper`, dispatched by `Map` (`0x1fc584e0`) on the `RoutingScheme` argument: `== 2 ⇒` `MapTwoAxesReachable` (diagonal), else `⇒` `MapOneTwoFourEightHopNeighborsReachable` (single-axis n-hop). All five tables below are byte-exact `.rodata` dumps.
+Once the collective knows *who* it reduces with (the replica groups above), the route generator must decide *which physical ICI link* carries each `(src_chip, dst_chip)` transfer. On a limited-ICI (n-hop) topology that decision is a pure table lookup in `DmaDestinationRoutingTableEntryMapper`, dispatched by `Map` (`0x1fc584e0`) on the `RoutingScheme` argument (`a5`, decompile-verified at `Map`'s tail): `== 2 ⇒` `MapTwoAxesReachable` (diagonal), `== 1 ⇒` `MapOneTwoFourEightHopNeighborsReachable` (single-axis n-hop), `== 0 ⇒` all-to-all (the route's `target_port` is set directly to the destination chip ID, no table), anything else ⇒ fatal `"Unsupported routing scheme: %d"`. All five tables below are byte-exact `.rodata` dumps.
 
 ### 4.1 The single-axis table — `kCaseHopsSignToOffsets` (`0xb8f0fb0`)
 
@@ -169,7 +169,7 @@ routing_case = (coord_parity & 1) + (near ? 3 : 1)   // group 1..4
    // near = (the differing-axis hop count <= 4); coord_parity = source coord & 1
    // same-axis branch (v78 == v80): +3 if hop<=4 else +1; else (cross) +1
 hop_len = GetHopLength(|delta|) in {1,2,4,8}          // 0x1fc59c80
-sign    = (delta <= 0) ? 1 : 2                        // 1 = NEGATIVE, 2 = POSITIVE
+sign    = (delta <= 0) + 1                            // 1 = POSITIVE (delta > 0), 2 = NEGATIVE (delta <= 0)
 ```
 
 The matched entry's `port_offset` (4th int) is folded to the physical port (`0x1fc58c8e`+):
@@ -205,14 +205,20 @@ idx  case hop sign -> off        idx  case hop sign -> off
 
 ### 4.2 The diagonal tables — `MapTwoAxesReachable` (`0x1fc58fa0`)
 
-When source and destination differ on **both** axes simultaneously, the Mapper reads one of four direct-indexed tables. The dispatch is on the topology X-dimension `v53` (via the `[a4+88]` vtable getter) and on which axis the transfer runs along:
+When source and destination differ on **both** axes simultaneously, the Mapper reads one of four direct-indexed tables. The dispatch is on the topology X-dimension `v53` (a topology getter; `cmp $0x4` / `cmp $0x8` on it at `0x1fc59102`/`0x1fc59107`) and on which axis the transfer runs along (`src.y == dst.y` ⇒ Y-axis table; `src.x == dst.x` ⇒ X-axis table; both equal ⇒ the same-src/dst error):
 
 | X-dim (`v53`) | Y-axis transfer (`y == dst_y`) | X-axis transfer (`x == dst_x`) | row index | col index |
 |---|---|---|---|---|
-| `8` | `y_routing` (4×8) `0xb8f0e70` | `x_routing` (4×4) `0xb8f0ef0` | `src_coord / 2` | other-axis hop |
-| `4` | `y_routing_0` (2×8) `0xb8f0f30` | `x_routing_0` (4×4) `0xb8f0f70` | `src_coord / 2` (Y) · `coord mod 4` (X) | other-axis hop |
+| `8` | `y_routing` (4×8) `0xb8f0e70` | `x_routing` (16 int32) `0xb8f0ef0` | Y: `src_y / 2` · X: `src_x mod 2` | other-axis hop |
+| `4` | `y_routing_0` (2×8) `0xb8f0f30` | `x_routing_0` (4×4) `0xb8f0f70` | Y: `src_y / 2` · X: `src_x mod 4` | other-axis hop |
 
-The leaf access is `table[4 * col + 32 * row]` for the y-tables (row stride 32 B = 8 int32) and `table[4 * col + 16 * row]` for the x-tables (row stride 16 B = 4 int32). Invalid X-dim, or a same-axis transfer, errors: `"Two axes routing only supports slices of dimension X equal to 4 or 8"`, `"Two axes routing only supports transfers along X or Y axes"`, `"Mapper should not be called with same src/dst"` (all decompile-verified).
+The leaf access (decompile-verified `0x1fc58fa0`+) is byte-offset `4*col + row_stride*row` into the chosen table:
+
+- **`y_routing` / `y_routing_0`** (both 8 int32 per row): offset `4*col + 32*(src_y / 2)`.
+- **`x_routing_0`** (`v53 == 4`, 4 int32 per row): offset `4*col + 16*(src_x mod 4)` — a genuine 4×4.
+- **`x_routing`** (`v53 == 8`): offset `4*col + 32*(src_x mod 2)` with `col < 8` — the 16 int32 are indexed as a 2×8 block, **not** as the 4×4 the `.rodata` dump below prints. The dump rows below show the raw 16 int32 in storage order; the `v53 == 8` X-axis path walks them in 2×8 stride.
+
+Invalid X-dim, or a same-axis transfer, errors: `"Two axes routing only supports slices of dimension X equal to 4 or 8"`, `"Two axes routing only supports transfers along X or Y axes"`, `"Mapper should not be called with same src/dst"` (all decompile-verified).
 
 `y_routing` (4×8, `0xb8f0e70`):
 
@@ -269,7 +275,7 @@ So a coordinate delta on the n-hop ladder is always one of the four power-of-two
 - **The `K_2K_2K` per-orientation closed form.** §3.2 byte-confirmed the `(+K) mod 2K` seam and the dominant (X = Z = 2K) orientation, but the full per-orientation case table (which physical axis is the short `K`-axis in each of the three `a6` arms) was traced to its seam effect, not reduced to one closed formula. MEDIUM.
 - **The `routing_case` "near vs far" axis-class.** §4.1 confirmed `routing_case = (parity & 1) + (near ? 3 : 1)` and that groups `{1,2}`/`{3,4}` are the near/far halves, but the exact physical meaning of "near vs far" (which axis-class / wrap-direction picks `+3` vs `+1`) was traced to the `hop_len <= 4` branch, not tied to a named axis. MEDIUM.
 - **The `y_routing` vs `y_routing_0` pod-size selection.** Beyond the `X-dim == 8 vs 4` dispatch, the per-pod choice of variant was inferred from the dispatch immediates, not tied to a named `TpuChipConfig` pod-size field. MEDIUM.
-- **The `RoutingScheme` enum value set.** Only the dispatch selector (`== 2 ⇒` two-axes, `== 0 ⇒` n-hop) is byte-proven; the full enum name/number set and whether a third scheme exists were not decoded. LOW.
+- **The `RoutingScheme` enum value set.** The dispatch selector is byte-proven for `0` (all-to-all), `1` (n-hop), `2` (two-axes), with any other value hitting `"Unsupported routing scheme: %d"`; the symbolic enumerator *names* (which spelling maps to `0`/`1`/`2`) were not decoded. LOW.
 - **The `≥2-phase` fold arm.** The `a6 == 1` orientation arm is a structurally distinct seam reached only if a future `>1`-phase twisted sharding is enabled; `GetPerColorShardIdTable`'s `1`-phase gate makes it unreachable in v0.0.40. Its collective semantic is unexercised. LOW. See [2-Phase Replica-Group Construction](replica-group-2phase.md).
 
 ---
@@ -281,7 +287,7 @@ So a coordinate delta on the n-hop ladder is always one of the four power-of-two
 | `GetReplicaPair3DOnTwistedTorus` | `0x1c893400` | coord fold; returns `map[cY][cX][cZ]` pair | HIGH (dispatch + CHECK + leaf access verified) |
 | `CHECK("num_max_dims == 2")` | `group_utils.cc:1558/1571/1584` | per-orientation fatal precondition | HIGH (3 string occurrences) |
 | `GetPhysicalToLogicalMapping3D` | `0x1c88a280` | builds the `[Y][X][Z] → {core0,core1}` map | HIGH (see [2-phase page](replica-group-2phase.md)) |
-| `DmaDestinationRoutingTableEntryMapper::Map` | `0x1fc584e0` | `RoutingScheme` dispatch (2 ⇒ two-axes, else n-hop) | HIGH |
+| `DmaDestinationRoutingTableEntryMapper::Map` | `0x1fc584e0` | `RoutingScheme` dispatch (2 ⇒ two-axes, 1 ⇒ n-hop, 0 ⇒ all-to-all, else fatal) | HIGH |
 | `MapOneTwoFourEightHopNeighborsReachable` | `0x1fc588a0` | single-axis n-hop lookup + mod-8 port fold | HIGH |
 | `MapTwoAxesReachable` | `0x1fc58fa0` | diagonal two-axes table lookup | HIGH |
 | `GetHopLength` | `0x1fc59c80` | `±{1,2,4,8} → {1,2,4,8}` snap (`utils.cc:105`) | HIGH |
