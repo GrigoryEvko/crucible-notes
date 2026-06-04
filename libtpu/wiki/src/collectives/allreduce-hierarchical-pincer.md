@@ -20,10 +20,10 @@ The single-axis binomial / recursive-doubling emitter loop and the ring offset *
 | **Hierarchical enable gate** | `ShouldEnableSparseCoreHierarchicalAllReduce` — `0x1d6b6d80` |
 | **Per-axis ring-dim / extent producer** | `GetDimensionRings` — `0x133df520` (jump table `0xae2eaac`) |
 | **Ring-config leaf proto** | `IciStrategyRingConfig` — `_InternalSerialize` `0x1d6ec320`, `ByteSizeLong` `0x1d6ec700`, `MergeImpl` `0x1d6ec120`, `Clear` `0x1d6ec2c0` |
-| **Pincer fusion arms** | `EmitAllReduceScatterFusion`, `EmitAllGatherFusion` (`0x1374e580`); `TpuAllReduceScatterFusion` pass |
+| **Pincer fusion arms** | `RotatedPincerFusionEmitter::EmitAllReduceScatterFusion` (`0x1376c4e0`) / `EmitAllGatherFusion` (`0x13771640`); `AsyncPincerFusionEmitter::EmitAllReduceScatterFusion` (`0x13776fc0`); anon-ns `EmitAllGatherFusion` `$_1` lambda thunk (`0x1374e580`); `TpuAllReduceScatterFusion` pass |
 | **Pincer sflag init** | `AsyncPincerInstance::InitSflags` `0x13782fc0`; `RotatedPincerEmitterBase::InitSyncFlags` `0x137a56a0` |
 | **Reserved AllReduce sflags** | `Target::GetAllReduceSyncFlagNumber` — `0x1d60f440` (slots `+2`/`+3`) |
-| **Source TU** | `platforms/xla/service/.../offload_collective_config_builder.cc` (builder + `GetDimensionRings`) |
+| **Source TU** | `platforms/xla/sparse_core/offload_collective_config.cc` (builder + `GetDimensionRings`) |
 
 ---
 
@@ -86,7 +86,7 @@ The per-axis outer loop walks a deque of ND-plane axes (the `170 * (… >> 3)` /
 **FLAT block** (one collapsed EXPLICIT-neighbour ring, taken when `is_hierarchical == 0`):
 
 ```c
-// FLAT inter-chip ring — 0x133c2dc0, decompile lines 3548-3559
+// FLAT inter-chip ring — 0x133c2dc0, decompile lines 3548-3559 + 3564
 *(_QWORD *)(v114 + 24) = v119;          // core_count = computed ring length   @0x18
 *(_DWORD *)(v114 + 36) = 1;             // ring_neighbor = ICI_RING_NEIGHBOR_EXPLICIT (1) @0x24
 // --- flat_map<IciStrategyRingDim, RingConfigAttributes>::operator[](ringDim) (0x133ddc60) ---
@@ -106,8 +106,8 @@ The per-axis outer loop walks a deque of ND-plane axes (the `170 * (… >> 3)` /
 if (across_cores_first_axis)            //   only on axis 0 when megacore
     *(_BYTE *)(v114 + 60) = 1;          // across_cores_on_chip = true                    @0x3c
 *(_BYTE  *)(v114 + 62) = 0;             // partner_transfers_outside_the_ring = false     @0x3e
-if (logical_devices_per_chip >= 2 && hi > 0)        // megacore adjust
-    *(_QWORD *)(v143 + 64) = hi;        // core_count_adjustment = hi                     @0x40
+if (logical_devices_per_chip >= 2 && adjustment > 0)// megacore adjust (v141 branch)
+    *(_QWORD *)(v143 + 64) = adjustment;// core_count_adjustment = v105 (= len*lpc)       @0x40
 // hasbits |= ring_neighbor | ring_dim [| across_cores] [| core_count_adjustment 0x200]
 ```
 
@@ -182,7 +182,7 @@ The pincer is a different emitter family from the hierarchical config builder ab
 |---|---|---|---|
 | Emitter | `BinomialSinglePhaseRingSumEmitter` (`0x13769be0`) | `RotatedPincerEmitter` / `AsyncPincerFusionEmitter` | Confirmed |
 | Reduce arm / broadcast arm | fused into one traversal (not separable) | **separable** — RS arm and AG arm exposed for windowing | Confirmed |
-| Fusion arm emitters | — | `EmitAllReduceScatterFusion` / `EmitAllGatherFusion` (`0x1374e580`) | Confirmed |
+| Fusion arm emitters | — | `EmitAllReduceScatterFusion` (`0x1376c4e0`/`0x13776fc0`) / `EmitAllGatherFusion` (`0x13771640`; anon-ns thunk `0x1374e580`) | Confirmed |
 | Schedule source | binomial replica table (ConstantMapper Type 7) | `net_util::GetRingLocation` (no precomputed table) | Confirmed |
 | Sflags | 7 general recv sflags | **reserved** AllReduce slots (`GetAllReduceSyncFlagNumber`) | Confirmed |
 | Directions / step | one (butterfly partner) | two (rotated CW + counter-rotated CCW) | Confirmed |
@@ -199,7 +199,7 @@ v29                     = Target::GetAllReduceSyncFlagNumber(v28, 2);   // direc
 while (1) { ... }   // per (dim, color): install one flag pair
 ```
 
-A full `.text` cross-reference of `GetAllReduceSyncFlagNumber` (`0x1d60f440`) shows its **only** callers are `AsyncPincerInstance::InitSflags` (`0x13782fc0`) and `RotatedPincer*::InitSyncFlags` (`0x137a56a0`) — **none** in the binomial emitter, and none in the hierarchical config builder. This is the three-topology split:
+A full `.text` cross-reference of `GetAllReduceSyncFlagNumber` (`0x1d60f440`) shows **every** caller is in the pincer family — `AsyncPincerInstance::InitSflags` (both overloads, `0x13782fc0` / `0x137835e0`), `RotatedPincerEmitterBase::InitSyncFlags` (`0x137a56a0`), and `RotatedPincerShortEmitter::Init` (`0x137ba900`) — with **none** in the binomial emitter, and none in the hierarchical config builder. This is the three-topology split:
 
 - **Binomial butterfly** — `CreateStaticBinomialReplicaInfoTable` precomputed `int32[N×8]` partner schedule, 7 general recv sflags ([Binomial / Recursive-Doubling](binomial-recursive-doubling.md)).
 - **Ring rotation** — `net_util::GetRingLocation{ring_index, position, ring_size}`, no precomputed table.
@@ -214,7 +214,7 @@ A full `.text` cross-reference of `GetAllReduceSyncFlagNumber` (`0x1d60f440`) sh
 - **Dispatch:** reload the 16-bit `HierarchicalKind`; `is_hierarchical = (kind & 0x101) != 0x100`. Pin the flag to `0x100` for AllGather and ReduceScatter — only AllReduce may take the hierarchical arm.
 - **Phase list:** build `phase_rings` as an ordered list per color. Prepend the D2D ring (`ring_neighbor=IMPLICIT`, `ring_dim=D2D(7)`, `across_cores_on_chip=true`) only when the chip is megacore.
 - **Flat inter-chip ring:** one ring — `core_count` = computed length, `ring_neighbor=EXPLICIT(1)`, `ring_neighbor_table_offset` + `has_reordering_map` from `RingConfigAttributes[ringDim]`, `explicit_strategy_ring_dim=ringDim`, `partner_transfers=false`.
-- **Hierarchical inter-chip rings:** one ring **per torus axis** — `ring_neighbor=IMPLICIT(2)`, `ring_dim=ringDim` (X/Y/Z torus|mesh), `across_cores_on_chip` only on the first axis when megacore, `core_count_adjustment=hi` when `logical_devices_per_chip ≥ 2`. No `core_count`, no neighbour table.
+- **Hierarchical inter-chip rings:** one ring **per torus axis** — `ring_neighbor=IMPLICIT(2)`, `ring_dim=ringDim` (X/Y/Z torus|mesh), `across_cores_on_chip` only on the first axis when megacore, set `core_count_adjustment` (the computed megacore delta) when `logical_devices_per_chip ≥ 2`. No `core_count`, no neighbour table.
 - **Leaf layout:** lay `IciStrategyRingConfig` out with the 13 fields at the byte offsets in the field-map table; pack the three bools at `0x3c/0x3d/0x3e`, the enums at `0x20/0x24/0x38/0x48/0x4c`, the int64s at `0x18/0x28/0x30/0x40/0x50`; hasbits int32 at `0x10`.
 - **Pincer:** for the bidirectional fusion, draw the two direction sflags from `GetAllReduceSyncFlagNumber(1)/(2)` and key a `[dim][color]` flag table; keep the reduce-scatter and all-gather arms separable for windowed-einsum overlap. Do **not** route the pincer through the binomial replica table.
 
