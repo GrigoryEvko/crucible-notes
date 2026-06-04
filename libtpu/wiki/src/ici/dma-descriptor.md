@@ -181,14 +181,14 @@ addr = sflag_value
 // annotated "remote sync flag address"; DefaultSyncFlagSegmentId() = 0x40 @ 0x1d62da60
 ```
 
-**(B) Pufferfish** — `pufferfish::dma_utils::EncodeRemoteSyncFlagAddress` @ `0x1d5ae1a0`, core-relative: keeps the 12-bit sflag field `<< 0x12` (bit 18) | `0x20000` (bit 17 remote marker) | `CoreIndex() << 0xd` (bit 13), with an MS-based `+2` add and a `Sshrl(…,2)` segment fold.
+**(B) Pufferfish** — `pufferfish::dma_utils::EncodeRemoteSyncFlagAddress` @ `0x1d5ae1a0`, core-relative: masks the sflag field `& 0xfff` (12-bit), shifts `<< 0x12` (bit 18), OR's `0x20000` (bit 17 remote marker) and `CoreIndex() << 0x10` (bit 16), with a `Sshrl(…,2)` segment fold (shift-right-by-2) applied to the core value before the final OR.
 
 **(C) Viperfish** — `viperfish::dma_utils::EncodeRemoteSyncFlagAddress` @ `0x1d5af9c0`, same shape as Pufferfish but a **wider 14-bit** sflag field. The decompile confirms `sflag & 0x3fff` (`SimmU32 0x3FFF`, `SandU32`) `<< 0x11` (bit 17) | `0x20000` (bit 17 marker), with the low 2 bits kept (`& 3`) and `CoreIndex << 0x10`. Ghostlite reuses this V2 path; `ghostlite::…EncodeRemoteSyncFlagAddressGhostlite` @ `0x1d5b01e0` is an 11-byte delegator.
 
 | Gen | sflag field width | sflag shift | remote marker | core encoding | Confidence |
 |---|---:|---:|---|---|---|
 | Jellyfish / Dragonfish | (coordinate) | X`<<0x14`, Y`<<0x15` | `0x40000` (b18) + `0x80000` (b19) | core X/Y coordinate | CONFIRMED |
-| Pufferfish | 12-bit | `<< 0x12` (b18) | `0x20000` (b17) | `CoreIndex() << 0xd` | CONFIRMED |
+| Pufferfish | 12-bit | `<< 0x12` (b18) | `0x20000` (b17) | `CoreIndex() << 0x10` | CONFIRMED |
 | Viperfish | **14-bit** (`0x3fff`) | `<< 0x11` (b17) | `0x20000` (b17) | `CoreIndex() << 0x10` | CONFIRMED |
 | Ghostlite / Trillium | 14-bit | (delegates to Viperfish path) | `0x20000` | `CoreIndex` | HIGH |
 
