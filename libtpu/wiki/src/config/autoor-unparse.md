@@ -79,7 +79,7 @@ The present/has byte sits at a class-specific offset because the packed layouts 
 | `int64` (`long`) | `@ 0x1d743560` | `+0x08` | `{value@+0, has@+8}` | CONFIRMED |
 | `double` | `@ 0x1d744ce0` | `+0x08` | `{value@+0, has@+8}` | CONFIRMED |
 | `string` | `@ 0x1d743b00` | `+0x20` | `{body, variant-idx@+0x18, has@+0x20}` | CONFIRMED |
-| enum (8 arms) | `@ 0x1d748380` etc. | `+0x04` | `(present<<32)\|val32` | CONFIRMED (`ScavengingMode`) |
+| enum (7 arms) | `@ 0x1d748380` etc. | `+0x04` | `(present<<32)\|val32` | CONFIRMED (`ScavengingMode`) |
 | message (11 arms) | `@ 0x1d7453c0` etc. | `+0x28..+0x50` | `{variant idx, sub-msg, has}` | HIGH (offsets recovered, not sizeof-derived) |
 
 > **GOTCHA —** `float` shares the `+0x04` 8-byte-packed slot with `int32`/`enum`, **not** the `+0x08` has-byte slot of `int64`/`double`. A `float` is 4 bytes, so its present bit fits at bit 32 of the 8-byte pack (present byte `+4`); a `double` is 8 bytes and needs the separate has-byte at `+8`. A reimplementer who lumps "floating point ⇒ has-byte at +8" will read the `float` present bit from the wrong byte. This was a correction to an earlier ingest sketch (KF#3 in the source: `float` packs `(present<<32)|f32`, witnessed by `AbslUnparseFlag<AutoOr<float>> @ 0x1d743d40` testing `+4` and `vmovss`-loading the value at `+0`).
@@ -89,7 +89,7 @@ The present/has byte sits at a class-specific offset because the packed layouts 
 The `AutoProto` oneof has 30 arms but only 25 distinct unparse symbols exist:
 
 - **4 arms have no registered flag** (oneof-inner-only, never a CLI flag) so no unparse is emitted: `uint64`, `BufferContentsSanitizerConfig`, `PrecisionTracerModeProto_Value`, `SkipConfigTypeProto_Value`.
-- **2 arms were identical-code-folded** by the linker onto a byte-identical sibling — the symbol is gone, the code is shared: `ExecutionOptions_EffortLevel` (folds onto another `(present<<32)|val32` + enum `AbslUnparseFlagImpl`) and `SparseCoreAssertLevel` (folds onto a sibling message unparse).
+- **2 arms were identical-code-folded** by the linker onto a byte-identical sibling — the symbol is gone, the code is shared: `ExecutionOptions_EffortLevel` (folds onto another `(present<<32)|val32` + enum `AbslUnparseFlagImpl`) and `SparseCoreAssertLevel` (an enum-class arm; its `AbslUnparseFlag<AutoOr<…>>` symbol is likewise absent, folded onto a byte-identical sibling).
 
 > **NOTE —** ICF means a reimplementer cannot infer "every arm has its own unparse function." Two enum/message arms run *another* arm's bytes. The behavior is unchanged (byte-identical code), but a symbol-by-symbol reconstruction will be short two names.
 
