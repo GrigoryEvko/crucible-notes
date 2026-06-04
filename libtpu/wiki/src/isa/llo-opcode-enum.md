@@ -96,7 +96,7 @@ The low opcodes are the control-and-handshake layer: program boundaries, schedul
 | `0x029` | `kProgramLaunchSc` | SparseCore program launch | CONFIRMED |
 | `0x02B` | `kVectorInterrupt` | vector-side interrupt | CONFIRMED |
 
-The push/pop bits (`opcode_info` bit0/bit1) are set on exactly the FIFO-transfer members: e.g. `kVectorToScalarPush` (0x0A) and the `*Push` group carry bit0; `kSfrfPop`/`kDrfPop` (0x11/0x12) and the `*Pop` group carry bit1. `kScalarHalt`/`kScalarHaltOnError` share `GhPerf` cost row 0x000.
+The static `opcode_info` low-byte push/pop bits do **not** line up with the `*Push`/`*Pop` opcode names the way one would expect, so FIFO behavior must be taken from the helper functions rather than read off the table by name. As decoded from the on-disk `opcode_info` (base `0x223a1320`, uint16 stride): `kVectorToScalarPush` (0x0A), `kSyncFlagToScalarPush` (0x0B), and `kSyncFlagToSfrfPush` (0x0F) all read `0x0000` (no bit0); whereas `kSfrfPop` (0x11) reads `0x0073` and `kDrfPop` (0x12) reads `0x0002` (bit1 set on both). `LloInstructionPushesToResultFifo` (`opcode_info[op] & 1`) and `LloInstructionPopsFromResultFifo` (matres special-case + bit-field extract) are the authoritative push/pop tests. `kScalarHalt`/`kScalarHaltOnError` share `GhPerf` cost row 0x000.
 
 ---
 
@@ -169,7 +169,7 @@ The Extended Unit Pipeline computes transcendentals as a deferred-result pipelin
 | `0x13B`..`0x144` | same set + `kVectorPushErfAndPop` | F32, issue+pop | CONFIRMED |
 | `0x145`..`0x14D` | same set | Bf16, issue+pop | CONFIRMED |
 
-> **NOTE — the EUP family is the cleanest illustration of the Push/Pop property bits.** Every issue-only EUP opcode sets `opcode_info` bit0 (Push); `kVectorEupResult` (0x14E) sets bit1 (Pop, `opcode_info[0x14E] == 0x0202`). The `*AndPop` opcodes fuse both into one instruction. A scheduler that models the EUP FIFO drives directly off these bits.
+> **NOTE — EUP FIFO push/pop is not read from a static `opcode_info` bit.** `LloInstructionPushesToResultFifo` (@ `0x1d4f3600`) tests `opcode_info[op] & 1`, and `LloInstructionPopsFromResultFifo` (@ `0x1d4f3720`) special-cases the matres band (`0x152`/`0x153`) and otherwise extracts a sign-bit field (`shl 0xC; cwde; sar 0xD`) from the property word — it does *not* test a fixed `Pop` bit. The static `opcode_info` slot for `kVectorEupResult` (0x14E) reads `0x0000` on disk (file offset `0x223a15bc`), so a reimplementer must drive the EUP FIFO from the push/pop *helpers* (and their matres/EUP special-cases), not from a literal property-word constant. The `*AndPop` opcodes fuse issue+pop into one instruction.
 
 ---
 
@@ -187,7 +187,7 @@ Reductions (`0x0F5`..`0x101`) compute min/max/add/argmin/argmax across lanes or 
 | `0x152`..`0x153` | `kVectorMatres` / `kVectorMatresAdd` | pop MXU result (plain / accumulate) | CONFIRMED |
 | `0x154`..`0x155` | `kVectorTransposeResult` / `kVectorTransposeClear` | pop transpose result / clear transpose FIFO | CONFIRMED |
 
-`kVectorXlaneResult`/`kVectorPermuteResult`/`kVectorTransposeResult` share `GhPerf` cost row 0x1C7. `kVectorTransposeClear` (0x155) is the single opcode whose `opcode_info` word is `0x000E` (Pop + a transpose-clear sub-tag in bits 2/3).
+`kVectorXlaneResult`/`kVectorPermuteResult`/`kVectorTransposeResult` share `GhPerf` cost row 0x1C7. `kVectorTransposeClear` (0x155) has `opcode_info` word `0x0911` (bytes `11 09` at file offset `0x223a15ca`).
 
 ---
 
@@ -246,7 +246,7 @@ Predicate (single-bit, P-register) and vector-mask (lane-mask, VM-register) ops.
 
 | Value | Name | Role | Confidence |
 |---|---|---|---|
-| `0x0E1` | `kPredicateConstant` | remat-able predicate constant (`opcode_info` `0x00D0`) | CONFIRMED |
+| `0x0E1` | `kPredicateConstant` | remat-able predicate constant (`opcode_info` `0x222C`, file offset `0x223a14e2`) | CONFIRMED |
 | `0x0E5`..`0x0E8` | `kPredicateNegate` … `kPredicateOr` | predicate logic (share `GhPerf` row 0x032) | CONFIRMED |
 | `0x0E6` | `kPredicateMove` | predicate copy — **Move-exclusion** opcode | CONFIRMED |
 | `0x0E2`..`0x0E3` | `kVectorMaskConstant` / `…Packed` | mask constants | CONFIRMED |

@@ -21,7 +21,7 @@ For reimplementation, the contract is:
 | **`ResultFifo` depth** | `ResultFifoEntryCount` @ `0x1d631520` — 25 arms, `TpuVersion < 6` gate |
 | **`RegisterType` stringifiers** | `RegisterTypeToString` @ `0x1d640560`, `RegisterTypeToMnemonic` @ `0x1d640600` |
 | **`ArchRegister` instance resolver** | `internal::ArchRegisterInstance` @ `0x126b3240` — 12 banked arms + default pass-through |
-| **Per-opcode metadata** | `opcode_info_big` @ `0x227b5570` — `LloOpcodeBigInfo[462]`, 28-byte stride |
+| **Per-opcode metadata** | `opcode_info_big` @ `0x227b5570` — `LloOpcodeBigInfo[461]` (symbol size `0x326c` = 12908 B = 461 × 28), 28-byte stride |
 | **XLU consumer** | `LloXluGraphOptimizer::ComputeXluOperations` @ `0x126d9780` |
 
 ---
@@ -160,7 +160,7 @@ function ResultFifoEntryCount(fifo, version):        // sub_1d631520
 
 ## opcode_info_big — Where the Enums Are Consumed
 
-Both enums are referenced from the per-opcode metadata table `opcode_info_big` @ `0x227b5570` (`LloOpcodeBigInfo[462]`, 28-byte stride, indexed by `LloOpcode`; `ComputeXluOperations` bounds the index with `opcode < 0x1CE` and traps otherwise). Each record carries three sentinel-terminated `int8` lists:
+Both enums are referenced from the per-opcode metadata table `opcode_info_big` @ `0x227b5570` (`LloOpcodeBigInfo[461]` — symbol size `0x326c` = 12908 B = 461 × 28 — 28-byte stride, indexed by `LloOpcode`; `ComputeXluOperations` bounds the index with `opcode < 0x1CE` and traps otherwise, so the bound admits one index past the 461-entry table). Each record carries three sentinel-terminated `int8` lists:
 
 ```c
 struct LloOpcodeBigInfo {              // sizeof 28 (0x1c)

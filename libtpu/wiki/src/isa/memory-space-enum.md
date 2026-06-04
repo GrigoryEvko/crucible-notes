@@ -130,7 +130,7 @@ int dma_utils::MemorySpaceToLocalMemId(MemorySpace ms):  // sub_1D5AE120, puffer
 ```
 
 - `DmaMemoryId` accepts `ms-1 ∈ {0,2,3,4,6,7}` (mask `0xDD = 0b1101_1101`) → spaces `hbm(1)`, `vmem(3)`, `cmem(4)`, `smem(5)`, `imem(7)`, `barna_core_bmem(8)`.
-- `MemorySpaceToLocalMemId` accepts `ms-1 ∈ {0,2,3,4,6,7,8,9,10}` (mask `0x5DD`) → the same six plus the three remaining BarnaCore spaces `barna_core_{smem(9),sflag(10),imem(11)}`.
+- `MemorySpaceToLocalMemId` accepts `ms-1 ∈ {0,2,3,4,6,7,8,10}` (mask `0x5DD = 0b101_1101_1101`) → the same six plus two of the remaining BarnaCore spaces, `barna_core_smem(9)` and `barna_core_imem(11)`. Note bit `9` is **clear** in `0x5DD`, so `barna_core_sflag(10)` is *not* accepted by this helper.
 
 A third helper, `ghostlite::GhostliteProtoUtils::MemorySpaceToLocalMemId` (`sub_1C5EF520`), collapses spaces to a 3-value local-mem id: `{hbm(1), vmem(3)} → 0`, `{hib(2), smem(5), sparse_core_sequencer_smem(14)} → 1`, `{imem(7)} → 2`, everything else `InvalidArgument`. The `hib`/`vmem`/`smem` cases here only line up with sensible local-mem ids under the **runtime** enum (`hib=2`, `vmem=3`, `smem=5`), which is the cleanest confirmation that the enum int — not the proto field number — is what flows through the emitter.
 
