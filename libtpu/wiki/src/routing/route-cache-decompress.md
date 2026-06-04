@@ -116,7 +116,7 @@ A dense protobuf enum, span `[0,4]`, descriptor `@0x20c06b00` (table `@0x224ab9c
 | 1 | `CACHE_TWISTED_TORUS` | the non-resilient slice-builder twisted torus |
 | 2 | `CACHE_ICI_RESILIENCY_PUFFERFISH` | resilient — pufferfish silicon generation |
 | 3 | `CACHE_ICI_RESILIENCY_VIPERFISH` | resilient — viperfish silicon generation |
-| 4 | `CACHE_ICI_RESILIENCY_6acc60406` | resilient — `6acc60406` (ghostfish) silicon generation |
+| 4 | `CACHE_ICI_RESILIENCY_6acc60406` | resilient — `6acc60406` silicon generation |
 
 This enum is the input to `GetRouteCacheDataPath` (`@0x20bf2080`), **not** to `CacheRead`. The decompile shows the dense-enum lookup `NameOfDenseEnum<&ToroidalRouteCacheType_descriptor, 0, 4>` bounded by `type <= 4`, then `AsciiStrToLower`, then `FormatPack` into the resource template:
 
