@@ -4,7 +4,7 @@
 
 ## Abstract
 
-`libtpu.so` ships un-stripped with full Itanium-ABI RTTI: every polymorphic class left a `type_info` struct (`_ZTI`), a type-name string (`_ZTS`), and — if concrete — a vtable group (`_ZTV`). The [RTTI / Vtable Census](../forensics/rtti-vtable-census.md) establishes the headline counts (**160,351** records: `_ZTI` 60,457 · `_ZTV` 39,244 · `_ZTS` 60,650 · 2 demangler-prefix strings) and ranks the dominant *hierarchies* by width and depth. This appendix asks a different question of the same 160,351 records: **which C++ namespace owns the type system?** It buckets the 60,457 distinct `type_info` structs by their leading namespace token and ranks the libraries by how many polymorphic classes each contributes.
+`libtpu.so` ships un-stripped with full Itanium-ABI RTTI: every polymorphic class left a `type_info` struct (`_ZTI`), a type-name string (`_ZTS`), and — if concrete — a vtable group (`_ZTV`). The [RTTI / Vtable Census](../forensics/rtti-vtable-census.md) establishes the headline counts (**160,351** records: `_ZTI` 60,457 · `_ZTV` 39,244 · `_ZTS` 60,650, summing exactly to 160,351) and ranks the dominant *hierarchies* by width and depth. This appendix asks a different question of the same 160,351 records: **which C++ namespace owns the type system?** It buckets the 60,457 distinct `type_info` structs by their leading namespace token and ranks the libraries by how many polymorphic classes each contributes.
 
 The answer is a two-empire split. MLIR (`mlir::`, 13,091 typeinfos) and the TPU driver stack (`asic_sw::`, 11,379 typeinfos) together own **40%** of every polymorphic class in the binary — MLIR because every registered op, pattern, pass, and dialect interface is a distinct C++ type, and `asic_sw::` because the per-codename / per-lane-cluster hardware driver instantiates a separate class for every chip generation × functional block. Behind them sit the framework cores (`tensorflow::` 3,108, `xla::` 3,036, `llvm::` 2,940) and a long tail of vendored support libraries (`dnnl::` 1,888, `std::` 1,787, `grpc_core::` 1,502). The TPU *codename* namespaces a reader might expect to see at the top — `jellyfish`, `pufferfish`, `viperfish`, `ghostlite`, `sparse_core` — are **not** top-level namespaces at all; they are sub-namespaces nested inside `xla::`, `mlir::`, and `platforms_deepsea::`, and their classes are counted under those parents.
 
@@ -131,13 +131,13 @@ A reader hunting for `jellyfish`, `pufferfish`, `viperfish`, `ghostlite`, or `sp
 
 | Codename | `_ZTI` occurrences | Nesting parents (where it lives) | Confidence |
 |---|---:|---|---|
-| `jellyfish` | 2,996 | `xla::jellyfish` (662), `platforms_deepsea::jellyfish` (576), `asic_sw::…::jfc` | CERTAIN |
-| `sparse_core` | 3,155 | `mlir::sparse_core` (2,621), `xla::tpu::sparse_core` (1,210), `platforms_performance_deepsea::sparse_core` | CERTAIN |
+| `jellyfish` | 2,996 | `xla::jellyfish` (667), `platforms_deepsea::jellyfish` (576), `asic_sw::…::jfc` | CERTAIN |
+| `sparse_core` | 3,155 | `mlir::sparse_core` (1,689), `xla::tpu::sparse_core` (553), `platforms_performance_deepsea::sparse_core` | CERTAIN |
 | `pufferfish` | 29 | `xla::pufferfish`, `asic_sw::…::pfc::Pufferfish*` | HIGH |
 | `viperfish` | 19 | `xla::viperfish`, `xla::tpu::sparse_core::isa_emitter::viperfish` | HIGH |
-| `ghostlite` | 16 | `xla::ghostlite`, `xla::tpu::sparse_core::isa_emitter::ghostlite` | HIGH |
+| `ghostlite` | 17 | `xla::ghostlite`, `xla::tpu::sparse_core::isa_emitter::ghostlite` | HIGH |
 
-> **CORRECTION (NS-CODENAME) —** the codename counts above are **substring (anywhere-in-symbol) matches**, not leading-namespace buckets, and they therefore **overlap** the `xla`/`mlir`/`platforms_deepsea` rows of the census table rather than adding to them. The `jellyfish` 662 inside `xla::` is already counted in the `xla` 3,036; the `sparse_core` 2,621 inside `mlir::` is already inside the `mlir` 13,091. Do **not** sum the codename rows into the namespace total — they are a cross-cut view, presented so a reimplementer can locate codename-specific code, not a partition. The asymmetry (`sparse_core` 3,155 vs `pufferfish` 29) reflects that SparseCore has a full MLIR dialect + lowering pipeline + ISA emitter, whereas the older chip codenames survive only as a handful of driver/emitter leaf classes.
+> **CORRECTION (NS-CODENAME) —** the codename counts above are **substring (anywhere-in-symbol) matches**, not leading-namespace buckets, and they therefore **overlap** the `xla`/`mlir`/`platforms_deepsea` rows of the census table rather than adding to them. The `jellyfish` 667 inside `xla::` is already counted in the `xla` 3,036; the `sparse_core` 1,689 inside `mlir::` is already inside the `mlir` 13,091. Do **not** sum the codename rows into the namespace total — they are a cross-cut view, presented so a reimplementer can locate codename-specific code, not a partition. The asymmetry (`sparse_core` 3,155 vs `pufferfish` 29) reflects that SparseCore has a full MLIR dialect + lowering pipeline + ISA emitter, whereas the older chip codenames survive only as a handful of driver/emitter leaf classes.
 
 > **QUIRK — the codename appears in two roles.** Lowercase (`jellyfish`, `viperfish`) is a *namespace* token; capitalized (`PufferfishDeviceScanner`, `ViperfishTensorCoreEmitter`, `GhostliteTensorCoreEmitter`) is a *class-name* token in a generation-agnostic namespace (`xla::`, `asic_sw::…::pfc`). Both forms encode the same target generation; a reimplementer mapping codenames to silicon must match both the namespace and the class-name spelling.
 
@@ -152,7 +152,7 @@ The census is byte-exact and rebuildable from the RTTI sidecar with a dozen grep
 count mangled ^_ZTI                 ->  60,457   (typeinfo structs = denominator)
 count mangled ^_ZTV                 ->  39,244   (vtable groups)
 count mangled ^_ZTS                 ->  60,650   (type-name strings)
-# 60,457 + 39,244 + 60,650 + 2          = 160,351 (records)
+# 60,457 + 39,244 + 60,650              = 160,351 (records)
 
 # per-namespace bucket (leading prefix; <len> is the namespace name length):
 count mangled ^_ZTIN3xla            ->   3,036
