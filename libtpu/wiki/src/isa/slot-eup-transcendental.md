@@ -174,7 +174,7 @@ function VtanhDecomposed(builder, prim_type, value):  // @0x1d555040
     // NO inline correction polynomial, NO refinement helper
 ```
 
-> **CORRECTION (EUP-1) —** an earlier reading reported that `VrsqrtDecomposed` issues a second push+pop pair for a Newton refinement and that `VtanhDecomposed` interleaves a `VfastTwoSum` correction between push and pop. Byte-exact disassembly of both builders shows they are bare push+pop *only*. The `VfastTwoSum` (`@0x1d5550a0`) that appeared "between" them is a stand-alone Dekker two-sum helper (three ops, no constants) that merely sits physically adjacent to `VtanhDecomposed` in `.text`; the earlier merged trace conflated adjacent functions. The correction *math* (with coefficients) lives in the `*NoEupF32` fallbacks and the shared Newton/rational helpers, not inside the `V*Decomposed` builders.
+> **NOTE —** the `V*Decomposed` builders carry no inline correction. `VrsqrtDecomposed` and `VtanhDecomposed` emit a bare push + bare pop and nothing else; neither issues a second push+pop pair for a Newton refinement nor interleaves a correction step between push and pop. `VfastTwoSum` (`@0x1d5550a0`) is a stand-alone Dekker two-sum helper (three ops, no constants) that merely sits physically adjacent to `VtanhDecomposed` in `.text` — it is not invoked by it. The correction *math* (with coefficients) lives in the `*NoEupF32` fallbacks and the shared Newton/rational helpers, not inside the `V*Decomposed` builders.
 
 The split is mandatory on the v5+ generations because `HasEupRestrictions` is TRUE on Viperfish (`@0x1c458620`) and Ghostlite (`@0x1c458d80`): the EUP push and its pop **cannot co-issue**, so the decomposer must emit them into separate bundles with VALU correction (or unrelated work) filling the gap. On Jellyfish (`@0x1c457b80`) and Pufferfish (`@0x1c4580c0`) the restriction is FALSE, so the fused form can survive — the inverse simplifiers `SimplifyTanhAndPop` (`@0x1d593c60`), `SimplifyReciprocalAndPop` (`@0x1d595d40`), `SimplifySinqAndPop` (`@0x1d596de0`), `SimplifyCosqAndPop` (`@0x1d597680`) re-fuse a matching push+pop when the schedule allows co-location.
 
@@ -337,7 +337,7 @@ function EmitRsqrtNrIteration(x, y):      // @0x1d5a9e20 — rsqrt Newton step
 
 `EmitTanhPolyApproximation` (`@0x1d5a9f40`) is the no-EUP software tanh and the rational the cost model sizes against. The SSA structure, traced through `VdivF32`: clamp x to [−9, +9]; small-|x| guard (|x| < 4e-4 → return x); x² = x·x; **numerator** = x·P(x²) where P is a 7-coefficient Horner in x² (seed c0 + 6 FMAs c1..c6, then ×x); **denominator** = Q(x²), a 4-coefficient Horner (seed d0 + 3 FMAs d1..d3); `VdivF32(NUM, DEN)`; `Vselect(small ? x : quotient)`; final clamp to [−1, +1].
 
-> **CORRECTION (EUP-2) —** the numerator P has **7** coefficients (c0..c6), not 6. The earlier count saw only the six `VmulAddF32` FMA steps and missed that the seed `VimmF32(c0)` is itself a coefficient of P. The `VdivF32` operand trace settles which Horner accumulator is which: the accumulator multiplied by the clamped x (forming the odd function x·P) is the numerator; the bare even Horner is the denominator.
+The numerator P has **7** coefficients (c0..c6): the seed `VimmF32(c0)` plus six `VmulAddF32` FMA steps (c1..c6). The `VdivF32` operand trace disambiguates the two Horner accumulators — the one multiplied by the clamped x (forming the odd function x·P) is the numerator; the bare even Horner is the denominator.
 
 Numerator P(x²) — 7 coeffs, Horner low→high in x², then ×x:
 

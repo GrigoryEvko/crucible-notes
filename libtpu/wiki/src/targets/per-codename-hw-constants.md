@@ -8,7 +8,7 @@ This page is the consolidated per-generation hardware-constant table for every T
 
 Two source classes feed the table. The first and dominant is the embedded `<codename>_chip_parts.binarypb` proto blob, decoded directly from `.rodata` (see [chip_parts.binarypb Decode](chip-parts-binarypb.md) for the schema and resolution path). Every memory size, core count, MXU geometry integer, clock, register count, and DMA constant below comes from those bytes, materialized as `bytes_per_word × word_count` or read as a scalar field. The second is the small set of constants the proto does *not* carry — the VMEM/SMEM/CMEM bank counts — which are C++ literals in the per-codename `*Target::MemBanks` overrides.
 
-These integers are the entire value of the page, so they were not taken on faith: all nine blobs were carved from `.rodata`, md5-verified against their `FileWrapper` descriptor fingerprints, and walked field-by-field against the schema recovered from `protodesc_cold`. The decode reproduces, byte-for-byte, the relationships a reimplementer would expect (e.g. peak BF16 = 2 × `mxu_count` × 128² × `frequency_mhz` for the 128×128 generations), and every row carries a Confidence column with its source.
+All nine blobs were carved from `.rodata`, md5-verified against their `FileWrapper` descriptor fingerprints, and walked field-by-field against the schema recovered from `protodesc_cold`. The decode reproduces, byte-for-byte, the relationships a reimplementer would expect (e.g. peak BF16 = 2 × `mxu_count` × 128² × `frequency_mhz` for the 128×128 generations), and every row carries a Confidence column with its source.
 
 | | |
 |---|---|
@@ -75,7 +75,7 @@ The exact byte products behind the headline HBM and VMEM cells: Jellyfish HBM `1
 
 `JellyfishTarget::MemBanks` @ `0x1d48fc80` returns 8 for space 3, 2 for space 5, and `LOG(FATAL)` otherwise (`target_jellyfish.h:215`). `PufferfishTarget::MemBanks` @ `0x1d493900` indexes the table at `.rodata` `0xb5305c8 = {16, 32, 8}` for spaces 3/4/5 (`target_pufferfish.h:228`). `ViperfishTarget::MemBanks` @ `0x1d4999c0` and `GhostliteTarget::MemBanks` @ `0x1d4969c0` return 32 / 8 / FATAL. Dragonfish overrides none of these and inherits Jellyfish's 8 / 2.
 
-> **NOTE —** Pufferfish is the only generation whose `MemBanks` ladder has a CMEM (space 4) entry, and it is the only generation whose `chip_parts` has a `SharedMemory[CMEM]` (128 MiB). Every other generation `LOG(FATAL)`s on the CMEM space *and* has no CMEM shared memory — two independent encodings of "CMEM is first-class only on v4."
+> **Note:** Pufferfish is the only generation whose `MemBanks` ladder has a CMEM (space 4) entry, and it is the only generation whose `chip_parts` has a `SharedMemory[CMEM]` (128 MiB). Every other generation `LOG(FATAL)`s on the CMEM space *and* has no CMEM shared memory — two independent encodings of "CMEM is first-class only on v4." See [Memory Hierarchy](memory-hierarchy.md).
 
 ---
 
@@ -95,7 +95,7 @@ v2/v3/v4 TensorCore sequencers report SREG 32, VREG 32, PREG 15, VMREG 8. From V
 
 `mxu_count` rises 1→2→4→4 across v2..v5p, then *drops* to 2 for v6e/v7. The drop is compensated by the systolic-array dimension: v6e/v7 use 2 × 256×256 arrays (the `GhostliteTarget` C++ override `MxuContractingSize`/`MxuNoncontractingSize` = 256, byte-confirmed at `0x1d497840`/`0x1d497860`; base `Target` returns 128), where v2..v5p use up-to-4 × 128×128. The 256 dimension is the one MXU geometry value that is a C++ literal, not a proto field — the proto carries only `lane_count=128` and `mxu_count` — but the literal itself is byte-exact, so the systolic-dim row is CONFIRMED, flagged as a C++-override source rather than a proto field. The 128×128 generations cross-validate: peak BF16 = `2 × mxu_count × 128² × frequency_mhz` reproduces the published per-chip FLOPS for v2 (22.9 T at 1 MXU × 700 MHz), v3 (61.6 T at 2 × 940), and v4 (137.6 T at 4 × 1050) to within 1%.
 
-> **GOTCHA —** the proto's `sublane_count` is 8 for *every* generation, including v4. An older topology-descriptor analysis reported a (16,128) tile for jellyfish-class v4; the `chip_parts` `VectorIsa.sublane_count` field is unambiguously 8. The tile dimension a tiling pass consumes is `Tile(SublaneCount, LaneCount) = (8, 128)` on every gen in this build (the `Target::SublaneCount` accessor reads exactly this proto value). A reimplementation that hardcodes a 16-sublane v4 tile diverges from the loaded geometry.
+> **Note:** the proto's `sublane_count` is 8 for *every* generation, including v4 — the `chip_parts` `VectorIsa.sublane_count` field is unambiguously 8, not 16. The tile dimension a tiling pass consumes is `Tile(SublaneCount, LaneCount) = (8, 128)` on every gen in this build (the `Target::SublaneCount` accessor reads exactly this proto value). A reimplementation that hardcodes a 16-sublane v4 tile diverges from the loaded geometry.
 
 ---
 

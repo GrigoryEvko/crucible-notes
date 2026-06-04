@@ -144,7 +144,9 @@ The branch/call/sync target offset and all other immediates live in the immediat
 | 4 | `+0x28` | `0xd7` | 215 | 20 | CERTAIN |
 | 5 | `+0x2c` | `0xc3` | 195 | 20 | CERTAIN |
 
-Encoder addresses: `vfc` `0x1ee75ee0`, `glc` `0x1eb563c0`, `gfc` `0x1ecd1760`. Slots 4 and 5 (bits 215/195) appear in the full `SparseCoreImmediatesEncoder`; the SCS branch/call path uses only slots 0..3. A second class, `SparseCoreScalarImmediatesEncoder` (`gfc` `0x1eb5bd20`), packs only slots 0..3 at the same bits 67/47/27/7 — it is the encoder the `gfc` SCS codec template names (see [Correction](#corrections)).
+Encoder addresses: `vfc` `0x1ee75ee0`, `glc` `0x1eb563c0`, `gfc` `0x1ecd1760`. Slots 4 and 5 (bits 215/195) appear in the full `SparseCoreImmediatesEncoder`; the SCS branch/call path uses only slots 0..3. A second class, `SparseCoreScalarImmediatesEncoder` (`gfc` `0x1eb5bd20`), packs only slots 0..3 at the same bits 67/47/27/7 — it is the encoder the `gfc` SCS codec template names. The `gfc` SCS codec template (confirmed in the `EncodeBundle` `0x1e838cc0` `case 3` `SparseCoreScsCodecBase<…>` argument list) selects `SparseCoreScalarImmediatesEncoder`, so `0x1eb5bd20` is the function actually invoked on the SCS branch path; the full `SparseCoreImmediatesEncoder::Encode` (slots 0..5, bits 215/195) lives at `0x1ecd1760`. The branch/call offset (imm slot 0 = bit 67) is identical between the two encoders.
+
+> **NOTE —** `EncodeBundle` `0x1e838cc0` is the **6acc60406** codec dispatcher specifically: its `default` arm reports "EncodeBundle not implemented for sequencer type", and its three live cases construct `gfc::isa::{TensorCore,SparseCoreScs,SparseCoreTec}CodecBase<…>`. Ghostlite has its own `EncoderGlTensorCore::EncodeBundle` (`0x1d331d00`). The slot-walk mechanism is shared across v5+, but the dispatcher symbol is generation-specific.
 
 ### TensorCore Bundle (64 B / 512 bit)
 
@@ -218,9 +220,9 @@ The slot `InstBits` could not hold. Confirmed from `vxc` `0x1eecb900` (and helpe
 | x-target / 2nd operand | bit 482 w6 | bit 485 w6 | bit 472 w6 | CERTAIN |
 | call dest (return-addr) sreg | bit 477 w5 | bit 480 w5 | bit 467 w5 | CERTAIN |
 
-Ghostlite shifts the entire TC scalar/sequencer region **+3 bits** above Viperfish, in lockstep with the +3-bit TC immediate-block shift (433 vs 430) — the whole TC scalar/sequencer/immediate block translates as one rigid window to absorb the 7→8-bit opcode widening. (This corrects an earlier reading that asserted the Ghostlite TC sequencer was byte-identical to Viperfish; see [CORRECTION (EMITX-4)](#corrections).) 6acc60406's TC scalar slot is the widest: it adds the 6-bit operand at bit 472 and shrinks per-slot predication to a 2-bit selector at bit 489, with the actual 16-register predicate pool moved to the dedicated `TensorCorePredicates` slot.
+Ghostlite shifts the entire TC scalar/sequencer region **+3 bits** above Viperfish, in lockstep with the +3-bit TC immediate-block shift (433 vs 430) — the whole TC scalar/sequencer/immediate block translates as one rigid window to absorb the 7→8-bit opcode widening (`glc::isa::TensorCoreScalarAlu0Encoder::Encode` `0x1f219b40` and its `BranchAbsolute` helper `0x1f21da40`: predicate reg @ 502 not 499, inversion @ 506 not 503, opcode-HIGH @ 496 not 493, opcode-LOW @ 491 not 488, x-target aux @ 485 not 482, call dest @ 480 not 477). The SCS sequencer is *not* shifted — there `glc` is byte-identical to `vxc` (`0x1e9d2140`); see [Ghostlite Bundle](bundle-gl.md). 6acc60406's TC scalar slot is the widest: it adds the 6-bit operand at bit 472 and shrinks per-slot predication to a 2-bit selector at bit 489, with the actual 16-register predicate pool moved to the dedicated `TensorCorePredicates` slot.
 
-> **CORRECTION (EMITX-1) —** the raw sequencer trace summarized the TC `vxc` x-target as "bit 488 w5". Decompilation of the `vxc` encoder body (`0x1eecb900`) shows that bit 488 (w5) is the opcode-LOW discriminator (shared with the `BranchSreg` x-target *value*), while the distinct secondary-operand / LCC-read aux field is a **6-bit** field at **bit 482** (`0x1da`). The 488-vs-482 distinction matters: a `BranchSreg` overwrites the discriminator window with the x() sreg, but an LCC read uses both the 5-bit discriminator at 488 and the 6-bit aux at 482.
+> **NOTE —** the TC `vxc` x-target spans two distinct fields. Bit 488 (w5) is the opcode-LOW discriminator (shared with the `BranchSreg` x-target *value*); the secondary-operand / LCC-read aux field is a separate **6-bit** field at **bit 482** (`0x1da`), per the `vxc` encoder body (`0x1eecb900`). A `BranchSreg` overwrites the discriminator window with the x() sreg, but an LCC read uses both the 5-bit discriminator at 488 and the 6-bit aux at 482.
 
 ---
 
@@ -372,16 +374,6 @@ Two fields a stock LLVM-MC mental model expects to be encoded are *not* in-bundl
 - **Hardware-loop length.** V5+ has no hardware-loop setup slot bit field. A loop is the LCC hardware counter read (`ReadRegisterLccLow`/`High`, the sequencer-slot opcode at bit 181 + dst at bit 176) feeding a conditional `BranchRelative`. The "loop counter" is a register, not an encoded loop-length field.
 
 > **GOTCHA —** a reimplementation that allocates a 3-bit delay-slot field inside the bundle (as a `BarnaCore`-style v4 layout would have) will desynchronize every subsequent field. On V5+, after the branch's dest field the next bits belong to the next slot, not to a delay count.
-
----
-
-## Corrections
-
-> **CORRECTION (EMITX-2) —** the raw immediates trace attributed the `gfc` SCS `SparseCoreImmediatesEncoder::Encode` to `0x1eb5bd20`. The function at `0x1eb5bd20` is `SparseCoreScalarImmediatesEncoder::Encode` (a distinct class that packs only slots 0..3, all at bits 67/47/27/7); the full `gfc SparseCoreImmediatesEncoder::Encode` is at `0x1ecd1760` (slots 0..5, including bits 215/195). The `gfc` SCS codec template (confirmed in the `EncodeBundle` `0x1e838cc0` `case 3` `SparseCoreScsCodecBase<…>` argument list) names `SparseCoreScalarImmediatesEncoder` — so `0x1eb5bd20` is the one actually invoked for the SCS branch path. The branch/call offset (imm slot 0 = bit 67) is unaffected; both encoders agree.
-
-> **CORRECTION (EMITX-3) —** `EncodeBundle` `0x1e838cc0` is more precisely the **6acc60406** codec dispatcher: its `default` arm reports "EncodeBundle not implemented for sequencer type" from `learning/45eac/tpu/runtime/utility/tpu_codec_6acc60406.cc`, and its three live cases construct `gfc::isa::{TensorCore,SparseCoreScs,SparseCoreTec}CodecBase<…>`. Ghostlite uses its own `EncoderGlTensorCore::EncodeBundle` (`0x1d331d00`). The raw's "v5 codec" label is correct in spirit (the slot-walk mechanism is shared) but the symbol is generation-specific.
-
-> **CORRECTION (EMITX-4) —** an earlier reading asserted the Ghostlite TC sequencer was byte-identical to Viperfish (the `glc` column read "= `vxc`"). Decompilation of `glc::isa::TensorCoreScalarAlu0Encoder::Encode` (`0x1f219b40`) and its `BranchAbsolute` helper (`0x1f21da40`) refutes this: the Ghostlite TC scalar/sequencer region is uniformly **+3 bits** above Viperfish (predicate reg @ 502 not 499, inversion @ 506 not 503; opcode-HIGH @ 496 not 493; opcode-LOW @ 491 not 488; x-target aux @ 485 not 482; call dest @ 480 not 477). The +3 shift matches the already-confirmed TC immediate-slot +3 (433 vs 430), so the whole TC scalar/sequencer/immediate block translates as one rigid window. The SCS sequencer is *not* shifted — there `glc` is byte-identical to `vxc` (`0x1e9d2140`). This aligns the page with [Ghostlite Bundle](bundle-gl.md)'s `CORRECTION (GL-TC-SHIFT)`.
 
 ---
 

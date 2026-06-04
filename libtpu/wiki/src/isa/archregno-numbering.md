@@ -253,7 +253,7 @@ Each XLU opcode `ComputeXluOperations` selects (see [ResultFifo and ArchRegister
 - **`RpuOperation`** (index 1) is trivially copyable (≤0x28 bytes). It holds an `LloValue*` at `+0x10` plus inline fusion-key metadata (`RpuOperationMetadata`: `u16 opcode` at `+0x00`, `i64` pattern/segment key at `+0x08`, `optional<i64>` at `+0x10` gated by `[+0x18]==1`). Two `RpuOperation`s with equal metadata are fusion candidates.
 - **`XluControlOperation`** (index 2) is trivially destructible — an `LloValue*` at `+0x00` plus inline control metadata, no owning vectors.
 
-> **CORRECTION (UsesRpu-band) —** `LloOpcodeUsesRpu` has a secondary low-opcode arm: for `op <= 0x3b` it tests `_bittest64(0xC40000000000000, op)`, which sets bits `{0x36, 0x3a, 0x3b}` (RPU ops outside the cross-lane reduce band). An earlier reading listed this set as `{0x32, 0x36, 0x37, 0x3a, 0x3b}`; the decompiled bitmask is `{0x36, 0x3a, 0x3b}`. The primary `(op-0xf5)<0xd` arm covering the 13 reduce ops is unaffected.
+`LloOpcodeUsesRpu` has a secondary low-opcode arm: for `op <= 0x3b` it tests `_bittest64(0xC40000000000000, op)`, which sets bits `{0x36, 0x3a, 0x3b}` (RPU ops outside the cross-lane reduce band). The primary `(op-0xf5)<0xd` arm covers the 13 reduce ops.
 
 ---
 

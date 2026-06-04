@@ -50,7 +50,7 @@ VXC  TpuHalVxcHardwareFactory   <- kViperfish (3), kGhostlite (4), k6acc60406 (5
 
 JXC carries the two oldest generations because Dragonfish is a Jellyfish refresh sharing its dataflow. PXC is dedicated to Pufferfish and is constructed with no version argument, since it services exactly one generation. VXC is the modern family: it handles Viperfish, Ghostlite, and 6acc60406, differentiated only by the `TpuVersion` integer the factory is constructed with — one factory class parameterized three ways. The init-module-to-factory wiring (the `google_init_module_tpu_hal_*` translation units, including the separately-named `glc` and `gfc` init modules that both register the VXC factory) is detailed in [HAL Families](hal-families.md).
 
-> **GOTCHA —** the `glc` and `gfc` init-module names do not imply `Glc`/`Gfc` factory classes. Generations 4 and 5 register through init modules named for their ISA sub-family (`glc`, `gfc`), but both construct the shared `TpuHalVxcHardwareFactory`. There is no `TpuHalGxcHardwareFactory`. The `glc`/`gfc` tokens name the *ISA sub-core namespace*, not a fourth HAL family.
+> **Note:** the `glc` and `gfc` init-module names do not imply `Glc`/`Gfc` factory classes. Generations 4 and 5 register through init modules named for their ISA sub-family (`glc`, `gfc`), but both construct the shared `TpuHalVxcHardwareFactory`. There is no `TpuHalGxcHardwareFactory`. The `glc`/`gfc` tokens name the *ISA sub-core namespace*, not a fourth HAL family.
 
 ---
 
@@ -68,7 +68,7 @@ deepsea (driver umbrella)
 
 The pattern is clear for `pxc` and `vxc`: the `f`/`l` letter marks fetch versus load, and the symbol counts are asymmetric (the fetch core is far larger — `pfc` ~8.0K vs `plc` ~0.9K, `vfc` ~17.4K vs `vlc` ~1.8K mangled-token occurrences), consistent with a decoupled fetch/execute pair within one chip. JXC has no such split: `jxc::jellyfish` is a thin namespace, matching a first-generation fused dataflow design with no separate fetch core.
 
-> **GOTCHA — under `gxc` the `f`/`l` letters mark fetch/load *and* each sub-core is a different generation.** `gfc` is the general fetch-core, `glc` the general load-core — the same f/l convention as `pxc`/`vxc`. The twist is that the two `gxc` sub-cores do not split one chip: `glc` carries Ghostlite (v4) and `gfc` carries 6acc60406 (v5), each a full, near-equal-sized ISA namespace (`gfc` ~63.8K, `glc` ~62.9K token occurrences — not the lopsided fetch/load ratio of `pxc`/`vxc`). The codec walk pins the pairing — `TpuCodecGhostlite` binds `gxc::glc::isa`, the anonymous v5 codec binds `gxc::gfc::isa`. Reading `gfc` as "Ghostlite fetch-core" inverts both facts; the [sub-core taxonomy](sub-core-taxonomy.md) page works the pairing out in detail.
+> **Note: under `gxc` the `f`/`l` letters mark fetch/load *and* each sub-core is a different generation.** `gfc` is the general fetch-core, `glc` the general load-core — the same f/l convention as `pxc`/`vxc`. The twist is that the two `gxc` sub-cores do not split one chip: `glc` carries Ghostlite (v4) and `gfc` carries 6acc60406 (v5), each a full, near-equal-sized ISA namespace (`gfc` ~63.8K, `glc` ~62.9K token occurrences — not the lopsided fetch/load ratio of `pxc`/`vxc`). The codec walk pins the pairing — `TpuCodecGhostlite` binds `gxc::glc::isa`, the anonymous v5 codec binds `gxc::gfc::isa`. Reading `gfc` as "Ghostlite fetch-core" inverts both facts; the [sub-core taxonomy](sub-core-taxonomy.md) page works the pairing out in detail.
 
 ---
 
@@ -110,4 +110,8 @@ A reimplementation must perform these reads in the same order and on the same in
 - [Sub-Core Taxonomy](sub-core-taxonomy.md) — the fetch/load core split and the `gxc::glc` / `gxc::gfc` ISA sub-families
 - [Per-Codename HW Constants](per-codename-hw-constants.md) — hardware parameters gated by `TpuVersion`
 - [PCI Device IDs](pci-device-ids.md) — DeviceIdentifiers records that bind silicon to a version at discovery
+- [TpuChipConfig](tpu-chip-config.md) — how the decoded constants assemble into the runtime `Target` config
+- [Memory Hierarchy](memory-hierarchy.md) — the HBM/VMEM/SMEM/SFLAG/CMEM tier model the constants populate
+- [Marketing / Cloud Naming](marketing-cloud-naming.md) — the `accelerator_type` vocabulary and the codename↔Cloud cross-walk
+- [TpuHal Class Hierarchy](tpuhal-class-hierarchy.md) — the four class trees the version integer keys
 - [ISA Overview](../isa/overview.md) — the codec and bundle-encoder families a version selects

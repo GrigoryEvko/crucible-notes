@@ -95,7 +95,7 @@ switch (*((_DWORD *)this + 6)) {          // this+6*4 = +0x18 = the TPUMCImmKind
 
 The kind is the **relocation / variant discriminator**; the encoding-id at `+0x29` is the **operand-field selector**. They co-vary for the integer-immediate family (kind 5 ⇒ encoding `0x2c`), but they are distinct fields with distinct consumers: the printer reads both, the emitter reads the kind to gate (below), and the packer reads the encoding-id to choose a slot.
 
-> **CORRECTION (H4-IMM-1) —** an earlier reading inferred `shl` was a single kind and that kinds 4 was `VyImm32`. The printer is unambiguous: kind 3 is `shl12 imm` and kind 4 is `shl16 imm` — two scalar shift variants, not a vector kind. `i32 imm` (the `SyImm32` this page documents) is kind 5, and kind 6 is `embed`. The `Vy*` vector encodings have their own encoding-ids (e.g. `VyImm32 = 0x1a`) but are not the same axis as this scalar-`TPUMCImmKind` enum.
+> **NOTE —** kinds 3 and 4 are two distinct scalar shift variants (`shl12`, `shl16`), not a single `shl` kind. `i32 imm` (the `SyImm32` this page documents) is kind 5; kind 6 is `embed`. The `Vy*` vector encodings have their own encoding-ids (e.g. `VyImm32 = 0x1a`) and are a separate axis from this scalar `TPUMCImmKind` enum.
 
 ### VK_TPU_none Is Mandatory for Branch/Call
 
@@ -156,7 +156,7 @@ opclass   = rec.openc_class;                             // ImmediateCompatibili
 
 1. **`canAddImmInternal` (`0x13bebce0`)** reads the operand's `TPUOp::OperandType` from the per-opcode `MCInstrDesc` operand record (the operand-type byte) and maps it through the **`ImmediateCompatibilityTable`** (`0xaed36d0`, 17 entries × 12 B, `{key u32, compat_mask u32, OpEnc class u32}`) via `getOperandTypeRecord` (`0x13c63b80`). `getOperandTypeRecord` first subtracts 13 from the `OperandType`, then binary-searches on that key, so the table's `key` column is `OperandType − 13`. The scalar-immediate row is key `4` (i.e. raw `OperandType 17`): `→ OpEnc class 5` (the scalar integer-immediate chooser) with compat mask `0x0f`.
 
-   > **CORRECTION (H4-IMM-3) —** an earlier reading reported this as "`OperandType 4 → OpEnc class 5`". The `4` is the table *key*, and `getOperandTypeRecord`/`getSpecialOpEncoding` both compute `key = OperandType − 13` before the search (byte-anchored: `v1 = (uchar)(a1 - 13)` at `0x13c63b80`). The raw `OperandType` for the scalar-imm row is therefore `17`, not `4`. The `0x0f` mask is the row's compatibility bitmask; mapping its four set bits onto the `ZeroExt`/`OneExt`/`Shl`/`Imm32` classes is plausible but UNVERIFIED (the bits are not the encoding-ids `0x20/0x24/0x28/0x2c`).
+   > **NOTE —** the `4` here is the table *key*, not the raw `OperandType`: both `getOperandTypeRecord` and `getSpecialOpEncoding` compute `key = OperandType − 13` before the search (byte-anchored `v1 = (uchar)(a1 - 13)` at `0x13c63b80`), so the scalar-imm row's raw `OperandType` is `17`. The `0x0f` value is the row's compatibility bitmask; mapping its four set bits onto the `ZeroExt`/`OneExt`/`Shl`/`Imm32` classes is plausible but UNVERIFIED (the bits are not the encoding-ids `0x20/0x24/0x28/0x2c`).
 2. **`getPackedImm` (`0x13bec4e0`)** auto-selects the most compact encoding: a jump table on the `OpEnc` class routes class `5` (scalar) / `4` (vector) to the integer chooser, which tests how many high bits of the value are non-zero (the per-encoding width is a subtarget vtable slot) and picks `ZeroExt`/`OneExt`/`Shl`, falling through to **`Imm32 = 0x2c` for a value that needs all 32 bits**. The chosen id is written to `ImmediateEncoding+0x5`.
 3. **`getFullImmediate` (`0x13be79a0`)** is the forced-class path: it asserts the class is in `{4,5,6}`, forces `VyImm32 0x1a` (class 4) or **`SyImm32 0x2c`** (otherwise), then allocates the bundle immediate slot(s) from the per-program slot pool, splitting a value wider than one slot into a low and a high half across two slots.
 
@@ -180,7 +180,7 @@ return ok;
 
 The folded value comes from the sub-expression at `+0x20`; the `MCValue` `RefKind` (`out+0x18`) is set from the byte at `this+8`. This is a `TPUMCImmExpr`, so `this+8` is the `MCExpr::Kind` field (constant `5`, the `Target` kind), which is what the assembler's relocation logic keys on to recognise a TPU target expression during fixup resolution.
 
-> **CORRECTION (H4-IMM-2) —** an earlier note claimed `evaluateAsRelocatableImpl` copies the `TPUMCImmKind` (`+0x18`) into the `MCValue` `RefKind`. The decompile reads `this + 8` (the `MCExpr::Kind` byte, `== 5`), **not** `this + 0x18` (the `TPUMCImmKind`). The relocation `RefKind` therefore carries the *expression-class* tag (`5`), not the immediate-variant kind; the variant kind drives encoding selection and printing, not relocation. The distinction matters for a reimplementation that wires the fixup table off the `MCValue` `RefKind`.
+> **NOTE —** the `MCValue` `RefKind` carries the *expression-class* tag (`MCExpr::Kind` at `this+8`, constant `5`), **not** the `TPUMCImmKind` variant (`this+0x18`). The variant kind drives encoding selection and printing; relocation keys only off the expression-class tag. A reimplementation that wires its fixup table off the `MCValue` `RefKind` must use `5`, not the immediate-variant kind.
 
 ---
 

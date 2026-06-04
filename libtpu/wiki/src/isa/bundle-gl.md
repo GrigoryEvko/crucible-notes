@@ -90,7 +90,7 @@ The bundle partitions into the standard V5+ slot classes. The table below is the
 | imm slot 3 | 373 | 0x175 | 20 | (same) | CONFIRMED |
 | imm slot 4 | 353 | 0x161 | 20 | (same) | CONFIRMED |
 | imm slot 5 | 333 | 0x14d | 20 | (same) | CONFIRMED |
-| **VALU slot 0** opcode | 302 | 0x12e | 7 | `TensorCoreVectorAlu0Encoder` (P-3-204 family) | HIGH |
+| **VALU slot 0** opcode | 302 | 0x12e | 7 | `TensorCoreVectorAlu0Encoder` | HIGH |
 | VALU0 predicate (4-bit reg) | 309 | 0x135 | 4 | (same) | HIGH |
 | **MXU VEx0** opcode-HIGH | 58 | 0x3a | 8 | `TensorCoreVectorExtended0Encoder::Encode` @ `0x1f32fd00` | CONFIRMED |
 | VEx0 data-format sub-disc | 52 | 0x34 | 4 | (same) | CONFIRMED |
@@ -126,7 +126,7 @@ Every field in the TensorCore *scalar* region (sequencer opcode, predicate, imme
 | TC seq predicate reg index | bit 499 (0x1f3) | bit 502 (0x1f6) | +3 | CONFIRMED |
 | TC seq predicate inversion | bit 503 (0x1f7) | bit 506 (0x1fa) | +3 | CONFIRMED |
 
-> **CORRECTION (GL-TC-SHIFT) —** an earlier reading asserted the Ghostlite TC sequencer was byte-identical to Viperfish ("GLC = VXC"). Direct disassembly of `glc::isa::TensorCoreScalarAlu0Encoder::Encode` @ `0x1f219b40` and its branch helpers (`EncodeTensorCoreScalarAlu0BranchAbsolute` @ `0x1f21da40`) refutes this: the Ghostlite TC scalar region is uniformly **+3 bits** above Viperfish (predicate reg @ 502 not 499; opcode-HIGH @ 496 not 493; opcode-LOW @ 491 not 488). The +3 shift matches the already-confirmed TC immediate-slot +3 (433 vs 430), so the whole TC scalar/sequencer/immediate block translates as one rigid window. The SparseCore SCS sequencer is *not* shifted — there `glc` is byte-identical to `vxc` (see below).
+These positions are read directly from `glc::isa::TensorCoreScalarAlu0Encoder::Encode` (`0x1f219b40`) and its branch helper `EncodeTensorCoreScalarAlu0BranchAbsolute` (`0x1f21da40`). The Ghostlite TC scalar region is uniformly **+3 bits** above Viperfish, matching the TC immediate-slot +3 (433 vs 430): the whole TC scalar/sequencer/immediate block translates as one rigid window. The SparseCore SCS sequencer is *not* shifted — there `glc` is byte-identical to `vxc` (see below).
 
 The **SparseCore SCS** sequencer, by contrast, is byte-identical between the two generations — the +3 shift is a TensorCore-only phenomenon:
 
@@ -239,7 +239,7 @@ glc TensorCoreVectorResult0Encoder::Encode @ 0x1f3bc160:
 | result-opcode bound | 0x8 (9) | 0x8 (9) | 0x7 (8) | CONFIRMED |
 | fused-accumulate op | `PopCcrfResult` (scalar) | **`PopAddMxu01Result`** | (none) | CONFIRMED |
 
-> **CORRECTION (GL-RESULT-MAP) —** an earlier reading listed the result jump-table arms as `op 5 = TransposeResult, op 6 = PopMxuResult, op 7 = PopEupResult, op 8 = PopAddMxu01Result`. Direct disassembly of `TensorCoreVectorResult0Encoder::Encode` @ `0x1f3bc160` refutes the 5/7/8 assignments: the `switch` is over the proto oneof tag at `a2+0x50`, and the fallback default-instance globals each arm references pin the correct pairing — **tag 5 → `PopEupResult`** (writes sub-disc `0` @ bit 20 w4), **tag 6 → `PopMxuResult`** (sub-disc `2` @ bit 21 w3), **tag 7 → `PopAddMxu01Result`** (sub-disc `1` @ bit 20 w4), **tag 8 → `TransposeResult`** (sub-disc `4` @ bit 21 w3). `PopMxuResult` (tag 6) is the only arm unchanged. The fused-accumulate op is still GL-only; only its tag (7, not 8) and the EUP/Transpose tags were mislabeled.
+The tag→op pairing above is read from `TensorCoreVectorResult0Encoder::Encode` (`0x1f3bc160`): the `switch` is over the proto oneof tag at `a2+0x50`, and the default-instance global each arm references pins the op (tag 5 → `PopEupResult`, tag 6 → `PopMxuResult`, tag 7 → `PopAddMxu01Result`, tag 8 → `TransposeResult`). The fused-accumulate `PopAddMxu01Result` (tag 7) is GL-only.
 
 `PopAddMxu01Result` (referenced as `TensorCoreVectorResult_PopAddMxu01Result_globals_`, the proto default-instance the tag-7 arm falls back to, in the `glc::isa` namespace) is the in-result matres-add accumulate of the multi-pass (K>128) matmul path — a Ghostlite-specific fusion. Where Viperfish uses a scalar `PopCcrfResult` and 6acc60406 uses a separate VALU `VaddF32`, Ghostlite folds the accumulate into the result pop itself.
 
@@ -256,7 +256,7 @@ glc EncodeTensorCoreVectorAlu3F32Tanh @ 0x1f2f4f40:
   EUP push src vreg             -> bit 194 (0xc2) w6   ; mov esi,0xc2 ; mov r8d,0x6
 ```
 
-> **CORRECTION (GL-EUP) —** an earlier reading carried the Ghostlite EUP-push fields at the 6acc60406 offsets (VALU-opcode bit 194 w8, selector bit 183, src bit 188). Direct disassembly of `glc::isa::...VectorAlu3F32Tanh` @ `0x1f2f4f40` resolves them **+6 bits** higher with a **7-bit** VALU opcode: VALU-opcode @ bit 200 w7, function selector @ bit 189 w5, src vreg @ bit 194 w6. (Ghostlite's VALU opcode is 7-bit, like Viperfish's; only 6acc60406 widens the VALU opcode to 8 bits.)
+> **NOTE —** Ghostlite's VALU opcode is **7-bit** (like Viperfish's); only 6acc60406 widens it to 8 bits. The Ghostlite EUP-push fields therefore sit +6 bits above the 6acc60406 offsets: VALU-opcode @ bit 200 w7 (vs gfc bit 194 w8), function selector @ bit 189 w5 (vs 183), src vreg @ bit 194 w6 (vs 188), per `glc::isa::…VectorAlu3F32Tanh` (`0x1f2f4f40`).
 
 The 5-bit function selector value (`0x13` for `F32Tanh`) is sourced at encode time from the function helper's static proto default-instance (e.g. `TensorCoreVectorAlu_F32Tanh_globals_` @ `0x2243f290`), not a literal in the helper, so the per-function selector values carry the same enum as the gen-invariant `GhPerf` transcendental set:
 
