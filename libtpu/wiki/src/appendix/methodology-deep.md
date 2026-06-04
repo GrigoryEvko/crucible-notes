@@ -50,7 +50,7 @@ The deliverable of extraction is the sidecar family: one JSON file per kind of r
 | `switches` | Jump/switch dispatch tables | 339,618,667 B (324 MB) | 33,016 | CERTAIN |
 | `function_addresses` | Flat address→name index (fast lookup) | 187,509,657 B (179 MB) | 884,832 | CERTAIN |
 | `fixups` | Relocations / address fixups | 119,612,914 B (115 MB) | — | CERTAIN |
-| `data_tables` | Recovered static data tables | 114,277,117 B (109 MB) | — | CERTAIN |
+| `data_tables` | Recovered static data tables (function-pointer / dispatch tables) | 114,277,117 B (109 MB) | 40,313 | CERTAIN |
 | `rtti` | C++ RTTI: type-info, vtables, class hierarchy | 64,877,616 B (62 MB) | 160,351 | CERTAIN |
 | `problems` | IDA-flagged analysis problems (`addr`/`func`/`type`) | 805,426 B (788 KB) | 7,915 | CERTAIN |
 | `structures` | Recovered struct/class layouts | 289,703 B (284 KB) | — | HIGH |
@@ -67,7 +67,7 @@ The deliverable of extraction is the sidecar family: one JSON file per kind of r
 
 > **GOTCHA —** the `xrefs` sidecar (~39 GB) is the global code+data cross-reference graph and is the single largest artifact in the family — larger than the binary itself by ~50×. It is not in the table above because at that scale it is streamed, not loaded; an auditor inspecting a specific cross-reference slices it by address rather than reading it whole. The `callgraph` (1.8 GB) is the function-level projection of it and is the practical entry point for "who calls X."
 
-> **NOTE —** record counts are blank for sidecars whose top-level shape is a map keyed by address (`names`, `frames`, `comments`, `fixups`, `data_tables`) rather than a flat array. For those, the *size* is the meaningful scale signal; the per-address content is reached by lookup, not by enumeration.
+> **NOTE —** record counts are blank for sidecars whose top-level shape is a map keyed by address (`names`, `frames`, `comments`) rather than a flat array. For those, the *size* is the meaningful scale signal; the per-address content is reached by lookup, not by enumeration. (`data_tables` is itself a flat array — 40,313 records — and `switches` likewise; both carry the dispatch-table counts cited on [Dispatch-Table Taxonomy](../forensics/dispatch-table-taxonomy.md).)
 
 ---
 

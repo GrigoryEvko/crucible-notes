@@ -74,8 +74,8 @@ The single most important structural fact is that the flag *families* split acro
 
 | Family | Count | Lands in | Detail page |
 |---|---:|---|---|
-| `xla_*` (generic) | 138 | `xla::DebugOptions` (290-field proto; most reached via PJRT, not standalone flags) | [debugoptions-proto.md](debugoptions-proto.md) |
-| `xla_tpu_*` | 968 | `TpuCompilationEnvironment` (standalone, TPU-private) | [tpu-compilation-environment.md](tpu-compilation-environment.md) |
+| `xla_*` (generic) | 121 | `xla::DebugOptions` (290-field proto; most reached via PJRT, not standalone flags) | [debugoptions-proto.md](debugoptions-proto.md) |
+| `xla_tpu_*` | 909 | `TpuCompilationEnvironment` (standalone, TPU-private) | [tpu-compilation-environment.md](tpu-compilation-environment.md) |
 | `xla_jf_*` | 148 | `TpuCompilationEnvironment` (Jellyfish backend) | [flag-families.md](flag-families.md) |
 | `xla_sc_*` / `barna_core_*` | 92 / 61 | `TpuCompilationEnvironment` (SparseCore / embedding) | [flag-families.md](flag-families.md) |
 | `megascale_*` | 150 | standalone `absl::Flag` (DCN runtime, not TCE) | [flag-families.md](flag-families.md) |

@@ -43,7 +43,7 @@ Every registered flag's value lands in exactly one of three places. The prefix i
 PREFIX                         SINK                            REGISTRATION SITE
 ──────                         ────                            ─────────────────
 xla_* (generic, non-tpu)   →   xla::DebugOptions field     →   MakeDebugOptionsFlags
-                               (94 of 111 fields wired)         (MakeDebugOptionsFlagsEPNS_)
+                               (290-field DebugOptions)         (MakeDebugOptionsFlagsEPNS_)
 
 xla_tpu_* / xla_jf_*       →   TpuCompilationEnvironment   →   per-flag FLAGS_<name> ctor,
 xla_sc_* / xla_msa_*           field (1:1 flag↔field)           bridged by
@@ -182,7 +182,7 @@ The full prefix → owner / routing / live-vs-inert table. Counts are registrati
 | `xla_tpu_*` | 909 | TPU compiler + runtime (master surface) | TCE | LIVE |
 | `megascale_*` | 150 | Megascale DCN collective runtime | standalone | LIVE |
 | `xla_jf_*` | 148 | Jellyfish — TPU XLA backend core | TCE | LIVE |
-| `xla_*` (generic) | 138 | Generic XLA (scheduler/MSA/collective/dump) | `DebugOptions` | LIVE (94/111 wired) |
+| `xla_*` (generic) | 138 | Generic XLA (scheduler/MSA/collective/dump) | `DebugOptions` | LIVE (290-field schema) |
 | `xla_sc_*` | 92 | SparseCore LLVM compiler backend | TCE | LIVE |
 | `tpu_*` | 69 | TPU runtime / cache / driver | standalone | LIVE |
 | `barna_core_*` | 61 | BarnaCore embedding-engine runtime | TCE | LIVE |
@@ -247,6 +247,6 @@ This is the logical shape, not a single traced function: the actual binding is d
 - [overview.md](overview.md) — the three-layer pipeline; where this map sits (which proto each family lands in)
 - [xla-flag-atlas.md](xla-flag-atlas.md) — the flat per-flag catalog; the full name list and subsystem keyword taxonomy this page indexes by prefix
 - [flag-prefix-dispatch.md](flag-prefix-dispatch.md) — the `TpuVersion`-aware prefix-strip/select mechanism and the per-codename MSA overlay (`jf`/`vf`/`gf` resolution)
-- [debugoptions-proto.md](debugoptions-proto.md) — `xla::DebugOptions`: the 94 flag-wired vs 17 proto-only split, the inert `xla_gpu_*`/`xla_cpu_*` fields
+- [debugoptions-proto.md](debugoptions-proto.md) — `xla::DebugOptions`: the 290-field schema and the inert `xla_gpu_*`/`xla_cpu_*` carryover fields (only 2 fields are standalone-flag-wired; the earlier "94/111" split was superseded there)
 - [tpu-compilation-environment.md](tpu-compilation-environment.md) — the TCE master proto that the `xla_tpu_*` / codename / `xla_sc_*` / `xla_msa_*` families land in
 - [registry-mediated-flags.md](registry-mediated-flags.md) — the reflection-mediated flag→field bridge (`TpuCompEnvReflection`) that serves all TCE families through one generic path

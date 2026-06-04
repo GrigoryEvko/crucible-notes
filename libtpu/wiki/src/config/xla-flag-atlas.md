@@ -36,10 +36,10 @@ The prefix is the routing key: it decides which proto consumes the flag and whic
 | Family | Count | Type-dominant | Lands in | Subsystem owner |
 |---|---:|---|---|---|
 | `xla_tpu_*` | 909 | bool / int / float | TCE (standalone) | TPU compiler + runtime |
-| `(other)` | 412 | mixed | n/a (vendored libs) | absl / grpc / protobuf / OR-tools |
+| `(other + xla_vf_/xla_pf_)` | 429 | mixed | n/a (vendored libs) | absl / grpc / protobuf / OR-tools |
 | `megascale_*` | 150 | bool 73 / int 47 / str 14 | standalone `absl::Flag` | DCN collective runtime |
 | `xla_jf_*` | 148 | bool 109 / int 23 | TCE | Jellyfish XLA backend |
-| `xla_*` (plain) | 138 | bool / int / enum | `xla::DebugOptions` | generic XLA |
+| `xla_*` (plain) | 121 | bool / int / enum | `xla::DebugOptions` | generic XLA |
 | `xla_sc_*` | 92 | bool 73 / int 13 | TCE | SparseCore LLVM backend |
 | `tpu_*` | 69 | bool / int / str | runtime/cache/driver | TPU runtime |
 | `barna_core_*` | 61 | float / int / duration | standalone `absl::Flag` | BarnaCore embedding HW |
@@ -50,7 +50,7 @@ The prefix is the routing key: it decides which proto consumes the flag and whic
 | `xla_ior_*` | 4 | bool / enum | TCE | "IOR" fast-mem MSA variant |
 | `xla_llo_*` | 1 | enum | TCE | LLO annotation lifecycle |
 
-> **GOTCHA —** the 412 `(other)` names are not TPU flags at all — they are `absl`, gRPC, protobuf, OR-tools, and `cp_model` library flags statically linked into the 745 MB binary. A reimplementer enumerating `AbslFlagHelpGenFor*` symbols must filter to the `xla*` / `tpu*` / `megascale*` / `barna_core*` prefixes or pull in OR-tools' entire flag surface (`absl_flags_*`, `cp_model_*`). They are still settable through `LIBTPU_INIT_ARGS`, but they configure the vendored solvers, not the TPU compiler.
+> **GOTCHA —** the 429 `(other)` registered flags are almost all not TPU flags — 412 are `absl`, gRPC, protobuf, OR-tools, and `cp_model` library flags statically linked into the 745 MB binary; the remaining 17 are the tiny gen-codename mirrors (`xla_vf_*` 16, `xla_pf_*` 1) folded in here rather than given their own rows. (The owner partition on [flag-catalog-full.md](../appendix/flag-catalog-full.md) breaks `xla_vf_` out separately and reports the pure vendored-lib bucket as 412.) A reimplementer enumerating `AbslFlagHelpGenFor*` symbols must filter to the `xla*` / `tpu*` / `megascale*` / `barna_core*` prefixes or pull in OR-tools' entire flag surface (`absl_flags_*`, `cp_model_*`). They are still settable through `LIBTPU_INIT_ARGS`, but they configure the vendored solvers, not the TPU compiler.
 
 > **NOTE —** there are **zero `xla_gpu_*` flags** registered (no `AbslFlagHelpGenForxla_gpu_*` symbol exists), yet 17 GPU/CPU fields survive in the *shared* `DebugOptions` descriptor as proto-only, flag-less fields. The TPU build strips the GPU flag wiring but keeps the GPU fields in the proto. The proto-only set is enumerated on [debugoptions-proto.md](debugoptions-proto.md).
 
@@ -464,7 +464,7 @@ The entire catalog above rests on two extraction methods with different trust le
 - [overview.md](overview.md) — the four-stage flag→DebugOptions→TCE→effective-value pipeline this atlas sits inside
 - [flag-families.md](flag-families.md) — the prefix→owner taxonomy in full; which proto each family lands in
 - [env-vars.md](env-vars.md) — `LIBTPU_INIT_ARGS` and the env-var roster that feeds the parse
-- [debugoptions-proto.md](debugoptions-proto.md) — `xla::DebugOptions`: the 111 wire-fields the plain `xla_*` flags back, 94 flag-wired vs 17 proto-only
+- [debugoptions-proto.md](debugoptions-proto.md) — `xla::DebugOptions`: the 290-field schema the plain `xla_*` flags back (full descriptor decode; the earlier "111 wire-fields / 94 flag-wired" figure was a partial sample, superseded there)
 - [tpu-compilation-environment.md](tpu-compilation-environment.md) — the 1121-field TCE proto the `xla_tpu_*` / `xla_jf_*` / `xla_sc_*` flags land in
 - [autoproto-autoor-resolution.md](autoproto-autoor-resolution.md) — the AUTO tri-state that makes "default" a resolution rule for ~330 fields
 - [tce-field-offsets-defaults.md](tce-field-offsets-defaults.md) — the byte-exact field→offset→default reference where the non-evidenced defaults are recovered
