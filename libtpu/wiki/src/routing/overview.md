@@ -24,7 +24,7 @@ For reimplementation, the contract of the routing subsystem is:
 | **net_router namespace** | `xla::jellyfish::net_router` (per-collective schedule, compile time) |
 | **Generator base / factory** | `RoutingTableGenerator` @`0x1fbd72e0` · `RoutingTableGeneratorFactory::CreateGenerator` @`0x1fbd3dc0` |
 | **Resilient orchestrator** | `ResilientToroidalTopology::InitRouteSolution` @`0x1fbdf8a0` |
-| **Live path generator** | `Randomized/NonRandomizedToroidalWildFirstPaths::PathsWithFaults` @`0x1fbea380` / `0x1fbe6ae0` |
+| **Live path generator** | `RandomizedToroidalWildFirstPaths::PathsWithFaults` @`0x1fbea380` · `NonRandomizedToroidalWildFirstPaths::Paths` @`0x1fbe6ae0` |
 | **Cache lookup** | `RouteCacheDeduplicator::Find` @`0x20b59000` → `ToroidalRouteCache::Create` @`0x20b5d6e0` |
 | **Schedule literal** | `net_router::CreateRoutingScheduleLiteral` @`0x13822400` → `EmitRoutingCode` @`0x13819ca0` |
 | **Routing model** | Static, per-chip, dimension-order on a 3-D torus; no runtime reroute |
@@ -141,11 +141,18 @@ The production fast path loads a pre-baked route table instead of generating one
 
 ```c
 function InitRouteSolution():                                  // 0x1fbdf8a0
-    dedup = RouteCacheDeduplicator()
-    // populate from the embedded cache sets via UpdateDeduplicator (lines 281/295/618/632/668):
-    UpdateDeduplicator(dedup, kRouteCacheSet)                  // line 283  — default family (pufferfish)
-    UpdateDeduplicator(dedup, k6acc60406RouteCacheSet)         // line 303  — Ghostlite (codename 6acc60406)
-    UpdateDeduplicator(dedup, kViperfishRouteCacheSet)         // line 634  — viperfish-specific
+    // dedup = GetCacheDeduplicator(generation): a per-generation switch (line 260)
+    //   selects ONE of three lazily-constructed static deduplicator instances,
+    //   each combining the common kRouteCacheSet with at most one generation set.
+    switch generation:                                         // HIDWORD(v90)
+      case 4:  dedup = gf_deduplicator                        // 6acc60406 / TPU7x generation
+                 UpdateDeduplicator(dedup, kRouteCacheSet)     // line 283
+                 UpdateDeduplicator(dedup, k6acc60406RouteCacheSet) // line 295
+      case 2:  dedup = vf_deduplicator                        // viperfish
+                 UpdateDeduplicator(dedup, kRouteCacheSet)     // line 618
+                 UpdateDeduplicator(dedup, kViperfishRouteCacheSet) // line 632
+      case 1:  dedup = pf_deduplicator                        // pufferfish (default)
+                 UpdateDeduplicator(dedup, kRouteCacheSet)     // line 668
     key = ToFaultyDimensions(discovered_faults)                // cache key from the fault pattern
     cache = RouteCacheDeduplicator::Find(key)                  // line 335  — 0x20b59000
     if cache found:                                            // PATH B — cache hit (fast path)
@@ -157,17 +164,21 @@ function InitRouteSolution():                                  // 0x1fbdf8a0
     // if any (src,dst) has no fault-free path → "No route solution for topology %s." (.rodata 0xa02af1b)
 ```
 
-> **CORRECTION (ROUTE-1) —** the cache population in this binary uses **three** dedup sets, not two. The decompile shows `UpdateDeduplicator` called with `kRouteCacheSet`, `k6acc60406RouteCacheSet` (the Ghostlite codename, populated by a distinct dedup-`Create` lambda), and `kViperfishRouteCacheSet`. Earlier reconstruction folded the Ghostlite (`6acc60406`) caches into `kRouteCacheSet`; the separate `k6acc60406RouteCacheSet` symbol and its own `UpdateDeduplicator` call site (decompile line 303, distinct from the default at line 283) confirm it is a third, separately registered set. Functionally it is still the "default-family" path; structurally it is its own set. Marked HIGH.
+> **CORRECTION (ROUTE-1) —** the dedup population is **per-generation**, selected by a `switch` (decompile line 260) inside the inlined `GetCacheDeduplicator(int)`, not a single deduplicator that loads all sets. The switch picks one of three lazily-constructed static instances: `gf_deduplicator` (case 4 — the `6acc60406` / TPU7x generation) loads `kRouteCacheSet` + `k6acc60406RouteCacheSet`; `vf_deduplicator` (case 2 — viperfish) loads `kRouteCacheSet` + `kViperfishRouteCacheSet`; `pf_deduplicator` (case 1 — pufferfish/default) loads `kRouteCacheSet` alone. `kRouteCacheSet` is the common base every generation shares; the generation-specific set (`k6acc60406RouteCacheSet` or `kViperfishRouteCacheSet`) is layered on top. The `k6acc60406RouteCacheSet` name is recovered from the decompile's CHECK strings (lines 295/303); it does not surface as an independent `nm` data symbol (folded behind `GetCacheDeduplicator`). Marked HIGH.
 
-### 3.1 The three cache sets and per-generation coverage
+### 3.1 The per-generation deduplicators and their cache sets
 
-| Cache set | Codename family | Populated by | Confidence |
-|---|---|---|---|
-| `kRouteCacheSet` | pufferfish (default) | `RouteCacheDeduplicator::Create` lambda | HIGH |
-| `k6acc60406RouteCacheSet` | Ghostlite (`6acc60406`) | own dedup-`Create` lambda | HIGH |
-| `kViperfishRouteCacheSet` | viperfish | `RouteCacheDeduplicator::CreateResilientViperfish` lambda | HIGH |
+`GetCacheDeduplicator(int)` switches on the generation enum and returns one of three lazily-constructed static deduplicator instances. Each combines the common `kRouteCacheSet` with at most one generation-specific set:
 
-Viperfish carries its own caches because its slice shapes and twist conventions differ. Older generations (jellyfish / dragonfish) have **no** resilient cache and no viperfish-set entry — on those, a faulty link cannot be routed around: the fault-symmetry gate fails and bring-up fails or reshapes (see [Route-Table Generation](route-table-generation.md) for the gate and the chip-isolation path). The embedded descriptive inventory keys caches as `route_cache_symmetry_4_4_4_fault_num_{1,2,4}_fault_dim_{x,y,z}_<XxYxZ>[_twisted].binarypb` — full inventory and the cache-key dimensions are in [Route-Cache Dedup](route-cache-dedup.md) and [Toroidal Route Cache](toroidal-route-cache.md).
+| Deduplicator (switch case) | Generation | Cache sets loaded | Set-2 lambda | Confidence |
+|---|---|---|---|---|
+| `pf_deduplicator` (case 1) | pufferfish (default) | `kRouteCacheSet` only | — (base via `RouteCacheDeduplicator::Create`) | HIGH |
+| `vf_deduplicator` (case 2) | viperfish | `kRouteCacheSet` + `kViperfishRouteCacheSet` | `RouteCacheDeduplicator::CreateResilientViperfish` | HIGH |
+| `gf_deduplicator` (case 4) | `6acc60406` / TPU7x | `kRouteCacheSet` + `k6acc60406RouteCacheSet` | inlined sub @`0x1fbe4140` (not named in symtab) | HIGH |
+
+`kRouteCacheSet` is the shared base set every generation loads; the generation-specific set is layered on top of it for viperfish and the `6acc60406` generation only. Of the three sets, only `kRouteCacheSet` @`0x21f57380` and `kViperfishRouteCacheSet` @`0x21f57440` resolve as independent `nm` data symbols; `k6acc60406RouteCacheSet` is recovered from the decompile's CHECK strings (it is folded behind `GetCacheDeduplicator`).
+
+Older generations (jellyfish / dragonfish) have **no** resilient cache set of their own — on those, a faulty link cannot be routed around: the fault-symmetry gate fails and bring-up fails or reshapes (see [Route-Table Generation](route-table-generation.md) for the gate and the chip-isolation path). The embedded descriptive inventory keys caches as `route_cache_symmetry_4_4_4_fault_num_{1,2,4}_fault_dim_{x,y,z}_<XxYxZ>[_twisted].binarypb` — full inventory and the cache-key dimensions are in [Route-Cache Dedup](route-cache-dedup.md) and [Toroidal Route Cache](toroidal-route-cache.md).
 
 ### 3.2 Chip isolation — when no route exists
 
