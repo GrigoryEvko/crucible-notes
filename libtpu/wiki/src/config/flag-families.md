@@ -70,7 +70,7 @@ These prefixes are inherited from upstream XLA. Some are live on TPU; some survi
 
 ### `xla_*` — generic XLA, the `DebugOptions` proto
 
-The plain `xla_*` prefix (no recognized second token) is the generic XLA flag family: 138 distinct names. Each maps to a `DebugOptions` field by 1:1 name (`--xla_foo` ↔ field `xla_foo`), registered by `MakeDebugOptionsFlags`. Of the **290** `DebugOptions` wire-fields in libtpu's descriptor, only **2** are wired to a registered standalone `absl::Flag` (`xla_tpu_detect_nan` (135), `xla_tpu_detect_inf` (136)); the rest — including these generic `xla_*` fields — are reached through the PJRT `CompileOptions.debug_options` proto path, not the standalone flag surface (full breakdown on [debugoptions-proto.md](debugoptions-proto.md)). The all-default baseline is `DefaultDebugOptionsIgnoringFlags @ 0x1e66a860`. This family covers cross-backend concerns: the scheduler (`xla_latency_hiding_scheduler_*`), MSA (`xla_enable_cross_program_prefetch`), collectives (`xla_enable_async_all_reduce`), dump/trace (`xla_enable_hlo_trace`), and the `xla_backend_extra_options` string→string escape-hatch map. Owned in detail by [debugoptions-proto.md](debugoptions-proto.md).
+The plain `xla_*` prefix (no recognized second token) is the generic XLA flag family: **112** distinct registered names (deduped `AbslFlagHelpGenForxla_*`, disjoint from the `tpu`/`jf`/`sc`/`gpu`/`cpu`/`msa`/`gf`/`vf`/`pf`/`ior`/`mosaic`/`llo`/`hlo`/`llvm` second-token families that get their own rows below). Each maps to a `DebugOptions` field by 1:1 name (`--xla_foo` ↔ field `xla_foo`), registered by `MakeDebugOptionsFlags`. Of the **290** `DebugOptions` wire-fields in libtpu's descriptor, only **2** are wired to a registered standalone `absl::Flag` (`xla_tpu_detect_nan` (135), `xla_tpu_detect_inf` (136)); the rest — including these generic `xla_*` fields — are reached through the PJRT `CompileOptions.debug_options` proto path, not the standalone flag surface (full breakdown on [debugoptions-proto.md](debugoptions-proto.md)). The all-default baseline is `DefaultDebugOptionsIgnoringFlags @ 0x1e66a860`. This family covers cross-backend concerns: the scheduler (`xla_latency_hiding_scheduler_*`), MSA (`xla_enable_cross_program_prefetch`), collectives (`xla_enable_async_all_reduce`), dump/trace (`xla_enable_hlo_trace`), and the `xla_backend_extra_options` string→string escape-hatch map. Owned in detail by [debugoptions-proto.md](debugoptions-proto.md).
 
 ### `xla_hlo_*` — HLO-level passes (split: live + proto-only)
 
@@ -182,7 +182,7 @@ The full prefix → owner / routing / live-vs-inert table. Counts are registrati
 | `xla_tpu_*` | 909 | TPU compiler + runtime (master surface) | TCE | LIVE |
 | `megascale_*` | 150 | Megascale DCN collective runtime | standalone | LIVE |
 | `xla_jf_*` | 148 | Jellyfish — TPU XLA backend core | TCE | LIVE |
-| `xla_*` (generic) | 138 | Generic XLA (scheduler/MSA/collective/dump) | `DebugOptions` | LIVE (290-field schema) |
+| `xla_*` (generic) | 112 | Generic XLA (scheduler/MSA/collective/dump) | `DebugOptions` | LIVE (290-field schema) |
 | `xla_sc_*` | 92 | SparseCore LLVM compiler backend | TCE | LIVE |
 | `tpu_*` | 69 | TPU runtime / cache / driver | standalone | LIVE |
 | `barna_core_*` | 61 | BarnaCore embedding-engine runtime | TCE | LIVE |

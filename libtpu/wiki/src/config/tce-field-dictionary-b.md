@@ -14,8 +14,10 @@ deserializes, which `FieldEntry` in `TpuCompilationEnvironment::_table_`
 (`@0x21cfa9e0`) a tag selects, and therefore which struct byte a value lands on.
 
 This page is the **upper half** of that dictionary. It covers field numbers
-**#561 through #1121** (the count-aligned upper bound — the 1121st live entry, not
-field number 1121; the highest *number* in the message is #1218), ordered by
+**#561 through #1218** (the highest *number* in the message; the two halves split
+at the #561 boundary, with the lower 560 field numbers on dictionary A and the
+remaining 561 live entries — entries 561–1121 of the dense `FieldEntry` array —
+here), ordered by
 field number and grouped by functional area within the range. For each field it
 gives the verbatim flag/proto name, the proto type (and the wrapper enum or
 message type where the base type is `enum` or `message`), and a confidence label.
@@ -33,7 +35,7 @@ reimplementation contract of its own. What a reimplementer must reproduce is the
 *shape* of the field space, captured below as a dimension table and then the
 per-area name lists:
 
-- The **field# → name → proto-type** map for #561–#1121, the half of the wire
+- The **field# → name → proto-type** map for #561–#1218, the half of the wire
   contract the upper FieldEntry rows encode.
 - The **wrapper resolution** for the four enum-typed and the message-typed
   (AutoProto / typed-message) fields in this range — the base proto type alone
@@ -45,7 +47,7 @@ per-area name lists:
 
 | | |
 |---|---|
-| **Range owned by this page** | field **#561 – #1121** (lower bound inclusive; #1–#560 on dictionary A) |
+| **Range owned by this page** | field **#561 – #1218** (561 live entries; #1–#560 on dictionary A) |
 | **Live fields total (message)** | 1121 (max field number 1218 / `0x4c2`) |
 | **Parse table** | `TpuCompilationEnvironment::_table_` `@0x21cfa9e0` (`.data.rel.ro`) |
 | **FieldEntry array** | `table+0x370`, 1121 × 12 B, sorted ascending by field# |
@@ -61,7 +63,7 @@ per-area name lists:
 
 ---
 
-## Range Shape — Type Histogram for #561–#1121
+## Range Shape — Type Histogram for #561–#1218
 
 The whole-message type histogram (all 1121 fields) is fixed, and each proto base
 type maps to exactly one 16-bit `type_card`. The upper half inherits the same
@@ -304,7 +306,7 @@ default `ENABLED(2)`.
 
 ---
 
-## #900–#1121 — Tail: Mixed Scalars, Tristates, AutoProto Messages
+## #900–#1218 — Tail: Mixed Scalars, Tristates, AutoProto Messages
 
 The top ~220 field numbers carry no single dominant area; they are a mix of
 bool/int scalar knobs, additional `TristateProto.Value` toggles, and
@@ -317,19 +319,19 @@ the tail is anchored and HIGH:
 
 | Axis | Values | Source |
 |---|---|---|
-| Highest live field# | #1121 (this page's upper bound) | `num_field_entries=1121`, ascending order |
-| Max field number | #1218 (`0x4c2`) | parse-table header `max_field_number` |
+| Live entry count | 1121 FieldEntry rows (the 1121st is the last live field) | `num_field_entries=1121`, ascending order |
+| Highest live field number | #1218 (`0x4c2`) | parse-table header `max_field_number` |
 | Gap field-numbers in tail | the `1218 − 1121 = 97` dead numbers, spread across the whole range | header arithmetic |
 | Proto types present | bool, int64, int32, float, double, string, enum, message | message-wide histogram |
 | `message` fields | resolve via `aux_idx` → aux array (`table+0x3800`); AutoProto = empty/AUTO default | aux entries (349 message fields message-wide) |
 
-> **GOTCHA —** "field #1121" is the **last FieldEntry**, not field number 1121.
-> Because 97 field numbers below #1218 are dead, the 1121st live entry carries a
-> field number somewhere between #1121 and #1218. This page's stated upper bound
-> of **#1121** is the *count-aligned* bound used by both dictionary pages to tile
-> cleanly; the genuinely highest field *number* in the message is up to #1218.
-> A reimplementer reading the parse table sees only the 1121 live entries and
-> their actual (sparse) numbers; the dead numbers are simply absent.
+> **GOTCHA —** the **1121st FieldEntry** is the last live field, but its field
+> *number* is **#1218**, not 1121. Because 97 field numbers below #1218 are dead,
+> the live-entry count (1121) and the highest field number (#1218) differ by
+> exactly those 97 gaps. Dictionary A owns the first 560 field numbers (#1–#560);
+> this page owns the remainder (#561–#1218). A reimplementer reading the parse
+> table sees only the 1121 live entries and their actual (sparse) numbers; the
+> dead numbers are simply absent.
 
 > **NOTE —** the message-typed fields in this tail (and throughout TCE) are
 > overwhelmingly `xla.jellyfish.AutoProto` oneof fields. AutoProto is a 30-arm
@@ -344,15 +346,16 @@ the tail is anchored and HIGH:
 > **CORRECTION (TCE-B) —** an earlier reading of this range assumed field numbers
 > were dense and that "#1121" meant proto field number 1121. The parse-table
 > header (`max_field_number=1218`, `num_field_entries=1121`) shows the numbers are
-> sparse: there are 97 dead numbers. The two dictionary pages therefore tile by
-> *count* (A: first 560 live entries; B: entries 561–1121), and any reader mapping
-> a serialized tag must use the live FieldEntry, never assume tag == index.
+> sparse: there are 97 dead numbers, so the live-entry *count* (1121) is not a
+> field number. The two dictionary pages tile by field *number* (A: #1–#560; B:
+> #561–#1218), and any reader mapping a serialized tag must use the live
+> FieldEntry, never assume tag == index.
 
 ---
 
 ## Wrapper Enums Referenced in This Range
 
-Four of the 7 dedicated (non-Tristate) TCE wrapper enums are the type of a *direct* enum field in #561–#1121
+Four of the 7 dedicated (non-Tristate) TCE wrapper enums are the type of a *direct* enum field in #561–#1218
 (versus appearing only inside the AutoProto oneof). Their value tables, read
 verbatim from the FileDescriptorProto value-name stream (`@0xbfa6060+`):
 

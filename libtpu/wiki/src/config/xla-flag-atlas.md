@@ -95,7 +95,7 @@ libtpu advertises **five distinct latency-hiding scheduler engines** behind sepa
 | `xla_tpu_enable_latency_hiding_layer_scheduler` | bool | (unrec) | per-layer LHS | HIGH |
 | `xla_tpu_enable_multi_compute_overlap_in_layer_scheduler` | bool | (unrec) | multi-compute overlap | HIGH |
 | `xla_tpu_aggressive_flexible_annotation_scheduling` | bool | (unrec) | annotation aggressiveness | HIGH |
-| `xla_tpu_scheduling_annotation_deannotate_unsupported_groups` | bool | **true** | deannotate annotation gaps | CERTAIN |
+| `xla_tpu_scheduling_annotation_deannotate_unsupported_groups` | AutoOr&lt;bool&gt; | **false** (AUTO→off) | deannotate annotation gaps | CERTAIN |
 | `xla_tpu_enable_all_experimental_scheduler_features` | bool | (unrec) | turns on all experimental sched features | HIGH |
 
 ### Catalog — BRKGA tuning + generic LHS
@@ -134,12 +134,12 @@ Fusion is the second-largest `xla_tpu_` subsystem and carries the only cluster o
 
 | Flag | Type | Default | Effect | Confidence |
 |---|---|---|---|---|
-| `xla_tpu_rwb_fusion` | bool | **false** | read-write-buffer fusion | CERTAIN |
-| `xla_tpu_dot_dot_fusion` | bool | **false** | dot→dot fusion | CERTAIN |
+| `xla_tpu_rwb_fusion` | bool | **true** | read-write-buffer fusion | CERTAIN |
+| `xla_tpu_dot_dot_fusion` | bool | **true** | dot→dot fusion | CERTAIN |
 | `xla_tpu_nested_dot_fusion` | bool | **true** | nested-dot (PartialReduce) fusion | CERTAIN |
-| `xla_tpu_accumulate_into_mrb` | bool | **false** | MRB accumulation fusion | CERTAIN |
+| `xla_tpu_accumulate_into_mrb` | bool | **true** | MRB accumulation fusion | CERTAIN |
 | `xla_tpu_allow_deeply_nested_fusion_numerical_diff` | bool | **true** | tolerate deep-fusion numerics | CERTAIN |
-| `xla_tpu_fusion_debugger_instrument_inputs` | bool | **false** | fusion-debugger input instrumentation | CERTAIN |
+| `xla_tpu_fusion_debugger_instrument_inputs` | AutoOr&lt;bool&gt; | **false** (`Gen` `movw $0`→AUTO; off if consumer AUTO→off) | fusion-debugger input instrumentation | HIGH |
 | `xla_tpu_allow_input_fusion_in_certain_reduce_ops` | bool | (unrec) | reduce-op input fusion | HIGH |
 | `xla_tpu_allow_conv_input_fusion_with_downcast_convert` | bool | (unrec) | conv input fusion w/ downcast | HIGH |
 | `xla_tpu_wrap_fusion_lowerable_hlos_in_loop_fusion` | bool | (unrec) | wrap lowerable HLOs | HIGH |
@@ -162,7 +162,7 @@ Fusion is the second-largest `xla_tpu_` subsystem and carries the only cluster o
 | `xla_tpu_bf16_emission_mode` | enum | bf16 emission policy | LOW |
 | `xla_tpu_experimental_enable_dynamic_int8_quantization` | bool | dynamic int8 quant (experimental) | HIGH |
 
-> **GOTCHA —** the byte-evidenced defaults come from error strings, and the value in the string is the value the *message tells you to set* — which is the **non-default** when the message is steering you to flip it. For the four `=false`/`=true` rows above the resolution is: `nested_dot_fusion` and `allow_deeply_nested_fusion_numerical_diff` are `true` by default (the message says "set `=true`" to recover), while `rwb_fusion`, `dot_dot_fusion`, `accumulate_into_mrb` are `false` by default (the message offers `=false` as a workaround for a bug they are *off* to avoid). The error strings appear verbatim in `PartialReduceEmitter::ValidateShapes @ 0x10eaa120` (`nested_dot_fusion=true`) and `AssignMrbEntriesToChains @ 0x10f4ac60` (`accumulate_into_mrb=false`). The authoritative default is in the `FLAGS_<name>` static initializer; see [tce-field-offsets-defaults.md](tce-field-offsets-defaults.md).
+> **GOTCHA —** the help/error-string `=value` clause is the value the *message tells you to set* — **not** the registered default. The byte-authoritative default is the `FLAGS_<name>` inline literal at `FlagImpl+0x48`, and for this cluster it is `01 00 00 00` = **true** in every case: `rwb_fusion`, `dot_dot_fusion`, `accumulate_into_mrb`, `nested_dot_fusion`, and `allow_deeply_nested_fusion_numerical_diff` are **all `true` by default**. The error strings (e.g. in `PartialReduceEmitter::ValidateShapes @ 0x10eaa120`, `AssignMrbEntriesToChains @ 0x10f4ac60`) offer `=false`/`=true` as a *workaround to flip an on-by-default knob*, so reading the suggested value as the default inverts it. Trust the `+0x48` union, never the prose; see [tce-field-offsets-defaults.md](tce-field-offsets-defaults.md).
 
 ---
 
@@ -219,7 +219,7 @@ The largest `xla_tpu_` subsystem. It covers the inter-chip-interconnect (ICI) co
 
 | Flag | Type | Default | Effect | Confidence |
 |---|---|---|---|---|
-| `xla_tpu_enable_sparse_core_reduce_scatter_v2` | bool | **true** | SC ND reduce-scatter v2 | CERTAIN |
+| `xla_tpu_enable_sparse_core_reduce_scatter_v2` | AutoOr&lt;bool&gt; | **true** (AUTO→on, but `TpuVersion`+second-field composite at `EnableSparseCoreReduceScatterV2 @ 0x1d6b8660`) | SC ND reduce-scatter v2 | HIGH |
 | `xla_tpu_all_gather_collective_matmul_mode` | enum | (unrec) | collective-matmul AG mode | LOW |
 | `xla_tpu_all_gather_step_count` | int | (unrec) | AG ring step count | HIGH |
 | `xla_tpu_all_reduce_vmem_contingency_kib` | int | (unrec) | AR VMEM reserve (KiB) | HIGH |
@@ -266,8 +266,8 @@ Two families serve the SparseCore (SC) embedding path: `xla_sc_*` (92) are the S
 | Flag | Type | Default | Effect | Confidence |
 |---|---|---|---|---|
 | `xla_tpu_enable_offloading_gather_to_sparsecore` | bool | **false** | gather offload to SC | CERTAIN |
-| `xla_tpu_enable_offloading_scatter_to_sparsecore` | bool | **false** | scatter offload to SC | CERTAIN |
-| `xla_tpu_enable_sc_log_recorder` | bool | **true** | SC log recorder | CERTAIN |
+| `xla_tpu_enable_offloading_scatter_to_sparsecore` | enum (Tristate) | **ENABLED** (`Gen` `movb $2`) | scatter offload to SC | CERTAIN |
+| `xla_tpu_enable_sc_log_recorder` | AutoOr&lt;bool&gt; | **false** (AUTO→off) | SC log recorder | CERTAIN |
 | `xla_tpu_embedding_table_oblongness_threshold` | float | **50.0** | embedding-table oblongness cutoff | CERTAIN |
 | `xla_tpu_enable_sc_sdc_checker` | bool | (unrec) | SparseCore SDC checker | HIGH |
 | `xla_tpu_aggregate_data_dependent_sc_ops` | bool | (unrec) | data-dependent SC aggregation | HIGH |
@@ -335,7 +335,7 @@ Allocation knobs (27 `xla_tpu_` + generic) control OOM handling, HBM/VMEM/SMEM s
 
 | Flag | Type | Default | Effect | Confidence |
 |---|---|---|---|---|
-| `xla_tpu_impure_oom_fast_exit_threshold` | int | **-1** (=off) | OOM fast-exit threshold | CERTAIN |
+| `xla_tpu_impure_oom_fast_exit_threshold` | int | **10** (`+0x48`=`0x0a`) | OOM fast-exit threshold | CERTAIN |
 | `xla_enable_megacore_hbm_spill` | bool | **true** | megacore HBM spill | CERTAIN |
 | `xla_tpu_always_spill_to_default_memory` | bool | (unrec) | always spill to default mem (proto field) | HIGH |
 | `xla_jf_poison_vmem_allocations` | bool | (unrec) | poison VMEM allocs (debug) | HIGH |
@@ -350,7 +350,7 @@ Allocation knobs (27 `xla_tpu_` + generic) control OOM handling, HBM/VMEM/SMEM s
 | `tpu_log_allocations_on_oom` | bool | (unrec) | log allocations on OOM | HIGH |
 | `DANGEROUS_tpu_runtime_abi_verification_disabled` | bool | (unrec) | **disables ABI verification** | HIGH |
 
-> **QUIRK —** `xla_tpu_impure_oom_fast_exit_threshold` defaults to **-1** (byte-evidenced) which means *disabled* — the negative sentinel is the off-state, not a normal value. The `impure_` prefix is a libtpu naming convention marking ~30 non-deterministic / logging / side-effecting knobs (`impure_cost_model_logging_options`, `impure_llo_lifecycle_log_mode`, `impure_probability_of_host_offloading`). A reimplementer should treat `impure_` flags as runtime-observable side channels, not pure compile decisions.
+> **QUIRK —** `xla_tpu_impure_oom_fast_exit_threshold` defaults to **10** (byte-evidenced: inline `FlagImpl+0x48` = `0x0a`, no `Gen` reloc) — a positive count, not the `-1` "disabled" sentinel an earlier pass assumed. The `impure_` prefix is a libtpu naming convention marking ~30 non-deterministic / logging / side-effecting knobs (`impure_cost_model_logging_options`, `impure_llo_lifecycle_log_mode`, `impure_probability_of_host_offloading`). A reimplementer should treat `impure_` flags as runtime-observable side channels, not pure compile decisions.
 
 ---
 
@@ -364,8 +364,8 @@ Allocation knobs (27 `xla_tpu_` + generic) control OOM handling, HBM/VMEM/SMEM s
 
 | Flag | Type | Default | Effect | Confidence |
 |---|---|---|---|---|
-| `xla_tpu_enable_tile_log_recorder` | bool | **true** | tile log recorder | CERTAIN |
-| `xla_jf_debug_level` | int | **2** | Jellyfish debug verbosity | CERTAIN |
+| `xla_tpu_enable_tile_log_recorder` | bool | **false** | tile log recorder | CERTAIN |
+| `xla_jf_debug_level` | int | **1** | Jellyfish debug verbosity | CERTAIN |
 | `xla_jf_run_verifier` | bool | **false** | run HLO verifier | CERTAIN |
 | `xla_jf_dump_to` | string | (unrec) | Jellyfish dump directory | HIGH |
 | `xla_jf_dump_hlo_text` | bool | (unrec) | dump HLO text | HIGH |
@@ -426,24 +426,24 @@ The entire catalog above rests on two extraction methods with different trust le
 
 | Flag | Default | Confidence |
 |---|---|---|
-| `xla_tpu_accumulate_into_mrb` | false | CERTAIN |
-| `xla_tpu_rwb_fusion` | false | CERTAIN |
-| `xla_tpu_dot_dot_fusion` | false | CERTAIN |
+| `xla_tpu_accumulate_into_mrb` | true (`+0x48`=`01`) | CERTAIN |
+| `xla_tpu_rwb_fusion` | true (`+0x48`=`01`) | CERTAIN |
+| `xla_tpu_dot_dot_fusion` | true (`+0x48`=`01`) | CERTAIN |
 | `xla_tpu_nested_dot_fusion` | true | CERTAIN |
 | `xla_tpu_allow_deeply_nested_fusion_numerical_diff` | true | CERTAIN |
-| `xla_tpu_fusion_debugger_instrument_inputs` | false | CERTAIN |
-| `xla_tpu_scheduling_annotation_deannotate_unsupported_groups` | true | CERTAIN |
-| `xla_tpu_enable_tile_log_recorder` | true | CERTAIN |
-| `xla_tpu_enable_sc_log_recorder` | true | CERTAIN |
-| `xla_tpu_enable_sparse_core_reduce_scatter_v2` | true | CERTAIN |
+| `xla_tpu_fusion_debugger_instrument_inputs` | AUTO (`Gen` `movw $0`) → off | HIGH |
+| `xla_tpu_scheduling_annotation_deannotate_unsupported_groups` | false (AutoOr, AUTO→off) | CERTAIN |
+| `xla_tpu_enable_tile_log_recorder` | false (`+0x48`=`00`) | CERTAIN |
+| `xla_tpu_enable_sc_log_recorder` | false (AutoOr, AUTO→off) | CERTAIN |
+| `xla_tpu_enable_sparse_core_reduce_scatter_v2` | true (AutoOr AUTO→on; version composite) | HIGH |
 | `xla_tpu_enable_offloading_gather_to_sparsecore` | false | CERTAIN |
-| `xla_tpu_enable_offloading_scatter_to_sparsecore` | false | CERTAIN |
-| `xla_tpu_impure_oom_fast_exit_threshold` | -1 (off) | CERTAIN |
+| `xla_tpu_enable_offloading_scatter_to_sparsecore` | ENABLED (`Gen` `movb $2`) | CERTAIN |
+| `xla_tpu_impure_oom_fast_exit_threshold` | 10 (`+0x48`=`0x0a`) | CERTAIN |
 | `xla_tpu_embedding_table_oblongness_threshold` | 50.0 (float) | CERTAIN |
 | `xla_enable_megacore_hbm_spill` | true | CERTAIN |
-| `xla_jf_debug_level` | 2 | CERTAIN |
+| `xla_jf_debug_level` | 1 | CERTAIN |
 | `xla_jf_run_verifier` | false | CERTAIN |
-| `megascale_use_numa_aware_threadpool` | false | CERTAIN |
+| `megascale_use_numa_aware_threadpool` | true (`+0x48`=`01`) | CERTAIN |
 
 > **NOTE —** for the ~330 TCE fields that are `AutoProto` oneofs, "default" is not even a flat value — it is an AUTO-resolution polarity baked into each consumer, optionally rewritten by a per-`TpuVersion` MSA overlay. The effective value is `flag-default ⊕ AUTO-polarity ⊕ per-version-overlay`. That resolution is owned by [autoproto-autoor-resolution.md](autoproto-autoor-resolution.md); this atlas catalogs the flag *names and inferred types*, not their resolved values.
 
