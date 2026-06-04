@@ -7,7 +7,7 @@
 
 **Megascale** is the data-center-network (DCN) scale-out layer of the TPU runtime. Where [ICI](../ici/overview.md) is the in-pod optical torus that wires the chips of one *slice* into a single SerDes-connected `(X,Y,Z)` mesh, Megascale federates many such slices — each its own ICI island — into one logical TPU job that spans racks and rows of a data center, communicating over Ethernet via gRPC. ICI moves operands chip-to-chip at link speed inside a slice; Megascale moves the cross-slice fraction of a collective (the `AllReduceDcnFusionData` / `LowerCollectivePermuteFullDCN` paths the compiler emits in `xla::megascale::compiler::CrossSliceRewrites`) host-to-host between slices, and it owns the control plane that lets those hosts find one another at all. The split is visible in the binary's own vocabulary: the cross-slice rewriter names its primitives `ICIDCN…` and `…FullDCN`, treating "ICI" and "DCN" as the two transport tiers of one collective.
 
-Everything in this section lives under the C++ namespace `xla::megascale::runtime` and is hosted by one facade object, the `CommunicationBackend` (object size `0x368`, built by `Create()`). Each TPU host runs one backend; the backend owns a gRPC server — the 6-method `MegaScaleTransport` service — bound to `MEGASCALE_PORT`, plus, on exactly one elected process per job, a `TopologyCoordinator`, a map of `BarrierCoordinator`s, and an `ErrorReporter`. Beneath the backend, the host-local **`tpunetd`** daemon (namespace `superpod::tpunetd_client`) brings up the ICI fabric *within* the slice before Megascale's cross-slice rendezvous ever runs; the two are sequenced one-way, tpunetd → Megascale.
+Everything in this section lives under the C++ namespace `xla::megascale::runtime` and is hosted by one facade object, the `CommunicationBackend` (object size `0x370`, built by `Create()`). Each TPU host runs one backend; the backend owns a gRPC server — the 6-method `MegaScaleTransport` service — bound to `MEGASCALE_PORT`, plus, on exactly one elected process per job, a `TopologyCoordinator`, a map of `BarrierCoordinator`s, and an `ErrorReporter`. Beneath the backend, the host-local **`tpunetd`** daemon (namespace `superpod::tpunetd_client`) brings up the ICI fabric *within* the slice before Megascale's cross-slice rendezvous ever runs; the two are sequenced one-way, tpunetd → Megascale.
 
 This page is a map. It orients the reader on the ICI↔DCN boundary, the host-side daemon model, and the four-phase job lifecycle, then hands off to the already-written subsections for every byte-level derivation. It does not duplicate their internals.
 
@@ -20,7 +20,7 @@ For the section as a whole, the reimplementation contract is:
 | | |
 |---|---|
 | **C++ namespace** | `xla::megascale::runtime` |
-| **Per-host facade** | `CommunicationBackend` (`0x368` bytes; `Create()`) |
+| **Per-host facade** | `CommunicationBackend` (`0x370` bytes; `Create()` @ `0x1ccafe60`) |
 | **Bootstrap entry** | `CommunicationBackend::DiscoverTopologyAndAddressBindings(int, tpu::TpuTopologyArgsProto, int, int)` @ `0x1ccacb80` |
 | **gRPC service** | `MegaScaleTransport` — 6 unary RPCs, prefix `/xla.megascale.runtime.MegaScaleTransport/` |
 | **Coordinator (1/job)** | `TopologyCoordinator` (`0x108` bytes) + `BarrierCoordinator` map + `ErrorReporter` |
@@ -71,12 +71,12 @@ Every TPU host in the job runs the same two software layers; only the coordinato
 
 ### CommunicationBackend — one per host
 
-The `CommunicationBackend` (`0x368` bytes, constructed by `Create()`) is the per-process facade for all DCN activity. It owns:
+The `CommunicationBackend` (`0x370` bytes, allocated by `Create()` @ `0x1ccafe60` via `operator new(880, 16)`) is the per-process facade for all DCN activity. It owns:
 
 - the `MegaScaleTransport` gRPC server, bound to `MEGASCALE_PORT` and wired through a `GrpcTransport` (default) by `InitializeTransportLayerInternal()` @ `0x1ccaeb40`;
-- the per-(slice,host) **address table** (region `+0x170..+0x1e0`) that steady-state `Send` RPCs index;
+- the per-(slice,host) **address table** (member at `+0x170`, below the two pointer slots at `+0x1a0`/`+0x1a8`) that steady-state `Send` RPCs index;
 - a `TopologyCoordinator*` at `+0x1a0` — **null on every process except the coordinator**;
-- a `flat_hash_map<string, unique_ptr<BarrierCoordinator>>` at `+0x228`, keyed by `barrier_id`;
+- a `flat_hash_map<string, unique_ptr<BarrierCoordinator>>` at `+0x1b0`, keyed by `barrier_id` and guarded by the `TracedMutex` at `+0xe0`;
 - an `ErrorReporter*` at `+0x1a8`;
 - the `HeartBeat` scheduler started by `StartHeartBeat()` @ `0x1ccade60`.
 
@@ -149,7 +149,7 @@ The response deserializes into the live `xla::megascale::runtime::MultiSliceTopo
 
 ### Phase 3 — Cross-host barrier
 
-Gated by `--xla_tpu_enable_megascale_barrier`, this is the pre-execution barrier. It reuses the same `Coordinator<>` template: one `BarrierCoordinator` per `barrier_id` (lazily inserted into the backend's `+0x228` map by `OnBarrierRequestReceived` @ `0x1ccac5c0`), releasing all waiters when the seen-host set reaches `num_workers`. The per-call deadline is `barrier_timeout_in_ms` on each request. Owned by [Cross-Host Barrier](cross-host-barrier.md).
+Gated by `--xla_tpu_enable_megascale_barrier`, this is the pre-execution barrier. It reuses the same `Coordinator<>` template: one `BarrierCoordinator` per `barrier_id` (lazily inserted into the backend's `+0x1b0` map by `OnBarrierRequestReceived` @ `0x1ccac5c0`), releasing all waiters when the seen-host set reaches `num_workers`. The per-call deadline is `barrier_timeout_in_ms` on each request. Owned by [Cross-Host Barrier](cross-host-barrier.md).
 
 ### Phase 4 — Steady state
 
