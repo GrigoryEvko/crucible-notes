@@ -30,7 +30,7 @@ For reimplementation, the contract is:
 | **Fan-out** | `Start` @ `0xF6A1640`, `Stop` @ `0xF6A16C0`, `CollectData` @ `0xF6A1740` |
 | **Device collector** | `xprof::tpu::TpuProfilerImpl::CollectData` @ `0xEF34860` |
 | **Host collectors** | `ThreadpoolProfilerInterface::CollectData` @ `0xF3326C0`; `HostTracer` (factory @ `0xF32F7C0`) |
-| **Run-gate singleton** | `GetOrCreateTpuProfilerControlListener` @ `0xF332800`, 16 bytes, vtable @ `0x2175C1B0` |
+| **Run-gate singleton** | `GetOrCreateTpuProfilerControlListener` @ `0xF332800`, 16 bytes, vtable symbol @ `0x2175C1A0` (installed vptr `0x2175C1B0`) |
 | **Output** | one `tensorflow.profiler.XSpace` proto, host + per-device planes |
 
 ---
@@ -160,7 +160,7 @@ The `Start` and `CollectData` bodies (`0x1CF50DE0`, `0x1CF51060`) share one shap
 ```c
 function ProfilerController::Start(this):                 // 0x1CF50DE0
     if (this.phase != 0):                                 // wrong order
-        return Log(InvalidArgument("Start called in the wrong order"));   // profiler_controller.cc:51
+        return Log(MakeErrorImpl<10 ABORTED>("Start called in the wrong order"));   // profiler_controller.cc:51
     this.phase = 1;
     if (this.last_status != OK):                          // a prior phase already failed
         return Log("Previous call returned an error.");
@@ -330,17 +330,17 @@ Collection (`CollectData`) is a one-shot drain at the end of a session, but trac
 ### Layout and Construction
 
 ```c
-/* xprof::tpu::TpuProfilerControlListener — 16 bytes, vtable @ 0x2175C1B0. */
+/* xprof::tpu::TpuProfilerControlListener — 16 bytes, vtable symbol @ 0x2175C1A0 (installed vptr 0x2175C1B0). */
 struct TpuProfilerControlListener {
     /* +0x00 */ void**             vtable;
     /* +0x08 */ xprof::tpu::Profiler* profiler;   /* the global profiler singleton */
 };
 
 function GetOrCreateTpuProfilerControlListener():          // 0xF332800
-    if (guard(singleton)): return singleton;               // __cxa_guard, 0x224C5D78
+    if (guard(singleton)): return singleton;               // singleton @ 0x224C5D78, __cxa_guard @ 0x224C5D80
     p = operator new(0x10);
     p->profiler = Profiler::GetOrCreateProfilerSingleton(); // 0xF336640
-    p->vtable   = &vtable@0x2175C1B0;
+    p->vtable   = off_2175C1B0;  // installed vptr = vtable symbol 0x2175C1A0 + 0x10
     singleton   = p;
     return singleton;
 ```
@@ -373,7 +373,7 @@ function TpuProfilerControlListener::MustStopProfiler(this, chip_loc):       // 
 | `MustStopProfiler(chip_loc)` | `0xF332A00` | poll chip-out: delegate to `UnregisterChipProfiler` | CERTAIN |
 | `Profiler::GetOrCreateProfilerSingleton` | `0xF336640` | the wrapped `xprof::tpu::Profiler` | HIGH |
 
-> **NOTE —** the listener's vtable slot ordering relative to its abstract base was not extracted; the four registration methods and two gate methods are confirmed at the cited addresses, but the position of each within the vtable at `0x2175C1B0` is LOW confidence.
+> **NOTE —** the listener's vtable slot ordering relative to its abstract base was not extracted; the four registration methods and two gate methods are confirmed at the cited addresses, but the position of each within the vtable (symbol `0x2175C1A0`, installed vptr `0x2175C1B0`) is LOW confidence.
 
 ---
 
