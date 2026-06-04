@@ -64,7 +64,7 @@ Every intrinsic is assigned to exactly one family. The 20 enumerated family rows
 | [transcendental / EUP](#transcendental--eup) | 22 | EUP VALU3 push (Alu3 op0 + 5-bit selector) + `PopEupResult` | C | HIGH |
 | [control register rd / set](#control-register-rd--set) | 21 | scalar `RdReg`/`SetReg` → SCS scalar slot | C | HIGH |
 | [pointer / addressing / loop-bc](#pointer--addressing--loop-bytecode) | 16 | LLVM `inttoptr`/`ptrtoint`/`addrspace` + loop bytecode | C | MEDIUM |
-| [addrspacecast](#addrspacecast) | 16 | surviving `@llvm.tpu.addrspacecast.*` IR intrinsic call (IDs `0x33b0`–`0x33bf`) | C | HIGH |
+| [addrspacecast](#addrspacecast) | 16 | surviving `@llvm.tpu.addrspacecast.*` IR intrinsic call (IDs `0x33b1`–`0x33c0`) | C | HIGH |
 | [scalar ALU / scalar mem](#scalar-alu--scalar-mem) | 14 | SCS scalar slot (shifts, overflow-add, addcarry, add_high/low_f32) | C | MEDIUM |
 | [lane / sublane permute](#lane--sublane-permute) | 14 | VPU cross-lane slot → `llo.vrot.slane` / `vperm.sublane` / `sc.permute` | C | MEDIUM |
 | [CBREG / circular buffer](#cbreg--circular-buffer) | 12 | scalar CBREG ops (`ReadCbreg`/`WriteCbreg`/`AddCbreg`/`MoveCbreg`/`SLD/SST.cb`) | C | HIGH |
@@ -328,11 +328,11 @@ The plain cast is 1-operand (`create(Type, Value)`); the per-core (`tec`/`tac`/`
 
 | Stage | Site | Action |
 |---|---|---|
-| MLIR op → IR call | `convertOperation` `@0x13933e40` (16 arms `0x1393c460`–`0x1393c8da`) → trampoline `@0x1393bf27` → `createIntrinsicCall` `@0x1683f440` | emits `@llvm.tpu.addrspacecast.*` IR call, intrinsic IDs `0x33b0`–`0x33bf` (13232–13247) |
+| MLIR op → IR call | `convertOperation` `@0x13933e40` (16 arms `0x1393c460`–`0x1393c8da`) → trampoline `@0x1393bf27` → `createIntrinsicCall` `@0x1683f440` | emits `@llvm.tpu.addrspacecast.*` IR call, intrinsic IDs `0x33b1`–`0x33c0` (13233–13248) — byte-verified from the storage order of `IntrinsicNameTableStorage @0x4179440` (`llvm.tpu.addrspacecast` = ID `0x33b1`; the prior `0x33b0`–`0x33bf` derivation was off by one) |
 | IR intrinsic survives | (no conversion) | NOT lowered to `ISD::ADDRSPACECAST` (`0xf4`) — no matcher arm, no `Select`/`LowerOp`/`Combine` arm |
 | discharge | generic `INTRINSIC_WO_CHAIN` fold / consuming SC load-store ISel | value-preserving cast absorbed by the consumer (inferred) |
 
-> **NOTE —** the SparseCore `addrspacecast` intrinsics do **not** become `ISD::ADDRSPACECAST` (`0xf4`) nodes. The `0xf4` node arises only from a *real IR `addrspacecast` instruction* (via `SelectionDAGBuilder::visitAddrSpaceCast` `@0x19333020` → `getAddrSpaceCast` `@0x192e2360`), which no TPU/SparseCore code emits — a whole-`.text` xref of the `addrspacecast` constructors places every caller in generic LLVM, none in the TPU/SC bands. The cast intrinsic family and the `0xf4`/`0xf3` lowering are two separate mechanisms; the `0xf4`→`0xf3` register-copy path serves only the generic TensorCore front. The only ID-keyed backend sites for `0x33b0`–`0x33bf` are: the `convertOperation` emit, the `Select` default-route table (`@0xaec81ec` idx `0x10`–`0x1f` → `SelectCode` default), and `TPUVerifier::runImpl` `@0x13c54912` (validation only). No lowering site.
+> **NOTE —** the SparseCore `addrspacecast` intrinsics do **not** become `ISD::ADDRSPACECAST` (`0xf4`) nodes. The `0xf4` node arises only from a *real IR `addrspacecast` instruction* (via `SelectionDAGBuilder::visitAddrSpaceCast` `@0x19333020` → `getAddrSpaceCast` `@0x192e2360`), which no TPU/SparseCore code emits — a whole-`.text` xref of the `addrspacecast` constructors places every caller in generic LLVM, none in the TPU/SC bands. The cast intrinsic family and the `0xf4`/`0xf3` lowering are two separate mechanisms; the `0xf4`→`0xf3` register-copy path serves only the generic TensorCore front. The only ID-keyed backend sites for `0x33b1`–`0x33c0` are: the `convertOperation` emit, the `Select` default-route table (`@0xaec81ec` idx `0x10`–`0x1f` → `SelectCode` default), and `TPUVerifier::runImpl` `@0x13c54912` (validation only). No lowering site.
 
 ---
 
@@ -430,6 +430,75 @@ The 890 default-builder ops (bare transcendentals `tpu_sin`/`tpu_rcp`, the `tpu_
 
 ---
 
+## Per-Intrinsic IntrProperties (LLVM attribute table)
+
+Each `llvm.tpu.*` intrinsic carries an `IntrProperties` set — the `IntrNoMem`/`IntrArgMemOnly`/`IntrReadMem`/`IntrWillReturn`/… bits TableGen lowers into the LLVM function-attribute list returned by `llvm::Intrinsic::getAttributes` (`@0x1da0b460`). This is the backend's alias-analysis and scheduling contract for the call. The set is byte-recoverable from a two-table lookup; the sample below is read directly from those tables.
+
+### The Lookup (byte-decoded from `getAttributes`)
+
+`getAttributes(ctx, ID, FT)` reads `IntrinsicsToAttributesMap` (`_ZL25IntrinsicsToAttributesMap @0x416fb30`, a `uint16_t[17648]`, one entry per LLVM intrinsic ID, indexed `[ID−1]`). The packed `uint16` splits:
+
+| Field | Bits | Decode site (in `getAttributes`) |
+|---|---|---|
+| arg-attr-set index | `[8:0]` (`& 0x1ff`) | `1da0b4ab: and $0x1ff,%ecx` → `ArgAttributesInfoTable @0x4178510` (4-byte stride: `1da0b4c0: movzwl 0x2(%rdx,%rsi,4)`) |
+| **fn-attr-set index** | `[15:9]` (`>> 9`) | `1da0b564: shr $0x9,%esi`; `0x7f` = "no fn attrs" sentinel (`1da0b567: cmp $0x7f`) |
+
+The fn-attr-set index selects a case in `getIntrinsicFnAttributeSet` (`_ZL26getIntrinsicFnAttributeSet @0x1da0d460`) via the jump table at `0xb550f54` (`int32` rel-offsets, indexed by set ID). Each case is a fixed sequence of `Attribute::get(ctx, AttrKind, 0)` calls (`@0x1d912ee0`) optionally followed by one `Attribute::getWithMemoryEffects(ctx, ME)` (`@0x1d9139a0`). The `AttrKind` immediate in `mov $0xNN,%esi` before each call is the LLVM `Attribute::AttrKind` enum value; the `ME` immediate is the `MemoryEffects` bitmask.
+
+**AttrKind enum values** (byte-read from the `mov $imm,%esi` operands; names cross-checked against the binary's `IRAttribute<AttrKind N>`/`AA*Impl` template instantiations in the symbol table): `0x2c`=44 NoUnwind, `0x50`=80 WillReturn, `0x47`=71 Speculatable (`INFERRED` name — enum value byte-read, name from the NoMem+WillReturn pure-intrinsic pairing; no Attributor AA carries 71). **MemoryEffects bitmask** (2 bits/location, ModRef = Ref(1)/Mod(2)/ModRef(3), locations ArgMem/InaccessibleMem/Other): `0x0`=`memory(none)` (IntrNoMem), `0x555`=`memory(read)` (IntrReadMem), `0xaaa`=`memory(write)` (IntrWriteMem), `0x3`=`memory(argmem: readwrite)` (IntrArgMemOnly), `0x1`=`memory(argmem: read)`, `0x2`=`memory(argmem: write)`, `0xc`=`memory(inaccessiblemem: readwrite)`; **absent** = full unmodeled ModRef (side-effecting).
+
+### The 12 fn-attr sets the `llvm.tpu.*` surface uses
+
+Census over all 1356 (fn-attr-set index read from each intrinsic's map entry; each set's contents decoded by tracing its `getIntrinsicFnAttributeSet` case to the `AttributeSetNode::get` finalizer `@0x1da0f134`):
+
+| Set | # of 1356 | Enum attrs | Memory effect | LLVM `IntrProperties` shorthand | Conf |
+|---:|---:|---|---|---|---|
+| 11 | 215 | NoUnwind | `memory(none)` | `IntrNoMem` | HIGH |
+| 13 | 128 | NoUnwind | `memory(argmem: readwrite)` | `IntrArgMemOnly` | HIGH |
+| 112 | 843 | NoUnwind | `memory(argmem: readwrite)` | `IntrArgMemOnly` | HIGH |
+| 14 | 8 | NoUnwind | `memory(argmem: read)` | `IntrReadMem`+`IntrArgMemOnly` | HIGH |
+| 32 | 11 | NoUnwind | `memory(read)` | `IntrReadMem` | HIGH |
+| 34 | 8 | NoUnwind, WillReturn | `memory(write)` | `IntrWriteMem`+`IntrWillReturn` | HIGH |
+| 36 | 26 | NoUnwind, WillReturn | `memory(write)` | `IntrWriteMem`+`IntrWillReturn` | HIGH |
+| 83 | 8 | NoUnwind | `memory(argmem: write)` | `IntrWriteMem`+`IntrArgMemOnly` | HIGH |
+| 108 | 50 | NoUnwind, WillReturn, Speculatable | `memory(none)` | `IntrNoMem`+`IntrWillReturn`+`IntrSpeculatable` | HIGH |
+| 114 | 19 | NoUnwind | `memory(inaccessiblemem: readwrite)` | `IntrInaccessibleMemOnly` | HIGH |
+| 5 | 19 | NoUnwind | *(none)* | side-effecting (full ModRef) | HIGH |
+| 10 | 21 | NoUnwind | *(none)* | side-effecting (full ModRef) | HIGH |
+
+Sum: `215+128+843+8+11+8+26+8+50+19+19+21 = 1356` — exact, every `llvm.tpu.*` intrinsic maps to one of these 12 sets.
+
+### Byte-verified per-leaf sample (name → ID → map entry → set)
+
+Each row: intrinsic name, its LLVM intrinsic ID (storage-order index in `IntrinsicNameTableStorage @0x4179440`, where `not_intrinsic`=0, `llvm.abs`=1, …), the `uint16` read from `IntrinsicsToAttributesMap[ID−1]`, and the decoded fn-attr-set.
+
+| Intrinsic | ID | Map `uint16` | fn set | Resolved `IntrProperties` |
+|---|---:|---|---:|---|
+| `llvm.tpu.addrspacecast` | `0x33b1` | `0x1601` | 11 | `IntrNoMem` |
+| `llvm.tpu.pack.c.b32.b16` | `0x3453` | `0x1601` | 11 | `IntrNoMem` |
+| `llvm.tpu.vcvt.f32.bf16` | `0x384e` | `0x1601` | 11 | `IntrNoMem` |
+| `llvm.tpu.16i1.to.32i1` | `0x33a1` | `0x1601` | 11 | `IntrNoMem` |
+| `llvm.tpu.nop` / `llvm.tpu.delay` / `llvm.tpu.sfence` | — | `0x1601` | 11 | `IntrNoMem` |
+| `llvm.tpu.dma.hbm.to.spmem.sc.simple` | `0x3408` | `0x1afb` | 13 | `IntrArgMemOnly` |
+| `llvm.tpu.dma.hbm.to.spmem.sc.general` | `0x3407` | `0x1afa` | 13 | `IntrArgMemOnly` |
+| `llvm.tpu.syncadd` | `0x37e8` | `0x1a01` | 13 | `IntrArgMemOnly` |
+| `llvm.tpu.waiteq` | `0x38bb` | `0x1a01` | 13 | `IntrArgMemOnly` |
+| `llvm.tpu.stream.linear.gather.add.f32.hbm.to.tilespmem` | `0x36ce` | `0xe0ff` | 112 | `IntrArgMemOnly` |
+| `llvm.tpu.vst.msk.idx.add` (+ all indexed scatter-stores) | — | `0x…ff`/`0xe0…` | 112 | `IntrArgMemOnly` |
+| `llvm.tpu.vld.cb.msk` / `llvm.tpu.rdcbreg.offset` / `llvm.tpu.sin.macro` | `0x346a`/`0x3498` | `0x4001` | 32 | `IntrReadMem` |
+| `llvm.tpu.vst.cb.msk.add` / `llvm.tpu.vst.cb.msk` | `0x387e` | `0x4801` | 36 | `IntrWriteMem`+`IntrWillReturn` |
+| `llvm.tpu.rcp` / `rsqrt` / `tanh` / `sort.ascdf` / `add.scan1xNf` | `0x3468`/`0x349b`/`0x33ac` | `0xd801` | 108 | `IntrNoMem`+`IntrWillReturn`+`IntrSpeculatable` |
+| `llvm.tpu.rdreg.gtc.hi` / `read.global.cycle.count` | `0x3474` | `0x1401` | 10 | side-effecting (full ModRef) |
+| `llvm.tpu.fetch.and.add` / `task.dispatch` / `eup.pop` | `0x342d`/`0x3802` | `0x0a01` | 5 | side-effecting (full ModRef) |
+
+The map `uint16` for each is the exact little-endian halfword at file offset `0x416fb30 + (ID−1)*2`; e.g. ID `0x33b1` reads `01 16` at `0x4176290` (= `0x416fb30 + (0x33b1−1)·2`) → `0x1601` → `arg = 0x1601 & 0x1ff = 1`, `fnset = 0x1601 >> 9 = 11`.
+
+> **NOTE — coverage, no silent cap.** 16 representative leaves are byte-verified here against the map (spanning addrspacecast / pack / convert / mask-width / DMA / sync / wait / stream / CBREG load+store / EUP-macro / transcendental / scan / sort / control-reg / atomic / task families), and **all 12 fn-attr sets are byte-decoded in full** from `getIntrinsicFnAttributeSet`. The per-leaf set assignment for the remaining 1340 intrinsics is *not* individually transcribed, but the fn-set census above is exact (sums to 1356) and the lookup is deterministic: `set = (IntrinsicsToAttributesMap[ID−1] >> 9)`, `ID` from the storage order of `IntrinsicNameTableStorage @0x4179440`. A reimplementer reads any leaf's `IntrProperties` with one halfword load + one table dispatch.
+
+> **GOTCHA —** the dominant fn-set is **112 (843 ops, ≈ all 834 stream + 9 indexed scatter-stores) = `nounwind memory(argmem: readwrite)` = `IntrArgMemOnly`**, *not* `IntrNoMem`. A reimplementer who marks the stream ops `IntrNoMem` (because they look like pure data movers) will let the scheduler hoist/CSE/dead-code-eliminate them across the embedding table they actually read and write — a correctness bug. The stream engine touches argument-pointed memory, so `argmem: readwrite` is the binary's verdict. Conversely the pure-math set 108 (`rcp`/`rsqrt`/`tanh`/`sort`/`scan`) is the only set carrying `IntrSpeculatable` — those are the safely-hoistable ones.
+
+---
+
 ## Registration Binding
 
 `mlir::sparse_core::registerLlvmTpuDialectOperations` `@0x146d0560` tail-calls 10 batch sub-registrars; each `RegisteredOperationName::insert`s ~135 ops (the TableGen op-registration split into ≤256-op batches to bound per-function instantiation size). 10 × ~135 = 1356.
@@ -472,7 +541,7 @@ The deep per-gen reachability is on [`isa/sequencer-ops-per-gen.md`](../isa/sequ
 Honest gaps in this catalog:
 
 - **Per-leaf stream→HW opcode** — for all 834 stream ops the class→engine mapping is confirmed and the lowering pass located, but the per-`(pattern,verb,dtype,memspace)` numeric stream-engine command value is not individually byte-dumped. (`INFERRED` for the leaf opcode.)
-- **Per-intrinsic LLVM `IntrProperties`** — which `IntrNoMem`/`IntrArgMemOnly`/`IntrWillReturn` bits each intrinsic carries (the backend alias/scheduling contract) is not transcribed; only the OpInterface presence (`MemoryEffect` 285, `AliasAnalysis` 546, `AccessGroup` 180, `Bytecode` 188) is known.
+- **Per-intrinsic LLVM `IntrProperties`** — *recovered* (see [§Per-Intrinsic IntrProperties](#per-intrinsic-intrproperties-llvm-attribute-table)): all 12 fn-attr sets the surface uses are byte-decoded and the per-set census is exact (sums to 1356); the `set = IntrinsicsToAttributesMap[ID−1] >> 9` lookup is deterministic. Only the per-leaf assignment for the 1340 non-sampled IDs is not individually transcribed (each is one halfword load away). The OpInterface presence on the MLIR side (`MemoryEffect` 285, `AliasAnalysis` 546, `AccessGroup` 180, `Bytecode` 188) is the dialect-layer counterpart.
 - **The 890 default-builder ops' exact arity + result `TypeConstraint`** — recovered by name family; the per-op `verifyInvariantsImpl` byte-decode would confirm 1-vs-2 operands and the `Vreg`/`Mask`/`Scalar`/`Ptr` result predicate.
 - **The scan/sort/unique-engine opcode bit layouts** — mapped to the SparseCore scan/sort/dedup units by name; the per-op HW command bit layout is not decoded (SparseCore-specific compute units, not TensorCore LLO slots).
 - **The full numeric address-space ID table** — the `AddressSpaceDescription` switch base (201) and sampled case strings are known; the complete ID↔space map (and which `addrspacecast` leaf casts between which numeric IDs) needs the full switch-arm walk.

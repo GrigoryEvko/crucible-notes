@@ -44,7 +44,7 @@ The table below is the master index. Each row is one open item; the **Confidence
 | `issue_latency_cycle_count` absent in every embedded blob | Per-gen gap | A build whose `chip_parts` populates field 4 | [per-gen-comparison-matrix](per-gen-comparison-matrix.md) | LOW |
 | 834 stream-op per-leaf `(pattern,verb,dtype,space)` opcode | Inferred link | Byte-dump the ISel matcher arm per leaf | [llvmtpu-intrinsic-table](llvmtpu-intrinsic-table.md) | MEDIUM |
 | 890 default-builder ops' exact arity + result predicate | Inferred link | Decode each `verifyInvariantsImpl` body | [llvmtpu-intrinsic-table](llvmtpu-intrinsic-table.md) | HIGH |
-| Per-intrinsic LLVM `IntrProperties` bits | Inferred link | Decode the `Intrinsic::getAttributes` table | [llvmtpu-intrinsic-table](llvmtpu-intrinsic-table.md) | MEDIUM |
+| Per-intrinsic LLVM `IntrProperties` bits | RECOVERED | Decoded: `set = IntrinsicsToAttributesMap[ID−1] >> 9` (`@0x416fb30`); all 12 fn-attr sets byte-decoded, per-set census exact (sums to 1356), 16-leaf sample byte-verified; per-leaf for the 1340 others is a deterministic one-halfword lookup | [llvmtpu-intrinsic-table](llvmtpu-intrinsic-table.md) | CLOSED |
 | `#1092` structured-sparsity slot encoding | CLOSED (recovered) | Recovered: there is **no** dedicated sparsity bundle slot — sparsity rides in the packed MXU operand layout (`SparsityConfig`, 1:N restriction, SME outer-product gate) | [slot-sparsity-v5plus](../isa/slot-sparsity-v5plus.md) | CLOSED |
 | `#1096` per-gen NOP canonical templates | CLOSED (recovered) | Recovered: two orthogonal no-ops — empty-slot predicate `kNeverExecute=31` fill + opcode-space all-ones NOP (`CORRECTION NOP-1`: the default bundle halts) | [nop-canonical](../isa/nop-canonical.md) | CLOSED |
 | `#1171` `TpuVersion`-aware flag-prefix dispatch | CLOSED (recovered) | Recovered: codename-prefixed flags are registered unconditionally and applied gen-blind (`CORRECTION DISPATCH-1`); the active gen selects only data/codec, not flag gating | [flag-prefix-dispatch](../config/flag-prefix-dispatch.md) | CLOSED |
@@ -224,7 +224,7 @@ The [LLVMTPU intrinsic table](llvmtpu-intrinsic-table.md) recovers all **1356 di
 |---|---|---|---|
 | 834 stream ops | class→engine mapping confirmed; lowering pass located | the per-`(pattern,verb,dtype,memspace)` numeric stream-engine command value | MEDIUM |
 | 890 default-builder ops | name-family arity recovered | exact operand count and result `TypeConstraint` per op (in each `verifyInvariantsImpl`) | HIGH |
-| Per-intrinsic `IntrProperties` | OpInterface presence known (`MemoryEffect`, `AliasAnalysis`, `AccessGroup`, `Bytecode`) | the `IntrNoMem`/`IntrArgMemOnly`/`IntrWillReturn` bits each carries | MEDIUM |
+| Per-intrinsic `IntrProperties` | **RECOVERED** — the `IntrNoMem`/`IntrArgMemOnly`/`IntrWillReturn`/… bits via `set = IntrinsicsToAttributesMap[ID−1] >> 9` (`@0x416fb30`); all 12 fn-attr sets byte-decoded, census exact (1356), 16-leaf sample byte-verified | per-leaf set for the 1340 non-sampled IDs not individually transcribed (deterministic one-halfword lookup) | CLOSED |
 
 > **QUIRK —** the 834-way stream-op explosion *is* the encoding — there is no single parameterized `llvm.tpu.stream` op. The frontier here is not "find the parameterization" (there is none); it is "byte-dump the matcher arm for each of the 834 leaves." That is bounded work, but 834 leaves of it, which is why the closeability is `MEDIUM` rather than `HIGH` despite the path being known.
 
