@@ -56,7 +56,7 @@ emit_binomial_all_reduce(span, b):                       # 0x13769be0
         recv = DmaDoneInGranules(...).annotate("shard-recv-wait")
         # runtime butterfly (mirrors the build-side $_2 writer, see below)
         dist    = 1 << step                              # DISTANCE DOUBLES: 1,2,4,...
-        lo      = my_pos & (0xFFFFFFFF >> (63 - (step+1)))   # low step+1 bits
+        lo      = my_pos & (0xFFFFFFFFFFFFFFFF >> (63 - step))   # low step+1 bits
         partner = (lo < dist) ? my_pos + dist : my_pos - dist
         ReduceShardInPlace(src, recv, useBf16=is_bf16, b)
     # after L steps every core holds the full reduction (no AG emitted)
@@ -151,10 +151,10 @@ my_pos = use_partition ? (N * partition_count + rel) : rel;   // 1D: rel == memb
 table[write_pos + 0] = my_pos;                                // COLUMN 0 = self
 step = 0;
 while (step < log2N) {                                        // *result == log2(N)
-    v15 = 1 << step; step++;                                  // dist = 1<<step
+    v15 = 1 << step; step++;                                  // dist = 1<<step ; step now = k+1
     v16 = (int64)v15;
     v17 = -v16;
-    if ((my_pos & ~(-1 << step)) < v16)                       // low (step) bits below dist?
+    if ((my_pos & ~(-1 << step)) < v16)                       // low k+1 bits (step pre-incremented) below dist?
         v17 = v16;                                            //   -> add
     partner = my_pos + v17;                                   // my_pos ± dist
     CHECK(partner >= 0);                                      // ring_sum_emitter.cc:1810
