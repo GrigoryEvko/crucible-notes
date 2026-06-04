@@ -199,7 +199,7 @@ for color in 0 .. num_colors-1:                      # concurrent rings, one per
         peer = next_peer(pos, i, color)               # CwCore (ring) or counterparts[i] (binomial)
         EnqueueDmaInGranules(out_shard, peer,         # DMA_TYPE_REMOTE_WRITE_UNICAST
                              remote_sflag_handle)      #   carries the receiver's sflag to bump
-        recv = DmaDoneInGranules(...)                  # local sync-flag WAIT ("shard-recv-wait")
+        recv = DmaDoneInGranules(...)                  # local sync-flag WAIT ("shard-{cw,ccw}-recv-wait")
         fmerge(local_copy, recv, b)                    # VPU vadd/vmin/vmax/vmul/vand/vor
 
     # ---- PHASE 1: all-gather (N-1 steps; absent on binomial, which self-completes) ----
@@ -214,7 +214,7 @@ The four wire-level events per reduce-scatter step are:
 
 1. **Remote-write DMA** — `EnqueueDmaInGranules` emits a `DMA_TYPE_REMOTE_WRITE_UNICAST` descriptor: source = local VMEM offset of the outgoing shard, destination = the slot in the neighbour's reduce-scatter scratch, plus a **remote sync-flag handle**. The descriptor word layout is per-generation; see [DMA Descriptor](dma-descriptor.md).
 2. **Remote sync-flag bump** — when the chunk lands, the receiving NodeFabric Ingress Unit auto-increments the encoded remote sync flag (the wire-level `atomic_remote_add_set_done`). The compiler emits no software ack on the receive side.
-3. **Local sync-flag wait** — `DmaDoneInGranules` emits the wait on the local receive sync flag, annotated `shard-recv-wait` (reduce side) or `shard-send-wait` (gather side). The runtime watchdog string is `Sflag wait timeout on op {…}`.
+3. **Local sync-flag wait** — `DmaDoneInGranules` emits the wait on the local receive sync flag, annotated `shard-cw-recv-wait` / `shard-ccw-recv-wait` (reduce side, direction-qualified by the ring leg) or `shard-send-wait` / `shard-cw-send-wait` / `shard-ccw-send-wait` (gather side). The runtime watchdog string is `Sflag wait timeout on op {…}`.
 4. **VPU reduce** — once the wait clears, the merge functor `fmerge` is called on `(local_copy, just_received_chunk)`. This is a plain scalar VPU op (`vadd`/`vmin`/`vmax`/`vmul`/`vand`/`vor`), folded into the step body. There is no reduce-on-wire.
 
 The all-gather phase replaces the `fmerge` with a plain `SafeMemcopyN` — it rotates the already-reduced shards around the ring without reducing.
@@ -257,7 +257,7 @@ The decompile shows exactly two terminal calls: `EmitAllReduce` (line 139) and `
 - Read `is_cross_module` from `IsCrossModuleReduceInstruction` and the `BarrierConfig` from the instruction's backend config *before* choosing a sub-emitter; both feed the builders.
 - Dispatch in three checks, in order: (1) `MayUseSinglePhaseRingEmitter` → `CreateEmitter` (binomial/ring fast path, installs the `RingLocation` and `BinomialGroupData` providers); (2) multi-axis topology → `SelectNDStrategy` → `UniDirectionNDRingStrategy` (optionally pincer-wrapped); (3) single axis → `GetRingLocationWrapper` → `UniDirection1DRingStrategy`/`StrategyRing` (optionally pincer-wrapped).
 - Apply the pincer / quantized-pincer wrap as a *decorator* over the chosen base ring strategy, identically in both the 1-D and N-D arms. Consult `CanLowerToQuantizedAllReduce` before the quantized wrap.
-- Drive every constructed sub-emitter through the same virtual `Build()`/`Emit()` pair (vtable+8). The per-step body must emit, per reduce-scatter step: `EnqueueDmaInGranules(REMOTE_WRITE_UNICAST)` → `DmaDoneInGranules` (`shard-recv-wait`) → `fmerge`; the all-gather step replaces `fmerge` with `SafeMemcopyN`.
+- Drive every constructed sub-emitter through the same virtual `Build()`/`Emit()` pair (vtable+8). The per-step body must emit, per reduce-scatter step: `EnqueueDmaInGranules(REMOTE_WRITE_UNICAST)` → `DmaDoneInGranules` (`shard-{cw,ccw}-recv-wait`) → `fmerge`; the all-gather step replaces `fmerge` with `SafeMemcopyN`.
 - The async / continuation-fusion forms belong in `EmitAllReduceFusion`, not here; `EmitAllReduce` is the single-region blocking path only.
 
 ---
