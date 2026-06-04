@@ -197,7 +197,7 @@ The producer reads only `first_packet_in_dma` (+0x32) and `last_packet_in_dma` (
 | 2 | `CMEM_TCIMEM_BCBIMEM` | `VMEMALL_TCIMEM_SCSIMEM` | `NONCORERESERVEDMEM0_TCIMEM` | HIGH |
 | 3 | `RSVD_RSVD_BCVIMEM` | `NONCORERESERVEDMEM0_TCRESERVEDMEM_SCTIMEM` | `NONCORERESERVEDMEM0_TCRESERVEDMEM` | HIGH |
 
-The `core_id` enum gains `SC0..SC3` (replacing `BC0..BC3`) on the SparseCore gens; the SparseCore strings `SRC_MEM_CORE_ID_SC0..SC3` are present in the unit. The `dma_type` enum also collapses on the newer gens: pxc has the four-value `{LOCAL, CHIP2HOST, REMOTEUNICAST, REMOTEMULTICAST}`, while the SparseCore family ships a two-value `{LOCAL_OR_HOST = 0, REMOTE_UNICAST = 1}` (strings `DMA_TYPE_LOCAL_OR_HOST`, `DMA_TYPE_REMOTE_WRITE_UNICAST` present in `.rodata`).
+The `core_id` enum gains `SC0..SC3` (replacing `BC0..BC3`) on the SparseCore gens; the SparseCore strings `SRC_MEM_CORE_ID_SC0..SC3` are present in the unit. The `dma_type` enum also collapses on the newer gens: pxc has the four-value `{LOCAL, CHIP2HOST, REMOTEUNICAST, REMOTEMULTICAST}`, while the SparseCore family's descriptor `DmaTypeValues` collapses to a two-value `{LOCALORHOST = 0, REMOTEUNICAST = 1}` (strings `DMA_TYPE_LOCALORHOST` @ `0xbf07208`, `DMA_TYPE_REMOTEUNICAST` @ `0xbf07222` present in the `protodesc_cold` pool).
 
 > **QUIRK —** the rename is *string-only*; the proto field numbers, C++ offsets, and the 2-bit/3-bit widths are stable across all five gens. A single decoder handles every gen by value number; only the *display* name table is per-gen. This is why a reimplementer should key the symbolizer on `(gen, mem_id, core_id_segment)`, never on the value-name string.
 
