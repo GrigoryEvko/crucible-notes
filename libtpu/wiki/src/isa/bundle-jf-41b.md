@@ -156,7 +156,7 @@ Lane0 packs into the 16-bit word at struct `0x1D`; lane1 packs into the 56-bit w
 
 The opcode is 6-bit (`VectorAluOpcode` 0..62). Opcode `0x18` (LANE_ID) and the EUP run `0x30..0x34` take dedicated branches; `IsEupOpcode` (`0x1e875900`) gates whether the EUP/XLU reservation is needed before the bundle commits.
 
-> **CORRECTION (BUNDLE-JF-1) —** the lane-0 *dest* exact bit width was recovered from the shared `y`/`dest` branch (struct `0x16` `shl 0x29`/`shl 0x33`), not from a dedicated named-field write, so it is HIGH rather than CONFIRMED. The lane-1 window is fully isolated (`y@90, Vx@105, opcode@110, pred@116, dest@121`), and the decode-side independently confirms the lane-1 layout — see [Decode-Side: JF / PF](decode-side-jf-pf.md).
+> **NOTE —** the lane-0 *dest* width is graded HIGH (not CONFIRMED) because it was recovered from the shared `y`/`dest` branch (struct `0x16` `shl 0x29`/`shl 0x33`) rather than a dedicated named-field write. The lane-1 window is fully isolated (`y@90, Vx@105, opcode@110, pred@116, dest@121`) and the decode-side independently confirms the lane-1 layout — see [Decode-Side: JF / PF](decode-side-jf-pf.md).
 
 ### Vector-Extended / MXU (struct `0x0C`) — `EncodeVectorExtendedInstruction` @ `0x1e869f00`
 
@@ -290,7 +290,7 @@ offset = (n / 3) * 128                              // 3 bundles per 128-byte ch
 | Bundles per chunk | 3 | `(n/3)*128` grouping | CONFIRMED |
 | Chunk granularity | 128 B | `(n/3)*128` | CONFIRMED |
 
-> **CORRECTION (BUNDLE-JF-2) —** the in-chunk stride is `BundleSizeBytes()+2 = 43`, *not* the HBM bundle width 42. The two differ by one byte: `BundleSizeBytesForHbm` reports the stored bundle as 42 (a single check/pad byte over the 41-byte issue width), while `GetBundleByteOffset` advances by 43 between consecutive bundles in a chunk. The extra byte is consistent with a check byte plus one pad byte, or a 2-byte trailer; the exact per-bundle framing bytes (the check byte `0x55` and any pad) are written by the program-level `EncodeProgramForHbmInternal` and are not pinned here.
+> **GOTCHA —** the in-chunk stride is `BundleSizeBytes()+2 = 43`, *not* the HBM bundle width 42. The two differ by one byte: `BundleSizeBytesForHbm` reports the stored bundle as 42 (a single check/pad byte over the 41-byte issue width), while `GetBundleByteOffset` advances by 43 between consecutive bundles in a chunk. The extra byte is consistent with a check byte plus one pad byte, or a 2-byte trailer; the exact per-bundle framing bytes (the check byte `0x55` and any pad) are written by the program-level `EncodeProgramForHbmInternal` and are not pinned here.
 
 ---
 

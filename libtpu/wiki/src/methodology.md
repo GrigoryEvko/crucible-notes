@@ -114,7 +114,7 @@ The sidecar family, with verified presence and the count or size each carries:
 
 > **NOTE —** the per-function artifact count (884,843) is slightly higher than the function-record count in the metadata (884,832). The directory count includes a small number of thunk/alias/data-stub entries that receive an artifact file without being counted as a full function record. When a page cites a function *count*, it cites 884,832; when it cites artifact *coverage*, the per-function directories hold one file per analyzed entry.
 
-> **CORRECTION (METH-02) —** the extraction manifest for the primary pass records `decompiled: 0` and `ctree: 0`. That is an artifact of a two-phase extraction, **not** a claim that nothing was decompiled. The first pass ran in a *fast* mode (boundaries, names, tables, xrefs) and deliberately deferred Hex-Rays; the decompiled bodies and control-flow trees were produced by subsequent split passes, yielding the 884,843 per-function `decompiled/*.c` files and control-flow-tree coverage over 884,332 of them (a 511-function gap). A reader who only inspects the manifest's `decompiled` counter will draw the wrong conclusion — the bodies exist on disk.
+> **NOTE —** the extraction manifest for the primary pass records `decompiled: 0` and `ctree: 0`. This is an artifact of a two-phase extraction, **not** a claim that nothing was decompiled. The first pass ran in a *fast* mode (boundaries, names, tables, xrefs) and deliberately deferred Hex-Rays; the decompiled bodies and control-flow trees were produced by subsequent split passes, yielding the 884,843 per-function `decompiled/*.c` files and control-flow-tree coverage over 884,332 of them (a 511-function gap). A reader who only inspects the manifest's `decompiled` counter will draw the wrong conclusion — the bodies exist on disk.
 
 ---
 
@@ -148,7 +148,7 @@ The cross-checks draw on different sidecars on purpose, so that the indicators a
 - **Dispatch position vs. purpose** — the `switches` and `rtti` sidecars place a function in a table or a vtable, which constrains what it can be.
 - **Raw bytes vs. decompiler** — where Hex-Rays is uncertain (it flags this with its own warnings), the `disasm/*` file and the raw bytes are the tiebreaker.
 
-When a later cross-check overturns an earlier claim, the page is not silently edited. A `> **CORRECTION (tag) —**` note is filed in place, with a provenance tag, so the reasoning trail survives — exactly the two corrections above. This is the single most important honesty mechanism in the book: a reader can see not only the current claim but the claim it replaced and why.
+Every claim carries an explicit Confidence grade (the four-level scale above), and where a value is *inferred* rather than read directly off the binary, a `> **NOTE —**` or `> **GOTCHA —**` callout flags exactly which step is inference and what would raise it. This is the book's core honesty mechanism: a reader can always tell how directly a stated value is backed, and where a later cross-check would tighten or loosen a grade.
 
 > **QUIRK —** the heaviest cross-validation burden falls on the *most* symbolized functions, not the least. A 600-character demangled C++ template name (the `pxc::mnemonics::ProtoToEnvMiscGenerated...` family, for instance) is so specific that it *feels* authoritative, yet these template-heavy functions are precisely the ones where IDA's analysis stumbles (see below). The richest name and the weakest analysis often coincide; the discipline exists to catch exactly that trap.
 

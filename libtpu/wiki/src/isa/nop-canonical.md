@@ -114,7 +114,7 @@ misc   = DefaultConstruct<TensorCoreMisc>(arena);            misc->predicate   =
 // all 12 has-bits now set; serializer produces the deterministic default 51-byte word
 ```
 
-> **CORRECTION (NOP-1) —** an earlier reading treated the default bundle as "all slots predicated off." The decompilation shows scalar-0 is the exception: `FillDefaultBundle` stamps predicate **`15` (`kAlwaysExecute`)** into scalar-0 and gives it a default `ScalarHalt` op, while every other slot gets predicate `31` (`kNeverExecute`). The default bundle therefore *executes one instruction* — a halt — and skips the rest. This is a deliberate safety template: a bundle that falls through to the default state stops the program rather than running garbage. A reimplementation that stamps `31` into scalar-0 to make a "fully idle" default would let execution run off the end instead of halting.
+> **GOTCHA —** the default bundle is *not* "all slots predicated off." Scalar-0 is the exception: `FillDefaultBundle` stamps predicate **`15` (`kAlwaysExecute`)** into scalar-0 and gives it a default `ScalarHalt` op, while every other slot gets predicate `31` (`kNeverExecute`). The default bundle therefore *executes one instruction* — a halt — and skips the rest. This is a deliberate safety template: a bundle that falls through to the default state stops the program rather than running garbage. A reimplementation that stamps `31` into scalar-0 to make a "fully idle" default would let execution run off the end instead of halting.
 
 ### Viperfish / Ghostlite / `6acc60406` — header prefill
 

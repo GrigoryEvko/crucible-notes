@@ -361,7 +361,7 @@ The lineage is a coherent story of a widening compute fabric, not arbitrary per-
 
 The narrative: Pufferfish keeps two slots but switches to the table-driven encoder and 64-window registers, splits the two slots into distinct structs (VALU1 wider), and adds the `vmul.u32.u64` slot-pair wide multiply. Viperfish doubles to four slots, widens the opcode to 7 bits to admit the FP8/FP4 convert + stochastic-round + sublane pack/unpack set, narrows the predicate to 4 bits, and adds a second XLU. Ghostlite folds the 32 per-`Vmsk` select opcodes into one op plus a mask field and splits reciprocal by dtype. 6acc60406 (GF) widens the opcode to 8 bits (headroom; current max 131) and shrinks the per-slot predicate to a 2-bit dual-predicate selector, having moved the predicate-register write into a dedicated slot.
 
-> **CORRECTION (VPU-1) —** an earlier reading of the transcendental path described the EUP push as issuable from "a VALU slot" generically. The Viperfish encoder shows the push helper exists only as `EncodeTensorCoreVectorAlu3EupPush` (slot 3); the single-issue XLU is sourced exclusively from `Alu3`. The push is slot-3-specific on v5+, not slot-agnostic.
+> **GOTCHA —** the EUP push is slot-3-specific on v5+, not slot-agnostic. The Viperfish encoder exposes the push helper only as `EncodeTensorCoreVectorAlu3EupPush` (slot 3); the single-issue XLU is sourced exclusively from `Alu3`.
 
 ---
 

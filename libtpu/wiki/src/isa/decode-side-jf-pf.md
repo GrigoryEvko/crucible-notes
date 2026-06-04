@@ -116,7 +116,7 @@ VectorExtendedUsesData(op): return op != 3;                  // op 3 reads no da
 | `15,16` | `IsTranspose` | matrix transpose (matprep) | CONFIRMED |
 | `17..34` | `IsRpu` | reduce / permute-unit family | CONFIRMED |
 
-> **CORRECTION (DEC-JF-1) —** an earlier reading placed `IsTranspose` at opcodes `{17,18}`. The decompiled predicate (`0x1e875b40`) is `(op − 15) < 2`, i.e. opcodes **`{15,16}`**. The transpose pair sits *below* the `IsRpu` range (`{17..34}`), not inside it. A reimplementation that classifies the transpose ops at 17/18 will mislabel two RPU ops as transposes and miss the real transpose pair. Likewise `IsMatrixMultiply` is `(op<7) & (0x77>>op)`, which **excludes opcode 3** (`0x77 = 0b1110111` has bit 3 clear); opcode 3 is the staging-only matmul flagged by `VectorExtendedUsesData(op)==false`.
+> **GOTCHA —** `IsTranspose` is the decompiled predicate (`0x1e875b40`) `(op − 15) < 2`, i.e. opcodes **`{15,16}`** — the transpose pair sits *below* the `IsRpu` range (`{17..34}`), not inside it. A reimplementation that classifies the transpose ops at 17/18 will mislabel two RPU ops as transposes and miss the real transpose pair. Likewise `IsMatrixMultiply` is `(op<7) & (0x77>>op)`, which **excludes opcode 3** (`0x77 = 0b1110111` has bit 3 clear); opcode 3 is the staging-only matmul flagged by `VectorExtendedUsesData(op)==false`.
 
 ### The Data-Source Recovery
 

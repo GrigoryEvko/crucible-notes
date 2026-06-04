@@ -69,7 +69,7 @@ Every row was read directly from the decompiled init module: the immediate `Regi
 
 > **QUIRK —** the PXC `make_unique` is the lone version-less constructor. The JXC, VXC, GLC, and GFC source strings spell `make_unique<...HardwareFactory>(tpu::TpuVersion::k<Codename>)`, but PXC's is bare — `std::make_unique<tpu::TpuHalPxcHardwareFactory>()` — because Pufferfish is the only generation that factory services, so the version need not be passed to the constructor. The version dword is still stamped into the factory object at +8 (`*(int*)(obj+8) = 2`) and still supplied as the `Register` key; only the *constructor argument* is omitted. The matrix and overview both record this asymmetry; it is the one binary-visible difference in the otherwise-uniform five registrations.
 
-> **CORRECTION (HAL-A3) —** earlier mid-knowledge notes placed `TpuVersion 0` as a pre-Jellyfish "TPU v2" variant and called Jellyfish version 1. The JXC init module's own source strings refute this: the first `Register` (version 0) names `tpu::TpuVersion::kJellyfish` and the second (version 1) names `tpu::TpuVersion::kDragonfish`. The JXC family is therefore Jellyfish (0) + Dragonfish (1), with no separate pre-Jellyfish key. Likewise the v5 enum is literally `k6acc60406`, not a "Ghostfish" name — that label never appears in the binary.
+> **NOTE —** the JXC init module's source strings name version 0 `tpu::TpuVersion::kJellyfish` and version 1 `tpu::TpuVersion::kDragonfish`: the JXC family is Jellyfish (0) + Dragonfish (1), with no separate pre-Jellyfish key. The v5 enum is literally `k6acc60406` — the "Ghostfish" label never appears in the binary.
 
 ### JXC: The Double Registration
 

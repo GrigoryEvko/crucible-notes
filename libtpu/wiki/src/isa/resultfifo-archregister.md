@@ -131,7 +131,7 @@ The names are byte-exact: arms 0..7 are `strcpy("kMsrA0")` … `strcpy("kMsrB3")
 
 So the instance-bearing physical domain is the matmul + transpose staging/result banks; the higher ordinals (`kTrf1/2` as named enum values, `kErf`, `kV2sf`, `kSfrf`, `kCrf`, `kDrf`, `kSccf`, `kCcrf`) are single-instance FIFOs that do not pass through the bank arithmetic.
 
-> **CORRECTION (P3-345) —** an earlier reading bounded `ResultFifo` at 0..0xf from `FifoInstance`'s `cmp edi,0xf`. That bound is the *physical-instance sub-domain* — the banks that take an instance index — not the enum size. `ResultFifoToString` and `ResultFifoEntryCount` both show 25 members (0..0x18). The enum is 25 wide; only the first 16 ordinals participate in `FifoInstance` arithmetic.
+> **GOTCHA —** `FifoInstance`'s `cmp edi,0xf` is *not* the enum size: that `0..0xf` bound is the physical-instance sub-domain (the banks that take an instance index). `ResultFifoToString` and `ResultFifoEntryCount` both show 25 members (`0..0x18`) — the enum is 25 wide, and only the first 16 ordinals participate in `FifoInstance` arithmetic.
 
 ### ResultFifoEntryCount — per-FIFO, per-version depth
 
@@ -172,7 +172,7 @@ struct LloOpcodeBigInfo {              // sizeof 28 (0x1c)
 
 The read list at `+0x08` is read by a loop that starts a counter at `-12` and indexes `record[counter + 0x14]`, so it sweeps offsets `+0x08..+0x13` (12 entries) and stops at the first negative byte. The written list at `+0x14` and the result-fifo list at `+0x00` are read forward. Each `ArchRegister` code is resolved to a physical slot through `ArchRegisterInstance`, with the instance index drawn from the LLO value's metadata word (below). See [opcode_info_big](record-format.md) for the full descriptor.
 
-> **CORRECTION (P3-345) —** the `+0x08..+0x13` field was earlier called a "reserved gap read by no consumer". It is the `arch_registers_read[12]` list. The three readers — `ComputeXluOperations` and both `GetPseudoArchRegistersRead<…>` instantiations — each start a loop counter at `-12` (`0xfffffffffffffff4`) and add it to a `+0x14` displacement, which lands the read at `+0x08`, not `+0x14`. The consumer literally named `GetPseudoArchRegisters***Read***` confirms the field is the registers-read list.
+> **NOTE —** the `+0x08..+0x13` field is the `arch_registers_read[12]` list. Its three readers — `ComputeXluOperations` and both `GetPseudoArchRegistersRead<…>` instantiations — each start a loop counter at `-12` (`0xfffffffffffffff4`) and add it to a `+0x14` displacement, which lands the read at `+0x08`, not `+0x14`. The consumer named `GetPseudoArchRegisters`**`Read`** confirms the field is the registers-read list.
 
 ---
 

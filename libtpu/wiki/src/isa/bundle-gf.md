@@ -127,7 +127,7 @@ The bundle partitions into the standard V5+ slot classes. The table below is the
 | imm slot 3 | 363 | 0x16b | 20 | (same) | CONFIRMED |
 | imm slot 4 | 343 | 0x157 | 20 | (same) | CONFIRMED |
 | imm slot 5 | 323 | 0x143 | 20 | (same) | CONFIRMED |
-| **VALU slot 0** opcode | 293 | 0x125 | 8 | `TensorCoreVectorAlu0Encoder` (P-3-204 family) | HIGH |
+| **VALU slot 0** opcode | 293 | 0x125 | 8 | `TensorCoreVectorAlu0Encoder` family | HIGH |
 | VALU0 dst vreg | 276 | 0x114 | 6 | (same) | HIGH |
 | VALU0 src0 | 270 | 0x10e | 6 | (same) | HIGH |
 | VALU0 src1 | 287 | 0x11f | 6 | (same) | HIGH |
@@ -311,7 +311,7 @@ The decode side independently confirms the GF MXU layout and pins two GF-specifi
 | Ghostlite (`glc`) | 60 | 39 | −21 | 58 / 37 | CONFIRMED |
 | **6acc60406 (`gfc`)** | **64** | **39** | **−25** | **62 / 37** | CONFIRMED |
 
-> **CORRECTION (GF-TWIN) —** an earlier reading carried the 6acc60406 inter-MXU twin as −21 (the Ghostlite value). The decode-side disassembly resolves it to **−25**: the +4 `glc`→`gfc` MXU0 drift (latch opcode 60→64) compounds the inter-MXU offset because MXU1 stays anchored at bit 39 in both generations. The −21 figure applies only to Ghostlite.
+> **GOTCHA —** the 6acc60406 inter-MXU twin is **−25**, not the Ghostlite −21: the +4 `glc`→`gfc` MXU0 drift (latch opcode 60→64) compounds the inter-MXU offset because MXU1 stays anchored at bit 39 in both generations. The −21 figure applies only to Ghostlite.
 
 For the full decode-side mechanism (the staged-copy accessor model and the linear `Opcode::Matches` dispatch) shared with Viperfish, see [Decode-Side: VF / GXC](decode-side-vf-gxc.md).
 

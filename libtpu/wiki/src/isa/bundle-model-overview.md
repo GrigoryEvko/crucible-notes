@@ -141,7 +141,7 @@ The bundle widens because the slot population grows. The byte-widths are byte-an
 | Ghostlite | 64 | ~16 | same capacity as Viperfish; opcode/encoding deltas, adds a vector-misc slot | MEDIUM |
 | 6acc60406 | 64 | ~17 | adds a dedicated predicate slot (up to 4 predicate-defining ops) | LOW |
 
-> **CORRECTION (BUNDLE-1) —** an early reading treated the slot counts (9 / 12 / 16 / 16 / 17) as directly extracted constants. They are not: the three *byte-widths* (41 / 51 / 64) are inline-constant returns from `BundleSizeBytes`, but the slot counts are derived from the per-gen slot-type roster (which typed sub-instructions each `Bundle` exposes) and the bundle width. They are reported HIGH for Jellyfish (where `EncodeBundleInternal` enumerates the seven typed slot classes plus three header carriers) and MEDIUM/LOW for later generations until each per-gen `EncodeBundleInternal` is individually traced. The per-gen bundle pages ([Jellyfish](bundle-jf-41b.md), [Pufferfish](bundle-pf-51b.md), [Viperfish](bundle-vf-64b.md)) carry the confirmed maps.
+> **NOTE —** the slot counts (9 / 12 / 16 / 16 / 17) are *not* directly extracted constants. The three byte-widths (41 / 51 / 64) are inline-constant returns from `BundleSizeBytes`, but the slot counts are derived from the per-gen slot-type roster (which typed sub-instructions each `Bundle` exposes) plus the bundle width. They are graded HIGH for Jellyfish (where `EncodeBundleInternal` enumerates the seven typed slot classes plus three header carriers) and MEDIUM/LOW for later generations until each per-gen `EncodeBundleInternal` is individually traced. The per-gen bundle pages ([Jellyfish](bundle-jf-41b.md), [Pufferfish](bundle-pf-51b.md), [Viperfish](bundle-vf-64b.md)) carry the confirmed maps.
 
 ---
 

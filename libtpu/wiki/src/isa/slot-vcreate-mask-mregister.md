@@ -241,7 +241,7 @@ The inactive-lane model follows directly from the mask being the op's intrinsic 
 
 `DuplicateCount` / `Uniquify` emit dedicated `tpu_dupcnt{f,s}` / `tpu_unique` ops plus `ReplaceOpWithExtracts` (struct-unpack only) — no select, no sentinel; the uniquify mask result is written to a `VMDest` (M0..M15) directly. The only explicit "else"-type wiring lives in the row-size consumer (`lower_scan` / `max_ell_row_size_scan` over `chunk_size_`), which builds an **all-active** `scan_mask = lowering_util::BroadcastBoolToVector(b, loc, chunk_size_, true)` and uses `tpu_mprefix` (one operand) for the masked-prefix positions. The i1→i32 sum-scan (count-active-lanes, the `DuplicateCount` prefix form) explicitly **disallows** a mask.
 
-> **CORRECTION (MASK-1) —** An earlier reading modeled the masked-scan inactive *output* lane as a compiler-inserted post-scan `VectorSelect(mask, scan_result, else)` whose else operand (zero/identity vs preserve-old) was chosen per call. The resolved `ScanOp::build` decompile shows the mask is the scan op's own operand[0] — there is *no* post-scan select for the plain/segmented/index scans. Inactive input lanes contribute the reduction identity; the masked-off output value is a HW datapath detail, not a per-call compiler-chosen else.
+> **NOTE —** there is *no* compiler-inserted post-scan `VectorSelect` for the plain/segmented/index scans: the `ScanOp::build` decompile shows the mask is the scan op's own operand[0]. Inactive input lanes contribute the reduction identity; the masked-off output value is a HW datapath detail, not a per-call compiler-chosen else.
 
 ---
 

@@ -101,7 +101,7 @@ LLO instructions serialize through `MemorySpaceProto` (`platforms/xla/service/je
 
 > **GOTCHA —** the two numberings agree at `0`, `1`, and `12`..`16`, but diverge across `2`..`11`. `hib` is `2` in C++ but `10` in the proto; `vmem` is `3` in C++ but `2` in the proto; `cmem` is `4` vs `11`. A reimplementation that round-trips an LLO buffer through `MemorySpaceProto` **must remap** between the two integers at the (de)serialization boundary — treating the protobuf field number as the runtime enum value silently relabels `vmem` buffers as `hib`, `cmem` as `vmem`, and so on. The boundary that must apply the remap is the `LloOpcodeProto` (de)serializer; the rest of the compiler operates on the C++ enum only.
 
-> **CORRECTION (MS-1) —** the [Memory Hierarchy](../targets/memory-hierarchy.md) page states the `MemorySpaceToString` table has "18 entries". Decompilation shows the proper `MemorySpaceProto` region enum is **17 values** (`0`..`16`); the string table at `0x21ce6b08` is longer than 17 only because it shares storage with the `absolute`/`heap_relative`/`stack_relative` relativity tags at indices 17+. The region enum proper is 17, matching the proto descriptor exactly.
+> **NOTE —** the proper `MemorySpaceProto` region enum is **17 values** (`0`..`16`), matching the proto descriptor exactly. The `MemorySpaceToString` table at `0x21ce6b08` runs longer than 17 only because it shares storage with the `absolute`/`heap_relative`/`stack_relative` relativity tags at indices 17+ — those trailing entries are not region values.
 
 ---
 

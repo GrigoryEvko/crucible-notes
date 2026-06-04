@@ -46,7 +46,7 @@ struct FileWrapper {              // 0x28 bytes
 
 > **GOTCHA —** the `name` and `data` pointers read as **zero in the on-disk image**: they are `R_X86_64_RELATIVE` relocations the dynamic loader fills in at load time. Only `size` and the 16-byte md5 `fp` are literal on disk. A reader that trusts the on-disk pointer fields concludes the array is empty and that only the two blobs whose data happen to be examined directly are present. The correct read resolves the `data` reloc *addend* (which points at the real blob VA) and verifies it against the on-disk md5. Every one of the nine `fp` fields matches the md5 of the blob its reloc addend targets.
 
-> **CORRECTION (CHIP-PARTS) —** an earlier analysis concluded that only the two `6acc60406` blobs were embedded and that the six older-codename resources existed solely as `.rodata` lookup-key strings ("the bytes are NOT embedded"). That was wrong, and the cause was exactly the reloc trap above. All nine blobs are embedded; all nine were md5-verified against their descriptor `fp` field and decoded byte-exactly. The per-codename pages now carry confirmed values, not "—(configs/C++)" placeholders.
+> **NOTE —** all nine blobs are embedded (the reloc trap above is what makes the array look short): each was md5-verified against its descriptor `fp` field and decoded byte-exactly, so every per-codename page carries confirmed values.
 
 The nine descriptors, in array order, with reloc-resolved data VAs:
 
