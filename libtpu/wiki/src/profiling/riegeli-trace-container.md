@@ -104,9 +104,9 @@ The `rs_` prefix marks the statically-linked vendored zlib. There is **no custom
 function DecodeInternal(view, out_entries):
     pkt = GetEntryPacketSize();                       // virtual *0x18(vtable) → 0x10 = 16
     if (view.length < pkt):
-        return MakeErrorImpl<3>("Buffer too small …");          // @0xf5adacc
-    if (view.length % pkt != 0):                       // (unsigned)len % (unsigned)pkt, @line 68
-        return MakeErrorImpl<3>("… not a multiple of the packet size");  // @0xf5adb01
+        return MakeErrorImpl<3>("Entries must be at least %d bytes.");          // @0xf5adacc (line 117)
+    if (view.length % pkt != 0):                       // (unsigned)len % (unsigned)pkt
+        return MakeErrorImpl<3>("Entries must be a multiple of %d bytes.");  // @0xf5adb01 (line 121)
     cursor = view.begin;
     while (cursor < view.end):                          // stride pkt (16)
         TraceEntry* e = out_entries.Add();
@@ -118,7 +118,7 @@ function DecodeInternal(view, out_entries):
         cursor += pkt;                                  // advance one 16-byte packet
 ```
 
-The length validation is byte-confirmed: `len < 16` → `MakeErrorImpl<3>` ("Buffer too small…", `0xf5adacc`), and `(unsigned)len % (unsigned)pkt` ("not a multiple of the packet size", `0xf5adb01`). The `valid==0` break is the [codec's](trace-entries-coder.md#framing-semantics--valid-and-started) graceful end-of-stream sentinel — the same framing bit the codec reads at packet bit 0.
+The length validation is byte-confirmed: `len < 16` → `MakeErrorImpl<3>("Entries must be at least %d bytes.")` (`%d`-formatted via `absl::str_format_internal::FormatPack`, line 117, `0xf5adacc`), and `(unsigned)len % (unsigned)pkt` → `MakeErrorImpl<3>("Entries must be a multiple of %d bytes.")` (line 121, `0xf5adb01`). The `valid==0` break is the [codec's](trace-entries-coder.md#framing-semantics--valid-and-started) graceful end-of-stream sentinel — the same framing bit the codec reads at packet bit 0.
 
 > **QUIRK —** the inflated stream carries **no length prefix and no record framing**. The stream is terminated *in-band* by the first packet whose `valid` bit is 0, exactly the way an over-allocated ring buffer is drained. `len % 16 == 0` therefore checks alignment of the whole buffer, not record boundaries — a riegeli `RecordReader` is never instantiated inside the inflated bytes. The only riegeli object in the entire path is the per-buffer `ZlibReader`.
 
@@ -270,14 +270,15 @@ function GetEntriesGtcSpan(entries) -> GtcSpan {start, length}:
 
 ```c
 // TpuXLineBuilder::AddEvent(GtcSpan, XEventMetadata) @0xf1df1e0 — byte-confirmed
-function AddEvent(this, span, metadata):
+//   ABI: rdi = this (builder); rdx:r8 = GtcSpan {start,length} by value; rsi = metadata ref `m`
+function AddEvent(this, span, m):
     gtc   = span.start & 0xFFFFFFFFFFFFFFF0;             // clear the 4 fractional bits (@0xf1df247)
-    clk16 = 16 * *(*(this + 0x10));                      // [this+0x10] = per-line GTC-clock; clk << 4 (@line 38)
-    num   = 0x3B9ACA00 * (u128)gtc;                      // × 1e9, 128-bit mul (@line 37)
-    value = __udivti3(num + (clk16 >> 1), clk16);        // round-to-nearest 128-bit divide (@line 39)
-    //  XStat "device_offset_ps" = value (start);  XStatMetadata id from [this+0x38]
-    //  length side via GtcSpanConverter::TimespanFromGtcSpan(*(this+0x10), span) (@line 74)
-    //    → XStat "device_duration_ps";  XStatMetadata id from [this+0x40]
+    clk16 = 16 * *(*(m + 0x10));                         // [m+0x10] = per-line GTC-clock; clk << 4 (@0xf1df256 shl 4)
+    num   = 0x3B9ACA00 * (u128)gtc;                      // × 1e9, 128-bit mul (@0xf1df24b mov 0x3b9aca00)
+    value = __udivti3(num + (clk16 >> 1), clk16);        // round-to-nearest 128-bit divide
+    //  XStat "device_offset_ps" = value (start);  XStatMetadata id from [m+0x38]  (@0xf1df205)
+    //  length side via GtcSpanConverter::TimespanFromGtcSpan((GtcSpan) on *(m+0x10), span)
+    //    → XStat "device_duration_ps";  XStatMetadata id from [m+0x40]
 ```
 
 The masks (`0x1ffffffffff0` value window, `0xfffffffffffffff0` low-4 clear), the `0x3B9ACA00` (=1e9) multiply, the `clk << 4`, the `+clk16/2` round, and the `__udivti3` 128-bit divide are all byte-confirmed at `0xf1df1e0`. Algebraically, with `gtc` carrying the ×16 scale and `clk16 = freq × 16`:
@@ -286,9 +287,9 @@ The masks (`0x1ffffffffff0` value window, `0xfffffffffffffff0` low-4 clear), the
 value_ps = gtc · 1e9 / (gtc_freq_hz · 16)
 ```
 
-> **QUIRK —** the divisor is `gtc_freq_hz << 4`, *not* `gtc_freq_hz`, because the GTC tick itself is in ×16 fixed-point. The two ×16 factors (numerator tick and denominator clock) cancel; getting only one of them right yields a result off by 16×. The exact unit of `[this+0x10][0]` (Hz vs kHz vs ticks/ps) is inferred — the end-to-end picosecond result is byte-exact, the intermediate clock-object unit is LOW confidence.
+> **QUIRK —** the divisor is `gtc_freq_hz << 4`, *not* `gtc_freq_hz`, because the GTC tick itself is in ×16 fixed-point. The two ×16 factors (numerator tick and denominator clock) cancel; getting only one of them right yields a result off by 16×. The exact unit of `*(*(m+0x10))` (Hz vs kHz vs ticks/ps) is inferred — the end-to-end picosecond result is byte-exact, the intermediate clock-object unit is LOW confidence. (The divisor and the two XStatMetadata ids are read off the metadata-reference argument `m` in `rsi`, not off the builder `this` in `rdi`.)
 
-> **NOTE —** the length (duration) side routes through `xprof::tpu::GtcSpanConverter::TimespanFromGtcSpan(*(this+0x10), span)` @ line 74 rather than inlining the same divide; the result feeds the `device_duration_ps` XStat. The start side inlines the divide directly. Both ultimately compute `gtc · 1e9 / (freq · 16)`; the start path is the canonical, fully byte-traced form.
+> **NOTE —** the length (duration) side routes through `xprof::tpu::GtcSpanConverter::TimespanFromGtcSpan(GtcSpan) const` @ `0xf2cb7e0` (called on the converter object `*(m+0x10)`) rather than inlining the same divide; the result feeds the `device_duration_ps` XStat. The start side inlines the divide directly. Both ultimately compute `gtc · 1e9 / (freq · 16)`; the start path is the canonical, fully byte-traced form.
 
 ### The Line Origin — `SetTimestampNsAndAdjustEventOffsets`
 
@@ -359,7 +360,7 @@ device-plane XEvent (offset_ps / duration_ps in picoseconds)
 | `StaticMapBase` singleton (pxc) | guard `0x224c6020`; map root `0x224c6000`; node key `+0x20` (+ rev byte `+0x2b`); value `+0x38` | the codec registry `std::map` |
 | `kXxxChipIdentifiers` | `.rodata 0xbdf3c0c`–`0xbdf3cdc` | 15 baked PCI-tuple constants, vendor `0x1AE0` |
 | `GtcSpan` | `{u64 start; u64 length}`, value bits `[4..44]` | the ×16 GTC fixed-point min/max span; passed by value (`rdx`=start, `r8`=length) |
-| `TpuXLineBuilder` | `+0x10` per-line GTC-clock object (`[0]` = divisor base); `+0x38`/`+0x40` offset/duration XStatMetadata ptrs | the timebase builder |
+| `AddEvent` metadata arg (`rsi`) | `+0x10` per-line GTC-clock object (`[0]` = divisor base); `+0x38`/`+0x40` offset/duration XStatMetadata ptrs | read by `AddEvent` off the 2nd pointer arg, not the builder `this` |
 | `XLine` | `+0x40` timestamp_ns origin | the line-origin field rescaled `×1000` |
 | `ZlibReaderBase` | `+0x78` windowBits (`0x2f=47`); pool guard `0x224c6280`, storage `0x224c6240` | the decompressor state |
 | `TraceEntriesCoder` vtable (pxc) | obj vptr `off_21771038`; `TraceCodec<pxc>` vptr `off_21770ef8`; `GetEntryPacketSize`→`0x10`, `GetMaxEntrySize`→`0x20` | the codec object the factory builds |
