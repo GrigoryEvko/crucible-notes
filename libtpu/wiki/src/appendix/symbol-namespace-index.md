@@ -1,6 +1,6 @@
 # Symbol Namespace Index
 
-> *All counts on this page apply to `libtpu.so` v0.103 from the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`, SHA-256 `456e7d6e…4ae033`). The byte footprints are the summed `size` of resolved functions, not section sizes; other versions and other extraction passes will differ.*
+> *All counts on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel (a 781,691,048-byte ELF64 shared object, build-id `89edbbe81c5b328a958fe628a9f2207d`; the wheel/`METADATA`/`__init__` version is `0.0.40` — pin to the build-id). The byte footprints are the summed `size` of resolved functions, not section sizes; other wheels and other extraction passes will differ.*
 
 ## Abstract
 
@@ -13,12 +13,12 @@ This page is the **symbol/function counterpart** to [the RTTI namespace census](
 For a reimplementer, the contract this page satisfies is:
 
 - **The counting rule** — what "owns a symbol" means (the `_ZN<quals><len><ns>` top-level anchor), and why prefix-anywhere and raw-substring counts give different, larger answers.
-- **The ranking** — the per-namespace function count, byte footprint, and role, summing exactly to the 884,832-function total.
+- **The ranking** — the per-namespace function count, byte footprint, and role for the largest top-level owners, with a *(other)* catch-all so the listed rows plus the residual reach the 884,832-function total.
 - **The reconciliation** — why earlier library-family substring tallies (absl, Eigen, re2) overshoot the owner counts, and which surface each number describes.
 
 | | |
 |---|---|
-| **Binary** | `libtpu.so` v0.103, build-id `89edbbe81c5b328a958fe628a9f2207d` |
+| **Binary** | `libtpu.so` (wheel `0.0.40`), build-id `89edbbe81c5b328a958fe628a9f2207d` |
 | **Symbol table** | `.symtab` present (full local symbols) — not stripped |
 | **Named addresses** | 1,893,205 (881,784 function · 880,052 data · 108,629 other · 22,740 code-label) |
 | **Functions** | 884,832 total — 881,784 named, 3,048 anonymous (`sub_`) |
@@ -59,13 +59,13 @@ The top-level owner is extracted from the `name` field of the function sidecar w
 
 ## The Namespace Census
 
-Top-level-owner function counts and byte footprints, sorted by symbol count. The 18 rows partition the function population exactly: the counts sum to **884,832** and the bytes to **299,035,160**, the full resolved-function total.
+Top-level-owner function counts and byte footprints, sorted by symbol count. These rows rank the **largest** top-level owners; they do not exhaust the population. The whole-binary totals are **884,832** functions and **299,035,160** bytes; the listed namespaces plus the *(other)* catch-all account for those totals, with the catch-all absorbing every owner that ranks below the cut. Several real mangled `_ZN` owners fall into that residual — notably `dnnl` (oneDNN, ~19.5k functions), `proto2` (the protobuf runtime, ~12k), `grpc_core` (~8.4k), `operations_research` (~6.8k), and `platforms_deepsea` (~6k, the codename-rooted device layer) — each larger than several of the listed lower rows. They are folded into *(other)* here and broken out by the sibling [RTTI namespace census](rtti-namespace-census.md).
 
 | Namespace | Functions | Function Bytes | % of funcs | Role in `libtpu.so` | Confidence |
 |---|---:|---:|---:|---|---|
 | `mlir` | 270,983 | 54,560,105 | 30.6% | MLIR compiler framework — dialects, passes, IR/op infrastructure | CERTAIN |
 | `asic_sw` | 194,445 | 26,811,387 | 22.0% | Closed TPU driver stack — chip-generation register/queue/DMA layers | CERTAIN |
-| *(other)* | 138,313 | 85,667,960 | 15.6% | C symbols, vendored libs, non-`_ZN` exports, vtable thunks | HIGH |
+| *(other)* | 138,313 | 85,667,960 | 15.6% | Below-cut mangled owners (`dnnl`, `proto2`, `grpc_core`, …), C symbols, non-`_ZN` exports, vtable thunks | HIGH |
 | `llvm` | 91,060 | 30,705,459 | 10.3% | LLVM core — IR, codegen, target backends used by the JIT | CERTAIN |
 | `xla` | 62,221 | 42,138,764 | 7.0% | XLA HLO middle-end — passes, layout, runtime, `megascale` collectives | CERTAIN |
 | `std` (libc++) | 57,643 | 18,571,901 | 6.5% | libc++ `std::__u` containers/algorithms instantiated into the binary | CERTAIN |
@@ -79,10 +79,10 @@ Top-level-owner function counts and byte footprints, sorted by symbol count. The
 | `tsl` | 1,855 | 678,318 | 0.2% | TSL (TensorFlow Support Lib) — `AsyncValue`, monitoring, platform | CERTAIN |
 | `stream_executor` | 542 | 99,857 | 0.1% | StreamExecutor device-abstraction interfaces | CERTAIN |
 | `re2` | 226 | 109,063 | <0.1% | RE2 regular-expression engine | CERTAIN |
-| `protobuf` | 201 | 25,173 | <0.1% | protobuf runtime as top-level owner (most is in generated `.pb` code) | CERTAIN |
+| `google::protobuf` | 201 | 25,173 | <0.1% | protobuf C++ runtime under `google::` (the bulk of the runtime is the separate `proto2` owner, in *(other)*; generated messages mangle under their own namespace) | HIGH |
 | `tcmalloc` | 70 | 16,947 | <0.1% | tcmalloc allocator core | CERTAIN |
 
-> **QUIRK —** `protobuf`, `tcmalloc`, and `re2` rank at the bottom by *owned function count* yet are unmistakably present and heavily used. The owner count understates them because their work shows up elsewhere: protobuf's bulk is in generated message code (mangled under the message's own namespace and in the `protodesc_cold` / `.lrodata` data segments), tcmalloc's hot path is in the `google_malloc` / `malloc_hook` code sections by *function* not by namespace, and RE2's value is in a few engine functions invoked from everywhere. Owner count measures authored surface, not runtime weight.
+> **QUIRK —** `google::protobuf`, `tcmalloc`, and `re2` rank at the bottom by *owned function count* yet are unmistakably present and heavily used. The owner count understates them because their work shows up elsewhere: the protobuf runtime's bulk is the separate `proto2` owner (~12k functions, folded into *(other)* above) plus generated message code (mangled under each message's own namespace and in the `protodesc_cold` / `.lrodata` data segments), tcmalloc's hot path is in the `google_malloc` / `malloc_hook` code sections by *function* not by namespace, and RE2's value is in a few engine functions invoked from everywhere. Owner count measures authored surface, not runtime weight.
 
 ### Reading the ranking
 
@@ -112,7 +112,7 @@ The census above counts functions. The name sidecar also resolves data symbols, 
 | `tsl` | 1,985 | +130 | HIGH |
 | `stream_executor` | 656 | +114 | HIGH |
 | `re2` | 499 | +273 | HIGH |
-| `protobuf` | 276 | +75 | HIGH |
+| `google::protobuf` | 276 | +75 | HIGH |
 | `tcmalloc` | 84 | +14 | HIGH |
 
 The kind breakdown of the full surface — 881,784 functions, 880,052 data, 108,629 `other`, 22,740 code-labels — explains the deltas. `llvm` gains the most absolute entries (~30k) because its target tables, instruction-info arrays, and intrinsic descriptors are large static data objects; `asic_sw` gains its second-largest delta from per-register and per-queue data tables plus its dense RTTI.
