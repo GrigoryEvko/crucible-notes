@@ -14,7 +14,8 @@ deserializes, which `FieldEntry` in `TpuCompilationEnvironment::_table_`
 (`@0x21cfa9e0`) a tag selects, and therefore which struct byte a value lands on.
 
 This page is the **upper half** of that dictionary. It covers field numbers
-**#561 through #1121** (the highest live field number in the message), ordered by
+**#561 through #1121** (the count-aligned upper bound — the 1121st live entry, not
+field number 1121; the highest *number* in the message is #1218), ordered by
 field number and grouped by functional area within the range. For each field it
 gives the verbatim flag/proto name, the proto type (and the wrapper enum or
 message type where the base type is `enum` or `message`), and a confidence label.
@@ -73,7 +74,7 @@ matching type:
 | `bool` | `0x0011` | 418 | plain bool |
 | `int64` | `0x10d1` | 148 | plain int64 |
 | `message` | `0x0416` | 349 | AutoProto oneof or typed sub-message; `aux_idx` resolves the type |
-| `enum` | `0x1891` | 74 | one of 17 wrapper enums; 67 are `TristateProto.Value` |
+| `enum` | `0x1891` | 74 | one of 8 distinct wrapper enums; 67 are `TristateProto.Value`, the other 7 are dedicated wrappers |
 | `string` | `0x0c15` | 37 | SSO; 7 non-empty defaults message-wide |
 | `float` | `0x1893` | 34 | f32 |
 | `int32` | `0x1091` | 32 | plain int32 |
@@ -139,8 +140,8 @@ large-buffer scaling controls. Two anchored fields pin the band.
 > as a `std::string` SSO field (`type_card 0x0c15`), not as an enum — the wire
 > type is genuinely string. Default `"SQRT"` was grepped verbatim from `.rodata`.
 
-`ChecksumAlgoProto.Value` (the wrapper for #583) is one of the 17 TCE wrapper
-enums: `DEFAULT=0`, `XOR=1`, `SIP_HASH_1_3=2` (value name `SIP_HASH_1_3`
+`ChecksumAlgoProto.Value` (the wrapper for #583) is one of the 7 dedicated
+(non-Tristate) TCE wrapper enums: `DEFAULT=0`, `XOR=1`, `SIP_HASH_1_3=2` (value name `SIP_HASH_1_3`
 confirmed verbatim). #583 defaults to `0 (DEFAULT)`. The remaining fields in this
 band are bool and int64 SDC-checker knobs (e.g. `xla_tpu_sdc_checker_*`,
 HIGH confidence on individual names; the band boundary is the anchored claim).
@@ -256,7 +257,7 @@ plus the async-wrapper fusion-type enum. This band is heavily ENABLED-by-default
 | #802 | `xla_tpu_enable_offloading_scatter_to_sparsecore` | enum / `TristateProto.Value` (default `ENABLED`) | CERTAIN |
 | #804 | `xla_tpu_use_bundle_aware_cost_model_for_fusions` | enum / `TristateProto.Value` (default `ENABLED`) | HIGH |
 | #807 | `xla_tpu_experimental_do_not_use_fusion_estimate_cost_changes` | enum / `TristateProto.Value` (default `ENABLED`) | HIGH |
-| #816 | `xla_tpu_msa_use_bundle_aware_cost_model` | enum / `TristateProto.Value` (default `ENABLED`) | HIGH |
+| #816 | `xla_msa_use_bundle_aware_cost_model` | enum / `TristateProto.Value` (default `ENABLED`) | HIGH |
 | #822 | `xla_tpu_enable_sparse_core_collective_offload_all_gather` | enum / `TristateProto.Value` (default `ENABLED`) | CERTAIN |
 | #827 | `xla_sc_async_wrapper_fusion_type` | enum / `ScAsyncWrapperFusionTypeProto.Value` | CERTAIN |
 | #839 | `xla_tpu_enable_sparse_core_collective_offload_all_reduce` | enum / `TristateProto.Value` (default `ENABLED`) | HIGH |
@@ -351,7 +352,7 @@ the tail is anchored and HIGH:
 
 ## Wrapper Enums Referenced in This Range
 
-Four of the 17 TCE wrapper enums are the type of a *direct* enum field in #561–#1121
+Four of the 7 dedicated (non-Tristate) TCE wrapper enums are the type of a *direct* enum field in #561–#1121
 (versus appearing only inside the AutoProto oneof). Their value tables, read
 verbatim from the FileDescriptorProto value-name stream (`@0xbfa6060+`):
 
@@ -374,7 +375,7 @@ full wrapper list and bridge are on
 ## Cross-References
 
 - [TCE Field Dictionary (A)](tce-field-dictionary-a.md) — fields **#1–#560**, the lower half of this same field#→name→type catalog; the two pages tile at the #561 boundary
-- [TpuCompilationEnvironment](tpu-compilation-environment.md) — the message structure: parse table, FieldEntry/aux layout, has-bits, the 17 wrapper enums, and the 30-arm AutoProto oneof whose arms are the `message`-typed fields in this dictionary
+- [TpuCompilationEnvironment](tpu-compilation-environment.md) — the message structure: parse table, FieldEntry/aux layout, has-bits, the wrapper enums (67 `TristateProto.Value` fields plus 7 dedicated wrappers), and the 30-arm AutoProto oneof whose arms are the `message`-typed fields in this dictionary
 - [TCE Field-Offsets & Flag Defaults](tce-field-offsets-defaults.md) — the struct-offset column and the byte-exact literal default for every field, including the per-area defaults this page only spot-cites
 - [Flag Families](flag-families.md) — the `xla_*` / `xla_tpu_*` / `xla_jf_*` / `xla_sc_*` / `xla_msa_*` / `megascale_*` prefix families and how a flag name maps to its registered `absl::Flag`
 - [XLA Flag Atlas](xla-flag-atlas.md) — the broader catalog of XLA debug/compile flags surfaced through the TPU PJRT plugin
