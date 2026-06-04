@@ -23,6 +23,7 @@ The contract a reimplementer must honor:
 | **Abstract base** | `xla::jellyfish::CycleTable` (pure-virtual `GetCyclesForThroughput`) |
 | **`JfCycleTable` vtable** | `0x21c1ffb8` — slots: dtor pair, `GetCyclesForThroughput` @ `0x1c89dce0`, `EstimateSinCosCost`, `EstimateTanCost` |
 | **Factory** | `CycleTable::Create(const Target&)` @ `0x1c89cc00` — dispatches on `target.tpu_version()` |
+| **Sibling factory** | [`LatencyTable::Create(TpuVersion)`](#the-sibling-factory--latencytablecreatetpuversion) @ `0x1c89fba0` — ordinal-indexed `AnyInvocable` vector, not a hash registry |
 | **Registration** | `_GLOBAL__sub_I_cycle_table.cc` @ `0x21353460` — 6 × `FunctionRegistry::Register(version, λ)` |
 | **Cycle-class enum** | `CycleTable::Instruction` — dense `0x00..0x20` (33 values); per-gen priced subset |
 | **Opcode → class** | `CycleTableInstruction(LloInstruction*)` @ `0x1c89ca80` — MXU band only |
@@ -72,6 +73,49 @@ The six factories are registered once by the `cycle_table.cc` static initializer
 > **NOTE — `TpuVersion` 0 and 1 share one class.** Both the jellyfish (v0) and dragonfish (v1) factories produce a `JfCycleTable` — the two registry entries bind the symbols `kUnusedRegisterJfCycleTable` and `kUnusedRegisterDfCycleTable` respectively, both to the same `JfCycleTable` factory lambda. Both read `GetCyclesForThroughput` @ `0x1c89dce0` over the same throughput offset-LUT; the gens differ only in their `Performance` grids, and the cells that differ are not throughput-LUT targets — so `GetCyclesForThroughput` is identical for JF and DF. See [JfCycleTable](jf-cycletable.md).
 
 The two later gens (`Glc`, `Gfc`) wrap a `…Helper` that returns an `absl::Status`-style result; the public `GetCyclesForThroughput` calls the helper and `CHECK`s success (`MakeCheckFailString(..., "cycles is OK")`, fatal at `cycle_table.cc:817`) before returning the cycle integer. A reimplementation can flatten this into a direct return; the wrapper exists only to surface "unschedulable class" as a fatal rather than a silent default.
+
+---
+
+## The Sibling Factory — `LatencyTable::Create(TpuVersion)`
+
+The throughput half (`CycleTable`) and the [dependency-latency half](bundle-aware-cost.md) (`LatencyTable`) are parallel per-gen families, but their factories use **two structurally different dispatch mechanisms**, and a reimplementer must not assume one mirrors the other.
+
+`CycleTable::Create(const Target&)` @ `0x1c89cc00` keys a `FunctionRegistry<TpuVersion, …>` (a hash map). `LatencyTable::Create(tpu::TpuVersion)` @ `0x1c89fba0` instead keys a **dense inlined-vector indexed by the version ordinal** — there is no `cmp $0xN` switch and no hash lookup. The ordinal is bounds-checked against the vector size, then the stored `absl::AnyInvocable` factory at byte offset `+0x18` of the `version`-th 32-byte slot is called directly:
+
+```c
+// xla::jellyfish::LatencyTable::Create @ 0x1c89fba0 (decompiled, exact shape)
+unique_ptr<LatencyTable> LatencyTable::Create(tpu::TpuVersion v) {
+    Vector *reg = registry;                              // @ 0x225799f8, file-local inlined_vector
+    if (reg == nullptr)
+        LogFatal("registry", /*latency_table.cc:0x78*/); // "registry" non-null CHECK
+    if ((int64_t)v < 0 || (size_t)v >= reg->size())      // signed + size bound, both fatal
+        LogFatal(/*latency_table.cc:0x7a / 0x7b*/);
+    void *entry = reg->data() + ((size_t)v << 5);        // 32-byte AnyInvocable stride
+    void (*fn)() = *(void**)(entry + 0x18);              // stored factory pointer
+    if (fn == nullptr)
+        LogFatal("registered", /*latency_table.cc:0x7c*/);
+    return fn(entry);                                    // call *%rax  @ 0x1c89fc0f
+}
+```
+
+The version→ctor binding is therefore **not visible inside `Create`** — it is written at static-init time by five separate translation-unit initializers, each calling `LatencyTable::Register(version, AnyInvocable)` @ `0x1c89fac0` (which `Resize`s the vector to `version+1` and stores the invoker at slot `+0x18`). The dispatch tail is the union of those five initializers:
+
+| Ordinal | Codename | Initializer (`.text.startup`) | `Register(v, λ)` arg | Factory invoker λ | Concrete ctor (`new` size) | Confidence |
+|--------:|----------|-------------------------------|---------------------:|-------------------|----------------------------|------------|
+| 0 | jellyfish (v2) | `_GLOBAL__sub_I_latency_table_jf.cc` @ `0x21353860` | `mov $0x0,%edi` @ `0x21353885` | `LocalInvoker<jellyfish::$_0>` @ `0x1c8a1280` | `LatencyTableJellyfish::C1` @ `0x1c8a0c20` (`new 0x58`) | HIGH |
+| 1 | dragonfish (v3) | `_GLOBAL__sub_I_latency_table_jf.cc` @ `0x21353860` | `mov $0x1,%edi` @ `0x213538a9` | `LocalInvoker<jellyfish::$_1>` @ `0x1c8a12c0` | `LatencyTableJellyfish::C1` @ `0x1c8a0c20` (`new 0x58`) | HIGH |
+| 2 | pufferfish (v4) | `_GLOBAL__sub_I_latency_table_pf.cc` @ `0x213538d0` | `mov $0x2,%edi` @ `0x213538f3` | `LocalInvoker<pufferfish::$_0>` @ `0x1c8a31c0` | `LatencyTablePufferfish::C1` @ `0x1c8a1960` (`new 0x1e0`) | HIGH |
+| 3 | viperfish (v5) | `_GLOBAL__sub_I_latency_table_vf.cc` @ `0x21353920` | `mov $0x3,%edi` @ `0x21353943` | `LocalInvoker<viperfish::$_0>` @ `0x1c8a5280` | `LatencyTableViperfish::C1` @ `0x1c8a3f20` (`new 0x1e0`) | HIGH |
+| 4 | ghostlite (v6 lite) | `_GLOBAL__sub_I_latency_table_gl.cc` @ `0x21353970` | `mov $0x4,%edi` @ `0x21353993` | `LocalInvoker<ghostlite::$_0>` @ `0x1c8b28e0` | `LatencyTableGhostlite::C1` @ `0x1c8b0c00` (`new 0x1e0`) | HIGH |
+| 5 | `6acc60406` (TPU7x) | `_GLOBAL__sub_I_latency_table_gf.cc` @ `0x213539c0` | `mov $0x5,%edi` @ `0x213539e3` | GF invoker λ @ `0x1c8bb180` (symbol-coalesced) | GF `LatencyTable` ctor @ `0x1c8b9520` (`new 0x1e0`) | HIGH |
+
+> **NOTE — `LatencyTable` and `CycleTable` factories are *not* the same machine.** `CycleTable::Create` uses a `FunctionRegistry` hash map and dispatches by lambda lookup; `LatencyTable::Create` uses a flat ordinal-indexed `inlined_vector<AnyInvocable, 8>` (file-local `registry` @ `0x225799f8`) and dispatches by `registry[version](entry)` (`call *0x18(%rdi,version<<5)`). The "no factory registered" failure modes also differ: `CycleTable` logs `"No cycle table registered for platform: "`; `LatencyTable::Create` instead emits three distinct fatal CHECKs (`registry` non-null at `latency_table.cc:0x78`, ordinal in-bounds at `0x7a`/`0x7b`, slot non-null at `0x7c`). A reimplementer can collapse both into one ordinal-keyed table but must preserve the bounds CHECK before the indirect call.
+
+> **NOTE — JF and DF share `LatencyTableJellyfish`, like the cycle side.** Ordinals 0 and 1 register two *distinct* lambdas (`jellyfish::$_0` @ `0x1c8a1280`, `jellyfish::$_1` @ `0x1c8a12c0`) but both `new (0x58)` and tail-call the *same* ctor `LatencyTableJellyfish::C1` @ `0x1c8a0c20`. The two lambdas exist only because JF and DF are registered as separate ordinals; the constructed object type is identical. This mirrors the `JfCycleTable`-for-both-gens fact above. Note the JF object is `0x58` bytes whereas PF/VF/GL/GF objects are all `0x1e0` bytes — the later gens carry the per-`MatmulModifier`/`VlxmrModifier` MXU-latency maps inline.
+
+> **QUIRK — the GF (ordinal 5) factory and ctor are symbol-stripped.** Unlike the other five arms, the GF invoker (`0x1c8bb180`) and the GF `LatencyTable` ctor (`0x1c8b9520`) carry **no own demangled symbol** in `nm`; both were folded under the neighbouring `raw_hash_set<…VlxmrModifier…>::find` symbol (at `+0x1d80` and `+0x120` respectively). The GF identity is still byte-anchored three ways: (1) `latency_table_gf.cc`'s initializer `Register`s ordinal `5` with this exact invoker pointer (`lea 0x1c8bb180` @ `0x213539c9`); (2) the invoker `new (0x1e0)`s and calls `0x1c8b9520`; (3) `0x1c8b9520` calls the `LatencyTable` base ctor (`0x1c89f800`), zero-fills a `0x1e0`-byte body, installs its own pair of vtables (`0x21c20930+0x10` at `[obj]`, `+0x48` at `[obj+0x18]`), and loads the **ghostlite `GetSharedMxuLatency` singleton** (`0x22579a70`) — the `VlxmrModifier` (variable-latency MXU modifier) type and the `gf` TU name jointly mark it as the GF/TPU7x generation. The symbol coalescing is a linker ICF artifact, not a missing function.
+
+> **NOTE — base vs subclass `LatencyTable`.** `xla::jellyfish::LatencyTable` is the abstract base (`C2` ctor @ `0x1c89f800`, providing `LatencyBetween` @ `0x1c89f820`, `IsTrueDependencyBetween`, `HasSetPermutePatternReservation`, etc.). Every per-gen arm above subclasses it: the JF arm in the `jellyfish` namespace, PF in `pufferfish`, VF in `viperfish`, GL/GF in `ghostlite` (the GF ctor reuses the ghostlite shared MXU-latency table). The base `LatencyTable::Create`/`Register`/`registry` triple lives in the `jellyfish` namespace and is shared across all gens.
 
 ---
 
