@@ -40,7 +40,7 @@ The table below is the master index. Each row is one open item; the **Confidence
 | PJRT vtable slots populated by framework at `Create` | HW-dependent | A live `PJRT_Client_Create` trace on a TPU | [client-and-device](../pjrt/client-and-device.md) | LOW |
 | `FLAGS_enable_runtime_uptime_telemetry` live values | HW-dependent | On-device runtime; telemetry is read, not stored | [stream-executor-pjrt-adapter](../pjrt/stream-executor-pjrt-adapter.md) | LOW |
 | Flag defaults that resolve against device state | HW-dependent | Device-resident config; static default may be a sentinel | [flag-catalog-full](flag-catalog-full.md) | LOW |
-| `chip_config` (driver-side) vs `chip_parts` (geometry) split | Per-gen gap | xref `kChipConfigAliases` consumers per gen | [per-gen-comparison-matrix](per-gen-comparison-matrix.md) | MEDIUM |
+| `chip_config` (driver-side) vs `chip_parts` (geometry) split | CLOSED (recovered) | Recovered: `kChipConfigAliases` (`0x2200b8b0`) is a static 4-entry `flat_map` keyed by `TpuVersion` {2,3,4,5} (variant `"default"`); v4/v5 share one alias sub-map. Per-`TpuVersion` consumer split is fully static, not device-probed | [per-gen-comparison-matrix](per-gen-comparison-matrix.md) | CLOSED |
 | `issue_latency_cycle_count` absent in every embedded blob | Per-gen gap | A build whose `chip_parts` populates field 4 | [per-gen-comparison-matrix](per-gen-comparison-matrix.md) | LOW |
 | 834 stream-op per-leaf `(pattern,verb,dtype,space)` opcode | Inferred link | Byte-dump the ISel matcher arm per leaf | [llvmtpu-intrinsic-table](llvmtpu-intrinsic-table.md) | MEDIUM |
 | 890 default-builder ops' exact arity + result predicate | Inferred link | Decode each `verifyInvariantsImpl` body | [llvmtpu-intrinsic-table](llvmtpu-intrinsic-table.md) | HIGH |
@@ -203,7 +203,7 @@ The hinted gap — "older codenames ship only as `chip_configs`, not `chip_parts
 
 | Residual gap | Why it is open | Closeable by | Confidence |
 |---|---|---|---|
-| `chip_config` (driver) vs `chip_parts` (geometry) consumer split | The two proto families serve different layers; which gen reads which `kChipConfigAliases` entry is not fully xref'd | xref `kChipConfigAliases` consumers per `TpuVersion` | MEDIUM |
+| `chip_config` (driver) vs `chip_parts` (geometry) consumer split | RECOVERED — `kChipConfigAliases` is a static 4-entry `flat_map<TpuVersionAndVariant, MapView>` keyed by `TpuVersion` {2,3,4,5} (all variant `"default"`); v4/v5 share one sub-map; alias vocab `default`/`legacy`/`megacore`/`megachip`/`megachip_tccontrol` | per-`TpuVersion` split is static, not device-probed; only the type-erased MapView key→value direction is residual | CLOSED |
 | `issue_latency_cycle_count` (`VectorIsa` field 4) | **Absent (proto default 0) in every embedded blob** — real per-gen issue latency lives in the cost-model `Performance` grids, not `chip_parts` | A build whose `chip_parts` populates field 4 — may never exist | LOW |
 
 > **GOTCHA —** `issue_latency_cycle_count` is the trap. The field exists in the `chip_parts` schema but is never populated in this build (it reads as proto default 0 for all gens). A reimplementer must **not** read MXU/VPU issue latency from `chip_parts`; the live value is queried through `CycleTable::GetCyclesForThroughput` (per-gen vtable slot `+0x10`). The `chip_parts` zero is not the answer — it is the absence of an answer.
