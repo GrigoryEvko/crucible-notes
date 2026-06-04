@@ -1,6 +1,6 @@
 # Binary Layout Reference
 
-> *All addresses on this page apply to `libtpu.so` version 0.103, build-id `89edbbe81c5b328a958fe628a9f2207d`, from the `libtpu-0.0.40-cp314` wheel (781,691,048 bytes, 884,832 functions). Other builds will shift every boundary.*
+> *All addresses on this page apply to `libtpu.so` build-id `89edbbe81c5b328a958fe628a9f2207d` (build tag `libtpu_lts_20260413_b_RC00`), from the `libtpu-0.0.40-cp314` wheel (781,691,048 bytes, 884,832 functions). Other builds will shift every boundary.*
 
 ## Abstract
 
@@ -18,8 +18,8 @@ For navigation, the contract is:
 
 | | |
 |---|---|
-| **Binary** | `libtpu.so` 0.103, build-id `89edbbe81c5b328a958fe628a9f2207d` |
-| **File size** | 781,691,048 B (745.5 MiB), 51 allocatable sections |
+| **Binary** | `libtpu.so`, build-id `89edbbe81c5b328a958fe628a9f2207d`, build tag `libtpu_lts_20260413_b_RC00` |
+| **File size** | 781,691,048 B (745.5 MiB), 51 named sections (48 allocatable) |
 | **Function count** | 884,832 total · 877,976 inside `.text` |
 | **`.text` range** | `0x0e63c000` .. `0x21217484` (299.9 MiB) |
 | **`.lrodata` range** | `0x01884a00` .. `0x084931d0` (108.1 MiB, large read-only data) |
@@ -42,7 +42,7 @@ Before any band lookup, place the address in its section. The linker laid the fi
 | `.rodata` | `0x084a0000` | `0x0be8af28` | 57.9 MiB | PROGBITS | Strings, small constants, format tables | CERTAIN |
 | `protodesc_cold` | `0x0be8af30` | `0x0c1bf0b0` | 3.2 MiB | PROGBITS | Cold protobuf descriptor tables | CERTAIN |
 | `.gcc_except_table` | `0x0c1bf0b0` | `0x0c2cc634` | 1.0 MiB | PROGBITS | C++ EH landing-pad tables | CERTAIN |
-| `.eh_frame_hdr` / `.eh_frame` | `0x0c2cc634` | `0x0e635524` | ~37 MiB | PROGBITS | Unwind tables (largest non-code RO region) | CERTAIN |
+| `.eh_frame_hdr` / `.eh_frame` | `0x0c2cc634` | `0x0e635524` | ~35 MiB | PROGBITS | Unwind tables (C++ EH; `.eh_frame` alone is ~28.7 MiB) | CERTAIN |
 | `.init` / `.text.hot` | `0x0e635524` | `0x0e63738e` | ~8 KiB | PROGBITS (X) | Init stub + 6 hot-promoted functions | CERTAIN |
 | `google_malloc` | `0x0e6373c0` | `0x0e63bab2` | 18.2 KiB | PROGBITS (X) | TCMalloc fast-path (72 functions) | CERTAIN |
 | **`.text`** | **`0x0e63c000`** | **`0x21217484`** | **299.9 MiB** | **PROGBITS (X)** | **All primary code — the band map below** | **CERTAIN** |
@@ -63,11 +63,11 @@ Before any band lookup, place the address in its section. The linker laid the fi
 
 ## The `.text` Address Bands
 
-`.text` is partitioned below into nine bands of ~30 MiB. Each row gives the band's VA range, the section (always `.text` here), the dominant namespace/subsystem by function count, the approximate live-function count in the band, and a confidence. The dominant-occupant column is the per-band namespace census: the leading C++ namespace among the functions whose address falls in that band, sampled from the symbol table. "~funcs" is the count of recovered functions whose entry address lands in the band.
+`.text` is partitioned below into ten bands (B0 a ~15 MiB entry band, B1–B9 ~30 MiB each). Each row gives the band's VA range, the section (always `.text` here), the dominant namespace/subsystem by function count, the approximate live-function count in the band, and a confidence. The dominant-occupant column is the per-band namespace census: the leading C++ namespace among the functions whose address falls in that band, sampled from the symbol table. "~funcs" is the count of recovered functions whose entry address lands in the band.
 
 | Band | VA Range | Section | Dominant Subsystem / Namespace | ~Funcs | Confidence |
 |---|---|---|---|---|---|
-| **B0** Runtime / PJRT entry | `0x0e63c000` .. `0x0f53a2a0` | `.text` | TPU runtime driver (`asic_sw::driver::deepsea`) + PJRT/`Tpu*` exports + MLIR op registration | ~99,000 | HIGH |
+| **B0** Runtime / PJRT entry | `0x0e63c000` .. `0x0f53a2a0` | `.text` | TPU runtime driver (`asic_sw::driver::deepsea`) + PJRT/`Tpu*` exports + MLIR op registration | ~40,000 | HIGH |
 | **B1** MLIR core + SPIR-V | `0x0f53a2a0` .. `0x11336000` | `.text` | MLIR framework (`mlir::RegisteredOperationName`, `mlir::spirv`), LLVM support | ~115,000 | HIGH |
 | **B2** XLA / SparseCore + MLIR | `0x11336000` .. `0x14030fc0` | `.text` | MLIR op machinery + `xla::tpu::sparse_core`, `mlir::linalg` | ~120,000 | HIGH |
 | **B3** MLIR dialects (dense) | `0x14030fc0` .. `0x15e2d500` | `.text` | `mlir::RegisteredOperationName` peak, `mlir::stablehlo`, Eigen tensor evaluators | ~92,000 | HIGH |
@@ -78,7 +78,7 @@ Before any band lookup, place the address in its section. The linker laid the fi
 | **B8** TPU codecs (vxc/gxc) | `0x1d61ea00` .. `0x1f41af40` | `.text` | TPU ISA codecs `asic_sw::deepsea::{vxc,gxc,pxc}`, `xla` literals | ~128,000 | HIGH |
 | **B9** TPU codecs (gxc peak) | `0x1f41af40` .. `0x21217484` | `.text` | `asic_sw::deepsea::gxc` density peak, `pxc`/`vxc`, protobuf arena | ~146,000 | HIGH |
 
-> **QUIRK —** the namespace `asic_sw::deepsea::gxc` (the TPU "core-X" ISA codec family) appears across a 110 MiB code span (`0x01391cd40` .. `0x01fe6f7a0`), but its *density* climbs monotonically toward the top of `.text`: ~33k functions land in B8 and ~75k in B9. A reimplementer who keys "codec land starts at X" off the first `gxc` function will be 100 MiB too low. Use the **density centroid** (high `.text`, B8–B9), not the first occurrence.
+> **QUIRK —** the namespace `asic_sw::deepsea::gxc` (the TPU "core-X" ISA codec family, ~60,700 functions in `.text`) appears across a ~197 MiB code span (`0x1391cd40` .. `0x1fe6f7a0`), but its *density* climbs toward the top of `.text`: ~13.7k functions land in B8 and ~46k in B9. A reimplementer who keys "codec land starts at X" off the first `gxc` function will be ~150 MiB too low. Use the **density centroid** (high `.text`, B8–B9), not the first occurrence.
 
 > **CORRECTION (LAYOUT-1) —** an earlier scratch hypothesis placed the codec/ISA-emitter cluster at "≈0x1e8xxxxx–0x14xxxxxx" — a descending, self-crossing range that cannot be a band. The binary shows the codec namespaces (`gxc`/`vxc`/`pxc`) cluster *ascending* with a density peak in the top quarter of `.text` (`~0x1d6xxxxx`–`0x21217484`). The "0x14xxxxxx" figure is where the lower codec stragglers begin, not where the cluster sits. Trust the per-band census: B8–B9 are the codec bands.
 
@@ -129,7 +129,7 @@ A transitional band with no single dominant subsystem. It is led by `std::__u` S
 
 ### B8–B9 — TPU ISA Codecs (`0x1d61ea00`–`0x21217484`)
 
-The top quarter of `.text` and the heart of the TPU-specific machinery: the instruction-set codecs that encode/decode TPU bundles for the three core families — `vxc` (vector core), `gxc` (general/grid core), and `pxc` (processing core). These are the `asic_sw::deepsea::{vxc,gxc,pxc}` namespaces, and they are densest here: B8 holds ~41k `vxc` + ~33k `gxc` + ~9k `pxc`; B9 holds ~75k `gxc` (its peak) + ~5k each `pxc`/`vxc`. The codec class hierarchy is template-heavy — `SparseCoreTecCodecBase`, `TensorCoreCodecBase`, and the `platforms_deepsea::jellyfish::isa::{Encoder,Decoder}Base` templates — which is why function counts explode here: every codec instantiation generates a full set of encode/decode/validate methods.
+The top quarter of `.text` and the heart of the TPU-specific machinery: the instruction-set codecs that encode/decode TPU bundles for the three core families — `vxc` (vector core), `gxc` (general/grid core), and `pxc` (processing core). These are the `asic_sw::deepsea::{vxc,gxc,pxc}` namespaces, and they are densest here: B8 holds ~20k `vxc` + ~14k `gxc` + ~1.5k `pxc`; B9 holds ~46k `gxc` (its peak) + ~4.9k `pxc` + ~4.4k `vxc`. The codec class hierarchy is template-heavy — `SparseCoreTecCodecBase`, `TensorCoreCodecBase`, and the `platforms_deepsea::jellyfish::isa::{Encoder,Decoder}Base` templates — which is why function counts explode here: every codec instantiation generates a full set of encode/decode/validate methods.
 
 | Anchor (RTTI typeinfo string, `.rodata`) | Address | Pins | Confidence |
 |---|---|---|---|
@@ -152,12 +152,12 @@ A few subsystems span sections rather than living inside `.text`. They are liste
 | Vtable / typeinfo pool | `0x01884a00`–`0x084931d0` | `.lrodata` | RTTI typeinfo strings, vtable bodies, jump/dispatch tables (large code model) | CERTAIN |
 | String / constant pool | `0x084a0000`–`0x0be8af28` | `.rodata` | Log messages, op-name strings, flag tables, format strings | CERTAIN |
 | Protobuf descriptors | `0x0be8af30`–`0x0c1bf0b0` | `protodesc_cold` | Cold protobuf reflection metadata | CERTAIN |
-| Unwind tables | `0x0c2cc634`–`0x0e635524` | `.eh_frame*` | C++ exception unwind (~37 MiB) | CERTAIN |
+| Unwind tables | `0x0c2cc634`–`0x0e635524` | `.eh_frame*` | C++ exception unwind (~35 MiB) | CERTAIN |
 | Static constructors | `0x21217490`–`0x213818e4` | `.text.startup` | 2,886 init functions (dialect/flag/proto registration) | CERTAIN |
 | Cold / error paths | `0x21381900`–`0x213efe71` | `.text.unlikely`, `google_init_cold` | 2,923 cold-promoted functions | CERTAIN |
 | Relocated RO data | `0x215f81a0`–`0x22048b30` | `.data.rel.ro` | Vtable pointer arrays, RTTI base-class lists, the RTTI graph backbone | CERTAIN |
 
-> **GOTCHA —** the second ELF in the wheel, `sdk.so` (22.5 MiB, the Python/PJRT shim), is a *separate* shared object with its own independent VA space and its own `GetLibtpuSdkApi` export. Do not confuse `sdk.so`'s addresses with `libtpu.so`'s — they overlap numerically but mean nothing across the boundary. The two-binary split is documented in [`forensics/two-binary-split.md`](../forensics/two-binary-split.md). All addresses on *this* page are `libtpu.so` only.
+> **GOTCHA —** the second ELF in the wheel, `sdk.so` (21.5 MiB, the Python `sdk` module), is a *separate* shared object with its own independent VA space. Do not confuse `sdk.so`'s addresses with `libtpu.so`'s — they overlap numerically but mean nothing across the boundary. Note the naming trap: the `GetLibtpuSdkApi` C-ABI export lives *inside `libtpu.so`* (at `0x109028c0`), not in `sdk.so` — `sdk.so` is a Python module that neither exports nor imports it. The two-binary split is documented in [`forensics/two-binary-split.md`](../forensics/two-binary-split.md). All addresses on *this* page are `libtpu.so` only.
 
 ---
 
