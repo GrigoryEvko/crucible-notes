@@ -145,7 +145,7 @@ ConstructConfigForCollectiveUniDirNDGroups<AllGatherOffloadConfig, HloAllGatherI
 
 ### 2.1 `GetDimensionRings` — the per-axis ring partitioner
 
-`GetDimensionRings @0x133df520` is the per-axis worker that turns one `IciStrategyRingDim` plus the device count into a `RingConfigAttributes` POD. (It is inlined into the builder body in this build — it appears as the `@line 3104` insertion, not a standalone decompiled function.)
+`GetDimensionRings @0x133df520` is the per-axis worker that turns one `IciStrategyRingDim` plus the device count into a `RingConfigAttributes` POD. (It is its own out-of-line function — `xla::tpu::sparse_core::collective::(anonymous namespace)::GetDimensionRings(Target const&, IciStrategyRingDim, int, bool, bool)` — `call`ed from the builder body at the `@line 3104` site, not inlined.)
 
 ```text
 RingConfigAttributes GetDimensionRings(
@@ -156,6 +156,7 @@ RingConfigAttributes GetDimensionRings(
     bool                 megacore_aware): // r9
 
   1. validate ring_dim ∈ [1..7]                         (jump table)
+       RetCheck "dim_x || dim_y || dim_z"               (offload_collective_config.cc:417)
   2. select chip torus extent by ring_dim:
        X → [chip_cfg +0x58]   Y → [+0x5c]   Z → [+0x60]
        (set the mesh-vs-torus flag per switch arm)
@@ -188,7 +189,7 @@ guard:  if ((~hier_word & 0x101) == 0) { … }     @lines 3204, 3262
 
 The `(~hier_word & 0x101) == 0` test is true exactly when both the value bit and the engaged bit are set — i.e. the *hierarchical* discriminant `0x101`. That branch reaches the multi-phase deque walk and an associated validation error path. The flat path (`== 0x100`) is what AllGather/ReduceScatter hardwire, so in this build only AllReduce ever evaluates the hierarchical branch.
 
-> **[CONFIRMED]** The `& 0x101` mask at line 3032 and the `(~v & 0x101) == 0` discriminant at lines 3204/3262 are present byte-exact in the AllGather builder decompile; the `0x100` flat comparison sites are at lines 1970, 2284, 2916, 3548. The mechanism — flat single-ring per axis vs the queued multi-phase walk — is confirmed; the *contents* of the hierarchical AllReduce emission (how the intra-chip and inter-chip phase rings differ in `IciStrategyRingType`/neighbor) was not fully expanded — see [LOW] §6.
+> **[CONFIRMED]** The `& 0x101` mask at line 3032 and the `(~v & 0x101) == 0` discriminant at lines 3204/3262 are present byte-exact in the AllGather builder decompile; the `0x100` flat comparison sites (`(_DWORD)v615 == 256`) are at lines 3102 and 3525. The mechanism — flat single-ring per axis vs the queued multi-phase walk — is confirmed; the *contents* of the hierarchical AllReduce emission (how the intra-chip and inter-chip phase rings differ in `IciStrategyRingType`/neighbor) was not fully expanded — see [LOW] §6.
 
 ---
 
@@ -322,7 +323,7 @@ The twist gate is the bridge to the SparseCore twisted-torus path: when all thre
 > **[CONFIRMED]** Cross-checked against the IDA decompile of `libtpu.so` v0.0.40:
 > - **Templated signature** — the mangled symbol of all three instantiations carries `…bbNS3_16HierarchicalKindENSt3__u8optionalIbEESQ_NSP_IiEE` = `(…, bool, bool, HierarchicalKind, optional<bool>, optional<bool>, optional<int>) → StatusOr<CollectiveConfigInfo<T>>` — exact.
 > - **Body pipeline** — `CheckInputOutputNumberOfElementIsBelowLimit` (line 529), `GetPhysicalDeviceGroups` (552), `ExtractNDPlaneInfo` + `IsNDPlaneSpanAcrossEntireDimension` RetCheck (571/595), chip extents `v17 + 88/92/96` = `0x58/0x5c/0x60` (567-569), `TryCreateTwistedTorusTopologyInfo` (936), `GetDimensionRings` (3104), `CopyRuntimeConfigToProtoLiteral` (2641/3366) — all present in order.
-> - **HierarchicalKind dispatch** — `& 0x101` at line 3032; `(~v & 0x101) == 0` at lines 3204/3262; `0x100` flat sites at 1970/2284/2916/3548 — exact.
+> - **HierarchicalKind dispatch** — `& 0x101` at line 3032; `(~v & 0x101) == 0` at lines 3204/3262; `0x100` (`== 256`) flat sites at 3102/3525 — exact.
 > - **AllReduce wrapper** — `ShouldEnableSparseCoreHierarchicalAllReduce` (lines 18/35) combined with `0x101` (line 41); AG/RS wrappers (`0x133c76c0`/`0x133ccbe0`) hardwire `0x100` — exact.
 > - **OffloadConfig structs** — three byte-identical `sizeof 0x48` messages via ctors `0x1d6ee220`/`0x1d6ed860`/`0x1d6eebe0`; field offsets `+0x1c/+0x30/+0x38/+0x40-44`; the carried `CollectiveIciStrategyConfig` → `PerColorIciStrategyConfig` → `IciStrategyRingConfig` nest — confirmed.
 > - **Per-color appender** — lambda `@0x133e0a80` Adds `PerColorIciStrategyConfig` (line 38) then `IciStrategyRingConfig` (line 67) keyed by `color` (line 78) — exact.
@@ -331,7 +332,7 @@ The twist gate is the bridge to the SparseCore twisted-torus path: when all thre
 > **[LOW]** Two residuals were confirmed by *structure* but not by per-field numeric decode:
 > - The exact per-field byte offset of each of the 13 `IciStrategyRingConfig` scalars within `[+0x18..0x50]`: the field *set* and the 13 has-bits (`0x1..0x1000`) are byte-exact, but which byte holds `ring_type` vs `core_count` vs `barrier_id` etc. was not individually pinned.
 > - The three `RingConfigAttributes` fields (`{flag/int, lo, hi}`, the flat_map value): proven a `0x18`-byte POD copied verbatim into each ring, but the semantic of the three fields (ring length vs segment count vs neighbor stride) was traced only to the deque-tuple correspondence, not separately named.
-> - The hierarchical (non-`0x100`) AllReduce multi-phase emission `@0x133c8e80`: the deque-block iterator and per-phase append are confirmed, but how the intra-chip vs inter-chip phase rings differ (their `IciStrategyRingType` / neighbor) was not expanded — only AllReduce reaches it and the flag is off by default in the wrappers observed.
+> - The hierarchical (non-`0x100`) AllReduce multi-phase branch — an in-body branch of the AllReduce builder `@0x133c2dc0` reached from the `(~v & 0x101) == 0` discriminant at AllReduce decompile line 3142 (its `MakeErrorStream` cites `offload_collective_config.cc:1616` at line 3144): the deque-block iterator and per-phase append are confirmed, but how the intra-chip vs inter-chip phase rings differ (their `IciStrategyRingType` / neighbor) was not expanded — only AllReduce reaches it and the flag is off by default in the wrappers observed.
 
 ---
 
