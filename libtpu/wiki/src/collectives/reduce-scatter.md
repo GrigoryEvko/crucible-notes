@@ -14,9 +14,9 @@ of `P` participants) every participant owns exactly one fully-reduced `1/P` shar
 
 The binary does **not** carry a standalone hand-tuned reduce-scatter emitter. ReduceScatter is
 realized through the **`AllReduce = ReduceScatter + AllGather`** decomposition that the
-TensorCore collective stack is built around: the cost model charges `reduce-scatter` (HLO opcode
-`93`) through the **same AllReduce-family branch** as `all-reduce`, and the SparseCore-offload
-substrate builds a `ReduceScatterOffloadConfig` whose `CollectiveIciStrategyConfig` is produced by
+TensorCore collective stack is built around: dedicated HLO passes (`AllReduceReduceScatterReorder`,
+`ReduceScatterReassociate`, `ReduceScatterLegalizer`) operate on exactly this boundary, and the
+SparseCore-offload substrate builds a `ReduceScatterOffloadConfig` whose `CollectiveIciStrategyConfig` is produced by
 the **same templated ring builder** as AllGather and AllReduce. This page documents the ring
 reduce-scatter loop, the RS+AG = AR decomposition identity, the per-step reduce, and the
 RS-specific SC-offload path; it links the AllGather half, the hierarchical AllReduce, and the
@@ -30,9 +30,11 @@ Contract of ReduceScatter as observed in the binary:
   shape — the operand is the full pre-scatter tensor.
 - **ReduceScatter is the reduce phase of AllReduce.** `AllReduce(x) = AllGather(ReduceScatter(x))`:
   RS produces the per-participant reduced shard, AllGather concatenates the shards back to a full
-  replicated tensor. The cost model encodes this directly — the bandwidth term is `B = 2 ·
-  operand_size` (one `operand_size` for the RS phase + one for the AG phase), divided over the
-  active torus axes.
+  replicated tensor. The compiler treats RS and AR as two faces of one operation — the dedicated
+  reorder/reassociate/legalize HLO passes operate on this boundary. The *dense* all-reduce cost
+  branch charges `B = 2 · operand_size` (one `operand_size` for the RS phase + one for the AG
+  phase), divided over the active torus axes; the *SC-offload* reduce-scatter cost is charged
+  separately, over the per-color ring phases the config builder emits (`§3`).
 - **The SC-offload ReduceScatter path is pinned FLAT.** `ConstructConfigForReduceScatterUniDirND`
   @`0x133ccbe0` calls the templated builder with `HierarchicalKind = 0x100` (engaged + false =
   explicitly flat) — RS gets one EXPLICIT-neighbor ring per torus axis, never the multi-phase
@@ -45,9 +47,9 @@ Contract of ReduceScatter as observed in the binary:
 | Aspect | Value | Source |
 |--------|-------|--------|
 | HLO opcode | `reduce-scatter` = `93` | cost-model jump table @`0x130abfc0` (`v96 == 93`) |
-| Decomposition identity | `AllReduce = AllGather ∘ ReduceScatter` | cost `B = 2·operand_size`; `AllReduceReduceScatterReorder` / `ReduceScatterLegalizer` passes |
-| Cost branch | AllReduce-family (`ComputeAllReduceCycles` @`0x130d0040`) | `GetCollectiveCycles` cases `9/11/93` |
-| Bandwidth term | `B = 2 · ShapeSize(operand0)`, over `num_dims = popcnt(active axes)` | `GetCollectiveCycles` (`v460 = 2*ShapeSize`; `__popcnt(v465 & 7)`) |
+| Decomposition identity | `AllReduce = AllGather ∘ ReduceScatter` | `AllReduceReduceScatterReorder` / `ReduceScatterReassociate` / `ReduceScatterLegalizer` passes (nm-confirmed); dense AR branch charges `B = 2·operand_size` |
+| Cost branch | SC-offload ring charge (NOT the dense AR branch) | `GetCollectiveCycles` second switch `case 93` @ line 902; opcode `93` is absent from the first (dense) switch and falls to `goto LABEL_447` |
+| Cost numerator | `v92 = ShapeSize(operand0)` (the `v96 == 93` branch reads operand 0), charged over the emitted per-color ring phases | `GetCollectiveCycles` (`v92 = GetShapeSize(v93+88)` @ line 868, `v93 = operand(a2,0)` @ line 853) |
 | Ring shape | unidirectional, length `P`, `P-1` steps, `1/P` shard/step | AR-family decomposition + SC `IciStrategyRingType` UNIDIR |
 | SC-offload builder | `ConstructConfigForCollectiveUniDirNDGroups<ReduceScatterOffloadConfig,…>` @`0x133cd800` | nm-confirmed symbol |
 | SC-offload ND wrapper | `ConstructConfigForReduceScatterUniDirND` @`0x133ccbe0` | calls builder with `HierarchicalKind = 256` (FLAT) |
@@ -96,17 +98,20 @@ the RS phase and the AG phase as the **same transfer volume** — both move `(P-
 bytes around the ring — but only RS performs the reduction arithmetic on each landed shard.
 
 On the TPU torus the ring is laid over a torus axis (X/Y/Z). For a multi-dimensional reduce-scatter
-the ring is run **per active torus axis** (one ring per dimension the replica-groups span), which is
-where the `num_dims` term in the cost model (`§3`) comes from. The per-axis ring direction is
+the ring is run **per active torus axis** (one ring per dimension the replica-groups span) — the same
+per-axis structure the dense all-reduce cost branch counts with its `num_dims = popcnt(active axes)`
+term (`§2.1`). The per-axis ring direction is
 unidirectional — the SC-offload substrate names it explicitly (`ICI_RING_TYPE_UNIDIR_CW` /
 `ICI_RING_TYPE_UNIDIR_CCW`), and the dense substrate runs the same per-color ring decomposition via
 `StrategyND`'s `UniDirectionNDRingStrategy`.
 
-> **[CONFIRMED]** The RS opcode (`93`) and its operand/output shape handling are byte-anchored in
+> **[CONFIRMED]** The RS opcode (`93`) and its shape handling are byte-anchored in
 > `CostModel::GetCollectiveCycles` @`0x130abfc0`: `v96 = *((_BYTE *)a2 + 12)` (the opcode), the
-> `if (v96 == 93)` branch @ line 859 reads the **output** shape (`GetShapeSize(v93+88)`) for the
-> per-shard size, distinct from the `v96 == 9` (all-reduce) branch which reads the operand at
-> `a2+11`. The unidirectional per-axis ring decomposition is the shared AR-family ring (`§3`).
+> `if (v96 == 93)` branch @ line 859 reads **operand 0's** shape (`v154 = *(v93+88)`,
+> `v93 = operand(a2,0)` @ line 853; `v92 = GetShapeSize(v154)` @ line 868) for the cost numerator,
+> then `goto LABEL_113`. The `v96 == 9` (all-reduce) branch instead reads the instruction's own
+> result shape at `a2+88` (`*((_QWORD *)a2 + 11)`) — which for all-reduce equals the operand. The
+> unidirectional per-axis ring decomposition is carried by the SC-offload ring config (`§4`).
 > **[LOW]** The exact `(i - t - 1) mod P` shard-index schedule and the `P-1` step count are the
 > standard ring-reduce-scatter algorithm — confirmed *structurally* (UNIDIR ring + per-shard
 > output-size transfer + the `2·operand_size` AR-family cost) but the precise per-step shard
@@ -131,25 +136,31 @@ AllReduce(x)  ≡  AllGather( ReduceScatter(x) )
 
 This identity is not merely descriptive — it is **encoded in three places** in the binary:
 
-### 2.1 The cost model encodes `B = 2 · operand_size`
+### 2.1 The dense all-reduce branch encodes `B = 2 · operand_size`
 
-`reduce-scatter` (`93`), `all-reduce` (`9`), and `all-reduce-start` (`11`) all route to the **same**
-AllReduce-family cost branch in `GetCollectiveCycles`. The bandwidth term computed there is `B = 2 ·
-operand_size`, the sum of the RS-phase volume and the AG-phase volume:
+`all-reduce` (`9`) and `all-reduce-start` (`11`) share one jump-table branch (`case 9:`/`case 11:`)
+in the *first* (dense) switch of `GetCollectiveCycles`. The bandwidth term computed there is `B = 2 ·
+operand_size`, the algebraic sum of the RS-phase volume and the AG-phase volume — the cost-model
+expression of the `AllReduce = AllGather ∘ ReduceScatter` decomposition:
 
 ```text
-GetCollectiveCycles @0x130abfc0  (AllReduce-family branch, shared by RS opcode 93)
-    v460 = 2 * ShapeSize;                 // B = 2 · operand_size  (RS phase + AG phase)
+GetCollectiveCycles @0x130abfc0  (dense all-reduce branch, case 9/11 — NOT reduce-scatter)
+    ShapeSize = GetShapeSize(operand0);   // @line 582 (case 9/11), operand 0 size
+    v460 = 2 * ShapeSize;                 // @line 674: B = 2 · operand_size  (RS phase + AG phase)
     ...
-    ShapeSize *= 2;                       // the bidirectional doubling preserved through the ND path
-    __popcnt((unsigned __int8)v465 & 7);  // num_dims = popcount of active torus axes (mask 0x7 = X/Y/Z)
-    // cycles ≈ B / (num_dims · eff_Bps),  eff_Bps = IciGigabytesPerSecond()·0.5·1e9
+    ShapeSize *= 2;                       // @line 707: the doubling preserved through the ND path
+    __popcnt((unsigned __int8)v465 & 7);  // @line 727: num_dims = popcount of active axes (mask 0x7 = X/Y/Z)
+    // cycles ≈ B / (num_dims · eff_Bps)
 ```
 
-The `2·` factor is the algebraic statement of the decomposition: every all-reduce (and therefore
-every reduce-scatter, which is one half of it) pays one operand-size of ring traffic for the reduce
-phase and one for the gather phase, spread over `num_dims` active torus axes. There is **no additive
-latency term** in this branch — the AR-family cost is pure bandwidth (consistent with the overview's
+Reduce-scatter (opcode `93`) does **not** enter this branch: `93` is absent from the first switch
+and would fall to its `goto LABEL_447` exit. RS reaches the cost model only as a SparseCore-offload
+instruction, through the *second* switch (`case 93:`, `§3`), where the cost numerator is
+`v92 = ShapeSize(operand0)` charged over the emitted per-color ring phases — there is no `2·` factor
+on the RS path. The `2·` factor on the AR path is nevertheless the algebraic statement of the
+decomposition: an all-reduce pays one operand-size of ring traffic for the reduce phase and one for
+the gather phase, spread over `num_dims` active torus axes. There is **no additive
+latency term** in the AR branch — it is pure bandwidth (consistent with the overview's
 "no additive latency term in any collective branch"). The full per-kind formula and the ICI
 resource-slot deposits live in [SPMD Link-Count Cost](spmd-link-count-cost.md).
 
@@ -177,37 +188,44 @@ IciStrategyRingConfig` tree. The structural identity is the proto-level expressi
 RS/AG/AR family sharing one ring representation. The full layout is on
 [SC-Offload Config Builder](sc-offload-config-builder.md).
 
-> **[CONFIRMED]** The `2·` bandwidth factor (`v460 = 2 * ShapeSize`, then `ShapeSize *= 2`) and the
-> `__popcnt(… & 7)` num-dims term are byte-anchored in `GetCollectiveCycles` @`0x130abfc0`. The
-> reorder/legalize passes are nm-confirmed symbols. The byte-identical `ReduceScatterOffloadConfig`
-> layout (sizeof `0x48`, vtable `0x21ce1c60`) is confirmed via its ctor @`0x1d6eebe0`.
+> **[CONFIRMED]** The `2·` bandwidth factor (`v460 = 2 * ShapeSize` @ line 674, then `ShapeSize *= 2`
+> @ line 707) and the `__popcnt(… & 7)` num-dims term @ line 727 are byte-anchored in
+> `GetCollectiveCycles` @`0x130abfc0` — in the dense `case 9:`/`case 11:` (all-reduce) branch, not on
+> the reduce-scatter path. The `AllReduceReduceScatterReorder` / `ReduceScatterReassociate` /
+> `ReduceScatterLegalizer` passes are nm-confirmed symbols. The byte-identical
+> `ReduceScatterOffloadConfig` layout (sizeof `0x48`, vtable `0x21ce1c60`) is confirmed via its ctor
+> @`0x1d6eebe0`.
 
 ---
 
 ## 3. The per-step reduce and the cost shape
 
 The arithmetic that makes RS *reduce* rather than *gather* is the in-place fold at each landed
-shard (`§1` step 2). Although the per-element reduction op runs on the TensorCore datapath rather
-than appearing as a discrete cost term, the cost model accounts for the RS phase's transfer volume
-explicitly, and the shard-size derivation in `GetCollectiveCycles` is RS-specific:
+shard (`§1` step 2). The per-element reduction op runs on the TensorCore datapath rather than
+appearing as a discrete cost term; the cost model accounts only for the transfer volume. The
+size-derivation `switch` in `GetCollectiveCycles` is shared by the three SC-offload collectives
+(opcodes `93`, `9`, `6`), and reduce-scatter takes the simplest leg of it:
 
 ```text
-GetCollectiveCycles @0x130abfc0  (shard-size derivation, lines ~853-888)
-    v93   = HloInstruction::operand(a2, 0)                 // operand 0
-    v94   = GetShapeSize(operand0)                         // full pre-scatter size
-    v96   = opcode
-    if (v96 == 93)            v92 = GetShapeSize(OUTPUT)   // RS: per-participant shard = output shape
-    else if (v96 == 9)        v92 = GetShapeSize(a2+11)    // AR: full operand again
-    else { /* opcode 6 = all-gather, else FATAL "Unsupported collective opcode" */ }
-    // general N-shard path:
-    v98 = result_size / operand_size                       // shard fraction
-    v92 = operand0_size · (v98 - 1)                        // ring traffic = (P-1)/P · size
+GetCollectiveCycles @0x130abfc0  (size derivation, lines 853-888)
+    v93 = HloInstruction::operand(a2, 0)                   // operand 0          (line 853)
+    v94 = v95 = GetShapeSize(operand0)                     // full pre-scatter size (line 854)
+    v96 = opcode                                           // a2+12              (line 858)
+    if (v96 == 93)       v92 = GetShapeSize(v93+88) ──────►// RS: OPERAND 0 size  (line 868) ; goto LABEL_113
+    else if (v96 == 9)   v92 = GetShapeSize(a2+88)  ──────►// AR: result shape (== operand) ; goto LABEL_113
+    else if (v96 != 6)   FATAL("Unsupported collective opcode")
+    // opcode 6 = all-gather only — falls through to the shard-fraction path:
+    v97 = GetShapeSize(a2+88)                              // AG: result shape   (line 883)
+    v98 = v97 / v95                                        // shard fraction = result / operand
+    v92 = GetShapeSize(operand0) · (v98 - 1)               // AG ring traffic    (line 888)
 ```
 
-The `v96 == 93` branch reads the **output** shape for the per-shard size because reduce-scatter's
-result is `1/P` of its operand — the output shape *is* the shard. (All-reduce, by contrast, has
-output == operand, so it reads the operand again.) The `operand0_size · (v98 − 1)` form is the
-`(P-1)/P · size` ring-traffic identity written out: a `P`-participant ring moves `P-1` shards.
+The `v96 == 93` branch reads **operand 0's** shape (`v93+88`, `v93 = operand(a2,0)`) and jumps
+straight to `LABEL_113` — the cost numerator for reduce-scatter is the full operand size, which the
+later loop divides over the emitted ring phases. (All-reduce reads `a2`'s own result shape at
+`a2+88`; for AR that equals the operand.) The `operand0_size · (v98 − 1)` shard-fraction form is the
+**all-gather** leg (opcode `6`), reached only when neither `93` nor `9` matches — it is *not* on the
+reduce-scatter path.
 
 For the **SparseCore-offload** path, the cost model probes `GetCollectiveOffloadConfig`
 @`0x133e1740` and, for opcode `93`, dereferences the `reduce_scatter_offload_config()` and asserts
@@ -231,10 +249,12 @@ When the SC config is present the cost charges the per-color UNIDIR ring set the
 not the dense TC operating point — the same probe-and-charge the overview describes for the SC
 substrate.
 
-> **[CONFIRMED]** The RS-specific shard-size branch (`v96 == 93` → output-shape size) and the
-> `operand0_size · (v98 - 1)` ring-traffic form are byte-anchored at `GetCollectiveCycles`
-> @`0x130abfc0` lines ~859 / ~888. The `case 93:` SC-offload probe reading
-> `ReduceScatterOffloadConfig` with the `& 2` (`has_ici_strategy_config`) hasbit is at line ~902.
+> **[CONFIRMED]** The RS size branch (`v96 == 93` → `GetShapeSize(operand0)`, line 868, jumping
+> straight to `LABEL_113`) is byte-anchored at `GetCollectiveCycles` @`0x130abfc0` lines 859/868;
+> the `operand0_size · (v98 - 1)` shard-fraction form @ line 888 belongs to the **all-gather**
+> (opcode `6`) leg, not RS. The `case 93:` SC-offload probe reading `ReduceScatterOffloadConfig`
+> with the `& 2` (`has_ici_strategy_config`) hasbit is at decompile line 902 (source `cost_model.cc`
+> line 702).
 
 ---
 
