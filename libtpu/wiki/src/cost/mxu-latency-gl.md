@@ -110,7 +110,7 @@ The `Vlxmr` (vector-latch-into-MRB) and `Matres` (matrix-result-read) families t
 | `Matres` | `1,2,3,4` | `{res4: 2}` | `@0xb43bfd8` | CERTAIN |
 | `Matres` | `5,6,7,8` | `{res4: 1}` | `@0xb43bfe0` | CERTAIN |
 
-The MSR-driven matpush walk reads the GL `kMsrs` list `{1,2,3,3,4,5,6,7,8}` at `@0xb43bfb4`; the inline matpush value-set bytes are `{0,0,1,1,9,0,3,7,a,8,a,4,3,3,3,3,1,1,2,2,3,3}` at `@0xb43bfec`. These are the v6e-specific MxuResource indices — the `array<int,11>` resource numbering differs from Viperfish's `array<int,19>`, so the *physical* sub-unit at a given index is not shared between the two generations.
+The MSR-driven matpush walk reads the GL `kMsrs` list `{1,2,3,3,4,5,6,7,8}` at `@0xb43bfb4`; the inline matpush value-set bytes are `{0,0,1,1,9,0,3,7,a,8,a,4,3,3,3,3,1,1,2,2,3,3}` at `@0xb43bfe8`. These are the v6e-specific MxuResource indices — the `array<int,11>` resource numbering differs from Viperfish's `array<int,19>`, so the *physical* sub-unit at a given index is not shared between the two generations.
 
 > **NOTE —** the MxuResource enum has **no** `ToString` in the binary; the indices `0..10` are used numerically throughout. They are the MXU-internal sub-units (gain array, staging registers A/B, MRB read port, matmul-issue slot), distinct from the higher-level 23-slot `ResourceVector` of [`resource-enum`](resource-enum.md). Index-to-physical-unit binding for GL is by position only (MEDIUM).
 

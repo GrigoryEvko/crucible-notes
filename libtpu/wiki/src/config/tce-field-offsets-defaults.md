@@ -80,8 +80,8 @@ Three offsets that were previously pinned by hand-disassembling consumer gates r
 | Field# | Name | Index | Offset | Source of cross-check | Confidence |
 |---|---|---|---|---|---|
 | #132 | `xla_tpu_verify_or_assign_tiling_before_lowering` | 120 | `+0xDFC` | hand-pinned accessor gate | CERTAIN |
-| #648 | `xla_tpu_post_optimization_pipeline` (region) | 591 | `+0x1328` | hand-pinned accessor gate | CERTAIN |
-| #867 | `xla_tpu_enable_pipelined_loop_unroll` (region) | 787 | `+0x2f0` | hand-pinned accessor gate | CERTAIN |
+| #648 | `xla_while_loop_unroll_count` (int64) | 591 | `+0x1328` | parse-table FieldEntry[591] | CERTAIN |
+| #867 | `xla_tpu_enable_pipelined_loop_unrolling` (message) | 787 | `+0x2f0` | parse-table FieldEntry[787] | CERTAIN |
 
 > **CORRECTION (OFFMAP-1) —** an earlier ad-hoc analysis placed field **#2** (`xla_tpu_sdc_checker_instrument_megacore_fusion`, bool) "in the `+0x1206` region". The parse table places #2 at `+0xBC`. `+0x1206` (4614) is a *different* field — the collective-producer "must-fuse" bool that the producer-priority cost model reads. The hedged "region" attribution was imprecise; the `FieldEntry` array resolves it to the byte.
 
