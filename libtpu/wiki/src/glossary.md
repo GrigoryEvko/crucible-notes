@@ -6,7 +6,7 @@
 
 This is the canonical definition source for every acronym, codename, and term the rest of this wiki uses. It exists so that no other page has to re-define `MXU`, `SCS`, `Mosaic`, or `gfc` in passing — they link here, and here each term gets a tight one-to-three-sentence definition plus a pointer to the deep page that owns it. A reader who lands mid-graph on a page about, say, the SparseCore tile-execute sequencer can resolve `TEC`, `Spmem`, and `vex` here in seconds and then follow the link to the page that documents the mechanism.
 
-The entries are grouped by domain — **Silicon & Codenames**, **Compute Units**, **Memory Spaces**, **Compiler & IR**, **ABI & Runtime**, **Collectives & Network**, **Profiling**, and **Reverse-Engineering Terms** — and within each group they read as a definition list. Every term that is a concrete binary fact (a codec namespace, a sequencer ordinal, a C-API struct) was re-confirmed against the binary's name and string tables before being defined; terms that are *external* facts (the marketing name "Trillium", the conventional acronym "PSUM") or that are *inferred* carry an explicit `(inferred)` or `(not in binary)` tag rather than a fabricated anchor.
+The entries are grouped by domain — **Silicon & Codenames**, **Compute Units**, **Memory Spaces**, **Compiler & IR**, **ABI & Runtime**, **Collectives & Network**, **Profiling**, and **Reverse-Engineering Terms** — and within each group they read as a definition list. Every term that is a concrete binary fact (a codec namespace, a sequencer ordinal, a C-API struct) is anchored to the symbol, namespace, or ELF section that grounds it; terms that are *external* facts (the marketing name "Trillium", the conventional acronym "PSUM") or that are *inferred* carry an explicit `(inferred)` or `(not in binary)` tag rather than a fabricated anchor.
 
 Two structural traps recur often enough to be worth stating before the body: a single TPU generation wears at least seven names spread across **three numerically-disjoint integer axes** (`TpuVersion`, `DeviceType`, `TpuVersionProto`), and the SparseCore sequencer enum exists in **two off-by-one numberings** (codec-template vs proto/runtime). Both are defined below and flagged where a reimplementer is most likely to index the wrong table.
 
@@ -29,7 +29,9 @@ For navigation, the contract is:
 
 ## Silicon & Codenames
 
-Three orthogonal naming systems describe one chip: the **codec/ISA codename** (a two-or-three-letter tag baked into namespaces), the **fish codename** (a marketing-adjacent internal name in `.rodata`), and the **public Cloud name** (`v2`…`tpu7x`). The codec codenames nest two levels deep under `asic_sw::driver::deepsea::` — a *family* tag (`jxc`/`pxc`/`vxc`/`gxc`) then a fetch/load *sub-core* tag. All counts below are confirmed hits in the name table unless tagged.
+Three orthogonal naming systems describe one chip: the **codec/ISA codename** (a two-or-three-letter tag baked into namespaces), the **fish codename** (a marketing-adjacent internal name in `.rodata`), and the **public Cloud name** (`v2`…`tpu7x`). The codec codenames nest two levels deep under `asic_sw::driver::deepsea::` — a *family* tag (`jxc`/`pxc`/`vxc`/`gxc`) then a fetch/load *sub-core* tag.
+
+> **NOTE —** the `(N hits)` figures throughout this page are **name-table / sidecar substring hits** — every occurrence of the token across the symbol-name index — not the deduped `nm` symbol counts. They are an order-of-magnitude relevance signal for "how much of the binary mentions this term," not a count of distinct functions or classes; a single class can contribute hundreds of hits through its members, vtables, and type-info strings. For a deduped population (e.g. the RTTI `_ZTI`/`_ZTV`/`_ZTS` census) use the [Forensics Overview](forensics/overview.md), which reports the `nm`-deduped totals. Do not add these hit counts together or read them as cardinalities.
 
 | Term | Definition |
 |---|---|
@@ -116,9 +118,7 @@ The compiler ingests a high-level graph (HLO / StableHLO), lowers it through MLI
 | **autotune** | The cache that memoizes best-found kernel configs (`Autotune*`, 610 hits; `autotune_results`, 8 hits). Cache mode is `READ`/`UPDATE`/`UNSPECIFIED`; invalidation is the user's responsibility. See [Fusion Cost Model](compiler/fusion-cost-model.md). |
 | **SymbolicTile / IndexingMap** | The tiling cost-model primitives: a `SymbolicTile` is an `IndexingMap` triple (offset-map, size-map, stride-map) describing how a tile maps to a tensor (`SymbolicTile*` 272, `IndexingMap*` 8,014 hits). Used by the loop-tiling and fusion passes. |
 | **addrspacecast** | The MLIR/LLVM address-space cast op (`addrspacecast*`, 1,578 hits) — the lowering that re-typed a pointer between memory spaces (notably the SparseCore fat-pointer spaces). See [AddrSpaceCast ISel](sparsecore/addrspacecast-isel.md) and [Fat Pointers AS7/8/9](sparsecore/fat-pointers-as789.md). |
-| **walrus** | An IR/compiler term carried in upstream context but with **zero occurrences** in this binary (name and string tables, case-insensitive). `(not in binary)` — do not anchor any claim to it; if a feature was attributed to "walrus", re-derive it from a grounded symbol before citing. |
-
-> **CORRECTION (GLOSS-1) — "walrus" is not present in `libtpu.so`.** Prior scratch context listed `walrus` among the IR/compiler terms. A case-insensitive search of both the name and string tables returns nothing. It is retained here only as a flagged absence so later pages do not silently treat it as binary-grounded.
+| **walrus** | A term sometimes attached to the pass-pipeline driver, but with **zero occurrences** in this binary (name and string tables, case-insensitive). `(not in binary)` — do not anchor any claim to it; the pass-pipeline driver is grounded as the ordinary `xla::HloPassPipeline`. If a feature was attributed to "walrus", re-derive it from a grounded symbol before citing. |
 
 ---
 

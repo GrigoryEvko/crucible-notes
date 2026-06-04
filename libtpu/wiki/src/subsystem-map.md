@@ -214,7 +214,7 @@ Three binding mechanisms hold the nine subsystems together, and each is the seam
 | All layers ↔ memory | The shared memory-space enum + per-pool allocators | [`isa/memory-space-enum.md`](isa/memory-space-enum.md) |
 | Process startup | `.init_array` (~2,900 ctors) → `init_proc` → plugin discovery | [`lifecycle/elf-entry-and-init-proc.md`](lifecycle/elf-entry-and-init-proc.md) |
 
-The single most important structural fact is that **the version (`TpuVersion`) is the master key**. It is the dimension along which the ISA encoders, the cost-model latency tables, the schedulers' resource models, and several memory defaults all fan out. A reimplementation that hardcodes one generation will silently mis-encode, mis-cost, and mis-schedule the others; the per-gen dispatch is the architecture, not an afterthought. The [forensics](forensics/overview.md) Part documents the per-gen dispatch machinery directly.
+The single most important structural fact is that **the version (`TpuVersion`) is the master key** (the [Codename Cheat-Sheet](front/codename-cheatsheet.md) binds it to every other naming axis). It is the dimension along which the ISA encoders, the cost-model latency tables, the schedulers' resource models, and several memory defaults all fan out. A reimplementation that hardcodes one generation will silently mis-encode, mis-cost, and mis-schedule the others; the per-gen dispatch is the architecture, not an afterthought. The [forensics](forensics/overview.md) Part documents the per-gen dispatch machinery directly.
 
 ## Cross-References
 
@@ -237,4 +237,6 @@ The single most important structural fact is that **the version (`TpuVersion`) i
 - [`config/overview.md`](config/overview.md) — XLA flags, DebugOptions, and the TPU compilation environment
 - [`lifecycle/overview.md`](lifecycle/overview.md) — ELF entry, static init, plugin discovery, `TfTpu_Initialize` bootstrap
 - [`forensics/overview.md`](forensics/overview.md) — ELF anatomy, address-band derivation, per-gen dispatch, embedded-library atlas
+- [Glossary](glossary.md) — definitions of every acronym and codename the subsystem descriptions use
+- [Codename Cheat-Sheet](front/codename-cheatsheet.md) — the `TpuVersion` master-key axis this map's per-gen dispatch fans out on
 - [back to index](index.md) — Part 0 — Reference Apparatus

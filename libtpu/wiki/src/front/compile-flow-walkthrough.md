@@ -44,7 +44,7 @@ The seven IR levels our matmul passes through, the dialect each speaks, the key 
 | — | Mosaic `tpu` import | `mlir::tpu` MLIR | `createLowerToLLOPass` (`0x11203ba0`); imported via `GetMlirModuleOpFromCustomCall` (`0x13e327a0`) | M | [tpu → LLO ODS](../compiler/tpu-to-llo-ods.md) · [Mosaic Overview](../compiler/mosaic-overview.md) | HIGH |
 | — | XLA XTile codegen | `xla::xtile` MLIR | `StablehloLowerToXtilePass` (`0x15060560`) | X | [MHLO/XTile/tpu Lowering](../compiler/mhlo-xtile-tpu-lowering.md) | HIGH |
 
-> **GOTCHA —** rows 0–7 are the path the traced matmul actually walks. The last two rows are *bundled but off-path*: a plain `kDot` never visits the `tpu` dialect or XTile. The `tpu` dialect appears only for Pallas/Mosaic kernels that the framework already authored as serialized MLIR; XTile is the XLA CPU/GPU backend's tiled-fusion codegen, depending only on the LLVM/CPU dialect set. Confusing either for "the TPU lowering of MHLO" is the single most common error in reading this compiler.
+> **GOTCHA —** rows 0–7 are the path the traced matmul actually walks. The last two rows are *bundled but off-path*: a plain `kDot` never visits the `tpu` dialect or XTile. The `tpu` dialect appears only for Pallas/Mosaic kernels the framework hands in as serialized MLIR; XTile is the XLA CPU/GPU backend's tiled-fusion codegen, depending only on the LLVM/CPU dialect set. Confusing either for "the TPU lowering of MHLO" is the single most common error in reading this compiler.
 
 ---
 
@@ -102,7 +102,7 @@ A scheduled HLO graph still says nothing about *where* each buffer lives. Memory
 
 ## Stage 5 — HLO → LLO: the emitter wall (and where MHLO does *not* go)
 
-This is the genuinely TPU-specific descent and the stage most likely to be mis-described. The scheduled, laid-out, memory-assigned HLO graph is lowered **straight to LLO** — the TPU's low-level VLIW IR — by hundreds of C++ `*Emitter` classes, each owning one HLO op family and building LLO into a region via `xla::jellyfish::LloRegionBuilder`. There is **no MHLO→`tpu`-dialect conversion pass** for general programs; the `tpu` MLIR dialect is authored only by the Pallas/Mosaic frontend and imported separately (see the callout below).
+This is the genuinely TPU-specific descent and the stage most likely to be mis-described. The scheduled, laid-out, memory-assigned HLO graph is lowered **straight to LLO** — the TPU's low-level VLIW IR — by hundreds of C++ `*Emitter` classes, each owning one HLO op family and building LLO into a region via `xla::jellyfish::LloRegionBuilder`. There is **no MHLO→`tpu`-dialect conversion pass** for general programs; the `tpu` MLIR dialect is produced only by the Pallas/Mosaic frontend and imported separately (see the callout below).
 
 Our `bf16` matmul reaches the systolic array through one descent shared with convolution: an upstream pass rewrites `kDot` into `kConvolution`, so a single lowering serves both. A per-window tile-cost comparator picks the systolic tiling, an emission-strategy dispatch (`GetEmitFunctorFromEmitFunctorEnum` `0x130e8de0`, a 19-case `switch`) selects one of the MXU strategies, and the codegen body `xla::jellyfish::MatrixMultiplyAccumulateFunctor::operator()` (`0x1310cd80`, which takes an `LloRegionBuilder`) produces a tiled loop nest of LLO matmul ops. The matmul atom is a strict 3-or-4-instruction sequence per native chunk — `llo.vmatprep` → `llo.vmatmul` → (optional pack) → `llo.vmatres` (the `kVectorMatprep*` / `kVectorMatmul` / `kVectorMatres` opcode band). The data-format choice (`bf16×bf16→f32` vs. an `f8` or `int8` variant) and the MXU register-bank assignment are selected here from the operand element types and the `Target` — the second place silicon-specific behavior enters, now at instruction granularity. Elementwise ops fused onto the matmul lower through the scalar/vector LLO atom tables; LLO-level allocation (`LloAllocation`, an interval-tree live-range allocator) and region analysis run as part of this stage.
 
@@ -170,8 +170,10 @@ Each stage above is a single paragraph over a deep page; this section is the ind
 - [Dot/Conv → MXU Lowering](../compiler/dot-conv-mxu-lowering.md) — Stage 5; the matmul emitter wall in full
 - [LLO Opcode Enum](../isa/llo-opcode-enum.md) — the LLO IR our matmul becomes at Stage 5
 - [tpu → LLO ODS](../compiler/tpu-to-llo-ods.md) — the off-path Mosaic `tpu`-dialect import that rejoins at LLO
-- [MHLO/XTile/tpu Lowering](../compiler/mhlo-xtile-tpu-lowering.md) — the off-path XTile (CPU/GPU) tree and the two-tree correction
+- [MHLO/XTile/tpu Lowering](../compiler/mhlo-xtile-tpu-lowering.md) — the off-path XTile (CPU/GPU) tree and the two-tree split
 - [LLO Bundle Packing](../sched/llo-bundle-packing.md) — Stage 6; greedy slot-fill list scheduling
 - [Bundle Model Overview](../isa/bundle-model-overview.md) — Stage 7; the per-gen wire-format model
 - [Codename Cheat-Sheet](codename-cheatsheet.md) — the generation names this page uses for silicon-specific behavior
 - [How to Read This Book](how-to-read.md) — evidence conventions and the confidence labels used throughout
+- [Glossary](../glossary.md) — definitions of the IR and unit terms (LLO, MXU, VMEM, bundle) this walkthrough leans on
+- [Subsystem Map](../subsystem-map.md) — where the compiler stage traced here sits among the nine subsystems

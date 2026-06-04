@@ -129,7 +129,7 @@ The reconstruction used a small, conventional static-analysis toolchain. No dyna
 | **`strings`** | system | `.rodata` literal recovery (version pins, format markers, error text) at byte offsets — e.g. the LLVM/MLIR version literals. |
 | **Sidecar-extraction pipeline** | project-internal | Serializes IDA's per-function output (disassembly, decompiled C, CFGs, types, xrefs) into machine-readable sidecars that the cross-validation passes consume; described in [Methodology](methodology.md). |
 
-> **NOTE (tooling) —** IDA's symbol-table read is a hypothesis source, not ground truth. Because `libtpu.so` is not stripped, identifiers arrive demangled from `.symtab`; the book treats every such name as a claim to be confirmed against the decompiled body before it is graded above MEDIUM confidence. See [Methodology](methodology.md) for the adversarial cross-validation discipline.
+> **NOTE (tooling) —** IDA's symbol-table read is a hypothesis source, not ground truth. Because `libtpu.so` is not stripped, identifiers arrive demangled from `.symtab`; the book treats every such name as a claim to be confirmed against the decompiled body before it is graded above MEDIUM confidence. See [Methodology](methodology.md) for the cross-validation discipline that confirms names against bodies.
 
 ---
 
@@ -189,3 +189,5 @@ These public references frame what the binary *is* — the host-side API it impl
 - [LLVM/MLIR Manifest](forensics/llvm-mlir-manifest.md) — the embedded LLVM 23-dev version pin and component census the standards section cites
 - [Embedded-Library Atlas](forensics/embedded-library-atlas.md) — the statically-linked third-party census corroborated by the wheel's third-party notices
 - [Source-Corpus Map](appendix/source-corpus-map.md) — the raw-findings file → part assignment underlying every page (sibling reference apparatus)
+- [How to Read This Book](front/how-to-read.md) — the orientation companion to this references page; reading paths and page anatomy
+- [back to index](index.md) — Part 0 — Reference Apparatus

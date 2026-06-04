@@ -40,7 +40,7 @@ Every reverse-engineered claim in this book carries — or could carry — one o
 | **Low** | Supported by a single weak indicator with no corroboration. | One suggestive string near a function; one cross-reference; a name that *implies* a behavior not seen in the body. | Treat as a lead, not a fact. Re-derive before building on it. |
 | **Inferred** | Reasoned from structure, convention, or analogy with **no direct byte** asserting it. | "This must be the cleanup path because every other arm returns and this one falls through." | A hypothesis. Useful for orientation; never a foundation. |
 
-> **NOTE (EVID-01) —** the dividing line that matters most is **High vs. everything below it.** High means a verifier with the same binary can point at the exact decompiled line or table entry and see the claim. Medium, Low, and Inferred all require the verifier to *reconstruct a reasoning chain* — they differ only in how much corroboration that chain has. When a page omits a label, read it as the page's default grade for that section (stated in the section), not as "certain."
+> **NOTE —** the dividing line that matters most is **High vs. everything below it.** High means a verifier with the same binary can point at the exact decompiled line or table entry and see the claim. Medium, Low, and Inferred all require the verifier to *reconstruct a reasoning chain* — they differ only in how much corroboration that chain has. When a page omits a label, read it as the page's default grade for that section (stated in the section), not as "certain."
 
 The forensics pages — the ones that report headline structural counts confirmed directly with `readelf`/sidecar queries — sometimes use a stronger `CERTAIN` tag for a count that was checked against the raw binary byte-for-byte. Treat `CERTAIN` as the top of the same ladder: directly measured, not inferred. The four-level scale above is the working vocabulary for *behavioral* claims about code, where exact certainty is rarely available.
 
@@ -94,7 +94,7 @@ Alongside the bodies, the extraction emits a set of JSON sidecars, each indexing
 | `fixups` | Relocations / pointer fixups across the image. | High — relocation entries. |
 | `xrefs` | Cross-references: who calls/reads/writes each address. | High — used heavily for Medium-grade role inference. |
 
-> **NOTE (EVID-02) —** when a page says "this function classifies X," the *body* (decompiler) is the High-confidence part; the *name* "X" usually comes from `names`/`strings`/`xrefs` and is what pushes the claim up from Medium toward High. The sidecars are not independent of the bodies — they are the same extraction viewed by facet — but agreement across several facets is exactly what justifies a Medium label.
+> **NOTE —** when a page says "this function classifies X," the *body* (decompiler) is the High-confidence part; the *name* "X" usually comes from `names`/`strings`/`xrefs` and is what pushes the claim up from Medium toward High. The sidecars are not independent of the bodies — they are the same extraction viewed by facet — but agreement across several facets is exactly what justifies a Medium label.
 
 ### Verified extraction scope
 
@@ -124,11 +124,9 @@ The book uses four blockquote markers — bold text, never an emoji — to pull 
 | `> **QUIRK —**` | A counter-intuitive fact. | Something true that contradicts the obvious assumption; a reimplementer who assumes the obvious gets it wrong. |
 | `> **GOTCHA —**` | A trap. | A place where the naive implementation is *silently* wrong — it compiles, runs, and produces incorrect results. |
 | `> **NOTE —**` | A clarification. | An important point that is not a trap and not counter-intuitive, but easy to miss. |
-| `> **CORRECTION (tag) —**` | An overturned claim. | A prior assertion that later analysis disproved, recorded in place — usually with a provenance tag — rather than silently edited out. |
+| `> **CORRECTION —**` | An overturned claim. | An earlier reading the binary disproves, recorded in place with the correct value beside it rather than silently edited out. |
 
-The first three carry no tag; `CORRECTION` normally carries a short provenance tag (e.g. `EVID-03`, `FOR-01`) so a specific reversal can be referenced and audited, and the deep pages tag the overwhelming majority of theirs. A few self-contained, page-local corrections — ones that merely overturn an earlier reading of the same passage and need no cross-page handle — appear as a bare `> **CORRECTION —**` instead; the tag is the norm, not an inviolable requirement. Either way a correction is never a silent edit — when analysis changes a conclusion, the old conclusion stays visible with the correction beside it, so a reader who memorized the old claim is actively warned.
-
-> **QUIRK —** a `CORRECTION` block is *evidence of trustworthiness*, not a defect. A reverse-engineering book with zero corrections has either analyzed nothing hard or is hiding its mistakes. Treat the presence of in-place corrections as a signal that the surrounding claims were genuinely re-examined.
+The first three carry no tag. A `CORRECTION` records where an earlier reading of the binary was wrong and states the right value in place, so a reader who memorized the old claim is actively warned rather than left to wonder why a number changed. When you meet one, take the corrected value as authoritative and the struck claim as a labelled trap to avoid.
 
 ---
 
@@ -144,6 +142,10 @@ Claims are anchored to the binary with a small, fixed citation grammar. Learn it
 
 The rule behind all of it: **every claim points at something a reader with the same binary can independently find.** If a statement cannot be anchored to an address, offset, symbol, string, or flag bit, the page either marks it Inferred or does not make it.
 
+> **NOTE —** an absolute VA equals the raw file offset only in `.text`, `.rodata`, and `.lrodata`. For a struct or table resident in `.data` the file offset is VA − `0x400000`; in `.data.rel.ro` it is VA − `0x200000`. Seeking with `xxd`/`objdump` at the bare VA for data in those sections reads the wrong bytes; subtract the section delta first. The full section map is in [ELF Anatomy](../forensics/elf-anatomy.md).
+
+> **NOTE —** a vtable slot index is measured from the vptr, which is the `_ZTV` symbol **+ 0x10** — past the two-word header (offset-to-top, then the `type_info` pointer). A `call *0xN(%rax)` therefore lands at slot `(0xN − 0x10)/8`; computing it from the bare `_ZTV` address overcounts by one header (`0x10`). Cross-check any slot number against a real call site. The vtable layout is decoded in [RTTI & Vtable Census](../forensics/rtti-vtable-census.md).
+
 ### A worked anchor
 
 A typical anchored sentence in this book carries every layer of the citation grammar at once. For instance, a page might write:
@@ -157,7 +159,7 @@ switches); the default arm returns `kInvalidArgument`.
 
 Unpacked, that one sentence gives a verifier four independent handles: the **absolute VA** `sub_FE21DA0` to navigate to, the **mangled symbol** to confirm it is the right function, the **base+offset** `ctx+0x10` for the field being read, and the **switch** as the dispatch mechanism — each checkable against the binary and the matching sidecar. The reader never has to take the conclusion on faith; the anchors *are* the proof.
 
-> **NOTE (EVID-03) —** `sub_FE21DA0` is exactly the kind of function that lives near the extraction's limits: a `__policy_func`/`__call_func` template dispatcher. Some functions of this family are among the 516 the decompiler could not body (see below), in which case the same sentence would be graded `Low`/`Inferred` and would lean on the disassembly and `xrefs` rather than a decompiled line. The anchor format does not change; the Confidence does.
+> **NOTE —** `sub_FE21DA0` is exactly the kind of function that lives near the extraction's limits: a `__policy_func`/`__call_func` template dispatcher. Some functions of this family are among the 516 the decompiler could not body (see below), in which case the same sentence would be graded `Low`/`Inferred` and would lean on the disassembly and `xrefs` rather than a decompiled line. The anchor format does not change; the Confidence does.
 
 ---
 
