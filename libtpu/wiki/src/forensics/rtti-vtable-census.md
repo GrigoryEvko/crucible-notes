@@ -158,11 +158,11 @@ Every `_ZTI` is one of the Itanium ABI's `type_info` flavors, and the flavor is 
 | `0x22048600` | 42,447 | `__si_class_type_info` | single public base @ `+0x10` | CERTAIN |
 | `0x22048668` | 680 | `__vmi_class_type_info` | base array @ `+0x18`, count @ `+0x14` | CERTAIN |
 | `0x220486d0` | 282 | `__pointer_type_info` | — (not a class hierarchy) | CERTAIN |
-| `0x22048528` | 261 | `__pbase_type_info` | — (not a class hierarchy) | CERTAIN |
-| `0x22048560` | 22 | `__fundamental_type_info` | — | CERTAIN |
-| *(tail)* | 11 | fundamental / other variants | — | HIGH |
+| `0x22048528` | 261 | `__function_type_info` | — (not a class hierarchy) | CERTAIN |
+| `0x22048560` | 22 | `__enum_type_info` | — | CERTAIN |
+| *(tail)* | 11 | `__fundamental_type_info` (10, `0x220483d8`) + `__pointer_to_member_type_info` (1, `0x22048708`) | — | HIGH |
 
-Class-kind typeinfos (`class` + `si` + `vmi`) total **59,881**; the 576 pointer/pbase/fundamental records are not class hierarchies and are correctly left as forest roots.
+Class-kind typeinfos (`class` + `si` + `vmi`) total **59,881**; the 576 pointer/function/enum/fundamental records are not class hierarchies and are correctly left as forest roots.
 
 > **QUIRK —** the histogram value at `_ZTI+0` is the metatype vtable's **address point**, which sits `0x10` *above* the vtable group base. The `__class_type_info` *symbol* (`'vtable for'__cxxabiv1::__class_type_info`) lives at `0x220485a0`, but the value written into every `__class_type_info` typeinfo's first word is `0x220485b0` = `0x220485a0 + 0x10`. Likewise `__si` is `0x220485f0 → 0x22048600` and `__vmi` is `0x22048658 → 0x22048668`. A reimplementer who matches the histogram value against the *symbol* address will find every classification "off by 16" unless they add the address-point offset. This is the same `+0x10` address-point convention that governs ordinary vtables (offset-to-top at `+0`, typeinfo at `+8`, first method at `+0x10`).
 
