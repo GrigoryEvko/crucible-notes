@@ -81,11 +81,11 @@ The chip-level identity a reimplementer might expect here — PCI vendor/device 
 
 The field names sit consecutively in the serialized descriptor blob (`protodesc_cold` section) immediately after the message header. The three clock-rate fields are the primary anchors for the timebase and were confirmed byte-exact:
 
-| Field string | descriptor addr | Status |
-|---|---|---|
-| `tensor_core_freq_hz` | `0xbe99b16` | CERTAIN (verbatim in binary) |
-| `sparse_core_freq_hz` | `0xbe99b33` | CERTAIN (verbatim in binary) |
-| `gtc_freq_hz` | `0xbe99b50` | CERTAIN (verbatim in binary) |
+| Field string | descriptor addr |
+|---|---|
+| `tensor_core_freq_hz` | `0xbe99b16` |
+| `sparse_core_freq_hz` | `0xbe99b33` |
+| `gtc_freq_hz` | `0xbe99b50` |
 
 The full name run spans `0xbe99a03`–`0xbe99b50` (`Task`, `changelist`, … `gtc_freq_hz`); the path string `…tensorboard_plugin_profile/protobuf/task.proto` and package `tensorflow.profiler` are both present verbatim, anchoring the `FileDescriptorProto` at `0xbe999a0`.
 

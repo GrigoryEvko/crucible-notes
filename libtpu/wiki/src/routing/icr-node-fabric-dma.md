@@ -44,7 +44,7 @@ Each ID maps to one protobuf message class in the `asic_sw::driver::deepsea::pxc
 | 51 | `OciMessageGeneratedInIcrIngressDma` | 32 (`0x20`) | `…_globals_` | **BYTE_COUNT** `msg_data << 9` (ingress) |
 | 91 | `OciDescriptorCommonIssuedFromTcs` | 48 (`0x30`) | `…_globals_` | **BEGIN_GTC + BYTE_COUNT** `length << g` (egress) |
 
-> **CONFIRMED —** The `oneof` cases are byte-exact in `GetDmaId` (`0xf699ca0`): `case 48 → [rdi+0x28]==0x1d`, `case 50 → 0x1f`, `case 51 → 0x20`, `case 91 → 0x30`. The producer re-checks the same cases at its per-ID arms (`*(_DWORD)(v16+40)` = the submessage `oneof` discriminator). All four messages place `trace_id_header` at cpp-offset `0x18` (field 1), so the `dma_id` extraction is uniform across the band.
+> The `oneof` cases are byte-exact in `GetDmaId` (`0xf699ca0`): `case 48 → [rdi+0x28]==0x1d`, `case 50 → 0x1f`, `case 51 → 0x20`, `case 91 → 0x30`. The producer re-checks the same cases at its per-ID arms (`*(_DWORD)(v16+40)` = the submessage `oneof` discriminator). All four messages place `trace_id_header` at cpp-offset `0x18` (field 1), so the `dma_id` extraction is uniform across the band.
 
 The four IDs are assembled into the `GetMerged` request set in the producer's preamble:
 

@@ -81,7 +81,7 @@ The enum value mappings recovered from `.rodata` are:
 
 `Master::DiscoverTopology` @`0x1fbbe4e0` builds the inner-lambda capture `{this, &target_size, origin_coord}` and invokes `$_0::operator()` @`0x1fbc1ae0`, which drives the composite. The composite `TopologyDiscoverer` (ctor @`0x1fbff680`) holds five sub-objects at fixed pointer offsets +8..+40 — `IciLinkPolarityAssigner`, `ChipCoordinatesAssigner`, `IciDiscoverer`, `TopologyFaultVerifier`, `TrayShapeChecker` — and is gated by `tpu_slice_builder_topology_discovery_new_module`. The `LegacyTopologyDiscoverer` @`0x213dcfe0` is the fallback (it adds a `SliceReshaper` step and a monolithic walk but produces the same `ResilientToroidalTopology`).
 
-> **[CONFIRMED]** `Master::DiscoverTopology` @`0x1fbbe4e0`: builds a 3-dim `Coordinates` from a `.rodata` constant array (`{4,4,4}`, not a `Master` field), captures `{this, &(*(int*)(this+304)), coord}` — where `this+304` (`*((int*)this + 76)`) is the target-size int — and calls `$_0::operator()` twice (once normally, once after optional fault injection). The `$_0 != 1` (not-OK) path returns `CreateStatusAndConditionallyLog(668, "…/master.cc", …)` — i.e. the wrapping error `"Failed to discover ICI network topology"` is emitted at **`master.cc:668`** (the raw-anchor estimate of `:655` is superseded by the decompile).
+> `Master::DiscoverTopology` @`0x1fbbe4e0`: builds a 3-dim `Coordinates` from a `.rodata` constant array (`{4,4,4}`, not a `Master` field), captures `{this, &(*(int*)(this+304)), coord}` — where `this+304` (`*((int*)this + 76)`) is the target-size int — and calls `$_0::operator()` twice (once normally, once after optional fault injection). The `$_0 != 1` (not-OK) path returns `CreateStatusAndConditionallyLog(668, "…/master.cc", …)` — i.e. the wrapping error `"Failed to discover ICI network topology"` is emitted at **`master.cc:668`** (the raw-anchor estimate of `:655` is superseded by the decompile).
 
 ```c
 // TopologyDiscoverer::Discover(target_topology, locals_span, option)   // 0x1fbff7e0
@@ -134,7 +134,7 @@ After the walk every port has a fully resolved `Direction` (axis + sign), every 
 
 ### 2.3 Link discovery + reverse-counterpart check (`IciDiscoverer`)
 
-> **[CONFIRMED]** `IciDiscoverer::Discover` @`0x1fc0b720` signature takes `(ToroidalTopologyInterface&, flat_hash_map<asic_sw::ChipLocation, superpod::routing::Coordinates>*, Span<LocalTopology>)` — i.e. its second argument is the **coordinate↔chip map**, confirming the discoverer writes directly into the map later read by id-assignment.
+> `IciDiscoverer::Discover` @`0x1fc0b720` signature takes `(ToroidalTopologyInterface&, flat_hash_map<asic_sw::ChipLocation, superpod::routing::Coordinates>*, Span<LocalTopology>)` — i.e. its second argument is the **coordinate↔chip map**, confirming the discoverer writes directly into the map later read by id-assignment.
 
 `IciDiscoverer::Init` @`0x1fc09d40` walks every chip × port. For each port it resolves the remote name (`LocalTopology::GetRemoteName` @`0x1ffdd1a0`) and:
 
@@ -157,7 +157,7 @@ Finally the **node count** must match the intent: `target.GetTopologySize() == l
 
 `ChipCoordinatesAssigner::Init` @`0x1fc00580` re-validates the link set and additionally tracks a `flat_hash_set<string>` of seen names to catch hostname collisions distinct from the `ChipLocation` check (`"Chip %s is not unique during node coordinate assignment for topology %s."`, `chip_coordinates_assigner.cc:91`). The heart is `BreadthFirstWalk` @`0x1fc02040`.
 
-> **[CONFIRMED]** `ChipCoordinatesAssigner::BreadthFirstWalk` @`0x1fc02040`: uses a `std::deque<asic_sw::ChipLocation>` at `this+80` — `emplace_back` the origin, `pop_front` the current chip, then for each direction call `FindNeighbor` @`0x1fc03ba0` and `AssignOrVerifyCoordinates` @`0x1fc03da0`. The deque-driven BFS is exactly as reconstructed below.
+> `ChipCoordinatesAssigner::BreadthFirstWalk` @`0x1fc02040`: uses a `std::deque<asic_sw::ChipLocation>` at `this+80` — `emplace_back` the origin, `pop_front` the current chip, then for each direction call `FindNeighbor` @`0x1fc03ba0` and `AssignOrVerifyCoordinates` @`0x1fc03da0`. The deque-driven BFS is exactly as reconstructed below.
 
 ```c
 // ChipCoordinatesAssigner::BreadthFirstWalk()   // 0x1fc02040
@@ -227,7 +227,7 @@ After BFS, if `|chip_to_coord_| < target node count`, the unvisited names are co
 
 Once the coordinate↔chip map is installed, the slice still needs a dense integer id `0..N-1` per chip (this is what collectives, routing, and firmware index by). The `Master` derives the id from the validated coordinates with a Cartesian ordering — **X varies fastest, then Y, then Z** — and pushes it per worker via `Master::SetGlobalChipId(string_view name, Stub*)` @`0x1fbbe7e0`.
 
-> **[CONFIRMED]** `Master::SetGlobalChipId` @`0x1fbbe7e0` decompile: `lock_shared(Master+760)` → look up the worker's chip set in the `flat_hash_map<string, flat_hash_set<ChipLocation>>` at `Master+800` → for each owned chip, `find<ChipLocation>` in the `flat_hash_map<ChipLocation, Coordinates>` at **`Master+832`** (the coordinate↔chip map) → call **vtable slot +144** on the `ResilientToroidalTopology` at `Master+152` to obtain that chip's id (returned as a `StatusOr<int>`) → emit a `SetGlobalChipIdRequest_ChipLocationToId{ChipLocation (via ToProto), int id}` → issue the gRPC call via the stub vtable. Confirmed exactly against the binary.
+> `Master::SetGlobalChipId` @`0x1fbbe7e0` decompile: `lock_shared(Master+760)` → look up the worker's chip set in the `flat_hash_map<string, flat_hash_set<ChipLocation>>` at `Master+800` → for each owned chip, `find<ChipLocation>` in the `flat_hash_map<ChipLocation, Coordinates>` at **`Master+832`** (the coordinate↔chip map) → call **vtable slot +144** on the `ResilientToroidalTopology` at `Master+152` to obtain that chip's id (returned as a `StatusOr<int>`) → emit a `SetGlobalChipIdRequest_ChipLocationToId{ChipLocation (via ToProto), int id}` → issue the gRPC call via the stub vtable. Confirmed exactly against the binary.
 
 ```c
 // Master::SetGlobalChipId(worker_name, stub)   // 0x1fbbe7e0
@@ -297,7 +297,7 @@ VLog-only (silently dropped, not errors): `"ICI port %s is incorrectly left in l
 
 ## 6. Verification notes
 
-> **[CONFIRMED]** Cross-checked against the IDA decompile of `libtpu.so` v0.0.40:
+> Cross-checked against the IDA decompile of `libtpu.so` v0.0.40:
 > - `Master::DiscoverTopology` @`0x1fbbe4e0`: inner `$_0` lambda invocation (passing `Master+152` topology and `Master+776`/`+784` locals begin/end into the discoverer at `Master+224`), the 3-dim `Coordinates` built from a `.rodata` constant `{4,4,4}`, the `!= 1` error at `master.cc:668`, the `tpu_slice_builder_topology_discovery_fault_injection` flag read, `Orientation_descriptor` + `ParseNamedEnum`, `InjectIciResilientFaults(...)`, and the `master.cc:680` invalid-dimension error — all present and matched.
 > - `TopologyDiscoverer::Discover` @`0x1fbff7e0` and `LegacyTopologyDiscoverer::Discover` @`0x213dcfe0`: both present with the exact `(ToroidalTopologyInterface&, Span<LocalTopology>, TopologyDiscoveryOption&)` signature.
 > - `IciDiscoverer::Discover` @`0x1fc0b720`: second argument confirmed as `flat_hash_map<asic_sw::ChipLocation, superpod::routing::Coordinates>*` (the coordinate↔chip map).

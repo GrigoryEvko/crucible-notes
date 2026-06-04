@@ -192,7 +192,7 @@ Bring-up and runtime faults flow through a six-value `SliceFailureType` enum (`S
 
 ## 7. Verification notes
 
-> **[CONFIRMED]** The link model, bring-up entry, discovery entry, link count, and the all-reduce family were cross-checked against the IDA decompile of `libtpu.so` v0.0.40:
+> The link model, bring-up entry, discovery entry, link count, and the all-reduce family were cross-checked against the IDA decompile of `libtpu.so` v0.0.40:
 > - `Master::InitSlice` @`0x1fbbaac0`: 11 `ExecuteOnAllWorkers` fan-out sites plus the `DiscoverTopology`, `SetGlobalChipId`, `SetRoutingTable`, `SetGtcConfiguration`, `ControlIciErrorReport`, `EnableIciDataLink`, `DetectRoutingTableDeadlock` sub-calls — the 16-step sequence is consistent.
 > - `IciControl::WaitForLinksUp` @`0xe7b1060`: a single fixed sleep quantum `mov $0x3D0900,%eax` @`0xe7b11c2` feeding `AbslInternalSleepFor` (one tier only — no 500 ms fallback path exists), the `cmp $0x3D0901,%edx` deadline branch @`0xe7b1198`, `IsLinkUp` + `GetLinkStackReadyState` per link, and `NameOfDenseEnum<&LinkStackReadyState_descriptor, 0, 7>` (8-valued firmware code 0..7 → software enum) — exact.
 > - `Master::DiscoverTopology` @`0x1fbbe4e0` and `TopologyDiscoverer::Discover` @`0x1fbff7e0` present; the composite sub-objects and `ResilientToroidalTopology` install are reconstructed from the discovery chain.

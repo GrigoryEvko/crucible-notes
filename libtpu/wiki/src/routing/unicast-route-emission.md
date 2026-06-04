@@ -89,7 +89,7 @@ The driver and the entry build read a fixed set of generator fields. These are t
 | `use_cache_` | `gen+0x129` | cached `GetPath` vs live `GetStaticPath` |
 | RouteTargetCache | `gen+0x130` (`*((qword*)this+38)`) | the 2-D path + per-link byte caches |
 
-> **[CONFIRMED]** Every offset above appears as a direct field access in `CreateUnicastRoutingTables`/`CreateSrcDestUnicastRoutingTable`: `gen+0x3c` as `*(int*)(a1+60)` (status-vector size, `@0x1fbd5343`), `gen+0x40` as `*((int*)v2+16)` (inner-loop bound, `@0x1fbd7240`), `use_cache_` as `*((_BYTE*)this+297)` (`cmpb $1,0x129(%r15)` `@0x1fbd573d`), and the `RouteTargetCache` at `*((qword*)this+38)` (`gen+0x130`). The `use_cache_` field name is confirmed by the `LogMessageFatal(..., 417, "use_cache_")` consistency assert.
+> Every offset above appears as a direct field access in `CreateUnicastRoutingTables`/`CreateSrcDestUnicastRoutingTable`: `gen+0x3c` as `*(int*)(a1+60)` (status-vector size, `@0x1fbd5343`), `gen+0x40` as `*((int*)v2+16)` (inner-loop bound, `@0x1fbd7240`), `use_cache_` as `*((_BYTE*)this+297)` (`cmpb $1,0x129(%r15)` `@0x1fbd573d`), and the `RouteTargetCache` at `*((qword*)this+38)` (`gen+0x130`). The `use_cache_` field name is confirmed by the `LogMessageFatal(..., 417, "use_cache_")` consistency assert.
 
 ---
 
@@ -148,9 +148,9 @@ function Inner(gen, src, result_slot):
     if *result_slot == OK and st != OK: *result_slot = st
 ```
 
-> **[CONFIRMED]** The status vector is `operator new(8*v5)` with `v5 = *(int*)(a1+60)` = `gen+0x3c`, pre-filled to OK by the `vmovddup cs:qword_A2DF228` block plus the `*(_QWORD*)v9 = 1` tail loop (`@0x1fbd5400`). The `thread::Fiber` is `operator new(352, 16)`, bound to `RemoteInvoker<...CreateUnicastRoutingTables...$_0&&>` capturing `{gen, &srcs, &result}` (the 24-byte `operator new(0x18)` closure at `@0x1fbd7240`'s caller), then `Start`/`Join`. The post-Join scan walks `result[i]` for the first slot `!= OK` (`@0x1fbd5570`).
+> The status vector is `operator new(8*v5)` with `v5 = *(int*)(a1+60)` = `gen+0x3c`, pre-filled to OK by the `vmovddup cs:qword_A2DF228` block plus the `*(_QWORD*)v9 = 1` tail loop (`@0x1fbd5400`). The `thread::Fiber` is `operator new(352, 16)`, bound to `RemoteInvoker<...CreateUnicastRoutingTables...$_0&&>` capturing `{gen, &srcs, &result}` (the 24-byte `operator new(0x18)` closure at `@0x1fbd7240`'s caller), then `Start`/`Join`. The post-Join scan walks `result[i]` for the first slot `!= OK` (`@0x1fbd5570`).
 
-> **[CONFIRMED]** The inner lambda (`@0x1fbd7240`) loops `dst = 0 .. *((int*)v2+16)-1` (chipcount = `gen+0x40`), calls `CreateSrcDestUnicastRoutingTable(gen, src, dst)`, and applies the first-error rule `if (*result_slot == 1 && st != 1) *result_slot = st;` (lines 23-32 of its decompile). After the loop it calls `SetChannelMerges(gen, src)` (line 38) with the same first-error capture. The outer lambda (`@0x1fbd70c0`) opens a `thread::Bundle`, resolves each source through `GetTableIndex`, and submits one `Bundle::AddImpl` task per source before `JoinAll`.
+> The inner lambda (`@0x1fbd7240`) loops `dst = 0 .. *((int*)v2+16)-1` (chipcount = `gen+0x40`), calls `CreateSrcDestUnicastRoutingTable(gen, src, dst)`, and applies the first-error rule `if (*result_slot == 1 && st != 1) *result_slot = st;` (lines 23-32 of its decompile). After the loop it calls `SetChannelMerges(gen, src)` (line 38) with the same first-error capture. The outer lambda (`@0x1fbd70c0`) opens a `thread::Bundle`, resolves each source through `GetTableIndex`, and submits one `Bundle::AddImpl` task per source before `JoinAll`.
 
 > **QUIRK —** the error model is **per source, first-error-wins**. Each fiber owns exactly one `result[]` slot (keyed by `GetTableIndex(src)`, not by the raw chip id), and a later dst failure cannot overwrite an earlier one. A reimplementation that records the *last* error, or that shares one status across sources, diverges from the binary's diagnostics.
 
@@ -166,7 +166,7 @@ function CreateUnicastRoutingTables_serial(gen, Span<int> srcs):   // @0x1fbd94a
         SetChannelMerges(gen, src)
 ```
 
-> **[CONFIRMED]** `@0x1fbd94a0` contains the nested `for src / for dst<[gen+0x40]` loop calling `WalkCreateSrcDestUnicastRoutingTable` (`@0x1fbd94f9`) followed by `SetChannelMerges` (`@0x1fbd951a`). `WalkCreateSrcDestUnicastRoutingTable @0x1fbd9580` mirrors the parallel entry build (GetCoordinate, GetStaticPath, egress `gen+0xa8`, HopDirection, SetUnicastTerminal) but is hard-wired to the live `GetStaticPath` path source — it is the non-cached analogue of §3.
+> `@0x1fbd94a0` contains the nested `for src / for dst<[gen+0x40]` loop calling `WalkCreateSrcDestUnicastRoutingTable` (`@0x1fbd94f9`) followed by `SetChannelMerges` (`@0x1fbd951a`). `WalkCreateSrcDestUnicastRoutingTable @0x1fbd9580` mirrors the parallel entry build (GetCoordinate, GetStaticPath, egress `gen+0xa8`, HopDirection, SetUnicastTerminal) but is hard-wired to the live `GetStaticPath` path source — it is the non-cached analogue of §3.
 
 ---
 
@@ -226,7 +226,7 @@ function CreateSrcDestUnicastRoutingTable(gen, int src, int dst):    // @0x1fbd5
     return OK
 ```
 
-> **[CONFIRMED]** Both coordinate fetches use topology vtable slot `+136` (`+0x88`, `(**((qword**)this+4) + 136)`), at `@0x1fbd566d` (src, AddSourceLocation line 371) and the second at line 373. `GetEgressTable` (line 375) and `GetNextHopTable(src, …)` (line 377) follow. The path-source branch tests `*((_BYTE*)this + 297)` (`gen+0x129`, line 120 of the decompile): true → `RouteTargetCache::GetPath(cache, src, dst)`; false → `GetStaticPath(this, src_coord)`. The hop guard reads `*(_DWORD*)v51` (the path's `num_hops`); the multi-hop arm calls `HopDirection`, `LinkMap::GetLink`, `SetUnicastTarget`, then `PopulateRoutingTable`; the no-hop arm (`LABEL_17`) calls `SetUnicastTerminal` twice + `SetUnicastVcControl`.
+> Both coordinate fetches use topology vtable slot `+136` (`+0x88`, `(**((qword**)this+4) + 136)`), at `@0x1fbd566d` (src, AddSourceLocation line 371) and the second at line 373. `GetEgressTable` (line 375) and `GetNextHopTable(src, …)` (line 377) follow. The path-source branch tests `*((_BYTE*)this + 297)` (`gen+0x129`, line 120 of the decompile): true → `RouteTargetCache::GetPath(cache, src, dst)`; false → `GetStaticPath(this, src_coord)`. The hop guard reads `*(_DWORD*)v51` (the path's `num_hops`); the multi-hop arm calls `HopDirection`, `LinkMap::GetLink`, `SetUnicastTarget`, then `PopulateRoutingTable`; the no-hop arm (`LABEL_17`) calls `SetUnicastTerminal` twice + `SetUnicastVcControl`.
 
 > **GOTCHA —** the **first hop is the source's own egress**, written directly here, not by `PopulateRoutingTable`. `PopulateRoutingTable` is then called with `hop = 0` to walk the path and fill the *intermediate* chips' forwarding entries. A reimplementation that lets the per-hop fan-out also write the source egress will double-write the egress row (the `SetUnicastTarget` `overwrite=false` arg makes the second write a no-op, but the link-byte computation differs between the two paths).
 
@@ -243,7 +243,7 @@ The `use_cache_` flag (`gen+0x129`) chooses between two `IciRoutePath` providers
 
 `GetPath` indexes a 2-D array: `idx = GetTableIndex(src) · numdst + dst`, `IciRoutePath` stride `0x50` (`lea rax,[rax+rax*4]; shl 4`), base pointer at `cache+0x0`, `numdst` read indirectly via the `cache+0x48` field (`*(int*)([cache+0x48]+0x40)`). See **[Static-Path Generation](get-static-path.md)** for the live generator's internals.
 
-> **[CONFIRMED]** `RouteTargetCache::GetPath @0x1fbd42c0` computes `idx = TableIndex(src)·numdst + dst` with `numdst = *(_DWORD*)([cache+0x48]+0x40)` (`mov 0x48(%rdi),%rsi; imul 0x40(%rsi),%edx` at `@0x1fbd42f4`) and returns `*(qword*)cache + 0x50·idx` (`lea (rax,rax,4); shl 4` at `@0x1fbd4304`). The destination count lives one indirection deep through the `cache+0x48` pointer, not at `cache+0x40` directly; the `cache+0x8` field is the path-array element count used for the bounds check. `GetTableIndex(src)` is applied only on the non-fast-path branch (when `*(_BYTE*)([cache+0x48]+24) == 0`).
+> `RouteTargetCache::GetPath @0x1fbd42c0` computes `idx = TableIndex(src)·numdst + dst` with `numdst = *(_DWORD*)([cache+0x48]+0x40)` (`mov 0x48(%rdi),%rsi; imul 0x40(%rsi),%edx` at `@0x1fbd42f4`) and returns `*(qword*)cache + 0x50·idx` (`lea (rax,rax,4); shl 4` at `@0x1fbd4304`). The destination count lives one indirection deep through the `cache+0x48` pointer, not at `cache+0x40` directly; the `cache+0x8` field is the path-array element count used for the bounds check. `GetTableIndex(src)` is applied only on the non-fast-path branch (when `*(_BYTE*)([cache+0x48]+24) == 0`).
 
 ---
 
@@ -274,7 +274,7 @@ function GetNextHopAction(src_coord, dst_coord, IciRoutePath& path, int hop):  /
     return { next_chip @+8, output_link @+0xc, vc @+0x10 }
 ```
 
-> **[CONFIRMED]** `GetNextHopAction @0x1fbda6a0`: `HopDirection` (`@0x1fbda6d4`), `Walk` via vtable `+0xa0` (`@0x1fbda702`), `GetId` via vtable `+0x90` (`@0x1fbda74b`), `Coordinates::operator==` vs `dst_coord` (`@0x1fbda773`), last-hop terminal `0xff` (`@0x1fbda79c`), `RemainDirectionHops(hop)` (the raw hop index, `@0x1fbda7bb`), `LinkMap::GetLink` (`@0x1fbda863`). The VC inputs `CrossesDateline` (`@0x1fbda8b5`), `Direction::IsSame` (`@0x1fbda8fd`), `GetVcBalanceUsage` (`@0x1fbda921`) feed `vc ∈ {0,1,2}`. The result struct packs `{next_chip(int32)@+8, output_link(int8)@+0xc, vc(int32)@+0x10}` (`@0x1fbdaa6a`).
+> `GetNextHopAction @0x1fbda6a0`: `HopDirection` (`@0x1fbda6d4`), `Walk` via vtable `+0xa0` (`@0x1fbda702`), `GetId` via vtable `+0x90` (`@0x1fbda74b`), `Coordinates::operator==` vs `dst_coord` (`@0x1fbda773`), last-hop terminal `0xff` (`@0x1fbda79c`), `RemainDirectionHops(hop)` (the raw hop index, `@0x1fbda7bb`), `LinkMap::GetLink` (`@0x1fbda863`). The VC inputs `CrossesDateline` (`@0x1fbda8b5`), `Direction::IsSame` (`@0x1fbda8fd`), `GetVcBalanceUsage` (`@0x1fbda921`) feed `vc ∈ {0,1,2}`. The result struct packs `{next_chip(int32)@+8, output_link(int8)@+0xc, vc(int32)@+0x10}` (`@0x1fbdaa6a`).
 
 ### 4.3 `PopulateRoutingTable`
 
@@ -294,7 +294,7 @@ function PopulateRoutingTable(src_coord, dst_coord, src_chip, via_chip, path, ho
     return (act.output_link != 0xfe)                            // "wrote a target"
 ```
 
-> **[CONFIRMED]** `PopulateRoutingTable @0x1fbdb5c0`: `GetNextHopAction` (`@0x1fbdb5f6`), next-hop table select `gen+0xc0`/`+0xd8` gated by `gen+0x1a` (`@0x1fbdb659`), the egress branch via `Direction::Opposite` (`@0x1fbdb6fb`) + `LinkMap::GetLink` (`@0x1fbdb773`) + `GetLinkHopTable` (`@0x1fbdb797`), `GetRoutingEntry` (`@0x1fbdb85c`), `SetUnicastTarget`/`SetUnicastTerminal`/`SetUnicastVcControl` (`@0x1fbdb889`/`@0x1fbdb8b4`/`@0x1fbdb8cd`), and the `bl = (link != 0xfe)` return (`@0x1fbdb876`).
+> `PopulateRoutingTable @0x1fbdb5c0`: `GetNextHopAction` (`@0x1fbdb5f6`), next-hop table select `gen+0xc0`/`+0xd8` gated by `gen+0x1a` (`@0x1fbdb659`), the egress branch via `Direction::Opposite` (`@0x1fbdb6fb`) + `LinkMap::GetLink` (`@0x1fbdb773`) + `GetLinkHopTable` (`@0x1fbdb797`), `GetRoutingEntry` (`@0x1fbdb85c`), `SetUnicastTarget`/`SetUnicastTerminal`/`SetUnicastVcControl` (`@0x1fbdb889`/`@0x1fbdb8b4`/`@0x1fbdb8cd`), and the `bl = (link != 0xfe)` return (`@0x1fbdb876`).
 
 > **NOTE —** the VC-assignment rule from `{CrossesDateline, Direction::IsSame, GetVcBalanceUsage}` is a 3-way priority cascade, byte-confirmed in `GetNextHopAction`'s `r12d` immediates (`mov $0x1` at the `$_2`/"Turned" site `0x1fbda9d1`, `mov $0x2` at the `$_3`/"Crossed a dateline" site `0x1fbda950` and the `$_4`/"VC load balancing" site `0x1fbda9fd`): a **turn** (`!IsSame`) forces **VC1**; a straight hop that **crosses a dateline** forces **VC2**; a straight hop where **balance** fires forces **VC2**; a plain straight hop stays on the default **VC0**. So VC2 (the *high* VC) is the deadlock-break / balance VC and VC1 is the turn VC — see [VC-Balance Allocation](../ici/vc-balance-allocation.md) for the full cascade and the `CreateVcBalanceThreshold @0x1fbd8320` threshold math.
 
@@ -306,7 +306,7 @@ function PopulateRoutingTable(src_coord, dst_coord, src_chip, via_chip, path, ho
 
 `GetTableIndex(chip_id) @0x1fbdd000` maps a (possibly sparse) physical chip id to a dense `0 .. numsrcs-1` row index used to address every per-source table. It is a crc32-seeded absl swiss-table (`gen+0x108` size mask, `gen+0x118` ctrl bytes, `gen+0x120` slot array), with a linear fast path for slices under `0x20000` chips. This compaction is why a reimplementation cannot index the tables by raw chip id.
 
-> **[CONFIRMED]** `GetTableIndex @0x1fbdd000`: crc32 of chip (`@0x1fbdd05c`), swiss-table fields `gen+0x108`/`+0x118`/`+0x120`, the `< 0x20000` fast path (`@0x1fbdd012`).
+> `GetTableIndex @0x1fbdd000`: crc32 of chip (`@0x1fbdd05c`), swiss-table fields `gen+0x108`/`+0x118`/`+0x120`, the `< 0x20000` fast path (`@0x1fbdd012`).
 
 ### 5.2 The three RoutingTable arrays
 
@@ -333,7 +333,7 @@ When `use_cache_`, `RouteTargetCache` (at `gen+0x130`) holds a **2-D path array*
 | `0xff` | `SetUnicastTerminal(dst, false)` `@0x1ffe0040` | **terminal** — this chip is the destination |
 | — | `SetUnicastVcControl(dst, vc, true)` `@0x1ffe0320` | `vc ∈ {0,1,2}` deadlock/balance control |
 
-> **[CONFIRMED]** The `0xfe` skip-if-set is in `SetUnicastTarget @0x1ffdfce0` (`@0x1ffdfd1e`); `0xff` is the terminal marker emitted by `GetNextHopAction`'s last-hop arm and routed to `SetUnicastTerminal`. The setters are the `superpod::routing::RoutingTable` `PerLinksRoutingTable` writers whose `output_link` byte is the `0..3` SerDes link index of the runtime's `LinkNextHopRoutingTablesEntry`.
+> The `0xfe` skip-if-set is in `SetUnicastTarget @0x1ffdfce0` (`@0x1ffdfd1e`); `0xff` is the terminal marker emitted by `GetNextHopAction`'s last-hop arm and routed to `SetUnicastTerminal`. The setters are the `superpod::routing::RoutingTable` `PerLinksRoutingTable` writers whose `output_link` byte is the `0..3` SerDes link index of the runtime's `LinkNextHopRoutingTablesEntry`.
 
 > **GOTCHA —** `0xfe` and `0xff` are **distinct sentinels in the same byte field**: `0xfe` means "not yet written, leave it" (idempotent fill), `0xff` means "deliver here". A reimplementation that uses a single out-of-band value, or that treats `0xff` as just another link index, will mis-route either the unset rows or the destination rows.
 
@@ -378,7 +378,7 @@ All emitted via `AddSourceLocationImpl` / `CreateStatusAndConditionallyLog` agai
 | 417 | `use_cache_` consistency assert (`LogMessageFatal`) |
 | 428 / 431 / 434 / 443 | cached nexthop mirror: table fetch, terminal, target, VcControl |
 
-> **[CONFIRMED]** Each line above is the literal `AddSourceLocationImpl(..., N, "...parallel_routing_table_generator.cc")` / `CreateStatusAndConditionallyLog(N, ...)` argument read at its call site in the `@0x1fbd5640` decompile. Line 417's `LogMessageFatal(..., 417, "use_cache_")` names the field.
+> Each line above is the literal `AddSourceLocationImpl(..., N, "...parallel_routing_table_generator.cc")` / `CreateStatusAndConditionallyLog(N, ...)` argument read at its call site in the `@0x1fbd5640` decompile. Line 417's `LogMessageFatal(..., 417, "use_cache_")` names the field.
 
 ---
 

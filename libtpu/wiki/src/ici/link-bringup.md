@@ -332,7 +332,7 @@ Both raise `"… Must call Initialize() first"` if invoked before driver init. `
 
 ## Verification notes
 
-> **[CONFIRMED]** Cross-checked against the IDA decompile of `libtpu.so` v0.0.40:
+> Cross-checked against the IDA decompile of `libtpu.so` v0.0.40:
 > - `Master::InitSlice` @`0x1fbbaac0` (578 lines): exactly **11** `ExecuteOnAllWorkers` sites; named callables in order `GetLocalTopology, SetGlobalChipId, SetRoutingTable, SetGtcConfiguration, ControlIciErrorReport, EnableIciDataLink`; `DiscoverTopology` (local) between sites 1 and 2; `DetectRoutingTableDeadlock` gated before `SetRoutingTable`. The 16-step sequence is consistent.
 > - `IciControl::WaitForLinksUp` @`0xe7b1060`: `absl::Now()` deadline base, single comparand `cmp $0x3D0901` @`0xe7b1198` (line 299) feeding the fixed `mov $0x3D0900,%eax` @`0xe7b11c2` 1 ms quantum (no second 500 ms tier — `0x77359400` does **not** appear in this function's `0xe7b1060–0xe7b1900` range), per-link `IsLinkUp` (line 316) ∧ `GetLinkStackReadyState` (line 325), `AbslInternalSleepFor` (line 896), and `NameOfDenseEnum<&LinkStackReadyState_descriptor, 0, 7>` (lines 947–950, with `NameOfDenseEnumSlow` fallback) — exact; the **7-value** arity is proven by the template argument.
 > - `EnableIciDataLink` @`0x1fbc0ee0`: builds a repeated `EnableIciDataLinkRequest_IciDataLinkConfiguration` (`RepeatedPtrFieldBase::Add<…>` at line 133) — confirms the per-link config fan-out.

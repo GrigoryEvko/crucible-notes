@@ -164,11 +164,11 @@ The per-core ctor takes a `TpuVxcDriver*` — the unified VXC driver, not a sepa
 
 `asic_sw::driver::deepsea::vxc::` carries the fetch/load split and a family-level ISA. Direct sub-namespaces, confirmed in the symbol table:
 
-| Sub-namespace | Confidence | Role |
-|---|---|---|
-| `vxc::vfc` | CERTAIN | **vector fetch-core** — fetch-side instruction stream |
-| `vxc::vlc` | CERTAIN | **vector load-core** — load-side instruction stream |
-| `vxc::isa` | CERTAIN | family-level ISA (170K symbols) |
+| Sub-namespace | Role |
+|---|---|
+| `vxc::vfc` | **vector fetch-core** — fetch-side instruction stream |
+| `vxc::vlc` | **vector load-core** — load-side instruction stream |
+| `vxc::isa` | family-level ISA (170K symbols) |
 
 Below the fetch-core sit `vxc::vfc::isa` (67K symbols), `vxc::vfc::profiler` (40K symbols, with the named `TraceEntry` class, 4015 symbols), and on the load side `vxc::vlc::profiler` (12K symbols, `TraceEntry`, 3001 symbols). The SparseCore ISA bundles (`SparseCoreScsBundle`, `SparseCoreTacBundle`) live under `vxc::vfc::isa` — in the ISA/codec layer, not the 216-byte HAL impl. Each `vxc::vfc` / `vxc::vlc` carries its own `profiler::TraceEntry` class, making both sub-cores trace-entry sub-cores in the [taxonomy](sub-core-taxonomy.md).
 

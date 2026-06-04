@@ -276,7 +276,7 @@ The split is purely in **how** a barrier identity is chosen and bound: the TC pa
 
 ## 4. Verification notes
 
-> **[CONFIRMED]** Byte-exact in `libtpu.so` v0.0.40:
+> Byte-exact in `libtpu.so` v0.0.40:
 > - `DetermineBarrierConfigForKey` @`0x109c6fa0`: `BarrierConfig::BarrierConfig(this,0)`; `IsGlobalBarrierBeneficial`; `force_global || beneficial` → `type=1`, `id=-1`; saturation (`key+0x10 == key+0x20 − 1`) with `config+0x50 != 1` → `type=2`, `id=replica_group_count`; else `type=3` fresh + `std::map __try_key_extraction_impl` → cache hit `CopyFrom(node+0x80)`. Type at `+0x20`, id at `+0x18`, hasbits `+0x10 |= 3`. **No `movl $4`** — exact.
 > - `ExplicitUniDirRingStrategy::InitializeOnScs` @`0x1337aa60`: `if (!config) RetCheck` line 351; base `UniDirRingStrategy::InitializeOnScs` → `AddSourceLocationImpl(354)`; `GetCoreIndex`; `CoresPerChip(2) / LogicalDevicesPerChip(2)` unsigned-divide fold; `IdxConst`; `DivU`; `ToGlobalCoreId`; `call [a1+0x98]` with `(&record, a1+0x88, a1+0x08, OpBuilder, &global_core_id, &ordinal)`; writeback `*(a1+0x58)=ordinal_`, `*(a1+0x60)=next_chip_`, `*(a1+0x78)=reordering_map_`, each `LogMessageFatal`-guarded (lines 250/245/255); `AddSourceLocationImpl(362)` — exact.
 > - Symbol confirmation: `TensorCoreBarrierAssignment::{Run, ForEachCollective, IsGlobalBarrierBeneficial, DetermineBarrierConfigForKey}` and `TensorCoreBarrierKey` present with full demangled symbols; `ExplicitUniDirRingStrategy::InitializeOnScs` and the `CreateRingStrategiesForNdFromExplicitTable` `$_1` (→ `ExplicitAllToAllRingRecord`) / `$_2` (→ `ExplicitRingRecord`) lambdas present, confirming the factory→record map and the `(OffloadFactory&, OpBuilder&, Value, Value) → StatusOr<…Record>` callback signature.

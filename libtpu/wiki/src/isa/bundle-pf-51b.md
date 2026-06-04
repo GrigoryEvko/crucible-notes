@@ -292,13 +292,13 @@ The 51-byte width is the *issue* width. Stored in HBM, each bundle is framed by 
 
 | Helper | @ addr | Result / delegate |
 |---|---|---|
-| `BundleSizeBytes()` | `0x1d227740` | `0x33` = 51 (on-wire issue width) · CONFIRMED |
+| `BundleSizeBytes()` | `0x1d227740` | `0x33` = 51 (on-wire issue width) |
 | `BundleSizeBytesForDma()` | `0x1d227760` | reads version `[encoder+0x8]` → tail-jumps `codec_metadata::BundleSizeBytesForHbm(ver, seqtype)` @ `0x1ecf71a0` |
 | `HasCheckByteForDma()` | `0x1d227780` | → `codec_metadata::HasCheckByteForHbm` @ `0x1ecf71c0` |
 | `BundleCheckByte()` | `0x1d2277a0` | → `codec_metadata::BundleCheckByte` @ `0x1ecf71e0` |
 | `BundleCheckByteMask()` | `0x1d2277c0` | → `codec_metadata::BundleCheckByteMask` @ `0x1ecf7200` |
 | `DmaEncodingBytesRequired(n)` | `0x1d2277e0` | `n + BundleSizeBytesForHbm()` (per-bundle stride) |
-| `MinimumBundlesRequiredToEncodeToDma()` | `0x1d227920` | `0xa` = 10 · CONFIRMED |
+| `MinimumBundlesRequiredToEncodeToDma()` | `0x1d227920` | `0xa` = 10 |
 | `EncodeProgramForHbmInternal` | `0x1e8c5ce0` | thin wrapper → codec vtable `[+0x20]`, per-bundle loop over `TensorCoreProgram.bundles` |
 
 > **NOTE —** the codec-metadata table lives in `platforms_deepsea::jellyfish::isa::codec_metadata` and is shared across generations — Pufferfish (`TpuVersion = 2`) is one row of a `(TpuVersion, TpuSequencerType)` lookup, so its HBM stride and check-byte are *not* compiled into `EncoderPfTensorCore`. The exact per-bundle framing bytes (the check byte and any pad) are written by the program-level `EncodeProgramForHbmInternal` and are not individually pinned on this page.

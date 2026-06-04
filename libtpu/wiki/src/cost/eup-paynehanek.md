@@ -155,7 +155,7 @@ k mod 4   sin(x) =        cos(x) =
   3       −cos(r)         +sin(r)
 ```
 
-> **INFERRED —** the `k mod 4 → {sign, sin↔cos swap}` truth table above is the standard quadrant mapping and is the *expected* meaning of the two low turn-count bits, but it was **not** byte-transcribed from the 16 `SimplifySelect` arms. The select network was decoded structurally (window selection by exponent bucket), and the integer-to-quadrant binding pairs with the EUP `sinq`/`cosq` push rather than living entirely inside this function. Treat the truth table as a documented convention, not a binary-confirmed fact; the sign/swap arms are most plausibly applied at the `Vsinq`/`Vcosq` builder that wraps the EUP push (see [`slot-eup-transcendental`](../isa/slot-eup-transcendental.md)). **LOW** confidence on the exact arm-to-quadrant assignment.
+> the `k mod 4 → {sign, sin↔cos swap}` truth table above is the standard quadrant mapping and is the *expected* meaning of the two low turn-count bits, but it was **not** byte-transcribed from the 16 `SimplifySelect` arms. The select network was decoded structurally (window selection by exponent bucket), and the integer-to-quadrant binding pairs with the EUP `sinq`/`cosq` push rather than living entirely inside this function. Treat the truth table as a documented convention, not a binary-confirmed fact; the sign/swap arms are most plausibly applied at the `Vsinq`/`Vcosq` builder that wraps the EUP push (see [`slot-eup-transcendental`](../isa/slot-eup-transcendental.md)). **LOW** confidence on the exact arm-to-quadrant assignment.
 
 ### Worked Example — Why the Window Survives for Large `|x|`
 

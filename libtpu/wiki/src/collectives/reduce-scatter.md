@@ -105,7 +105,7 @@ unidirectional — the SC-offload substrate names it explicitly (`ICI_RING_TYPE_
 `ICI_RING_TYPE_UNIDIR_CCW`), and the dense substrate runs the same per-color ring decomposition via
 `StrategyND`'s `UniDirectionNDRingStrategy`.
 
-> **[CONFIRMED]** The RS opcode (`93`) and its shape handling are byte-anchored in
+> The RS opcode (`93`) and its shape handling are byte-anchored in
 > `CostModel::GetCollectiveCycles` @`0x130abfc0`: `v96 = *((_BYTE *)a2 + 12)` (the opcode), the
 > `if (v96 == 93)` branch @ line 859 reads **operand 0's** shape (`v154 = *(v93+88)`,
 > `v93 = operand(a2,0)` @ line 853; `v92 = GetShapeSize(v154)` @ line 868) for the cost numerator,
@@ -188,7 +188,7 @@ IciStrategyRingConfig` tree. The structural identity is the proto-level expressi
 RS/AG/AR family sharing one ring representation. The full layout is on
 [SC-Offload Config Builder](sc-offload-config-builder.md).
 
-> **[CONFIRMED]** The `2·` bandwidth factor (`v460 = 2 * ShapeSize` @ line 674, then `ShapeSize *= 2`
+> The `2·` bandwidth factor (`v460 = 2 * ShapeSize` @ line 674, then `ShapeSize *= 2`
 > @ line 707) and the `__popcnt(… & 7)` num-dims term @ line 727 are byte-anchored in
 > `GetCollectiveCycles` @`0x130abfc0` — in the dense `case 9:`/`case 11:` (all-reduce) branch, not on
 > the reduce-scatter path. The `AllReduceReduceScatterReorder` / `ReduceScatterReassociate` /
@@ -249,7 +249,7 @@ When the SC config is present the cost charges the per-color UNIDIR ring set the
 not the dense TC operating point — the same probe-and-charge the overview describes for the SC
 substrate.
 
-> **[CONFIRMED]** The RS size branch (`v96 == 93` → `GetShapeSize(operand0)`, line 868, jumping
+> The RS size branch (`v96 == 93` → `GetShapeSize(operand0)`, line 868, jumping
 > straight to `LABEL_113`) is byte-anchored at `GetCollectiveCycles` @`0x130abfc0` lines 859/868;
 > the `operand0_size · (v98 - 1)` shard-fraction form @ line 888 belongs to the **all-gather**
 > (opcode `6`) leg, not RS. The `case 93:` SC-offload probe reading `ReduceScatterOffloadConfig`
@@ -311,7 +311,7 @@ instantiations. The RS instantiation differs only in the `*OffloadConfig` type i
 field map, the per-color emission loop, and the `GetDimensionRings` per-axis partitioner are on
 [SC-Offload Config Builder](sc-offload-config-builder.md).
 
-> **[CONFIRMED]** `ConstructConfigForReduceScatterUniDirND` @`0x133ccbe0` calls the templated
+> `ConstructConfigForReduceScatterUniDirND` @`0x133ccbe0` calls the templated
 > builder with the literal `256` (FLAT) — byte-anchored at the decompiled call site. The 1D/2D/3D
 > gate (`"We only support 1D/2D/3D ReduceScatter for now."`), `IsSupportedReduceScatter`,
 > `GetCollectiveNDPlaneDimensionCount`, and `ValidateReduceScatterReplicaGroupsOrderOnNDPlane`

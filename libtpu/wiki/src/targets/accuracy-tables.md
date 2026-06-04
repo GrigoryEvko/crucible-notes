@@ -29,12 +29,12 @@ Each blob is keyed by codename in its `embed://` URI and stamped with `proto fie
 
 | codename | `tpu::TpuVersion` | proto f3 | blob file | data_va / off | size (B) | md5 (== `FileWrapper` fp) · Conf |
 |---|---:|---:|---|---|---:|---|
-| jellyfish | 0 | 1 | `accuracy_table_jellyfish.binarypb` | `0x040c8990` | 181,284 | `e3a2a768…d4c42cf4` · CONFIRMED |
-| dragonfish | 1 | 2 | `accuracy_table_dragonfish.binarypb` | `0x040703d0` | 181,284 | `4d2efd10…748bc019` · CONFIRMED |
-| pufferfish | 2 | 3 | `accuracy_table_pufferfish.binarypb` | `0x040f4dc0` | 181,284 | `e8dbf7b1…a185d4c4` · CONFIRMED |
-| viperfish | 3 | 4 | `accuracy_table_viperfish.binarypb` | `0x041211f0` | 181,139 | `354963c9…3746b900` · CONFIRMED |
-| ghostlite | 4 | 5 | `accuracy_table_ghostlite.binarypb` | `0x0409c800` | 180,617 | `8acb76b8…fb433612` · CONFIRMED |
-| 6acc60406 | 5 | — | — (none) | — | — | no table — fallback · CONFIRMED |
+| jellyfish | 0 | 1 | `accuracy_table_jellyfish.binarypb` | `0x040c8990` | 181,284 | `e3a2a768…d4c42cf4` |
+| dragonfish | 1 | 2 | `accuracy_table_dragonfish.binarypb` | `0x040703d0` | 181,284 | `4d2efd10…748bc019` |
+| pufferfish | 2 | 3 | `accuracy_table_pufferfish.binarypb` | `0x040f4dc0` | 181,284 | `e8dbf7b1…a185d4c4` |
+| viperfish | 3 | 4 | `accuracy_table_viperfish.binarypb` | `0x041211f0` | 181,139 | `354963c9…3746b900` |
+| ghostlite | 4 | 5 | `accuracy_table_ghostlite.binarypb` | `0x0409c800` | 180,617 | `8acb76b8…fb433612` |
+| 6acc60406 | 5 | — | — (none) | — | — | no table — fallback |
 
 The `embed://` URI is assembled as `embed://accuracy_table_<codename>_memfile/accuracy_table_<codename>.binarypb` from the path pieces `"embed://accuracy_table_"` + codename + `"_memfile/"` + `"accuracy_table_"` + codename + `".binarypb"`; the codename comes from `tpu::TpuVersionToString(version)` (string table @ `0x22011bf0`, `0→jellyfish … 5→6acc60406`, FATAL above 5).
 

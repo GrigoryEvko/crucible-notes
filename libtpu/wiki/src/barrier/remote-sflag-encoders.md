@@ -282,7 +282,7 @@ Putting the dispatcher, the remap, and the per-gen encoders together, the cross-
 
 ## 6. Verification notes
 
-> **[CONFIRMED]** Byte-exact in `libtpu.so` v0.0.40:
+> Byte-exact in `libtpu.so` v0.0.40:
 > - **Dispatcher** `EncodeRemoteSyncFlagAddress` @`0x1d54da40`: the `(sflag[+0xb]&0x7c)==0x18` kSflag gate with the SupportsRemoteSyncFlagInTpuEmbeddingSpace (vtable+0x7b0, MS ∈ {9,10}) and SupportsSparseCore (vtable+0x260, MS `0x30`) alternates; the RetCheck string `"remote_sync_flag->memory_space() == MemorySpace::kSflag || …kBarnaCoreSmem … kBarnaCoreSflag … kSparseCoreSequencerSflag"`; `MapLogicalToPhysicalChipId(…, operand "EncodeRemoteSyncFlagAddress()" [29 chars], multicast=0)`; `version = Target[+0x398]`; the registry `Get` then invoke with `(sflag, &x_coord, multicast, phys_chip_val, &builder)`; `LOG(FATAL) "Unsupported version: "` at line 8252 — exact.
 > - **`VsyncAddRemote`** @`0x1d522f40`: `EncodeRemoteSyncFlagAddress` then `CreateVectorSyncFlagAddRemote(addr, value)` then `AppendInstruction` — exact.
 > - **JfDf** @`0x1d5aa620`: `SshllU32(CLB[+8],0x14)`, `SshllU32(phys_chip,0x15)`, `0x40000`, `DefaultSyncFlagSegmentId()<<0xc`, conditional `0x80000` under `if(multicast)` with the `VLOG(1) "Set multicast in EncodeRemoteSyncFlagAddress"` site, annotation `"remote sync flag address"` — exact (multicast bit is CONDITIONAL).

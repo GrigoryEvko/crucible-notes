@@ -70,7 +70,7 @@ if (src < 0 || src >= n)  return INVALID_ARGUMENT("Invalid source chip ID")
 if (dst < 0 || dst >= n)  return INVALID_ARGUMENT("Invalid destination chip ID")
 ```
 
-> **[CONFIRMED]** Both checks call interface slot `+0x78` (`+120`) for `n`; the strings `"Invalid source chip ID"` (len 22, line 34) and `"Invalid destination chip ID"` (len 27, line 37) are `MakeErrorImpl<9>` (absl `kFailedPrecondition` = `9`, i.e. FAILED_PRECONDITION — **not** INVALID_ARGUMENT) at the TU `dma_destination_routing_table_entry_mapper.cc`. (All of the mapper's own topology-precondition errors use `<9>`; only the `not-reachable` and `unsupported-scheme` paths use `MakeErrorImpl<3>` = `kInvalidArgument`.)
+> Both checks call interface slot `+0x78` (`+120`) for `n`; the strings `"Invalid source chip ID"` (len 22, line 34) and `"Invalid destination chip ID"` (len 27, line 37) are `MakeErrorImpl<9>` (absl `kFailedPrecondition` = `9`, i.e. FAILED_PRECONDITION — **not** INVALID_ARGUMENT) at the TU `dma_destination_routing_table_entry_mapper.cc`. (All of the mapper's own topology-precondition errors use `<9>`; only the `not-reachable` and `unsupported-scheme` paths use `MakeErrorImpl<3>` = `kInvalidArgument`.)
 
 ### 1.3 Scheme dispatch + preconditions
 
@@ -83,7 +83,7 @@ if (dst < 0 || dst >= n)  return INVALID_ARGUMENT("Invalid destination chip ID")
 | `0` | all-to-all | `TotalSize() <= 16` (else `"All to all routing is only supported for slices with <= 16 chips"`) | inline (direct, see §1.4) |
 | other | — | — | `INVALID_ARGUMENT("Unsupported routing scheme: %d")` (line 94) |
 
-> **[CONFIRMED]** The `scheme == 2` branch first checks `(*(...)(*topo + 72))(topo) == 2` — interface slot `+0x48` returns the dim count — with error `"Two axes routing is only supported for 2-D topologies"` (len 53), then `TotalSize() <= 64` with `"Two axes routing is only supported for slices with <= 64 chips"` (len 62). It then iterates the per-dim sizes (slot `+0x50` total, slot `+0x58` per-dim `StatusOr<int>`) checking `size < 9` (`"...axes of size <= 8"`, line 61) and, for is-wrap dims (slot `+0x68` `StatusOr<bool>`), `size >= 16` (`"All wrap-around dimensions must be of length 16"`, line 77). The `scheme == 0 && TotalSize() >= 17` guard precedes the loop. The dispatch at the tail is `if (v30==2) MapTwoAxes else if (v30==1) MapOneTwoFourEight else if (v30) <error> else <direct>`.
+> The `scheme == 2` branch first checks `(*(...)(*topo + 72))(topo) == 2` — interface slot `+0x48` returns the dim count — with error `"Two axes routing is only supported for 2-D topologies"` (len 53), then `TotalSize() <= 64` with `"Two axes routing is only supported for slices with <= 64 chips"` (len 62). It then iterates the per-dim sizes (slot `+0x50` total, slot `+0x58` per-dim `StatusOr<int>`) checking `size < 9` (`"...axes of size <= 8"`, line 61) and, for is-wrap dims (slot `+0x68` `StatusOr<bool>`), `size >= 16` (`"All wrap-around dimensions must be of length 16"`, line 77). The `scheme == 0 && TotalSize() >= 17` guard precedes the loop. The dispatch at the tail is `if (v30==2) MapTwoAxes else if (v30==1) MapOneTwoFourEight else if (v30) <error> else <direct>`.
 
 ### 1.4 The all-to-all direct case (`scheme == 0`)
 
@@ -95,7 +95,7 @@ When the scheme is all-to-all and the chip count is small (≤ 16), every chip i
 *result = 1;                   // ok Status
 ```
 
-> **[CONFIRMED]** The `else` arm of the tail dispatch (`v30 == 0`) writes `*((_DWORD*)v32 + 2) = v31` where `v31 = a3 = dst`, and `*v5 = 1`. No worker is invoked — direct routing means "send straight to the destination chip".
+> The `else` arm of the tail dispatch (`v30 == 0`) writes `*((_DWORD*)v32 + 2) = v31` where `v31 = a3 = dst`, and `*v5 = 1`. No worker is invoked — direct routing means "send straight to the destination chip".
 
 ### 1.5 The n-hop worker (`MapOneTwoFourEightHopNeighborsReachable`)
 
@@ -125,7 +125,7 @@ RET_CHECK(routing_table_index != src)                     // line 387
 *result = 1
 ```
 
-> **[CONFIRMED]** The worker reads `src`/`dst` coordinates via slot `+0x88`, calls `CheckReachable` (`@0x1fc594c0`), and on unreachable emits `MakeErrorImpl<3>` with the format string `"Chip ID %d is not reachable from chip ID %d for this topology, %s"` (len 65, line 196). The reachability result is a `StatusOr<{reachable,hops}>` whose bit `& 0x100000000` is the reachable flag and whose low dword is the hop count. `GetHopLength` is called on the hop count (line 356). A `RET_CHECK(routing_table_index != source_chip_id)` (string `"routing_table_index != source_chip_id"`, line 387) guards against a self-loop, with a VLOG dump (`"routing_table_index is equal to source_chip_id for: ..."`, line 382).
+> The worker reads `src`/`dst` coordinates via slot `+0x88`, calls `CheckReachable` (`@0x1fc594c0`), and on unreachable emits `MakeErrorImpl<3>` with the format string `"Chip ID %d is not reachable from chip ID %d for this topology, %s"` (len 65, line 196). The reachability result is a `StatusOr<{reachable,hops}>` whose bit `& 0x100000000` is the reachable flag and whose low dword is the hop count. `GetHopLength` is called on the hop count (line 356). A `RET_CHECK(routing_table_index != source_chip_id)` (string `"routing_table_index != source_chip_id"`, line 387) guards against a self-loop, with a VLOG dump (`"routing_table_index is equal to source_chip_id for: ..."`, line 382).
 
 > **[LOW]** The exact arithmetic of `kCaseHopsSignToOffsets` — a static lookup table searched by two interleaved binary searches over a 512-byte region of 16-byte `{routing_case, hop_len, sign, offset}` records (`kCaseHopsSignToOffsets.contains({routing_case, hop_len, hops>0?POSITIVE:NEGATIVE})`, line 363) — and the final `(offset + sy + hops*axis_len) & 7 | 8` fold (`v41 = ((unsigned)offset + v79 + v16*v17 ...) & 7 | 8`) were traced to their operands but not reduced to a closed-form per-axis index. The structure (search the table for the `(case, |hops|, sign)` key, add the stored offset to a strided coordinate, mask to the axis, set bit 3) is byte-confirmed; the precise meaning of each `routing_case` (0/1/3 + parity) is inferred from the `sx==dx` / `axis_len<=4` branch shape.
 
@@ -133,7 +133,7 @@ RET_CHECK(routing_table_index != src)                     // line 387
 
 `CheckReachable` (`@0x1fc594c0`) takes two `superpod::routing::Coordinates` and the topology and returns a `StatusOr<{bool reachable, int hops}>` — whether `dst` is a valid n-hop neighbor of `src` along a single axis, and the signed hop count. `MapTwoAxesReachable` (`@0x1fc58fa0`) is the `scheme == 2` analog: it resolves both coordinates (slot `+0x88`), and folds a displacement that may move along **both** axes (the small ≤ 64-chip 2-D case), again validating reachability before producing the index. Both workers share the `dma_destination_routing_table_entry_mapper.cc` TU and the same `StatusOr<int>` return contract.
 
-> **[CONFIRMED]** `MapTwoAxesReachable @0x1fc58fa0` opens with the same `GetCoordinate(src)` (slot `+0x88`) pattern as the n-hop worker and is reached only from the `scheme == 2` arm of `Map`. The two-axes precondition loop (axes ≤ 8, wrap dims == 16) is enforced by `Map` before the call.
+> `MapTwoAxesReachable @0x1fc58fa0` opens with the same `GetCoordinate(src)` (slot `+0x88`) pattern as the n-hop worker and is reached only from the `scheme == 2` arm of `Map`. The two-axes precondition loop (axes ≤ 8, wrap dims == 16) is enforced by `Map` before the call.
 
 ---
 
@@ -160,13 +160,13 @@ idx = DmaDestinationRoutingTableEntryMapper::Map(adapter, src, dst, /*scheme=*/1
 return ok(idx) ? idx : -1     // on error, returns index -1
 ```
 
-> **[CONFIRMED]** The function checks `a3 >= topo[+0x70/4]` (chip count, field at int-offset 28) with `"Invalid source chip id "` / `"Invalid destination chip id "`, then `topo[+0x60/4] != 1` (int-offset 24, the Z size) with `"toplogy must be 2d for limited ICI routing, z: "`. It constructs `slice_builder::Topology` from `topo[+0xa0]`/`topo[+0xa1]` (wrap bits) and `topo[+0x58]` (dim-size span), then calls `DmaDestinationRoutingTableEntryMapper::Map(&result, src, dst, &adapter, 1)`. On success it writes `*((int*)this + 2) = mapped_index`; on the mapper returning an error Status it writes `-1` and unrefs the error.
+> The function checks `a3 >= topo[+0x70/4]` (chip count, field at int-offset 28) with `"Invalid source chip id "` / `"Invalid destination chip id "`, then `topo[+0x60/4] != 1` (int-offset 24, the Z size) with `"toplogy must be 2d for limited ICI routing, z: "`. It constructs `slice_builder::Topology` from `topo[+0xa0]`/`topo[+0xa1]` (wrap bits) and `topo[+0x58]` (dim-size span), then calls `DmaDestinationRoutingTableEntryMapper::Map(&result, src, dst, &adapter, 1)`. On success it writes `*((int*)this + 2) = mapped_index`; on the mapper returning an error Status it writes `-1` and unrefs the error.
 
 ### 2.2 `net_util::MapSrcDstCoreToRoutingTableIndex`
 
 `xla::jellyfish::net_util::MapSrcDstCoreToRoutingTableIndex` (`@0x1c6aea80`) is the compile-side analog: it likewise builds the topology adapter and calls `Map(...,1)`, used by `GenerateRoutingTableIndexMappingTable` (`@0x1c6a2b80`) to materialise the **full src×dst routing-table-index table** the runtime indexes per DMA (the `routing_table_index` field of the DMA descriptor; see **[Unicast Route Emission](unicast-route-emission.md)** for how these indices populate `superpod::routing::RoutingTable`).
 
-> **[CONFIRMED]** `MapSrcDstCoreToRoutingTableIndex @0x1c6aea80` contains the call `DmaDestinationRoutingTableEntryMapper::Map(&result, src, dst, adapter, 1)` (line 60 of its decompile), confirming both public callers fix `scheme == 1`.
+> `MapSrcDstCoreToRoutingTableIndex @0x1c6aea80` contains the call `DmaDestinationRoutingTableEntryMapper::Map(&result, src, dst, adapter, 1)` (line 60 of its decompile), confirming both public callers fix `scheme == 1`.
 
 ---
 
@@ -197,7 +197,7 @@ The mapper never touches a concrete topology — it dispatches through the abstr
 | `+0x78` (`+120`) | `TotalSize()` (chip count) | `int` | src/dst bounds, scheme caps |
 | `+0x88` (`+136`) | `GetCoordinate(int)` | `StatusOr<Coordinates>` | both workers |
 
-> **[CONFIRMED]** Every slot above is taken from a `(*(...)(*(qword*)a4 + N))(a4, ...)` indirect call in `Map` / `MapOneTwoFourEightHopNeighborsReachable`. The `slice_builder::Topology` concrete class (constructed in `RoutingTableEntryForICILimitedRouting @0x1fc58040`, vtable `off_220174F0`) is the implementation the HAL path uses.
+> Every slot above is taken from a `(*(...)(*(qword*)a4 + N))(a4, ...)` indirect call in `Map` / `MapOneTwoFourEightHopNeighborsReachable`. The `slice_builder::Topology` concrete class (constructed in `RoutingTableEntryForICILimitedRouting @0x1fc58040`, vtable `off_220174F0`) is the implementation the HAL path uses.
 
 ### 3.3 The `slice_builder::Topology` adapter
 
@@ -236,7 +236,7 @@ Each leaf `pair` is initialised to `{-1, -1}`:
 *(qword*)(leaf + 8)  = -1;   // .second = core1_logical (unmapped)
 ```
 
-> **[CONFIRMED]** The outer vector is `operator new(24 * Y)` with `Y = v5[23]`; each middle vector is grown to `X = v5[22]` via `vector<…>::__append`; each inner to `Z = v5[24]` `pair`s; the `{-1,-1}` init is the two `*(qword*)(... ) = -1` stores inside the `LABEL_34` fill loop. The element strides match: outer `24 * v12`, middle `lea [r15+r15*2]` (= `·24`), inner `16 * v77` (the pair).
+> The outer vector is `operator new(24 * Y)` with `Y = v5[23]`; each middle vector is grown to `X = v5[22]` via `vector<…>::__append`; each inner to `Z = v5[24]` `pair`s; the `{-1,-1}` init is the two `*(qword*)(... ) = -1` stores inside the `LABEL_34` fill loop. The element strides match: outer `24 * v12`, middle `lea [r15+r15*2]` (= `·24`), inner `16 * v77` (the pair).
 
 ### 4.3 The device-assignment fill loop
 
@@ -261,7 +261,7 @@ for r in [0, replica_count):                 // outer (i)
         mapping[cY][cX][cZ].first  = stored      // core0
 ```
 
-> **[CONFIRMED]** The loop bounds are `da[+0x8] & 0x7fffffff` (replica) and `da[+0x0] & 0x7fffffff` (partition). The flat-id is a Horner-style `imul/add` chain over the `{p, r}` coordinate and the `da[+0x0]` stride vector (the 8-way-unrolled multiply chain at `LABEL_57`/the unrolled body). `LogicalDeviceForId(chip_cfg, 0, da.flat_id_table[flat])` is called with `core_type = 0` and the flat-id table at `da[+0x10]` (`*((qword*)v38 + 2)`). `chip_coordinates()` is read three times into `v76[1]`=cY, `v76[0]`=cX, `v77`=cZ. The stored id is `v57 = p + replica_count·r` unless `!per_partition`-arg... — precisely, `v57 = v88 + v85*r`; when `!(byte)v79` (the `per_partition` arg is false) `v57 = (unsigned)r`. The slot is chosen on `*(dword*)&v75[52]` (the `chip_coordinates` struct's `valid`/second-core field): nonzero → `.second` (`+8` of the pair), zero → `.first`. All three levels are bound-checked (`BUG()` on out-of-range).
+> The loop bounds are `da[+0x8] & 0x7fffffff` (replica) and `da[+0x0] & 0x7fffffff` (partition). The flat-id is a Horner-style `imul/add` chain over the `{p, r}` coordinate and the `da[+0x0]` stride vector (the 8-way-unrolled multiply chain at `LABEL_57`/the unrolled body). `LogicalDeviceForId(chip_cfg, 0, da.flat_id_table[flat])` is called with `core_type = 0` and the flat-id table at `da[+0x10]` (`*((qword*)v38 + 2)`). `chip_coordinates()` is read three times into `v76[1]`=cY, `v76[0]`=cX, `v77`=cZ. The stored id is `v57 = p + replica_count·r` unless `!per_partition`-arg... — precisely, `v57 = v88 + v85*r`; when `!(byte)v79` (the `per_partition` arg is false) `v57 = (unsigned)r`. The slot is chosen on `*(dword*)&v75[52]` (the `chip_coordinates` struct's `valid`/second-core field): nonzero → `.second` (`+8` of the pair), zero → `.first`. All three levels are bound-checked (`BUG()` on out-of-range).
 
 > **[LOW]** The exact named `TpuChipConfig`/`TpuCoreLocation` fields behind `chip_coordinates()` (`coord0`=cX, `coord1`=cY, `coord2`=cZ, and the `+52` second-core/valid flag) and the `per_partition` true/false semantics (`v57 = p + replicas·r` vs `v57 = r`) are byte-confirmed at the offset level; the binding of each offset to a proto field name is inferred from the VLOG dump labels (`"replica:"`, `"model id:"`, `"row:"`, `"col:"`, `"dim_z:"` at `group_utils.cc:285`).
 
@@ -273,7 +273,7 @@ Each fill iteration, when `VLOG(2)` is enabled (`group_utils.cc:285`), emits:
 device assignment. replica: <r> model id: <p> row: <cY> col: <cX> dim_z: <cZ>
 ```
 
-> **[CONFIRMED]** The `LogMessage` chain at `LABEL_73` emits exactly these labels (`"device assignment. replica: "`, `" model id: "`, `" row: "`, `" col: "`, `" dim_z: "`) with `r`, `p`, `cY`, `cX`, `cZ` operands, gated on `VLogSite::SlowIsEnabled2(..., dword_2236DE58)`.
+> The `LogMessage` chain at `LABEL_73` emits exactly these labels (`"device assignment. replica: "`, `" model id: "`, `" row: "`, `" col: "`, `" dim_z: "`) with `r`, `p`, `cY`, `cX`, `cZ` operands, gated on `VLogSite::SlowIsEnabled2(..., dword_2236DE58)`.
 
 ### 4.5 Consumers
 
@@ -288,7 +288,7 @@ The map is read by the replica-group builders to turn a twist coordinate `(cY,cX
 | `TwistedTorusND::GetPhase0ReplicaGroups` | `@0x137d3560` |
 | `TwistedTorusND::GetPhase1ReplicaGroups` | `@0x137d3de0` |
 
-> **[CONFIRMED]** All six functions reference `GetPhysicalToLogicalMapping3D` in their decompiled bodies (cross-checked by symbol grep). These are the megacore replica-group emitters that append the two core ids of each physical chip into the HLO `ReplicaGroup` device lists.
+> All six functions reference `GetPhysicalToLogicalMapping3D` in their decompiled bodies (cross-checked by symbol grep). These are the megacore replica-group emitters that append the two core ids of each physical chip into the HLO `ReplicaGroup` device lists.
 
 ---
 
@@ -337,7 +337,7 @@ The Type-5 schedule literal and Type-0xb table layout are documented on the coll
 | `routing_table_index != source_chip_id` | 387 | RET_CHECK | computed index == src (self-loop) |
 | `toplogy must be 2d for limited ICI routing, z: %d` (in `n_hop_route.cc`) | 40 | INVALID_ARGUMENT (`InvalidArgumentErrorBuilder`) | Z dim != 1 |
 
-> **[CONFIRMED]** All strings above were read at their referenced `MakeErrorImpl` / `InvalidArgumentErrorBuilder` / `RetCheckFailSlowPath` call sites in the two TUs. The mapper's own six precondition errors are `MakeErrorImpl<9>` (absl `kFailedPrecondition`); the `not-reachable` (line 196) and `unsupported-scheme` (line 94) paths are `MakeErrorImpl<3>` (`kInvalidArgument`); and the three `n_hop_route.cc` errors (`Invalid source/destination chip id`, `toplogy must be 2d`) are `util::InvalidArgumentErrorBuilder`.
+> All strings above were read at their referenced `MakeErrorImpl` / `InvalidArgumentErrorBuilder` / `RetCheckFailSlowPath` call sites in the two TUs. The mapper's own six precondition errors are `MakeErrorImpl<9>` (absl `kFailedPrecondition`); the `not-reachable` (line 196) and `unsupported-scheme` (line 94) paths are `MakeErrorImpl<3>` (`kInvalidArgument`); and the three `n_hop_route.cc` errors (`Invalid source/destination chip id`, `toplogy must be 2d`) are `util::InvalidArgumentErrorBuilder`.
 
 ---
 

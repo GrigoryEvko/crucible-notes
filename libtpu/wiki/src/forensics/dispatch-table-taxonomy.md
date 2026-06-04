@@ -504,22 +504,22 @@ The relocation figures on this page are taken directly from the binary with
 `readelf -dW`/`-rW`, which are authoritative over any analysis-sidecar relocation
 total (see the count-provenance note below). The confirmed figures:
 
-| Quantity | Value | Status |
-|---|---:|---|
-| Function-pointer tables | 40,313 | CERTAIN |
-| Total pointer entries | 516,323 | CERTAIN |
-| Section split | 38,664 / 1,442 / 207 | CERTAIN |
-| `.data` composition | 833 pfm + 585 UFB (+ ~24 misc) | CERTAIN |
-| Switch jump tables | 33,016 | CERTAIN |
-| Switch case targets | 4,673,757 | CERTAIN |
-| Largest switch | 40,813 cases | CERTAIN |
-| size-23 tables / with Model / without | 6,129 / 6,050 / 79 | CERTAIN |
-| Tables with ≥1 Model entry | 6,070 | CERTAIN |
-| "vtable for" RTTI records | 39,155 | CERTAIN |
-| `R_X86_64_RELATIVE` relocations (`DT_RELACOUNT`) | 1,069,006 | CERTAIN |
-| Total relocation entries (all types) | 1,069,659 | CERTAIN |
-| `.data.rel.ro` relocations (all types / `RELATIVE`) | 924,033 / 924,015 | CERTAIN |
-| `0x223393a0` / `0x21c1d590` / `0x21e0d0a0` entries | 2,595 / 447 / 674 | CERTAIN |
+| Quantity | Value |
+|---|---:|
+| Function-pointer tables | 40,313 |
+| Total pointer entries | 516,323 |
+| Section split | 38,664 / 1,442 / 207 |
+| `.data` composition | 833 pfm + 585 UFB (+ ~24 misc) |
+| Switch jump tables | 33,016 |
+| Switch case targets | 4,673,757 |
+| Largest switch | 40,813 cases |
+| size-23 tables / with Model / without | 6,129 / 6,050 / 79 |
+| Tables with ≥1 Model entry | 6,070 |
+| "vtable for" RTTI records | 39,155 |
+| `R_X86_64_RELATIVE` relocations (`DT_RELACOUNT`) | 1,069,006 |
+| Total relocation entries (all types) | 1,069,659 |
+| `.data.rel.ro` relocations (all types / `RELATIVE`) | 924,033 / 924,015 |
+| `0x223393a0` / `0x21c1d590` / `0x21e0d0a0` entries | 2,595 / 447 / 674 |
 
 > **Note (count provenance):** relocation totals must come from `readelf -dW` /
 > `readelf -rW` on the binary, not from an analysis sidecar. The authoritative

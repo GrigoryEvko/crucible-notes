@@ -292,7 +292,7 @@ Both paths produce the same *logical* predicate; only the realization differs (o
 ## 6. What is not yet pinned
 
 - **The HW `vcmask` decoder inclusivity.** The emitter packs inclusive end bounds (`hi − 1`); whether the VPU decoder reads `sublane_end`/`lane_end` as inclusive vs exclusive, and whether the 7-bit lane field is truncated at `LaneCount` or full 128, was not cross-checked against a decoder arm. **INFERRED** at the HW decode side.
-- **The per-lane write-enable micro-datapath of the masked scan** (physical suppress-write vs always-materialized select). The `masked_scan` classification and `VectorSelect` lowering are CONFIRMED; the lowest hardware write gate is below the binary. **INFERRED.**
+- **The per-lane write-enable micro-datapath of the masked scan** (physical suppress-write vs always-materialized select). The `masked_scan` classification and `VectorSelect` lowering are CONFIRMED; the lowest hardware write gate is below the binary. 
 - **The exact per-gen `LaneCount`.** Read from the runtime config blob `[Target+0x3b8]+0x198`. `SublaneCount = 8` is CONFIRMED by the 3-bit packed field + `VectorMaskConstantPacked(uint8)`; `LaneCount ≤ 128` by the 7-bit field, but the exact per-gen value lives in config, not code. **INFERRED for the value.**
 - **Whether `M16..M31` have any op-produced write path.** The read band is 32-deep, the op-write band (`GetVMDestregno`) is 16-deep; the upper half being read-only compiler-materialized predicate inputs is **INFERRED** from the band split, not from a write-path-absence proof. The native writers (`Vcmask`/`CreateVmask`) target the full logical `M0..M31` space.
 

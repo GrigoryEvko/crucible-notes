@@ -319,7 +319,7 @@ The cost model treats the two as one family: `ComputeRaggedAllToAllCycles` (`0x1
 
 ## Verification notes
 
-> **[CONFIRMED]** The table builder, SparseCore twin, registration/read-back, and allocator value struct were cross-checked against the IDA decompile of `libtpu.so` v0.0.40:
+> The table builder, SparseCore twin, registration/read-back, and allocator value struct were cross-checked against the IDA decompile of `libtpu.so` v0.0.40:
 > - `GenerateAllToAllTables` @ `0x133ed620` (622 lines): `channel_id` parity (lines 94/121-125), `static_device_assignment_.has_value()` assert (`hlo_module_config.h:285`), `has_replica_groups`/`replica_groups()`, `__append(2*group_size)` (line 168), table-A `2·dev` stores (lines 263-266, `0x133edd36`/`da1`), table-B `imul group_size` (`0x133edde5`), table-C copy (`0x133ee011`), `LogIndexOutOfBoundsAndAbort` (`0x21063300`) — all present.
 > - `GenerateAllToAllTablesForSparseCore` @ `0x133ee200`: `GetCollectiveOpGroupMode` (line 67), `GetParticipatingDevicesGroups` (line 77), `2·dev`/`2·dev+1` stores (lines 100-103) — exact.
 > - `GetConstantTables` @ `0x10f07860`: two `GetConstant` reads + `HasConstant(a2, 10)` gate for Type 0xa — exact.

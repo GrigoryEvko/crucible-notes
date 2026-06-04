@@ -237,7 +237,7 @@ Status TopologyCoordinator::ProcessRequest(
 }
 ```
 
-> **CONFIRMED.** Every consistency check is a hard *reject* that
+> Every consistency check is a hard *reject* that
 > returns a non-OK `Status` (all `MakeErrorImpl<3>` =
 > INVALID_ARGUMENT). They are not "log and continue" warnings, and
 > there is no separate `LogUniqueIds` pass — the topology, host,
@@ -314,7 +314,7 @@ GetMultiSliceTopologyResponse TopologyCoordinator::CreateResponse() {
 }
 ```
 
-> **CONFIRMED.** There is no `shared_seed` / `NewGlobalID()` field
+> There is no `shared_seed` / `NewGlobalID()` field
 > and no separate `endpoints` repeated field — both were not
 > present in the binary. The payload is a single
 > `MultiSliceTopologyInfo` serialized into a `Cord` stored at

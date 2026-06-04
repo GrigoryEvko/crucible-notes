@@ -65,7 +65,7 @@ The three instantiations differ only in `OffloadConfig`/`HloXxx`:
 | AllReduce | `0x133c2dc0` | `AllReduceOffloadConfig` | `HloAllReduceInstruction` |
 | ReduceScatter | `0x133cd800` | `ReduceScatterOffloadConfig` | `HloReduceScatterInstruction` |
 
-> **[CONFIRMED]** The mangled symbol read from the AllGather instantiation is `…StatusOrINS2_20CollectiveConfigInfoIT_EEEERKNS5_6TargetERKNS_16DeviceAssignmentEPKT0_bbNS3_16HierarchicalKindENSt3__u8optionalIbEESQ_NSP_IiEE` — i.e. `(Target const&, DeviceAssignment const&, T0 const*, bool, bool, HierarchicalKind, optional<bool>, optional<bool>, optional<int>) → StatusOr<CollectiveConfigInfo<T>>`. The `bbNS3_16HierarchicalKind…` fragment confirms two `bool`s then `HierarchicalKind` then the three `optional`s. All three instantiations carry the identical fragment with only the message/Hlo type swapped.
+> The mangled symbol read from the AllGather instantiation is `…StatusOrINS2_20CollectiveConfigInfoIT_EEEERKNS5_6TargetERKNS_16DeviceAssignmentEPKT0_bbNS3_16HierarchicalKindENSt3__u8optionalIbEESQ_NSP_IiEE` — i.e. `(Target const&, DeviceAssignment const&, T0 const*, bool, bool, HierarchicalKind, optional<bool>, optional<bool>, optional<int>) → StatusOr<CollectiveConfigInfo<T>>`. The `bbNS3_16HierarchicalKind…` fragment confirms two `bool`s then `HierarchicalKind` then the three `optional`s. All three instantiations carry the identical fragment with only the message/Hlo type swapped.
 
 ### 1.1 The three public ND wrappers — who sets `HierarchicalKind`
 
@@ -86,7 +86,7 @@ arg0  =  (!ShouldEnableSparseCoreHierarchicalAllReduce(target_comp_env))   @0x13
 
 i.e. "use the flat path" — true unless the compile flag is engaged+true **and** the caller's optional override does not force flat.
 
-> **[CONFIRMED]** In the AllReduce wrapper decompile (`…AllReduceUniDirND…_0x133c2c80.c`) `ShouldEnableSparseCoreHierarchicalAllReduce` appears at lines 18/35 and is combined with a `0x101` mask at line 41 — matching the inversion above. The flat-pin of AG/RS (`0x100`) is the engaged+false discriminant; the full enum decode is on **[HierarchicalKind](hierarchical-kind.md)**.
+> In the AllReduce wrapper decompile (`…AllReduceUniDirND…_0x133c2c80.c`) `ShouldEnableSparseCoreHierarchicalAllReduce` appears at lines 18/35 and is combined with a `0x101` mask at line 41 — matching the inversion above. The flat-pin of AG/RS (`0x100`) is the engaged+false discriminant; the full enum decode is on **[HierarchicalKind](hierarchical-kind.md)**.
 
 ---
 
@@ -141,7 +141,7 @@ ConstructConfigForCollectiveUniDirNDGroups<AllGatherOffloadConfig, HloAllGatherI
  [l]  return CollectiveConfigInfo<AllGatherOffloadConfig>(config, strategy_dimension)
 ```
 
-> **[CONFIRMED]** Every callee in the pipeline was located at the cited line in `…AllGatherIn_dfa0bc1bcac2597e_0x133c82c0.c`: `CheckInputOutputNumberOfElementIsBelowLimit` (529), `GetPhysicalDeviceGroups` (552), `ExtractNDPlaneInfo` (571), `IsNDPlaneSpanAcrossEntireDimension` (595), `TryCreateTwistedTorusTopologyInfo` (936), `GetDimensionRings` (3104), `CopyRuntimeConfigToProtoLiteral` (2641, 3366), and the chip extents at `v17 + 88/92/96` (567-569). The `MakeErrorStream` call at line 3206 cites source `offload_collective_config.cc:1616`, pinning the TU name.
+> Every callee in the pipeline was located at the cited line in `…AllGatherIn_dfa0bc1bcac2597e_0x133c82c0.c`: `CheckInputOutputNumberOfElementIsBelowLimit` (529), `GetPhysicalDeviceGroups` (552), `ExtractNDPlaneInfo` (571), `IsNDPlaneSpanAcrossEntireDimension` (595), `TryCreateTwistedTorusTopologyInfo` (936), `GetDimensionRings` (3104), `CopyRuntimeConfigToProtoLiteral` (2641, 3366), and the chip extents at `v17 + 88/92/96` (567-569). The `MakeErrorStream` call at line 3206 cites source `offload_collective_config.cc:1616`, pinning the TU name.
 
 ### 2.1 `GetDimensionRings` — the per-axis ring partitioner
 
@@ -189,7 +189,7 @@ guard:  if ((~hier_word & 0x101) == 0) { … }     @lines 3204, 3262
 
 The `(~hier_word & 0x101) == 0` test is true exactly when both the value bit and the engaged bit are set — i.e. the *hierarchical* discriminant `0x101`. That branch reaches the multi-phase deque walk and an associated validation error path. The flat path (`== 0x100`) is what AllGather/ReduceScatter hardwire, so in this build only AllReduce ever evaluates the hierarchical branch.
 
-> **[CONFIRMED]** The `& 0x101` mask at line 3032 and the `(~v & 0x101) == 0` discriminant at lines 3204/3262 are present byte-exact in the AllGather builder decompile; the `0x100` flat comparison sites (`(_DWORD)v615 == 256`) are at lines 3102 and 3525. The mechanism — flat single-ring per axis vs the queued multi-phase walk — is confirmed; the *contents* of the hierarchical AllReduce emission (how the intra-chip and inter-chip phase rings differ in `IciStrategyRingType`/neighbor) was not fully expanded — see [LOW] §6.
+> The `& 0x101` mask at line 3032 and the `(~v & 0x101) == 0` discriminant at lines 3204/3262 are present byte-exact in the AllGather builder decompile; the `0x100` flat comparison sites (`(_DWORD)v615 == 256`) are at lines 3102 and 3525. The mechanism — flat single-ring per axis vs the queued multi-phase walk — is confirmed; the *contents* of the hierarchical AllReduce emission (how the intra-chip and inter-chip phase rings differ in `IciStrategyRingType`/neighbor) was not fully expanded — see [LOW] §6.
 
 ---
 
@@ -227,7 +227,7 @@ message {AllGather|AllReduce|ReduceScatter}OffloadConfig {
 }
 ```
 
-> **[CONFIRMED]** The three ctors `@0x1d6ee220` (AG) / `0x1d6ed860` (AR) / `0x1d6eebe0` (RS), with matching `Clear` / `ByteSizeLong` triplets, zero the identical `0x48`-byte range; the three proto symbols (`AllGather`/`AllReduce`/`ReduceScatter` `OffloadConfig`) are present throughout the builder decompile and in the `CopyRuntimeConfigToProtoLiteral<…>` and `CollectiveConfigInfo<…>` instantiations. The vtable/typeinfo bases and the field offsets are byte-anchored.
+> The three ctors `@0x1d6ee220` (AG) / `0x1d6ed860` (AR) / `0x1d6eebe0` (RS), with matching `Clear` / `ByteSizeLong` triplets, zero the identical `0x48`-byte range; the three proto symbols (`AllGather`/`AllReduce`/`ReduceScatter` `OffloadConfig`) are present throughout the builder decompile and in the `CopyRuntimeConfigToProtoLiteral<…>` and `CollectiveConfigInfo<…>` instantiations. The vtable/typeinfo bases and the field offsets are byte-anchored.
 
 ### 4.1 The outer wrapper and the cost-model probe
 
@@ -281,7 +281,7 @@ lambda(long color):
    3. fill ring_type / ring_dim / core_count / … from RingConfigAttributes
 ```
 
-> **[CONFIRMED]** In the AllGather per-color lambda (`…_adac2b005e1e2b0d_0x133e0a80.c`) the body shows, in order, `RepeatedPtrFieldBase` → `PerColorIciStrategyConfig` (line 38), then `RepeatedPtrFieldBase` → `IciStrategyRingConfig` (line 67), indexed by `color` (line 78) — exactly the index-color / Add-ring sequence above. The 13-scalar `IciStrategyRingConfig` field *set* and the has-bit count are byte-exact; the per-field byte offset of each scalar within the message was not individually pinned — see [LOW] §6.
+> In the AllGather per-color lambda (`…_adac2b005e1e2b0d_0x133e0a80.c`) the body shows, in order, `RepeatedPtrFieldBase` → `PerColorIciStrategyConfig` (line 38), then `RepeatedPtrFieldBase` → `IciStrategyRingConfig` (line 67), indexed by `color` (line 78) — exactly the index-color / Add-ring sequence above. The 13-scalar `IciStrategyRingConfig` field *set* and the has-bit count are byte-exact; the per-field byte offset of each scalar within the message was not individually pinned — see [LOW] §6.
 
 ### 5.2 The ring enums
 
@@ -322,7 +322,7 @@ The twist gate is the bridge to the SparseCore twisted-torus path: when all thre
 
 ## 7. Verification notes
 
-> **[CONFIRMED]** Cross-checked against the IDA decompile of `libtpu.so` v0.0.40:
+> Cross-checked against the IDA decompile of `libtpu.so` v0.0.40:
 > - **Templated signature** — the mangled symbol of all three instantiations carries `…bbNS3_16HierarchicalKindENSt3__u8optionalIbEESQ_NSP_IiEE` = `(…, bool, bool, HierarchicalKind, optional<bool>, optional<bool>, optional<int>) → StatusOr<CollectiveConfigInfo<T>>` — exact.
 > - **Body pipeline** — `CheckInputOutputNumberOfElementIsBelowLimit` (line 529), `GetPhysicalDeviceGroups` (552), `ExtractNDPlaneInfo` + `IsNDPlaneSpanAcrossEntireDimension` RetCheck (571/595), chip extents `v17 + 88/92/96` = `0x58/0x5c/0x60` (567-569), `TryCreateTwistedTorusTopologyInfo` (936), `GetDimensionRings` (3104), `CopyRuntimeConfigToProtoLiteral` (2641/3366) — all present in order.
 > - **HierarchicalKind dispatch** — `& 0x101` at line 3032; `(~v & 0x101) == 0` at lines 3204/3262; `0x100` (`== 256`) flat sites at 3102/3525 — exact.

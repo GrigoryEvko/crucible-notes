@@ -250,7 +250,7 @@ Within a phase, ties are broken by the single `stable_sort` of `allowed_vec` int
 
 ## 5. Verification notes
 
-> **[CONFIRMED]** The offload gate, the offload enum classifier, and the five-phase policy were cross-checked against the IDA decompile of `libtpu.so` v0.0.40:
+> The offload gate, the offload enum classifier, and the five-phase policy were cross-checked against the IDA decompile of `libtpu.so` v0.0.40:
 > - `SparseCoreCompiler::RunHloScheduler` (`0x1306F820`): the predicate `*(int *)(v8 + 148) > 0 && ((*((_BYTE *)this + 1576) & 4) != 0 || *((_BYTE *)this + 1344))` (offsets `0x94`/`0x628`/`0x540`), the `Megachip` call, `ModuleContainsLEMSparseCoreInstruction`, and `FLAGS_xla_sc_enable_latency_hiding_scheduler` — all present (decompile lines 80/85/193/196/243).
 > - `GetSparseCoreResources` (`0x10FDC0A0`): opcode `[hlo+12] == 17` (0x11), `GetSparseCoreConfig`, has-bit `(cfg[16] & 4)` (`+0x10` mask `0x4`), the offload-enum `switch` arms `case 1..7`, and the non-custom-call `GetResourceTypeForOp` path — exact (lines 44/46/47/49/142).
 > - `GetAllowedCores` (`0x10FDA3C0`): `GetChipIDsFromParallelismConfig` (line 204), `GetSparseCoreResources` (lines 241/725/930), `__tls_get_addr(&qword_22048D78)` budget (lines 237/747), the decrement `(*addr)--` (lines 636/810), the `>= 2` gate (lines 244/637/811), and `insert_hint_unique` (line 522) — exact.

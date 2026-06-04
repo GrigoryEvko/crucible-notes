@@ -91,7 +91,7 @@ A whole-`.text` scan for `E8`/`E9` `rel32` resolving to `0x1d60f420` finds **20*
 
 The sibling `GetMegacoreBarrierSyncFlagNumber` @`0x1d60f4e0` (`= base + count`, `Megacore()`-gated) has only 3 callers — `SynchronizeProgramDescriptorStatesMegacore`, `LloRegionBuilder::BarrierMegacore`, and `RaceAnalyzerStepper::PreProcessEvent` — i.e. the megacore-fold runtime barrier only; no `BarrierConfig` producer ever writes `MEGACORE(4)` (see [Infer Barrier Config](infer-barrier-config.md) and the [overview](overview.md) §2 QUIRK).
 
-> **[CONFIRMED]** `BarrierCoresTree` @`0x1c6a75c0` calls `GetGlobalBarrierSyncFlagNumber` in its body and wraps it as `SflagImmPtr("global barrier sync flag")` — the TC tree barrier's GLOBAL slot. Verified directly in the decompile.
+> `BarrierCoresTree` @`0x1c6a75c0` calls `GetGlobalBarrierSyncFlagNumber` in its body and wraps it as `SflagImmPtr("global barrier sync flag")` — the TC tree barrier's GLOBAL slot. Verified directly in the decompile.
 
 ---
 
@@ -229,7 +229,7 @@ BarrierConfig{type=2, id} ──GetBarrierSyncFlag──▶ sflag = base + id
 
 The GLOBAL barrier takes the **same** `BarrierCoresTree` path with `TreeBarrierType = ALL_CORES(0)` over *all* cores; REPLICA narrows the peer set to the current core's replica group. The actuator op is `VsyncAddRemote` @`0x1d522f40` — signal each peer's SFLAG, then wait — the TC analog of the SparseCore `sc_tpu.sync_add` ([Tree-Barrier / vSync](tree-barrier-vsync.md)).
 
-> **[CONFIRMED]** `BarrierWithinReplicaGroupStartImpl` @`0x1c698080`: the decompile shows `GetReplicaGroupCoreInfo` (resolving group peers), `Pneg` @`0x1d5208e0` + `Predicated` @`0x1d520f00` (participation gate), and `VsyncAddRemote` (per-peer signal). The peer set is the **current core's replica group**, not all cores.
+> `BarrierWithinReplicaGroupStartImpl` @`0x1c698080`: the decompile shows `GetReplicaGroupCoreInfo` (resolving group peers), `Pneg` @`0x1d5208e0` + `Predicated` @`0x1d520f00` (participation gate), and `VsyncAddRemote` (per-peer signal). The peer set is the **current core's replica group**, not all cores.
 
 ### 4.3 Membership encoding — the replica-group `InfoTable`
 
@@ -244,13 +244,13 @@ Both SparseCore custom-kernel barrier entry points **RetCheck** type 2:
 
 > **GOTCHA — the `EmitReplicaGroupCustomBarrierStart` name trap.** The SparseCore function literally named `EmitReplicaGroupCustomBarrierStart` @`0x13353620` is the lowering for the SC A2A **`CUSTOM(3)`** barrier (and the explicit-id path), **NOT** for `BarrierType::REPLICA`. It emits a predicated `sc_tpu.sync_add` to each member of a group whose membership lives in an **SMEM buffer** at a passed `BufferOffset` — distinct from the TC `REPLICA(2)` whose membership is the `InfoTable` literal (§4.3). On SparseCore there is **no** `BarrierType-REPLICA(2)` lowering at all; embedding collectives use `GLOBAL(1)` or `CUSTOM(3)` only. `REPLICA(2)` is a TensorCore dense-collective barrier type **exclusively**.
 
-> **[CONFIRMED]** `EmitAllToAllBarrierStart` @`0x133500e0`: the RetCheck string and message are present verbatim in the decompile at the `else` arm of the `barrier_type` dispatch — REPLICA(2) is rejected on SparseCore.
+> `EmitAllToAllBarrierStart` @`0x133500e0`: the RetCheck string and message are present verbatim in the decompile at the `else` arm of the `barrier_type` dispatch — REPLICA(2) is rejected on SparseCore.
 
 ---
 
 ## 5. Verification notes
 
-> **[CONFIRMED]** Byte-exact in `libtpu.so` v0.0.40:
+> Byte-exact in `libtpu.so` v0.0.40:
 > - `GetGlobalBarrierSyncFlagNumber` @`0x1d60f420`: `this[561] + this[560] + 4` = `base + count + 4` — exact.
 > - `net_util::GetBarrierSyncFlag` @`0x1c69ad00`: `type==1` → `target()->GetGlobalBarrierSyncFlagNumber()` → `SflagImmPtr("global barrier sync flag")`; `type==0` → CHECK-fail (`net_util.cc:2065`); else → CHECK `id < target[0x8c4]` (`:2070`) → `id + target[0x8c0]` → `SflagImmPtr("barrier sync flag number")` — exact, offsets `0x8c0`/`0x8c4` (=`2240`/`2244`) confirmed.
 > - `MaybeInsertGlobalBarrier` @`0x1321ac20`: flags read from `cfg[+0x10]` (bits `0x200`/`0x2000`/`0x40`), `cfg[+0x90]`/`cfg[+0x94]`, `bc->type [+0x20] == 3`; three error sites `custom_kernel_emitter.cc:3560`/`:3572`/`:3681`; **no call to `GetGlobalBarrierSyncFlagNumber`** anywhere in the body; insert via `mlir::detail::walk(MaybeInsertGlobalBarrier::$_0)` with `v12 = 2 − HasAnyCoreType(...)` — exact.

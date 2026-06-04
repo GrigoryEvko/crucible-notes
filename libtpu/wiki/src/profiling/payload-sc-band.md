@@ -92,11 +92,11 @@ Proto fields (descriptor-confirmed, identical for all 11 events and all 3 gens):
 
 ### Per-Gen Width Table
 
-| Gen | payload widths (no `TraceIdHeader`) | `CHECK` | pkts | oneof base | Confidence |
-|---|---|---|---|---|---|
-| vfc | `32,1,6,13,14` | 127 | 1 | 75 | CERTAIN |
-| glc | `32,1,6,13,14` | 127 | 1 | 67 | CERTAIN |
-| gfc | `32,1,6,13,14` | 127 | 1 | 66 | CERTAIN |
+| Gen | payload widths (no `TraceIdHeader`) | `CHECK` | pkts | oneof base |
+|---|---|---|---|---|
+| vfc | `32,1,6,13,14` | 127 | 1 | 75 |
+| glc | `32,1,6,13,14` | 127 | 1 | 67 |
+| gfc | `32,1,6,13,14` | 127 | 1 | 66 |
 
 66 payload bits + 61 frame+header = 127. **Byte-identical across all three SC gens** — only the oneof base differs (the wire shape and `CHECK` are invariant). The 11 primitives, in oneof / on-wire-id order: `CoreInterrupt, SetTracemark, TraceInstruction, SfenceStart, SfenceStop, SyncStart, SyncStop, BarrierStart, BarrierStop, SyncWatchStart, SyncWatchStop`.
 
@@ -132,11 +132,11 @@ function DecodeScTaskIssueFromScs(view, started_out, entry):
 | `tac_pc` | 14 | [TAC](../sparsecore/tac-engine.md) program counter | HIGH |
 | `tile_bitmap` | 16 | SMEM-bitmap iteration field — the set of tiles the task spans | HIGH |
 
-| Gen | widths | `CHECK` | pkts | oneof | Confidence |
-|---|---|---|---|---|---|
-| vfc | `13,8,14,14,16` | 126 | 1 | 86 | CERTAIN |
-| glc | `13,8,14,14,16` | 126 | 1 | 78 | CERTAIN |
-| gfc | `13,8,14,14,16` | 126 | 1 | 77 | CERTAIN |
+| Gen | widths | `CHECK` | pkts | oneof |
+|---|---|---|---|---|
+| vfc | `13,8,14,14,16` | 126 | 1 | 86 |
+| glc | `13,8,14,14,16` | 126 | 1 | 78 |
+| gfc | `13,8,14,14,16` | 126 | 1 | 77 |
 
 65 payload bits + 61 = 126. Byte-identical across gens.
 
@@ -180,11 +180,11 @@ function DecodeScTaskCommitOnSct(view, started_out, entry):
 | `num_spmem_words` | 16 | SPMEM word throughput of the task | HIGH |
 | `num_hbm_words` | 32 | HBM word throughput of the task | HIGH |
 
-| Gen | widths | mid `CHECK` | final `CHECK` | pkts | proto fields | Confidence |
-|---|---|---|---|---|---|---|
-| vfc | `8,4,32,16,7,1,1,9,16,16,16,16,16,32` | 128 | 251 | 2 | 11 (TEC+TAC triples) | CERTAIN |
-| glc | `8,4,32,16,7,1,1,9,16,16,16,16,16,32` | 128 | 251 | 2 | 11 (identical) | CERTAIN |
-| gfc | `8,4,32,16,7,1,1,9,16,16,32,16` | 128 | 219 | 2 | 9 (TAC dropped, `lsu_hold_stalls` added) | CERTAIN |
+| Gen | widths | mid `CHECK` | final `CHECK` | pkts | proto fields |
+|---|---|---|---|---|---|
+| vfc | `8,4,32,16,7,1,1,9,16,16,16,16,16,32` | 128 | 251 | 2 | 11 (TEC+TAC triples) |
+| glc | `8,4,32,16,7,1,1,9,16,16,16,16,16,32` | 128 | 251 | 2 | 11 (identical) |
+| gfc | `8,4,32,16,7,1,1,9,16,16,32,16` | 128 | 219 | 2 | 9 (TAC dropped, `lsu_hold_stalls` added) |
 
 vfc/glc payload = 190 bits (251−61); gfc payload = 158 bits (219−61).
 
@@ -238,11 +238,11 @@ function DecodeScStreamIssueFromCore(view, started_out, entry):
 | `indirect_list_type` | 1 | `WORD`/`ROW` indirection granularity enum | HIGH |
 | `length_in_4B` | 18 (vfc,gfc) / 17 (glc) | stream length in 4-byte words | HIGH |
 
-| Gen | widths | `CHECK` | pkts | `stream_opcode` | `length_in_4B` | Confidence |
-|---|---|---|---|---|---|---|
-| vfc | `14,6,5,1,3,1,3,1,2,1,1,1,18` | 118 | 1 | 3-bit (8 values) | 18 | CERTAIN |
-| glc | `14,6,5,1,4,1,3,1,2,1,1,1,17` | 118 | 1 | 4-bit (11 values) | 17 | CERTAIN |
-| gfc | `14,6,5,1,4,1,3,1,2,1,1,1,18` | 119 | 1 | 4-bit (11 values) | 18 | CERTAIN |
+| Gen | widths | `CHECK` | pkts | `stream_opcode` | `length_in_4B` |
+|---|---|---|---|---|---|
+| vfc | `14,6,5,1,3,1,3,1,2,1,1,1,18` | 118 | 1 | 3-bit (8 values) | 18 |
+| glc | `14,6,5,1,4,1,3,1,2,1,1,1,17` | 118 | 1 | 4-bit (11 values) | 17 |
+| gfc | `14,6,5,1,4,1,3,1,2,1,1,1,18` | 119 | 1 | 4-bit (11 values) | 18 |
 
 > **CONFIRMED (SC-3) —** the per-gen drift is byte-exact. glc/gfc read `GetBits64(4)` for `stream_opcode` where vfc reads `GetBits64(3)` (verified at `DecodeScStreamIssueFromCore` @ `0xf63e300` for glc). glc absorbs the extra bit by narrowing `length_in_4B` 18→17 (keeping `CHECK == 118`); gfc keeps `length_in_4B == 18` and lets the total grow to `CHECK == 119`. The enum growth that forces the widening is in the [enum tables below](#the-sparsecore-selector-enum-value-tables).
 
@@ -270,11 +270,11 @@ function DecodeScStreamProgress<Lane>(view, started_out, entry):
 | `data` | 32 | progress count / lane payload word | HIGH |
 | `done` | 1 | lane-drained flag | HIGH |
 
-| Gen | widths | `CHECK` | pkts | oneof (Xbar / Cmn) | Confidence |
-|---|---|---|---|---|---|
-| vfc | `6,5,1,32,1` | 106 | 1 | 89 / 90 | CERTAIN |
-| glc | `6,5,1,32,1` | 106 | 1 | 81 / 82 | CERTAIN |
-| gfc | `6,5,1,32,1` | 106 | 1 | 80 / 81 | CERTAIN |
+| Gen | widths | `CHECK` | pkts | oneof (Xbar / Cmn) |
+|---|---|---|---|---|
+| vfc | `6,5,1,32,1` | 106 | 1 | 89 / 90 |
+| glc | `6,5,1,32,1` | 106 | 1 | 81 / 82 |
+| gfc | `6,5,1,32,1` | 106 | 1 | 80 / 81 |
 
 45 payload + 61 = 106. The `{sync_flag_id, sync_flag_core_type, done}` triple is the stream's per-progress sync-flag bump — the producer/consumer occupancy signal the stream queue uses.
 
@@ -325,11 +325,11 @@ function DecodeScMessage<Dir>InternalMessage(view, started_out, entry):
 | `data` | 32 | message payload word | HIGH |
 | `done` | 1 | done flag | HIGH |
 
-| Gen | `TraceIdHeader` \| payload widths | mid `CHECK` | final `CHECK` | pkts | oneof (Out / In) | Confidence |
+| Gen | `TraceIdHeader` \| payload widths | mid `CHECK` | final `CHECK` | pkts | oneof (Out / In) |
 |---|---|---|---|---|---|---|
-| vfc | `21,3,14` \| `6,5,1,13,4,1,1,10,1,2,32,1` | 128 | 176 | 2 | 98 / 99 | CERTAIN |
-| glc | `21,3,14` \| `6,5,1,13,4,1,1,10,1,2,32,1` | 128 | 176 | 2 | 90 / 91 | CERTAIN |
-| gfc | `21,3,14` \| `6,5,1,13,4,1,1,10,1,2,32,1` | 128 | 176 | 2 | 90 / 91 | CERTAIN |
+| vfc | `21,3,14` \| `6,5,1,13,4,1,1,10,1,2,32,1` | 128 | 176 | 2 | 98 / 99 |
+| glc | `21,3,14` \| `6,5,1,13,4,1,1,10,1,2,32,1` | 128 | 176 | 2 | 90 / 91 |
+| gfc | `21,3,14` \| `6,5,1,13,4,1,1,10,1,2,32,1` | 128 | 176 | 2 | 90 / 91 |
 
 payload incl. straddle = 115 bits; + 61 = 176. Byte-identical across all three SC gens. `dest_tile_id` + `dest_core_type` pick the target tile and core; `msg_type` + `opcode` are the message semantic.
 
@@ -339,19 +339,19 @@ payload incl. straddle = 115 bits; + 61 = 176. Byte-identical across all three S
 
 Read byte-exact from the `*Values` nested enums of each SC message in `trace_entries.proto` (descriptor pool: vfc @ `0xbf06830`, glc @ `0xbf41210`, gfc @ `0xbf64c80`). These are the *named* values for the enum fields decoded above. vfc values shown; glc/gfc identical **except** `StreamOpcodeValues`, which gains 3 values (and a bit) on the newer gens.
 
-| Enum | Width | Values | Confidence |
-|---|---|---|---|
-| `StreamOpcodeValues` (vfc) | 3-bit | `0=GATHER, 1=GATHERADDS32, 2=GATHERADDF32, 4=SCATTER, 5=SCATTERADDS32, 6=SCATTERADDF32, 7=RESERVED` (value 3 is a hole) | CERTAIN |
-| `StreamOpcodeValues` (glc/gfc) | 4-bit | adds `9=GATHERADDS16, 10=GATHERADDBF16, 13=SCATTERADDS16, 14=SCATTERADDBF16, 15=RESERVED` | CERTAIN |
-| `SyncFlagCoreTypeValues` | 1-bit | `0=TEC_OR_SCS, 1=TAC` | CERTAIN |
-| `TileLocalMemoryTypeValues` | 1-bit | `0=SMEM, 1=TILESPMEM` | CERTAIN |
-| `OffTileMemoryTypeValues` | 3-bit | `0=SPMEM, 1=TILESPMEMN, 2=HBM, 3=HBM4B` | CERTAIN |
-| `TileLocalStreamTypeValues` | 1-bit | `0=LINEAR, 1=CIRCULARBUFFER` | CERTAIN |
-| `OffTileStreamTypeValues` | 2-bit | `0=LINEAR, 1=STRIDED, 2=INDIRECT, 3=INDIRECTVREG` | CERTAIN |
-| `IndirectListTypeValues` | 1-bit | `0=WORD, 1=ROW` | CERTAIN |
-| `DestCoreTypeValues` | 1-bit | `0=TEC_OR_SCS, 1=TAC` | CERTAIN |
-| `MsgTypeValues` | 1-bit | `0=SYNCUPDATE, 1=SMEMUPDATE` | CERTAIN |
-| `OpcodeValues` | 2-bit | `0=WRITE_NO_DONE, 1=WRITE_WITH_DONE, 2=INC_NO_DONE, 3=INC_WITH_DONE` | CERTAIN |
+| Enum | Width | Values |
+|---|---|---|
+| `StreamOpcodeValues` (vfc) | 3-bit | `0=GATHER, 1=GATHERADDS32, 2=GATHERADDF32, 4=SCATTER, 5=SCATTERADDS32, 6=SCATTERADDF32, 7=RESERVED` (value 3 is a hole) |
+| `StreamOpcodeValues` (glc/gfc) | 4-bit | adds `9=GATHERADDS16, 10=GATHERADDBF16, 13=SCATTERADDS16, 14=SCATTERADDBF16, 15=RESERVED` |
+| `SyncFlagCoreTypeValues` | 1-bit | `0=TEC_OR_SCS, 1=TAC` |
+| `TileLocalMemoryTypeValues` | 1-bit | `0=SMEM, 1=TILESPMEM` |
+| `OffTileMemoryTypeValues` | 3-bit | `0=SPMEM, 1=TILESPMEMN, 2=HBM, 3=HBM4B` |
+| `TileLocalStreamTypeValues` | 1-bit | `0=LINEAR, 1=CIRCULARBUFFER` |
+| `OffTileStreamTypeValues` | 2-bit | `0=LINEAR, 1=STRIDED, 2=INDIRECT, 3=INDIRECTVREG` |
+| `IndirectListTypeValues` | 1-bit | `0=WORD, 1=ROW` |
+| `DestCoreTypeValues` | 1-bit | `0=TEC_OR_SCS, 1=TAC` |
+| `MsgTypeValues` | 1-bit | `0=SYNCUPDATE, 1=SMEMUPDATE` |
+| `OpcodeValues` | 2-bit | `0=WRITE_NO_DONE, 1=WRITE_WITH_DONE, 2=INC_NO_DONE, 3=INC_WITH_DONE` |
 
 > **QUIRK —** `StreamOpcode` is **not** densely packed. The GATHER family occupies `0..2`, value 3 is a hole, the SCATTER family starts at 4 — so the gather/scatter dichotomy is encoded in the high bit, not a contiguous range. On glc/gfc the half-width-accumulate variants (`+S16`/`+BF16`) are NEW on Ghostlite/6acc60406 and slot in at `9,10,13,14`, forcing the field to 4 bits. A reimplementation that assumes `0..n` contiguity will misdecode SCATTER as a reserved opcode. The `SyncFlagCoreType`/`DestCoreType` `TEC_OR_SCS`/`TAC` split mirrors the [SparseCore sequencer-type enum](../sparsecore/getsequencertype.md).
 
@@ -367,26 +367,26 @@ The codec's [two-level dispatch](trace-entries-coder.md#the-dual-dispatch) split
 
 The SC band occupies a contiguous run in the high band. on-wire ids are **identical across vfc/glc** (108..132); **gfc** inserts a `StatsCounterSampleIssuedFromScs` at id 129, shifting the two `ScMessage*` events up by one (to 132/133).
 
-| Event | on-wire id (vfc/glc) | vfc oneof | glc oneof | gfc oneof | gfc on-wire id | Confidence |
-|---|---|---|---|---|---|---|
-| `ScInstructionCoreInterrupt` | 108 | 75 | 67 | 66 | 108 | CERTAIN |
-| `ScInstructionSetTracemark` | 109 | 76 | 68 | 67 | 109 | CERTAIN |
-| `ScInstructionTraceInstruction` | 110 | 77 | 69 | 68 | 110 | CERTAIN |
-| `ScInstructionSfenceStart` | 111 | 78 | 70 | 69 | 111 | CERTAIN |
-| `ScInstructionSfenceStop` | 112 | 79 | 71 | 70 | 112 | CERTAIN |
-| `ScInstructionSyncStart` | 113 | 80 | 72 | 71 | 113 | CERTAIN |
-| `ScInstructionSyncStop` | 114 | 81 | 73 | 72 | 114 | CERTAIN |
-| `ScInstructionBarrierStart` | 115 | 82 | 74 | 73 | 115 | CERTAIN |
-| `ScInstructionBarrierStop` | 116 | 83 | 75 | 74 | 116 | CERTAIN |
-| `ScInstructionSyncWatchStart` | 117 | 84 | 76 | 75 | 117 | CERTAIN |
-| `ScInstructionSyncWatchStop` | 118 | 85 | 77 | 76 | 118 | CERTAIN |
-| `ScTaskIssueFromScs` | 119 | 86 | 78 | 77 | 119 | CERTAIN |
-| `ScTaskCommitOnSct` | 120 | 87 | 79 | 78 | 120 | CERTAIN |
-| `ScStreamIssueFromCore` | 121 | 88 | 80 | 79 | 121 | CERTAIN |
-| `ScStreamProgressXbar` | 122 | 89 | 81 | 80 | 122 | CERTAIN |
-| `ScStreamProgressCmn` | 123 | 90 | 82 | 81 | 123 | CERTAIN |
-| `ScMessageOutboundInternalMessage` | 131 | 98 | 90 | 90 | 132 | CERTAIN |
-| `ScMessageInboundInternalMessage` | 132 | 99 | 91 | 91 | 133 | CERTAIN |
+| Event | on-wire id (vfc/glc) | vfc oneof | glc oneof | gfc oneof | gfc on-wire id |
+|---|---|---|---|---|---|
+| `ScInstructionCoreInterrupt` | 108 | 75 | 67 | 66 | 108 |
+| `ScInstructionSetTracemark` | 109 | 76 | 68 | 67 | 109 |
+| `ScInstructionTraceInstruction` | 110 | 77 | 69 | 68 | 110 |
+| `ScInstructionSfenceStart` | 111 | 78 | 70 | 69 | 111 |
+| `ScInstructionSfenceStop` | 112 | 79 | 71 | 70 | 112 |
+| `ScInstructionSyncStart` | 113 | 80 | 72 | 71 | 113 |
+| `ScInstructionSyncStop` | 114 | 81 | 73 | 72 | 114 |
+| `ScInstructionBarrierStart` | 115 | 82 | 74 | 73 | 115 |
+| `ScInstructionBarrierStop` | 116 | 83 | 75 | 74 | 116 |
+| `ScInstructionSyncWatchStart` | 117 | 84 | 76 | 75 | 117 |
+| `ScInstructionSyncWatchStop` | 118 | 85 | 77 | 76 | 118 |
+| `ScTaskIssueFromScs` | 119 | 86 | 78 | 77 | 119 |
+| `ScTaskCommitOnSct` | 120 | 87 | 79 | 78 | 120 |
+| `ScStreamIssueFromCore` | 121 | 88 | 80 | 79 | 121 |
+| `ScStreamProgressXbar` | 122 | 89 | 81 | 80 | 122 |
+| `ScStreamProgressCmn` | 123 | 90 | 82 | 81 | 123 |
+| `ScMessageOutboundInternalMessage` | 131 | 98 | 90 | 90 | 132 |
+| `ScMessageInboundInternalMessage` | 132 | 99 | 91 | 91 | 133 |
 
 The 7-id gap between `ScStreamProgressCmn` (123) and `ScMessageOutbound` (131) is filled by the **SC-issued OCI** descriptor/message events — on-wire ids 124..130 = `OciDescriptorCommonIssuedBySc`, `OciDescriptorStride{Src,Dst,Steps}IssuedBySc`, `OciDescriptorAddressMiscIssuedFromSc`, `OciMessage{ReceivedBySc,SentBySc}` (the SC's view of its own OCI traffic, owned by [`payload-uhi-oci-ici-dma.md`](payload-uhi-oci-ici-dma.md)). gfc additionally exposes a SparseCore PMU surface: `StatsCounterSampleIssuedFromScs` @ id 129, and `StatsCounterSampleIssuedFrom{Sctd,Sctc}` @ ids 134/135 (the SC TileData/TileCompute hardware perf-counter samples — gfc-only).
 
@@ -401,12 +401,12 @@ DecodeEntry(view):
                     else:             goto error
 ```
 
-| Gen | `DecodeEntry` | primary jt | bound1 | rebase | secondary jt | bound2 | SC sub-range | Confidence |
-|---|---|---|---|---|---|---|---|---|
-| vfc | `0xf5f7080` | `0xab86ce8` | `0x5f` (95) | −0x60 (96) | `0xab86e68` | `0x59` (89) | 108..132 | CERTAIN |
-| glc | `0xf6295c0` | `0xab875a8` | `0x62` (98) | −0x63 (99) | `0xab87734` | `0x70` (112) | 108..132 | CERTAIN |
-| gfc | `0xf65ffe0` | `0xab87f20` | `0x64` (100) | −0x6c (108) | `0xab880b4` | `0x62` (98) | 108..133 | CERTAIN |
-| vlc | `0xf5d6460` | `0xab86520` | `0x8f` (143) | −0x90 (144) | `0xab86760` | `0x17` (23) | — (no SC) | CERTAIN |
+| Gen | `DecodeEntry` | primary jt | bound1 | rebase | secondary jt | bound2 | SC sub-range |
+|---|---|---|---|---|---|---|---|
+| vfc | `0xf5f7080` | `0xab86ce8` | `0x5f` (95) | −0x60 (96) | `0xab86e68` | `0x59` (89) | 108..132 |
+| glc | `0xf6295c0` | `0xab875a8` | `0x62` (98) | −0x63 (99) | `0xab87734` | `0x70` (112) | 108..132 |
+| gfc | `0xf65ffe0` | `0xab87f20` | `0x64` (100) | −0x6c (108) | `0xab880b4` | `0x62` (98) | 108..133 |
+| vlc | `0xf5d6460` | `0xab86520` | `0x8f` (143) | −0x90 (144) | `0xab86760` | `0x17` (23) | — (no SC) |
 
 Each secondary arm is a `rel32` relative to the secondary table base; the arm is a thunk inside `DecodeEntry` that stamps the proto oneof tag and tail-calls the matching `DecodeSc<Name>`. The codec page owns the [dispatch mechanism](trace-entries-coder.md#the-dual-dispatch); this page owns the SC sub-range it routes to.
 

@@ -228,7 +228,7 @@ The `compiler_reserved` carve (the `−5` reservation on TC, the SC full-range, 
 
 ## 7. Verification notes
 
-> **[CONFIRMED]** Byte-exact in `libtpu.so` v0.0.40:
+> Byte-exact in `libtpu.so` v0.0.40:
 > - `GetSpecialPurposeSyncFlags` @`0x20afcf40`: `v2 = *(chip+864)`; `if (!_bittest64(&v2, core)) return 0`; `if ((unsigned)core >= 3) ud1`; `return chip + 672 + (core<<6)` — i.e. `+0x360` bitmask, `+0x2a0` base, `core<<6` stride — byte-exact.
 > - `TpuChipConfig::FromProto` @`0x20aea100`: in the `special_purpose_sync_flags` loop the element base is `core << 6`; the four scalars are stored verbatim (`>>8`/`<<8|low-byte` reconstruction), `sequencer_overlay` presence carried as `v705 + 0x100000000` and the other three as `setg (value > 0)` bytes at element `+0x24`/`+0x34`/`+0x3c`; `compiler_reserved` via `operator new(4*count)` + `memcpy` — confirms the element build and the (value, present) packing.
 > - `Target::Init` @`0x1d60fc20`: `*((_DWORD*)target + 560) = *base` (= `Target+0x8c0` base); `*((_DWORD*)target + 561) = size − 5` (= `Target+0x8c4` count); sequencer_overlay gated by `& 0x100000000` at element `+0x28`; `DieBecauseNull("…GetSpecialPurposeSyncFlags( ::tpu::TpuCoreType::kTensorCore)")` on `NULL` — exact.

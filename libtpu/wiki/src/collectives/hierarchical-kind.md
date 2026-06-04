@@ -79,7 +79,7 @@ __int64 FromProtoOrDie(xla::jellyfish::AutoProto *a1)
 }
 ```
 
-> **[CONFIRMED]** `FromProtoOrDie @0xf795300`: line 16-17 returns `0` when the proto's engaged word (`*((_DWORD*)a1 + 7)`) is zero, i.e. the flag was never set → `0x000`. Otherwise (line 40) it returns `v11 | 0x100u`, OR-ing the engaged bit `0x100` onto the contained boolean `v11`. So the only three values the packer can emit are `0x000` (not engaged), `0x100` (engaged + false), `0x101` (engaged + true). The source location it would `LOG(FATAL)` from is `platforms/xla/service/jellyfish/flag_types.h:845`, confirming the wrapper is `jellyfish`'s flag type.
+> `FromProtoOrDie @0xf795300`: line 16-17 returns `0` when the proto's engaged word (`*((_DWORD*)a1 + 7)`) is zero, i.e. the flag was never set → `0x000`. Otherwise (line 40) it returns `v11 | 0x100u`, OR-ing the engaged bit `0x100` onto the contained boolean `v11`. So the only three values the packer can emit are `0x000` (not engaged), `0x100` (engaged + false), `0x101` (engaged + true). The source location it would `LOG(FATAL)` from is `platforms/xla/service/jellyfish/flag_types.h:845`, confirming the wrapper is `jellyfish`'s flag type.
 
 The flag itself defaults to false:
 
@@ -88,7 +88,7 @@ The flag itself defaults to false:
 *(_WORD *)this = 0;     // default value = false
 ```
 
-> **[CONFIRMED]** `AbslFlagDefaultGenFor… @0x1d726a00` stores `0` — the compiled-in default is `false`. The flag is registered into the `TpuCompilationEnvironment` (`GLOBAL__sub_I_tpu_compilation_environment.cc`), so it is a per-compilation environment option, read via `GetTpuCompEnv` at the AllReduce wrapper. Default → the contained bool is false; reaching `0x101` requires `--xla_tpu_enable_sparse_core_hierarchical_all_reduce=true`.
+> `AbslFlagDefaultGenFor… @0x1d726a00` stores `0` — the compiled-in default is `false`. The flag is registered into the `TpuCompilationEnvironment` (`GLOBAL__sub_I_tpu_compilation_environment.cc`), so it is a per-compilation environment option, read via `GetTpuCompEnv` at the AllReduce wrapper. Default → the contained bool is false; reaching `0x101` requires `--xla_tpu_enable_sparse_core_hierarchical_all_reduce=true`.
 
 ---
 
@@ -109,7 +109,7 @@ bool ShouldEnableSparseCoreHierarchicalAllReduce(__int64 comp_env)
 }
 ```
 
-> **[CONFIRMED]** `0x1d6b6d80` line 13: `return (~v2 & 0x101) == 0;`. The identity `(~v & M) == 0  ⟺  (v & M) == M` means this returns `true` exactly when **both** `0x100` and `0x1` are set — i.e. the kind is `0x101` (engaged + true). Any other value (`0x100`, `0x000`, or a stray `0x001`) returns `false`. This is the canonical "is the hierarchical AllReduce enabled" test.
+> `0x1d6b6d80` line 13: `return (~v2 & 0x101) == 0;`. The identity `(~v & M) == 0  ⟺  (v & M) == M` means this returns `true` exactly when **both** `0x100` and `0x1` are set — i.e. the kind is `0x101` (engaged + true). Any other value (`0x100`, `0x000`, or a stray `0x001`) returns `false`. This is the canonical "is the hierarchical AllReduce enabled" test.
 
 ### 3.2 The builder dispatch — `(kind & 0x101) != 0x100`
 
@@ -130,7 +130,7 @@ v637 = (v63 & 0x101) != 256;       // is_hierarchical = (kind & 0x101) != 0x100 
 // lines 3204/3262:  if ( (~(_WORD)v598 & 0x101) == 0 ) { ... hierarchical-only branch ... }
 ```
 
-> **[CONFIRMED]** AllReduce body `@0x133c2dc0` line 806 computes the `is_hierarchical` byte as `(kind & 0x101) != 0x100`. AllGather body `@0x133c82c0` line 3032 masks `& 0x101`, then at lines 3102/3525 compares the masked value directly against `256` (= `0x100`); the `(~v & 0x101) == 0` hierarchical-discriminant guard appears at lines 3204/3262. The two op families compile the *same* predicate differently (AllReduce materialises a `setne` byte from the stack arg; AllGather compares a stack slot inline) because AG can never satisfy the hierarchical arm — its wrapper pins the kind to `0x100`.
+> AllReduce body `@0x133c2dc0` line 806 computes the `is_hierarchical` byte as `(kind & 0x101) != 0x100`. AllGather body `@0x133c82c0` line 3032 masks `& 0x101`, then at lines 3102/3525 compares the masked value directly against `256` (= `0x100`); the `(~v & 0x101) == 0` hierarchical-discriminant guard appears at lines 3204/3262. The two op families compile the *same* predicate differently (AllReduce materialises a `setne` byte from the stack arg; AllGather compares a stack slot inline) because AG can never satisfy the hierarchical arm — its wrapper pins the kind to `0x100`.
 
 The decisive point: the builders treat **only `0x100`** as flat. Every other value falls into the hierarchical arm of `!= 0x100`. Combined with the packer (§2), which can only emit `0x000`/`0x100`/`0x101`, the reachable behaviour is:
 
@@ -183,7 +183,7 @@ arg0 = ((~a8 & 0x101) != 0) & (unsigned __int8)~ShouldEnableSparseCoreHierarchic
 //        ^ a8 = caller's 16-bit HierarchicalKind         ^ the §3.1 enable predicate
 ```
 
-> **[CONFIRMED]** `0x133c2c80` line 35 calls `ShouldEnableSparseCoreHierarchicalAllReduce` on the result of `GetTpuCompEnv(module, all_reduce)`; line 41 folds it with `(~a8 & 0x101) != 0` (where `a8` is the `unsigned __int16` caller-supplied kind) into the leading `bool` forwarded to the builder. The RetCheck/error strings at lines 49/52/57 cite `platforms/xla/sparse_core/offload_collective_config.cc`, pinning the translation unit.
+> `0x133c2c80` line 35 calls `ShouldEnableSparseCoreHierarchicalAllReduce` on the result of `GetTpuCompEnv(module, all_reduce)`; line 41 folds it with `(~a8 & 0x101) != 0` (where `a8` is the `unsigned __int16` caller-supplied kind) into the leading `bool` forwarded to the builder. The RetCheck/error strings at lines 49/52/57 cite `platforms/xla/sparse_core/offload_collective_config.cc`, pinning the translation unit.
 
 Reading line 41 as boolean logic, `arg0` is true (meaning **"use the flat path"**) unless **both** of the following hold:
 
@@ -206,7 +206,7 @@ So the hierarchical arm is reached only when the global flag is engaged+true *an
 
 ## 7. Verification notes
 
-> **[CONFIRMED]** Cross-checked against the IDA decompile of `libtpu.so` v0.0.40:
+> Cross-checked against the IDA decompile of `libtpu.so` v0.0.40:
 > - **Packing** — `AutoOr<bool>::FromProtoOrDie @0xf795300`: `return v11 | 0x100u` (engaged + value) / `return 0` when the engaged word is zero (line 16-17). Only `0x000`/`0x100`/`0x101` are emittable. The `LOG(FATAL)` source `flag_types.h:845` confirms the `jellyfish` flag wrapper.
 > - **Default** — `AbslFlagDefaultGenFor… @0x1d726a00` stores `0` (flag default false); registered into `TpuCompilationEnvironment`.
 > - **Enable predicate** — `ShouldEnableSparseCoreHierarchicalAllReduce @0x1d6b6d80` line 13: `(~v2 & 0x101) == 0` ≡ `(v2 & 0x101) == 0x101`.

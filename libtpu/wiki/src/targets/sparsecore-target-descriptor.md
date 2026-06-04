@@ -208,31 +208,31 @@ The 24 `SparseCoreTarget` virtual accessors are present in both concrete subclas
 
 | `SparseCoreTarget` vfn | Viperfish (v5p) | Ghostlite / 6acc60406 (v6e/v7x) | Source (VF / GL) · Confidence |
 |---|---|---|---|
-| `FlopsPerSparseCore(fmt∈{1,2})` | 1.0e12 (1 TFLOP/s) | 3.595e13 (35.95 TFLOP/s) | `0x1D49C540` / `0x1D4990A0` · CONFIRMED |
-| └ other fmt | → `Target` vtable `+0x718` | → `Target` vtable `+0x718` | tail-call · CONFIRMED |
-| `SparseCoreTileCrossbarBandwidthRandomAccess` | 29 B/cyc | 29 B/cyc | vtable · CONFIRMED |
-| `SparseCoreTileVectorAluSlotCount(bool)` | 3 | 3 | vtable · CONFIRMED |
-| `SparseCoreHbmAccessLatency` | 418 | 418 | `0x1D49C5C0` / `0x1D499120` · CONFIRMED |
-| `SparseCoreSpmemAccessLatency` | 30 | 30 | `0x1D49C5E0` / `0x1D499140` · CONFIRMED |
-| `TaskRequestStartAccessFunctionArgWordOffset` | 1 | 1 | vtable · CONFIRMED |
-| `TaskRequestStartExecuteFunctionArgWordOffset` | 1 | 1 | vtable · CONFIRMED |
-| `TaskRequestEndExecuteFunctionArgWordOffset` | 0 | 0 | vtable · CONFIRMED |
-| `TraceEnBitOffsetInStreamControl` | 15 | 15 | vtable · CONFIRMED |
-| `SetDoneBitOffsetInStreamControl` | 2 | 2 | vtable · CONFIRMED |
-| `TileLocalStrideOffsetInStreamControl` | 3 | 3 | vtable · CONFIRMED |
-| `IndirectListTypeBitOffsetInStreamControl` | 7 | 7 | vtable · CONFIRMED |
-| `IndirectFilterEnBitOffsetInStreamControl` | 14 | 14 | vtable · CONFIRMED |
-| `SupportsScVdupcntVuniqueWithLaneIds` | **0** | **1** | `0x1D49C7A0` / `0x1D499300` · CONFIRMED |
-| `SupportsScVldVstIdxAdd` | **0** | **1** | `0x1D49C7C0` / `0x1D499320` · CONFIRMED |
-| `SupportsScVar` | 0 | 0 | `0x1D49C7E0` / `0x1D499340` · CONFIRMED |
-| `SupportsScFp8VectorCmp` | 0 | 0 | vtable · CONFIRMED |
-| `SupportsScVmemStream` | 0 | 0 | vtable · CONFIRMED |
-| `SupportsScHbm4bStream` | 1 | 1 | `0x1D49C840` / `0x1D4993A0` · CONFIRMED |
-| `SupportsScLocalSpmemDma` | 1 | 1 | `0x1D49C860` / `0x1D4993C0` · CONFIRMED |
-| `SupportsScBundleCompression` | 0 | 0 | vtable · CONFIRMED |
-| `SupportsScB8VectorMaskPopulationCount` | 0 | 0 | vtable · CONFIRMED |
-| `SupportsScEupOps` | **1** | **1** | `0x1D49C8C0` / `0x1D499420` · CONFIRMED |
-| `SupportsTileSmemDma` | 0 | 0 | vtable · CONFIRMED |
+| `FlopsPerSparseCore(fmt∈{1,2})` | 1.0e12 (1 TFLOP/s) | 3.595e13 (35.95 TFLOP/s) | `0x1D49C540` / `0x1D4990A0` |
+| └ other fmt | → `Target` vtable `+0x718` | → `Target` vtable `+0x718` | tail-call |
+| `SparseCoreTileCrossbarBandwidthRandomAccess` | 29 B/cyc | 29 B/cyc | vtable |
+| `SparseCoreTileVectorAluSlotCount(bool)` | 3 | 3 | vtable |
+| `SparseCoreHbmAccessLatency` | 418 | 418 | `0x1D49C5C0` / `0x1D499120` |
+| `SparseCoreSpmemAccessLatency` | 30 | 30 | `0x1D49C5E0` / `0x1D499140` |
+| `TaskRequestStartAccessFunctionArgWordOffset` | 1 | 1 | vtable |
+| `TaskRequestStartExecuteFunctionArgWordOffset` | 1 | 1 | vtable |
+| `TaskRequestEndExecuteFunctionArgWordOffset` | 0 | 0 | vtable |
+| `TraceEnBitOffsetInStreamControl` | 15 | 15 | vtable |
+| `SetDoneBitOffsetInStreamControl` | 2 | 2 | vtable |
+| `TileLocalStrideOffsetInStreamControl` | 3 | 3 | vtable |
+| `IndirectListTypeBitOffsetInStreamControl` | 7 | 7 | vtable |
+| `IndirectFilterEnBitOffsetInStreamControl` | 14 | 14 | vtable |
+| `SupportsScVdupcntVuniqueWithLaneIds` | **0** | **1** | `0x1D49C7A0` / `0x1D499300` |
+| `SupportsScVldVstIdxAdd` | **0** | **1** | `0x1D49C7C0` / `0x1D499320` |
+| `SupportsScVar` | 0 | 0 | `0x1D49C7E0` / `0x1D499340` |
+| `SupportsScFp8VectorCmp` | 0 | 0 | vtable |
+| `SupportsScVmemStream` | 0 | 0 | vtable |
+| `SupportsScHbm4bStream` | 1 | 1 | `0x1D49C840` / `0x1D4993A0` |
+| `SupportsScLocalSpmemDma` | 1 | 1 | `0x1D49C860` / `0x1D4993C0` |
+| `SupportsScBundleCompression` | 0 | 0 | vtable |
+| `SupportsScB8VectorMaskPopulationCount` | 0 | 0 | vtable |
+| `SupportsScEupOps` | **1** | **1** | `0x1D49C8C0` / `0x1D499420` |
+| `SupportsTileSmemDma` | 0 | 0 | vtable |
 
 The genuine Viperfish → Ghostlite/6acc60406 capability gains are exactly two bits plus the FLOPS jump:
 

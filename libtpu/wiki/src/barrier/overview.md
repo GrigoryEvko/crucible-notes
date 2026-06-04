@@ -249,7 +249,7 @@ It is worth stating plainly that the `BarrierConfig` field has **two** writers t
 
 ## 7. Verification notes
 
-> **[CONFIRMED]** Byte-exact in `libtpu.so` v0.0.40:
+> Byte-exact in `libtpu.so` v0.0.40:
 > - `InferBarrierConfig` @`0x1376c240`: the singleton predicate `*((__int64*)a4 + 1) <= 1 && *((__int64*)a4 + 2) <= 1` (Strategy+0x8/+0x10); `if (v35 == 3)` (CUSTOM); `channel_id(a3)` then `v15 == 1` → `v35 = 1` (GLOBAL), `v16 = -1`; else `v35 = 2` (REPLICA), `v16 = *((int*)a2 + 561) - 1` (Target+0x8c4 − 1); RetCheck line 115 `"barrier.barrier_type() != BarrierType::BARRIER_INVALID"`; **no `movl $4`** anywhere — exact.
 > - `GetGlobalBarrierSyncFlagNumber` @`0x1d60f420`: `this[561] + this[560] + 4` = `base + count + 4` — exact.
 > - `GetAllReduceSyncFlagNumber` @`0x1d60f440`: CHECK `phase > 0` / `phase < 3`; `this[560] + phase + this[561] + 1` = `base + count + phase + 1` — exact.

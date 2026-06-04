@@ -276,10 +276,10 @@ Collective-permute is the only kind that divides by `eff_Bps` alone (no `×2` fa
 
 The byte-exact, decompile-confirmed core (this page's primary claims):
 
-- The vtable `+0x488` → `GetCommunicationMultiplier` reloc resolution and its control flow (default `1`, no-DeviceAssignment short-circuit, multi-slice single-group `1×`, `ReplicaGroupsOnNDPlane(plane=2).result_byte + 1`). **CERTAIN.**
-- The SPMD ms formula, the `6.0` multi-slice override, and the `1e9` / `1000.0` constants. **CERTAIN.**
-- The `eff_Bps = ici · 0.5 · 1e9` term, the `opcode − 6` jump table, every per-kind bandwidth divisor (AG 1D÷2 / 2D÷4, AR ÷`2·num_dims`, all-to-all ÷`links/per_link`, CP ÷1), and the `R[13..18]` slot deposits. **CERTAIN.**
-- The `HloOpcode` integer → name map for all collective opcodes (length-verified). **CERTAIN.**
+- The vtable `+0x488` → `GetCommunicationMultiplier` reloc resolution and its control flow (default `1`, no-DeviceAssignment short-circuit, multi-slice single-group `1×`, `ReplicaGroupsOnNDPlane(plane=2).result_byte + 1`). 
+- The SPMD ms formula, the `6.0` multi-slice override, and the `1e9` / `1000.0` constants. 
+- The `eff_Bps = ici · 0.5 · 1e9` term, the `opcode − 6` jump table, every per-kind bandwidth divisor (AG 1D÷2 / 2D÷4, AR ÷`2·num_dims`, all-to-all ÷`links/per_link`, CP ÷1), and the `R[13..18]` slot deposits. 
+- The `HloOpcode` integer → name map for all collective opcodes (length-verified). 
 
 Items confirmed via formula shape rather than a named constant, and items not field-decoded:
 

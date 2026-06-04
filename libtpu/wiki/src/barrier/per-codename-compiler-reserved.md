@@ -150,14 +150,14 @@ SpecialPurposeSyncFlags = GetSpecialPurposeSyncFlags(kSparseCore);          // l
 
 Each per-gen integer was carved directly from the blob at its file offset (`.lrodata`/`.rodata` VMA == file offset). The TC `compiler_reserved` is a packed-int32 field-3 (each value `< 128` is a single varint byte, so `[8..24]`/`[8..50]` appears as the literal byte sequence `08 09 … 18` / `08 … 32`); `sequencer_overlay` is field 4 (tag `0x20`) as a LE varint; the SC range `[7055..7154]` is packed two-byte LE varints. Findings, per gen:
 
-| Gen | Blob @ file off | TC `cr` byte run | `seq_overlay` tag bytes | SC `cr` packed run | Result |
-|---|---|---|---|---|---|
-| JF | `0xbdee4c0` (848) | `08..18` (`[8..24]`) present | `20 FE 01` (`254`) present | — | CONFIRMED |
-| DF | `0xbdee820` (918) | `08..18` (`[8..24]`) present | `20 FE 01` (`254`) present | — | CONFIRMED |
-| PF | `0xbdee0d0` (996) | `08..32` (`[8..50]`) present | `20 FF 03` (`511`) present | — | CONFIRMED |
-| VF | `0x5f05b70` (1458) | `08..32` (`[8..50]`) present | `20 FF 03` (`511`) present | `[7055..7154]` present | CONFIRMED |
-| GL | `0x5f03570` (1263) | `08..32` (`[8..50]`) present | `20 FF 03` (`511`) present | `[7055..7154]` present | CONFIRMED |
-| GF | `0x5f01460` (1309) | `08..32` (`[8..50]`) present | `20 FF 1F` (`4095`) present | `[7055..7154]` present; scalars `F3 37`/`F4 37`/`F5 37`/`FF 37` (`7155`/`7156`/`7157`/`7167`) all present | CONFIRMED |
+| Gen | Blob @ file off | TC `cr` byte run | `seq_overlay` tag bytes | SC `cr` packed run |
+|---|---|---|---|---|
+| JF | `0xbdee4c0` (848) | `08..18` (`[8..24]`) present | `20 FE 01` (`254`) present | — |
+| DF | `0xbdee820` (918) | `08..18` (`[8..24]`) present | `20 FE 01` (`254`) present | — |
+| PF | `0xbdee0d0` (996) | `08..32` (`[8..50]`) present | `20 FF 03` (`511`) present | — |
+| VF | `0x5f05b70` (1458) | `08..32` (`[8..50]`) present | `20 FF 03` (`511`) present | `[7055..7154]` present |
+| GL | `0x5f03570` (1263) | `08..32` (`[8..50]`) present | `20 FF 03` (`511`) present | `[7055..7154]` present |
+| GF | `0x5f01460` (1309) | `08..32` (`[8..50]`) present | `20 FF 1F` (`4095`) present | `[7055..7154]` present; scalars `F3 37`/`F4 37`/`F5 37`/`FF 37` (`7155`/`7156`/`7157`/`7167`) all present |
 
 The carved ranges are exactly the inputs the `Init` writers (§3) copy. Three independent decoders agree: a hand-written packed-varint decoder, `protoc --decode_raw` of each blob (field 13 visible with packed `compiler_reserved` + scalars), and the writer disassembly. The blob top-level is `TpuChipConfigProto` (field 12 `memory_reservations`, field 13 `special_purpose_sync_flags` present); the `SpecialPurposeSyncFlags` field schema (`f1 core_type` enum `.tpu.TpuCoreTypeProto`, `f3 compiler_reserved` repeated int32, `f4`–`f7` scalars) is re-decoded from the embedded descriptor and matches [SpecialPurposeSyncFlags §1](special-purpose-sync-flags.md).
 
@@ -176,7 +176,7 @@ Across all 35 unique blobs the TC `cr` range and TC `sequencer_overlay` depend O
 
 ## 6. What remains LOW / open
 
-> **[CONFIRMED]** The per-gen `compiler_reserved` `{base, count}` integers (TC `base = 8` all gens, `count = 12`/`38`; SC `base = 7055`, `count = 100`), the TC `sequencer_overlay` values (`254`/`511`/`4095`), the SC named scalars (`7155`/`7156`/`7157`/`7167`), the static-embed storage (`.lrodata`/`.rodata` blobs + `.data.rel.ro` descriptors + memfile-stub TOC slots 39–47), and the `Target::Init` (`size − 5`) / `SparseCoreTarget::Init` (no `−5`) resolution are CONFIRMED — carved from the embedded blob bytes and matched against the writer disassembly. These are the authoritative integers (the sibling pages mark them LOW only because they do not carve the blobs).
+> The per-gen `compiler_reserved` `{base, count}` integers (TC `base = 8` all gens, `count = 12`/`38`; SC `base = 7055`, `count = 100`), the TC `sequencer_overlay` values (`254`/`511`/`4095`), the SC named scalars (`7155`/`7156`/`7157`/`7167`), the static-embed storage (`.lrodata`/`.rodata` blobs + `.data.rel.ro` descriptors + memfile-stub TOC slots 39–47), and the `Target::Init` (`size − 5`) / `SparseCoreTarget::Init` (no `−5`) resolution are CONFIRMED — carved from the embedded blob bytes and matched against the writer disassembly. These are the authoritative integers (the sibling pages mark them LOW only because they do not carve the blobs).
 
 > **[LOW] Open items, scoped out of this page:**
 > - **The runtime placement of the four named scalars** inside the `EnumMap` element (`+0x20..+0x3c`) and whether `FromProto` consumes any on the spot — owned by [SpecialPurposeSyncFlags](special-purpose-sync-flags.md); the proto *values* are CONFIRMED here, the element-offset reads there.

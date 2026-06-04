@@ -12,7 +12,7 @@ branches on whether it returns `2` (coordinator) or not (worker). The
 decision is therefore deterministic: it falls out of the way the
 launcher sets the environment variables on each node.
 
-> **CONFIRMED.** All VAs, offsets, source-line numbers and strings on
+> All VAs, offsets, source-line numbers and strings on
 > this page were verified byte-for-byte against the IDA decompile and
 > `objdump`/`strings` of `libtpu.so` (wheel 0.0.40, build-id
 > `89edbbe81c5b328a958fe628a9f2207d`).

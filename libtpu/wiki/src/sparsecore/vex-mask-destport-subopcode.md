@@ -308,10 +308,10 @@ For `Sort`, the dest read-port (`bit0x10c`) and a second read-port (`bit0x109`) 
 
 ## 5. What is not yet pinned
 
-- **The inactive-lane output micro-semantic of the masked scan** (zero-fill vs register-preserve vs no-drive). The mask register *selection* (`M0..M31`) and the masked-scan classification are CONFIRMED; the per-lane write behavior on masked-off lanes is a datapath layer below the encoding — see [M-register predicate](m-register-predicate.md). **INFERRED.**
+- **The inactive-lane output micro-semantic of the masked scan** (zero-fill vs register-preserve vs no-drive). The mask register *selection* (`M0..M31`) and the masked-scan classification are CONFIRMED; the per-lane write behavior on masked-off lanes is a datapath layer below the encoding — see [M-register predicate](m-register-predicate.md). 
 - **The internal layout of the M-register predicate word** (the exact (lane,sublane) bit packing). The 5-bit selector is CONFIRMED; the stored predicate bit-order is not decoded here.
-- **The per-generation reachability of the 16 `*`-marked encoders.** They exist with valid sub-opcodes; their dispatch-reachability in other SparseCore generations was not arm-traced. **INFERRED.**
-- **Whether `M16..M31` have any write path.** The read band is 32-deep, the write band (`GetVMDestregno`) is 16-deep; the upper half being read-only predicate inputs is inferred from the band split, not from a write-path absence proof. **INFERRED.**
+- **The per-generation reachability of the 16 `*`-marked encoders.** They exist with valid sub-opcodes; their dispatch-reachability in other SparseCore generations was not arm-traced. 
+- **Whether `M16..M31` have any write path.** The read band is 32-deep, the write band (`GetVMDestregno`) is 16-deep; the upper half being read-only predicate inputs is inferred from the band split, not from a write-path absence proof. 
 
 ---
 

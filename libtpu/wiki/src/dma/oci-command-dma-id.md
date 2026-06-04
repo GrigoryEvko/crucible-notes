@@ -48,7 +48,7 @@ Six OCI command message classes share **one** protobuf schema, byte-exact across
 | 7 | `id_index2` | uint32 | `0x3c` | `0x38` | transaction #2 id-index |
 | 8 | `node_type` | enum | `0x40` | `0x40` | command endpoint class (`NodeTypeValues`) |
 
-> **CONFIRMED —** Message layout: vtable `@0`, `InternalMetadata` `@0x8`, hasbits `@0x10`, the three submessage pointers `cmd0`/`cmd1`/`cmd2` `@0x18`/`0x20`/`0x28`, `index_valid` `@0x30`, `id_index0/1/2` `@0x34`/`0x38`/`0x3c`, `node_type` `@0x40`. The dtor frees exactly the three submessage pointers at `+0x18`/`+0x20`/`+0x28` (each a `TraceIdHeader`); the ctor zeroes `0x10..0x43`, so the three pointers start null. These offsets are precisely the selector's read sites (§2).
+> Message layout: vtable `@0`, `InternalMetadata` `@0x8`, hasbits `@0x10`, the three submessage pointers `cmd0`/`cmd1`/`cmd2` `@0x18`/`0x20`/`0x28`, `index_valid` `@0x30`, `id_index0/1/2` `@0x34`/`0x38`/`0x3c`, `node_type` `@0x40`. The dtor frees exactly the three submessage pointers at `+0x18`/`+0x20`/`+0x28` (each a `TraceIdHeader`); the ctor zeroes `0x10..0x43`, so the three pointers start null. These offsets are precisely the selector's read sites (§2).
 
 The three `trace_id_header_cmd0/1/2` are **the three header bands** this page owns. Each is the identity of one DMA transaction the command fired. The `index_valid` bitmask says which of the three bands are populated: a command that issues a single DMA sets bit 0 only; a command that fans out to three transactions sets bits 0, 1, and 2. The `id_index0/1/2` are 17-bit per-transaction indices (their precise role — queue slot vs. descriptor-ring pointer vs. re-order tag — is not part of the `dma_id` key; see §6).
 
@@ -88,7 +88,7 @@ Each OCI command message type `T` gets one template instantiation of `CmdDmaIdFr
 | `0xf69a680` | `OciCommonOciReadCommand` | 55 | 36 |
 | `0xf69a6e0` | `OciCommonCompletedInTcs` | 96 | 53 |
 
-> **CONFIRMED —** All six decompiled bodies are identical down to the byte. The body (selector `0xf69a500` shown; the other five differ only in `T` and the `*_globals_` address):
+> All six decompiled bodies are identical down to the byte. The body (selector `0xf69a500` shown; the other five differ only in `T` and the `*_globals_` address):
 
 ```c
 // CmdDmaIdFromEntry<…OciCommonReadCmdIssuedFromEngine>(a1 = const T& msg, a2 = int selector)
@@ -164,7 +164,7 @@ present = 1
 
 The chip-id field is 14 bits wide (`& 0x3FFF`) in this pxc build; earlier generations used a narrower (12-bit) chip id, widened to 14 bits in later silicon. The full result is 38 bits. This is the same bit layout the [ICR Node-Fabric DMA band](../routing/icr-node-fabric-dma.md) uses for its single-header `dma_id` extraction — the OCI *command* selector and the NF-band extractor converge on one composite ID format, so a transaction's id is comparable across the two bands.
 
-> **CONFIRMED —** The byte-exact composition appears in two places: each `CmdDmaIdFromEntry<T>` selector (§2 body), and the `GetDmaId(int)` no-selector tail (`LABEL_172`, §4) for single-header trace ids. Both read `transaction_id` at header `+0x18`, `core_id` at `+0x1c`, `chip_id` at `+0x20`, and emit the identical `0x1FFF00 | (core_id&7)<<21 | (chip_id&0x3fff)<<24 | (uint8)transaction_id` expression.
+> The byte-exact composition appears in two places: each `CmdDmaIdFromEntry<T>` selector (§2 body), and the `GetDmaId(int)` no-selector tail (`LABEL_172`, §4) for single-header trace ids. Both read `transaction_id` at header `+0x18`, `core_id` at `+0x1c`, `chip_id` at `+0x20`, and emit the identical `0x1FFF00 | (core_id&7)<<21 | (chip_id&0x3fff)<<24 | (uint8)transaction_id` expression.
 
 ---
 
@@ -204,7 +204,7 @@ LABEL_172:
   return v4 | (unsigned __int8)v3;
 ```
 
-> **CONFIRMED —** The on-wire id → `oneof` map (id 22 → 15, 23 → 16, 26 → 19, 54 → 35, 55 → 36, 96 → 53) matches the OCI command `oneof` field numbers exactly, and each arm forwards `entry+0x20` (live payload) / `*_globals_` (fallback) into the selector. The default arm returns 0 (absent).
+> The on-wire id → `oneof` map (id 22 → 15, 23 → 16, 26 → 19, 54 → 35, 55 → 36, 96 → 53) matches the OCI command `oneof` field numbers exactly, and each arm forwards `entry+0x20` (live payload) / `*_globals_` (fallback) into the selector. The default arm returns 0 (absent).
 
 ---
 

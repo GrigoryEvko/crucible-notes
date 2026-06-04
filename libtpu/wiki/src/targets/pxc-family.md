@@ -140,13 +140,13 @@ The PXC `CommonHelper` is 48 bytes (vs JXC's 24) because it owns a `std::vector<
 
 `asic_sw::driver::deepsea::pxc::` is the first family namespace to carry the fetch/load split. Its direct sub-namespaces, confirmed in the symbol table:
 
-| Sub-namespace | Confidence | Role |
-|---|---|---|
-| `pxc::pfc` | CERTAIN | **Pufferfish fetch-core** — fetch-side instruction stream |
-| `pxc::plc` | CERTAIN | **Pufferfish load-core** — load-side instruction stream |
-| `pxc::isa` | CERTAIN | family-level ISA (137K symbols) |
-| `pxc::profiler` | CERTAIN | family-level profiler (8125 symbols), holds the `TraceEntry` class |
-| `pxc::internal` | CERTAIN | internal driver helpers |
+| Sub-namespace | Role |
+|---|---|
+| `pxc::pfc` | **Pufferfish fetch-core** — fetch-side instruction stream |
+| `pxc::plc` | **Pufferfish load-core** — load-side instruction stream |
+| `pxc::isa` | family-level ISA (137K symbols) |
+| `pxc::profiler` | family-level profiler (8125 symbols), holds the `TraceEntry` class |
+| `pxc::internal` | internal driver helpers |
 
 Below the fetch-core sit further namespaces: `pxc::pfc::isa` (46K symbols — includes `pxc::pfc::isa::BarnaCoreChannelBundle`, `VectorBase`), `pxc::pfc::profiler`, and `pxc::pfc::b0` (a register-block namespace). The load-core carries `pxc::plc::profiler`. BarnaCore bundle types living under the fetch-core's ISA confirm Pufferfish is the last family to ship BarnaCore — it is retired in VXC.
 

@@ -85,14 +85,14 @@ GXC has no factory vtable. v4 and v5 use the VXC factory vtable at 0x21cabf70 / 
 
 The GXC story is the driver layer. `asic_sw::driver::deepsea::gxc::` has exactly two direct sub-namespaces — the fetch/load-core pair — and, unlike PXC and VXC, **no family-level `isa` or `profiler`**: GXC carries its ISA and profiler entirely under the sub-cores.
 
-| Sub-namespace | Confidence | Role |
-|---|---|---|
-| `gxc::gfc` | CERTAIN | **general fetch-core** — the 6acc60406 (v5) sub-core |
-| `gxc::glc` | CERTAIN | **general load-core** — the Ghostlite (v4) sub-core |
-| `gxc::gfc::isa` | CERTAIN | v5 ISA (270K symbols) — e.g. `TensorCoreBundleCompact`, SparseCore Tec codecs |
-| `gxc::glc::isa` | CERTAIN | v4 ISA (294K symbols) — e.g. `TensorCoreBundleCompact`, SparseCore codecs |
-| `gxc::gfc::profiler` | CERTAIN | v5 profiler (48K symbols), with named `TraceEntry` class (4781 token occ.) |
-| `gxc::glc::profiler` | CERTAIN | v4 profiler (29K symbols), with named `TraceEntry` class (4590 token occ.) |
+| Sub-namespace | Role |
+|---|---|
+| `gxc::gfc` | **general fetch-core** — the 6acc60406 (v5) sub-core |
+| `gxc::glc` | **general load-core** — the Ghostlite (v4) sub-core |
+| `gxc::gfc::isa` | v5 ISA (270K symbols) — e.g. `TensorCoreBundleCompact`, SparseCore Tec codecs |
+| `gxc::glc::isa` | v4 ISA (294K symbols) — e.g. `TensorCoreBundleCompact`, SparseCore codecs |
+| `gxc::gfc::profiler` | v5 profiler (48K symbols), with named `TraceEntry` class (4781 token occ.) |
+| `gxc::glc::profiler` | v4 profiler (29K symbols), with named `TraceEntry` class (4590 token occ.) |
 
 > **NOTE —** there is no *family-level* `gxc::isa` (the search for `deepsea3gxc3isa` returns zero); the ISA lives one level deeper than PXC's/VXC's, under the sub-cores (`gxc::gfc::isa`, `gxc::glc::isa`, with matching `profiler` namespaces). GXC shares the VXC family only at the HAL-object layer (the common factory/impl); the ISA layer is wholly GXC-specific.
 

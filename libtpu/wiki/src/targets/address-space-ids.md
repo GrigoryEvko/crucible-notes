@@ -31,34 +31,34 @@ The contract for a reimplementer is: tag every SparseCore pointer with the ID fo
 
 | AS# | hex | Region / pool | MS# | Width | tile? | Meaning · Confidence |
 |----:|-----|---------------|----:|-------|:-----:|----------------------|
-| 0 | 0x0 | smem | 1 | KB | off | inherited base TPU scalar memory ✓ · CONFIRMED |
-| 201 | 0xc9 | tile_spmem | 2 | KB | **ON** | per-tile SparseCore SRAM ✓ · CONFIRMED |
-| 202 | 0xca | spmem | 3 | MB | off | chip-shared SparseCore SRAM ✓ · CONFIRMED |
-| 203 | 0xcb | hbm | 4 | GB | off | global HBM (embedding tables) ✓ · CONFIRMED |
-| 204 | 0xcc | sflag | 5 | — | off | sync-flag memory ✓ (MS 22 `sflag_tc` also maps here) · CONFIRMED |
-| 205 | 0xcd | vmem | 6 | MB | off | TensorCore vector memory (TC↔SC handoff) ✓ · CONFIRMED |
-| 206 | 0xce | — | 0 | — | — | reserved / gap · CONFIRMED |
-| 207 | 0xcf | — | 0 | — | — | reserved / gap · CONFIRMED |
-| 208 | 0xd0 | dreg | 7 | — | off | data-register window ✓ · CONFIRMED |
-| 209 | 0xd1 | — | 0 | — | — | reserved / gap · CONFIRMED |
-| 210 | 0xd2 | — | 0 | — | — | reserved / gap · CONFIRMED |
-| 211 | 0xd3 | — (alias) | 0 | — | off | `SflagAny` may-alias superset (no pool) · CONFIRMED |
-| 212 | 0xd4 | smem_any | 9 | — | off | `SmemAny` may-alias superset ✓ · CONFIRMED |
-| 213 | 0xd5 | hbm_any | 10 | — | off | `HBMAny` may-alias superset ✓ · CONFIRMED |
-| 214 | 0xd6 | timem | 11 | — | off | per-tile instruction memory ✓ · CONFIRMED |
-| 215 | 0xd7 | simem | 12 | — | off | SC instruction memory ✓ · CONFIRMED † |
-| 216 | 0xd8 | iova | 13 | GB | off | I/O virtual address ✓ · CONFIRMED |
-| 217 | 0xd9 | sflag_tile | 14 | — | off | per-tile sflag bank ✓ · CONFIRMED |
-| 218 | 0xda | spmem_any | 15 | — | off | `SpmemAny` may-alias superset ✓ · CONFIRMED |
-| 219 | 0xdb | smem_tile | 16 | KB | off | per-tile SMEM (`TileSmem`) ✓ · CONFIRMED |
-| 220 | 0xdc | mar | 17 | — | off | memory-access-region ✓ · CONFIRMED † |
-| 221 | 0xdd | — | 0 | — | — | reserved / gap · CONFIRMED |
-| 222 | 0xde | — | 0 | — | — | reserved / gap · CONFIRMED |
-| 223 | 0xdf | sflag_scs | 20 | — | off | per-SCS sflag bank (`SflagScs`) ✓ · CONFIRMED |
-| 224 | 0xe0 | smem_scs | 21 | KB | off | per-SCS SMEM (`SmemScs`) ✓ · CONFIRMED |
-| 225 | 0xe1 | — (alias) | 0 | — | off | `SflagAnySynctile` (no pool) · CONFIRMED |
-| 501 | 0x1f5 | tile_spmem_cb | 18 | KB | **ON** | CBREG-windowed `TILE_SPMEM` ✓ · CONFIRMED |
-| 502 | 0x1f6 | smem_cb | 19 | KB | off | CBREG-windowed `SMEM` ✓ · CONFIRMED |
+| 0 | 0x0 | smem | 1 | KB | off | inherited base TPU scalar memory ✓ |
+| 201 | 0xc9 | tile_spmem | 2 | KB | **ON** | per-tile SparseCore SRAM ✓ |
+| 202 | 0xca | spmem | 3 | MB | off | chip-shared SparseCore SRAM ✓ |
+| 203 | 0xcb | hbm | 4 | GB | off | global HBM (embedding tables) ✓ |
+| 204 | 0xcc | sflag | 5 | — | off | sync-flag memory ✓ (MS 22 `sflag_tc` also maps here) |
+| 205 | 0xcd | vmem | 6 | MB | off | TensorCore vector memory (TC↔SC handoff) ✓ |
+| 206 | 0xce | — | 0 | — | — | reserved / gap |
+| 207 | 0xcf | — | 0 | — | — | reserved / gap |
+| 208 | 0xd0 | dreg | 7 | — | off | data-register window ✓ |
+| 209 | 0xd1 | — | 0 | — | — | reserved / gap |
+| 210 | 0xd2 | — | 0 | — | — | reserved / gap |
+| 211 | 0xd3 | — (alias) | 0 | — | off | `SflagAny` may-alias superset (no pool) |
+| 212 | 0xd4 | smem_any | 9 | — | off | `SmemAny` may-alias superset ✓ |
+| 213 | 0xd5 | hbm_any | 10 | — | off | `HBMAny` may-alias superset ✓ |
+| 214 | 0xd6 | timem | 11 | — | off | per-tile instruction memory ✓ |
+| 215 | 0xd7 | simem | 12 | — | off | SC instruction memory ✓ † |
+| 216 | 0xd8 | iova | 13 | GB | off | I/O virtual address ✓ |
+| 217 | 0xd9 | sflag_tile | 14 | — | off | per-tile sflag bank ✓ |
+| 218 | 0xda | spmem_any | 15 | — | off | `SpmemAny` may-alias superset ✓ |
+| 219 | 0xdb | smem_tile | 16 | KB | off | per-tile SMEM (`TileSmem`) ✓ |
+| 220 | 0xdc | mar | 17 | — | off | memory-access-region ✓ † |
+| 221 | 0xdd | — | 0 | — | — | reserved / gap |
+| 222 | 0xde | — | 0 | — | — | reserved / gap |
+| 223 | 0xdf | sflag_scs | 20 | — | off | per-SCS sflag bank (`SflagScs`) ✓ |
+| 224 | 0xe0 | smem_scs | 21 | KB | off | per-SCS SMEM (`SmemScs`) ✓ |
+| 225 | 0xe1 | — (alias) | 0 | — | off | `SflagAnySynctile` (no pool) |
+| 501 | 0x1f5 | tile_spmem_cb | 18 | KB | **ON** | CBREG-windowed `TILE_SPMEM` ✓ |
+| 502 | 0x1f6 | smem_cb | 19 | KB | off | CBREG-windowed `SMEM` ✓ |
 
 A `†` on a row marks an ID whose pool name comes only from `stringifyMemorySpace`, not from `AddressSpaceDescription` (see the GOTCHA below).
 

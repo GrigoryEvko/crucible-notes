@@ -202,7 +202,7 @@ The ring dimensions are drawn from the same X/Y/Z torus extents as the dense pat
 
 ## 6. Verification notes
 
-> **[CONFIRMED]** Substrate split, end-to-end flow, op-family dispatch, and the SC-offload gate were all cross-checked against the IDA decompile of `libtpu.so` v0.0.40:
+> Substrate split, end-to-end flow, op-family dispatch, and the SC-offload gate were all cross-checked against the IDA decompile of `libtpu.so` v0.0.40:
 > - `CostModel::GetCollectiveCycles` @`0x130abfc0`: opcode jump table cases `6/8` (AllGather → `UseAllGather2D`), `9/11/93` (AllReduce-family → `ComputeAllReduceCycles`), `12` (`ComputeAllToAllCycles`), `86` (`ComputeRaggedAllToAllCycles`), `34/36` (CollectivePermute); `TensorCoreFrequencyInMegaHertz`; `GetCollectiveOffloadConfig` SC-offload probe — all present.
 > - `GetCommunicationMultiplier` @`0x127a16c0`: `ReplicaGroupsOnNDPlane(…, 2, 0)` then `return (unsigned int)v7 + 1`; `GetMultiSliceTopology` fork; `ConstructSliceTransferGroup(mode=3)` — exact.
 > - `BaseStrategyND::SelectNDStrategy` @`0x137c78e0`: `StrategySubgroupND`, `StrategyND` (NDNway/strided), `TwistedTorusND` constructed; `IsGroupNDPlane`, `UseSpecialStrategyNDNWay`, `UseStridedStrategyND` guards; `ReplicaGroupsOnNDPlane(plane=2)`; VLOG strings — exact.

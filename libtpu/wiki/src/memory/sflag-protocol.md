@@ -240,7 +240,7 @@ Per-gen override addresses (decoded immediates): `JellyfishTarget::GetDummySyncF
 
 ## 6. Verification Notes
 
-> **[CONFIRMED]** Re-derived byte-exact from the IDA decompile of `libtpu.so` v0.0.40 for this page:
+> Re-derived byte-exact from the IDA decompile of `libtpu.so` v0.0.40 for this page:
 > - `SflagImmPtr` @ `0x1d5185a0`: `MakeValidatedShape(element_type=4 == S32)`; `ImmPtr(byte_offset = 4·number, shape, space=6, name)` — the word stride and render space id are exact.
 > - `VsyncAdd` @ `0x1d523200`: CHECK `sync_flag->memory_space() == MemorySpace::kSflag` (`llo_region_builder.cc:8280`); `CreateVectorSyncFlagAdd(…, flag=0, …)` — pure counter add.
 > - `VsyncAddDone` @ `0x1d54e380`: same CHECK (`:8289`); `CreateVectorSyncFlagAdd(…, flag=257=0x101, …)` — done bit `0x100`.

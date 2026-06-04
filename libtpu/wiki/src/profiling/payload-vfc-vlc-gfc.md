@@ -81,11 +81,11 @@ The dominant band — its event count grows pxc 32 → vfc 52 / vlc 38 / gfc 47.
 
 The richest OCI shape: three `trace_id_header` records (`cmd0`/`cmd1`/`cmd2`), with the command scalars interleaved between the second and third header. Fields: `index_valid`, `id_index0/1/2` (uint32, 17 each), trailing node-identity enum (3 bits — `node_type` on pxc, `extra_id` on the newer gens).
 
-| gen | `OciCommonReadCmdIssuedFromEngine` widths | CHECK | Confidence |
-|---|---|---|---|
-| vfc | `21,3,14, 21,3,5,1,1,9, 21,3,14, 3,17,17,17,3` | 234 | CERTAIN |
-| gfc | `21,3,14, 21,3,5,1,1,9, 21,3,14, 3,17,17,17,3` | 234 | CERTAIN |
-| vlc | `21,3,14, 21,3,8,1,1,6, 21,3,14, 3,17,17,17,3` | 231 | CERTAIN |
+| gen | `OciCommonReadCmdIssuedFromEngine` widths | CHECK |
+|---|---|---|
+| vfc | `21,3,14, 21,3,5,1,1,9, 21,3,14, 3,17,17,17,3` | 234 |
+| gfc | `21,3,14, 21,3,5,1,1,9, 21,3,14, 3,17,17,17,3` | 234 |
+| vlc | `21,3,14, 21,3,8,1,1,6, 21,3,14, 3,17,17,17,3` | 231 |
 
 > **QUIRK —** the cmd1 scalar group is where vlc breaks ranks. vfc/gfc encode the cmd1 interleave as `5,1,1,9`; vlc as `8,1,1,6` — the two scalar widths (a counter and an id) are re-apportioned 5/9 → 8/6. The total payload-bit count differs by only the header re-base (vlc 231 = 58+173; vfc/gfc 234 = 61+173), so a decoder that reads "five bits then nine" will mis-read vlc's cmd1 even though the overall CHECK looks consistent. The pxc reference is `21,3,12, 21,3,7,1,1,5, …` CHECK 228 — narrower headers, different cmd1 split again. Decoder anchor: vfc `DecodeOciCommonReadCmdIssuedFromEngine` @ `0xf5fd560` (CHECK 234).
 
@@ -93,11 +93,11 @@ The richest OCI shape: three `trace_id_header` records (`cmd0`/`cmd1`/`cmd2`), w
 
 `dma_type` + src/dst `{mem_mem_id, core_id, opcode}` + sync-flag ids/core-ids + `program_counter`. The descriptor grew versus pxc's CHECK 179.
 
-| gen | `OciDescriptorCommon` / `DescAtQnm` widths | CHECK | Confidence |
-|---|---|---|---|
-| vfc | `21,3,14, 1,2,3,2,2,3,2,13,1,1,1,2,13,3,13,3,2,1,1,16,32` | 216 | CERTAIN |
-| gfc | `21,3,14, 1,2,3,2,2,3,2,13,1,1,1,2,13,3,13,3,3,1,1,16,32` | 217 | CERTAIN |
-| vlc | `21,3,14, 1,2,3,2,2,3,2,13,3,1,1,1,12,3,13,3,1,16,32` | 210 | CERTAIN |
+| gen | `OciDescriptorCommon` / `DescAtQnm` widths | CHECK |
+|---|---|---|
+| vfc | `21,3,14, 1,2,3,2,2,3,2,13,1,1,1,2,13,3,13,3,2,1,1,16,32` | 216 |
+| gfc | `21,3,14, 1,2,3,2,2,3,2,13,1,1,1,2,13,3,13,3,3,1,1,16,32` | 217 |
+| vlc | `21,3,14, 1,2,3,2,2,3,2,13,3,1,1,1,12,3,13,3,1,16,32` | 210 |
 
 vfc→gfc differ by a single bit (one trailing enum field widens 2→3, CHECK 216→217). vlc restructures the sync-flag id group (a `12` where vfc/gfc carry a `13`) and re-bases on the 58-bit header.
 
@@ -105,11 +105,11 @@ vfc→gfc differ by a single bit (one trailing enum field widens 2→3, CHECK 21
 
 `msg_data` + `done` + `msg_type` + node-selectors + `addr`.
 
-| gen | `OciMessagePacketSentToOci` widths | CHECK | note | Confidence |
-|---|---|---|---|---|
-| vfc | `21,3,14, 29,1,1,3,1,1,2,33,3` | 173 | msg_data 29, addr 33 | CERTAIN |
-| gfc | `21,3,14, 29,1,1,3,1,1,2,33,3` | 173 | == vfc | CERTAIN |
-| vlc | `21,3,14, 32,1,1,1,1,2,34,3` | 171 | msg_data 32, addr 34, 58-bit hdr | CERTAIN |
+| gen | `OciMessagePacketSentToOci` widths | CHECK | note |
+|---|---|---|---|
+| vfc | `21,3,14, 29,1,1,3,1,1,2,33,3` | 173 | msg_data 29, addr 33 |
+| gfc | `21,3,14, 29,1,1,3,1,1,2,33,3` | 173 | == vfc |
+| vlc | `21,3,14, 32,1,1,1,1,2,34,3` | 171 | msg_data 32, addr 34, 58-bit hdr |
 
 The pxc reference SHAPE-A is `21,3,12, 31,1,1,1,1,1,2,32,3` CHECK 170. vlc widens both `msg_data` (32 vs 29) and `addr` (34 vs 33) and drops one of the 1-bit flag positions — the largest per-gen SHAPE-A drift.
 
@@ -225,10 +225,10 @@ pxc had **one** throttle event (id 97) with a [discriminated two-variant body](p
 
 A single, undiscriminated thermal/electrical state record. Fields (descriptor): `packet_type` (enum), `num_electrical_throttles`, `num_thermal_throttles`, `thermal_total_throttles`, `thermal_max_throttle`, `thermal_min_throttle`.
 
-| gen | `ThrottleTcsState…ThermalAndElectrical` widths | CHECK | note | Confidence |
-|---|---|---|---|---|
-| vfc | `3,5,5,21,5,5` | 105 | no TIDhdr; packet_type 3 bits | CERTAIN |
-| vlc | `3,5,5,21,5,5` | 102 | 58-bit hdr → CHECK 102 | CERTAIN |
+| gen | `ThrottleTcsState…ThermalAndElectrical` widths | CHECK | note |
+|---|---|---|---|
+| vfc | `3,5,5,21,5,5` | 105 | no TIDhdr; packet_type 3 bits |
+| vlc | `3,5,5,21,5,5` | 102 | 58-bit hdr → CHECK 102 |
 
 The wide electrical/voltage record that pxc's variant B carried is gone; its values migrate to the cycle-skip and LDIDT-voltage events below. Anchors: vfc `DecodeThrottleTcsStateTcsThermalAndElectricalThrottleState` @ `0xf609840` (oneof 68, CHECK 105), vlc @ `0xf5e4660` (oneof 57, CHECK 102).
 

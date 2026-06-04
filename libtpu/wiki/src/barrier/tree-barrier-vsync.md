@@ -251,7 +251,7 @@ The three tables are keyed and registered once per program:
 
 ## 7. Verification notes
 
-> **[CONFIRMED]** Byte-exact in `libtpu.so` v0.0.40 (cross-checked against the demangled symbol table):
+> Byte-exact in `libtpu.so` v0.0.40 (cross-checked against the demangled symbol table):
 > - `VsyncAddRemote` @`0x1d522f40`: body is exactly `EncodeRemoteSyncFlagAddress` @`0x1d54da40` → `CreateVectorSyncFlagAddRemote` @`0x1d4dc340` → `LloRegion::AppendInstruction` @`0x1d50f9a0` — exact.
 > - The Vsync creators: `CreateVectorSyncFlagAddRemote(LloValue*, LloValue*, LloRegion*)` and `CreateVectorSyncFlagAdd(LloValue*, LloValue*, optional<bool>, LloRegion*)` present in `functions.json`; MLIR ops `VSyncAddRemoteOp` / `VSyncAddOp` / `VWaitGeOp` / `VWaitEqOp` / `VSyncReadOp` confirmed in the `addOperations` registration list.
 > - `BarrierCoresTree` @`0x1c6a75c0`: the GLOBAL-sflag materialisation (`GetGlobalBarrierSyncFlagNumber` @`0x1d60f420` + `SflagImmPtr "global barrier sync flag"`); the **two-phase** sweep (`.rodata` `"tree-barrier-phase-1"` / `"tree-barrier-phase-2"`, each `GetLimitedIciRoutingTableIndex` @`0x1c6a5e80` + `SimpleLoop` @`0x1d57d4a0` stride `0x10` + `VsyncAddRemote`); the `VwaitGeSV` + `VsyncAdd` rendezvous; the `BarrierCoresTreeCustom` `"custom-tree-barrier"` variant — confirmed.

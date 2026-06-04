@@ -142,15 +142,15 @@ JXC's construction path is the heaviest of the four families (a large `CreateAnd
 
 The `asic_sw::driver::deepsea::jxc::` namespace is the strongest evidence for the no-split nature of JXC. Its direct sub-namespaces, confirmed in the symbol table, are organized by engine block and trace-entry type, **not** by fetch/load role:
 
-| Sub-namespace | Confidence | Role |
-|---|---|---|
-| `jxc::dfc` | CERTAIN | dataflow controller engine (1991 symbols) |
-| `jxc::jfc` | CERTAIN | Jellyfish core engine (988 symbols) |
-| `jxc::registers` | CERTAIN | register-block definitions (330 symbols) |
-| `jxc::snap` | CERTAIN | snapshot / checkpoint support (241 symbols) |
-| `jxc::jellyfish_performance_counters` | CERTAIN | gen-0 perf counters |
-| `jxc::dragonfish_performance_counters` | CERTAIN | gen-1 perf counters |
-| `jxc::*_trace_entry` | CERTAIN | profiler trace-entry types (see below) |
+| Sub-namespace | Role |
+|---|---|
+| `jxc::dfc` | dataflow controller engine (1991 symbols) |
+| `jxc::jfc` | Jellyfish core engine (988 symbols) |
+| `jxc::registers` | register-block definitions (330 symbols) |
+| `jxc::snap` | snapshot / checkpoint support (241 symbols) |
+| `jxc::jellyfish_performance_counters` | gen-0 perf counters |
+| `jxc::dragonfish_performance_counters` | gen-1 perf counters |
+| `jxc::*_trace_entry` | profiler trace-entry types (see below) |
 
 The `*_trace_entry` family includes `bcs_internal`, `brn_fabric_sync`, `brn_sync_wait`, `cs_internal`, `cs_external_sync_flag_update`, `hbm_mux_switch`, `hib_request`, `hib_interrupt`, `hib_hbm_write`, `hib_sync_update`, `ici_packet`, and the `nf_*` set — engine-block event records, not standalone namespaces.
 

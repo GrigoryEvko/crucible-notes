@@ -258,7 +258,7 @@ Megacore deployments (`megacore*`, `megachip`) are the ones for which `CoresPerC
 
 ## 6. Verification Notes
 
-> **[CONFIRMED]** Byte-exact in `libtpu.so` v0.0.40:
+> Byte-exact in `libtpu.so` v0.0.40:
 > - `InferBarrierConfig` @`0x1376c240` full body: predicate `*((__int64*)a4+1) <= 1 && *((__int64*)a4+2) <= 1` (line 79); `if (v35 == 3)` CUSTOM (line 86); `channel_id(a3)` then `v15 == 1` → `v35=1, v16=-1` GLOBAL (lines 88-92) else `v35=2, v16 = *((int*)a2+561) − 1` REPLICA (lines 97-99); `v33 = v17 | 3` hasbits (line 102); `if (v14)` keep-else-RetCheck line 115 `"barrier.barrier_type() != BarrierType::BARRIER_INVALID"` (line 148); default `BarrierConfig_globals_` @`0x223a9450` (line 76); **no `movl $4`** — exact.
 > - `Target::Init` @`0x1d60fc20`: `target[560] = arr[0]` (base → `+0x8c0`), `target[561] = size − 5` (count → `+0x8c4`) — exact (decompile lines 2067-2068).
 > - `SparseCoreTarget::Init` @`0x1d612b20`: `(sctgt+464) = SPSF[1]` (SC base → `+0x1d0`), `(sctgt+468) = SPSF->size` (SC count → `+0x1d4`, no `−5`); `(sctgt+144) = SequencerCount(core, 5)` (`+0x90`, not SFLAG) — exact.

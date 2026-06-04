@@ -17,7 +17,7 @@ worker's stub returns `DEADLINE_EXCEEDED` to
 (`xla::megascale::runtime::CommunicationBackend::DiscoverTopologyAndAddressBindings`,
 `0x1ccacb80`), which:
 
-1. **CONFIRMED.** Returns the error to the XLA Megascale runtime via
+1. Returns the error to the XLA Megascale runtime via
    the `StatusOr<tuple<MultiSliceTopologyAndLocationProto,
    EndpointAddresses>>` constructed at `0x1ccacea4` (the
    `absl::StatusOr<...>::StatusOr` call inside
@@ -60,7 +60,7 @@ that each worker attaches. So what happens when registrations keep
 arriving late:
 
 1. The coordinator's pending-callback vector at `+0x88` grows.
-2. **CONFIRMED.** The periodic `ReportStatus()`
+2. The periodic `ReportStatus()`
    (`xla::megascale::runtime::TopologyCoordinator::ReportStatus`,
    `0x213b7ba0`) continues to emit
    `"MegaScale Topology Discovery in progress. Missing hosts
@@ -82,7 +82,7 @@ TopologyCoordinator still in state=1, ready to accept the missing
 registrations. If the operator decides the rendezvous is doomed,
 they must kill the coordinator process externally.
 
-**CONFIRMED.** The `"TopologyCoordinator: Unable to wait for all
+The `"TopologyCoordinator: Unable to wait for all
 slices to connect. The missing hosts (num_slices=<N>,
 num_hosts=<H>): [<list>]"` log (`0x96df1d4`) is emitted only when the
 `TopologyCoordinator` is **destroyed** without converging — by
@@ -107,7 +107,7 @@ When a worker re-registers with a different `topology_args`,
 different `host_addresses`, or different `incarnation_id`, the
 coordinator catches the drift in two places:
 
-**CONFIRMED.** All three drift checks live in one function —
+All three drift checks live in one function —
 `xla::megascale::runtime::TopologyCoordinator::ProcessRequest`
 (`0x1cf524c0`) — not split across a separate broadcast-time path.
 Two `proto2::util::MessageDifferencer::Compare` calls (`0x1cf5269d`
@@ -169,7 +169,7 @@ and the per-call deadline comes from
 participant times out:
 
 1. Worker side logs the local deadline-exceeded error.
-2. **CONFIRMED.** When the `BarrierCoordinator` is destroyed without
+2. When the `BarrierCoordinator` is destroyed without
    all participants having checked in, its destructor
    (`xla::megascale::runtime::BarrierCoordinator::~BarrierCoordinator`,
    `0x1cf55760`) emits

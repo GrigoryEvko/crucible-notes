@@ -201,7 +201,7 @@ function GetSparseCoreBarrierSyncFlagCount(target):            // 0x10972fa0
 
 ## 7. Verification notes
 
-> **[CONFIRMED]** Byte-exact in `libtpu.so` v0.0.40:
+> Byte-exact in `libtpu.so` v0.0.40:
 > - `GetGlobalBarrierSyncFlagNumber` @`0x1d60f420`: `return (uint32)(this[561] + this[560] + 4)` = `base + count + 4` — exact, no gate.
 > - `GetAllReduceSyncFlagNumber` @`0x1d60f440`: CHECK `phase > 0` (`target.cc:143`) and `phase < 3` (`target.cc:144`); `return (uint32)(this[560] + phase + this[561] + 1)` = `base + phase + count + 1`; legal phases `{1,2}` → slots `{base+count+2, base+count+3}` — exact.
 > - `GetMegacoreBarrierSyncFlagNumber` @`0x1d60f4e0`: gate `tpu::TpuChipConfig::Megacore(*(*(this+119)+24))` (`target.cc:154`, `"topology_->chip_config().Megacore()"`); `return (uint32)(this[560] + this[561])` = `base + count` — exact.

@@ -74,20 +74,20 @@ The four trailing bytes at `+0x208..+0x20b` are the "already-attempted / require
 
 The return type is not an enum — it is a failure bitset (10 named bits, `0x001..0x200`) where `0` is success and each set bit is one failure reason. `SingleFailureResultToString` (`0x1dc7bc80`) range-checks the value against `0x7f` (`cmp 0x7f`), routing values `≤0x7f` through a 65-entry jump table at `0xb564d94` (indexed by the single-bit value `0..0x40`) and the three high bits (`0x80/0x100/0x200`) through explicit compares; each arm stores its result string. `Success`, `FailOutOfMemory`, and `UnknownResult` are inline `strcpy` string literals in the decompile; the remaining names are loaded from rodata (so they do not surface as inline string args), consistent with the jump-table-plus-rodata structure.
 
-| Bit | Name | Confidence |
-|---|---|---|
-| `0x000` | `Success` (no bits set) | CONFIRMED |
-| `0x001` | `FailOutOfMemory` | CONFIRMED |
-| `0x002` | `FailPrevAllocationNotInAlternateMem` | CONFIRMED |
-| `0x004` | `FailLiveRangeTooLong` | CONFIRMED |
-| `0x008` | `FailLiveRangeTooShort` | CONFIRMED |
-| `0x010` | `FailOutOfAsyncCopies` | CONFIRMED |
-| `0x020` | `FailViolatesAsyncCopyResource` | CONFIRMED |
-| `0x040` | `FailRequiresUncommit` | CONFIRMED |
-| `0x080` | `AllSlicesHaveTheSameStartTime` | CONFIRMED |
-| `0x100` | `FailConflictingPreferredOffsets` | CONFIRMED |
-| `0x200` | `FailSyncDataMoveReplacement` | CONFIRMED |
-| else | `UnknownResult` | CONFIRMED |
+| Bit | Name |
+|---|---|
+| `0x000` | `Success` (no bits set) |
+| `0x001` | `FailOutOfMemory` |
+| `0x002` | `FailPrevAllocationNotInAlternateMem` |
+| `0x004` | `FailLiveRangeTooLong` |
+| `0x008` | `FailLiveRangeTooShort` |
+| `0x010` | `FailOutOfAsyncCopies` |
+| `0x020` | `FailViolatesAsyncCopyResource` |
+| `0x040` | `FailRequiresUncommit` |
+| `0x080` | `AllSlicesHaveTheSameStartTime` |
+| `0x100` | `FailConflictingPreferredOffsets` |
+| `0x200` | `FailSyncDataMoveReplacement` |
+| else | `UnknownResult` |
 
 A result with multiple bits set is decomposed and joined name-by-name by `ResultToString` (`0x1dc68c80`). Two predicate helpers read the mask: `result_requires_uncommit()` tests bit `0x40`; `result_failed_because_of_async_copy()` tests `0x10|0x20`. The semantics that matter for the cascade:
 
