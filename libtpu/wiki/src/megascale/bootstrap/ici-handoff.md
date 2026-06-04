@@ -94,10 +94,16 @@ MessageDifferencer diff;
 diff.set_message_field_comparison(EQUIVALENT);
 if (!diff.Compare(req.topology_args,
                   *cached_topology_args_for_slice[slice_id])) {
-  LOG(ERROR) << "Received topology that differs from previously
-                 registered topology at same sliceID. ...";
+  return MakeErrorImpl<3>(  // INVALID_ARGUMENT — hard reject, not a log
+      "Received topology that differs from previously "
+      "registered topology at same sliceID. ...");
 }
 ```
+
+The comparison is a hard *reject* that returns a non-OK `Status`
+(`MakeErrorImpl<3>` = INVALID_ARGUMENT), not a log-and-continue — see
+[Topology Exchange](topology-exchange.md) for the byte-level
+derivation.
 
 Where the comparison matters:
 
@@ -110,8 +116,8 @@ Where the comparison matters:
   the runtime cannot correctly schedule collectives that
   partition across hosts. This still surfaces through the same
   `tpu_topology_args` comparison above — the
-  "Received topology that differs..." warning string at rodata
-  VA `0x9b27486` fires.
+  "Received topology that differs..." error string at rodata
+  VA `0x9b27486` is returned as an INVALID_ARGUMENT `Status`.
 - **Twist factors / topology mode.** When
   `MEGASCALE_TOPOLOGY` or `FLAGS_megascale_force_use_dcn_topology_
   from_flags` injects a synthesised topology, it must match the
@@ -190,16 +196,18 @@ Three concrete scenarios:
    schedule the missing chips.
 2. **Two hosts of the same slice raced and got different chip
    coordinates.** Megascale's `MessageDifferencer` catches the
-   mismatch and emits the `Received topology that differs...`
-   warning. Bootstrap continues serving the first-seen topology
-   (so the slice runs with the wrong chip set on half its hosts);
-   collectives that hit the misaligned chips will fail at compile
-   time with shape errors.
+   mismatch and `ProcessRequest` returns the `Received topology that
+   differs...` `MakeErrorImpl<3>` (INVALID_ARGUMENT) `Status`. The
+   second host's `GetMultiSliceTopology` RPC fails with that error;
+   the rendezvous does not converge for that slice, so bootstrap
+   returns a non-OK Status to the runtime rather than silently
+   running with a mismatched chip set.
 3. **A host restarted after the slice was already in steady
    state and reconnected with a different `incarnation_id`.**
-   `TopologyCoordinator::ProcessRequest` (`0x1cf524c0`) emits the
+   `TopologyCoordinator::ProcessRequest` (`0x1cf524c0`) returns the
    "Received incarnation ID that is different from previous
-   incarnation ID..." warning (rodata VA `0x9c14456`). Separately,
+   incarnation ID..." `MakeErrorImpl<3>` (INVALID_ARGUMENT) `Status`
+   (rodata VA `0x9c14456`). Separately,
    the inlined `LogUniqueIds` helper (folded into
    `Communicator::Create` at `0x1cca9aa0`) tracks the three
    `last_ids` slots under `unique_id_mutex` and logs when any

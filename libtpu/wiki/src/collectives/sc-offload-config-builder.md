@@ -201,15 +201,17 @@ The three backend-config messages — `AllGatherOffloadConfig`, `AllReduceOffloa
 |--------|-------|-----------------------|
 | `+0x00` | vptr | AG vtbl `0x21ce1ce0` / AR `0x21ce1ca0` / RS `0x21ce1c60` (`+0x10`) |
 | `+0x08` | `InternalMetadata` (Arena ptr \| tag bits) | — (proto2 internal) |
-| `+0x10` | `hasbits` (int32) | bit0=`tensor_split_factor`, bit1=`ici_strategy_config`, bit2=`constant_propagation_config`, bit5=`use_n_dimension_strategy` |
-| `+0x1c` | int32 `tensor_split_factor` | 5, optional int32 |
-| `+0x28` | int32 (cleared scalar) | — |
+| `+0x10` | `hasbits` (int32) | bit0=`physical_core_indices`, bit1=`ici_strategy_config`, bit2=`constant_propagation_config`, bit3=`use_single_sparse_core`, bit5=`use_n_dimension_strategy` |
+| `+0x18` | `RepeatedField<int32>` flags \| arena tag | `physical_core_indices` heap-bit (low bit) |
+| `+0x1c` | int32 `current_size` | `physical_core_indices` element count |
+| `+0x20` | `Rep*` (`int32[]` at `Rep+0x8`) | `physical_core_indices` data |
+| `+0x28` | int32 serialized-size cache | (`physical_core_indices` cached byte length) |
 | `+0x30` | `message*` `ici_strategy_config` | 2, `CollectiveIciStrategyConfig` |
 | `+0x38` | `message*` `constant_propagation_config` | 3, `CollectiveOffloadConstantPropagationConfig` |
-| `+0x40` | repeated-int ptr `physical_core_indices` | 4 (size at `+0x44`) |
-| `+0x44` | repeated-int size | (part of field 4) |
+| `+0x40` | `bool` `use_single_sparse_core` | 1, optional bool |
+| `+0x44` | int32 scalar | `tensor_split_factor` / `use_n_dimension_strategy` (low-byte region) |
 
-The two `bool` scalars `use_single_sparse_core` (field 1) and `use_n_dimension_strategy` (field 6) live in the has-bit / low-byte region; the builder reads `tensor_split_factor` from its `optional<int>` argument and fills `physical_core_indices`.
+The repeated `physical_core_indices` is a standard proto2 `RepeatedField<int32>` at `+0x18..+0x20` (heap-bit `+0x18`, `current_size` `+0x1c`, `Rep*` `+0x20` with the `int32[]` at `Rep+0x8`); the writer/reader (`AddCollectivePhysicalCoreIndicesHelper` / `GetPhysicalCoreIndices`) and the `_InternalSerialize` witness all agree on these offsets — see **[Physical-Core Placement](physical-core-placement.md)** §1. The `bool` scalars `use_single_sparse_core` (field 1) and `use_n_dimension_strategy` (field 6) live in the `+0x40` / low-byte region; the builder reads `tensor_split_factor` from its `optional<int>` argument and fills `physical_core_indices`.
 
 The proto field schema (read from the serialized `FileDescriptorProto` in `.rodata`):
 
@@ -325,7 +327,7 @@ The twist gate is the bridge to the SparseCore twisted-torus path: when all thre
 > - **Body pipeline** — `CheckInputOutputNumberOfElementIsBelowLimit` (line 529), `GetPhysicalDeviceGroups` (552), `ExtractNDPlaneInfo` + `IsNDPlaneSpanAcrossEntireDimension` RetCheck (571/595), chip extents `v17 + 88/92/96` = `0x58/0x5c/0x60` (567-569), `TryCreateTwistedTorusTopologyInfo` (936), `GetDimensionRings` (3104), `CopyRuntimeConfigToProtoLiteral` (2641/3366) — all present in order.
 > - **HierarchicalKind dispatch** — `& 0x101` at line 3032; `(~v & 0x101) == 0` at lines 3204/3262; `0x100` (`== 256`) flat sites at 3102/3525 — exact.
 > - **AllReduce wrapper** — `ShouldEnableSparseCoreHierarchicalAllReduce` (lines 18/35) combined with `0x101` (line 41); AG/RS wrappers (`0x133c76c0`/`0x133ccbe0`) hardwire `0x100` — exact.
-> - **OffloadConfig structs** — three byte-identical `sizeof 0x48` messages via ctors `0x1d6ee220`/`0x1d6ed860`/`0x1d6eebe0`; field offsets `+0x1c/+0x30/+0x38/+0x40-44`; the carried `CollectiveIciStrategyConfig` → `PerColorIciStrategyConfig` → `IciStrategyRingConfig` nest — confirmed.
+> - **OffloadConfig structs** — three byte-identical `sizeof 0x48` messages via ctors `0x1d6ee220`/`0x1d6ed860`/`0x1d6eebe0`; the `_InternalSerialize` witness (`@0x1d6ee760`, AG) pins `physical_core_indices` `RepeatedField<int32>` at `+0x18`(heap-bit)/`+0x1c`(size)/`+0x20`(`Rep*`) with serialized-size cache `+0x28`, `ici_strategy_config` msg ptr `+0x30`, `constant_propagation_config` msg ptr `+0x38`, `use_single_sparse_core` bool `+0x40`, and a `<6>` int32 scalar `+0x44`; the carried `CollectiveIciStrategyConfig` → `PerColorIciStrategyConfig` → `IciStrategyRingConfig` nest — confirmed (matches the `AddCollectivePhysicalCoreIndicesHelper` writer and `GetPhysicalCoreIndices` reader on [Physical-Core Placement](physical-core-placement.md) §1).
 > - **Per-color appender** — lambda `@0x133e0a80` Adds `PerColorIciStrategyConfig` (line 38) then `IciStrategyRingConfig` (line 67) keyed by `color` (line 78) — exact.
 > - **Source TU** — the `MakeErrorStream` call (line 3206) cites `offload_collective_config.cc:1616`, pinning the translation unit (the raw working note's `_builder.cc` suffix is corrected to the binary-confirmed name).
 >

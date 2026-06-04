@@ -249,7 +249,8 @@ The full retrain then re-runs bring-up:
                               umbrella: "Bringing ICI links down." /
                               "Failed to take down links and reset ICI"
 2. EnableIci(span)          — re-issue enable_ici_serdes_training → fw re-trains PHY
-   WaitForDataLinkUp(dur)   — poll port_ready_state (1 ms / 500 ms quanta, tail timeout)
+   WaitForDataLinkUp(dur)   — poll port_ready_state (fixed 1 ms quantum, clamped to the
+                              remaining budget when under 1 ms; no second tier — see link-bringup.md §2)
    MaskIciErrors during the window; UnmaskIciErrors once DL-up succeeds
 3. ClearGtc → WaitForGtcReset → StartGtc   — tear and rebuild global-time-counter sync
                               failure: "Failed to restart GTC on link "

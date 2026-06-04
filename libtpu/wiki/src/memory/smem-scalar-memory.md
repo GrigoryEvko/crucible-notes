@@ -117,10 +117,10 @@ The accessors in [§1](#1-the-scalar-address-space) read four `Target` fields; t
 | Generation | Target class | SMEM banks | `ScalarLoadLatency` (cy) | 4-byte SMEM-write DMA opcode | SCS SMEM (bytes) |
 |---|---|---:|---:|---|---|
 | v2 / Jellyfish (JF) | `JellyfishTarget` | **2** | **2** | `false` (`0x1d48fee0`) | n/a (no SCS) |
-| v3 / Pufferfish (PF) | `PufferfishTarget` | **8** | **4** | `false` (`0x1d4946a0`) | 0 (no SCS in SMEM; `0x1fbac3e0`) |
-| v4 / Viperfish (VF) | `ViperfishTarget` | **8** | **6** | `true` (`0x1d49a8e0`) | **64 KiB** (vfc) / 0 (vlc) |
-| v5 / Ghostlite (GL) | `GhostliteTarget` | **8** | **6** | `true` (`0x1d4976c0`) | **64 KiB** (`0x1fe6dd60`) |
-| v5+ / Ghostfish (GF) | `GhostliteTarget` | **8** | **6** | `true` | **64 KiB** (`0x1fda8aa0`) |
+| v4 / Pufferfish (PF) | `PufferfishTarget` | **8** | **4** | `false` (`0x1d4946a0`) | 0 (no SCS in SMEM; `0x1fbac3e0`) |
+| v5 / Viperfish (VF) | `ViperfishTarget` | **8** | **6** | `true` (`0x1d49a8e0`) | **64 KiB** (vfc) / 0 (vlc) |
+| v6e / Ghostlite (GL) | `GhostliteTarget` | **8** | **6** | `true` (`0x1d4976c0`) | **64 KiB** (`0x1fe6dd60`) |
+| v7x / `6acc60406` (gfc) | `GhostliteTarget` | **8** | **6** | `true` | **64 KiB** (`0x1fda8aa0`) |
 
 - **Banks** come from the per-Target `MemBanks(MemorySpace)` override on the `kSmem(5)` branch: `JellyfishTarget::MemBanks` (`0x1d48fc80`) returns 2 for kSmem; PF/VF/GL return 8. The bank index for a byte offset `B` is `(B / SmemWordSizeBytes) mod MemBanks(kSmem)`; the row-within-bank is `(B / SmemWordSizeBytes) / MemBanks(kSmem)` (assumed by symmetry with VMEM — **MEDIUM confidence** on the exact formula; the bank *count* is CERTAIN).
 - **`ScalarLoadLatency`** (load-to-use cycles, SREG ← SMEM) is the hard latency the LLO bundle packer honours: JF=2, PF=4, VF=6, GL=6.

@@ -167,7 +167,7 @@ There are **three** topology-string sets and **two distinct families of singleto
 
 ### 4.1 The base set — `kRouteCacheSet` @0x22011f88
 
-`TwistedTorusTopology::kRouteCacheSet` @ `0x22011f88` is eight `{const char*, size_t}` pairs in `.data.rel.ro`, RELA-resolved to eight twisted-shape strings. (`ResilientToroidalTopology::kRouteCacheSet` @ `0x21f57380` is a *distinct* data symbol holding the same inventory referenced from the resilient class — see §4.3.)
+`TwistedTorusTopology::kRouteCacheSet` @ `0x22011f88` is eight `{const char*, size_t}` pairs in `.data.rel.ro`, RELA-resolved to eight twisted-shape strings. (`ResilientToroidalTopology::kRouteCacheSet` @ `0x21f57380` is a *distinct* data symbol with a **different, larger** inventory — twelve `{const char*, size_t}` pairs covering both plain and twisted shapes: `4x4x4, 4x4x8, 4x4x8_twisted, 4x4x12, 4x4x16, 4x8x8, 4x8x8_twisted, 8x8x8, 8x8x16_twisted, 8x16x16_twisted, 12x12x12, 12x12x24_twisted` (byte-verified by relocating the RELA pointers at `0x21f57380`). The resilient *base* set the §4.3 codename singletons layer on is this 12-shape `ResilientToroidalTopology::kRouteCacheSet`, **not** the 8-shape twisted set tabulated below.)
 
 | idx | str VMA | len | string | dims |
 |-----|---------|-----|--------|------|

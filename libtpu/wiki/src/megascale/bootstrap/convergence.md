@@ -188,8 +188,13 @@ the cached response (the same one delivered to its predecessor),
 without forcing the coordinator to wait for any other worker.
 
 This is what makes silent worker restart compatible with the
-rendezvous: as long as the restarted worker has the same
-`(slice_id, host_id)` and produces an equivalent `topology_args`,
-the cache stays valid. The drift warnings emitted by
-`LogUniqueIds` are the only forensic record that a restart
-happened.
+rendezvous: as long as the restarted worker re-presents the same
+`(slice_id, host_id)`, an equivalent `topology_args`, **and** the
+same `incarnation_id`, `ProcessRequest` (which runs before the
+state-2 cached-serve path in `AddRequest`) accepts it and the cache
+stays valid. A restart that drifts on any of those — a new
+`incarnation_id` in particular — is rejected with INVALID_ARGUMENT by
+`ProcessRequest` rather than served the cache (see
+[Failure Handling](failure-handling.md)). The worker-side
+`LogUniqueIds` "Created communicator." line is the forensic record
+that the local `(slice_id, host_id, incarnation_id)` triple changed.

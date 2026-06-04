@@ -149,7 +149,7 @@ The response deserializes into the live `xla::megascale::runtime::MultiSliceTopo
 
 ### Phase 3 — Cross-host barrier
 
-Gated by `--xla_tpu_enable_megascale_barrier`, this is the pre-execution barrier. It reuses the same `Coordinator<>` template: one `BarrierCoordinator` per `barrier_id` (lazily inserted into the backend's `+0x1b0` map by `OnBarrierRequestReceived` @ `0x1ccac5c0`), releasing all waiters when the seen-host set reaches `num_workers`. The per-call deadline is `barrier_timeout_in_ms` on each request. Owned by [Cross-Host Barrier](cross-host-barrier.md).
+Gated by `--xla_tpu_enable_megascale_barrier`, this is the pre-execution barrier. It reuses the same `Coordinator<>` template: one `BarrierCoordinator` per `barrier_id` (lazily inserted into the backend's `+0x1b0` map by `OnBarrierRequestReceived` @ `0x1ccac5c0`), releasing all waiters when the seen-host set reaches `num_workers`. The per-call deadline is the gRPC client deadline (`FLAGS_tf_tpu_preexecution_barrier_timeout`, default 30 s) — `BarrierRequest` field 4 is `num_participants`, not a timeout. Owned by [Cross-Host Barrier](cross-host-barrier.md).
 
 ### Phase 4 — Steady state
 

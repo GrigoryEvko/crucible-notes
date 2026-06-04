@@ -227,7 +227,7 @@ EnqueueCompactionImpl (0x1d12ed00) -> CompactionRunner // enqueue on the device 
 
 ## What Triggers Compaction: the OOM Retry Chain
 
-Nothing runs `Compact` proactively. The sole driver is an allocation failure. When `BestFitAllocator::Allocate` (`0x1e817820`) cannot find a fitting free block, it returns the `ResourceExhausted` diagnostic *"Attempting to allocate \<size\> at the bottom of memory. That was not possible. There are \<free\> free. The largest contiguous region of free memory is \<largest\> due to fragmentation."* (site string at `best_fit_allocator.cc:129`). That error propagates up the four-layer allocator stack and lands in the retry chain:
+Nothing runs `Compact` proactively. The sole driver is an allocation failure. When `BestFitAllocator::Allocate` (`0x1e817820`) cannot find a fitting free block, it returns the `ResourceExhausted` diagnostic *"Attempting to allocate \<size\>. That was not possible. There are \<free\> free. The largest contiguous region of free memory is \<largest\> due to fragmentation."* (site string at `best_fit_allocator.cc:129`). (The superficially similar "…at the bottom of memory…" wording is a *different* string emitted by `ReserveBottomOfMemory` @ `0x1e81b0c0`, not by this `Allocate` OOM path — see [hbm-allocator.md](hbm-allocator.md).) That error propagates up the four-layer allocator stack and lands in the retry chain:
 
 ```c
 // tpu::System::CompactMemory (0x1d0b6000): the device-side defrag driver.

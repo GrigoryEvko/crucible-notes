@@ -113,7 +113,10 @@ Two `proto2::util::MessageDifferencer::Compare` calls (`0x1cf5269d`
 and `0x1cf527a4`, each preceded by
 `set_message_field_comparison(1)` + `ReportDifferencesToString`)
 drive the topology and host-address comparisons; the incarnation id
-is compared inline. The three warnings are:
+is compared inline. Each mismatch is a hard *reject*: the message
+below is built into a `MakeErrorImpl<3>` (INVALID_ARGUMENT) `Status`
+and **returned** (the function `return Error`s at the matching site),
+not logged-and-continued. The three error messages are:
 
 - `"Received topology that differs from previously registered
   topology at same sliceID. SliceID: $0 Previous HostId: $1
@@ -130,23 +133,23 @@ is compared inline. The three warnings are:
   incarnation id has changed. This is the signal of a silent
   worker restart.
 
-All three use `absl::SubstituteAndAppendArray` (literal lengths
-153 / 122 / 139 respectively in the decompile). The drift is logged
-at WARNING but **not** treated as fatal: the coordinator retains the
-originally accepted state and serves the cached response.
-
-The drift warnings are informational. The coordinator does not
-invalidate its cache; the restarted worker reuses the original
-address table. This is the **intended** behaviour because most
-restarts come back with the same network endpoints.
+All three messages are assembled by `absl::SubstituteAndAppendArray`
+(literal lengths 153 / 122 / 139 respectively in the decompile) into
+the returned INVALID_ARGUMENT `Status`. The drifting registration is
+rejected: the offending worker's `GetMultiSliceTopology` RPC returns
+the error rather than completing. The coordinator's *already-accepted*
+state for that `(slice_id, host_id)` is untouched — it does not adopt
+the new (drifted) values — so a worker that re-registers with
+identical args still resolves against the cached response, but one
+that drifts gets the error.
 
 A separate once-per-`(slice,host)` de-duplication exists for
 logging unique ids — `LogUniqueIds` (inlined into
 `xla::megascale::runtime::Communicator::Create`, `0x1cca9aa0`) holds
 three `int` slots `last_ids.0/.1/.2` at `0x223717c0`, `0x223717c4`,
 `0x223717c8` guarded by a `unique_id_mutex`. This machinery throttles
-unique-id logging on the response path; it does **not** emit the
-three drift warnings above.
+unique-id logging on the worker-side response path; it does **not**
+emit the three coordinator-side error messages above.
 
 To force a real re-bootstrap the operator must kill the
 coordinator process; on coordinator restart the new
@@ -155,9 +158,14 @@ coordinator process; on coordinator restart the new
 
 ## Barrier failure
 
-`BarrierCoordinator` has the same timeout-on-the-RPC model. Each
-`BarrierRequest` carries `barrier_timeout_in_ms` (field 4) which
-acts as the per-call deadline. When a participant times out:
+`BarrierCoordinator` has the same timeout-on-the-RPC model. The
+barrier timeout is carried out-of-band as the gRPC client deadline,
+**not** as a proto field — `BarrierRequest` field 4 is
+`num_participants` (validated against the coordinator's stored count),
+and the per-call deadline comes from
+`FLAGS_tf_tpu_preexecution_barrier_timeout` (default 30 s). See
+[Cross-Host Barrier §5](../cross-host-barrier.md#5-timeout). When a
+participant times out:
 
 1. Worker side logs the local deadline-exceeded error.
 2. **CONFIRMED.** When the `BarrierCoordinator` is destroyed without

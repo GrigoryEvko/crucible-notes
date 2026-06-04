@@ -100,10 +100,10 @@ Whether the *hardware* register treats a flag word as a counter or a done-bit is
 |---|---:|---|---|
 | Jellyfish (v2) | **0** | `0x1d491380` | count-mode bit not used; mode implicit |
 | Pufferfish (v4) | **0** | `0x1d495860` | mode implicit |
-| Viperfish (v5) | **272** non-lite / **0** lite | `0x1d49bca0` | `version==4 && codename!="lite" ? 272 : 0` |
+| Viperfish (v5) | **272** non-lite / **0** lite | `0x1d49bca0` | `codename=="lite" ? 0 : 272` |
 | Ghostlite (v6e) | **272** (`0x110`) | `0x1d4988c0` | count-mode bit at register bit 272 |
 
-The Viperfish accessor (`0x1d49bca0`) decodes as: return `272` unless the stored version ordinal is `4` **and** the codename dword equals `1702127980` (= `0x6574696c`, `"lite"` little-endian), in which case it returns `0`. So viperfish-lite disables the count-mode bit and viperfish-std keeps it — the same lite-codename string-compare fork the VMEM and barrier pages observe. The value `272` is a bit index, not a byte offset: it selects "count mode vs. done mode" within the wider hardware register that backs each flag.
+The Viperfish accessor (`0x1d49bca0`) decodes as: return `272` unless the codename string is the 4-character `"lite"` — it first tests the string *length* against `4` (`v2 != 4 → return 272`), then, for a 4-char string, compares the leading dword against `1702127980` (= `0x6574696c`, `"lite"` little-endian) and returns `0` only on a match. So viperfish-lite disables the count-mode bit and viperfish-std keeps it — the same lite-codename string-compare fork the VMEM and barrier pages observe. (The `4` is the codename string length, **not** a `TpuVersion` ordinal.) The value `272` is a bit index, not a byte offset: it selects "count mode vs. done mode" within the wider hardware register that backs each flag.
 
 > **[LOW]** The full bit-field map of the multi-word SFLAG register where bit 272 sits — the counter width, the done bit, the public-access bit — is **not** decoded here. Bit 272 is CONFIRMED as the count-mode selector returned by the per-gen accessor; the surrounding fields are not enumerated and would require decoding the LLO→ISA lowering of the `VSync*Op` register encoders.
 

@@ -309,7 +309,7 @@ GetMultiSliceTopologyResponse TopologyCoordinator::CreateResponse() {
 
   absl::Cord cord;
   CHECK(info.SerializeToString(&cord));                  // line 315
-  response.set_serialized_topology(std::move(cord));     // response+24
+  response.set_serialized_topology_info(std::move(cord)); // response+24, field 1
   return response;
 }
 ```
