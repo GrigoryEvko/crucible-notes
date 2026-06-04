@@ -1,12 +1,12 @@
 # Cross-Reference Graph
 
-> *All counts on this page are derived from the wiki source tree as of the build that pins to `libtpu.so` 0.103, build-id `89edbbe81c5b328a958fe628a9f2207d`. They describe the **wiki's own navigation structure**, not the binary. Re-derive after any large editing pass — link counts drift as pages are written.*
+> *All counts on this page are derived from the wiki source tree, not from `libtpu.so` (build-id `89edbbe81c5b328a958fe628a9f2207d`). They describe the **wiki's own navigation structure**, not the binary, and they drift as pages are added or renamed. Treat every number below as approximate and re-derive after any large editing pass.*
 
 ## Abstract
 
-This appendix maps the wiki as a directed graph: every page is a node, every inline Markdown link `](path.md)` is an edge. Unlike the rest of the reference — which documents the TPU binary — this page documents the *book*, so a reader (or a future editor) can see which pages are load-bearing junctions, which pages fan out to many others, and which Parts are tightly coupled. It is the structural complement to [`front/how-to-read.md`](../front/how-to-read.md): that page owns the human reading-path narrative ("start here, read these in order"); this page owns the measured topology ("these 18 pages absorb a third of all inbound links").
+This appendix maps the wiki as a directed graph: every page is a node, every inline Markdown link `](path.md)` is an edge. Unlike the rest of the reference — which documents the TPU binary — this page documents the *book*, so a reader (or a future editor) can see which pages are central junctions, which pages fan out to many others, and which Parts are tightly coupled. It is the structural complement to [`front/how-to-read.md`](../front/how-to-read.md): that page owns the human reading-path narrative ("start here, read these in order"); this page owns the measured topology ("these 18 pages absorb a third of all inbound links").
 
-The graph has **426 page nodes** (425 pages linked from `SUMMARY.md`, plus the generated `index.md` landing page; `SUMMARY.md` itself is the mdBook table of contents and is excluded from the node set). Across those nodes there are **7745 internal `.md` link instances**, of which 7742 (99.96 %) resolve to a real page; the three stragglers are stale relative paths flagged for repair. The 18 Parts (0 through XVII) partition the nodes; inter-Part edges reveal the coupling backbone — the compiler→ISA→cost spine and the routing↔collectives mesh dominate.
+The graph has **426 page nodes** — every distinct `.md` file linked from `SUMMARY.md`, including the `index.md` landing page that `SUMMARY.md` lists as its prefix chapter; `SUMMARY.md` itself is the mdBook table of contents and is excluded from the node set. Of the 425 nodes assigned to a numbered Part, plus `index.md`, the count is 426. Across those nodes there are roughly **eight thousand internal `.md` link instances**, nearly all of which resolve to a real page; a small number of stale relative paths are flagged for repair. The 18 Parts (0 through XVII) partition the nodes; inter-Part edges reveal the coupling backbone — the compiler→ISA→cost spine and the routing↔collectives mesh dominate.
 
 Three roles emerge from the counts and structure the rest of the page:
 
@@ -16,14 +16,14 @@ Three roles emerge from the counts and structure the rest of the page:
 
 | | |
 |---|---|
-| **Node set** | 426 pages (425 in `SUMMARY.md` + `index.md`) |
+| **Node set** | 426 pages (425 assigned to numbered Parts + `index.md` prefix chapter) |
 | **Parts** | 18 (Part 0 — Reference Apparatus … Part XVII — Appendices) |
-| **Internal link instances** | 7745 (7742 resolve, 3 stale) |
-| **Top hub** | [`isa/slot-mxu.md`](../isa/slot-mxu.md) — 48 inbound |
+| **Internal link instances** | ~8200 (nearly all resolve; a handful of stale relative paths) |
+| **Top hub** | [`isa/slot-mxu.md`](../isa/slot-mxu.md) — ~50 inbound |
 | **Top connector** | [`glossary.md`](../glossary.md) — 73 distinct outbound |
-| **Structural sink** | [`index.md`](../index.md) — 151 inbound ("back to index") |
-| **Densest Part (inbound)** | Part VI — TensorCore ISA — 363 from other Parts |
-| **Heaviest internal coupling** | Part IX — SparseCore — 876 intra-Part links |
+| **Structural sink** | [`index.md`](../index.md) — ~146 inbound ("back to index") |
+| **Densest Part (inbound)** | Part VI — TensorCore ISA |
+| **Heaviest internal coupling** | Part IX — SparseCore (most intra-Part links) |
 
 > **NOTE —** "inbound link count" here means *distinct source pages* that contain at least one link to the target (page-level in-degree), except where noted as *link instances* (raw edge count, counting repeats). The two differ when one page links the same target several times; the hub table uses distinct-source counts, which is the metric an editor cares about ("how many files do I touch if I move this page").
 
@@ -61,31 +61,31 @@ The 18 Parts and their page counts, parsed directly from `SUMMARY.md` by assigni
 
 ## Top Hub Pages
 
-Pages ranked by **distinct inbound source pages** (page-level in-degree), excluding `index.md`. These are the load-bearing junctions: rename one and you rewrite dozens of links; they are also the pages a cross-referencing editor should always remember to point new pages at.
+Pages ranked by **distinct inbound source pages** (page-level in-degree), excluding `index.md`. These are the central junctions: rename one and you rewrite dozens of links; they are also the pages a cross-referencing editor should always remember to point new pages at.
 
 | Page | Inbound | Role | Confidence |
 |---|---:|---|---|
-| [`isa/slot-mxu.md`](../isa/slot-mxu.md) | 48 | The MXU VLIW slot — every lowering/cost/sched page references it | CERTAIN |
-| [`sparsecore/overview.md`](../sparsecore/overview.md) | 47 | SparseCore landing — 38 of 45 Part-IX pages link up to it | CERTAIN |
-| [`isa/bundle-model-overview.md`](../isa/bundle-model-overview.md) | 41 | The VLIW bundle model — the ISA's central concept | CERTAIN |
-| [`compiler/overview.md`](../compiler/overview.md) | 35 | Compiler pipeline landing | CERTAIN |
-| [`collectives/overview.md`](../collectives/overview.md) | 34 | On-pod collectives landing | CERTAIN |
-| [`cost/resource-enum.md`](../cost/resource-enum.md) | 32 | The resource enum shared by sched + cost + ISA | CERTAIN |
-| [`cost/mxu-latency-overview.md`](../cost/mxu-latency-overview.md) | 30 | MXU latency reference, cited by lowering and sched | CERTAIN |
-| [`routing/overview.md`](../routing/overview.md) | 27 | Routing landing | CERTAIN |
-| [`targets/tpu-version-codename-matrix.md`](../targets/tpu-version-codename-matrix.md) | 27 | The authoritative codename reconciliation table | CERTAIN |
-| [`cost/overview.md`](../cost/overview.md) | 26 | Cost-model landing | CERTAIN |
-| [`profiling/overview.md`](../profiling/overview.md) | 25 | Profiling landing | CERTAIN |
-| [`compiler/compile-phases.md`](../compiler/compile-phases.md) | 25 | The phase ordering, cited from runtime and ISA | CERTAIN |
-| [`isa/mc-emitter.md`](../isa/mc-emitter.md) | 25 | The machine-code emitter | CERTAIN |
-| [`sparsecore/tec-engine.md`](../sparsecore/tec-engine.md) | 23 | TEC sequencer engine | CERTAIN |
-| [`pjrt/overview.md`](../pjrt/overview.md) | 23 | PJRT API landing | CERTAIN |
-| [`sparsecore/stream-gather-scatter.md`](../sparsecore/stream-gather-scatter.md) | 23 | SC gather/scatter primitive | CERTAIN |
-| [`compiler/tpu-to-llo-ods.md`](../compiler/tpu-to-llo-ods.md) | 22 | The TPU→LLO ODS dialect definition | CERTAIN |
-| [`sched/overview.md`](../sched/overview.md) | 22 | Scheduling landing | CERTAIN |
-| [`index.md`](../index.md) | 151 | Generated landing — the universal "back to index" target | CERTAIN |
+| [`isa/slot-mxu.md`](../isa/slot-mxu.md) | ~50 | The MXU VLIW slot — every lowering/cost/sched page references it | CERTAIN |
+| [`sparsecore/overview.md`](../sparsecore/overview.md) | ~48 | SparseCore landing — most Part-IX pages link up to it | CERTAIN |
+| [`isa/bundle-model-overview.md`](../isa/bundle-model-overview.md) | ~45 | The VLIW bundle model — the ISA's central concept | CERTAIN |
+| [`compiler/overview.md`](../compiler/overview.md) | ~37 | Compiler pipeline landing | CERTAIN |
+| [`collectives/overview.md`](../collectives/overview.md) | ~35 | On-pod collectives landing | CERTAIN |
+| [`cost/resource-enum.md`](../cost/resource-enum.md) | ~34 | The resource enum shared by sched + cost + ISA | CERTAIN |
+| [`targets/tpu-version-codename-matrix.md`](../targets/tpu-version-codename-matrix.md) | ~33 | The authoritative codename reconciliation table | CERTAIN |
+| [`cost/mxu-latency-overview.md`](../cost/mxu-latency-overview.md) | ~31 | MXU latency reference, cited by lowering and sched | CERTAIN |
+| [`routing/overview.md`](../routing/overview.md) | ~28 | Routing landing | CERTAIN |
+| [`cost/overview.md`](../cost/overview.md) | ~28 | Cost-model landing | CERTAIN |
+| [`profiling/overview.md`](../profiling/overview.md) | ~27 | Profiling landing | CERTAIN |
+| [`compiler/compile-phases.md`](../compiler/compile-phases.md) | ~27 | The phase ordering, cited from runtime and ISA | CERTAIN |
+| [`isa/mc-emitter.md`](../isa/mc-emitter.md) | ~26 | The machine-code emitter | CERTAIN |
+| [`pjrt/overview.md`](../pjrt/overview.md) | ~25 | PJRT API landing | CERTAIN |
+| [`sparsecore/tec-engine.md`](../sparsecore/tec-engine.md) | ~24 | TEC sequencer engine | CERTAIN |
+| [`sparsecore/stream-gather-scatter.md`](../sparsecore/stream-gather-scatter.md) | ~24 | SC gather/scatter primitive | CERTAIN |
+| [`compiler/tpu-to-llo-ods.md`](../compiler/tpu-to-llo-ods.md) | ~23 | The TPU→LLO ODS dialect definition | CERTAIN |
+| [`sched/overview.md`](../sched/overview.md) | ~23 | Scheduling landing | CERTAIN |
+| [`index.md`](../index.md) | ~146 | The prefix landing — the universal "back to index" target | CERTAIN |
 
-> **NOTE —** `index.md` is in a class by itself at 151 inbound. Almost every page closes with a `[back to index](../index.md)` link, so its in-degree tracks the page count, not topical importance. It is the structural sink of the graph and is listed last so it does not distort the topical ranking. The real topical hubs are the `overview.md` pages and the shared ISA/cost reference pages — exactly the pages [`front/how-to-read.md`](../front/how-to-read.md) recommends as section entry points.
+> **NOTE —** `index.md` is in a class by itself at roughly 146 inbound. Almost every page closes with a `[back to index](../index.md)` link, so its in-degree tracks the page count, not topical importance. It is the structural sink of the graph and is listed last so it does not distort the topical ranking. The real topical hubs are the `overview.md` pages and the shared ISA/cost reference pages — exactly the pages [`front/how-to-read.md`](../front/how-to-read.md) recommends as section entry points.
 
 > **QUIRK —** the hub list is dominated by Parts V (Compiler), VI (ISA), VII (Cost), and IX (SparseCore). That is not an artifact: those four Parts are the *referenced* core. A page about routing, collectives, or profiling routinely links *down* into the ISA and cost model to explain what an instruction costs or how a slot is encoded, but the ISA pages rarely link back up. The graph is asymmetric by design — the spine is referenced, not referencing.
 
@@ -100,13 +100,13 @@ Pages ranked by **distinct outbound internal links** (out-degree). These fan the
 | [`glossary.md`](../glossary.md) | 73 | Cross-cutting — every defined term links to its home page |
 | [`subsystem-map.md`](../subsystem-map.md) | 63 | Cross-cutting — the visual index of the whole binary |
 | [`appendix/glossary-extended.md`](glossary-extended.md) | 59 | Cross-cutting — long-form term definitions |
-| [`isa/overview.md`](../isa/overview.md) | 43 | Section overview — fans into all 42 ISA pages |
-| [`front/how-to-read.md`](../front/how-to-read.md) | 41 | Cross-cutting — the reading-path companion to this page |
+| [`isa/overview.md`](../isa/overview.md) | ~44 | Section overview — fans into the ISA pages |
+| [`front/how-to-read.md`](../front/how-to-read.md) | ~42 | Cross-cutting — the reading-path companion to this page |
 | [`sparsecore/overview.md`](../sparsecore/overview.md) | 40 | Section overview — both a top hub *and* a top connector |
 | [`compiler/overview.md`](../compiler/overview.md) | 39 | Section overview — compiler pipeline fan-out |
 | [`front/compile-flow-walkthrough.md`](../front/compile-flow-walkthrough.md) | 35 | Cross-cutting — end-to-end worked example threading many Parts |
 | [`appendix/llvmtpu-intrinsic-table.md`](llvmtpu-intrinsic-table.md) | 33 | Cross-cutting — intrinsic→lowering-page index |
-| [`isa/bundle-model-overview.md`](../isa/bundle-model-overview.md) | 24 | Section overview — bundle/slot fan-out |
+| [`isa/bundle-model-overview.md`](../isa/bundle-model-overview.md) | ~25 | Section overview — bundle/slot fan-out |
 | [`runtime/internal-pass-names.md`](../runtime/internal-pass-names.md) | 22 | Cross-cutting — pass-name→pass-page index |
 | [`profiling/overview.md`](../profiling/overview.md) | 22 | Section overview |
 | [`compiler/compile-phases.md`](../compiler/compile-phases.md) | 21 | Section index — phase→page |
@@ -180,13 +180,13 @@ The canonical end-to-end route, following the strongest inbound edges into the I
 
 ```text
 front/how-to-read.md
-  -> compiler/overview.md            (hub: 35 in)
-  -> compiler/compile-phases.md      (hub: 25 in)
-  -> compiler/tpu-to-llo-ods.md      (hub: 22 in)
-  -> isa/bundle-model-overview.md    (hub: 41 in)
-  -> isa/slot-mxu.md                 (TOP hub: 48 in)
-  -> cost/resource-enum.md           (hub: 32 in)
-  -> sched/overview.md               (hub: 22 in)
+  -> compiler/overview.md            (hub: ~37 in)
+  -> compiler/compile-phases.md      (hub: ~27 in)
+  -> compiler/tpu-to-llo-ods.md      (hub: ~23 in)
+  -> isa/bundle-model-overview.md    (hub: ~45 in)
+  -> isa/slot-mxu.md                 (TOP hub: ~50 in)
+  -> cost/resource-enum.md           (hub: ~34 in)
+  -> sched/overview.md               (hub: ~23 in)
 ```
 
 This is the spine Parts V → VI → VII → VIII trace. A reader who walks only these seven pages sees the whole lowering-to-scheduling pipeline through its highest-degree nodes.
@@ -196,7 +196,7 @@ This is the spine Parts V → VI → VII → VIII trace. A reader who walks only
 The two engine sub-books, each entered through its dual hub/connector overview:
 
 ```text
-sparsecore/overview.md  (47 in / 40 out)  -> tec-engine.md, stream-gather-scatter.md, architecture.md
+sparsecore/overview.md  (~48 in / 40 out)  -> tec-engine.md, stream-gather-scatter.md, architecture.md
 barnacore/overview.md                     -> bcs-scalar-isa.md, retirement.md
 ```
 
@@ -207,8 +207,8 @@ Part IX is the most internally cohesive Part (876 self-links); once inside `spar
 The bidirectional routing↔collectives pair, plus the megascale extension:
 
 ```text
-routing/overview.md      (hub: 27 in)  <-> collectives/overview.md   (hub: 34 in)
-  twist/overview.md      (hub: 22 in)     barrier/...
+routing/overview.md      (hub: ~28 in)  <-> collectives/overview.md   (hub: ~35 in)
+  twist/overview.md      (hub: ~22 in)     barrier/...
   ici/...                                 megascale/...   (Part XIV, peripheral)
 ```
 
@@ -238,4 +238,4 @@ These four pages collectively point at most of the book; they are the index laye
 - [`glossary.md`](../glossary.md) — the single highest-outbound page (73); the term-to-page router.
 - [`appendix/evidence-anchor-index.md`](evidence-anchor-index.md) — sibling appendix; indexes binary evidence anchors as this page indexes navigation edges. Parallel structure, orthogonal axis.
 - [`appendix/glossary-extended.md`](glossary-extended.md) — long-form glossary, the third-highest connector (59 outbound).
-- [`index.md`](../index.md) — the generated landing and structural sink (151 inbound); the `SUMMARY.md` table of contents is its source of truth.
+- [`index.md`](../index.md) — the prefix landing and structural sink (~146 inbound); the `SUMMARY.md` table of contents is its source of truth.
