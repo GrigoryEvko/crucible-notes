@@ -1,127 +1,125 @@
 # Topology Exchange
 
 `TopologyCoordinator` is the per-job singleton that accumulates
-`GetMultiSliceTopology` registrations and emits a single
+`GetMultiSliceTopologyRequest` registrations and emits a single
 byte-stable response broadcast to every blocked worker. It lives
-inside the coordinator process at `CommunicationBackend.+0x1a0`,
-allocated by `InitializeCoordinator(num_slices)`. Every worker
-process has a null slot — its `OnTopologyRequestReceived` rejects
-every incoming call.
+inside the coordinator process at `CommunicationBackend +0x1a0`
+(`*(void**)(backend + 416)`), allocated by
+`CommunicationBackend::InitializeCoordinator(int)` at `0x1ccad600`.
+Every worker process has a null slot — its
+`OnTopologyRequestReceived` (`0x1ccac380`) reaches the
+`coordinator == nullptr` branch and returns
+`MakeErrorImpl<14>("Topology Coordinator is not ready. Try later.")`.
 
 ## Object layout
 
-`TopologyCoordinator` is 264 bytes (0x108), inherits from
+`TopologyCoordinator` inherits from
 `Coordinator<GetMultiSliceTopologyRequest,
 GetMultiSliceTopologyResponse,
-AnyInvocable<void(StatusOr<...>)>>` (vtable at `0x21c9bbf0`), and
-adds three of its own fields. The shape:
+AnyInvocable<void(StatusOr<...> const&)>>` and adds its own
+slice-state and address maps. Two vtables apply: the base
+`Coordinator<GetMultiSliceTopology…>` vtable at `0x21c9bbf0` and the
+derived `TopologyCoordinator` vtable at `0x21c9baf0` (both confirmed
+by `nm -C`). The constructor installs the base vptr `off_21C9BC00`
+(= `0x21c9bbf0 + 0x10`) first, then overwrites it with the derived
+vptr `off_21C9BB00` (= `0x21c9baf0 + 0x10`). The shape (offsets
+read directly out of the ctor at `0x213b7a40` and the base
+`AddRequest` at `0x1ccb42a0`):
 
 | Offset    | Size  | Type / Field                                                                          |
 |-----------|------:|--------------------------------------------------------------------------------------|
 | `+0x00`   |  8    | `vptr` → derived vtable at `0x21c9baf0`                                              |
-| `+0x08`   |  0x50 | `TracedMutex mu_` (kind=9 = "Coordinator")                                            |
-| `+0x58`   |  1    | `uint8_t state_` (0=init, 1=ready, 2=completed, 3=error)                               |
-| `+0x60`   |  0x60 | `StatusOr<GetMultiSliceTopologyResponse> cached_response_` (initial = UnavailableError) |
-| `+0x88`   |  0x18 | `std::vector<AnyInvocable<void(StatusOr<GetMultiSliceTopologyResponse> const&)>> callbacks_` (16 B per entry) |
-| `+0xa0`   |  0x20 | `absl::Notification completion_`                                                      |
-| `+0xc0`   |  4    | `int32_t num_slices_` (ctor argument)                                                 |
-| `+0xc4..` |  ...  | padding                                                                              |
+| `+0x08`   |  0x50 | `TracedMutex mu_` (`TracedMutex::TracedMutex(this+8, /*kind=*/9)`)                    |
+| `+0x58`   |  1    | `uint8_t state_` (1=in-progress, 2=completed, 3=error; ctor zeroes it)                |
+| `+0x60`   |  0x28 | `StatusOr<GetMultiSliceTopologyResponse> cached_response_` (error rep at `+0x60`, embedded response at `+0x68`; initial = `MakeErrorImpl<14>` "Coordinator in IN_PROGRESS", UNAVAILABLE) |
+| `+0x88`   |  0x18 | `std::vector<AnyInvocable<void(StatusOr<…> const&)>> response_setters_` (begin/end/cap at +0x88/+0x90/+0x98, 32 B per entry) |
+| `+0xa0`   |  0x10 | `absl::Notification completion_` (`Notify()` at `this+160`)                           |
+| `+0xb0`   |  ...  | periodic-report alarm handle (armed via `thread::AddCancellableAt`, stored at `this+176`) |
+| `+0xc0`   |  4    | `int32_t num_expected_slices_` (ctor argument; `CHECK(> 0)`)                          |
+| `+0xc8`   |  0x20 | `absl::flat_hash_map<std::tuple<int,int>, NetworkAddressMapping> address_map_` ((slice_id, host_id) → address) |
 | `+0xe8`   |  0x20 | `absl::flat_hash_map<int, SliceState>` (slice_id → per-slice accumulator)              |
 
-Where `SliceState` is 40 bytes:
-
-```
-struct SliceState {
-  int32_t              num_hosts_seen;          // +0x00
-  int32_t              expected_num_hosts;      // +0x04
-  TpuTopologyArgsProto* cached_topology_args;   // +0x08
-  HostNetworkAddress*  host_addresses_table;    // +0x10 (arena-owned)
-  /* ... */
-};
-```
+`SliceState` is the flat_hash_map value at `this+0xe8`. The slot
+layout observed in `ProcessRequest`/`CreateResponse` stores the
+slice's `TpuTopology*` (read as `*(slot+16)`, with the host count at
+`*(int*)(topology+108)`) and a nested `flat_hash_map<int, …>` keyed
+by host id that tracks the per-host seen count (compared in
+`IsComplete` as `slot_count >> 17`).
 
 The base `Coordinator<>` class is also instantiated for
 `BarrierCoordinator` with a different `Req`/`Resp` pair; the two
 share the same control flow (`AddRequest`, `ScheduleStatusReport`,
-the pending-callback vector, the Notification).
+the `response_setters_` vector, the Notification).
 
 ## Construction
 
 `TopologyCoordinator::TopologyCoordinator(int num_slices)` at
-`0x213b7a40` (in `.text.unlikely` because called once per job):
+`0x213b7a40` (in `.text.unlikely`, section base `0x21381900`,
+because it is called once per job):
 
-```
-push %rbp; mov %rsp, %rbp
-push %r14; push %rbx
-sub $0x20, %rsp
-mov %esi, %r14d     // num_slices arg
-mov %rdi, %rbx       // this pointer
+```cpp
+TopologyCoordinator::TopologyCoordinator(int num_slices) {
+  *(void**)this = off_21C9BC00;                  // base vptr (0x21c9bbf0+0x10)
+  TracedMutex::TracedMutex(this + 8, /*kind=*/9);
 
-// Install base vtable, construct the embedded TracedMutex.
-lea base_vtable+0x10(%rip), %rax   // 0x21c9bbf0 + 0x10
-mov %rax, (%rdi)
-TracedMutex::TracedMutex(this+0x08, /*kind=*/9);
+  *(uint8_t*)(this + 88) = 0;                     // state_ = 0
+  // Sticky StatusOr seeded with UNAVAILABLE:
+  *(void**)(this + 96) = MakeErrorImpl<14>(       // code 14 = UNAVAILABLE
+      "Coordinator in IN_PROGRESS", 26, /*line=*/46,
+      "platforms/xla/megascale/runtime/communication/topology_coordinator.h");
 
-// Initialise state slot and the sticky-error StatusOr.
-movb $0x0, 0x58(%rbx)
-StatusBuilder::CreateStatusAndConditionallyLog(
-    line=0x2e, source="topology_coordinator.h");   // template
-mov %rax, 0x60(%rbx)
+  *(void**)(this + 184) = 0;                       // response_setters_ tail
+  *(__m256*)(this + 0x90) = 0;                      // vector + alarm slots
+  *(uint8_t*)(this + 176) = 0;
 
-// Zero pending vector + Notification + callbacks tail.
-movq $0x0, 0xb8(%rbx)
-vmovups %ymm0, 0x90(%rbx)
-movb   $0x0, 0xb0(%rbx)
+  *(void**)this = off_21C9BB00;                     // derived vptr (0x21c9baf0+0x10)
+  *(int*)(this + 192) = num_slices;                 // num_expected_slices_
+  *(__m128*)(this + 0xc8) = 0;                       // address_map_ control
+  *(__m128*)(this + 0xe8) = 0;                       // slice_state_ control
 
-// Install derived vtable.
-lea TopologyCoordinator_vtable+0x10(%rip), %rax   // 0x21c9baf0
-mov %rax, (%rbx)
-
-// Store num_slices, zero the slice-state map.
-mov %r14d, 0xc0(%rbx)
-vmovups %xmm0, 0xc8(%rbx)
-vmovups %xmm0, 0xe8(%rbx)
-
-// Log iff num_slices > 0:
-if (num_slices > 0) {
+  CHECK(num_slices > 0) << "num_expected_slices_ > 0";   // FATAL at line 55
   LOG(INFO) << "Megascale Topology Coordinator started for "
-            << num_slices << " slices";
+            << num_slices << " slices";                  // line 56, unconditional
 }
 ```
 
-The single info-log line (`0xa1e728a` + `0x856f615`) is how an
-operator confirms which process is the coordinator. Workers never
-emit it because their `InitializeCoordinator` path bails out at
-the address mismatch check before reaching this ctor.
+The info-log prefix `"Megascale Topology Coordinator started for "`
+lives at rodata `0xa1e728a`; the `" slices"` suffix is a separate
+literal appended after the `int`. This line is how an operator
+confirms which process is the coordinator. The
+`num_expected_slices_ > 0` guard is a `CHECK` (fatal at file line
+55), not a conditional around the log — the log at file line 56 is
+emitted unconditionally once the ctor is reached.
 
 ## Generic `Coordinator<>::AddRequest`
 
 The shared base template handles all of the rendezvous protocol.
-Decompilation of the Barrier instance (`0x1ccb42a0`) maps onto the
-Topology instance (`0x1cf559c0`) because both reuse the same
-control flow. Pseudocode:
+The Barrier instance (`0x1ccb42a0`, size `0x7d4`) and the Topology
+instance (`0x1cf559c0`, also size `0x7d4`) are byte-for-byte the
+same instantiation pattern, so the Barrier decompile reads onto the
+Topology one. The three derived hooks are reached through fixed
+vtable slots — confirmed by `objdump` of the Barrier `AddRequest`:
+`call *0x20(%rax)` = `ProcessRequest`, `call *0x28(%rax)` =
+`IsComplete`, `call *0x30(%rax)` = `CreateResponse`. Pseudocode:
 
 ```cpp
 void Coordinator<Req, Resp, Callback>::AddRequest(
     Req const& req, Callback cb) {
 
-  // Initial VLOG site (rate-limited).
-  if (VLOG_IS_ON(5))
-    LOG(INFO) << "Adding request: " << req;
-
-  absl::Time start = absl::Now();   // for TracedMutex contention
+  // VLOG(5) site: "AddRequest: " << ShortFormat(req).
+  absl::Time start = absl::Now();
   TracedReleasableMutexLock lock(&this->mu_);
 
-  // State 3 = previously failed; serve sticky error immediately.
+  // State 3 = previously failed; serve sticky error and return
+  // (CHECK(response_setters_.empty()) on this path).
   if (this->state_ == 3) {
-    cb(this->cached_response_);    // a StatusOr holding the error
+    cb(this->cached_response_);    // StatusOr holding the error at this+96
     return;
   }
 
-  // Always build a per-request response shell first (vtable +0x20).
-  // For Topology this writes (slice_id, host_id) into the response
-  // so the caller can verify its own slot when the broadcast fires.
-  Resp shell = vtable_[+0x20].BuildResponseShell(this, req);
+  // Register the request into per-coordinator state via vtable +0x20
+  // (= ProcessRequest). Returns a Status: OK accepts, else rejects.
+  Status st = vtable_[+0x20].ProcessRequest(this, req);
 
   // State 2 = already complete; serve the cached response.
   if (this->state_ == 2) {
@@ -129,228 +127,266 @@ void Coordinator<Req, Resp, Callback>::AddRequest(
     return;
   }
 
-  // State 0/1 = still gathering.
-  this->callbacks_.push_back(std::move(cb));   // pending fan-out
+  // State 0/1 = still gathering: queue the response setter.
+  this->response_setters_.push_back(std::move(cb));   // 32 B/entry
 
-  // Register the request into the per-coordinator state via
-  // vtable +0x28 (= ProcessRequest). Returns true if quorum now met.
-  bool complete = vtable_[+0x28].ProcessRequest(this, req);
-
-  if (complete) {
+  // Quorum check via vtable +0x28 (= IsComplete).
+  if (vtable_[+0x28].IsComplete(this)) {
     this->state_ = 2;
     this->cached_response_ = vtable_[+0x30].CreateResponse(this);
-    this->completion_.Notify();
-    for (auto& pending : this->callbacks_) pending(this->cached_response_);
-    this->callbacks_.clear();
-  } else if (this->state_ == 0) {
+    for (auto& s : this->response_setters_) s(this->cached_response_);
+    this->completion_.Notify();           // absl::Notification at this+160
+  } else {
     this->state_ = 1;
-    this->ScheduleStatusReport();    // arms periodic ReportStatus
+    this->ScheduleStatusReport();          // arms periodic ReportStatus
   }
 }
 ```
 
 Disassembly cross-references inside the Barrier instance:
 
-- `0x1ccb4318` — `TracedReleasableMutexLock` ctor.
-- `0x1ccb4328` — state-3 fast-path check.
-- `0x1ccb4358` — vtable `+0x20` call (`BuildResponseShell`).
-- `0x1ccb436b` — state-2 cached-response path.
-- `0x1ccb43c6..0x1ccb4451` — `callbacks_.push_back` via
-  `__emplace_back_slow_path` (vector grows by doubling).
-- `0x1ccb4493` — vtable `+0x28` call (`ProcessRequest`).
-- `0x1ccb44a4..0x1ccb44d7` — completion path: set state=2, call
-  vtable `+0x30` (`CreateResponse`), copy into cached_response_.
-- `0x1ccb4524..0x1ccb45a7` — drain pending callback vector under
-  the lock, then `Notification.Notify()` at `0x1ccb4638`.
-- `0x1ccb4654..` — non-complete branch: arm the periodic alarm via
-  `DefaultFiberExecutor` + `LocalInvoker<...ScheduleStatusReport()...>`.
+- `0x1ccb4347` — vtable `+0x18` call (`TracedReleasableMutexLock`
+  / response-setter helper) on the state-3 fast path.
+- `0x1ccb4365` — vtable `+0x20` call (`ProcessRequest`).
+- `0x1ccb4499` and `0x1ccb4669` — vtable `+0x28` call
+  (`IsComplete`, evaluated twice).
+- `0x1ccb44b6` — vtable `+0x30` call (`CreateResponse`).
+- `__emplace_back_slow_path` grows the `response_setters_` vector
+  (32-byte `AnyInvocable` entries) when it is at capacity.
+- non-complete branch: `state_ = 1`, then arm the periodic alarm via
+  `thread::DefaultFiberExecutor` + `thread::AddCancellableAt` +
+  `LocalInvoker<...ScheduleStatusReport()...>` (handle at `this+176`).
+- `absl::Notification::Notify(this+160)` fires after the setter
+  fan-out completes.
 
 ## `TopologyCoordinator::ProcessRequest`
 
-The derived `ProcessRequest` at `0x1cf524c0` is 6 528 bytes. Its
-shape:
+The derived `ProcessRequest` at `0x1cf524c0` is `0x1dab` (7 595)
+bytes. It returns `absl::Status` (not `bool`): a clean accept
+returns OK (the `1`/inline-OK rep), and every consistency failure
+returns a distinct error that rejects the registration. The base
+`AddRequest` does the quorum decision afterward via the separate
+`IsComplete` vtable slot. Shape:
 
 ```cpp
-bool TopologyCoordinator::ProcessRequest(
+Status TopologyCoordinator::ProcessRequest(
     GetMultiSliceTopologyRequest const& req) {
 
-  // 1. Bounds check: slice_id must be in [0, num_slices_).
-  if (req.slice_id < 0 || req.slice_id >= num_slices_) {
-    LOG(ERROR) << "Local SliceID " << req.slice_id
-               << " out of bounds. Expected num_slices: "
-               << num_slices_;
-    cached_response_ = OutOfRangeError("Invalid slice_id.");
-    state_ = 3;
-    return false;
+  // 1. slice_id bounds: must be in [0, num_expected_slices_).
+  int slice_id = req.network_address_mapping().slice_id();
+  if (slice_id < 0 || slice_id >= num_expected_slices_) {
+    return MakeErrorImpl<3>(  // INVALID_ARGUMENT, file line 183
+        Substitute("SliceId out of bounds. Expected num slices: $0. "
+                   "Request: $1", num_expected_slices_, req));
   }
 
-  // 2. Look up or create the SliceState entry.
-  auto& slot = slice_state_[req.slice_id];
+  // 2. Look up or create the SliceState entry in slice_state_ (this+0xe8).
+  SliceState& slot = slice_state_[slice_id];
 
-  // 3. Topology-args equality check (MessageDifferencer).
-  if (slot.first_seen) {
-    proto2::util::MessageDifferencer diff;
-    diff.set_message_field_comparison(EQUIVALENT);
+  // 3. If a topology was already registered for this slice, compare
+  //    it (proto2 MessageDifferencer, EQUIVALENT). On mismatch reject.
+  if (slot.has_topology) {
+    MessageDifferencer diff;
+    diff.set_message_field_comparison(MessageDifferencer::EQUIVALENT);
     std::string text_diff;
     diff.ReportDifferencesToString(&text_diff);
-    if (!diff.Compare(req.topology_args, *slot.cached_topology_args)) {
-      LOG(ERROR) << "Received topology that differs from previously "
-                    "registered topology at same sliceID. "
-                    "SliceID: " << req.slice_id
-                 << " Previous HostId: " << slot.first_host_id
-                 << " New HostId: " << req.host_id
-                 << " Diff: " << text_diff;
-      return false;   // drop registration; coordinator continues
-                      // to serve the originally accepted topology
+    if (!diff.Compare(slot.topology_args.ToProto(),
+                      req.tpu_topology_args())) {
+      return MakeErrorImpl<3>(   // INVALID_ARGUMENT, file line 202
+        Substitute("Received topology that differs from previously "
+          "registered topology at same sliceID. SliceID: $0 "
+          "Previous HostId: $1 New HostId: $2 Addresses: $3 Diff: $4",
+          ...));
     }
   } else {
-    slot.cached_topology_args = NewInArena(req.topology_args);
-    slot.first_host_id = req.host_id;
-    slot.expected_num_hosts =
-        req.topology_args.host_count();
-    slot.first_seen = true;
+    // First registration for this slice: distill+store TpuTopology,
+    // record num_expected_slices_-side state.
+    slot.topology = TpuTopologySerdes::Construct(req.tpu_topology_args());
+    slot.has_topology = true;
   }
 
-  // 4. Per-host network mapping check.
-  for (auto const& host_addr : req.host_addresses) {
-    auto& mapping_slot = slot.host_addresses_table[req.host_id];
-    if (mapping_slot.present &&
-        !MessageDifferencer::Equivalent(host_addr, mapping_slot.value)) {
-      LOG(ERROR) << "Received host address mapping that differs "
-                    "from previous mapping "
-                    "SliceID: " << req.slice_id
-                 << " HostId: " << req.host_id
-                 << " Prev Address: " << mapping_slot.value
-                 << " New Addresses: " << host_addr;
-      // Mapping drift is logged but does NOT abort; coordinator
-      // keeps the original mapping.
-    } else {
-      mapping_slot.value = host_addr;
-      mapping_slot.present = true;
-    }
+  // 4. host_id bounds: must be < topology.host_count()
+  //    (= *(int*)(topology + 108)).
+  int host_id = req.network_address_mapping().host_id();
+  if (host_id < 0 || host_id >= slot.topology->host_count()) {
+    return MakeErrorImpl<3>(   // INVALID_ARGUMENT, file lines 235 / 250
+        Substitute("HostId out of bounds. hostId: $0. Request: $1",
+                   host_id, req));
   }
 
-  // 5. Increment per-slice host count exactly once.
-  if (!slot.host_seen[req.host_id]) {
-    slot.host_seen[req.host_id] = true;
-    slot.num_hosts_seen++;
+  // 5. Per-(slice,host) address mapping in address_map_ (this+0xc8).
+  //    If already present and the new mapping differs, reject.
+  auto& cell = address_map_[{slice_id, host_id}];
+  if (cell.present &&
+      !MessageDifferencer::Equivalent(cell, req.network_address_mapping())) {
+    return MakeErrorImpl<3>(   // INVALID_ARGUMENT, file line 216
+      Substitute("Received host address mapping that differs from "
+        "previous mapping SliceID: $0 HostId: $1 Prev Address: $2 "
+        "New Addresses: $3", ...));
   }
+  // Incarnation-id drift on the same (slice,host) is likewise rejected.
+  if (incarnation_changed) {
+    return MakeErrorImpl<3>(   // INVALID_ARGUMENT, file line 226
+      Substitute("Received incarnation ID that is different from "
+        "previous incarnation ID. SliceID: $0 HostId: $1 "
+        "Prev IncarnationId: $2 New IncarnationId: $3", ...));
+  }
+  cell.CopyFrom(req.network_address_mapping());
 
-  // 6. Capture incarnation drift signal (LogUniqueIds is called
-  //    later at response time, not here).
-
-  return this->IsComplete();
+  return absl::OkStatus();
 }
 ```
 
-The 3 264 byte `MessageDifferencer::Compare` call chain
-(`0x1cf526a4..0x1cf52732`) is the dominant cost; the rest is
-flat_hash_map insertion at `0x1cf54280`.
+> **CONFIRMED.** Every consistency check is a hard *reject* that
+> returns a non-OK `Status` (all `MakeErrorImpl<3>` =
+> INVALID_ARGUMENT). They are not "log and continue" warnings, and
+> there is no separate `LogUniqueIds` pass — the topology, host,
+> address-mapping, and incarnation comparisons are all inline in
+> this one function.
+
+The two `MessageDifferencer::Compare` call chains (topology args
+and per-host `NetworkAddressMapping`) dominate the cost; the
+slice_state and address-map SwissMap insertions
+(`find_or_prepare_insert_large` / `PrepareInsertSmallNonSoo`) make
+up most of the rest.
 
 ## `TopologyCoordinator::IsComplete`
 
-Decompiled at `0x1cf543a0` (only 0xb4 bytes):
+Decompiled at `0x1cf543a0` (only `0xb6` bytes):
 
 ```cpp
 bool TopologyCoordinator::IsComplete() const {
-  // size() of the slice_state_ map must equal num_slices_.
-  if (slice_state_.size() < num_slices_) return false;
+  // slice_state_.size() (encoded as size_field >> 17) must reach
+  // num_expected_slices_ (this+0xc0, read as *(int*)(this+192)).
+  if (slice_state_.size() < num_expected_slices_) return false;
 
   // Walk SwissMap control bytes; for each occupied slot, check that
-  // num_hosts_seen >= expected_num_hosts.
+  // the per-host seen count has reached the slice's host_count
+  // (= *(int*)(topology + 108)).
   for (auto const& [slice_id, slot] : slice_state_) {
-    if (slot.num_hosts_seen < slot.expected_num_hosts) return false;
+    if (slot.seen_count < slot.topology->host_count()) return false;
   }
   return true;
 }
 ```
 
-The tight loop at `0x1cf543e3..0x1cf54453` is the SwissMap
-iteration. The completion check is therefore O(num_slices), called
-once per `ProcessRequest`.
+The completion check is O(num_slices), called once per
+`AddRequest` through the base template's vtable `+0x28` slot (not
+from inside `ProcessRequest`).
 
 ## `TopologyCoordinator::CreateResponse`
 
-Decompiled at `0x1cf54460` (2 624 bytes). Builds the response in
-one pass:
+Decompiled at `0x1cf54460` (`0x9e6` / 2 534 bytes). Builds a
+`MultiSliceTopologyInfo`, serializes it into a `Cord`, and stores
+that Cord on the `GetMultiSliceTopologyResponse`:
 
 ```cpp
 GetMultiSliceTopologyResponse TopologyCoordinator::CreateResponse() {
   MultiSliceTopologyInfo info;
   GetMultiSliceTopologyResponse response;
 
-  // Walk slice_state_ in numeric order (sort at the end).
+  // Walk slice_state_ (this+0xe8). For each slice add a SliceInfo and,
+  // for every host in [0, topology.host_count()), append the host's
+  // NetworkAddressMapping (looked up in address_map_ at this+0xc8;
+  // a miss is FATAL: "Missing addresses for SliceID: ...").
   for (auto const& [slice_id, slot] : slice_state_) {
     SliceInfo* si = info.add_slices();
     si->set_slice_id(slice_id);
-    si->mutable_topology_args()->CopyFrom(*slot.cached_topology_args);
-    for (int h = 0; h < slot.expected_num_hosts; ++h) {
-      si->add_host_addresses()->CopyFrom(slot.host_addresses_table[h]);
-
-      NetworkAddressMapping* ep = info.add_endpoints();
-      ep->set_slice_id(slice_id);
-      ep->set_host_id(h);
-      *ep->add_addresses() = slot.host_addresses_table[h];
+    si->mutable_topology_args()->CopyFrom(slot.topology.ToProto());
+    for (int h = 0; h < slot.topology->host_count(); ++h) {
+      auto it = address_map_.find({slice_id, h});      // CHECK != end()
+      si->add_host_addresses()->CopyFrom(it->second);
     }
   }
 
-  // Sort SliceInfo* by slice_id and NetworkAddressMapping* by
-  // (slice_id, host_id) for byte-stable output.
-  std::sort(info.mutable_slices()->begin(),
-            info.mutable_slices()->end(), $_0);
-  std::sort(info.mutable_endpoints()->begin(),
-            info.mutable_endpoints()->end(), $_1);
+  // Byte-stable ordering: SliceInfo* by slice_id, host-address
+  // NetworkAddressMapping* by (slice_id, host_id).
+  std::__introsort(slices.begin(),    slices.end(),    $_0);   // 0x1cf56520
+  std::__introsort(host_addrs.begin(), host_addrs.end(), $_1); // 0x1cf57360
 
-  *response.mutable_multi_slice_topology_info() = std::move(info);
-  response.set_shared_seed(util::random::NewGlobalID());
+  VLOG(3) << "Topology Coordinator response: " << info;  // line 311
+  LOG(INFO) << "MegaScale Topology Discovery completed."; // line 312
+
+  absl::Cord cord;
+  CHECK(info.SerializeToString(&cord));                  // line 315
+  response.set_serialized_topology(std::move(cord));     // response+24
   return response;
 }
 ```
 
-The two `std::__u::__introsort` instantiations at `0x1cf56520`
-and `0x1cf57360` are the byte-stable sorters; comparator lambdas
-`$_0` and `$_1` capture `*this` and read `+0x20` (slice_id) and
-`+0x28` (host_id) of the respective elements.
+> **CONFIRMED.** There is no `shared_seed` / `NewGlobalID()` field
+> and no separate `endpoints` repeated field — both were not
+> present in the binary. The payload is a single
+> `MultiSliceTopologyInfo` serialized into a `Cord` stored at
+> `response + 24`. A missing `(slice_id, host_id)` entry in
+> `address_map_` is a fatal `CHECK`
+> ("`address_mapping != address_map_.end()`",
+> "Missing addresses for SliceID: " at rodata `0xa28aff5`).
 
-## `LogUniqueIds`
+The two `std::__u::__introsort` instantiations are the byte-stable
+sorters: `$_0` over `SliceInfo**` at `0x1cf56520` and `$_1` over
+`NetworkAddressMapping**` at `0x1cf57360` (both confirmed by
+`nm -C -S`). Their comparators read the `slice_id` (and `host_id`
+for `$_1`) of the respective elements.
 
-Once `CreateResponse` returns, the coordinator calls
-`xla::megascale::runtime::(anonymous)::LogUniqueIds(int slice_id,
-int host_id, MultiSliceTopologyAndLocation const& info)`. The
-function maintains three static slots at `0x223717c0..0x223717c8`
-plus a guard variable / mutex pair at `0x2257b030 / 0x2257b038`:
+## Consistency-check error strings
 
-- Slot 0: last seen `(slice_id, topology_proto_hash)`.
-- Slot 1: last seen `(host_id, network_address_proto_hash)`.
-- Slot 2: last seen `(slice_id, host_id, incarnation_id)`.
-
-Any mismatch emits one of the rodata warnings:
+The three rodata strings below are the `MakeErrorImpl<3>`
+(INVALID_ARGUMENT) messages emitted *inside* `ProcessRequest`
+(`0x1cf524c0`) — they are returned as errors, not logged as
+informational warnings:
 
 - `Received topology that differs from previously registered
   topology at same sliceID. SliceID: $0 Previous HostId: $1 New
-  HostId: $2 Addresses: $3 Diff: $4` (`0x9b27486`).
+  HostId: $2 Addresses: $3 Diff: $4` (`0x9b27486`, file line 202).
 - `Received host address mapping that differs from previous mapping
   SliceID: $0 HostId: $1 Prev Address: $2 New Addresses: $3`
-  (`0x9c14204`).
+  (`0x9c14204`, file line 216).
 - `Received incarnation ID that is different from previous
   incarnation ID. SliceID: $0 HostId: $1 Prev IncarnationId: $2
-  New IncarnationId: $3` (`0x9c14456`).
+  New IncarnationId: $3` (`0x9c14456`, file line 226).
 
-The warnings are informational — neither aborts the coordinator
-nor invalidates the cached response. They show up in
-post-mortems when an operator wants to understand "why did the
-fleet's address table change at time T".
+Two more bounds errors share the same code path:
+`SliceId out of bounds. Expected num slices: $0. Request: $1`
+(`0x9e6f891`, line 183) and `HostId out of bounds. hostId: $0.
+Request: $1` (`0x9e6f8cd`, lines 235/250).
+
+## `LogUniqueIds` (worker side)
+
+The real `LogUniqueIds` is *not* a coordinator function. It is an
+anonymous-namespace helper
+`xla::megascale::runtime::(anonymous namespace)::LogUniqueIds(int
+slice_id, int host_id, MultiSliceTopologyAndLocation const& info)`
+inlined into `Communicator::Create` (`0x1cca9aa0`) on the worker
+side. It deduplicates repeated log spam by remembering the last
+ids it saw in three static `int` slots at
+`0x223717c0/0x223717c4/0x223717c8`
+(`...LogUniqueIds(...)::last_ids.{0,1,2}`), guarded by a static
+`absl::Mutex` `unique_id_mutex` at `0x2257b030` with its
+`__cxa_guard` variable at `0x2257b038` (all confirmed by `nm -C`).
+When the incoming `(slice_id, host_id, …)` triple differs from the
+cached one, the worker emits the "Created communicator. …
+Slices: … Hosts: …" line (file line 570 / 583) and updates the
+slots; otherwise it stays quiet. It has no bearing on the
+coordinator's accept/reject decision.
 
 ## Response delivery
 
 Once `CreateResponse` finishes, the base `Coordinator<>::AddRequest`
-broadcasts the response to every pending callback (`callbacks_`
-vector at `+0x88`) under the still-held `TracedReleasableMutexLock`,
-then notifies the `absl::Notification` at `+0xa0`. The gRPC layer
-serializes each callback's response to wire format and sends it
-back to the corresponding worker.
+copies the result into `cached_response_` (`+0x60`), sets
+`state_ = 2`, then **releases** the `TracedReleasableMutexLock`
+(`TracedReleasableMutexLock::Release`) before draining the
+`response_setters_` vector (`+0x88`, 32-byte entries) — each setter
+serializes the response and hands it to the gRPC layer for the
+corresponding worker. After the fan-out it signals the
+`absl::Notification completion_` at `+0xa0` (`Notify(this+160)`).
+The same path also logs VLOG(5) "Num responses to send: ",
+"Response sent ", and "Done processing Request received at: …
+Duration: " (and a "Long running topology coordinator AddRequest"
+warning past a threshold).
 
-The success log line on the coordinator is
-`"MegaScale Topology Discovery completed."` (rodata `0xa0a3869`),
-emitted by `ReportStatus()` once it observes
-`IsComplete() == true`.
+The success log line `"MegaScale Topology Discovery completed."`
+(rodata `0xa0a3869`) is emitted by `CreateResponse` itself
+(`0x1cf54460`, file line 312), immediately before it serializes the
+`MultiSliceTopologyInfo` — not by a separate `ReportStatus()`
+observer.
