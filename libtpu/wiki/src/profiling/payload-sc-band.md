@@ -406,7 +406,7 @@ DecodeEntry(view):
 | vfc | `0xf5f7080` | `0xab86ce8` | `0x5f` (95) | −0x60 (96) | `0xab86e68` | `0x59` (89) | 108..132 | CERTAIN |
 | glc | `0xf6295c0` | `0xab875a8` | `0x62` (98) | −0x63 (99) | `0xab87734` | `0x70` (112) | 108..132 | CERTAIN |
 | gfc | `0xf65ffe0` | `0xab87f20` | `0x64` (100) | −0x6c (108) | `0xab880b4` | `0x62` (98) | 108..133 | CERTAIN |
-| vlc | `0xf5d6460` | `0xab86520` | `0x8f` (143) | −0x70 (112) | `0xab86760` | `0x17` (23) | — (no SC) | CERTAIN |
+| vlc | `0xf5d6460` | `0xab86520` | `0x8f` (143) | −0x90 (144) | `0xab86760` | `0x17` (23) | — (no SC) | CERTAIN |
 
 Each secondary arm is a `rel32` relative to the secondary table base; the arm is a thunk inside `DecodeEntry` that stamps the proto oneof tag and tail-calls the matching `DecodeSc<Name>`. The codec page owns the [dispatch mechanism](trace-entries-coder.md#the-dual-dispatch); this page owns the SC sub-range it routes to.
 
