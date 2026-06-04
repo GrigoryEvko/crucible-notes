@@ -41,7 +41,7 @@ That vector is the whole input to discovery — which is why the inner lambda pa
 
 ### 1.1 `LocalTopology` wire format
 
-The `accel_ssw::deepsea::proto::LocalTopology` proto carries one chip's connectivity snapshot. The C++ wrapper (`LocalTopology::LocalTopology(proto&)` @`0x1ffdb620`) materialises a **2560-byte** record: an 88-byte header (`ChipLocation` + `hostname` + `num_ports`) followed by **12 inline 208-byte `PortEntry` slots** (`kMaxPortsPerChip = 12` in the proto, even though current SerDes hardware uses 4 ports per chip — see [ICI Overview](overview.md) §1).
+The `accel_ssw::deepsea::proto::LocalTopology` proto carries one chip's connectivity snapshot. The C++ wrapper (`LocalTopology::LocalTopology(proto&)` @`0x1ffdb620`) materialises a **2560-byte** record (confirmed: `operator new(2560 * count)` in the vector emplace path): a ~40-byte header (`ChipLocation` + `hostname`) followed by **12 inline 208-byte `PortEntry` slots** (12 × 208 = 2496), with the `num_ports` count stored as an `int32` at byte offset **2552** (`*((int*)this + 638)`) — i.e. *after* the port array, not in the header. `kMaxPortsPerChip = 12` in the proto, even though current SerDes hardware uses 4 ports per chip — see [ICI Overview](overview.md) §1.
 
 ```text
 message LocalTopology {
@@ -81,7 +81,7 @@ The enum value mappings recovered from `.rodata` are:
 
 `Master::DiscoverTopology` @`0x1fbbe4e0` builds the inner-lambda capture `{this, &target_size, origin_coord}` and invokes `$_0::operator()` @`0x1fbc1ae0`, which drives the composite. The composite `TopologyDiscoverer` (ctor @`0x1fbff680`) holds five sub-objects at fixed pointer offsets +8..+40 — `IciLinkPolarityAssigner`, `ChipCoordinatesAssigner`, `IciDiscoverer`, `TopologyFaultVerifier`, `TrayShapeChecker` — and is gated by `tpu_slice_builder_topology_discovery_new_module`. The `LegacyTopologyDiscoverer` @`0x213dcfe0` is the fallback (it adds a `SliceReshaper` step and a monolithic walk but produces the same `ResilientToroidalTopology`).
 
-> **[CONFIRMED]** `Master::DiscoverTopology` @`0x1fbbe4e0`: builds a `Coordinates(…,3)` from `Master+0xb8`, captures `{this, &(*(int*)(this+304)), coord}` and calls `$_0::operator()` twice — once normally, once after optional fault injection. The `$_0 != 1` (not-OK) path returns `CreateStatusAndConditionallyLog(668, "…/master.cc", …)` — i.e. the wrapping error `"Failed to discover ICI network topology"` is emitted at **`master.cc:668`** (the raw-anchor estimate of `:655` is superseded by the decompile).
+> **[CONFIRMED]** `Master::DiscoverTopology` @`0x1fbbe4e0`: builds a 3-dim `Coordinates` from a `.rodata` constant array (`{4,4,4}`, not a `Master` field), captures `{this, &(*(int*)(this+304)), coord}` — where `this+304` (`*((int*)this + 76)`) is the target-size int — and calls `$_0::operator()` twice (once normally, once after optional fault injection). The `$_0 != 1` (not-OK) path returns `CreateStatusAndConditionallyLog(668, "…/master.cc", …)` — i.e. the wrapping error `"Failed to discover ICI network topology"` is emitted at **`master.cc:668`** (the raw-anchor estimate of `:655` is superseded by the decompile).
 
 ```c
 // TopologyDiscoverer::Discover(target_topology, locals_span, option)   // 0x1fbff7e0
@@ -146,7 +146,7 @@ A second pass validates every `(chip, direction)` against its reverse: look up t
 
 ```text
 "Bidirectional ICI link <%s, %s> with direction %c does not have a reverse counterpart during discovery."
-    -> INTERNAL   (ici_discoverer.cc:126)
+    -> INTERNAL   (ici_discoverer.cc:121)
 ```
 
 Finally the **node count** must match the intent: `target.GetTopologySize() == locals.size()`, else `"Topology intent %s with %d nodes does not match the slice's chip-local ICI connectivity input which has %d nodes"` (`ici_discoverer.cc:139`, FAILED_PRECONDITION).
@@ -162,7 +162,7 @@ Finally the **node count** must match the intent: `target.GetTopologySize() == l
 ```c
 // ChipCoordinatesAssigner::BreadthFirstWalk()   // 0x1fc02040
 dirs = target.GetAllDirections()                    // 4 entries on 2-D, 6 on 3-D
-deque.emplace_back(origin)                          // origin = Master+0xb8 (--xla_jf_ici_origin_chip_location or first chip)
+deque.emplace_back(origin)                          // origin seeded from assigner+56 (the first chip of the discovered link set)
 chip_to_coord_[origin] = Coordinates(0,0,0)         // chip_to_coord_ at assigner+24
 while (!deque.empty()):
     cur = deque.pop_front()
@@ -211,7 +211,7 @@ This is the classic discovery-time failure — a miscabled torus where two paths
 
 After BFS, if `|chip_to_coord_| < target node count`, the unvisited names are collected and reported: `"Coordinate assignment failed ... because there are chips disconnected from the rest of the slice: %s."` (`chip_coordinates_assigner.cc:262`, FAILED_PRECONDITION).
 
-> **GOTCHA —** the origin is **not** necessarily a corner. The BFS seeds at `Master+0xb8` (the user's `--xla_jf_ici_origin_chip_location`, or the first chip), which may sit in the middle of the slice, so coordinates can go negative mid-walk. `NormalizeChipPositions` @`0x1fc02ca0` computes the component-wise minimum across the whole map and shifts every coordinate so the lower corner is `(0,0,0)`. A reimplementer who assumes the origin is the lower corner will mis-derive chip ids (§4), which are ordered over the *normalized* coordinates.
+> **GOTCHA —** the origin is **not** necessarily a corner. The BFS seeds at the first chip of the discovered link set (read from `assigner+56`, sourced from the locals during `Init`), which may sit in the middle of the slice, so coordinates can go negative mid-walk. `NormalizeChipPositions` @`0x1fc02ca0` computes the component-wise minimum across the whole map and shifts every coordinate so the lower corner is `(0,0,0)`. A reimplementer who assumes the origin is the lower corner will mis-derive chip ids (§4), which are ordered over the *normalized* coordinates.
 
 `RotateToroidalTopology` @`0x1fc040a0` optionally rotates the whole coordinate set (X→Y→Z) if an `axis_swap` was passed via `TopologyDiscoveryOption`.
 
@@ -281,7 +281,7 @@ All discovery-time diagnostics, their status codes, and source lines, collected 
 | Link discovery | `"Chip %s is not unique during ICI links discovery for topology %s."` | INVALID_ARGUMENT | `ici_discoverer.cc:39` |
 | Link discovery | `"ICI link <%s, %s> has unknown orientation which is invalid"` | INVALID_ARGUMENT | `ici_discoverer.cc:76` |
 | Link discovery | `"ICI link <%s, %s> has unknown polarity which is invalid"` | INVALID_ARGUMENT | `ici_discoverer.cc:82` |
-| Link discovery | `"Bidirectional ICI link ... does not have a reverse counterpart during discovery."` | INTERNAL | `ici_discoverer.cc:126` |
+| Link discovery | `"Bidirectional ICI link ... does not have a reverse counterpart during discovery."` | INTERNAL | `ici_discoverer.cc:121` |
 | Link discovery | `"Topology intent %s with %d nodes does not match ... which has %d nodes"` | FAILED_PRECONDITION | `ici_discoverer.cc:139` |
 | Coordinates | `"Chip %s is not unique during node coordinate assignment for topology %s."` | INVALID_ARGUMENT | `chip_coordinates_assigner.cc:91` |
 | Coordinates | `"ICI link direction %c is not eligible for topology discovery from chip %s"` | NOT_FOUND | `chip_coordinates_assigner.cc:293` |
@@ -298,14 +298,14 @@ VLog-only (silently dropped, not errors): `"ICI port %s is incorrectly left in l
 ## 6. Verification notes
 
 > **[CONFIRMED]** Cross-checked against the IDA decompile of `libtpu.so` v0.0.40:
-> - `Master::DiscoverTopology` @`0x1fbbe4e0`: inner `$_0` lambda invocation, `Coordinates(…,3)` from `Master+0xb8`, the `!= 1` error at `master.cc:668`, the `tpu_slice_builder_topology_discovery_fault_injection` flag read, `Orientation_descriptor` + `ParseNamedEnum`, `InjectIciResilientFaults(...)`, and the `master.cc:680` invalid-dimension error — all present and matched.
+> - `Master::DiscoverTopology` @`0x1fbbe4e0`: inner `$_0` lambda invocation (passing `Master+152` topology and `Master+776`/`+784` locals begin/end into the discoverer at `Master+224`), the 3-dim `Coordinates` built from a `.rodata` constant `{4,4,4}`, the `!= 1` error at `master.cc:668`, the `tpu_slice_builder_topology_discovery_fault_injection` flag read, `Orientation_descriptor` + `ParseNamedEnum`, `InjectIciResilientFaults(...)`, and the `master.cc:680` invalid-dimension error — all present and matched.
 > - `TopologyDiscoverer::Discover` @`0x1fbff7e0` and `LegacyTopologyDiscoverer::Discover` @`0x213dcfe0`: both present with the exact `(ToroidalTopologyInterface&, Span<LocalTopology>, TopologyDiscoveryOption&)` signature.
 > - `IciDiscoverer::Discover` @`0x1fc0b720`: second argument confirmed as `flat_hash_map<asic_sw::ChipLocation, superpod::routing::Coordinates>*` (the coordinate↔chip map).
 > - `ChipCoordinatesAssigner::BreadthFirstWalk` @`0x1fc02040`: `std::deque<ChipLocation>` at `this+80`, `emplace_back`/`pop_front`/`FindNeighbor`/`AssignOrVerifyCoordinates` — the deque-driven BFS confirmed.
 > - `Master::SetGlobalChipId` @`0x1fbbe7e0`: `lock_shared(+760)`, worker-chip-set map at `+800`, coordinate map at `+832`, topology vtable slot +144 for the id, `ChipLocationToId` request build, the `master.cc:1065` NOT_FOUND, and the gRPC dispatch at `master.cc:1077` — confirmed exactly.
 > - `superpod::routing::IciLinkPolarityAssigner` confirmed under the `superpod::routing` namespace (`ChooseSeed` @`0x1fc10cc0`, `Init` @`0x1fc0db40`), as the raw source path implied.
 >
-> **[LOW]** Numeric protobuf field tags for `LocalTopology`/`PortEntry` (names + serialization order are HIGH; tags require decoding the linked `FileDescriptorProto`). The numeric value assignment of the `Direction` enum (`kIciXPlus = ?`) — string anchors confirm the value→name set, but the integer ordering is produced at runtime by `NameOfDenseEnum<&Direction_descriptor>` and is not a `.rodata` literal. The default origin `ChipLocation` (`Master+0xb8`) is set by the master-factory `Options` and not visible from this binary alone. The exact bodies of `FindMinimalSetOfLinksToPolarize` @`0x1fc15620` and `GetCoordinateOffset` per topology shape (`TwistedTorus` etc.) were not individually decompiled in this pass.
+> **[LOW]** Numeric protobuf field tags for `LocalTopology`/`PortEntry` (names + serialization order are HIGH; tags require decoding the linked `FileDescriptorProto`). The numeric value assignment of the `Direction` enum (`kIciXPlus = ?`) — string anchors confirm the value→name set, but the integer ordering is produced at runtime by `NameOfDenseEnum<&Direction_descriptor>` and is not a `.rodata` literal. The BFS origin `ChipLocation` (read from `assigner+56`) derives from the first chip of the discovered link set; the exact selection rule the assigner's `Init` uses is not fully decompiled in this pass. The exact bodies of `FindMinimalSetOfLinksToPolarize` @`0x1fc15620` and `GetCoordinateOffset` per topology shape (`TwistedTorus` etc.) were not individually decompiled in this pass.
 
 ---
 
