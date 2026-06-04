@@ -14,7 +14,7 @@ A note on `secure_getenv`: despite the dispatch hardening elsewhere in the runti
 |---|---|
 | **Flag-injection channel** | `LIBTPU_INIT_ARGS` → `GetLibTpuInitArguments @ 0x20ccca20` (851 B) |
 | **Lock + topology gate reader** | `tensorflow::tpu::TryAcquireTpuLock @ 0x20ccbc40` (3531 B) |
-| **TfRT runtime selector** | `tpu::ShouldUseTfrt @ 0x1d0fc800` reads `ENABLE_TFRT_TPU_RUNTIME` |
+| **TfRT runtime selector** | `tpu::ShouldUseTfrt @ 0x1d0fc740` (getenv in lambda `$_0 @ 0x1d0fc800`) reads `ENABLE_TFRT_TPU_RUNTIME` |
 | **Megascale gate** | `PJRT_Client_Create @ 0xe6a8840` reads `SKIP_MEGASCALE_PJRT_CLIENT` |
 | **Uptime telemetry reader** | `InitializeUptimeMetricViaEnvironmentVariables @ 0x20a65720` reads `TPU_ML_PLATFORM[_VERSION]` |
 | **Premapped-buffer reader** | `TpuStatesManager::GetOrCreateTpuSystemState @ 0xf956e40` |
@@ -44,9 +44,9 @@ The primary configuration channel. A plugin `.so` has no command line of its own
 
 | Variable | Reader (symbol @ addr) | Effect | Default | Confidence |
 |---|---|---|---|---|
-| `LIBTPU_INIT_ARGS` | `tensorflow::tpu::GetLibTpuInitArguments @ 0x20ccca20` | Space-split into an argv-style `vector<string>`; prepended with `"./tpu_driver"` and Cloud-TPU defaults; handed to `ParseCommandLineNonHelpFlags`. The injection point for every `--xla_*` / `--tpu_*` flag. | unset → empty argv (no injected flags) | CONFIRMED |
+| `LIBTPU_INIT_ARGS` | `tensorflow::tpu::GetLibTpuInitArguments @ 0x20ccca20` | Read by literal `getenv`; the value is space-split (on ASCII 0x20) into a `vector<string>` and a parallel `vector<char const*>` argv, which the function returns. The `argv[0]` synthesis, prepend of Cloud-TPU defaults, and the `ParseCommandLineNonHelpFlags` call happen in the bootstrap *caller*, not in this function. The injection point for every `--xla_*` / `--tpu_*` flag. | unset → empty argv (no injected flags) | CONFIRMED |
 | `XLA_FLAGS` | absl/tsl `ParseFlagsFromEnvAndDieIfUnknown` (string `@ .rodata`, **not** `getenv`'d by TPU code) | Standard XLA flag-from-env channel; merged with the `LIBTPU_INIT_ARGS` argv into the same absl flag tables. | unset → no env flags | CONFIRMED (string present; parsed by flag machinery, not `getenv`) |
-| `TF_XLA_FLAGS` | absl/tsl flag-from-env (string `@ .rodata`) | TensorFlow-bridge XLA flag channel; same flag tables. | unset | HIGH |
+| `TF_XLA_FLAGS` | `xla::ParseFlagsFromEnvAndDieIfUnknown("TF_XLA_FLAGS", …)` (in `AllocateAndParseFlags @ 0xfe5fe80`, **not** `getenv`'d) | TensorFlow-bridge XLA flag channel; same flag tables. | unset | CONFIRMED (string present; parsed by flag machinery, not `getenv`) |
 
 > **NOTE —** `LIBTPU_INIT_ARGS` is the *only* TPU-specific variable in this group read by a literal `getenv`. `XLA_FLAGS` / `TF_XLA_FLAGS` are read by the generic absl flag-from-env code (`absl::ParseCommandLine` reads them by way of `ABSL_FLAGS_FROM_ENV`-style scanning), so they are environment variables in effect but are not `getenv`'d at any TPU call site. A reimplementer must wire all three into one flag parse, but only `LIBTPU_INIT_ARGS` is a hand-rolled `getenv` in the TPU layer.
 
@@ -93,8 +93,8 @@ Direct `getenv` reads that select the runtime backend and tune transfer buffers.
 | `TPU_PREMAPPED_BUFFER_SIZE` | `xla::TpuStatesManager::GetOrCreateTpuSystemState @ 0xf956e40` | Size (bytes) of the pre-mapped DMA staging buffer reserved per TPU system. | unset → runtime-chosen size | CONFIRMED |
 | `TPU_PREMAPPED_BUFFER_TRANSFER_THRESHOLD_BYTES` | `xla::TpuStatesManager::GetOrCreateTpuSystemState @ 0xf956e40` | Transfer-size threshold above which the pre-mapped buffer path is used instead of per-transfer mapping. | unset → runtime default threshold | CONFIRMED |
 | `DISABLE_HOST_SEND_RECV_REGISTRATION` | `_GLOBAL__sub_I_sendrecv_ops.cc @ 0x212c9af0` (static ctor) | Suppresses registration of the host-side send/recv ops at module-init time. Read in a file-static constructor during the `dlopen` storm. | unset → host send/recv registered | CONFIRMED |
-| `PJRT_NPROC` | (PJRT process-count probe; string present) | Number of PJRT processes participating; used for sizing/partitioning. | unset → derived | HIGH |
-| `CLOUD_TPU_TASK_ID` | (Cloud-TPU task identity; string present) | This process's task index within the Cloud-TPU job. | unset → 0 / derived | HIGH |
+| `PJRT_NPROC` | `xla::DefaultThreadPoolSize @ 0x1d7f4800` | Process count used to size the default thread pool; falls back to `NPROC` when unset. Read by literal `getenv`. | unset → falls back to `NPROC`, then a derived size | CONFIRMED |
+| `CLOUD_TPU_TASK_ID` | `tpu::TpuHal::GetTaskId @ 0x1e8142c0` | This process's task index within the Cloud-TPU job; required for multi-host jobs (the reader errors with `"'CLOUD_TPU_TASK_ID' not specified for a multi-host job."` if absent and one is needed). Read by literal `getenv`. | unset → single-host / derived | CONFIRMED |
 
 ---
 
@@ -129,7 +129,8 @@ A mix of direct `getenv` reads (telemetry platform labels, TF graph dumps) and f
 | `TPU_ML_PLATFORM` | `libtpu::telemetry::InitializeUptimeMetricViaEnvironmentVariables @ 0x20a65720` | ML-platform label (e.g. the framework name) stamped onto the uptime/runtime telemetry gauge. | CONFIRMED |
 | `TPU_ML_PLATFORM_VERSION` | `libtpu::telemetry::InitializeUptimeMetricViaEnvironmentVariables @ 0x20a65720` | Platform version string for the same telemetry gauge. | CONFIRMED |
 | `TF_DUMP_GRAPH_PREFIX` | `getenv` (TF graph dump) | Directory prefix for TensorFlow graph dumps. Read by literal `getenv` (multiple sites). | CONFIRMED |
-| `TF_DUMP_GRAPH_NAME_FILTER` / `_GROUPS` / `_WRAPPED` / `_FMT` | `getenv` (TF graph dump) | Name filter / grouping / wrap / format controls for graph dumps. | CONFIRMED |
+| `TF_DUMP_GRAPH_NAME_FILTER` / `_GROUPS` / `_WRAPPED` | `getenv` (TF graph dump) | Name filter / grouping / wrap controls for graph dumps. Read by literal `getenv` (`DebugDataDumper::LoadEnvvars`). | CONFIRMED |
+| `TF_DUMP_GRAPH_FMT` | `tsl::ReadStringFromEnvVar` (`GetDumpGraphFormatLowerCase @ 0x10d8cf60`) | Output format for graph dumps (default `"TXT"`). Read through the tsl env-var helper, **not** a literal `getenv`. | CONFIRMED (string present; read via `ReadStringFromEnvVar`, not `getenv`) |
 | `TF_GRAPH_TO_HLO_COMPILER_DUMP_DIR` | `getenv` | Dump directory for the graph→HLO compiler. | CONFIRMED |
 | `TF_LOG_XLA_ACTIVITY` | `getenv` | Enables XLA activity logging. | CONFIRMED |
 | `MLIR_CRASH_REPRODUCER_DIRECTORY` | `getenv` (MLIR) | Directory for MLIR crash reproducers. | CONFIRMED |
