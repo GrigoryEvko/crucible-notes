@@ -105,7 +105,7 @@ if (valid) {
             switch (id) {
                 case 0:  DecodeUhiHostDmaTransactionStartedAddressTranslation(...); break;
                 case 1:  DecodeUhiHostPhysicalRequestRead(...);                     break;
-                // … 0-6 UHI, 7-10/20-27 OCI, 40-48 ICI, 49-55 OCI, 80-90 TCS, 97 throttle …
+                // … 0-6 UHI, 7-10/20-27 OCI, 40-48 ICI, 49-55 OCI, 80-90 TCS, 91-96 OCI-from-TCS, 97 throttle …
                 default: goto second_table;   // reserved slots fall to @0xf5b032f
             }
         } else {                       // second jump table @0xab85d7c (ids 0x6f..0xff)
@@ -189,14 +189,14 @@ The codec is deliberately asymmetric: decode and encode index *different* jump t
 | Band | `trace_point_id` (pxc) | Subsystem |
 |---|---|---|
 | UHI | 0–6 | host-DMA / address translation |
-| OCI | 7–10, 20–27, 49–55 (+ scattered) | on-chip interconnect engine |
+| OCI | 7–10, 20–27, 49–55, 91–96 (OCI-issued-from-TCS) | on-chip interconnect engine |
 | ICI | 40–48 | inter-chip interconnect / collective fabric |
-| TCS | 80–90 | TensorCore sequencer sync/control |
+| TCS | 80–90 | TensorCore sequencer sync/control (sync/fence/instruction + interrupt) |
 | Throttle | 97 | thermal/electrical throttle state |
 | BC (SparseCore/broadcast) | 100–134 | BcFsm / Bcs / BcOci controllers |
 | CMQ | 140–149 | command queue / VPU DMA |
 | Dummy | 255 (`0xff`) | `DummyTraceEntryDummyTracePoint` |
-| (reserved) | 11–19, 28–39, 56–79, 91–96, 98–99, 135–139, 150–254 | unhandled → graceful return |
+| (reserved) | 11–19, 28–39, 56–79, 98–99, 135–139, 150–254 | unhandled → graceful return |
 
 > **GOTCHA —** the reserved id ranges do **not** fall through to a neighbour handler. Reserved slots in the **first** table (ids ≤ `0x6e`) jump to `0xf5b032f`, which is *not* an error label — it is the entry to the **second** dispatch table; both tables' out-of-range / unfilled slots ultimately land at `0xf5b0b33`, which sets `bytes_consumed = 0` and returns `OK` (an unhandled id is silently skipped, not a status error). This confirms the band gaps are deliberate reserved space, not a decode bug. Drive band detection off the per-family jump table contents, never off a hardcoded pxc range; the band boundaries shift per generation as trace-point cardinality grows (99 handled cases for pxc → 144 for gfc).
 

@@ -215,10 +215,10 @@ Target[+0x628] |= 4;                         // bit-2  (SC-offload-capability ha
 
 | gate bit | object off | meaning | set in `Target::Init` | Confidence |
 |---|---|---|---|---|
-| `Target[+0x628] & 4` (bit-2) | `+0x628` qword | SC-offload-capability has-bit (per-gen, predicate-gated) | OR'd `|= 4` @ `0x1d612121` | CONFIRMED |
+| `Target[+0x628] & 4` (bit-2) | `+0x628` qword | SC-offload-capability has-bit (per-gen, predicate-gated) | OR'd `\|= 4` @ `0x1d612121` | CONFIRMED |
 | `Target[+0x540]` | `+0x540` byte | `platform_type == 2` (iss/simulator) | `= (TpuTopology[+0] == 2)` @ `0x1d610b1b` | CONFIRMED |
 | `Target[+0x541]` | `+0x541` byte | `platform_type == 1` (sibling, not in gate) | `= (TpuTopology[+0] == 1)` @ `0x1d610b29` | CONFIRMED |
-| `Target[+0x628] & 1` (bit-0) | `+0x628` qword | sibling config-append has-bit (not in gate) | OR'd `|= 1` @ `0x1d611d52` | CONFIRMED |
+| `Target[+0x628] & 1` (bit-0) | `+0x628` qword | sibling config-append has-bit (not in gate) | OR'd `\|= 1` @ `0x1d611d52` | CONFIRMED |
 
 > **NOTE — the exact proto sub-field naming bit-2 was not isolated.** The bit-set site, mask, and value are byte-exact, and the bit sits in the predicate-gated config-append loop alongside bit-0 and two SSO strings (object `+0x580`/`+0x5f0`). But the single descriptor entry that names this SC-offload-capability sub-field (a nested config field copied from the chip's `vector_isa`/`TpuSequencerParts`) was not pinned to one descriptor. The *role* — an SC-offload-capability flag the scheduler gate reads — is byte-exact regardless. **Confidence: bit position CONFIRMED; sub-field proto name INFERRED.**
 
@@ -324,7 +324,7 @@ This is exactly why `offload` is the SC op-type classifier: it is the one proto 
 | id-22 (`kSparseCore`) path is independent of `offload`, gated `this+0x13b == 1` | `0x11000480`: post-switch loop on `GetNumSparseCoresUsed` | CONFIRMED |
 | Gate predicate `(Target[+0x628] & 4) ∨ Target[+0x540]` plus Megachip/CoresPerChip(SC)/LEM/flag | `RunHloScheduler` @ `0x1306f820`: `this+1576 & 4`, `this+1344`, `+148 > 0` | CONFIRMED |
 | `Target[+0x540] = (TpuTopology[+0] == 2)`; `Target[+0x541] = (== 1)` | `Target::Init` @ `0x1d60fc20` lines `_R12+1344/+1345 = *v98 == 2/1` | CONFIRMED |
-| `Target[+0x628] |= 4` (bit-2) and `|= 1` (bit-0) in predicate-gated config loop | `Target::Init`: `v342+197 = … | 4` / `| 1` (qword 197 = `0x628`) | CONFIRMED |
+| `Target[+0x628] \|= 4` (bit-2) and `\|= 1` (bit-0) in predicate-gated config loop | `Target::Init`: `v342+197 = … \| 4` / `\| 1` (qword 197 = `0x628`) | CONFIRMED |
 | The proto sub-field that names bit-2 (SC-offload-capability) | bit-set site byte-exact; descriptor entry not isolated | INFERRED |
 | `platform_type` value→name pairing `{0 hardware, 1 grm, 2 iss}` | descriptor-string order + `ToProto = type+1`; `== 2` comparison byte-exact | INFERRED (pairing) / CONFIRMED (`== 2`) |
 | Per-gen default `TpuVersion == 5`; `AutoOr<bool>` 0x100 override at TCE `+0x458`/`+0x730` | `0x1d6b6f80` (`*(topo+8)==5`, `a1+1112`); `0x1d6b81e0` (`a1+1840`) | CONFIRMED |

@@ -26,7 +26,7 @@ For reimplementation, the contract is:
 | **Top encoders** | `tpu::EncodeBarnaCoreAddressHandler<EncoderJf,…>` `@0x1e841640`; `<EncoderDf,…>` `@0x1e836ea0` |
 | **Bundle dispatcher** | `EncoderJf::EncodeBarnaCoreAddressHandlerBundle` `@0x1e86fd80` |
 | **Struct image** | qword0 `+0` (bits 0..63) · qword1 `+8` (64..127) · dword `+16` (128..159) · word `+20` (160..175) · byte `+22` (176..183) |
-| **Predication law** | `pred5 = condition + ((16*value) ^ 0x10)` = `condition[3:0] | (~value)<<4`; default 0x0f |
+| **Predication law** | `pred5 = condition + ((16*value) ^ 0x10)` = `condition[3:0] \| (~value)<<4`; default 0x0f |
 | **Immediate model** | 2 × 16-bit `ImmSlot` (`imm_0`/`imm_1`) allocated by `YIsImm` `@0x14169c20` |
 | **Confidence** | CONFIRMED (decompiled shift/mask extraction + 23-byte stride proof + proto string decode) unless a row says otherwise |
 

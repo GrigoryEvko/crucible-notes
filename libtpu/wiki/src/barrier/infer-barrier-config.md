@@ -25,8 +25,8 @@ For reimplementation, the contract is:
 | **Predicate** | `*((int64*)a4 + 1) <= 1 && *((int64*)a4 + 2) <= 1` (Strategy `+0x8` / `+0x10`) |
 | **CUSTOM arm** | `type==3` → channelled? `GLOBAL(1), id=-1` : `REPLICA(2), id=Target[+0x8c4]−1` |
 | **Never writes** | `MEGACORE(4)` — no `movl $4` anywhere in the body |
-| **TC block** | `Target+0x8c0` base / `Target+0x8c4` count (`= |CR_TC| − 5`) |
-| **SC block** | `SparseCoreTarget+0x1d0` base / `+0x1d4` count (`= |CR_SC|`, no `−5`) |
+| **TC block** | `Target+0x8c0` base / `Target+0x8c4` count (`= \|CR_TC\| − 5`) |
+| **SC block** | `SparseCoreTarget+0x1d0` base / `+0x1d4` count (`= \|CR_SC\|`, no `−5`) |
 
 The enum + producer→normaliser→lowering flow is on [Barriers — Section Map](overview.md); the coloring engine on [Barrier Coloring](barrier-coloring.md); the SFLAG-number lowering on [Barrier-to-SFLAG Binding](barrier-to-sflag-binding.md); the `compiler_reserved` proto source on [Special-Purpose Sync Flags](special-purpose-sync-flags.md); the literal per-gen integers on [Per-Codename Compiler-Reserved](per-codename-compiler-reserved.md). This page does not duplicate them.
 

@@ -1,6 +1,6 @@
 # libtpu Internals — Reverse-Engineering Reference
 
-> **Status**: index drafted (426 pages across 18 parts; 18 written) · **Primary binary**: `libtpu-0.0.40-cp314-cp314-manylinux_2_31_x86_64/libtpu/libtpu.so` — 781,691,048 B, x86-64 ELF64 DYN, **not stripped**, build-id `89edbbe81c5b328a958fe628a9f2207d` · **Secondary**: `sdk.so` (94,732 functions)
+> **Status**: authored (426 pages across 18 parts; all 426 written, Parts 0–XIV reverified through QA batches WXC-39…WXC-53) · **Primary binary**: `libtpu-0.0.40-cp314-cp314-manylinux_2_31_x86_64/libtpu/libtpu.so` — 781,691,048 B, x86-64 ELF64 DYN, **not stripped**, build-id `89edbbe81c5b328a958fe628a9f2207d` · **Secondary**: `sdk.so` (94,732 functions)
 
 ## What this reference is
 
@@ -64,19 +64,21 @@ Each page below carries a grade reflecting how directly its claims are anchored 
 - `I` — **Inferred / synthesis**: foundational, forensic-survey, per-gen-parametric, or connective overview pages.
 - `O` — **Open**: not yet recovered; tracked in the [Open-Frontier Register](appendix/open-frontier-register.md).
 
-Pages marked *(written)* already have content; all others are scaffolded stubs awaiting authoring.
+All 426 pages are authored; the evidence grade above (`C`/`I`/`O`) is the per-page label that matters. The `O` (open) pages are written but flag a specific not-yet-recovered detail, tracked in the [Open-Frontier Register](appendix/open-frontier-register.md).
 
 ### Parts at a glance
 
-| Part | Title | Pages | Written | Depends on | Source domain |
-|------|-------|------:|:-------:|-----------|---------------|
-| 0 | Reference Apparatus | 9 | 1 | — | — |
+All pages are authored; the **Open** column counts the pages still carrying an `O` (not-yet-recovered detail) grade.
+
+| Part | Title | Pages | Open | Depends on | Source domain |
+|------|-------|------:|:----:|-----------|---------------|
+| 0 | Reference Apparatus | 9 | 0 | — | — |
 | I | Binary Anatomy | 12 | 0 | 0 | forensics / dispatch / RTTI |
 | II | Plugin Lifecycle & PJRT API | 23 | 0 | I | runtime / PJRT |
 | III | Tpu C-Shim Layer | 10 | 0 | II | shim |
 | IV | Silicon & Hardware Codename Model | 24 | 0 | — | silicon |
 | V | Compiler — Lowering & Optimization Passes | 36 | 0 | IV | compiler |
-| VI | TensorCore ISA & LLO Encoding | 42 | 0 | IV, V | ISA |
+| VI | TensorCore ISA & LLO Encoding | 42 | 2 | IV, V | ISA |
 | VII | Cost & Latency Model | 41 | 0 | IV, VI | cost |
 | VIII | Instruction Scheduling & Bundle Packing | 14 | 0 | VI, VII | cost / scheduling |
 | IX | SparseCore & BarnaCore | 45 | 0 | IV, VI, VII | sparsecore |
@@ -84,11 +86,11 @@ Pages marked *(written)* already have content; all others are scaffolded stubs a
 | XI | Runtime & Execution | 11 | 0 | II, VI, X | runtime |
 | XII | Interconnect & Routing | 30 | 0 | IV | collectives / routing |
 | XIII | On-Pod Collectives & Barriers | 30 | 0 | IX, XII | collectives |
-| XIV | Megascale (Multi-Host / DCN) | 21 | 17 | XII, XIII | collectives / DCN |
+| XIV | Megascale (Multi-Host / DCN) | 21 | 0 | XII, XIII | collectives / DCN |
 | XV | Profiling & Telemetry | 22 | 0 | XI, XII | profiler |
-| XVI | Configuration & Compile Knobs | 16 | 0 | V, VII | config |
+| XVI | Configuration & Compile Knobs | 16 | 1 | V, VII | config |
 | XVII | Appendices | 20 | 0 | all | cross-cutting |
-| | **Total** | **426** | **18** | | |
+| | **Total** | **426** | **3** | | |
 
 ### Per-generation navigation cross-index
 
@@ -133,7 +135,7 @@ Every page in this book is derived from static analysis of `libtpu.so` — its s
 
 Orientation and connective tissue. Read the *Compile-Flow Walkthrough* first — it traces one matmul through every part and is the on-ramp to the whole book.
 
-- `index.md` — **Landing / This Reference** · `I` *(written)*  
+- `index.md` — **Landing / This Reference** · `I`  
   What libtpu is, binary provenance, organization, per-gen cross-index, reading paths.
 - `front/how-to-read.md` — **How to Read This Book** · `I`  
   Evidence grades, the dependency-flow rationale, the reading-path personas.
@@ -895,7 +897,7 @@ The physical fabric and how packets route across it. The geometric substrate (tw
 How a collective is decomposed, offloaded, and synchronized over the fabric (XII). The SparseCore-offload path bridges to IX.
 
 ### Collective algorithms
-- `collectives/overview.md` — **Overview** · `I` *(stub exists)*  
+- `collectives/overview.md` — **Overview** · `I`  
   The strategy picker and the algorithm family. _src: P-3-69, P-3-319_
 - `collectives/strategy-nd-picker.md` — **SelectNDStrategy** · `C`  
   The collective-algorithm picker + degraded-axis handling. _src: P-3-319, P-3-405_
@@ -955,7 +957,7 @@ How a collective is decomposed, offloaded, and synchronized over the fabric (XII
   GetRemoteSyncFlagEncoderRegistry + chip-id map. _src: P-3-447, P-3-453_
 
 ### Higher-level
-- `collectives/megacore-fusion.md` — **Megacore Fusion** · `I` *(stub exists)*  
+- `collectives/megacore-fusion.md` — **Megacore Fusion** · `I`  
   The megacore collective fusion. _src: P-3-424, P-3-348_
 - `collectives/fp8-quantized-collective.md` — **FP8 Quantized Collective** · `C`  
   The quantized-collective dispatch path. _src: #1339_
@@ -964,43 +966,43 @@ How a collective is decomposed, offloaded, and synchronized over the fabric (XII
 
 ## Part XIV — Megascale (Multi-Host / DCN) (21)
 
-The data-center-network layer above on-pod ICI: cross-host rendezvous, fleet metadata, and error aggregation. Seventeen of these pages are already written.
+The data-center-network layer above on-pod ICI: cross-host rendezvous, fleet metadata, and error aggregation.
 
 - `megascale/overview.md` — **Overview** · `I`  
   DCN vs ICI; what Megascale orchestrates. _src: P-3-70, P-3-176_
-- `megascale/bootstrap/overview.md` — **Bootstrap: Overview** · `C` *(written)*  
+- `megascale/bootstrap/overview.md` — **Bootstrap: Overview** · `C`  
   The rendezvous overview. _src: P-3-70_
-- `megascale/bootstrap/coordinator-election.md` — **Bootstrap: Coordinator Election** · `C` *(written)*  
+- `megascale/bootstrap/coordinator-election.md` — **Bootstrap: Coordinator Election** · `C`  
   The coordinator-election logic. _src: P-3-70_
-- `megascale/bootstrap/worker-registration.md` — **Bootstrap: Worker Registration** · `C` *(written)*  
+- `megascale/bootstrap/worker-registration.md` — **Bootstrap: Worker Registration** · `C`  
   Worker registration with the coordinator. _src: P-3-70_
-- `megascale/bootstrap/topology-exchange.md` — **Bootstrap: Topology Exchange** · `C` *(written)*  
+- `megascale/bootstrap/topology-exchange.md` — **Bootstrap: Topology Exchange** · `C`  
   The cross-host topology exchange. _src: P-3-70_
-- `megascale/bootstrap/ici-handoff.md` — **Bootstrap: ICI Handoff** · `C` *(written)*  
+- `megascale/bootstrap/ici-handoff.md` — **Bootstrap: ICI Handoff** · `C`  
   Handoff to the ICI fabric. _src: P-3-70_
-- `megascale/bootstrap/convergence.md` — **Bootstrap: Convergence** · `C` *(written)*  
+- `megascale/bootstrap/convergence.md` — **Bootstrap: Convergence** · `C`  
   Convergence detection. _src: P-3-70_
-- `megascale/bootstrap/failure-handling.md` — **Bootstrap: Failure Handling** · `C` *(written)*  
+- `megascale/bootstrap/failure-handling.md` — **Bootstrap: Failure Handling** · `C`  
   Bootstrap failure handling. _src: P-3-70_
-- `megascale/bootstrap/tpunetd-relationship.md` — **Bootstrap: tpunetd Relationship** · `C` *(written)*  
+- `megascale/bootstrap/tpunetd-relationship.md` — **Bootstrap: tpunetd Relationship** · `C`  
   Relationship to the tpunetd daemon. _src: P-3-70, P-3-11_
-- `megascale/fleet-metadata/overview.md` — **Fleet Metadata: Overview** · `C` *(written)*  
+- `megascale/fleet-metadata/overview.md` — **Fleet Metadata: Overview** · `C`  
   The fleet-metadata schema overview. _src: P-3-176_
-- `megascale/fleet-metadata/topology-model.md` — **Fleet: Topology Model** · `C` *(written)*  
+- `megascale/fleet-metadata/topology-model.md` — **Fleet: Topology Model** · `C`  
   The fleet topology model. _src: P-3-176_
-- `megascale/fleet-metadata/host-identity.md` — **Fleet: Host Identity** · `C` *(written)*  
+- `megascale/fleet-metadata/host-identity.md` — **Fleet: Host Identity** · `C`  
   Host identity fields. _src: P-3-176_
-- `megascale/fleet-metadata/global-addressing.md` — **Fleet: Global Addressing** · `C` *(written)*  
+- `megascale/fleet-metadata/global-addressing.md` — **Fleet: Global Addressing** · `C`  
   Global addressing scheme. _src: P-3-176_
-- `megascale/fleet-metadata/ici-vs-dcn.md` — **Fleet: ICI vs DCN** · `C` *(written)*  
+- `megascale/fleet-metadata/ici-vs-dcn.md` — **Fleet: ICI vs DCN** · `C`  
   The ICI/DCN distinction. _src: P-3-176_
-- `megascale/fleet-metadata/slice-shape.md` — **Fleet: Slice Shape** · `C` *(written)*  
+- `megascale/fleet-metadata/slice-shape.md` — **Fleet: Slice Shape** · `C`  
   Slice-shape encoding. _src: P-3-176_
-- `megascale/fleet-metadata/bootstrap-exchange.md` — **Fleet: Bootstrap Exchange** · `C` *(written)*  
+- `megascale/fleet-metadata/bootstrap-exchange.md` — **Fleet: Bootstrap Exchange** · `C`  
   The bootstrap data exchange. _src: P-3-176_
-- `megascale/fleet-metadata/barrier-error-usage.md` — **Fleet: Barrier & Error Usage** · `C` *(written)*  
+- `megascale/fleet-metadata/barrier-error-usage.md` — **Fleet: Barrier & Error Usage** · `C`  
   How fleet metadata feeds barriers/errors. _src: P-3-176_
-- `megascale/fleet-metadata/field-decode.md` — **Fleet: Field Decode** · `C` *(written)*  
+- `megascale/fleet-metadata/field-decode.md` — **Fleet: Field Decode** · `C`  
   Field-by-field decode. _src: P-3-176_
 - `megascale/cross-host-barrier.md` — **Cross-Host Barrier** · `C`  
   The Megascale barrier primitive. _src: P-3-148_
@@ -1013,7 +1015,7 @@ The data-center-network layer above on-pod ICI: cross-host rendezvous, fleet met
 
 How libtpu emits XPlane traces and hardware telemetry. Per-generation trace payloads have distinct on-wire formats.
 
-- `profiling/overview.md` — **Overview** · `I` *(stub exists)*  
+- `profiling/overview.md` — **Overview** · `I`  
   XPlane, the trace pipeline, the codec families. _src: P-2-32_
 - `profiling/tpu-profiler-abi.md` — **TpuProfiler ABI** · `C`  
   The profiler C surface. _src: P-3-80_
@@ -1062,7 +1064,7 @@ How libtpu emits XPlane traces and hardware telemetry. Per-generation trace payl
 
 Every flag, env var, and compile knob, and how they resolve. The TpuCompilationEnvironment is the 1,121-field master config object.
 
-- `config/overview.md` — **Overview** · `I` *(stub exists)*  
+- `config/overview.md` — **Overview** · `I`  
   The flag/knob/env taxonomy. _src: P-3-281_
 - `config/xla-flag-atlas.md` — **xla_* Flag Atlas** · `C`  
   The full option-name catalog. _src: P-3-193_

@@ -26,7 +26,7 @@ For reimplementation, the contract is:
 | **Source (slice_builder)** | `platforms/accel_ssw/deepsea/slice_builder/friends/routing_table_generator.cc` |
 | **Source (multipod)** | `platforms/accel_ssw/deepsea/dragonfish/multipod/routing_table_generator.cc` |
 | **Source (packer)** | `platforms/accel_ssw/deepsea/slice_builder/internal/routing_path.cc` |
-| **Packed `DirectionHops` code** | `(hop_count<<6) | (polarity<<3) | (orientation & 7)`, ≤ 7 axes |
+| **Packed `DirectionHops` code** | `(hop_count<<6) \| (polarity<<3) \| (orientation & 7)`, ≤ 7 axes |
 
 ---
 

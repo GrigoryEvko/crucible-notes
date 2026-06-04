@@ -337,7 +337,7 @@ The result: host `TraceMe` scopes and device hardware trace-entries arrive on di
 | `TpuXPlaneBuilder::GetOrCreateLine(TpuComponent)` | `0xf1df120` | device-semantic line key | CERTAIN |
 | `TpuXPlaneBuilder::GetOrCreateLine(IciPort)` | `0xf25af20` | ICI-port line key | CERTAIN |
 | `TraceMeRecorder::Record(Event&&)` | `0x207ff580` | lock-free per-thread capture | CERTAIN |
-| `TraceMeRecorder::NewActivityId()` | `0x207ff7a0` | `(thread<<32)|counter` id | CERTAIN |
+| `TraceMeRecorder::NewActivityId()` | `0x207ff7a0` | `(thread<<32)\|counter` id | CERTAIN |
 | `TraceMeRecorder::Consume()` | `0x207fe700` | drain per-thread chunks | CERTAIN |
 | `TraceMeEncode(name, args)` | `0x10885f20` | `name#k=v,…#` wire format | CERTAIN |
 | `ConvertCompleteEventsToXPlane(...)` | `0xf32ff00` | host events → `/host` XPlane | CERTAIN |

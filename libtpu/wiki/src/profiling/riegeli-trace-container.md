@@ -264,7 +264,7 @@ function GetEntriesGtcSpan(entries) -> GtcSpan {start, length}:
     return { start: min, length: max - min };
 ```
 
-`DurationCycles` @ `0xf699900` reads the per-event cycle count, returning non-zero only for the CMQ band (trace_point_id `0x64`..`0x77`) and `0` otherwise; the `×16` shift aligns it with the GTC fixed-point. The `GtcSpan` value occupies bits `[4..44]` — a 41-bit field, masked by `0x1ffffffffff0`.
+`DurationCycles` @ `0xf699900` reads the per-event cycle count, returning non-zero only for the BC band's CmqVpuDma duration events (trace_point_id `0x64`..`0x77` = 100..119; the body gate is `(unsigned)(id − 100) > 0x13`) and `0` otherwise; the `×16` shift aligns it with the GTC fixed-point. The `GtcSpan` value occupies bits `[4..44]` — a 41-bit field, masked by `0x1ffffffffff0`.
 
 ### The Conversion — `AddEvent(GtcSpan)`
 
@@ -372,7 +372,7 @@ device-plane XEvent (offset_ps / duration_ps in picoseconds)
 | Component | Relationship |
 |---|---|
 | [TraceEntriesCoder](trace-entries-coder.md) | the per-packet codec this container inflates the bytes for and the factory builds; `DecodeInternal` calls its `DecodeEntry` per 16-byte packet |
-| [TracePoints Master Registry](tracepoints-master-registry.md) | the wire-id ↔ oneof-field id spaces the codec keys on; the `DurationCycles` CMQ band ids come from there |
+| [TracePoints Master Registry](tracepoints-master-registry.md) | the wire-id ↔ oneof-field id spaces the codec keys on; the `DurationCycles` BC-band duration ids come from there |
 | [TraceEntry → XEvent/XStat](trace-entry-to-xevent.md) | the downstream subscriber that calls `AddEvent(GtcSpan)` and turns the converted ps offsets into device-plane XEvents/XStats |
 | [Task Proto](task-proto.md) | the `Task` message carrying `gtc_freq_hz`/`tensor_core_freq_hz`/`sparse_core_freq_hz`, the runtime clock divisors |
 | [Payload: jxc Legacy](payload-jxc-legacy.md) | the separate `PerformanceTraceEntry` codec (variant idx 6) jxc/dfc take instead of the fixed-16-byte path |
@@ -383,6 +383,6 @@ device-plane XEvent (offset_ps / duration_ps in picoseconds)
 - [Profiling and Telemetry Overview](overview.md) — the device-trace pipeline; this page owns the transport (stage 2) and timebase (stage 5)
 - [TraceEntriesCoder](trace-entries-coder.md) — stage 3, the fixed 16-byte packet codec this container frames and the factory constructs
 - [TraceEntry → XEvent/XStat](trace-entry-to-xevent.md) — stage 5 consumer, where the GTC→ps conversion lands as XStat `device_offset_ps`/`device_duration_ps`
-- [TracePoints Master Registry](tracepoints-master-registry.md) — the trace-point id space; the CMQ band ids `0x64`–`0x77` that `DurationCycles` reads
+- [TracePoints Master Registry](tracepoints-master-registry.md) — the trace-point id space; the BC-band duration ids `0x64`–`0x77` (100–119) that `DurationCycles` reads
 - [Task Proto](task-proto.md) — the runtime `gtc_freq_hz`/`*_core_freq_hz` clock sources the timebase divides by
 - [Payload: jxc Legacy](payload-jxc-legacy.md) — the legacy `PerformanceTraceEntry` codec the factory selects for jxc/dfc

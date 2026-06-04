@@ -4,7 +4,7 @@
 
 ## Abstract
 
-The TPU profiler renders inter-chip-router (ICR / node-fabric) DMA traffic as two timeline lanes — **"From ICI Router"** (component 54) and **"To ICI Router"** (component 55) — in the device XPlane. Unlike the OCI *command* bands (trace-point ids 22/26/96), which name a command and resolve a `dma_id` only on demand, the DMA-timeline producer keys on exactly **four** trace-point ids — **48, 50, 51, 91** — and stitches them into begin/end DMA spans. Each id carries a *different* node-fabric trace message, contributes a *different* part of the span (begin marker, end marker, byte count, or end timestamp), and lands in one of two `flat_hash_map<uint64,DmaTransfer>` keyed by a 38-bit `dma_id` extracted from the message's `TraceIdHeader`.
+The TPU profiler renders inter-chip-router (ICR / node-fabric) DMA traffic as two XEvent kinds — **"ICI Egress"** (kind tag 3) and **"ICI Ingress"** (kind tag 2) — in the device XPlane. The renderer creates the "From ICI Router" (component 54) and "To ICI Router" (component 55) lines, but the byte-exact `case→line` binding is asymmetric: the egress span lands on component 54 and the ingress span on component 64 ("MemcpyD2H" line), with component 55 created but unused (see [§ Lane / Tag Map](#lane--tag-map)). Unlike the OCI *command* bands (trace-point ids 22/26/96), which name a command and resolve a `dma_id` only on demand, the DMA-timeline producer keys on exactly **four** trace-point ids — **48, 50, 51, 91** — and stitches them into begin/end DMA spans. Each id carries a *different* node-fabric trace message, contributes a *different* part of the span (begin marker, end marker, byte count, or end timestamp), and lands in one of two `flat_hash_map<uint64,DmaTransfer>` keyed by a 38-bit `dma_id` extracted from the message's `TraceIdHeader`.
 
 This page owns the variant decode on top of the shared 16-byte `TraceEntry` packet (the 2-bit frame + 59-bit `TraceHeader` + 38-bit `TraceIdHeader` on these deepsea gens — `chip_id` is 14 bits, not the 12-bit pxc form, which is exactly why the `dma_id` below is 38 bits; see [Trace Entries Coder](trace-entries-coder.md)). For these four ids the producer reads the on-wire `trace_point_id` from `TraceHeader+0x18`, then dereferences the message submessage (`TraceEntry+0x10` → submessage at `+0x20`) and decodes the proto fields packed at fixed C++ offsets. The four messages split cleanly into two directions: **egress** (data leaving to the router) uses id 91 (descriptor) + id 50 (egress message); **ingress** (data arriving from the router) uses id 48 (ICI data packet) + id 51 (ingress message). Two independent maps keep the egress and ingress span sets separate, then each is merged and rendered to its lane.
 
@@ -26,8 +26,8 @@ For reimplementation, the contract is:
 | **Span merger** | `0xf26dae0` — `MergeOverlappingTransfers` (run per map) |
 | **Key set** | `{48, 50, 51, 91}` — built from `0x320000005B` + two stores |
 | **Span value type** | `DmaTransfer`, 0x58 (88) bytes; `push_back` `@0xf2547e0` |
-| **Egress lane** | component 55 "To ICI Router", XEvent "ICI Egress" (kind tag 3) |
-| **Ingress lane** | component 54 "From ICI Router", XEvent "ICI Ingress" (kind tag 2) |
+| **Egress span** | XEvent "ICI Egress" (kind tag 3) → rendered on component **54** ("From ICI Router") |
+| **Ingress span** | XEvent "ICI Ingress" (kind tag 2) → rendered on component **64** ("MemcpyD2H" line) |
 
 ---
 
@@ -387,11 +387,11 @@ function ConvertDmaTransfersToXPlane(spans, plane):  // 0xf254bc0
 
     for span in spans:
         if not (span.byte_count && span.begin_present && span.end_present): continue
-        switch span.kind_tag:                    // @0xf254... switch on [rbx-8]
-            case 2: line = line_in;  meta = meta_in;  break    // ingress
-            case 3: line = line_out; meta = meta_out; break    // egress
+        switch span.kind_tag:                    // @0xf254... switch on [rbx-8], jt @0xab589bc
+            case 2: line = line_d2h; meta = meta_in;  break    // ingress "ICI Ingress" → line 64 (byte-confirmed)
+            case 3: line = line_in;  meta = meta_out; break    // egress  "ICI Egress"  → line 54 (byte-confirmed)
             case 6: line = line_h2d; meta = "MemcpyH2D"; break // host (unused here)
-            case 7: line = line_d2h; meta = "MemcpyD2H"; break // host (unused here)
+            case 7: line = line_h2d; meta = "MemcpyD2H"; break // host (unused here)
             default: continue                    // tags 0/4/5 dropped
         if span.end_gtc <= span.begin_gtc: continue   // non-positive duration
         ev = line.AddEvent(GtcSpan{begin_gtc, end_gtc})   // 0xf1df1e0
@@ -401,15 +401,15 @@ function ConvertDmaTransfersToXPlane(spans, plane):  // 0xf254bc0
 
 ### Lane / Tag Map
 
-| Kind tag | Source bands | Line (component) | XEvent name | Confidence |
+| Kind tag | Source bands | XEvent name | Line (component) rendered on | Confidence |
 |---|---|---|---|---|
-| **2** | 48 (markers) + 51 (bytes) | 54 "From ICI Router" | "ICI Ingress" | CERTAIN |
-| **3** | 91 (begin+bytes) + 50 (end) | 55 "To ICI Router" | "ICI Egress" | CERTAIN |
-| 6 | (host H2D, unused) | 63 "MemcpyH2D" | "MemcpyH2D" | HIGH |
-| 7 | (host D2H, unused) | 64 "MemcpyD2H" | "MemcpyD2H" | HIGH |
-| 0 / 4 / 5 | — | (none) | dropped | HIGH |
+| **2** | 48 (markers) + 51 (bytes) | "ICI Ingress" | **64** ("MemcpyD2H" line, component 64) | CERTAIN |
+| **3** | 91 (begin+bytes) + 50 (end) | "ICI Egress" | **54** ("From ICI Router", component 54) | CERTAIN |
+| 6 | (host H2D, unused) | "MemcpyH2D" | 63 "MemcpyH2D" | HIGH |
+| 7 | (host D2H, unused) | "MemcpyD2H" | 63 "MemcpyH2D" | HIGH |
+| 0 / 4 / 5 | — | dropped | (none) | HIGH |
 
-The tag → direction mapping is byte-confirmed by the producer rather than only by the renderer's local-slot tracking: id 91 writes tag 3 into MAP_A (egress), id 48 writes tag 2 into MAP_B (ingress), and each map flushes to its own vector. The renderer's `case 2` pairs with the "ICI Ingress" metadata (`v120`) and `case 3` with "ICI Egress" (`v121`), and `TpuComponentName(54)` = "From ICI Router", `TpuComponentName(55)` = "To ICI Router" (`0x1c8ebb60`). The semantic direction is consistent end to end: data arriving from the router (ingress) → "From ICI Router"; data leaving to the router (egress) → "To ICI Router".
+The tag → metadata pairing is byte-confirmed in `ConvertDmaTransfersToXPlane` @ `0xf254bc0`: id 91 writes tag 3 into MAP_A (egress), id 48 writes tag 2 into MAP_B (ingress), and each map flushes to its own vector. The renderer's `case 2` pairs the "ICI Ingress" metadata (`v120`) and `case 3` the "ICI Egress" metadata (`v121`). The *line* each lands on, however, is **not** the symmetric 54/55 pair one would expect: the byte-exact switch routes `case 2` (ingress) onto the line-64 builder (`v131`, component 64) and `case 3` (egress) onto the line-54 builder (`v137`, component 54). `TpuComponentName(54)` = "From ICI Router", `TpuComponentName(55)` = "To ICI Router", `TpuComponentName(64)` = "MemcpyD2H" — so the rendered line names do **not** read as a clean "From/To ICI Router" pair; the egress span lands on "From ICI Router" and the ingress span on the "MemcpyD2H" line. Component 55 ("To ICI Router") is created in the line setup but is **not** selected by any switch arm. A reimplementation must follow the byte-exact `case→builder` binding (`2→line64`, `3→line54`), not an assumed direction↔component symmetry. (See [DMA Endpoint Rendering](dma-endpoint-rendering.md), whose renderer table carries the same binding.)
 
 > **QUIRK —** the renderer also interns `queue` (StatType 79) and `details` stat metadata, but the `DmaTransfer` span on this trace family carries only `{begin, end, bytes, tag}`. The id-48 `router_link_port_id`/`virtual_channel`/`link_targets` and the id-91 src/dst endpoint and sync-flag fields are decoded into the proto and then dropped — they never reach an XStat here. Only the `dma_id`-derived pairing, the GTC span, and the byte count survive into the rendered event.
 

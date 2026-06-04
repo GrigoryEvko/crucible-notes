@@ -363,7 +363,7 @@ for step in [0, num_steps):
 | gather destination XYs | `CreateRoutingSchedule` loop @ `0x1381c770` | `std::map<XY, IterationInfo>` scoreboard |
 | candidate directions (shortest ring) | `@0x1381d850..0x1381d942` | `InlinedVector<Direction,4>` per dest |
 | build / push priority queue | `__sift_up<…$_0…>` @ `0x13825f60` (×3) | heap of `SchedulingQueueKey` (0x28) |
-| ↳ distance comparator | `$_0` @ `0x13825f60` (`min(|d|, dim-|d|)`/axis) | remaining-ring-distance key |
+| ↳ distance comparator | `$_0` @ `0x13825f60` (`min(\|d\|, dim-\|d\|)`/axis) | remaining-ring-distance key |
 | per-direction torus hop | jump table @ `0xae5dec8` / `@0x13820b34` | next chip coordinate (mod ChipBounds) |
 | defer callback to step *k* | `$_4` @ `0x13825b60` | `extra_actions[step] += function` |
 | buffer release / in-flight record | `$_1` @ `0x13826dc0` | `available` list + `latest_dma_out` deque |

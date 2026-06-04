@@ -108,7 +108,7 @@ Each decoded hop is one `proto::Direction` (size `0x20`, vtable @`0x22019600`):
 |---|---|---|---|
 | `+0x00` | vptr | — | — |
 | `+0x08` | arena / `InternalMetadata` | — | — |
-| `+0x10` | has-bits / presence | uint32 | `|= 0x3` (both fields present) |
+| `+0x10` | has-bits / presence | uint32 | `\|= 0x3` (both fields present) |
 | `+0x18` | `orientation` | int | X=1, Y=2, Z=3 |
 | `+0x1c` | `polarity` | int | POSITIVE=1, NEGATIVE=2 |
 
@@ -196,7 +196,7 @@ struct Encoder {               // 0x20 bytes
 
 | Writer | Behavior | Dual of |
 |---|---|---|
-| `PutBits(value, n)` | `acc |= (value & mask_[n]) << bitpos; bitpos += n;` spill whole bytes LSB-first while `bitpos>=8` (`mov [cursor],acc_lo8; inc cursor; acc>>=8; bitpos-=8`) | `GetBits64` |
+| `PutBits(value, n)` | `acc \|= (value & mask_[n]) << bitpos; bitpos += n;` spill whole bytes LSB-first while `bitpos>=8` (`mov [cursor],acc_lo8; inc cursor; acc>>=8; bitpos-=8`) | `GetBits64` |
 | `PutVarInt(chunk, v)` | `num_groups = max(1, ceil(bitlen(v)/chunk))`; emit `num_groups-1` one-bits + a 0, then `num_groups` little-endian `chunk`-bit groups | `GetVarInt` |
 | `PutGamma(v≥1)` | `b = floor(log2(v))`; emit `b` zeros + a 1 + `(v & mask_[b])` | `GetGamma` |
 | `Flush()` | pad the final partial byte with zeros and spill it | — |

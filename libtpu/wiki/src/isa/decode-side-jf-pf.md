@@ -21,7 +21,7 @@ For reimplementation, the contract is:
 |---|---|
 | **JF decoder entry** | `DecoderJf::DecodeVectorExtendedSlot` @ `0x1e854000` |
 | **JF dispatch** | nested `switch`: family `(qword0>>32)&7` (abs 32..34) → sub-opcode `(qword0>>29)&7` (abs 29..31) |
-| **JF opcode sink** | `VectorExtendedInstruction` proto `+0x60` (`[VEinst+0x60]`), has-bit `[VEinst+0x10] |= 0x20` |
+| **JF opcode sink** | `VectorExtendedInstruction` proto `+0x60` (`[VEinst+0x60]`), has-bit `[VEinst+0x10] \|= 0x20` |
 | **JF data-source** | `SetVectorRegisterForData` @ `0x1e854c40` — `vex_source` = `(qword0>>27)&3` (abs 27..28) |
 | **JF latch sub-table** | `asc_B833FA0` = `{7,8,9,0,10,11,12}` (indexed `(abs29..31)−1`) |
 | **PF decoder entry** | `TensorCoreVectorExtended0Decoder::Decode` @ `0x1ed76f20` (MXU0), `…Extended1Decoder::Decode` @ `0x1edcea40` (MXU1) |

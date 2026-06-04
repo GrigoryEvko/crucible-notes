@@ -21,7 +21,7 @@ The page is the runtime-observability fingerprint of BarnaCore as a live engine:
 | **HbmMux subscriber** | `xprof::tpu::HbmMuxSubscriber<jxc::PerformanceTraceEntry>::ProcessTraceEntry` @ `0xf1def00` |
 | **DMA-id composer** | `TraceEntryWrapper<jxc>::GetDmaId` @ `0xf698180` |
 | **COMMAND / DATA_END gates** | `MemoryCommand` @ `0xf698560` (mask `0x56B6D8`) / `MemoryDataEnd` @ `0xf6985a0` (mask `0x894920`) |
-| **Flow stat** | `StatType` 56 = `"flow"`; value `((dma_id & 0x00FFFFFFFFFFFFFF) << 2) | 3` |
+| **Flow stat** | `StatType` 56 = `"flow"`; value `((dma_id & 0x00FFFFFFFFFFFFFF) << 2) \| 3` |
 | **HbmMux XLine** | `TpuComponent` 56 = `"HBM Mux"` (`TpuComponentName` @ `0x1c8ebb60`) |
 | **Record discriminator** | `EntryDataCase` at submsg-ptr `+0x30`; nf band sub-id at submsg `+0x30` (alias) |
 

@@ -296,34 +296,37 @@ The `HbmMuxSubscriber<jxc>` (vtable `0x21643ce0`) is the first subscriber regist
 
 ### Registered key and the 2-state tracker
 
-It registers a single packed key `0x728` (built by `movw $0x728,(buf)` @ `0xf1db361`): `0x728 = (7<<8)|0x28 = case 7 (hbm_mux_switch) id 40 = EVENT`. `HbmMuxSubscriber<jxc>::ProcessTraceEntry` @ `0xf1def00` is a 2-state switch tracker:
+It registers a single packed key `0x728` (built by `movw $0x728,(buf)` @ `0xf1db361`): `0x728 = (7<<8)|0x28 = case 7 (hbm_mux_switch) id 40 = EVENT`. `HbmMuxSubscriber<jxc>::ProcessTraceEntry` @ `0xf1def00` is a **four-symbol open/close FSM** — `{1,2}` open a direction, `{0,3}` close it:
 
 ```c
-// HbmMuxSubscriber<jxc>::ProcessTraceEntry @0xf1def00
+// HbmMuxSubscriber<jxc>::ProcessTraceEntry @0xf1def00 (byte-confirmed)
 function ProcessTraceEntry(self, entry):
-    if (!CoreId_matches(self, entry)) return;          // +0x08/+0x0c
+    if (!CoreId_matches(self, entry)) return;          // +0x08
     state = HbmMuxSwitchState(entry);                  // @0xf6986e0
     // HbmMuxSwitchState: if EntryDataCase==7 -> return (fsm | 0x100000000); else 0
     if ((state >> 32) == 0) return;                    // not an hbm_mux_switch entry
-    fsm = state & 0xffffffff;                          // 0=drop, 1/2=directions, 3=other
-    switch (fsm):
-        case 1, 2:                                     // a switch: close the open direction's span
-            dur   = GtcSpan(entry) - (DurationCycles(prev) << 4);
-            line  = GetOrCreateLine(56);               // "HBM Mux" XLine, @0xf1df120
-            meta  = (open_dir == BFIFO) ? self[+0x18] : self[+0x20];
-            AddEvent(line, meta, self[+0x28] /*start*/, dur);   // @0xf1df1e0
-            self[+0x28] = GtcSpan(entry);              // open the next direction
-            self[+0x38] = fsm;                          // current direction
-            self[+0x30] = entry;                        // prev-entry shared_ptr
-        case 3:  ... // third path — see gap note
-        case 0:  return;                                // dropped
+    fsm = state & 0xffffffff;
+    if ((fsm - 1) < 2):                                // fsm in {1,2} — OPEN, no emit
+        self[+0x28] = entry;  self[+0x30] = entry.rc;  // stash prev entry + refcount
+        self[+0x38] = fsm;                              // open_dir (1 or 2)
+        return
+    if (fsm == 3):                                      // CLOSE what fsm==1 opened
+        if (self[+0x38] != 1) { clear(); return; }
+        start = self[+0x28].gtc - (DurationCycles(prev) << 4);
+        AddEvent(GetOrCreateLine(56), start, entry.gtc - start, self[+0x20]); // "Node Fabric to BFIFO"
+        clear();                                        // zero +0x28/+0x30/+0x38
+    else if (fsm == 0):                                 // CLOSE what fsm==2 opened
+        if (self[+0x38] != 2) { clear(); return; }
+        start = self[+0x28].gtc - (DurationCycles(prev) << 4);
+        AddEvent(GetOrCreateLine(56), start, entry.gtc - start, self[+0x18]); // "BFIFO to Node Fabric"
+        clear();
 ```
 
 `HbmMuxSwitchState` @ `0xf6986e0` is byte-confirmed: it checks `EntryDataCase == 7`, reads the `fsm` field at `member + 0x1c`, and returns `fsm | 0x100000000` (bit-32 = present marker, low 32 bits = state); otherwise 0.
 
-The HBM-mux event payload is therefore `{fsm switch-direction (2-state), tensor_node}`. The begin/end pairing key is the **fsm direction** itself: each `EVENT` closes the previously open direction's span and opens the next, so the duration is the time the mux spent in one direction. Spans land on XLine `TpuComponent 56 = "HBM Mux"` (name @ `0x84c06ed`).
+The HBM-mux event payload is `{fsm switch-symbol, tensor_node}`; the four `fsm` symbols form two open/close pairs (`1`→`3` and `2`→`0`), so a span is the interval the mux spent pointed one way. Spans land on XLine `TpuComponent 56 = "HBM Mux"` (name @ `0x84c06ed`).
 
-> **NOTE —** the `fsm == 3` arm (@ `0xf1df044`) takes a slightly different branch (it uses the `+0x18` and `+0x20` metadata differently). States 1/2 are the two named switch directions and state 0 is dropped; the precise semantic of state 3 — a third mux mode versus an init/flush event — was **not isolated** (LOW confidence on the state-3 path; the 2-state switch behaviour is CERTAIN).
+> **NOTE —** the FSM is **four-symbol open/close**, not a two-state toggle: `fsm 1 = open(BFIFO→NF)` paired with `fsm 3 = close` (emits `"Node Fabric to BFIFO"`, meta `+0x20`); `fsm 2 = open(NF→BFIFO)` paired with `fsm 0 = close` (emits `"BFIFO to Node Fabric"`, meta `+0x18`). State 3 is the close marker for the `fsm==1` direction, not a third mux mode. Byte-confirmed in the decompiled `0xf1def00` body (`if ((fsm-1) >= 2)` is the close branch; the open branch stashes `a2` and sets `*(this+56)=fsm`). The full open/close pairing is owned by [jxc DMA / HbmMux / brn_perf](jxc-dma-hbmmux-brnperf.md).
 
 ---
 

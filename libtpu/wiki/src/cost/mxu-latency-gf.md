@@ -137,8 +137,8 @@ The reservation widens with the format, falling into three value-sets — `narro
 | 3 | 307 (`0x133`) | matmul | 0xa (F8E4M3Fn) | `array[3]` | **8** | cycles CERTAIN; opcode HIGH |
 | 5 | 324 (`0x144`) | matpush | 1 (bf16, direct GLM) | `array[8]` | **2** | CERTAIN |
 | 6 | 326 (`0x146`) | matpush | GLM `^0xB` (transpose flip) | `array[8]` | per fmt | HIGH |
-| 7 / 9 | 327 (`0x147`) | matpush | GLM `|0x30` → fmt 9 | `array[8]` | **4** | CERTAIN |
-| 8 | 325 (`0x145`) | matpush | GLM `|0x32` → fmt 0xa | `array[8]` | **4** | CERTAIN |
+| 7 / 9 | 327 (`0x147`) | matpush | GLM `\|0x30` → fmt 9 | `array[8]` | **4** | CERTAIN |
+| 8 | 325 (`0x145`) | matpush | GLM `\|0x32` → fmt 0xa | `array[8]` | **4** | CERTAIN |
 
 The matpush transpose CTs (11–15) re-enter `sub_1C8BDB20` as `sub_1C8BDB20(a1, op, opcode, 8, 1)` — resource `8`, `latch_mode = 1` — selecting the transposed (`wide`) value-set (`res8 = 8`). The CT→opcode binding for the matmul CTs (0–4) is inferred from the resource index (`3`) and transpose (`0`) the helper passes plus the opcode the dispatch consumes; the matpush opcodes (324–327) are byte-confirmed in both the helper and `sub_1C8BDB20`.
 

@@ -192,7 +192,7 @@ The kernel family and its role in one ring step:
 
 | `pincer_utils` kernel | Address | Role | Confidence |
 |---|---|---|---|
-| `UpdateMaxLocalChunk` | `0x137b73a0` | running absmax over the shard: `acc = max(acc, |x|)` | Confirmed |
+| `UpdateMaxLocalChunk` | `0x137b73a0` | running absmax over the shard: `acc = max(acc, \|x\|)` | Confirmed |
 | `UpdateScale` | `0x137b75c0` | `scale = qmax / absmax` (qmax per dtype above) | Confirmed |
 | `SymmetricallyQuantizeShardInPlaceTo8Bits` | `0x137b7740` | `q = round(x · scale)` then lane-pack to 8-bit | Confirmed |
 | `SymmetricallyDequantizeShardInPlace8Bit` | `0x137b7fc0` | `f = q / scale` (unpack 8-bit → F32) | Confirmed |

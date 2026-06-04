@@ -26,8 +26,8 @@ For reimplementation, the contract is:
 | **Producer (coloring)** | `TensorCoreBarrierAssignment::DetermineBarrierConfigForKey` @`0x109c6fa0` |
 | **Normaliser (fusion-emit)** | `InferBarrierConfig` @`0x1376c240` (8 pincer-fusion callers) |
 | **SFLAG lowering** | `CustomKernelEmitter::Emit` @`0x1321ad60` → `MaybeInsertGlobalBarrier` @`0x1321ac20` / `RunPasses` @`0x13202780` |
-| **TC reserved block** | `Target+0x8c0` base / `Target+0x8c4` count (`= |CR_TC| − 5`); 5 named top slots |
-| **SC reserved block** | `SparseCoreTarget+0x1d0` base / `+0x1d4` count (`= |CR_SC|`, no `−5`) |
+| **TC reserved block** | `Target+0x8c0` base / `Target+0x8c4` count (`= \|CR_TC\| − 5`); 5 named top slots |
+| **SC reserved block** | `SparseCoreTarget+0x1d0` base / `+0x1d4` count (`= \|CR_SC\|`, no `−5`) |
 | **SFLAG-range source** | `TpuChipConfigProto.special_purpose_sync_flags` field 13 → `.compiler_reserved` repeated int32 |
 
 ---
@@ -219,7 +219,7 @@ Let `CR_TC = compiler_reserved(TensorCore)` and `CR_SC = compiler_reserved(Spars
 
 | Gen (codename) | TC block (`Target+0x8c0`/`+0x8c4`) | SC block (`SCTgt+0x1d0`/`+0x1d4`) | TC top-5 reserved (within block) |
 |---|---|---|---|
-| JF (`kJellyfish`, v2) | `base=CR_TC[0]`, `count=|CR_TC|−5` | `base=CR_SC[0]`, `count=|CR_SC|` (no `−5`) | mega `b+c`, gap `b+c+1`, ar1 `b+c+2`, ar2 `b+c+3`, glob `b+c+4` |
+| JF (`kJellyfish`, v2) | `base=CR_TC[0]`, `count=\|CR_TC\|−5` | `base=CR_SC[0]`, `count=\|CR_SC\|` (no `−5`) | mega `b+c`, gap `b+c+1`, ar1 `b+c+2`, ar2 `b+c+3`, glob `b+c+4` |
 | DF (`kDragonfish`, v3) | same | same | same 5-slot map |
 | PF (`kPufferfish`, v4) | same | same | same 5-slot map |
 | VF (`kViperfish`, v5p) | same | same | same 5-slot map |

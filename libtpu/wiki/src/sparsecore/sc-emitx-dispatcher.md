@@ -154,7 +154,7 @@ Every row below is read from the `ConsumeScalarAluInstruction<glc::SparseCoreTac
 | `0x233,0x234` | 30 / `0x1e` | `MinOfTwoFloatingPointValues` | B | `EmitScalarBinop<…,Min…>` |
 | `0x237,0x238` | 17 / `0x11` | `ConvertFloat32ToInt32` | B | `EmitScalarUnop<…,ConvertF32ToI32>` |
 | `0x23b` | 6 | `Halt` | H | `clear_inst` → `DefaultConstruct Halt` |
-| `0x24d` | — | `delay` | A | `mutable_delay`; inline `[+24]=operand`, `[+16] |= 1`; `return OK` |
+| `0x24d` | — | `delay` | A | `mutable_delay`; inline `[+24]=operand`, `[+16] \|= 1`; `return OK` |
 | `0x254` | — | `scalar_fence` | A | `mutable_scalar_fence` |
 | `0x255` | — | `scalar_fence_scmf` | A | `mutable_scalar_fence_scmf` |
 | `0x256,0x257` | 64 / `0x40` | `ScalarFenceSelect` | B | `EmitScalarYUnop<…,ScalarFenceSelect>` |

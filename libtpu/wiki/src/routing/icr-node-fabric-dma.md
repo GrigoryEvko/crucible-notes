@@ -23,7 +23,7 @@ Three facts are the whole band, and a reimplementer must get all three right:
 | **Producer** | `ConvertTpuTraceToXPlane<pxc::…::TraceEntry>{lambda}` @`0xf26c6e0` |
 | **GetMerged ID set** | `{91, 50, 48, 51}` — packed `0x320000005B` @`0xf26c7bf`, grown `48`/`51` |
 | **`dma_id` extractor** | `TraceEntryWrapper<pxc>::GetDmaId(int)` @`0xf699ca0` (single caller) |
-| **`dma_id` width** | 38 bits = `txn_id[0:21] | (core_id&7)<<21 | (chip_id&0x3fff)<<24` |
+| **`dma_id` width** | 38 bits = `txn_id[0:21] \| (core_id&7)<<21 \| (chip_id&0x3fff)<<24` |
 | **Egress map → span** | IDs 50 + 91 → tag 3 → lane 55 "To ICI Router" / "ICI Egress" |
 | **Ingress map → span** | IDs 48 + 51 → tag 2 → lane 54 "From ICI Router" / "ICI Ingress" |
 | **Renderer** | `ConvertDmaTransfersToXPlane` @`0xf254bc0` |

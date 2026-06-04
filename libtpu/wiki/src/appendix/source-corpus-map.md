@@ -110,7 +110,7 @@ The two objects play categorically different roles, summarized here and detailed
 
 | Object | ABI surface | Linkage | What it is | Confidence |
 |---|---|---|---|---|
-| `libtpu.so` | 225-entry versioned PJRT C-ABI (`GetPjrtApi` family) | No `DT_NEEDED` on `sdk.so` | The TPU compiler + runtime: XLA/HLO, ICI collectives, the deepsea ISA backends | CERTAIN |
+| `libtpu.so` | 226-entry C-ABI (218 `@@VERS_1.0` versioned + 8 linker-set bounds; `GetPjrtApi` family) | No `DT_NEEDED` on `sdk.so` | The TPU compiler + runtime: XLA/HLO, ICI collectives, the deepsea ISA backends | CERTAIN |
 | `sdk.so` | `PyInit_sdk` (one CPython init export) | No `DT_NEEDED` on `libtpu.so` | A CPython 3.14 extension module for direct TPU/SDK interaction | CERTAIN |
 
 ---

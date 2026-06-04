@@ -24,7 +24,7 @@ For reimplementation, the contract is:
 | **DebugOptions proto** | `xla::DebugOptions`, 290 wire-fields, 17 nested enums; `DefaultDebugOptionsIgnoringFlags @ 0x1e66a860` |
 | **TCE proto** | `xla::jellyfish::TpuCompilationEnvironment`, 1121 fields, `sizeof 0x15e8`; `_table_ @ 0x21cfa9e0` |
 | **Flag→TCE bridge** | `OverrideTpuCompEnvByCmdLineFlags @ 0x1d73e640` · `SetFieldFromFlagString @ 0x1d73fcc0` · `CreateDefaultTpuCompEnv @ 0x1d73dfa0` |
-| **AUTO resolver** | `AutoOr<bool>::FromProtoOrDie @ 0xf795300` (`(present<<8)|val`); ~130 `ObjectView<TCE>` accessors `0x1d6b6420..0x1d6b9f60` |
+| **AUTO resolver** | `AutoOr<bool>::FromProtoOrDie @ 0xf795300` (`(present<<8)\|val`); ~130 `ObjectView<TCE>` accessors `0x1d6b6420..0x1d6b9f60` |
 | **AutoProto** | `xla.jellyfish.AutoProto`, 30-arm oneof, `_table_ @ 0x21cfa788`; default instance `AutoProto_globals_ @ 0x223c8968` (all-AUTO) |
 | **String parse** | `ParseAutoOrFromString<30> @ 0x1d7504c0` / `ReadAutoOr<30> @ 0x1d74ca00` |
 | **Confidence** | CONFIRMED (byte-anchored vs decompile) unless a row or callout says otherwise |
@@ -149,7 +149,7 @@ function AutoOr<bool>::FromProtoOrDie(AutoProto& p):     // 0xf795300
     return v | 0x100                                     // SET present-bit (bit8); pack (present<<8)|val
 ```
 
-The decompile of `0xf795300` confirms the `return v11 | 0x100u` packing exactly. The `AutoProto` memory layout is fixed: oneof body at struct `+0x10`, discriminator `oneof_case_` at `+0x1c` (the field number of the active arm; `0` = unset = AUTO). The packed return is type-class dependent — `(present<<8)|val8` for bool, `(present<<32)|val32` for int32/enum, `{value, has-bit}` for int64, full sub-message + has-flag for message. The all-AUTO default instance is `AutoProto_globals_ @ 0x223c8968` (oneof body and case both zero), and a null TCE field falls back to it — so an unset AutoProto knob always resolves through its consumer's polarity. The 30-arm oneof (8 hardcoded scalar arms, 11 reflection-dispatched enum arms, 12 message arms) is owned by [autoproto-message-arms.md](autoproto-message-arms.md); the resolver template and packing per type-class by [autoproto-autoor-resolution.md](autoproto-autoor-resolution.md).
+The decompile of `0xf795300` confirms the `return v11 | 0x100u` packing exactly. The `AutoProto` memory layout is fixed: oneof body at struct `+0x10`, discriminator `oneof_case_` at `+0x1c` (the field number of the active arm; `0` = unset = AUTO). The packed return is type-class dependent — `(present<<8)|val8` for bool, `(present<<32)|val32` for int32/enum, `{value, has-bit}` for int64, full sub-message + has-flag for message. The all-AUTO default instance is `AutoProto_globals_ @ 0x223c8968` (oneof body and case both zero), and a null TCE field falls back to it — so an unset AutoProto knob always resolves through its consumer's polarity. The 30-arm oneof (8 hardcoded scalar arms, 10 reflection-dispatched enum arms, 12 message arms) is owned by [autoproto-message-arms.md](autoproto-message-arms.md); the resolver template and packing per type-class by [autoproto-autoor-resolution.md](autoproto-autoor-resolution.md).
 
 ### Polarity is the default
 

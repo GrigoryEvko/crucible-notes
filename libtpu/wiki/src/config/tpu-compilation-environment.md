@@ -206,7 +206,7 @@ A small set of fields are typed `RangeSpecProto` (its own generated message clas
 
 ### The AutoProto oneof — 30 arms
 
-`xla.jellyfish.AutoProto` is a 30-arm oneof, byte-confirmed from its own parse table `AutoProto::_table_ @ 0x21cfa788`. It is the wrapper for the bulk of the message-typed TCE fields (~330): a field declared `AutoProto` can hold AUTO (unset, oneof-case 0), or any one of 30 typed alternatives. The 30 arms are 8 hardcoded scalar arms (bool/int64/uint64/int32/uint32/double/float/string), 11 enum arms, and **12 message arms** resolved to concrete sub-message types via the parse table's 12 aux pointers:
+`xla.jellyfish.AutoProto` is a 30-arm oneof, byte-confirmed from its own parse table `AutoProto::_table_ @ 0x21cfa788`. It is the wrapper for the bulk of the message-typed TCE fields (~330): a field declared `AutoProto` can hold AUTO (unset, oneof-case 0), or any one of 30 typed alternatives. The 30 arms are 8 hardcoded scalar arms (bool/int64/uint64/int32/uint32/double/float/string), 10 enum arms, and **12 message arms** resolved to concrete sub-message types via the parse table's 12 aux pointers:
 
 | Arm | Message type | Sub-message `_table_` | Governs |
 |---|---|---|---|

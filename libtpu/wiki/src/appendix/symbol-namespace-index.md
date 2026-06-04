@@ -4,7 +4,7 @@
 
 ## Abstract
 
-`libtpu.so` is a 745 MB statically-linked PJRT plugin, and — unusually for a shipped product binary — it carries a full local symbol table (`.symtab`), not just the 444-entry dynamic export table. The IDA name sidecar resolves **1,893,205 named addresses** and **884,832 functions**, of which 881,784 carry a name and 3,048 fall back to a synthetic `sub_` label. Because the names are real Itanium-mangled C++ symbols, the binary can be partitioned by its **top-level namespace** — the namespace token that immediately follows `_ZN` in each mangled symbol. That partition is what this page is: a census of *who owns how much of the function population*, by symbol count and by code byte footprint.
+`libtpu.so` is a 745 MB statically-linked PJRT plugin, and — unusually for a shipped product binary — it carries a full local symbol table (`.symtab`), not just the 226 defined dynamic exports in its 741-entry `.dynsym`. The IDA name sidecar resolves **1,893,205 named addresses** and **884,832 functions**, of which 881,784 carry a name and 3,048 fall back to a synthetic `sub_` label. Because the names are real Itanium-mangled C++ symbols, the binary can be partitioned by its **top-level namespace** — the namespace token that immediately follows `_ZN` in each mangled symbol. That partition is what this page is: a census of *who owns how much of the function population*, by symbol count and by code byte footprint.
 
 The reference frame is the rest of the XLA/TPU stack a reader already knows. `libtpu.so` is the whole compiler-plus-runtime collapsed into one shared object: the MLIR/LLVM compiler core, the XLA HLO middle-end, the TensorFlow op bridge, the Eigen kernel library, the Abseil/protobuf/gRPC support layer, and — uniquely — the closed `asic_sw` driver stack that talks to the silicon. The ranking below makes the proportions concrete: MLIR alone is 31% of all named functions, the four compiler namespaces (mlir, xla, llvm, tensorflow) plus the driver (asic_sw) are over 70%, and everything Google-internal-but-generic (absl, tsl, protobuf, gRPC, tcmalloc) is a single-digit-percent tail.
 
@@ -24,7 +24,7 @@ For a reimplementer, the contract this page satisfies is:
 | **Functions** | 884,832 total — 881,784 named, 3,048 anonymous (`sub_`) |
 | **Resolved function bytes** | 299,035,160 (sum of function `size`) |
 | **Main `.text`** | 314,422,404 bytes at `0xe63c000`; all CODE segments 342,157,540 bytes |
-| **Dynamic exports / imports** | 444 / 907 (`.dynsym`) |
+| **Dynamic exports / imports** | 226 / 515 (`.dynsym`, 741 entries total incl. null) |
 
 ---
 

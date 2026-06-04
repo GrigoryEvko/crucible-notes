@@ -167,7 +167,7 @@ Decompiled (lines 49-76): `pred << 35` (clear `0xFFFFFF07FFFFFFFF`), `mxu_id << 
 | predicate | `EncodePredication & 0x1F` | 35 | 5 | CONFIRMED |
 | opcode | (6-bit `VectorExtendedOpcode`) | 29..34 | 6 | CONFIRMED |
 | mxu-id | `[instr+0x64] & 3` | 27..28 | 2 | CONFIRMED |
-| has-bit | `| 0x20000000` | 29 | 1 | CONFIRMED |
+| has-bit | `\| 0x20000000` | 29 | 1 | CONFIRMED |
 | operands | `[instr+0x6C]` | `<<46`/`<<15` into the `0x16` window; byte `0x14` `<<11` | — | HIGH |
 
 The opcode clear-mask `0xFFFFFFF81FFFFFFF` here is the *same* mask the decoder uses to extract the 6-bit opcode at abs 29..34, so the encode and decode sides agree bit-for-bit; this gives the MXU opcode/mxu-id/predicate fields CERTAIN-grade cross-confirmation. The opcode space is `{matmul 0..6, latch/PushGains 7..12, transpose/RPU 13..34}`; see [MXU Slot](slot-mxu.md) and [Decode-Side: JF / PF](decode-side-jf-pf.md) for the full roster and the two-level jump-table decode.
@@ -189,7 +189,7 @@ The destination register's bit position is selected by the `which_destination` s
 |---|---|---|---|---|
 | predicate | `& 0x1F` `<<58` | 58 | 5 | CONFIRMED |
 | opcode (addr-mode) | `[instr+0x50] & 3` `<<56` | 56 | 2 | CONFIRMED |
-| has-bit | `[instr+0x60]!=0` → `| (1<<40)` | 40 | 1 | CONFIRMED |
+| has-bit | `[instr+0x60]!=0` → `\| (1<<40)` | 40 | 1 | CONFIRMED |
 | destVreg | `[instr+0x64] & 0x1F` `<<51` | 51 | 5 | CONFIRMED |
 | stride | `[instr+0x54] & 7` `<<48` | 48 | 3 | CONFIRMED |
 | offset | `[instr+0x58] & 3` `<<46` | 46 | 2 | CONFIRMED |

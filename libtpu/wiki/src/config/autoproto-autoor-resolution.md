@@ -35,7 +35,7 @@ For reimplementation, the contract is:
 
 ### Purpose
 
-`AutoProto` is the storage cell for one tri-state knob. It is a protobuf message with exactly one `oneof` (named `"value"`), whose 30 arms cover every value type a TCE knob can carry — 8 scalar types, 11 enums, and 12 sub-messages. An active arm holds the explicit user value; an inactive oneof (`oneof_case_ == 0`) means the knob was left at `AUTO`. The TCE holds these as `AutoProto*` pointer fields, one per tri-state knob (~330 of the 1121 TCE fields). The resolver reads the layout below; the 30-arm dispatch and the sub-message arms are owned by [autoproto-message-arms.md](autoproto-message-arms.md).
+`AutoProto` is the storage cell for one tri-state knob. It is a protobuf message with exactly one `oneof` (named `"value"`), whose 30 arms cover every value type a TCE knob can carry — 8 scalar types, 10 enums, and 12 sub-messages. An active arm holds the explicit user value; an inactive oneof (`oneof_case_ == 0`) means the knob was left at `AUTO`. The TCE holds these as `AutoProto*` pointer fields, one per tri-state knob (~330 of the 1121 TCE fields). The resolver reads the layout below; the 30-arm dispatch and the sub-message arms are owned by [autoproto-message-arms.md](autoproto-message-arms.md).
 
 ### Memory Layout
 

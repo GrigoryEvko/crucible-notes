@@ -76,14 +76,14 @@ The constant `0x400000800000000` has exactly two set bits — bit 35 and bit 58 
 
 | Slot | Predicate abs bit | Prefill store | Confidence |
 |---|---:|---|---|
-| Scalar 0 | 317 | `[struct+0x2D] |= 31<<53` | CONFIRMED |
-| Scalar 1 | 290 | `[struct+0x2D] |= 31<<26` | CONFIRMED |
+| Scalar 0 | 317 | `[struct+0x2D] \|= 31<<53` | CONFIRMED |
+| Scalar 1 | 290 | `[struct+0x2D] \|= 31<<26` | CONFIRMED |
 | VALU lane 0 | 147 | `[struct+0x1D] = 31<<11` | CONFIRMED |
 | VALU lane 1 | 116 | `[struct+0x1A] = 0x1F0` | CONFIRMED |
-| Vector load | 58 | `[struct+0x0C] |= 31·0x400000800000000` (bit 58) | CONFIRMED |
-| MXU | 35 | `[struct+0x0C] |= 31·0x400000800000000` (bit 35) | CONFIRMED |
-| Vector result | 22 | `[struct+0x0C] |= 31<<22` | CONFIRMED |
-| Misc | 13 | `[struct+0x0C] |= 31<<13` | CONFIRMED |
+| Vector load | 58 | `[struct+0x0C] \|= 31·0x400000800000000` (bit 58) | CONFIRMED |
+| MXU | 35 | `[struct+0x0C] \|= 31·0x400000800000000` (bit 35) | CONFIRMED |
+| Vector result | 22 | `[struct+0x0C] \|= 31<<22` | CONFIRMED |
+| Misc | 13 | `[struct+0x0C] \|= 31<<13` | CONFIRMED |
 
 ### Pufferfish — `FillDefaultBundle`
 

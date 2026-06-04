@@ -96,7 +96,7 @@ function GetDistances(this, src, dst):                   // 0x20b420e0
 
 The result is a *set of equal-minimum-distance routes*, not a single distance. `best` starts at `INT32_MAX` (`0x20b4242e`); a strictly smaller norm resets `routes` to a one-element vector, an equal norm sorted-inserts via `Coordinates::operator<` (lexicographic, `0x20c0ba40`). The final `vector<Coordinates>` is therefore sorted and deduplicated by displacement.
 
-| `|routes|` | Vertex class | Shape | Consumer |
+| `\|routes\|` | Vertex class | Shape | Consumer |
 |---|---|---|---|
 | `6` | symmetric mid | `k*k*2k` | [`get-tiebreak`](../twist/get-tiebreak.md) corner/edge/mid dispatch |
 | `4` | corner | `k*2k*2k` | (same) |
@@ -111,7 +111,7 @@ The result is a *set of equal-minimum-distance routes*, not a single distance. `
 |---|---|---|---|
 | `TwistedTorusTopology::GetDistances` | `0x20b420e0` | Candidate-set generator (vtable `+0xc0`) | CERTAIN |
 | `TwistedTorusTopology::GetDistanceFromOrigin` | `0x20b42980` | Per-axis toroidal-with-twist distance | CERTAIN |
-| `Coordinates::ManhattanNorm` | `0x20c0ba00` | `Σ|coord|` (vpabsd + horizontal add) | CERTAIN |
+| `Coordinates::ManhattanNorm` | `0x20c0ba00` | `Σ\|coord\|` (vpabsd + horizontal add) | CERTAIN |
 | `Coordinates::operator<` | `0x20c0ba40` | Lexicographic order for the sorted set | CERTAIN |
 | `Coordinates::Subtract` | `0x20c0bfc0` | Plain mesh delta before normalization | CERTAIN |
 | `Topology::CheckBoundary` | `0x20bf5800` | In-bounds guard on src and dst | CERTAIN |
@@ -258,7 +258,7 @@ function GetDistance(this, src, dst):                    // 0x20b408e0, vtable+0
 |---|---|---|
 | `GetStaticPath` | `GetDistance` (vtable `+0xb8`), the single min-norm distance, then packs hops | [get-static-path](get-static-path.md) |
 | `RandomizedToroidalWildFirstPaths` | the torus-reduced distance, then a fault-avoiding multi-path search | [randomized-toroidal-wildfirst](randomized-toroidal-wildfirst.md) |
-| twist tiebreaker | `|GetDistances result|` as the corner/edge/mid vertex class | [twist/get-tiebreak](../twist/get-tiebreak.md) |
+| twist tiebreaker | `\|GetDistances result\|` as the corner/edge/mid vertex class | [twist/get-tiebreak](../twist/get-tiebreak.md) |
 | route cache | the distance-vector value stored per `(src,dst)` chip-id pair | [toroidal-route-cache](toroidal-route-cache.md) |
 
 `GetDistances` produces the *set*; the consumers each reduce it to one route by a different policy — deterministic DOR (`GetStaticPath`), fault-avoiding search (`WildFirst`), or a precomputed lookup (the cache). The seam-and-wrap math is shared by all three; only the selection differs.

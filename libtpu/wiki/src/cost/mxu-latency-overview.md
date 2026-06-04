@@ -101,7 +101,7 @@ The modifier key is the compression of an MXU op down to the small set of attrib
 | matmul | 230 (also 212→fmt1, 218→fmt2) | `MatmulModifier` | byte[0] = format (6 for the plain matmul case), byte[1..] = 0 | `this+0x20` |
 | matpush / matprep | 267 | `MatpushModifier` | byte[0]=`GainLatchModeToMatmulDataFormat(latch_mode)`, byte[1..2]=`LatchModeIsTranspose(latch_mode)`, byte[3]=`LatchOpcodeToMsr(0x8F)` | `this+0x00` |
 | matpush (xpose pass) | 271 | `MatpushModifier` | as above, with `latch_mode ^= 0xB` (XOR-flip selects the transposed staging path) | `this+0x00` |
-| matpush (wide pass) | 277 | `MatpushModifier` | as above, with `latch_mode |= 0x14` (OR-set selects the x8/wide bucket) | `this+0x00` |
+| matpush (wide pass) | 277 | `MatpushModifier` | as above, with `latch_mode \|= 0x14` (OR-set selects the x8/wide bucket) | `this+0x00` |
 | matres | (matres opcode) | `MatresModifier` | result-chunk index | matres map |
 | vlxmr | (vlxmr opcode) | `VlxmrModifier` | latch-into-MRB variant | vlxmr map |
 
