@@ -82,7 +82,7 @@ field 113  xla_dump_hlo_as_proto : bool
        → xla_dump_hlo_as_proto()      reads the value (zero if unset)
 ```
 
-The 12 non-`optional` fields are 9 repeated-scalar/enum, 1 repeated message, and 2 map fields (§4). Repeated/map fields have list/map presence (size), not a has-bit.
+The 12 non-`optional` fields are 10 repeated-scalar/enum (4 `repeated string`, 6 `repeated enum`) and 2 map fields (§4) — there is no standalone (non-map) repeated message field. Repeated/map fields have list/map presence (size), not a has-bit.
 
 > **NOTE —** this presence model is *why* `GetNonDefaultDebugOptions` @ `0x1c920540` and `DumpNonDefaultDebugOptions` @ `0x1c920d80` exist: they diff a populated DebugOptions against the all-default baseline (`DefaultDebugOptionsIgnoringFlags` @ `0x1e66a860`) using the has-bits to emit only the fields the user actually changed. A reimplementer that drops proto3-optional presence loses the "what did the user touch" signal these functions rely on.
 
@@ -373,4 +373,4 @@ Gaps (field numbers absent, 1..501):
 - [xla-flag-atlas.md](xla-flag-atlas.md) — the ~2107-name flag surface; which flags (the 2) set DebugOptions fields vs the 1328 that land in the TCE
 - [default-debugoptions.md](default-debugoptions.md) — the `DefaultDebugOptionsIgnoringFlags @ 0x1e66a860` effective-default values (this page owns the schema; that page owns the defaults)
 - [tpu-compilation-environment.md](tpu-compilation-environment.md) — the 1121-field TCE that wraps DebugOptions for the TPU compile path
-- [autoproto-autoor-resolution.md](autoproto-autoor-resolution.md) — the `AutoOr<T>` tri-state resolver used by the TCE (DebugOptions itself has no AutoProto fields — all 278 scalars are plain proto3-optional)
+- [autoproto-autoor-resolution.md](autoproto-autoor-resolution.md) — the `AutoOr<T>` tri-state resolver used by the TCE (DebugOptions itself has no AutoProto fields — all 278 singular fields are plain proto3-optional)
