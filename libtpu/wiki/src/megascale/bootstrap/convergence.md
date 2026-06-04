@@ -46,8 +46,9 @@ Transitions:
 
 Field `+0x88` of `Coordinator<>` is a
 `std::vector<AnyInvocable<void(StatusOr<Resp> const&)>>` (each entry
-is 16 bytes — 8 bytes function pointer / payload + 8 bytes manager
-pointer, matching libc++'s `AnyInvocable` SSO layout). Workers
+is 32 bytes — the slow-path helper and the inline push both stride by
+`0x20`; the entry holds the `absl::AnyInvocable` invoker pointer,
+manager pointer, and the type-erased state buffer). Workers
 arrive asynchronously; when the coordinator is still in state 0/1,
 each handler pushes its `cb` into this vector and returns immediately
 without responding over gRPC. The gRPC framework holds the request
@@ -77,9 +78,9 @@ Specifically: when `CommunicationBackend::DiscoverTopologyAnd
 AddressBindings` is called on the coordinator process itself, the
 runtime takes a fast path that calls
 `topology_coordinator_->AddRequest(...)` synchronously (no gRPC) and
-then awaits the response. Other in-process consumers (e.g. the
-debug surface that emits `MegaScaleTopologyCoordinator`-related
-streamz counters) may also wait on this Notification.
+then awaits the response. Any other in-process consumer that needs to
+block until the rendezvous completes can wait on this same
+Notification.
 
 For gRPC clients the Notification is not relevant — the callback
 fan in `callbacks_` is the signalling mechanism.
@@ -87,33 +88,43 @@ fan in `callbacks_` is the signalling mechanism.
 ## `ScheduleStatusReport`
 
 When the coordinator transitions from state 0 → 1, it arms a
-periodic alarm via the threadpool / fiber executor. The relevant
-code path is at `0x1ccb4670..0x1ccb46b1` in the Barrier
-`AddRequest`:
+periodic alarm via the fiber executor. In the Barrier `AddRequest`
+(`0x1ccb42a0`) the state byte is set at `0x1ccb4654`
+(`movb $0x1,0x58(%r14)`), the executor is fetched at `0x1ccb4677`
+(`call thread::DefaultFiberExecutor`), the deadline is computed at
+`0x1ccb4696` (`call absl::Duration::operator+=`), and the alarm is
+armed at `0x1ccb46c9` (`call thread::AddCancellableAt`):
 
 ```cpp
-if (state_ == 0) {
+if (state_ == 0) {                                 // 0x1ccb4654
   state_ = 1;
-  thread::Executor* exec = thread::DefaultFiberExecutor();
-  absl::Time now = absl::Now();
-  absl::Time deadline = now + absl::Seconds(1);  // increment in
-                                                  // 0x1ccb4694
-  ScheduleAt(exec, deadline,
-             [this] { this->ScheduleStatusReport(); });
+  thread::Executor* exec = thread::DefaultFiberExecutor();   // 0x1ccb4677
+  absl::Time deadline = absl::Now();
+  deadline += /* ~1s */;                           // operator+= @0x1ccb4696
+  thread::AddCancellableAt(exec, deadline,         // 0x1ccb46c9
+                           [this] { this->ScheduleStatusReport(); },
+                           &alarm_handle_ /* this+0xb0 */);
 }
 ```
 
-The body of the `ScheduleStatusReport` lambda (visible at
-`Coordinator<...>::ScheduleStatusReport()::{lambda(...)#1}` —
-typeinfo at `0x21c33908` slot) calls back into the derived
-`ReportStatus()` (vtable `+0x40` on the derived class) and then
-re-arms itself unless the state is now 2 or 3.
+The arming step is gated by `IsComplete()` (the `(*vtable+40)(this)`
+call just before it): the alarm is only scheduled if the rendezvous
+is not already complete.
 
-The effective cadence is set inside `Executor::ScheduleAt` —
-`absl::Seconds(1)` initialises the first deadline; subsequent
-re-arms typically scale up via the executor's internal backoff to
-avoid log floods. The observed cadence in production logs is on
-the order of seconds to a minute.
+The body of the `ScheduleStatusReport` lambda
+(`Coordinator<...>::ScheduleStatusReport()::{lambda()#1}::operator()`
+at `0x1ccb4ea0` for the Barrier instantiation) first invokes the
+derived `ReportStatus()` through vtable slot `+0x38`
+(`(*vtable+56)(this)`), then re-checks `IsComplete()` (vtable slot
+`+0x28`, `(*vtable+40)(this)`); if the rendezvous is still
+incomplete it re-arms itself via the same `thread::AddCancellableAt`
+path, re-targeting the alarm handle at `this+0xb0`.
+
+The re-arm interval is a fixed constant — every re-arm uses the same
+`absl::Duration::operator+=` increment (≈1 s) seen at the initial
+arm; there is no exponential backoff. The loop terminates the first
+time `IsComplete()` returns true, at which point no further alarm is
+scheduled.
 
 ## `TopologyCoordinator::ReportStatus`
 
@@ -150,19 +161,22 @@ void BarrierCoordinator::ReportStatus() const {
     LOG(INFO) << "MegaScale Barrier completed.";   // 0xa0a3986
     return;
   }
-  size_t seen = seen_set_.size();                  // +0xe0 size
-  int num_workers = this->num_workers_;            // +0xd0
-  std::string seen_hosts = GetSeenHosts();
+  size_t seen = *(uint64_t*)(this+0xe0) >> 17;     // SwissMap size: field>>17
+  int num_workers = this->num_workers_;            // +0xd0 (32-bit)
+  std::string seen_hosts = GetSeenHosts();         // 0x1cf55280
   LOG(INFO) << "MegaScale Barrier in progress. Seen " << seen
             << " of " << num_workers
             << " expected participants. Seen hosts: " << seen_hosts;
 }
 ```
 
-The instructions at `0x213b7d5b..0x213b7daf` load
-`seen_set_.size()` (a SwissMap size) and `num_workers_` from
-`+0xd0`, then concatenate via `LogMessage::ls<size_t>` and
-`LogMessage::ls<int>`.
+The seen count is not a method call: at `0x213b7d5b` the code does
+`mov 0xe0(%rbx),%rax` then `shr $0x11,%rax` at `0x213b7d62` — the raw
+SwissMap header field at `+0xe0` shifted right by 17, the same
+`size>>17` idiom `IsComplete` uses. `num_workers_` is loaded as a
+32-bit value at `0x213b7d8d` (`mov 0xd0(%rbx),%eax`). The two values
+are streamed through `LogMessage::operator<<<unsigned long>` and
+`LogMessage::operator<<<int>` respectively.
 
 ## Why convergence is single-shot
 
