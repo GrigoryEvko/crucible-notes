@@ -4,38 +4,38 @@
 
 ## Abstract
 
-libtpu registers roughly **2048 `absl::Flag<T>` globals**, and 2107 distinct flag *names* survive in `.rodata` once deprecated aliases and error-message-only references are folded in. Every one of them is settable through a single funnel — `LIBTPU_INIT_ARGS` parsed by `absl::ParseCommandLine` — so the flag surface is, in effect, libtpu's entire command line. This page is the **grouped atlas** of that surface: not a flat 2107-row dump (that would be the anti-pattern this wiki exists to avoid) but a per-family taxonomy with per-subsystem deep-dives into the ~100 highest-signal knobs, each tagged with its inferred type, the proto field it backs where known, and a confidence label.
+libtpu registers exactly **2048 `absl::Flag<T>` globals** (the `AbslFlagHelpGenFor<name>` symbol count). Every one of them is settable through a single funnel — `LIBTPU_INIT_ARGS` parsed by `absl::ParseCommandLine` — so the flag surface is, in effect, libtpu's entire command line. This page is the **grouped atlas** of that surface: not a flat 2048-row dump (that would be the anti-pattern this wiki exists to avoid) but a per-family taxonomy with per-subsystem deep-dives into the ~100 highest-signal knobs, each tagged with its inferred type, the proto field it backs where known, and a confidence label.
 
 The reference frame is XLA's own flag system. The non-TPU `xla_*` flags are fields of `xla::DebugOptions`, registered by `xla::MakeDebugOptionsFlags @ 0x1e66ce80` (confirmed: it takes a `vector<tsl::Flag>*` and a `DebugOptions*` and binds each field to a `--xla_foo` flag). The TPU-private families (`xla_tpu_*`, `xla_jf_*`, `xla_sc_*`, `megascale_*`, `barna_core_*`) are standalone `absl::Flag` globals whose values land in `TpuCompilationEnvironment` (TCE) via `OverrideTpuCompEnvByCmdLineFlags @ 0x1d73e640`, *not* in DebugOptions. Which proto a name lands in is the single most consequential structural fact for a reimplementer; that taxonomy is owned by [flag-families.md](flag-families.md) and the protos by [debugoptions-proto.md](debugoptions-proto.md) and [tpu-compilation-environment.md](tpu-compilation-environment.md). This page owns the **catalog**: the grouped name space and per-flag type/effect.
 
-The authoritative name enumeration is the mangled helper-symbol set: every `absl::Flag<T> FLAGS_<name>` emits an `_ZN<len>AbslFlagHelpGenFor<name>8NonConstEv` symbol, so that symbol set is a 1:1 census of registered flags (length-prefix parsing recovers each `<name>` exactly). All 12 names spot-checked for this page resolve to an `AbslFlagHelpGenFor<name>` symbol in the binary. **Types are convention-inferred** for ~99% of flags (the `enable_/use_/allow_` ⇒ bool, `_ms/_kib/_count` ⇒ int, `_ratio/_factor` ⇒ float, `_file/_path` ⇒ string, `_mode/_level` ⇒ enum heuristic XLA itself uses to register them); only **18 defaults and types are byte-evidenced** from `=value` clauses in error strings. Treat every type and default below as `HIGH` unless a row says `CERTAIN` (byte-evidenced) or `LOW` (ambiguous suffix).
+The authoritative name enumeration is the mangled helper-symbol set: every `absl::Flag<T> FLAGS_<name>` emits an `_ZN<len>AbslFlagHelpGenFor<name>8NonConstEv` symbol, so that symbol set is a 1:1 census of registered flags (length-prefix parsing recovers each `<name>` exactly); `nm | rg -o 'AbslFlagHelpGenFor...8NonConstEv' | sort -u | wc -l` returns 2048. Every catalogued name on this page resolves to an `AbslFlagHelpGenFor<name>` symbol in the binary. **Types are convention-inferred** for ~99% of flags (the `enable_/use_/allow_` ⇒ bool, `_ms/_kib/_count` ⇒ int, `_ratio/_factor` ⇒ float, `_file/_path` ⇒ string, `_mode/_level` ⇒ enum heuristic XLA itself uses to register them); only a handful of defaults and types are byte-evidenced — most from `=value` clauses in error strings, plus `xla_tpu_embedding_table_oblongness_threshold` recovered from its `AbslFlagDefaultGenFor` initializer. Treat every type and default below as `HIGH` unless a row says `CERTAIN` (byte-evidenced) or `LOW` (ambiguous suffix).
 
 For navigation, the contract is:
 
 - **The family taxonomy** — prefix → owning proto → count, so a reader knows where a name's field lives before chasing it.
 - **The per-subsystem high-signal catalog** — the ~100 flags a reimplementer of the TPU pipeline actually needs, grouped by scheduler / fusion / MSA / collectives / SparseCore / layout / numerics / autotune / debug / runtime.
-- **The certainty boundary** — which 18 rows are byte-confirmed, and the err-string direction-of-default trap on the rest.
+- **The certainty boundary** — which rows are byte-confirmed, and the err-string direction-of-default trap on the rest.
 
 | | |
 |---|---|
-| **Name census** | ~2048 registered `absl::Flag`; 2107 distinct rodata names |
+| **Name census** | 2048 registered `absl::Flag` (`AbslFlagHelpGenFor*` symbols, `sort -u`) |
 | **Enumeration symbol** | `_ZN<len>AbslFlagHelpGenFor<name>8NonConstEv` (1 per flag) |
 | **DebugOptions registrar** | `xla::MakeDebugOptionsFlags @ 0x1e66ce80` (binds `xla_*` fields) |
 | **TCE flag→field bridge** | `OverrideTpuCompEnvByCmdLineFlags @ 0x1d73e640` (TPU families) |
 | **Funnel** | `LIBTPU_INIT_ARGS` (str @ file `0x918c880`) → `absl::ParseCommandLine` |
-| **Type split (all 2107)** | bool 1431 (68%) · int 434 (21%) · string 93 · float 79 · enum 70 |
-| **Byte-confirmed types/defaults** | 18 (from `=value` error strings); the rest convention-inferred |
+| **Type split (inferred, all 2048)** | ≈ bool 68% · int 21% · string · float · enum (suffix-convention, not byte-typed) |
+| **Byte-confirmed types/defaults** | ~18 (most from `=value` error strings; oblongness from `AbslFlagDefaultGenFor`) |
 | **Confidence** | HIGH (convention-inferred) unless a row says CERTAIN (byte-evidenced) or LOW |
 
 ---
 
 ## 1. Family Taxonomy — At a Glance
 
-The prefix is the routing key: it decides which proto consumes the flag and which compiler/runtime subsystem owns its semantics. The counts below are the de-duplicated 2107-name union. The `Lands in` column is the load-bearing distinction — `xla_tpu_*` are **not** DebugOptions fields, a trap [overview.md](overview.md) §3 flags as the GOOD/BAD divide.
+The prefix is the routing key: it decides which proto consumes the flag and which compiler/runtime subsystem owns its semantics. The counts below are per-prefix `AbslFlagHelpGenFor*` symbol counts and sum to the 2048 registered total. The `Lands in` column is the central distinction — `xla_tpu_*` are **not** DebugOptions fields, a trap [overview.md](overview.md) §3 flags as the GOOD/BAD divide.
 
 | Family | Count | Type-dominant | Lands in | Subsystem owner |
 |---|---:|---|---|---|
-| `xla_tpu_*` | 968 | bool 701 / int 180 / float 36 | TCE (standalone) | TPU compiler + runtime |
+| `xla_tpu_*` | 909 | bool / int / float | TCE (standalone) | TPU compiler + runtime |
 | `(other)` | 412 | mixed | n/a (vendored libs) | absl / grpc / protobuf / OR-tools |
 | `megascale_*` | 150 | bool 73 / int 47 / str 14 | standalone `absl::Flag` | DCN collective runtime |
 | `xla_jf_*` | 148 | bool 109 / int 23 | TCE | Jellyfish XLA backend |
@@ -58,7 +58,7 @@ The `xla_tpu_*` family — the bulk of the surface — itself splits across the 
 
 | `xla_tpu_*` subsystem | Count | Deep-dive |
 |---|---:|---|
-| misc / uncategorized | 288 | (long tail; not catalogued individually) |
+| misc / uncategorized | 229 | (long tail; not catalogued individually) |
 | ICI / collectives | 174 | [§5](#5-collectives--ici-174-xla_tpu_) |
 | fusion | 101 | [§3](#3-fusion-101-xla_tpu_) |
 | debug / dump / log | 77 | [§9](#9-debug--dump--log--trace) |
@@ -181,7 +181,7 @@ MSA controls where buffers live (VMEM / CMEM / HBM), how async copies prefetch a
 | `xla_tpu_allocate_scoped_vmem_at_same_offset` | bool | scoped VMEM offset reuse | HIGH |
 | `xla_tpu_allocate_scoped_cmem_at_same_offset` | bool | scoped CMEM offset reuse | HIGH |
 | `xla_tpu_allow_in_cmem_copy` | bool | permit copies into CMEM | HIGH |
-| `xla_tpu_allow_all_reduce_use_in_cmem` | bool | AR result in CMEM | HIGH |
+| `xla_tpu_scoped_cmem_for_all_reduce` | bool | scoped CMEM for all-reduce | HIGH |
 | `xla_tpu_vmem_scavenging_mode` | enum | VMEM scavenger policy | LOW |
 | `xla_tpu_vmem_use_telamalloc` | bool | telamalloc VMEM allocator | HIGH |
 | `xla_tpu_scoped_vmem_limit_kib` | int | scoped-VMEM byte budget (KiB) | HIGH |
@@ -268,14 +268,14 @@ Two families serve the SparseCore (SC) embedding path: `xla_sc_*` (92) are the S
 | `xla_tpu_enable_offloading_gather_to_sparsecore` | bool | **false** | gather offload to SC | CERTAIN |
 | `xla_tpu_enable_offloading_scatter_to_sparsecore` | bool | **false** | scatter offload to SC | CERTAIN |
 | `xla_tpu_enable_sc_log_recorder` | bool | **true** | SC log recorder | CERTAIN |
-| `xla_tpu_embedding_table_oblongness_threshold` | int | **1** | embedding-table oblongness cutoff | CERTAIN |
+| `xla_tpu_embedding_table_oblongness_threshold` | float | **50.0** | embedding-table oblongness cutoff | CERTAIN |
 | `xla_tpu_enable_sc_sdc_checker` | bool | (unrec) | SparseCore SDC checker | HIGH |
 | `xla_tpu_aggregate_data_dependent_sc_ops` | bool | (unrec) | data-dependent SC aggregation | HIGH |
 | `xla_sc_enable_instruction_fusion` | bool | (unrec) | SC instruction fusion | HIGH |
 | `xla_sc_enable_latency_hiding_scheduler` | bool | (unrec) | SC LHS | HIGH |
 | `xla_sc_enable_tile_overlays` / `_scs_overlays` | bool | (unrec) | tile / SCS overlays | HIGH |
 | `xla_sc_enable_stack_eliding` | bool | (unrec) | stack eliding | HIGH |
-| `xla_sc_hbm_optimization_mode` | enum | (unrec) | SC HBM optimization mode | LOW |
+| `xla_sc_enable_hbm_optimization_mode` | enum | (unrec) | SC HBM optimization mode | LOW |
 | `xla_sc_detect_nan` | bool | (unrec) | SC NaN detection | HIGH |
 | `xla_sc_assert_level` | enum | (unrec) | SC assertion level | LOW |
 | `xla_sc_dump_llvm_ir_to` | string | (unrec) | dump SC LLVM IR | HIGH |
@@ -395,7 +395,7 @@ Allocation knobs (27 `xla_tpu_` + generic) control OOM handling, HBM/VMEM/SMEM s
 
 ### Purpose
 
-24 `xla_tpu_autofdo_*` flags drive profile-guided optimization: fingerprint-keyed loading of pre-tuned flags, layouts, schedules, and shardings, plus the FlagNet predictor. AutoFDO is a fingerprint→tuning cache: a module's fingerprint keys a stored set of decisions that bypass the live cost models.
+23 `xla_tpu_autofdo_*` flags drive profile-guided optimization: fingerprint-keyed loading of pre-tuned flags, layouts, schedules, and shardings, plus the FlagNet predictor. AutoFDO is a fingerprint→tuning cache: a module's fingerprint keys a stored set of decisions that bypass the live cost models.
 
 ### Catalog — AutoFDO
 
@@ -403,9 +403,9 @@ Allocation knobs (27 `xla_tpu_` + generic) control OOM handling, HBM/VMEM/SMEM s
 |---|---|---|---|
 | `xla_tpu_autofdo` | bool | AutoFDO master gate | HIGH |
 | `xla_tpu_autofdo_profile_file` | string | profile file path | HIGH |
-| `xla_tpu_autofdo_load_fingerprint` | string | fingerprint to load | HIGH |
+| `xla_tpu_autofdo_load_module_layout_fingerprint` | string | per-module layout fingerprint | HIGH |
 | `xla_tpu_autofdo_load_module_flag_fingerprint` | string | per-module flag fingerprint | HIGH |
-| `xla_tpu_autofdo_module_flags` / `_module_dots` | bool | apply flag / dot tunings | HIGH |
+| `xla_tpu_autofdo_module_flags` / `_module_layouts` | bool | apply flag / layout tunings | HIGH |
 | `xla_tpu_autofdo_flagnet` | enum | FlagNet predictor mode | LOW |
 | `xla_tpu_autofdo_flagnet_confidence_threshold` | int | FlagNet confidence cutoff | HIGH |
 | `xla_tpu_autofdo_hlo_module_size_threshold` | int | size threshold for AutoFDO | HIGH |
@@ -418,11 +418,11 @@ Allocation knobs (27 `xla_tpu_` + generic) control OOM handling, HBM/VMEM/SMEM s
 
 The entire catalog above rests on two extraction methods with different trust levels, and a reimplementer must respect the seam.
 
-**Names — `CERTAIN`.** The 2048 registered names come from the `AbslFlagHelpGenFor<name>` mangled-symbol set, which is a 1:1 enumeration of `absl::Flag` globals. The 12 names spot-checked for this page all resolved. The 59 rodata-only names (deprecated aliases / error-message references) are the soft edge of the 2107 union.
+**Names — `CERTAIN`.** The 2048 registered names come from the `AbslFlagHelpGenFor<name>` mangled-symbol set, which is a 1:1 enumeration of `absl::Flag` globals (`sort -u | wc -l` = 2048). Every name catalogued on this page resolves to such a symbol. Additional flag-like strings appear in `.rodata` (deprecated aliases / error-message references) but are not registered flags; they are not counted in the 2048 and are out of scope here.
 
 **Types — `HIGH`, mostly inferred.** Only the suffix convention (XLA's own registration convention) types ~99% of flags. The ambiguous suffixes (`_threshold` int-or-float, `_mode`/`_level` int-enum-or-string) are marked `LOW` per row. Byte-confirming a type needs the `absl::Flag<T>` template argument from the `FLAGS_<name>` symbol's RTTI — not done here.
 
-**Defaults — only 18 are `CERTAIN`.** They come from `=value` clauses in help/error strings; everything else lives in `.text` initializers (`xla::DefaultDebugOptions()` and the per-flag `FLAGS_*` static ctors) not recoverable from strings. The full byte-evidenced set:
+**Defaults — only 18 are `CERTAIN`.** Most come from `=value` clauses in help/error strings; `xla_tpu_embedding_table_oblongness_threshold` is recovered directly from its `AbslFlagDefaultGenFor` initializer (`movl $0x42480000` = `50.0f` @ `0x1d7068c0`), which overrides the `=1` workaround value its error string suggests. Everything else lives in `.text` initializers (`xla::DefaultDebugOptions()` and the per-flag `FLAGS_*` static ctors) not recoverable from strings. The full byte-evidenced set:
 
 | Flag | Default | Confidence |
 |---|---|---|
@@ -439,7 +439,7 @@ The entire catalog above rests on two extraction methods with different trust le
 | `xla_tpu_enable_offloading_gather_to_sparsecore` | false | CERTAIN |
 | `xla_tpu_enable_offloading_scatter_to_sparsecore` | false | CERTAIN |
 | `xla_tpu_impure_oom_fast_exit_threshold` | -1 (off) | CERTAIN |
-| `xla_tpu_embedding_table_oblongness_threshold` | 1 | CERTAIN |
+| `xla_tpu_embedding_table_oblongness_threshold` | 50.0 (float) | CERTAIN |
 | `xla_enable_megacore_hbm_spill` | true | CERTAIN |
 | `xla_jf_debug_level` | 2 | CERTAIN |
 | `xla_jf_run_verifier` | false | CERTAIN |
