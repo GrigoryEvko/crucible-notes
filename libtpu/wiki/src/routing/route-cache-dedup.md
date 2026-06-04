@@ -15,7 +15,7 @@ For reimplementation, the contract is:
 - **The key** — `RouteCacheIdentifier{ vector<int> dim_sizes; bool is_twisted; optional<proto::Orientation> orientation }`, hashed via an Abseil `combine<vector<int>, bool, optional<Orientation>>` with `is_twisted` hashed *inverted* (`^ 1`).
 - **`Find`** — a `FlatHashMap` lookup that, on hit, copies out the matched slot's canonical `RouteCacheIdentifier` *and* the value `vector<Orientation>` rotation; on miss returns a not-found flag.
 - **`UpdateDeduplicator`** — for each topology string in a set, `ParseTopologyString` it, then `Insert` four variants (X/Y/Z + NONE) so all rotations register against one canonical entry.
-- **The three sets** — `kRouteCacheSet` (base, eight twisted shapes), `k6acc60406RouteCacheSet`, `kViperfishRouteCacheSet`. The no-arg singleton loads only the base set; the `6acc60406` (ghostfish) and viperfish singletons each load the base set **plus** their codename-specific set.
+- **The three sets** — `kRouteCacheSet` (base, eight twisted shapes), `k6acc60406RouteCacheSet`, `kViperfishRouteCacheSet`. The no-arg singleton loads only the base set; the `6acc60406` (TPU7x) and viperfish singletons each load the base set **plus** their codename-specific set.
 
 | | |
 |---|---|
@@ -167,7 +167,7 @@ There are **three** topology-string sets and **two distinct families of singleto
 
 ### 4.1 The base set — `kRouteCacheSet` @0x22011f88
 
-`TwistedTorusTopology::kRouteCacheSet` is eight `{const char*, size_t}` pairs in `.data.rel.ro`, RELA-resolved to eight twisted-shape strings. (`ResilientToroidalTopology::kRouteCacheSet` is the same inventory referenced from the resilient class — see §4.3.)
+`TwistedTorusTopology::kRouteCacheSet` @ `0x22011f88` is eight `{const char*, size_t}` pairs in `.data.rel.ro`, RELA-resolved to eight twisted-shape strings. (`ResilientToroidalTopology::kRouteCacheSet` @ `0x21f57380` is a *distinct* data symbol holding the same inventory referenced from the resilient class — see §4.3.)
 
 | idx | str VMA | len | string | dims |
 |-----|---------|-----|--------|------|
@@ -194,7 +194,7 @@ These eight shapes × the four `{X,Y,Z,NONE}` orientation variants register 32 d
 |--------|-----------|---------------------------------------|--------------------------|
 | `1` | `pf_deduplicator` (pufferfish) | `kRouteCacheSet` | `CACHE_ICI_RESILIENCY_PUFFERFISH` (2) |
 | `2` | `vf_deduplicator` (viperfish) | `kRouteCacheSet`, then `kViperfishRouteCacheSet` | `CACHE_ICI_RESILIENCY_VIPERFISH` (3) |
-| `4` | `gf_deduplicator` (`6acc60406` / ghostfish) | `kRouteCacheSet`, then `k6acc60406RouteCacheSet` | `CACHE_ICI_RESILIENCY_6acc60406` (4) |
+| `4` | `gf_deduplicator` (`6acc60406` / TPU7x) | `kRouteCacheSet`, then `k6acc60406RouteCacheSet` | `CACHE_ICI_RESILIENCY_6acc60406` (4) |
 
 The exact decompiled `CHECK` strings, verbatim:
 
@@ -210,7 +210,7 @@ The exact decompiled `CHECK` strings, verbatim:
 
 The `code` value comes from the fault topology (traced to `TopologyFaults::GetSymmetryProperty` @ `0x20bfbd60` / `GetMinFaultLocation` @ `0x20bfbc00`). After the `Find`, a *second* `switch` in the same function (cases `1 → 4 → 2` at the post-Find branch) re-derives the `ToroidalRouteCacheType` passed to `GetRouteCacheData` (the per-codename baked blob). The structural binding (`pf → PUFFERFISH`, `vf → VIPERFISH`, `gf → 6acc60406`) is byte-confirmed via the dedup singletons; the precise `code → enum` integer arithmetic of that second switch was read structurally, not exhaustively tabulated. Marked LOW.
 
-> **NOTE — `6acc60406` is a redacted silicon codename, not a hex address.** It appears verbatim as a string token in the enum name (`CACHE_ICI_RESILIENCY_6acc60406`), the set symbol (`k6acc60406RouteCacheSet`), and the resource-path prefix. It denotes the ghostfish silicon generation; treat it as an opaque identifier.
+> **NOTE — `6acc60406` is a redacted silicon codename, not a hex address.** It appears verbatim as a string token in the enum name (`CACHE_ICI_RESILIENCY_6acc60406`), the set symbol (`k6acc60406RouteCacheSet`), and the resource-path prefix. It denotes the TPU7x silicon generation; treat it as an opaque identifier.
 
 ---
 
@@ -254,8 +254,10 @@ The `code` value comes from the fault topology (traced to `TopologyFaults::GetSy
 | `0x20b5b680` | `…raw_hash_set<…>::find_or_prepare_insert_large` | dedup map insert | C |
 | `0x20b3f7c0` | `TwistedTorusTopology::InitRouteSolution` | no-arg dedup; `kRouteCacheSet` walk @ `0x20b3f990` | C |
 | `0x1fbdf8a0` | `ResilientToroidalTopology::InitRouteSolution` | codename `switch`; pf/vf/gf singletons | C |
-| `0x22011f88` | `kRouteCacheSet` | 8 twisted-shape `{ptr,len}` pairs | C |
-| — | `k6acc60406RouteCacheSet` / `kViperfishRouteCacheSet` | codename-specific sets (`ResilientToroidalTopology::`) | C |
+| `0x22011f88` | `TwistedTorusTopology::kRouteCacheSet` | 8 twisted-shape `{ptr,len}` pairs (non-resilient path) | C |
+| `0x21f57380` | `ResilientToroidalTopology::kRouteCacheSet` | base set for the resilient path | C |
+| `0x21f57440` | `ResilientToroidalTopology::kViperfishRouteCacheSet` | viperfish-only codename set | C |
+| — | `k6acc60406RouteCacheSet` | TPU7x codename set (recovered from `CHECK` strings; not an independent `nm` symbol) | C |
 
 ---
 
