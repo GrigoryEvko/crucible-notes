@@ -169,8 +169,8 @@ if (v74 & 0x100000000)                       // bit-32 presence gate
 |---|---|---|---|---|---|
 | `sequencer_overlay` (f4) | `+0x28` | bit 32 | `Target+0x534` | `SparseCoreTarget+0x200` | TC: `GetOverlayReservedSyncFlagNumber` → overlay-reserved SFLAG (single index). SC: **none** (stored, never read in this build) |
 | `tile_overlay` (f5) | `+0x20` | bit 32 | (not copied) | `SparseCoreTarget+0x1e8` | SC: `overlayer::OverlayProgram` encodes it as a `SyImm32` MC immediate; also read by `EmitFinishDescriptorDma`/`EmitEmulatedContinuation` |
-| `global_barrier_sflag` (f6) | `+0x30` | bit 32 | (not copied) | `SparseCoreTarget+0x204` | SC: `LoweringEmitter::Emit` / `CustomKernelEmitter::MaybeInsertGlobalBarrier` (MemorySpace 14 global-barrier SFLAG MemRef) |
-| `local_barrier_sflag` (f7) | `+0x38` | bit 32 | (not copied) | `SparseCoreTarget+0x208` | SC: `lowering_util::ReservedLocalBarrierSflag` (1-elt i32 MemRef, MemorySpace 5 = sflag) |
+| `global_barrier_sflag` (f6) | `+0x30` | bit 32 | (not copied) | `SparseCoreTarget+0x204` | SC: `LoweringEmitter::Emit` / `CustomKernelEmitter::MaybeInsertGlobalBarrier` (`mlir::sparse_core::MemorySpaceAttr::get(ctx, 14)` global-barrier SFLAG MemRef — SC MLIR enum sflag-band value 14, **not** the jellyfish `MemorySpace` enum) |
+| `local_barrier_sflag` (f7) | `+0x38` | bit 32 | (not copied) | `SparseCoreTarget+0x208` | SC: `lowering_util::ReservedLocalBarrierSflag` (1-elt i32 MemRef, `mlir::sparse_core::MemorySpaceAttr::get(ctx, 5)` — SC MLIR enum sflag-band value 5, **not** jellyfish `MemorySpace`) |
 | `compiler_reserved` (f3) | `+0x08`/`+0x10` | (vector, always) | `Target+0x8c0`/`+0x8c4` (count = size **−5**) | `SparseCoreTarget+0x1d0`/`+0x1d4` (count = size, **no −5**) | per-id barrier window — see [Barrier-to-SFLAG Binding](barrier-to-sflag-binding.md) |
 
 ### 5.3 Why "overlay" is an index, not a bitmask
@@ -215,8 +215,8 @@ EnumMap<TpuCoreType, SpecialPurposeSyncFlags, 3>  @TpuChipConfig+0x2a0  (stride 
         │     element +0x10 size / +0x08 data → SparseCoreTarget+0x1d0 base, +0x1d4 count (no −5)
         │     +0x20 tile_overlay → +0x1e8   (→ overlayer::OverlayProgram SyImm32)
         │     +0x28 sequencer_overlay → +0x200   (stored, NO reader)
-        │     +0x30 global_barrier_sflag → +0x204 (→ MaybeInsertGlobalBarrier, MemSpace 14)
-        │     +0x38 local_barrier_sflag → +0x208  (→ ReservedLocalBarrierSflag, MemSpace 5)
+        │     +0x30 global_barrier_sflag → +0x204 (→ MaybeInsertGlobalBarrier, SC MLIR MemSpace 14)
+        │     +0x38 local_barrier_sflag → +0x208  (→ ReservedLocalBarrierSflag, SC MLIR MemSpace 5)
         │
         ├── TpuPxcDriver::InitializeCores @0xe806500  (reads only the cr vector +0x08/+0x10)
         └── TpuProfilerControlListener::CanStartProfiler @0xf3328c0  (profiler gate)

@@ -1147,7 +1147,7 @@ Reference tables, the source-traceability index, and the open-frontier register.
 Two appendix pages are the connective tissue that make this book auditable and the per-generation story coherent:
 
 - **Evidence-Anchor Index** (`appendix/evidence-anchor-index.md`) — the full page → source-findings file (`P-2-*`/`P-3-*`/`W*`) → binary VA mapping. Every claim in the book is traceable back through this index to a specific function address and a specific raw-findings file. This is what separates a reimplementation reference from a blog post.
-- **Per-Gen Master Comparison Matrix** (`appendix/per-gen-comparison-matrix.md`) — one page, six generations (Jellyfish/Dragonfish/Pufferfish/Viperfish/Ghostlite/6acc60406) × every per-generation constant: bundle size, lane/sublane count, MXU dimensions, XLU/IAR counts, SFLAG base/count, EUP push→pop latency, chip DID, PCI device IDs. Ties together the per-gen material otherwise distributed across Parts IV, VI, and VII.
+- **Per-Gen Master Comparison Matrix** (`appendix/per-gen-comparison-matrix.md`) — one page, six generations (Jellyfish/Dragonfish/Pufferfish/Viperfish/Ghostlite/6acc60406) × every per-generation constant: bundle size, lane/sublane count, MXU dimensions, XLU/IAR counts, per-tier memory (VMEM/SMEM/SFLAG/CMEM/HBM), accelerator-core type, and the cost-model class trio (LatencyTable/CycleTable/Performance) that carries the per-gen EUP push→pop latency. Ties together the per-gen material otherwise distributed across Parts IV, VI, and VII.
 
 ## Open frontier
 

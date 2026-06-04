@@ -53,7 +53,7 @@ Both substrates reduce over the **same physical torus** and share the topology-d
 - **`EstimatePhysicalLinksUsed`** @`0x1c8939c0` walks the same chip coordinates to count the physical ICI links a collective uses — the divisor for the all-to-all / ragged / cross-module-all-reduce cost branches.
 - The torus extents X/Y/Z are read at the same chip-config offsets (`[chip_cfg+0x58]` / `+0x5c` / `+0x60`) by the dense picker, the cost model, and the SC `GetDimensionRings` @`0x133df520` — so the dense `StrategyND` ring dims and the SC `IciStrategyRingDim` ring dims index the identical hardware geometry.
 
-The per-dimension ICI resource map is shared too: `GetResourceFromIciResource` @`0x1c894c00` maps `IciResource ∈ [1..6]` to `ResourceVector` slots `{0xd, 0xe | 0xf, 0x10 | 0x11, 0x12}` = 3 torus dimensions × 2 ring directions. The degraded-axis remap demotes a failed axis's two slots out of the primary ring (see [Degraded-Axis Ingest](degraded-axis.md)).
+The per-dimension ICI resource map is shared too: `GetResourceFromIciResource` @`0x1c894c00` maps `IciResource ∈ [1..6]` to `ResourceVector` slots `{0xd,0xe | 0xf,0x10 | 0x11,0x12}` = 3 torus dimensions (Y, X, Z) × 2 ring directions (±). The degraded-axis remap demotes a failed axis's two slots out of the primary ring (see [Degraded-Axis Ingest](degraded-axis.md)).
 
 ---
 

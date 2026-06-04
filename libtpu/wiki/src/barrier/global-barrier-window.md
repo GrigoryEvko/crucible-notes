@@ -101,11 +101,11 @@ Because the word "global" is overloaded, a reimplementer must keep three distinc
 
 | # | What | Chosen / inserted by | SFLAG number source | Sequencer / op family | Confidence |
 |---|---|---|---|---|---|
-| **(a)** | SC Mosaic **func-level** tree barrier | `CustomKernelEmitter::MaybeInsertGlobalBarrier` @`0x1321ac20` (§3) | SC Mosaic per-core window (MemorySpace 14, `AllocateAtOffsetOp`); **NOT** `GetGlobalBarrierSyncFlagNumber` | TC sequencer (Mosaic) `tpu.sem_signal`/`tpu.sem_wait` in `scf.for` | CONFIRMED |
+| **(a)** | SC Mosaic **func-level** tree barrier | `CustomKernelEmitter::MaybeInsertGlobalBarrier` @`0x1321ac20` (§3) | SC Mosaic per-core window (`mlir::sparse_core::MemorySpaceAttr::get(ctx, 14)` — SC MLIR enum, **not** jellyfish `MemorySpace`; `AllocateAtOffsetOp`); **NOT** `GetGlobalBarrierSyncFlagNumber` | TC sequencer (Mosaic) `tpu.sem_signal`/`tpu.sem_wait` in `scf.for` | CONFIRMED |
 | **(b)** | SC **per-collective** global barrier | `EmitScsBarrier(type1)` / `EmitAllToAllBarrierStart(type1)` → `EmitGlobalBarrier` @`0x13352820` | `GetSyncFlagForBarrierId(reserved id)` = `id + SC_base` (SC barrier block) | SC sequencer `sc_tpu.sync_add` tree over SC cores | CONFIRMED |
 | **(c)** | **TC LLO reserved GLOBAL slot** | `net_util::GetBarrierSyncFlag(type1)` @`0x1c69ad00`; `BarrierCoresTree` etc. (§1) | `GetGlobalBarrierSyncFlagNumber()` = `base + count + 4` (TC barrier block) | TC sequencer Vsync* / `net_util` tree barrier | CONFIRMED |
 
-The three live in three number spaces: (a) the SparseCore Mosaic per-core window (MemorySpace 14); (b) the SC barrier block; (c) the TC barrier block `[base, base+count]` with the GLOBAL slot at `+count+4`. (a) and (b) are SparseCore; (c) is TensorCore. **`GetGlobalBarrierSyncFlagNumber` belongs to the TC engine only** — which is exactly why the SparseCore `MaybeInsertGlobalBarrier` never calls it. An earlier reading that attributed source (c) to the SC tree barrier (a) is corrected here: they are different `Target`/`SparseCoreTarget` fields and different sequencers.
+The three live in three number spaces: (a) the SparseCore Mosaic per-core window (`mlir::sparse_core::MemorySpace` value 14 — the SC MLIR enum, distinct from the jellyfish `MemorySpace` enum where 14 = `sparse_core_sequencer_smem`); (b) the SC barrier block; (c) the TC barrier block `[base, base+count]` with the GLOBAL slot at `+count+4`. (a) and (b) are SparseCore; (c) is TensorCore. **`GetGlobalBarrierSyncFlagNumber` belongs to the TC engine only** — which is exactly why the SparseCore `MaybeInsertGlobalBarrier` never calls it. An earlier reading that attributed source (c) to the SC tree barrier (a) is corrected here: they are different `Target`/`SparseCoreTarget` fields and different sequencers.
 
 ---
 

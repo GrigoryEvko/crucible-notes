@@ -59,7 +59,7 @@ if ( *(uint8_t*)(v93 + 0x18) == 1 ) {             // VectorIsa-present gate (seq
 
 The per-gen blobs are embedded **uncompressed** in `.rodata`. Parsing the `VectorIsa` submessage out of each blob (the `f2=128, f3=8` prefix locates it; `f7` is the IAR count) gives, byte-exact:
 
-| Gen (codename) | `VectorIsa` f2 | f3 | f5 | f6 | f7 = `IarsPerTensorCore` | Confidence |
+| Gen (codename) | `lane_count` f2 | `sublane_count` f3 | `mxu_count` f5 | `xlu_count` f6 | `iar_count` f7 = `IarsPerTensorCore` | Confidence |
 |---|---|---|---|---|---|---|
 | v2 Jellyfish | 128 | 8 | 1 | 1 | **2** | CERTAIN |
 | v3 Dragonfish | 128 | 8 | 2 | 1 | **2** | CERTAIN |
@@ -68,7 +68,7 @@ The per-gen blobs are embedded **uncompressed** in `.rodata`. Parsing the `Vecto
 | v6e Ghostlite | 128 | 8 | 2 | 2 | **2** | CERTAIN |
 | v7 6acc60406 | 128 | 8 | 2 | 2 | **2** | CERTAIN |
 
-So `IarsPerTensorCore = 2` on every generation — the IAR file does not grow v2→v7. This is exactly consistent with the ISA-encoding ceiling: the `SetIar` slot's `IarField` accessor (`0x1ee3b380`) is `>>13 & 1`, a single bit, which can address only IAR0/IAR1. `VectorIsa.f2 = 128` is constant across all gens (a vector lane/width parameter); `f5`/`f6` vary per gen — INFERRED MXU-count / matrix-unit-geometry parameters, read byte-exact but not semantically named here.
+So `IarsPerTensorCore = 2` on every generation — the IAR file does not grow v2→v7. This is exactly consistent with the ISA-encoding ceiling: the `SetIar` slot's `IarField` accessor (`0x1ee3b380`) is `>>13 & 1`, a single bit, which can address only IAR0/IAR1. The `VectorIsa` field names are not inferred — `TpuSequencerParts::FromProto` (`0x20b30700`) validates each by name (`"Invalid lane_count in vector_isa field"`, `"Invalid sublane_count …"`, `"Invalid mxu_count …"`, `"Invalid xlu_count …"`, `"Invalid iar_count …"`), so f2=`lane_count`=128 (constant across all gens), f5=`mxu_count` (1/2/4/4/2/2), and f6=`xlu_count` (1/1/2/3/2/2) are CONFIRMED, not merely positional.
 
 > **NOTE — this value is data, not code.** The accessor and the 1-bit `IarField` are immutable code; the *value* is a runtime proto field. The "2 all gens" claim holds for this binary's embedded chip-parts blobs only. A reimplementation must read it from the per-gen proto, not bake it in. See [Chip-Parts Binarypb](../targets/chip-parts-binarypb.md) and [../isa/slot-matprep-iar-latch.md](../isa/slot-matprep-iar-latch.md) for the IAR value-field layout.
 

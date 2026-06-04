@@ -230,7 +230,7 @@ The `−5` is a compile-time constant in `Target::Init` (`add $0xfffffffb`), gen
 
 > **GOTCHA —** the literal per-`(codename, deployment-name)` integers (`CR_TC[0]`, `|CR_TC|`, `CR_SC[0]`, `|CR_SC|`) are **not statically extractable** from `.rodata`. They live in embedded chip-config memfile binarypb blobs (`tpu_chip_config_memfile_{default,megacore,megachip,…}_embed_internal_create` @`0x20b18fa0..`), resolved at runtime via a `flat_hash_map<tuple<TpuVersion, name, TpuCoreType>, FileToc*>` keyed by `FLAGS_deepsea_chip_config_name` @`0x224714b0`. The block geometry above is CONFIRMED; the integers are LOW (memfile-dependency). See [Per-Codename Compiler-Reserved](per-codename-compiler-reserved.md).
 
-> **CORRECTION (P-3-409) —** `SparseCoreTarget+0x90` is **not** an SFLAG-window base — it is `TpuCoreParts::SequencerCount(TpuSequencerType=5)`, a per-core sequencer count. `+0x1fc` is the `GetMemoryReservation → GetUserRegion` length (the Mosaic per-core tree-barrier window, MemorySpace 14), a third disjoint region not drawn from the SFLAG vector. Neither is part of the `compiler_reserved` block.
+> **CORRECTION (P-3-409) —** `SparseCoreTarget+0x90` is **not** an SFLAG-window base — it is `TpuCoreParts::SequencerCount(TpuSequencerType=5)`, a per-core sequencer count. `+0x1fc` is the `GetMemoryReservation → GetUserRegion` length (the Mosaic per-core tree-barrier window, jellyfish `MemorySpace::kSparseCoreSequencerSmem` = 14), a third disjoint region not drawn from the SFLAG vector. Neither is part of the `compiler_reserved` block.
 
 ---
 

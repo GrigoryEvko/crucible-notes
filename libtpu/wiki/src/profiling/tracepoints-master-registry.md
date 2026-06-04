@@ -134,6 +134,8 @@ This is the canonical band-base encoding: a sync `trace_point_id`'s "selection-m
 
 The SparseCore instruction/task/sync band: ids 109..120 carrying SC tracemarks, trace-instructions, sfence/sync/barrier start-stop pairs, and the task issue→commit span. Present on gfc/glc/vfc; **absent** on pxc and vlc.
 
+> **NOTE —** the *subscriber-bound* SC ids are 109..120, but the full SC codec band starts one lower at **id 108** (`ScInstructionCoreInterrupt`, unbound — no deepsea lambda subscriber routes it) and extends through id 132/133 plus the gfc-only PMU samples at 134/135. "Base 109" here is the lowest *routed* id, not the band floor; the complete 108..133/135 on-wire SC sub-range (and the SC-issued OCI events at 124..130 that sit inside it) is owned by [`payload-sc-band.md`](payload-sc-band.md).
+
 ### Registry
 
 | id | event name (codec) | subscriber(s) | tracker / key | Conf. |

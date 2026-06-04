@@ -288,12 +288,12 @@ Six contiguous 32-bit words form the fixed-point expansion of **1/(2π)** (the q
 
 | word | u32 | role |
 |---|---|---|
-| w0 | `0x28be60db` | bits[31..0] of 1/(2π) ( = floor(2³²/(2π)) = 683565275 ) |
-| w1 | `0x9391054a` | bits[63..32] |
-| w2 | `0x7f09d5f4` | bits[95..64] |
-| w3 | `0x7d4d3770` | bits[127..96] |
-| w4 | `0x36d8a566` | bits[159..128] |
-| w5 | `0x4f10e410` | bits[191..160] |
+| w0 | `0x28be60db` | bits[191..160] of 1/(2π), the MSB limb ( = floor(2³²/(2π)) = 683565275 ) |
+| w1 | `0x9391054a` | bits[159..128] |
+| w2 | `0x7f09d5f4` | bits[127..96] |
+| w3 | `0x7d4d3770` | bits[95..64] |
+| w4 | `0x36d8a566` | bits[63..32] |
+| w5 | `0x4f10e410` | bits[31..0], the LSB limb |
 
 Fractional reconstruction Σ wᵢ·2^(−32(i+1)) = 0.15915494309189535 = 1/(2π), exact to fp64. The windowed multiply (`VshllU64High` @ `0x1d583ac0` + `VmulU64`) extracts the bit window of the product selected by the argument's exponent, so the relevant fraction bits survive for arbitrarily large |x|.
 

@@ -4,7 +4,7 @@
 
 ## Abstract
 
-`TraceEntriesCoder` is the on-device profiler trace-entry codec: the fixed-width, LSB-first bit format that every TPU hardware trace event packs into, and the per-chip-family decoder/encoder that translates between that wire packet and a proto2 `TraceEntry` message. It is the bottom-most layer of the [xprof device-trace pipeline](overview.md) — the stage between the compressed [riegeli container](riegeli-trace-container.md) and the [`TraceEntry → XEvent/XStat`](trace-entry-to-xevent.md) shaping. Where a route-cache record is a self-delimiting varint stream, a profiler trace event is the opposite: a **constant 16-byte (128-bit) packet** with a 2-bit framing prefix, a 56- or 59-bit header (59 for pxc/vfc/glc/gfc, 56 for vlc), an optional 36-bit transaction-identity sub-record, and a per-event fixed-width payload, all read with the shared `GetBits64`/`SkipBits` bit-codec primitives.
+`TraceEntriesCoder` is the on-device profiler trace-entry codec: the fixed-width, LSB-first bit format that every TPU hardware trace event packs into, and the per-chip-family decoder/encoder that translates between that wire packet and a proto2 `TraceEntry` message. It is the bottom-most layer of the [xprof device-trace pipeline](overview.md) — the stage between the compressed [riegeli container](riegeli-trace-container.md) and the [`TraceEntry → XEvent/XStat`](trace-entry-to-xevent.md) shaping. Where a route-cache record is a self-delimiting varint stream, a profiler trace event is the opposite: a **constant 16-byte (128-bit) packet** with a 2-bit framing prefix, a 56- or 59-bit header (59 for pxc/vfc/glc/gfc, 56 for vlc), an optional 36/38-bit transaction-identity sub-record (36 on pxc, 38 on vfc/vlc/glc/gfc), and a per-event fixed-width payload, all read with the shared `GetBits64`/`SkipBits` bit-codec primitives.
 
 The codec has a deliberately asymmetric two-id-space dispatch, and getting it right is the whole reimplementation. **Decode** peeks the 2 framing bits and the 8-bit `trace_point_id` — the *banded hardware enum value*, gappy, max handled `0x95` (149) for pxc plus a `0xff` dummy — and indexes a pair of contiguous `rel32` jump tables (the first @ `0xab85bc0` bounded at `0x6e`, the second @ `0xab85d7c` for ids `0x6f..0xff`) to reach an anonymous-namespace `Decode<EventName>()`. **Encode** dispatches on the *dense proto oneof field number* stored at `TraceEntry+0x28` through a parallel jump table. The two id spaces are not interchangeable; the registry that pairs them is owned by [TracePoints Master Registry](tracepoints-master-registry.md), and a reimplementation that drives encode off the wire id (or decode off the oneof field) mis-keys every event.
 
@@ -13,7 +13,7 @@ This page owns the **codec format and dispatch**: the 16-byte packet, the framin
 For reimplementation, the contract is:
 
 - **The fixed 16-byte packet and the bit-stream reader** — LSB-first, `GetBits64NoInline(n)` for an n-bit field, `SkipBitsNoInline(n)` to advance, masked by `mask_[k] = (1<<k)-1`.
-- **The 2-bit framing prefix + 56/59-bit `TraceHeader` + optional 36-bit `TraceIdHeader`** — the envelope, with the per-family `block_id`/`timestamp` split (pxc/vfc/glc/gfc = 59-bit header; vlc = 56-bit).
+- **The 2-bit framing prefix + 56/59-bit `TraceHeader` + optional 36/38-bit `TraceIdHeader`** — the envelope, with the per-family `block_id`/`timestamp` split (pxc/vfc/glc/gfc = 59-bit header; vlc = 56-bit) and the `chip_id` 12→14 widening at Viperfish.
 - **The dual dispatch** — decode by 8-bit wire `trace_point_id` (`DecodeEntry` jump table), encode by dense oneof field number (`EncodeEntry` jump table); the `valid`/`started` framing semantics; the per-event total-bit `CHECK`.
 - **The per-family factory** — `GetTraceCodec(DeviceIdentifiers, int)` selecting one of pxc/vfc/vlc/glc/gfc fixed-width codecs (or the jxc legacy `PerformanceTraceEntry` path) from a static type-factory keyed by chip codename.
 
@@ -153,18 +153,18 @@ The `|= 1 / 2 / 4` are the proto2 *has-bits* (presence byte at `TraceHeader+0x10
 
 ## The TraceIdHeader Sub-Record
 
-Most variant messages carry a 36-bit `TraceIdHeader` immediately after the 61-bit header — the per-transaction identity that lets a multi-packet DMA be stitched back together. It is decoded *inline* (there is no standalone `DecodeTraceIdHeader` symbol) into a nested proto2 `TraceIdHeader` submessage.
+Most variant messages carry a `TraceIdHeader` immediately after the header — the per-transaction identity that lets a multi-packet DMA be stitched back together. It is decoded *inline* (there is no standalone `DecodeTraceIdHeader` symbol) into a nested proto2 `TraceIdHeader` submessage. Its width is **36 bits on pxc** (`chip_id` = 12) but **38 bits on vfc/vlc/glc/gfc** (`chip_id` widens to 14 at Viperfish); `transaction_id` (21) and `core_id` (3) are constant across all families.
 
 ```text
- rel bit  field            width   proto
- ───────  ───────────────  ──────  ─────────────────────────────────────────────
-  0-20    transaction_id   21      TraceIdHeader.transaction_id (f1)
- 21-23    core_id          3       f2 — enum {TC0,TC1,BC0..BC3,NONCORE,…} (8 values ⇒ 3 bits)
- 24-35    chip_id          12      f3
- = 36 bits, immediately after the 61-bit header when present
+ rel bit  field            width        proto
+ ───────  ───────────────  ───────────  ────────────────────────────────────────
+  0-20    transaction_id   21           TraceIdHeader.transaction_id (f1)
+ 21-23    core_id          3            f2 — enum {TC0,TC1,BC0..BC3,NONCORE,…} (8 values ⇒ 3 bits)
+ 24-..    chip_id          12 (pxc) │ 14 (vfc/vlc/glc/gfc)   f3
+ = 36 bits (pxc) │ 38 bits (vfc/vlc/glc/gfc), immediately after the header when present
 ```
 
-Byte-confirmed in `DecodeUhiHostPhysicalRequestRead` @ `0xf5b0f20`, where the three opening `GetBits64` calls are `21 / 3 / 12`:
+Byte-confirmed in pxc `DecodeUhiHostPhysicalRequestRead` @ `0xf5b0f20`, where the three opening `GetBits64` calls are `21 / 3 / 12`; and in the newer-gen `DecodeScMessageOutboundInternalMessage` (vfc) @ `0xf60e6c0`, where they are `21 / 3 / 14`:
 
 ```c
 // DecodeUhiHostPhysicalRequestRead @0xf5b0f20 — TraceIdHeader, then payload
@@ -344,7 +344,7 @@ Each family also has a templated `GetTraceCodec<…::TraceEntry>` instantiation 
 |---|---|---|
 | `TraceEntry` (proto2) | `+0x18` trace_header ptr; `+0x20` active oneof variant ptr; `+0x28` oneof **case** (proto field number — the encode dispatch key) | the decoded message |
 | `TraceHeader` (proto2) | `+0x10` presence (bit0=id, bit1=block, bit2=ts); `+0x18` trace_point_id; `+0x1c` block_id; `+0x20` timestamp | the universal header |
-| `TraceIdHeader` (proto2) | `+0x10` presence; `+0x18` transaction_id; `+0x1c` core_id; `+0x20` chip_id | the 36-bit identity sub-record |
+| `TraceIdHeader` (proto2) | `+0x10` presence; `+0x18` transaction_id; `+0x1c` core_id; `+0x20` chip_id | the identity sub-record — **36 bits on pxc** (chip_id 12), **38 bits on vfc/vlc/glc/gfc** (chip_id 14) |
 | `BitDecoder` | `+0x8` cursor, `+0x10` end, `+0x18` buffer (LSB-first), `+0x20` bits_avail (0x28 total) | the bit-stream window |
 | `mask_` | `0xbe79440` | 65-qword mask table, `mask_[k]=(1<<k)-1` |
 | Decode jump table (low) | `0xab85bc0` | 111 `rel32` entries, ids `0..0x6e`, indexed by 8-bit `trace_point_id` (pxc) |

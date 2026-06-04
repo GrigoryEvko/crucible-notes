@@ -215,7 +215,7 @@ Both tail-call into `ComputeAllToAllCyclesHelper` (`@0x130d02a0`); the ragged va
 
 ```c
 B        = operand_shape_size * group_size;          // imul
-links    = EstimatePhysicalLinksUsed(...);           // @0x1c8939c0 — topology link count
+links    = EstimatePhysicalLinksUsed(...);           // @0x1c8939c0 — |sorted distinct IciResource set|
 per_link = per_link_table[is2D];                     // table {1D→2.0, 2D→4.0}
 c        = cyc(B * per_link / links / eff_Bps);      // vmul [tbl+is2D*8] ; ÷links ; ÷eff_Bps
 // deposit c into ALL 6 slots R[13..18] — all-to-all saturates every ICI link
@@ -284,7 +284,7 @@ The byte-exact, decompile-confirmed core (this page's primary claims):
 Items confirmed via formula shape rather than a named constant, and items not field-decoded:
 
 - The exact integer `ReplicaGroupsOnNDPlaneImpl::$_0` returns as the "plane count" — proved to be the `vector<MeshNDInfo>` size (compared against `2`) and `+1`'d, but the per-field `MeshNDInfo` encoding (`MeshDim` stride/size/origin) and the dimension-collapse arithmetic were not field-by-field decoded. **HIGH** on the count semantics, the field layout is open.
-- `EstimatePhysicalLinksUsed` closed-form link count: traced to a per-dimension extent product over chip coordinates, but not reduced to a single equation; the multi-slice cross-slice branch was seen but not expanded. **HIGH** on the call chain.
+- `EstimatePhysicalLinksUsed` link count: **resolved** — the function builds a *deduplicated, sorted set* of directional `IciResource`s (`1..6` = 3 torus dims × 2 directions; `absl` hash-set insert + `std::__introsort<IciResource*>` in the decompile) and the divisor is the set cardinality `|EstimatePhysicalLinksUsed(...)|`, **not** a per-dimension extent product. The multi-slice cross-slice branch (`EstimatePhysicalLinksUsed::$_0` @ `0x1c894ac0`, global→local logical-id resolver) was seen but not expanded. **HIGH** on the set-cardinality semantics; see [SC-side Twist §3](../twist/sc-side-twist.md#3-estimatephysicallinksused--the-physical-ici-link-estimator).
 - The per-link table beyond `{0,1} = {2.0, 4.0}`: index ≥2 decodes as garbage (only 1D/2D exercised); whether a 3D all-to-all uses a real index-2 entry is untested. **LOW** on a hypothetical 3D entry.
 - The `AllPairsUseSameIciLink` resource-id derivation from `source_target_pairs` geometry (the 1-slot-vs-3-slot predicate). **HIGH** on the branch existing, the geometry mapping is open.
 - The SparseCore `GetCollectiveOffloadConfig` (`@0x133e1740`) alternate cost reroute for offloaded reduce-scatter/all-reduce: the probe is read but its alternate path was not separately decoded. **HIGH** on the probe, the offload cost path is open. See [SC offload config](sc-offload-config-builder.md) / [SC core selection](sc-core-selection-offload.md).
