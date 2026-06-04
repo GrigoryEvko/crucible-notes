@@ -9,7 +9,7 @@ This page documents the **physical-core placement datapath** of a SparseCore-off
 
 1. the **`physical_core_indices` fill** — `AddCollectivePhysicalCoreIndices` (`@0x1c868500`), a recursive async/fusion walker, and its writer `AddCollectivePhysicalCoreIndicesHelper` (`@0x1c868920`), which copies the chosen-core `absl::Span<long const>` *verbatim* (truncated `long`→`int32`) into the per-collective `*OffloadConfig` variant's `repeated int32 physical_core_indices` (proto field 4);
 2. the **`physical_core_indices` index-array layout + read-back** — the proto2 `RepeatedField<int32>` at `[variant+0x18..+0x20]`, read back (widened to `long`) by `GetPhysicalCoreIndices` (`@0x1c8692e0`) into a `StatusOr<absl::InlinedVector<long,4>>`;
-3. the **`tensor_split_mode==2` per-core emission key** — `TensorSplitPerCoreClassifier` (`@0x13379de0`), which maps a per-color `UniDirRingStrategy` to a classification key `(tensor-split bool) | (axis classcode 0/2/4 | D2D core count)`, and the `CanBeCombined` (`@0x13379d60`) predicate that merges per-color strategies into one per-SC-core partial-tensor op.
+3. the **`tensor_split_mode==2` per-core emission key** — `TensorSplitPerCoreClassifier` (`@0x13379de0`), which maps a per-color `UniDirRingStrategy` to a classification key — `(axis classcode 0/2/4) | (tensor-split bool)` for the torus axes, or the raw `D2DUniDirRingStrategy::core_classifier_` count (no `split_bit` OR) for `kCoresOnChip` — and the `CanBeCombined` (`@0x13379d60`) predicate that merges per-color strategies into one per-SC-core partial-tensor op.
 
 The **core-selection policy** — *which* cores are eligible and the order in which `SelectCores` builds the chosen list — is **not** owned here; it lives on **[SC Core-Selection (Offload)](sc-core-selection-offload.md)** and **[SC Core Selection](../sparsecore/sc-core-selection.md)**. The **ND-plane / tensor-split-factor** derivation lives on **[Tensor-Split / ND-Plane](tensor-split-ndplane.md)**. This page picks up at the moment the chosen-core `Span` exists and follows it into the proto, and picks up the split-mode-2 emission at the classifier that keys it.
 
@@ -34,7 +34,7 @@ Contract of the placement datapath as observed in the binary:
 | Oneof variant ptrs | AR `[CollectiveOffloadConfig+0x18]` · AG `[+0x20]` · RS `[+0x28]` (discriminant dword `[+0x10]`) |
 | Walker opcode set | `{6, 9, 12, 86, 93}` (jump table `@0xb438098`, mask `0x1240` + explicit `cmp 0x56/0x5d`) |
 | Read-back error lines | `523` / `527` / `565` (`backend_config_util.cc`), all `MakeErrorImpl<13>` (INTERNAL) |
-| Split-2 classifier | `TensorSplitPerCoreClassifier` `@0x13379de0` → `(byte[s+0x43]) \| (axis 0/2/4 \| D2D count)` |
+| Split-2 classifier | `TensorSplitPerCoreClassifier` `@0x13379de0` → axis `0/2/4 \| byte[s+0x43]`; kCoresOnChip → raw D2D `core_classifier_` (no OR) |
 | `ici_dim()` | vtable `+0x68` = `byte[s+0x80] \| 0x100` (`AutoOr`-engaged `IciDim`) |
 | Combine key | `core_count()` (vtable `+0x30` = `qword[s+0x88]`) via `CanBeCombined` `@0x13379d60` |
 | Reader consumer | `CheckCoreAssignmentConsistency` `@0x1c869cc0` |
@@ -82,7 +82,7 @@ The two `*_to_all` variants are handled by a templated lambda `$_0<RaggedAllToAl
 
 ```text
 AddCollectivePhysicalCoreIndices(hlo, Span indices):
-  if !hlo->IsAsynchronous()                       (@0x1e592520)            → return 1   // no-op
+  CHECK(hlo->IsAsynchronous())                    (@0x1e592520)            // FATAL "inst->IsAsynchronous()" (.cc:433)
   wrapped = hlo->async_wrapped_instruction()       (@0x1e5aa300)
   if opcode_byte[wrapped+0xc] != 0x1b (fusion)                              → return 1
   for each instr in wrapped->called_computations() (@0x1e5885a0):
@@ -97,7 +97,7 @@ AddCollectivePhysicalCoreIndices(hlo, Span indices):
 
 The opcode set `{6, 9, 12, 86, 93}` is the SparseCore async-collective plus all-reduce / all-gather / reduce-scatter / all-to-all family. Opcode `0x28` (fusion) triggers a recursive descent, so a nested fusion body is fully walked. The walk is depth-first; the same `Span` reaches every matched leaf.
 
-> **[CONFIRMED — symbol + structure]** The walker symbol `…AddCollectivePhysicalCoreIndicesEPNS_14HloInstructionEN4absl4SpanIKlEE @0x1c868500` is present in `*_functions.json`, with its two source call sites in `AssignQueueIDsToAsyncStart` (`@0x10fdff30`) and `OffloadCollective` (`@0x10fc871c`). The jump-table form (`@0xb438098`, `0x23` dwords, opcode−6 index; mask `0x1240` = bits 6/9/12; explicit `cmp eax, 0x56` / `0x5d`; recurse target for `0x28`) is byte-traced from the disassembly. The Helper call forwards the *same* `(rsi=data, rdx=count)` pair to each matched instruction.
+> **[CONFIRMED — symbol + structure]** The walker symbol `…AddCollectivePhysicalCoreIndicesEPNS_14HloInstructionEN4absl4SpanIKlEE @0x1c868500` is present in `*_functions.json`, with its two source call sites in `AssignQueueIDsToAsyncStart` (`@0x10fdff30`) and `OffloadCollective` (`@0x10fc871c`). The entry is guarded by a FATAL `CHECK(inst->IsAsynchronous())` (`backend_config_util.cc:433`) — a non-async input aborts, it is **not** a silent no-op. The jump-table form (`@0xb438098`, `0x23` dwords, opcode−6 index; mask `0x1240` = bits 6/9/12; explicit `cmp eax, 0x56` / `0x5d`; recurse target for `0x28`) is byte-traced from the disassembly. The Helper call forwards the *same* `(rsi=data, rdx=count)` pair to each matched instruction.
 
 ### 2.2 The writer (`…Helper @0x1c868920`)
 
@@ -182,21 +182,21 @@ When the offload substrate adopts the split-tensor mode (`tensor_split_mode == 2
 TensorSplitPerCoreClassifier(UniDirRingStrategy* s) → long:
   split_bit = (byte[s+0x43] != 0)                  // the tensor-split / per-core bool, bit0
   switch (s->ici_dim() & 0x1ff):                   // ici_dim() = vtable+0x68 = byte[s+0x80] | 0x100
-     0x100  IciDim::kX           → class = 0
-     0x101  IciDim::kY           → class = 2
-     0x102  IciDim::kZ           → class = 4
+     0x100  IciDim::kX           → return 0 | split_bit
+     0x101  IciDim::kY           → return 2 | split_bit
+     0x102  IciDim::kZ           → return 4 | split_bit
      0x103  IciDim::kCoresOnChip → d2d = dynamic_cast<D2DUniDirRingStrategy*>(s)
-                                    if !d2d  → FATAL "Expected D2DUniDirRingStrategy if the
-                                               ici_dim is kCoresOnChip"   (.cc line 156)
-                                    class = d2d->core_classifier_   ([d2d+0x90])
-                                    CHECK class >= 0    "core_classifier_ >= 0"   (.h line 375)
-     default → FATAL CHECK "strategy->ici_dim() == IciDim::kCoresOnChip"   (.cc line 153)
-  return class | split_bit                          // `or rbx, rcx`
+                                    CHECK d2d != nullptr  → FATAL streams "Expected
+                                       D2DUniDirRingStrategy if the ici_dim is kCoresOnChip" (.cc:156)
+                                    c = d2d->core_classifier_   ([d2d+0x90])
+                                    CHECK c >= 0     "core_classifier_ >= 0"   (.h:375)
+                                    return c                    // NO `| split_bit` on this path
+     default → FATAL CHECK "strategy->ici_dim() == IciDim::kCoresOnChip"   (.cc:153)
 ```
 
-The classifier returns a per-SC-core **key**: the low bit is the tensor-split flag, and the upper part is either an **axis classcode** (`kX → 0`, `kY → 2`, `kZ → 4` — which torus axis the per-core partial-tensor ring iterates) or, for `kCoresOnChip` (the megacore cross-core split — the split-2 datapath proper), the `D2DUniDirRingStrategy::core_classifier_` count. The `kCoresOnChip` D2D strategy is the SC analog of the dense TensorCore megacore data-split.
+The classifier returns a per-SC-core **key**. For the torus-axis dims (`kX → 0`, `kY → 2`, `kZ → 4` — which axis the per-core partial-tensor ring iterates) the low bit is OR'd in with the tensor-split flag (`class | split_bit`). For `kCoresOnChip` (the megacore cross-core split — the split-2 datapath proper) the classifier returns the raw `D2DUniDirRingStrategy::core_classifier_` count **directly, without the `split_bit` OR** (`return v9;` in the decompile). The `kCoresOnChip` D2D strategy is the SC analog of the dense TensorCore megacore data-split.
 
-> **[CONFIRMED]** The decompile of `@0x13379de0` matches byte-exact: `v3 = *((_BYTE*)this + 67) != 0` (`[+0x43]`); the `ici_dim()` virtual via `*(_QWORD*)this + 104LL` (vtable `+0x68`) masked `& 0x1FF`; comparisons `0x100 → v4=0`, `0x101 → v4=2`, `0x102 → v4=4`; `0x103` → `_dynamic_cast(this, typeinfo UniDirRingStrategy, typeinfo D2DUniDirRingStrategy, 0)` then `v9 = v11[18]` (= `[+0x90]`, 18×8) with `CHECK v9 >= 0`; the final `return v4 | v2`. The three diagnostic strings + source lines are byte-exact: `"strategy->ici_dim() == IciDim::kCoresOnChip"` (`offload_collective_strategies.cc:153`), `"Expected D2DUniDirRingStrategy if the ici_dim is kCoresOnChip"` (`.cc:156`), `"core_classifier_ >= 0"` (`offload_collective_strategies.h:375`).
+> **[CONFIRMED]** The decompile of `@0x13379de0` matches byte-exact: `v3 = *((_BYTE*)this + 67) != 0` (`[+0x43]`); the `ici_dim()` virtual via `*(_QWORD*)this + 104LL` (vtable `+0x68`) masked `& 0x1FF`; comparisons `0x100 → v4=0`, `0x101 → v4=2`, `0x102 → v4=4`, each reaching `LABEL_5: LOBYTE(v2)=v3; return v4 | v2` (the `class | split_bit` OR); `0x103` → `_dynamic_cast(this, typeinfo UniDirRingStrategy, typeinfo D2DUniDirRingStrategy, 0)` then `v9 = v11[18]` (= `[+0x90]`, 18×8) with `CHECK v9 >= 0`, returning `v9` **directly** (the kCoresOnChip path does *not* OR in `split_bit`). The three diagnostic strings + source lines are byte-exact: `"strategy->ici_dim() == IciDim::kCoresOnChip"` (`offload_collective_strategies.cc:153`); the D2D null-check is `CHECK(d2d_strategy != nullptr)` at `.cc:156` streaming `"Expected D2DUniDirRingStrategy if the ici_dim is kCoresOnChip"`; `"core_classifier_ >= 0"` (`offload_collective_strategies.h:375`, streaming `"Color id is not set."`).
 
 ### 5.2 The `UniDirRingStrategy` field map
 
@@ -209,12 +209,12 @@ The strategy fields the classifier reads (from the `ImplicitUniDirRingStrategy` 
 | `[s+0x44]` | `byte` `RingDir` | |
 | `[s+0x80]` | `byte` `IciDim` | `0 kX / 1 kY / 2 kZ / 3 kCoresOnChip`; D2D ctor hardwires `3` |
 | `[s+0x88]` | `long` `core_count` | the **combine key** (`CanBeCombined`); D2D hardwires `2` |
-| `[s+0x90]` | base `bool` · **D2D `long core_classifier_`** | the per-core split count; D2D CHECKs `LogicalDevicesPerChip(SC) == 2` |
+| `[s+0x90]` | base `bool` · **D2D `long core_classifier_`** | the per-core split count; D2D ctor CHECKs `target.LogicalDevicesPerChip() == 2` (`.h:361`) |
 | `[s+0x91]` | `bool` | |
 
 The D2D vtable (`@0x21908db0`, vptr at `+0x10`) resolves slot `+0x30` → `core_count` (`@0x13399000` = `qword[s+0x88]`) and slot `+0x68` → `ici_dim` (`@0x13399020` = `byte[s+0x80] | 0x100`). The `| 0x100` is the `AutoOr<IciDim>`-engaged bit (the same `AutoOr` packing the offload config builder uses for `HierarchicalKind` — see **[SC-Offload Config Builder](sc-offload-config-builder.md)** §3).
 
-> **[CONFIRMED — vtable + ctor]** `D2DUniDirRingStrategy` is present in `*_functions.json`; the vtable slot relocations (`+0x30 → 0x13399000`, `+0x68 → 0x13399020`) and the D2D ctor hardwires (`[+0x80]=3`, `[+0x88]=2`, `[+0x90]=` trailing `long` arg, `LogicalDevicesPerChip(SparseCore) == 2` CHECK) are byte-traced. **[LOW]** *Which* caller computes the `core_classifier_` `long` (i.e. whether it equals `tensor_split_factor`, `NumScOffloadDevices/LDPC`, or the megacore 2-core count) was not traced to the `AllReduceUnidirNdStrategy::TryCreate` lambda that constructs the D2D strategy — the classifier returns the stored value directly; its provenance is a tensor-split-factor concern (**[Tensor-Split / ND-Plane](tensor-split-ndplane.md)**).
+> **[CONFIRMED — vtable + ctor]** `D2DUniDirRingStrategy` is present in `*_functions.json`; the vtable slot relocations (`+0x30 → 0x13399000`, `+0x68 → 0x13399020`) and the D2D ctor hardwires (`[+0x80]=3`, `[+0x88]=2`, `[+0x90]=` trailing `long` arg, and the FATAL `CHECK(target.LogicalDevicesPerChip() == 2)` at `offload_collective_strategies.h:361`) are byte-traced. **[LOW]** *Which* caller computes the `core_classifier_` `long` (i.e. whether it equals `tensor_split_factor`, `NumScOffloadDevices/LDPC`, or the megacore 2-core count) was not traced to the `AllReduceUnidirNdStrategy::TryCreate` lambda that constructs the D2D strategy — the classifier returns the stored value directly; its provenance is a tensor-split-factor concern (**[Tensor-Split / ND-Plane](tensor-split-ndplane.md)**).
 
 ### 5.3 The combine consumer — `CanBeCombined` (`@0x13379d60`)
 
@@ -240,7 +240,7 @@ The classifier key from §5.1 plus `CanBeCombined` are what the `DefaultStrategy
 | read-back | `GetPhysicalCoreIndices` `@0x1c8692e0` | `StatusOr<InlinedVector<long,4>>` (`int32`→`long`) |
 | read-back consumer | `CheckCoreAssignmentConsistency` `@0x1c869cc0` | cross-instruction core agreement |
 | shared list | `MegaChipParallelismConfig` repeated long (`@0x10fdfe80`) | same chosen array → mega-chip parallelism |
-| per-core class key | `TensorSplitPerCoreClassifier` `@0x13379de0` | `(split bool) \| (axis 0/2/4 or D2D count)` |
+| per-core class key | `TensorSplitPerCoreClassifier` `@0x13379de0` | axis: `(axis 0/2/4) \| split bool`; kCoresOnChip: raw D2D `core_classifier_` |
 | `ici_dim` | `byte[s+0x80] \| 0x100` (vtable `+0x68`) | `kX` / `kY` / `kZ` / `kCoresOnChip` |
 | D2D per-core split | `D2DUniDirRingStrategy::core_classifier_` `[s+0x90]` (LDPC(SC)==2) | megacore cross-core split count |
 | combine key | `core_count()` `[s+0x88]` (vtable `+0x30`) | `CanBeCombined` grouping |
@@ -253,7 +253,7 @@ The classifier key from §5.1 plus `CanBeCombined` are what the `DefaultStrategy
 > - **Writer** (`…Helper @0x1c868920`) — `GetBackendConfig` → `v43 == 1` gate; the `CollectiveOffloadConfig` oneof discriminant `v8 = *((_DWORD*)v6+4)` (`[cfg+0x10]`) with bits `2/1/4/8/0x10` and variant ptrs `*((_QWORD*)v6+4)/+3/+5` (= `[+0x20]/[+0x18]/[+0x28]`); the clear (`[+0x1c]=0`, `[+0x10]&=~1`) + the verbatim `long`→`int32` copy loop (`GrowNoAnnotate @0xe68d9e0`, store `[Rep+0x8+i*4]`, `[+0x1c]++`, `[+0x10]|=1`); the `CloneBackendConfigProto` + `BackendConfigWrapper::operator=([hlo+0x68])` write-back — all byte-exact.
 > - **Reader** (`GetPhysicalCoreIndices @0x1c8692e0`) — the same oneof bits; `Rep*`=`[+0x20]`, count=`[+0x1c]`, data `Rep+0x8`; `vpmovsxdq` `int32`→`long`; the `cmp 5` inline / `>= 9` exact heap `InlinedVector<long,4>` split; the three `MakeErrorImpl<13>` strings at lines `523/527/565`; the OK sret layout `+0/+8/+0x10/+0x18` — all byte-exact.
 > - **Field-offset agreement** — writer `[+0x1c]/[+0x10]` and reader `[+0x1c]/[+0x18]/[+0x20]` independently confirm the `RepeatedField<int32>` at `[variant+0x18..+0x20]`; the `[+0x40]/[+0x44]` reading is disproven.
-> - **Classifier** (`TensorSplitPerCoreClassifier @0x13379de0`) — `byte[+0x43]` read; `ici_dim()` vtable `+0x68` masked `& 0x1FF`; `0x100/0x101/0x102 → 0/2/4`; `0x103` → `dynamic_cast<D2DUniDirRingStrategy>` + `[+0x90]` `core_classifier_` (`CHECK >= 0`); default FATAL; `return class | bool`. Source lines `153/156` (`.cc`) and `375` (`.h`) byte-exact.
+> - **Classifier** (`TensorSplitPerCoreClassifier @0x13379de0`) — `byte[+0x43]` read; `ici_dim()` vtable `+0x68` masked `& 0x1FF`; `0x100/0x101/0x102 → 0/2/4`; `0x103` → `dynamic_cast<D2DUniDirRingStrategy>` (`CHECK != nullptr`, `.cc:156`) + `[+0x90]` `core_classifier_` (`CHECK >= 0`); default FATAL. The axis paths return `axis | split_bit`; the `kCoresOnChip` path returns the raw `core_classifier_` (`return v9;`) with **no** `split_bit` OR. Source lines `153/156` (`.cc`) and `375` (`.h`) byte-exact.
 > - **Combine** (`CanBeCombined @0x13379d60`, `DimPerCoreClassifier @0x13379dc0`) — `core_count()` equality via vtable `+0x30`, gated by `FLAGS_xla_tpu_impure_coff_never_combine_colors_test_only`; `DimPerCoreClassifier` = `byte[+0x43] != 0` — both byte-exact.
 > - **Symbols** — `AddCollectivePhysicalCoreIndices`, `…Helper` (+ `$_0<Ragged…>` / `$_0<AllToAll…>` lambdas), `GetPhysicalCoreIndices`, `AssignQueueIDsToAsyncStart`, `OffloadCollective`, `GetMegaChipParallelism`, `SetMegaChipParallelism`, `D2DUniDirRingStrategy`, `CheckCoreAssignmentConsistency`, and the `CanBeCombined` overloads all present in `*_functions.json`.
 >
