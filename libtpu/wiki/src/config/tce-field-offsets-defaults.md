@@ -235,7 +235,7 @@ function SetFieldFromFlagString(flag, value_str, env):      // 0x1d73fcc0
     return TpuCompEnvReflection::SetEnvField(value, field, env)
 ```
 
-`GetFieldForFlag` @`0x1d74ab20` is the inverse of `GetFlagForField` — the same `FlagFieldMappings` structure, keyed the other way. The parsed value is an 18-alternative `std::variant` (the scalar types plus `RangeSpecProto`, `RepeatedStrings`, `SparseDenseMatmulFdoConfig`, the MSA option messages, `AutoProto`, …); `SetEnvField` @`0x1d752ae0` visits the variant and stores into the field at its offset.
+`GetFieldForFlag` @`0x1d74ab20` is the inverse of `GetFlagForField` — the same `FlagFieldMappings` structure, keyed the other way. The parsed value is a 20-alternative `std::variant` (the scalar types plus `RangeSpecProto`, `RepeatedStrings`, `SparseDenseMatmulFdoConfig`, the MSA option messages, `BufferContentsSanitizerConfig`, `BufferIsolationConfig`, `AutoProto`); `SetEnvField` @`0x1d752ae0` visits the variant and stores into the field at its offset.
 
 ### `OverwriteFieldIfNotDefault` — the conflict-aware overrider
 
@@ -316,7 +316,7 @@ The other 30 string fields default to `""`.
 | #74 | `xla_tpu_rematerialization_min_size_in_bytes` | 10,485,760 (10 MiB) | HIGH |
 | #107 | `xla_jf_vliw_fuel` | INT64_MAX (unlimited) | HIGH |
 | #128 | `xla_tpu_min_elements_for_while_loop_concat_code_motion` | INT64_MAX | HIGH |
-| #149 | `xla_tpu_max_concurrent_send_recv` | INT32_MAX (2147483647) | HIGH |
+| #149 | `xla_max_concurrent_send_recv` | INT32_MAX (2147483647) | HIGH |
 | #151 | `xla_tpu_licm_analysis_allowance` | 100,000 | HIGH |
 | #166 | `xla_jf_loop_trip_count` | 4 | CERTAIN |
 | #255 | `xla_jf_overlay_compression_threshold` | 2,044,723,200 (`0x79e00000`) | HIGH |
