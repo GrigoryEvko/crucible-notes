@@ -137,7 +137,7 @@ function DestinationSyncFlagTarget(wrapper):           // 0xf698340
           | (nf[22] & 0x3ff)                            // destination_update_sync_flag (0x58) -> sync_flag[0:10]
 ```
 
-The four reads `nf[16]/nf[17]/nf[21]/nf[22]/nf[23]` are at C++ offsets `0x40`/`0x44`/`0x54`/`0x58`/`0x5c` — exactly the `destination_*` fields 12, 13, 17, 18, 19 from §1. This is byte-exact agreement with the table.
+The five reads `nf[16]/nf[17]/nf[21]/nf[22]/nf[23]` are at C++ offsets `0x40`/`0x44`/`0x54`/`0x58`/`0x5c` — exactly the `destination_*` fields 12, 13, 17, 18, 19 from §1. This is byte-exact agreement with the table.
 
 `SourceSyncFlagTarget` @`0xf6982e0` (gate `source_update`@`0x60`) and `AckSyncFlagTarget` @`0xf6983a0` (gate `ack_update`@`0x6c`) reach the same 23-bit layout through the shared OCI SyncFlag-target fold: a `vpunpcklqdq` interleave of `{node_id, *_update_sync_flag}` into a vector, a `vpmulld` by the lane multiplier `[1, 0x400, 0x800, 0x1000]` (fold table @`0xa2c2560`), a `vpand` by `[0x3ff, 0x400, 0x800, 0x7ff000]` (mask @`0xa2d5e00`), then a horizontal OR. The multiplier/mask pair maps lane 0 → `sync_flag[0:10]`, lane 1 → `resource[10]`, lane 2 → `node[11]`, lane 3 → `chip[12:23]` — the same 23-bit target the Destination channel packs explicitly.
 
@@ -157,7 +157,7 @@ Two more wrapper accessors read this record without packing a SyncFlag target:
 
 - **`GetDmaSize()` @`0xf6982a0`** — for case 3 (`nf_descriptor`) returns `length(@0x48) << 10`, i.e. the byte length in **1 KiB units**. For case `0x13` (the BMEM nf arm) it instead returns `(@0x2c) << 10`. A reimplementer must left-shift by 10 to recover bytes; the descriptor stores KiB.
 
-- **`GetDmaTransactionId()` @`0xf698260`** — returns 0 for the `nf_descriptor` case (the transaction id is absent there); it is only populated for case `0x13` (the BMEM arm), where it packs `{(@0x18 low byte) | (@0x18 bit-11) | ((@0x28) & 0x700) | ((@0x20) & ~0xfff)}` — the BMEM transaction id.
+- **`GetDmaTransactionId()` @`0xf698260`** — returns 0 for the `nf_descriptor` case (the transaction id is absent there); it is only populated for case `0x13` (the BMEM arm), where it packs `{((@0x18 bit-0) << 11) | ((@0x28) & 0x700) | ((@0x20) & ~0xfff) | (@0x28 low byte)}` — the BMEM transaction id.
 
 > **GOTCHA —** `length` is in KiB, not bytes. A DMA-timeline reimplementer that reads `length` directly as a byte count under-reports every transfer by a factor of 1024. The `<< 10` is in `GetDmaSize`, not in the descriptor.
 
@@ -262,15 +262,17 @@ The 6 `CmdDmaIdFromEntry<…>` helpers @`0xf69a500`–`0xf69a6e0` (for `OciCommo
 
 ### Cross-gen correspondence to the jxc key
 
-The jxc `GetDmaId()` @`0xf698180` (27-bit key) composes the same logical tuple from the jxc nf record:
+The jxc `GetDmaId()` @`0xf698180` (27-bit key) composes the same logical tuple from the jxc nf record. For the `nf_descriptor` arm (case 3) it reads `{trace_id@0x20, node_id@0x24, chip_id@0x28, descriptor_source@0x80}` and packs `(u8)trace_id | (trace_id & 0x1F00) | ((descriptor_source & 3) << 13) | (node_id << 15) | ((chip_id << 16) & 0x7FF0000)`:
 
 ```text
-jxc dma_id (27 bits):     deepsea correspondence:
-  trace_id[0:13]      <->  transaction_id[0:21]    (per-transfer tag; widened 13 -> 21)
-  resource[13:15]     <->  core_id[21:24]          (jxc 2-bit resource slot -> deepsea 3-bit core_id)
-  node[15]            <->  (folded into core_id)   (jxc 1-bit tensor-node selector)
-  chip[16:27] (11b)   <->  chip_id[24:38] (14b)    (widened 11 -> 14)
+jxc dma_id (27 bits):              deepsea correspondence:
+  trace_id[0:13]              <->  transaction_id[0:21]    (per-transfer tag; widened 13 -> 21)
+  descriptor_source[13:15]    <->  core_id[21:24]          (jxc 2-bit engine selector -> deepsea 3-bit core_id)
+  node_id[15]                 <->  (folded into core_id)   (jxc 1-bit tensor-node selector)
+  chip_id[16:27] (11b)        <->  chip_id[24:38] (14b)    (widened 11 -> 14)
 ```
+
+(The jxc descriptor-resource role is carried by `descriptor_source` — the BarnaCore/TensorCore/HIB engine that staged the descriptor — packed into the 2-bit slot at bits 13:15; the deepsea `core_id` is the analogous 3-bit core selector.)
 
 > **QUIRK —** the deepsea / modern gens widen the `dma_id` chip field to **14 bits** (mask `0x3fff`), the same chip_id 11/12→14 widening the trace header undergoes across gens. The proto2 `chip_id` field is `uint32` in every gen; the 14-bit mask is the maximally-widened value — it over-allocates for pxc (12-bit chip in the header) but exactly fits the widened vfc/vlc/glc/gfc gens. So the DMA-pairing key tracks the same pod-address widening as the trace header. This proves the cross-gen pairing key is the **same logical `(tag, resource/core, node, chip)` tuple**, widened per generation.
 
