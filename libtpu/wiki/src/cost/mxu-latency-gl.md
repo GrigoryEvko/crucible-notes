@@ -152,7 +152,7 @@ The `MatpushKey` is `{ byte[0]=GainLatchModeToMatmulDataFormat(mode), byte[1]=La
 
 > **GOTCHA —** the GL opcodes are **not** the Viperfish opcodes. Where VF matches matmul on opcode `230` (cases `212/218`) and matpush on `267/271/277`, GL matches matmul on `292/298/310` and matpush on `347/349/356/358` — and GL adds a *fourth* matpush case (`358`, `mode | 0x18`) that Viperfish lacks. GL's `LatchOpcodeToMsr` argument is `0x95` (VF: `0x8F`), and the key byte[2] is `3` (VF byte[3] holds the MSR). Bind the family by the per-gen opcode list, never by a hardcoded constant.
 
-> **CORRECTION (cost-VII) —** the per-resource default keys are per-generation. The Viperfish defaults are `res3→15` / `res11→0`; Ghostlite's are `res4→3` / `res9→9`, byte-confirmed at `@0x1c8b7560` (`a4==4 → v9=3`, `a4==9 → v9=9`). An early synthesis that carried the VF defaults onto GL is corrected: a reimplementation must read the GL default-resource keys from the GL lookup, and the GL integer matrix reflects the 11-resource indexing.
+> **NOTE —** The per-resource default keys are per-generation: Viperfish defaults are `res3→15` / `res11→0`; Ghostlite's are `res4→3` / `res9→9`, byte-confirmed at `@0x1c8b7560` (`a4==4 → v9=3`, `a4==9 → v9=9`). A reimplementation must read the GL default-resource keys from the GL lookup; the GL integer matrix reflects the 11-resource indexing.
 
 ### Function Map
 

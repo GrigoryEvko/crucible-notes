@@ -143,7 +143,7 @@ So the seven JF/DF `Resource` columns are the **first seven** `ResourceVector` s
 | r5 | `R[5]` `+0x28` | `VectorAluAny` | vector ALU "any" lane (`Instr 0x15, 0x16, 0x19, 0x20`) | CERTAIN |
 | r6 | `R[6]` `+0x30` | `VectorEup` | vector extended-precision (`Instr 0x11, 0x18, 0x1a`) | CERTAIN |
 
-> **CORRECTION (PERF-JFDF-1) —** an earlier reading labeled the columns functionally as "MXU matmul-issue" (r0) and "MXU matprep" (r1). The binding-confirmed names overturn the pairing: the `resLUT` maps matprep (`Instr 0x00`) → `r1` `Matmul` and the matmul/latch ordinals (`Instr 0x05`) → `r0` `Matpush`. The names above come from the `AccumulateInstructionUsage → Acc` consumer path and match `ResourceVectorToString` `@0x1c89bde0` slot-for-slot; the column index *is* the `ResourceVector` slot index.
+> **GOTCHA —** Mind the r0/r1 pairing: the `resLUT` maps matprep (`Instr 0x00`) → `r1` `Matmul`, and the matmul/latch ordinals (`Instr 0x05`) → `r0` `Matpush` — the opposite of the intuitive "r0 = matmul-issue, r1 = matprep" reading. The names above come from the `AccumulateInstructionUsage → Acc` consumer path and match `ResourceVectorToString` `@0x1c89bde0` slot-for-slot; the column index *is* the `ResourceVector` slot index.
 
 ---
 

@@ -144,7 +144,7 @@ The four scalar tiers above `0.0`/`1.0` rank **elementwise expense**, not op cat
 - **`reduce` uniquely multiplies by the OPERAND's `ChunksIn`** (`operand(0).shape`), not the root's. A reduce's compute scales with the large input it reduces over, not the small reduced output — the priority mirror of `HandleReduce`'s `ExtentProduct(operand)` flop formula.
 - **`parameter` is `×2` only for `operand_index ≤ 1`** — the first two fused-parameter slots cost the read-plus-forward of the param tensor; higher slots are free. This is the only tier gated on `operand_index` rather than opcode.
 
-> **CORRECTION (NCC-1) —** an earlier reading of the priority model labeled `42.0` the "matmul/conv heavy class." The byte-exact jump table overturns this: `42.0` is the `erf` *elementwise* weight (block `0x13098e49`, constant `0xa2df1a0`), and convolution takes the **separate** `flop_count / peak` path (block `0x13098db0`). There is no opcode that maps to a `×42` matmul tier. A reimplementation that prices matmul at `×42·ChunksIn` will be wrong by orders of magnitude on large convs.
+> **GOTCHA —** `42.0` is the `erf` *elementwise* weight (block `0x13098e49`, constant `0xa2df1a0`), not a matmul/conv class. Convolution takes the **separate** `flop_count / peak` path (block `0x13098db0`); there is no opcode mapping to a `×42` matmul tier. Pricing matmul at `×42·ChunksIn` is wrong by orders of magnitude on large convs.
 
 ---
 
@@ -262,7 +262,7 @@ double FusionWeight(this, inst):                           // 0x13098e09
     return cost;
 ```
 
-> **CORRECTION (NCC-2) —** an earlier reading described case `0x3D` as a pure cache lookup whose miss is "computed elsewhere." The decompile shows the miss branch (`0x13098f18` onward) **computes the cost in place** by recursing `NormalizedComputationCost` over every instruction of `fused_instructions_computation()` and accumulating into `xmm0` (the `vaddsd xmm0, var_30, xmm0` at `0x13098fd0`), then stores the sum into the `this+0x80` map. The cache is populated by `NormalizedComputationCost` itself on the parent fusion's first query, not by an external pass.
+> **NOTE —** Case `0x3D` is a cache lookup whose miss (`0x13098f18` onward) **computes the cost in place**: it recurses `NormalizedComputationCost` over every instruction of `fused_instructions_computation()`, accumulating into `xmm0` (the `vaddsd xmm0, var_30, xmm0` at `0x13098fd0`), then stores the sum into the `this+0x80` map. The cache is populated by `NormalizedComputationCost` itself on the parent fusion's first query, not by an external pass.
 
 The recursion guard at the function's top (`operand_index > 0` + binary op + `operand(0)` is iota/broadcast → `0.0`) prevents a fused binary op from charging for an iota/broadcast operand that the loop pre-path or a sibling edge already accounts for.
 
@@ -378,7 +378,7 @@ ResourceVector ScaleAndSumOutputFusionResourceVectors(            // 0x130b8320
 
 The four `GetSubset` calls use distinct `SubsetOptions` literals at `.rodata 0xae0f0c8 / 0xcc / 0xd0 / 0xd4` (each the 4-byte tuple `{0x00,0x01,0x01,0x01}`, byte-verified) — one subset shape per emitter. The final two `Acc` calls are the **explicit slot-9/11 MAX-combine**: the input-DMA and output-DMA *startup latency* terms are paid once (the maximum across the four sub-emitters), not summed per emitter — a transfer's startup latency overlaps across the fused sub-regions, while its bandwidth (slots 10/12) and the compute slots accumulate.
 
-> **CORRECTION (NCC-3) —** the raw model notes described this routine as returning `MaxResourceCycles()`. The decompile shows it returns after `Acc(this, 11, …)` — it *builds* the combined `ResourceVector` (with slots 9/11 MAX-combined) and returns it; the final scalar reduction to cycles happens in the **caller** via a separate `MaxResourceCycles` (@ `0x1c89b9e0`). The MAX-combine of slots 9/11 is therefore an explicit per-slot override here, distinct from the `MaxResourceCycles` reduction's serial-sum of the full `{9,10,11,12}` memory group ([Resource Enum](resource-enum.md#the-maxresourcecycles-reduction)).
+> **NOTE —** This routine *builds* the combined `ResourceVector` (with slots 9/11 MAX-combined) and returns it after `Acc(this, 11, …)`; it does **not** itself reduce to cycles. The final scalar reduction happens in the **caller** via a separate `MaxResourceCycles` (`@0x1c89b9e0`). The MAX-combine of slots 9/11 here is an explicit per-slot override, distinct from the `MaxResourceCycles` reduction's serial-sum of the full `{9,10,11,12}` memory group ([Resource Enum](resource-enum.md#the-maxresourcecycles-reduction)).
 
 ### Why `total_fused < total_unfused`
 

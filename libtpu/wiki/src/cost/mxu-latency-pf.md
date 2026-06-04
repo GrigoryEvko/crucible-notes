@@ -30,9 +30,11 @@ For reimplementation, the contract is:
 
 ---
 
-## The Correction
+## Pufferfish Has No MxuLatencyTable
 
-> **CORRECTION (cost-VII) —** an earlier synthesis (carried in [`mxu-latency-overview`](mxu-latency-overview.md)) listed Pufferfish among the four generations that own an `MxuLatencyTable` at `LatencyTable + 0x1d8`. The decompile overturns this for Pufferfish. `LatencyTablePufferfish` (ctor `@0x1c8a1960`) allocates **no** `MxuLatencyTable`: it stores `GetSharedPufferfishPerformance` at `[this+0x1d0]` and `GetSharedPufferfishBarnaCorePerformance` at `[this+0x1d8]` (two `Performance` grids, not a reservation map), and builds an inline `XluConflictPenaltyTable` at `[this+0x18]`. No `xla::pufferfish::MxuLatencyTable` class, ctor, or `GetResourceUsage` exists anywhere in the symbol table. The reservation-matrix model (matpush map at `this+0x00`, matmul map at `this+0x20`, `array<int,19>` bodies, the `{2,1,1}/{4,3,2}/{8,7,6}` value-sets) is the **Viperfish** model ([`mxu-latency-vf`](mxu-latency-vf.md)); it first appears at v5p, not v4. Viperfish, Ghostlite, and `6acc60406` carry the table; Jellyfish, Dragonfish, **and Pufferfish** do not.
+Pufferfish does **not** own an `MxuLatencyTable`. `LatencyTablePufferfish` (ctor `@0x1c8a1960`) allocates none: it stores `GetSharedPufferfishPerformance` at `[this+0x1d0]` and `GetSharedPufferfishBarnaCorePerformance` at `[this+0x1d8]` (two `Performance` grids, not a reservation map), and builds an inline `XluConflictPenaltyTable` at `[this+0x18]`. No `xla::pufferfish::MxuLatencyTable` class, ctor, or `GetResourceUsage` exists anywhere in the symbol table.
+
+> **GOTCHA —** The reservation-matrix model (matpush map at `this+0x00`, matmul map at `this+0x20`, `array<int,19>` bodies, the `{2,1,1}/{4,3,2}/{8,7,6}` value-sets) is the **Viperfish** model ([`mxu-latency-vf`](mxu-latency-vf.md)); it first appears at v5p, not v4. Viperfish, Ghostlite, and `6acc60406` carry the table; Jellyfish, Dragonfish, **and Pufferfish** do not. Do not assume the `LatencyTable + 0x1d8` slot is a reservation map on PF — it is a second `Performance` grid.
 
 ### What the decompile shows
 

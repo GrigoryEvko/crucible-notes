@@ -131,7 +131,7 @@ function MxuOpHoldIssues(B):                         // VF @0x1c8ad3a0
     return seed_set
 ```
 
-> **CORRECTION (MXU-STALL-1) —** an earlier revision swapped two of the three opcode ranges, attributing the `kFusedLoadReserved`/`kMatmulAccumulationPipe`/`kLmrReserved` build to matpush and the `OverrunCheck0..3` latch-sequence switch to matmul. The decompile is the reverse: matmul `[0x9b,0xa5]` (`(v6-155)<=0xA`) builds the `@0xb43b344` seed plus the `done_with_gains`/`kMatmulAccumulationPipe`/`kLmrReserved` logic, while matpush `[0x8d,0x96]` is the fall-through `else` that seeds `@0xb43b200` and runs the `latch_index_in_sequence` `OverrunCheck` switch.
+> **GOTCHA —** Mind which opcode band owns which seed. Matmul `[0x9b,0xa5]` (`(v6-155)<=0xA`) builds the `@0xb43b344` seed plus the `done_with_gains`/`kMatmulAccumulationPipe`/`kLmrReserved` logic; matpush `[0x8d,0x96]` is the fall-through `else` that seeds `@0xb43b200` and runs the `latch_index_in_sequence` `OverrunCheck` switch. The two are easy to transpose because each builds a held-set from a contiguous opcode range.
 
 The held-set elements are the named `MxuResource` enumerators (`kMsrAOverrunCheck0..3` / `kMsrBOverrunCheck0..3`, the transpose bit selecting the A vs B bank via `(4*(msr!=0))`; `kFusedLoadReserved`, `kLmrReserved`, `kMatmulAccumulationPipe`), as confirmed by the CHECK strings in the constructor (`holds.insert(MxuResource::kMatmulAccumulationPipe).second` `:491`, `holds.insert(MxuResource::kLmrReserved).second` `:488`, `kMsrAOverrunCheck0..3` `:447/454/461/468`, `kFusedLoadReserved` `:483`, `mxu_latency_table_vf.cc`).
 

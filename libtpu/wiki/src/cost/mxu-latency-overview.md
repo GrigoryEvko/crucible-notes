@@ -142,7 +142,7 @@ function MxuLatencyTable::GetResourceUsage(instr, resource, is_throughput):  // 
 
 The default fallback (step 1) is what makes the table sparse-by-default: for the seed resources the lookup returns a fixed cycle even before consulting any map, and for an unsupported resource it returns an error `Status` rather than reading out of bounds. The bounds-check in step 3 (`v9 >= 0x13` → `BUG()` on VF) is the same `kNumMxuResources` guard `SetReservations` enforces on the write side.
 
-> **CORRECTION (cost-VII) —** the per-resource default keys are **per-generation**, not shared. On Viperfish the defaults are `resource==3 → 15` and `resource==11 → 0` (`@0x1c8ae5c0`, `a4==3`/`a4==11`). On Ghostlite they are `resource==4 → 3` and `resource==9 → 9` (`@0x1c8b7560`, `a4==4`/`a4==9`); an early synthesis that carried the VF defaults onto GL is corrected here. A reimplementation must read the default-resource keys from the per-gen lookup, and the GL/GF integer matrices on their own pages reflect the 11-resource indexing.
+> **GOTCHA —** The per-resource default keys are **per-generation**, not shared. On Viperfish the defaults are `resource==3 → 15` and `resource==11 → 0` (`@0x1c8ae5c0`, `a4==3`/`a4==11`). On Ghostlite they are `resource==4 → 3` and `resource==9 → 9` (`@0x1c8b7560`, `a4==4`/`a4==9`). A reimplementation must read the default-resource keys from the per-gen lookup; the GL/GF integer matrices on their own pages reflect the 11-resource indexing, not the VF 19-resource one.
 
 ### Function Map
 

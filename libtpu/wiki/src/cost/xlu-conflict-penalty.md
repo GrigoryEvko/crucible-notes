@@ -188,7 +188,7 @@ The `B16` siblings of these rows/columns (`kReduceB16`, `kTransposeB16`) are fil
 | `kTransposeB32` | `Perm` | 96 | 96 | CONFIRMED |
 | `kTransposeB32` | `kReduceB32` | 86 | 86 | CONFIRMED |
 
-> **CORRECTION (XLU-CONFLICT-1) —** an earlier synthesis listed Pufferfish as 9 calls and marked the `kTransposeB32 → kReduceB32` cell as "`vx=1` not separately set" (`86 / —`). The Ghostlite-class ctor decompile at `LatencyTablePufferfish` ctor shows **10** calls: line `0x1c8a1960+…` sets `(2, 0, 1, 86)` explicitly. The `vx=1` cell **is** set, to 86. The PF matrix is fully symmetric across `vxpose 0/1`.
+> **NOTE —** The PF ctor (`@0x1c8a1960`) makes **10** `SetXluConflictPenaltyBetween` calls, including an explicit `(2, 0, 1, 86)` — so the `kTransposeB32 → kReduceB32` cell is set to 86 on **both** `vxpose` planes. The PF matrix is fully symmetric across `vxpose 0/1`.
 
 ### Ghostlite — `LatencyTableGhostlite` ctor @ `0x1c8b0c00`
 
@@ -224,7 +224,7 @@ The `B16` siblings of these rows/columns (`kReduceB16`, `kTransposeB16`) are fil
 | `Perm` | `kTransposeB16` | 29 | 34 | CONFIRMED |
 | `Perm` | `kTransposeB8` | 17 | 18 | CONFIRMED |
 
-> **CORRECTION (XLU-CONFLICT-2) —** the `kReduceB32 → kTransposeB8` pair is installed **twice** in the GL ctor: first `(0, 4, 0, 32)` / `(0, 4, 1, 28)`, then `(0, 4, 0, 36)` / `(0, 4, 1, 32)`. The second write wins, so the final stored values are **36 / 32** (raw), not the first pair's 32 / 28. An earlier synthesis noted "two sets" but listed the values ambiguously; the live values are the second write. The earlier synthesis also reported 44 cells / 21 pairs and was missing the transpose↔transpose cross pairs (`kTransposeB32↔kTransposeB16/B8`, `kTransposeB8↔kTranspose*`, `kReduceB16↔kTransposeB16`); the matrix above is the complete 56-call / 27-pair set.
+> **GOTCHA —** The `kReduceB32 → kTransposeB8` pair is installed **twice** in the GL ctor: first `(0, 4, 0, 32)` / `(0, 4, 1, 28)`, then `(0, 4, 0, 36)` / `(0, 4, 1, 32)`. The second write wins, so the live stored values are **36 / 32** (raw), not the first pair's 32 / 28. A reader who stops at the first install of this cell records the wrong penalty.
 
 ### What the numbers say
 
@@ -306,7 +306,7 @@ The gating helpers (all byte-confirmed):
 | `IsFinalTransposeFollowedByResult` | `0x1c8a0500` | A is a final-in-sequence transpose feeding B's result | HIGH |
 | `GetXluPathReservation` (VF) | `0x1c8a3200` | op `0x8b` → `1` (or `8` if field `+0x40` set); else `ViperfishPerformance::GetResourceUsage(instr, 14)` | CONFIRMED |
 
-> **CORRECTION (XLU-CONFLICT-3) —** an earlier note described `GetXluPathReservation` as "returns 8 if the op is **not** matpush (`0x8b`), else `GetResourceUsage`." The decompile (`@0x1c8a3200`) is the other way: for op `0x8b` (`kVectorSetPermutePattern`) it returns `1`, or `8` when the field at `+0x40` is nonzero; for every other op it returns `ViperfishPerformance::GetResourceUsage(instr, /*resource=*/14)`. The `0x8b` branch also runs a soft `LloCheckForFailure` that the opcode is `kVectorSetPermutePattern`.
+> **NOTE —** `GetXluPathReservation` (`@0x1c8a3200`) special-cases op `0x8b` (`kVectorSetPermutePattern`): it returns `1`, or `8` when the field at `+0x40` is nonzero; every other op returns `ViperfishPerformance::GetResourceUsage(instr, /*resource=*/14)`. The `0x8b` branch also runs a soft `LloCheckForFailure` that the opcode is `kVectorSetPermutePattern`.
 
 ---
 

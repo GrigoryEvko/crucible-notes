@@ -189,7 +189,7 @@ All rows CERTAIN. F32 has 10 entries (`0x130 kVectorErfF32` *and* `0x131 kVector
 | BF16 EUP push (9) | `0x110`..`0x118` | `0x440`..`0x460` | `0xe` (14) | `@0x1c8cd91d`..`@0x1c8cd9f5` |
 | EUP pop | `0x1c4` | `0x710` | `1` | `@0x1c8d2864` |
 
-> **CORRECTION (P-3-326 → P-3-334) —** an earlier pass reported the GL F32 EUP run as `Instruction 0x106..0x10c` (7 entries). The full constructor fill is `0x106..0x10f` — **ten** contiguous F32 slots, all 13, including `sinq`/`cosq`/`erf` F32 (`0x10d..0x10f`), byte-confirmed at offsets `0x418..0x43c`. The 9 BF16 slots `0x110..0x118` are all 14. There is no per-function outlier (no erf/sigshft deviation), closing the open question of a per-function GL EUP latency table.
+> **NOTE —** The GL F32 EUP fill is **ten** contiguous slots `0x106..0x10f`, all 13, including `sinq`/`cosq`/`erf` F32 (`0x10d..0x10f`), byte-confirmed at offsets `0x418..0x43c`; the 9 BF16 slots `0x110..0x118` are all 14. Every EUP function shares one per-precision latency — there is no per-function outlier (no `erf`/`sigshft` deviation), so GL needs no per-function EUP latency table.
 
 > **NOTE —** the BF16 push costs one extra cycle (14 vs 13). This is the latency-level reflection of GL keeping the 16-bit lane (`SupportsBf16AluInstructions` TRUE): GL pays a distinct BF16 EUP latency where VF/PF unpack to F32 and pay the single F32 latency. The 192/182 and 212/204 figures on the [`performance-gl`](performance-gl-ghperf.md) / [`performance-gf`](performance-gf-ghperf.md) pages are the EUP-*prep* grid-band cost magnitudes — a different quantity from this push→pop latency edge.
 
@@ -253,7 +253,7 @@ The EUP push→pop edge is bounded by **two independent quantities read from two
 
 `VectorEupReservationCycles` is the orthogonal EUP-unit **issue occupancy**: how many bundles the EUP resource stays reserved after a push, applied by the per-instruction resource model (`GetResourceUsage` matrix + the `SlotTracker` reservation), not by the latency edge. The composition is `max(latency-deadline, resource-availability)`, never a product: a pop is placed no earlier than `push_bundle + latency`; consecutive pushes are no closer than `reservation` bundles.
 
-> **CORRECTION (EUP-LAT) —** an earlier note (carried on [`performance-pf`](performance-pf.md)) described the PF EUP edge as "7, then doubled by `VectorEupReservationCycles` = 2". That is wrong: the latency edge is **not** scaled by the reservation. Disassembly of `LatencyTable::LatencyBetween` and the per-gen `LatencyBetweenInternal` shows the EUP push returns `latency[Instruction]` unmodified. Pufferfish's half-rate EUP (reservation 2) bounds the *issue rate* (one push per 2 bundles), not the push→pop window. The VALU-correction software-pipeline depth the decomposer must fill = the **latency** (PF 7), independent of the reservation; a chain of N independent transcendentals on PF is EUP-bound at ≈ 2·(N−1) + 7 bundles, not 7·2.
+> **GOTCHA —** The latency edge is **not** scaled by the reservation. Pufferfish's half-rate EUP (reservation 2) bounds the *issue rate* (one push per 2 bundles), not the push→pop window — the push returns `latency[Instruction]` unmodified. The VALU-correction software-pipeline depth the decomposer must fill equals the **latency** (PF 7), independent of the reservation. A chain of N independent transcendentals on PF is EUP-bound at ≈ 2·(N−1) + 7 bundles (issue-rate-limited spacing plus the final drain), not 7·2.
 
 ---
 

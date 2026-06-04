@@ -154,11 +154,7 @@ RecordHloCycles(inst, window, rv, fs, nesting):       // sub_130BBFE0
       default:              Acc(R5, elems × 1.0);                 // VectorAluAny, 1 cy/elem
 ```
 
-> **CORRECTION (HCA-1) —** an earlier reading had `add` and `subtract` unconditionally on the dedicated `VectorAlu` lanes (`R4`). The decompile shows both are **float-type-gated**: `slot = ElementIsFloating(shape) ? GetResource(CT) : R5`. Integer add/subtract deposit into `VectorAluAny` (`R5`) like the default; only floating-point add/subtract reach the dedicated lanes (`R4` via `CT 0x12`/`0x13`). A reimplementation that ignores the gate over-occupies the dedicated lanes for integer fusions.
-
-> **CORRECTION (HCA-2) —** an earlier reading had `convert` *free* for 1-bit PRED and `×2` for wider types. The decompile shows the **opposite**: `case 0x2a` tests `ElementHasBitWidth(shape, 1)` and only the 1-bit case deposits (`R5`, `elems × 2.0`); every wider convert falls through to the zero path with no deposit. The TPU prices a packed-bool repack at 2 cy/elem and treats numeric width-conversions as free in the bundle model.
-
-> **CORRECTION (HCA-3) —** the `erf` block does not consume a `vtable+0x138` transcendental-estimate slot. It is gated by an `HloCostAnalysis` vtable predicate at `+312` (called with arg `11`); the floating fast-path is a single `VectorEup` deposit (`CT 0x11`), and the slow path is a 4-deposit polynomial scaled by the `.rodata` constants `16.0` (`0xa2df040`) on `VectorAlu0` and `4.0` (`0xa2de830`) on `VectorAluAny`. Both constants are byte-confirmed below.
+> **GOTCHA —** Two slot-routing traps in this table. (1) `add` and `subtract` are **float-type-gated**: `slot = ElementIsFloating(shape) ? GetResource(CT) : R5`. Integer add/subtract deposit into `VectorAluAny` (`R5`) like the default; only floating-point add/subtract reach the dedicated lanes (`R4` via `CT 0x12`/`0x13`). Ignoring the gate over-occupies the dedicated lanes for integer fusions. (2) `convert` deposits **only** for 1-bit PRED (`R5`, `elems × 2.0`, a packed-bool repack); every wider numeric width-conversion falls through to the zero path and is free — the opposite of the intuitive "narrow free, wide costed" assumption.
 
 ### The Decoded Jump Table
 
@@ -236,7 +232,7 @@ GetConvolutionFlops(inst, out, lhs, rhs):           // sub_1E480060
     return 2 * (out_feature / bgc) * (in_feature / fgc) * window_vol * out_spatial;
 ```
 
-> **CORRECTION (HCA-4) —** the convolution flop divides by **both** `feature_group_count` *and* `batch_group_count`, not feature-group alone. The decompile's final line is `2 * (v115/bgc) * (Dimension/fgc) * window_vol * out_spatial` with two separate `idiv`/`div` sequences (`v109 = Dimension/v105`, `v110 = v115/v106`). Grouped convolutions (depthwise, batch-grouped) are mis-costed by a model that drops the batch-group divide.
+> **GOTCHA —** The convolution flop divides by **both** `feature_group_count` *and* `batch_group_count`, not feature-group alone — two separate `idiv`/`div` sequences (`v109 = Dimension/fgc`, `v110 = v115/bgc`). Grouped convolutions (depthwise, batch-grouped) are mis-costed by any model that drops the batch-group divide.
 
 This is the flop the [NormalizedComputationCost](normalized-computation-cost.md) conv path caches per `unique_id` and divides by the per-LHS-format peak to get MXU cycles.
 

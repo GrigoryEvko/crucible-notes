@@ -164,7 +164,7 @@ The binary has a second, larger "resource" enum that a reimplementer will inevit
 
 The two enums overlap on one physical concept — the six ICI ring links. The cost model deposits *cycle weight* into `R[13..18]` (`Ici{Y,X,Z}{Plus,Minus}`); the scheduler caps *concurrent issue* of the same links via `ResourceType` ids 14..19 (also `kIci{Y,X,Z}{Plus,Minus}`), bounded by the `xla_tpu_sparse_core_ici_overlap_limit` knob (field 1130). A bundle that uses an ICI link both costs cycles (this model) and consumes a concurrency slot (the other model). The scheduler enum, its producers, and its available-count sources are documented in full on the dedicated [ResourceType Taxonomy](../sched/scheduler-resourcetype-model.md) page; the contrast is summarized here only to fix the boundary.
 
-> **CORRECTION (RES-1) —** an earlier reading of the `MaxResourceCycles` reduction labeled the 0.5 blend on `{3,4,5}` an "XLU blend" and the serial sum on `{9..12}` an "MXU group". The recovered names overturn both: `{3,4,5}` are the `VectorAlu0/1/Any` port-balance lanes, and `{9..12}` are the `MemXfer{Input,Output}{Latency,Bandwidth}` memory group. The MXU pipes (`R[0]`, `R[1]`) are in the plain-MAX group and overlap, not serialize.
+> **GOTCHA —** In the `MaxResourceCycles` reduction, the 0.5 blend on `{3,4,5}` is the `VectorAlu0/1/Any` port-balance group (not an XLU blend), and the serial sum on `{9..12}` is the `MemXfer{Input,Output}{Latency,Bandwidth}` memory group (not an MXU group). The MXU pipes `R[0]`/`R[1]` are in the plain-MAX group and overlap, not serialize.
 
 ---
 

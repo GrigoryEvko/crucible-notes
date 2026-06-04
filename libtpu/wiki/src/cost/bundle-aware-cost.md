@@ -267,7 +267,7 @@ The per-gen `LatencyBetweenInternal` is itself a per-op-pair `max` over the rele
 
 The scheduler then uses these two quantities — per-node bundle cost (this page's `MaxResourceCycles`) and per-edge dependency latency (`LatencyBetween`) — to compute its list-scheduling priority: it overlaps async work under compute when the dependency latency permits, packing independent ops into bundles whose cost is the max-lane occupancy rather than the sum. The scheduler internals (list priority, async tracking, the distinct 47-ID `ResourceType` concurrency model) live on the [Scheduler Overview](../sched/overview.md) and [ResourceType Taxonomy](../sched/scheduler-resourcetype-model.md) pages.
 
-> **CORRECTION (BAC-1) —** an early framing of this subsystem described the bundle cost as a "sum of slot costs with overlap discounts." The decompile of `MaxResourceCycles` overturns that: the bundle cost is a `max` over lanes (with one serial-sum group for memory and one 50%-blend group for the vector ALU), never a global sum. The only `sum` in the whole pipeline is the four-term memory group inside the reduction and the per-slot `Add` across packed vectors (which itself `max`-combines the two DMA-startup terms). Treating the bundle cost as a slot sum mis-prices every multi-lane bundle.
+> **GOTCHA —** The bundle cost is a per-lane `max`, never a global sum. The only addition in the whole pipeline is the four-term memory group inside the reduction and the per-slot `Add` across packed vectors (which itself `max`-combines the two DMA-startup terms). Pricing a bundle as a sum of slot costs mis-prices every multi-lane bundle.
 
 ---
 

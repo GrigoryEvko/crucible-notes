@@ -363,7 +363,7 @@ case kErf:                                  // ResultFifo ordinal 0x12
 
 The six depth values `{4, 4, 32, 16, 16, 16}` were read byte-exactly from `0xb53e270`. The `TpuVersion → generation` ordering is not labeled in this function; it is the same `TpuVersion` enum the rest of the cost model indexes (ordinal 0 = Jellyfish, per [ResultFifo / ArchRegister Enums](../isa/resultfifo-archregister.md)). A strong consistency signal supports the binding: the `TpuVersion 0`/`1` depth of `4` exactly equals the Jellyfish/Dragonfish push→pop latency clamp of `4` (below) — on the legacy gens the FIFO holds exactly one latency-window's worth of in-flight EUP results.
 
-> **CORRECTION (EUP-3) —** the EUP-result-FIFO *depth* is recoverable from this binary as a literal, contrary to the framing that "the chip FIFO depth is a hardware parameter, not a libtpu literal." That framing is correct for the `EupResultFifoEntry` proto (a runtime `repeated`-message snapshot of in-flight results), but `ResultFifoEntryCount(kErf, ver)` is the compile-time depth the scheduler enforces, and it is the `int[6]` `{4, 4, 32, 16, 16, 16}` at `0xb53e270`.
+> **NOTE —** Two distinct EUP-FIFO quantities exist and must not be conflated. The runtime `EupResultFifoEntry` proto is a `repeated`-message *snapshot* of in-flight results (a hardware-state dump, no fixed size). `ResultFifoEntryCount(kErf, ver)` is the separate *compile-time depth* the scheduler enforces — and that one **is** a libtpu literal: the `int[6]` `{4, 4, 32, 16, 16, 16}` at `0xb53e270`.
 
 ### The Push→Pop Latency Edge
 

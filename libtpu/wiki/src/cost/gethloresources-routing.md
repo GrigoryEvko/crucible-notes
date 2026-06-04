@@ -288,7 +288,7 @@ Block addresses and the jump-table target offsets are byte-verified from `.rodat
 
 The DEFAULT arm covers every numeric elementwise / structural op not named above (the decompiler annotates it `cases 4-23, 25, 27-38, 40, 43-49, 51-55, 57-66, 68-70, 72-74, 76-81, 83-90, 92-96, 98-107, 109-122, 124-128`). The ZERO arm covers the data-layout ops: `bitcast` (`0x18`), `broadcast` (`0x1a`), `concatenate` (`0x27`), `constant` (`0x29`), `iota` (`0x43`), `reshape` (`0x61`), `tuple` (`0x81`) — all at the single block `0x130bc8c2`.
 
-> **CORRECTION (HRR-1) —** an earlier reading routed the `erf` fast path through a `Matpush`-class `CT 0xb`. The decompile (`@0x130bc245`) shows the ext-precision predicate `inst.vtable[+312](11)` selecting a single `VectorEup` deposit at `CT 0x11`, which `GetResource` maps to `R[6]` (`dword_B438AEC[0x11] == 6`, byte-verified). There is no `Matpush` traffic in the `erf` block; it stays on the vector/EUP pipes. This matches the corrected reading on [TpuHloCostAnalysis](tpu-hlo-cost-analysis.md).
+> **NOTE —** The `erf` fast path carries no `Matpush` traffic: the ext-precision predicate `inst.vtable[+312](11)` (`@0x130bc245`) selects a single `VectorEup` deposit at `CT 0x11`, which `GetResource` maps to `R[6]` (`dword_B438AEC[0x11] == 6`, byte-verified). It stays entirely on the vector/EUP pipes — see [TpuHloCostAnalysis](tpu-hlo-cost-analysis.md).
 
 ### The Op→Slot Table — `dword_B438AEC`
 

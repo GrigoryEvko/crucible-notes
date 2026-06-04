@@ -8,7 +8,7 @@
 
 There are in fact **two** distinct structs, and conflating them is the central trap. `ConvCostState` is the large persistent state (1180+ bytes — protos at `+0x158`/`+0x1e8`/`+0x328`, six layout-mapped dim sizes at `+0x350..+0x378`, a set of per-dim vector masks at `+0x380..+0x458`, the 21-byte `ConvolutionLoweringStrategy` dtype/pack flags at `+0x470..+0x484`, and three `inlined_vector<long,6>` chunk-count grids at `+0x8`/`+0x78`/`+0xe8`). `ConvState` is the small per-call dim-product struct (`+0x0..+0x78`) that `CostModel::RecordConvolutionCycles` `@0x130b6ce0` builds **inside** the deposit, on the stack, from `ConvCostState`'s chunk-count vectors divided by the `Target` geometry. The pricing leaf `CostModel::RecordConvKernelCycles` `@0x130caf20` reads dtype/pack flags from `ConvCostState` and dim products from `ConvState`, multiplies them into an op count, and deposits cycles into the `Matmul` / `Matpush` / `Xlu` resource slots.
 
-This page documents the field offsets of both structs and the **throughput bridge** that turns the conv's op count into cycles. The bridge is the key reconciliation: the matmul-rate multiplier the conv deposit needs is `VfCycleTable::GetCyclesForThroughput(CT 0)`, which is *not* a constant — it is a call into `MxuLatencyTable::GetResourceUsage(instr 212, res 3)`, and the `res` argument is a **resource-index remap** (res 3 → array index 15 = `MatmulAccA`; res 11 → array index 0 = `MatpushPushPort`), not a cycle seed. So the `VfCycleTable` throughput integer and the `MxuLatencyTable` reservation cycle of [`mxu-latency-overview`](mxu-latency-overview.md) are *the same number viewed two ways*.
+This page documents the field offsets of both structs and the **throughput bridge** that turns the conv's op count into cycles. The bridge is the central detail: the matmul-rate multiplier the conv deposit needs is `VfCycleTable::GetCyclesForThroughput(CT 0)`, which is *not* a constant — it is a call into `MxuLatencyTable::GetResourceUsage(instr 212, res 3)`, and the `res` argument is a **resource-index remap** (res 3 → array index 15 = `MatmulAccA`; res 11 → array index 0 = `MatpushPushPort`), not a cycle seed. So the `VfCycleTable` throughput integer and the `MxuLatencyTable` reservation cycle of [`mxu-latency-overview`](mxu-latency-overview.md) are *the same number viewed two ways*.
 
 For reimplementation, the contract is:
 
@@ -66,7 +66,7 @@ For reimplementation, the contract is:
 | `+0x440` / `+0x458` | `vector<long>` (init = 0) | `assign(N, 0)` `@0x130a53bc/53e2` | CERTAIN |
 | `+0x470..+0x484` | `ConvolutionLoweringStrategy` (21 B) | `GetConvolutionLoweringStrategy`, copied **only when opcode == 0x2b** `@0x130a5705..577a` | CERTAIN |
 
-> **CORRECTION (cost-VII) —** an earlier synthesis placed the three chunk-count `inlined_vector` members at `+0x78`/`+0xe8`/`+0x128`. The decompile of `GetConvolutionCostState` fixes them at **`+0x8`/`+0x78`/`+0xe8`**: the three `Storage<long,6>::Assign` calls target `(__int64*)a3 + 1`, `+15`, `+29` (byte offsets 0x8, 0x78, 0xe8) immediately after the three `ChunkCountsWithTmp` calls. The stride is 0x70 (112 B per `inlined_vector<long,6>` member, including its header). The first vector — fed from the **operand** shape `v128` — is the one that was dropped in the earlier reading.
+> **NOTE —** The three chunk-count `inlined_vector<long,6>` members sit at `+0x8`/`+0x78`/`+0xe8` on a 0x70 stride (112 B per member, including its header): the three `Storage<long,6>::Assign` calls target `(__int64*)a3 + 1`, `+15`, `+29` immediately after the three `ChunkCountsWithTmp` calls. The first vector is fed from the **operand** shape (`v128`), the second from the output shape, the third from the kernel shape — easy to mis-bind if the operand vector is overlooked.
 
 ### The ConvolutionLoweringStrategy Flag Block
 
@@ -156,7 +156,7 @@ The decompile of `@0x1c89e2c0` (a `switch(a2)` over CT, `default → return 1`) 
 
 The transpose flag is the 4th `GetResourceUsage` arg; the matpush key pre-transforms (`267` direct, `271 → latch_mode ^ 0xB`, `277 → latch_mode | 0x14`) are applied inside `GetResourceUsage` (see [`mxu-latency-overview`](mxu-latency-overview.md)).
 
-### The Reconciliation — `res` Is a Resource-Index Remap
+### The Throughput Bridge — `res` Is a Resource-Index Remap
 
 `MxuLatencyTable::GetResourceUsage(instr, res, transpose)` `@0x1c8ae5c0` does **not** index its `array<int,19>` reservation vector with `res` directly. It first remaps:
 
@@ -216,7 +216,7 @@ The bridge is per-generation. The Ghostlite helper `GlcCycleTable::GetCyclesForT
 
 The `0.5` (`.rodata 0xa2df5c8`) is the half-rate the matmul multiplies by when the format flag `v166` is clear; the `0.25` (`.rodata 0xa2df6d0`) replaces it only when `ConvCostState+0x480` (`generate_x8_packed_vlatches`) `== 1` **and** `Target+0x398` `== 2` (the topology gate at `@0x130cb468/cb471`). The matmul-rate divisor is read as `vcvtsi2sd xmm1, [rax+0x4ac]` (`Target+0x4ac`); the Xlu divisor as `[rax+0x4b0]` reached through the `CycleTable`'s `Target` pointer.
 
-> **CORRECTION (cost-VII) —** an earlier reading listed `Target+0x4ac` (matmul rate) and `Target+0x4b0` (Xlu rate) as `ConvCostState` fields. They are **`Target` fields**, populated in `Target::Init` from `TpuSequencerParts::vector_isa()` `@0x20b31840`: `vector_isa[+0xc]` (8 bytes) → `Target+0x4ac` & `+0x4b0`; `vector_isa[+0x14]` → `Target+0x4a8`. They are chip-wide vector-ISA throughput-rate parameters, not a conv-local derate. The conv deposit reads them through `*(_QWORD*)a1` (the `CostModel`'s `Target*`) and through the `CycleTable`'s `Target*`, never out of `ConvCostState`.
+> **GOTCHA —** `Target+0x4ac` (matmul rate) and `Target+0x4b0` (Xlu rate) are **`Target` fields**, not `ConvCostState` fields. They are chip-wide vector-ISA throughput-rate parameters populated in `Target::Init` from `TpuSequencerParts::vector_isa()` `@0x20b31840`: `vector_isa[+0xc]` (8 bytes) → `Target+0x4ac` & `+0x4b0`; `vector_isa[+0x14]` → `Target+0x4a8`. The conv deposit reads them through `*(_QWORD*)a1` (the `CostModel`'s `Target*`) and through the `CycleTable`'s `Target*`, never out of `ConvCostState` — they are not a conv-local derate.
 
 Because `Matmul`, `Matpush`, and `Xlu` (`R[0]`/`R[1]`/`R[2]`) are in the plain-MAX group of `MaxResourceCycles` (the MXU pipes overlap — see [`resource-enum`](resource-enum.md)), a compute-bound conv's bundle cost is `≈ max(Matmul, Matpush, Xlu)`, not their sum.
 
