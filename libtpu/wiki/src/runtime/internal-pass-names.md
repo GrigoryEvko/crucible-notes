@@ -29,11 +29,11 @@ The catalog contract:
 | Host-offload | HLO `name()` | ~17 | — |
 | While-loop / pipelining / misc | HLO `name()` | ~25 | [`loop-tiling-unrolling.md`](../compiler/loop-tiling-unrolling.md), [`optimization-barrier.md`](../compiler/optimization-barrier.md) |
 | SparseCore-offload (HLO-level) | HLO `name()` | ~10 | — |
-| SparseCore tile-task (MLIR) | `Create*Pass` | 41 | [`lower-to-sparsecore-llvm.md`](../compiler/lower-to-sparsecore-llvm.md) |
+| SparseCore tile-task (MLIR) | `Create*Pass` | 36 | [`lower-to-sparsecore-llvm.md`](../compiler/lower-to-sparsecore-llvm.md) |
 | StableHLO / CHLO / VHLO legalizers | `create*Pass`/flag | ~40 | [`mhlo-xtile-tpu-lowering.md`](../compiler/mhlo-xtile-tpu-lowering.md) |
 | Shardy (sdy) round-trip | `create*Pass`/flag | ~35 | [`sharding-propagation.md`](../compiler/sharding-propagation.md) |
 | XTile | `create*Pass`/flag | ~13 | [`mhlo-xtile-tpu-lowering.md`](../compiler/mhlo-xtile-tpu-lowering.md) |
-| `tpu` dialect (TensorCore vector IR) | `create*Pass`/flag | 13 | [`tpu-dialect-and-ops.md`](../compiler/tpu-dialect-and-ops.md), [`tpu-to-llo-ods.md`](../compiler/tpu-to-llo-ods.md) |
+| `tpu` dialect (TensorCore vector IR) | `create*Pass`/flag | 14 | [`tpu-dialect-and-ops.md`](../compiler/tpu-dialect-and-ops.md), [`tpu-to-llo-ods.md`](../compiler/tpu-to-llo-ods.md) |
 | `mosaic_sc` dialect | `create*Pass` | 3 | [`mosaic-overview.md`](../compiler/mosaic-overview.md) |
 | `llo` / LLO bridge | `create*Pass`/flag | ~5 | [`lower-to-mlo-dma-bridge.md`](../compiler/lower-to-mlo-dma-bridge.md), [`llvmtpu-intrinsic-catalog.md`](../compiler/llvmtpu-intrinsic-catalog.md) |
 | TPU LLVM-backend MachineFunction flags | `cl::opt` flag | 242 | — (codegen tail; flags only) |
@@ -176,11 +176,11 @@ All-reduce / all-gather / reduce-scatter / all-to-all combiners, legalizers, and
 
 ### Scheduling (Phase 7: "final_scheduler" / "async_scheduling")
 
-The latency-hiding scheduler family. Three scheduler `name()` strings are byte-confirmed literals (one hit each). The scheduler placement is owned by [`hlo-pass-registry.md`](../compiler/hlo-pass-registry.md).
+The latency-hiding scheduler family. Three scheduler `name()` strings are byte-confirmed dashed literals — `latency-hiding-layer-scheduler`, `sparsecore-latency-hiding-scheduler`, and `legalize-scheduling-annotations` (one hit each). The OSS `latency-hiding-scheduler` name is built at runtime: only the substring `latency-hiding-scheduler` inside the two TPU-prefixed forms is present in `.rodata`, so that row is `HIGH`, not `CERTAIN`. The scheduler placement is owned by [`hlo-pass-registry.md`](../compiler/hlo-pass-registry.md).
 
 | Registered name | Class | Tier | Confidence |
 |---|---|---|---|
-| `latency-hiding-scheduler` | `LatencyHidingScheduler` | O | CERTAIN |
+| `latency-hiding-scheduler` | `LatencyHidingScheduler` | O | HIGH |
 | `latency-hiding-layer-scheduler` | `jellyfish::LatencyHidingLayerScheduler` (`name()` @ `0x10b85160`) | T | CERTAIN |
 | `sparsecore-latency-hiding-scheduler` | `sparse_core::SparseCoreLatencyHidingScheduler` (`name()` @ `0x13077ea0`) | T | CERTAIN |
 | `legalize-scheduling-annotations` | `LegalizeSchedulingAnnotations` (`name()` @ `0x12e9a060`) | O | CERTAIN |
@@ -263,7 +263,7 @@ The MLIR surface is recovered from `create*Pass`/`Create*Pass` factory symbols a
 StableHLO ── createStablehloLowerToXtilePass ──> XTile
 XTile     ── vector-layout / tiling passes     ──> tpu (TensorCore vector IR)
 tpu       ── createLowerToLLOPass              ──> LLO ── tpu-bundle-packer / tpu-encode-mcinst-bundles ──> ISA bundles
-tpu       ── (SparseCore fork) sc 41 passes    ──> Mlo ── createLowerToSparseCoreLlvmPass ──> LLVM-TPU IR
+tpu       ── (SparseCore fork) sc 36 passes    ──> Mlo ── createLowerToSparseCoreLlvmPass ──> LLVM-TPU IR
 ```
 
 ### StableHLO / CHLO / VHLO Legalizers
@@ -308,7 +308,7 @@ The StableHLO → XTile lowering layer, plus the XTile-CPU bufferization/vectori
 | `xtile-verify-legal-ops` | `createVerifyLegalXTileOpsPass` | HIGH |
 | `xtile-cpu-*` (bufferization, fuse-elementwise, linalg-elementwise-to-vector, lower-xtile-entry, shlo-to-vector, vector-to-scalar, unpack-sub-byte-vector-write, …) | XTile-CPU passes | HIGH |
 
-### `tpu` Dialect — TensorCore Vector IR (13 `create*Pass`)
+### `tpu` Dialect — TensorCore Vector IR (14 `create*Pass`)
 
 The TensorCore vector-layout and lowering passes. `lower-to-llo` and `lower-to-mlo` are byte-confirmed (`getArgument()` literals located). Documented on [`tpu-dialect-and-ops.md`](../compiler/tpu-dialect-and-ops.md) and [`tpu-to-llo-ods.md`](../compiler/tpu-to-llo-ods.md).
 
@@ -334,7 +334,7 @@ Documented on [`mosaic-overview.md`](../compiler/mosaic-overview.md).
 | `mlir::mosaic_sc::createInferVectorLayoutPass` | HIGH |
 | `mlir::mosaic_sc::createInsertRelayoutPass` | HIGH |
 
-### SparseCore Tile-Task Passes (41 `Create*Pass`)
+### SparseCore Tile-Task Passes (36 `Create*Pass`)
 
 The `xla::tpu::sparse_core::Create*Pass` family — the SparseCore tile-task lowering chain (bounds-checks, tile outlining, allocation, prefetch scheduling, LLVM lowering). Documented on [`lower-to-sparsecore-llvm.md`](../compiler/lower-to-sparsecore-llvm.md). Named by *function* rather than dumped flat:
 
@@ -384,7 +384,7 @@ Two phase taxonomies coexist. The **monolithic compile** labels its `HloPassPipe
 
 | Stage string | File-off | Role | Confidence |
 |---|---|---|---|
-| `pre-optimization` | `0x85eaa00` | PreOptimizationPipeline (Phase 1) | CERTAIN |
+| `pre-optimization` | `0x85ea920` | PreOptimizationPipeline (Phase 1) | CERTAIN |
 | `post-optimization` | `0x85ea85e` | PostOptimizationPipeline | CERTAIN |
 | `Pre layout assignment` | `0x84ef7bf` | pre-layout HLO | CERTAIN |
 | `Layout assignment` / `XLA::JF Layout Assignment` | `0x84ef7d5` / `0x84efbdf` | LayoutAssignment | CERTAIN |
@@ -442,7 +442,7 @@ Honest scope limits, so a reimplementer knows what to re-derive:
 - [`optimization-barrier.md`](../compiler/optimization-barrier.md) — body of the `optimization-barrier-expander` row
 - [`msa-overview.md`](../compiler/msa-overview.md) — the MSA engine behind the memory-space rows
 - [`mhlo-xtile-tpu-lowering.md`](../compiler/mhlo-xtile-tpu-lowering.md) — the StableHLO/XTile/`tpu` MLIR lowering cascade
-- [`lower-to-sparsecore-llvm.md`](../compiler/lower-to-sparsecore-llvm.md) — the 41 SparseCore `Create*Pass` lowering chain
+- [`lower-to-sparsecore-llvm.md`](../compiler/lower-to-sparsecore-llvm.md) — the 36 SparseCore `Create*Pass` lowering chain
 - [`tpu-to-llo-ods.md`](../compiler/tpu-to-llo-ods.md) — the `lower-to-llo` / `lower-to-mlo` bodies
 - [`error-templates.md`](error-templates.md) — the error/status template catalog (contrast: this page owns pass names, not error text)
 - [`hint-strings.md`](hint-strings.md) — the advisory-hint catalog (contrast: this page owns pass names, not remedies)
