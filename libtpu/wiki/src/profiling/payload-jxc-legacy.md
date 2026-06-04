@@ -276,10 +276,10 @@ key = (trace_id & 0x1f00)                  // bits 8..12 of trace_id
     | ((node_id  & 1)   << 15)             // node bit
     | ((chip_id  << 16) & 0x7ff0000)       // 11-bit chip
     | (id & 0xff);                          // low byte = the nf id
-// simple arms (VMEM-ICI / SMEM / IMEM / BMEM / HIB): key = node_id & 0xff (degenerate)
+// simple arms (VMEM-ICI / SMEM / IMEM / BMEM / HIB): key = 0 (degenerate — no composite, low byte never set)
 ```
 
-> **GOTCHA —** the simple-engine arms (`case 7,9,0xA..0x11` in the switch) fall to `LABEL_12` and return `id & 0xff` *only* — i.e. the engine families without a rich command/data-end identity pair on the low byte alone. The HBM and VMEM-HBM arms build the full composite. The *value* is deterministic and pairs correctly per engine, but the **exact LSB bit layout per arm is CONFIRMED-PARTIAL** — the field selection per direction is byte-read from the arm table @ `0xab88674`, the OR/shift composition for the HBM family is read, but a fully tabulated per-arm bit map was not enumerated. A reimplementer must reproduce the arm-by-arm field selection, not a single global formula.
+> **GOTCHA —** the simple-engine arms (`case 7,9,0xA..0x11` in the switch) fall to `LABEL_12` and return **`0`** — those cases never assign the composite fields (`v3` stays `0` and the low byte stays `0`), so the engine families without a rich command/data-end identity collapse to a single degenerate key. Only the composite arms (`case 3` `nf_descriptor`, `case 4`/`6` `nf_control`/`nf`, `case 5` `nf_ici`, `case 8` `ici_packet`, and the two HIB arms `case 0x12`/`0x13`) build the full key. The *value* is deterministic and pairs correctly per engine, but the **exact LSB bit layout per arm is CONFIRMED-PARTIAL** — the field selection per direction is byte-read from the arm table @ `0xab88674`, the OR/shift composition for the composite family is read, but a fully tabulated per-arm bit map was not enumerated. A reimplementer must reproduce the arm-by-arm field selection, not a single global formula.
 
 The per-engine XStat assignment (which engine/direction lands on StatType `0x12`/`0x13`/`0x14`/`0x34`/`0x39`) and the read-vs-write XEvent display-name table (the `"Writ"` branch) were **not fully tabulated** (LOW confidence on the integer→XStat-name mapping; the *mechanism* is CERTAIN).
 
