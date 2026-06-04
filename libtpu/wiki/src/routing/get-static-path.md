@@ -109,7 +109,7 @@ function CreateRoutePathFromDistance(out, dst, dist, dim_order):  // 0x20c02040
         return MakeError("Mismatch source coordinate dimensionality %d and "
                          "routing order dimensionality %d")        // [:113]
 
-    path.cost = dst.ManhattanNorm()                       // stored at path+0x20, line 0x20c020a0
+    path.cost = dst.ManhattanNorm()                       // staged in the path body, copied to path+0x28 by the tail vmovups
     for idx, dim in enumerate(dim_order):                 // walk axes in dimension order
         if idx >= 7: BUG()                                // ≤ 7 axes hard cap (0x20c0212d)
         d        = dist.GetCoordinate(dim)                // signed per-axis distance
