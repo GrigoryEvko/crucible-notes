@@ -13,17 +13,19 @@ components.
 | `incarnation_id` | int64 | process | per-process generation token |
 | `tpu_topology_args` | `tpu.TpuTopologyArgsProto` | slice | the slice's 3D shape (must match across hosts) |
 
-`(slice_id, host_id)` is the **universal host key**. It appears
-verbatim as:
+`(slice_id, host_id)` is the **universal host key**. It appears as:
 
-- the key of [`NetworkAddressMapping`](field-decode.md) (the endpoint
-  table),
-- the [barrier](barrier-error-usage.md)'s arrival set
-  `flat_hash_set<tuple<int,int>>`,
-- the [error aggregator](barrier-error-usage.md)'s worker key
-  `StrCat("$0:$1", slice_id, host_id)`,
-- the Communicator's endpoint map key
-  `flat_hash_map<tuple<int,int>, NetworkAddressMapping>`.
+- fields 1 and 2 of [`NetworkAddressMapping`](field-decode.md) (the
+  endpoint table — `slice_id` field 1 int32, `host_id` field 2 int32),
+- fields 2 and 3 of the [barrier](barrier-error-usage.md)'s
+  `BarrierRequest` (`slice_id` field 2 int32, `host_id` field 3 int32),
+  which the coordinator uses to track arrivals against
+  `num_participants` (field 4),
+- the [error aggregator](barrier-error-usage.md)'s per-worker key,
+  carried in a `MegascaleErrorAggregator::WorkerAndCoreInfo` struct,
+- the **Communicator's endpoint map key**
+  `flat_hash_map<tuple<int,int>, NetworkAddressMapping>` (confirmed in
+  the `Communicator::Communicator` constructor signature @0x1cca9700).
 
 There is no separate "node id" or "rank" field. A flat rank, where one
 is needed, is derived by flattening `(slice_id, host_id)` against the
@@ -61,12 +63,17 @@ layers:
 - `MultiSliceTopologyAndLocationProto.incarnation_id` (field 4) — the
   serialized fleet object.
 
-The bootstrap re-key detector (`LogUniqueIds`) compares the
-`(slice_id, host_id, incarnation_id)` of each registration against the
-previous one and logs a warning if the incarnation changed — the signal
-an operator reads when asking "why did the fleet's address table change
-at time T". See the [bootstrap](../bootstrap/topology-exchange.md)
-documentation for the re-key detail.
+The re-key detector — the anonymous-namespace helper
+`LogUniqueIds(int, int, MultiSliceTopologyAndLocation const&)`, inlined
+into `Communicator::Create` — caches the
+`(slice_id, host_id, incarnation_id)` triple of the last registration in
+a static `last_ids[3]` array behind `unique_id_mutex`, and re-logs the
+communicator instance whenever the triple changes (the
+`communication_backend.cc` "Created communicator." log). This is the
+signal an operator reads when asking "why did the fleet's address table
+change at time T". See the
+[bootstrap](../bootstrap/topology-exchange.md) documentation for the
+re-key detail.
 
 ## Per-slice consistency
 
