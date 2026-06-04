@@ -1,12 +1,12 @@
 # Dispatch-Table Taxonomy (Full Census)
 
-> *All addresses, counts, and section names on this page apply to `libtpu.so` version 0.103 (libtpu-0.0.40, cp314), build-id `89edbbe81c5b328a958fe628a9f2207d`. Other builds will differ. This is the exhaustive machine-style companion to the narrative [Dispatch-Table Taxonomy](../forensics/dispatch-table-taxonomy.md); for the "why" of each class, read the parent.*
+> *All addresses, counts, and section names on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel, build-id `89edbbe81c5b328a958fe628a9f2207d` (the wheel/`METADATA`/`__init__` version is `0.0.40`; pin to the build-id, which is unambiguous). Other builds will differ. This is the exhaustive machine-style companion to the narrative [Dispatch-Table Taxonomy](../forensics/dispatch-table-taxonomy.md); for the "why" of each class, read the parent.*
 
 ## Abstract
 
 `libtpu.so` is a 745 MB PJRT plugin built by statically linking XLA, MLIR, LLVM, TensorFlow, the TPU `asic_sw` ISA backend, oneDNN, abseil, protobuf, gRPC, and a long tail of host libraries into one position-independent shared object. Almost every C++ class in that union is polymorphic, so the binary carries an enormous population of dispatch structures: **40,313 function-pointer tables** (Itanium-ABI vtables, MLIR Op-Model arrays, type-erasure pools, PMU C tables) holding **516,323 function pointers**, plus a structurally separate **33,016 compiled switch jump tables** holding **4,673,757 case entries**. The parent page sorts the function-pointer tables into 19 structural classes and tells the story of each. This appendix is the full reference: per-class counts, the section a class lives in, its stride/entry-kind signature, the largest individual tables *with addresses*, and the switch jump-table size distribution.
 
-The function-pointer tables are not filled in the file image. Of 1,069,603 relocations, 924,033 live in `.data.rel.ro`; each vtable slot is zero on disk and the loader writes the real target via an `R_X86_64_RELATIVE` reduce at load. IDA's table sidecar already resolved each slot through its relocation, so the per-table entry counts and first-symbol identities below are read off the resolved targets, not the file bytes. The single most important structural fact is the **39,155 / 40,313 ratio**: 39,155 of the tables are RTTI-confirmed C++ vtables (`vtable for` records), so the dispatch population is overwhelmingly relocated vtables, with roughly 1,158 non-vtable dispatch structures (abseil policy thunks, libpfm4 C tables, member-pointer arrays) making up the rest.
+The function-pointer tables are not filled in the file image. Of 1,069,603 relocations, 924,033 live in `.data.rel.ro`; each vtable slot is zero on disk and the loader writes the real target via an `R_X86_64_RELATIVE` reduce at load. IDA's table sidecar already resolved each slot through its relocation, so the per-table entry counts and first-symbol identities below are read off the resolved targets, not the file bytes. The single most important structural fact is the **39,244 / 40,313 ratio**: the binary carries 39,244 `_ZTV` vtable groups (nm-verified), so the dispatch population is overwhelmingly relocated vtables, with roughly 1,069 non-vtable dispatch structures (abseil policy thunks, libpfm4 C tables, member-pointer arrays) making up the rest.
 
 This page is a census, not a reimplementation guide. It does not re-explain the Itanium vtable ABI, the RTTI→vtable binding chain, or the per-slot semantics of any hierarchy — those belong to [RTTI / Vtable Census](../forensics/rtti-vtable-census.md) and [Polymorphic Entry Points](../forensics/polymorphic-entry-points.md). What it provides is the complete enumeration a tool author needs to *index* the binary's dispatch surface: which class a table belongs to, how big it is, and where the outliers are.
 
@@ -14,7 +14,7 @@ This page is a census, not a reimplementation guide. It does not re-explain the 
 |---|---|
 | **Function-pointer tables** | 40,313 / 516,323 entries |
 | **Switch jump tables** | 33,016 / 4,673,757 cases |
-| **RTTI records** | 160,566 (`vtable for` = 39,155) |
+| **RTTI records** | 160,351 (`_ZTV` vtable groups = 39,244) |
 | **Relocations** | 1,069,603 (924,033 in `.data.rel.ro`) |
 | **Section split (tables)** | 38,664 `.data.rel.ro` / 1,442 `.data` / 207 `.rodata` |
 | **Largest single table** | `0x223393a0` — 2,595 entries (`UniqueFunctionBase`, `.data`) |
@@ -69,7 +69,7 @@ The 19 classes cover 99.6% of the 40,313 tables; 157 (0.4%) are IDA-auto-named (
 
 The largest class by table count (9,932; 24.6%) and the structural heart of the TPU code generator. Each table is a vtable for an `asic_sw::deepsea::<cluster>::isa::*` instruction encoder, where `<cluster>` partitions by silicon generation and lane cluster. Entry kind: relocated code pointers into the per-cluster encode/clone bodies; medium stride-6 (the typical encoder declares ~6 virtual methods), with a heavy tail of wide `TensorCoreVectorAluCompact`-family tables.
 
-The population partitions by lane cluster. The two `gxc` clusters (`gfc` ≈ 2,290, `glc` ≈ 2,270) dominate and are near-symmetric, which suggests a paired encode/clone vtable per ISA opcode; `vxc` and `pxc` follow, with `jxc` a vestigial pair. The near-symmetry is the load-bearing observation for a reimplementer: the encoder count is roughly 2× the opcode count per generation, not 1×.
+The population partitions by lane cluster. The two `gxc` clusters (`gfc` ≈ 2,290, `glc` ≈ 2,270) dominate and are near-symmetric, which suggests a paired encode/clone vtable per ISA opcode; `vxc` and `pxc` follow, with `jxc` a vestigial pair. The near-symmetry is the central observation for a reimplementer: the encoder count is roughly 2× the opcode count per generation, not 1×.
 
 ### Largest Tables
 
@@ -414,7 +414,7 @@ abseil policy             = 0x21c1d590 = 447 entries (GetRefForEmptyClass)
 asic_sw widest            = 0x21e0d0a0 = 674 (TensorCoreVectorAluCompact, gxc/gfc)
 266-slot Target tables    = exactly 7 @ 0x21cc6358 … 0x21cce6b0
 llvm widest               = 0x2186b0c0 = 336 (TargetLowering, 3 instances)
-RTTI records              = 160,566 ; 'vtable for' = 39,155
+RTTI records              = 160,351 (nm) ; _ZTV vtable groups = 39,244
 fixups                    = 1,069,603 (924,033 in .data.rel.ro)
 switch jump tables        = 33,016 ; cases sum = 4,673,757 ; median 18
 largest switch            = 0x11cc4900 = 40,813 cases (AMDGPUMCCodeEmitter)
