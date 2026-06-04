@@ -153,15 +153,15 @@ if (*(byte*)(key + 0x00) != 0x0c)               // opcode != all-to-all
     return false;
 if (*(char*)(key + 0x50) != 0)                  // channel-id parity (cross-module) != 0
     return false;
-if (*(int*)(config + 0x170) == 1 ||             // num_partitions / replica_count along axis == 1
-    *(int*)(config + 0x178) == 1)
+if (*(long*)(config + 0x170) == 1 ||            // num_partitions / replica_count along axis == 1 (cmpq)
+    *(long*)(config + 0x178) == 1)
     return (*(long*)(key + 0x10) == 1);         // replica_group_count == 1 ⇒ single group
 return false;
 ```
 
 A global barrier is "beneficial" exactly for a **single-replica-group, channelled `all-to-all`** on a topology axis whose tested partition/replica count is `1` — the degenerate all-to-all where a per-key barrier would synchronise a trivial group and a single shared global barrier is strictly cheaper.
 
-> **GOTCHA — `config+0x170` / `config+0x178`.** The two `== 1` scalars are byte-confirmed at those offsets and read as "single-device-along-axis" from use, but their proto field names (`num_partitions` vs `replica_count` vs a derived device count of `HloModuleConfig`) are **inferred**, not field-matched against the descriptor. The behaviour (`==1` on either ⇒ test `replica_group_count == 1`) is CERTAIN; the field naming is LOW.
+> **GOTCHA — `config+0x170` / `config+0x178`.** The two `== 1` tests are 64-bit `cmpq` compares (`cmpq $0x1,0x170(%rdx)` / `cmpq $0x1,0x178(%rdx)` @`0x109c6ef3`/`0x109c6efd`), byte-confirmed at those offsets and read as "single-device-along-axis" from use, but their proto field names (`num_partitions` vs `replica_count` vs a derived device count of `HloModuleConfig`) are **inferred**, not field-matched against the descriptor. The behaviour (`==1` on either ⇒ test `replica_group_count == 1`, itself a `cmpq $0x1,0x10(%rsi)`) is CERTAIN; the field naming is LOW.
 
 ### 1.6 `TensorCoreBarrierKey` ctor @`0x109d6200` / `operator<` @`0x109d6620`
 
@@ -169,14 +169,14 @@ The key is what two collectives must agree on to be *candidates* for sharing a b
 
 | Offset | Field | Source | Confidence |
 |---|---|---|---|
-| `+0x00` | opcode byte | `hlo+0xc`; `all-to-all(0xc)` may be rewritten to `0x5d` for the "5d" reshaped form (`@0x109d62db`) | CONFIRMED |
-| `+0x08…+0x18` | sorted `vector<ReplicaGroup>` | copied from `hlo+0xd0`/`hlo+0xd8` (`__assign_with_size` @`0x10d6f60`), `__introsort`'d @`0x109d7580` (order-independent); `+0x10` = group count | CONFIRMED |
+| `+0x00` | opcode byte | `hlo+0xc`; `all-reduce(0x09)` is rewritten to `reduce-scatter(0x5d)` when its computation has ≥2 caller instructions (`cmpb $0x9` @`0x109d6297` → `caller_instructions()` ≥ 2 → `movb $0x5d` @`0x109d62db`) | CONFIRMED |
+| `+0x08…+0x18` | sorted `vector<ReplicaGroup>` | copied from `hlo+0xd0`/`hlo+0xd8` (`__assign_with_size` @`0x109d6f60`), `__introsort`'d @`0x109d7580` (order-independent); `+0x10` = group count | CONFIRMED |
 | `+0x20…+0x28` | sorted `vector<pair<long,long>>` | source-target pairs (for collective-permute `0x22`/`0x24`): `__assign_with_size` @`0x109d7220` + `__introsort` @`0x109da4e0` | CONFIRMED |
 | `+0x38` | custom-call config scalar | `all-to-all(0xc)` custom-calls: reads `CustomCallConfig+0x78` when hasbit `0x40` set; also sets `+0x50` true | CONFIRMED |
 | `+0x40` | core-id (int) | `-1` default, else `core_id_fn(hlo)` (invoked via `[fn+0x10]` when the function target is non-null) | CONFIRMED |
 | `+0x50` | channel-id parity | `hlo->channel_id() & 1` (`HloInstruction::channel_id` @`0x1e59ff80`) — the byte `IsGlobalBarrierBeneficial` gates on | CONFIRMED |
-| `+0x51` | heuristic-candidate flag | the ctor's `bool b`, AND'd with the `ragged-all-to-all(0x56)` check @`0x109d64e2` | CONFIRMED |
-| `+0x58` | secondary discriminant | `-1` sentinel for the ragged-all-to-all global-disable case | CONFIRMED |
+| `+0x51` | heuristic-candidate flag | the byte `IsGlobalBarrierBeneficial` gates on (`cmpb $0x0,0x51(%rdi)` @`0x109c6ee0`); **not written by this ctor** — the ctor only zero-touches `+0x08…+0x37`, `+0x38`, `+0x40`, `+0x48`, `+0x50`, `+0x58`, so the candidate byte is set on a different path (standing gap) | INFERRED |
+| `+0x58` | secondary discriminant | `-1` sentinel written only when the ctor's `bool b` is set AND opcode `== ragged-all-to-all(0x56)` (`test %r15b,%r15b` @`0x109d64dd` → `cmpb $0x56,0xc(%r14)` @`0x109d64e2` → `movq $-1,0x58(%rbx)` @`0x109d64e9`); the ragged-all-to-all global-disable case | CONFIRMED |
 
 `operator<` @`0x109d6620` compares in order: `+0x58`, `+0x38`, `+0x00` (opcode), `+0x50` (channel parity), then the replica-group vector (`+0x10` count, then per-group sorted device ids). Two collectives share a TC barrier **key** iff same opcode, same channel parity, same custom-call scalar, same secondary discriminant, and identical sorted replica-group membership — the dense-collective analog of the SparseCore ring key, keyed on HLO replica groups rather than ICI ring offsets.
 
