@@ -238,7 +238,7 @@ The Ghostlite perf classifier (`GetGhostliteInstruction` @ `0x1c8b1740`) keys th
 | `0x040` | `kVectorStoreIndexed` | scatter to VMEM[base + IAR] | CONFIRMED |
 | `0x044` | `kVectorStoreIndexedMasked` | masked scatter | CONFIRMED |
 
-> **QUIRK — the LLO IAR opcode number and the bundle-slot IAR opcode do not line up.** LLO `kVectorSetIarRaw` (`0x03`) maps to ISA slot-opcode 4, and LLO `kVectorSetIarSublane` (`0x04`) maps to slot-opcode 3 — the Sublane/Raw encodings cross. A reimplementation that assumes LLO-opcode == slot-opcode swaps them. See [Matprep/IAR/Latch §IAR](../isa/slot-matprep-iar-latch.md#the-iar--index-add-register).
+> **QUIRK — the LLO IAR opcode number and the bundle-slot IAR opcode do not line up.** LLO `kVectorSetIarRaw` (`0x03`) maps to ISA slot-opcode 4, and LLO `kVectorSetIarSublane` (`0x04`) maps to slot-opcode 3 — the Sublane/Raw encodings cross. A reimplementation that assumes LLO-opcode == slot-opcode swaps them. See [Matprep/IAR/Latch §IAR](../isa/slot-matprep-iar-latch.md#the-iar--index-address-register).
 
 ---
 

@@ -158,11 +158,11 @@ SC owns four address-space tiers of decreasing scope and increasing speed. The c
 | Tier | Scope | Size class | LLVM addrspace | Capacity field | Word-size field | Use |
 |---|---|---|---|---|---|---|
 | HBM | Chip-wide (shared with TC) | GB | 203 | `Target::HbmSizeBytes` | `[0x948]+0x38` 4b-word count | Embedding tables, gradient buffers, spill |
-| SPMEM | All SC cores on chip | MB | 0 / 219 (TEC scope) | `[0x948]+0x2C` | `[0x948]+0x4C` | Cross-SC comms, large buffers, tile backing store |
+| SPMEM | All SC cores on chip | MB | 202 | `[0x948]+0x2C` | `[0x948]+0x4C` | Cross-SC comms, large buffers, tile backing store |
 | TILE_SPMEM | Per-tile (one TEC) | KB | 201 | `[0x948]+0x28` | `[0x948]+0x48` | Local working set the vector ALU computes over |
-| TIMEM | Per-tile instruction memory | small | 204 / 223 (SCS scope) | `[0x948]+0x10` | `[0x948]+0x50` | Tile-local kernel code |
+| TIMEM | Per-tile instruction memory | small | 214 | `[0x948]+0x10` | `[0x948]+0x50` | Tile-local kernel code |
 
-SC also exposes per-scope **SMEM** (scalar memory, addrspace 202) and **SFLAG** (sync-flag pool, addrspace 208 / 217 for the tile pool). The `mlir::sparse_core::MemorySpace` enum (1-based) maps to an LLVM address space through a 22-entry table at `.rodata 0xAF36CE8`, decoded by `MemorySpaceToAddressSpace` (`0x14B78780`); the scope (SCS vs TEC/tile) selects which physical addrspace a logical `spmem`/`timem` request lands in.
+SC also exposes per-scope **SMEM** (scalar memory, addrspace 0; per-tile `smem_tile` 219 in TEC scope, per-SCS `smem_scs` 224) and **SFLAG** (sync-flag pool, addrspace 204; per-tile `sflag_tile` 217, per-SCS `sflag_scs` 223). The `mlir::sparse_core::MemorySpace` enum (1-based) maps to an LLVM address space through a 22-entry table at `.rodata 0xAF36CE8`, decoded by `MemorySpaceToAddressSpace` (`0x14B78780`); the scope (SCS vs TEC/tile) selects which physical addrspace a logical `spmem`/`timem` request lands in.
 
 ### SPMEM ↔ TILE_SPMEM Split
 

@@ -7,7 +7,7 @@ overlap with Megascale's in name only: tpunetd handles
 exchange. The two run sequentially and on different transports.
 
 This page describes the data flow between them; for tpunetd's own
-internals see [tpunetd Client](../topology/tpunetd-client.md) and
+internals see [tpunetd Protocol](../tpunetd-protocol.md) and
 the source-of-truth `P-3-11_tpunetd_protocol.txt`.
 
 ## Layering

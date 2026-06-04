@@ -263,7 +263,7 @@ function ShapeSizeBytesRaw(topology, shape):                      // 0x1d6add40
     if ElementHasBitWidth(shape, 128):                            // c128
         return 2 * ShapeSizeBytesRaw(topology, ComponentShape<128>(shape))
 
-    if ColorToMemorySpace(layout.memory_space) == kSparseCoreSequencerSmem (12):
+    if ColorToMemorySpace(layout.memory_space) == kSparseCoreSequencerSflag (12):
         return ExtentProduct(shape) * ByteSizeOfPrimitiveType(et)  // SparseCore: untiled, dense
 
     if shape.layout().tiles().size() >= 2:                        // already tiled
@@ -279,6 +279,8 @@ function ShapeSizeBytesRaw(topology, shape):                      // 0x1d6add40
         bits = element_size_in_bits * max_elems                   // packed: bit-accurate
         return bits/8 + (rounding correction)                     // ceil to byte
 ```
+
+> **CORRECTION (MST-2) —** the decompile of `ShapeSizeBytesRaw` (`0x1d6add40`) confirms the literal `12` on the untiled-dense branch, but `12` is `sparse_core_sequencer_sflag` in the canonical LLO `MemorySpace` enum — *not* `sparse_core_sequencer_smem` (which is `14`, byte-confirmed by `MakeSparseCoreSequencerSmemConstant` @ `0x1d60bc60` = `mov $0xe,%esi`). The *constant* `12` is correct; the name attached to it above is corrected to its true neighbour. `ColorToMemorySpace` (`0x1d6ffb00`) is a `byte_B5435CA[color]` remap with `color < 0xA`, so its output is already a canonical `MemorySpace` enum value, not a raw layout color. See [memory-space-table.md](../appendix/memory-space-table.md) for the 17-value owner table.
 
 > **GOTCHA —** the 64- and 128-bit element split is **not** "8 bytes per element". A 64-bit buffer is decomposed by `ComponentShape<64>` into two 32-bit *component* buffers (high and low words), each tiled independently as a 4-byte buffer, and the sizes summed (`2 * ...`). So an `[N]` f64 buffer is physically two `[N]` f32 tiled buffers, not one `[N]` 8-byte tiled buffer. A reimplementation that treats f64 as an 8-byte element and tiles it directly will mis-size and mis-address every double-precision buffer. The same split governs how DMA reads the buffer.
 

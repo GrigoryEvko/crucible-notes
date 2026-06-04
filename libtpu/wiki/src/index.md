@@ -58,10 +58,10 @@ The compiler back-end is deliberately factored along the canonical three-concern
 
 ### Status and evidence grade
 
-Each page below carries a grade reflecting the maturity of its backing raw-findings file(s):
+Each page below carries a grade reflecting how directly its claims are anchored in the binary:
 
-- `C` — **Confirmed / reimplementation-grade**: byte-anchored against objdump/nm/readelf or `protoc --decode_raw` of carved descriptors. The default for the `P-3-*` deep-dive corpus.
-- `I` — **Inferred / synthesis**: wave-2 (`P-2-*`) foundations, forensic surveys (`W*`), per-gen-parametric claims, or connective overview pages.
+- `C` — **Confirmed / reimplementation-grade**: byte-anchored against objdump/nm/readelf or `protoc --decode_raw` of carved descriptors. The default for the byte-level deep-dive pages.
+- `I` — **Inferred / synthesis**: foundational, forensic-survey, per-gen-parametric, or connective overview pages.
 - `O` — **Open**: not yet recovered; tracked in the [Open-Frontier Register](appendix/open-frontier-register.md).
 
 Pages marked *(written)* already have content; all others are scaffolded stubs awaiting authoring.
@@ -118,12 +118,12 @@ The one-page consolidated constants table is [Per-Gen Master Comparison Matrix](
 ## Conventions
 
 - Function addresses are virtual addresses (`@0x…`); for `.lrodata`/`.rodata`, VA == file offset.
-- Each page carries a **References** block: source binary path, the function/symbol VAs it cites, and the raw-findings file(s) it derives from.
-- The `_src:_` tags in this index point at the internal raw-findings corpus (`P-2-*`, `P-3-*`, `W*`) that backs each page; the full page→file→VA mapping is the [Evidence-Anchor Index](appendix/evidence-anchor-index.md).
+- Each page carries a **References** block: the source binary and the function/symbol virtual addresses it cites.
+- The full page→symbol→VA mapping that backs every claim is the [Evidence-Anchor Index](appendix/evidence-anchor-index.md); the input set those addresses resolve against is catalogued in the [Source-Corpus Map](appendix/source-corpus-map.md).
 
 ## The source corpus
 
-This book is the promotion of a 412-file, ~33 MB raw-findings corpus (`libtpu/raw/`) into reader-facing pages: 322 byte-level deep dives (`P-3-*`), 14 wave-2 foundations (`P-2-*`), and ~70 forensic/substrate reports (`W*`, `p0-*`, `p1-*`).
+Every page in this book is derived from static analysis of `libtpu.so` — its symbol table, disassembly, and decompilation. The complete input set that the analysis ran against, down to the byte, is inventoried in the [Source-Corpus Map](appendix/source-corpus-map.md); the methodology that produced and consumed it is described in [Methodology (Deep)](appendix/methodology-deep.md).
 
 ---
 

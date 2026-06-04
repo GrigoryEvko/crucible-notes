@@ -59,7 +59,7 @@ two recoveries of one ISA
 
 ### The match predicate — form C against the slot word
 
-The vector slots all use the mask-compare predicate (form C in the [scalar taxonomy](scalar-opcode-enum.md#form-c-mask-compare-the-alu-lanes)): a single AND-mask isolates the opcode field from the slot word, and the result is compared to `VAL`; the opcode is `VAL >> tzcnt(MASK)`. `ByteNez` (op 55) on the gfc lane-0 type (`0x1ec09e00`):
+The vector slots all use the mask-compare predicate (form C in the [scalar taxonomy](scalar-opcode-enum.md#form-c--mask-compare-the-alu-lanes)): a single AND-mask isolates the opcode field from the slot word, and the result is compared to `VAL`; the opcode is `VAL >> tzcnt(MASK)`. `ByteNez` (op 55) on the gfc lane-0 type (`0x1ec09e00`):
 
 ```c
 // SparseCoreTecVectorAlu0ByteNezOpcode::Matches  (gfc 0x1ec09e00)

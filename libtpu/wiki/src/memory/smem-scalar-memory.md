@@ -213,7 +213,7 @@ llvm.tpu.addrspacecast.smem                              — bridge LLO SMEM add
 llvm.tpu.dma.hbm.to.smem.sc.{simple,general,single.strided}  — SparseCore HBM→SMEM DMA variants
 ```
 
-> **NOTE —** the numeric `LlvmTpuDialect::SmemAddressSpace()` value is asserted by the sentinel `"address_space == LlvmTpuDialect::SmemAddressSpace()"` but its literal integer was not confirmed from the dialect registration code (**LOW confidence**; likely AddrSpace 4 or 5). The kSmem *MemorySpace* enum value (5) is CERTAIN and is a separate number space from the LLVM address space.
+> **NOTE —** the numeric `LlvmTpuDialect::SmemAddressSpace()` value is asserted by the sentinel `"address_space == LlvmTpuDialect::SmemAddressSpace()"`. The generic SMEM LLVM address space is **0** — `MemorySpace 1` (`smem`) maps to LLVM `addrspace 0` in the `MemorySpaceToAddressSpace` reverse table (`dword_AF36CE8[0] == 0`), confirmed on [Address-Space ID Table](../targets/address-space-ids.md). The LLO `kSmem` *MemorySpace* enum value (5) is a separate number space from this LLVM address space and must not be confused with it.
 
 ---
 

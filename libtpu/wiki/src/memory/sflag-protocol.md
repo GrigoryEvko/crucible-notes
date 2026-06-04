@@ -256,7 +256,7 @@ Per-gen override addresses (decoded immediates): `JellyfishTarget::GetDummySyncF
 
 ## Cross-References
 
-- [Memory Hierarchy Overview](overview.md) — SFLAG as `MemorySpace::kSflag` = 7; the six-region taxonomy, the render-id vs operand-tag enum split, and the `BestFitAllocator` matrix this page's `4·n` stride feeds
+- [Memory Hierarchy Overview](overview.md) — SFLAG as `MemorySpace::kSflag` = 6; the six-region taxonomy, the render-id vs operand-tag enum split, and the `BestFitAllocator` matrix this page's `4·n` stride feeds
 - [SMEM — Scalar Memory](smem-scalar-memory.md) — the adjacent scalar tier; SFLAG is snapshotted/transferred together with SMEM in the sequencer-local SRAM image
 - [Barrier → SFLAG Number Binding](../barrier/barrier-to-sflag-binding.md) — *which* number a barrier binds to (the reserved five-slot window above `[base, base+count)`); this page is the substrate those numbers index
 - [Barriers and Sync-Flags — Section Map](../barrier/overview.md) — the cross-core barrier subsystem that drives these `Vsync`/`Vwait` primitives

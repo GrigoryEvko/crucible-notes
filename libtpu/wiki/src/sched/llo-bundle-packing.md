@@ -149,7 +149,7 @@ Status Feed(LloInstruction *instr, int64 latency) {
 }
 ```
 
-The dependency-floor variable is named `MinSafeHoistBundleNo` in the decompile, and it is raised by `if (n <= rt) n = rt;` at every contributor — i.e. a `max`. The operand RAW floor is byte-exact at the loop near `bundle_packer.cc` offset where each operand's `scheduled_bundleno + LatencyTable::LatencyBetween(operand, instr)` is taken; `LatencyBetween` is the same per-op-pair dependency latency the cost model uses ([Bundle-Aware Cost](../cost/bundle-aware-cost.md#the-dependency-latency-axis-latencybetween)).
+The dependency-floor variable is named `MinSafeHoistBundleNo` in the decompile, and it is raised by `if (n <= rt) n = rt;` at every contributor — i.e. a `max`. The operand RAW floor is byte-exact at the loop near `bundle_packer.cc` offset where each operand's `scheduled_bundleno + LatencyTable::LatencyBetween(operand, instr)` is taken; `LatencyBetween` is the same per-op-pair dependency latency the cost model uses ([Bundle-Aware Cost](../cost/bundle-aware-cost.md#the-dependency-latency-axis--latencybetween)).
 
 > **GOTCHA — there is no spill-to-next-bundle search.** When the trackers cannot fit the op into any *existing* bundle at or after `n`, the algorithm appends empty bundles (each a 112-byte zeroed `Bundle`, with an out-of-line 160-byte block allocated lazily) and retries — it never re-tries earlier indices or moves already-placed ops. The only failures are the five fatal paths below. A reimplementation that adds an "if it doesn't fit, try the previous bundle" branch diverges from the binary.
 
