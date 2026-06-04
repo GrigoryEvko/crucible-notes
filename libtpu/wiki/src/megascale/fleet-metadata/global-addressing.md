@@ -70,8 +70,8 @@ the fleet's (slice, device) space by:
   DeviceAssignmentProto, optional<int>)` — fleet-wide assignment,
 - `GetLocalDeviceAssignmentForSlice(const MultiSliceTopologyAndLocation&,
   DeviceAssignment[, int])` — the slice-local slice of the assignment,
-- `GetDeviceIdFromDeviceAssignment(const DeviceAssignment&)` — a single
-  device id.
+- `GetDeviceIdFromDeviceAssignment(const DeviceAssignment&, long, long)` —
+  a single device id at a given (replica, computation) index.
 
 These bind the XLA-level abstract device indices to concrete fleet
 positions.
@@ -85,8 +85,8 @@ produced from the (slice, device) pair by the LLO emitter:
 - `LloRegionBuilder::GlobalCoreId()` / `ToGlobalCoreId(...)` /
   `FromGlobalCoreId(...)`,
 - `xla::tpu::sparse_core::FromGlobalCoreId(...)`,
-- `OffloadFactory::GlobalCoreIdToPhysicalChipId(...)`,
-- `OffloadFactory::SubsliceToFullSliceGlobalCoreId(...)`.
+- `xla::tpu::sparse_core::collective::OffloadFactory::GlobalCoreIdToPhysicalChipId(...)`,
+- `xla::tpu::sparse_core::collective::OffloadFactory::SubsliceToFullSliceGlobalCoreId(...)`.
 
 This is the addressing the kernels themselves use to route SparseCore
 collectives and host send/recv; it is recomputed locally from the fleet
