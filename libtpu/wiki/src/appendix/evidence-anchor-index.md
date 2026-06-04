@@ -1,12 +1,12 @@
 # Evidence-Anchor Index
 
-> *All addresses on this page apply to `libtpu.so` v0.103 from the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`). The binary is **not** stripped: every `0x…` here resolves to a demangled C++ symbol in the IDA function table, and `.text`/`.rodata`/`.lrodata`/`.data.rel.ro` map VMA == file offset. Other builds will differ.*
+> *All addresses on this page apply to `libtpu.so` build-id `89edbbe81c5b328a958fe628a9f2207d`, from the `libtpu-0.0.40-cp314` wheel. The binary is **not** stripped: every `0x…` here resolves to a demangled C++ symbol in the IDA function table, and `.text`/`.rodata`/`.lrodata`/`.data.rel.ro` map VMA == file offset. Other builds will differ.*
 
 ## Abstract
 
 This is the wiki's **reverse-lookup index**: a flat, address-sorted table of the binary anchors that recur across the deep pages, each mapped back to the page that explains it. It exists for one workflow — you are in IDA, your cursor lands on `0x1c89fba0`, and you want the prose that documents it. Scan the master table, find the row, follow the link. It is the inverse of [`subsystem-map`](../subsystem-map.md) (which goes subsystem → address band) and of [`front/codename-cheatsheet`](../front/codename-cheatsheet.md) (which goes codename → facts): both of those collect anchors *forward*; this page is the *flat address → page* spine that ties them together.
 
-The index is deliberately **not exhaustive**. The binary has 884,843 functions; this page carries only the ~60 genuinely cross-cutting anchors — the entry points, factory functions, cost tables, target accessors, and data sections that are cited on three or more pages and that a reader is realistically likely to hit cold. Single-page locals (the thousands of `_GLOBAL__N_` helpers, per-opcode handlers, ICF duplicates) are documented in place on their owning page and are not duplicated here. The selection bias is toward addresses that a reimplementer needs to recognise to orient inside the binary at all.
+The index is deliberately **not exhaustive**. The binary has 884,832 functions; this page carries only the ~60 genuinely cross-cutting anchors — the entry points, factory functions, cost tables, target accessors, and data sections that are cited on three or more pages and that a reader is realistically likely to hit cold. Single-page locals (the thousands of `_GLOBAL__N_` helpers, per-opcode handlers, ICF duplicates) are documented in place on their owning page and are not duplicated here. The selection bias is toward addresses that a reimplementer needs to recognise to orient inside the binary at all.
 
 Every row was verified **both ways** before it was admitted: (a) the address resolves to the named symbol in the IDA function table (`…_function_addresses.json`) or, for data anchors, to a section/symbol the owning page pins; and (b) the named owning page exists and actually cites the address. Where a label in circulation does not survive that check, a `> **CORRECTION —**` callout records it instead of a silent fix. Confidence reflects the *binding* (address ↔ page), not the underlying RE claim, which the owning page grades on its own.
 
@@ -18,7 +18,7 @@ For reimplementation, the contract this page serves is:
 
 | | |
 |---|---|
-| **Indexed anchors** | ~58 cross-cutting addresses (of 884,843 functions total) |
+| **Indexed anchors** | ~58 cross-cutting addresses (of 884,832 functions total) |
 | **Master table sort key** | ascending VA |
 | **Symbol source** | `…_function_addresses.json` (functions) · ELF section/symbol records (data) |
 | **`.text` span** | `0xe63c000` – `0x21217484` (~360 MB) |
