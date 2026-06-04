@@ -249,7 +249,7 @@ drift) and `0x9c14456` (incarnation drift).
 
 - **No magic / sanity field.** The protobuf schema validation is
   trusted — there's no equivalent of libnccom's `0x61796c69` "ilya"
-  sanity (see P-3-49). A malformed inbound message is rejected by
+  sanity field. A malformed inbound message is rejected by
   proto2 parsing before reaching the handler.
 - **No authentication token at the application layer.** Authentication
   is done by the gRPC `ServerCredentials` selected via

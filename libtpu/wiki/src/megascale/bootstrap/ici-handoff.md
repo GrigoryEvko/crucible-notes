@@ -142,8 +142,8 @@ through Megascale. ICI's health is monitored by tpunetd's
 detects link failures; the failing path runs through
 `SessionMaster::HandleFailingSession(SessionState)`, and the
 `SessionState` enum's failure value is `SESSION_STATE_FAILING`
-(P-3-11). Such failures propagate up to PJRT through the tpunetd
-path, NOT the Megascale path.
+(see [tpunetd Relationship](tpunetd-relationship.md)). Such failures
+propagate up to PJRT through the tpunetd path, NOT the Megascale path.
 
 The architectural separation means:
 
@@ -219,5 +219,13 @@ Three concrete scenarios:
 The combined diagnostic surface is therefore: tpunetd answers
 "is ICI healthy on this host?", Megascale answers "do all hosts
 of all slices agree on the chip layout?", and the
-ErrorReporter / RapidEye chain (P-3-45) answers "what was the
-worst-case combination of failures across the fleet?".
+ErrorReporter / RapidEye chain (see [Error Aggregator](../error-aggregator.md))
+answers "what was the worst-case combination of failures across the fleet?".
+
+## Cross-References
+
+- [tpunetd Relationship](tpunetd-relationship.md) — the per-slice daemon that owns ICI bring-up before Megascale starts
+- [Bootstrap › Overview](overview.md) — where the ICI→DCN handoff sits in the lifecycle
+- [Failure Handling](failure-handling.md) — the Megascale-side failure path that runs alongside the tpunetd one
+- [Error Aggregator](../error-aggregator.md) — the fleet-wide root-cause chain referenced above
+- [ICI › Overview](../../ici/overview.md) — the in-slice optical torus tier this page hands off from

@@ -1,6 +1,6 @@
 # Cross-Host Barrier
 
-> *All addresses on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`, x86-64, 781,691,048 bytes). Other versions will differ. Confirmed (byte-anchored): the `BarrierCoordinator` object layout, the vtable, the arrival-accounting set, the `IsComplete` test, the client replay/auto-id paths, and every log string below were re-derived from the IDA decompile + demangled `functions.json`.*
+> *All addresses on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`, x86-64, 781,691,048 bytes). Other versions will differ.*
 
 ## Abstract
 
@@ -51,7 +51,7 @@ The request is built and parsed via `BarrierRequest::Clear` `0x1cf7f220` (has-bi
 
 The response carries only `barrier_id` (field 1, `+0x18`), echoed by `CreateResponse`. The C++ object has int fields at `+0x20…` (has-bit at `+0x10`) mirroring the request shape, but the coordinator never writes them — so their wire field numbers are inferred from request symmetry, not observed being set (LOW for fields 2-4 of the response).
 
-> **CORRECTION (P-3-70) —** an earlier reading guessed `BarrierRequest` field 4 was `barrier_timeout_in_ms`. It is **not**. `ProcessRequest` reads `*((int*)req + 10)` (proto field at `+0x28`) and compares it against the stored `num_participants_`; a mismatch is rejected with `INVALID_ARGUMENT`. The barrier timeout is carried entirely out-of-band as the gRPC client deadline — there is no timeout proto field (see [§5](#5-timeout)).
+> **NOTE —** field 4 is `num_participants`, not a timeout. `ProcessRequest` reads `*((int*)req + 10)` (proto field at `+0x28`) and compares it against the stored `num_participants_`; a mismatch is rejected with `INVALID_ARGUMENT`. There is no timeout proto field — the barrier timeout is carried entirely out-of-band as the gRPC client deadline (see [§5](#5-timeout)).
 
 ### Server Callback Chain
 
@@ -159,7 +159,7 @@ The participant count for the *ctor* is taken from the **first** request's field
 
 > **GOTCHA —** there is **no** coordinator-only guard here. Topology discovery rejects with "TopologyCoordinator not initialized." if a non-coordinator process is hit; the barrier path has no such check — *any* process holding the barrier map can host a `BarrierCoordinator`. A reimplementation that assumes only the elected coordinator ever allocates a `BarrierCoordinator` will diverge; the gate is purely that callers send to the coordinator's endpoint, not a server-side identity check.
 
-> **CORRECTION (P-3-70) —** the barrier map was estimated at `+0x228` with a 192-byte coordinator object. The binary shows the `flat_hash_map<string, unique_ptr<BarrierCoordinator>>` at `CommunicationBackend +0x1b0` (`operator[](backend+432, id)`) and `operator new(0xf8)` — a 248-byte object. The `TopologyCoordinator*` is at `+0x1a0`, the `ErrorReporter*` at `+0x1a8`, and the auto-barrier counter at `+0x1d0`.
+Within `CommunicationBackend`, the barrier map lives at `+0x1b0` (`operator[](backend+432, id)`, allocating each coordinator via `operator new(0xf8)` = 248 bytes); the neighbouring `TopologyCoordinator*` is at `+0x1a0`, the `ErrorReporter*` at `+0x1a8`, and the auto-barrier counter at `+0x1d0`.
 
 ### Two Flavours, One Mechanism
 
@@ -294,7 +294,7 @@ function SendRPC(method, peer, req, opt_timeout):
 
 When `AddRequest` moves the coordinator from state 0 → 1, it arms a periodic alarm at `+0xb0` via the `ScheduleStatusReport` lambda `0x1ccb4ea0`: under the mutex it calls `ReportStatus` (vtable `+0x38`) and, if still incomplete, re-arms at `Now() + 1 s` via `thread::AddCancellableAt` on the `DefaultFiberExecutor`.
 
-> **CORRECTION (P-3-148) —** the cadence is a fixed **1 second**, not "once per minute" / executor-backoff. The re-arm in `ScheduleStatusReport`'s lambda is unconditionally `Now() + absl::Seconds(1)`; there is no backoff multiplier. ([Bootstrap Convergence](bootstrap/convergence.md) describes the generic alarm as "seconds to a minute" — the barrier's concrete re-arm is 1 s.)
+> **NOTE —** the re-arm is unconditionally `Now() + absl::Seconds(1)` with no backoff multiplier, so the cadence is a fixed **1 second**. Where [Bootstrap Convergence](bootstrap/convergence.md) describes the generic alarm as "seconds to a minute", the barrier's concrete re-arm is always 1 s.
 
 `ReportStatus` (`0x213b7ce0`) logs "MegaScale Barrier completed." (`:353`) when done, else "MegaScale Barrier in progress. Seen <K> of <N> expected participants. Seen hosts: <list>" (`:356`). The host list comes from `GetSeenHosts` (`0x1cf55280`), which compacts the `(slice, host)` set into per-slice `gtl::IntervalSet<int>` ranges — e.g. `slice0.hosts[0-3,5], slice1.hosts[0-7]`.
 

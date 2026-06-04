@@ -265,3 +265,12 @@ view into the `HostCommandSchedulerFactory`.
 | `ChipLocationToCoordinate` | 32 |
 | `global_core_id` / `global_chip_id` | 8 / 6 |
 | `GetSliceLocalDeviceId` / `ToSliceAndLogicalDeviceId` | 2 / 1 |
+
+## Cross-References
+
+- [Fleet Metadata › Overview](overview.md) — the model these wire fields populate
+- [Topology Model](topology-model.md) — how the decoded coordinates assemble into the `ToroidalTopology`
+- [Global Addressing](global-addressing.md) — the `global_core_id` / `global_chip_id` derivations decoded here
+- [Slice Shape](slice-shape.md) — the per-slice bounds fields and their versioning gate
+- [Bootstrap Exchange](bootstrap-exchange.md) — the rendezvous that carries this blob across DCN
+- [ICI › Topology Discovery](../../ici/topology-discovery.md) — the in-slice producer of the per-slice `tpu_topology_args.proto`

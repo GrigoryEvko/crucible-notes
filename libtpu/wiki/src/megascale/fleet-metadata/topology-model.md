@@ -96,3 +96,11 @@ is **not** part of the host inventory — it is computed/configured and
 handed into the Communicator alongside the
 `MultiSliceTopologyAndLocation`. See [Field Decode](field-decode.md#dcntopology)
 for the message and [ICI vs DCN](ici-vs-dcn.md) for where it fits.
+
+## Cross-References
+
+- [Slice Shape](slice-shape.md) — the per-slice bounding box that populates the inventory
+- [Global Addressing](global-addressing.md) — the `(slice, host, core)` ↔ global-id map built on this model
+- [Field Decode](field-decode.md) — the wire decode of `DCNTopology` and the inventory protos
+- [ICI vs DCN](ici-vs-dcn.md) — the tier split between in-slice ICI and cross-slice DCN
+- [Collectives › Overview](../../collectives/overview.md) — the cross-slice collectives the `DCNTopology` reduction plan serves

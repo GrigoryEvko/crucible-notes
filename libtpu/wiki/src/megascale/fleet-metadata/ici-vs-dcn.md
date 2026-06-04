@@ -103,3 +103,12 @@ inside the slice.
   stay in the slice; only host-granular DCN faults
   (`FaultyNetworkLink {src_worker, dst_worker}`) surface to the
   cross-host [error aggregator](barrier-error-usage.md).
+
+## Cross-References
+
+- [Topology Model](topology-model.md) — the in-slice ICI coordinate space this page contrasts with DCN
+- [Slice Shape](slice-shape.md) — the opaque per-slice blob that crosses the ICI↔DCN boundary
+- [Barrier / Error Usage](barrier-error-usage.md) — where host-granular DCN faults surface
+- [Error Aggregator](../error-aggregator.md) — the fleet-wide classifier those DCN faults feed
+- [ICI › Overview](../../ici/overview.md) — the in-slice optical torus tier
+- [Bootstrap › ICI Handoff](../bootstrap/ici-handoff.md) — the ICI-up → DCN-rendezvous handoff

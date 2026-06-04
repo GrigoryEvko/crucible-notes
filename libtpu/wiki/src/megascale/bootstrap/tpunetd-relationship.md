@@ -159,10 +159,17 @@ warnings at rodata `0x9b27486` are designed to surface.
   tpunetd `SessionMaster::CheckSessionHeartbeat` is the first to
   notice a stalled host; it emits
   `"Session is failing due to the following chips having zero as
-  chip id"` (P-3-11). If the slice never finishes tpunetd bringup,
+  chip id"`. If the slice never finishes tpunetd bringup,
   Megascale's per-host requests never arrive, and the coordinator
   reports the missing slice in its periodic status log.
 
 The two systems are therefore complementary diagnostics: tpunetd
 sees per-chip failures; Megascale sees per-slice / per-host
 absences.
+
+## Cross-References
+
+- [tpunetd Protocol](../tpunetd-protocol.md) — the daemon's wire surface this page relates Megascale to
+- [Bootstrap › Overview](overview.md) — where the tpunetd dependency sits in the lifecycle
+- [ICI Handoff](ici-handoff.md) — the ICI-up → DCN-rendezvous boundary between the two systems
+- [Fleet Metadata › Slice Shape](../fleet-metadata/slice-shape.md) — the slice geometry tpunetd's `GetChipCoordinates` feeds into

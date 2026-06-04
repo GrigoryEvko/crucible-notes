@@ -247,7 +247,7 @@ The `[target+0x948]+0x90` field is the per-SparseCore TEC-sequencer count (16 on
 | 1. target core type | `EnqueueDMAOp::getTargetCoreType` `0x14AF8B20` | 0 TENSOR / 1 / 2 SPARSE (memref `MemorySpace` → CoreType) |
 | 2. SPARSE sub-core divide | `[target+0x948]+0x90` (TEC count) | `DivUIOp(coreId, TEC_count)` |
 | 3. build `DeviceAndCoreIds` | (return `FailureOr<>`) | `{deviceId, coreId}` |
-| 4a. → DMA `destination_id` | `issueGeneralDma` (P-3-327/335) | same ids → topology divisor → 5-bit slot |
+| 4a. → DMA `destination_id` | `issueGeneralDma` | same ids → topology divisor → 5-bit slot |
 | 4b. → `get_remote_memref` | `issueGeneralDma` remote arm `0x1350B4A1` → `GetRemoteMemBase` `0x13D88660` | same ids → op1=`remoteCoreId`, op2=`v3` |
 
 Both 4a and 4b consume the stage-3 `{device, core}`; the SPARSE TEC-count divisor `[target+0x948]+0x90` is the same field in stage 2 as in the destination-id SPARSE stride. The data base is resolved here; the routed sync core is named by the destination-id — two consumers of one `{device, core}` computation. The destination-id topology arithmetic and the GeneralDma assembler that routes it are on [StartRemoteDma](start-remote-dma.md) and the GeneralDma emitter.

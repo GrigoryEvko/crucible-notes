@@ -299,7 +299,7 @@ function release_buffer(map, ptr, dest_xy, step):              // $_1 @0x13826dc
 
 All five strings are byte-confirmed in the decompile: `net_router_emitter.cc:389` `"available.empty() || available.back().second <= available_at"`, `:390` `"ptr.type == PointerType::kAlloc"`, `:391` `"ptr.index.has_value()"`, `:395` the `c_none_of` lambda, `:396` `"*ptr.index < size"`. The push packs the freed buffer as `(index | step<<32)` — `.first` = buffer index, `.second` = release step — preserving the back()-sorted-by-step invariant.
 
-> **CORRECTION (A2A-1) —** an earlier reading distinguished an "available list" and a separate "latest-DMA-out deque" in the route-buffer allocator. This decode shows they are the **same single `std::deque<pair<int,int>> available`** at `value+0x8`; there is no second container. The deque's `.second` field carries the release step, which is what the earlier reading misattributed to a distinct "latest-DMA-out" structure.
+The route-buffer allocator keeps a single `std::deque<pair<int,int>> available` at `value+0x8` — there is no second container; the deque's `.second` field carries the release step.
 
 ### Considerations
 

@@ -31,8 +31,6 @@ For reimplementation, the contract is:
 | **Map key** | `slice<S>-task<H>/<task_id>` (`linked_hash_map<string, MegaScaleRuntimeError>`) |
 | **Persistence** | none by default; opt-in `RapidEyeLogger` sink (`--megascale_rapideye_error_digest_log_path`) |
 
-> **CORRECTION (AGG-1) —** an earlier pass estimated the coordinator dedup key template as `"$0:$1"` and the aggregator `job_name` as `"error"`. Decompilation of `ErrorReporter::ReportError` (`0x1ccb6ea0`) shows the binary uses `SubstituteAndAppendArray("slice$0-task$1", …)` (line 92, template length 14) and constructs `MegascaleErrorAggregator(…, "McJax")` (line 47). The `slice<S>-task<H>` form and the `"McJax"` launcher identity are the values on the wire; the page uses them throughout.
-
 ---
 
 ## Scope — One Fleet-Wide Instance

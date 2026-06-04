@@ -33,7 +33,8 @@ worker's stub returns `DEADLINE_EXCEEDED` to
    MegaScaleRuntimeError const&)`, `0x1ccadbe0`) — this is the
    `MegaScaleTransport.ReportError` gRPC
    (`/xla.megascale.runtime.MegaScaleTransport/ReportError`) that fans
-   into the coordinator's `ErrorReporter` (P-3-45). The
+   into the coordinator's `ErrorReporter` (see
+   [Error Aggregator](../error-aggregator.md)). The
    `MegaScaleRuntimeError` carries the `error_message` field
    (`xla.megascale.runtime.MegaScaleRuntimeError.error_message`) and an
    `ErrorType` enum
@@ -95,7 +96,7 @@ A coordinator-specific log is
 (rodata `0xa238672`) — this comes from the
 `ErrorReporter::ProcessErrorDigest()` path
 (`xla::megascale::runtime::ErrorReporter::ProcessErrorDigest`,
-`0x1ccb7140`, P-3-45), not from
+`0x1ccb7140`; see [Error Aggregator](../error-aggregator.md)), not from
 TopologyCoordinator itself. It fires when the **error**
 aggregation in turn times out; topology aggregation has no such
 log.
@@ -215,7 +216,8 @@ modes implicitly verify that table.
 ## Propagation into `ErrorReporter` / `RapidEye`
 
 Every bootstrap failure mode that calls `ReportError` ends up in
-the coordinator's `MegascaleErrorAggregator` (P-3-45). The
+the coordinator's `MegascaleErrorAggregator` (see
+[Error Aggregator](../error-aggregator.md)). The
 `MegaScaleRuntimeError.ErrorType` carries the `UNRECOVERABLE_ERROR`
 member (the numeric ordinal is not independently confirmed here). The
 aggregator's classifier maps this into the
@@ -230,7 +232,8 @@ aggregator's classifier maps this into the
 If `--megascale_rapideye_error_digest_log_path` is set, the digest
 including the failed-host list is written to the path via
 `CloudRapidEyeLogger`. Otherwise the failure is captured only in
-the LOG(ERROR) trail on the coordinator. See P-3-45 for the full
+the LOG(ERROR) trail on the coordinator. See
+[Error Aggregator](../error-aggregator.md) for the full
 retention and consumer chain.
 
 ## What does NOT exist
@@ -247,3 +250,11 @@ retention and consumer chain.
 - No bounded queue for pending callbacks. A coordinator process
   holding tens of thousands of pending workers will keep them all
   in memory.
+
+## Cross-References
+
+- [Bootstrap › Overview](overview.md) — the lifecycle whose failure paths this page enumerates
+- [Convergence](convergence.md) — the success path these failures branch off from
+- [Worker Registration](worker-registration.md) — the request whose validation produces the INVALID_ARGUMENT rejections
+- [Error Aggregator](../error-aggregator.md) — where every `ReportError` ends up classified into a `RapidEyeErrorDigestProto.Cause`
+- [ICI Handoff](ici-handoff.md) — the tpunetd-side failure surface that runs in parallel with the Megascale path

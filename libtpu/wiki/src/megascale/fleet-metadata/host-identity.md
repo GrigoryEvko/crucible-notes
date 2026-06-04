@@ -83,3 +83,10 @@ slice must report an equivalent one. The coordinator validates this with
 mismatched shapes (e.g. one v4 and one v5 chip generation) is rejected
 and the diff is logged. This is the schema-compatibility gate described
 under [Slice Shape](slice-shape.md#versioning).
+
+## Cross-References
+
+- [Fleet Metadata › Overview](overview.md) — where host identity sits in the fleet model
+- [Slice Shape](slice-shape.md) — the per-slice blob each host must report equivalently
+- [Global Addressing](global-addressing.md) — how a host's `(slice_id, host_id)` maps to global core/chip ids
+- [Bootstrap › Worker Registration](../bootstrap/worker-registration.md) — the request that announces this identity to the coordinator

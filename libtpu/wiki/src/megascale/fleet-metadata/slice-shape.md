@@ -127,3 +127,12 @@ bringup: the driver's global chip-id assignment
 each chip in the slice's `ToroidalTopology`, and the slice shape is the
 bounding box of those coordinates. The Megascale layer consumes the
 shape as an opaque, validated blob — see [ICI vs DCN](ici-vs-dcn.md).
+
+## Cross-References
+
+- [Topology Model](topology-model.md) — the `ToroidalTopology` this shape bounds
+- [Field Decode](field-decode.md) — the wire decode of `chips_per_host_bounds` / `host_bounds` / `chip_config_name`
+- [ICI vs DCN](ici-vs-dcn.md) — why the shape is opaque to the DCN layer
+- [Host Identity](host-identity.md) — the per-slice consistency gate (`MessageDifferencer::Compare`) on this blob
+- [Twist › Overview](../../twist/overview.md) — how the `wrap` / `twist` bits feed twisted-torus ring construction
+- [Routing › Overview](../../routing/overview.md) — the `ChipLocationToCoordinate` placement layer that produces the coordinates

@@ -198,3 +198,11 @@ stays valid. A restart that drifts on any of those — a new
 [Failure Handling](failure-handling.md)). The worker-side
 `LogUniqueIds` "Created communicator." line is the forensic record
 that the local `(slice_id, host_id, incarnation_id)` triple changed.
+
+## Cross-References
+
+- [Bootstrap › Overview](overview.md) — the full rendezvous lifecycle this convergence step closes
+- [Worker Registration](worker-registration.md) — the request whose repeated arrival drives the state machine
+- [Failure Handling](failure-handling.md) — what happens when an arriving worker drifts on its identity triple
+- [Cross-Host Barrier](../cross-host-barrier.md) — the sibling `Coordinator<>` specialisation with the same convergence / status-alarm machinery
+- [ICI › Topology Discovery](../../ici/topology-discovery.md) — the in-slice tier whose `TpuTopologyArgsProto` the rendezvous federates

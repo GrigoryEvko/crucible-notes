@@ -53,14 +53,14 @@ bringup:
    │   - On the coordinator process:                       │
    │       TopologyCoordinator   (cross-slice rendezvous)  │
    │       BarrierCoordinator map (per-id rendezvous)      │
-   │       ErrorReporter (P-3-45)                          │
+   │       ErrorReporter                                   │
    │   - On every process:                                 │
    │       address table, peer Send fan-out, HeartBeat     │
    └──┬────────────────────────────────────────────────────┘
       ↑   uses tpunetd's per-host chip-coordinate bindings as input
       │
    ┌──┴────────────────────────────────────────────────────┐
-   │ superpod::tpunetd_client::TpunetdClient (P-3-11)      │
+   │ superpod::tpunetd_client::TpunetdClient                │
    │   - SessionMaster talks to tpunetd over UDS           │
    │   - Brings up ICI fabric WITHIN this slice            │
    │   - BroadcastBarrier rendezvous WITHIN this slice     │
