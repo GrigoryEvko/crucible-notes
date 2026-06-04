@@ -53,7 +53,7 @@ For reimplementation, the contract is:
 
 | | |
 |---|---|
-| **Client namespace** | `superpod::tpunetd_client` (305 mangled symbols) |
+| **Client namespace** | `superpod::tpunetd_client` (306 mangled symbols) |
 | **Daemon namespace** | `superpod::tpunetd` (425 mangled symbols) |
 | **Source-path prefix** | `platforms/deepsea/software/superpod/routing/` |
 | **Local endpoint (default)** | `/var/google/services/tpunetd/user.socket` (UDS) |
@@ -198,8 +198,11 @@ function CreateTpuNetworkInterface(topology, process_owns_chips):
 ```
 
 `kTpunetdSupportedTpuVersions` is a sorted `tpu::TpuType` array in
-`.rodata` (~10 entries, matching the dense `0..10` range of
-`TpuType_descriptor`); the lookup is a binary search. So `tpunetd` is
+`.rodata` at `0xb8ec184` — a static-local of
+`superpod::routing::CreateTpuNetworkFactory` but referenced here. It holds
+exactly **two** entries, `{4, 5}` (bytes `04 00 00 00 05 00 00 00`,
+end sentinel at `0xb8ec18c`); the lookup is a `lower_bound`-style binary
+search over those 4-byte `TpuType` values. So `tpunetd` is
 **strictly the Cloud / production-superpod path**; everything else falls
 back to the in-process SliceBuilder family with its own
 `/accel_ssw.deepsea.slice_builder.SliceBuilderWorkerService/*` RPCs. The
@@ -441,13 +444,14 @@ Client class: BroadcastBarrier  (tpunetd_client/lib/broadcast_barrier.cc)
 ```c
 // BroadcastBarrier  (Init 0x1ff9bac0, BroadcastNotification 0x1ff9c320)
 function Init(absl::Duration):
-    for each known peer worker:
-        materialize one grpc::ClientContext   // 400 B each; vector sized 400 * num_workers
+    for each known peer worker:                 // peer count at this+104, peer array at this+96
+        build one std::function<absl::Status()>  // 32 B closure each; vector sized 32 * num_workers
 
 function BroadcastNotification(barrier_id, deadline):
+    materialize vector<grpc::ClientContext>(num_peers)   // 400 B each; alloc = 400 * num_peers
     counter = absl::BlockingCounter(num_peers)
     for peer in peers:                          // parallel fan-out
-        log("Notifying " + peer + " with barrier id " + barrier_id)   // broadcast_barrier.cc:230
+        log("Notifying " + peer + " with barrier id " + barrier_id)
         async Notify(peer, {barrier_id, chip_locations}) -> counter.DecrementCount()
     counter.Wait()
 
@@ -462,7 +466,7 @@ function SyncWithTimeout(barrier_id, timeout):
 `SyncWithTimeout` is the user-facing collective rendezvous point: `Notify`
 is fire-and-forget per peer; `WaitForReady` blocks until every peer has
 both notified the same `barrier_id` and is itself waiting on it. A
-`NoOpBarrier` (`lib/noop_barrier.h`) replaces this when
+`NoopBarrier` (`lib/noop_barrier.h`) replaces this when
 `process_owns_chips == false`.
 
 ---
