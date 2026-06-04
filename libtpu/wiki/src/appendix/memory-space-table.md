@@ -1,6 +1,6 @@
 # Memory-Space Master Table
 
-> *Every enum ordinal, address-space ID, allocator symbol, and per-gen geometry on this page was decoded byte-exactly from `libtpu.so` in the `libtpu-0.0.40-cp314` wheel (version 0.103, build `libtpu_lts_20260413_b_RC00`, BuildID md5 `89edbbe81c5b328a958fe628a9f2207d`). Other versions will differ.*
+> *Every enum ordinal, address-space ID, allocator symbol, and per-gen geometry on this page was decoded byte-exactly from `libtpu.so` in the `libtpu-0.0.40-cp314` wheel (build `libtpu_lts_20260413_b_RC00`, BuildID md5 `89edbbe81c5b328a958fe628a9f2207d` — the unambiguous version anchor). Other builds will differ.*
 
 ## Abstract
 
@@ -12,7 +12,7 @@ There are **three distinct, separately-numbered integer spaces** here, and the c
 2. The **wire `MemorySpaceProto` field numbers** — the same 17 spaces, *remapped* integers (`hib`/`vmem`/`cmem` differ); a (de)serializer must remap at the boundary. Owned by [memory-space-enum.md](../isa/memory-space-enum.md).
 3. The **SparseCore `mlir::sparse_core::MemorySpace` enum** (22 values, 1-based, value-8 gap) and its **LLVM address-space IDs** (`AS0`, `AS201..225`, `AS501/502`). Here `smem` = MS **1** (AS `0`). Owned by [address-space-ids.md](../targets/address-space-ids.md) and [fat-pointers-as789.md](../sparsecore/fat-pointers-as789.md).
 
-The three are **not** convertible by arithmetic — only named pools correspond, and only by physical identity. This page gives the master table keyed on the LLO enum, then a focused section for the LLO ordinals, a section for the SparseCore AS space (including the dead AS7/8/9 fat-pointer reserve), and a section for the alignment/geometry rules. Two deep-page values disagreed with the binary; both are corrected in place below.
+The three are **not** convertible by arithmetic — only named pools correspond, and only by physical identity. This page gives the master table keyed on the LLO enum, then a focused section for the LLO ordinals, a section for the SparseCore AS space (including the dead AS7/8/9 fat-pointer reserve), and a section for the alignment/geometry rules. One deep-page label still disagrees with the binary (an off-by-one sequencer-SMEM name); it is corrected in place below.
 
 This is a pure reference catalog — there is no algorithm to reimplement, only data to reproduce exactly. Every factual table carries a Confidence column.
 
@@ -112,9 +112,9 @@ The `sflag → render id 6` ordering this switch implies is the same one `SflagI
 
 LLO serializes through `MemorySpaceProto` (descriptor @ VA `0xbf8cc80`). The proto and the C++ enum name the same 17 spaces with **different** integers across `2`..`11` (`hib` is C++ 2 / proto 10; `vmem` is C++ 3 / proto 2; `cmem` is C++ 4 / proto 11); they agree at `0`, `1`, and `12`..`16`. The full remap table and the masked DMA-validity gates live on [memory-space-enum.md](../isa/memory-space-enum.md); a (de)serializer that conflates proto field numbers with the runtime enum silently relabels every `vmem`/`cmem`/`hib` buffer.
 
-### Correction — the overview's alternate numbering
+### The canonical assignment, four ways anchored
 
-> **CORRECTION (MST-1) —** [overview.md §2](../memory/overview.md#2-the-memoryspace-enum) lists a second, MEDIUM/HIGH-confidence ordinal assignment (`kPinnedHbm=2`, `kSflag=7`, `kBarnaCoreBmem=8`, `kBarnaCoreSflag=11`, `kBarnaCoreSmem=9/10`, `kSparseCoreSequencerSflag=13`, `kSparseCoreSequencerSmem=12`). The binary contradicts it. `MemorySpaceToString`/`MemorySpaceToDriverResource` fix `sflag = 6` (not 7) and `imem = 7`; `MakeSparseCoreSequencerSmemConstant` (`0x1d60bc60`) fixes `sparse_core_sequencer_smem = 14` (not 12); `MemorySpaceToDriverResource` fixes `sparse_core_sequencer_sflag = 12` (not 13) and `host = 13` (not a `kHost` with no value). The CONFIRMED, byte-exact assignment is the 17-value table at the top of this page; the overview's `kSflag=7 … kSparseCoreSequencerSmem=12` numbering should be read as superseded by it. `hib`(2) and `pinned_hbm`(16) — not a `kPinnedHbm=2` — are the correct names at those slots.
+> **NOTE —** the byte-exact ordinal assignment is the 17-value table at the top of this page, anchored four independent ways above (`MemorySpaceToString`, `MemorySpaceToDriverResource`, `MakeCmemConstant`, `MakeSparseCoreSequencerSmemConstant`). The boundary cases a reimplementer most often gets wrong: `sflag = 6` (not 7) with `imem = 7`; `sparse_core_sequencer_sflag = 12` and `host = 13` and `sparse_core_sequencer_smem = 14` (the sequencer SFLAG/SMEM ordinals are *not* adjacent — `host` sits between them); `hib = 2` and `pinned_hbm = 16` (there is no `kPinnedHbm` at slot 2). [overview.md §2](../memory/overview.md#2-the-memoryspace-enum) carries the same `kNone=0 … kPinnedHbm=16` assignment.
 
 ---
 
@@ -237,7 +237,7 @@ Only VMEM (and CMEM on Pufferfish) is MSA-managed — the `kAlternate`/`kDefault
 ## Cross-References
 
 - [memory-space-enum.md](../isa/memory-space-enum.md) — the 17-value LLO `MemorySpace` enum, the `MemorySpaceToString` decoder, the proto↔enum remap, and the masked DMA-validity gates; the authority for the ordinals on this page
-- [overview.md](../memory/overview.md) — the six-region taxonomy, the universal `BestFitAllocator`, and the compile-time→runtime hand-off (its §2 alternate numbering is superseded — see CORRECTION MST-1)
+- [overview.md](../memory/overview.md) — the six-region taxonomy, the universal `BestFitAllocator`, and the compile-time→runtime hand-off; its §2 carries the same canonical `kNone=0 … kPinnedHbm=16` ordinal assignment used here
 - [hbm-allocator.md](../memory/hbm-allocator.md) — the universal best-fit allocate/deallocate algorithm shared by every tier
 - [hbm-dma-alignment.md](../memory/hbm-dma-alignment.md) — the 1024-B DMA floor vs. the 16-KiB compile-time program alignment
 - [vmem-allocator.md](../memory/vmem-allocator.md) — the `kAlternate` fast tier; per-gen VMEM size/word/bank/alignment formulas
