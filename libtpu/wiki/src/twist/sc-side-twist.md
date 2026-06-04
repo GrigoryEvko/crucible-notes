@@ -16,7 +16,7 @@ Contract of the three pieces as observed in the binary:
 
 - **The shape gate.** `TryCreateTwistedTorusTopologyInfo` accepts a twisted topology only when `max_dim_size % min_dim_size == 0` **and** `min_dims.size()` is in a `2:1` ratio with `max_dims.size()`. The ratio direction is the shape discriminant: `2·|min| == |max|` → `k_2k_2k`, `|min| == 2·|max|` → `k_k_2k`. **Exactly two shapes** — no literal `nK`.
 - **The two views.** Each shape builds **two `TwistedView` objects** (the reduce-scatter view and the all-gather view) from a pool of **7 coordinate-fold closures**, each capturing `K`.
-- **The fold.** `TwistedView::ForEachPhase` is a fixed **3-axis** fold (`CHECK size == 3`): for each axis it reads a permutation index and invokes the matching `std::function` closure on a `(coord_a, coord_b)` pair, producing physical `TpuDimensions`. The seam primitive is `(⌊j/K⌋·K + i) mod 2K`; the short-axis primitive is `j mod K`.
+- **The fold.** `TwistedView::ForEachPhase` is a fixed **3-axis** fold (`CHECK size == 3`): for each axis it reads a permutation index and invokes the matching `std::function` closure on a `(coord_a, coord_b)` pair, producing physical `TpuDimensions`. The seam primitive is `(⌊j/K⌋·K + i) mod 2K`; the short-axis primitive is `i mod K`.
 - **The link count.** `EstimatePhysicalLinksUsed` is a topology **set walk**, not a scalar span product: a group that spans more axes / both directions touches more distinct `IciResource`s, and `links = |set|`.
 
 ## At a glance
@@ -115,7 +115,7 @@ ConstructTwistedViews(this):
    push_back( TwistedView{ all-gather    coordinate folds } )   // view 1
 ```
 
-> **[CONFIRMED]** The decompile shows two `vector<unique_ptr<TwistedView>>::push_back` sites (`@0x133e1ea0` body, lines ~1300 and ~1542), and the views are populated with `std::function<TpuDimensions(TpuDimensions)>` closures `SetToTwistedCoordinates::$_0` / `$_1` (the `__call_func<…TpuDimensions(TpuDimensions)…>` policy stores). The two-view structure and the shape dispatch are byte-confirmed.
+> **[CONFIRMED]** The decompile shows two `vector<unique_ptr<TwistedView>>::push_back` sites (`@0x133e1ea0` body, lines ~1300 and ~1542). The two views carry `std::function<TpuDimensions(TpuDimensions)>` closure stores: the first view installs `ConstructTwistedViews()::$_0` (`@0x133e6160`) and `ConstructTwistedViews()::$_1` (`@0x133e6180`); the second installs the forward/inverse pair `TwistedView::SetToTwistedCoordinates::$_0` (`@0x133e4140`) and `TwistedView::SetToOriginalCoordinates::$_0` (`@0x133e4580`). The two-view structure and the shape dispatch are byte-confirmed. The presence of a `SetToOriginalCoordinates` partner to `SetToTwistedCoordinates` matches `$_4` being the *inverse* of the `$_1` seam (§1.5).
 
 > **[LOW]** **Which** of the 7 fold closures populates **which** of the two views' three axis-groups, per shape, was traced to the construction order amid the `shared_ptr` refcounting — not reduced to a per-`(shape, view, group)` composition table. The two-view `{2,3,3}`-group structure and the 7 primitives' closed forms (§1.5) are byte-exact, but the analog of the TensorCore "Phase0 uses fold $_1/$_3/$_2; Phase1 uses $_5/$_4/$_6" assignment table is open. Decoding it would let the SparseCore physical coordinate of any `(logical group, member)` be reconstructed in closed form, the SparseCore analog of the [GetReplicaPair3DOnTwistedTorus](get-replica-pair-3d.md) coordinate table.
 
@@ -143,25 +143,25 @@ ForEachPhase(dims, transform, phase):
    return out
 ```
 
-The closure is invoked through `*(transform[i] + 0x10)` — the `std::function` call-operator slot — with the two source coordinates `dims[a]` and `dims[b]`. The fixed `== 3` rank is the SparseCore counterpart of the TensorCore `num_max_dims == 2` / 3-D twist invariant ([get-replica-pair-3d.md](get-replica-pair-3d.md) §2). `SetToTwistedCoordinates::$_0` clones the fold list and drives `ForEachPhase` once per phase.
+The closure is invoked through `*(transform[i] + 0x10)` — the `std::function` call-operator slot — with the two source coordinates `dims[a]` and `dims[b]`. The fixed `== 3` rank is the SparseCore counterpart of the TensorCore `num_max_dims == 2` / 3-D twist invariant ([get-replica-pair-3d.md](get-replica-pair-3d.md) §2). `TwistedView::SetToTwistedCoordinates::$_0` (`@0x133e4140`) clones the fold list and drives `ForEachPhase` once per phase; `SetToOriginalCoordinates::$_0` (`@0x133e4580`) is its inverse partner.
 
 > **[CONFIRMED]** The decompile shows `new(0xCu)` (12-byte `TpuDimensions`) for both the input clone and the output, the two fatal `CHECK`s (`"dim_per_phase_.size() == transform.size()"` line 77, `"dim_per_phase_.size() == 3"` line 78, both `LogMessageFatal` in `offload_collective_config_builder.cc`), the 3-iteration loop with the `< 3` bound checks on each index, and the `*(transform[i] + 16)(obj, dims[a], dims[b])` indirect call. The raw working note's hex line markers `0x4d`/`0x4e` are decimal `77`/`78` — consistent.
 
 ### 1.5 The 7 fold primitives
 
-Each closure is an `operator()(long i, long j)` capturing `K`, byte-exact:
+Each closure is `operator()(long i, long j)` capturing `K`, where `i` is the **first** argument and `j` the **second** (`dims[a]` and `dims[b]` respectively in `ForEachPhase`). The closed forms below follow that convention, byte-verified against each `$_N` body:
 
 | Closure | Address | Closed form | Role |
 |---------|---------|-------------|------|
-| `$_1` | `0x133e4ae0` | `(⌊j/K⌋·K + i) mod 2K` | the `+K`-mod-`2K` twist seam |
-| `$_2` | `0x133e4b80` | `j mod K` | short `K`-axis coordinate |
+| `$_1` | `0x133e4ae0` | `(⌊j/K⌋·K + i) mod 2K` | the `+K`-mod-`2K` twist seam (forward) |
+| `$_2` | `0x133e4b80` | `i mod K` | short `K`-axis coordinate (uses `i` only) |
 | `$_3` | `0x133e4bc0` | `⌊j/K⌋·K + i` | long-axis base `+ i` |
-| `$_4` | `0x133e4c40` | `((j mod K) + K) mod 2K` | seam-shifted short coordinate |
+| `$_4` | `0x133e4c40` | `(i − ⌊j/K⌋·K) mod 2K` | inverse seam (the `−⌊j/K⌋·K` counterpart of `$_1`) |
 | `$_5` | `0x133e4d00` | `⌊j/K⌋·K + i` | `= $_3` |
-| `$_6` | `0x133e4d80` | `j mod K` | `= $_2` |
-| `$_7` | `0x133e4dc0` | `j` | identity |
+| `$_6` | `0x133e4d80` | `i mod K` | `= $_2` (uses `i` only) |
+| `$_7` | `0x133e4dc0` | `i` | identity (returns the first arg) |
 
-The seam primitive `$_1` is the exact SparseCore restatement of the TensorCore `+K`-mod-`2K` fold ([overview](overview.md) §1, [get-replica-pair-3d.md](get-replica-pair-3d.md) §3): walk the short `K`-axis, jump `+K` along the long axis, walk the `K`-axis a second time — the dateline that cuts the cyclic dependency on the doubled ring. The `⌊j/K⌋` floor division is the standard sign-correct truncated-quotient idiom (`idiv K` then a `(rem != 0 && signs differ) ? -1` carry correction).
+The seam primitive `$_1` is the exact SparseCore restatement of the TensorCore `+K`-mod-`2K` fold ([overview](overview.md) §1, [get-replica-pair-3d.md](get-replica-pair-3d.md) §3): walk the short `K`-axis, jump `+K` along the long axis, walk the `K`-axis a second time — the dateline that cuts the cyclic dependency on the doubled ring. `$_4` is its inverse: same `⌊j/K⌋·K` step subtracted rather than added, with a `(… mod 2K + 2K) mod 2K` non-negative-remainder fixup. The `⌊j/K⌋` floor division is the standard sign-correct truncated-quotient idiom (`idiv K` then a `(rem != 0 && signs differ) ? -1` carry correction).
 
 ---
 
@@ -281,7 +281,7 @@ The 6 directional resources are the `{axis × direction}` cross product:
 
 `GetResourceFromIciResource @0x1c894c00` maps each value `e ∈ [1,6]` to slot `e - 1 + 0xd` (slots `0xd..0x12`). The dim↔resource pairing matches the cost consumer's per-dim read (§3.3).
 
-> **[LOW]** **Which** of an axis's two directional resources (even vs odd of each pair) a spanned axis selects — the `+/-` SerDes direction parity — was traced to the same-flag conjunction (the `sameX`/`sameY`/`sameZ` booleans drive the `{1,2}`/`{3,4}`/`{5,6}` choice), not tied to the physical SerDes direction sign. The decompile shows resource values `2` and `4` inserted at **two** sites each (the even/odd selection by member-walk parity), confirming the dispatch but not the geometric direction sign. The interaction with a degraded axis (which can drop a resource from the set — the partial-torus reliability path) was observed via the consumer's degraded-mask AND (§3.3) but not field-decoded.
+> **[LOW]** **Which** of an axis's two directional resources (even vs odd of each pair) a spanned axis selects — the `+/-` SerDes direction parity — was traced to the same-flag conjunction (the `sameX`/`sameY`/`sameZ` booleans drive the `{1,2}`/`{3,4}`/`{5,6}` choice), not tied to the physical SerDes direction sign. The decompile shows resource values `2`, `4`, and `6` (the "dir 1" of each axis) inserted at **two** sites each (the even/odd selection by member-walk parity), confirming the dispatch but not the geometric direction sign. The interaction with a degraded axis (which can drop a resource from the set — the partial-torus reliability path) was observed via the consumer's degraded-mask AND (§3.3) but not field-decoded.
 
 ### 3.3 The cost-model consumer
 
@@ -318,7 +318,9 @@ The SparseCore `TwistedTorusTopologyInfo` and the TensorCore `TwistedTorusND` de
 | `TwistedTorusTopologyInfo::TwistedTorusTopologyInfo` (ctor) | `0x133e1b40` | object layout + `(2K,R,K)` triple + 7 closures | MEDIUM (offsets from disasm, not re-walked) |
 | `TwistedTorusTopologyInfo::ConstructTwistedViews` | `0x133e1ea0` | two `TwistedView` build (RS + AG) | HIGH (two push_backs); per-group fold assignment LOW |
 | `TwistedView::ForEachPhase` | `0x133e17c0` | 3-axis fold; `CHECK==3` + `*0x10` dispatch | HIGH |
-| `SetToTwistedCoordinates::$_0` | `0x133e4140` | drives `ForEachPhase` per phase | HIGH (call-func policy) |
+| `TwistedView::SetToTwistedCoordinates::$_0` | `0x133e4140` | drives `ForEachPhase` per phase (forward twist) | HIGH (call-func policy) |
+| `TwistedView::SetToOriginalCoordinates::$_0` | `0x133e4580` | inverse twist partner of `SetToTwistedCoordinates` | HIGH (call-func policy) |
+| `ConstructTwistedViews()::$_0` / `$_1` | `0x133e6160` / `0x133e6180` | first view's two `TpuDimensions(TpuDimensions)` closures | HIGH (policy stores) |
 | fold closures `$_1..$_7` | `0x133e4ae0..0x133e4dc0` | the 7 coordinate-fold primitives | HIGH (closed forms verified) |
 | `TwistedTorusND::GetPhase0Cores` | `0x137d6de0` | `2K · LogicalDevicesPerChip` | HIGH (field arithmetic verified) |
 | `TwistedTorusND::GetPhase1Cores` | `0x137d6ec0` | `R = (num2K ≥ 2 ? 2K : K)` | HIGH (field arithmetic verified) |
