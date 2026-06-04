@@ -228,7 +228,7 @@ function ShouldEnablePostMsaSyncSliceFusion(env):          // composite
     return override & 1                                    // explicit override wins
 ```
 
-`PadOperationsInputTiles` (`+0x618`) is the second decoded composite, following the same present-bit gate. The remaining composites (`EnableMixedPrecisionAddTransform` reading `+0x830`&`+0x840`; `AllReduceMinBytes` reading `+0x1590`&`+0xa48`) follow the pattern but their second-field semantics were not individually decoded (LOW).
+`PadOperationsInputTiles` (`+0x618`) is the second decoded composite, following the same present-bit gate. The remaining composites (`EnableMixedPrecisionAddTransform` reading `+0x830`&`+0x840`; `AllReduceMinBytesForSparseCoreOffload` reading `+0x1590`&`+0xa48`) follow the pattern but their second-field semantics were not individually decoded (LOW).
 
 ---
 
@@ -307,7 +307,7 @@ There is no resolver, no fallback instance, no present-bit. The enum value is re
 |---|---|
 | `AutoOr<bool>::FromProtoOrDie @ 0xf795300` | the resolver template — present-bit packing |
 | `AutoProto_globals_ @ 0x223c8968` | the all-AUTO default instance every unset knob falls back to |
-| `AutoProto::_table_ @ 0x21cfa9e0` | the 30-arm oneof parse table that drives `FromAutoProto` |
+| `AutoProto::_table_ @ 0x21cfa788` | the 30-arm oneof parse table that drives `FromAutoProto` |
 | `ObjectView<TCE>` band `0x1d6b6420..0x1d6b9f60` | the 130 named single-field resolvers and their polarity tails |
 | `TpuCompilationEnvironment` (TCE) | hosts the `AutoProto*` fields and the inline `TristateProto` fields |
 
