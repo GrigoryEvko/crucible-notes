@@ -326,5 +326,3 @@ The data to embed: the [`MxuLatencyTable`](mxu-latency-vf.md) reservation matrix
 - [Performance: VF](performance-vf.md) and [MXU Latency: VF](mxu-latency-vf.md) together hold the two sub-tables a `VfCycleTable` owns at `+0x10` and `+0x18`.
 - **Binary:** `extracted/libtpu-0.0.40-cp314-cp314-manylinux_2_31_x86_64/libtpu/libtpu.so` (build-id `89edbbe81c5b328a958fe628a9f2207d`)
 - **Index entry:** Part VII — Cost & Latency Model / CycleTable — [back to index](../index.md)
-</content>
-</invoke>
