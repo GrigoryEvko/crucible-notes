@@ -208,7 +208,7 @@ The abstract `xla::PjRtTopologyDescription` vtable exposes only what every backe
 
 ### Storage and Population
 
-The extension struct is a static at `pjrt::tpu_plugin::GetTpuPjrtApi::tpu_topology_extension` @ `0x224C3B90` (`.bss`), guard @ `0x224C3CA0`, populated once during the `__cxa_guard`-protected `GetTpuPjrtApi` init by `pjrt::CreateTpuTopologyExtension(PJRT_Extension_Base*)` @ `0xE6DE5E0`. That function is 35 `lea`/store pairs and a `ret` — three header slots then 31 function pointers, with the single `rsi` argument written to `+0x10` as the chain `next` (pointing at `callback_extension` @ `0x224C3B60`).
+The extension struct is a static at `pjrt::tpu_plugin::GetTpuPjrtApi::tpu_topology_extension` @ `0x224C3B90` (`.bss`), guard @ `0x224C3CA0`, populated once during the `__cxa_guard`-protected `GetTpuPjrtApi` init by `pjrt::CreateTpuTopologyExtension(PJRT_Extension_Base*)` @ `0xE6DE5E0`. That function is 34 field stores and a `ret` — three header slots then 31 function pointers (the latter as 31 `lea`/store pairs), with the single `rsi` argument written to `+0x10` as the chain `next` (pointing at `callback_extension` @ `0x224C3B60`).
 
 ```c
 struct PJRT_Extension_Base {                              // 24-byte common header
