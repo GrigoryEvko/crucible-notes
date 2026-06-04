@@ -318,7 +318,7 @@ The device catalog grows monotonically in count but is re-banded, not strictly a
 
 | Dimension | pufferfish (pxc) | viperfish (vfc) | viperfish-lite (vlc) | ghostlite (glc) | 6acc60406 (gfc) |
 |---|---|---|---|---|---|
-| total events | 99 | 122 | 78 | 122 | 144 |
+| total events | 99 | 122 | 78 | 135 | 144 |
 | host-DMA band | UHI (7) | HDE (4) | HDE (4) | HDE (4) | HDE (4) |
 | sparse compute | BarnaCore `BC/BCS/B7b2m` (29) | SparseCore `SC_*` (18) | none | `SC_*` (18) | `SC_*` (18) |
 | VPU DMA | CMQ (9) | — | VDQ (8) | — | — |
