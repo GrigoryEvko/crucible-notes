@@ -100,7 +100,21 @@ A breakdown of the 516 by address band and demangled name puts every refusal int
 | Hand-written assembly | 9 | Reading the disassembly; the `cfunc` will never exist | CERTAIN (floor) |
 | Template / codegen giants | ~21 | Manual disasm pass over the named addresses; some lift with a raised budget | HIGH |
 
-> **QUIRK —** the largest single refusal, `mlir::Dialect::addOperations<…>` at `0xfedc180`, is one C++ call that registers the entire TensorFlow MLIR op set — over a thousand op classes as template arguments in a single statement. It is not algorithmically interesting; recovering it yields a flat registration list, not logic. It sits on the frontier only because the decompiler refused it, not because a reimplementer needs its body. The `jellyfish::ReduceEmitter::EmitReduction` refusal (`0x13e16240`) is the inverse — genuinely interesting reduction-emission logic behind a deeply nested `btree_map` signature — and is the one template-explosion refusal worth a targeted manual pass.
+> **QUIRK —** the largest single refusal, `mlir::Dialect::addOperations<…>` at `0xfedc180`, is one C++ call that registers the entire TensorFlow MLIR op set — over a thousand op classes as template arguments in a single statement. It is not algorithmically interesting; recovering it yields a flat registration list, not logic. It sits on the frontier only because the decompiler refused it, not because a reimplementer needs its body. The `jellyfish::ReduceEmitter::EmitReduction` refusal (`0x13e16240`) is the inverse — genuinely interesting reduction-emission logic behind a deeply nested `btree_map` signature — and was the one template-explosion refusal worth a targeted manual pass. That pass is **done**: a windowed disassembly of `0x13e16240`–`0x13e16720` recovered it as a thin axis dispatcher (validate → two axis bits → tail-call one of five specialized emitters), written up in [fusion-patterns § ReduceEmitter::EmitReduction](../compiler/fusion-patterns.md#reduceemitteremitreduction--the-axis-dispatcher-behind-reducefuser). The TPU-IP half of the residual wall is therefore closed — what remains is registration boilerplate (`addOperations`) and upstream-LLVM/XLA giants whose logic is recoverable but not TPU-specific.
+
+### The Zero-Output Floor — 5 Named Addresses (CLOSED)
+
+The 516 "no `cfunc`" count is the set where Hex-Rays produced *some* output but no clean C tree. A strictly harder subset is the **artifact-level floor**: addresses for which IDA wrote *no decompiled file at all*. For `libtpu.so` that set is exactly **five named addresses**, and naming them resolves the question of whether the floor hides any TPU IP. It does not — every one is third-party:
+
+| Address | `nm` symbol | Kind | What it is |
+|---|---|---|---|
+| `0x1ffb8020` | `riegeli::TransposeDecoder::Parse` | code, 7,424 B | riegeli columnar-transpose record decoder (the trace-container codec, [riegeli-trace-container](../profiling/riegeli-trace-container.md)); too large for the lift budget, vendored upstream |
+| `0x21055260` | `proto2::internal::UntypedMapBase::SpaceUsedExcludingSelfLong` | code, 1,984 B | protobuf map-field memory accounting; vendored upstream |
+| `0x206a3600` | `mlkem::(anon)::fips::ensure_decap_self_test()::$_0::__invoke` | code, trivial | ML-KEM FIPS decap self-test lambda — `call decap_self_test; test eax; ret`; BoringSSL post-quantum crypto |
+| `0x206a8000` | *(none — `0x1000` into `ecp_nistz256_precomputed`, `0x206a7000`–`0x206cc000`, 148 KB)* | **data** | NIST P-256 precomputed EC-point table; BoringSSL crypto constant, not code |
+| `0x206d2690` | `boringssl_self_test_fast()::kTLS10Secret` | **data** | TLS-1.0 KDF known-answer-test secret (the bytes contain the literal `TLS10-KDF KAT`); BoringSSL self-test constant, not code |
+
+> **GOTCHA —** two of the five (`0x206a8000`, `0x206d2690`) are *data* IDA tried to lift as functions — a NIST P-256 point table and a TLS KDF test vector — so "decompilation failed" is the correct outcome, not a gap. The other three are vendored library code (riegeli decoder, protobuf accountant, a one-line ML-KEM self-test). None is TPU IP. The artifact-level decompile floor of the entire 745 MB binary is two crypto blobs, two upstream library functions, and a crypto self-test stub — confirming the recoverable TPU surface was fully lifted.
 
 ### The 7,915 Analysis Problems
 
