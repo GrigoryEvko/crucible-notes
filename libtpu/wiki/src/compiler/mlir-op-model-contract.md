@@ -26,7 +26,7 @@ For reimplementation, the contract is:
 | **Vtable slots per Model** | **23** = slot 0 shared base dtor + slot 1 per-op dtor + slots 2–22 dispatch |
 | **Shared slot-0 dtor** | `mlir::OperationName::Impl::~Impl` @ `0xfea8820` (D2; identical addend ∀ Models) |
 | **Registration sink** | `RegisteredOperationName::insert(unique_ptr<OperationName::Impl>, ArrayRef<StringRef>)` @ `0x1d8c57a0` |
-| **Per-dialect registrars** | `mlir::Dialect::addOperations<Op…>` — **224** symbols binary-wide (**205** unique after demangling) |
+| **Per-dialect registrars** | `mlir::Dialect::addOperations<Op…>` — **243** symbols binary-wide (**205** unique after demangling) |
 | **Reference Model walk** | `Model<xla::PureCallOp>` slots @ `0x150d56c0…0x150d5c20` |
 | **Caller-side dispatch** | `mlir::Operation::fold` @ `0x1d8cd480` → `call *0x10(vptr)` = slot 2 |
 | **Second interface layer** | `mlir::detail::<Iface>InterfaceTraits::Model<Op>` (`Concept`-based) |
@@ -146,7 +146,7 @@ mlir::RegisteredOperationName::insert(
     llvm::ArrayRef<llvm::StringRef>)                  @ 0x1d8c57a0
 ```
 
-The `Model<Op>` *is* the `OperationName::Impl` — registration is "intern this Impl under the op's name(s)." Binary-wide there are **224** distinct `addOperations<…>` symbols — **205** unique after demangling (19 collapse to identical demangled signatures) — one per registered dialect (some split into batches). A reimplementer's dialect-init path is: build a `Model<Op>` per op, `insert` each under its mnemonic; the `Impl` ownership transfers via `unique_ptr` into the context's interning map.
+The `Model<Op>` *is* the `OperationName::Impl` — registration is "intern this Impl under the op's name(s)." Binary-wide there are **243** distinct `addOperations<…>` symbols — **205** unique after demangling (38 collapse to identical demangled signatures) — one per registered dialect (some split into batches). A reimplementer's dialect-init path is: build a `Model<Op>` per op, `insert` each under its mnemonic; the `Impl` ownership transfers via `unique_ptr` into the context's interning map.
 
 ### Level 2 — per-slot delegation to ODS statics
 
@@ -269,7 +269,7 @@ This page owns the *contract*; the dialect pages own the *instantiations* — th
 | `Model<Op>` is a 23-slot vtable; 6,050 instances binary-wide | count of distinct `Model<…>::~Model` (D0) symbols = 6,050; reference walk on `Model<xla::PureCallOp>` slots `0x150d56c0…0x150d5c20` | CONFIRMED |
 | All 21 dispatch-slot symbols present per op, same order across dialects | `Model<{PureCallOp, tpu::IotaOp, llo::ConstantOp, mosaic_sc::RelayoutOp}>::<method>` resolve identically | CONFIRMED |
 | Slot 0 is one shared base dtor across all Models | `OperationName::Impl::~Impl` (D2) = addend `0xfea8820`; 30-Model stratified sample shares it | CONFIRMED |
-| Registration sink is `RegisteredOperationName::insert` | demangled `insert(unique_ptr<OperationName::Impl,…>, ArrayRef<StringRef>)` @ `0x1d8c57a0`; 224 `addOperations<…>` symbols (205 demangled) | CONFIRMED |
+| Registration sink is `RegisteredOperationName::insert` | demangled `insert(unique_ptr<OperationName::Impl,…>, ArrayRef<StringRef>)` @ `0x1d8c57a0`; 243 `addOperations<…>` symbols (205 demangled) | CONFIRMED |
 | Inherent-attr slots tail-call ODS statics via inline-prop unpack | `Model<IotaOp>::getInherentAttr` body computes `op + ((flags>>19)&0x10) + 64` then calls `IotaOp::getInherentAttr(...)` @ `0x14b220e0` | CONFIRMED |
 | Indirect hooks (2,3,4,7,8) wrapped in `UniqueFunction` callback-holders carrying the `Op<…>` trait list | `Model<IotaOp>::hasTrait` holder names `Op<tpu::IotaOp, …, MemoryEffectOpInterface::Trait>::getHasTraitFn()::lambda` | CONFIRMED |
 | `getOpPropertyByteSize` is an inlined `sizeof(Properties)` | `Model<IotaOp>::getOpPropertyByteSize` @ `0x14ac19c0` decompiles to `return 8;`; zero-prop ops return 0 | CONFIRMED |
