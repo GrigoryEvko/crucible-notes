@@ -28,7 +28,7 @@ For reimplementation, the contract is: the per-gen slot-list (1/2/3 VMEM-load sl
 
 ## The Load Slot Is a Per-Gen VLIW Sub-Bundle
 
-Each gen's TensorCore bundle is a struct of fixed-position slots; the slot order is the template-argument order of the per-gen `TensorCoreCodecBase<TensorCoreBundle, …Decoder, …Encoder, …>`. The number of *load* slots and whether CMEM gets a dedicated slot is the primary per-gen delta. CMEM is first-class only on Pufferfish (it has its own bundle slot); Viperfish/Ghostlite/Trillium have no `*Cmem*` ISA op family at all and reuse the freed bundle width for a 2nd/3rd VMEM-load slot.
+Each gen's TensorCore bundle is a struct of fixed-position slots; the slot order is the template-argument order of the per-gen `TensorCoreCodecBase<TensorCoreBundle, …Decoder, …Encoder, …>`. The number of *load* slots and whether CMEM gets a dedicated slot is the primary per-gen delta. CMEM is first-class only on Pufferfish (it has its own bundle slot); Viperfish/Ghostlite/6acc60406 have no `*Cmem*` ISA op family at all and reuse the freed bundle width for a 2nd/3rd VMEM-load slot.
 
 | Gen | VMEM-load slots (TC) | CMEM-load slots | SMEM scalar-load slots | Confidence |
 |-----|---------------------:|----------------:|-----------------------:|------------|
@@ -37,7 +37,7 @@ Each gen's TensorCore bundle is a struct of fixed-position slots; the slot order
 | Pufferfish | 1 (`VectorLoad`) | **1 (`CmemLoad`, dedicated)** | 2 (`Scalar0`/`Scalar1`) | CONFIRMED |
 | Viperfish | **3 (`VectorLoad0/1/2`)** | 0 | 2 (`ScalarAlu0`/`ScalarAlu1`) | CONFIRMED |
 | Ghostlite | 2 (`VectorLoad0/1`) | 0 | 2 (`ScalarAlu0`/`ScalarAlu1`) | CONFIRMED |
-| Trillium | 2 (`VectorLoad0/1`) | 0 | 2 (`ScalarAlu0`/`ScalarAlu1`) | CONFIRMED |
+| 6acc60406 | 2 (`VectorLoad0/1`) | 0 | 2 (`ScalarAlu0`/`ScalarAlu1`) | CONFIRMED |
 
 On Pufferfish the `VectorLoad` slot's control fields land at absolute bundle bits 119..140 (the `VectorLoadEncoder::Encode` body @ `0x1ee287e0` writes Predication via `BitCopy(dst, 136, …, 5)`, Dest `BitCopy(dst, 129, …, 5)`, Stride `…126,3`, Offset `…124,2`, BaseAddress `…122,2`, SublaneMask `…119,3`, Opcode `…134,2`); the `CmemLoad` control fields land at 103..118 (the `CmemLoadEncoder::Encode` body @ `0x1ecf89a0` writes Predication `BitCopy(dst,114,5)`, Opcode `…113,1`, SublaneMask `…110,3`, BaseAddress `…108,2`, Offset `…106,2`, Stride `…103,3`) — see [Pufferfish 51B Bundle](bundle-pf-51b.md). The two control regions are disjoint, so a CMEM load and a VMEM load can issue in the **same** bundle cycle — the only generation with this property (their shared `Vs0/Vs1/Vs2` and `Imm` fields land in higher disjoint bits, 241..256+). The three VMEM-load slots on Viperfish are confirmed by the three distinct per-slot encoder symbols `vxc::isa::TensorCoreVectorLoad{0,1,2}Encoder::Encode`.
 
@@ -128,7 +128,7 @@ GLC repacks the **same** logical fields to **different** positions than VXC. The
 
 Versus VXC: Dest moves bit 4 → 7, SublaneMask bit 0 → 3, Predication bit 12 → 15, Stride bit 55 → 58, BaseAddress word `@0x10` bit 62 → word `@0x18` bit 1. This is a pure per-gen layout delta — same fields, different positions. Anchors: `DestVregField` @ `0x1f3a26a0`, `StrideField` @ `0x1f3a26c0`, `SublaneMaskField` @ `0x1f3a26e0`.
 
-### Trillium (GFC) — TensorCore `VectorLoad0` (VMEM → vreg)
+### 6acc60406 (GFC) — TensorCore `VectorLoad0` (VMEM → vreg)
 
 GFC uses a **wider** opcode. The discriminator is `(*((_BYTE*)this + 25) & 0x18) == 0` (byte `@0x19` bits 3-4) plus a **3-bit** opcode in word `@0x10 & 0x7000000000000000` (bits 60-62), byte-exact in `VectorLoadOpcode::Matches` (@ `0x1f9e97e0`). The 3-bit opcode (vs GLC's 2-bit) is consistent with GFC adding ops.
 
@@ -139,7 +139,7 @@ GFC uses a **wider** opcode. The discriminator is `(*((_BYTE*)this + 25) & 0x18)
 | Stride | byte `@0x17` | 0 | `0xf` | 4 | CONFIRMED |
 | Offset | `@0x10` | 60 | `0x7` | 3 | CONFIRMED |
 
-Trillium moves Stride into byte `@0x17` — another per-gen layout delta. Anchors: `DestVregField` @ `0x1f9e99e0`, `StrideField` @ `0x1f9e9a00`, `SublaneMaskField` @ `0x1f9e9a20`, `OffsetField` @ `0x1f9e9a40`.
+6acc60406 (GFC) moves Stride into byte `@0x17` — another per-gen layout delta. Anchors: `DestVregField` @ `0x1f9e99e0`, `StrideField` @ `0x1f9e9a00`, `SublaneMaskField` @ `0x1f9e9a20`, `OffsetField` @ `0x1f9e9a40`.
 
 ### PXC / VXC scalar-load (SMEM → sreg)
 
@@ -185,7 +185,7 @@ The `SublaneMask` field controls load granularity. A vector register holds `lane
 
 ## Destination Register File and the 5→6-Bit Widening
 
-From `TPURegStrings`: vector V0..V63 (64 vregs; wide pairs/triples/quads `V60_V61`, `V60_V61_V62_V63` exist for multi-register loads), scalar S0..S31 (32 sregs), circular-buffer CB0..CB15 (16, SparseCore), predicate P0..P31 (32). The vector-load Dest field is **5-bit on Pufferfish** (byte-exact `(DWORD@0x18 >> 1) & 0x1f`, `0x1ee281a0`) and **6-bit on Viperfish/Ghostlite/Trillium** (byte-exact `(DWORD@0x18 >> 4) & 0x3f`, `0x1f006b60`). The dest widening 5 → 6 bits at the v5 boundary is a primary per-gen delta tracking the doubled vector register file. The scalar-load Dest is 5-bit on every gen.
+From `TPURegStrings`: vector V0..V63 (64 vregs; wide pairs/triples/quads `V60_V61`, `V60_V61_V62_V63` exist for multi-register loads), scalar S0..S31 (32 sregs), circular-buffer CB0..CB15 (16, SparseCore), predicate P0..P31 (32). The vector-load Dest field is **5-bit on Pufferfish** (byte-exact `(DWORD@0x18 >> 1) & 0x1f`, `0x1ee281a0`) and **6-bit on Viperfish/Ghostlite/6acc60406** (byte-exact `(DWORD@0x18 >> 4) & 0x3f`, `0x1f006b60`). The dest widening 5 → 6 bits at the v5 boundary is a primary per-gen delta tracking the doubled vector register file. The scalar-load Dest is 5-bit on every gen.
 
 > **GOTCHA —** the 5-bit PXC dest addresses V0..V31 *directly* in the slot; the wider V32..V63 half and the wide/complement multi-vreg destinations (the `V60_V61_V62_V63` quads) are reached through a separate wide/complement mechanism, not by widening the slot field. The slot-encoding of a multi-register destination is not yet decoded (LOW).
 
@@ -193,7 +193,7 @@ From `TPURegStrings`: vector V0..V63 (64 vregs; wide pairs/triples/quads `V60_V6
 
 ## Per-Gen Load Encoding Table (Consolidated)
 
-| Dimension | Jellyfish/Dragonfish | Pufferfish (PXC) | Viperfish (VXC) | Ghostlite (GLC) | Trillium (GFC) |
+| Dimension | Jellyfish/Dragonfish | Pufferfish (PXC) | Viperfish (VXC) | Ghostlite (GLC) | 6acc60406 (GFC) |
 |-----------|----------------------|------------------|-----------------|-----------------|----------------|
 | Bundle width | 41 B | 51 B | 64 B | 64 B | 64 B |
 | Codec namespace | `jellyfish::isa` | `pxc::isa` | `vxc::isa` | `gxc::glc::isa` | `gxc::gfc::isa` |

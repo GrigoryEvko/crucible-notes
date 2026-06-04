@@ -6,7 +6,7 @@
 
 This appendix is the single consolidated reference table for the LLO opcode space — the one table a reimplementer keeps open while building a TPU back end. LLO (Low-Level Optimizer IR) is the TPU-specific late compiler IR below MHLO/TLP and above the per-generation TensorCore bundle encoders; its in-memory opcode enum `xla::jellyfish::LloOpcode` is a **dense, zero-based, 461-value** numbering (`0x000`..`0x1CC`), and every value is named in the relocated `opcode_name` table at `0x21ccfef0`. The authoritative per-family facts live on the isa/ deep pages; this page aggregates them into one master opcode→mnemonic→slot→semantics→per-gen table, grouped by the bundle slot (functional unit) each opcode is encoded into.
 
-The table is organized by **slot family**, not by numeric run, because the value space interleaves: `LloOpcodeIsVector` is a dense switch, not a `>= threshold` test, and (for example) `kVectorReadIar` (1) is vector while `kLog` (5) is not. Each slot section below enumerates the opcodes that the per-slot encoder serializes into that slot, with the numeric `LloOpcode` value, a one-line semantics, and per-generation availability where it varies (the five codec lineages: **jxc** Jellyfish/Dragonfish v3/v3′, **pxc** Pufferfish v4, **vfc/vxc** Viperfish v5e, **glc** Ghostlite v5p, **gfc** Trillium v6e). The bit-level field encodings — where each opcode's operands land in the 41/51/64-byte bundle — are *not* repeated here; they live on the per-slot deep pages, which every section cross-links.
+The table is organized by **slot family**, not by numeric run, because the value space interleaves: `LloOpcodeIsVector` is a dense switch, not a `>= threshold` test, and (for example) `kVectorReadIar` (1) is vector while `kLog` (5) is not. Each slot section below enumerates the opcodes that the per-slot encoder serializes into that slot, with the numeric `LloOpcode` value, a one-line semantics, and per-generation availability where it varies (the five codec lineages: **jxc** Jellyfish/Dragonfish v2/v3, **pxc** Pufferfish v4, **vfc/vxc** Viperfish v5p, **glc** Ghostlite v6e, **gfc** 6acc60406 TPU7x). The bit-level field encodings — where each opcode's operands land in the 41/51/64-byte bundle — are *not* repeated here; they live on the per-slot deep pages, which every section cross-links.
 
 Three index spaces must not be conflated with `LloOpcode`, and a reimplementer who confuses them mis-decodes every program: the **`LloOpcodeProto`** wire enum (1-based, max 499, 38 reserved gaps, see [LloOpcode↔Proto](../isa/llo-opcode-to-proto.md)); the **MC `MCInst`** opcode space the LLVM-MC emitter dispatches on (`LloOpcode + 499`, gated `<= 0x1F2`); and the **`GhPerf::Instruction`** cost-grid enum. `LloOpcode` is the one all the others map *from*. A representative sample of the values in this table was re-verified against the binary classifiers and converters (see [Verification](#verification-provenance)); where a deep page and the binary agreed they were taken as CONFIRMED, and no disagreements were found.
 
@@ -306,21 +306,21 @@ The 33 highest opcodes are the BarnaCore (SparseCore) instruction set — embedd
 | `0x1BC`..`0x1C8` | `kBarnaCoreRemoteScalarWrite` … `kBarnaCorePfLocalScatterGradients` | remote write / scatter-gather / sparse-reduce | CONFIRMED |
 | `0x1C9`..`0x1CC` | `kBarnaCoreVectorLoad` … `kBarnaCoreVectorStore` | BarnaCore vector load / store / move | CONFIRMED |
 
-> **QUIRK — the BarnaCore vector load/store opcodes (457..460) test as *vector*; the scalar/sync ones (428..456) test as non-vector.** This is the only place the BarnaCore block straddles the vector/scalar partition, and it matters for register-class selection. The TpuSequencerType enum that selects the SparseCore engine codec is `kTensorCoreSequencer`(0)..`kSparseCoreTileExecuteSequencer`(5); `TpuSequencerTypeFromProto` (`0x20b36300`) maps proto 1..6 → internal 0..5 — verified byte-exact. BarnaCore is a pre-v5 construct (JF address-handler, PF sequencer); from v5 onward SparseCore (SCS/TAC/TEC) replaces it, and Trillium drops the TAC engine.
+> **QUIRK — the BarnaCore vector load/store opcodes (457..460) test as *vector*; the scalar/sync ones (428..456) test as non-vector.** This is the only place the BarnaCore block straddles the vector/scalar partition, and it matters for register-class selection. The TpuSequencerType enum that selects the SparseCore engine codec is `kTensorCoreSequencer`(0)..`kSparseCoreTileExecuteSequencer`(5); `TpuSequencerTypeFromProto` (`0x20b36300`) maps proto 1..6 → internal 0..5 — verified byte-exact. BarnaCore is a pre-v5 construct (JF address-handler, PF sequencer); from v5 onward SparseCore (SCS/TAC/TEC) replaces it, and 6acc60406 (v7x) drops the TAC engine.
 
 ---
 
 ## Per-Generation Availability Summary
 
-`LloOpcode` numbering is gen-invariant; the *valid subset* grows per silicon. The codename → namespace map: jxc = Jellyfish (`jellyfish::isa`) + Dragonfish (alias); pxc = Pufferfish; vxc/vfc = Viperfish; glc = Ghostlite; gfc = Trillium.
+`LloOpcode` numbering is gen-invariant; the *valid subset* grows per silicon. The codename → namespace map: jxc = Jellyfish (`jellyfish::isa`) + Dragonfish (alias); pxc = Pufferfish; vxc/vfc = Viperfish; glc = Ghostlite; gfc = 6acc60406.
 
 | Generation | Codename | LloOpcode additions over prior gen | Confidence |
 |---|---|---|---|
-| TPU v3 | Jellyfish / Dragonfish | base set (proto-direct encoding, no Compact encoder) | HIGH |
+| TPU v2 / v3 | Jellyfish / Dragonfish | base set (proto-direct encoding, no Compact encoder) | HIGH |
 | TPU v4 | Pufferfish | F8 converts (`0x061`..`0x063`), S4/U4 int↔Bf16 (`0x067`/`0x069`/`0x06B`/`0x06D`), `kCmemFence` (`0x01E`), CMEM DMA/load/store | HIGH |
 | TPU v5e | Viperfish | stochastic-rounding converts (`0x070`..`0x074`); SparseCore SCS/TAC/TEC engines; native `vcreate_mask` | HIGH |
-| TPU v5p | Ghostlite | `vector_misc` slot ops; consolidated `VectorSelect`; 2 vector-store write ports | MEDIUM |
-| TPU v6e | Trillium | dual matrix staging (MSRA/MSRB); float-only FP8 matmul remap; dual-predicate slot; drops TAC engine, yield machinery | MEDIUM |
+| TPU v6e | Ghostlite | `vector_misc` slot ops; consolidated `VectorSelect`; 2 vector-store write ports | MEDIUM |
+| TPU7x | 6acc60406 | dual matrix staging (MSRA/MSRB); float-only FP8 matmul remap; dual-predicate slot; drops TAC engine, yield machinery | MEDIUM |
 
 > **NOTE — append-and-insert, not append-only.** New opcodes are *inserted* into the in-memory `LloOpcode` at their family's natural position (keeping families contiguous) but *appended* to the end of the `LloOpcodeProto` wire enum (preserving wire compatibility). This is why proto 498/499 map to low in-memory opcodes (`0x084`/`0x197`) — verified byte-exact. Port the actual `LloOpcodeToProto` table (`0x344cb4c`), not a formula. See [LloOpcode↔Proto](../isa/llo-opcode-to-proto.md).
 

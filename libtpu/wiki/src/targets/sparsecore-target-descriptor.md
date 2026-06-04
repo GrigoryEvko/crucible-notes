@@ -9,7 +9,7 @@
 Three concrete facts drive the page, and a reimplementer needs all three:
 
 - **SparseCore presence is gated, not assumed.** Every `Target::SparseCore*` accessor first calls a virtual predicate (`SupportsSparseCore`, vtable slot `+0x260`) and `LOG(FATAL)`s if it is false. The `Target+0x948` pointer is only populated on the SparseCore-bearing generations; on the BarnaCore generations (Jellyfish/Dragonfish/Pufferfish) and the TensorCore-only lite dies, the guard short-circuits before the pointer is ever dereferenced.
-- **Three SparseCoreTarget classes ship.** A base `SparseCoreTarget` plus two concrete subclasses — `ViperfishSparseCoreTarget` (v5p) and `GhostLiteSparseCoreTarget` (v6e Ghostlite *and* v7 Trillium). The per-gen capability bits, latencies, and FLOPS are C++ literals in those subclass virtuals.
+- **Three SparseCoreTarget classes ship.** A base `SparseCoreTarget` plus two concrete subclasses — `ViperfishSparseCoreTarget` (v5p) and `GhostLiteSparseCoreTarget` (v6e Ghostlite *and* v7x `6acc60406`). The per-gen capability bits, latencies, and FLOPS are C++ literals in those subclass virtuals.
 - **The MXU contracting depth is a compiled-in literal.** Base `Target::MxuContractingSize` returns 128; only `GhostliteTarget` overrides it to 256. This 128-vs-256 split is the single hard per-codename MXU-geometry value in this build, and it is not a `chip_parts` proto field.
 
 | | |
@@ -18,7 +18,7 @@ Three concrete facts drive the page, and a reimplementer needs all three:
 | **Built by** | `SparseCoreTarget::Init` @ `0x1D612B20`, installed by `Target::Init` |
 | **Presence gate** | `Target::SupportsSparseCore` @ `0x1D48FD40` (vtable slot `+0x260`) |
 | **Concrete classes** | base / `ViperfishSparseCoreTarget` / `GhostLiteSparseCoreTarget` |
-| **Has SparseCore** | Viperfish (v5p), Ghostlite (v6e), `6acc60406` (v7x Trillium) |
+| **Has SparseCore** | Viperfish (v5p), Ghostlite (v6e), `6acc60406` (v7x) |
 | **No SparseCore** | Jellyfish / Dragonfish / Pufferfish (BarnaCore); lite dies (none) |
 | **Confidence** | CONFIRMED (byte-anchored) unless a row says otherwise |
 
@@ -144,7 +144,7 @@ The tile/lane geometry is sourced from `TpuCoreParts::SequencerCount(cp, 5)` and
 
 > **NOTE —** `Init`'s `SequencerCount(cp, 5)` / `SequencerParts(cp, 5)` indices are *internal* `TpuSequencerType` values, the same codec-template numbering the Part IX SparseCore pages use: `{TC=0, BARNA=1, BARNA_ADDR=2, SCS=3, TAC=4, TEC=5}`. In that scheme index `5 = SC_TEC` (the tile-execute pool), which is exactly what the geometry block reads — so `SparseCoreTiles` / `SparseCoreLaneCount` come from the TEC sequencer, not from TAC. The SparseCore block of this enum is `{SCS=3, TAC=4, TEC=5}`, the canonical wiki numbering; see [getSequencerType](../sparsecore/getsequencertype.md#the-off-by-one-runtime-enum-vs-codec-template-enum) and [SparseCore Overview](../sparsecore/overview.md).
 
-> **QUIRK —** there are two legitimate numbering schemes, off by one, and `Init` uses the internal one. The *proto* enum `TpuSequencerTypeProto` prepends an `INVALID=0` slot and renumbers the SparseCore block one higher — `{INVALID=0, TC=1, BARNA=2, BARNA_ADDR=3, SCS=4, TAC=5, TEC=6}` — so a reader who applies proto numbering to `Init`'s index would mis-read `5` as TAC. `tpu::TpuSequencerTypeToProto` (`0x20B36460`) returns `internal + 1` and `tpu::TpuSequencerTypeFromProto` (`0x20B36300`) maps proto case *N* to `internal = N − 1`, so `internal = proto − 1` exactly. Code paths that index `TpuCoreParts` (`Init` here) take the internal value; only serialized proto fields and the `TpuSequencerTypeToString` label table use the proto value. (Trillium / `gfc` carries internal codec params 3 and 5 only — SCS + TEC, no TAC — so on v7x there is no TAC sequencer to confuse with TEC in the first place.)
+> **QUIRK —** there are two legitimate numbering schemes, off by one, and `Init` uses the internal one. The *proto* enum `TpuSequencerTypeProto` prepends an `INVALID=0` slot and renumbers the SparseCore block one higher — `{INVALID=0, TC=1, BARNA=2, BARNA_ADDR=3, SCS=4, TAC=5, TEC=6}` — so a reader who applies proto numbering to `Init`'s index would mis-read `5` as TAC. `tpu::TpuSequencerTypeToProto` (`0x20B36460`) returns `internal + 1` and `tpu::TpuSequencerTypeFromProto` (`0x20B36300`) maps proto case *N* to `internal = N − 1`, so `internal = proto − 1` exactly. Code paths that index `TpuCoreParts` (`Init` here) take the internal value; only serialized proto fields and the `TpuSequencerTypeToString` label table use the proto value. (`6acc60406` / `gfc` carries internal codec params 3 and 5 only — SCS + TEC, no TAC — so on v7x there is no TAC sequencer to confuse with TEC in the first place.)
 
 ---
 
@@ -166,7 +166,7 @@ These pin field `+0x190` as the embedding param-region base word offset: the all
 
 The MXU contracting dimension is a per-codename C++ literal in the `Target` subclass, not a `chip_parts` field. The base `Target` returns 128; only `GhostliteTarget` overrides to 256. "inherit" means the subclass does not override and uses the base value. Every numeric cell is a byte-exact literal read from the named method.
 
-| MXU constant (CODE) | v2 Jelly | v3 Dragon | v4 Puffer | v5p Viperfish | v6e Ghostlite | v7x Trillium | Source · Confidence |
+| MXU constant (CODE) | v2 Jelly | v3 Dragon | v4 Puffer | v5p Viperfish | v6e Ghostlite | v7x 6acc60406 | Source · Confidence |
 |---|---|---|---|---|---|---|---|
 | `MxuContractingSize` | 128 | 128 | 128 | 128 | **256** | **256** | base `0x1D490060`; Ghostlite `0x1D497840` · CONFIRMED |
 | `MxuNoncontractingSize` | 128 | 128 | 128 | 128 | **256** | **256** | base `0x1D490080`; Ghostlite `0x1D497860` · CONFIRMED |
@@ -176,7 +176,7 @@ The MXU contracting dimension is a per-codename C++ literal in the `Target` subc
 | `MinLmrWidthInColumns` | FATAL | FATAL | FATAL | **8** | **16** | **16** | base `0x1D4900E0` FATAL; VF `0x1D49AA80`; GL `0x1D4978A0` · CONFIRMED |
 | `MaxLmrWidthInColumns` | FATAL | FATAL | FATAL | **128** | **128** | **128** | VF `0x1D49AAA0`; GL `0x1D4978C0` · CONFIRMED |
 
-> **NOTE —** v7x Trillium reuses the `GhostliteTarget` TensorCore subclass; no separate `TrilliumTarget`/`TpuV7xTarget` class exists in this build. The v6e/v7 distinction is data-driven via `chip_parts`, so both get `MxuContractingSize` = 256.
+> **NOTE —** v7x `6acc60406` reuses the `GhostliteTarget` TensorCore subclass; no separate `Tpu7xTarget`/`TpuV7xTarget` class exists in this build. The v6e/v7 distinction is data-driven via `chip_parts`, so both get `MxuContractingSize` = 256.
 
 How a reimplementer should read this:
 
@@ -195,7 +195,7 @@ How a reimplementer should read this:
 | v4 Pufferfish | 3 | no (BarnaCore) | — | — | 128 | `chip_parts` `Core.type` · CONFIRMED |
 | v5p Viperfish | 4 | yes | `ViperfishSparseCoreTarget` | — × 8 (SC_TEC lane) | 128 | vtable + `chip_parts` · CONFIRMED |
 | v6e Ghostlite | 5 | yes | `GhostLiteSparseCoreTarget` | — × 8 (SC_TEC lane) | 256 | vtable + `chip_parts` · CONFIRMED |
-| v7x Trillium (`6acc60406`) | 6 | yes | `GhostLiteSparseCoreTarget` | 16 × 16 | 256 | Init + `chip_parts` · CONFIRMED |
+| v7x `6acc60406` | 6 | yes | `GhostLiteSparseCoreTarget` | 16 × 16 | 256 | Init + `chip_parts` · CONFIRMED |
 | v4 lite / v5e lite | — | no (TC-only) | — | — | 128 | `chip_parts` (no SC core) · CONFIRMED |
 
 The `Tiles × Lane` column shows the `chip_parts` `SC_TEC VectorIsa` lane width; v7x widens that to 16 (and `SparseCoreTiles`/`SparseCoreLaneCount` both report 16 after `Init`). v5p/v6e carry the narrower 8-lane TEC. The lite dies (`pufferfish_lite`, `viperfish_lite`) carry neither BarnaCore nor SparseCore — their `TpuTopology[+0x98]` SC count is zero, so `SupportsSparseCore` is false and no `SparseCoreTarget` is built.
@@ -204,9 +204,9 @@ The `Tiles × Lane` column shows the `chip_parts` `SC_TEC VectorIsa` lane width;
 
 ## Per-Gen SparseCore Capability / Geometry Table
 
-The 24 `SparseCoreTarget` virtual accessors are present in both concrete subclasses (`ViperfishSparseCoreTarget` for v5p, `GhostLiteSparseCoreTarget` for v6e Ghostlite + v7 Trillium). Values are byte-exact, matched by method name (the Viperfish vtable order shifts by one vs GhostLite).
+The 24 `SparseCoreTarget` virtual accessors are present in both concrete subclasses (`ViperfishSparseCoreTarget` for v5p, `GhostLiteSparseCoreTarget` for v6e Ghostlite + v7x `6acc60406`). Values are byte-exact, matched by method name (the Viperfish vtable order shifts by one vs GhostLite).
 
-| `SparseCoreTarget` vfn | Viperfish (v5p) | Ghostlite/Trillium (v6e/v7) | Source (VF / GL) · Confidence |
+| `SparseCoreTarget` vfn | Viperfish (v5p) | Ghostlite / 6acc60406 (v6e/v7x) | Source (VF / GL) · Confidence |
 |---|---|---|---|
 | `FlopsPerSparseCore(fmt∈{1,2})` | 1.0e12 (1 TFLOP/s) | 3.595e13 (35.95 TFLOP/s) | `0x1D49C540` / `0x1D4990A0` · CONFIRMED |
 | └ other fmt | → `Target` vtable `+0x718` | → `Target` vtable `+0x718` | tail-call · CONFIRMED |
@@ -234,13 +234,13 @@ The 24 `SparseCoreTarget` virtual accessors are present in both concrete subclas
 | `SupportsScEupOps` | **1** | **1** | `0x1D49C8C0` / `0x1D499420` · CONFIRMED |
 | `SupportsTileSmemDma` | 0 | 0 | vtable · CONFIRMED |
 
-The genuine Viperfish → Ghostlite/Trillium capability gains are exactly two bits plus the FLOPS jump:
+The genuine Viperfish → Ghostlite/6acc60406 capability gains are exactly two bits plus the FLOPS jump:
 
 - `SupportsScVdupcntVuniqueWithLaneIds` (0 → 1) — vdupcnt / vunique-with-lane-ids ops.
 - `SupportsScVldVstIdxAdd` (0 → 1) — indexed vector load/store with add.
-- `FlopsPerSparseCore` 1 TFLOP/s → 35.95 TFLOP/s — the widened Ghostlite/Trillium TEC vector engine.
+- `FlopsPerSparseCore` 1 TFLOP/s → 35.95 TFLOP/s — the widened Ghostlite/6acc60406 TEC vector engine.
 
-> **GOTCHA —** `SupportsScEupOps` returns **1 on both** Viperfish and Ghostlite/Trillium (verified at `0x1D49C8C0` and `0x1D499420` — both `return 1`). It is *not* a per-generation delta. An earlier draft listed Viperfish `SupportsScEupOps` = 0 and counted it among the Ghostlite gains; that is incorrect — the Extended-Unit-Pipeline ops are present on Viperfish too, and the only capability-bit deltas are the two listed above.
+> **GOTCHA —** `SupportsScEupOps` returns **1 on both** Viperfish and Ghostlite/6acc60406 (verified at `0x1D49C8C0` and `0x1D499420` — both `return 1`). It is *not* a per-generation delta. An earlier draft listed Viperfish `SupportsScEupOps` = 0 and counted it among the Ghostlite gains; that is incorrect — the Extended-Unit-Pipeline ops are present on Viperfish too, and the only capability-bit deltas are the two listed above.
 
 The `FlopsPerSparseCore` body is a small dispatcher, identical in shape across both subclasses:
 

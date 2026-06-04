@@ -4,9 +4,9 @@
 
 ## Abstract
 
-This page is the per-silicon-generation completion of the device-event payload decode. [Trace Payload: UHI / OCI / ICI / DMA](payload-uhi-oci-ici-dma.md) decodes the **pxc** (pufferfish) family byte-exact and the **glc** family as a representative sample; this page decodes the same six high-value bands on the three remaining families — **vfc** (Viperfish), **vlc** (Viperfish-lite), and **gfc** (Trillium) — and pins the per-generation *deltas*: the bit widths that drift, the fields that appear and disappear, and the framing budget that shifts. It then enumerates the **selector enum value tables** that the prior pages left as bit-widths only: the integer→name maps that every `enum`-typed payload field keys into.
+This page is the per-silicon-generation completion of the device-event payload decode. [Trace Payload: UHI / OCI / ICI / DMA](payload-uhi-oci-ici-dma.md) decodes the **pxc** (pufferfish) family byte-exact and the **glc** family as a representative sample; this page decodes the same six high-value bands on the three remaining families — **vfc** (Viperfish), **vlc** (Viperfish-lite), and **gfc** (6acc60406) — and pins the per-generation *deltas*: the bit widths that drift, the fields that appear and disappear, and the framing budget that shifts. It then enumerates the **selector enum value tables** that the prior pages left as bit-widths only: the integer→name maps that every `enum`-typed payload field keys into.
 
-The parser is family-invariant — the same `Decode<Name>(string_view, bool* started_out, TraceEntry* out)` shape, the same `BitDecoder::GetBits64NoInline` width immediates, the same total-bit `CHECK` (`cmp $CONST,%rdi; jne FATAL`), the same `TraceEntry+0x28` oneof stamp. What changes per family is the *widths* and the *field set*. Each `Decode<Name>` lives in the family's anonymous namespace (`asic_sw::driver::deepsea::vxc::vfc::profiler`, `…::vxc::vlc::profiler`, `…::gxc::gfc::profiler`) and is reachable from that family's `DecodeEntry` jump table. The C++ namespaces are themselves the generation evidence: vfc and vlc share the `vxc` parent (Viperfish and its lite cut), gfc sits under `gxc` (Trillium).
+The parser is family-invariant — the same `Decode<Name>(string_view, bool* started_out, TraceEntry* out)` shape, the same `BitDecoder::GetBits64NoInline` width immediates, the same total-bit `CHECK` (`cmp $CONST,%rdi; jne FATAL`), the same `TraceEntry+0x28` oneof stamp. What changes per family is the *widths* and the *field set*. Each `Decode<Name>` lives in the family's anonymous namespace (`asic_sw::driver::deepsea::vxc::vfc::profiler`, `…::vxc::vlc::profiler`, `…::gxc::gfc::profiler`) and is reachable from that family's `DecodeEntry` jump table. The C++ namespaces are themselves the generation evidence: vfc and vlc share the `vxc` parent (Viperfish and its lite cut), gfc sits under `gxc` (6acc60406).
 
 Three facts drive every table below and must be held simultaneously. First, the `TraceIdHeader.chip_id` widens **12→14** at Viperfish (not at glc): `vfc`/`vlc`/`glc`/`gfc` all carry `TraceIdHeader{transaction_id 21, core_id 3, chip_id 14}` = 38 bits; only pxc uses 12. Second, **vlc is the anomaly** — its `DecodeTraceHeader` reads `block_id 3` **and** `timestamp 45`, a 56-bit header and a **58-bit** frame+header, so every vlc payload starts at packet bit 58 and every vlc `CHECK` is re-based on 58, not 61. Third, the field set itself grows per generation: the TCS sync-flag band gains a 64-bit `lcc` field from glc onward, and gfc adds three bands (STATS_COUNTER, O2CUR, FLL) that exist on no earlier silicon.
 
@@ -255,7 +255,7 @@ The throttle band grows pxc 1 → vfc/vlc 7 → gfc 20 events; gfc adds the max-
 
 ## gfc-Only Bands — STATS_COUNTER / O2CUR / FLL
 
-gfc (Trillium) adds three bands that exist on no earlier silicon — the on-device observability surface unique to this generation.
+gfc (6acc60406) adds three bands that exist on no earlier silicon — the on-device observability surface unique to this generation.
 
 ### STATS_COUNTER — in-band hardware perf-counter sampling
 

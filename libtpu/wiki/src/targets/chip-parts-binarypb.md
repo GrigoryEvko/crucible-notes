@@ -4,7 +4,7 @@
 
 ## Abstract
 
-Every per-codename hardware constant that the TPU compiler needs — HBM/VMEM/SMEM/SFLAG capacities, MXU lane/sublane geometry, TensorCore and HBM clocks, register-file widths, DMA granules — is carried not in C++ literals but in a serialized protobuf blob, `<codename>_chip_parts.binarypb`, embedded directly in the `.lrodata` section of `libtpu.so`. At boot the runtime resolves the blob for the active `TpuVersion`, parses it into a `TpuChipPartsProto`, and copies the decoded fields into the `xla::jellyfish::Target` object that the cost model, ISA emitter, and topology layers read. This is a *data-driven HAL*: the same C++ `Target` class serves every generation, specialized only by the bytes it was loaded with.
+Every per-codename hardware constant that the TPU compiler needs — HBM/VMEM/SMEM/SFLAG capacities, MXU lane/sublane geometry, TensorCore and HBM clocks, register-file widths, DMA granules — is carried not in C++ literals but in a serialized protobuf blob, `<codename>_chip_parts.binarypb`, embedded directly in the `.rodata` section of `libtpu.so`. At boot the runtime resolves the blob for the active `TpuVersion`, parses it into a `TpuChipPartsProto`, and copies the decoded fields into the `xla::jellyfish::Target` object that the cost model, ISA emitter, and topology layers read. This is a *data-driven HAL*: the same C++ `Target` class serves every generation, specialized only by the bytes it was loaded with.
 
 The mechanism resembles LLVM's `TargetMachine` initialized from a `.td`-generated `SubtargetInfo` table, except the table is a runtime-loaded proto rather than a TableGen-baked struct. The proto schema lives in the binary's own `protodesc_cold` descriptor pool, so it can be recovered exactly; the blobs are 232–624 bytes each and decode byte-for-byte with no inference. The resolution function `TpuChipParts::DefaultsForVersion` builds an `embed://` resource path from the version string and reads it through `tsl::ReadBinaryProto`.
 
@@ -20,7 +20,7 @@ For reimplementation, the contract is:
 | **Source file (resolver)** | `learning/45eac/tpu/runtime/topology/tpu_chip_parts.cc:341` |
 | **Parser** | `tpu::TpuChipParts::FromProto` @ `0x20b1b400`; `tpu::TpuMemoryParts::FromProto` @ `0x20b333a0` |
 | **Descriptor array** | `.data.rel.ro` VA `0x22010ED0` (file off `0x21E10ED0`), 9 entries × `0x28` bytes |
-| **Blob region** | `.lrodata` VA `0x0BDF29A0..0x0BDF3AB8` (VA == file offset) |
+| **Blob region** | `.rodata` VA `0x0BDF29A0..0x0BDF3AB8` (VA == file offset) |
 | **Proto schema** | `protodesc_cold`: `tpu_chip_parts.proto` @ `0xC18FD80` and companions |
 
 ---
@@ -31,14 +31,14 @@ For reimplementation, the contract is:
 
 `chip_parts` is the single source of truth for one TPU generation's hardware capability geometry. It is *not* the same thing as `chip_config` (see [TpuChipConfig](tpu-chip-config.md)): `chip_parts` describes what the silicon *is* (core counts, memory sizes, MXU dimensions, clocks), while `chip_config` describes a runtime *mode* (bounce buffers, sync-flag resources, on-device transfer windows). Both are `embed://` proto blobs, but they resolve through different functions and parse into different objects.
 
-### Blob Layout in `.lrodata`
+### Blob Layout in `.rodata`
 
-Nine blobs sit contiguously in `.lrodata`, where the section VA equals the file offset, so the bytes can be carved directly. Each is registered by a 40-byte `FileWrapper` descriptor in a 9-entry array at `.data.rel.ro` VA `0x22010ED0`. The descriptor layout is:
+Nine blobs sit contiguously in `.rodata`, where the section VA equals the file offset, so the bytes can be carved directly. Each is registered by a 40-byte `FileWrapper` descriptor in a 9-entry array at `.data.rel.ro` VA `0x22010ED0`. The descriptor layout is:
 
 ```text
 struct FileWrapper {              // 0x28 bytes
     const char* name;   // +0x00  R_X86_64_RELATIVE reloc (0 on disk, filled at load)
-    const void* data;   // +0x08  R_X86_64_RELATIVE reloc -> blob VA in .lrodata
+    const void* data;   // +0x08  R_X86_64_RELATIVE reloc -> blob VA in .rodata
     int64_t     size;   // +0x10  ON DISK (the serialized byte length)
     uint8_t     fp[16]; // +0x18  ON DISK (md5 fingerprint of the blob)
 };

@@ -4,7 +4,7 @@
 
 ## Abstract
 
-libtpu carries seven recognizable per-subsystem flag-prefix namespaces — the four TPU-generation codenames `xla_jf_*` (Jellyfish), `xla_pf_*` (Pufferfish), `xla_vf_*` (Viperfish), `xla_gf_*` (Trillium/gen6), plus `xla_sc_*` (SparseCore), `barna_core_*` (embedding engine), and the generic `xla_tpu_*` master surface — and the obvious question a reimplementer asks is "does an `xla_jf_*` flag no-op when the active generation is Viperfish?" This page recovers the answer from the binary, and the answer is **no, and the question is malformed**: there is no generation gate on flag registration or on flag *application*. The codename in a flag name is a static authoring namespace, not a runtime routing key.
+libtpu carries seven recognizable per-subsystem flag-prefix namespaces — the four TPU-generation codenames `xla_jf_*` (Jellyfish), `xla_pf_*` (Pufferfish), `xla_vf_*` (Viperfish), `xla_gf_*` (6acc60406/v7x), plus `xla_sc_*` (SparseCore), `barna_core_*` (embedding engine), and the generic `xla_tpu_*` master surface — and the obvious question a reimplementer asks is "does an `xla_jf_*` flag no-op when the active generation is Viperfish?" This page recovers the answer from the binary, and the answer is **no, and the question is malformed**: there is no generation gate on flag registration or on flag *application*. The codename in a flag name is a static authoring namespace, not a runtime routing key.
 
 The reference frame is the [flag-families](flag-families.md) routing map, which establishes the prefix → sink classification (generic `xla_*` → `DebugOptions`; `xla_tpu_*` / codenames / `xla_sc_*` / `barna_core_*` → the `TpuCompilationEnvironment` (TCE); `megascale_*` / `tpu_*` → standalone runtime). This page is the layer below: the actual *dispatch*. Every TCE-routed flag — including all four codename families — is registered unconditionally as one `absl::Flag<T>`, bound 1:1 to one TCE proto field through a single global flag↔field hash map (`FlagFieldMappings`), and applied by a reflection loop that walks **every** field of the TCE descriptor with **no `TpuVersion` parameter anywhere in its signature**. An `xla_jf_*` flag and an `xla_vf_*` flag are equal citizens in that loop; the only difference between them is *which TCE field each writes* and *which consumer subsequently reads that field for the active generation*.
 
@@ -43,7 +43,7 @@ The per-prefix counts are the registration-symbol-true figures from [flag-famili
 | `xla_sc_*` | none (SparseCore backend) | 92 | unconditional register; gen-blind reflection apply | CERTAIN |
 | `barna_core_*` | none (embedding runtime) | 61 | unconditional register; gen-blind reflection apply | CERTAIN |
 | `xla_vf_*` | Viperfish (v3) VMEM/MSA | 16 | unconditional register; gen-blind reflection apply | CERTAIN |
-| `xla_gf_*` | Trillium/gen6 (v5 family) VMEM/MSA | 14 | unconditional register; gen-blind reflection apply | CERTAIN |
+| `xla_gf_*` | 6acc60406 (`TpuVersion` 5, v7x) VMEM/MSA | 14 | unconditional register; gen-blind reflection apply | CERTAIN |
 | `xla_pf_*` | Pufferfish (v2) ND all-reduce | 1 | unconditional register; gen-blind reflection apply | CERTAIN |
 | *(legacy MSA evict/prefetch)* | per-`TpuVersion` flag-name map | n/a | **gen-keyed** `flat_hash_map<TpuVersion,…>` | HIGH |
 | `xla_gl_*` | (Ghostlite codename) | **0** | absent — no flag, no string | CERTAIN |

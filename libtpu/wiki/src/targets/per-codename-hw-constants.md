@@ -6,13 +6,13 @@
 
 This page is the consolidated per-generation hardware-constant table for every TPU codename the binary knows: Jellyfish (v2), Dragonfish (v3), Pufferfish (v4), Viperfish (v5p/v5e), Ghostlite (v6e), and `6acc60406` (v7x). It is reference-table-centric: the master table is the point of the page, and the prose around it exists only to name the source of each row and flag the confidence.
 
-Two source classes feed the table. The first and dominant is the embedded `<codename>_chip_parts.binarypb` proto blob, decoded directly from `.lrodata` (see [chip_parts.binarypb Decode](chip-parts-binarypb.md) for the schema and resolution path). Every memory size, core count, MXU geometry integer, clock, register count, and DMA constant below comes from those bytes, materialized as `bytes_per_word × word_count` or read as a scalar field. The second is the small set of constants the proto does *not* carry — the VMEM/SMEM/CMEM bank counts — which are C++ literals in the per-codename `*Target::MemBanks` overrides.
+Two source classes feed the table. The first and dominant is the embedded `<codename>_chip_parts.binarypb` proto blob, decoded directly from `.rodata` (see [chip_parts.binarypb Decode](chip-parts-binarypb.md) for the schema and resolution path). Every memory size, core count, MXU geometry integer, clock, register count, and DMA constant below comes from those bytes, materialized as `bytes_per_word × word_count` or read as a scalar field. The second is the small set of constants the proto does *not* carry — the VMEM/SMEM/CMEM bank counts — which are C++ literals in the per-codename `*Target::MemBanks` overrides.
 
-These integers are the entire value of the page, so they were not taken on faith: all nine blobs were carved from `.lrodata`, md5-verified against their `FileWrapper` descriptor fingerprints, and walked field-by-field against the schema recovered from `protodesc_cold`. The decode reproduces, byte-for-byte, the relationships a reimplementer would expect (e.g. peak BF16 = 2 × `mxu_count` × 128² × `frequency_mhz` for the 128×128 generations), and every row carries a Confidence column with its source.
+These integers are the entire value of the page, so they were not taken on faith: all nine blobs were carved from `.rodata`, md5-verified against their `FileWrapper` descriptor fingerprints, and walked field-by-field against the schema recovered from `protodesc_cold`. The decode reproduces, byte-for-byte, the relationships a reimplementer would expect (e.g. peak BF16 = 2 × `mxu_count` × 128² × `frequency_mhz` for the 128×128 generations), and every row carries a Confidence column with its source.
 
 | | |
 |---|---|
-| **Source (capability)** | nine `*_chip_parts.binarypb` blobs, `.lrodata` `0x0BDF29A0..0x0BDF3AB8` |
+| **Source (capability)** | nine `*_chip_parts.binarypb` blobs, `.rodata` `0x0BDF29A0..0x0BDF3AB8` |
 | **Source (bank counts)** | `*Target::MemBanks` C++ overrides (addresses below) |
 | **Decode method** | md5-verified carve + field-walk against `protodesc_cold` schema |
 | **Generations** | jellyfish/dragonfish/pufferfish/viperfish/ghostlite/6acc60406 (TpuVersionProto 1..6) |

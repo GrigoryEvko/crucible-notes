@@ -6,7 +6,7 @@
 
 The VPU is the TensorCore's per-lane vector ALU: the engine that runs element-wise arithmetic across the architectural **8 sublanes × 128 lanes = 1024-element** vector register. In the VLIW bundle it appears as one or more `VectorAlu*` sub-bundles — the slot a reimplementer must serialize to drive vector `add`/`mul`/`min`/`max`/`shift`/`select`/`compare`/`convert`/`pack`, and to push transcendentals into the extended-unary pipeline. Unlike an SSA back end where the scheduler tracks hazards at runtime, a TPU bundle *is* the issue packet: the encoder lays each present VALU slot into the bundle byte buffer at a generation-fixed bit offset, and an absent slot is filled with the never-execute predicate. There is no per-instruction header — the opcode immediate selects both the operation and (on older generations) the vector-mask register or transcendental function.
 
-The VPU slot is not one wire format but a family of six. Two encoder lineages exist. Jellyfish and its byte-identical variant Dragonfish (the `EncoderJf` path) pack the VALU word with direct `and`/`shl`/`or` bit twiddling into a 64-bit value that is OR-merged into the bundle. Pufferfish and every v5+ generation (Viperfish, Ghostlite, Trillium) drive a uniform table-driven `BitCopy(dst, dst_bit, src, src_bit, nbits)` primitive (`@0x1fa0a900`) from per-opcode `Encode<gen>VectorAluN<Op>` helpers reached through an opcode-keyed jump table. Across the lineage the slot count grows **2 → 4**, the opcode field widens **6 → 7 → 8 bits**, the per-slot predicate field *shrinks* **5 → 4 → 2 bits**, and the single XLU (transcendental) becomes a pair — every change a deliberate response to a wider compute fabric, not padding.
+The VPU slot is not one wire format but a family of six. Two encoder lineages exist. Jellyfish and its byte-identical variant Dragonfish (the `EncoderJf` path) pack the VALU word with direct `and`/`shl`/`or` bit twiddling into a 64-bit value that is OR-merged into the bundle. Pufferfish and every v5+ generation (Viperfish, Ghostlite, 6acc60406) drive a uniform table-driven `BitCopy(dst, dst_bit, src, src_bit, nbits)` primitive (`@0x1fa0a900`) from per-opcode `Encode<gen>VectorAluN<Op>` helpers reached through an opcode-keyed jump table. Across the lineage the slot count grows **2 → 4**, the opcode field widens **6 → 7 → 8 bits**, the per-slot predicate field *shrinks* **5 → 4 → 2 bits**, and the single XLU (transcendental) becomes a pair — every change a deliberate response to a wider compute fabric, not padding.
 
 This page documents the slot per generation as a reimplementation target: the opcode enum and its op-family grouping; the exact bit positions of opcode / destination / two sources / Y-operand selector / predicate, all anchored to verified `BitCopy` immediates; the lane geometry; the Y-operand (source-B) selector model; the EUP/XLU push-pop protocol; the predicate and vector-mask register files; and the JF→GF evolution.
 
@@ -88,7 +88,7 @@ function VxcTensorCoreVectorAlu0Encoder_Encode(proto, out_span):  // VF @0x1eef8
 | `pxc::isa::TensorCoreVectorAlu1Encoder::Encode` | `0x1ed68d80` | PF VALU1 dispatcher (struct `…Alu1`) | CERTAIN |
 | `vxc::isa::TensorCoreVectorAlu{0..3}Encoder::Encode` | `0x1eef8a80` / `0x1ef1c500` / `0x1ef3f120` / `0x1ef62880` | VF 4 VALU dispatchers (shared struct) | CERTAIN |
 | `gxc::glc::isa::TensorCoreVectorAlu0Encoder::Encode` | `0x1f250160` | Ghostlite VALU0 dispatcher | CERTAIN |
-| `gxc::gfc::isa::TensorCoreVectorAlu0Encoder::Encode` | `0x1f8b53c0` | Trillium VALU0 dispatcher | CERTAIN |
+| `gxc::gfc::isa::TensorCoreVectorAlu0Encoder::Encode` | `0x1f8b53c0` | 6acc60406 (GF) VALU0 dispatcher | CERTAIN |
 | `gxc::{glc,gfc}::isa::SparseCoreTecVectorAlu{0..2}Encoder::Encode` | `0x1eaa4880…` / `0x1ec11100…` | SparseCore TEC 3 VALU slots | CERTAIN |
 
 > **QUIRK —** Pufferfish gives VALU0 and VALU1 *distinct struct types* (`TensorCoreVectorAlu0` vs `TensorCoreVectorAlu1`), and VALU1 accepts a wider opcode range — `cmp rcx,0x43` (67) versus VALU0's `cmp rcx,0x3e` (62). VALU1 carries a few ops VALU0 lacks. From Viperfish onward the four slots share one `TensorCoreVectorAlu` struct and one op range, so a reimplementation can use a single encoder template; on Pufferfish it cannot.
@@ -150,7 +150,7 @@ The four predicate fields sit at bits 306 / 272 / 238 / 204 (VALU0..3), a unifor
 
 **Ghostlite** (64-byte TC bundle). VALU0 `Encode` @ `0x1f250160`: predicate `BitCopy(…,309,…,4)` (`0x135`), opcode `BitCopy(…,302,…,7)` (`0x12e`), dispatch `cmp 0x83` (0..131). 6-bit register fields, same template as Viperfish shifted +3 bits by the widened slot start.
 
-**Trillium** (64-byte TC bundle). VALU0 `Encode` @ `0x1f8b53c0`; representative `VectorF32Add` helper @ `0x1f8b7860`:
+**6acc60406 (GF)** (64-byte TC bundle). VALU0 `Encode` @ `0x1f8b53c0`; representative `VectorF32Add` helper @ `0x1f8b7860`:
 
 | Field | Width | VALU0 bit | Source | Confidence |
 |---|---|---|---|---|
@@ -162,21 +162,21 @@ The four predicate fields sit at bits 306 / 272 / 238 / 204 (VALU0..3), a unifor
 | predicate | **2-bit** | 301 (`0x12d`) | `mov esi,0x12d; r8d,2` | CERTAIN |
 | opcode range | — | `cmp 0x83` (0..131) | dispatcher | CERTAIN |
 
-> **GOTCHA —** Trillium's predicate field is only 2 bits, which is *not* enough to name one of 16 predicate registers. It selects among `{pred_0, pred_1, always, never}`: the bundle's two active dual predicates are written by the dedicated `TensorCorePredicates` slot, and the VALU slot merely picks which of the two applies. A reimplementation that treats the 2-bit field as a 4-register index will mis-predicate every Trillium VALU op. See [Predicate Slot](slot-predicate.md).
+> **GOTCHA —** 6acc60406 (GF)'s predicate field is only 2 bits, which is *not* enough to name one of 16 predicate registers. It selects among `{pred_0, pred_1, always, never}`: the bundle's two active dual predicates are written by the dedicated `TensorCorePredicates` slot, and the VALU slot merely picks which of the two applies. A reimplementation that treats the 2-bit field as a 4-register index will mis-predicate every GF VALU op. See [Predicate Slot](slot-predicate.md).
 
 ### Per-Generation Slot Position
 
 | Gen | Bundle | #VALU | Lane-0 opcode bit | Lane-0 pred bit | Pred width | Per-slot stride | Confidence |
 |---|---|---|---|---|---|---|---|
-| Jellyfish (v3) | 41 B | 2 | 141 (lane 1 op @110) | 147 (lane 1 @116) | 5-bit | two windows (136 / 80) | CERTAIN |
+| Jellyfish (v2) | 41 B | 2 | 141 (lane 1 op @110) | 147 (lane 1 @116) | 5-bit | two windows (136 / 80) | CERTAIN |
 | Dragonfish (v3 var) | 41 B | 2 | alias of Jellyfish | alias of Jellyfish | 5-bit | two windows (136 / 80) | CERTAIN |
 | Pufferfish (v4) | 51 B | 2 | (switch-dispatched) | 236; lane 1 @193 | 5-bit | distinct structs | CERTAIN |
-| Viperfish (v5e) | 64 B | 4 | 299 | 306 | 4-bit | 34 bits/slot | CERTAIN |
-| Ghostlite (v5p) | 64 B | 4 | 302 | 309 | 4-bit | ~34 bits/slot | CERTAIN |
-| Trillium (v6e) | 64 B | 4 | 293 | 301 | 2-bit | ~34 bits/slot | CERTAIN |
+| Viperfish (v5p) | 64 B | 4 | 299 | 306 | 4-bit | 34 bits/slot | CERTAIN |
+| Ghostlite (v6e) | 64 B | 4 | 302 | 309 | 4-bit | ~34 bits/slot | CERTAIN |
+| 6acc60406 (TPU7x) | 64 B | 4 | 293 | 301 | 2-bit | ~34 bits/slot | CERTAIN |
 | SparseCore TEC | 64 B | 3 | `SparseCoreTecVectorAlu0..2` (same template, SC bundle) | — | 4/2-bit | not leaf-decoded | MEDIUM |
 
-The generation-to-codename mapping is fixed by the codec-metadata table (see [Bundle Model](bundle-model-overview.md)): `kJellyfish`=v3, `kDragonfish`=v3 variant, `kPufferfish`=v4, `kViperfish`=v5e, `kGhostlite`=v5p, `k6acc60406`/Trillium=v6e. The binary namespaces follow as `jellyfish` (JF/DF, shared proto), `pxc` (PF), `vxc` (VF), `gxc::glc` (GL), `gxc::gfc` (GF).
+The generation-to-codename mapping is fixed by the codec-metadata table (see [Bundle Model](bundle-model-overview.md)): `kJellyfish`=v2, `kDragonfish`=v3, `kPufferfish`=v4, `kViperfish`=v5p, `kGhostlite`=v6e, `k6acc60406`=TPU7x. The binary namespaces follow as `jellyfish` (JF/DF, shared proto), `pxc` (PF), `vxc` (VF), `gxc::glc` (GL), `gxc::gfc` (GF).
 
 ---
 
@@ -184,7 +184,7 @@ The generation-to-codename mapping is fixed by the codec-metadata table (see [Bu
 
 ### Purpose
 
-The opcode immediate selects the operation. There are two naming generations of the enum: the dense Jellyfish `VectorAluOpcode` (`0..62`, 63 values) and the v5+ `TensorCoreVectorAlu.<Op>H` proto-message set (131 ops on Viperfish, 132 on Ghostlite/Trillium). Both span the same logical repertoire — only the dtype split and the Vmsk handling differ. The list is grouped here by family rather than dumped flat; the SparseCore TEC 142-op enumeration (a finer-grained dtype split of the same families) is byte-exact in the source and summarized at the end of this section.
+The opcode immediate selects the operation. There are two naming generations of the enum: the dense Jellyfish `VectorAluOpcode` (`0..62`, 63 values) and the v5+ `TensorCoreVectorAlu.<Op>H` proto-message set (131 ops on Viperfish, 132 on Ghostlite/6acc60406). Both span the same logical repertoire — only the dtype split and the Vmsk handling differ. The list is grouped here by family rather than dumped flat; the SparseCore TEC 142-op enumeration (a finer-grained dtype split of the same families) is byte-exact in the source and summarized at the end of this section.
 
 ### Encoding
 
@@ -214,7 +214,7 @@ The v5+ op families, grouped (representative proto names; `H` suffix = the v5+ p
 | Select | `VectorSelectVmsk0..15`, `VectorSelectNotVmsk0..15` (PF/VF) / `VectorSelect`+`VectorSelectNot` (GL/GF) | consume a Vmsk | CERTAIN |
 | Transcendental (EUP push) | `Reciprocal`, `ReciprocalSqrt`, `Tanh`, `ShiftedSigmoid`, `LogTwo`, `PowTwo`, `EupPush` | issued into the XLU | CERTAIN |
 
-> **QUIRK —** the 32 `VectorSelect[Not]Vmsk0..15` entries on Pufferfish and Viperfish are *not* 32 distinct operations — they are one select op whose mask-register index (`Vmsk0..15`) is baked into the opcode. Ghostlite and Trillium consolidate them into a single `VectorSelect` / `VectorSelectNot` opcode with the `Vmsk` index moved to a separate field (width not measured; likely 4-bit for 16 masks — LOW). A reimplementation must know which scheme a generation uses or it will either explode the opcode space or fail to find the mask index.
+> **QUIRK —** the 32 `VectorSelect[Not]Vmsk0..15` entries on Pufferfish and Viperfish are *not* 32 distinct operations — they are one select op whose mask-register index (`Vmsk0..15`) is baked into the opcode. Ghostlite and 6acc60406 consolidate them into a single `VectorSelect` / `VectorSelectNot` opcode with the `Vmsk` index moved to a separate field (width not measured; likely 4-bit for 16 masks — LOW). A reimplementation must know which scheme a generation uses or it will either explode the opcode space or fail to find the mask index.
 
 The LLO IR mnemonics that lower onto these opcodes (geometry suffix `.8x128` = native vreg) confirm the repertoire in `.rodata`: `vadd.8x128.{f32,bf16,s32,s16}`, `vmul.8x128.{f32,bf16,u32,u16}` (+ the wide `vmul.u32.u64` slot-pair), `vand`/`vor`/`vxor`/`vandn.8x128.u32`, `vshll`/`vshra`/`vshrl`, `vcmp.{f32,f64}`, `vsel.8x128`, the `.xlane` tree-reduce family, the `vcvt.*` convert set (including `.sr` stochastic-round and FP8/FP4 narrow types), the `vpack`/`vunpack` sub-byte family, and the transcendental `vrsqrt`/`vrcp`/`vtanh`/`verf`/`vsinq`/`vcosq`/`vpow` with matching `.pop` forms.
 
@@ -249,7 +249,7 @@ The architectural register file is `v0..v1023` (1024 names in `TPURegStrings`). 
 | `TPUBcSubtarget` (PF BarnaCore) | `0x13c58de0` | CERTAIN |
 | `TPUVfcSubtarget` (Viperfish) | `0x13c5ec20` | CERTAIN |
 | `TPUGlcSubtarget` (Ghostlite) | `0x13c60a20` | CERTAIN |
-| `TPUGfcSubtarget` (Trillium) | `0x13c625a0` | CERTAIN |
+| `TPUGfcSubtarget` (6acc60406) | `0x13c625a0` | CERTAIN |
 
 > **NOTE —** the window-map contents (which architectural vreg maps to which 6-bit slot code) were not dumped; the lookup shape and the `-1` sentinel are confirmed, the per-entry table is not. A reimplementer must recover the window assignment per generation before encoding real programs.
 
@@ -332,13 +332,13 @@ Per-slot predicate field width and the predicate register count:
 | Pufferfish | 5-bit | 236 (V0) / 193 (V1) | same | 15 (16 on BarnaCore) | CERTAIN |
 | Viperfish | 4-bit | 306 | 1 of 16 pred regs | 16 | CERTAIN |
 | Ghostlite | 4-bit | 309 | 1 of 16 pred regs | 16 | CERTAIN |
-| Trillium | 2-bit | 301 | `{pred_0, pred_1, always, never}` | 16 | CERTAIN |
+| 6acc60406 | 2-bit | 301 | `{pred_0, pred_1, always, never}` | 16 | CERTAIN |
 
 The 16-register count for the v5+ subtargets is a confirmed inline constant — `getNumPredicateRegisters` returns `mov eax,0x10; ret` for `TPUVfcSubtarget` (`@0x13c5f6e0`), `TPUGlcSubtarget` (`@0x13c615c0`), `TPUGfcSubtarget` (`@0x13c630e0`), and `TPUBcSubtarget` (`@0x13c59780`). Jellyfish/Pufferfish-TC use the base `TPUSubtarget` count of 15.
 
 The vector-mask file is **16 registers** (`Vmsk0..15`), distinct from the predicate file. Compare ops produce a `Vmsk`; `VectorSelect` consumes one. The select opcode/field split per generation is described in the opcode-enum section above.
 
-> **NOTE —** Trillium's narrow 2-bit predicate works only because the full per-bundle predicate-register write was moved out of the VALU slot into the dedicated `TensorCorePredicates` slot. The VALU slot picks which of the two pre-written dual predicates applies. The exact 2-bit value-to-meaning mapping (`0=pred_0`? `3=never`?) was not decoded — LOW.
+> **NOTE —** 6acc60406 (GF)'s narrow 2-bit predicate works only because the full per-bundle predicate-register write was moved out of the VALU slot into the dedicated `TensorCorePredicates` slot. The VALU slot picks which of the two pre-written dual predicates applies. The exact 2-bit value-to-meaning mapping (`0=pred_0`? `3=never`?) was not decoded — LOW.
 
 ---
 
@@ -359,7 +359,7 @@ The lineage is a coherent story of a widening compute fabric, not arbitrary per-
 | Vmsk select | per-Vmsk opcode | per-Vmsk opcode | per-Vmsk opcode | single op + field | single op + field |
 | XLUs | 1 | 1 | 2 | 2 | 2 |
 
-The narrative: Pufferfish keeps two slots but switches to the table-driven encoder and 64-window registers, splits the two slots into distinct structs (VALU1 wider), and adds the `vmul.u32.u64` slot-pair wide multiply. Viperfish doubles to four slots, widens the opcode to 7 bits to admit the FP8/FP4 convert + stochastic-round + sublane pack/unpack set, narrows the predicate to 4 bits, and adds a second XLU. Ghostlite folds the 32 per-`Vmsk` select opcodes into one op plus a mask field and splits reciprocal by dtype. Trillium widens the opcode to 8 bits (headroom; current max 131) and shrinks the per-slot predicate to a 2-bit dual-predicate selector, having moved the predicate-register write into a dedicated slot.
+The narrative: Pufferfish keeps two slots but switches to the table-driven encoder and 64-window registers, splits the two slots into distinct structs (VALU1 wider), and adds the `vmul.u32.u64` slot-pair wide multiply. Viperfish doubles to four slots, widens the opcode to 7 bits to admit the FP8/FP4 convert + stochastic-round + sublane pack/unpack set, narrows the predicate to 4 bits, and adds a second XLU. Ghostlite folds the 32 per-`Vmsk` select opcodes into one op plus a mask field and splits reciprocal by dtype. 6acc60406 (GF) widens the opcode to 8 bits (headroom; current max 131) and shrinks the per-slot predicate to a 2-bit dual-predicate selector, having moved the predicate-register write into a dedicated slot.
 
 > **CORRECTION (VPU-1) —** an earlier reading of the transcendental path described the EUP push as issuable from "a VALU slot" generically. The Viperfish encoder shows the push helper exists only as `EncodeTensorCoreVectorAlu3EupPush` (slot 3); the single-issue XLU is sourced exclusively from `Alu3`. The push is slot-3-specific on v5+, not slot-agnostic.
 
@@ -372,8 +372,8 @@ The narrative: Pufferfish keeps two slots but switches to the table-driven encod
 - The v5+ 131-op enum value→name mapping (the op names are a confirmed set; only a few opcode immediates, e.g. `VectorFloatAdd = 0x0c`, are index-confirmed).
 - The SparseCore TEC `VectorAlu0..2` leaf bit layout (encoders exist; per-slot bit offsets within the SC TEC bundle not individually decoded).
 - The per-generation `getVyEncodings` window-map contents.
-- The Vmsk-index field width on Ghostlite/Trillium (inferred ~4-bit).
-- Trillium's 2-bit dual-predicate value semantics.
+- The Vmsk-index field width on Ghostlite/6acc60406 (inferred ~4-bit).
+- 6acc60406 (GF)'s 2-bit dual-predicate value semantics.
 
 ---
 
@@ -383,10 +383,10 @@ The narrative: Pufferfish keeps two slots but switches to the table-driven encod
 - [Viperfish 64-bit Bundle](bundle-vf-64b.md) — the absolute VALU bit positions in context, plus the Alu3 EUP push
 - [Jellyfish 41-bit Bundle](bundle-jf-41b.md) — the direct-pack VALU encoder in the full JF bundle
 - [Pufferfish 51-bit Bundle](bundle-pf-51b.md) — the distinct `Alu0`/`Alu1` slot structs in context
-- [Ghostlite Bundle](bundle-gl.md) — the v5p VALU slot and the consolidated select op
+- [Ghostlite Bundle](bundle-gl.md) — the v6e VALU slot and the consolidated select op
 - [EUP / Transcendental Slot](slot-eup-transcendental.md) — the XLU push-pop pipeline and result pop
 - [MXU Slot](slot-mxu.md) — the `VectorExtended` matmul-staging path that shares the EUP and `PopEupResult`
-- [Predicate Slot](slot-predicate.md) — the predicate register file and Trillium's dual-predicate slot
+- [Predicate Slot](slot-predicate.md) — the predicate register file and 6acc60406 (GF)'s dual-predicate slot
 - [VCreate / Mask / Mregister](slot-vcreate-mask-mregister.md) — the 16 `Vmsk` vector-mask registers consumed by select
 - [Pack/Unpack Precision](pack-unpack-precision.md) — the sub-byte convert and pack/unpack family semantics
 - [LLO Opcode Enum](llo-opcode-enum.md) — the LLO IR opcodes that lower onto the VALU slot

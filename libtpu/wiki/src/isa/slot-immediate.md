@@ -172,7 +172,7 @@ if ((uint64_t)(target + 0x80000) >= 0x100000) return RetCheckFail();  // signed-
 EmitImmediate<SparseCoreImmediates>(/*slot=*/0, target);              // → immediate slot 0
 ```
 
-The range check `(value + 0x80000) < 0x100000` is precisely `−524288 .. +524287` — a signed 20-bit field, the full width of one V5+ immediate slot (`getImmediateSizeInBits = 20`). On Trillium that slot 0 is TC bit 423; on Viperfish, 430. Because the branch target fits one slot, it never triggers the lo/hi split. The barrier/sync ops (`EmitBarrierSync<…ScalarMisc>`) reuse the *same* immediate slot 0 for the sflag id/threshold, which is why a decoder must read the bundle's immediate region — not the sequencer slot bytes — to recover a branch offset.
+The range check `(value + 0x80000) < 0x100000` is precisely `−524288 .. +524287` — a signed 20-bit field, the full width of one V5+ immediate slot (`getImmediateSizeInBits = 20`). On 6acc60406 (GF) that slot 0 is TC bit 423; on Viperfish, 430. Because the branch target fits one slot, it never triggers the lo/hi split. The barrier/sync ops (`EmitBarrierSync<…ScalarMisc>`) reuse the *same* immediate slot 0 for the sflag id/threshold, which is why a decoder must read the bundle's immediate region — not the sequencer slot bytes — to recover a branch offset.
 
 > **GOTCHA —** the LLVM-MC code emitter contributes *zero* bits to a branch's encoding; the MC `InstBits` record for `BRrel`/`BRabs`/`CALLrel`/`CALLabs` is all zero. The real 20-bit offset is written by the proto-bundle `EmitImmediate` path into immediate slot 0. A reimplementation that looks for the offset in the MC-emitted scalar bytes finds nothing. See [Sequencer Slot](slot-sequencer.md).
 
@@ -187,12 +187,12 @@ The pre-V5 generations carry **6 immediate slots, each 16 bits**, but through a 
 
 | gen | bundle | imm slots | width | positions / proto | codec | Confidence |
 |---|---|---|---|---|---|---|
-| Jellyfish (v3) | 41 B | 6 | 16 | proto `+0x68..+0x7C` | `Bundle` proto + `FindFreeSlot` | CONFIRMED (see [JF 41B](bundle-jf-41b.md)) |
+| Jellyfish (v2) | 41 B | 6 | 16 | proto `+0x68..+0x7C` | `Bundle` proto + `FindFreeSlot` | CONFIRMED (see [JF 41B](bundle-jf-41b.md)) |
 | Pufferfish (v4) | 51 B | 6 | 16 | `256/272/288/304/320/338` | shared SlotMap + `SetImmOrDie` | CONFIRMED (see [PF 51B](bundle-pf-51b.md)) |
 | BarnaCore (v4 BC) | — | — | 16 (`getImmediateSizeInBits`) | `BarnaCore*MinImm` fields | subtarget width only | LOW (positions not walked) |
-| Viperfish (v5e) | 64 B TC / 32 B SCS | 6 / 4 | 20 | TC `430/410/390/370/350/330`; SCS `67/47/27/7` | `TensorCoreImmediatesEncoder` / `SparseCoreImmediatesEncoder` | CONFIRMED |
-| Ghostlite (v5p) | 64 B TC / 32 B SCS | 6 / 4(+2) | 20 | TC `433/413/393/373/353/333`; SCS `67/47/27/7(+215/195)` | same (GLC) | CONFIRMED |
-| Trillium (v6e) | 64 B TC / 32 B SCS | 6 / 4 | 20 | TC `423/403/383/363/343/323`; SCS `67/47/27/7` | same (GFC) | CONFIRMED |
+| Viperfish (v5p) | 64 B TC / 32 B SCS | 6 / 4 | 20 | TC `430/410/390/370/350/330`; SCS `67/47/27/7` | `TensorCoreImmediatesEncoder` / `SparseCoreImmediatesEncoder` | CONFIRMED |
+| Ghostlite (v6e) | 64 B TC / 32 B SCS | 6 / 4(+2) | 20 | TC `433/413/393/373/353/333`; SCS `67/47/27/7(+215/195)` | same (GLC) | CONFIRMED |
+| 6acc60406 (TPU7x) | 64 B TC / 32 B SCS | 6 / 4 | 20 | TC `423/403/383/363/343/323`; SCS `67/47/27/7` | same (GFC) | CONFIRMED |
 
 > **NOTE — the BarnaCore bit positions are not recovered.** `getImmediateSizeInBits` confirms the BarnaCore immediate slot is 16 bits wide, but the bit positions live in the `BarnaCoreSequencerScalar*ScalarFloatMinImm0..3` / `BarnaCoreChannelVectorAlu*VectorFloatMinImm0..5` accessors (a different `GetConcatenatedValue` codec, not a `BitCopy` ladder) and were not walked. This is the only gap in the per-gen ladder. Marked LOW. The clean V5+ table (VF/GL/GF, w20) and the PF/JF 16-bit pool are complete.
 

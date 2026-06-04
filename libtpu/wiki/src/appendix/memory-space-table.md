@@ -218,9 +218,9 @@ The one piece of on-chip geometry that *is* baked into `.text` (not `chip_parts`
 | Target (gen) | VMEM (MS 3) | CMEM (MS 4) | SMEM (MS 5) | `MemBanks` accessor | Conf. |
 |---|---:|---:|---:|---|---|
 | JellyfishTarget (v2) | 8 | — (`LogFatal`) | 2 | `0x1d48fc80` | CONFIRMED |
-| PufferfishTarget (v3) | 16 | **32** | 8 | `0x1d493900` (`qword_B5305C8[ms-3]={16,32,8}`) | CONFIRMED |
-| ViperfishTarget (v4) | 32 | — (`LogFatal`) | 8 | `0x1d4999c0` | HIGH |
-| GhostliteTarget (v5/Trillium) | 32 | — (`LogFatal`) | 8 | `0x1d4969c0` | CONFIRMED |
+| PufferfishTarget (v4) | 16 | **32** | 8 | `0x1d493900` (`qword_B5305C8[ms-3]={16,32,8}`) | CONFIRMED |
+| ViperfishTarget (v5p) | 32 | — (`LogFatal`) | 8 | `0x1d4999c0` | HIGH |
+| GhostliteTarget (v6e) | 32 | — (`LogFatal`) | 8 | `0x1d4969c0` | CONFIRMED |
 
 Pufferfish is the only generation where `MemBanks(kCmem)` returns a value rather than `LogFatal` — the structural marker that CMEM is a real tier only on Pufferfish (PXC, TPU v4). Viperfish (`0x1d4999c0`) is graded HIGH (symbol-table body, source-identical to the confirmed Ghostlite shape, not separately re-read).
 

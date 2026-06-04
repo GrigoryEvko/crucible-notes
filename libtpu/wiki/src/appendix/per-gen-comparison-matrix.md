@@ -12,7 +12,7 @@ For navigation, the contract is:
 
 - **The master matrix** is one row per generation, the headline constants as columns, each row carrying a Confidence. It is the canonical lookup; the rest of the wiki links here.
 - **Grouped detail tables** then split the matrix by subsystem — geometry, compute units, memory tiers, cost-model classes, interconnect, and the BarnaCore↔SparseCore pivot — because no single 30-column table is readable.
-- **Callouts** flag the traps: the Viperfish std/lite variant split decided at runtime by a string compare, Trillium dropping the TAC sequencer, the `v4`-only CMEM tier, and the cells this build genuinely cannot confirm.
+- **Callouts** flag the traps: the Viperfish std/lite variant split decided at runtime by a string compare, the v7 `6acc60406` dropping the TAC sequencer, the `v4`-only CMEM tier, and the cells this build genuinely cannot confirm.
 
 | | |
 |---|---|

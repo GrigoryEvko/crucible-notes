@@ -4,9 +4,9 @@
 
 ## Abstract
 
-The **SparseCore (SC) trace band** is the on-device profiler's only view of SparseCore execution progress: the per-event payload field maps for the 18 hardware trace events emitted by the SparseCore sequencer (SCS), the TensorE/TensorA compute tiles (TEC/TAC), and the SC stream gather/scatter engine. SparseCore is the sparse-compute substrate that replaced BarnaCore on the Viperfish/Ghostlite/Trillium line; its instructions, tasks, streams, and inter-tile messages each pack into the same [fixed 16-byte profiler packet](trace-entries-coder.md) as every other band, behind the same 61-bit framing+header envelope, and are read out by an anonymous-namespace `DecodeSc<Name>(string_view, bool*, TraceEntry*)` per event per chip family.
+The **SparseCore (SC) trace band** is the on-device profiler's only view of SparseCore execution progress: the per-event payload field maps for the 18 hardware trace events emitted by the SparseCore sequencer (SCS), the TensorE/TensorA compute tiles (TEC/TAC), and the SC stream gather/scatter engine. SparseCore is the sparse-compute substrate that replaced BarnaCore on the Viperfish/Ghostlite/6acc60406 line; its instructions, tasks, streams, and inter-tile messages each pack into the same [fixed 16-byte profiler packet](trace-entries-coder.md) as every other band, behind the same 61-bit framing+header envelope, and are read out by an anonymous-namespace `DecodeSc<Name>(string_view, bool*, TraceEntry*)` per event per chip family.
 
-This page owns two things the [codec page](trace-entries-coder.md) deliberately does not: (1) the **per-event payload bit-decode** — the ordered `GetBits64` width sequence after bit 61, the total-bit `CHECK`, the packet count, and the named proto fields with per-field widths — byte-exact for the three SC-bearing families **vfc** (Viperfish), **glc** (Ghostlite), **gfc** (Trillium); and (2) the **on-wire-id → trace-point map** — the dense `trace_point_id` (108..133) the hardware stamps for each SC event, which is *distinct* from the proto oneof field number the decoder writes. The SC band lives in the *high* id band reached only through the newer codec's two-level dispatch; [`tracepoints-master-registry.md`](tracepoints-master-registry.md) owns the full cross-band registry, this page owns the SC sub-range.
+This page owns two things the [codec page](trace-entries-coder.md) deliberately does not: (1) the **per-event payload bit-decode** — the ordered `GetBits64` width sequence after bit 61, the total-bit `CHECK`, the packet count, and the named proto fields with per-field widths — byte-exact for the three SC-bearing families **vfc** (Viperfish), **glc** (Ghostlite), **gfc** (6acc60406); and (2) the **on-wire-id → trace-point map** — the dense `trace_point_id` (108..133) the hardware stamps for each SC event, which is *distinct* from the proto oneof field number the decoder writes. The SC band lives in the *high* id band reached only through the newer codec's two-level dispatch; [`tracepoints-master-registry.md`](tracepoints-master-registry.md) owns the full cross-band registry, this page owns the SC sub-range.
 
 A structural fact frames everything: the SC trace band **exists only on SparseCore-bearing silicon**. pxc (Pufferfish, BarnaCore generation) and vlc (Viperfish-lite) emit zero `Sc*` proto messages and have zero `DecodeSc*` functions. The events instrument the [SCS sequencer](../sparsecore/scs-engine.md), the [TEC](../sparsecore/tec-engine.md)/[TAC](../sparsecore/tac-engine.md) tiles, and the [stream gather/scatter](../sparsecore/stream-gather-scatter.md) datapath; the SyncFlagCoreType/DestCoreType `TEC_OR_SCS`/`TAC` selectors are the [sequencer-type enum](../sparsecore/getsequencertype.md) surfaced on the wire.
 
@@ -21,7 +21,7 @@ For reimplementation, the contract is:
 |---|---|
 | **Owns** | SC-band per-event payload field-bit maps + the SC on-wire-id table |
 | **Codec / framing** | [`trace-entries-coder.md`](trace-entries-coder.md) — 16-byte packet, 2-bit framing, 61-bit header, `GetBits64`/`SkipBits` primitives, `CHECK` mechanism |
-| **SC-bearing families** | vfc (Viperfish), glc (Ghostlite), gfc (Trillium) — 18 `DecodeSc*` each |
+| **SC-bearing families** | vfc (Viperfish), glc (Ghostlite), gfc (6acc60406) — 18 `DecodeSc*` each |
 | **No SC band** | pxc (Pufferfish/BarnaCore), vlc (Viperfish-lite) — 0 `DecodeSc*`, 0 `Sc*` proto messages |
 | **SC event count** | 18 — `11 ScInstruction* + 2 ScTask* + 3 ScStream* + 2 ScMessage*` |
 | **SC on-wire id range** | 108..132 (vfc/glc), 108..133 (gfc — a StatsCounter sample shifts ScMessage up by 1) |
@@ -142,7 +142,7 @@ function DecodeScTaskIssueFromScs(view, started_out, entry):
 
 ### ScTaskCommitOnSct — the progress record (RESTRUCTURES on gfc)
 
-A 2-packet event with a mid-stream packet-1 boundary `CHECK == 128`. The shape **restructures on gfc (Trillium)**: the separate TEC/TAC stall accounting is collapsed and a load-store-unit hold-stall counter is added.
+A 2-packet event with a mid-stream packet-1 boundary `CHECK == 128`. The shape **restructures on gfc (6acc60406)**: the separate TEC/TAC stall accounting is collapsed and a load-store-unit hold-stall counter is added.
 
 ```c
 // DecodeScTaskCommitOnSct @0xf60c0c0 (vfc) — 2-packet, mid CHECK 128, final CHECK 251
@@ -188,7 +188,7 @@ function DecodeScTaskCommitOnSct(view, started_out, entry):
 
 vfc/glc payload = 190 bits (251−61); gfc payload = 158 bits (219−61).
 
-> **CONFIRMED (SC-2) —** the gfc restructure is byte-exact. After the `7,1,1,9` straddle of `tec_sync_stalls`, gfc reads only `16,16,32,16` = `tec_hold_stalls(16)`, `num_spmem_words(16)`, `num_hbm_words(32)`, `lsu_hold_stalls(16)` — the three TAC counters (`tac_ibuf/sync/hold_stalls`) are **gone**, replaced by a single `lsu_hold_stalls(16)`. Read from `DecodeScTaskCommitOnSct` @ `0xf673da0` (gfc): mid `CHECK == 128`, final `CHECK == 219`. Whether this is a true Trillium microarch change (a unified SC tile vs separate TEC/TAC) or a profiler schema rev was not cross-checked against the SC ISA (LOW on the *cause*; the wire shape is CERTAIN).
+> **CONFIRMED (SC-2) —** the gfc restructure is byte-exact. After the `7,1,1,9` straddle of `tec_sync_stalls`, gfc reads only `16,16,32,16` = `tec_hold_stalls(16)`, `num_spmem_words(16)`, `num_hbm_words(32)`, `lsu_hold_stalls(16)` — the three TAC counters (`tac_ibuf/sync/hold_stalls`) are **gone**, replaced by a single `lsu_hold_stalls(16)`. Read from `DecodeScTaskCommitOnSct` @ `0xf673da0` (gfc): mid `CHECK == 128`, final `CHECK == 219`. Whether this is a true 6acc60406 (v7x) microarch change (a unified SC tile vs separate TEC/TAC) or a profiler schema rev was not cross-checked against the SC ISA (LOW on the *cause*; the wire shape is CERTAIN).
 
 ---
 
@@ -353,7 +353,7 @@ Read byte-exact from the `*Values` nested enums of each SC message in `trace_ent
 | `MsgTypeValues` | 1-bit | `0=SYNCUPDATE, 1=SMEMUPDATE` | CERTAIN |
 | `OpcodeValues` | 2-bit | `0=WRITE_NO_DONE, 1=WRITE_WITH_DONE, 2=INC_NO_DONE, 3=INC_WITH_DONE` | CERTAIN |
 
-> **QUIRK —** `StreamOpcode` is **not** densely packed. The GATHER family occupies `0..2`, value 3 is a hole, the SCATTER family starts at 4 — so the gather/scatter dichotomy is encoded in the high bit, not a contiguous range. On glc/gfc the half-width-accumulate variants (`+S16`/`+BF16`) are NEW on Ghostlite/Trillium and slot in at `9,10,13,14`, forcing the field to 4 bits. A reimplementation that assumes `0..n` contiguity will misdecode SCATTER as a reserved opcode. The `SyncFlagCoreType`/`DestCoreType` `TEC_OR_SCS`/`TAC` split mirrors the [SparseCore sequencer-type enum](../sparsecore/getsequencertype.md).
+> **QUIRK —** `StreamOpcode` is **not** densely packed. The GATHER family occupies `0..2`, value 3 is a hole, the SCATTER family starts at 4 — so the gather/scatter dichotomy is encoded in the high bit, not a contiguous range. On glc/gfc the half-width-accumulate variants (`+S16`/`+BF16`) are NEW on Ghostlite/6acc60406 and slot in at `9,10,13,14`, forcing the field to 4 bits. A reimplementation that assumes `0..n` contiguity will misdecode SCATTER as a reserved opcode. The `SyncFlagCoreType`/`DestCoreType` `TEC_OR_SCS`/`TAC` split mirrors the [SparseCore sequencer-type enum](../sparsecore/getsequencertype.md).
 
 ---
 

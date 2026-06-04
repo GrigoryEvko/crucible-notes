@@ -296,10 +296,10 @@ The 33 highest opcodes are the BarnaCore (SparseCore) instruction set — embedd
 
 | Generation | Codename | LloOpcode additions | Confidence |
 |---|---|---|---|
-| TPU v3 | Jellyfish | base set (proto-direct encoding, no Compact encoder) | HIGH |
+| TPU v2 | Jellyfish | base set (proto-direct encoding, no Compact encoder) | HIGH |
 | TPU v4 | Pufferfish | F8 converts (`0x061`..`0x063`), S4/U4 int↔Bf16 (`0x067`/`0x069`/`0x06B`/`0x06D`), `kCmemFence` (`0x01E`), CMEM DMA/load opcodes | HIGH |
-| TPU v5e | Viperfish | stochastic-rounding converts (`0x070`..`0x074`) | HIGH |
-| TPU v5p | Ghostlite | `vector_misc` slot ops | MEDIUM |
+| TPU v5p | Viperfish | stochastic-rounding converts (`0x070`..`0x074`) | HIGH |
+| TPU v6e | Ghostlite | `vector_misc` slot ops | MEDIUM |
 | TPU7x | `6acc60406` | dual matrix staging (MATPUSH target MSRA/MSRB); newest-gen-only opcodes `kVectorToScalarPush` (0x0A) / `kSyncFlagToScalarPush` (0x0B) map to the highest `GhPerf` rows (0x1DA) only valid on the 476-row grid | MEDIUM |
 
 > **NOTE — the enum is append-and-insert, not append-only, which is why proto and in-memory numbering diverge.** New opcodes are inserted into the in-memory `LloOpcode` at their family's natural position (keeping families contiguous), but appended to the *end* of the `LloOpcodeProto` wire enum (to preserve wire compatibility). The result is the non-monotonic tail of the [LloOpcode↔Proto](llo-opcode-to-proto.md) map: proto value 499 (the newest wire slot) maps to in-memory `0x197` (`kVectorMaskPackCompressedEven`), and proto value 498 maps to `0x084` (`kVectorTraceArg`).

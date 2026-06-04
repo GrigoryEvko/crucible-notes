@@ -13,7 +13,7 @@ This page is the *taxonomy and routing map*. It does not re-list the per-flag ca
 For reimplementation, the contract is:
 
 - **The prefix → owner routing table** — for each of the ~18 prefixes, the registration site, the config struct it lands in (`DebugOptions` vs TCE vs standalone), and the subsystem that consumes it.
-- **The codename family model** — that `jf` / `pf` / `vf` / `gf` are per-`TpuVersion` generation namespaces (Jellyfish / Pufferfish / Viperfish / Trillium), each carrying the *same* VMEM/MSA knob names scoped to a different generation, and that the catalogued `gl` codename is **not present** in this build.
+- **The codename family model** — that `jf` / `pf` / `vf` / `gf` are per-`TpuVersion` generation namespaces (Jellyfish / Pufferfish / Viperfish / 6acc60406), each carrying the *same* VMEM/MSA knob names scoped to a different generation, and that the catalogued `gl` codename is **not present** in this build.
 - **The live-vs-inert classification** — which families have registered `AbslFlagHelpGenFor` symbols (live, settable through `LIBTPU_INIT_ARGS`) versus which survive only as proto descriptor strings (inert on TPU).
 
 | | |
@@ -111,7 +111,7 @@ The most distinctive routing fact: four prefixes are **TPU-generation codenames*
 |---|---|---:|---|
 | `xla_jf_*` | Jellyfish | 148 | The TPU XLA backend namespace (compiler core, all gens) |
 | `xla_vf_*` | Viperfish | 16 | Per-generation VMEM / MSA overrides |
-| `xla_gf_*` | (Trillium / gen6, `gxc::gfc`) | 14 | Per-generation VMEM / MSA overrides |
+| `xla_gf_*` | (6acc60406 / v7x TPU7x, `gxc::gfc`) | 14 | Per-generation VMEM / MSA overrides |
 | `xla_pf_*` | Pufferfish | 1 | `xla_pf_enable_nd_allreduce` (ND all-reduce gate) |
 
 The `vf` / `gf` families are near-identical name-for-name — they are the *same* memory-subsystem knobs replicated per generation. Compare the byte-confirmed names:
@@ -143,7 +143,7 @@ This is the static face of the `TpuVersion`-aware overlay: the per-codename MSA 
 | Prefix | Registered | Owner / role | Sink |
 |---|---:|---|---|
 | `xla_msa_*` | 22 | Memory-Space-Assignment (dedicated namespace: prefetch ratios, eviction/repack caps, IOR algorithm) | TCE |
-| `xla_gf_*` | 14 | Trillium/gen6 VMEM/MSA overrides (codename, see §3) | TCE |
+| `xla_gf_*` | 14 | 6acc60406/v7x VMEM/MSA overrides (codename, see §3) | TCE |
 | `xla_vf_*` | 16 | Viperfish VMEM/MSA overrides (codename, see §3) | TCE |
 | `xla_ior_*` | 4 | "IOR" fast-mem round-trip MSA variant | TCE |
 | `xla_mosaic_*` | 8 | Mosaic MLIR custom-kernel dialect controls | TCE |
@@ -189,7 +189,7 @@ The full prefix → owner / routing / live-vs-inert table. Counts are registrati
 | `xla_msa_*` | 22 | Memory-Space-Assignment namespace | TCE | LIVE |
 | `tf_*` | 20 | TensorFlow-TPU bridge | standalone | LIVE |
 | `xla_vf_*` | 16 | Viperfish per-gen VMEM/MSA | TCE | LIVE |
-| `xla_gf_*` | 14 | Trillium/gen6 per-gen VMEM/MSA | TCE | LIVE |
+| `xla_gf_*` | 14 | 6acc60406/v7x per-gen VMEM/MSA | TCE | LIVE |
 | `xla_mosaic_*` | 8 | Mosaic MLIR custom-kernel dialect | TCE | LIVE |
 | `xla_hlo_*` | 5 | HLO scheduler (BRKGA) + schedule I/O | standalone* | LIVE (split) |
 | `xla_ior_*` | 4 | IOR fast-mem round-trip MSA variant | TCE | LIVE |

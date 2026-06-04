@@ -4,7 +4,7 @@
 
 ## Abstract
 
-A TensorCore bundle is a fixed-width VLIW issue word — 41 B (Jellyfish / TPU v3), 51 B (Pufferfish / TPU v4), 64 B (Viperfish / Ghostlite / `6acc60406`, TPU v5e / v5p / v6e) — with one slot per execution unit (MXU, two scalar lanes, two vector-ALU lanes, vector load / store / cmem-load, two vector-extended-to-MXU ports, two vector-result-FIFO reads, and a misc/sequencer slot). On almost every cycle the compiler has no operation for some of those slots, so the encoder must emit a *defined* "this slot does nothing" pattern that the decoder can round-trip and the hardware will reliably skip. This page is the encode/decode support reference for that pattern: what an idle slot and a whole idle bundle look like on the wire.
+A TensorCore bundle is a fixed-width VLIW issue word — 41 B (Jellyfish / TPU v2), 51 B (Pufferfish / TPU v4), 64 B (Viperfish / Ghostlite / `6acc60406`, TPU v5p / v6e / TPU7x) — with one slot per execution unit (MXU, two scalar lanes, two vector-ALU lanes, vector load / store / cmem-load, two vector-extended-to-MXU ports, two vector-result-FIFO reads, and a misc/sequencer slot). On almost every cycle the compiler has no operation for some of those slots, so the encoder must emit a *defined* "this slot does nothing" pattern that the decoder can round-trip and the hardware will reliably skip. This page is the encode/decode support reference for that pattern: what an idle slot and a whole idle bundle look like on the wire.
 
 There are **two distinct no-op mechanisms**, and a reimplementer must keep them separate. The first is the **empty-slot predicate fill**: every slot carries a predicate field, and an unfilled slot is stamped with the architectural sentinel `kNeverExecute = 31` (`0xb834cfc`), which the sequencer reads as "this slot is predicated off this cycle." This is the mechanism that turns an absent slot into a no-op, and it is what makes the whole-bundle NOP. The second is the **opcode-space NOP**: each slot's opcode enum reserves a dedicated `Noop` value — a `<Slot>_Noop` proto sub-message whose opcode field is the **all-ones maximum** of that field (`31` for a 5-bit opcode, `15` for the 4-bit Viperfish vector-extended opcode). The opcode-space NOP is used when a slot must be *present in the bundle's has-mask* (so the decoder visits it) yet carry no work — most importantly inside the default bundle the codec materializes when it needs a valid-but-inert template.
 
@@ -37,11 +37,11 @@ The canonical idle bundle is **every slot predicated off**. It is not an all-zer
 
 | Gen | Bundle | Idle-bundle definition | Stamp value | Stamping function | Confidence |
 |---|---:|---|---|---|---|
-| Jellyfish (v3) | 41 B | all 8 slot-predicate fields = `kNeverExecute` | `31` | `EncoderJf::EncodeBundleInternal` @ `0x1e86c7c0` (inline prologue) | CONFIRMED |
+| Jellyfish (v2) | 41 B | all 8 slot-predicate fields = `kNeverExecute` | `31` | `EncoderJf::EncodeBundleInternal` @ `0x1e86c7c0` (inline prologue) | CONFIRMED |
 | Pufferfish (v4) | 51 B | all 12 slot predicates = `31`; scalar-0 default = `ScalarHalt`@`15` | `31` / `15` | `…CodecBase<TensorCoreBundle,…>::FillDefaultBundle` @ `0x1d222ee0` | CONFIRMED |
-| Viperfish (v5e) | 64 B | per-slot predicate field = `31`; absent slots not encoded | `31` | bundle-header prefill (`vxc` encoder set) | HIGH |
-| Ghostlite (v5p) | 64 B | per-slot predicate field = `31` | `31` | bundle-header prefill (`glc` encoder set) | HIGH |
-| `6acc60406` (v6e) | 64 B | two-entry `TensorCorePredicates` pool + per-slot selector; idle selector points at a `31`-equivalent pool entry | pool index | bundle-header prefill (`gfc` encoder set) | MEDIUM |
+| Viperfish (v5p) | 64 B | per-slot predicate field = `31`; absent slots not encoded | `31` | bundle-header prefill (`vxc` encoder set) | HIGH |
+| Ghostlite (v6e) | 64 B | per-slot predicate field = `31` | `31` | bundle-header prefill (`glc` encoder set) | HIGH |
+| `6acc60406` (TPU7x) | 64 B | two-entry `TensorCorePredicates` pool + per-slot selector; idle selector points at a `31`-equivalent pool entry | pool index | bundle-header prefill (`gfc` encoder set) | MEDIUM |
 
 > **GOTCHA — the idle bundle is nonzero.** Because the empty mark is `kNeverExecute = 31` (`0x1F`) — a *nonzero* 5-bit pattern replicated into every slot's predicate field — a `memset(bundle, 0, width)` followed by filling only the active slots leaves the inactive slots at predicate `0`, which is a *valid* reference to predicate register P0 (the slot fires, gated on P0). The empty value is the explicit `31` stamp, never zero. A bit-exact round-trip test that builds the "expected idle bundle" by zeroing memory will silently disagree with the real encoder on every unused slot.
 
@@ -220,7 +220,7 @@ The decoder round-trips both mechanisms. The predicate read is `DecoderJf::GetPr
 - [Bundle: Pufferfish 51 B](bundle-pf-51b.md) — `FillDefaultBundle` and the twelve-slot `31`-stamp / `ScalarHalt` default
 - [Bundle: Viperfish 64 B](bundle-vf-64b.md) — the per-slot 4+1 predicate field the VF empty mark writes
 - [Bundle: Ghostlite 64 B](bundle-gl.md) — V5+ `BitCopy` encoder set and header predicate prefill
-- [Bundle: Trillium (6acc60406) 64 B](bundle-gf.md) — the `TensorCorePredicates` pool model and the `Noop`-first decoder ladder
+- [Bundle: 6acc60406 (GF) 64 B](bundle-gf.md) — the `TensorCorePredicates` pool model and the `Noop`-first decoder ladder
 - [LLO Opcode Enum](llo-opcode-enum.md) — `kVectorNop` (`0x047`) and `kScalarHalt` (`0x025`), the IR-level no-ops that lower into these slot encodings
 - [Predicate Slot](slot-predicate.md) — the 5-bit predicate field, the `15`/`31` sentinels, and `ValidatePacking`'s range check
 - [ISA Emitter Registry](isa-emitter-registry.md) — where the per-gen `Encoder<gen>` / `Decoder<gen>` codecs register

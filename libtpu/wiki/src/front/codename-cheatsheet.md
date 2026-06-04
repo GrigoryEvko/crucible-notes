@@ -12,7 +12,7 @@ For navigation, the contract is:
 
 - **The master table** binds every axis for every generation in one row, each cell carrying its own confidence — the canonical lookup the rest of the wiki links to.
 - **The two-axes warning** explains *why* `TpuVersion` and `DeviceType` disagree numerically, so a reimplementer never indexes one table with the other's ordinal.
-- **The gotchas** collect the traps: the two off-by-one SparseCore sequencer enums, the nested codec namespaces (`pxc::plc`, `vxc::vlc`, `gxc::gfc`), and Trillium shipping SparseCore SCS+TEC but **not** TAC.
+- **The gotchas** collect the traps: the two off-by-one SparseCore sequencer enums, the nested codec namespaces (`pxc::plc`, `vxc::vlc`, `gxc::gfc`), and the v7x `6acc60406`/`gfc` shipping SparseCore SCS+TEC but **not** TAC.
 
 | | |
 |---|---|
@@ -133,7 +133,7 @@ The codec/ISA namespaces are **two levels deep**: a family tag, then a sub-core 
 
 `TpuSequencerTypeFromProto` (`0x20b36300`) is the literal `internal = proto − 1` switch that joins them; the SCS codec is instantiated at `(TpuSequencerType)3`, the TAC codec at `(TpuSequencerType)4`. Full op rosters per generation are on [Sequencer Ops Per Gen](../isa/sequencer-ops-per-gen.md).
 
-> **GOTCHA — Trillium ships SCS + TEC only, no TAC.** `gxc::gfc::isa::SparseCoreScs{Bundle,CodecBase,Program}` and `gfc::isa::SparseCoreTec{Bundle,Program}` are present in the symbol table; `gfc::isa::SparseCoreTac{Bundle,CodecBase,Program}` is **absent**. Viperfish (`vfc`) and Ghostlite (`glc`) carry all three SparseCore sequencers; `6acc60406`/`gfc` (v7x) drops the tile-access engine. A reimplementation that assumes the SparseCore triad is uniform across the SparseCore-bearing generations (Viperfish onward) will emit a TAC codec for v7x that the hardware has no sequencer for.
+> **GOTCHA — 6acc60406 (v7x) ships SCS + TEC only, no TAC.** `gxc::gfc::isa::SparseCoreScs{Bundle,CodecBase,Program}` and `gfc::isa::SparseCoreTec{Bundle,Program}` are present in the symbol table; `gfc::isa::SparseCoreTac{Bundle,CodecBase,Program}` is **absent**. Viperfish (`vfc`) and Ghostlite (`glc`) carry all three SparseCore sequencers; `6acc60406`/`gfc` (v7x) drops the tile-access engine. A reimplementation that assumes the SparseCore triad is uniform across the SparseCore-bearing generations (Viperfish onward) will emit a TAC codec for v7x that the hardware has no sequencer for.
 
 ### Trace-codec selection is keyed on PCI identity, not on either ordinal
 
@@ -153,6 +153,6 @@ The codec/ISA namespaces are **two levels deep**: a family tag, then a sub-core 
 - [HAL Families](../targets/hal-families.md) — the three `TpuHal{Jxc,Pxc,Vxc}HardwareFactory` classes and which `TpuVersion` each registers
 - [Per-DeviceType Profiler Struct](../profiling/per-devicetype-struct.md) — the `kDeviceTypeInfo` array indexed by the sparse `DeviceType` ordinal
 - [v7x Perf-Counters](../profiling/v7x-perf-counters.md) — the `DeviceType == 12` gate and why v7x is the only counter-naming generation
-- [Sequencer Ops Per Gen](../isa/sequencer-ops-per-gen.md) — the `(TpuVersion, TpuSequencerType)` op rosters and the Trillium TAC drop
+- [Sequencer Ops Per Gen](../isa/sequencer-ops-per-gen.md) — the `(TpuVersion, TpuSequencerType)` op rosters and the v7x `6acc60406` TAC drop
 - [Riegeli Trace Container](../profiling/riegeli-trace-container.md) — how the PCI-identity-selected trace codec frames its records
 - [Per-Gen Function Dispatcher](../forensics/per-gen-function-dispatcher.md) — the binary's per-`TpuVersion` dispatch pattern across the codebase

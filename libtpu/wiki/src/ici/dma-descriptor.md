@@ -190,7 +190,7 @@ addr = sflag_value
 | Jellyfish / Dragonfish | (coordinate) | X`<<0x14`, Y`<<0x15` | `0x40000` (b18) + `0x80000` (b19) | core X/Y coordinate | CONFIRMED |
 | Pufferfish | 12-bit | `<< 0x12` (b18) | `0x20000` (b17) | `CoreIndex() << 0x10` | CONFIRMED |
 | Viperfish | **14-bit** (`0x3fff`) | `<< 0x11` (b17) | `0x20000` (b17) | `CoreIndex() << 0x10` | CONFIRMED |
-| Ghostlite / Trillium | 14-bit | (delegates to Viperfish path) | `0x20000` | `CoreIndex` | HIGH |
+| Ghostlite / 6acc60406 | 14-bit | (delegates to Viperfish path) | `0x20000` | `CoreIndex` | HIGH |
 
 > **GOTCHA —** the remote sync-flag address is **not** the destination data address and **not** the chip-id endpoint. It is a *separately encoded* VMEM address the receiving NIU dereferences to find the flag to bump. The Jellyfish encoder is coordinate-based (X/Y in bits 20/21); the V2 encoders are `CoreIndex`-relative with the chip already resolved by `WriteRemoteEndpoints`. A reimplementer who reuses the data-address encoder for the sflag produces a valid-looking but wrong completion target — the transfer lands and the wait never releases.
 
@@ -228,7 +228,7 @@ The descriptor family splits into V1 (one hardware class) and V2 (one hardware c
 | Jellyfish / Dragonfish | `jxc::DmaDescriptor` (V1) | 8 × 32-bit = 32 B | word 7 low 12 bits (`≤59`) | JfDf @ `0x1d5aa620` (coord) | 1 level (+ unroll) | no | CONFIRMED |
 | Pufferfish | `DmaDescriptorV2` | ≥96 B (~24 words) | 12-bit, valid bit 13 | dma_utils @ `0x1d5ae1a0` (`CoreIndex`) | 4 levels | yes | CONFIRMED |
 | Viperfish | `DmaDescriptorV2` | ≥96 B | **14-bit** sflag | dma_utils @ `0x1d5af9c0` | 4 levels | yes | CONFIRMED |
-| Ghostlite / Trillium | `DmaDescriptorV2` | ≥96 B (header/fields slot split) | 14-bit | Ghostlite @ `0x1d5b01e0` (delegator) | 4 levels | yes | HIGH |
+| Ghostlite / 6acc60406 | `DmaDescriptorV2` | ≥96 B (header/fields slot split) | 14-bit | Ghostlite @ `0x1d5b01e0` (delegator) | 4 levels | yes | HIGH |
 
 The two hardware classes are joined by `std::variant<std::monostate, DmaDescriptor, DmaDescriptorV2>` inside `asic_sw::driver::deepsea::DmaCommand` (3-arm `__variant_detail::__dispatcher<0|1|2>`). `DmaDescriptorV2`'s 4-level scatter/gather is `set_src_stride(level 0..3, u32)` @ `0x1febaf20` / `set_dst_stride` @ `0x1febb060` / `set_steps_per_stride` @ `0x1febb1a0` — each level index range-checked against 3, each stride stored `<< 6` (granule-shifted). Pufferfish is reused for Viperfish via `CreateForViperfish` @ `0x1d5ad860`, differing only in the per-gen encoders pulled from the version-keyed registries.
 

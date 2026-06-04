@@ -103,7 +103,7 @@ The sole writer of `Target+0x4a8` is the shared `Target::Init` (`sub_1D60FC20`) 
 | v4 Pufferfish | 2 | `pufferfish` blob | HIGH |
 | v5p Viperfish | 2 | `viperfish` blob | HIGH |
 | v6e Ghostlite | 2 | `ghostlite` blob | HIGH |
-| v7 (6acc60406, Trillium-class) | 2 | `6acc60406` blob | HIGH |
+| v7x (6acc60406) | 2 | `6acc60406` blob | HIGH |
 
 > **NOTE —** the value is data, not code, so the version pin above is necessary but not sufficient: a future chip whose `VectorIsa.f7` differs would widen the `IarField`. The 1-bit `IarField` accessor (`sub_1EE3B380`) and the count of 2 are mutually consistent *for this binary's chip-parts blobs only*. See [Chip-Parts Binarypb](../targets/chip-parts-binarypb.md) for the load path.
 

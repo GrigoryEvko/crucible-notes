@@ -45,7 +45,7 @@ The prefix is the routing key: it decides which proto consumes the flag and whic
 | `barna_core_*` | 61 | float / int / duration | standalone `absl::Flag` | BarnaCore embedding HW |
 | `xla_msa_*` | 22 | bool / int / float | TCE + DebugOptions mix | Memory-Space Assignment |
 | `tf_*` | 20 | bool | runtime | TF-TPU bridge |
-| `xla_gf_*` | 14 | bool / int / enum | TCE | Trillium/gen6 VMEM/MSA |
+| `xla_gf_*` | 14 | bool / int / enum | TCE | 6acc60406/v7x VMEM/MSA |
 | `xla_mosaic_*` | 8 | bool / enum | TCE | Mosaic MLIR dialect |
 | `xla_ior_*` | 4 | bool / enum | TCE | "IOR" fast-mem MSA variant |
 | `xla_llo_*` | 1 | enum | TCE | LLO annotation lifecycle |
@@ -170,7 +170,7 @@ Fusion is the second-largest `xla_tpu_` subsystem and carries the only cluster o
 
 ### Purpose
 
-MSA controls where buffers live (VMEM / CMEM / HBM), how async copies prefetch across the memory hierarchy, and how the scoped-memory allocator (`telamalloc`) packs them. The knobs split three ways: the `xla_tpu_*` MSA family (55), the dedicated `xla_msa_*` namespace (22), and the per-generation `xla_gf_vmem_*` (Trillium) / `xla_ior_fast_mem_*` overlays. Many MSA fields resolve through the AUTO tri-state rather than carrying a flat default — see [autoproto-autoor-resolution.md](autoproto-autoor-resolution.md).
+MSA controls where buffers live (VMEM / CMEM / HBM), how async copies prefetch across the memory hierarchy, and how the scoped-memory allocator (`telamalloc`) packs them. The knobs split three ways: the `xla_tpu_*` MSA family (55), the dedicated `xla_msa_*` namespace (22), and the per-generation `xla_gf_vmem_*` (6acc60406) / `xla_ior_fast_mem_*` overlays. Many MSA fields resolve through the AUTO tri-state rather than carrying a flat default — see [autoproto-autoor-resolution.md](autoproto-autoor-resolution.md).
 
 ### Catalog — `xla_tpu_*` MSA
 
@@ -205,7 +205,7 @@ MSA controls where buffers live (VMEM / CMEM / HBM), how async copies prefetch a
 | `xla_msa_use_bundle_aware_cost_model` | bool | bundle-aware cost model | HIGH |
 | `xla_msa_cost_model_options` | string | cost-model config string | LOW |
 
-Per-generation overlays: `xla_gf_vmem_max_outstanding_evictions` / `_max_repacks` / `_max_retries` (int, Trillium), `xla_gf_vmem_use_ior_algorithm` (enum), `xla_ior_fast_mem_*` (4 flags, the fast-mem round-trip MSA variant). The generic `xla_enable_cross_program_prefetch` and `xla_default_cross_program_prefetch_heuristic` gate XPP at the DebugOptions level.
+Per-generation overlays: `xla_gf_vmem_max_outstanding_evictions` / `_max_repacks` / `_max_retries` (int, 6acc60406), `xla_gf_vmem_use_ior_algorithm` (enum), `xla_ior_fast_mem_*` (4 flags, the fast-mem round-trip MSA variant). The generic `xla_enable_cross_program_prefetch` and `xla_default_cross_program_prefetch_heuristic` gate XPP at the DebugOptions level.
 
 ---
 

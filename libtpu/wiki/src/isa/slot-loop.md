@@ -72,18 +72,18 @@ The "count" is the number of *addressable* loop-counter registers a program can 
 
 The active counter is selected by the `reg` enum field of the scalar read-register op, not by a dedicated opcode — which is why no `pxc::isa::*ReadRegisterLcc*` function exists in the binary (the `nm` set has none). A reader of LCC0 vs LCC1 is choosing an enum value, not a different instruction.
 
-**Viperfish (v5e) / Ghostlite (v5p) / Trillium (v6e) — ONE loop counter, implicit.** V5+ replaced the indexed read with two dedicated opcodes per engine: `ReadRegisterLccLow` reads `LCC[31:0]`, `ReadRegisterLccHigh` reads `LCC[63:32]`, each into a scalar dest. The encoders exist for `vxc`, `gxc::glc`, and `gxc::gfc` on both `ScalarAlu0` and `ScalarAlu1` and on the SparseCore. As shown above, the op's only operand is the 5-bit destination — there is no index field, so the program can address exactly one (implicit) loop counter per sequencer.
+**Viperfish (v5p) / Ghostlite (v6e) / 6acc60406 (TPU7x) — ONE loop counter, implicit.** V5+ replaced the indexed read with two dedicated opcodes per engine: `ReadRegisterLccLow` reads `LCC[31:0]`, `ReadRegisterLccHigh` reads `LCC[63:32]`, each into a scalar dest. The encoders exist for `vxc`, `gxc::glc`, and `gxc::gfc` on both `ScalarAlu0` and `ScalarAlu1` and on the SparseCore. As shown above, the op's only operand is the 5-bit destination — there is no index field, so the program can address exactly one (implicit) loop counter per sequencer.
 
-**Jellyfish (v3) / Dragonfish (v3′) — NO LCC read on the TensorCore.** No `jellyfish::isa::*ReadRegisterLcc*` symbol exists and no Jellyfish read-register enum names LCC; the JF TensorCore has only the cycle-counter reads. Jellyfish exposes a hardware loop **only** through the AddressHandler `Loop` slot (below), never via an LCC read on the TensorCore.
+**Jellyfish (v2) / Dragonfish (v3) — NO LCC read on the TensorCore.** No `jellyfish::isa::*ReadRegisterLcc*` symbol exists and no Jellyfish read-register enum names LCC; the JF TensorCore has only the cycle-counter reads. Jellyfish exposes a hardware loop **only** through the AddressHandler `Loop` slot (below), never via an LCC read on the TensorCore.
 
 | Gen | TC LCC regs | SC/BCS LCC regs | Read mechanism | Confidence |
 |---|---:|---|---|---|
-| Jellyfish (v3) | 0 | n/a (BCAH `Loop` slot) | cycle-counter only on TC | CONFIRMED (no symbol) |
-| Dragonfish (v3′) | 0 (alias JF) | n/a | inherits Jellyfish | HIGH |
+| Jellyfish (v2) | 0 | n/a (BCAH `Loop` slot) | cycle-counter only on TC | CONFIRMED (no symbol) |
+| Dragonfish (v3) | 0 (alias JF) | n/a | inherits Jellyfish | HIGH |
 | Pufferfish (v4) | 2 (LCC0/LCC1) | 2 (BCS LCC0/LCC1) | `Tcs`/`Bcs` read-register enum | CONFIRMED |
-| Viperfish (v5e) | 1 (implicit) | 1 (implicit) | `ReadRegisterLcc{Low,High}` (dest-only) | CONFIRMED |
-| Ghostlite (v5p) | 1 (implicit) | 1 (implicit) | `ReadRegisterLcc{Low,High}` (dest-only) | CONFIRMED |
-| Trillium (v6e) | 1 (implicit) | 1 (implicit) | `ReadRegisterLcc{Low,High}` (dest-only) | CONFIRMED |
+| Viperfish (v5p) | 1 (implicit) | 1 (implicit) | `ReadRegisterLcc{Low,High}` (dest-only) | CONFIRMED |
+| Ghostlite (v6e) | 1 (implicit) | 1 (implicit) | `ReadRegisterLcc{Low,High}` (dest-only) | CONFIRMED |
+| 6acc60406 (TPU7x) | 1 (implicit) | 1 (implicit) | `ReadRegisterLcc{Low,High}` (dest-only) | CONFIRMED |
 
 > **CORRECTION (LOOP-PF) —** an earlier survey recorded "Pufferfish has no LCC". That conclusion came from searching for the V5+ `ReadRegisterLcc{Low,High}` opcode form, which Pufferfish genuinely lacks. Pufferfish reads the LCC through the indexed `TcsReadRegister` / `BcsReadRegister` enum instead — it has **two** LCC registers, not zero. A reimplementation that drives off the V5+ opcode shape will miss the PF loop counters entirely.
 
@@ -186,7 +186,7 @@ The loop body is **not** an offset field — the per-generation `Target::InsertA
 
 > **CORRECTION (LOOP-EVEN) —** an earlier draft stated the AddressHandler loop body is a *"signed multiple of 2"* offset, citing the strings *"loop end is out of range or not a positive multiple of 2"* / *"loop start is out of range or not a negative multiple of 2"*. Those two diagnostics belong to LLVM's bundled **ARM** backend (`(anon)::ARMAsmParser::matchAndEmitInstruction` @ `0x15185a20`, the Armv8.1-M low-overhead-loop `WLS`/`LE` validation), **not** to any TPU `InsertAddressHandlerLoop` path. The TPU AddressHandler loop carries an iteration **count** (`bundles − 1`), not a signed even byte-offset; there is no even-multiple constraint in the TPU encode path.
 
-The AddressHandler loop persists across **v3/v4 only** (`JellyfishTarget` / `PufferfishTarget` overrides, both live with real proto construction). The `ViperfishTarget::InsertAddressHandlerLoop` override (`0x1d49b980`) exists but is a `__noreturn` stub that fatals *"Deepsea version not supported"* (`target_viperfish.h:320`) — so the AddressHandler-style hardware loop is **dropped at v5e (Viperfish)**, not v5p; there is no Ghostlite or Trillium override at all. CONFIRMED (the Viperfish override is present-but-dead, traced byte-exactly).
+The AddressHandler loop persists across **v3/v4 only** (`JellyfishTarget` / `PufferfishTarget` overrides, both live with real proto construction). The `ViperfishTarget::InsertAddressHandlerLoop` override (`0x1d49b980`) exists but is a `__noreturn` stub that fatals *"Deepsea version not supported"* (`target_viperfish.h:320`) — so the AddressHandler-style hardware loop is **dropped at Viperfish (v5)**; there is no Ghostlite or 6acc60406 override at all. CONFIRMED (the Viperfish override is present-but-dead, traced byte-exactly).
 
 | Element | BarnaCore / AddressHandler (HW loop) | TC / SparseCore (SW loop) | Confidence |
 |---|---|---|---|

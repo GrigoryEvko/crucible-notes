@@ -4,9 +4,9 @@
 
 ## Abstract
 
-The **SPU** (scalar-processing unit, `ScalarAlu` in the V5+ ISA namespaces) is the TensorCore's per-core control CPU lane. It owns the 32-entry scalar register file (SREGs), computes loop bounds, memory addresses, strides, and predicate values, runs branch/call/halt control flow, and bridges the scalar and vector engines through the V2S FIFO. In the VLIW bundle the SPU appears as **two scalar lanes** — `scalar_0`/`scalar_1` on Jellyfish and Pufferfish, `ScalarAlu0`/`ScalarAlu1` on Viperfish/Ghostlite/Trillium, `SparseCoreScalarAlu0/1` on the SparseCore sequencer. Lane 0 carries the full op set including branch/call; lane 1 is an ALU+halt mirror. This is ARM-style predicated, statically-scheduled execution: there is no scoreboard, and the compiler proves bundle legality (see [Bundle Model](bundle-model-overview.md)).
+The **SPU** (scalar-processing unit, `ScalarAlu` in the V5+ ISA namespaces) is the TensorCore's per-core control CPU lane. It owns the 32-entry scalar register file (SREGs), computes loop bounds, memory addresses, strides, and predicate values, runs branch/call/halt control flow, and bridges the scalar and vector engines through the V2S FIFO. In the VLIW bundle the SPU appears as **two scalar lanes** — `scalar_0`/`scalar_1` on Jellyfish and Pufferfish, `ScalarAlu0`/`ScalarAlu1` on Viperfish/Ghostlite/6acc60406, `SparseCoreScalarAlu0/1` on the SparseCore sequencer. Lane 0 carries the full op set including branch/call; lane 1 is an ALU+halt mirror. This is ARM-style predicated, statically-scheduled execution: there is no scoreboard, and the compiler proves bundle legality (see [Bundle Model](bundle-model-overview.md)).
 
-Two encoder families produce the slot bytes. **Jellyfish/Dragonfish (JXC)** is a direct-pack encoder: `EncoderJf::EncodeScalarInstruction` (`0x1e862060`) ORs each field into a 64-bit slot word held at the encoder's struct byte `+0x2D` via literal `shl`/`and`/`or` arithmetic, then the [41-byte bundle](bundle-jf-41b.md) is sliced out. **Pufferfish/Viperfish/Ghostlite/Trillium (PXC/VXC/GXC)** route every field through the universal little-endian bit packer `BitCopy(dst, dst_bit, src, src_bit, nbits)` (`0x1fa0a900`), called once per field from a leaf `*ScalarAlu0Encoder::Encode` method whose body is a `switch` on the proto opcode at `[instr+0x50]`. The field positions on this page were read from the `BitCopy(buf, <bitoff>, …, <nbits>)` call triples in those leaf encoders, which is why each row is byte-anchored to a concrete bit offset.
+Two encoder families produce the slot bytes. **Jellyfish/Dragonfish (JXC)** is a direct-pack encoder: `EncoderJf::EncodeScalarInstruction` (`0x1e862060`) ORs each field into a 64-bit slot word held at the encoder's struct byte `+0x2D` via literal `shl`/`and`/`or` arithmetic, then the [41-byte bundle](bundle-jf-41b.md) is sliced out. **Pufferfish/Viperfish/Ghostlite/6acc60406 (PXC/VXC/GXC)** route every field through the universal little-endian bit packer `BitCopy(dst, dst_bit, src, src_bit, nbits)` (`0x1fa0a900`), called once per field from a leaf `*ScalarAlu0Encoder::Encode` method whose body is a `switch` on the proto opcode at `[instr+0x50]`. The field positions on this page were read from the `BitCopy(buf, <bitoff>, …, <nbits>)` call triples in those leaf encoders, which is why each row is byte-anchored to a concrete bit offset.
 
 This page documents the SPU to reimplementation grade across all six generations: the two-lane slot model and lane-0/lane-1 ownership split, the per-gen bit-field grid (opcode class, sub-opcode, predicate, X/Y/dst register operands), the unified 6-bit `ScalarYEncoding` operand selector and its 14 hardwired constants, the scalar register file bound, the immediate-slot geometry, the scalar address-computation ops, the V2S bridge, and the JF→GF field-layout evolution.
 
@@ -16,7 +16,7 @@ For reimplementation, the contract is:
 - The **per-gen field grid**: opcode-class + sub-opcode + predicate-bit + X/Y/dst register fields, each at the absolute bit offset its `BitCopy` call names; and the JF direct-pack equivalent at struct word `+0x2D`.
 - The **`ScalarYEncoding` 6-bit operand model**: `0..0x1f` = SREG, `0x20..0x25` = immediate-slot reference, `0x2e..0x3b` = hardwired constant.
 - The **opcode dispatch**: a leaf `switch`/jump-table indexed by the proto opcode whose case count *is* the per-gen scalar ISA size (JF 0..0x3E, PF ≤0x33, VF ≤0x4C / lane1 ≤0x52, VF-SCS ≤0x57, GL/GF ≤0x49).
-- The **JF→GF shrink**: opcode-class width 6→5→(4+6)→(4+6)→(2+6), the predicate model from in-slot 5-bit field to in-slot 1-bit selector to the dedicated dual-predicate slot on Trillium, and the 16-bit→20-bit immediate-slot widening.
+- The **JF→GF shrink**: opcode-class width 6→5→(4+6)→(4+6)→(2+6), the predicate model from in-slot 5-bit field to in-slot 1-bit selector to the dedicated dual-predicate slot on 6acc60406 (GF), and the 16-bit→20-bit immediate-slot widening.
 
 | | |
 |---|---|
@@ -100,10 +100,10 @@ The five generations share one logical field set — opcode class, sub-opcode, p
 | **Pufferfish** | 51 B | opcode 5b @bit **403** | 6b @bit **397** | opcode value `0x1F`=NeverExecute | 6b @bit **386** | 6b ScalarY | — | ≤0x33 | `0x1ed16dc0` |
 | **Viperfish** | 64 B | 4b @bit **499** | 6b @bit **493** | 1b @bit **503** | 5b @bit **488** | 6b @bit **482** | 5b @bit **477** | ≤0x4C | `0x1eecb900` |
 | **Ghostlite** | 64 B | 4b @bit **502** | 6b @bit **496** | 1b @bit **506** | 5b @bit **491** | 6b @bit **485** | 5b @bit **480** | ≤0x49 | `0x1f219b40` |
-| **Trillium** | 64 B | 2b @bit **489** | 6b @bit **483** | (dual-pred slot) | 5b @bit **478** | — | 5b @bit **467** | ≤0x49 | `0x1f87b420` |
+| **6acc60406** | 64 B | 2b @bit **489** | 6b @bit **483** | (dual-pred slot) | 5b @bit **478** | — | 5b @bit **467** | ≤0x49 | `0x1f87b420` |
 | **VF SparseCore** | 32 B | 4b @bit **187** | 6b @bit **181** | 1b @bit **191** | 5b @bit **176** | 6b | — | ≤0x57 | `0x1ee82ce0` |
 
-The cleanest reading of the table is the **Ghostlite = Viperfish + 3** relation: every GL field is exactly 3 bits higher than its VF counterpart (499→502, 503→506, 493→496, 488→491, 482→485, 477→480), the uniform `+3` shift that [Ghostlite Bundle](bundle-gl.md) attributes to widening the MXU/VALU opcodes by one bit each. Trillium then *removes* the in-slot predicate entirely (no `BitCopy` to a predicate bit appears in `0x1f87b420`) and shrinks the class field to 2 bits, dropping the slot header down ~13 bits to free room for the dedicated [`TensorCorePredicates`](slot-predicate.md) dual-predicate slot.
+The cleanest reading of the table is the **Ghostlite = Viperfish + 3** relation: every GL field is exactly 3 bits higher than its VF counterpart (499→502, 503→506, 493→496, 488→491, 482→485, 477→480), the uniform `+3` shift that [Ghostlite Bundle](bundle-gl.md) attributes to widening the MXU/VALU opcodes by one bit each. 6acc60406 (GF) then *removes* the in-slot predicate entirely (no `BitCopy` to a predicate bit appears in `0x1f87b420`) and shrinks the class field to 2 bits, dropping the slot header down ~13 bits to free room for the dedicated [`TensorCorePredicates`](slot-predicate.md) dual-predicate slot.
 
 ### Jellyfish — direct-pack at struct word `+0x2D`
 
@@ -188,15 +188,15 @@ The hardwired-constant half lets the SPU reference common scalar values without 
 |---|---:|---|---|---:|
 | Jellyfish / Dragonfish | 32 | 5-bit | SMEM (2 banks) | 2 cyc |
 | Pufferfish | 32 | 5-bit | SMEM (8 banks) | 4 cyc |
-| Viperfish / Ghostlite / Trillium | 32 | 5-bit | SMEM (8 banks) | 6 cyc |
+| Viperfish / Ghostlite / 6acc60406 | 32 | 5-bit | SMEM (8 banks) | 6 cyc |
 
-The 32-entry / 5-bit count is bound three independent ways in the binary: `EncodingToScalarRegister` rejects `> 0x1F`; every per-gen register operand `BitCopy` is `nbits=5` (VF X@488, dst@477; GL X@491, dst@480; Trillium X@478, dst@467); and a debug flag `FLAGS_ForceTargetNumScalarRegs` (`0x22542da8`) can only clamp the count *below* the hardware 32. SMEM is the spill backing store — there is no SMEM register window. When LSRA-v2 cannot keep a SREG live across a region, it emits a `ScalarStore*ToSmem*` to the reserved spill region and a `ScalarLoadSmem*` at the next use; the spill region size is set by `FLAGS_xla_jf_lsra_v2_reserved_smem` (`0x223afaa8`).
+The 32-entry / 5-bit count is bound three independent ways in the binary: `EncodingToScalarRegister` rejects `> 0x1F`; every per-gen register operand `BitCopy` is `nbits=5` (VF X@488, dst@477; GL X@491, dst@480; GF X@478, dst@467); and a debug flag `FLAGS_ForceTargetNumScalarRegs` (`0x22542da8`) can only clamp the count *below* the hardware 32. SMEM is the spill backing store — there is no SMEM register window. When LSRA-v2 cannot keep a SREG live across a region, it emits a `ScalarStore*ToSmem*` to the reserved spill region and a `ScalarLoadSmem*` at the next use; the spill region size is set by `FLAGS_xla_jf_lsra_v2_reserved_smem` (`0x223afaa8`).
 
 ---
 
 ## The Scalar Op Set
 
-The authoritative per-gen op roster is the leaf encoder `switch` itself: each `case N` returns an `Encode…<OpName>` thunk, so the case set is the ISA. The Viperfish lane-0 `switch` (`0x1eecb900`, cases 6–0x4C, 77 ops) groups as follows; Ghostlite and Trillium are this set minus their deltas.
+The authoritative per-gen op roster is the leaf encoder `switch` itself: each `case N` returns an `Encode…<OpName>` thunk, so the case set is the ISA. The Viperfish lane-0 `switch` (`0x1eecb900`, cases 6–0x4C, 77 ops) groups as follows; Ghostlite and 6acc60406 are this set minus their deltas.
 
 ```text
 Integer ALU    IntegerAdd, IntegerAddWithOverflowCheck, IntegerSubtractYX(+OverflowCheck),
@@ -233,7 +233,7 @@ JF / PF (JXC/PXC)   ScalarLoadSmem        SREG <- SMEM[abs imm]
 V5+ (VXC/GXC)       ScalarLoadSmemY       SREG <- SMEM[imm]          (Y = 20-bit imm)
                     ScalarLoadSmemXY      SREG <- SMEM[Xreg + imm]   (base+displacement)
                     ScalarStoreXToSmemY   SMEM[imm] <- Xreg
-                    ScalarStoreXToSmemSumDestAndY  SMEM[imm] += Xreg (Trillium scatter-add)
+                    ScalarStoreXToSmemSumDestAndY  SMEM[imm] += Xreg (6acc60406 scatter-add)
 ```
 
 The `XY` form (X = base SREG, Y = `ScalarYEncoding` reg/imm/const) is the canonical V5+ base+displacement address generator; an `indicesToOffset` chain `Σ indices[d]·strides[d]` lowers to a sequence of scalar `IntegerAdd`/`Multiply` ops packed into SPU slots. See [Memory-Load](slot-memory-load.md) and [Memory-Store](slot-memory-store.md).
@@ -249,11 +249,11 @@ Six immediate slots ride at the **low** end of every bundle (opposite the scalar
 | Jellyfish | 6 | 16 b | `Bundle` proto words `+0x70/+0x74/+0x78/+0x7c` (mask bits `0x1000`..`0x8000`) | `Place16BitScalarImmediate` @ `0x1e8721e0` |
 | Viperfish | 6 | 20 b | 330, 350, 370, 390, 410, 430 | `0x1eebee40` |
 | Ghostlite | 6 | 20 b | 333, 353, 373, 393, 413, 433 | `0x1f20d520` |
-| Trillium | 6 | 20 b | 323, 343, 363, 383, 403, 423 | `0x1f86de20` |
+| 6acc60406 | 6 | 20 b | 323, 343, 363, 383, 403, 423 | `0x1f86de20` |
 
 The V5+ slots are a perfect stride-20 ladder (`BitCopy(span, off, …, 20)`), and the GL ladder is again VF+3, the GF ladder VF−7 — the same uniform per-gen shift the scalar slot shows. A 32-bit immediate consumes an adjacent **pair** of 20-bit slots (40 ≥ 32); anything wider becomes an SMEM constant load issued by the SPU.
 
-> **CORRECTION (SPU-2) —** an earlier note placed the Viperfish immediate slots at bits `0x4a, 0x5e, 0x72, …` (74, 94, …). The decompiled `TensorCoreImmediatesEncoder::Encode` (`0x1eebee40`) packs them at **330, 350, 370, 390, 410, 430** (stride 20), with Ghostlite at 333…433 and Trillium at 323…423. The earlier offsets are not what the encoder emits; this page uses the `BitCopy` arguments directly.
+> **CORRECTION (SPU-2) —** an earlier note placed the Viperfish immediate slots at bits `0x4a, 0x5e, 0x72, …` (74, 94, …). The decompiled `TensorCoreImmediatesEncoder::Encode` (`0x1eebee40`) packs them at **330, 350, 370, 390, 410, 430** (stride 20), with Ghostlite at 333…433 and 6acc60406 at 323…423. The earlier offsets are not what the encoder emits; this page uses the `BitCopy` arguments directly.
 
 Jellyfish's `Place16BitScalarImmediate` (`0x1e8721e0`) walks the slot-presence mask testing `0x8000/0x4000/0x2000/0x1000` and returns a `ScalarYEncoding` in `0x20..0x23` referencing the slot it filled, folding the sign bit as `(val >> 13) & 4`. A 32-bit value splits into an adjacent slot pair via `Place32BitScalarImmediate` (`0x1e8724c0`). See [Immediate Slot](slot-immediate.md) for the full per-gen encoding-id → slot-position map.
 
@@ -267,7 +267,7 @@ The SPU and vector engine exchange values through FIFOs, never a direct register
 
 ## Per-Generation Deltas
 
-| Feature | JF v3 | PF v4 | VF v5e | GL v5p | GF v6e |
+| Feature | JF v2 | PF v4 | VF v5p | GL v6e | GF TPU7x |
 |---|---|---|---|---|---|
 | Scalar lanes | 2 | 2 | 2 | 2 | 2 (+ dual-pred slot) |
 | Opcode field | 6-bit single | 5-bit + 6-sub | 4-class + 6-sub | 4 + 6 | 2 + 6 |
@@ -282,13 +282,13 @@ The SPU and vector engine exchange values through FIFOs, never a direct register
 | `LogicalShiftLeftOnesXByYPlaces` (lane 0) | no | no | no | no | yes |
 | FIFO bridge | V2S, Hmf | V2S | V2S,Drf,Sfrf,Sccf | V2S,Drf,Sfrf | V2S,Drf,Sfrf |
 
-The Trillium TensorCore scalar slot differs from Ghostlite by two binary-confirmed deltas: it **adds** `LogicalShiftLeftOnesXByYPlaces` to the lane-0 op set (the GF lane-0 switch `0x1f87b420` has 65 distinct `Encode…` mnemonics vs GL's 64, the single new case at `0x18`) and adds `ScalarStoreXToSmemSumDestAndY` to the **lane-1** op set (a scatter-add store; present in the GF `TensorCoreScalarAlu1` family — e.g. `0x1f64dc60` — but absent from the VF/GL TensorCore lane-1 store set, which stops at `ScalarStoreXToSmemY`). The lane-0 65-vs-64 count therefore reflects `LogicalShiftLeftOnesXByYPlaces` alone; the scatter-add store is a separate lane-1-only addition and does not appear in the lane-0 switch. Trillium also **drops** the in-slot predicate (no predicate `BitCopy` in `0x1f87b420`; the opcode-class is read from `[instr+0x1c]` as 2 bits, not `[instr+0x20]` as 4). The dropped predicate routes to the dedicated dual-`pred_0`/`pred_1` slot; the exact wiring from the scalar slot into that slot was not traced (see *Limits*).
+The 6acc60406 (GF) TensorCore scalar slot differs from Ghostlite by two binary-confirmed deltas: it **adds** `LogicalShiftLeftOnesXByYPlaces` to the lane-0 op set (the GF lane-0 switch `0x1f87b420` has 65 distinct `Encode…` mnemonics vs GL's 64, the single new case at `0x18`) and adds `ScalarStoreXToSmemSumDestAndY` to the **lane-1** op set (a scatter-add store; present in the GF `TensorCoreScalarAlu1` family — e.g. `0x1f64dc60` — but absent from the VF/GL TensorCore lane-1 store set, which stops at `ScalarStoreXToSmemY`). The lane-0 65-vs-64 count therefore reflects `LogicalShiftLeftOnesXByYPlaces` alone; the scatter-add store is a separate lane-1-only addition and does not appear in the lane-0 switch. 6acc60406 (GF) also **drops** the in-slot predicate (no predicate `BitCopy` in `0x1f87b420`; the opcode-class is read from `[instr+0x1c]` as 2 bits, not `[instr+0x20]` as 4). The dropped predicate routes to the dedicated dual-`pred_0`/`pred_1` slot; the exact wiring from the scalar slot into that slot was not traced (see *Limits*). (This GF generation is the externally-documented "Ironwood"/TPU7x; do not confuse it with Trillium, which is the prior Ghostlite/v6e generation.)
 
-> **GOTCHA — Trillium reads the opcode class from a different proto offset.** The VF/GL/SCS encoders read the class from `[instr+0x20]` (4 bits); Trillium reads it from `[instr+0x1c]` (2 bits). A decoder that hardcodes the `+0x20` offset and a 4-bit class will misread every Trillium scalar slot. The slot also starts ~13 bits lower in the bundle (sub-opcode @483 vs GL @496) precisely because the predicate bit no longer lives in the slot.
+> **GOTCHA — 6acc60406 (GF) reads the opcode class from a different proto offset.** The VF/GL/SCS encoders read the class from `[instr+0x20]` (4 bits); GF reads it from `[instr+0x1c]` (2 bits). A decoder that hardcodes the `+0x20` offset and a 4-bit class will misread every GF scalar slot. The slot also starts ~13 bits lower in the bundle (sub-opcode @483 vs GL @496) precisely because the predicate bit no longer lives in the slot.
 
 ### Branch/call discriminators (lane 0)
 
-The control-flow ops share the sub-opcode/operand grid but disambiguate through a value written into the **opcode-LOW** field — the same 5-bit field the table calls "sub-opcode discriminator", at the per-gen position below. On Trillium (`0x1f87b420`) the immediate branch/call family pins the 6-bit `sub-opcode` (opcode-HIGH) at **483** to `0` and selects the op via the 5-bit field at **478**:
+The control-flow ops share the sub-opcode/operand grid but disambiguate through a value written into the **opcode-LOW** field — the same 5-bit field the table calls "sub-opcode discriminator", at the per-gen position below. On 6acc60406 (GF) (`0x1f87b420`) the immediate branch/call family pins the 6-bit `sub-opcode` (opcode-HIGH) at **483** to `0` and selects the op via the 5-bit field at **478**:
 
 | Op | opcode value (`[instr+0x50]`) | sub-opcode @483 (w6) | discriminator @478 (w5) | leaf encoder | Confidence |
 |---|---:|---:|---:|---|---|
@@ -313,7 +313,7 @@ case 6: BitCopy(span, 181, &zero, 0, 6);                         // sub-opcode  
         BitCopy(span, 176, &Xreg, 0, 5);                         // X register   @bit 176, 5b
 ```
 
-The SCS scalar slot sits near the top of the 256-bit bundle (bytes 22–23). Its jump table is *larger* than the TensorCore's — cases run to 0x57 (88 ops) — because the SparseCore scalar path carries gather/scatter address ops the TensorCore lacks. Ghostlite and Trillium SCS share the 32-byte bundle width, so the byte positions are expected to match; this was inferred from the shared bundle width, not byte-verified for GL/GF SCS (MEDIUM).
+The SCS scalar slot sits near the top of the 256-bit bundle (bytes 22–23). Its jump table is *larger* than the TensorCore's — cases run to 0x57 (88 ops) — because the SparseCore scalar path carries gather/scatter address ops the TensorCore lacks. Ghostlite and 6acc60406 SCS share the 32-byte bundle width, so the byte positions are expected to match; this was inferred from the shared bundle width, not byte-verified for GL/GF SCS (MEDIUM).
 
 ---
 
@@ -322,7 +322,7 @@ The SCS scalar slot sits near the top of the 256-bit bundle (bytes 22–23). Its
 - **Per-opcode operand sets (Partial).** The binary-ALU template (`IntegerAdd`-class: dst@477, X@488, Y@482 on VF), the load/store template, and the branch template were decoded. The remaining ~70 VF / ~64 GL / ~65 GF ops reuse the same field grid, but each op's exact present/absent operand set was not enumerated one leaf encoder at a time. (LOW for the non-template ops' operand presence.)
 - **V5+ predicate-register count (Partial).** Only Jellyfish's 15-predicate file is decoded; the `getNumPredicateRegisters` overrides for the VF/GL/GF subtargets were not — the in-slot 1-bit field is a selector into a per-gen predicate file whose size lives in the HAL factory. See [Predicate Register File](slot-predicate.md).
 - **Pufferfish immediate geometry (Partial).** PXC routes immediates through the `TensorCoreMiscEncoder` `ScalarY` 5-bit fields rather than a clean 16-bit slot ladder; the exact PXC slot count/width was not pinned (only the 5-bit `ScalarY` field). The table lists the JF/VF/GL/GF immediate ladders, which are byte-exact.
-- **Trillium dual-predicate routing (Not traced).** The slot exists; the wiring from `ScalarAlu0`'s removed predicate bit into `TensorCorePredicates` was not followed.
+- **6acc60406 (GF) dual-predicate routing (Not traced).** The slot exists; the wiring from `ScalarAlu0`'s removed predicate bit into `TensorCorePredicates` was not followed.
 - **GL/GF SparseCore slot positions (Inferred).** Only the VF SCS layout (`0x1ee82ce0`) is byte-verified; GL/GF SCS positions are inferred from the shared 32-byte bundle width.
 - **Decode side (Located, not field-decoded).** The symmetric `*ScalarAlu0Decoder` methods were located but not decoded field-by-field; they are the inverse `BitCopy` extraction at the same offsets. See [Decode-Side: VF / GXC](decode-side-vf-gxc.md) and [Decode-Side: JF / PF](decode-side-jf-pf.md).
 
@@ -336,6 +336,6 @@ The SCS scalar slot sits near the top of the 256-bit bundle (bytes 22–23). Its
 - [Predicate Register File](slot-predicate.md) — the (smaller) predicate file the in-slot 1-bit predicate selector indexes, and the JF 5-bit predicate field.
 - [Jellyfish Bundle](bundle-jf-41b.md) — the 41-byte direct-pack layout and the scalar-slot lane-0/lane-1 field arithmetic this page summarizes.
 - [Ghostlite Bundle](bundle-gl.md) — the source of the uniform +3-bit scalar/immediate shift versus Viperfish.
-- [6acc60406 Bundle](bundle-gf.md) — the Trillium generation that moves the scalar predicate to the dual-predicate slot.
+- [6acc60406 Bundle](bundle-gf.md) — the GF generation that moves the scalar predicate to the dual-predicate slot.
 - [MC-Emitter](mc-emitter.md) — `getBinaryCodeForInstr` / `InstBits`, the LLVM-MC path the V5+ proto encoders bypass (all-zero `InstBits`).
 - [LLO Opcode Enum](llo-opcode-enum.md) — the 462-opcode LLO enum the scalar-ALU opcodes map into via the per-gen jump tables.
