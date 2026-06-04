@@ -1,10 +1,10 @@
 # Changelog — Reconstruction Change Record
 
-> *This wiki is a static reverse-engineering reconstruction of one artifact: `libtpu.so` from the `libtpu-0.0.40-cp314` wheel (version 0.103, build `libtpu_lts_20260413_b_RC00`, BuildID md5 `89edbbe81c5b328a958fe628a9f2207d`). Every address, ordinal, and symbol on every page is pinned to that one binary. Other wheels will differ.*
+> *This wiki is a static reverse-engineering reconstruction of one artifact: `libtpu.so` from the `libtpu-0.0.40-cp314` wheel (wheel version `0.0.40`, build `libtpu_lts_20260413_b_RC00`, BuildID md5 `89edbbe81c5b328a958fe628a9f2207d`). Every address, ordinal, and symbol on every page is pinned to that one binary by its build-id. Other wheels will differ.*
 
 ## Abstract
 
-This is the wiki's own change record — not a software release log. `libtpu.so` ships as a single stripped 745 MB PJRT plugin with no public source, no symbol table beyond `.dynsym`, and no versioned API surface the documentation could track release-over-release. There is exactly **one** binary under analysis, so a conventional dated changelog ("what changed in 0.0.40 vs 0.0.39") is not what this page can honestly provide. What it *can* provide is the record of how the **reconstruction itself** evolved: the version it pins to, the 18-Part / ~427-page structure it grew into, and — the part worth a reader's attention — the **corrections** the deep pages filed against themselves as they re-checked early beliefs against direct decompile evidence.
+This is the wiki's own change record — not a software release log. `libtpu.so` ships as a single ~745 MB PJRT plugin with no public source and no versioned API surface the documentation could track release-over-release. (The binary is **not** stripped — it retains a full `.symtab` of ~1.23 M symbols alongside the 740-entry `.dynsym` — which is exactly what makes static reconstruction tractable; the runtime ABI surface is essentially the PJRT C entry point `GetPjrtApi` @ `0xe6a83a0`, alongside a second `GetLibtpuSdkApi` export.) There is exactly **one** binary under analysis, so a conventional dated changelog ("what changed in 0.0.40 vs 0.0.39") is not what this page can honestly provide. What it *can* provide is the record of how the **reconstruction itself** evolved: the version it pins to, the 18-Part / ~427-page structure it grew into, and — the part worth a reader's attention — the **corrections** the deep pages filed against themselves as they re-checked early beliefs against direct decompile evidence.
 
 A correction here is a first-class artifact. When a page's analysis overturned a prior claim (its own scratch notes, an earlier pass, or a plausible-but-wrong inference), the old claim was **not** silently deleted. It was left visible with a tagged `> **CORRECTION (tag) —**` callout beside it, so a reader who absorbed the old claim is actively warned. The convention is defined on [evidence-conventions.md](../front/evidence-conventions.md); this page is the consolidated index of where it fired and on what. As that page puts it, an in-place correction is *evidence of trustworthiness* — a reverse-engineering reconstruction with zero corrections has either analyzed nothing hard or is hiding its mistakes.
 
@@ -27,7 +27,7 @@ There is one release under reconstruction. Every fact below was re-confirmed aga
 | --- | --- | --- |
 | Wheel | `libtpu-0.0.40-cp314-cp314-manylinux_2_31_x86_64` | `.dist-info/METADATA` |
 | Package / Version | `libtpu` / `0.0.40` | `METADATA`: `Name: libtpu`, `Version: 0.0.40` |
-| Runtime version | 0.103 | wiki version-pin convention; `libtpu_version` symbol present in `.dynsym` |
+| Runtime version | 0.103 | wiki version-pin convention only — **statically unverifiable** in the binary (no `0.103` string in `.rodata`; the ABI entry points `GetPjrtApi` + `GetLibtpuSdkApi` encode no version). Pin to the build-id, not this number. |
 | Build label | `libtpu_lts_20260413_b_RC00` | house version-pin string (LTS build of 2026-04-13) |
 | BuildID (md5) | `89edbbe81c5b328a958fe628a9f2207d` | `readelf -n` → `.note.gnu.build-id` |
 | Binary | `libtpu/libtpu.so` | `extracted/libtpu-0.0.40-cp314-…/libtpu/libtpu.so` |
@@ -38,7 +38,7 @@ There is one release under reconstruction. Every fact below was re-confirmed aga
 
 > **NOTE (PIN) —** the build-id is the canonical anchor. If `readelf -n` on your local `libtpu.so` reports a different value than `89edbbe81c5b328a958fe628a9f2207d`, you are not looking at the binary this wiki documents, and every address on every page should be treated as un-verifiable for your copy. Pin first; read second.
 
-> **GOTCHA (VER) —** the literal string `0.103` is **not** a direct substring in the binary's `.rodata`. The runtime version is exposed through the `libtpu_version` exported symbol (a function, not a static string), so a naive `strings | grep 0.103` returns nothing. The `0.103` ↔ `0.0.40` mapping is the wheel/runtime correspondence, not two competing facts. Do not "correct" one to the other.
+> **GOTCHA (VER) —** the literal string `0.103` is **not** a direct substring in the binary's `.rodata` (`strings | grep 0.103` returns nothing), and there is no exported `libtpu_version` symbol either — `.rodata` carries only the bare token `libtpu_version`, and the binary's dynamic ABI entry points (`GetPjrtApi` @ `0xe6a83a0`, `GetLibtpuSdkApi`) encode no version. So `0.103` is **not** statically verifiable from this binary: it is a wiki version-pin convention paired with the wheel's `0.0.40`, not a value the binary itself asserts. The canonical anchor is the build-id; do not present `0.103` as a binary fact.
 
 ---
 
@@ -75,7 +75,7 @@ The appendices in Part XVII deliberately *aggregate* facts the deep pages establ
 
 ## Notable Corrections
 
-These are the headline self-reversals — harvested from the real tagged `CORRECTION` callouts in the source tree, not invented. Across all 427 pages there are **193** distinct tagged corrections; the table below is the curated set a reader should know about, each linking to its owning page where the full reasoning and addresses live. The **Confidence** column rates the *corrected* (current) finding, not the discarded claim.
+These are the headline self-reversals — harvested from the real tagged `CORRECTION` callouts in the source tree, not invented. Across all 427 pages there are **231** distinct correction tags (in **249** `> **CORRECTION (…)` callouts; a handful of tags fire on more than one page); the table below is the curated set a reader should know about, each linking to its owning page where the full reasoning and addresses live. The **Confidence** column rates the *corrected* (current) finding, not the discarded claim.
 
 | Tag | What was overturned | Corrected finding | Owning page | Confidence |
 | --- | --- | --- | --- | --- |
@@ -111,7 +111,7 @@ The corrections above were not a single audit pass; they accumulated as the anal
 
 The correction convention (defined on [evidence-conventions.md](../front/evidence-conventions.md), detailed methodology on [methodology.md](../methodology.md) and [appendix/methodology-deep.md](methodology-deep.md)) is the through-line: a conclusion that changes is never silently edited. The old claim stays, the correction sits beside it with a tag, and pages like this one can audit the full set. That is what makes the reconstruction a *living, self-correcting* artifact rather than a frozen snapshot of first impressions.
 
-> **NOTE (LIVING) —** 193 tagged corrections across 427 pages is roughly one filed reversal per two pages. That density is the point. It is the measurable signal that the hard claims were genuinely re-examined against the binary, not asserted once and left.
+> **NOTE (LIVING) —** 249 tagged correction callouts (231 distinct tags) across 427 pages is roughly one filed reversal every other page. That density is the point. It is the measurable signal that the hard claims were genuinely re-examined against the binary, not asserted once and left.
 
 ---
 
