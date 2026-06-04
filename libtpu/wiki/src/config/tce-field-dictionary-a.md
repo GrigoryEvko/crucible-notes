@@ -6,7 +6,7 @@
 
 `TpuCompilationEnvironment` (TCE) is the TPU-private master compile-config protobuf: a single editions-proto message carrying **1121 live fields**, every one of which is also a registered `absl::Flag` (a perfect 1:1 mapping, the structural inverse of the GPU/CPU-shared `xla.DebugOptions`). This page is the **field-number → name → proto type** dictionary for the **lower half** of that proto: field numbers **1 through 560**. The matching upper half — field **561 through 1218** (max field number 1218, with 97 deletion gaps) — lives on [TCE Field Dictionary (B)](tce-field-dictionary-b.md). The split point is exact and stated below.
 
-The dictionary is reconstructed from the `TpuCompilationEnvironment` `FileDescriptorProto` carved out of the binary at `protodesc_cold` VA `0xbfa6060` (size 137,692 B) and cross-checked against the generated fast-parse table `TpuCompilationEnvironment::_table_` @ `0x21cfa9e0`, whose 1121-entry `FieldEntry` array is sorted by ascending field number. Each line of this page gives the field number, the verbatim field name (every name on this page was confirmed byte-present in the binary's `.rodata` string pool), the proto base type, and — for the 397 wrapped fields — the wrapper message/enum type. The C++ struct offset and the per-field literal default value are deliberately *not* repeated here; they are the subject of [TCE Field-Offsets & Flag Defaults](tce-field-offsets-defaults.md), and the structural overview (parse-table header, type histogram, HOT-tag taxonomy, AutoProto switch) is on [TpuCompilationEnvironment](tpu-compilation-environment.md).
+The dictionary is reconstructed from the `TpuCompilationEnvironment` `FileDescriptorProto` carved out of the binary at `protodesc_cold` VA `0xbfa6060` (size 137,692 B) and cross-checked against the generated fast-parse table `TpuCompilationEnvironment::_table_` @ `0x21cfa9e0`, whose 1121-entry `FieldEntry` array is sorted by ascending field number. Each line of this page gives the field number, the verbatim field name (every name on this page was confirmed byte-present in the binary's `.rodata` string pool), the proto base type, and — for the 423 wrapped fields — the wrapper message/enum type. The C++ struct offset and the per-field literal default value are deliberately *not* repeated here; they are the subject of [TCE Field-Offsets & Flag Defaults](tce-field-offsets-defaults.md), and the structural overview (parse-table header, type histogram, HOT-tag taxonomy, AutoProto switch) is on [TpuCompilationEnvironment](tpu-compilation-environment.md).
 
 For a reimplementer, the contract this page satisfies is narrow and precise:
 
@@ -34,7 +34,7 @@ Each row is one live field, in ascending field-number order. Columns are uniform
 - **Field name** — the verbatim proto field name, identical to the registered `absl::Flag` name. Most carry the `xla_tpu_` / `xla_jf_` / `xla_` prefixes; a handful are bare (`config_criterion`, `loop_invert`, `rematerialization_algorithm`).
 - **Type** — the proto base type. For `enum` and `message`, the **Wrapper / message type** column names the concrete type.
 
-> **NOTE —** the 397 non-scalar fields split into 74 `enum`-typed (67 of them `TristateProto.Value` = AUTO/DISABLED/ENABLED, plus 7 direct helper enums) and 349 `message`-typed (330 are the 30-arm `AutoProto` switch wrapper; the remaining 19 are typed helper messages such as `RangeSpecProto`, `RepeatedStrings`, and the `msa.*` option messages). The wrapper enum value-by-value tables and the AutoProto arm list live on [TpuCompilationEnvironment](tpu-compilation-environment.md); this page only names the wrapper per field.
+> **NOTE —** the 423 non-scalar fields split into 74 `enum`-typed (67 of them `TristateProto.Value` = AUTO/DISABLED/ENABLED, plus 7 direct helper enums) and 349 `message`-typed (330 are the 30-arm `AutoProto` switch wrapper; the remaining 19 are typed helper messages such as `RangeSpecProto`, `RepeatedStrings`, and the `msa.*` option messages). The wrapper enum value-by-value tables and the AutoProto arm list live on [TpuCompilationEnvironment](tpu-compilation-environment.md); this page only names the wrapper per field.
 
 > **GOTCHA —** a field's *position* on this page is its field number, not its struct offset. The two are unrelated: the parse table sorts `FieldEntry` by field number, but the C++ `_impl_` layout interleaves them by type/alignment (field #2 sits at struct offset `+0xBC`, field #1 at `+0xB8`, field #3 at `+0xA8`). Do not infer offset from field number; use [TCE Field-Offsets & Flag Defaults](tce-field-offsets-defaults.md).
 
@@ -658,7 +658,7 @@ The numbering is not contiguous: TCE carries no `reserved_range` or `reserved_na
 
 ## Type Distribution Within #1–#560
 
-For orientation, the proto base-type mix of the 540 live fields on this page (the lower half is bool-heavy, consistent with the early jellyfish toggle era):
+For orientation, the proto base-type mix of the 508 live fields on this page (the lower half is bool-heavy, consistent with the early jellyfish toggle era):
 
 | Base type | Notes |
 |---|---|
@@ -668,7 +668,7 @@ For orientation, the proto base-type mix of the 540 live fields on this page (th
 | uint32 / uint64 | a handful: delay masks (#406), `keep_hlo_proto_literals_up_to` (#559), DCN-pipelining (#523/#525), sflag-wait shalt (#514) |
 | float / double | the MSA overlap ratios and the megacore-fusion / cost-model scaling factors |
 | string | profile paths, config selectors, filename prefixes, `config_criterion` / `rematerialization_algorithm` |
-| enum | 14 in this range; `TristateProto.Value` dominates, plus `MemorySchedulerProto.Value` (#31), `VerifyOrAssignTilingFlagsProto.Value` (#132), `TpuVmacTransformStrategyProto.Value` (#487) |
+| enum | 13 in this range; `TristateProto.Value` dominates, plus `MemorySchedulerProto.Value` (#31), `VerifyOrAssignTilingFlagsProto.Value` (#132), `TpuVmacTransformStrategyProto.Value` (#487) |
 | message | `RangeSpecProto` (bounds/ISA-emitter knobs), `RepeatedStrings` (LLVM flags, FDO skip lists), the first `AutoProto` (#295), and typed helpers (`SparseDenseMatmulFdoConfig` #462) |
 
 The whole-proto histogram (418 bool / 148 int64 / 349 message / 74 enum / 37 string / 34 float / 32 int32 / 14 double / 11 uint32 / 4 uint64) and the parse-table-derived `type_card` proof are on [TpuCompilationEnvironment](tpu-compilation-environment.md).
