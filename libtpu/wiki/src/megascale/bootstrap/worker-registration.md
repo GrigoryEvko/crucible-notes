@@ -34,7 +34,7 @@ package `xla.megascale.runtime`, syntax `proto3`. The serialized
 `NetworkAddressMapping` (defined in `addresses.proto`, descriptor at
 `0xc1795bd`) carries `(int32 slice_id [1], int32 host_id [2],
 repeated HostNetworkAddress addresses [3])`. `HostNetworkAddress`
-(descriptor at `0xbe9a9e5`) carries `(string address [1], string
+(descriptor at `0xc17954a`) carries `(string address [1], string
 interface_name [2], string host_name_for_debugging [3], int32
 numa_node [4])` — there is no `port` or `transport_type` field on the
 wire; the address is the full endpoint string.
