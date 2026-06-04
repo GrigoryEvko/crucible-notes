@@ -31,28 +31,28 @@ For reproduction — to rebuild this census from the binary — the contract is:
 
 The 60,457 `type_info` structs bucketed by leading namespace, ranked by typeinfo count. "Typeinfos" is the count of `_ZTI` structs whose mangled symbol begins `_ZTIN<len><namespace>`. "~Classes" is the same number read as a class population — a `_ZTI` struct *is* one polymorphic class identity, so the two are equal except where template instantiations of one logical class inflate the count (called out per row). "Dominant hierarchy" is the widest/deepest tree rooted in that namespace, with its root `_ZTI` struct VA. Counts are byte-exact greps over the RTTI sidecar; hierarchy widths/depths carry the parent census's confidence.
 
-| Namespace | Typeinfos | ~Classes | Dominant hierarchy (width / depth, root `_ZTI`) | Confidence |
-|---|---:|---:|---|---|
-| `mlir` | 13,091 | ~13,000 | `mlir::Pattern` (6,142 / 9, `0x21cea698`); `OperationName::InterfaceConcept` (6,052 / 2, `0x217b1000`) | CERTAIN |
-| `asic_sw` | 11,379 | ~11,400 | `…::profiler::EventControlInterface` (821 / 1, `0x2175c798`) | CERTAIN |
-| `tensorflow` | 3,108 | ~3,100 | `tensorflow::OpKernel` (1,122 / 4, `0x218114c8`) | CERTAIN |
-| `xla` | 3,036 | ~3,000 | `xla::HloInstruction` (68 / 4, `0x21d2ce88`); `HloPassInterface` (361 / 4) | CERTAIN |
-| `llvm` | 2,940 | ~2,900 | `llvm::Pass` (628 / 5, `0x21ced3b8`) | CERTAIN |
-| `(anonymous)` | 2,352 | ~2,350 | per-TU local classes (`_GLOBAL__N_…`) — no single tree | CERTAIN |
-| `dnnl` | 1,888 | ~1,900 | `dnnl::impl::c_compatible` (2,069 / 6, `0x21b69258`) | HIGH |
-| `std` | 1,787 | ~1,000 | `std::__u` container / iostream plumbing — many template insts | HIGH |
-| `grpc_core` | 1,502 | ~1,500 | `grpc_core::PolymorphicRefCount` (442 / 6, `0x21ca0128`) | CERTAIN |
-| `platforms_deepsea` | 576 | ~580 | `…::jellyfish::isa::Encoder` (19 / 3, `0x21cb6a20`) | CERTAIN |
-| `operations_research` | 483 | ~610 | `…::math_opt::SolverInterface` tree (root `0x217fa708`) | HIGH |
-| `grpc` | 430 | ~430 | `grpc::Service` (44 / 10, `0x216162d8`) — deepest chain in binary | CERTAIN |
-| `tpu` | 315 | ~410 | `tpu::TpuCodec` (5 / 1, `0x21d35858`) | HIGH |
-| `proto2` | 152 | ~8,000 | `proto2::MessageLite` (8,013 / 3, `0x22034138`) — see GOTCHA | CERTAIN |
-| `riegeli` | 136 | ~140 | `riegeli::Object` (114 / 6, `0x220291a8`) | CERTAIN |
-| `tsl` | 128 | ~130 | `tsl::core::RefCounted` (140 / 4, `0x215f9b18`) | CERTAIN |
-| `stream_executor` | 58 | ~58 | `stream_executor::…` device/stream interfaces (`0x215fb6f0`) | HIGH |
-| `absl` | 33 | ~33 | `absl::Duration` & status internals (`0x215fd610`) — see note below | CERTAIN |
-| `Xbyak` | 4 | ~551 | `Xbyak::CodeArray` (551 / 5, `0x21b6d738`) — see GOTCHA | HIGH |
-| `Eigen` | 4 | ~4 | `Eigen::ThreadPoolInterface` (`0x2163bd98`) — see note below | CERTAIN |
+| Namespace | Typeinfos | ~Classes | Dominant hierarchy (width / depth, root `_ZTI`) |
+|---|---:|---:|---|
+| `mlir` | 13,091 | ~13,000 | `mlir::Pattern` (6,142 / 9, `0x21cea698`); `OperationName::InterfaceConcept` (6,052 / 2, `0x217b1000`) |
+| `asic_sw` | 11,379 | ~11,400 | `…::profiler::EventControlInterface` (821 / 1, `0x2175c798`) |
+| `tensorflow` | 3,108 | ~3,100 | `tensorflow::OpKernel` (1,122 / 4, `0x218114c8`) |
+| `xla` | 3,036 | ~3,000 | `xla::HloInstruction` (68 / 4, `0x21d2ce88`); `HloPassInterface` (361 / 4) |
+| `llvm` | 2,940 | ~2,900 | `llvm::Pass` (628 / 5, `0x21ced3b8`) |
+| `(anonymous)` | 2,352 | ~2,350 | per-TU local classes (`_GLOBAL__N_…`) — no single tree |
+| `dnnl` | 1,888 | ~1,900 | `dnnl::impl::c_compatible` (2,069 / 6, `0x21b69258`) |
+| `std` | 1,787 | ~1,000 | `std::__u` container / iostream plumbing — many template insts |
+| `grpc_core` | 1,502 | ~1,500 | `grpc_core::PolymorphicRefCount` (442 / 6, `0x21ca0128`) |
+| `platforms_deepsea` | 576 | ~580 | `…::jellyfish::isa::Encoder` (19 / 3, `0x21cb6a20`) |
+| `operations_research` | 483 | ~610 | `…::math_opt::SolverInterface` tree (root `0x217fa708`) |
+| `grpc` | 430 | ~430 | `grpc::Service` (44 / 10, `0x216162d8`) — deepest chain in binary |
+| `tpu` | 315 | ~410 | `tpu::TpuCodec` (5 / 1, `0x21d35858`) |
+| `proto2` | 152 | ~8,000 | `proto2::MessageLite` (8,013 / 3, `0x22034138`) — see GOTCHA |
+| `riegeli` | 136 | ~140 | `riegeli::Object` (114 / 6, `0x220291a8`) |
+| `tsl` | 128 | ~130 | `tsl::core::RefCounted` (140 / 4, `0x215f9b18`) |
+| `stream_executor` | 58 | ~58 | `stream_executor::…` device/stream interfaces (`0x215fb6f0`) |
+| `absl` | 33 | ~33 | `absl::Duration` & status internals (`0x215fd610`) — see note below |
+| `Xbyak` | 4 | ~551 | `Xbyak::CodeArray` (551 / 5, `0x21b6d738`) — see GOTCHA |
+| `Eigen` | 4 | ~4 | `Eigen::ThreadPoolInterface` (`0x2163bd98`) — see note below |
 
 > **NOTE —** the table rows sum to ~43,500; with the long tail of single-digit namespaces (boringssl, re2, nsync, farmhash, snappy, zlibwrapper, …) the namespaced total is 46,078, and the remaining 14,379 `_ZTI` are global-scope classes and compound types (`_ZTIPF…` pointer-to-function, `_ZTIN…` template substitutions whose substitution resolves below the leading token). Together: 60,457.
 
@@ -129,13 +129,13 @@ Below the framework cores sit the statically-linked third-party libraries. They 
 
 A reader hunting for `jellyfish`, `pufferfish`, `viperfish`, `ghostlite`, or `sparse_core` as top-level namespaces will not find them in the census table — and that absence is itself a finding. These are the TPU generation/subsystem codenames, and they appear **only as nested sub-namespaces** inside the framework and driver empires. Counting every `_ZTI` whose mangled name contains the token (regardless of nesting depth):
 
-| Codename | `_ZTI` occurrences | Nesting parents (where it lives) | Confidence |
-|---|---:|---|---|
-| `jellyfish` | 2,996 | `xla::jellyfish` (667), `platforms_deepsea::jellyfish` (576), `asic_sw::…::jfc` | CERTAIN |
-| `sparse_core` | 3,155 | `mlir::sparse_core` (1,689), `xla::tpu::sparse_core` (553), `platforms_performance_deepsea::sparse_core` | CERTAIN |
-| `pufferfish` | 29 | `xla::pufferfish`, `asic_sw::…::pfc::Pufferfish*` | HIGH |
-| `viperfish` | 19 | `xla::viperfish`, `xla::tpu::sparse_core::isa_emitter::viperfish` | HIGH |
-| `ghostlite` | 17 | `xla::ghostlite`, `xla::tpu::sparse_core::isa_emitter::ghostlite` | HIGH |
+| Codename | `_ZTI` occurrences | Nesting parents (where it lives) |
+|---|---:|---|
+| `jellyfish` | 2,996 | `xla::jellyfish` (667), `platforms_deepsea::jellyfish` (576), `asic_sw::…::jfc` |
+| `sparse_core` | 3,155 | `mlir::sparse_core` (1,689), `xla::tpu::sparse_core` (553), `platforms_performance_deepsea::sparse_core` |
+| `pufferfish` | 29 | `xla::pufferfish`, `asic_sw::…::pfc::Pufferfish*` |
+| `viperfish` | 19 | `xla::viperfish`, `xla::tpu::sparse_core::isa_emitter::viperfish` |
+| `ghostlite` | 17 | `xla::ghostlite`, `xla::tpu::sparse_core::isa_emitter::ghostlite` |
 
 > **NOTE —** the codename counts above are **substring (anywhere-in-symbol) matches**, not leading-namespace buckets, and they therefore **overlap** the `xla`/`mlir`/`platforms_deepsea` rows of the census table rather than adding to them. The `jellyfish` 667 inside `xla::` is already counted in the `xla` 3,036; the `sparse_core` 1,689 inside `mlir::` is already inside the `mlir` 13,091. Do **not** sum the codename rows into the namespace total — they are a cross-cut view, presented so a reimplementer can locate codename-specific code, not a partition. The asymmetry (`sparse_core` 3,155 vs `pufferfish` 29) reflects that SparseCore has a full MLIR dialect + lowering pipeline + ISA emitter, whereas the older chip codenames survive only as a handful of driver/emitter leaf classes.
 

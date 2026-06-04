@@ -109,15 +109,15 @@ Each matched arm does exactly two things on success: call the type's `ParseFlag`
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `ParseAutoOrFromString<30>` | `0x1d7504c0` | 5-arm prefix selector + tail-call to `<25>` | CONFIRMED |
-| `ParseAutoOrFromString<25>` | `0x1d7eac40` | 24-arm selector + `"Not an AutoOr."` default | CONFIRMED |
-| `ReadAutoOr<30>` | `0x1d74ca00` | from-current-value mirror of `<30>` | HIGH |
-| `ReadAutoOr<25>` | `0x1d785f00` | from-current-value mirror of `<25>` | HIGH |
-| `TpuCompEnvReflection::ReadFlag` | `0x1d74af60` | dispatch on `CommandLineFlag::*0x38` | HIGH |
-| `xla::jellyfish::SetFieldFromFlagString` | `0x1d73fcc0` | string→TCE bridge (free function) | HIGH |
-| `NormalizeFieldType<AutoOr<T>>` | per-type | folds `AutoOr<T>` into the 20-alt variant | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `ParseAutoOrFromString<30>` | `0x1d7504c0` | 5-arm prefix selector + tail-call to `<25>` |
+| `ParseAutoOrFromString<25>` | `0x1d7eac40` | 24-arm selector + `"Not an AutoOr."` default |
+| `ReadAutoOr<30>` | `0x1d74ca00` | from-current-value mirror of `<30>` |
+| `ReadAutoOr<25>` | `0x1d785f00` | from-current-value mirror of `<25>` |
+| `TpuCompEnvReflection::ReadFlag` | `0x1d74af60` | dispatch on `CommandLineFlag::*0x38` |
+| `xla::jellyfish::SetFieldFromFlagString` | `0x1d73fcc0` | string→TCE bridge (free function) |
+| `NormalizeFieldType<AutoOr<T>>` | per-type | folds `AutoOr<T>` into the 20-alt variant |
 
 ---
 
@@ -176,16 +176,16 @@ The eight scalar arms delegate to `absl::flags_internal::AbslParseFlag(T*)`, whi
 
 ### Per-type parser and packing
 
-| Type | `ParseFlag` | absl callee (strip-WS → core) | OK-pack | Confidence |
-|---|---|---|---|---|
-| `bool` | `0x1d6ba160` | `AbslParseFlag(bool*)` `0x21112840` → `SimpleAtob` `0x211716c0` | `val \| 0x100` | CONFIRMED |
-| `int32` | `0x1d744080` | `AbslParseFlag(int*)` `0x21112a40` → `safe_strto32_base` `0x21173ce0` | `val \| 0x100000000` | CONFIRMED |
-| `uint32` | `0x1d743e60` | `AbslParseFlag(uint*)` `0x21112b60` → `safe_strtou32_base` `0x211742a0` | `val \| 0x100000000` | HIGH |
-| `int64` | `0x1d743480` | `AbslParseFlag(long*)` `0x21112c80` → `safe_strto64_base` `0x21173e20` | `{value@+0, has=1@+8}` | CONFIRMED |
-| `uint64` | `0x1d7ed180` | `AbslParseFlag(ulong*)` `0x21112da0` → `safe_strtou64_base` `0x21174360` | `{value@+0, has=1@+8}` | HIGH |
-| `double` | `0x1d744be0` | `AbslParseFlag(double*)` `0x21112ee0` → `SimpleAtod` `0x21171580` | `{dbl@+0, has=1@+8}` | HIGH |
-| `float` | (via `NormalizeFieldType`) | `AbslParseFlag(float*)` `0x21112ec0` → `SimpleAtof` `0x21171440` | `{flt@+0, has=1@+8}` | HIGH |
-| `string` | `0x1d7437e0` | `AbslParseFlag(string*)` `0x21112f00` (verbatim copy) | `{body, idx@+0x18=0, has@+0x20=1}` | HIGH |
+| Type | `ParseFlag` | absl callee (strip-WS → core) | OK-pack |
+|---|---|---|---|
+| `bool` | `0x1d6ba160` | `AbslParseFlag(bool*)` `0x21112840` → `SimpleAtob` `0x211716c0` | `val \| 0x100` |
+| `int32` | `0x1d744080` | `AbslParseFlag(int*)` `0x21112a40` → `safe_strto32_base` `0x21173ce0` | `val \| 0x100000000` |
+| `uint32` | `0x1d743e60` | `AbslParseFlag(uint*)` `0x21112b60` → `safe_strtou32_base` `0x211742a0` | `val \| 0x100000000` |
+| `int64` | `0x1d743480` | `AbslParseFlag(long*)` `0x21112c80` → `safe_strto64_base` `0x21173e20` | `{value@+0, has=1@+8}` |
+| `uint64` | `0x1d7ed180` | `AbslParseFlag(ulong*)` `0x21112da0` → `safe_strtou64_base` `0x21174360` | `{value@+0, has=1@+8}` |
+| `double` | `0x1d744be0` | `AbslParseFlag(double*)` `0x21112ee0` → `SimpleAtod` `0x21171580` | `{dbl@+0, has=1@+8}` |
+| `float` | (via `NormalizeFieldType`) | `AbslParseFlag(float*)` `0x21112ec0` → `SimpleAtof` `0x21171440` | `{flt@+0, has=1@+8}` |
+| `string` | `0x1d7437e0` | `AbslParseFlag(string*)` `0x21112f00` (verbatim copy) | `{body, idx@+0x18=0, has@+0x20=1}` |
 
 ### The bool token set
 

@@ -100,11 +100,11 @@ NO_REWRITE:
 
 The emission deposits up to three `UnitAttr` markers — all confirmed as `.rodata` string literals consumed by the stage-2 pass:
 
-| Attribute | Set on | Meaning | Confidence |
-|---|---|---|---|
-| `sc.unlowering` | each emitted `builtin.unrealized_conversion_cast` | "this cast bridges a not-yet-lowered operand into the Mlo type system; the stage-2 pass owns it" | CERTAIN |
-| `sc.unlowered` | the source `tpu.enqueue_dma` op itself | "this op was intentionally left un-lowered by LowerToMlo; expand it during tile expansion" | CERTAIN |
-| `sc.inside_trace_region` | the source op, only if the pass is mid-trace-region | propagates trace nesting so the expanded DMA stays inside the trace scope | CERTAIN |
+| Attribute | Set on | Meaning |
+|---|---|---|
+| `sc.unlowering` | each emitted `builtin.unrealized_conversion_cast` | "this cast bridges a not-yet-lowered operand into the Mlo type system; the stage-2 pass owns it" |
+| `sc.unlowered` | the source `tpu.enqueue_dma` op itself | "this op was intentionally left un-lowered by LowerToMlo; expand it during tile expansion" |
+| `sc.inside_trace_region` | the source op, only if the pass is mid-trace-region | propagates trace nesting so the expanded DMA stays inside the trace scope |
 
 > **NOTE — the bridge resolves in `ExpandTiledMemRefsPass`, not `LowerToSparseCoreLlvm`.** The decompiled `0x13239e00` body sets the tags at fixed sites: `sc.unlowering` on the per-operand cast (`UnitAttr`, line 182), `sc.unlowered` on the source op (line 219), and `sc.inside_trace_region` when nested (line 232). The downstream consumer is `substituteUnloweringConversionCastOp` (`0x134e73e0`), registered by `ExpandTiledMemRefsPass` — so the bridge resolves one stage *earlier* than the `LowerToSparseCoreLlvmPass` (`0x13566d00`) that the tag names might suggest.
 
@@ -124,11 +124,11 @@ Before any DMA op is reached, LowerToMlo must decide which functions need their 
 
 `runOnOperation` (`0x1322b200`) installs three legality callbacks via `addDynamicallyLegalOp` (the call census shows four `addDynamicallyLegalOp` invocations + two static `setOpAction`; the four resolve to the three distinct predicate lambdas below, one of which is registered for two op classes). All three return a 16-bit value where bit 0 = legal-now and bit 8 (`0x100`) = "answer present" (the form `ConversionTarget::isLegal` reads).
 
-| Predicate | Lambda | Op(s) it gates | Confidence |
-|---|---|---|---|
-| `$_0` FuncOp signature | `0x13231300` | `func::FuncOp` | HIGH |
-| `$_1` cast-in-transit | `0x13231560` | `builtin.UnrealizedConversionCastOp` | HIGH |
-| `$_2` result-type catch-all | `0x132315e0` | the `OpResultTypeConversionPattern` target | HIGH |
+| Predicate | Lambda | Op(s) it gates |
+|---|---|---|
+| `$_0` FuncOp signature | `0x13231300` | `func::FuncOp` |
+| `$_1` cast-in-transit | `0x13231560` | `builtin.UnrealizedConversionCastOp` |
+| `$_2` result-type catch-all | `0x132315e0` | the `OpResultTypeConversionPattern` target |
 
 #### `$_0` — `func::FuncOp` legality (`0x13231300`)
 

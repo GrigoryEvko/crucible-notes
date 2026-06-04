@@ -61,24 +61,24 @@ int64_t GetCyclesForThroughput(JfCycleTable *this, uint32_t cls) {
 
 The priced mask `0x19FFC0821` selects 16 of the 33 classes: `{0x00, 0x05, 0x0b, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1f, 0x20}`. The offset LUT (`qword_B438B70` @ `0xb438b70`) is `0` for every unpriced class — harmless, since the read is short-circuited. The priced rows, with the byte offset, the resolved value in the rebuilt `PerformanceJf` image, and the constructor idiom that wrote the cell:
 
-| Class | `offsetLUT[cls]` | Resource | JF cyc | DF cyc | Source idiom | Confidence |
-|------:|-----------------:|----------|-------:|-------:|--------------|------------|
-| `0x00` | `0x910` | `R[1]` Matmul | 8 | 8 | block `@0xa2da220` `{8,8,8,1}[0]` | CONFIRMED |
-| `0x05` | `0x92c` | `R[0]` Matpush | 8 | 8 | bcast `8` (`@0x84a2d0c`) | CONFIRMED |
-| `0x0b` | `0x92c` | `R[0]` Matpush | 8 | 8 | bcast `8` (shares offset with `0x05`) | CONFIRMED |
-| `0x12` | `0x33c` | `R[4]` VectorAlu1 | 1 | 1 | bcast `1` (`@0x84a2b08`) | CONFIRMED |
-| `0x13` | `0x340` | `R[4]` VectorAlu1 | 1 | 1 | bcast `1` | CONFIRMED |
-| `0x14` | `0x344` | `R[3]` VectorAlu0 | 1 | 1 | bcast `1` | CONFIRMED |
-| `0x15` | `0x39c` | `R[5]` VectorAluAny | 1 | 1 | bcast `1` | CONFIRMED |
-| `0x16` | `0x398` | `R[5]` VectorAluAny | 1 | 1 | bcast `1` | CONFIRMED |
-| `0x17` | `0x954` | `R[2]` Xlu | 8 | 8 | bcast `8` | CONFIRMED |
-| `0x18` | `0x3f8` | `R[6]` VectorEup | 1 | 1 | imm `1` | CONFIRMED |
-| `0x19` | `0x368` | `R[5]` VectorAluAny | 1 | 1 | bcast `1` | CONFIRMED |
-| `0x1a` | `0x3f4` | `R[6]` VectorEup | 1 | 1 | bcast `1` | CONFIRMED |
-| `0x1b` | `0x960` | `R[2]` Xlu | 8 | 8 | bcast `8` | CONFIRMED |
-| `0x1c` | `0x94c` | `R[2]` Xlu | 8 | 8 | block `@0xa2cf810` `{8,1,1,8}[3]` | CONFIRMED |
-| `0x1f` | `0x958` | `R[2]` Xlu | 8 | 8 | bcast `8` | CONFIRMED |
-| `0x20` | `0x39c` | `R[5]` VectorAluAny | 1 | 1 | bcast `1` (shares offset with `0x15`) | CONFIRMED |
+| Class | `offsetLUT[cls]` | Resource | JF cyc | DF cyc | Source idiom |
+|------:|-----------------:|----------|-------:|-------:|--------------|
+| `0x00` | `0x910` | `R[1]` Matmul | 8 | 8 | block `@0xa2da220` `{8,8,8,1}[0]` |
+| `0x05` | `0x92c` | `R[0]` Matpush | 8 | 8 | bcast `8` (`@0x84a2d0c`) |
+| `0x0b` | `0x92c` | `R[0]` Matpush | 8 | 8 | bcast `8` (shares offset with `0x05`) |
+| `0x12` | `0x33c` | `R[4]` VectorAlu1 | 1 | 1 | bcast `1` (`@0x84a2b08`) |
+| `0x13` | `0x340` | `R[4]` VectorAlu1 | 1 | 1 | bcast `1` |
+| `0x14` | `0x344` | `R[3]` VectorAlu0 | 1 | 1 | bcast `1` |
+| `0x15` | `0x39c` | `R[5]` VectorAluAny | 1 | 1 | bcast `1` |
+| `0x16` | `0x398` | `R[5]` VectorAluAny | 1 | 1 | bcast `1` |
+| `0x17` | `0x954` | `R[2]` Xlu | 8 | 8 | bcast `8` |
+| `0x18` | `0x3f8` | `R[6]` VectorEup | 1 | 1 | imm `1` |
+| `0x19` | `0x368` | `R[5]` VectorAluAny | 1 | 1 | bcast `1` |
+| `0x1a` | `0x3f4` | `R[6]` VectorEup | 1 | 1 | bcast `1` |
+| `0x1b` | `0x960` | `R[2]` Xlu | 8 | 8 | bcast `8` |
+| `0x1c` | `0x94c` | `R[2]` Xlu | 8 | 8 | block `@0xa2cf810` `{8,1,1,8}[3]` |
+| `0x1f` | `0x958` | `R[2]` Xlu | 8 | 8 | bcast `8` |
+| `0x20` | `0x39c` | `R[5]` VectorAluAny | 1 | 1 | bcast `1` (shares offset with `0x15`) |
 
 The seven 8-cycle cells are the MXU matprep/matmul/matrix-result throughput ports (`0x00, 0x05, 0x0b, 0x17, 0x1b, 0x1c, 0x1f`); the nine 1-cycle cells are the vector/EUP/cross-lane result stages. Two pairs share an offset (`0x05`/`0x0b` → `0x92c`; `0x15`/`0x20` → `0x39c`). None of the priced offsets is `0x28` or `0x2c`, so the Dragonfish two-cell override never touches a throughput cell.
 
@@ -139,21 +139,21 @@ switch (cls) {
 
 The `(instruction_id, resource)` pairs are the primary constants. Resolving each against the Pufferfish `Performance` latency array gives the per-class cost:
 
-| Class | `(instr, res)` | Perf value | Role | Confidence |
-|------:|----------------|-----------:|------|------------|
-| `0x00` | `(125, 9)` | 101 | bf16 matprep | CONFIRMED |
-| `0x01` | `(137, 9)` | 101 | bf16 matprep' | CONFIRMED |
-| `0x05`/`0x0b` | `(220, 11)` | 7 | bf16 latch | CONFIRMED |
-| `0x06`/`0x0c` | `(223, 11)` | 7 | int8 latch | CONFIRMED |
-| `0x09`/`0x0f` | `(224, 11)` | 7 | fp8 latch | CONFIRMED |
-| `0x0a`/`0x10` | — | fatal | `PushGainsS4` (`cycle_table.cc:575`) | CONFIRMED |
-| `0x17` | `(260, 11)` | 69 | matrix-result TC | CONFIRMED |
-| `0x18` | `(107, 3)` | 7 | r/w transpose | CONFIRMED |
-| `0x1a` | `(106, 3)` | 7 | lane compare | CONFIRMED |
-| `0x1b` | `(264, 11)` | 79 | matrix-result primary | CONFIRMED |
-| `0x1c` | `(244, 11)` | 126 | matrix-result secondary | CONFIRMED |
-| `0x1d` | `(252, 11)` | 126 | EUP primary | CONFIRMED |
-| `0x1f` | `(262, 11)` | 69 | transcendental class | CONFIRMED |
+| Class | `(instr, res)` | Perf value | Role |
+|------:|----------------|-----------:|------|
+| `0x00` | `(125, 9)` | 101 | bf16 matprep |
+| `0x01` | `(137, 9)` | 101 | bf16 matprep' |
+| `0x05`/`0x0b` | `(220, 11)` | 7 | bf16 latch |
+| `0x06`/`0x0c` | `(223, 11)` | 7 | int8 latch |
+| `0x09`/`0x0f` | `(224, 11)` | 7 | fp8 latch |
+| `0x0a`/`0x10` | — | fatal | `PushGainsS4` (`cycle_table.cc:575`) |
+| `0x17` | `(260, 11)` | 69 | matrix-result TC |
+| `0x18` | `(107, 3)` | 7 | r/w transpose |
+| `0x1a` | `(106, 3)` | 7 | lane compare |
+| `0x1b` | `(264, 11)` | 79 | matrix-result primary |
+| `0x1c` | `(244, 11)` | 126 | matrix-result secondary |
+| `0x1d` | `(252, 11)` | 126 | EUP primary |
+| `0x1f` | `(262, 11)` | 69 | transcendental class |
 
 The resource arguments expose the lane: `9` = matmul-issue (PF only — later gens use `11`), `11` = XLU MRB, `3` = XLU input slot. The `PushGainsS4` cases were declared in the enum but their cost is intentionally a fatal log, keeping those modes out of the schedulable set.
 
@@ -165,21 +165,21 @@ The resource arguments expose the lane: `9` = matmul-issue (PF only — later ge
 
 Decoded from each gen's `GetCyclesForThroughput` (or `…Helper`) switch, cross-referenced against the per-gen `Performance` latency arrays. These are per-bundle-issue throughput cycles, not per-instruction latency.
 
-| Class | Role | JF/DF | Puff | Vip | Glite | `6acc60406` | Confidence |
-|------:|------|------:|-----:|----:|------:|---------:|------------|
-| `0x00` | Vector matprep, bf16 | 8 | 79 | 131 | 192 | 212 | CONFIRMED |
-| `0x05` | Latch, bf16 | 8 | 79 | 131 | 192 | 212 | CONFIRMED |
-| `0x0b` | Transposed bf16 latch | 8 | 79 | 131 | 192 | 212 | CONFIRMED |
-| `0x09` | Latch, fp8 | (dflt 1) | — | 114 | 192 | 204 | CONFIRMED |
-| `0x12`–`0x16` | XLU rot / shuffle / bcast / reduce | 1 | 1 | 1 | 1 | 2 | CONFIRMED |
-| `0x17` | Matrix-result read (TC) | 8 | 53 | 114 | 192 | 212 | CONFIRMED |
-| `0x18`/`0x19`/`0x1a` | RW-xpose / cross-lane / lane-cmp | 1 | 1 | 1 | 1 | 1 | CONFIRMED |
-| `0x1b` | Matrix-result, primary | 8 | 79 | 115 | 122 | 127 | CONFIRMED |
-| `0x1c` | Matrix-result, secondary | 8 | 30 | 30 | 49 | 49 | CONFIRMED |
-| `0x1d` | EUP unary primary | — | 1 | 1 | 13 | 10 | CONFIRMED |
-| `0x1e` | EUP unary secondary | — | — | — | 13 | 11 | CONFIRMED |
-| sin/cos (scalar) | transcendental estimate | 198 | 198 | 154 | 142 | 142 | CONFIRMED |
-| tan (scalar) | transcendental estimate | 219 | 219 | 170 | 151 | 151 | CONFIRMED |
+| Class | Role | JF/DF | Puff | Vip | Glite | `6acc60406` |
+|------:|------|------:|-----:|----:|------:|---------:|
+| `0x00` | Vector matprep, bf16 | 8 | 79 | 131 | 192 | 212 |
+| `0x05` | Latch, bf16 | 8 | 79 | 131 | 192 | 212 |
+| `0x0b` | Transposed bf16 latch | 8 | 79 | 131 | 192 | 212 |
+| `0x09` | Latch, fp8 | (dflt 1) | — | 114 | 192 | 204 |
+| `0x12`–`0x16` | XLU rot / shuffle / bcast / reduce | 1 | 1 | 1 | 1 | 2 |
+| `0x17` | Matrix-result read (TC) | 8 | 53 | 114 | 192 | 212 |
+| `0x18`/`0x19`/`0x1a` | RW-xpose / cross-lane / lane-cmp | 1 | 1 | 1 | 1 | 1 |
+| `0x1b` | Matrix-result, primary | 8 | 79 | 115 | 122 | 127 |
+| `0x1c` | Matrix-result, secondary | 8 | 30 | 30 | 49 | 49 |
+| `0x1d` | EUP unary primary | — | 1 | 1 | 13 | 10 |
+| `0x1e` | EUP unary secondary | — | — | — | 13 | 11 |
+| sin/cos (scalar) | transcendental estimate | 198 | 198 | 154 | 142 | 142 |
+| tan (scalar) | transcendental estimate | 219 | 219 | 170 | 151 | 151 |
 
 `—` means the gen does not implement that class (the switch falls through to default `1`). The matmul/matprep clusters match the per-format MXU cycles: **bf16** Vf=131 / Gl=192 / Gf=212; **fp8** Vf=114–115 / Gl=192 / Gf=204; **fp32** shares bf16. These cross-check against the [matmul mode modifiers](matmul-mode-modifiers.md) and the per-gen MXU latency tables ([JF/DF](mxu-latency-jf-df.md), and the per-gen `Performance` pages [PF](performance-pf.md), [VF](performance-vf.md)).
 
@@ -203,12 +203,12 @@ Each value was read from the function body (`return <imm>;`). The trend (sin/cos
 
 The per-gen `Performance` object also holds the *latency* array the `LatencyTable*` reads. The value histograms below were extracted by parsing every `mov dword [base+off], imm` in each constructor. Constructor addresses and array sizes:
 
-| Gen | Performance class | Ctor | num_instr | latency bytes | resource_count | Confidence |
-|-----|-------------------|------|----------:|--------------:|---------------:|------------|
-| Pufferfish | `xla::pufferfish::PufferfishPerformance` | `0x1c8be080` | 336 | 1344 | 20 | CONFIRMED |
-| Viperfish | `xla::viperfish::ViperfishPerformance` | `0x1c8c4840` | 384 | 1536 | 28 | CONFIRMED |
-| Ghostlite | `xla::ghostlite::GhostlitePerformance` | `0x1c8cbc80` | 476 | 1904 | 31 | CONFIRMED |
-| `6acc60406` | (`gxc::gfc` Performance, unnamed `sub_1C8D3740`) | `0x1c8d3740` | 465 | 1860 | 31 | CONFIRMED |
+| Gen | Performance class | Ctor | num_instr | latency bytes | resource_count |
+|-----|-------------------|------|----------:|--------------:|---------------:|
+| Pufferfish | `xla::pufferfish::PufferfishPerformance` | `0x1c8be080` | 336 | 1344 | 20 |
+| Viperfish | `xla::viperfish::ViperfishPerformance` | `0x1c8c4840` | 384 | 1536 | 28 |
+| Ghostlite | `xla::ghostlite::GhostlitePerformance` | `0x1c8cbc80` | 476 | 1904 | 31 |
+| `6acc60406` | (`gxc::gfc` Performance, unnamed `sub_1C8D3740`) | `0x1c8d3740` | 465 | 1860 | 31 |
 
 Notable clusters in the latency histograms (full per-value tables omitted for brevity): Pufferfish concentrates at `1` (144 entries), `83`/`101` (48 each), `126` (16); Viperfish at `1`/`2` (147/113), `121` (25), `131` (27); Ghostlite at `1`/`2` (149/181), `182` (24), `192` (27); `6acc60406` at `1`/`2` (154/198), `204` (12), `212` (15). The 200+ cycle entries cluster at instruction ids 289..330 — the bf16/fp8 MXU latch/matmul/matres ops.
 

@@ -134,28 +134,28 @@ The grid's inner axis is the `PufferfishPerformance::Resource` enum — the intr
 
 `kResources` `@0xb43cd94` lists the 20 columns in fill order `13 11 08 00 05 02 03 12 0a 06 09 0e 04 01 0b 10 07 0c 0d 0f` (all of `{0..19}` exactly once). Naming each by its dominant occupant LLO class (cell count, value-set, occupant):
 
-| Col | Cells | Value(s) | Occupant LLO band (classifier-named) | Physical port (functional) | Confidence |
-|---|---|---|---|---|---|
-| r0 | 1 | 5 | `kDma` (instr 0x32) | DMA address/issue port A | HIGH |
-| r1 | 1 | 5 | `kDma` (instr 0x32) | DMA address/issue port B | HIGH |
-| r2 | 6 | 1 | EUP push 0x67..0x6c (rsqrt/pow2/log2/tanh/recip/erf) | EUP transcendental-prep stage A | CERTAIN |
-| r3 | 6 | 2 | same EUP push band | EUP transcendental-prep stage B | CERTAIN |
-| r4 | 2 | 7, 9 | `kVectorSetRngSeed` (0x6d), `kVectorPrng` (0x6f) | RNG seed / PRNG setup port | HIGH |
-| r5 | 1 | 1 | `kVectorEupResult` (0x76 = EUP pop) | EUP-result-pop drain port | CERTAIN |
-| r6 | 1 | 8 | **`kVectorMatres` (0x77)** | **matrix-result (Xlu) deposit port** | CERTAIN |
-| r7 | 1 | 8 | `kVectorXlaneResult`/permute/transpose-result (0x78) | cross-lane / transpose result port | HIGH |
-| r8 | 1 | 2 | `kVectorCmemResult` (0x79) | Cmem-result port | HIGH |
-| r9 | 96 | 8, 16 | MXU matmul band (0x7a..0xd9; latch-mode ords) | **MXU matmul throughput port** (×96) | CERTAIN |
-| r10 | 20 | 7 | MXU matprep band (0xdc..0xef) | MXU matprep throughput port | HIGH |
-| r11 | 54 | 1, 8, 16 | matprep; `SetSegmentPattern`(0xf3); transpose-binary(0xfc); permute(0x104); rotate(0x106) | matprep / transpose-binary result A | HIGH |
-| r12 | 34 | 1, 8, 16 | same transpose/permute/rotate band | transpose / permute result B | HIGH |
-| r13 | 4 | 47, 55 | `kVectorPermute`(0x104), `kVectorRotate`(0x106) | permute/rotate extended-result stage | MEDIUM |
-| r14 | 10 | 18 | `kVector{Add,Max,Min,..}ReduceF32` (0x108..0x111) | reduce-result stage A | HIGH |
-| r15 | 10 | 57 | same reduce band | reduce-result stage B | HIGH |
-| r16 | 11 | 1 | `kVectorSyncFlag{Set,Add}*` / `kVectorWait*` (0x113..) | sync-flag / wait port | HIGH |
-| r17 | 2 | 4 | `kVectorCmemStore` (0x135..0x136) | Cmem-store port | MEDIUM |
-| r18 | 3 | 4 | `kVectorSetIar{Lane,Sublane,Raw}` (0x14b..0x14d) | SetIar (index-addr-reg) port | MEDIUM |
-| r19 | 1 | 2 | `kVectorCmemLoad` (0x14f) | Cmem-load port | MEDIUM |
+| Col | Cells | Value(s) | Occupant LLO band (classifier-named) | Physical port (functional) |
+|---|---|---|---|---|
+| r0 | 1 | 5 | `kDma` (instr 0x32) | DMA address/issue port A |
+| r1 | 1 | 5 | `kDma` (instr 0x32) | DMA address/issue port B |
+| r2 | 6 | 1 | EUP push 0x67..0x6c (rsqrt/pow2/log2/tanh/recip/erf) | EUP transcendental-prep stage A |
+| r3 | 6 | 2 | same EUP push band | EUP transcendental-prep stage B |
+| r4 | 2 | 7, 9 | `kVectorSetRngSeed` (0x6d), `kVectorPrng` (0x6f) | RNG seed / PRNG setup port |
+| r5 | 1 | 1 | `kVectorEupResult` (0x76 = EUP pop) | EUP-result-pop drain port |
+| r6 | 1 | 8 | **`kVectorMatres` (0x77)** | **matrix-result (Xlu) deposit port** |
+| r7 | 1 | 8 | `kVectorXlaneResult`/permute/transpose-result (0x78) | cross-lane / transpose result port |
+| r8 | 1 | 2 | `kVectorCmemResult` (0x79) | Cmem-result port |
+| r9 | 96 | 8, 16 | MXU matmul band (0x7a..0xd9; latch-mode ords) | **MXU matmul throughput port** (×96) |
+| r10 | 20 | 7 | MXU matprep band (0xdc..0xef) | MXU matprep throughput port |
+| r11 | 54 | 1, 8, 16 | matprep; `SetSegmentPattern`(0xf3); transpose-binary(0xfc); permute(0x104); rotate(0x106) | matprep / transpose-binary result A |
+| r12 | 34 | 1, 8, 16 | same transpose/permute/rotate band | transpose / permute result B |
+| r13 | 4 | 47, 55 | `kVectorPermute`(0x104), `kVectorRotate`(0x106) | permute/rotate extended-result stage |
+| r14 | 10 | 18 | `kVector{Add,Max,Min,..}ReduceF32` (0x108..0x111) | reduce-result stage A |
+| r15 | 10 | 57 | same reduce band | reduce-result stage B |
+| r16 | 11 | 1 | `kVectorSyncFlag{Set,Add}*` / `kVectorWait*` (0x113..) | sync-flag / wait port |
+| r17 | 2 | 4 | `kVectorCmemStore` (0x135..0x136) | Cmem-store port |
+| r18 | 3 | 4 | `kVectorSetIar{Lane,Sublane,Raw}` (0x14b..0x14d) | SetIar (index-addr-reg) port |
+| r19 | 1 | 2 | `kVectorCmemLoad` (0x14f) | Cmem-load port |
 
 Per-column cell counts (sum 265): `r0:1 r1:1 r2:6 r3:6 r4:2 r5:1 r6:1 r7:1 r8:1 r9:96 r10:20 r11:54 r12:34 r13:4 r14:10 r15:10 r16:11 r17:2 r18:3 r19:1`.
 
@@ -241,23 +241,23 @@ This is the **per-gen structural difference**: PF prices Xlu by a conflict matri
 
 ## Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `PufferfishPerformance::PufferfishPerformance` | `0x1c8be080` | ctor — fills 336-entry latency array + 336×20 grid (265 cells) | CERTAIN |
-| `PufferfishPerformance::GetResourceUsage` | `0x1c8c3880` | grid read — outer/inner bound + 24-B stride + `row.data[res]` | CERTAIN |
-| `PufferfishPerformance::GetLatency` | `0x1c8c3860` | `latency[instr]`, bound `[perf+8]` | CERTAIN |
-| `PufferfishPerformance::GetResources` | `0x1c8c3840` | returns `kResources` traversal order (count 20) | CERTAIN |
-| `kResources` (PF) | `0xb43cd94` | 20-byte column traversal order, permutation of `{0..19}` | CERTAIN |
-| `GetPufferfishInstruction` | `0x1c8a1fe0` | LloValue → `Instruction` + variant tag (jt `@0xb43927c`) | HIGH |
-| `LatencyTablePufferfish::LatencyTablePufferfish` | `0x1c8a1960` | ctor — installs both grids + the XluConflictPenaltyTable | CERTAIN |
-| `ResourceUsageFromInstruction` (variant 0) | `0x1c8a3180` | TensorCore → `PufferfishPerformance::GetResourceUsage` | CERTAIN |
-| `ResourceUsageFromInstruction` (variant 1) | `0x1c8a31a0` | BarnaCore → `PufferfishBarnaCorePerformance::GetResourceUsage` | CERTAIN |
-| `PufferfishBarnaCorePerformance::GetResourceUsage` | `0x1c8c4800` | BarnaCore grid read (variant-1 ops) | HIGH |
-| `XposeXLUReservationLatency` | `0x1c8a13e0` | conv/transpose Xlu pricing via penalty table | CERTAIN |
-| `XluConflictPenaltyBetween` | `0x1c8a0180` | 3-axis penalty-table read `[type][6][3]` | CERTAIN |
-| `XluConflictPenaltyTable::IsTranspose` | `0x1c8a04e0` | `(type - 2) < 3` | CERTAIN |
-| `PufferfishTarget::VectorEupReservationCycles` | `0x1d494cc0` | `= 2` (half-rate EUP) | HIGH |
-| `GetSharedPufferfishPerformance` singleton | `0x22579a10` | `pf_shared` TensorCore grid instance | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `PufferfishPerformance::PufferfishPerformance` | `0x1c8be080` | ctor — fills 336-entry latency array + 336×20 grid (265 cells) |
+| `PufferfishPerformance::GetResourceUsage` | `0x1c8c3880` | grid read — outer/inner bound + 24-B stride + `row.data[res]` |
+| `PufferfishPerformance::GetLatency` | `0x1c8c3860` | `latency[instr]`, bound `[perf+8]` |
+| `PufferfishPerformance::GetResources` | `0x1c8c3840` | returns `kResources` traversal order (count 20) |
+| `kResources` (PF) | `0xb43cd94` | 20-byte column traversal order, permutation of `{0..19}` |
+| `GetPufferfishInstruction` | `0x1c8a1fe0` | LloValue → `Instruction` + variant tag (jt `@0xb43927c`) |
+| `LatencyTablePufferfish::LatencyTablePufferfish` | `0x1c8a1960` | ctor — installs both grids + the XluConflictPenaltyTable |
+| `ResourceUsageFromInstruction` (variant 0) | `0x1c8a3180` | TensorCore → `PufferfishPerformance::GetResourceUsage` |
+| `ResourceUsageFromInstruction` (variant 1) | `0x1c8a31a0` | BarnaCore → `PufferfishBarnaCorePerformance::GetResourceUsage` |
+| `PufferfishBarnaCorePerformance::GetResourceUsage` | `0x1c8c4800` | BarnaCore grid read (variant-1 ops) |
+| `XposeXLUReservationLatency` | `0x1c8a13e0` | conv/transpose Xlu pricing via penalty table |
+| `XluConflictPenaltyBetween` | `0x1c8a0180` | 3-axis penalty-table read `[type][6][3]` |
+| `XluConflictPenaltyTable::IsTranspose` | `0x1c8a04e0` | `(type - 2) < 3` |
+| `PufferfishTarget::VectorEupReservationCycles` | `0x1d494cc0` | `= 2` (half-rate EUP) |
+| `GetSharedPufferfishPerformance` singleton | `0x22579a10` | `pf_shared` TensorCore grid instance |
 
 ---
 

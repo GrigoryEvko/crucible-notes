@@ -75,14 +75,14 @@ The creator is a pure flat-table writer with no allocation or branching — veri
 
 ### Function Map
 
-| Slot | Field | Symbol | Addr | Origin | Confidence |
-|---|---|---|---|---|---|
-| `+0x18` | `get_compiler` | `tpu_plugin::GetTpuPhaseCompiler` | `0x0E6AA320` | TPU-injected | CERTAIN |
-| `+0x20` | `destroy_compiler` | `tpu_plugin::DestroyTpuPhaseCompiler` | `0x0E6AA400` | TPU-injected | CERTAIN |
-| `+0x28` | `run_phase` | `pjrt::PJRT_PhaseCompile_Run_Phase` | `0x0E6F42E0` | generic | CERTAIN |
-| `+0x30` | `get_phase_names` | `pjrt::PJRT_PhaseCompile_Get_Phase_Names` | `0x0E6F4A60` | generic | CERTAIN |
-| `+0x38` | `c_buffers_destroy` | `pjrt::PJRT_PhaseCompile_C_Buffers_Destroy` | `0x0E6F4CC0` | generic | CERTAIN |
-| — | creator | `pjrt::CreatePhaseCompileExtension` | `0x0E6F42A0` | generic | CERTAIN |
+| Slot | Field | Symbol | Addr | Origin |
+|---|---|---|---|---|
+| `+0x18` | `get_compiler` | `tpu_plugin::GetTpuPhaseCompiler` | `0x0E6AA320` | TPU-injected |
+| `+0x20` | `destroy_compiler` | `tpu_plugin::DestroyTpuPhaseCompiler` | `0x0E6AA400` | TPU-injected |
+| `+0x28` | `run_phase` | `pjrt::PJRT_PhaseCompile_Run_Phase` | `0x0E6F42E0` | generic |
+| `+0x30` | `get_phase_names` | `pjrt::PJRT_PhaseCompile_Get_Phase_Names` | `0x0E6F4A60` | generic |
+| `+0x38` | `c_buffers_destroy` | `pjrt::PJRT_PhaseCompile_C_Buffers_Destroy` | `0x0E6F4CC0` | generic |
+| — | creator | `pjrt::CreatePhaseCompileExtension` | `0x0E6F42A0` | generic |
 
 ---
 
@@ -214,22 +214,22 @@ function PJRT_PhaseCompile_Run_Phase(args):               // 0xe6f42e0
 
 The decompiled body reads the following offsets within `PJRT_PhaseCompile_Run_Phase_Args`. The two parallel char-buffer spans (programs and phase names) each carry a `(ptrs, sizes, count)` triple; the semantic labels of the two spans are inferred from the `Convert*` call argument order.
 
-| Off | Field (recovered) | Meaning | Conf |
-|---|---|---|---|
-| `+0x00` | `struct_size` | guard input; min 32, cur 120 | CERTAIN |
-| `+0x10` | `phase_compiler` | the `{base,owner}` holder from `Get_Compiler` (`args[2]`) | CERTAIN |
-| `+0x18` | `input_programs` | `char**` — serialized `PjRtPartialProgramProto` blobs | HIGH |
-| `+0x20` | `input_programs_sizes` | `size_t*` — per-blob byte length | HIGH |
-| `+0x28` | `input_programs_count` | element count | HIGH |
-| `+0x30` | `phase_names` | `char**` — phase-name strings | HIGH |
-| `+0x38` | `phase_names_sizes` | `size_t*` — per-name length | HIGH |
-| `+0x40` | `phase_names_count` | element count | HIGH |
-| `+0x60` | `out_programs` | `char**` out — written on success | HIGH |
-| `+0x68` | `out_programs_sizes` | `size_t*` out | HIGH |
-| `+0x70` | `out_programs_count` | count out | HIGH |
-| `+0x88` | `topology` | `*(args+0x88)+8` → `PjRtTopologyDescription` | HIGH |
-| `+0x48` | `compile_options` | `char*` — serialized `CompileOptionsProto`, fed to `ParseFromString` | HIGH |
-| `+0x50` | `compile_options_size` | `size_t` — proto byte length | HIGH |
+| Off | Field (recovered) | Meaning |
+|---|---|---|
+| `+0x00` | `struct_size` | guard input; min 32, cur 120 |
+| `+0x10` | `phase_compiler` | the `{base,owner}` holder from `Get_Compiler` (`args[2]`) |
+| `+0x18` | `input_programs` | `char**` — serialized `PjRtPartialProgramProto` blobs |
+| `+0x20` | `input_programs_sizes` | `size_t*` — per-blob byte length |
+| `+0x28` | `input_programs_count` | element count |
+| `+0x30` | `phase_names` | `char**` — phase-name strings |
+| `+0x38` | `phase_names_sizes` | `size_t*` — per-name length |
+| `+0x40` | `phase_names_count` | element count |
+| `+0x60` | `out_programs` | `char**` out — written on success |
+| `+0x68` | `out_programs_sizes` | `size_t*` out |
+| `+0x70` | `out_programs_count` | count out |
+| `+0x88` | `topology` | `*(args+0x88)+8` → `PjRtTopologyDescription` |
+| `+0x48` | `compile_options` | `char*` — serialized `CompileOptionsProto`, fed to `ParseFromString` |
+| `+0x50` | `compile_options_size` | `size_t` — proto byte length |
 
 > **Note —** the offsets above are read directly from the `Run_Phase` body at `0xe6f42e0` (lines 84-85, 134-135): the two char-buffer spans are distinct `(ptr, size, count)` triples — programs at `(+0x18, +0x20, +0x28)`, phase names at `(+0x30, +0x38, +0x40)` — and the options proto is `(ptr=+0x48, len=+0x50)`. The decompiler renders these decimal (`*(a1+72)`/`*(a1+80)` = hex `+0x48`/`+0x50`); do not misread the decimal as hex. The exact per-field *names* depend on the public `pjrt_c_api_phase_compile.h` header order, which is not in the binary; the offsets are HIGH confidence.
 
@@ -442,11 +442,11 @@ CompilationEnvironmentsProto { repeated google.protobuf.Any environments = 1; }
 
 A reimplementer needs to know there are *three* concentric ways TPU compiler config reaches the compiler, narrowest to widest:
 
-| Channel | Where | Scope | Confidence |
-|---|---|---|---|
-| Per-flag override | `CompileOptionsProto.env_option_overrides` (field 7) | one flag, this compile; `map<name, {string\|bool\|int\|double}>` | HIGH |
-| Full env, per-compile | `executable_build_options.comp_envs.environments[Any → TpuCompilationEnvironment]` (3→13→1) | the whole 1,121-field table, this compile | HIGH |
-| Process-global | TpuExecutable ext `SetTpuCompilationEnv` (type 17, slot `+0x40`, `0xe6dd400`) | a `CompilationEnvironments` singleton later compiles inherit | HIGH |
+| Channel | Where | Scope |
+|---|---|---|
+| Per-flag override | `CompileOptionsProto.env_option_overrides` (field 7) | one flag, this compile; `map<name, {string\|bool\|int\|double}>` |
+| Full env, per-compile | `executable_build_options.comp_envs.environments[Any → TpuCompilationEnvironment]` (3→13→1) | the whole 1,121-field table, this compile |
+| Process-global | TpuExecutable ext `SetTpuCompilationEnv` (type 17, slot `+0x40`, `0xe6dd400`) | a `CompilationEnvironments` singleton later compiles inherit |
 
 The first two ride inside `CompileOptionsProto` and so pass through `Run_Phase`'s chokepoint identically to every other compile entry. The third is a separate out-of-band surface on the TpuExecutable extension (type 17), not the PhaseCompile extension; it is documented with that extension and noted here only so a reimplementer knows the PhaseCompile path is *not* the only env channel.
 

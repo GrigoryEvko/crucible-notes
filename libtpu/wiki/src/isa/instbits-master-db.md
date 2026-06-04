@@ -36,11 +36,11 @@ For reimplementation, the contract is:
 
 The InstBits database is best read as a three-axis cube. A reimplementer must reproduce all three axes; the per-row 32-byte payload is generated from the axes, not stored as free data.
 
-| Axis | Values | Source | Confidence |
-|---|---|---|---|
-| HwMode / table | `default` (`InstBits`), `BarnaCorePxcHwMode` (`InstBits_BarnaCorePxcHwMode`) | two GOT-relative base computations in `getBinaryCodeForInstr` (`− 65189758` / `− 65167090`); HwMode query is a virtual call through the `MCSubtargetInfo` vtable slot at `+0x28` with feature index `3` (`(*(*subtarget + 40))(subtarget, 3)`) | CONFIRMED |
-| instruction class | 22 encoder case bodies (1 zero-base default + 21 BarnaCore classes) | the `switch (opcode)` in `getBinaryCodeForInstr` lowers to a **self-relative jump table at `0xaed7dac`** indexed by `opcode − 499` (`add $-0x1f3, %ebx; cmp $0x1622, %ebx; movslq (%rcx,%rbx,4),%rdx; add %rcx,%rdx; jmp *%rdx` @ `0x13c74e7b`, table base `0xaed7dac` in `%rcx`): one default arm (target `0x13c74e9d`, zero base, copy-and-return) plus 21 populated arms over the `2855..3991` opcode band. Opcodes 0-498 are gated to the trap by `cmp 0x1f2 / jbe` before the table read; within the table itself, the leading entries for opcodes `499..2854` (indices `0..2355`) are dead padding — all hold the self-relative offset `0x08d9d0f1` (i.e. the default arm at `0x13c74e9d`) — until the populated band begins at index `2356` (opcode `2855`). | CONFIRMED |
-| field | per-class fixed `(pos, width)` windows (e.g. base-reg @ bit 35 w6, dst @ bit 88 w5, imm @ bit 207 w16) | the `insertBits(value, pos, width)` deposits inside each case body | CONFIRMED |
+| Axis | Values | Source |
+|---|---|---|
+| HwMode / table | `default` (`InstBits`), `BarnaCorePxcHwMode` (`InstBits_BarnaCorePxcHwMode`) | two GOT-relative base computations in `getBinaryCodeForInstr` (`− 65189758` / `− 65167090`); HwMode query is a virtual call through the `MCSubtargetInfo` vtable slot at `+0x28` with feature index `3` (`(*(*subtarget + 40))(subtarget, 3)`) |
+| instruction class | 22 encoder case bodies (1 zero-base default + 21 BarnaCore classes) | the `switch (opcode)` in `getBinaryCodeForInstr` lowers to a **self-relative jump table at `0xaed7dac`** indexed by `opcode − 499` (`add $-0x1f3, %ebx; cmp $0x1622, %ebx; movslq (%rcx,%rbx,4),%rdx; add %rcx,%rdx; jmp *%rdx` @ `0x13c74e7b`, table base `0xaed7dac` in `%rcx`): one default arm (target `0x13c74e9d`, zero base, copy-and-return) plus 21 populated arms over the `2855..3991` opcode band. Opcodes 0-498 are gated to the trap by `cmp 0x1f2 / jbe` before the table read; within the table itself, the leading entries for opcodes `499..2854` (indices `0..2355`) are dead padding — all hold the self-relative offset `0x08d9d0f1` (i.e. the default arm at `0x13c74e9d`) — until the populated band begins at index `2356` (opcode `2855`). |
+| field | per-class fixed `(pos, width)` windows (e.g. base-reg @ bit 35 w6, dst @ bit 88 w5, imm @ bit 207 w16) | the `insertBits(value, pos, width)` deposits inside each case body |
 
 The cube is sparse. The HwMode axis has two values but only one (`BarnaCorePxcHwMode`) carries data. The instruction-class axis has 22 values but one of them — the zero-base default — absorbs `4956` of the `5667` opcodes. The field axis is dense only within the BarnaCore classes; the default class has no fields at all (it copies a zero row and returns). The whole encoding mass lives in the `2855..3991` opcode band, in one HwMode, across 21 case bodies.
 
@@ -100,27 +100,27 @@ The arithmetic is exact. `index4 = 4 * opc − 1996` is the word index, i.e. `(o
 
 The two tables are structurally identical and semantically opposite. The default holds nothing; the variant holds everything the MC emitter encodes.
 
-| Property | `InstBits` (default) | `InstBits_BarnaCorePxcHwMode` | Confidence |
-|---|---|---|---|
-| Address | `0x3366d90` | `0x33931f0` | CONFIRMED |
-| Size | `0x2c460` (5667 × 32 B) | `0x2c460` (5667 × 32 B) | CONFIRMED |
-| Non-zero rows | 0 | 704 | CONFIRMED |
-| Non-zero 8-byte words | `0 / 22668` | `2144` | CONFIRMED |
-| Populated opcode range | none | `2855..3991` | CONFIRMED |
-| `.rela.dyn` relocations | none | none | CONFIRMED |
-| Opcodes encoded through it | none (records returned all-zero) | Pufferfish BarnaCore lanes + native ops | CONFIRMED |
-| Selected when | HwMode feature `BarnaCorePxcHwMode` inactive | feature active (vtable call `MCSubtargetInfo+0x28`, feature idx 3) | CONFIRMED |
+| Property | `InstBits` (default) | `InstBits_BarnaCorePxcHwMode` |
+|---|---|---|
+| Address | `0x3366d90` | `0x33931f0` |
+| Size | `0x2c460` (5667 × 32 B) | `0x2c460` (5667 × 32 B) |
+| Non-zero rows | 0 | 704 |
+| Non-zero 8-byte words | `0 / 22668` | `2144` |
+| Populated opcode range | none | `2855..3991` |
+| `.rela.dyn` relocations | none | none |
+| Opcodes encoded through it | none (records returned all-zero) | Pufferfish BarnaCore lanes + native ops |
+| Selected when | HwMode feature `BarnaCorePxcHwMode` inactive | feature active (vtable call `MCSubtargetInfo+0x28`, feature idx 3) |
 
 The populated rows of the BarnaCore table fall into a small set of instruction classes. The class taxonomy (recovered from the case-body grouping in the `getBinaryCodeForInstr` `switch`) is the second axis of the database:
 
-| Class | Rows | What it covers | Confidence |
-|---|---:|---|---|
-| `_V0` lane vector-ALU | 228 | BarnaCore vector lane 0 ops | CONFIRMED |
-| `_V1` lane vector-ALU | 228 | BarnaCore vector lane 1 ops | CONFIRMED |
-| `_V2` lane vector-ALU | 227 | BarnaCore vector lane 2 ops | CONFIRMED |
-| `_VM` mask lane | 6 | BarnaCore mask-lane ops | CONFIRMED |
-| `bc*` native | 11 | `bcHALT` / `bcLOOP_START` / `bcNOP` / `bcVLD*` / `bcVST*` / `bcVSHIFT` | CONFIRMED |
-| other | 4 | misc | CONFIRMED |
+| Class | Rows | What it covers |
+|---|---:|---|
+| `_V0` lane vector-ALU | 228 | BarnaCore vector lane 0 ops |
+| `_V1` lane vector-ALU | 228 | BarnaCore vector lane 1 ops |
+| `_V2` lane vector-ALU | 227 | BarnaCore vector lane 2 ops |
+| `_VM` mask lane | 6 | BarnaCore mask-lane ops |
+| `bc*` native | 11 | `bcHALT` / `bcLOOP_START` / `bcNOP` / `bcVLD*` / `bcVST*` / `bcVSHIFT` |
+| other | 4 | misc |
 
 The base bits of a populated row are predominantly 1-bits with structured zero **holes**. The set bits encode the fixed opcode discriminator plus default field values; the holes are exactly the `(pos, width)` windows the class's operand encoders write into. Every opcode in a given class shares one hole layout — the per-opcode difference is only the discriminator value in the base. A reimplementer recovers a class's field map either by reading the base zero-runs or by reading the case body's `insertBits` arguments; the two agree bit-for-bit. The 21 BarnaCore classes correspond one-to-one with the 21 non-default case bodies in the dispatch ([MC-Emitter §Per-Opcode Dispatch](mc-emitter.md)).
 
@@ -146,14 +146,14 @@ The register index is 4 bits because the predicate block of `TPURegEncodingTable
 
 The load class case body (`0x13c767c0`) runs ~26 `insertBits` deposits over two sub-slots. The first sub-slot:
 
-| Field | Position | Width | Encoder | Confidence |
-|---|---|---:|---|---|
-| base-address register | bit 35 (`0x23`) | 6 | `getMachineOpValue` | CONFIRMED |
-| predicate (mode + reg) | bits 126/128 | 2 + 5 | `encodePredicateOperand` | CONFIRMED |
-| addressing-mode sub-opcode | bit 133 (`0x85`) | 3 | `getMachineOpValue` | CONFIRMED |
-| destination Vreg | bit 136 (`0x88`) | 5 | `getMachineOpValue` | CONFIRMED |
-| load qualifier | bit 141 (`0x8D`) | 2 | constant | CONFIRMED |
-| immediate displacement | bit 207 (`0xCF`) | 16 | `getMachineOpValue` | CONFIRMED |
+| Field | Position | Width | Encoder |
+|---|---|---:|---|
+| base-address register | bit 35 (`0x23`) | 6 | `getMachineOpValue` |
+| predicate (mode + reg) | bits 126/128 | 2 + 5 | `encodePredicateOperand` |
+| addressing-mode sub-opcode | bit 133 (`0x85`) | 3 | `getMachineOpValue` |
+| destination Vreg | bit 136 (`0x88`) | 5 | `getMachineOpValue` |
+| load qualifier | bit 141 (`0x8D`) | 2 | constant |
+| immediate displacement | bit 207 (`0xCF`) | 16 | `getMachineOpValue` |
 
 The second VLD sub-slot repeats the same field shapes shifted up (`+21`), with its immediate displacement landing at bit 223 (`0xDF`, width 16) — the highest field in the database and the reason the record is sized at 239 bits. So a BarnaCore vector load is `{predicate(7b), base-reg(6b), addr-mode(3b), dst-Vreg(5b), qualifier(2b), imm16}`, twice.
 
@@ -161,17 +161,17 @@ The second VLD sub-slot repeats the same field shapes shifted up (`+21`), with i
 
 The store classes pack the source register and addressing through one 64-bit window plus several discrete register fields. The deposits below were read from the store case bodies of `getBinaryCodeForInstr` (the four `insertBits(value, 0xAF, 0x40)` cluster sites): a single `insertBits(value, 0xAF, 0x40)` writes the 64-bit packed address/source word at bit 175, then several 5-bit register fields and 2-bit qualifier fields are deposited around it. Exact opcode-to-class binding for the store arms is UNVERIFIED (the decompiled `switch` does not carry inline addresses); the field positions themselves are byte-anchored:
 
-| Field | Position | Width | Encoder | Confidence |
-|---|---|---:|---|---|
-| predicate (mode + reg) | bits 60/62 (`0x3C`/`0x3E`) | 2 + 5 | `encodePredicateOperand` | CONFIRMED |
-| source / address register | bit 88 (`0x58`) | 5 | `getMachineOpValue` | CONFIRMED |
-| index register | bit 73 (`0x49`) | 5 | `getMachineOpValue` | CONFIRMED |
-| packed address/source word | bit 175 (`0xAF`) | 64 | `getMachineOpValue` (extract `64@0x20`) | CONFIRMED |
-| register field | bit 83 (`0x53`) | 5 | from packed word | CONFIRMED |
-| register field | bit 78 (`0x4E`) | 5 | from packed word | CONFIRMED |
-| qualifier | bit 39 (`0x27`) | 2 | from packed word | CONFIRMED |
-| qualifier | bit 37 (`0x25`) | 2 | from packed word | CONFIRMED |
-| base-address bits | bit 35 (`0x23`) | 2 | from packed word | CONFIRMED |
+| Field | Position | Width | Encoder |
+|---|---|---:|---|
+| predicate (mode + reg) | bits 60/62 (`0x3C`/`0x3E`) | 2 + 5 | `encodePredicateOperand` |
+| source / address register | bit 88 (`0x58`) | 5 | `getMachineOpValue` |
+| index register | bit 73 (`0x49`) | 5 | `getMachineOpValue` |
+| packed address/source word | bit 175 (`0xAF`) | 64 | `getMachineOpValue` (extract `64@0x20`) |
+| register field | bit 83 (`0x53`) | 5 | from packed word |
+| register field | bit 78 (`0x4E`) | 5 | from packed word |
+| qualifier | bit 39 (`0x27`) | 2 | from packed word |
+| qualifier | bit 37 (`0x25`) | 2 | from packed word |
+| base-address bits | bit 35 (`0x23`) | 2 | from packed word |
 
 The earlier draft of this section listed a single 21-bit "source + addressing pack" at bit 126 (`0x7E`); that is incorrect — no `insertBits` of width 21 (`0x15`) exists anywhere in the emitter body (`0x15` appears only as an *extract* offset). The widest store deposit is the 64-bit window at `0xAF`. The `0x7E`/width-2 deposit is the VLD-class predicate-mode field, not a store window.
 
@@ -179,13 +179,13 @@ The earlier draft of this section listed a single 21-bit "source + addressing pa
 
 The loop class (`0x13c770f8`) is base-only: its row holds the discriminator and the trip/length field as a hole. The recovered hole map (opcode 3978):
 
-| Field | Position | Width | Meaning | Confidence |
-|---|---|---:|---|---|
-| loop mode / type | bit 0 | 2 | loop kind | CONFIRMED |
-| opcode discriminator | bit 2 | 1 | fixed (=1) | CONFIRMED |
-| loop length / body offset | bit 3 | 9 | hardware-loop trip / length | CONFIRMED |
-| bundle-common byte | bit 24 (`0x18`) | 8 | shared by all bc ops | CONFIRMED |
-| bundle-common field | bit 58 (`0x3A`) | 2 | shared by all bc ops | CONFIRMED |
+| Field | Position | Width | Meaning |
+|---|---|---:|---|
+| loop mode / type | bit 0 | 2 | loop kind |
+| opcode discriminator | bit 2 | 1 | fixed (=1) |
+| loop length / body offset | bit 3 | 9 | hardware-loop trip / length |
+| bundle-common byte | bit 24 (`0x18`) | 8 | shared by all bc ops |
+| bundle-common field | bit 58 (`0x3A`) | 2 | shared by all bc ops |
 
 The 9-bit length at bit 3 is the BarnaCore hardware-loop trip count. The bundle-common fields at bits 24 and 58 are shared by every populated BarnaCore opcode (the `00` byte at bits `24:31` is a zero-hole in the otherwise 1-bit-dense base, e.g. low pattern `f3ffffff00fff004`).
 

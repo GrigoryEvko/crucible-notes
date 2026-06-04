@@ -161,22 +161,22 @@ The head of the ordering is the **`PreOptimizationPipeline`** — an `xla::HloPa
 
 The recovered front-of-pipeline pass set (the `name()`-anchored, pipeline-confirmed subset — the full enumeration with HLO-input/output invariants is on [hlo-pre-passes.md](hlo-pre-passes.md)):
 
-| Order | Pass class | Role | Confidence |
-|---|---|---|---|
-| front | `xla::HloDomainIsolator` (predicate `$_7`) | wrap sharding regions in explicit `kDomain` ops (only if `EnableDomainPasses()`) | CONFIRMED |
-| early | `xla::DynamicIndexSplitter` | split multi-dim dynamic indices into scalars | CONFIRMED |
-| early | `xla::BatchNormExpander(true,true,true)` | lower batch-norm to primitive arithmetic | CONFIRMED |
-| expanders | `xla::TpuCholeskyExpander` / `TpuQrExpander` / `TpuEighExpander` / `TpuTriangularSolveExpander` | decompose linalg custom-calls to dot/triangular-solve graphs | CONFIRMED (TPU subclasses) |
-| expanders | `xla::FftExpander(Target const&)` / `xla::LuDecompositionExpander` | FFT (TPU-aware radix-2) / LU decomposition | CONFIRMED |
-| rng | `xla::jellyfish::TpuRngBitGeneratorExpander` (+ `TpuRngBitGeneratorTupleDecomposer`) | Philox/ThreeFry; un-tuple `(state,output)` | CONFIRMED |
-| dtype | `xla::jellyfish::TpuInt2AutoUpDownCaster` | bracket int2 arith with `Convert`↔int8 (MXU wire min is int8) | CONFIRMED |
-| inline | `xla::jellyfish::TpuCallInliner(MustFuseInlineMode)` | inline `must_fuse`-marked callees early | CONFIRMED |
-| fusion-prep | `xla::jellyfish::UserGuidedFusionIdAssigner` | turn `frontend_attribute: fusion_id` strings into integer backend-config | CONFIRMED |
-| dynamic | `xla::DynamicDimensionSimplifier` → `xla::DynamicPadder(...)` | fold then statically pad dynamic shapes | CONFIRMED |
-| precision | `xla::jellyfish::XPrecisionRewriter(kX128Precision)` then `XPrecisionRewriter()` | x128 → 8-step, x6/x9 → 2/3-step dot accumulation chains | CONFIRMED |
-| precision | `xla::jellyfish::TpuHloPrecisionTracer` / `xla::BitcastDtypesExpander` | fill missing `precision_config`; expand dtype-only bitcasts | CONFIRMED |
-| cleanup | `xla::HloDCE` (re-run between most stages) | drop dead instructions/computations | CONFIRMED |
-| boundary | `xla::HloDomainRemover("sharding", ...)` | strip `kDomain`, keep sharding as attribute — always runs before Phase 2 | CONFIRMED |
+| Order | Pass class | Role |
+|---|---|---|
+| front | `xla::HloDomainIsolator` (predicate `$_7`) | wrap sharding regions in explicit `kDomain` ops (only if `EnableDomainPasses()`) |
+| early | `xla::DynamicIndexSplitter` | split multi-dim dynamic indices into scalars |
+| early | `xla::BatchNormExpander(true,true,true)` | lower batch-norm to primitive arithmetic |
+| expanders | `xla::TpuCholeskyExpander` / `TpuQrExpander` / `TpuEighExpander` / `TpuTriangularSolveExpander` | decompose linalg custom-calls to dot/triangular-solve graphs |
+| expanders | `xla::FftExpander(Target const&)` / `xla::LuDecompositionExpander` | FFT (TPU-aware radix-2) / LU decomposition |
+| rng | `xla::jellyfish::TpuRngBitGeneratorExpander` (+ `TpuRngBitGeneratorTupleDecomposer`) | Philox/ThreeFry; un-tuple `(state,output)` |
+| dtype | `xla::jellyfish::TpuInt2AutoUpDownCaster` | bracket int2 arith with `Convert`↔int8 (MXU wire min is int8) |
+| inline | `xla::jellyfish::TpuCallInliner(MustFuseInlineMode)` | inline `must_fuse`-marked callees early |
+| fusion-prep | `xla::jellyfish::UserGuidedFusionIdAssigner` | turn `frontend_attribute: fusion_id` strings into integer backend-config |
+| dynamic | `xla::DynamicDimensionSimplifier` → `xla::DynamicPadder(...)` | fold then statically pad dynamic shapes |
+| precision | `xla::jellyfish::XPrecisionRewriter(kX128Precision)` then `XPrecisionRewriter()` | x128 → 8-step, x6/x9 → 2/3-step dot accumulation chains |
+| precision | `xla::jellyfish::TpuHloPrecisionTracer` / `xla::BitcastDtypesExpander` | fill missing `precision_config`; expand dtype-only bitcasts |
+| cleanup | `xla::HloDCE` (re-run between most stages) | drop dead instructions/computations |
+| boundary | `xla::HloDomainRemover("sharding", ...)` | strip `kDomain`, keep sharding as attribute — always runs before Phase 2 |
 
 > **NOTE — fixed-point loops.** Several passes are wrapped in `xla::HloPassFix<P>` and re-run to convergence. `RunToFixPoint` is present in the binary for `HloPassFix<xla::ReduceWindowRewriter>` (@ `0x14bd0980`), `HloPassFix<xla::jellyfish::TpuReduceWindowRewriter>` (@ `0x109589e0`), and `HloPassFix<xla::HloDCE>` (@ `0x1d6d7a60`). Iteration limit and crash-on-non-convergence are gated by real flags whose strings are present: `xla_tpu_hlo_pass_fix_pipeline_iteration_limit` (the per-pipeline cap), `xla_unsupported_crash_on_hlo_pass_fix_max_iterations` (abort if the cap is hit), and `xla_hlo_pass_fix_detect_cycles`. The `HloPassFix` fixed-point mechanism and these flag strings are CONFIRMED; the exact runtime behavior on cap-hit was not traced beyond the flag wiring.
 

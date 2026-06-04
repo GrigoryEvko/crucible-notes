@@ -143,14 +143,14 @@ write_ptr[mxu] %= fifo_depth;                            // final wrap
 
 `AllocateMrbEntriesAsFifo` reaches the per-generation geometry entirely through `Target` virtuals. These six slots resolve the formerly-inferred `Target[+0x390]`/`[+0x5e0]` slots that the [chain allocator](mrb-chain-allocator.md) and the cost model left unnamed.
 
-| `Target` vtable slot | vptr offset | Base impl | Role on this path | Confidence |
-|---|---|---|---|---|
-| `MatmulResultBufferEntries` | `+0x390` | `0x1d61da40` | MRB-support gate: `set_mrb_address` aborts unless `> 0` | CONFIRMED |
-| `SupportsMatmulResultPack` | `+0x398` | `0x1d61da80` | sibling; not on this hot path | HIGH |
-| `MinMrbWriteBlockSize` | `+0x5e0` | `0x1d490d80` (`LogFatal`) | the FIFO push round-up granule (`idiv` divisor) | CONFIRMED |
-| `MrbRelativeAddressFromOffset` | `+0x5e8` | `0x1d490dc0` (`LogFatal`) | `(op, offset) → relative MRB address` on the pop side | HIGH |
-| `MxuResultEntriesPushed` | `+0x5f0` | `0x1d61e9c0` | entries a matmul pushes; advances `write_ptr` | CONFIRMED |
-| `MxuResultEntriesPopped` | `+0x5f8` | `0x1d61ea00` | entries a matres pops; advances `matres_index` | CONFIRMED |
+| `Target` vtable slot | vptr offset | Base impl | Role on this path |
+|---|---|---|---|
+| `MatmulResultBufferEntries` | `+0x390` | `0x1d61da40` | MRB-support gate: `set_mrb_address` aborts unless `> 0` |
+| `SupportsMatmulResultPack` | `+0x398` | `0x1d61da80` | sibling; not on this hot path |
+| `MinMrbWriteBlockSize` | `+0x5e0` | `0x1d490d80` (`LogFatal`) | the FIFO push round-up granule (`idiv` divisor) |
+| `MrbRelativeAddressFromOffset` | `+0x5e8` | `0x1d490dc0` (`LogFatal`) | `(op, offset) → relative MRB address` on the pop side |
+| `MxuResultEntriesPushed` | `+0x5f0` | `0x1d61e9c0` | entries a matmul pushes; advances `write_ptr` |
+| `MxuResultEntriesPopped` | `+0x5f8` | `0x1d61ea00` | entries a matres pops; advances `matres_index` |
 
 > **NOTE — `Target[+0x4ac]` is `num_mxus`, `Target[+0x398]` is the version.** `num_mxus` (`movsxd rcx,[rdi+0x4ac]`) is read identically by `MxuAssigner::LatchLhs` (`0x10f3b791`, `imul rcx, Target::ChunksPerTile()`); `Target[+0x398]` is the `tpu::TpuVersion` (an unsigned in `[0,6)`) the FIFO-depth table is indexed by. Both are CONFIRMED cross-function.
 
@@ -158,14 +158,14 @@ write_ptr[mxu] %= fifo_depth;                            // final wrap
 
 `ResultFifoEntryCount(ResultFifo fifo, TpuVersion ver)` (`0x1d631520`) is a switch over the `fifo` argument; the matmul-result FIFO `kMrf0 = 8` lands in the arm that returns `table[ver]` from `.rodata` at `0xb53e240`. Read directly from the ELF (`struct.unpack`):
 
-| TpuVersion ordinal | Generation | `ResultFifoEntryCount(kMrf0, ver)` | Confidence |
-|---|---|---|---|
-| 0 | Jellyfish | 16 | CONFIRMED |
-| 1 | Dragonfish | 16 | CONFIRMED |
-| 2 | Pufferfish | 16 | CONFIRMED |
-| 3 | Viperfish | 48 | CONFIRMED |
-| 4 | Ghostlite | 224 | CONFIRMED |
-| 5 | 6acc60406 (TPU7x) | 256 | CONFIRMED |
+| TpuVersion ordinal | Generation | `ResultFifoEntryCount(kMrf0, ver)` |
+|---|---|---|
+| 0 | Jellyfish | 16 |
+| 1 | Dragonfish | 16 |
+| 2 | Pufferfish | 16 |
+| 3 | Viperfish | 48 |
+| 4 | Ghostlite | 224 |
+| 5 | 6acc60406 (TPU7x) | 256 |
 
 The version ordinals `≥ 6` take the `LogMessageFatal("invalid platform type:")` arm; the table has exactly six live rows. This is the modulus every cursor wraps at.
 
@@ -256,13 +256,13 @@ else if (op == 0xA8):                  a1[+0x41] = msr;   // 0xa8        vector-
 else:  FATAL("msr unsupported for opcode: ");             // llo_instruction.cc:3414
 ```
 
-| `LloOpcode` range | Op family | Destination field | Confidence |
-|---|---|---|---|
-| `0x9b..0xa5` | vector-matmul / vector-matmul-lmr | `+0x46` | CONFIRMED |
-| `0x8d..0x96` | vector-latch family (`kVectorLatch*`) | `+0x44` | CONFIRMED |
-| `0xaa`, `0xab` | vector-load-lmr / -lmr-bf16 | `+0x42` | CONFIRMED |
-| `0xa8` | vector-done-with-gains | `+0x41` | CONFIRMED |
-| else | — | FATAL | CONFIRMED |
+| `LloOpcode` range | Op family | Destination field |
+|---|---|---|
+| `0x9b..0xa5` | vector-matmul / vector-matmul-lmr | `+0x46` |
+| `0x8d..0x96` | vector-latch family (`kVectorLatch*`) | `+0x44` |
+| `0xaa`, `0xab` | vector-load-lmr / -lmr-bf16 | `+0x42` |
+| `0xa8` | vector-done-with-gains | `+0x41` |
+| else | — | FATAL |
 
 ### The `Msr` Enum
 
@@ -289,29 +289,29 @@ The allocator carries *two* flat arrays keyed by `MrbEntry.chunk_id`, not one. T
 
 **(a) Per-MXU reservation-timeline array** — `MrbChainAllocator[+0xf0]`, allocated `clamp(num_mxus, ≥8 when ver≥5) * 0x70` via `__size_returning_new`, **stride `0x70`**, indexed `chunk_id × 0x70` (`SplitAccumulationChain` `0x10f59941`: `v13 = base + 112 * chunk_id`). Each element is its **own** `boost::multi_index` bimap (the `chains_unevictable_until_` timeline of the [chain allocator](mrb-chain-allocator.md)) — i.e. the reservation timeline is **per-MXU**, not one global structure. The per-element ctor (`r14 += 0x70` per iteration):
 
-| Field | Offset | Value / role | Confidence |
-|---|---|---|---|
-| multi_index self/sentinel | `+0x00` | `= &[+0x18]` | CONFIRMED |
-| node-header ptr | `+0x10` | `operator new(0xa8)` | CONFIRMED |
-| ordered-index head sentinel | `+0x18` | `= self` | CONFIRMED |
-| size | `+0x28` | `0` | CONFIRMED |
-| bucket count | `+0x38` | `0x36 = 54` | CONFIRMED |
-| bucket array | `+0x40` | `operator new(0x1b0) = 54 * 8` | CONFIRMED |
-| max load factor | `+0x48` | `(int)(54 * 1.0f)` (`0x3f800000`) | CONFIRMED |
+| Field | Offset | Value / role |
+|---|---|---|
+| multi_index self/sentinel | `+0x00` | `= &[+0x18]` |
+| node-header ptr | `+0x10` | `operator new(0xa8)` |
+| ordered-index head sentinel | `+0x18` | `= self` |
+| size | `+0x28` | `0` |
+| bucket count | `+0x38` | `0x36 = 54` |
+| bucket array | `+0x40` | `operator new(0x1b0) = 54 * 8` |
+| max load factor | `+0x48` | `(int)(54 * 1.0f)` (`0x3f800000`) |
 
 (The boost prime-bucket sizes `{53,97,193,389,769,…}` are at `0xac092a0`; max load factor `1.0f`.)
 
 **(b) Per-chunk free-entry pool** — `MrbChainAllocator[+0x7a0]` with an SOO bit at `MrbChainAllocator[+0x798]`, a flat array of **`0x40`-byte** records, indexed `chunk_id × 0x40` (`ReleaseMrbReservation` `0x10f5fa18`: `v7 = (int16)chunk_id << 6`). Each record is an `absl::container_internal::raw_hash_set` whose element is a `linked_hash_set<MrbEntry>` (policy `@0x2181c730`):
 
-| Field | Offset | Role | Confidence |
-|---|---|---|---|
-| capacity mask | `+0x00` | hash-set capacity | CONFIRMED |
-| size / SOO-state | `+0x08` | element count + SOO flag | CONFIRMED |
-| ctrl ptr | `+0x10` | control-byte array | CONFIRMED |
-| slots ptr | `+0x18` | slot array | CONFIRMED |
-| SOO inline slot | `+0x20` | single-element fast path | CONFIRMED |
-| free-list head | `+0x28` | doubly-linked recycled-entry list | CONFIRMED |
-| list count | `+0x38` | recycled-entry count | CONFIRMED |
+| Field | Offset | Role |
+|---|---|---|
+| capacity mask | `+0x00` | hash-set capacity |
+| size / SOO-state | `+0x08` | element count + SOO flag |
+| ctrl ptr | `+0x10` | control-byte array |
+| slots ptr | `+0x18` | slot array |
+| SOO inline slot | `+0x20` | single-element fast path |
+| free-list head | `+0x28` | doubly-linked recycled-entry list |
+| list count | `+0x38` | recycled-entry count |
 
 `ReleaseMrbReservation` hashes the `MrbEntry` (`MixingHashState::kSeed` CRC32 over `{uint16 chunk_id, int fifo_index, byte format}`), finds/inserts it in the chunk's set, then `operator new(0x20)`s a node `{+0x10 = MrbEntry key, +0x18 = format byte}` and pushes it onto the free-list (`[record+0x28]` head, `++[record+0x38]`). This recycles a freed FIFO entry back into the per-chunk pool.
 
@@ -319,16 +319,16 @@ The allocator carries *two* flat arrays keyed by `MrbEntry.chunk_id`, not one. T
 
 When `SplitAccumulationChain` cuts a chain at the current program order, the *tail* is deferred as a `unique_ptr<AccumulationChainAfterSplit>` keyed by program order into a `btree_set_container<btree<map_params_impl<long, unique_ptr<…>>>>` (root at `MrbChainAllocator[+0x70…]`, insert `@0x10f5d2e0`). The record:
 
-| Field | Offset | Type | Meaning | Confidence |
-|---|---|---|---|---|
-| span base | `+0x00` | `AccumulationWithOriginalChain*` | tail span begin | CONFIRMED |
-| split program order | `+0x08` | `s64` | compared vs `alloc[+0x70]` current_time (`0x10f598ff`) | CONFIRMED |
-| span ptr | `+0x10` | `AccumulationWithOriginalChain*` | cut cursor; `+= consumed * 0x60` (AWOC stride `0x60`) | CONFIRMED |
-| span len | `+0x18` | `s64` | `-= consumed = current_order − begin` | CONFIRMED |
-| `MrbEntry.chunk_id` | `+0x20` | `s16` | read at `0x10f599e2` / `AdvanceTimeTo` | CONFIRMED |
-| `MrbEntry.fifo_index` | `+0x28` | `s32` | (also at `+0x24`) | CONFIRMED |
-| has-MRB-entry flag | `+0x2c` | `byte` | gates `ReleaseMrbReservation` (`0x10f5990d`/`0x10f599d6`) | CONFIRMED |
-| matres program order | `+0x68` | `s64` | the bimap LEFT key (unevictable-until) | CONFIRMED |
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| span base | `+0x00` | `AccumulationWithOriginalChain*` | tail span begin |
+| split program order | `+0x08` | `s64` | compared vs `alloc[+0x70]` current_time (`0x10f598ff`) |
+| span ptr | `+0x10` | `AccumulationWithOriginalChain*` | cut cursor; `+= consumed * 0x60` (AWOC stride `0x60`) |
+| span len | `+0x18` | `s64` | `-= consumed = current_order − begin` |
+| `MrbEntry.chunk_id` | `+0x20` | `s16` | read at `0x10f599e2` / `AdvanceTimeTo` |
+| `MrbEntry.fifo_index` | `+0x28` | `s32` | (also at `+0x24`) |
+| has-MRB-entry flag | `+0x2c` | `byte` | gates `ReleaseMrbReservation` (`0x10f5990d`/`0x10f599d6`) |
+| matres program order | `+0x68` | `s64` | the bimap LEFT key (unevictable-until) |
 
 The span cut is `lea r14,[rax+rax*2]; shl r14,5` (`0x10f59ab6`) = `consumed * 0x60`, so the `AccumulationWithOriginalChain` element stride is `0x60`. The btree node built at `operator new(0x30)` writes `{+0x00 span_base, +0x08 latest_matmul/program_order, +0x10 span_ptr, +0x18 len}`. (Source: `mxu_accumulation.cc:1017` "Cannot split an AccumulationChain in the past", `:1033` "Freeing MRB entry …".)
 
@@ -369,24 +369,24 @@ So the placed slot lands in a 16-bit field at `LloInstruction+0x42`, valid for t
 
 ## Confidence Summary
 
-| Claim | Evidence | Confidence |
-|---|---|---|
-| Two per-MXU `int32` cursors (write/read), sized `num_mxus = Target[+0x4ac]`, memset 0 | `0x10f3efc4`/`0x10f3efe0`; `num_mxus` cross-checked vs `LatchLhs` `0x10f3b791` | CONFIRMED |
-| Per-MXU select `unit_id & 3`, gated by the `0x400` "has mxu" bit on WORD[+0xb] | `0x10f3f069` | CONFIRMED |
-| Advance by `MxuResultEntriesPushed`/`Popped`, round up to `MinMrbWriteBlockSize`, wrap mod `ResultFifoEntryCount` | `idiv` `@0x10f3f218`, mod `@0x10f3f234`; vtbl `+0x5f0`/`+0x5f8`/`+0x5e0` | CONFIRMED |
-| FIFO depth `{16,16,16,48,224,256}` per version | table `@0xb53e240` (`struct.unpack` direct ELF read) | CONFIRMED |
-| Physical write via `set_mrb_address` → `set_mrb_address_unrestricted` into `+0x42` | `0x1d4d93c0` / `0x1d4e9780` decompiled | CONFIRMED |
-| `0xa5` pre-scan aborts the whole quadrant bounce | `0x10f3fb34` (`cmp …,165`) | CONFIRMED |
-| Per-sequence `msr ^= 1` toggle from initial `msr = 1` | `0x10f3fb60` | CONFIRMED |
-| MSR byte written to `+0x46`/`+0x44`/`+0x42`/`+0x41` by op family | `set_matrix_staging_register` `0x1d4d7d40` decompiled | CONFIRMED |
-| Bounce stamps latches (`+0x18`) and `matmuls[0]` (`+0x48`), not matres | `[seq+0x50]` guarded by "!sequence->matmuls.empty()" `:1063` | CONFIRMED |
-| `Msr{0}="msra"`, `Msr{1}="msrb"` | `MsrToString` `0x1d629720` arithmetic | CONFIRMED |
-| Per-MXU timeline element stride `0x70`; per-chunk free-pool record stride `0x40` | `0x10f59941` (`×0x70`), `0x10f5fa18` (`<<6`) | CONFIRMED |
-| `AccumulationChainAfterSplit` `0x70`-byte field map; AWOC stride `0x60` | `SplitAccumulationChain` `0x10f598e0`; `0x10f59ab6` | CONFIRMED |
-| Six `Target` accessors at `+0x390`/`+0x398`/`+0x5e0`/`+0x5e8`/`+0x5f0`/`+0x5f8` | vtable `@0x21cce6a0`, `.rela.dyn`-resolved | CONFIRMED |
-| MRB path gen-gated off (all shipped Targets return `MatmulResultBufferEntries==0`) | `JellyfishTarget` `0x1d4902c0` etc. (`xor eax,eax; ret`) | CONFIRMED |
-| `MrbRelativeAddressFromOffset` is the matres-side relative-address map | vtbl `+0x5e8` used at `0x10f3f313`; base is `LogFatal` | HIGH |
-| Per-MXU cursors reset per quadrant call (no cross-region carry) | cursor `new`/`free` bracket the function body | HIGH |
+| Claim | Evidence |
+|---|---|
+| Two per-MXU `int32` cursors (write/read), sized `num_mxus = Target[+0x4ac]`, memset 0 | `0x10f3efc4`/`0x10f3efe0`; `num_mxus` cross-checked vs `LatchLhs` `0x10f3b791` |
+| Per-MXU select `unit_id & 3`, gated by the `0x400` "has mxu" bit on WORD[+0xb] | `0x10f3f069` |
+| Advance by `MxuResultEntriesPushed`/`Popped`, round up to `MinMrbWriteBlockSize`, wrap mod `ResultFifoEntryCount` | `idiv` `@0x10f3f218`, mod `@0x10f3f234`; vtbl `+0x5f0`/`+0x5f8`/`+0x5e0` |
+| FIFO depth `{16,16,16,48,224,256}` per version | table `@0xb53e240` (`struct.unpack` direct ELF read) |
+| Physical write via `set_mrb_address` → `set_mrb_address_unrestricted` into `+0x42` | `0x1d4d93c0` / `0x1d4e9780` decompiled |
+| `0xa5` pre-scan aborts the whole quadrant bounce | `0x10f3fb34` (`cmp …,165`) |
+| Per-sequence `msr ^= 1` toggle from initial `msr = 1` | `0x10f3fb60` |
+| MSR byte written to `+0x46`/`+0x44`/`+0x42`/`+0x41` by op family | `set_matrix_staging_register` `0x1d4d7d40` decompiled |
+| Bounce stamps latches (`+0x18`) and `matmuls[0]` (`+0x48`), not matres | `[seq+0x50]` guarded by "!sequence->matmuls.empty()" `:1063` |
+| `Msr{0}="msra"`, `Msr{1}="msrb"` | `MsrToString` `0x1d629720` arithmetic |
+| Per-MXU timeline element stride `0x70`; per-chunk free-pool record stride `0x40` | `0x10f59941` (`×0x70`), `0x10f5fa18` (`<<6`) |
+| `AccumulationChainAfterSplit` `0x70`-byte field map; AWOC stride `0x60` | `SplitAccumulationChain` `0x10f598e0`; `0x10f59ab6` |
+| Six `Target` accessors at `+0x390`/`+0x398`/`+0x5e0`/`+0x5e8`/`+0x5f0`/`+0x5f8` | vtable `@0x21cce6a0`, `.rela.dyn`-resolved |
+| MRB path gen-gated off (all shipped Targets return `MatmulResultBufferEntries==0`) | `JellyfishTarget` `0x1d4902c0` etc. (`xor eax,eax; ret`) |
+| `MrbRelativeAddressFromOffset` is the matres-side relative-address map | vtbl `+0x5e8` used at `0x10f3f313`; base is `LogFatal` |
+| Per-MXU cursors reset per quadrant call (no cross-region carry) | cursor `new`/`free` bracket the function body |
 
 ---
 

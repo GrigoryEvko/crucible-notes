@@ -255,22 +255,22 @@ The `k*2k*2k` tiebreak (§5) is what makes the `K_2K_2K` route table *determinis
 
 ## 9. Function & String Map
 
-| Symbol / string | Address | Role | Confidence |
-|---|---|---|---|
-| `TwistedTorusTopology::GetTiebreak` | `0x20b41320` | the tiebreak rule; entry, `std::min` K, shape dispatch | HIGH (full path read) |
-| `TwistedTorusTopology::Init` | `0x20b3e5e0` | sets `this[+0xe8]` shape discriminant (1/2/3) | HIGH (assigns at lines 730/734/738) |
-| `TwistedTorusTopology::GetDistances` | `0x20b420e0` | candidate-route generator (the vertex-class source) | MEDIUM (located, not field-decoded) |
-| `TwistedTorusTopology::GetDistanceFromOrigin` | `0x20b42980` | per-axis distance walk feeding the candidate count | MEDIUM (located) |
-| `TwistedTorusTopology::GetDistanceFromCache` | `0x20b40fa0` | route memoisation (`this[+0xe0]` cache bool) | LOW (located) |
-| `Coordinates::GetCoordinate` | `0x20c0b800` | `[+0]`=ndims, `[+4+4·i]`=coord | HIGH |
-| `Coordinates::ManhattanNorm` | `0x20c0ba00` | `Σ\|coord\|` — the `k*k*2k` `tb` input | HIGH |
-| `Coordinates::operator==` | `0x20c0bac0` | candidate ↔ expected route compare (stride 28) | HIGH |
-| `"…k*k*2k twisted torus vertex %s, expected distance %s is not in its minimum route sets."` | `0xa000dba` | k\*k\*2k not-in-set error (line 515) | HIGH (byte-exact) |
-| `"…k*2k*2k twisted torus's edge vertex %s, did not find a route whose traveling distances are less than tiebreaking length %d…"` | `0xa01ddf5` | "edge vertex" error, emitted by the count==3 (mid) path (source line 651) | HIGH (byte-exact) |
-| `"…k*2k*2k twisted torus's corner vertex %s, did not find a dimension whose travelling distances are all less than tiebreaking length %d…"` | `0xa01debc` | corner no-dim error (source line 610) | HIGH (byte-exact) |
-| `"…k*2k*2k twisted torus's corner vertex %s, expected distance %d on dimension %d is not found among the candidates."` | `0xa01dfed` | corner no-match error (source line 602) | HIGH (byte-exact) |
-| `"Invalid vertex %s in topology %s for algorithmic tiebreaking rule."` | `0xa085c3a` | shape∉{1,2} / bad-count fallthrough | HIGH (byte-exact) |
-| `"TPU twisted torus only supports k*k*2k and k*2k*2k and k*2k*nk slice shapes."` | `0xa020458` | the shape-support classifier string | HIGH (byte-exact) |
+| Symbol / string | Address | Role |
+|---|---|---|
+| `TwistedTorusTopology::GetTiebreak` | `0x20b41320` | the tiebreak rule; entry, `std::min` K, shape dispatch |
+| `TwistedTorusTopology::Init` | `0x20b3e5e0` | sets `this[+0xe8]` shape discriminant (1/2/3) |
+| `TwistedTorusTopology::GetDistances` | `0x20b420e0` | candidate-route generator (the vertex-class source) |
+| `TwistedTorusTopology::GetDistanceFromOrigin` | `0x20b42980` | per-axis distance walk feeding the candidate count |
+| `TwistedTorusTopology::GetDistanceFromCache` | `0x20b40fa0` | route memoisation (`this[+0xe0]` cache bool) |
+| `Coordinates::GetCoordinate` | `0x20c0b800` | `[+0]`=ndims, `[+4+4·i]`=coord |
+| `Coordinates::ManhattanNorm` | `0x20c0ba00` | `Σ\|coord\|` — the `k*k*2k` `tb` input |
+| `Coordinates::operator==` | `0x20c0bac0` | candidate ↔ expected route compare (stride 28) |
+| `"…k*k*2k twisted torus vertex %s, expected distance %s is not in its minimum route sets."` | `0xa000dba` | k\*k\*2k not-in-set error (line 515) |
+| `"…k*2k*2k twisted torus's edge vertex %s, did not find a route whose traveling distances are less than tiebreaking length %d…"` | `0xa01ddf5` | "edge vertex" error, emitted by the count==3 (mid) path (source line 651) |
+| `"…k*2k*2k twisted torus's corner vertex %s, did not find a dimension whose travelling distances are all less than tiebreaking length %d…"` | `0xa01debc` | corner no-dim error (source line 610) |
+| `"…k*2k*2k twisted torus's corner vertex %s, expected distance %d on dimension %d is not found among the candidates."` | `0xa01dfed` | corner no-match error (source line 602) |
+| `"Invalid vertex %s in topology %s for algorithmic tiebreaking rule."` | `0xa085c3a` | shape∉{1,2} / bad-count fallthrough |
+| `"TPU twisted torus only supports k*k*2k and k*2k*2k and k*2k*nk slice shapes."` | `0xa020458` | the shape-support classifier string |
 
 ---
 

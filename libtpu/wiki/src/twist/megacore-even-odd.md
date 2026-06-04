@@ -240,16 +240,16 @@ Read alongside the Phase0 contrast: Phase0 group count is always `K·R` (it uses
 
 ## 6. Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `TwistedTorusND::GetPhase1ReplicaGroups` | `0x137d3de0` | owns the even/odd append gate; group count `LDPC(0)·2K` | HIGH (gate + multiply decompile-verified) |
-| `TwistedTorusND::GetPhase0ReplicaGroups` | `0x137d3560` | always co-groups both cores into the same group | HIGH (both appends share group offset) |
-| `Target::LogicalDevicesPerChip` | `0x1d615b00` | wrapper → `TpuTopology::LogicalDevicesPerChip` | HIGH (delegating body verified) |
-| `TpuTopology::LogicalDevicesPerChip` | `0x20ad3020` | `Megacore ? 1 : CoreCount` (TC arm) — the gate's source | HIGH (TC arm verified) |
-| `TpuChipConfig::Megacore` | `0x20afca00` | `byte[TpuChipConfig+0x8]` megacore mode bit | HIGH (one-byte read verified) |
-| `Target::CoresPerChip` | `0x1d615b40` | `int32[TpuTopology+0x7c + t·12]` physical core count | HIGH (offset + stride verified) |
-| `TpuChipParts::CoreCount` | `0x20b198e0` | per-core-type physical core count | MEDIUM (located; body not transcribed) |
-| `GetReplicaPair3DOnTwistedTorus` | `0x1c893400` | produces the `{core0, core1}` pair the gate routes | HIGH (own page) |
+| Function | Address | Role |
+|---|---|---|
+| `TwistedTorusND::GetPhase1ReplicaGroups` | `0x137d3de0` | owns the even/odd append gate; group count `LDPC(0)·2K` |
+| `TwistedTorusND::GetPhase0ReplicaGroups` | `0x137d3560` | always co-groups both cores into the same group |
+| `Target::LogicalDevicesPerChip` | `0x1d615b00` | wrapper → `TpuTopology::LogicalDevicesPerChip` |
+| `TpuTopology::LogicalDevicesPerChip` | `0x20ad3020` | `Megacore ? 1 : CoreCount` (TC arm) — the gate's source |
+| `TpuChipConfig::Megacore` | `0x20afca00` | `byte[TpuChipConfig+0x8]` megacore mode bit |
+| `Target::CoresPerChip` | `0x1d615b40` | `int32[TpuTopology+0x7c + t·12]` physical core count |
+| `TpuChipParts::CoreCount` | `0x20b198e0` | per-core-type physical core count |
+| `GetReplicaPair3DOnTwistedTorus` | `0x1c893400` | produces the `{core0, core1}` pair the gate routes |
 
 ---
 

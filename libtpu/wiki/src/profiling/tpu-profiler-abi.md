@@ -35,13 +35,13 @@ For reimplementation, the contract is:
 
 Every entry past `Create` operates on an opaque 120-byte handle. It is the legacy twin of the PJRT [`PLUGIN_Profiler`](../pjrt/ext-profiler.md#the-handle-and-the-error-object) handle, but eight bytes shorter and with the `XSpace` serialized directly rather than buffered. The offsets below are read directly from the entry bodies: `Create` does `operator new(0x78)`, zero-fills, then writes `+112 = 1` and `+104 = collection`; `CollectData` reads `+88` (the constructed flag) and writes `+96` (cached size); `Destroy` reads `+104`/`+88`.
 
-| Field | Off | Type | Meaning | Confidence |
-|---|---|---|---|---|
-| `xspace` | `+0x00` | `tensorflow::profiler::XSpace` (88 B) | inline proto2 message; constructed lazily by the first `CollectData` | HIGH |
-| `xspace_constructed` | `+0x58` (88) | `uint8_t` | `1` iff `XSpace::XSpace()` has run; gates `~XSpace` in Destroy and the lazy-init in CollectData | CERTAIN |
-| `cached_xspace_size` | `+0x60` (96) | `size_t` | `XSpace::ByteSizeLong()` from the collection drain; the size reported to the caller | CERTAIN |
-| `collection` | `+0x68` (104) | `tsl::profiler::ProfilerCollection*` | owned backend; vtable-dispatched and freed (vtable `+8`) in Destroy | CERTAIN |
-| `state` | `+0x70` (112) | `uint8_t` | `1` = created/stopped (not running); `0` = running. Set `1` by Create, `0` by successful Start, `1` by successful Stop | CERTAIN |
+| Field | Off | Type | Meaning |
+|---|---|---|---|
+| `xspace` | `+0x00` | `tensorflow::profiler::XSpace` (88 B) | inline proto2 message; constructed lazily by the first `CollectData` |
+| `xspace_constructed` | `+0x58` (88) | `uint8_t` | `1` iff `XSpace::XSpace()` has run; gates `~XSpace` in Destroy and the lazy-init in CollectData |
+| `cached_xspace_size` | `+0x60` (96) | `size_t` | `XSpace::ByteSizeLong()` from the collection drain; the size reported to the caller |
+| `collection` | `+0x68` (104) | `tsl::profiler::ProfilerCollection*` | owned backend; vtable-dispatched and freed (vtable `+8`) in Destroy |
+| `state` | `+0x70` (112) | `uint8_t` | `1` = created/stopped (not running); `0` = running. Set `1` by Create, `0` by successful Start, `1` by successful Stop |
 
 > **QUIRK —** the legacy state byte at `+112` is the *inverse polarity* of the PJRT handle's `ready` byte and one slot further along. PJRT writes `ready = 1` at Create and `ready = 0` on Start (and leaves it `0` on Stop); legacy writes `state = 1` at Create, `0` on Start, and back to `1` on Stop. The legacy byte is therefore a clean two-state "is it running?" flag with no overload — Start guards on `state != 0`, Stop guards on `state != 1`, and Stop *restores* the byte to `1`. A reimplementer porting the PJRT state machine onto the legacy handle must not copy PJRT's overloaded `0`-means-both-running-and-stopped encoding.
 
@@ -87,11 +87,11 @@ The two `drop_each` loops in the decompiled body release any `unique_ptr<Profile
 
 ### Function Map
 
-| Function | Addr | Role | Confidence |
-|---|---|---|---|
-| `TpuProfiler_Create` | `0xEF33BC0` | entry; allocate handle + build collection | CERTAIN |
-| `tsl::profiler::CreateProfilers` | `0x1CF50860` | factory walk under global `mu` | CERTAIN |
-| `tsl::profiler::ProfilerCollection::ProfilerCollection(vector)` | `0xF6A15E0` | move sub-profiler vector inline | CERTAIN |
+| Function | Addr | Role |
+|---|---|---|
+| `TpuProfiler_Create` | `0xEF33BC0` | entry; allocate handle + build collection |
+| `tsl::profiler::CreateProfilers` | `0x1CF50860` | factory walk under global `mu` |
+| `tsl::profiler::ProfilerCollection::ProfilerCollection(vector)` | `0xF6A15E0` | move sub-profiler vector inline |
 
 ---
 
@@ -132,10 +132,10 @@ function TpuProfiler_Start(h, status):                           // 0xEF33EA0
 
 ### Function Map
 
-| Function | Addr | Role | Confidence |
-|---|---|---|---|
-| `TpuProfiler_Start` | `0xEF33EA0` | entry; reset + Start + state flip | CERTAIN |
-| `ProfilerCollection::Start` | `0xF6A1640` | vtable `+16`; fan out Start to sub-profilers | CERTAIN |
+| Function | Addr | Role |
+|---|---|---|
+| `TpuProfiler_Start` | `0xEF33EA0` | entry; reset + Start + state flip |
+| `ProfilerCollection::Start` | `0xF6A1640` | vtable `+16`; fan out Start to sub-profilers |
 
 ---
 
@@ -170,10 +170,10 @@ function TpuProfiler_Stop(h, status):                            // 0xEF34080
 
 ### Function Map
 
-| Function | Addr | Role | Confidence |
-|---|---|---|---|
-| `TpuProfiler_Stop` | `0xEF34080` | entry; Stop + state restore | CERTAIN |
-| `ProfilerCollection::Stop` | `0xF6A16C0` | vtable `+24`; fan out Stop to sub-profilers | CERTAIN |
+| Function | Addr | Role |
+|---|---|---|
+| `TpuProfiler_Stop` | `0xEF34080` | entry; Stop + state restore |
+| `ProfilerCollection::Stop` | `0xF6A16C0` | vtable `+24`; fan out Stop to sub-profilers |
 
 ---
 
@@ -239,13 +239,13 @@ function TpuProfiler_CollectData(h, status, buffer, size_io):    // 0xEF34240
 
 ### Function Map
 
-| Function | Addr | Role | Confidence |
-|---|---|---|---|
-| `TpuProfiler_CollectData` | `0xEF34240` | entry; drain + size report + serialize | CERTAIN |
-| `ProfilerCollection::CollectData(XSpace*)` | `0xF6A1740` | vtable `+32`; fan out drain into shared XSpace | CERTAIN |
-| `TSL_SetStatus` | (TF C-API) | write `absl::Status` into `TF_Status*` | CERTAIN |
-| `XSpace::SerializePartialToArray` | (proto2) | serialize message into caller buffer | CERTAIN |
-| `XSpace::Clear` | (proto2) | reset inline message after fetch | CERTAIN |
+| Function | Addr | Role |
+|---|---|---|
+| `TpuProfiler_CollectData` | `0xEF34240` | entry; drain + size report + serialize |
+| `ProfilerCollection::CollectData(XSpace*)` | `0xF6A1740` | vtable `+32`; fan out drain into shared XSpace |
+| `TSL_SetStatus` | (TF C-API) | write `absl::Status` into `TF_Status*` |
+| `XSpace::SerializePartialToArray` | (proto2) | serialize message into caller buffer |
+| `XSpace::Clear` | (proto2) | reset inline message after fetch |
 
 ---
 
@@ -280,10 +280,10 @@ function TpuProfiler_Destroy(h):                                 // 0xEF33DE0
 
 ### Function Map
 
-| Function | Addr | Role | Confidence |
-|---|---|---|---|
-| `TpuProfiler_Destroy` | `0xEF33DE0` | entry; tear down collection + XSpace + handle | CERTAIN |
-| `ProfilerCollection::~ProfilerCollection` (D0) | `0xF6A18E0` | vtable `+8`; destroy + free collection | CERTAIN |
+| Function | Addr | Role |
+|---|---|---|
+| `TpuProfiler_Destroy` | `0xEF33DE0` | entry; tear down collection + XSpace + handle |
+| `ProfilerCollection::~ProfilerCollection` (D0) | `0xF6A18E0` | vtable `+8`; destroy + free collection |
 
 ---
 
@@ -301,13 +301,13 @@ stream_executor::tpu::ProfilerApiFn()         @ 0x10900EA0  (accessor)
         profiler_api_fn[4] ── &TpuProfiler_Destroy      0xEF33DE0
 ```
 
-| Property | Value | Confidence |
-|---|---|---|
-| Accessor symbol | `stream_executor::tpu::ProfilerApiFn()` | CERTAIN |
-| Accessor addr | `0x10900EA0` | CERTAIN |
-| Backing storage | `ProfilerApiFn()::profiler_api_fn` (function-local static) | CERTAIN |
-| Slot contents | the five `TpuProfiler_*` function pointers | HIGH |
-| Slot ordering / extra metadata | Create/Start/Stop/CollectData/Destroy order; any trailing metadata fields not individually traced | LOW |
+| Property | Value |
+|---|---|
+| Accessor symbol | `stream_executor::tpu::ProfilerApiFn()` |
+| Accessor addr | `0x10900EA0` |
+| Backing storage | `ProfilerApiFn()::profiler_api_fn` (function-local static) |
+| Slot contents | the five `TpuProfiler_*` function pointers |
+| Slot ordering / extra metadata | Create/Start/Stop/CollectData/Destroy order; any trailing metadata fields not individually traced |
 
 > **NOTE —** the accessor returns a *pointer into* the static table; the table itself is filled by the function-local static's guarded initializer on first call. The exact byte layout (whether the table carries trailing version/metadata fields beyond the five pointers) was not individually decoded — the slot ordering matches the export order and the call sites in stream-executor's TPU backend, hence HIGH confidence on the five entries, LOW on any extra fields.
 
@@ -357,14 +357,14 @@ function TpuProfilerImpl::CollectData(this, XSpace* xs):         // 0xEF34860
 
 ### Function Map
 
-| Function | Addr | Role | Confidence |
-|---|---|---|---|
-| `xprof::tpu::TpuProfilerImpl::Start` | `0xEF347E0` | record start ns; inner Start + `AddPluginMetadata` | CERTAIN |
-| `xprof::tpu::TpuProfilerImpl::Stop` | `0xEF34820` | inner Stop; record stop ns | CERTAIN |
-| `xprof::tpu::TpuProfilerImpl::CollectData(XSpace*)` | `0xEF34860` | drain → `XprofResponse` → device XPlanes | CERTAIN |
-| `xprof::tpu::TpuProfilerImpl::~TpuProfilerImpl` (D2/D0) | `0xEF34DC0` / `0xEF34E00` | base / destroying dtor | CERTAIN |
-| `xla::profiler::AddPluginMetadata` | `0xF3165C0` | stamp libtpu build CL/timestamp as an XStat | CERTAIN |
-| `xprof::ConvertResponseToTpuXSpace` | (in `CollectData`) | response → device-plane XEvents | HIGH |
+| Function | Addr | Role |
+|---|---|---|
+| `xprof::tpu::TpuProfilerImpl::Start` | `0xEF347E0` | record start ns; inner Start + `AddPluginMetadata` |
+| `xprof::tpu::TpuProfilerImpl::Stop` | `0xEF34820` | inner Stop; record stop ns |
+| `xprof::tpu::TpuProfilerImpl::CollectData(XSpace*)` | `0xEF34860` | drain → `XprofResponse` → device XPlanes |
+| `xprof::tpu::TpuProfilerImpl::~TpuProfilerImpl` (D2/D0) | `0xEF34DC0` / `0xEF34E00` | base / destroying dtor |
+| `xla::profiler::AddPluginMetadata` | `0xF3165C0` | stamp libtpu build CL/timestamp as an XStat |
+| `xprof::ConvertResponseToTpuXSpace` | (in `CollectData`) | response → device-plane XEvents |
 
 > **GOTCHA —** do not conflate `TpuProfilerImpl` with the handle's collector. The 120-byte legacy handle's `+104` field is a `ProfilerCollection*` whose vtable slots `+16/+24/+32` are *its* Start/Stop/CollectData; that collection's inner vector holds `TpuProfilerImpl` (device), `HostTracer` (host), `ThreadpoolProfilerInterface` (host threadpool), and whatever else the factory registry built. `TpuProfilerImpl`'s own `+8` field is yet another level down — its inner per-chip RPC profiler. Three distinct objects, three distinct vtables; the entries on this page only ever touch the top one (`ProfilerCollection`).
 

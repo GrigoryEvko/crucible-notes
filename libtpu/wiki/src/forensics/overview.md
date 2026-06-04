@@ -40,16 +40,16 @@ For reimplementation — or, more realistically, for re-deriving this analysis a
 
 The file is a normal `DYN` object with an abnormal size distribution. Nearly half the on-disk bytes are code; most of the rest is read-only constant data and the (unstripped) symbol/string tables. The four largest sections account for the overwhelming majority of the file.
 
-| Section | Size | Share | Role | Confidence |
-|---|---|---|---|---|
-| `.text` | 299.9 MiB (314,422,404 B) | ~40 % | Primary executable code | CERTAIN |
-| `.strtab` | 171.5 MiB (179,840,222 B) | ~23 % | Symbol-name strings (unstripped) | CERTAIN |
-| `.lrodata` | 108.1 MiB (113,305,552 B) | ~14 % | Large-model read-only data | CERTAIN |
-| `.rodata` | 57.9 MiB (60,731,176 B) | ~8 % | Read-only constants, vtables, RTTI | CERTAIN |
-| `.eh_frame` | 28.7 MiB (30,062,700 B) | ~4 % | DWARF CFI unwind tables | CERTAIN |
-| `.symtab` | 28.2 MiB (29,609,040 B) | ~4 % | 1,233,710 symbol entries | CERTAIN |
-| `.rela.dyn` | 24.5 MiB (25,660,464 B) | ~3 % | Dynamic relocations | CERTAIN |
-| (remaining 45 sections) | ~38 MiB | ~5 % | unwind hdr, got, data, custom | HIGH |
+| Section | Size | Share | Role |
+|---|---|---|---|
+| `.text` | 299.9 MiB (314,422,404 B) | ~40 % | Primary executable code |
+| `.strtab` | 171.5 MiB (179,840,222 B) | ~23 % | Symbol-name strings (unstripped) |
+| `.lrodata` | 108.1 MiB (113,305,552 B) | ~14 % | Large-model read-only data |
+| `.rodata` | 57.9 MiB (60,731,176 B) | ~8 % | Read-only constants, vtables, RTTI |
+| `.eh_frame` | 28.7 MiB (30,062,700 B) | ~4 % | DWARF CFI unwind tables |
+| `.symtab` | 28.2 MiB (29,609,040 B) | ~4 % | 1,233,710 symbol entries |
+| `.rela.dyn` | 24.5 MiB (25,660,464 B) | ~3 % | Dynamic relocations |
+| (remaining 45 sections) | ~38 MiB | ~5 % | unwind hdr, got, data, custom |
 
 > **NOTE —** `.text` alone (299.9 MiB) is larger than a typical full LLVM `libLLVM.so`. The single biggest *lever* on reasoning about this file is that the code is one giant section in the **small/medium code model** with a "large" overflow family (`.lrodata`/`.ldata`/`.lbss`) for objects whose displacement would not fit a 32-bit `RIP`-relative reference. The split-section discipline below is what keeps a binary this size linkable at all.
 
@@ -89,16 +89,16 @@ The R-E segment swallows everything from the build-id note through `.plt` — in
 
 The compiler emitted code into eight distinct sections rather than one, a hot/cold/startup partition the linker uses to improve locality:
 
-| Section | Size | Meaning | Confidence |
-|---|---|---|---|
-| `.text` | 299.9 MiB | Main code body | CERTAIN |
-| `.text.startup` | 1.41 MiB (1,483,860 B) | Static-init / constructor code (runs once) | CERTAIN |
-| `.text.unlikely` | 417 KiB (427,113 B) | Cold paths (error/abort/slow) | CERTAIN |
-| `.text.hot` | 7.5 KiB (7,726 B) | Profile-hot inner loops | CERTAIN |
-| `google_init_cold` | 24.2 KiB (24,817 B) | Cold init for the embedded allocator | MEDIUM |
-| `google_malloc` | 17.7 KiB (18,162 B) | Embedded malloc implementation (TCMalloc-style) | MEDIUM |
-| `malloc_hook` | 2.2 KiB (2,206 B) | Allocation hook trampolines | MEDIUM |
-| `__lcxx_override` | 261 B | libc++ operator-new/delete overrides | MEDIUM |
+| Section | Size | Meaning |
+|---|---|---|
+| `.text` | 299.9 MiB | Main code body |
+| `.text.startup` | 1.41 MiB (1,483,860 B) | Static-init / constructor code (runs once) |
+| `.text.unlikely` | 417 KiB (427,113 B) | Cold paths (error/abort/slow) |
+| `.text.hot` | 7.5 KiB (7,726 B) | Profile-hot inner loops |
+| `google_init_cold` | 24.2 KiB (24,817 B) | Cold init for the embedded allocator |
+| `google_malloc` | 17.7 KiB (18,162 B) | Embedded malloc implementation (TCMalloc-style) |
+| `malloc_hook` | 2.2 KiB (2,206 B) | Allocation hook trampolines |
+| `__lcxx_override` | 261 B | libc++ operator-new/delete overrides |
 
 > **QUIRK —** the allocator is not a dependency loaded at runtime; it is **welded into the object** as named sections (`google_malloc`, `malloc_hook`, `google_malloc_data`, `google_malloc_bss`, `google_init_cold`). A reimplementer who assumes `libtpu.so` calls the system `malloc` will mis-model its heap behavior; the binary overrides `operator new`/`delete` via `__lcxx_override` and routes through its own arena. This is the standard fingerprint of a statically-linked Google TCMalloc.
 
@@ -110,28 +110,28 @@ The full per-section walk — flags, alignment, the `.text.split` zero-length ma
 
 The disassembler recovered **884,832 functions** from `libtpu.so`. Because the object is unstripped, the recovery is symbol-driven rather than purely heuristic, so the named fraction is far higher than a stripped binary of this size would yield.
 
-| Metric | Value | Confidence |
-|---|---|---|
-| Total functions | 884,832 | CERTAIN |
-| Carry a real symbol name | 881,784 (99.66 %) | CERTAIN |
-| Anonymous (`sub_` only, no symbol) | 3,048 (0.34 %) | CERTAIN |
-| C++ name successfully demangled | 822,847 (93.0 %) | CERTAIN |
-| Thunks | 750 | CERTAIN |
-| Leaf functions (no callees) | 326,941 (37 %) | CERTAIN |
-| Median function size | 72 bytes | HIGH |
-| 95th-percentile function size | 1,256 bytes | HIGH |
+| Metric | Value |
+|---|---|
+| Total functions | 884,832 |
+| Carry a real symbol name | 881,784 (99.66 %) |
+| Anonymous (`sub_` only, no symbol) | 3,048 (0.34 %) |
+| C++ name successfully demangled | 822,847 (93.0 %) |
+| Thunks | 750 |
+| Leaf functions (no callees) | 326,941 (37 %) |
+| Median function size | 72 bytes |
+| 95th-percentile function size | 1,256 bytes |
 
 The population is dominated by a handful of C++ namespaces, which is the clearest single signal of what this binary *is*:
 
-| Namespace prefix | Functions | What it is | Confidence |
-|---|---|---|---|
-| `mlir::RegisteredOperationName` | 19,171 | MLIR op registration (per-op machinery) | HIGH |
-| `asic_sw::driver` | 18,834 | TPU device driver / low-level ASIC software | HIGH |
-| `mlir::TF` | 9,125 | TensorFlow MLIR dialect | HIGH |
-| `std::__u` | 5,449 | libc++ (`__u` inline namespace) | HIGH |
-| `mlir::detail` | 5,389 | MLIR internals | HIGH |
-| `tensorflow::(anon)` | 2,514 | TensorFlow translation-unit-local | MEDIUM |
-| `platforms_deepsea::jellyfish` | 2,505 | TPU platform / codegen ("jellyfish") | MEDIUM |
+| Namespace prefix | Functions | What it is |
+|---|---|---|
+| `mlir::RegisteredOperationName` | 19,171 | MLIR op registration (per-op machinery) |
+| `asic_sw::driver` | 18,834 | TPU device driver / low-level ASIC software |
+| `mlir::TF` | 9,125 | TensorFlow MLIR dialect |
+| `std::__u` | 5,449 | libc++ (`__u` inline namespace) |
+| `mlir::detail` | 5,389 | MLIR internals |
+| `tensorflow::(anon)` | 2,514 | TensorFlow translation-unit-local |
+| `platforms_deepsea::jellyfish` | 2,505 | TPU platform / codegen ("jellyfish") |
 
 > **NOTE —** the disassembler's per-function `addr_name` field is *always* the address form (`sub_E635524`); the real symbol lives in a separate `name` field. The named/anonymous split above is computed by comparing the two: a function is "anonymous" only when its `name` collapses back to the `sub_` form. Do not read a `sub_`-prefixed name as evidence the function is unnamed — for 99.66 % of this binary there is a real mangled symbol behind it.
 
@@ -145,18 +145,18 @@ The named/anonymous mechanics, the namespace concentration, and how 326 K leaf f
 
 Beyond the standard ELF sections, the file carries several large *capsules* — self-contained embedded regions whose contents are a different kind of artifact than ordinary compiled code. The atlas below is coarse: it names each region, locates it, and points to the page that reverse-engineers its interior. It is a routing table, not an analysis.
 
-| Capsule | Where | Nature | Owning page | Confidence |
-|---|---|---|---|---|
-| Code body | `.text` (`0xe63c000`–`0x21217484`) | 300 MiB of x86-64 | [ELF Anatomy](elf-anatomy.md) | CERTAIN |
-| Large read-only data | `.lrodata` (108 MiB) | Constant pools past 32-bit reach | [ELF Anatomy](elf-anatomy.md) | CERTAIN |
-| Protobuf descriptor pool | `protodesc_cold` (3.2 MiB) | Serialized `FileDescriptorProto`s | [Custom Sections](custom-sections.md) | HIGH |
-| File-wrapper TOC | `filewrapper_toc` (488 B) | Index into embedded file blobs | [Custom Sections](custom-sections.md) | MEDIUM |
-| upb extension registry | `linkarr_upb_AllExts` (1.2 KiB) | Link-array of upb extensions | [Custom Sections](custom-sections.md) | MEDIUM |
-| Restartable-sequence metadata | `__rseq_cs`, `__rseq_cs_ptr_array` | Per-CPU `rseq` critical sections | [Custom Sections](custom-sections.md) | MEDIUM |
-| Embedded allocator | `google_malloc` + data/bss | Statically-linked TCMalloc | [ELF Anatomy](elf-anatomy.md) | MEDIUM |
-| Dispatch / vtable tables | `.rodata`, `.data.rel.ro` | C++ vtables, RTTI, jump tables | [Dispatch-Table Taxonomy](dispatch-table-taxonomy.md), [RTTI/Vtable Census](rtti-vtable-census.md) | HIGH |
-| LLVM/MLIR manifest | `.rodata` string pools | Pass names, dialect/op tables | [LLVM/MLIR Manifest](llvm-mlir-manifest.md) | MEDIUM |
-| Trailing compressed blob | end-of-file region | Suspected zstd payload | [Trailing zstd Blob](trailing-zstd-blob.md) | LOW |
+| Capsule | Where | Nature | Owning page |
+|---|---|---|---|
+| Code body | `.text` (`0xe63c000`–`0x21217484`) | 300 MiB of x86-64 | [ELF Anatomy](elf-anatomy.md) |
+| Large read-only data | `.lrodata` (108 MiB) | Constant pools past 32-bit reach | [ELF Anatomy](elf-anatomy.md) |
+| Protobuf descriptor pool | `protodesc_cold` (3.2 MiB) | Serialized `FileDescriptorProto`s | [Custom Sections](custom-sections.md) |
+| File-wrapper TOC | `filewrapper_toc` (488 B) | Index into embedded file blobs | [Custom Sections](custom-sections.md) |
+| upb extension registry | `linkarr_upb_AllExts` (1.2 KiB) | Link-array of upb extensions | [Custom Sections](custom-sections.md) |
+| Restartable-sequence metadata | `__rseq_cs`, `__rseq_cs_ptr_array` | Per-CPU `rseq` critical sections | [Custom Sections](custom-sections.md) |
+| Embedded allocator | `google_malloc` + data/bss | Statically-linked TCMalloc | [ELF Anatomy](elf-anatomy.md) |
+| Dispatch / vtable tables | `.rodata`, `.data.rel.ro` | C++ vtables, RTTI, jump tables | [Dispatch-Table Taxonomy](dispatch-table-taxonomy.md), [RTTI/Vtable Census](rtti-vtable-census.md) |
+| LLVM/MLIR manifest | `.rodata` string pools | Pass names, dialect/op tables | [LLVM/MLIR Manifest](llvm-mlir-manifest.md) |
+| Trailing compressed blob | end-of-file region | Suspected zstd payload | [Trailing zstd Blob](trailing-zstd-blob.md) |
 
 > **GOTCHA —** the section header table ends *exactly* at EOF: `e_shoff` (781,687,720) + 52 × 64 bytes = 781,691,048 = file size. There is therefore **no naive trailing data after the section headers**. A plain ASCII/byte scan for the zstd frame magic (`28 b5 2f fd`) returned zero hits at this layer. Any "trailing zstd blob" is consequently either inside a section (e.g. an embedded payload within `.lrodata`/`.rodata`) or absent in this build — the claim is carried at **LOW** confidence and is owned, with the proper search, by [Trailing zstd Blob](trailing-zstd-blob.md). This page does not assert the blob exists; it routes the question.
 
@@ -166,10 +166,10 @@ Beyond the standard ELF sections, the file carries several large *capsules* — 
 
 The wheel directory holds two ELF objects, not one. Both were disassembled; the analysis treats them as a pair because the runtime/driver split spans them.
 
-| Object | Size | Functions | Needed libs | Role | Confidence |
-|---|---|---|---|---|---|
-| `libtpu.so` | 745.5 MiB | 884,832 | libm, libpthread, libdl, librt, libc, ld | PJRT plugin: compiler + runtime + driver | CERTAIN |
-| `sdk.so` | 21.5 MiB | 94,732 | libstdc++, libgcc_s, libpthread, libm, libc, ld | SDK / support library | HIGH |
+| Object | Size | Functions | Needed libs | Role |
+|---|---|---|---|---|
+| `libtpu.so` | 745.5 MiB | 884,832 | libm, libpthread, libdl, librt, libc, ld | PJRT plugin: compiler + runtime + driver |
+| `sdk.so` | 21.5 MiB | 94,732 | libstdc++, libgcc_s, libpthread, libm, libc, ld | SDK / support library |
 
 Two details distinguish them. `libtpu.so` links **no external `libstdc++`** — its C++ runtime is statically embedded (consistent with the welded allocator and the `std::__u` / libc++ namespace seen in the function population). `sdk.so`, by contrast, dynamically needs `libstdc++.so.6` and presents protobuf/absl-heavy namespaces (`google::protobuf`, `absl::lts_*`, `libtpu::sdk`, `tpu::monitoring`). The full provenance — why there are two objects, what each owns, and how symbols flow between them — is the subject of [Two-Binary Split](two-binary-split.md).
 

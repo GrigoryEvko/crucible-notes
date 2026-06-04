@@ -89,15 +89,15 @@ function EncodeAddrHandlerVectorAlu(lane, bundle, bits):
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `EncodeBarnaCoreAddressHandlerVectorAlu` | `0x1e86f5c0` | Per-lane ALU slot encoder; harvest + merge | CERTAIN |
-| `EncodeBundleInternal` | `0x1e86c7c0` | Full 41-byte JF bundle encoder (the scratch packer) | CERTAIN |
-| `EncodeVectorAluInstruction` | `0x1e864f00` | JF ALU field writer; struct bytes `0x16/0x1a/0x1c/0x1d` | HIGH |
-| `EncodeVectorAluYEncoding` | `0x1e864be0` | Y-encoding jump table `@0xb83450c`; copies `Common.imm` slots | HIGH |
-| `ValidateVectorAluInstruction` | `0x1e8632e0` | Proto-offset → field binding (opcode `@+0x50`) | HIGH |
-| `ProtoUtils::IsEupOpcode` | `0x1e875900` | `add edi,-0x30; cmp 5; setb` → opcodes `0x30..0x34` | CERTAIN |
-| `EncodeBarnaCoreAddressHandlerBundle` | `0x1e86fd80` | Per-bundle dispatcher; calls ALU lane 0 then 1 | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `EncodeBarnaCoreAddressHandlerVectorAlu` | `0x1e86f5c0` | Per-lane ALU slot encoder; harvest + merge |
+| `EncodeBundleInternal` | `0x1e86c7c0` | Full 41-byte JF bundle encoder (the scratch packer) |
+| `EncodeVectorAluInstruction` | `0x1e864f00` | JF ALU field writer; struct bytes `0x16/0x1a/0x1c/0x1d` |
+| `EncodeVectorAluYEncoding` | `0x1e864be0` | Y-encoding jump table `@0xb83450c`; copies `Common.imm` slots |
+| `ValidateVectorAluInstruction` | `0x1e8632e0` | Proto-offset → field binding (opcode `@+0x50`) |
+| `ProtoUtils::IsEupOpcode` | `0x1e875900` | `add edi,-0x30; cmp 5; setb` → opcodes `0x30..0x34` |
+| `EncodeBarnaCoreAddressHandlerBundle` | `0x1e86fd80` | Per-bundle dispatcher; calls ALU lane 0 then 1 |
 
 > **NOTE —** the decompile confirms the call chain directly: `EncodeBundleInternal` is invoked at line 249 of the merged-ALU encoder, `IsEupOpcode` is called on the opcode (proto offset `+0x50`, i.e. `v40+0x14` as a `uint`) at line 324, and the merge writes follow immediately after. The harvest window reads `out[0xa]` (dword), `out[0xe]` (word), `out[0x10]` (byte) — confirmed as `*(v37+10)`, `*(v37+14)`, `*(v37+16)` in the decompiled merge expressions.
 
@@ -142,16 +142,16 @@ bit: 48      53                          78  79      84                         
 
 ### Slot fields
 
-| Slot field | Abs bits | Width | Source | Role | Confidence |
-|---|---|---|---|---|---|
-| `Alu0` predication | 48 .. 52 | 5 | predication path | 5-bit BCS predication (lane 0) | CERTAIN |
-| `Alu0` OPCODE | 53 .. 58 | 6 | `VectorAluInstruction.opcode` | `VectorAluOpcode` (§4) | CERTAIN |
-| `Alu0` operand body | 59 .. 78 | 20 | `Vx`/`y_encoding`/`y_reg`/`dest` | JF VectorAlu operands (lane-0 layout) | HIGH |
-| `Alu1` predication | 79 .. 83 | 5 | predication path | 5-bit BCS predication (lane 1) | CERTAIN |
-| `Alu1` OPCODE | 84 .. 89 | 6 | `VectorAluInstruction.opcode` | `VectorAluOpcode` (§4) | CERTAIN |
-| `Alu1` `Vx` | 90 .. 94 | 5 | `consumes_vector_register`/`x_reg` | `VectorRegister` (VREG 0..31) | HIGH |
-| `Alu1` Y-region | 95 ..104 | 10 | `y_reg` + `y_encoding`-driven | `VectorRegister` + `VectorAluYEncoding` (§5) | HIGH |
-| `Alu1` Dest | 105 ..109 | 5 | `produces_register`/`destination` | `VectorRegister` | HIGH |
+| Slot field | Abs bits | Width | Source | Role |
+|---|---|---|---|---|
+| `Alu0` predication | 48 .. 52 | 5 | predication path | 5-bit BCS predication (lane 0) |
+| `Alu0` OPCODE | 53 .. 58 | 6 | `VectorAluInstruction.opcode` | `VectorAluOpcode` (§4) |
+| `Alu0` operand body | 59 .. 78 | 20 | `Vx`/`y_encoding`/`y_reg`/`dest` | JF VectorAlu operands (lane-0 layout) |
+| `Alu1` predication | 79 .. 83 | 5 | predication path | 5-bit BCS predication (lane 1) |
+| `Alu1` OPCODE | 84 .. 89 | 6 | `VectorAluInstruction.opcode` | `VectorAluOpcode` (§4) |
+| `Alu1` `Vx` | 90 .. 94 | 5 | `consumes_vector_register`/`x_reg` | `VectorRegister` (VREG 0..31) |
+| `Alu1` Y-region | 95 ..104 | 10 | `y_reg` + `y_encoding`-driven | `VectorRegister` + `VectorAluYEncoding` (§5) |
+| `Alu1` Dest | 105 ..109 | 5 | `produces_register`/`destination` | `VectorRegister` |
 
 The opcode/operand body is the standard JF VectorAlu encoding, relocated. Only the predication and the lane select are address-handler-specific. The predication bits are written by the predication path (decompile: `(pred & 0x1F) << 48` into qword0 for `Alu0`; `(pred & 0x1F) << 15` into qword1 for `Alu1`, i.e. abs bit 79), not by the harvest.
 
@@ -370,12 +370,12 @@ prog_end encode (decompile @0x1e85e8a0, line 55):
 
 The compiler sets `prog_end = 1` in the **final** bundle's scalar control slot; the hardware sequencer halts after executing that bundle. Intra-program control flow lives in the same DF scalar slot's Branch fields — predication (ABS 30..34), branch_type (ABS 36), branch_target_pc (ABS 37..43, `&0x7f`); `prog_end` (ABS 44) is the unconditional halt.
 
-| Field | Abs bits | Width | Encoder | Confidence |
-|---|---|---|---|---|
-| Branch predication | 30 .. 34 | 5 | `EncodeBarnaCoreAddressHandlerScalarSlot` (DF) | HIGH |
-| Branch type | 36 | 1 | same | HIGH |
-| Branch target PC | 37 .. 43 | 7 | same (`&0x7f`) | HIGH |
-| `prog_end` | 44 | 1 | same (`<<0x2c`, mask `0xFFFFEFFFFFFFFFFF`) | CERTAIN |
+| Field | Abs bits | Width | Encoder |
+|---|---|---|---|
+| Branch predication | 30 .. 34 | 5 | `EncodeBarnaCoreAddressHandlerScalarSlot` (DF) |
+| Branch type | 36 | 1 | same |
+| Branch target PC | 37 .. 43 | 7 | same (`&0x7f`) |
+| `prog_end` | 44 | 1 | same (`<<0x2c`, mask `0xFFFFEFFFFFFFFFFF`) |
 
 > **QUIRK —** only the **DF** address-handler scalar surface exposes Branch and `prog_end`. The JF standalone scalar-slot helper (`EncodeBarnaCoreAddressHandlerScalarSlotHelper` `@0x1e86f2e0`) does not. A reimplementer targeting the JF generation must source program termination and intra-program control flow from the DF scalar-slot encoding, consistent with the asymmetry noted in the parent JF/DF bundle work.
 

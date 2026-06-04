@@ -38,29 +38,29 @@ The registry is a two-dimensional table: `(TpuVersion) × (TpuSequencerType) →
 
 **Axis 1 — `TpuVersion`** is the silicon generation, the same six-value enum that keys the codec metadata and the cost model. `tpu::TpuVersionToString` (`0x20b3a480`) indexes a 6-entry pointer table and traps for any ordinal `≥ 6`:
 
-| `TpuVersion` | Codename | Public name | Confidence |
-|---|---|---|---|
-| 0 | jellyfish | TPU v2 | CONFIRMED |
-| 1 | dragonfish | TPU v3 | CONFIRMED |
-| 2 | pufferfish | TPU v4 | CONFIRMED |
-| 3 | viperfish | TPU v5p (+ v5e lite) | CONFIRMED |
-| 4 | ghostlite | TPU v6e | CONFIRMED |
-| 5 | 6acc60406 | TPU v7 | CONFIRMED |
+| `TpuVersion` | Codename | Public name |
+|---|---|---|
+| 0 | jellyfish | TPU v2 |
+| 1 | dragonfish | TPU v3 |
+| 2 | pufferfish | TPU v4 |
+| 3 | viperfish | TPU v5p (+ v5e lite) |
+| 4 | ghostlite | TPU v6e |
+| 5 | 6acc60406 | TPU v7 |
 
 The codename strings are read straight from the `tpu::TpuVersionToString` table (`off_22011BF0`): ordinals 0..5 resolve to `jellyfish`, `dragonfish`, `pufferfish`, `viperfish`, `ghostlite`, `6acc60406`. The public-name column follows the canonical codename → marketing-name mapping in the [per-gen comparison matrix](../appendix/per-gen-comparison-matrix.md); `6acc60406` is the only generation whose binary carries no public-name string (the literal `Trillium`/`Ironwood` appears **nowhere** in `libtpu.so` — `6acc60406` is the sole codename for that generation).
 
 **Axis 2 — `TpuSequencerType`** is which sequencer in the chip the bundle targets. `tpu::TpuSequencerTypeToString` (`0x20b362e0`) is a single instruction — `return off_22010DE0[ordinal]` — an ordinal-indexed pointer table with eight entries:
 
-| `TpuSequencerType` | Name | Registers a cell? | Confidence |
-|---|---|---|---|
-| 0 | `TensorCoreSequencer` | yes (every gen) | CONFIRMED |
-| 1 | `BarnaCoreSequencer` | yes (v0/v1/v2) | CONFIRMED |
-| 2 | `BarnaCoreAddressHandler` | yes (v0/v1/v2) | CONFIRMED |
-| 3 | `SparseCoreSequencer` | no (separate path) | CONFIRMED |
-| 4 | `SparseCoreTileAccessCoreSequencer` (TAC) | no | CONFIRMED |
-| 5 | `SparseCoreTileExecuteCoreSequencer` (TEC) | no | CONFIRMED |
-| 6 | `IMEM` | no | CONFIRMED |
-| 7 | `VIMEM` | no | CONFIRMED |
+| `TpuSequencerType` | Name | Registers a cell? |
+|---|---|---|
+| 0 | `TensorCoreSequencer` | yes (every gen) |
+| 1 | `BarnaCoreSequencer` | yes (v0/v1/v2) |
+| 2 | `BarnaCoreAddressHandler` | yes (v0/v1/v2) |
+| 3 | `SparseCoreSequencer` | no (separate path) |
+| 4 | `SparseCoreTileAccessCoreSequencer` (TAC) | no |
+| 5 | `SparseCoreTileExecuteCoreSequencer` (TEC) | no |
+| 6 | `IMEM` | no |
+| 7 | `VIMEM` | no |
 
 The cross-product is sparse. Only `(gen, seq)` pairs that name a sequencer actually present on that generation are registered: v0/v1/v2 carry a TensorCore plus BarnaCore engines; v3/v4/v5 carry only a TensorCore on this path (their SparseCore lowering is a separate dispatcher). That gives 12 live cells out of the 6 × 8 = 48 grid positions.
 
@@ -129,20 +129,20 @@ key = 0x100000001;  Register(GetIsaEmitterRegistry(), &key, JellyfishEmitter_$_0
 
 The whole-section scan finds exactly twelve `Register` call sites feeding this registry, across eight init modules. Each cell's leaf is the `IsaEmitter` subclass the cell's `__call_func` lambda constructs.
 
-| # | key (u64) | (`TpuVersion`, `TpuSequencerType`) | Init module | Leaf emitter | Confidence |
-|---|---|---|---|---|---|
-| 1 | `0x000000000` | (0 jellyfish, 0 TensorCore) | `jellyfish_emitter` | `JellyfishEmitter` | CONFIRMED |
-| 2 | `0x100000000` | (0 jellyfish, 1 BarnaCoreSequencer) | `jellyfish_emitter` | `JellyfishEmitter` | CONFIRMED |
-| 3 | `0x200000000` | (0 jellyfish, 2 BarnaCoreAddressHandler) | `barna_core_address_handler_emitter` | `BarnaCoreAddressHandlerEmitter` | CONFIRMED |
-| 4 | `0x000000001` | (1 dragonfish, 0 TensorCore) | `jellyfish_emitter` | `JellyfishEmitter` | CONFIRMED |
-| 5 | `0x100000001` | (1 dragonfish, 1 BarnaCoreSequencer) | `jellyfish_emitter` | `JellyfishEmitter` | CONFIRMED |
-| 6 | `0x200000001` | (1 dragonfish, 2 BarnaCoreAddressHandler) | `barna_core_address_handler_emitter` | `BarnaCoreAddressHandlerEmitter` | CONFIRMED |
-| 7 | `0x000000002` | (2 pufferfish, 0 TensorCore) | `pufferfish_tensorcore_emitter` | `PufferfishTensorCoreEmitter` | CONFIRMED |
-| 8 | `0x100000002` | (2 pufferfish, 1 BarnaCoreSequencer) | `pufferfish_barnacore_sequencer_emitter` | `PufferfishBarnaCoreSequencerEmitter` | CONFIRMED |
-| 9 | `0x200000002` | (2 pufferfish, 2 BarnaCoreAddressHandler) | `pufferfish_barnacore_channel_emitter` | `PufferfishBarnaCoreChannelEmitter` | CONFIRMED |
-| 10 | `0x000000003` | (3 viperfish, 0 TensorCore) | `viperfish_tensorcore_emitter` | `ViperfishTensorCoreEmitter` | CONFIRMED |
-| 11 | `0x000000004` | (4 ghostlite, 0 TensorCore) | `ghostlite_tensorcore_emitter` | `GhostliteTensorCoreEmitter` | CONFIRMED |
-| 12 | `0x000000005` | (5 6acc60406, 0 TensorCore) | `6acc60406_tensorcore_emitter` (`sub_213ED1C0`) | `GhostliteTensorCoreEmitter` (reused) | CONFIRMED |
+| # | key (u64) | (`TpuVersion`, `TpuSequencerType`) | Init module | Leaf emitter |
+|---|---|---|---|---|
+| 1 | `0x000000000` | (0 jellyfish, 0 TensorCore) | `jellyfish_emitter` | `JellyfishEmitter` |
+| 2 | `0x100000000` | (0 jellyfish, 1 BarnaCoreSequencer) | `jellyfish_emitter` | `JellyfishEmitter` |
+| 3 | `0x200000000` | (0 jellyfish, 2 BarnaCoreAddressHandler) | `barna_core_address_handler_emitter` | `BarnaCoreAddressHandlerEmitter` |
+| 4 | `0x000000001` | (1 dragonfish, 0 TensorCore) | `jellyfish_emitter` | `JellyfishEmitter` |
+| 5 | `0x100000001` | (1 dragonfish, 1 BarnaCoreSequencer) | `jellyfish_emitter` | `JellyfishEmitter` |
+| 6 | `0x200000001` | (1 dragonfish, 2 BarnaCoreAddressHandler) | `barna_core_address_handler_emitter` | `BarnaCoreAddressHandlerEmitter` |
+| 7 | `0x000000002` | (2 pufferfish, 0 TensorCore) | `pufferfish_tensorcore_emitter` | `PufferfishTensorCoreEmitter` |
+| 8 | `0x100000002` | (2 pufferfish, 1 BarnaCoreSequencer) | `pufferfish_barnacore_sequencer_emitter` | `PufferfishBarnaCoreSequencerEmitter` |
+| 9 | `0x200000002` | (2 pufferfish, 2 BarnaCoreAddressHandler) | `pufferfish_barnacore_channel_emitter` | `PufferfishBarnaCoreChannelEmitter` |
+| 10 | `0x000000003` | (3 viperfish, 0 TensorCore) | `viperfish_tensorcore_emitter` | `ViperfishTensorCoreEmitter` |
+| 11 | `0x000000004` | (4 ghostlite, 0 TensorCore) | `ghostlite_tensorcore_emitter` | `GhostliteTensorCoreEmitter` |
+| 12 | `0x000000005` | (5 6acc60406, 0 TensorCore) | `6acc60406_tensorcore_emitter` (`sub_213ED1C0`) | `GhostliteTensorCoreEmitter` (reused) |
 
 The shape of the table is the silicon story:
 
@@ -182,17 +182,17 @@ The version axis is backed by a `Target` class hierarchy: `IsaEmitterFactory::Cr
     └── GhostLiteSparseCoreTarget
 ```
 
-| Class | ZTI @ | base class | object size | ordinal / public | Confidence |
-|---|---|---|---|---|---|
-| `Target` (root) | `0x21ccef00` | — | — | — | CONFIRMED |
-| `JellyfishTarget` | `0x21cc7420` | `Target` | `0x958` (2392 B) | 0 / v2 | CONFIRMED |
-| `DragonfishTarget` | `0x21cc6ba8` | `JellyfishTarget` | `0x958` | 1 / v3 | CONFIRMED |
-| `PufferfishTarget` | `0x21cc7d38` | `Target` | `0x950` (2384 B) | 2 / v4 | CONFIRMED |
-| `ViperfishTarget` | `0x21cc8f78` | `Target` | `0x950` | 3 / v5p | CONFIRMED |
-| `GhostliteTarget` | `0x21cc85f8` | `Target` | `0x950` | 4 / v6e (+5/v7 reuse) | CONFIRMED |
-| `SparseCoreTarget` (root) | `0x21ccef10` | — | — | — | CONFIRMED |
-| `ViperfishSparseCoreTarget` | `0x21cc9080` | `SparseCoreTarget` | — | v5p SC | CONFIRMED |
-| `GhostLiteSparseCoreTarget` | `0x21cc8700` | `SparseCoreTarget` | — | v6e SC | CONFIRMED |
+| Class | ZTI @ | base class | object size | ordinal / public |
+|---|---|---|---|---|
+| `Target` (root) | `0x21ccef00` | — | — | — |
+| `JellyfishTarget` | `0x21cc7420` | `Target` | `0x958` (2392 B) | 0 / v2 |
+| `DragonfishTarget` | `0x21cc6ba8` | `JellyfishTarget` | `0x958` | 1 / v3 |
+| `PufferfishTarget` | `0x21cc7d38` | `Target` | `0x950` (2384 B) | 2 / v4 |
+| `ViperfishTarget` | `0x21cc8f78` | `Target` | `0x950` | 3 / v5p |
+| `GhostliteTarget` | `0x21cc85f8` | `Target` | `0x950` | 4 / v6e (+5/v7 reuse) |
+| `SparseCoreTarget` (root) | `0x21ccef10` | — | — | — |
+| `ViperfishSparseCoreTarget` | `0x21cc9080` | `SparseCoreTarget` | — | v5p SC |
+| `GhostLiteSparseCoreTarget` | `0x21cc8700` | `SparseCoreTarget` | — | v6e SC |
 
 The 8-byte object-size delta (`0x958` for v0/v1 vs `0x950` for v2+) is `JellyfishTarget`'s extra `+0x950` `Performance*` field (the Jf cost-model object built in its ctor); v4+ build their performance object through a different path and omit that field.
 

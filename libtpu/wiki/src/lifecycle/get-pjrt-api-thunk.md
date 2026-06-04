@@ -64,10 +64,10 @@ Because it is a `jmp` and not a `call`, `GetPjrtApi` consumes no stack frame and
 
 ### Function Map
 
-| Function | Address | Size | Role | Confidence |
-|---|---|---|---|---|
-| `GetPjrtApi` | `0xe6a83a0` | 5 B | Exported `jmp` thunk → builder | CONFIRMED |
-| `pjrt::tpu_plugin::GetTpuPjrtApi` | `0xe6aa440` | 1336 B | The builder it forwards to (internal) | CONFIRMED |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `GetPjrtApi` | `0xe6a83a0` | 5 B | Exported `jmp` thunk → builder |
+| `pjrt::tpu_plugin::GetTpuPjrtApi` | `0xe6aa440` | 1336 B | The builder it forwards to (internal) |
 
 > **GOTCHA —** spelling and casing are part of the ABI. The exported symbol is `GetPjrtApi` (lowercase `jrt`); `GetTpuPjrtApi` is internal and **not** in the dynamic symbol table. A loader that `dlsym`s `GetTpuPjrtApi`, or a build that exports only the `Tpu`-cased name, fails discovery. The 194 `Tpu*_*` symbols that *are* exported (`FUNC GLOBAL`, all `@@VERS_1.0`) are the legacy StreamExecutor C-ABI, never reached through PJRT — see [tftpu-initialize-bootstrap.md](tftpu-initialize-bootstrap.md).
 
@@ -136,13 +136,13 @@ The 16 extension builders and their exact construction order, `next`-linking, an
 
 ### Function Map
 
-| Function | Address | Size | Role | Confidence |
-|---|---|---|---|---|
-| `pjrt::tpu_plugin::GetTpuPjrtApi` | `0xe6aa440` | 1336 B | The 17-guard lazy builder | CONFIRMED |
-| `pjrt::CreatePjrtApi` | `0xf874160` | 1872 B | 17th-guard slot-fill constructor | CONFIRMED |
-| `__cxa_guard_acquire` | `0x213e9ac0` | — | libtpu's own one-shot acquire | CONFIRMED |
-| `__cxa_guard_release` | `0x213e9be0` | — | libtpu's own one-shot release | CONFIRMED |
-| `__cxa_guard_abort` | `0x213e9c20` | — | libtpu's own one-shot abort | CONFIRMED |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `pjrt::tpu_plugin::GetTpuPjrtApi` | `0xe6aa440` | 1336 B | The 17-guard lazy builder |
+| `pjrt::CreatePjrtApi` | `0xf874160` | 1872 B | 17th-guard slot-fill constructor |
+| `__cxa_guard_acquire` | `0x213e9ac0` | — | libtpu's own one-shot acquire |
+| `__cxa_guard_release` | `0x213e9be0` | — | libtpu's own one-shot release |
+| `__cxa_guard_abort` | `0x213e9c20` | — | libtpu's own one-shot abort |
 
 ### Considerations
 
@@ -171,14 +171,14 @@ The builder runs only the PJRT-table and extension-chain construction. It does *
 
 `.lbss` is the *large* BSS — NOBITS, occupies no file space, zero-filled by the loader. At `dlopen` the entire 1120-byte slab is zero. It stays zero until the first `GetPjrtApi` call runs guard 17 and `CreatePjrtApi` writes every slot. The header writes are byte-confirmed against `CreatePjrtApi @ 0xf874160`: `*a1 = 1120; a1[1] = chain_head; a1[2] = 24; a1[3] = 0; a1[4] = 0x6700000000`.
 
-| Field | Value | Source | Confidence |
-|---|---|---|---|
-| Storage VA | `0x227BA840` | `.lbss` static, `mov rbx, offset` in builder | CONFIRMED |
-| Section | `.lbss` [47], NOBITS | section table | CONFIRMED |
-| Size | 1120 B (= 140 × 8) | `*a1 = 1120` in `CreatePjrtApi` | CONFIRMED |
-| Value at load | all zero | NOBITS, zero-filled | CONFIRMED |
-| Written by | `CreatePjrtApi @ 0xf874160` (guard 17) | builder call site | CONFIRMED |
-| Lifetime | process (leaked-on-exit) | function-local static, no atexit dtor | CONFIRMED |
+| Field | Value | Source |
+|---|---|---|
+| Storage VA | `0x227BA840` | `.lbss` static, `mov rbx, offset` in builder |
+| Section | `.lbss` [47], NOBITS | section table |
+| Size | 1120 B (= 140 × 8) | `*a1 = 1120` in `CreatePjrtApi` |
+| Value at load | all zero | NOBITS, zero-filled |
+| Written by | `CreatePjrtApi @ 0xf874160` (guard 17) | builder call site |
+| Lifetime | process (leaked-on-exit) | function-local static, no atexit dtor |
 
 > **NOTE —** the slot-by-slot reconstruction — which of the 135 fn-ptrs map to which `pjrt::PJRT_*` wrapper — lives on [../pjrt/api-vtable-reconstruction.md](../pjrt/api-vtable-reconstruction.md). What this page fixes is *where the table is and how it comes to exist*: a zero `.lbss` slab, written once under guard 17. A static analyst who greps for a populated `PJRT_Api` in `PROGBITS` finds nothing; the table is a runtime artifact.
 
@@ -196,13 +196,13 @@ The builder runs only the PJRT-table and extension-chain construction. It does *
 
 The `CreatePjrtApi` argument-to-slot mapping is byte-confirmed: in `GetTpuPjrtApi` the call passes `(Client_Create, ExecuteContext_Create, TopologyDescription_Create, Plugin_Initialize, &host_memory_allocator_extension, Plugin_Attributes_Xla)`; in `CreatePjrtApi` those land as `a1[15]=a2`, `a1[103]=a3`, `a1[87]=a4`, `a1[8]=a5`, `a1[1]=a6`, `a1[9]=a7`. The mangled symbol of `CreatePjrtApi` encodes this exact parameter order (`Client_Create_Args`, `ExecuteContext_Create_Args`, `TopologyDescription_Create_Args`, `Plugin_Initialize_Args`, `PJRT_Extension_Base*`, `Plugin_Attributes_Args`), corroborating the register-to-slot trace.
 
-| Slot | Field | Implementation | Address | Namespace | Confidence |
-|---|---|---|---|---|---|
-| 8 | `PJRT_Plugin_Initialize` | `tpu_plugin::PJRT_Plugin_Initialize` | `0xe6a9d00` | `pjrt::tpu_plugin` (TPU) | CONFIRMED |
-| 9 | `PJRT_Plugin_Attributes` | `pjrt::PJRT_Plugin_Attributes_Xla` | `0xf85f080` | `pjrt` (generic XLA) | CONFIRMED |
-| 15 | `PJRT_Client_Create` | `tpu_plugin::PJRT_Client_Create` | `0xe6a8840` | `pjrt::tpu_plugin` (TPU) | CONFIRMED |
-| 87 | `PJRT_TopologyDescription_Create` | `tpu_plugin::PJRT_TopologyDescription_Create` | `0xe6a9b20` | `pjrt::tpu_plugin` (TPU) | CONFIRMED |
-| 103 | `PJRT_ExecuteContext_Create` | `tpu_plugin::PJRT_ExecuteContext_Create` | `0xe6a9a80` | `pjrt::tpu_plugin` (TPU) | CONFIRMED |
+| Slot | Field | Implementation | Address | Namespace |
+|---|---|---|---|---|
+| 8 | `PJRT_Plugin_Initialize` | `tpu_plugin::PJRT_Plugin_Initialize` | `0xe6a9d00` | `pjrt::tpu_plugin` (TPU) |
+| 9 | `PJRT_Plugin_Attributes` | `pjrt::PJRT_Plugin_Attributes_Xla` | `0xf85f080` | `pjrt` (generic XLA) |
+| 15 | `PJRT_Client_Create` | `tpu_plugin::PJRT_Client_Create` | `0xe6a8840` | `pjrt::tpu_plugin` (TPU) |
+| 87 | `PJRT_TopologyDescription_Create` | `tpu_plugin::PJRT_TopologyDescription_Create` | `0xe6a9b20` | `pjrt::tpu_plugin` (TPU) |
+| 103 | `PJRT_ExecuteContext_Create` | `tpu_plugin::PJRT_ExecuteContext_Create` | `0xe6a9a80` | `pjrt::tpu_plugin` (TPU) |
 
 Slot 1 (`extension_start`) is also caller-supplied — argument `a6`, the chain head `&host_memory_allocator_extension @ 0x224c3f68` — but it is a data pointer, not a `tpu_plugin` function. The remaining 130 function-pointer slots are `lea`-loaded constants in `CreatePjrtApi`'s body: compile-fixed `pjrt::PJRT_*` wrappers (e.g. `a1[5]=PJRT_Error_Destroy`, `a1[16]=PJRT_Client_Destroy`), shared with the generic XLA PJRT layer and not TPU-specialized.
 
@@ -210,13 +210,13 @@ Slot 1 (`extension_start`) is also caller-supplied — argument `a6`, the chain 
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `pjrt::tpu_plugin::PJRT_Client_Create` | `0xe6a8840` | Silicon scan + live client construction (slot 15) | CONFIRMED |
-| `pjrt::tpu_plugin::PJRT_Plugin_Initialize` | `0xe6a9d00` | One-time TPU driver bring-up (slot 8) | CONFIRMED |
-| `pjrt::tpu_plugin::PJRT_TopologyDescription_Create` | `0xe6a9b20` | AOT pod topology, no client (slot 87) | CONFIRMED |
-| `pjrt::tpu_plugin::PJRT_ExecuteContext_Create` | `0xe6a9a80` | Per-execution context (slot 103) | CONFIRMED |
-| `pjrt::PJRT_Plugin_Attributes_Xla` | `0xf85f080` | Generic XLA attribute table (slot 9) | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `pjrt::tpu_plugin::PJRT_Client_Create` | `0xe6a8840` | Silicon scan + live client construction (slot 15) |
+| `pjrt::tpu_plugin::PJRT_Plugin_Initialize` | `0xe6a9d00` | One-time TPU driver bring-up (slot 8) |
+| `pjrt::tpu_plugin::PJRT_TopologyDescription_Create` | `0xe6a9b20` | AOT pod topology, no client (slot 87) |
+| `pjrt::tpu_plugin::PJRT_ExecuteContext_Create` | `0xe6a9a80` | Per-execution context (slot 103) |
+| `pjrt::PJRT_Plugin_Attributes_Xla` | `0xf85f080` | Generic XLA attribute table (slot 9) |
 
 ### Considerations
 

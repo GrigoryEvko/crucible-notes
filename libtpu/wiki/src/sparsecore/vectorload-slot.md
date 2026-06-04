@@ -58,16 +58,16 @@ VectorLoad slot — word 0x28 (8 bytes), gfc plain TileSpmemLoad form
 
 > **NOTE — `SourceOne@13` is a `VectorExtended` (scan) field, not a `VectorLoad` field; it shares word `0x28` and is drawn here to show the seam.** The load proper carries `{Dest, Cbreg, BaseAddress, Offset, Stride, Mask, Index}` at bits 27..60. `SourceOne` at bit 13 belongs to the scan op that consumes the loaded VREG (see [§The SourceOne Seed Enum](#the-sourceone-seed-enum)); it is byte-confirmed in the same word from the `…AddScanS32SourceOneField` accessor.
 
-| Field | Word | Shift | Width | Present in modes | Accessor (gfc) | Confidence |
-|---|---:|---:|---:|---|---|---|
-| `Opcode` | `0x28` | 58 | 3 | all | (Matches predicate, `byte+0x2f & 0x1c`) | CONFIRMED |
-| `Dest` | `0x28` | 52 | 6 | all (the loaded row's VREG) | `…TileSpmemLoadDestField` `0x1ecb9b20` | CONFIRMED |
-| `Cbreg` | `0x28` | 48 | 4 | `CircularBuffer*` only (→ 16 [CBREGs](cbreg.md)) | `…CircularBufferCbregField` `0x1ecb9be0` | CONFIRMED |
-| `BaseAddress` | `0x28` | 45 | 3 | all (`TILE_SPMEM` tile base / alt to CBREG) | `…TileSpmemLoadBaseAddressField` `0x1ecb9b40` | CONFIRMED |
-| `Offset` | `0x28` | 42 | 3 | all (within-window offset) | `…TileSpmemLoadOffsetField` `0x1ecb9b60` | CONFIRMED |
-| `Stride` | `0x28` | 38 | 4 | all (per-element address stride) | `…TileSpmemLoadStrideField` `0x1ecb9b80` | CONFIRMED |
-| `Mask` | `0x28` | 33 | 5 | all (lane predicate / vmask) | `…TileSpmemLoadMaskField` `0x1ecb9ba0` | CONFIRMED |
-| `Index` | `0x28` | 27 | 6 | `Indexed*` only (per-element gather VREG) | `…TileSpmemLoadIndexedIndexField` `0x1ecb9dc0` | CONFIRMED |
+| Field | Word | Shift | Width | Present in modes | Accessor (gfc) |
+|---|---:|---:|---:|---|---|
+| `Opcode` | `0x28` | 58 | 3 | all | (Matches predicate, `byte+0x2f & 0x1c`) |
+| `Dest` | `0x28` | 52 | 6 | all (the loaded row's VREG) | `…TileSpmemLoadDestField` `0x1ecb9b20` |
+| `Cbreg` | `0x28` | 48 | 4 | `CircularBuffer*` only (→ 16 [CBREGs](cbreg.md)) | `…CircularBufferCbregField` `0x1ecb9be0` |
+| `BaseAddress` | `0x28` | 45 | 3 | all (`TILE_SPMEM` tile base / alt to CBREG) | `…TileSpmemLoadBaseAddressField` `0x1ecb9b40` |
+| `Offset` | `0x28` | 42 | 3 | all (within-window offset) | `…TileSpmemLoadOffsetField` `0x1ecb9b60` |
+| `Stride` | `0x28` | 38 | 4 | all (per-element address stride) | `…TileSpmemLoadStrideField` `0x1ecb9b80` |
+| `Mask` | `0x28` | 33 | 5 | all (lane predicate / vmask) | `…TileSpmemLoadMaskField` `0x1ecb9ba0` |
+| `Index` | `0x28` | 27 | 6 | `Indexed*` only (per-element gather VREG) | `…TileSpmemLoadIndexedIndexField` `0x1ecb9dc0` |
 
 The shifts above were read from the *plain* `TileSpmemLoad` op-form — the canonical reference, because it carries the address-build fields with no `Cbreg`/`Index`. The accessor bodies decode exactly:
 
@@ -129,13 +129,13 @@ return (*((uint64_t *)this + 5) & 0x1C00000000000000) == 0xC00000000000000;   //
 
 ### The full roster (gfc, 5 ops, byte-confirmed)
 
-| op | mnemonic (`TileSpmem…`) | mode | extra fields | `Matches` immediate (`>>58`) | Confidence |
-|---:|---|---|---|---|---|
-| 0 | `Load` | plain | — | `byte+0x2f & 0x1c == 0` | CONFIRMED |
-| 1 | `LoadCircularBuffer` | CB-windowed | `Cbreg` | `0x04…>>58 = 1` | CONFIRMED |
-| 2 | `LoadCircularBufferPostUpdate` | CB + advance | `Cbreg` | `0x08…>>58 = 2` | CONFIRMED |
-| 3 | `LoadIndexed` | indexed gather | `Index` | `0x0c…>>58 = 3` | CONFIRMED |
-| 4 | `LoadIndexedCircularBuffer` | indexed gather, CB | `Index`,`Cbreg` | `0x10…>>58 = 4` | CONFIRMED |
+| op | mnemonic (`TileSpmem…`) | mode | extra fields | `Matches` immediate (`>>58`) |
+|---:|---|---|---|---|
+| 0 | `Load` | plain | — | `byte+0x2f & 0x1c == 0` |
+| 1 | `LoadCircularBuffer` | CB-windowed | `Cbreg` | `0x04…>>58 = 1` |
+| 2 | `LoadCircularBufferPostUpdate` | CB + advance | `Cbreg` | `0x08…>>58 = 2` |
+| 3 | `LoadIndexed` | indexed gather | `Index` | `0x0c…>>58 = 3` |
+| 4 | `LoadIndexedCircularBuffer` | indexed gather, CB | `Index`,`Cbreg` | `0x10…>>58 = 4` |
 
 Per-form field sets:
 
@@ -181,16 +181,16 @@ The value is an `asic_sw::deepsea::gxc::gfc::isa::VexSourcePortEncoding`. It is 
 
 ### The 8 values
 
-| value | enum name | role | Confidence |
-|---:|---|---|---|
-| 0 | `VEX_SOURCE_PORT_ENCODING_VST_SOURCE` | the VST (vector-store) source bus | CONFIRMED |
-| 1 | `VEX_SOURCE_PORT_ENCODING_V0_Y_VREG` | V0 operand, `Y_VREG` sub-port | CONFIRMED |
-| 2 | `VEX_SOURCE_PORT_ENCODING_V0_X` | V0 operand, `X` sub-port | CONFIRMED |
-| 3 | `VEX_SOURCE_PORT_ENCODING_V1_Y_VREG` | V1 operand, `Y_VREG` sub-port | CONFIRMED |
-| 4 | `VEX_SOURCE_PORT_ENCODING_V1_X` | V1 operand, `X` sub-port | CONFIRMED |
-| 5 | `VEX_SOURCE_PORT_ENCODING_V2_Y_VREG` | V2 operand, `Y_VREG` sub-port | CONFIRMED |
-| 6 | `VEX_SOURCE_PORT_ENCODING_V2_X` | V2 operand, `X` sub-port | CONFIRMED |
-| 7 | `VEX_SOURCE_PORT_ENCODING_V3_Y_VREG` | V3 operand, `Y_VREG` sub-port | CONFIRMED |
+| value | enum name | role |
+|---:|---|---|
+| 0 | `VEX_SOURCE_PORT_ENCODING_VST_SOURCE` | the VST (vector-store) source bus |
+| 1 | `VEX_SOURCE_PORT_ENCODING_V0_Y_VREG` | V0 operand, `Y_VREG` sub-port |
+| 2 | `VEX_SOURCE_PORT_ENCODING_V0_X` | V0 operand, `X` sub-port |
+| 3 | `VEX_SOURCE_PORT_ENCODING_V1_Y_VREG` | V1 operand, `Y_VREG` sub-port |
+| 4 | `VEX_SOURCE_PORT_ENCODING_V1_X` | V1 operand, `X` sub-port |
+| 5 | `VEX_SOURCE_PORT_ENCODING_V2_Y_VREG` | V2 operand, `Y_VREG` sub-port |
+| 6 | `VEX_SOURCE_PORT_ENCODING_V2_X` | V2 operand, `X` sub-port |
+| 7 | `VEX_SOURCE_PORT_ENCODING_V3_Y_VREG` | V3 operand, `Y_VREG` sub-port |
 
 The enum is cross-confirmed by `xla::ghostlite::GhostliteProtoUtils::GetVexSourcePortEncoding(common_proto_utils::VregReadPort)` (gfc `0x1c5ee280`), a switch that maps the compiler's logical `VregReadPort` onto these encodings 1:1 — cases 0..7 return encodings 0..7 with an OK status, and the two higher ports are rejected: **case 8 (`V3_X`) returns `InvalidArgument` ("The V3_X slot (port number 8) cannot be used by a VEX instruction.")** and **case 9 (`MISC_AUX`) returns `InvalidArgument` ("MISC_AUX not supported on GLC")**:
 
@@ -305,22 +305,22 @@ Stage 2 (this page) pulls the gathered rows into VREGs; stage 3's `SourceOne` (t
 
 ## Function Map
 
-| Symbol (gfc) | Address | Role | Confidence |
-|---|---|---|---|
-| `…VectorLoadTileSpmemLoadOpcode::Matches` | `0x1ecb9a00` | op 0 predicate (`byte+0x2f & 0x1c == 0`) — the base op | CONFIRMED |
-| `…VectorLoadTileSpmemLoadIndexedOpcode::Matches` | `0x1ecb9a60` | op 3 (`cmp 0xc00000000000000` → `>>58 = 3`) | CONFIRMED |
-| `…VectorLoadTileSpmemLoadDestField::GetConcatenatedValue` | `0x1ecb9b20` | `Dest` @ word `0x28` >> 52 & 0x3f | CONFIRMED |
-| `…VectorLoadTileSpmemLoadBaseAddressField` | `0x1ecb9b40` | `BaseAddress` @ word `0x28` >> 45 & 0x7 | CONFIRMED |
-| `…VectorLoadTileSpmemLoadOffsetField` | `0x1ecb9b60` | `Offset` @ word `0x28` >> 42 & 0x7 | CONFIRMED |
-| `…VectorLoadTileSpmemLoadStrideField` | `0x1ecb9b80` | `Stride` @ word `0x28` >> 38 & 0xf | CONFIRMED |
-| `…VectorLoadTileSpmemLoadMaskField` | `0x1ecb9ba0` | `Mask` @ word `0x28` >> 33 & 0x1f | CONFIRMED |
-| `…VectorLoadTileSpmemLoadCircularBufferCbregField` | `0x1ecb9be0` | `Cbreg` @ word `0x28` >> 48 & 0xf (CB forms) | CONFIRMED |
-| `…VectorLoadTileSpmemLoadIndexedIndexField` | `0x1ecb9dc0` | `Index` @ word `0x28` >> 27 & 0x3f (Indexed forms) | CONFIRMED |
-| `…VectorLoadTileSpmemLoadIndexedCircularBufferDestField` | `0x1ecb9e00` | densest-form `Dest` (same @52) | CONFIRMED |
-| `…VectorExtendedAddScanS32SourceOneField::GetConcatenatedValue` | `0x1eca7c40` | `SourceOne` @ word `0x28` >> 13 (3-bit), op-invariant | CONFIRMED |
-| `GhostliteProtoUtils::GetVexSourcePortEncoding` | `0x1c5ee280` | `VregReadPort` → `VexSourcePortEncoding` 1:1 (8 values) | CONFIRMED |
-| `mlir::sparse_core::SegmentedScanOp::build` | `0x145fd4a0` | 2-operand build (operand0=data, operand1=segment_ids) | CONFIRMED |
-| `mlir::sparse_core::VectorLoadStoreIdxAddOp::build` | `0x1459d840` | fetch-and-add op; leading `Type` arg = result (pre-add) | CONFIRMED |
+| Symbol (gfc) | Address | Role |
+|---|---|---|
+| `…VectorLoadTileSpmemLoadOpcode::Matches` | `0x1ecb9a00` | op 0 predicate (`byte+0x2f & 0x1c == 0`) — the base op |
+| `…VectorLoadTileSpmemLoadIndexedOpcode::Matches` | `0x1ecb9a60` | op 3 (`cmp 0xc00000000000000` → `>>58 = 3`) |
+| `…VectorLoadTileSpmemLoadDestField::GetConcatenatedValue` | `0x1ecb9b20` | `Dest` @ word `0x28` >> 52 & 0x3f |
+| `…VectorLoadTileSpmemLoadBaseAddressField` | `0x1ecb9b40` | `BaseAddress` @ word `0x28` >> 45 & 0x7 |
+| `…VectorLoadTileSpmemLoadOffsetField` | `0x1ecb9b60` | `Offset` @ word `0x28` >> 42 & 0x7 |
+| `…VectorLoadTileSpmemLoadStrideField` | `0x1ecb9b80` | `Stride` @ word `0x28` >> 38 & 0xf |
+| `…VectorLoadTileSpmemLoadMaskField` | `0x1ecb9ba0` | `Mask` @ word `0x28` >> 33 & 0x1f |
+| `…VectorLoadTileSpmemLoadCircularBufferCbregField` | `0x1ecb9be0` | `Cbreg` @ word `0x28` >> 48 & 0xf (CB forms) |
+| `…VectorLoadTileSpmemLoadIndexedIndexField` | `0x1ecb9dc0` | `Index` @ word `0x28` >> 27 & 0x3f (Indexed forms) |
+| `…VectorLoadTileSpmemLoadIndexedCircularBufferDestField` | `0x1ecb9e00` | densest-form `Dest` (same @52) |
+| `…VectorExtendedAddScanS32SourceOneField::GetConcatenatedValue` | `0x1eca7c40` | `SourceOne` @ word `0x28` >> 13 (3-bit), op-invariant |
+| `GhostliteProtoUtils::GetVexSourcePortEncoding` | `0x1c5ee280` | `VregReadPort` → `VexSourcePortEncoding` 1:1 (8 values) |
+| `mlir::sparse_core::SegmentedScanOp::build` | `0x145fd4a0` | 2-operand build (operand0=data, operand1=segment_ids) |
+| `mlir::sparse_core::VectorLoadStoreIdxAddOp::build` | `0x1459d840` | fetch-and-add op; leading `Type` arg = result (pre-add) |
 
 Cross-gen anchors: the vfc `VectorLoad` opcode field is **3-bit @ word `0x28` bits[56:58]** (base op via `testb $0x7, 0x2f`; `CircularBuffer` via `mask 0x07<<56 cmp 0x01<<56` → 1), with `TileSpmemIndexedLoad*` (Indexed-*prefix*) naming; gfc/glc are **3-bit @ bits[58:60]** with `TileSpmemLoadIndexed*` (Indexed-*suffix*) naming — a 2-bit upward shift (GF inserted 2 bits below the opcode). The decode VALUES 0..4 and the operand-field semantics are gen-stable; the per-gen count is **5 ops in vfc/glc/gfc**. The 2 bits GF inserted below the opcode were not identified — `LOW`.
 

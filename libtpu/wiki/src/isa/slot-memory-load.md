@@ -22,7 +22,6 @@ For reimplementation, the contract is: the per-gen slot-list (1/2/3 VMEM-load sl
 | **Field accessor shape** | `<Field>::GetConcatenatedValue` = `(word@off >> shift) & mask` (the exact bit position) |
 | **Dest field width** | 5-bit on JF/PF, **6-bit on VF/GL/GFC** (vector register file doubled at v5) |
 | **Register files** | V0..V63 (vreg, 64 on V5+ / 32 on JF–PF), S0..S31 (32 sreg), CB0..CB15 (SparseCore), predicate file 15 entries (JF–PF) / 14 (V5+) — but the slot's Predication *field* is 5-bit, encoding the preg index plus the 15=always / 31=never sentinels |
-| **Confidence** | CONFIRMED (byte-anchored) unless a cell says otherwise |
 
 ---
 
@@ -30,14 +29,14 @@ For reimplementation, the contract is: the per-gen slot-list (1/2/3 VMEM-load sl
 
 Each gen's TensorCore bundle is a struct of fixed-position slots; the slot order is the template-argument order of the per-gen `TensorCoreCodecBase<TensorCoreBundle, …Decoder, …Encoder, …>`. The number of *load* slots and whether CMEM gets a dedicated slot is the primary per-gen delta. CMEM is first-class only on Pufferfish (it has its own bundle slot); Viperfish/Ghostlite/6acc60406 have no `*Cmem*` ISA op family at all and reuse the freed bundle width for a 2nd/3rd VMEM-load slot.
 
-| Gen | VMEM-load slots (TC) | CMEM-load slots | SMEM scalar-load slots | Confidence |
-|-----|---------------------:|----------------:|-----------------------:|------------|
-| Jellyfish | 1 (slot-mask bit `0x040`) | 0 | 2 (`scalar_0`/`scalar_1`) | CONFIRMED |
-| Dragonfish | 1 (= Jellyfish codec) | 0 | 2 | CONFIRMED |
-| Pufferfish | 1 (`VectorLoad`) | **1 (`CmemLoad`, dedicated)** | 2 (`Scalar0`/`Scalar1`) | CONFIRMED |
-| Viperfish | **3 (`VectorLoad0/1/2`)** | 0 | 2 (`ScalarAlu0`/`ScalarAlu1`) | CONFIRMED |
-| Ghostlite | 2 (`VectorLoad0/1`) | 0 | 2 (`ScalarAlu0`/`ScalarAlu1`) | CONFIRMED |
-| 6acc60406 | 2 (`VectorLoad0/1`) | 0 | 2 (`ScalarAlu0`/`ScalarAlu1`) | CONFIRMED |
+| Gen | VMEM-load slots (TC) | CMEM-load slots | SMEM scalar-load slots |
+|-----|---------------------:|----------------:|-----------------------:|
+| Jellyfish | 1 (slot-mask bit `0x040`) | 0 | 2 (`scalar_0`/`scalar_1`) |
+| Dragonfish | 1 (= Jellyfish codec) | 0 | 2 |
+| Pufferfish | 1 (`VectorLoad`) | **1 (`CmemLoad`, dedicated)** | 2 (`Scalar0`/`Scalar1`) |
+| Viperfish | **3 (`VectorLoad0/1/2`)** | 0 | 2 (`ScalarAlu0`/`ScalarAlu1`) |
+| Ghostlite | 2 (`VectorLoad0/1`) | 0 | 2 (`ScalarAlu0`/`ScalarAlu1`) |
+| 6acc60406 | 2 (`VectorLoad0/1`) | 0 | 2 (`ScalarAlu0`/`ScalarAlu1`) |
 
 On Pufferfish the `VectorLoad` slot's control fields land at absolute bundle bits 119..140 (the `VectorLoadEncoder::Encode` body @ `0x1ee287e0` writes Predication via `BitCopy(dst, 136, …, 5)`, Dest `BitCopy(dst, 129, …, 5)`, Stride `…126,3`, Offset `…124,2`, BaseAddress `…122,2`, SublaneMask `…119,3`, Opcode `…134,2`); the `CmemLoad` control fields land at 103..118 (the `CmemLoadEncoder::Encode` body @ `0x1ecf89a0` writes Predication `BitCopy(dst,114,5)`, Opcode `…113,1`, SublaneMask `…110,3`, BaseAddress `…108,2`, Offset `…106,2`, Stride `…103,3`) — see [Pufferfish 51B Bundle](bundle-pf-51b.md). The two control regions are disjoint, so a CMEM load and a VMEM load can issue in the **same** bundle cycle — the only generation with this property (their shared `Vs0/Vs1/Vs2` and `Imm` fields land in higher disjoint bits, 241..256+). The three VMEM-load slots on Viperfish are confirmed by the three distinct per-slot encoder symbols `vxc::isa::TensorCoreVectorLoad{0,1,2}Encoder::Encode`.
 
@@ -89,12 +88,12 @@ Every load slot is a discriminated union; the sub-opcode field selects the addre
 
 **PXC TensorCore `VectorLoad` (VMEM → vreg)** — 2-bit sub-opcode at byte `@0x18` bits 6-7 (mask `0xC0`). The discriminator is the literal `(byte@0x18 & 0xC0)` test in `TensorCoreVectorLoadVmemLoadOpcode::Matches` (@ `0x1ee28100`, body `(*((_BYTE*)this + 24) & 0xC0) == 0`):
 
-| value | variant | meaning | Confidence |
-|-------|---------|---------|------------|
-| `00` | `VmemLoad` | base + immediate offset | CONFIRMED |
-| `01` (`0x40`) | `VmemLoadShuffled` | base + offset, on-load sublane shuffle | CONFIRMED |
-| `10` (`0x80`) | `VmemLoadIndexedIar0` | gather via index-address-register 0 | CONFIRMED |
-| `11` (`0xC0`) | `VmemLoadIndexedIar1` | gather via index-address-register 1 | CONFIRMED |
+| value | variant | meaning |
+|-------|---------|---------|
+| `00` | `VmemLoad` | base + immediate offset |
+| `01` (`0x40`) | `VmemLoadShuffled` | base + offset, on-load sublane shuffle |
+| `10` (`0x80`) | `VmemLoadIndexedIar0` | gather via index-address-register 0 |
+| `11` (`0xC0`) | `VmemLoadIndexedIar1` | gather via index-address-register 1 |
 
 **PXC TensorCore `CmemLoad` (CMEM → vreg)** — 1-bit sub-opcode at byte `@0x16` bit 1 (`TensorCoreCmemLoadCmemLoadOpcode::Matches` @ `0x1ecf8800`, body `(*((_BYTE*)this+22) & 2) >> 1`); the `Noop` (slot-idle) variant matches when bits `0x7c000000000000` of word `@0x10` are all set — its `Matches` (@ `0x1ecf87e0`) is `(~word@0x10 & 0x7c000000000000) == 0`.
 
@@ -118,36 +117,36 @@ Each per-gen `Field` class exposes `GetConcatenatedValue()` whose body is litera
 
 `DestField::GetConcatenatedValue` (@ `0x1ee281a0`) is byte-exact: `(*((_DWORD*)this + 6) >> 1) & 0x1F` — the DWORD at member offset 24 (`@0x18`), shifted 1, masked to 5 bits.
 
-| Field | word | shift | mask | width | meaning | Confidence |
-|-------|------|------:|------|------:|---------|------------|
-| Opcode | `@0x18` | 6 | `0x3` | 2 | addr-mode discriminator | CONFIRMED |
-| Dest (vreg) | `@0x18` | 1 | `0x1f` | 5 | destination vreg | CONFIRMED |
-| SublaneMask | `@0x10` (128-bit) | 62 | `0x7` | 3 | sublane-group select (straddles into `@0x18`) | CONFIRMED |
-| BaseAddress | `@0x10` | 60 | `0x3` | 2 | base-address reg select | CONFIRMED |
-| Offset | `@0x10` | 58 | `0x3` | 2 | immediate-offset slot index | CONFIRMED |
-| Stride | `@0x10` | 55 | `0x7` | 3 | stride select | CONFIRMED |
-| Vs0 / Vs1 / Vs2 | `@0x20` | 59 / 54 / 49 | 5-bit | 5 | vector source ports (gather index) | CONFIRMED |
-| Imm2..Imm5 | `@0x2e`/`@0x2c`/`@0x2a`/`@0x28` | — | 16-bit | 16 | immediate displacement slots | CONFIRMED |
-| Predication | (separate Predication slot) | — | — | 5 | 0..14 preg / 15 always / 31 never | CONFIRMED |
+| Field | word | shift | mask | width | meaning |
+|-------|------|------:|------|------:|---------|
+| Opcode | `@0x18` | 6 | `0x3` | 2 | addr-mode discriminator |
+| Dest (vreg) | `@0x18` | 1 | `0x1f` | 5 | destination vreg |
+| SublaneMask | `@0x10` (128-bit) | 62 | `0x7` | 3 | sublane-group select (straddles into `@0x18`) |
+| BaseAddress | `@0x10` | 60 | `0x3` | 2 | base-address reg select |
+| Offset | `@0x10` | 58 | `0x3` | 2 | immediate-offset slot index |
+| Stride | `@0x10` | 55 | `0x7` | 3 | stride select |
+| Vs0 / Vs1 / Vs2 | `@0x20` | 59 / 54 / 49 | 5-bit | 5 | vector source ports (gather index) |
+| Imm2..Imm5 | `@0x2e`/`@0x2c`/`@0x2a`/`@0x28` | — | 16-bit | 16 | immediate displacement slots |
+| Predication | (separate Predication slot) | — | — | 5 | 0..14 preg / 15 always / 31 never |
 
 The `IndexedIar0`/`IndexedIar1`/`Shuffled` variants share these exact positions; only the 2-bit Opcode value changes (`VmemLoad`=0, `VmemLoadShuffled`=1, `VmemLoadIndexedIar0`=2, `VmemLoadIndexedIar1` via a dedicated branch). `Shuffled` adds a `ShuffleField` (sublane-shuffle selector); the Indexed variants use `Vs0/Vs1/Vs2` as the per-lane gather indices. Accessor anchors: `Opcode::Matches` @ `0x1ee28100`, `DestField` @ `0x1ee281a0`, `SublaneMaskField` @ `0x1ee281c0`, `BaseAddressField` @ `0x1ee281e0`, `OffsetField` @ `0x1ee28200`, `StrideField` @ `0x1ee28220`, `Vs0Field` @ `0x1ee28240`, `Vs1Field` @ `0x1ee28260`, `Vs2Field` @ `0x1ee28280`. The three source ports (`Vs0/Vs1/Vs2`) are the per-gen-stable count on Pufferfish — the load slot has not yet widened its gather-index port count at v4; the widening visible across v5+ is in the *number of load slots*, not the per-slot port count.
 
 ### Pufferfish (PXC) — TensorCore `CmemLoad` (CMEM → vreg)
 
-CMEM load mirrors VMEM load field-for-field but lives in the separate `CmemLoad` slot/word: Opcode `@0x16` bit 1 (1-bit), Predication `@0x10>>50 &0x1f`, SublaneMask `@0x10>>46 &0x7`, BaseAddress `@0x10>>44 &0x3`, Offset `@0x10>>42 &0x3`, Stride `@0x10>>39 &0x7`, and — exactly like VMEM load — three gather index ports Vs0 `@0x20>>59`, Vs1 `@0x20>>54 &0x1f`, Vs2 `@0x20>>49 &0x1f`, plus the same Imm2..Imm5 16-bit slots. Anchors: `NoopOpcode::Matches` @ `0x1ecf87e0`, `CmemLoadOpcode` @ `0x1ecf8800`, `PredicationField` @ `0x1ecf8820`, `Vs0Field` @ `0x1ecf88c0`, `Vs1Field` @ `0x1ecf88e0`, `Vs2Field` @ `0x1ecf8900`. All CONFIRMED.
+CMEM load mirrors VMEM load field-for-field but lives in the separate `CmemLoad` slot/word: Opcode `@0x16` bit 1 (1-bit), Predication `@0x10>>50 &0x1f`, SublaneMask `@0x10>>46 &0x7`, BaseAddress `@0x10>>44 &0x3`, Offset `@0x10>>42 &0x3`, Stride `@0x10>>39 &0x7`, and — exactly like VMEM load — three gather index ports Vs0 `@0x20>>59`, Vs1 `@0x20>>54 &0x1f`, Vs2 `@0x20>>49 &0x1f`, plus the same Imm2..Imm5 16-bit slots. Anchors: `NoopOpcode::Matches` @ `0x1ecf87e0`, `CmemLoadOpcode` @ `0x1ecf8800`, `PredicationField` @ `0x1ecf8820`, `Vs0Field` @ `0x1ecf88c0`, `Vs1Field` @ `0x1ecf88e0`, `Vs2Field` @ `0x1ecf8900`.
 
 ### Viperfish (VXC) — TensorCore `VectorLoad0` (VMEM → vreg)
 
 The discriminator is two tests, byte-exact in `VectorLoadOpcode::Matches` (@ `0x1f006960`): `(*((_BYTE*)this + 25) & 0xC) == 0` (byte `@0x19` bits 2-3, i.e. qword `@0x18` bits 10-11, mask `0xc00`) **and** `(~*((_QWORD*)this + 2) & 0x3800000000000000) != 0` (a high-word test of word `@0x10` that selects the Iar/Indexed family). `VectorLoadBaseOpcode` matches `0x400`; `VectorLoadShuffledOpcode` matches `0x800`.
 
-| Field | word | shift | mask | width | meaning | Confidence |
-|-------|------|------:|------|------:|---------|------------|
-| Dest (vreg) | `@0x18` | 4 | `0x3f` | **6** | destination vreg (V0..V63) | CONFIRMED |
-| SublaneMask | `@0x18` | 0 | `0xf` | 4 | sublane-group select | CONFIRMED |
-| Predication | `@0x18` | 12 | `0xf` | 4 | predicate reg (0..15) | CONFIRMED |
-| Stride | `@0x10` | 55 | `0xf` | 4 | stride select | CONFIRMED |
-| Offset | `@0x10` | 59 | `0x7` | 3 | immediate-offset slot index | CONFIRMED |
-| BaseAddress (Indexed) | `@0x10` | 62 | `0x3` | 2 | base-address reg select | CONFIRMED |
+| Field | word | shift | mask | width | meaning |
+|-------|------|------:|------|------:|---------|
+| Dest (vreg) | `@0x18` | 4 | `0x3f` | **6** | destination vreg (V0..V63) |
+| SublaneMask | `@0x18` | 0 | `0xf` | 4 | sublane-group select |
+| Predication | `@0x18` | 12 | `0xf` | 4 | predicate reg (0..15) |
+| Stride | `@0x10` | 55 | `0xf` | 4 | stride select |
+| Offset | `@0x10` | 59 | `0x7` | 3 | immediate-offset slot index |
+| BaseAddress (Indexed) | `@0x10` | 62 | `0x3` | 2 | base-address reg select |
 
 `DestVregField::GetConcatenatedValue` (@ `0x1f006b60`) reads `(*((_DWORD*)this + 6) >> 4) & 0x3F` — the byte-exact proof of the 6-bit dest. `ReadIar0/Iar1` carry only a `DestVreg` (the IAR value lands in a vreg). Anchors: `PredicationField` @ `0x1f006ac0`, `StrideField` @ `0x1f006b80`, `SublaneMaskField` @ `0x1f006ba0`, `OffsetField` @ `0x1f006bc0`.
 
@@ -155,14 +154,14 @@ The discriminator is two tests, byte-exact in `VectorLoadOpcode::Matches` (@ `0x
 
 GLC repacks the **same** logical fields to **different** positions than VXC. The discriminator is `(*((_QWORD*)this + 3) & 0x6000) == 0` (word `@0x18` bits 13-14) plus the high-word `(word@0x10 >> 62) & 7` test, byte-exact in `VectorLoadOpcode::Matches` (@ `0x1f3a2460`).
 
-| Field | word | shift | mask | width | Confidence |
-|-------|------|------:|------|------:|------------|
-| Dest (vreg) | `@0x18` | 7 | `0x3f` | 6 | CONFIRMED |
-| SublaneMask | `@0x18` | 3 | `0xf` | 4 | CONFIRMED |
-| Predication | `@0x18` | 15 | `0xf` | 4 | CONFIRMED |
-| Stride | `@0x10` | 58 | `0xf` | 4 | CONFIRMED |
-| BaseAddress (Indexed) | `@0x18` | 1 | `0x3` | 2 | CONFIRMED |
-| Offset | spans `@0x10`/`@0x18` (3-bit straddle) | — | — | 3 | CONFIRMED extent |
+| Field | word | shift | mask | width |
+|-------|------|------:|------|------:|
+| Dest (vreg) | `@0x18` | 7 | `0x3f` | 6 |
+| SublaneMask | `@0x18` | 3 | `0xf` | 4 |
+| Predication | `@0x18` | 15 | `0xf` | 4 |
+| Stride | `@0x10` | 58 | `0xf` | 4 |
+| BaseAddress (Indexed) | `@0x18` | 1 | `0x3` | 2 |
+| Offset | spans `@0x10`/`@0x18` (3-bit straddle) | — | — | 3 |
 
 Versus VXC: Dest moves bit 4 → 7, SublaneMask bit 0 → 3, Predication bit 12 → 15, Stride bit 55 → 58, BaseAddress word `@0x10` bit 62 → word `@0x18` bit 1. This is a pure per-gen layout delta — same fields, different positions. Anchors: `DestVregField` @ `0x1f3a26a0`, `StrideField` @ `0x1f3a26c0`, `SublaneMaskField` @ `0x1f3a26e0`.
 
@@ -170,18 +169,18 @@ Versus VXC: Dest moves bit 4 → 7, SublaneMask bit 0 → 3, Predication bit 12 
 
 GFC uses a **wider** opcode. The discriminator is `(*((_BYTE*)this + 25) & 0x18) == 0` (byte `@0x19` bits 3-4) plus a **3-bit** opcode in word `@0x10 & 0x7000000000000000` (bits 60-62), byte-exact in `VectorLoadOpcode::Matches` (@ `0x1f9e97e0`). The 3-bit opcode (vs GLC's 2-bit) is consistent with GFC adding ops.
 
-| Field | word | shift | mask | width | Confidence |
-|-------|------|------:|------|------:|------------|
-| Dest (vreg) | `@0x18` | 5 | `0x3f` | 6 | CONFIRMED |
-| SublaneMask | `@0x18` | 1 | `0xf` | 4 | CONFIRMED |
-| Stride | byte `@0x17` | 0 | `0xf` | 4 | CONFIRMED |
-| Offset | `@0x10` | 60 | `0x7` | 3 | CONFIRMED |
+| Field | word | shift | mask | width |
+|-------|------|------:|------|------:|
+| Dest (vreg) | `@0x18` | 5 | `0x3f` | 6 |
+| SublaneMask | `@0x18` | 1 | `0xf` | 4 |
+| Stride | byte `@0x17` | 0 | `0xf` | 4 |
+| Offset | `@0x10` | 60 | `0x7` | 3 |
 
 6acc60406 (GFC) moves Stride into byte `@0x17` — another per-gen layout delta. Anchors: `DestVregField` @ `0x1f9e99e0`, `StrideField` @ `0x1f9e9a00`, `SublaneMaskField` @ `0x1f9e9a20`, `OffsetField` @ `0x1f9e9a40`.
 
 ### PXC / VXC scalar-load (SMEM → sreg)
 
-PXC `Scalar1` `ScalarLoadSmem`: Opcode `@0x30>>50 &0x3f` (`0x4`=Smem, `0x5`=SmemOffset), Address `@0x30>>39 &0x3f`, Dest (sreg) `@0x30>>34 &0x1f`, Imm0 `@0x30>>18 &0xffff`. VXC `ScalarAlu1` `ScalarLoadSmemY/XY` (byte-exact from the accessors): Opcode `@0x40 & 0xFC0000` (`0x40000`=SmemY → value 1, `0x80000`=SmemXY → value 2), Dest `@0x40>>2 &0x1f` (`0x1eedc280`), Y `@0x40>>7 &0x3f` (`0x1eedc2a0`), X `@0x40>>13 &0x1f` (`0x1eedc2e0`). All CONFIRMED. GLC/GFC use the `gxc::glc`/`gxc::gfc` analogues; GFC additionally adds `SmemFetchAndAdd`.
+PXC `Scalar1` `ScalarLoadSmem`: Opcode `@0x30>>50 &0x3f` (`0x4`=Smem, `0x5`=SmemOffset), Address `@0x30>>39 &0x3f`, Dest (sreg) `@0x30>>34 &0x1f`, Imm0 `@0x30>>18 &0xffff`. VXC `ScalarAlu1` `ScalarLoadSmemY/XY` (byte-exact from the accessors): Opcode `@0x40 & 0xFC0000` (`0x40000`=SmemY → value 1, `0x80000`=SmemXY → value 2), Dest `@0x40>>2 &0x1f` (`0x1eedc280`), Y `@0x40>>7 &0x3f` (`0x1eedc2a0`), X `@0x40>>13 &0x1f` (`0x1eedc2e0`). GLC/GFC use the `gxc::glc`/`gxc::gfc` analogues; GFC additionally adds `SmemFetchAndAdd`.
 
 ---
 
@@ -196,7 +195,7 @@ The sub-opcode selects one of six addressing modes:
 5. **Circular-buffer relative** (SparseCore only): a CB register (CB0..CB15) holds a rolling base; `TileSpmemLoadCircularBuffer` reads relative to it, optionally auto-updating the pointer.
 6. **Sublane-shuffled** (`VmemLoadShuffled` / `VectorLoadShuffled`): the load applies a sublane permutation (`ShuffleField`) as part of the load, fusing load + sublane-shuffle into one slot.
 
-The indexed IAR ports are shared with the store slot: an IAR set by a store's `SetIar*` sub-op can be consumed by a subsequent indexed load (see [Memory-Store Slot](slot-memory-store.md)). The per-gen IAR count is `Target::IarsPerTensorCore()` (numeric value not yet pinned — LOW).
+The indexed IAR ports are shared with the store slot: an IAR set by a store's `SetIar*` sub-op can be consumed by a subsequent indexed load (see [Memory-Store Slot](slot-memory-store.md)). The per-gen IAR count is `Target::IarsPerTensorCore()`.
 
 ---
 
@@ -204,12 +203,12 @@ The indexed IAR ports are shared with the store slot: an IAR set by a store's `S
 
 There is **no** tier-select bit inside the load slot. The tier is selected by which slot the op occupies:
 
-| Source tier | Slot | Confidence |
-|-------------|------|------------|
-| VMEM | `VectorLoad` / `VectorLoad0/1/2` | CONFIRMED |
-| CMEM | dedicated `CmemLoad` slot (Pufferfish only) | CONFIRMED |
-| SMEM | `Scalar0/1` (PXC) or `ScalarAlu0/1` (VF/GL/GF), opcode `ScalarLoadSmem*` | CONFIRMED |
-| SPMEM | SparseCore `VectorLoad` slot, opcode `TileSpmemLoad*` | CONFIRMED |
+| Source tier | Slot |
+|-------------|------|
+| VMEM | `VectorLoad` / `VectorLoad0/1/2` |
+| CMEM | dedicated `CmemLoad` slot (Pufferfish only) |
+| SMEM | `Scalar0/1` (PXC) or `ScalarAlu0/1` (VF/GL/GF), opcode `ScalarLoadSmem*` |
+| SPMEM | SparseCore `VectorLoad` slot, opcode `TileSpmemLoad*` |
 
 This is the canonical companion to the [MemorySpace Enum](memory-space-enum.md): the runtime `MemorySpace` carried by the LLO operand picks the tier at the IR level, and the per-gen lowering routes it to the matching slot; the slot's wire encoding then carries only the address (a tier-relative byte offset divided by the tier granule), the base-address register, and the offset/stride. Three bits in the bundle word cannot encode 17 MemorySpace values, which is exactly why the slot identity, not a tag, carries the tier.
 
@@ -225,7 +224,7 @@ The `SublaneMask` field controls load granularity. A vector register holds `lane
 
 From `TPURegStrings`: vector V0..V63 (64 vregs; wide pairs/triples/quads `V60_V61`, `V60_V61_V62_V63` exist for multi-register loads), scalar S0..S31 (32 sregs), circular-buffer CB0..CB15 (16, SparseCore), predicate P0..P31 (32). The vector-load Dest field is **5-bit on Pufferfish** (byte-exact `(DWORD@0x18 >> 1) & 0x1f`, `0x1ee281a0`) and **6-bit on Viperfish/Ghostlite/6acc60406** (byte-exact `(DWORD@0x18 >> 4) & 0x3f`, `0x1f006b60`). The dest widening 5 → 6 bits at the v5 boundary is a primary per-gen delta tracking the doubled vector register file. The scalar-load Dest is 5-bit on every gen.
 
-> **GOTCHA —** the 5-bit PXC dest addresses V0..V31 *directly* in the slot; the wider V32..V63 half and the wide/complement multi-vreg destinations (the `V60_V61_V62_V63` quads) are reached through a separate wide/complement mechanism, not by widening the slot field. The slot-encoding of a multi-register destination is not yet decoded (LOW).
+> **GOTCHA —** the 5-bit PXC dest addresses V0..V31 *directly* in the slot; the wider V32..V63 half and the wide/complement multi-vreg destinations (the `V60_V61_V62_V63` quads) are reached through a separate wide/complement mechanism, not by widening the slot field. The slot-encoding of a multi-register destination is not decoded here.
 
 ---
 
@@ -248,17 +247,17 @@ From `TPURegStrings`: vector V0..V63 (64 vregs; wide pairs/triples/quads `V60_V6
 | Gather index source | n/a (no IAR) | Vs0/Vs1/Vs2 | IAR0/IAR1 (`ReadIar`) | IAR0/IAR1 | IAR0/IAR1 |
 | SparseCore load | none | none (BarnaCore `bcVLD`) | `TileSpmem*` (vfc) | `TileSpmem*` (glc::sc) | `TileSpmem*` (gfc::sc) |
 
-Jellyfish/Dragonfish vector-load uses the monolithic `VectorLoadInstruction` proto packed by `EncoderJf` into the 41-byte bundle plus the LLVM `InstBits` table; the slot presence (slot-mask bit `0x040`), dest-vreg semantics, and sublane-shuffle variant are CONFIRMED, but the exact JXC bit offsets live in `InstBits` (a binary record, all-zero on disk for the codec path) rather than in `Field` accessors — marked **LOW** / not bit-enumerated here.
+Jellyfish/Dragonfish vector-load uses the monolithic `VectorLoadInstruction` proto packed by `EncoderJf` into the 41-byte bundle plus the LLVM `InstBits` table; the slot presence (slot-mask bit `0x040`), dest-vreg semantics, and sublane-shuffle variant are established, but the exact JXC bit offsets live in `InstBits` (a binary record, all-zero on disk for the codec path) rather than in `Field` accessors and are not bit-enumerated here.
 
 ---
 
 ## What Is Not Yet Pinned
 
-- **Jellyfish/Dragonfish exact VMEM-load bit positions.** Slot presence, dest semantics, and the sublane-shuffle variant are CONFIRMED; the per-field offsets are in `InstBits`, not `Field` accessors. LOW.
+- **Jellyfish/Dragonfish exact VMEM-load bit positions.** Slot presence, dest semantics, and the sublane-shuffle variant are established; the per-field offsets are in `InstBits`, not `Field` accessors.
 - **The Offset→immediate-slot mapping.** The 2-/3-bit Offset is a slot index; the 16-bit displacement lives in `Imm2..Imm5`; the per-opcode `Offset→Imm` mapping is not fully enumerated.
-- **The IAR file size** (`ReadIar0/Iar1` imply 2 IARs per slot; the register-file count `IarsPerTensorCore()` numeric value is not recovered). LOW.
-- **The wide/complement multi-vreg load destination encoding** (`V60_V61_V62_V63` quads). LOW.
-- **The literal byte-range of each load slot inside the bundle.** The field word offsets inside the decoded slot struct are CONFIRMED; the absolute Pufferfish load-slot region (abs 119..140) is on the [Pufferfish 51B Bundle](bundle-pf-51b.md) page, but the per-gen slot-to-byte map for V5+ comes from each codec's `Encode` dispatch.
+- **The IAR file size** (`ReadIar0/Iar1` imply 2 IARs per slot; the register-file count `IarsPerTensorCore()` numeric value is not recovered here).
+- **The wide/complement multi-vreg load destination encoding** (`V60_V61_V62_V63` quads).
+- **The literal byte-range of each load slot inside the bundle.** The field word offsets inside the decoded slot struct are pinned; the absolute Pufferfish load-slot region (abs 119..140) is on the [Pufferfish 51B Bundle](bundle-pf-51b.md) page, but the per-gen slot-to-byte map for V5+ comes from each codec's `Encode` dispatch.
 
 ---
 

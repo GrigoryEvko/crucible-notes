@@ -25,7 +25,6 @@ For reimplementation, the contract is:
 | **Bundle widths** | 41 B (Jellyfish) / 51 B (Pufferfish) / 64 B (Viperfish, Ghostlite, 6acc60406) — [Bundle Model](bundle-model-overview.md) |
 | **`TpuVersion`** | 6 values (`TpuVersionToString` @ `0x20b3a480` traps on `≥ 6`) |
 | **Proto-bundle encode** | `Encoder<gen>::EncodeBundleInternal` (Jellyfish @ `0x1e86c7c0`) |
-| **Confidence** | CONFIRMED (byte-anchored) unless a row says otherwise |
 
 ---
 
@@ -51,14 +50,14 @@ Within Level 2 there are *two* encoders, and which one carries an opcode's bits 
 
 The bundle is a fixed-width VLIW word issued in one cycle; the compiler proves slot independence because the hardware does not. The width is fixed per generation and selected by a `(TpuVersion, TpuSequencerType)` codec-metadata lookup. The codename ↔ external-name mapping below is the one the [Codename Matrix](../targets/tpu-version-codename-matrix.md) pins from the `TpuVersionToString` / `TpuVersionToExternalName` pair; `6acc60406` (`TpuVersion` 5) is the binary's literal codename, not the marketing name (`Trillium`/`Ironwood` appear **zero** times in `libtpu.so`).
 
-| `TpuVersion` | Codename | External name | Bundle bytes | Bundle bits | Confidence |
-|---:|---|---|---:|---:|---|
-| 0 | Jellyfish | TPU v2 | 41 | 328 | CONFIRMED |
-| 1 | Dragonfish | TPU v3 | 41 | 328 | HIGH (shares JF codec) |
-| 2 | Pufferfish | TPU v4 | 51 | 408 | CONFIRMED |
-| 3 | Viperfish | TPU v5e | 64 | 512 | CONFIRMED |
-| 4 | Ghostlite | TPU v6 lite | 64 | 512 | CONFIRMED |
-| 5 | 6acc60406 | TPU7x | 64 | 512 | MEDIUM (registered codec) |
+| `TpuVersion` | Codename | External name | Bundle bytes | Bundle bits |
+|---:|---|---|---:|---:|
+| 0 | Jellyfish | TPU v2 | 41 | 328 |
+| 1 | Dragonfish | TPU v3 | 41 | 328 |
+| 2 | Pufferfish | TPU v4 | 51 | 408 |
+| 3 | Viperfish | TPU v5e | 64 | 512 |
+| 4 | Ghostlite | TPU v6 lite | 64 | 512 |
+| 5 | 6acc60406 | TPU7x | 64 | 512 |
 
 The 41-byte Jellyfish width is the hardest-pinned: it is the literal `operator new(0x29)` (= 41) allocation inside `EncoderJf::EncodeBundleInternal` (`0x1e86c7c0`), not a metadata read. The 51-byte and 64-byte widths are computed at runtime — `EncoderPfTensorCore::BundleSizeBytes` returns 51 inline, while the v5+ codecs reach 64 through a `(TpuVersion, TpuSequencerType)` vtable call (and the SparseCore overlayer's `GetTileInstructionBundleSizeInBytes` derives a per-tile size as `field[32] / field[31]`). The full byte-source accounting per generation is on the [Bundle Model](bundle-model-overview.md#per-generation-bundle-widths) page.
 

@@ -35,13 +35,13 @@ For reimplementation, the contract is:
 
 The canonical idle bundle is **every slot predicated off**. It is not an all-zero buffer: the predicate field of each slot must hold the nonzero sentinel `31`. The table gives, per generation, the slot count whose predicate must be stamped, the value stamped, and the function that does the stamping.
 
-| Gen | Bundle | Idle-bundle definition | Stamp value | Stamping function | Confidence |
-|---|---:|---|---|---|---|
-| Jellyfish (v2) | 41 B | all 8 slot-predicate fields = `kNeverExecute` | `31` | `EncoderJf::EncodeBundleInternal` @ `0x1e86c7c0` (inline prologue) | CONFIRMED |
-| Pufferfish (v4) | 51 B | all 12 slot predicates = `31`; scalar-0 default = `ScalarHalt`@`15` | `31` / `15` | `…CodecBase<TensorCoreBundle,…>::FillDefaultBundle` @ `0x1d222ee0` | CONFIRMED |
-| Viperfish (v5p) | 64 B | per-slot predicate field = `31`; absent slots not encoded | `31` | bundle-header prefill (`vxc` encoder set) | HIGH |
-| Ghostlite (v6e) | 64 B | per-slot predicate field = `31` | `31` | bundle-header prefill (`glc` encoder set) | HIGH |
-| `6acc60406` (TPU7x) | 64 B | two-entry `TensorCorePredicates` pool + per-slot selector; idle selector points at a `31`-equivalent pool entry | pool index | bundle-header prefill (`gfc` encoder set) | MEDIUM |
+| Gen | Bundle | Idle-bundle definition | Stamp value | Stamping function |
+|---|---:|---|---|---|
+| Jellyfish (v2) | 41 B | all 8 slot-predicate fields = `kNeverExecute` | `31` | `EncoderJf::EncodeBundleInternal` @ `0x1e86c7c0` (inline prologue) |
+| Pufferfish (v4) | 51 B | all 12 slot predicates = `31`; scalar-0 default = `ScalarHalt`@`15` | `31` / `15` | `…CodecBase<TensorCoreBundle,…>::FillDefaultBundle` @ `0x1d222ee0` |
+| Viperfish (v5p) | 64 B | per-slot predicate field = `31`; absent slots not encoded | `31` | bundle-header prefill (`vxc` encoder set) |
+| Ghostlite (v6e) | 64 B | per-slot predicate field = `31` | `31` | bundle-header prefill (`glc` encoder set) |
+| `6acc60406` (TPU7x) | 64 B | two-entry `TensorCorePredicates` pool + per-slot selector; idle selector points at a `31`-equivalent pool entry | pool index | bundle-header prefill (`gfc` encoder set) |
 
 > **GOTCHA — the idle bundle is nonzero.** Because the empty mark is `kNeverExecute = 31` (`0x1F`) — a *nonzero* 5-bit pattern replicated into every slot's predicate field — a `memset(bundle, 0, width)` followed by filling only the active slots leaves the inactive slots at predicate `0`, which is a *valid* reference to predicate register P0 (the slot fires, gated on P0). The empty value is the explicit `31` stamp, never zero. A bit-exact round-trip test that builds the "expected idle bundle" by zeroing memory will silently disagree with the real encoder on every unused slot.
 
@@ -74,16 +74,16 @@ nx = kNeverExecute & 0x1F;                                  // = 31
 
 The constant `0x400000800000000` has exactly two set bits — bit 35 and bit 58 — so multiplying it by `31` places `kNeverExecute` at the MXU predicate (abs 35) and the vector-load predicate (abs 58) in one multiply. Because struct byte `0x0C` is bundle bit 96, the qword-0 shift constants (`<<35`, `<<58`, `<<22`, `<<13`) read as the absolute bundle bit positions verbatim. A present slot's per-slot writer (e.g. `EmitVectorBinop`) later overwrites its predicate field with the real `EncodePredication` value; an absent slot keeps `31`.
 
-| Slot | Predicate abs bit | Prefill store | Confidence |
-|---|---:|---|---|
-| Scalar 0 | 317 | `[struct+0x2D] \|= 31<<53` | CONFIRMED |
-| Scalar 1 | 290 | `[struct+0x2D] \|= 31<<26` | CONFIRMED |
-| VALU lane 0 | 147 | `[struct+0x1D] = 31<<11` | CONFIRMED |
-| VALU lane 1 | 116 | `[struct+0x1A] = 0x1F0` | CONFIRMED |
-| Vector load | 58 | `[struct+0x0C] \|= 31·0x400000800000000` (bit 58) | CONFIRMED |
-| MXU | 35 | `[struct+0x0C] \|= 31·0x400000800000000` (bit 35) | CONFIRMED |
-| Vector result | 22 | `[struct+0x0C] \|= 31<<22` | CONFIRMED |
-| Misc | 13 | `[struct+0x0C] \|= 31<<13` | CONFIRMED |
+| Slot | Predicate abs bit | Prefill store |
+|---|---:|---|
+| Scalar 0 | 317 | `[struct+0x2D] \|= 31<<53` |
+| Scalar 1 | 290 | `[struct+0x2D] \|= 31<<26` |
+| VALU lane 0 | 147 | `[struct+0x1D] = 31<<11` |
+| VALU lane 1 | 116 | `[struct+0x1A] = 0x1F0` |
+| Vector load | 58 | `[struct+0x0C] \|= 31·0x400000800000000` (bit 58) |
+| MXU | 35 | `[struct+0x0C] \|= 31·0x400000800000000` (bit 35) |
+| Vector result | 22 | `[struct+0x0C] \|= 31<<22` |
+| Misc | 13 | `[struct+0x0C] \|= 31<<13` |
 
 ### Pufferfish — `FillDefaultBundle`
 
@@ -130,22 +130,22 @@ Independent of the predicate, each slot's opcode enum reserves a `Noop` value. I
 
 The canonical evidence is each slot's `<Slot>NoopOpcode::Matches` predicate. `Matches` returns true iff every bit of the slot's opcode field is set, written in the binary as the idiom `(~field & mask) == 0` — i.e. `~field` has no bit inside `mask`, so `field` has *all* of `mask`'s bits. The mask is the contiguous opcode field for that slot:
 
-| Gen / slot | `<Slot>NoopOpcode::Matches` @ | Opcode mask | Field width / position | NOP opcode value | Confidence |
-|---|---|---|---|---:|---|
-| PF VectorAlu0 | `0x1ed40820` | `0x1F00000000000` | 5-bit @ bit 44 | `31` | CONFIRMED |
-| PF VectorAlu1 | `0x1ed63c80` | (5-bit, sym to Alu0) | 5-bit | `31` | CONFIRMED |
-| PF Scalar0 | `0x1ed14480` | `0xF80000` | 5-bit @ bit 19 | `31` | CONFIRMED |
-| PF Scalar1 | `0x1ed27be0` | (5-bit) | 5-bit | `31` | CONFIRMED |
-| PF Misc | `0x1ed016c0` | `0x1F000000000` | 5-bit @ bit 36 | `31` | CONFIRMED |
-| PF VectorLoad | `0x1ee280e0` | `0x1F00` | 5-bit @ bit 8 | `31` | CONFIRMED |
-| PF VectorStore | `0x1ee38e00` | `0x7C00000000` | 5-bit @ bit 34 | `31` | CONFIRMED |
-| PF CmemLoad | `0x1ecf87e0` | `0x7C000000000000` | 5-bit @ bit 50 | `31` | CONFIRMED |
-| PF VectorExtended0 | `0x1eda6400` | `0x7C00000000` | 5-bit @ bit 34 | `31` | CONFIRMED |
-| PF VectorExtended1 | `0x1edfdc60` | (5-bit) | 5-bit | `31` | CONFIRMED |
-| PF VectorResult0 | `0x1ee2ae40` | `0x7C00000000000000` | 5-bit @ bit 58 | `31` | CONFIRMED |
-| PF VectorResult1 | `0x1ee2ce00` | (5-bit) | 5-bit | `31` | CONFIRMED |
-| VF VectorExtended0 | `0x1ef98480` | `0xF` | 4-bit @ bit 0 | `15` | CONFIRMED |
-| VF VectorExtended1 | `0x1efe3540` | (4-bit) | 4-bit | `15` | CONFIRMED |
+| Gen / slot | `<Slot>NoopOpcode::Matches` @ | Opcode mask | Field width / position | NOP opcode value |
+|---|---|---|---|---:|
+| PF VectorAlu0 | `0x1ed40820` | `0x1F00000000000` | 5-bit @ bit 44 | `31` |
+| PF VectorAlu1 | `0x1ed63c80` | (5-bit, sym to Alu0) | 5-bit | `31` |
+| PF Scalar0 | `0x1ed14480` | `0xF80000` | 5-bit @ bit 19 | `31` |
+| PF Scalar1 | `0x1ed27be0` | (5-bit) | 5-bit | `31` |
+| PF Misc | `0x1ed016c0` | `0x1F000000000` | 5-bit @ bit 36 | `31` |
+| PF VectorLoad | `0x1ee280e0` | `0x1F00` | 5-bit @ bit 8 | `31` |
+| PF VectorStore | `0x1ee38e00` | `0x7C00000000` | 5-bit @ bit 34 | `31` |
+| PF CmemLoad | `0x1ecf87e0` | `0x7C000000000000` | 5-bit @ bit 50 | `31` |
+| PF VectorExtended0 | `0x1eda6400` | `0x7C00000000` | 5-bit @ bit 34 | `31` |
+| PF VectorExtended1 | `0x1edfdc60` | (5-bit) | 5-bit | `31` |
+| PF VectorResult0 | `0x1ee2ae40` | `0x7C00000000000000` | 5-bit @ bit 58 | `31` |
+| PF VectorResult1 | `0x1ee2ce00` | (5-bit) | 5-bit | `31` |
+| VF VectorExtended0 | `0x1ef98480` | `0xF` | 4-bit @ bit 0 | `15` |
+| VF VectorExtended1 | `0x1efe3540` | (4-bit) | 4-bit | `15` |
 
 Worked example — `TensorCoreVectorAlu0NoopOpcode::Matches` (`0x1ed40820`) decompiles to a single expression:
 

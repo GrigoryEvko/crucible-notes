@@ -119,18 +119,18 @@ The decompile renders the jump table as a C `switch`, but the prologue is a true
 
 The ten arms, byte-confirmed against the TAC body and its jump table; the SCS and TEC routers have the identical distribution.
 
-| Arm | Opcodes | Slot class → action | Confidence |
-|---|---:|---|---|
-| Stream | 888 | `GetStreamSlot` + `EmitPredicationToSlot<…Stream>` + `ConsumeStreamInstruction` | CONFIRMED |
-| ScalarMisc | 92 | `GetScalarMiscSlot` + `…<…ScalarMisc>` + `ConsumeScalarMiscInstruction` | CONFIRMED |
-| ScalarAlu | 49 | `GetScalarAluSlot` (StatusOr) + `…<…ScalarAlu>` + `ConsumeScalarAluInstruction` | CONFIRMED |
-| ScalarAlu-S1 | 27 | `GetScalarAluSlotS1` + `ConsumeScalarAluSlotS1Instruction` (fixed S1) | CONFIRMED |
-| ScalarAlu-S0 | 17 | `GetScalarAluSlotS0` + `ConsumeScalarAluSlotS0Instruction` (fixed S0) | CONFIRMED |
-| DMA | 70 | guard oneof → `clear_scalar_instruction` → `DefaultConstruct<SparseCoreDma>` → variant | CONFIRMED |
-| Multi-scalar (flag) | 54 | `flags & 1 → S0` / `& 2 → S1` / `& 4 → Misc`; none → error | CONFIRMED |
-| Optional-skip | 4 | `if tolerate_skip return OK; else DEFAULT` (`0x100d/0x100e/0x1015/0x10f2`) | CONFIRMED |
-| No-op | 1 | `return OK` (opcode `0x264`) | CONFIRMED |
-| Default / OOB | 2817 | `MakeErrorImpl` "Unsupported opcode while consuming slot instruction: $0 : $1" | CONFIRMED |
+| Arm | Opcodes | Slot class → action |
+|---|---:|---|
+| Stream | 888 | `GetStreamSlot` + `EmitPredicationToSlot<…Stream>` + `ConsumeStreamInstruction` |
+| ScalarMisc | 92 | `GetScalarMiscSlot` + `…<…ScalarMisc>` + `ConsumeScalarMiscInstruction` |
+| ScalarAlu | 49 | `GetScalarAluSlot` (StatusOr) + `…<…ScalarAlu>` + `ConsumeScalarAluInstruction` |
+| ScalarAlu-S1 | 27 | `GetScalarAluSlotS1` + `ConsumeScalarAluSlotS1Instruction` (fixed S1) |
+| ScalarAlu-S0 | 17 | `GetScalarAluSlotS0` + `ConsumeScalarAluSlotS0Instruction` (fixed S0) |
+| DMA | 70 | guard oneof → `clear_scalar_instruction` → `DefaultConstruct<SparseCoreDma>` → variant |
+| Multi-scalar (flag) | 54 | `flags & 1 → S0` / `& 2 → S1` / `& 4 → Misc`; none → error |
+| Optional-skip | 4 | `if tolerate_skip return OK; else DEFAULT` (`0x100d/0x100e/0x1015/0x10f2`) |
+| No-op | 1 | `return OK` (opcode `0x264`) |
+| Default / OOB | 2817 | `MakeErrorImpl` "Unsupported opcode while consuming slot instruction: $0 : $1" |
 
 > **GOTCHA — the slot class is in the jump table, but for 54 ops the *sub-slot* is in the `MCInst` flags, not the opcode.** The five fixed-slot arms (Stream, ScalarMisc, ScalarAlu, S0, S1) decide the slot from the opcode alone. The multi-scalar arm does not: it carries no fixed slot and reads the per-`MCInst` flag word to pick S0/S1/Misc. A reimplementer who maps opcode→slot statically will mis-route every one of those 54 ops, because the same opcode can land on a different scalar sub-slot in two different bundles depending on the scheduler's flag stamp.
 
@@ -272,27 +272,27 @@ Each arm calls `SparseCoreTecVectorAlu::_internal_mutable_<op>()` to select the 
 
 ## Function Map
 
-| Symbol | Address | Role | Confidence |
-|---|---|---|---|
-| `ConsumeOneSlotInstruction<…TacBundle>` | `0x139f1360` | the scalar-slot router (this page); jt base `0x1f3`, bound `0xfb2` | CONFIRMED |
-| `ConsumeOneSlotInstruction<…ScsBundle>` | `0x13a50540` | SCS instance; jt `0xaea9fb4`, identical arm map | CONFIRMED |
-| `ConsumeOneSlotInstruction<…TecBundle>` | `0x13a15500` | TEC scalar instance; jt `0xaea4ba0`, identical arm map | CONFIRMED |
-| `getSlotFlagsFromMCInst` | `0x13c798e0` | `return *(u32*)(mcinst+0x4)` — the slot-flag word source | CONFIRMED |
-| OneSlot jump table (TAC) | `0xae8dce4` | 4019×int32 rel offsets; 10 arm targets | CONFIRMED |
-| `GetStreamSlot<…,TacBundle>` | `0x139fa760` | Stream slot accessor | CONFIRMED |
-| `GetScalarMiscSlot<…,TacBundle>` | `0x139eeac0` | ScalarMisc slot accessor | CONFIRMED |
-| `GetScalarAluSlot<…,TacBundle>` | `0x139f0800` | generic ScalarAlu slot accessor (StatusOr) | CONFIRMED |
-| `GetScalarAluSlotS0` / `…S1` | `0x139f7300` / `0x139f74a0` | dual-issue sub-slot accessors | CONFIRMED |
-| `ConsumeStreamInstruction` | `0x139fa940` | Stream slot leaf consumer | CONFIRMED |
-| `ConsumeScalarMiscInstruction` | `0x139eeca0` | ScalarMisc slot leaf consumer | CONFIRMED |
-| `ConsumeScalarAluInstruction` | `0x139f09c0` | generic ScalarAlu leaf consumer | CONFIRMED |
-| `ConsumeScalarAluSlotS0Instruction` / `…S1` | `0x139f9480` / `0x139f9be0` | dual-issue leaf consumers | CONFIRMED |
-| `clear_scalar_instruction` | `0x1fb59220` | DMA arm: clears the `scalar_instruction` oneof | CONFIRMED |
-| `Arena::DefaultConstruct<SparseCoreDma>` | `0x1fb5a480` | DMA arm: materializes the DMA descriptor | CONFIRMED |
-| DMA variant dispatcher | `0x13a04820` | `{SparseCoreDma*, SparseCoreTecDma*}` value-visitor | CONFIRMED |
-| `MakeErrorImpl<9>` | `0x2111e900` | both router error paths | CONFIRMED |
-| `ConsumeOneTecBundleInstruction` | `0x13a08e00` | the separate TEC *vector*-slot dispatcher | CONFIRMED |
-| `ConsumeVectorAluInstruction<…TecBundle>` | `0x13a0b580` | reaches the 142-op `VectorAlu` table; jt `0xae9d3dc`, base `0xb26` | CONFIRMED |
+| Symbol | Address | Role |
+|---|---|---|
+| `ConsumeOneSlotInstruction<…TacBundle>` | `0x139f1360` | the scalar-slot router (this page); jt base `0x1f3`, bound `0xfb2` |
+| `ConsumeOneSlotInstruction<…ScsBundle>` | `0x13a50540` | SCS instance; jt `0xaea9fb4`, identical arm map |
+| `ConsumeOneSlotInstruction<…TecBundle>` | `0x13a15500` | TEC scalar instance; jt `0xaea4ba0`, identical arm map |
+| `getSlotFlagsFromMCInst` | `0x13c798e0` | `return *(u32*)(mcinst+0x4)` — the slot-flag word source |
+| OneSlot jump table (TAC) | `0xae8dce4` | 4019×int32 rel offsets; 10 arm targets |
+| `GetStreamSlot<…,TacBundle>` | `0x139fa760` | Stream slot accessor |
+| `GetScalarMiscSlot<…,TacBundle>` | `0x139eeac0` | ScalarMisc slot accessor |
+| `GetScalarAluSlot<…,TacBundle>` | `0x139f0800` | generic ScalarAlu slot accessor (StatusOr) |
+| `GetScalarAluSlotS0` / `…S1` | `0x139f7300` / `0x139f74a0` | dual-issue sub-slot accessors |
+| `ConsumeStreamInstruction` | `0x139fa940` | Stream slot leaf consumer |
+| `ConsumeScalarMiscInstruction` | `0x139eeca0` | ScalarMisc slot leaf consumer |
+| `ConsumeScalarAluInstruction` | `0x139f09c0` | generic ScalarAlu leaf consumer |
+| `ConsumeScalarAluSlotS0Instruction` / `…S1` | `0x139f9480` / `0x139f9be0` | dual-issue leaf consumers |
+| `clear_scalar_instruction` | `0x1fb59220` | DMA arm: clears the `scalar_instruction` oneof |
+| `Arena::DefaultConstruct<SparseCoreDma>` | `0x1fb5a480` | DMA arm: materializes the DMA descriptor |
+| DMA variant dispatcher | `0x13a04820` | `{SparseCoreDma*, SparseCoreTecDma*}` value-visitor |
+| `MakeErrorImpl<9>` | `0x2111e900` | both router error paths |
+| `ConsumeOneTecBundleInstruction` | `0x13a08e00` | the separate TEC *vector*-slot dispatcher |
+| `ConsumeVectorAluInstruction<…TecBundle>` | `0x13a0b580` | reaches the 142-op `VectorAlu` table; jt `0xae9d3dc`, base `0xb26` |
 
 Error strings (`.rodata`): "`Unsupported opcode while consuming slot instruction: $0 : $1`" (`0x9e6fbec`, default arm) and "`Invalid slot. Expected Scalar Slot. MCInst Flags: $0`" (`0x9fbf02c`, multi-scalar no-flag arm). Source file `platforms/xla/sparse_core/ghostlite/isa_emitter.cc` (`0x8762dbb`).
 

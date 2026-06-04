@@ -29,7 +29,6 @@ For reimplementation, the contract is:
 | **Address spaces** | SMEM base (`wrcbreg.smem.base`) or TILE_SPMEM base (`wrcbreg.tilespmem.base`) |
 | **Wrap** | `offset = (offset + step) mod size`, HW-implicit; no trap, wraps by design |
 | **Per-gen presence** | v5+ only — VF (vfc, Viperfish), GL (glc, Ghostlite), GF (gfc, 6acc60406); none in jxc/pxc |
-| **Confidence** | CONFIRMED (decompile-anchored) unless a row or callout says otherwise |
 
 > **NOTE — this page owns CBREG semantics, not the opcode roster or the bundle layout.** `AddCbreg=0x33` and its sibling opcode values are catalogued on [Scalar Opcode Enum](scalar-opcode-enum.md); the 32-byte SCS bundle, the slot bases, and the 27-bit scalar-slot template are on [SCS Engine](scs-engine.md). The CBREG-as-Stream-offset-window and the scatter-add slot bit layout are on [Stream Gather/Scatter](stream-gather-scatter.md). This page documents what a CBREG *is*, how it is addressed, how it wraps, and how those ops bind it.
 
@@ -119,35 +118,35 @@ SST CircularBuffer (0x3d) / PostUpdate (0x3c):  CB[CBREG][offset] <- ScalarY
 
 Each op's `Matches()` predicate masks the 6-bit opcode out of the `ScalarAlu1` slot word and compares against a signature; the signature *is* the opcode. The values are gen-invariant — the gfc and vfc/glc predicates are byte-identical. Confirmed values:
 
-| Opcode | Mnemonic | `Matches()` evidence (gfc) | Confidence |
-|---:|---|---|---|
-| `0x36` | `ReadCbreg` | `(word6 & 0xFC000000) == 0xD8000000`; `0xD8000000>>26 = 0x36` (gfc `0x1eb7b560`) | CONFIRMED |
-| `0x35` | `WriteCbreg` | `(word6 & 0xFC000000) == 0xD4000000`; `0xD4000000>>26 = 0x35` | CONFIRMED |
-| `0x33` | `AddCbreg` | `(word6 & 0xFC000000) == 0xCC000000`; `0xCC000000>>26 = 0x33` | CONFIRMED |
-| `0x3f` / `0x3e` | `ScalarLoadCircularBuffer` / `…PostUpdate` | opcode field; PostUpdate VF/GL only | HIGH |
-| `0x3d` / `0x3c` | `ScalarStoreCircularBuffer` / `…PostUpdate` | opcode field; PostUpdate VF/GL only | HIGH |
-| `0x00`+`0x1b` | `MoveCbreg` | `(word6 & 0xFFE00000) == 0x3600000`; `>>26 = 0x00` primary, `>>21 = 0x1b` sub; gfc only | CONFIRMED |
+| Opcode | Mnemonic | `Matches()` evidence (gfc) |
+|---:|---|---|
+| `0x36` | `ReadCbreg` | `(word6 & 0xFC000000) == 0xD8000000`; `0xD8000000>>26 = 0x36` (gfc `0x1eb7b560`) |
+| `0x35` | `WriteCbreg` | `(word6 & 0xFC000000) == 0xD4000000`; `0xD4000000>>26 = 0x35` |
+| `0x33` | `AddCbreg` | `(word6 & 0xFC000000) == 0xCC000000`; `0xCC000000>>26 = 0x33` |
+| `0x3f` / `0x3e` | `ScalarLoadCircularBuffer` / `…PostUpdate` | opcode field; PostUpdate VF/GL only |
+| `0x3d` / `0x3c` | `ScalarStoreCircularBuffer` / `…PostUpdate` | opcode field; PostUpdate VF/GL only |
+| `0x00`+`0x1b` | `MoveCbreg` | `(word6 & 0xFFE00000) == 0x3600000`; `>>26 = 0x00` primary, `>>21 = 0x1b` sub; gfc only |
 
 > **QUIRK — `MoveCbreg` is a two-level (escape) opcode, not a flat 6-bit value.** Its `Matches()` masks an 11-bit field (`& 0xFFE00000`, bits 21–31) and compares `== 0x3600000`. The primary 6-bit opcode part (`>>26`) is `0x00` and the 5-bit X field (`>>21`) carries the sub-opcode `0x1b` (27). A reimplementer who reads only the 6-bit primary will see `Move` as opcode `0x00` and collide it with the control class; the discriminating bits are the X-field sub-opcode. `Move` exists only in gfc (6acc60406); VF/GL have no scalar `MoveCbreg`.
 
-A slot encoding-mode tag distinguishes the plain Read/Write/Add/LD/ST forms from the PostUpdate forms — the mode byte carries the auto-increment bit that tells the hardware to advance OFFSET after the access. The PostUpdate-vs-plain discriminator is the separate `…PostUpdate` opcode predicate; the exact mode-byte values are not bit-decoded here (HIGH confidence).
+A slot encoding-mode tag distinguishes the plain Read/Write/Add/LD/ST forms from the PostUpdate forms — the mode byte carries the auto-increment bit that tells the hardware to advance OFFSET after the access. The PostUpdate-vs-plain discriminator is the separate `…PostUpdate` opcode predicate; the exact mode-byte values are not bit-decoded here.
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `GetCbMetadata<vfc::CbregMetadata>` | `0x13998fe0` | validate metadata immediate {0,1,2}; LogFatal otherwise | CONFIRMED |
-| `GetCbMetadata<glc::CbregMetadata>` / `<gfc::…>` | `0x13a046c0` / `0x13a7a6a0` | same, per gen | CONFIRMED |
-| `EmitReadCbregOp<vfc::CbregMetadata, …ReadCbreg>` | `0x139983c0` | lower `ReadCbreg` MCInst → scalar slot | CONFIRMED |
-| `EmitWriteCbregOp<…, ScsBundle, …WriteCbreg>` (vfc) | `0x139e6420` | write CBREG, SCS bundle | CONFIRMED |
-| `EmitWriteCbregOp<…, TacBundle / TecBundle, …>` (vfc) | `0x13998b60` / `0x139d0d00` | write CBREG, TAC / TEC bundle | CONFIRMED |
-| `EmitMoveCbregOp<…, ScsBundle / TecBundle, …MoveCbreg>` (gfc) | `0x13ac9540` / `0x13a73c80` | copy CBREG triple; gfc only, no TAC | CONFIRMED |
-| `…TacScalarAlu1ReadCbregDestField::GetConcatenatedValue` | `0x1e8e5400` | Dest `>>10 & 0x1F` | CONFIRMED |
-| `…TacScalarAlu1ReadCbregCbregMetadataField::…` | `0x1e8e53c0` | Meta `>>15 & 0x3F` | CONFIRMED |
-| `…TacScalarAlu1ReadCbregXField::…` | `0x1e8e53e0` | X `>>21 & 0x1F` | CONFIRMED |
-| `…ScalarAlu1AddCbregOpcode::Matches` (gfc) | `0x1eb7b5a0` | `(word6 & 0xFC000000)==0xCC000000` → `0x33` | CONFIRMED |
-| `…ScalarAlu1MoveCbregOpcode::Matches` (gfc) | `0x1eb7b5c0` | `(word6 & 0xFFE00000)==0x3600000` → `0x00`+`0x1b` | CONFIRMED |
-| `BitCopy` | `0x1fa0a900` | LE bit-field packer `(dst, dst_off, src, src_off, nbits)` | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `GetCbMetadata<vfc::CbregMetadata>` | `0x13998fe0` | validate metadata immediate {0,1,2}; LogFatal otherwise |
+| `GetCbMetadata<glc::CbregMetadata>` / `<gfc::…>` | `0x13a046c0` / `0x13a7a6a0` | same, per gen |
+| `EmitReadCbregOp<vfc::CbregMetadata, …ReadCbreg>` | `0x139983c0` | lower `ReadCbreg` MCInst → scalar slot |
+| `EmitWriteCbregOp<…, ScsBundle, …WriteCbreg>` (vfc) | `0x139e6420` | write CBREG, SCS bundle |
+| `EmitWriteCbregOp<…, TacBundle / TecBundle, …>` (vfc) | `0x13998b60` / `0x139d0d00` | write CBREG, TAC / TEC bundle |
+| `EmitMoveCbregOp<…, ScsBundle / TecBundle, …MoveCbreg>` (gfc) | `0x13ac9540` / `0x13a73c80` | copy CBREG triple; gfc only, no TAC |
+| `…TacScalarAlu1ReadCbregDestField::GetConcatenatedValue` | `0x1e8e5400` | Dest `>>10 & 0x1F` |
+| `…TacScalarAlu1ReadCbregCbregMetadataField::…` | `0x1e8e53c0` | Meta `>>15 & 0x3F` |
+| `…TacScalarAlu1ReadCbregXField::…` | `0x1e8e53e0` | X `>>21 & 0x1F` |
+| `…ScalarAlu1AddCbregOpcode::Matches` (gfc) | `0x1eb7b5a0` | `(word6 & 0xFC000000)==0xCC000000` → `0x33` |
+| `…ScalarAlu1MoveCbregOpcode::Matches` (gfc) | `0x1eb7b5c0` | `(word6 & 0xFFE00000)==0x3600000` → `0x00`+`0x1b` |
+| `BitCopy` | `0x1fa0a900` | LE bit-field packer `(dst, dst_off, src, src_off, nbits)` |
 
 ---
 
@@ -177,7 +176,7 @@ base, base+s, base+2·s, …, base+(N-1)·s, base, base+s, …
 
 This is the address-sequence prediction the address-generation logic needs to stream embedding rows or lookup indices without a per-element scalar address computation — the SC's hardware-managed DMA-descriptor-ring analog.
 
-> **QUIRK — there is no modulo instruction; the wrap is the OFFSET counter, and overflow never traps.** No explicit modulo opcode exists in the binary. The OFFSET sub-register *is* a modulo-SIZE counter; the compiler-visible advance ops carry only `{cbreg, delta}` and never an explicit `% size`. The wrap formula `offset = (offset + step) mod size` is therefore inferred from the op shape plus the "circular buffer" semantics (HIGH confidence — the explicit modulo is intrinsic to the hardware, not transcribed). "Overflow" of a CBREG is the wrap by design — unlike the SREG file (which overflows into LSRA spill), a CBREG never traps; it wraps.
+> **QUIRK — there is no modulo instruction; the wrap is the OFFSET counter, and overflow never traps.** No explicit modulo opcode exists in the binary. The OFFSET sub-register *is* a modulo-SIZE counter; the compiler-visible advance ops carry only `{cbreg, delta}` and never an explicit `% size`. The wrap formula `offset = (offset + step) mod size` is therefore inferred from the op shape plus the "circular buffer" semantics — the explicit modulo is intrinsic to the hardware, not transcribed. "Overflow" of a CBREG is the wrap by design — unlike the SREG file (which overflows into LSRA spill), a CBREG never traps; it wraps.
 
 ### Dual Address Space — SMEM vs TILE_SPMEM
 
@@ -196,11 +195,11 @@ The scalar `ScalarLoadCircularBuffer` (`scSLDCBREG`) windows the SCS SMEM tier; 
 
 The CBREG file is **16 entries per sequencer bank**. The binding evidence is the 4-bit selector on the TEC vector load/store `Cbreg` field, confirmed across glc and gfc:
 
-| Bank | Count | Selector width | Evidence |
-|---|---:|---|---|
-| `SC_SCS_CBREGS_*` | 16 | 4-bit | scalar X/Dest field 5-bit (low 4 used); vector Cbreg `& 0xF` |
-| `SC_TAC_CBREGS_*` | 16 | 4-bit | same encoder family; TAC present on VF/GL only |
-| `SC_TEC_CBREGS_*` | 16 | 4-bit | `…TileSpmemStoreCircularBuffer…CbregField::GetConcatenatedValue` returns `(word12 >> shift) & 0xF`; shift is gen-variant (vfc `>>21` `0x1e9c1d00`, glc `>>22` `0x1eb4f160`, gfc `>>23` `0x1ecca4c0`) — `& 0xF` (16) is invariant |
+| Bank | Count | Selector width |
+|---|---:|---|
+| `SC_SCS_CBREGS_*` | 16 | 4-bit |
+| `SC_TAC_CBREGS_*` | 16 | 4-bit |
+| `SC_TEC_CBREGS_*` | 16 | 4-bit |
 
 > **NOTE — the scalar field is 5-bit but the CBREG file is 16, set by the vector path's 4-bit selector.** The scalar-ALU `Dest@10` and `X@21` fields are physically 5-bit (wide enough for 32), but the TEC vector Cbreg field is a hard `& 0xF` (16 entries). The high bit of the scalar 5-bit field is unused for CBREG selection. A reimplementer must size the CBREG file at 16 — the 5-bit scalar slot is not evidence of 32 registers. TAC has CBREGs on VF/GL only (`EmitWriteCbregOp` is instantiated for Tac under vfc/glc but not gfc).
 
@@ -259,17 +258,17 @@ The compiler driver `LinearStreamStartOpLowering::rewriteSparseCoreStreamOpToLLV
 
 The compiler-facing ops that drive a CBREG. All names below are present as strings in the binary; the read/write intrinsics carry per-sub-register and per-address-space variants.
 
-| Op-name string | Role | Confidence |
-|---|---|---|
-| `llvm.tpu.allocate.cbreg` | allocate a CBREG (16 per bank) | CONFIRMED |
-| `llvm.tpu.cbreg.add.offset` | `offset += delta` → new offset, wrap mod size | CONFIRMED |
-| `llvm.tpu.cbreg.add.offset.in.place` | same, mutates the CBREG | CONFIRMED |
-| `llvm.tpu.copy.cbreg` | copy whole CBREG triple → `MoveCbreg` | CONFIRMED |
-| `llvm.tpu.rdcbreg.offset` / `.size` | read OFFSET / SIZE sub-register | CONFIRMED |
-| `llvm.tpu.rdcbreg.smem.base` / `.tilespmem.base` | read BASE (per address space) | CONFIRMED |
-| `llvm.tpu.wrcbreg.offset` / `.size` | write OFFSET / SIZE | CONFIRMED |
-| `llvm.tpu.wrcbreg.smem.base` / `.tilespmem.base` | write BASE (per address space) | CONFIRMED |
-| `sc_tpu.advance_cb_offset` / `read_cb_offset` | textual MLIR op names for advance / read | CONFIRMED |
+| Op-name string | Role |
+|---|---|
+| `llvm.tpu.allocate.cbreg` | allocate a CBREG (16 per bank) |
+| `llvm.tpu.cbreg.add.offset` | `offset += delta` → new offset, wrap mod size |
+| `llvm.tpu.cbreg.add.offset.in.place` | same, mutates the CBREG |
+| `llvm.tpu.copy.cbreg` | copy whole CBREG triple → `MoveCbreg` |
+| `llvm.tpu.rdcbreg.offset` / `.size` | read OFFSET / SIZE sub-register |
+| `llvm.tpu.rdcbreg.smem.base` / `.tilespmem.base` | read BASE (per address space) |
+| `llvm.tpu.wrcbreg.offset` / `.size` | write OFFSET / SIZE |
+| `llvm.tpu.wrcbreg.smem.base` / `.tilespmem.base` | write BASE (per address space) |
+| `sc_tpu.advance_cb_offset` / `read_cb_offset` | textual MLIR op names for advance / read |
 
 MLIR `sc_tpu` op creators back these (`tpu_allocate_cbreg::create` `0x146d6d80`, `tpu_cbreg_add_offset::create` `0x146d7e60` with `OneResult`/`NOperands<2>`, `tpu_cbreg_add_offset_in_place::create` `0x146d7f60`, `tpu_rdcbreg_offset` `0x14734820`, `tpu_wrcbreg_offset`/`_size` `0x14a30fe0`/`0x14a310e0`). The SC ISel matches the reads via `matchReadCbreg<13419u,13417u,13418u>` (`0x13b39200`) and `<13420u,…>` (`0x13b39620`) — intrinsic IDs `0x3469..0x346c` for the `rdcbreg.{offset,size,base}` family.
 
@@ -309,21 +308,21 @@ The gen split is byte-confirmed by namespace presence: `MoveCbreg` files exist o
 
 ## Limits and Open Items
 
-| Item | Status | Confidence |
-|---|---|---|
-| `CbregMetadata` enum {BASE=0, SIZE=1, OFFSET=2} | proto + validator agree, body read | CONFIRMED |
-| Scalar-ALU CBREG slot layout (opcode `@154/6`, fields `@138/5`, `@143/6`, `@149/5`) | accessor shifts read; bundle-abs from SCS slot base | CONFIRMED |
-| Opcode values Read `0x36` / Write `0x35` / Add `0x33` / Move `0x00`+`0x1b` | `Matches()` immediates read, gen-invariant | CONFIRMED |
-| 16-CBREG-per-bank (4-bit selector) | TEC vector Cbreg `& 0xF` (shift gen-variant: vfc/glc/gfc `>>21`/`>>22`/`>>23`) | CONFIRMED |
-| Dual address space (SMEM base / TILE_SPMEM base) | both accessor strings present; two `wrcbreg.*.base` variants | CONFIRMED |
-| `IndirectOffsetSource` SREG=0 / CBREG=1 + scatter-add Cbreg binding | enum + vector-store Cbreg field | CONFIRMED |
-| Per-gen presence (v5+ only; Move gfc-only; PostUpdate not gfc-scalar) | namespace file presence | CONFIRMED |
-| The wrap arithmetic `offset = (offset + step) mod size` | inferred from op shape + circular-buffer semantics; no explicit modulo op | HIGH |
-| SLD/SST `0x3f/0x3e/0x3d/0x3c` opcode values | opcode-field roster; PostUpdate-bit not fully bit-decoded | HIGH |
-| Physical OFFSET/SIZE sub-register bit widths | chip_parts geometry, not in C++ | LOW |
-| The PostUpdate `step` source (element-size vs fixed-1 vs operand Stride) | vector form has a 4-bit `Stride`; scalar step source not bit-confirmed | LOW |
-| Whether writing SIZE mid-loop is legal vs in-flight PostUpdates (HW ordering) | proto allows `WriteCbreg[SIZE]`; ordering not recovered | LOW |
-| `scIMPLICIT_CBREG` operand role (likely the default CB0 for SLD/SST) | inferred, not decoded | LOW |
+| Item | Notes |
+|---|---|
+| `CbregMetadata` enum {BASE=0, SIZE=1, OFFSET=2} | proto + validator agree, body read |
+| Scalar-ALU CBREG slot layout (opcode `@154/6`, fields `@138/5`, `@143/6`, `@149/5`) | accessor shifts read; bundle-abs from SCS slot base |
+| Opcode values Read `0x36` / Write `0x35` / Add `0x33` / Move `0x00`+`0x1b` | `Matches()` immediates read, gen-invariant |
+| 16-CBREG-per-bank (4-bit selector) | TEC vector Cbreg `& 0xF` (shift gen-variant: vfc/glc/gfc `>>21`/`>>22`/`>>23`) |
+| Dual address space (SMEM base / TILE_SPMEM base) | both accessor strings present; two `wrcbreg.*.base` variants |
+| `IndirectOffsetSource` SREG=0 / CBREG=1 + scatter-add Cbreg binding | enum + vector-store Cbreg field |
+| Per-gen presence (v5+ only; Move gfc-only; PostUpdate not gfc-scalar) | namespace file presence |
+| The wrap arithmetic `offset = (offset + step) mod size` | inferred from op shape + circular-buffer semantics; no explicit modulo op |
+| SLD/SST `0x3f/0x3e/0x3d/0x3c` opcode values | opcode-field roster; PostUpdate-bit not fully bit-decoded |
+| Physical OFFSET/SIZE sub-register bit widths | chip_parts geometry, not in C++ |
+| The PostUpdate `step` source (element-size vs fixed-1 vs operand Stride) | vector form has a 4-bit `Stride`; scalar step source not bit-confirmed |
+| Whether writing SIZE mid-loop is legal vs in-flight PostUpdates (HW ordering) | proto allows `WriteCbreg[SIZE]`; ordering not recovered |
+| `scIMPLICIT_CBREG` operand role (likely the default CB0 for SLD/SST) | not decoded |
 
 ---
 

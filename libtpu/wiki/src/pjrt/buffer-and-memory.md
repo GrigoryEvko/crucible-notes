@@ -69,26 +69,26 @@ The size and field offsets are byte-confirmed: `PJRT_Buffer_Destroy` (`0xf86d020
 
 The 18 slots this page covers, all in the 140-slot `PJRT_Api`. Each wrapper validates `struct_size` via `pjrt::ActualStructSizeIsGreaterOrEqual(name, min_fields, cur_bytes, caller_size)` @ `0xf8a4ec0`, then reads `args+0x10` to reach the wrapper and `wrapper+0x00` to reach the inner `PjRtBuffer*`.
 
-| Slot | Off | Method | C symbol | Addr | vtable bounce / backing | Confidence |
-|---|---|---|---|---|---|---|
-| 27 | — | BufferFromHostBuffer | `PJRT_Client_BufferFromHostBuffer` | `0xf8644c0` | memory-space vtable+0x120 (allocate+stage) | CERTAIN |
-| 63 | 0x1f8 | Destroy | `PJRT_Buffer_Destroy` | `0xf86d020` | `~PJRT_Buffer()` + `free(0x110)` | CERTAIN |
-| 64 | 0x200 | ElementType | `PJRT_Buffer_ElementType` | `0xf86d220` | inner vtable+0x10 `element_type()` + `ConvertToPjRtBufferType` | CERTAIN |
-| 65 | 0x208 | Dimensions | `PJRT_Buffer_Dimensions` | `0xf86d280` | inner vtable+0x18 `dimensions()` → `{ptr,count}` | CERTAIN |
-| 69 | — | OnDeviceSizeInBytes | `PJRT_Buffer_OnDeviceSizeInBytes` | `0xf86da80` | inner vtable+0x88 `GetOnDeviceSizeInBytes()` | CERTAIN |
-| 71 | 0x238 | Memory | `PJRT_Buffer_Memory` | `0xf86dc60` | inner vtable+0x58 `memory_space()` + inlined client-side wrapper lookup | CERTAIN |
-| 72 | 0x240 | Delete | `PJRT_Buffer_Delete` | `0xf86dd80` | inner vtable+0xa0 `Delete()` (eager HBM free) | CERTAIN |
-| 73 | 0x248 | IsDeleted | `PJRT_Buffer_IsDeleted` | `0xf86dde0` | inner vtable+0xb0 `IsDeleted()` | CERTAIN |
-| 74 | 0x250 | CopyToDevice | `PJRT_Buffer_CopyToDevice` | `0xf86e360` | dst-device vtable+0x98 (default mem) + src vtable+0xb8 | CERTAIN |
-| 75 | 0x258 | ToHostBuffer | `PJRT_Buffer_ToHostBuffer` | `0xf86e640` | de-tile + inner vtable+0x78 `ToLiteral()` | CERTAIN |
-| 76 | 0x260 | IsOnCpu | `PJRT_Buffer_IsOnCpu` | `0xf86ecc0` | inner vtable+0xe8 `IsOnCpu()` | CERTAIN |
-| 77 | 0x268 | ReadyEvent | `PJRT_Buffer_ReadyEvent` | `0xf86ed20` | inner vtable+0xe0 `GetReadyFuture()` → 0x50 event | CERTAIN |
-| 79 | 0x278 | IncreaseExternalReferenceCount | `PJRT_Buffer_IncreaseExternalReferenceCount` | `0xf86ef20` | inner vtable+0x70 `AcquireExternalReference` | CERTAIN |
-| 80 | 0x280 | DecreaseExternalReferenceCount | `PJRT_Buffer_DecreaseExternalReferenceCount` | `0xf86f100` | release tracked hold | CERTAIN |
-| 81 | 0x288 | OpaqueDeviceMemoryDataPointer | `PJRT_Buffer_OpaqueDeviceMemoryDataPointer` | `0xf86f200` | inner vtable+0x70 + read hold+0x08 (raw ptr) | CERTAIN |
-| 97 | 0x308 | CopyToMemory | `PJRT_Buffer_CopyToMemory` | `0xf86e500` | inner vtable+0xb8 `CopyToMemorySpace(PjRtMemorySpace*)` | CERTAIN |
-| 105 | 0x350 | CopyRawToHost | `PJRT_Buffer_CopyRawToHost` | `0xf86de40` | inner vtable+0x90 | CERTAIN |
-| 130 | 0x410 | DonateWithControlDependency | `PJRT_Buffer_DonateWithControlDependency` | `0xf86f2e0` | inner vtable+0xd8 | CERTAIN |
+| Slot | Off | Method | C symbol | Addr | vtable bounce / backing |
+|---|---|---|---|---|---|
+| 27 | — | BufferFromHostBuffer | `PJRT_Client_BufferFromHostBuffer` | `0xf8644c0` | memory-space vtable+0x120 (allocate+stage) |
+| 63 | 0x1f8 | Destroy | `PJRT_Buffer_Destroy` | `0xf86d020` | `~PJRT_Buffer()` + `free(0x110)` |
+| 64 | 0x200 | ElementType | `PJRT_Buffer_ElementType` | `0xf86d220` | inner vtable+0x10 `element_type()` + `ConvertToPjRtBufferType` |
+| 65 | 0x208 | Dimensions | `PJRT_Buffer_Dimensions` | `0xf86d280` | inner vtable+0x18 `dimensions()` → `{ptr,count}` |
+| 69 | — | OnDeviceSizeInBytes | `PJRT_Buffer_OnDeviceSizeInBytes` | `0xf86da80` | inner vtable+0x88 `GetOnDeviceSizeInBytes()` |
+| 71 | 0x238 | Memory | `PJRT_Buffer_Memory` | `0xf86dc60` | inner vtable+0x58 `memory_space()` + inlined client-side wrapper lookup |
+| 72 | 0x240 | Delete | `PJRT_Buffer_Delete` | `0xf86dd80` | inner vtable+0xa0 `Delete()` (eager HBM free) |
+| 73 | 0x248 | IsDeleted | `PJRT_Buffer_IsDeleted` | `0xf86dde0` | inner vtable+0xb0 `IsDeleted()` |
+| 74 | 0x250 | CopyToDevice | `PJRT_Buffer_CopyToDevice` | `0xf86e360` | dst-device vtable+0x98 (default mem) + src vtable+0xb8 |
+| 75 | 0x258 | ToHostBuffer | `PJRT_Buffer_ToHostBuffer` | `0xf86e640` | de-tile + inner vtable+0x78 `ToLiteral()` |
+| 76 | 0x260 | IsOnCpu | `PJRT_Buffer_IsOnCpu` | `0xf86ecc0` | inner vtable+0xe8 `IsOnCpu()` |
+| 77 | 0x268 | ReadyEvent | `PJRT_Buffer_ReadyEvent` | `0xf86ed20` | inner vtable+0xe0 `GetReadyFuture()` → 0x50 event |
+| 79 | 0x278 | IncreaseExternalReferenceCount | `PJRT_Buffer_IncreaseExternalReferenceCount` | `0xf86ef20` | inner vtable+0x70 `AcquireExternalReference` |
+| 80 | 0x280 | DecreaseExternalReferenceCount | `PJRT_Buffer_DecreaseExternalReferenceCount` | `0xf86f100` | release tracked hold |
+| 81 | 0x288 | OpaqueDeviceMemoryDataPointer | `PJRT_Buffer_OpaqueDeviceMemoryDataPointer` | `0xf86f200` | inner vtable+0x70 + read hold+0x08 (raw ptr) |
+| 97 | 0x308 | CopyToMemory | `PJRT_Buffer_CopyToMemory` | `0xf86e500` | inner vtable+0xb8 `CopyToMemorySpace(PjRtMemorySpace*)` |
+| 105 | 0x350 | CopyRawToHost | `PJRT_Buffer_CopyRawToHost` | `0xf86de40` | inner vtable+0x90 |
+| 130 | 0x410 | DonateWithControlDependency | `PJRT_Buffer_DonateWithControlDependency` | `0xf86f2e0` | inner vtable+0xd8 |
 
 The inherited shape accessors `element_type()`/`dimensions()` point into the abstract `xla::PjRtBuffer` base (`0xe6eaac0` / `0xe6eaae0`), not into `CommonPjRtBufferImpl` — the concrete impl does not override them.
 
@@ -185,13 +185,13 @@ function PJRT_Client_BufferFromHostBuffer(args):          // 0xf8644c0
 
 ### Function Map
 
-| Function | Addr | Role | Confidence |
-|---|---|---|---|
-| `pjrt::PJRT_Client_BufferFromHostBuffer` | `0xf8644c0` | C wrapper, args validation + marshalling | CERTAIN |
-| `pjrt::ConvertFromPjRtBufferType` | `0xf8a3e60` | `PJRT_Buffer_Type` → `xla::PrimitiveType` | CERTAIN |
-| `pjrt::ConvertFromPjRtHostBufferSemantics` | `0xf8a3f20` | public → XLA semantics enum | CERTAIN |
-| `tsl::internal::PromiseMaker<void>::Make` | (inlined) | builds the `done_with_host_buffer` promise | HIGH |
-| inner client vtable+0x120 | (per-platform) | allocate + schedule host→device DMA | HIGH |
+| Function | Addr | Role |
+|---|---|---|
+| `pjrt::PJRT_Client_BufferFromHostBuffer` | `0xf8644c0` | C wrapper, args validation + marshalling |
+| `pjrt::ConvertFromPjRtBufferType` | `0xf8a3e60` | `PJRT_Buffer_Type` → `xla::PrimitiveType` |
+| `pjrt::ConvertFromPjRtHostBufferSemantics` | `0xf8a3f20` | public → XLA semantics enum |
+| `tsl::internal::PromiseMaker<void>::Make` | (inlined) | builds the `done_with_host_buffer` promise |
+| inner client vtable+0x120 | (per-platform) | allocate + schedule host→device DMA |
 
 ---
 
@@ -224,12 +224,12 @@ The raw, un-shaped readback variants are `CopyRawToHost` (slot 105, inner vtable
 
 ### Function Map
 
-| Function | Addr | Role | Confidence |
-|---|---|---|---|
-| `pjrt::PJRT_Buffer_ToHostBuffer` | `0xf86e640` | C wrapper; de-tile + ToLiteral | CERTAIN |
-| `xla::ShapeUtil::DeviceShapeToHostShape` | `0x20cec000` | tiled → linear shape | CERTAIN |
-| `pjrt::ConvertToLayout` | `0xf8a5640` | `PJRT_Buffer_MemoryLayout_Tiled` → `xla::Layout` | CERTAIN |
-| `CommonPjRtBufferImpl::ToLiteral` | inner vtable+0x78 (`0xf9295a0`) | layout-aware device→host copy | CERTAIN |
+| Function | Addr | Role |
+|---|---|---|
+| `pjrt::PJRT_Buffer_ToHostBuffer` | `0xf86e640` | C wrapper; de-tile + ToLiteral |
+| `xla::ShapeUtil::DeviceShapeToHostShape` | `0x20cec000` | tiled → linear shape |
+| `pjrt::ConvertToLayout` | `0xf8a5640` | `PJRT_Buffer_MemoryLayout_Tiled` → `xla::Layout` |
+| `CommonPjRtBufferImpl::ToLiteral` | inner vtable+0x78 (`0xf9295a0`) | layout-aware device→host copy |
 
 ### Considerations
 

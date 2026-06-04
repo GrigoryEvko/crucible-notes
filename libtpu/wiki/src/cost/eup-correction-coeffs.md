@@ -57,18 +57,18 @@ function EmitRsqrtNrIteration(x, y):      // jellyfish::EmitRsqrtNrIteration @0x
     return VmulF32(y, t)                    //  y·(1.5 − 0.5·x·y²)
 ```
 
-| role | function | u32 | f32 | .rodata off | Confidence |
-|---|---|---|---|---|---|
-| `1.0` | `EmitRecpNrIteration` | `0x3f800000` | 1.0 | `0x84a2444` | CERTAIN |
-| `0.5` | `EmitRsqrtNrIteration` | `0x3f000000` | 0.5 | `0x84a27e8` | CERTAIN |
-| `1.5` | `EmitRsqrtNrIteration` | `0x3fc00000` | 1.5 | `0x84a2680` | CERTAIN |
+| role | function | u32 | f32 | .rodata off |
+|---|---|---|---|---|
+| `1.0` | `EmitRecpNrIteration` | `0x3f800000` | 1.0 | `0x84a2444` |
+| `0.5` | `EmitRsqrtNrIteration` | `0x3f000000` | 0.5 | `0x84a27e8` |
+| `1.5` | `EmitRsqrtNrIteration` | `0x3fc00000` | 1.5 | `0x84a2680` |
 
 `VrecpNr` (`@0x1d5580c0`) wraps `EmitRecpNrIteration` with special-value saturation: it abs-masks with the integer constant `0x7fffffff` (a `VectorU32Constant`, not a `.rodata` fp32) and clamps overflow/underflow to `2^126` (`0x7e800000` @ `0x84a3004`) and `2^−126` (`0x00800000` @ `0x84a2f64`), selecting on NaN/inf through `SimplifyVweird`.
 
-| role | u32 | f32 | .rodata off | Confidence |
-|---|---|---|---|---|
-| `2^126` saturation hi | `0x7e800000` | 8.507059e+37 | `0x84a3004` | CERTAIN |
-| `2^−126` saturation lo | `0x00800000` | 1.175494e−38 | `0x84a2f64` | CERTAIN |
+| role | u32 | f32 | .rodata off |
+|---|---|---|---|
+| `2^126` saturation hi | `0x7e800000` | 8.507059e+37 | `0x84a3004` |
+| `2^−126` saturation lo | `0x00800000` | 1.175494e−38 | `0x84a2f64` |
 
 ---
 
@@ -102,34 +102,34 @@ The `VdivF32` operand trace settles the parity: the accumulator that is multipli
 
 Numerator `P(x²)` — 7 coefficients, Horner low→high in `x²`, whole `P` then `×x`:
 
-| role | u32 | f32 | .rodata off | Confidence |
-|---|---|---|---|---|
-| c0 | `0xa59f25c0` | -2.7607683663038313e-16 | `0x84a2654` | CERTAIN |
-| c1 | `0x2a61337e` | 2.0001879384549948e-13 | `0x84a2428` | CERTAIN |
-| c2 | `0xaebd37ff` | -8.604671836165423e-11 | `0x84a2ef4` | CERTAIN |
-| c3 | `0x335c0041` | 5.122297253024044e-08 | `0x84a27d8` | CERTAIN |
-| c4 | `0x3779434a` | 1.4857223504805006e-05 | `0x84a24f0` | CERTAIN |
-| c5 | `0x3a270ded` | 0.0006372619536705315 | `0x84a242c` | CERTAIN |
-| c6 | `0x3ba059dc` | 0.004893524572253227 | `0x84a24a0` | CERTAIN |
+| role | u32 | f32 | .rodata off |
+|---|---|---|---|
+| c0 | `0xa59f25c0` | -2.7607683663038313e-16 | `0x84a2654` |
+| c1 | `0x2a61337e` | 2.0001879384549948e-13 | `0x84a2428` |
+| c2 | `0xaebd37ff` | -8.604671836165423e-11 | `0x84a2ef4` |
+| c3 | `0x335c0041` | 5.122297253024044e-08 | `0x84a27d8` |
+| c4 | `0x3779434a` | 1.4857223504805006e-05 | `0x84a24f0` |
+| c5 | `0x3a270ded` | 0.0006372619536705315 | `0x84a242c` |
+| c6 | `0x3ba059dc` | 0.004893524572253227 | `0x84a24a0` |
 
 Denominator `Q(x²)` — 4 coefficients, Horner low→high in `x²`:
 
-| role | u32 | f32 | .rodata off | Confidence |
-|---|---|---|---|---|
-| d0 | `0x35a0d3d8` | 1.1982583600911312e-06 | `0x84a2e8c` | CERTAIN |
-| d1 | `0x38f895d6` | 0.00011853470641653985 | `0x84a2658` | CERTAIN |
-| d2 | `0x3b14aa05` | 0.0022684347350150347 | `0x84a2564` | CERTAIN |
-| d3 | `0x3ba059dd` | 0.0048935250379145145 | `0x84a27dc` | CERTAIN |
+| role | u32 | f32 | .rodata off |
+|---|---|---|---|
+| d0 | `0x35a0d3d8` | 1.1982583600911312e-06 | `0x84a2e8c` |
+| d1 | `0x38f895d6` | 0.00011853470641653985 | `0x84a2658` |
+| d2 | `0x3b14aa05` | 0.0022684347350150347 | `0x84a2564` |
+| d3 | `0x3ba059dd` | 0.0048935250379145145 | `0x84a27dc` |
 
 Brackets and saturation:
 
-| role | u32 | f32 | .rodata off | Confidence |
-|---|---|---|---|---|
-| clamp lo | `0xc1100000` | -9.0 | `0x84a283c` | CERTAIN |
-| clamp hi | `0x41100000` | +9.0 | `0x84a2a84` | CERTAIN |
-| small thresh | `0x39d1b717` | 0.00039999998989515007 | `0x84a2758` | CERTAIN |
-| saturate −1 | `0xbf800000` | -1.0 | `0x84a26cc` | CERTAIN |
-| saturate +1 | `0x3f800000` | 1.0 | `0x84a2444` | CERTAIN |
+| role | u32 | f32 | .rodata off |
+|---|---|---|---|
+| clamp lo | `0xc1100000` | -9.0 | `0x84a283c` |
+| clamp hi | `0x41100000` | +9.0 | `0x84a2a84` |
+| small thresh | `0x39d1b717` | 0.00039999998989515007 | `0x84a2758` |
+| saturate −1 | `0xbf800000` | -1.0 | `0x84a26cc` |
+| saturate +1 | `0x3f800000` | 1.0 | `0x84a2444` |
 
 > **NOTE —** c6 (`0x3ba059dc`) and d3 (`0x3ba059dd`) differ in only the LSB. The leading numerator and denominator coefficients are intentionally near-equal so `x·P/Q → ±1` as `|x| → 9` (the saturation limit); this is the rational's high-order asymptote and is the reason the outer `[−1, +1]` clamp is exact at the boundary. They are byte-confirmed *distinct* constants, not a transcription artifact.
 
@@ -152,27 +152,27 @@ function EmitAtan2Approximation(y, x):    // @0x1d5aa1c0
 
 Polynomial `P(r²)` — 8 coefficients, Horner low→high:
 
-| role | u32 | f32 | .rodata off | Confidence |
-|---|---|---|---|---|
-| p0 | `0x3b369013` | 0.0027856871020048857 | `0x84a2594` | CERTAIN |
-| p1 | `0xbc81f96a` | -0.015866000205278397 | `0x84a2e38` | CERTAIN |
-| p2 | `0x3d2df75a` | 0.042472220957279205 | `0x84a2520` | CERTAIN |
-| p3 | `0xbd998ca7` | -0.07497530430555344 | `0x84a278c` | CERTAIN |
-| p4 | `0x3dda01d4` | 0.10644879937171936 | `0x84a2d24` | CERTAIN |
-| p5 | `0xbe117ae1` | -0.14207030832767487 | `0x84a300c` | CERTAIN |
-| p6 | `0x3e4cbba4` | 0.19993454217910767 | `0x84a2790` | CERTAIN |
-| p7 | `0xbeaaaa6c` | -0.33333146572113037 | `0x84a26dc` | CERTAIN |
+| role | u32 | f32 | .rodata off |
+|---|---|---|---|
+| p0 | `0x3b369013` | 0.0027856871020048857 | `0x84a2594` |
+| p1 | `0xbc81f96a` | -0.015866000205278397 | `0x84a2e38` |
+| p2 | `0x3d2df75a` | 0.042472220957279205 | `0x84a2520` |
+| p3 | `0xbd998ca7` | -0.07497530430555344 | `0x84a278c` |
+| p4 | `0x3dda01d4` | 0.10644879937171936 | `0x84a2d24` |
+| p5 | `0xbe117ae1` | -0.14207030832767487 | `0x84a300c` |
+| p6 | `0x3e4cbba4` | 0.19993454217910767 | `0x84a2790` |
+| p7 | `0xbeaaaa6c` | -0.33333146572113037 | `0x84a26dc` |
 
 Quadrant constants and sentinels:
 
-| role | u32 | f32 | .rodata off | Confidence |
-|---|---|---|---|---|
-| `π/2` | `0x3fc90fdb` | 1.5707964 | `0x84a29d0` | CERTAIN |
-| `π` | `0x40490fdb` | 3.1415927 | `0x84a2e3c` | CERTAIN |
-| `π/4` | `0x3f490fdb` | 0.78539819 | `0x84a25f8` | CERTAIN |
-| `3π/4` | `0x4016cbe4` | 2.3561945 | `0x84a28f8` | CERTAIN |
-| NaN | `0x7fc00000` | nan | `0x84a2ff8` | CERTAIN |
-| inf | `0x7f800000` | inf | `0x84a2a34` | CERTAIN |
+| role | u32 | f32 | .rodata off |
+|---|---|---|---|
+| `π/2` | `0x3fc90fdb` | 1.5707964 | `0x84a29d0` |
+| `π` | `0x40490fdb` | 3.1415927 | `0x84a2e3c` |
+| `π/4` | `0x3f490fdb` | 0.78539819 | `0x84a25f8` |
+| `3π/4` | `0x4016cbe4` | 2.3561945 | `0x84a28f8` |
+| NaN | `0x7fc00000` | nan | `0x84a2ff8` |
+| inf | `0x7f800000` | inf | `0x84a2a34` |
 
 > **NOTE —** `π/4` is loaded from `0x84a25f8`, which is offset `+0xC` into the 16-byte aligned constant pair at `0x84a25ec`. The word at `+0x8` of that pair (`0x84a25f4`, `0x3f317218` = `ln2` = 0.6931472) is the `ln2` multiplier used by `VlnNoEupF32` and `Vln1pEup` (below). The pair packs `π/4` and `ln2` adjacently — a constant-pool layout detail worth reproducing only if a reimplementer mirrors the exact RIP-relative addressing.
 
@@ -186,41 +186,41 @@ When a generation or datatype has no hardware EUP transcendental, the `*NoEupF32
 
 `exp(x) = 2^(x · log2e)`, range-clamped, with a Cody-Waite `ln2` split to keep the fractional reduction accurate, a 5-term Taylor polynomial for `2^f` on the reduced fraction `f ∈ [−0.5, 0.5]`, and exponent reconstruction through `VextractExponent` / `VcvtF32ToS32` / `VcomposeF32`. Overflow saturates to the clamp-hi `inf`-producing path; underflow is selected away by the clamp-lo comparison.
 
-| role | u32 | f32 | .rodata off | Confidence |
-|---|---|---|---|---|
-| `1.0` | `0x3f800000` | 1.0 | `0x84a2444` | CERTAIN |
-| `0.5` | `0x3f000000` | 0.5 | `0x84a27e8` | CERTAIN |
-| clamp hi | `0x42b1722d` | 88.7229995727539 | `0x84a2734` | CERTAIN |
-| clamp lo | `0xc2aeac4f` | -87.33654022216797 | `0x84a2878` | CERTAIN |
-| log2e | `0x3fb8aa3b` | 1.4426950216293335 | `0x84a2dc8` | CERTAIN |
-| `ln2`-hi (Cody-Waite) | `0xbf318000` | -0.693359375 | `0x84a2d28` | CERTAIN |
-| `ln2`-lo (Cody-Waite) | `0x395e8083` | 0.00021219444170128554 | `0x84a2d7c` | CERTAIN |
-| Taylor t0 | `0x3efffffc` | 0.49999988079071045 | `0x84a2ebc` | CERTAIN |
-| Taylor t1 | `0x3e2aaa47` | 0.166665181517601 | `0x84a2794` | CERTAIN |
-| Taylor t2 | `0x3d2aadcc` | 0.04166965186595917 | `0x84a2b18` | CERTAIN |
-| Taylor t3 | `0x3c091de6` | 0.008368944749236107 | `0x84a26e4` | CERTAIN |
-| Taylor t4 | `0x3ab42872` | 0.001374496379867196 | `0x84a2ca4` | CERTAIN |
+| role | u32 | f32 | .rodata off |
+|---|---|---|---|
+| `1.0` | `0x3f800000` | 1.0 | `0x84a2444` |
+| `0.5` | `0x3f000000` | 0.5 | `0x84a27e8` |
+| clamp hi | `0x42b1722d` | 88.7229995727539 | `0x84a2734` |
+| clamp lo | `0xc2aeac4f` | -87.33654022216797 | `0x84a2878` |
+| log2e | `0x3fb8aa3b` | 1.4426950216293335 | `0x84a2dc8` |
+| `ln2`-hi (Cody-Waite) | `0xbf318000` | -0.693359375 | `0x84a2d28` |
+| `ln2`-lo (Cody-Waite) | `0x395e8083` | 0.00021219444170128554 | `0x84a2d7c` |
+| Taylor t0 | `0x3efffffc` | 0.49999988079071045 | `0x84a2ebc` |
+| Taylor t1 | `0x3e2aaa47` | 0.166665181517601 | `0x84a2794` |
+| Taylor t2 | `0x3d2aadcc` | 0.04166965186595917 | `0x84a2b18` |
+| Taylor t3 | `0x3c091de6` | 0.008368944749236107 | `0x84a26e4` |
+| Taylor t4 | `0x3ab42872` | 0.001374496379867196 | `0x84a2ca4` |
 
 ### `expm1` — `Vexpm1NoEupF32` (`@0x1d533ec0`)
 
 A separate `expm1(x) = exp(x) − 1` implementation with its own coefficient set (sharing `log2e`, the Cody-Waite `ln2` words, and the `88.723` clamp-hi by constant-pool reuse) plus a tighter small-`x` bound `−17.32868` and `{−1, 0.5, −0.5, 2}` selector constants for the `expm1`-specific result correction.
 
-| role | u32 | f32 | .rodata off | Confidence |
-|---|---|---|---|---|
-| clamp lo | `0xc18aa123` | -17.328680038452148 | `0x84a3038` | CERTAIN |
-| clamp hi | `0x42b17218` | 88.72283935546875 | `0x84a2ce8` | CERTAIN |
-| log2e | `0x3fb8aa3b` | 1.4426950216293335 | `0x84a2dc8` | CERTAIN |
-| `ln2`-hi | `0x3f317200` | 0.693145751953125 | `0x84a2f44` | CERTAIN |
-| `ln2`-lo | `0x35bfbe8e` | 1.428606765330187e-06 | `0x84a282c` | CERTAIN |
-| Taylor (t·1) | `0x3e2aaa6f` | 0.16666577756404877 | `0x84a26ac` | CERTAIN |
-| Taylor (t·2) | `0x3d2aaab6` | 0.041666708886623383 | `0x84a2754` | CERTAIN |
-| Taylor (t·3) | `0x3c09055f` | 0.008363096974790096 | `0x84a2fe0` | CERTAIN |
-| Taylor (t·4) | `0x3ab654c9` | 0.0013910765992477536 | `0x84a2c54` | CERTAIN |
-| selector −1 | `0xbf800000` | -1.0 | `0x84a26cc` | CERTAIN |
-| selector +0.5 | `0x3f000000` | 0.5 | `0x84a27e8` | CERTAIN |
-| selector −0.5 | `0xbf000000` | -0.5 | `0x84a28f4` | CERTAIN |
-| selector 2.0 | `0x40000000` | 2.0 | `0x84a2850` | CERTAIN |
-| inf | `0x7f800000` | inf | `0x84a2a34` | CERTAIN |
+| role | u32 | f32 | .rodata off |
+|---|---|---|---|
+| clamp lo | `0xc18aa123` | -17.328680038452148 | `0x84a3038` |
+| clamp hi | `0x42b17218` | 88.72283935546875 | `0x84a2ce8` |
+| log2e | `0x3fb8aa3b` | 1.4426950216293335 | `0x84a2dc8` |
+| `ln2`-hi | `0x3f317200` | 0.693145751953125 | `0x84a2f44` |
+| `ln2`-lo | `0x35bfbe8e` | 1.428606765330187e-06 | `0x84a282c` |
+| Taylor (t·1) | `0x3e2aaa6f` | 0.16666577756404877 | `0x84a26ac` |
+| Taylor (t·2) | `0x3d2aaab6` | 0.041666708886623383 | `0x84a2754` |
+| Taylor (t·3) | `0x3c09055f` | 0.008363096974790096 | `0x84a2fe0` |
+| Taylor (t·4) | `0x3ab654c9` | 0.0013910765992477536 | `0x84a2c54` |
+| selector −1 | `0xbf800000` | -1.0 | `0x84a26cc` |
+| selector +0.5 | `0x3f000000` | 0.5 | `0x84a27e8` |
+| selector −0.5 | `0xbf000000` | -0.5 | `0x84a28f4` |
+| selector 2.0 | `0x40000000` | 2.0 | `0x84a2850` |
+| inf | `0x7f800000` | inf | `0x84a2a34` |
 
 ### `log2` — `Vlog2NoEup` (`@0x1d556a60`)
 
@@ -240,23 +240,23 @@ function Vlog2NoEup(x):                    // @0x1d556a60
 
 9-coefficient Horner in `(m − 1)`, low→high:
 
-| role | u32 | f32 | .rodata off | Confidence |
-|---|---|---|---|---|
-| p0 | `0x3e013d7b` | 0.12621109187602997 | `0x84a2c14` | CERTAIN |
-| p1 | `0x3e5c9fc9` | 0.21545328199863434 | `0x84a2598` | CERTAIN |
-| p2 | `0xbe540971` | -0.20706726610660553 | `0x84a28fc` | CERTAIN |
-| p3 | `0xbe74b2ad` | -0.23896284401416779 | `0x84a29d4` | CERTAIN |
-| p4 | `0x3e936e69` | 0.28795173764228821 | `0x84a26e0` | CERTAIN |
-| p5 | `0xbeb8ae28` | -0.36070370674133301 | `0x84a2874` | CERTAIN |
-| p6 | `0x3ef639b7` | 0.4809090793132782 | `0x84a2684` | CERTAIN |
-| p7 | `0xbf38aa38` | -0.72134733200073242 | `0x84a2a3c` | CERTAIN |
-| p8 | `0x3fb8aa3b` | 1.4426950216293335 | `0x84a2dc8` | CERTAIN |
+| role | u32 | f32 | .rodata off |
+|---|---|---|---|
+| p0 | `0x3e013d7b` | 0.12621109187602997 | `0x84a2c14` |
+| p1 | `0x3e5c9fc9` | 0.21545328199863434 | `0x84a2598` |
+| p2 | `0xbe540971` | -0.20706726610660553 | `0x84a28fc` |
+| p3 | `0xbe74b2ad` | -0.23896284401416779 | `0x84a29d4` |
+| p4 | `0x3e936e69` | 0.28795173764228821 | `0x84a26e0` |
+| p5 | `0xbeb8ae28` | -0.36070370674133301 | `0x84a2874` |
+| p6 | `0x3ef639b7` | 0.4809090793132782 | `0x84a2684` |
+| p7 | `0xbf38aa38` | -0.72134733200073242 | `0x84a2a3c` |
+| p8 | `0x3fb8aa3b` | 1.4426950216293335 | `0x84a2dc8` |
 
-| role | u32 | f32 | .rodata off | Confidence |
-|---|---|---|---|---|
-| sqrt2 split | `0x3fb504f3` | 1.4142135381698608 | `0x84a2524` | CERTAIN |
-| `−inf` (x==0) | `0xff800000` | -inf | `0x84a2578` | CERTAIN |
-| NaN (x<0) | `0x7fc00000` | nan | `0x84a2ff8` | CERTAIN |
+| role | u32 | f32 | .rodata off |
+|---|---|---|---|
+| sqrt2 split | `0x3fb504f3` | 1.4142135381698608 | `0x84a2524` |
+| `−inf` (x==0) | `0xff800000` | -inf | `0x84a2578` |
+| NaN (x<0) | `0x7fc00000` | nan | `0x84a2ff8` |
 
 The integer masks `0x7fffff` (mantissa) and `0x3f800000` (set-exponent-1) are `LloModule::VectorU32Constant` immediates (`esi`-carried), not `.rodata` fp32 loads; `p8` (`0x84a2dc8`) is the same physical word as the `exp` `log2e`.
 
@@ -264,9 +264,9 @@ The integer masks `0x7fffff` (mantissa) and `0x3f800000` (set-exponent-1) are `L
 
 `ln(x) = Vlog2NoEup(x) · ln2`. The function is a two-line wrapper: it calls `Vlog2NoEup` then multiplies by `ln2`.
 
-| role | u32 | f32 | .rodata off | Confidence |
-|---|---|---|---|---|
-| `ln2` | `0x3f317218` | 0.6931471824645996 | `0x84a25f4` | CERTAIN |
+| role | u32 | f32 | .rodata off |
+|---|---|---|---|
+| `ln2` | `0x3f317218` | 0.6931471824645996 | `0x84a25f4` |
 
 ### `log1p` — `Vln1pNoEupF32` (`@0x1d534a20`)
 
@@ -274,40 +274,40 @@ The integer masks `0x7fffff` (mantissa) and `0x3f800000` (set-exponent-1) are `L
 
 8-coefficient Horner (low→high):
 
-| role | u32 | f32 | .rodata off | Confidence |
-|---|---|---|---|---|
-| q0 | `0xbd43a4d3` | -0.0477646104991436 | `0x84a2560` | CERTAIN |
-| q1 | `0x3dda59bb` | 0.10661645978689194 | `0x84a2940` | CERTAIN |
-| q2 | `0xbe066c58` | -0.13127267360687256 | `0x84a2e00` | CERTAIN |
-| q3 | `0x3e13d018` | 0.14434850215911865 | `0x84a27d4` | CERTAIN |
-| q4 | `0xbe2a7741` | -0.16647054255008698 | `0x84a2498` | CERTAIN |
-| q5 | `0x3e4cbc51` | 0.1999371200799942 | `0x84a2fe4` | CERTAIN |
-| q6 | `0xbe800036` | -0.25000160932540894 | `0x84a2838` | CERTAIN |
-| q7 | `0x3eaaaabf` | 0.33333393931388855 | `0x84a2b50` | CERTAIN |
+| role | u32 | f32 | .rodata off |
+|---|---|---|---|
+| q0 | `0xbd43a4d3` | -0.0477646104991436 | `0x84a2560` |
+| q1 | `0x3dda59bb` | 0.10661645978689194 | `0x84a2940` |
+| q2 | `0xbe066c58` | -0.13127267360687256 | `0x84a2e00` |
+| q3 | `0x3e13d018` | 0.14434850215911865 | `0x84a27d4` |
+| q4 | `0xbe2a7741` | -0.16647054255008698 | `0x84a2498` |
+| q5 | `0x3e4cbc51` | 0.1999371200799942 | `0x84a2fe4` |
+| q6 | `0xbe800036` | -0.25000160932540894 | `0x84a2838` |
+| q7 | `0x3eaaaabf` | 0.33333393931388855 | `0x84a2b50` |
 
-| role | u32 | f32 | .rodata off | Confidence |
-|---|---|---|---|---|
-| recombine `−0.5` | `0xbf000000` | -0.5 | `0x84a28f4` | CERTAIN |
-| `ln2`-hi | `0x3f317200` | 0.693145751953125 | `0x84a2f44` | CERTAIN |
-| `ln2`-lo | `0x35bfbe8e` | 1.428606765330187e-06 | `0x84a282c` | CERTAIN |
-| `−inf` (1+x==0) | `0xff800000` | -inf | `0x84a2578` | CERTAIN |
-| NaN (1+x<0) | `0x7fc00000` | nan | `0x84a2ff8` | CERTAIN |
+| role | u32 | f32 | .rodata off |
+|---|---|---|---|
+| recombine `−0.5` | `0xbf000000` | -0.5 | `0x84a28f4` |
+| `ln2`-hi | `0x3f317200` | 0.693145751953125 | `0x84a2f44` |
+| `ln2`-lo | `0x35bfbe8e` | 1.428606765330187e-06 | `0x84a282c` |
+| `−inf` (1+x==0) | `0xff800000` | -inf | `0x84a2578` |
+| NaN (1+x<0) | `0x7fc00000` | nan | `0x84a2ff8` |
 
 ### Function Map
 
-| Function | Address | Method | Confidence |
-|---|---|---|---|
-| `EmitRecpNrIteration` | `0x1d5a9ec0` | recip Newton `y·(2−xy)` | CERTAIN |
-| `EmitRsqrtNrIteration` | `0x1d5a9e20` | rsqrt Newton `y·(1.5−0.5xy²)` | CERTAIN |
-| `EmitTanhPolyApproximation` | `0x1d5a9f40` | tanh rational `x·P(x²)/Q(x²)` | CERTAIN |
-| `EmitAtan2Approximation` | `0x1d5aa1c0` | atan2 8-coeff odd Horner + quadrant | CERTAIN |
-| `VexpNoEupF32` | `0x1d533820` | `2^(x·log2e)` Cody-Waite + 5-term Taylor | CERTAIN |
-| `Vexpm1NoEupF32` | `0x1d533ec0` | expm1 own 4-coeff Taylor + selectors | CERTAIN |
-| `Vlog2NoEup` | `0x1d556a60` | mantissa extract + 9-coeff Horner | CERTAIN |
-| `VlnNoEupF32` | `0x1d534740` | `log2 · ln2` | CERTAIN |
-| `Vln1pNoEupF32` | `0x1d534a20` | log1p 8-coeff Horner + Cody-Waite | CERTAIN |
-| `VtanhNoEupF32` | `0x1d535b20` | thunk → `EmitTanhPolyApproximation` | CERTAIN |
-| `VrecpNr` | `0x1d5580c0` | recip Newton + saturation wrapper | CERTAIN |
+| Function | Address | Method |
+|---|---|---|
+| `EmitRecpNrIteration` | `0x1d5a9ec0` | recip Newton `y·(2−xy)` |
+| `EmitRsqrtNrIteration` | `0x1d5a9e20` | rsqrt Newton `y·(1.5−0.5xy²)` |
+| `EmitTanhPolyApproximation` | `0x1d5a9f40` | tanh rational `x·P(x²)/Q(x²)` |
+| `EmitAtan2Approximation` | `0x1d5aa1c0` | atan2 8-coeff odd Horner + quadrant |
+| `VexpNoEupF32` | `0x1d533820` | `2^(x·log2e)` Cody-Waite + 5-term Taylor |
+| `Vexpm1NoEupF32` | `0x1d533ec0` | expm1 own 4-coeff Taylor + selectors |
+| `Vlog2NoEup` | `0x1d556a60` | mantissa extract + 9-coeff Horner |
+| `VlnNoEupF32` | `0x1d534740` | `log2 · ln2` |
+| `Vln1pNoEupF32` | `0x1d534a20` | log1p 8-coeff Horner + Cody-Waite |
+| `VtanhNoEupF32` | `0x1d535b20` | thunk → `EmitTanhPolyApproximation` |
+| `VrecpNr` | `0x1d5580c0` | recip Newton + saturation wrapper |
 
 ---
 
@@ -326,11 +326,11 @@ function VexpEup(x):                        // @0x1d556080
         return Vpow2(t)                      //  HW pow2 push + pop
 ```
 
-| function | address | HW push consumed | scale / correction constant(s) | Confidence |
-|---|---|---|---|---|
-| `VexpEup` | `0x1d556080` | `0x146` `kVectorPow2Bf16AndPop` (bf16) / `Vpow2` (f32) | f32 log2e `0x3fb8aa3b` @ `0x84a2dc8`; bf16-packed log2e `0x3fb93fb9` (`VectorU32Constant`) | CERTAIN |
-| `Vexpm1Eup` | `0x1d5561a0` | `Vexp` (which uses HW pow2) | `1.0` @ `0x84a2444`, `0.5` @ `0x84a27e8`, small-x thresh `0x3c4c7ad2` = 0.012480455 @ `0x84a2fbc` | CERTAIN |
-| `Vln1pEup` | `0x1d557340` | `Vlog2` (HW log2 push) | `1.0` @ `0x84a2444`, `−0.5` @ `0x84a28f4`, `ln2` `0x3f317218` @ `0x84a25f4`, correction `0x39e81ecb` = 0.00044273 @ `0x84a3008` | CERTAIN |
+| function | address | HW push consumed | scale / correction constant(s) |
+|---|---|---|---|
+| `VexpEup` | `0x1d556080` | `0x146` `kVectorPow2Bf16AndPop` (bf16) / `Vpow2` (f32) | f32 log2e `0x3fb8aa3b` @ `0x84a2dc8`; bf16-packed log2e `0x3fb93fb9` (`VectorU32Constant`) |
+| `Vexpm1Eup` | `0x1d5561a0` | `Vexp` (which uses HW pow2) | `1.0` @ `0x84a2444`, `0.5` @ `0x84a27e8`, small-x thresh `0x3c4c7ad2` = 0.012480455 @ `0x84a2fbc` |
+| `Vln1pEup` | `0x1d557340` | `Vlog2` (HW log2 push) | `1.0` @ `0x84a2444`, `−0.5` @ `0x84a28f4`, `ln2` `0x3f317218` @ `0x84a25f4`, correction `0x39e81ecb` = 0.00044273 @ `0x84a3008` |
 
 `Vexpm1Eup` computes `exp(x) − 1` via the EUP `exp` then a small-argument correction; for tiny `|x|` (below the `0.012480455` threshold) it falls back to a `tanh`-style series rather than subtracting 1 from a near-1 value (catastrophic cancellation guard). `Vln1pEup` does `ln1p(x) = log2(1+x)·ln2 + correction·x` with the EUP `log2` push.
 
@@ -352,14 +352,14 @@ case kErf:                                  // ResultFifo ordinal 0x12
     return (uint32_t[6]){4, 4, 32, 16, 16, 16}[version]   // .rodata @0xb53e270
 ```
 
-| `TpuVersion` | generation | `kErf` depth | Confidence |
-|---|---|---|---|
-| 0 | Jellyfish | 4 | CERTAIN (value); HIGH (gen binding) |
-| 1 | Dragonfish | 4 | CERTAIN; HIGH |
-| 2 | Pufferfish | 32 | CERTAIN; HIGH |
-| 3 | Viperfish | 16 | CERTAIN; HIGH |
-| 4 | Ghostlite (V5e/V6e-class) | 16 | CERTAIN; HIGH |
-| 5 | `6acc60406` (TPU7x-class) | 16 | CERTAIN (value); HIGH (gen binding) |
+| `TpuVersion` | generation | `kErf` depth |
+|---|---|---|
+| 0 | Jellyfish | 4 |
+| 1 | Dragonfish | 4 |
+| 2 | Pufferfish | 32 |
+| 3 | Viperfish | 16 |
+| 4 | Ghostlite (V5e/V6e-class) | 16 |
+| 5 | `6acc60406` (TPU7x-class) | 16 |
 
 The six depth values `{4, 4, 32, 16, 16, 16}` were read byte-exactly from `0xb53e270`. The `TpuVersion → generation` ordering is not labeled in this function; it is the same `TpuVersion` enum the rest of the cost model indexes (ordinal 0 = Jellyfish, per [ResultFifo / ArchRegister Enums](../isa/resultfifo-archregister.md)). A strong consistency signal supports the binding: the `TpuVersion 0`/`1` depth of `4` exactly equals the Jellyfish/Dragonfish push→pop latency clamp of `4` (below) — on the legacy gens the FIFO holds exactly one latency-window's worth of in-flight EUP results.
 
@@ -381,11 +381,11 @@ The number of correction VALU ops a software fallback emits (e.g. the 7-coeffici
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `ResultFifoEntryCount` | `0x1d631520` | per-`TpuVersion` FIFO depth; `kErf` arm → `0xb53e270` | CERTAIN |
-| `LatencyTableJellyfish::LatencyBetweenInternal` | `0x1c8a0d60` | JF/DF push→pop clamp to `Performance[+0x30]`=4 | CERTAIN |
-| `kErf` depth table | `.rodata 0xb53e270` | `int[6]` `{4,4,32,16,16,16}` | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `ResultFifoEntryCount` | `0x1d631520` | per-`TpuVersion` FIFO depth; `kErf` arm → `0xb53e270` |
+| `LatencyTableJellyfish::LatencyBetweenInternal` | `0x1c8a0d60` | JF/DF push→pop clamp to `Performance[+0x30]`=4 |
+| `kErf` depth table | `.rodata 0xb53e270` | `int[6]` `{4,4,32,16,16,16}` |
 
 ---
 

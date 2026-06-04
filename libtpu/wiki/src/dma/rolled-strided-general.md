@@ -98,17 +98,17 @@ function issueRolledTransfer(b, op, bases, srcTileStrides, dstTileStrides,
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `issueRolledTransfer` | `0x13516ca0` | the rolled emitter | CONFIRMED |
-| `issueRolledTransfer::$_0` | `0x135182c0` | per-axis tile-stride suffix-product table (`SmallVector<unsigned>`) | CONFIRMED |
-| `issueRolledTransfer::$_1` | `0x13518480` | `arith.constant n : i32` builder | CONFIRMED |
-| `mlir::scf::ForOp::create` | `0x17866d60` | the rolled loop shell | CONFIRMED |
-| `MulIOp<Value,Value>::createOrFold` | `0xfaaae00` | per-iteration `index × stride` (both Values) | CONFIRMED |
-| `MulIOp<Value,ConstantOp>::createOrFold` | `0x1351ab00` | per-iteration `index × stride` (folded const) | CONFIRMED |
-| `OpState::emitOpError` | `0x1d8cefa0` | divisibility diagnostic | CONFIRMED |
-| `LowerPassBase` vtable `+0x18` | (no symbol) | per-tile sub-memref / offset generator | HIGH |
-| `LowerPassBase` vtable `+0x20` | (no symbol) | `getConstantIntValue`-style probe (coalescing) | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `issueRolledTransfer` | `0x13516ca0` | the rolled emitter |
+| `issueRolledTransfer::$_0` | `0x135182c0` | per-axis tile-stride suffix-product table (`SmallVector<unsigned>`) |
+| `issueRolledTransfer::$_1` | `0x13518480` | `arith.constant n : i32` builder |
+| `mlir::scf::ForOp::create` | `0x17866d60` | the rolled loop shell |
+| `MulIOp<Value,Value>::createOrFold` | `0xfaaae00` | per-iteration `index × stride` (both Values) |
+| `MulIOp<Value,ConstantOp>::createOrFold` | `0x1351ab00` | per-iteration `index × stride` (folded const) |
+| `OpState::emitOpError` | `0x1d8cefa0` | divisibility diagnostic |
+| `LowerPassBase` vtable `+0x18` | (no symbol) | per-tile sub-memref / offset generator |
+| `LowerPassBase` vtable `+0x20` | (no symbol) | `getConstantIntValue`-style probe (coalescing) |
 
 > **NOTE —** the per-tile op-emission helper (vtable `+0x18`) and the constant-int probe (vtable `+0x20`) are abstract `LowerPassBase` virtuals with no standalone symbol; the concrete pass `LowerMemrefToMlo` is an anonymous-namespace class with no emitted `ZTV` table. The call arguments and the surrounding `index`/`offset` arithmetic are byte-pinned; the method *names* are inferred from those arguments — hence HIGH, not CONFIRMED.
 
@@ -150,15 +150,15 @@ function coalesceStridingDims(bases, srcStride, dstStride):
 
 A pair is collapsed iff **either** the inner dimension's tile-count is the constant `1` (COND i — always foldable, skips the stride check) **or** the outer base is a constant int and the outer stride equals the inner stride scaled by the outer extent, on *both* sides (COND ii — true row-major contiguity). If neither holds the pair is left intact and the dimension becomes a residual loop/stride dimension. When the VLOG path cannot fold a stride it logs `"Attempted to combine non-constant stride: "` (`@0xa27e861`) and skips.
 
-| Predicate step | Test (@VA) | Meaning | Confidence |
-|---|---|---|---|
-| outer-const probe | `getConstantIntValue(bases[d])` @ `0x13517160` | `vtable+0x20` constant-int probe | CONFIRMED |
-| inner-const probe | `getConstantIntValue(bases[d+1])` @ `0x13517176` | same, inner dim | CONFIRMED |
-| COND (i) | `(rax & 0x1ffffffff) == 0x100000001` @ `0x13517186` | inner tile-count is constant `1` | CONFIRMED |
-| COND (ii) gate | `test r13, 0x100000000` @ `0x1351721a` | outer base is a constant int | CONFIRMED |
-| COND (ii) src | `srcStride[d] == srcStride[d+1] × outerC` @ `0x13517243` | source row-major contiguity | CONFIRMED |
-| COND (ii) dst | `dstStride[d] == dstStride[d+1] × outerC` @ `0x1351726a` | dest row-major contiguity | CONFIRMED |
-| MERGE | `muli` + VLOG + 3× memmove + dec @ `0x13517070` | collapse `(d, d+1)` → one dim | CONFIRMED |
+| Predicate step | Test (@VA) | Meaning |
+|---|---|---|
+| outer-const probe | `getConstantIntValue(bases[d])` @ `0x13517160` | `vtable+0x20` constant-int probe |
+| inner-const probe | `getConstantIntValue(bases[d+1])` @ `0x13517176` | same, inner dim |
+| COND (i) | `(rax & 0x1ffffffff) == 0x100000001` @ `0x13517186` | inner tile-count is constant `1` |
+| COND (ii) gate | `test r13, 0x100000000` @ `0x1351721a` | outer base is a constant int |
+| COND (ii) src | `srcStride[d] == srcStride[d+1] × outerC` @ `0x13517243` | source row-major contiguity |
+| COND (ii) dst | `dstStride[d] == dstStride[d+1] × outerC` @ `0x1351726a` | dest row-major contiguity |
+| MERGE | `muli` + VLOG + 3× memmove + dec @ `0x13517070` | collapse `(d, d+1)` → one dim |
 
 > **GOTCHA —** the two merge conditions are distinct branch targets in the binary. COND (i) (inner count == 1) skips the stride check entirely — it is a correctness-preserving superset of COND (ii) for count-1 dims, not a redundant special case. A reimplementation that folds only on the stride-contiguity test (COND ii) will fail to collapse degenerate count-1 dimensions and emit a wasteful 1-trip loop level. *(The two distinct jump targets are byte-pinned; whether (i) is logically subsumed by (ii) for zero-stride inner dims was not proven — the binary keeps them separate.)*
 
@@ -239,14 +239,14 @@ function issueStridedTransfer(b, op, src, dst, p /*DmaParameters&*/,
 
 The Strided/General arm CHECK_EQs three size fields of the bundle (whose offset map is owned by [Tile-Index Expansion](tile-index-expansion.md)): `|src_byte_strides| == |tgt_byte_strides| == |steps_per_stride| − 1`. A contiguous (0-stride) descriptor therefore has `steps_per_stride.size() == 1`: the `steps_per_stride` vector carries N+1 cumulative steps for N stride levels.
 
-| Bundle field | Offset | Role in `issueStridedTransfer` | Confidence |
-|---|---:|---|---|
-| `src` (memref `Value`) | `+0x00` | → `GetMemorySpace` → src endpoint | CONFIRMED |
-| `dst` (memref `Value`) | `+0x08` | → `GetMemorySpace` → dst endpoint | CONFIRMED |
-| `src_byte_strides` `{data,size}` | `+0x10` / `+0x18` | **the form selector** (`+0x18`) | CONFIRMED |
-| `tgt_byte_strides` `{data,size}` | `+0x50` / `+0x58` | CHECK_EQ vs `+0x18` | CONFIRMED |
-| `length`/`sflag` `Value` | `+0x90` | create `len`/`sflag` arg | CONFIRMED (offset/type), INFERRED (which) |
-| `steps_per_stride` `{data,size}` | `+0x98` / `+0xa0` | CHECK `size == +0x18 + 1` | CONFIRMED |
+| Bundle field | Offset | Role in `issueStridedTransfer` |
+|---|---:|---|
+| `src` (memref `Value`) | `+0x00` | → `GetMemorySpace` → src endpoint |
+| `dst` (memref `Value`) | `+0x08` | → `GetMemorySpace` → dst endpoint |
+| `src_byte_strides` `{data,size}` | `+0x10` / `+0x18` | **the form selector** (`+0x18`) |
+| `tgt_byte_strides` `{data,size}` | `+0x50` / `+0x58` | CHECK_EQ vs `+0x18` |
+| `length`/`sflag` `Value` | `+0x90` | create `len`/`sflag` arg |
+| `steps_per_stride` `{data,size}` | `+0x98` / `+0xa0` | CHECK `size == +0x18 + 1` |
 
 > **NOTE —** the granularity divisor differs by kind: kDma uses `Target::GranuleBytes()` (`0x1d617f80`) with a ceil-div idiom; kStream uses `xla_mlo_util::TransferGranularityInBytes(SparseCoreTarget const&, MemorySpace, bool)` (`0x14a89ea0`) reached via `target()->[+0x948]` — the per-memory-space SPMEM-stripe / DMA-word unit. The chosen granularity becomes an `arith.ConstantIndexOp` divisor folded into a `DivUIOp`/`idiv` before the op is built.
 
@@ -262,15 +262,15 @@ Each `*StartOp::create` is a thin wrapper that forwards arg-order-identity into 
 
 `DmaSimpleStartOp::create` (`0x145b9740`) is a wrapper supplying `enable_trace=false`, two null `IntegerAttr`s, and `StringRef=""`; it forwards into `build` (`0x1459ac00`), which adds 7 operand segments and writes a `0x40`-byte `Properties` (TypeID `@0x224e95c0`). The 7 create operand args are `(srcBase, srcIdx, dstBase, dstIdx, length, sflagIdx, sflag)`.
 
-| create arg / wrapper default | ODS getter (op-rel) | SparseCoreDma `SimpleDma` slot field | Confidence |
-|---|---|---|---|
-| `enable_trace = false` (default) | `getEnableTrace` (`+0x50`) | `TraceEn` (slot `+0x18` bit 41) | CONFIRMED |
-| `srcMemIndex IntegerAttr = null` | `getSrcMemIndex` (`+0x58`) | `dma_sreg_source_offset` | CONFIRMED |
-| `dstMemIndex`/opcode `IntegerAttr = 0` | `getDstMemIndex` (`+0x40`) / `getDstOpcode` (`+0x48`) | `dst_opcode` (slot `+0x18` `>>39 &0x3`) | CONFIRMED |
-| `srcBase` `Value` | `getSrcBufferIndicesMutable` | `src_mem_{core,mem}_id` (via `GetMemorySpace`) | CONFIRMED |
-| `dstBase` `Value` | `getDstBufferIndicesMutable` | `dst_mem_{core,mem}_id` (via `GetMemorySpace`) | CONFIRMED |
-| `length` `Value` | (operand seg) | `dma_length` (slot `+0x18` `>>42 &0x3f`) | CONFIRMED |
-| `sflagIdx`, `sflag` | `getDstSflagIndicesMutable` | `dest_sync_flags` (slot `+0x18` `>>15 &0x3f`) | CONFIRMED |
+| create arg / wrapper default | ODS getter (op-rel) | SparseCoreDma `SimpleDma` slot field |
+|---|---|---|
+| `enable_trace = false` (default) | `getEnableTrace` (`+0x50`) | `TraceEn` (slot `+0x18` bit 41) |
+| `srcMemIndex IntegerAttr = null` | `getSrcMemIndex` (`+0x58`) | `dma_sreg_source_offset` |
+| `dstMemIndex`/opcode `IntegerAttr = 0` | `getDstMemIndex` (`+0x40`) / `getDstOpcode` (`+0x48`) | `dst_opcode` (slot `+0x18` `>>39 &0x3`) |
+| `srcBase` `Value` | `getSrcBufferIndicesMutable` | `src_mem_{core,mem}_id` (via `GetMemorySpace`) |
+| `dstBase` `Value` | `getDstBufferIndicesMutable` | `dst_mem_{core,mem}_id` (via `GetMemorySpace`) |
+| `length` `Value` | (operand seg) | `dma_length` (slot `+0x18` `>>42 &0x3f`) |
+| `sflagIdx`, `sflag` | `getDstSflagIndicesMutable` | `dest_sync_flags` (slot `+0x18` `>>15 &0x3f`) |
 
 The `dst_opcode` string-attr → 2-bit code mapping (`write_4b` / `read_and_add` / `atomic_add`) and its memory-space gates are owned by [Intra-Chip DMA Descriptor §2](intra-chip-descriptor.md#2-the-opcode-enums-srcopcode--dstopcode); the `GetDstOpcode<DmaSimpleStartOp>` accessor (`0x135aaa60`) reads the optional `dst_opcode` attribute at `this+0x48`.
 
@@ -353,17 +353,17 @@ function issueGeneralDma(b, locGen, target, op, src, dst, len,
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `issueGeneralDma` | `0x1350b3a0` | GeneralDma assembler | CONFIRMED |
-| `lowering_util::GetRemoteMemBase` | `0x13d88660` | cross-device remote target base | CONFIRMED |
-| `AllocateAtOffsetOp::create` | `0x145a5aa0` | local sflag memref | CONFIRMED |
-| `MemorySpaceAttr::getCoreType` | `0x14a9e320` | target-semaphore core type | CONFIRMED |
-| `TpuChipConfig::Megacore` | `0x20afca00` | megacore gate | CONFIRMED |
-| `Target::SparseCoresPerLogicalDevice` | `0x135159c0` | dest_id divisor (SC) | CONFIRMED |
-| `Target::TensorCoresPerLogicalDevice` | `0x111f6020` | dest_id divisor (TC) | CONFIRMED |
-| `CoreIndexOp::create` | `0x145aba00` | runtime core index | CONFIRMED |
-| `DmaGeneralStartOp::create` | `0x145b1b80` | the emit (28-arg overload) | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `issueGeneralDma` | `0x1350b3a0` | GeneralDma assembler |
+| `lowering_util::GetRemoteMemBase` | `0x13d88660` | cross-device remote target base |
+| `AllocateAtOffsetOp::create` | `0x145a5aa0` | local sflag memref |
+| `MemorySpaceAttr::getCoreType` | `0x14a9e320` | target-semaphore core type |
+| `TpuChipConfig::Megacore` | `0x20afca00` | megacore gate |
+| `Target::SparseCoresPerLogicalDevice` | `0x135159c0` | dest_id divisor (SC) |
+| `Target::TensorCoresPerLogicalDevice` | `0x111f6020` | dest_id divisor (TC) |
+| `CoreIndexOp::create` | `0x145aba00` | runtime core index |
+| `DmaGeneralStartOp::create` | `0x145b1b80` | the emit (28-arg overload) |
 
 > **QUIRK —** `GeneralDma`'s descriptor attributes are emitted as **`StringAttr`s**, not the integer enums the slot decode shows: `dst_opcode = "write_4b"`, `sync_mode = "count_dones"/"count_words"`, `dma_ordering = "relaxed"`. The codec maps these symbolic names to bit fields at encode time. A reimplementation that writes the integer enum directly into the op skips the string layer the binary uses; the *descriptor* the hardware sees is the same, but the MLIR op carries strings. `dst_opcode` is `null` unless `src` or `dst` is `smem` (then `"write_4b"` ⇒ `WRITE_4B=1`, the 4-byte scalar write). *(All four StringAttr selectors CONFIRMED in decompile @ `0x1350b3a0` lines 762/1025/1027/1033.)*
 
@@ -375,16 +375,16 @@ function issueGeneralDma(b, locGen, target, op, src, dst, len,
 
 `DmaGeneralStartOp::create` (`0x145b1b80`, the 28-arg overload) forwards into `build` (`0x1459b2c0`), which adds the operand groups (`AttrSizedOperandSegments`, segment-size array at `op+0x80`) and writes 8 inherent attributes into a `0x88`-byte `Properties` (`operator new(0x88)`, TypeID `@0x224e95b0`). The same `+0x40` raw↔getter delta as the simpler forms holds. The build's attr-pointer writes were data-flow traced; the 6 typed getters are byte-confirmed.
 
-| raw `Properties` | op-rel getter | getter | attr name | type | Confidence |
-|---:|---:|---|---|---|---|
-| `+0x00` | `+0x40` | (getInherentAttr only) | `dma_ordering` | `StringAttr` | HIGH |
-| `+0x08` | `+0x48` | `getDstMemCoreType` | `dst_mem_core_type` | `CoreTypeAttr` | CONFIRMED |
-| `+0x10` | `+0x50` | `getDstOpcode` | `dst_opcode` | `StringAttr` | CONFIRMED |
-| `+0x18` | `+0x58` | `getDstSyncFlagCoreType` | `dst_sync_flag_core_type` | `CoreTypeAttr` | CONFIRMED |
-| `+0x20` | `+0x60` | `getEnableTrace` | `enable_trace` | `UnitAttr` | CONFIRMED |
-| `+0x28` | `+0x68` | `getSrcMemCoreType` | `src_mem_core_type` | `CoreTypeAttr` | CONFIRMED |
-| `+0x30` | `+0x70` | `getSrcSyncFlagCoreType` | `src_sync_flag_core_type` | `CoreTypeAttr` | CONFIRMED |
-| `+0x38` | `+0x78` | (getInherentAttr only) | `sync_mode` | `StringAttr` | HIGH |
+| raw `Properties` | op-rel getter | getter | attr name | type |
+|---:|---:|---|---|---|
+| `+0x00` | `+0x40` | (getInherentAttr only) | `dma_ordering` | `StringAttr` |
+| `+0x08` | `+0x48` | `getDstMemCoreType` | `dst_mem_core_type` | `CoreTypeAttr` |
+| `+0x10` | `+0x50` | `getDstOpcode` | `dst_opcode` | `StringAttr` |
+| `+0x18` | `+0x58` | `getDstSyncFlagCoreType` | `dst_sync_flag_core_type` | `CoreTypeAttr` |
+| `+0x20` | `+0x60` | `getEnableTrace` | `enable_trace` | `UnitAttr` |
+| `+0x28` | `+0x68` | `getSrcMemCoreType` | `src_mem_core_type` | `CoreTypeAttr` |
+| `+0x30` | `+0x70` | `getSrcSyncFlagCoreType` | `src_sync_flag_core_type` | `CoreTypeAttr` |
+| `+0x38` | `+0x78` | (getInherentAttr only) | `sync_mode` | `StringAttr` |
 
 The create-arg → `GeneralDma` slot-field join:
 

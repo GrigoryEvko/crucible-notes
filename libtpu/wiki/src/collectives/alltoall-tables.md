@@ -131,22 +131,22 @@ Three details a reimplementer must get right:
 
 The `sret` buffer at `-0xd0` is a `tuple<vector<int>, vector<int>, optional<vector<int>>>`:
 
-| Field | Offset | Type | Meaning | Confidence |
-|---|---|---|---|---|
-| tag | `+0x00` | int | active-member tag (always `1` here) | HIGH |
-| A | `+0x08` / `+0x10` / `+0x18` | `vector<int>` `{data, size, cap}` | Table A (device → group, ordinal) | HIGH |
-| B | `+0x20` / `+0x28` / `+0x30` | `vector<int>` `{data, size, cap}` | Table B (position, group → device) | HIGH |
-| C | `+0x38` / `+0x40` / `+0x48` | `vector<int>` `{data, size, cap}` | Table C (3-D core table) | HIGH |
-| C.has_value | `+0x50` | byte | set `1` @ `0x133ee0ec` only when `-0x68` | HIGH |
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| tag | `+0x00` | int | active-member tag (always `1` here) |
+| A | `+0x08` / `+0x10` / `+0x18` | `vector<int>` `{data, size, cap}` | Table A (device → group, ordinal) |
+| B | `+0x20` / `+0x28` / `+0x30` | `vector<int>` `{data, size, cap}` | Table B (position, group → device) |
+| C | `+0x38` / `+0x40` / `+0x48` | `vector<int>` `{data, size, cap}` | Table C (3-D core table) |
+| C.has_value | `+0x50` | byte | set `1` @ `0x133ee0ec` only when `-0x68` |
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `GenerateAllToAllTables` | `0x133ed620` | builds `(A, B, opt C)`; 622 decompiled lines | HIGH |
-| `GenerateAllToAllTablesForSparseCore` | `0x133ee200` | SparseCore twin (no parity, no C); confirms A/B encoding | HIGH |
-| `proto2::LogIndexOutOfBoundsAndAbort` | `0x21063300` | bounds trap on table writes (`0x133edd71`, `0x133ee01e`) | HIGH |
-| `LogMessageFatal` (static-DA assert) | — | `hlo_module_config.h:285` @ `0x133ee1c0`, str `0x86508f3` | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `GenerateAllToAllTables` | `0x133ed620` | builds `(A, B, opt C)`; 622 decompiled lines |
+| `GenerateAllToAllTablesForSparseCore` | `0x133ee200` | SparseCore twin (no parity, no C); confirms A/B encoding |
+| `proto2::LogIndexOutOfBoundsAndAbort` | `0x21063300` | bounds trap on table writes (`0x133edd71`, `0x133ee01e`) |
+| `LogMessageFatal` (static-DA assert) | — | `hlo_module_config.h:285` @ `0x133ee1c0`, str `0x86508f3` |
 
 ### Considerations
 
@@ -229,14 +229,14 @@ function EmitBarrierStartImpl(...):                            // 0x10f07240
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `AllToAllEmitterBase::GenerateConstants` | `0x10f089a0` | registers Types 8/9/0xa + Type 5 | HIGH |
-| `CollectiveShouldUseStaticInfoTable` | `0x138194c0` | static-vs-dynamic carrier gate | HIGH |
-| `(anon)::GetConstantTables` | `0x10f07860` | reads 8/9/0xa back as `InfoTable` triple | HIGH |
-| `AllToAllEmitterBase::EmitBarrierStartImpl` | `0x10f07240` | feeds triple to barrier-start | HIGH |
-| `BarrierWithinReplicaGroupStartNoReturn` | `0x1c6983e0` | the within-group barrier consumer | HIGH |
-| `CreateAllToAllRoutingScheduleTable` | `0x10f061c0` | the orthogonal Type-5 route literal (call site `0x10f0906f`) | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `AllToAllEmitterBase::GenerateConstants` | `0x10f089a0` | registers Types 8/9/0xa + Type 5 |
+| `CollectiveShouldUseStaticInfoTable` | `0x138194c0` | static-vs-dynamic carrier gate |
+| `(anon)::GetConstantTables` | `0x10f07860` | reads 8/9/0xa back as `InfoTable` triple |
+| `AllToAllEmitterBase::EmitBarrierStartImpl` | `0x10f07240` | feeds triple to barrier-start |
+| `BarrierWithinReplicaGroupStartNoReturn` | `0x1c6983e0` | the within-group barrier consumer |
+| `CreateAllToAllRoutingScheduleTable` | `0x10f061c0` | the orthogonal Type-5 route literal (call site `0x10f0906f`) |
 
 > **QUIRK —** the carrier choice is per-instruction, not per-table-kind. All three of A/B/C take the same `use_static` decision from one `CollectiveShouldUseStaticInfoTable` call, so a single instruction never mixes a static A with a dynamic B. The threshold `TpuCompEnv[+0x15d0]` is a compile-environment knob, so the same HLO can lower to static constants on one configuration and runtime vectors on another.
 
@@ -246,12 +246,12 @@ function EmitBarrierStartImpl(...):                            // 0x10f07240
 
 Table C's 3-D linearization and the ND-ring AllGather tables share one mesh-geometry descriptor. `MeshNDInfo` (copy ctor `0x127b5100`) is **0x40 bytes**, describing one per-axis ring embedded in the N-D device mesh:
 
-| Field | Offset | Type | Meaning | Confidence |
-|---|---|---|---|---|
-| axis ids | `+0x00` | `vector<MeshDim>` (int32×) | the mesh-axis id list; `memcpy 4·n` @ `0x127b516b` | HIGH |
-| per-dim sizes | `+0x18` | `vector<long>` (8-byte×) | the ring lengths; divisor for the modular neighbor; `memcpy 8·n` @ `0x127b51a9` | HIGH |
-| ring order | `+0x28` | `vector<MeshDim>` (int32×) | traversal order (device ids along the ring); `memcpy 4·n` @ `0x127b51e9` | HIGH |
-| dim bitmask | `+0x38` | long | `popcount(low 3 bits)` ⇒ `Is2D` (2) / `Is3D` (3) | HIGH (count); LOW (bit→axis map) |
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| axis ids | `+0x00` | `vector<MeshDim>` (int32×) | the mesh-axis id list; `memcpy 4·n` @ `0x127b516b` |
+| per-dim sizes | `+0x18` | `vector<long>` (8-byte×) | the ring lengths; divisor for the modular neighbor; `memcpy 8·n` @ `0x127b51a9` |
+| ring order | `+0x28` | `vector<MeshDim>` (int32×) | traversal order (device ids along the ring); `memcpy 4·n` @ `0x127b51e9` |
+| dim bitmask | `+0x38` | long | `popcount(low 3 bits)` ⇒ `Is2D` (2) / `Is3D` (3) |
 
 The coordinate-to-device linearization both Table C (§1) and the ND-ring builder use is an 8-wide `imul`/`add` dot-product of the mesh coordinate against the `DeviceAssignment` per-dimension stride array. In `CreateStaticNDRingReplicaInfoTable` (`0x1c69e900`) the dispatch is gated by a `RET_CHECK` that the descriptor is 2-D or 3-D: `__popcnt(a2[7] & 7) != 2` then `... || mesh_info.Is3D()`, reporting `net_util.cc:2440` (str `0xa17c039`) on failure. The DA-flatten bound is `indexes.size() == num_dimensions()` (str `0xa1567ac`, line 413 of the decompile).
 
@@ -269,10 +269,10 @@ The routing-schedule solver maintains a per-destination scoreboard of scratch bu
 
 `find_or_prepare_insert` (`0x138270a0`) uses a `0x40`-byte slot (stride `shl $0x6` @ `0x13827163` / `0x13827217`). The slot is `pair<const XY, Allocator>`: an 8-byte `XY` key (2×int32) at `slot+0x0`, the `Allocator` value at `slot+0x8`.
 
-| Value off | Slot off | Field | Type | Role | Confidence |
-|---|---|---|---|---|---|
-| `+0x00` | `+0x08` | `size` | int32 | per-XY scratch-buffer count bound (`RET_CHECK *ptr.index < size`) | HIGH (read); LOW (writer) |
-| `+0x08` | `+0x10` | `available` | `std::deque<pair<int32,int32>>` | in-flight `(buffer_index, available_at_step)` list | HIGH |
+| Value off | Slot off | Field | Type | Role |
+|---|---|---|---|---|
+| `+0x00` | `+0x08` | `size` | int32 | per-XY scratch-buffer count bound (`RET_CHECK *ptr.index < size`) |
+| `+0x08` | `+0x10` | `available` | `std::deque<pair<int32,int32>>` | in-flight `(buffer_index, available_at_step)` list |
 
 The deque (libc++ split-buffer, `0x30` bytes) lays out within the value as `__map_.__first_` @ `value+0x8`, `__begin_` @ `+0x10`, `__end_` @ `+0x18`, `__end_cap_` @ `+0x20`, `__start_` @ `+0x28`, `__size_` @ `+0x30`. The 512-element block indexing (`shr $0x9`, `and $0x1ff`) is the `std::deque` map signature. Total value = `0x38` bytes (`int32 size` + `0x30` deque), exactly filling the `0x40` slot after the 8-byte XY key.
 

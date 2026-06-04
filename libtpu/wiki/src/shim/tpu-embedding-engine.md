@@ -117,15 +117,15 @@ function TpuEmbeddingEngine_ExecutePartitioner(Params* p):   // sub_f6a5b20
 
 ### Function Map
 
-| Function | Addr | Size | Core callee | Confidence |
-|---|---|---|---|---|
-| `TpuEmbeddingEngine_ExecutePartitioner` | `0xf6a5b20` | 363 | `tensorflow::ExecuteTpuEmbeddingPartitioner` | CERTAIN |
-| `TpuEmbeddingEngine_ConfigureMemory` | `0xf6a5d80` | 540 | `tensorflow::ConfigureTpuEmbeddingMemory` | CERTAIN |
-| `TpuEmbeddingEngine_CollateMemory` | `0xf6a5fa0` | 908 | `tensorflow::CollateTpuEmbeddingMemory` | CERTAIN |
-| `TpuEmbeddingEngine_ConfigureHost` | `0xf6a6340` | 774 | `tensorflow::ConfigureTpuEmbeddingHost` | CERTAIN |
-| `TpuEmbeddingEngine_ConnectHosts` | `0xf6a6660` | 738 | `tensorflow::ConnectTpuEmbeddingHosts` | CERTAIN |
-| `TpuEmbeddingEngine_Finalize` | `0xf6a6960` | 549 | `tensorflow::FinalizeTpuEmbedding` | CERTAIN |
-| `TpuEmbeddingEngine_IsInitialized` | `0xf6a6ba0` | 385 | `tensorflow::IsTPUEmbeddingInitialized` | CERTAIN |
+| Function | Addr | Size | Core callee |
+|---|---|---|---|
+| `TpuEmbeddingEngine_ExecutePartitioner` | `0xf6a5b20` | 363 | `tensorflow::ExecuteTpuEmbeddingPartitioner` |
+| `TpuEmbeddingEngine_ConfigureMemory` | `0xf6a5d80` | 540 | `tensorflow::ConfigureTpuEmbeddingMemory` |
+| `TpuEmbeddingEngine_CollateMemory` | `0xf6a5fa0` | 908 | `tensorflow::CollateTpuEmbeddingMemory` |
+| `TpuEmbeddingEngine_ConfigureHost` | `0xf6a6340` | 774 | `tensorflow::ConfigureTpuEmbeddingHost` |
+| `TpuEmbeddingEngine_ConnectHosts` | `0xf6a6660` | 738 | `tensorflow::ConnectTpuEmbeddingHosts` |
+| `TpuEmbeddingEngine_Finalize` | `0xf6a6960` | 549 | `tensorflow::FinalizeTpuEmbedding` |
+| `TpuEmbeddingEngine_IsInitialized` | `0xf6a6ba0` | 385 | `tensorflow::IsTPUEmbeddingInitialized` |
 
 > **QUIRK —** `ConfigureMemory` → `CollateMemory` is a fan-in. `ConfigureMemory` is called once *per SparseCore* and each returns that core's HBM-layout blob; `CollateMemory` then takes the whole *array* of those blobs and merges them into one pod-wide layout. A reimplementation that calls `CollateMemory` with a single core's output will produce a layout that ignores cross-core table sharding. The 24-byte per-element loop in `CollateMemory` is reconstructing the `std::vector<std::string>` the host flattened into the `*_Params` struct.
 
@@ -175,10 +175,10 @@ function TpuEmbeddingEngine_WriteParameters(Params* p, TF_Status* status):   // 
 
 ### Function Map
 
-| Function | Addr | Size | Core callee | Confidence |
-|---|---|---|---|---|
-| `TpuEmbeddingEngine_WriteParameters` | `0xf6a6d40` | 750 | `BarnaCoreManager::WriteParameters` | CERTAIN |
-| `TpuEmbeddingEngine_ReadParameters` | `0xf6a7160` | 1000 | `BarnaCoreManager::ReadParameters` | CERTAIN |
+| Function | Addr | Size | Core callee |
+|---|---|---|---|
+| `TpuEmbeddingEngine_WriteParameters` | `0xf6a6d40` | 750 | `BarnaCoreManager::WriteParameters` |
+| `TpuEmbeddingEngine_ReadParameters` | `0xf6a7160` | 1000 | `BarnaCoreManager::ReadParameters` |
 
 > **GOTCHA —** the explicit `"TpuEmbeddingEngine not initialized."` error (string at file line 43) fires when `GetBarnaCoreManager` succeeds but returns a null manager. A reimplementation that only checks `GetBarnaCoreManager`'s status and not the manager pointer will dereference null and crash instead of returning a clean `INVALID_ARGUMENT` (`MakeErrorImpl<3>`).
 
@@ -235,13 +235,13 @@ function TpuEmbeddingEngine_DedupDataSizeComputation(Params* p):   // sub_f7697e
 
 ### Function Map
 
-| Function | Addr | Size | Core callee | Emits | Confidence |
-|---|---|---|---|---|---|
-| `TpuEmbeddingEngine_RecvActivationsComputation` | `0xf767960` | 2463 | `xla::XlaBuilder` recv-activations build | HLO computation | CERTAIN |
-| `TpuEmbeddingEngine_RecvTPUEmbeddingDeduplicationDataComputation` | `0xf7683e0` | 2440 | `barna_core_util::LowerRecvTPUEmbeddingDeduplicationDataComputation` | HLO computation | CERTAIN |
-| `TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation` | `0xf768d80` | 2645 | `barna_core_util::LowerSendTPUEmbeddingGradientsComputation` | HLO computation | CERTAIN |
-| `TpuEmbeddingEngine_DedupDataSizeComputation` | `0xf7697e0` | 999 | `barna_core_util::DedupDataSizeComputation` | size (int out) | CERTAIN |
-| `TpuEmbeddingEngine_DedupDataTupleMaskComputation` | `0xf769be0` | 1325 | `barna_core_util::DedupDataTupleMaskComputation` | tuple mask | CERTAIN |
+| Function | Addr | Size | Core callee | Emits |
+|---|---|---|---|---|
+| `TpuEmbeddingEngine_RecvActivationsComputation` | `0xf767960` | 2463 | `xla::XlaBuilder` recv-activations build | HLO computation |
+| `TpuEmbeddingEngine_RecvTPUEmbeddingDeduplicationDataComputation` | `0xf7683e0` | 2440 | `barna_core_util::LowerRecvTPUEmbeddingDeduplicationDataComputation` | HLO computation |
+| `TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation` | `0xf768d80` | 2645 | `barna_core_util::LowerSendTPUEmbeddingGradientsComputation` | HLO computation |
+| `TpuEmbeddingEngine_DedupDataSizeComputation` | `0xf7697e0` | 999 | `barna_core_util::DedupDataSizeComputation` | size (int out) |
+| `TpuEmbeddingEngine_DedupDataTupleMaskComputation` | `0xf769be0` | 1325 | `barna_core_util::DedupDataTupleMaskComputation` | tuple mask |
 
 > **QUIRK —** the `*Computation` suffix is literal — these return *HLO*, not device results. `RecvActivationsComputation` instantiating an `xla::XlaBuilder` and emitting `xla::OpSharding` is the tell: the embedding lookup is expressed as XLA ops the main compiler schedules, so the SparseCore recv/send is fused into the surrounding step rather than being a separate dispatch. A reimplementer who models these as device calls (like the load/retrieve family) will miss that their output is a subgraph the XLA pipeline still has to compile. The dedup triple (`Size` → `TupleMask` → recv `DeduplicationData`) is the host-side metadata the deduplication scheme needs; the on-device multiplicity math is in [Dedup Multiplicity](../sparsecore/dedup-multiplicity.md).
 
@@ -281,12 +281,12 @@ TpuEmbeddingEngineState_Free(...):          // sub_f766ea0 — destroy + free
 
 ### Function Map
 
-| Function | Addr | Size | Role | Confidence |
-|---|---|---|---|---|
-| `TpuEmbeddingEngine_EnqueueTensorBatch` | `0xf6a9680` | 4001 | enqueue sparse batch → `BarnaCoreManager::Run` (minibatching) | CERTAIN |
-| `TpuEmbeddingEngineState_Create` | `0x21389240` | 1295 | allocate + initialize `TpuEmbeddingEngineState` | CERTAIN |
-| `TpuEmbeddingEngineState_Free` | `0xf766ea0` | 292 | destroy + free the state handle | CERTAIN |
-| `TpuEmbeddingEngineState_GetState` | `0xf766fe0` | 4 | dereference handle → inner state pointer | CERTAIN |
+| Function | Addr | Size | Role |
+|---|---|---|---|
+| `TpuEmbeddingEngine_EnqueueTensorBatch` | `0xf6a9680` | 4001 | enqueue sparse batch → `BarnaCoreManager::Run` (minibatching) |
+| `TpuEmbeddingEngineState_Create` | `0x21389240` | 1295 | allocate + initialize `TpuEmbeddingEngineState` |
+| `TpuEmbeddingEngineState_Free` | `0xf766ea0` | 292 | destroy + free the state handle |
+| `TpuEmbeddingEngineState_GetState` | `0xf766fe0` | 4 | dereference handle → inner state pointer |
 
 > **NOTE —** `TpuEmbeddingEngineState` is a `tensorflow::TpuEmbeddingEngineState` C++ object reached through the TF `ResourceMgr` on the host side (`tensorflow::GetAndInitializeTpuEmbeddingEngineState`, `0xf78aec0`; `GetTpuEmbeddingEngineState`, `0xf78b1e0`). Its constructor takes either a `tpu::TpuTopology` (`0xf961920`) or a `tpu::System` (`0xf9619e0`), and on first use it runs `InitializeBarnaCoreManager` (`0xf961dc0`, 3204 bytes) — the bridge from this engine into the [BarnaCore](../barnacore/overview.md) scalar driver. These mangled `tensorflow::TpuEmbeddingEngineState*` symbols are internal C++, not part of the flat C roster; only `Create` / `Free` / `GetState` cross the seam.
 

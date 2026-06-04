@@ -35,17 +35,17 @@ For reimplementation, the contract is:
 
 The descriptor carries seventeen fields; the rendered XEvent carries eight stats. The table below is the whole story of the data flow: every column on the left is *decoded*, only the bottom three rows survive into a *label*.
 
-| Descriptor / message field | Decoded into proto | Reaches an XStat | Confidence |
-|---|---|---|---|
-| `src_mem_mem_id` / `src_mem_core_id` / `src_opcode` (f3–f5) | yes | **no** | CERTAIN |
-| `dst_mem_mem_id` / `dst_mem_core_id` / `dst_opcode` (f6–f8) | yes | **no** | CERTAIN |
-| `src_sync_flag_*` / `dst_sync_flag_0_*` / `dst_sync_flag_1_*` (f9–f14) | yes | **no** | CERTAIN |
-| `program_counter` (f15) | yes | **no** | CERTAIN |
-| id-50/51 `addr` / `node_type` / `msg_type` / `opcode` | yes | **no** | CERTAIN |
-| id-48 `router_link_port_id` / `virtual_channel` / `dst_chip_id` | yes | **no** | CERTAIN |
-| `length` (f16) × `length_granule` (f17) → byte count | yes | **`bytes_transferred` (78)** | CERTAIN |
-| derived: bytes ÷ duration | — | **`bandwidth` (string)** | CERTAIN |
-| derived: GTC span | — | **`offset_ps` / `duration_ps` + `flow` (56) + `_a` (42)** | CERTAIN |
+| Descriptor / message field | Decoded into proto | Reaches an XStat |
+|---|---|---|
+| `src_mem_mem_id` / `src_mem_core_id` / `src_opcode` (f3–f5) | yes | **no** |
+| `dst_mem_mem_id` / `dst_mem_core_id` / `dst_opcode` (f6–f8) | yes | **no** |
+| `src_sync_flag_*` / `dst_sync_flag_0_*` / `dst_sync_flag_1_*` (f9–f14) | yes | **no** |
+| `program_counter` (f15) | yes | **no** |
+| id-50/51 `addr` / `node_type` / `msg_type` / `opcode` | yes | **no** |
+| id-48 `router_link_port_id` / `virtual_channel` / `dst_chip_id` | yes | **no** |
+| `length` (f16) × `length_granule` (f17) → byte count | yes | **`bytes_transferred` (78)** |
+| derived: bytes ÷ duration | — | **`bandwidth` (string)** |
+| derived: GTC span | — | **`offset_ps` / `duration_ps` + `flow` (56) + `_a` (42)** |
 
 > **GOTCHA —** the page title is descriptive of the *enums*, not of an executed renderer. A reimplementer who expects `ConvertDmaTransfersToXPlane` to emit a `"HBM → VMEM"`-style endpoint label will find no such code. The `queue` (StatType 79) and `details` string XStats *are* attached to every span, but their source strings live at `DmaTransfer+0x28` and `+0x40` and are **zero-initialized and never written** by the pxc producer — so they render as empty strings. The endpoint enums below describe a wire format whose symbolizer is not in this translation unit (see [Considerations](#considerations--where-the-endpoints-go)).
 
@@ -87,38 +87,38 @@ The producer and parser address the message at fixed C++ offsets. The seventeen 
 
 The transfer class; the timeline producer keeps a span only when this is `REMOTEUNICAST` (value 2), the inter-chip-router direction. Byte-verified value numbers:
 
-| Value | Name (pxc) | Meaning | Confidence |
-|---|---|---|---|
-| 0 | `DMA_TYPE_LOCAL` | within-chip DMA | CERTAIN |
-| 1 | `DMA_TYPE_CHIP2HOST` | chip → host | CERTAIN |
-| 2 | `DMA_TYPE_REMOTEUNICAST` | chip → one remote chip (the ICI band) | CERTAIN |
-| 3 | `DMA_TYPE_REMOTEMULTICAST` | chip → many remote chips | CERTAIN |
+| Value | Name (pxc) | Meaning |
+|---|---|---|
+| 0 | `DMA_TYPE_LOCAL` | within-chip DMA |
+| 1 | `DMA_TYPE_CHIP2HOST` | chip → host |
+| 2 | `DMA_TYPE_REMOTEUNICAST` | chip → one remote chip (the ICI band) |
+| 3 | `DMA_TYPE_REMOTEMULTICAST` | chip → many remote chips |
 
 ### `SrcMemMemId` / `DstMemMemId` — the memory class (f3 / f6)
 
 A 2-bit class. Each value *name* is a composite of one memory-space name per core class, joined by `_`. The companion `core_id` (next section) picks which segment applies. The `Src` and `Dst` tables are identical apart from the prefix; pxc values:
 
-| Value | `SRC_MEM_MEM_ID_…` / `DST_MEM_MEM_ID_…` (pxc) | NONCORE seg | TC seg | BC seg | Confidence |
-|---|---|---|---|---|---|
-| 0 | `HBM_TCVMEM_BCBMEM` | HBM | TC VMEM | BC BMEM | CERTAIN |
-| 1 | `RSVD_TCSMEM_BCSMEM` | (reserved) | TC SMEM | BC SMEM | CERTAIN |
-| 2 | `CMEM_TCIMEM_BCBIMEM` | CMEM | TC IMEM | BC BIMEM | CERTAIN |
-| 3 | `RSVD_RSVD_BCVIMEM` | (reserved) | (reserved) | BC VIMEM | CERTAIN |
+| Value | `SRC_MEM_MEM_ID_…` / `DST_MEM_MEM_ID_…` (pxc) | NONCORE seg | TC seg | BC seg |
+|---|---|---|---|---|
+| 0 | `HBM_TCVMEM_BCBMEM` | HBM | TC VMEM | BC BMEM |
+| 1 | `RSVD_TCSMEM_BCSMEM` | (reserved) | TC SMEM | BC SMEM |
+| 2 | `CMEM_TCIMEM_BCBIMEM` | CMEM | TC IMEM | BC BIMEM |
+| 3 | `RSVD_RSVD_BCVIMEM` | (reserved) | (reserved) | BC VIMEM |
 
 ### `SrcMemCoreId` / `DstMemCoreId` — the core selector (f4 / f7)
 
 A 3-bit selector that disambiguates the composite memory-class name. Identical `Src`/`Dst` tables; pxc values:
 
-| Value | `…_MEM_CORE_ID_…` | Selects MemId segment | Confidence |
-|---|---|---|---|
-| 0 | `RESERVED` | — | CERTAIN |
-| 1 | `NONCORE` | 1st (HBM / CMEM / reserved) | CERTAIN |
-| 2 | `TC0` | 2nd (TCVMEM / TCSMEM / TCIMEM) | CERTAIN |
-| 3 | `TC1` | 2nd | CERTAIN |
-| 4 | `BC0` | 3rd (BCBMEM / BCSMEM / BCBIMEM / BCVIMEM) | CERTAIN |
-| 5 | `BC1` | 3rd | CERTAIN |
-| 6 | `BC2` | 3rd | CERTAIN |
-| 7 | `BC3` | 3rd | CERTAIN |
+| Value | `…_MEM_CORE_ID_…` | Selects MemId segment |
+|---|---|---|
+| 0 | `RESERVED` | — |
+| 1 | `NONCORE` | 1st (HBM / CMEM / reserved) |
+| 2 | `TC0` | 2nd (TCVMEM / TCSMEM / TCIMEM) |
+| 3 | `TC1` | 2nd |
+| 4 | `BC0` | 3rd (BCBMEM / BCSMEM / BCBIMEM / BCVIMEM) |
+| 5 | `BC1` | 3rd |
+| 6 | `BC2` | 3rd |
+| 7 | `BC3` | 3rd |
 
 > **QUIRK —** the full endpoint space is *the cross product*, not either table alone. A 2-bit `mem_id` × the 3-segment `core_id` class encodes the entire HBM / VMEM / SMEM / IMEM / BMEM / VIMEM / CMEM address map in five bits. `src_mem_mem_id = 0, src_mem_core_id = 2` reads as "TC0 VMEM"; the *same* `mem_id = 0` with `core_id = 1` reads as "HBM". A reimplementation that symbolizes the `mem_id` alone — ignoring the `core_id` segment pick — produces a wrong endpoint for every non-NONCORE transfer.
 
@@ -126,12 +126,12 @@ A 3-bit selector that disambiguates the composite memory-class name. Identical `
 
 The source and destination tables differ. pxc values:
 
-| Value | `SRC_OPCODE_…` | `DST_OPCODE_…` | Confidence |
-|---|---|---|---|
-| 0 | `READ` | `WRITE` | CERTAIN |
-| 1 | `RESERVED` | `RESERVED` | CERTAIN |
-| 2 | `INSTRUCTIONMEMSET` | `WRITESPECIAL0` | CERTAIN |
-| 3 | `DATAMEMSET` | `WRITESPECIAL1` | CERTAIN |
+| Value | `SRC_OPCODE_…` | `DST_OPCODE_…` |
+|---|---|---|
+| 0 | `READ` | `WRITE` |
+| 1 | `RESERVED` | `RESERVED` |
+| 2 | `INSTRUCTIONMEMSET` | `WRITESPECIAL0` |
+| 3 | `DATAMEMSET` | `WRITESPECIAL1` |
 
 ### Sync-flag core enums (f10 / f12 / f14)
 
@@ -143,10 +143,10 @@ The three sync-flag *core* fields each carry their own 8-value enum — `SrcSync
 
 The selector that turns `length` into a byte count. Byte-verified:
 
-| Value | Name | `length` shift | Byte count | Confidence |
-|---|---|---|---|---|
-| 0 | `LENGTH_GRANULE_512B` | `<< 9` | `length × 512` | CERTAIN |
-| 1 | `LENGTH_GRANULE_4B` | `<< 2` | `length × 4` | CERTAIN |
+| Value | Name | `length` shift | Byte count |
+|---|---|---|---|
+| 0 | `LENGTH_GRANULE_512B` | `<< 9` | `length × 512` |
+| 1 | `LENGTH_GRANULE_4B` | `<< 2` | `length × 4` |
 
 This is the *only* descriptor enum the renderer consumes: the producer reads `length_granule` to pick the shift and `length` to compute `bytes_transferred`. See [The Producer Store](#the-producer-store--what-it-reads).
 
@@ -162,11 +162,11 @@ The other three node-fabric trace points carry their own endpoint vocabulary. id
 
 Byte-verified from the egress message FDP body at `0xbef7b3b` (the ingress body at `0xbef7e5f` is identical):
 
-| Enum (C++ off) | Values | Confidence |
-|---|---|---|
-| `MsgType` (+0x28) | 0 `MSG_TYPE_PRIVATE`, 1 `MSG_TYPE_PUBLIC` | CERTAIN |
-| `Opcode` (+0x2c) | 0 `WRITE_NO_DONE`, 1 `WRITE_WITH_DONE`, 2 `INC_NO_DONE`, 3 `INC_WITH_DONE` | CERTAIN |
-| `NodeType` (+0x30) | 0 `TCS`, 1 `BC`, 2 `CMQ`, 3 `HBMQ`, 4 `UHI`, 5 `ICR`, 6 `QNM` | CERTAIN |
+| Enum (C++ off) | Values |
+|---|---|
+| `MsgType` (+0x28) | 0 `MSG_TYPE_PRIVATE`, 1 `MSG_TYPE_PUBLIC` |
+| `Opcode` (+0x2c) | 0 `WRITE_NO_DONE`, 1 `WRITE_WITH_DONE`, 2 `INC_NO_DONE`, 3 `INC_WITH_DONE` |
+| `NodeType` (+0x30) | 0 `TCS`, 1 `BC`, 2 `CMQ`, 3 `HBMQ`, 4 `UHI`, 5 `ICR`, 6 `QNM` |
 
 > **NOTE —** `NodeType` is the node-fabric component vocabulary (the same one the OCI command bands use). It is the closest thing in these messages to a routing endpoint, and it is the field a hypothetical `node_type → TpuComponent` lane symbolizer would consume. No such symbolizer is linked; `NodeType` is parsed and dropped on every id-50/51 span. The id-51 (ingress) producer reads only `msg_data` (+0x20, for the `<< 9` byte-count accumulate); id-50 (egress) reads only `done` (+0x24).
 
@@ -174,9 +174,9 @@ Byte-verified from the egress message FDP body at `0xbef7b3b` (the ingress body 
 
 Byte-verified from `IciPacketDataPacketQueuedForLocalIngress` at `0xbef6b17`:
 
-| Enum (C++ off) | Values | Confidence |
-|---|---|---|
-| `RouterLinkPortId` (+0x20) | 0 `LINK0` … 5 `LINK5` (`ROUTER_LINK_PORT_ID_LINK0..5`) | CERTAIN |
+| Enum (C++ off) | Values |
+|---|---|
+| `RouterLinkPortId` (+0x20) | 0 `LINK0` … 5 `LINK5` (`ROUTER_LINK_PORT_ID_LINK0..5`) |
 
 The producer reads only `first_packet_in_dma` (+0x32) and `last_packet_in_dma` (+0x33) — the begin/end markers — and drops `router_link_port_id`, `virtual_channel`, the link-target mask, and `dst_chip_id`.
 
@@ -190,12 +190,12 @@ The producer reads only `first_packet_in_dma` (+0x32) and `last_packet_in_dma` (
 
 ### The rename, by generation
 
-| `mem_id` | pxc (BarnaCore) | vfc / glc / gfc (SparseCore) | vlc (no SC) | Confidence |
-|---|---|---|---|---|
-| 0 | `HBM_TCVMEM_BCBMEM` | `HBM_TCVMEM_SCSPMEM` | `HBM_TCVMEM` | HIGH |
-| 1 | `RSVD_TCSMEM_BCSMEM` | `HOST_TCSMEM_SCSMEM` | `HOST_TCSMEM` | HIGH |
-| 2 | `CMEM_TCIMEM_BCBIMEM` | `VMEMALL_TCIMEM_SCSIMEM` | `NONCORERESERVEDMEM0_TCIMEM` | HIGH |
-| 3 | `RSVD_RSVD_BCVIMEM` | `NONCORERESERVEDMEM0_TCRESERVEDMEM_SCTIMEM` | `NONCORERESERVEDMEM0_TCRESERVEDMEM` | HIGH |
+| `mem_id` | pxc (BarnaCore) | vfc / glc / gfc (SparseCore) | vlc (no SC) |
+|---|---|---|---|
+| 0 | `HBM_TCVMEM_BCBMEM` | `HBM_TCVMEM_SCSPMEM` | `HBM_TCVMEM` |
+| 1 | `RSVD_TCSMEM_BCSMEM` | `HOST_TCSMEM_SCSMEM` | `HOST_TCSMEM` |
+| 2 | `CMEM_TCIMEM_BCBIMEM` | `VMEMALL_TCIMEM_SCSIMEM` | `NONCORERESERVEDMEM0_TCIMEM` |
+| 3 | `RSVD_RSVD_BCVIMEM` | `NONCORERESERVEDMEM0_TCRESERVEDMEM_SCTIMEM` | `NONCORERESERVEDMEM0_TCRESERVEDMEM` |
 
 The `core_id` enum gains `SC0..SC3` (replacing `BC0..BC3`) on the SparseCore gens; the SparseCore strings `SRC_MEM_CORE_ID_SC0..SC3` are present in the unit. The `dma_type` enum also collapses on the newer gens: pxc has the four-value `{LOCAL, CHIP2HOST, REMOTEUNICAST, REMOTEMULTICAST}`, while the SparseCore family's descriptor `DmaTypeValues` collapses to a two-value `{LOCALORHOST = 0, REMOTEUNICAST = 1}` (strings `DMA_TYPE_LOCALORHOST` @ `0xbf07208`, `DMA_TYPE_REMOTEUNICAST` @ `0xbf07222` present in the `protodesc_cold` pool).
 

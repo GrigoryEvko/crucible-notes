@@ -70,12 +70,12 @@ StatusOr<TpuChipConfig> TpuChipConfig::Create(TpuVersion v, string_view variant,
 
 The first 11 bytes of the constructed object are a fixed header the constructor writes from its leading scalar arguments (`0x20AF6300` stores `a2`→`+0`, `a3`→`+8`, `a4`→`+9`, `a5`→`+10`), and three one-line const accessors expose the three mode flags. These are the per-config booleans a reimplementation must reproduce verbatim, because the HAL branches on them at boot:
 
-| Off | Accessor (VA) | Type | Holds | Confidence |
-|---:|---|---|---|---|
-| +0x00 | (constructor `a2`) | int64 | leading scalar word (per-config count) | HIGH |
-| +0x08 | `Megacore` (`0x20AFCA00`) | bool | megacore mode (name CONFIRMED; semantics inferred) | CONFIRMED (offset) |
-| +0x09 | `Megachip` (`0x20AFCC00`) | bool | megachip mode (name CONFIRMED; semantics inferred) | CONFIRMED (offset) |
-| +0x0A | `TcControl` (`0x20AFCC20`) | bool | TensorCore-control mode (name CONFIRMED; semantics inferred) | CONFIRMED (offset) |
+| Off | Accessor (VA) | Type | Holds |
+|---:|---|---|---|
+| +0x00 | (constructor `a2`) | int64 | leading scalar word (per-config count) |
+| +0x08 | `Megacore` (`0x20AFCA00`) | bool | megacore mode (name CONFIRMED; semantics inferred) |
+| +0x09 | `Megachip` (`0x20AFCC00`) | bool | megachip mode (name CONFIRMED; semantics inferred) |
+| +0x0A | `TcControl` (`0x20AFCC20`) | bool | TensorCore-control mode (name CONFIRMED; semantics inferred) |
 
 Each accessor is literally `return *((uint8_t*)this + N)` — `Megacore` reads `+8` (`0x20AFCA00`), `Megachip` reads `+9` (`0x20AFCC00`), `TcControl` reads `+10` (`0x20AFCC20`). The byte positions and accessor symbols are byte-exact from the disassembly; the *meaning* of each mode (megacore as a two-TensorCore fused topology, megachip as a multi-die-as-one-device topology) is the standard TPU interpretation, inferred rather than proven from this binary. `xla::jellyfish::Target::IsMegachip` (`0x10914F60`) consumes the `+9` byte through the config pointer the `Target` holds at `Target+0x3B8→+0x18` (`*(TpuChipConfig**)([Target+0x3B8]+24)`), and gates its result on a positive `[Target+0x3B8]+148` count — so megachip-parallel compilation requires both the `Megachip` byte set and a non-zero descriptor count.
 
@@ -91,20 +91,20 @@ After the header the constructor stores a long tail of per-core-type tables — 
 
 The capability constants from `chip_parts` do not live in `TpuChipConfig`; they live in the `xla::jellyfish::Target` object, filled at boot by `TpuChipParts::FromProto` (`0x20B1B400`) and `TpuMemoryParts::FromProto` (`0x20B333A0`). Each constant has a fixed struct offset, read by a one-line accessor. The offset map below was read byte-exact from the accessor disassembly (e.g. `HbmSizeBytes` is literally `return *((int64_t*)this + 138)`, i.e. `Target+0x450`).
 
-| Target off | Accessor (VA) | Type | Holds | Confidence |
-|---:|---|---|---|---|
-| +0x398 | `Target::TpuVersionToString` (`0x12772CC0`) | int32 | `tpu_version` (0..5 → jellyfish/dragonfish/pufferfish/viperfish/ghostlite/`6acc60406`) | CONFIRMED |
-| +0x3B8 | `LaneCount`/`SublaneCount`/… (`0x1D60F400`) | `TpuTopology*` | geometry descriptor pointer | CONFIRMED |
-| +0x3B8→+0x198 | `LaneCount` (`0x1D60F400`) | int64 | `lane_count` (=128 all gens) | CONFIRMED |
-| +0x3B8→+0x1A0 | `SublaneCount` (`0x1D60F300`) | int64 | `sublane_count` (=8 all gens) | CONFIRMED |
-| +0x450 | `HbmSizeBytes` (`0x1D615320`) | int64 | HBM size (v7x: 102,005,473,280) | CONFIRMED |
-| +0x458 | `VmemSizeBytes` (`0x1D615E00`) | int32 | VMEM size (v7x: 67,108,864) | CONFIRMED |
-| +0x460 | `CmemSizeBytes` (`0x1D615E20`) | int64 | CMEM size (v7x: 0) | CONFIRMED |
-| +0x468 | `SflagSizeBytes` (`0x1D615E60`) | int32 | SFLAG size (v7x: 16,384) | CONFIRMED |
-| +0x470 | `SmemSizeBytes` (`0x1D615E40`) | int32 | SMEM size (v7x: 1,048,576) | CONFIRMED |
-| +0x50C | `VmemWordSizeBytes` (`0x1D617300`) | int32 | VMEM word (v7x: 512) | CONFIRMED |
-| +0x90C | `TensorCoreFrequencyInMegaHertz` (`0x1D615B60`) | int32 | TC freq MHz (v7x: 1900) | CONFIRMED |
-| +0x910 | `HbmFrequencyInMegaHertz` (`0x1D615BA0`) | int32 | HBM freq MHz (v7x: 7200) | CONFIRMED |
+| Target off | Accessor (VA) | Type | Holds |
+|---:|---|---|---|
+| +0x398 | `Target::TpuVersionToString` (`0x12772CC0`) | int32 | `tpu_version` (0..5 → jellyfish/dragonfish/pufferfish/viperfish/ghostlite/`6acc60406`) |
+| +0x3B8 | `LaneCount`/`SublaneCount`/… (`0x1D60F400`) | `TpuTopology*` | geometry descriptor pointer |
+| +0x3B8→+0x198 | `LaneCount` (`0x1D60F400`) | int64 | `lane_count` (=128 all gens) |
+| +0x3B8→+0x1A0 | `SublaneCount` (`0x1D60F300`) | int64 | `sublane_count` (=8 all gens) |
+| +0x450 | `HbmSizeBytes` (`0x1D615320`) | int64 | HBM size (v7x: 102,005,473,280) |
+| +0x458 | `VmemSizeBytes` (`0x1D615E00`) | int32 | VMEM size (v7x: 67,108,864) |
+| +0x460 | `CmemSizeBytes` (`0x1D615E20`) | int64 | CMEM size (v7x: 0) |
+| +0x468 | `SflagSizeBytes` (`0x1D615E60`) | int32 | SFLAG size (v7x: 16,384) |
+| +0x470 | `SmemSizeBytes` (`0x1D615E40`) | int32 | SMEM size (v7x: 1,048,576) |
+| +0x50C | `VmemWordSizeBytes` (`0x1D617300`) | int32 | VMEM word (v7x: 512) |
+| +0x90C | `TensorCoreFrequencyInMegaHertz` (`0x1D615B60`) | int32 | TC freq MHz (v7x: 1900) |
+| +0x910 | `HbmFrequencyInMegaHertz` (`0x1D615BA0`) | int32 | HBM freq MHz (v7x: 7200) |
 
 The offsets resolve directly from the accessor bodies: `LaneCount` returns `*(int64_t*)(*((void**)this + 119) + 408)` — `this+119*8 = Target+0x3B8` is the `TpuTopology*`, and `+408 = +0x198` is `lane_count` inside it. `SublaneCount` reads the same descriptor at `+416 = +0x1A0`. `HbmSizeBytes` is `*((int64_t*)this + 138) = Target+0x450`; `VmemSizeBytes` is `*((int32_t*)this + 278) = Target+0x458`; `SmemSizeBytes` is `+284 = +0x470`; `SflagSizeBytes` is `+282 = +0x468`; `VmemWordSizeBytes` is `+323 = +0x50C`; `TensorCoreFrequencyInMegaHertz` is `+579 = +0x90C`; `HbmFrequencyInMegaHertz` is `+580 = +0x910`. See [TpuTopology Struct](tpu-topology-struct.md) for the `+0x3B8` descriptor's full layout.
 

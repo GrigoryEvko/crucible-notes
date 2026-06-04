@@ -125,25 +125,25 @@ bit: 0    7              87      111  138  165   195      239    261        283 
      TecStream(oneof of a scalar lane): scalar opcode @181/@162, high payload @283/@322
 ```
 
-| Slot | Base | End | Width | Opcode bit | Internal template | Confidence |
-|---|---:|---:|---:|---:|---|---|
-| (reserved header) | 0 | 6 | 7 | — | bundle prefix; meaning not decoded | MEDIUM |
-| `Immediates` (low) | 7 | 86 | 80 | — | 4 × 20-bit (`@7,@27,@47,@67`) | CONFIRMED |
-| `VectorScalar` | 87 | 110 | 24 | — | scalar→vector bridge | CONFIRMED |
-| `ScalarMisc` | 111 | 137 | 27 | 127 | 27-bit scalar template | CONFIRMED |
-| `ScalarAlu1` (lane 1) | 138 | 164 | 27 | 154 | 27-bit scalar template | CONFIRMED |
-| `ScalarAlu0` (lane 0) | 165 | 191 | 27 | 181 | 27-bit scalar template | CONFIRMED |
-| `Immediates` (high) | 195 | 234 | 40 | — | 2 × 20-bit (`@195,@215`) | CONFIRMED |
-| `VectorResult` | 239 | 260 | 22 | 239 | XRF-pop (`EupResult`/`PopXrf…`) | CONFIRMED |
-| `VectorExtended` | 261 | 461 | ~201 | 261 (EUP) | scan/sort/uniquify region; reuses VREG operands | HIGH |
-| `VectorLoad` | 283 | 321 | 39 | 283 | `TileSpmemLoad*` | CONFIRMED |
-| `VectorStore` | 328 | 363 | 36 | 353 | `TileSpmemStore*[Add]` | CONFIRMED |
-| `VectorAlu2` (lane 2) | 364 | 400 | 37 | 388 | 37-bit vector template | CONFIRMED |
-| `VectorAlu1` (lane 1) | 401 | 437 | 37 | 425 | 37-bit vector template | CONFIRMED |
-| `VectorAlu0` (lane 0) | 438 | 474 | 37 | 462 | 37-bit vector template | CONFIRMED |
-| (reserved / pad) | 475 | 511 | 37 | — | unwritten by any slot encoder | HIGH |
-| `TecDma` (oneof of lane) | 87 | 327 | — | 181; 283/322 | scalar opcode + high payload | CONFIRMED |
-| `TecStream` (oneof of lane) | 99 | 327 | — | 181/162; 283/322 | scalar opcode + high payload | CONFIRMED |
+| Slot | Base | End | Width | Opcode bit | Internal template |
+|---|---:|---:|---:|---:|---|
+| (reserved header) | 0 | 6 | 7 | — | bundle prefix; meaning not decoded |
+| `Immediates` (low) | 7 | 86 | 80 | — | 4 × 20-bit (`@7,@27,@47,@67`) |
+| `VectorScalar` | 87 | 110 | 24 | — | scalar→vector bridge |
+| `ScalarMisc` | 111 | 137 | 27 | 127 | 27-bit scalar template |
+| `ScalarAlu1` (lane 1) | 138 | 164 | 27 | 154 | 27-bit scalar template |
+| `ScalarAlu0` (lane 0) | 165 | 191 | 27 | 181 | 27-bit scalar template |
+| `Immediates` (high) | 195 | 234 | 40 | — | 2 × 20-bit (`@195,@215`) |
+| `VectorResult` | 239 | 260 | 22 | 239 | XRF-pop (`EupResult`/`PopXrf…`) |
+| `VectorExtended` | 261 | 461 | ~201 | 261 (EUP) | scan/sort/uniquify region; reuses VREG operands |
+| `VectorLoad` | 283 | 321 | 39 | 283 | `TileSpmemLoad*` |
+| `VectorStore` | 328 | 363 | 36 | 353 | `TileSpmemStore*[Add]` |
+| `VectorAlu2` (lane 2) | 364 | 400 | 37 | 388 | 37-bit vector template |
+| `VectorAlu1` (lane 1) | 401 | 437 | 37 | 425 | 37-bit vector template |
+| `VectorAlu0` (lane 0) | 438 | 474 | 37 | 462 | 37-bit vector template |
+| (reserved / pad) | 475 | 511 | 37 | — | unwritten by any slot encoder |
+| `TecDma` (oneof of lane) | 87 | 327 | — | 181; 283/322 | scalar opcode + high payload |
+| `TecStream` (oneof of lane) | 99 | 327 | — | 181/162; 283/322 | scalar opcode + high payload |
 
 > **QUIRK — the immediate slots are split around the scalar lanes.** Four 20-bit slots sit *below* the scalar stack (bits 7..86) and two more sit *above* it (bits 195/215), separated by the 81-bit scalar-slot stack and the vector-scalar bridge. They are nonetheless a single 6-entry indexed array (slot index 0..5), packed in *descending* bundle-bit order (idx0→bit67 … idx3→bit7; idx4→215, idx5→195). A reimplementer must not treat the high pair as a separate resource — `EmitImmediate(slot_index, value)` indexes all six (see [Immediate-Slot Indexing](#immediate-slot-indexing)).
 
@@ -195,11 +195,11 @@ All three vector-ALU lanes share one internal template; only the slot base diffe
 
 So the absolute opcode bits fall out as `base + 24`: `VectorAlu2` op `@388` (= 364+24), `VectorAlu1` `@425` (= 401+24), `VectorAlu0` `@462` (= 438+24). The three lanes stack 37 bits apart directly above the vector load/store region.
 
-| Lane | Base (GF) | VREG sel | OPCODE `@+24/8` | pred header `@+32` | Confidence |
-|---|---:|---:|---:|---|---|
-| `VectorAlu2` | 364 | 364/370/376/382 | **388** | 396/399/400 | CONFIRMED |
-| `VectorAlu1` | 401 | 401/407/413/419 | **425** | 433/436/437 | CONFIRMED |
-| `VectorAlu0` | 438 | 438/444/450/456 | **462** | 470/473/474 | CONFIRMED |
+| Lane | Base (GF) | VREG sel | OPCODE `@+24/8` | pred header `@+32` |
+|---|---:|---:|---:|---|
+| `VectorAlu2` | 364 | 364/370/376/382 | **388** | 396/399/400 |
+| `VectorAlu1` | 401 | 401/407/413/419 | **425** | 433/436/437 |
+| `VectorAlu0` | 438 | 438/444/450/456 | **462** | 470/473/474 |
 
 The vector-ALU template is the scalar template's structural cousin: where the 27-bit [scalar slot](scs-engine.md#the-27-bit-scalar-slot-template) carries two/one 5-bit register operands and a 6-bit opcode, the vector slot carries *four* 6-bit VREG selectors and a wider opcode, with the same overlapped normal/rotate predication header at the top. The `VectorY` immediate-selector lives in the vector-scalar bridge / immediate-indexing path rather than inline (see [Immediate-Slot Indexing](#immediate-slot-indexing)).
 
@@ -328,32 +328,32 @@ So an op needing a ≤20-bit literal sets its `VectorY` selector to `IMMk_ZERO`,
 
 ## Function Map
 
-| Symbol | Address | Role | Confidence |
-|---|---|---|---|
-| `SparseCoreTecCodecBase<…>::Encode` (vfc) | `0x139328a0` | bundle dispatcher; shared-Span call to each slot encoder | CONFIRMED |
-| `BitCopy` | `0x1fa0a900` | little-endian bit packer (`dst, dst_bitoff, src, src_bitoff, nbits`) | CONFIRMED |
-| `SparseCoreImmediatesEncoder::Encode` (gfc) | `0x1ecd1760` | 6 × 20-bit immediates `@7/27/47/67/195/215` | CONFIRMED |
-| `SparseCoreVectorScalarEncoder::Encode` (gfc) | `0x1ecd1e00` | scalar→vector bridge `@87..110` | CONFIRMED |
-| `SparseCoreScalarMiscEncoder::Encode` (gfc) | `0x1ebad840` | misc/sync/atomic slot, opcode `@127` | CONFIRMED |
-| `SparseCoreTecScalarAlu1Encoder::Encode` (gfc) | `0x1ebd8040` | scalar lane 1, opcode `@154` | CONFIRMED |
-| `SparseCoreTecScalarAlu0Encoder::Encode` (gfc) | `0x1ebc54a0` | scalar lane 0, opcode `@181` | CONFIRMED |
-| `SparseCoreTecVectorResultEncoder::Encode` (gfc) | `0x1ecbc9e0` | XRF-pop slot, opcode `@239` | CONFIRMED |
-| `SparseCoreTecVectorExtendedEncoder::Encode` (gfc) | `0x1ecab8a0` | scan/sort/uniquify region `@261..461` | HIGH |
-| `SparseCoreTecVectorLoadEncoder::Encode` (gfc) | `0x1ecb9ee0` | tile vector load, opcode `@283` | CONFIRMED |
-| `SparseCoreTecVectorStoreEncoder::Encode` (gfc) | `0x1eccbe20` | tile vector store + scatter-add, opcode `@353` | CONFIRMED |
-| `SparseCoreTecVectorAlu2Encoder::Encode` (gfc) | `0x1ec85ae0` | vector lane 2, opcode `@388/8`; slot base 364 | CONFIRMED |
-| `SparseCoreTecVectorAlu1Encoder::Encode` (gfc) | `0x1ec51900` | vector lane 1, opcode `@425/8`; slot base 401 | CONFIRMED |
-| `SparseCoreTecVectorAlu0Encoder::Encode` (gfc) | `0x1ec11100` | vector lane 0, opcode `@462/8`; sel `@438/444/450/456`; pred `@470/473/474` | CONFIRMED |
-| `SparseCoreTecStreamEncoder::Encode` (gfc) | `0x1ebe33e0` | Stream oneof-of-lane, opcode `@181/162`, high payload `@283/322` | CONFIRMED |
-| `SparseCoreTecDmaEncoder::Encode` (gfc) | `0x1ebb6960` | Dma oneof-of-lane, opcode `@181`, high payload `@283/322` | CONFIRMED |
-| `EncoderBase<…gfc Tec…>::BundleSizeBytes` | `0x1e8359e0` | dispatches codec-metadata `vtable[+0x30]` → 64 | CONFIRMED |
-| `SparseCoreTecCodecBase GetBytesPerBundle` (gfc / vfc) | `0x13923a80` / `0x13933660` | packed bytes 60 (gfc) / 59 (vfc) | CONFIRMED |
-| `TileTaskOutliningPass::runOnOperation` | `0x13606220` | outlines tile_task → TEC `"execute"` func | CONFIRMED |
-| outliner per-op callback | `0x136066e0` | stamps `sc.sequencer="execute"` unconditionally | CONFIRMED |
-| `LaunchTileTaskOp::create` | `0x145dd0e0` | replaces tile_task with a launch of the TEC func | CONFIRMED |
-| `LowerSequencerFunctionsPass::runOnOperation` | `0x13532120` | reads `sc.sequencer`, lowers per-engine body | CONFIRMED |
-| `ScDialect::HasExecuteSequencerTypeAttribute` | `0x1459a020` | predicate: `sc.sequencer == "execute"` (len-7 byte-exact) | CONFIRMED |
-| `GetTransferKind` | `0x1351b140` | kStream/kDma classifier (routes within a sequencer, not between) | CONFIRMED |
+| Symbol | Address | Role |
+|---|---|---|
+| `SparseCoreTecCodecBase<…>::Encode` (vfc) | `0x139328a0` | bundle dispatcher; shared-Span call to each slot encoder |
+| `BitCopy` | `0x1fa0a900` | little-endian bit packer (`dst, dst_bitoff, src, src_bitoff, nbits`) |
+| `SparseCoreImmediatesEncoder::Encode` (gfc) | `0x1ecd1760` | 6 × 20-bit immediates `@7/27/47/67/195/215` |
+| `SparseCoreVectorScalarEncoder::Encode` (gfc) | `0x1ecd1e00` | scalar→vector bridge `@87..110` |
+| `SparseCoreScalarMiscEncoder::Encode` (gfc) | `0x1ebad840` | misc/sync/atomic slot, opcode `@127` |
+| `SparseCoreTecScalarAlu1Encoder::Encode` (gfc) | `0x1ebd8040` | scalar lane 1, opcode `@154` |
+| `SparseCoreTecScalarAlu0Encoder::Encode` (gfc) | `0x1ebc54a0` | scalar lane 0, opcode `@181` |
+| `SparseCoreTecVectorResultEncoder::Encode` (gfc) | `0x1ecbc9e0` | XRF-pop slot, opcode `@239` |
+| `SparseCoreTecVectorExtendedEncoder::Encode` (gfc) | `0x1ecab8a0` | scan/sort/uniquify region `@261..461` |
+| `SparseCoreTecVectorLoadEncoder::Encode` (gfc) | `0x1ecb9ee0` | tile vector load, opcode `@283` |
+| `SparseCoreTecVectorStoreEncoder::Encode` (gfc) | `0x1eccbe20` | tile vector store + scatter-add, opcode `@353` |
+| `SparseCoreTecVectorAlu2Encoder::Encode` (gfc) | `0x1ec85ae0` | vector lane 2, opcode `@388/8`; slot base 364 |
+| `SparseCoreTecVectorAlu1Encoder::Encode` (gfc) | `0x1ec51900` | vector lane 1, opcode `@425/8`; slot base 401 |
+| `SparseCoreTecVectorAlu0Encoder::Encode` (gfc) | `0x1ec11100` | vector lane 0, opcode `@462/8`; sel `@438/444/450/456`; pred `@470/473/474` |
+| `SparseCoreTecStreamEncoder::Encode` (gfc) | `0x1ebe33e0` | Stream oneof-of-lane, opcode `@181/162`, high payload `@283/322` |
+| `SparseCoreTecDmaEncoder::Encode` (gfc) | `0x1ebb6960` | Dma oneof-of-lane, opcode `@181`, high payload `@283/322` |
+| `EncoderBase<…gfc Tec…>::BundleSizeBytes` | `0x1e8359e0` | dispatches codec-metadata `vtable[+0x30]` → 64 |
+| `SparseCoreTecCodecBase GetBytesPerBundle` (gfc / vfc) | `0x13923a80` / `0x13933660` | packed bytes 60 (gfc) / 59 (vfc) |
+| `TileTaskOutliningPass::runOnOperation` | `0x13606220` | outlines tile_task → TEC `"execute"` func |
+| outliner per-op callback | `0x136066e0` | stamps `sc.sequencer="execute"` unconditionally |
+| `LaunchTileTaskOp::create` | `0x145dd0e0` | replaces tile_task with a launch of the TEC func |
+| `LowerSequencerFunctionsPass::runOnOperation` | `0x13532120` | reads `sc.sequencer`, lowers per-engine body |
+| `ScDialect::HasExecuteSequencerTypeAttribute` | `0x1459a020` | predicate: `sc.sequencer == "execute"` (len-7 byte-exact) |
+| `GetTransferKind` | `0x1351b140` | kStream/kDma classifier (routes within a sequencer, not between) |
 
 Cross-gen anchors: vfc TEC `VectorAlu0` `0x1e954ae0` (opcode `@456/7`, **7-bit** narrow form, sel `@432/438/444/450`); glc TEC `VectorAlu0` `0x1eaa4880` (37-bit/8-bit, matching GF). The codec dispatcher passes the same buffer Span to every slot encoder on all gens; the low region (bits 7..191) and immediate layout are byte-identical VF/GL/GF — only the vector compute region above bit 235 shifts.
 

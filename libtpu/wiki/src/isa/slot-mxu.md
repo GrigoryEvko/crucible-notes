@@ -39,16 +39,16 @@ The MXU is a weight-stationary systolic array. A full dense matmul `C = A·B` is
 
 The Jellyfish op set was read directly from the per-op `LloOpcodeIsVector*` classifier functions, each a tiny `(opcode − base) < n` or mask test. The classifier values are CERTAIN — they are arithmetic constants in the binary, not inferred.
 
-| LLO mnemonic | `LloOpcode` | Slot | Role | Confidence |
-|---|---|---|---|---|
-| `vmatprep.subr` (`+.msk`) | `0x97`/`0x98` | VectorExtended | push the **moving** operand, sub-row form | CERTAIN |
-| `vmatprep.mubr` (`+.msk`) | `0x99`/`0x9a` | VectorExtended | push the **moving** operand, block-row form | CERTAIN |
-| `vmatmul` | `0x9b` | VectorExtended | one systolic step | CERTAIN |
-| `vmatmul.mubr` (`+.msk`) | `0x9c`/`0xa0` | VectorExtended | conv block-row matmul | CERTAIN |
-| `vmatmul.high` | `0x9d` | VectorExtended | high-half accumulator step | CERTAIN |
-| `vmatmul.low` | `0x9e` | VectorExtended | low-half accumulator step | CERTAIN |
-| `vlatch` / `vlatchi` | (latch path) | VectorExtended | latch **stationary** weights into the array | CERTAIN |
-| `vmatres` (`+.add`) | `0x152` | VectorResult | drain the result FIFO (`.add` = accumulate) | CERTAIN |
+| LLO mnemonic | `LloOpcode` | Slot | Role |
+|---|---|---|---|
+| `vmatprep.subr` (`+.msk`) | `0x97`/`0x98` | VectorExtended | push the **moving** operand, sub-row form |
+| `vmatprep.mubr` (`+.msk`) | `0x99`/`0x9a` | VectorExtended | push the **moving** operand, block-row form |
+| `vmatmul` | `0x9b` | VectorExtended | one systolic step |
+| `vmatmul.mubr` (`+.msk`) | `0x9c`/`0xa0` | VectorExtended | conv block-row matmul |
+| `vmatmul.high` | `0x9d` | VectorExtended | high-half accumulator step |
+| `vmatmul.low` | `0x9e` | VectorExtended | low-half accumulator step |
+| `vlatch` / `vlatchi` | (latch path) | VectorExtended | latch **stationary** weights into the array |
+| `vmatres` (`+.add`) | `0x152` | VectorResult | drain the result FIFO (`.add` = accumulate) |
 
 The classifier arithmetic, verified in the decompile:
 
@@ -114,12 +114,12 @@ word  = (mxu_id    & 0x03) << 27 | word & 0xFFFFFFFFE7FFFFFF;   // mxu-id    @ a
 //   opcode 3 → + 0x60000000;             ... opcode 0x22 → + 0x540000000   (35-case jump table)
 ```
 
-| Field | Source | abs bits | Width | Confidence |
-|---|---|---|---|---|
-| predicate | `EncodePredication & 0x1F` | 35 | 5 | CONFIRMED |
-| opcode (`VectorExtendedOpcode`) | 35-case jump table | 29..34 | 6 | CONFIRMED |
-| mxu-id (unit) | proto `+0x64 & 3` | 27..28 | 2 | CONFIRMED |
-| operand vregs | proto `+0x6c` etc. | sub-mode dependent | 5 each | HIGH |
+| Field | Source | abs bits | Width |
+|---|---|---|---|
+| predicate | `EncodePredication & 0x1F` | 35 | 5 |
+| opcode (`VectorExtendedOpcode`) | 35-case jump table | 29..34 | 6 |
+| mxu-id (unit) | proto `+0x64 & 3` | 27..28 | 2 |
+| operand vregs | proto `+0x6c` etc. | sub-mode dependent | 5 each |
 
 The opcode clear-mask `0xFFFFFFF81FFFFFFF` is the *same* mask the decoder (`DecoderJf::DecodeVectorExtendedSlot` @ `0x1e854000`) uses to extract the 6-bit opcode at abs 29..34, so encode and decode agree bit-for-bit — this raises the opcode / mxu-id / predicate fields to CERTAIN-grade cross-confirmation. See [Jellyfish 41B Bundle](bundle-jf-41b.md#vector-extended--mxu-struct-0x0c--encodevectorextendedinstruction--0x1e869f00) for the absolute positions in context.
 
@@ -178,12 +178,12 @@ These six VEopcodes land squarely in the `IsPushGains` range (7..12). The full c
 
 `EncoderJf::EncodeVectorResultInstruction` (`0x1e865ae0`) shares the same word at struct `0x0C` — `VectorExtended` and `VectorResult` coexist in one bundle on disjoint bit ranges. Decoded from the encoder masks:
 
-| Field | Source | abs bits | Width | Confidence |
-|---|---|---|---|---|
-| predicate | `& 0x1F` | 22..26 | 5 | CONFIRMED |
-| result type / format | proto `+0x40` | 20..21 | 2 | HIGH |
-| result mode | proto `+0x44` | 18..19 | 2 | HIGH |
-| dest vreg | proto `+0x48` | mode-dependent | 5 | HIGH |
+| Field | Source | abs bits | Width |
+|---|---|---|---|
+| predicate | `& 0x1F` | 22..26 | 5 |
+| result type / format | proto `+0x40` | 20..21 | 2 |
+| result mode | proto `+0x44` | 18..19 | 2 |
+| dest vreg | proto `+0x48` | mode-dependent | 5 |
 
 The 2-bit result-mode (proto `+0x44`, value 0/1/2) selects which MRF/MSR FIFO the result drains from and gates the destination-vreg shift; `matres.add` (a distinct LLO opcode) accumulates into the result accumulator rather than overwriting. `AddMxuNumToVectorResult` (`0x140b9680`) additionally stamps the source MXU id.
 
@@ -199,12 +199,12 @@ The 2-bit result-mode (proto `+0x44`, value 0/1/2) selects which MRF/MSR FIFO th
 
 Pufferfish doubles Jellyfish's single `VectorExtended` slot into **two** independent MXU control slots and switches to the `TensorCoreCodecBase` template encoder (no scratch struct, no header strip — every field is placed by a `BitCopy(buf, dst_bit, &field, 0, width)` call whose `dst_bit` *is* the absolute bundle bit). MXU1 (abs 63..82) is a bit-for-bit twin of MXU0 (abs 83..102), offset exactly **−20 bits**.
 
-| Field | MXU0 abs | MXU1 abs | Width | Confidence |
-|---|---|---|---|---|
-| sub-op | 83 | 63 | 3 | CONFIRMED |
-| mode / mxu-num | 89 | 69 | 2 | CONFIRMED |
-| opcode | 91 | 71 | 7 | CONFIRMED |
-| predicate | 98 | 78 | 5 | CONFIRMED |
+| Field | MXU0 abs | MXU1 abs | Width |
+|---|---|---|---|
+| sub-op | 83 | 63 | 3 |
+| mode / mxu-num | 89 | 69 | 2 |
+| opcode | 91 | 71 | 7 |
+| predicate | 98 | 78 | 5 |
 
 See [Pufferfish 51B Bundle](bundle-pf-51b.md#vector-extended--mxu-slots--0x1edb0900-mxu0-0x1ee08060-mxu1) for the slot map in context.
 
@@ -234,16 +234,16 @@ So `PushGains opcode = 0x20 + {Rounded 0, Low 1, Hi 2, Packed 3, Byte 4} + maske
 
 Viperfish keeps the two-`VectorExtended`-slots-over-one-operand-pool model and the **−20** twin, widens to a 64-byte bundle, and replaces Jellyfish's `GainLatchMode` enum with *named opcode families*. The MXU control region, verified from the decompiled `EncodeTensorCoreVectorExtended0PushmatrixBf16` (`0x1efaf820`) and `MatrixMultiplyBf16` helpers:
 
-| Field | MXU0 abs | Width | Op family | Value (Bf16) | Confidence |
-|---|---|---|---|---|---|
-| MXU-id (unit) | 64 | 4 | always (written first) | 0 (MXU 0) | CERTAIN |
-| opcode-HIGH (matmul) | 57 | 7 | `MatrixMultiply<fmt>` | `0x1` | CERTAIN |
-| opcode-HIGH (latch/push) | 59 | 5 | `Pushmatrix<fmt>` | `0xe` (14) | CERTAIN |
-| data-format sub-disc | 51 | 4 | per-op | matmul Bf16 = 1 / push Bf16 = 3 | CERTAIN |
-| control (proto `+0x18`) | 48 | 3 | per-op | — | CERTAIN |
-| done-gains / latch flag | 55 | 2 | per-op | — | CERTAIN |
-| **Transpose** | 57 | 1 | `Pushmatrix*` (proto `+0x20`) | — | CERTAIN |
-| **Target** | 58 | 1 | `Pushmatrix*` (proto `+0x24`) | — | CERTAIN |
+| Field | MXU0 abs | Width | Op family | Value (Bf16) |
+|---|---|---|---|---|
+| MXU-id (unit) | 64 | 4 | always (written first) | 0 (MXU 0) |
+| opcode-HIGH (matmul) | 57 | 7 | `MatrixMultiply<fmt>` | `0x1` |
+| opcode-HIGH (latch/push) | 59 | 5 | `Pushmatrix<fmt>` | `0xe` (14) |
+| data-format sub-disc | 51 | 4 | per-op | matmul Bf16 = 1 / push Bf16 = 3 |
+| control (proto `+0x18`) | 48 | 3 | per-op | — |
+| done-gains / latch flag | 55 | 2 | per-op | — |
+| **Transpose** | 57 | 1 | `Pushmatrix*` (proto `+0x20`) | — |
+| **Target** | 58 | 1 | `Pushmatrix*` (proto `+0x24`) | — |
 
 The latch (`Pushmatrix`) encode reads byte-for-byte from `0x1efaf820` as `BitCopy(buf, 59, …, 5)` (opcode = `0xe`), `BitCopy(buf, 51, …, 4)` (format = 3), `BitCopy(buf, 48, …, 3)` (control), `BitCopy(buf, 55, …, 2)` (done-gains/latch flag), `BitCopy(buf, 57, …, 1)` (Transpose, proto `+0x20`), `BitCopy(buf, 58, …, 1)` (Target, proto `+0x24`), plus the eight shared operand vregs at abs 157/282/293/248/259/214/225/180 (w6 each, proto order). The matmul helper `MatrixMultiplyBf16` @ `0x1efa2e40` writes the same control region with `BitCopy(buf, 57, …, 7)` (opcode = `0x1`), `BitCopy(buf, 51, …, 4)` (format = 1), `BitCopy(buf, 48, …, 3)` (control), `BitCopy(buf, 55, …, 2)` (done-gains) over the identical operand pool — so matmul and push share every field position, differing only in opcode width (7 vs 5) and the repurposed bits 57/58. All offsets **LSB-first**, **CONFIRMED**.
 
@@ -339,13 +339,13 @@ Both Jellyfish encoders prefill `kNeverExecute = 31` (`0xB834CFC`) into every sl
 
 ## Systolic-Array Geometry
 
-| Quantity | Value | Source | Confidence |
-|---|---|---|---|
-| Systolic array | 128 × 128 (JF/DF/PF/VF) / 256 × 256 (Ghostlite, 6acc60406) | base `Target` `LaneCount`; `GhostliteTarget::MxuContractingSize`/`MxuNoncontractingSize` @ `0x1d497840`/`0x1d497860` = 256 | CONFIRMED |
-| MXUs per TensorCore | 1 (JF) / 2 (Dragonfish) / 4 (PF, VF) / 2 (Ghostlite, 6acc60406) | `NumVexSlots`, `VectorIsa.mxu_count` f5 | CONFIRMED |
-| MXU-id field width | 2 bits (JF/PF: physical select) / 4 bits (VF MXU-id @ 64, glc @ 66) / 2 bits (gfc @ 70) | encoder | CONFIRMED |
-| matpush / latch tile | 8 × 128 or 4 × 256 | vmatpush perf-counter string | CONFIRMED |
-| vreg shape | 8 sublanes × 128 lanes | `Target::SublaneCount` @ `0x1d60f300` = 8, `LaneCount` @ `0x1d60f400` = 128 | CONFIRMED |
+| Quantity | Value | Source |
+|---|---|---|
+| Systolic array | 128 × 128 (JF/DF/PF/VF) / 256 × 256 (Ghostlite, 6acc60406) | base `Target` `LaneCount`; `GhostliteTarget::MxuContractingSize`/`MxuNoncontractingSize` @ `0x1d497840`/`0x1d497860` = 256 |
+| MXUs per TensorCore | 1 (JF) / 2 (Dragonfish) / 4 (PF, VF) / 2 (Ghostlite, 6acc60406) | `NumVexSlots`, `VectorIsa.mxu_count` f5 |
+| MXU-id field width | 2 bits (JF/PF: physical select) / 4 bits (VF MXU-id @ 64, glc @ 66) / 2 bits (gfc @ 70) | encoder |
+| matpush / latch tile | 8 × 128 or 4 × 256 | vmatpush perf-counter string |
+| vreg shape | 8 sublanes × 128 lanes | `Target::SublaneCount` @ `0x1d60f300` = 8, `LaneCount` @ `0x1d60f400` = 128 |
 
 On the 128×128 generations the array is filled by sixteen 8×128 matpush tiles (or eight 4×256); the moving operand streams through, one `vmatmul` advances one systolic step, and the result drains via `vmatres` after the array latency. The per-format matmul latency tables are on the per-gen cost pages — they are *not* a single constant across generations.
 

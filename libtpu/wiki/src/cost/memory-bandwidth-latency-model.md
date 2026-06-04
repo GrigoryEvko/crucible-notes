@@ -75,12 +75,12 @@ The `rv[latency_lane] == 0.0` guard is the **once-per-lane** rule: the DMA start
 
 Decoded from the `vmovsd xmm0, [rodata]` immediates inside each per-gen override (all `.rodata` doubles verified byte-exact):
 
-| dst MemorySpace | Jellyfish (v2/v3) | Pufferfish (v4) | Viperfish (v5p) | Ghostlite (v6e) | base | Confidence |
-|---|---:|---:|---:|---:|---|---|
-| VMEM (`MS=3`) | 240 | 555 | 0 | 0 | `LogFatal` | CERTAIN |
-| CMEM (`MS=4`) | 240 | **50** | 1200 | 1200 | `LogFatal` | CERTAIN |
-| SMEM (`MS=5`) | 240 | 555 | 1200 | 1200 | `LogFatal` | CERTAIN |
-| HBM / any other | 240 | 555 | 1200 | 1200 | `LogFatal` | CERTAIN |
+| dst MemorySpace | Jellyfish (v2/v3) | Pufferfish (v4) | Viperfish (v5p) | Ghostlite (v6e) | base |
+|---|---:|---:|---:|---:|---|
+| VMEM (`MS=3`) | 240 | 555 | 0 | 0 | `LogFatal` |
+| CMEM (`MS=4`) | 240 | **50** | 1200 | 1200 | `LogFatal` |
+| SMEM (`MS=5`) | 240 | 555 | 1200 | 1200 | `LogFatal` |
+| HBM / any other | 240 | 555 | 1200 | 1200 | `LogFatal` |
 
 The three dispatch shapes, each confirmed byte-exact in the decompile:
 
@@ -101,12 +101,12 @@ LogFatal();                                // never reached for a configured tar
 
 Latency rodata constants (decoded from `.rodata`):
 
-| VA | double | role | Confidence |
-|---|---:|---|---|
-| `0xa2de6a8` | `240.0` | Jellyfish, all tiers | CERTAIN |
-| `0xa2dcd40` | `555.0` | Pufferfish default (table index 0) | CERTAIN |
-| `0xa2dcd48` | `50.0` | Pufferfish CMEM (table index 1) | CERTAIN |
-| `0xa2df9f8` | `1200.0` | Viperfish / Ghostlite non-VMEM | CERTAIN |
+| VA | double | role |
+|---|---:|---|
+| `0xa2de6a8` | `240.0` | Jellyfish, all tiers |
+| `0xa2dcd40` | `555.0` | Pufferfish default (table index 0) |
+| `0xa2dcd48` | `50.0` | Pufferfish CMEM (table index 1) |
+| `0xa2df9f8` | `1200.0` | Viperfish / Ghostlite non-VMEM |
 
 > **GOTCHA —** Pufferfish's CMEM destination is **cheaper** (50 ns) than every other tier (555 ns), the only tier where a non-HBM destination lowers startup cost. The 2-entry table at `0xa2dcd40` is indexed by the boolean `dst == kCmem(4)`; a reimplementation that hardcodes a single PF latency will misprice every CMEM-targeted DMA by 11×. Conversely, on Viperfish/Ghostlite the *only* cheap tier is VMEM (0 ns) — every non-VMEM destination, including CMEM and SMEM, pays the full 1200 ns. The polarity of the cheap tier flips between v4 and v5p+.
 
@@ -202,13 +202,13 @@ function GetBytesPerCycle(HloInstruction* hlo, Target t, MemorySpace ms):  // @0
 
 The geometry is `bytes_per_cycle = FullChipBytesPerSecond / (TC_MHz · 1e6) / CoresPerChip`: the chip's aggregate memory rate, converted to bytes-per-second-per-cycle by dividing by the clock in Hz, then split across the chip's TensorCores. The `1e6` multiplier was confirmed at `.rodata 0xa2e0208 = 1000000.0`; `HbmFullChipBytesPerSecond` is a plain field read at `Target+0x4f0` (populated from chip parts); `CoresPerChip` reads a per-`TpuCoreType` count from the topology.
 
-| Source | Address | Meaning | Confidence |
-|---|---|---|---|
-| `TensorCoreFrequencyInMegaHertz` | `0x1d615b60` | TC clock (MHz); pure `mov 0x90c(%rdi),%eax` read of the `Target+0x90C` `int32` field, populated from chip parts (per-codename value CONFIRMED: v6e 1750, v7x 1900) | CERTAIN |
-| `HbmFullChipBytesPerSecond` | `0x1d6172a0` | `Target+0x4f0` field (full-chip HBM B/s) | CERTAIN |
-| `CmemFullChipBytesPerSecond` | `0x1d6172c0` | full-chip CMEM B/s (kCmem path) | CERTAIN |
-| `CoresPerChip` | `0x1d615b40` | per-`TpuCoreType` core count from topology | CERTAIN |
-| `1e6` Hz multiplier | `0xa2e0208` | MHz → Hz | CERTAIN |
+| Source | Address | Meaning |
+|---|---|---|
+| `TensorCoreFrequencyInMegaHertz` | `0x1d615b60` | TC clock (MHz); pure `mov 0x90c(%rdi),%eax` read of the `Target+0x90C` `int32` field, populated from chip parts (per-codename value CONFIRMED: v6e 1750, v7x 1900) |
+| `HbmFullChipBytesPerSecond` | `0x1d6172a0` | `Target+0x4f0` field (full-chip HBM B/s) |
+| `CmemFullChipBytesPerSecond` | `0x1d6172c0` | full-chip CMEM B/s (kCmem path) |
+| `CoresPerChip` | `0x1d615b40` | per-`TpuCoreType` core count from topology |
+| `1e6` Hz multiplier | `0xa2e0208` | MHz → Hz |
 
 > **GOTCHA —** `GetBytesPerCycle` is only valid for `kHbm` and `kCmem`; any other `MemorySpace` triggers `LogFatal("m_space == MemorySpace::kHbm || m_space == MemorySpace::kCmem")` at `fusion_util.cc:2354`. VMEM/SMEM transfers are *not* priced through this function — their cycle cost rides the HBM `bytes_per_cycle` denominator and the per-direction VMEM lane inside `WindowCycles` (below), not a VMEM-specific `bytes_per_cycle`. The two **override hatches** — the `GetTpuCompEnv[+0x1040]` chip-wide env value and the per-op `FlagConfig` double — let a caller pin `bytes_per_cycle` for benchmarking; a reimplementation that ignores them will diverge whenever the env or a custom-call backend config sets a non-zero HBM bandwidth.
 
@@ -260,12 +260,12 @@ The two-lane block (confirmed at `@0x1455282e`) is the explicit roofline; on v5p
 
 The VLOG-6 trace at `fusion_util.cc:3474` names every intermediate, confirming the model is a two-lane max: `"hbm_percentage"`, `"vmem_percentage"`, `"hbm_bytes"`, `"vmem_bytes"`, `"mem_bw"`, `"vmem_byte_rate"`, `"hbmbw"`, `"vmembw"`, `"hbmlatency"`, `"vmemlatency"`, and `"next_gen"` (the v5p+ marker, `fusion_util.cc:3481`).
 
-| rodata / vtable | value / offset | role | Confidence |
-|---|---|---|---|
-| `0xa2ce650` | `[1000.0, 1000.0]` | per-direction byte→rate divisor (v5p+) | CERTAIN |
-| `0xa2d8020` | `[0.01, 0.01]` | per-direction 1% percentage gate (`vcmpnlepd`) | CERTAIN |
-| `vtable[+0x590]` | `== 1` | per-gen count-descriptors predicate | HIGH |
-| `Target+0x398` | `>= 5` | v5p+ two-lane gate (`TpuVersion`) | CERTAIN |
+| rodata / vtable | value / offset | role |
+|---|---|---|
+| `0xa2ce650` | `[1000.0, 1000.0]` | per-direction byte→rate divisor (v5p+) |
+| `0xa2d8020` | `[0.01, 0.01]` | per-direction 1% percentage gate (`vcmpnlepd`) |
+| `vtable[+0x590]` | `== 1` | per-gen count-descriptors predicate |
+| `Target+0x398` | `>= 5` | v5p+ two-lane gate (`TpuVersion`) |
 
 > **NOTE —** the `c` (5th) argument selects the startup source: `c == -1` uses `DefaultHbmInitLatency`; any other `c` uses `TC_GHz · c` as an explicit per-call startup count (so `c == 0` yields a zero startup *inside* `WindowCycles`). `RecordMemXferCyclesImpl` passes `c == 0` — it deposits the per-tier `DefaultHbmInitLatency` into a *separate* latency lane itself (see [§The arithmetic](#the-arithmetic)) and uses `WindowCycles` only for the bandwidth term. The callers that pass `c == -1` are `permutation_util::IterateThroughWindowConfigs @0x145350c0` and `SelectAndScatterEmitter::EmitR3plus @0x10e71320`, where the startup is folded into the single returned cycle value. The conv classic-window path (`SpatialMajorConvolution::CalculateClassicWindowCost @0x131626c0`) is the only caller that passes non-zero `hbm_b`/`vmem_b` and so the only one that reaches the two-lane roofline block.
 
@@ -281,25 +281,25 @@ Distinct from the `bytes_per_cycle` *cycle-cost* denominator, the per-tier `Loca
 
 Decoded from the `return <ieee754>` immediates in each per-gen override; `—` = no override (base returns `nullopt` = not modelled). Viperfish columns show `default / lite` where the `variant_name == "lite"` gate applies (all immediates verified byte-exact):
 
-| Pair (Src→Dst) | Dragonfish | Pufferfish | Viperfish (def/lite) | Ghostlite | Confidence |
-|---|---:|---:|---:|---:|---|
-| HBM → HBM | — | 480 | 72 / 308 | 64 | CERTAIN |
-| HBM → VMEM | 423 | 481 | 1198 / 822 | 1285 | CERTAIN |
-| HBM → SMEM | — | 34 | 55 / 56 | 55 | CERTAIN |
-| HBM → CMEM | *(via VmemToVmem slot)* | *(via VmemToVmem)* | *(via VmemToVmem)* | *(via VmemToVmem)* | CERTAIN |
-| VMEM → HBM | 423 | 1111 | 1224 / 828 | 1432 | CERTAIN |
-| VMEM → VMEM | — | 544 | 72 / 827 | 64 | CERTAIN |
-| VMEM → CMEM | — | 1121 | — | — | CERTAIN |
-| VMEM → SMEM | — | 34 | 55 / 56 | 55 | CERTAIN |
-| CMEM → HBM | — | 1080 | — | — | CERTAIN |
-| CMEM → VMEM | — | 2339 | — | — | CERTAIN |
-| CMEM → CMEM | — | 1193 | — | — | CERTAIN |
-| CMEM → SMEM | — | 34 | — | — | CERTAIN |
-| SMEM → HBM | — | 34 | 55 / 56 | 55 | CERTAIN |
-| SMEM → VMEM | — | 34 | 55 / 56 | 55 | CERTAIN |
-| SMEM → CMEM | — | 34 | — | — | CERTAIN |
-| SMEM → SMEM | — | 17 | 28 | 28 | CERTAIN |
-| SPMEM → HBM | — | — | 587.4 | 588 | CERTAIN |
+| Pair (Src→Dst) | Dragonfish | Pufferfish | Viperfish (def/lite) | Ghostlite |
+|---|---:|---:|---:|---:|
+| HBM → HBM | — | 480 | 72 / 308 | 64 |
+| HBM → VMEM | 423 | 481 | 1198 / 822 | 1285 |
+| HBM → SMEM | — | 34 | 55 / 56 | 55 |
+| HBM → CMEM | *(via VmemToVmem slot)* | *(via VmemToVmem)* | *(via VmemToVmem)* | *(via VmemToVmem)* |
+| VMEM → HBM | 423 | 1111 | 1224 / 828 | 1432 |
+| VMEM → VMEM | — | 544 | 72 / 827 | 64 |
+| VMEM → CMEM | — | 1121 | — | — |
+| VMEM → SMEM | — | 34 | 55 / 56 | 55 |
+| CMEM → HBM | — | 1080 | — | — |
+| CMEM → VMEM | — | 2339 | — | — |
+| CMEM → CMEM | — | 1193 | — | — |
+| CMEM → SMEM | — | 34 | — | — |
+| SMEM → HBM | — | 34 | 55 / 56 | 55 |
+| SMEM → VMEM | — | 34 | 55 / 56 | 55 |
+| SMEM → CMEM | — | 34 | — | — |
+| SMEM → SMEM | — | 17 | 28 | 28 |
+| SPMEM → HBM | — | — | 587.4 | 588 |
 
 Structural facts a reimplementer must respect:
 

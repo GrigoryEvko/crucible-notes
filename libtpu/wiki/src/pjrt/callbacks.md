@@ -148,15 +148,15 @@ function PJRT_CopyToDeviceStream_AddChunk(args):
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `PJRT_LoadedExecutable_Execute` | `0xf869b40` | Slot 60; receives `PJRT_ExecuteOptions` with the callback arrays | CERTAIN |
-| `xla::(anon)::SetUpHostCallbacksForDevice` | (`tpu_pjrt_client.cc`) | Translates `Span<SendCallback>`/`Span<RecvCallback>` into the per-launch `TpuHostTransferManager` maps | CONFIRMED |
-| `pjrt::CSendCallbackToCpp` | inner @ `0xf876680` | Wraps a C `send_callback` into a C++ `std::function`; maps `PJRT_Error_Code`→`Status` | CONFIRMED |
-| `pjrt::CRecvCallbackToCpp` | — | Wraps a C `recv_callback` into a `std::function` driving a `CopyToDeviceStream` | HIGH |
-| `pjrt::ConvertToCppChunk` | `0xf8a5280` | Decodes the 32-byte `PJRT_Chunk`, re-wraps the C deleter as a C++ closure | CONFIRMED |
-| `pjrt::PJRT_CopyToDeviceStream_AddChunk` | `0xf86f660` | Slot 83; host pushes a chunk into the recv stream | CONFIRMED |
-| `xla::(anon)::TpuCopyToDeviceStream::AddChunk` | `0xf8374e0` | Stream-side AddChunk into the transfer manager | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `PJRT_LoadedExecutable_Execute` | `0xf869b40` | Slot 60; receives `PJRT_ExecuteOptions` with the callback arrays |
+| `xla::(anon)::SetUpHostCallbacksForDevice` | (`tpu_pjrt_client.cc`) | Translates `Span<SendCallback>`/`Span<RecvCallback>` into the per-launch `TpuHostTransferManager` maps |
+| `pjrt::CSendCallbackToCpp` | inner @ `0xf876680` | Wraps a C `send_callback` into a C++ `std::function`; maps `PJRT_Error_Code`→`Status` |
+| `pjrt::CRecvCallbackToCpp` | — | Wraps a C `recv_callback` into a `std::function` driving a `CopyToDeviceStream` |
+| `pjrt::ConvertToCppChunk` | `0xf8a5280` | Decodes the 32-byte `PJRT_Chunk`, re-wraps the C deleter as a C++ closure |
+| `pjrt::PJRT_CopyToDeviceStream_AddChunk` | `0xf86f660` | Slot 83; host pushes a chunk into the recv stream |
+| `xla::(anon)::TpuCopyToDeviceStream::AddChunk` | `0xf8374e0` | Stream-side AddChunk into the transfer manager |
 
 > **GOTCHA — an unregistered channel is a fatal crash.** Once `SetUpHostCallbacksForDevice` has populated the `TpuHostTransferManager` maps, a device `Send`/`Recv` whose channel id has no matching callback is a `LOG(FATAL)`, not a silent drop. This is enforced one layer down, in `HandleSendChunk`/`HandleRecvChunk`; see [Host Callbacks §2.3](../runtime/host-callbacks.md). The C-ABI layer's responsibility is to ensure every `PJRT_SendCallbackInfo`/`PJRT_RecvCallbackInfo` the program needs is present in `PJRT_ExecuteOptions` before the launch. Confidence: CONFIRMED.
 
@@ -302,19 +302,19 @@ function InvokeCallbacks(this, status):                        // sub_F95DC80
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `pjrt::CreateCallbackExtension` | `0xe6b91e0` | Builds the type-14 extension struct (size 40, two fn ptrs) | CONFIRMED |
-| `pjrt::(anon)::PJRT_Callback_RegisterCallback` | `0xe6b9220` | Registers a slice-builder (`1`) or pre-fatal (`2`) callback | CONFIRMED |
-| `pjrt::(anon)::PJRT_Callback_InvokeCallback` | `0xe6b94c0` | Fires the pre-fatal callbacks from the C ABI | CONFIRMED |
-| `RegisterPrefatalCallback::$_0` trampoline | `0xe6b9700` | C++ `Status` → C `(code, msg)`; calls the user C fn | CONFIRMED |
-| `xla::PreFatalErrorCallbackState::AddCallback` | `0xf95dc00` | Append-only, mutex-guarded register | CONFIRMED |
-| `xla::PreFatalErrorCallbackState::InvokeCallbacks` | `0xf95dc80` | Fire all, in order, under the lock | CONFIRMED |
-| `xla::PreFatalErrorCallbackState` ctor | `0xf95dbe0` | Zero-init the 32-byte registry (vxorps/vmovups) | CONFIRMED |
-| `xla::SliceBuilderCallbackState::AddCallback` | `0xf95df80` | Slice-builder analogue (`type==1`) | CONFIRMED |
-| `xla::SliceBuilderCallbackState::InvokeCallbacks` | `0xf95e000` | Slice-builder fire | CONFIRMED |
-| `pjrt::StatusCodeToPjrtErrorCode` | `0xf8a3cc0` | absl code → `PJRT_Error_Code` (identity for 0–16; `LOG(FATAL)` on the `INT_MIN/INT_MAX/DO_NOT_USE` sentinels, `pjrt_c_api_helpers.cc:251-256`) | CERTAIN |
-| `pjrt::PjrtErrorCodeToStatusCode` | `0xf8a3ca0` | `PJRT_Error_Code` → absl code (pure identity: `return a1`) | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `pjrt::CreateCallbackExtension` | `0xe6b91e0` | Builds the type-14 extension struct (size 40, two fn ptrs) |
+| `pjrt::(anon)::PJRT_Callback_RegisterCallback` | `0xe6b9220` | Registers a slice-builder (`1`) or pre-fatal (`2`) callback |
+| `pjrt::(anon)::PJRT_Callback_InvokeCallback` | `0xe6b94c0` | Fires the pre-fatal callbacks from the C ABI |
+| `RegisterPrefatalCallback::$_0` trampoline | `0xe6b9700` | C++ `Status` → C `(code, msg)`; calls the user C fn |
+| `xla::PreFatalErrorCallbackState::AddCallback` | `0xf95dc00` | Append-only, mutex-guarded register |
+| `xla::PreFatalErrorCallbackState::InvokeCallbacks` | `0xf95dc80` | Fire all, in order, under the lock |
+| `xla::PreFatalErrorCallbackState` ctor | `0xf95dbe0` | Zero-init the 32-byte registry (vxorps/vmovups) |
+| `xla::SliceBuilderCallbackState::AddCallback` | `0xf95df80` | Slice-builder analogue (`type==1`) |
+| `xla::SliceBuilderCallbackState::InvokeCallbacks` | `0xf95e000` | Slice-builder fire |
+| `pjrt::StatusCodeToPjrtErrorCode` | `0xf8a3cc0` | absl code → `PJRT_Error_Code` (identity for 0–16; `LOG(FATAL)` on the `INT_MIN/INT_MAX/DO_NOT_USE` sentinels, `pjrt_c_api_helpers.cc:251-256`) |
+| `pjrt::PjrtErrorCodeToStatusCode` | `0xf8a3ca0` | `PJRT_Error_Code` → absl code (pure identity: `return a1`) |
 
 ---
 

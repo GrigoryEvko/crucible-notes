@@ -69,19 +69,19 @@ VectorExtended slot — op-invariant scan frame (gfc; AddScanS32 reference)
                └───────────┴───────────┘
 ```
 
-| Field | Word | Shift | Width | Present in | Accessor (gfc) | Confidence |
-|---|---:|---:|---:|---|---|---|
-| `Opcode` | `0x28` | 16 | 6 | all | (Matches predicate, `byte+0x2a & 0x3f`) | CONFIRMED |
-| `SourceOne` | `0x28` | 13 | 3 | all (scan seed-port selector) | `…AddScanS32SourceOneField` `0x1eca7c40` | CONFIRMED |
-| `Vmask` | `0x28` | 5 | 5 | all *except* `VectorMoveConstrained` | `…AddScanS32VmaskField` `0x1eca7d40` | CONFIRMED |
-| `VstSource` | `0x30` | 27 | 6 | all (fused store source) | `…AddScanS32VstSourceField` `0x1eca7c60` | CONFIRMED |
-| `V0YVreg` | `0x38`/`0x40` | (shld 4) | 6 | all (operand-0 VREG) | `…AddScanS32V0YVregField` `0x1eca7c80` | CONFIRMED |
-| `V1YVreg` | `0x38` | 23 | 6 | all (operand-1 VREG) | `…AddScanS32V1YVregField` `0x1eca7cc0` | CONFIRMED |
-| `V2YVreg` | `0x30` | 50 | 6 | all (operand-2 VREG) | `…AddScanS32V2YVregField` `0x1eca7d00` | CONFIRMED |
-| `SourceTwo` | `0x28` | 10 | 3 | `Sort*` only (key+payload 2nd src) | `…SortIntegerAscendingSourceTwoField` `0x1ecaade0` | CONFIRMED |
-| `VexDest` | `0x28` | 10 | **1** | `VectorMoveConstrained` only | `…VectorMoveConstrainedVexDestField` `0x1ecab840` | CONFIRMED |
-| `VresDestOne` | `0x20` | 53 | 6 | `VectorMoveConstrained` only | `…VectorMoveConstrainedVresDestOneField` `0x1ecab860` | CONFIRMED |
-| `VresDestTwo` | `0x20` | 47 | 6 | `VectorMoveConstrained` only | `…VectorMoveConstrainedVresDestTwoField` `0x1ecab880` | CONFIRMED |
+| Field | Word | Shift | Width | Present in | Accessor (gfc) |
+|---|---:|---:|---:|---|---|
+| `Opcode` | `0x28` | 16 | 6 | all | (Matches predicate, `byte+0x2a & 0x3f`) |
+| `SourceOne` | `0x28` | 13 | 3 | all (scan seed-port selector) | `…AddScanS32SourceOneField` `0x1eca7c40` |
+| `Vmask` | `0x28` | 5 | 5 | all *except* `VectorMoveConstrained` | `…AddScanS32VmaskField` `0x1eca7d40` |
+| `VstSource` | `0x30` | 27 | 6 | all (fused store source) | `…AddScanS32VstSourceField` `0x1eca7c60` |
+| `V0YVreg` | `0x38`/`0x40` | (shld 4) | 6 | all (operand-0 VREG) | `…AddScanS32V0YVregField` `0x1eca7c80` |
+| `V1YVreg` | `0x38` | 23 | 6 | all (operand-1 VREG) | `…AddScanS32V1YVregField` `0x1eca7cc0` |
+| `V2YVreg` | `0x30` | 50 | 6 | all (operand-2 VREG) | `…AddScanS32V2YVregField` `0x1eca7d00` |
+| `SourceTwo` | `0x28` | 10 | 3 | `Sort*` only (key+payload 2nd src) | `…SortIntegerAscendingSourceTwoField` `0x1ecaade0` |
+| `VexDest` | `0x28` | 10 | **1** | `VectorMoveConstrained` only | `…VectorMoveConstrainedVexDestField` `0x1ecab840` |
+| `VresDestOne` | `0x20` | 53 | 6 | `VectorMoveConstrained` only | `…VectorMoveConstrainedVresDestOneField` `0x1ecab860` |
+| `VresDestTwo` | `0x20` | 47 | 6 | `VectorMoveConstrained` only | `…VectorMoveConstrainedVresDestTwoField` `0x1ecab880` |
 
 The accessor bodies decode exactly:
 
@@ -273,23 +273,23 @@ Viperfish uses **coarse Float/Integer-merged names** — `FloatAddScan`, `Intege
 
 ## Function Map
 
-| Symbol (gfc) | Address | Role | Confidence |
-|---|---|---|---|
-| `…VectorExtendedAddScanS32Opcode::Matches` | `0x1eca7520` | op 0 predicate (`byte+0x2a & 0x3f == 0`) — the base op | CONFIRMED |
-| `…VectorExtendedMaxScanU32Opcode::Matches` | `0x1eca7560` | op 2 (`& 0x3f0000 == 0x20000`) | CONFIRMED |
-| `…VectorExtendedSortFloatDescendingOpcode::Matches` | `0x1eca7b00` | op 23 (`0x170000 >> 16`) | CONFIRMED |
-| `…VectorExtendedVectorMoveConstrainedOpcode::Matches` | `0x1eca7ba0` | op 52 (`0x340000 >> 16`) — gfc-only | CONFIRMED |
-| `…VectorExtendedAddScanS32SourceOneField` | `0x1eca7c40` | `SourceOne` @ `word0x28 >> 13 & 7` (seed-port selector) | CONFIRMED |
-| `…VectorExtendedAddScanS32VstSourceField` | `0x1eca7c60` | `VstSource` @ `word0x30 >> 27 & 0x3f` (== VectorStore `Source`) | CONFIRMED |
-| `…VectorExtendedAddScanS32VmaskField` | `0x1eca7d40` | `Vmask` @ `word0x28 >> 5 & 0x1f` | CONFIRMED |
-| `…VectorExtendedAddScanS32V2YVregField` | `0x1eca7d00` | `V2YVreg` @ `word0x30 >> 50 & 0x3f` | CONFIRMED |
-| `…VectorExtendedAddScanS32V0YVregField` | `0x1eca7c80` | `V0YVreg` straddling `word0x38`/`0x40` (shld 4) | CONFIRMED |
-| `…VectorExtendedSortIntegerAscendingSourceTwoField` | `0x1ecaade0` | `SourceTwo` @ `word0x28 >> 10 & 7` (Sort key+payload) | CONFIRMED |
-| `…VectorExtendedVectorMoveConstrainedVexDestField` | `0x1ecab840` | `VexDest` @ `word0x28 >> 10 & 1` (1-bit; see VEX-1) | CONFIRMED |
-| `…VectorExtendedVectorMoveConstrainedVresDestOneField` | `0x1ecab860` | `VresDestOne` @ `word0x20 >> 53 & 0x3f` | CONFIRMED |
-| `…VectorExtendedVectorMoveConstrainedVresDestTwoField` | `0x1ecab880` | `VresDestTwo` @ `word0x20 >> 47 & 0x3f` | CONFIRMED |
-| `ConsumeOneTecVexBundleInstruction` (glc) | `0x13a15ba0` | inline VEX orchestrator; main jump table dispatch | CONFIRMED |
-| `EmitVectorSort<…>` (vfc) | `0x139d2dc0` | the 4-arm sort emitter | CONFIRMED |
+| Symbol (gfc) | Address | Role |
+|---|---|---|
+| `…VectorExtendedAddScanS32Opcode::Matches` | `0x1eca7520` | op 0 predicate (`byte+0x2a & 0x3f == 0`) — the base op |
+| `…VectorExtendedMaxScanU32Opcode::Matches` | `0x1eca7560` | op 2 (`& 0x3f0000 == 0x20000`) |
+| `…VectorExtendedSortFloatDescendingOpcode::Matches` | `0x1eca7b00` | op 23 (`0x170000 >> 16`) |
+| `…VectorExtendedVectorMoveConstrainedOpcode::Matches` | `0x1eca7ba0` | op 52 (`0x340000 >> 16`) — gfc-only |
+| `…VectorExtendedAddScanS32SourceOneField` | `0x1eca7c40` | `SourceOne` @ `word0x28 >> 13 & 7` (seed-port selector) |
+| `…VectorExtendedAddScanS32VstSourceField` | `0x1eca7c60` | `VstSource` @ `word0x30 >> 27 & 0x3f` (== VectorStore `Source`) |
+| `…VectorExtendedAddScanS32VmaskField` | `0x1eca7d40` | `Vmask` @ `word0x28 >> 5 & 0x1f` |
+| `…VectorExtendedAddScanS32V2YVregField` | `0x1eca7d00` | `V2YVreg` @ `word0x30 >> 50 & 0x3f` |
+| `…VectorExtendedAddScanS32V0YVregField` | `0x1eca7c80` | `V0YVreg` straddling `word0x38`/`0x40` (shld 4) |
+| `…VectorExtendedSortIntegerAscendingSourceTwoField` | `0x1ecaade0` | `SourceTwo` @ `word0x28 >> 10 & 7` (Sort key+payload) |
+| `…VectorExtendedVectorMoveConstrainedVexDestField` | `0x1ecab840` | `VexDest` @ `word0x28 >> 10 & 1` (1-bit; see VEX-1) |
+| `…VectorExtendedVectorMoveConstrainedVresDestOneField` | `0x1ecab860` | `VresDestOne` @ `word0x20 >> 53 & 0x3f` |
+| `…VectorExtendedVectorMoveConstrainedVresDestTwoField` | `0x1ecab880` | `VresDestTwo` @ `word0x20 >> 47 & 0x3f` |
+| `ConsumeOneTecVexBundleInstruction` (glc) | `0x13a15ba0` | inline VEX orchestrator; main jump table dispatch |
+| `EmitVectorSort<…>` (vfc) | `0x139d2dc0` | the 4-arm sort emitter |
 
 Cross-gen anchors: glc `AddScanS32::Matches` (`0x1eb2cd20`) masks `0x1F80` of the 16-bit at byte 41 → opcode field 6-bit @ `word0x28` bit 15 (vs gfc bit 16). The per-gen `Matches`-symbol counts — vfc 28, glc 52, gfc 53 — were re-confirmed by per-namespace enumeration; the vfc names are the coarse `Float`/`Integer`-merged set (`FloatAddScan`, `IntegerMaxScan`, `SegmentedFloatMinScan`).
 

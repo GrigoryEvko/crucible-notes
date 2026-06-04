@@ -39,24 +39,24 @@ For reimplementation, the contract is:
 
 `xla::jellyfish::operator<<(ostream&, MatmulMode)` `@0x1d6294e0` is a `jmp *jt[ord]` dispatcher over a 16-entry jump table (`@0xb53c6e4`); each case builds its display string inline. Decoded byte-exact and bound 1:1 to the 16-entry weight table `@0xae0f480`:
 
-| Ord | MatmulMode | Weight | Group / feed role | Confidence |
-|---:|---|---:|---|---|
-| 0 | Round | 5 | bf16/fp32 — round-to-nearest, single pass | HIGH |
-| 1 | High | 4 | bf16/fp32 — high-significand pass | HIGH |
-| 2 | Low | 3 | bf16/fp32 — low-significand pass | HIGH |
-| 3 | Soft Middle Eight | 2 | bf16 3-pass split — middle 8 bits | HIGH |
-| 4 | Soft Low Eight | 1 | bf16 3-pass split — low 8 bits | HIGH |
-| 5 | Soft Byte 0 | 40 | int8 ×8 — byte plane 0 | HIGH |
-| 6 | Soft Signed Byte 0 | 40 | int8 ×8 signed — byte plane 0 | HIGH |
-| 7 | Soft Byte 1 | 30 | int8 ×8 — byte plane 1 | HIGH |
-| 8 | Soft Signed Byte 1 | 30 | int8 ×8 signed — byte plane 1 | HIGH |
-| 9 | Soft Byte 2 | 20 | int8 ×8 — byte plane 2 | HIGH |
-| 10 | Soft Byte 3 | 10 | int8 ×8 — byte plane 3 (top) | HIGH |
-| 11 | Soft Signed Byte 3 | 10 | int8 ×8 signed — byte plane 3 | HIGH |
-| 12 | Nibble 0 | 40 | int4 ×4 — nibble plane 0 | HIGH |
-| 13 | Signed Nibble 0 | 40 | int4 ×4 signed — nibble plane 0 | HIGH |
-| 14 | Nibble 1 | 40 | int4 ×4 — nibble plane 1 | HIGH |
-| 15 | Signed Nibble 1 | 40 | int4 ×4 signed — nibble plane 1 | HIGH |
+| Ord | MatmulMode | Weight | Group / feed role |
+|---:|---|---:|---|
+| 0 | Round | 5 | bf16/fp32 — round-to-nearest, single pass |
+| 1 | High | 4 | bf16/fp32 — high-significand pass |
+| 2 | Low | 3 | bf16/fp32 — low-significand pass |
+| 3 | Soft Middle Eight | 2 | bf16 3-pass split — middle 8 bits |
+| 4 | Soft Low Eight | 1 | bf16 3-pass split — low 8 bits |
+| 5 | Soft Byte 0 | 40 | int8 ×8 — byte plane 0 |
+| 6 | Soft Signed Byte 0 | 40 | int8 ×8 signed — byte plane 0 |
+| 7 | Soft Byte 1 | 30 | int8 ×8 — byte plane 1 |
+| 8 | Soft Signed Byte 1 | 30 | int8 ×8 signed — byte plane 1 |
+| 9 | Soft Byte 2 | 20 | int8 ×8 — byte plane 2 |
+| 10 | Soft Byte 3 | 10 | int8 ×8 — byte plane 3 (top) |
+| 11 | Soft Signed Byte 3 | 10 | int8 ×8 signed — byte plane 3 |
+| 12 | Nibble 0 | 40 | int4 ×4 — nibble plane 0 |
+| 13 | Signed Nibble 0 | 40 | int4 ×4 signed — nibble plane 0 |
+| 14 | Nibble 1 | 40 | int4 ×4 — nibble plane 1 |
+| 15 | Signed Nibble 1 | 40 | int4 ×4 signed — nibble plane 1 |
 
 > **NOTE —** ordinal 4's `operator<<` display string is the literal `"Soft Low Eight"` (length 14, three space-separated words). This is the jellyfish C++ enum's print string and is distinct from the MLIR `llo::MatmulMode` attribute spelling `soft_low_eight` (underscores) emitted by `MatmulModeAttr::print` — the two enums print differently; see the second-enum NOTE at the end of this page.
 
@@ -179,19 +179,19 @@ The latch (matpush) and vector-transpose ops feed the format byte through `GainL
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `operator<<(ostream&, MatmulMode)` | `0x1d6294e0` | 16-case display dispatcher (jt `@0xb53c6e4`) | HIGH |
-| `ConvMatmulModes::operator<` | `0x130e12a0` | pair comparator — `W[lhs]+W[rhs]` | CERTAIN |
-| `SpatialMajorConvolution::GetMatmulModes(long)` | `0x130dfbe0` | per-dtype candidate mode list | CERTAIN |
-| `SpatialMajorConvolution::GetMatmulModes()` | `0x130df600` | cross-product, skip `{Low,Low}`, `stable_sort` | HIGH |
-| `convolution_util::GetConvPrecision` | `0x131916e0` | bf16 precision 0 / 1 / 2 selector | HIGH |
-| `convolution_util::GetMatmulDataFormat` | `0x1307be40` | dtype + strategy → format code (jt `@0xae0d6f4`) | CERTAIN |
-| `GainLatchModeToMatmulDataFormat` | `0x1d629260` | latch mode → format byte (matpush key byte[0]) | CERTAIN |
-| `LatchModeIsTranspose` | `0x1d628ea0` | matpush key transpose bytes | HIGH |
-| `LatchOpcodeToMsr` | `0x1c8a1300` | matpush key staging-register byte | HIGH |
-| weight table | `0xae0f480` | `[5,4,3,2,1,40,40,30,30,20,10,10,40,40,40,40]` | CERTAIN |
-| matmul-format key list | `0x84a2644` | `01,02,03,04,…` — matmul key byte[0] source | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `operator<<(ostream&, MatmulMode)` | `0x1d6294e0` | 16-case display dispatcher (jt `@0xb53c6e4`) |
+| `ConvMatmulModes::operator<` | `0x130e12a0` | pair comparator — `W[lhs]+W[rhs]` |
+| `SpatialMajorConvolution::GetMatmulModes(long)` | `0x130dfbe0` | per-dtype candidate mode list |
+| `SpatialMajorConvolution::GetMatmulModes()` | `0x130df600` | cross-product, skip `{Low,Low}`, `stable_sort` |
+| `convolution_util::GetConvPrecision` | `0x131916e0` | bf16 precision 0 / 1 / 2 selector |
+| `convolution_util::GetMatmulDataFormat` | `0x1307be40` | dtype + strategy → format code (jt `@0xae0d6f4`) |
+| `GainLatchModeToMatmulDataFormat` | `0x1d629260` | latch mode → format byte (matpush key byte[0]) |
+| `LatchModeIsTranspose` | `0x1d628ea0` | matpush key transpose bytes |
+| `LatchOpcodeToMsr` | `0x1c8a1300` | matpush key staging-register byte |
+| weight table | `0xae0f480` | `[5,4,3,2,1,40,40,30,30,20,10,10,40,40,40,40]` |
+| matmul-format key list | `0x84a2644` | `01,02,03,04,…` — matmul key byte[0] source |
 
 ---
 

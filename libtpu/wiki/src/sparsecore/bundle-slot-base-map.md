@@ -26,7 +26,6 @@ This is a reference index page, not a reimplementable algorithm; the reimplement
 | **TEC vector opcode bits (GF)** | Result `@239` · Load `@283` · Store `@353` · Alu2/1/0 `@388/425/462` |
 | **Bundle sizes** | SCS 32 · TAC 64 · TEC 64 (codec-metadata `vtable[+0x30]`) |
 | **Check trailer** | none on any SC bundle (no `0x55`); all-zero bundle = NOP |
-| **Confidence** | CONFIRMED (`BitCopy`-immediate anchored) unless a row or callout says otherwise |
 
 ---
 
@@ -36,29 +35,29 @@ This is a reference index page, not a reimplementable algorithm; the reimplement
 
 The table below is the cross-engine partition: one row per slot, with the absolute bundle-bit base and end for each engine column (an em-dash means the slot does not exist on that engine). All three engines share the low region (bits 7..191) byte-for-byte; the columns diverge only above bit 191. The opcode bit (where a slot has one) is shown in the per-engine maps that follow; in this consolidated table the opcode bit is `base + 16` for the scalar slots and the value given for the TEC vector slots.
 
-> **NOTE — the bit positions are absolute, not slot-relative.** Prior decode work reported a Stream/Dma opcode "at bit 181" and a scalar opcode "at bit 154/127" *relative to the slot*. Because the dispatcher hands every slot encoder the same buffer `Span`, those numbers are the *absolute* bundle bits: `@181` is the bundle-bit base of scalar lane 0's opcode field, full stop. A reimplementer composing a bundle writes each slot at its absolute base; there is no per-slot origin to add.
+> **NOTE — the bit positions are absolute, not slot-relative.** Because the dispatcher hands every slot encoder the same buffer `Span`, the bit numbers on this page are the *absolute* bundle bits: `@181` is the bundle-bit base of scalar lane 0's opcode field, full stop. A reimplementer composing a bundle writes each slot at its absolute base; there is no per-slot origin to add.
 
 ### The cross-engine map
 
-| Slot | SCS (32 B) | TAC (64 B, VF/GL) | TEC (64 B) | Width | Confidence |
-|---|---|---|---|---:|---|
-| (reserved header) | 0..6 | 0..6 | 0..6 | 7 | MEDIUM |
-| `Immediates` (low) | 7..86 | 7..86 | 7..86 | 80 | CONFIRMED |
-| `VectorScalar` (bridge) | 87..110 | 87..110 | 87..110 | 24 | CONFIRMED |
-| `ScalarMisc` (op `@127`) | 111..137 | 111..137 | 111..137 | 27 | CONFIRMED |
-| `ScalarAlu1` (lane 1, op `@154`) | 138..164 | 138..164 | 138..164 | 27 | CONFIRMED |
-| `ScalarAlu0` (lane 0, op `@181`) | 165..191 | 165..191 | 165..191 | 27 | CONFIRMED |
-| `Immediates` (high, 2×20-bit) | — | — | 195..234 | 40 | CONFIRMED |
-| `VectorResult` (op `@239`) | — | — | 239..260 | 22 | CONFIRMED |
-| `VectorExtended` (op `@261`) | — | — | 261..461 | ~201 | HIGH |
-| `VectorLoad` (op `@283`) | — | — | 283..321 | 39 | CONFIRMED |
-| `VectorStore` (op `@353`) | — | — | 328..363 | 36 | CONFIRMED |
-| `VectorAlu2` (lane 2, op `@388`) | — | — | 364..400 | 37 | CONFIRMED |
-| `VectorAlu1` (lane 1, op `@425`) | — | — | 401..437 | 37 | CONFIRMED |
-| `VectorAlu0` (lane 0, op `@462`) | — | — | 438..474 | 37 | CONFIRMED |
-| (reserved / pad) | 192..255 | 192..511 | 475..511 | — | HIGH |
-| `Dma` (oneof of lane) | 87..191 | 87..191 | 87..327 | — | CONFIRMED |
-| `Stream` (oneof of lane) | 99..191 | 99..191 | 99..327 | — | CONFIRMED |
+| Slot | SCS (32 B) | TAC (64 B, VF/GL) | TEC (64 B) | Width |
+|---|---|---|---|---:|
+| (reserved header) | 0..6 | 0..6 | 0..6 | 7 |
+| `Immediates` (low) | 7..86 | 7..86 | 7..86 | 80 |
+| `VectorScalar` (bridge) | 87..110 | 87..110 | 87..110 | 24 |
+| `ScalarMisc` (op `@127`) | 111..137 | 111..137 | 111..137 | 27 |
+| `ScalarAlu1` (lane 1, op `@154`) | 138..164 | 138..164 | 138..164 | 27 |
+| `ScalarAlu0` (lane 0, op `@181`) | 165..191 | 165..191 | 165..191 | 27 |
+| `Immediates` (high, 2×20-bit) | — | — | 195..234 | 40 |
+| `VectorResult` (op `@239`) | — | — | 239..260 | 22 |
+| `VectorExtended` (op `@261`) | — | — | 261..461 | ~201 |
+| `VectorLoad` (op `@283`) | — | — | 283..321 | 39 |
+| `VectorStore` (op `@353`) | — | — | 328..363 | 36 |
+| `VectorAlu2` (lane 2, op `@388`) | — | — | 364..400 | 37 |
+| `VectorAlu1` (lane 1, op `@425`) | — | — | 401..437 | 37 |
+| `VectorAlu0` (lane 0, op `@462`) | — | — | 438..474 | 37 |
+| (reserved / pad) | 192..255 | 192..511 | 475..511 | — |
+| `Dma` (oneof of lane) | 87..191 | 87..191 | 87..327 | — |
+| `Stream` (oneof of lane) | 99..191 | 99..191 | 99..327 | — |
 
 > **QUIRK — Dma and Stream are not separate slots; they are oneof forms of a scalar lane.** On every engine, a DMA or Stream instruction writes its opcode into a scalar lane's opcode field (`@181` lane 0, `@154` lane 1) and spills its multi-word descriptor into lower (and, on TEC, higher) payload bits. There is no physically separate "DMA region." A reimplementer who allocates one will double-book the lane and immediate bits. The SCS/TAC Dma descriptor stays in bits 87..142; the TEC Dma/Stream reaches up into bits 283/322 (overlapping the vector load/store region — see the [TEC map](#tec-bundle-map-64-bytes--512-bits-gf)).
 
@@ -83,15 +82,15 @@ bit:  0    7              87       111      138      165      192        255
       Stream(oneof of lane): opcode @181/@154, descriptor payload @99..142
 ```
 
-| Slot | Base | End | Width | Opcode bit | Confidence |
-|---|---:|---:|---:|---:|---|
-| (reserved header) | 0 | 6 | 7 | — | MEDIUM |
-| `ScalarImmediates` | 7 | 86 | 80 | — | CONFIRMED |
-| `VectorScalar` | 87 | 110 | 24 | — | CONFIRMED |
-| `ScsScalarMisc` | 111 | 137 | 27 | 127 | CONFIRMED |
-| `ScalarAlu1` | 138 | 164 | 27 | 154 | CONFIRMED |
-| `ScalarAlu0` | 165 | 191 | 27 | 181 | CONFIRMED |
-| (reserved / pad) | 192 | 255 | 64 | — | HIGH |
+| Slot | Base | End | Width | Opcode bit |
+|---|---:|---:|---:|---:|
+| (reserved header) | 0 | 6 | 7 | — |
+| `ScalarImmediates` | 7 | 86 | 80 | — |
+| `VectorScalar` | 87 | 110 | 24 | — |
+| `ScsScalarMisc` | 111 | 137 | 27 | 127 |
+| `ScalarAlu1` | 138 | 164 | 27 | 154 |
+| `ScalarAlu0` | 165 | 191 | 27 | 181 |
+| (reserved / pad) | 192 | 255 | 64 | — |
 
 Decompile cross-check — gfc `SparseCoreScalarAlu0Encoder::Encode` (`0x1eb693c0`) writes its `BitCopy` destination bits at `165` (x0, w5), `170` (ScalarY, w6), `176` (x1, w5), `181` (opcode, w6), and the predication header at `187/190/191` — exactly the 27-bit scalar template at slot base 165. The encoder dispatcher is gfc `SparseCoreScsCodecBase::Encode` (`0x1391ef60`).
 
@@ -101,16 +100,16 @@ Decompile cross-check — gfc `SparseCoreScalarAlu0Encoder::Encode` (`0x1eb693c0
 
 A 64-byte bundle that **reuses the SCS low region (bits 7..191) and leaves the upper 320 bits empty** — TAC has no vector path, so its width buys concurrent scalar address-op parallelism, not vector compute. Present only on Viperfish (`vxc.vfc`) and Ghostlite (`gxc.glc`); **absent on gfc** (the TAC codec survives there only as a standalone legacy path — see [Per-Generation Deltas](#per-generation-deltas)). Documented in full on [TAC Engine](tac-engine.md); the slot bases:
 
-| Slot | Base | End | Width | Opcode bit | Confidence |
-|---|---:|---:|---:|---:|---|
-| `ScalarImmediates` | 7 | 86 | 80 | — | CONFIRMED |
-| `VectorScalar` | 87 | 110 | 24 | — | CONFIRMED |
-| `ScalarMisc` | 111 | 137 | 27 | 127 | CONFIRMED |
-| `TacScalarAlu1` | 138 | 164 | 27 | 154 | CONFIRMED |
-| `TacScalarAlu0` | 165 | 191 | 27 | 181 | CONFIRMED |
-| `Dma` (oneof of lane) | 87 | 191 | — | 181 / 154 | CONFIRMED |
-| `TacStream` (oneof of lane) | 99 | 191 | — | 181 / 154 | CONFIRMED |
-| (reserved / pad) | 192 | 511 | 320 | — | CONFIRMED |
+| Slot | Base | End | Width | Opcode bit |
+|---|---:|---:|---:|---:|
+| `ScalarImmediates` | 7 | 86 | 80 | — |
+| `VectorScalar` | 87 | 110 | 24 | — |
+| `ScalarMisc` | 111 | 137 | 27 | 127 |
+| `TacScalarAlu1` | 138 | 164 | 27 | 154 |
+| `TacScalarAlu0` | 165 | 191 | 27 | 181 |
+| `Dma` (oneof of lane) | 87 | 191 | — | 181 / 154 |
+| `TacStream` (oneof of lane) | 99 | 191 | — | 181 / 154 |
+| (reserved / pad) | 192 | 511 | 320 | — |
 
 Decompile cross-check — glc `TacScalarAlu0Encoder::Encode` (`0x1ea17e40`) writes its `BitCopy` destination bits at `165/170/176/181/187/191`, byte-identical to the SCS `ScalarAlu0` slot. Sweeping the `BitCopy` immediates across `TacScalarAlu0` (`0x1ea17e40`), `TacScalarAlu1` (`0x1ea2a7a0`), `TacStream` (`0x1ea338e0`), and the shared `SparseCoreDmaEncoder` (`0x1ea09b40`), the highest bit any TAC slot writes is **191** — the upper 320 bits of the 512-bit bundle are pure padding.
 
@@ -135,25 +134,25 @@ bit: 0   7          87   111 138 165  195    239   261       283    328   364  4
      TecStream(oneof of lane): scalar opcode @181/@162, high payload @283/@322
 ```
 
-| Slot | Base | End | Width | Opcode bit | Confidence |
-|---|---:|---:|---:|---:|---|
-| (reserved header) | 0 | 6 | 7 | — | MEDIUM |
-| `Immediates` (low) | 7 | 86 | 80 | — | CONFIRMED |
-| `VectorScalar` | 87 | 110 | 24 | — | CONFIRMED |
-| `ScalarMisc` | 111 | 137 | 27 | 127 | CONFIRMED |
-| `ScalarAlu1` | 138 | 164 | 27 | 154 | CONFIRMED |
-| `ScalarAlu0` | 165 | 191 | 27 | 181 | CONFIRMED |
-| `Immediates` (high) | 195 | 234 | 40 | — | CONFIRMED |
-| `VectorResult` | 239 | 260 | 22 | 239 | CONFIRMED |
-| `VectorExtended` | 261 | 461 | ~201 | 261 | HIGH |
-| `VectorLoad` | 283 | 321 | 39 | 283 | CONFIRMED |
-| `VectorStore` | 328 | 363 | 36 | 353 | CONFIRMED |
-| `VectorAlu2` | 364 | 400 | 37 | 388 | CONFIRMED |
-| `VectorAlu1` | 401 | 437 | 37 | 425 | CONFIRMED |
-| `VectorAlu0` | 438 | 474 | 37 | 462 | CONFIRMED |
-| (reserved / pad) | 475 | 511 | 37 | — | HIGH |
-| `TecDma` (oneof of lane) | 87 | 327 | — | 181; 283/322 | CONFIRMED |
-| `TecStream` (oneof of lane) | 99 | 327 | — | 181/162; 283/322 | CONFIRMED |
+| Slot | Base | End | Width | Opcode bit |
+|---|---:|---:|---:|---:|
+| (reserved header) | 0 | 6 | 7 | — |
+| `Immediates` (low) | 7 | 86 | 80 | — |
+| `VectorScalar` | 87 | 110 | 24 | — |
+| `ScalarMisc` | 111 | 137 | 27 | 127 |
+| `ScalarAlu1` | 138 | 164 | 27 | 154 |
+| `ScalarAlu0` | 165 | 191 | 27 | 181 |
+| `Immediates` (high) | 195 | 234 | 40 | — |
+| `VectorResult` | 239 | 260 | 22 | 239 |
+| `VectorExtended` | 261 | 461 | ~201 | 261 |
+| `VectorLoad` | 283 | 321 | 39 | 283 |
+| `VectorStore` | 328 | 363 | 36 | 353 |
+| `VectorAlu2` | 364 | 400 | 37 | 388 |
+| `VectorAlu1` | 401 | 437 | 37 | 425 |
+| `VectorAlu0` | 438 | 474 | 37 | 462 |
+| (reserved / pad) | 475 | 511 | 37 | — |
+| `TecDma` (oneof of lane) | 87 | 327 | — | 181; 283/322 |
+| `TecStream` (oneof of lane) | 99 | 327 | — | 181/162; 283/322 |
 
 Decompile cross-check — the gfc TEC slot encoders write their `BitCopy` destination bits exactly at the bases above:
 
@@ -199,7 +198,7 @@ TEC:  195   Immediates (high) — 2 × 20-bit (idx5@195, idx4@215)
       475..511 padding
 ```
 
-> **NOTE — `VectorExtended` (261..461) overlaps the load/store/ALU slots by design.** The extended slot's bit range subsumes `VectorLoad`, `VectorStore`, and the three vector-ALU lanes. This is a oneof-style sharing: a bundle issuing a scan/sort/uniquify op (the embedding-reduce primitives) uses the extended region *instead of* the regular vector lanes in that range. The field-level binding inside 261..461 is recovered as a slot extent but not exhaustively named (HIGH); see [VectorExtended (VEX)](vectorextended-vex.md).
+> **NOTE — `VectorExtended` (261..461) overlaps the load/store/ALU slots by design.** The extended slot's bit range subsumes `VectorLoad`, `VectorStore`, and the three vector-ALU lanes. This is a oneof-style sharing: a bundle issuing a scan/sort/uniquify op (the embedding-reduce primitives) uses the extended region *instead of* the regular vector lanes in that range. The field-level binding inside 261..461 is recovered as a slot extent but not exhaustively named; see [VectorExtended (VEX)](vectorextended-vex.md).
 
 ### The 27-bit scalar slot template (all three engines)
 
@@ -268,35 +267,35 @@ The low region (bits 7..191) and the scalar template are byte-identical across a
 
 ## What Is Not Mapped
 
-- **The 7-bit reserved prefix (bits 0..6) of every SC bundle** is unwritten by any slot encoder. Whether the codec sets a version/valid nibble in an epilogue is undecoded (SC bundles carry no `0x55` check trailer, unlike TensorCore bundles). MEDIUM/LOW. One analysis notes a gfc NOP-bundle last byte of `0x50` that *might* be a 4-bit framing field — unconfirmed, LOW.
-- **The trailing padding** (SCS 192..255; TAC 192..511; TEC 475..511) is confirmed unwritten by any slot encoder; whether a codec epilogue touches it is unconfirmed (HIGH that it is unwritten by slots).
-- **The bit-exact field labels inside `VectorScalar` (87..110) and `VectorExtended` (261..461)** — the slot bases and extents are recovered, but the per-op operand-to-selector binding inside these regions is not exhaustively named (HIGH).
-- **The full VF TEC vector-region slot map** — only `VectorAlu0` was bit-confirmed on VF (`0x1e954ae0`, base 432, pinning the 36-bit / 7-bit-opcode delta); the VF `VectorLoad`/`Store`/`Extended`/`Result` bases are inferred as the −6-bit shift of GF (LOW for the exact VF bases of those four slots).
-- **The decode-side struct→bundle inverse** (the `DecoderBase` path) was not re-extracted; the encode-side absolute bit map here is authoritative and the prior decode-struct shifts are consistent with it.
+- **The 7-bit reserved prefix (bits 0..6) of every SC bundle** is unwritten by any slot encoder. Whether the codec sets a version/valid nibble in an epilogue is undecoded (SC bundles carry no `0x55` check trailer, unlike TensorCore bundles). A gfc NOP-bundle last byte of `0x50` may be a 4-bit framing field — unconfirmed.
+- **The trailing padding** (SCS 192..255; TAC 192..511; TEC 475..511) is unwritten by any slot encoder; whether a codec epilogue touches it is unconfirmed.
+- **The bit-exact field labels inside `VectorScalar` (87..110) and `VectorExtended` (261..461)** — the slot bases and extents are recovered, but the per-op operand-to-selector binding inside these regions is not exhaustively named.
+- **The full VF TEC vector-region slot map** — only `VectorAlu0` is bit-confirmed on VF (`0x1e954ae0`, base 432, pinning the 36-bit / 7-bit-opcode delta); the VF `VectorLoad`/`Store`/`Extended`/`Result` bases follow as the −6-bit shift of GF.
+- **The decode-side struct→bundle inverse** (the `DecoderBase` path) is not re-extracted; the encode-side absolute bit map here is authoritative and the decode-struct shifts are consistent with it.
 
 ---
 
 ## Function Map
 
-| Symbol | Address | Role | Confidence |
-|---|---|---|---|
-| `BitCopy` | `0x1fa0a900` | little-endian bit packer (`dst, dst_bitoff, src, src_bitoff, nbits`) | CONFIRMED |
-| `SparseCoreScsCodecBase::Encode` (gfc) | `0x1391ef60` | SCS dispatcher; shared-Span call to each slot encoder | CONFIRMED |
-| `SparseCoreScalarAlu0Encoder::Encode` (gfc) | `0x1eb693c0` | SCS lane 0; `BitCopy` bits 165/170/176/181/187/190/191 | CONFIRMED |
-| `SparseCoreScsScalarMiscEncoder::Encode` (gfc) | `0x1eb914a0` | SCS misc/sync, opcode `@127` | CONFIRMED |
-| `TacScalarAlu0Encoder::Encode` (glc) | `0x1ea17e40` | TAC lane 0; `BitCopy` bits 165/170/176/181/187/191 (= SCS) | CONFIRMED |
-| `SparseCoreDmaEncoder::Encode` (glc) | `0x1ea09b40` | TAC/SCS shared Dma oneof-of-lane | CONFIRMED |
-| `SparseCoreTecCodecBase::Encode` (vfc) | `0x139328a0` | TEC dispatcher; shared-Span call to all 14 slot encoders | CONFIRMED |
-| `SparseCoreImmediatesEncoder::Encode` (gfc) | `0x1ecd1760` | 6 × 20-bit immediates `@7/27/47/67/195/215` | CONFIRMED |
-| `SparseCoreTecVectorResultEncoder::Encode` (gfc) | `0x1ecbc9e0` | XRF-pop slot, opcode `@239` | CONFIRMED |
-| `SparseCoreTecVectorLoadEncoder::Encode` (gfc) | `0x1ecb9ee0` | tile vector load, opcode `@283` .. 321 | CONFIRMED |
-| `SparseCoreTecVectorStoreEncoder::Encode` (gfc) | `0x1eccbe20` | tile vector store, base 328, opcode `@353` | CONFIRMED |
-| `SparseCoreTecVectorAlu2Encoder::Encode` (gfc) | `0x1ec85ae0` | vector lane 2, base 364, opcode `@388/8` | CONFIRMED |
-| `SparseCoreTecVectorAlu0Encoder::Encode` (gfc) | `0x1ec11100` | vector lane 0, base 438, opcode `@462/8`; sel `@438/444/450/456` | CONFIRMED |
-| `SparseCoreTecVectorAlu0Encoder::Encode` (vfc) | `0x1e954ae0` | narrow VF lane 0, base 432, opcode `@456/7` | CONFIRMED |
-| `EncoderBase<…Scs…>::BundleSizeBytes` (gfc) | `0x1e835260` | codec-metadata `vtable[+0x30]` → 32 | CONFIRMED |
-| `EncoderBase<…Tec…>::BundleSizeBytes` (gfc) | `0x1e8359e0` | codec-metadata `vtable[+0x30]` → 64 | CONFIRMED |
-| `EncoderBase<…Tac…>::BundleSizeBytes` (glc) | `0x1e832100` | codec-metadata `vtable[+0x30]` → 64 | CONFIRMED |
+| Symbol | Address | Role |
+|---|---|---|
+| `BitCopy` | `0x1fa0a900` | little-endian bit packer (`dst, dst_bitoff, src, src_bitoff, nbits`) |
+| `SparseCoreScsCodecBase::Encode` (gfc) | `0x1391ef60` | SCS dispatcher; shared-Span call to each slot encoder |
+| `SparseCoreScalarAlu0Encoder::Encode` (gfc) | `0x1eb693c0` | SCS lane 0; `BitCopy` bits 165/170/176/181/187/190/191 |
+| `SparseCoreScsScalarMiscEncoder::Encode` (gfc) | `0x1eb914a0` | SCS misc/sync, opcode `@127` |
+| `TacScalarAlu0Encoder::Encode` (glc) | `0x1ea17e40` | TAC lane 0; `BitCopy` bits 165/170/176/181/187/191 (= SCS) |
+| `SparseCoreDmaEncoder::Encode` (glc) | `0x1ea09b40` | TAC/SCS shared Dma oneof-of-lane |
+| `SparseCoreTecCodecBase::Encode` (vfc) | `0x139328a0` | TEC dispatcher; shared-Span call to all 14 slot encoders |
+| `SparseCoreImmediatesEncoder::Encode` (gfc) | `0x1ecd1760` | 6 × 20-bit immediates `@7/27/47/67/195/215` |
+| `SparseCoreTecVectorResultEncoder::Encode` (gfc) | `0x1ecbc9e0` | XRF-pop slot, opcode `@239` |
+| `SparseCoreTecVectorLoadEncoder::Encode` (gfc) | `0x1ecb9ee0` | tile vector load, opcode `@283` .. 321 |
+| `SparseCoreTecVectorStoreEncoder::Encode` (gfc) | `0x1eccbe20` | tile vector store, base 328, opcode `@353` |
+| `SparseCoreTecVectorAlu2Encoder::Encode` (gfc) | `0x1ec85ae0` | vector lane 2, base 364, opcode `@388/8` |
+| `SparseCoreTecVectorAlu0Encoder::Encode` (gfc) | `0x1ec11100` | vector lane 0, base 438, opcode `@462/8`; sel `@438/444/450/456` |
+| `SparseCoreTecVectorAlu0Encoder::Encode` (vfc) | `0x1e954ae0` | narrow VF lane 0, base 432, opcode `@456/7` |
+| `EncoderBase<…Scs…>::BundleSizeBytes` (gfc) | `0x1e835260` | codec-metadata `vtable[+0x30]` → 32 |
+| `EncoderBase<…Tec…>::BundleSizeBytes` (gfc) | `0x1e8359e0` | codec-metadata `vtable[+0x30]` → 64 |
+| `EncoderBase<…Tac…>::BundleSizeBytes` (glc) | `0x1e832100` | codec-metadata `vtable[+0x30]` → 64 |
 
 ---
 

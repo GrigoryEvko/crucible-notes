@@ -93,20 +93,20 @@ The twelve `test [proto+0x10],N` immediates appear in strict ascending order —
 
 > **QUIRK — scalar_1 is encoded conditionally on scalar_0's opcode, not purely on its own has-bit.** The dispatch tests the scalar_1 has-bit (`0x2`) as expected, but the codec gates the entire scalar_1 encode behind `(scalar0.opcode_field − 17) >= 3` (the codec reads scalar_0's opcode oneof at submessage dword `+0x50` and skips scalar_1 when it falls in `{17,18,19}`). Those three scalar_0 opcodes are the wide forms that consume the scalar_1 bit window themselves; emitting a second scalar op alongside them would overwrite bits. Every other slot is gated purely on its own has-bit. A reimplementer must reproduce this scalar_0→scalar_1 interlock, not treat the two SPU slots as fully independent.
 
-| Has-bit | `proto+` | `_globals_` default @ | Slot (role) | Per-slot encoder @ | Abs bits (region) | Confidence |
-|---|---|---|---|---|---|---|
-| `0x001` | `+0x18` | `0x223fd378` | scalar_0 (SPU) | `0x1ed16dc0` | 381..407 (27b) | CONFIRMED |
-| `0x002` | `+0x20` | `0x223fef38` | scalar_1 (SPU) | `0x1ed2a0e0` | 354..380 (27b) | CONFIRMED |
-| `0x004` | `+0x28` | `0x22400f90` | vector_alu_0 (VPU, **wide lane**) | `0x1ed45060` | 198..240 (43b) | CONFIRMED |
-| `0x008` | `+0x30` | `0x224036b8` | vector_alu_1 (VPU, narrow lane) | `0x1ed68d80` | 167..197 (31b) | CONFIRMED |
-| `0x010` | `+0x38` | `0x22411eb0` | vector_store (mem-store) | `0x1ee3b440` | 142..166 (25b) | CONFIRMED |
-| `0x020` | `+0x40` | `0x22410b88` | vector_load (mem-load) | `0x1ee287e0` | 119..140 (22b) | CONFIRMED |
-| `0x040` | `+0x48` | `0x223fb410` | **cmem_load** (const-mem load, NEW) | `0x1ecf89a0` | 103..118 (16b) | CONFIRMED |
-| `0x080` | `+0x50` | `0x22407210` | vector_extended_0 / MXU0 | `0x1edb0900` | 83..102 (20b) | CONFIRMED |
-| `0x100` | `+0x58` | `0x2240cf50` | vector_extended_1 / MXU1 (−20 twin) | `0x1ee08060` | 63..82 (20b) | CONFIRMED |
-| `0x200` | `+0x60` | `0x22410fd8` | vector_result_0 (EUP-pop lane 0) | `0x1ee2b1c0` | 52..62 (11b) | CONFIRMED |
-| `0x400` | `+0x68` | `0x22411428` | vector_result_1 (EUP-pop lane 1) | `0x1ee2d180` | 41..51 (11b) | CONFIRMED |
-| `0x800` | `+0x70` | `0x223fbce8` | misc (mask / rotate / imm-set) | `0x1ed03500` | 17..40 (24b) | CONFIRMED |
+| Has-bit | `proto+` | `_globals_` default @ | Slot (role) | Per-slot encoder @ | Abs bits (region) |
+|---|---|---|---|---|---|
+| `0x001` | `+0x18` | `0x223fd378` | scalar_0 (SPU) | `0x1ed16dc0` | 381..407 (27b) |
+| `0x002` | `+0x20` | `0x223fef38` | scalar_1 (SPU) | `0x1ed2a0e0` | 354..380 (27b) |
+| `0x004` | `+0x28` | `0x22400f90` | vector_alu_0 (VPU, **wide lane**) | `0x1ed45060` | 198..240 (43b) |
+| `0x008` | `+0x30` | `0x224036b8` | vector_alu_1 (VPU, narrow lane) | `0x1ed68d80` | 167..197 (31b) |
+| `0x010` | `+0x38` | `0x22411eb0` | vector_store (mem-store) | `0x1ee3b440` | 142..166 (25b) |
+| `0x020` | `+0x40` | `0x22410b88` | vector_load (mem-load) | `0x1ee287e0` | 119..140 (22b) |
+| `0x040` | `+0x48` | `0x223fb410` | **cmem_load** (const-mem load, NEW) | `0x1ecf89a0` | 103..118 (16b) |
+| `0x080` | `+0x50` | `0x22407210` | vector_extended_0 / MXU0 | `0x1edb0900` | 83..102 (20b) |
+| `0x100` | `+0x58` | `0x2240cf50` | vector_extended_1 / MXU1 (−20 twin) | `0x1ee08060` | 63..82 (20b) |
+| `0x200` | `+0x60` | `0x22410fd8` | vector_result_0 (EUP-pop lane 0) | `0x1ee2b1c0` | 52..62 (11b) |
+| `0x400` | `+0x68` | `0x22411428` | vector_result_1 (EUP-pop lane 1) | `0x1ee2d180` | 41..51 (11b) |
+| `0x800` | `+0x70` | `0x223fbce8` | misc (mask / rotate / imm-set) | `0x1ed03500` | 17..40 (24b) |
 
 > **QUIRK — the proto-pointer order and the on-wire bit order are reversed.** The has-bit / `proto+` order runs scalar_0 → misc (bit 0x1 to 0x800), but the on-wire bit layout runs the *other way*: misc sits at the bottom of the bundle (abs 17) and scalar_0 at the very top (abs 381..407). A reimplementer who lays slots into the buffer in has-bit order, low-to-high, inverts the entire bundle. The has-bit is a proto-occupancy index; the absolute bit comes only from the `BitCopy dst_bit`, never from the slot's ordinal.
 
@@ -152,12 +152,12 @@ Each per-slot encoder writes its fields with `BitCopy(buf, abs_bit, &proto_field
 
 The two scalar slots are identical in layout, scalar_0 sitting exactly 27 bits above scalar_1. Pufferfish replaces Jellyfish's single `ScalarInstruction` proto with roughly fifty per-opcode oneof submessages (`TensorCoreScalar0_ScalarMove`, `_ScalarIntAdd`, `_ScalarDmaSimple`, `_ScalarHalt`, …); the opcode field is written from two of those oneof branches but always lands at the same base, and the scalar's Y/immediate operand is bound through `ScalarYEncode` into the shared immediate pool, *not* written inline into the scalar region.
 
-| Field | scalar_0 abs | scalar_1 abs | Width | Confidence |
-|---|---|---|---|---|
-| operand (Scalar Y / operand) | 381 | 354 | 11 | CONFIRMED |
-| X reg | 386 | 359 | 6 | CONFIRMED |
-| opcode | 397 | 370 | 6 | CONFIRMED |
-| predicate | 403 | 376 | 5 | CONFIRMED |
+| Field | scalar_0 abs | scalar_1 abs | Width |
+|---|---|---|---|
+| operand (Scalar Y / operand) | 381 | 354 | 11 |
+| X reg | 386 | 359 | 6 |
+| opcode | 397 | 370 | 6 |
+| predicate | 403 | 376 | 5 |
 
 The scalar_0 harvest reads literally: `BitCopy(buf,0x193,…,5)` (pred @403), `BitCopy(buf,0x18d,…,6)` (opcode @397), `BitCopy(buf,0x182,…,6)` (X @386), `BitCopy(buf,0x17d,…,11)` (operand @381), plus four 16-bit immediate writes into the shared pool (abs 288/304/320/338).
 
@@ -165,16 +165,16 @@ The scalar_0 harvest reads literally: `BitCopy(buf,0x193,…,5)` (pred @403), `B
 
 Lane 0 is the **wide lane** (43 bits, abs 198..240); lane 1 is the narrow lane (31 bits, abs 167..197). Both carry a 6-bit opcode matching the 56-value `VectorAluOpcode` enum (see [VPU Slot](slot-vpu.md)).
 
-| Field | lane0 (wide) abs | lane1 (narrow) abs | Width | Confidence |
-|---|---|---|---|---|
-| (lane0 first operand) | 198 | — | 5 | CONFIRMED |
-| dest | 203 | 167 | 5 | CONFIRMED |
-| (wide-only field region) | 208..219 | — | 12 | CONFIRMED extent / **LOW role** |
-| Vx | 220 | 177 | 5 | CONFIRMED |
-| y | 225 | 172 | 5 | CONFIRMED |
-| x2 | — | 182 | 5 | CONFIRMED |
-| opcode | 230 | 187 | 6 | CONFIRMED |
-| predicate | 236 | 193 | 5 | CONFIRMED |
+| Field | lane0 (wide) abs | lane1 (narrow) abs | Width |
+|---|---|---|---|
+| (lane0 first operand) | 198 | — | 5 |
+| dest | 203 | 167 | 5 |
+| (wide-only field region) | 208..219 | — | 12 |
+| Vx | 220 | 177 | 5 |
+| y | 225 | 172 | 5 |
+| x2 | — | 182 | 5 |
+| opcode | 230 | 187 | 6 |
+| predicate | 236 | 193 | 5 |
 
 Both lanes also write their register operands into the shared Y-register selectors (abs 241/246/251) and immediates into the shared pool.
 
@@ -184,12 +184,12 @@ Both lanes also write their register operands into the shared Y-register selecto
 
 Pufferfish doubles Jellyfish's single VectorExtended slot into two independent MXU control slots. MXU1 (abs 63..82) is a **bit-for-bit twin of MXU0 (abs 83..102), offset exactly −20 bits**.
 
-| Field | MXU0 abs | MXU1 abs | Width | Confidence |
-|---|---|---|---|---|
-| sub-op | 83 | 63 | 3 | CONFIRMED |
-| mode / mxu-num | 89 | 69 | 2 | CONFIRMED |
-| opcode | 91 | 71 | 7 | CONFIRMED |
-| predicate | 98 | 78 | 5 | CONFIRMED |
+| Field | MXU0 abs | MXU1 abs | Width |
+|---|---|---|---|
+| sub-op | 83 | 63 | 3 |
+| mode / mxu-num | 89 | 69 | 2 |
+| opcode | 91 | 71 | 7 |
+| predicate | 98 | 78 | 5 |
 
 The MXU0 harvest reads `BitCopy(buf,0x62,…,5)` (pred @98), `BitCopy(buf,0x5b,…,7)` (opcode @91), `BitCopy(buf,0x59,…,2)` (mode @89). The 7-bit opcode field selects the matmul / PushGains / transpose roster; for matmul the field widens to 9 bits (abs 89..97) so the low two bits @89..90 carry the physical MXU number (0..3). The full opcode roster and the −20 twin are documented on the [MXU Slot](slot-mxu.md) page and the [Decode-Side: JF / PF](decode-side-jf-pf.md) page.
 
@@ -197,13 +197,13 @@ The MXU0 harvest reads `BitCopy(buf,0x62,…,5)` (pred @98), `BitCopy(buf,0x5b,�
 
 Two EUP-result drain lanes, one per VALU lane, each 11 bits. result_0 (abs 52..62) sits exactly 11 bits above result_1 (abs 41..51).
 
-| Field | result_0 abs | result_1 abs | Width | Confidence |
-|---|---|---|---|---|
-| which-destination | 52 | 41 | 2 | CONFIRMED |
-| (mode block) | 54 | 43 | 2 | CONFIRMED |
-| valid | 54 | 43 | 1 | CONFIRMED |
-| result-format | 56 | 45 | 2 | CONFIRMED |
-| predicate | 58 | 47 | 5 | CONFIRMED |
+| Field | result_0 abs | result_1 abs | Width |
+|---|---|---|---|
+| which-destination | 52 | 41 | 2 |
+| (mode block) | 54 | 43 | 2 |
+| valid | 54 | 43 | 1 |
+| result-format | 56 | 45 | 2 |
+| predicate | 58 | 47 | 5 |
 
 The `which-destination` field routes the deferred transcendental/EUP result to a dest VREG drawn from the shared register references (`V0_DEST` / `V1_DEST` / `VLD_DEST` routing); see [ResultFifo](resultfifo-archregister.md) and [EUP / Transcendental Slot](slot-eup-transcendental.md).
 
@@ -211,14 +211,14 @@ The `which-destination` field routes the deferred transcendental/EUP result to a
 
 The first-class constant-memory load slot, new in Pufferfish. Its addressing operand is read from the addressing submessage at `proto+0x48` (the same structure `vector_load` uses) and written with the shared memory operand shapes.
 
-| Field | abs bit | Width | Confidence |
-|---|---|---|---|
-| sublane-mask | 103 | 3 | CONFIRMED |
-| base-address | 106 | 2 | CONFIRMED |
-| offset | 108 | 2 | CONFIRMED |
-| stride | 110 | 3 | CONFIRMED |
-| has-bit | 113 | 1 | CONFIRMED |
-| predicate | 114 | 5 | CONFIRMED |
+| Field | abs bit | Width |
+|---|---|---|
+| sublane-mask | 103 | 3 |
+| base-address | 106 | 2 |
+| offset | 108 | 2 |
+| stride | 110 | 3 |
+| has-bit | 113 | 1 |
+| predicate | 114 | 5 |
 
 The harvest reads `BitCopy(buf,0x72,…,5)` (pred @114), `BitCopy(buf,0x71,…,1)` (has @113), `BitCopy(buf,0x6e,…,3)` (stride @110), `BitCopy(buf,0x6c,…,2)` (offset @108), `BitCopy(buf,0x6a,…,2)` (base @106), `BitCopy(buf,0x67,…,3)` (sublane-mask @103). The field names match the [cmem_load Slot](slot-cmem-load-pf.md) page byte-for-byte. The index/destination registers come from the shared Y-register selectors (abs 241/246/251) and up to four 16-bit immediates (abs 256/272/288/304) from the shared pool. Full coverage of the addressing modes and the constant-memory path is on the [cmem_load Slot](slot-cmem-load-pf.md) page.
 

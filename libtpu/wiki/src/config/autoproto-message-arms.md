@@ -71,20 +71,20 @@ oneof    : message 0x0436   (= singular message 0x0416 | 0x20)   — TpuCustomCa
 
 The twelve message arms, with their parse table, default instance, and constructor. The flag-name column is the TCE knob(s) backed by each arm (cross-join from [registry-mediated-flags.md](registry-mediated-flags.md) and [tce-field-offsets-defaults.md](tce-field-offsets-defaults.md)); a single message type can back several flags.
 
-| Arm | `_table_` | `_globals_` | ctor | Fields | TCE flag(s) | Conf. |
-|---|---|---|---|---|---|---|
-| `IlpLatencyHidingSchedulerOptions` | `0x21cfa308` | `0x223c8790` | `0x1db24d00` | 6 | `xla_tpu_ilp_latency_hiding_scheduler_options` | CONFIRMED |
-| `CostModelFlagOptions` | `0x21cfa170` | `0x223c87e8` | `0x1db23d40` | 2 (repeated enum) | `xla_msa_cost_model_options`, `xla_tpu_fusion_cost_model_options`, `xla_tpu_latency_hiding_scheduler_cost_model_options` | CONFIRMED |
-| `SparseCoreOffloadingOptions` | `0x21cfa110` | `0x223c85d8` | `0x1db23780` | 1 (repeated enum) | `xla_tpu_sparse_core_offloading_options` | CONFIRMED |
-| `ShardyOptions` | `0x21cfa260` | `0x223c8650` | `0x1db24940` | 3 | `xla_shardy_options` | CONFIRMED |
-| `EmitterLearnedCostModelOptions` | `0x21cff9a8` | `0x223c9710` | `0x1db63f20` | 9 (+ 8-field sub-msg) | `xla_tpu_emitter_learned_cost_model_options` | CONFIRMED |
-| `AccumulatorTransformations` | `0x21cf9c30` | `0x223c88d8` | `0x1db20fe0` | 1 (repeated enum) | `xla_tpu_accumulator_transformations` | CONFIRMED |
-| `SparseCoreAssertLevel` | `0x21cfa550` | `0x223c8608` | `0x1db252e0` | 1 (repeated enum) | `xla_sc_assert_level` | CONFIRMED |
-| `BundleInstrumentationOptions` | `0x21cfa5b0` | `0x223c8860` | `0x1db258a0` | 3 | `xla_tpu_bundle_instrumentation_options` | CONFIRMED |
-| `TpuCustomCallMemorySpaceSpec` | `0x21cfa708` | `0x223c8920` | `0x1db25fa0` | 2 (oneof, +nested) | `xla_tpu_tpu_custom_call_memory_space_spec` | CONFIRMED |
-| `BufferContentsSanitizerConfig` | `0x21cf9f58` | `0x223c8890` | `0x1db23040` | 2 | TCE field #623 (arm 10 per the oneof map) | CONFIRMED |
-| `RepeatedStrings` | `0x21cf9d18` | — | — | 1 (repeated string) | `xla_explicit_disable_passes` (#900), `xla_explicit_enable_passes` (#901), `xla_tpu_enable_mosaic_emitters`, `xla_tpu_block_summary_split_specs` | CONFIRMED |
-| `RepeatedIntegers` | `0x21cf9da0` | — | — | 1 (repeated int64) | `xla_tpu_distributed_hash_moduli`, `xla_tpu_reserved_sparse_cores` | CONFIRMED |
+| Arm | `_table_` | `_globals_` | ctor | Fields | TCE flag(s) |
+|---|---|---|---|---|---|
+| `IlpLatencyHidingSchedulerOptions` | `0x21cfa308` | `0x223c8790` | `0x1db24d00` | 6 | `xla_tpu_ilp_latency_hiding_scheduler_options` |
+| `CostModelFlagOptions` | `0x21cfa170` | `0x223c87e8` | `0x1db23d40` | 2 (repeated enum) | `xla_msa_cost_model_options`, `xla_tpu_fusion_cost_model_options`, `xla_tpu_latency_hiding_scheduler_cost_model_options` |
+| `SparseCoreOffloadingOptions` | `0x21cfa110` | `0x223c85d8` | `0x1db23780` | 1 (repeated enum) | `xla_tpu_sparse_core_offloading_options` |
+| `ShardyOptions` | `0x21cfa260` | `0x223c8650` | `0x1db24940` | 3 | `xla_shardy_options` |
+| `EmitterLearnedCostModelOptions` | `0x21cff9a8` | `0x223c9710` | `0x1db63f20` | 9 (+ 8-field sub-msg) | `xla_tpu_emitter_learned_cost_model_options` |
+| `AccumulatorTransformations` | `0x21cf9c30` | `0x223c88d8` | `0x1db20fe0` | 1 (repeated enum) | `xla_tpu_accumulator_transformations` |
+| `SparseCoreAssertLevel` | `0x21cfa550` | `0x223c8608` | `0x1db252e0` | 1 (repeated enum) | `xla_sc_assert_level` |
+| `BundleInstrumentationOptions` | `0x21cfa5b0` | `0x223c8860` | `0x1db258a0` | 3 | `xla_tpu_bundle_instrumentation_options` |
+| `TpuCustomCallMemorySpaceSpec` | `0x21cfa708` | `0x223c8920` | `0x1db25fa0` | 2 (oneof, +nested) | `xla_tpu_tpu_custom_call_memory_space_spec` |
+| `BufferContentsSanitizerConfig` | `0x21cf9f58` | `0x223c8890` | `0x1db23040` | 2 | TCE field #623 (arm 10 per the oneof map) |
+| `RepeatedStrings` | `0x21cf9d18` | — | — | 1 (repeated string) | `xla_explicit_disable_passes` (#900), `xla_explicit_enable_passes` (#901), `xla_tpu_enable_mosaic_emitters`, `xla_tpu_block_summary_split_specs` |
+| `RepeatedIntegers` | `0x21cf9da0` | — | — | 1 (repeated int64) | `xla_tpu_distributed_hash_moduli`, `xla_tpu_reserved_sparse_cores` |
 
 > **NOTE —** a thirteenth `AutoOr<message>` type, `CostModelLoggingOptions` (`_globals_ @ 0x223c87c8`, ctor `@ 0x1db24600`, 2 bools both default `false`), is *not* one of the 30 TCE oneof arms — it is the non-TCE `xla_tpu_impure_cost_model_logging_options` flag, decoded here only for completeness. Its non-TCE resolver/consumer is not traced (LOW).
 
@@ -348,11 +348,11 @@ The repeated short-list `field: [A, B, C]` is supported: `ConsumeField @ 0x20f03
 
 The arm's `AutoOr<Msg>::ParseFlag` decides what grammar the user spells. Three flavors were decoded from each arm's callee set:
 
-| Flavor | Arms (`ParseFlag` VA) | Grammar | Conf. |
-|---|---|---|---|
-| **A — pure TextFormat** (`AbslParseFlagImpl` only) | `CostModelFlagOptions` (`0x1d744f80`), `SparseCoreOffloadingOptions` (`0x1d745d80`), `IlpLatencyHidingSchedulerOptions` (`0x1d747b00`), `ShardyOptions` (`0x1d746e20`), `EmitterLearnedCostModelOptions` (`0x1d745680`), `BundleInstrumentationOptions` (`0x1d749ce0`), `TpuCustomCallMemorySpaceSpec` (`0x1d74a3c0`) | `--<flag>=text:<field>: <VAL>` (or `serialized:`/`base64:`) | CONFIRMED |
-| **B — custom comma-list** (`AutoOrTypeTraits<T>::Parse`, + TextFormat fallback) | `RepeatedStrings` (Parse `0x1d746720`: `ByChar::Find` split → `RepeatedPtrFieldBase::Add<string>` per token), `RepeatedIntegers` (Parse `0x1d7446e0`: split → `safe_strto64_base @ 0x21173e20` → append int64), `AccumulatorTransformations` (Parse `0x1d748f40`: split → `ParseNamedEnum` → append enum) | `--<flag>=A,B,C` *or* `text:values: A` | CONFIRMED |
-| **C — preset / level comma-list** (`assert_level::Parse @ 0x1db1e3e0`) | `SparseCoreAssertLevel` (`ParseFlag 0x1d7495e0`) — `ByChar(',')` split, each token via `StringToAssertLevel @ 0x1db1e8a0` (preset aliases) or `StringToEnum @ 0x1db1ec60` (individual level names) | `--xla_sc_assert_level=prod` (preset) *or* `=bounds,csrs,checksums` (level list) | CONFIRMED |
+| Flavor | Arms (`ParseFlag` VA) | Grammar |
+|---|---|---|
+| **A — pure TextFormat** (`AbslParseFlagImpl` only) | `CostModelFlagOptions` (`0x1d744f80`), `SparseCoreOffloadingOptions` (`0x1d745d80`), `IlpLatencyHidingSchedulerOptions` (`0x1d747b00`), `ShardyOptions` (`0x1d746e20`), `EmitterLearnedCostModelOptions` (`0x1d745680`), `BundleInstrumentationOptions` (`0x1d749ce0`), `TpuCustomCallMemorySpaceSpec` (`0x1d74a3c0`) | `--<flag>=text:<field>: <VAL>` (or `serialized:`/`base64:`) |
+| **B — custom comma-list** (`AutoOrTypeTraits<T>::Parse`, + TextFormat fallback) | `RepeatedStrings` (Parse `0x1d746720`: `ByChar::Find` split → `RepeatedPtrFieldBase::Add<string>` per token), `RepeatedIntegers` (Parse `0x1d7446e0`: split → `safe_strto64_base @ 0x21173e20` → append int64), `AccumulatorTransformations` (Parse `0x1d748f40`: split → `ParseNamedEnum` → append enum) | `--<flag>=A,B,C` *or* `text:values: A` |
+| **C — preset / level comma-list** (`assert_level::Parse @ 0x1db1e3e0`) | `SparseCoreAssertLevel` (`ParseFlag 0x1d7495e0`) — `ByChar(',')` split, each token via `StringToAssertLevel @ 0x1db1e8a0` (preset aliases) or `StringToEnum @ 0x1db1ec60` (individual level names) | `--xla_sc_assert_level=prod` (preset) *or* `=bounds,csrs,checksums` (level list) |
 
 The flavor-B arms each *also* retain `AbslParseFlagImpl` as a fallback, so they accept both the comma-list short form and the full `text:` form.
 

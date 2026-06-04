@@ -93,19 +93,19 @@ function RecordReduceWindowCycles(rw, act_win, win2, out_win, rv0, rv1, rv2, rv3
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `CostModel::RecordReduceWindowCycles` (4-RV) | `0x130b5ec0` | top emitter — CHECK, ConvState build, axis dispatch | CERTAIN |
-| `fusion_util::GetReduceWindowType` | `0x1454d4a0` | axis classifier — −1 / 0 / 1 / 2 | CERTAIN |
-| `CostModel::RecordLaneReduceWindowCycles` | `0x130c97e0` | lane-axis leaf — VectorLoad + combine + Xlu drain | CERTAIN |
-| `CostModel::RecordSublaneReduceWindowCycles` | `0x130c9c60` | sublane-axis leaf — adds sublane shuffle | CERTAIN |
-| `CostModel::RecordMajorReduceWindowCycles` | `0x130c9f00` | major-axis leaf — read-heavy, no Xlu | CERTAIN |
-| `CostModel::UpdateCostBasedOnReductionFunction` | `0x130c9a20` | combiner-op cost (shared by all three leaves) | CERTAIN |
-| `CostModel::RecordOperandCycles` | `0x130ca140` | input-DMA deposit → `R[9..12]` MemXfer | HIGH |
-| `CostModel::RecordTopLevelConvolutionOutputCycles` | `0x130bcb80` | output-DMA deposit (top-level only) | HIGH |
-| `ResourceVector::Acc(Resource, double)` | `0x1c89adc0` | the slot deposit primitive (bound `< 23`) | CERTAIN |
-| `convolution_util::GetConvLikeProperties` | `0x13190bc0` | shared conv/RW dim-number + shape extraction | HIGH |
-| `window_util::HasBaseDilation` | (call @0x130b62..) | dilation gate blocking Lane/Sublane | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `CostModel::RecordReduceWindowCycles` (4-RV) | `0x130b5ec0` | top emitter — CHECK, ConvState build, axis dispatch |
+| `fusion_util::GetReduceWindowType` | `0x1454d4a0` | axis classifier — −1 / 0 / 1 / 2 |
+| `CostModel::RecordLaneReduceWindowCycles` | `0x130c97e0` | lane-axis leaf — VectorLoad + combine + Xlu drain |
+| `CostModel::RecordSublaneReduceWindowCycles` | `0x130c9c60` | sublane-axis leaf — adds sublane shuffle |
+| `CostModel::RecordMajorReduceWindowCycles` | `0x130c9f00` | major-axis leaf — read-heavy, no Xlu |
+| `CostModel::UpdateCostBasedOnReductionFunction` | `0x130c9a20` | combiner-op cost (shared by all three leaves) |
+| `CostModel::RecordOperandCycles` | `0x130ca140` | input-DMA deposit → `R[9..12]` MemXfer |
+| `CostModel::RecordTopLevelConvolutionOutputCycles` | `0x130bcb80` | output-DMA deposit (top-level only) |
+| `ResourceVector::Acc(Resource, double)` | `0x1c89adc0` | the slot deposit primitive (bound `< 23`) |
+| `convolution_util::GetConvLikeProperties` | `0x13190bc0` | shared conv/RW dim-number + shape extraction |
+| `window_util::HasBaseDilation` | (call @0x130b62..) | dilation gate blocking Lane/Sublane |
 
 > **NOTE —** the trivial-zero short-circuit (`CostModel+0x14 == 0`) is not a no-op: it still deposits four explicit `0.0` cycles into `VectorLoad`/`VectorAlu0`/`VectorAlu1`/`Xlu`. The deposit count must match a real pooling op even when the cost is zero, because downstream the four `ResourceVector`s are folded positionally; a reimplementation that simply `return`s without the four zero-`Acc` calls leaves those slots uninitialized for the fold. The deposit goes into the **third** out-vector (`a9`/`rv2`), which is also where every real-path leaf deposits.
 
@@ -121,12 +121,12 @@ A reduce-window does not build a `ConvCostState`. It builds the smaller per-call
 
 The three leaf emitters index `ConvState` as a `_QWORD` array (`a4[i]` = `ConvState + 8*i`). Only three offsets carry the pooling cost, and the binary identifies each:
 
-| `ConvState` offset | `a4[i]` | Named role | Evidence | Confidence |
-|---|---|---|---|---|
-| `+0x18` | `a4[3]` | output-spatial dim product | VLOG arg 3 ("`, %ld`" in Lane/Sublane @cost_model.cc:4931/4978) | HIGH |
-| `+0x20` | `a4[4]` | **kernel-spatial-dims iteration count** | CHECK string `rw_state.kernel_spatial_dims_iteration_count == 1` (Major @cost_model.cc:5033) | CERTAIN |
-| `+0x68` | `a4[13]` | output dim product / window extent (per-axis) | VLOG arg 2 (Lane/Sublane) + combiner `(a4[13]−1)` | HIGH |
-| `+0x70` | `a4[14]` | window-extent / iteration count (the reduced axis) | VLOG arg 1 (Lane/Sublane) + combiner `(a4[14]−1)` | HIGH |
+| `ConvState` offset | `a4[i]` | Named role | Evidence |
+|---|---|---|---|
+| `+0x18` | `a4[3]` | output-spatial dim product | VLOG arg 3 ("`, %ld`" in Lane/Sublane @cost_model.cc:4931/4978) |
+| `+0x20` | `a4[4]` | **kernel-spatial-dims iteration count** | CHECK string `rw_state.kernel_spatial_dims_iteration_count == 1` (Major @cost_model.cc:5033) |
+| `+0x68` | `a4[13]` | output dim product / window extent (per-axis) | VLOG arg 2 (Lane/Sublane) + combiner `(a4[13]−1)` |
+| `+0x70` | `a4[14]` | window-extent / iteration count (the reduced axis) | VLOG arg 1 (Lane/Sublane) + combiner `(a4[14]−1)` |
 
 The CHECK at cost_model.cc:5033 is the one hard name: in the Major path, `ConvState+0x20` (`a4[4]`) **must equal 1** and is explicitly labeled the *kernel-spatial-dims iteration count*. That is the conv "how many kernel-window positions iterate" field; a major-axis reduce-window has its window folded into a single major iteration, so it is pinned to 1. The other three are named from the order in which the Lane/Sublane VLOG prints them (`win_extent`, `output`, `output_spatial`) and from which one the combiner decrements by 1 (the *window extent* of the reduced axis).
 
@@ -278,13 +278,13 @@ function UpdateCostBasedOnReductionFunction(comp, count, rv):   // @0x130c9a20
 
 The opcode→CT classification (`@0x130c9a20`):
 
-| Combiner opcode | Class | CT (float) | CT (int) | Resource | Confidence |
-|---|---|---|---|---|---|
-| `0x49`/`0x4a` (min/max — the max-pool case) | compare-select | `0x20` | `0x20` | `R[5] VectorAluAny` (no float remap) | CERTAIN |
-| `0x4b` (multiply) | mul | `0x14` | `0x14` | `R[5]`; float remaps slot via `GetResource(0x14)` | CERTAIN |
-| `0x03` add (the avg/sum-pool case) | add | `0x12` | `0x12` | `R[5]`; float remaps slot via `GetResource(0x12)` | CERTAIN |
-| `0x29` (parameter) / `0x52` (get-tuple-element) | structural | — | — | (no deposit) | CERTAIN |
-| anything else | — | FATAL (`cost_model.cc:6870`) | — | — | CERTAIN |
+| Combiner opcode | Class | CT (float) | CT (int) | Resource |
+|---|---|---|---|---|
+| `0x49`/`0x4a` (min/max — the max-pool case) | compare-select | `0x20` | `0x20` | `R[5] VectorAluAny` (no float remap) |
+| `0x4b` (multiply) | mul | `0x14` | `0x14` | `R[5]`; float remaps slot via `GetResource(0x14)` |
+| `0x03` add (the avg/sum-pool case) | add | `0x12` | `0x12` | `R[5]`; float remaps slot via `GetResource(0x12)` |
+| `0x29` (parameter) / `0x52` (get-tuple-element) | structural | — | — | (no deposit) |
+| anything else | — | FATAL (`cost_model.cc:6870`) | — | — |
 
 > **NOTE —** the count argument is the only thing that ties the combiner to the window area. Lane passes `vol·(window−1)`, Sublane passes `base·(window−1)` plus a separate `4·base`, Major passes the whole `vol`. So `to_apply × window_volume × output` — the flop the HLO-level `HandleReduceWindow` estimator charges — appears here as `throughput(CT) × count`: the combiner runs once per window-element per output, priced at the per-generation throughput of the specific combiner op (max vs add vs multiply), not as a fixed flop.
 

@@ -45,14 +45,14 @@ For reimplementation, the contract is:
 
 The op is one VEX form parameterized by six accumulation dtypes, all present in both `gxc::gfc` and `gxc::glc`. The `PartialSum` suffix names the *output* (accumulator) width versus the *input* element width: a narrow input is accumulated into a wider partial so a long embedding run does not overflow or lose precision.
 
-| Variant | Input → accumulator | Role | Confidence |
-|---|---|---|---|
-| `SegmentedAddScanF32` | f32 → f32 | float embedding sum (op 15) | CONFIRMED |
-| `SegmentedAddScanS32` | s32 → s32 | integer embedding sum (op 10) | CONFIRMED |
-| `SegmentedAddScanS16PartialSumS16` | s16 → s16 | narrow-int sum, no widen | CONFIRMED |
-| `SegmentedAddScanS16PartialSumS32` | s16 → s32 | int8/int16 row sum widened to s32 | CONFIRMED |
-| `SegmentedAddScanBf16PartialSumBf16` | bf16 → bf16 | bf16 sum kept in bf16 | CONFIRMED |
-| `SegmentedAddScanBf16PartialSumF32` | bf16 → f32 | **the bf16 embedding-row sum** (many rows → f32 partial) | CONFIRMED |
+| Variant | Input → accumulator | Role |
+|---|---|---|
+| `SegmentedAddScanF32` | f32 → f32 | float embedding sum (op 15) |
+| `SegmentedAddScanS32` | s32 → s32 | integer embedding sum (op 10) |
+| `SegmentedAddScanS16PartialSumS16` | s16 → s16 | narrow-int sum, no widen |
+| `SegmentedAddScanS16PartialSumS32` | s16 → s32 | int8/int16 row sum widened to s32 |
+| `SegmentedAddScanBf16PartialSumBf16` | bf16 → bf16 | bf16 sum kept in bf16 |
+| `SegmentedAddScanBf16PartialSumF32` | bf16 → f32 | **the bf16 embedding-row sum** (many rows → f32 partial) |
 
 Each variant is a distinct C++ type carrying the full accessor set — `…<dtype>Opcode::Matches`, `…<dtype>SourceOneField`, `…V0/V1/V2{X,YVreg}Field`, `…VmaskField`, `…VstSourceField` — confirmed present for `Bf16PartialSumBf16`, `Bf16PartialSumF32`, `S16PartialSumS16`, `S16PartialSumS32`, `F32`, and `S32` in the decompile. The six are the `SegmentedAddScan` rows of the 12-op `Segmented*` family (the segmented twins of the plain scans: `Add`, `Min`, `Max`, `MinIndex`, `MaxIndex` × {32-bit ops 10..19, 16-bit/bf16 ops 40..51}); the full roster lives in [VectorExtended](vectorextended-vex.md#the-embedding-reduce-op-roster).
 
@@ -151,15 +151,15 @@ The forward embedding sum-lookup and its gradient both lower through this chain.
 
 The lowering reads `getReductionOp()` (the 3-char scan kind) and the result `VectorType`'s element type (via `Builder::getF32Type` / `getI32Type` / `getI16Type` / `getBF16Type`), builds an `i1` `VectorType` (the per-lane segment-boundary mask) and an `LLVMStructType` literal (the `{value, segment-id}` reduce pair), then creates the matching intrinsic and extracts the value back out with `LLVM::ExtractValueOp`. The full dispatch table is owned by [Segmented Scan](segmented-scan.md); the six segmented intrinsics it emits are:
 
-| reduction | elem-type | segmented intrinsic | ISA dtype | Confidence |
-|---|---|---|---|---|
-| add | f32 | `tpu_add_seg_scan1xNf` (`0x146d5a80`) | `SegmentedAddScanF32` | CONFIRMED |
-| add | i32 | `tpu_add_seg_scan1xNi` (`0x146d5c40`) | `SegmentedAddScanS32` | CONFIRMED |
-| add | bf16 | `tpu_add_half_seg_scan2xN` (`0x146d45c0`) | `SegmentedAddScanBf16PartialSum*` | CONFIRMED |
-| max | f32 | `tpu_max_seg_scan1xNf` (`0x14730e00`) | `SegmentedMaxScanF32` | CONFIRMED |
-| max | i32 | `tpu_max_seg_scan1xNi` (`0x14730fc0`) | `SegmentedMaxScanU32` | CONFIRMED |
-| min | f32 | `tpu_min_seg_scan1xNf` (`0x147316c0`) | `SegmentedMinScanF32` | CONFIRMED |
-| min | i32 | `tpu_min_seg_scan1xNi` (`0x14731880`) | `SegmentedMinScanU32` | CONFIRMED |
+| reduction | elem-type | segmented intrinsic | ISA dtype |
+|---|---|---|---|
+| add | f32 | `tpu_add_seg_scan1xNf` (`0x146d5a80`) | `SegmentedAddScanF32` |
+| add | i32 | `tpu_add_seg_scan1xNi` (`0x146d5c40`) | `SegmentedAddScanS32` |
+| add | bf16 | `tpu_add_half_seg_scan2xN` (`0x146d45c0`) | `SegmentedAddScanBf16PartialSum*` |
+| max | f32 | `tpu_max_seg_scan1xNf` (`0x14730e00`) | `SegmentedMaxScanF32` |
+| max | i32 | `tpu_max_seg_scan1xNi` (`0x14730fc0`) | `SegmentedMaxScanU32` |
+| min | f32 | `tpu_min_seg_scan1xNf` (`0x147316c0`) | `SegmentedMinScanF32` |
+| min | i32 | `tpu_min_seg_scan1xNi` (`0x14731880`) | `SegmentedMinScanU32` |
 
 The `1xNf`/`1xNi`/`2xN` suffix is the lane packing: `1xNf` = one f32 per lane, `1xNi` = one int32, `2xN` = two bf16 per lane (the packed pair). `half` is the PartialSum widen (bf16/s16 accumulated into f32/s32). Only `add` has the `half` widen — `min`/`max` need no wider accumulator.
 
@@ -267,12 +267,12 @@ On Jellyfish and Pufferfish, the per-segment cross-lane reduce was three F32-onl
 
 The per-gen support gate:
 
-| Target | `SupportsSegmentedReduce` | `SupportsSegmentedReducePartialResults` | TC emitter behaviour | Confidence |
-|---|---|---|---|---|
-| Jellyfish | true (`0x1d4909c0`) | true (`0x1d490a00`) | emits VEX `0xe`/`0x1e`/`0x1f`/`0x20` | CONFIRMED |
-| Pufferfish | true (`0x1d494f80`) | false (`0x1d494fc0`) | emits (no partial-result drain) | CONFIRMED |
-| Viperfish | false (`0x1d49b380`) | false (`0x1d49b3c0`) | uses SparseCore VectorExtended instead | CONFIRMED |
-| Ghostlite | false (`0x1d4981c0`) | false (`0x1d498200`) | `LogFatal` "Operation not supported on Ghostlite" | CONFIRMED |
+| Target | `SupportsSegmentedReduce` | `SupportsSegmentedReducePartialResults` | TC emitter behaviour |
+|---|---|---|---|
+| Jellyfish | true (`0x1d4909c0`) | true (`0x1d490a00`) | emits VEX `0xe`/`0x1e`/`0x1f`/`0x20` |
+| Pufferfish | true (`0x1d494f80`) | false (`0x1d494fc0`) | emits (no partial-result drain) |
+| Viperfish | false (`0x1d49b380`) | false (`0x1d49b3c0`) | uses SparseCore VectorExtended instead |
+| Ghostlite | false (`0x1d4981c0`) | false (`0x1d498200`) | `LogFatal` "Operation not supported on Ghostlite" |
 
 ### The architectural delta
 

@@ -187,13 +187,13 @@ Running the two tables in series — GLM through `dword_AEF42AC`, then the VEopc
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `JellyfishEmitter::EmitVectorLatch` | `sub_140B8C20` | GLM bound `< 6`, GLM→VEopcode lookup, emit chain | CONFIRMED |
-| `JellyfishEmitter::EmitVectorExtendedInstruction` | `sub_140B4F80` | VEopcode → proto `+0x60`, Vs → proto `+0x6c` | CONFIRMED |
-| `JellyfishEmitter::AddMxuNumToVectorExtended` | `sub_140B8DA0` | mxu_num → proto `+0x70` | CONFIRMED |
-| `EncoderJf::EncodeVectorExtendedInstruction` | `sub_1E869F00` | 35-case VEopcode → bundle bits; pred `@abs35`, mxu-id `@abs27`, opcode `@abs29` | CONFIRMED |
-| `dword_AEF42AC` | `.rodata` | 6-entry GLM→VEopcode table `{7,10,9,12,8,11}` | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `JellyfishEmitter::EmitVectorLatch` | `sub_140B8C20` | GLM bound `< 6`, GLM→VEopcode lookup, emit chain |
+| `JellyfishEmitter::EmitVectorExtendedInstruction` | `sub_140B4F80` | VEopcode → proto `+0x60`, Vs → proto `+0x6c` |
+| `JellyfishEmitter::AddMxuNumToVectorExtended` | `sub_140B8DA0` | mxu_num → proto `+0x70` |
+| `EncoderJf::EncodeVectorExtendedInstruction` | `sub_1E869F00` | 35-case VEopcode → bundle bits; pred `@abs35`, mxu-id `@abs27`, opcode `@abs29` |
+| `dword_AEF42AC` | `.rodata` | 6-entry GLM→VEopcode table `{7,10,9,12,8,11}` |
 
 > **NOTE — encoder reads MXU id from proto `+0x64`; the emitter writes it to `+0x70`.** The encoder reads the MXU id from proto `+0x64` (`*((DWORD*)ve + 25)`) while `AddMxuNumToVectorExtended` *writes* `mxu_num` to proto `+0x70`. The two reconcile as the emitter holding the submessage through an indirection while the encoder receives it directly; the unit-id → `@abs27-28` binding is byte-exact either way, but which protobuf field number occupies `+0x64` vs `+0x70` was not cross-checked against the proto descriptor. **MEDIUM** on the exact field-number layout; CONFIRMED on the bundle-bit binding.
 
@@ -260,11 +260,11 @@ The 20 variants follow a regular structure: `opcode = 0x20 + variant + 8·transp
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `PufferfishTensorCoreEmitter::EmitVectorLatch` | `sub_1410E1A0` | `switch(glm)` → `PushGains*` oneof; MXU0/MXU1 slot select | CONFIRMED |
-| `Encode…0PushGainsRounded` | `sub_1EDC1660` | `BitCopy` opcode `0x20@abs91`, mode `@abs89`, sub-op `@abs83`, operands | CONFIRMED |
-| 19 sibling `Encode…0PushGains*` | `sub_1EDC1920`..`sub_1EDC4E00` | per-variant opcode `0x21..0x3c` `@abs91` | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `PufferfishTensorCoreEmitter::EmitVectorLatch` | `sub_1410E1A0` | `switch(glm)` → `PushGains*` oneof; MXU0/MXU1 slot select |
+| `Encode…0PushGainsRounded` | `sub_1EDC1660` | `BitCopy` opcode `0x20@abs91`, mode `@abs89`, sub-op `@abs83`, operands |
+| 19 sibling `Encode…0PushGains*` | `sub_1EDC1920`..`sub_1EDC4E00` | per-variant opcode `0x21..0x3c` `@abs91` |
 
 > **NOTE — no MSR bit on Pufferfish.** PF has a single matrix-staging register and `HasMsrOverrunChecks()` is `FALSE` (see [latch assignment](latch-assignment-overrun.md#hasmsroverrunchecks--the-gen-level-coupling)). The `PushGains` sub-encoders write no MSR-select field; there are zero MSR-suffixed oneof types in the PF codec. The MSR-A/MSR-B distinction is a Viperfish-only feature.
 
@@ -320,12 +320,12 @@ The MXU1 (`VectorExtended1`) slot is the MXU0 layout shifted down 20 bits: opcod
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `Encode…0PushmatrixBf16` | `sub_1EFAF820` | latch: op `14@abs59`, fmt `3@abs51`, MSR `@abs57`, ctl `@abs58`, operands | CONFIRMED |
-| 15 sibling `Encode…0Pushmatrix*` | `sub_1EFAE520`..`sub_1EFB2C40` | per-dtype op `14`/masked `15..23`, fmt `0..8` | CONFIRMED |
-| `Encode…0MatrixMultiplyU8LgmrMsra` | `sub_1EFA4A20` | matmul opcode `2@abs57` (bit57=0, MSR-A) | CONFIRMED |
-| `Encode…0MatrixMultiplyU8LgmrMsrb` | `sub_1EFA4E00` | matmul opcode `3@abs57` (bit57=1, MSR-B) | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `Encode…0PushmatrixBf16` | `sub_1EFAF820` | latch: op `14@abs59`, fmt `3@abs51`, MSR `@abs57`, ctl `@abs58`, operands |
+| 15 sibling `Encode…0Pushmatrix*` | `sub_1EFAE520`..`sub_1EFB2C40` | per-dtype op `14`/masked `15..23`, fmt `0..8` |
+| `Encode…0MatrixMultiplyU8LgmrMsra` | `sub_1EFA4A20` | matmul opcode `2@abs57` (bit57=0, MSR-A) |
+| `Encode…0MatrixMultiplyU8LgmrMsrb` | `sub_1EFA4E00` | matmul opcode `3@abs57` (bit57=1, MSR-B) |
 
 > **NOTE — bit 57 ties the encode side to the [latch-assignment overrun gate](latch-assignment-overrun.md) and the VF cost model.** The MSR-A/MSR-B choice the matmul carries at `@abs57` is the same handshake whose extra reservation the Viperfish cost model charges as `{Msr:2/6}` (see [MatmulMode and Modifiers](../cost/matmul-mode-modifiers.md)). The latch's MSR field (`BYTE[op+0x44]`) determines which bank a consuming matmul reads, and so which `…Msra`/`…Msrb` matmul encoder fires — i.e. the value of bit 57. The first-latch index that `SetLatchIndices` assigns only on Viperfish wide formats is the scheduling-side decision; bit 57 is its bundle-level result.
 
@@ -387,13 +387,13 @@ Type 4 is the bulk vector register class. The gain matrix a latch loads into the
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `LloInstruction::CreateVectorLatchLsf` | `sub_1D4D7AA0` | gain-source bound, type-4 guard, slow path, field stamp | CONFIRMED |
-| `opcode_produced_register_type` | `@0x223a16c0` (`.data`) | 461-entry (1 byte each) producer→reg-type table; `4`=vector | CONFIRMED |
-| `set_latch_mode` | `sub_1D4D7C20` | `BYTE[op+0x40] = glm` | CONFIRMED |
-| `set_matrix_staging_register` | `sub_1D4D7D40` | MSR opcode-mux: latch→`+0x44`, matmul→`+0x46`, load-LMR→`+0x42`, dwg→`+0x41` | CONFIRMED |
-| `set_latch_index_in_sequence` | `sub_1D4E7960` | `WORD[op+0x42] = index`, bound `≤ 0xFFFF` | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `LloInstruction::CreateVectorLatchLsf` | `sub_1D4D7AA0` | gain-source bound, type-4 guard, slow path, field stamp |
+| `opcode_produced_register_type` | `@0x223a16c0` (`.data`) | 461-entry (1 byte each) producer→reg-type table; `4`=vector |
+| `set_latch_mode` | `sub_1D4D7C20` | `BYTE[op+0x40] = glm` |
+| `set_matrix_staging_register` | `sub_1D4D7D40` | MSR opcode-mux: latch→`+0x44`, matmul→`+0x46`, load-LMR→`+0x42`, dwg→`+0x41` |
+| `set_latch_index_in_sequence` | `sub_1D4E7960` | `WORD[op+0x42] = index`, bound `≤ 0xFFFF` |
 
 > **NOTE — the latch_index field is *not* a per-latch bundle bit.** `set_latch_index_in_sequence` (`sub_1D4E7960`) stores the assigned ordinal at `WORD[op+0x42]` (re-checking `LloOpcodeIsVectorLatch` at `llo_instruction.cc:3399` and bounding `index <= 65535` at `:3400`), but no encoder blits that ordinal into the bundle. The index is a *scheduling* artifact consumed before encode: on Viperfish the first-latch index gates whether the overrun handshake fires, which surfaces in the bundle only indirectly as the MSR-select bit `@abs57`. The wire bundle carries opcode, format, unit-id, and MSR — never the sequence index.
 

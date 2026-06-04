@@ -55,17 +55,17 @@ VectorStore slot — word 0x30 (8 bytes) + Dest in word 0x28 (gfc)
  word0x28 bit 52:  Dest 6b   ── IndexedReturnValue* only (fetch-and-add return VREG; == VectorLoad Dest)
 ```
 
-| Field | Word | Shift | Width | Present in modes | Accessor (gfc) | Confidence |
-|---|---:|---:|---:|---|---|---|
-| `Opcode` | `0x30` | 33 | 6 | all | (Matches predicate) | CONFIRMED |
-| `Source` | `0x30` | 27 | 6 | all | `…StoreSourceField` `0x1ecca3e0` | CONFIRMED |
-| `Cbreg` | `0x30` | 23 | 4 | `CircularBuffer*` only (→ 16 [CBREGs](cbreg.md)) | `…CbregField` | CONFIRMED |
-| `BaseAddress` | `0x30` | 20 | 3 | all (explicit base / alt to CBREG base) | `…BaseAddressField` | CONFIRMED |
-| `Offset` | `0x30` | 17 | 3 | all (within-window offset) | `…OffsetField` | CONFIRMED |
-| `Stride` | `0x30` | 13 | 4 | all (per-element address stride) | `…StrideField` | CONFIRMED |
-| `Mask` | `0x30` | 8 | 5 | all (lane predicate / vmask) | `…MaskField` `0x1ecca460` | CONFIRMED |
-| `Index` | `0x30` | 2 | 6 | `Indexed*` only (per-element scatter VREG) | `…IndexField` `0x1eccaf00` | CONFIRMED |
-| `Dest` | `0x28` | 52 | 6 | `IndexedReturnValue*` only (fetch-and-add return) | `…DestField` `0x1eccb860` | CONFIRMED |
+| Field | Word | Shift | Width | Present in modes | Accessor (gfc) |
+|---|---:|---:|---:|---|---|
+| `Opcode` | `0x30` | 33 | 6 | all | (Matches predicate) |
+| `Source` | `0x30` | 27 | 6 | all | `…StoreSourceField` `0x1ecca3e0` |
+| `Cbreg` | `0x30` | 23 | 4 | `CircularBuffer*` only (→ 16 [CBREGs](cbreg.md)) | `…CbregField` |
+| `BaseAddress` | `0x30` | 20 | 3 | all (explicit base / alt to CBREG base) | `…BaseAddressField` |
+| `Offset` | `0x30` | 17 | 3 | all (within-window offset) | `…OffsetField` |
+| `Stride` | `0x30` | 13 | 4 | all (per-element address stride) | `…StrideField` |
+| `Mask` | `0x30` | 8 | 5 | all (lane predicate / vmask) | `…MaskField` `0x1ecca460` |
+| `Index` | `0x30` | 2 | 6 | `Indexed*` only (per-element scatter VREG) | `…IndexField` `0x1eccaf00` |
+| `Dest` | `0x28` | 52 | 6 | `IndexedReturnValue*` only (fetch-and-add return) | `…DestField` `0x1eccb860` |
 
 The shifts above were read from the *plain* `TileSpmemStore` op-form, which is the canonical reference: it carries the address-build fields with no `Cbreg`/`Index`/`Dest`. The densest op-form, `IndexedCircularBufferReturnValueAddS32` (`Source` accessor `0x1eccb780`, `Dest` `0x1eccb860`), carries *all* of `{Source@27, Cbreg@23, BaseAddress@20, Offset@17, Stride@13, Mask@8, Index@2}` in word `0x30` plus `Dest@52` in word `0x28` plus `Opcode@33` — verified to fit with no overlap and no gap. The `{Source,BaseAddress,Offset,Stride,Mask}` positions match the [Stream](stream-gather-scatter.md) slot's scatter-add descriptor decode (`Source` @>>0x1b, `Cbreg` @>>0x17), cross-confirming the address-build field order.
 
@@ -107,41 +107,41 @@ The 6-bit opcode enumerates the cells of a (dtype × store-mode) grid. The order
 
 ### The full matrix (gfc, 33 ops, byte-confirmed)
 
-| op | mnemonic (`TileSpmem…`) | dtype | store mode | extra fields | Confidence |
-|---:|---|---|---|---|---|
-| 0 | `Store` | — | plain overwrite | — | CONFIRMED |
-| 1 | `StoreCircularBuffer` | — | plain, CB-windowed | `Cbreg` | CONFIRMED |
-| 2 | `StoreCircularBufferPostUpdate` | — | plain, CB + advance | `Cbreg` | CONFIRMED |
-| 3 | `StoreAddS32` | S32 | scatter-ADD | — | CONFIRMED |
-| 4 | `StoreCircularBufferAddS32` | S32 | scatter-ADD, CB | `Cbreg` | CONFIRMED |
-| 5 | `StoreCircularBufferPostUpdateAddS32` | S32 | scatter-ADD, CB+adv | `Cbreg` | CONFIRMED |
-| 6 | `StoreAddF32` | F32 | scatter-ADD | — | CONFIRMED |
-| 7 | `StoreCircularBufferAddF32` | F32 | scatter-ADD, CB | `Cbreg` | CONFIRMED |
-| 8 | `StoreCircularBufferPostUpdateAddF32` | F32 | scatter-ADD, CB+adv | `Cbreg` | CONFIRMED |
-| 9 | `IndexedStore` | — | indexed scatter (overwrite) | `Index` | CONFIRMED |
-| 10 | `StoreIndexedCircularBuffer` | — | indexed scatter, CB | `Index`,`Cbreg` | CONFIRMED |
-| 11 | `StoreIndexedAddS32` | S32 | indexed scatter-ADD | `Index` | CONFIRMED |
-| 12 | `StoreIndexedCircularBufferAddS32` | S32 | indexed scatter-ADD, CB | `Index`,`Cbreg` | CONFIRMED |
-| 13 | `StoreIndexedAddF32` | F32 | indexed scatter-ADD | `Index` | CONFIRMED |
-| 14 | `StoreIndexedCircularBufferAddF32` | F32 | indexed scatter-ADD, CB | `Index`,`Cbreg` | CONFIRMED |
-| 15 | `StoreIndexedReturnValueAddS32` | S32 | indexed fetch-and-add | `Index`,`Dest` | CONFIRMED |
-| 16 | `StoreIndexedCircularBufferReturnValueAddS32` | S32 | indexed fetch-and-add, CB | `Index`,`Cbreg`,`Dest` | CONFIRMED |
-| 17 | `StoreIndexedReturnValueAddF32` | F32 | indexed fetch-and-add | `Index`,`Dest` | CONFIRMED |
-| 18 | `StoreIndexedCircularBufferReturnValueAddF32` | F32 | indexed fetch-and-add, CB | `Index`,`Cbreg`,`Dest` | CONFIRMED |
-| 19 | `StoreAddS16` | S16 | scatter-ADD | — | CONFIRMED |
-| 20 | `StoreCircularBufferAddS16` | S16 | scatter-ADD, CB | `Cbreg` | CONFIRMED |
-| 21 | `StoreCircularBufferPostUpdateAddS16` | S16 | scatter-ADD, CB+adv | `Cbreg` | CONFIRMED |
-| 22 | `StoreAddBf16` | Bf16 | scatter-ADD | — | CONFIRMED |
-| 23 | `StoreCircularBufferAddBf16` | Bf16 | scatter-ADD, CB | `Cbreg` | CONFIRMED |
-| 24 | `StoreCircularBufferPostUpdateAddBf16` | Bf16 | scatter-ADD, CB+adv | `Cbreg` | CONFIRMED |
-| 25 | `StoreIndexedAddS16` | S16 | indexed scatter-ADD | `Index` | CONFIRMED |
-| 26 | `StoreIndexedCircularBufferAddS16` | S16 | indexed scatter-ADD, CB | `Index`,`Cbreg` | CONFIRMED |
-| 27 | `StoreIndexedAddBf16` | Bf16 | indexed scatter-ADD | `Index` | CONFIRMED |
-| 28 | `StoreIndexedCircularBufferAddBf16` | Bf16 | indexed scatter-ADD, CB | `Index`,`Cbreg` | CONFIRMED |
-| 29 | `StoreIndexedReturnValueAddS16` | S16 | indexed fetch-and-add | `Index`,`Dest` | CONFIRMED |
-| 30 | `StoreIndexedCircularBufferReturnValueAddS16` | S16 | indexed fetch-and-add, CB | `Index`,`Cbreg`,`Dest` | CONFIRMED |
-| 31 | `StoreIndexedReturnValueAddBf16` | Bf16 | indexed fetch-and-add | `Index`,`Dest` | CONFIRMED |
-| 32 | `StoreIndexedCircularBufferReturnValueAddBf16` | Bf16 | indexed fetch-and-add, CB | `Index`,`Cbreg`,`Dest` | CONFIRMED |
+| op | mnemonic (`TileSpmem…`) | dtype | store mode | extra fields |
+|---:|---|---|---|---|
+| 0 | `Store` | — | plain overwrite | — |
+| 1 | `StoreCircularBuffer` | — | plain, CB-windowed | `Cbreg` |
+| 2 | `StoreCircularBufferPostUpdate` | — | plain, CB + advance | `Cbreg` |
+| 3 | `StoreAddS32` | S32 | scatter-ADD | — |
+| 4 | `StoreCircularBufferAddS32` | S32 | scatter-ADD, CB | `Cbreg` |
+| 5 | `StoreCircularBufferPostUpdateAddS32` | S32 | scatter-ADD, CB+adv | `Cbreg` |
+| 6 | `StoreAddF32` | F32 | scatter-ADD | — |
+| 7 | `StoreCircularBufferAddF32` | F32 | scatter-ADD, CB | `Cbreg` |
+| 8 | `StoreCircularBufferPostUpdateAddF32` | F32 | scatter-ADD, CB+adv | `Cbreg` |
+| 9 | `IndexedStore` | — | indexed scatter (overwrite) | `Index` |
+| 10 | `StoreIndexedCircularBuffer` | — | indexed scatter, CB | `Index`,`Cbreg` |
+| 11 | `StoreIndexedAddS32` | S32 | indexed scatter-ADD | `Index` |
+| 12 | `StoreIndexedCircularBufferAddS32` | S32 | indexed scatter-ADD, CB | `Index`,`Cbreg` |
+| 13 | `StoreIndexedAddF32` | F32 | indexed scatter-ADD | `Index` |
+| 14 | `StoreIndexedCircularBufferAddF32` | F32 | indexed scatter-ADD, CB | `Index`,`Cbreg` |
+| 15 | `StoreIndexedReturnValueAddS32` | S32 | indexed fetch-and-add | `Index`,`Dest` |
+| 16 | `StoreIndexedCircularBufferReturnValueAddS32` | S32 | indexed fetch-and-add, CB | `Index`,`Cbreg`,`Dest` |
+| 17 | `StoreIndexedReturnValueAddF32` | F32 | indexed fetch-and-add | `Index`,`Dest` |
+| 18 | `StoreIndexedCircularBufferReturnValueAddF32` | F32 | indexed fetch-and-add, CB | `Index`,`Cbreg`,`Dest` |
+| 19 | `StoreAddS16` | S16 | scatter-ADD | — |
+| 20 | `StoreCircularBufferAddS16` | S16 | scatter-ADD, CB | `Cbreg` |
+| 21 | `StoreCircularBufferPostUpdateAddS16` | S16 | scatter-ADD, CB+adv | `Cbreg` |
+| 22 | `StoreAddBf16` | Bf16 | scatter-ADD | — |
+| 23 | `StoreCircularBufferAddBf16` | Bf16 | scatter-ADD, CB | `Cbreg` |
+| 24 | `StoreCircularBufferPostUpdateAddBf16` | Bf16 | scatter-ADD, CB+adv | `Cbreg` |
+| 25 | `StoreIndexedAddS16` | S16 | indexed scatter-ADD | `Index` |
+| 26 | `StoreIndexedCircularBufferAddS16` | S16 | indexed scatter-ADD, CB | `Index`,`Cbreg` |
+| 27 | `StoreIndexedAddBf16` | Bf16 | indexed scatter-ADD | `Index` |
+| 28 | `StoreIndexedCircularBufferAddBf16` | Bf16 | indexed scatter-ADD, CB | `Index`,`Cbreg` |
+| 29 | `StoreIndexedReturnValueAddS16` | S16 | indexed fetch-and-add | `Index`,`Dest` |
+| 30 | `StoreIndexedCircularBufferReturnValueAddS16` | S16 | indexed fetch-and-add, CB | `Index`,`Cbreg`,`Dest` |
+| 31 | `StoreIndexedReturnValueAddBf16` | Bf16 | indexed fetch-and-add | `Index`,`Dest` |
+| 32 | `StoreIndexedCircularBufferReturnValueAddBf16` | Bf16 | indexed fetch-and-add, CB | `Index`,`Cbreg`,`Dest` |
 
 > **QUIRK — the matrix is sparse on purpose; not every (dtype × mode) cell exists.** Three cells the grid would predict are *absent*, and a reimplementer must not synthesize them: there is **no `PostUpdate` for any `Indexed` form** (post-update only pairs with non-indexed CB stores — ops 2/5/8/21/24), **no `S16`/`Bf16` `IndexedReturnValueAdd` was dropped** (they exist, ops 29..32), but there is **no fetch-and-add for the non-indexed forms** (`ReturnValue` only ever appears with `Indexed`). The plain/indexed-plain overwrites (0,1,2,9,10) are dtype-agnostic, so they have no `S32/F32/S16/Bf16` variants. The 33 entries are exactly the reachable cells; the full Cartesian product would be larger.
 
@@ -277,20 +277,20 @@ The forward sum-lookup reduces gathered rows with a [VectorExtended](vectorexten
 
 ## Function Map
 
-| Symbol (gfc) | Address | Role | Confidence |
-|---|---|---|---|
-| `…VectorStoreTileSpmemStoreOpcode::Matches` | `0x1ecc9f40` | op 0 predicate (`testb $0x7e,0x34`) — the base op | CONFIRMED |
-| `…VectorStoreTileSpmemStoreCircularBufferOpcode::Matches` | `0x1ecc9f60` | op 1 (`cmp 0x200000000`) | CONFIRMED |
-| `…VectorStoreTileSpmemStoreAddS32Opcode::Matches` | `0x1ecc9fa0` | op 3 (`cmp 0x600000000`) | CONFIRMED |
-| `…VectorStoreTileSpmemStoreAddF32Opcode::Matches` | `0x1ecca060` | op 6 (`cmp 0xC00000000`) | CONFIRMED |
-| `…IndexedCircularBufferReturnValueAddBf16Opcode::Matches` | `0x1ecca340` | op 32 (`cmp 0x4000000000`) — the densest op | CONFIRMED |
-| `…TileSpmemStoreSourceField::GetConcatenatedValue` | `0x1ecca3e0` | `Source` @ word `0x30` >> 27 & 0x3f | CONFIRMED |
-| `…TileSpmemStoreMaskField::GetConcatenatedValue` | `0x1ecca460` | `Mask` @ word `0x30` >> 8 & 0x1f | CONFIRMED |
-| `…TileSpmemIndexedStoreIndexField::GetConcatenatedValue` | `0x1eccaf00` | `Index` @ word `0x30` >> 2 & 0x3f | CONFIRMED |
-| `…IndexedCircularBufferReturnValueAddS32SourceField` | `0x1eccb780` | densest-form `Source` (same @27) | CONFIRMED |
-| `…IndexedCircularBufferReturnValueAddS32DestField` | `0x1eccb860` | `Dest` @ word `0x28` >> 52 & 0x3f (RVA fetch result) | CONFIRMED |
-| `SparseCoreTecVectorStoreEncoder::Encode` | `0x1eccbe20` | slot encoder; opcode `BitCopy(a3, 353, …, 6)` @ bundle bit 353, `Source` `BitCopy(…,347,…,6)`, slot base @328 | CONFIRMED |
-| `…VectorExtendedMinScanU32VstSourceField` | `0x1eca7d80` | `VstSource` @ word `0x30` >> 27 — the fused store-source (== `Source`) | CONFIRMED |
+| Symbol (gfc) | Address | Role |
+|---|---|---|
+| `…VectorStoreTileSpmemStoreOpcode::Matches` | `0x1ecc9f40` | op 0 predicate (`testb $0x7e,0x34`) — the base op |
+| `…VectorStoreTileSpmemStoreCircularBufferOpcode::Matches` | `0x1ecc9f60` | op 1 (`cmp 0x200000000`) |
+| `…VectorStoreTileSpmemStoreAddS32Opcode::Matches` | `0x1ecc9fa0` | op 3 (`cmp 0x600000000`) |
+| `…VectorStoreTileSpmemStoreAddF32Opcode::Matches` | `0x1ecca060` | op 6 (`cmp 0xC00000000`) |
+| `…IndexedCircularBufferReturnValueAddBf16Opcode::Matches` | `0x1ecca340` | op 32 (`cmp 0x4000000000`) — the densest op |
+| `…TileSpmemStoreSourceField::GetConcatenatedValue` | `0x1ecca3e0` | `Source` @ word `0x30` >> 27 & 0x3f |
+| `…TileSpmemStoreMaskField::GetConcatenatedValue` | `0x1ecca460` | `Mask` @ word `0x30` >> 8 & 0x1f |
+| `…TileSpmemIndexedStoreIndexField::GetConcatenatedValue` | `0x1eccaf00` | `Index` @ word `0x30` >> 2 & 0x3f |
+| `…IndexedCircularBufferReturnValueAddS32SourceField` | `0x1eccb780` | densest-form `Source` (same @27) |
+| `…IndexedCircularBufferReturnValueAddS32DestField` | `0x1eccb860` | `Dest` @ word `0x28` >> 52 & 0x3f (RVA fetch result) |
+| `SparseCoreTecVectorStoreEncoder::Encode` | `0x1eccbe20` | slot encoder; opcode `BitCopy(a3, 353, …, 6)` @ bundle bit 353, `Source` `BitCopy(…,347,…,6)`, slot base @328 |
+| `…VectorExtendedMinScanU32VstSourceField` | `0x1eca7d80` | `VstSource` @ word `0x30` >> 27 — the fused store-source (== `Source`) |
 
 Cross-gen anchors: vfc `VectorStore` opcode field is **4-bit @ word `0x30` bit 31** (base op via `movzwl 0x33`; `CircularBuffer` via `mask 0x780000000 cmp 0x80000000` → 1), generic `Float`/`Integer` names; glc/gfc are 6-bit @ bit 33 with the four-dtype split. The full per-gen counts — vfc 15, glc 33, gfc 33 — were re-confirmed by per-namespace `Matches`-symbol enumeration in the decompile.
 

@@ -30,7 +30,6 @@ For reimplementation, the contract is:
 | **Selection passes** | P1 same-plane · P2 data-dep (`HloReachabilityMap`) · P3 assign-group · P4 not-different-plane · P5 fallback |
 | **Tie-break** | cost-ascending `stable_sort` comparator `$_0` (`vucomisd`, `0x10FE8AE0`) |
 | **Caller / sink** | `AssignQueueIDsToAsyncStart` (`0x10FDF480`) → `__sort` → `AddCollectivePhysicalCoreIndices` (`0x1C868500`) → `physical_core_indices` |
-| **Confidence** | CONFIRMED (decompile + binary-byte anchored) unless a row or callout says otherwise |
 
 ---
 
@@ -68,12 +67,12 @@ AddCollectivePhysicalCoreIndices(hlo, span(selected))  // long -> int32, write p
 
 ### Related Functions
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `SparseCoreQueueAssignment::GetAllowedCores` | `0x10FDA3C0` | candidate-core mask (btree_set) | CONFIRMED |
-| `SparseCoreQueueAssignment::SelectCores` | `0x10FDC4E0` | five-phase ordered selection | CONFIRMED |
-| `SparseCoreQueueAssignment::AssignQueueIDsToAsyncStart` | `0x10FDF480` | per-collective driver; calls both, then sorts | CONFIRMED |
-| `backend_config_util::AddCollectivePhysicalCoreIndices` | `0x1C868500` | writes `physical_core_indices` from `Span<long const>` | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `SparseCoreQueueAssignment::GetAllowedCores` | `0x10FDA3C0` | candidate-core mask (btree_set) |
+| `SparseCoreQueueAssignment::SelectCores` | `0x10FDC4E0` | five-phase ordered selection |
+| `SparseCoreQueueAssignment::AssignQueueIDsToAsyncStart` | `0x10FDF480` | per-collective driver; calls both, then sorts |
+| `backend_config_util::AddCollectivePhysicalCoreIndices` | `0x1C868500` | writes `physical_core_indices` from `Span<long const>` |
 
 ---
 
@@ -154,21 +153,21 @@ function GetAllowedCores(hlo):                         // 0x10FDA3C0
     return result
 ```
 
-> **NOTE —** the budget gate is byte-confirmed as the **post-decrement-then-compare** pattern `v = (*budget)--; if (v >= 2)` at two sites in the decompile (one per map-fill pass; the TLS `long` is loaded via `__tls_get_addr(&qword_22048D78)`, post-decremented, then tested `>= 2`), but the **writer that seeds** the thread-local `long` — and therefore its initial value — was **not** traced to its initialization site. The reservation is the embedding-device / reserved-core knob: it is the mechanism by which cores reserved for embedding devices (the `sc_dev − num_embedding_devices` split) are excluded from the candidate pool, but whether the seed is `NumEmbeddingDevices`, a fixed cores-per-resource cap, or `LogicalDevicesPerChip(SC)` is **LOW confidence** here. See [SC Queue Assignment & Reservation](sc-queue-assignment-reservation.md) for the resource→limit map this budget is part of.
+> **NOTE —** the budget gate is the **post-decrement-then-compare** pattern `v = (*budget)--; if (v >= 2)` at two sites (one per map-fill pass; the TLS `long` is loaded via `__tls_get_addr(&qword_22048D78)`, post-decremented, then tested `>= 2`). The **writer that seeds** the thread-local `long` — and therefore its initial value — is not visible in this function. The reservation is the embedding-device / reserved-core knob: it is the mechanism by which cores reserved for embedding devices (the `sc_dev − num_embedding_devices` split) are excluded from the candidate pool; whether the seed is `NumEmbeddingDevices`, a fixed cores-per-resource cap, or `LogicalDevicesPerChip(SC)` is not determined here. See [SC Queue Assignment & Reservation](sc-queue-assignment-reservation.md) for the resource→limit map this budget is part of.
 
 > **GOTCHA —** the two map globals are *policy* singletons, not per-call state: `flat_hash_map<long, btree_set<long,…,256>>::GetPolicyFunctions()::value` at `0x2181D940` and `flat_hash_map<long, long>` at `0x21639C10`. The btree empty-node sentinel is `0x2181D930`. A reimplementer instantiating these maps must match the `btree_set<...,256>` node fan-out (256) for the resource→chip-set value type; the `256` is part of the type and the btree-node walk stride depends on it.
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `SparseCoreQueueAssignment::GetAllowedCores` | `0x10FDA3C0` | candidate-mask build (sret btree_set) | CONFIRMED |
-| `(anon)::GetChipIDsFromParallelismConfig` | `0x10FDBF40` | megachip per-axis chip IDs → `vector<long>` | CONFIRMED |
-| `(anon)::GetSparseCoreResources` | `0x10FDC0A0` | per-collective resource-type IDs `{0,23..28}` | CONFIRMED |
-| `GetMegaChipParallelism` | `0x1C867B00` | `StatusOr<InlinedVector<long,4>>` per-axis split | CONFIRMED |
-| `backend_config_util::GetSparseCoreConfig` | `0x1C868D20` | offload-config read (type enum + hasbit) | CONFIRMED |
-| `AsyncTracker::GetResourceTypeForOp` | `0x13612240` | enum-4 switch arm: resource-type from unwrapped async-op root opcode | CONFIRMED |
-| reservation budget | `__tls_get_addr(&qword_22048D78)` | per-resource exclusion counter | CONFIRMED (gate); seed LOW |
+| Function | Address | Role |
+|---|---|---|
+| `SparseCoreQueueAssignment::GetAllowedCores` | `0x10FDA3C0` | candidate-mask build (sret btree_set) |
+| `(anon)::GetChipIDsFromParallelismConfig` | `0x10FDBF40` | megachip per-axis chip IDs → `vector<long>` |
+| `(anon)::GetSparseCoreResources` | `0x10FDC0A0` | per-collective resource-type IDs `{0,23..28}` |
+| `GetMegaChipParallelism` | `0x1C867B00` | `StatusOr<InlinedVector<long,4>>` per-axis split |
+| `backend_config_util::GetSparseCoreConfig` | `0x1C868D20` | offload-config read (type enum + hasbit) |
+| `AsyncTracker::GetResourceTypeForOp` | `0x13612240` | enum-4 switch arm: resource-type from unwrapped async-op root opcode |
+| reservation budget | `__tls_get_addr(&qword_22048D78)` | per-resource exclusion counter |
 
 ---
 
@@ -229,7 +228,7 @@ function SelectCores(hlo, allowed, devcount, cost, assigned, reach, assign_group
     return Ok(selected)                   // sret: [+0]=1 ok-tag, [+8]=data, [+0x10]=size, [+0x18]=cap
 ```
 
-> **QUIRK —** the `double cost` argument is consumed at exactly one place: the `stable_sort` comparator `$_0` (`vucomisd` on a per-core `double` weight array). It is a **tie-break only**. Among candidates that equally satisfy a phase's predicate, the lower-cost core is appended first. There is no per-candidate score that decides *whether* a core is selected — only the phase predicate does that. The arithmetic that *populates* each core's weight (the LatencyEstimator / queue-occupancy feed in the caller) was not traced; the comparator's *use* (ascending sort) is byte-confirmed, the producer is **LOW confidence**.
+> **QUIRK —** the `double cost` argument is consumed at exactly one place: the `stable_sort` comparator `$_0` (`vucomisd` on a per-core `double` weight array). It is a **tie-break only**. Among candidates that equally satisfy a phase's predicate, the lower-cost core is appended first. There is no per-candidate score that decides *whether* a core is selected — only the phase predicate does that. The arithmetic that *populates* each core's weight (the LatencyEstimator / queue-occupancy feed in the caller) is not visible in this function; only the comparator's *use* (ascending sort) is determined here.
 
 ### Algorithm — the five predicates
 
@@ -264,14 +263,14 @@ P5  FALLBACK FILL          (no VLOG):
     every candidate in allowed_vec not already selected -> append unconditionally.
 ```
 
-| Phase | Src line | Predicate (candidate core `c`, scanning `assigned`) | VLOG | Confidence |
-|---|---|---|---|---|
-| P1 | 279 | ∃ `Info` holding `c` whose `NDPlaneInfo == target` (**same plane**) | "… because it is running … on the same ND plane." | CONFIRMED |
-| P2 | 302 | ∃ `Info` whose op is reachable ↔ `hlo` (**data dependency**) | "… has data dependency with it." | CONFIRMED |
-| P3 | 329 | `hlo` ∈ some assignment group ∧ a member's `Info` holds `c` | "… due to hint from pre-determined assignment groups." | CONFIRMED |
-| P4 | 362 | **no** `Info` holding `c` is on a **different** ND plane | "… because it is not running a collective on a different ND plane." | CONFIRMED |
-| P4 (skip) | 352 | (`c` **is** on a different plane → skip) | "Core … is running … on a different ND plane." | CONFIRMED |
-| P5 | — | always (append every remaining allowed core) | (none) | CONFIRMED |
+| Phase | Src line | Predicate (candidate core `c`, scanning `assigned`) | VLOG |
+|---|---|---|---|
+| P1 | 279 | ∃ `Info` holding `c` whose `NDPlaneInfo == target` (**same plane**) | "… because it is running … on the same ND plane." |
+| P2 | 302 | ∃ `Info` whose op is reachable ↔ `hlo` (**data dependency**) | "… has data dependency with it." |
+| P3 | 329 | `hlo` ∈ some assignment group ∧ a member's `Info` holds `c` | "… due to hint from pre-determined assignment groups." |
+| P4 | 362 | **no** `Info` holding `c` is on a **different** ND plane | "… because it is not running a collective on a different ND plane." |
+| P4 (skip) | 352 | (`c` **is** on a different plane → skip) | "Core … is running … on a different ND plane." |
+| P5 | — | always (append every remaining allowed core) | (none) |
 
 > **NOTE —** the assignment-group VLOG inside `SelectCores` is the **positive** pin ("Adding core … due to hint …", line 329). The complementary diagnostic "Not pinning … due to hint from pre-determined assignment groups." is **not** referenced inside `SelectCores` or `GetAllowedCores`; it lives in a higher-level assignment-group decision (the group construction / `AssignQueueIDsForComputation` layer). `SelectCores`'s own per-candidate "skip" diagnostic is P4's "Core … is running … on a different ND plane." (line 352).
 
@@ -283,14 +282,14 @@ P5  FALLBACK FILL          (no VLOG):
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `SparseCoreQueueAssignment::SelectCores` | `0x10FDC4E0` | five-phase ordered selection (sret StatusOr) | CONFIRMED |
-| `…::SelectCores(...)::$_0` (in `__stable_sort`) | `0x10FE8AE0` | cost-ascending comparator (`vucomisd` @ `0x10FE8B34`) | CONFIRMED |
-| `(anon)::TryGetNDPlaneInfoForSparseCoreCollectives` | `0x10FDEDC0` | target ND-plane for the predicates | CONFIRMED |
-| `NDPlaneInfo::ToString` | `0x10FDF2A0` | VLOG plane formatter (or literal `"None"`) | CONFIRMED |
-| `HloReachabilityMap` probe | — | P2 bit-matrix `bt` test (crc32 Swiss find) | CONFIRMED (probe); construction LOW |
-| `HloInstruction::async_wrapped_instruction` | `0x1E5AA300` | unwrap for resource derivation (shared with mask) | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `SparseCoreQueueAssignment::SelectCores` | `0x10FDC4E0` | five-phase ordered selection (sret StatusOr) |
+| `…::SelectCores(...)::$_0` (in `__stable_sort`) | `0x10FE8AE0` | cost-ascending comparator (`vucomisd` @ `0x10FE8B34`) |
+| `(anon)::TryGetNDPlaneInfoForSparseCoreCollectives` | `0x10FDEDC0` | target ND-plane for the predicates |
+| `NDPlaneInfo::ToString` | `0x10FDF2A0` | VLOG plane formatter (or literal `"None"`) |
+| `HloReachabilityMap` probe | — | P2 bit-matrix `bt` test (crc32 Swiss find) |
+| `HloInstruction::async_wrapped_instruction` | `0x1E5AA300` | unwrap for resource derivation (shared with mask) |
 
 ---
 
@@ -322,16 +321,16 @@ So the modes are: **single-core** (`use_single_sparse_core()` → the collective
 
 `SelectCores`/`GetAllowedCores` produce the *set* of physical cores a collective may use; `tensor_split_factor` determines how many of those cores a single collective's ring actually fans out across, and the divisibility `RET_CHECK` ensures the strategy table partitions evenly. The selection policy is agnostic to the split mode — it neither reads `tensor_split_factor` nor branches on `use_single_sparse_core`. A reimplementer should treat `tensor_split_factor` as a property of the *emitted strategy* that must be consistent with the count of selected cores, propagated through the offload-config the same `GetSparseCoreConfig` reader that `GetSparseCoreResources` uses for its resource-type enum.
 
-> **NOTE —** the `tensor_split_factor` ↔ selected-core-count consistency is **CONFIRMED-via-structure**: the gate strings and the divisibility `RET_CHECK` are byte-read, and both sit in the collective strategy layer that consumes `physical_core_indices`. The exact arithmetic mapping a `tensor_split_factor` of N onto N specific entries of the selected-core list is part of the ring-strategy construction, which is **out of scope** for this selection page (it belongs to the offload-strategy emitters). Confidence on the *interaction direction* (consumer, not selection input): CONFIRMED. Confidence on the per-color partition arithmetic: not covered here.
+> **NOTE —** the gate strings and the divisibility `RET_CHECK` for the `tensor_split_factor` ↔ selected-core-count consistency both sit in the collective strategy layer that consumes `physical_core_indices`. The exact arithmetic mapping a `tensor_split_factor` of N onto N specific entries of the selected-core list is part of the ring-strategy construction, which is **out of scope** for this selection page (it belongs to the offload-strategy emitters). `tensor_split_factor` is a consumer of the selected-core set, not a selection input.
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `SinglePhaseAGStrategy::AdjustStrategiesForSingleCoreIfNeeded` | `0x1338C1E0` | single-core vs tensor-split gate | CONFIRMED |
-| `SinglePhaseRSStrategy::AdjustStrategiesForSingleCoreIfNeeded` | `0x1338A7A0` | reduce-scatter analogue | CONFIRMED |
-| `emitter_helpers::CreateRingStrategiesForNdFromExplicitTable` | `0x13390900` | `color_strategies_size() % tensor_split_factor == 0` | CONFIRMED |
-| `backend_config_util::GetSparseCoreConfig` | `0x1C868D20` | offload-config reader (shared with the mask) | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `SinglePhaseAGStrategy::AdjustStrategiesForSingleCoreIfNeeded` | `0x1338C1E0` | single-core vs tensor-split gate |
+| `SinglePhaseRSStrategy::AdjustStrategiesForSingleCoreIfNeeded` | `0x1338A7A0` | reduce-scatter analogue |
+| `emitter_helpers::CreateRingStrategiesForNdFromExplicitTable` | `0x13390900` | `color_strategies_size() % tensor_split_factor == 0` |
+| `backend_config_util::GetSparseCoreConfig` | `0x1C868D20` | offload-config reader (shared with the mask) |
 
 ---
 

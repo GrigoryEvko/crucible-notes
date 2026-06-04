@@ -29,7 +29,6 @@ For reimplementation, the contract is:
 | **TPU Select** | `TPUDAGToDAGISel::Select` (`0x13B69640`); cast IDs → `SelectCodeCommon` default |
 | **MatcherTable** | size `0x37CAC` (228 524 B); opcode-48 = `ISD::INTRINSIC_WO_CHAIN` (no cast arm) |
 | **`0xf4` lowering** | `LowerOperation` (`0x13B70AA0`) opcode `244` → `LowerADDRSPACECAST` (`0x13B70480`) |
-| **Confidence** | CONFIRMED (decompile-anchored) unless a row or callout says otherwise |
 
 ---
 
@@ -140,15 +139,15 @@ function TPUTargetLowering_LowerOperation(op, dag):   // 0x13B70AA0
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `MemorySpaceCastOpLowering::matchAndRewrite` | `0x135A5C20` | MLIR cast: elide if `convertType` equal, else fail → generic `llvm.addrspacecast` | CONFIRMED |
-| `convertOperationImpl` | `0x15140240` (IDA VMA) | LlvmTpu op→IR dispatcher; cast arms → `createIntrinsicCall` | CONFIRMED |
-| `mlir::LLVM::detail::createIntrinsicCall` | `0x1683F440` | emit real intrinsic call (`getOrInsertDeclaration` + `CreateCall`) | CONFIRMED |
-| `SelectionDAG::getAddrSpaceCast` | `0x192E2360` | the only `getNode(244)` / `0xf4` producer | CONFIRMED |
-| `SelectionDAGBuilder::visitAddrSpaceCast` | `0x19333020` | sole caller of `getAddrSpaceCast` — real IR-instruction handler | CONFIRMED |
-| `TPUTargetLowering::LowerOperation` | `0x13B70AA0` | opcode `244` → `LowerADDRSPACECAST`; opcode 48 NOT lowered | CONFIRMED |
-| `TPUTargetLowering::LowerADDRSPACECAST` | `0x13B70480` | `0xf4` → value-preserving `0xf3` register-copy node | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `MemorySpaceCastOpLowering::matchAndRewrite` | `0x135A5C20` | MLIR cast: elide if `convertType` equal, else fail → generic `llvm.addrspacecast` |
+| `convertOperationImpl` | `0x15140240` (IDA VMA) | LlvmTpu op→IR dispatcher; cast arms → `createIntrinsicCall` |
+| `mlir::LLVM::detail::createIntrinsicCall` | `0x1683F440` | emit real intrinsic call (`getOrInsertDeclaration` + `CreateCall`) |
+| `SelectionDAG::getAddrSpaceCast` | `0x192E2360` | the only `getNode(244)` / `0xf4` producer |
+| `SelectionDAGBuilder::visitAddrSpaceCast` | `0x19333020` | sole caller of `getAddrSpaceCast` — real IR-instruction handler |
+| `TPUTargetLowering::LowerOperation` | `0x13B70AA0` | opcode `244` → `LowerADDRSPACECAST`; opcode 48 NOT lowered |
+| `TPUTargetLowering::LowerADDRSPACECAST` | `0x13B70480` | `0xf4` → value-preserving `0xf3` register-copy node |
 
 ---
 
@@ -208,16 +207,16 @@ So every cast intrinsic node that survives to `Select` is handed to the generic 
 
 ### How the cast is discharged before the matcher
 
-The sixteen casts are value-preserving: the result pointer equals the operand pointer with a different `addrspace` tag. The intended discharge (HIGH confidence, not a single byte-trace) is that the **consuming** SparseCore load/store ISel pattern reads *through* the cast's pointer operand (plus, for the TEC/TAC-scoped two-operand casts, the separate `i32 tileid` operand), so the cast node is dead and DCE'd before `Select` ever sees it — or it is folded by the generic DAGCombiner's `visitINTRINSIC_WO_CHAIN` pointer pass-through. Either way the cast never needs a matcher pattern. The exact discharge stage (consumer-pattern fold vs generic combiner DCE) is the one open machine-level link; the negatives — no `0xf4` conversion, no matcher arm, no special `Select` handler — are instruction-grade firm.
+The sixteen casts are value-preserving: the result pointer equals the operand pointer with a different `addrspace` tag. The intended discharge is that the **consuming** SparseCore load/store ISel pattern reads *through* the cast's pointer operand (plus, for the TEC/TAC-scoped two-operand casts, the separate `i32 tileid` operand), so the cast node is dead and DCE'd before `Select` ever sees it — or it is folded by the generic DAGCombiner's `visitINTRINSIC_WO_CHAIN` pointer pass-through. Either way the cast never needs a matcher pattern. The exact discharge stage (consumer-pattern fold vs generic combiner DCE) is not byte-traced here; the negatives — no `0xf4` conversion, no matcher arm, no special `Select` handler — are firm.
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `TPUDAGToDAGISel::Select` | `0x13B69640` | per-node ISel; opcode-48 intrinsic dispatch | CONFIRMED |
-| `SelectionDAGISel::SelectCodeCommon` | (tail-called) | MatcherTable interpreter; `0x37CAC`-byte table | CONFIRMED |
-| MatcherTable opcode-48 arm | (in table) | `ISD::INTRINSIC_WO_CHAIN`; ~150 IDs, **no** cast IDs | HIGH |
-| `selectCrossLaneIntrinsic` / `selectCMask` / `selectErfIntrinsic` | `0x13B6B940` / `0x13B6C6E0` / `0x13B6B480` | the special-handler intrinsics (NOT the casts) | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `TPUDAGToDAGISel::Select` | `0x13B69640` | per-node ISel; opcode-48 intrinsic dispatch |
+| `SelectionDAGISel::SelectCodeCommon` | (tail-called) | MatcherTable interpreter; `0x37CAC`-byte table |
+| MatcherTable opcode-48 arm | (in table) | `ISD::INTRINSIC_WO_CHAIN`; ~150 IDs, **no** cast IDs |
+| `selectCrossLaneIntrinsic` / `selectCMask` / `selectErfIntrinsic` | `0x13B6B940` / `0x13B6C6E0` / `0x13B6B480` | the special-handler intrinsics (NOT the casts) |
 
 ---
 
@@ -249,26 +248,26 @@ The destination address space is read from the SparseCore address-space ID table
 
 The **Operands** column is byte-confirmed from each op class's operand trait (`NOperands<2u>` ⇒ two, `OneOperand` ⇒ one). The nine two-operand casts are exactly the TEC- and TAC-scoped set.
 
-| ID | hex | Intrinsic name | Operands | from (src AS) | to (dst scope / AS) | Confidence |
-|---|---|---|---|---|---|---|
-| 13232 | `0x33b0` | `llvm.tpu.addrspacecast` | `ptr` | any | generic / default pointer re-tag | CONFIRMED |
-| 13233 | `0x33b1` | `…​.scs` | `ptr` | any | SCS engine scope (scalar-sequencer view) | CONFIRMED (name/arity) / HIGH (scope) |
-| 13234 | `0x33b2` | `…​.scs.sflag.scs` | `ptr` | sflag | SFLAG, SCS scope (`sflag_scs`, AS 223) | CONFIRMED |
-| 13235 | `0x33b3` | `…​.sflag.tile.scs` | `ptr` | sflag-tile | SFLAG tile pool, SCS view (`sflag_tile` AS 217) | CONFIRMED |
-| 13236 | `0x33b4` | `…​.sflag.tile.sflag.scs` | `ptr` | sflag-tile | SFLAG tile → `sflag_scs` (AS 223), SCS scope | CONFIRMED |
-| 13237 | `0x33b5` | `…​.sflag.tile.sflag.tec` | `ptr, i32 tid` | sflag-tile | SFLAG tile → sflag, TEC scope | CONFIRMED |
-| 13238 | `0x33b6` | `…​.sflag.tile.tac` | `ptr, i32 tid` | sflag-tile | SFLAG tile pool, TAC view (`sflag_tile` AS 217) | CONFIRMED |
-| 13239 | `0x33b7` | `…​.sflag.tile.tec` | `ptr, i32 tid` | sflag-tile | SFLAG tile pool, TEC view (`sflag_tile` AS 217) | CONFIRMED |
-| 13240 | `0x33b8` | `…​.smem` | `ptr, i32 tid` | any | SMEM (AS 0 / `smem`), TEC scope | CONFIRMED |
-| 13241 | `0x33b9` | `…​.smem.tile.scs` | `ptr` | smem-tile | per-tile SMEM (`smem_tile`/`TileSmem` AS 219), SCS scope | CONFIRMED |
-| 13242 | `0x33ba` | `…​.smem.tile.tec` | `ptr, i32 tid` | smem-tile | per-tile SMEM (`smem_tile`/`TileSmem` AS 219), TEC scope | CONFIRMED |
-| 13243 | `0x33bb` | `…​.spmem` | `ptr, i32 tid` | any | SPMEM (chip-shared SC SRAM, AS 202), TEC scope | CONFIRMED |
-| 13244 | `0x33bc` | `…​.tac` | `ptr, i32 tid` | any | TAC engine scope (tile-access-core view) | CONFIRMED (name/arity) / HIGH (scope) |
-| 13245 | `0x33bd` | `…​.tc` | `ptr` | any | TensorCore scope (cross-engine handoff) | CONFIRMED (name/arity) / HIGH (scope) |
-| 13246 | `0x33be` | `…​.tec` | `ptr, i32 tid` | any | TEC engine scope (tile-execute view) | CONFIRMED |
-| 13247 | `0x33bf` | `…​.tec.sflag.tec` | `ptr, i32 tid` | sflag | SFLAG, TEC scope (`.tec` engine + sflag pool) | CONFIRMED |
+| ID | hex | Intrinsic name | Operands | from (src AS) | to (dst scope / AS) |
+|---|---|---|---|---|---|
+| 13232 | `0x33b0` | `llvm.tpu.addrspacecast` | `ptr` | any | generic / default pointer re-tag |
+| 13233 | `0x33b1` | `…​.scs` | `ptr` | any | SCS engine scope (scalar-sequencer view) |
+| 13234 | `0x33b2` | `…​.scs.sflag.scs` | `ptr` | sflag | SFLAG, SCS scope (`sflag_scs`, AS 223) |
+| 13235 | `0x33b3` | `…​.sflag.tile.scs` | `ptr` | sflag-tile | SFLAG tile pool, SCS view (`sflag_tile` AS 217) |
+| 13236 | `0x33b4` | `…​.sflag.tile.sflag.scs` | `ptr` | sflag-tile | SFLAG tile → `sflag_scs` (AS 223), SCS scope |
+| 13237 | `0x33b5` | `…​.sflag.tile.sflag.tec` | `ptr, i32 tid` | sflag-tile | SFLAG tile → sflag, TEC scope |
+| 13238 | `0x33b6` | `…​.sflag.tile.tac` | `ptr, i32 tid` | sflag-tile | SFLAG tile pool, TAC view (`sflag_tile` AS 217) |
+| 13239 | `0x33b7` | `…​.sflag.tile.tec` | `ptr, i32 tid` | sflag-tile | SFLAG tile pool, TEC view (`sflag_tile` AS 217) |
+| 13240 | `0x33b8` | `…​.smem` | `ptr, i32 tid` | any | SMEM (AS 0 / `smem`), TEC scope |
+| 13241 | `0x33b9` | `…​.smem.tile.scs` | `ptr` | smem-tile | per-tile SMEM (`smem_tile`/`TileSmem` AS 219), SCS scope |
+| 13242 | `0x33ba` | `…​.smem.tile.tec` | `ptr, i32 tid` | smem-tile | per-tile SMEM (`smem_tile`/`TileSmem` AS 219), TEC scope |
+| 13243 | `0x33bb` | `…​.spmem` | `ptr, i32 tid` | any | SPMEM (chip-shared SC SRAM, AS 202), TEC scope |
+| 13244 | `0x33bc` | `…​.tac` | `ptr, i32 tid` | any | TAC engine scope (tile-access-core view) |
+| 13245 | `0x33bd` | `…​.tc` | `ptr` | any | TensorCore scope (cross-engine handoff) |
+| 13246 | `0x33be` | `…​.tec` | `ptr, i32 tid` | any | TEC engine scope (tile-execute view) |
+| 13247 | `0x33bf` | `…​.tec.sflag.tec` | `ptr, i32 tid` | sflag | SFLAG, TEC scope (`.tec` engine + sflag pool) |
 
-> **NOTE —** the intrinsic *names* and their contiguous ID assignment (`0x33b0..0x33bf`, bracketed by `0x33af llvm.tpu.addcarry` and `0x33c0 llvm.tpu.alloca.dreg`) are CONFIRMED byte-exactly from the binary's Intrinsic name table. The **operand arity** is also CONFIRMED — read from each op class's operand trait (the nine `NOperands<2u>` two-operand casts are precisely the TEC- and TAC-scoped set; the seven `OneOperand` casts are SCS/TC-scoped). The pool address-space numbers `217` (`sflag_tile`), `219` (`smem_tile`/`TileSmem`), `223` (`sflag_scs`), `202` (`spmem`), `0` (`smem`) are CONFIRMED from the cast-lowering drivers (`CastSflagPointerToSflagAny` `0x135b8a00`, `CastTileSmemPointerToSmem` `0x135b86e0`). The remaining HIGH items are the per-suffix *scope* meaning for the bare engine tags (`.scs`/`.tac`/`.tc`): the exact LLVM address-space *number* a given engine-scope tag resolves to is the per-scope alias selection owned by [Fat Pointers (AS7/8/9)](fat-pointers-as789.md) and the address-space catalog; this page resolves the *pool*, not the per-scope numeric alias.
+> **NOTE —** the intrinsic *names* and their contiguous ID assignment (`0x33b0..0x33bf`, bracketed by `0x33af llvm.tpu.addcarry` and `0x33c0 llvm.tpu.alloca.dreg`) are read byte-exactly from the binary's Intrinsic name table. The **operand arity** is read from each op class's operand trait (the nine `NOperands<2u>` two-operand casts are precisely the TEC- and TAC-scoped set; the seven `OneOperand` casts are SCS/TC-scoped). The pool address-space numbers `217` (`sflag_tile`), `219` (`smem_tile`/`TileSmem`), `223` (`sflag_scs`), `202` (`spmem`), `0` (`smem`) come from the cast-lowering drivers (`CastSflagPointerToSflagAny` `0x135b8a00`, `CastTileSmemPointerToSmem` `0x135b86e0`). For the bare engine tags (`.scs`/`.tac`/`.tc`), the exact LLVM address-space *number* a given engine-scope tag resolves to is the per-scope alias selection owned by [Fat Pointers (AS7/8/9)](fat-pointers-as789.md) and the address-space catalog; this page resolves the *pool*, not the per-scope numeric alias.
 
 ### The two-operand (TEC/TAC-scoped) subset
 

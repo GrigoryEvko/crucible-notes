@@ -24,7 +24,6 @@ The page is three units plus the downstream binding: the **minibatching decompos
 | **Data-format adapter** | `EmbeddingDataFormattingDecomposer::RunImpl` (`0x1368b4a0`) — op-types `0x1a..0x1d`; Sc/Tc gated by `EnableEmbeddingDataFormattingOffload` |
 | **Packed-op lowering** | `ScanOpLowering<SegmentedScanOp>::matchAndRewrite` (`0x135f3000`) — unpack→`getReductionOp`→`SegmentedScanOp::create`→pack |
 | **Downstream emitter** | `SparseDenseMatmulDotCombinerEmitter::Emit` (`0x1332bda0`) → `EmitValencyLoop` / `EmitVectorizedLoop` / `EmitSampleCombiner` |
-| **Confidence** | CONFIRMED (decompile + binary-byte anchored) unless a row or callout says otherwise |
 
 ---
 
@@ -105,7 +104,7 @@ int GetPaddedRowCount(const Target &t, int num) {
 
 So the padded row count is `max( max(GranuleBytes/4, num), cfg )` — a granule-aligned floor on the per-minibatch row count.
 
-> **NOTE — the config bound is a floor (`max`), not a cap (`min`).** The decompiled comparison is `if ((int)r <= cfg) r = cfg`, which raises `r` *up* to `cfg` when `r` is below it — a **lower** bound. The padded count is therefore `max(max(GranuleBytes/4, num), cfg)`. The semantic identity of the `cfg` field (`[Target+0x948]→[+0x94]`) is read structurally — it is a per-target row-count config, but its proto field *name* was not decoded (INFERRED).
+> **NOTE — the config bound is a floor (`max`), not a cap (`min`).** The decompiled comparison is `if ((int)r <= cfg) r = cfg`, which raises `r` *up* to `cfg` when `r` is below it — a **lower** bound. The padded count is therefore `max(max(GranuleBytes/4, num), cfg)`. The semantic identity of the `cfg` field (`[Target+0x948]→[+0x94]`) is read structurally — it is a per-target row-count config, but its proto field *name* is not decoded.
 
 ### The forward / backward pass roster
 
@@ -151,7 +150,7 @@ The whole point of the multiply/add chain in `CreateDynamicSliceCsr` is to give 
 
 So each physical SparseCore reads a contiguous `padded`-length window of the concatenated row-pointers starting at `padded · GCI · (b + 1)`. The `csr` operand (an `HloInstruction*` arg) is consumed by the `"DynamicSliceCsr"` custom-call as its first of three operands when present, and the `{sliced-csr, base, padded}` is wrapped into the returned 3-tuple.
 
-> **NOTE — operand identity of `b` is structural.** The two `HloInstruction*` args to `CreateDynamicSliceCsr` (call them `a` and `b`) were read from the `DecomposeForwardPass` call-site register convention (`r8`=`a`, `r9`=`b`), not from a named accessor. `b` is inferred to be the minibatch index operand and `a` the csr operand. The register-identity dataflow inside `CreateDynamicSliceCsr` is CONFIRMED byte-exact; which SSA value is the per-table vs per-minibatch index is **INFERRED**. The `SparseDenseMatmulConfig` field `[+0x30]` that the forward pass reads (≈ `FLAGS_xla_sparse_core_minibatch_max_division_level`, `0x222bd280`) is a CONFIRMED byte read whose proto field *name* is INFERRED by flag adjacency.
+> **NOTE — operand identity of `b` is structural.** The two `HloInstruction*` args to `CreateDynamicSliceCsr` (call them `a` and `b`) are read from the `DecomposeForwardPass` call-site register convention (`r8`=`a`, `r9`=`b`), not from a named accessor. `b` is the minibatch index operand and `a` the csr operand. The register-identity dataflow inside `CreateDynamicSliceCsr` is byte-exact; which SSA value is the per-table vs per-minibatch index is read structurally. The `SparseDenseMatmulConfig` field `[+0x30]` that the forward pass reads (≈ `FLAGS_xla_sparse_core_minibatch_max_division_level`, `0x222bd280`) is a byte read whose proto field *name* follows from flag adjacency.
 
 ### The decomposed operand-name tables
 
@@ -177,10 +176,10 @@ BackwardPassArgSpec::kBackwardPassOperandNames (0x21938320, 9 entries):
 
 The four `concatenated_*` operands map directly onto the SC embedding sum-lookup roles: `csr_pointers` → segment boundaries (the SegmentedScan's reset points), `embedding_ids` → the gather indices, `sample_ids` → output rows, `gains` → the per-id multiplicative weight the [DotCombiner FMA](sample-combiner-emitter.md) applies verbatim.
 
-| Table | Address | Entries | Confidence |
-|---|---|---|---|
-| `kForwardPassOperandNames` | `0x21937d80` | 7 | CONFIRMED (reloc addends resolved; strings present in binary) |
-| `kBackwardPassOperandNames` | `0x21938320` | 9 | CONFIRMED |
+| Table | Address | Entries |
+|---|---|---|
+| `kForwardPassOperandNames` | `0x21937d80` | 7 |
+| `kBackwardPassOperandNames` | `0x21938320` | 9 |
 
 ---
 
@@ -237,31 +236,7 @@ The chain is: **`MinibatchingDecomposition`** produces the per-minibatch inner o
 
 A separate, non-minibatch path exists for the gather-mul-scatter form: `GatherMulScatterSparseDenseMatmulOpDecomposer` (`0x13c861e0`) with the `GatherEmitter::ScatterOperandSlicesToHbm{,ForSortedIndices,ForChunkGather,ForColumnWiseGather}` family (`0x138e6c80` …). That is the symmetric non-CSR lowering and is out of scope here.
 
-> **NOTE — the deep emitter wiring is surveyed, not instruction-decoded here.** The per-instruction gather/scan/scatter wiring inside `EmitVectorizedLoop` / `EmitSampleCombiner` — which `IndirectStream` variant per dtype, SPMEM tile sizes, `Sfence`/`TileBarrier`/`SyncAdd` placement, and the `GetScheduleType` (`0x131d5300`) valency-vs-vectorized selection — is owned by [EmitValencyLoop](emit-valency-loop.md) and [SampleCombiner Emitter](sample-combiner-emitter.md). The DAG *shape* (the five stages above) is CONFIRMED by op `::build`/`::create` presence; the instruction sequence inside the loops is documented on those pages.
-
----
-
-## Confidence Summary
-
-| Claim | Evidence | Confidence |
-|---|---|---|
-| Op recognition is two-name `IsCustomCall` (`…WithMinibatchingOp` 35 B OR `…GradOptimizerUpdate…` 54 B) | `0x13c86da0` decompile (both string literals + lengths) | CONFIRMED |
-| Decomposed inner op name = `"SparseDenseMatmulOp"` (19 B); custom-combiner family mapped | `0x13c86e60` decompile string-assignment arms | CONFIRMED |
-| `CreateDynamicSliceCsr` emits NO HLO `kDynamicSlice`; only `kMultiply` (×3) + `kAdd` (×1) as opcodes | `0x13489ea0`: `CreateBinary(…,75,…)` ×3 + `CreateBinary(…,3,…)` ×1; no `0x36` | CONFIRMED |
-| `GetCoreIndex` / `DynamicSliceCsr` are SC custom-call names (op-types `0xc` / `0x10`) | `CreateCustomCall` sites + `SparseCoreOperationTypeToString` `0x14b7f480` | CONFIRMED |
-| Op DAG order: `GetPaddedRowCount → Constant → CustomCall(GCI) → 3×Mul → Add → CustomCall(dsc,3 ops) → GTE → Tuple` | `0x13489ea0` decompile call order | CONFIRMED |
-| Early-return guard string = `"max_ids_per_partition > 0"` (line 154), inner check `"…size() > kCsrTupleRowPtrIndex"` (177) | `0x13489ea0` `RetCheckFailSlowPath` args | CONFIRMED |
-| `GetPaddedRowCount` = `max(max(GranuleBytes/4, num), cfg[+0x948]→[+0x94])`, gated by `SupportsSparseCore()` | `0x13c90280` full body | CONFIRMED |
-| `GetPaddedRowCount` config bound is a **floor** (`max`), not a cap (`min`) | `if ((int)r <= cfg) r = cfg` raises `r` up to `cfg` | CORRECTED (was read as `min`) |
-| Granule term = `GranuleBytes >> 2` (= bytes / `sizeof(int32)`); `LOG(FATAL)` at `target.h:1709` | `0x13c90280`: `v2 >> 2`, message string | CONFIRMED |
-| Per-core CSR base = `padded · GetCoreIndex · (b + 1)` | TABLE B register-identity dataflow | CONFIRMED (arithmetic); `b`=minibatch index INFERRED |
-| Forward 7 / backward 9 operand-name tables; operand 0 = `concatenated_csr_pointers` | `0x21937d80` / `0x21938320` reloc-resolved; strings present in binary | CONFIRMED |
-| `CreateDynamicSliceCsr` 6th-arg `cfg[+0x30]` ≈ `FLAGS_xla_sparse_core_minibatch_max_division_level` | byte read CONFIRMED (`[rcx+0x30]`); proto field name not decoded | INFERRED (name only) |
-| Two emission modes: no-while (inline) vs while-fusion; both use the same slice descriptor | `0x1348c720` / `0x1348cd60`; `CombineParamsIntoTuple` `0x13c87260` + induction var `0x1348a760` | CONFIRMED |
-| `PackedOperandsLowering` re-creates `SegmentedScanOp` via unpack→`getReductionOp`→`create`→pack | `0x135f3000` decompile (UnpackF/UnpackUI, getReductionOp, create, PackF/PackUI) | CONFIRMED |
-| `applyFullConversion` driver + per-op dynamic legality; ~40 AluEp ops in the same packing table | `0x135d8520` (`applyFullConversion` `0x1c958ac0`, `setLegalityCallback`) | CONFIRMED |
-| `EmbeddingDataFormattingDecomposer` reformats activations/gradients (NOT CSR/id/gain operands) | `0x1368b4a0` op-types `0x1a..0x1d`; Sc/Tc dispatch on `EnableEmbeddingDataFormattingOffload` | CONFIRMED |
-| Inner op lowers to gather→sort→uniquify→reduce→scatter Stream DAG via `DotCombinerEmitter::Emit` | `0x1332bda0`; op `::build` presence (`0x145cf440` / `0x14604480` / `0x145d4420`) | CONFIRMED (DAG shape); per-instruction wiring surveyed only |
+> **NOTE — the deep emitter wiring is surveyed, not instruction-decoded here.** The per-instruction gather/scan/scatter wiring inside `EmitVectorizedLoop` / `EmitSampleCombiner` — which `IndirectStream` variant per dtype, SPMEM tile sizes, `Sfence`/`TileBarrier`/`SyncAdd` placement, and the `GetScheduleType` (`0x131d5300`) valency-vs-vectorized selection — is owned by [EmitValencyLoop](emit-valency-loop.md) and [SampleCombiner Emitter](sample-combiner-emitter.md). The DAG *shape* (the five stages above) is established by op `::build`/`::create` presence; the instruction sequence inside the loops is documented on those pages.
 
 ---
 

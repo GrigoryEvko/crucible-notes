@@ -120,10 +120,10 @@ function RankAndPermuteComputeFunction(...):              // sub_134039c0
 
 The two dedup primitives share the exact same two operands and differ only in result count. `getNextResultAtOffset(base, n)` (`0x1d8e9700`) returns the op's `n`-th result; the decompile reads offsets `0`, `1`, `2` — i.e. the first three results `result0`/`result1`/`result2`, contiguous indices, *not* every-other-result.
 
-| Op | `::create` | Results | Extracted (this fn) | Lowers to | Confidence |
-|---|---|---:|---|---|---|
-| `UniqueOp` | `0x14622400` | 3 | `result0` = unique values, `result1` = unique index/marker | `tpu_uniquei`/`tpu_uniquef` (3-field LLVM struct) | CONFIRMED |
-| `UniqueWithLaneIdsOp` | `0x146231a0` | 5 | `result0` = unique values, `result1` = index, `result2` = lane-id / multiplicity | same 3-field struct + 2 `ReplaceOpWithExtracts` | CONFIRMED |
+| Op | `::create` | Results | Extracted (this fn) | Lowers to |
+|---|---|---:|---|---|
+| `UniqueOp` | `0x14622400` | 3 | `result0` = unique values, `result1` = unique index/marker | `tpu_uniquei`/`tpu_uniquef` (3-field LLVM struct) |
+| `UniqueWithLaneIdsOp` | `0x146231a0` | 5 | `result0` = unique values, `result1` = index, `result2` = lane-id / multiplicity | same 3-field struct + 2 `ReplaceOpWithExtracts` |
 
 Both lower through the shared `DuplicateCountUniqueOpLowering<T>` template (`UniqueOp` at `0x1359b280`, `UniqueWithLaneIdsOp` at `0x1359bd20`), which builds a 3-field literal struct via `LLVMStructType::getLiteral(ctx, types, 3, 0)` (decompile `0x1359b280` line 46; the `0x600000003` word is the size-3/capacity-6 SmallVector header of the field-type list). The lane-id form does two extra extracts for its two added results. The per-field meaning of the struct (unique-values vs write-mask vs segment-marker) is inferred from the extract order, not from a field-name table (LOW). The `result2` lane-id is the per-unique *multiplicity* — the count of original ids that collapsed into each unique entry — and it is the third operand (the second Value) of `PermuteOp`.
 
@@ -149,16 +149,16 @@ The rank build is the heart of the pass and the place a reimplementer most often
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `RankAndPermuteComputeFunction` | `0x134039c0` | per-digit per-chunk rank+permute body | CONFIRMED |
-| `RankAndPermute` (wrapper) | `0x13404dc0` | tiles the compute fn over chunks (two passes) | CONFIRMED |
-| `GetDigits` | `0x133fe480` | `digit = (key>>shift)&mask` (`ShRUIOp`+`AndIOp`+…) | CONFIRMED |
-| `GetMappedKeysForRadixSort` | `0x133fe8c0` | bucket-map the key before digit extract | CONFIRMED |
-| `SliceBuffer` (anon ns) | `0x13404c00` | `memref::SubViewOp` window of the values buffer | CONFIRMED |
-| `$_0` callback | `0x1341b7e0` | trampoline → `RankAndPermuteComputeFunction` (pass 1) | CONFIRMED |
-| `$_1` callback | `0x1341b9e0` | companion `vector::BroadcastOp` twin (pass 2) | CONFIRMED |
-| `DuplicateCountUniqueOpLowering<UniqueOp>` | `0x1359b280` | LLVM lowering → 3-field struct + extracts | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `RankAndPermuteComputeFunction` | `0x134039c0` | per-digit per-chunk rank+permute body |
+| `RankAndPermute` (wrapper) | `0x13404dc0` | tiles the compute fn over chunks (two passes) |
+| `GetDigits` | `0x133fe480` | `digit = (key>>shift)&mask` (`ShRUIOp`+`AndIOp`+…) |
+| `GetMappedKeysForRadixSort` | `0x133fe8c0` | bucket-map the key before digit extract |
+| `SliceBuffer` (anon ns) | `0x13404c00` | `memref::SubViewOp` window of the values buffer |
+| `$_0` callback | `0x1341b7e0` | trampoline → `RankAndPermuteComputeFunction` (pass 1) |
+| `$_1` callback | `0x1341b9e0` | companion `vector::BroadcastOp` twin (pass 2) |
+| `DuplicateCountUniqueOpLowering<UniqueOp>` | `0x1359b280` | LLVM lowering → 3-field struct + extracts |
 
 ---
 
@@ -248,18 +248,18 @@ The 4-character sort-direction StringAttr is byte-confirmed against the intrinsi
 
 ### SparseMapRow Op-Create Sequence
 
-| # | Op / call | Address | Role | Confidence |
-|---|---|---|---|---|
-| 0 | `IsSparseMapRowHlo` (`0x13d7efe0`) + `GetRootInstruction` | `0x13890d71`/`d81` | recognise the op (`...FromString == 4`) | CONFIRMED |
-| 1 | `operand(0)` | `0x13890da3` | the row input | CONFIRMED |
-| 2 | `BroadcastBoolToVector` / `…I32…` + `GetCurrentState` | `0x13890ede`/`ef4` | per-row segment state | CONFIRMED |
-| 3 | `ConstantIndexOp` + `AddIOp` ×2 | `0x13891136`+ | window-bound arithmetic | CONFIRMED |
-| 4 | `StringAttr::get("dscd")` | `0x1389133d` | sort-dir attr (`0x8720761`) | CONFIRMED |
-| 5 | `SortOp::create(Ty,Ty,Ty, V,V,V, "dscd")` | `0x1389136a` | 3 result tys, 3 keys | CONFIRMED |
-| 6 | `getNextResultAtOffset` ×2 + `ExtractVectorElement` | `0x138913a6`+ | extract sorted column + scalar | CONFIRMED |
-| 7 | `getStringAttr("max")` | `0x138914a4` | reduction_op (`0x84c6977`) | CONFIRMED |
-| 8 | `ScanOp::create(Type, data, segid, "max")` | `0x138914bf` | window-extent scan | CONFIRMED |
-| 9 | `ExtractVectorElement` + `IndexCastOp` | `0x1389150d`/`a5` | finalise the bound | CONFIRMED |
+| # | Op / call | Address | Role |
+|---|---|---|---|
+| 0 | `IsSparseMapRowHlo` (`0x13d7efe0`) + `GetRootInstruction` | `0x13890d71`/`d81` | recognise the op (`...FromString == 4`) |
+| 1 | `operand(0)` | `0x13890da3` | the row input |
+| 2 | `BroadcastBoolToVector` / `…I32…` + `GetCurrentState` | `0x13890ede`/`ef4` | per-row segment state |
+| 3 | `ConstantIndexOp` + `AddIOp` ×2 | `0x13891136`+ | window-bound arithmetic |
+| 4 | `StringAttr::get("dscd")` | `0x1389133d` | sort-dir attr (`0x8720761`) |
+| 5 | `SortOp::create(Ty,Ty,Ty, V,V,V, "dscd")` | `0x1389136a` | 3 result tys, 3 keys |
+| 6 | `getNextResultAtOffset` ×2 + `ExtractVectorElement` | `0x138913a6`+ | extract sorted column + scalar |
+| 7 | `getStringAttr("max")` | `0x138914a4` | reduction_op (`0x84c6977`) |
+| 8 | `ScanOp::create(Type, data, segid, "max")` | `0x138914bf` | window-extent scan |
+| 9 | `ExtractVectorElement` + `IndexCastOp` | `0x1389150d`/`a5` | finalise the bound |
 
 ---
 
@@ -378,11 +378,11 @@ The decompile (`0x135a1640`) is just that: derive the result type from operand[0
 
 `tpu_sc_permute::build` (`0x147359a0`) confirms the op shape: it `addOperands` the two incoming Values (line 12) and one result type (lines 33–45) — a 2-operand, 1-result op (`NOperands<2>`, `OneTypedResult<Type>`, `MemoryEffectOpInterface`). There is a masked twin, `tpu_sc_mask_permute`, with the identical 2-operand/1-result shape — the predicated permute that gates inactive output lanes (the `tpu_sc_mask_permute` op name appears 37× in `.rodata` vs 39× for `tpu_sc_permute`).
 
-| MLIR op | Op name | Operands | Result | Confidence |
-|---|---|---:|---|---|
-| `mlir::sparse_core::PermuteOp` | `sc_tpu.permute` | 2 (data, index) | 1 (= type of operand[0]) | CONFIRMED |
-| `tpu_sc_permute` (lowered) | `tpu_sc_permute` | 2 | 1 | CONFIRMED |
-| `tpu_sc_mask_permute` (predicated) | `tpu_sc_mask_permute` | 2 | 1 | CONFIRMED |
+| MLIR op | Op name | Operands | Result |
+|---|---|---:|---|
+| `mlir::sparse_core::PermuteOp` | `sc_tpu.permute` | 2 (data, index) | 1 (= type of operand[0]) |
+| `tpu_sc_permute` (lowered) | `tpu_sc_permute` | 2 | 1 |
+| `tpu_sc_mask_permute` (predicated) | `tpu_sc_mask_permute` | 2 | 1 |
 
 ### The TEC VectorAlu Permute Opcode
 

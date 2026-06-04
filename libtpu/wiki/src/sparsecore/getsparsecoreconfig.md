@@ -71,17 +71,17 @@ Two guards bracket the parse:
 
 `GetSparseCoreConfig` returns the full `SparseCoreConfig`; only `offload` (field 2) is read by the scheduler/reservation classifiers, but the complete field map (from `SparseCoreConfig::_InternalSerialize` @ `0x1d6dfae0`) fixes the object layout and confirms `offload` lives at object `+0x24` behind has-bit `+0x10 & 4`.
 
-| field | name | object off | has-bit (`obj+0x10`) | proto type | Confidence |
-|---|---|---|---|---|---|
-| 1 | `tiling` | `+0x20` (i32) | `0x2` | enum `.xla.jellyfish.Tiling` | CONFIRMED |
-| 2 | **`offload`** ← the SC op-type enum | `+0x24` (i32) | `0x4` | enum `.xla.jellyfish.Offload` | CONFIRMED |
-| 3 | `comp_env` | `+0x18` (msg) | `0x1` | msg `ScCompilationEnvironment` | CONFIRMED |
-| 4 | `enable_megacore` | `+0x2c` (bool) | `0x10` | bool | CONFIRMED |
-| 5 | `hbm_bandwidth_adjustment_factor` | `+0x28` (f32) | `0x8` | float (fixed32) | CONFIRMED |
-| 6 | `function_mode` | `+0x2d` (byte) | `0x20` | enum/bool | CONFIRMED |
-| 7 | `dedup_id` | `+0x30` (i64) | `0x80` | int64 | CONFIRMED |
-| 8 | `enable_program_barrier` | `+0x2e` (bool) | `0x40` | bool | CONFIRMED |
-| 9 | `load_dat` | `+0x38` (bool) | `0x100` | bool | CONFIRMED |
+| field | name | object off | has-bit (`obj+0x10`) | proto type |
+|---|---|---|---|---|
+| 1 | `tiling` | `+0x20` (i32) | `0x2` | enum `.xla.jellyfish.Tiling` |
+| 2 | **`offload`** ← the SC op-type enum | `+0x24` (i32) | `0x4` | enum `.xla.jellyfish.Offload` |
+| 3 | `comp_env` | `+0x18` (msg) | `0x1` | msg `ScCompilationEnvironment` |
+| 4 | `enable_megacore` | `+0x2c` (bool) | `0x10` | bool |
+| 5 | `hbm_bandwidth_adjustment_factor` | `+0x28` (f32) | `0x8` | float (fixed32) |
+| 6 | `function_mode` | `+0x2d` (byte) | `0x20` | enum/bool |
+| 7 | `dedup_id` | `+0x30` (i64) | `0x80` | int64 |
+| 8 | `enable_program_barrier` | `+0x2e` (bool) | `0x40` | bool |
+| 9 | `load_dat` | `+0x38` (bool) | `0x100` | bool |
 
 The `offload` `FieldDescriptorProto` is carved byte-exact: tag `0a07` (`"offload"`, 7 bytes), `1802` (number = 2), `2001` (label = optional), `280e` (type = `TYPE_ENUM` = 14), `3216` (`.xla.jellyfish.Offload`, 0x16 bytes). The descriptor type strings `.xla.jellyfish.Offload`, `.xla.jellyfish.Tiling`, and the field names `enable_megacore` / `hbm_bandwidth_adjustment_factor` / `function_mode` / `dedup_id` / `enable_program_barrier` / `load_dat` are all present in `.rodata`.
 
@@ -93,17 +93,17 @@ The `offload` `FieldDescriptorProto` is carved byte-exact: tag `0a07` (`"offload
 
 Decoded byte-exact from the `EnumDescriptorProto` (each value is a `10 NN` `EnumValueDescriptorProto`). All nine enumerator name strings (`OFFLOAD_UNSPECIFIED` .. `OFFLOAD_COMPUTE`) are present in `.rodata`.
 
-| value | enumerator | semantic | Confidence |
-|---|---|---|---|
-| 0 | `OFFLOAD_UNSPECIFIED` | unset / default | CONFIRMED |
-| 1 | `OFFLOAD_EMBEDDING` | embedding lookup/update offload | CONFIRMED |
-| 2 | `OFFLOAD_GATHER` | gather op-class | CONFIRMED |
-| 3 | `OFFLOAD_SCATTER` | scatter op-class | CONFIRMED |
-| 4 | `OFFLOAD_COLLECTIVE` | collective (recurse into wrapped op) | CONFIRMED |
-| 5 | `OFFLOAD_DATA_FORMATTING` | data-formatting op-class | CONFIRMED |
-| 6 | `OFFLOAD_KERNEL` | generic SC kernel op-class | CONFIRMED |
-| 7 | `OFFLOAD_SORT` | sort op-class | CONFIRMED |
-| 8 | `OFFLOAD_COMPUTE` | compute offload | CONFIRMED |
+| value | enumerator | semantic |
+|---|---|---|
+| 0 | `OFFLOAD_UNSPECIFIED` | unset / default |
+| 1 | `OFFLOAD_EMBEDDING` | embedding lookup/update offload |
+| 2 | `OFFLOAD_GATHER` | gather op-class |
+| 3 | `OFFLOAD_SCATTER` | scatter op-class |
+| 4 | `OFFLOAD_COLLECTIVE` | collective (recurse into wrapped op) |
+| 5 | `OFFLOAD_DATA_FORMATTING` | data-formatting op-class |
+| 6 | `OFFLOAD_KERNEL` | generic SC kernel op-class |
+| 7 | `OFFLOAD_SORT` | sort op-class |
+| 8 | `OFFLOAD_COMPUTE` | compute offload |
 
 ---
 
@@ -136,17 +136,17 @@ if (this[+0x13b] == 1) {                         // a1+315 — "per-core" gate
 }
 ```
 
-| `offload` | enumerator | scheduler arm (`MayAddSparseCoreResource`, idx `enum − 2`) | Confidence |
-|---|---|---|---|
-| 0 | `OFFLOAD_UNSPECIFIED` | no arm — id 22 path only | CONFIRMED |
-| 1 | `OFFLOAD_EMBEDDING` | no arm — id 22 path only | CONFIRMED |
-| 2 | `OFFLOAD_GATHER` | id 23 `kSparseCoreGather` | CONFIRMED |
-| 3 | `OFFLOAD_SCATTER` | id 24 `kSparseCoreScatter` | CONFIRMED |
-| 4 | `OFFLOAD_COLLECTIVE` | recurse into `async_wrapped_instruction` (`$_0` @ `0x110008e0`) | CONFIRMED |
-| 5 | `OFFLOAD_DATA_FORMATTING` | id 25 `kSparseCoreDataFormatting` | CONFIRMED |
-| 6 | `OFFLOAD_KERNEL` | id 26 `kSparseCoreKernel` | CONFIRMED |
-| 7 | `OFFLOAD_SORT` | id 27 `kSparseCoreSort` | CONFIRMED |
-| 8 | `OFFLOAD_COMPUTE` | no arm — id 22 path only | CONFIRMED |
+| `offload` | enumerator | scheduler arm (`MayAddSparseCoreResource`, idx `enum − 2`) |
+|---|---|---|
+| 0 | `OFFLOAD_UNSPECIFIED` | no arm — id 22 path only |
+| 1 | `OFFLOAD_EMBEDDING` | no arm — id 22 path only |
+| 2 | `OFFLOAD_GATHER` | id 23 `kSparseCoreGather` |
+| 3 | `OFFLOAD_SCATTER` | id 24 `kSparseCoreScatter` |
+| 4 | `OFFLOAD_COLLECTIVE` | recurse into `async_wrapped_instruction` (`$_0` @ `0x110008e0`) |
+| 5 | `OFFLOAD_DATA_FORMATTING` | id 25 `kSparseCoreDataFormatting` |
+| 6 | `OFFLOAD_KERNEL` | id 26 `kSparseCoreKernel` |
+| 7 | `OFFLOAD_SORT` | id 27 `kSparseCoreSort` |
+| 8 | `OFFLOAD_COMPUTE` | no arm — id 22 path only |
 
 The resource ids `{22..27}` are the SparseCore engine classes in the 47-id scheduler `ResourceType` enum; see [ResourceType Taxonomy](../sched/scheduler-resourcetype-model.md) for their concurrency caps and hazard classes.
 
@@ -213,12 +213,12 @@ Target[+0x628] |= 4;                         // bit-2  (SC-offload-capability ha
 - **`Target[+0x540]`** is a `bool` = `(TpuTopology[+0] == 2)`. The first `TpuTopology` scalar is the internal platform-type enum; value `2` is the `iss` (simulator) path (`platform_type == 1` lands in the sibling byte `Target[+0x541]`). So `Target[+0x540] != 0` force-takes the SC path on the simulator regardless of the capability bit.
 - **`Target[+0x628]`** is a `_has_bits_`-style qword (decompile `*((_QWORD*)_R12 + 197)` — qword index 197 = byte `0x628`). Bit-2 (mask `0x4`) is OR'd in inside an unrolled config-append loop that is itself gated by the SC-offload feature-detect; it is the **SC-offload-capability has-bit**, set for the eligible (newest-gen) part. Bit-0 (mask `0x1`) is OR'd earlier in the same loop for a sibling config sub-field. The gate predicate `(Target[+0x628] & 4) == 0 → read Target[+0x540]` is replayed verbatim inside `Target::Init` itself (combined with `Megachip ∧ CoresPerChip(SC) > 0`) — the SC-offload feature-detect.
 
-| gate bit | object off | meaning | set in `Target::Init` | Confidence |
-|---|---|---|---|---|
-| `Target[+0x628] & 4` (bit-2) | `+0x628` qword | SC-offload-capability has-bit (per-gen, predicate-gated) | OR'd `\|= 4` @ `0x1d612121` | CONFIRMED |
-| `Target[+0x540]` | `+0x540` byte | `platform_type == 2` (iss/simulator) | `= (TpuTopology[+0] == 2)` @ `0x1d610b1b` | CONFIRMED |
-| `Target[+0x541]` | `+0x541` byte | `platform_type == 1` (sibling, not in gate) | `= (TpuTopology[+0] == 1)` @ `0x1d610b29` | CONFIRMED |
-| `Target[+0x628] & 1` (bit-0) | `+0x628` qword | sibling config-append has-bit (not in gate) | OR'd `\|= 1` @ `0x1d611d52` | CONFIRMED |
+| gate bit | object off | meaning | set in `Target::Init` |
+|---|---|---|---|
+| `Target[+0x628] & 4` (bit-2) | `+0x628` qword | SC-offload-capability has-bit (per-gen, predicate-gated) | OR'd `\|= 4` @ `0x1d612121` |
+| `Target[+0x540]` | `+0x540` byte | `platform_type == 2` (iss/simulator) | `= (TpuTopology[+0] == 2)` @ `0x1d610b1b` |
+| `Target[+0x541]` | `+0x541` byte | `platform_type == 1` (sibling, not in gate) | `= (TpuTopology[+0] == 1)` @ `0x1d610b29` |
+| `Target[+0x628] & 1` (bit-0) | `+0x628` qword | sibling config-append has-bit (not in gate) | OR'd `\|= 1` @ `0x1d611d52` |
 
 > **NOTE — the exact proto sub-field naming bit-2 was not isolated.** The bit-set site, mask, and value are byte-exact, and the bit sits in the predicate-gated config-append loop alongside bit-0 and two SSO strings (object `+0x580`/`+0x5f0`). But the single descriptor entry that names this SC-offload-capability sub-field (a nested config field copied from the chip's `vector_isa`/`TpuSequencerParts`) was not pinned to one descriptor. The *role* — an SC-offload-capability flag the scheduler gate reads — is byte-exact regardless. **Confidence: bit position CONFIRMED; sub-field proto name INFERRED.**
 
@@ -245,14 +245,14 @@ flag = tce[+0x730] ? tce[+0x730] : &AutoProto_globals_;   // a1 + 1840 = 0x730
 
 `TpuChipParts[+0]` is the `TpuVersion` (the 0-based chip-generation enum); `TpuChipParts::ToProto` → `TpuVersionToProto(v) = v + 1` (confirmed: the decompiled body is literally `return v + 1`). The codename table from `TpuVersionFromString` (@ `0x20b3a5a0`, init-list @ `0x220117b0`):
 
-| TpuVersion (internal) | codename | proto value (`= internal + 1`) | Confidence |
-|---|---|---|---|
-| 0 | `jellyfish` | 1 | CONFIRMED |
-| 1 | `dragonfish` | 2 | CONFIRMED |
-| 2 | `pufferfish` | 3 | CONFIRMED |
-| 3 | `viperfish` | 4 | CONFIRMED |
-| 4 | `ghostlite` | 5 | CONFIRMED |
-| 5 | `6acc60406` | 6 ← SC-offload concurrency default ON | CONFIRMED |
+| TpuVersion (internal) | codename | proto value (`= internal + 1`) |
+|---|---|---|
+| 0 | `jellyfish` | 1 |
+| 1 | `dragonfish` | 2 |
+| 2 | `pufferfish` | 3 |
+| 3 | `viperfish` | 4 |
+| 4 | `ghostlite` | 5 |
+| 5 | `6acc60406` | 6 ← SC-offload concurrency default ON |
 
 All six codenames are present verbatim in `.rodata` (init-list `off_220117B0`; the value-5 string `"6acc60406"` lives at `.rodata` VMA `0x863f0cf`, `len 9`, paired with `TpuVersion == 5`). See [TPU Version Codename Matrix](../targets/tpu-version-codename-matrix.md) for the full generation map.
 
@@ -279,11 +279,11 @@ bool IsSupportedAsyncStart(const HloInstruction *h) {
 
 `SparseCoreOperationTypeFromString` (@ `0x14b7f060`) is a chained `EqualsIgnoreCase` mapper over a *separate* enum, `SparseCoreOperationType`, whose first eight values are confirmed in order: `1 SparseMap`, `2 CooToCsr`, `3 CooToEll`, `4 SparseMapRow`, `5 SortLexicographic`, `6 ReduceDuplicates`, `7 EllToCsr`, `8 AllToAllDynamic` (then `9 ScSendToTc`, `10 ScReceiveFromTc`, … continuing well past 8). The plain tracker gates only on `== 8` (`"AllToAllDynamic"`) — it overlaps SC all-to-all ops, and (via `PostProcessScheduleGraph` → `FindNearestAllToAlls` @ `0x13496600`) biases the schedule toward them.
 
-| classifier | keyed on | enum | values used | Confidence |
-|---|---|---|---|---|
-| `MayAddSparseCoreResource` (this page) | `SparseCoreConfig.offload` (field 2) | `xla::jellyfish::Offload` | `{2..7}` → ids `{23..27}` + recurse | CONFIRMED |
-| `GetSparseCoreResources` (reservation) | `SparseCoreConfig.offload` (field 2) | `xla::jellyfish::Offload` | `{1..7}` | CONFIRMED |
-| `SparseCoreAsyncTracker::IsSupportedAsync{Start,Done}` | custom-call target string | `SparseCoreOperationType` | `== 8` (`AllToAllDynamic`) | CONFIRMED |
+| classifier | keyed on | enum | values used |
+|---|---|---|---|
+| `MayAddSparseCoreResource` (this page) | `SparseCoreConfig.offload` (field 2) | `xla::jellyfish::Offload` | `{2..7}` → ids `{23..27}` + recurse |
+| `GetSparseCoreResources` (reservation) | `SparseCoreConfig.offload` (field 2) | `xla::jellyfish::Offload` | `{1..7}` |
+| `SparseCoreAsyncTracker::IsSupportedAsync{Start,Done}` | custom-call target string | `SparseCoreOperationType` | `== 8` (`AllToAllDynamic`) |
 
 > **QUIRK — two enums, one word "SparseCore op type".** `xla::jellyfish::Offload` (a backend-config enum, 9 values, drives resource lanes) and `SparseCoreOperationType` (a custom-call target-name enum, ≥ 8 values, drives async-schedulability) are easy to conflate because both describe "what kind of SparseCore op this is". They are wholly separate: different namespaces, different value spaces, different read paths, different consumers. `GetSparseCoreConfig` resolves the first; `custom_call_target()` + `SparseCoreOperationTypeFromString` the second.
 
@@ -313,25 +313,25 @@ This is exactly why `offload` is the SC op-type classifier: it is the one proto 
 
 ## Confidence Summary
 
-| Claim | Evidence | Confidence |
-|---|---|---|
-| `GetSparseCoreConfig` returns a copy-constructed `SparseCoreConfig` (globals fallback) | `0x1c868d20`: `SparseCoreConfig::SparseCoreConfig(this, 0, src)`, `SparseCoreConfig_globals_` | CONFIRMED |
-| Thread guard: `"sparsecore"` (len 10) ∨ `kSparseCoreOffloadCandidateThread` (len 28); opcode `kAsyncStart` | `0x1c868d20` SIMD compare + `CHECK` strings (src 472/475) | CONFIRMED |
-| `offload` = field 2, enum `.xla.jellyfish.Offload`, object `+0x24`, has-bit `+0x10 & 4` | `_InternalSerialize` @ `0x1d6dfae0`; `FieldDescriptorProto` carve; consumer reads | CONFIRMED |
-| Offload enum `OFFLOAD_UNSPECIFIED` 0 .. `OFFLOAD_COMPUTE` 8 (9 values) | `EnumDescriptorProto` @ `0xbfa1f9f`; all 9 strings in `.rodata` | CONFIRMED |
-| Scheduler arm map `{2→23, 3→24, 4→recurse, 5→25, 6→26, 7→27}`, idx `enum − 2` | `MayAddSparseCoreResource` @ `0x11000480` switch (decompiled) | CONFIRMED |
-| Reservation map reads same field, idx `enum − 1`, range `{1..7}` (covers `EMBEDDING`) | `GetSparseCoreResources` @ `0x10fdc0a0`: `v29[16] & 4`, `case 1..7` | CONFIRMED |
-| id-22 (`kSparseCore`) path is independent of `offload`, gated `this+0x13b == 1` | `0x11000480`: post-switch loop on `GetNumSparseCoresUsed` | CONFIRMED |
-| Gate predicate `(Target[+0x628] & 4) ∨ Target[+0x540]` plus Megachip/CoresPerChip(SC)/LEM/flag | `RunHloScheduler` @ `0x1306f820`: `this+1576 & 4`, `this+1344`, `+148 > 0` | CONFIRMED |
-| `Target[+0x540] = (TpuTopology[+0] == 2)`; `Target[+0x541] = (== 1)` | `Target::Init` @ `0x1d60fc20` lines `_R12+1344/+1345 = *v98 == 2/1` | CONFIRMED |
-| `Target[+0x628] \|= 4` (bit-2) and `\|= 1` (bit-0) in predicate-gated config loop | `Target::Init`: `v342+197 = … \| 4` / `\| 1` (qword 197 = `0x628`) | CONFIRMED |
-| The proto sub-field that names bit-2 (SC-offload-capability) | bit-set site byte-exact; descriptor entry not isolated | INFERRED |
-| `platform_type` value→name pairing `{0 hardware, 1 grm, 2 iss}` | descriptor-string order + `ToProto = type+1`; `== 2` comparison byte-exact | INFERRED (pairing) / CONFIRMED (`== 2`) |
-| Per-gen default `TpuVersion == 5`; `AutoOr<bool>` 0x100 override at TCE `+0x458`/`+0x730` | `0x1d6b6f80` (`*(topo+8)==5`, `a1+1112`); `0x1d6b81e0` (`a1+1840`) | CONFIRMED |
-| TCE override field numbers for the two SC-offload knobs | offsets + override byte-exact; field numbers not decoded | PARTIAL |
-| TpuVersion 0..5 = jellyfish/dragonfish/pufferfish/viperfish/ghostlite/`6acc60406`; proto = +1 | `TpuVersionFromString` init-list @ `0x220117b0` (v5 string `"6acc60406"` @ `.rodata 0x863f0cf`); `TpuVersionToProto` body `v+1` | CONFIRMED |
-| Plain `SparseCoreAsyncTracker` keys on opcode `{0xc, 0x11/0x10, 0x31}` + `SparseCoreOperationType == 8` | `IsSupportedAsyncStart/Done` @ `0x134964c0`/`0x13496520`; `FromString` @ `0x14b7f060` | CONFIRMED |
-| `SparseCoreOperationType` values 1..8 = SparseMap..AllToAllDynamic | `0x14b7f060` chained `EqualsIgnoreCase` (decompiled, in order) | CONFIRMED |
+| Claim | Evidence |
+|---|---|
+| `GetSparseCoreConfig` returns a copy-constructed `SparseCoreConfig` (globals fallback) | `0x1c868d20`: `SparseCoreConfig::SparseCoreConfig(this, 0, src)`, `SparseCoreConfig_globals_` |
+| Thread guard: `"sparsecore"` (len 10) ∨ `kSparseCoreOffloadCandidateThread` (len 28); opcode `kAsyncStart` | `0x1c868d20` SIMD compare + `CHECK` strings (src 472/475) |
+| `offload` = field 2, enum `.xla.jellyfish.Offload`, object `+0x24`, has-bit `+0x10 & 4` | `_InternalSerialize` @ `0x1d6dfae0`; `FieldDescriptorProto` carve; consumer reads |
+| Offload enum `OFFLOAD_UNSPECIFIED` 0 .. `OFFLOAD_COMPUTE` 8 (9 values) | `EnumDescriptorProto` @ `0xbfa1f9f`; all 9 strings in `.rodata` |
+| Scheduler arm map `{2→23, 3→24, 4→recurse, 5→25, 6→26, 7→27}`, idx `enum − 2` | `MayAddSparseCoreResource` @ `0x11000480` switch (decompiled) |
+| Reservation map reads same field, idx `enum − 1`, range `{1..7}` (covers `EMBEDDING`) | `GetSparseCoreResources` @ `0x10fdc0a0`: `v29[16] & 4`, `case 1..7` |
+| id-22 (`kSparseCore`) path is independent of `offload`, gated `this+0x13b == 1` | `0x11000480`: post-switch loop on `GetNumSparseCoresUsed` |
+| Gate predicate `(Target[+0x628] & 4) ∨ Target[+0x540]` plus Megachip/CoresPerChip(SC)/LEM/flag | `RunHloScheduler` @ `0x1306f820`: `this+1576 & 4`, `this+1344`, `+148 > 0` |
+| `Target[+0x540] = (TpuTopology[+0] == 2)`; `Target[+0x541] = (== 1)` | `Target::Init` @ `0x1d60fc20` lines `_R12+1344/+1345 = *v98 == 2/1` |
+| `Target[+0x628] \|= 4` (bit-2) and `\|= 1` (bit-0) in predicate-gated config loop | `Target::Init`: `v342+197 = … \| 4` / `\| 1` (qword 197 = `0x628`) |
+| The proto sub-field that names bit-2 (SC-offload-capability) | bit-set site byte-exact; descriptor entry not isolated |
+| `platform_type` value→name pairing `{0 hardware, 1 grm, 2 iss}` | descriptor-string order + `ToProto = type+1`; `== 2` comparison byte-exact |
+| Per-gen default `TpuVersion == 5`; `AutoOr<bool>` 0x100 override at TCE `+0x458`/`+0x730` | `0x1d6b6f80` (`*(topo+8)==5`, `a1+1112`); `0x1d6b81e0` (`a1+1840`) |
+| TCE override field numbers for the two SC-offload knobs | offsets + override byte-exact; field numbers not decoded |
+| TpuVersion 0..5 = jellyfish/dragonfish/pufferfish/viperfish/ghostlite/`6acc60406`; proto = +1 | `TpuVersionFromString` init-list @ `0x220117b0` (v5 string `"6acc60406"` @ `.rodata 0x863f0cf`); `TpuVersionToProto` body `v+1` |
+| Plain `SparseCoreAsyncTracker` keys on opcode `{0xc, 0x11/0x10, 0x31}` + `SparseCoreOperationType == 8` | `IsSupportedAsyncStart/Done` @ `0x134964c0`/`0x13496520`; `FromString` @ `0x14b7f060` |
+| `SparseCoreOperationType` values 1..8 = SparseMap..AllToAllDynamic | `0x14b7f060` chained `EqualsIgnoreCase` (decompiled, in order) |
 
 ---
 

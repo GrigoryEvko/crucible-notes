@@ -76,11 +76,11 @@ function RegisterProfilerFactory(fn /* std::function, 32 bytes */):   // 0x1CF50
 
 ### Function Map
 
-| Function | Addr | Role | Confidence |
-|---|---|---|---|
-| `RegisterProfilerFactory` | `0x1CF50780` | append one factory under `mu` | CERTAIN |
-| `GetFactories()::factories` | `0x2257C830` | the global `vector<std::function<...>>` | CERTAIN |
-| `(anonymous)::mu` | `0x2257C828` | `absl::Mutex` guarding the vector | CERTAIN |
+| Function | Addr | Role |
+|---|---|---|
+| `RegisterProfilerFactory` | `0x1CF50780` | append one factory under `mu` |
+| `GetFactories()::factories` | `0x2257C830` | the global `vector<std::function<...>>` |
+| `(anonymous)::mu` | `0x2257C828` | `absl::Mutex` guarding the vector |
 
 ---
 
@@ -126,11 +126,11 @@ function CreateProfilers(out /* vector<unique_ptr<ProfilerInterface>> */, opts):
 
 ### Function Map
 
-| Function | Addr | Role | Confidence |
-|---|---|---|---|
-| `CreateProfilers` | `0x1CF50860` | walk registry, wrap, collect | CERTAIN |
-| `ProfilerController::ProfilerController(unique_ptr)` | `0x1CF50CE0` | wrap one collector for isolation | CERTAIN |
-| `ProfilerCollection::ProfilerCollection(vector)` | `0xF6A15E0` | take the result vector inline | CERTAIN |
+| Function | Addr | Role |
+|---|---|---|
+| `CreateProfilers` | `0x1CF50860` | walk registry, wrap, collect |
+| `ProfilerController::ProfilerController(unique_ptr)` | `0x1CF50CE0` | wrap one collector for isolation |
+| `ProfilerCollection::ProfilerCollection(vector)` | `0xF6A15E0` | take the result vector inline |
 
 ---
 
@@ -185,12 +185,12 @@ function ProfilerController::CollectData(this, xspace):    // 0x1CF51060
 
 ### Function Map
 
-| Function | Addr | Role | Confidence |
-|---|---|---|---|
-| `ProfilerController::Start` | `0x1CF50DE0` | phase 0→1, guarded inner `Start` | CERTAIN |
-| `ProfilerController::Stop` | `0x1CF50F20` | phase 1→2, guarded inner `Stop` | CERTAIN |
-| `ProfilerController::CollectData` | `0x1CF51060` | phase 2→3, guarded inner `CollectData` | CERTAIN |
-| `ProfilerController::~ProfilerController (D2/D0)` | `0x1CF50D20` / `0x1CF50DA0` | drop inner, unref status | HIGH |
+| Function | Addr | Role |
+|---|---|---|
+| `ProfilerController::Start` | `0x1CF50DE0` | phase 0→1, guarded inner `Start` |
+| `ProfilerController::Stop` | `0x1CF50F20` | phase 1→2, guarded inner `Stop` |
+| `ProfilerController::CollectData` | `0x1CF51060` | phase 2→3, guarded inner `CollectData` |
+| `ProfilerController::~ProfilerController (D2/D0)` | `0x1CF50D20` / `0x1CF50DA0` | drop inner, unref status |
 
 ---
 
@@ -251,13 +251,13 @@ function ProfilerCollection::CollectData(this, xspace):    // 0xF6A1740
 
 ### Function Map
 
-| Function | vtable slot | Addr | Role | Confidence |
-|---|---|---|---|---|
-| `ProfilerCollection::Start` | `+0x10` | `0xF6A1640` | fan `Start` to all members | CERTAIN |
-| `ProfilerCollection::Stop` | `+0x18` | `0xF6A16C0` | fan `Stop` to all members | CERTAIN |
-| `ProfilerCollection::CollectData` | `+0x20` | `0xF6A1740` | fan `CollectData`, then destroy members | CERTAIN |
-| `ProfilerCollection::~ (D2/D0)` | `+0x08` | `0xF6A1840` / `0xF6A18E0` | drop remaining members + heap | CERTAIN |
-| `ProfilerCollection::ProfilerCollection(vector)` | — | `0xF6A15E0` | take the `CreateProfilers` result | CERTAIN |
+| Function | vtable slot | Addr | Role |
+|---|---|---|---|
+| `ProfilerCollection::Start` | `+0x10` | `0xF6A1640` | fan `Start` to all members |
+| `ProfilerCollection::Stop` | `+0x18` | `0xF6A16C0` | fan `Stop` to all members |
+| `ProfilerCollection::CollectData` | `+0x20` | `0xF6A1740` | fan `CollectData`, then destroy members |
+| `ProfilerCollection::~ (D2/D0)` | `+0x08` | `0xF6A1840` / `0xF6A18E0` | drop remaining members + heap |
+| `ProfilerCollection::ProfilerCollection(vector)` | — | `0xF6A15E0` | take the `CreateProfilers` result |
 
 ---
 
@@ -311,11 +311,11 @@ function ThreadpoolProfilerInterface::CollectData(this, xspace):  // 0xF3326C0
 
 ### Collector Map
 
-| Collector | Factory | `CollectData` | Output into `XSpace` | Confidence |
-|---|---|---|---|---|
-| `xprof::tpu::TpuProfilerImpl` | (legacy `TpuProfiler_Create` path) | `0xEF34860` | `/device:TPU:N` planes via `ConvertResponseToTpuXSpace` | CERTAIN |
-| `ThreadpoolProfilerInterface` | (static-init) | `0xF3326C0` | `errors` string on failure only | CERTAIN |
-| `xprof::cpu::HostTracer` | `0xF32F7C0` | `0xF32FB40` | `/host:0` plane from `TraceMe` | HIGH |
+| Collector | Factory | `CollectData` | Output into `XSpace` |
+|---|---|---|---|
+| `xprof::tpu::TpuProfilerImpl` | (legacy `TpuProfiler_Create` path) | `0xEF34860` | `/device:TPU:N` planes via `ConvertResponseToTpuXSpace` |
+| `ThreadpoolProfilerInterface` | (static-init) | `0xF3326C0` | `errors` string on failure only |
+| `xprof::cpu::HostTracer` | `0xF32F7C0` | `0xF32FB40` | `/host:0` plane from `TraceMe` |
 
 > **NOTE —** the complete factory inventory was not exhaustively enumerated. These three are confirmed by symbol and decompiled body; additional factories (e.g. a megascale RPC tracer gated by `FLAGS_enable_megascale_profiler` @ `0x2236E238`) are populated across several `_GLOBAL__sub_I_*profiler*.cc` static-init blocks and are LOW confidence on completeness.
 
@@ -366,12 +366,12 @@ function TpuProfilerControlListener::MustStopProfiler(this, chip_loc):       // 
 
 ### Function Map
 
-| Function | Addr | Role | Confidence |
-|---|---|---|---|
-| `GetOrCreateTpuProfilerControlListener` | `0xF332800` | `__cxa_guard` singleton, wraps `Profiler*` | CERTAIN |
-| `CanStartProfiler(chip_loc, profiler, run_id)` | `0xF3328C0` | gate chip-in: delegate to `RegisterChipProfiler` | CERTAIN |
-| `MustStopProfiler(chip_loc)` | `0xF332A00` | poll chip-out: delegate to `UnregisterChipProfiler` | CERTAIN |
-| `Profiler::GetOrCreateProfilerSingleton` | `0xF336640` | the wrapped `xprof::tpu::Profiler` | HIGH |
+| Function | Addr | Role |
+|---|---|---|
+| `GetOrCreateTpuProfilerControlListener` | `0xF332800` | `__cxa_guard` singleton, wraps `Profiler*` |
+| `CanStartProfiler(chip_loc, profiler, run_id)` | `0xF3328C0` | gate chip-in: delegate to `RegisterChipProfiler` |
+| `MustStopProfiler(chip_loc)` | `0xF332A00` | poll chip-out: delegate to `UnregisterChipProfiler` |
+| `Profiler::GetOrCreateProfilerSingleton` | `0xF336640` | the wrapped `xprof::tpu::Profiler` |
 
 > **NOTE —** the listener's vtable slot ordering relative to its abstract base was not extracted; the four registration methods and two gate methods are confirmed at the cited addresses, but the position of each within the vtable (symbol `0x2175C1A0`, installed vptr `0x2175C1B0`) is LOW confidence.
 

@@ -35,11 +35,11 @@ The contract a reimplementation must honor:
 
 The model is the standard XLA per-dimension dynamic bit paired with the static extent serving as the upper bound. Each `xla::Shape` carries, per dimension `i`, a static extent `D[i]` and a boolean `is_dynamic[i]`. When `is_dynamic[i]` is true, `D[i]` is the **upper bound** and the runtime value lies in `[0, D[i]]`. The relevant accessors are byte-anchored:
 
-| Method | VA | Role | Confidence |
-|---|---|---|---|
-| `xla::Shape::is_dynamic_dimension(int)` | `0x1e52c9e0` | per-dim dynamic bit query | CONFIRMED |
-| `xla::Shape::set_dynamic_dimension(int, bool)` | `0x20cd8c60` | set per-dim dynamic bit | CONFIRMED |
-| `xla::Shape::is_static()` | `0x20cd8f80` | true iff no dim is dynamic | CONFIRMED |
+| Method | VA | Role |
+|---|---|---|
+| `xla::Shape::is_dynamic_dimension(int)` | `0x1e52c9e0` | per-dim dynamic bit query |
+| `xla::Shape::set_dynamic_dimension(int, bool)` | `0x20cd8c60` | set per-dim dynamic bit |
+| `xla::Shape::is_static()` | `0x20cd8f80` | true iff no dim is dynamic |
 
 A dynamic dimension's runtime size is always an **S32 scalar**. The shape-inference helpers for the two dimension-size ops fix this:
 
@@ -286,16 +286,16 @@ lowering_util::CalculateDynamicCompact2ndMinorRatio  // compact tiling ratio
 
 TPU explicitly rejects *unbounded* dynamism and several op-specific dynamic cases. Verbatim string anchors:
 
-| Anchor | Meaning | Confidence |
-|---|---|---|
-| `unbounded dynamism is not supported` / `Unbounded dynamism is disabled for instruction: %s` | only bounded-dynamic dims compile | CONFIRMED (string) |
-| `AllToAll does not support bounded dynamic shapes` / `AllToAllTuple does not support unbounded dynamic shapes` | collectives reject dynamism | CONFIRMED (string) |
-| `CustomCall "%s" is not supported to have a dynamic dimension` | most custom-calls must be static-shaped | CONFIRMED (string) |
-| `Dynamic inferencing on custom call %s is not supported` | no registered dynamism handler | CONFIRMED (string) |
-| `bitcast-convert is not valid for dynamic shape %s->%s` | bitcast-convert rejects dynamism | CONFIRMED (string) |
-| `The output of iota must not have dynamic dimensions` | iota output must be static | CONFIRMED (string) |
-| `Dynamic shapes are not supported for host buffers` / `dynamic shapes not supported in allocations` | host/pinned allocs reject dynamism | CONFIRMED (string) |
-| `MemRefType don't support dynamic shapes` | MLIR memref must be static | CONFIRMED (string) |
+| Anchor | Meaning |
+|---|---|
+| `unbounded dynamism is not supported` / `Unbounded dynamism is disabled for instruction: %s` | only bounded-dynamic dims compile |
+| `AllToAll does not support bounded dynamic shapes` / `AllToAllTuple does not support unbounded dynamic shapes` | collectives reject dynamism |
+| `CustomCall "%s" is not supported to have a dynamic dimension` | most custom-calls must be static-shaped |
+| `Dynamic inferencing on custom call %s is not supported` | no registered dynamism handler |
+| `bitcast-convert is not valid for dynamic shape %s->%s` | bitcast-convert rejects dynamism |
+| `The output of iota must not have dynamic dimensions` | iota output must be static |
+| `Dynamic shapes are not supported for host buffers` / `dynamic shapes not supported in allocations` | host/pinned allocs reject dynamism |
+| `MemRefType don't support dynamic shapes` | MLIR memref must be static |
 
 The StableHLO unbounded-`Dynamic*Op` family (`DynamicReshapeOp`, `DynamicBroadcastInDimOp`, `DynamicConvOp`, `DynamicGatherOp`, …) has verifiers present in the binary, but whether any are ever reachable on TPU or are purely a front-end import artifact rejected by `unbounded dynamism is not supported` was not established. [Confidence: LOW.]
 

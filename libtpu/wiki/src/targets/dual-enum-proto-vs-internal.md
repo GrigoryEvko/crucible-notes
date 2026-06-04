@@ -91,15 +91,15 @@ A third conversion pair bridges the internal enum and its codename string for co
 
 The complete cross-walk between the two enums, with the codename each shares and the external display name. The proto enumerator names are the codename-derived `TPU_VERSION_*` identifiers from the descriptor; the external names are the `TpuVersionToExternalName` outputs.
 
-| Internal `TpuVersion` | Internal tag | `TpuVersionProto` | Proto enumerator | Codename | External name | Confidence |
-|---:|---|---:|---|---|---|---|
-| — | (none) | 0 | `TPU_VERSION_INVALID` | (sentinel) | (error) | HIGH |
-| 0 | `kJellyfish` | 1 | `TPU_VERSION_JELLYFISH` | `jellyfish` | `TPU v2` | HIGH |
-| 1 | `kDragonfish` | 2 | `TPU_VERSION_DRAGONFISH` | `dragonfish` | `TPU v3` | HIGH |
-| 2 | `kPufferfish` | 3 | `TPU_VERSION_PUFFERFISH` | `pufferfish` | `TPU v4` | HIGH |
-| 3 | `kViperfish` | 4 | `TPU_VERSION_VIPERFISH` | `viperfish` | `TPU v5` | HIGH |
-| 4 | `kGhostlite` | 5 | `TPU_VERSION_GHOSTLITE` | `ghostlite` | `TPU v6 lite` | HIGH |
-| 5 | `k6acc60406` | 6 | `TPU_VERSION_6acc60406` | `6acc60406` | `TPU7x` | HIGH |
+| Internal `TpuVersion` | Internal tag | `TpuVersionProto` | Proto enumerator | Codename | External name |
+|---:|---|---:|---|---|---|
+| — | (none) | 0 | `TPU_VERSION_INVALID` | (sentinel) | (error) |
+| 0 | `kJellyfish` | 1 | `TPU_VERSION_JELLYFISH` | `jellyfish` | `TPU v2` |
+| 1 | `kDragonfish` | 2 | `TPU_VERSION_DRAGONFISH` | `dragonfish` | `TPU v3` |
+| 2 | `kPufferfish` | 3 | `TPU_VERSION_PUFFERFISH` | `pufferfish` | `TPU v4` |
+| 3 | `kViperfish` | 4 | `TPU_VERSION_VIPERFISH` | `viperfish` | `TPU v5` |
+| 4 | `kGhostlite` | 5 | `TPU_VERSION_GHOSTLITE` | `ghostlite` | `TPU v6 lite` |
+| 5 | `k6acc60406` | 6 | `TPU_VERSION_6acc60406` | `6acc60406` | `TPU7x` |
 
 The relationship is uniform: proto value = internal value + 1, and proto value 0 has no internal counterpart. The external "TPU vN" name is a *third* numbering that aligns with neither enum's integer — `TPU v2` is internal 0 / proto 1, `TPU7x` is internal 5 / proto 6 — which is exactly why all three numberings must be kept distinct.
 

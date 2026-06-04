@@ -64,12 +64,12 @@ A naïve `objdump -s -j .init_array` shows all-zeros — every 8-byte slot reads
 
 This is the expected encoding for a PIE/`-fPIC` shared object: position independence forces the loader, not the linker, to materialize absolute constructor addresses, and `R_X86_64_RELATIVE` (addend-carrying, symbol-less) is the cheapest form. The 2900 relocations are a non-trivial slice of the binary's total relative-relocation load.
 
-| Anchor | Value | Confidence |
-|---|---|---|
-| Relocations targeting `.init_array` | 2900 × `R_X86_64_RELATIVE` | CERTAIN |
-| Slot-0 addend | `0x21211240` | CERTAIN |
-| Highest in-range addend | `0x21380980` | CERTAIN |
-| On-disk slot bytes | all zero (relocated at load) | CERTAIN |
+| Anchor | Value |
+|---|---|
+| Relocations targeting `.init_array` | 2900 × `R_X86_64_RELATIVE` |
+| Slot-0 addend | `0x21211240` |
+| Highest in-range addend | `0x21380980` |
+| On-disk slot bytes | all zero (relocated at load) |
 
 ---
 
@@ -79,12 +79,12 @@ This is the expected encoding for a PIE/`-fPIC` shared object: position independ
 
 Of the 2900 slots, IDA's symbol table names 2644 distinct constructors. They split into two clang naming families plus an anonymous remainder and a small CRT prefix.
 
-| Family | Count | Form | What it is | Confidence |
-|---|---|---|---|---|
-| `_GLOBAL__sub_I_<file>.cc` | 1885 | source-file-keyed | Default-priority TU initializer, one per `.cc` with non-trivial namespace-scope ctors | CERTAIN |
-| `_GLOBAL__I_<priority>` | 759 | priority-keyed | Initializer for objects with an explicit `init_priority` attribute | CERTAIN |
-| anonymous in-span ctor | ~234 | unnamed `sub_` | Constructor code in the TU-init span that IDA did not resolve to a `_GLOBAL__` symbol | MEDIUM |
-| low-address / CRT thunk | 22 | e.g. `__cpu_indicator_init` | Pre-C++ initializers below the TU-init span (IFUNC/CPU detection, runtime helpers) | HIGH |
+| Family | Count | Form | What it is |
+|---|---|---|---|
+| `_GLOBAL__sub_I_<file>.cc` | 1885 | source-file-keyed | Default-priority TU initializer, one per `.cc` with non-trivial namespace-scope ctors |
+| `_GLOBAL__I_<priority>` | 759 | priority-keyed | Initializer for objects with an explicit `init_priority` attribute |
+| anonymous in-span ctor | ~234 | unnamed `sub_` | Constructor code in the TU-init span that IDA did not resolve to a `_GLOBAL__` symbol |
+| low-address / CRT thunk | 22 | e.g. `__cpu_indicator_init` | Pre-C++ initializers below the TU-init span (IFUNC/CPU detection, runtime helpers) |
 
 The arithmetic closes: 1885 + 759 = 2644 named; the named-constructor code span is `[0x21217490, 0x21380980]`, and **2878** of the 2900 relocation addends land inside that span, leaving 2878 − 2644 = **234 anonymous ctors** in the span and **22** addends *below* it (`< 0x21217490`). No addend exceeds the span. The 234 anonymous entries are real constructors — the relocation points into executable code in the same region — that simply lack a `_GLOBAL__` symbol because clang emitted them for an anonymous-namespace object or because the symbol was stripped.
 
@@ -110,16 +110,16 @@ All 2644 named constructors, and the ~234 anonymous in-span ones, live in the de
 
 The 2900 slots are not 2900 different *kinds* of work; they are thousands of instances of a half-dozen recurring static-registration idioms, each of which a large C++/MLIR/XLA codebase emits per-TU. Categorizing by the source-file name embedded in the `_GLOBAL__sub_I_*` symbol (a keyword scan over the 1885 named TUs) gives the breakdown below. Counts are lower bounds — a single TU often performs several kinds of registration, and the category is inferred from the filename plus corroborating decompiled bodies.
 
-| Category | TU keyword evidence | What the constructor does | Approx. TUs | Confidence |
-|---|---|---|---|---|
-| Op / kernel registration | `*_ops.cc` (156 TUs) | `REGISTER_OP` / `REGISTER_KERNEL` statics push op definitions into a global op registry | ≥156 | HIGH |
-| Factory / static registry | `*factory*` (79), `*registr*` (26) | Self-registering factories install a `make_*` callback into a name→factory map (driver, codec, kernel-firmware, snap-analyzer, device-scanner) | ≥79 | HIGH |
-| Flag registration | `flags.cc` / `*flags*` (50) | `ABSL_FLAG`/gflags definitions register a flag descriptor and default into the global flag table | ≥50 | HIGH |
-| Metrics / counters | `metrics.cc` (8), `performance_counters.cc` (6), `*metric*` (17) | Construct metric/counter descriptor singletons and register them | ≥17 | HIGH |
-| Dialect / pass / HLO registration | `*_registration.cc` (22), plus `mlir_*`/`*hlo*`/`*pass*` siblings | Register MLIR dialects/passes and HLO graph-optimization passes into pass-pipeline registries | ≥22 | HIGH |
-| Codec / static-map registration | `codec_metadata_*` (ghostlite/jellyfish/pufferfish/viperfish), `trace_codec_factory.cc` (×6) | Build per-codec static descriptor maps and register codec factories keyed by ASIC generation | ≥10 | HIGH |
-| Proto / descriptor-pool | `*proto*`, `*descriptor*` (7) | Register generated message descriptors into the protobuf descriptor pool; reflection plugins | ≥7 | MEDIUM |
-| Meyers singletons / RTTI | pervasive (not filename-keyed) | Construct function-local-static and namespace-scope singletons; emit type-info for polymorphic types | — | MEDIUM |
+| Category | TU keyword evidence | What the constructor does | Approx. TUs |
+|---|---|---|---|
+| Op / kernel registration | `*_ops.cc` (156 TUs) | `REGISTER_OP` / `REGISTER_KERNEL` statics push op definitions into a global op registry | ≥156 |
+| Factory / static registry | `*factory*` (79), `*registr*` (26) | Self-registering factories install a `make_*` callback into a name→factory map (driver, codec, kernel-firmware, snap-analyzer, device-scanner) | ≥79 |
+| Flag registration | `flags.cc` / `*flags*` (50) | `ABSL_FLAG`/gflags definitions register a flag descriptor and default into the global flag table | ≥50 |
+| Metrics / counters | `metrics.cc` (8), `performance_counters.cc` (6), `*metric*` (17) | Construct metric/counter descriptor singletons and register them | ≥17 |
+| Dialect / pass / HLO registration | `*_registration.cc` (22), plus `mlir_*`/`*hlo*`/`*pass*` siblings | Register MLIR dialects/passes and HLO graph-optimization passes into pass-pipeline registries | ≥22 |
+| Codec / static-map registration | `codec_metadata_*` (ghostlite/jellyfish/pufferfish/viperfish), `trace_codec_factory.cc` (×6) | Build per-codec static descriptor maps and register codec factories keyed by ASIC generation | ≥10 |
+| Proto / descriptor-pool | `*proto*`, `*descriptor*` (7) | Register generated message descriptors into the protobuf descriptor pool; reflection plugins | ≥7 |
+| Meyers singletons / RTTI | pervasive (not filename-keyed) | Construct function-local-static and namespace-scope singletons; emit type-info for polymorphic types | — |
 
 > **QUIRK —** the codec category is keyed by ASIC fish-codenames — `ghostlite`, `jellyfish`, `pufferfish`, `viperfish` each get a `codec_metadata_*.cc` TU initializer, and `trace_codec_factory.cc` appears six times (`.cc_0` … `.cc_4`). A reimplementer cannot collapse these into one codec init: each generation registers its own static descriptor map at load time, so the per-generation dispatch the runtime relies on (see [`per-gen-function-dispatcher.md`](per-gen-function-dispatcher.md)) is *populated entirely by static-init*, not lazily.
 
@@ -145,14 +145,14 @@ Slot 0's addend `0x21211240` resolves to **`__cpu_indicator_init`**, not a `_GLO
 
 A handful of slots are worth calling out individually — either because of their position (first/last) or because they anchor a category. Addresses are the relocation addends (constructor VAs); names are from the IDA symbol table.
 
-| Address | Symbol | Role | Confidence |
-|---|---|---|---|
-| `0x21211240` | `__cpu_indicator_init` | Slot 0 — CPU-feature / IFUNC detector; must precede all SIMD dispatch | CERTAIN |
-| `0x21380980` | `_GLOBAL__I_000100` | Highest-priority (`init_priority(100)`) global ctor — earliest C++ object | CERTAIN |
-| `0x21371040` | `_GLOBAL__sub_I_flags.cc` | Flag-table registration cluster (also `0x21378ab0`, `0x21379660`, `0x2137ace0`, …) | HIGH |
-| `0x21218610` | `_GLOBAL__sub_I_xla_ops.cc` | XLA op registration (recurs as `xla_ops.cc_0` at `0x2121f2d0`, ×4 total) | HIGH |
-| span anchor | `_GLOBAL__sub_I_codec_metadata_{ghostlite,jellyfish,pufferfish,viperfish}.cc` | Per-generation codec descriptor-map registration | HIGH |
-| span anchor | `_GLOBAL__sub_I_mlir_bridge_pass_registration.cc` / `*_graph_optimization_pass_registration.cc` | MLIR/HLO pass-pipeline registration | HIGH |
+| Address | Symbol | Role |
+|---|---|---|
+| `0x21211240` | `__cpu_indicator_init` | Slot 0 — CPU-feature / IFUNC detector; must precede all SIMD dispatch |
+| `0x21380980` | `_GLOBAL__I_000100` | Highest-priority (`init_priority(100)`) global ctor — earliest C++ object |
+| `0x21371040` | `_GLOBAL__sub_I_flags.cc` | Flag-table registration cluster (also `0x21378ab0`, `0x21379660`, `0x2137ace0`, …) |
+| `0x21218610` | `_GLOBAL__sub_I_xla_ops.cc` | XLA op registration (recurs as `xla_ops.cc_0` at `0x2121f2d0`, ×4 total) |
+| span anchor | `_GLOBAL__sub_I_codec_metadata_{ghostlite,jellyfish,pufferfish,viperfish}.cc` | Per-generation codec descriptor-map registration |
+| span anchor | `_GLOBAL__sub_I_mlir_bridge_pass_registration.cc` / `*_graph_optimization_pass_registration.cc` | MLIR/HLO pass-pipeline registration |
 
 > **NOTE —** beyond the four anchors above, the named span is dense with op/factory/flag initializers at one-constructor granularity; enumerating all 2644 named slots would be a 2644-row dump with no reimplementation value. The category table and the symbol-family census above describe the *shape* of the population; the per-address detail for any single registry lives on that registry's own page (op tables → [`dispatch-table-taxonomy.md`](dispatch-table-taxonomy.md), RTTI → [`rtti-vtable-census.md`](rtti-vtable-census.md)).
 

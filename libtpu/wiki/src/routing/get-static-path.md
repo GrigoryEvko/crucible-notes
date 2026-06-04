@@ -82,13 +82,13 @@ function GetStaticPath(gen, src, dst):                   // 0x1fbdbd00
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `RoutingTableGenerator::GetStaticPath` | `0x1fbdbd00` | Mode gate + torus-vs-mesh per-axis pick | CERTAIN |
-| `slice_builder::CreateRoutePathFromDistance` | `0x20c02040` | Pack `DirectionHops`, compute cost | CERTAIN |
-| `TwistedTorusTopology::GetStaticPath` | `0x20b407c0` | Delegate target (limited-ICI off) | HIGH |
-| `ResilientToroidalTopology::GetStaticPath` | `0x1fbe1ce0` | Delegate target (resilient topology) | HIGH |
-| `InitializeGenerator` (Mesh build) | `0x1fbd78f7` | Build the `gen+0x28` non-wrap mesh | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `RoutingTableGenerator::GetStaticPath` | `0x1fbdbd00` | Mode gate + torus-vs-mesh per-axis pick |
+| `slice_builder::CreateRoutePathFromDistance` | `0x20c02040` | Pack `DirectionHops`, compute cost |
+| `TwistedTorusTopology::GetStaticPath` | `0x20b407c0` | Delegate target (limited-ICI off) |
+| `ResilientToroidalTopology::GetStaticPath` | `0x1fbe1ce0` | Delegate target (resilient topology) |
+| `InitializeGenerator` (Mesh build) | `0x1fbd78f7` | Build the `gen+0x28` non-wrap mesh |
 
 ---
 
@@ -307,19 +307,19 @@ function SetNextHopRoutingTableEntry(this, src, dst, idx, table):  // 0x1fbf1a80
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `multipod::Generate` | `0x1fbf03a0` | Pod model, per-chip table build, divisibility/cap checks | CERTAIN |
-| `multipod::GetMultipodCoordinate` | `0x1fbf14a0` | Chip → pod-aligned `{X,Y}` multipod coord | CERTAIN |
-| `multipod::GetRoutingDistance` | `0x1fbf2e60` | Per-axis torus-if-`<3`-else-mesh distance | CERTAIN |
-| `multipod::GetNextRoutingDirection` | `0x1fbf26e0` | First non-zero axis DOR direction | CERTAIN |
-| `multipod::CreateEgressRoutingTable` | `0x1fbf11e0` | Loop `dst < per_pod`, fill egress entries | HIGH |
-| `multipod::CreateNextHopRoutingTable` | `0x1fbf1360` | Same loop, next-hop entries | HIGH |
-| `multipod::SetEgressRoutingTableEntry` | `0x1fbf17c0` | Terminal / target writer (no VC) | CERTAIN |
-| `multipod::SetNextHopRoutingTableEntry` | `0x1fbf1a80` | Terminal / target writer + fixed VC=1 | CERTAIN |
-| `multipod::SetChannelMerges` | `0x1fbf2100` | `AddChannelMerge` on high-latency links | HIGH |
-| `multipod::GeneratesDeadlockFreeTables` | `0x1fbf2e40` | Returns `false` (defers to per-pod) | CERTAIN |
-| `multipod::CreateDateline` | `0x1fbf0b20` | Build the multipod dateline (call site only) | LOW |
+| Function | Address | Role |
+|---|---|---|
+| `multipod::Generate` | `0x1fbf03a0` | Pod model, per-chip table build, divisibility/cap checks |
+| `multipod::GetMultipodCoordinate` | `0x1fbf14a0` | Chip → pod-aligned `{X,Y}` multipod coord |
+| `multipod::GetRoutingDistance` | `0x1fbf2e60` | Per-axis torus-if-`<3`-else-mesh distance |
+| `multipod::GetNextRoutingDirection` | `0x1fbf26e0` | First non-zero axis DOR direction |
+| `multipod::CreateEgressRoutingTable` | `0x1fbf11e0` | Loop `dst < per_pod`, fill egress entries |
+| `multipod::CreateNextHopRoutingTable` | `0x1fbf1360` | Same loop, next-hop entries |
+| `multipod::SetEgressRoutingTableEntry` | `0x1fbf17c0` | Terminal / target writer (no VC) |
+| `multipod::SetNextHopRoutingTableEntry` | `0x1fbf1a80` | Terminal / target writer + fixed VC=1 |
+| `multipod::SetChannelMerges` | `0x1fbf2100` | `AddChannelMerge` on high-latency links |
+| `multipod::GeneratesDeadlockFreeTables` | `0x1fbf2e40` | Returns `false` (defers to per-pod) |
+| `multipod::CreateDateline` | `0x1fbf0b20` | Build the multipod dateline (call site only) |
 
 > **NOTE —** `CreateDateline` @ `0x1fbf0b20` was traced to its call site in `Generate` (`0x1fbf0617`) but its body was not byte-decoded. Given the inter-pod next-hop uses a fixed VC=1, the multipod dateline is presumably per-pod only (intra-pod wrap); the inter-pod mesh hops are acyclic by construction. Confidence: LOW until the body is decoded.
 

@@ -29,7 +29,6 @@ For reimplementation, the contract is:
 | **Cost remap** | `GetGhostliteInstruction` @ `0x1c8b1740` (LloOpcode → GhPerf::Instruction); `GlcCycleTable` @ `0x1c89e7e0` |
 | **MXU dtype set** | `{F32, If8, Bf16, Bf8}` (float) + `{U8, S8, U4, S4}` (int) — 8 total |
 | **Predicate model** | per-slot 4-bit reg index + 1-bit inversion (no dedicated predicate slot) |
-| **Confidence** | CONFIRMED (byte-anchored) unless a row says otherwise |
 
 ---
 
@@ -78,34 +77,34 @@ glc proto sub-message ──(<Slot>Encoder::Encode, BitCopy)──▶ absolute b
 
 The bundle partitions into the standard V5+ slot classes. The table below is the consolidated Ghostlite (`glc`) slot map; bit 0 is the LSB of byte 0. Each entry is anchored to the named `glc::isa::...Encoder::Encode` that writes it and the `BitCopy` immediate that fixes the offset.
 
-| Slot / field | dst_bit (dec) | hex | width | Encoder (`glc::isa`) @ | Confidence |
-|---|---:|---|---:|---|---|
-| **Sequencer** per-slot pred reg index | 502 | 0x1f6 | 4 | `TensorCoreScalarAlu0Encoder::Encode` @ `0x1f219b40` | CONFIRMED |
-| seq pred inversion | 506 | 0x1fa | 1 | (same) | CONFIRMED |
-| seq opcode-HIGH / family | 496 | 0x1f0 | 6 | (same; branch helpers @ `0x1f21da40`+) | CONFIRMED |
-| seq opcode-LOW / discriminator | 491 | 0x1eb | 5 | (same) | CONFIRMED |
-| **Immediate** slot 0 (branch/call/sync offset) | 433 | 0x1b1 | 20 | `TensorCoreImmediatesEncoder::Encode` @ `0x1f20d520` | CONFIRMED |
-| imm slot 1 | 413 | 0x19d | 20 | (same) | CONFIRMED |
-| imm slot 2 | 393 | 0x189 | 20 | (same) | CONFIRMED |
-| imm slot 3 | 373 | 0x175 | 20 | (same) | CONFIRMED |
-| imm slot 4 | 353 | 0x161 | 20 | (same) | CONFIRMED |
-| imm slot 5 | 333 | 0x14d | 20 | (same) | CONFIRMED |
-| **VALU slot 0** opcode | 302 | 0x12e | 7 | `TensorCoreVectorAlu0Encoder` | HIGH |
-| VALU0 predicate (4-bit reg) | 309 | 0x135 | 4 | (same) | HIGH |
-| **MXU VEx0** opcode-HIGH | 58 | 0x3a | 8 | `TensorCoreVectorExtended0Encoder::Encode` @ `0x1f32fd00` | CONFIRMED |
-| VEx0 data-format sub-disc | 52 | 0x34 | 4 | (same) | CONFIRMED |
-| VEx0 MXU-id (unit) | 66 | 0x42 | 4 | (same) | CONFIRMED |
-| VEx0 control (matpush target) | 49 | 0x31 | 3 | `…MatrixMultiplyBf16` @ `0x1f333ce0` | CONFIRMED |
-| VEx0 done-gains / latch flag | 56 | 0x38 | 1 | (same) | CONFIRMED |
-| VEx0 systolic src vreg #1 (proto +0x20) | 160 | 0xa0 | 6 | (same) | CONFIRMED |
-| VEx0 systolic src vregs #2..#8 (proto +0x24..+0x3c) | 285/296/251/262/217/228/183 | — | 6 ea | (same) | CONFIRMED |
-| **EUP push** (VALU slot 3) VALU-opcode | 200 | 0xc8 | 7 | `…VectorAlu3F32Tanh` @ `0x1f2f4f40` (family) | CONFIRMED |
-| EUP function selector | 189 | 0xbd | 5 | (same) | CONFIRMED |
-| EUP push src vreg | 194 | 0xc2 | 6 | (same) | CONFIRMED |
-| **Result slot** result-type discriminator | 24 | 0x18 | 4 | `TensorCoreVectorResult0Encoder::Encode` @ `0x1f3bc160` | CONFIRMED |
-| result dest vreg | 14 | 0x0e | 6 | (same) | CONFIRMED |
+| Slot / field | dst_bit (dec) | hex | width | Encoder (`glc::isa`) @ |
+|---|---:|---|---:|---|
+| **Sequencer** per-slot pred reg index | 502 | 0x1f6 | 4 | `TensorCoreScalarAlu0Encoder::Encode` @ `0x1f219b40` |
+| seq pred inversion | 506 | 0x1fa | 1 | (same) |
+| seq opcode-HIGH / family | 496 | 0x1f0 | 6 | (same; branch helpers @ `0x1f21da40`+) |
+| seq opcode-LOW / discriminator | 491 | 0x1eb | 5 | (same) |
+| **Immediate** slot 0 (branch/call/sync offset) | 433 | 0x1b1 | 20 | `TensorCoreImmediatesEncoder::Encode` @ `0x1f20d520` |
+| imm slot 1 | 413 | 0x19d | 20 | (same) |
+| imm slot 2 | 393 | 0x189 | 20 | (same) |
+| imm slot 3 | 373 | 0x175 | 20 | (same) |
+| imm slot 4 | 353 | 0x161 | 20 | (same) |
+| imm slot 5 | 333 | 0x14d | 20 | (same) |
+| **VALU slot 0** opcode | 302 | 0x12e | 7 | `TensorCoreVectorAlu0Encoder` |
+| VALU0 predicate (4-bit reg) | 309 | 0x135 | 4 | (same) |
+| **MXU VEx0** opcode-HIGH | 58 | 0x3a | 8 | `TensorCoreVectorExtended0Encoder::Encode` @ `0x1f32fd00` |
+| VEx0 data-format sub-disc | 52 | 0x34 | 4 | (same) |
+| VEx0 MXU-id (unit) | 66 | 0x42 | 4 | (same) |
+| VEx0 control (matpush target) | 49 | 0x31 | 3 | `…MatrixMultiplyBf16` @ `0x1f333ce0` |
+| VEx0 done-gains / latch flag | 56 | 0x38 | 1 | (same) |
+| VEx0 systolic src vreg #1 (proto +0x20) | 160 | 0xa0 | 6 | (same) |
+| VEx0 systolic src vregs #2..#8 (proto +0x24..+0x3c) | 285/296/251/262/217/228/183 | — | 6 ea | (same) |
+| **EUP push** (VALU slot 3) VALU-opcode | 200 | 0xc8 | 7 | `…VectorAlu3F32Tanh` @ `0x1f2f4f40` (family) |
+| EUP function selector | 189 | 0xbd | 5 | (same) |
+| EUP push src vreg | 194 | 0xc2 | 6 | (same) |
+| **Result slot** result-type discriminator | 24 | 0x18 | 4 | `TensorCoreVectorResult0Encoder::Encode` @ `0x1f3bc160` |
+| result dest vreg | 14 | 0x0e | 6 | (same) |
 
-> **NOTE — the VALU slot rows are HIGH, not CONFIRMED.** The VALU0/VALU3 opcode and predicate offsets (302/309 for VALU0) are carried from the cross-confirmed VALU-slot trace (the `TensorCoreVectorAlu0Encoder` family) rather than re-walked field-by-field on this page; they are reported HIGH. The MXU, sequencer, immediate, EUP, and result offsets above were each re-walked from the named `glc::isa` encoder's `BitCopy` immediates and are CONFIRMED. All eight MXU systolic source-vreg fields (proto `+0x20..+0x3c`) were re-walked from `MatrixMultiplyBf16` @ `0x1f333ce0`: they land at bits **160 / 285 / 296 / 251 / 262 / 217 / 228 / 183** (w6 each), in proto-field order — note the offsets are *non-monotone* in the buffer (160 then jumps to 285, descends, and the last field +0x3c lands at 183). The corresponding `gfc` pool is documented on the [6acc60406 page](bundle-gf.md#slot-map--absolute-bit-offsets-64-byte--512-bit-buffer).
+> **NOTE — the eight MXU source-vreg offsets are non-monotone.** All eight MXU systolic source-vreg fields (proto `+0x20..+0x3c`), written by `MatrixMultiplyBf16` @ `0x1f333ce0`, land at bits **160 / 285 / 296 / 251 / 262 / 217 / 228 / 183** (w6 each), in proto-field order — the offsets are *non-monotone* in the buffer (160 then jumps to 285, descends, and the last field +0x3c lands at 183). The corresponding `gfc` pool is documented on the [6acc60406 page](bundle-gf.md#slot-map--absolute-bit-offsets-64-byte--512-bit-buffer).
 
 ---
 
@@ -117,14 +116,14 @@ Ghostlite is, field-for-field, a Viperfish bundle with two systematic transforma
 
 Every field in the TensorCore *scalar* region (sequencer opcode, predicate, immediate slots) sits exactly **+3 bits** higher on Ghostlite than on Viperfish. This is uniform and internally consistent:
 
-| Field | Viperfish (`vxc`) | Ghostlite (`glc`) | Δ | Confidence |
-|---|---:|---:|---:|---|
-| TC imm slot 0 (branch offset) | bit 430 (0x1ae) | bit 433 (0x1b1) | +3 | CONFIRMED |
-| TC imm slots 1..5 | 410/390/370/350/330 | 413/393/373/353/333 | +3 | CONFIRMED |
-| TC seq opcode-HIGH / family | bit 493 (0x1ed) | bit 496 (0x1f0) | +3 | CONFIRMED |
-| TC seq opcode-LOW discriminator | bit 488 (0x1e8) | bit 491 (0x1eb) | +3 | CONFIRMED |
-| TC seq predicate reg index | bit 499 (0x1f3) | bit 502 (0x1f6) | +3 | CONFIRMED |
-| TC seq predicate inversion | bit 503 (0x1f7) | bit 506 (0x1fa) | +3 | CONFIRMED |
+| Field | Viperfish (`vxc`) | Ghostlite (`glc`) | Δ |
+|---|---:|---:|---:|
+| TC imm slot 0 (branch offset) | bit 430 (0x1ae) | bit 433 (0x1b1) | +3 |
+| TC imm slots 1..5 | 410/390/370/350/330 | 413/393/373/353/333 | +3 |
+| TC seq opcode-HIGH / family | bit 493 (0x1ed) | bit 496 (0x1f0) | +3 |
+| TC seq opcode-LOW discriminator | bit 488 (0x1e8) | bit 491 (0x1eb) | +3 |
+| TC seq predicate reg index | bit 499 (0x1f3) | bit 502 (0x1f6) | +3 |
+| TC seq predicate inversion | bit 503 (0x1f7) | bit 506 (0x1fa) | +3 |
 
 These positions are read directly from `glc::isa::TensorCoreScalarAlu0Encoder::Encode` (`0x1f219b40`) and its branch helper `EncodeTensorCoreScalarAlu0BranchAbsolute` (`0x1f21da40`). The Ghostlite TC scalar region is uniformly **+3 bits** above Viperfish, matching the TC immediate-slot +3 (433 vs 430): the whole TC scalar/sequencer/immediate block translates as one rigid window. The SparseCore SCS sequencer is *not* shifted — there `glc` is byte-identical to `vxc` (see below).
 
@@ -143,12 +142,12 @@ glc SCS imm slot 0 (branch offset) -> bit 67 (0x43) w20   ; = vxc (SparseCoreImm
 
 The MXU and VALU opcode fields gain one bit on Ghostlite. The Viperfish MXU `VectorExtended` opcode is 7-bit @ bit 57; the Ghostlite one is **8-bit @ bit 58**. This mirrors the VALU-slot opcode widening across the same generation pair (Viperfish VALU0 opcode 7-bit @ bit 299; Ghostlite 7-bit @ bit 302 — note the VALU0 opcode stays 7-bit on `glc` and only becomes 8-bit on `gfc`).
 
-| MXU `VectorExtended` field | Viperfish (`vxc`) | Ghostlite (`glc`) | Confidence |
-|---|---:|---:|---|
-| opcode-HIGH | bit 57 w7 | **bit 58 w8** | CONFIRMED |
-| data-format sub-disc | bit 51 w4 | bit 52 w4 | CONFIRMED |
-| MXU-id (unit) | bit 64 w4 | bit 66 w4 | CONFIRMED |
-| opcode bound (`cmp`) | `0x66` (103 ops) | **`0x70` (113 ops)** | CONFIRMED |
+| MXU `VectorExtended` field | Viperfish (`vxc`) | Ghostlite (`glc`) |
+|---|---:|---:|
+| opcode-HIGH | bit 57 w7 | **bit 58 w8** |
+| data-format sub-disc | bit 51 w4 | bit 52 w4 |
+| MXU-id (unit) | bit 64 w4 | bit 66 w4 |
+| opcode bound (`cmp`) | `0x66` (103 ops) | **`0x70` (113 ops)** |
 
 The wider opcode and the larger jump-table bound (113 vs 103) are how Ghostlite's MXU slot encodes its extra operations within the same 64-byte word.
 
@@ -192,10 +191,10 @@ The Ghostlite MXU slot is two `VectorExtended` slots (VEx0, VEx1), one per physi
 
 Ghostlite supports **eight** matmul/push dtypes — the symbol census of the `PushMatrix*` helper roster is definitive:
 
-| Generation | PushMatrix / MatrixMultiply dtype set | Confidence |
-|---|---|---|
-| **Ghostlite (`glc`)** | `F32`, `If8`, `Bf16`, `Bf8` (float) + `U8`, `S8`, `U4`, `S4` (int) — **8** | CONFIRMED |
-| 6acc60406 (`gfc`) | `F32`, `E4m3`, `Bf16`, `E5m2` (4, float-only) | CONFIRMED |
+| Generation | PushMatrix / MatrixMultiply dtype set |
+|---|---|
+| **Ghostlite (`glc`)** | `F32`, `If8`, `Bf16`, `Bf8` (float) + `U8`, `S8`, `U4`, `S4` (int) — **8** |
+| 6acc60406 (`gfc`) | `F32`, `E4m3`, `Bf16`, `E5m2` (4, float-only) |
 
 Ghostlite names its two FP8 formats `If8` / `Bf8` (vs 6acc60406's explicit `E4m3` / `E5m2`) and — crucially — keeps the four integer matmul dtypes that `gfc` drops entirely. The decode side reads the dtype as a 2-bit sub-ordinal `@ bit 54` within a 4-element class selected by the latch opcode at bit 60 (14 = float class `{F32=0, If8=1, Bf16=2, Bf8=3}`, 15 = integer class `{U8=0, S8=1, U4=2, S4=3}`).
 
@@ -232,12 +231,12 @@ glc TensorCoreVectorResult0Encoder::Encode @ 0x1f3bc160:
     tag 8 = TransposeResult     -> writes sub-disc 4 @ bit 21 w3
 ```
 
-| Result-slot axis | Viperfish (`vxc`) | Ghostlite (`glc`) | 6acc60406 (`gfc`) | Confidence |
-|---|---:|---:|---:|---|
-| result-type discriminator | bit 24 w4 | bit 24 w4 | bit 20 w2 | CONFIRMED |
-| dest vreg | bit 14 w6 | bit 14 w6 | bit 11 w6 | CONFIRMED |
-| result-opcode bound | 0x8 (9) | 0x8 (9) | 0x7 (8) | CONFIRMED |
-| fused-accumulate op | `PopCcrfResult` (scalar) | **`PopAddMxu01Result`** | (none) | CONFIRMED |
+| Result-slot axis | Viperfish (`vxc`) | Ghostlite (`glc`) | 6acc60406 (`gfc`) |
+|---|---:|---:|---:|
+| result-type discriminator | bit 24 w4 | bit 24 w4 | bit 20 w2 |
+| dest vreg | bit 14 w6 | bit 14 w6 | bit 11 w6 |
+| result-opcode bound | 0x8 (9) | 0x8 (9) | 0x7 (8) |
+| fused-accumulate op | `PopCcrfResult` (scalar) | **`PopAddMxu01Result`** | (none) |
 
 The tag→op pairing above is read from `TensorCoreVectorResult0Encoder::Encode` (`0x1f3bc160`): the `switch` is over the proto oneof tag at `a2+0x50`, and the default-instance global each arm references pins the op (tag 5 → `PopEupResult`, tag 6 → `PopMxuResult`, tag 7 → `PopAddMxu01Result`, tag 8 → `TransposeResult`). The fused-accumulate `PopAddMxu01Result` (tag 7) is GL-only.
 
@@ -260,19 +259,19 @@ glc EncodeTensorCoreVectorAlu3F32Tanh @ 0x1f2f4f40:
 
 The 5-bit function selector value (`0x13` for `F32Tanh`) is sourced at encode time from the function helper's static proto default-instance (e.g. `TensorCoreVectorAlu_F32Tanh_globals_` @ `0x2243f290`), not a literal in the helper, so the per-function selector values carry the same enum as the gen-invariant `GhPerf` transcendental set:
 
-| Function | F32 selector | Bf16 selector | Confidence |
-|---|---:|---:|---|
-| `Erf` | 0x0e (14) | 0x0f (15) | HIGH |
-| `ReciprocalSqrt` | 0x10 (16) | 0x0c (12) | HIGH |
-| `PowTwo` (2^x) | 0x11 (17) | 0x19 (25) | HIGH |
-| `LogTwo` (log2) | 0x12 (18) | 0x1a (26) | HIGH |
-| `Tanh` | 0x13 (19) | 0x1b (27) | HIGH |
-| `ShiftedSigmoid` | 0x14 (20) | 0x1c (28) | HIGH |
-| `Reciprocal` | 0x15 (21) | 0x1d (29) | HIGH |
-| `Sinq` (sin) | 0x17 (23) | 0x1e (30) | HIGH |
-| `Cosq` (cos) | 0x18 (24) | 0x1f (31) | HIGH |
+| Function | F32 selector | Bf16 selector |
+|---|---:|---:|
+| `Erf` | 0x0e (14) | 0x0f (15) |
+| `ReciprocalSqrt` | 0x10 (16) | 0x0c (12) |
+| `PowTwo` (2^x) | 0x11 (17) | 0x19 (25) |
+| `LogTwo` (log2) | 0x12 (18) | 0x1a (26) |
+| `Tanh` | 0x13 (19) | 0x1b (27) |
+| `ShiftedSigmoid` | 0x14 (20) | 0x1c (28) |
+| `Reciprocal` | 0x15 (21) | 0x1d (29) |
+| `Sinq` (sin) | 0x17 (23) | 0x1e (30) |
+| `Cosq` (cos) | 0x18 (24) | 0x1f (31) |
 
-The push-pop protocol: bundle N issues the VALU3 op with the function selector; bundle N+k issues a result-slot `PopEupResult` (opcode 7) with dest vreg at bit 14. (The selector *bit position* is CONFIRMED; the per-function *values* are HIGH — they are read from the `.data` globals, whose per-function ordinals follow the gen-invariant `GhPerf` transcendental enum rather than per-helper literals.)
+The push-pop protocol: bundle N issues the VALU3 op with the function selector; bundle N+k issues a result-slot `PopEupResult` (opcode 7) with dest vreg at bit 14. The per-function selector values are read from the `.data` globals, whose per-function ordinals follow the gen-invariant `GhPerf` transcendental enum rather than per-helper literals.
 
 ---
 
@@ -287,12 +286,12 @@ Stage 1 of the encode chain — proto population — runs through the `EmitX` te
 
 The discriminator value map (shared with all V5+ generations):
 
-| Value | Op | Confidence |
-|---:|---|---|
-| 4 | `BranchAbsolute` | CONFIRMED |
-| 5 | `BranchRelative` | CONFIRMED |
-| 6 | `CallAbsolute` | CONFIRMED |
-| 7 | `CallRelative` | CONFIRMED |
+| Value | Op |
+|---:|---|
+| 4 | `BranchAbsolute` |
+| 5 | `BranchRelative` |
+| 6 | `CallAbsolute` |
+| 7 | `CallRelative` |
 
 There is no in-bundle delay-slot field on any V5+ generation; the branch delay-slot count is a bundle-packer pad-count (empty bundles appended after the branch), not an encoded slot bit. The hardware loop is likewise not an encoded field — it is an LCC-register read at the sequencer opcode feeding a conditional `BranchRelative`.
 

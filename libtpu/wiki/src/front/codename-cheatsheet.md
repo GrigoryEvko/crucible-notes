@@ -29,16 +29,16 @@ For navigation, the contract is:
 
 One row per generation, in `TpuVersion` order. Read left-to-right to translate any one name into all the others. The **Confidence** column applies to the whole row's binary-anchored cells; the marketing column is called out separately because it is the one column not sourced from the binary.
 
-| Codec codename | Fish codename | `TpuVersion` (internal) | `DeviceType` (profiler) | Marketing display | PCI chip DID | HAL family | Confidence |
-|---|---|---|---|---|---|---|---|
-| `jxc` (jellyfish) | Jellyfish | **0** | **3** | `TPU v2` | `0x004e` | `TpuHalJxc` | CERTAIN |
-| `jxc` (dragonfish) | Dragonfish | **1** | **5** | `TPU v3` | `0x004f` | `TpuHalJxc` | CERTAIN |
-| `pxc` / `pfc` | Pufferfish | **2** | **7** | `TPU v4` (`v4 lite`) | `0x0050`/`51`/`52` | `TpuHalPxc` | CERTAIN |
-| `pxc` / `plc` | Puffylite | — *(no own `TpuVersion`)* | **8** | *(v4-class lite)* | *(chip-parts variant)* | `TpuHalPxc` | HIGH |
-| `vxc` / `vfc` | Viperfish | **3** | **10** | `TPU v5` (`v5 lite`) | `0x00ac`/`0x00ad` | `TpuHalVxc` | CERTAIN |
-| `vxc` / `vlc` | Viperlite | — *(folds into v3)* | **11** | *(v5-class lite)* | `0x00ae`/`0x00af` | `TpuHalVxc` | HIGH |
-| `gxc` / `glc` | Ghostlite | **4** | **13** | `TPU v6 lite` | `0x00d1` | `TpuHalVxc` | CERTAIN |
-| `gxc` / `gfc` | *(none — `6acc60406`)* | **5** | **12** | `TPU7x` | `0x00f2` | `TpuHalVxc` | CERTAIN |
+| Codec codename | Fish codename | `TpuVersion` (internal) | `DeviceType` (profiler) | Marketing display | PCI chip DID | HAL family |
+|---|---|---|---|---|---|---|
+| `jxc` (jellyfish) | Jellyfish | **0** | **3** | `TPU v2` | `0x004e` | `TpuHalJxc` |
+| `jxc` (dragonfish) | Dragonfish | **1** | **5** | `TPU v3` | `0x004f` | `TpuHalJxc` |
+| `pxc` / `pfc` | Pufferfish | **2** | **7** | `TPU v4` (`v4 lite`) | `0x0050`/`51`/`52` | `TpuHalPxc` |
+| `pxc` / `plc` | Puffylite | — *(no own `TpuVersion`)* | **8** | *(v4-class lite)* | *(chip-parts variant)* | `TpuHalPxc` |
+| `vxc` / `vfc` | Viperfish | **3** | **10** | `TPU v5` (`v5 lite`) | `0x00ac`/`0x00ad` | `TpuHalVxc` |
+| `vxc` / `vlc` | Viperlite | — *(folds into v3)* | **11** | *(v5-class lite)* | `0x00ae`/`0x00af` | `TpuHalVxc` |
+| `gxc` / `glc` | Ghostlite | **4** | **13** | `TPU v6 lite` | `0x00d1` | `TpuHalVxc` |
+| `gxc` / `gfc` | *(none — `6acc60406`)* | **5** | **12** | `TPU7x` | `0x00f2` | `TpuHalVxc` |
 
 > **NOTE —** the `TpuVersion`→codename binding is the single most-anchored fact in the binary. `TpuVersionToString` (`0x20b3a480`) indexes the 6-pointer `.data.rel.ro` table at `off_22011BF0`, whose `R_X86_64_RELATIVE` relocations target the literals `jellyfish` (`0x863f064`), `dragonfish` (`0x863f392`), `pufferfish` (`0x863f1c4`), `viperfish` (`0x863f172`), `ghostlite` (`0x86864e0`), `6acc60406` (`0x863f0cf`). This compiled array is the root every other axis hangs off.
 
@@ -105,12 +105,12 @@ A third enum, `TpuVersionProto`, is the protobuf wire form: `TPU_V2=1` … `TPU_
 
 The codec/ISA namespaces are **two levels deep**: a family tag, then a sub-core — for the split families (`pxc`, `vxc`, `gxc`) that sub-core is a fetch/load pair; `jxc` is fused and instead nests engine blocks. A symbol search for the family tag alone (`pxc`, `vxc`, `gxc`) lands in the wrong sub-namespace half the time. The nesting, under `asic_sw::driver::deepsea::`:
 
-| Family | Sub-cores (nested namespaces) | Serves | Confidence |
-|---|---|---|---|
-| `jxc` | `jxc::jfc` (Jellyfish core), `jxc::dfc` (dataflow), `jxc::registers`, `jxc::snap` | Jellyfish, Dragonfish (fused, no fetch/load split) | HIGH |
-| `pxc` | `pxc::pfc` (fetch), `pxc::plc` (load) | Pufferfish, Puffylite | HIGH |
-| `vxc` | `vxc::vfc` (fetch), `vxc::vlc` (load) | Viperfish, Viperlite | HIGH |
-| `gxc` | `gxc::glc` (load), `gxc::gfc` (fetch) | Ghostlite (`glc`), `6acc60406` (`gfc`) | HIGH |
+| Family | Sub-cores (nested namespaces) | Serves |
+|---|---|---|
+| `jxc` | `jxc::jfc` (Jellyfish core), `jxc::dfc` (dataflow), `jxc::registers`, `jxc::snap` | Jellyfish, Dragonfish (fused, no fetch/load split) |
+| `pxc` | `pxc::pfc` (fetch), `pxc::plc` (load) | Pufferfish, Puffylite |
+| `vxc` | `vxc::vfc` (fetch), `vxc::vlc` (load) | Viperfish, Viperlite |
+| `gxc` | `gxc::glc` (load), `gxc::gfc` (fetch) | Ghostlite (`glc`), `6acc60406` (`gfc`) |
 
 > **GOTCHA —** `jxc::jellyfish`, `jxc::dragonfish`, `jxc::bcs`, and `jxc::brn` are **not** namespaces. The only real nested namespaces under `jxc` are the engine blocks (`jfc`, `dfc`, `registers`, `snap`); the `bcs`/`brn` tokens are prefixes inside `*_trace_entry` type names (`bcs_internal_trace_entry`, `brn_perf1_trace_entry`), and `jellyfish`/`dragonfish` appear only as `*_performance_counters` identifiers. JXC's compiler-side ISA lives in `platforms_deepsea::jellyfish::isa`, not in any `jxc::isa`. See [Sub-Core Taxonomy](../targets/sub-core-taxonomy.md).
 
@@ -122,14 +122,14 @@ The codec/ISA namespaces are **two levels deep**: a family tag, then a sub-core 
 
 `TpuSequencerType` (the sub-core a bundle targets) has **two numberings one apart**, and mixing them silently encodes for the wrong engine. The codec template instantiates SCS/TAC/TEC at internal values `{3, 4, 5}`; the proto/runtime form is one higher, `{4, 5, 6}`:
 
-| Sequencer | Codec-template (internal) | Proto / runtime | Confidence |
-|---|---|---|---|
-| TensorCore (TC) | 0 | 1 | CONFIRMED |
-| BarnaCore (BCS) | 1 | 2 | CONFIRMED |
-| *(reserved)* | 2 | 3 | CONFIRMED |
-| SparseCore Scalar (SCS) | **3** | **4** | CONFIRMED |
-| SparseCore Tile-Access (TAC) | **4** | **5** | CONFIRMED |
-| SparseCore Tile-Execute (TEC) | **5** | **6** | CONFIRMED |
+| Sequencer | Codec-template (internal) | Proto / runtime |
+|---|---|---|
+| TensorCore (TC) | 0 | 1 |
+| BarnaCore (BCS) | 1 | 2 |
+| *(reserved)* | 2 | 3 |
+| SparseCore Scalar (SCS) | **3** | **4** |
+| SparseCore Tile-Access (TAC) | **4** | **5** |
+| SparseCore Tile-Execute (TEC) | **5** | **6** |
 
 `TpuSequencerTypeFromProto` (`0x20b36300`) is the literal `internal = proto − 1` switch that joins them; the SCS codec is instantiated at `(TpuSequencerType)3`, the TAC codec at `(TpuSequencerType)4`. Full op rosters per generation are on [Sequencer Ops Per Gen](../isa/sequencer-ops-per-gen.md).
 

@@ -288,12 +288,12 @@ The 6acc60406 (GF) TensorCore scalar slot differs from Ghostlite by two binary-c
 
 The control-flow ops share the sub-opcode/operand grid but disambiguate through a value written into the **opcode-LOW** field — the same 5-bit field the table calls "sub-opcode discriminator", at the per-gen position below. On 6acc60406 (GF) (`0x1f87b420`) the immediate branch/call family pins the 6-bit `sub-opcode` (opcode-HIGH) at **483** to `0` and selects the op via the 5-bit field at **478**:
 
-| Op | opcode value (`[instr+0x50]`) | sub-opcode @483 (w6) | discriminator @478 (w5) | leaf encoder | Confidence |
-|---|---:|---:|---:|---|---|
-| `BranchAbsolute` | 62 | 0 | **4** | `0x1f87f5c0` | CONFIRMED |
-| `BranchRelative` | 63 | 0 | **5** | `0x1f87f660` | CONFIRMED |
-| `CallAbsolute` | 65 | 0 | **6** | `0x1f87f7e0` | CONFIRMED |
-| `CallRelative` | 66 | 0 | **7** | `0x1f87f8e0` | CONFIRMED |
+| Op | opcode value (`[instr+0x50]`) | sub-opcode @483 (w6) | discriminator @478 (w5) | leaf encoder |
+|---|---:|---:|---:|---|
+| `BranchAbsolute` | 62 | 0 | **4** | `0x1f87f5c0` |
+| `BranchRelative` | 63 | 0 | **5** | `0x1f87f660` |
+| `CallAbsolute` | 65 | 0 | **6** | `0x1f87f7e0` |
+| `CallRelative` | 66 | 0 | **7** | `0x1f87f8e0` |
 
 The register-indirect forms (`BranchSreg`/`CallSreg`) instead carry their opcode in the opcode-HIGH (`@483`) field, and a `CallSreg` writes its return-address SREG into the 5-bit field at **467** and the link/target SREG into the 6-bit field at **472**. This is the same discriminator grid the [Sequencer Slot](slot-sequencer.md) documents from the same encoders; the SPU page's "sub-opcode" is that page's "opcode-HIGH", and the @478 field is its "opcode-LOW". On Viperfish (`0x1eecb900`) the equivalent fields sit at the VF positions (sub @493, dst @477), on Ghostlite at VF+3 (sub @496, dst @480).
 

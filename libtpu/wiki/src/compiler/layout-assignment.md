@@ -111,17 +111,17 @@ function RunImpl(module, exec_threads):              // 0x110ace00
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `TpuLayoutAssignment::RunImpl` | `0x110ace00` | Driver + re-run loop | CONFIRMED |
-| `TpuLayoutAssignment::PreprocessModule` | `0x1109ff20` | Insert `kCopy` boundary nodes pre-assignment | HIGH |
-| `TpuLayoutAssignment::ModuleLayoutIsValid` | `0x110a6b80` | TPU module-level validator (loop gate) | CONFIRMED |
-| `xla::LayoutAssignment::RunImpl` (base) | `0x169bf440` | OSS seed→propagate→assign engine | CONFIRMED |
-| `xla::LayoutAssignment::AssignLayouts` (base) | `0x169bb0e0` | Commit chosen layouts to module | CONFIRMED |
-| `xla::LayoutAssignment::PropagateConstraints` (base) | `0x169b8120` | Forward+backward worklist | CONFIRMED |
-| `(anon)::CreateTwoMinorLayout` | `0x110c1fa0` | Build a `Layout` from pinned 2-minor dims | HIGH |
-| `GetReduceLayoutFromOperand` (anon) | `0x110ac4e0` | Forward reduce layout | HIGH |
-| `MemorySpaceColorMap::UpdateFromLayout` | `0x110411a0` | Read `memory_space` into per-buffer color map (feeds MSA) | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `TpuLayoutAssignment::RunImpl` | `0x110ace00` | Driver + re-run loop |
+| `TpuLayoutAssignment::PreprocessModule` | `0x1109ff20` | Insert `kCopy` boundary nodes pre-assignment |
+| `TpuLayoutAssignment::ModuleLayoutIsValid` | `0x110a6b80` | TPU module-level validator (loop gate) |
+| `xla::LayoutAssignment::RunImpl` (base) | `0x169bf440` | OSS seed→propagate→assign engine |
+| `xla::LayoutAssignment::AssignLayouts` (base) | `0x169bb0e0` | Commit chosen layouts to module |
+| `xla::LayoutAssignment::PropagateConstraints` (base) | `0x169b8120` | Forward+backward worklist |
+| `(anon)::CreateTwoMinorLayout` | `0x110c1fa0` | Build a `Layout` from pinned 2-minor dims |
+| `GetReduceLayoutFromOperand` (anon) | `0x110ac4e0` | Forward reduce layout |
+| `MemorySpaceColorMap::UpdateFromLayout` | `0x110411a0` | Read `memory_space` into per-buffer color map (feeds MSA) |
 
 > **QUIRK —** the `TpuLayoutAssignment` members are accessed as `*((qword*)this + N)` in the decompile. The two that matter most: `target_` is at qword `+181` (1448 bytes in) — every handler reaches the chip descriptor through it — and the `allow_relayout` flag is at qword `+152` (offset `0x4C0`), tested as `*((_QWORD*)this + 152) != 0` before any handler is permitted to insert a relayout copy.
 
@@ -193,13 +193,13 @@ The only numeric constants in the function are the element-type validity bitmask
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `(anon)::FindMemoryMinimizingLayout` | `0x1109dfe0` | Rank>3 unconstrained chooser | CONFIRMED |
-| `TpuLayoutAssignment::GetUnconstrainedLayout` | `0x110b7520` | OSS fallback hook; calls the chooser then `ChooseCompactLayoutForShape` | HIGH |
-| `Target::ShapeSizeCompact` | `0x1d61a620` | Compact byte size (cost key 1) | CONFIRMED |
-| `Target::LaneCount` / `SublaneCount` | `0x1d60f400` / `0x1d60f300` | Tile divisors (cost key 2) | CONFIRMED |
-| `Target::ChooseCompactLayoutForShape` | `0x1d61bd00` | Catch-all compact/SparseCore chooser | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `(anon)::FindMemoryMinimizingLayout` | `0x1109dfe0` | Rank>3 unconstrained chooser |
+| `TpuLayoutAssignment::GetUnconstrainedLayout` | `0x110b7520` | OSS fallback hook; calls the chooser then `ChooseCompactLayoutForShape` |
+| `Target::ShapeSizeCompact` | `0x1d61a620` | Compact byte size (cost key 1) |
+| `Target::LaneCount` / `SublaneCount` | `0x1d60f400` / `0x1d60f300` | Tile divisors (cost key 2) |
+| `Target::ChooseCompactLayoutForShape` | `0x1d61bd00` | Catch-all compact/SparseCore chooser |
 
 ---
 
@@ -287,20 +287,20 @@ The handlers above enforce a small set of hard rules. These are what a reimpleme
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `TpuLayoutAssignment::AddBackendConstraints` | `0x110b19a0` | Seed-constraint dispatch (per-opcode loops) | CONFIRMED |
-| `TpuLayoutAssignment::AssignConvolutionLayout` | `0x11096160` | dot+conv MXU layout (self-dispatch 0x34/0x2b) | CONFIRMED |
-| `TpuLayoutAssignment::AssignReshapeLayout` | `0x1109be80` | Reshape layout via `ImproveReshapeLayout` | HIGH |
-| `TpuLayoutAssignment::AssignSelectAndScatterLayout` | `0x1109b400` | Window-op joint layout | HIGH |
-| `TpuLayoutAssignment::AssignRaggedDotLayout` | `0x1109a060` | RaggedDot (variable-batch matmul) layout | HIGH |
-| `TpuLayoutAssignment::GatherLayoutIsValid` | `0x110a2d80` | Gather validator | HIGH |
-| `TpuLayoutAssignment::ScatterLayoutIsValid` | `0x110a12a0` | Scatter validator | HIGH |
-| `TpuLayoutAssignment::CollectiveOpsNeedPackedLayout` | `0x1109ef40` | Collective packed-lane test (opcodes 6/8/9/11/12/33/34/86/93) | CONFIRMED |
-| `TpuLayoutAssignment::GetLayoutConfig` | `0x110a5940` | Load autofdo proposed layouts into decision caches | HIGH |
-| `(anon)::AddIndicesLayoutConstraintForScatterGather` | `0x110b7080` | Pin indices operand layout | HIGH |
-| `(anon)::CreateShapeWithOptimalLayoutForConcat` | `0x110b1320` | Concat optimal layout | HIGH |
-| `(anon)::TwoMinorSize` | `0x110bd3a0` | Two-minor MXU tile sizing (8 call sites in conv) | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `TpuLayoutAssignment::AddBackendConstraints` | `0x110b19a0` | Seed-constraint dispatch (per-opcode loops) |
+| `TpuLayoutAssignment::AssignConvolutionLayout` | `0x11096160` | dot+conv MXU layout (self-dispatch 0x34/0x2b) |
+| `TpuLayoutAssignment::AssignReshapeLayout` | `0x1109be80` | Reshape layout via `ImproveReshapeLayout` |
+| `TpuLayoutAssignment::AssignSelectAndScatterLayout` | `0x1109b400` | Window-op joint layout |
+| `TpuLayoutAssignment::AssignRaggedDotLayout` | `0x1109a060` | RaggedDot (variable-batch matmul) layout |
+| `TpuLayoutAssignment::GatherLayoutIsValid` | `0x110a2d80` | Gather validator |
+| `TpuLayoutAssignment::ScatterLayoutIsValid` | `0x110a12a0` | Scatter validator |
+| `TpuLayoutAssignment::CollectiveOpsNeedPackedLayout` | `0x1109ef40` | Collective packed-lane test (opcodes 6/8/9/11/12/33/34/86/93) |
+| `TpuLayoutAssignment::GetLayoutConfig` | `0x110a5940` | Load autofdo proposed layouts into decision caches |
+| `(anon)::AddIndicesLayoutConstraintForScatterGather` | `0x110b7080` | Pin indices operand layout |
+| `(anon)::CreateShapeWithOptimalLayoutForConcat` | `0x110b1320` | Concat optimal layout |
+| `(anon)::TwoMinorSize` | `0x110bd3a0` | Two-minor MXU tile sizing (8 call sites in conv) |
 
 ---
 
@@ -364,16 +364,16 @@ The per-op dispatches above are byte tests against the upstream `HloOpcode` enum
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `TpuLayoutAssignment::ChooseOutputLayoutFromOperandLayout` | `0x110ba2c0` | Forward per-op routing | CONFIRMED |
-| `TpuLayoutAssignment::ChooseOperandLayoutFromOutputLayout` | `0x110b7de0` | Backward per-op routing | CONFIRMED |
-| `TpuLayoutAssignment::OutputLayoutAlwaysPropagateToOperands` | `0x11094ae0` | transpose-always-propagate rule | CONFIRMED |
-| `TpuLayoutAssignment::InstructionCanChangeLayoutDeepsea` | `0x110b0640` | Per-op can-change bitmap | CONFIRMED |
-| `(anon)::ImproveReshapeLayout` | `0x110b8f00` | Reshape source↔target dim mapping (both directions) | HIGH |
-| `(anon)::GetScatterUpdatesLayout` | `0x110a2600` | Scatter-updates backward layout | HIGH |
-| `(anon)::GetGatherOutputLayout` | `0x110a4be0` | Gather forward output layout | HIGH |
-| `xla::LayoutAssignment::InstructionCanChangeLayout` (base) | `0x169c19c0` | OSS fallback | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `TpuLayoutAssignment::ChooseOutputLayoutFromOperandLayout` | `0x110ba2c0` | Forward per-op routing |
+| `TpuLayoutAssignment::ChooseOperandLayoutFromOutputLayout` | `0x110b7de0` | Backward per-op routing |
+| `TpuLayoutAssignment::OutputLayoutAlwaysPropagateToOperands` | `0x11094ae0` | transpose-always-propagate rule |
+| `TpuLayoutAssignment::InstructionCanChangeLayoutDeepsea` | `0x110b0640` | Per-op can-change bitmap |
+| `(anon)::ImproveReshapeLayout` | `0x110b8f00` | Reshape source↔target dim mapping (both directions) |
+| `(anon)::GetScatterUpdatesLayout` | `0x110a2600` | Scatter-updates backward layout |
+| `(anon)::GetGatherOutputLayout` | `0x110a4be0` | Gather forward output layout |
+| `xla::LayoutAssignment::InstructionCanChangeLayout` (base) | `0x169c19c0` | OSS fallback |
 
 ---
 
@@ -397,14 +397,14 @@ The cost in `FindMemoryMinimizingLayout` is per-tensor and tile-aware, not graph
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `Target::LaneCount` / `SublaneCount` / `ChunksPerTile` | `0x1d60f400` / `0x1d60f300` / `0x1d60f2c0` | Tile dims from chip descriptor | CONFIRMED |
-| `Target::Compact2ndMinorRatio` | `0x1d61a4e0` | 2nd-minor packing ratio (called by `ScatterLayoutIsValid`) | CONFIRMED |
-| `(anon)::UpdateLayout(target, Layout, Shape&)` | `0x110f66a0` | Per-shape fixup: set Layout, then `Target::UpdateLayout` | CONFIRMED |
-| `Target::UpdateLayout` | `0x1d618aa0` | Recompute tile/packing via `TransferSizeUtil::UpdateLayout` | CONFIRMED |
-| `HardwareLayout::PopulateDefaultLayout` | `0x1d6da120` | Stamp tile + memory_space on leaf subshapes | CONFIRMED |
-| `HardwareLayout::PopulateShape` | `0x1d6da360` | Tile-kind selection (Default/X64/X128) | MEDIUM |
+| Function | Address | Role |
+|---|---|---|
+| `Target::LaneCount` / `SublaneCount` / `ChunksPerTile` | `0x1d60f400` / `0x1d60f300` / `0x1d60f2c0` | Tile dims from chip descriptor |
+| `Target::Compact2ndMinorRatio` | `0x1d61a4e0` | 2nd-minor packing ratio (called by `ScatterLayoutIsValid`) |
+| `(anon)::UpdateLayout(target, Layout, Shape&)` | `0x110f66a0` | Per-shape fixup: set Layout, then `Target::UpdateLayout` |
+| `Target::UpdateLayout` | `0x1d618aa0` | Recompute tile/packing via `TransferSizeUtil::UpdateLayout` |
+| `HardwareLayout::PopulateDefaultLayout` | `0x1d6da120` | Stamp tile + memory_space on leaf subshapes |
+| `HardwareLayout::PopulateShape` | `0x1d6da360` | Tile-kind selection (Default/X64/X128) |
 
 ---
 

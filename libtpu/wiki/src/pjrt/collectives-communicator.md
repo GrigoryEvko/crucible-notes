@@ -52,19 +52,19 @@ All key/value primitives are methods on `tsl::CoordinationServiceAgent`. Keys an
 
 ### Method map
 
-| Primitive | Agent symbol (addr) | Signature shape | Confidence |
-|---|---|---|---|
-| Blocking get | `CoordinationServiceAgent::GetKeyValue` @`0x1dafd700` | `(string_view key) → StatusOr<string>` | HIGH |
-| Timed get | `…::GetKeyValue` @`0x1dafd720` | `(string_view key, absl::Duration timeout) → StatusOr<string>` | HIGH |
-| Try get | `…::TryGetKeyValue` @`0x1dafe0a0` | `(string_view key) → StatusOr<string>` (non-blocking; NotFound if absent) | HIGH |
-| Async get | `…::GetKeyValueAsync` @`0x1dafdc20` | `(string_view key, function<void(const StatusOr<string>&)> done)` | HIGH |
-| Insert | `…::InsertKeyValue` @`0x1dafe660` | `(string_view key, string_view value) → Status` | HIGH |
-| Insert (overwrite) | `…::InsertKeyValue` @`0x1dafe680` | `(string_view key, string_view value, bool allow_overwrite) → Status` | HIGH |
-| Delete | `…::DeleteKeyValue` @`0x1dafe9c0` | `(string_view key) → Status` (prefix delete) | HIGH |
-| Dir list | `…::GetKeyValueDir` @`0x1dafe2c0` | `(string_view dir) → StatusOr<vector<KeyValueEntry>>` | HIGH |
-| Dir list async | `…::GetKeyValueDirAsync` @`0x1dafe3a0` | `(string_view dir, function<void(const StatusOr<vector<KeyValueEntry>>&)> done)` | HIGH |
-| Init check | `…::IsInitialized` @`0x1dafd5a0` | `() → bool` | HIGH |
-| Own task | `…::GetOwnTask` @`0x1dafd5e0` | `() → StatusOr<CoordinatedTask>` | MEDIUM |
+| Primitive | Agent symbol (addr) | Signature shape |
+|---|---|---|
+| Blocking get | `CoordinationServiceAgent::GetKeyValue` @`0x1dafd700` | `(string_view key) → StatusOr<string>` |
+| Timed get | `…::GetKeyValue` @`0x1dafd720` | `(string_view key, absl::Duration timeout) → StatusOr<string>` |
+| Try get | `…::TryGetKeyValue` @`0x1dafe0a0` | `(string_view key) → StatusOr<string>` (non-blocking; NotFound if absent) |
+| Async get | `…::GetKeyValueAsync` @`0x1dafdc20` | `(string_view key, function<void(const StatusOr<string>&)> done)` |
+| Insert | `…::InsertKeyValue` @`0x1dafe660` | `(string_view key, string_view value) → Status` |
+| Insert (overwrite) | `…::InsertKeyValue` @`0x1dafe680` | `(string_view key, string_view value, bool allow_overwrite) → Status` |
+| Delete | `…::DeleteKeyValue` @`0x1dafe9c0` | `(string_view key) → Status` (prefix delete) |
+| Dir list | `…::GetKeyValueDir` @`0x1dafe2c0` | `(string_view dir) → StatusOr<vector<KeyValueEntry>>` |
+| Dir list async | `…::GetKeyValueDirAsync` @`0x1dafe3a0` | `(string_view dir, function<void(const StatusOr<vector<KeyValueEntry>>&)> done)` |
+| Init check | `…::IsInitialized` @`0x1dafd5a0` | `() → bool` |
+| Own task | `…::GetOwnTask` @`0x1dafd5e0` | `() → StatusOr<CoordinatedTask>` |
 
 The two `InsertKeyValue` overloads (`@0x1dafe660` and `@0x1dafe680`, mangled suffixes `…S5_` vs `…S5_b`) differ only by the trailing `bool allow_overwrite`. The plain overload rejects a duplicate key with `AlreadyExists`; the overwrite form replaces silently. A rendezvous protocol that publishes each worker's endpoint exactly once uses the plain form so a duplicate publish surfaces a restart.
 
@@ -191,16 +191,16 @@ The arrows are one-way: the coordination KV rendezvous must converge before mega
 
 ## 6. What is present vs absent
 
-| Surface | Status in this build | Evidence |
-|---|---|---|
-| `tsl::CoordinationServiceAgent` KV methods (get/insert/delete/dir/async) | PRESENT | 19 KV method symbols across the 3 agent classes (9 `tsl::` base + 5 `CPlugin` + 5 `DirectPlugin`) |
-| `TF_CoordinationService*KeyValue*` C-ABI thunks | PRESENT (as `WEAK UND` imports) | `.plt` stubs `0x213f0a10`–`0x213f0bc0` → `.got.plt` slots `0x224c2a80`/`0x224c2b30`–`0x224c2b58`; definitions resolved from host TF runtime |
-| `CPlugin` / `DirectPlugin` coordination agents | PRESENT | `0xe71e260`-family / `0xe71c5c0`-family |
-| `xla.coordination` KV protos | PRESENT | `Get/Insert/Delete/TryGet/Dir` request/response + `KeyValueEntry` |
-| `PjrtClientFactoryRegistry` + `PjrtClientFactoryOptions` | PRESENT | `0x10849c60`, `0x10849a60` |
-| `PJRT_KeyValueStore` C struct | **ABSENT** (HIGH) | no symbol; not in any extension; not in `PJRT_Client_Create_Args` |
-| `PJRT_KeyValueGetCallback` / `PutCallback` typedefs | **ABSENT** (HIGH) | no symbol match |
-| Canonical `KeyValueStoreInterface` wrapper | **ABSENT** (HIGH) | no symbol match |
+| Surface | Status in this build |
+|---|---|
+| `tsl::CoordinationServiceAgent` KV methods (get/insert/delete/dir/async) | PRESENT |
+| `TF_CoordinationService*KeyValue*` C-ABI thunks | PRESENT (as `WEAK UND` imports) |
+| `CPlugin` / `DirectPlugin` coordination agents | PRESENT |
+| `xla.coordination` KV protos | PRESENT |
+| `PjrtClientFactoryRegistry` + `PjrtClientFactoryOptions` | PRESENT |
+| `PJRT_KeyValueStore` C struct | **ABSENT** (HIGH) |
+| `PJRT_KeyValueGetCallback` / `PutCallback` typedefs | **ABSENT** (HIGH) |
+| Canonical `KeyValueStoreInterface` wrapper | **ABSENT** (HIGH) |
 
 > **Note —** the `CreateCommunicators` / cross-host communicator-handle surface is the in-process **Collectives extension** (type 21): a CPU-executor-backed XLA surface that is *not* the TPU multi-host coordination path and carries no KV store. It is documented in [the extension chain](extension-chain.md). This page covers the distinct PJRT distributed-coordination KV surface that bootstraps multi-host execution.
 

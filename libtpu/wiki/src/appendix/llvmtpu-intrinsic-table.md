@@ -50,30 +50,30 @@ The 1356 figure is not taken on faith; it is the agreement point of two independ
 
 Every intrinsic is assigned to exactly one family. The 20 enumerated family rows recover 1341 of the 1356 grep-confirmed names; the remaining 15 sit on the MEDIUM-confidence boundaries between adjacent families and are carried in the explicit remainder row rather than force-assigned. The LLO/HW column is the lowering target: a TensorCore-style LLO slot/op where the SparseCore reuses it, a SparseCore-specific compute unit, or the SparseCore stream engine. Status: `C` = encoding byte-confirmed elsewhere, `I` = engine identified by name family, opcode not individually byte-dumped.
 
-| Family | # | LLO op / hardware unit | St | Confidence |
-|---|---:|---|---|---|
-| [stream (gather/scatter/vreg)](#stream-engine-the-dominant-family) | 834 | SparseCore stream/scatter engine descriptor → `LowerToSparseCoreLlvm` → LLVM call | I | HIGH |
-| [pack / unpack (subelement)](#pack--unpack-subelement-staging) | 87 | VPU pack/unpack slot → `llo.vpack*` / `llo.vunpack*` | C | HIGH |
-| [vector load / store](#vector-load--store-vmem--cb) | 74 | VPU mem slot → `llo.vector_{load,store}[_masked]` | C | HIGH |
-| [semaphore wait / watch](#sync--wait--watch-sflag-atomics) | 47 | sflag VWait slot → `llo.vwait.{eq,ne,lt,le,gt,ge}[.done]` | C | HIGH |
-| [DMA descriptor](#dma-descriptor-builders) | 40 | SparseCore DMA engine cmd (3 complexity tiers) | C | HIGH |
-| [scan / segment-scan / reduce](#scan--reduce-embedding-aggregation) | 32 | SparseCore scan unit (add/max/min × full/half/1xN/2xN × seg × index) | I | HIGH |
-| [vector convert](#vector-convert) | 28 | VPU convert slot → `llo.vcvt.*` | C | HIGH |
-| [alloca / allocate](#alloca--allocate) | 24 | SparseCore allocator (smem/spmem/vmem/sflag/hbm/iova/timem/tilespmem/dreg/cbreg) | C | HIGH |
-| [semaphore set / add (sflag)](#sync--wait--watch-sflag-atomics) | 22 | sflag VSync slot → `llo.vsync.{add,set}[.done,.remote]` | C | HIGH |
-| [transcendental / EUP](#transcendental--eup) | 22 | EUP VALU3 push (Alu3 op0 + 5-bit selector) + `PopEupResult` | C | HIGH |
-| [control register rd / set](#control-register-rd--set) | 21 | scalar `RdReg`/`SetReg` → SCS scalar slot | C | HIGH |
-| [pointer / addressing / loop-bc](#pointer--addressing--loop-bytecode) | 16 | LLVM `inttoptr`/`ptrtoint`/`addrspace` + loop bytecode | C | MEDIUM |
-| [addrspacecast](#addrspacecast) | 16 | surviving `@llvm.tpu.addrspacecast.*` IR intrinsic call (IDs `0x33b1`–`0x33c0`) | C | HIGH |
-| [scalar ALU / scalar mem](#scalar-alu--scalar-mem) | 14 | SCS scalar slot (shifts, overflow-add, addcarry, add_high/low_f32) | C | MEDIUM |
-| [lane / sublane permute](#lane--sublane-permute) | 14 | VPU cross-lane slot → `llo.vrot.slane` / `vperm.sublane` / `sc.permute` | C | MEDIUM |
-| [CBREG / circular buffer](#cbreg--circular-buffer) | 12 | scalar CBREG ops (`ReadCbreg`/`WriteCbreg`/`AddCbreg`/`MoveCbreg`/`SLD/SST.cb`) | C | HIGH |
-| [trace / telemetry / sc-control](#trace--telemetry--sc-control) | 12 | SparseCore control/trace (strace, event, cycle-count, ssetpstate) | C | MEDIUM |
-| [sort / unique / dupcount](#sort--unique--dupcount) | 11 | SparseCore sort/dedup unit (embedding dedup) | I | MEDIUM |
-| [task / control / structural](#task--control--structural) | 10 | SparseCore tile-task + structural (task_dispatch, loop_*, barrier, nop) | C | MEDIUM |
-| [i1-mask width conversion](#i1-mask-width-conversion) | 5 | VPU mask slot — vector-mask width re-pack | C | HIGH |
-| unclassified remainder (boundary/misc) | 15 | spread across the MEDIUM-confidence families — not separately enumerated | I | LOW |
-| **Total** | **1356** | | | |
+| Family | # | LLO op / hardware unit | St |
+|---|---:|---|---|
+| [stream (gather/scatter/vreg)](#stream-engine-the-dominant-family) | 834 | SparseCore stream/scatter engine descriptor → `LowerToSparseCoreLlvm` → LLVM call | I |
+| [pack / unpack (subelement)](#pack--unpack-subelement-staging) | 87 | VPU pack/unpack slot → `llo.vpack*` / `llo.vunpack*` | C |
+| [vector load / store](#vector-load--store-vmem--cb) | 74 | VPU mem slot → `llo.vector_{load,store}[_masked]` | C |
+| [semaphore wait / watch](#sync--wait--watch-sflag-atomics) | 47 | sflag VWait slot → `llo.vwait.{eq,ne,lt,le,gt,ge}[.done]` | C |
+| [DMA descriptor](#dma-descriptor-builders) | 40 | SparseCore DMA engine cmd (3 complexity tiers) | C |
+| [scan / segment-scan / reduce](#scan--reduce-embedding-aggregation) | 32 | SparseCore scan unit (add/max/min × full/half/1xN/2xN × seg × index) | I |
+| [vector convert](#vector-convert) | 28 | VPU convert slot → `llo.vcvt.*` | C |
+| [alloca / allocate](#alloca--allocate) | 24 | SparseCore allocator (smem/spmem/vmem/sflag/hbm/iova/timem/tilespmem/dreg/cbreg) | C |
+| [semaphore set / add (sflag)](#sync--wait--watch-sflag-atomics) | 22 | sflag VSync slot → `llo.vsync.{add,set}[.done,.remote]` | C |
+| [transcendental / EUP](#transcendental--eup) | 22 | EUP VALU3 push (Alu3 op0 + 5-bit selector) + `PopEupResult` | C |
+| [control register rd / set](#control-register-rd--set) | 21 | scalar `RdReg`/`SetReg` → SCS scalar slot | C |
+| [pointer / addressing / loop-bc](#pointer--addressing--loop-bytecode) | 16 | LLVM `inttoptr`/`ptrtoint`/`addrspace` + loop bytecode | C |
+| [addrspacecast](#addrspacecast) | 16 | surviving `@llvm.tpu.addrspacecast.*` IR intrinsic call (IDs `0x33b1`–`0x33c0`) | C |
+| [scalar ALU / scalar mem](#scalar-alu--scalar-mem) | 14 | SCS scalar slot (shifts, overflow-add, addcarry, add_high/low_f32) | C |
+| [lane / sublane permute](#lane--sublane-permute) | 14 | VPU cross-lane slot → `llo.vrot.slane` / `vperm.sublane` / `sc.permute` | C |
+| [CBREG / circular buffer](#cbreg--circular-buffer) | 12 | scalar CBREG ops (`ReadCbreg`/`WriteCbreg`/`AddCbreg`/`MoveCbreg`/`SLD/SST.cb`) | C |
+| [trace / telemetry / sc-control](#trace--telemetry--sc-control) | 12 | SparseCore control/trace (strace, event, cycle-count, ssetpstate) | C |
+| [sort / unique / dupcount](#sort--unique--dupcount) | 11 | SparseCore sort/dedup unit (embedding dedup) | I |
+| [task / control / structural](#task--control--structural) | 10 | SparseCore tile-task + structural (task_dispatch, loop_*, barrier, nop) | C |
+| [i1-mask width conversion](#i1-mask-width-conversion) | 5 | VPU mask slot — vector-mask width re-pack | C |
+| unclassified remainder (boundary/misc) | 15 | spread across the MEDIUM-confidence families — not separately enumerated | I |
+| **Total** | **1356** | | |
 
 Sum check: `834+87+74+47+40+32+28+24+22+22+21+16+16+14+14+12+12+11+10+5 = 1341`; the 20 enumerated families recover 1341 of the 1356 grep-confirmed names, leaving 15 intrinsics on the MEDIUM-confidence family boundaries that this taxonomy does not separately bucket (the "unclassified remainder" row above). The 1356 total is the byte-confirmed truth; the per-family split is the analyst classification and is exact only for the grep-anchored families (stream, pack/unpack, vld/vst, wait/watch, dma, scan, convert, alloca, sync, addrspacecast, i1-width).
 
@@ -403,28 +403,28 @@ The dual base (`smem.base` vs `tilespmem.base`) is the dual-address-space window
 
 466 of 1356 carry a typed `create(OpBuilder&, Location, …)` whose argument list is the ODS declaration; the other 890 use the generic default builder (shape inferred from name-family arity + `verifyInvariantsImpl` presence). `T` = result Type, `V` = Value operand.
 
-| Intrinsic (family) | create args (after Location) | Shape | Confidence |
-|---|---|---|---|
-| `tpu_addrspacecast` (addrspacecast) | `T, V` | 1 res, 1 opnd | HIGH |
-| `tpu_addrspacecast_smem` (addrspacecast) | `T, V, V` | +tile-window | HIGH |
-| `tpu_dma_*_sc_simple` (DMA) | `V×8` | 8-field descriptor | HIGH |
-| `tpu_dma_*_sc_single_strided` (DMA) | `V×11` | +stride triple | HIGH |
-| `tpu_dma_*_sc_general` (DMA) | `V×16` | multi-dim | HIGH |
-| `tpu_stream_*_{gather,scatter}_*` (stream) | `V×6` | stream descriptor | HIGH |
-| `tpu_syncadd` (sync) | `V, V` | sflag, delta | HIGH |
-| `tpu_syncadd_remote` / `syncset_remote` (sync) | `V×5` | +dev/core/id | HIGH |
-| `tpu_fetch_and_add` (wait) | `V, V, V` | sflag, addr, val | HIGH |
-| `tpu_waitge` / `waiteq` / … (wait) | `V, V` | sflag, threshold | HIGH |
-| `tpu_alloca_smem` / `alloca_sflag` (alloca) | `T, V` | result, size | HIGH |
-| `tpu_rdcbreg_offset` / `rdcbreg_size` (CBREG) | `T, V` | result, cbreg | HIGH |
-| `tpu_wrcbreg_offset` (CBREG) | `T, V, V` | cbreg, value | HIGH |
-| `tpu_cbreg_add_offset` (CBREG) | `T, V, V` | cbreg, delta | HIGH |
-| `tpu_inttoptr` / `ptrtoint` (ptr) | `T, V` | result, val | HIGH |
-| `tpu_setreg_sflagrange` (ctl-reg) | `V` | range value | HIGH |
-| `tpu_sin_macro` / `tpu_*_macro` (EUP) | `T, V` | result, operand | HIGH |
-| `tpu_tileid` (task/struct) | `T` | 0-operand id | HIGH |
-| `tpu_barrier` (task/struct) | `V, V, V` | barrier args | MEDIUM |
-| `tpu_delay` (task/struct) | `V` | cycles | HIGH |
+| Intrinsic (family) | create args (after Location) | Shape |
+|---|---|---|
+| `tpu_addrspacecast` (addrspacecast) | `T, V` | 1 res, 1 opnd |
+| `tpu_addrspacecast_smem` (addrspacecast) | `T, V, V` | +tile-window |
+| `tpu_dma_*_sc_simple` (DMA) | `V×8` | 8-field descriptor |
+| `tpu_dma_*_sc_single_strided` (DMA) | `V×11` | +stride triple |
+| `tpu_dma_*_sc_general` (DMA) | `V×16` | multi-dim |
+| `tpu_stream_*_{gather,scatter}_*` (stream) | `V×6` | stream descriptor |
+| `tpu_syncadd` (sync) | `V, V` | sflag, delta |
+| `tpu_syncadd_remote` / `syncset_remote` (sync) | `V×5` | +dev/core/id |
+| `tpu_fetch_and_add` (wait) | `V, V, V` | sflag, addr, val |
+| `tpu_waitge` / `waiteq` / … (wait) | `V, V` | sflag, threshold |
+| `tpu_alloca_smem` / `alloca_sflag` (alloca) | `T, V` | result, size |
+| `tpu_rdcbreg_offset` / `rdcbreg_size` (CBREG) | `T, V` | result, cbreg |
+| `tpu_wrcbreg_offset` (CBREG) | `T, V, V` | cbreg, value |
+| `tpu_cbreg_add_offset` (CBREG) | `T, V, V` | cbreg, delta |
+| `tpu_inttoptr` / `ptrtoint` (ptr) | `T, V` | result, val |
+| `tpu_setreg_sflagrange` (ctl-reg) | `V` | range value |
+| `tpu_sin_macro` / `tpu_*_macro` (EUP) | `T, V` | result, operand |
+| `tpu_tileid` (task/struct) | `T` | 0-operand id |
+| `tpu_barrier` (task/struct) | `V, V, V` | barrier args |
+| `tpu_delay` (task/struct) | `V` | cycles |
 
 The 890 default-builder ops (bare transcendentals `tpu_sin`/`tpu_rcp`, the `tpu_*i1_to_*i1`, `scan2xN`, pack/unpack, `vld`/`vst`, `rdreg_*` counters, `sld_cb`, `eup_pop`) use the generic `(TypeRange, ValueRange, ArrayRef<NamedAttribute>)` builder — result type inferred (`SameOperandsAndResultType`/`InferType`), operand count by name-family arity.
 
@@ -477,23 +477,23 @@ Sum = 1060.
 
 Each row's `#res`/`#operands` is the `OneResult`/`ZeroResults` and `OneOperand`/`ZeroOperands`/`NOperands<Lj N>` token extracted from that op's mangled `Op<…sparse_core…tpu_NAME EJ…OpInvariants>` callback symbol in the `nm` table — the exact string is the evidence.
 
-| Intrinsic (class) | result token | operand token | (#res, #opnd) | Conf |
-|---|---|---|---:|---|
-| `tpu_sin` (bare EUP) | `OneResult` | `OneOperand` | (1, 1) | HIGH |
-| `tpu_addrspacecast` | `OneResult` | `OneOperand` | (1, 1) | HIGH |
-| `tpu_tileid` | `OneResult` | `ZeroOperands` | (1, 0) | HIGH |
-| `tpu_vld_msk` | `OneResult` | `NOperands<Lj2>` | (1, 2) | HIGH |
-| `tpu_sld_cb` | `OneResult` | `NOperands<Lj2>` | (1, 2) | HIGH |
-| `tpu_pack_c_b32_b16` | `OneResult` | `NOperands<Lj2>` | (1, 2) | HIGH |
-| `tpu_sort_ascdf` | `OneResult` | `NOperands<Lj3>` | (1, 3) | HIGH |
-| `tpu_vst_msk` | `ZeroResults` | `NOperands<Lj3>` | (0, 3) | HIGH |
-| `tpu_syncadd` | `ZeroResults` | `NOperands<Lj2>` | (0, 2) | HIGH |
-| `tpu_stream_linear_gather_hbm_to_tilespmem` | `ZeroResults` | `NOperands<Lj6>` | (0, 6) | HIGH |
-| `tpu_stream_strided_gather_hbm_to_tilespmem` | `ZeroResults` | `NOperands<Lj8>` | (0, 8) | HIGH |
-| `tpu_stream_indirect_vreg_vreg_gather_hbm_to_tilespmem` | `ZeroResults` | `NOperands<Lj9>` | (0, 9) | HIGH |
-| `tpu_dma_hbm_to_spmem_sc_single_strided` | `ZeroResults` | `NOperands<Lj11>` | (0, 11) | HIGH |
-| `tpu_dma_hbm_to_iova_sc_single_strided` | `ZeroResults` | `NOperands<Lj12>` | (0, 12) | HIGH |
-| `tpu_sfence` | `OneResult` | `NOperands<Lj10>` | (1, 10) | HIGH |
+| Intrinsic (class) | result token | operand token | (#res, #opnd) |
+|---|---|---|---:|
+| `tpu_sin` (bare EUP) | `OneResult` | `OneOperand` | (1, 1) |
+| `tpu_addrspacecast` | `OneResult` | `OneOperand` | (1, 1) |
+| `tpu_tileid` | `OneResult` | `ZeroOperands` | (1, 0) |
+| `tpu_vld_msk` | `OneResult` | `NOperands<Lj2>` | (1, 2) |
+| `tpu_sld_cb` | `OneResult` | `NOperands<Lj2>` | (1, 2) |
+| `tpu_pack_c_b32_b16` | `OneResult` | `NOperands<Lj2>` | (1, 2) |
+| `tpu_sort_ascdf` | `OneResult` | `NOperands<Lj3>` | (1, 3) |
+| `tpu_vst_msk` | `ZeroResults` | `NOperands<Lj3>` | (0, 3) |
+| `tpu_syncadd` | `ZeroResults` | `NOperands<Lj2>` | (0, 2) |
+| `tpu_stream_linear_gather_hbm_to_tilespmem` | `ZeroResults` | `NOperands<Lj6>` | (0, 6) |
+| `tpu_stream_strided_gather_hbm_to_tilespmem` | `ZeroResults` | `NOperands<Lj8>` | (0, 8) |
+| `tpu_stream_indirect_vreg_vreg_gather_hbm_to_tilespmem` | `ZeroResults` | `NOperands<Lj9>` | (0, 9) |
+| `tpu_dma_hbm_to_spmem_sc_single_strided` | `ZeroResults` | `NOperands<Lj11>` | (0, 11) |
+| `tpu_dma_hbm_to_iova_sc_single_strided` | `ZeroResults` | `NOperands<Lj12>` | (0, 12) |
+| `tpu_sfence` | `OneResult` | `NOperands<Lj10>` | (1, 10) |
 
 > **QUIRK — the stream family is *not* uniform `V×6`.** The [§Stream](#stream-engine-the-dominant-family) typed-create example shows a 6-operand linear form, but the byte-read arity splits the 834 stream ops into **three operand counts keyed by addressing pattern**: `stream_linear_*` = 6, `stream_{strided,indirect}_*` = 8, `stream_indirect_vreg_vreg_*` = 9. The extra operands carry the stride/index/vreg-offset sources the more complex patterns need. A reimplementer who builds every stream op with a fixed 6-operand list will under-supply the strided/indirect forms. Likewise the DMA `single.strided` tier is **11 operands normally but 12 when an `iova` endpoint is involved** (`dma_hbm_to_iova` / `dma_iova_to_hbm`), refining the flat "11 Value" in [§DMA](#dma-descriptor-builders).
 
@@ -522,20 +522,20 @@ The fn-attr-set index selects a case in `getIntrinsicFnAttributeSet` (`_ZL26getI
 
 Census over all 1356 (fn-attr-set index read from each intrinsic's map entry; each set's contents decoded by tracing its `getIntrinsicFnAttributeSet` case to the `AttributeSetNode::get` finalizer `@0x1da0f134`):
 
-| Set | # of 1356 | Enum attrs | Memory effect | LLVM `IntrProperties` shorthand | Conf |
-|---:|---:|---|---|---|---|
-| 11 | 215 | NoUnwind | `memory(none)` | `IntrNoMem` | HIGH |
-| 13 | 128 | NoUnwind | `memory(argmem: readwrite)` | `IntrArgMemOnly` | HIGH |
-| 112 | 843 | NoUnwind | `memory(argmem: readwrite)` | `IntrArgMemOnly` | HIGH |
-| 14 | 8 | NoUnwind | `memory(argmem: read)` | `IntrReadMem`+`IntrArgMemOnly` | HIGH |
-| 32 | 11 | NoUnwind | `memory(read)` | `IntrReadMem` | HIGH |
-| 34 | 8 | NoUnwind, WillReturn | `memory(write)` | `IntrWriteMem`+`IntrWillReturn` | HIGH |
-| 36 | 26 | NoUnwind, WillReturn | `memory(write)` | `IntrWriteMem`+`IntrWillReturn` | HIGH |
-| 83 | 8 | NoUnwind | `memory(argmem: write)` | `IntrWriteMem`+`IntrArgMemOnly` | HIGH |
-| 108 | 50 | NoUnwind, WillReturn, Speculatable | `memory(none)` | `IntrNoMem`+`IntrWillReturn`+`IntrSpeculatable` | HIGH |
-| 114 | 19 | NoUnwind | `memory(inaccessiblemem: readwrite)` | `IntrInaccessibleMemOnly` | HIGH |
-| 5 | 19 | NoUnwind | *(none)* | side-effecting (full ModRef) | HIGH |
-| 10 | 21 | NoUnwind | *(none)* | side-effecting (full ModRef) | HIGH |
+| Set | # of 1356 | Enum attrs | Memory effect | LLVM `IntrProperties` shorthand |
+|---:|---:|---|---|---|
+| 11 | 215 | NoUnwind | `memory(none)` | `IntrNoMem` |
+| 13 | 128 | NoUnwind | `memory(argmem: readwrite)` | `IntrArgMemOnly` |
+| 112 | 843 | NoUnwind | `memory(argmem: readwrite)` | `IntrArgMemOnly` |
+| 14 | 8 | NoUnwind | `memory(argmem: read)` | `IntrReadMem`+`IntrArgMemOnly` |
+| 32 | 11 | NoUnwind | `memory(read)` | `IntrReadMem` |
+| 34 | 8 | NoUnwind, WillReturn | `memory(write)` | `IntrWriteMem`+`IntrWillReturn` |
+| 36 | 26 | NoUnwind, WillReturn | `memory(write)` | `IntrWriteMem`+`IntrWillReturn` |
+| 83 | 8 | NoUnwind | `memory(argmem: write)` | `IntrWriteMem`+`IntrArgMemOnly` |
+| 108 | 50 | NoUnwind, WillReturn, Speculatable | `memory(none)` | `IntrNoMem`+`IntrWillReturn`+`IntrSpeculatable` |
+| 114 | 19 | NoUnwind | `memory(inaccessiblemem: readwrite)` | `IntrInaccessibleMemOnly` |
+| 5 | 19 | NoUnwind | *(none)* | side-effecting (full ModRef) |
+| 10 | 21 | NoUnwind | *(none)* | side-effecting (full ModRef) |
 
 Sum: `215+128+843+8+11+8+26+8+50+19+19+21 = 1356` — exact, every `llvm.tpu.*` intrinsic maps to one of these 12 sets.
 
@@ -595,13 +595,13 @@ The map `uint16` for each is the exact little-endian halfword at file offset `0x
 
 The 1356 count is the union for the generations this build targets; the intrinsic surface grows per generation. The dimensions that vary:
 
-| Source of variation | Effect | Confidence |
-|---|---|---|
-| New dtypes (FP8 `e4m3`/`e5m2`, narrow ints) | adds stream/convert/pack op rows per dtype | HIGH |
-| New stream patterns / memspaces | extends the 834-way stream cross-product | HIGH |
-| New EUP transcendental selectors | adds transcendental + `.macro` pairs | MEDIUM |
-| New address spaces | adds `addrspacecast` leaf variants | MEDIUM |
-| Generation-gated ops | a name may be absent on older gens (the `getSequencerType` / EmitX gen dispatch gates which are reachable) | MEDIUM |
+| Source of variation | Effect |
+|---|---|
+| New dtypes (FP8 `e4m3`/`e5m2`, narrow ints) | adds stream/convert/pack op rows per dtype |
+| New stream patterns / memspaces | extends the 834-way stream cross-product |
+| New EUP transcendental selectors | adds transcendental + `.macro` pairs |
+| New address spaces | adds `addrspacecast` leaf variants |
+| Generation-gated ops | a name may be absent on older gens (the `getSequencerType` / EmitX gen dispatch gates which are reachable) |
 
 The deep per-gen reachability is on [`isa/sequencer-ops-per-gen.md`](../isa/sequencer-ops-per-gen.md) and [`isa/v5plus-emitx-bit-positions.md`](../isa/v5plus-emitx-bit-positions.md). This appendix snapshots the full registered set for *this* build; a reimplementer targeting a single generation must gate names against the generation's EmitX dispatch.
 

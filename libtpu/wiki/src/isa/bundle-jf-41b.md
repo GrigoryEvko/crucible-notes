@@ -28,7 +28,6 @@ This page documents the complete slot map at absolute bit precision, the `Encode
 | **Empty-slot mark** | `HardwareBundleBits::kNeverExecute = 31` (`0xB834CFC`) in every slot's 5-bit predicate field |
 | **HBM stored width** | 42 bytes (`BundleSizeBytesForHbm` @ `0x1ecf74c0`); 3 bundles per 128-byte DMA chunk |
 | **Shared by** | Dragonfish (`EncoderDf` inherits this `EncodeBundleInternal`) — see [Dragonfish Bundle](bundle-df.md) |
-| **Confidence** | CONFIRMED (byte-anchored) unless a row says otherwise |
 
 ---
 
@@ -86,19 +85,19 @@ for bit in {0x8000,0x4000,0x2000,0x1000,0x800,0x400}:
 
 The bit-to-slot map is byte-exact from the decompiled `if ((mask & N) != 0)` ladder; each writer reads its sub-message pointer at the listed `proto+` offset (a null pointer falls back to the per-type `_globals_` default instance). The same `proto+0x10` word is read by `ProtoUtils::GetPopulatedSlots` (`0x1e875be0`) with the identical bit tests — it is the canonical bundle-occupancy bitfield.
 
-| `slot_mask` bit | `proto+` | Slot (role) | Per-slot writer | Struct word | Confidence |
-|---|---|---|---|---|---|
-| `0x0001` | `+0x18` | scalar_0 (SPU lane0 / sequencer lane) | `EncodeScalarInstruction(lane=0)` @ `0x1e862060` | `0x2D` (qword4) | CONFIRMED |
-| `0x0002` | `+0x20` | scalar_1 (SPU lane1) | `EncodeScalarInstruction(lane=1)` @ `0x1e862060` | `0x2D` (qword4) | CONFIRMED |
-| `0x0008` | `+0x30` | vector_alu_0 (VPU lane0) | `EncodeVectorAluInstruction(lane=0)` @ `0x1e864f00` | `0x1D` (qword2) | CONFIRMED |
-| `0x0010` | `+0x38` | vector_alu_1 (VPU lane1) | `EncodeVectorAluInstruction(lane=1)` @ `0x1e864f00` | `0x16` window | CONFIRMED |
-| `0x0020` | `+0x40` | vector_store (mem-store) | `EncodeVectorStoreInstruction` @ `0x1e868c40` | `0x14` + `0x16` | CONFIRMED |
-| `0x0040` | `+0x48` | vector_load (mem-load) | `EncodeVectorLoadInstruction` @ `0x1e867340` | `0x0C` + `0x1F` | CONFIRMED |
-| `0x0080` | `+0x50` | vector_extended (MXU / EUP) | `EncodeVectorExtendedInstruction` @ `0x1e869f00` | `0x0C` + `0x16` | CONFIRMED |
-| `0x0100` | `+0x58` | vector_result (matres / EUP-pop) | `EncodeVectorResultInstruction` @ `0x1e865ae0` | `0x0C` | CONFIRMED |
-| `0x0200` | `+0x60` | misc (mask / rotate / imm-set) | `EncodeMiscInstruction` @ `0x1e86be80` | `0x0C` | CONFIRMED |
-| `0x0400`..`0x8000` | `+0x68`..`+0x7C` | immediate slots imm0..imm5 (16-bit each) | `ValidateImmediate` @ `0x1e86da20` | imm region `0x1F`/`0x27` | HIGH |
-| `(0x0004)` | — | TTU operands | `EncodeTtuOperands` @ `0x1e863280` | `0x2D` + `0x2B` (borrows scalar0) | HIGH |
+| `slot_mask` bit | `proto+` | Slot (role) | Per-slot writer | Struct word |
+|---|---|---|---|---|
+| `0x0001` | `+0x18` | scalar_0 (SPU lane0 / sequencer lane) | `EncodeScalarInstruction(lane=0)` @ `0x1e862060` | `0x2D` (qword4) |
+| `0x0002` | `+0x20` | scalar_1 (SPU lane1) | `EncodeScalarInstruction(lane=1)` @ `0x1e862060` | `0x2D` (qword4) |
+| `0x0008` | `+0x30` | vector_alu_0 (VPU lane0) | `EncodeVectorAluInstruction(lane=0)` @ `0x1e864f00` | `0x1D` (qword2) |
+| `0x0010` | `+0x38` | vector_alu_1 (VPU lane1) | `EncodeVectorAluInstruction(lane=1)` @ `0x1e864f00` | `0x16` window |
+| `0x0020` | `+0x40` | vector_store (mem-store) | `EncodeVectorStoreInstruction` @ `0x1e868c40` | `0x14` + `0x16` |
+| `0x0040` | `+0x48` | vector_load (mem-load) | `EncodeVectorLoadInstruction` @ `0x1e867340` | `0x0C` + `0x1F` |
+| `0x0080` | `+0x50` | vector_extended (MXU / EUP) | `EncodeVectorExtendedInstruction` @ `0x1e869f00` | `0x0C` + `0x16` |
+| `0x0100` | `+0x58` | vector_result (matres / EUP-pop) | `EncodeVectorResultInstruction` @ `0x1e865ae0` | `0x0C` |
+| `0x0200` | `+0x60` | misc (mask / rotate / imm-set) | `EncodeMiscInstruction` @ `0x1e86be80` | `0x0C` |
+| `0x0400`..`0x8000` | `+0x68`..`+0x7C` | immediate slots imm0..imm5 (16-bit each) | `ValidateImmediate` @ `0x1e86da20` | imm region `0x1F`/`0x27` |
+| `(0x0004)` | — | TTU operands | `EncodeTtuOperands` @ `0x1e863280` | `0x2D` + `0x2B` (borrows scalar0) |
 
 > **QUIRK — the scalar slot is *lane-aware* and the lanes live at different bit bases in the same qword.** `EncodeScalarInstruction` takes a lane argument (0 or 1) and writes scalar_0 at the *high* bits of qword4 (opcode @abs311) and scalar_1 at the *lower* bits (opcode @abs284). A reimplementation that assumes "slot 0 is the low bits, slot 1 the high bits" inverts the two scalar lanes. The same lane split applies to the two vector-ALU lanes, which live in *two different struct words* (lane0 in word `0x1D`, lane1 in the 56-bit window at `0x16`), not adjacent fields of one word.
 
@@ -132,69 +131,69 @@ Each per-slot writer ORs its fields into one struct qword via `(field & mask) <<
 
 The lane-0 (sequencer) lane sits at the high bits, lane-1 at the low bits. Decompiled (lines 240-253): lane1 takes the `(... & 0x3F) << 20` / `pred << 26` branch (clear-masks `0x...FC0FFFFF` / `0x...83FFFFFF`); lane0 takes the `<< 47` / `pred << 53` branch (clear-masks `0xFFE07F...` / `0xFC1F...`).
 
-| Field | proto src | lane0 shift → abs | lane1 shift → abs | Width | Confidence |
-|---|---|---|---|---|---|
-| predicate | `EncodePredication & 0x1F` | `<<53` → 317 | `<<26` → 290 | 5 | CONFIRMED |
-| opcode | `[instr+0x50] & 0x3F` | `<<47` → 311 | `<<20` → 284 | 6 | CONFIRMED |
-| X reg | `ScalarBinaryOperands+0x20 & 0x1F` | `<<31` → 295 | `<<4` → 268 | 5 | CONFIRMED |
-| Y reg | `+0x1C & 0x1F` | `<<42` → 306 | `<<15` → 279 | 5 | CONFIRMED |
-| ScalarY | `+0x18 & 0x3F` | `<<36` → 300 | `<<9` → 273 | 6 | CONFIRMED |
+| Field | proto src | lane0 shift → abs | lane1 shift → abs | Width |
+|---|---|---|---|---|
+| predicate | `EncodePredication & 0x1F` | `<<53` → 317 | `<<26` → 290 | 5 |
+| opcode | `[instr+0x50] & 0x3F` | `<<47` → 311 | `<<20` → 284 | 6 |
+| X reg | `ScalarBinaryOperands+0x20 & 0x1F` | `<<31` → 295 | `<<4` → 268 | 5 |
+| Y reg | `+0x1C & 0x1F` | `<<42` → 306 | `<<15` → 279 | 5 |
+| ScalarY | `+0x18 & 0x3F` | `<<36` → 300 | `<<9` → 273 | 6 |
 
-The opcode jump table covers `ScalarOpcode` 0..0x37; an immediate Y constant routes through `EncodeImmediateValueForScalarYEncoding` (`0x1e85f3a0`) into the immediate region. This refines an earlier reading that placed the scalar0 opcode at bits 20-25 — that was the *lane-1* placement; the sequencer lane (lane0) opcode is at abs 311.
+The opcode jump table covers `ScalarOpcode` 0..0x37; an immediate Y constant routes through `EncodeImmediateValueForScalarYEncoding` (`0x1e85f3a0`) into the immediate region. The sequencer lane (lane0) opcode is at abs 311; the lane-1 opcode is at abs 284.
 
 ### Vector-ALU lanes — `EncodeVectorAluInstruction` @ `0x1e864f00`
 
 Lane0 packs into the 16-bit word at struct `0x1D`; lane1 packs into the 56-bit window at struct `0x16`. Decompiled (lines 80-128): lane0 `pred << 11` (clear `& 0x7FF`) and `opcode << 5` (clear `0xF81F`); lane1 `pred << 36`, `Vx << 25` (clear `0xC1FFFFFF`), `y << 10` (clear `0xFFFF83FF`).
 
-| Field | proto src | Lane0 (word `0x1D`) abs | Lane1 (window `0x16`) abs | Width | Confidence |
-|---|---|---|---|---|---|
-| Vx | `[instr+0x58] & 0x1F` | `<<0` → 136 | `<<25` → 105 | 5 | CONFIRMED |
-| opcode | `[instr+0x50] & 0x3F` | `<<5` → 141 | `<<30` → 110 | 6 | CONFIRMED |
-| predicate | `& 0x1F` | `<<11` → 147 | `<<36` → 116 | 5 | CONFIRMED |
-| y | `[instr+0x60] & 0x1F` | (spills to `0x16`) | `<<10` → 90 | 5 | CONFIRMED |
-| dest | `[instr+0x60] & 0x1F` | `<<41`/`<<51` (spill) | `<<41` → 121 | 5 | HIGH |
+| Field | proto src | Lane0 (word `0x1D`) abs | Lane1 (window `0x16`) abs | Width |
+|---|---|---|---|---|
+| Vx | `[instr+0x58] & 0x1F` | `<<0` → 136 | `<<25` → 105 | 5 |
+| opcode | `[instr+0x50] & 0x3F` | `<<5` → 141 | `<<30` → 110 | 6 |
+| predicate | `& 0x1F` | `<<11` → 147 | `<<36` → 116 | 5 |
+| y | `[instr+0x60] & 0x1F` | (spills to `0x16`) | `<<10` → 90 | 5 |
+| dest | `[instr+0x60] & 0x1F` | `<<41`/`<<51` (spill) | `<<41` → 121 | 5 |
 
 The opcode is 6-bit (`VectorAluOpcode` 0..62). Opcode `0x18` (LANE_ID) and the EUP run `0x30..0x34` take dedicated branches; `IsEupOpcode` (`0x1e875900`) gates whether the EUP/XLU reservation is needed before the bundle commits.
 
-> **NOTE —** the lane-0 *dest* width is graded HIGH (not CONFIRMED) because it was recovered from the shared `y`/`dest` branch (struct `0x16` `shl 0x29`/`shl 0x33`) rather than a dedicated named-field write. The lane-1 window is fully isolated (`y@90, Vx@105, opcode@110, pred@116, dest@121`) and the decode-side independently confirms the lane-1 layout — see [Decode-Side: JF / PF](decode-side-jf-pf.md).
+> **NOTE —** the lane-0 *dest* field is written from the shared `y`/`dest` branch (struct `0x16` `shl 0x29`/`shl 0x33`) rather than a dedicated named-field write. The lane-1 window is fully isolated (`y@90, Vx@105, opcode@110, pred@116, dest@121`); the decode-side independently corroborates the lane-1 layout — see [Decode-Side: JF / PF](decode-side-jf-pf.md).
 
 ### Vector-Extended / MXU (struct `0x0C`) — `EncodeVectorExtendedInstruction` @ `0x1e869f00`
 
 Decompiled (lines 49-76): `pred << 35` (clear `0xFFFFFF07FFFFFFFF`), `mxu_id << 27` (clear `0xFFFFFFFFE7FFFFFF`), has-bit `| 0x20000000` (bit 29), and the opcode field cleared by `0xFFFFFFF81FFFFFFF` (bits 29..34).
 
-| Field | proto src | abs bit | Width | Confidence |
-|---|---|---|---|---|
-| predicate | `EncodePredication & 0x1F` | 35 | 5 | CONFIRMED |
-| opcode | (6-bit `VectorExtendedOpcode`) | 29..34 | 6 | CONFIRMED |
-| mxu-id | `[instr+0x64] & 3` | 27..28 | 2 | CONFIRMED |
-| has-bit | `\| 0x20000000` | 29 | 1 | CONFIRMED |
-| operands | `[instr+0x6C]` | `<<46`/`<<15` into the `0x16` window; byte `0x14` `<<11` | — | HIGH |
+| Field | proto src | abs bit | Width |
+|---|---|---|---|
+| predicate | `EncodePredication & 0x1F` | 35 | 5 |
+| opcode | (6-bit `VectorExtendedOpcode`) | 29..34 | 6 |
+| mxu-id | `[instr+0x64] & 3` | 27..28 | 2 |
+| has-bit | `\| 0x20000000` | 29 | 1 |
+| operands | `[instr+0x6C]` | `<<46`/`<<15` into the `0x16` window; byte `0x14` `<<11` | — |
 
-The opcode clear-mask `0xFFFFFFF81FFFFFFF` here is the *same* mask the decoder uses to extract the 6-bit opcode at abs 29..34, so the encode and decode sides agree bit-for-bit; this gives the MXU opcode/mxu-id/predicate fields CERTAIN-grade cross-confirmation. The opcode space is `{matmul 0..6, latch/PushGains 7..12, transpose/RPU 13..34}`; see [MXU Slot](slot-mxu.md) and [Decode-Side: JF / PF](decode-side-jf-pf.md) for the full roster and the two-level jump-table decode.
+The opcode clear-mask `0xFFFFFFF81FFFFFFF` here is the *same* mask the decoder uses to extract the 6-bit opcode at abs 29..34, so the encode and decode sides agree bit-for-bit. The opcode space is `{matmul 0..6, latch/PushGains 7..12, transpose/RPU 13..34}`; see [MXU Slot](slot-mxu.md) and [Decode-Side: JF / PF](decode-side-jf-pf.md) for the full roster and the two-level jump-table decode.
 
 ### Vector-Result / matres (struct `0x0C`) — `EncodeVectorResultInstruction` @ `0x1e865ae0`
 
-| Field | proto src | abs bit | Width | Confidence |
-|---|---|---|---|---|
-| predicate | `& 0x1F` `<<22` | 22 | 5 | CONFIRMED |
-| result-format | `[instr+0x40] & 3` `<<20` | 20 | 2 | CONFIRMED |
-| result-mode | `[instr+0x44] & 3` `<<18` | 18 | 2 | CONFIRMED |
-| dest-Vreg | `[instr+0x48] & 0x1F` | mode-dependent: `<<10` / `<<41` / `<<51` | 5 | HIGH |
+| Field | proto src | abs bit | Width |
+|---|---|---|---|
+| predicate | `& 0x1F` `<<22` | 22 | 5 |
+| result-format | `[instr+0x40] & 3` `<<20` | 20 | 2 |
+| result-mode | `[instr+0x44] & 3` `<<18` | 18 | 2 |
+| dest-Vreg | `[instr+0x48] & 0x1F` | mode-dependent: `<<10` / `<<41` / `<<51` | 5 |
 
 The destination register's bit position is selected by the `which_destination` sub-form (which EUP/result target the value drains to). The result-valid routing is covered on the [ResultFifo](resultfifo-archregister.md) page.
 
 ### Vector-Load (struct `0x0C` + Vs ports `0x1F`) — `EncodeVectorLoadInstruction` @ `0x1e867340`
 
-| Field | proto src | abs bit | Width | Confidence |
-|---|---|---|---|---|
-| predicate | `& 0x1F` `<<58` | 58 | 5 | CONFIRMED |
-| opcode (addr-mode) | `[instr+0x50] & 3` `<<56` | 56 | 2 | CONFIRMED |
-| has-bit | `[instr+0x60]!=0` → `\| (1<<40)` | 40 | 1 | CONFIRMED |
-| destVreg | `[instr+0x64] & 0x1F` `<<51` | 51 | 5 | CONFIRMED |
-| stride | `[instr+0x54] & 7` `<<48` | 48 | 3 | CONFIRMED |
-| offset | `[instr+0x58] & 3` `<<46` | 46 | 2 | CONFIRMED |
-| base | `[instr+0x5C] & 3` `<<44` | 44 | 2 | CONFIRMED |
-| vs2 / vs1 | `[target+0x88] & 0x1F` `<<10`, `[target+0x84] & 0x1F` `<<5` | word `0x1F` | 5 each | HIGH |
+| Field | proto src | abs bit | Width |
+|---|---|---|---|
+| predicate | `& 0x1F` `<<58` | 58 | 5 |
+| opcode (addr-mode) | `[instr+0x50] & 3` `<<56` | 56 | 2 |
+| has-bit | `[instr+0x60]!=0` → `\| (1<<40)` | 40 | 1 |
+| destVreg | `[instr+0x64] & 0x1F` `<<51` | 51 | 5 |
+| stride | `[instr+0x54] & 7` `<<48` | 48 | 3 |
+| offset | `[instr+0x58] & 3` `<<46` | 46 | 2 |
+| base | `[instr+0x5C] & 3` `<<44` | 44 | 2 |
+| vs2 / vs1 | `[target+0x88] & 0x1F` `<<10`, `[target+0x84] & 0x1F` `<<5` | word `0x1F` | 5 each |
 
 The 2-bit opcode at abs 56 selects `{VmemLoad, VmemLoadShuffled, VmemLoadIndexedIar0, VmemLoadIndexedIar1}`. The Vs base/index ports and the sublane-mask sub-fields route through `EncodeVectorSublaneMaskEncoding` (`0x1e867840`). These positions close a long-standing gap: the VectorLoad/Store field layout is written byte-exact by the proto-path encoders here, not hidden in an `InstBits` row. See [Memory-Load](slot-memory-load.md).
 
@@ -204,11 +203,11 @@ Writes the source vreg (11-bit packed) into word `0x14` at abs 75, predication i
 
 ### Misc (struct `0x0C`) — `EncodeMiscInstruction` @ `0x1e86be80`
 
-| Field | proto src | abs bit | Width | Confidence |
-|---|---|---|---|---|
-| predication | `& 0x1F` `<<13` | 13 | 5 | CONFIRMED |
-| operand | `[instr+0x40]` `<<8` | 8 | — | HIGH |
-| sub-op | `[instr+0x18]/[+0x1C]` `<<5` (per `MiscOperandEncoding`) | 5 | — | HIGH |
+| Field | proto src | abs bit | Width |
+|---|---|---|---|
+| predication | `& 0x1F` `<<13` | 13 | 5 |
+| operand | `[instr+0x40]` `<<8` | 8 | — |
+| sub-op | `[instr+0x18]/[+0x1C]` `<<5` (per `MiscOperandEncoding`) | 5 | — |
 
 ---
 
@@ -232,12 +231,12 @@ nx = kNeverExecute & 0x1F;                                  // = 31
 
 The constant `0x400000800000000` has exactly two set bits — bit 35 and bit 58 — so multiplying it by 31 places `kNeverExecute` at the MXU predicate (abs 35) and the VectorLoad predicate (abs 58). The struct `0x2D` store places it at the two scalar predicates (abs 317, abs 290), and the struct `0x1D`/`0x1A` stores at the two VALU-lane predicates (abs 147, abs 116). Because struct byte `0x0C` is bit 96, the qword-0 shifts read as their absolute bit positions directly (35, 58, 22, 13), which is the cleanest demonstration of the 12-byte-strip law.
 
-| Prefill store | Sets predicate (abs bit) to 31 | Confidence |
-|---|---|---|
-| `[struct+0x2D] = (31<<53)\|(31<<26)` | scalar_0 @317 ; scalar_1 @290 | CONFIRMED |
-| `[struct+0x1D] = 31<<11` | VALU lane0 @147 | CONFIRMED |
-| `[struct+0x1A] = 0x1F0` | VALU lane1 @116 | CONFIRMED |
-| `[struct+0x0C] = (31·0x400000800000000)\|(31<<22)\|(31<<13)` | VLoad @58 ; MXU @35 ; VResult @22 ; Misc @13 | CONFIRMED |
+| Prefill store | Sets predicate (abs bit) to 31 |
+|---|---|
+| `[struct+0x2D] = (31<<53)\|(31<<26)` | scalar_0 @317 ; scalar_1 @290 |
+| `[struct+0x1D] = 31<<11` | VALU lane0 @147 |
+| `[struct+0x1A] = 0x1F0` | VALU lane1 @116 |
+| `[struct+0x0C] = (31·0x400000800000000)\|(31<<22)\|(31<<13)` | VLoad @58 ; MXU @35 ; VResult @22 ; Misc @13 |
 
 A present slot's writer overwrites its predicate with the real 5-bit `EncodePredication` value (0..14 predicate register, 15 `kAlwaysExecute`, +16 negate, 31 `kNeverExecute`); the constants `kPredicateRegisterCount=15` / `kAlwaysExecute=15` / `kNeverExecute=31` live at `0xB834CF4`..`0xB834CFC`. An absent slot keeps predicate 31 and the hardware skips it. See [NOP / Unused-Slot Canonical Encoding](nop-canonical.md) and [Predicate Slot](slot-predicate.md).
 
@@ -282,13 +281,13 @@ offset = (n / 3) * 128                              // 3 bundles per 128-byte ch
        + (n % 3) * (BundleSizeBytes() + 2);         // 41 + 2 = 43-byte in-chunk stride
 ```
 
-| Quantity | Value | Source | Confidence |
-|---|---|---|---|
-| Issue bundle | 41 B | `BundleSizeBytes` @ `0x1ecf7460` | CONFIRMED |
-| HBM stored bundle | 42 B | `BundleSizeBytesForHbm` @ `0x1ecf74c0` | CONFIRMED |
-| In-chunk stride | 43 B (`BundleSizeBytes()+2`) | `GetBundleByteOffset` @ `0x1e86db80` | CONFIRMED |
-| Bundles per chunk | 3 | `(n/3)*128` grouping | CONFIRMED |
-| Chunk granularity | 128 B | `(n/3)*128` | CONFIRMED |
+| Quantity | Value | Source |
+|---|---|---|
+| Issue bundle | 41 B | `BundleSizeBytes` @ `0x1ecf7460` |
+| HBM stored bundle | 42 B | `BundleSizeBytesForHbm` @ `0x1ecf74c0` |
+| In-chunk stride | 43 B (`BundleSizeBytes()+2`) | `GetBundleByteOffset` @ `0x1e86db80` |
+| Bundles per chunk | 3 | `(n/3)*128` grouping |
+| Chunk granularity | 128 B | `(n/3)*128` |
 
 > **GOTCHA —** the in-chunk stride is `BundleSizeBytes()+2 = 43`, *not* the HBM bundle width 42. The two differ by one byte: `BundleSizeBytesForHbm` reports the stored bundle as 42 (a single check/pad byte over the 41-byte issue width), while `GetBundleByteOffset` advances by 43 between consecutive bundles in a chunk. The extra byte is consistent with a check byte plus one pad byte, or a 2-byte trailer; the exact per-bundle framing bytes (the check byte `0x55` and any pad) are written by the program-level `EncodeProgramForHbmInternal` and are not pinned here.
 

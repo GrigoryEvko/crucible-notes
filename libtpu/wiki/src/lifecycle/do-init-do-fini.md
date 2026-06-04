@@ -97,15 +97,15 @@ function some_ctor_with_destructible_global():
 
 The 1885 `_GLOBAL__sub_I_*` constructors are not a flat list to enumerate — that is the anti-pattern. They are better understood by the *kinds of registries they populate*, all of which share one property: they register into a table or build a descriptor, and run no hardware or order-critical setup. The table below buckets the constructor set by what each TU's globals do, with the count of TUs matching each bucket (a keyword scan over the `_GLOBAL__sub_I_*.cc/.cpp` symbol set; buckets overlap, so they do not sum to 1885).
 
-| Constructor bucket | What its globals register | Distinct TUs | Confidence |
-|---|---|---|---|
-| **TPU/XLA/TSL runtime** | module descriptors, factory tables, runtime flags (the largest area) | ~162 (`*tpu*`) | CONFIRMED |
-| **LLVM target backends** | `*TargetMachine.cpp`, `*AsmPrinter.cpp`, `*ISelLowering.cpp`, `*Subtarget.cpp`, `*CodeGen*` — `RegisterTarget`/`RegisterPass` into LLVM's global registries (X86, AArch64, AMDGPU, ARM, TPU) | ~51 | CONFIRMED |
-| **`GoogleInitializer` module descriptors** | the `_GLOBAL__sub_I_*_registration.cc` set — bind module NAME → `google_init_module_*` fn + dependency edges | ~41 (`*registration*`/`*register*`) | CONFIRMED |
-| **abseil flag registries** | `_GLOBAL__sub_I_absl_flags.cc`, `commandlineflags.cc`, `*_flags.cc` — `FLAGS_*` into the absl flag registry | ~28 (`*[Ff]lags*`) | CONFIRMED |
-| **MLIR / HLO dialects + passes** | `mhlo`, `stablehlo`, `mlir_bridge_pass`, dialect/pass registrations | ~14 | CONFIRMED |
-| **Metrics / telemetry** | gauge/monitor/metric registries | ~19 | HIGH |
-| **protobuf / upb descriptors** | proto descriptor pools + the `linkarr_upb_AllExts` mini-table extension array (`0x224c2480..0x224c2920`) | ~11 named + linker array | CONFIRMED |
+| Constructor bucket | What its globals register | Distinct TUs |
+|---|---|---|
+| **TPU/XLA/TSL runtime** | module descriptors, factory tables, runtime flags (the largest area) | ~162 (`*tpu*`) |
+| **LLVM target backends** | `*TargetMachine.cpp`, `*AsmPrinter.cpp`, `*ISelLowering.cpp`, `*Subtarget.cpp`, `*CodeGen*` — `RegisterTarget`/`RegisterPass` into LLVM's global registries (X86, AArch64, AMDGPU, ARM, TPU) | ~51 |
+| **`GoogleInitializer` module descriptors** | the `_GLOBAL__sub_I_*_registration.cc` set — bind module NAME → `google_init_module_*` fn + dependency edges | ~41 (`*registration*`/`*register*`) |
+| **abseil flag registries** | `_GLOBAL__sub_I_absl_flags.cc`, `commandlineflags.cc`, `*_flags.cc` — `FLAGS_*` into the absl flag registry | ~28 (`*[Ff]lags*`) |
+| **MLIR / HLO dialects + passes** | `mhlo`, `stablehlo`, `mlir_bridge_pass`, dialect/pass registrations | ~14 |
+| **Metrics / telemetry** | gauge/monitor/metric registries | ~19 |
+| **protobuf / upb descriptors** | proto descriptor pools + the `linkarr_upb_AllExts` mini-table extension array (`0x224c2480..0x224c2920`) | ~11 named + linker array |
 
 > **NOTE —** the `GoogleInitializer`-descriptor bucket (~41 `*registration*` TUs) is the only one whose registrations are *order-critical at run time*, and it is precisely the one whose execution is deferred. The `_GLOBAL__sub_I_*_registration.cc` ctors run at load (building descriptors), but the `google_init_module_*` functions they point at run later, in the DAG, at first `PJRT_Plugin_Initialize`. See [module-init-plugin-discovery.md](module-init-plugin-discovery.md) for the descriptor → run mapping.
 

@@ -65,11 +65,11 @@ function CreateRoutingSchedule(topology, transfers):     // 0x1381c6a0
 
 ### Function Map
 
-| Function | VMA | Role | Confidence |
-|---|---|---|---|
-| `CreateRoutingSchedule` | `0x1381c6a0` | Hop-assignment solver entry (~0x5c00 bytes) | CERTAIN |
-| `TpuTopology::CoreForId` | — (called @ `0x1381c7aa`) | core id → `TpuCoreLocation` | CERTAIN |
-| `TpuCoreLocation::chip_coordinates` | — (called @ `0x1381c7b5`) | location → torus XY | CERTAIN |
+| Function | VMA | Role |
+|---|---|---|
+| `CreateRoutingSchedule` | `0x1381c6a0` | Hop-assignment solver entry (~0x5c00 bytes) |
+| `TpuTopology::CoreForId` | — (called @ `0x1381c7aa`) | core id → `TpuCoreLocation` |
+| `TpuCoreLocation::chip_coordinates` | — (called @ `0x1381c7b5`) | location → torus XY |
 
 ---
 
@@ -100,12 +100,12 @@ This is the heart of the solver. It has three phases: candidate-direction genera
 
 `net_router::(anon)::Direction` is a 4-value compass enum. The values are byte-confirmed from a relocated `char*` direction-name table @ `0x21924ed8` (`.data.rel.ro`; four `R_X86_64_RELATIVE` slots) used by the iteration logger:
 
-| dir | char | name | torus step (jump table @ `0xae5dec8`, dispatched @ `0x13820b34`) | Confidence |
-|---|---|---|---|---|
-| 0 | `'N'` | North (+Y) | `y' = (y + 1)       mod Y` | CERTAIN |
-| 1 | `'W'` | West (-X) | `x' = (x + (X - 1)) mod X` | CERTAIN |
-| 2 | `'S'` | South (-Y) | `y' = (y + (Y - 1)) mod Y` | CERTAIN |
-| 3 | `'E'` | East (+X) | `x' = (x + 1)       mod X` | CERTAIN |
+| dir | char | name | torus step (jump table @ `0xae5dec8`, dispatched @ `0x13820b34`) |
+|---|---|---|---|
+| 0 | `'N'` | North (+Y) | `y' = (y + 1)       mod Y` |
+| 1 | `'W'` | West (-X) | `x' = (x + (X - 1)) mod X` |
+| 2 | `'S'` | South (-Y) | `y' = (y + (Y - 1)) mod Y` |
+| 3 | `'E'` | East (+X) | `x' = (x + 1)       mod X` |
 
 The negative step uses the `(dim - 1)` addend trick (`X-1` @ `-0x2a0(rbp)`, `Y-1` @ `-0x2a8(rbp)`) so that a wrap-around decrement stays non-negative before the modulo. The two divisors are `ChipBounds.X` (E/W, `idivl` @ `0x13820b6a`) and `ChipBounds.Y` (N/S, `idivl` @ `0x13820b51`).
 
@@ -251,12 +251,12 @@ Every endpoint of every schedule `Action` is a `net_router::Pointer` whose `type
 
 ### Values
 
-| value | char tag | name | resolution in `GetDataPointerAddress` | Confidence |
-|---|---|---|---|---|
-| 0 | `'i'` (`0x69`) | `kInput` | caller callback `function<LloMemoryAddress(PointerType, PointerType, LloValue*)>(0, …)` | HIGH |
-| 1 | `'o'` (`0x6f`) | `kOutput` | caller callback `(…)(1, …)` | HIGH |
-| 2 | `'a'` (`0x61`) | `kAlloc` | `GetLocalDataAllocAddress` @ `0x13828460` (local scratch) | CERTAIN |
-| 3 | — (`'?'`/`0x00`) | (undefined) | rejected by `ScheckLt(type, 3)` bound | CERTAIN |
+| value | char tag | name | resolution in `GetDataPointerAddress` |
+|---|---|---|---|
+| 0 | `'i'` (`0x69`) | `kInput` | caller callback `function<LloMemoryAddress(PointerType, PointerType, LloValue*)>(0, …)` |
+| 1 | `'o'` (`0x6f`) | `kOutput` | caller callback `(…)(1, …)` |
+| 2 | `'a'` (`0x61`) | `kAlloc` | `GetLocalDataAllocAddress` @ `0x13828460` (local scratch) |
+| 3 | — (`'?'`/`0x00`) | (undefined) | rejected by `ScheckLt(type, 3)` bound |
 
 The character tags are byte-confirmed from `Pointer::ToString` @ `0x13826c60`, which packs the tag from the 3-byte literal `0x616F69` ("ioa") and selects `byte = (0x616F69 >> (8 * type)) & 0xff` (decompile line 24: `LOWORD(v14) = (unsigned __int8)(0x616F69u >> (8 * v4))`, with `v4 = *type`). The name `kAlloc` is additionally confirmed verbatim by the assertion string `"type != net_router::PointerType::kAlloc"` (in `$_1`). The names `kInput`/`kOutput` for values 0/1 are the structural reading — `GetDataPointerAddress` routes value 0 and value 1 to the external input/output address callback and value 2 to local scratch — but were not extracted from a spelled-out enumerator string, hence HIGH rather than CERTAIN.
 
@@ -314,13 +314,13 @@ The encoding is byte-confirmed from the single return expression (decompile line
 `((dst.type & 3) << 28) + (src.index & 0x1FFF | ((src.type & 3) << 13) | (dst.index << 15) & 0xFFF8000) + 0x40000000`.
 `kActionAddressIndexSize = 13` is fixed by the two `< 1 << kActionAddressIndexSize` bounds (the literal divisor `0x2000` = `1 << 13` in the `MakeCheckOpString` calls). The bit field map:
 
-| field | bits | width | mask / shift | Confidence |
-|---|---|---|---|---|
-| `src_ptr.index` | b0–12 | 13 | `& 0x1FFF` | CERTAIN |
-| `src_ptr.type` | b13–14 | 2 | `(& 3) << 13` | CERTAIN |
-| `dst_ptr.index` | b15–27 | 13 | `(<< 15) & 0xFFF8000` | CERTAIN |
-| `dst_ptr.type` | b28–29 | 2 | `(& 3) << 28` | CERTAIN |
-| DMA-action marker | b30 | 1 | `+ 0x40000000` | CERTAIN |
+| field | bits | width | mask / shift |
+|---|---|---|---|
+| `src_ptr.index` | b0–12 | 13 | `& 0x1FFF` |
+| `src_ptr.type` | b13–14 | 2 | `(& 3) << 13` |
+| `dst_ptr.index` | b15–27 | 13 | `(<< 15) & 0xFFF8000` |
+| `dst_ptr.type` | b28–29 | 2 | `(& 3) << 28` |
+| DMA-action marker | b30 | 1 | `+ 0x40000000` |
 
 A null (no-DMA) action encodes as `0`; the b30 marker therefore distinguishes a live DMA from an empty slot. The `index` fields are exactly the `Pointer::index` ordinals; the `type` fields are the 2-bit `PointerType` documented above.
 
@@ -346,11 +346,11 @@ for step in [0, num_steps):
 - **Record index** — `core_id * num_steps + step` (byte-confirmed @ line 982 as `step + num_steps * core.Id()`). Records are laid out core-major, step-minor.
 - **`kRoutingScheduleValuesPerRecord = 4`** — four `SerializeAction` words per record (lines 983–986 / 1004–1007), bounded by the `offset + kRoutingScheduleValuesPerRecord <= kTotalValueCount` RET_CHECK.
 
-| Function | VMA | Role | Confidence |
-|---|---|---|---|
-| `CreateRoutingScheduleLiteral` | `0x13822400` | `Schedule` → flat `int32` `xla::Literal` | CERTAIN |
-| `SerializeAction` | `0x13829300` | `Action` → packed `int32` | CERTAIN |
-| `EmitRoutingCode` | `0x13819ca0` | route-code emitter consuming the schedule at runtime | CERTAIN |
+| Function | VMA | Role |
+|---|---|---|
+| `CreateRoutingScheduleLiteral` | `0x13822400` | `Schedule` → flat `int32` `xla::Literal` |
+| `SerializeAction` | `0x13829300` | `Action` → packed `int32` |
+| `EmitRoutingCode` | `0x13819ca0` | route-code emitter consuming the schedule at runtime |
 
 `EmitRoutingCode` @ `0x13819ca0` is the runtime-side emitter (it threads the `GetDataPointerAddress` callback through to materialize each `Pointer`); its full body is documented in [route-table-generation](route-table-generation.md).
 

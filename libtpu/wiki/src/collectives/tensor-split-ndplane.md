@@ -176,19 +176,19 @@ The three RetChecks are the **`IsNDPlaneSpanAcrossEntireDimension`** gate. The c
 
 The two structs are pinned by their `ToString` methods (`NDPlaneInfo::ToString` `@0x10fdf2a0`, `NDPlaneStrideInfo::ToString` `@0x10fe62e0`) and independently cross-checked by the field reads in the two consumers, `GetCollectiveNDPlaneDimensionCount` (`@0x133bb6e0`) and `GetMinorToMajorOrder` (`@0x133c1c40`).
 
-| Struct | Offset | Type | Field | Confidence |
-|---|---|---|---|---|
-| `NDPlaneInfo` | `+0x00` | `int32` | `size_x` (plane span, X axis) | HIGH |
-| | `+0x04` | `int32` | `size_y` | HIGH |
-| | `+0x08` | `int32` | `size_z` (also the iteration/plane bound `GetMinorToMajorOrder` reads at `+0x8`) | HIGH |
-| | `+0x0c` | `NDPlaneStrideInfo` | embedded stride descriptor | CERTAIN |
-| `NDPlaneStrideInfo` | `+0x00` | `int32` | `stride_x` (`optional<int32>` value) | CERTAIN |
-| (at `NDPlaneInfo+0xc`) | `+0x04` | `bool` | `has_stride_x` | CERTAIN |
-| | `+0x08` | `int32` | `stride_y` | CERTAIN |
-| | `+0x0c` | `bool` | `has_stride_y` | CERTAIN |
-| | `+0x10` | `int32` | `stride_z` | CERTAIN |
-| | `+0x14` | `bool` | `has_stride_z` | CERTAIN |
-| | `+0x18` | `bool` | `across_cores_on_chip` (megacore / both-cores flag) | CERTAIN |
+| Struct | Offset | Type | Field |
+|---|---|---|---|
+| `NDPlaneInfo` | `+0x00` | `int32` | `size_x` (plane span, X axis) |
+| | `+0x04` | `int32` | `size_y` |
+| | `+0x08` | `int32` | `size_z` (also the iteration/plane bound `GetMinorToMajorOrder` reads at `+0x8`) |
+| | `+0x0c` | `NDPlaneStrideInfo` | embedded stride descriptor |
+| `NDPlaneStrideInfo` | `+0x00` | `int32` | `stride_x` (`optional<int32>` value) |
+| (at `NDPlaneInfo+0xc`) | `+0x04` | `bool` | `has_stride_x` |
+| | `+0x08` | `int32` | `stride_y` |
+| | `+0x0c` | `bool` | `has_stride_y` |
+| | `+0x10` | `int32` | `stride_z` |
+| | `+0x14` | `bool` | `has_stride_z` |
+| | `+0x18` | `bool` | `across_cores_on_chip` (megacore / both-cores flag) |
 
 `sizeof(NDPlaneStrideInfo)` is `0x1c`; `sizeof(NDPlaneInfo)` is `~0x28` (three ints + the embedded `0x1c`-byte stride info, rounded up). Relative to the parent `NDPlaneInfo`, the embedded stride fields sit at: `stride_x`@`+0xc` / `has_x`@`+0x10`, `stride_y`@`+0x14` / `has_y`@`+0x18`, `stride_z`@`+0x1c` / `has_z`@`+0x20`, `across_cores`@`+0x24`.
 

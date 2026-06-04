@@ -43,42 +43,42 @@ A `WindowDescription` is the cost model's frozen snapshot of one windowed access
 
 The layout below is recovered byte-exact from three independent sources that must agree: the copy ctor `@0xfaa9da0` (which `vmovups`/`InitFrom`-copies every field at a fixed offset), the from-`LloValue` builder `@0x1c86c1c0` (which writes each field), and the byte/cycle readers `@0x14552180`/`@0x13844e80` (which read them). Each dimension array is an `absl::inlined_vector<long,6>`: the first qword is a metadata word (bit 0 = is-heap-allocated; otherwise `size << 1`); if inline, the up-to-six `long`s start at `+0x8`; if heap, `+0x8` is the data pointer and `+0x10` the capacity. This Storage layout is confirmed by `inlined_vector<long,6>::Assign` `@0xf913da0`.
 
-| Field | Offset | Type | Meaning (confirmed source) | Confidence |
-|---|---|---|---|---|
-| valid flag | `+0x00` | byte | "is-default"/valid flag; ctors set 0 | HIGH |
-| name string | `+0x08` | `std::string` (libc++ SSO, 0x18 B) | debug/name string; `__init_copy_ctor_external` `@0xfaa9de5` | MEDIUM |
-| string-present | `+0x18` | byte | flag: name string populated | MEDIUM |
-| **operand pointer** | `+0x20` | `const void*` (`LloValue*` / element-type-bearing ptr) | written from the builder's `LloValue*` arg (`null` on the cost-model path); the byte/cycle readers treat it as an element-type-bearing pointer, reading the type as `WORD[ptr+0xb] >> 2 & 0x1f` (and gating the F16 divisor on `WORD[ptr+0xb] & 0x7c == 0x10`) | HIGH |
-| index LloValues | `+0x28` | `inlined_vector<LloValue*,8>` | per-axis window-iteration index variables | HIGH |
-| **window sizes** | `+0x70` | `inlined_vector<long,6>` | per-axis chunk count of the window = `ChunkCountsWithTmp(Shape)` | CERTAIN |
-| layout order | `+0xa8` | `inlined_vector<long,6>` | the `Shape`'s minor-to-major physical dim order | HIGH |
-| second array | `+0xe0` | heap `{ptr, size, cap}` (long) | heap-only long vector; `memcpy`'d by the copy ctor; iterated as the second array by the fragment loop | MEDIUM |
-| **strides** | `+0xf8` | `inlined_vector<long,6>` | per-axis stride; `Resize(N, init=1)`. The array `Size`/the fragment loop product over | CERTAIN |
-| base dilation | `+0x130` | `inlined_vector<long,6>` | per-axis base/window dilation; `Resize(N, init=1)` | HIGH |
-| **dilation** | `+0x168` | `inlined_vector<long,6>` | per-axis dilation; `Resize(N, init=0)`. Fragment-run gate (must be 0) | CERTAIN |
-| ElementalStrideInfo | `+0x1a0` | sub-struct | elemental stride descriptor; **read by the LLO window-iteration emitter, not the byte/cycle path** | MEDIUM |
-| ESI-present | `+0x260` | byte | flag: `ElementalStrideInfo` constructed | HIGH |
-| **padding-low** | `+0x268` | `inlined_vector<long,6>` | per-axis padding-low; `Resize(N, init=0)`. Fragment-run gate (must be 0) | CERTAIN |
-| padding-high | `+0x2a0` | `inlined_vector<long,6>` | per-axis padding-high / aux | HIGH |
-| **ChunkBytes** | `+0x2d8` | `long` | `= Target::ChunkBytes()` (`= topology[+0x1a8]·4`) | CERTAIN |
-| index callback | `+0x310` | `std::function<…>` (16 B) | per-axis index-computation callback (`+0x310` fn-ptr, `+0x318` policy) | MEDIUM |
-| **element_type** | `+0x320` | `PrimitiveType` (dword) | `= Shape::element_type()` | CERTAIN |
-| config flags | `+0x324` | word=1, byte=0 | default config (`1`/`0`) | LOW |
-| config scalars | `+0x328` | 3×long (`1`,`0`,`1`) | transfer-granularity defaults | LOW |
-| offset LloValues | `+0x350` | `inlined_vector<LloValue*,?>` | offset index variables (`ComputeWindowWithIndicesOnly`) | LOW |
+| Field | Offset | Type | Meaning (confirmed source) |
+|---|---|---|---|
+| valid flag | `+0x00` | byte | "is-default"/valid flag; ctors set 0 |
+| name string | `+0x08` | `std::string` (libc++ SSO, 0x18 B) | debug/name string; `__init_copy_ctor_external` `@0xfaa9de5` |
+| string-present | `+0x18` | byte | flag: name string populated |
+| **operand pointer** | `+0x20` | `const void*` (`LloValue*` / element-type-bearing ptr) | written from the builder's `LloValue*` arg (`null` on the cost-model path); the byte/cycle readers treat it as an element-type-bearing pointer, reading the type as `WORD[ptr+0xb] >> 2 & 0x1f` (and gating the F16 divisor on `WORD[ptr+0xb] & 0x7c == 0x10`) |
+| index LloValues | `+0x28` | `inlined_vector<LloValue*,8>` | per-axis window-iteration index variables |
+| **window sizes** | `+0x70` | `inlined_vector<long,6>` | per-axis chunk count of the window = `ChunkCountsWithTmp(Shape)` |
+| layout order | `+0xa8` | `inlined_vector<long,6>` | the `Shape`'s minor-to-major physical dim order |
+| second array | `+0xe0` | heap `{ptr, size, cap}` (long) | heap-only long vector; `memcpy`'d by the copy ctor; iterated as the second array by the fragment loop |
+| **strides** | `+0xf8` | `inlined_vector<long,6>` | per-axis stride; `Resize(N, init=1)`. The array `Size`/the fragment loop product over |
+| base dilation | `+0x130` | `inlined_vector<long,6>` | per-axis base/window dilation; `Resize(N, init=1)` |
+| **dilation** | `+0x168` | `inlined_vector<long,6>` | per-axis dilation; `Resize(N, init=0)`. Fragment-run gate (must be 0) |
+| ElementalStrideInfo | `+0x1a0` | sub-struct | elemental stride descriptor; **read by the LLO window-iteration emitter, not the byte/cycle path** |
+| ESI-present | `+0x260` | byte | flag: `ElementalStrideInfo` constructed |
+| **padding-low** | `+0x268` | `inlined_vector<long,6>` | per-axis padding-low; `Resize(N, init=0)`. Fragment-run gate (must be 0) |
+| padding-high | `+0x2a0` | `inlined_vector<long,6>` | per-axis padding-high / aux |
+| **ChunkBytes** | `+0x2d8` | `long` | `= Target::ChunkBytes()` (`= topology[+0x1a8]·4`) |
+| index callback | `+0x310` | `std::function<…>` (16 B) | per-axis index-computation callback (`+0x310` fn-ptr, `+0x318` policy) |
+| **element_type** | `+0x320` | `PrimitiveType` (dword) | `= Shape::element_type()` |
+| config flags | `+0x324` | word=1, byte=0 | default config (`1`/`0`) |
+| config scalars | `+0x328` | 3×long (`1`,`0`,`1`) | transfer-granularity defaults |
+| offset LloValues | `+0x350` | `inlined_vector<LloValue*,?>` | offset index variables (`ComputeWindowWithIndicesOnly`) |
 
 > **NOTE —** the decompiler renders these offsets in decimal. The copy ctor's `vmovups [rbx+0x78]`/`[rbx+0x88]` pair (qword index `this+14`) is the **inline payload** of the window-sizes vector at metadata-word `+0x70`; likewise `+0x100`/`+0x110` is the strides payload behind metadata `+0xf8`. When the metadata word's bit 0 is set the array spilled to the heap and the ctor takes the `Storage<long,6>::InitFrom` path instead of the inline `vmovups` copy. A reimplementation must read the metadata word first, never assume the data lives inline.
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `windowing_util::WindowDescription::WindowDescription(const&)` | `0xfaa9da0` | copy ctor — the byte-exact layout witness | CERTAIN |
-| `windowing_util::MakeWindowDescription(Target, LloValue*, Shape)` | `0x1c86c1c0` | from-LloValue builder (chunk-count window) | CERTAIN |
-| `cost_model_util::…::MakeWindowDescription(CycleTable, Window, Shape)` | `0x138456c0` | from-`Window` builder (cost-model path) | CERTAIN |
-| `inlined_vector<long,6>::Assign` | `0xf913da0` | Storage metadata layout witness | CERTAIN |
-| `Target::ChunkBytes` | — | `+0x2d8` source (`topology[+0x1a8]·4`) | HIGH |
-| `Target::ChunkCountsWithTmp` | — | `+0x70` window-sizes source | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `windowing_util::WindowDescription::WindowDescription(const&)` | `0xfaa9da0` | copy ctor — the byte-exact layout witness |
+| `windowing_util::MakeWindowDescription(Target, LloValue*, Shape)` | `0x1c86c1c0` | from-LloValue builder (chunk-count window) |
+| `cost_model_util::…::MakeWindowDescription(CycleTable, Window, Shape)` | `0x138456c0` | from-`Window` builder (cost-model path) |
+| `inlined_vector<long,6>::Assign` | `0xf913da0` | Storage metadata layout witness |
+| `Target::ChunkBytes` | — | `+0x2d8` source (`topology[+0x1a8]·4`) |
+| `Target::ChunkCountsWithTmp` | — | `+0x70` window-sizes source |
 
 ---
 
@@ -298,14 +298,14 @@ The latency deposit is guarded by `rv[latency_res] == 0.0`: the DMA startup is b
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `RecordMemXferCyclesImpl` | `0x13844e80` | the chain — Size → corrections → latency + bandwidth → ResourceVector | CERTAIN |
-| `RecordInputMemXferCycles` | `0x13845580` | input wrapper — R9/R10 lanes | HIGH |
-| `RecordOutputMemXferCycles` | `0x13845860` | output wrapper — R11/R12 lanes | HIGH |
-| `GetBytesPerCycle` | `0x1454dd00` | per-op bytes-per-cycle budget | HIGH |
-| `Target::ChunkGranules` | `0x1d61a440` | `Size` granule = `(ChunkCellCount·4)/vtable[+0x5c0]` | CERTAIN |
-| `ComputeDmaLevels` | `0x1c86a9e0` | DMA-level vector feeding the fragment early-out | MEDIUM |
+| Function | Address | Role |
+|---|---|---|
+| `RecordMemXferCyclesImpl` | `0x13844e80` | the chain — Size → corrections → latency + bandwidth → ResourceVector |
+| `RecordInputMemXferCycles` | `0x13845580` | input wrapper — R9/R10 lanes |
+| `RecordOutputMemXferCycles` | `0x13845860` | output wrapper — R11/R12 lanes |
+| `GetBytesPerCycle` | `0x1454dd00` | per-op bytes-per-cycle budget |
+| `Target::ChunkGranules` | `0x1d61a440` | `Size` granule = `(ChunkCellCount·4)/vtable[+0x5c0]` |
+| `ComputeDmaLevels` | `0x1c86a9e0` | DMA-level vector feeding the fragment early-out |
 
 ---
 

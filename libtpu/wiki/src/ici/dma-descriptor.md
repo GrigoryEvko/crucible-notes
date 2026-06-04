@@ -39,15 +39,15 @@ The single most common reimplementation error is to assume one DMA descriptor fo
 
 The intra-chip descriptor (`OciDescriptorCommonIssuedFromTcs`) is a **17-field profiler/wire record** whose two endpoints each resolve to a *local tier* via a `(mem_id, core_id)` pair. It never names another chip. The ICI descriptor is a **staged SMEM word array** built by a `*DmaDescriptorState` and lowered to a hardware register class (`jxc::DmaDescriptor` or `DmaDescriptorV2`); its destination endpoint resolves to a *remote chip*.
 
-| Aspect | Intra-chip (`OciDescriptorCommonIssuedFromTcs`) | ICI cross-chip (`jxc::DmaDescriptor` / V2) | Confidence |
-|---|---|---|---|
-| Named by | `(mem_id, core_id)` local-tier pair | remote chip id (12-bit) or core X/Y | CONFIRMED |
-| Destination | local HBM/VMEM/SMEM/… tier | remote chip VMEM/HBM + sflag address | CONFIRMED |
-| Build site | LLO `Dma*StartOp` fills proto fields | `*DmaDescriptorState` stages SMEM words | CONFIRMED |
-| Completion | local `dst_sync_flag_*` bump | receive-side NIU auto-increment of encoded remote sflag | CONFIRMED |
-| `dma_type` value | profiler `DMA_TYPE_LOCAL=0` | `DMA_TYPE_REMOTE_*` (unicast/write-unicast/multicast) | CONFIRMED |
-| Stride levels | (rolled/strided body emitters) | V1: 1 level (+ unroll); V2: 4 levels | CONFIRMED |
-| Sync flags | `dst_sync_flag_{0,1}` in proto | V1: 1 dst (word 7); V2: 2 dst (mem-offset setters) | CONFIRMED |
+| Aspect | Intra-chip (`OciDescriptorCommonIssuedFromTcs`) | ICI cross-chip (`jxc::DmaDescriptor` / V2) |
+|---|---|---|
+| Named by | `(mem_id, core_id)` local-tier pair | remote chip id (12-bit) or core X/Y |
+| Destination | local HBM/VMEM/SMEM/… tier | remote chip VMEM/HBM + sflag address |
+| Build site | LLO `Dma*StartOp` fills proto fields | `*DmaDescriptorState` stages SMEM words |
+| Completion | local `dst_sync_flag_*` bump | receive-side NIU auto-increment of encoded remote sflag |
+| `dma_type` value | profiler `DMA_TYPE_LOCAL=0` | `DMA_TYPE_REMOTE_*` (unicast/write-unicast/multicast) |
+| Stride levels | (rolled/strided body emitters) | V1: 1 level (+ unroll); V2: 4 levels |
+| Sync flags | `dst_sync_flag_{0,1}` in proto | V1: 1 dst (word 7); V2: 2 dst (mem-offset setters) |
 
 > **NOTE —** the two families *share the same data-address encoder*. `MemorySpaceToDriverResource` @ `0x1d6223e0` (the resource-id map documented in detail on the [Intra-Chip DMA Descriptor](../dma/intra-chip-descriptor.md) page, §3) and `EncodeDmaAddressForGranule` @ `0x1d5402c0` (resource tag `<<0x28`, HBM external-address marker `0x80000000` at bit 31) serve *both* the intra-chip endpoint render and the ICI source/local-dest address word. What the ICI descriptor adds on top is the **chip-id endpoint** and the **remote sync-flag address** — the two encodings unique to cross-chip transfer, covered in [§4](#4-remote-address-composition).
 
@@ -101,16 +101,16 @@ V1 is the only descriptor whose word-by-word layout is fully recovered. It is 8 
 
 ### Layout
 
-| Field | Word / bits | Writer (addr) | Confidence |
-|---|---|---|---|
-| (template control defaults) | bit-fields @ bit 0x40 / 0x50 / 0xa0 / 0xb0 `= 1` | `jxc::DmaDescriptor` ctor @ `0x1d62bc20` | CONFIRMED |
-| Destination address | field-group 0 (`vtable+0x60`, `esi=0`) | `WriteDestinationAddress` @ `0x1d4caa20` | CONFIRMED |
-| Remote dest core X/Y | field-group 1, `(x<<0x13)\|(y<<0x10)`, low 16 kept | `WriteRemoteDestinationCoreLocation` @ `0x1d4cae80` | CONFIRMED |
-| Source address | field-group 3 (`vtable+0x60`, `esi=3`) | `WriteSourceAddress` @ `0x1d4ca960` | CONFIRMED |
-| Size in granules | **word 6**, mask `0xfffffc00` (low 10 bits) | `WriteSize` @ `0x1d4ca7c0` | CONFIRMED |
-| Sync flags (src+dst) | **word 7**, mask `0xfffff000`, `(dst<<0xa)\|src` (low 12 bits) | `WriteSyncFlags` @ `0x1d4cb040` | CONFIRMED |
-| Stride (single level) | per-level | `WriteStrideForLevel` @ `0x1d4caae0` | CONFIRMED |
-| Outfeed queue / multicast | CHECK-fail on JF (V2-only) | `WriteOutfeedQueueId` @ `0x213c6da0` | CONFIRMED |
+| Field | Word / bits | Writer (addr) |
+|---|---|---|
+| (template control defaults) | bit-fields @ bit 0x40 / 0x50 / 0xa0 / 0xb0 `= 1` | `jxc::DmaDescriptor` ctor @ `0x1d62bc20` |
+| Destination address | field-group 0 (`vtable+0x60`, `esi=0`) | `WriteDestinationAddress` @ `0x1d4caa20` |
+| Remote dest core X/Y | field-group 1, `(x<<0x13)\|(y<<0x10)`, low 16 kept | `WriteRemoteDestinationCoreLocation` @ `0x1d4cae80` |
+| Source address | field-group 3 (`vtable+0x60`, `esi=3`) | `WriteSourceAddress` @ `0x1d4ca960` |
+| Size in granules | **word 6**, mask `0xfffffc00` (low 10 bits) | `WriteSize` @ `0x1d4ca7c0` |
+| Sync flags (src+dst) | **word 7**, mask `0xfffff000`, `(dst<<0xa)\|src` (low 12 bits) | `WriteSyncFlags` @ `0x1d4cb040` |
+| Stride (single level) | per-level | `WriteStrideForLevel` @ `0x1d4caae0` |
+| Outfeed queue / multicast | CHECK-fail on JF (V2-only) | `WriteOutfeedQueueId` @ `0x213c6da0` |
 
 The IDA decompile of `WriteSyncFlags` confirms the packing byte-for-byte:
 
@@ -185,12 +185,12 @@ addr = sflag_value
 
 **(C) Viperfish** — `viperfish::dma_utils::EncodeRemoteSyncFlagAddress` @ `0x1d5af9c0`, same shape as Pufferfish but a **wider 14-bit** sflag field. The decompile confirms `sflag & 0x3fff` (`SimmU32 0x3FFF`, `SandU32`) `<< 0x11` (bit 17) | `0x20000` (bit 17 marker), with the low 2 bits kept (`& 3`) and `CoreIndex << 0x10`. Ghostlite reuses this V2 path; `ghostlite::…EncodeRemoteSyncFlagAddressGhostlite` @ `0x1d5b01e0` is an 11-byte delegator.
 
-| Gen | sflag field width | sflag shift | remote marker | core encoding | Confidence |
-|---|---:|---:|---|---|---|
-| Jellyfish / Dragonfish | (coordinate) | X`<<0x14`, Y`<<0x15` | `0x40000` (b18) + `0x80000` (b19) | core X/Y coordinate | CONFIRMED |
-| Pufferfish | 12-bit | `<< 0x12` (b18) | `0x20000` (b17) | `CoreIndex() << 0x10` | CONFIRMED |
-| Viperfish | **14-bit** (`0x3fff`) | `<< 0x11` (b17) | `0x20000` (b17) | `CoreIndex() << 0x10` | CONFIRMED |
-| Ghostlite / 6acc60406 | 14-bit | (delegates to Viperfish path) | `0x20000` | `CoreIndex` | HIGH |
+| Gen | sflag field width | sflag shift | remote marker | core encoding |
+|---|---:|---:|---|---|
+| Jellyfish / Dragonfish | (coordinate) | X`<<0x14`, Y`<<0x15` | `0x40000` (b18) + `0x80000` (b19) | core X/Y coordinate |
+| Pufferfish | 12-bit | `<< 0x12` (b18) | `0x20000` (b17) | `CoreIndex() << 0x10` |
+| Viperfish | **14-bit** (`0x3fff`) | `<< 0x11` (b17) | `0x20000` (b17) | `CoreIndex() << 0x10` |
+| Ghostlite / 6acc60406 | 14-bit | (delegates to Viperfish path) | `0x20000` | `CoreIndex` |
 
 > **GOTCHA —** the remote sync-flag address is **not** the destination data address and **not** the chip-id endpoint. It is a *separately encoded* VMEM address the receiving NIU dereferences to find the flag to bump. The Jellyfish encoder is coordinate-based (X/Y in bits 20/21); the V2 encoders are `CoreIndex`-relative with the chip already resolved by `WriteRemoteEndpoints`. A reimplementer who reuses the data-address encoder for the sflag produces a valid-looking but wrong completion target — the transfer lands and the wait never releases.
 
@@ -223,12 +223,12 @@ Cross-chip completion is the descriptor's one wire-level interaction with the re
 
 The descriptor family splits into V1 (one hardware class) and V2 (one hardware class, three gens), unified by the `DmaCommand` variant.
 
-| Gen / family | HW class | Words / size | Sflag field | Remote-addr encoder | Stride | Dual dst sflag | Confidence |
-|---|---|---|---|---|---|---|---|
-| Jellyfish / Dragonfish | `jxc::DmaDescriptor` (V1) | 8 × 32-bit = 32 B | word 7 low 12 bits (`≤59`) | JfDf @ `0x1d5aa620` (coord) | 1 level (+ unroll) | no | CONFIRMED |
-| Pufferfish | `DmaDescriptorV2` | ≥96 B (~24 words) | 12-bit, valid bit 13 | dma_utils @ `0x1d5ae1a0` (`CoreIndex`) | 4 levels | yes | CONFIRMED |
-| Viperfish | `DmaDescriptorV2` | ≥96 B | **14-bit** sflag | dma_utils @ `0x1d5af9c0` | 4 levels | yes | CONFIRMED |
-| Ghostlite / 6acc60406 | `DmaDescriptorV2` | ≥96 B (header/fields slot split) | 14-bit | Ghostlite @ `0x1d5b01e0` (delegator) | 4 levels | yes | HIGH |
+| Gen / family | HW class | Words / size | Sflag field | Remote-addr encoder | Stride | Dual dst sflag |
+|---|---|---|---|---|---|---|
+| Jellyfish / Dragonfish | `jxc::DmaDescriptor` (V1) | 8 × 32-bit = 32 B | word 7 low 12 bits (`≤59`) | JfDf @ `0x1d5aa620` (coord) | 1 level (+ unroll) | no |
+| Pufferfish | `DmaDescriptorV2` | ≥96 B (~24 words) | 12-bit, valid bit 13 | dma_utils @ `0x1d5ae1a0` (`CoreIndex`) | 4 levels | yes |
+| Viperfish | `DmaDescriptorV2` | ≥96 B | **14-bit** sflag | dma_utils @ `0x1d5af9c0` | 4 levels | yes |
+| Ghostlite / 6acc60406 | `DmaDescriptorV2` | ≥96 B (header/fields slot split) | 14-bit | Ghostlite @ `0x1d5b01e0` (delegator) | 4 levels | yes |
 
 The two hardware classes are joined by `std::variant<std::monostate, DmaDescriptor, DmaDescriptorV2>` inside `asic_sw::driver::deepsea::DmaCommand` (3-arm `__variant_detail::__dispatcher<0|1|2>`). `DmaDescriptorV2`'s 4-level scatter/gather is `set_src_stride(level 0..3, u32)` @ `0x1febaf20` / `set_dst_stride` @ `0x1febb060` / `set_steps_per_stride` @ `0x1febb1a0` — each level index range-checked against 3, each stride stored `<< 6` (granule-shifted). Pufferfish is reused for Viperfish via `CreateForViperfish` @ `0x1d5ad860`, differing only in the per-gen encoders pulled from the version-keyed registries.
 
@@ -240,14 +240,14 @@ The two hardware classes are joined by `std::variant<std::monostate, DmaDescript
 
 The descriptor's transfer class is selected by `BuildDmaOverrides(srcMS, dstMS, isRemote, DmaType, …)` @ `0x1d546780`, a per-`TpuVersion` registry. The recovered `.rodata` names:
 
-| `DMA_TYPE` string | Meaning | ICI? | Confidence |
-|---|---|---|---|
-| `DMA_TYPE_LOCAL` | intra-chip (VMEM↔VMEM/HBM) | no — see [Intra-Chip DMA Descriptor](../dma/intra-chip-descriptor.md) | CONFIRMED |
-| `DMA_TYPE_LOCAL_OR_HOST` | local or chip↔host | no | CONFIRMED |
-| `DMA_TYPE_CHIP_TO_HOST` | chip → host DRAM (infeed/outfeed) | no — host path | CONFIRMED |
-| `DMA_TYPE_REMOTE_UNICAST` | cross-chip point-to-point | **yes** | CONFIRMED |
-| `DMA_TYPE_REMOTE_WRITE_UNICAST` | cross-chip write (AR reduce-scatter / all-gather) | **yes** | CONFIRMED |
-| `DMA_TYPE_REMOTE_MULTICAST` | cross-chip fan-out to a multicast group | **yes** | CONFIRMED |
+| `DMA_TYPE` string | Meaning | ICI? |
+|---|---|---|
+| `DMA_TYPE_LOCAL` | intra-chip (VMEM↔VMEM/HBM) | no — see [Intra-Chip DMA Descriptor](../dma/intra-chip-descriptor.md) |
+| `DMA_TYPE_LOCAL_OR_HOST` | local or chip↔host | no |
+| `DMA_TYPE_CHIP_TO_HOST` | chip → host DRAM (infeed/outfeed) | no — host path |
+| `DMA_TYPE_REMOTE_UNICAST` | cross-chip point-to-point | **yes** |
+| `DMA_TYPE_REMOTE_WRITE_UNICAST` | cross-chip write (AR reduce-scatter / all-gather) | **yes** |
+| `DMA_TYPE_REMOTE_MULTICAST` | cross-chip fan-out to a multicast group | **yes** |
 
 > **QUIRK —** the *runtime/LLO* `xla::jellyfish::DmaType` enum (3 values, starting `DMA_TYPE_CHIP_TO_HOST=0`) and the *profiler descriptor* `DmaTypeValues` enum (`DMA_TYPE_LOCAL=0`, …) are **two unrelated enumerations** — see [Intra-Chip DMA Descriptor §6](../dma/intra-chip-descriptor.md). For the ICI descriptor this page owns, the relevant runtime type is `DMA_TYPE_REMOTE_WRITE_UNICAST`: an all-reduce always emits one per shard (the reduction itself is a local VPU op, never on-wire). The descriptor's own profiler `dma_type` field then reads back as `DMA_TYPE_REMOTEUNICAST`.
 

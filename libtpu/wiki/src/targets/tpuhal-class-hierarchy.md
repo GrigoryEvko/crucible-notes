@@ -94,12 +94,12 @@ The base `TpuHal` vtable holds 23 function-pointer slots. Slots 0/1 are the dest
 
 The impl object is allocated and stamped by the family `CreateImpl`, and torn down by its D2 destructor. Both confirm the layout:
 
-| Field | Offset | Type | Meaning | Confidence |
-|---|---|---|---|---|
-| vtable pointer | +0 | `void*` | per-family impl vtable (`off_215FE590` / `off_21608628` / `off_21CABFD0`) | CERTAIN |
-| base state | +8 .. | (TpuHal base) | `TpuVersion`, work-queue, topology, etc. (set by `TpuHal::TpuHal`) | HIGH |
-| `helper` | +200 (`obj[25]`) | `TpuHal*CommonHelper*` | heap-owned CommonHelper; `nullptr` until `CreateAndInitializeChips` | CERTAIN |
-| `mesh_torn_down` flag | +208 | `uint8` | **VXC only** — guards `PreTearDownChips`; absent on the 208 B Jxc/Pxc objects | CERTAIN |
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| vtable pointer | +0 | `void*` | per-family impl vtable (`off_215FE590` / `off_21608628` / `off_21CABFD0`) |
+| base state | +8 .. | (TpuHal base) | `TpuVersion`, work-queue, topology, etc. (set by `TpuHal::TpuHal`) |
+| `helper` | +200 (`obj[25]`) | `TpuHal*CommonHelper*` | heap-owned CommonHelper; `nullptr` until `CreateAndInitializeChips` |
+| `mesh_torn_down` flag | +208 | `uint8` | **VXC only** — guards `PreTearDownChips`; absent on the 208 B Jxc/Pxc objects |
 
 > **QUIRK —** the VXC impl is 216 bytes (`operator new(0xD8)`), eight bytes larger than the 208-byte (`0xD0`) Jxc and Pxc impls. The extra space is a flag byte at +208 that `VxcImpl::PreTearDownChips` (0x1d111720) reads to skip a double mesh-teardown. The CommonHelper pointer stays at +200 (`obj[25]`) in all three. A reimplementation that assumes a uniform 208-byte object across families will over-write past the Jxc/Pxc allocation or under-allocate the Vxc one.
 

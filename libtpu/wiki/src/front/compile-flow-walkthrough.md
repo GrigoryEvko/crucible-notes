@@ -31,18 +31,18 @@ For reimplementation, the orientation contract is:
 
 The seven IR levels our matmul passes through, the dialect each speaks, the key passes there, and the page that owns the full story. **Tree** marks whether the level is on the TPU device path (D) or one of the bundled off-path trees (X = XLA CPU/GPU XTile, M = Mosaic-`tpu` Pallas import).
 
-| # | IR level | Dialect / form | Key passes (entry VA) | Tree | Owning deep page | Confidence |
-|---|----------|----------------|------------------------|------|------------------|------------|
-| 0 | Front-door bytecode | StableHLO + CHLO/VHLO | `CompilePhase0StablehloToHlo` (`0xf84de60`) | D | [HLO Ingestion](../compiler/hlo-ingestion.md) | HIGH |
-| 1 | HLO pre-passes | XLA HLO | `RunHloPasses` (`0x1093a420`); `TpuHloSupportChecker` (`0x11071480`) | D | [HLO Pre-Passes](../compiler/hlo-pre-passes.md) · [Compile Phases](../compiler/compile-phases.md) | HIGH |
-| 2 | Layout / sharding | XLA HLO + layouts | `LayoutAssignment` (`0x169bf440`); `TpuLayoutAssignment` (`0x110ace00`) | D | [Layout Assignment](../compiler/layout-assignment.md) · [Sharding Propagation](../compiler/sharding-propagation.md) | HIGH |
-| 3 | Fusion + scheduling | XLA HLO (scheduled) | `LatencyHidingScheduler` (`0x136321a0`); `TpuInstructionFusion` | D | [LHS Core](../sched/latency-hiding-scheduler-core.md) · [Fusion Patterns](../compiler/fusion-patterns.md) | HIGH |
-| 4 | Memory-space assignment | XLA HLO + memspace | `RunMemorySpaceAssignment` (`0x12fc3080`) | D | [MSA Overview](../compiler/msa-overview.md) | HIGH |
-| 5 | HLO → LLO emit | LLO (VLIW IR) | jellyfish `*Emitter` via `LloRegionBuilder`; `MatrixMultiplyAccumulateFunctor::operator()` (`0x1310cd80`) | D | [Dot/Conv → MXU Lowering](../compiler/dot-conv-mxu-lowering.md) · [LLO Opcode Enum](../isa/llo-opcode-enum.md) | HIGH |
-| 6 | Bundle packing | `vector<Bundle>` | `BundlePacker::runOnMachineFunction` (`0x13b206a0`) | D | [LLO Bundle Packing](../sched/llo-bundle-packing.md) | HIGH |
-| 7 | Bundle bytes | per-gen wire word | `Encoder<gen>::EncodeBundleInternal` | D | [Bundle Model](../isa/bundle-model-overview.md) | HIGH |
-| — | Mosaic `tpu` import | `mlir::tpu` MLIR | `createLowerToLLOPass` (`0x11203ba0`); imported via `GetMlirModuleOpFromCustomCall` (`0x13e327a0`) | M | [tpu → LLO ODS](../compiler/tpu-to-llo-ods.md) · [Mosaic Overview](../compiler/mosaic-overview.md) | HIGH |
-| — | XLA XTile codegen | `xla::xtile` MLIR | `StablehloLowerToXtilePass` (`0x15060560`) | X | [MHLO/XTile/tpu Lowering](../compiler/mhlo-xtile-tpu-lowering.md) | HIGH |
+| # | IR level | Dialect / form | Key passes (entry VA) | Tree | Owning deep page |
+|---|----------|----------------|------------------------|------|------------------|
+| 0 | Front-door bytecode | StableHLO + CHLO/VHLO | `CompilePhase0StablehloToHlo` (`0xf84de60`) | D | [HLO Ingestion](../compiler/hlo-ingestion.md) |
+| 1 | HLO pre-passes | XLA HLO | `RunHloPasses` (`0x1093a420`); `TpuHloSupportChecker` (`0x11071480`) | D | [HLO Pre-Passes](../compiler/hlo-pre-passes.md) · [Compile Phases](../compiler/compile-phases.md) |
+| 2 | Layout / sharding | XLA HLO + layouts | `LayoutAssignment` (`0x169bf440`); `TpuLayoutAssignment` (`0x110ace00`) | D | [Layout Assignment](../compiler/layout-assignment.md) · [Sharding Propagation](../compiler/sharding-propagation.md) |
+| 3 | Fusion + scheduling | XLA HLO (scheduled) | `LatencyHidingScheduler` (`0x136321a0`); `TpuInstructionFusion` | D | [LHS Core](../sched/latency-hiding-scheduler-core.md) · [Fusion Patterns](../compiler/fusion-patterns.md) |
+| 4 | Memory-space assignment | XLA HLO + memspace | `RunMemorySpaceAssignment` (`0x12fc3080`) | D | [MSA Overview](../compiler/msa-overview.md) |
+| 5 | HLO → LLO emit | LLO (VLIW IR) | jellyfish `*Emitter` via `LloRegionBuilder`; `MatrixMultiplyAccumulateFunctor::operator()` (`0x1310cd80`) | D | [Dot/Conv → MXU Lowering](../compiler/dot-conv-mxu-lowering.md) · [LLO Opcode Enum](../isa/llo-opcode-enum.md) |
+| 6 | Bundle packing | `vector<Bundle>` | `BundlePacker::runOnMachineFunction` (`0x13b206a0`) | D | [LLO Bundle Packing](../sched/llo-bundle-packing.md) |
+| 7 | Bundle bytes | per-gen wire word | `Encoder<gen>::EncodeBundleInternal` | D | [Bundle Model](../isa/bundle-model-overview.md) |
+| — | Mosaic `tpu` import | `mlir::tpu` MLIR | `createLowerToLLOPass` (`0x11203ba0`); imported via `GetMlirModuleOpFromCustomCall` (`0x13e327a0`) | M | [tpu → LLO ODS](../compiler/tpu-to-llo-ods.md) · [Mosaic Overview](../compiler/mosaic-overview.md) |
+| — | XLA XTile codegen | `xla::xtile` MLIR | `StablehloLowerToXtilePass` (`0x15060560`) | X | [MHLO/XTile/tpu Lowering](../compiler/mhlo-xtile-tpu-lowering.md) |
 
 > **GOTCHA —** rows 0–7 are the path the traced matmul actually walks. The last two rows are *bundled but off-path*: a plain `kDot` never visits the `tpu` dialect or XTile. The `tpu` dialect appears only for Pallas/Mosaic kernels the framework hands in as serialized MLIR; XTile is the XLA CPU/GPU backend's tiled-fusion codegen, depending only on the LLVM/CPU dialect set. Confusing either for "the TPU lowering of MHLO" is the single most common error in reading this compiler.
 
@@ -126,12 +126,12 @@ The flat list of `LloInstruction`s — our matmul is now a loop nest of `vmatpre
 
 Each typed `Bundle` is serialized to raw bytes by the per-generation encoder. This is the last place silicon matters, and it matters most: the **bundle width itself is a per-generation constant**, returned inline from a codec-metadata table keyed on `(TpuVersion, TpuSequencerType)`.
 
-| Generation (codename) | Bundle width | Codec-metadata anchor | Confidence |
-|---|---|---|---|
-| Jellyfish (≤ v3) | **41 B / 328 bit** | `JellyfishCodecMetadata::BundleSizeBytes` @ `0x1ecf7460` → 41 | HIGH |
-| Pufferfish (v4) | **51 B / 408 bit** | `EncoderPfTensorCore::BundleSizeBytes` @ `0x1d227740` → 0x33 | HIGH |
-| Viperfish (TPU v5 / v5e / v5p) | **64 B / 512 bit** | `ViperfishCodecMetadata::BundleSizeBytes` @ `0x1ee71320` → 64 | HIGH |
-| Ghostlite (TPU v6 lite / v6e) | **64 B / 512 bit** | `GhostliteCodecMetadata::BundleSizeBytes` @ `0x1eeb7640` → 0x40 | HIGH |
+| Generation (codename) | Bundle width | Codec-metadata anchor |
+|---|---|---|
+| Jellyfish (≤ v3) | **41 B / 328 bit** | `JellyfishCodecMetadata::BundleSizeBytes` @ `0x1ecf7460` → 41 |
+| Pufferfish (v4) | **51 B / 408 bit** | `EncoderPfTensorCore::BundleSizeBytes` @ `0x1d227740` → 0x33 |
+| Viperfish (TPU v5 / v5e / v5p) | **64 B / 512 bit** | `ViperfishCodecMetadata::BundleSizeBytes` @ `0x1ee71320` → 64 |
+| Ghostlite (TPU v6 lite / v6e) | **64 B / 512 bit** | `GhostliteCodecMetadata::BundleSizeBytes` @ `0x1eeb7640` → 0x40 |
 
 The encoders themselves diverge in mechanism, not just width. Jellyfish is a *direct-pack* encoder: `EncoderJf::EncodeBundleInternal` builds a 53-byte scratch struct with `shl`/`and`/`or` arithmetic and strips the first 12 bytes (output byte N == struct byte 0x0C+N). Pufferfish and every V5+ generation instead `memset` a zero buffer and write each field with the shared bit-packing primitive `BitCopy(dst, dst_bit, src, src_bit, nbits)` (`0x1fa0a900`), so a field's absolute bundle bit *is* its `BitCopy` argument. The same 64-byte width is shared by Viperfish, Ghostlite, and `6acc60406` (the three V5+ generations), but the slot *bit layout* differs (Ghostlite widens opcodes 7→8 bits and shifts the scalar/sequencer region +3 bits). Our matmul's `vmatmul` op lands in a `VectorExtended`/MXU slot whose exact bit position is one of these per-gen maps.
 

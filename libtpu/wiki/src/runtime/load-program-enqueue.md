@@ -163,16 +163,16 @@ function TpuExecutable_LoadProgramAndEnqueueToStream(launch /*a1*/):   // 0xeaaf
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `TpuExecutable_LoadProgramAndEnqueueToStream` | `0xeaafba0` | C-ABI marshal → jellyfish core | CONFIRMED |
-| `xla::Shape::FromProto` | (OSS) | Rebuild each `Shape` from its proto | CONFIRMED |
-| `tensorflow::TPUNodeInterfaces::Get` | (in `0xeaafba0`) | ordinal → `{backend, ...}` | CONFIRMED |
-| `tensorflow::TpuHostTransferManagerImpl` ctor | (in `0xeaafba0`) | Outside-compilation host transfers | HIGH |
-| `xla::DeviceAssignment::Deserialize` | (OSS) | proto → `DeviceAssignment` | CONFIRMED |
-| `xla::ExecutableRunOptions::set_*` | (inline) | stream / assignment / rng_seed / allocator | CONFIRMED |
-| `ApiConverter::FromC(SE_DeviceAddressBase*)` | (OSS-mirror) | C-ABI address → `DeviceAddressBase` | CONFIRMED |
-| `FreeHostTransferManager` (anon `$_0`) | (in `0xeaafba0`) | Host-callback HTM teardown | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `TpuExecutable_LoadProgramAndEnqueueToStream` | `0xeaafba0` | C-ABI marshal → jellyfish core |
+| `xla::Shape::FromProto` | (OSS) | Rebuild each `Shape` from its proto |
+| `tensorflow::TPUNodeInterfaces::Get` | (in `0xeaafba0`) | ordinal → `{backend, ...}` |
+| `tensorflow::TpuHostTransferManagerImpl` ctor | (in `0xeaafba0`) | Outside-compilation host transfers |
+| `xla::DeviceAssignment::Deserialize` | (OSS) | proto → `DeviceAssignment` |
+| `xla::ExecutableRunOptions::set_*` | (inline) | stream / assignment / rng_seed / allocator |
+| `ApiConverter::FromC(SE_DeviceAddressBase*)` | (OSS-mirror) | C-ABI address → `DeviceAddressBase` |
+| `FreeHostTransferManager` (anon `$_0`) | (in `0xeaafba0`) | Host-callback HTM teardown |
 
 ---
 
@@ -249,16 +249,16 @@ function tpu_System_LoadProgram(out /*AsyncValueRef<ProgramHandle>*/, loc, progr
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `tpu::System::LoadProgram` | `0x1d0b2240` | Modern async program load (`system.cc:1804`) | CONFIRMED |
-| `deepsea::executor::DeepseaExecutor::LoadProgram` | (in `0x13426260`) | Legacy synchronous core load | CONFIRMED |
-| `tpu::TpuExecutableLoadState::LoadInternal` | `0xf80c1c0` | Cache `LoadedProgramState` per device | CONFIRMED |
-| `tpu::TpuCoreLocation::Chip` / `LocalSharedMemory` | (in `0x1d0b2240`) | Resolve chip + per-core sub-object | CONFIRMED |
-| `tpu::TpuChipConfig::Megacore` | (in `0x13426260`) | Dual-core fan-out gate (line 200) | CONFIRMED |
-| `deepsea::executor::DeepseaPlatform::GetCoreType` | (in `0x13426260`) | Core-type discriminator (`!= 2`) | HIGH |
-| `tpu::TpuCoreProgramHandle::fingerprint` | (in `0x13426260`) | Program identity for unload record | CONFIRMED |
-| `ProgramUnloadInfo` (anon struct) | (in `0x13426260`) | Per-handle unload bookkeeping | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `tpu::System::LoadProgram` | `0x1d0b2240` | Modern async program load (`system.cc:1804`) |
+| `deepsea::executor::DeepseaExecutor::LoadProgram` | (in `0x13426260`) | Legacy synchronous core load |
+| `tpu::TpuExecutableLoadState::LoadInternal` | `0xf80c1c0` | Cache `LoadedProgramState` per device |
+| `tpu::TpuCoreLocation::Chip` / `LocalSharedMemory` | (in `0x1d0b2240`) | Resolve chip + per-core sub-object |
+| `tpu::TpuChipConfig::Megacore` | (in `0x13426260`) | Dual-core fan-out gate (line 200) |
+| `deepsea::executor::DeepseaPlatform::GetCoreType` | (in `0x13426260`) | Core-type discriminator (`!= 2`) |
+| `tpu::TpuCoreProgramHandle::fingerprint` | (in `0x13426260`) | Program identity for unload record |
+| `ProgramUnloadInfo` (anon struct) | (in `0x13426260`) | Per-handle unload bookkeeping |
 
 ---
 
@@ -339,18 +339,18 @@ launch struct (C ABI)                 marshalled C++ (DeviceAddressBase, 24 B ea
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `xla::jellyfish::DeepseaExecutable::LoadProgramAndEnqueueToStream` | `0x13426260` | Legacy load + enqueue core | CONFIRMED |
-| `deepsea::executor::DeepseaStream::EnqueueRequest` | `0x1d0e9840` | Push `Request` onto core stream | CONFIRMED |
-| `deepsea::executor::DeepseaRequestQueue::EnqueueRequest` | `0x1d0f23a0` | Queue insert (locks) | CONFIRMED |
-| `deepsea::executor::DeepseaRequestQueue::EnqueueRequestLocked` | `0x1d0f0e80` | Locked queue insert | CONFIRMED |
-| `asic_sw::driver::deepsea::jxc::Queue::EnqueueRequest` | `0xe7d9be0` | Hardware queue (DmaBuffer + completion) | CONFIRMED |
-| `tpu::System::Execute` | `0x1d0b33e0` | Modern async enqueue | CONFIRMED |
-| `tpu::TpuExecutableLoadState::ExecuteLaunchRaw` | `0xf8109a0` | Modern per-launch driver | CONFIRMED |
-| `tpu::TpuCoreProgramHandle::core` | (in `0x13426260`) | Handle → `TpuCoreLocation` (replica) | CONFIRMED |
-| `tpu::TpuCoreLocation::LogicalDeviceId` | (in `0x13426260`) | Core → device-assignment row | CONFIRMED |
-| `tpu::TpuEventIssuer::IssueArgs` / `FulfillArgs` | (in `0x1d0b2240` / `0x1d0b33e0`) | Sequence-point submit / completion | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `xla::jellyfish::DeepseaExecutable::LoadProgramAndEnqueueToStream` | `0x13426260` | Legacy load + enqueue core |
+| `deepsea::executor::DeepseaStream::EnqueueRequest` | `0x1d0e9840` | Push `Request` onto core stream |
+| `deepsea::executor::DeepseaRequestQueue::EnqueueRequest` | `0x1d0f23a0` | Queue insert (locks) |
+| `deepsea::executor::DeepseaRequestQueue::EnqueueRequestLocked` | `0x1d0f0e80` | Locked queue insert |
+| `asic_sw::driver::deepsea::jxc::Queue::EnqueueRequest` | `0xe7d9be0` | Hardware queue (DmaBuffer + completion) |
+| `tpu::System::Execute` | `0x1d0b33e0` | Modern async enqueue |
+| `tpu::TpuExecutableLoadState::ExecuteLaunchRaw` | `0xf8109a0` | Modern per-launch driver |
+| `tpu::TpuCoreProgramHandle::core` | (in `0x13426260`) | Handle → `TpuCoreLocation` (replica) |
+| `tpu::TpuCoreLocation::LogicalDeviceId` | (in `0x13426260`) | Core → device-assignment row |
+| `tpu::TpuEventIssuer::IssueArgs` / `FulfillArgs` | (in `0x1d0b2240` / `0x1d0b33e0`) | Sequence-point submit / completion |
 
 ---
 
@@ -379,15 +379,15 @@ stream->DoHostCallback( FreeHostTransferManager(stream, htm) )   // anon $_0
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `ProgramUnloadInfo` push_back | (in `0x13426260`) | Per-handle unload record | HIGH |
-| `tpu::TpuCoreCommonImpl::UnloadProgram` | `0x1d13e6a0` | Drop a loaded program (with callback) | CONFIRMED |
-| `tpu::TpuCoreCommonImpl::UnloadProgramWithFingerprintLegacy` | `0x1d141580` | Fingerprint-keyed unload | CONFIRMED |
-| `FreeHostTransferManager` (anon `$_0`) | (in `0xeaafba0`) | Deferred HTM free via host callback | HIGH |
-| `tensorflow::tpu::TpuStream::DoHostCallbackWithStatus` | `0xe998fa0` | Legacy host-callback trampoline | CONFIRMED |
-| `xla::CommonPjRtClient::CreateLinkedUserPromise` | (in `0xf8109a0`) | Modern user-completion event | HIGH |
-| `TpuHostTransferManager::SetExecuteEvent` | (in `0xf8109a0`) | Tie HTM lifetime to launch event | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `ProgramUnloadInfo` push_back | (in `0x13426260`) | Per-handle unload record |
+| `tpu::TpuCoreCommonImpl::UnloadProgram` | `0x1d13e6a0` | Drop a loaded program (with callback) |
+| `tpu::TpuCoreCommonImpl::UnloadProgramWithFingerprintLegacy` | `0x1d141580` | Fingerprint-keyed unload |
+| `FreeHostTransferManager` (anon `$_0`) | (in `0xeaafba0`) | Deferred HTM free via host callback |
+| `tensorflow::tpu::TpuStream::DoHostCallbackWithStatus` | `0xe998fa0` | Legacy host-callback trampoline |
+| `xla::CommonPjRtClient::CreateLinkedUserPromise` | (in `0xf8109a0`) | Modern user-completion event |
+| `TpuHostTransferManager::SetExecuteEvent` | (in `0xf8109a0`) | Tie HTM lifetime to launch event |
 
 ---
 

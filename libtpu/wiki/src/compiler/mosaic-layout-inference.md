@@ -175,16 +175,16 @@ The multiplier is `(32/bw) * sublanes` in every arm — i.e. it widens the subla
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `InferMemRefLayoutPass::runOnOperation` | `0x132c1820` | pass entry; requires `hardware_generation` (+114); calls `inferFunc` | HIGH |
-| `createInferMemRefLayoutPass` | `0x132c0f00` | factory (`gen`, target span, `TpuTilingFlags`); pass struct `0x328` B | HIGH |
-| `inferFunc` | `0x132c0560` | per-func arg retype + `erase_layout`/`reinterpret_cast` insertion | HIGH |
-| `inferOp` | `0x132c01a0` | memref-result inference for `alloca`/`alloca_semaphore` | HIGH |
-| `inferMemref` | `0x132bfd60` | semaphore→contiguous; else `inferLayout` + `checkTiles` | HIGH |
-| `inferLayout` | `0x132bef00` | the 1-D/2-D/packing tiling math | HIGH |
-| `getTilingFactor` | `0x132bed80` | the sublane-tile chooser (the formula above) | HIGH |
-| `checkTiles` | `0x132bfac0` | validates the resolved tiling | MEDIUM |
+| Function | Address | Role |
+|---|---|---|
+| `InferMemRefLayoutPass::runOnOperation` | `0x132c1820` | pass entry; requires `hardware_generation` (+114); calls `inferFunc` |
+| `createInferMemRefLayoutPass` | `0x132c0f00` | factory (`gen`, target span, `TpuTilingFlags`); pass struct `0x328` B |
+| `inferFunc` | `0x132c0560` | per-func arg retype + `erase_layout`/`reinterpret_cast` insertion |
+| `inferOp` | `0x132c01a0` | memref-result inference for `alloca`/`alloca_semaphore` |
+| `inferMemref` | `0x132bfd60` | semaphore→contiguous; else `inferLayout` + `checkTiles` |
+| `inferLayout` | `0x132bef00` | the 1-D/2-D/packing tiling math |
+| `getTilingFactor` | `0x132bed80` | the sublane-tile chooser (the formula above) |
+| `checkTiles` | `0x132bfac0` | validates the resolved tiling |
 
 ---
 
@@ -283,16 +283,16 @@ The four op-name strings `tpu.vector_store`, `tpu.enqueue_indirect_dma`, `tpu.wa
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `TilingPropagationPass::runOnOperation` | `0x132e0dc0` | pass entry; builds `PropagationContext` | HIGH |
-| `createTilingPropagationPass` | `0x132e0900` | factory (`{sublane,lane}`, `sparse_core`); struct `0x228` B | HIGH |
-| `propagateTiling` | `0x132e10a0` | worklist fixpoint + deferred `EraseLayoutOp` removal | HIGH |
-| `rules()` | `0x132e15e0` | 26-entry op-name→rule `StringMap` | HIGH |
-| `propagate_layout_to_consumer_rule` | `0x132e40a0` | see-through `erase_layout` for 20 consumer ops | HIGH |
-| `tpu_memref_slice_rule` | `0x132e1b20` | slice re-tile + tile-stride folding | HIGH |
-| `tpu_memref_{squeeze,reshape,bitcast}_rule` | `0x132e2a60`/`0x132e33a0`/`0x132e37a0` | re-thread cast + recompute strides | HIGH |
-| `tpu_reinterpret_cast_rule` / `memref_cast_rule` | `0x132e3e60` / `0x132e3ee0` | re-thread cast + recompute strides | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `TilingPropagationPass::runOnOperation` | `0x132e0dc0` | pass entry; builds `PropagationContext` |
+| `createTilingPropagationPass` | `0x132e0900` | factory (`{sublane,lane}`, `sparse_core`); struct `0x228` B |
+| `propagateTiling` | `0x132e10a0` | worklist fixpoint + deferred `EraseLayoutOp` removal |
+| `rules()` | `0x132e15e0` | 26-entry op-name→rule `StringMap` |
+| `propagate_layout_to_consumer_rule` | `0x132e40a0` | see-through `erase_layout` for 20 consumer ops |
+| `tpu_memref_slice_rule` | `0x132e1b20` | slice re-tile + tile-stride folding |
+| `tpu_memref_{squeeze,reshape,bitcast}_rule` | `0x132e2a60`/`0x132e33a0`/`0x132e37a0` | re-thread cast + recompute strides |
+| `tpu_reinterpret_cast_rule` / `memref_cast_rule` | `0x132e3e60` / `0x132e3ee0` | re-thread cast + recompute strides |
 
 ---
 
@@ -406,23 +406,23 @@ Only the two *vector* memory ops — `tpu.vector_load` and `tpu.vector_store` �
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `InferVectorLayoutPass::runOnOperation` | `0x132c3600` | pass entry; constructs the `VectorLayoutInferer` | HIGH |
-| `createInferVectorLayoutPass` | `0x132c2c20` | factory (`gen`, `{sublane,lane}`, `TpuTilingFlags`, bool) | HIGH |
-| `VectorLayoutInferer::inferBlock` | `0x132c3dc0` | per-op TypeID dispatch (~1400 lines decompiled) | HIGH |
-| `getLayoutFromOperands` | `0x132c59a0` | collects each operand's producer `out_layout` | HIGH |
-| `getLayout` | `0x132d3260` | reads a value's `out_layout` at the result index | HIGH |
-| `inferExt` / `inferTrunc` | `0x132c5be0` / `0x132c6600` | widening / narrowing cast layout | HIGH |
-| `inferElementwise` | `0x132c70e0` | layout-preserving elementwise rule (uses `join`) | HIGH |
-| `inferLoadStoreVectorLayout` | `0x132d48c0` | reads the memref tiling, matches the vreg layout | HIGH |
-| `verifyMemoryTiling` | `0x132d3580` | enforces the legal memory-op tiling | HIGH |
-| `infer(MatmulOp)` | `0x132cc740` | the MXU-packed operand/acc/result layouts | HIGH |
-| `infer(vector::BroadcastOp)` | `0x132ce520` | replicated-axis selection | HIGH |
-| `infer(RotateOp)` / `infer(IotaOp)` / `infer(TransposeOp)` / `inferReshape` | `0x132ca600` / `0x132cd0a0` / `0x132d26c0` / `0x132d09a0` | per-op rules | HIGH |
-| remaining ≈25 `infer(...)` bodies | `0x132c78c0`..`0x132d2d80` | addresses + signatures recovered; bodies sampled | HIGH |
-| `setInLayout` / `setOutLayout` / `setLayout` | `0x14b75c60` / `0x14b75e40` / `0x14b75fa0` | write the `in_layout`/`out_layout` ArrayAttrs | HIGH |
-| `extensions::{can,}inferVectorLayout` | `0x13246280` / `0x132462a0` | out-of-tree op fallback | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `InferVectorLayoutPass::runOnOperation` | `0x132c3600` | pass entry; constructs the `VectorLayoutInferer` |
+| `createInferVectorLayoutPass` | `0x132c2c20` | factory (`gen`, `{sublane,lane}`, `TpuTilingFlags`, bool) |
+| `VectorLayoutInferer::inferBlock` | `0x132c3dc0` | per-op TypeID dispatch (~1400 lines decompiled) |
+| `getLayoutFromOperands` | `0x132c59a0` | collects each operand's producer `out_layout` |
+| `getLayout` | `0x132d3260` | reads a value's `out_layout` at the result index |
+| `inferExt` / `inferTrunc` | `0x132c5be0` / `0x132c6600` | widening / narrowing cast layout |
+| `inferElementwise` | `0x132c70e0` | layout-preserving elementwise rule (uses `join`) |
+| `inferLoadStoreVectorLayout` | `0x132d48c0` | reads the memref tiling, matches the vreg layout |
+| `verifyMemoryTiling` | `0x132d3580` | enforces the legal memory-op tiling |
+| `infer(MatmulOp)` | `0x132cc740` | the MXU-packed operand/acc/result layouts |
+| `infer(vector::BroadcastOp)` | `0x132ce520` | replicated-axis selection |
+| `infer(RotateOp)` / `infer(IotaOp)` / `infer(TransposeOp)` / `inferReshape` | `0x132ca600` / `0x132cd0a0` / `0x132d26c0` / `0x132d09a0` | per-op rules |
+| remaining ≈25 `infer(...)` bodies | `0x132c78c0`..`0x132d2d80` | addresses + signatures recovered; bodies sampled |
+| `setInLayout` / `setOutLayout` / `setLayout` | `0x14b75c60` / `0x14b75e40` / `0x14b75fa0` | write the `in_layout`/`out_layout` ArrayAttrs |
+| `extensions::{can,}inferVectorLayout` | `0x13246280` / `0x132462a0` | out-of-tree op fallback |
 
 ---
 

@@ -58,12 +58,12 @@ The 16-byte size is byte-confirmed two ways: the builders index a `vector<Transf
 
 ### Function Map
 
-| Function | VMA | Role | Confidence |
-|---|---|---|---|
-| `Transfer::ToString` | — (called for debug logs) | format `{src_core, src_index, dst_core, dst_index}` for `VLOG` | CERTAIN |
-| `CreateAllToAllTransfers` | `0x10f05580` | A2A `vector<Transfer>` builder | CERTAIN |
-| `CreateAllGatherTransfers` | `0x1380ea20` | AG `vector<Transfer>` builder | CERTAIN |
-| `CreateCollectivePermuteTransfers` | `0x13470fe0` | CP `vector<Transfer>` builder | CERTAIN |
+| Function | VMA | Role |
+|---|---|---|
+| `Transfer::ToString` | — (called for debug logs) | format `{src_core, src_index, dst_core, dst_index}` for `VLOG` |
+| `CreateAllToAllTransfers` | `0x10f05580` | A2A `vector<Transfer>` builder |
+| `CreateAllGatherTransfers` | `0x1380ea20` | AG `vector<Transfer>` builder |
+| `CreateCollectivePermuteTransfers` | `0x13470fe0` | CP `vector<Transfer>` builder |
 
 ---
 
@@ -159,11 +159,11 @@ Byte anchors: `HloAllGatherInstruction` cast @ `0x1380ea44`; `GetCollectiveOpGro
 
 ### 2.5 The three builders compared
 
-| Collective | Builder (VMA) | Source of pairs | `Transfer` shape per element | Confidence |
-|---|---|---|---|---|
-| CollectivePermute | `CreateCollectivePermuteTransfers` `0x13470fe0` | HLO `source_target_pairs` | one Transfer per `(pair × buffer × r/w)` | CERTAIN |
-| AllToAll | `CreateAllToAllTransfers` `0x10f05580` | replica-group ordered position pairs | bidirectional **PAIR** (`i→j` and `j→i`); `src/dst_index` = within-group position | CERTAIN |
-| AllGather | `CreateAllGatherTransfers` `0x1380ea20` | replica-group members `i, j` | `i→j` broadcast; `src_index=0`, `dst_index=i` | CERTAIN |
+| Collective | Builder (VMA) | Source of pairs | `Transfer` shape per element |
+|---|---|---|---|
+| CollectivePermute | `CreateCollectivePermuteTransfers` `0x13470fe0` | HLO `source_target_pairs` | one Transfer per `(pair × buffer × r/w)` |
+| AllToAll | `CreateAllToAllTransfers` `0x10f05580` | replica-group ordered position pairs | bidirectional **PAIR** (`i→j` and `j→i`); `src/dst_index` = within-group position |
+| AllGather | `CreateAllGatherTransfers` `0x1380ea20` | replica-group members `i, j` | `i→j` broadcast; `src_index=0`, `dst_index=i` |
 
 > **GOTCHA —** AllReduce is **not** in this table. The full-text caller xref of `CreateRoutingScheduleLiteral` finds only AllGather, AllToAll, and CollectivePermute. AllReduce reaches the per-step program through `EmitRoutingCode`'s direct `CreateRoutingSchedule` call (§4, the runtime non-literal path), so it does not use these per-collective `Transfer` builders at all. Confidence: HIGH (consistent with the [overview](overview.md#42-explicit-schedule--the-net_router-route-program)).
 
@@ -242,11 +242,11 @@ The emitter builds and defers the two closures inside the `CreateRoutingSchedule
 
 Both are heap (`"large"`) `std::function` policies. The defer step is read as `-0xa8(rbp)` at both sites; `$_1` adds `+1` internally. The precise arithmetic relating these to the popped step and `kPipelineFactor` was read at the immediate level only — whether `available_at = step+3` exactly or `step+1` with the `+3` enforced solely in `LogAndValidatePaths` is not isolated to a single constant. Confidence: HIGH for the exact defer-step computation.
 
-| callback | VMA | role | capture (bytes) | key CHECK (str / line) | Confidence |
-|---|---|---|---|---|---|
-| `$_4` | `0x13825b60` | defer cb to step *k* | (operator args) | `extra_actions[index].has_value()` `0xa171d66` / `0x691` | CERTAIN |
-| `$_1` | `0x13826dc0` | buffer-release / in-flight | `0x28` flat POD | `available.back().second<=available_at` `0x8509fa3`/`0x185`; `kAlloc` `0x873065f`/`0x186` | CERTAIN |
-| `$_2` | `0x13827760` | commit-placement | `0x30` (owns `IV<int,1>`) | `!placement[transfer].has_value()` `0xa171d87`/`0x6d9` | CERTAIN |
+| callback | VMA | role | capture (bytes) | key CHECK (str / line) |
+|---|---|---|---|---|
+| `$_4` | `0x13825b60` | defer cb to step *k* | (operator args) | `extra_actions[index].has_value()` `0xa171d66` / `0x691` |
+| `$_1` | `0x13826dc0` | buffer-release / in-flight | `0x28` flat POD | `available.back().second<=available_at` `0x8509fa3`/`0x185`; `kAlloc` `0x873065f`/`0x186` |
+| `$_2` | `0x13827760` | commit-placement | `0x30` (owns `IV<int,1>`) | `!placement[transfer].has_value()` `0xa171d87`/`0x6d9` |
 
 ---
 
@@ -291,20 +291,20 @@ The `AllocateScopedSflag` / `AllocateScopedSflags(4)` / `AllocateScopedSflags(8)
 
 ## 5. The Pipeline At A Glance
 
-| stage | function / site (VMA) | output | Confidence |
-|---|---|---|---|
-| CP `Transfer` set | `CreateCollectivePermuteTransfers` @ `0x13470fe0` | `vector<Transfer>` (`source_target_pairs`) | CERTAIN |
-| A2A `Transfer` set | `CreateAllToAllTransfers` @ `0x10f05580` | `vector<Transfer>` (bidir replica pairs) | CERTAIN |
-| AG `Transfer` set | `CreateAllGatherTransfers` @ `0x1380ea20` | `vector<Transfer>` (`i→j` broadcast) | CERTAIN |
-| build schedule (solver) | `CreateRoutingSchedule` @ `0x1381c6a0` | `Schedule{Step[]·{XY→Action[4]}}` | CERTAIN |
-| ↳ defer cb to step | `$_4` @ `0x13825b60` | `extra_actions[step] += function` | CERTAIN |
-| ↳ buffer-release / in-flight | `$_1` @ `0x13826dc0` | `available` list + `latest_dma_out` deque | CERTAIN |
-| ↳ commit placement | `$_2` @ `0x13827760` | `placement[transfer]` `Action` + `has_value` | CERTAIN |
-| validate (pipeline factor 3) | `LogAndValidatePaths` @ `0x13823dc0` | `Schedule` metrics | CERTAIN |
-| Type-5 route literal | `CreateRoutingScheduleLiteral` @ `0x13822400` | `s32[X·Y·steps·4+4]` | CERTAIN |
-| A2A schedule table | `CreateAllToAllRoutingScheduleTable` @ `0x10f061c0` | literal (RET_CHECK device_assignment) | CERTAIN |
-| AG constants (explicit gate) | `AllGatherEmitter::GenerateConstants` @ `0x13801be0` | literal *or* ND-ring table | CERTAIN |
-| runtime replay | `EmitRoutingCode` @ `0x13819ca0` | per-step ICI DMA program | CERTAIN |
+| stage | function / site (VMA) | output |
+|---|---|---|
+| CP `Transfer` set | `CreateCollectivePermuteTransfers` @ `0x13470fe0` | `vector<Transfer>` (`source_target_pairs`) |
+| A2A `Transfer` set | `CreateAllToAllTransfers` @ `0x10f05580` | `vector<Transfer>` (bidir replica pairs) |
+| AG `Transfer` set | `CreateAllGatherTransfers` @ `0x1380ea20` | `vector<Transfer>` (`i→j` broadcast) |
+| build schedule (solver) | `CreateRoutingSchedule` @ `0x1381c6a0` | `Schedule{Step[]·{XY→Action[4]}}` |
+| ↳ defer cb to step | `$_4` @ `0x13825b60` | `extra_actions[step] += function` |
+| ↳ buffer-release / in-flight | `$_1` @ `0x13826dc0` | `available` list + `latest_dma_out` deque |
+| ↳ commit placement | `$_2` @ `0x13827760` | `placement[transfer]` `Action` + `has_value` |
+| validate (pipeline factor 3) | `LogAndValidatePaths` @ `0x13823dc0` | `Schedule` metrics |
+| Type-5 route literal | `CreateRoutingScheduleLiteral` @ `0x13822400` | `s32[X·Y·steps·4+4]` |
+| A2A schedule table | `CreateAllToAllRoutingScheduleTable` @ `0x10f061c0` | literal (RET_CHECK device_assignment) |
+| AG constants (explicit gate) | `AllGatherEmitter::GenerateConstants` @ `0x13801be0` | literal *or* ND-ring table |
+| runtime replay | `EmitRoutingCode` @ `0x13819ca0` | per-step ICI DMA program |
 
 ---
 

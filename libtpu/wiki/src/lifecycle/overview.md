@@ -169,14 +169,14 @@ There is no large `atexit` teardown of the PJRT surface — the `PJRT_Api` table
 
 The single most reimplementation-critical fact is *which event triggers each transition* and *what state it leaves*. Drivers are linker, `dlsym`, or framework C-call; nothing is time- or thread-triggered.
 
-| Stage | Trigger | Owning function | State after | Confidence |
-|---|---|---|---|---|
-| 0 | `dlopen` (dynamic linker) | `cpu_feature_fail_fast` + INIT_ARRAY storm | registered, nothing run, no table | CONFIRMED |
-| 1 | `dlsym(handle, "GetPjrtApi")` | `GetPjrtApi @ 0xe6a83a0` (thunk) | symbol resolved, nothing run | CONFIRMED |
-| 2 | first `GetPjrtApi()` call | `GetTpuPjrtApi @ 0xe6aa440` | 140-slot table built, hardware untouched | CONFIRMED |
-| 3 | first `api->PJRT_Plugin_Initialize` | `PJRT_Plugin_Initialize @ 0xe6a9d00` | driver live, module DAG run, no silicon scan | CONFIRMED |
-| 4 | first `api->PJRT_Client_Create` | `PJRT_Client_Create @ 0xe6a8840` | live client on detected silicon | HIGH |
-| 5 | `dlclose` / process exit | `__do_fini @ 0xe63c020` + FINI_ARRAY | per-thread RNG cleared; PJRT surface leaked | CONFIRMED |
+| Stage | Trigger | Owning function | State after |
+|---|---|---|---|
+| 0 | `dlopen` (dynamic linker) | `cpu_feature_fail_fast` + INIT_ARRAY storm | registered, nothing run, no table |
+| 1 | `dlsym(handle, "GetPjrtApi")` | `GetPjrtApi @ 0xe6a83a0` (thunk) | symbol resolved, nothing run |
+| 2 | first `GetPjrtApi()` call | `GetTpuPjrtApi @ 0xe6aa440` | 140-slot table built, hardware untouched |
+| 3 | first `api->PJRT_Plugin_Initialize` | `PJRT_Plugin_Initialize @ 0xe6a9d00` | driver live, module DAG run, no silicon scan |
+| 4 | first `api->PJRT_Client_Create` | `PJRT_Client_Create @ 0xe6a8840` | live client on detected silicon |
+| 5 | `dlclose` / process exit | `__do_fini @ 0xe63c020` + FINI_ARRAY | per-thread RNG cleared; PJRT surface leaked |
 
 > **QUIRK —** the three "first call" stages (2/3/4) are each protected by a *different* once-guard mechanism, not one shared scheme: Stage 2 by libtpu's own libc++abi `__cxa_guard` (17 distinct `.bss` guard bytes, `acquire/release/abort @ 0x213e9ac0 / 0x213e9be0 / 0x213e9c20`); Stage 3 by an `absl::Mutex` once-lock (`TryAcquireTpuLock::mu`, guard `@ 0x225925d0`) plus a function-static byte guard for the platform registration (`tpu_platform_registered @ 0x224c5388`); the linker entry (Stage 0) by the trivial `__do_init___initialized @ 0x224c3880` byte. A reimplementer must reproduce all three idempotency styles — collapsing them to one lock changes the concurrency and lifetime semantics the framework relies on.
 
@@ -188,14 +188,14 @@ The single most reimplementation-critical fact is *which event triggers each tra
 
 A reimplementer's other essential mental model: what data/state flows in and out at each transition. Everything is C-ABI or in-process; no IPC except the cross-process TPU lock at Stage 3.
 
-| Stage | Inputs | Outputs / side effects | Confidence |
-|---|---|---|---|
-| 0 | CPU feature mask (`__cpu_indicator_init`) | populated flag/descriptor/backend tables + `GoogleInitializer` DAG; SIGILL on a missing ISA feature | CONFIRMED |
-| 1 | symbol name `"GetPjrtApi"` | function address (thunk) | CONFIRMED |
-| 2 | none (no args) | `const PJRT_Api*` → `0x227BA840`; 16 `.bss` extension nodes built | CONFIRMED |
-| 3 | `PJRT_Plugin_Initialize_Args` (`struct_size`); env `TPU_LOAD_LIBRARY`, `LIBTPU_INIT_ARGS` | cross-process TPU lock held; module DAG run; `TpuPlatform` registered; `NULL` on success / heap-boxed status on error | CONFIRMED |
-| 4 | `PJRT_Client_Create_Args` | live `xla::PjRtClient`; detected `TpuVersion`; live executor stack | HIGH |
-| 5 | `_dso_handle` | `__cxa_finalize`; per-thread RNG cleared | CONFIRMED |
+| Stage | Inputs | Outputs / side effects |
+|---|---|---|
+| 0 | CPU feature mask (`__cpu_indicator_init`) | populated flag/descriptor/backend tables + `GoogleInitializer` DAG; SIGILL on a missing ISA feature |
+| 1 | symbol name `"GetPjrtApi"` | function address (thunk) |
+| 2 | none (no args) | `const PJRT_Api*` → `0x227BA840`; 16 `.bss` extension nodes built |
+| 3 | `PJRT_Plugin_Initialize_Args` (`struct_size`); env `TPU_LOAD_LIBRARY`, `LIBTPU_INIT_ARGS` | cross-process TPU lock held; module DAG run; `TpuPlatform` registered; `NULL` on success / heap-boxed status on error |
+| 4 | `PJRT_Client_Create_Args` | live `xla::PjRtClient`; detected `TpuVersion`; live executor stack |
+| 5 | `_dso_handle` | `__cxa_finalize`; per-thread RNG cleared |
 
 ---
 

@@ -105,16 +105,16 @@ In the decompile the tail is `vdivsd ÷0xa2de620(=1e9)`, `vmulsd ×var_30(=link_
 
 > **GOTCHA —** the `6.0` override fires only when there is a *single* cross-slice transfer group on a multi-slice topology — that is the DCN/OCS inter-slice link rate, far below the intra-slice ICI rate. When the collective spans multiple cross-slice groups, the regular `ReplicaGroupsOnNDPlane(plane=2)+1` divisor applies. A reimplementation that always uses `6.0` on multi-slice will mis-price multi-group cross-slice collectives.
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `GetCommunicationTimeInMilliSec` | `0x127a19e0` | SPMD sharding ms estimator; formula + `6.0` override | CERTAIN |
-| `GetCommunicationMultiplier` | `0x127a16c0` | vtable `+0x488` divisor = `ReplicaGroupsOnNDPlane(plane=2)+1` | CERTAIN |
-| `ReplicaGroupsOnNDPlane` | `0x1c890960` | `plane=2` mesh-dim count; memoized `NDPlaneCacheKey` | CERTAIN |
-| `ReplicaGroupsOnNDPlaneImpl::$_0` | `0x1c896400` | per-replica-group mesh-dim worker (vec size vs `2`) | HIGH |
-| `TensorCoreLocationForLogicalDeviceId` | `0x1c8904e0` | logical id → physical TC location | HIGH |
-| `TpuCoreLocation::Chip` | `0x20ad6720` | physical chip coordinates | HIGH |
-| `ConstructSliceTransferGroup` | `0x14b8ca20` | multi-slice cross-slice transfer groups (mode 3) | HIGH |
-| `Target::GetMultiSliceTopology` | `0x1d617980` | multi-slice topology probe | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `GetCommunicationTimeInMilliSec` | `0x127a19e0` | SPMD sharding ms estimator; formula + `6.0` override |
+| `GetCommunicationMultiplier` | `0x127a16c0` | vtable `+0x488` divisor = `ReplicaGroupsOnNDPlane(plane=2)+1` |
+| `ReplicaGroupsOnNDPlane` | `0x1c890960` | `plane=2` mesh-dim count; memoized `NDPlaneCacheKey` |
+| `ReplicaGroupsOnNDPlaneImpl::$_0` | `0x1c896400` | per-replica-group mesh-dim worker (vec size vs `2`) |
+| `TensorCoreLocationForLogicalDeviceId` | `0x1c8904e0` | logical id → physical TC location |
+| `TpuCoreLocation::Chip` | `0x20ad6720` | physical chip coordinates |
+| `ConstructSliceTransferGroup` | `0x14b8ca20` | multi-slice cross-slice transfer groups (mode 3) |
+| `Target::GetMultiSliceTopology` | `0x1d617980` | multi-slice topology probe |
 
 ---
 
@@ -140,18 +140,18 @@ The decompile shows exactly this: `vmulsd xmm0, qword_A2DF5C8` (×0.5) immediate
 
 After the `eff_Bps` setup, dispatch is a `switch(opcode)` compiled to a self-relative jump table at `.rodata 0xae0e9e0` with index `opcode − 6` (`v17 = (uint)(v15 - 6)` in the decompile). `HloOpcode` integers are verified byte-exact via the `HloOpcodeString` length table.
 
-| opcode | name | branch | Confidence |
-|---:|---|---|---|
-| 6 | `all-gather` | AllGather branch @ `0x130ac06c` | CERTAIN |
-| 8 | `all-gather-start` | AllGather branch @ `0x130ac06c` | CERTAIN |
-| 9 | `all-reduce` | AllReduce branch @ `0x130ac14c` | CERTAIN |
-| 11 | `all-reduce-start` | AllReduce branch @ `0x130ac14c` | CERTAIN |
-| 12 | `all-to-all` | tail-call `ComputeAllToAllCycles` @ `0x130ae8e0` | CERTAIN |
-| 34 | `collective-permute` | CollectivePermute branch @ `0x130ac40f` | CERTAIN |
-| 36 | `collective-permute-start` | CollectivePermute branch @ `0x130ac40f` | CERTAIN |
-| 86 | `ragged-all-to-all` | tail-call `ComputeRaggedAllToAllCycles` @ `0x130aea80` | CERTAIN |
-| 93 | `reduce-scatter` | AllReduce-family path (`ComputeAllReduceCycles`) | CERTAIN |
-| 7, 10, 33, 35 | `-done` / `collective-broadcast` / `cp-done` | default @ `0x130ae546` ⇒ **0 cycles** | CERTAIN |
+| opcode | name | branch |
+|---:|---|---|
+| 6 | `all-gather` | AllGather branch @ `0x130ac06c` |
+| 8 | `all-gather-start` | AllGather branch @ `0x130ac06c` |
+| 9 | `all-reduce` | AllReduce branch @ `0x130ac14c` |
+| 11 | `all-reduce-start` | AllReduce branch @ `0x130ac14c` |
+| 12 | `all-to-all` | tail-call `ComputeAllToAllCycles` @ `0x130ae8e0` |
+| 34 | `collective-permute` | CollectivePermute branch @ `0x130ac40f` |
+| 36 | `collective-permute-start` | CollectivePermute branch @ `0x130ac40f` |
+| 86 | `ragged-all-to-all` | tail-call `ComputeRaggedAllToAllCycles` @ `0x130aea80` |
+| 93 | `reduce-scatter` | AllReduce-family path (`ComputeAllReduceCycles`) |
+| 7, 10, 33, 35 | `-done` / `collective-broadcast` / `cp-done` | default @ `0x130ae546` ⇒ **0 cycles** |
 
 > **GOTCHA —** the async shells (`-start` / `-done`) and `collective-broadcast` contribute zero ICI bundle cost; the cost is charged on the *data-carrying* opcode. Opcodes 7/10/13..33/35 all `goto` the zero-cost label. A reimplementation that charges both the `-start` and the `-done` shell double-counts.
 
@@ -242,33 +242,33 @@ Collective-permute is the only kind that divides by `eff_Bps` alone (no `×2` fa
 
 ## Per-Kind Formula Summary
 
-| collective (opcode) | volume `B` | bandwidth divisor | dirs | slots deposited | Confidence |
-|---|---|---|---:|---|---|
-| all-gather (6/8) 1D | `(n−1)·out_size` | `2 · eff_Bps` | 2 | per-dim `R[13..18]` | CERTAIN |
-| all-gather (6/8) 2D | `(n−1)·out_size` | `4 · eff_Bps` | 4 | per-dim (2 dims) | CERTAIN |
-| all-reduce (9/11) ND-plane | `2 · operand_size` | `2·num_dims · eff_Bps` | 2/dim | per active dim (2 each) | CERTAIN |
-| all-reduce cross-module | `AR.size_field` | `2 · eff_Bps` | 2 | all 6 (by `links`) | HIGH |
-| reduce-scatter (93) | `operand_size` (RS phase) | `2·num_dims · eff_Bps` | 2/dim | per active dim | HIGH |
-| all-to-all (12) | `op_size·group_size` | `links / per_link · eff_Bps` | var | all 6 `R[13..18]` | CERTAIN |
-| ragged-all-to-all (86) | `op_size·group_size` | `links / per_link · eff_Bps` | var | all 6 | CERTAIN |
-| collective-permute (34/36) | `operand_size` | `1 · eff_Bps` | 1 | `R[13/15/17]±` or 1 slot | CERTAIN |
-| `*-done` / broadcast / cp-done | — | — | — | 0 cycles (default) | CERTAIN |
+| collective (opcode) | volume `B` | bandwidth divisor | dirs | slots deposited |
+|---|---|---|---:|---|
+| all-gather (6/8) 1D | `(n−1)·out_size` | `2 · eff_Bps` | 2 | per-dim `R[13..18]` |
+| all-gather (6/8) 2D | `(n−1)·out_size` | `4 · eff_Bps` | 4 | per-dim (2 dims) |
+| all-reduce (9/11) ND-plane | `2 · operand_size` | `2·num_dims · eff_Bps` | 2/dim | per active dim (2 each) |
+| all-reduce cross-module | `AR.size_field` | `2 · eff_Bps` | 2 | all 6 (by `links`) |
+| reduce-scatter (93) | `operand_size` (RS phase) | `2·num_dims · eff_Bps` | 2/dim | per active dim |
+| all-to-all (12) | `op_size·group_size` | `links / per_link · eff_Bps` | var | all 6 `R[13..18]` |
+| ragged-all-to-all (86) | `op_size·group_size` | `links / per_link · eff_Bps` | var | all 6 |
+| collective-permute (34/36) | `operand_size` | `1 · eff_Bps` | 1 | `R[13/15/17]±` or 1 slot |
+| `*-done` / broadcast / cp-done | — | — | — | 0 cycles (default) |
 
 `eff_Bps = IciGigabytesPerSecond · 0.5 · 1e9`; `cycles = volume/divisor · TC_freq_MHz · 1e6`. `num_dims = popcnt(active torus axes)`; `links = EstimatePhysicalLinksUsed`; `per_link = {1D→2.0, 2D→4.0}`.
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `CostModel::GetCollectiveCycles` | `0x130abfc0` | bundle collective estimator; `eff_Bps` + opcode dispatch | CERTAIN |
-| `ComputeAllToAllCycles` | `0x130ae8e0` | opcode-12 entry | CERTAIN |
-| `ComputeRaggedAllToAllCycles` | `0x130aea80` | opcode-86 entry | CERTAIN |
-| `ComputeAllToAllCyclesHelper` | `0x130d02a0` | `B·per_link/links/eff_Bps`; per-link table `{2,4}` | CERTAIN |
-| `ComputeAllReduceCycles::$_0` | `0x130d0040` | cross-module AR fallback; all-6-slot deposit | HIGH |
-| `GetResourceFromIciResource` | `0x1c894c00` | `IciResource → slot 0xD..0x12` + present flag | CERTAIN |
-| `EstimatePhysicalLinksUsed` | `0x1c8939c0` | topology link counter (chip-coordinate walk) | HIGH |
-| `AllGatherEmitter::UseAllGather2D` | `0x13801740` | 1D ÷2 vs 2D ÷4 selection | CERTAIN |
-| `DoesReplicaGroupFormNDPlane` | `0x1c88bfc0` | fills `NDTopologyInfo` dim bitmask | HIGH |
-| `AllPairsUseSameIciLink` | `0x1c88de40` | collective-permute single-link narrowing | HIGH |
-| `GetShapeSize` | `0x130aec20` | byte volume `B` | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `CostModel::GetCollectiveCycles` | `0x130abfc0` | bundle collective estimator; `eff_Bps` + opcode dispatch |
+| `ComputeAllToAllCycles` | `0x130ae8e0` | opcode-12 entry |
+| `ComputeRaggedAllToAllCycles` | `0x130aea80` | opcode-86 entry |
+| `ComputeAllToAllCyclesHelper` | `0x130d02a0` | `B·per_link/links/eff_Bps`; per-link table `{2,4}` |
+| `ComputeAllReduceCycles::$_0` | `0x130d0040` | cross-module AR fallback; all-6-slot deposit |
+| `GetResourceFromIciResource` | `0x1c894c00` | `IciResource → slot 0xD..0x12` + present flag |
+| `EstimatePhysicalLinksUsed` | `0x1c8939c0` | topology link counter (chip-coordinate walk) |
+| `AllGatherEmitter::UseAllGather2D` | `0x13801740` | 1D ÷2 vs 2D ÷4 selection |
+| `DoesReplicaGroupFormNDPlane` | `0x1c88bfc0` | fills `NDTopologyInfo` dim bitmask |
+| `AllPairsUseSameIciLink` | `0x1c88de40` | collective-permute single-link narrowing |
+| `GetShapeSize` | `0x130aec20` | byte volume `B` |
 
 ---
 

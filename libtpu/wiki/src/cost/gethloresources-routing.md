@@ -113,20 +113,20 @@ StatusOr<ResourceVector> GetHloResourcesImpl(inst, opts, fs, isFused):  // sub_1
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `CostModel::GetHloResources` | `0x130aa560` | public wrapper | CERTAIN |
-| `CostModel::GetHloResourcesImpl` | `0x130aa580` | 5-way routing dispatch | CERTAIN |
-| `IsSupportedCollectiveHlo` | `0x130aeda0` | collective predicate (arm 1) | CERTAIN |
-| `GetCollectiveCycles` | `0x130abfc0` | network-model deposit (`rv[+8]`) | CERTAIN |
-| `IsFusionSupportedHlo` | `0x130abee0` | numeric + fusion-support gate | CERTAIN |
-| `IsConvLowerable` | `0x14553620` | conv-lowerable predicate | CERTAIN |
-| `ExtractConvLikeHlo` | `0x1d6aa140` | pull the conv/reduce-window root | CERTAIN |
-| `GetReduceWindowType` | `0x1454d4a0` | `−1`/`2` max-pool sentinel (axis class) | CERTAIN |
-| `GetOutputFusionOrConvolutionCycles` | `0x130aede0` | arm 2 — MXU output-fusion model | CERTAIN |
-| `IsCollectiveComputeFusion` | `0x13e028c0` | arm-3 predicate | CERTAIN |
-| `GetCollectiveComputeFusionCycles` | `0x130b13a0` | arm 3 | HIGH |
-| `GetLoopFusionOrUnfusedHloCycles` | `0x130b2bc0` | default → Stage 2 | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `CostModel::GetHloResources` | `0x130aa560` | public wrapper |
+| `CostModel::GetHloResourcesImpl` | `0x130aa580` | 5-way routing dispatch |
+| `IsSupportedCollectiveHlo` | `0x130aeda0` | collective predicate (arm 1) |
+| `GetCollectiveCycles` | `0x130abfc0` | network-model deposit (`rv[+8]`) |
+| `IsFusionSupportedHlo` | `0x130abee0` | numeric + fusion-support gate |
+| `IsConvLowerable` | `0x14553620` | conv-lowerable predicate |
+| `ExtractConvLikeHlo` | `0x1d6aa140` | pull the conv/reduce-window root |
+| `GetReduceWindowType` | `0x1454d4a0` | `−1`/`2` max-pool sentinel (axis class) |
+| `GetOutputFusionOrConvolutionCycles` | `0x130aede0` | arm 2 — MXU output-fusion model |
+| `IsCollectiveComputeFusion` | `0x13e028c0` | arm-3 predicate |
+| `GetCollectiveComputeFusionCycles` | `0x130b13a0` | arm 3 |
+| `GetLoopFusionOrUnfusedHloCycles` | `0x130b2bc0` | default → Stage 2 |
 
 ---
 
@@ -176,16 +176,16 @@ Before the leaf deposit of a fused `parameter`, `RecordHloCycles` walks the fusi
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `CostModel::RecordCyclesIfFused` | `0x130cc720` | fusion-root kind router | CERTAIN |
-| `CostModel::RecordLoopFusionCycles` | `0x130b89a0` | loop-fusion recursion | CERTAIN |
-| `CostModel::RecordOutputFusionCycles` | `0x130b86c0` | output-fusion (MXU) | CERTAIN |
-| `CostModel::RecordConvolutionCycles` | `0x130ca6c0` | conv peel → MXU deposit | CERTAIN |
-| `CostModel::RecordReduceWindowCycles` | `0x130c94e0` | reduce-window peel → vector deposit | CERTAIN |
-| `CostModel::RecordHloCycles` | `0x130bbfe0` | leaf per-op deposit | CERTAIN |
-| `CostModel::IsProducerUse` | `0x130ab0c0` | producer→consumer edge-drop | HIGH |
-| `CostModel::RecordFusionInputCycles` | `0x130ce940` | external-input DMA → `MemXfer` | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `CostModel::RecordCyclesIfFused` | `0x130cc720` | fusion-root kind router |
+| `CostModel::RecordLoopFusionCycles` | `0x130b89a0` | loop-fusion recursion |
+| `CostModel::RecordOutputFusionCycles` | `0x130b86c0` | output-fusion (MXU) |
+| `CostModel::RecordConvolutionCycles` | `0x130ca6c0` | conv peel → MXU deposit |
+| `CostModel::RecordReduceWindowCycles` | `0x130c94e0` | reduce-window peel → vector deposit |
+| `CostModel::RecordHloCycles` | `0x130bbfe0` | leaf per-op deposit |
+| `CostModel::IsProducerUse` | `0x130ab0c0` | producer→consumer edge-drop |
+| `CostModel::RecordFusionInputCycles` | `0x130ce940` | external-input DMA → `MemXfer` |
 
 ---
 
@@ -271,20 +271,20 @@ RecordHloCycles(inst, window, rv, fs, nesting):       // sub_130BBFE0
 
 Block addresses and the jump-table target offsets are byte-verified from `.rodata 0xae0ebbc` (`target = 0xae0ebbc + offset[opcode−3]`). The full µop-sequence detail for `divide`/`logistic`/`erf` (the FP-multiplier scaling, the slow-vs-fast erf gate) is documented on [TpuHloCostAnalysis](tpu-hlo-cost-analysis.md#recordhlocycles--the-opcodeslot-jump-table); this table is the routing-spine view — which block, which CT, which slot.
 
-| Opcode (name) | Block @ | CT issued → slot | Cycle quantity | Confidence |
-|---|---|---|---|---|
-| `0x03` add | `0x130bc0f7` | float: `CT 0x12`→`R4`; int: `R5` | `elems × thru(0x12)` | CERTAIN |
-| `0x7b` subtract | `0x130bc4af` | float: `CT 0x13`→`R4`; int: `R5` | `elems × thru(0x13)` | CERTAIN |
-| `0x4b` multiply | `0x130bc4dd` | `CT 0x14`→`R3` | `elems × thru(0x14)` | CERTAIN |
-| `0x32` divide | `0x130bc3cf` | `R6` + `CT 0x14`→`R3` + `CT 0x12`→`R4` + `R5` | 4-deposit; `×3.0`(R3), `×2`(R4 elems), `×9.0`(R5) | CERTAIN |
-| `0x47` logistic | `0x130bc17b` | `CT 0x12`→`R4`, `CT 0x14`, `R5`, `CT 0x1a`→`R6` | 5-deposit sigmoid; `×2`(R-elems) | HIGH |
-| `0x38` erf | `0x130bc245` | fast: `CT 0x11`→`R6`; slow: `R6`+`R3`+`R4`+`R5` | gated; slow `×16.0`(R3), `×2`(R4), `×4.0`(R5) | HIGH |
-| `0x2a` convert | `0x130bc293` | 1-bit: `R5`; wider: none | 1-bit: `elems × 2.0`; wider: 0 | CERTAIN |
-| `0x6c` select | `0x130bc2a9` | `R5` (`×2` path) | `elems × 2.0` | CERTAIN |
-| `0x52` parameter | `0x130bc2b8` | fused→`RecordFusionInputCycles`; else none | fused: input-DMA into `MemXfer` `R9..12` | MEDIUM |
-| `0x5b` reduce | `0x130bc2f9` | `R5` over operand window | priced over the reduced-OVER input window | HIGH |
-| DEFAULT (most ops) | `0x130bc3c0` | `R5` `VectorAluAny` | `elems × 1.0` | CERTAIN |
-| ZERO-cost | `0x130bc8c2` | (no deposit) | `0` | CERTAIN |
+| Opcode (name) | Block @ | CT issued → slot | Cycle quantity |
+|---|---|---|---|
+| `0x03` add | `0x130bc0f7` | float: `CT 0x12`→`R4`; int: `R5` | `elems × thru(0x12)` |
+| `0x7b` subtract | `0x130bc4af` | float: `CT 0x13`→`R4`; int: `R5` | `elems × thru(0x13)` |
+| `0x4b` multiply | `0x130bc4dd` | `CT 0x14`→`R3` | `elems × thru(0x14)` |
+| `0x32` divide | `0x130bc3cf` | `R6` + `CT 0x14`→`R3` + `CT 0x12`→`R4` + `R5` | 4-deposit; `×3.0`(R3), `×2`(R4 elems), `×9.0`(R5) |
+| `0x47` logistic | `0x130bc17b` | `CT 0x12`→`R4`, `CT 0x14`, `R5`, `CT 0x1a`→`R6` | 5-deposit sigmoid; `×2`(R-elems) |
+| `0x38` erf | `0x130bc245` | fast: `CT 0x11`→`R6`; slow: `R6`+`R3`+`R4`+`R5` | gated; slow `×16.0`(R3), `×2`(R4), `×4.0`(R5) |
+| `0x2a` convert | `0x130bc293` | 1-bit: `R5`; wider: none | 1-bit: `elems × 2.0`; wider: 0 |
+| `0x6c` select | `0x130bc2a9` | `R5` (`×2` path) | `elems × 2.0` |
+| `0x52` parameter | `0x130bc2b8` | fused→`RecordFusionInputCycles`; else none | fused: input-DMA into `MemXfer` `R9..12` |
+| `0x5b` reduce | `0x130bc2f9` | `R5` over operand window | priced over the reduced-OVER input window |
+| DEFAULT (most ops) | `0x130bc3c0` | `R5` `VectorAluAny` | `elems × 1.0` |
+| ZERO-cost | `0x130bc8c2` | (no deposit) | `0` |
 
 The DEFAULT arm covers every numeric elementwise / structural op not named above (the decompiler annotates it `cases 4-23, 25, 27-38, 40, 43-49, 51-55, 57-66, 68-70, 72-74, 76-81, 83-90, 92-96, 98-107, 109-122, 124-128`). The ZERO arm covers the data-layout ops: `bitcast` (`0x18`), `broadcast` (`0x1a`), `concatenate` (`0x27`), `constant` (`0x29`), `iota` (`0x43`), `reshape` (`0x61`), `tuple` (`0x81`) — all at the single block `0x130bc8c2`.
 
@@ -294,40 +294,40 @@ The DEFAULT arm covers every numeric elementwise / structural op not named above
 
 `CycleTable::GetResource(k)` (`@0x1c89ce20`) is literally `return dword_B438AEC[k]`. The entries the leaf blocks issue, re-decoded from the binary:
 
-| `CT::Instruction` | `dword_B438AEC[CT]` → slot | Issued by | Confidence |
-|---|---|---|---|
-| `0x11` | `R[6]` `VectorEup` | erf fast path | CERTAIN |
-| `0x12` | `R[4]` `VectorAlu1` | float add, divide, logistic | CERTAIN |
-| `0x13` | `R[4]` `VectorAlu1` | float subtract | CERTAIN |
-| `0x14` | `R[3]` `VectorAlu0` | multiply, divide, logistic, erf-slow | CERTAIN |
-| `0x18` | `R[6]` `VectorEup` | divide / erf-slow transpose stage | CERTAIN |
-| `0x1a` | `R[6]` `VectorEup` | logistic lane-compare | CERTAIN |
+| `CT::Instruction` | `dword_B438AEC[CT]` → slot | Issued by |
+|---|---|---|
+| `0x11` | `R[6]` `VectorEup` | erf fast path |
+| `0x12` | `R[4]` `VectorAlu1` | float add, divide, logistic |
+| `0x13` | `R[4]` `VectorAlu1` | float subtract |
+| `0x14` | `R[3]` `VectorAlu0` | multiply, divide, logistic, erf-slow |
+| `0x18` | `R[6]` `VectorEup` | divide / erf-slow transpose stage |
+| `0x1a` | `R[6]` `VectorEup` | logistic lane-compare |
 
 > **QUIRK —** `CT 0x12` and `CT 0x13` both map to the *same* slot `R[4]` `VectorAlu1`, even though they are distinct `CycleTable::Instruction` ordinals (input-rotate vs output-rotate) with distinct per-gen throughputs. So float add and float subtract share a dedicated lane but may not share a cycle count. Multiply pins the *other* dedicated lane (`R[3]` via `CT 0x14`). This is the deliberate port-balancing input to `MaxResourceCycles` — see Considerations.
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `CostModel::RecordHloCycles` | `0x130bbfe0` | leaf per-op deposit + opcode switch | CERTAIN |
-| `CostModel::RecordHloCyclesIfTopLevel` | `0x130cdd80` | `== 1` fusion-root guard | HIGH |
-| `CycleTable::GetResource` | `0x1c89ce20` | `dword_B438AEC[CT]` (gen-invariant) | CERTAIN |
-| `ResourceVector::Acc` | `0x1c89adc0` | `vector[slot] += cycles` (bound `< 23`) | CERTAIN |
-| `ShapeUtil::ElementIsFloating` | (call @line 139) | add/subtract lane gate | CERTAIN |
-| `ShapeUtil::ElementHasBitWidth` | `0x20ce1580` | 1-bit PRED convert gate | CERTAIN |
-| `xla::Product` | `0x20cf5200` | `element_count` = Product(output dims) | CERTAIN |
-| `GetInputWindow` | (anon-ns) | non-fused reduce operand window | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `CostModel::RecordHloCycles` | `0x130bbfe0` | leaf per-op deposit + opcode switch |
+| `CostModel::RecordHloCyclesIfTopLevel` | `0x130cdd80` | `== 1` fusion-root guard |
+| `CycleTable::GetResource` | `0x1c89ce20` | `dword_B438AEC[CT]` (gen-invariant) |
+| `ResourceVector::Acc` | `0x1c89adc0` | `vector[slot] += cycles` (bound `< 23`) |
+| `ShapeUtil::ElementIsFloating` | (call @line 139) | add/subtract lane gate |
+| `ShapeUtil::ElementHasBitWidth` | `0x20ce1580` | 1-bit PRED convert gate |
+| `xla::Product` | `0x20cf5200` | `element_count` = Product(output dims) |
+| `GetInputWindow` | (anon-ns) | non-fused reduce operand window |
 
 ### Fixed FP Multipliers (`.rodata`, byte-verified)
 
-| Address | Value | Used by | Confidence |
-|---|---|---|---|
-| `0xa2df230` | `1.0` | default per-op multiplier | CERTAIN |
-| `0xa2df930` | `3.0` | divide `VectorAlu0` (R3) scale | CERTAIN |
-| `0xa2deb40` | `9.0` | divide `VectorAluAny` (R5) scale | CERTAIN |
-| `0xa2df040` | `16.0` | erf slow-path `VectorAlu0` (R3) scale | CERTAIN |
-| `0xa2de830` | `4.0` | erf slow-path `VectorAluAny` (R5) scale | CERTAIN |
-| `0xa2df5c8` | `0.5` | `MaxResourceCycles` `VectorAlu` port-balance blend | CERTAIN |
+| Address | Value | Used by |
+|---|---|---|
+| `0xa2df230` | `1.0` | default per-op multiplier |
+| `0xa2df930` | `3.0` | divide `VectorAlu0` (R3) scale |
+| `0xa2deb40` | `9.0` | divide `VectorAluAny` (R5) scale |
+| `0xa2df040` | `16.0` | erf slow-path `VectorAlu0` (R3) scale |
+| `0xa2de830` | `4.0` | erf slow-path `VectorAluAny` (R5) scale |
+| `0xa2df5c8` | `0.5` | `MaxResourceCycles` `VectorAlu` port-balance blend |
 
 ---
 

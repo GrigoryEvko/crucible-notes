@@ -86,14 +86,14 @@ TensorCoreVectorExtended0PushmatrixBf16TargetField::GetConcatenatedValue:     //
 
 The latch (`Pushmatrix<fmt>`) `Opcode::Matches` predicates read the staged quadword with mask `0xF878000000000000` (bits 51..54 = data-format, bits 59..63 = opcode-high). The plain variants all carry opcode-high 14; the data-format field at abs 51 distinguishes the dtype. The masked variants drop the format and carry the dtype in a distinct opcode-high value (`>> 59 ==`):
 
-| Mnemonic | opcode-high (abs 59 w5) | format (abs 51 w4) | Matches | Confidence |
-|---|---|---|---|---|
-| `PushmatrixRounded` (`0x1ef98b80`) | 14 | 0 | `& 0xF878… == 0x7000000000000000` | CONFIRMED |
-| `PushmatrixBf16` (`0x1ef98c00`) | 14 | 3 | `== 0x7018000000000000` | CONFIRMED |
-| `PushmatrixBf8` (`0x1ef98c40`) | 14 | 4 | `== 0x7020000000000000` | CONFIRMED |
-| `PushmatrixU8` (`0x1ef98c80`) | 14 | 5 | `== 0x7028000000000000` | CONFIRMED |
-| `PushmatrixU8Masked` (`0x1ef98ca0`) | 20 | — | `>> 59 == 20` | CONFIRMED |
-| `PushmatrixS4` / `…Masked` | 14 / 23 | 8 / — | per fmt | CONFIRMED |
+| Mnemonic | opcode-high (abs 59 w5) | format (abs 51 w4) | Matches |
+|---|---|---|---|
+| `PushmatrixRounded` (`0x1ef98b80`) | 14 | 0 | `& 0xF878… == 0x7000000000000000` |
+| `PushmatrixBf16` (`0x1ef98c00`) | 14 | 3 | `== 0x7018000000000000` |
+| `PushmatrixBf8` (`0x1ef98c40`) | 14 | 4 | `== 0x7020000000000000` |
+| `PushmatrixU8` (`0x1ef98c80`) | 14 | 5 | `== 0x7028000000000000` |
+| `PushmatrixU8Masked` (`0x1ef98ca0`) | 20 | — | `>> 59 == 20` |
+| `PushmatrixS4` / `…Masked` | 14 / 23 | 8 / — | per fmt |
 
 The full plain set is `{Rounded 0, PackedIf8Conv 2, Bf16 3, Bf8 4, U8 5, S8 6, U4 7, S4 8}` at format abs 51 (opcode-high always 14); the masked set carries `{Rounded 15, PackedIf8Conv 17, Bf16 18, Bf8 19, U8 20, S8 21, U4 22, S4 23}` directly in opcode-high abs 59. There is no opcode-high 16 — `RoundedMasked` is 15, then `PackedIf8ConvMasked` is 17 (format 1 has no masked variant).
 
@@ -105,15 +105,15 @@ The matmul (`MatrixMultiply<fmt>`) predicates use mask `0xFE78000000000000` (bit
 
 `Extended1Decoder::Decode` is the same sweep over a control region 20 bits lower. Each MXU1 field accessor reads the matching MXU0 bit minus 20; the eight register-operand selectors read the *same* absolute bits in both slots (the shared systolic-feed pool):
 
-| Field | MXU0 abs | MXU1 abs | Δ | Confidence |
-|---|---|---|---|---|
-| latch opcode-high | 59 | 39 | −20 | CONFIRMED |
-| matmul opcode | 57 | 37 | −20 | CONFIRMED |
-| data-format | 51 | 31 | −20 | CONFIRMED |
-| Transpose | 57 | 37 | −20 | CONFIRMED |
-| Target | 58 | 38 | −20 | CONFIRMED |
-| predication | 64 | 44 | −20 | CONFIRMED |
-| 8 register-operand selectors | 157/180/214/225/248/259/282/293 | (same) | 0 | CONFIRMED |
+| Field | MXU0 abs | MXU1 abs | Δ |
+|---|---|---|---|
+| latch opcode-high | 59 | 39 | −20 |
+| matmul opcode | 57 | 37 | −20 |
+| data-format | 51 | 31 | −20 |
+| Transpose | 57 | 37 | −20 |
+| Target | 58 | 38 | −20 |
+| predication | 64 | 44 | −20 |
+| 8 register-operand selectors | 157/180/214/225/248/259/282/293 | (same) | 0 |
 
 The MXU1 accessors confirm the offset byte-for-byte: `…Extended1PushmatrixBf16TransposeField` (`0x1efe8bc0`) reads `>> 37 & 1` and `…TargetField` (`0x1efe8be0`) reads `>> 38 & 1`; the MXU1 matmul predicate (`0x1efe3700`) masks `0xFE780000000` (opcode abs 37, format abs 31). The predication field is part of the twin too: MXU0 predication is read via `Extended0PredicationField` (bound `< 0x10`, abs 64) and MXU1 via `Extended1PredicationField` (abs 44) — a −20 detail the encode-side analysis did not isolate, since predication is written by a separate template.
 
@@ -189,12 +189,12 @@ The dtype-class field at abs 54 carries the sub-ordinal within the 4-element cla
 
 The MXU1 twin is **−21**, confirmed from the MXU1 predicates: `Extended1PushMatrixBf16Opcode` (`0x1f37ac60`) reads opcode @ abs 39 (mask `0x1F8000000000`, value `>> 39 = 14`), dtype-class @ abs 33, guard @ abs 37/38; `Extended1MatrixMultiplyBf16LgmrMsra` (`0x1f37a5a0`) masks `0x1FE780000000` (opcode abs 37 = `0x2`, format abs 31). Every field is exactly −21 vs MXU0 (op 60→39, class 54→33, matmul op 58→37, matmul fmt 52→31).
 
-| Field | MXU0 abs (glc) | MXU1 abs (glc) | Δ | Confidence |
-|---|---|---|---|---|
-| latch opcode | 60 | 39 | −21 | CONFIRMED |
-| dtype-class | 54 | 33 | −21 | CONFIRMED |
-| matmul opcode (w8) | 58 | 37 | −21 | CONFIRMED |
-| matmul format | 52 | 31 | −21 | CONFIRMED |
+| Field | MXU0 abs (glc) | MXU1 abs (glc) | Δ |
+|---|---|---|---|
+| latch opcode | 60 | 39 | −21 |
+| dtype-class | 54 | 33 | −21 |
+| matmul opcode (w8) | 58 | 37 | −21 |
+| matmul format | 52 | 31 | −21 |
 
 ### `6acc60406` (cloud TPU7x / gfc)
 
@@ -214,12 +214,12 @@ return (((v1 >> 62) & 0xFF) == 2)                     // opcode @ abs 62 w8 == 0
 
 The dtype-class at abs 59 is `{F32 0, E4m3 1, Bf16 2, E5m2 3}`. The MXU1 twin is **−25**, confirmed from `Extended1PushMatrixBf16Opcode` (`0x1f9ccd60`, opcode @ abs 39, value 14) and `Extended1MatrixMultiplyBf16LgmrMsra` (`0x1f9cc9a0`, mask `0x1FEF00000000`, opcode @ abs 37, format @ abs 32): op 64→39, matmul op 62→37, format 57→32 — all exactly −25.
 
-| Field | MXU0 abs (gfc) | MXU1 abs (gfc) | Δ | Confidence |
-|---|---|---|---|---|
-| latch opcode | 64 | 39 | −25 | CONFIRMED |
-| dtype-class | 59 | 34 | −25 | CONFIRMED |
-| matmul opcode (w8) | 62 | 37 | −25 | CONFIRMED |
-| matmul format | 57 | 32 | −25 | CONFIRMED |
+| Field | MXU0 abs (gfc) | MXU1 abs (gfc) | Δ |
+|---|---|---|---|
+| latch opcode | 64 | 39 | −25 |
+| dtype-class | 59 | 34 | −25 |
+| matmul opcode (w8) | 62 | 37 | −25 |
+| matmul format | 57 | 32 | −25 |
 
 The gfc twin is **−25** rather than Ghostlite's −21 because the gfc MXU0 anchors drift up by +4 (glc 60 → gfc 64) while the MXU1 anchor stays at abs 39 across both GXC generations: the +4 MXU0 shift compounds onto the inter-MXU delta.
 
@@ -231,11 +231,11 @@ The gfc twin is **−25** rather than Ghostlite's −21 because the gfc MXU0 anc
 
 The V5+ decode reference (this page) completing the [JF / PF](decode-side-jf-pf.md) older-gen counterpart:
 
-| TpuVersion | Codename (binary) | Cloud | Decoder @ | MXU0 opcode | MXU1 opcode | Twin | dtype set | Confidence |
-|---|---|---|---|---|---|---|---|---|
-| 3 | viperfish (`vxc`) | TPU v5 (v5e/v5p) | `0x1ef6e4c0` | matmul abs 57 / push abs 59 | abs 37 / 39 | −20 | 8 (int + float) | CONFIRMED |
-| 4 | ghostlite (`gxc::glc`) | TPU v6e | `0x1f2f69a0` | unified abs 58 (w8) | abs 37 | −21 | 8 (int + float) | CONFIRMED |
-| 5 | `6acc60406` (`gxc::gfc`) | TPU7x | `0x1f96d020` | unified abs 62 (w8) | abs 37 | −25 | 4 (float only) | CONFIRMED |
+| TpuVersion | Codename (binary) | Cloud | Decoder @ | MXU0 opcode | MXU1 opcode | Twin | dtype set |
+|---|---|---|---|---|---|---|---|
+| 3 | viperfish (`vxc`) | TPU v5 (v5e/v5p) | `0x1ef6e4c0` | matmul abs 57 / push abs 59 | abs 37 / 39 | −20 | 8 (int + float) |
+| 4 | ghostlite (`gxc::glc`) | TPU v6e | `0x1f2f69a0` | unified abs 58 (w8) | abs 37 | −21 | 8 (int + float) |
+| 5 | `6acc60406` (`gxc::gfc`) | TPU7x | `0x1f96d020` | unified abs 62 (w8) | abs 37 | −25 | 4 (float only) |
 
 All three use the staged-copy + linear `Opcode::Matches` codec; the per-generation deltas are the opcode widening (7→8 bits), the dtype-set shift (`6acc60406` drops integers, names FP8 explicitly), and the inter-MXU twin (−20 → −21 → −25). The encode side ([V5+ EmitX](v5plus-emitx-bit-positions.md), [Viperfish bundle](bundle-vf-64b.md)) wrote each of these bits with a `BitCopy(buf, abs_bit, …)`, and the decode `Opcode::Matches` masks recover them at the same abs_bit — the round-trip is closed for all three generations.
 

@@ -151,21 +151,21 @@ These per-strategy costs become two cost arrays: a **node cost** (compute + the 
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `TpuAutoSharding::RunImpl` | `0x1118d3a0` | TPU wrapper, dispatch to base | HIGH |
-| `TpuAutoSharding::ApplyShardingConfig` | `0x1118c100` | apply stashed config | HIGH |
-| `TpuAutoSharding::ExtractShardingConfig` | `0x1118c820` | serialize chosen shardings | HIGH |
-| `AutoSharding::RunImpl` | `0x1280a180` | base entry | HIGH |
-| `AutoShardingImplementation::RunAutoSharding` | `0x128055a0` | multi-phase core | HIGH |
-| `SaveAndRemoveShardingAnnotation` | `0x128020a0` | stash + clear user shardings | HIGH |
-| `BuildAliasSet` | `0x12e174a0` | force aliased params/outputs equal | HIGH |
-| `DotHandler::RegisterStrategies` | `0x12825140` | matmul strategy enumeration | CONFIRMED |
-| `DotHandler::AppendAllGatherWindowedEinsumStrategyForOperand` | `0x12826780` | AG windowed-einsum candidate | CONFIRMED |
-| `DotHandler::AppendReduceScatterWindowedEinsumStrategy` | `0x128270a0` | RS windowed-einsum candidate | CONFIRMED |
-| `ClusterEnvironment::ClusterEnvironment` | `0x12808800` | cost model state | HIGH |
-| `StrategyShaverForProblem::FindShavedStrategies` | `0x12851a60` | drop infeasible strategies | HIGH |
-| `SetHloSharding` | `0x127f7540` | commit | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `TpuAutoSharding::RunImpl` | `0x1118d3a0` | TPU wrapper, dispatch to base |
+| `TpuAutoSharding::ApplyShardingConfig` | `0x1118c100` | apply stashed config |
+| `TpuAutoSharding::ExtractShardingConfig` | `0x1118c820` | serialize chosen shardings |
+| `AutoSharding::RunImpl` | `0x1280a180` | base entry |
+| `AutoShardingImplementation::RunAutoSharding` | `0x128055a0` | multi-phase core |
+| `SaveAndRemoveShardingAnnotation` | `0x128020a0` | stash + clear user shardings |
+| `BuildAliasSet` | `0x12e174a0` | force aliased params/outputs equal |
+| `DotHandler::RegisterStrategies` | `0x12825140` | matmul strategy enumeration |
+| `DotHandler::AppendAllGatherWindowedEinsumStrategyForOperand` | `0x12826780` | AG windowed-einsum candidate |
+| `DotHandler::AppendReduceScatterWindowedEinsumStrategy` | `0x128270a0` | RS windowed-einsum candidate |
+| `ClusterEnvironment::ClusterEnvironment` | `0x12808800` | cost model state |
+| `StrategyShaverForProblem::FindShavedStrategies` | `0x12851a60` | drop infeasible strategies |
+| `SetHloSharding` | `0x127f7540` | commit |
 
 ---
 
@@ -204,15 +204,15 @@ The request crossing into the solver is the `AutoShardingSolverRequest` proto (p
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `FormulateAndSolveMIPFromProblem` | `0x128407c0` | build + solve the MIP via OR-Tools `MPSolver` | CONFIRMED |
-| `CreateAutoShardingSolverRequestAndCallSolver` | `0x127f24a0` | build request, dispatch | HIGH |
-| `(anon)::SolveAndExtractSolution` | `0x2139b540` | call `MPSolver::Solve`, read variables | HIGH |
-| `CheckDominance` | `0x12850cc0` | prune dominated strategies | HIGH |
-| `Evaluate` | `0x128473c0` | post-solve re-pricing | HIGH |
-| `operations_research::SatInterface::Solve` | `0x1285dce0` | CP-SAT integer backend | HIGH |
-| `operations_research::GLOPInterface::Solve` | `0x12ef4760` | GLOP LP relaxation | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `FormulateAndSolveMIPFromProblem` | `0x128407c0` | build + solve the MIP via OR-Tools `MPSolver` |
+| `CreateAutoShardingSolverRequestAndCallSolver` | `0x127f24a0` | build request, dispatch |
+| `(anon)::SolveAndExtractSolution` | `0x2139b540` | call `MPSolver::Solve`, read variables |
+| `CheckDominance` | `0x12850cc0` | prune dominated strategies |
+| `Evaluate` | `0x128473c0` | post-solve re-pricing |
+| `operations_research::SatInterface::Solve` | `0x1285dce0` | CP-SAT integer backend |
+| `operations_research::GLOPInterface::Solve` | `0x12ef4760` | GLOP LP relaxation |
 
 > **QUIRK —** the request carries a `SolverTimeout` and the code emits three distinct failure strings: "could not find a valid solution within the given time limit. Please report this as a bug!", "could only find a non-optimal solution within the given time limit.", and the no-mesh-feasible message. A reimplementer must treat the CP-SAT solve as fallible and on timeout fall back (the `use_sharding_propagation_for_default_shardings` option computes a default via [propagation](sharding-propagation.md) when a node's cost is infinite).
 

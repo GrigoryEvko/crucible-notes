@@ -46,16 +46,16 @@ Whether tcmalloc *is* the process allocator is decided at the final link, not at
 
 The `nm`/symbol-table partition is decisive. The `google_malloc` section roster ([19], 18,162 B), recovered in full, is *support-only*: per-CPU `rseq` trampolines, experiment selection, `MallocHook` lifecycle, signal-safe I/O, a crash/OOM printer, and the `PbtxtRegion` stats serializer. The allocator-core classes have **zero** symbols.
 
-| Category | Present? | Evidence |
-|---|---|---|
-| Allocator core (`PageHeap`, `CentralFreeList`, `PerCPUCache`, `TransferCache`, `SizeMap`, `ThreadCache`, `HugePageAwareAllocator`, `PageAllocator`) | **No** — 0 symbols | symbol-table scan returns 0 hits; `google_malloc_bss` holds no CFL arrays, no per-CPU slab pointers, no PageMap |
-| Strong `malloc`/`free`/`tc_malloc`/`tc_new`/`tc_free` | **No** | no `T`/`W` definition anywhere; `tc_*` prefix absent |
-| Size-class table / `kPageSize` / `kHugePageSize` / `kMaxSize` / `kNumClasses` | **No** | the `kPageSize` strings present belong to `base_logging::LogFileObject` / `thread::StackReclaimer` (the *OS* page size), not tcmalloc |
-| `MallocExtension` / `TCMalloc_Internal` API | **Yes**, but weak `UND` | 8 wrappers compiled; providers are weak `UND`→`NULL` (W012: `MallocExtension_Internal_SetMemoryLimit … bind WEAK … section UND size 0`) |
-| `MallocHook` (`Add/Remove{New,Delete,…}Hook`, `Invoke…HookSlow`) | **Yes**, registrable | hooks register but never fire (the *invoker* is in the absent core) |
-| Experiment selection (`SelectExperiments`, 18-entry table) | **Yes** | `0x0e638b40`; populates query tables only — no allocation effect |
-| `rseq` per-CPU primitives | **Yes**, shared | `__rseq_cs` [39] 8,800 B; consumers include `EventManager2`, `base::rcu::Pile`, `CountingMutex` — these back google3 synchronization, not (only) tcmalloc |
-| jemalloc (anything) | **No** — 0 symbols, 0 strings | no `je_malloc`/`mallctl`/`MALLOC_CONF`/`narenas`/`background_thread` |
+| Category | Present? |
+|---|---|
+| Allocator core (`PageHeap`, `CentralFreeList`, `PerCPUCache`, `TransferCache`, `SizeMap`, `ThreadCache`, `HugePageAwareAllocator`, `PageAllocator`) | **No** — 0 symbols |
+| Strong `malloc`/`free`/`tc_malloc`/`tc_new`/`tc_free` | **No** |
+| Size-class table / `kPageSize` / `kHugePageSize` / `kMaxSize` / `kNumClasses` | **No** |
+| `MallocExtension` / `TCMalloc_Internal` API | **Yes**, but weak `UND` |
+| `MallocHook` (`Add/Remove{New,Delete,…}Hook`, `Invoke…HookSlow`) | **Yes**, registrable |
+| Experiment selection (`SelectExperiments`, 18-entry table) | **Yes** |
+| `rseq` per-CPU primitives | **Yes**, shared |
+| jemalloc (anything) | **No** — 0 symbols, 0 strings |
 
 > **GOTCHA —** the `rseq` primitives (`RseqFunction_PerCpuCmpxchg64`, `PerCpuTryLock`, `PerCpuReadCycleCounter`) are *not* proof that tcmalloc's per-CPU caches exist here. Of the 247 `RseqFunction_*` records in `__rseq_cs`, the consumers are abseil synchronization and RCU — a *shared* google3 per-CPU library. A reimplementer who infers "rseq present ⇒ tcmalloc per-CPU cache active" will model a cache that the binary does not contain. The cache lives in the absent core; the rseq trampolines outlive it because other subsystems use them.
 

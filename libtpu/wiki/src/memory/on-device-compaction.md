@@ -50,21 +50,21 @@ This page owns the **present/absent compaction inventory**, the **`Compact` relo
 
 The headline inventory, each line byte-verified in the decompile (see [Evidence](#evidence-table)):
 
-| Mechanism | Present? | Evidence | Confidence |
-|---|---|---|---|
-| Live-buffer **relocation** (`Compact`) | **PRESENT** | `BestFitAllocator::Compact` @ `0x1e81c360` emits `vector<TpuMemmoves::Memmove>` and rewrites the block map + free tree | CONFIRMED |
-| **Relocation plan** decoupled from byte movement | **PRESENT** | `Compact` returns the move list; bytes moved later by `Generate` codegen | CONFIRMED |
-| **OOM-triggered** defrag-and-retry | **PRESENT** | `System::CompactMemory` `0x1d0b6000`, `TpuClient::DefragmentMemory` `0xf7fd660`, `ShouldRetryOnOom` `0xf8141a0` | CONFIRMED |
-| **Pinned set** keeping static/aliased buffers immovable | **PRESENT** | `Compact` takes `flat_hash_set<long> pinned`; CRC32 SwissTable probe per block | CONFIRMED |
-| Program-stack **shrink** before compaction | **PRESENT** | `System::CompactMemory` calls `TpuProgramStack::MaybeShrink` `0x1db0c100` | CONFIRMED |
-| Program **eviction** to free HBM between retries | **PRESENT** | `EvictLoadedPrograms` `0xf80d2c0`, `UnloadAllProgramsForCore` (in retry lambda) | CONFIRMED |
-| Donation-driven **reuse** (allocation avoidance) | **PRESENT** | `AllocateOutputBuffersWithInputReuse` `0xf7ba9a0` (see [buffer-donation-aliasing.md](buffer-donation-aliasing.md)) | CONFIRMED |
-| Relocation inside `Allocate` | **ABSENT** | `Allocate` `0x1e817820` has no `Compact`/`Memmove` reference; only `SplitBlock` | CONFIRMED |
-| Relocation inside `Deallocate` (free-time defrag) | **ABSENT** | `Deallocate` `0x1e819dc0` only calls `MergeBlock`/free-tree ops — coalescing, not moving | CONFIRMED |
-| Periodic / background defragmenter | **ABSENT** | no timer/thread driving `Compact`; sole driver is the OOM retry path | HIGH |
-| Multi-pass fixpoint compaction within one `Compact` call | **ABSENT** | single reverse sweep; a block failing `IsDisjoint` is left in place | HIGH |
-| Device-side arena/slab compaction | **ABSENT** | one fixed-region `BestFitAllocator` per (core, tier); no arenas — see [hbm-allocator.md](hbm-allocator.md) | CONFIRMED |
-| Growth-by-doubling on the device | **ABSENT** | region is a fixed `[base, end)`; `Expand`/`Shrink` only adjust stack bounds | CONFIRMED |
+| Mechanism | Present? | Evidence |
+|---|---|---|
+| Live-buffer **relocation** (`Compact`) | **PRESENT** | `BestFitAllocator::Compact` @ `0x1e81c360` emits `vector<TpuMemmoves::Memmove>` and rewrites the block map + free tree |
+| **Relocation plan** decoupled from byte movement | **PRESENT** | `Compact` returns the move list; bytes moved later by `Generate` codegen |
+| **OOM-triggered** defrag-and-retry | **PRESENT** | `System::CompactMemory` `0x1d0b6000`, `TpuClient::DefragmentMemory` `0xf7fd660`, `ShouldRetryOnOom` `0xf8141a0` |
+| **Pinned set** keeping static/aliased buffers immovable | **PRESENT** | `Compact` takes `flat_hash_set<long> pinned`; CRC32 SwissTable probe per block |
+| Program-stack **shrink** before compaction | **PRESENT** | `System::CompactMemory` calls `TpuProgramStack::MaybeShrink` `0x1db0c100` |
+| Program **eviction** to free HBM between retries | **PRESENT** | `EvictLoadedPrograms` `0xf80d2c0`, `UnloadAllProgramsForCore` (in retry lambda) |
+| Donation-driven **reuse** (allocation avoidance) | **PRESENT** | `AllocateOutputBuffersWithInputReuse` `0xf7ba9a0` (see [buffer-donation-aliasing.md](buffer-donation-aliasing.md)) |
+| Relocation inside `Allocate` | **ABSENT** | `Allocate` `0x1e817820` has no `Compact`/`Memmove` reference; only `SplitBlock` |
+| Relocation inside `Deallocate` (free-time defrag) | **ABSENT** | `Deallocate` `0x1e819dc0` only calls `MergeBlock`/free-tree ops — coalescing, not moving |
+| Periodic / background defragmenter | **ABSENT** | no timer/thread driving `Compact`; sole driver is the OOM retry path |
+| Multi-pass fixpoint compaction within one `Compact` call | **ABSENT** | single reverse sweep; a block failing `IsDisjoint` is left in place |
+| Device-side arena/slab compaction | **ABSENT** | one fixed-region `BestFitAllocator` per (core, tier); no arenas — see [hbm-allocator.md](hbm-allocator.md) |
+| Growth-by-doubling on the device | **ABSENT** | region is a fixed `[base, end)`; `Expand`/`Shrink` only adjust stack bounds |
 
 > **WARNING — this is not the negative result one might expect.** A naive read of "`BestFitAllocator` is a non-moving boundary-tag allocator" would conclude libtpu cannot defragment. That read is wrong. The *allocator's free-list methods* never relocate, but the allocator class also exposes a separate `Compact` method that does — and the runtime calls it on OOM. The honest summary is: **non-moving for the common case, moving-as-last-resort on exhaustion.**
 
@@ -210,18 +210,18 @@ TpuCompactionIsaEmitterCodegen::Generate (0x1090ece0)  // codegen VMEM-staged DM
 EnqueueCompactionImpl (0x1d12ed00) -> CompactionRunner // enqueue on the device command stream
 ```
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `BestFitAllocator::Compact` | `0x1e81c360` | collect → sort → IntervalSet pack → emit `TpuMemmoves` → rewrite map/tree | CONFIRMED |
-| `TpuSharedMemory::EnqueueCompaction` | `0x1d4bcde0` | per-core compaction entry (`TpuCompactionConfig` + callback) | CONFIRMED |
-| `GenerateAndValidateCompactionPrograms` | `0x1d130ec0` | validate the move set, drive codegen | CONFIRMED |
-| `TpuCompactionIsaEmitterCodegen::Generate` | `0x1090ece0` | codegen merged VMEM↔HBM staged DMA transactions | CONFIRMED |
-| `EnqueueCompactionImpl` | `0x1d12ed00` | build `CompactionRunner`, enqueue on the command stream | CONFIRMED |
-| `gtl::IntervalSet<long>::AddImpl` | `0x1e824ae0` | mark an interval occupied during the pack | CONFIRMED |
-| `gtl::IntervalSet<long>::IsDisjoint` | `0x1cc99740` | test a candidate placement window | CONFIRMED |
-| `__introsort` (Compact `LiveBlock`) | `0x1e81e260` | sort live blocks by offset | CONFIRMED |
-| `TpuExecutor::EnqueueCompactionOnStreamForHbm` | `0xe997400` | stream-executor compaction surface | CONFIRMED |
-| `TpuNodeContext::CompactionSupported` | `0xeaca440` | per-chip capability gate | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `BestFitAllocator::Compact` | `0x1e81c360` | collect → sort → IntervalSet pack → emit `TpuMemmoves` → rewrite map/tree |
+| `TpuSharedMemory::EnqueueCompaction` | `0x1d4bcde0` | per-core compaction entry (`TpuCompactionConfig` + callback) |
+| `GenerateAndValidateCompactionPrograms` | `0x1d130ec0` | validate the move set, drive codegen |
+| `TpuCompactionIsaEmitterCodegen::Generate` | `0x1090ece0` | codegen merged VMEM↔HBM staged DMA transactions |
+| `EnqueueCompactionImpl` | `0x1d12ed00` | build `CompactionRunner`, enqueue on the command stream |
+| `gtl::IntervalSet<long>::AddImpl` | `0x1e824ae0` | mark an interval occupied during the pack |
+| `gtl::IntervalSet<long>::IsDisjoint` | `0x1cc99740` | test a candidate placement window |
+| `__introsort` (Compact `LiveBlock`) | `0x1e81e260` | sort live blocks by offset |
+| `TpuExecutor::EnqueueCompactionOnStreamForHbm` | `0xe997400` | stream-executor compaction surface |
+| `TpuNodeContext::CompactionSupported` | `0xeaca440` | per-chip capability gate |
 
 ---
 
@@ -261,17 +261,17 @@ The async leaf, `tfrt::tpu::AllocateTpuBufferWithRetry` (`0xf7ec6a0`), is depend
 
 > **NOTE — two config bools gate recovery.** `TpuClient+0x67` toggles program eviction and `TpuClient+0x69` toggles defragmentation on OOM; either can be disabled independently. Their exact `PjRtTpuClientConfig` key names were not back-traced (marked in the open items). The megascale-aware variant `CommonPjRtClient::ShouldRetryOnOom` (`0xe6edc80`) additionally consults the `DeviceAssignment` so a pod slice can coordinate retry across devices.
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `BestFitAllocator::Allocate` (OOM site) | `0x1e817820` | emits the `ResourceExhausted` "…due to fragmentation" leaf error | CONFIRMED |
-| `tpu::System::CompactMemory` | `0x1d0b6000` | shrink program stacks → `EnqueueCompaction`; `MakeErrorImpl<13>` on bad core | CONFIRMED |
-| `TpuProgramStack::MaybeShrink` | `0x1db0c100` | reclaim dynamic-stack HBM before compacting | CONFIRMED |
-| `TpuClient::DefragmentMemory` | `0xf7fd660` | PJRT defrag entry → `EnqueueDefragmentMemory` → `System::CompactMemory` | CONFIRMED |
-| `TpuClient::EnqueueDefragmentMemory` | `0xf7fd180` | enqueue the defrag work item | CONFIRMED |
-| `TpuClient::ShouldRetryOnOom` | `0xf8141a0` | ≤ 2 attempts; evict programs + defragment | CONFIRMED |
-| `CommonPjRtClient::ShouldRetryOnOom` | `0xe6edc80` | megascale/pod-aware retry coordination | HIGH |
-| `tfrt::tpu::AllocateTpuBufferWithRetry` | `0xf7ec6a0` | async dependency-gated retry; `UnloadAllProgramsForCore` | CONFIRMED |
-| `TpuExecutableLoadState::EvictLoadedPrograms` | `0xf80d2c0` | free program HBM between retries | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `BestFitAllocator::Allocate` (OOM site) | `0x1e817820` | emits the `ResourceExhausted` "…due to fragmentation" leaf error |
+| `tpu::System::CompactMemory` | `0x1d0b6000` | shrink program stacks → `EnqueueCompaction`; `MakeErrorImpl<13>` on bad core |
+| `TpuProgramStack::MaybeShrink` | `0x1db0c100` | reclaim dynamic-stack HBM before compacting |
+| `TpuClient::DefragmentMemory` | `0xf7fd660` | PJRT defrag entry → `EnqueueDefragmentMemory` → `System::CompactMemory` |
+| `TpuClient::EnqueueDefragmentMemory` | `0xf7fd180` | enqueue the defrag work item |
+| `TpuClient::ShouldRetryOnOom` | `0xf8141a0` | ≤ 2 attempts; evict programs + defragment |
+| `CommonPjRtClient::ShouldRetryOnOom` | `0xe6edc80` | megascale/pod-aware retry coordination |
+| `tfrt::tpu::AllocateTpuBufferWithRetry` | `0xf7ec6a0` | async dependency-gated retry; `UnloadAllProgramsForCore` |
+| `TpuExecutableLoadState::EvictLoadedPrograms` | `0xf80d2c0` | free program HBM between retries |
 
 ---
 

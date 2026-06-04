@@ -34,7 +34,6 @@ For reimplementation, the contract is:
 | **Config → pass copy** | `HloPassPipeline::AddPass<SparseCoreQueueAssignment,…>` (`0x10975FC0`) — three `vmovups` |
 | **Map consumer** | **NONE** in v0.0.40 (definitive negative; see units below) |
 | **Live enforcer (elsewhere)** | `TpuAsyncTracker::GetNumAvailableResources` (`0x10FFF600`) — see [ResourceType Taxonomy](../sched/scheduler-resourcetype-model.md) |
-| **Confidence** | CONFIRMED (decompile + binary-byte anchored) unless a row or callout says otherwise |
 
 ---
 
@@ -102,13 +101,13 @@ btree_node<map_params_impl<long,long>>::clear_and_delete(*((_QWORD **)this + 24)
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `SparseCoreQueueAssignment::RunImpl` | `0x10FE4000` | builds the nine-entry reservation map; root → `[this+0xC0]` | CONFIRMED |
-| `btree<map_params_impl<long,long>>::insert_hint_unique` | `0x10FE6E40` | the per-key inserter (×9) | CONFIRMED |
-| `btree<map_params_impl<long,long>>::EmptyNode` | `0x2177A4B0` | empty-node sentinel for the fresh root | CONFIRMED |
-| `~SparseCoreQueueAssignment::D2` | `0x10FE4BA0` | frees the map via `clear_and_delete` | CONFIRMED |
-| `btree_node<map_params_impl<long,long>>::clear_and_delete` | `0xF7D0400` | recursive btree free | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `SparseCoreQueueAssignment::RunImpl` | `0x10FE4000` | builds the nine-entry reservation map; root → `[this+0xC0]` |
+| `btree<map_params_impl<long,long>>::insert_hint_unique` | `0x10FE6E40` | the per-key inserter (×9) |
+| `btree<map_params_impl<long,long>>::EmptyNode` | `0x2177A4B0` | empty-node sentinel for the fresh root |
+| `~SparseCoreQueueAssignment::D2` | `0x10FE4BA0` | frees the map via `clear_and_delete` |
+| `btree_node<map_params_impl<long,long>>::clear_and_delete` | `0xF7D0400` | recursive btree free |
 
 ---
 
@@ -152,7 +151,7 @@ So `obj[+0x18] = Config[+0x00]`, …, `obj[+0x58] = Config[+0x40]` (the overlap 
 
 ### The full field table
 
-The `TCE _impl_ off` column and the `TCE field name` column are CONFIRMED (the byte-offset from `RunHloScheduler`, the name from the matching `AbslFlagDefaultGenFor<name>` symbol). The `TCE field #` column is the proto-source label (MEDIUM — see the note after the table).
+The `TCE _impl_ off` column is the byte-offset from `RunHloScheduler`; the `TCE field name` column is the name from the matching `AbslFlagDefaultGenFor<name>` symbol. The `TCE field #` column is the proto-source label (see the note after the table).
 
 | Map key | obj off | Config off | TCE `_impl_` off | TCE field # | TCE field name | Proto type | AUTO fallback (here) |
 |---|---|---|---|---|---|---|---|
@@ -166,7 +165,7 @@ The `TCE _impl_ off` column and the `TCE field name` column are CONFIRMED (the b
 | 27 | `+0x50` | `+0x38` | `0x960` | 1092 | `xla_tpu_sparse_core_sort_overlap_limit` | `AutoOr<long>` | `1` (cmove) |
 | 28 | `+0x58` | `+0x40` | — | — | (hardcoded `INT64_MAX`; not a TCE field) | constant | `0x7FFFFFFFFFFFFFFF` |
 
-Each field's `_impl_` byte-offset is byte-confirmed from the `RunHloScheduler` Config-build region (the `GetTpuCompEnv(…) + N` loads: `+3960`, `+1120`, `+1128`, `+2368`, `+2376`, `+2384`, `+2392`, `+2400` — see Hop A), and each offset binds to a distinct `AutoOr<long>` proto field whose flag-symbol name (`AbslFlagDefaultGenFor<name>`) matches the table below. The proto **field numbers** are recorded from `TpuCompilationEnvironment::_InternalSerialize` (`0x1DB41DC0`); that function does not produce Hex-Rays pseudocode and its serializer tags are mostly pre-shifted varints rather than bare `mov $imm` immediates, so treat the field-*number* column as MEDIUM confidence — the offset↔name binding (CONFIRMED) is what a reimplementer needs, the number is the proto-source label. The `925` tag (`0x39D`) is observable in the serializer body; the int32 key 2 carries wire tag `0x1280` (varint `0x1280` → 2304 → field 288, wire-type 0).
+Each field's `_impl_` byte-offset is byte-confirmed from the `RunHloScheduler` Config-build region (the `GetTpuCompEnv(…) + N` loads: `+3960`, `+1120`, `+1128`, `+2368`, `+2376`, `+2384`, `+2392`, `+2400` — see Hop A), and each offset binds to a distinct `AutoOr<long>` proto field whose flag-symbol name (`AbslFlagDefaultGenFor<name>`) matches the table below. The proto **field numbers** are recorded from `TpuCompilationEnvironment::_InternalSerialize` (`0x1DB41DC0`); its serializer tags are mostly pre-shifted varints rather than bare `mov $imm` immediates, so the offset↔name binding is what a reimplementer needs and the number is the proto-source label. The `925` tag (`0x39D`) is observable in the serializer body; the int32 key 2 carries wire tag `0x1280` (varint `0x1280` → 2304 → field 288, wire-type 0).
 
 > **NOTE — AUTO polarity is call-site-local.** The seven `AutoOr<long>` reads here resolve an *unset* (AUTO) oneof to **`1`** (the `test $1,%dl ; cmove $1` shape). This is the polarity for the `AddPass` Config-build site only. The *live* scheduler reads the **same** five SC overlap knobs (`1088..1092`) in `GetTpuAsyncTracker` (`0x10975520`) with AUTO → **`INT64_MAX`** (no cap) instead — same fields, opposite default, different call site. A reimplementer must not assume one global default for these knobs. The semantic default in the enforcing path is "no cap"; the `1` here is moot because this map has no reader.
 
@@ -192,14 +191,14 @@ The keys are AsyncTracker scheduling resource-type IDs. The base IDs `{2,3,6}` a
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `(anon)::RunHloScheduler` (Config-build region) | `0x109718C0..0x10971A99` | reads TCE; builds `SparseCoreQueueAssignmentConfig[-0x138]` | CONFIRMED |
-| `GetTpuCompEnv` | `0x1D73DD20` | returns `TpuCompilationEnvironment` `_impl_` | CONFIRMED |
-| `AutoOr<long>::FromProtoOrDie` | `0x1092F7E0` | packed `{value rax, has-bit dl}` reader | CONFIRMED |
-| `HloPassPipeline::AddPass<SparseCoreQueueAssignment,…>` | `0x10975FC0` | three `vmovups`; Config → `obj[+0x18..]` | CONFIRMED |
-| `TpuCompilationEnvironment::_InternalSerialize` | `0x1DB41DC0` | field-number decode source | CONFIRMED |
-| `AutoProto_globals_` | `0x223C8968` | null-TCE fallback default instance | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `(anon)::RunHloScheduler` (Config-build region) | `0x109718C0..0x10971A99` | reads TCE; builds `SparseCoreQueueAssignmentConfig[-0x138]` |
+| `GetTpuCompEnv` | `0x1D73DD20` | returns `TpuCompilationEnvironment` `_impl_` |
+| `AutoOr<long>::FromProtoOrDie` | `0x1092F7E0` | packed `{value rax, has-bit dl}` reader |
+| `HloPassPipeline::AddPass<SparseCoreQueueAssignment,…>` | `0x10975FC0` | three `vmovups`; Config → `obj[+0x18..]` |
+| `TpuCompilationEnvironment::_InternalSerialize` | `0x1DB41DC0` | field-number decode source |
+| `AutoProto_globals_` | `0x223C8968` | null-TCE fallback default instance |
 
 ---
 
@@ -242,13 +241,13 @@ The scheduler refuses to co-issue more than `limit` async ops of a given resourc
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `SparseCoreQueueAssignment::GetAllowedCores` | `0x10FDA3C0` | candidate-mask build; reads `[hlo+0xC0]`, not `[this+0xC0]` | CONFIRMED |
-| `SparseCoreQueueAssignment::AssignQueueIDsToAsyncStart` | `0x10FDF480` | per-collective driver; no map read | CONFIRMED |
-| `TpuAsyncTracker::GetNumAvailableResources` | `0x10FFF600` | live per-resource co-issue cap (the real enforcer) | CONFIRMED |
-| `AsyncTracker::SetConcurrentResourceLimits` | `0x13615800` | builds the live `resource_type→limit` map | CONFIRMED |
-| `(anon)::GetTpuAsyncTracker` | `0x10975520` | reads `1088..1092`/`1130` (AUTO → `INT64_MAX`) for the tracker | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `SparseCoreQueueAssignment::GetAllowedCores` | `0x10FDA3C0` | candidate-mask build; reads `[hlo+0xC0]`, not `[this+0xC0]` |
+| `SparseCoreQueueAssignment::AssignQueueIDsToAsyncStart` | `0x10FDF480` | per-collective driver; no map read |
+| `TpuAsyncTracker::GetNumAvailableResources` | `0x10FFF600` | live per-resource co-issue cap (the real enforcer) |
+| `AsyncTracker::SetConcurrentResourceLimits` | `0x13615800` | builds the live `resource_type→limit` map |
+| `(anon)::GetTpuAsyncTracker` | `0x10975520` | reads `1088..1092`/`1130` (AUTO → `INT64_MAX`) for the tracker |
 
 ---
 

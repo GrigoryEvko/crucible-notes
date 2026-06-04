@@ -33,29 +33,29 @@ For an auditor, the contract of this page is:
 
 The table below is the master index. Each row is one open item; the **Confidence** column grades how confidently the gap can be *closed* given the evidence named in the blocking-evidence column — `HIGH` means a bounded manual pass over identified addresses closes it, `LOW` means closing it needs evidence the binary does not contain (a powered device, a newer build). Rows that read `CLOSED` are kept to show the register is live; their detail is in the [§CLOSED-by-Correction](#closed-by-correction-the-graveyard) section.
 
-| Open item | Category | Blocking evidence to close it | Owning page | Confidence (closeable) |
-|---|---|---|---|---|
-| ~21 template/codegen functions with no `cfunc` | Decompile wall | Manual disasm of named addresses; raise lift budget | [methodology-deep](methodology-deep.md) | HIGH |
-| dnnl JIT + BoringSSL asm stubs unrecoverable as C | Decompile wall | None — assembly with no C source; read the disasm | [embedded-library-atlas](../forensics/embedded-library-atlas.md) | CERTAIN (won't improve) |
-| PJRT vtable slots populated by framework at `Create` | HW-dependent | A live `PJRT_Client_Create` trace on a TPU | [client-and-device](../pjrt/client-and-device.md) | LOW |
-| `FLAGS_enable_runtime_uptime_telemetry` live values | HW-dependent | On-device runtime; telemetry is read, not stored | [stream-executor-pjrt-adapter](../pjrt/stream-executor-pjrt-adapter.md) | LOW |
-| Flag defaults that resolve against device state | HW-dependent | Device-resident config; static default may be a sentinel | [flag-catalog-full](flag-catalog-full.md) | LOW |
-| `chip_config` (driver-side) vs `chip_parts` (geometry) split | CLOSED (recovered) | Recovered: `kChipConfigAliases` (`0x2200b8b0`) is a static 4-entry `flat_map` keyed by `TpuVersion` {2,3,4,5} (variant `"default"`); v4/v5 share one alias sub-map. Per-`TpuVersion` consumer split is fully static, not device-probed | [per-gen-comparison-matrix](per-gen-comparison-matrix.md) | CLOSED |
-| `issue_latency_cycle_count` absent in every embedded blob | Per-gen gap | A build whose `chip_parts` populates field 4 | [per-gen-comparison-matrix](per-gen-comparison-matrix.md) | LOW |
-| 834 stream-op per-leaf `(pattern,verb,dtype,space)` opcode | CLOSED (negative result) | No per-leaf static table exists: the slot command is runtime-assembled in `SparseCoreStreamEncoder::Encode` (`0x1eb9b4c0`) from 4 orthogonal proto bitfields — form (bits 53–58: linear `0x3b`/strided `0x3a`/indirect `0x39`), verb `(dword[+0x18]>>9)&7`, dtype `(>>0xc)&1`, memspace `(qword[+0x10]>>0x2f)&7`. Open `INFERRED` → proven composed-not-per-leaf | [llvmtpu-intrinsic-table](llvmtpu-intrinsic-table.md) | CLOSED |
-| 890 default-builder ops' exact arity + result predicate | RECOVERED (arity) / NEGATIVE (predicate) | Arity byte-read from each op's mangled `Op<…OneResult/ZeroResults…NOperands<Lj N>…>` trait pack — `(#res,#operands)` shape for 1060 of 1356, full census tabulated. Result predicate: no per-op `Vreg`/`Mask`/`Scalar`/`Ptr` at the MLIR layer — all generic `OneTypedResult<mlir::Type>` + one shared `isCompatibleOuterType` | [llvmtpu-intrinsic-table](llvmtpu-intrinsic-table.md) | CLOSED |
-| Per-intrinsic LLVM `IntrProperties` bits | RECOVERED | Decoded: `set = IntrinsicsToAttributesMap[ID−1] >> 9` (`@0x416fb30`); all 12 fn-attr sets byte-decoded, per-set census exact (sums to 1356), 16-leaf sample byte-verified; per-leaf for the 1340 others is a deterministic one-halfword lookup | [llvmtpu-intrinsic-table](llvmtpu-intrinsic-table.md) | CLOSED |
-| `#1092` structured-sparsity slot encoding | CLOSED (recovered) | Recovered: there is **no** dedicated sparsity bundle slot — sparsity rides in the packed MXU operand layout (`SparsityConfig`, 1:N restriction, SME outer-product gate) | [slot-sparsity-v5plus](../isa/slot-sparsity-v5plus.md) | CLOSED |
-| `#1096` per-gen NOP canonical templates | CLOSED (recovered) | Recovered: two orthogonal no-ops — empty-slot predicate `kNeverExecute=31` fill + opcode-space all-ones NOP (`CORRECTION NOP-1`: the default bundle halts) | [nop-canonical](../isa/nop-canonical.md) | CLOSED |
-| `#1171` `TpuVersion`-aware flag-prefix dispatch | CLOSED (recovered) | Recovered: codename-prefixed flags are registered unconditionally and applied gen-blind (`CORRECTION DISPATCH-1`); the active gen selects only data/codec, not flag gating | [flag-prefix-dispatch](../config/flag-prefix-dispatch.md) | CLOSED |
-| `P-3-478` `InitializeOnScs` lookup-callback edge | CLOSED (recovered) | Recovered: `InitializeOnScs` (`0x1337aa60`) folds the core index then `call *0x98(%rbx)` into `ExplicitRingRecord` (`0x133a9a40`) / `ExplicitAllToAllRingRecord` (`0x133a94a0`), writing `(ordinal, next_chip, reorder)` to strategy `+0x58`/`+0x60`/`+0x78` | [tensorcore-barrier](../barrier/tensorcore-barrier.md) | CLOSED |
-| `P-3-480` `LatencyTable::Create(TpuVersion)` factory tail | CLOSED (recovered) | Recovered: not a `cmp`-switch — a flat ordinal-indexed `inlined_vector<AnyInvocable>` registry (`0x225799f8`) populated by five static-init TU initializers; `registry[version](entry)` via `call *0x18`, per-gen invoker→ctor byte-traced | [cycletable-family](../cost/cycletable-family.md) | CLOSED |
-| `P-3-481` `SetLatchIndices` per-gen overrun handshake | CLOSED (recovered) | Recovered: gate is `idx==0 && !GainLatchModeHasOverrunChecks(latch_mode)` (vtable `+0x358`); only `ViperfishTarget::HasMsrOverrunChecks` (`0x1d49aac0` = `mov $1`) returns TRUE, so only v5 indexes the first latch | [latch-assignment-overrun](../sched/latch-assignment-overrun.md) | CLOSED |
-| `P-3-482` cmem-load / sparsity DMA edge | CLOSED (non-edge) | Non-edge: `EmitVectorCmemLoad` (`0x14120a40`) calls only SlotMap binders — no DMA/sparsity callee. Sparsity is v5+ SparseCore (`gxc::*`); v4 `pxc::isa` has no sparsity codec; the two never co-occur | [slot-cmem-load-pf](../isa/slot-cmem-load-pf.md) | CLOSED |
-| trailing-zstd blob → per-codename constants | CLOSED | — overturned: no blob exists | [trailing-zstd-blob](../forensics/trailing-zstd-blob.md) | CLOSED |
-| "walrus" pass-pipeline driver | CLOSED | — overturned: zero occurrences in binary | [glossary](../glossary.md) | CLOSED |
-| naive `_Z`-prefix demangle rate (98%) | CLOSED | — overturned: field-backed rate is 93.0% | [methodology-deep](methodology-deep.md) | CLOSED |
-| 7 `illegal_addr` analysis problems | CLOSED (triaged) | — triaged: 6 are an intentional `call *0x10` near-null trap in gRPC filter epilogues, 1 is a `.rodata` jump-table IDA misaligned into; no reloc, no out-of-segment data ref | [§The 7 illegal_addr Anomalies](#the-7-illegal_addr-anomalies--triage-closed) | CLOSED |
+| Open item | Category | Blocking evidence to close it | Owning page |
+|---|---|---|---|
+| ~21 template/codegen functions with no `cfunc` | Decompile wall | Manual disasm of named addresses; raise lift budget | [methodology-deep](methodology-deep.md) |
+| dnnl JIT + BoringSSL asm stubs unrecoverable as C | Decompile wall | None — assembly with no C source; read the disasm | [embedded-library-atlas](../forensics/embedded-library-atlas.md) |
+| PJRT vtable slots populated by framework at `Create` | HW-dependent | A live `PJRT_Client_Create` trace on a TPU | [client-and-device](../pjrt/client-and-device.md) |
+| `FLAGS_enable_runtime_uptime_telemetry` live values | HW-dependent | On-device runtime; telemetry is read, not stored | [stream-executor-pjrt-adapter](../pjrt/stream-executor-pjrt-adapter.md) |
+| Flag defaults that resolve against device state | HW-dependent | Device-resident config; static default may be a sentinel | [flag-catalog-full](flag-catalog-full.md) |
+| `chip_config` (driver-side) vs `chip_parts` (geometry) split | CLOSED (recovered) | Recovered: `kChipConfigAliases` (`0x2200b8b0`) is a static 4-entry `flat_map` keyed by `TpuVersion` {2,3,4,5} (variant `"default"`); v4/v5 share one alias sub-map. Per-`TpuVersion` consumer split is fully static, not device-probed | [per-gen-comparison-matrix](per-gen-comparison-matrix.md) |
+| `issue_latency_cycle_count` absent in every embedded blob | Per-gen gap | A build whose `chip_parts` populates field 4 | [per-gen-comparison-matrix](per-gen-comparison-matrix.md) |
+| 834 stream-op per-leaf `(pattern,verb,dtype,space)` opcode | CLOSED (negative result) | No per-leaf static table exists: the slot command is runtime-assembled in `SparseCoreStreamEncoder::Encode` (`0x1eb9b4c0`) from 4 orthogonal proto bitfields — form (bits 53–58: linear `0x3b`/strided `0x3a`/indirect `0x39`), verb `(dword[+0x18]>>9)&7`, dtype `(>>0xc)&1`, memspace `(qword[+0x10]>>0x2f)&7`. Open `INFERRED` → proven composed-not-per-leaf | [llvmtpu-intrinsic-table](llvmtpu-intrinsic-table.md) |
+| 890 default-builder ops' exact arity + result predicate | RECOVERED (arity) / NEGATIVE (predicate) | Arity byte-read from each op's mangled `Op<…OneResult/ZeroResults…NOperands<Lj N>…>` trait pack — `(#res,#operands)` shape for 1060 of 1356, full census tabulated. Result predicate: no per-op `Vreg`/`Mask`/`Scalar`/`Ptr` at the MLIR layer — all generic `OneTypedResult<mlir::Type>` + one shared `isCompatibleOuterType` | [llvmtpu-intrinsic-table](llvmtpu-intrinsic-table.md) |
+| Per-intrinsic LLVM `IntrProperties` bits | RECOVERED | Decoded: `set = IntrinsicsToAttributesMap[ID−1] >> 9` (`@0x416fb30`); all 12 fn-attr sets byte-decoded, per-set census exact (sums to 1356), 16-leaf sample byte-verified; per-leaf for the 1340 others is a deterministic one-halfword lookup | [llvmtpu-intrinsic-table](llvmtpu-intrinsic-table.md) |
+| `#1092` structured-sparsity slot encoding | CLOSED (recovered) | Recovered: there is **no** dedicated sparsity bundle slot — sparsity rides in the packed MXU operand layout (`SparsityConfig`, 1:N restriction, SME outer-product gate) | [slot-sparsity-v5plus](../isa/slot-sparsity-v5plus.md) |
+| `#1096` per-gen NOP canonical templates | CLOSED (recovered) | Recovered: two orthogonal no-ops — empty-slot predicate `kNeverExecute=31` fill + opcode-space all-ones NOP (`CORRECTION NOP-1`: the default bundle halts) | [nop-canonical](../isa/nop-canonical.md) |
+| `#1171` `TpuVersion`-aware flag-prefix dispatch | CLOSED (recovered) | Recovered: codename-prefixed flags are registered unconditionally and applied gen-blind (`CORRECTION DISPATCH-1`); the active gen selects only data/codec, not flag gating | [flag-prefix-dispatch](../config/flag-prefix-dispatch.md) |
+| `P-3-478` `InitializeOnScs` lookup-callback edge | CLOSED (recovered) | Recovered: `InitializeOnScs` (`0x1337aa60`) folds the core index then `call *0x98(%rbx)` into `ExplicitRingRecord` (`0x133a9a40`) / `ExplicitAllToAllRingRecord` (`0x133a94a0`), writing `(ordinal, next_chip, reorder)` to strategy `+0x58`/`+0x60`/`+0x78` | [tensorcore-barrier](../barrier/tensorcore-barrier.md) |
+| `P-3-480` `LatencyTable::Create(TpuVersion)` factory tail | CLOSED (recovered) | Recovered: not a `cmp`-switch — a flat ordinal-indexed `inlined_vector<AnyInvocable>` registry (`0x225799f8`) populated by five static-init TU initializers; `registry[version](entry)` via `call *0x18`, per-gen invoker→ctor byte-traced | [cycletable-family](../cost/cycletable-family.md) |
+| `P-3-481` `SetLatchIndices` per-gen overrun handshake | CLOSED (recovered) | Recovered: gate is `idx==0 && !GainLatchModeHasOverrunChecks(latch_mode)` (vtable `+0x358`); only `ViperfishTarget::HasMsrOverrunChecks` (`0x1d49aac0` = `mov $1`) returns TRUE, so only v5 indexes the first latch | [latch-assignment-overrun](../sched/latch-assignment-overrun.md) |
+| `P-3-482` cmem-load / sparsity DMA edge | CLOSED (non-edge) | Non-edge: `EmitVectorCmemLoad` (`0x14120a40`) calls only SlotMap binders — no DMA/sparsity callee. Sparsity is v5+ SparseCore (`gxc::*`); v4 `pxc::isa` has no sparsity codec; the two never co-occur | [slot-cmem-load-pf](../isa/slot-cmem-load-pf.md) |
+| trailing-zstd blob → per-codename constants | CLOSED | — overturned: no blob exists | [trailing-zstd-blob](../forensics/trailing-zstd-blob.md) |
+| "walrus" pass-pipeline driver | CLOSED | — overturned: zero occurrences in binary | [glossary](../glossary.md) |
+| naive `_Z`-prefix demangle rate (98%) | CLOSED | — overturned: field-backed rate is 93.0% | [methodology-deep](methodology-deep.md) |
+| 7 `illegal_addr` analysis problems | CLOSED (triaged) | — triaged: 6 are an intentional `call *0x10` near-null trap in gRPC filter epilogues, 1 is a `.rodata` jump-table IDA misaligned into; no reloc, no out-of-segment data ref | [§The 7 illegal_addr Anomalies](#the-7-illegal_addr-anomalies--triage-closed) |
 
 > **NOTE —** the Confidence column on this page is deliberately *not* the four-level behavioral scale that [evidence-conventions](../front/evidence-conventions.md) defines for the rest of the book. Here it grades the **tractability of closing the gap**: `HIGH`/`MEDIUM` items are bounded static work this corpus already contains the inputs for; `LOW` items need a powered device or a different build; `CERTAIN (won't improve)` items are at their permanent floor.
 
@@ -94,11 +94,11 @@ A breakdown of the 516 by address band and demangled name puts every refusal int
 
 ### What Closes Each Bucket
 
-| Bucket | Count | Closeable by | Confidence (closeable) |
-|---|---|---|---|
-| Import / data stubs | 486 | Already closed by symbol name; no decompilation owed | CERTAIN |
-| Hand-written assembly | 9 | Reading the disassembly; the `cfunc` will never exist | CERTAIN (floor) |
-| Template / codegen giants | ~21 | Manual disasm pass over the named addresses; some lift with a raised budget | HIGH |
+| Bucket | Count | Closeable by |
+|---|---|---|
+| Import / data stubs | 486 | Already closed by symbol name; no decompilation owed |
+| Hand-written assembly | 9 | Reading the disassembly; the `cfunc` will never exist |
+| Template / codegen giants | ~21 | Manual disasm pass over the named addresses; some lift with a raised budget |
 
 > **QUIRK —** the largest single refusal, `mlir::Dialect::addOperations<…>` at `0xfedc180`, is one C++ call that registers the entire TensorFlow MLIR op set — over a thousand op classes as template arguments in a single statement. It is not algorithmically interesting; recovering it yields a flat registration list, not logic. It sits on the frontier only because the decompiler refused it, not because a reimplementer needs its body. The `jellyfish::ReduceEmitter::EmitReduction` refusal (`0x13e16240`) is the inverse — genuinely interesting reduction-emission logic behind a deeply nested `btree_map` signature — and was the one template-explosion refusal worth a targeted manual pass. That pass is **done**: a windowed disassembly of `0x13e16240`–`0x13e16720` recovered it as a thin axis dispatcher (validate → two axis bits → tail-call one of five specialized emitters), written up in [fusion-patterns § ReduceEmitter::EmitReduction](../compiler/fusion-patterns.md#reduceemitteremitreduction--the-axis-dispatcher-behind-reducefuser). The TPU-IP half of the residual wall is therefore closed — what remains is registration boilerplate (`addOperations`) and upstream-LLVM/XLA giants whose logic is recoverable but not TPU-specific.
 
@@ -144,15 +144,15 @@ LOAD  VirtAddr 0x222551c0  FileSiz 0x0026e6a0  Flg RW
 LOAD  VirtAddr 0x22798c30  FileSiz 0x00021c00  Flg RW
 ```
 
-| Site (instr addr) | Decoded operand | Falls in | Relocation? | Classification | Confidence (closeable) |
-|---|---|---|---|---|---|
-| `0x20062a67` | `call *0x10` (`ff 14 25 10 00 00 00`) | abs `0x10` → in **no** `PT_LOAD` (ELF-header gap, below LOAD1 VMA 0) | **none** (`readelf -rW` empty at site; `0x10` unpatched) | Near-null absolute indirect call; intentional unreachable/abort tail of a fused gRPC filter epilogue | CLOSED — confirmed artifact |
-| `0x2006a8a4` | `call *0x10` (identical 7 bytes) | abs `0x10` → no `PT_LOAD` | none | same idiom (different filter fusion) | CLOSED |
-| `0x20070a95` | `call *0x10` (identical) | abs `0x10` → no `PT_LOAD` | none | same idiom | CLOSED |
-| `0x20074db2` | `call *0x10` (identical) | abs `0x10` → no `PT_LOAD` | none | same idiom | CLOSED |
-| `0x20079a52` | `call *0x10` (identical) | abs `0x10` → no `PT_LOAD` | none | same idiom | CLOSED |
-| `0x2007e7b5` | `call *0x10` (identical) | abs `0x10` → no `PT_LOAD` | none | same idiom | CLOSED |
-| `0xee6c96b` | mid-`lea` of `lea -0x4af7817(%rip),%rsi # 0xa375158` | table base `0xa375158` → **`.rodata`** (sec [11], `+0x1ed5158`) | none needed (RIP-relative, no dynamic reloc) | Jump-table dispatch; flagged byte is inside the `lea` of a `movslq (%rsi,%rdx,4); add %rsi,%rdx; jmp *%rdx` switch — IDA failed to follow the computed table, base is valid | CLOSED — analysis miss, no gap |
+| Site (instr addr) | Decoded operand | Falls in | Relocation? | Classification |
+|---|---|---|---|---|
+| `0x20062a67` | `call *0x10` (`ff 14 25 10 00 00 00`) | abs `0x10` → in **no** `PT_LOAD` (ELF-header gap, below LOAD1 VMA 0) | **none** (`readelf -rW` empty at site; `0x10` unpatched) | Near-null absolute indirect call; intentional unreachable/abort tail of a fused gRPC filter epilogue |
+| `0x2006a8a4` | `call *0x10` (identical 7 bytes) | abs `0x10` → no `PT_LOAD` | none | same idiom (different filter fusion) |
+| `0x20070a95` | `call *0x10` (identical) | abs `0x10` → no `PT_LOAD` | none | same idiom |
+| `0x20074db2` | `call *0x10` (identical) | abs `0x10` → no `PT_LOAD` | none | same idiom |
+| `0x20079a52` | `call *0x10` (identical) | abs `0x10` → no `PT_LOAD` | none | same idiom |
+| `0x2007e7b5` | `call *0x10` (identical) | abs `0x10` → no `PT_LOAD` | none | same idiom |
+| `0xee6c96b` | mid-`lea` of `lea -0x4af7817(%rip),%rsi # 0xa375158` | table base `0xa375158` → **`.rodata`** (sec [11], `+0x1ed5158`) | none needed (RIP-relative, no dynamic reloc) | Jump-table dispatch; flagged byte is inside the `lea` of a `movslq (%rsi,%rdx,4); add %rsi,%rdx; jmp *%rdx` switch — IDA failed to follow the computed table, base is valid |
 
 Evidence quoted:
 
@@ -201,10 +201,10 @@ The hinted gap — "older codenames ship only as `chip_configs`, not `chip_parts
 
 ### The Genuine Residual
 
-| Residual gap | Why it is open | Closeable by | Confidence |
-|---|---|---|---|
-| `chip_config` (driver) vs `chip_parts` (geometry) consumer split | RECOVERED — `kChipConfigAliases` is a static 4-entry `flat_map<TpuVersionAndVariant, MapView>` keyed by `TpuVersion` {2,3,4,5} (all variant `"default"`); v4/v5 share one sub-map; alias vocab `default`/`legacy`/`megacore`/`megachip`/`megachip_tccontrol` | per-`TpuVersion` split is static, not device-probed; only the type-erased MapView key→value direction is residual | CLOSED |
-| `issue_latency_cycle_count` (`VectorIsa` field 4) | **Absent (proto default 0) in every embedded blob** — real per-gen issue latency lives in the cost-model `Performance` grids, not `chip_parts` | A build whose `chip_parts` populates field 4 — may never exist | LOW |
+| Residual gap | Why it is open | Closeable by |
+|---|---|---|
+| `chip_config` (driver) vs `chip_parts` (geometry) consumer split | RECOVERED — `kChipConfigAliases` is a static 4-entry `flat_map<TpuVersionAndVariant, MapView>` keyed by `TpuVersion` {2,3,4,5} (all variant `"default"`); v4/v5 share one sub-map; alias vocab `default`/`legacy`/`megacore`/`megachip`/`megachip_tccontrol` | per-`TpuVersion` split is static, not device-probed; only the type-erased MapView key→value direction is residual |
+| `issue_latency_cycle_count` (`VectorIsa` field 4) | **Absent (proto default 0) in every embedded blob** — real per-gen issue latency lives in the cost-model `Performance` grids, not `chip_parts` | A build whose `chip_parts` populates field 4 — may never exist |
 
 > **GOTCHA —** `issue_latency_cycle_count` is the trap. The field exists in the `chip_parts` schema but is never populated in this build (it reads as proto default 0 for all gens). A reimplementer must **not** read MXU/VPU issue latency from `chip_parts`; the live value is queried through `CycleTable::GetCyclesForThroughput` (per-gen vtable slot `+0x10`). The `chip_parts` zero is not the answer — it is the absence of an answer.
 
@@ -220,11 +220,11 @@ The fourth category is edges the wiki traced by *name-family agreement* — conf
 
 The [LLVMTPU intrinsic table](llvmtpu-intrinsic-table.md) recovers all **1356 distinct `llvm.tpu.*` intrinsics** two independent ways. Three leaf-level facts remain inferred:
 
-| Inferred link | What is known | What is not yet byte-confirmed | Confidence (closeable) |
-|---|---|---|---|
-| 834 stream ops | **RESOLVED (negative result)** — class→engine + lowering located; encoder `Encode` (`0x1eb9b4c0`) 11-arm proto-oneof + 4 byte-verified field accessors | the numeric command is runtime-**composed** from (form,verb,dtype,memspace) bitfields — there is no static per-leaf command table to dump | CLOSED |
-| 890 default-builder ops | **RECOVERED** — `(#res,#operands)` byte-read from the `Op<…>` trait pack for 1060/1356 (full census tabulated); stream split 6/8/9, DMA 11/12-iova corrections surfaced | result `TypeConstraint` is a **negative result**: no per-op register-class predicate at the MLIR layer (all `OneTypedResult<mlir::Type>` + `isCompatibleOuterType`) — refinement lives only in the downstream LLVM intrinsic signature | CLOSED |
-| Per-intrinsic `IntrProperties` | **RECOVERED** — the `IntrNoMem`/`IntrArgMemOnly`/`IntrWillReturn`/… bits via `set = IntrinsicsToAttributesMap[ID−1] >> 9` (`@0x416fb30`); all 12 fn-attr sets byte-decoded, census exact (1356), 16-leaf sample byte-verified | per-leaf set for the 1340 non-sampled IDs not individually transcribed (deterministic one-halfword lookup) | CLOSED |
+| Inferred link | What is known | What is not yet byte-confirmed |
+|---|---|---|
+| 834 stream ops | **RESOLVED (negative result)** — class→engine + lowering located; encoder `Encode` (`0x1eb9b4c0`) 11-arm proto-oneof + 4 byte-verified field accessors | the numeric command is runtime-**composed** from (form,verb,dtype,memspace) bitfields — there is no static per-leaf command table to dump |
+| 890 default-builder ops | **RECOVERED** — `(#res,#operands)` byte-read from the `Op<…>` trait pack for 1060/1356 (full census tabulated); stream split 6/8/9, DMA 11/12-iova corrections surfaced | result `TypeConstraint` is a **negative result**: no per-op register-class predicate at the MLIR layer (all `OneTypedResult<mlir::Type>` + `isCompatibleOuterType`) — refinement lives only in the downstream LLVM intrinsic signature |
+| Per-intrinsic `IntrProperties` | **RECOVERED** — the `IntrNoMem`/`IntrArgMemOnly`/`IntrWillReturn`/… bits via `set = IntrinsicsToAttributesMap[ID−1] >> 9` (`@0x416fb30`); all 12 fn-attr sets byte-decoded, census exact (1356), 16-leaf sample byte-verified | per-leaf set for the 1340 non-sampled IDs not individually transcribed (deterministic one-halfword lookup) |
 
 > **QUIRK —** the 834-way stream-op explosion *is* the encoding — there is no single parameterized `llvm.tpu.stream` op. The frontier here is not "find the parameterization" (there is none); it is "byte-dump the matcher arm for each of the 834 leaves." That is bounded work, but 834 leaves of it, which is why the closeability is `MEDIUM` rather than `HIGH` despite the path being known.
 
@@ -244,12 +244,12 @@ This band was originally five `O`-graded tasks whose deep pages existed as stubs
 
 ### The Five Tasks (all now resolved)
 
-| Task | Topic | Owning page (current state) | What closed / closes it | Confidence |
-|---|---|---|---|---|
-| `#1092` | Structured-sparsity slot encoding (v5+) | [slot-sparsity-v5plus](../isa/slot-sparsity-v5plus.md) — RECOVERED | Closed: no dedicated slot; sparsity lives in the packed MXU operand layout | CLOSED |
-| `#1096` | Per-gen NOP canonical templates | [nop-canonical](../isa/nop-canonical.md) — RECOVERED | Closed: predicate `kNeverExecute=31` fill + all-ones opcode NOP (`CORRECTION NOP-1`) | CLOSED |
-| `#1171` | `TpuVersion`-aware flag-prefix dispatch | [flag-prefix-dispatch](../config/flag-prefix-dispatch.md) — RECOVERED | Closed: flags registered gen-blind (`CORRECTION DISPATCH-1`) | CLOSED |
-| `P-3-478..482` | SparseCore / DMA edges (cluster) | barrier / cost / sched / isa pages — RECOVERED | Closed: callbacks/factory/overrun byte-traced; the cmem-load/sparsity "edge" is a confirmed non-edge | CLOSED |
+| Task | Topic | Owning page (current state) | What closed / closes it |
+|---|---|---|---|
+| `#1092` | Structured-sparsity slot encoding (v5+) | [slot-sparsity-v5plus](../isa/slot-sparsity-v5plus.md) — RECOVERED | Closed: no dedicated slot; sparsity lives in the packed MXU operand layout |
+| `#1096` | Per-gen NOP canonical templates | [nop-canonical](../isa/nop-canonical.md) — RECOVERED | Closed: predicate `kNeverExecute=31` fill + all-ones opcode NOP (`CORRECTION NOP-1`) |
+| `#1171` | `TpuVersion`-aware flag-prefix dispatch | [flag-prefix-dispatch](../config/flag-prefix-dispatch.md) — RECOVERED | Closed: flags registered gen-blind (`CORRECTION DISPATCH-1`) |
+| `P-3-478..482` | SparseCore / DMA edges (cluster) | barrier / cost / sched / isa pages — RECOVERED | Closed: callbacks/factory/overrun byte-traced; the cmem-load/sparsity "edge" is a confirmed non-edge |
 
 The `P-3-478..482` cluster was a band of related SparseCore and DMA edges feeding completed pages; it is now fully resolved. `P-3-478` — the `InitializeOnScs` lookup-callback target — is byte-traced to `call *0x98` → `ExplicitRingRecord`/`ExplicitAllToAllRingRecord` writing `(ordinal, next_chip, reorder)` ([tensorcore-barrier](../barrier/tensorcore-barrier.md)). `P-3-480` — the tail of `LatencyTable::Create(TpuVersion)` — is recovered as a flat ordinal-indexed `AnyInvocable` registry populated by five static-init TU initializers ([cycletable-family](../cost/cycletable-family.md)). `P-3-481` — the `SetLatchIndices` per-gen overrun handshake — gates on `ViperfishTarget::HasMsrOverrunChecks` (the only gen returning TRUE), so only v5 indexes the first latch ([latch-assignment-overrun](../sched/latch-assignment-overrun.md)). `P-3-482` — the supposed cmem-load → sparsity DMA edge — is a confirmed **non-edge**: the v4 cmem-load emit chain touches no DMA or sparsity path, and sparsity is a disjoint v5+ SparseCore ISA ([slot-cmem-load-pf](../isa/slot-cmem-load-pf.md)).
 

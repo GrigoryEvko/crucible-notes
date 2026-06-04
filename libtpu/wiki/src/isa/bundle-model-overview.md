@@ -57,14 +57,14 @@ The compiler-side `Bundle` object models exactly one such word. It is not a gene
 
 The bundle byte-width is fixed per `TpuVersion` and is the single most load-anchored fact in the model: each per-generation codec returns it as an inline constant. The TPU has exactly six versions — `tpu::TpuVersionToString` (`0x20b3a480`) indexes a 6-entry pointer table (`off_22011BF0`) and calls `LogMessageFatal` for any version `≥ 6` — and their codenames (`kJellyfish`, `kDragonfish`, `kPufferfish`, `kViperfish`, `kGhostlite`, `k6acc60406`) all appear verbatim in the binary's `.rodata`.
 
-| `TpuVersion` | Codename | Public name | Bundle bytes | Width source | Confidence |
-|---|---|---|---:|---|---|
-| 0 | Jellyfish | TPU v2 | **41** | `JellyfishCodecMetadata::BundleSizeBytes` @ `0x1ecf7460` `return 41` | CONFIRMED |
-| 1 | Dragonfish | TPU v3 | 41 | shares Jellyfish codec metadata (component 0) | HIGH |
-| 2 | Pufferfish | TPU v4 | **51** | `EncoderPfTensorCore::BundleSizeBytes` @ `0x1d227740` `return 51`; `PufferfishCodecMetadata::BundleSizeBytes` @ `0x1ecf7ac0` `return 51` | CONFIRMED |
-| 3 | Viperfish | TPU v5 | **64** | `ViperfishCodecMetadata::BundleSizeBytes` @ `0x1ee71320` `return 64` | CONFIRMED |
-| 4 | Ghostlite | TPU v6 lite | **64** | `GhostliteCodecMetadata::BundleSizeBytes` @ `0x1eeb7640` `return 64` | CONFIRMED |
-| 5 | 6acc60406 | TPU7x | 64 | registered codec metadata; same 64-B class as v5+ | MEDIUM |
+| `TpuVersion` | Codename | Public name | Bundle bytes | Width source |
+|---|---|---|---:|---|
+| 0 | Jellyfish | TPU v2 | **41** | `JellyfishCodecMetadata::BundleSizeBytes` @ `0x1ecf7460` `return 41` |
+| 1 | Dragonfish | TPU v3 | 41 | shares Jellyfish codec metadata (component 0) |
+| 2 | Pufferfish | TPU v4 | **51** | `EncoderPfTensorCore::BundleSizeBytes` @ `0x1d227740` `return 51`; `PufferfishCodecMetadata::BundleSizeBytes` @ `0x1ecf7ac0` `return 51` |
+| 3 | Viperfish | TPU v5 | **64** | `ViperfishCodecMetadata::BundleSizeBytes` @ `0x1ee71320` `return 64` |
+| 4 | Ghostlite | TPU v6 lite | **64** | `GhostliteCodecMetadata::BundleSizeBytes` @ `0x1eeb7640` `return 64` |
+| 5 | 6acc60406 | TPU7x | 64 | registered codec metadata; same 64-B class as v5+ |
 
 The dispatch from a `TpuVersion` to its width is a two-step indirection, not a `switch`:
 
@@ -99,11 +99,11 @@ offset = (n / 3) * 128                                // 3 bundles per 128-B chu
 
 Two constants fall out, both matching the documented model: **3 bundles per DMA chunk** (the `n / 3` grouping) and a **128-byte chunk granularity**. The `BundleSizeBytes() + 2` stride (43 bytes for Jellyfish) is the per-bundle slot inside the chunk; three of them (129 bytes of payload) round up to the 128-byte aligned chunk with the chunk header. The "exceeds limit of bundles-per-chunk" assertion string is the binary's own name for the constant.
 
-| Generation | Issue bundle (B) | HBM bundle (B) | Bundles / DMA chunk | Source | Confidence |
-|---|---:|---:|---:|---|---|
-| Jellyfish | 41 | 42 | 3 | `BundleSizeBytesForHbm` @ `0x1ecf74c0`; `GetBundleByteOffset` @ `0x1e86db80` | CONFIRMED |
-| Pufferfish | 51 | (codec-metadata `ForHbm`) | 10 | `EncoderPfTensorCore::BundleSizeBytesForDma` @ `0x1d227760` | MEDIUM |
-| Viperfish+ | 64 | 64 | 1 | per-gen `BundleSizeBytesForDma` (vtable) | MEDIUM |
+| Generation | Issue bundle (B) | HBM bundle (B) | Bundles / DMA chunk | Source |
+|---|---:|---:|---:|---|
+| Jellyfish | 41 | 42 | 3 | `BundleSizeBytesForHbm` @ `0x1ecf74c0`; `GetBundleByteOffset` @ `0x1e86db80` |
+| Pufferfish | 51 | (codec-metadata `ForHbm`) | 10 | `EncoderPfTensorCore::BundleSizeBytesForDma` @ `0x1d227760` |
+| Viperfish+ | 64 | 64 | 1 | per-gen `BundleSizeBytesForDma` (vtable) |
 
 > **NOTE —** the bundles-per-chunk count is generation-specific and shrinks as the bundle widens: a 41-byte bundle packs 3 to a 128-byte chunk, while a 64-byte v5+ bundle effectively fills a chunk on its own. A reimplementation that hard-codes "3 bundles per chunk" misaligns every v4+ HBM image.
 
@@ -113,19 +113,19 @@ Two constants fall out, both matching the documented model: **3 bundles per DMA 
 
 A bundle's slots partition across the TensorCore's execution units. The compiler-side `Bundle` object encodes the partition as one typed sub-instruction per slot class; the names below are the concrete C++ types `EncodeBundleInternal` dispatches on, anchored to their decompiled symbol use in the Jellyfish encoder.
 
-| Slot class | `Bundle` sub-instruction | Drives | First gen | Slot page | Confidence |
-|---|---|---|---|---|---|
-| Sequencer / scalar | `ScalarInstruction` | SPU + control flow, loop counters, sync; one per bundle | Jellyfish | [SPU](slot-spu-scalar.md), [Sequencer](slot-sequencer.md) | CONFIRMED |
-| Vector ALU (VPU) | `VectorAluInstruction` | VPU lanes; count grows per gen (quad on Viperfish) | Jellyfish | [VPU](slot-vpu.md) | CONFIRMED |
-| EUP / transcendental | `VectorExtendedInstruction` | extended-unit transcendentals; also feeds the MXU (`DecodeVectorExtendedToMxuNum`) | Jellyfish | [EUP](slot-eup-transcendental.md), [MXU](slot-mxu.md) | CONFIRMED |
-| Vector load | `VectorLoadInstruction` | memory-load port; triple on Viperfish | Jellyfish | [Memory-Load](slot-memory-load.md) | CONFIRMED |
-| Vector store | `VectorStoreInstruction` | memory-store port | Jellyfish | [Memory-Store](slot-memory-store.md) | CONFIRMED |
-| Vector result | `VectorResultInstruction` | MXU result-FIFO read (latch result → vreg) | Jellyfish | [ResultFifo](resultfifo-archregister.md) | CONFIRMED |
-| Misc | `MiscInstruction` | mask/M-register, rotate-count, immediate set helpers | Jellyfish | [vcreate_mask](slot-vcreate-mask-mregister.md), [Immediate](slot-immediate.md) | CONFIRMED |
-| Bundle header | `HardwareBundleBits` | per-bundle predicate + boundary bits | Jellyfish | [Predicate](slot-predicate.md) | CONFIRMED |
-| cmem-load | `TensorCoreCmemLoad` | second-scratchpad load port | Pufferfish | [cmem_load](slot-cmem-load-pf.md) | CONFIRMED |
-| Sparsity | SparseCore sub-bundle | SparseCore control | Viperfish | [Sparsity](slot-sparsity-v5plus.md) | HIGH |
-| Predicate | dedicated predicate slot | up to 4 predicate-defining ops/bundle | 6acc60406 | [Predicate](slot-predicate.md) | MEDIUM |
+| Slot class | `Bundle` sub-instruction | Drives | First gen | Slot page |
+|---|---|---|---|---|
+| Sequencer / scalar | `ScalarInstruction` | SPU + control flow, loop counters, sync; one per bundle | Jellyfish | [SPU](slot-spu-scalar.md), [Sequencer](slot-sequencer.md) |
+| Vector ALU (VPU) | `VectorAluInstruction` | VPU lanes; count grows per gen (quad on Viperfish) | Jellyfish | [VPU](slot-vpu.md) |
+| EUP / transcendental | `VectorExtendedInstruction` | extended-unit transcendentals; also feeds the MXU (`DecodeVectorExtendedToMxuNum`) | Jellyfish | [EUP](slot-eup-transcendental.md), [MXU](slot-mxu.md) |
+| Vector load | `VectorLoadInstruction` | memory-load port; triple on Viperfish | Jellyfish | [Memory-Load](slot-memory-load.md) |
+| Vector store | `VectorStoreInstruction` | memory-store port | Jellyfish | [Memory-Store](slot-memory-store.md) |
+| Vector result | `VectorResultInstruction` | MXU result-FIFO read (latch result → vreg) | Jellyfish | [ResultFifo](resultfifo-archregister.md) |
+| Misc | `MiscInstruction` | mask/M-register, rotate-count, immediate set helpers | Jellyfish | [vcreate_mask](slot-vcreate-mask-mregister.md), [Immediate](slot-immediate.md) |
+| Bundle header | `HardwareBundleBits` | per-bundle predicate + boundary bits | Jellyfish | [Predicate](slot-predicate.md) |
+| cmem-load | `TensorCoreCmemLoad` | second-scratchpad load port | Pufferfish | [cmem_load](slot-cmem-load-pf.md) |
+| Sparsity | SparseCore sub-bundle | SparseCore control | Viperfish | [Sparsity](slot-sparsity-v5plus.md) |
+| Predicate | dedicated predicate slot | up to 4 predicate-defining ops/bundle | 6acc60406 | [Predicate](slot-predicate.md) |
 
 The MXU is not a single "slot" in the same sense as the others. Matrix work enters the array through the EUP / vector-extended path and a set of latch/matpush operations (`MxuAssigner`, `MxuSequence`, `MatrixMultiplyAccumulateFunctor`, `DistributeMatpushesEvenly`), and the result is read back later through the vector-result slot. The [MXU slot page](slot-mxu.md) and [matprep/IAR/latch page](slot-matprep-iar-latch.md) cover that two-phase model.
 
@@ -133,13 +133,13 @@ The MXU is not a single "slot" in the same sense as the others. Matrix work ente
 
 The bundle widens because the slot population grows. The byte-widths are byte-anchored (above); the slot counts are reconstructed from the per-generation slot types and bundle width and are best treated as the *shape* of the growth rather than load-anchored scalars.
 
-| Generation | Bundle B | Slots (approx) | What the wider word buys | Confidence |
-|---|---:|---:|---|---|
-| Jellyfish | 41 | ~9 | scalar + 1 VPU + EUP + load/store/result + misc + header | HIGH |
-| Pufferfish | 51 | ~12 | adds the `cmem_load` slot; widens the vector-extended path | MEDIUM |
-| Viperfish | 64 | ~16 | quad VPU, triple vector-load, `ScalarSubBundle`, SparseCore standard | MEDIUM |
-| Ghostlite | 64 | ~16 | same capacity as Viperfish; opcode/encoding deltas, adds a vector-misc slot | MEDIUM |
-| 6acc60406 | 64 | ~17 | adds a dedicated predicate slot (up to 4 predicate-defining ops) | LOW |
+| Generation | Bundle B | Slots (approx) | What the wider word buys |
+|---|---:|---:|---|
+| Jellyfish | 41 | ~9 | scalar + 1 VPU + EUP + load/store/result + misc + header |
+| Pufferfish | 51 | ~12 | adds the `cmem_load` slot; widens the vector-extended path |
+| Viperfish | 64 | ~16 | quad VPU, triple vector-load, `ScalarSubBundle`, SparseCore standard |
+| Ghostlite | 64 | ~16 | same capacity as Viperfish; opcode/encoding deltas, adds a vector-misc slot |
+| 6acc60406 | 64 | ~17 | adds a dedicated predicate slot (up to 4 predicate-defining ops) |
 
 > **NOTE —** the slot counts (9 / 12 / 16 / 16 / 17) are *not* directly extracted constants. The three byte-widths (41 / 51 / 64) are inline-constant returns from `BundleSizeBytes`, but the slot counts are derived from the per-gen slot-type roster (which typed sub-instructions each `Bundle` exposes) plus the bundle width. They are graded HIGH for Jellyfish (where `EncodeBundleInternal` enumerates the seven typed slot classes plus three header carriers) and MEDIUM/LOW for later generations until each per-gen `EncodeBundleInternal` is individually traced. The per-gen bundle pages ([Jellyfish](bundle-jf-41b.md), [Pufferfish](bundle-pf-51b.md), [Viperfish](bundle-vf-64b.md)) carry the confirmed maps.
 

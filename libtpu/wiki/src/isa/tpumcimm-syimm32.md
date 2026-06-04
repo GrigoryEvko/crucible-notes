@@ -53,12 +53,12 @@ For reimplementation, the contract is:
 
 The fields are independent. The `TPUMCImmKind` at `+0x18` is the *variant*; the encoding-id at `+0x29` is the *operand-encoding class*; the `h1`/imm-base at `+0x28` is a per-operand zero check (a call immediate must have `getImmBase() == 0`). Three accessors read the object:
 
-| Accessor | Address | Reads | Result | Confidence |
-|---|---|---|---|---|
-| `getSubKind` | `0x13c78da0` | (constant) | `1` — the `MCExpr::Kind==5` sub-discriminator that marks this a `TPUMCImmExpr` | CONFIRMED |
-| `getImmKind` | (inlined) | `+0x18` | the `TPUMCImmKind` | CONFIRMED |
-| `getImmBase` | (inlined) | `+0x28` | the `h1` byte (`== 0` for branch/call) | CONFIRMED |
-| `getBitWidth` | `0x13c78660` | `+0x2c` | `(TPUMCImmType < 2) ? 32 : 16` | CONFIRMED |
+| Accessor | Address | Reads | Result |
+|---|---|---|---|
+| `getSubKind` | `0x13c78da0` | (constant) | `1` — the `MCExpr::Kind==5` sub-discriminator that marks this a `TPUMCImmExpr` |
+| `getImmKind` | (inlined) | `+0x18` | the `TPUMCImmKind` |
+| `getImmBase` | (inlined) | `+0x28` | the `h1` byte (`== 0` for branch/call) |
+| `getBitWidth` | `0x13c78660` | `+0x2c` | `(TPUMCImmType < 2) ? 32 : 16` |
 
 `getBitWidth` decompiles to `16 * (this->type < 2) + 16` — a `TPUMCImmType` below `2` is a 32-bit immediate, otherwise 16-bit. The five-argument overload (`0x13c78580`) is field-identical except it writes the caller's `TPUMCImmType` into `+0x2c` instead of `0`. The emitter recovers a `TPUMCImmExpr` from an `MCInst` operand via `GetTPUMCImmExpr` (`0x13a65900`), which checks `*(MCExpr) == 5 && getSubKind() == 1` and otherwise returns *"Could not cast MCExpr to TPUMCImmExpr."* (`isa_emitter_base.cc:49`); the wrapped value is read by `GetValueFromSubExpr` (`0x13a658e0`) as `*(sub-expr + 0x10)` (the `MCConstantExpr` value word).
 
@@ -83,15 +83,15 @@ switch (*((_DWORD *)this + 6)) {          // this+6*4 = +0x18 = the TPUMCImmKind
 // ... then print(" encoding "), then print(this->h2 /*+0x29 encoding-id*/)
 ```
 
-| `TPUMCImmKind` | name (printer) | encoding-id (`+0x29`) | producing `getFirst…Encoding` | role | Confidence |
-|---|---|---|---|---|---|
-| 0 | `VK_TPU_none` | (none; plain `MCConstantExpr`) | — | plain immediate (branch/call offset) | CONFIRMED |
-| 1 | `zext` | `0x20` | `getFirstSyZeroExtEncoding` | zero-extended scalar imm | CONFIRMED |
-| 2 | `oneext` | `0x24` | `getFirstSyOneExtEncoding` | one-extended scalar imm | CONFIRMED |
-| 3 | `shl12` | `0x28` | `getFirstSyShlEncoding` | shift-left scalar imm (×2¹²) | CONFIRMED |
-| 4 | `shl16` | — | (shifted variant) | shift-left scalar imm (×2¹⁶) | HIGH |
-| 5 | `i32` (SyImm32) | `0x2c` | `getFirstSyImm32Encoding` | FULL 32-bit scalar imm | CONFIRMED |
-| 6 | `embed` | (`getSyEncodings`) | resource-allocated | embedded / general scalar enc | HIGH |
+| `TPUMCImmKind` | name (printer) | encoding-id (`+0x29`) | producing `getFirst…Encoding` | role |
+|---|---|---|---|---|
+| 0 | `VK_TPU_none` | (none; plain `MCConstantExpr`) | — | plain immediate (branch/call offset) |
+| 1 | `zext` | `0x20` | `getFirstSyZeroExtEncoding` | zero-extended scalar imm |
+| 2 | `oneext` | `0x24` | `getFirstSyOneExtEncoding` | one-extended scalar imm |
+| 3 | `shl12` | `0x28` | `getFirstSyShlEncoding` | shift-left scalar imm (×2¹²) |
+| 4 | `shl16` | — | (shifted variant) | shift-left scalar imm (×2¹⁶) |
+| 5 | `i32` (SyImm32) | `0x2c` | `getFirstSyImm32Encoding` | FULL 32-bit scalar imm |
+| 6 | `embed` | (`getSyEncodings`) | resource-allocated | embedded / general scalar enc |
 
 The kind is the **relocation / variant discriminator**; the encoding-id at `+0x29` is the **operand-field selector**. They co-vary for the integer-immediate family (kind 5 ⇒ encoding `0x2c`), but they are distinct fields with distinct consumers: the printer reads both, the emitter reads the kind to gate (below), and the packer reads the encoding-id to choose a slot.
 
@@ -128,14 +128,14 @@ char getFirstSyShlEncoding    (bool) { return 0x28; }   // 0x13c639c0
 char getFirstSyImm32Encoding  (bool) { return 0x2c; }   // 0x13c63a00  <- SyImm32
 ```
 
-| class | fn @ addr | value | note | Confidence |
-|---|---|---|---|---|
-| SyZeroExt | `0x13c63940` | `0x20` | scalar zero-extend | CONFIRMED |
-| SyOneExt | `0x13c63980` | `0x24` | scalar one-extend | CONFIRMED |
-| SyShl | `0x13c639c0` | `0x28` | scalar shift-left | CONFIRMED |
-| **SyImm32** | `0x13c63a00` | `0x2c` | **full 32-bit scalar imm** | CONFIRMED |
-| VyImm32 | `0x13c639e0` | `0x1a − arg` | full 32-bit vector imm | CONFIRMED |
-| VyZeroExt / VyOneExt / VyShl | `0x13c63920` / `0x13c63960` / `0x13c639a0` | `0x08 / 0x0e / 0x14 − arg` | vector variants | CONFIRMED |
+| class | fn @ addr | value | note |
+|---|---|---|---|
+| SyZeroExt | `0x13c63940` | `0x20` | scalar zero-extend |
+| SyOneExt | `0x13c63980` | `0x24` | scalar one-extend |
+| SyShl | `0x13c639c0` | `0x28` | scalar shift-left |
+| **SyImm32** | `0x13c63a00` | `0x2c` | **full 32-bit scalar imm** |
+| VyImm32 | `0x13c639e0` | `0x1a − arg` | full 32-bit vector imm |
+| VyZeroExt / VyOneExt / VyShl | `0x13c63920` / `0x13c63960` / `0x13c639a0` | `0x08 / 0x0e / 0x14 − arg` | vector variants |
 
 `SyImm32 = 0x2c` is the widest of the four scalar integer-immediate classes — the full 32-bit scalar immediate the packer falls through to when `ZeroExt` (`0x20`), `OneExt` (`0x24`), and `Shl` (`0x28`) cannot represent the value compactly. The byte `0x2c` is stored verbatim into `TPUMCImmExpr+0x29` and re-emitted by the packer as the slot's encoding-id.
 
@@ -208,12 +208,12 @@ The pass refuses to run twice (`!trampolines_patched_`) and refuses to re-encode
 
 PatchOverlay scans the program's bundles and, per address operand, classifies it by a `switch` on the patch kind (the operand's `[+48]` byte) and inserts it into per-overlay `absl::flat_hash_set<long>` patch-site sets (the SIMD `crc32` / `vpcmpeqb` hash-set inserts dominating the body). The kinds:
 
-| patch kind | covers | RetCheck on miss | Confidence |
-|---|---|---|---|
-| 0 / 3 | direct in-overlay bundle address | (operand present) overlay.cc:4709 | CONFIRMED |
-| 1 / 2 | cross-overlay target (`target_overlay_number`) | `t.target_overlay_number.has_value()` (4694) | CONFIRMED |
-| 4 | non-targeting size patch | `!t.target_overlay_number.has_value()` (4674) | CONFIRMED |
-| 5 | HLO-function overlay (`kind() == kHloFunction`, 4681) | `kind() == Kind::kHloFunction` | CONFIRMED |
+| patch kind | covers | RetCheck on miss |
+|---|---|---|
+| 0 / 3 | direct in-overlay bundle address | (operand present) overlay.cc:4709 |
+| 1 / 2 | cross-overlay target (`target_overlay_number`) | `t.target_overlay_number.has_value()` (4694) |
+| 4 | non-targeting size patch | `!t.target_overlay_number.has_value()` (4674) |
+| 5 | HLO-function overlay (`kind() == kHloFunction`, 4681) | `kind() == Kind::kHloFunction` |
 
 ### The Per-Site Rewrite
 

@@ -142,13 +142,13 @@ for each all-reduce (opcode 9):
 
 So the config carries a **quantization dtype** and a **stage** enum (`QuantizedAllReduceStage`, values `1/2/3`). The pass establishes a baseline `{dtype=S8, stage=2}` config (line 234 `v140 = 0x200000001` = the packed `{1, 2}` field pair with default dtype), then overrides from frontend attributes if present. The two failure strings — `"Unsupported quantized type: "` and `"Unsupported quantized stage: "` — are byte-anchored in the TU `tpu_quantized_all_reduce_backend_config_setter.cc`.
 
-| Frontend attribute / config field | Source | Decoded values | Confidence |
-|---|---|---|---|
-| quantize dtype | `kQuantizeAllReduceDtypeFrontendAttribute` | `S8`=2, `F8E5M2`=19, `F8E4M3B11FNUZ`=23 | Confirmed |
-| quantize stage | `kQuantizeAllReduceStageFrontendAttribute` | `QuantizedAllReduceStage` ∈ {1, 2, 3} | Confirmed |
-| level | `xla_tpu_quantized_all_reduce_level` (TpuCompEnv+5600) | clamped to 0..3 | Confirmed |
-| size threshold | `xla_tpu_quantized_all_reduce_size_threshold_mib` (TpuCompEnv+0x15dc) | MiB → elements | Confirmed |
-| operand combine | `xla_tpu_combine_quantized_all_reduce_operands` | bool (default-gen present) | Confirmed |
+| Frontend attribute / config field | Source | Decoded values |
+|---|---|---|
+| quantize dtype | `kQuantizeAllReduceDtypeFrontendAttribute` | `S8`=2, `F8E5M2`=19, `F8E4M3B11FNUZ`=23 |
+| quantize stage | `kQuantizeAllReduceStageFrontendAttribute` | `QuantizedAllReduceStage` ∈ {1, 2, 3} |
+| level | `xla_tpu_quantized_all_reduce_level` (TpuCompEnv+5600) | clamped to 0..3 |
+| size threshold | `xla_tpu_quantized_all_reduce_size_threshold_mib` (TpuCompEnv+0x15dc) | MiB → elements |
+| operand combine | `xla_tpu_combine_quantized_all_reduce_operands` | bool (default-gen present) |
 
 ### 2.2 The feasibility gate — `CanLowerToQuantizedAllReduce`
 
@@ -190,13 +190,13 @@ Vst(scale_addr, scale);
 
 The kernel family and its role in one ring step:
 
-| `pincer_utils` kernel | Address | Role | Confidence |
-|---|---|---|---|
-| `UpdateMaxLocalChunk` | `0x137b73a0` | running absmax over the shard: `acc = max(acc, \|x\|)` | Confirmed |
-| `UpdateScale` | `0x137b75c0` | `scale = qmax / absmax` (qmax per dtype above) | Confirmed |
-| `SymmetricallyQuantizeShardInPlaceTo8Bits` | `0x137b7740` | `q = round(x · scale)` then lane-pack to 8-bit | Confirmed |
-| `SymmetricallyDequantizeShardInPlace8Bit` | `0x137b7fc0` | `f = q / scale` (unpack 8-bit → F32) | Confirmed |
-| `ReduceSymmetricallyQuantized8BitShardInPlace` | `0x137b8880` | per-step **F32** dequant → merge → re-track absmax | Confirmed |
+| `pincer_utils` kernel | Address | Role |
+|---|---|---|
+| `UpdateMaxLocalChunk` | `0x137b73a0` | running absmax over the shard: `acc = max(acc, \|x\|)` |
+| `UpdateScale` | `0x137b75c0` | `scale = qmax / absmax` (qmax per dtype above) |
+| `SymmetricallyQuantizeShardInPlaceTo8Bits` | `0x137b7740` | `q = round(x · scale)` then lane-pack to 8-bit |
+| `SymmetricallyDequantizeShardInPlace8Bit` | `0x137b7fc0` | `f = q / scale` (unpack 8-bit → F32) |
+| `ReduceSymmetricallyQuantized8BitShardInPlace` | `0x137b8880` | per-step **F32** dequant → merge → re-track absmax |
 
 The decisive structural fact, from `ReduceSymmetricallyQuantized8BitShardInPlace`: the per-step ring reduction **dequantizes both the local and received shard to F32, merges in F32 (the reduction functor), then re-tracks the absmax** for the next hop's re-quantization. The 8-bit integer/fp8 bytes are never summed directly — they are purely the wire representation. This is why the quantized path needs a *per-shard scale shipped alongside the data* and why it can carry an arbitrary reduction functor (sum / max / …).
 
@@ -224,19 +224,19 @@ The emitter is a quantized specialization of the bidirectional [pincer all-reduc
 
 This is the page's primary deliverable. Each row is byte-anchored and was confirmed (or refuted) by a symbol sweep over the decompile.
 
-| Capability | Status | Evidence | Confidence |
-|---|---|---|---|
-| BF16→F32 all-reduce **accumulation promotion** | **PRESENT** | `MayIncreaseBF16AllReduceAccumulationAccuracy` `0x127a22c0`; wrapper `$_0` `0x127a4340` (clone + `set_element_type` + `CreateConvert` BF16↔F32) | Confirmed |
-| On-wire BF16-vs-F32 reduction toggle | **PRESENT** | `AllReduceEmitter::bf16_inside_cross_replica_sum` `0x1373ca60` (flag `xla_jf_bf16_inside_cross_replica_sum`) | Confirmed |
-| 8-bit on-wire **quantized all-reduce** | **PRESENT** | `RotatedPincerQuantizedEmitter` (full method surface); `TpuQuantizedAllReduceBackendConfigSetter::RunImpl` `0x11107b00`; `QuantizedAllReduceConfig` proto | Confirmed |
-| Quantize formats `S8`, `F8E5M2`, `F8E4M3B11FNUZ` | **PRESENT** | `pincer_utils::UpdateScale` switch cases `{2, 0x13, 0x17}`; setter dtype match `{2, 19, 23}` | Confirmed |
-| Symmetric absmax scale (`qmax/absmax`) | **PRESENT** | `UpdateScale` `0x137b75c0`; `.rodata` qmax `{127.0, 57344.0, 30.0}` | Confirmed |
-| F32 in-flight reduction (8-bit = wire only) | **PRESENT** | `ReduceSymmetricallyQuantized8BitShardInPlace` `0x137b8880` (dequant→F32 merge→re-absmax) | Confirmed |
-| Quantize format **`F8E4M3Fn`** (PrimitiveType 20) | **ABSENT** | not in `UpdateScale` switch nor the setter dtype match (only `{2,19,23}`) | Confirmed |
-| **Zero-point** / asymmetric collective quant | **ABSENT** | device quantizer is symmetric (scale only); no zero-point field in `pincer_utils` | Confirmed |
-| Quantized **all-gather** | **ABSENT** | no `Quantized*Gather` symbol (only `QuantizedAllReduce*`) | Confirmed |
-| Quantized **all-to-all** / **reduce-scatter** | **ABSENT** | no `Quantized{AllToAll,ReduceScatter}` symbol | Confirmed |
-| Quantized AR on `TpuVersion ∉ {3,4}` | **ABSENT (gated off)** | `CanLowerToQuantizedAllReduce` `0x13798420`: `TpuVersion - 3 < 2` | Confirmed |
+| Capability | Status | Evidence |
+|---|---|---|
+| BF16→F32 all-reduce **accumulation promotion** | **PRESENT** | `MayIncreaseBF16AllReduceAccumulationAccuracy` `0x127a22c0`; wrapper `$_0` `0x127a4340` (clone + `set_element_type` + `CreateConvert` BF16↔F32) |
+| On-wire BF16-vs-F32 reduction toggle | **PRESENT** | `AllReduceEmitter::bf16_inside_cross_replica_sum` `0x1373ca60` (flag `xla_jf_bf16_inside_cross_replica_sum`) |
+| 8-bit on-wire **quantized all-reduce** | **PRESENT** | `RotatedPincerQuantizedEmitter` (full method surface); `TpuQuantizedAllReduceBackendConfigSetter::RunImpl` `0x11107b00`; `QuantizedAllReduceConfig` proto |
+| Quantize formats `S8`, `F8E5M2`, `F8E4M3B11FNUZ` | **PRESENT** | `pincer_utils::UpdateScale` switch cases `{2, 0x13, 0x17}`; setter dtype match `{2, 19, 23}` |
+| Symmetric absmax scale (`qmax/absmax`) | **PRESENT** | `UpdateScale` `0x137b75c0`; `.rodata` qmax `{127.0, 57344.0, 30.0}` |
+| F32 in-flight reduction (8-bit = wire only) | **PRESENT** | `ReduceSymmetricallyQuantized8BitShardInPlace` `0x137b8880` (dequant→F32 merge→re-absmax) |
+| Quantize format **`F8E4M3Fn`** (PrimitiveType 20) | **ABSENT** | not in `UpdateScale` switch nor the setter dtype match (only `{2,19,23}`) |
+| **Zero-point** / asymmetric collective quant | **ABSENT** | device quantizer is symmetric (scale only); no zero-point field in `pincer_utils` |
+| Quantized **all-gather** | **ABSENT** | no `Quantized*Gather` symbol (only `QuantizedAllReduce*`) |
+| Quantized **all-to-all** / **reduce-scatter** | **ABSENT** | no `Quantized{AllToAll,ReduceScatter}` symbol |
+| Quantized AR on `TpuVersion ∉ {3,4}` | **ABSENT (gated off)** | `CanLowerToQuantizedAllReduce` `0x13798420`: `TpuVersion - 3 < 2` |
 
 > **NOTE — what "fp8 quantized collective" does and does not mean here.** A reader expecting a general "fp8 compress every collective" facility will not find it: the only collective with an 8-bit-on-wire path is **`all-reduce`**, via the rotated-pincer family. All-gather, reduce-scatter, and all-to-all move data uncompressed. The `F8E4M3Fn` format — the more common fp8 variant elsewhere on the TPU convert surface — is **not** an admissible collective-quantize type; the collective quantizer admits only the `B11FNUZ` fp8 variant plus `F8E5M2` and `S8`. And the quantizer is **symmetric only** — no zero-point — so it is unsuitable for asymmetric/unsigned activation distributions.
 

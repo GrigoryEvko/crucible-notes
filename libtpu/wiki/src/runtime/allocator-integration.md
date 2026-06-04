@@ -52,14 +52,14 @@ What this page owns: the `AllocateRawBuffer` → `…` → `AllocateLocked` call
 
 A reader coming from XLA's StreamExecutor backend should hold this correspondence in mind throughout. libtpu does not instantiate `se::StreamExecutorMemoryAllocator` for runtime buffers; it reimplements the same responsibilities with TPU-specific types.
 
-| StreamExecutor concept | libtpu bridge object | Evidence |
-|---|---|---|
-| `se::DeviceMemoryAllocator::Allocate(ordinal, size, …)` | `xla::TpuClient::AllocateRawBuffer` (memory-space routed) | `0xf7fb1e0` |
-| `Allocate` device-ordinal selection | `tpu::System::Allocate` map lookup `loc → allocator` | `0x1d0aeea0` |
-| `se::DeviceMemoryBase` (opaque base + size) | `tpu::TpuSharedMemoryLocation` (chip, tier, host index) | ctor `0x20ad6ae0` |
-| `se::OwningDeviceMemory` / `ScopedDeviceMemory` (RAII) | `tpu::TpuBuffer` (`xla::TpuRawBuffer` PJRT wrapper) | `TpuBuffer` vtable `0x21ca9ae8` |
-| `se::DeviceMemoryAllocator::Deallocate` | `tpu::TpuAllocator::Deallocate` (vt+0x30) | `Deferred` `0x1d0cf460` |
-| The concrete backing allocator | per-core `tpu::TpuAllocator` → `tpu::BestFitAllocator` | router map value |
+| StreamExecutor concept | libtpu bridge object |
+|---|---|
+| `se::DeviceMemoryAllocator::Allocate(ordinal, size, …)` | `xla::TpuClient::AllocateRawBuffer` (memory-space routed) |
+| `Allocate` device-ordinal selection | `tpu::System::Allocate` map lookup `loc → allocator` |
+| `se::DeviceMemoryBase` (opaque base + size) | `tpu::TpuSharedMemoryLocation` (chip, tier, host index) |
+| `se::OwningDeviceMemory` / `ScopedDeviceMemory` (RAII) | `tpu::TpuBuffer` (`xla::TpuRawBuffer` PJRT wrapper) |
+| `se::DeviceMemoryAllocator::Deallocate` | `tpu::TpuAllocator::Deallocate` (vt+0x30) |
+| The concrete backing allocator | per-core `tpu::TpuAllocator` → `tpu::BestFitAllocator` |
 
 > **QUIRK —** the `DeviceMemoryBase` analogue (`TpuSharedMemoryLocation`) is not a raw pointer-plus-size. It is a structured *identity* — `(chip, on-chip-memory-segment, host index)` — that doubles as the **hash-map key** selecting which core's allocator services the request (`operator==` `0x20ad6be0`, `AbslHashValue` `0x1d0ba2a0`). The "ordinal" and the "memory space" are fused into one key. A reimplementation that models the ordinal as a bare integer will mis-route VMEM/SMEM/CMEM tiers, because the tier is part of the same key, not a separate argument.
 
@@ -147,15 +147,15 @@ Slot `+0x10` of the `TpuAllocator` vtable is `Allocate`; the function tail-calls
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `xla::TpuClient::AllocateRawBuffer` | `0xf7fb1e0` | `Allocate` ABI entry; memory-space routing | HIGH |
-| `xla::TpuClient::AllocateBuffer` | `0xf7fc5a0` | Device branch; builds `TpuSharedMemoryLocation` | HIGH |
-| `tpu::AllocateBuffer` | `0xf8d51c0` | sync/`AllocateAfter` select; trace + latency | HIGH |
-| `tpu::System::Allocate` | `0x1d0aeea0` | Per-ordinal map lookup → vt+0x10 tail-call | CONFIRMED |
-| `tpu::System::AllocateAfter` | `0x1d0af060` | Async-gated variant (vt+0x18) | HIGH |
-| `tpu::TpuSharedMemory::AllocateLocked` | `0x1d4be920` / `0x1d4c0f40` | Dispatches `BestFitAllocator::Allocate` (vt+0x30) | HIGH |
-| `xla::CpuRawBuffer::Allocate` | `0xf911680` | CPU-resident memory-space branch | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `xla::TpuClient::AllocateRawBuffer` | `0xf7fb1e0` | `Allocate` ABI entry; memory-space routing |
+| `xla::TpuClient::AllocateBuffer` | `0xf7fc5a0` | Device branch; builds `TpuSharedMemoryLocation` |
+| `tpu::AllocateBuffer` | `0xf8d51c0` | sync/`AllocateAfter` select; trace + latency |
+| `tpu::System::Allocate` | `0x1d0aeea0` | Per-ordinal map lookup → vt+0x10 tail-call |
+| `tpu::System::AllocateAfter` | `0x1d0af060` | Async-gated variant (vt+0x18) |
+| `tpu::TpuSharedMemory::AllocateLocked` | `0x1d4be920` / `0x1d4c0f40` | Dispatches `BestFitAllocator::Allocate` (vt+0x30) |
+| `xla::CpuRawBuffer::Allocate` | `0xf911680` | CPU-resident memory-space branch |
 
 ---
 

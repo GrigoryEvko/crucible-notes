@@ -76,13 +76,13 @@ Both subtract `95` (`0x5f`) to dense-index the file from zero. The read band `[0
 
 A mask register predicate spans the SparseCore VPU lane/sublane grid. The two dimension getters read the per-target config blob:
 
-| Getter | Computation | Source | Confidence |
-|---|---|---|---|
-| `SublaneCount()` `@0x1d60f300` | `QWORD[[Target+0x3b8]+0x1a0]` | per-target config | CONFIRMED |
-| `LaneCount()` `@0x1d60f400` | `QWORD[[Target+0x3b8]+0x198]` | per-target config | CONFIRMED |
-| `AllSublanesMask()` `@0x1d61c3e0` | `(1 << SublaneCount) − 1` (`0xffffffff >> (32 − count)`, `cmov→0` when count == 0) | derived | CONFIRMED |
-| `ChunkLanesMask()` `@0x1d61c3a0` | `0xffffffff >> (clz(LaneCount) + 1)` (`_BitScanReverse` on `LaneCount`; for power-of-two `LaneCount` ⇒ `LaneCount − 1`) | derived | CONFIRMED |
-| `Vxlaneid()` `@0x1d51d540` | `VectorLaneSequence AND ChunkLanesMask` | iota | CONFIRMED |
+| Getter | Computation | Source |
+|---|---|---|
+| `SublaneCount()` `@0x1d60f300` | `QWORD[[Target+0x3b8]+0x1a0]` | per-target config |
+| `LaneCount()` `@0x1d60f400` | `QWORD[[Target+0x3b8]+0x198]` | per-target config |
+| `AllSublanesMask()` `@0x1d61c3e0` | `(1 << SublaneCount) − 1` (`0xffffffff >> (32 − count)`, `cmov→0` when count == 0) | derived |
+| `ChunkLanesMask()` `@0x1d61c3a0` | `0xffffffff >> (clz(LaneCount) + 1)` (`_BitScanReverse` on `LaneCount`; for power-of-two `LaneCount` ⇒ `LaneCount − 1`) | derived |
+| `Vxlaneid()` `@0x1d51d540` | `VectorLaneSequence AND ChunkLanesMask` | iota |
 
 `SublaneCount = 8` is pinned two independent ways: the native packed word reserves a **3-bit** field for each sublane bound (`0..7`), and a literal mask can be set with `LloModule::VectorMaskConstantPacked(uint8)` `@0x1d506a80` — an **8-bit** packed sublane mask. `LaneCount` is read from the runtime config and is only bounded (`≤ 128`) by the 7-bit lane field; the exact per-gen value lives in the config blob, not the code path **[INFERRED for the exact value]**.
 
@@ -123,12 +123,12 @@ The offsets are a constant pair returned identically by both native gens. `Ghost
    WORD = (s_start << 0) | (l_start << 3) | (s_end << 10) | (l_end << 13)
 ```
 
-| Field | Vcmask arg | shift | bits | width | meaning | Confidence |
-|---|---|---|---|---|---|---|
-| `sublane_start` | `a2` (`s_start`) | `<< 0` | `[2:0]` | 3 | first active sublane (`0..7`) | CONFIRMED |
-| `lane_start` | `a4` (`l_start`) | `<< 3` | `[9:3]` | 7 | first active lane (`0..127`) | CONFIRMED |
-| `sublane_end` | `a3` (`s_end_incl`) | `<< 10` | `[12:10]` | 3 | last active sublane (inclusive) | CONFIRMED |
-| `lane_end` | `a5` (`l_end_incl`) | `<< 13` | `[≥13]` | 7 | last active lane (inclusive) | CONFIRMED |
+| Field | Vcmask arg | shift | bits | width | meaning |
+|---|---|---|---|---|---|
+| `sublane_start` | `a2` (`s_start`) | `<< 0` | `[2:0]` | 3 | first active sublane (`0..7`) |
+| `lane_start` | `a4` (`l_start`) | `<< 3` | `[9:3]` | 7 | first active lane (`0..127`) |
+| `sublane_end` | `a3` (`s_end_incl`) | `<< 10` | `[12:10]` | 3 | last active sublane (inclusive) |
+| `lane_end` | `a5` (`l_end_incl`) | `<< 13` | `[≥13]` | 7 | last active lane (inclusive) |
 
 The two 3-bit sublane fields at offsets `0` and `10` (with the 7-bit lane field between them) directly pin `SublaneCount = 8`. The word is a `{sublane_range, lane_range}` rectangle descriptor, **not** a per-lane bitmask — the hardware's `vcmask` decoder expands the four bounds into the active-lane set.
 
@@ -138,10 +138,10 @@ The two 3-bit sublane fields at offsets `0` and `10` (with the 7-bit lane field 
 
 Two builders set an M-register directly without the four-bound packer:
 
-| Builder | Argument | Produces | Confidence |
-|---|---|---|---|
-| `LloModule::VectorMaskConstantPacked(uint8)` `@0x1d506a80` | 8-bit packed sublane bitmask | per-sublane literal (one bit per sublane ⇒ 8 sublanes) | CONFIRMED |
-| `LloModule::VectorMaskConstant(bool)` `@0x1d506940` | `true` / `false` | all-ones / all-zeros predicate | CONFIRMED |
+| Builder | Argument | Produces |
+|---|---|---|
+| `LloModule::VectorMaskConstantPacked(uint8)` `@0x1d506a80` | 8-bit packed sublane bitmask | per-sublane literal (one bit per sublane ⇒ 8 sublanes) |
+| `LloModule::VectorMaskConstant(bool)` `@0x1d506940` | `true` / `false` | all-ones / all-zeros predicate |
 
 The `uint8` width of `VectorMaskConstantPacked` is the second independent confirmation of the 8-sublane geometry.
 
@@ -164,11 +164,11 @@ result      = /* VectorMaskAnd(sublane_sub, lane_sub) */ ...;  // op 0x195
 
 The per-axis builders short-circuit empty/full ranges and otherwise call `CreateVmaskHelper`:
 
-| Builder | Iota source | Predicate built | Empty/full shortcut | Confidence |
-|---|---|---|---|---|
-| `CreateLaneVmask(l_lo, l_hi)` `@0x1d53f740` | `Vxlaneid()` `@0x1d51d540` (`VectorLaneSequence & ChunkLanesMask`) | `l_lo ≤ xlaneid < l_hi` | `l_hi==l_lo` → `false`; `l_lo==0 && l_hi==LaneCount` → `true` | CONFIRMED |
-| `CreateSublaneVmask(s_lo, s_hi)` `@0x1d53d7c0` | `Vslaneid()` `@0x1d51d380` (single); `VectorLaneSequence×LaneCount` (multi) | `s_lo ≤ slaneid < s_hi` (single → `Vslaneid == const` EQ) | `s_hi==s_lo` → `false`; full → `true` | CONFIRMED |
-| `CreateVmaskHelper(iota, lo, hi, range_lo, range_hi)` `@0x1d53f380` | the passed iota | `iota ∈ [lo, hi)` | `hi==range_hi` → one-sided (`iota ≥ lo`); `lo==range_lo` → one-sided (`iota < hi`) | CONFIRMED |
+| Builder | Iota source | Predicate built | Empty/full shortcut |
+|---|---|---|---|
+| `CreateLaneVmask(l_lo, l_hi)` `@0x1d53f740` | `Vxlaneid()` `@0x1d51d540` (`VectorLaneSequence & ChunkLanesMask`) | `l_lo ≤ xlaneid < l_hi` | `l_hi==l_lo` → `false`; `l_lo==0 && l_hi==LaneCount` → `true` |
+| `CreateSublaneVmask(s_lo, s_hi)` `@0x1d53d7c0` | `Vslaneid()` `@0x1d51d380` (single); `VectorLaneSequence×LaneCount` (multi) | `s_lo ≤ slaneid < s_hi` (single → `Vslaneid == const` EQ) | `s_hi==s_lo` → `false`; full → `true` |
+| `CreateVmaskHelper(iota, lo, hi, range_lo, range_hi)` `@0x1d53f380` | the passed iota | `iota ∈ [lo, hi)` | `hi==range_hi` → one-sided (`iota ≥ lo`); `lo==range_lo` → one-sided (`iota < hi`) |
 
 The general two-sided case in `CreateVmaskHelper` issues two comparisons against `VcmpHelper` `@0x1d55ce40` — direction `5` *against `hi`* (yielding `iota < hi`) then direction `2` *against `lo`* (yielding `iota ≥ lo`) — and combines them with `SimplifyPredicateAnd` `@0x1d58e4e0`, which lowers to `CreateVectorMaskBinop` opcode `0x195` (`VectorMaskAnd`). The two one-sided shortcut arms pin the direction-code meaning: the `lo==range_lo` arm emits `VcmpHelper(iota, U32Constant(hi), 4, /*dir*/ 5)` for the upper bound, and the `hi==range_hi` arm emits `VcmpHelper(iota, U32Constant(lo), 4, /*dir*/ 2)` for the lower bound:
 
@@ -181,10 +181,10 @@ result = SimplifyPredicateAnd(v18, v21);   // → CreateVectorMaskBinop op 0x195
 
 The complement half (when a sub-mask must be negated) goes through `SimplifyPredicateNegate` `@0x1d58eb20` → `CreateVectorMaskUnop` opcode `0x198` (`VectorMaskNegate`). The synthesized result is the **same logical M-register** — the 2D rectangle `{sublane ∈ [s_lo, s_hi)} ∧ {lane ∈ [l_lo, l_hi)}` — materialized as an LLO predicate-instruction chain instead of one packed `vcmask` immediate.
 
-| LLO opcode | Number | Builder | Confidence |
-|---|---|---|---|
-| `VectorMaskAnd` | `0x195` | `CreateVectorMaskBinop` `@0x1d4d2b00` | CONFIRMED |
-| `VectorMaskNegate` | `0x198` | `CreateVectorMaskUnop` `@0x1d4d2e80` | CONFIRMED |
+| LLO opcode | Number | Builder |
+|---|---|---|
+| `VectorMaskAnd` | `0x195` | `CreateVectorMaskBinop` `@0x1d4d2b00` |
+| `VectorMaskNegate` | `0x198` | `CreateVectorMaskUnop` `@0x1d4d2e80` |
 
 ---
 
@@ -224,13 +224,13 @@ The full op-name chain is `lower_scan` / `max_ell_row_size_scan` / `masked_scan`
 
 `mlir::tpu::ScanOp::verify` `@0x14af7460` asserts (rodata error strings):
 
-| Error string | Constraint | Confidence |
-|---|---|---|
-| "Scan is supported only on the SC vector subcore" | SC vector subcore only | CONFIRMED |
-| "Input must be a rank 1 or 2 vector" | rank 1 (lane vector) or 2 (packed sublanes) | CONFIRMED |
-| "Input and output shape mismatch" | output shape == input shape (scan produces a **full-width** result; masked-off lanes still occupy their slot) | CONFIRMED |
-| "Output element type must be i32 vector for i1 vector inputs" | `i1` input ⇒ `i32` output | CONFIRMED |
-| "Only sum reduction is supported for i1 vector inputs" | `i1` input ⇒ `sum` only | CONFIRMED |
+| Error string | Constraint |
+|---|---|
+| "Scan is supported only on the SC vector subcore" | SC vector subcore only |
+| "Input must be a rank 1 or 2 vector" | rank 1 (lane vector) or 2 (packed sublanes) |
+| "Input and output shape mismatch" | output shape == input shape (scan produces a **full-width** result; masked-off lanes still occupy their slot) |
+| "Output element type must be i32 vector for i1 vector inputs" | `i1` input ⇒ `i32` output |
+| "Only sum reduction is supported for i1 vector inputs" | `i1` input ⇒ `sum` only |
 
 The `i1 → i32` sum-only scan is the **count-active-lanes** primitive (`DuplicateCount`): a prefix-count of set predicate bits. A boolean input forbids a separate mask and forbids non-`sum` reductions.
 
@@ -241,14 +241,14 @@ The two halves resolve independently:
 - **Inactive INPUT lanes contribute the reduction identity.** Because the scan output is full-width (verify enforces `output shape == input shape`), a masked-off input lane cannot simply vanish; it feeds the identity element so the running prefix is unperturbed — `0` for `add`, `+INF` for `min`, `−INF` for `max`. This is **CONFIRMED** by the `masked_scan` classification and the `i1→i32` sum semantics; the exact identity per family is an **INFERRED** detail.
 - **Masked-off OUTPUT lanes are select-driven.** The LLO op roster exposes `VectorSelectOp` and the `vnsel` (vector negate-mask select) emitter `EmitVectorSelectNegateMask(Vregno dest, Vmregno mask, variant<VregnoOrImm, Sregno> src)`: it selects `dest`/`src` per the named mask Vmreg. The per-target bodies are `GhostliteTensorCoreEmitter::EmitVectorSelectNegateMask` `@0x1424c8a0` and `ViperfishTensorCoreEmitter::EmitVectorSelectNegateMask` `@0x141cbca0`; the abstract `IsaEmitter::EmitVectorSelectNegateMask` `@0x140c1920` is a `LogFatal` stub ("Instruction vnsel not supported on this platform."). The masked-off output lanes take the select's `else`/`src` operand — the broadcast identity/zero for a fresh result, or the prior register value for a preserve-old select. The select's mask is drawn from the narrower `M0..M15` write/select file (§1.1), distinct from the scan's `M0..M31` read file.
 
-| Layer | What | Evidence | Confidence |
-|---|---|---|---|
-| MLIR `sc_tpu.scan` | explicit mask vector operand | `scan_mask = BroadcastBoolToVector(..., true)`; `ScanOp::create` | CONFIRMED |
-| op shape | `AtLeastNOperands<1>`, `OneResult`, rank 1/2 | `sparse_core::ScanOp` traits | CONFIRMED |
-| verify | `i1→i32` sum-only (count-active); full-width output | `ScanOp::verify` `@0x14af7460` strings | CONFIRMED |
-| inactive INPUT lanes | contribute the reduction identity (no perturbation) | `masked_scan` classification; sum/min/max identity | CONFIRMED (identity detail INFERRED) |
-| masked-off OUTPUT lanes | `select(mask, scan, else)` — `else` = zero/identity or preserve-old | `VectorSelectOp`; `vnsel` emitter `EmitVectorSelectNegateMask` (Ghostlite `@0x1424c8a0`, Viperfish `@0x141cbca0`; base `@0x140c1920` is a `LogFatal` stub) | CONFIRMED |
-| result commit | inline (VresMove/Sort dest-port) OR out-of-line (`PopXrf`) | see [VEX Mask/Dest-Port](vex-mask-destport-subopcode.md) | CONFIRMED |
+| Layer | What | Evidence |
+|---|---|---|
+| MLIR `sc_tpu.scan` | explicit mask vector operand | `scan_mask = BroadcastBoolToVector(..., true)`; `ScanOp::create` |
+| op shape | `AtLeastNOperands<1>`, `OneResult`, rank 1/2 | `sparse_core::ScanOp` traits |
+| verify | `i1→i32` sum-only (count-active); full-width output | `ScanOp::verify` `@0x14af7460` strings |
+| inactive INPUT lanes | contribute the reduction identity (no perturbation) | `masked_scan` classification; sum/min/max identity |
+| masked-off OUTPUT lanes | `select(mask, scan, else)` — `else` = zero/identity or preserve-old | `VectorSelectOp`; `vnsel` emitter `EmitVectorSelectNegateMask` (Ghostlite `@0x1424c8a0`, Viperfish `@0x141cbca0`; base `@0x140c1920` is a `LogFatal` stub) |
+| result commit | inline (VresMove/Sort dest-port) OR out-of-line (`PopXrf`) | see [VEX Mask/Dest-Port](vex-mask-destport-subopcode.md) |
 
 > **GOTCHA — the bundle carries only the M-mask + the scan op; the zero-vs-preserve choice is the lowering's select wiring.** A reimplementation that looks for a "masked-off output" micro-field in the VEX bundle will not find one. The hardware bundle gates the input lanes by the named M-register; the output disposition is a downstream `VectorSelect` whose `else` operand the lowering chooses per scan family.
 

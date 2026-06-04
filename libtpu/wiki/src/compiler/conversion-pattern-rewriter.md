@@ -120,19 +120,19 @@ The 11 record types are the alphabet of reversible mutations. This unit inventor
 
 Every record is a leaf of an `(anonymous namespace)::IRRewrite` single-base hierarchy. The intermediate abstract bases `BlockRewrite` and `OperationRewrite` carry no own vtable (typeinfo only) — only the 11 concrete leaves do, and all 11 vtables were verified against their `_ZTV` symbols. Each leaf's `{vtable, rollback, commit, cleanup}` addresses:
 
-| IRRewrite leaf | vtable | rollback | commit | cleanup | Confidence |
-|---|---|---|---|---|---|
-| `UnresolvedMaterializationRewrite` | `0x21c234a0` | `0x1c95b660` | (base) | (base) | CONFIRMED |
-| `InlineBlockRewrite` | `0x21c235e0` | `0x1c962920` | (base) | (base) | HIGH |
-| `BlockTypeConversionRewrite` | `0x21c23648` | `0x1c9629e0` | `0x1c962a60` | (base) | HIGH |
-| `CreateOperationRewrite` | `0x21c23698` | `0x1c962f60` | `0x1c963080` | (base) | CONFIRMED |
-| `MoveOperationRewrite` | `0x21c236e8` | `0x1c9630c0` | `0x1c963160` | (base) | CONFIRMED |
-| `ReplaceOperationRewrite` | `0x21c23738` | `0x1c963500` | `0x1c9635a0` | `0x1c963920` | CONFIRMED |
-| `ReplaceValueRewrite` | `0x21c23788` | `0x1c963b00` | `0x1c963b60` | (base) | HIGH |
-| `EraseBlockRewrite` | `0x21c237f0` | `0x1c963fc0` | `0x1c964020` | `0x1c9640a0` | HIGH |
-| `CreateBlockRewrite` | `0x21c23840` | `0x1c9641e0` | `0x1c9642e0` | (base) | HIGH |
-| `MoveBlockRewrite` | `0x21c23890` | `0x1c964340` | `0x1c964400` | (base) | HIGH |
-| `ModifyOperationRewrite` | `0x21c238e0` | `0x1c964860` | `0x1c964960` | (base) | CONFIRMED |
+| IRRewrite leaf | vtable | rollback | commit | cleanup |
+|---|---|---|---|---|
+| `UnresolvedMaterializationRewrite` | `0x21c234a0` | `0x1c95b660` | (base) | (base) |
+| `InlineBlockRewrite` | `0x21c235e0` | `0x1c962920` | (base) | (base) |
+| `BlockTypeConversionRewrite` | `0x21c23648` | `0x1c9629e0` | `0x1c962a60` | (base) |
+| `CreateOperationRewrite` | `0x21c23698` | `0x1c962f60` | `0x1c963080` | (base) |
+| `MoveOperationRewrite` | `0x21c236e8` | `0x1c9630c0` | `0x1c963160` | (base) |
+| `ReplaceOperationRewrite` | `0x21c23738` | `0x1c963500` | `0x1c9635a0` | `0x1c963920` |
+| `ReplaceValueRewrite` | `0x21c23788` | `0x1c963b00` | `0x1c963b60` | (base) |
+| `EraseBlockRewrite` | `0x21c237f0` | `0x1c963fc0` | `0x1c964020` | `0x1c9640a0` |
+| `CreateBlockRewrite` | `0x21c23840` | `0x1c9641e0` | `0x1c9642e0` | (base) |
+| `MoveBlockRewrite` | `0x21c23890` | `0x1c964340` | `0x1c964400` | (base) |
+| `ModifyOperationRewrite` | `0x21c238e0` | `0x1c964860` | `0x1c964960` | (base) |
 
 `(base)` = the leaf inherits the no-op `IRRewrite::commit` (`0x1c95b760`, a bare `ret`) or `IRRewrite::cleanup` (`0x1c95b780`). `IRRewrite::~IRRewrite` (D1, slot0) is `0x1c964300`, shared across all leaves. Only `ReplaceOperationRewrite` and `EraseBlockRewrite` carry a non-trivial `cleanup` — the deferred-erase step (below).
 
@@ -441,29 +441,29 @@ The decompile pins both: the move path (lines 54-95, `operator new(0x30u)`, tag 
 
 ## Function Map
 
-| Function | VA | Role | Confidence |
-|---|---|---|---|
-| `ConversionPatternRewriter` ctor | `0x1c9512a0` | builds the 0x1e0-byte Impl (`operator new(0x1e0)`); field init | CONFIRMED |
-| `ConversionPatternRewriterImpl::undoRewrites` | `0x1c94d060` | LIFO rollback: pop log to `numToKeep`, call each `rollback()` | CONFIRMED |
-| `ConversionPatternRewriterImpl::resetState` | `0x1c95bf60` | checkpoint rollback: `undoRewrites` + ignored/replaced rewind | CONFIRMED |
-| `ConversionPatternRewriterImpl::applyRewrites` | `0x1c94c1c0` | FORWARD two-pass commit (`commit` then `cleanup`-erase) | CONFIRMED |
-| `ConversionPatternRewriterImpl::notifyOperationInserted` | `0x1c950260` | push Create (32 B) / Move (48 B) record on insert | CONFIRMED |
-| `ConversionPatternRewriterImpl::replaceOp` (1:N) | `0x1c950540` | map each result → value-vector; push `ReplaceOperationRewrite` | CONFIRMED |
-| `ConversionPatternRewriterImpl::replaceValueUses` (1:1) | `0x1c94f740` | push `ReplaceValueRewrite` | HIGH |
-| `ConversionPatternRewriterImpl::buildUnresolvedMaterialization` | `0x1c94dcc0` | insert `builtin.unrealized_conversion_cast`; push materialization record | HIGH |
-| `ConversionPatternRewriterImpl::findOrBuildReplacementValue` | `0x1c94fde0` | resolve final replacement; build cast on type mismatch | CONFIRMED |
-| `ReplaceOperationRewrite::rollback` | `0x1c963500` | erase per-result entries from `ConversionValueMapping` | CONFIRMED |
-| `ReplaceOperationRewrite::commit` | `0x1c9635a0` | `findOrBuildReplacementValue` per result + `replaceAllUsesWith` | CONFIRMED |
-| `ReplaceOperationRewrite::cleanup` | `0x1c963920` | deferred `eraseOp` of the replaced op (slot4) | CONFIRMED |
-| `CreateOperationRewrite::rollback` | `0x1c962f60` | detach the inserted op (`removeNodeFromList`) | CONFIRMED |
-| `MoveOperationRewrite::rollback` | `0x1c9630c0` | `transferNodesFromList` back to saved block/before-op | CONFIRMED |
-| `ModifyOperationRewrite::rollback` | `0x1c964860` | restore saved loc/attrs/operands/successors/regions | CONFIRMED |
-| `UnresolvedMaterializationRewrite::rollback` | `0x1c95b660` | un-map cast results + prune `unresolvedMaterializations` + erase cast | CONFIRMED |
-| `IRRewrite::~IRRewrite` (D1, shared slot0) | `0x1c964300` | record dtor | CONFIRMED |
-| `IRRewrite::commit` (base no-op) | `0x1c95b760` | bare `ret` (inherited by 2 leaves: UnresolvedMaterialization, InlineBlock) | CONFIRMED |
-| `IRRewrite::cleanup` (base no-op) | `0x1c95b780` | bare `ret` (inherited by 9 leaves; only EraseBlock + ReplaceOperation override) | CONFIRMED |
-| `ConversionValueMapping::erase` | `0x1c95b7a0` | drop a value→replacement mapping (used by rollbacks) | HIGH |
-| `mallocForGrow` (SmallVector) | `0x208d1820` | log realloc-down on pop | HIGH |
+| Function | VA | Role |
+|---|---|---|
+| `ConversionPatternRewriter` ctor | `0x1c9512a0` | builds the 0x1e0-byte Impl (`operator new(0x1e0)`); field init |
+| `ConversionPatternRewriterImpl::undoRewrites` | `0x1c94d060` | LIFO rollback: pop log to `numToKeep`, call each `rollback()` |
+| `ConversionPatternRewriterImpl::resetState` | `0x1c95bf60` | checkpoint rollback: `undoRewrites` + ignored/replaced rewind |
+| `ConversionPatternRewriterImpl::applyRewrites` | `0x1c94c1c0` | FORWARD two-pass commit (`commit` then `cleanup`-erase) |
+| `ConversionPatternRewriterImpl::notifyOperationInserted` | `0x1c950260` | push Create (32 B) / Move (48 B) record on insert |
+| `ConversionPatternRewriterImpl::replaceOp` (1:N) | `0x1c950540` | map each result → value-vector; push `ReplaceOperationRewrite` |
+| `ConversionPatternRewriterImpl::replaceValueUses` (1:1) | `0x1c94f740` | push `ReplaceValueRewrite` |
+| `ConversionPatternRewriterImpl::buildUnresolvedMaterialization` | `0x1c94dcc0` | insert `builtin.unrealized_conversion_cast`; push materialization record |
+| `ConversionPatternRewriterImpl::findOrBuildReplacementValue` | `0x1c94fde0` | resolve final replacement; build cast on type mismatch |
+| `ReplaceOperationRewrite::rollback` | `0x1c963500` | erase per-result entries from `ConversionValueMapping` |
+| `ReplaceOperationRewrite::commit` | `0x1c9635a0` | `findOrBuildReplacementValue` per result + `replaceAllUsesWith` |
+| `ReplaceOperationRewrite::cleanup` | `0x1c963920` | deferred `eraseOp` of the replaced op (slot4) |
+| `CreateOperationRewrite::rollback` | `0x1c962f60` | detach the inserted op (`removeNodeFromList`) |
+| `MoveOperationRewrite::rollback` | `0x1c9630c0` | `transferNodesFromList` back to saved block/before-op |
+| `ModifyOperationRewrite::rollback` | `0x1c964860` | restore saved loc/attrs/operands/successors/regions |
+| `UnresolvedMaterializationRewrite::rollback` | `0x1c95b660` | un-map cast results + prune `unresolvedMaterializations` + erase cast |
+| `IRRewrite::~IRRewrite` (D1, shared slot0) | `0x1c964300` | record dtor |
+| `IRRewrite::commit` (base no-op) | `0x1c95b760` | bare `ret` (inherited by 2 leaves: UnresolvedMaterialization, InlineBlock) |
+| `IRRewrite::cleanup` (base no-op) | `0x1c95b780` | bare `ret` (inherited by 9 leaves; only EraseBlock + ReplaceOperation override) |
+| `ConversionValueMapping::erase` | `0x1c95b7a0` | drop a value→replacement mapping (used by rollbacks) |
+| `mallocForGrow` (SmallVector) | `0x208d1820` | log realloc-down on pop |
 
 ---
 

@@ -102,14 +102,14 @@ Two structural facts to preserve:
 - **The attribute name is the 12-character string `"sc.sequencer"`** (the literal and length `12` are baked into the `getInherentAttr(a2, "sc.sequencer", 12)` call in the decompiled body). The identical name+length pair appears in `HasCoreSequencerTypeAttribute` and `HasExecuteSequencerTypeAttribute` (below), confirming all three read the same attribute.
 - **The two-step inherent→dictionary lookup** mirrors MLIR's split between *inherent* attributes (declared on the op definition) and *discardable* dictionary attributes. The accessor accepts either, so the outliner may attach `sc.sequencer` through whichever path is convenient for the op kind.
 
-| Property | Value | Confidence |
-|---|---|---|
-| Function VA | `0x13507760` | CONFIRMED |
-| Attribute name / length | `"sc.sequencer"` / 12 | CONFIRMED |
-| Return type | `optional<StringRef>` (data, size, present-byte at +16) | CONFIRMED |
-| Lookup order | inherent attr, then discardable dictionary attr | CONFIRMED |
-| Type guard | `StringAttr` TypeID (`TypeIDResolver<StringAttr>::id`) | CONFIRMED |
-| Returned values | `"scs"` / `"access"` / `"execute"` | CONFIRMED (string set) |
+| Property | Value |
+|---|---|
+| Function VA | `0x13507760` |
+| Attribute name / length | `"sc.sequencer"` / 12 |
+| Return type | `optional<StringRef>` (data, size, present-byte at +16) |
+| Lookup order | inherent attr, then discardable dictionary attr |
+| Type guard | `StringAttr` TypeID (`TypeIDResolver<StringAttr>::id`) |
+| Returned values | `"scs"` / `"access"` / `"execute"` |
 
 ---
 
@@ -200,16 +200,16 @@ kDma:
 
 The routing constants matter for reimplementation:
 
-| Mechanism | Value | Meaning | Confidence |
-|---|---|---|---|
-| spmem normalization | `src/dst==1 → 5*(¬cap)+16` | encoded `1` → 16 (cap) or 21 (no cap) | CONFIRMED |
-| both-local gate | `(dst_local & src_local) == 1` | kStream requires both endpoints local | CONFIRMED |
-| HBM dst-set bitmask | `0x210018` (2162712) over `dst` | gatherable destinations from HBM source | CONFIRMED |
-| HBM_4B dst-set bitmask | `0x210004` (2162692) over `dst` | gatherable destinations from HBM_4B | CONFIRMED |
-| capability slot | `target` vtable `+0xa0` | the `SupportsScVar` predicate | HIGH |
-| kStream result | `[result+0]=1, [result+8]=1` | FailureOr success + `kind=kStream` | CONFIRMED |
-| kDma result | `[result+0]=1, [result+8]=0` | FailureOr success + `kind=kDma` | CONFIRMED |
-| illegal-pair diag | `transfer_emitter.cc:196` `InvalidArgument` | "SparseCore does not support transfers…" | CONFIRMED |
+| Mechanism | Value | Meaning |
+|---|---|---|
+| spmem normalization | `src/dst==1 → 5*(¬cap)+16` | encoded `1` → 16 (cap) or 21 (no cap) |
+| both-local gate | `(dst_local & src_local) == 1` | kStream requires both endpoints local |
+| HBM dst-set bitmask | `0x210018` (2162712) over `dst` | gatherable destinations from HBM source |
+| HBM_4B dst-set bitmask | `0x210004` (2162692) over `dst` | gatherable destinations from HBM_4B |
+| capability slot | `target` vtable `+0xa0` | the `SupportsScVar` predicate |
+| kStream result | `[result+0]=1, [result+8]=1` | FailureOr success + `kind=kStream` |
+| kDma result | `[result+0]=1, [result+8]=0` | FailureOr success + `kind=kDma` |
+| illegal-pair diag | `transfer_emitter.cc:196` `InvalidArgument` | "SparseCore does not support transfers…" |
 
 > **NOTE — the capability bit is the `SupportsScVar` predicate, and it is 0 in this wheel.** The cases that gate on `target.vtable[+0xa0]()` (`src==6` and the `dst==6` sub-branch of HBM) call a virtual method on the `SparseCoreTarget`; the cross-references resolve this slot to `SupportsScVar` (Ghostlite `0x1d499340`, Viperfish `0x1d49c7e0`), which returns 0 for every generation shipped here. So those capability-gated Stream routes are *compiled out* in this build — they fall through to the kDma path. A reimplementer targeting these chips must treat `SupportsScVar` as false.
 
@@ -309,22 +309,22 @@ To reproduce SparseCore engine selection:
 
 ## Confidence Summary
 
-| Claim | Evidence | Confidence |
-|---|---|---|
-| `getSequencerType` is an attribute accessor returning `optional<StringRef>` | decompiled `@0x13507760`: inherent→dictionary `sc.sequencer` lookup, StringAttr guard | CONFIRMED |
-| Attribute name is `"sc.sequencer"` (12 chars) | `getInherentAttr(…, 12)` literal in all three reader functions | CONFIRMED |
-| `"scs"` → SCS, `"execute"` → TEC, `"access"` → TAC | byte-literal compares in `HasCore…` `@0x14599ec0` / `HasExecute…` `@0x1459a020`; `"access"` is the third value (no predicate) | CONFIRMED (scs/execute); HIGH (access) |
-| Engine tag is function-scoped; ops inherit via parent-func trait | `ParentHasSequencerTypeAttribute` `@0x1353e980` walks to `LLVMFuncOp`; trait verified on `TileTaskWaitOp` `@0x14689880` | CONFIRMED |
-| `GetTransferKind` selects kStream vs kDma on memory-space pair + capability | decompiled `@0x1351b140`: both-local gate, bitmasks `0x210018`/`0x210004`, `vtable[+0xa0]`, `transfer_emitter.cc:196` diag | CONFIRMED |
-| `SupportsScVar` capability is 0 on these gens (capability-gated Stream routes compiled out) | `vtable[+0xa0]` resolves to `SupportsScVar` (GL `0x1d499340` / VF `0x1d49c7e0`), =0 | HIGH |
-| Feeders: `lowerEnqueueDma` `@0x135105a0`, `lowerEnqueueIndirectDma` `@0x13511da0`, `getTransferKind<…>` `@0x135114a0`/`@0x135145e0` | demangled decompiled symbols present | CONFIRMED |
-| Outliner stamps `sc.sequencer` per region | `LowerSequencerFunctionsPass::runOnOperation` `@0x13532120` + `OutlineSequencerFunction` | HIGH |
-| 6acc60406 (`gfc`) folds "access" into "execute" (no TAC) | `gfc::…SparseCoreTacCodecBase` = 0 files vs 13/30; no `HasAccessSequencerTypeAttribute` | CONFIRMED |
-| `TpuSequencerTypeToString` is a jump table over `off_22010DE0` | decompiled `@0x20b362e0`: `*(&off_22010DE0 + a1)` | CONFIRMED |
-| C++ enum order via `off_22010DE0` = {TC=0, BARNA=1, BARNA_ADDR=2, SCS=3, TAC=4, TEC=5}; no INVALID slot | `R_X86_64_RELATIVE` relocs resolve idx0→`"TensorCoreSequencer"`, idx3→`"SparseCoreSequencer"`, idx5→`"SparseCoreTileExecuteCoreSequencer"`; idx6→`"IMEM"` (adjacent table) | CONFIRMED |
-| Codec template enum {SCS=3,TAC=4,TEC=5} == the C++ enum (no off-by-one) | `nm` `(TpuSequencerType)3`×32 / `)4`×16; codec-metadata `BundleSizeBytes` `@0x1ecf7180` keys on the same C++ enum | CONFIRMED |
-| Proto enum {INVALID=0…SCS=4,TAC=5,TEC=6,SCv0=7/8}; +1 vs C++ enum, bridged by `TpuSequencerTypeFromProto` | `TpuSequencerTypeProto` descriptor literals; `FromProto` `@0x20b36300` switch maps proto `4→3,5→4,6→5`, rejects 7/8 | CONFIRMED |
-| Per-op Access-vs-Execute region rule; runtime→codec conversion site | not bit-traced in this analysis | LOW |
+| Claim | Evidence |
+|---|---|
+| `getSequencerType` is an attribute accessor returning `optional<StringRef>` | decompiled `@0x13507760`: inherent→dictionary `sc.sequencer` lookup, StringAttr guard |
+| Attribute name is `"sc.sequencer"` (12 chars) | `getInherentAttr(…, 12)` literal in all three reader functions |
+| `"scs"` → SCS, `"execute"` → TEC, `"access"` → TAC | byte-literal compares in `HasCore…` `@0x14599ec0` / `HasExecute…` `@0x1459a020`; `"access"` is the third value (no predicate) |
+| Engine tag is function-scoped; ops inherit via parent-func trait | `ParentHasSequencerTypeAttribute` `@0x1353e980` walks to `LLVMFuncOp`; trait verified on `TileTaskWaitOp` `@0x14689880` |
+| `GetTransferKind` selects kStream vs kDma on memory-space pair + capability | decompiled `@0x1351b140`: both-local gate, bitmasks `0x210018`/`0x210004`, `vtable[+0xa0]`, `transfer_emitter.cc:196` diag |
+| `SupportsScVar` capability is 0 on these gens (capability-gated Stream routes compiled out) | `vtable[+0xa0]` resolves to `SupportsScVar` (GL `0x1d499340` / VF `0x1d49c7e0`), =0 |
+| Feeders: `lowerEnqueueDma` `@0x135105a0`, `lowerEnqueueIndirectDma` `@0x13511da0`, `getTransferKind<…>` `@0x135114a0`/`@0x135145e0` | demangled decompiled symbols present |
+| Outliner stamps `sc.sequencer` per region | `LowerSequencerFunctionsPass::runOnOperation` `@0x13532120` + `OutlineSequencerFunction` |
+| 6acc60406 (`gfc`) folds "access" into "execute" (no TAC) | `gfc::…SparseCoreTacCodecBase` = 0 files vs 13/30; no `HasAccessSequencerTypeAttribute` |
+| `TpuSequencerTypeToString` is a jump table over `off_22010DE0` | decompiled `@0x20b362e0`: `*(&off_22010DE0 + a1)` |
+| C++ enum order via `off_22010DE0` = {TC=0, BARNA=1, BARNA_ADDR=2, SCS=3, TAC=4, TEC=5}; no INVALID slot | `R_X86_64_RELATIVE` relocs resolve idx0→`"TensorCoreSequencer"`, idx3→`"SparseCoreSequencer"`, idx5→`"SparseCoreTileExecuteCoreSequencer"`; idx6→`"IMEM"` (adjacent table) |
+| Codec template enum {SCS=3,TAC=4,TEC=5} == the C++ enum (no off-by-one) | `nm` `(TpuSequencerType)3`×32 / `)4`×16; codec-metadata `BundleSizeBytes` `@0x1ecf7180` keys on the same C++ enum |
+| Proto enum {INVALID=0…SCS=4,TAC=5,TEC=6,SCv0=7/8}; +1 vs C++ enum, bridged by `TpuSequencerTypeFromProto` | `TpuSequencerTypeProto` descriptor literals; `FromProto` `@0x20b36300` switch maps proto `4→3,5→4,6→5`, rejects 7/8 |
+| Per-op Access-vs-Execute region rule; runtime→codec conversion site | not bit-traced in this analysis |
 
 ---
 

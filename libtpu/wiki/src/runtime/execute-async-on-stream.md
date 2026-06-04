@@ -54,16 +54,16 @@ The `legacy::` namespace on `TpuExecutableInterface` is the binary's own label (
 
 ### Function Map
 
-| Function | Address | Size | Role | Confidence |
-|---|---|---|---|---|
-| `xla::legacy::TpuExecutableInterface::ExecuteAsyncOnStream` | `0x1342cd20` | 3650 B | The entry: marshal → allocate → dispatch → output | CERTAIN |
-| `xla::legacy::TpuExecutableInterface::AllocateOutputMemoryWithInputReuse` | `0x1342ba00` | 4828 B | Build output `ScopedShapedBuffer`, honor donation/aliasing | CERTAIN |
-| `xla::jellyfish::DeepseaExecutable::LoadProgramAndEnqueueToStream` | `0x13426260` | 7512 B | Pure-virtual leaf (vtable+96) — device enqueue | CERTAIN |
-| `xla::Executable::ExecuteAsyncOnStreamWrapper` (`ExecutionInput`) | `0x1dad98a0` | 579 B | Profiled public wrapper around the +24 virtual | CERTAIN |
-| `xla::Executable::ExecuteAsyncOnStreamWrapper` (`ShapedBuffer`) | `0x1dad9780` | 259 B | Legacy `ShapedBuffer`-span overload | HIGH |
-| `xla::ExecuteWrapperAfterExecution` | `0x1dad9b00` | 266 B | Post-exec profiling/HLO-profile finalize | HIGH |
-| `xla::LocalExecutable::RunAsync` | `0x1084d140` | 2489 B | `LocalClient` driver → wrapper | CERTAIN |
-| `TpuExecutable_ExecuteAsyncOnStream` | `0xeabd500` | 4708 B | C-ABI shim: C structs ↔ C++ objects | CERTAIN |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `xla::legacy::TpuExecutableInterface::ExecuteAsyncOnStream` | `0x1342cd20` | 3650 B | The entry: marshal → allocate → dispatch → output |
+| `xla::legacy::TpuExecutableInterface::AllocateOutputMemoryWithInputReuse` | `0x1342ba00` | 4828 B | Build output `ScopedShapedBuffer`, honor donation/aliasing |
+| `xla::jellyfish::DeepseaExecutable::LoadProgramAndEnqueueToStream` | `0x13426260` | 7512 B | Pure-virtual leaf (vtable+96) — device enqueue |
+| `xla::Executable::ExecuteAsyncOnStreamWrapper` (`ExecutionInput`) | `0x1dad98a0` | 579 B | Profiled public wrapper around the +24 virtual |
+| `xla::Executable::ExecuteAsyncOnStreamWrapper` (`ShapedBuffer`) | `0x1dad9780` | 259 B | Legacy `ShapedBuffer`-span overload |
+| `xla::ExecuteWrapperAfterExecution` | `0x1dad9b00` | 266 B | Post-exec profiling/HLO-profile finalize |
+| `xla::LocalExecutable::RunAsync` | `0x1084d140` | 2489 B | `LocalClient` driver → wrapper |
+| `TpuExecutable_ExecuteAsyncOnStream` | `0xeabd500` | 4708 B | C-ABI shim: C structs ↔ C++ objects |
 
 ---
 

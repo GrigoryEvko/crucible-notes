@@ -99,11 +99,11 @@ The sibling `GetMegacoreBarrierSyncFlagNumber` @`0x1d60f4e0` (`= base + count`, 
 
 Because the word "global" is overloaded, a reimplementer must keep three distinct sources apart. Only **(c)** is `GetGlobalBarrierSyncFlagNumber`; this page owns (c) and the gate that produces (a).
 
-| # | What | Chosen / inserted by | SFLAG number source | Sequencer / op family | Confidence |
-|---|---|---|---|---|---|
-| **(a)** | SC Mosaic **func-level** tree barrier | `CustomKernelEmitter::MaybeInsertGlobalBarrier` @`0x1321ac20` (§3) | SC Mosaic per-core window (`mlir::sparse_core::MemorySpaceAttr::get(ctx, 14)` — SC MLIR enum, **not** jellyfish `MemorySpace`; `AllocateAtOffsetOp`); **NOT** `GetGlobalBarrierSyncFlagNumber` | TC sequencer (Mosaic) `tpu.sem_signal`/`tpu.sem_wait` in `scf.for` | CONFIRMED |
-| **(b)** | SC **per-collective** global barrier | `EmitScsBarrier(type1)` / `EmitAllToAllBarrierStart(type1)` → `EmitGlobalBarrier` @`0x13352820` | `GetSyncFlagForBarrierId(reserved id)` = `id + SC_base` (SC barrier block) | SC sequencer `sc_tpu.sync_add` tree over SC cores | CONFIRMED |
-| **(c)** | **TC LLO reserved GLOBAL slot** | `net_util::GetBarrierSyncFlag(type1)` @`0x1c69ad00`; `BarrierCoresTree` etc. (§1) | `GetGlobalBarrierSyncFlagNumber()` = `base + count + 4` (TC barrier block) | TC sequencer Vsync* / `net_util` tree barrier | CONFIRMED |
+| # | What | Chosen / inserted by | SFLAG number source | Sequencer / op family |
+|---|---|---|---|---|
+| **(a)** | SC Mosaic **func-level** tree barrier | `CustomKernelEmitter::MaybeInsertGlobalBarrier` @`0x1321ac20` (§3) | SC Mosaic per-core window (`mlir::sparse_core::MemorySpaceAttr::get(ctx, 14)` — SC MLIR enum, **not** jellyfish `MemorySpace`; `AllocateAtOffsetOp`); **NOT** `GetGlobalBarrierSyncFlagNumber` | TC sequencer (Mosaic) `tpu.sem_signal`/`tpu.sem_wait` in `scf.for` |
+| **(b)** | SC **per-collective** global barrier | `EmitScsBarrier(type1)` / `EmitAllToAllBarrierStart(type1)` → `EmitGlobalBarrier` @`0x13352820` | `GetSyncFlagForBarrierId(reserved id)` = `id + SC_base` (SC barrier block) | SC sequencer `sc_tpu.sync_add` tree over SC cores |
+| **(c)** | **TC LLO reserved GLOBAL slot** | `net_util::GetBarrierSyncFlag(type1)` @`0x1c69ad00`; `BarrierCoresTree` etc. (§1) | `GetGlobalBarrierSyncFlagNumber()` = `base + count + 4` (TC barrier block) | TC sequencer Vsync* / `net_util` tree barrier |
 
 The three live in three number spaces: (a) the SparseCore Mosaic per-core window (`mlir::sparse_core::MemorySpace` value 14 — the SC MLIR enum, distinct from the jellyfish `MemorySpace` enum where 14 = `sparse_core_sequencer_smem`); (b) the SC barrier block; (c) the TC barrier block `[base, base+count]` with the GLOBAL slot at `+count+4`. (a) and (b) are SparseCore; (c) is TensorCore. **`GetGlobalBarrierSyncFlagNumber` belongs to the TC engine only** — which is exactly why the SparseCore `MaybeInsertGlobalBarrier` never calls it. Source (c) is not the SC tree barrier (a): they are different `Target`/`SparseCoreTarget` fields and different sequencers.
 
@@ -122,14 +122,14 @@ The three live in three number spaces: (a) the SparseCore Mosaic per-core window
 
 The decompile presents `a1`=module handle, `a2`=walk iterator over the module, `a3`=`CustomCallConfig*`, `a4`=`BarrierConfig*` (may be null). The gate reads three things out of `CustomCallConfig` (`a3`) and one out of `BarrierConfig` (`a4`):
 
-| Decompile read | Meaning (attributed from use + RetCheck strings) | Confidence |
-|---|---|---|
-| `v4 = cfg[+0x10]` flags dword; bit `0x200` | presence guard for the *has-communication* byte | HIGH |
-| `v5 = cfg[+0x90]` (read only if bit `0x200`) | **has-communication** flag (custom call communicates) | HIGH |
-| `v4` bit `0x2000` | presence guard for the *skip-device-barrier* byte | HIGH |
-| `v6 = cfg[+0x94]` (read only if bit `0x2000`) | **skip_device_barrier** flag | HIGH |
-| `v4` bit `0x40` | **custom-barrier-requested** flag (a `BarrierConfig` is attached) | HIGH |
-| `v7 = (bc->type [a4+0x20] == 3)` | the attached barrier is `CUSTOM(3)` | CONFIRMED |
+| Decompile read | Meaning (attributed from use + RetCheck strings) |
+|---|---|
+| `v4 = cfg[+0x10]` flags dword; bit `0x200` | presence guard for the *has-communication* byte |
+| `v5 = cfg[+0x90]` (read only if bit `0x200`) | **has-communication** flag (custom call communicates) |
+| `v4` bit `0x2000` | presence guard for the *skip-device-barrier* byte |
+| `v6 = cfg[+0x94]` (read only if bit `0x2000`) | **skip_device_barrier** flag |
+| `v4` bit `0x40` | **custom-barrier-requested** flag (a `BarrierConfig` is attached) |
+| `v7 = (bc->type [a4+0x20] == 3)` | the attached barrier is `CUSTOM(3)` |
 
 ### 3.2 The three legality gates (byte-exact)
 

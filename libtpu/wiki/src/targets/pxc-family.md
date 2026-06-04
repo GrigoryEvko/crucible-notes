@@ -61,12 +61,12 @@ function google_init_module_tpu_hal_pxc_hardware_impl():   // 0x213e9ec0
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `google_init_module_tpu_hal_pxc_hardware_impl` | 0x213e9ec0 | single Register (v2) | CERTAIN |
-| `TpuHalFactory::Register` | 0x1fbb16a0 | registry insert (shared) | CERTAIN |
-| `TpuHalFactory::Get` | 0x1fbb19c0 | runtime lookup (shared) | CERTAIN |
-| `TpuHal::Create` | 0x1e814180 | public entry (shared) | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `google_init_module_tpu_hal_pxc_hardware_impl` | 0x213e9ec0 | single Register (v2) |
+| `TpuHalFactory::Register` | 0x1fbb16a0 | registry insert (shared) |
+| `TpuHalFactory::Get` | 0x1fbb19c0 | runtime lookup (shared) |
+| `TpuHal::Create` | 0x1e814180 | public entry (shared) |
 
 ---
 
@@ -78,13 +78,13 @@ PXC's factory vtable is byte-identical in shape to JXC's: two family-specific ov
 
 ### Vtable Layout
 
-| vaddr | slot | resolves to | base/override | Confidence |
-|---|---|---|---|---|
-| 0x216085d8 | 0 — `~TpuHalFactory()` D2 | 0x0e723a80 (`ret`) | INHERITED | CERTAIN |
-| 0x216085e0 | 1 — `~TpuHalPxcHardwareFactory()` D0 | 0x0e7f8260 | **OVERRIDE** | CERTAIN |
-| 0x216085e8 | 2 — `HardwareFactoryBase::Create(wq)` | 0x1e80f560 | INHERITED | CERTAIN |
-| 0x216085f0 | 3 — `HardwareFactoryBase::CanCreate()` | 0x1e80f520 | INHERITED | CERTAIN |
-| 0x216085f8 | 4 — `TpuHalPxcHardwareFactory::CreateImpl(wq)` | 0x0e7f8280 | **OVERRIDE** | CERTAIN |
+| vaddr | slot | resolves to | base/override |
+|---|---|---|---|
+| 0x216085d8 | 0 — `~TpuHalFactory()` D2 | 0x0e723a80 (`ret`) | INHERITED |
+| 0x216085e0 | 1 — `~TpuHalPxcHardwareFactory()` D0 | 0x0e7f8260 | **OVERRIDE** |
+| 0x216085e8 | 2 — `HardwareFactoryBase::Create(wq)` | 0x1e80f560 | INHERITED |
+| 0x216085f0 | 3 — `HardwareFactoryBase::CanCreate()` | 0x1e80f520 | INHERITED |
+| 0x216085f8 | 4 — `TpuHalPxcHardwareFactory::CreateImpl(wq)` | 0x0e7f8280 | **OVERRIDE** |
 
 Slot 1 encodes `operator delete(this, 0x10)` — the factory is 16 bytes, like all four families.
 
@@ -158,15 +158,15 @@ Below the fetch-core sit further namespaces: `pxc::pfc::isa` (46K symbols — in
 
 Pufferfish has chip variants (B0 Mfg / B0 Water / B0 Air) multiplexed inside the same impl via `TpuChipParts::variant_name()` (0x20b1eb40). They are not separate `TpuVersion` values and do not change the factory or vtable — the variant name is read only for census reporting and human-readable naming (`TpuVersionAndVariantToHumanReadableName`, 0x20b3b040), with no per-variant code branch observed in `CreateAndInitializeChips`.
 
-| Axis | Pufferfish (v2) | Source | Confidence |
-|---|---|---|---|
-| TpuVersion enum | kPufferfish = 2 | `TpuVersionToString` 0x20b3a480 | CERTAIN |
-| ToString | "pufferfish" | rodata | CERTAIN |
-| External name | "TPU v4" (lite variant: "TPU v4 lite") | naming path | CERTAIN |
-| Codec class | `TpuCodecPufferfish` (named) | `TpuCodec::Create` 0x1e835fa0 case 2 | CERTAIN |
-| TensorCore / BarnaCore | yes / yes (last BarnaCore gen) | TpuChipParts | CERTAIN |
-| SparseCore | no | TpuChipParts | CERTAIN |
-| Flag prefix | `xla_pf_` (only 3 flags; mostly shares `xla_jf_`) | flag scan | HIGH |
+| Axis | Pufferfish (v2) | Source |
+|---|---|---|
+| TpuVersion enum | kPufferfish = 2 | `TpuVersionToString` 0x20b3a480 |
+| ToString | "pufferfish" | rodata |
+| External name | "TPU v4" (lite variant: "TPU v4 lite") | naming path |
+| Codec class | `TpuCodecPufferfish` (named) | `TpuCodec::Create` 0x1e835fa0 case 2 |
+| TensorCore / BarnaCore | yes / yes (last BarnaCore gen) | TpuChipParts |
+| SparseCore | no | TpuChipParts |
+| Flag prefix | `xla_pf_` (only 3 flags; mostly shares `xla_jf_`) | flag scan |
 
 > **NOTE —** the tiny `xla_pf_` count (3 flags) shows Pufferfish is still close to the Jellyfish flag base; it shares most of `xla_jf_`. The architectural break (fetch/load split, DMA-in-driver, V2 descriptor) is structural, not flag-surfaced.
 

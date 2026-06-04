@@ -241,23 +241,23 @@ The `code` value comes from the fault topology (traced to `TopologyFaults::GetSy
 
 ## 6. Function and symbol map
 
-| Address | Symbol | Role | Confidence |
-|---------|--------|------|------------|
-| `0x20b59000` | `RouteCacheDeduplicator::Find` | hash-lookup; copy canonical key + rotation on hit | C |
-| `0x20b58340` | `RouteCacheDeduplicator::Insert` | canonicalize (`ToFaultyDimensions`→`ToRouteCacheIdentifier`→`ToRotationMapper`) + `find_or_prepare_insert` | C |
-| `0x1fbe3780` | `(anon)::UpdateDeduplicator` | per-string parse + 4-variant Insert fan-out | C |
-| `0x20b5aa40` | `combine<vector<int>,bool,optional<Orientation>>` | key hash (CRC32; `is_twisted ^ 1`) | C |
-| `0x20b480c0` | `slice_builder::ParseTopologyString` | `'x'`-split + `_twisted` suffix → `{dims, is_twisted}` | C |
-| `0x20b57b40` | `RouteCacheDeduplicator::ToFaultyDimensions` | `vector<FaultyDimension>` (stride 12) | C |
-| `0x20b57d80` | `RouteCacheDeduplicator::ToRouteCacheIdentifier` | canonical shape; "Only one faulty orientation…" `0xa244c87` | C |
-| `0x20b58160` | `RouteCacheDeduplicator::ToRotationMapper` | canonical→queried Orientation list | C |
-| `0x20b5b680` | `…raw_hash_set<…>::find_or_prepare_insert_large` | dedup map insert | C |
-| `0x20b3f7c0` | `TwistedTorusTopology::InitRouteSolution` | no-arg dedup; `kRouteCacheSet` walk @ `0x20b3f990` | C |
-| `0x1fbdf8a0` | `ResilientToroidalTopology::InitRouteSolution` | codename `switch`; pf/vf/gf singletons | C |
-| `0x22011f88` | `TwistedTorusTopology::kRouteCacheSet` | 8 twisted-shape `{ptr,len}` pairs (non-resilient path) | C |
-| `0x21f57380` | `ResilientToroidalTopology::kRouteCacheSet` | base set for the resilient path | C |
-| `0x21f57440` | `ResilientToroidalTopology::kViperfishRouteCacheSet` | viperfish-only codename set | C |
-| — | `k6acc60406RouteCacheSet` | TPU7x codename set (recovered from `CHECK` strings; not an independent `nm` symbol) | C |
+| Address | Symbol | Role |
+|---------|--------|------|
+| `0x20b59000` | `RouteCacheDeduplicator::Find` | hash-lookup; copy canonical key + rotation on hit |
+| `0x20b58340` | `RouteCacheDeduplicator::Insert` | canonicalize (`ToFaultyDimensions`→`ToRouteCacheIdentifier`→`ToRotationMapper`) + `find_or_prepare_insert` |
+| `0x1fbe3780` | `(anon)::UpdateDeduplicator` | per-string parse + 4-variant Insert fan-out |
+| `0x20b5aa40` | `combine<vector<int>,bool,optional<Orientation>>` | key hash (CRC32; `is_twisted ^ 1`) |
+| `0x20b480c0` | `slice_builder::ParseTopologyString` | `'x'`-split + `_twisted` suffix → `{dims, is_twisted}` |
+| `0x20b57b40` | `RouteCacheDeduplicator::ToFaultyDimensions` | `vector<FaultyDimension>` (stride 12) |
+| `0x20b57d80` | `RouteCacheDeduplicator::ToRouteCacheIdentifier` | canonical shape; "Only one faulty orientation…" `0xa244c87` |
+| `0x20b58160` | `RouteCacheDeduplicator::ToRotationMapper` | canonical→queried Orientation list |
+| `0x20b5b680` | `…raw_hash_set<…>::find_or_prepare_insert_large` | dedup map insert |
+| `0x20b3f7c0` | `TwistedTorusTopology::InitRouteSolution` | no-arg dedup; `kRouteCacheSet` walk @ `0x20b3f990` |
+| `0x1fbdf8a0` | `ResilientToroidalTopology::InitRouteSolution` | codename `switch`; pf/vf/gf singletons |
+| `0x22011f88` | `TwistedTorusTopology::kRouteCacheSet` | 8 twisted-shape `{ptr,len}` pairs (non-resilient path) |
+| `0x21f57380` | `ResilientToroidalTopology::kRouteCacheSet` | base set for the resilient path |
+| `0x21f57440` | `ResilientToroidalTopology::kViperfishRouteCacheSet` | viperfish-only codename set |
+| — | `k6acc60406RouteCacheSet` | TPU7x codename set (recovered from `CHECK` strings; not an independent `nm` symbol) |
 
 ---
 

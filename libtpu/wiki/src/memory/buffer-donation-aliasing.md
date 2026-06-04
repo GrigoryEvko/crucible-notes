@@ -61,11 +61,11 @@ enum AliasKind {                   // proto HloInputOutputAliasProto.Kind
 
 The config is queried two ways, both `const`:
 
-| Query | Symbol | Address | Returns | Confidence |
-|---|---|---|---|---|
-| output → input | `GetAliasedParameter(output_index)` | `0x1e580200` | `optional<Alias>` (empty ⇒ output is freshly allocated) | CONFIRMED |
-| input → output | `GetAliasedOutput(param_number, param_index)` | `0x1e5800a0` | `optional<ShapeIndex>` | CONFIRMED |
-| add an alias | `SetUpAlias(output_index, param_number, param_index, kind)` | `0x1e57e140` | mutates the table | CONFIRMED |
+| Query | Symbol | Address | Returns |
+|---|---|---|---|
+| output → input | `GetAliasedParameter(output_index)` | `0x1e580200` | `optional<Alias>` (empty ⇒ output is freshly allocated) |
+| input → output | `GetAliasedOutput(param_number, param_index)` | `0x1e5800a0` | `optional<ShapeIndex>` |
+| add an alias | `SetUpAlias(output_index, param_number, param_index, kind)` | `0x1e57e140` | mutates the table |
 
 > **NOTE —** the two `AliasKind` values are the spine of the safety model. `kMayAlias` is a *performance hint*: if the caller donates the input, reuse it; if not, the runtime allocates a fresh output and copies. `kMustAlias` is a *requirement*: the program was lowered assuming in-place update (it has no copy-in fallback), so the runtime fatals if the matching input is not donated. The literal proto enum strings `MAY_ALIAS` (`0xc18c23a`) and `MUST_ALIAS` (`0xc18c249`) sit adjacent in `.rodata` (in the serialized `HloInputOutputAliasProto` enum descriptor), and the diagnostic `print-must-aliases` (`0x855e010`) dumps only the mandatory set.
 
@@ -80,17 +80,17 @@ Two paths populate the config, both feeding the same object:
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `HloInputOutputAliasConfig::GetAliasedParameter` | `0x1e580200` | output leaf → `optional<Alias>` (the run-time query) | CONFIRMED |
-| `HloInputOutputAliasConfig::GetAliasedOutput` | `0x1e5800a0` | input leaf → `optional<ShapeIndex>` | CONFIRMED |
-| `HloInputOutputAliasConfig::SetUpAlias` | `0x1e57e140` | record an alias entry | CONFIRMED |
-| `HloInputOutputAliasConfig::ForEachAliasWithStatus` | (used by `0x1d7f4700`) | iterate all entries, fallible | CONFIRMED |
-| `HloInputOutputAliasConfig::CreateFromProto` | (`xla` core) | rehydrate from `HloInputOutputAliasProto` | HIGH |
-| `XlaBuilder::SetUpAlias` | `0xfb21220` | front-end alias declaration | CONFIRMED |
-| `XlaBuilder::PopulateInputOutputAliasAndBufferDonor` | (`xla` core) | serialize aliases + donors into `HloModuleProto` | CONFIRMED |
-| `OptimizeInputOutputBufferAlias::Build` | `0x164d9b00` | compiler-synthesized alias/donor discovery | CONFIRMED |
-| `ImportInputOutputAlias` / `ConvertInputOutputAlias` | (`xla` core) | MLIR ↔ config conversion | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `HloInputOutputAliasConfig::GetAliasedParameter` | `0x1e580200` | output leaf → `optional<Alias>` (the run-time query) |
+| `HloInputOutputAliasConfig::GetAliasedOutput` | `0x1e5800a0` | input leaf → `optional<ShapeIndex>` |
+| `HloInputOutputAliasConfig::SetUpAlias` | `0x1e57e140` | record an alias entry |
+| `HloInputOutputAliasConfig::ForEachAliasWithStatus` | (used by `0x1d7f4700`) | iterate all entries, fallible |
+| `HloInputOutputAliasConfig::CreateFromProto` | (`xla` core) | rehydrate from `HloInputOutputAliasProto` |
+| `XlaBuilder::SetUpAlias` | `0xfb21220` | front-end alias declaration |
+| `XlaBuilder::PopulateInputOutputAliasAndBufferDonor` | (`xla` core) | serialize aliases + donors into `HloModuleProto` |
+| `OptimizeInputOutputBufferAlias::Build` | `0x164d9b00` | compiler-synthesized alias/donor discovery |
+| `ImportInputOutputAlias` / `ConvertInputOutputAlias` | (`xla` core) | MLIR ↔ config conversion |
 
 ---
 
@@ -139,13 +139,13 @@ The runtime cross-checks this set against the effective donation set (inputs abs
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `ComputeParametersThatMustBeDonated(config, int, bool)` | `0x1d7f4700` | sorted `vector<int>` of must-donate params | CONFIRMED |
-| `ComputeParametersThatMustBeDonated(HloModule, bool)` | `0x1d7f4580` | same, from a module (extracts config first) | CONFIRMED |
-| `TestBufferDonationClashes` | `0x1d7f4be0` | detect two args resolving to one donated buffer | CONFIRMED |
-| `InferDispatchInfo(client, ComputationLayout&, config&, …)` | `0xf90cb40` | plan dispatch (layouts + aliasing) per launch | CONFIRMED |
-| (deny-list field) `ExecuteOptions::non_donatable_input_indices` | string `0xbf85686` | per-execute opt-out donation flag | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `ComputeParametersThatMustBeDonated(config, int, bool)` | `0x1d7f4700` | sorted `vector<int>` of must-donate params |
+| `ComputeParametersThatMustBeDonated(HloModule, bool)` | `0x1d7f4580` | same, from a module (extracts config first) |
+| `TestBufferDonationClashes` | `0x1d7f4be0` | detect two args resolving to one donated buffer |
+| `InferDispatchInfo(client, ComputationLayout&, config&, …)` | `0xf90cb40` | plan dispatch (layouts + aliasing) per launch |
+| (deny-list field) `ExecuteOptions::non_donatable_input_indices` | string `0xbf85686` | per-execute opt-out donation flag |
 
 ---
 
@@ -190,14 +190,14 @@ The decompiled branch is unambiguous: a per-leaf flag (`v77`) set from the `GetA
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `tfrt::tpu::AllocateOutputBuffersWithInputReuse` | `0xf7ba9a0` | per-leaf reuse-or-allocate over donated `TpuBuffer`s | CONFIRMED |
-| (reuse lambda) `…::$_0::operator()` | `0xf7bb1c0` | move a donated input buffer into the output slot | CONFIRMED |
-| `CommonPjRtClient::AllocateOutputBuffersWithInputReuse` | `0xf91ec20` | generic (ScopedHold-based) sibling | CONFIRMED |
-| `tfrt::tpu::AllocateTpuBufferWithRetry` | (in `0xf7ba9a0`) | fresh HBM alloc w/ OOM→defrag→retry | CONFIRMED |
-| `TransferSizeUtil::ShapeSizeCompact` | `0x1d6ae8a0` | size the output leaf's padded device shape | CONFIRMED |
-| `HloInputOutputAliasConfig::GetAliasedParameter` | `0x1e580200` | the per-leaf alias query | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `tfrt::tpu::AllocateOutputBuffersWithInputReuse` | `0xf7ba9a0` | per-leaf reuse-or-allocate over donated `TpuBuffer`s |
+| (reuse lambda) `…::$_0::operator()` | `0xf7bb1c0` | move a donated input buffer into the output slot |
+| `CommonPjRtClient::AllocateOutputBuffersWithInputReuse` | `0xf91ec20` | generic (ScopedHold-based) sibling |
+| `tfrt::tpu::AllocateTpuBufferWithRetry` | (in `0xf7ba9a0`) | fresh HBM alloc w/ OOM→defrag→retry |
+| `TransferSizeUtil::ShapeSizeCompact` | `0x1d6ae8a0` | size the output leaf's padded device shape |
+| `HloInputOutputAliasConfig::GetAliasedParameter` | `0x1e580200` | the per-leaf alias query |
 
 ---
 
@@ -261,19 +261,19 @@ PJRT_LoadedExecutable_Execute
 
 ### Function Map
 
-| Function | Address | Source anchor | Role | Confidence |
-|---|---|---|---|---|
-| `ScopedHold::AcquireDonation` | `0xf93d600` | `abstract_tracked_device_buffer.cc:180/192` | move tracked buffer out of PjRtBuffer | CONFIRMED |
-| `ScopedHold::ConfirmDonation` | `0xf93dca0` | — | finalize: donor permanently empty | CONFIRMED |
-| `CommonPjRtBuffer::ConfirmDonation` | `0xf93dd40` | — | dispatch to tracked-buffer confirm | CONFIRMED |
-| `TrackedTpuDeviceBuffer::ConfirmDonation` | `0xf840660` | `tracked_tpu_device_buffer.cc:88` | clear `in_use_`, release events | CONFIRMED |
-| `TrackedCpuDeviceBuffer::ConfirmDonation` | `0xf916b20` | — | CPU sibling | CONFIRMED |
-| `CommonPjRtBuffer::DropDonationHold` | `0xf93d900` | — | return buffer on failure / no-donate | CONFIRMED |
-| `CommonPjRtBuffer::GetBufferForDonationHoldLocked` | `0xf93d3a0` | — | fetch buffer under lock for the hold | CONFIRMED |
-| `PjRtBuffer::DonateWithControlDependency` | `0xe6eb260` | — | standalone future-gated donation | CONFIRMED |
-| `CommonPjRtBufferImpl::DonateWithControlDependency` | `0xf92a740` | — | TPU impl of the above | CONFIRMED |
-| `PJRT_Buffer_DonateWithControlDependency` | `0xf86f2e0` | — | PJRT C-ABI shim | CONFIRMED |
-| `InferDispatchInfo(…, ComputationLayout&, config&, …)` | `0xf90cb40` | — | plan donation + output mapping | CONFIRMED |
+| Function | Address | Source anchor | Role |
+|---|---|---|---|
+| `ScopedHold::AcquireDonation` | `0xf93d600` | `abstract_tracked_device_buffer.cc:180/192` | move tracked buffer out of PjRtBuffer |
+| `ScopedHold::ConfirmDonation` | `0xf93dca0` | — | finalize: donor permanently empty |
+| `CommonPjRtBuffer::ConfirmDonation` | `0xf93dd40` | — | dispatch to tracked-buffer confirm |
+| `TrackedTpuDeviceBuffer::ConfirmDonation` | `0xf840660` | `tracked_tpu_device_buffer.cc:88` | clear `in_use_`, release events |
+| `TrackedCpuDeviceBuffer::ConfirmDonation` | `0xf916b20` | — | CPU sibling |
+| `CommonPjRtBuffer::DropDonationHold` | `0xf93d900` | — | return buffer on failure / no-donate |
+| `CommonPjRtBuffer::GetBufferForDonationHoldLocked` | `0xf93d3a0` | — | fetch buffer under lock for the hold |
+| `PjRtBuffer::DonateWithControlDependency` | `0xe6eb260` | — | standalone future-gated donation |
+| `CommonPjRtBufferImpl::DonateWithControlDependency` | `0xf92a740` | — | TPU impl of the above |
+| `PJRT_Buffer_DonateWithControlDependency` | `0xf86f2e0` | — | PJRT C-ABI shim |
+| `InferDispatchInfo(…, ComputationLayout&, config&, …)` | `0xf90cb40` | — | plan donation + output mapping |
 
 ---
 
@@ -287,11 +287,11 @@ A donated, aliased program is reused across many executes and may be loaded from
 
 The compiled-program payload is a tuple constructed once and carried for the program's whole lifetime. The `HloInputOutputAliasConfig` is a member of every payload variant, sitting beside the `ComputationLayout` (or `vector<Shape>`) and the `xdb::CompilerMetadata`:
 
-| Payload type | Constructor | Members (relevant) | Confidence |
-|---|---|---|---|
-| `xla::jellyfish::TpuJitResult::Program` | `0xf8b7720` / `0xf8b7500` | `unique_ptr<TpuCoreProgram>`, `ComputationLayout`, **`HloInputOutputAliasConfig`**, `CompilerMetadata`, `HostTransferProto[]`, `HostExecutionProto[]` | CONFIRMED |
-| `tfrt::tpu::TpuCompilationCacheEntry::Program` | `0xf7bc500` / `0xf7bbd60` | `int`, `AsyncValueRef<TpuCoreProgram>`, `vector<Shape>×2`, **`HloInputOutputAliasConfig`**, `CompilerMetadata`, `HostTransferProto[]` | CONFIRMED |
-| `tfrt::tpu::TpuJitResultTF::Program` | `0xf7c8d60` | `AsyncValueRef<TpuCoreProgram>`, **`const HloInputOutputAliasConfig`**, `CompilerMetadata`, `HostTransferProto[]` | CONFIRMED |
+| Payload type | Constructor | Members (relevant) |
+|---|---|---|
+| `xla::jellyfish::TpuJitResult::Program` | `0xf8b7720` / `0xf8b7500` | `unique_ptr<TpuCoreProgram>`, `ComputationLayout`, **`HloInputOutputAliasConfig`**, `CompilerMetadata`, `HostTransferProto[]`, `HostExecutionProto[]` |
+| `tfrt::tpu::TpuCompilationCacheEntry::Program` | `0xf7bc500` / `0xf7bbd60` | `int`, `AsyncValueRef<TpuCoreProgram>`, `vector<Shape>×2`, **`HloInputOutputAliasConfig`**, `CompilerMetadata`, `HostTransferProto[]` |
+| `tfrt::tpu::TpuJitResultTF::Program` | `0xf7c8d60` | `AsyncValueRef<TpuCoreProgram>`, **`const HloInputOutputAliasConfig`**, `CompilerMetadata`, `HostTransferProto[]` |
 
 The on-disk form is `xla::HloInputOutputAliasProto` (with nested `HloInputOutputAliasProto_AliasEntryProto`; `CopyFrom`/`MergeImpl`/`InternalSwap`/`Clear` all present), and `HloInputOutputAliasConfig::CreateFromProto(result_shape, proto)` rehydrates the in-memory config at load time. This is why a cache-hit reload of a program preserves its aliasing exactly — the config is data, not recomputed.
 

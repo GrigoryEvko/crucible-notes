@@ -56,17 +56,17 @@ function VpackBf16Inst(a, b):                           // 0x1d565940
 
 The decompile shows `VpackBf16Inst` calling `CreateVectorPack(294, 7u, …)` — `294` = `0x126` = `kVectorPack`, format `7` = `InterleavedBf16` — after the gate `(*(…+1224))(v7, 7)` where `1224` = `0x4c8` is the target sub-object vtable slot for `SupportsVectorPackOps`. `CreateVectorPack` (`0x1d4d3140`) builds a two-operand `New(0x126, {a,b})` and calls `set_pack_format_sublane(7, nullopt)`.
 
-> **NOTE —** the bf16 pair-pack is **not** `kVectorWeird` (`0xae`). The `0xae` op is the *distinct one-operand* `VweirdBf16` factory (`0x1d5546e0` → `CreateVectorWeird` `0x1d4d4e20`), a single-input cross-lane op gated on `SupportsBf16AluInstructions` (vtable `+0x780`); the decompile passes a fixed result `PrimitiveType` `0x10` (F16) to `CreateVectorWeird`, which builds `New(0xae, {in}, 1)`. An earlier reading that routed `VpackBf16` through `CreateVectorWeird`/`0xae` was wrong; the two share no factory.
+> **NOTE —** the bf16 pair-pack is **not** `kVectorWeird` (`0xae`). The `0xae` op is the *distinct one-operand* `VweirdBf16` factory (`0x1d5546e0` → `CreateVectorWeird` `0x1d4d4e20`), a single-input cross-lane op gated on `SupportsBf16AluInstructions` (vtable `+0x780`); the decompile passes a fixed result `PrimitiveType` `0x10` (F16) to `CreateVectorWeird`, which builds `New(0xae, {in}, 1)`. The two share no factory.
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `LloRegionBuilder::VpackBf16` | `0x1d554680` | Peephole + tail-call entry | CERTAIN |
-| `LloRegionBuilder::VpackBf16Inst` | `0x1d565940` | Gate + emit `0x126` | CERTAIN |
-| `LloInstruction::CreateVectorPack` | `0x1d4d3140` | `New(0x126, {a,b})` + format | CERTAIN |
-| `llo_simplifier::SimplifyPackF16` | `0x1d599360` | Constant-fold two bf16 | HIGH |
-| `LloRegionBuilder::VweirdBf16` | `0x1d5546e0` | Distinct 1-op `0xae` factory | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `LloRegionBuilder::VpackBf16` | `0x1d554680` | Peephole + tail-call entry |
+| `LloRegionBuilder::VpackBf16Inst` | `0x1d565940` | Gate + emit `0x126` |
+| `LloInstruction::CreateVectorPack` | `0x1d4d3140` | `New(0x126, {a,b})` + format |
+| `llo_simplifier::SimplifyPackF16` | `0x1d599360` | Constant-fold two bf16 |
+| `LloRegionBuilder::VweirdBf16` | `0x1d5546e0` | Distinct 1-op `0xae` factory |
 
 ---
 
@@ -96,17 +96,17 @@ The decompile is unambiguous: `VunpackUpperCF32` calls `CreateVectorUnpack(0x109
 
 `CreateVectorUnpack` (`0x1d4d37c0`) builds a one-operand `New(0x109, {in})` and calls `set_pack_format_sublane(format, index | engaged)` — the index is folded into the sub-lane field (next section).
 
-> **CORRECTION —** the bf16 unpack opcode is `0x109 kVectorUnpack`, **not** `0x10f kVectorDynamicUnpack`. `0x10f` is the separate `CreateVectorDynamicUnpack` (`0x1d4d3d80`), gated by `SupportsDynamicUnpackOps` (vtable `+0x4e0`, `false` on Viperfish). The sibling sub-byte unpacks `kVectorUnpackAndJoinB2ToB4`/`B4ToB8` (`0x10a`-`0x10d`) and `kVectorUnpackEXMY` (`0x10e`) are distinct opcodes again.
+The bf16 unpack opcode is `0x109 kVectorUnpack`, distinct from `0x10f kVectorDynamicUnpack`. `0x10f` is the separate `CreateVectorDynamicUnpack` (`0x1d4d3d80`), gated by `SupportsDynamicUnpackOps` (vtable `+0x4e0`, `false` on Viperfish). The sibling sub-byte unpacks `kVectorUnpackAndJoinB2ToB4`/`B4ToB8` (`0x10a`-`0x10d`) and `kVectorUnpackEXMY` (`0x10e`) are distinct opcodes again.
 
 ### Function Map
 
-| Function | Address | Emits | Confidence |
-|---|---|---|---|
-| `LloRegionBuilder::VunpackUpperCF32` | `0x1d567f20` | `0x109`, idx 1, fmt 1 | CERTAIN |
-| `LloRegionBuilder::VunpackLowerCF32` | `0x1d567e20` | `0x109`, idx 0, fmt 1 | CERTAIN |
-| `LloInstruction::CreateVectorUnpack` | `0x1d4d37c0` | `New(0x109, {in})` + format | CERTAIN |
-| `LloInstruction::CreateVectorDynamicUnpack` | `0x1d4d3d80` | `0x10f` (separate path) | HIGH |
-| `llo_simplifier::SimplifyUnpack` | `0x1d593060` | Const-fold peephole | HIGH |
+| Function | Address | Emits |
+|---|---|---|
+| `LloRegionBuilder::VunpackUpperCF32` | `0x1d567f20` | `0x109`, idx 1, fmt 1 |
+| `LloRegionBuilder::VunpackLowerCF32` | `0x1d567e20` | `0x109`, idx 0, fmt 1 |
+| `LloInstruction::CreateVectorUnpack` | `0x1d4d37c0` | `New(0x109, {in})` + format |
+| `LloInstruction::CreateVectorDynamicUnpack` | `0x1d4d3d80` | `0x10f` (separate path) |
+| `llo_simplifier::SimplifyUnpack` | `0x1d593060` | Const-fold peephole |
 
 ---
 
@@ -170,13 +170,13 @@ So **bits 0-15 = `VpackFormat`**, **bits 16-31 = sub-lane/unpack index**. The un
 
 The `VpackFormat` enum names come from `VpackFormatString` (`0x1d629960`). The values directly on the bf16↔f32 datapath:
 
-| Value | Name | Lane fan-in | Role | Confidence |
-|---|---|---|---|---|
-| 0 | *(invalid)* | — | Sentinel / unset | HIGH |
-| 1 | `CompressedBf16` | 2 | CF32 unpack source | CERTAIN |
-| 7 | `InterleavedBf16` | 2 | `VpackBf16` pack format; `VunpackF32` widen | CERTAIN |
-| 11 | `CompressedHf16` | 2 | f16 (half) compressed | HIGH |
-| 19-22 | `Compressed{U8,S8,U4,S4}ToBf16` | 2 / 4 | int→bf16 dequant (embedding quant) | HIGH |
+| Value | Name | Lane fan-in | Role |
+|---|---|---|---|
+| 0 | *(invalid)* | — | Sentinel / unset |
+| 1 | `CompressedBf16` | 2 | CF32 unpack source |
+| 7 | `InterleavedBf16` | 2 | `VpackBf16` pack format; `VunpackF32` widen |
+| 11 | `CompressedHf16` | 2 | f16 (half) compressed |
+| 19-22 | `Compressed{U8,S8,U4,S4}ToBf16` | 2 / 4 | int→bf16 dequant (embedding quant) |
 
 The full 26-entry enum extends through the fp8 (`F8E5M2`/`F8E4M3*`) and sub-byte dequant formats; those are the province of the quant pack/unpack path. See [Bias-Add & Quant/Dequant Helpers](bias-quantization-helpers.md).
 
@@ -184,12 +184,12 @@ The full 26-entry enum extends through the fp8 (`F8E5M2`/`F8E4M3*`) and sub-byte
 
 The gate vtable slots (`+0x4c8` pack, `+0x4d8` unpack, `+0x4e0` dynamic-unpack) on the target's `+0x10` sub-object are byte-exact bitmask predicates:
 
-| Target / method | Address | Predicate | Supported formats | Confidence |
-|---|---|---|---|---|
-| `ViperfishTarget::SupportsVectorPackOps` | `0x1d49b1a0` | `(fmt-1) < 0xA` | 1..10 | CERTAIN |
-| `ViperfishTarget::SupportsVectorUnpackOps` | `0x1d49b1c0` | `fmt < 0xE && (0x39FE >> fmt)&1` | 1,2,3,4,5,6,7,8,11,12,13 | CERTAIN |
-| `GhostliteTarget::SupportsVectorPackOps` | `0x1d498020` | `fmt < 0x17 && (0x7807FE >> fmt)&1` | 1..10, 19..22 | CERTAIN |
-| `GhostliteTarget::SupportsVectorUnpackOps` | `0x1d498040` | `fmt < 0x17 && (0x7839FE >> fmt)&1` | 1..13, 19..22 | CERTAIN |
+| Target / method | Address | Predicate | Supported formats |
+|---|---|---|---|
+| `ViperfishTarget::SupportsVectorPackOps` | `0x1d49b1a0` | `(fmt-1) < 0xA` | 1..10 |
+| `ViperfishTarget::SupportsVectorUnpackOps` | `0x1d49b1c0` | `fmt < 0xE && (0x39FE >> fmt)&1` | 1,2,3,4,5,6,7,8,11,12,13 |
+| `GhostliteTarget::SupportsVectorPackOps` | `0x1d498020` | `fmt < 0x17 && (0x7807FE >> fmt)&1` | 1..10, 19..22 |
+| `GhostliteTarget::SupportsVectorUnpackOps` | `0x1d498040` | `fmt < 0x17 && (0x7839FE >> fmt)&1` | 1..13, 19..22 |
 
 `InterleavedBf16` (7) is in both generations' pack set and `CompressedBf16` (1) in both unpack sets, so the bf16↔f32 datapath is universally available; Ghostlite additionally admits the `U8/S8/U4/S4→bf16` dequant pack formats (embedding quantization).
 
@@ -294,23 +294,23 @@ function EmitVectorSetSegmentPattern(src, spr_id):       // 0x140b58e0
 
 The decompile confirms the literal VEX values: `0xfa→0x1f` (`31`), `0xfb→0x20` (`32`), `0xfc→0x1e` (`30`), `SetSegmentPattern→0xe` (`14`). The plain reduce family `0xf5`-`0xf9` maps to VEX `{0x16,0x15,0x14,0x17,0x18}` (a separate cross-lane-reduce emitter). The `.seg.perm` cross-lane mnemonics (`vadd.xlane.seg.perm`, `vmax.xlane.seg.perm`, `vmin.xlane.seg.perm`) in `.rodata` confirm the segment-pattern-driven reduce semantics.
 
-| LLO opcode | Name | JF VEX opcode | Confidence |
-|---|---|---|---|
-| `0x8c` | `kVectorSetSegmentPattern` | `0xe` | CERTAIN |
-| `0xfc` | `kVectorAddSegmentReduceF32` | `0x1e` | CERTAIN |
-| `0xfa` | `kVectorMaxSegmentReduceF32` | `0x1f` | CERTAIN |
-| `0xfb` | `kVectorMinSegmentReduceF32` | `0x20` | CERTAIN |
+| LLO opcode | Name | JF VEX opcode |
+|---|---|---|
+| `0x8c` | `kVectorSetSegmentPattern` | `0xe` |
+| `0xfc` | `kVectorAddSegmentReduceF32` | `0x1e` |
+| `0xfa` | `kVectorMaxSegmentReduceF32` | `0x1f` |
+| `0xfb` | `kVectorMinSegmentReduceF32` | `0x20` |
 
 ### The JF/PF-Only Support Gate
 
 `SupportsSegmentedReduce` is a one-line per-target predicate:
 
-| Target | Address | Returns | TC emitter behaviour | Confidence |
-|---|---|---|---|---|
-| `JellyfishTarget` | `0x1d4909c0` | `1` (true) | Emits VEX `0xe`/`0x1e`/`0x1f`/`0x20` | CERTAIN |
-| `PufferfishTarget` | `0x1d494f80` | `1` (true) | Emits (no partial-result drain — `SupportsSegmentedReducePartialResults` `false`) | CERTAIN |
-| `ViperfishTarget` | `0x1d49b380` | `0` (false) | `LogFatal "Operation not supported."` | CERTAIN |
-| `GhostliteTarget` | `0x1d4981c0` | `0` (false) | `LogFatal "Operation not supported on Ghostlite."` | CERTAIN |
+| Target | Address | Returns | TC emitter behaviour |
+|---|---|---|---|
+| `JellyfishTarget` | `0x1d4909c0` | `1` (true) | Emits VEX `0xe`/`0x1e`/`0x1f`/`0x20` |
+| `PufferfishTarget` | `0x1d494f80` | `1` (true) | Emits (no partial-result drain — `SupportsSegmentedReducePartialResults` `false`) |
+| `ViperfishTarget` | `0x1d49b380` | `0` (false) | `LogFatal "Operation not supported."` |
+| `GhostliteTarget` | `0x1d4981c0` | `0` (false) | `LogFatal "Operation not supported on Ghostlite."` |
 
 Both the Viperfish (`ViperfishTensorCoreEmitter::EmitVectorSegmentedReduce` `0x141dd2c0`) and Ghostlite (`GhostliteTensorCoreEmitter::EmitVectorSegmentedReduce` `0x1429ff60`) TensorCore segment-reduce emitters are `__noreturn` `LogMessageFatal` stubs. On those generations the per-segment embedding aggregation runs on the SparseCore VectorExtended unit, not the TensorCore XLU — the segment-reduce became a JF/PF legacy primitive.
 
@@ -339,10 +339,10 @@ A bf16 embedding tensor lives two-bf16-per-32-bit-lane (InterleavedBf16). To red
 
 ## What Is Not Decoded
 
-- The exact middle `VpackFormat` enum indices (the `CompressedB8/B4/B2/B1` arms and the fp8/sub-byte dequant arms 12-25) are name-confirmed from `VpackFormatString` but their per-arm byte-overlap offsets were read structurally, not byte-exactly.
-- The `VpackFormatSublanesIndices` fan-in semantics for the dequant formats (12-25): the `2`/`4` table values are dumped, but whether `4` means "4 sub-byte elements per slot" vs "4-bit element width" was not separated per format.
-- The per-gen VEX *bundle slot* the segment-reduce / SetSegmentPattern op lands in (`EmitVectorExtendedInstruction` schedules via `CurrentBundle`/`GetPopulatedSlots`/`FindFreeSlot`; the VEX-slot mask was read structurally).
-- The `VectorExtendedOpcode` proto enum *symbolic names* per value (descriptor `0x1fa1fd00`): the VEX *values* are byte-exact but the proto member names were not pulled from the serialized FileDescriptor.
+- The exact middle `VpackFormat` enum indices (the `CompressedB8/B4/B2/B1` arms and the fp8/sub-byte dequant arms 12-25) are named in `VpackFormatString`; their per-arm byte-overlap offsets are not pinned here.
+- The `VpackFormatSublanesIndices` fan-in semantics for the dequant formats (12-25): the `2`/`4` table values are dumped, but whether `4` means "4 sub-byte elements per slot" vs "4-bit element width" is not separated per format.
+- The per-gen VEX *bundle slot* the segment-reduce / SetSegmentPattern op lands in (`EmitVectorExtendedInstruction` schedules via `CurrentBundle`/`GetPopulatedSlots`/`FindFreeSlot`).
+- The `VectorExtendedOpcode` proto enum *symbolic names* per value (descriptor `0x1fa1fd00`): the VEX values are listed but the proto member names are not pulled from the serialized FileDescriptor.
 - The host-side embedding lowering that emits the `SetSegmentPattern` + `SegmentReduce` pair (how an HLO segment-sum's offsets become the segment-id pattern source).
 
 ---

@@ -143,18 +143,18 @@ The successor engine that replaced BarnaCore from Viperfish onward is documented
 
 ## Confidence Summary
 
-| Claim | Evidence | Confidence |
-|---|---|---|
-| BarnaCore ships on Jellyfish / Dragonfish / Pufferfish only | `EncoderBcsDf` under `jellyfish::isa`; `pfc`/`pufferfish` BarnaCore syms (~8.7 K); **zero** BarnaCore syms under `vfc`/`glc`/`gfc` | CONFIRMED |
-| Two personalities: BCS (seq=1, 32 B, Pufferfish) and BCAH (seq=2, 16 B, JF/DF) | `TpuSequencerTypeToString` pointer table (idx 1 → `BarnaCoreSequencer`, idx 2 → `BarnaCoreAddressHandler`); `EncoderPfBarnaCoreSequencer` (PF) vs `EncoderJf`/`EncoderDf::EncodeBarnaCoreAddressHandlerScalarSlot` (JF/DF) | CONFIRMED |
-| Pufferfish BCS is a full independent VLIW machine | `pxc::pfc::isa::BarnaCoreSequencerCodecBase` + `BarnaCoreChannelCodecBase`; dual `Scalar0/1_SyncAdd`; `TPUBcSubtarget` | CONFIRMED |
-| `EncoderBcsDf` symbol-name vs BCAH presence-matrix tension on JF/DF | `Bcs` reads as "BarnaCore Sequencer"; JF/DF encode methods take `BarnaCoreAddressHandlerBundle`; presence matrix says BCAH | HIGH |
-| BarnaCore embedding path: gather → DMA-infeed to VMEM → backward scatter | `barna_core::BcsLloEmitter::{IssueDmaInfeedToVmem,WaitForInfeedToVmemDma,IssueDmaScatter,IssueDmaScatterOne}` | CONFIRMED |
-| Four BarnaCore memory tiers `barna_core_{bmem,smem,sflag,imem}` | `xla::jellyfish::MemorySpaceToString` (`0x1d6ffae0`) pointer table — enum indices 8→11 in exactly this order | CONFIRMED |
-| Hardwired sync FSM (vs SparseCore software sync) | `BarnaCoreSyncFsmInstructionBitfieldsRefImpl`; `fsm_program_patch_functions::UpdateSyncFlagWaitAndClear`; `BcSfence` + `add_bc_sfence_slots` | CONFIRMED |
-| BC and SC are mutually exclusive — one per gen, swap at Pufferfish→Viperfish (`TpuVersion` 2→3) | presence matrix; no gen carries both a live BC and live SC codec | CONFIRMED |
-| Pufferfish BC has its own 181 KB LLVM encoding table `InstBits_BarnaCorePxcHwMode` | `nm -S`: static-local rodata in `TPUMCCodeEmitter::getBinaryCodeForInstr`, size `0x2c460` = 181,344 bytes, HwMode-gated | CONFIRMED |
-| Codename / `TpuVersion` / external-name mapping | `TpuVersionToString` (`0x20b3a480`) pointer table → `0..5` = jellyfish/dragonfish/pufferfish/viperfish/ghostlite/`6acc60406`; external names follow [ISA Overview](../isa/overview.md) | CONFIRMED (codename/`TpuVersion`); HIGH (external names) |
+| Claim | Evidence |
+|---|---|
+| BarnaCore ships on Jellyfish / Dragonfish / Pufferfish only | `EncoderBcsDf` under `jellyfish::isa`; `pfc`/`pufferfish` BarnaCore syms (~8.7 K); **zero** BarnaCore syms under `vfc`/`glc`/`gfc` |
+| Two personalities: BCS (seq=1, 32 B, Pufferfish) and BCAH (seq=2, 16 B, JF/DF) | `TpuSequencerTypeToString` pointer table (idx 1 → `BarnaCoreSequencer`, idx 2 → `BarnaCoreAddressHandler`); `EncoderPfBarnaCoreSequencer` (PF) vs `EncoderJf`/`EncoderDf::EncodeBarnaCoreAddressHandlerScalarSlot` (JF/DF) |
+| Pufferfish BCS is a full independent VLIW machine | `pxc::pfc::isa::BarnaCoreSequencerCodecBase` + `BarnaCoreChannelCodecBase`; dual `Scalar0/1_SyncAdd`; `TPUBcSubtarget` |
+| `EncoderBcsDf` symbol-name vs BCAH presence-matrix tension on JF/DF | `Bcs` reads as "BarnaCore Sequencer"; JF/DF encode methods take `BarnaCoreAddressHandlerBundle`; presence matrix says BCAH |
+| BarnaCore embedding path: gather → DMA-infeed to VMEM → backward scatter | `barna_core::BcsLloEmitter::{IssueDmaInfeedToVmem,WaitForInfeedToVmemDma,IssueDmaScatter,IssueDmaScatterOne}` |
+| Four BarnaCore memory tiers `barna_core_{bmem,smem,sflag,imem}` | `xla::jellyfish::MemorySpaceToString` (`0x1d6ffae0`) pointer table — enum indices 8→11 in exactly this order |
+| Hardwired sync FSM (vs SparseCore software sync) | `BarnaCoreSyncFsmInstructionBitfieldsRefImpl`; `fsm_program_patch_functions::UpdateSyncFlagWaitAndClear`; `BcSfence` + `add_bc_sfence_slots` |
+| BC and SC are mutually exclusive — one per gen, swap at Pufferfish→Viperfish (`TpuVersion` 2→3) | presence matrix; no gen carries both a live BC and live SC codec |
+| Pufferfish BC has its own 181 KB LLVM encoding table `InstBits_BarnaCorePxcHwMode` | `nm -S`: static-local rodata in `TPUMCCodeEmitter::getBinaryCodeForInstr`, size `0x2c460` = 181,344 bytes, HwMode-gated |
+| Codename / `TpuVersion` / external-name mapping | `TpuVersionToString` (`0x20b3a480`) pointer table → `0..5` = jellyfish/dragonfish/pufferfish/viperfish/ghostlite/`6acc60406`; external names follow [ISA Overview](../isa/overview.md) |
 
 ---
 

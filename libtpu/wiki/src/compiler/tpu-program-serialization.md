@@ -40,15 +40,15 @@ This page documents the outer envelope, the nested AOT container, the per-core p
 
 Field numbers and presence bits are read directly from `TpuExecutableProto::_InternalSerialize` (`0xf8d0c00`); the source struct offsets are read from `SerializeExecutable` (`0xf8a9300`). The `has_bits` byte lives at object offset `+16`.
 
-| Field | Tag | Type | `has_bit` | Populated from (`a2 = TpuExecutable`) | Confidence |
-|---|---|---|---|---|---|
-| `deepsea_executable` | 1 | `DeepseaExecutableProto` (message) | `0x08` | nested: `TpuCoreProgram` @ `+2600`/`+1374` + `CompilerMetadata` @ `+2584` | HIGH |
-| `hlo_module_with_config` | 2 | `HloModuleProtoWithConfig` (message) | `0x10` | `HloModule::ToProtoWithConfig`, `HloModule*` @ `+2560` | HIGH |
-| `host_transfers` | 3 | repeated `HostTransferProto` | `0x01` | array @ `+2616`, count @ `+2624`, stride 120 B | HIGH |
-| `compile_options` | 4 | `CompileOptionsProto` (message) | `0x20` | `CompileOptions::ToProto`, `CompileOptions` @ `+8` | HIGH |
-| `target_arguments` | 5 | `TargetArgumentsProto` (message) | `0x40` | built inline (topology + configured properties), see below | HIGH |
-| `host_executions` | 8 | repeated `HostExecutionProto` | `0x02` | array @ `+2640`, count @ `+2648`, stride 80 B | HIGH |
-| `source_uri` | 9 | `string` (UTF-8 verified) | `0x04` | `TpuExecutable::GetSourceUri`, copied to proto `+56` | HIGH |
+| Field | Tag | Type | `has_bit` | Populated from (`a2 = TpuExecutable`) |
+|---|---|---|---|---|
+| `deepsea_executable` | 1 | `DeepseaExecutableProto` (message) | `0x08` | nested: `TpuCoreProgram` @ `+2600`/`+1374` + `CompilerMetadata` @ `+2584` |
+| `hlo_module_with_config` | 2 | `HloModuleProtoWithConfig` (message) | `0x10` | `HloModule::ToProtoWithConfig`, `HloModule*` @ `+2560` |
+| `host_transfers` | 3 | repeated `HostTransferProto` | `0x01` | array @ `+2616`, count @ `+2624`, stride 120 B |
+| `compile_options` | 4 | `CompileOptionsProto` (message) | `0x20` | `CompileOptions::ToProto`, `CompileOptions` @ `+8` |
+| `target_arguments` | 5 | `TargetArgumentsProto` (message) | `0x40` | built inline (topology + configured properties), see below |
+| `host_executions` | 8 | repeated `HostExecutionProto` | `0x02` | array @ `+2640`, count @ `+2648`, stride 80 B |
+| `source_uri` | 9 | `string` (UTF-8 verified) | `0x04` | `TpuExecutable::GetSourceUri`, copied to proto `+56` |
 
 > **QUIRK —** the field numbers are not contiguous. The serializer emits in ascending-tag order 1, 2, 3, 4, 5, 8, 9 — there is no field 6 or 7 in the populated set, so a reimplementation that assumes a dense `1..N` schema will mis-tag `host_executions` (8) and `source_uri` (9). The tag for `source_uri` is observed as the raw byte `74` (`0x4A` = field 9, wire type 2) in the inline string writer at `0xf8d0c00` line 167.
 
@@ -86,10 +86,10 @@ If a `MultiSliceConfig` is present (`exe + 1832` non-null), the path additionall
 
 From `DeepseaExecutable::ToProto` (`0x134282e0`):
 
-| Field | Tag | Type | `has_bit` | Source | Confidence |
-|---|---|---|---|---|---|
-| `core_program` | 1 | `tpu::TpuCoreProgramProto` (message) | `0x01` | `TpuCoreProgram::ToProto`, `TpuCoreProgram` @ `DeepseaExecutable+96` | HIGH |
-| `compiler_metadata` | 2 | `xdb::CompilerMetadata` (message) | `0x02` | `Message::CopyFrom`, source @ `DeepseaExecutable+104` | HIGH |
+| Field | Tag | Type | `has_bit` | Source |
+|---|---|---|---|---|
+| `core_program` | 1 | `tpu::TpuCoreProgramProto` (message) | `0x01` | `TpuCoreProgram::ToProto`, `TpuCoreProgram` @ `DeepseaExecutable+96` |
+| `compiler_metadata` | 2 | `xdb::CompilerMetadata` (message) | `0x02` | `Message::CopyFrom`, source @ `DeepseaExecutable+104` |
 
 > **NOTE —** `xdb::CompilerMetadata` is `platforms_deepsea::jellyfish::xdb::CompilerMetadata`. It is the same metadata object carried alongside the program through the whole `TpuJitResult`/`TpuCompilationCacheEntry::Program` lifetime (constructors at `0xf7bbd60`, `0xf7bc500`, `0xf8b7720`), holding the data a reloaded program needs that is not in the ISA itself — buffer assignment, alias config, and host-compute descriptors are tracked as siblings of it in those constructors.
 
@@ -107,15 +107,15 @@ When `SerializeExecutable` builds the envelope's field 1, it does not call `Deep
 
 Tags and presence read from the serializer at `0x1e82ea40`. The `has_bits` are at object offset `+16`.
 
-| Field | Tag (byte) | Wire type | `has_bit` | Meaning | Confidence |
-|---|---|---|---|---|---|
-| (field 2) | `16` = `0x10` | varint | `0x10` | scalar selector / count (4-byte field @ `+64` low word) | MEDIUM |
-| (field 3) | `26` = `0x1A` | LEN | `0x02` | byte/string blob (the raw program image) | HIGH |
-| (field 4) | `32` = `0x20` | varint | `0x08` | varint (`this+56`) | MEDIUM |
-| `TensorCore`/`BarnaCore`/`SparseCore` | 5 / 6 / 7 | LEN (message) | oneof @ `+88` | the core-program oneof; case = `field_88` ∈ {5,6,7} | HIGH |
-| (field 9) | int64 | varint | `0x40` | int64 (`this+72`) — see `WriteInt64ToArrayWithField<9>` | HIGH |
-| (field 10) | `80` = `0x50` | varint (bool) | `0x20` | bool (`this+68`, emitted only when value == 1) | HIGH |
-| (field 9, msg) | `byte_9[3]` | LEN (message) | `0x04` | trailing sub-message (`this+48`) | MEDIUM |
+| Field | Tag (byte) | Wire type | `has_bit` | Meaning |
+|---|---|---|---|---|
+| (field 2) | `16` = `0x10` | varint | `0x10` | scalar selector / count (4-byte field @ `+64` low word) |
+| (field 3) | `26` = `0x1A` | LEN | `0x02` | byte/string blob (the raw program image) |
+| (field 4) | `32` = `0x20` | varint | `0x08` | varint (`this+56`) |
+| `TensorCore`/`BarnaCore`/`SparseCore` | 5 / 6 / 7 | LEN (message) | oneof @ `+88` | the core-program oneof; case = `field_88` ∈ {5,6,7} |
+| (field 9) | int64 | varint | `0x40` | int64 (`this+72`) — see `WriteInt64ToArrayWithField<9>` |
+| (field 10) | `80` = `0x50` | varint (bool) | `0x20` | bool (`this+68`, emitted only when value == 1) |
+| (field 9, msg) | `byte_9[3]` | LEN (message) | `0x04` | trailing sub-message (`this+48`) |
 
 > **QUIRK —** the oneof is dispatched by `v20 = *((_DWORD*)this + 22)` and the test `(unsigned)(v20 - 5) <= 2` at `0x1e82ea40` lines 134-137 — i.e. the active arm is whichever of tags 5/6/7 the discriminant holds, and exactly one of `TpuCoreProgramProto_TensorCore` (`0x1e82dae0`), `_BarnaCore` (`0x1e82dde0`), `_SparseCore` (`0x1e82e240`) is written. A reimplementation must treat 5/6/7 as mutually exclusive, not three independent optional messages.
 
@@ -232,11 +232,11 @@ A serialized executable is only loadable on hardware that matches the chip gener
 
 2. **The compile-time version flags.** The static initializer `_GLOBAL__sub_I_tpu_version_flag.cc` (`0x21367f50`) registers three Abseil command-line flags from `learning/45eac/tpu/runtime/tpu_version_flag.cc`:
 
-| Flag symbol | Role | Confidence |
-|---|---|---|
-| `FLAGS_deepsea_version` | TPU generation / version selector | HIGH |
-| `FLAGS_deepsea_variant` | hardware variant within a generation | HIGH |
-| `FLAGS_deepsea_chip_config_name` | named chip configuration | HIGH |
+| Flag symbol | Role |
+|---|---|
+| `FLAGS_deepsea_version` | TPU generation / version selector |
+| `FLAGS_deepsea_variant` | hardware variant within a generation |
+| `FLAGS_deepsea_chip_config_name` | named chip configuration |
 
 These flags select the `Target` the compiler builds against, and the resolved values land in `TpuConfiguredProperties` → `target_arguments`. They are the upstream source of the stamp, not a separate field in the wire format.
 
@@ -250,43 +250,43 @@ These flags select the `Target` the compiler builds against, and the resolved va
 
 The source offsets into the live `xla::TpuExecutable` (argument `a2` in `SerializeExecutable`) that the serializer reads. Offsets are from the object base; confirmed against `0xf8a9300`.
 
-| Offset | Field | Used for | Confidence |
-|---|---|---|---|
-| `+8` | `CompileOptions` | envelope field 4 (`compile_options`) | HIGH |
-| `+1374` | flag byte | gates whether `TpuCoreProgram`/`CompilerMetadata` are emitted as defaults | MEDIUM |
-| `+1504` | flag byte | source-URI / core-program branch selector | MEDIUM |
-| `+1832` | `MultiSliceConfig*` | multi-slice topology sub-assembly in field 5 | HIGH |
-| `+2536` | `TpuTopology*` (shared_ptr target) | `target_arguments.topology_args` | HIGH |
-| `+2560` | `HloModule*` | envelope field 2 (`hlo_module_with_config`) | HIGH |
-| `+2576` | int32 | `target_arguments` scalar (sub field 8) | MEDIUM |
-| `+2584` | `CompilerMetadata` | inner `DeepseaExecutableProto.compiler_metadata` | HIGH |
-| `+2600` | `TpuCoreProgram*` | inner `DeepseaExecutableProto.core_program` | HIGH |
-| `+2616` / `+2624` | `HostTransferProto[]` / count | envelope field 3, stride 120 B | HIGH |
-| `+2640` / `+2648` | `HostExecutionProto[]` / count | envelope field 8, stride 80 B | HIGH |
+| Offset | Field | Used for |
+|---|---|---|
+| `+8` | `CompileOptions` | envelope field 4 (`compile_options`) |
+| `+1374` | flag byte | gates whether `TpuCoreProgram`/`CompilerMetadata` are emitted as defaults |
+| `+1504` | flag byte | source-URI / core-program branch selector |
+| `+1832` | `MultiSliceConfig*` | multi-slice topology sub-assembly in field 5 |
+| `+2536` | `TpuTopology*` (shared_ptr target) | `target_arguments.topology_args` |
+| `+2560` | `HloModule*` | envelope field 2 (`hlo_module_with_config`) |
+| `+2576` | int32 | `target_arguments` scalar (sub field 8) |
+| `+2584` | `CompilerMetadata` | inner `DeepseaExecutableProto.compiler_metadata` |
+| `+2600` | `TpuCoreProgram*` | inner `DeepseaExecutableProto.core_program` |
+| `+2616` / `+2624` | `HostTransferProto[]` / count | envelope field 3, stride 120 B |
+| `+2640` / `+2648` | `HostExecutionProto[]` / count | envelope field 8, stride 80 B |
 
 ---
 
 ## Serialization Infrastructure Functions
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `xla::TpuExecutable::SerializeExecutable` | `0xf8a9300` | builds the envelope from the live executable | HIGH |
-| `xla::TpuExecutableProtoToString` | `0xf8a8880` | four-segment delimited framing | HIGH |
-| `xla::TpuExecutableProto::_InternalSerialize` | `0xf8d0c00` | envelope proto wire writer | HIGH |
-| `xla::DeepseaExecutable::ToProto` | `0x134282e0` | AOT container writer | HIGH |
-| `xla::DeepseaExecutable::FromProto` | `0x134283e0` | AOT container reader | HIGH |
-| `tpu::TpuCoreProgramProto::_InternalSerialize` | `0x1e82ea40` | per-core bundle writer | HIGH |
-| `tpu::TpuCoreProgramProto_TensorCore::_InternalSerialize` | `0x1e82dae0` | oneof arm 5 | HIGH |
-| `tpu::TpuCoreProgramProto_BarnaCore::_InternalSerialize` | `0x1e82dde0` | oneof arm 6 | HIGH |
-| `tpu::TpuCoreProgramProto_SparseCore::_InternalSerialize` | `0x1e82e240` | oneof arm 7 | HIGH |
-| `xla::jellyfish::DeepseaCompiler::DeserializeExecutable` | `0xfaa2660` | AOT deserialize entry | HIGH |
-| `xla::PjRtClient::DeserializeExecutable` | `0xe6ecfa0` | base class (unimplemented) | HIGH |
-| `TpuExecutable_Serialize` | `0xeabea80` | C-API: DeepseaExecutable → proto | HIGH |
-| `TpuExecutable_Deserialize` | `0xeabede0` | C-API: bytes → DeepseaExecutable | HIGH |
-| `TpuProgram_SerializeTpuExecutable` | `0xe8be720` | C-API: core program → response blob | HIGH |
-| `TpuProgram_SerializeCompilerMetadata` | `0xe8be840` | C-API: metadata → blob | MEDIUM |
-| `TpuProgram_DeserializeFromGetTpuProgramResponseProto` | `0xe8be960` | C-API: response proto → program | HIGH |
-| `tensorflow::tpu::internal::TpuCompileOpKernelImpl::BuildExecutable` | `0xe8c0be0` | compile → `TpuProgramGroup` producer | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `xla::TpuExecutable::SerializeExecutable` | `0xf8a9300` | builds the envelope from the live executable |
+| `xla::TpuExecutableProtoToString` | `0xf8a8880` | four-segment delimited framing |
+| `xla::TpuExecutableProto::_InternalSerialize` | `0xf8d0c00` | envelope proto wire writer |
+| `xla::DeepseaExecutable::ToProto` | `0x134282e0` | AOT container writer |
+| `xla::DeepseaExecutable::FromProto` | `0x134283e0` | AOT container reader |
+| `tpu::TpuCoreProgramProto::_InternalSerialize` | `0x1e82ea40` | per-core bundle writer |
+| `tpu::TpuCoreProgramProto_TensorCore::_InternalSerialize` | `0x1e82dae0` | oneof arm 5 |
+| `tpu::TpuCoreProgramProto_BarnaCore::_InternalSerialize` | `0x1e82dde0` | oneof arm 6 |
+| `tpu::TpuCoreProgramProto_SparseCore::_InternalSerialize` | `0x1e82e240` | oneof arm 7 |
+| `xla::jellyfish::DeepseaCompiler::DeserializeExecutable` | `0xfaa2660` | AOT deserialize entry |
+| `xla::PjRtClient::DeserializeExecutable` | `0xe6ecfa0` | base class (unimplemented) |
+| `TpuExecutable_Serialize` | `0xeabea80` | C-API: DeepseaExecutable → proto |
+| `TpuExecutable_Deserialize` | `0xeabede0` | C-API: bytes → DeepseaExecutable |
+| `TpuProgram_SerializeTpuExecutable` | `0xe8be720` | C-API: core program → response blob |
+| `TpuProgram_SerializeCompilerMetadata` | `0xe8be840` | C-API: metadata → blob |
+| `TpuProgram_DeserializeFromGetTpuProgramResponseProto` | `0xe8be960` | C-API: response proto → program |
+| `tensorflow::tpu::internal::TpuCompileOpKernelImpl::BuildExecutable` | `0xe8c0be0` | compile → `TpuProgramGroup` producer |
 
 ---
 

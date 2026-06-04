@@ -108,11 +108,11 @@ return this;                        // cache MISS ⇒ keep the fresh type-3 conf
 
 The numeric layout (`this+0x20` is the DWORD type at byte offset `0x20`; `this+0x18` is the QWORD id; `this+0x10` is the hasbit byte):
 
-| Outcome | type @`+0x20` | id @`+0x18` | when | Confidence |
-|---|---|---|---|---|
-| `GLOBAL` | `1` | `-1` | `force_global` OR `IsGlobalBarrierBeneficial` OR (saturation AND `config+0x50 == 1`) | CONFIRMED |
-| `REPLICA` (shared) | `2` | `replica_group_count` | saturation (`rgc == num_groups − 1`) AND `config+0x50 != 1`; **or** map dedup found the key present | CONFIRMED |
-| `CUSTOM` (fresh) | `3` | `replica_group_count` | otherwise, on a `std::map` cache miss | CONFIRMED |
+| Outcome | type @`+0x20` | id @`+0x18` | when |
+|---|---|---|---|
+| `GLOBAL` | `1` | `-1` | `force_global` OR `IsGlobalBarrierBeneficial` OR (saturation AND `config+0x50 == 1`) |
+| `REPLICA` (shared) | `2` | `replica_group_count` | saturation (`rgc == num_groups − 1`) AND `config+0x50 != 1`; **or** map dedup found the key present |
+| `CUSTOM` (fresh) | `3` | `replica_group_count` | otherwise, on a `std::map` cache miss |
 
 > **GOTCHA — the saturation arm.** The saturation case (`replica_group_count == num_groups − 1`) does not simply produce GLOBAL. It produces a shared `REPLICA(2)` (id = the real `replica_group_count`) **unless** the module-config flag `config+0x50 == 1`, in which case it falls to `GLOBAL(1)`. The `2` write (`*(int*)(this+0x20) = 2`) at `0x109c704d` is reached both from the saturation arm and from the `std::map` cache-hit `CopyFrom`. `MEGACORE(4)` is never written — there is no `movl $4` into `+0x20` in this function (full-`.text` xref; [overview §2](overview.md)).
 
@@ -127,17 +127,17 @@ The numeric layout (`this+0x20` is the DWORD type at byte offset `0x20`; `this+0
 
 The callback also threads the conflict graph through async-start/async-done pairs by recursing into operand positions (`instr+0x40` / `instr+0x48`).
 
-| byte | mnemonic | filter mechanism | barrier-key role | Confidence |
-|---|---|---|---|---|
-| `0x06` | all-gather | bitmask | replica-group keyed | CONFIRMED |
-| `0x08` | all-gather-start | bitmask | replica-group keyed (async start) | CONFIRMED |
-| `0x09` | all-reduce | bitmask | replica-group keyed | CONFIRMED |
-| `0x0c` | all-to-all | bitmask | replica-group keyed; **only** opcode eligible for `IsGlobalBarrierBeneficial` | CONFIRMED |
-| `0x22` | collective-permute | bitmask | source-target-pair keyed (`+0x20`) | CONFIRMED |
-| `0x24` | collective-permute-start | bitmask | source-target-pair keyed (async start) | CONFIRMED |
-| `0x31` | custom-call | `GetCustomCallCollectiveId` | accepted iff it has a TPU collective id | CONFIRMED |
-| `0x56` | ragged-all-to-all | eq-check | replica-group keyed; `+0x51`/`+0x58` special-case | CONFIRMED |
-| `0x5d` | reduce-scatter | eq-check | replica-group keyed (also the a2a-5d rewrite target) | CONFIRMED |
+| byte | mnemonic | filter mechanism | barrier-key role |
+|---|---|---|---|
+| `0x06` | all-gather | bitmask | replica-group keyed |
+| `0x08` | all-gather-start | bitmask | replica-group keyed (async start) |
+| `0x09` | all-reduce | bitmask | replica-group keyed |
+| `0x0c` | all-to-all | bitmask | replica-group keyed; **only** opcode eligible for `IsGlobalBarrierBeneficial` |
+| `0x22` | collective-permute | bitmask | source-target-pair keyed (`+0x20`) |
+| `0x24` | collective-permute-start | bitmask | source-target-pair keyed (async start) |
+| `0x31` | custom-call | `GetCustomCallCollectiveId` | accepted iff it has a TPU collective id |
+| `0x56` | ragged-all-to-all | eq-check | replica-group keyed; `+0x51`/`+0x58` special-case |
+| `0x5d` | reduce-scatter | eq-check | replica-group keyed (also the a2a-5d rewrite target) |
 
 > **NOTE — opcode→mnemonic map.** The map is recovered from the `HloOpcodeString` length array @`0x421c9c0` (lengths `10/16/10/10/18/24/11/17/14` match `all-gather` / `all-gather-start` / `all-reduce` / `all-to-all` / `collective-permute` / `collective-permute-start` / `custom-call` / `ragged-all-to-all` / `reduce-scatter`) plus `.lrodata` string presence; the `char*` table itself is relocated, so values are resolved by length + presence.
 
@@ -167,16 +167,16 @@ A global barrier is "beneficial" exactly for a **single-replica-group, channelle
 
 The key is what two collectives must agree on to be *candidates* for sharing a barrier (the coloring then decides whether they actually may). Ctor `TensorCoreBarrierKey(HloInstruction* hlo, function<int(HloInstruction*)> core_id_fn, bool b)`:
 
-| Offset | Field | Source | Confidence |
-|---|---|---|---|
-| `+0x00` | opcode byte | `hlo+0xc`; `all-reduce(0x09)` is rewritten to `reduce-scatter(0x5d)` when its computation has ≥2 caller instructions (`cmpb $0x9` @`0x109d6297` → `caller_instructions()` ≥ 2 → `movb $0x5d` @`0x109d62db`) | CONFIRMED |
-| `+0x08…+0x18` | sorted `vector<ReplicaGroup>` | copied from `hlo+0xd0`/`hlo+0xd8` (`__assign_with_size` @`0x109d6f60`), `__introsort`'d @`0x109d7580` (order-independent); `+0x10` = group count | CONFIRMED |
-| `+0x20…+0x28` | sorted `vector<pair<long,long>>` | source-target pairs (for collective-permute `0x22`/`0x24`): `__assign_with_size` @`0x109d7220` + `__introsort` @`0x109da4e0` | CONFIRMED |
-| `+0x38` | custom-call config scalar | `all-to-all(0xc)` custom-calls: reads `CustomCallConfig+0x78` when hasbit `0x40` set; also sets `+0x50` true | CONFIRMED |
-| `+0x40` | core-id (int) | `-1` default, else `core_id_fn(hlo)` (invoked via `[fn+0x10]` when the function target is non-null) | CONFIRMED |
-| `+0x50` | channel-id parity | `hlo->channel_id() & 1` (`HloInstruction::channel_id` @`0x1e59ff80`) — the byte `IsGlobalBarrierBeneficial` gates on | CONFIRMED |
-| `+0x51` | heuristic-candidate flag | the byte `IsGlobalBarrierBeneficial` gates on (`cmpb $0x0,0x51(%rdi)` @`0x109c6ee0`); **not written by this ctor** — the ctor only zero-touches `+0x08…+0x37`, `+0x38`, `+0x40`, `+0x48`, `+0x50`, `+0x58`, so the candidate byte is set on a different path (standing gap) | INFERRED |
-| `+0x58` | secondary discriminant | `-1` sentinel written only when the ctor's `bool b` is set AND opcode `== ragged-all-to-all(0x56)` (`test %r15b,%r15b` @`0x109d64dd` → `cmpb $0x56,0xc(%r14)` @`0x109d64e2` → `movq $-1,0x58(%rbx)` @`0x109d64e9`); the ragged-all-to-all global-disable case | CONFIRMED |
+| Offset | Field | Source |
+|---|---|---|
+| `+0x00` | opcode byte | `hlo+0xc`; `all-reduce(0x09)` is rewritten to `reduce-scatter(0x5d)` when its computation has ≥2 caller instructions (`cmpb $0x9` @`0x109d6297` → `caller_instructions()` ≥ 2 → `movb $0x5d` @`0x109d62db`) |
+| `+0x08…+0x18` | sorted `vector<ReplicaGroup>` | copied from `hlo+0xd0`/`hlo+0xd8` (`__assign_with_size` @`0x109d6f60`), `__introsort`'d @`0x109d7580` (order-independent); `+0x10` = group count |
+| `+0x20…+0x28` | sorted `vector<pair<long,long>>` | source-target pairs (for collective-permute `0x22`/`0x24`): `__assign_with_size` @`0x109d7220` + `__introsort` @`0x109da4e0` |
+| `+0x38` | custom-call config scalar | `all-to-all(0xc)` custom-calls: reads `CustomCallConfig+0x78` when hasbit `0x40` set; also sets `+0x50` true |
+| `+0x40` | core-id (int) | `-1` default, else `core_id_fn(hlo)` (invoked via `[fn+0x10]` when the function target is non-null) |
+| `+0x50` | channel-id parity | `hlo->channel_id() & 1` (`HloInstruction::channel_id` @`0x1e59ff80`) — the byte `IsGlobalBarrierBeneficial` gates on |
+| `+0x51` | heuristic-candidate flag | the byte `IsGlobalBarrierBeneficial` gates on (`cmpb $0x0,0x51(%rdi)` @`0x109c6ee0`); **not written by this ctor** — the ctor only zero-touches `+0x08…+0x37`, `+0x38`, `+0x40`, `+0x48`, `+0x50`, `+0x58`, so the candidate byte is set on a different path (standing gap) |
+| `+0x58` | secondary discriminant | `-1` sentinel written only when the ctor's `bool b` is set AND opcode `== ragged-all-to-all(0x56)` (`test %r15b,%r15b` @`0x109d64dd` → `cmpb $0x56,0xc(%r14)` @`0x109d64e2` → `movq $-1,0x58(%rbx)` @`0x109d64e9`); the ragged-all-to-all global-disable case |
 
 `operator<` @`0x109d6620` compares in order: `+0x58`, `+0x38`, `+0x00` (opcode), `+0x50` (channel parity), then the replica-group vector (`+0x10` count, then per-group sorted device ids). Two collectives share a TC barrier **key** iff same opcode, same channel parity, same custom-call scalar, same secondary discriminant, and identical sorted replica-group membership — the dense-collective analog of the SparseCore ring key, keyed on HLO replica groups rather than ICI ring offsets.
 
@@ -262,13 +262,13 @@ The all-to-all twin `ExplicitAllToAllRingRecord` @`0x133a94a0` is identical in s
 
 The TC assignment pass (§1) and the explicit-ring `InitializeOnScs` (§2) sit on opposite ends of the same on-chip barrier model: the TC pass chooses a `BarrierConfig` for dense TC collectives; `InitializeOnScs` binds the per-ring transfer geometry for SC embedding collectives. Both ultimately program chip SFLAGs ([Barrier → SFLAG Binding](barrier-to-sflag-binding.md)).
 
-| Aspect | TensorCore (§1) | SparseCore explicit ring (§2) | Confidence |
-|---|---|---|---|
-| Pass / init | `TensorCoreBarrierAssignment::Run` @`0x109c7420` | `ExplicitUniDirRingStrategy::InitializeOnScs` @`0x1337aa60` | CONFIRMED |
-| Identity unit | `TensorCoreBarrierKey` (opcode, channel parity, replica-group / src-tgt vectors, cc scalar) | static `IciStrategyRingConfig` EXPLICIT offsets (id_info / group_info) | CONFIRMED |
-| Dedup / bind mechanism | greedy graph coloring ([Barrier Coloring](barrier-coloring.md)) → `BarrierConfig {1,2,3}` | `strategy+0x98` const-literals lookup → `(next_chip, ordinal, reorder)` | CONFIRMED |
-| Output destination | HLO `BackendConfig.BarrierConfig` submessage | `strategy+0x58/+0x60/+0x78` (`ordinal_` / `next_chip_` / `reordering_map_`) | CONFIRMED |
-| Hardware sink | chip SFLAG block via the kernel emitter | per-ring `SyncAdd` targeting `next_chip_` on the chip SFLAG block | CONFIRMED |
+| Aspect | TensorCore (§1) | SparseCore explicit ring (§2) |
+|---|---|---|
+| Pass / init | `TensorCoreBarrierAssignment::Run` @`0x109c7420` | `ExplicitUniDirRingStrategy::InitializeOnScs` @`0x1337aa60` |
+| Identity unit | `TensorCoreBarrierKey` (opcode, channel parity, replica-group / src-tgt vectors, cc scalar) | static `IciStrategyRingConfig` EXPLICIT offsets (id_info / group_info) |
+| Dedup / bind mechanism | greedy graph coloring ([Barrier Coloring](barrier-coloring.md)) → `BarrierConfig {1,2,3}` | `strategy+0x98` const-literals lookup → `(next_chip, ordinal, reorder)` |
+| Output destination | HLO `BackendConfig.BarrierConfig` submessage | `strategy+0x58/+0x60/+0x78` (`ordinal_` / `next_chip_` / `reordering_map_`) |
+| Hardware sink | chip SFLAG block via the kernel emitter | per-ring `SyncAdd` targeting `next_chip_` on the chip SFLAG block |
 
 The split is purely in **how** a barrier identity is chosen and bound: the TC pass colors the live async-collective conflict graph; the explicit ring indexes a static config table by the runtime core id. Both arms end at the chip SFLAG tier ([overview §1](overview.md)).
 

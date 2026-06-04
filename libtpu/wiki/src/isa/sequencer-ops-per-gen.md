@@ -27,7 +27,6 @@ For reimplementation, the contract is:
 | **Universal core** | Branch{Abs,Rel,Sreg/Ind}, Call{Abs,Rel,Sreg/Ind}, Halt, Delay, Fence |
 | **Viperfish+ additions** | `ReadRegisterLcc{Low,High}`, `HaltYield*`, `ScalarMisc` sync lane |
 | **6acc60406 additions** | `BranchRelativeRotatingPreg`, `SetRotatingPredicateRegister`, `SetPOrTState` |
-| **Confidence** | CONFIRMED (symbol-presence-anchored) unless a row says otherwise |
 
 ---
 
@@ -35,14 +34,14 @@ For reimplementation, the contract is:
 
 `TpuSequencerType` is the second key into the codec/emitter registry. Its six values are recovered byte-exactly: `TpuSequencerTypeFromProto` (`0x20b36300`) maps the protobuf enum (`1..6`) to the internal C++ enum (`0..5`), and `TpuSequencerTypeToString` (`0x20b362e0`) is a flat table index `off_22010DE0[value]`. The string-pointer length table at `0xbdf2878` gives each name's length (`19, 18, 23, 19, 33, 34`), which pins the six names uniquely:
 
-| Internal value | Proto value | Name (`k…`) | Role | Codename / gen | Confidence |
-|---:|---:|---|---|---|---|
-| 0 | 1 | `kTensorCoreSequencer` | TC — the main TensorCore VLIW sequencer | all gens | CONFIRMED |
-| 1 | 2 | `kBarnaCoreSequencer` | BCS — Pufferfish BarnaCore sequencer | Pufferfish | CONFIRMED |
-| 2 | 3 | `kBarnaCoreAddressHandler` | BCAH — Jellyfish BarnaCore address handler | Jellyfish | CONFIRMED |
-| 3 | 4 | `kSparseCoreSequencer` | SCS — SparseCore scalar sequencer | Viperfish+ | CONFIRMED |
-| 4 | 5 | `kSparseCoreTileAccessSequencer` | TAC — SparseCore tile-access | Viperfish, Ghostlite | CONFIRMED |
-| 5 | 6 | `kSparseCoreTileExecuteSequencer` | TEC — SparseCore tile-execute | Viperfish+ | CONFIRMED |
+| Internal value | Proto value | Name (`k…`) | Role | Codename / gen |
+|---:|---:|---|---|---|
+| 0 | 1 | `kTensorCoreSequencer` | TC — the main TensorCore VLIW sequencer | all gens |
+| 1 | 2 | `kBarnaCoreSequencer` | BCS — Pufferfish BarnaCore sequencer | Pufferfish |
+| 2 | 3 | `kBarnaCoreAddressHandler` | BCAH — Jellyfish BarnaCore address handler | Jellyfish |
+| 3 | 4 | `kSparseCoreSequencer` | SCS — SparseCore scalar sequencer | Viperfish+ |
+| 4 | 5 | `kSparseCoreTileAccessSequencer` | TAC — SparseCore tile-access | Viperfish, Ghostlite |
+| 5 | 6 | `kSparseCoreTileExecuteSequencer` | TEC — SparseCore tile-execute | Viperfish+ |
 
 The mapping is the literal switch in the decompiled `TpuSequencerTypeFromProto`:
 
@@ -69,14 +68,14 @@ The codec instantiations confirm the keying: the SparseCore SCS codec template i
 
 Before the op matrix, the coarser question: which sequencer types exist on which generation. This is decided by codec-class presence (`SparseCoreScsCodecBase`, `SparseCoreTacBundle`, `SparseCoreTecBundle`) in each gen's namespace.
 
-| Gen | TC | BarnaCore | SCS | TAC | TEC | Source | Confidence |
-|---|:--:|:--:|:--:|:--:|:--:|---|---|
-| Jellyfish (v2) | ✓ | BCAH | — | — | — | `jellyfish::isa` + `barna_core` | CONFIRMED |
-| Dragonfish (v3) | ✓ | BCAH | — | — | — | aliases Jellyfish codec | HIGH |
-| Pufferfish (v4) | ✓ | BCS | — | — | — | `pxc::isa` + `pxc::pfc::isa` | CONFIRMED |
-| Viperfish (v5p, +v5e lite) | ✓ | — | ✓ | ✓ | ✓ | `vxc::isa`, `vxc::vfc::isa` | CONFIRMED |
-| Ghostlite (v6e) | ✓ | — | ✓ | ✓ | ✓ | `gxc::glc::isa` | CONFIRMED |
-| `6acc60406` (v7) | ✓ | — | ✓ | — | ✓ | `gxc::gfc::isa` | CONFIRMED |
+| Gen | TC | BarnaCore | SCS | TAC | TEC | Source |
+|---|:--:|:--:|:--:|:--:|:--:|---|
+| Jellyfish (v2) | ✓ | BCAH | — | — | — | `jellyfish::isa` + `barna_core` |
+| Dragonfish (v3) | ✓ | BCAH | — | — | — | aliases Jellyfish codec |
+| Pufferfish (v4) | ✓ | BCS | — | — | — | `pxc::isa` + `pxc::pfc::isa` |
+| Viperfish (v5p, +v5e lite) | ✓ | — | ✓ | ✓ | ✓ | `vxc::isa`, `vxc::vfc::isa` |
+| Ghostlite (v6e) | ✓ | — | ✓ | ✓ | ✓ | `gxc::glc::isa` |
+| `6acc60406` (v7) | ✓ | — | ✓ | — | ✓ | `gxc::gfc::isa` |
 
 The `6acc60406` TAC drop is byte-anchored: `gxc::gfc::isa::SparseCoreTac{Bundle,CodecBase,Program}` is absent, while `gfc::isa::SparseCoreTec{Bundle,Program}` and `gfc::isa::SparseCoreScs{Bundle,CodecBase,Program}` are present (`nm -C`). Viperfish and Ghostlite each have all three SparseCore codecs. BarnaCore is a pre-Viperfish construct: Jellyfish's address handler (BCAH) and Pufferfish's sequencer (BCS) are distinct sequencer types, gone from Viperfish onward as SparseCore replaces it. The full sub-core taxonomy is on [Sub-Core Taxonomy](../targets/sub-core-taxonomy.md).
 
@@ -118,13 +117,13 @@ TAC and TEC do not declare their own `Branch*`/`Call*` message types; their scal
 
 Jellyfish predates the per-op proto messages; its TensorCore sequencer ops are values of a flat 62-entry `ScalarOpcode` enum (`ScalarOpcode_descriptor()` @ `0x1fa1fc00`). The sequencer-relevant subset, anchored to the `ProtoUtils` classifiers and `.rodata` strings:
 
-| Range | Classifier | Ops | Source | Confidence |
-|---|---|---|---|---|
-| 8..11 | `IsBranch` @ `0x1e876120` (`op & ~3 == 8`) | `ScalarBranch{Relative,Absolute,Indirect}` + 1 | byte-exact disasm | CONFIRMED (range); MEDIUM (per-value name) |
-| 12..15 | `IsCall` @ `0x1e876140` (`op & ~3 == 12`) | `ScalarCall{Relative,Absolute,Indirect}` + 1 | byte-exact disasm | CONFIRMED (range); MEDIUM (per-value name) |
-| — | — | `ScalarHalt`, `ScalarHaltOnError`, `ScalarHaltYieldConditional` | strings | CONFIRMED |
-| — | — | `ScalarDelay`, `ScalarFence` | strings | CONFIRMED |
-| — | — | `ScalarReadCycle{Start,End,Low,High}` | strings | CONFIRMED |
+| Range | Classifier | Ops | Source |
+|---|---|---|---|
+| 8..11 | `IsBranch` @ `0x1e876120` (`op & ~3 == 8`) | `ScalarBranch{Relative,Absolute,Indirect}` + 1 | byte-exact disasm |
+| 12..15 | `IsCall` @ `0x1e876140` (`op & ~3 == 12`) | `ScalarCall{Relative,Absolute,Indirect}` + 1 | byte-exact disasm |
+| — | — | `ScalarHalt`, `ScalarHaltOnError`, `ScalarHaltYieldConditional` | strings |
+| — | — | `ScalarDelay`, `ScalarFence` | strings |
+| — | — | `ScalarReadCycle{Start,End,Low,High}` | strings |
 
 The branch range `8..11` and call range `12..15` are byte-exact from the classifier disassembly. The Jellyfish TensorCore emitter (`JellyfishEmitter`) confirms the full control-flow capability of the JF TC: it has `EmitScalarBranchWithDelay`, `EmitScalarUnconditionalCallWithDelay`, `EmitScalarIndirectBranchWithDelay`, `EmitScalarHalt`, `EmitScalarHaltYieldConditional`, and `EmitScalarDelay` — i.e. the Jellyfish TensorCore is *not* call-less, and it does have halt-yield-conditional. The Jellyfish BarnaCore address handler (`BarnaCoreAddressHandlerEmitter`) carries the same `EmitScalar*` set plus the software-loop builder `AddressHandlerProgramBuilder::BeginLoop` (`0xfa90d40`) / `EndLoop` (`0xfa91300`).
 
@@ -134,13 +133,13 @@ The branch range `8..11` and call range `12..15` are byte-exact from the classif
 
 Sync-flag, barrier, and atomic ops are part of the sequencer's job, but the slot they occupy differs by generation, and they form their own per-(gen × type) inventory:
 
-| Gen × Type | Sync slot | Sync op family | Source | Confidence |
-|---|---|---|---|---|
-| JF TC | vector path | `EmitVectorSyncFlag{Set,Add,SetRemote,AddRemote,PublicAccessSet}` | `JellyfishEmitter::*` | CONFIRMED |
-| PF BCS | `Scalar0` **and** `Scalar1` | `Sync{Add,Done,EqualTo,GreaterOrEqualTo,GreaterThan,LessThan,NotEqualTo}` (7) | `BarnaCoreSequencerScalar{0,1}_*` | CONFIRMED |
-| VF SCS / TAC / TEC | dedicated `ScalarMisc` lane | base sync family (`SetSyncFlag`, `SyncEqual`, `SyncGreaterOrEqual`, `SyncBarrier`, `AddSyncFlag`, `SmemFetchAndAdd`, atomics, `ReadSync*`) | `vfc::isa::SparseCoreScalarMisc_*` | CONFIRMED |
-| GL SCS / TAC / TEC | dedicated `ScalarMisc` lane | base family **+ dual-channel** (`AddBothSyncFlag`, `SetBothSyncFlag`, `SetOtherSyncFlag`) **+ `YieldableSync*`** | `glc::isa::SparseCoreScalarMisc_*` | CONFIRMED |
-| 6acc60406 SCS / TEC | dedicated `ScalarMisc` lane | base family **only** (dual-channel + Yieldable dropped) **+ `SetPOrTState`** | `gfc::isa::SparseCoreScalarMisc_*` | CONFIRMED |
+| Gen × Type | Sync slot | Sync op family | Source |
+|---|---|---|---|
+| JF TC | vector path | `EmitVectorSyncFlag{Set,Add,SetRemote,AddRemote,PublicAccessSet}` | `JellyfishEmitter::*` |
+| PF BCS | `Scalar0` **and** `Scalar1` | `Sync{Add,Done,EqualTo,GreaterOrEqualTo,GreaterThan,LessThan,NotEqualTo}` (7) | `BarnaCoreSequencerScalar{0,1}_*` |
+| VF SCS / TAC / TEC | dedicated `ScalarMisc` lane | base sync family (`SetSyncFlag`, `SyncEqual`, `SyncGreaterOrEqual`, `SyncBarrier`, `AddSyncFlag`, `SmemFetchAndAdd`, atomics, `ReadSync*`) | `vfc::isa::SparseCoreScalarMisc_*` |
+| GL SCS / TAC / TEC | dedicated `ScalarMisc` lane | base family **+ dual-channel** (`AddBothSyncFlag`, `SetBothSyncFlag`, `SetOtherSyncFlag`) **+ `YieldableSync*`** | `glc::isa::SparseCoreScalarMisc_*` |
+| 6acc60406 SCS / TEC | dedicated `ScalarMisc` lane | base family **only** (dual-channel + Yieldable dropped) **+ `SetPOrTState`** | `gfc::isa::SparseCoreScalarMisc_*` |
 
 The generation deltas in the sync family are byte-anchored: the dual-channel ops (`AddBothSyncFlag` / `SetBothSyncFlag` / `SetOtherSyncFlag`) and the `YieldableSync*` family (`YieldableSyncEqual`, `YieldableSyncGreater`, `YieldableSyncDone`, …) exist in `gxc::glc::isa` (Ghostlite) but are **absent from `gxc::gfc::isa`** (`6acc60406`); `6acc60406` adds the unique `SparseCoreScalarMisc_SetPOrTState`. The `ScalarMisc` lane is encoded by `EmitBarrierSync<Bundle, …ScalarMisc>` — instantiated for SCS (`0x13a5f100`), TAC (`0x139f1f80`), and TEC (`0x13a38600`) on Ghostlite — and the atomic add-return-old by `EmitFetchAndAddOp<…SmemFetchAndAdd>` (`0x13a60e00`). The barrier op sets the `ScalarMisc` present bit (`orb $0x4`) and writes the sflag id/threshold through a `ScalarY` operand whose immediate form reuses immediate slot 0.
 

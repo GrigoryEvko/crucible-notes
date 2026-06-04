@@ -85,13 +85,13 @@ function EncodeField(buf, op):                                 // per-op helper
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `BitCopy` | `0x1fa0a900` | Bit-granular field writer; `(dst, dst_bitoff, src, src_bitoff, nbits)` | CERTAIN |
-| `BarnaCoreSequencerCodecBase<…>::Encode` | `0x1d229780` | Sequencer dispatcher; reuses one `Span` across both scalar slots | CERTAIN |
-| `BarnaCoreChannelCodecBase<…>::Encode` | `0x1d22c560` | Channel dispatcher; reuses one `Span` across 6 slots | CERTAIN |
-| `EncoderPfBarnaCoreSequencer::BundleSizeBytes` | `0x1d229220` | `return 32` | CERTAIN |
-| `EncoderPfBarnaCoreChannel::BundleSizeBytes` | `0x1d22bb00` | `return 32` | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `BitCopy` | `0x1fa0a900` | Bit-granular field writer; `(dst, dst_bitoff, src, src_bitoff, nbits)` |
+| `BarnaCoreSequencerCodecBase<…>::Encode` | `0x1d229780` | Sequencer dispatcher; reuses one `Span` across both scalar slots |
+| `BarnaCoreChannelCodecBase<…>::Encode` | `0x1d22c560` | Channel dispatcher; reuses one `Span` across 6 slots |
+| `EncoderPfBarnaCoreSequencer::BundleSizeBytes` | `0x1d229220` | `return 32` |
+| `EncoderPfBarnaCoreChannel::BundleSizeBytes` | `0x1d22bb00` | `return 32` |
 
 ---
 
@@ -151,13 +151,13 @@ bit:  15      31      47      63        79 ............ 105   106 ........... 13
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `BarnaCoreSequencerScalar0Encoder::Encode` | `0x1ee51ec0` | Scalar0 slot encoder; base 106, jump table `@0xb84559c` (bound ≤0x3e) | CERTAIN |
-| `BarnaCoreSequencerScalar1Encoder::Encode` | `0x1ee69000` | Scalar1 slot encoder; base 79, jump table `@0xb845698` (bound ≤0x3c) | CERTAIN |
-| `ScalarIntAdd` (Scalar0) | `0x1ee55ee0` | op=0x20; Sy@106/Sx@111/Dest@117 | HIGH |
-| `ScalarGeneralDma` (Scalar0) | `0x1ee55120` | widest op; spans bits 0..127 | HIGH |
-| `ScalarStoreSmemAbsolute` (Scalar1) | `0x1ee6ace0` | op=0x6 | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `BarnaCoreSequencerScalar0Encoder::Encode` | `0x1ee51ec0` | Scalar0 slot encoder; base 106, jump table `@0xb84559c` (bound ≤0x3e) |
+| `BarnaCoreSequencerScalar1Encoder::Encode` | `0x1ee69000` | Scalar1 slot encoder; base 79, jump table `@0xb845698` (bound ≤0x3c) |
+| `ScalarIntAdd` (Scalar0) | `0x1ee55ee0` | op=0x20; Sy@106/Sx@111/Dest@117 |
+| `ScalarGeneralDma` (Scalar0) | `0x1ee55120` | widest op; spans bits 0..127 |
+| `ScalarStoreSmemAbsolute` (Scalar1) | `0x1ee6ace0` | op=0x6 |
 
 ---
 
@@ -204,14 +204,14 @@ The `ChannelScalar` slot is the per-cycle feature-length loop sequencer. Its fie
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `BarnaCoreChannelVectorAlu0Encoder::Encode` | `0x1e8927c0` | Alu0 slot; opcode@67/w6, pred@62/w5; jump table `@0xb834e8c` (bound ≤0x2e) | CERTAIN |
-| `BarnaCoreChannelVectorAlu1Encoder::Encode` | `0x1e8b4ec0` | Alu1 slot; opcode@100/w6, pred@95/w5 | CERTAIN |
-| `BarnaCoreChannelScalarEncoder::Encode` | `0x1e87e6a0` | loop controller; type@12/w2, count@16/w8 | CERTAIN |
-| `VectorFloatMul` (Alu0) | `0x1e894420` | opcode value 0x7 | HIGH |
-| `VectorTanh` (Alu0) | `0x1e89edc0` | opcode value 0x33 | HIGH |
-| `VectorReciprocal` (Alu0) | `0x1e89ee40` | opcode value 0x34 | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `BarnaCoreChannelVectorAlu0Encoder::Encode` | `0x1e8927c0` | Alu0 slot; opcode@67/w6, pred@62/w5; jump table `@0xb834e8c` (bound ≤0x2e) |
+| `BarnaCoreChannelVectorAlu1Encoder::Encode` | `0x1e8b4ec0` | Alu1 slot; opcode@100/w6, pred@95/w5 |
+| `BarnaCoreChannelScalarEncoder::Encode` | `0x1e87e6a0` | loop controller; type@12/w2, count@16/w8 |
+| `VectorFloatMul` (Alu0) | `0x1e894420` | opcode value 0x7 |
+| `VectorTanh` (Alu0) | `0x1e89edc0` | opcode value 0x33 |
+| `VectorReciprocal` (Alu0) | `0x1e89ee40` | opcode value 0x34 |
 
 ---
 

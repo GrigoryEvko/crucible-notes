@@ -55,14 +55,14 @@ function default_delete_MxuSequence(seq):     // 0x14504c00, demangled symbol pr
 
 Each list is a custom three-word vector — `{ptr, count, cap}` — *not* the libc++ `{begin, end, end_cap}` triple: the count word is an integer element count, not an end-pointer. `SetLatchIndices` proves this by looping `idx < seq[+0x20]` and indexing `seq[+0x18][8*idx]` (a count, used as a loop bound, not subtracted from a base pointer). The deleter's "zero the second word of each pair" pattern (`seq[1]`, `seq[4]`, `seq[7]`, `seq[10]`, `seq[13]`) is consistent with the count being cleared before the backing store is freed; the lists are spaced `0x18` apart (`ptr` words at `seq[0]`/`seq[3]`/`seq[6]`/`seq[9]`/`seq[12]`), and five of them give `0x78`. The builder (`mxu_sequence_collector.cc`) appends to these lists with a grow-realloc that updates `{ptr@+0x00, count@+0x08, cap@+0x10}`, confirming the third word is the capacity.
 
-| Offset | List | Element opcodes / consumer | Confidence |
-|---|---|---|---|
-| `+0x00` | list0 — head / setup | INFERRED head-of-sequence setup | MEDIUM |
-| `+0x18` | latches | `0x8d..0x96` — `SetLatchIndices` count @`+0x20` | CERTAIN |
-| `+0x30` | matprep / MUBR aux | appended alongside each matmul (builder line ~1190, "Adding vmatprep MUBR") | HIGH |
-| `+0x48` | matmuls (`matmuls`) | `0x9b..0xa5` — builder appends the matmul op; `LatchLhs` ΣPackingFactor + `seq->matmuls.size()` CHECK, count @`+0x50` | CERTAIN |
-| `+0x60` | matreses (`matreses`) | `0x152`/`0x153` — builder `emplace_back` after `kVectorMatres` CHECK, count @`+0x68` | CERTAIN |
-| `0x78` | sizeof | `free(seq, 0x78)` | CERTAIN |
+| Offset | List | Element opcodes / consumer |
+|---|---|---|
+| `+0x00` | list0 — head / setup | INFERRED head-of-sequence setup |
+| `+0x18` | latches | `0x8d..0x96` — `SetLatchIndices` count @`+0x20` |
+| `+0x30` | matprep / MUBR aux | appended alongside each matmul (builder line ~1190, "Adding vmatprep MUBR") |
+| `+0x48` | matmuls (`matmuls`) | `0x9b..0xa5` — builder appends the matmul op; `LatchLhs` ΣPackingFactor + `seq->matmuls.size()` CHECK, count @`+0x50` |
+| `+0x60` | matreses (`matreses`) | `0x152`/`0x153` — builder `emplace_back` after `kVectorMatres` CHECK, count @`+0x68` |
+| `0x78` | sizeof | `free(seq, 0x78)` |
 
 The `+0x18`, `+0x48`, `+0x60` identities are byte-exact: the deleter proves five lists at these offsets, and independent consumers index them with opcode-checked accesses. `SetLatchIndices` reads `+0x18`/`+0x20` and asserts `0x8d..0x96`. In `CollectAndTransformSequencesInternal` a matmul-family op (`(uint16)(op-0x9b) <= 0xa`) is appended to the `+0x48` list (and a paired matprep/MUBR value to the `+0x30` list), and a matres-family op (`(op & ~1) == 0x152`, gated by `opcode == kVectorMatres`) is `emplace_back`'d into the `+0x60` list. `LatchLhs` then reads the same `+0x48` list as `seq->matmuls` — its capacity loop walks `seq[+0x48]` (count @`+0x50`) over opcodes `0x9b`/`0xa3`, and the source-field name is anchored by the CHECK `"...== seq->matmuls.size()"` which reads `*(seq+0x50)`. The `+0x00` (head/setup) and `+0x30` (matprep/MUBR aux) identities are weaker: `+0x30` is the list that grows in lockstep with `+0x48` and is logged as "vmatprep MUBR" (HIGH), while `+0x00` is filled but its opcode membership was not isolated cell-by-cell (MEDIUM).
 
@@ -181,17 +181,17 @@ function set_unit_id(v, unit):                 // 0x12698c00
     check unit <= 3                            // "unit_id_ == unit_id" llo_value.h:408
 ```
 
-| Table / callee | Address | Role | Confidence |
-|---|---|---|---|
-| `BuildXposeSequences` | `0x10f813a0` | group LHS: vec1 `{0xa6,0xa7}`, vec2 `{0x154}` | CERTAIN |
-| `MatmulDataFormatPackingFactor` | `0x1d629300` | `int32[fmt-1] @0xb53c6bc = {1,2,4,4,4,4,8,8,4,4}` | CERTAIN |
-| `Target::ChunksPerTile` | `0x1d60f2c0` | `hwcfg[+0x198] / hwcfg[+0x1a0]` | CERTAIN |
-| `num_mxus` | `Target+0x4ac` | per-region MXU count | CERTAIN |
-| GLM byte table | `0xac0913e` | `(op-0x9b)→GLM` : `{0×8, 0xb, 0xb}` | CERTAIN |
-| `LloRegionBuilder::VlatchLsf` | `0x1d573ec0` | emit `vlatch.lsf` (`LloValue*`, GainLatchMode, int) | CERTAIN |
-| `LloRegionBuilder::Vmatmul` | `0x1d575a60` | emit matmul (K-tile loop, PackingFactor× per latch) | CERTAIN |
-| `LloRegionBuilder::Vmatres` | `0x1d5761a0` | emit matres | CERTAIN |
-| `LloValue::set_unit_id` (inlined) | `0x12698c00` | `WORD[v+0x0b]` quadrant pack | CERTAIN |
+| Table / callee | Address | Role |
+|---|---|---|
+| `BuildXposeSequences` | `0x10f813a0` | group LHS: vec1 `{0xa6,0xa7}`, vec2 `{0x154}` |
+| `MatmulDataFormatPackingFactor` | `0x1d629300` | `int32[fmt-1] @0xb53c6bc = {1,2,4,4,4,4,8,8,4,4}` |
+| `Target::ChunksPerTile` | `0x1d60f2c0` | `hwcfg[+0x198] / hwcfg[+0x1a0]` |
+| `num_mxus` | `Target+0x4ac` | per-region MXU count |
+| GLM byte table | `0xac0913e` | `(op-0x9b)→GLM` : `{0×8, 0xb, 0xb}` |
+| `LloRegionBuilder::VlatchLsf` | `0x1d573ec0` | emit `vlatch.lsf` (`LloValue*`, GainLatchMode, int) |
+| `LloRegionBuilder::Vmatmul` | `0x1d575a60` | emit matmul (K-tile loop, PackingFactor× per latch) |
+| `LloRegionBuilder::Vmatres` | `0x1d5761a0` | emit matres |
+| `LloValue::set_unit_id` (inlined) | `0x12698c00` | `WORD[v+0x0b]` quadrant pack |
 
 > **QUIRK — the matmul loop runs `PackingFactor` times, not once.** Packed/nibble formats (`PackingFactor` 2, 4, or 8) emit multiple `Vmatmul` ops per latch — the K-tiling that splits the packed contracting dimension across systolic passes. A reimplementation that emits one matmul per latch under-counts the systolic steps for every format wider than bf16 (fmt 1). The `ExpectedMatresesPerMatmul` balance check downstream depends on this count.
 
@@ -225,12 +225,12 @@ Both vectors are owning (allocated via `operator new`, `memcpy`-filled from call
 
 > **UNVERIFIED — the two trailing `long`s are not a busy interval.** It is tempting to model `SequenceInfo` as `{latch_latency, vec1, vec2, busy_start, busy_end}` with the two `long`s a scheduled busy *interval*; the write site does not support that. The value object's two trailing `long`s are the `latch_latency`/new-value arg and the per-MXU `accumulated_latency` snapshot, not a start/end pair, and `+0x00` is a vector begin pointer (freed on overwrite), not a `latch_latency` scalar. The cost function reads its predecessor `latch_latency` and the interval endpoints through absl btree-node-internal offsets (`9*idx+9`, `9*idx+10` qwords), which are *node* offsets, not value-struct offsets, and were not fully resolved to the two trailing `long`s. Treat the precise meaning of the cost-function reads as UNVERIFIED.
 
-| Field | Offset | Type | Meaning | Confidence |
-|---|---|---|---|---|
-| `vec1` | `+0x00` / `+0x08` / `+0x10` | owning vector (8-byte elem) | per-sequence list #1 | HIGH |
-| `vec2` | `+0x18` / `+0x20` / `+0x28` | owning vector (`CycleTable::Instruction`, `0x28` elem) | per-sequence cycle/result records | HIGH |
-| `latch_latency` | `+0x30` | `long` | per-sequence latch latency (CHECK-anchored) | CERTAIN |
-| `accumulated_latency` | `+0x38` | `long` | per-MXU accumulated-latency snapshot | HIGH |
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `vec1` | `+0x00` / `+0x08` / `+0x10` | owning vector (8-byte elem) | per-sequence list #1 |
+| `vec2` | `+0x18` / `+0x20` / `+0x28` | owning vector (`CycleTable::Instruction`, `0x28` elem) | per-sequence cycle/result records |
+| `latch_latency` | `+0x30` | `long` | per-sequence latch latency (CHECK-anchored) |
+| `accumulated_latency` | `+0x38` | `long` | per-MXU accumulated-latency snapshot |
 
 ### The set_mxu Commit
 

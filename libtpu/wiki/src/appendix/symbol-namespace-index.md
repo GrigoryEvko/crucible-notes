@@ -61,26 +61,26 @@ The top-level owner is extracted from the `name` field of the function sidecar w
 
 Top-level-owner function counts and byte footprints, sorted by symbol count. These rows rank the **largest** top-level owners; they do not exhaust the population. The whole-binary totals are **884,832** functions and **299,035,160** bytes; the listed namespaces plus the *(other)* catch-all account for those totals, with the catch-all absorbing every owner that ranks below the cut. Several real mangled `_ZN` owners fall into that residual — notably `dnnl` (oneDNN, ~19.5k functions), `proto2` (the protobuf runtime, ~12k), `grpc_core` (~8.4k), `operations_research` (~6.8k), and `platforms_deepsea` (~6k, the codename-rooted device layer) — each larger than several of the listed lower rows. They are folded into *(other)* here and broken out by the sibling [RTTI namespace census](rtti-namespace-census.md).
 
-| Namespace | Functions | Function Bytes | % of funcs | Role in `libtpu.so` | Confidence |
-|---|---:|---:|---:|---|---|
-| `mlir` | 270,983 | 54,560,105 | 30.6% | MLIR compiler framework — dialects, passes, IR/op infrastructure | CERTAIN |
-| `asic_sw` | 194,445 | 26,811,387 | 22.0% | Closed TPU driver stack — chip-generation register/queue/DMA layers | CERTAIN |
-| *(other)* | 138,313 | 85,667,960 | 15.6% | Below-cut mangled owners (`dnnl`, `proto2`, `grpc_core`, …), C symbols, non-`_ZN` exports, vtable thunks | HIGH |
-| `llvm` | 91,060 | 30,705,459 | 10.3% | LLVM core — IR, codegen, target backends used by the JIT | CERTAIN |
-| `xla` | 62,221 | 42,138,764 | 7.0% | XLA HLO middle-end — passes, layout, runtime, `megascale` collectives | CERTAIN |
-| `std` (libc++) | 57,643 | 18,571,901 | 6.5% | libc++ `std::__u` containers/algorithms instantiated into the binary | CERTAIN |
-| `absl` | 27,777 | 8,080,990 | 3.1% | Abseil — `Status`, containers, strings, synchronization, time | CERTAIN |
-| `tensorflow` | 17,721 | 10,915,236 | 2.0% | TF op bridge — XLA kernels, device compiler, SparseCore ops | CERTAIN |
-| `Eigen` | 10,419 | 15,400,879 | 1.2% | Eigen tensor/matrix kernels — note the high bytes-per-function | CERTAIN |
-| `tpu` | 3,438 | 1,339,121 | 0.4% | TPU driver glue — `Tpu*Driver`, chip/core handles, HAL bridge | CERTAIN |
-| `anon` (`sub_`) | 3,048 | 1,807,907 | 0.3% | Functions with no symbol — synthetic `sub_<addr>` labels | CERTAIN |
-| `xprof` | 2,605 | 1,606,724 | 0.3% | TPU profiler — trace conversion to XPlane, counter controls | CERTAIN |
-| `grpc` | 2,265 | 499,369 | 0.3% | gRPC — RPC transport for distributed/multi-host execution | CERTAIN |
-| `tsl` | 1,855 | 678,318 | 0.2% | TSL (TensorFlow Support Lib) — `AsyncValue`, monitoring, platform | CERTAIN |
-| `stream_executor` | 542 | 99,857 | 0.1% | StreamExecutor device-abstraction interfaces | CERTAIN |
-| `re2` | 226 | 109,063 | <0.1% | RE2 regular-expression engine | CERTAIN |
-| `google::protobuf` | 201 | 25,173 | <0.1% | protobuf C++ runtime under `google::` (the bulk of the runtime is the separate `proto2` owner, in *(other)*; generated messages mangle under their own namespace) | HIGH |
-| `tcmalloc` | 70 | 16,947 | <0.1% | tcmalloc allocator core | CERTAIN |
+| Namespace | Functions | Function Bytes | % of funcs | Role in `libtpu.so` |
+|---|---:|---:|---:|---|
+| `mlir` | 270,983 | 54,560,105 | 30.6% | MLIR compiler framework — dialects, passes, IR/op infrastructure |
+| `asic_sw` | 194,445 | 26,811,387 | 22.0% | Closed TPU driver stack — chip-generation register/queue/DMA layers |
+| *(other)* | 138,313 | 85,667,960 | 15.6% | Below-cut mangled owners (`dnnl`, `proto2`, `grpc_core`, …), C symbols, non-`_ZN` exports, vtable thunks |
+| `llvm` | 91,060 | 30,705,459 | 10.3% | LLVM core — IR, codegen, target backends used by the JIT |
+| `xla` | 62,221 | 42,138,764 | 7.0% | XLA HLO middle-end — passes, layout, runtime, `megascale` collectives |
+| `std` (libc++) | 57,643 | 18,571,901 | 6.5% | libc++ `std::__u` containers/algorithms instantiated into the binary |
+| `absl` | 27,777 | 8,080,990 | 3.1% | Abseil — `Status`, containers, strings, synchronization, time |
+| `tensorflow` | 17,721 | 10,915,236 | 2.0% | TF op bridge — XLA kernels, device compiler, SparseCore ops |
+| `Eigen` | 10,419 | 15,400,879 | 1.2% | Eigen tensor/matrix kernels — note the high bytes-per-function |
+| `tpu` | 3,438 | 1,339,121 | 0.4% | TPU driver glue — `Tpu*Driver`, chip/core handles, HAL bridge |
+| `anon` (`sub_`) | 3,048 | 1,807,907 | 0.3% | Functions with no symbol — synthetic `sub_<addr>` labels |
+| `xprof` | 2,605 | 1,606,724 | 0.3% | TPU profiler — trace conversion to XPlane, counter controls |
+| `grpc` | 2,265 | 499,369 | 0.3% | gRPC — RPC transport for distributed/multi-host execution |
+| `tsl` | 1,855 | 678,318 | 0.2% | TSL (TensorFlow Support Lib) — `AsyncValue`, monitoring, platform |
+| `stream_executor` | 542 | 99,857 | 0.1% | StreamExecutor device-abstraction interfaces |
+| `re2` | 226 | 109,063 | <0.1% | RE2 regular-expression engine |
+| `google::protobuf` | 201 | 25,173 | <0.1% | protobuf C++ runtime under `google::` (the bulk of the runtime is the separate `proto2` owner, in *(other)*; generated messages mangle under their own namespace) |
+| `tcmalloc` | 70 | 16,947 | <0.1% | tcmalloc allocator core |
 
 > **QUIRK —** `google::protobuf`, `tcmalloc`, and `re2` rank at the bottom by *owned function count* yet are unmistakably present and heavily used. The owner count understates them because their work shows up elsewhere: the protobuf runtime's bulk is the separate `proto2` owner (~12k functions, folded into *(other)* above) plus generated message code (mangled under each message's own namespace and in the `protodesc_cold` / `.lrodata` data segments), tcmalloc's hot path is in the `google_malloc` / `malloc_hook` code sections by *function* not by namespace, and RE2's value is in a few engine functions invoked from everywhere. Owner count measures authored surface, not runtime weight.
 
@@ -96,24 +96,24 @@ The byte column tells a second story that the count column hides. `mlir` owns th
 
 The census above counts functions. The name sidecar also resolves data symbols, vtables, typeinfo records, and code labels — 1,893,205 named addresses in total. Partitioned by the same top-level-owner rule, the *full* symbol surface re-ranks the namespaces, because data-heavy and RTTI-heavy namespaces pick up entries that the function-only view misses.
 
-| Namespace | Named addresses (all kinds) | vs function count | Confidence |
-|---|---:|---|---|
-| `mlir` | 286,192 | +15,209 data/typeinfo/labels | HIGH |
-| `asic_sw` | 210,325 | +15,880 — driver RTTI and register tables | HIGH |
-| `llvm` | 120,884 | +29,824 — large static tables | HIGH |
-| `xla` | 65,339 | +3,118 | HIGH |
-| `std` (libc++) | 57,726 | ≈ same (mostly functions) | HIGH |
-| `absl` | 28,189 | +412 | HIGH |
-| `tensorflow` | 20,923 | +3,202 | HIGH |
-| `Eigen` | 10,419 | ≈ same | HIGH |
-| `xprof` | 2,853 | +248 | HIGH |
-| `tpu` | 3,989 | +551 | HIGH |
-| `grpc` | 2,563 | +298 | HIGH |
-| `tsl` | 1,985 | +130 | HIGH |
-| `stream_executor` | 656 | +114 | HIGH |
-| `re2` | 499 | +273 | HIGH |
-| `google::protobuf` | 276 | +75 | HIGH |
-| `tcmalloc` | 84 | +14 | HIGH |
+| Namespace | Named addresses (all kinds) | vs function count |
+|---|---:|---|
+| `mlir` | 286,192 | +15,209 data/typeinfo/labels |
+| `asic_sw` | 210,325 | +15,880 — driver RTTI and register tables |
+| `llvm` | 120,884 | +29,824 — large static tables |
+| `xla` | 65,339 | +3,118 |
+| `std` (libc++) | 57,726 | ≈ same (mostly functions) |
+| `absl` | 28,189 | +412 |
+| `tensorflow` | 20,923 | +3,202 |
+| `Eigen` | 10,419 | ≈ same |
+| `xprof` | 2,853 | +248 |
+| `tpu` | 3,989 | +551 |
+| `grpc` | 2,563 | +298 |
+| `tsl` | 1,985 | +130 |
+| `stream_executor` | 656 | +114 |
+| `re2` | 499 | +273 |
+| `google::protobuf` | 276 | +75 |
+| `tcmalloc` | 84 | +14 |
 
 The kind breakdown of the full surface — 881,784 functions, 880,052 data, 108,629 `other`, 22,740 code-labels — explains the deltas. `llvm` gains the most absolute entries (~30k) because its target tables, instruction-info arrays, and intrinsic descriptors are large static data objects; `asic_sw` gains its second-largest delta from per-register and per-queue data tables plus its dense RTTI.
 
@@ -125,18 +125,18 @@ The kind breakdown of the full surface — 881,784 functions, 880,052 data, 108,
 
 `asic_sw` is the only top-level namespace that is entirely TPU-specific, and internally it is organized by **chip generation codename** rather than by component. These are nested namespaces (`asic_sw::driver::deepsea::<codename>::…`), so they do not appear as top-level rows; their participation counts (mangled token appearing anywhere in a symbol) are listed here to size the per-generation driver surface. Participation over-counts — a `pxc` symbol referenced as a template argument inside a `gxc` function increments both — so treat these as relative magnitudes, not disjoint totals.
 
-| Sub-namespace token | Participation count | Role | Confidence |
-|---|---:|---|---|
-| `deepsea` | 271,973 | The umbrella driver family for all TPU generations | HIGH |
-| `gxc` | 156,011 | A chip-generation core (largest by symbol participation) | HIGH |
-| `glc` | 77,591 | `gxc` sub-core / lane-control variant | MEDIUM |
-| `vxc` | 68,986 | A chip-generation core | HIGH |
-| `pxc` | 33,363 | A chip-generation core | HIGH |
-| `vfc` | 21,860 | `vxc` sub-core variant | MEDIUM |
-| `pfc` | 10,647 | `pxc` sub-core variant (with `b0` stepping sub-namespace) | MEDIUM |
-| `jxc` | 5,183 | A chip-generation core | HIGH |
-| `vlc` | 3,008 | `vxc` sub-core variant | MEDIUM |
-| `plc` | 1,379 | `pxc` sub-core variant | MEDIUM |
+| Sub-namespace token | Participation count | Role |
+|---|---:|---|
+| `deepsea` | 271,973 | The umbrella driver family for all TPU generations |
+| `gxc` | 156,011 | A chip-generation core (largest by symbol participation) |
+| `glc` | 77,591 | `gxc` sub-core / lane-control variant |
+| `vxc` | 68,986 | A chip-generation core |
+| `pxc` | 33,363 | A chip-generation core |
+| `vfc` | 21,860 | `vxc` sub-core variant |
+| `pfc` | 10,647 | `pxc` sub-core variant (with `b0` stepping sub-namespace) |
+| `jxc` | 5,183 | A chip-generation core |
+| `vlc` | 3,008 | `vxc` sub-core variant |
+| `plc` | 1,379 | `pxc` sub-core variant |
 
 The pattern is a `<x>xc` core with `<x>lc` / `<x>fc` lane/fabric sub-cores and, for `pfc`, an explicit silicon-stepping namespace (`b0`). The driver replicates the same factory/queue/register interface family (`*Factory`, `*Interface`, `QueueAllocator`, `IndirectStateFactory`) per generation, which is why the participation counts are so large relative to the asic_sw owned-function total — most of these symbols are template instantiations of a shared interface, re-stamped once per codename. The [RTTI namespace census](rtti-namespace-census.md) resolves these codenames to concrete generations from the typeinfo records.
 

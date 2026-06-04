@@ -65,11 +65,11 @@ function google_init_module_tpu_hal_glc_hardware_impl():   // 0x213eb9e0 (Ghostl
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `google_init_module_tpu_hal_glc_hardware_impl` | 0x213eb9e0 | Register v4 into VXC factory | CERTAIN |
-| `google_init_module_tpu_hal_gfc_hardware_impl` | 0x213e9f60 | Register v5 into VXC factory | CERTAIN |
-| `xla_target_ghostlite` | 0x213eeee0 | compiler-target registration (v4) | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `google_init_module_tpu_hal_glc_hardware_impl` | 0x213eb9e0 | Register v4 into VXC factory |
+| `google_init_module_tpu_hal_gfc_hardware_impl` | 0x213e9f60 | Register v5 into VXC factory |
+| `xla_target_ghostlite` | 0x213eeee0 | compiler-target registration (v4) |
 
 ---
 
@@ -130,15 +130,15 @@ While the HAL/driver layer is shared with VXC, the *compiler* layer is GXC-speci
 
 ### Function Map
 
-| Artefact | Address / symbol | Codename | Confidence |
-|---|---|---|---|
-| `xla_target_ghostlite` | 0x213eeee0 (`mov edi,4`) | Ghostlite (v4) | HIGH |
-| `GlcCycleTable` vtable | `_ZTV` 0x21c20148 | Ghostlite (v4) | CERTAIN |
-| `GfcCycleTable` vtable | `_ZTV` 0x21c201c8 | 6acc60406 (v5) | CERTAIN |
-| `TPUGlcSubtarget` | predicate-regs @ 0x13c615c0 (16) | Ghostlite (v4) | CERTAIN |
-| `TPUGfcSubtarget` | predicate-regs @ 0x13c630e0 (16) | 6acc60406 (v5) | CERTAIN |
-| `GhostliteCodecMetadata` vtable | `_ZTV` 0x21d647a8 | Ghostlite (v4) | CERTAIN |
-| `xla::ghostlite::kLloOpcodeToGlcInstruction` | 0x4067dc8 (258 entries) | Ghostlite (v4) | HIGH |
+| Artefact | Address / symbol | Codename |
+|---|---|---|
+| `xla_target_ghostlite` | 0x213eeee0 (`mov edi,4`) | Ghostlite (v4) |
+| `GlcCycleTable` vtable | `_ZTV` 0x21c20148 | Ghostlite (v4) |
+| `GfcCycleTable` vtable | `_ZTV` 0x21c201c8 | 6acc60406 (v5) |
+| `TPUGlcSubtarget` | predicate-regs @ 0x13c615c0 (16) | Ghostlite (v4) |
+| `TPUGfcSubtarget` | predicate-regs @ 0x13c630e0 (16) | 6acc60406 (v5) |
+| `GhostliteCodecMetadata` vtable | `_ZTV` 0x21d647a8 | Ghostlite (v4) |
+| `xla::ghostlite::kLloOpcodeToGlcInstruction` | 0x4067dc8 (258 entries) | Ghostlite (v4) |
 
 ### Considerations
 
@@ -154,26 +154,26 @@ Ghostlite and 6acc60406 share the VXC HAL product chain (impl 216 B, `TpuVxcDriv
 
 > **NOTE —** the shared GlGf encoder is why the two `gxc` sub-core ISA namespaces are near-equal in token weight (`gxc::glc::isa` 294K, `gxc::gfc::isa` 270K) despite the named-vs-anonymous codec split: 6acc60406 inherits Ghostlite's encoder machinery rather than carrying a wholly independent one. The same pairing shows on the version-dispatch side — `BundleCount`'s switch collapses the six generations to four encoder families (`JfDf`, `Pf`, `Vf`, `GlGf`), with v4+v5 sharing `GlGf` exactly as v0+v1 share `JfDf` (see the [Codename Matrix](tpu-version-codename-matrix.md#codec-selection-confirms-the-ordering)).
 
-| Axis | Ghostlite (v4 / glc) | 6acc60406 (v5 / gfc) | Source | Confidence |
-|---|---|---|---|---|
-| TpuVersion enum | kGhostlite = 4 | k6acc60406 = 5 | `TpuVersionToString` 0x20b3a480 | CERTAIN |
-| ToString | "ghostlite" (0x86864e0) | "6acc60406" (0x863f0cf) | rodata | CERTAIN |
-| External / Cloud name | "TPU v6 lite" / `v6e` | "TPU7x" / `tpu7x` | naming path | CERTAIN |
-| Init module | glc 0x213eb9e0 | gfc 0x213e9f60 | symtab | CERTAIN |
-| Sub-core | `gxc::glc` (load-core) | `gxc::gfc` (fetch-core) | symtab | CERTAIN |
-| Codec class | `TpuCodecGhostlite` (NAMED, `_ZTV` 0x21d35c00) | anonymous (no codec `_ZTV`/`_ZTI`) | codec walks | CERTAIN |
-| Codec creator | `CreateTpuCodecGhostlite` 0x1e83bce0 (named) | `sub_1E838380` (inline, anon) | disasm | HIGH |
-| Named workers | `ghostlite::isa::EncoderGl{TC,Scs,Tac,Tec}` | gfc `EncoderBase` templates (no `EncoderGf*`) | symtab | CERTAIN |
-| LLVM subtarget | `TPUGlcSubtarget` | `TPUGfcSubtarget` | symtab | CERTAIN |
-| Cost-model table | `GlcCycleTable` (`_ZTV` 0x21c20148) | `GfcCycleTable` (`_ZTV` 0x21c201c8) | symtab | CERTAIN |
-| Codec metadata | `GhostliteCodecMetadata` (NAMED, `_ZTV` 0x21d647a8) | anonymous registry entry | disasm | HIGH |
-| Codec platform tag (cmp) | `$0x5` (proto value for Ghostlite) | `$0x6` (proto value for 6acc60406) | Encode body | HIGH |
-| Entry-point opcodes | 0x11/0x12/0x13/0x14 (TC/Scs/Tac/Tec) | 0x15/0x16/0x17 (+4 shift) | Encode body | HIGH |
-| TensorCore bundle | 64 B; 4 VALU; 7-bit opcode @302; 4-bit pred @309 | 64 B; 4 VALU; 8-bit opcode @293; 2-bit dual pred @301 | VALU0 encoder bytes | HIGH |
-| TC CodecBase object | 240 B (1 `Predication` param) | 248 B (4 predication params) | EncodeBundle `new()` | HIGH |
-| PCI chip DID | 0x00d1 (named `kGhostliteChip*`) | 0x00f2 (anonymous gfc) | DeviceIdentifiers | CERTAIN |
-| Device-type byte | 0xd (`IsGlc`) | 0xc (`IsGfc`) | `DeviceTypeFromDeviceIdentifiers` | CERTAIN |
-| Flag prefix | `xla_gf_` (44), `xla_sc_` | `xla_gf_`, `xla_sc_` | flag scan | HIGH |
+| Axis | Ghostlite (v4 / glc) | 6acc60406 (v5 / gfc) | Source |
+|---|---|---|---|
+| TpuVersion enum | kGhostlite = 4 | k6acc60406 = 5 | `TpuVersionToString` 0x20b3a480 |
+| ToString | "ghostlite" (0x86864e0) | "6acc60406" (0x863f0cf) | rodata |
+| External / Cloud name | "TPU v6 lite" / `v6e` | "TPU7x" / `tpu7x` | naming path |
+| Init module | glc 0x213eb9e0 | gfc 0x213e9f60 | symtab |
+| Sub-core | `gxc::glc` (load-core) | `gxc::gfc` (fetch-core) | symtab |
+| Codec class | `TpuCodecGhostlite` (NAMED, `_ZTV` 0x21d35c00) | anonymous (no codec `_ZTV`/`_ZTI`) | codec walks |
+| Codec creator | `CreateTpuCodecGhostlite` 0x1e83bce0 (named) | `sub_1E838380` (inline, anon) | disasm |
+| Named workers | `ghostlite::isa::EncoderGl{TC,Scs,Tac,Tec}` | gfc `EncoderBase` templates (no `EncoderGf*`) | symtab |
+| LLVM subtarget | `TPUGlcSubtarget` | `TPUGfcSubtarget` | symtab |
+| Cost-model table | `GlcCycleTable` (`_ZTV` 0x21c20148) | `GfcCycleTable` (`_ZTV` 0x21c201c8) | symtab |
+| Codec metadata | `GhostliteCodecMetadata` (NAMED, `_ZTV` 0x21d647a8) | anonymous registry entry | disasm |
+| Codec platform tag (cmp) | `$0x5` (proto value for Ghostlite) | `$0x6` (proto value for 6acc60406) | Encode body |
+| Entry-point opcodes | 0x11/0x12/0x13/0x14 (TC/Scs/Tac/Tec) | 0x15/0x16/0x17 (+4 shift) | Encode body |
+| TensorCore bundle | 64 B; 4 VALU; 7-bit opcode @302; 4-bit pred @309 | 64 B; 4 VALU; 8-bit opcode @293; 2-bit dual pred @301 | VALU0 encoder bytes |
+| TC CodecBase object | 240 B (1 `Predication` param) | 248 B (4 predication params) | EncodeBundle `new()` |
+| PCI chip DID | 0x00d1 (named `kGhostliteChip*`) | 0x00f2 (anonymous gfc) | DeviceIdentifiers |
+| Device-type byte | 0xd (`IsGlc`) | 0xc (`IsGfc`) | `DeviceTypeFromDeviceIdentifiers` |
+| Flag prefix | `xla_gf_` (44), `xla_sc_` | `xla_gf_`, `xla_sc_` | flag scan |
 
 > **GOTCHA —** v5 (6acc60406 / gfc) is the **only fully symbol-stripped codename**. Its codec class, vtable, typeinfo, and creator carry no demangled names; v0..v4 all retain `_ZTV`/`_ZTI`/`_ZTS` symbols (only the RTTI name-string *content* is obfuscated to `s_NNNNN` tags for all six codecs). A reimplementer cross-checking by symbol will find Ghostlite by name but will recover the v5 codec only structurally (8-byte object, 6-slot vtable, `gxc::gfc::isa` dispatch). The v4→v5 codec delta — opcode widens 7→8 bits, per-slot predicate shrinks 4→2 bits into a dedicated dual-predicate slot, entry-point opcodes shift +4, TC CodecBase grows 240→248 B — is the structural fingerprint to match.
 

@@ -245,18 +245,18 @@ Limited-ICI routing is a **2-D n-hop scheme** (1/2/4/8-hop neighbour reachabilit
 
 ## 4. Function & Enum Map
 
-| Symbol | Address | Role | Confidence |
-|---|---|---|---|
-| `TwistedTorusND::UpdateMinMaxDims` | `0x137d0260` | the twist predicate + dim sort + K/2K counts | HIGH (decompile-verified `CHECK` strings) |
-| `Direction::OrientationToDimension` | `0x20c027c0` | `o == 0 ⇒ error; else dim = o − 1` | HIGH (byte-exact body) |
-| `Orientation_descriptor` | `0x20c0ad20` | enum descriptor (`dimension.proto`) | HIGH |
-| `NameOfDenseEnum<Orientation,0,6>` | `0x22471c50` | confirms dense `0..6` range | HIGH |
-| `tpu::OrientationsToTpuDegradedAxes` | `0x1fc57d00` | folds only `1/2/3` (X/Y/Z) — see [degraded-axis](../collectives/degraded-axis.md) | HIGH |
-| `Target::IsNhopSourceRelative` | `0x1d6159a0` | `return byte[this+0x3fb]` | HIGH (byte-exact body) |
-| `DragonfishTarget::IsNhopSourceRelative` | `0x1d48f020` | per-slice byte + `CHECK(!base)` | HIGH (byte-exact body) |
-| `GetDefaultConfiguredProperties` | `0x20acee40` | `is_nhop = (routing_strategy == 2)` | HIGH (byte-exact body) |
-| `tpu::IsReachableOverLimitedIci` | `0x1fc57fe0` | `entry.target_port >= 0` reachability query | HIGH |
-| `tpu::RoutingTableEntryForICILimitedRouting` | `0x1fc58040` | 2-D limited-ICI route entry; `ROUTING_MESH` gate | MEDIUM (gate + call chain; full body on routing pages) |
+| Symbol | Address | Role |
+|---|---|---|
+| `TwistedTorusND::UpdateMinMaxDims` | `0x137d0260` | the twist predicate + dim sort + K/2K counts |
+| `Direction::OrientationToDimension` | `0x20c027c0` | `o == 0 ⇒ error; else dim = o − 1` |
+| `Orientation_descriptor` | `0x20c0ad20` | enum descriptor (`dimension.proto`) |
+| `NameOfDenseEnum<Orientation,0,6>` | `0x22471c50` | confirms dense `0..6` range |
+| `tpu::OrientationsToTpuDegradedAxes` | `0x1fc57d00` | folds only `1/2/3` (X/Y/Z) — see [degraded-axis](../collectives/degraded-axis.md) |
+| `Target::IsNhopSourceRelative` | `0x1d6159a0` | `return byte[this+0x3fb]` |
+| `DragonfishTarget::IsNhopSourceRelative` | `0x1d48f020` | per-slice byte + `CHECK(!base)` |
+| `GetDefaultConfiguredProperties` | `0x20acee40` | `is_nhop = (routing_strategy == 2)` |
+| `tpu::IsReachableOverLimitedIci` | `0x1fc57fe0` | `entry.target_port >= 0` reachability query |
+| `tpu::RoutingTableEntryForICILimitedRouting` | `0x1fc58040` | 2-D limited-ICI route entry; `ROUTING_MESH` gate |
 
 | Enum | Values |
 |---|---|

@@ -136,12 +136,12 @@ The conversion is `picoseconds = round(gtc_ticks × 1e9 / (clock × 16))`, done 
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `TpuXLineBuilder::AddEvent(GtcSpan, XEventMetadata&)` | `0xf1df1e0` | universal stamp: XEvent + device_*_ps stats | CERTAIN |
-| `tsl::profiler::XLineBuilder::AddEvent(XEventMetadata&)` | `0x1cf4dc40` | base: append XEvent, copy metadata_id | CERTAIN |
-| `GtcSpanConverter::TimespanFromGtcSpan` | `0xf2cb7e0` | GTC span → {offset_ps, duration_ps} | CERTAIN |
-| `_udivti3` | (libgcc) | 128÷64 unsigned divide for the ps multiply | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `TpuXLineBuilder::AddEvent(GtcSpan, XEventMetadata&)` | `0xf1df1e0` | universal stamp: XEvent + device_*_ps stats |
+| `tsl::profiler::XLineBuilder::AddEvent(XEventMetadata&)` | `0x1cf4dc40` | base: append XEvent, copy metadata_id |
+| `GtcSpanConverter::TimespanFromGtcSpan` | `0xf2cb7e0` | GTC span → {offset_ps, duration_ps} |
+| `_udivti3` | (libgcc) | 128÷64 unsigned divide for the ps multiply |
 
 ---
 
@@ -180,14 +180,14 @@ The stateful/decorating subscribers compute a human-readable name from decoded f
 
 ### Naming Function Map
 
-| Function | Address | Produces | Confidence |
-|---|---|---|---|
-| `TpuXLineBuilder::AddEvent<lambda>` (pxc) | `0xf1f26e0` | decimal-string raw name | CERTAIN |
-| `FastIntToBuffer(int)` | `0x211719e0` | the id's base-10 text | CERTAIN |
-| `GetOrCreateEventMetadata(string&&)` | `0x1cf4d380` | intern by name → metadata_id | CERTAIN |
-| `GetSyncFlagEventName<TraceEntry>` (pxc) | `0xf1ef840` | `"SyncWait:<n>"` etc. | CERTAIN |
-| `GetOrCreateXlaEventMetadata(pair)` | `0xf1e4e40` | HLO op name on "XLA Ops" | HIGH |
-| `Symbolizer::TensorCoreSymbolize` | `0xf57ce60` | HLO symbol resolution | MEDIUM |
+| Function | Address | Produces |
+|---|---|---|
+| `TpuXLineBuilder::AddEvent<lambda>` (pxc) | `0xf1f26e0` | decimal-string raw name |
+| `FastIntToBuffer(int)` | `0x211719e0` | the id's base-10 text |
+| `GetOrCreateEventMetadata(string&&)` | `0x1cf4d380` | intern by name → metadata_id |
+| `GetSyncFlagEventName<TraceEntry>` (pxc) | `0xf1ef840` | `"SyncWait:<n>"` etc. |
+| `GetOrCreateXlaEventMetadata(pair)` | `0xf1e4e40` | HLO op name on "XLA Ops" |
+| `Symbolizer::TensorCoreSymbolize` | `0xf57ce60` | HLO symbol resolution |
 
 ---
 
@@ -208,12 +208,12 @@ function add_dynamic_stat(event_builder, name, value):
 
 The `oneof` case written by `AddStatValue<V>` depends on the value type, confirmed at the call sites:
 
-| Value kind | XStat oneof case | Field | Used by | Confidence |
-|---|---|---|---|---|
-| `int64` | 3 (`int64_value`) | 4 | the universal `device_*_ps` pair | CERTAIN |
-| `uint64` | 2 (`uint64_value`) | 3 | DMA byte count (`AddStatValue<unsigned long>` @ `0xf1df460`) | CERTAIN |
-| `double` | (per schema) | — | SPI power(W) samples | MEDIUM |
-| `XStatMetadata&` (ref) | 7 (`ref_value`) | — | sync wait reason (interned string ref, `0xf1e1da0`) | CERTAIN |
+| Value kind | XStat oneof case | Field | Used by |
+|---|---|---|---|
+| `int64` | 3 (`int64_value`) | 4 | the universal `device_*_ps` pair |
+| `uint64` | 2 (`uint64_value`) | 3 | DMA byte count (`AddStatValue<unsigned long>` @ `0xf1df460`) |
+| `double` | (per schema) | — | SPI power(W) samples |
+| `XStatMetadata&` (ref) | 7 (`ref_value`) | — | sync wait reason (interned string ref, `0xf1e1da0`) |
 
 ### Observed dynamic stats
 
@@ -289,16 +289,16 @@ function DmaSubscriber::ProcessTraceEntry(entry):        // jxc 0xf1dfee0
 
 ### Pairing Function Map
 
-| Function | Address | Match key | Confidence |
-|---|---|---|---|
-| `SyncTracker::ProcessTraceEntry<pxc>` | `0xf1ef3c0` | `sync_flag_number` (`state+0x18`) | CERTAIN |
-| `SyncTracker::ProcessSyncBlock` | `0xf2c46a0` | stores key `+0x18`, waiting `+0x28` | CERTAIN |
-| `SyncTracker::ProcessSyncUnblock` | `0xf2c4700` | gates `+0x28==1`, cmp `+0x18==sfn` | CERTAIN |
-| `SyncSubscriber::AddSyncWaitEvent` | `0xf1ef520` | emits span on TpuComponent 17 | CERTAIN |
-| `DmaSubscriber::ProcessTraceEntry<jxc>` | `0xf1dfee0` | `dma_id` (FlatHashMap) | CERTAIN |
-| `StepTracker::ProcessTraceEntry` | `0xf2c4480` | TraceMark sequence (not decoded) | LOW |
-| `TaskTracker::ProcessTraceEntry` (gfc) | `0xf2394e0` | task id (not decoded) | LOW |
-| `OverlayTracker::ProcessTraceOperand` | `0xf2c3e40` | overlay id (not decoded) | LOW |
+| Function | Address | Match key |
+|---|---|---|
+| `SyncTracker::ProcessTraceEntry<pxc>` | `0xf1ef3c0` | `sync_flag_number` (`state+0x18`) |
+| `SyncTracker::ProcessSyncBlock` | `0xf2c46a0` | stores key `+0x18`, waiting `+0x28` |
+| `SyncTracker::ProcessSyncUnblock` | `0xf2c4700` | gates `+0x28==1`, cmp `+0x18==sfn` |
+| `SyncSubscriber::AddSyncWaitEvent` | `0xf1ef520` | emits span on TpuComponent 17 |
+| `DmaSubscriber::ProcessTraceEntry<jxc>` | `0xf1dfee0` | `dma_id` (FlatHashMap) |
+| `StepTracker::ProcessTraceEntry` | `0xf2c4480` | TraceMark sequence (not decoded) |
+| `TaskTracker::ProcessTraceEntry` (gfc) | `0xf2394e0` | task id (not decoded) |
+| `OverlayTracker::ProcessTraceOperand` | `0xf2c3e40` | overlay id (not decoded) |
 
 ---
 
@@ -338,20 +338,20 @@ function TpuXPlaneBuilder::GetOrCreateLine(this, plane_builder, component):   //
 
 The fixed event→lane routing, byte-confirmed in each subscriber body:
 
-| Subscriber | Trace-points (pxc) | XLine(s) (TpuComponent) | Confidence |
-|---|---|---|---|
-| `TensorCoreHloSubscriber` | 84/85 (SET_TRACEMARK / TRACE_INSTRUCTION) | 3 "XLA Ops" | HIGH |
-| `SyncSubscriber` | {80,81,82,86,87,88} (mask 0x1c7) | 17 "Tensor Core Sync Flag" (+ counter line) | CERTAIN |
-| `TensorCoreOverlaySubscriber` | overlay trace-points | 7 "TC Overlay" | HIGH |
-| `TensorCoreStepSubscriber` / `StepTracker` | SET_TRACEMARK (step marks) | 1 / 117 "Steps" / "SC Steps" | MEDIUM |
-| `ScalarFenceSubscriber` | 89/90 (SCALAR_FENCE_START/END) | 9 "Scalar Unit" (fence span) | MEDIUM |
-| `DmaSubscriber` | DMA req / data-end | mem / Memcpy line by `dma_id` | HIGH |
-| `FirmwareSubscriber` | manager/power FW events | 120–130, 134–139, 141, 143 (`kComponents`, byte-read) | HIGH |
-| `PowerThrottleSubscriber` | 97 / 200.. (THROTTLE_*) | 58 "Power Throttle" | MEDIUM |
-| `SpiSamplerSubscriber` | 168/169 (SPI_SAMPLER_*) | 118/119 "SPI Sampler Power Meter(W)" | MEDIUM |
-| `SparseCore{Hlo,Task,Overlay,Syncs,Step}Subscriber` | SC_* (108..135) | 46/47/48, 65/66/67/142 | MEDIUM |
-| `…OnDeviceTraceMeSubscriber` | TraceMark TraceMe records | 6, 100, 101–116 "TraceMe" lanes | MEDIUM |
-| `LloOpEventSubscriber` | TRACE_INSTRUCTION (LLO ops) | 8 "Tensor Core" + units 9–16 | MEDIUM |
+| Subscriber | Trace-points (pxc) | XLine(s) (TpuComponent) |
+|---|---|---|
+| `TensorCoreHloSubscriber` | 84/85 (SET_TRACEMARK / TRACE_INSTRUCTION) | 3 "XLA Ops" |
+| `SyncSubscriber` | {80,81,82,86,87,88} (mask 0x1c7) | 17 "Tensor Core Sync Flag" (+ counter line) |
+| `TensorCoreOverlaySubscriber` | overlay trace-points | 7 "TC Overlay" |
+| `TensorCoreStepSubscriber` / `StepTracker` | SET_TRACEMARK (step marks) | 1 / 117 "Steps" / "SC Steps" |
+| `ScalarFenceSubscriber` | 89/90 (SCALAR_FENCE_START/END) | 9 "Scalar Unit" (fence span) |
+| `DmaSubscriber` | DMA req / data-end | mem / Memcpy line by `dma_id` |
+| `FirmwareSubscriber` | manager/power FW events | 120–130, 134–139, 141, 143 (`kComponents`, byte-read) |
+| `PowerThrottleSubscriber` | 97 / 200.. (THROTTLE_*) | 58 "Power Throttle" |
+| `SpiSamplerSubscriber` | 168/169 (SPI_SAMPLER_*) | 118/119 "SPI Sampler Power Meter(W)" |
+| `SparseCore{Hlo,Task,Overlay,Syncs,Step}Subscriber` | SC_* (108..135) | 46/47/48, 65/66/67/142 |
+| `…OnDeviceTraceMeSubscriber` | TraceMark TraceMe records | 6, 100, 101–116 "TraceMe" lanes |
+| `LloOpEventSubscriber` | TRACE_INSTRUCTION (LLO ops) | 8 "Tensor Core" + units 9–16 |
 
 `FirmwareSubscriber::GetTrackedComponents()::kComponents` byte-confirmed (19-entry `int32` array, size `0x4c`, identical for vfc/vlc/glc/gfc) = `{120,121,122,123,124,125,126,127,128,129,130, 134,135,136,137,138,139, 141, 143}` (note the gaps at 131–133, 140, 142).
 

@@ -107,14 +107,14 @@ Two driver-level facts that a reimplementer must reproduce:
 
 ### Function Map
 
-| Function | VA | Role | Confidence |
-|---|---|---|---|
-| `TileTaskOutliningPass::runOnOperation` | `0x13606220` | pass driver: gate → target → walk | CONFIRMED |
-| `CreateTileTaskOutliningPass(Target&)` | `0x13605fe0` | pass factory (binds the `Target`) | CONFIRMED |
-| `overlayer::ContainsExplicitTimemAccess` | `0x1395bb60` | Timem-conflict gate | CONFIRMED |
-| `xla_mlo_util::SparseCoreTargetForModule` | `0x14a8b5c0` | module → `SparseCoreTarget` | CONFIRMED |
-| `walk<TileTaskOp>` callback (outline one) | `0x136066e0` | the per-op outlining body | CONFIRMED |
-| nested terminator walk (`OutlineSequencerFunction` lambda) | `0x136071c0` | rewires the cloned region's terminators | HIGH |
+| Function | VA | Role |
+|---|---|---|
+| `TileTaskOutliningPass::runOnOperation` | `0x13606220` | pass driver: gate → target → walk |
+| `CreateTileTaskOutliningPass(Target&)` | `0x13605fe0` | pass factory (binds the `Target`) |
+| `overlayer::ContainsExplicitTimemAccess` | `0x1395bb60` | Timem-conflict gate |
+| `xla_mlo_util::SparseCoreTargetForModule` | `0x14a8b5c0` | module → `SparseCoreTarget` |
+| `walk<TileTaskOp>` callback (outline one) | `0x136066e0` | the per-op outlining body |
+| nested terminator walk (`OutlineSequencerFunction` lambda) | `0x136071c0` | rewires the cloned region's terminators |
 
 ---
 
@@ -212,25 +212,25 @@ The numbered steps each carry a reimplementation subtlety worth calling out.
 
 ### Function Map
 
-| Function | VA | Role | Confidence |
-|---|---|---|---|
-| `getUsedValuesDefinedAbove` | `0x1c974440` | region live-in collection → arg/capture set | CONFIRMED |
-| `BaseMemRefType::hasRank` | `0x1d896e20` | capture rank check | CONFIRMED |
-| `MemRefType::getShape` | `0x1d8921e0` | capture static-shape check | CONFIRMED |
-| `FunctionType::get` | `0x1d891c80` | build the outlined func type | CONFIRMED |
-| `func::FuncOp::create` | `0x1d8006a0` | create the outlined function | CONFIRMED |
-| `FunctionOpInterface::addEntryBlock` | `0xea4b680` | entry block + block args | CONFIRMED |
-| `Region::cloneInto` | `0x1d8dfa60` | clone the task body under IRMapping | CONFIRMED |
-| `cf::BranchOp::create` | `0x17bd69a0` | wire the synthetic entry | CONFIRMED |
-| `StringAttr::get` | `0x1d85dda0` | build attr name/value StringAttrs | CONFIRMED |
-| `Operation::setAttr` | `0xea37860` | stamp `sc.sequencer` / budget attrs | CONFIRMED |
-| `Operation::erase` | `0x1d8ccd20` | delete the original `tile_task` | CONFIRMED |
-| `overlayer::IsTileOverlayerEnabled` | `0x1395d880` | gate the overlay path | CONFIRMED |
-| `overlayer::GetTileOverlaysSize` | `0x1395ba20` | i32 size for `sc.func_size_limit` | CONFIRMED |
-| `overlayer::GetTileOverlayMemRefType` | `0x1395b960` | overlay-buffer memref type | CONFIRMED |
-| `memref::AllocOp::create` | `0x183015a0` | overlay buffer allocation | CONFIRMED |
-| `sparse_core::PrefetchTileTaskOp::create` | `0x145f4cc0` | overlay prefetch before launch | CONFIRMED |
-| `LaunchTileTaskOp::create` (FuncOp overload) | `0x145dd0e0` | the launch the callback emits | CONFIRMED |
+| Function | VA | Role |
+|---|---|---|
+| `getUsedValuesDefinedAbove` | `0x1c974440` | region live-in collection → arg/capture set |
+| `BaseMemRefType::hasRank` | `0x1d896e20` | capture rank check |
+| `MemRefType::getShape` | `0x1d8921e0` | capture static-shape check |
+| `FunctionType::get` | `0x1d891c80` | build the outlined func type |
+| `func::FuncOp::create` | `0x1d8006a0` | create the outlined function |
+| `FunctionOpInterface::addEntryBlock` | `0xea4b680` | entry block + block args |
+| `Region::cloneInto` | `0x1d8dfa60` | clone the task body under IRMapping |
+| `cf::BranchOp::create` | `0x17bd69a0` | wire the synthetic entry |
+| `StringAttr::get` | `0x1d85dda0` | build attr name/value StringAttrs |
+| `Operation::setAttr` | `0xea37860` | stamp `sc.sequencer` / budget attrs |
+| `Operation::erase` | `0x1d8ccd20` | delete the original `tile_task` |
+| `overlayer::IsTileOverlayerEnabled` | `0x1395d880` | gate the overlay path |
+| `overlayer::GetTileOverlaysSize` | `0x1395ba20` | i32 size for `sc.func_size_limit` |
+| `overlayer::GetTileOverlayMemRefType` | `0x1395b960` | overlay-buffer memref type |
+| `memref::AllocOp::create` | `0x183015a0` | overlay buffer allocation |
+| `sparse_core::PrefetchTileTaskOp::create` | `0x145f4cc0` | overlay prefetch before launch |
+| `LaunchTileTaskOp::create` (FuncOp overload) | `0x145dd0e0` | the launch the callback emits |
 
 ---
 
@@ -257,14 +257,14 @@ properties.execute_func = FlatSymbolRefAttr(fn.getSymName());  // symbol of the 
 return builder.create(op);     // verified TypeID == LaunchTileTaskOp::id
 ```
 
-| Element | Kind | Source | Confidence |
-|---|---|---|---|
-| op name | string `"sc_tpu.launch_tile_task"` (23) | `create` `@0x145dd0e0` / `@0x145dcfa0` | CONFIRMED |
-| `execute_func` | `FlatSymbolRefAttr` | `build` `@0x1459c060`; accessor `getExecuteFunc` `@0x145dcf40` | CONFIRMED |
-| `clear_ibuf` | `UnitAttr` (present ⇔ true) | `create` `bool` arg; accessor `getClearIbuf` `@0x145dcf20` | CONFIRMED |
-| operand 0 (`task`) | `Value` | `addOperands` site 1 | CONFIRMED |
-| operand 1 (`alloc`) | `Value` (overlay buffer) | `addOperands` site 2 | HIGH |
-| trailing operands | `ValueRange` (captures) | `addOperands` site 3 | CONFIRMED |
+| Element | Kind | Source |
+|---|---|---|
+| op name | string `"sc_tpu.launch_tile_task"` (23) | `create` `@0x145dd0e0` / `@0x145dcfa0` |
+| `execute_func` | `FlatSymbolRefAttr` | `build` `@0x1459c060`; accessor `getExecuteFunc` `@0x145dcf40` |
+| `clear_ibuf` | `UnitAttr` (present ⇔ true) | `create` `bool` arg; accessor `getClearIbuf` `@0x145dcf20` |
+| operand 0 (`task`) | `Value` | `addOperands` site 1 |
+| operand 1 (`alloc`) | `Value` (overlay buffer) | `addOperands` site 2 |
+| trailing operands | `ValueRange` (captures) | `addOperands` site 3 |
 
 ### The `execute_func` symbol round-trip
 
@@ -318,22 +318,22 @@ To reproduce the SparseCore region→sequencer outliner:
 
 ## Confidence Summary
 
-| Claim | Evidence | Confidence |
-|---|---|---|
-| `runOnOperation` gates on Timem+tile-task conflict, resolves target, walks `TileTaskOp` | decompile `@0x13606220`: `ContainsExplicitTimemAccess` + two error fragments + `SparseCoreTargetForModule` + `walk` | CONFIRMED |
-| Per-op callback outlines via live-ins → FuncOp → cloneInto → launch → erase | decompile `@0x136066e0` (lines 126–476) | CONFIRMED |
-| Captures = `getUsedValuesDefinedAbove`, must be static memrefs | `@0x1c974440`; `hasRank`/`getShape` + `LOG(FATAL)` `tile_task_outlining_pass.cc:62` | CONFIRMED |
-| Func name = `"execute"` + decimal counter (`APInt::toString`) | callback: `qmemcpy("execute",7)` + counter `pass+352` + `APInt::toString` | CONFIRMED |
-| `sc.sequencer` stamped `"execute"` (12-char name, 7-char value) via `setAttr` | `setAttr` `@0xea37860` with `StringAttr "sc.sequencer"`/`"execute"` | CONFIRMED |
-| Budget attr read from `sc.execute_alloc_high_water_mark` (32), written as `sc.alloc_high_water_mark` (24) | callback `getInherentAttr(…,32)` read + `setAttr(…,24)` write | CONFIRMED |
-| Overlayer path adds `sc.func_size_limit` (18) + `memref.alloc` + `PrefetchTileTaskOp` | `IsTileOverlayerEnabled`/`GetTileOverlaysSize`/`GetTileOverlayMemRefType` + create calls | CONFIRMED |
-| Launch op name `"sc_tpu.launch_tile_task"` (23 chars); `execute_func` FlatSymbolRef; `clear_ibuf` UnitAttr | both `create` overloads (`@0x145dd0e0` / `@0x145dcfa0`) carry the op-name literal; `build` `@0x1459c060` signature; `getExecuteFunc`/`getClearIbuf` accessors | CONFIRMED |
-| Outliner always sets `clear_ibuf = true` | callback passes `bool=1` to `create` | CONFIRMED |
-| `GetExecuteFunc` resolves the symbol via `SymbolTable::lookup`, asserts non-null | `@0x136054e0` `tile_task_arguments_spill.cc:70` | CONFIRMED |
-| 6acc60406 callback emits only `"execute"`; VF/GL also emit `"access"` | gfc callback has no `"access"` branch; cross-gen pass is Target-parameterized (not traced) | CONFIRMED (gfc); LOW (VF/GL split) |
-| Callback calls the `func::FuncOp` `LaunchTileTaskOp::create` overload `0x145dd0e0` (the `Value`-only overload `0x145dcfa0` is a sibling, not the call here) | disasm call site `136070ec → 0x145dd0e0`; `0x145dd0e0` forwards to `build` `@0x1459c060` | CONFIRMED |
-| Terminator fix-up walk `@0x136071c0` (`OutlineSequencerFunction` lambda) reshapes the cloned region | callback nested `walk` call site; lambda name in symbol | HIGH |
-| Per-op Access-vs-Execute region-selection rule | not bit-traced; owned by getSequencerType | LOW |
+| Claim | Evidence |
+|---|---|
+| `runOnOperation` gates on Timem+tile-task conflict, resolves target, walks `TileTaskOp` | decompile `@0x13606220`: `ContainsExplicitTimemAccess` + two error fragments + `SparseCoreTargetForModule` + `walk` |
+| Per-op callback outlines via live-ins → FuncOp → cloneInto → launch → erase | decompile `@0x136066e0` (lines 126–476) |
+| Captures = `getUsedValuesDefinedAbove`, must be static memrefs | `@0x1c974440`; `hasRank`/`getShape` + `LOG(FATAL)` `tile_task_outlining_pass.cc:62` |
+| Func name = `"execute"` + decimal counter (`APInt::toString`) | callback: `qmemcpy("execute",7)` + counter `pass+352` + `APInt::toString` |
+| `sc.sequencer` stamped `"execute"` (12-char name, 7-char value) via `setAttr` | `setAttr` `@0xea37860` with `StringAttr "sc.sequencer"`/`"execute"` |
+| Budget attr read from `sc.execute_alloc_high_water_mark` (32), written as `sc.alloc_high_water_mark` (24) | callback `getInherentAttr(…,32)` read + `setAttr(…,24)` write |
+| Overlayer path adds `sc.func_size_limit` (18) + `memref.alloc` + `PrefetchTileTaskOp` | `IsTileOverlayerEnabled`/`GetTileOverlaysSize`/`GetTileOverlayMemRefType` + create calls |
+| Launch op name `"sc_tpu.launch_tile_task"` (23 chars); `execute_func` FlatSymbolRef; `clear_ibuf` UnitAttr | both `create` overloads (`@0x145dd0e0` / `@0x145dcfa0`) carry the op-name literal; `build` `@0x1459c060` signature; `getExecuteFunc`/`getClearIbuf` accessors |
+| Outliner always sets `clear_ibuf = true` | callback passes `bool=1` to `create` |
+| `GetExecuteFunc` resolves the symbol via `SymbolTable::lookup`, asserts non-null | `@0x136054e0` `tile_task_arguments_spill.cc:70` |
+| 6acc60406 callback emits only `"execute"`; VF/GL also emit `"access"` | gfc callback has no `"access"` branch; cross-gen pass is Target-parameterized (not traced) |
+| Callback calls the `func::FuncOp` `LaunchTileTaskOp::create` overload `0x145dd0e0` (the `Value`-only overload `0x145dcfa0` is a sibling, not the call here) | disasm call site `136070ec → 0x145dd0e0`; `0x145dd0e0` forwards to `build` `@0x1459c060` |
+| Terminator fix-up walk `@0x136071c0` (`OutlineSequencerFunction` lambda) reshapes the cloned region | callback nested `walk` call site; lambda name in symbol |
+| Per-op Access-vs-Execute region-selection rule | not bit-traced; owned by getSequencerType |
 
 ---
 

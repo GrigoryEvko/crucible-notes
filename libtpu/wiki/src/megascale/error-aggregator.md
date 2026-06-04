@@ -83,15 +83,15 @@ A third, independent scope exists: the PJRT C-API exposes the same class to high
 
 ### Function Map
 
-| Function | VA | Role | Confidence |
-|---|---|---|---|
-| `ErrorReporter::ReportError` | `0x1ccb6ea0` | gRPC fan-in; lazy alloc, key build, deadline, AddError, early-fire | CERTAIN |
-| `ErrorReporter::ProcessErrorDigest` | `0x1ccb7140` | drain + missing-worker diff + LogErrorDigest + optional abort | HIGH |
-| `MegascaleErrorAggregator` ctor (4-arg) | `0x1ccba600` | class init; stores `job_name`/`log_dir` strings + precomputed `global_id`/`xid`; reads `FLAGS_megascale_error_aggregation_enabled` → `shutdown_` | HIGH |
-| `MegascaleErrorAggregator` ctor (1-arg) | `0x1ccba4c0` | `job_name`-only delegator: reads `FLAGS_megascale_rapideye_error_digest_log_path`, `NewGlobalID()`, `getenv("XM_XID")`, then calls the 4-arg ctor | HIGH |
-| `PJRT ErrorAggregatorCreate` | `0xe6bab80` | in-process aggregator (`operator new(752,16)`) | CERTAIN |
-| `PJRT ErrorAggregatorAddError` | `0xe6bad60` | `ParseFromString` + AddError; `megascale_extension.cc:321` | HIGH |
-| `PJRT ErrorAggregatorProcessAndShutdown` | `0xe6bae40` | returns a 448-byte (`0x1C0`) `ErrorDigest` | HIGH |
+| Function | VA | Role |
+|---|---|---|
+| `ErrorReporter::ReportError` | `0x1ccb6ea0` | gRPC fan-in; lazy alloc, key build, deadline, AddError, early-fire |
+| `ErrorReporter::ProcessErrorDigest` | `0x1ccb7140` | drain + missing-worker diff + LogErrorDigest + optional abort |
+| `MegascaleErrorAggregator` ctor (4-arg) | `0x1ccba600` | class init; stores `job_name`/`log_dir` strings + precomputed `global_id`/`xid`; reads `FLAGS_megascale_error_aggregation_enabled` → `shutdown_` |
+| `MegascaleErrorAggregator` ctor (1-arg) | `0x1ccba4c0` | `job_name`-only delegator: reads `FLAGS_megascale_rapideye_error_digest_log_path`, `NewGlobalID()`, `getenv("XM_XID")`, then calls the 4-arg ctor |
+| `PJRT ErrorAggregatorCreate` | `0xe6bab80` | in-process aggregator (`operator new(752,16)`) |
+| `PJRT ErrorAggregatorAddError` | `0xe6bad60` | `ParseFromString` + AddError; `megascale_extension.cc:321` |
+| `PJRT ErrorAggregatorProcessAndShutdown` | `0xe6bae40` | returns a 448-byte (`0x1C0`) `ErrorDigest` |
 
 ---
 
@@ -133,11 +133,11 @@ Because the early-fire check caps the population at `expected` and the key colla
 
 ### Function Map
 
-| Function | VA | Role | Confidence |
-|---|---|---|---|
-| `MegascaleErrorAggregator::AddError` | `0x1ccba940` | mutex, CANCELLED short-circuit, key build, upsert | CERTAIN |
-| `MegascaleErrorAggregator::size` | `0x1ccba900` | `linked_hash_map.size()` under mutex (+744) | CERTAIN |
-| `MegascaleErrorAggregator::active` | `0x1ccba8c0` | `!shutdown_` under mutex (+744) | CERTAIN |
+| Function | VA | Role |
+|---|---|---|
+| `MegascaleErrorAggregator::AddError` | `0x1ccba940` | mutex, CANCELLED short-circuit, key build, upsert |
+| `MegascaleErrorAggregator::size` | `0x1ccba900` | `linked_hash_map.size()` under mutex (+744) |
+| `MegascaleErrorAggregator::active` | `0x1ccba8c0` | `!shutdown_` under mutex (+744) |
 
 ---
 
@@ -193,13 +193,13 @@ otherwise                                    -> UNKNOWN_CAUSE
 
 ### Function Map
 
-| Function | VA | Role | Confidence |
-|---|---|---|---|
-| `MegascaleErrorAggregator::ProcessAndShutdown` | `0x1ccbaba0` | build/cache digest, classify, set `shutdown_` (idempotent) | HIGH |
-| `MegascaleErrorAggregator::LogErrorDigest` | `0x213b42c0` | cause-switched LOG(ERROR) emitter + `FormatWorkers` | HIGH |
-| `ErrorDigest::ToRapidEyeErrorDigestProto` | `0x1ccb8560` | `ErrorDigest` → wire proto | HIGH |
-| `(anon)::FormatWorkers` | `0x1ccba060` | render a `btree_set<WorkerAndCoreInfo>` host list | HIGH |
-| `(anon)::ToWorkerAndCoreInfoProto` | `0x1ccc4f80` | culprit-worker → proto message | HIGH |
+| Function | VA | Role |
+|---|---|---|
+| `MegascaleErrorAggregator::ProcessAndShutdown` | `0x1ccbaba0` | build/cache digest, classify, set `shutdown_` (idempotent) |
+| `MegascaleErrorAggregator::LogErrorDigest` | `0x213b42c0` | cause-switched LOG(ERROR) emitter + `FormatWorkers` |
+| `ErrorDigest::ToRapidEyeErrorDigestProto` | `0x1ccb8560` | `ErrorDigest` → wire proto |
+| `(anon)::FormatWorkers` | `0x1ccba060` | render a `btree_set<WorkerAndCoreInfo>` host list |
+| `(anon)::ToWorkerAndCoreInfoProto` | `0x1ccc4f80` | culprit-worker → proto message |
 
 ---
 
@@ -211,25 +211,25 @@ The single serialized artifact the aggregator persists is `xla.megascale.runtime
 
 ### Root message
 
-| Field # | Name | Label | Type | Confidence |
-|--------:|------|-------|------|---|
-| 1 | `potential_cause` | optional | enum `Cause` | HIGH |
-| 2 | `potential_culprit_workers` | repeated | `WorkerAndCoreInfo` | HIGH |
-| 4 | `workers_by_tpu_states` | repeated | `WorkersByTpuState` | HIGH |
-| 5 | `all_workers` | repeated | `WorkerInfo` | HIGH |
-| 7 | `timestamp_ns` | optional | int64 | HIGH |
-| 11 | `first_recorded_error` | optional | `MegaScaleRuntimeError` (embedded verbatim) | CERTAIN |
-| 12 | `error_messages` | repeated | `ErrorMessage` | HIGH |
-| 13 | `graph_consolidater_output` | optional | `GraphConsolidaterOutput` | HIGH |
-| 14 | `event_id` | optional | fixed64 | HIGH |
-| 15 | `xid` | optional | int64 (from `getenv("XM_XID")`) | HIGH |
-| 16 | `executable_by_modules` | repeated | `ExecutableByModules` | HIGH |
-| 17 | `app_type` | optional | string | HIGH |
-| 18 | `faulty_network_links` | repeated | `FaultyNetworkLink` | HIGH |
-| 19 | `offloaded_sparse_core_tag_pc` | repeated | `OffloadedSparseCoreTagPc` | HIGH |
-| 20 | `build_info` | optional | `BuildInfo` | HIGH |
-| 21 | `launches` | repeated | `Launch` | HIGH |
-| 22 | `runtime_error_ids` | repeated | fixed64 | HIGH |
+| Field # | Name | Label | Type |
+|--------:|------|-------|------|
+| 1 | `potential_cause` | optional | enum `Cause` |
+| 2 | `potential_culprit_workers` | repeated | `WorkerAndCoreInfo` |
+| 4 | `workers_by_tpu_states` | repeated | `WorkersByTpuState` |
+| 5 | `all_workers` | repeated | `WorkerInfo` |
+| 7 | `timestamp_ns` | optional | int64 |
+| 11 | `first_recorded_error` | optional | `MegaScaleRuntimeError` (embedded verbatim) |
+| 12 | `error_messages` | repeated | `ErrorMessage` |
+| 13 | `graph_consolidater_output` | optional | `GraphConsolidaterOutput` |
+| 14 | `event_id` | optional | fixed64 |
+| 15 | `xid` | optional | int64 (from `getenv("XM_XID")`) |
+| 16 | `executable_by_modules` | repeated | `ExecutableByModules` |
+| 17 | `app_type` | optional | string |
+| 18 | `faulty_network_links` | repeated | `FaultyNetworkLink` |
+| 19 | `offloaded_sparse_core_tag_pc` | repeated | `OffloadedSparseCoreTagPc` |
+| 20 | `build_info` | optional | `BuildInfo` |
+| 21 | `launches` | repeated | `Launch` |
+| 22 | `runtime_error_ids` | repeated | fixed64 |
 
 Field numbers 3, 6, 8, 9, 10 are gaps — retired fields. The dependency `megascale_status.proto` supplies `MegaScaleRuntimeError`; `actions.proto` supplies the `MegaScaleAction` embedded in `BottleneckNode.action`.
 
@@ -321,14 +321,14 @@ default (no flags):   in-memory linked_hash_map  →  LOG(ERROR) on drain  →  
                        (scheme picks backend: gs:// → GCS, /cns/ → CNS, local → Posix)
 ```
 
-| Aspect | Behavior | Evidence |
-|---|---|---|
-| TTL | none — lives until `ProcessAndShutdown` | `ProcessAndShutdown` `0x1ccbaba0` sets `shutdown_` then frees |
-| Count cap | none — `linked_hash_map` grows to one entry per unique key | `+0xe8`, no bound; retired `num_workers_to_log_errors` flag |
-| Byte cap | per-error only, at the host tier (truncate, never drop) | `--max_rapid_eye_runtime_error_size_bytes`; `is_truncated` set |
-| Ring / LRU | none | no eviction site in `AddError` |
-| Cross-restart | none — no load on ctor; the log is write-only | `RapidEyeLogger` has no `Read` on its vtable |
-| Drain | one-shot; `ProcessAndShutdown` empties and dies | idempotent fast path at `0x1ccbaba0` line ~817 |
+| Aspect | Behavior |
+|---|---|
+| TTL | none — lives until `ProcessAndShutdown` |
+| Count cap | none — `linked_hash_map` grows to one entry per unique key |
+| Byte cap | per-error only, at the host tier (truncate, never drop) |
+| Ring / LRU | none |
+| Cross-restart | none — no load on ctor; the log is write-only |
+| Drain | one-shot; `ProcessAndShutdown` empties and dies |
 
 > **QUIRK —** the `linked_hash_map` is *unbounded by design*. There is no LRU, no ring buffer, no eviction sweep — the formerly-present `num_workers_to_log_errors` flag that capped logged-error count was retired (visible via `absl::flags_internal::Retire` in `_GLOBAL__sub_I_megascale_error_aggregator.cc` `0x213560a0`). The map is bounded *only* by the dedup key collapsing per-host duplicates plus the `size() == expected` early-fire that drains it the instant every expected worker has reported. A reimplementation that omits the early-fire and relies on the 300 ms idle deadline alone will hold the storm in memory until 300 ms pass with no new report; with one ~112-byte `MegaScaleRuntimeError` plus a 24-byte string per worker, a 1 000-chip pod's worst case is ~150 kB plus message payload — bounded, but only because the map is one-entry-per-worker, not because anything evicts.
 
@@ -338,12 +338,12 @@ default (no flags):   in-memory linked_hash_map  →  LOG(ERROR) on drain  →  
 
 ### Function Map
 
-| Function | VA | Role | Confidence |
-|---|---|---|---|
-| `MegascaleErrorAggregator::WriteErrorDigestToStorage` | `0x1ccb83e0` | empty-path skip; else `RapidEyeLogger::Create` + `WriteRecord` | HIGH |
-| `RapidEyeLogger::Create` | `0x20511aa0` | `StatusOr<unique_ptr<RapidEyeLogger>>` from options | HIGH |
-| `NullRapidEyeLogger::WriteRecord` | `0x20511d40` | default sink — drops all writes | HIGH |
-| `CloudRapidEyeLogger::WriteRecord` | `0x20511e00` | `tsl::FileSystem`-backed write | HIGH |
+| Function | VA | Role |
+|---|---|---|
+| `MegascaleErrorAggregator::WriteErrorDigestToStorage` | `0x1ccb83e0` | empty-path skip; else `RapidEyeLogger::Create` + `WriteRecord` |
+| `RapidEyeLogger::Create` | `0x20511aa0` | `StatusOr<unique_ptr<RapidEyeLogger>>` from options |
+| `NullRapidEyeLogger::WriteRecord` | `0x20511d40` | default sink — drops all writes |
+| `CloudRapidEyeLogger::WriteRecord` | `0x20511e00` | `tsl::FileSystem`-backed write |
 
 ---
 
@@ -351,20 +351,20 @@ default (no flags):   in-memory linked_hash_map  →  LOG(ERROR) on drain  →  
 
 The 752-byte (`0x2f0`) heap object, allocated 16-aligned. Scope-relevant offsets:
 
-| Offset | Type | Field | Confidence |
-|---|---|---|---|
-| `+0x00` | `std::string` | `job_name` (`"McJax"` on the coordinator) | CERTAIN |
-| `+0x18` | `std::string` | `rapideye_log_dir` (FLAG copy) | HIGH |
-| `+0x30` | `bool` | `shutdown_` (`active()` = `!shutdown_`) | CERTAIN |
-| `+0x50` | `AnyInvocable<void(int,int,MegaScaleRuntimeError const&)>` | per-error unicast callback | MEDIUM |
-| `+0x60` | `int64_t` | `global_id_` (`util::random::NewGlobalID()`) | HIGH |
-| `+0x68` | `int64_t` | `xid_` (`getenv("XM_XID")`) | HIGH |
-| `+0x70` | `MegaScaleRuntimeError` (`0x70`) | `first_recorded_error_` (sticky) | HIGH |
-| `+0xe0` | `bool` | `has_first_recorded_error_` | HIGH |
-| `+0xe8` | `linked_hash_map<string, MegaScaleRuntimeError>` | `errors_by_worker_launch_` (the store) | CERTAIN |
-| `+0x128`..`+0x2e7` | `ErrorDigest` (`0x1c0` = 448 B) | `cached_digest_` (filled on drain); spans up to `mu_`. Standalone `ErrorDigest` confirmed `operator new(0x1C0)` in PJRT `ProcessAndShutdown` `0xe6bae40` | HIGH |
-| `+0x1a8`..`+0x2b0` | 5 `btree_set` / `btree_map` | indices built during `ProcessAndShutdown`; sub-fields *inside* `cached_digest_` (not separate aggregator members) | MEDIUM |
-| `+0x2e8` | `absl::Mutex` | `mu_` — the *only* lock (`this+744`) | CERTAIN |
+| Offset | Type | Field |
+|---|---|---|
+| `+0x00` | `std::string` | `job_name` (`"McJax"` on the coordinator) |
+| `+0x18` | `std::string` | `rapideye_log_dir` (FLAG copy) |
+| `+0x30` | `bool` | `shutdown_` (`active()` = `!shutdown_`) |
+| `+0x50` | `AnyInvocable<void(int,int,MegaScaleRuntimeError const&)>` | per-error unicast callback |
+| `+0x60` | `int64_t` | `global_id_` (`util::random::NewGlobalID()`) |
+| `+0x68` | `int64_t` | `xid_` (`getenv("XM_XID")`) |
+| `+0x70` | `MegaScaleRuntimeError` (`0x70`) | `first_recorded_error_` (sticky) |
+| `+0xe0` | `bool` | `has_first_recorded_error_` |
+| `+0xe8` | `linked_hash_map<string, MegaScaleRuntimeError>` | `errors_by_worker_launch_` (the store) |
+| `+0x128`..`+0x2e7` | `ErrorDigest` (`0x1c0` = 448 B) | `cached_digest_` (filled on drain); spans up to `mu_`. Standalone `ErrorDigest` confirmed `operator new(0x1C0)` in PJRT `ProcessAndShutdown` `0xe6bae40` |
+| `+0x1a8`..`+0x2b0` | 5 `btree_set` / `btree_map` | indices built during `ProcessAndShutdown`; sub-fields *inside* `cached_digest_` (not separate aggregator members) |
+| `+0x2e8` | `absl::Mutex` | `mu_` — the *only* lock (`this+744`) |
 
 > **NOTE —** one `absl::Mutex` at `+0x2e8` guards every public method — `AddError`, `ProcessAndShutdown`, `size`, `active` all lock `this+744`. There is no lock-free path. The coordinator's `ErrorReporter` adds a *separate* `TracedMutex` (kind=14) so the lazy-alloc, deadline arm, AddError, and early-fire check are atomic with respect to a concurrent deadline fire; the deadline fiber re-takes that mutex and the `if (!aggregator) return` idempotence guard at `ProcessErrorDigest` (`0x1ccb7140`) handles a late report racing the drain.
 

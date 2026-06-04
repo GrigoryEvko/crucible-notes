@@ -57,12 +57,12 @@ Bring a device executor online (`Init`), report its health (`GetStatus`), descri
 
 ### Function Map
 
-| Function | Address | Size | Driver dispatch | Confidence |
-|---|---|---|---|---|
-| `TpuExecutor_Init` | `0xeab90c0` | 60 | `driver_vtable+32` (status query) | CERTAIN |
-| `TpuExecutor_GetStatus` | `0xeab92e0` | 60 | `driver_vtable+32` (same slot as `Init`) | CERTAIN |
-| `TpuExecutor_CreateDeviceDescription` | `0xeab9cc0` | 991 | `driver_vtable+272`, then builds `stream_executor::DeviceDescription` | HIGH |
-| `TpuExecutor_Free` | `0xeab9100` | 16 | none — `if (p) free(p)` | CERTAIN |
+| Function | Address | Size | Driver dispatch |
+|---|---|---|---|
+| `TpuExecutor_Init` | `0xeab90c0` | 60 | `driver_vtable+32` (status query) |
+| `TpuExecutor_GetStatus` | `0xeab92e0` | 60 | `driver_vtable+32` (same slot as `Init`) |
+| `TpuExecutor_CreateDeviceDescription` | `0xeab9cc0` | 991 | `driver_vtable+272`, then builds `stream_executor::DeviceDescription` |
+| `TpuExecutor_Free` | `0xeab9100` | 16 | none — `if (p) free(p)` |
 
 ### Algorithm
 
@@ -96,12 +96,12 @@ Allocate and free device memory (`Allocate`/`Deallocate`), and report capacity (
 
 ### Function Map
 
-| Function | Address | Size | Driver dispatch | Marshalling | Confidence |
-|---|---|---|---|---|---|
-| `TpuExecutor_Allocate` | `0xeab9120` | 55 | `driver_vtable+136` | returns 16-byte `DeviceMemoryBase` by value | CERTAIN |
-| `TpuExecutor_Deallocate` | `0xeab9160` | 50 | `driver_vtable+144` | `ApiConverter::FromC` on the `DeviceMemoryBase` arg | CERTAIN |
-| `TpuExecutor_GetAllocatorStats` | `0xeab91a0` | 120 | `driver_vtable+320` | copies optional `AllocatorStats` fields out | CERTAIN |
-| `TpuExecutor_DeviceMemoryUsage` | `0xeab9220` | 64 | `driver_vtable+256` | two out-params: `free`, `total` | CERTAIN |
+| Function | Address | Size | Driver dispatch | Marshalling |
+|---|---|---|---|---|
+| `TpuExecutor_Allocate` | `0xeab9120` | 55 | `driver_vtable+136` | returns 16-byte `DeviceMemoryBase` by value |
+| `TpuExecutor_Deallocate` | `0xeab9160` | 50 | `driver_vtable+144` | `ApiConverter::FromC` on the `DeviceMemoryBase` arg |
+| `TpuExecutor_GetAllocatorStats` | `0xeab91a0` | 120 | `driver_vtable+320` | copies optional `AllocatorStats` fields out |
+| `TpuExecutor_DeviceMemoryUsage` | `0xeab9220` | 64 | `driver_vtable+256` | two out-params: `free`, `total` |
 
 ### Algorithm
 
@@ -146,10 +146,10 @@ Operate on streams the host already created. `CreateStreamDependency` records a 
 
 ### Function Map
 
-| Function | Address | Size | Driver dispatch | Confidence |
-|---|---|---|---|---|
-| `TpuExecutor_CreateStreamDependency` | `0xeab92a0` | 48 | `*arg1->vtable+56` (on the *stream* object) | CERTAIN |
-| `TpuExecutor_DeallocateStream` | `0xeab9260` | 58 | `driver_vtable+224`, then stream dtor `vtable+8` | CERTAIN |
+| Function | Address | Size | Driver dispatch |
+|---|---|---|---|
+| `TpuExecutor_CreateStreamDependency` | `0xeab92a0` | 48 | `*arg1->vtable+56` (on the *stream* object) |
+| `TpuExecutor_DeallocateStream` | `0xeab9260` | 58 | `driver_vtable+224`, then stream dtor `vtable+8` |
 
 ### Algorithm
 
@@ -180,11 +180,11 @@ Mint a device event (`AllocateEvent`), mark it reached on a stream (`RecordEvent
 
 ### Function Map
 
-| Function | Address | Size | Driver dispatch | Confidence |
-|---|---|---|---|---|
-| `TpuExecutor_AllocateEvent` | `0xeab9340` | 179 | `driver_vtable+72` (creates event), ref-count plumbing | CERTAIN |
-| `TpuExecutor_RecordEvent` | `0xeab9400` | 63 | `*arg1->vtable+72` (on the *stream*: record event) | CERTAIN |
-| `TpuExecutor_WaitForEvent` | `0xeab9440` | 63 | `*arg1->vtable+64` (on the *stream*: wait on event) | CERTAIN |
+| Function | Address | Size | Driver dispatch |
+|---|---|---|---|
+| `TpuExecutor_AllocateEvent` | `0xeab9340` | 179 | `driver_vtable+72` (creates event), ref-count plumbing |
+| `TpuExecutor_RecordEvent` | `0xeab9400` | 63 | `*arg1->vtable+72` (on the *stream*: record event) |
+| `TpuExecutor_WaitForEvent` | `0xeab9440` | 63 | `*arg1->vtable+64` (on the *stream*: wait on event) |
 
 ### Algorithm
 
@@ -215,12 +215,12 @@ Copy buffers between host and device. Four variants split on two axes: **directi
 
 ### Function Map
 
-| Function | Address | Size | Direction | Sync | Driver dispatch | Confidence |
-|---|---|---|---|---|---|---|
-| `TpuExecutor_SynchronousMemcpyToHost` | `0xeab9480` | 112 | D→H | blocking | `driver_vtable+216` | CERTAIN |
-| `TpuExecutor_SynchronousMemcpyFromHost` | `0xeab9500` | 109 | H→D | blocking | `driver_vtable+208` | CERTAIN |
-| `TpuExecutor_MemcpyToHost` | `0xeab9580` | 109 | D→H | stream | `driver_vtable+80` | CERTAIN |
-| `TpuExecutor_MemcpyFromHost` | `0xeab9600` | 109 | H→D | stream | `driver_vtable+88` | CERTAIN |
+| Function | Address | Size | Direction | Sync | Driver dispatch |
+|---|---|---|---|---|---|
+| `TpuExecutor_SynchronousMemcpyToHost` | `0xeab9480` | 112 | D→H | blocking | `driver_vtable+216` |
+| `TpuExecutor_SynchronousMemcpyFromHost` | `0xeab9500` | 109 | H→D | blocking | `driver_vtable+208` |
+| `TpuExecutor_MemcpyToHost` | `0xeab9580` | 109 | D→H | stream | `driver_vtable+80` |
+| `TpuExecutor_MemcpyFromHost` | `0xeab9600` | 109 | H→D | stream | `driver_vtable+88` |
 
 ### Algorithm
 
@@ -254,10 +254,10 @@ Push a literal into the device's infeed queue (`EnqueueInfeed`) and pull one fro
 
 ### Function Map
 
-| Function | Address | Size | Driver dispatch | Confidence |
-|---|---|---|---|---|
-| `TpuExecutor_EnqueueInfeed` | `0xeab9680` | 59 | direct call `DeepseaExecutor::EnqueueInfeed` | HIGH |
-| `TpuExecutor_DequeueOutfeed` | `0xeab96c0` | 68 | direct call `DeepseaExecutor::DequeueOutfeed`, with an `AnyInvocable` completion | HIGH |
+| Function | Address | Size | Driver dispatch |
+|---|---|---|---|
+| `TpuExecutor_EnqueueInfeed` | `0xeab9680` | 59 | direct call `DeepseaExecutor::EnqueueInfeed` |
+| `TpuExecutor_DequeueOutfeed` | `0xeab96c0` | 68 | direct call `DeepseaExecutor::DequeueOutfeed`, with an `AnyInvocable` completion |
 
 ### Algorithm
 
@@ -286,10 +286,10 @@ Block the host thread until work completes: until one stream drains (`BlockHostU
 
 ### Function Map
 
-| Function | Address | Size | Driver dispatch | Confidence |
-|---|---|---|---|---|
-| `TpuExecutor_BlockHostUntilDone` | `0xeab9720` | 60 | `*arg1->vtable+120` (on the *stream*) | CERTAIN |
-| `TpuExecutor_SynchronizeAllActivity` | `0xeab9760` | 12 | `driver_vtable+168` | CERTAIN |
+| Function | Address | Size | Driver dispatch |
+|---|---|---|---|
+| `TpuExecutor_BlockHostUntilDone` | `0xeab9720` | 60 | `*arg1->vtable+120` (on the *stream*) |
+| `TpuExecutor_SynchronizeAllActivity` | `0xeab9760` | 12 | `driver_vtable+168` |
 
 ### Algorithm
 
@@ -318,11 +318,11 @@ Three operations that do not fit the stream/event/memcpy regulars: compact the H
 
 ### Function Map
 
-| Function | Address | Size | Driver dispatch | Confidence |
-|---|---|---|---|---|
-| `TpuExecutor_EnqueueCompactionOnStreamForHbm` | `0xeab97c0` | 66 | `driver_vtable+432` | HIGH |
-| `TpuExecutor_HostCallback` | `0xeab9c20` | 149 | `*arg1->vtable+128` (on the *stream*), wraps a `std::function` | HIGH |
-| `TpuExecutor_UnloadAllPrograms` | `0xeab9780` | 63 | `driver_vtable+424` | CERTAIN |
+| Function | Address | Size | Driver dispatch |
+|---|---|---|---|
+| `TpuExecutor_EnqueueCompactionOnStreamForHbm` | `0xeab97c0` | 66 | `driver_vtable+432` |
+| `TpuExecutor_HostCallback` | `0xeab9c20` | 149 | `*arg1->vtable+128` (on the *stream*), wraps a `std::function` |
+| `TpuExecutor_UnloadAllPrograms` | `0xeab9780` | 63 | `driver_vtable+424` |
 
 ### Algorithm
 
@@ -358,9 +358,9 @@ Return the executor's `TpuCoreLocation` — its chip/core coordinate in the mesh
 
 ### Function Map
 
-| Function | Address | Size | Driver dispatch | Confidence |
-|---|---|---|---|---|
-| `TpuExecutor_GetCoreLocation` | `0xeab9320` | 8 | direct tail-call `DeepseaExecutor::GetCoreLocation(*handle)` | CERTAIN |
+| Function | Address | Size | Driver dispatch |
+|---|---|---|---|
+| `TpuExecutor_GetCoreLocation` | `0xeab9320` | 8 | direct tail-call `DeepseaExecutor::GetCoreLocation(*handle)` |
 
 ### Algorithm
 

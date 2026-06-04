@@ -36,17 +36,17 @@ For reimplementation, the contract is:
 
 The per-prefix counts are the registration-symbol-true figures from [flag-families](flag-families.md) (`AbslFlagHelpGenFor<prefix>` symbols). The **Gating** column is what this page recovers: for every TCE-routed family the answer is the same — *unconditional registration, gen-blind application*. The codename column records the authoring association, not a runtime filter.
 
-| Prefix | Authoring gen / codename | Count | Gating mechanism | Confidence |
-|---|---|---:|---|---|
-| `xla_tpu_*` | none (all gens) | 909 | unconditional register; gen-blind reflection apply | CERTAIN |
-| `xla_jf_*` | Jellyfish (v0) namespace, all-gen compiler core | 148 | unconditional register; gen-blind reflection apply | CERTAIN |
-| `xla_sc_*` | none (SparseCore backend) | 92 | unconditional register; gen-blind reflection apply | CERTAIN |
-| `barna_core_*` | none (embedding runtime) | 61 | unconditional register; gen-blind reflection apply | CERTAIN |
-| `xla_vf_*` | Viperfish (v3) VMEM/MSA | 16 | unconditional register; gen-blind reflection apply | CERTAIN |
-| `xla_gf_*` | 6acc60406 (`TpuVersion` 5, v7x) VMEM/MSA | 14 | unconditional register; gen-blind reflection apply | CERTAIN |
-| `xla_pf_*` | Pufferfish (v2) ND all-reduce | 1 | unconditional register; gen-blind reflection apply | CERTAIN |
-| *(legacy MSA evict/prefetch)* | per-`TpuVersion` flag-name map | n/a | **gen-keyed** `flat_hash_map<TpuVersion,…>` | HIGH |
-| `xla_gl_*` | (Ghostlite codename) | **0** | absent — no flag, no string | CERTAIN |
+| Prefix | Authoring gen / codename | Count | Gating mechanism |
+|---|---|---:|---|
+| `xla_tpu_*` | none (all gens) | 909 | unconditional register; gen-blind reflection apply |
+| `xla_jf_*` | Jellyfish (v0) namespace, all-gen compiler core | 148 | unconditional register; gen-blind reflection apply |
+| `xla_sc_*` | none (SparseCore backend) | 92 | unconditional register; gen-blind reflection apply |
+| `barna_core_*` | none (embedding runtime) | 61 | unconditional register; gen-blind reflection apply |
+| `xla_vf_*` | Viperfish (v3) VMEM/MSA | 16 | unconditional register; gen-blind reflection apply |
+| `xla_gf_*` | 6acc60406 (`TpuVersion` 5, v7x) VMEM/MSA | 14 | unconditional register; gen-blind reflection apply |
+| `xla_pf_*` | Pufferfish (v2) ND all-reduce | 1 | unconditional register; gen-blind reflection apply |
+| *(legacy MSA evict/prefetch)* | per-`TpuVersion` flag-name map | n/a | **gen-keyed** `flat_hash_map<TpuVersion,…>` |
+| `xla_gl_*` | (Ghostlite codename) | **0** | absent — no flag, no string |
 
 > **NOTE —** there is **no active-gen gating** on flag registration or application. There is no per-generation registration switch and no per-generation application filter: all TCE flags — codename-prefixed or not — register unconditionally and are written into their TCE field whenever present on the command line, regardless of the active `TpuVersion`. An `xla_jf_*` flag does not no-op on Viperfish, nor carry a gen-specific default. Per-generation behavior lives entirely in (a) the *default* proto loaded per codename (`DefaultsForVersion`) and (b) which fields each consuming pass reads for the active gen. `OverrideTpuCompEnvByCmdLineFlags` and `CreateDefaultTpuCompEnv` take no `TpuVersion`, and the reflection loop walks the full descriptor.
 
@@ -125,14 +125,14 @@ function GetFlagForField(field):                         // sub_1d74ad40
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `OverrideTpuCompEnvByCmdLineFlags` | `0x1d73e640` | full-descriptor walk; override present flags; emit deprecation report | CERTAIN |
-| `CreateDefaultTpuCompEnv` | `0x1d73dfa0` | full-descriptor walk; seed defaults from flags; diff vs canonical defaults | CERTAIN |
-| `SetFieldFromFlagString` | `0x1d73fcc0` | per-flag: field lookup → `ParseFlagFromString` → `SetEnvField` | CERTAIN |
-| `TpuCompEnvReflection::GetFlagForField` | `0x1d74ad40` | field → flag via `FlagFieldMappings` Swiss-table | CERTAIN |
-| `TpuCompEnvReflection::GetFieldForFlag` | `0x1d74ab20` | flag → field (inverse) | CERTAIN |
-| `FlagFieldMappings` ctor | `0x1d753ce0` | builds the global flag↔field map (once) | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `OverrideTpuCompEnvByCmdLineFlags` | `0x1d73e640` | full-descriptor walk; override present flags; emit deprecation report |
+| `CreateDefaultTpuCompEnv` | `0x1d73dfa0` | full-descriptor walk; seed defaults from flags; diff vs canonical defaults |
+| `SetFieldFromFlagString` | `0x1d73fcc0` | per-flag: field lookup → `ParseFlagFromString` → `SetEnvField` |
+| `TpuCompEnvReflection::GetFlagForField` | `0x1d74ad40` | field → flag via `FlagFieldMappings` Swiss-table |
+| `TpuCompEnvReflection::GetFieldForFlag` | `0x1d74ab20` | flag → field (inverse) |
+| `FlagFieldMappings` ctor | `0x1d753ce0` | builds the global flag↔field map (once) |
 
 ### Considerations
 
@@ -216,13 +216,13 @@ This is the codec/HAL-family selection the topic asks about: it is keyed on the 
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `AcceleratorTypeToTpuVersionEnum` | `0x204cf620` | parse `accelerator_type` string → `TpuType` ordinal | CERTAIN |
-| `IsAtLeastTPU7x` | `0x204cfda0` | capability gate: parsed ordinal `>= 8` | CERTAIN |
-| `TpuVersionToString` | `0x20b3a480` | ordinal → codename string (table `off_22011BF0`) | CERTAIN |
-| `TpuChipParts::DefaultsForVersion` | `0x20b1b040` | ordinal → `<codename>_chip_parts.binarypb` defaults | CERTAIN |
-| `TpuCodec::Create` | `0x1e835fa0` | ordinal → per-codename codec / HAL family | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `AcceleratorTypeToTpuVersionEnum` | `0x204cf620` | parse `accelerator_type` string → `TpuType` ordinal |
+| `IsAtLeastTPU7x` | `0x204cfda0` | capability gate: parsed ordinal `>= 8` |
+| `TpuVersionToString` | `0x20b3a480` | ordinal → codename string (table `off_22011BF0`) |
+| `TpuChipParts::DefaultsForVersion` | `0x20b1b040` | ordinal → `<codename>_chip_parts.binarypb` defaults |
+| `TpuCodec::Create` | `0x1e835fa0` | ordinal → per-codename codec / HAL family |
 
 ---
 
@@ -249,10 +249,10 @@ These two registries exist because the legacy MSA eviction/prefetch knobs predat
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `LegacyEvictionsFlagRegistry::InsertValue` | `0x1c6f8760` | per-`TpuVersion` eviction-flag-name registration | HIGH |
-| `LegacyPrefetchesFlagRegistry::InsertValue` | `0x1c6f8940` | per-`TpuVersion` prefetch-flag-name registration | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `LegacyEvictionsFlagRegistry::InsertValue` | `0x1c6f8760` | per-`TpuVersion` eviction-flag-name registration |
+| `LegacyPrefetchesFlagRegistry::InsertValue` | `0x1c6f8940` | per-`TpuVersion` prefetch-flag-name registration |
 
 > **GOTCHA —** do not generalize these registries. Finding a `flat_hash_map<TpuVersion,…>` keyed flag registry might suggest the whole flag system is gen-keyed; it is not. These two `sync_flag_util` maps are a localized legacy mechanism for MSA eviction/prefetch only. Every other TCE flag — including all `jf`/`pf`/`vf`/`gf` codename flags — is resolved by the pointer-keyed, generation-blind `FlagFieldMappings` of §1.
 

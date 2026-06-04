@@ -41,23 +41,23 @@ A DMA endpoint is *not* named by a single memory-space integer. The descriptor s
 
 The two enums, byte-verified from the FDP descriptor pool (the `enum_type` blocks of the carved `OciDescriptorCommonIssuedFromTcs` `DescriptorProto`), are identical between source (`SRC_*`) and destination (`DST_*`):
 
-| `MemMemId` (2-bit) | pxc composite name (`SRC_MEM_MEM_ID_*`) | Confidence |
-|---:|---|---|
-| 0 | `HBM_TCVMEM_BCBMEM` | CONFIRMED |
-| 1 | `RSVD_TCSMEM_BCSMEM` | CONFIRMED |
-| 2 | `CMEM_TCIMEM_BCBIMEM` | CONFIRMED |
-| 3 | `RSVD_RSVD_BCVIMEM` | CONFIRMED |
+| `MemMemId` (2-bit) | pxc composite name (`SRC_MEM_MEM_ID_*`) |
+|---:|---|
+| 0 | `HBM_TCVMEM_BCBMEM` |
+| 1 | `RSVD_TCSMEM_BCSMEM` |
+| 2 | `CMEM_TCIMEM_BCBIMEM` |
+| 3 | `RSVD_RSVD_BCVIMEM` |
 
-| `MemCoreId` (3-bit) | name (`SRC_MEM_CORE_ID_*`) | selects segment | Confidence |
-|---:|---|---|---|
-| 0 | `RESERVED` | — | CONFIRMED |
-| 1 | `NONCORE` | 1st (`HBM` / `CMEM` / …) | CONFIRMED |
-| 2 | `TC0` | 2nd (`TCVMEM` / `TCSMEM` / `TCIMEM`) | CONFIRMED |
-| 3 | `TC1` | 2nd | CONFIRMED |
-| 4 | `BC0` | 3rd (`BCBMEM` / `BCSMEM` / `BCBIMEM`) | CONFIRMED |
-| 5 | `BC1` | 3rd | CONFIRMED |
-| 6 | `BC2` | 3rd | CONFIRMED |
-| 7 | `BC3` | 3rd | CONFIRMED |
+| `MemCoreId` (3-bit) | name (`SRC_MEM_CORE_ID_*`) | selects segment |
+|---:|---|---|
+| 0 | `RESERVED` | — |
+| 1 | `NONCORE` | 1st (`HBM` / `CMEM` / …) |
+| 2 | `TC0` | 2nd (`TCVMEM` / `TCSMEM` / `TCIMEM`) |
+| 3 | `TC1` | 2nd |
+| 4 | `BC0` | 3rd (`BCBMEM` / `BCSMEM` / `BCBIMEM`) |
+| 5 | `BC1` | 3rd |
+| 6 | `BC2` | 3rd |
+| 7 | `BC3` | 3rd |
 
 The composite name is a `_`-joined triple `<noncore>_<tensorcore>_<thirdcore>`. To resolve a `(mem_id, core_id)` pair to a physical tier, pick the `mem_id` row, then select the segment named by the `core_id` class:
 
@@ -100,19 +100,19 @@ Each endpoint carries a 2-bit opcode (`src_opcode` @ `+0x2c`, `dst_opcode` @ `+0
 
 Both enums are 2-bit, byte-verified from the FDP `enum_type` blocks:
 
-| `SrcOpcode` (`+0x2c`) | name | meaning | Confidence |
-|---:|---|---|---|
-| 0 | `READ` | normal source read | CONFIRMED |
-| 1 | `RESERVED` | — | CONFIRMED |
-| 2 | `INSTRUCTIONMEMSET` | fill IMEM (no source read) | CONFIRMED |
-| 3 | `DATAMEMSET` | fill data memory (no source read) | CONFIRMED |
+| `SrcOpcode` (`+0x2c`) | name | meaning |
+|---:|---|---|
+| 0 | `READ` | normal source read |
+| 1 | `RESERVED` | — |
+| 2 | `INSTRUCTIONMEMSET` | fill IMEM (no source read) |
+| 3 | `DATAMEMSET` | fill data memory (no source read) |
 
-| `DstOpcode` (`+0x38`) | name | meaning | Confidence |
-|---:|---|---|---|
-| 0 | `WRITE` | normal destination write | CONFIRMED |
-| 1 | `RESERVED` | — | CONFIRMED |
-| 2 | `WRITESPECIAL0` | special write mode 0 | CONFIRMED |
-| 3 | `WRITESPECIAL1` | special write mode 1 | CONFIRMED |
+| `DstOpcode` (`+0x38`) | name | meaning |
+|---:|---|---|
+| 0 | `WRITE` | normal destination write |
+| 1 | `RESERVED` | — |
+| 2 | `WRITESPECIAL0` | special write mode 0 |
+| 3 | `WRITESPECIAL1` | special write mode 1 |
 
 ### The LLO-side string opcode
 
@@ -142,13 +142,13 @@ function GetDstOpcode(op, ms):
 
 The string→code table the LLO ops emit:
 
-| LLO `dst_opcode` string | Length | Maps to `DstOpcode` | MS gate | Confidence |
-|---|---:|---|---|---|
-| (absent) | 0 | `WRITE` (0) | — | HIGH |
-| `write_4b` | 8 | `WRITESPECIAL0`/1 | `Smem` only | CONFIRMED |
-| (16-char write attr) | 16 | special write | `Smem` only | HIGH |
-| `read_and_add` | 12 | special / atomic | `Smem` only | CONFIRMED |
-| `atomic_add` | 10 | atomic-add (element-typed) | `Spmem` only | CONFIRMED |
+| LLO `dst_opcode` string | Length | Maps to `DstOpcode` | MS gate |
+|---|---:|---|---|
+| (absent) | 0 | `WRITE` (0) | — |
+| `write_4b` | 8 | `WRITESPECIAL0`/1 | `Smem` only |
+| (16-char write attr) | 16 | special write | `Smem` only |
+| `read_and_add` | 12 | special / atomic | `Smem` only |
+| `atomic_add` | 10 | atomic-add (element-typed) | `Spmem` only |
 
 > **GOTCHA —** the opcode is a string at the LLO/MLIR layer and a 2-bit enum on the wire. A reimplementer that drives the descriptor straight off the 2-bit enum misses the *gating*: the non-default opcodes are rejected unless the destination memory space is `Smem` (or `Spmem` for `atomic_add`). The `getDstOpcode` accessor reads the attribute at `this+0x48` with a bit-test on the property word (`(*(this+44) >> 19) & 0x10`), so the attribute is optional — absent means the plain `WRITE` opcode. The 16-char variant's exact spelling lives in `xmmword_A2D00C0` and was not string-decoded (HIGH, not CONFIRMED).
 
@@ -191,21 +191,21 @@ The returned resource id is stamped into the descriptor's address word at bit 40
 
 ### The resource-id table
 
-| LLO `MemorySpace` | Enum# | Driver resource id | Confidence |
-|---|---:|---:|---|
-| `<no memory space>` | 0 | 10 | CONFIRMED |
-| `hbm` | 1 | 2 | CONFIRMED |
-| `hib` | 2 | 3 | CONFIRMED |
-| `vmem` | 3 | 4 | CONFIRMED |
-| `cmem` | 4 | — (FATAL) | CONFIRMED |
-| `smem` | 5 | 6 | CONFIRMED |
-| `sflag` | 6 | 0 | CONFIRMED |
-| `imem` | 7 | 5 | CONFIRMED |
-| `barna_core_bmem` | 8 | 7 | CONFIRMED |
-| `barna_core_smem` | 9 | 9 | CONFIRMED |
-| `barna_core_sflag` | 10 | 1 | CONFIRMED |
-| `barna_core_imem` | 11 | 8 | CONFIRMED |
-| `sparse_core_*` (12..16) | 12..16 | — (FATAL) | CONFIRMED |
+| LLO `MemorySpace` | Enum# | Driver resource id |
+|---|---:|---:|
+| `<no memory space>` | 0 | 10 |
+| `hbm` | 1 | 2 |
+| `hib` | 2 | 3 |
+| `vmem` | 3 | 4 |
+| `cmem` | 4 | — (FATAL) |
+| `smem` | 5 | 6 |
+| `sflag` | 6 | 0 |
+| `imem` | 7 | 5 |
+| `barna_core_bmem` | 8 | 7 |
+| `barna_core_smem` | 9 | 9 |
+| `barna_core_sflag` | 10 | 1 |
+| `barna_core_imem` | 11 | 8 |
+| `sparse_core_*` (12..16) | 12..16 | — (FATAL) |
 
 > **QUIRK —** the resource-id assignment is *not* the identity of the `MemorySpace` enum, and it is *not* monotone: `sflag`→0, `barna_core_sflag`→1, `hbm`→2, `hib`→3, `vmem`→4, `imem`→5, `smem`→6, `barna_core_bmem`→7, `barna_core_imem`→8, `barna_core_smem`→9, NONE→10. A reimplementer must use the explicit table; deriving the resource id from the space integer is wrong for every row. The `cmem` and `sparse_core_*` cases trap at `LogMessageFatal` — those spaces are addressable by LLO loads/stores but **not** as a DMA endpoint on this gen's resource model, so a DMA targeting them is a compile-time fatal, not a silent miss.
 
@@ -221,25 +221,25 @@ The returned resource id is stamped into the descriptor's address word at bit 40
 
 Field offsets are byte-verified from the carved `DescriptorProto` (the FDP message body) and the pxc producer store. The structure is bit-packed — these are the *parsed-into-proto* member offsets, not raw bit positions:
 
-| # | Field | Offset | Width / enum | Filled by | Confidence |
-|---:|---|---:|---|---|---|
-| 1 | `trace_id_header` | `+0x18` | u64 | DMA-id producer (pairing key) | CONFIRMED |
-| 2 | `dma_type` | `+0x20` | `DmaTypeValues` (4) | DMA lowering | CONFIRMED |
-| 3 | `src_mem_mem_id` | `+0x24` | `MemMemId` (2-bit) | source endpoint render | CONFIRMED |
-| 4 | `src_mem_core_id` | `+0x28` | `MemCoreId` (3-bit) | source endpoint render | CONFIRMED |
-| 5 | `src_opcode` | `+0x2c` | `SrcOpcode` (2-bit) | source opcode | CONFIRMED |
-| 6 | `dst_mem_mem_id` | `+0x30` | `MemMemId` (2-bit) | dest endpoint render | CONFIRMED |
-| 7 | `dst_mem_core_id` | `+0x34` | `MemCoreId` (3-bit) | dest endpoint render | CONFIRMED |
-| 8 | `dst_opcode` | `+0x38` | `DstOpcode` (2-bit) | `GetDstOpcode<>` | CONFIRMED |
-| 9 | `src_sync_flag_id` | `+0x3c` | u32 | sync-flag binding | CONFIRMED |
-| 10 | `src_sync_flag_core_id` | `+0x40` | `SyncFlagCoreId` (8) | sync-flag binding | CONFIRMED |
-| 11 | `dst_sync_flag_0_id` | `+0x44` | u32 | completion flag 0 | CONFIRMED |
-| 12 | `dst_sync_flag_0_core_id` | `+0x48` | `SyncFlagCoreId` (8) | completion flag 0 | CONFIRMED |
-| 13 | `dst_sync_flag_1_id` | `+0x4c` | u32 | completion flag 1 | CONFIRMED |
-| 14 | `dst_sync_flag_1_core_id` | `+0x50` | `SyncFlagCoreId` (8) | completion flag 1 | CONFIRMED |
-| 15 | `program_counter` | `+0x54` | u32 | trace/PC | CONFIRMED |
-| 16 | `length` | `+0x58` | u32 | size operand | CONFIRMED |
-| 17 | `length_granule` | `+0x5c` | `LengthGranule` (1-bit) | size operand | CONFIRMED |
+| # | Field | Offset | Width / enum | Filled by |
+|---:|---|---:|---|---|
+| 1 | `trace_id_header` | `+0x18` | u64 | DMA-id producer (pairing key) |
+| 2 | `dma_type` | `+0x20` | `DmaTypeValues` (4) | DMA lowering |
+| 3 | `src_mem_mem_id` | `+0x24` | `MemMemId` (2-bit) | source endpoint render |
+| 4 | `src_mem_core_id` | `+0x28` | `MemCoreId` (3-bit) | source endpoint render |
+| 5 | `src_opcode` | `+0x2c` | `SrcOpcode` (2-bit) | source opcode |
+| 6 | `dst_mem_mem_id` | `+0x30` | `MemMemId` (2-bit) | dest endpoint render |
+| 7 | `dst_mem_core_id` | `+0x34` | `MemCoreId` (3-bit) | dest endpoint render |
+| 8 | `dst_opcode` | `+0x38` | `DstOpcode` (2-bit) | `GetDstOpcode<>` |
+| 9 | `src_sync_flag_id` | `+0x3c` | u32 | sync-flag binding |
+| 10 | `src_sync_flag_core_id` | `+0x40` | `SyncFlagCoreId` (8) | sync-flag binding |
+| 11 | `dst_sync_flag_0_id` | `+0x44` | u32 | completion flag 0 |
+| 12 | `dst_sync_flag_0_core_id` | `+0x48` | `SyncFlagCoreId` (8) | completion flag 0 |
+| 13 | `dst_sync_flag_1_id` | `+0x4c` | u32 | completion flag 1 |
+| 14 | `dst_sync_flag_1_core_id` | `+0x50` | `SyncFlagCoreId` (8) | completion flag 1 |
+| 15 | `program_counter` | `+0x54` | u32 | trace/PC |
+| 16 | `length` | `+0x58` | u32 | size operand |
+| 17 | `length_granule` | `+0x5c` | `LengthGranule` (1-bit) | size operand |
 
 The three `SyncFlagCoreId` enums (`+0x40`, `+0x48`, `+0x50`) share the same 8-value set as `MemCoreId` (`RESERVED`/`NONCORE`/`TC0`/`TC1`/`BC0`..`BC3`) — the sync-flag target core mirrors the memory-target core. The dual `dst_sync_flag_{0,1}` pair is the dual-channel completion that the V2 ICI descriptor also exposes (via `set_dst_sync_flag_mem_offset(idx 0..1)`); on the intra-chip descriptor both are present in the layout.
 
@@ -247,10 +247,10 @@ The three `SyncFlagCoreId` enums (`+0x40`, `+0x48`, `+0x50`) share the same 8-va
 
 The transfer byte count is `length << granule_shift`, where the shift is chosen by the 1-bit `length_granule`:
 
-| `LengthGranule` (`+0x5c`) | name | shift | bytes per unit | Confidence |
-|---:|---|---:|---:|---|
-| 0 | `512B` | `<< 9` | 512 | CONFIRMED |
-| 1 | `4B` | `<< 2` | 4 | CONFIRMED |
+| `LengthGranule` (`+0x5c`) | name | shift | bytes per unit |
+|---:|---|---:|---:|
+| 0 | `512B` | `<< 9` | 512 |
+| 1 | `4B` | `<< 2` | 4 |
 
 The pxc DMA-timeline producer (the `ConvertTpuTraceToXPlane<pxc>` lambda, store block @ `0xf26c865`) is the byte-exact proof of the size decode and of *which* fields survive into a rendered span:
 
@@ -281,16 +281,16 @@ The descriptor fields are populated from an LLO `Dma*StartOp` op's operands and 
 
 The single intra-chip DMA-timeline pass, `xprof::tpu::ConvertDmaTransfersToXPlane` @ `0xf254bc0`, renders one paired DMA into one device `XEvent`. It is the only consumer that reads the descriptor for display, and it **decodes the endpoints into the proto but never copies them into the rendered span**. The span's begin/duration are the `XEvent`'s own offset/duration fields, stamped directly by `TpuXLineBuilder::AddEvent(event, begin, end−begin)` from the pre-decoded `DmaTransfer` timespan — they are *not* `XStat`s and carry no `StatType` id. On top of that the pass attaches **six `XStat`s** per span, all via `GetStatTypeStr(N)` (numeric) or a literal stat-metadata name (string):
 
-| Span field / XStat | StatType | Source | Confidence |
-|---|---:|---|---|
-| event offset (begin) | — (XEvent field) | `AddEvent(begin)` — `DmaTransfer` begin timespan | CONFIRMED |
-| event duration | — (XEvent field) | `AddEvent(end−begin)` — `DmaTransfer` end−begin | CONFIRMED |
-| `bytes_transferred` | 78 | `DmaTransfer.byte_count` (producer-decoded `length << granule_shift`) | CONFIRMED |
-| `queue` | 79 | string from `DmaTransfer` — **empty on pxc** | CONFIRMED |
-| `details` | (string `"details"`) | string from `DmaTransfer` — **empty on pxc** | CONFIRMED |
-| `_a` | 42 | constant 1 (per-DMA aggregate marker) | CONFIRMED |
-| `flow` | 56 | `XFlow::next_flow_id_` via `4·(id & 0xff_ffff_ffff_ffff)+3` (begin↔end arrow) | CONFIRMED |
-| `bandwidth` | (string `"bandwidth"`) | `FormatPack(unit, bytes/(dur/1e12))`, 5-rung B/KB/MB/GB/TB ladder | CONFIRMED |
+| Span field / XStat | StatType | Source |
+|---|---:|---|
+| event offset (begin) | — (XEvent field) | `AddEvent(begin)` — `DmaTransfer` begin timespan |
+| event duration | — (XEvent field) | `AddEvent(end−begin)` — `DmaTransfer` end−begin |
+| `bytes_transferred` | 78 | `DmaTransfer.byte_count` (producer-decoded `length << granule_shift`) |
+| `queue` | 79 | string from `DmaTransfer` — **empty on pxc** |
+| `details` | (string `"details"`) | string from `DmaTransfer` — **empty on pxc** |
+| `_a` | 42 | constant 1 (per-DMA aggregate marker) |
+| `flow` | 56 | `XFlow::next_flow_id_` via `4·(id & 0xff_ffff_ffff_ffff)+3` (begin↔end arrow) |
+| `bandwidth` | (string `"bandwidth"`) | `FormatPack(unit, bytes/(dur/1e12))`, 5-rung B/KB/MB/GB/TB ladder |
 
 > **GOTCHA —** the `src_mem_*` / `dst_mem_*` / `*_opcode` / `*_sync_flag_*` fields (descriptor `+0x24`..`+0x50`) are parsed by `DecodeOciDescriptorCommonIssuedFromTcs` but the only descriptor fields that survive into the `DmaTransfer` the producer hands this pass are `length` (`+0x58`), `length_granule` (`+0x5c`, decoded to the byte count), and the `trace_id_header` (`+0x18`, for begin/end pairing). The `queue` and `details` string stats are attached on every span but their backing strings are empty on the pxc producer, so a captured pxc trace shows them blank (the pass skips the `SetStatValue` call when the `DmaTransfer` string length is zero). An `nm -C` scan finds **no** `MemMemId/MemCoreId → tier` or endpoint→stat symbolizer in `libtpu.so`. So the endpoint enums of [§1](#1-the-two-memory-space-enums-srcmem--dstmem) / [§2](#2-the-opcode-enums-srcopcode--dstopcode) are fully decodable but have no display renderer inside this unit — a downstream xprof/TensorBoard symbolizer, if any, would have to re-read the proto fields the pass discards.
 
@@ -302,20 +302,20 @@ The transfer class appears under the name `DmaType` in **two** places with **dif
 
 The **runtime / LLO** enum `xla::jellyfish::DmaType` is recovered from its `absl` log operator (`operator<<<DmaType>` @ `0x1d5ae080`) — a dense 3-value switch:
 
-| `xla::jellyfish::DmaType` | Value | Confidence |
-|---|---:|---|
-| `DMA_TYPE_CHIP_TO_HOST` | 0 | CONFIRMED |
-| `DMA_TYPE_LOCAL_OR_HOST` | 1 | CONFIRMED |
-| `DMA_TYPE_REMOTE_WRITE_UNICAST` | 2 | CONFIRMED |
+| `xla::jellyfish::DmaType` | Value |
+|---|---:|
+| `DMA_TYPE_CHIP_TO_HOST` | 0 |
+| `DMA_TYPE_LOCAL_OR_HOST` | 1 |
+| `DMA_TYPE_REMOTE_WRITE_UNICAST` | 2 |
 
 The **profiler descriptor** enum `DmaTypeValues` (`dma_type` @ `+0x20`) is a 4-value set with a *different ordering*:
 
-| `DmaTypeValues` (pxc) | Value | Confidence |
-|---|---:|---|
-| `DMA_TYPE_LOCAL` | 0 | CONFIRMED |
-| `DMA_TYPE_CHIP2HOST` | 1 | CONFIRMED |
-| `DMA_TYPE_REMOTEUNICAST` | 2 | CONFIRMED |
-| `DMA_TYPE_REMOTEMULTICAST` | 3 | CONFIRMED |
+| `DmaTypeValues` (pxc) | Value |
+|---|---:|
+| `DMA_TYPE_LOCAL` | 0 |
+| `DMA_TYPE_CHIP2HOST` | 1 |
+| `DMA_TYPE_REMOTEUNICAST` | 2 |
+| `DMA_TYPE_REMOTEMULTICAST` | 3 |
 
 On the SparseCore gens (`vfc`/`vlc`/`glc`/`gfc`) the descriptor `DmaTypeValues` collapses to two values `{LOCALORHOST=0, REMOTEUNICAST=1}`. The runtime layer additionally names a wider set of `.rodata` strings (`DMA_TYPE_LOCAL`, `DMA_TYPE_LOCAL_OR_HOST`, `DMA_TYPE_CHIP_TO_HOST`, `DMA_TYPE_REMOTE_UNICAST`, `DMA_TYPE_REMOTE_WRITE_UNICAST`, `DMA_TYPE_REMOTE_MULTICAST`) selected by `BuildDmaOverrides(srcMS, dstMS, isRemote, DmaType, …)`.
 

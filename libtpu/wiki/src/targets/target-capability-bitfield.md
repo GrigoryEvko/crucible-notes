@@ -34,12 +34,12 @@ The qword is a `_has_bits_`-style flags member. **Bit numbering is LSB-first**: 
 
 > **GOTCHA —** a raw operand grep for `testb $0x1,0x628` returns *three* hits, but one (`0xFE3B600`, inside `PostorderDFSVisitor::PostOrderDFSVisit`) is `testb $0x1,0x628(%rsp)` — a stack local that coincidentally lives at frame offset `0x628`, not the `Target` field. Only the two `%r12`/`%r14`-based reads (`0x10928083`, `0x1090EB6E`) are genuine bit-0 tests. The 102 `testb $0x4` sites are all pointer-register-based, with no `%rsp`/`%rbp` false positive in the set.
 
-| bit | mask | semantic / name | set site (`Target::Init`) | consumers (test sites) | Confidence |
-|---:|------|---|---|---|---|
-| 0 | `0x1` | TensorCore continuation-queue scoped-memory region present (entry-A) | `0x1D611D52` (`or $0x1`), after the entry-A append | 2 genuine `testb $0x1,0x628` reads; operative reader `DeepseaCompilerBase::CompileInternal` @ `0x10928083` → gate `LloRegionBuilder::ShaltInternal` | CONFIRMED |
-| 1 | `0x2` | reserved / unused in v0.0.40 | (never set) | (never tested) | CONFIRMED (absent) |
-| 2 | `0x4` | megachip / SparseCore-offload capability has-bit — the operative term of `Target::IsMegachip()` | `0x1D612121` (`or $0x4`), after the entry-B append | `testb $0x4,0x628` ×102 = inlined `IsMegachip()`; SC lowering, `CompileSparseCorePrograms`, `EmitSparseCoreAsyncStart/Done`, `IsValidReduceScatterForSparseCoreOffload`, Deepsea `Lower`/`RunBackend`/`MakeAot` | CONFIRMED |
-| 3+ | `0x8+` | reserved / unused in v0.0.40 | (never set) | (never tested) | CONFIRMED (absent) |
+| bit | mask | semantic / name | set site (`Target::Init`) | consumers (test sites) |
+|---:|------|---|---|---|
+| 0 | `0x1` | TensorCore continuation-queue scoped-memory region present (entry-A) | `0x1D611D52` (`or $0x1`), after the entry-A append | 2 genuine `testb $0x1,0x628` reads; operative reader `DeepseaCompilerBase::CompileInternal` @ `0x10928083` → gate `LloRegionBuilder::ShaltInternal` |
+| 1 | `0x2` | reserved / unused in v0.0.40 | (never set) | (never tested) |
+| 2 | `0x4` | megachip / SparseCore-offload capability has-bit — the operative term of `Target::IsMegachip()` | `0x1D612121` (`or $0x4`), after the entry-B append | `testb $0x4,0x628` ×102 = inlined `IsMegachip()`; SC lowering, `CompileSparseCorePrograms`, `EmitSparseCoreAsyncStart/Done`, `IsValidReduceScatterForSparseCoreOffload`, Deepsea `Lower`/`RunBackend`/`MakeAot` |
+| 3+ | `0x8+` | reserved / unused in v0.0.40 | (never set) | (never tested) |
 
 > **NOTE —** the qword is loaded and stored with a REX.W (`mov`) — 64-bit — so it physically has room for 62 more flags. Whether bits 1 and 3+ are dead-in-source or forward-reserved for a later silicon generation is not distinguishable from this binary alone; what is certain is that v0.0.40 drives exactly two of them.
 

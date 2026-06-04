@@ -26,7 +26,6 @@ For reimplementation, the contract is:
 | **Emitter leaf** | `GhostliteTensorCoreEmitter` @ `0x14221840` (shared; cell 12 reuses Ghostlite's) |
 | **MXU dtype set** | `{F32, E4m3, Bf16, E5m2}` — float-only, FP8 named explicitly (vs Ghostlite's 8) |
 | **Predicate model** | dedicated dual-predicate slot + per-slot 2-bit selector |
-| **Confidence** | CONFIRMED (byte-anchored) unless a row says otherwise |
 
 ---
 
@@ -110,60 +109,60 @@ proto sub-message ──(<Slot>Encoder::Encode, BitCopy)──▶ absolute bit w
 
 The bundle partitions into the standard V5+ slot classes. The table below is the consolidated 6acc60406 (`gfc`) slot map; bit 0 is the LSB of byte 0. Each entry is anchored to the named `gfc::isa::...Encoder::Encode` that writes it and the `BitCopy` immediate that fixes the offset.
 
-| Slot / field | dst_bit (dec) | hex | width | Encoder (`gfc::isa`) @ | Confidence |
-|---|---:|---|---:|---|---|
-| **Predicate pool** `pred_0` reg | 501 | 0x1f5 | 4 | `TensorCorePredicatesEncoder::Encode` @ `0x1f86e500` | CONFIRMED |
-| `pred_0` invert | 505 | 0x1f9 | 1 | (same) | CONFIRMED |
-| `pred_1` reg | 496 | 0x1f0 | 4 | (same) | CONFIRMED |
-| `pred_1` invert | 500 | 0x1f4 | 1 | (same) | CONFIRMED |
-| **Sequencer** per-slot 2-bit pred selector | 489 | 0x1e9 | 2 | `TensorCoreScalarAlu0Encoder::Encode` @ `0x1f87b420` | CONFIRMED |
-| seq opcode-HIGH / family | 483 | 0x1e3 | 6 | (same) | CONFIRMED |
-| seq opcode-LOW / discriminator | 478 | 0x1de | 5 | (same; branch helpers @ `0x1f87f5c0`+) | CONFIRMED |
-| seq x-target / 2nd operand | 472 | 0x1d8 | 6 | (same) | CONFIRMED |
-| seq call dest (return-addr) sreg | 467 | 0x1d3 | 5 | (same) | CONFIRMED |
-| **Immediate** slot 0 (branch/call/sync offset) | 423 | 0x1a7 | 20 | `TensorCoreImmediatesEncoder::Encode` @ `0x1f86de20` | CONFIRMED |
-| imm slot 1 | 403 | 0x193 | 20 | (same) | CONFIRMED |
-| imm slot 2 | 383 | 0x17f | 20 | (same) | CONFIRMED |
-| imm slot 3 | 363 | 0x16b | 20 | (same) | CONFIRMED |
-| imm slot 4 | 343 | 0x157 | 20 | (same) | CONFIRMED |
-| imm slot 5 | 323 | 0x143 | 20 | (same) | CONFIRMED |
-| **VALU slot 0** opcode | 293 | 0x125 | 8 | `TensorCoreVectorAlu0Encoder` family | HIGH |
-| VALU0 dst vreg | 276 | 0x114 | 6 | (same) | HIGH |
-| VALU0 src0 | 270 | 0x10e | 6 | (same) | HIGH |
-| VALU0 src1 | 287 | 0x11f | 6 | (same) | HIGH |
-| VALU0 Y-enc | 282 | 0x11a | 5 | (same) | HIGH |
-| VALU0 2-bit pred selector | 301 | 0x12d | 2 | (same) | HIGH |
-| **MXU VEx0** opcode-HIGH | 62 | 0x3e | 8 | `TensorCoreVectorExtended0Encoder::Encode` @ `0x1f996940` | CONFIRMED |
-| VEx0 data-format sub-disc | 57 | 0x39 | 4 | (same) | CONFIRMED |
-| VEx0 MXU-id (unit) | 70 | 0x46 | 2 | (same) | CONFIRMED |
-| VEx0 control (matpush target) | 54 | 0x36 | 3 | (matmul/push helpers) | CONFIRMED |
-| VEx0 done-gains / latch flag | 61 | 0x3d | 1 | (same) | CONFIRMED |
-| VEx0 primary operand (matmul) | 47 | 0x2f | 7 | `…MatrixMultiplyBf16` @ `0x1f99a920` | CONFIRMED |
-| **MXU VEx1** opcode-HIGH | 37 | 0x25 | 8 | `TensorCoreVectorExtended1Encoder::Encode` @ `0x1f9d3800` | CONFIRMED |
-| VEx1 data-format sub-disc | 32 | 0x20 | 4 | (same) | CONFIRMED |
-| VEx1 MXU-id (unit) | 45 | 0x2d | 2 | (same) | CONFIRMED |
-| **EUP push** (VALU slot 3) VALU-opcode | 194 | 0xc2 | 8 | `…VectorAlu3F32Tanh` @ `0x1f96ae40` (family) | CONFIRMED |
-| EUP function selector | 183 | 0xb7 | 5 | (same) | CONFIRMED |
-| EUP push src vreg | 188 | 0xbc | 6 | (same) | CONFIRMED |
-| **Result slot** result-type discriminator | 20 | 0x14 | 2 | `TensorCoreVectorResult0Encoder::Encode` @ `0x1fa01820` | CONFIRMED |
-| result dest vreg | 11 | 0x0b | 6 | (same) | CONFIRMED |
-| result mode/format | 17–19 | 0x11–0x13 | 2/1 | (same) | CONFIRMED |
-| `PopMxuResult` accum-mode/format | 323 | 0x143 | 8 | (same; result-opcode 7 path) | CONFIRMED |
+| Slot / field | dst_bit (dec) | hex | width | Encoder (`gfc::isa`) @ |
+|---|---:|---|---:|---|
+| **Predicate pool** `pred_0` reg | 501 | 0x1f5 | 4 | `TensorCorePredicatesEncoder::Encode` @ `0x1f86e500` |
+| `pred_0` invert | 505 | 0x1f9 | 1 | (same) |
+| `pred_1` reg | 496 | 0x1f0 | 4 | (same) |
+| `pred_1` invert | 500 | 0x1f4 | 1 | (same) |
+| **Sequencer** per-slot 2-bit pred selector | 489 | 0x1e9 | 2 | `TensorCoreScalarAlu0Encoder::Encode` @ `0x1f87b420` |
+| seq opcode-HIGH / family | 483 | 0x1e3 | 6 | (same) |
+| seq opcode-LOW / discriminator | 478 | 0x1de | 5 | (same; branch helpers @ `0x1f87f5c0`+) |
+| seq x-target / 2nd operand | 472 | 0x1d8 | 6 | (same) |
+| seq call dest (return-addr) sreg | 467 | 0x1d3 | 5 | (same) |
+| **Immediate** slot 0 (branch/call/sync offset) | 423 | 0x1a7 | 20 | `TensorCoreImmediatesEncoder::Encode` @ `0x1f86de20` |
+| imm slot 1 | 403 | 0x193 | 20 | (same) |
+| imm slot 2 | 383 | 0x17f | 20 | (same) |
+| imm slot 3 | 363 | 0x16b | 20 | (same) |
+| imm slot 4 | 343 | 0x157 | 20 | (same) |
+| imm slot 5 | 323 | 0x143 | 20 | (same) |
+| **VALU slot 0** opcode | 293 | 0x125 | 8 | `TensorCoreVectorAlu0Encoder` family |
+| VALU0 dst vreg | 276 | 0x114 | 6 | (same) |
+| VALU0 src0 | 270 | 0x10e | 6 | (same) |
+| VALU0 src1 | 287 | 0x11f | 6 | (same) |
+| VALU0 Y-enc | 282 | 0x11a | 5 | (same) |
+| VALU0 2-bit pred selector | 301 | 0x12d | 2 | (same) |
+| **MXU VEx0** opcode-HIGH | 62 | 0x3e | 8 | `TensorCoreVectorExtended0Encoder::Encode` @ `0x1f996940` |
+| VEx0 data-format sub-disc | 57 | 0x39 | 4 | (same) |
+| VEx0 MXU-id (unit) | 70 | 0x46 | 2 | (same) |
+| VEx0 control (matpush target) | 54 | 0x36 | 3 | (matmul/push helpers) |
+| VEx0 done-gains / latch flag | 61 | 0x3d | 1 | (same) |
+| VEx0 primary operand (matmul) | 47 | 0x2f | 7 | `…MatrixMultiplyBf16` @ `0x1f99a920` |
+| **MXU VEx1** opcode-HIGH | 37 | 0x25 | 8 | `TensorCoreVectorExtended1Encoder::Encode` @ `0x1f9d3800` |
+| VEx1 data-format sub-disc | 32 | 0x20 | 4 | (same) |
+| VEx1 MXU-id (unit) | 45 | 0x2d | 2 | (same) |
+| **EUP push** (VALU slot 3) VALU-opcode | 194 | 0xc2 | 8 | `…VectorAlu3F32Tanh` @ `0x1f96ae40` (family) |
+| EUP function selector | 183 | 0xb7 | 5 | (same) |
+| EUP push src vreg | 188 | 0xbc | 6 | (same) |
+| **Result slot** result-type discriminator | 20 | 0x14 | 2 | `TensorCoreVectorResult0Encoder::Encode` @ `0x1fa01820` |
+| result dest vreg | 11 | 0x0b | 6 | (same) |
+| result mode/format | 17–19 | 0x11–0x13 | 2/1 | (same) |
+| `PopMxuResult` accum-mode/format | 323 | 0x143 | 8 | (same; result-opcode 7 path) |
 
 The eight MXU source-vreg fields are **shared** between VEx0 and VEx1 (both MXUs draw the same vector read ports) and are byte-identical across the two slots:
 
-| MXU systolic source-vreg (`gfc` VEx0 = VEx1) | dst_bit (dec) | hex | width | Confidence |
-|---|---:|---|---:|---|
-| src #1 (proto +0x20) | 156 | 0x9c | 6 | CONFIRMED |
-| src #2 (proto +0x24) | 276 | 0x114 | 6 | CONFIRMED |
-| src #3 (proto +0x28) | 287 | 0x11f | 6 | CONFIRMED |
-| src #4 (proto +0x2c) | 243 | 0xf3 | 6 | CONFIRMED |
-| src #5 (proto +0x30) | 254 | 0xfe | 6 | CONFIRMED |
-| src #6 (proto +0x34) | 210 | 0xd2 | 6 | CONFIRMED |
-| src #7 (proto +0x38) | 221 | 0xdd | 6 | CONFIRMED |
-| src #8 (proto +0x3c) | 177 | 0xb1 | 6 | CONFIRMED |
+| MXU systolic source-vreg (`gfc` VEx0 = VEx1) | dst_bit (dec) | hex | width |
+|---|---:|---|---:|
+| src #1 (proto +0x20) | 156 | 0x9c | 6 |
+| src #2 (proto +0x24) | 276 | 0x114 | 6 |
+| src #3 (proto +0x28) | 287 | 0x11f | 6 |
+| src #4 (proto +0x2c) | 243 | 0xf3 | 6 |
+| src #5 (proto +0x30) | 254 | 0xfe | 6 |
+| src #6 (proto +0x34) | 210 | 0xd2 | 6 |
+| src #7 (proto +0x38) | 221 | 0xdd | 6 |
+| src #8 (proto +0x3c) | 177 | 0xb1 | 6 |
 
-> **NOTE — the two MXU control regions are a fixed −25-bit twin.** VEx0's opcode/format/MXU-id/control region (bits 62/57/70/54) and VEx1's (bits 37/32/45/29) differ by exactly **−25 bits**; only the eight shared source-vreg fields are delta-0. A reimplementation packs both MXUs into the same 64-byte word by writing one control region at the VEx0 offsets and a second at VEx0 − 25, over a single 8×6-bit operand pool. (The VALU slot rows are marked HIGH rather than CONFIRMED here because their offsets are carried from the cross-confirmed VALU-slot trace rather than re-walked on this page.)
+> **NOTE — the two MXU control regions are a fixed −25-bit twin.** VEx0's opcode/format/MXU-id/control region (bits 62/57/70/54) and VEx1's (bits 37/32/45/29) differ by exactly **−25 bits**; only the eight shared source-vreg fields are delta-0. A reimplementation packs both MXUs into the same 64-byte word by writing one control region at the VEx0 offsets and a second at VEx0 − 25, over a single 8×6-bit operand pool.
 
 ---
 
@@ -183,12 +182,12 @@ gfc TensorCoreScalarAlu0 sequencer slot:
 
 The opcode-LOW discriminator value map (shared with all V5+ gens):
 
-| Value | Op | Confidence |
-|---:|---|---|
-| 4 | `BranchAbsolute` | CONFIRMED |
-| 5 | `BranchRelative` | CONFIRMED |
-| 6 | `CallAbsolute` | CONFIRMED |
-| 7 | `CallRelative` | CONFIRMED |
+| Value | Op |
+|---:|---|
+| 4 | `BranchAbsolute` |
+| 5 | `BranchRelative` |
+| 6 | `CallAbsolute` |
+| 7 | `CallRelative` |
 
 Two GF specifics relative to Ghostlite (`glc`), where the sequencer slot is the inverse of the predicate change below: the GF sequencer slot is **wider** — it adds a 6-bit operand field at bit 472 that Ghostlite's slot lacks — and its predicate field shrinks from Ghostlite's 4-bit reg + 1-bit inversion to a **2-bit selector** at bit 489. There is no in-bundle delay-slot field on any V5+ gen; the branch delay-slot count is a bundle-packer pad-count (empty bundles appended after the branch), not an encoded slot bit. The hardware loop is likewise not an encoded field — it is an LCC-register read at the sequencer opcode feeding a conditional `BranchRelative`.
 
@@ -213,11 +212,11 @@ gfc TensorCorePredicatesEncoder::Encode @ 0x1f86e500:
 
 Each 4-bit `reg` field indexes the 16-entry `PredicationSlot` pool (0..15). Every functional slot then carries only the 2-bit selector. This is the bit-exact realization of the "two predicate slots are already taken" overflow rule: the two `(reg, invert)` entries at bits 496..505 are the entire per-bundle predicate budget.
 
-| Predicate model | Viperfish / Ghostlite | 6acc60406 | Confidence |
-|---|---|---|---|
-| Per-slot field | 4-bit reg + 1-bit invert (TC: reg @ 499, inv @ 503 on VXC) | 2-bit selector (TC seq @ 489) | CONFIRMED |
-| Pool | none (each slot self-contained) | dedicated `TensorCorePredicates` slot @ bits 496..505 | CONFIRMED |
-| Per-bundle predicate budget | per-slot (unbounded) | exactly two pool entries (`pred_0`, `pred_1`) | CONFIRMED |
+| Predicate model | Viperfish / Ghostlite | 6acc60406 |
+|---|---|---|
+| Per-slot field | 4-bit reg + 1-bit invert (TC: reg @ 499, inv @ 503 on VXC) | 2-bit selector (TC seq @ 489) |
+| Pool | none (each slot self-contained) | dedicated `TensorCorePredicates` slot @ bits 496..505 |
+| Per-bundle predicate budget | per-slot (unbounded) | exactly two pool entries (`pred_0`, `pred_1`) |
 
 > **GOTCHA — a slot's predicate is an indirection on GF, a direct index on Ghostlite.** A Ghostlite decoder reads a slot's 4-bit register index directly from the slot. A 6acc60406 decoder must read the slot's 2-bit selector, then resolve it against the `pred_0`/`pred_1` pool in the dedicated predicate slot. Treating the GF 2-bit field as a register index (rather than a pool selector) decodes wrong predicates.
 
@@ -231,10 +230,10 @@ The MXU slot is where the GF "latency/format remap" lives. The slot mechanism is
 
 6acc60406 supports **four** matmul/push dtypes, all float: `{F32, E4m3, Bf16, E5m2}`. It drops the integer matmul group entirely. The symbol-table census is definitive:
 
-| Generation | PushMatrix / MatrixMultiply dtype set | Confidence |
-|---|---|---|
-| **6acc60406 (`gfc`)** | `F32`, `E4m3`, `Bf16`, `E5m2` (4, float-only; FP8 = e4m3 / e5m2) | CONFIRMED |
-| Ghostlite (`glc`) | `F32`, `If8`, `Bf16`, `Bf8` (float) + `U8`, `S8`, `U4`, `S4` (int) (8) | CONFIRMED |
+| Generation | PushMatrix / MatrixMultiply dtype set |
+|---|---|
+| **6acc60406 (`gfc`)** | `F32`, `E4m3`, `Bf16`, `E5m2` (4, float-only; FP8 = e4m3 / e5m2) |
+| Ghostlite (`glc`) | `F32`, `If8`, `Bf16`, `Bf8` (float) + `U8`, `S8`, `U4`, `S4` (int) (8) |
 
 The rename is the heart of the remap: where Ghostlite names its two FP8 formats `If8` / `Bf8`, 6acc60406 names them explicitly as **`E4m3`** and **`E5m2`** — and registers no integer matmul dtypes at all. (The `e4m3`/`e5m2` here are the IEEE-style FP8 mantissa/exponent splits; the GF MXU latency/format mapping for these — including the FP8 `fnuz` handling and the result-format remap — is detailed in the [GF MXU latency cost page](../cost/mxu-latency-gf.md).)
 
@@ -257,12 +256,12 @@ The opcode bound for the VEx0 encoder is `cmp 0x54` = 85 ops/slot. The weight la
 
 The result slot (`TensorCoreVectorResult0Encoder::Encode` @ `0x1fa01820`) is where the "res-remap" delta sits — the discriminator and dest-vreg fields move down relative to Ghostlite:
 
-| Result-slot field | Ghostlite (`glc`) | 6acc60406 (`gfc`) | Confidence |
-|---|---:|---:|---|
-| result-type discriminator | bit 24 w4 | **bit 20 w2** | CONFIRMED |
-| dest vreg | bit 14 w6 | **bit 11 w6** | CONFIRMED |
-| `PopMxuResult` accum-mode/format | (per +0x1c) | **bit 323 w8** | CONFIRMED |
-| result-opcode bound | 0x8 (9 ops) | **0x7 (8 ops)** | CONFIRMED |
+| Result-slot field | Ghostlite (`glc`) | 6acc60406 (`gfc`) |
+|---|---:|---:|
+| result-type discriminator | bit 24 w4 | **bit 20 w2** |
+| dest vreg | bit 14 w6 | **bit 11 w6** |
+| `PopMxuResult` accum-mode/format | (per +0x1c) | **bit 323 w8** |
+| result-opcode bound | 0x8 (9 ops) | **0x7 (8 ops)** |
 
 The result-opcode map (the proto sub-message tag, read from the `switch` in `TensorCoreVectorResult0Encoder::Encode` @ `0x1fa01820`): `5` = `PopEupResult` (EUP transcendental pop), `6` = `TransposeResult`, `7` = `PopMxuResult` (matres pop; the `case 7` arm is the only one that writes the 8-bit accum-mode/format at bit 323). 6acc60406 has no `PopAddMxu01Result` (Ghostlite's fused accumulate) and no `PopCcrfResult` (Viperfish's scalar pop) — its result sub-message set is `{PopEupResult, TransposeResult, PopMxuResult}`.
 
@@ -281,19 +280,19 @@ gfc EncodeTensorCoreVectorAlu3F32Tanh @ 0x1f96ae40:
 
 The 5-bit function selector value map (verified from the per-function `Alu3` helper literals):
 
-| Function | F32 selector | Bf16 selector | Confidence |
-|---|---:|---:|---|
-| `Erf` | 0x0e (14) | 0x0f (15) | CONFIRMED |
-| `ReciprocalSqrt` | 0x10 (16) | 0x0c (12) | CONFIRMED |
-| `PowTwo` (2^x) | 0x11 (17) | 0x19 (25) | HIGH |
-| `LogTwo` (log2) | 0x12 (18) | 0x1a (26) | HIGH |
-| `Tanh` | 0x13 (19) | 0x1b (27) | CONFIRMED |
-| `ShiftedSigmoid` | 0x14 (20) | 0x1c (28) | HIGH |
-| `Reciprocal` | 0x15 (21) | 0x1d (29) | CONFIRMED |
-| `Sinq` (sin) | 0x17 (23) | 0x1e (30) | HIGH |
-| `Cosq` (cos) | 0x18 (24) | 0x1f (31) | HIGH |
+| Function | F32 selector | Bf16 selector |
+|---|---:|---:|
+| `Erf` | 0x0e (14) | 0x0f (15) |
+| `ReciprocalSqrt` | 0x10 (16) | 0x0c (12) |
+| `PowTwo` (2^x) | 0x11 (17) | 0x19 (25) |
+| `LogTwo` (log2) | 0x12 (18) | 0x1a (26) |
+| `Tanh` | 0x13 (19) | 0x1b (27) |
+| `ShiftedSigmoid` | 0x14 (20) | 0x1c (28) |
+| `Reciprocal` | 0x15 (21) | 0x1d (29) |
+| `Sinq` (sin) | 0x17 (23) | 0x1e (30) |
+| `Cosq` (cos) | 0x18 (24) | 0x1f (31) |
 
-The push-pop protocol: bundle N issues the VALU3 op with the function selector; bundle N+k issues a result-slot `PopEupResult` (result-opcode 5) with dest vreg at bit 11. (`Tanh` and `Reciprocal`/`ReciprocalSqrt` are CONFIRMED from disassembled helper immediates; the remaining selectors are HIGH from the helper roster and the contiguous selector ordering.)
+The push-pop protocol: bundle N issues the VALU3 op with the function selector; bundle N+k issues a result-slot `PopEupResult` (result-opcode 5) with dest vreg at bit 11.
 
 ---
 
@@ -306,10 +305,10 @@ The decode side independently confirms the GF MXU layout and pins two GF-specifi
 - **Latch opcode @ bit 64.** The `gfc` `PushMatrix*Opcode::Matches` reads the latch opcode at bit 64 (width 6 = 14, all four dtypes float) and the dtype-class at bit 59 (width 2): `{F32=0, E4m3=1, Bf16=2, E5m2=3}`. The matmul opcode is a unified 8-bit field at bit 62 (`MatrixMultiply*Lgmr{Msra,Msrb}` @ `0x1f98f740`, value `0x2`=Msra / `0x3`=Msrb, MSR-select = opcode LSB); the latch valid-guard is a `bt bit 62` test (the GF analog of Ghostlite's 2-bit `58,59 == 3` guard).
 - **The inter-MXU twin is −25 on GF (−21 on Ghostlite).** Because GF's MXU0 control region is +4 bits higher than Ghostlite's (latch opcode 60→64) while MXU1 anchors at bit 39 in both, the GF MXU0↔MXU1 delta widens to −25 (latch op 64→39, dtype-class 59→34, matmul op 62→37, matmul fmt 57→32).
 
-| MXU-twin geometry | MXU0 latch op bit | MXU1 latch op bit | inter-MXU twin | matmul MSR-LSB (MXU0/MXU1) | Confidence |
-|---|---:|---:|---:|---|---|
-| Ghostlite (`glc`) | 60 | 39 | −21 | 58 / 37 | CONFIRMED |
-| **6acc60406 (`gfc`)** | **64** | **39** | **−25** | **62 / 37** | CONFIRMED |
+| MXU-twin geometry | MXU0 latch op bit | MXU1 latch op bit | inter-MXU twin | matmul MSR-LSB (MXU0/MXU1) |
+|---|---:|---:|---:|---|
+| Ghostlite (`glc`) | 60 | 39 | −21 | 58 / 37 |
+| **6acc60406 (`gfc`)** | **64** | **39** | **−25** | **62 / 37** |
 
 > **GOTCHA —** the 6acc60406 inter-MXU twin is **−25**, not the Ghostlite −21: the +4 `glc`→`gfc` MXU0 drift (latch opcode 60→64) compounds the inter-MXU offset because MXU1 stays anchored at bit 39 in both generations. The −21 figure applies only to Ghostlite.
 

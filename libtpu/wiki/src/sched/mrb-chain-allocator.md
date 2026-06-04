@@ -61,17 +61,17 @@ bimap<
 
 Reconstructed from the field accesses across the four traced methods. Field roles are CONFIRMED; struct-name bindings for the option caps and the chunk arrays are INFERRED (no struct-layout string).
 
-| Offset | Field | Meaning | Confidence |
-|---|---|---|---|
-| `+0x00` | `Target*` | the JF `Target` (vtable gates `[+0x390]` MRB-support, `[+0x5e0]` FIFO granule) | CONFIRMED |
-| `+0x08` | `CycleTable*` | `GetCyclesForThroughput` source — the throughput axis of `ExtendMrbReservation` | CONFIRMED |
-| `+0x10` | `LatencyTable*` | `LatencyBetween` source — the edge axis | CONFIRMED |
-| `+0x20` | `s64` throughput cap | `min(throughput, cap)` cell — copied from `MrbAccumulationOptions` | CONFIRMED (offset + the `min` direction); name INFERRED |
-| `+0x28` | `s64` latency cap | `min(latency, cap)` cell — copied from `MrbAccumulationOptions` | CONFIRMED (offset + the `min` direction); name INFERRED |
-| `+0x70` | `s64 latest_matmul_` | monotone clock; `AdvanceTimeTo`/`SplitAccumulationChain` RetCheck guard | CONFIRMED |
-| `+0xd8`..`+0xe8` | `chains_unevictable_until_` | the eviction bimap (LEFT-ordered head at `+0xd8`, RIGHT-hashed at `+0xe0`) | CONFIRMED |
-| `+0x7a0` | per-chunk free pool | `flat_hash_set<MrbEntry>` of recycled entries, bucketed by chunk_id (`ReleaseMrbReservation`) | CONFIRMED |
-| — | `btree_map<long, unique_ptr<AccumulationChainAfterSplit>>` | the deferred split-off chain tails, keyed by program order | CONFIRMED |
+| Offset | Field | Meaning |
+|---|---|---|
+| `+0x00` | `Target*` | the JF `Target` (vtable gates `[+0x390]` MRB-support, `[+0x5e0]` FIFO granule) |
+| `+0x08` | `CycleTable*` | `GetCyclesForThroughput` source — the throughput axis of `ExtendMrbReservation` |
+| `+0x10` | `LatencyTable*` | `LatencyBetween` source — the edge axis |
+| `+0x20` | `s64` throughput cap | `min(throughput, cap)` cell — copied from `MrbAccumulationOptions` |
+| `+0x28` | `s64` latency cap | `min(latency, cap)` cell — copied from `MrbAccumulationOptions` |
+| `+0x70` | `s64 latest_matmul_` | monotone clock; `AdvanceTimeTo`/`SplitAccumulationChain` RetCheck guard |
+| `+0xd8`..`+0xe8` | `chains_unevictable_until_` | the eviction bimap (LEFT-ordered head at `+0xd8`, RIGHT-hashed at `+0xe0`) |
+| `+0x7a0` | per-chunk free pool | `flat_hash_set<MrbEntry>` of recycled entries, bucketed by chunk_id (`ReleaseMrbReservation`) |
+| — | `btree_map<long, unique_ptr<AccumulationChainAfterSplit>>` | the deferred split-off chain tails, keyed by program order |
 
 The `+0x70` clock carries the canonical name `latest_matmul_`: both `AdvanceTimeTo` and `SplitAccumulationChain` read `*(this+0x70)` and name it `latest_matmul` in their RetCheck format strings (`@0x10f5ea08`, `@0x10f59920`).
 
@@ -351,23 +351,23 @@ A trace-arg → trace-arg edge takes a configurable floor (default 16 cycles); a
 
 ## Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `(anon)::AssignMrbEntriesToChains` | `0x10f4ac60` | driver: copy → introsort → allocator ctor → main loop | CONFIRMED |
-| `MrbChainAllocator::ExtendMrbReservation` | `0x10f58800` | per-step cost cell (throughput and edge, each capped via `min`, written to separate per-MXU timelines) | CONFIRMED |
-| `MrbChainAllocator::AdvanceTimeTo` | `0x10f5e9e0` | monotone clock + evict-by-`matres_program_order` | CONFIRMED |
-| `MrbChainAllocator::ReleaseMrbReservation` | `0x10f5f9e0` | recycle a freed `MrbEntry` into the per-chunk pool | CONFIRMED |
-| `MrbChainAllocator::SplitAccumulationChain` | `0x10f598e0` | cut a chain at the clock; defer the tail | CONFIRMED |
-| `bimap final_erase_` | `0x10f61d60` | the `chains_unevictable_until_` relation type (demangled) | CONFIRMED |
-| `btree_map<long, unique_ptr<…>>::insert` | `0x10f5d2e0` | store the deferred split-off chain tail | CONFIRMED |
-| `LloInstructionPushesToResultFifo` | `0x1d4f3600` | FIFO-push count, rounded to the per-gen granule | CONFIRMED |
-| `Target::vtable[+0x390]` | — | MRB-support count gate (`> 0`) | HIGH (slot byte-exact; name INFERRED) |
-| `Target::vtable[+0x5e0]` | — | FIFO-push rounding granule (byte) | HIGH (slot byte-exact; name INFERRED) |
-| `LatencyTable::LatencyBetween` | `0x1c89f820` | base edge → optional jitter → trace clamps | CONFIRMED |
-| `LatencyTable::LatencyTable(TpuVersion)` | `0x1c89f800` | base ctor — `+0x10 = 0` (jitter off) | CONFIRMED |
-| `DistributionCaller<BitGen>::Impl<UniformDistributionWrapper<int>>` | `0xfa7c9a0` | the `Uniform(0,101)` jitter draw (Randen PRNG) | CONFIRMED |
-| `AutoOr<int>::FromProtoOrDie` | `0x10979760` | trace-arg `0x84/0x84` edge config (default 16) | HIGH (default byte-exact; proto field name LOW) |
-| `LloOpcodeString` | `0x1d631360` | opcode → name table `@0x21cd0d60` (0x82/0x83/0x84) | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `(anon)::AssignMrbEntriesToChains` | `0x10f4ac60` | driver: copy → introsort → allocator ctor → main loop |
+| `MrbChainAllocator::ExtendMrbReservation` | `0x10f58800` | per-step cost cell (throughput and edge, each capped via `min`, written to separate per-MXU timelines) |
+| `MrbChainAllocator::AdvanceTimeTo` | `0x10f5e9e0` | monotone clock + evict-by-`matres_program_order` |
+| `MrbChainAllocator::ReleaseMrbReservation` | `0x10f5f9e0` | recycle a freed `MrbEntry` into the per-chunk pool |
+| `MrbChainAllocator::SplitAccumulationChain` | `0x10f598e0` | cut a chain at the clock; defer the tail |
+| `bimap final_erase_` | `0x10f61d60` | the `chains_unevictable_until_` relation type (demangled) |
+| `btree_map<long, unique_ptr<…>>::insert` | `0x10f5d2e0` | store the deferred split-off chain tail |
+| `LloInstructionPushesToResultFifo` | `0x1d4f3600` | FIFO-push count, rounded to the per-gen granule |
+| `Target::vtable[+0x390]` | — | MRB-support count gate (`> 0`) |
+| `Target::vtable[+0x5e0]` | — | FIFO-push rounding granule (byte) |
+| `LatencyTable::LatencyBetween` | `0x1c89f820` | base edge → optional jitter → trace clamps |
+| `LatencyTable::LatencyTable(TpuVersion)` | `0x1c89f800` | base ctor — `+0x10 = 0` (jitter off) |
+| `DistributionCaller<BitGen>::Impl<UniformDistributionWrapper<int>>` | `0xfa7c9a0` | the `Uniform(0,101)` jitter draw (Randen PRNG) |
+| `AutoOr<int>::FromProtoOrDie` | `0x10979760` | trace-arg `0x84/0x84` edge config (default 16) |
+| `LloOpcodeString` | `0x1d631360` | opcode → name table `@0x21cd0d60` (0x82/0x83/0x84) |
 
 ---
 

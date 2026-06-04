@@ -65,21 +65,21 @@ const char *GetResourceName(unsigned long r) {
 
 This is the stock XLA `AsyncTracker` collective taxonomy. The id is the canonical XLA `ResourceType` enum value.
 
-| id | name | Confidence |
-|---|---|---|
-| 0 | `kNoResource` | CONFIRMED |
-| 1 | `kAllToAll` | CONFIRMED |
-| 2 | `kAllGather` | CONFIRMED |
-| 3 | `kAllReduce` | CONFIRMED |
-| 4 | `kCollectivePermute` | CONFIRMED |
-| 5 | `kCopy` | CONFIRMED |
-| 6 | `kReduceScatter` | CONFIRMED |
-| 7 | `kSendRecv` | CONFIRMED |
-| 8 | `kSendHost` | CONFIRMED |
-| 9 | `kRecvHost` | CONFIRMED |
-| 10 | `kCollectiveBroadcast` | CONFIRMED |
-| 11 | (`"Not a valid default resource"` sentinel; no enumerator) | CONFIRMED |
-| 12 | `kRaggedAllToAll` | CONFIRMED |
+| id | name |
+|---|---|
+| 0 | `kNoResource` |
+| 1 | `kAllToAll` |
+| 2 | `kAllGather` |
+| 3 | `kAllReduce` |
+| 4 | `kCollectivePermute` |
+| 5 | `kCopy` |
+| 6 | `kReduceScatter` |
+| 7 | `kSendRecv` |
+| 8 | `kSendHost` |
+| 9 | `kRecvHost` |
+| 10 | `kCollectiveBroadcast` |
+| 11 | (`"Not a valid default resource"` sentinel; no enumerator) |
+| 12 | `kRaggedAllToAll` |
 
 > **NOTE — id 11 is a hole.** The name-ptr table has no real enumerator at index 11; the out-of-range branch (`r > 0xc`) and a stray index 11 both resolve to the `"Not a valid default resource"` string. Ids `{2, 3, 6}` (`kAllGather`, `kAllReduce`, `kReduceScatter`) are the three the `SetConcurrentResourceLimits` block reads from the `SchedulerConfig` (`xla_max_concurrent_async_all_gathers` / `all_reduces` / `reduce_scatters`); the base resources have no entry in the target-defined availability loop (`AsyncTracker::GetNumAvailableResources` returns 0).
 
@@ -99,27 +99,27 @@ char *GetResourceName(long r) {
 
 `GetNumTargetDefinedResources` @ `0x10fff5e0` returns `34`, fixing the target range at `[13, 13+34) = [13, 46]` inclusive.
 
-| id | name | functional resource | Confidence |
-|---|---|---|---|
-| 13 | `kDCNbw` | DCN (cross-slice) network bandwidth | CONFIRMED |
-| 14 | `kIciYPlus` | ICI ring link +Y | CONFIRMED |
-| 15 | `kIciYMinus` | ICI ring link −Y | CONFIRMED |
-| 16 | `kIciXPlus` | ICI ring link +X | CONFIRMED |
-| 17 | `kIciXMinus` | ICI ring link −X | CONFIRMED |
-| 18 | `kIciZPlus` | ICI ring link +Z | CONFIRMED |
-| 19 | `kIciZMinus` | ICI ring link −Z | CONFIRMED |
-| 20 | `kHostToDevice` | host→device DMA tap | CONFIRMED |
-| 21 | `kDeviceToHost` | device→host DMA tap | CONFIRMED |
-| 22 | `kSparseCore` | general SparseCore engine (per-core) | CONFIRMED |
-| 23 | `kSparseCoreGather` | SC gather op-class | CONFIRMED |
-| 24 | `kSparseCoreScatter` | SC scatter op-class | CONFIRMED |
-| 25 | `kSparseCoreDataFormatting` | SC data-formatting op-class | CONFIRMED |
-| 26 | `kSparseCoreKernel` | SC kernel op-class | CONFIRMED |
-| 27 | `kSparseCoreSort` | SC sort op-class | CONFIRMED |
-| 28 | (unnamed; no reloc, len 0 — SC catch-all) | SC general/catch-all | MEDIUM |
-| 29 | `kVmem` | VMEM-resident op | CONFIRMED |
-| 30..45 | `kCustomCollective` | 16 user custom-collective lanes (one shared string) | CONFIRMED |
-| 46 | (unnamed; len 0 — final catch-all) | tail sentinel | MEDIUM |
+| id | name | functional resource |
+|---|---|---|
+| 13 | `kDCNbw` | DCN (cross-slice) network bandwidth |
+| 14 | `kIciYPlus` | ICI ring link +Y |
+| 15 | `kIciYMinus` | ICI ring link −Y |
+| 16 | `kIciXPlus` | ICI ring link +X |
+| 17 | `kIciXMinus` | ICI ring link −X |
+| 18 | `kIciZPlus` | ICI ring link +Z |
+| 19 | `kIciZMinus` | ICI ring link −Z |
+| 20 | `kHostToDevice` | host→device DMA tap |
+| 21 | `kDeviceToHost` | device→host DMA tap |
+| 22 | `kSparseCore` | general SparseCore engine (per-core) |
+| 23 | `kSparseCoreGather` | SC gather op-class |
+| 24 | `kSparseCoreScatter` | SC scatter op-class |
+| 25 | `kSparseCoreDataFormatting` | SC data-formatting op-class |
+| 26 | `kSparseCoreKernel` | SC kernel op-class |
+| 27 | `kSparseCoreSort` | SC sort op-class |
+| 28 | (unnamed; no reloc, len 0 — SC catch-all) | SC general/catch-all |
+| 29 | `kVmem` | VMEM-resident op |
+| 30..45 | `kCustomCollective` | 16 user custom-collective lanes (one shared string) |
+| 46 | (unnamed; len 0 — final catch-all) | tail sentinel |
 
 > **NOTE — ids 28 and 46 are anonymous but valid.** The name-ptr table at `off_2181E148` has no relocation for index 28 (gap at slot `0x2181e1c0`), and id 46 falls through to `&nptr` (the empty string). Both are real resource ids that `GetNumAvailableResources` and `GetResourceHazardType` accept; only the print path leaves them blank. Id 28 is the SparseCore "catch-all" category (the `enum1` arm), id 46 the tail catch-all. A reimplementer must size the resource tables at 47, not 45.
 
@@ -175,14 +175,14 @@ void GetResourcesFromInstructionImpl(const HloInstruction &hlo, vector<pair<id,u
 
 The producers run in this fixed order. Each emits `pair{resource_id, ResourceUsageType}` where the usage is `kResourceOccupy` (`2 - byte208`) on an async-start and `kResourceRelease` (`byte208 + 1`) on an async-done; `byte208` (`this+0x208`) is the start/done canonical-swap bit.
 
-| Producer | Address | Emits ids | Selection rule | Confidence |
-|---|---|---|---|---|
-| `MayAddDcnBw` | `0x10fff6e0` | 13 | cross-slice collective (opcode in mask `{89..111}` ∩ `0x600003`); looks up `CrossSliceCollectiveInfoTracker`; emits id `13` | CONFIRMED |
-| `MayAddIciLinks` | `0x10fffb20` | 14..19 | builds a `CostModel`, runs `GetCycles` into a 23-slot `ResourceVector`, scans the six ICI slots `{0xd..0x12}` (heap table `{13,14,15,16,17,18}`); for each slot with cost ≠ 0 emits id `slot+1` | CONFIRMED |
-| `MayAddHostTransfers` | `0x11000280` | 20, 21 | host send/recv → `20` (H2D) / `21` (D2H) | CONFIRMED |
-| `MayAddSparseCoreResource` | `0x11000480` | 22..27 | thread-name "sparsecore" gate, then `GetSparseCoreConfig` op-type enum `{2..7}` → ids `{23,24,25,26,27}`; separately emits id `22` once per SC core (`GetNumSparseCoresUsed`), gated `this+0x13b == 1` | CONFIRMED |
-| `MayAddVmem` | `0x11000c00` | 29 | VMEM-resident op (opcode 10/11/16/17 with all-reduce-scatter-fusion gate) → id `29` | CONFIRMED |
-| `MayAddCustomCollective` | `0x11000d20` | 30..45 | `IsCustomCallAsync{Start,Done}` gate; `CustomCallConfig.collective_id` (field 3, `cfg+0x78`, hasbit `cfg+0x10 & 0x40`); emits id `0x1e + collective_id`, bounded `[0,15]` | CONFIRMED |
+| Producer | Address | Emits ids | Selection rule |
+|---|---|---|---|
+| `MayAddDcnBw` | `0x10fff6e0` | 13 | cross-slice collective (opcode in mask `{89..111}` ∩ `0x600003`); looks up `CrossSliceCollectiveInfoTracker`; emits id `13` |
+| `MayAddIciLinks` | `0x10fffb20` | 14..19 | builds a `CostModel`, runs `GetCycles` into a 23-slot `ResourceVector`, scans the six ICI slots `{0xd..0x12}` (heap table `{13,14,15,16,17,18}`); for each slot with cost ≠ 0 emits id `slot+1` |
+| `MayAddHostTransfers` | `0x11000280` | 20, 21 | host send/recv → `20` (H2D) / `21` (D2H) |
+| `MayAddSparseCoreResource` | `0x11000480` | 22..27 | thread-name "sparsecore" gate, then `GetSparseCoreConfig` op-type enum `{2..7}` → ids `{23,24,25,26,27}`; separately emits id `22` once per SC core (`GetNumSparseCoresUsed`), gated `this+0x13b == 1` |
+| `MayAddVmem` | `0x11000c00` | 29 | VMEM-resident op (opcode 10/11/16/17 with all-reduce-scatter-fusion gate) → id `29` |
+| `MayAddCustomCollective` | `0x11000d20` | 30..45 | `IsCustomCallAsync{Start,Done}` gate; `CustomCallConfig.collective_id` (field 3, `cfg+0x78`, hasbit `cfg+0x10 & 0x40`); emits id `0x1e + collective_id`, bounded `[0,15]` |
 
 > **QUIRK — collectives overlap by ICI *direction*, not by one "collective" counter.** `MayAddIciLinks` does not read the opcode to pick a direction; it inspects which ICI `ResourceVector` slots the cost model deposited cycles into and emits the matching scheduler resource for each. Two collectives that ride *different* ICI axes (e.g. an all-reduce on +X and an all-gather on +Y) consume *different* resource ids and overlap freely; two on the *same* axis serialize. A reimplementation that models a single "collective overlap" counter will incorrectly serialize them. The opcode pre-filter skips `{6, 9, 0x22}` (all-gather / all-reduce / collective-permute, which have their own ring path) and `0x5d` (reduce-scatter).
 
@@ -216,21 +216,21 @@ long GetNumAvailableResources(long id) {
 }
 ```
 
-| id(s) | name | tracker field | available-count source | Confidence |
-|---|---|---|---|---|
-| 13 | `kDCNbw` | `+0x128` | `xla_tpu_dcn_overlap_limit` (`int64`, TCE `+0x11d8`) | HIGH |
-| 14..19 | `kIci{Y,X,Z}{±}` | `+0x170` | field 1130 `xla_tpu_sparse_core_ici_overlap_limit` | CONFIRMED |
-| 20, 21 | `kHostToDevice`/`kDeviceToHost` | `+0x130` | field 803 `xla_tpu_host_transfer_overlap_limit` | HIGH |
-| 22 | `kSparseCore` | `+0x140` | `CoresPerChip(SC) / LogicalDevicesPerChip(SC)` (TpuTopology, per-gen) | CONFIRMED |
-| 23 | `kSparseCoreGather` | `+0x148` | field 1088 `..._gather_overlap_limit` | HIGH |
-| 24 | `kSparseCoreScatter` | `+0x150` | field 1089 `..._scatter_overlap_limit` | HIGH |
-| 25 | `kSparseCoreDataFormatting` | `+0x158` | field 1090 `..._data_formatting_overlap_limit` | HIGH |
-| 26 | `kSparseCoreKernel` | `+0x160` | field 1091 `..._kernel_overlap_limit` | HIGH |
-| 27 | `kSparseCoreSort` | `+0x168` | field 1092 `..._sort_overlap_limit` | HIGH |
-| 28 | (SC catch-all) | `+0x170` | field 1130 (shared with ICI) | HIGH |
-| 29 | `kVmem` | const | hardcoded `1` | CONFIRMED |
-| 30..45 | `kCustomCollective` | `+0x178` | constant `1` (ctor `push 1`) | HIGH |
-| 46 | (catch-all) | `+0x170` | field 1130 (shared with ICI) | HIGH |
+| id(s) | name | tracker field | available-count source |
+|---|---|---|---|
+| 13 | `kDCNbw` | `+0x128` | `xla_tpu_dcn_overlap_limit` (`int64`, TCE `+0x11d8`) |
+| 14..19 | `kIci{Y,X,Z}{±}` | `+0x170` | field 1130 `xla_tpu_sparse_core_ici_overlap_limit` |
+| 20, 21 | `kHostToDevice`/`kDeviceToHost` | `+0x130` | field 803 `xla_tpu_host_transfer_overlap_limit` |
+| 22 | `kSparseCore` | `+0x140` | `CoresPerChip(SC) / LogicalDevicesPerChip(SC)` (TpuTopology, per-gen) |
+| 23 | `kSparseCoreGather` | `+0x148` | field 1088 `..._gather_overlap_limit` |
+| 24 | `kSparseCoreScatter` | `+0x150` | field 1089 `..._scatter_overlap_limit` |
+| 25 | `kSparseCoreDataFormatting` | `+0x158` | field 1090 `..._data_formatting_overlap_limit` |
+| 26 | `kSparseCoreKernel` | `+0x160` | field 1091 `..._kernel_overlap_limit` |
+| 27 | `kSparseCoreSort` | `+0x168` | field 1092 `..._sort_overlap_limit` |
+| 28 | (SC catch-all) | `+0x170` | field 1130 (shared with ICI) |
+| 29 | `kVmem` | const | hardcoded `1` |
+| 30..45 | `kCustomCollective` | `+0x178` | constant `1` (ctor `push 1`) |
+| 46 | (catch-all) | `+0x170` | field 1130 (shared with ICI) |
 
 ### Field 1130 — one knob caps the ICI links *and* the SC catch-all
 
@@ -326,11 +326,11 @@ For the target ids 13..29, the table is `dword_AC0B2C0 = [0,1,1,1,1,1,1,0,0,0,0,
 
 The `ResourceType` model above is the jellyfish `TpuAsyncTracker`. It is not the only `AsyncTracker` in the binary: two SparseCore variants exist, and all three coexist within one compile, owned by *different* scheduling sub-passes — not selected by a single flag.
 
-| Tracker | Installer / call site | Resource space | Confidence |
-|---|---|---|---|
-| jellyfish `TpuAsyncTracker` | `GetTpuAsyncTracker` @ `0x10975520`, from jellyfish `RunHloScheduler` (1st pass + field-1202 rerun) | base `{0..12}` + target `{13..46}` (this page) | CONFIRMED |
-| `SparseCoreAsyncTracker` | `RunSparseCoreLatencyHidingScheduler` @ `0x1306e020` | base `AsyncTracker` + SC overrides (not decoded here) | HIGH |
-| `SparseCoreResourceAwareAsyncTracker` | `RunSparseCoreCostModelLatencyHidingScheduler` @ `0x1306f040` (make_shared @ `0x1306f1bb`) | distinct `{13..17}` space, hardcoded caps | CONFIRMED |
+| Tracker | Installer / call site | Resource space |
+|---|---|---|
+| jellyfish `TpuAsyncTracker` | `GetTpuAsyncTracker` @ `0x10975520`, from jellyfish `RunHloScheduler` (1st pass + field-1202 rerun) | base `{0..12}` + target `{13..46}` (this page) |
+| `SparseCoreAsyncTracker` | `RunSparseCoreLatencyHidingScheduler` @ `0x1306e020` | base `AsyncTracker` + SC overrides (not decoded here) |
+| `SparseCoreResourceAwareAsyncTracker` | `RunSparseCoreCostModelLatencyHidingScheduler` @ `0x1306f040` (make_shared @ `0x1306f1bb`) | distinct `{13..17}` space, hardcoded caps |
 
 The TensorCore LHS always uses the jellyfish `TpuAsyncTracker`. The two SparseCore-offload schedulers run only when the SparseCore gate holds (`SparseCoreCompiler::RunHloScheduler` @ `0x1306f820`):
 
@@ -395,25 +395,25 @@ This is exactly why the resource model keys collectives by ICI *direction*, not 
 
 ## Confidence Summary
 
-| Claim | Evidence | Confidence |
-|---|---|---|
-| Enum is 47 IDs: base `{0..12}` + target `{13..46}` | `GetNumTargetDefinedResources` @ `0x10fff5e0` = 34; `GetResourceName` `r <= 46` CHECK | CONFIRMED |
-| Base names `{0..12}` (kNoResource..kRaggedAllToAll, id 11 sentinel) | `AsyncTracker::GetResourceName` @ `0x13616500`, table `off_21920270` | CONFIRMED |
-| Target names `{13..46}` (kDCNbw, 6× kIci, host, 6× SC, kVmem, 16× kCustomCollective, 2 catch-alls) | `TpuAsyncTracker::GetResourceName` @ `0x10fff420`, table `off_2181E148` | CONFIRMED |
-| Ids 28 and 46 are valid but unnamed | name-ptr table gap at slot 28; id 46 → `&nptr` | MEDIUM |
-| Op→id switch (op6→2, 9→3, 12→1, 33→10, 34→4, 44→5, 86→12, 93→6, else 0) | `GetResourceTypeForOp` @ `0x13612240` | CONFIRMED |
-| Six `MayAdd*` producers in fixed order; usage = occupy/release via `byte208` | `GetResourcesFromInstructionImpl` @ `0x11001040` | CONFIRMED |
-| `MayAddIciLinks` emits id `slot+1` from nonzero ICI `ResourceVector` slots | `MayAddIciLinks` @ `0x10fffb20`, slot table `{13..18}` | CONFIRMED |
-| `MayAddCustomCollective` id = `0x1e + collective_id`, bound `[0,15]` | `MayAddCustomCollective` @ `0x11000d20`, CHECK `kCustomCollectiveEnd` | CONFIRMED |
-| `GetNumAvailableResources` id→field map (`+0x128..+0x178`, id 29 const 1) | `0x10fff600`, switch byte-decoded | CONFIRMED |
-| Field 1130 = `xla_tpu_sparse_core_ici_overlap_limit` caps ids 14..19, 28, 46 | `_InternalSerialize` `edi=0x46a`; FieldDescriptorProto carve | CONFIRMED |
-| Id 22 (`kSparseCore`) cap = `CoresPerChip(SC)/LDPC(SC)` (TpuTopology, per-gen) | `GetTpuAsyncTracker` @ `0x10975520` idiv branch | CONFIRMED |
-| Hazard table `[0,1,1,1,1,1,1,0,0,0,0,2,0,0,0,0,2]`; base `4*(id!=5)`; override→3 | `GetResourceHazardType` @ `0x110015e0`, `dword_AC0B2C0` | CONFIRMED |
-| Three trackers coexist by sub-pass; SC gate predicate | `SparseCoreCompiler::RunHloScheduler` @ `0x1306f820` | CONFIRMED |
-| SCRAAT distinct `{13..17}` = SCS/SCT/ICI/LocalReduction/2DAllToAll, caps `{1,20,5,1,1}` | `0x134a7b20` (table `qword_AE344F8`) / `0x134a7440` | CONFIRMED |
-| TCE field numbers 803/1088..1092 for ids 20/21/23..27 | descriptor names (not separately byte-anchored here) | HIGH |
-| Id 13 DCN cap field# (507 vs 508) at TCE `+0x11d8` | `int64` type + name confirmed; slot pairing not isolated | PARTIAL |
-| Offload-queuing branch field# for id 22 | three-way select byte-present; knob field# not decoded | PARTIAL |
+| Claim | Evidence |
+|---|---|
+| Enum is 47 IDs: base `{0..12}` + target `{13..46}` | `GetNumTargetDefinedResources` @ `0x10fff5e0` = 34; `GetResourceName` `r <= 46` CHECK |
+| Base names `{0..12}` (kNoResource..kRaggedAllToAll, id 11 sentinel) | `AsyncTracker::GetResourceName` @ `0x13616500`, table `off_21920270` |
+| Target names `{13..46}` (kDCNbw, 6× kIci, host, 6× SC, kVmem, 16× kCustomCollective, 2 catch-alls) | `TpuAsyncTracker::GetResourceName` @ `0x10fff420`, table `off_2181E148` |
+| Ids 28 and 46 are valid but unnamed | name-ptr table gap at slot 28; id 46 → `&nptr` |
+| Op→id switch (op6→2, 9→3, 12→1, 33→10, 34→4, 44→5, 86→12, 93→6, else 0) | `GetResourceTypeForOp` @ `0x13612240` |
+| Six `MayAdd*` producers in fixed order; usage = occupy/release via `byte208` | `GetResourcesFromInstructionImpl` @ `0x11001040` |
+| `MayAddIciLinks` emits id `slot+1` from nonzero ICI `ResourceVector` slots | `MayAddIciLinks` @ `0x10fffb20`, slot table `{13..18}` |
+| `MayAddCustomCollective` id = `0x1e + collective_id`, bound `[0,15]` | `MayAddCustomCollective` @ `0x11000d20`, CHECK `kCustomCollectiveEnd` |
+| `GetNumAvailableResources` id→field map (`+0x128..+0x178`, id 29 const 1) | `0x10fff600`, switch byte-decoded |
+| Field 1130 = `xla_tpu_sparse_core_ici_overlap_limit` caps ids 14..19, 28, 46 | `_InternalSerialize` `edi=0x46a`; FieldDescriptorProto carve |
+| Id 22 (`kSparseCore`) cap = `CoresPerChip(SC)/LDPC(SC)` (TpuTopology, per-gen) | `GetTpuAsyncTracker` @ `0x10975520` idiv branch |
+| Hazard table `[0,1,1,1,1,1,1,0,0,0,0,2,0,0,0,0,2]`; base `4*(id!=5)`; override→3 | `GetResourceHazardType` @ `0x110015e0`, `dword_AC0B2C0` |
+| Three trackers coexist by sub-pass; SC gate predicate | `SparseCoreCompiler::RunHloScheduler` @ `0x1306f820` |
+| SCRAAT distinct `{13..17}` = SCS/SCT/ICI/LocalReduction/2DAllToAll, caps `{1,20,5,1,1}` | `0x134a7b20` (table `qword_AE344F8`) / `0x134a7440` |
+| TCE field numbers 803/1088..1092 for ids 20/21/23..27 | descriptor names (not separately byte-anchored here) |
+| Id 13 DCN cap field# (507 vs 508) at TCE `+0x11d8` | `int64` type + name confirmed; slot pairing not isolated |
+| Offload-queuing branch field# for id 22 | three-way select byte-present; knob field# not decoded |
 
 ---
 

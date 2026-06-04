@@ -289,21 +289,21 @@ All four deposit through `BaseStrategyND::UpdateNeighborLocation` (`0x137c5fa0`)
 
 ## Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `tpu::OrientationsToTpuDegradedAxes` | `0x1fc57d00` | enum `1/2/3` → x/y/z degraded bytes | HIGH (decompile-verified) |
-| `SliceBuilderHelper::StatSession` | `0x1fbb5b80` | faulty-link `Orientation` source; pack dword | HIGH (sole caller, scan-verified) |
-| `TpuDegradedAxesProto::_InternalSerialize` | `0x20adb880` | proto byte layout proof | HIGH (byte-exact) |
-| `tpu::GetDefaultConfiguredProperties` | `0x20acee40` | no-degraded default POD | HIGH (byte-exact) |
-| `target::CreateFromTopology` (`…,TpuConfiguredProperties&,…`) | `0x1d48e520` | the writer: cfg → `Target[+0x3f8..+0x3fc]` | HIGH (byte-exact) |
-| `target::CreateFromTopology` (`…,MultiSliceTopologyAndLocation*`) | `0x1d48e4c0` | default-config wrapper (called by `GetTargetDescription`) | HIGH |
-| `target::CreateFromTopology` (`TpuTopology*,long`) | `0x1d48e460` | default-config wrapper (called by `CreateTargetFromDeepseaPlatform`) | HIGH |
-| `Target::IsXDegraded` / `IsYDegraded` / `IsZDegraded` | `0x1d615940` / `…960` / `…980` | read `Target[+0x3f8..+0x3fa]` | HIGH (byte-exact) |
-| `StrategyND::BuildStrategy` | `0x137c4660` | `[obj+0xa8]` gate, color_dims fan-out, `RingLocation` build | HIGH (gate + coord build); emitter walk MEDIUM |
-| `StrategyND::ComputeOrdinal` | `0x137c5300` | coord → ring-ordinal `LloValue` | HIGH |
-| `StrategyND::ComputeNeighbor` | `0x137c5600` | forward/backward neighbour, 4-builder dispatch | HIGH |
-| `BaseStrategyND::UpdateNeighborLocation` | `0x137c5fa0` | deposit neighbour into ring list | HIGH |
-| `UniDirectionNDRingStrategy::ctor` / `UniDirection1DRingStrategy::ctor` | `0x137d4700` / `0x137d4a20` | thin ND / 1-D ring wrappers | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `tpu::OrientationsToTpuDegradedAxes` | `0x1fc57d00` | enum `1/2/3` → x/y/z degraded bytes |
+| `SliceBuilderHelper::StatSession` | `0x1fbb5b80` | faulty-link `Orientation` source; pack dword |
+| `TpuDegradedAxesProto::_InternalSerialize` | `0x20adb880` | proto byte layout proof |
+| `tpu::GetDefaultConfiguredProperties` | `0x20acee40` | no-degraded default POD |
+| `target::CreateFromTopology` (`…,TpuConfiguredProperties&,…`) | `0x1d48e520` | the writer: cfg → `Target[+0x3f8..+0x3fc]` |
+| `target::CreateFromTopology` (`…,MultiSliceTopologyAndLocation*`) | `0x1d48e4c0` | default-config wrapper (called by `GetTargetDescription`) |
+| `target::CreateFromTopology` (`TpuTopology*,long`) | `0x1d48e460` | default-config wrapper (called by `CreateTargetFromDeepseaPlatform`) |
+| `Target::IsXDegraded` / `IsYDegraded` / `IsZDegraded` | `0x1d615940` / `…960` / `…980` | read `Target[+0x3f8..+0x3fa]` |
+| `StrategyND::BuildStrategy` | `0x137c4660` | `[obj+0xa8]` gate, color_dims fan-out, `RingLocation` build |
+| `StrategyND::ComputeOrdinal` | `0x137c5300` | coord → ring-ordinal `LloValue` |
+| `StrategyND::ComputeNeighbor` | `0x137c5600` | forward/backward neighbour, 4-builder dispatch |
+| `BaseStrategyND::UpdateNeighborLocation` | `0x137c5fa0` | deposit neighbour into ring list |
+| `UniDirectionNDRingStrategy::ctor` / `UniDirection1DRingStrategy::ctor` | `0x137d4700` / `0x137d4a20` | thin ND / 1-D ring wrappers |
 
 ---
 

@@ -100,25 +100,25 @@ The ordering invariants are the part worth internalizing. Routing is installed (
 
 `(fanout)` = `ExecuteOnAllWorkers` gRPC broadcast-and-join; `(local)` = on the controller under `Master::mu_`; `(seq)` = per-worker sequential RPC; `(gated)` = conditional.
 
-| # | Step | Dispatch | Implementation | Confidence |
-|---|---|---|---|---|
-| 0 | Drain stale local topology | local | `LocalTopology` dtor on cached entries | HIGH |
-| 1 | Discover local topology | fanout | `Master::GetLocalTopology` → per-worker link set | CERTAIN |
-| 2 | Aggregate → global topology | local | `Master::DiscoverTopology` @`0x1fbbe4e0` | CERTAIN |
-| 3 | Set global chip IDs | fanout | `Master::SetGlobalChipId` @`0x1fbbe7e0` | CERTAIN |
-| 4 | Generate routing tables | local | `RoutingTableGeneratorFactory::Generate` | HIGH |
-| 5 | Detect routing-table deadlock | gated local | `Master::DetectRoutingTableDeadlock` @`0x1fbbed60` (if `this+0x90`) | CERTAIN |
-| 6 | Install routing tables | fanout | `Master::SetRoutingTable` @`0x1fbbf6e0` | CERTAIN |
-| 7 | Generate GTC tree | local | global-time-counter root/leaf | HIGH |
-| 8 | Install GTC configuration | fanout | `Master::SetGtcConfiguration` @`0x1fbc0580` | CERTAIN |
-| 9 | Control ICI error reporting | gated fanout | `Master::ControlIciErrorReport` @`0x1fbc0d00` | CERTAIN |
-| 10 | Enable ICI data link | fanout | `Master::EnableIciDataLink` @`0x1fbc0ee0` (§3) | CERTAIN |
-| 11 | Wait for data-link-up | seq | `Master::WaitForDataLinkUp` @`0x1fbc3b20` → `IciControl::WaitForLinksUp` (§2) | HIGH |
-| 12 | Clear / reset global GTC | seq | `Master::ClearGlobalGtc` @`0x1fbc3d80` | HIGH |
-| 13 | Wait for GTC reset | seq | `Master::WaitForGtcReset` @`0x1fbc3fe0` | HIGH |
-| 14 | Set chip coordinates | fanout | `Master::SetChipCoordinates` @`0x1fbc4640` | HIGH |
-| 15 | Broadcast slice information | seq | `Master::BroadcastSliceInformation` @`0x1fbc4240` | HIGH |
-| 16 | Disable ICI interrupts | seq | `Master::DisableIciInterrupts` @`0x1fbc4a80` | HIGH |
+| # | Step | Dispatch | Implementation |
+|---|---|---|---|
+| 0 | Drain stale local topology | local | `LocalTopology` dtor on cached entries |
+| 1 | Discover local topology | fanout | `Master::GetLocalTopology` → per-worker link set |
+| 2 | Aggregate → global topology | local | `Master::DiscoverTopology` @`0x1fbbe4e0` |
+| 3 | Set global chip IDs | fanout | `Master::SetGlobalChipId` @`0x1fbbe7e0` |
+| 4 | Generate routing tables | local | `RoutingTableGeneratorFactory::Generate` |
+| 5 | Detect routing-table deadlock | gated local | `Master::DetectRoutingTableDeadlock` @`0x1fbbed60` (if `this+0x90`) |
+| 6 | Install routing tables | fanout | `Master::SetRoutingTable` @`0x1fbbf6e0` |
+| 7 | Generate GTC tree | local | global-time-counter root/leaf |
+| 8 | Install GTC configuration | fanout | `Master::SetGtcConfiguration` @`0x1fbc0580` |
+| 9 | Control ICI error reporting | gated fanout | `Master::ControlIciErrorReport` @`0x1fbc0d00` |
+| 10 | Enable ICI data link | fanout | `Master::EnableIciDataLink` @`0x1fbc0ee0` (§3) |
+| 11 | Wait for data-link-up | seq | `Master::WaitForDataLinkUp` @`0x1fbc3b20` → `IciControl::WaitForLinksUp` (§2) |
+| 12 | Clear / reset global GTC | seq | `Master::ClearGlobalGtc` @`0x1fbc3d80` |
+| 13 | Wait for GTC reset | seq | `Master::WaitForGtcReset` @`0x1fbc3fe0` |
+| 14 | Set chip coordinates | fanout | `Master::SetChipCoordinates` @`0x1fbc4640` |
+| 15 | Broadcast slice information | seq | `Master::BroadcastSliceInformation` @`0x1fbc4240` |
+| 16 | Disable ICI interrupts | seq | `Master::DisableIciInterrupts` @`0x1fbc4a80` |
 
 > **GOTCHA —** step 11 (`WaitForDataLinkUp`) is **not** an `ExecuteOnAllWorkers` fan-out in the original design intent — the raw classification marked it sequential, "wait per chip, not fanned out." The decompile shows a fan-out call site in the trailing block, but the per-chip poll inside each worker (`Worker::WaitForDataLinkUp` @`0x1fc417e0` → driver `WaitForDataLinkUp` → `IciControl::WaitForLinksUp`) blocks until that chip's links are up or its deadline expires. Whether the controller waits on all chips concurrently (fanout-join) or serially, the per-chip blocking semantics are identical and the deadline is per-chip-overridable via `WaitForDataLinkUpRequest_ChipDataLinkUpTimeout`. Treat step 11 as "every chip must reach DL-up before any chip advances to step 12."
 
@@ -273,12 +273,12 @@ The chip-local `jxc::SliceConfiguration::EnableIci` @`0xe799da0` sets `ports_ena
 
 The chip-local `SliceConfiguration` holds the per-port DL state and enable bookkeeping. The one field anchored byte-exact is the `ports_enabled` bool in `asic_sw::driver::deepsea::jxc::SliceConfiguration`, at offset `0xe8` (`= +232`); the modern `ici::SliceConfiguration` @`0x1fdb43e0` carries the same logical state but at a shifted layout (its enabled-port array/length/capacity live at `0x108`/`0x110`/`0x118`, verified in `ici::SliceConfiguration::EnableIci`). The fields a reimplementer must replicate:
 
-| Offset | Class | Type | Field | Set by | Cleared by | Confidence |
-|---|---|---|---|---|---|---|
-| `0xe8` | `jxc::SliceConfiguration` | bool | `ports_enabled` (`EnableIci` called) | `jxc::SliceConfiguration::EnableIci` @`0xe799da0` (`slice_configuration.cc:291–295`) | `LinksDownReset` @`0xe79a440` (`+232 = 0`) | CERTAIN |
-| `0x108` | `ici::SliceConfiguration` | int* | enabled-port indices | `ici::SliceConfiguration::EnableIci` @`0x1fdb43e0` | `LinksDownReset` | HIGH |
-| `0x110` | `ici::SliceConfiguration` | uint64 | enabled-port count | `EnableIci` | `LinksDownReset` (→ 0) | HIGH |
-| `0x118` | `ici::SliceConfiguration` | uint64 | enabled-port capacity | `EnableIci` | (immutable) | HIGH |
+| Offset | Class | Type | Field | Set by | Cleared by |
+|---|---|---|---|---|---|
+| `0xe8` | `jxc::SliceConfiguration` | bool | `ports_enabled` (`EnableIci` called) | `jxc::SliceConfiguration::EnableIci` @`0xe799da0` (`slice_configuration.cc:291–295`) | `LinksDownReset` @`0xe79a440` (`+232 = 0`) |
+| `0x108` | `ici::SliceConfiguration` | int* | enabled-port indices | `ici::SliceConfiguration::EnableIci` @`0x1fdb43e0` | `LinksDownReset` |
+| `0x110` | `ici::SliceConfiguration` | uint64 | enabled-port count | `EnableIci` | `LinksDownReset` (→ 0) |
+| `0x118` | `ici::SliceConfiguration` | uint64 | enabled-port capacity | `EnableIci` | (immutable) |
 
 The per-port `DataLinkLayerState` array (re-read by `CollectDataLinkState`) is owned by `IciPortUser` per port (below), not by an inline `SliceConfiguration` field on this build.
 
@@ -294,17 +294,17 @@ The mapping is an **identity**, not a permutation. The function body is a plain 
 
 The enum descriptor is `LinkStackReadyState_descriptor` @`0xe7b6540`; its arity (7) is confirmed by the `NameOfDenseEnum<&…, 0, 7>` calls in `WaitForLinksUp` (§2). The seven value-name strings are emitted at runtime from the proto descriptor and are **not present as `.rodata` literals** (LOW — names require the `link_stack.proto` FileDescriptorProto). The numeric model:
 
-| FW `port_ready_state` | `LinkStackReadyState` value | Source | Confidence |
-|---|---|---|---|
-| 0 | 0 | `0xe7b6400` case 0 | CERTAIN |
-| 1 | 1 | case 1 | CERTAIN |
-| 2 | 2 | case 2 | CERTAIN |
-| 3 | 3 | case 3 | CERTAIN |
-| 4 | 4 | case 4 | CERTAIN |
-| 5 | 5 | case 5 | CERTAIN |
-| 6 | 6 | case 6 | CERTAIN |
-| 7 | 7 → error if proto arity is 7 | case 7; descriptor arity 7 | HIGH |
-| ≥8 | `"Unknown ready_state %d"` error | default arm | CERTAIN |
+| FW `port_ready_state` | `LinkStackReadyState` value | Source |
+|---|---|---|
+| 0 | 0 | `0xe7b6400` case 0 |
+| 1 | 1 | case 1 |
+| 2 | 2 | case 2 |
+| 3 | 3 | case 3 |
+| 4 | 4 | case 4 |
+| 5 | 5 | case 5 |
+| 6 | 6 | case 6 |
+| 7 | 7 → error if proto arity is 7 | case 7; descriptor arity 7 |
+| ≥8 | `"Unknown ready_state %d"` error | default arm |
 
 > **QUIRK —** the firmware register is 8-valued (0..7) but the proto enum is described as 7-valued by `NameOfDenseEnum<…,0,7>`. The identity remap passes all eight firmware codes through unchanged; if the descriptor truly carries only seven dense names (indices 0..6), firmware code 7 would have no name and `NameOfDenseEnum` falls to its `NameOfDenseEnumSlow` path (verified present at decompile line 950) rather than indexing the cached name table. The discrepancy is benign for the poll — `WaitForLinksUp` compares against the numeric ready value, not the name — but a reimplementer rendering diagnostics must handle the un-named eighth code.
 

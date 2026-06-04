@@ -461,6 +461,4 @@
 - [Open-Frontier Register](appendix/open-frontier-register.md)
 - [Cross-Reference Dependency Graph](appendix/cross-reference-graph.md)
 - [Binary Layout Reference](appendix/binary-layout.md)
-- [Methodology (Deep)](appendix/methodology-deep.md)
 - [Extended Glossary](appendix/glossary-extended.md)
-- [Changelog](appendix/changelog.md)

@@ -43,12 +43,6 @@ For reimplementation, the contract is:
 
 The string immediates are byte-confirmed: case 1 stores the DWORD `"preg"` then `'s'`, case 2 `"sreg"`+`'s'`, case 4 `"vreg"`+`'s'`; cases 0 and 3 use a `strcpy` of `"none"` / `"vmregs"`; the mnemonic arm uses the two-byte immediates `'p'`, `'s'`, `'v'` and a `strcpy("vm")`. The "opcode count" column is the per-`RegisterType` histogram of which class each LLO opcode produces.
 
-| | | Confidence |
-|---|---|---|
-| Five-member enum, ordinals 0..4 | Both stringifiers are 5-arm switches | CERTAIN |
-| Names and mnemonics | Inline immediates decoded | CERTAIN |
-| Opcode-count histogram | Cross-referenced produced-type histogram | HIGH |
-
 > **NOTE —** the register allocator splits these five classes into two groups, witnessed by two assertion strings in the binary: `"type == RegisterType::kPreg || type == RegisterType::kVmreg"` (the non-spillable predicate/mask group) and `"type == RegisterType::kSreg || type == RegisterType::kVreg"` (the spillable scalar/vector data group). `kNone` is never allocated.
 
 ---
@@ -78,12 +72,7 @@ Twelve ordinals are **multi-instance banks** — registers that exist in several
 
 The two count-3 banks (0x01, 0x05) assert `*unit_id < 3`; the ten count-4 banks assert `*unit_id < 4`. The base always equals the ordinal (`return ordinal + instance`).
 
-| | | Confidence |
-|---|---|---|
-| Enum value space 1..0x32 (50 ordinals) | Banked arms span 0x01..0x32; default pass-through | CERTAIN |
-| 12 banked ordinals, counts 3/3 then 4×10 | Per-arm `*unit_id < N` + `return ordinal + instance` | CERTAIN |
-| 38 single (non-banked) ordinals | Default arm returns ordinal unchanged | CERTAIN |
-| Per-ordinal symbolic name (which is a loop counter vs sync-flag bank, etc.) | No static `ArchRegister->ToString` exists | LOW |
+There is no static `ArchRegister`-to-name table: no static `ArchRegister->ToString` exists, so a per-ordinal symbolic name (loop counter vs sync-flag bank, etc.) is not resolvable from this enum alone.
 
 > **GOTCHA —** there is no static `ArchRegister`-to-name table. The printable name of any arch register is produced one level up by `RegisterNumbering::ToArchRegString` @ `0x1275e2a0`, which prints `"<RegisterTypeToMnemonic(type)><regno>"` (e.g. `v3`, `s12`, `vm5`, `p2`) *after* resolving the slot through the per-`Target` numbering table built by `Target::InitRegisterNumbering`. So "ArchRegister 23" does not have a fixed name — it prints as `vN` / `sN` / etc. only once the target's numbering is bound. See [ArchRegno Numbering](archregno-numbering.md).
 
@@ -97,22 +86,22 @@ Above the ~50 real arch registers sits a pseudo-register namespace for matmul-re
 
 `ResultFifo` enumerates the 25 hardware result FIFOs (ordinals 0..0x18). The authoritative name source is `ResultFifoToString` @ `0x14441340`, a pure `switch` where each arm writes the name as inline ASCII immediates and stores the length at `buffer[23]`. The count is independently cross-confirmed by `ResultFifoEntryCount` @ `0x1d631520`, which has the same 25 valid arms.
 
-| Ordinal | Name | FIFO class | Confidence |
-|---|---|---|---|
-| 0x00–0x03 | `kMsrA0`..`kMsrA3` | Matmul staging-result, bank A, instances 0..3 | CERTAIN |
-| 0x04–0x07 | `kMsrB0`..`kMsrB3` | Matmul staging-result, bank B, instances 0..3 | CERTAIN |
-| 0x08–0x0b | `kMrf0`..`kMrf3` | Matmul result FIFO, instances 0..3 | CERTAIN |
-| 0x0c–0x0e | `kTsf0`..`kTsf2` | Transpose staging FIFO, instances 0..2 | CERTAIN |
-| 0x0f–0x11 | `kTrf0`..`kTrf2` | Transpose result FIFO, instances 0..2 | CERTAIN |
-| 0x12 | `kErf` | EUP result FIFO (transcendental/activation drain) | CERTAIN |
-| 0x13 | `kV2sf` | Vector-to-scalar FIFO (vector→scalar bridge) | CERTAIN |
-| 0x14 | `kSfrf` | Sync-flag result FIFO (sync-flag read-back) | CERTAIN |
-| 0x15 | `kCrf` | Cross-lane result FIFO (XLU permute/reduce result) | CERTAIN |
-| 0x16 | `kDrf` | DivRem result FIFO (scalar divide/remainder) | CERTAIN |
-| 0x17 | `kSccf` | Cross-core / channel result FIFO | HIGH (name), LOW (gloss) |
-| 0x18 | `kCcrf` | Cmem / cross-core result FIFO | HIGH (name), LOW (gloss) |
+| Ordinal | Name | FIFO class |
+|---|---|---|
+| 0x00–0x03 | `kMsrA0`..`kMsrA3` | Matmul staging-result, bank A, instances 0..3 |
+| 0x04–0x07 | `kMsrB0`..`kMsrB3` | Matmul staging-result, bank B, instances 0..3 |
+| 0x08–0x0b | `kMrf0`..`kMrf3` | Matmul result FIFO, instances 0..3 |
+| 0x0c–0x0e | `kTsf0`..`kTsf2` | Transpose staging FIFO, instances 0..2 |
+| 0x0f–0x11 | `kTrf0`..`kTrf2` | Transpose result FIFO, instances 0..2 |
+| 0x12 | `kErf` | EUP result FIFO (transcendental/activation drain) |
+| 0x13 | `kV2sf` | Vector-to-scalar FIFO (vector→scalar bridge) |
+| 0x14 | `kSfrf` | Sync-flag result FIFO (sync-flag read-back) |
+| 0x15 | `kCrf` | Cross-lane result FIFO (XLU permute/reduce result) |
+| 0x16 | `kDrf` | DivRem result FIFO (scalar divide/remainder) |
+| 0x17 | `kSccf` | Cross-core / channel result FIFO |
+| 0x18 | `kCcrf` | Cmem / cross-core result FIFO |
 
-The names are byte-exact: arms 0..7 are `strcpy("kMsrA0")` … `strcpy("kMsrB3")`; arms 8..17 store the DWORD prefix (`"kMrf"`, `"kTsf"`, `"kTrf"`) plus a single digit byte; arms 18..24 store `"kErf"`, `"kV2sf"`, `"kSfrf"`, `"kCrf"`, `"kDrf"`, `"kSccf"`, `"kCcrf"`. The class gloss for the first ten staging/result FIFOs is anchored by both the name prefix and the `FifoInstance` bank arithmetic; the `kSccf` / `kCcrf` expansion is inferred from the prefix.
+The names are byte-exact: arms 0..7 are `strcpy("kMsrA0")` … `strcpy("kMsrB3")`; arms 8..17 store the DWORD prefix (`"kMrf"`, `"kTsf"`, `"kTrf"`) plus a single digit byte; arms 18..24 store `"kErf"`, `"kV2sf"`, `"kSfrf"`, `"kCrf"`, `"kDrf"`, `"kSccf"`, `"kCcrf"`. The class gloss for the first ten staging/result FIFOs is anchored by both the name prefix and the `FifoInstance` bank arithmetic; the `kSccf` / `kCcrf` class follows the name prefix.
 
 > **QUIRK —** a sibling stringifier `MsrToString` @ `0x1d629720` confirms the two matmul staging-result banks are `"msra"` / `"msrb"`, matching `kMsrA*` / `kMsrB*`. A separate `XmrToString` @ `0x1d629740` names the matrix-register file `"gmra"` (gain-matrix register) and `"lmr"` (latch-matrix register) — these are a *different* register file from `ResultFifo`, surfaced in [Slot: MXU](slot-mxu.md).
 
@@ -154,7 +143,7 @@ function ResultFifoEntryCount(fifo, version):        // sub_1d631520
             return depth_table_for_group[version]    // version-indexed int[]
 ```
 
-> **NOTE —** the `TpuVersion < 6` gate means this build's depth table covers `kJellyfish`(0) through a version-5 codename; version 6+ is a not-yet-supported platform. The full 25 × `TpuVersion` depth matrix is mechanism-confirmed but not enumerated cell-by-cell here.
+> **NOTE —** the `TpuVersion < 6` gate means this build's depth table covers `kJellyfish`(0) through a version-5 codename; version 6+ is a not-yet-supported platform. The full 25 × `TpuVersion` depth matrix is not enumerated cell-by-cell here.
 
 ---
 
@@ -217,29 +206,29 @@ The dispatch is a jump table at `0xadf5504` indexed by `op - 0x8b` (203 entries)
 
 ### The 21 XLU opcodes
 
-| Opcode | Name | Variant | Confidence |
-|---|---|---|---|
-| 0x08b | `kVectorSetPermutePattern` | `XluControlOperation` | CERTAIN (opcode), HIGH (variant) |
-| 0x08c | `kVectorSetSegmentPattern` | `XluControlOperation` | CERTAIN / HIGH |
-| 0x0a6 | `kVectorTranspose` | `TransposeTile` | CERTAIN / HIGH |
-| 0x0a7 | `kVectorTransposeBinary` | `TransposeTile` | CERTAIN / HIGH |
-| 0x0f5 | `kVectorMinReduceF32` | `RpuOperation` | CERTAIN / HIGH |
-| 0x0f6 | `kVectorMaxReduceF32` | `RpuOperation` | CERTAIN / HIGH |
-| 0x0f7 | `kVectorAddReduceF32` | `RpuOperation` | CERTAIN / HIGH |
-| 0x0f8 | `kVectorMaxIndexReduceF32` | `RpuOperation` | CERTAIN / HIGH |
-| 0x0f9 | `kVectorMinIndexReduceF32` | `RpuOperation` | CERTAIN / HIGH |
-| 0x0fa | `kVectorMaxSegmentReduceF32` | `RpuOperation` | CERTAIN / HIGH |
-| 0x0fb | `kVectorMinSegmentReduceF32` | `RpuOperation` | CERTAIN / HIGH |
-| 0x0fc | `kVectorAddSegmentReduceF32` | `RpuOperation` | CERTAIN / HIGH |
-| 0x0fd | `kVectorMinReduceBf16` | `RpuOperation` | CERTAIN / HIGH |
-| 0x0fe | `kVectorMaxReduceBf16` | `RpuOperation` | CERTAIN / HIGH |
-| 0x0ff | `kVectorAddReduceBf16` | `RpuOperation` | CERTAIN / HIGH |
-| 0x100 | `kVectorMaxIndexReduceBf16` | `RpuOperation` | CERTAIN / HIGH |
-| 0x101 | `kVectorMinIndexReduceBf16` | `RpuOperation` | CERTAIN / HIGH |
-| 0x14f | `kVectorXlaneResult` | `XluControlOperation` (pops `kCrf`) | CERTAIN / HIGH |
-| 0x150 | `kVectorPermuteResult` | `XluControlOperation` | CERTAIN / HIGH |
-| 0x154 | `kVectorTransposeResult` | `TransposeTile` (pops `kTrf*`) | CERTAIN / HIGH |
-| 0x155 | `kVectorTransposeClear` | `TransposeTile` | CERTAIN / HIGH |
+| Opcode | Name | Variant |
+|---|---|---|
+| 0x08b | `kVectorSetPermutePattern` | `XluControlOperation` |
+| 0x08c | `kVectorSetSegmentPattern` | `XluControlOperation` |
+| 0x0a6 | `kVectorTranspose` | `TransposeTile` |
+| 0x0a7 | `kVectorTransposeBinary` | `TransposeTile` |
+| 0x0f5 | `kVectorMinReduceF32` | `RpuOperation` |
+| 0x0f6 | `kVectorMaxReduceF32` | `RpuOperation` |
+| 0x0f7 | `kVectorAddReduceF32` | `RpuOperation` |
+| 0x0f8 | `kVectorMaxIndexReduceF32` | `RpuOperation` |
+| 0x0f9 | `kVectorMinIndexReduceF32` | `RpuOperation` |
+| 0x0fa | `kVectorMaxSegmentReduceF32` | `RpuOperation` |
+| 0x0fb | `kVectorMinSegmentReduceF32` | `RpuOperation` |
+| 0x0fc | `kVectorAddSegmentReduceF32` | `RpuOperation` |
+| 0x0fd | `kVectorMinReduceBf16` | `RpuOperation` |
+| 0x0fe | `kVectorMaxReduceBf16` | `RpuOperation` |
+| 0x0ff | `kVectorAddReduceBf16` | `RpuOperation` |
+| 0x100 | `kVectorMaxIndexReduceBf16` | `RpuOperation` |
+| 0x101 | `kVectorMinIndexReduceBf16` | `RpuOperation` |
+| 0x14f | `kVectorXlaneResult` | `XluControlOperation` (pops `kCrf`) |
+| 0x150 | `kVectorPermuteResult` | `XluControlOperation` |
+| 0x154 | `kVectorTransposeResult` | `TransposeTile` (pops `kTrf*`) |
+| 0x155 | `kVectorTransposeClear` | `TransposeTile` |
 
 The variant assignment is decided at emission time by four byte-exact classifiers (`LloOpcodeUsesTranspose`, `LloOpcodeUsesRpu`, `LloOpcodeIsRpuControl`, `LloOpcodeIsRpuResult`); the per-opcode → variant cells are confirmed in [ArchRegno Numbering](archregno-numbering.md#per-opcode-variant-classification). See [XLU Op Roster](xlu-op-roster.md) for the opcode→factory mapping at the encode side.
 

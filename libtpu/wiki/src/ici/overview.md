@@ -164,13 +164,13 @@ With the torus discovered and routing installed, collectives move bytes. The uni
 
 The all-reduce is a **colored-ring reduce-scatter + all-gather**, not one algorithm. `AllReduceEmitter::EmitAllReduce` @`0x13742200` and `BaseStrategyND::SelectNDStrategy` @`0x137c78e0` pick one of five strategy families on tensor size, color count, topology, cross-module-ness, and prefer-flags. The conceptual decomposition is shared: `ring_size − 1` reduce-scatter steps (each core sends one shard CW, receives one from CCW, accumulates), then `ring_size − 1` all-gather steps. The **3-D torus exploit** is `BaseStrategyND::ComputeColorDimensions` @`0x137c3ba0` (signature confirms a `bitset<3>` axis-usability mask and a `long[6][3]` per-color/per-dimension result): on a 3-D part it runs up to three orthogonal rings concurrently, one per axis, so the rings never share a SerDes port.
 
-| Strategy family | Algorithm | When chosen | Confidence |
-|---|---|---|---|
-| `BinomialSinglePhaseRingSumEmitter` @`0x13769be0` | binomial tree, log₂(ring) steps | small / latency-bound | HIGH |
-| `UniDirection1DRingStrategy` @`0x137d4a20` | 1-D ring, single direction, 2-phase | generic 1-D torus axis | HIGH |
-| `UniDirectionNDRingStrategy` @`0x137d4700` | N concurrent per-axis color rings | 2-D/3-D torus decomposition | HIGH |
-| `StrategySubgroupND` @`0x137d4c00` | per-subgroup ring then over-rings | hierarchical / cross-module ARS | HIGH |
-| rotated- / async-pincer family | bidirectional pincer, overlapped send/recv | mid/large, bandwidth-bound | HIGH |
+| Strategy family | Algorithm | When chosen |
+|---|---|---|
+| `BinomialSinglePhaseRingSumEmitter` @`0x13769be0` | binomial tree, log₂(ring) steps | small / latency-bound |
+| `UniDirection1DRingStrategy` @`0x137d4a20` | 1-D ring, single direction, 2-phase | generic 1-D torus axis |
+| `UniDirectionNDRingStrategy` @`0x137d4700` | N concurrent per-axis color rings | 2-D/3-D torus decomposition |
+| `StrategySubgroupND` @`0x137d4c00` | per-subgroup ring then over-rings | hierarchical / cross-module ARS |
+| rotated- / async-pincer family | bidirectional pincer, overlapped send/recv | mid/large, bandwidth-bound |
 
 Supported element types are exactly five — `kSupportedTypes` @`.rodata 0x0ae5a56c` = `{F32=11, S32=4, U32=8, BF16=16, PRED=1}`; anything else is promoted upstream. The quantized-pincer path additionally accepts `{S8, F8E5M2, F8E4M3B11FNUZ}` on the wire. The strategy decision tree, the per-family pincer overlap, dtype/BF16-accumulation gates, the tree-barrier scopes, and VMEM scratch sizing are all in **[All-Reduce Primitive](all-reduce-primitive.md)**. The `EmitAllReduce` decompile cross-confirms the family set (`Pincer`, `UniDirection`, `Binomial`, and `GetRingLocation` all referenced).
 

@@ -35,27 +35,27 @@ A tool that walks `libtpu.so`'s dispatch surface must:
 
 The 19 classes cover 99.6% of the 40,313 tables; 157 (0.4%) are IDA-auto-named (`sub_`/`nullsub_`) or pure-virtual-only tables with no recoverable owner. "Stride" is uniform 8 bytes (`void(*)()` slots) for every class — the differentiator is the **entry kind** (relocated code pointer, ICF-folded forwarder, ABI thunk, or C function pointer), given per class in the detail sections. "Top table" is the largest individual table whose first resolved symbol places it in the class.
 
-| ID | Class | Count | % | Section | Top table (addr — entries) | Confidence |
-|----|-------|------:|------:|---------|-----------------------------|------------|
-| E | TPU ISA encoder/clone vtables (`asic_sw`) | 9,932 | 24.6% | `.data.rel.ro` | `0x21e0d0a0` — 674 | HIGH |
-| A | MLIR Op `Model<>` arrays (size-23) | 6,085 | 15.1% | `.data.rel.ro` | size-23 fingerprint — 23 | HIGH |
-| F | `mlir::` vtables (non-Op-Model) | 4,270 | 10.6% | `.data.rel.ro` | `0x21c2d030` — 108 | MEDIUM |
-| I | `llvm::` vtables (TargetLowering, passes) | 2,611 | 6.5% | `.data.rel.ro` | `0x2186b0c0` — 336 | MEDIUM |
-| D | oneDNN / Xbyak JIT vtables | 2,289 | 5.7% | `.data.rel.ro` | `0x21b6e048` — 29 | MEDIUM |
-| G | `xla::` / `stablehlo::` vtables | 2,154 | 5.3% | `.data.rel.ro` | `0x21cc6358` — 266 | HIGH |
-| H | `tensorflow::` / `tsl::` vtables | 2,153 | 5.3% | `.data.rel.ro` | `0xa304280` — 89 | MEDIUM |
-| P | abseil hash-container policy thunks | 2,066 | 5.1% | `.data.rel.ro` | `0x21c1d590` — 447 | HIGH |
-| O | long-tail named-namespace vtables | 1,866 | 4.6% | `.data.rel.ro` | `0x21865d20` — 256 | LOW |
-| K | libc++ `std::` thunks | 1,802 | 4.5% | `.data.rel.ro` | `0x21c0c0c8` — 231 | MEDIUM |
-| N | TPU runtime / profiler vtables | 1,130 | 2.8% | `.data.rel.ro` | `0x21ca92b0` — 61 | MEDIUM |
-| M | gRPC / `grpc_core` vtables | 931 | 2.3% | `.data.rel.ro` | `0x21f874e0` — 30 | MEDIUM |
-| C | libpfm4 PMU event tables | 833 | 2.1% | `.data` (mut.) | `0x222684d8` — 10 | HIGH |
-| L | protobuf message/descriptor vtables | 712 | 1.8% | `.data.rel.ro` | `0x220387e8` — 117 | MEDIUM |
-| Z1 | anonymous-namespace static helpers | 698 | 1.7% | `.data.rel.ro` | `0xa30af90` — 165 | LOW |
-| B | LLVM `UniqueFunctionBase` pools | 591 | 1.5% | `.data` (mut.) | `0x223393a0` — 2,595 | HIGH |
-| R | C-runtime / Rust I/O & codec tables | 33 | 0.1% | `.data.rel.ro` | `0x21fbfee8` — 30 | MEDIUM |
-| Q | abseil `AnyInvocable` invoker thunks | 2 | 0.0% | `.rodata` | `0xa30c788` — 4 | HIGH |
-| Z | unclassified (IDA auto-named) | 157 | 0.4% | `.data.rel.ro` | `0x21c3c558` — 345 | LOW |
+| ID | Class | Count | % | Section | Top table (addr — entries) |
+|----|-------|------:|------:|---------|-----------------------------|
+| E | TPU ISA encoder/clone vtables (`asic_sw`) | 9,932 | 24.6% | `.data.rel.ro` | `0x21e0d0a0` — 674 |
+| A | MLIR Op `Model<>` arrays (size-23) | 6,085 | 15.1% | `.data.rel.ro` | size-23 fingerprint — 23 |
+| F | `mlir::` vtables (non-Op-Model) | 4,270 | 10.6% | `.data.rel.ro` | `0x21c2d030` — 108 |
+| I | `llvm::` vtables (TargetLowering, passes) | 2,611 | 6.5% | `.data.rel.ro` | `0x2186b0c0` — 336 |
+| D | oneDNN / Xbyak JIT vtables | 2,289 | 5.7% | `.data.rel.ro` | `0x21b6e048` — 29 |
+| G | `xla::` / `stablehlo::` vtables | 2,154 | 5.3% | `.data.rel.ro` | `0x21cc6358` — 266 |
+| H | `tensorflow::` / `tsl::` vtables | 2,153 | 5.3% | `.data.rel.ro` | `0xa304280` — 89 |
+| P | abseil hash-container policy thunks | 2,066 | 5.1% | `.data.rel.ro` | `0x21c1d590` — 447 |
+| O | long-tail named-namespace vtables | 1,866 | 4.6% | `.data.rel.ro` | `0x21865d20` — 256 |
+| K | libc++ `std::` thunks | 1,802 | 4.5% | `.data.rel.ro` | `0x21c0c0c8` — 231 |
+| N | TPU runtime / profiler vtables | 1,130 | 2.8% | `.data.rel.ro` | `0x21ca92b0` — 61 |
+| M | gRPC / `grpc_core` vtables | 931 | 2.3% | `.data.rel.ro` | `0x21f874e0` — 30 |
+| C | libpfm4 PMU event tables | 833 | 2.1% | `.data` (mut.) | `0x222684d8` — 10 |
+| L | protobuf message/descriptor vtables | 712 | 1.8% | `.data.rel.ro` | `0x220387e8` — 117 |
+| Z1 | anonymous-namespace static helpers | 698 | 1.7% | `.data.rel.ro` | `0xa30af90` — 165 |
+| B | LLVM `UniqueFunctionBase` pools | 591 | 1.5% | `.data` (mut.) | `0x223393a0` — 2,595 |
+| R | C-runtime / Rust I/O & codec tables | 33 | 0.1% | `.data.rel.ro` | `0x21fbfee8` — 30 |
+| Q | abseil `AnyInvocable` invoker thunks | 2 | 0.0% | `.rodata` | `0xa30c788` — 4 |
+| Z | unclassified (IDA auto-named) | 157 | 0.4% | `.data.rel.ro` | `0x21c3c558` — 345 |
 
 > **NOTE —** the Class B (`UniqueFunctionBase`) table count is **586–591 depending on the symbol-prefix criterion**. The strict "first resolved symbol is `UniqueFunctionBase`" criterion yields 586 tables / 11,516 entries; broadening to include the `unique_function` template spelling yields 591 / 11,591. The 2,595-entry top table at `0x223393a0` and the `.data` residency are constant either way. The boundary cases are two `.data.rel.ro` and one `.rodata` table whose first slot resolves to a non-`UniqueFunctionBase` base before the pool body.
 
@@ -366,19 +366,19 @@ The 33,016 compiled switch jump tables are a structurally separate population fr
 
 By bucketing every switch's case count:
 
-| Case-count bucket | Switches | Cumulative | Confidence |
-|-------------------|---------:|-----------:|------------|
-| 1–4 | 2,681 | 2,681 | HIGH |
-| 5–8 | 10,148 | 12,829 | HIGH |
-| 9–16 | 2,857 | 15,686 | HIGH |
-| 17–32 | 4,213 | 19,899 | HIGH |
-| 33–64 | 4,063 | 23,962 | HIGH |
-| 65–128 | 3,150 | 27,112 | HIGH |
-| 129–256 | 3,070 | 30,182 | HIGH |
-| 257–512 | 1,301 | 31,483 | HIGH |
-| 513–1024 | 625 | 32,108 | HIGH |
-| 1025–4096 | 720 | 32,828 | HIGH |
-| 4097+ | 188 | 33,016 | HIGH |
+| Case-count bucket | Switches | Cumulative |
+|-------------------|---------:|-----------:|
+| 1–4 | 2,681 | 2,681 |
+| 5–8 | 10,148 | 12,829 |
+| 9–16 | 2,857 | 15,686 |
+| 17–32 | 4,213 | 19,899 |
+| 33–64 | 4,063 | 23,962 |
+| 65–128 | 3,150 | 27,112 |
+| 129–256 | 3,070 | 30,182 |
+| 257–512 | 1,301 | 31,483 |
+| 513–1024 | 625 | 32,108 |
+| 1025–4096 | 720 | 32,828 |
+| 4097+ | 188 | 33,016 |
 
 The distribution is sharply front-loaded: 39% of all switches (12,829) have 8 or fewer cases — these are small enum/state dispatches. Only 188 switches (0.6%) exceed 4,096 cases, but those few hold a disproportionate share of the 4.67M total cases. The 5–8 bucket alone (10,148 switches) is the single mode, reflecting the binary's pervasive small enum dispatch.
 

@@ -62,10 +62,10 @@ void TpuCompiler_Free(Compiler** box):
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `TpuCompiler_New` | `0xeabc4a0` | Allocate box + `DeepseaCompiler`, return `Compiler**` | CERTAIN |
-| `TpuCompiler_Free` | `0xeabc4e0` | Virtual-destruct the compiler, free the box | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `TpuCompiler_New` | `0xeabc4a0` | Allocate box + `DeepseaCompiler`, return `Compiler**` |
+| `TpuCompiler_Free` | `0xeabc4e0` | Virtual-destruct the compiler, free the box |
 
 ### Considerations
 
@@ -141,10 +141,10 @@ cleanup:
 
 ### Function Map
 
-| Function | Address | Vtable slot | Result form | Confidence |
-|---|---|---|---|---|
-| `TpuCompiler_RunHloPasses` | `0xeabcd80` | `+24` | re-serialized `HloModuleProto` (byte buf) | CERTAIN |
-| `TpuCompiler_RunBackend` | `0xeabd100` | `+32` | boxed `xla::Executable*` handle | CERTAIN |
+| Function | Address | Vtable slot | Result form |
+|---|---|---|---|
+| `TpuCompiler_RunHloPasses` | `0xeabcd80` | `+24` | re-serialized `HloModuleProto` (byte buf) |
+| `TpuCompiler_RunBackend` | `0xeabd100` | `+32` | boxed `xla::Executable*` handle |
 
 ### Considerations
 
@@ -192,9 +192,9 @@ void TpuCompiler_Compile(a1, group, ..., out_array, status):
 
 ### Function Map
 
-| Function | Address | Proto in | Result form | Confidence |
-|---|---|---|---|---|
-| `TpuCompiler_Compile` | `0xeabc520` | `HloModuleGroupProto` | array of boxed `Executable*` | CERTAIN |
+| Function | Address | Proto in | Result form |
+|---|---|---|---|
+| `TpuCompiler_Compile` | `0xeabc520` | `HloModuleGroupProto` | array of boxed `Executable*` |
 
 ### Considerations
 
@@ -234,10 +234,10 @@ void TpuCompiler_DefaultDeviceShapeRepresentation(Compiler** a1, XLA_Shape* in, 
 
 ### Function Map
 
-| Function | Address | Vtable slot | Returns | Confidence |
-|---|---|---|---|---|
-| `TpuCompiler_ShapeSize` | `0xeabd400` | `+96` (functor factory) | `int64` byte size | CERTAIN |
-| `TpuCompiler_DefaultDeviceShapeRepresentation` | `0xeabd480` | `+104` | device `XLA_Shape` (out-param) | CERTAIN |
+| Function | Address | Vtable slot | Returns |
+|---|---|---|---|
+| `TpuCompiler_ShapeSize` | `0xeabd400` | `+96` (functor factory) | `int64` byte size |
+| `TpuCompiler_DefaultDeviceShapeRepresentation` | `0xeabd480` | `+104` | device `XLA_Shape` (out-param) |
 
 ### Considerations
 
@@ -255,9 +255,9 @@ The open-source `xla::TpuCompiler` constructor performs one-time registration of
 
 `RegisterAllPhases` is also the bridge to the PJRT **PhaseCompile** extension: the same phase set that `RegisterAllPhases` populates is what the PJRT `PhaseCompile` extension enumerates and drives phase-by-phase. The extension's wrapping of this registration is owned by [PJRT PhaseCompile Extension](../pjrt/ext-compile-phasecompile.md); the concrete pass *schedule* the phases run is owned by the [HLO Pass Registry](../compiler/hlo-pass-registry.md). This page records only that the registration entry point exists and is the missing "Initialize" half of `TpuCompiler_New`.
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `xla::TpuCompiler::RegisterAllPhases` | `0xf849ec0` | one-time phase-registry population (host-side ctor hook) | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `xla::TpuCompiler::RegisterAllPhases` | `0xf849ec0` | one-time phase-registry population (host-side ctor hook) |
 
 ---
 
@@ -319,14 +319,14 @@ bool ShouldTpuCompileOpIgnoreCancellation():
 
 ### Function Map
 
-| Function | Address | Role | Source TU | Confidence |
-|---|---|---|---|---|
-| `TpuCompile_CompileAndBuild` | `0xe8bc1e0` | Run the whole `TpuCompileOpKernelCommon`; emit `XLA_TpuProgram` handles | `tpu_util_c_api.cc` (HIGH) | CERTAIN |
-| `TpuCompile_CreateCompilationCacheKey` | `0xf6a2080` | Build the TF compilation-cache key (config + fingerprints) | cache-key TU | HIGH |
-| `TpuCompile_CreateGuaranteedConstFingerprint` | `0xf6a2040` | `FingerprintCat2011(seed, Fingerprint2011(data,len))` | cache-key TU | CERTAIN |
-| `TpuCompile_DestroyCompilationCacheKey` | `0xf6a2e60` | `free` the two heap strings inside a cache key | cache-key TU | CERTAIN |
-| `TpuCompile_IsTpuCompilationEnabled` | `0xf6a1b40` | Constant `true` runtime gate | `tpu_util_c_api.cc` | CERTAIN |
-| `TpuCompile_ShouldTpuCompileOpIgnoreCancellation` | `0xf6a1b60` | Abort-suppression policy for cancelled compiles (test-only) | `tpu_util_c_api.cc` | CERTAIN |
+| Function | Address | Role | Source TU |
+|---|---|---|---|
+| `TpuCompile_CompileAndBuild` | `0xe8bc1e0` | Run the whole `TpuCompileOpKernelCommon`; emit `XLA_TpuProgram` handles | `tpu_util_c_api.cc` (HIGH) |
+| `TpuCompile_CreateCompilationCacheKey` | `0xf6a2080` | Build the TF compilation-cache key (config + fingerprints) | cache-key TU |
+| `TpuCompile_CreateGuaranteedConstFingerprint` | `0xf6a2040` | `FingerprintCat2011(seed, Fingerprint2011(data,len))` | cache-key TU |
+| `TpuCompile_DestroyCompilationCacheKey` | `0xf6a2e60` | `free` the two heap strings inside a cache key | cache-key TU |
+| `TpuCompile_IsTpuCompilationEnabled` | `0xf6a1b40` | Constant `true` runtime gate | `tpu_util_c_api.cc` |
+| `TpuCompile_ShouldTpuCompileOpIgnoreCancellation` | `0xf6a1b60` | Abort-suppression policy for cancelled compiles (test-only) | `tpu_util_c_api.cc` |
 
 ### Considerations
 

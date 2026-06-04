@@ -73,12 +73,12 @@ LloRegion::AppendInstruction(region, m);                   // @ 0x1d50f9a0
 
 The decompiler renders the four shifts as `(a4 << SBYTE4(v11)) | (a2 << v11) | (a3 << v12) | (a5 << SBYTE4(v12))`, where `v11 = 0x300000000` (so `v11`-as-int32 = 0, `SBYTE4(v11)` = 3) and `v12 = 0xd0000000a` (so `v12`-as-int32 = 10, `SBYTE4(v12)` = 13). The instruction additionally stamps a human-readable annotation `[s_start:s_end,l_start:l_end]` (built by `CatPieces` from the literals `"["`, `":"`, `","`, `":"`, `"]"`), which independently confirms the `(s_start, s_end)` / `(l_start, l_end)` field assignment.
 
-| Field | Vcmask arg | Shift | Bits | Width | Meaning | Confidence |
-|---|---|---|---|---|---|---|
-| `sublane_start` | `a2` (s_start) | `<< 0` | `[2:0]` | 3 | first active sublane (0..7) | CONFIRMED |
-| `lane_start` | `a4` (l_start) | `<< 3` | `[9:3]` | 7 | first active lane (0..127) | CONFIRMED |
-| `sublane_end` | `a3` (s_end) | `<< 10` | `[12:10]` | 3 | last active sublane (inclusive) | CONFIRMED |
-| `lane_end` | `a5` (l_end) | `<< 13` | `[19:13]` | 7 | last active lane (inclusive) | CONFIRMED |
+| Field | Vcmask arg | Shift | Bits | Width | Meaning |
+|---|---|---|---|---|---|
+| `sublane_start` | `a2` (s_start) | `<< 0` | `[2:0]` | 3 | first active sublane (0..7) |
+| `lane_start` | `a4` (l_start) | `<< 3` | `[9:3]` | 7 | first active lane (0..127) |
+| `sublane_end` | `a3` (s_end) | `<< 10` | `[12:10]` | 3 | last active sublane (inclusive) |
+| `lane_end` | `a5` (l_end) | `<< 13` | `[19:13]` | 7 | last active lane (inclusive) |
 
 The 3-bit sublane fields (start at bit 0, end at bit 10, each 3 bits wide because `off1 − off0 = 3` and `off3 − off2 = 3`) pin **SublaneCount = 8**; the `LloModule::VectorMaskConstantPacked(uint8)` literal-mask builder (`0x1d506a80`) — an 8-bit packed sublane mask — confirms 8 sublanes independently. The 7-bit lane fields (`off2 − off1 = 7`, end at bit 13) bound **LaneCount ≤ 128**. The geometry leaves are `Target::SublaneCount() = QWORD[[Target+0x3b8]+0x1a0]` (`0x1d60f300`) and `Target::LaneCount() = QWORD[[Target+0x3b8]+0x198]` (`0x1d60f400`); the exact per-gen LaneCount lives in the runtime config blob, not the code path (LOW — bounded `≤ 128`, exact value not in the code).
 
@@ -122,14 +122,14 @@ LogFatal("Unsupported instruction: vcmask");                      // target.h:26
 
 The abstract base body is `__noreturn` and emits the verbatim string `"Unsupported instruction: vcmask"` (present in `.rodata`), so a synthesized gen that ever dispatched to it would abort — which it cannot, because the synthesized path is gated behind `HasVcmaskInstruction() == 0`.
 
-| Target subclass (gen) | `HasVcmaskInstruction` | `GetVcmaskFieldOffsets` | Offsets | Confidence |
-|---|---|---|---|---|
-| `Target` (abstract base) | `0x1d61dcc0` LogFatal | `0x1d490500` LogFatal (`__noreturn`) | — | CONFIRMED |
-| `JellyfishTarget` (v2 / JXC) | `0x1d4904c0` → `0` | base (unreached) | synthesized | CONFIRMED |
-| `DragonfishTarget` (v3) | inherits Jellyfish → `0` | base (unreached) | synthesized | CONFIRMED |
-| `PufferfishTarget` (v4 / PXC) | `0x1d494b60` → `0` | base (unreached) | synthesized | CONFIRMED |
-| `ViperfishTarget` (v5p, v5e / VXC) | `0x1d49ae60` → `1` | `0x1d49aea0` → `{0,3,10,13}` | `{0,3,10,13}` | CONFIRMED |
-| `GhostliteTarget` (v6e / GXC `gxc::glc`; reused by v7x `gxc::gfc`) | `0x1d497d20` → `1` | `0x1d497d60` → `{0,3,10,13}` | `{0,3,10,13}` | CONFIRMED |
+| Target subclass (gen) | `HasVcmaskInstruction` | `GetVcmaskFieldOffsets` | Offsets |
+|---|---|---|---|
+| `Target` (abstract base) | `0x1d61dcc0` LogFatal | `0x1d490500` LogFatal (`__noreturn`) | — |
+| `JellyfishTarget` (v2 / JXC) | `0x1d4904c0` → `0` | base (unreached) | synthesized |
+| `DragonfishTarget` (v3) | inherits Jellyfish → `0` | base (unreached) | synthesized |
+| `PufferfishTarget` (v4 / PXC) | `0x1d494b60` → `0` | base (unreached) | synthesized |
+| `ViperfishTarget` (v5p, v5e / VXC) | `0x1d49ae60` → `1` | `0x1d49aea0` → `{0,3,10,13}` | `{0,3,10,13}` |
+| `GhostliteTarget` (v6e / GXC `gxc::glc`; reused by v7x `gxc::gfc`) | `0x1d497d20` → `1` | `0x1d497d60` → `{0,3,10,13}` | `{0,3,10,13}` |
 
 > **NOTE — the packed-word layout is gen-stable; it does not drift with lane count.** Both native subclasses return the *byte-identical* offset pair `{0,3,10,13}`, even though v6e/v7x have a wider compute fabric than v5p. The wider-lane gens do not widen or shift the packed fields — the 3-bit sublane / 7-bit lane layout is a single fixed SC predicate-register wire format across v5p and v6e/v7x. The Dragonfish (v3) target inherits `JellyfishTarget::HasVcmaskInstruction` via its vtable `+0x410` slot. There is no separate `6acc60406`/`gfc` `Target` subclass: only five `xla::jellyfish::*Target` classes carry Vcmask methods (Jellyfish, Pufferfish, Viperfish, Ghostlite, and the abstract base), so the v7x `gfc` backend — which does have its own LLVM `TPUGfcSubtarget` (`0x13c628c0`) and `gxc::gfc::isa` encoder namespace — shares `GhostliteTarget`'s `llo_region_builder` Vcmask path. The two SparseCore *cost-model* classes (`GhostLiteSparseCoreTarget` / `ViperfishSparseCoreTarget`) use a different vtable layout — their `+0x410`/`+0x420` slots map to `MxuNoncontractingSize`/`ShouldReverseTileForLatching`, not the Vcmask ABI — and do not participate in the `vcreate_mask` path.
 
@@ -178,12 +178,12 @@ if (HasVcmaskInstruction())        return Vcmask(s_start, s_end, l_start, l_end)
 
 The `LloCheckForFailure` op semantics are byte-exact in the decompile: template parameter `(LloCheckOp)2` is `>=` (`cmp [rdi],rax; jl fail`), `(LloCheckOp)1` is strict `<` (`cmp rax,[rsi]; jge fail`), `(LloCheckOp)3` is `<=` (`cmp rax,[rsi]; jg fail`). The check strings (`"start_sublane < target().SublaneCount()"`, `"end <= target().LaneCount()"`) are present in `.rodata`, sourced from `platforms/xla/service/jellyfish/llo_region_builder.cc`.
 
-| Builder API | Range convention | End handling at the `Vcmask` boundary | Confidence |
-|---|---|---|---|
-| `Vcmask` @ `0x1d53f9c0` | INCLUSIVE `[lo, hi]` | primitive — packs ends raw | CONFIRMED |
-| `CreateVmask` @ `0x1d53fc40` | INCLUSIVE `[lo, hi]` | native: pass raw; delegate: `+1` (inclusive → half-open) | CONFIRMED |
-| `CreateLaneVmask` @ `0x1d53f740` | HALF-OPEN `[lo, hi)` | native: `Vcmask(0, SublaneCount−1, l_lo, l_hi−1)` | CONFIRMED |
-| `CreateSublaneVmask` @ `0x1d53d7c0` | HALF-OPEN `[lo, hi)` | native: `Vcmask(s_lo, s_hi−1, 0, LaneCount−1)` | CONFIRMED |
+| Builder API | Range convention | End handling at the `Vcmask` boundary |
+|---|---|---|
+| `Vcmask` @ `0x1d53f9c0` | INCLUSIVE `[lo, hi]` | primitive — packs ends raw |
+| `CreateVmask` @ `0x1d53fc40` | INCLUSIVE `[lo, hi]` | native: pass raw; delegate: `+1` (inclusive → half-open) |
+| `CreateLaneVmask` @ `0x1d53f740` | HALF-OPEN `[lo, hi)` | native: `Vcmask(0, SublaneCount−1, l_lo, l_hi−1)` |
+| `CreateSublaneVmask` @ `0x1d53d7c0` | HALF-OPEN `[lo, hi)` | native: `Vcmask(s_lo, s_hi−1, 0, LaneCount−1)` |
 
 > **GOTCHA — the public APIs disagree on convention by design; the wire format does not.** `CreateVmask` is inclusive, `CreateLaneVmask`/`CreateSublaneVmask` are half-open — but all three converge on `Vcmask` receiving inclusive ends, so the *packed M-register word always stores an inclusive rectangle*. A `start > end` (inclusive) describes the complement / wrap-around, materialized via `SimplifyPredicateNegate` (`CreateVectorMaskUnop` op `0x198` = `VectorMaskNegate`, the decompile shows the literal `408`) on the synthesized path.
 
@@ -229,15 +229,15 @@ The inactive-lane model follows directly from the mask being the op's intrinsic 
 - **Inactive *input* lanes contribute the reduction identity** (`add → +0`, `min → +INF`, `max → −INF`), so they do not perturb the running prefix. This is the standard masked-scan reading, confirmed by the i1-no-mask classification and the masked-scan op contract.
 - **There is no per-family compiler-chosen else operand.** The masked-off *output* lane carries whatever the HW scan datapath drives for an inactive lane (carry vs identity vs undriven) — a hardware micro-datapath detail one layer below the binary (LOW / INFERRED).
 
-| Scan family | Op / intrinsic (operands) | Mask handling | Confidence |
-|---|---|---|---|
-| `AddScan`/`MinScan`/`MaxScan` (1xN typed) | `ScanOp(mask, data, reduction)` → `tpu_{add,min,max}_scan1xN{f,i}` `NOperands<2>` | intrinsic operand[0]; no select | CONFIRMED |
-| `IndexScan` (Min/Max, 1xN) | same `ScanOp` path (dtype via `VpackFormat`) | intrinsic operand[0] | CONFIRMED |
-| `SegmentedAddScan`/`Min`/`Max` | `SegmentedScanOp` → `tpu_{add,min,max}_seg_scan1xN{f,i}` `NOperands<2>` | intrinsic mask + intrinsic segment reset | CONFIRMED |
-| `DuplicateCount` / `Uniquify` | `tpu_dupcnt{f,s}` / `tpu_unique` + `ReplaceOpWithExtracts` | no select, no sentinel; result produced directly | CONFIRMED |
-| i1→i32 sum (count-active) | `ScanOp` i1 input, sum-only | **mask not supported** — all lanes counted | CONFIRMED |
-| row-size consumer (`lower_scan`) | `ScanOp("sum")` + `tpu_mprefix` (1 operand) | `scan_mask = BroadcastBoolToVector(..., true)` = all-active | CONFIRMED |
-| masked-off *output* lane value | — | HW datapath (carry/identity/undriven) | LOW (one layer below binary) |
+| Scan family | Op / intrinsic (operands) | Mask handling |
+|---|---|---|
+| `AddScan`/`MinScan`/`MaxScan` (1xN typed) | `ScanOp(mask, data, reduction)` → `tpu_{add,min,max}_scan1xN{f,i}` `NOperands<2>` | intrinsic operand[0]; no select |
+| `IndexScan` (Min/Max, 1xN) | same `ScanOp` path (dtype via `VpackFormat`) | intrinsic operand[0] |
+| `SegmentedAddScan`/`Min`/`Max` | `SegmentedScanOp` → `tpu_{add,min,max}_seg_scan1xN{f,i}` `NOperands<2>` | intrinsic mask + intrinsic segment reset |
+| `DuplicateCount` / `Uniquify` | `tpu_dupcnt{f,s}` / `tpu_unique` + `ReplaceOpWithExtracts` | no select, no sentinel; result produced directly |
+| i1→i32 sum (count-active) | `ScanOp` i1 input, sum-only | **mask not supported** — all lanes counted |
+| row-size consumer (`lower_scan`) | `ScanOp("sum")` + `tpu_mprefix` (1 operand) | `scan_mask = BroadcastBoolToVector(..., true)` = all-active |
+| masked-off *output* lane value | — | HW datapath (carry/identity/undriven) |
 
 `DuplicateCount` / `Uniquify` emit dedicated `tpu_dupcnt{f,s}` / `tpu_unique` ops plus `ReplaceOpWithExtracts` (struct-unpack only) — no select, no sentinel; the uniquify mask result is written to a `VMDest` (M0..M15) directly. The only explicit "else"-type wiring lives in the row-size consumer (`lower_scan` / `max_ell_row_size_scan` over `chunk_size_`), which builds an **all-active** `scan_mask = lowering_util::BroadcastBoolToVector(b, loc, chunk_size_, true)` and uses `tpu_mprefix` (one operand) for the masked-prefix positions. The i1→i32 sum-scan (count-active-lanes, the `DuplicateCount` prefix form) explicitly **disallows** a mask.
 
@@ -247,27 +247,27 @@ The inactive-lane model follows directly from the mask being the op's intrinsic 
 
 ## Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `LloRegionBuilder::Vcmask(s_start,s_end,l_start,l_end)` | `0x1d53f9c0` | native packed-word builder (`llo.vcmask`) | CONFIRMED |
-| `LloRegionBuilder::CreateVmask(s_start,s_end,l_start,l_end)` | `0x1d53fc40` | inclusive-bounds 2D mask builder (8 checks) | CONFIRMED |
-| `LloRegionBuilder::CreateLaneVmask(l_lo,l_hi)` | `0x1d53f740` | half-open lane-range mask | CONFIRMED |
-| `LloRegionBuilder::CreateSublaneVmask(s_lo,s_hi)` | `0x1d53d7c0` | half-open sublane-range mask | CONFIRMED |
-| `LloRegionBuilder::CreateVmaskHelper` | `0x1d53f380` | synthesized iota-compare construction | CONFIRMED |
-| `Target::GetVcmaskFieldOffsets()` (base) | `0x1d490500` | `__noreturn` LogFatal `"Unsupported instruction: vcmask"` | CONFIRMED |
-| `GhostliteTarget::GetVcmaskFieldOffsets()` | `0x1d497d60` | returns `{0,3,10,13}` | CONFIRMED |
-| `ViperfishTarget::GetVcmaskFieldOffsets()` | `0x1d49aea0` | returns `{0,3,10,13}` (byte-identical) | CONFIRMED |
-| `Target::HasVcmaskInstruction()` (base) | `0x1d61dcc0` | LogFatal (abstract) | CONFIRMED |
-| `JellyfishTarget::HasVcmaskInstruction()` | `0x1d4904c0` | `return 0` (synthesized) | CONFIRMED |
-| `PufferfishTarget::HasVcmaskInstruction()` | `0x1d494b60` | `return 0` (synthesized) | CONFIRMED |
-| `GhostliteTarget::HasVcmaskInstruction()` | `0x1d497d20` | `return 1` (native) | CONFIRMED |
-| `ViperfishTarget::HasVcmaskInstruction()` | `0x1d49ae60` | `return 1` (native) | CONFIRMED |
-| `mlir::llo::VectorCreateMaskOp::create` | `0x13fb3ba0` | MLIR `llo.vcmask` op create | CONFIRMED |
-| `mlir::sparse_core::ScanOp::create` | `0x145f93e0` | `sc_tpu.scan` create (mask, data, reduction) | CONFIRMED |
-| `mlir::sparse_core::ScanOp::build` | `0x145f92e0` | adds operand[0]=mask (optional), operand[1]=data | CONFIRMED |
-| `ScanOpLowering<ScanOp,ScanOp>::matchAndRewrite` | `0x135f2580` | dtype Pack/Unpack splitter; mask passed through | CONFIRMED |
-| `GetVectorMask<SparsecoreVectorMask>` | `0x13a33320` | 5-bit M-selector decode (`regid − 0x5f`) | CONFIRMED |
-| `GetVMDestregno` | `0x13a65b20` | M0..M15 mask-write band `[0x5f,0x6e]` | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `LloRegionBuilder::Vcmask(s_start,s_end,l_start,l_end)` | `0x1d53f9c0` | native packed-word builder (`llo.vcmask`) |
+| `LloRegionBuilder::CreateVmask(s_start,s_end,l_start,l_end)` | `0x1d53fc40` | inclusive-bounds 2D mask builder (8 checks) |
+| `LloRegionBuilder::CreateLaneVmask(l_lo,l_hi)` | `0x1d53f740` | half-open lane-range mask |
+| `LloRegionBuilder::CreateSublaneVmask(s_lo,s_hi)` | `0x1d53d7c0` | half-open sublane-range mask |
+| `LloRegionBuilder::CreateVmaskHelper` | `0x1d53f380` | synthesized iota-compare construction |
+| `Target::GetVcmaskFieldOffsets()` (base) | `0x1d490500` | `__noreturn` LogFatal `"Unsupported instruction: vcmask"` |
+| `GhostliteTarget::GetVcmaskFieldOffsets()` | `0x1d497d60` | returns `{0,3,10,13}` |
+| `ViperfishTarget::GetVcmaskFieldOffsets()` | `0x1d49aea0` | returns `{0,3,10,13}` (byte-identical) |
+| `Target::HasVcmaskInstruction()` (base) | `0x1d61dcc0` | LogFatal (abstract) |
+| `JellyfishTarget::HasVcmaskInstruction()` | `0x1d4904c0` | `return 0` (synthesized) |
+| `PufferfishTarget::HasVcmaskInstruction()` | `0x1d494b60` | `return 0` (synthesized) |
+| `GhostliteTarget::HasVcmaskInstruction()` | `0x1d497d20` | `return 1` (native) |
+| `ViperfishTarget::HasVcmaskInstruction()` | `0x1d49ae60` | `return 1` (native) |
+| `mlir::llo::VectorCreateMaskOp::create` | `0x13fb3ba0` | MLIR `llo.vcmask` op create |
+| `mlir::sparse_core::ScanOp::create` | `0x145f93e0` | `sc_tpu.scan` create (mask, data, reduction) |
+| `mlir::sparse_core::ScanOp::build` | `0x145f92e0` | adds operand[0]=mask (optional), operand[1]=data |
+| `ScanOpLowering<ScanOp,ScanOp>::matchAndRewrite` | `0x135f2580` | dtype Pack/Unpack splitter; mask passed through |
+| `GetVectorMask<SparsecoreVectorMask>` | `0x13a33320` | 5-bit M-selector decode (`regid − 0x5f`) |
+| `GetVMDestregno` | `0x13a65b20` | M0..M15 mask-write band `[0x5f,0x6e]` |
 
 ---
 

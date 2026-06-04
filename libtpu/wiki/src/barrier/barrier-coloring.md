@@ -66,14 +66,14 @@ class BarrierColoring {
 
 The two instantiations are reached through a 6-slot vtable. Only the predicates differ; the algorithm is byte-identical (the A2A variants of every function — e.g. `AssignColorsGreedy @ 0x109d30e0`, `CollectConflictInfo @ 0x109d5a60` — have the same stack frame and the same loops as the ACP variants).
 
-| vtable slot | method | `AsyncCollectivePermutePolicy` | `AsyncAllToAllWithAsyncBarrierPolicy` | Confidence |
-|---|---|---|---|---|
-| `+0x10` | `IsAsyncStart` | `opcode == 0x24` (CP-start) `@ 0x109cc080` | `IsCustomCall(kBarrierStart)` `@ 0x109cc640` | CONFIRMED |
-| `+0x18` | `IsAsyncDone` | `opcode == 0x23` (CP-done) `@ 0x109cc0a0` | `opcode == 0x11 && GetBarrierStartFromAsyncStart != 0` `@ 0x109cc660` | CONFIRMED |
-| `+0x20` | `GetKey` (build key) | normalise→start `@ 0x109d3ec0` | `async_wrapped_instruction` → key `@ 0x109d4460` | CONFIRMED |
-| `+0x28` | `GetStartForDone` | `done->operand(0)` `@ 0x109cc0e0` | `GetBarrierStartFromAsyncStart(done)` `@ 0x109cc680` | CONFIRMED |
-| `+0x30` | `GetCollectiveForStart` | identity `@ 0x109cc0c0` | `@ 0x109d4400` | CONFIRMED |
-| `+0x38` | `ShouldForceGlobalBarrier` | degenerate-CP gate `@ 0x109d3f20` | base `false` `@ 0x109cac00` (inherited) | CONFIRMED |
+| vtable slot | method | `AsyncCollectivePermutePolicy` | `AsyncAllToAllWithAsyncBarrierPolicy` |
+|---|---|---|---|
+| `+0x10` | `IsAsyncStart` | `opcode == 0x24` (CP-start) `@ 0x109cc080` | `IsCustomCall(kBarrierStart)` `@ 0x109cc640` |
+| `+0x18` | `IsAsyncDone` | `opcode == 0x23` (CP-done) `@ 0x109cc0a0` | `opcode == 0x11 && GetBarrierStartFromAsyncStart != 0` `@ 0x109cc660` |
+| `+0x20` | `GetKey` (build key) | normalise→start `@ 0x109d3ec0` | `async_wrapped_instruction` → key `@ 0x109d4460` |
+| `+0x28` | `GetStartForDone` | `done->operand(0)` `@ 0x109cc0e0` | `GetBarrierStartFromAsyncStart(done)` `@ 0x109cc680` |
+| `+0x30` | `GetCollectiveForStart` | identity `@ 0x109cc0c0` | `@ 0x109d4400` |
+| `+0x38` | `ShouldForceGlobalBarrier` | degenerate-CP gate `@ 0x109d3f20` | base `false` `@ 0x109cac00` (inherited) |
 
 > **NOTE — verified opcodes.** The decompiled `IsAsyncStart` body for ACP is literally `return *(_BYTE *)(op + 0xc) == 36;` (36 = `0x24`, collective-permute-start) and `IsAsyncDone` is `== 35;` (`0x23`, collective-permute-done). The async-barrier helpers are `async_barrier_util::kBarrierStart @ 0xabe9620`, `GetBarrierStartFromAsyncStart @ 0x11007c80` (HLO async-start `0x11`, backend kind `== 2`, `operand(0)` opcode `0x81` = barrier-start), and `GetAsyncStartFromBarrierStart @ 0x11007d20`.
 
@@ -101,15 +101,15 @@ Walk every instruction of every computation. For each op, build its `TensorCoreB
 
 The `0xb0`-byte `ConflictInfo` node sub-layout (offsets proven by the construction stores `@ 0x109cfd5b … 0x109cff7b`; sub-member *semantics* inferred from use):
 
-| Offset | Member | Confidence |
-|---|---|---|
-| `+0x10` | map-node key back-pointer | INFERRED |
-| `+0x20` | key opcode byte mirror | INFERRED |
-| `+0x28 … +0x38` | replica-group vector (copied) | INFERRED |
-| `+0x40 … +0x50` | src-tgt-pair vector (copied) | INFERRED |
-| `+0x58 … +0x78` | copied key tail | INFERRED |
-| `+0x80` | per-key adjacency `map<HloInstruction*, set<HloInstruction*>>` root | CONFIRMED (used by `AssignColorsGreedy`) |
-| `+0x98` | per-key colored `map<HloInstruction*, long>` root | INFERRED |
+| Offset | Member |
+|---|---|
+| `+0x10` | map-node key back-pointer |
+| `+0x20` | key opcode byte mirror |
+| `+0x28 … +0x38` | replica-group vector (copied) |
+| `+0x40 … +0x50` | src-tgt-pair vector (copied) |
+| `+0x58 … +0x78` | copied key tail |
+| `+0x80` | per-key adjacency `map<HloInstruction*, set<HloInstruction*>>` root |
+| `+0x98` | per-key colored `map<HloInstruction*, long>` root |
 
 ### 3 — Build the interference graph (`@ 0x109d0469`)
 
@@ -263,18 +263,18 @@ The per-key SFLAG emission for the SC kernel goes through `CollectiveEmitterBase
 
 ## TC vs SC: Decision Differs, SFLAG Sink Is Shared
 
-| Stage | TensorCore (this page + the [assignment producer](overview.md)) | SparseCore | Confidence |
-|---|---|---|---|
-| Dedup mechanism | GREEDY GRAPH COLORING (`BarrierColoring::Run`) over the live-async interference graph, first-fit color | `FlatHashMap<SparseCoreBarrierKey, long>` on the static ring key | CONFIRMED |
-| Conflict predicate | live-range OVERLAP of two async collectives (`CollectConflictInfo`) | n/a (no schedule notion) | CONFIRMED |
-| Coloring | `AssignColorsGreedy @ 0x109d0c80` — smallest available color | monotonic `GetNextUniqueSyncFlagId` | CONFIRMED |
-| Async start/done | ACP: CP-start `0x24` / CP-done `0x23`; A2A: `kBarrierStart` custom-call / async-start `0x11` | sparsecore custom-call | CONFIRMED |
-| Config produced | `BarrierConfig {type 1 global / 2 shared / 3 fresh}` → `BackendConfig` | `barrier_id` + hasbit | CONFIRMED |
-| Read back at emit | `CustomKernelEmitter::Emit @ 0x1321ad60` → `backend_config<BackendConfig>` | `UniDirRingStrategy::BarrierId` | CONFIRMED |
-| GLOBAL lowering | `MaybeInsertGlobalBarrier @ 0x1321ac20` → `AllocateAtOffsetOp(sflag)` + `scf.for(sem_signal/sem_wait)` tree barrier | `AssignGlobalBarrier` reserved slot → same SFLAG block | CONFIRMED |
-| PER-KEY lowering | `RunPasses @ 0x13202780` → `EmitCustomBarrierFromConfig @ 0x13352cc0` → `GetSyncFlagForBarrierId`-style `AllocateAtOffsetOp(sflag)` | `EmitCustomBarrierStart @ 0x13352fc0` → `GetSyncFlagForBarrierId @ 0x133e9dc0` | CONFIRMED |
-| Atomic op family | `tpu.sem_signal` / `tpu.sem_wait` (TC sequencer) | `sc_tpu.sync_add` / `sync_wait` (SC sequencer) | CONFIRMED |
-| SFLAG sink | `AllocateAtOffsetOp(MemorySpace::sflag)` → chip SFLAG block — **shared by both arms** | same | CONFIRMED |
+| Stage | TensorCore (this page + the [assignment producer](overview.md)) | SparseCore |
+|---|---|---|
+| Dedup mechanism | GREEDY GRAPH COLORING (`BarrierColoring::Run`) over the live-async interference graph, first-fit color | `FlatHashMap<SparseCoreBarrierKey, long>` on the static ring key |
+| Conflict predicate | live-range OVERLAP of two async collectives (`CollectConflictInfo`) | n/a (no schedule notion) |
+| Coloring | `AssignColorsGreedy @ 0x109d0c80` — smallest available color | monotonic `GetNextUniqueSyncFlagId` |
+| Async start/done | ACP: CP-start `0x24` / CP-done `0x23`; A2A: `kBarrierStart` custom-call / async-start `0x11` | sparsecore custom-call |
+| Config produced | `BarrierConfig {type 1 global / 2 shared / 3 fresh}` → `BackendConfig` | `barrier_id` + hasbit |
+| Read back at emit | `CustomKernelEmitter::Emit @ 0x1321ad60` → `backend_config<BackendConfig>` | `UniDirRingStrategy::BarrierId` |
+| GLOBAL lowering | `MaybeInsertGlobalBarrier @ 0x1321ac20` → `AllocateAtOffsetOp(sflag)` + `scf.for(sem_signal/sem_wait)` tree barrier | `AssignGlobalBarrier` reserved slot → same SFLAG block |
+| PER-KEY lowering | `RunPasses @ 0x13202780` → `EmitCustomBarrierFromConfig @ 0x13352cc0` → `GetSyncFlagForBarrierId`-style `AllocateAtOffsetOp(sflag)` | `EmitCustomBarrierStart @ 0x13352fc0` → `GetSyncFlagForBarrierId @ 0x133e9dc0` |
+| Atomic op family | `tpu.sem_signal` / `tpu.sem_wait` (TC sequencer) | `sc_tpu.sync_add` / `sync_wait` (SC sequencer) |
+| SFLAG sink | `AllocateAtOffsetOp(MemorySpace::sflag)` → chip SFLAG block — **shared by both arms** | same |
 
 The decision differs (TC = live-conflict coloring; SC = static ring-hash); the hardware SFLAG sink is identical. The TC global barrier uses the TC tree barrier (`sem_signal`/`wait`); the per-key barriers reuse the SC `sync_add` emission path.
 

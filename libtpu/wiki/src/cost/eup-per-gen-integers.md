@@ -77,15 +77,15 @@ ctor:
 
 ### Edge Integer
 
-| Role | LLO opcode | `Instruction` | Byte offset | Value | Confidence |
-|---|---|---|---|---|---|
-| EUP push (rsqrt) | `0x12c` | `0x67` | `0x19c` | 7 | CERTAIN |
-| EUP push (pow2) | `0x129` | `0x68` | `0x1a0` | 7 | CERTAIN |
-| EUP push (log2) | `0x12b` | `0x69` | `0x1a4` | 7 | CERTAIN |
-| EUP push (tanh) | `0x128` | `0x6a` | `0x1a8` | 7 | CERTAIN |
-| EUP push (recip) | `0x12a` | `0x6b` | `0x1ac` | 7 | CERTAIN |
-| EUP push (pushErf) | `0x131` | `0x6c` | `0x1b0` | 7 | CERTAIN |
-| EUP pop | `0x14e` | `0x76` | `0x1d8` | 1 | CERTAIN |
+| Role | LLO opcode | `Instruction` | Byte offset | Value |
+|---|---|---|---|---|
+| EUP push (rsqrt) | `0x12c` | `0x67` | `0x19c` | 7 |
+| EUP push (pow2) | `0x129` | `0x68` | `0x1a0` | 7 |
+| EUP push (log2) | `0x12b` | `0x69` | `0x1a4` | 7 |
+| EUP push (tanh) | `0x128` | `0x6a` | `0x1a8` | 7 |
+| EUP push (recip) | `0x12a` | `0x6b` | `0x1ac` | 7 |
+| EUP push (pushErf) | `0x131` | `0x6c` | `0x1b0` | 7 |
+| EUP pop | `0x14e` | `0x76` | `0x1d8` | 1 |
 
 `PufferfishPerformance` ctor `@0x1c8be080`: `operator new(0x540)` = 1344 B = **336** `int32`; `Perf[+8] = Perf[+0x10] = 336`; `memset(array, 0xff, 1344)`. The six EUP-push stores are contiguous (`mov [rax+412LL]=7` … `[rax+432LL]=7`, decimal `412 = 0x19c` … `432 = 0x1b0`), and the pop store is `mov [rax+472LL]=1` (`472 = 0x1d8`). The value is **uniform 7** across all six classified F32 EUP functions.
 
@@ -115,12 +115,12 @@ The BarnaCore arm reads the `Instruction` as a **byte** (`unsigned __int8 *`) an
 
 ### Edge Integer
 
-| Role | `Instruction` | Byte offset | Value | Confidence |
-|---|---|---|---|---|
-| BarnaCore EUP/transcendental block | `0x77`..`0x7c` (6 entries) | `0x1dc`..`0x1f0` | 6 | CERTAIN |
-| `kBarnaCoreScalarSyncDoneRead` | `0x3d` | `0xf4` | 3 | CERTAIN |
-| `kBarnaCoreVectorStore` (memory op) | `0x85` | `0x214` | 12 | CERTAIN |
-| no-op / null slot | `0x01` | `0x04` | 0 | CERTAIN |
+| Role | `Instruction` | Byte offset | Value |
+|---|---|---|---|
+| BarnaCore EUP/transcendental block | `0x77`..`0x7c` (6 entries) | `0x1dc`..`0x1f0` | 6 |
+| `kBarnaCoreScalarSyncDoneRead` | `0x3d` | `0xf4` | 3 |
+| `kBarnaCoreVectorStore` (memory op) | `0x85` | `0x214` | 12 |
+| no-op / null slot | `0x01` | `0x04` | 0 |
 
 `PufferfishBarnaCorePerformance` ctor `@0x1c8c38c0`: `operator new(0x218)` = 536 B = **134** `int32`; `memset(array, 0xff, 536)`; `Perf[+8] = 134`. The EUP block is six contiguous `mov [rax+476LL]=6` … `[rax+496LL]=6` stores (decimal `476 = 0x1dc` … `496 = 0x1f0`); the VectorStore store is `[rax+532LL]=12` (`532 = 0x214`). The 134-entry array is dominated by 1-cycle scalar/sync ops; the recovered non-default values are six `6` (the EUP block), one `12` (VectorStore), two `3`, two `4`, and one `0` — the legacy embedding-engine latency model.
 
@@ -136,16 +136,16 @@ The BarnaCore arm reads the `Instruction` as a **byte** (`unsigned __int8 *`) an
 
 ### Edge Integer
 
-| Role | LLO opcode | `Instruction` | Byte offset | Value | Confidence |
-|---|---|---|---|---|---|
-| EUP push (rsqrt) | `0x12c` | `0xcc` | `0x330` | 6 | CERTAIN |
-| EUP push (pow2) | `0x129` | `0xcd` | `0x334` | 6 | CERTAIN |
-| EUP push (log2) | `0x12b` | `0xce` | `0x338` | 6 | CERTAIN |
-| EUP push (tanh) | `0x128` | `0xcf` | `0x33c` | 6 | CERTAIN |
-| EUP push (sigshft) | `0x12d` | `0xd0` | `0x340` | 6 | CERTAIN |
-| EUP push (recip) | `0x12a` | `0xd1` | `0x344` | 6 | CERTAIN |
-| EUP push (pushErf) | `0x131` | `0xd2` | `0x348` | 6 | CERTAIN |
-| EUP pop | `0x14e` | `0x168` | `0x5a0` | 1 | CERTAIN |
+| Role | LLO opcode | `Instruction` | Byte offset | Value |
+|---|---|---|---|---|
+| EUP push (rsqrt) | `0x12c` | `0xcc` | `0x330` | 6 |
+| EUP push (pow2) | `0x129` | `0xcd` | `0x334` | 6 |
+| EUP push (log2) | `0x12b` | `0xce` | `0x338` | 6 |
+| EUP push (tanh) | `0x128` | `0xcf` | `0x33c` | 6 |
+| EUP push (sigshft) | `0x12d` | `0xd0` | `0x340` | 6 |
+| EUP push (recip) | `0x12a` | `0xd1` | `0x344` | 6 |
+| EUP push (pushErf) | `0x131` | `0xd2` | `0x348` | 6 |
+| EUP pop | `0x14e` | `0x168` | `0x5a0` | 1 |
 
 `ViperfishPerformance` ctor `@0x1c8c4840`: `operator new(0x600)` = 1536 B = **384** `int32`; `Perf[+8] = Perf[+0x10] = 0x180` (384); `memset(array, 0xff, 1536)`. The seven EUP-push stores are contiguous `mov dword ptr [rax+0x330],6` … `[rax+0x348],6` (`@0x1c8c5d4a`..`@0x1c8c5dec`), and the pop store is `mov dword ptr [rax+0x5a0],1` (`@0x1c8cadff`). Viperfish classifies **all seven** F32 EUP pushes (including `sigshft`, unlike PF) and the value is uniform 6.
 
@@ -203,13 +203,13 @@ The `6acc60406`-line (GF) GhPerf object is built by a distinct constructor `sub_
 
 ### Edge Integer
 
-| Block | Byte offsets (same as GL) | Value | Confidence |
-|---|---|---|---|
-| F32 EUP-shaped run (head, 3 slots) | `0x410`..`0x418` | 2 | LOW |
-| F32 EUP-shaped run (rest, 9 slots) | `0x41c`..`0x43c` | `0xa` (10) | LOW |
-| BF16 EUP-shaped run (9 slots) | `0x440`..`0x460` | `0xb` (11) | LOW |
-| post-BF16 tail | `0x464`..`0x46c` | 1 | LOW |
-| pop-position slot | `0x710` | 2 | LOW |
+| Block | Byte offsets (same as GL) | Value |
+|---|---|---|
+| F32 EUP-shaped run (head, 3 slots) | `0x410`..`0x418` | 2 |
+| F32 EUP-shaped run (rest, 9 slots) | `0x41c`..`0x43c` | `0xa` (10) |
+| BF16 EUP-shaped run (9 slots) | `0x440`..`0x460` | `0xb` (11) |
+| post-BF16 tail | `0x464`..`0x46c` | 1 |
+| pop-position slot | `0x710` | 2 |
 
 `sub_1C8D3740`: `operator new(0x744)` = 1860 B = **465** `int32` (one row short of GL's 476); `Perf[+8] = Perf[+0x10] = 0x1d1` (465); `memset(_, 0xff, 0x744)`. The latency fill differs from GL's. The stores at `0x410..0x460` are byte-exact and contiguous: three `mov [rax+off],2` at `0x410`/`0x414`/`0x418` (`@0x1c8d5367`..`@0x1c8d539d`), nine `mov [rax+off],0xa` at `0x41c..0x43c` (`@0x1c8d53b8`..`@0x1c8d5490`), nine `mov [rax+off],0xb` at `0x440..0x460` (`@0x1c8d54ab`..`@0x1c8d5583`), then `1`s from `0x464`; the pop-position slot `0x710` is `2` (`@0x1c8d97d1`).
 
@@ -259,22 +259,22 @@ The EUP push→pop edge is bounded by **two independent quantities read from two
 
 ## Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `LatencyTable::LatencyBetween` | `0x1c89f820` | dispatcher; returns EUP edge unmodified | CERTAIN |
-| `LatencyTableJellyfish::LatencyBetweenInternal` | `0x1c8a0d60` | Jf/Df EUP clamp to `Performance[+0x30]` = 4 | CERTAIN |
-| `LatencyTablePufferfish::LatencyBetweenInternal` | `0x1c8a2aa0` | variant select via `shr r14d,0x10` → `fmatrix` | CERTAIN |
-| `LatencyTableViperfish::LatencyBetweenInternal` | `0x1c8a4ac0` | VF EUP edge via `GetViperfishInstruction` → `GetLatency` | CERTAIN |
-| `LatencyTableGhostlite::LatencyBetweenInternal` | `0x1c8b22e0` | GL/GF EUP edge via `GetGhostliteInstruction` → `GetLatency` | CERTAIN |
-| `__fmatrix LatencyFromInstruction` visitor | `0x21c203d0` | 2-arm `variant<TensorCore,BarnaCore>` dispatch | CERTAIN |
-| `dispatch<0ul>` / `dispatch<1ul>` | `0x1c8a3140` / `0x1c8a3160` | TensorCore (u16 ordinal) / BarnaCore (u8 ordinal) | CERTAIN |
-| `PufferfishPerformance` ctor | `0x1c8be080` | fills TensorCore EUP push = 7, pop = 1 | CERTAIN |
-| `PufferfishBarnaCorePerformance` ctor | `0x1c8c38c0` | fills BarnaCore EUP block = 6, VectorStore = 12 | CERTAIN |
-| `ViperfishPerformance` ctor | `0x1c8c4840` | fills EUP push = 6, pop = 1 | CERTAIN |
-| `GhostlitePerformance` ctor | `0x1c8cbc80` | fills F32 EUP = 13, BF16 = 14, pop = 1 | CERTAIN |
-| `sub_1C8D3740` (GF GhPerf ctor) | `0x1c8d3740` | fills 465-row array; EUP-shaped block 10/11 (binding LOW) | LOW |
-| `<Gen>Performance::GetLatency` | `0x1c8cbc20` (VF), `0x1c8c3860` (PF-TC), `0x1c8d36e0` (GL), `0x1c8c47e0` (PF-BC) | `latency[Instruction]` heap lookup | CERTAIN |
-| `GetGhostliteInstruction` | `0x1c8b1740` | sorted `(u16,u16)` pair table `@0x4067dc8` (258 entries) | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `LatencyTable::LatencyBetween` | `0x1c89f820` | dispatcher; returns EUP edge unmodified |
+| `LatencyTableJellyfish::LatencyBetweenInternal` | `0x1c8a0d60` | Jf/Df EUP clamp to `Performance[+0x30]` = 4 |
+| `LatencyTablePufferfish::LatencyBetweenInternal` | `0x1c8a2aa0` | variant select via `shr r14d,0x10` → `fmatrix` |
+| `LatencyTableViperfish::LatencyBetweenInternal` | `0x1c8a4ac0` | VF EUP edge via `GetViperfishInstruction` → `GetLatency` |
+| `LatencyTableGhostlite::LatencyBetweenInternal` | `0x1c8b22e0` | GL/GF EUP edge via `GetGhostliteInstruction` → `GetLatency` |
+| `__fmatrix LatencyFromInstruction` visitor | `0x21c203d0` | 2-arm `variant<TensorCore,BarnaCore>` dispatch |
+| `dispatch<0ul>` / `dispatch<1ul>` | `0x1c8a3140` / `0x1c8a3160` | TensorCore (u16 ordinal) / BarnaCore (u8 ordinal) |
+| `PufferfishPerformance` ctor | `0x1c8be080` | fills TensorCore EUP push = 7, pop = 1 |
+| `PufferfishBarnaCorePerformance` ctor | `0x1c8c38c0` | fills BarnaCore EUP block = 6, VectorStore = 12 |
+| `ViperfishPerformance` ctor | `0x1c8c4840` | fills EUP push = 6, pop = 1 |
+| `GhostlitePerformance` ctor | `0x1c8cbc80` | fills F32 EUP = 13, BF16 = 14, pop = 1 |
+| `sub_1C8D3740` (GF GhPerf ctor) | `0x1c8d3740` | fills 465-row array; EUP-shaped block 10/11 (binding LOW) |
+| `<Gen>Performance::GetLatency` | `0x1c8cbc20` (VF), `0x1c8c3860` (PF-TC), `0x1c8d36e0` (GL), `0x1c8c47e0` (PF-BC) | `latency[Instruction]` heap lookup |
+| `GetGhostliteInstruction` | `0x1c8b1740` | sorted `(u16,u16)` pair table `@0x4067dc8` (258 entries) |
 
 ---
 

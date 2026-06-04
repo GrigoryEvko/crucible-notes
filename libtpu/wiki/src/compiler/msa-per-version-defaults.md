@@ -88,13 +88,13 @@ function IsMemorySpaceAssignmentEnabled(out, Target, env_view, HloModule):  // 0
 
 All five `*_memory_space_assignment` family flags default to **1 (enabled)**. The global `xla_msa_enable` is a **Tristate** whose default-gen (`AbslFlagDefaultGenForxla_msa_enable::Gen` @ `0x1d705500`) writes a single byte **2 = ENABLED**. So MSA is on by default for every gated version; the `default:` fallthrough additionally enables it for any unknown `tpu_version >= 2`.
 
-| Flag | Type | Default | Confidence |
-|---|---|---|---|
-| `xla_jf_vmem_memory_space_assignment` | bool | **1** | CERTAIN |
-| `xla_vf_vmem_memory_space_assignment` | bool | **1** | CERTAIN |
-| `xla_gf_vmem_memory_space_assignment` | bool | **1** | CERTAIN |
-| `xla_tpu_cmem_memory_space_assignment` | bool | **1** | CERTAIN |
-| `xla_msa_enable` (global) | Tristate | **2 (ENABLED)** | CERTAIN — byte-exact @ `0x1d705500` |
+| Flag | Type | Default |
+|---|---|---|
+| `xla_jf_vmem_memory_space_assignment` | bool | **1** |
+| `xla_vf_vmem_memory_space_assignment` | bool | **1** |
+| `xla_gf_vmem_memory_space_assignment` | bool | **1** |
+| `xla_tpu_cmem_memory_space_assignment` | bool | **1** |
+| `xla_msa_enable` (global) | Tristate | **2 (ENABLED)** |
 
 ---
 
@@ -106,11 +106,11 @@ These are the literal values a reimplementer must reproduce. Every float is mate
 
 The three floats feed the `PrefetchIntervalPicker` constructor (`@0x1dcd6b60`): `picker+0x80` ← min, `picker+0x84` ← preferred, `picker+0x88` ← a product derived from preferred × max. `min` seeds the latest legal prefetch time (`use_time − ⌈min × async_copy_elapsed⌉`); `max` bounds how far ahead of the use a prefetch may be hoisted.
 
-| Option | jf | vf | gf | cmem | msa | Confidence |
-|---|---:|---:|---:|---:|---:|---|
-| `min_overlap_to_async_copy_ratio` | 1.0 | 1.0 | 1.0 | 1.0 | 1.0 | CERTAIN |
-| `preferred_overlap_to_async_copy_ratio` | 2.0 | 2.0 | 2.0 | 2.0 | 2.0 | CERTAIN |
-| `max_overlap_to_mem_size_async_copy_ratio` | **32.0** | 8.0 | 8.0 | 8.0 | 8.0 | CERTAIN |
+| Option | jf | vf | gf | cmem | msa |
+|---|---:|---:|---:|---:|---:|
+| `min_overlap_to_async_copy_ratio` | 1.0 | 1.0 | 1.0 | 1.0 | 1.0 |
+| `preferred_overlap_to_async_copy_ratio` | 2.0 | 2.0 | 2.0 | 2.0 | 2.0 |
+| `max_overlap_to_mem_size_async_copy_ratio` | **32.0** | 8.0 | 8.0 | 8.0 | 8.0 |
 
 > **QUIRK —** only the **max** ratio differs by family, and only Jellyfish stands apart: on `jf` a buffer may be prefetched up to **32×** its own async-copy elapsed time ahead of the use; on every later family only **8×**. `min` (1.0) and `preferred` (2.0) are uniform across all families. Byte evidence: `jf` max default-gen @ `0x1d72cae0` writes `0x42000000` (=32.0f); `gf` max @ `0x1d72dfa0` and `vf` max @ `0x1d72d4a0` both write `0x41000000` (=8.0f); `jf` min @ `0x1d72cc80` writes `0x3F800000` (=1.0f); `jf` preferred @ `0x1d72cd60` writes `0x40000000` (=2.0f). `cmem` additionally carries an inverse twin `xla_tpu_cmem_min_async_copy_to_overlap_ratio` = 1.0 (Gen @ `0x1d72fb20` writes `0x3F800000`).
 
@@ -118,12 +118,12 @@ The three floats feed the `PrefetchIntervalPicker` constructor (`@0x1dcd6b60`): 
 
 The outstanding caps are the ceiling enforced by the `AsynchronousCopyResource` time-bucket model: a candidate copy that would exceed the cap returns `FailOutOfAsyncCopies` (status `0x10`). These are stored as `kOneWord` inline literals (no default-gen function), confirmed by the family-paired flag names referenced inside `ComputeMemorySpaceAssignmentOptions`.
 
-| Option | jf | vf | gf | zf | cmem | msa | Confidence |
-|---|---:|---:|---:|---:|---:|---:|---|
-| `max_outstanding_prefetches` | **4** | 40 | 40 | 40 | 40 | 40 | HIGH |
-| `max_outstanding_evictions` | **4** | 40 | 40 | 40 | 40 | 40 | HIGH |
-| `max_repacks` | 4 | 4 | 4 | — | 4 | 4 | HIGH |
-| `max_retries` | 2 | 2 | 2 | — | 2 | 2 | HIGH |
+| Option | jf | vf | gf | zf | cmem | msa |
+|---|---:|---:|---:|---:|---:|---:|
+| `max_outstanding_prefetches` | **4** | 40 | 40 | 40 | 40 | 40 |
+| `max_outstanding_evictions` | **4** | 40 | 40 | 40 | 40 | 40 |
+| `max_repacks` | 4 | 4 | 4 | — | 4 | 4 |
+| `max_retries` | 2 | 2 | 2 | — | 2 | 2 |
 
 > **QUIRK —** the outstanding-copy budget splits Jellyfish from everyone else by **10×**: 4 concurrent prefetches/evictions on `jf` versus 40 on every later family (and `zf`). `max_repacks` (4) and `max_retries` (2) are uniform across all families — the int caps are inline `kOneWord` literals at `Flag<T>+0x48`, not default-gen functions, so they do not appear as `Gen` symbols in the decompile; they are confirmed by name through the family-paired `OverwriteFieldIfNotDefault` argument pairs (`xla_{jf,vf,gf,tpu_cmem,msa}_…_max_outstanding_prefetches`, `…_evictions`, `…_max_repacks`, `…_max_retries`) all present in `ComputeMemorySpaceAssignmentOptions` @ `0x12fc1440`.
 
@@ -131,12 +131,12 @@ The outstanding caps are the ceiling enforced by the `AsynchronousCopyResource` 
 
 Cross-program prefetch is the only knob besides `max_overlap` whose *enable* differs by family. The cap itself is global (1), but the per-family `*_vmem_enable_cross_program_prefetch` bool is **0 on Jellyfish, 1 on vf/gf**.
 
-| Flag | jf | vf | gf | cmem | msa | Confidence |
-|---|---:|---:|---:|---:|---:|---|
-| `<family>_vmem_enable_cross_program_prefetch` | **0** | 1 | 1 | — | — | HIGH |
-| `<family>_vmem_enable_cross_program_prefetch_freeing` | — | 1 | 1 | — | 1 | HIGH |
-| `<family>_vmem_enable_while_redundant_eviction_elimination` | 1 | 1 | 1 | 1 | 1 | HIGH |
-| `<family>_vmem_default_cross_program_prefetch_heuristic` | 0 | 0 | 0 | — | 0 | HIGH |
+| Flag | jf | vf | gf | cmem | msa |
+|---|---:|---:|---:|---:|---:|
+| `<family>_vmem_enable_cross_program_prefetch` | **0** | 1 | 1 | — | — |
+| `<family>_vmem_enable_cross_program_prefetch_freeing` | — | 1 | 1 | — | 1 |
+| `<family>_vmem_enable_while_redundant_eviction_elimination` | 1 | 1 | 1 | 1 | 1 |
+| `<family>_vmem_default_cross_program_prefetch_heuristic` | 0 | 0 | 0 | — | 0 |
 
 `msa_enable_cross_program_prefetch_freeing` default-gen @ `0x1d705e00` writes byte **1**; the `jf`/`vf`/`gf` `enable_cross_program_prefetch` and `_freeing` flags exist (HelpGen symbols present, e.g. `jf` enable @ `0x1d72c7e0`, `vf` enable @ `0x1d72d4c0`, `gf` enable @ `0x1d72dfc0`) but use `kOneWord`/inline defaults rather than `Gen` bodies, so the per-family 0/1 split is HIGH (not byte-exact from a `Gen`).
 
@@ -156,21 +156,21 @@ Several MSA knobs have no per-family variant — a single global flag governs al
 
 ### Float and integer globals
 
-| Flag | Type | Default | Confidence |
-|---|---|---:|---|
-| `xla_tpu_msa_inefficient_use_to_copy_ratio` | float | **0.5** | CERTAIN — `0x3F000000` @ `0x1d721c60` |
-| `xla_msa_max_cross_program_prefetches` | int64 | 1 | HIGH |
-| `xla_max_cross_program_prefetches` | int | 1 | HIGH |
-| `xla_tpu_llo_compilation_max_retries` | int32 | 15 | HIGH |
-| `xla_tpu_scoped_vmem_limit_kib` | int64 | **-1** (none) | HIGH |
-| `xla_tpu_prefetch_interval_picker_size_override` | int | **-1** (none) | HIGH |
-| `xla_vf_max_vmem_used_by_memory_space_assignment` | int64 | **-1** (none) | HIGH |
-| `xla_gf_max_vmem_used_by_memory_space_assignment` | int64 | **-1** (none) | HIGH |
-| `xla_tpu_max_cmem_used_by_memory_space_assignment` | int64 | **-1** (none) | HIGH |
-| `xla_tpu_sliced_prefetch_max_slices` | int32 | `0xFFFFFFFF` (unset) | HIGH |
-| `xla_tpu_sliced_prefetch_min_bytes` | int64 | -1 (unset) | HIGH |
-| `xla_tpu_sliced_prefetch_preferred_slice_size` | int64 | -1 (unset) | HIGH |
-| `xla_tpu_auto_spmd_partitioning_memory_budget_ratio` | float | 1.1 | HIGH — `@0x1d70db60` |
+| Flag | Type | Default |
+|---|---|---:|
+| `xla_tpu_msa_inefficient_use_to_copy_ratio` | float | **0.5** |
+| `xla_msa_max_cross_program_prefetches` | int64 | 1 |
+| `xla_max_cross_program_prefetches` | int | 1 |
+| `xla_tpu_llo_compilation_max_retries` | int32 | 15 |
+| `xla_tpu_scoped_vmem_limit_kib` | int64 | **-1** (none) |
+| `xla_tpu_prefetch_interval_picker_size_override` | int | **-1** (none) |
+| `xla_vf_max_vmem_used_by_memory_space_assignment` | int64 | **-1** (none) |
+| `xla_gf_max_vmem_used_by_memory_space_assignment` | int64 | **-1** (none) |
+| `xla_tpu_max_cmem_used_by_memory_space_assignment` | int64 | **-1** (none) |
+| `xla_tpu_sliced_prefetch_max_slices` | int32 | `0xFFFFFFFF` (unset) |
+| `xla_tpu_sliced_prefetch_min_bytes` | int64 | -1 (unset) |
+| `xla_tpu_sliced_prefetch_preferred_slice_size` | int64 | -1 (unset) |
+| `xla_tpu_auto_spmd_partitioning_memory_budget_ratio` | float | 1.1 |
 
 `xla_tpu_msa_inefficient_use_to_copy_ratio` (0.5) is the alt-mem skip threshold: if the ratio of in-alt-mem idle time to copy time exceeds 0.5, the buffer is **not** placed in alternate memory. Verified byte-exact: default-gen @ `0x1d721c60` writes `0x3F000000` = 0.5f.
 
@@ -184,22 +184,22 @@ This bound is **not** a top-level flag. It is a derived field of the MSA `Option
 
 ### Boolean / Tristate global enables
 
-| Flag | Type | Default | Confidence |
-|---|---|---:|---|
-| `xla_msa_allocate_scoped_memory_at_same_offset` | bool | 1 | HIGH |
-| `xla_tpu_allocate_scoped_vmem_at_same_offset` | bool | 1 | HIGH |
-| `xla_tpu_allocate_scoped_cmem_at_same_offset` | bool | 0 | HIGH |
-| `xla_msa_use_bundle_aware_cost_model` | Tristate | 2 (ENABLED) | HIGH — `@0x1d72f260` |
-| `xla_msa_cross_program_prefetch_permissive_mode` | bool | 0 | HIGH |
-| `xla_msa_experimental_use_telamalloc` | Tristate | 0 (AUTO) | HIGH |
-| `xla_tpu_vmem_use_telamalloc` / `cmem_use_telamalloc` | bool | 0 / 0 | HIGH |
-| `xla_tpu_msa_use_minimalloc` / `use_tinymalloc` | bool | 0 / 0 | HIGH |
-| `xla_tpu_msa_reduce_scoped_vmem_limit` | bool | 0 | HIGH |
-| `xla_msa_enable_sync_copy_replacement` | AutoProto | 0 (AUTO) | HIGH |
-| `xla_msa_enable_sync_slice_replacement` | AutoProto | 0 (AUTO) | HIGH |
-| `xla_msa_enable_window_prefetch` | AutoProto | 0 (AUTO) | HIGH |
-| `xla_vf_allow_split_vmem` | AutoProto | 0 (AUTO) | HIGH |
-| `xla_msa_expanded_scoped_alternate_memory_mode` | AutoProto | 0 (UNDEFINED) | HIGH |
+| Flag | Type | Default |
+|---|---|---:|
+| `xla_msa_allocate_scoped_memory_at_same_offset` | bool | 1 |
+| `xla_tpu_allocate_scoped_vmem_at_same_offset` | bool | 1 |
+| `xla_tpu_allocate_scoped_cmem_at_same_offset` | bool | 0 |
+| `xla_msa_use_bundle_aware_cost_model` | Tristate | 2 (ENABLED) |
+| `xla_msa_cross_program_prefetch_permissive_mode` | bool | 0 |
+| `xla_msa_experimental_use_telamalloc` | Tristate | 0 (AUTO) |
+| `xla_tpu_vmem_use_telamalloc` / `cmem_use_telamalloc` | bool | 0 / 0 |
+| `xla_tpu_msa_use_minimalloc` / `use_tinymalloc` | bool | 0 / 0 |
+| `xla_tpu_msa_reduce_scoped_vmem_limit` | bool | 0 |
+| `xla_msa_enable_sync_copy_replacement` | AutoProto | 0 (AUTO) |
+| `xla_msa_enable_sync_slice_replacement` | AutoProto | 0 (AUTO) |
+| `xla_msa_enable_window_prefetch` | AutoProto | 0 (AUTO) |
+| `xla_vf_allow_split_vmem` | AutoProto | 0 (AUTO) |
+| `xla_msa_expanded_scoped_alternate_memory_mode` | AutoProto | 0 (UNDEFINED) |
 
 > **GOTCHA —** the AutoProto-wrapped knobs (`sync_copy`/`sync_slice` replacement, `window_prefetch`, `expanded_scoped_alternate_memory_mode`, `allow_split_vmem`) all default to the empty/AUTO instance (0). "AUTO" means "no opinion at the flag layer" — a specific `Target` may force them ON in per-version C++ that was not traced here. Do not read AUTO=0 as "feature disabled"; read it as "decision deferred."
 
@@ -319,30 +319,30 @@ The `MemoryBoundLoopOptimizerOptions` defaults (`desired_copy_ratio`, `min_num_i
 
 ## Evidence Anchors
 
-| Symbol / Anchor | VA | Role | Confidence |
-|---|---|---|---|
-| `IsMemorySpaceAssignmentEnabled` | `0x12fc1280` | Version gate + family select | CERTAIN |
-| `ComputeMemorySpaceAssignmentOptions` | `0x12fc1440` | Per-version selection (55 Overwrite calls) | CERTAIN |
-| version jump table | `0xae09ac8` | 6 entries: v0/1→jf, v2→cmem, v3→vf, v4/5→gf | HIGH |
-| `GetTpuCompEnvWithDefaultValues` | `0x1d73f100` | Default-proto materializer | HIGH |
-| `…::$_0::operator()` | `0x1d73f1a0` | Per-field copy loop | HIGH |
-| default `TpuCompilationEnvironment` | `0x22803928` | singleton (sizeof 0x15e8), guard `0x2257ec08` | HIGH |
-| `TpuCompEnvReflection::GetFlagForField` | `0x1d74ad40` | field → CommandLineFlag | HIGH |
-| `SetFieldFromFlagString` | `0x1d73fcc0` | copy flag default into field | HIGH |
-| `ProcessNewTpuCompilationEnvironment` | `0x1d742c80` | process-new-env hook | HIGH |
-| `OverwriteFieldIfNotDefault` | `0x1d73f360` | resolution primitive | CERTAIN |
-| `jf max_overlap` Gen (`0x42000000`=32.0) | `0x1d72cae0` | byte-exact float | CERTAIN |
-| `gf max_overlap` Gen (`0x41000000`=8.0) | `0x1d72dfa0` | byte-exact float | CERTAIN |
-| `vf max_overlap` Gen (`0x41000000`=8.0) | `0x1d72d4a0` | byte-exact float | CERTAIN |
-| `jf min_overlap` Gen (`0x3F800000`=1.0) | `0x1d72cc80` | byte-exact float | CERTAIN |
-| `jf preferred_overlap` Gen (`0x40000000`=2.0) | `0x1d72cd60` | byte-exact float | CERTAIN |
-| `inefficient_use_to_copy_ratio` Gen (`0x3F000000`=0.5) | `0x1d721c60` | byte-exact float | CERTAIN |
-| `xla_msa_enable` Gen (byte 2) | `0x1d705500` | byte-exact Tristate | CERTAIN |
-| `msa_enable_cross_program_prefetch_freeing` Gen (byte 1) | `0x1d705e00` | byte-exact bool | CERTAIN |
-| `msa_use_bundle_aware_cost_model` Gen (byte 2) | `0x1d72f260` | byte-exact Tristate | HIGH |
-| `zf max_outstanding_prefetches` (=40) | `0x1d72ef40` | forward-stub flag (not gated) | HIGH |
-| `memory_space_assignment.proto` FDP | `0xbfe06e0` | proto3, 2,939 B | HIGH |
-| `tpu_compilation_environment.proto` FDP | `0xbfa6060` | proto3, 137,692 B, 1,121 fields | HIGH |
+| Symbol / Anchor | VA | Role |
+|---|---|---|
+| `IsMemorySpaceAssignmentEnabled` | `0x12fc1280` | Version gate + family select |
+| `ComputeMemorySpaceAssignmentOptions` | `0x12fc1440` | Per-version selection (55 Overwrite calls) |
+| version jump table | `0xae09ac8` | 6 entries: v0/1→jf, v2→cmem, v3→vf, v4/5→gf |
+| `GetTpuCompEnvWithDefaultValues` | `0x1d73f100` | Default-proto materializer |
+| `…::$_0::operator()` | `0x1d73f1a0` | Per-field copy loop |
+| default `TpuCompilationEnvironment` | `0x22803928` | singleton (sizeof 0x15e8), guard `0x2257ec08` |
+| `TpuCompEnvReflection::GetFlagForField` | `0x1d74ad40` | field → CommandLineFlag |
+| `SetFieldFromFlagString` | `0x1d73fcc0` | copy flag default into field |
+| `ProcessNewTpuCompilationEnvironment` | `0x1d742c80` | process-new-env hook |
+| `OverwriteFieldIfNotDefault` | `0x1d73f360` | resolution primitive |
+| `jf max_overlap` Gen (`0x42000000`=32.0) | `0x1d72cae0` | byte-exact float |
+| `gf max_overlap` Gen (`0x41000000`=8.0) | `0x1d72dfa0` | byte-exact float |
+| `vf max_overlap` Gen (`0x41000000`=8.0) | `0x1d72d4a0` | byte-exact float |
+| `jf min_overlap` Gen (`0x3F800000`=1.0) | `0x1d72cc80` | byte-exact float |
+| `jf preferred_overlap` Gen (`0x40000000`=2.0) | `0x1d72cd60` | byte-exact float |
+| `inefficient_use_to_copy_ratio` Gen (`0x3F000000`=0.5) | `0x1d721c60` | byte-exact float |
+| `xla_msa_enable` Gen (byte 2) | `0x1d705500` | byte-exact Tristate |
+| `msa_enable_cross_program_prefetch_freeing` Gen (byte 1) | `0x1d705e00` | byte-exact bool |
+| `msa_use_bundle_aware_cost_model` Gen (byte 2) | `0x1d72f260` | byte-exact Tristate |
+| `zf max_outstanding_prefetches` (=40) | `0x1d72ef40` | forward-stub flag (not gated) |
+| `memory_space_assignment.proto` FDP | `0xbfe06e0` | proto3, 2,939 B |
+| `tpu_compilation_environment.proto` FDP | `0xbfa6060` | proto3, 137,692 B, 1,121 fields |
 
 ---
 

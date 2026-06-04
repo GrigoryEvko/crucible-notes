@@ -107,16 +107,16 @@ Every method takes a single `PLUGIN_Profiler_*_Args*` and returns a `PLUGIN_Prof
 
 All 8 slots resolve to text-section symbols under `xla::profiler::`, confirmed by mangled name and address in the function table. The "Args size" column is the value each method validates `struct_size` against — when it validates at all.
 
-| Slot | Off | Method | Impl symbol (`xla::profiler::`) | Addr | Size | Args size | Confidence |
-|---|---|---|---|---|---|---|---|
-| 0 | `+0x10` | `Error_Destroy` | `PLUGIN_Profiler_Error_Destroy` | `0xE6F1540` | 235 | `0x18` (24) | CERTAIN |
-| 1 | `+0x18` | `Error_Message` | `PLUGIN_Profiler_Error_Message` | `0xE6F17C0` | 343 | `0x28` (40) | CERTAIN |
-| 2 | `+0x20` | `Error_GetCode` | `PLUGIN_Profiler_Error_GetCode` | `0xE6F1920` | 99 | `0x1C` (28) | CERTAIN |
-| 3 | `+0x28` | `Create` | `PLUGIN_Profiler_Create` | `0xE6F0C60` | 539 | — (no check) | CERTAIN |
-| 4 | `+0x30` | `Destroy` | `PLUGIN_Profiler_Destroy` | `0xE6F0E80` | 263 | — (no check) | CERTAIN |
-| 5 | `+0x38` | `Start` | `PLUGIN_Profiler_Start` | `0xE6F0FA0` | 322 | — (no check) | CERTAIN |
-| 6 | `+0x40` | `Stop` | `PLUGIN_Profiler_Stop` | `0xE6F1100` | 300 | — (no check) | CERTAIN |
-| 7 | `+0x48` | `CollectData` | `PLUGIN_Profiler_CollectData` | `0xE6F1240` | 728 | — (no check) | CERTAIN |
+| Slot | Off | Method | Impl symbol (`xla::profiler::`) | Addr | Size | Args size |
+|---|---|---|---|---|---|---|
+| 0 | `+0x10` | `Error_Destroy` | `PLUGIN_Profiler_Error_Destroy` | `0xE6F1540` | 235 | `0x18` (24) |
+| 1 | `+0x18` | `Error_Message` | `PLUGIN_Profiler_Error_Message` | `0xE6F17C0` | 343 | `0x28` (40) |
+| 2 | `+0x20` | `Error_GetCode` | `PLUGIN_Profiler_Error_GetCode` | `0xE6F1920` | 99 | `0x1C` (28) |
+| 3 | `+0x28` | `Create` | `PLUGIN_Profiler_Create` | `0xE6F0C60` | 539 | — (no check) |
+| 4 | `+0x30` | `Destroy` | `PLUGIN_Profiler_Destroy` | `0xE6F0E80` | 263 | — (no check) |
+| 5 | `+0x38` | `Start` | `PLUGIN_Profiler_Start` | `0xE6F0FA0` | 322 | — (no check) |
+| 6 | `+0x40` | `Stop` | `PLUGIN_Profiler_Stop` | `0xE6F1100` | 300 | — (no check) |
+| 7 | `+0x48` | `CollectData` | `PLUGIN_Profiler_CollectData` | `0xE6F1240` | 728 | — (no check) |
 
 > **GOTCHA —** only the three *error helper* slots validate `struct_size`. The five lifecycle methods perform **no** backward-compat size check at all. The error helpers funnel through `xla::profiler::(anonymous namespace)::CheckMatchingStructSizes(name_view, required, current)` @ `0xE6F1640`, which builds an `absl::Status` `"<Args> size: expected M …"` on mismatch (and proceeds best-effort for Destroy/Message; returns an error for GetCode). The lifecycle methods read fields off fixed offsets unconditionally — a caller built against a different `pjrt_c_api_profiler_extension.h` revision than libtpu ships will silently mis-read `Create_Args`/`CollectData_Args`. There is no forward-compat window on the lifecycle path: link against the matching header.
 
@@ -174,14 +174,14 @@ struct PLUGIN_Profiler_CollectData_Args {     /* 32 (0x20) */
 
 A 128-byte heap object (`operator new(0x80)`), zeroed on construction except the state byte. It inline-aggregates a `tensorflow::profiler::XSpace`, a serialized-bytes vector, the cached size, the backend `ProfilerCollection*`, and one state byte. All offsets below are confirmed directly from the lifecycle method bodies (Create writes `+120`; CollectData writes `+96`/`+104`; Destroy reads `+88`/`+96`/`+112`).
 
-| Field | Off | Type | Meaning | Confidence |
-|---|---|---|---|---|
-| `xspace` | `+0x00` | `tensorflow::profiler::XSpace` (88 B) | proto2 message; only constructed lazily by CollectData | HIGH |
-| `xspace_constructed` | `+0x58` | `uint8_t` | `1` iff `XSpace::XSpace()` ran; gates the `~XSpace` in Destroy | CERTAIN |
-| `serialized_xspace` | `+0x60` | `std::vector<uint8_t>*` | owned heap vector of proto bytes from CollectData | CERTAIN |
-| `cached_xspace_size` | `+0x68` | `size_t` | `XSpace::ByteSizeLong()` from first CollectData | CERTAIN |
-| `collection` | `+0x70` | `tsl::profiler::ProfilerCollection*` | owned backend; freed via vtable in Destroy | CERTAIN |
-| `ready` | `+0x78` | `uint8_t` | state byte (see below) | CERTAIN |
+| Field | Off | Type | Meaning |
+|---|---|---|---|
+| `xspace` | `+0x00` | `tensorflow::profiler::XSpace` (88 B) | proto2 message; only constructed lazily by CollectData |
+| `xspace_constructed` | `+0x58` | `uint8_t` | `1` iff `XSpace::XSpace()` ran; gates the `~XSpace` in Destroy |
+| `serialized_xspace` | `+0x60` | `std::vector<uint8_t>*` | owned heap vector of proto bytes from CollectData |
+| `cached_xspace_size` | `+0x68` | `size_t` | `XSpace::ByteSizeLong()` from first CollectData |
+| `collection` | `+0x70` | `tsl::profiler::ProfilerCollection*` | owned backend; freed via vtable in Destroy |
+| `ready` | `+0x78` | `uint8_t` | state byte (see below) |
 
 > **GOTCHA —** the field at `+0x60` is the **pointer to** a heap `std::vector<uint8_t>` (a 24-byte `{data,size,capacity}` header `operator new(0x18u)`-allocated by CollectData), not an inline vector. Destroy frees the inner `data` buffer and then the 24-byte header, and CollectData drops the previous header before installing a new one. A reimplementation that treats `+0x60` as an inline 24-byte vector will misalign every field after it.
 
@@ -326,13 +326,13 @@ function PLUGIN_Profiler_Destroy(args):                    // 0xE6F0E80
 
 The handle's `collection` (`+0x70`) is a `tsl::profiler::ProfilerCollection` — a 32-byte object whose `.data.rel.ro` vtable @ `0x217738A0` carries `{top-offset, RTTI, D2 dtor, D0 dtor, Start, Stop, CollectData}`. The five lifecycle methods call into it at fixed vtable offsets, so the PJRT layer is purely a marshaller.
 
-| Backend op | vtable slot | Symbol (`tsl::profiler::ProfilerCollection::`) | Addr | Confidence |
-|---|---|---|---|---|
-| ctor (takes `vector<unique_ptr<ProfilerInterface>>`) | — | `ProfilerCollection(vector)` | `0xF6A15E0` | CERTAIN |
-| `Start` | `+0x10` | `Start` | `0xF6A1640` | CERTAIN |
-| `Stop` | `+0x18` | `Stop` | `0xF6A16C0` | CERTAIN |
-| `CollectData(XSpace*)` | `+0x20` | `CollectData` | `0xF6A1740` | CERTAIN |
-| dtor (D2 / D0) | `+0x08` | `~ProfilerCollection` | `0xF6A1840` / `0xF6A18E0` | CERTAIN |
+| Backend op | vtable slot | Symbol (`tsl::profiler::ProfilerCollection::`) | Addr |
+|---|---|---|---|
+| ctor (takes `vector<unique_ptr<ProfilerInterface>>`) | — | `ProfilerCollection(vector)` | `0xF6A15E0` |
+| `Start` | `+0x10` | `Start` | `0xF6A1640` |
+| `Stop` | `+0x18` | `Stop` | `0xF6A16C0` |
+| `CollectData(XSpace*)` | `+0x20` | `CollectData` | `0xF6A1740` |
+| dtor (D2 / D0) | `+0x08` | `~ProfilerCollection` | `0xF6A1840` / `0xF6A18E0` |
 
 Each backend op iterates the inner vector and calls the corresponding `tsl::profiler::ProfilerInterface` vtable slot on every sub-profiler. The sub-profiler set is whatever `CreateProfilers` assembled from the factory registry: confirmed members include `xprof::tpu::TpuProfilerImpl` (device, talks to xdb per-chip), `xprof::cpu::HostTracer` (factory @ `0xEF34760`, host perf/cpu), and `tsl::profiler::ThreadpoolProfilerInterface` (vtable @ `0x2175C150`, host threadpool dispatch).
 

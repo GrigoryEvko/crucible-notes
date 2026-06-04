@@ -109,11 +109,11 @@ The xprof export path is driven by a `tsl::profiler::ProfilerCollection` — a v
 
 Each backend op (`ProfilerCollection::Start` @ `0xf6a1640`, `Stop` @ `0xf6a16c0`, `CollectData(XSpace*)` @ `0xf6a1740`) iterates the inner vector and calls the matching slot on every sub-profiler. Confirmed members:
 
-| Sub-profiler | Side | Key symbol | Addr | Confidence |
-|---|---|---|---|---|
-| `xprof::tpu::TpuProfilerImpl` | device — drains per-chip ring buffers, decodes, builds device planes | `TpuProfilerImpl::CollectData(XSpace*)` | `0xef34860` | CERTAIN |
-| `xla::profiler::HostTracer` | host — `TraceMe`/CPU events into `/host:0` (factory in `xprof::cpu`) | `HostTracer::CollectData(XSpace*)` | `0xf32fb40` | CERTAIN |
-| `tsl::profiler::ThreadpoolProfilerInterface` | host — threadpool dispatch events | `ThreadpoolProfilerInterface::CollectData(XSpace*)` | `0xf3326c0` | CERTAIN |
+| Sub-profiler | Side | Key symbol | Addr |
+|---|---|---|---|
+| `xprof::tpu::TpuProfilerImpl` | device — drains per-chip ring buffers, decodes, builds device planes | `TpuProfilerImpl::CollectData(XSpace*)` | `0xef34860` |
+| `xla::profiler::HostTracer` | host — `TraceMe`/CPU events into `/host:0` (factory in `xprof::cpu`) | `HostTracer::CollectData(XSpace*)` | `0xf32fb40` |
+| `tsl::profiler::ThreadpoolProfilerInterface` | host — threadpool dispatch events | `ThreadpoolProfilerInterface::CollectData(XSpace*)` | `0xf3326c0` |
 
 `CreateProfilers` wraps each factory output in a `ProfilerController` for crash isolation; the full factory inventory is populated lazily across several static-init blocks and is not exhaustively enumerated (LOW confidence on completeness — same gap noted on the PJRT page).
 
@@ -127,14 +127,14 @@ Device profiling runs *concurrently* with execution, mediated by the `xprof::tpu
 
 There is no single device-trace codec: each TPU chip family has its own `TraceCodecInterface<TraceEntry>` (vtable slots `DecodeEntry`/`EncodeEntry`/`GetMaxEntrySize`/`GetEntryPacketSize`), selected at runtime by `xprof::tpu::GetTraceCodec(asic_sw::DeviceIdentifiers, int)` @ `0xf5a2900` from a `util_registration::StaticMapBase` factory keyed by the chip codename. The packet size (16 bytes) and the 61-bit framing+header envelope are universal; what differs per family is the header split (3-vs-6-bit `block_id`, 48-vs-45-bit timestamp) and the per-trace-point payload field maps. The selector and the producer/reader wiring are owned by [Per-DeviceType Profiler Struct](per-devicetype-struct.md) and [kDeviceTypeInfo Producer / Readers](kdevicetypeinfo-producer-readers.md).
 
-| Family | `CreateTraceCodec` | TraceEntry type | block_id | timestamp | Codec page area | Confidence |
-|---|---|---|---|---|---|---|
-| pxc | `plc::driver::profiler::CreateTraceCodec` @ `0xf5af2c0` (pxc family) | fixed-width `TraceEntry` | 3 | 48 | [TraceEntriesCoder](trace-entries-coder.md) | CERTAIN |
-| vfc | `vfc::driver::profiler::CreateTraceCodec` @ `0xf5f5da0` | fixed-width `TraceEntry` | 6 | 45 | [Payload: vfc/vlc/gfc](payload-vfc-vlc-gfc.md) | CERTAIN |
-| vlc | `vlc::driver::profiler::CreateTraceCodec` @ `0xf5d5180` | fixed-width `TraceEntry` | 3 | 48 | [Payload: vfc/vlc/gfc](payload-vfc-vlc-gfc.md) | CERTAIN |
-| glc | `glc::driver::profiler::CreateTraceCodec` @ `0xf6282e0` | fixed-width `TraceEntry` | 6 | 45 | [Payload: vfc/vlc/gfc](payload-vfc-vlc-gfc.md) | CERTAIN |
-| gfc | `gfc::driver::profiler::CreateTraceCodec` @ `0xf65ed00` | fixed-width `TraceEntry` | 6 | 45 | [Payload: vfc/vlc/gfc](payload-vfc-vlc-gfc.md) | CERTAIN |
-| jxc | (legacy path) | `jxc::PerformanceTraceEntry` | — | — | [Payload: jxc Legacy](payload-jxc-legacy.md) | HIGH |
+| Family | `CreateTraceCodec` | TraceEntry type | block_id | timestamp | Codec page area |
+|---|---|---|---|---|---|
+| pxc | `plc::driver::profiler::CreateTraceCodec` @ `0xf5af2c0` (pxc family) | fixed-width `TraceEntry` | 3 | 48 | [TraceEntriesCoder](trace-entries-coder.md) |
+| vfc | `vfc::driver::profiler::CreateTraceCodec` @ `0xf5f5da0` | fixed-width `TraceEntry` | 6 | 45 | [Payload: vfc/vlc/gfc](payload-vfc-vlc-gfc.md) |
+| vlc | `vlc::driver::profiler::CreateTraceCodec` @ `0xf5d5180` | fixed-width `TraceEntry` | 3 | 48 | [Payload: vfc/vlc/gfc](payload-vfc-vlc-gfc.md) |
+| glc | `glc::driver::profiler::CreateTraceCodec` @ `0xf6282e0` | fixed-width `TraceEntry` | 6 | 45 | [Payload: vfc/vlc/gfc](payload-vfc-vlc-gfc.md) |
+| gfc | `gfc::driver::profiler::CreateTraceCodec` @ `0xf65ed00` | fixed-width `TraceEntry` | 6 | 45 | [Payload: vfc/vlc/gfc](payload-vfc-vlc-gfc.md) |
+| jxc | (legacy path) | `jxc::PerformanceTraceEntry` | — | — | [Payload: jxc Legacy](payload-jxc-legacy.md) |
 
 > **QUIRK —** jxc uses a *different* TraceEntry type — `asic_sw::driver::deepsea::jxc::PerformanceTraceEntry`, decoded by its own `DecodeTraceBuffers<PerformanceTraceEntry>` instantiation — not the shared fixed-16-byte `TraceEntry` codec the five current families use. A reimplementation that assumes one packet schema across all gens will misparse jxc traces. The jxc DMA/HbmMux/brn_perf specifics are on [jxc DMA / HbmMux / brn_perf](jxc-dma-hbmmux-brnperf.md) and [Payload: jxc Legacy](payload-jxc-legacy.md).
 
@@ -144,16 +144,16 @@ There is no single device-trace codec: each TPU chip family has its own `TraceCo
 
 The trace points per family (per-gen cardinality differs — 78–128 oneof variants depending on gen; pxc=99) are not a flat enum — they are organized into *subsystem bands* of contiguous `trace_point_id` ranges, with reserved gaps between bands that all dispatch to a common error label. The decode jump-table index span is wider than the variant count (pxc bounds the wire id at `0x6e`=110, vlc at `0x8f`=143, vfc at `0x5f`=95, gfc at `0x64`=100), since gappy bands leave reserved slots routed to the error label. The bands carve the device-trace space by hardware unit; each band's payload field maps live on a dedicated page so this opener stays a map, not a dump.
 
-| Band | `trace_point_id` range (pxc) | Subsystem | Payload page | Confidence |
-|---|---|---|---|---|
-| UHI | 0–10 | host-DMA / address translation | [Payload: UHI/OCI/ICI/DMA](payload-uhi-oci-ici-dma.md) | HIGH |
-| OCI | 20–27 | on-chip interconnect engine | [Payload: UHI/OCI/ICI/DMA](payload-uhi-oci-ici-dma.md) | HIGH |
-| ICI | 40–55 | inter-chip-interconnect / collective fabric | [Payload: UHI/OCI/ICI/DMA](payload-uhi-oci-ici-dma.md) | HIGH |
-| TCS | 80–97 | TensorCore sequencer sync/control + throttle | [Payload: SparseCore Band](payload-sc-band.md) | HIGH |
-| BC | 100–110 | BcFsm / Bcs / BcOci (SparseCore/broadcast) controllers — pxc top-level indices `BcFsmChannelController0..10` | [Payload: SparseCore Band](payload-sc-band.md) | HIGH |
-| CMQ | (sub-dispatch) | command-queue / VPU DMA — reached *within* BC case bodies, not a distinct top-level wire id | [Payload: UHI/OCI/ICI/DMA](payload-uhi-oci-ici-dma.md) | MEDIUM |
-| (reserved) | 11–19, 28–39, 56–79, 98–99 | unused — all → common error label `0xf5b032f` | n/a (decode rejects) | CERTAIN |
-| (out of range) | ≥ 111 | rejected by the `cmp $0x6e,%rax; ja` bound @ `0xf5af451` | n/a | CERTAIN |
+| Band | `trace_point_id` range (pxc) | Subsystem | Payload page |
+|---|---|---|---|
+| UHI | 0–10 | host-DMA / address translation | [Payload: UHI/OCI/ICI/DMA](payload-uhi-oci-ici-dma.md) |
+| OCI | 20–27 | on-chip interconnect engine | [Payload: UHI/OCI/ICI/DMA](payload-uhi-oci-ici-dma.md) |
+| ICI | 40–55 | inter-chip-interconnect / collective fabric | [Payload: UHI/OCI/ICI/DMA](payload-uhi-oci-ici-dma.md) |
+| TCS | 80–97 | TensorCore sequencer sync/control + throttle | [Payload: SparseCore Band](payload-sc-band.md) |
+| BC | 100–110 | BcFsm / Bcs / BcOci (SparseCore/broadcast) controllers — pxc top-level indices `BcFsmChannelController0..10` | [Payload: SparseCore Band](payload-sc-band.md) |
+| CMQ | (sub-dispatch) | command-queue / VPU DMA — reached *within* BC case bodies, not a distinct top-level wire id | [Payload: UHI/OCI/ICI/DMA](payload-uhi-oci-ici-dma.md) |
+| (reserved) | 11–19, 28–39, 56–79, 98–99 | unused — all → common error label `0xf5b032f` | n/a (decode rejects) |
+| (out of range) | ≥ 111 | rejected by the `cmp $0x6e,%rax; ja` bound @ `0xf5af451` | n/a |
 
 A small set of cross-cutting render/timeline concerns sit above the raw bands: the ICR DMA-timeline derivation ([ICR DMA-Timeline Band](icr-dma-timeline-band.md)), DMA endpoint rendering ([DMA Endpoint Rendering](dma-endpoint-rendering.md)), and the v7x performance-counter lines ([v7x Perf-Counters](v7x-perf-counters.md)). Most variant messages also carry a shared `TraceIdHeader` (`transaction_id:21`, `core_id:3`, `chip_id:12│14`) immediately after the header — 36 bits on pxc, 38 bits on vfc/vlc/glc/gfc where `chip_id` widens to 14 — the per-transaction identity that lets a multi-packet DMA be stitched back together; some events (OCI read/write) carry three of them.
 

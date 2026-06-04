@@ -88,27 +88,27 @@ The opcode is `VAL >> tzcnt(MASK)`: `0x140000000000000 >> 53 = 0x0a`. `ScalarAlu
 
 The two ALU lanes share one opcode namespace: `IntegerAdd=0x0a`, `BitwiseAnd=0x0e`, `CompareIntegerEq=0x1e`, the FP-compare block `0x2a..0x2f` decode to identical values on both lanes. They differ only in (a) the bundle bit the opcode lands at — `@181` for `ScalarAlu0` (decoded from word `this+0x18` bit 53), `@154` for `ScalarAlu1` (decoded from word `this+0x18` bits 26..31) — and (b) a small set of lane-exclusive ops listed below. Values are gen-invariant for shared ops (vfc `IntegerAdd` is `==0x0a`, byte-identical to gfc).
 
-| Opcode | Mnemonic | Class | Lane | Confidence |
-|---:|---|---|---|---|
-| `0x0a` | `IntegerAdd` | integer ALU | Alu0 + Alu1 | CONFIRMED |
-| `0x0b` | `IntegerAddWithOverflowCheck` | integer ALU | both | CONFIRMED |
-| `0x0c` / `0x0d` | `IntegerSubtractYX` / `…WithOverflowCheck` | integer ALU | both | CONFIRMED |
-| `0x0e` / `0x0f` / `0x10` | `BitwiseAnd` / `BitwiseOr` / `BitwiseXor` | bitwise | both | CONFIRMED |
-| `0x11` / `0x12` | `FloatingPointAdd` / `FloatingPointSubtractYX` | FP ALU | Alu1 | CONFIRMED |
-| `0x13` | `FloatingPointMultiply` | FP ALU | Alu0 | HIGH |
-| `0x14` / `0x15` | `Multiply32BitIntegers` / `Multiply32BitUnsignedIntsReturningHighHalf` | integer mul | Alu0 | HIGH |
-| `0x16` | `DivideWithRemainderXY` | integer div | Alu0 | HIGH |
-| `0x17` / `0x18` / `0x19` | `LogicalShiftLeft` / `LogicalShiftRight` / `ArithmeticShiftRight` `XByYPlaces` | shift | both | CONFIRMED |
-| `0x1a` / `0x1b` | `MaxOfTwoFloatingPointValues` / `MinOfTwoFloatingPointValues` | FP minmax | both | HIGH |
-| `0x1c` / `0x1d` | `MaxOfTwoUnsignedIntValues` / `MinOfTwoUnsignedIntValues` | int minmax | both | CONFIRMED |
-| `0x1e`–`0x23` | `CompareIntegerEq/Ne`, `CompareSignedIntegerGt/Gte/Lt/Lte` | int compare | both | CONFIRMED |
-| `0x24`–`0x27` | `CompareUnsignedIntegerGt/Gte/Lt/Lte` | uint compare | both | CONFIRMED |
-| `0x28` | `CarryOutFromIntegerUnsigned` | carry | both | CONFIRMED |
-| `0x29` | `PredicateOr` | predicate | both | CONFIRMED |
-| `0x2a`–`0x2f` | `CompareFloatingPoint{Eq,Neq,Gt,Gte,Lt,Lte}` | FP compare | both | HIGH |
-| `0x30` | `IsInfOrNan` | FP classify | both | HIGH |
-| `0x31` | `ArithmeticShiftLeftXByYPlacesCheckOverflow` | shift | both | CONFIRMED |
-| `0x3e` | `LogicalShiftLeftOnesXByYPlaces` | shift (GF-only) | Alu0 | HIGH |
+| Opcode | Mnemonic | Class | Lane |
+|---:|---|---|---|
+| `0x0a` | `IntegerAdd` | integer ALU | Alu0 + Alu1 |
+| `0x0b` | `IntegerAddWithOverflowCheck` | integer ALU | both |
+| `0x0c` / `0x0d` | `IntegerSubtractYX` / `…WithOverflowCheck` | integer ALU | both |
+| `0x0e` / `0x0f` / `0x10` | `BitwiseAnd` / `BitwiseOr` / `BitwiseXor` | bitwise | both |
+| `0x11` / `0x12` | `FloatingPointAdd` / `FloatingPointSubtractYX` | FP ALU | Alu1 |
+| `0x13` | `FloatingPointMultiply` | FP ALU | Alu0 |
+| `0x14` / `0x15` | `Multiply32BitIntegers` / `Multiply32BitUnsignedIntsReturningHighHalf` | integer mul | Alu0 |
+| `0x16` | `DivideWithRemainderXY` | integer div | Alu0 |
+| `0x17` / `0x18` / `0x19` | `LogicalShiftLeft` / `LogicalShiftRight` / `ArithmeticShiftRight` `XByYPlaces` | shift | both |
+| `0x1a` / `0x1b` | `MaxOfTwoFloatingPointValues` / `MinOfTwoFloatingPointValues` | FP minmax | both |
+| `0x1c` / `0x1d` | `MaxOfTwoUnsignedIntValues` / `MinOfTwoUnsignedIntValues` | int minmax | both |
+| `0x1e`–`0x23` | `CompareIntegerEq/Ne`, `CompareSignedIntegerGt/Gte/Lt/Lte` | int compare | both |
+| `0x24`–`0x27` | `CompareUnsignedIntegerGt/Gte/Lt/Lte` | uint compare | both |
+| `0x28` | `CarryOutFromIntegerUnsigned` | carry | both |
+| `0x29` | `PredicateOr` | predicate | both |
+| `0x2a`–`0x2f` | `CompareFloatingPoint{Eq,Neq,Gt,Gte,Lt,Lte}` | FP compare | both |
+| `0x30` | `IsInfOrNan` | FP classify | both |
+| `0x31` | `ArithmeticShiftLeftXByYPlacesCheckOverflow` | shift | both |
+| `0x3e` | `LogicalShiftLeftOnesXByYPlaces` | shift (GF-only) | Alu0 |
 
 The compare blocks are dense: `0x1e..0x27` is the ten integer compares (Eq/Ne then signed Gt/Gte/Lt/Lte then unsigned Gt/Gte/Lt/Lte) and `0x2a..0x2f` is the six FP compares. A reimplementer can decode the whole compare region by linear opcode index.
 
@@ -116,20 +116,20 @@ The compare blocks are dense: `0x1e..0x27` is the ten integer compares (Eq/Ne th
 
 The lanes are not interchangeable. `ScalarAlu1` carries the SMEM load/store, circular-buffer ([CBREG](cbreg.md)), and task-request ops; `ScalarAlu0` carries the FP-multiply / integer-multiply / divide ops and (in the escape fields below) the branch/call/convert/divide-push ops.
 
-| Opcode | Mnemonic | Lane | Confidence |
-|---:|---|---|---|
-| `0x01` | `ScalarLoadSmemY` | Alu1 | CONFIRMED |
-| `0x02` | `ScalarLoadSmemXY` | Alu1 | CONFIRMED |
-| `0x03` | `ScalarStoreXToSmemY` | Alu1 | CONFIRMED |
-| `0x09` | `DescriptorBasedDma` | Alu1 | HIGH |
-| `0x32` | `ScalarStoreXToSmemSumDestAndY` | Alu1 | HIGH |
-| `0x33` | `AddCbreg` | Alu1 | CONFIRMED |
-| `0x34` | `TaskRequestClearIbuf` | Alu1 | HIGH |
-| `0x35` | `WriteCbreg` | Alu1 | HIGH |
-| `0x36` | `ReadCbreg` | Alu1 | HIGH |
-| `0x37` | `TaskRequest` | Alu1 | CONFIRMED |
-| `0x3c` | `ScalarStoreCircularBuffer` | Alu1 | HIGH |
-| `0x3d` | `ScalarLoadCircularBuffer` | Alu1 | HIGH |
+| Opcode | Mnemonic | Lane |
+|---:|---|---|
+| `0x01` | `ScalarLoadSmemY` | Alu1 |
+| `0x02` | `ScalarLoadSmemXY` | Alu1 |
+| `0x03` | `ScalarStoreXToSmemY` | Alu1 |
+| `0x09` | `DescriptorBasedDma` | Alu1 |
+| `0x32` | `ScalarStoreXToSmemSumDestAndY` | Alu1 |
+| `0x33` | `AddCbreg` | Alu1 |
+| `0x34` | `TaskRequestClearIbuf` | Alu1 |
+| `0x35` | `WriteCbreg` | Alu1 |
+| `0x36` | `ReadCbreg` | Alu1 |
+| `0x37` | `TaskRequest` | Alu1 |
+| `0x3c` | `ScalarStoreCircularBuffer` | Alu1 |
+| `0x3d` | `ScalarLoadCircularBuffer` | Alu1 |
 
 `AddCbreg=0x33` is confirmed `(word6 & 0xFC000000) == 0xCC000000`, `0xCC000000 >> 26 = 0x33`; `TaskRequest=0x37` is `== 0xDC000000`, `0xDC000000 >> 26 = 0x37`. `FloatingPointAdd=0x11` exists only as `SparseCoreScalarAlu1FloatingPointAddOpcode` (`0x1eb7b4a0`, `== 0x44000000`, `0x44000000 >> 26 = 0x11`); there is no `ScalarAlu0FloatingPointAddOpcode` type in gfc — the lane asymmetry is structural, not a labeling artifact.
 
@@ -141,12 +141,12 @@ The lanes are not interchangeable. `ScalarAlu1` carries the SMEM load/store, cir
 
 When the primary 6-bit value names a class, the concrete op lives in a wider escape field that overlays the slot. The escape *values* are slot-independent (Alu0 and Alu1 use the same numbers); only the field's bit base differs per lane (`ScalarAlu0` higher in the struct, `ScalarAlu1` lower), mirroring the `@181`/`@154` opcode split.
 
-| Escape | Field width | Value range | Decoded from | Confidence |
-|---|---|---|---|---|
-| Control | 11-bit | `0x00..0x1d` | Alu0 word `+0x18` / Alu1 word `+6` | CONFIRMED |
-| Register-read | 17-bit | `0x280..0x28d` | `(word3 & 0x7FFFC0000000000)` Alu0 | CONFIRMED |
-| Config-set | 16-bit | `0x4001..0x4005` | `(word3 & 0x7FF03E000000000)` Alu0 | HIGH |
-| Divide-push | `0x16xxxx` | `0x160001..0x160002` | `(word3 & 0x7E003E000000000)` Alu0 | HIGH |
+| Escape | Field width | Value range | Decoded from |
+|---|---|---|---|
+| Control | 11-bit | `0x00..0x1d` | Alu0 word `+0x18` / Alu1 word `+6` |
+| Register-read | 17-bit | `0x280..0x28d` | `(word3 & 0x7FFFC0000000000)` Alu0 |
+| Config-set | 16-bit | `0x4001..0x4005` | `(word3 & 0x7FF03E000000000)` Alu0 |
+| Divide-push | `0x16xxxx` | `0x160001..0x160002` | `(word3 & 0x7E003E000000000)` Alu0 |
 
 ### Control ops (11-bit escape)
 
@@ -211,17 +211,17 @@ The two-result divide that pushes quotient or remainder. `DivideWithRemainderXYP
 
 `ScsScalarMisc` (op `@127`) is the sync/atomic engine. It carries no FP and no branch; it holds the sync-flag family that coordinates SC tiles with each other and with the TensorCore, plus an integer-ALU subset duplicated from the ALU lanes. Its opcode space is heavily composite (Form B): a 6-bit base names a class, and a 5-bit sub-opcode — the sync/atomic *mode* at struct-relative bit 47 (`0xF800000000000`), or an extended-ALU class at bit 58 (`0x7C00000000000000`) — picks the exact op.
 
-| Base | Class | Sub field | Members (sub value) | Confidence |
-|---:|---|---|---|---|
-| `0x00` | extended-ALU | bit 58 | `CoreInterrupt(0)`, `MoveY(13)`, `CountLeadingZeros(14)` | CONFIRMED |
-| `0x01` | Sync compare-and-set | bit 47 | `SyncDone(0)`, `SyncEqual(1)`, `SyncNotEqual(2)`, `SyncGreater(3)`, `SyncGreaterOrEqual(4)`, `SyncLess(5)`, `SyncNotDone(6)`, `SyncEqualOrDone(7)`, `SyncNotEqualOrDone(8)`, `SyncGreaterOrDone(9)`, `SyncGreaterOrEqualOrDone(10)`, `SyncLessOrDone(11)` | CONFIRMED |
-| `0x02` | SyncWatch | bit 47 | `SyncWatch{Done,Equal,NotEqual,Greater,GreaterOrEqual,Less,NotDone,EqualOrDone,NotEqualOrDone,GreaterOrDone,GreaterOrEqualOrDone,LessOrDone}` (modes 0..11) | CONFIRMED |
-| `0x03` | SyncWatch escape | bit 58 | `SyncWatchWait(0)`, `SyncWatchWaitSelect(1)` | HIGH |
-| `0x04` | SyncWatch escape | bit 58 | `SyncWatchEnd(0)`, `SyncWatchEndSelect(1)` | HIGH |
-| `0x05` | set-sync | bit 47 | `SetSyncFlag(0)`, `SetSyncDone(1)`, `AddSyncFlag(2)` | CONFIRMED |
-| `0x06` | read-sync | bit 58 | `ReadSyncFlag(0)`, `ReadSyncDone(1)`, `ReadSyncPublicAccess(2)` | HIGH |
-| `0x07` | barrier | bit 47 | `SyncBarrier(0)`, `SetPOrTState(4)` | HIGH |
-| `0x08` | Atomic | bit 47 | `AtomicTile{Write(0),Add(1),WriteSetDone(2),AddSetDone(3),WriteSetDoneInverted(4),AddSetDoneInverted(5)}`, `AtomicRemote{Write(6),Add(7),WriteSetDone(8),AddSetDone(9),WriteSetDoneInverted(10),AddSetDoneInverted(11)}` | CONFIRMED |
+| Base | Class | Sub field | Members (sub value) |
+|---:|---|---|---|
+| `0x00` | extended-ALU | bit 58 | `CoreInterrupt(0)`, `MoveY(13)`, `CountLeadingZeros(14)` |
+| `0x01` | Sync compare-and-set | bit 47 | `SyncDone(0)`, `SyncEqual(1)`, `SyncNotEqual(2)`, `SyncGreater(3)`, `SyncGreaterOrEqual(4)`, `SyncLess(5)`, `SyncNotDone(6)`, `SyncEqualOrDone(7)`, `SyncNotEqualOrDone(8)`, `SyncGreaterOrDone(9)`, `SyncGreaterOrEqualOrDone(10)`, `SyncLessOrDone(11)` |
+| `0x02` | SyncWatch | bit 47 | `SyncWatch{Done,Equal,NotEqual,Greater,GreaterOrEqual,Less,NotDone,EqualOrDone,NotEqualOrDone,GreaterOrDone,GreaterOrEqualOrDone,LessOrDone}` (modes 0..11) |
+| `0x03` | SyncWatch escape | bit 58 | `SyncWatchWait(0)`, `SyncWatchWaitSelect(1)` |
+| `0x04` | SyncWatch escape | bit 58 | `SyncWatchEnd(0)`, `SyncWatchEndSelect(1)` |
+| `0x05` | set-sync | bit 47 | `SetSyncFlag(0)`, `SetSyncDone(1)`, `AddSyncFlag(2)` |
+| `0x06` | read-sync | bit 58 | `ReadSyncFlag(0)`, `ReadSyncDone(1)`, `ReadSyncPublicAccess(2)` |
+| `0x07` | barrier | bit 47 | `SyncBarrier(0)`, `SetPOrTState(4)` |
+| `0x08` | Atomic | bit 47 | `AtomicTile{Write(0),Add(1),WriteSetDone(2),AddSetDone(3),WriteSetDoneInverted(4),AddSetDoneInverted(5)}`, `AtomicRemote{Write(6),Add(7),WriteSetDone(8),AddSetDone(9),WriteSetDoneInverted(10),AddSetDoneInverted(11)}` |
 
 `SetSyncFlag` (base `0x05`) is confirmed by `((base) ^ 5 | (word & 0xF800000000000)) == 0` (sub 0); `AtomicTileAdd` by base `^8` / sub `^0x800000000000` → base 8, sub 1; `CoreInterrupt` is the all-zero opcode (base 0, extended-ALU sub 0); `CountLeadingZeros` is base 0, extended-ALU sub `0x3800000000000000 >> 58 = 14`.
 
@@ -272,29 +272,29 @@ The scalar ISA is gen-invariant for shared ops (vfc `IntegerAdd` decodes `==0x0a
 
 All addresses are gfc (6acc60406) unless noted; the `Matches()` immediate is the authoritative opcode value.
 
-| Symbol | Address | Opcode evidence | Confidence |
-|---|---|---|---|
-| `SparseCoreScalarMiscIntegerAddOpcode::Matches` | `0x1ebabf00` | Form A `((w>>63)&0x3F)==0x0a` | CONFIRMED |
-| `SparseCoreScalarMiscAtomicTileAddOpcode::Matches` | `0x1ebabbe0` | Form B base 8 / sub 1 | CONFIRMED |
-| `SparseCoreScalarMiscSyncEqualOpcode::Matches` | `0x1ebab320` | Form B base 1 / mode 1 | CONFIRMED |
-| `SparseCoreScalarMiscSetSyncFlagOpcode::Matches` | (gfc) | Form B base 5 / sub 0 | CONFIRMED |
-| `SparseCoreScalarMiscCoreInterruptOpcode::Matches` | (gfc) | Form B base 0 / ext-ALU sub 0 | CONFIRMED |
-| `SparseCoreScalarMiscCountLeadingZerosOpcode::Matches` | (gfc) | Form B base 0 / ext-ALU sub 14 | CONFIRMED |
-| `SparseCoreScalarAlu0IntegerAddOpcode::Matches` | `0x1eb67660` | Form C `(w&0x7E0…)==0x140…` → 0x0a | CONFIRMED |
-| `SparseCoreScalarAlu0BitwiseAndOpcode::Matches` | (gfc) | Form C → 0x0e | CONFIRMED |
-| `SparseCoreScalarAlu0CompareIntegerEqOpcode::Matches` | (gfc) | Form C → 0x1e | CONFIRMED |
-| `SparseCoreScalarAlu0HaltOpcode::Matches` | `0x1eb67500` | control escape `(w15&0x7FF)==0` → 0x00 | CONFIRMED |
-| `SparseCoreScalarAlu0BranchAbsoluteOpcode::Matches` | `0x1eb67d40` | control escape → 0x04 | CONFIRMED |
-| `SparseCoreScalarAlu0ReadRegisterLccLowOpcode::Matches` | `0x1eb67560` | 17-bit escape → 0x280 | CONFIRMED |
-| `SparseCoreScalarAlu0SetDmaCreditOpcode::Matches` | `0x1eb67ac0` | 16-bit escape → 0x4003 | CONFIRMED |
-| `SparseCoreScalarAlu0DivideWithRemainderXYPushQuotientOpcode::Matches` | `0x1eb67e60` | divide-push → 0x160001 | CONFIRMED |
-| `SparseCoreScalarAlu0SetRotatingPredicateRegisterOpcode::Matches` | `0x1eb67b00` | config escape, GF-only | CONFIRMED |
-| `SparseCoreScalarAlu1FloatingPointAddOpcode::Matches` | `0x1eb7b4a0` | Form C `==0x44000000` → 0x11, Alu1-only | CONFIRMED |
-| `SparseCoreScalarAlu1AddCbregOpcode::Matches` | `0x1eb7b5a0` | Form C `(w6&0xFC000000)==0xCC000000` → 0x33 | CONFIRMED |
-| `SparseCoreScalarAlu1TaskRequestOpcode::Matches` | `0x1eb7b620` | Form C `==0xDC000000` → 0x37 | CONFIRMED |
-| `SparseCoreScalarAlu0Encoder::Encode` | `0x1eb693c0` | opcode `BitCopy(.,181,.,6)`; escapes @176/170/165 | CONFIRMED |
-| `SparseCoreScsScalarMiscEncoder::Encode` | `0x1eb914a0` | opcode `BitCopy(.,127,.,6)`; pred @133/136/137 | CONFIRMED |
-| `BitCopy` | `0x1fa0a900` | LE packer `(dst, dst_bitoff, src, src_bitoff, nbits)` | CONFIRMED |
+| Symbol | Address | Opcode evidence |
+|---|---|---|
+| `SparseCoreScalarMiscIntegerAddOpcode::Matches` | `0x1ebabf00` | Form A `((w>>63)&0x3F)==0x0a` |
+| `SparseCoreScalarMiscAtomicTileAddOpcode::Matches` | `0x1ebabbe0` | Form B base 8 / sub 1 |
+| `SparseCoreScalarMiscSyncEqualOpcode::Matches` | `0x1ebab320` | Form B base 1 / mode 1 |
+| `SparseCoreScalarMiscSetSyncFlagOpcode::Matches` | (gfc) | Form B base 5 / sub 0 |
+| `SparseCoreScalarMiscCoreInterruptOpcode::Matches` | (gfc) | Form B base 0 / ext-ALU sub 0 |
+| `SparseCoreScalarMiscCountLeadingZerosOpcode::Matches` | (gfc) | Form B base 0 / ext-ALU sub 14 |
+| `SparseCoreScalarAlu0IntegerAddOpcode::Matches` | `0x1eb67660` | Form C `(w&0x7E0…)==0x140…` → 0x0a |
+| `SparseCoreScalarAlu0BitwiseAndOpcode::Matches` | (gfc) | Form C → 0x0e |
+| `SparseCoreScalarAlu0CompareIntegerEqOpcode::Matches` | (gfc) | Form C → 0x1e |
+| `SparseCoreScalarAlu0HaltOpcode::Matches` | `0x1eb67500` | control escape `(w15&0x7FF)==0` → 0x00 |
+| `SparseCoreScalarAlu0BranchAbsoluteOpcode::Matches` | `0x1eb67d40` | control escape → 0x04 |
+| `SparseCoreScalarAlu0ReadRegisterLccLowOpcode::Matches` | `0x1eb67560` | 17-bit escape → 0x280 |
+| `SparseCoreScalarAlu0SetDmaCreditOpcode::Matches` | `0x1eb67ac0` | 16-bit escape → 0x4003 |
+| `SparseCoreScalarAlu0DivideWithRemainderXYPushQuotientOpcode::Matches` | `0x1eb67e60` | divide-push → 0x160001 |
+| `SparseCoreScalarAlu0SetRotatingPredicateRegisterOpcode::Matches` | `0x1eb67b00` | config escape, GF-only |
+| `SparseCoreScalarAlu1FloatingPointAddOpcode::Matches` | `0x1eb7b4a0` | Form C `==0x44000000` → 0x11, Alu1-only |
+| `SparseCoreScalarAlu1AddCbregOpcode::Matches` | `0x1eb7b5a0` | Form C `(w6&0xFC000000)==0xCC000000` → 0x33 |
+| `SparseCoreScalarAlu1TaskRequestOpcode::Matches` | `0x1eb7b620` | Form C `==0xDC000000` → 0x37 |
+| `SparseCoreScalarAlu0Encoder::Encode` | `0x1eb693c0` | opcode `BitCopy(.,181,.,6)`; escapes @176/170/165 |
+| `SparseCoreScsScalarMiscEncoder::Encode` | `0x1eb914a0` | opcode `BitCopy(.,127,.,6)`; pred @133/136/137 |
+| `BitCopy` | `0x1fa0a900` | LE packer `(dst, dst_bitoff, src, src_bitoff, nbits)` |
 
 Cross-gen anchors: vfc `SparseCoreScalarMiscIntegerAddOpcode::Matches` `0x1e8ff7c0` decodes `==0x0a` (gen-invariance); vfc `SparseCoreScalarAlu0HaltYieldOpcode::Matches` `0x1ee81460` exists (VF-only). The `TensorCore*` and `SparseCoreTec*` op-form types share the gfc `isa` namespace — match the `SparseCoreScalar`/`SparseCoreScsScalar` prefix exactly to avoid pulling TC or TEC predicates into the SCS scalar roster.
 

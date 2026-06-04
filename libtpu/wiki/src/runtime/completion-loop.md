@@ -132,12 +132,12 @@ The mechanism is `tsl::IndirectAsyncValue::ForwardTo`: the promise holds an *ind
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---:|---|---|
-| `pjrt::PJRT_Device_CreateAsyncTrackingEvent` | (slot) | C-ABI entry; unwraps `PJRT_Device_CreateAsyncTrackingEvent_Args` | HIGH |
-| `xla::TpuDevice::CreateAsyncTrackingEvent(string_view label)` | `0xf7ff1c0` | mint a labelled device tracking event (returns a promise/future pair) | HIGH |
-| `xla::PjRtCpuDevice::CreateAsyncTrackingEvent` | — | CPU sibling (same surface, CPU events) | HIGH |
-| `xla::MegaScalePjRtDevice::CreateAsyncTrackingEvent` | `0xe6eb780` | multi-slice decorator; forwards to the wrapped device | MEDIUM |
+| Function | Address | Role |
+|---|---:|---|
+| `pjrt::PJRT_Device_CreateAsyncTrackingEvent` | (slot) | C-ABI entry; unwraps `PJRT_Device_CreateAsyncTrackingEvent_Args` |
+| `xla::TpuDevice::CreateAsyncTrackingEvent(string_view label)` | `0xf7ff1c0` | mint a labelled device tracking event (returns a promise/future pair) |
+| `xla::PjRtCpuDevice::CreateAsyncTrackingEvent` | — | CPU sibling (same surface, CPU events) |
+| `xla::MegaScalePjRtDevice::CreateAsyncTrackingEvent` | `0xe6eb780` | multi-slice decorator; forwards to the wrapped device |
 
 The `string_view` argument is a human-readable label (the same label threaded through `CreateLinkedUserPromise`'s `file`/`line`/`label` triple), used by the `pending_event_logger` diagnostic path seen in `SetReady` line 27. The event a tracking-event call mints is the same `tsl::AsyncValue`-backed object; the caller resolves it via the returned promise (`SetReady`/`SetError`) exactly as the execute path does internally.
 
@@ -199,14 +199,14 @@ function on_device_complete(fulfill_args):           // FulfillArgs, run by the 
 
 The legacy SE path orders work with a per-stream FIFO (`DeepseaRequestQueue`, see [Stream Semantics](stream-semantics.md)). The modern path orders it with `tpu::TpuEventIssuer`: a sequence-point + dependency-DAG engine that decides *when* a launch's `FulfillArgs` lambda may run, expressed entirely over `tsl::AsyncValue` dependencies.
 
-| Function | Address | Role | Confidence |
-|---|---:|---|---|
-| `tpu::TpuEventIssuer::NextSequencePoint(int)` | `0x1d0d38e0` | allocate the next sequence point (ordering token) | HIGH |
-| `tpu::TpuEventIssuer::Sequence::Next()` | `0x1d0d3940` | advance the sequence (chains successive launches) | HIGH |
-| `tpu::TpuEventIssuer::RunWhenDepsReady(...)` | `0x1d0d4640` | register the fulfil/fulfil-on-error callbacks to run once all deps' `AsyncValue`s resolve | HIGH |
-| `tpu::TpuEventIssuer::AggregateDeps<Span<...>>(...)` | — | collapse input buffer/event refs into one dependency vector | HIGH |
-| `tpu::CreateCountTrackingTpuEventIssuer(int, ConcurrentWorkQueue*, SystemEventTracker*)` | `0x1d0d3820` | issuer flavour that counts in-flight events (tracking) | HIGH |
-| `tpu::CreateNonTrackingTpuEventIssuer(int, ConcurrentWorkQueue*)` | `0x1d0d37a0` | lightweight issuer flavour (no counting) | HIGH |
+| Function | Address | Role |
+|---|---:|---|
+| `tpu::TpuEventIssuer::NextSequencePoint(int)` | `0x1d0d38e0` | allocate the next sequence point (ordering token) |
+| `tpu::TpuEventIssuer::Sequence::Next()` | `0x1d0d3940` | advance the sequence (chains successive launches) |
+| `tpu::TpuEventIssuer::RunWhenDepsReady(...)` | `0x1d0d4640` | register the fulfil/fulfil-on-error callbacks to run once all deps' `AsyncValue`s resolve |
+| `tpu::TpuEventIssuer::AggregateDeps<Span<...>>(...)` | — | collapse input buffer/event refs into one dependency vector |
+| `tpu::CreateCountTrackingTpuEventIssuer(int, ConcurrentWorkQueue*, SystemEventTracker*)` | `0x1d0d3820` | issuer flavour that counts in-flight events (tracking) |
+| `tpu::CreateNonTrackingTpuEventIssuer(int, ConcurrentWorkQueue*)` | `0x1d0d37a0` | lightweight issuer flavour (no counting) |
 
 `RunWhenDepsReady` is the heart: its signature takes the define event (`AsyncValueRef<TpuEvent>`), two spans of `RCReference<AsyncValue>` dependencies, a `FulfillArgs` success callback, a `FulfillOnErrorArgs` error callback, and a `SequencePoint` async value. It registers the callbacks to fire once *all* dependencies are available — exactly the DAG join that SE achieves with `WaitFor`. When the join completes, the success callback runs `FulfillArgs` (resolving the define event → `SetReady` → user value), or the error callback runs `FulfillOnErrorArgs` (→ `SetError`).
 

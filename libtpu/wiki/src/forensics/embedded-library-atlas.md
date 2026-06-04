@@ -34,27 +34,27 @@ The table is the authoritative inventory. **Version evidence** is the strongest 
 
 The footprint scale, for orientation: **huge** ≳ 25 MB, **large** 5–25 MB, **medium** 1–5 MB, **small** 0.1–1 MB, **trace** < 0.1 MB.
 
-| Library | Version evidence | Footprint | Confidence |
-|---|---|---|---|
-| **LLVM** (see [sibling](llvm-mlir-manifest.md)) | `LLVM version g3_____-trunk 8918319853fbdf…` @ `0xB1FA070` — trunk commit, no upstream tag | huge (~84 MB) | CERTAIN |
-| **MLIR** (see [sibling](llvm-mlir-manifest.md)) | bundled with same LLVM trunk; `mlir::` namespace | huge (~72 MB) | CERTAIN |
-| **Abseil** | `absl::log_internal::SetTimeZone` @ `0x8714E5B`; `absl::AnyInvocable` @ `0x188C785` → **≥ LTS 20240722**, ceiling open | huge (~29 MB) | HIGH |
-| **Intel oneDNN (DNNL)** | path `third_party/intel_dnnl/v3_3/src/common` @ `0x85BEAE8` → **v3.3** | large (~25 MB) | CERTAIN |
-| **libc++** | `std::__u::` ABI tag — google3 libc++, matches the LLVM commit | large (~18 MB) | HIGH |
-| **Eigen** | `Eigen` namespace, 28,702 names; `Eigen::bfloat16` tensor ABI → **3.4.x branch**, exact tag open | large (~12 MB) | HIGH |
-| **protobuf** | `EDITION_2024` @ `0x5EE8C1E`, `EDITION_2026` @ `0x5EE8C31`; `descriptor_table_protodef` @ `0x23DF7736` → **v32+ editions-era** | medium (~8 MB) | HIGH |
-| **gRPC** | `grpc_core::` @ `0x188C4DE`; `chaotic_good` transport → google3-tip (no tagged release), **≥ v1.66 dev** | medium (~3 MB) | HIGH |
-| **BoringSSL** | `BoringSSL` banner @ `0x857D84C`; `bssl::` / `EVP_`/`SSL_`/`X509_` C symbols | medium (~1.3 MB) | CERTAIN |
-| **Brotli** | `BrotliDecoderDecompress` @ `0xA2869A1`; static-dictionary tables → ≥ 1.1, reached through riegeli | small (~0.85 MB) | HIGH |
-| **zstd** | `ZSTD_compressBound` @ `0x270D623C`, `ZSTD_createDCtx` @ `0x8716BDF`; bundled as `third_party/zippy/` | small (~0.6 MB) | CERTAIN |
-| **ICU** | data file `icudt78` @ `0x83FE04C`; namespace `icu_78` → **ICU 78** | small (~0.5 MB) | CERTAIN |
-| **riegeli** | path `third_party/riegeli/` @ `0x85D7066`; `riegeli::` namespace | small (~0.3 MB) | CERTAIN |
-| **snappy** | `snappy::` namespace @ `0xA1251E5` | trace (~18 KB) | CERTAIN |
-| **RE2** | `re2::` @ `0x86679B9`, `re2::RegexpFlag`, `third_party/re2` | small (~0.12 MB) | CERTAIN |
-| **zlib** | `zlib_rs` Rust-port symbols @ `0x852F25E`; `deflate`/`inflate`/`crc32` C symbols | small (~0.17 MB) | CERTAIN |
-| **Xbyak** (oneDNN JIT) | `Xbyak` namespace @ `0xB38846D` | trace (~90 KB) | CERTAIN |
-| **tcmalloc** | `tcmalloc::` namespace; custom `google_malloc` ELF section | trace (~55 KB code, allocator-only) | CERTAIN |
-| **farmhash** | `farmhash` family (`farmhashna`/`uo`/`te`/`xo`/`mk`/`cc`) @ `0xfdce579` | trace (~7 KB) | CERTAIN |
+| Library | Version evidence | Footprint |
+|---|---|---|
+| **LLVM** (see [sibling](llvm-mlir-manifest.md)) | `LLVM version g3_____-trunk 8918319853fbdf…` @ `0xB1FA070` — trunk commit, no upstream tag | huge (~84 MB) |
+| **MLIR** (see [sibling](llvm-mlir-manifest.md)) | bundled with same LLVM trunk; `mlir::` namespace | huge (~72 MB) |
+| **Abseil** | `absl::log_internal::SetTimeZone` @ `0x8714E5B`; `absl::AnyInvocable` @ `0x188C785` → **≥ LTS 20240722**, ceiling open | huge (~29 MB) |
+| **Intel oneDNN (DNNL)** | path `third_party/intel_dnnl/v3_3/src/common` @ `0x85BEAE8` → **v3.3** | large (~25 MB) |
+| **libc++** | `std::__u::` ABI tag — google3 libc++, matches the LLVM commit | large (~18 MB) |
+| **Eigen** | `Eigen` namespace, 28,702 names; `Eigen::bfloat16` tensor ABI → **3.4.x branch**, exact tag open | large (~12 MB) |
+| **protobuf** | `EDITION_2024` @ `0x5EE8C1E`, `EDITION_2026` @ `0x5EE8C31`; `descriptor_table_protodef` @ `0x23DF7736` → **v32+ editions-era** | medium (~8 MB) |
+| **gRPC** | `grpc_core::` @ `0x188C4DE`; `chaotic_good` transport → google3-tip (no tagged release), **≥ v1.66 dev** | medium (~3 MB) |
+| **BoringSSL** | `BoringSSL` banner @ `0x857D84C`; `bssl::` / `EVP_`/`SSL_`/`X509_` C symbols | medium (~1.3 MB) |
+| **Brotli** | `BrotliDecoderDecompress` @ `0xA2869A1`; static-dictionary tables → ≥ 1.1, reached through riegeli | small (~0.85 MB) |
+| **zstd** | `ZSTD_compressBound` @ `0x270D623C`, `ZSTD_createDCtx` @ `0x8716BDF`; bundled as `third_party/zippy/` | small (~0.6 MB) |
+| **ICU** | data file `icudt78` @ `0x83FE04C`; namespace `icu_78` → **ICU 78** | small (~0.5 MB) |
+| **riegeli** | path `third_party/riegeli/` @ `0x85D7066`; `riegeli::` namespace | small (~0.3 MB) |
+| **snappy** | `snappy::` namespace @ `0xA1251E5` | trace (~18 KB) |
+| **RE2** | `re2::` @ `0x86679B9`, `re2::RegexpFlag`, `third_party/re2` | small (~0.12 MB) |
+| **zlib** | `zlib_rs` Rust-port symbols @ `0x852F25E`; `deflate`/`inflate`/`crc32` C symbols | small (~0.17 MB) |
+| **Xbyak** (oneDNN JIT) | `Xbyak` namespace @ `0xB38846D` | trace (~90 KB) |
+| **tcmalloc** | `tcmalloc::` namespace; custom `google_malloc` ELF section | trace (~55 KB code, allocator-only) |
+| **farmhash** | `farmhash` family (`farmhashna`/`uo`/`te`/`xo`/`mk`/`cc`) @ `0xfdce579` | trace (~7 KB) |
 
 > **NOTE —** the footprint numbers are share of *named symbol bytes*, not segment sizes. They rank libraries correctly relative to one another but should not be read as exact `.text` contributions; a TU-local helper inside Abseil that lost its namespace prefix is counted in the anonymous residue, not against Abseil. Treat the scale buckets, not the parenthetical figures, as the reliable signal.
 

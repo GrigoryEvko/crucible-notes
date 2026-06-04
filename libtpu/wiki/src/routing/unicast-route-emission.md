@@ -341,24 +341,24 @@ When `use_cache_`, `RouteTargetCache` (at `gen+0x130`) holds a **2-D path array*
 
 ## 6. Function map
 
-| Function | Address | Role | Confidence |
-|----------|---------|------|------------|
-| `ParallelRoutingTableGenerator::CreateUnicastRoutingTables` | `0x1fbd5340` | fibered 2-D sweep driver | CERTAIN |
-| `RoutingTableGenerator::CreateUnicastRoutingTables` | `0x1fbd94a0` | serial sweep twin | CERTAIN |
-| `$_0` outer fiber lambda | `0x1fbd70c0` | one Bundle task per source | HIGH |
-| inner dst lambda | `0x1fbd7240` | dst loop + `SetChannelMerges` + first-error | CERTAIN |
-| `ParallelRoutingTableGenerator::CreateSrcDestUnicastRoutingTable` | `0x1fbd5640` | per-`(src,dst)` entry build | CERTAIN |
-| `RoutingTableGenerator::WalkCreateSrcDestUnicastRoutingTable` | `0x1fbd9580` | serial per-`(src,dst)` twin (live path only) | HIGH |
-| `RoutingTableGenerator::PopulateRoutingTable` | `0x1fbdb5c0` | per-hop table-select + write | CERTAIN |
-| `RoutingTableGenerator::GetNextHopAction` | `0x1fbda6a0` | hop → `{next_chip, output_link, vc}` | CERTAIN |
-| `GetTableIndex` | `0x1fbdd000` | chip_id → dense row (crc32 swiss) | HIGH |
-| `GetEgressTable` | `0x1fbdc040` | `gen+0xa8`[row], stride `0x48` | CERTAIN |
-| `GetNextHopTable` | `0x1fbdbb00` | egress-next / link-next select | CERTAIN |
-| `GetLinkHopTable` | `0x1fbdbbe0` | per-(chip, in-link) table | HIGH |
-| `RouteTargetCache::GetPath` | `0x1fbd42c0` | `[src_row][dst]` path index | CERTAIN |
-| `SetChannelMerges` | `0x1fbda1e0` | per-source VC/channel merge | MEDIUM |
-| `GetVcBalanceUsage` | `0x1fbdb4c0` | VC balance counter (rule not reduced) | LOW |
-| `RoutingTableGeneratorFactory::CreateGenerator` | `0x1fbd3dc0` | strategy → generator class | HIGH |
+| Function | Address | Role |
+|----------|---------|------|
+| `ParallelRoutingTableGenerator::CreateUnicastRoutingTables` | `0x1fbd5340` | fibered 2-D sweep driver |
+| `RoutingTableGenerator::CreateUnicastRoutingTables` | `0x1fbd94a0` | serial sweep twin |
+| `$_0` outer fiber lambda | `0x1fbd70c0` | one Bundle task per source |
+| inner dst lambda | `0x1fbd7240` | dst loop + `SetChannelMerges` + first-error |
+| `ParallelRoutingTableGenerator::CreateSrcDestUnicastRoutingTable` | `0x1fbd5640` | per-`(src,dst)` entry build |
+| `RoutingTableGenerator::WalkCreateSrcDestUnicastRoutingTable` | `0x1fbd9580` | serial per-`(src,dst)` twin (live path only) |
+| `RoutingTableGenerator::PopulateRoutingTable` | `0x1fbdb5c0` | per-hop table-select + write |
+| `RoutingTableGenerator::GetNextHopAction` | `0x1fbda6a0` | hop → `{next_chip, output_link, vc}` |
+| `GetTableIndex` | `0x1fbdd000` | chip_id → dense row (crc32 swiss) |
+| `GetEgressTable` | `0x1fbdc040` | `gen+0xa8`[row], stride `0x48` |
+| `GetNextHopTable` | `0x1fbdbb00` | egress-next / link-next select |
+| `GetLinkHopTable` | `0x1fbdbbe0` | per-(chip, in-link) table |
+| `RouteTargetCache::GetPath` | `0x1fbd42c0` | `[src_row][dst]` path index |
+| `SetChannelMerges` | `0x1fbda1e0` | per-source VC/channel merge |
+| `GetVcBalanceUsage` | `0x1fbdb4c0` | VC balance counter (rule not reduced) |
+| `RoutingTableGeneratorFactory::CreateGenerator` | `0x1fbd3dc0` | strategy → generator class |
 
 ---
 

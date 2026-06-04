@@ -66,51 +66,51 @@ The self-service remedy class: an error or log line names a specific `--xla_*` /
 
 ### Fusion / MXU
 
-| Offset | Hint string (verbatim) | Flag referenced | Confidence |
-|---|---|---|---|
-| `0x858bbcf` | "(1) Please use --xla_tpu_rwb_fusion=false (and --xla_tpu_dot_dot_fusion=false if failure persists), Reason: found fallback window config while lowering fusion." | `xla_tpu_rwb_fusion`, `xla_tpu_dot_dot_fusion` | CERTAIN |
-| `0xa2b7034` | (duplicate of `0x858bbcf` — same rwb/dot_dot fusion remedy; both copies byte-identical) | (same) | CERTAIN |
-| `0x96c35ed` | "PartialReduce is designed to be used with fusion. Did you forget to set \`--xla_tpu_nested_dot_fusion=true\`?" | `xla_tpu_nested_dot_fusion` | CERTAIN |
-| `0xa083064` | "…suboptimal MXU throughput on this HLO. Please file a bug with XLA:TPU compiler team, and use --xla_tpu_accumulate_into_mrb=false in the meantime." | `xla_tpu_accumulate_into_mrb` | HIGH |
+| Offset | Hint string (verbatim) | Flag referenced |
+|---|---|---|
+| `0x858bbcf` | "(1) Please use --xla_tpu_rwb_fusion=false (and --xla_tpu_dot_dot_fusion=false if failure persists), Reason: found fallback window config while lowering fusion." | `xla_tpu_rwb_fusion`, `xla_tpu_dot_dot_fusion` |
+| `0xa2b7034` | (duplicate of `0x858bbcf` — same rwb/dot_dot fusion remedy; both copies byte-identical) | (same) |
+| `0x96c35ed` | "PartialReduce is designed to be used with fusion. Did you forget to set \`--xla_tpu_nested_dot_fusion=true\`?" | `xla_tpu_nested_dot_fusion` |
+| `0xa083064` | "…suboptimal MXU throughput on this HLO. Please file a bug with XLA:TPU compiler team, and use --xla_tpu_accumulate_into_mrb=false in the meantime." | `xla_tpu_accumulate_into_mrb` |
 
 ### SparseCore / embedding
 
-| Offset | Hint string (verbatim) | Flag referenced | Confidence |
-|---|---|---|---|
-| `0x9fe2e58` | "If you are seeing this error when attempting to compile a distributed embedding model try running with --xla_tpu_embedding_table_oblongness_threshold=1 to ensure the embedding table is not given a tiled layout." | `xla_tpu_embedding_table_oblongness_threshold` | HIGH |
-| `0xa073044` | "Skipping reduce-scatter decomposition as SC ND RS needs --xla_tpu_enable_sparse_core_reduce_scatter_v2=true." | `xla_tpu_enable_sparse_core_reduce_scatter_v2` | HIGH |
-| `0xa07b05e` | "Number of sparse cores for scatter offloading should not be 0. To disable, please set xla_tpu_enable_offloading_scatter_to_sparsecore to false." | `xla_tpu_enable_offloading_scatter_to_sparsecore` | HIGH |
-| `0xa07b0ee` | "Number of SparseCores for gather offloading should not be 0. To disable, please set xla_tpu_enable_offloading_gather_to_sparsecore to false." | `xla_tpu_enable_offloading_gather_to_sparsecore` | HIGH |
-| `0x85c0718` | "Unsupported: computing max_nz_per_row requires --xla_sc_fused_scatter_in_compute_loop" | `xla_sc_fused_scatter_in_compute_loop` | HIGH |
-| `0x85c076e` | "Unsupported: computing max_unique_nz_per_row requires --xla_sc_fused_scatter_in_compute_loop" | `xla_sc_fused_scatter_in_compute_loop` | HIGH |
-| `0x85c07cb` | "Unsupported: computing max_unique_nz_per_row requires --xla_sc_fused_gather_in_compute_loop" | `xla_sc_fused_gather_in_compute_loop` | HIGH |
-| `0x86678da` | "…To avoid this failure, try to set a larger number to '--fdo_config_sparsecore_allowed_dropped_id_count_per_epoch' flag" | `fdo_config_sparsecore_allowed_dropped_id_count_per_epoch` | HIGH |
+| Offset | Hint string (verbatim) | Flag referenced |
+|---|---|---|
+| `0x9fe2e58` | "If you are seeing this error when attempting to compile a distributed embedding model try running with --xla_tpu_embedding_table_oblongness_threshold=1 to ensure the embedding table is not given a tiled layout." | `xla_tpu_embedding_table_oblongness_threshold` |
+| `0xa073044` | "Skipping reduce-scatter decomposition as SC ND RS needs --xla_tpu_enable_sparse_core_reduce_scatter_v2=true." | `xla_tpu_enable_sparse_core_reduce_scatter_v2` |
+| `0xa07b05e` | "Number of sparse cores for scatter offloading should not be 0. To disable, please set xla_tpu_enable_offloading_scatter_to_sparsecore to false." | `xla_tpu_enable_offloading_scatter_to_sparsecore` |
+| `0xa07b0ee` | "Number of SparseCores for gather offloading should not be 0. To disable, please set xla_tpu_enable_offloading_gather_to_sparsecore to false." | `xla_tpu_enable_offloading_gather_to_sparsecore` |
+| `0x85c0718` | "Unsupported: computing max_nz_per_row requires --xla_sc_fused_scatter_in_compute_loop" | `xla_sc_fused_scatter_in_compute_loop` |
+| `0x85c076e` | "Unsupported: computing max_unique_nz_per_row requires --xla_sc_fused_scatter_in_compute_loop" | `xla_sc_fused_scatter_in_compute_loop` |
+| `0x85c07cb` | "Unsupported: computing max_unique_nz_per_row requires --xla_sc_fused_gather_in_compute_loop" | `xla_sc_fused_gather_in_compute_loop` |
+| `0x86678da` | "…To avoid this failure, try to set a larger number to '--fdo_config_sparsecore_allowed_dropped_id_count_per_epoch' flag" | `fdo_config_sparsecore_allowed_dropped_id_count_per_epoch` |
 
 ### Scheduler / collective / infeed
 
-| Offset | Hint string (verbatim) | Flag referenced | Confidence |
-|---|---|---|---|
-| `0xa008ce4` | "…has gaps on the way from that operand to itself. You can use --xla_tpu_scheduling_annotation_deannotate_unsupported_groups=true to deannotate the unsupported groups." | `xla_tpu_scheduling_annotation_deannotate_unsupported_groups` | HIGH |
-| `0xa060e03` | "Attempted to use profile-guided latency estimator without the real cost model. Either enable --xla_tpu_scheduler_using_real_cost_model or unset --xla_tpu_impure_latency_hiding_scheduler_profile_path." | `xla_tpu_scheduler_using_real_cost_model`, `xla_tpu_impure_latency_hiding_scheduler_profile_path` | HIGH |
-| `0xa04a55e` | "Sinking DCN collectives requires --xla_tpu_use_megascale_host_reduction." | `xla_tpu_use_megascale_host_reduction` | HIGH |
-| `0xa05844c` | "Sharded infeed with non-uniform layouts is not supported. Try turning off the infeed layout optimization (--transpose_tpu_infeed=false) and report to XLA team." | `transpose_tpu_infeed` | HIGH |
+| Offset | Hint string (verbatim) | Flag referenced |
+|---|---|---|
+| `0xa008ce4` | "…has gaps on the way from that operand to itself. You can use --xla_tpu_scheduling_annotation_deannotate_unsupported_groups=true to deannotate the unsupported groups." | `xla_tpu_scheduling_annotation_deannotate_unsupported_groups` |
+| `0xa060e03` | "Attempted to use profile-guided latency estimator without the real cost model. Either enable --xla_tpu_scheduler_using_real_cost_model or unset --xla_tpu_impure_latency_hiding_scheduler_profile_path." | `xla_tpu_scheduler_using_real_cost_model`, `xla_tpu_impure_latency_hiding_scheduler_profile_path` |
+| `0xa04a55e` | "Sinking DCN collectives requires --xla_tpu_use_megascale_host_reduction." | `xla_tpu_use_megascale_host_reduction` |
+| `0xa05844c` | "Sharded infeed with non-uniform layouts is not supported. Try turning off the infeed layout optimization (--transpose_tpu_infeed=false) and report to XLA team." | `transpose_tpu_infeed` |
 
 ### Memory / OOM / runtime / debug
 
-| Offset | Hint string (verbatim) | Flag referenced | Confidence |
-|---|---|---|---|
-| `0x9e6e39e` | "…Aborting compilation early because it's unlikely to have enough device memory. Requires %s, has %s available. If more detailed logging is desired, set --xla_tpu_impure_oom_fast_exit_threshold=-1" | `xla_tpu_impure_oom_fast_exit_threshold` | CERTAIN |
-| `0xa074100` | ". Reduce TPU memory usage or set --jellyfish_executor_max_wait_time_for_releasing_memory_on_oom to a larger value." | `jellyfish_executor_max_wait_time_for_releasing_memory_on_oom` | CERTAIN |
-| `0xa01af59` | "Spilling sregs to HBM on megacore is implemented but untested; use --xla_enable_megacore_hbm_spill=true to activate, and please update b/177274769 with findings." | `xla_enable_megacore_hbm_spill` | CERTAIN |
-| `0xa07a6ba` | ". Restart the job or disable set --megascale_use_numa_aware_threadpool=false." | `megascale_use_numa_aware_threadpool` | HIGH |
-| `0x96deddc` | "…bytes. Pass --xla_hbm_logging_buffer_size_bytes=<n>" | `xla_hbm_logging_buffer_size_bytes` | HIGH |
-| `0xa06c059` | "Unable to log from the tile because tile log is NOT enabled. Use --xla_tpu_enable_tile_log_recorder=true to enable logging." | `xla_tpu_enable_tile_log_recorder` | HIGH |
-| `0xa06c0d5` | "…was invoked but logging was not enabled. Use --xla_tpu_enable_sc_log_recorder=true to enable logging." | `xla_tpu_enable_sc_log_recorder` | HIGH |
-| `0xb52d9a0` | "You need to set --deepsea_chips_per_host_bounds, --deepsea_host_bounds to match your setup. Contact tfrt-devs@ if you have any questions." | `deepsea_chips_per_host_bounds`, `deepsea_host_bounds` | HIGH |
-| `0x96c2015` | "…the threadpool for tensorflow operations is too small.  Try increasing --45eac_num_operation_threads and please notify barna-core-devs@" | `_45eac_num_operation_threads` (BarnaCore) | HIGH |
-| `0x9fff409` | "Very slow compile? If you want to file a bug, run with envvar XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results." | `xla_dump_to` | HIGH |
-| `0xa00da29` | "…if you would like to reliably retrieve the error message, try running it again with --notpu_use_continuations." | `tpu_use_continuations` (negated) | HIGH |
-| `0x87fb08b` | "[enable stack trace via --xla_jf_collect_llo_stack_trace]" | `xla_jf_collect_llo_stack_trace` | HIGH |
+| Offset | Hint string (verbatim) | Flag referenced |
+|---|---|---|
+| `0x9e6e39e` | "…Aborting compilation early because it's unlikely to have enough device memory. Requires %s, has %s available. If more detailed logging is desired, set --xla_tpu_impure_oom_fast_exit_threshold=-1" | `xla_tpu_impure_oom_fast_exit_threshold` |
+| `0xa074100` | ". Reduce TPU memory usage or set --jellyfish_executor_max_wait_time_for_releasing_memory_on_oom to a larger value." | `jellyfish_executor_max_wait_time_for_releasing_memory_on_oom` |
+| `0xa01af59` | "Spilling sregs to HBM on megacore is implemented but untested; use --xla_enable_megacore_hbm_spill=true to activate, and please update b/177274769 with findings." | `xla_enable_megacore_hbm_spill` |
+| `0xa07a6ba` | ". Restart the job or disable set --megascale_use_numa_aware_threadpool=false." | `megascale_use_numa_aware_threadpool` |
+| `0x96deddc` | "…bytes. Pass --xla_hbm_logging_buffer_size_bytes=<n>" | `xla_hbm_logging_buffer_size_bytes` |
+| `0xa06c059` | "Unable to log from the tile because tile log is NOT enabled. Use --xla_tpu_enable_tile_log_recorder=true to enable logging." | `xla_tpu_enable_tile_log_recorder` |
+| `0xa06c0d5` | "…was invoked but logging was not enabled. Use --xla_tpu_enable_sc_log_recorder=true to enable logging." | `xla_tpu_enable_sc_log_recorder` |
+| `0xb52d9a0` | "You need to set --deepsea_chips_per_host_bounds, --deepsea_host_bounds to match your setup. Contact tfrt-devs@ if you have any questions." | `deepsea_chips_per_host_bounds`, `deepsea_host_bounds` |
+| `0x96c2015` | "…the threadpool for tensorflow operations is too small.  Try increasing --45eac_num_operation_threads and please notify barna-core-devs@" | `_45eac_num_operation_threads` (BarnaCore) |
+| `0x9fff409` | "Very slow compile? If you want to file a bug, run with envvar XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results." | `xla_dump_to` |
+| `0xa00da29` | "…if you would like to reliably retrieve the error message, try running it again with --notpu_use_continuations." | `tpu_use_continuations` (negated) |
+| `0x87fb08b` | "[enable stack trace via --xla_jf_collect_llo_stack_trace]" | `xla_jf_collect_llo_stack_trace` |
 
 ### Direction-of-default caveat
 
@@ -124,14 +124,14 @@ The `go/` shortlink token splits cleanly into a small **actionable playbook** se
 
 ### Actionable / playbook links (TPU/XLA-relevant)
 
-| `go/` link | Hint string (offset) | Subsystem | Confidence |
-|---|---|---|---|
-| `go/scoped-vmem` | `0xa011573` ". See go/scoped-vmem for more details." | MSA / scoped VMEM | HIGH |
-| `go/sc-dynamic-bounded-slice` | `0xa050247` "DynamicBoundedSlice lowering is only supported inside of custom fusions, see go/sc-dynamic-bounded-slice for more information." | SparseCore lowering | HIGH |
-| `go/xla_compile_runtime_flag_error` | `0xa047216` "Runtime flags … must be set consistently between compile options and ABSL flags. … See go/xla_compile_runtime_flag_error for resolution." | compile-env flag consistency | HIGH |
-| `go/megascale-debug-playbook` | `0xa21a318` "Debug dumping triggered. Refer to go/megascale-debug-playbook for further debugging. megascale_debug_dir = " | megascale runtime | HIGH |
-| `go/jfc-errata` | `0x8644f10` / `0xa0d46d9` / `0xa0ee662` "…See errata entry go/jfc-errata#<anchor>" (counter-errata caveats) | JXC ISA errata | HIGH |
-| `go/llvm-crash-bug` | `0xa033687` "invalid profile created. Please file a bug at: http://go/llvm-crash-bug and include the profraw files that caused this error." | PGO / LLVM crash report | HIGH |
+| `go/` link | Hint string (offset) | Subsystem |
+|---|---|---|
+| `go/scoped-vmem` | `0xa011573` ". See go/scoped-vmem for more details." | MSA / scoped VMEM |
+| `go/sc-dynamic-bounded-slice` | `0xa050247` "DynamicBoundedSlice lowering is only supported inside of custom fusions, see go/sc-dynamic-bounded-slice for more information." | SparseCore lowering |
+| `go/xla_compile_runtime_flag_error` | `0xa047216` "Runtime flags … must be set consistently between compile options and ABSL flags. … See go/xla_compile_runtime_flag_error for resolution." | compile-env flag consistency |
+| `go/megascale-debug-playbook` | `0xa21a318` "Debug dumping triggered. Refer to go/megascale-debug-playbook for further debugging. megascale_debug_dir = " | megascale runtime |
+| `go/jfc-errata` | `0x8644f10` / `0xa0d46d9` / `0xa0ee662` "…See errata entry go/jfc-errata#<anchor>" (counter-errata caveats) | JXC ISA errata |
+| `go/llvm-crash-bug` | `0xa033687` "invalid profile created. Please file a bug at: http://go/llvm-crash-bug and include the profraw files that caused this error." | PGO / LLVM crash report |
 
 > **NOTE —** these are the only `go/` links a user can act on to *resolve* a TPU/XLA failure. A second cluster (`go/protection-key-fault`, `go/general-protection-fault`, `go/stacktraces`, `go/cppstackoverflow`, `go/lsan`, `go/prod-naming-1-5`, `go/grpc-without-init-google-exemption`, `go/streamz-force-collection`, `go/no_file_or_rpc_during_init`, `go/redact-debug-string`) comes from statically-linked Google library prose (signal handlers, sanitizers, gRPC, telemetry), not from TPU-specific code paths. They are present in the binary but are not libtpu remedies; treat them as library noise (MEDIUM relevance).
 
@@ -160,20 +160,20 @@ The file-it-upstream class. These prose strings point the user at a tracker, a t
 
 ### "file a bug" prose with tracker coordinates
 
-| Offset | Hint string (verbatim, abbreviated) | Destination | Confidence |
-|---|---|---|---|
-| `0x9f1d09c` | "DeepseaPlatform and --tpu_use_tfrt=false are now deprecated. … please file a bug at: https://b.stripped_domain/issues/new?component=670280" | tracker component 670280 (TFRT) | CERTAIN |
-| `0xa039ed8` | "RoutingTableAnalyzer detects a potential deadlock! File a bug against SliceBuilder (https://b.stripped_domain/issues/new?component=503036). Please attach core dumps retrieved from Coroner." | tracker component 503036 (SliceBuilder) | HIGH |
-| `0xaf0bf90` | "Please report a bug at: https://github.com/google/jax/issues/new?assignees=apaszke" | github.com/google/jax (public) | CERTAIN |
-| `0xab9e630` (also `0xaba4a30`/`0xaba4b70`/`0xaba4c50`) | "Please file a bug under Platforms > Performance > BarnaCore > Software with repro instructions" | BarnaCore component path (×4) | CERTAIN |
-| `0x858c562` | "Kernel body fingerprint collision detected for key: %016x%016x. Please file a bug with the XLA team and provide the colliding kernel bodies." | XLA team | HIGH |
-| `0x8a2941d` | "Fatal error in creation of RWB Fusion. Please file a bug with XLA-TPU" | XLA-TPU | HIGH |
-| `0x96c1211` | "XLA has not implemented dynamic sized slice with non-trival stride yet. Please file a bug against XLA" | XLA | HIGH |
-| `0x96c12d4` | "Unimplemented reduce-window in fusion cost modeling. Please file a bug with XLA" | XLA | HIGH |
-| `0x96c1fd3` / `0xa0c9b76` | "Allocated address is not aligned, please file a bug to tfrt-devs@" / "Duplicate allocation found, please file a bug to tfrt-devs@." | tfrt-devs@ | HIGH |
-| `0xa036ccd` | "… is an unsupported memory space in TpuCustomCallScopedVmemAdjuster. Please file a P2 *feature request*, against the XLA-TPU team …" | XLA-TPU (P2 FR) | HIGH |
-| `0xa03eb45` / `0xa03eb8b` | "Manual sub-axis isn't supported. Please file a bug with a reproducer." / "Non-divisible sharding with unreduced axes isn't supported. …" | XLA (Shardy) | HIGH |
-| `0xa1b0507` | "The auto-sharding solver could not find a valid solution within the given time limit. Please report this as a bug!" | XLA (auto-sharding) | HIGH |
+| Offset | Hint string (verbatim, abbreviated) | Destination |
+|---|---|---|
+| `0x9f1d09c` | "DeepseaPlatform and --tpu_use_tfrt=false are now deprecated. … please file a bug at: https://b.stripped_domain/issues/new?component=670280" | tracker component 670280 (TFRT) |
+| `0xa039ed8` | "RoutingTableAnalyzer detects a potential deadlock! File a bug against SliceBuilder (https://b.stripped_domain/issues/new?component=503036). Please attach core dumps retrieved from Coroner." | tracker component 503036 (SliceBuilder) |
+| `0xaf0bf90` | "Please report a bug at: https://github.com/google/jax/issues/new?assignees=apaszke" | github.com/google/jax (public) |
+| `0xab9e630` (also `0xaba4a30`/`0xaba4b70`/`0xaba4c50`) | "Please file a bug under Platforms > Performance > BarnaCore > Software with repro instructions" | BarnaCore component path (×4) |
+| `0x858c562` | "Kernel body fingerprint collision detected for key: %016x%016x. Please file a bug with the XLA team and provide the colliding kernel bodies." | XLA team |
+| `0x8a2941d` | "Fatal error in creation of RWB Fusion. Please file a bug with XLA-TPU" | XLA-TPU |
+| `0x96c1211` | "XLA has not implemented dynamic sized slice with non-trival stride yet. Please file a bug against XLA" | XLA |
+| `0x96c12d4` | "Unimplemented reduce-window in fusion cost modeling. Please file a bug with XLA" | XLA |
+| `0x96c1fd3` / `0xa0c9b76` | "Allocated address is not aligned, please file a bug to tfrt-devs@" / "Duplicate allocation found, please file a bug to tfrt-devs@." | tfrt-devs@ |
+| `0xa036ccd` | "… is an unsupported memory space in TpuCustomCallScopedVmemAdjuster. Please file a P2 *feature request*, against the XLA-TPU team …" | XLA-TPU (P2 FR) |
+| `0xa03eb45` / `0xa03eb8b` | "Manual sub-axis isn't supported. Please file a bug with a reproducer." / "Non-divisible sharding with unreduced axes isn't supported. …" | XLA (Shardy) |
+| `0xa1b0507` | "The auto-sharding solver could not find a valid solution within the given time limit. Please report this as a bug!" | XLA (auto-sharding) |
 
 ### The TPU-lowering invariant block (`0xa0c8b1e..0xa0c9758`)
 
@@ -193,18 +193,18 @@ A contiguous run of "should not happen" templates, one per HLO op the TPU backen
 
 These pin a limitation to a tracked bug. They are not actionable beyond "comment/track" — the most a user does is leave a note on the bug. Representative rows from the 31 distinct ids follow.
 
-| `b/<id>` | Context (offset) | Class | Confidence |
-|---|---|---|---|
-| `b/167392593` | `0xa00f6f4` (×4) "TODO(b/167392593): Support {bitcasts merging dims, sliced prefetches, …}." | MSA/prefetch TODO | HIGH |
-| `b/177274769` | `0xa01af59` "…use --xla_enable_megacore_hbm_spill=true … please update b/177274769 with findings." | megacore HBM spill | CERTAIN |
-| `b/433785288` | `0xa041d37` "…fixed by Shardy partitioner in the future, tracked in b/433785288. Contact Shardy or XLA team for help." | Shardy partitioner | HIGH |
-| `b/36072659` | `0xa0af6ba` "Infeed buffer size … bug in the infeed operation (b/36072659). See the bug for a workaround …" | infeed deadlock | HIGH |
-| `b/147787375` | `0x99e1405` / `0x99e144d` "Close() appears to be hanging, this might be a deadlock see b/147787375" / "Disable() appears to be hanging, …" | runtime deadlock | HIGH |
-| `b/282055166` | `0x9929df3` "Error may indicate firmware queue fullness: b/282055166" | runtime/firmware | HIGH |
-| `b/30481585` | `0xa12ba16` "Device reset is not yet supported on this platform (b/30481585)" | runtime/device-reset | HIGH |
-| `b/488336614` | `0xa0a0fb0` "b/488336614 Only single-SC element scatter add is supported." | SparseCore scatter | HIGH |
-| `b/422762004` | `0xa12c03b` "Gather with implicit convert is not supported. (b/422762004)" | gather lowering | HIGH |
-| `b/343490729` | `0x87050df` "Not implemented: TODO(b/343490729): stores packed int2 are not supported" | int2 lowering | HIGH |
+| `b/<id>` | Context (offset) | Class |
+|---|---|---|
+| `b/167392593` | `0xa00f6f4` (×4) "TODO(b/167392593): Support {bitcasts merging dims, sliced prefetches, …}." | MSA/prefetch TODO |
+| `b/177274769` | `0xa01af59` "…use --xla_enable_megacore_hbm_spill=true … please update b/177274769 with findings." | megacore HBM spill |
+| `b/433785288` | `0xa041d37` "…fixed by Shardy partitioner in the future, tracked in b/433785288. Contact Shardy or XLA team for help." | Shardy partitioner |
+| `b/36072659` | `0xa0af6ba` "Infeed buffer size … bug in the infeed operation (b/36072659). See the bug for a workaround …" | infeed deadlock |
+| `b/147787375` | `0x99e1405` / `0x99e144d` "Close() appears to be hanging, this might be a deadlock see b/147787375" / "Disable() appears to be hanging, …" | runtime deadlock |
+| `b/282055166` | `0x9929df3` "Error may indicate firmware queue fullness: b/282055166" | runtime/firmware |
+| `b/30481585` | `0xa12ba16` "Device reset is not yet supported on this platform (b/30481585)" | runtime/device-reset |
+| `b/488336614` | `0xa0a0fb0` "b/488336614 Only single-SC element scatter add is supported." | SparseCore scatter |
+| `b/422762004` | `0xa12c03b` "Gather with implicit convert is not supported. (b/422762004)" | gather lowering |
+| `b/343490729` | `0x87050df` "Not implemented: TODO(b/343490729): stores packed int2 are not supported" | int2 lowering |
 
 > **NOTE —** `b/<id>` ids that point a user at a *workaround* (`b/36072659` infeed, `b/494604538` cancellables) are the closest this class gets to actionable; the rest are progress-tracking only. The 6-digit-minimum `rg` threshold means shorter `b/<id>` or `cl/<id>` changelist references may exist below it (LOW confidence on completeness).
 
@@ -216,31 +216,31 @@ The operator-actionable memory-pressure class: free memory, raise a limit, or wa
 
 ### Compile-time and runtime OOM
 
-| Offset | Hint string (verbatim, abbreviated) | Remedy | Confidence |
-|---|---|---|---|
-| `0x9e6e39e` | "Aborting compilation early because it's unlikely to have enough device memory. Requires %s, has %s available. … set --xla_tpu_impure_oom_fast_exit_threshold=-1" | compile-time OOM abort + logging knob | CERTAIN |
-| `0xa074100` | ". Reduce TPU memory usage or set --jellyfish_executor_max_wait_time_for_releasing_memory_on_oom to a larger value." | runtime OOM → free memory or wait longer | CERTAIN |
-| `0xa07b361` | "Not enough HBM spill stack available, please increase." | increase HBM spill stack | HIGH |
-| `0xa04bde4` | "Allocation fails. Try again after compaction. Please note that compaction can be slow. If you want to achieve better performance, please manage TPU buffers carefully to avoid this compaction." | retry-after-compaction (capacity + perf) | CERTAIN |
+| Offset | Hint string (verbatim, abbreviated) | Remedy |
+|---|---|---|
+| `0x9e6e39e` | "Aborting compilation early because it's unlikely to have enough device memory. Requires %s, has %s available. … set --xla_tpu_impure_oom_fast_exit_threshold=-1" | compile-time OOM abort + logging knob |
+| `0xa074100` | ". Reduce TPU memory usage or set --jellyfish_executor_max_wait_time_for_releasing_memory_on_oom to a larger value." | runtime OOM → free memory or wait longer |
+| `0xa07b361` | "Not enough HBM spill stack available, please increase." | increase HBM spill stack |
+| `0xa04bde4` | "Allocation fails. Try again after compaction. Please note that compaction can be slow. If you want to achieve better performance, please manage TPU buffers carefully to avoid this compaction." | retry-after-compaction (capacity + perf) |
 
 ### Embedding capacity
 
-| Offset | Hint string (verbatim, abbreviated) | Trigger | Confidence |
-|---|---|---|---|
-| `0xa01cc4f` | "TPU embedding: out of memory allocating %lld bytes." | embedding HBM allocation | HIGH |
-| `0xa030f0a` | "The current embedding configuration does not fit on the TPU due to HBM space constraints or more optimization algorithms than supported: aggregate_min_resource_count (%d) > total_resource_count (%d)." | embedding config exceeds HBM/optimizer resources | HIGH |
-| `0xa056bd4` | "The number of unique optimizers in the TPU embedding configuration exceeds the capacity of the TPU system." | too many distinct optimizers | HIGH |
-| `0xa07d172` | "Scatter operand has %d elements, which exceeds the 32-bit limit. Unsupported on SparseCore." | SparseCore 32-bit index limit | HIGH |
+| Offset | Hint string (verbatim, abbreviated) | Trigger |
+|---|---|---|
+| `0xa01cc4f` | "TPU embedding: out of memory allocating %lld bytes." | embedding HBM allocation |
+| `0xa030f0a` | "The current embedding configuration does not fit on the TPU due to HBM space constraints or more optimization algorithms than supported: aggregate_min_resource_count (%d) > total_resource_count (%d)." | embedding config exceeds HBM/optimizer resources |
+| `0xa056bd4` | "The number of unique optimizers in the TPU embedding configuration exceeds the capacity of the TPU system." | too many distinct optimizers |
+| `0xa07d172` | "Scatter operand has %d elements, which exceeds the 32-bit limit. Unsupported on SparseCore." | SparseCore 32-bit index limit |
 
 ### Fusion / VMEM / Smem capacity guards
 
-| Offset | Hint string (verbatim) | Limit | Confidence |
-|---|---|---|---|
-| `0x84b1b50` / `0x84b1b7d` / `0x9fd4955` | "Nested dot fusion would exceed vmem capacity" / "Custom Fusion would exceed vmem capacity" / "' exceeds VMEM capacity." | VMEM-capacity fusion guard | HIGH |
-| `0x84b1a2b` / `0xa1b5992` | "Smem high-water mark exceeds memory capacity" / "SCS high-Smem usage exceeds Smem capacity" | Smem capacity | HIGH |
-| `0x9ff331b` | "The input tensor is not on HBM/VMEM and it exceeds the HBM logging buffer limit." | HBM logging-buffer cap (paired with `--xla_hbm_logging_buffer_size_bytes`) | HIGH |
-| `0xa1eed4d` | "Too many buffers are colored in the alternate memory. Could not reserve alternate memory for colored output of instruction " | alternate-memory coloring | HIGH |
-| `0xa122204` / `0xa122248` | "The size of next-hop routing table (%d) exceeds the chip limit (%d)" / "The size of routing table (%d) exceeds the chip limit (%d)" | ICI routing-table cap | HIGH |
+| Offset | Hint string (verbatim) | Limit |
+|---|---|---|
+| `0x84b1b50` / `0x84b1b7d` / `0x9fd4955` | "Nested dot fusion would exceed vmem capacity" / "Custom Fusion would exceed vmem capacity" / "' exceeds VMEM capacity." | VMEM-capacity fusion guard |
+| `0x84b1a2b` / `0xa1b5992` | "Smem high-water mark exceeds memory capacity" / "SCS high-Smem usage exceeds Smem capacity" | Smem capacity |
+| `0x9ff331b` | "The input tensor is not on HBM/VMEM and it exceeds the HBM logging buffer limit." | HBM logging-buffer cap (paired with `--xla_hbm_logging_buffer_size_bytes`) |
+| `0xa1eed4d` | "Too many buffers are colored in the alternate memory. Could not reserve alternate memory for colored output of instruction " | alternate-memory coloring |
+| `0xa122204` / `0xa122248` | "The size of next-hop routing table (%d) exceeds the chip limit (%d)" / "The size of routing table (%d) exceeds the chip limit (%d)" | ICI routing-table cap |
 
 > **NOTE —** the VMEM/Smem/routing-table guards are *capacity rejections*, not remedies — they tell the user the limit was hit but name no flag. The actionable OOM hints (`xla_tpu_impure_oom_fast_exit_threshold`, `jellyfish_executor_max_wait_time_for_releasing_memory_on_oom`) are also flag-suggestions and cross-appear above.
 
@@ -250,15 +250,15 @@ The operator-actionable memory-pressure class: free memory, raise a limit, or wa
 
 Sparse, and mostly flag-migration. Library "constexprs are no longer supported"-style noise is excluded; only TPU/XLA notices are listed.
 
-| Offset | Notice (verbatim, abbreviated) | Migration | Confidence |
-|---|---|---|---|
-| `0x9f1d09c` | "DeepseaPlatform and --tpu_use_tfrt=false are now deprecated. This flag is slated for removal. …" | remove; file bug if it was needed | CERTAIN |
-| `0x9feecc8` | "--xla_tpu_impure_enable_packed_bf16_math_ops is deprecated. Please use --xla_tpu_bf16_emission_mode in TpuCompilationEnvironment." | → `xla_tpu_bf16_emission_mode` | CERTAIN |
-| `0x8a293e0` | "Non-SPMD model parallelism is no longer supported by XLA:TPU" | use SPMD | HIGH |
-| `0xa26350a` | "[DEPRECATED_XLA_TPU_FLAG_USE] Deprecated TpuCompilationEnvironment flags were overridden: " | runtime marker (flags overridden) | HIGH |
-| `0xa2ad13b` | "[DEPRECATED_XLA_TPU_FLAG_USE] Deprecated TpuCompilationEnvironment flags were present and not matching their default values:" | runtime marker (non-default deprecated flag) | HIGH |
-| `0xa0b19dd` (also `0xa0b1a9a`) | "The SegmentShardingHelperDivSimple class can only be used when … BarnaCores per row per task is equal to 1 … Use the SegmentShardingHelperDiv class instead." (also `…ModSimple` → `…Mod`) | BarnaCore class migration | HIGH |
-| `0xa0b1c7c` | "DescriptionForDevice.* is not supported for TPU. Please use one of the GetExecutor methods instead." | → `GetExecutor` methods | HIGH |
+| Offset | Notice (verbatim, abbreviated) | Migration |
+|---|---|---|
+| `0x9f1d09c` | "DeepseaPlatform and --tpu_use_tfrt=false are now deprecated. This flag is slated for removal. …" | remove; file bug if it was needed |
+| `0x9feecc8` | "--xla_tpu_impure_enable_packed_bf16_math_ops is deprecated. Please use --xla_tpu_bf16_emission_mode in TpuCompilationEnvironment." | → `xla_tpu_bf16_emission_mode` |
+| `0x8a293e0` | "Non-SPMD model parallelism is no longer supported by XLA:TPU" | use SPMD |
+| `0xa26350a` | "[DEPRECATED_XLA_TPU_FLAG_USE] Deprecated TpuCompilationEnvironment flags were overridden: " | runtime marker (flags overridden) |
+| `0xa2ad13b` | "[DEPRECATED_XLA_TPU_FLAG_USE] Deprecated TpuCompilationEnvironment flags were present and not matching their default values:" | runtime marker (non-default deprecated flag) |
+| `0xa0b19dd` (also `0xa0b1a9a`) | "The SegmentShardingHelperDivSimple class can only be used when … BarnaCores per row per task is equal to 1 … Use the SegmentShardingHelperDiv class instead." (also `…ModSimple` → `…Mod`) | BarnaCore class migration |
+| `0xa0b1c7c` | "DescriptionForDevice.* is not supported for TPU. Please use one of the GetExecutor methods instead." | → `GetExecutor` methods |
 
 > **NOTE —** the two `[DEPRECATED_XLA_TPU_FLAG_USE]` strings are *runtime markers* the runtime prints when a deprecated `TpuCompilationEnvironment` flag is set; they prefix the offending flag list rather than naming a single flag. The deprecated-flag *names* themselves belong to the config section.
 
@@ -268,14 +268,14 @@ Sparse, and mostly flag-migration. Library "constexprs are no longer supported"-
 
 "Suboptimal but correct" notices: the code path works, but the user can do better.
 
-| Offset | Suggestion (verbatim, abbreviated) | Confidence |
-|---|---|---|
-| `0xa083064` | "…suboptimal MXU throughput on this HLO. … use --xla_tpu_accumulate_into_mrb=false in the meantime." (also a flag-suggestion + bug-report) | HIGH |
-| `0x9fd3a5e` | ". Switch to allocate_output to avoid performance penalty." | HIGH |
-| `0x9ff1304` | "Concatenate fusion is inefficient." | HIGH |
-| `0xa041d37` | "…SPMD will replicate the tensor and then partition it … which is inefficient. … tracked in b/433785288." | HIGH |
-| `0xa29fd14` | "Layout inefficient dot whose output shape has small lane/sublane dimensions" | HIGH |
-| `0xa04bde4` | "…If you want to achieve better performance, please manage TPU buffers carefully to avoid this compaction." (also a capacity hint) | CERTAIN |
+| Offset | Suggestion (verbatim, abbreviated) |
+|---|---|
+| `0xa083064` | "…suboptimal MXU throughput on this HLO. … use --xla_tpu_accumulate_into_mrb=false in the meantime." (also a flag-suggestion + bug-report) |
+| `0x9fd3a5e` | ". Switch to allocate_output to avoid performance penalty." |
+| `0x9ff1304` | "Concatenate fusion is inefficient." |
+| `0xa041d37` | "…SPMD will replicate the tensor and then partition it … which is inefficient. … tracked in b/433785288." |
+| `0xa29fd14` | "Layout inefficient dot whose output shape has small lane/sublane dimensions" |
+| `0xa04bde4` | "…If you want to achieve better performance, please manage TPU buffers carefully to avoid this compaction." (also a capacity hint) |
 
 > **NOTE —** the MSA knob `xla_tpu_msa_inefficient_use_to_copy_ratio` (a proto field at `0xbfc053e`) is the heuristic *behind* the "inefficient use-to-copy" perf path; it is named in the config layer, not in a hint string (LOW confidence that any user-facing hint prints it directly).
 
@@ -289,16 +289,16 @@ Self-service remedies that carry no bug-id: fleet/topology actions, op-sequencin
 
 Each "Megascale detects a hang that is likely caused by `<cause>`. `<remedy>`." string names a different operator action keyed to the detected cause. The cause→remedy *dispatch* (which `Cause` enum selects which string) is a `.text` switch and is **not traced**.
 
-| Offset | Cause → remedy (verbatim, abbreviated) | Confidence |
-|---|---|---|
-| `0xa058553` | bad TPU **sparse core** chips → "Please remove the hosts from the fleet and restart the workload. If problem persists please contact Megascale XLA team." | HIGH |
-| `0xa05862f` | bad TPU **tensor core** chips → "Please remove the hosts from the fleet and restart the workload. …" | HIGH |
-| `0x9ffc2f2` | networking issue → "Please examine the underlying networking stack for the following hosts." | CERTAIN |
-| `0x9fd7519` | data-input stall → "Please check the workers to make sure the data input pipeline is working properly." | CERTAIN |
-| `0xa06d7d2` | different modules on different devices → "Please confirm that all workers is running the exact same program. …" | HIGH |
-| `0xa079562` | inconsistent HLO module compilation → "This is likely a bug in JAX tracing or XLA compiler. Please inspect the HLO dumps …" | HIGH |
-| `0xa0d7cec` | worker not queuing programs → "Check if your application is blocked/crashing and preventing JAX to queue the next TPU program (jitted functions)." | HIGH |
-| `0x9fe02ae` | unknown cause → "Megascale detects a hang but cannot determine the root cause. Please inspect the full digest below." | CERTAIN |
+| Offset | Cause → remedy (verbatim, abbreviated) |
+|---|---|
+| `0xa058553` | bad TPU **sparse core** chips → "Please remove the hosts from the fleet and restart the workload. If problem persists please contact Megascale XLA team." |
+| `0xa05862f` | bad TPU **tensor core** chips → "Please remove the hosts from the fleet and restart the workload. …" |
+| `0x9ffc2f2` | networking issue → "Please examine the underlying networking stack for the following hosts." |
+| `0x9fd7519` | data-input stall → "Please check the workers to make sure the data input pipeline is working properly." |
+| `0xa06d7d2` | different modules on different devices → "Please confirm that all workers is running the exact same program. …" |
+| `0xa079562` | inconsistent HLO module compilation → "This is likely a bug in JAX tracing or XLA compiler. Please inspect the HLO dumps …" |
+| `0xa0d7cec` | worker not queuing programs → "Check if your application is blocked/crashing and preventing JAX to queue the next TPU program (jitted functions)." |
+| `0x9fe02ae` | unknown cause → "Megascale detects a hang but cannot determine the root cause. Please inspect the full digest below." |
 
 Associated aborts: `0xa045c93` "Aborting the coordinator as an unrecoverable error is reported …"; `0xa045d37` "Aborting the coordinator after collecting errors … as megascale_error_reporter_abort_on_hang is set to true …".
 
@@ -323,19 +323,19 @@ Associated aborts: `0xa045c93` "Aborting the coordinator as an unrecoverable err
 
 ### Init / driver-lifecycle hints
 
-| Offset | Hint (verbatim, abbreviated) | Confidence |
-|---|---|---|
-| `0x9fe0d47` | "Failed to get tpu system. Please call tf.tpu.experimental.initialize_tpu_system() before running any ops on tpu." | HIGH |
-| `0x9fd4688` | "PjRtClient already exists for TPU. This probably means you have already implicitly initialized PJRT. … call tf.tpu.experimental.initialize_tpu_system() explicitly …" | HIGH |
-| `0xa094bb2` | "No TPU_SYSTEM device found. Please ensure that you're connected to a host with a TPU_SYSTEM device." | HIGH |
-| `0x9fe65a1` | "Failed to initialize TPU system, please contact Cloud TPU Support." | HIGH |
-| `0xa07188f` | "WARNING: could not determine %s, please set env var \`%s\` manually, otherwise libtpu.so may not properly initialize." | HIGH |
-| `0xa1e3f95` | "Are you using the right LibTPU version? This LibTPU is built for <…>" | HIGH |
-| `0xa1a96ba` | "executable is built for device %s of type \"%s\"; cannot run it on device %s of type \"%s\"" | HIGH |
-| `0xa0012c5` | "… DMA buffers were still outstanding when the driver was destroyed. … please ensure all buffers are destroyed before destroying driver objects." | HIGH |
-| `0xa079d96` | "TPU driver close was incomplete; kernel reported %d device handles outstanding. … Ensure that all userspace access to the device has ended before invoking driver close." | HIGH |
-| `0x9ffb075` | "Lost connection to the SliceBuilder controller task (normally worker task 0). Please check controller task status." | HIGH |
-| `0xa1fd28c` | "Please ensure that you have only created one TPUEmbedding" | HIGH |
+| Offset | Hint (verbatim, abbreviated) |
+|---|---|
+| `0x9fe0d47` | "Failed to get tpu system. Please call tf.tpu.experimental.initialize_tpu_system() before running any ops on tpu." |
+| `0x9fd4688` | "PjRtClient already exists for TPU. This probably means you have already implicitly initialized PJRT. … call tf.tpu.experimental.initialize_tpu_system() explicitly …" |
+| `0xa094bb2` | "No TPU_SYSTEM device found. Please ensure that you're connected to a host with a TPU_SYSTEM device." |
+| `0x9fe65a1` | "Failed to initialize TPU system, please contact Cloud TPU Support." |
+| `0xa07188f` | "WARNING: could not determine %s, please set env var \`%s\` manually, otherwise libtpu.so may not properly initialize." |
+| `0xa1e3f95` | "Are you using the right LibTPU version? This LibTPU is built for <…>" |
+| `0xa1a96ba` | "executable is built for device %s of type \"%s\"; cannot run it on device %s of type \"%s\"" |
+| `0xa0012c5` | "… DMA buffers were still outstanding when the driver was destroyed. … please ensure all buffers are destroyed before destroying driver objects." |
+| `0xa079d96` | "TPU driver close was incomplete; kernel reported %d device handles outstanding. … Ensure that all userspace access to the device has ended before invoking driver close." |
+| `0x9ffb075` | "Lost connection to the SliceBuilder controller task (normally worker task 0). Please check controller task status." |
+| `0xa1fd28c` | "Please ensure that you have only created one TPUEmbedding" |
 
 ### Contact-team pointers
 

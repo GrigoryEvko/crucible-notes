@@ -27,7 +27,6 @@ For reimplementation, the contract is:
 | **Proto oneof** | `SparseCoreScalarAlu`; discriminator `[proto+0x50]` (`_oneof_case_[0]`), active msg `[proto+0x48]` |
 | **EmitX families** | `EmitScalarUnop` · `EmitScalarBinop` · `EmitScalarCompareOp<PredicateDest,…>` · `EmitScalarYUnop` · `EmitScalarWeird<PredicateDest,…>` · `EmitSetRegister` + 20 direct `mutable_<op>()` accessors |
 | **Default error** | `"Unsupported opcode for Scalar Alu slot: $0 : $1"` (`isa_emitter.cc`) |
-| **Confidence** | CONFIRMED (decompile-anchored) unless a row or callout says otherwise. The TABLE A opcode→op mappings are read directly from the `0x139f09c0` `switch`. |
 
 > **NOTE — "EmitX dispatcher" is two tables, not one.** Do not look for a single op→EmitX map. The engine is chosen by the *section name* (a runtime RE2 match), the op by the *opcode* (a `.rodata` jump table). The OneSlot router ([oneslot-router.md](oneslot-router.md)) inserts a third decision — the *slot within the bundle* — between them. A reimplementer needs all three; this page owns the engine classifier and the ScalarAlu op table.
 
@@ -96,7 +95,7 @@ if (tag == 6) DefaultConstruct<SparseCoreTacProgram>();       // TAC  (seq4)
 
 The `crc32` probe and the `tag == 7/6/8` dispatch and the `gxc::glc::isa::SparseCore{Tec,Tac,Scs}Program` default-constructs are confirmed in the `ConsumeProgram` decompile. `ViperfishEmitter::ConsumeProgram` (`0x13981d20`) is identical in shape with the `vfc` program types.
 
-> **NOTE — the SCS regex kind and the SCS engine tag are the same value (8); no normalization edge.** `ComputeKind` assigns the `.text(\.scs.*)?$` regex `SectionKind = 8` (the `int` stored at `v8[266]` in the decompile), and `ConsumeProgram` routes SCS on engine tag `8` — the regex kind feeds the map key directly and matches the route tag with no `9→8` step. Kind `9` is the `.note.GNU-stack` marker (`v8[304]`), which is not an SC code section and never reaches a `DefaultConstruct`. The only key transform `changeSection` applies is the `6→7` (TAC→TEC) remap under the `+0x240` flag. The full regex kind SET `{smem=0, tilespmem=1, spmem=2, hbm=3, sflag=4, tile_access=6, tile_execute=7, .text/.scs=8, GNU-stack=9}` and the engine-tag SET `{6=TAC, 7=TEC, 8=SCS}` are both CONFIRMED against the decompile. See [§Confidence Summary](#confidence-summary).
+> **NOTE — the SCS regex kind and the SCS engine tag are the same value (8); no normalization edge.** `ComputeKind` assigns the `.text(\.scs.*)?$` regex `SectionKind = 8` (the `int` stored at `v8[266]` in the decompile), and `ConsumeProgram` routes SCS on engine tag `8` — the regex kind feeds the map key directly and matches the route tag with no `9→8` step. Kind `9` is the `.note.GNU-stack` marker (`v8[304]`), which is not an SC code section and never reaches a `DefaultConstruct`. The only key transform `changeSection` applies is the `6→7` (TAC→TEC) remap under the `+0x240` flag. The full regex kind SET is `{smem=0, tilespmem=1, spmem=2, hbm=3, sflag=4, tile_access=6, tile_execute=7, .text/.scs=8, GNU-stack=9}`; the engine-tag SET is `{6=TAC, 7=TEC, 8=SCS}`.
 
 ---
 
@@ -134,9 +133,9 @@ Each of the 37 in-table arms is one of three shapes, byte-confirmed in the decom
 | **B — two-opcode EmitX** | Both opcodes of a pair test the oneof discriminator `[proto+0x50] == <tag>`; if not already set, `clear_inst`, set `[proto+0x50] = <tag>`, `Arena::DefaultConstruct<SparseCoreScalarAlu_<Op>>`, store at `[proto+0x48]`; then tail-`EmitScalar*`/`EmitSetRegister<Op,Bundle>`. 16 arm-pairs. | `0x223,0x224`: oneof `37`, `EmitScalarCompareOp<PredicateDest,…,CompareFloatingPointEq>` |
 | **H — Halt** | `clear_inst`; set oneof `[proto+0x50] = 6`; `DefaultConstruct<SparseCoreScalarAlu_Halt>`; `return OK`. Reached from `0x23b` (in-table) and `0xb25` (OOB). | `0x23b`: `goto Halt` |
 
-The two opcodes of a B-arm pair are the **predicated and non-predicated MCInst forms** of the same op — both route to the identical oneof tag and EmitX template. (The exact MCInst-operand difference between the two forms was not operand-decoded; **INFERRED** from the shared target.)
+The two opcodes of a B-arm pair are the **predicated and non-predicated MCInst forms** of the same op — both route to the identical oneof tag and EmitX template. (The exact MCInst-operand difference between the two forms is not operand-decoded here.)
 
-### TABLE A — the complete `0xae8db28` opcode → op → EmitX map (glc TacBundle; decompile-verified)
+### TABLE A — the complete `0xae8db28` opcode → op → EmitX map (glc TacBundle)
 
 Every row below is read from the `ConsumeScalarAluInstruction<glc::SparseCoreTacBundle>` (`0x139f09c0`) decompiled `switch`. The `oneof` column is the discriminator value written to `[proto+0x50]` (decimal in the binary; hex shown for cross-reference).
 
@@ -256,27 +255,6 @@ SC dialect → LowerToSparseCoreLlvmPass → LLVM backend → MCInst (in a named
 The two classifier keys are orthogonal: the **section name** (RE2 → `SectionKind` → engine tag) picks the engine program and therefore which `ConsumeScalarAluInstruction<…Bundle>` instantiation runs; the **`MCInst` opcode** (`0xae8db28` jt) picks the op + EmitX template inside it.
 
 > **GOTCHA — two `0xC0`-adjacent traps in the op/kind mapping.** Two assignments are easy to get backwards and are byte-pinned here: the SCS regex `.text(\.scs.*)?$` stores `SectionKind` **8** — the same value `ConsumeProgram` reads back as the SCS engine tag (`v8[266]=8`), so there is no `9↔8` normalization edge; kind **9** belongs only to `.note.GNU-stack` (`v8[304]`). And `0x25d,0x25e` is `ConvertInt32ToFloat32` (oneof 16), **not** `Max`/`Min` — `Max`/`Min` live at `0x231,0x232` / `0x233,0x234` (oneof 29/30).
-
----
-
-## Confidence Summary
-
-| Claim | Evidence | Confidence |
-|---|---|---|
-| Op selection is a jump table on `DWORD[MCInst]`; base `0x222`, bound `0x6e`, 111 entries, 37 in-table arms | `0x139f09c0` decompile `switch (*(_DWORD*)a2)`; jt `0xae8db28` | CONFIRMED |
-| Proto oneof discriminator `[proto+0x50]`, active msg `[proto+0x48]` | decompile `*(_DWORD*)(a3+80)` / `*(_QWORD*)(a3+72)` per arm | CONFIRMED |
-| TABLE A opcode→op→EmitX→oneof mappings (all 37 in-table arms + 2 OOB) | `0x139f09c0` decompile, per-case `mutable_<op>` / `DefaultConstruct<…>` + `*(a3+80)=tag` + tail `Emit*` | CONFIRMED (re-derived) |
-| TABLE A corrects the raw narration's compare/`Set*`/`Max`/`Min`/`delay`/`Halt` assignments | side-by-side of decompile cases vs raw TABLE A | CONFIRMED (correction) |
-| Two OOB opcodes `0xb25`→Halt, `0xf86`→`EmitScalarWeird<PredicateDest,IsInfOrNan>` | decompile `default:` `v7 == 2853` / `v7 == 3974` | CONFIRMED |
-| Default error `"Unsupported opcode for Scalar Alu slot: $0 : $1"` | decompile `SubstituteAndAppendArray(…, 47, …)` | CONFIRMED |
-| Per-`(gen,bundle)` jump-table family, same block/base/bound, only bundle-template arg differs | sibling consumers `0x13a4f7c0` (glc Scs), `0x13985100` (vfc Tac); EmitX `<…SparseCoreScsBundle>` vs `<…TacBundle>` | CONFIRMED |
-| `ComputeKind` = 9 static RE2 regexes (`__cxa_guard`), first `FullMatchN` wins → `SectionKind` | `0x13afefe0` decompile: 9 `RE2::RE2(...)` + `FullMatchN` chain + `*v4` kind store | CONFIRMED |
-| The 9 regex literals and their kinds (TABLE in §Engine Classifier) | decompile string literals + per-entry kind store | CONFIRMED |
-| Engine route `crc32` map probe → tag `slot+0x28`: `8`=Scs, `7`=Tec, `6`=Tac | `0x139ed5e0` decompile `_mm_crc32_u64` + `v27 == 7` + `DefaultConstruct<SparseCore{Tec,Tac,Scs}Program>` | CONFIRMED |
-| `TAC(6) → TEC(7)` map-key remap under `SCStreamer+0x240` | `changeSection` `0x13b03e20`: `if (*((_BYTE*)this+576)==1) if (kind==6) key=7` before the `crc32` map insert | CONFIRMED |
-| SCS regex kind = engine tag = `8` (no normalization); kind `9` is GNU-stack | `ComputeKind` stores `v8[266]=8` for `.text/.scs`, `v8[304]=9` for GNU-stack; `ConsumeProgram` routes SCS on tag `8` | CONFIRMED |
-| Pred / non-pred semantics of the two-opcode B-arm pairs | both opcodes share oneof tag + EmitX template; operand-level predicate not decoded | INFERRED |
-| The 58 DEFAULT opcodes are SCS-sequencer / other-slot ops | confirmed they hit the TAC "Unsupported" error; their home consumer not cross-walked here | INFERRED |
 
 ---
 

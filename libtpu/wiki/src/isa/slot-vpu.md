@@ -76,20 +76,20 @@ function VxcTensorCoreVectorAlu0Encoder_Encode(proto, out_span):  // VF @0x1eef8
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `BitCopy(void*,int,const void*,int,int)` | `0x1fa0a900` | Universal v5+/PF bit-packer | CERTAIN |
-| `EncoderJf::EncodeVectorAluInstruction` | `0x1e864f00` | JF/DF direct-pack VALU encoder | CERTAIN |
-| `EncoderJf::EncodeVectorAluYEncoding` | `0x1e864be0` | JF Y-operand selector encode | HIGH |
-| `EncoderJf::EncodePredication<VectorAluInstruction>` | `0x1e864000` | JF per-slot predicate encode | HIGH |
-| `EncoderJf::EncodeBundleInternal` | `0x1e86c7c0` | Calls VALU encoder per present slot | HIGH |
-| `ProtoUtils::IsEupOpcode(VectorAluOpcode)` | `0x1e875900` | JF EUP-push classifier | HIGH |
-| `pxc::isa::TensorCoreVectorAlu0Encoder::Encode` | `0x1ed45060` | PF VALU0 dispatcher (struct `…Alu0`) | CERTAIN |
-| `pxc::isa::TensorCoreVectorAlu1Encoder::Encode` | `0x1ed68d80` | PF VALU1 dispatcher (struct `…Alu1`) | CERTAIN |
-| `vxc::isa::TensorCoreVectorAlu{0..3}Encoder::Encode` | `0x1eef8a80` / `0x1ef1c500` / `0x1ef3f120` / `0x1ef62880` | VF 4 VALU dispatchers (shared struct) | CERTAIN |
-| `gxc::glc::isa::TensorCoreVectorAlu0Encoder::Encode` | `0x1f250160` | Ghostlite VALU0 dispatcher | CERTAIN |
-| `gxc::gfc::isa::TensorCoreVectorAlu0Encoder::Encode` | `0x1f8b53c0` | 6acc60406 (GF) VALU0 dispatcher | CERTAIN |
-| `gxc::{glc,gfc}::isa::SparseCoreTecVectorAlu{0..2}Encoder::Encode` | `0x1eaa4880…` / `0x1ec11100…` | SparseCore TEC 3 VALU slots | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `BitCopy(void*,int,const void*,int,int)` | `0x1fa0a900` | Universal v5+/PF bit-packer |
+| `EncoderJf::EncodeVectorAluInstruction` | `0x1e864f00` | JF/DF direct-pack VALU encoder |
+| `EncoderJf::EncodeVectorAluYEncoding` | `0x1e864be0` | JF Y-operand selector encode |
+| `EncoderJf::EncodePredication<VectorAluInstruction>` | `0x1e864000` | JF per-slot predicate encode |
+| `EncoderJf::EncodeBundleInternal` | `0x1e86c7c0` | Calls VALU encoder per present slot |
+| `ProtoUtils::IsEupOpcode(VectorAluOpcode)` | `0x1e875900` | JF EUP-push classifier |
+| `pxc::isa::TensorCoreVectorAlu0Encoder::Encode` | `0x1ed45060` | PF VALU0 dispatcher (struct `…Alu0`) |
+| `pxc::isa::TensorCoreVectorAlu1Encoder::Encode` | `0x1ed68d80` | PF VALU1 dispatcher (struct `…Alu1`) |
+| `vxc::isa::TensorCoreVectorAlu{0..3}Encoder::Encode` | `0x1eef8a80` / `0x1ef1c500` / `0x1ef3f120` / `0x1ef62880` | VF 4 VALU dispatchers (shared struct) |
+| `gxc::glc::isa::TensorCoreVectorAlu0Encoder::Encode` | `0x1f250160` | Ghostlite VALU0 dispatcher |
+| `gxc::gfc::isa::TensorCoreVectorAlu0Encoder::Encode` | `0x1f8b53c0` | 6acc60406 (GF) VALU0 dispatcher |
+| `gxc::{glc,gfc}::isa::SparseCoreTecVectorAlu{0..2}Encoder::Encode` | `0x1eaa4880…` / `0x1ec11100…` | SparseCore TEC 3 VALU slots |
 
 > **QUIRK —** Pufferfish gives VALU0 and VALU1 *distinct struct types* (`TensorCoreVectorAlu0` vs `TensorCoreVectorAlu1`), and VALU1 accepts a wider opcode range — `cmp rcx,0x43` (67) versus VALU0's `cmp rcx,0x3e` (62). VALU1 carries a few ops VALU0 lacks. From Viperfish onward the four slots share one `TensorCoreVectorAlu` struct and one op range, so a reimplementation can use a single encoder template; on Pufferfish it cannot.
 
@@ -114,37 +114,37 @@ proto +0x48 : operand descriptor → { dst vreg, src0 vreg, Y-encoding, src1 vre
 
 **Jellyfish / Dragonfish** (41-byte TC bundle, `EncoderJf::EncodeVectorAluInstruction` @ `0x1e864f00`). Direct `and`/`shl`/`or`, *not* `BitCopy`. The two VALU lanes occupy two *separate* windows in the 328-bit bundle, not a single repeated stride: lane 0 (`slot == 0`) packs into the struct-`0x1D` window (absolute bits 136..167), lane 1 (`slot == 1`) into the struct-`0x16` cross-word window (absolute bits 90..127). Within each lane the fields are placed by the literal shift constants, and because the two windows have different origins the per-field absolute bits differ by lane (the raw shifts share a relative layout). The opcode is masked `and 0x3f` (6-bit, range 0..62 with a `cmp 0x3e` guard) and the predicate `and 0x1f` (5-bit); register and Y-encoding fields are 5-bit windows. Dragonfish shares `EncoderJf` and `JellyfishCodecMetadata`, so it is byte-identical. The cross-checked absolute positions (LSB-first, also tabulated in [Jellyfish 41-bit Bundle](bundle-jf-41b.md)):
 
-| Field | Width | Raw shift | Lane 0 bit (struct `0x1D`) | Lane 1 bit (window `0x16`) | Confidence |
-|---|---|---|---|---|---|
-| Y-encoding (src1 vreg) | 5-bit | `<< 10` | — (slot-3 path) | 90 | CERTAIN |
-| Vx (src0 vreg) | 5-bit | `0` / `<< 25` | 136 | 105 | CERTAIN |
-| opcode | 6-bit | `<< 5` / `<< 30` (`shl 0x1e`) | 141 | 110 | CERTAIN |
-| predicate | 5-bit | `<< 11` / `<< 36` | 147 | 116 | CERTAIN |
-| dst vreg | 5-bit | `<< 41` | (in `0x1D` tail) | 121 | CERTAIN |
+| Field | Width | Raw shift | Lane 0 bit (struct `0x1D`) | Lane 1 bit (window `0x16`) |
+|---|---|---|---|---|
+| Y-encoding (src1 vreg) | 5-bit | `<< 10` | — (slot-3 path) | 90 |
+| Vx (src0 vreg) | 5-bit | `0` / `<< 25` | 136 | 105 |
+| opcode | 6-bit | `<< 5` / `<< 30` (`shl 0x1e`) | 141 | 110 |
+| predicate | 5-bit | `<< 11` / `<< 36` | 147 | 116 |
+| dst vreg | 5-bit | `<< 41` | (in `0x1D` tail) | 121 |
 
 > **GOTCHA — JF VALU is two distinct windows, not a stride.** Lane 0 writes byte `0x1D`/qword2; lane 1 writes the 56-bit cross-word at byte `0x16` (assembled as `dword[0x16] | word[0x1A]<<32 | byte[0x1C]<<48`). A reimplementation that derives lane 1 by adding a fixed offset to lane 0 — as the v5+ slots permit — will mis-place every lane-1 field. The shift constants in `EncodeVectorAluInstruction` are relative to each lane's window origin (136 for lane 0, 80 for lane 1), which is why the same logical field lands at, e.g., opcode bit 141 in lane 0 and bit 110 in lane 1.
 
 **Pufferfish** (51-byte TC bundle). VALU0 `Encode` @ `0x1ed45060`, VALU1 @ `0x1ed68d80`. `BitCopy`-driven, 6-bit register fields (64-window).
 
-| Field | Width | VALU0 bit | VALU1 bit | Confidence |
-|---|---|---|---|---|
-| predicate | 5-bit | 236 (`0xec`) | 193 (`0xc1`) | CERTAIN |
-| opcode range | 6-bit | `cmp 0x3e` (0..62) | `cmp 0x43` (0..67) | CERTAIN |
-| dst vreg | 6-bit | 230 (`0xe6`) | — | CERTAIN |
-| immediate (per-imm-op) | 16-bit each | 272 / 288 / 304 / 320 / 338 | — | CERTAIN |
-| NOP fill | — | predicate ← `0x1f` (`kNeverExecute`) | same | CERTAIN |
+| Field | Width | VALU0 bit | VALU1 bit |
+|---|---|---|---|
+| predicate | 5-bit | 236 (`0xec`) | 193 (`0xc1`) |
+| opcode range | 6-bit | `cmp 0x3e` (0..62) | `cmp 0x43` (0..67) |
+| dst vreg | 6-bit | 230 (`0xe6`) | — |
+| immediate (per-imm-op) | 16-bit each | 272 / 288 / 304 / 320 / 338 | — |
+| NOP fill | — | predicate ← `0x1f` (`kNeverExecute`) | same |
 
 **Viperfish** (64-byte TC bundle). Four slots, shared struct, **34-bit per-slot stride**. VALU0 `Encode` @ `0x1eef8a80`; representative `VectorFloatAdd` helper (op `0x0c`) @ `0x1eefa2c0`:
 
-| Field | Width | VALU0 bit | Source | Confidence |
-|---|---|---|---|---|
-| opcode | 7-bit | 299 (`0x12b`) | `mov esi,0x12b; r8d,7` | CERTAIN |
-| dst vreg | 6-bit | 276 (`0x114`) | `mov esi,0x114; r8d,6` | CERTAIN |
-| src vreg | 6-bit | 282 (`0x11a`) | `mov esi,0x11a; r8d,6` | CERTAIN |
-| src vreg | 6-bit | 293 (`0x125`) | `mov esi,0x125; r8d,6` | CERTAIN |
-| Y-encoding | 5-bit | 288 (`0x120`) | `mov esi,0x120; r8d,5` | CERTAIN |
-| predicate | 4-bit | 306 (`0x132`) | `mov esi,0x132; r8d,4` | CERTAIN |
-| opcode range | — | `cmp 0x80` (0..128) | dispatcher | CERTAIN |
+| Field | Width | VALU0 bit | Source |
+|---|---|---|---|
+| opcode | 7-bit | 299 (`0x12b`) | `mov esi,0x12b; r8d,7` |
+| dst vreg | 6-bit | 276 (`0x114`) | `mov esi,0x114; r8d,6` |
+| src vreg | 6-bit | 282 (`0x11a`) | `mov esi,0x11a; r8d,6` |
+| src vreg | 6-bit | 293 (`0x125`) | `mov esi,0x125; r8d,6` |
+| Y-encoding | 5-bit | 288 (`0x120`) | `mov esi,0x120; r8d,5` |
+| predicate | 4-bit | 306 (`0x132`) | `mov esi,0x132; r8d,4` |
+| opcode range | — | `cmp 0x80` (0..128) | dispatcher |
 
 The four predicate fields sit at bits 306 / 272 / 238 / 204 (VALU0..3), a uniform −34-bit step, so the slots occupy `{opcode 7 + dst 6 + 2 src 6 + Y-enc 5 + pred 4} = 34` bits each in the upper third of the 512-bit bundle.
 
@@ -152,29 +152,29 @@ The four predicate fields sit at bits 306 / 272 / 238 / 204 (VALU0..3), a unifor
 
 **6acc60406 (GF)** (64-byte TC bundle). VALU0 `Encode` @ `0x1f8b53c0`; representative `VectorF32Add` helper @ `0x1f8b7860`:
 
-| Field | Width | VALU0 bit | Source | Confidence |
-|---|---|---|---|---|
-| opcode | **8-bit** | 293 (`0x125`) | `mov esi,0x125; r8d,8` | CERTAIN |
-| dst vreg | 6-bit | 276 (`0x114`) | `mov esi,0x114; r8d,6` | CERTAIN |
-| src0 vreg | 6-bit | 270 (`0x10e`) | `mov esi,0x10e; r8d,6` | CERTAIN |
-| src1 vreg | 6-bit | 287 (`0x11f`) | `mov esi,0x11f; r8d,6` | CERTAIN |
-| Y-encoding | 5-bit | 282 (`0x11a`) | `mov esi,0x11a; r8d,5` | CERTAIN |
-| predicate | **2-bit** | 301 (`0x12d`) | `mov esi,0x12d; r8d,2` | CERTAIN |
-| opcode range | — | `cmp 0x83` (0..131) | dispatcher | CERTAIN |
+| Field | Width | VALU0 bit | Source |
+|---|---|---|---|
+| opcode | **8-bit** | 293 (`0x125`) | `mov esi,0x125; r8d,8` |
+| dst vreg | 6-bit | 276 (`0x114`) | `mov esi,0x114; r8d,6` |
+| src0 vreg | 6-bit | 270 (`0x10e`) | `mov esi,0x10e; r8d,6` |
+| src1 vreg | 6-bit | 287 (`0x11f`) | `mov esi,0x11f; r8d,6` |
+| Y-encoding | 5-bit | 282 (`0x11a`) | `mov esi,0x11a; r8d,5` |
+| predicate | **2-bit** | 301 (`0x12d`) | `mov esi,0x12d; r8d,2` |
+| opcode range | — | `cmp 0x83` (0..131) | dispatcher |
 
 > **GOTCHA —** 6acc60406 (GF)'s predicate field is only 2 bits, which is *not* enough to name one of 16 predicate registers. It selects among `{pred_0, pred_1, always, never}`: the bundle's two active dual predicates are written by the dedicated `TensorCorePredicates` slot, and the VALU slot merely picks which of the two applies. A reimplementation that treats the 2-bit field as a 4-register index will mis-predicate every GF VALU op. See [Predicate Slot](slot-predicate.md).
 
 ### Per-Generation Slot Position
 
-| Gen | Bundle | #VALU | Lane-0 opcode bit | Lane-0 pred bit | Pred width | Per-slot stride | Confidence |
-|---|---|---|---|---|---|---|---|
-| Jellyfish (v2) | 41 B | 2 | 141 (lane 1 op @110) | 147 (lane 1 @116) | 5-bit | two windows (136 / 80) | CERTAIN |
-| Dragonfish (v3 var) | 41 B | 2 | alias of Jellyfish | alias of Jellyfish | 5-bit | two windows (136 / 80) | CERTAIN |
-| Pufferfish (v4) | 51 B | 2 | (switch-dispatched) | 236; lane 1 @193 | 5-bit | distinct structs | CERTAIN |
-| Viperfish (v5p) | 64 B | 4 | 299 | 306 | 4-bit | 34 bits/slot | CERTAIN |
-| Ghostlite (v6e) | 64 B | 4 | 302 | 309 | 4-bit | ~34 bits/slot | CERTAIN |
-| 6acc60406 (TPU7x) | 64 B | 4 | 293 | 301 | 2-bit | ~34 bits/slot | CERTAIN |
-| SparseCore TEC | 64 B | 3 | `SparseCoreTecVectorAlu0..2` (same template, SC bundle) | — | 4/2-bit | not leaf-decoded | MEDIUM |
+| Gen | Bundle | #VALU | Lane-0 opcode bit | Lane-0 pred bit | Pred width | Per-slot stride |
+|---|---|---|---|---|---|---|
+| Jellyfish (v2) | 41 B | 2 | 141 (lane 1 op @110) | 147 (lane 1 @116) | 5-bit | two windows (136 / 80) |
+| Dragonfish (v3 var) | 41 B | 2 | alias of Jellyfish | alias of Jellyfish | 5-bit | two windows (136 / 80) |
+| Pufferfish (v4) | 51 B | 2 | (switch-dispatched) | 236; lane 1 @193 | 5-bit | distinct structs |
+| Viperfish (v5p) | 64 B | 4 | 299 | 306 | 4-bit | 34 bits/slot |
+| Ghostlite (v6e) | 64 B | 4 | 302 | 309 | 4-bit | ~34 bits/slot |
+| 6acc60406 (TPU7x) | 64 B | 4 | 293 | 301 | 2-bit | ~34 bits/slot |
+| SparseCore TEC | 64 B | 3 | `SparseCoreTecVectorAlu0..2` (same template, SC bundle) | — | 4/2-bit | not leaf-decoded |
 
 The generation-to-codename mapping is fixed by the codec-metadata table (see [Bundle Model](bundle-model-overview.md)): `kJellyfish`=v2, `kDragonfish`=v3, `kPufferfish`=v4, `kViperfish`=v5p, `kGhostlite`=v6e, `k6acc60406`=TPU7x. The binary namespaces follow as `jellyfish` (JF/DF, shared proto), `pxc` (PF), `vxc` (VF), `gxc::glc` (GL), `gxc::gfc` (GF).
 
@@ -199,20 +199,20 @@ NameOfDenseEnum<VectorResultOpcode,   0,  2>  @ 0x2239bd00   →  3 pop ops
 
 The v5+ op families, grouped (representative proto names; `H` suffix = the v5+ proto-message naming):
 
-| Family | Ops (representative) | Notes | Confidence |
-|---|---|---|---|
-| Float arithmetic | `VectorFloatAdd`, `Subtract`, `Multiply`, `Max`, `Min` | `f32`/`bf16` lanes | CERTAIN |
-| Float compare | `FloatEq`/`Neq`/`Gt`/`Gte`/`Lt`/`Lte`, `TotalLt`/`TotalLte`, `InfOrNan` | produce a vector mask | CERTAIN |
-| Integer arithmetic | `IntegerAdd`/`Subtract`/`Multiply`/`Carry` | `s16`/`s32`/`u16`/`u32` | CERTAIN |
-| Integer compare | `IntegerEq`/`Neq`/`Gt`/`Gte`/`Lt`/`Lte` | produce a vector mask | CERTAIN |
-| Bitwise | `BitwiseAnd`/`Or`/`Xor` | | CERTAIN |
-| Shift | `LogicalShiftLeft`/`Right`, `ArithmeticShiftRight` | | CERTAIN |
-| Move / misc | `Move`, `Clamp`, `Classify`, `Relux`, `Ceiling`, `Floor` | | CERTAIN |
-| Bit count | `CountLeadingZeros`, `PopulationCount`, `ByteNez` | | HIGH |
-| Convert | `ConvertF32To{Bf16,Bf8,Hf16,If8,Int32}[Stochastic]`, `ConvertInt32ToF32` | + FP8/FP4 narrow, stochastic round | CERTAIN |
-| Mask gen | `CreateMask`, `LaneId` | | HIGH |
-| Select | `VectorSelectVmsk0..15`, `VectorSelectNotVmsk0..15` (PF/VF) / `VectorSelect`+`VectorSelectNot` (GL/GF) | consume a Vmsk | CERTAIN |
-| Transcendental (EUP push) | `Reciprocal`, `ReciprocalSqrt`, `Tanh`, `ShiftedSigmoid`, `LogTwo`, `PowTwo`, `EupPush` | issued into the XLU | CERTAIN |
+| Family | Ops (representative) | Notes |
+|---|---|---|
+| Float arithmetic | `VectorFloatAdd`, `Subtract`, `Multiply`, `Max`, `Min` | `f32`/`bf16` lanes |
+| Float compare | `FloatEq`/`Neq`/`Gt`/`Gte`/`Lt`/`Lte`, `TotalLt`/`TotalLte`, `InfOrNan` | produce a vector mask |
+| Integer arithmetic | `IntegerAdd`/`Subtract`/`Multiply`/`Carry` | `s16`/`s32`/`u16`/`u32` |
+| Integer compare | `IntegerEq`/`Neq`/`Gt`/`Gte`/`Lt`/`Lte` | produce a vector mask |
+| Bitwise | `BitwiseAnd`/`Or`/`Xor` | |
+| Shift | `LogicalShiftLeft`/`Right`, `ArithmeticShiftRight` | |
+| Move / misc | `Move`, `Clamp`, `Classify`, `Relux`, `Ceiling`, `Floor` | |
+| Bit count | `CountLeadingZeros`, `PopulationCount`, `ByteNez` | |
+| Convert | `ConvertF32To{Bf16,Bf8,Hf16,If8,Int32}[Stochastic]`, `ConvertInt32ToF32` | + FP8/FP4 narrow, stochastic round |
+| Mask gen | `CreateMask`, `LaneId` | |
+| Select | `VectorSelectVmsk0..15`, `VectorSelectNotVmsk0..15` (PF/VF) / `VectorSelect`+`VectorSelectNot` (GL/GF) | consume a Vmsk |
+| Transcendental (EUP push) | `Reciprocal`, `ReciprocalSqrt`, `Tanh`, `ShiftedSigmoid`, `LogTwo`, `PowTwo`, `EupPush` | issued into the XLU |
 
 > **QUIRK —** the 32 `VectorSelect[Not]Vmsk0..15` entries on Pufferfish and Viperfish are *not* 32 distinct operations — they are one select op whose mask-register index (`Vmsk0..15`) is baked into the opcode. Ghostlite and 6acc60406 consolidate them into a single `VectorSelect` / `VectorSelectNot` opcode with the `Vmsk` index moved to a separate field (width not measured; likely 4-bit for 16 masks — LOW). A reimplementation must know which scheme a generation uses or it will either explode the opcode space or fail to find the mask index.
 
@@ -244,12 +244,12 @@ V5+ additionally exposes wider physical layouts (`16x128`, `8x256`, `4x8x128`, `
 
 The architectural register file is `v0..v1023` (1024 names in `TPURegStrings`). A VALU slot encodes a destination plus up to three source vregs, each a **6-bit field on Pufferfish and v5+** (5-bit register-class window on Jellyfish). Six bits address 64 registers directly, so each slot sees a *window* into the 1024-name file; the per-subtarget `getVyEncodings(unsigned)` map translates an architectural vreg into the slot encoding (returning `0xffffffff` when a vreg is not encodable in that slot's window):
 
-| Subtarget | `getVyEncodings` | Confidence |
-|---|---|---|
-| `TPUBcSubtarget` (PF BarnaCore) | `0x13c58de0` | CERTAIN |
-| `TPUVfcSubtarget` (Viperfish) | `0x13c5ec20` | CERTAIN |
-| `TPUGlcSubtarget` (Ghostlite) | `0x13c60a20` | CERTAIN |
-| `TPUGfcSubtarget` (6acc60406) | `0x13c625a0` | CERTAIN |
+| Subtarget | `getVyEncodings` |
+|---|---|
+| `TPUBcSubtarget` (PF BarnaCore) | `0x13c58de0` |
+| `TPUVfcSubtarget` (Viperfish) | `0x13c5ec20` |
+| `TPUGlcSubtarget` (Ghostlite) | `0x13c60a20` |
+| `TPUGfcSubtarget` (6acc60406) | `0x13c625a0` |
 
 > **NOTE —** the window-map contents (which architectural vreg maps to which 6-bit slot code) were not dumped; the lookup shape and the `-1` sentinel are confirmed, the per-entry table is not. A reimplementer must recover the window assignment per generation before encoding real programs.
 
@@ -265,14 +265,14 @@ A binary VALU op's second source is not a plain vreg field — it is chosen by a
 
 The field is 5-bit (`VectorAluYEncoding` dense `0..31`, `@0x1fa1fc40`), `BitCopy`'d from operand-descriptor `+0x20`. The 32 values (confirmed verbatim from `.rodata` `VECTOR_ALU_Y_*` strings):
 
-| Group | Values | Meaning | Confidence |
-|---|---|---|---|
-| Vreg | `VREG` | explicit vector register (uses the src1 vreg field) | CERTAIN |
-| VS ports | `VS0`, `VS1`, `VS2` | bundle-shared vector-source read port 0/1/2 (4 ports on v5+) | CERTAIN |
-| Float constants | `FLOAT_ONE`, `FLOAT_TWO`, `FLOAT_NEGATIVE_ONE`, `FLOAT_ZERO_POINT_FIVE` | hardwired `1.0`/`2.0`/`-1.0`/`0.5` | CERTAIN |
-| Integer constants | `INTEGER_ONE`, `INTEGER_NEGATIVE_ONE`, `ZERO` | hardwired | CERTAIN |
-| Immediate slots | `IMM0_ZERO`..`IMM5_ZERO`, `ZERO_IMM0`..`ZERO_IMM5`, `ONES_IMM0`..`ONES_IMM5` | reference bundle imm slots 0..5 with zero/ones extension | CERTAIN |
-| Paired-slot wide | `IMM1_IMM0`, `IMM3_IMM2`, `IMM5_IMM4` | two imm slots fused into a wide immediate | CERTAIN |
+| Group | Values | Meaning |
+|---|---|---|
+| Vreg | `VREG` | explicit vector register (uses the src1 vreg field) |
+| VS ports | `VS0`, `VS1`, `VS2` | bundle-shared vector-source read port 0/1/2 (4 ports on v5+) |
+| Float constants | `FLOAT_ONE`, `FLOAT_TWO`, `FLOAT_NEGATIVE_ONE`, `FLOAT_ZERO_POINT_FIVE` | hardwired `1.0`/`2.0`/`-1.0`/`0.5` |
+| Integer constants | `INTEGER_ONE`, `INTEGER_NEGATIVE_ONE`, `ZERO` | hardwired |
+| Immediate slots | `IMM0_ZERO`..`IMM5_ZERO`, `ZERO_IMM0`..`ZERO_IMM5`, `ONES_IMM0`..`ONES_IMM5` | reference bundle imm slots 0..5 with zero/ones extension |
+| Paired-slot wide | `IMM1_IMM0`, `IMM3_IMM2`, `IMM5_IMM4` | two imm slots fused into a wide immediate |
 
 The VS ports are a scarce bundle resource: multiple VALU slots in one bundle share a small number of read ports, which the packer's `SlotTracker` counts as a bundling constraint. The hardwired float constants are why scaling and bias ops appear with no immediate slot consumed.
 
@@ -306,13 +306,13 @@ The XLU is single-issue hardware — the diagnostic string `"1 XLU Busy"` is pre
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `vxc::isa::EncodeTensorCoreVectorAlu3EupPush` | `0x1ef6e400` | VF EUP push (Alu3 only) | CERTAIN |
-| `jellyfish::isa::ProtoUtils::IsEupOpcode` | `0x1e875900` | classifies EUP-push opcodes | HIGH |
-| `proto::Arena::DefaultConstruct<gxc::glc::isa::TensorCoreVectorAlu_EupPush>` | `0x1fb49c00` | Ghostlite EUP push proto | CERTAIN |
-| `proto::Arena::DefaultConstruct<…TensorCoreVectorResult_PopEupResult>` | `0x1fb55b40` (glc) / `0x1fb9e660` (gfc) | result pop proto | CERTAIN |
-| `proto::Arena::DefaultConstruct<pxc::isa::TensorCoreVectorResult{0,1}_PopEupResult>` | `0x1fa86240` / `0x1fa86ac0` | PF dual result pop | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `vxc::isa::EncodeTensorCoreVectorAlu3EupPush` | `0x1ef6e400` | VF EUP push (Alu3 only) |
+| `jellyfish::isa::ProtoUtils::IsEupOpcode` | `0x1e875900` | classifies EUP-push opcodes |
+| `proto::Arena::DefaultConstruct<gxc::glc::isa::TensorCoreVectorAlu_EupPush>` | `0x1fb49c00` | Ghostlite EUP push proto |
+| `proto::Arena::DefaultConstruct<…TensorCoreVectorResult_PopEupResult>` | `0x1fb55b40` (glc) / `0x1fb9e660` (gfc) | result pop proto |
+| `proto::Arena::DefaultConstruct<pxc::isa::TensorCoreVectorResult{0,1}_PopEupResult>` | `0x1fa86240` / `0x1fa86ac0` | PF dual result pop |
 
 ---
 
@@ -326,13 +326,13 @@ Two independent register files touch the VALU slot and are easy to conflate. The
 
 Per-slot predicate field width and the predicate register count:
 
-| Gen | Pred width | VALU0 pred bit | Semantics | Pred regs | Confidence |
-|---|---|---|---|---|---|
-| Jellyfish | 5-bit | (packed word) | 0..14 reg, 15 = always, 31 = never | 15 | HIGH |
-| Pufferfish | 5-bit | 236 (V0) / 193 (V1) | same | 15 (16 on BarnaCore) | CERTAIN |
-| Viperfish | 4-bit | 306 | 1 of 16 pred regs | 16 | CERTAIN |
-| Ghostlite | 4-bit | 309 | 1 of 16 pred regs | 16 | CERTAIN |
-| 6acc60406 | 2-bit | 301 | `{pred_0, pred_1, always, never}` | 16 | CERTAIN |
+| Gen | Pred width | VALU0 pred bit | Semantics | Pred regs |
+|---|---|---|---|---|
+| Jellyfish | 5-bit | (packed word) | 0..14 reg, 15 = always, 31 = never | 15 |
+| Pufferfish | 5-bit | 236 (V0) / 193 (V1) | same | 15 (16 on BarnaCore) |
+| Viperfish | 4-bit | 306 | 1 of 16 pred regs | 16 |
+| Ghostlite | 4-bit | 309 | 1 of 16 pred regs | 16 |
+| 6acc60406 | 2-bit | 301 | `{pred_0, pred_1, always, never}` | 16 |
 
 The 16-register count for the v5+ subtargets is a confirmed inline constant — `getNumPredicateRegisters` returns `mov eax,0x10; ret` for `TPUVfcSubtarget` (`@0x13c5f6e0`), `TPUGlcSubtarget` (`@0x13c615c0`), `TPUGfcSubtarget` (`@0x13c630e0`), and `TPUBcSubtarget` (`@0x13c59780`). Jellyfish/Pufferfish-TC use the base `TPUSubtarget` count of 15.
 

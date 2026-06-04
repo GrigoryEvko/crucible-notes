@@ -91,16 +91,16 @@ The numeric gate at `0x130aa9dc` is `cmp et, 0x21` followed by `bt 0x2FFF91FFE` 
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `CostModel::GetHloResourcesImpl` | `0x130aa580` | 5-way routing dispatch | CERTAIN |
-| `IsSupportedCollectiveHlo` | `0x130aeda0` | Collective predicate (arm 1) | CERTAIN |
-| `IsFusionSupportedHlo` | `0x130abee0` | Numeric + fusion-support gate | CERTAIN |
-| `IsConvLowerable` | `0x14553620` | Conv-lowerable predicate | CERTAIN |
-| `ExtractConvLikeHlo` | `0x1d6aa140` | Pull the conv/reduce-window root | CERTAIN |
-| `GetReduceWindowType` | `0x1454d4a0` | `−1`/`2` max-pool sentinel | HIGH |
-| `GetCollectiveComputeFusionCycles` | `0x130b13a0` | Arm 4 | HIGH |
-| `GetLoopFusionOrUnfusedHloCycles` | `0x130b2bc0` | Default → `RecordHloCycles` | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `CostModel::GetHloResourcesImpl` | `0x130aa580` | 5-way routing dispatch |
+| `IsSupportedCollectiveHlo` | `0x130aeda0` | Collective predicate (arm 1) |
+| `IsFusionSupportedHlo` | `0x130abee0` | Numeric + fusion-support gate |
+| `IsConvLowerable` | `0x14553620` | Conv-lowerable predicate |
+| `ExtractConvLikeHlo` | `0x1d6aa140` | Pull the conv/reduce-window root |
+| `GetReduceWindowType` | `0x1454d4a0` | `−1`/`2` max-pool sentinel |
+| `GetCollectiveComputeFusionCycles` | `0x130b13a0` | Arm 4 |
+| `GetLoopFusionOrUnfusedHloCycles` | `0x130b2bc0` | Default → `RecordHloCycles` |
 
 ---
 
@@ -160,33 +160,33 @@ RecordHloCycles(inst, window, rv, fs, nesting):       // sub_130BBFE0
 
 `element_count` is `Product(output dims)`; `thru(k)` is the per-gen `GetCyclesForThroughput(CT::Instruction k)`; `W` is the fixed FP multiplier. CT-bucket→slot via [`CycleTable::GetResource`](resource-enum.md#opslot-mapping--cycletablegetresource).
 
-| Opcode (name) | Block @ | CT issued → slot | Cycle quantity | Confidence |
-|---|---|---|---|---|
-| `0x03` add | `0x130bc0f7` | float: `CT 0x12`→`R4`; int: `R5` | `elems × thru(0x12)` | CERTAIN |
-| `0x4b` multiply | `0x130bc4dd` | `CT 0x14`→`R3` | `elems × thru(0x14)` | CERTAIN |
-| `0x7b` subtract | `0x130bc4af` | float: `CT 0x13`→`R4`; int: `R5` | `elems × thru(0x13)` | CERTAIN |
-| `0x32` divide | `0x130bc3cf` | `R6` + `CT 0x14`→`R3` + `CT 0x12`→`R4` + `R5` | 4-deposit; `×3.0`(R3), `×2`(R4 elems), `×9.0`(R5) | CERTAIN |
-| `0x47` logistic | `0x130bc17b` | `CT 0x12`→`R4`, `CT 0x14`→`R3`, `CT 0x1a`→`R6` | sigmoid seq; `×2`(R3 elems) | HIGH |
-| `0x38` erf | `0x130bc245` | fast: `CT 0x11`→`R6`; slow: `R6`+`R3`+`R4`+`R5` | gated; slow `×16.0`(R3), `×2`(R4), `×4.0`(R5) | HIGH |
-| `0x2a` convert | `0x130bc293` | 1-bit: `R5`; else none | 1-bit: `elems × 2.0`; wider: 0 | CERTAIN |
-| `0x6c` select | `0x130bc2a9` | `R5` (`LABEL_26` ×2 path) | `elems × 2.0` | CERTAIN |
-| `0x52` parameter | `0x130bc2b8` | fused→`RecordFusionInputCycles`; else none | fused: input-DMA into MemXfer; non-fused: `0` | CERTAIN |
-| `0x5b` reduce | `0x130bc2f9` | `R5` over operand window | priced over reduced-OVER input window | HIGH |
-| DEFAULT (most ops) | `0x130bc3c0` | `R5` `VectorAluAny` | `elems × 1.0` | CERTAIN |
-| ZERO-cost | `0x130bc8c2` | (no deposit) | `0` | CERTAIN |
+| Opcode (name) | Block @ | CT issued → slot | Cycle quantity |
+|---|---|---|---|
+| `0x03` add | `0x130bc0f7` | float: `CT 0x12`→`R4`; int: `R5` | `elems × thru(0x12)` |
+| `0x4b` multiply | `0x130bc4dd` | `CT 0x14`→`R3` | `elems × thru(0x14)` |
+| `0x7b` subtract | `0x130bc4af` | float: `CT 0x13`→`R4`; int: `R5` | `elems × thru(0x13)` |
+| `0x32` divide | `0x130bc3cf` | `R6` + `CT 0x14`→`R3` + `CT 0x12`→`R4` + `R5` | 4-deposit; `×3.0`(R3), `×2`(R4 elems), `×9.0`(R5) |
+| `0x47` logistic | `0x130bc17b` | `CT 0x12`→`R4`, `CT 0x14`→`R3`, `CT 0x1a`→`R6` | sigmoid seq; `×2`(R3 elems) |
+| `0x38` erf | `0x130bc245` | fast: `CT 0x11`→`R6`; slow: `R6`+`R3`+`R4`+`R5` | gated; slow `×16.0`(R3), `×2`(R4), `×4.0`(R5) |
+| `0x2a` convert | `0x130bc293` | 1-bit: `R5`; else none | 1-bit: `elems × 2.0`; wider: 0 |
+| `0x6c` select | `0x130bc2a9` | `R5` (`LABEL_26` ×2 path) | `elems × 2.0` |
+| `0x52` parameter | `0x130bc2b8` | fused→`RecordFusionInputCycles`; else none | fused: input-DMA into MemXfer; non-fused: `0` |
+| `0x5b` reduce | `0x130bc2f9` | `R5` over operand window | priced over reduced-OVER input window |
+| DEFAULT (most ops) | `0x130bc3c0` | `R5` `VectorAluAny` | `elems × 1.0` |
+| ZERO-cost | `0x130bc8c2` | (no deposit) | `0` |
 
 The DEFAULT arm covers every numeric elementwise / structural op not named above (the switch's `cases 4-23, 25, 27-38, 40, 43-49, 51-55, 57-66, 68-70, 72-74, 76-81, 83-90, 92-96, 98-107, 109-122, 124-128` per the decompiler's jumptable annotation). The ZERO arm covers the data-layout ops: `bitcast` (`0x18`), `broadcast` (`0x1a`), `concatenate` (`0x27`), `constant` (`0x29`), `iota` (`0x43`), `reshape` (`0x61`), `tuple` (`0x81`).
 
 ### Fixed FP Multipliers (`.rodata`, byte-verified)
 
-| Address | Value | Used by | Confidence |
-|---|---|---|---|
-| `0xa2df230` | `1.0` | default per-op multiplier | CERTAIN |
-| `0xa2df930` | `3.0` | divide `VectorAlu0` (R3) scale | CERTAIN |
-| `0xa2deb40` | `9.0` | divide `VectorAluAny` (R5) scale | CERTAIN |
-| `0xa2df040` | `16.0` | erf slow-path `VectorAlu0` (R3) scale | CERTAIN |
-| `0xa2de830` | `4.0` | erf slow-path `VectorAluAny` (R5) scale | CERTAIN |
-| `0xa2df5c8` | `0.5` | `MaxResourceCycles` `VectorAlu` port-balance blend | CERTAIN |
+| Address | Value | Used by |
+|---|---|---|
+| `0xa2df230` | `1.0` | default per-op multiplier |
+| `0xa2df930` | `3.0` | divide `VectorAlu0` (R3) scale |
+| `0xa2deb40` | `9.0` | divide `VectorAluAny` (R5) scale |
+| `0xa2df040` | `16.0` | erf slow-path `VectorAlu0` (R3) scale |
+| `0xa2de830` | `4.0` | erf slow-path `VectorAluAny` (R5) scale |
+| `0xa2df5c8` | `0.5` | `MaxResourceCycles` `VectorAlu` port-balance blend |
 
 ### Considerations
 
@@ -332,15 +332,15 @@ Custom-call is the open extensibility hook: a `util_registration::FunctionRegist
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `TpuHloCostAnalysis::HandleGather` | `0x130a2de0` | chunk-ratio bytes; gated on `this+456` | CERTAIN |
-| `TpuHloCostAnalysis::HandleScatter` | `0x130a3160` | chunk-ratio bytes + combiner flops/transcend. | CERTAIN |
-| `TpuHloCostAnalysis::HandleCustomCall` | `0x130a35c0` | `FunctionRegistry` on target; else base | CERTAIN |
-| `GetGatherSizeInChunkRatio` | `0x14a8e420` | gather read-amplification factor | HIGH |
-| `GetScatterSizeInChunkRatio` | `0x14a90ce0` | scatter write-amplification factor | HIGH |
-| `HloCostAnalysis::GetShapeSize` | `0x1e47a6e0` | byte size of a shape | CERTAIN |
-| base `HloCostAnalysis::HandleCustomCall` | `0x1e482a20` | fallback emitter | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `TpuHloCostAnalysis::HandleGather` | `0x130a2de0` | chunk-ratio bytes; gated on `this+456` |
+| `TpuHloCostAnalysis::HandleScatter` | `0x130a3160` | chunk-ratio bytes + combiner flops/transcend. |
+| `TpuHloCostAnalysis::HandleCustomCall` | `0x130a35c0` | `FunctionRegistry` on target; else base |
+| `GetGatherSizeInChunkRatio` | `0x14a8e420` | gather read-amplification factor |
+| `GetScatterSizeInChunkRatio` | `0x14a90ce0` | scatter write-amplification factor |
+| `HloCostAnalysis::GetShapeSize` | `0x1e47a6e0` | byte size of a shape |
+| base `HloCostAnalysis::HandleCustomCall` | `0x1e482a20` | fallback emitter |
 
 ---
 

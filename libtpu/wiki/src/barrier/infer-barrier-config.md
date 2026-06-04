@@ -190,10 +190,10 @@ The `count = size − 5` reserves the top 5 of the range for the named cross-cor
 
 The SC block is full and reserves its global-barrier id *within* `[SC_base, SC_base+SC_count)`. TC and SC ranges are disjoint by construction — they are different `SpecialPurposeSyncFlags` proto messages, keyed by distinct `TpuCoreType`, read from `GetSpecialPurposeSyncFlags(core)` @`0x20afcf40` (index `core << 6`, i.e. `+0x2a0 + core*0x40`; the TensorCore entry is mandatory or `Target::Init` dies via `DieBecauseNull`).
 
-| Block | base field | count field | count formula | Confidence |
-|---|---|---|---|---|
-| TensorCore | `Target+0x8c0` (`target[560]`) | `Target+0x8c4` (`target[561]`) | `\|CR_TC\| − 5` | CERTAIN |
-| SparseCore | `SparseCoreTarget+0x1d0` (`+464`) | `SparseCoreTarget+0x1d4` (`+468`) | `\|CR_SC\|` (no `−5`) | CERTAIN |
+| Block | base field | count field | count formula |
+|---|---|---|---|
+| TensorCore | `Target+0x8c0` (`target[560]`) | `Target+0x8c4` (`target[561]`) | `\|CR_TC\| − 5` |
+| SparseCore | `SparseCoreTarget+0x1d0` (`+464`) | `SparseCoreTarget+0x1d4` (`+468`) | `\|CR_SC\|` (no `−5`) |
 
 > **GOTCHA —** `SparseCoreTarget+0x90` is **not** an SFLAG-window base: `*(sctgt+144) = TpuCoreParts::SequencerCount(core, 5)`, a per-core sequencer count, not a barrier id. `SparseCoreTarget+0x1fc` (`*(sctgt+508) = v77 − 4`) is the `GetMemoryReservation → GetUserRegion` length (the Mosaic per-core tree-barrier window, MemorySpace 14), a third disjoint region. Neither is part of the `compiler_reserved` SFLAG block. The SC tree-barrier window is on [Tree-Barrier / vSync](tree-barrier-vsync.md).
 
@@ -201,13 +201,13 @@ The SC block is full and reserves its global-barrier id *within* `[SC_base, SC_b
 
 The `count = size − 5` carves the top 5 ids of the TC range into the named cross-core barrier sync flags. All three accessor formulas are byte-exact (`target[560]` = `Target+0x8c0` = base; `target[561]` = `Target+0x8c4` = count):
 
-| Slot | Accessor | Formula | Confidence |
-|---|---|---|---|
-| `base + count + 0` | `GetMegacoreBarrierSyncFlagNumber` @`0x1d60f4e0` | `target[560] + target[561]` = `base + count` (`Megacore()`-gated; CHECK `"topology_->chip_config().Megacore()"`, line 154) | CERTAIN |
-| `base + count + 1` | (gap; `GetAllReduceSyncFlagNumber(0)` illegal — CHECK `phase > 0`) | `base + count + 1` (permanent gap) | CERTAIN |
-| `base + count + 2` | `GetAllReduceSyncFlagNumber(1)` @`0x1d60f440` | `target[560] + 1 + target[561] + 1` = `base + count + 2` | CERTAIN |
-| `base + count + 3` | `GetAllReduceSyncFlagNumber(2)` @`0x1d60f440` | `base + count + 3` | CERTAIN |
-| `base + count + 4` | `GetGlobalBarrierSyncFlagNumber` @`0x1d60f420` | `target[561] + target[560] + 4` = `base + count + 4` | CERTAIN |
+| Slot | Accessor | Formula |
+|---|---|---|
+| `base + count + 0` | `GetMegacoreBarrierSyncFlagNumber` @`0x1d60f4e0` | `target[560] + target[561]` = `base + count` (`Megacore()`-gated; CHECK `"topology_->chip_config().Megacore()"`, line 154) |
+| `base + count + 1` | (gap; `GetAllReduceSyncFlagNumber(0)` illegal — CHECK `phase > 0`) | `base + count + 1` (permanent gap) |
+| `base + count + 2` | `GetAllReduceSyncFlagNumber(1)` @`0x1d60f440` | `target[560] + 1 + target[561] + 1` = `base + count + 2` |
+| `base + count + 3` | `GetAllReduceSyncFlagNumber(2)` @`0x1d60f440` | `base + count + 3` |
+| `base + count + 4` | `GetGlobalBarrierSyncFlagNumber` @`0x1d60f420` | `target[561] + target[560] + 4` = `base + count + 4` |
 
 `GetAllReduceSyncFlagNumber(phase)` is `LogMessageFatal`-bounded to `0 < phase < 3` (CHECK lines 143/144), which is why `base+count+1` is a permanent gap — `phase = 0` is illegal, so no caller can name it. The **usable per-id window** is `[base, base+count)`: `REPLICA` and `CUSTOM` ids satisfy `id < count`, sitting strictly *below* the five reserved slots. This is exactly the window the decision tree's `REPLICA` id, `count − 1`, indexes — the top of the usable range, one below the first reserved slot.
 
@@ -245,10 +245,10 @@ Megacore deployments (`megacore*`, `megachip`) are the ones for which `CoresPerC
 
 `InferBarrierConfig` is one of **two** writers of the `BackendConfig.BarrierConfig` field; a reimplementer must keep them distinct.
 
-| Producer | When it runs | Writes | id source | Confidence |
-|---|---|---|---|---|
-| `DetermineBarrierConfigForKey` @`0x109c6fa0` | HLO barrier-assignment pass (per key) | `GLOBAL(1)` / `CUSTOM(3 fresh)` / `REPLICA(2 shared)` | `-1` (GLOBAL) / fresh / shared key id | HIGH |
-| `InferBarrierConfig` @`0x1376c240` | pincer fusion emit (per fusion, 8 callers) | `CUSTOM → GLOBAL(1, id=-1)` if channelled; `CUSTOM → REPLICA(2, id=count−1)` if not | `-1` (GLOBAL) / `count−1` (REPLICA) | CERTAIN |
+| Producer | When it runs | Writes | id source |
+|---|---|---|---|
+| `DetermineBarrierConfigForKey` @`0x109c6fa0` | HLO barrier-assignment pass (per key) | `GLOBAL(1)` / `CUSTOM(3 fresh)` / `REPLICA(2 shared)` | `-1` (GLOBAL) / fresh / shared key id |
+| `InferBarrierConfig` @`0x1376c240` | pincer fusion emit (per fusion, 8 callers) | `CUSTOM → GLOBAL(1, id=-1)` if channelled; `CUSTOM → REPLICA(2, id=count−1)` if not | `-1` (GLOBAL) / `count−1` (REPLICA) |
 
 `DetermineBarrierConfigForKey` is the **authoritative coloring producer** at HLO-pass time: it runs over the per-key conflict/coloring map (fed by [Barrier Coloring](barrier-coloring.md)) and assigns the original `{type, id}`. `InferBarrierConfig` is a per-fusion **normaliser** that only fires later, at emit time, and only downgrades a `CUSTOM` choice — it never upgrades, never rewrites an already-set `GLOBAL`/`REPLICA`, and never writes `MEGACORE(4)`. Both results feed the same lowering ([Barrier-to-SFLAG Binding](barrier-to-sflag-binding.md)) → the same per-gen SFLAG number space (§4): a `GLOBAL` resolves to `base+count+4`, a `REPLICA` to `base+id` (with `id = count−1` from this normaliser, the top usable slot).
 

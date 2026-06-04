@@ -100,14 +100,14 @@ Every store is bound-checked against `this[+1]` (`BUG()` on overflow) for the la
 
 ### Function Map
 
-| Symbol | Address | Evidence | Confidence |
-|---|---|---|---|
-| `PufferfishBarnaCorePerformance::PufferfishBarnaCorePerformance` (ctor) | `0x1c8c38c0` | `new 0x218` latency, `new 0xC90` grid, 134 stores | CONFIRMED |
-| `PufferfishBarnaCorePerformance::GetLatency` | `0x1c8c47e0` | `latency[instr]`, bound `[a1+8]` | CONFIRMED |
-| `PufferfishBarnaCorePerformance::GetResourceUsage` | `0x1c8c4800` | `grid[instr].data[res]`, 3-qword stride | CONFIRMED |
-| `__dispatcher<1ul>::__dispatch<…ResourceUsageFromInstruction>` | `0x1c8a31a0` | variant-1 arm; `uint8` instr, `res = 0` | CONFIRMED |
-| `GetPufferfishInstruction` | `0x1c8a1fe0` | LLO opcode → `Instruction` + high-16 variant tag | CONFIRMED |
-| `GetSharedPufferfishBarnaCorePerformance::pf_bc_shared` | `0x22579a20` | variant-1 singleton (guard `@0x22579a28`) | CONFIRMED |
+| Symbol | Address | Evidence |
+|---|---|---|
+| `PufferfishBarnaCorePerformance::PufferfishBarnaCorePerformance` (ctor) | `0x1c8c38c0` | `new 0x218` latency, `new 0xC90` grid, 134 stores |
+| `PufferfishBarnaCorePerformance::GetLatency` | `0x1c8c47e0` | `latency[instr]`, bound `[a1+8]` |
+| `PufferfishBarnaCorePerformance::GetResourceUsage` | `0x1c8c4800` | `grid[instr].data[res]`, 3-qword stride |
+| `__dispatcher<1ul>::__dispatch<…ResourceUsageFromInstruction>` | `0x1c8a31a0` | variant-1 arm; `uint8` instr, `res = 0` |
+| `GetPufferfishInstruction` | `0x1c8a1fe0` | LLO opcode → `Instruction` + high-16 variant tag |
+| `GetSharedPufferfishBarnaCorePerformance::pf_bc_shared` | `0x22579a20` | variant-1 singleton (guard `@0x22579a28`) |
 
 ---
 
@@ -152,23 +152,23 @@ The latency array is the data-dependency depth of every BarnaCore `Instruction`.
 
 All 134 entries are written (the leading `memset 0xff` is fully overwritten); every row not listed below is `1`. `Instr idx` is the `BarnaCorePerformance::Instruction` ordinal; byte offset in the array = `idx × 4`. The "primitive" column names the row only where `GetPufferfishInstruction` classifies an LLO opcode onto it (see [`bcs-scalar-isa`](bcs-scalar-isa.md) TABLE B); unnamed rows are channel-vector ALU ops reached via the channel emitter, not the LLO classifier.
 
-| Instr idx | latency | primitive / band | Confidence |
-|---|---:|---|---|
-| `0x01` | 0 | no-op / null slot | CONFIRMED |
-| `0x22` | 2 | channel-vector binary/compare ALU | CONFIRMED |
-| `0x33..0x38` | 2 (×6) | channel-vector binary/compare group | CONFIRMED |
-| `0x3a, 0x3b` | 4 (×2) | mid-cost vector pack/select band | CONFIRMED |
-| `0x3d` | 3 | `kBarnaCoreScalarSyncDoneRead` (sync-completion read) | CONFIRMED |
-| `0x3f` | 3 | (vector op) | CONFIRMED |
-| `0x41, 0x42` | 2 (×2) | (vector binary/compare) | CONFIRMED |
-| `0x4c` | 2 | (vector op) | CONFIRMED |
-| `0x50` | 2 | (vector op) | CONFIRMED |
-| `0x5e..0x63` | 2 (×6) | channel-vector binary/compare group | CONFIRMED |
-| `0x66` | 2 | (vector op) | CONFIRMED |
-| `0x77..0x7c` | **6 (×6)** | **the EUP/transcendental block** — the only rows reserving the resource grid | CONFIRMED |
-| `0x7d, 0x7e` | 2 (×2) | (vector op) | CONFIRMED |
-| `0x82` | 2 | (vector op) | CONFIRMED |
-| `0x85` | **12** | `kBarnaCoreVectorStore` — the embedding-row HBM write | CONFIRMED |
+| Instr idx | latency | primitive / band |
+|---|---:|---|
+| `0x01` | 0 | no-op / null slot |
+| `0x22` | 2 | channel-vector binary/compare ALU |
+| `0x33..0x38` | 2 (×6) | channel-vector binary/compare group |
+| `0x3a, 0x3b` | 4 (×2) | mid-cost vector pack/select band |
+| `0x3d` | 3 | `kBarnaCoreScalarSyncDoneRead` (sync-completion read) |
+| `0x3f` | 3 | (vector op) |
+| `0x41, 0x42` | 2 (×2) | (vector binary/compare) |
+| `0x4c` | 2 | (vector op) |
+| `0x50` | 2 | (vector op) |
+| `0x5e..0x63` | 2 (×6) | channel-vector binary/compare group |
+| `0x66` | 2 | (vector op) |
+| `0x77..0x7c` | **6 (×6)** | **the EUP/transcendental block** — the only rows reserving the resource grid |
+| `0x7d, 0x7e` | 2 (×2) | (vector op) |
+| `0x82` | 2 | (vector op) |
+| `0x85` | **12** | `kBarnaCoreVectorStore` — the embedding-row HBM write |
 
 Histogram (byte-exact from the constructor): `{0: 1, 1: 101, 2: 21, 3: 2, 4: 2, 6: 6, 12: 1}` = **134**.
 
@@ -190,10 +190,10 @@ The grid is the structural-hazard model: how many cycles each instruction holds 
 
 The grid is allocated as 134 rows, each a `std::vector<int>` of width 1 default-initialized to `{0}`. The constructor writes exactly 6 cells — all column 0, on the EUP rows. Row `r`'s data lives at `grid_base + r × 24`; the EUP rows are at offsets 2856, 2880, 2904, 2928, 2952, 2976 (= `0x77..0x7c × 24`), each store guarded by the per-row size check.
 
-| Resource column | populated rows | value | occupant | Confidence |
-|---|---|---:|---|---|
-| `r0` (EUP unit) | `0x77..0x7c` (6 cells) | 1 | the 6 EUP transcendentals reserve the EUP unit 1 cycle each | CONFIRMED |
-| `r0` | all other 128 rows | 0 | no tracked structural hazard | CONFIRMED |
+| Resource column | populated rows | value | occupant |
+|---|---|---:|---|
+| `r0` (EUP unit) | `0x77..0x7c` (6 cells) | 1 | the 6 EUP transcendentals reserve the EUP unit 1 cycle each |
+| `r0` | all other 128 rows | 0 | no tracked structural hazard |
 
 ### Interpretation
 
@@ -270,11 +270,11 @@ Exactly **13 LLO opcodes** route to variant 1 — the scalar sync/wait/pop and v
 
 The dump is provably complete by the same store-count method used across the grid family. The constructor emits exactly the stores the layout requires, with no third store idiom (no `push_back`, no vector-grow — the only allocations are the two `new` + the per-row `new` loop):
 
-| Store class | count | evidence |
-|---|---:|---|
-| latency-array stores | 134 | 133 `latency[idx]=v` (offset form) + 1 `latency[0]=1` (`**(_DWORD**)this`) |
-| grid EUP-row stores | 6 | `grid[0x77..0x7c].data[0]=1`, offsets 2856/2880/2904/2928/2952/2976 |
-| per-row default-init stores | 134 | `*row = 0` in the alloc loop (one per grid row) |
+| Store class | count |
+|---|---:|
+| latency-array stores | 134 |
+| grid EUP-row stores | 6 |
+| per-row default-init stores | 134 |
 
 The 134 latency stores reconcile exactly with the histogram `{0:1, 1:101, 2:21, 3:2, 4:2, 6:6, 12:1}`; the 6 grid stores are all column 0 on the EUP rows; the 134 row-default stores are the loop body. Every store is bound-checked (`BUG()` on overflow) against the count fields, so the array dimensions (134 / 134×1) are self-evidenced by the constructor's own checks. Spot cells verified byte-exact against the decompile: `latency[0x22]=2` (offset 136), `latency[0x3a]=4` (offset 232), `latency[0x3d]=3` (offset 244), `latency[0x77]=6` (offset 476), `latency[0x85]=12` (offset 532), and `grid[0x77].data[0]=1` (row offset 2856).
 

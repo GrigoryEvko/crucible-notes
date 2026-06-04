@@ -29,13 +29,13 @@ The even/odd *twist topology* (which physical core is "primary" vs "secondary", 
 
 `BarrierType` is a 5-valued enum, stored as `BarrierConfig.barrier_type` at struct offset `+0x20` (field 1). The decisive structural result of this fold: **only three of the five arms are ever serialized into a `BarrierConfig`.**
 
-| `BarrierType` | Produced as a `BarrierConfig`? | Realized as | SFLAG slot | Confidence |
-|---|---|---|---|---|
-| `BARRIER_INVALID(0)` | default (all-zeros, never written) | `GetBarrierSyncFlag` CHECK-fail target | — (illegal) | Confirmed |
-| `GLOBAL(1)` | yes — `DetermineBarrierConfigForKey` / `InferBarrierConfig` | `GetGlobalBarrierSyncFlagNumber` | `base+count+4` (TC) | Confirmed |
-| `REPLICA(2)` | yes — same producers | per-id window | `base + id` (`id < count`) | Confirmed |
-| `CUSTOM(3)` | yes — same producers | per-id window | `base + id` (`id < count`) | Confirmed |
-| `MEGACORE(4)` | **NO — never written anywhere** | runtime `BarrierMegacore` (not a config) | `base+count` (separate accessor) | Confirmed |
+| `BarrierType` | Produced as a `BarrierConfig`? | Realized as | SFLAG slot |
+|---|---|---|---|
+| `BARRIER_INVALID(0)` | default (all-zeros, never written) | `GetBarrierSyncFlag` CHECK-fail target | — (illegal) |
+| `GLOBAL(1)` | yes — `DetermineBarrierConfigForKey` / `InferBarrierConfig` | `GetGlobalBarrierSyncFlagNumber` | `base+count+4` (TC) |
+| `REPLICA(2)` | yes — same producers | per-id window | `base + id` (`id < count`) |
+| `CUSTOM(3)` | yes — same producers | per-id window | `base + id` (`id < count`) |
+| `MEGACORE(4)` | **NO — never written anywhere** | runtime `BarrierMegacore` (not a config) | `base+count` (separate accessor) |
 
 The two functions that write `BarrierConfig.barrier_type` — `DetermineBarrierConfigForKey` (`0x109c6fa0`, writes `1` / `2` / `3` only) and the normalizer `InferBarrierConfig` (`0x1376c240`, rewrites `CUSTOM→GLOBAL` on a singleton channel, can set `REPLICA`, never `4`) — both confirmed to never emit `4`. There is **no megacore-specific assignment pass**. The `MEGACORE` enumerator is an enum value that is never materialized into a config.
 
@@ -175,11 +175,11 @@ The CHECK `TensorCoresPerLogicalDevice() == 2` (`= CoresPerChip(TC) / LogicalDev
 
 A full `.text` `E8/E9` cross-reference of `Target::GetMegacoreBarrierSyncFlagNumber` (`0x1d60f4e0`) finds exactly three callers — confirming the reserved `base+count` slot is consumed only by runtime/analysis paths, never via a `BarrierConfig`:
 
-| Consumer (VMA) | Role | Confidence |
-|---|---|---|
-| `LloRegionBuilder::BarrierMegacore` (`0x1d522641`) | the TC even/odd data barrier (§2.3) | Confirmed |
-| `net_util::SynchronizeProgramDescriptorStatesMegacore` (`0x1c6977fc`) | the program-descriptor state fold (§2.4) | Confirmed |
-| `RaceAnalyzerStepper::PreProcessEvent` (`0x10bb3229`) | reserves/accounts the slot in the LLO race analyzer | Confirmed |
+| Consumer (VMA) | Role |
+|---|---|
+| `LloRegionBuilder::BarrierMegacore` (`0x1d522641`) | the TC even/odd data barrier (§2.3) |
+| `net_util::SynchronizeProgramDescriptorStatesMegacore` (`0x1c6977fc`) | the program-descriptor state fold (§2.4) |
+| `RaceAnalyzerStepper::PreProcessEvent` (`0x10bb3229`) | reserves/accounts the slot in the LLO race analyzer |
 
 ---
 

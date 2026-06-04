@@ -77,11 +77,11 @@ uint32 struct_offset(int N):
 
 Three offsets that were previously pinned by hand-disassembling consumer gates reproduce **exactly** from this table, validating the formula:
 
-| Field# | Name | Index | Offset | Source of cross-check | Confidence |
-|---|---|---|---|---|---|
-| #132 | `xla_tpu_verify_or_assign_tiling_before_lowering` | 120 | `+0xDFC` | hand-pinned accessor gate | CERTAIN |
-| #648 | `xla_while_loop_unroll_count` (int64) | 591 | `+0x1328` | parse-table FieldEntry[591] | CERTAIN |
-| #867 | `xla_tpu_enable_pipelined_loop_unrolling` (message) | 787 | `+0x2f0` | parse-table FieldEntry[787] | CERTAIN |
+| Field# | Name | Index | Offset | Source of cross-check |
+|---|---|---|---|---|
+| #132 | `xla_tpu_verify_or_assign_tiling_before_lowering` | 120 | `+0xDFC` | hand-pinned accessor gate |
+| #648 | `xla_while_loop_unroll_count` (int64) | 591 | `+0x1328` | parse-table FieldEntry[591] |
+| #867 | `xla_tpu_enable_pipelined_loop_unrolling` (message) | 787 | `+0x2f0` | parse-table FieldEntry[787] |
 
 > **NOTE —** field **#2** (`xla_tpu_sdc_checker_instrument_megacore_fusion`, bool) sits at `+0xBC` in the parse table, not in the `+0x1206` region. `+0x1206` (4614) is a *different* field — the collective-producer "must-fuse" bool that the producer-priority cost model reads. The `FieldEntry` array resolves each field to the exact byte offset.
 
@@ -89,14 +89,14 @@ Three offsets that were previously pinned by hand-disassembling consumer gates r
 
 The 16-bit `type_card` in each `FieldEntry` is a 1:1 proxy for the field's proto type — every base type maps to exactly one card, and the per-card population reproduces the dictionary's type histogram with zero disagreement. This is an independent confirmation that the offset table and the [field dictionary](tce-field-dictionary-a.md) describe the same 1121 fields in the same order.
 
-| Type | `type_card` | Count | Type | `type_card` | Count | Confidence |
-|---|---|---|---|---|---|---|
-| bool | `0x0011` | 418 | string | `0x0c15` | 37 | HIGH |
-| int64 | `0x10d1` | 148 | float | `0x1893` | 34 | HIGH |
-| message | `0x0416` | 349 | int32 | `0x1091` | 32 | HIGH |
-| enum | `0x1891` | 74 | double | `0x18d3` | 14 | HIGH |
-| | | | uint32 | `0x0891` | 11 | HIGH |
-| | | | uint64 | `0x08d1` | 4 | HIGH |
+| Type | `type_card` | Count | Type | `type_card` | Count |
+|---|---|---|---|---|---|
+| bool | `0x0011` | 418 | string | `0x0c15` | 37 |
+| int64 | `0x10d1` | 148 | float | `0x1893` | 34 |
+| message | `0x0416` | 349 | int32 | `0x1091` | 32 |
+| enum | `0x1891` | 74 | double | `0x18d3` | 14 |
+| | | | uint32 | `0x0891` | 11 |
+| | | | uint64 | `0x08d1` | 4 |
 
 > **NOTE —** the `has_idx` in each `FieldEntry` is recovered, but the packing of `has_idx` → (hasbit word offset, bit position) was **not** re-walked. It follows protobuf's standard sequential packing from `has_bits_offset=16`; the hasbit region spans struct `+0x10`..`~+0xb0` for ~1121 presence bits. A reimplementer reading field presence from a serialized env must derive this packing (one disassembly of `TpuCompilationEnvironment::Clear` confirms it). Marked LOW until walked.
 
@@ -167,18 +167,18 @@ For `kOneWord` fields, the eight bytes at `+0x48` are read directly — e.g. `xl
 
 The 1121 defaults break down by base type as follows. The census is the reimplementer's checklist: reproduce these distributions and the named non-trivial values, and the default env is byte-identical.
 
-| Type | Count | Default distribution | Confidence |
-|---|---|---|---|
-| bool | 418 | 153 **true**, 265 **false** | HIGH |
-| enum | 74 | 67 Tristate (21 ENABLED, 37 AUTO, 9 DISABLED) + 7 wrapper enums | HIGH |
-| int64 | 148 | 108 non-{0,−1}; combiner thresholds, BRKGA limits, INT64_MAX fuel knobs | HIGH |
-| int32 | 32 | 18 non-{0,−1}; trip counts, send/recv limits | HIGH |
-| float | 34 | MSA overlap ratios, megacore margins, oblongness 50.0 | HIGH |
-| double | 14 | MSA scaling factors | HIGH |
-| string | 37 | 30 empty `""`, 7 non-empty literals | HIGH |
-| message | 349 | **all** empty/AUTO instance (oneof-case 0) | HIGH |
-| uint32 | 11 | — | HIGH |
-| uint64 | 4 | — | HIGH |
+| Type | Count | Default distribution |
+|---|---|---|
+| bool | 418 | 153 **true**, 265 **false** |
+| enum | 74 | 67 Tristate (21 ENABLED, 37 AUTO, 9 DISABLED) + 7 wrapper enums |
+| int64 | 148 | 108 non-{0,−1}; combiner thresholds, BRKGA limits, INT64_MAX fuel knobs |
+| int32 | 32 | 18 non-{0,−1}; trip counts, send/recv limits |
+| float | 34 | MSA overlap ratios, megacore margins, oblongness 50.0 |
+| double | 14 | MSA scaling factors |
+| string | 37 | 30 empty `""`, 7 non-empty literals |
+| message | 349 | **all** empty/AUTO instance (oneof-case 0) |
+| uint32 | 11 | — |
+| uint64 | 4 | — |
 
 > **GOTCHA —** the registered absl flag default is the **byte-authoritative** source for a field's default. Help-string text is *not*. For `xla_tpu_rwb_fusion` and `xla_tpu_accumulate_into_mrb`, the `=value` help-string text reads `false`, but their `FlagImpl+0x48` inline literal is `01 00 00 00` = **true** in both cases. The help string describes behavior, not the seeded default. When the two disagree, trust the union at `+0x48`.
 
@@ -274,15 +274,15 @@ These are the non-trivial defaults — the "magic numbers" a reimplementer must 
 
 The 67 Tristate-typed enums default per the [AUTO resolution](autoproto-autoor-resolution.md) split (21 ENABLED, 37 AUTO, 9 DISABLED). The 7 *non-Tristate* wrapper enums carry these specific defaults:
 
-| Field# | Name | Enum | Default | Confidence |
-|---|---|---|---|---|
-| #31 | `xla_memory_scheduler` | `MemorySchedulerProto.Value` | 0 (DEFAULT) | HIGH |
-| #132 | `xla_tpu_verify_or_assign_tiling_before_lowering` | `VerifyOrAssignTilingFlags.Value` | 1 (VERIFY) | HIGH |
-| #487 | `xla_tpu_vmac_transform_strategy` | `TpuVmacTransformStrategy.Value` | 0 (NONE) | HIGH |
-| #583 | `xla_tpu_sdc_checker_checksum_algo` | `ChecksumAlgoProto.Value` | 0 (DEFAULT) | HIGH |
-| #631 | `xla_tpu_register_selection_policy` | `RegSelectPolicyProto.Value` | 6 (DISREGARD_RECENTLY_USED) | CERTAIN |
-| #723 | `xla_tpu_precision_tracer_mode` | `PrecisionTracerModeProto.Value` | 0 (NONE) | HIGH |
-| #827 | `xla_sc_async_wrapper_fusion_type` | `ScAsyncWrapperFusionType.Value` | 3 (SINGLE_TPU_CUSTOM_CALL) | HIGH |
+| Field# | Name | Enum | Default |
+|---|---|---|---|
+| #31 | `xla_memory_scheduler` | `MemorySchedulerProto.Value` | 0 (DEFAULT) |
+| #132 | `xla_tpu_verify_or_assign_tiling_before_lowering` | `VerifyOrAssignTilingFlags.Value` | 1 (VERIFY) |
+| #487 | `xla_tpu_vmac_transform_strategy` | `TpuVmacTransformStrategy.Value` | 0 (NONE) |
+| #583 | `xla_tpu_sdc_checker_checksum_algo` | `ChecksumAlgoProto.Value` | 0 (DEFAULT) |
+| #631 | `xla_tpu_register_selection_policy` | `RegSelectPolicyProto.Value` | 6 (DISREGARD_RECENTLY_USED) |
+| #723 | `xla_tpu_precision_tracer_mode` | `PrecisionTracerModeProto.Value` | 0 (NONE) |
+| #827 | `xla_sc_async_wrapper_fusion_type` | `ScAsyncWrapperFusionType.Value` | 3 (SINGLE_TPU_CUSTOM_CALL) |
 
 `#631 = 6` is byte-confirmed against the `Gen` body @`0x1d723540` (`movb $0x6`).
 
@@ -290,36 +290,36 @@ The 67 Tristate-typed enums default per the [AUTO resolution](autoproto-autoor-r
 
 The other 30 string fields default to `""`.
 
-| Field# | Name | Default | Confidence |
-|---|---|---|---|
-| #198 | `xla_jf_hlo_deduplicate_only` | `"true"` | HIGH |
-| #209 | `config_criterion` | `"min"` | HIGH |
-| #212 | `rematerialization_algorithm` | `"treewidth"` | CERTAIN |
-| #393 | `xla_tpu_nested_dot_fusion_supported_custom_ops` | `"PartialReduce"` | HIGH |
-| #578 | `xla_tpu_alternate_memory_benefit_scaling_factor_for_large_buffers` | `"SQRT"` | HIGH |
-| #656 | `xla_tpu_collect_sflag_wait_stats_filter` | `"all"` | HIGH |
-| #739 | `xla_tpu_synthetic_compute_in_sflag_wait_filter` | `"all"` | HIGH |
+| Field# | Name | Default |
+|---|---|---|
+| #198 | `xla_jf_hlo_deduplicate_only` | `"true"` |
+| #209 | `config_criterion` | `"min"` |
+| #212 | `rematerialization_algorithm` | `"treewidth"` |
+| #393 | `xla_tpu_nested_dot_fusion_supported_custom_ops` | `"PartialReduce"` |
+| #578 | `xla_tpu_alternate_memory_benefit_scaling_factor_for_large_buffers` | `"SQRT"` |
+| #656 | `xla_tpu_collect_sflag_wait_stats_filter` | `"all"` |
+| #739 | `xla_tpu_synthetic_compute_in_sflag_wait_filter` | `"all"` |
 
 `#212 = "treewidth"` is byte-confirmed against the `Gen` body @`0x1d718ee0` (movabs `0x7464697765657274` = "treewidt" + 'h').
 
 ### Notable integer defaults
 
-| Field#(s) | Name | Default | Confidence |
-|---|---|---|---|
-| #55/56/57, #184 | arf / ars / agf / crs combiner threshold (bytes) | 125,829,120 (120 MiB) | HIGH |
-| #58 | `xla_jf_crs_combiner_threshold_count` | 256 | HIGH |
-| #41 | `xla_hlo_scheduling_brkga_generation_limit` | 1200 | HIGH |
-| #42 | `xla_hlo_scheduling_brkga_computation_limit` | 3 | HIGH |
-| #12/13 | net-router ring limits (cross-module / cross-replica) | 8 / 16 | HIGH |
-| #18/19 | cmem max outstanding prefetches / evictions | 40 / 40 | HIGH |
-| #40 | `xla_hbm_logging_buffer_size_bytes` | 1,048,576 (1 MiB) | HIGH |
-| #74 | `xla_tpu_rematerialization_min_size_in_bytes` | 10,485,760 (10 MiB) | HIGH |
-| #107 | `xla_jf_vliw_fuel` | INT64_MAX (unlimited) | HIGH |
-| #128 | `xla_tpu_min_elements_for_while_loop_concat_code_motion` | INT64_MAX | HIGH |
-| #149 | `xla_max_concurrent_send_recv` | INT32_MAX (2147483647) | HIGH |
-| #151 | `xla_tpu_licm_analysis_allowance` | 100,000 | HIGH |
-| #166 | `xla_jf_loop_trip_count` | 4 | CERTAIN |
-| #255 | `xla_jf_overlay_compression_threshold` | 2,044,723,200 (`0x79e00000`) | HIGH |
+| Field#(s) | Name | Default |
+|---|---|---|
+| #55/56/57, #184 | arf / ars / agf / crs combiner threshold (bytes) | 125,829,120 (120 MiB) |
+| #58 | `xla_jf_crs_combiner_threshold_count` | 256 |
+| #41 | `xla_hlo_scheduling_brkga_generation_limit` | 1200 |
+| #42 | `xla_hlo_scheduling_brkga_computation_limit` | 3 |
+| #12/13 | net-router ring limits (cross-module / cross-replica) | 8 / 16 |
+| #18/19 | cmem max outstanding prefetches / evictions | 40 / 40 |
+| #40 | `xla_hbm_logging_buffer_size_bytes` | 1,048,576 (1 MiB) |
+| #74 | `xla_tpu_rematerialization_min_size_in_bytes` | 10,485,760 (10 MiB) |
+| #107 | `xla_jf_vliw_fuel` | INT64_MAX (unlimited) |
+| #128 | `xla_tpu_min_elements_for_while_loop_concat_code_motion` | INT64_MAX |
+| #149 | `xla_max_concurrent_send_recv` | INT32_MAX (2147483647) |
+| #151 | `xla_tpu_licm_analysis_allowance` | 100,000 |
+| #166 | `xla_jf_loop_trip_count` | 4 |
+| #255 | `xla_jf_overlay_compression_threshold` | 2,044,723,200 (`0x79e00000`) |
 
 `#166 = 4` and `#255 = 0x79e00000` are byte-confirmed inline literals (no reloc at `+0x48`).
 
@@ -327,13 +327,13 @@ The other 30 string fields default to `""`.
 
 The MSA overlap-ratio triples (max / min / pref) repeat across the five memory families. They are the single most reused default pattern; reproduce them exactly per family.
 
-| Family | Fields (max/min/pref) | max | min | pref | Confidence |
-|---|---|---|---|---|---|
-| jf | #280 / #284 / #285 | 32.0 | 1.0 | 2.0 | HIGH |
-| vf | #442 / #446 / #447 | 8.0 | 1.0 | 2.0 | HIGH |
-| gf | #540 / #544 / #545 | 8.0 | 1.0 | 2.0 | HIGH |
-| cmem | #309 / #313 / #314 | 8.0 | 1.0 | 2.0 | HIGH |
-| msa | #790 / #788 / #789 | 8.0 | 1.0 | 2.0 | HIGH |
+| Family | Fields (max/min/pref) | max | min | pref |
+|---|---|---|---|---|
+| jf | #280 / #284 / #285 | 32.0 | 1.0 | 2.0 |
+| vf | #442 / #446 / #447 | 8.0 | 1.0 | 2.0 |
+| gf | #540 / #544 / #545 | 8.0 | 1.0 | 2.0 |
+| cmem | #309 / #313 / #314 | 8.0 | 1.0 | 2.0 |
+| msa | #790 / #788 / #789 | 8.0 | 1.0 | 2.0 |
 
 Other notable scalars: `#592` MSA inefficient-use-to-copy ratio = **0.5** (byte-confirmed `movl 0x3F000000` @`0x1d721c60`), `#459` auto-SPMD memory-budget ratio = 1.1 (f32 `1.10000002`), `#389` megacore-fusion scaling factor = 2.0, `#319` copy-fusion pad/unpad ratio = 300.0, `#364` experimental max padding = 0.125 GiB, `#30` embedding-table oblongness = 50.0, `#176` fusion max vmem = 15.0 MiB.
 

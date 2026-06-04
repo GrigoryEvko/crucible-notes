@@ -84,10 +84,10 @@ APInt(&record, 239, &GLOBAL_OFFSET_TABLE_ + index4 - 65167090, 4);
 
 The two offsets are in 8-byte (`_QWORD`) GOT units and differ by `65189758 − 65167090 = 22668` qwords = `0x2c460` bytes — exactly the size of each array, confirming the two are back-to-back (`InstBits` `0x3366d90` + `0x2c460` = `InstBits_BarnaCorePxcHwMode` `0x33931f0`). The case body that re-reads the base from the BarnaCore table does so after querying the subtarget's HwMode via `(*(vtable + 0x28))(MCSubtargetInfo, 3)` — feature index 3, the `BarnaCorePxcHwMode` query: when that mode is active, the BarnaCore base supplies real opcode-discriminator bits; otherwise the default zero base stands. Because the default table is all-zero, the practical effect is binary — either the instruction is a BarnaCore-Pxc op (real base bits, real `insertBits` sequence) or it is a TensorCore / V5+ op (zero base, no `insertBits`).
 
-| HwMode | Base table | On disk | Opcodes encoded here | Confidence |
-|---|---|---|---|---|
-| default | `InstBits` @ `0x3366d90` | all-zero, no RELA | none (records returned all-zero) | CONFIRMED |
-| `BarnaCorePxcHwMode` | `InstBits_BarnaCorePxcHwMode` @ `0x33931f0` | 704 populated rows (range `2855..3991`) | Pufferfish BarnaCore lanes + native ops | CONFIRMED |
+| HwMode | Base table | On disk | Opcodes encoded here |
+|---|---|---|---|
+| default | `InstBits` @ `0x3366d90` | all-zero, no RELA | none (records returned all-zero) |
+| `BarnaCorePxcHwMode` | `InstBits_BarnaCorePxcHwMode` @ `0x33931f0` | 704 populated rows (range `2855..3991`) | Pufferfish BarnaCore lanes + native ops |
 
 > **NOTE —** the all-zero default table is not a load-time placeholder. No `.rela.dyn` relocation targets either `InstBits` range, so the zero is the actual encoding. A reimplementation that expects the linker to fill these base bits at load time will encode every TensorCore and V5+ instruction as all-zero and never notice, because the proto-bundle path supplies the real bytes downstream.
 
@@ -97,19 +97,19 @@ The two offsets are in 8-byte (`_QWORD`) GOT units and differ by `65189758 − 6
 
 The `switch` is implemented as a self-relative jump table at `0xaed7dac`. The dispatch sequence is byte-exact: `lea -0x8d9d0e8(%rip),%rcx` (table base `0xaed7dac`), `movslq (%rcx,%rbx,4),%rdx` (load the signed `int32` at `table[raw_opcode]`), `add %rcx,%rdx` (relocate against the table base), `jmp *%rdx`. The index is the **raw opcode** (`%rbx`), not `opcode − 499`, and the entry is an offset relative to the table base — the default value `0x08d9d0f1` resolves to `0xaed7dac + 0x08d9d0f1 = 0x13c74e9d`, the zero-base default arm. The first 499 entries (opcodes `0..498`) are dead padding never reached past the pseudo guard; a separate `cmp $0x1622; ja` (opcode `> 5666`) caps the index. The decompiler renders the live range as 5168 `case` labels collapsing onto **22 distinct case bodies**, byte-confirmed by reading all 5667 table entries. The histogram below is the structural contract — which opcode classes carry a real `insertBits` sequence and which return the zero base unchanged.
 
-| Case body | #opcodes | Role | Confidence |
-|---|---:|---|---|
-| `0x13c74e9d` | 4457 | DEFAULT — zero base, no `insertBits`, return (all TensorCore + V5+) | CONFIRMED |
-| `0x13c74eb9` | 384 | BarnaCore `_V1`/`_V2` vector-ALU lanes | CONFIRMED |
-| `0x13c74f47` | 195 | BarnaCore `_V0` vector-ALU lane (predicate + operand `insertBits`) | CONFIRMED |
-| `0x13c754d1` | 34 | BarnaCore compose/sub `_V1`/`_V2` | CONFIRMED |
-| `0x13c75559` | 18 | BarnaCore `VIMM*`/`VMOV*` `_V1`/`_V2`/`_VM` | CONFIRMED |
-| `0x13c75723` … `0x13c75d77` | 17+12+10+9+6+6+5 | seven smaller BarnaCore vector classes | CONFIRMED |
-| `0x13c765a0` / `0x13c76628` / `0x13c766b0` / `0x13c76738` | 2 each | BarnaCore store-slot classes (`bcVST*`) | CONFIRMED |
-| `0x13c767c0` | 2 | `bcVLDi`/`bcVLDr` load slot (26 `insertBits`) | CONFIRMED |
-| `0x13c770f8` | 1 | `bcLOOP_START` loop slot | CONFIRMED |
-| `0x13c77180` / `0x13c77208` / `0x13c77290` / `0x13c77318` | 1 each | BarnaCore singletons (ops 3789/3787/3786/3588) | CONFIRMED |
-| `default` (`reportUnsupportedInst`) | — | out-of-range opcode trapped before the jump table (`> 5666`) | CONFIRMED |
+| Case body | #opcodes | Role |
+|---|---:|---|
+| `0x13c74e9d` | 4457 | DEFAULT — zero base, no `insertBits`, return (all TensorCore + V5+) |
+| `0x13c74eb9` | 384 | BarnaCore `_V1`/`_V2` vector-ALU lanes |
+| `0x13c74f47` | 195 | BarnaCore `_V0` vector-ALU lane (predicate + operand `insertBits`) |
+| `0x13c754d1` | 34 | BarnaCore compose/sub `_V1`/`_V2` |
+| `0x13c75559` | 18 | BarnaCore `VIMM*`/`VMOV*` `_V1`/`_V2`/`_VM` |
+| `0x13c75723` … `0x13c75d77` | 17+12+10+9+6+6+5 | seven smaller BarnaCore vector classes |
+| `0x13c765a0` / `0x13c76628` / `0x13c766b0` / `0x13c76738` | 2 each | BarnaCore store-slot classes (`bcVST*`) |
+| `0x13c767c0` | 2 | `bcVLDi`/`bcVLDr` load slot (26 `insertBits`) |
+| `0x13c770f8` | 1 | `bcLOOP_START` loop slot |
+| `0x13c77180` / `0x13c77208` / `0x13c77290` / `0x13c77318` | 1 each | BarnaCore singletons (ops 3789/3787/3786/3588) |
+| `default` (`reportUnsupportedInst`) | — | out-of-range opcode trapped before the jump table (`> 5666`) |
 
 The asymmetry is the point. 4457 of the 5168 live opcodes — every concrete branch/call/halt, every load/store, and every compute op on the TensorCore and V5+ side — route to the zero-base default. Their bytes are *not* emitted here; they are produced by the proto-bundle `EmitX` populators and the per-slot `<Slot>Encoder::Encode` `BitCopy` calls. Only 711 opcodes (all in the BarnaCore range `2855..3991`) carry a real `insertBits` sequence in this function. A reimplementation that treats the default arm as an error path would mis-diagnose 4457 legal opcodes; a reimplementation that tries to encode V5+ instructions through this function would emit all-zero bundles.
 

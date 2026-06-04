@@ -104,12 +104,12 @@ function GetPhase0ReplicaGroups(target, da, da2, arg, all_cores):   // 0x137d356
 
 ### Group count, index, and members
 
-| Quantity | Value | Evidence |
-|---|---|---|
-| Group count | `K · R` | `v21 = v19[K] * v20[R]`, alloc `48·v21` @ `0x137d3560` body |
-| Group index | `k · R + i` | `v50 = i + R·k` @ `0x137d3a79` |
-| Members per group | `2K` (`×2` if both cores appended) | middle loop `j = 0..2K-1`, one or two appends per `(i,k)` |
-| Member ordering | the twisted ring step order `j = 0..2K-1` | `j` is the only index swept into a single group |
+| Quantity | Value |
+|---|---|
+| Group count | `K · R` |
+| Group index | `k · R + i` |
+| Members per group | `2K` (`×2` if both cores appended) |
+| Member ordering | the twisted ring step order `j = 0..2K-1` |
 
 Group `(i, k)` is the reduce-scatter ring at plane position `(i, k)`: it collects, for `j = 0..2K-1`, the chip the twist places at ring step `j`. Because `j` is the **middle** loop and the group index `k·R + i` does not depend on `j`, all `2K` ring steps for a fixed `(i, k)` land in the same group — that group *is* the ring. The seam (the `+K`-mod-`2K` jump that the coordinate fold applies at `j ≥ K`) means consecutive `j` values are not consecutive physical chips; they are the two `K`-segments stitched at the dateline. See [`GetReplicaPair3DOnTwistedTorus`](get-replica-pair-3d.md) for the per-`j` chip math.
 
@@ -163,13 +163,13 @@ function GetPhase1ReplicaGroups(target, da, da2, arg, all_cores, b):   // 0x137d
 
 ### Group count, index, and members
 
-| Quantity | Value | Evidence |
-|---|---|---|
-| Group count | `2K · LogicalDevicesPerChip(0)` | `v20 = v18[2K] * LogicalDevicesPerChip(a3,0)` @ `0x137d3eb1` |
-| Group index (no split) | `m` | `v94 = 48·m`, append @ `0x137d3fee` |
-| Group index (split) | `{2m, 2m+1}` | `v90 = 2m`, `v91 = 2m+1`, appends @ `0x137d43d5` / `0x137d3ff2` |
-| Members per group | `R · K` | middle/inner loops `i = 0..R-1`, `k = 0..K-1` |
-| Member ordering | the `(i, k)` plane scan | `m` is the outer loop, fixed per group |
+| Quantity | Value |
+|---|---|
+| Group count | `2K · LogicalDevicesPerChip(0)` |
+| Group index (no split) | `m` |
+| Group index (split) | `{2m, 2m+1}` |
+| Members per group | `R · K` |
+| Member ordering | the `(i, k)` plane scan |
 
 Group `m` (or pair `{2m, 2m+1}`) is the all-gather over long-axis slice `m`: it collects every `(i, k)` chip in the `K×R` cross-section at ring position `m`. Because `m` is the **outer** loop, all `R·K` plane chips for a fixed `m` land in the slice's group(s) — that plane *is* the all-gather domain. The all-gather reassembles, over the plane orthogonal to the ring, what the Phase0 reduce-scatter dispersed along the ring; together they form one logical all-reduce.
 
@@ -248,16 +248,16 @@ The consequence for a reimplementer: the twisted-torus collective is **one shard
 
 ## 7. Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `TwistedTorusND::GetPhase0ReplicaGroups` | `0x137d3560` | RS-along-`2K` group lists; `K·R` groups, index `k·R+i`, member `j` | HIGH (loop nest + index + alloc decompile-verified) |
-| `TwistedTorusND::GetPhase1ReplicaGroups` | `0x137d3de0` | AG-over-plane group lists; `2K·LDPC` groups, index `m`/`{2m,2m+1}`, member `(i,k)` | HIGH (loop nest + index + alloc decompile-verified) |
-| `TwistedTorusND::GetPerColorShardIdTable` | `0x137d2d80` | 1-phase-only gate (`shard_count ≥ 2` → Unimplemented) | HIGH (string + `>= 2` compare verified) |
-| `GetReplicaPair3DOnTwistedTorus` | `0x1c893400` | per-`(i,j,k)` chip fold; called by both phases | HIGH (own page) |
-| `GetPhysicalToLogicalMapping3D` | `0x1c88a280` | `[Y][X][Z] → {core0, core1}` device-id source | HIGH (fill loop + init verified) |
-| `Target::LogicalDevicesPerChip` | `0x1d615b00` | Phase1 group-count multiplier (`Megacore ? 1 : cores`) | HIGH (delegates to `TpuTopology`) |
-| `Target::CoresPerChip` | `0x1d615b40` | the `cores_per_chip` second-core / split predicate input | HIGH (located) |
-| `TwistedTorusND::GetPhase0Cores` / `GetPhase1Cores` | `0x137d6de0` / `0x137d6ec0` | parallel per-phase core-ID vectors (cost model) | MEDIUM (located, bodies not transcribed) |
+| Function | Address | Role |
+|---|---|---|
+| `TwistedTorusND::GetPhase0ReplicaGroups` | `0x137d3560` | RS-along-`2K` group lists; `K·R` groups, index `k·R+i`, member `j` |
+| `TwistedTorusND::GetPhase1ReplicaGroups` | `0x137d3de0` | AG-over-plane group lists; `2K·LDPC` groups, index `m`/`{2m,2m+1}`, member `(i,k)` |
+| `TwistedTorusND::GetPerColorShardIdTable` | `0x137d2d80` | 1-phase-only gate (`shard_count ≥ 2` → Unimplemented) |
+| `GetReplicaPair3DOnTwistedTorus` | `0x1c893400` | per-`(i,j,k)` chip fold; called by both phases |
+| `GetPhysicalToLogicalMapping3D` | `0x1c88a280` | `[Y][X][Z] → {core0, core1}` device-id source |
+| `Target::LogicalDevicesPerChip` | `0x1d615b00` | Phase1 group-count multiplier (`Megacore ? 1 : cores`) |
+| `Target::CoresPerChip` | `0x1d615b40` | the `cores_per_chip` second-core / split predicate input |
+| `TwistedTorusND::GetPhase0Cores` / `GetPhase1Cores` | `0x137d6de0` / `0x137d6ec0` | parallel per-phase core-ID vectors (cost model) |
 
 ---
 

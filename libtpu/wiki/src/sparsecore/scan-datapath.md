@@ -172,18 +172,18 @@ The XOR constants are the little-endian byte triples: `"sum"` = `s u`=`0x7573`, 
 
 ### The reduction × dtype × rank → intrinsic map
 
-| reduction | input elt | → intrinsic | create / leaf @ | emit form | Confidence |
-|---|---|---|---|---|---|
-| `sum` | `i1` (count) | `tpu_mprefix` (i32 result, replaces op) | `0x14731a40` | direct (single op) | CONFIRMED |
-| `sum` | `i32` | `tpu_add_scan1xNi` | `0x146d57c0` | direct | CONFIRMED |
-| `sum` | `f32` | `tpu_add_scan1xNf` | `0x146d4fc0` | direct | CONFIRMED |
-| `sum` | `i16`/`bf16` | `tpu_add_half_scan2xN` | `0x146d4400` | direct (GXC-gated) | CONFIRMED |
-| `min` | `i32` | `tpu_min_scan1xNi` | `0x14731340` | direct | CONFIRMED |
-| `min` | `f32` | `tpu_min_scan1xNf` | `0x14731180` | direct | CONFIRMED |
-| `min` | `i16`/`bf16` | `tpu_min_scan2xN` | `0x1358bd80` | `ReplaceWithScanIntrinsic` (GXC-gated) | CONFIRMED |
-| `max` | `i32` | `tpu_max_scan1xNi` | `0x14730a80` | direct | CONFIRMED |
-| `max` | `f32` | `tpu_max_scan1xNf` | `0x1358bfa0` | `ReplaceWithScanIntrinsic` | CONFIRMED |
-| `max` | `i16`/`bf16` | `tpu_max_scan2xN` | `0x1358c1c0` | `ReplaceWithScanIntrinsic` (GXC-gated) | CONFIRMED |
+| reduction | input elt | → intrinsic | create / leaf @ | emit form |
+|---|---|---|---|---|
+| `sum` | `i1` (count) | `tpu_mprefix` (i32 result, replaces op) | `0x14731a40` | direct (single op) |
+| `sum` | `i32` | `tpu_add_scan1xNi` | `0x146d57c0` | direct |
+| `sum` | `f32` | `tpu_add_scan1xNf` | `0x146d4fc0` | direct |
+| `sum` | `i16`/`bf16` | `tpu_add_half_scan2xN` | `0x146d4400` | direct (GXC-gated) |
+| `min` | `i32` | `tpu_min_scan1xNi` | `0x14731340` | direct |
+| `min` | `f32` | `tpu_min_scan1xNf` | `0x14731180` | direct |
+| `min` | `i16`/`bf16` | `tpu_min_scan2xN` | `0x1358bd80` | `ReplaceWithScanIntrinsic` (GXC-gated) |
+| `max` | `i32` | `tpu_max_scan1xNi` | `0x14730a80` | direct |
+| `max` | `f32` | `tpu_max_scan1xNf` | `0x1358bfa0` | `ReplaceWithScanIntrinsic` |
+| `max` | `i16`/`bf16` | `tpu_max_scan2xN` | `0x1358c1c0` | `ReplaceWithScanIntrinsic` (GXC-gated) |
 
 Naming: `1xN` = rank-1 lane vector; `2xN` / `half` = rank-2, two sublanes packed (`bf16`/16-bit with an `f32`-accumulate); `i`/`f` = int/float. `ReplaceWithScanIntrinsic<T>` is the templated path used for the `2xN` forms and `max`-`f32`; the others call `T::create` directly into the `LLVMStructType` literal. Whether the `2xN`/`half` forms map 1:1 onto the VEX `*PartialSum*` sub-opcodes or carry the accumulate dtype via the `VpackFormat` attribute is owned by [VEX](vectorextended-vex.md) / [Segmented Add-Scan](segmented-add-scan.md) — cross-linked, not re-decoded here (LOW for the exact rank-2 sub-opcode binding).
 
@@ -376,26 +376,26 @@ The reduction enum (`sum=0`, `max=1`, `min=2`) is read from the `ReductionKindAt
 
 ## Function Map
 
-| Symbol | Address | Role | Confidence |
-|---|---|---|---|
-| `ScanOpLowering::matchAndRewrite` | `0x1358ab00` | reduction × dtype × rank → intrinsic; the `i1` count path | CONFIRMED |
-| `SegmentedScanOpLowering::matchAndRewrite` | `0x13589d40` | segmented variant; same XOR switch, no `i1` path | CONFIRMED |
-| `ScanOp::build` (StringAttr) | `0x145f92e0` | `addOperands(data)` then `addOperands(mask)` — operand[0]=data, [1]=mask | CONFIRMED |
-| `ScanOp::create` | `0x145f93e0` | op-name `"sc_tpu.scan"`; calls `build` | CONFIRMED |
-| `SegmentedScanOp::build` | `0x145fd4a0` | `addOperands(data)` then `addOperands(segment)` — operand[1]=boundary | CONFIRMED |
-| `SegmentedScanOp::create` | `0x145fd5a0` | builds `(data, segment, reductionStr)` | CONFIRMED |
-| `ConsumeOneTecVexBundleInstruction` | `0x13a15ba0` | per-arm emit; `proto+0x38 = GetVectorMask(op[1])`, `proto+0x11 \|= 1` | CONFIRMED |
-| `GetVectorMask<SparsecoreVectorMask>` | `0x13a33320` | in-scan mask read; band `[0x5f,0x7e]` = M0..M31, value `regno−0x5f` | CONFIRMED |
-| `GetVMDestregno` | `0x13a65b20` | `VectorSelect` mask select/write; band `[0x5f,0x6e]` = M0..M15 | CONFIRMED |
-| `EmitPredicationToSlot<…VectorExtended>` | `0x13a4a160` | whole-op predicate (last MCInst operand → `Predication` submessage); `GetPregno` band P0..P13 (`0x139f1bc0`) | CONFIRMED |
-| `EmitVectorSelect<…VectorSelect>` | `0x13a1e000` | post-scan `select(M, then, else)`; mask via `GetVMDestregno` | CONFIRMED |
-| `EncodeSparseCoreTecVectorExtendedAddScanF32` | `0x1eb32380` | encoder; `proto+0x38` → bundle bit `0x104` (5b); glc | CONFIRMED |
-| `EncodeSparseCoreTecVectorExtendedFloatAddScan` | `0x1e9b14a0` | vfc encoder; mask arm byte-identical to glc | CONFIRMED |
-| `BroadcastBoolToVector` | `0x13d9bfa0` | `getBoolAttr(value)` → `BroadcastScalarToVector` — the scan-mask producer | CONFIRMED |
-| `tpu_mprefix::create` | `0x14731a40` | `i1` cross-lane mask prefix-sum (`OneOperand`, `"llvm_tpu.mprefix"`, LLVM intrinsic `13389`, mnemonic `scVMPREFIX`) | CONFIRMED |
-| `EmitCrossLaneUnop<…VectorMaskPrefixSum…>` | `0x13a19d40` (glc) / `0x139adba0` (vfc) | the emit body for `tpu_mprefix` → `VectorAlu` `VectorMaskPrefixSum`; operand → M-reg via `GetVMDestregno`, source via `UseVectorXPort` | CONFIRMED |
-| `EncodeSparseCoreTecVectorAlu0VectorMaskPrefixSum` | `0x1e960cc0` (vfc) / `0x1eab4a40` (glc-B32) / `0x1eab4b40` (glc-B16) | the `VectorAlu` encoder: opcode `0x54` sub `1` (vfc) / opcode `0x80` sub `2`=B32/`3`=B16 (glc) | CONFIRMED |
-| `mlir::tpu::ScanOp::verify` | `0x14af7460` | the typing/mask/reduction contract (10 constraints) | CONFIRMED |
+| Symbol | Address | Role |
+|---|---|---|
+| `ScanOpLowering::matchAndRewrite` | `0x1358ab00` | reduction × dtype × rank → intrinsic; the `i1` count path |
+| `SegmentedScanOpLowering::matchAndRewrite` | `0x13589d40` | segmented variant; same XOR switch, no `i1` path |
+| `ScanOp::build` (StringAttr) | `0x145f92e0` | `addOperands(data)` then `addOperands(mask)` — operand[0]=data, [1]=mask |
+| `ScanOp::create` | `0x145f93e0` | op-name `"sc_tpu.scan"`; calls `build` |
+| `SegmentedScanOp::build` | `0x145fd4a0` | `addOperands(data)` then `addOperands(segment)` — operand[1]=boundary |
+| `SegmentedScanOp::create` | `0x145fd5a0` | builds `(data, segment, reductionStr)` |
+| `ConsumeOneTecVexBundleInstruction` | `0x13a15ba0` | per-arm emit; `proto+0x38 = GetVectorMask(op[1])`, `proto+0x11 \|= 1` |
+| `GetVectorMask<SparsecoreVectorMask>` | `0x13a33320` | in-scan mask read; band `[0x5f,0x7e]` = M0..M31, value `regno−0x5f` |
+| `GetVMDestregno` | `0x13a65b20` | `VectorSelect` mask select/write; band `[0x5f,0x6e]` = M0..M15 |
+| `EmitPredicationToSlot<…VectorExtended>` | `0x13a4a160` | whole-op predicate (last MCInst operand → `Predication` submessage); `GetPregno` band P0..P13 (`0x139f1bc0`) |
+| `EmitVectorSelect<…VectorSelect>` | `0x13a1e000` | post-scan `select(M, then, else)`; mask via `GetVMDestregno` |
+| `EncodeSparseCoreTecVectorExtendedAddScanF32` | `0x1eb32380` | encoder; `proto+0x38` → bundle bit `0x104` (5b); glc |
+| `EncodeSparseCoreTecVectorExtendedFloatAddScan` | `0x1e9b14a0` | vfc encoder; mask arm byte-identical to glc |
+| `BroadcastBoolToVector` | `0x13d9bfa0` | `getBoolAttr(value)` → `BroadcastScalarToVector` — the scan-mask producer |
+| `tpu_mprefix::create` | `0x14731a40` | `i1` cross-lane mask prefix-sum (`OneOperand`, `"llvm_tpu.mprefix"`, LLVM intrinsic `13389`, mnemonic `scVMPREFIX`) |
+| `EmitCrossLaneUnop<…VectorMaskPrefixSum…>` | `0x13a19d40` (glc) / `0x139adba0` (vfc) | the emit body for `tpu_mprefix` → `VectorAlu` `VectorMaskPrefixSum`; operand → M-reg via `GetVMDestregno`, source via `UseVectorXPort` |
+| `EncodeSparseCoreTecVectorAlu0VectorMaskPrefixSum` | `0x1e960cc0` (vfc) / `0x1eab4a40` (glc-B32) / `0x1eab4b40` (glc-B16) | the `VectorAlu` encoder: opcode `0x54` sub `1` (vfc) / opcode `0x80` sub `2`=B32/`3`=B16 (glc) |
+| `mlir::tpu::ScanOp::verify` | `0x14af7460` | the typing/mask/reduction contract (10 constraints) |
 
 > **NOTE — the prior write-ups cited `tpu::ScanOp::verify` at `0x14af7460` and that is correct; the SC-side `verifyInvariantsImpl` (`0x145f9640`) does NOT carry the constraint strings.** The byte-exact constraint roster (incl. the two NEW mask-shape rules) lives in the Mosaic `tpu::ScanOp::verify`. A reimplementer searching the SC `sparse_core::ScanOp::verifyInvariantsImpl` for the messages will not find them.
 

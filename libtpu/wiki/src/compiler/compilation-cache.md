@@ -102,16 +102,16 @@ function Store(signature, opt_state, opt_status, opt_result, opt_exe):
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `DeviceCompilationClusterSignature::Build` | `0xfb01f40` | Build name+args signature | HIGH |
-| `AppendArguments` | `0xfb01a80` | Append per-arg variant (const→Tensor, var→dtype/shape) | HIGH |
-| `DeviceCompilationCache<PjRt…>::LookupOrCreate` | `0xe9932e0` | Emplace + snapshot under mutex | CERTAIN |
-| `DeviceCompilationCache<PjRt…>::Store` | `0xe994a60` | Write-back optional fields | CERTAIN |
-| `DeviceCompilationCache<LocalExe>::LookupOrCreate` | `0xe986a20` | Same, `LocalExecutable` instantiation | HIGH |
-| `DeviceCompilationCache<LocalExe>::Store` | `0xe988d00` | Same, `LocalExecutable` instantiation | HIGH |
-| `DeviceCompiler<…>::CompileStrict` | `0xe993860` / `0xe986fa0` | Miss path: do the real compile | HIGH |
-| `DeviceCompiler<…>::CompileAsynchronous` | `0xe993420` / `0xe986b20` | Async miss path | MEDIUM |
+| Function | Address | Role |
+|---|---|---|
+| `DeviceCompilationClusterSignature::Build` | `0xfb01f40` | Build name+args signature |
+| `AppendArguments` | `0xfb01a80` | Append per-arg variant (const→Tensor, var→dtype/shape) |
+| `DeviceCompilationCache<PjRt…>::LookupOrCreate` | `0xe9932e0` | Emplace + snapshot under mutex |
+| `DeviceCompilationCache<PjRt…>::Store` | `0xe994a60` | Write-back optional fields |
+| `DeviceCompilationCache<LocalExe>::LookupOrCreate` | `0xe986a20` | Same, `LocalExecutable` instantiation |
+| `DeviceCompilationCache<LocalExe>::Store` | `0xe988d00` | Same, `LocalExecutable` instantiation |
+| `DeviceCompiler<…>::CompileStrict` | `0xe993860` / `0xe986fa0` | Miss path: do the real compile |
+| `DeviceCompiler<…>::CompileAsynchronous` | `0xe993420` / `0xe986b20` | Async miss path |
 
 ---
 
@@ -125,18 +125,18 @@ When Layer 1 misses and the compiler reaches the TPU backend, the request is red
 
 The key is a decimal string: the `Fingerprint2011` of a `StrCat`-assembled **prefix** string, itself a `to_string` of that 64-bit fingerprint. The builder carries a 13-entry `dump_vars` label table for its `VLOG` dump (`tpu_util_c_api.cc`, the `$_1` lambda, `dump_vars<13ul, 13ul, …>`); those thirteen labels name the program-identity inputs, and a fourteenth (`device_assignment`) is appended conditionally but is **not** in the dump table. The table below lists the inputs by name; the **#** column is the dump-table label order, which is *not* identical to the concatenation order (see the note after the pseudocode).
 
-| # | Field (dump_vars label) | Source | Confidence |
-|---|---|---|---|
-| 1 | `function_name` | `std::string(property.function_name)` | HIGH |
-| 2 | `function_library_fingerprint` | `property.function_library_fingerprint` | HIGH |
-| 3 | `mlir_module_fingerprint` | `property.mlir_module_fingerprint` | HIGH |
-| 4 | `num_replicas` | `property.num_replicas` | HIGH |
-| 5–7 | `chip_bounds.{x,y,z}` | `topology.chip_bounds().{x,y,z}` (topo+0x58 region) | HIGH |
-| 8–10 | `wrap.{x,y,z}` | `topology.wrap().{x,y,z}` (topo+0xA0/+0xA2) | HIGH |
-| 11 | `shapes_prefix` | `std::string(property.shapes_prefix)` | HIGH |
-| 12 | `guaranteed_constants_size` | `property.guaranteed_constants_size` | HIGH |
-| 13 | `embedding_partitions_fingerprint` | `Fingerprint2011(embedding_partitions_proto)` | HIGH |
-| — | `device_assignment` (conditional, not in dump table) | `:device_assignment:` + joined ids, **or** `:default_device_assignment` | HIGH |
+| # | Field (dump_vars label) | Source |
+|---|---|---|
+| 1 | `function_name` | `std::string(property.function_name)` |
+| 2 | `function_library_fingerprint` | `property.function_library_fingerprint` |
+| 3 | `mlir_module_fingerprint` | `property.mlir_module_fingerprint` |
+| 4 | `num_replicas` | `property.num_replicas` |
+| 5–7 | `chip_bounds.{x,y,z}` | `topology.chip_bounds().{x,y,z}` (topo+0x58 region) |
+| 8–10 | `wrap.{x,y,z}` | `topology.wrap().{x,y,z}` (topo+0xA0/+0xA2) |
+| 11 | `shapes_prefix` | `std::string(property.shapes_prefix)` |
+| 12 | `guaranteed_constants_size` | `property.guaranteed_constants_size` |
+| 13 | `embedding_partitions_fingerprint` | `Fingerprint2011(embedding_partitions_proto)` |
+| — | `device_assignment` (conditional, not in dump table) | `:device_assignment:` + joined ids, **or** `:default_device_assignment` |
 
 ```c
 // TpuCompile_CreateCompilationCacheKey  (sub_0xf6a2080, tpu_util_c_api.cc:149)
@@ -192,15 +192,15 @@ function CreateGuaranteedConstFingerprint(running_fp, const_bytes) -> uint64:
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `TpuCompile_CreateCompilationCacheKey` | `0xf6a2080` | Assemble prefix + fingerprint → key | CERTAIN |
-| `TpuCompile_CreateGuaranteedConstFingerprint` | `0xf6a2040` | `FingerprintCat2011(fp, Fingerprint2011(const))` | CERTAIN |
-| `TpuCompile_DestroyCompilationCacheKey` | `0xf6a2e60` | Free the key struct | HIGH |
-| `Fingerprint2011` | `0x20d6cd40` | 64-bit non-crypto digest of a `string_view` | CERTAIN |
-| `FingerprintCat2011` | `0x20d6d0e0` | Combine two 64-bit fingerprints | CERTAIN |
-| `TpuProgram_GetFingerprint` | `0xe8bed60` | Read fingerprint off a compiled `TpuProgram` (+160→+648) | HIGH |
-| `TpuExecutable_Fingerprint` | `0xeabea40` | Fingerprint of a serialized executable | MEDIUM |
+| Function | Address | Role |
+|---|---|---|
+| `TpuCompile_CreateCompilationCacheKey` | `0xf6a2080` | Assemble prefix + fingerprint → key |
+| `TpuCompile_CreateGuaranteedConstFingerprint` | `0xf6a2040` | `FingerprintCat2011(fp, Fingerprint2011(const))` |
+| `TpuCompile_DestroyCompilationCacheKey` | `0xf6a2e60` | Free the key struct |
+| `Fingerprint2011` | `0x20d6cd40` | 64-bit non-crypto digest of a `string_view` |
+| `FingerprintCat2011` | `0x20d6d0e0` | Combine two 64-bit fingerprints |
+| `TpuProgram_GetFingerprint` | `0xe8bed60` | Read fingerprint off a compiled `TpuProgram` (+160→+648) |
+| `TpuExecutable_Fingerprint` | `0xeabea40` | Fingerprint of a serialized executable |
 
 > **NOTE —** `Fingerprint2011` is the Farmhash-derived TF fingerprint, *not* a cryptographic hash. The cache trusts it for identity; an adversary could in principle force a collision, but the threat model is recompilation-avoidance, not integrity. `TpuProgram_GetFingerprint` reads the fingerprint stored *inside* an already-compiled program (the inline-string-optimized field at `program+160 → +648`), used to validate a deserialized program against its key on load.
 
@@ -255,21 +255,21 @@ The store/compile path is `CompileGroup` (0xf7a4f60) → `MaybeCompileGroup` (0x
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `TpuCompilationCache::LookUpInternal` | `0xf7a72c0` | Three-tier lookup (mem→coord→disk) | CERTAIN |
-| `TpuCompilationCache::LookUpWithCoordService` | `0xf7a74a0` | Tier-2 multi-host lookup | HIGH |
-| `TpuCompilationCache::LoadGroupFromPersistentCache` | `0xf7a7de0` | Tier-3 on-disk read | HIGH |
-| `TpuCompilationCache::CompileGroup` | `0xf7a4f60` | Miss path: compile a group | HIGH |
-| `TpuCompilationCache::MaybeCompileGroup` | `0xf7a6200` | Re-check under lock, dedup compiles | HIGH |
-| `TpuCompilationCache::EmplaceGroupEntry` | `0xf7a3a00` | Insert compiled group into map | HIGH |
-| `TpuCompilationCache::GetEntriesFrom` | `0xf7a1f80` | Resolve group → per-core entries | MEDIUM |
-| `TpuCompilationCache::RemoveGroup` | `0x21389f60` | Drop a group | HIGH |
-| `TpuCompilationCache::RemoveGroupEntries` | `0xf7a85c0` | Drop N entries of a group | MEDIUM |
-| `TpuCompilationCache::RestoreFromSerialized` | `0xf7a2ca0` | Rebuild entries from serialized blob | HIGH |
-| `TpuCompilationCache::ConvertToBaseKey` | `0xf7bf760` | Strip per-core suffix → group base key | HIGH |
-| `tfrt::tpu::TpuCompilationCacheEntry::Program` ctor | `0xf7bc500` | Build the `Program` payload of an entry | HIGH |
-| `tfrt::tpu::TpuCompilationCacheEntry` ctor | `0xf7bd100` | Build a full cache entry | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `TpuCompilationCache::LookUpInternal` | `0xf7a72c0` | Three-tier lookup (mem→coord→disk) |
+| `TpuCompilationCache::LookUpWithCoordService` | `0xf7a74a0` | Tier-2 multi-host lookup |
+| `TpuCompilationCache::LoadGroupFromPersistentCache` | `0xf7a7de0` | Tier-3 on-disk read |
+| `TpuCompilationCache::CompileGroup` | `0xf7a4f60` | Miss path: compile a group |
+| `TpuCompilationCache::MaybeCompileGroup` | `0xf7a6200` | Re-check under lock, dedup compiles |
+| `TpuCompilationCache::EmplaceGroupEntry` | `0xf7a3a00` | Insert compiled group into map |
+| `TpuCompilationCache::GetEntriesFrom` | `0xf7a1f80` | Resolve group → per-core entries |
+| `TpuCompilationCache::RemoveGroup` | `0x21389f60` | Drop a group |
+| `TpuCompilationCache::RemoveGroupEntries` | `0xf7a85c0` | Drop N entries of a group |
+| `TpuCompilationCache::RestoreFromSerialized` | `0xf7a2ca0` | Rebuild entries from serialized blob |
+| `TpuCompilationCache::ConvertToBaseKey` | `0xf7bf760` | Strip per-core suffix → group base key |
+| `tfrt::tpu::TpuCompilationCacheEntry::Program` ctor | `0xf7bc500` | Build the `Program` payload of an entry |
+| `tfrt::tpu::TpuCompilationCacheEntry` ctor | `0xf7bd100` | Build a full cache entry |
 
 ---
 
@@ -319,15 +319,15 @@ A cache entry is reference-counted across its whole life: created on a miss, pin
    MarkOldestEntryForEviction  ──►  flag node (+4 bits) ; RemoveEntry frees payload
 ```
 
-| Operation | Address | Role | Confidence |
-|---|---|---|---|
-| `TpuCompilationCacheInterface::InsertEntry` | `0xeaacde0` | Add a `CompiledSubgraph` to the cache | HIGH |
-| `TpuCompilationCacheInterface::RemoveEntry` | `0xeaac840` | Remove by key | HIGH |
-| `TpuCompilationCacheInterface::Release` | `0xeaabde0` | Drop a held reference by uid | HIGH |
-| `TpuCompilationCacheInterface::DiscardEntryRef` | `0xeaac500` | Decrement entry refcount | HIGH |
-| `TpuCompilationCacheInterface::MarkOldestEntryForEviction` | `0xeaac340` | LRU eviction candidate | HIGH |
-| `TpuCompilationCacheExternal::InitializeEntry` | `0xe977c40` | Populate an entry via compile callback | HIGH |
-| `DoTpuExecute` (consumes entry) | `0xe6fa5a0` | Holds `AsyncValueRef<TpuCompilationCacheEntry>` during run | HIGH |
+| Operation | Address | Role |
+|---|---|---|
+| `TpuCompilationCacheInterface::InsertEntry` | `0xeaacde0` | Add a `CompiledSubgraph` to the cache |
+| `TpuCompilationCacheInterface::RemoveEntry` | `0xeaac840` | Remove by key |
+| `TpuCompilationCacheInterface::Release` | `0xeaabde0` | Drop a held reference by uid |
+| `TpuCompilationCacheInterface::DiscardEntryRef` | `0xeaac500` | Decrement entry refcount |
+| `TpuCompilationCacheInterface::MarkOldestEntryForEviction` | `0xeaac340` | LRU eviction candidate |
+| `TpuCompilationCacheExternal::InitializeEntry` | `0xe977c40` | Populate an entry via compile callback |
+| `DoTpuExecute` (consumes entry) | `0xe6fa5a0` | Holds `AsyncValueRef<TpuCompilationCacheEntry>` during run |
 
 A `tfrt::tpu::TpuCompilationCacheEntry` (ctor 0xf7bd100) wraps an `AsyncValueRef<Program>` plus the metadata an executor needs without touching the program bytes: the `HloInputOutputAliasConfig`, the input/output `xla::Shape` vectors, the `CompilerMetadata`, the `HostTransferProto` list, an optional `DeviceAssignment`, the FDO config, and the `PjrtExecutableContext`. The `Program` itself (ctor 0xf7bc500) is the `shared_ptr<const tpu::TpuCoreProgram>` payload — the object that [tpu-program-serialization.md](tpu-program-serialization.md) documents.
 

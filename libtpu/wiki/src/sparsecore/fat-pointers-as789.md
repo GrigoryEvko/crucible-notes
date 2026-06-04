@@ -28,7 +28,6 @@ For reimplementation, the contract is:
 | **On-tile classifier** | `IsOffTileMemory` (`0x13D7AC00`) = `(ms & ~0x10) != 2` — on-tile only for MS 2 / 18 |
 | **SC pointer in-register value** | `MVT::i32` 32-bit word offset (re-tag is value-preserving; `LowerADDRSPACECAST` @ `0x13B70592`) |
 | **Tile/core routing** | separate SSA operands (`tpu_tileid` i32 / destination-id), never pointer bits |
-| **Confidence** | CONFIRMED (decompile-anchored) unless a row or callout says otherwise |
 
 ---
 
@@ -52,13 +51,13 @@ The reason this fragment lives in the TPU layout at all is provenance: the TPU b
 
 The per-field layout below is the AMDGPU ABI definition for each space; the TPU build inherits it unchanged. The `DataLayout` quadruple is `size:abi-align:pref-align:index-width` in bits.
 
-| AS | `p`-entry | Size | Index width | AMDGPU role | Field layout (AMDGPU ABI) | Confidence |
-|---|---|---|---|---|---|---|
-| 7 | `p7:160:256:256:32` | 160 bit | 32 bit | buffer **fat pointer** | 128-bit buffer resource (`V#`) + 32-bit offset | HIGH |
-| 8 | `p8:128:128:128:48` | 128 bit | 48 bit | buffer **resource** ("V#") | 128-bit descriptor; 48-bit index ⇒ "45-bit num_records" | HIGH |
-| 9 | `p9:192:256:256:32` | 192 bit | 32 bit | buffer **strided pointer** | 128-bit `V#` + 32-bit index + 32-bit stride | HIGH |
+| AS | `p`-entry | Size | Index width | AMDGPU role | Field layout (AMDGPU ABI) |
+|---|---|---|---|---|---|
+| 7 | `p7:160:256:256:32` | 160 bit | 32 bit | buffer **fat pointer** | 128-bit buffer resource (`V#`) + 32-bit offset |
+| 8 | `p8:128:128:128:48` | 128 bit | 48 bit | buffer **resource** ("V#") | 128-bit descriptor; 48-bit index ⇒ "45-bit num_records" |
+| 9 | `p9:192:256:256:32` | 192 bit | 32 bit | buffer **strided pointer** | 128-bit `V#` + 32-bit index + 32-bit stride |
 
-> **GOTCHA —** these three rows describe what the bits *would* mean **if** AS7/8/9 were ever constructed. In `libtpu` 0.0.40 they never are. The widths and field layout are HIGH-confidence because they are the byte-identical AMDGPU ABI and the binary ships the matching AMDGPU diagnostics; the fact that the TPU build treats them as inert reserve is CONFIRMED by the total absence of any TPU constructor (next section). Do not implement these as SparseCore pointer formats.
+> **GOTCHA —** these three rows describe what the bits *would* mean **if** AS7/8/9 were ever constructed. In `libtpu` 0.0.40 they never are. The widths and field layout are the byte-identical AMDGPU ABI, and the binary ships the matching AMDGPU diagnostics; the TPU build treats them as inert reserve, with no TPU constructor anywhere (next section). Do not implement these as SparseCore pointer formats.
 
 ### The Negative Result — No TPU Constructor
 
@@ -104,36 +103,36 @@ The `AddressSpaceDescription` body is small enough to confirm exactly: for `ID >
 
 `MS#` is the `MemorySpace` enum value (1-based; 0 = no canonical pool — an alias group). `tile?` is `IsOffTileMemory == false`, true only for MS 2 and MS 18.
 
-| ID | hex | Description | MS# | Pool | tile? | Notes | Confidence |
-|---|---|---|---|---|---|---|---|
-| 0 | `0x00` | Smem | 1 | `smem` | off | base TPU scalar memory | CONFIRMED |
-| 201 | `0xC9` | TileSpmem | 2 | `tile_spmem` | **ON** | per-tile SC SRAM (KB) | CONFIRMED |
-| 202 | `0xCA` | Spmem | 3 | `spmem` | off | chip-shared SC SRAM (MB) | CONFIRMED |
-| 203 | `0xCB` | HBM | 4 | `hbm` | off | global (GB) embedding tables | CONFIRMED |
-| 204 | `0xCC` | Sflag | 5 | `sflag` | off | sync-flag memory (also MS 22 `sflag_tc`) | CONFIRMED |
-| 205 | `0xCD` | Vmem | 6 | `vmem` | off | TC vector memory (handoff) | CONFIRMED |
-| 206 | `0xCE` | *(reserved)* | 0 | — | — | gap | CONFIRMED |
-| 207 | `0xCF` | *(reserved)* | 0 | — | — | gap | CONFIRMED |
-| 208 | `0xD0` | Dreg | 7 | `dreg` | off | data-register window | CONFIRMED |
-| 209 | `0xD1` | *(reserved)* | 0 | — | — | gap | CONFIRMED |
-| 210 | `0xD2` | *(reserved)* | 0 | — | — | gap | CONFIRMED |
-| 211 | `0xD3` | SflagAny | 0 | — *(alias)* | off | sflag may-alias superset | CONFIRMED |
-| 212 | `0xD4` | SmemAny | 9 | `smem_any` | off | smem may-alias superset | CONFIRMED |
-| 213 | `0xD5` | HBMAny | 10 | `hbm_any` | off | hbm may-alias superset | CONFIRMED |
-| 214 | `0xD6` | Timem | 11 | `timem` | off | per-tile instruction memory | CONFIRMED |
-| 215 | `0xD7` | *(no desc → "Unknown")* | 12 | `simem` | off | SC instruction memory † | CONFIRMED |
-| 216 | `0xD8` | IOVA | 13 | `iova` | off | I/O virtual address | CONFIRMED |
-| 217 | `0xD9` | SflagTile | 14 | `sflag_tile` | off | per-tile sflag bank | CONFIRMED |
-| 218 | `0xDA` | SpmemAny | 15 | `spmem_any` | off | spmem may-alias superset | CONFIRMED |
-| 219 | `0xDB` | TileSmem | 16 | `smem_tile` | off | per-tile SMEM | CONFIRMED |
-| 220 | `0xDC` | *(no desc → "Unknown")* | 17 | `mar` | off | memory-access-region † | CONFIRMED |
-| 221 | `0xDD` | *(reserved)* | 0 | — | — | gap | CONFIRMED |
-| 222 | `0xDE` | *(reserved)* | 0 | — | — | gap | CONFIRMED |
-| 223 | `0xDF` | SflagScs | 20 | `sflag_scs` | off | per-SCS sflag bank | CONFIRMED |
-| 224 | `0xE0` | SmemScs | 21 | `smem_scs` | off | per-SCS SMEM | CONFIRMED |
-| 225 | `0xE1` | SflagAnySynctile | 0 | — *(alias)* | off | sflag-any-synctile (no pool) | CONFIRMED |
-| 501 | `0x1F5` | TileSpmem Circular Buffer | 18 | `tile_spmem_cb` | **ON** | CBREG-windowed TILE_SPMEM | CONFIRMED |
-| 502 | `0x1F6` | Smem Circular Buffer | 19 | `smem_cb` | off | CBREG-windowed SMEM | CONFIRMED |
+| ID | hex | Description | MS# | Pool | tile? | Notes |
+|---|---|---|---|---|---|---|
+| 0 | `0x00` | Smem | 1 | `smem` | off | base TPU scalar memory |
+| 201 | `0xC9` | TileSpmem | 2 | `tile_spmem` | **ON** | per-tile SC SRAM (KB) |
+| 202 | `0xCA` | Spmem | 3 | `spmem` | off | chip-shared SC SRAM (MB) |
+| 203 | `0xCB` | HBM | 4 | `hbm` | off | global (GB) embedding tables |
+| 204 | `0xCC` | Sflag | 5 | `sflag` | off | sync-flag memory (also MS 22 `sflag_tc`) |
+| 205 | `0xCD` | Vmem | 6 | `vmem` | off | TC vector memory (handoff) |
+| 206 | `0xCE` | *(reserved)* | 0 | — | — | gap |
+| 207 | `0xCF` | *(reserved)* | 0 | — | — | gap |
+| 208 | `0xD0` | Dreg | 7 | `dreg` | off | data-register window |
+| 209 | `0xD1` | *(reserved)* | 0 | — | — | gap |
+| 210 | `0xD2` | *(reserved)* | 0 | — | — | gap |
+| 211 | `0xD3` | SflagAny | 0 | — *(alias)* | off | sflag may-alias superset |
+| 212 | `0xD4` | SmemAny | 9 | `smem_any` | off | smem may-alias superset |
+| 213 | `0xD5` | HBMAny | 10 | `hbm_any` | off | hbm may-alias superset |
+| 214 | `0xD6` | Timem | 11 | `timem` | off | per-tile instruction memory |
+| 215 | `0xD7` | *(no desc → "Unknown")* | 12 | `simem` | off | SC instruction memory † |
+| 216 | `0xD8` | IOVA | 13 | `iova` | off | I/O virtual address |
+| 217 | `0xD9` | SflagTile | 14 | `sflag_tile` | off | per-tile sflag bank |
+| 218 | `0xDA` | SpmemAny | 15 | `spmem_any` | off | spmem may-alias superset |
+| 219 | `0xDB` | TileSmem | 16 | `smem_tile` | off | per-tile SMEM |
+| 220 | `0xDC` | *(no desc → "Unknown")* | 17 | `mar` | off | memory-access-region † |
+| 221 | `0xDD` | *(reserved)* | 0 | — | — | gap |
+| 222 | `0xDE` | *(reserved)* | 0 | — | — | gap |
+| 223 | `0xDF` | SflagScs | 20 | `sflag_scs` | off | per-SCS sflag bank |
+| 224 | `0xE0` | SmemScs | 21 | `smem_scs` | off | per-SCS SMEM |
+| 225 | `0xE1` | SflagAnySynctile | 0 | — *(alias)* | off | sflag-any-synctile (no pool) |
+| 501 | `0x1F5` | TileSpmem Circular Buffer | 18 | `tile_spmem_cb` | **ON** | CBREG-windowed TILE_SPMEM |
+| 502 | `0x1F6` | Smem Circular Buffer | 19 | `smem_cb` | off | CBREG-windowed SMEM |
 
 > **NOTE —** † IDs 215 (`simem`) and 220 (`mar`) carry a valid `MemorySpace` (12 and 17) but `AddressSpaceDescription` has no arm for them and returns the fall-through `"Unknown"` — a description-switch gap in this build. Their pool names are the canonical ones from `stringifyMemorySpace`; the IDs themselves are live and map cleanly through `AddressSpaceToMemorySpace`. `MemorySpace 22` (`sflag_tc`) re-uses ID 204 alongside MS 5, so the reverse table `dword_AF36CE8` has the one AS (`0xCC`) shared by two `MemorySpace` values (entries 5 and 22).
 
@@ -191,16 +190,16 @@ Because the pointer is a flat 32-bit word offset with no structured fields, the 
 
 The arity split is the per-AS "field layout" that actually exists: it is encoded in the cast op's operand count, byte-confirmed from the `…::create` constructor signatures (`S6_` in the mangled name = a second `Value` operand; its absence = one operand). `tpu_addrspacecast_tec::create` (`0x146D69C0`) has signature `(OpBuilder, Location, Type, Value, Value)` and emits two `addOperands` calls — `operand 0 = base ptr`, `operand 1 = tile id`, result `Type` added last. `tpu_addrspacecast_scs::create` (`0x146D5F80`) and the plain `tpu_addrspacecast::create` (`0x146D5EA0`) take a single `Value` and emit one `addOperands`. The tile-id source is `tpu_tileid::create` (`0x149883A0`) — signature `(OpBuilder, Location, Type)` with **zero** Value operands, because it reads the SparseCore scalar TID register (`STILEID.VRES` / `stileid.u32`) rather than consuming a value.
 
-| Cast family | Constructor | Operands | Tile id? | Sequencer | Confidence |
-|---|---|---|---|---|---|
-| `tpu_addrspacecast` (plain) | `0x146D5EA0` | 1 `{base}` | no | generic | CONFIRMED |
-| `tpu_addrspacecast_scs` | `0x146D5F80` | 1 `{base}` | no | SCS | CONFIRMED |
-| `tpu_addrspacecast_tc` | `0x146D68E0` | 1 `{base}` | no | TC | CONFIRMED |
-| `tpu_addrspacecast_tac` | — (`NOperands<2>`) | 2 `{base, tileId}` | YES | TAC | HIGH |
-| `tpu_addrspacecast_smem` | `0x146D6500` | 2 `{base, tileId}` | YES | TEC | CONFIRMED |
-| `tpu_addrspacecast_spmem` | `0x146D67E0` | 2 `{base, tileId}` | YES | TEC | CONFIRMED |
-| `tpu_addrspacecast_tec` | `0x146D69C0` | 2 `{base, tileId}` | YES | TEC | CONFIRMED |
-| `tpu_tileid` (the i32 source) | `0x149883A0` | 0 (register read) | — | — | CONFIRMED |
+| Cast family | Constructor | Operands | Tile id? | Sequencer |
+|---|---|---|---|---|
+| `tpu_addrspacecast` (plain) | `0x146D5EA0` | 1 `{base}` | no | generic |
+| `tpu_addrspacecast_scs` | `0x146D5F80` | 1 `{base}` | no | SCS |
+| `tpu_addrspacecast_tc` | `0x146D68E0` | 1 `{base}` | no | TC |
+| `tpu_addrspacecast_tac` | — (`NOperands<2>`) | 2 `{base, tileId}` | YES | TAC |
+| `tpu_addrspacecast_smem` | `0x146D6500` | 2 `{base, tileId}` | YES | TEC |
+| `tpu_addrspacecast_spmem` | `0x146D67E0` | 2 `{base, tileId}` | YES | TEC |
+| `tpu_addrspacecast_tec` | `0x146D69C0` | 2 `{base, tileId}` | YES | TEC |
+| `tpu_tileid` (the i32 source) | `0x149883A0` | 0 (register read) | — | — |
 
 > **QUIRK —** the 2-operand-vs-1-operand split is determined entirely by the **sequencer**, not by the source/destination address space. Both tile-indexed lanes — TEC and TAC — declare `NOperands<2>` and carry the tile id; the singular-per-core lanes (SCS, TC, and the plain cast) declare `OneOperand` and do not. This is because the tile-indexed lanes address per-tile `TileSpmem` and therefore need a runtime tile-select; the singular sequencer lanes address their memory without a per-tile index. The full 16-cast roster, the from→to AS map, and the lowering body live on [addrspacecast ISel](addrspacecast-isel.md) and [Tile-ID Cast](tile-id-cast.md); this page documents only why the routing is an operand and not a pointer bit.
 

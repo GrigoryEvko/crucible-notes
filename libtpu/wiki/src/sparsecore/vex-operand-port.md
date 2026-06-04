@@ -92,18 +92,18 @@ The legal range is **exactly `[0,7]`**: the resolver returns the identity encodi
 
 The encoding interleaves the `Y_VREG` and `X` sub-ports of vector operands V0..V3, with the VST (vector-store) source bus at 0. Cross-confirmed against the [VectorLoad `SourceOne` seed](vectorload-slot.md#the-sourceone-seed-enum), which carries this same enum in the bundle:
 
-| value | enum name | source bus | Confidence |
-|---:|---|---|---|
-| 0 | `VEX_SOURCE_PORT_ENCODING_VST_SOURCE` | the VST (vector-store) source bus | CONFIRMED |
-| 1 | `VEX_SOURCE_PORT_ENCODING_V0_Y_VREG` | V0 operand, `Y_VREG` sub-port | CONFIRMED |
-| 2 | `VEX_SOURCE_PORT_ENCODING_V0_X` | V0 operand, `X` sub-port | CONFIRMED |
-| 3 | `VEX_SOURCE_PORT_ENCODING_V1_Y_VREG` | V1 operand, `Y_VREG` sub-port | CONFIRMED |
-| 4 | `VEX_SOURCE_PORT_ENCODING_V1_X` | V1 operand, `X` sub-port | CONFIRMED |
-| 5 | `VEX_SOURCE_PORT_ENCODING_V2_Y_VREG` | V2 operand, `Y_VREG` sub-port | CONFIRMED |
-| 6 | `VEX_SOURCE_PORT_ENCODING_V2_X` | V2 operand, `X` sub-port | CONFIRMED |
-| 7 | `VEX_SOURCE_PORT_ENCODING_V3_Y_VREG` | V3 operand, `Y_VREG` sub-port | CONFIRMED |
-| — | (`V3_X`, logical port 8) | rejected: "cannot be used by a VEX instruction" | CONFIRMED |
-| — | (`MISC_AUX`, logical port 9) | rejected: "not supported on GLC/VFC" | CONFIRMED |
+| value | enum name | source bus |
+|---:|---|---|
+| 0 | `VEX_SOURCE_PORT_ENCODING_VST_SOURCE` | the VST (vector-store) source bus |
+| 1 | `VEX_SOURCE_PORT_ENCODING_V0_Y_VREG` | V0 operand, `Y_VREG` sub-port |
+| 2 | `VEX_SOURCE_PORT_ENCODING_V0_X` | V0 operand, `X` sub-port |
+| 3 | `VEX_SOURCE_PORT_ENCODING_V1_Y_VREG` | V1 operand, `Y_VREG` sub-port |
+| 4 | `VEX_SOURCE_PORT_ENCODING_V1_X` | V1 operand, `X` sub-port |
+| 5 | `VEX_SOURCE_PORT_ENCODING_V2_Y_VREG` | V2 operand, `Y_VREG` sub-port |
+| 6 | `VEX_SOURCE_PORT_ENCODING_V2_X` | V2 operand, `X` sub-port |
+| 7 | `VEX_SOURCE_PORT_ENCODING_V3_Y_VREG` | V3 operand, `Y_VREG` sub-port |
+| — | (`V3_X`, logical port 8) | rejected: "cannot be used by a VEX instruction" |
+| — | (`MISC_AUX`, logical port 9) | rejected: "not supported on GLC/VFC" |
 
 The rejection of `V3_X` (the would-be encoding 8) is the reason the *legal* set stops at 7: V3 contributes only its `Y_VREG` sub-port to VEX sources, never its `X`. So the four V-pairs supply `{V0_Y, V0_X, V1_Y, V1_X, V2_Y, V2_X, V3_Y}` — seven V sources plus `VST_SOURCE`, totalling the 8 encodings.
 
@@ -151,16 +151,16 @@ Mechanism, step by step:
 
 ### The proto port-slot map
 
-| physical port | proto slot (vregno) | present-mask bit (`[proto+0x10]`) | Confidence |
-|---|---|---|---|
-| V0 | `+0x1c` | `0x02` (bit 1) | CONFIRMED |
-| V1 | `+0x20` | `0x04` (bit 2) | CONFIRMED |
-| V2 | `+0x24` | `0x08` (bit 3) | CONFIRMED |
-| V3 | `+0x28` | `0x10` (bit 4) | CONFIRMED |
-| V4 | `+0x2c` | `0x20` (bit 5) | CONFIRMED |
-| V5 | `+0x30` | `0x40` (bit 6) | CONFIRMED |
-| V6 | `+0x34` | `0x80` (bit 7) | CONFIRMED |
-| (dest read-port) | `+0x18` | `0x01` (bit 0) | CONFIRMED |
+| physical port | proto slot (vregno) | present-mask bit (`[proto+0x10]`) |
+|---|---|---|
+| V0 | `+0x1c` | `0x02` (bit 1) |
+| V1 | `+0x20` | `0x04` (bit 2) |
+| V2 | `+0x24` | `0x08` (bit 3) |
+| V3 | `+0x28` | `0x10` (bit 4) |
+| V4 | `+0x2c` | `0x20` (bit 5) |
+| V5 | `+0x30` | `0x40` (bit 6) |
+| V6 | `+0x34` | `0x80` (bit 7) |
+| (dest read-port) | `+0x18` | `0x01` (bit 0) |
 
 Present-mask bit 0 (`0x01`) is the **dest read-port** slot at `+0x18` (which V-port holds the op's result), written by the per-op emit body, not by this allocator. The seven source ports occupy bits 1..7. This is the proto-message representation; the encoder maps each present slot to the bundle (next section).
 
@@ -170,11 +170,11 @@ Present-mask bit 0 (`0x01`) is the **dest read-port** slot at `+0x18` (which V-p
 
 Before allocating, the per-op emit body extracts the operand register from the `MCInst`. Operands sit at `[MCInst+0x10]` with stride `0x10`; the helpers validate the register band and rebase the id:
 
-| helper | reg-id band | rebase | yields | Confidence |
-|---|---|---|---|---|
-| `GetVregno` (`0x13a659c0`) | `[0xd0, 0x10f]` | `id − 0xd0` | vregno 0..0x3f (64 vregs) | CONFIRMED |
-| `GetVectorMask` (`0x13a33320`) | `[0x5f, 0x7e]` | `id − 0x5f` | mask 0..0x1f (32 vmasks) | CONFIRMED |
-| `GetVMDestregno` (`0x13a65b20`) | `[0x5f, 0x6e]` | `id − 0x5f` | VM-dest 0..0xf (16) | CONFIRMED |
+| helper | reg-id band | rebase | yields |
+|---|---|---|---|
+| `GetVregno` (`0x13a659c0`) | `[0xd0, 0x10f]` | `id − 0xd0` | vregno 0..0x3f (64 vregs) |
+| `GetVectorMask` (`0x13a33320`) | `[0x5f, 0x7e]` | `id − 0x5f` | mask 0..0x1f (32 vmasks) |
+| `GetVMDestregno` (`0x13a65b20`) | `[0x5f, 0x6e]` | `id − 0x5f` | VM-dest 0..0xf (16) |
 
 `GetVregno` LogFatals if the `MCOperand` is not a register (kind byte `!= 1`); the reg-id is at operand `+0x8`. The vector mask (when present) is stored to a separate proto field and OR'd into a mask-present bit; the source vregno is what `FindAndEmitToUnusedPort` allocates a port for.
 
@@ -232,15 +232,15 @@ Two independent selectors govern PopXrf, and they must not be swapped:
 
 In every row the index (`vres_unit`) is written to `+0x18` with present bit `0x1`; the rows below list only the per-lane result fields. The present operand of each lane is the one written — note that in the `V P …` rows the *first present lane is op1*, so its vregno lands in the `+0x1c` field (the field offset is fixed; the source operand is whichever lane is present):
 
-| op0 | op1 | op2 | variant | oneof tag (`[proto+0x50]`) | result fields written (source operand → proto field, present bit) | Confidence |
-|:---:|:---:|:---:|---|---:|---|---|
-| P | P | P | `WriteAll` | `0x7` | op0→`+0x1c` `GetVregno` (0x2), op1→`+0x20` `GetVregno` (0x4), op2→`+0x24` `GetVMDestregno` (0x8) | CONFIRMED |
-| P | V | V | `PopXrfWritePartial0` | `0x8` | op0→`+0x1c` `GetVregno` (0x2) | CONFIRMED |
-| P | V | P | `PopXrfWritePartial1` | `0x9` | op0→`+0x1c` `GetVregno` (0x2), op2→`+0x20` `GetVMDestregno` (0x4) | CONFIRMED |
-| V | P | V | `PopXrfWritePartial2` | `0xa` | op1→`+0x1c` `GetVregno` (0x2) | CONFIRMED |
-| V | P | P | `PopXrfWritePartial3` | `0xb` | op1→`+0x1c` `GetVregno` (0x2), op2→`+0x20` `GetVMDestregno` (0x4) | CONFIRMED |
-| P | P | V | `PopXrfWritePartial4` | `0xc` | op0→`+0x1c` `GetVregno` (0x2), op1→`+0x20` `GetVregno` (0x4) | CONFIRMED |
-| (any other) | | | — | — | `MakeError "Invalid operands for Pop XRF Result." (len 36, isa_emitter_base.h:3239)` | CONFIRMED |
+| op0 | op1 | op2 | variant | oneof tag (`[proto+0x50]`) | result fields written (source operand → proto field, present bit) |
+|:---:|:---:|:---:|---|---:|---|
+| P | P | P | `WriteAll` | `0x7` | op0→`+0x1c` `GetVregno` (0x2), op1→`+0x20` `GetVregno` (0x4), op2→`+0x24` `GetVMDestregno` (0x8) |
+| P | V | V | `PopXrfWritePartial0` | `0x8` | op0→`+0x1c` `GetVregno` (0x2) |
+| P | V | P | `PopXrfWritePartial1` | `0x9` | op0→`+0x1c` `GetVregno` (0x2), op2→`+0x20` `GetVMDestregno` (0x4) |
+| V | P | V | `PopXrfWritePartial2` | `0xa` | op1→`+0x1c` `GetVregno` (0x2) |
+| V | P | P | `PopXrfWritePartial3` | `0xb` | op1→`+0x1c` `GetVregno` (0x2), op2→`+0x20` `GetVMDestregno` (0x4) |
+| P | P | V | `PopXrfWritePartial4` | `0xc` | op0→`+0x1c` `GetVregno` (0x2), op1→`+0x20` `GetVregno` (0x4) |
+| (any other) | | | — | — | `MakeError "Invalid operands for Pop XRF Result." (len 36, isa_emitter_base.h:3239)` |
 
 The proto present-mask `[proto+0x10]` bits are: bit0 (`0x1`) = index/`+0x18`, bit1 (`0x2`) = `+0x1c`, bit2 (`0x4`) = `+0x20`, bit3 (`0x8`) = `+0x24`. `WriteAll` is the full 3-lane commit (two vregs + one VM-dest); the `Partial*` variants are the operand-presence-determined subsets. Each result oneof submessage is lazily `DefaultConstruct`ed into the `SparseCoreTecVectorResult` union when the `[proto+0x50]` tag does not already match.
 
@@ -274,24 +274,24 @@ Layer 1 (dispatch) selects the op leaf and is the [VectorExtended](vectorextende
 
 ## Function Map
 
-| Symbol | Address | Role | Confidence |
-|---|---|---|---|
-| `xla::ghostlite::GhostliteProtoUtils::GetVexSourcePortEncoding` | glc `0x1c5ee280` | `VregReadPort`→`VexSourcePortEncoding`; identity `[0,7]`, reject 8/9 | CONFIRMED |
-| `xla::viperfish::ViperfishProtoUtils::GetVexSourcePortEncoding` | vfc `0x1c5d2e80` | same switch; "MISC_AUX not supported on VFC" | CONFIRMED |
-| `…isa_emitter::FindAndEmitToUnusedPort<…SparsecoreVregReadPort,…VectorExtended_MinScanU32>` | glc `0x13a4b840` | 7-port greedy-first-free allocator (representative instance) | CONFIRMED |
-| `…isa_emitter::utils::FindAndEmitToUnusedPort<…>` | gfc `0x13ab2aa0` | gen-identical allocator (structural twin) | CONFIRMED |
-| `…container_internal::btree_container<…>::erase` | `0x13a0dd60` | removes the allocated port from `port_is_free` | CONFIRMED |
-| `SparseCoreTecVectorExtendedEncoder::Encode` | `0x1eb30ee0` | per-op encoder dispatch (calls per-op `Encode…<Op>`) | CONFIRMED |
-| `EncodeSparseCoreTecVectorExtendedAddScanF32` | `0x1eb32380` | sub-op `0x05`; V0..V6 selector bit anchors | CONFIRMED |
-| `EncodeSparseCoreTecVectorExtendedMaxScanF32` | `0x1eb32a80` | sub-op `0x07`; same port bits (op-invariant proof) | CONFIRMED |
-| `BitCopy(dst,dst_bit,src,src_bit,nbits)` | `0x1fa0a900` | the per-field bit-pack primitive | CONFIRMED |
-| `…isa_emitter::EmitXrfResultOp<…PopXrfWriteAll,…Partial0..4,…VectorResult>` | glc `0x13a14180` | PopXrf result commit (Ghostlite); index + presence selection | CONFIRMED |
-| `EmitXrfResultOp<…>` (gfc) | gfc `0x13ab8c60` | 6acc60406 PopXrf instance (structural twin) | CONFIRMED |
-| `EmitXrfResultOp<…>` (vfc) | vfc `0x139a8240` | Viperfish PopXrf instance | CONFIRMED |
-| `…isa_emitter::isVoidOp` | `0x13a659a0` | per-operand void test driving the variant select | CONFIRMED |
-| `…isa_emitter::GetVregno` | `0x13a659c0` | reg band `[0xd0,0x10f]` → vregno `id−0xd0` | CONFIRMED |
-| `…isa_emitter::GetVectorMask` | `0x13a33320` | reg band `[0x5f,0x7e]` → mask `id−0x5f` | CONFIRMED |
-| `…isa_emitter::GetVMDestregno` | `0x13a65b20` | reg band `[0x5f,0x6e]` → VM-dest `id−0x5f` | CONFIRMED |
+| Symbol | Address | Role |
+|---|---|---|
+| `xla::ghostlite::GhostliteProtoUtils::GetVexSourcePortEncoding` | glc `0x1c5ee280` | `VregReadPort`→`VexSourcePortEncoding`; identity `[0,7]`, reject 8/9 |
+| `xla::viperfish::ViperfishProtoUtils::GetVexSourcePortEncoding` | vfc `0x1c5d2e80` | same switch; "MISC_AUX not supported on VFC" |
+| `…isa_emitter::FindAndEmitToUnusedPort<…SparsecoreVregReadPort,…VectorExtended_MinScanU32>` | glc `0x13a4b840` | 7-port greedy-first-free allocator (representative instance) |
+| `…isa_emitter::utils::FindAndEmitToUnusedPort<…>` | gfc `0x13ab2aa0` | gen-identical allocator (structural twin) |
+| `…container_internal::btree_container<…>::erase` | `0x13a0dd60` | removes the allocated port from `port_is_free` |
+| `SparseCoreTecVectorExtendedEncoder::Encode` | `0x1eb30ee0` | per-op encoder dispatch (calls per-op `Encode…<Op>`) |
+| `EncodeSparseCoreTecVectorExtendedAddScanF32` | `0x1eb32380` | sub-op `0x05`; V0..V6 selector bit anchors |
+| `EncodeSparseCoreTecVectorExtendedMaxScanF32` | `0x1eb32a80` | sub-op `0x07`; same port bits (op-invariant proof) |
+| `BitCopy(dst,dst_bit,src,src_bit,nbits)` | `0x1fa0a900` | the per-field bit-pack primitive |
+| `…isa_emitter::EmitXrfResultOp<…PopXrfWriteAll,…Partial0..4,…VectorResult>` | glc `0x13a14180` | PopXrf result commit (Ghostlite); index + presence selection |
+| `EmitXrfResultOp<…>` (gfc) | gfc `0x13ab8c60` | 6acc60406 PopXrf instance (structural twin) |
+| `EmitXrfResultOp<…>` (vfc) | vfc `0x139a8240` | Viperfish PopXrf instance |
+| `…isa_emitter::isVoidOp` | `0x13a659a0` | per-operand void test driving the variant select |
+| `…isa_emitter::GetVregno` | `0x13a659c0` | reg band `[0xd0,0x10f]` → vregno `id−0xd0` |
+| `…isa_emitter::GetVectorMask` | `0x13a33320` | reg band `[0x5f,0x7e]` → mask `id−0x5f` |
+| `…isa_emitter::GetVMDestregno` | `0x13a65b20` | reg band `[0x5f,0x6e]` → VM-dest `id−0x5f` |
 
 ---
 

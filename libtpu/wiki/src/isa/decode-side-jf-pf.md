@@ -108,13 +108,13 @@ IsRpu(op):                  return (uint)(op - 17) < 0x12;    // {17..34}       
 VectorExtendedUsesData(op): return op != 3;                  // op 3 reads no data @ 0x1e876160
 ```
 
-| VEopcode range | Classifier | Family | Confidence |
-|---|---|---|---|
-| `0,1,2,4,5,6` | `IsMatrixMultiply` (`op<7 & 0x77>>op`) | dense matmul step | CONFIRMED |
-| `3` | excluded from `IsMatrixMultiply`; `!VectorExtendedUsesData` | staging-only matmul (reads no vector data operand) | CONFIRMED |
-| `7..12` | `IsPushGains` | weight-latch (the `GainLatchMode 0..5` range) | CONFIRMED |
-| `15,16` | `IsTranspose` | matrix transpose (matprep) | CONFIRMED |
-| `17..34` | `IsRpu` | reduce / permute-unit family | CONFIRMED |
+| VEopcode range | Classifier | Family |
+|---|---|---|
+| `0,1,2,4,5,6` | `IsMatrixMultiply` (`op<7 & 0x77>>op`) | dense matmul step |
+| `3` | excluded from `IsMatrixMultiply`; `!VectorExtendedUsesData` | staging-only matmul (reads no vector data operand) |
+| `7..12` | `IsPushGains` | weight-latch (the `GainLatchMode 0..5` range) |
+| `15,16` | `IsTranspose` | matrix transpose (matprep) |
+| `17..34` | `IsRpu` | reduce / permute-unit family |
 
 > **GOTCHA —** `IsTranspose` is the decompiled predicate (`0x1e875b40`) `(op − 15) < 2`, i.e. opcodes **`{15,16}`** — the transpose pair sits *below* the `IsRpu` range (`{17..34}`), not inside it. A reimplementation that classifies the transpose ops at 17/18 will mislabel two RPU ops as transposes and miss the real transpose pair. Likewise `IsMatrixMultiply` is `(op<7) & (0x77>>op)`, which **excludes opcode 3** (`0x77 = 0b1110111` has bit 3 clear); opcode 3 is the staging-only matmul flagged by `VectorExtendedUsesData(op)==false`.
 
@@ -185,16 +185,16 @@ function Decode(span):
 
 Each `Opcode::Matches` reads the staged quadword at offset `0x10` (abs 64..127), ANDs a mask, and compares to a value. The mask pins the field width and base; the value is the opcode. Read byte-for-byte from the predicate bodies:
 
-| Opcode::Matches | Mask (staged qword @ `+0x10`) | Abs bits | Value | Meaning | Confidence |
-|---|---|---|---|---|---|
-| `NoopOpcode` (`0x1eda6400`) | `~val & 0x7C00000000 == 0` | 98..102 | all-ones | predicate == 31 (`kNeverExecute`) | CONFIRMED |
-| `MatrixMultiplyRoundedMxu0` (`0x1eda6420`) | `(word@+19) & 0x3FE == 0` | 89..97 (w9) | mxu-num 0 | op-hi 0, mxu-num @ 89..90 = 0 | CONFIRMED |
-| `MatrixMultiplyRoundedMxu1` (`0x1eda6440`) | `& 0x3FE000000 == 0x2000000` | 89..97 | mxu-num 1 | bit 89 set | CONFIRMED |
-| `PushGainsRounded` (`0x1eda7060`) | `& 0x3F8000000 == 0x100000000` | 91..97 (w7) | `0x20` | weight-latch rounded | CONFIRMED |
-| `PushGainsLow` (`0x1eda7080`) | `& 0x3F8000000 == 0x108000000` | 91..97 | `0x21` | latch `.low` | CONFIRMED |
-| `PushGainsByte` (`0x1eda70e0`) | `& 0x3F8000000 == 0x120000000` | 91..97 | `0x24` | latch `.byte` | CONFIRMED |
-| `DoneWithGainsGsfn` (`0x1eda7020`) | `& 0x3F8000000 == 0xC0000000` | 91..97 | `0x18` | end-of-gains (gsfn) | CONFIRMED |
-| `Transpose` (`0x1eda7360`) | `& 0x3F8000000 == 0x200000000` | 91..97 | `0x40` | systolic transpose op | CONFIRMED |
+| Opcode::Matches | Mask (staged qword @ `+0x10`) | Abs bits | Value | Meaning |
+|---|---|---|---|---|
+| `NoopOpcode` (`0x1eda6400`) | `~val & 0x7C00000000 == 0` | 98..102 | all-ones | predicate == 31 (`kNeverExecute`) |
+| `MatrixMultiplyRoundedMxu0` (`0x1eda6420`) | `(word@+19) & 0x3FE == 0` | 89..97 (w9) | mxu-num 0 | op-hi 0, mxu-num @ 89..90 = 0 |
+| `MatrixMultiplyRoundedMxu1` (`0x1eda6440`) | `& 0x3FE000000 == 0x2000000` | 89..97 | mxu-num 1 | bit 89 set |
+| `PushGainsRounded` (`0x1eda7060`) | `& 0x3F8000000 == 0x100000000` | 91..97 (w7) | `0x20` | weight-latch rounded |
+| `PushGainsLow` (`0x1eda7080`) | `& 0x3F8000000 == 0x108000000` | 91..97 | `0x21` | latch `.low` |
+| `PushGainsByte` (`0x1eda70e0`) | `& 0x3F8000000 == 0x120000000` | 91..97 | `0x24` | latch `.byte` |
+| `DoneWithGainsGsfn` (`0x1eda7020`) | `& 0x3F8000000 == 0xC0000000` | 91..97 | `0x18` | end-of-gains (gsfn) |
+| `Transpose` (`0x1eda7360`) | `& 0x3F8000000 == 0x200000000` | 91..97 | `0x40` | systolic transpose op |
 
 The two field bases fall straight out of the masks: `0x3FE000000` is bits 25..33 of the staged qword (= abs 89..97, a 9-bit matmul opcode), and `0x3F8000000` is bits 27..33 (= abs 91..97, a 7-bit non-matmul opcode). Shifting each comparison value down by its base recovers the opcode: `0x100000000 >> 27 = 0x20` (PushGainsRounded), `0x120000000 >> 27 = 0x24` (PushGainsByte), `0xC0000000 >> 27 = 0x18` (DoneWithGainsGsfn), `0x200000000 >> 27 = 0x40` (Transpose). This independently confirms the [Pufferfish bundle](bundle-pf-51b.md#vector-extended--mxu-slots--0x1edb0900-mxu0-0x1ee08060-mxu1) MXU0 layout (opcode @ 91 w7, matmul @ 89 w9, predicate @ 98 w5) and the [MXU Slot](slot-mxu.md#pufferfish-v4--the-dual-mxu-codec-origin) `PushGains opcode = 0x20 + variant + masked·0x10` formula, byte-for-byte from the decode side.
 
@@ -206,19 +206,19 @@ The two field bases fall straight out of the masks: `0x3FE000000` is bits 25..33
 
 `TensorCoreVectorExtended1Decoder::Decode` (`0x1edcea40`) is the same sweep over a control region shifted down exactly 20 bits. The MXU1 predicates read the staged **dword** at offset `0x10` (the lower 32 bits cover abs 64..95) rather than the qword, and their masks are the MXU0 masks shifted down by 20:
 
-| Opcode::Matches | Mask (staged dword @ `+0x10`) | Abs bits | Value | Confidence |
-|---|---|---|---|---|
-| `Extended1MatrixMultiplyLowMxu0` (`0x1edfdd00`) | `& 0x3FE0 == 128` | 69..77 (w9) | bit 71 set | CONFIRMED |
-| `Extended1PushGainsRounded` (`0x1edfe8c0`) | `& 0x3F80 == 4096` | 71..77 (w7) | `0x20` | CONFIRMED |
-| `Extended1Noop` (`0x1edfdc60`) | `~val & 0x7C000 == 0` | 78..82 | all-ones (31) | CONFIRMED |
+| Opcode::Matches | Mask (staged dword @ `+0x10`) | Abs bits | Value |
+|---|---|---|---|
+| `Extended1MatrixMultiplyLowMxu0` (`0x1edfdd00`) | `& 0x3FE0 == 128` | 69..77 (w9) | bit 71 set |
+| `Extended1PushGainsRounded` (`0x1edfe8c0`) | `& 0x3F80 == 4096` | 71..77 (w7) | `0x20` |
+| `Extended1Noop` (`0x1edfdc60`) | `~val & 0x7C000 == 0` | 78..82 | all-ones (31) |
 
 The arithmetic confirms the −20 offset exactly: `0x3FE0` is bits 5..13 of the staged dword (= abs 69..77, the 9-bit matmul opcode at 89..97 minus 20); `0x3F80` is bits 7..13 (= abs 71..77, the 7-bit opcode at 91..97 minus 20); `4096 = 0x1000`, and `0x1000 >> 7 = 0x20`, the same PushGainsRounded value as MXU0. The Noop mask `0x7C000` is bits 14..18 (= abs 78..82, the predicate at 98..102 minus 20).
 
-| Field | MXU0 abs | MXU1 abs | Δ | Confidence |
-|---|---|---|---|---|
-| matmul opcode | 89..97 | 69..77 | −20 | CONFIRMED |
-| non-matmul opcode | 91..97 | 71..77 | −20 | CONFIRMED |
-| predication | 98..102 | 78..82 | −20 | CONFIRMED |
+| Field | MXU0 abs | MXU1 abs | Δ |
+|---|---|---|---|
+| matmul opcode | 89..97 | 69..77 | −20 |
+| non-matmul opcode | 91..97 | 71..77 | −20 |
+| predication | 98..102 | 78..82 | −20 |
 
 > **QUIRK — two MXU control slots, four physical MXUs.** Pufferfish has two `VectorExtended` *control* slots (MXU0/MXU1, the −20 twin) and four physical arrays. The slot picks the control lane; the matmul opcode's low two bits pick the array. The −20 twin here is the v4 origin of the same dual-MXU geometry that becomes −20 on Viperfish, −21 on Ghostlite, and −25 on the `6acc60406` family — see [VF / GXC decode-side](decode-side-vf-gxc.md) and the [MXU Slot](slot-mxu.md#cross-generation-field-summary) cross-generation summary.
 
@@ -228,13 +228,13 @@ The arithmetic confirms the −20 offset exactly: `0x3FE0` is bits 5..13 of the 
 
 The five-generation decode reference, this page (JF, PF) plus its [VF / GXC](decode-side-vf-gxc.md) companion:
 
-| Gen | Codename | Bundle | Decode mechanism | MXU opcode field | Twin | Confidence |
-|---|---|---|---|---|---|---|
-| v2 | jellyfish | 41 B | two-level nested `switch` on 6-bit opcode (family abs 32..34 + sub abs 29..31) | abs 29..34 (single VE slot) | n/a | CONFIRMED |
-| v4 | pufferfish | 51 B | staged copy + linear `Opcode::Matches` sweep | MXU0 abs 89/91; MXU1 abs 69/71 | −20 | CONFIRMED |
-| v5 | viperfish | 64 B | staged copy + `Opcode::Matches` sweep | MXU0 push@59 mm@57 | −20 | [VF/GXC](decode-side-vf-gxc.md) |
-| v6e | ghostlite | 64 B | staged copy + `Opcode::Matches` sweep | MXU0 unified op@58 (w8) | −21 | [VF/GXC](decode-side-vf-gxc.md) |
-| TPU7x | `6acc60406` | 64 B | staged copy + `Opcode::Matches` sweep | MXU0 unified op@62 (w8) | −25 | [VF/GXC](decode-side-vf-gxc.md) |
+| Gen | Codename | Bundle | Decode mechanism | MXU opcode field | Twin |
+|---|---|---|---|---|---|
+| v2 | jellyfish | 41 B | two-level nested `switch` on 6-bit opcode (family abs 32..34 + sub abs 29..31) | abs 29..34 (single VE slot) | n/a |
+| v4 | pufferfish | 51 B | staged copy + linear `Opcode::Matches` sweep | MXU0 abs 89/91; MXU1 abs 69/71 | −20 |
+| v5 | viperfish | 64 B | staged copy + `Opcode::Matches` sweep | MXU0 push@59 mm@57 | −20 |
+| v6e | ghostlite | 64 B | staged copy + `Opcode::Matches` sweep | MXU0 unified op@58 (w8) | −21 |
+| TPU7x | `6acc60406` | 64 B | staged copy + `Opcode::Matches` sweep | MXU0 unified op@62 (w8) | −25 |
 
 Jellyfish is the only generation with a single VE issue slot (no twin) and a jump-table-style opcode decode, because its opcode is one contiguous 6-bit field. Every generation from Pufferfish onward uses the staged-copy + `Opcode::Matches` codec; Pufferfish is the v4 origin of both the codec design and the −N dual-MXU twin.
 

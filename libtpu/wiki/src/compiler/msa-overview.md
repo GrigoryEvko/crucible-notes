@@ -108,13 +108,13 @@ Status RunMemorySpaceAssignment(MsaOptions opts, Target target,
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `RunMemorySpaceAssignment` | `0x12fc3080` | Phase 7 entry; gate + options build + delegate | CONFIRMED |
-| `IsMemorySpaceAssignmentEnabled` | `0x12fc1280` | Per-version gate; `tpu_version` at `Target+0x398`, jump table `0xae09ac8` | CONFIRMED |
-| `ComputeMemorySpaceAssignmentOptions` | `0x12fc1440` | 55 `OverwriteFieldIfNotDefault` per-family overrides | HIGH |
-| `OverwriteFieldIfNotDefault` | `0x1d73f360` | Single per-family flag → option-field writer | HIGH |
-| `MemorySpaceAssignmentLambdaCollection::IsAsyncSliceImplemented` | `0x12fd64a0` | TPU cost/aliasing/slice callbacks handed to OSS | MEDIUM |
+| Function | Address | Role |
+|---|---|---|
+| `RunMemorySpaceAssignment` | `0x12fc3080` | Phase 7 entry; gate + options build + delegate |
+| `IsMemorySpaceAssignmentEnabled` | `0x12fc1280` | Per-version gate; `tpu_version` at `Target+0x398`, jump table `0xae09ac8` |
+| `ComputeMemorySpaceAssignmentOptions` | `0x12fc1440` | 55 `OverwriteFieldIfNotDefault` per-family overrides |
+| `OverwriteFieldIfNotDefault` | `0x1d73f360` | Single per-family flag → option-field writer |
+| `MemorySpaceAssignmentLambdaCollection::IsAsyncSliceImplemented` | `0x12fd64a0` | TPU cost/aliasing/slice callbacks handed to OSS |
 
 ---
 
@@ -184,15 +184,15 @@ The objective is **implicit**, not written into any solver. It lives in three pl
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `MemorySpaceAssignment::Run` | `0x1dc2e200` | OSS pass driver: FindAllocationSequence + Process | CONFIRMED |
-| `MemorySpaceAssignment::Process` | `0x1dc2f5e0` | Rewrites module with chosen allocations | CONFIRMED |
-| `MsaAlgorithm::Finish` | `0x1dc5b560` | Greedy best-fit core (HeapSimulator entry) | CONFIRMED |
-| `MsaAlgorithm::AllocateAllocationValues` | `0x1dc65600` | Per-value use dispatch | HIGH |
-| `MsaAlgorithm::AllocateSegment` | `0x1dc73ca0` | 6-stage per-buffer cascade — see [msa-allocate-segment.md](msa-allocate-segment.md) | CONFIRMED |
-| `MemoryBoundednessBufferIntervalComparator` ctor | `0x1dcd3100` | The sort key (memory-boundedness × size) | HIGH |
-| `GlobalDecreasingSizeBestFitHeap::GetSortedBufferIntervals` | `0x1e48f400` | Rank-orders intervals for the greedy walk | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `MemorySpaceAssignment::Run` | `0x1dc2e200` | OSS pass driver: FindAllocationSequence + Process |
+| `MemorySpaceAssignment::Process` | `0x1dc2f5e0` | Rewrites module with chosen allocations |
+| `MsaAlgorithm::Finish` | `0x1dc5b560` | Greedy best-fit core (HeapSimulator entry) |
+| `MsaAlgorithm::AllocateAllocationValues` | `0x1dc65600` | Per-value use dispatch |
+| `MsaAlgorithm::AllocateSegment` | `0x1dc73ca0` | 6-stage per-buffer cascade — see [msa-allocate-segment.md](msa-allocate-segment.md) |
+| `MemoryBoundednessBufferIntervalComparator` ctor | `0x1dcd3100` | The sort key (memory-boundedness × size) |
+| `GlobalDecreasingSizeBestFitHeap::GetSortedBufferIntervals` | `0x1e48f400` | Rank-orders intervals for the greedy walk |
 
 ---
 
@@ -251,16 +251,16 @@ When `AllocatePrefetch` fails (no disjoint even/odd pair fits), the buffer is si
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `IdentifyAndOptimizeMemoryBoundLoops` | `0x1dc4b520` | Scans `kWhile` candidates, drives MBLO | HIGH |
-| `OptimizeMemoryBoundLoop` | `0x1dc4a140` | Per-loop wrapper; creates + applies MBLO | HIGH |
-| `MemoryBoundLoopOptimizer::Create` | `0x1dcb5c40` | `operator new(0x1f0)` + ctor + Initialize | CONFIRMED |
-| `MemoryBoundLoopOptimizer::Optimize` | `0x1dcb9760` | SortLoopValues + AllocateLoopValues + cost | CONFIRMED |
-| `AllocateLoopValues` | `0x1dcb9840` | 5-case `allocation_type` jump table | HIGH |
-| `AllocatePrefetch` | `0x1dcc0160` | Even/odd coupling per prefetch | HIGH |
-| `LoopOptimizerBestFitHeap::FindEvenAndOddAllocationBetween` | `0x1dcb5580` | Atomic `(even, odd)` chunk-pair allocation | CONFIRMED |
-| `CalculateExecutionTime` | `0x1dcbb9a0` | Wall-clock estimate (one period + async-copy wait) | MEDIUM |
+| Function | Address | Role |
+|---|---|---|
+| `IdentifyAndOptimizeMemoryBoundLoops` | `0x1dc4b520` | Scans `kWhile` candidates, drives MBLO |
+| `OptimizeMemoryBoundLoop` | `0x1dc4a140` | Per-loop wrapper; creates + applies MBLO |
+| `MemoryBoundLoopOptimizer::Create` | `0x1dcb5c40` | `operator new(0x1f0)` + ctor + Initialize |
+| `MemoryBoundLoopOptimizer::Optimize` | `0x1dcb9760` | SortLoopValues + AllocateLoopValues + cost |
+| `AllocateLoopValues` | `0x1dcb9840` | 5-case `allocation_type` jump table |
+| `AllocatePrefetch` | `0x1dcc0160` | Even/odd coupling per prefetch |
+| `LoopOptimizerBestFitHeap::FindEvenAndOddAllocationBetween` | `0x1dcb5580` | Atomic `(even, odd)` chunk-pair allocation |
+| `CalculateExecutionTime` | `0x1dcbb9a0` | Wall-clock estimate (one period + async-copy wait) |
 
 > **NOTE —** the exact `LoopValue.allocation_type` *classifier* (when a buffer is kTemporary vs kPinned vs kPrefetch) lives inside `MemoryBoundLoopOptimizer::Initialize` (`0x1dcb5d60`, ~3 kB) and was not fully traced; only the dispatch table that consumes the classification is decoded. Treat the classifier boundary as **LOW** confidence.
 

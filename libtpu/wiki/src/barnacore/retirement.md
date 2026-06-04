@@ -235,18 +235,18 @@ Pufferfish is the high-water mark — a full BCS sequencer, four BarnaCores, a d
 
 ## Confidence Summary
 
-| Claim | Evidence | Confidence |
-|---|---|---|
-| 12 `TpuCoreVxcDriverImpl::*BarnaCore*` methods are `kUnimplemented` stubs; the `gxc` family has none | decompiled bodies `0x1d118be0`–`0x1d118d40`, all `MakeErrorImpl<12>("Not implemented in Viperfish.", …, tpu_core_vxc_driver_impl.cc)`, source lines 146–204; no `TpuCoreGxcDriverImpl` symbol exists | CONFIRMED |
-| The same method has a real register-programming body on `jxc`/`pxc` | `TpuCoreJxcDriverImpl::EnableBarnaCore` `@ 0xe735540` dispatches through the register backend; Pxc likewise | CONFIRMED |
-| BC encoder/codec/ISA syms present on `jxc`/`pxc·pfc`, zero on `vxc`/`gxc` | `nm -C` ∩ (`Encoder`/`Codec`/`isa`) ∩ `BarnaCore` bucketed by family namespace: legacy families carry the BarnaCore codec classes, v3+ families carry none | CONFIRMED (present/absent); exact per-family counts not reported |
-| Pufferfish has 4 BarnaCores; Viperfish, `gxc` (Ghostlite/`6acc60406`), and `plc` have 0 | `pfc::…GetNumberOfBarnaCores() {return 4;}` `@ 0x1fbac480`; `vxc::` `@ 0x1fbad0e0`, `gxc::` `@ 0x1fda8b40`, `plc::` `@ 0x1fbacb00` all `{return 0;}` | CONFIRMED |
-| Live Pufferfish BC encoders are `EncoderBcsDf`, `EncoderPfBarnaCoreSequencer`, `EncoderPfBarnaCoreChannel` | demangled symbol names under `pxc.pfc` | CONFIRMED |
-| `InstBits_BarnaCorePxcHwMode` is the only HwMode BC encoding table; none for v3+ | `TPUMCCodeEmitter::getBinaryCodeForInstr` `@ 0x13c74da0`; no `InstBits_BarnaCore*HwMode` under v3+ families | HIGH |
-| Device-path embedding op set is the ~20-op `Enqueue*`/`Recv*`/`Send*` family | 18 distinct `*(Enqueue\|Recv\|Send)TPUEmbedding*Op` symbols enumerated | CONFIRMED (count); "~20" framing HIGH |
-| BarnaCore lookup emitter = `barna_core::BcsLloEmitter`; v3+ replacement = `SparseDenseMatmulDotCombinerEmitter` | both symbol families present; `BcsLloEmitter::{IssueDmaInfeedToVmem,IssueDmaScatter}` vs combiner `Emit*` | CONFIRMED (presence); per-target selection HIGH |
-| 11 BarnaCore-era optimizers collapse to 5 on-engine SparseCore optimizers | 11 distinct `(Load\|Retrieve)TPUEmbedding<Opt>Parameters`; 5 distinct `XlaSparseDenseMatmulGradWith<Opt>` | CONFIRMED |
-| The v3+ embedding lowering never reaches the BC emitter | inferred from zero BC codecs + `GetNumberOfBarnaCores()==0` + the SC combiner being the v3+ lowering | HIGH (target-selection not body-traced) |
+| Claim | Evidence |
+|---|---|
+| 12 `TpuCoreVxcDriverImpl::*BarnaCore*` methods are `kUnimplemented` stubs; the `gxc` family has none | decompiled bodies `0x1d118be0`–`0x1d118d40`, all `MakeErrorImpl<12>("Not implemented in Viperfish.", …, tpu_core_vxc_driver_impl.cc)`, source lines 146–204; no `TpuCoreGxcDriverImpl` symbol exists |
+| The same method has a real register-programming body on `jxc`/`pxc` | `TpuCoreJxcDriverImpl::EnableBarnaCore` `@ 0xe735540` dispatches through the register backend; Pxc likewise |
+| BC encoder/codec/ISA syms present on `jxc`/`pxc·pfc`, zero on `vxc`/`gxc` | `nm -C` ∩ (`Encoder`/`Codec`/`isa`) ∩ `BarnaCore` bucketed by family namespace: legacy families carry the BarnaCore codec classes, v3+ families carry none |
+| Pufferfish has 4 BarnaCores; Viperfish, `gxc` (Ghostlite/`6acc60406`), and `plc` have 0 | `pfc::…GetNumberOfBarnaCores() {return 4;}` `@ 0x1fbac480`; `vxc::` `@ 0x1fbad0e0`, `gxc::` `@ 0x1fda8b40`, `plc::` `@ 0x1fbacb00` all `{return 0;}` |
+| Live Pufferfish BC encoders are `EncoderBcsDf`, `EncoderPfBarnaCoreSequencer`, `EncoderPfBarnaCoreChannel` | demangled symbol names under `pxc.pfc` |
+| `InstBits_BarnaCorePxcHwMode` is the only HwMode BC encoding table; none for v3+ | `TPUMCCodeEmitter::getBinaryCodeForInstr` `@ 0x13c74da0`; no `InstBits_BarnaCore*HwMode` under v3+ families |
+| Device-path embedding op set is the ~20-op `Enqueue*`/`Recv*`/`Send*` family | 18 distinct `*(Enqueue\|Recv\|Send)TPUEmbedding*Op` symbols enumerated |
+| BarnaCore lookup emitter = `barna_core::BcsLloEmitter`; v3+ replacement = `SparseDenseMatmulDotCombinerEmitter` | both symbol families present; `BcsLloEmitter::{IssueDmaInfeedToVmem,IssueDmaScatter}` vs combiner `Emit*` |
+| 11 BarnaCore-era optimizers collapse to 5 on-engine SparseCore optimizers | 11 distinct `(Load\|Retrieve)TPUEmbedding<Opt>Parameters`; 5 distinct `XlaSparseDenseMatmulGradWith<Opt>` |
+| The v3+ embedding lowering never reaches the BC emitter | inferred from zero BC codecs + `GetNumberOfBarnaCores()==0` + the SC combiner being the v3+ lowering |
 
 ---
 

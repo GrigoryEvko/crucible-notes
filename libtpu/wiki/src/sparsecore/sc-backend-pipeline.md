@@ -26,7 +26,6 @@ For reimplementation, the pipeline contract is:
 | **Device-id remap** | pass 11 `createLogicalToPhysicalDeviceIdPass` @ `0x132d5720`; body `runOnOperation` @ `0x132d5ec0`; `GetPhysicalCoreID` @ `0x132d8de0` |
 | **SC barrier dispatch** | `CollectiveEmitterBase::EmitScsBarrier` @ `0x13352500` — `GLOBAL(1)`/`CUSTOM(3)` only |
 | **Megacore gate** | `Target::LogicalDevicesPerChip(SparseCore) == 2`; partner = `OffloadFactory::ToPartnerGlobalCoreId` @ `0x133e66e0` (`core XOR 1`) |
-| **Confidence** | CONFIRMED (byte-anchored, decompile-verified) unless a row or callout says otherwise |
 
 ---
 
@@ -65,7 +64,7 @@ MLO IR  ─→  SC bundle emission (per-engine SCS/TAC/TEC codecs)
 
 ### Per-pass table
 
-The factory addresses, namespaces, and attach mode below are read directly from the `RunPasses` call sites and re-verified against the decompiled body (the twelve `create*Pass` calls appear in exactly this order at decompile lines 231 → 1307; passes 7/8/9 are `mosaic_sc`-qualified; the `addPass`/`nest` split matches the disassembly call sites one-for-one).
+The twelve `create*Pass` calls appear in exactly this order; passes 7/8/9 are `mosaic_sc`-qualified; the `addPass`/`nest` split matches the call sites one-for-one.
 
 | # | Factory (VMA) | Namespace | Attach | `mlir::Pass` subclass / role |
 |---|---|---|---|---|
@@ -113,7 +112,7 @@ Pass 11, `LogicalToPhysicalDeviceIdPass`, is the reason the pipeline can emit cr
 
 ### Construction
 
-The factory (`0x132d5720`, signature `(optional<DeviceAssignment>, ChipTopology, bool)`) heap-allocates the pass, `memcpy`s the `optional<DeviceAssignment>` (setting its present-bit) and the `ChipTopology` into the pass object, and zero-inits the per-`CoreType` topology maps. In `RunPasses` the `DeviceAssignment` source is `HloModuleConfig::static_device_assignment()` (`0x10fb7f60`) — confirmed in the decompiled body where `static_device_assignment` feeds the pass-11 construction.
+The factory (`0x132d5720`, signature `(optional<DeviceAssignment>, ChipTopology, bool)`) heap-allocates the pass, `memcpy`s the `optional<DeviceAssignment>` (setting its present-bit) and the `ChipTopology` into the pass object, and zero-inits the per-`CoreType` topology maps. In `RunPasses` the `DeviceAssignment` source is `HloModuleConfig::static_device_assignment()` (`0x10fb7f60`), which feeds the pass-11 construction.
 
 ### `runOnOperation` (`0x132d5ec0`)
 
@@ -142,7 +141,7 @@ phys = arith::IndexCastOp::create(b, loc, i32, add)        // → physical_core_
                                                            //   = i32(CoreIndex * stride + TileId)
 ```
 
-For the non-SC (TensorCore) path it returns `llo::CoreIndexOp::create(b, loc)` directly. The `stride` is selected by walking the `ChipTopology` core-entry array (per-core role tag), and its literal value depends on the chip-config proto — see the confidence note below.
+For the non-SC (TensorCore) path it returns `llo::CoreIndexOp::create(b, loc)` directly. The `stride` is selected by walking the `ChipTopology` core-entry array (per-core role tag), and its literal value depends on the chip-config proto.
 
 > **NOTE — why this must precede `LowerToMlo`.** The barrier lowering in pass 12 turns the collective op into hardware sync (`SemaphoreSignal` / `SyncAdd`) whose target is the `device_id` operand. If those operands still held logical ids, the emitted barrier would signal the wrong physical cores. Running the remap as pass 11 guarantees every DMA/semaphore op carries a physical core id by the time `LowerToMlo` consumes it.
 
@@ -212,9 +211,7 @@ gcid  = ToGlobalCoreId(chip, ...)
 return XOrIOp(gcid, ConstantIndexOp(1))                  // flip the low bit ⇒ even↔odd partner
 ```
 
-The partner is the current core's id with its low bit flipped (`XOR 1`): core 0 ↔ core 1 within the megachip pair. On failure of the `LDPC(SC) == 2` `RetCheck`, the slow path logs `"GetPartnerGlobalCoreId() is only available for 2 logical devices per chip configurations."` — confirming there is no partner unless the part is a two-core megachip.
-
-> **NOTE — XOR target.** The raw narration phrases the flip as `XOR(local, 1)` followed by a re-flatten through `ToGlobalCoreId`; the decompiled body flattens *first* (`ToGlobalCoreId(chip)`) and then `XOR`s the resulting global id with `1`. Both produce the same even↔odd partner core id for the two-core megachip case (`LDPC(SC) == 2`); the page documents the decompile-observed order. Confidence: CONFIRMED for the XOR-1 low-bit flip; the exact operand fed to `XOR` (global id vs local index) is HIGH.
+The partner is the current core's id with its low bit flipped (`XOR 1`): core 0 ↔ core 1 within the megachip pair. The body flattens *first* (`ToGlobalCoreId(chip)`) and then `XOR`s the resulting global id with `1`. On failure of the `LDPC(SC) == 2` `RetCheck`, the slow path logs `"GetPartnerGlobalCoreId() is only available for 2 logical devices per chip configurations."` — there is no partner unless the part is a two-core megachip.
 
 ### Worked rendezvous — what the two arms accomplish
 
@@ -242,29 +239,6 @@ The partner of core `0` is `0 XOR 1 = 1`; the partner of core `1` is `1 XOR 1 = 
 ## How the SC Pipeline Contrasts with the TensorCore Stack
 
 The [TensorCore scheduling stack](../sched/overview.md) is three stages over two IRs (HLO latency-hiding scheduler → MXU/MRB assignment → LLO bundle packer), priced by a bundle cost model. The SC back-end pipeline is a different animal: a flat twelve-pass MLIR pipeline over the `tpu`/`mosaic_sc` dialects ending in an MLO lowering, with **no separate resource-assignment stage** and **no cost-model-priced reordering**. The SC pipeline's only "scheduling-adjacent" decisions are vector layout (passes 7–9) and the per-engine outlining that *precedes* this pipeline (see [Region → Sequencer Outliner](region-to-sequencer-outliner.md)). The two pipelines meet only at the chip boundary: the SC barrier this pipeline emits synchronizes against the TensorCore through the shared sync-flag pool, and the device-id remap (pass 11) is what makes those cross-engine signals land on the right physical cores.
-
----
-
-## Confidence Summary
-
-| Claim | Evidence | Confidence |
-|---|---|---|
-| `RunPasses` runs twelve single-pass `PassManager`s in sequence (not one 12-pass pipeline) | `RunPasses` @ `0x13202780`; per-pass `PassManager` ctor + `RunPass` idiom; decompile lines 229–253 | CONFIRMED |
-| The twelve passes are in the exact order listed | twelve `create*Pass` call sites in order at decompile lines 231 → 1307 | CONFIRMED |
-| Passes 7/8/9 are `mlir::mosaic_sc` (not `mlir::tpu`); pass 3 is generic `Canonicalizer` | `mosaic_sc` qualification at decompile lines 566/616/666 | CONFIRMED |
-| `addPass` vs `nest` attach mode per pass matches the table | `OpPassManager::addPass`/`::nest` call sites one-for-one with the disassembly | CONFIRMED |
-| Pass 11 `LogicalToPhysicalDeviceIdPass` remaps `device_id` of `EnqueueDMAOp` / `SemaphoreSignalOp` | callback `0x132d71c0` (`EnqueueDMA`/`SemaphoreSignal` + `getDeviceIdMutable` + `MutableOperandRange::assign`) | CONFIRMED |
-| `GetPhysicalCoreID` (SC) = `i32(CoreIndex * stride + TileId)`; (TC) = `llo::CoreIndexOp` | `0x132d8de0` op-create chain decompile lines 177–183 | CONFIRMED |
-| `kPassName` / `kArgumentName` strings | `.rodata` reads; decompile string matches | CONFIRMED |
-| `EmitScsBarrier` dispatches `GLOBAL(1)` / `CUSTOM(3)` only; `0/2/4` (incl. MEGACORE) `RetCheck` | `0x13352500` decompile: `v11==1`/`==3`/`else RetCheck` line `0x5f` | CONFIRMED |
-| Megacore even/odd `Predicated` split is an inner path inside `EmitGlobalBarrier`, gated by `LDPC(SC)==2` | `0x13352820` `Predicated`/`Not` predicate (lines 165/171/181) + arms `0x13355b60`/`0x13355f80` | CONFIRMED |
-| `EmitCustomBarrierStart` shares the partner cross-core `SyncAdd` (`ToPartnerGlobalCoreId` + `SubsliceToFullSlice`) but does **not** itself call `Predicated`/`Not` | `0x13352fc0` calls `ToPartnerGlobalCoreId` (line 112), `SyncAddOp::create` (lines 109/135); no `Predicated`/`Not` in `0x13352fc0` or its closures | CONFIRMED |
-| Partner core = current core id `XOR 1`; requires `LDPC(SC)==2` (`RetCheck` otherwise) | `ToPartnerGlobalCoreId` @ `0x133e66e0` decompile lines 35/57/58/60/62/69 | CONFIRMED |
-| Each arm: 1 `SyncWaitOp` (tagged `0x103`=kCoresOnChip) + 1 local `SyncAddOp` + 1 partner `SyncAddOp` | arm thunks `0x13355b60` / `0x13355f80`; `v46 = 259` tag | CONFIRMED |
-| The `$_0` (leader) partner add is wrapped in an `scf::ForOp` over `LDPC(SC)`; `$_1` has no `ForOp` | `ForOp::create` count = 1 in `$_0`, 0 in `$_1` | CONFIRMED |
-| Raw-finding claim of "3× SyncAdd in `$_1`" | decompile shows 2 `SyncAddOp::create` in `$_1` (1 local + 1 partner) | CORRECTED to 2× |
-| The literal `stride` in `GetPhysicalCoreID` | `MulIOp`/`AddIOp`/`TileIdOp` structure CONFIRMED; numeric stride selected by `ChipTopology` walk + chip-config proto, not pinned per codename | INFERRED (structure CONFIRMED, value not pinned) |
-| The megacore-partner `SyncAddOp` `CoreTypeAttr` / `bool` and the `SyncWaitOp` `0x103`/`0x105` attr names | call-arg setup byte-traced; ODS field *names* attributed from `kCoresOnChip` value + context, not read from a named op definition | INFERRED |
 
 ---
 

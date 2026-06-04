@@ -133,17 +133,17 @@ The companion accessor `TpuCompEnvReflection::GetFlagForField @ 0x1d74ad40` read
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `GetFieldValueIfNotDefault<long>` | `0x1c6f1a80` | by-name reflection reader — `FindFieldByName` + diff-vs-default | CONFIRMED |
-| `Descriptor::FindFieldByName` | `0x20e57900` | name → `FieldDescriptor` (null ⇒ not a field) | CONFIRMED |
-| `TpuCompEnvReflection::GetFieldValue` | `0x1d7523a0` | reflection read → variant over all arm types | CONFIRMED |
-| `GetTpuCompEnvWithDefaultValues` | `0x1d73f100` | the all-defaults env the read diffs against | CONFIRMED |
-| `FlagFieldMappings` ctor | `0x1d753ce0` | builds dual `FlatHashMap` (flag↔field) | CONFIRMED |
-| `FlagFieldMappings::GetInstance()::mappings` | `0x2257ef50` | the `NoDestructor` singleton storage (accessor is inlined) | CONFIRMED |
-| `TpuCompEnvReflection::GetFlagForField` | `0x1d74ad40` | field→flag lookup (FATALs when absent) | CONFIRMED |
-| `SetFieldFromFlagString` | `0x1d73fcc0` | write side — flag string → proto field by reflection | CONFIRMED |
-| `RegisterCommandLineFlag` | `0x21114cc0` | the registrar's per-flag registration call | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `GetFieldValueIfNotDefault<long>` | `0x1c6f1a80` | by-name reflection reader — `FindFieldByName` + diff-vs-default |
+| `Descriptor::FindFieldByName` | `0x20e57900` | name → `FieldDescriptor` (null ⇒ not a field) |
+| `TpuCompEnvReflection::GetFieldValue` | `0x1d7523a0` | reflection read → variant over all arm types |
+| `GetTpuCompEnvWithDefaultValues` | `0x1d73f100` | the all-defaults env the read diffs against |
+| `FlagFieldMappings` ctor | `0x1d753ce0` | builds dual `FlatHashMap` (flag↔field) |
+| `FlagFieldMappings::GetInstance()::mappings` | `0x2257ef50` | the `NoDestructor` singleton storage (accessor is inlined) |
+| `TpuCompEnvReflection::GetFlagForField` | `0x1d74ad40` | field→flag lookup (FATALs when absent) |
+| `SetFieldFromFlagString` | `0x1d73fcc0` | write side — flag string → proto field by reflection |
+| `RegisterCommandLineFlag` | `0x21114cc0` | the registrar's per-flag registration call |
 
 ---
 

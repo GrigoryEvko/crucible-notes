@@ -42,19 +42,19 @@ For reimplementation, the contract is:
 
 The field map is carved byte-exact from the embedded `FileDescriptorProto` (`protoc --decode_raw` of the `DescriptorProto` body @ `0xc18e12d`, len `0x289`=649) and corroborated by the generated `TcParseTable` member-offset array `TpuChipConfigProto_ContinuationQueue::_table_` @ `0x2200cb48` (12-byte `FieldEntry` stride `{u32 member_offset, u16 has_idx, u16 typecard}`) and `Clear()` @ `0x20b0c5a0`.
 
-| Field # | Name | Proto type | C++ off | Confidence |
-|---:|---|---|---:|---|
-| 1 | `core_type` | enum `.tpu.TpuCoreTypeProto` (TC=0 / BarnaCore=2) | `+0x28` | CONFIRMED |
-| (2) | — (absent — a field-number gap) | — | — | CONFIRMED |
-| 3 | `completion_state_sync_flag_word_offset` | int32 | `+0x2c` | CONFIRMED |
-| 4 | `error_ack_sync_flag_word_offset` | int32 | `+0x30` | CONFIRMED |
-| 5 | `overwritten_error_sync_flag_word_offset` | int32 | `+0x34` | CONFIRMED |
-| 6 | `completion_interrupt_number` | int32 | `+0x38` | CONFIRMED |
-| 7 | `per_core` (repeated `ContinuationQueue.PerCore`) | message | `+0x18` (count `+0x20`) | CONFIRMED |
-| 8 | `producer_sync_flag_min_descriptor_word_offset` | int32 | `+0x3c` | CONFIRMED |
-| 9 | `producer_sync_flag_remaining_descriptors_word_offset` | int32 | `+0x40` | CONFIRMED |
-| 10 | `producer_sync_flag_count` | int32 | `+0x44` | CONFIRMED |
-| 11 | `producer_sync_flag_index_word_offset` | int32 | `+0x48` | CONFIRMED |
+| Field # | Name | Proto type | C++ off |
+|---:|---|---|---:|
+| 1 | `core_type` | enum `.tpu.TpuCoreTypeProto` (TC=0 / BarnaCore=2) | `+0x28` |
+| (2) | — (absent — a field-number gap) | — | — |
+| 3 | `completion_state_sync_flag_word_offset` | int32 | `+0x2c` |
+| 4 | `error_ack_sync_flag_word_offset` | int32 | `+0x30` |
+| 5 | `overwritten_error_sync_flag_word_offset` | int32 | `+0x34` |
+| 6 | `completion_interrupt_number` | int32 | `+0x38` |
+| 7 | `per_core` (repeated `ContinuationQueue.PerCore`) | message | `+0x18` (count `+0x20`) |
+| 8 | `producer_sync_flag_min_descriptor_word_offset` | int32 | `+0x3c` |
+| 9 | `producer_sync_flag_remaining_descriptors_word_offset` | int32 | `+0x40` |
+| 10 | `producer_sync_flag_count` | int32 | `+0x44` |
+| 11 | `producer_sync_flag_index_word_offset` | int32 | `+0x48` |
 
 `has_bits` is at `struct+0x10`. The four producer sflags (#8–#11) are **top-level** `ContinuationQueue` fields, not per-core — there is one queue config per core, so a per-queue field is already per-core.
 
@@ -64,29 +64,29 @@ The field map is carved byte-exact from the embedded `FileDescriptorProto` (`pro
 
 `ContinuationQueue.PerCore` (`DescriptorProto` @ `0xc18e326`, len 138; `_table_` @ `0x2200cab8`) carries exactly two message-typed fields:
 
-| Field # | Name | Proto type | C++ off | Confidence |
-|---:|---|---|---:|---|
-| 1 | `shared_memory_region` | message `.tpu.TpuChipConfigProto.SharedMemoryRegion` | `+0x18` | CONFIRMED |
-| 2 | `consumer_sync_flag` | message `.asic_sw.deepsea.SyncFlag` | `+0x20` | CONFIRMED |
+| Field # | Name | Proto type | C++ off |
+|---:|---|---|---:|
+| 1 | `shared_memory_region` | message `.tpu.TpuChipConfigProto.SharedMemoryRegion` | `+0x18` |
+| 2 | `consumer_sync_flag` | message `.asic_sw.deepsea.SyncFlag` | `+0x20` |
 
 `SharedMemoryRegion` (`DescriptorProto` @ `0xc18dd41`, len 117; `_table_` @ `0x2200c638`) names the descriptor-ring window:
 
-| Field # | Name | Proto type | C++ off | Confidence |
-|---:|---|---|---:|---|
-| 1 | `shared_memory` | message `.tpu.TpuSharedMemoryOnChipProto` (HBM / CMEM kind) | `+0x18` | CONFIRMED |
-| 2 | `word_count` | **INT64** | `+0x20` | CONFIRMED |
-| 3 | `word_offset` | **INT64** | `+0x28` | CONFIRMED |
+| Field # | Name | Proto type | C++ off |
+|---:|---|---|---:|
+| 1 | `shared_memory` | message `.tpu.TpuSharedMemoryOnChipProto` (HBM / CMEM kind) | `+0x18` |
+| 2 | `word_count` | **INT64** | `+0x20` |
+| 3 | `word_offset` | **INT64** | `+0x28` |
 
 > **NOTE —** `word_count`/`word_offset` are `int64` in the proto. The runtime `Target` `MemoryPart` carries truncated `int32` copies (`+0x04` = `word_offset`, `+0x08` = `word_count`) because on-chip word offsets fit in 32 bits; the ring-window arithmetic in the runtime ctor ([§3](#3-the-runtime-ring)) reads those `int32` copies. Do not assume `int32` at the proto layer.
 
 The `consumer_sync_flag` is the standard `asic_sw.deepsea.SyncFlag` handle (`DescriptorProto` @ `0xc19228a`, len 226) — the sync flag the *device* waits on before reading a descriptor slot:
 
-| Field # | Name | Proto type | Role | Confidence |
-|---:|---|---|---|---|
-| 1 | `index` | int32 | sflag word index within the core's tier | CONFIRMED |
-| 2 | `core` | enum `Core` | which engine owns the flag | CONFIRMED |
-| 3 | `core_index` | int32 | per-core instance index | CONFIRMED |
-| 4 | `tile_index` | int32 | tile index (SparseCore tiles) | CONFIRMED |
+| Field # | Name | Proto type | Role |
+|---:|---|---|---|
+| 1 | `index` | int32 | sflag word index within the core's tier |
+| 2 | `core` | enum `Core` | which engine owns the flag |
+| 3 | `core_index` | int32 | per-core instance index |
+| 4 | `tile_index` | int32 | tile index (SparseCore tiles) |
 
 The nested `Core` enum is `{TENSORCORE=0, BARNACORE=1, HOST_INTERFACE=2, SPARSECORE=3, SPARSECORE_TAC=4, SPARSECORE_TEC=5}`. (This is the same `SCS/TAC/TEC` numbering the SparseCore sequencer enum uses; two *other* `SyncFlag` messages exist in the build — `{is_host, word_offset}` @ `0xc18de3b` and `{word_offset, value, expected_transfer_size}` @ `0xc1792af` — and are distinct types, not the consumer flag.)
 
@@ -94,14 +94,14 @@ The nested `Core` enum is `{TENSORCORE=0, BARNACORE=1, HOST_INTERFACE=2, SPARSEC
 
 When `RegisterContinuationQueueConfigs` copies the proto into the `Target`, the head re-layout the device producer indexes (`Target+0x580 + core*0x38`, stride `0x38`) exposes the four producer sflags plus the `per_core` vector:
 
-| Off | Source field | Role | Confidence |
-|---:|---|---|---|
-| `+0x00` | #8 `…min_descriptor_word_offset` | producer descriptor-array base sflag (`"…available_count_sync_flag_base"`, len `0x31`) | CONFIRMED |
-| `+0x04` | #9 `…remaining_descriptors_word_offset` | remaining-descriptors sflag base (`"…_remaining_descriptors_base"`, len `0x47`) | CONFIRMED |
-| `+0x08` | #10 `…count` | ring slot count — power-of-2 (`popcnt==1` CHECK'd) | CONFIRMED |
-| `+0x1c` | #11 `…index_word_offset` | producer write-index sflag (`"…available_count_sync_flag_index"`, len `0x32`) | CONFIRMED |
-| `+0x20` | #7 `per_core` | vector `.begin` (`Target+0x5a0` for TC core 0) | CONFIRMED |
-| `+0x28` | #7 `per_core` | vector `.end` (`Target+0x5a8` for TC) | CONFIRMED |
+| Off | Source field | Role |
+|---:|---|---|
+| `+0x00` | #8 `…min_descriptor_word_offset` | producer descriptor-array base sflag (`"…available_count_sync_flag_base"`, len `0x31`) |
+| `+0x04` | #9 `…remaining_descriptors_word_offset` | remaining-descriptors sflag base (`"…_remaining_descriptors_base"`, len `0x47`) |
+| `+0x08` | #10 `…count` | ring slot count — power-of-2 (`popcnt==1` CHECK'd) |
+| `+0x1c` | #11 `…index_word_offset` | producer write-index sflag (`"…available_count_sync_flag_index"`, len `0x32`) |
+| `+0x20` | #7 `per_core` | vector `.begin` (`Target+0x5a0` for TC core 0) |
+| `+0x28` | #7 `per_core` | vector `.end` (`Target+0x5a8` for TC) |
 
 Each `per_core` element (the 28-byte `Target::ContinuationQueueConfig::PerCore`, stride `0x1c`): `+0x00` MemorySpace, `+0x04` `word_offset`, `+0x08` `word_count`, `+0x0c` consumer-sflag ptr (optional), `+0x14` has-consumer bool, `+0x18` producer-sflag word offset. The C++ member-type name `Target::ContinuationQueueConfig::PerCore` is recovered from the `std::vector<…ContinuationQueueConfig::PerCore>::__throw_length_error` symbol @ `0x1271a660` referenced by the producer's overflow path.
 
@@ -119,24 +119,24 @@ A "continuation descriptor" is the data a producer DMAs so the next program know
 
 The verified write set (each row is one `int32` slot; the device read-back accessor is on the [Targets overview](../targets/overview.md) program-descriptor SMEM block, `Target+0x808..+0x8b8`):
 
-| `TpuMemoryReservationType` (idx) | Value source (`FillCoreBuffer` / `Inputs`) | Device read-back (`Target` off) | Confidence |
-|---|---|---|---|
-| `kXprofProgramId` (0x07) | `TpuRunConfig::xprof_program_id()` | `ProgramIdLocation` (`+0x808`) | CONFIRMED |
-| `kRunIdLow` (0x08) | `Inputs+0x08` | `RunIdLowLocation` (`+0x820`) | CONFIRMED |
-| `kRunIdHigh` (0x09) | `Inputs+0x0c` | `RunIdHighLocation` (`+0x828`) | CONFIRMED |
-| `kSameAsLastProgram` (0x12) | 0 / cache-hit flag | `SameAsLastProgram` (`+0x838`) | HIGH |
-| `kLaunchBarrierId` (0x13) | 0 | `LaunchBarrierId` (`+0x840`) | HIGH |
-| `kCrossProgramPrefetchSuccess` (0x14) | region / flag | `CrossProgramPrefetchSuccess` (`+0x848`) | HIGH |
-| `kProgramDescriptorSize` (0x15) | `descriptor_bytes / words-per` | `ProgramDescriptorSize` (`+0x858`) | CONFIRMED |
-| `kProgramDescriptorState` (0x16) | `Inputs+0x4c` (1=initial / 2=continuation) | `ProgramDescriptorState` (`+0x860`) | CONFIRMED |
-| `kProgramEntryPointAddress` (0x17) | `Inputs+0x38` (NEXT program entry addr) | `ProgramEntryPointAddress` (`+0x868`) | CONFIRMED |
-| `kProgramEntryPointSize` (0x18) | `Inputs+0x3c` (entry size) | `ProgramEntryPointSize` (`+0x870`) | CONFIRMED |
-| `kHbmStackOffset` (0x05) / `kCmemStackOffset` (0x06) / `kHostStackOffset` (0x21) | region `word_offset` (stack base) | — | CONFIRMED |
-| `kHbmOffset` (0x03) / `kCmemOffset` (0x04) | `GetHeapWordOffset(., HBM/CMEM)` | heap slots | CONFIRMED |
-| `kTensorCoreStackSize` (0x1d) / `kSparseCoreStackSize` (0x1e) | per-gen stack-size-in-words | — | CONFIRMED |
-| `kTrapId` (0x23) | trap-id (0 if none) | — | HIGH |
-| `kSparseCorePTState` (0x30) | `0xFFFFFFFF` (unset sentinel) | — | CONFIRMED |
-| `kTensorCoreAssertionArgs` (0x31) | `0xC0C0C0C0` (poison fill) | — | CONFIRMED |
+| `TpuMemoryReservationType` (idx) | Value source (`FillCoreBuffer` / `Inputs`) | Device read-back (`Target` off) |
+|---|---|---|
+| `kXprofProgramId` (0x07) | `TpuRunConfig::xprof_program_id()` | `ProgramIdLocation` (`+0x808`) |
+| `kRunIdLow` (0x08) | `Inputs+0x08` | `RunIdLowLocation` (`+0x820`) |
+| `kRunIdHigh` (0x09) | `Inputs+0x0c` | `RunIdHighLocation` (`+0x828`) |
+| `kSameAsLastProgram` (0x12) | 0 / cache-hit flag | `SameAsLastProgram` (`+0x838`) |
+| `kLaunchBarrierId` (0x13) | 0 | `LaunchBarrierId` (`+0x840`) |
+| `kCrossProgramPrefetchSuccess` (0x14) | region / flag | `CrossProgramPrefetchSuccess` (`+0x848`) |
+| `kProgramDescriptorSize` (0x15) | `descriptor_bytes / words-per` | `ProgramDescriptorSize` (`+0x858`) |
+| `kProgramDescriptorState` (0x16) | `Inputs+0x4c` (1=initial / 2=continuation) | `ProgramDescriptorState` (`+0x860`) |
+| `kProgramEntryPointAddress` (0x17) | `Inputs+0x38` (NEXT program entry addr) | `ProgramEntryPointAddress` (`+0x868`) |
+| `kProgramEntryPointSize` (0x18) | `Inputs+0x3c` (entry size) | `ProgramEntryPointSize` (`+0x870`) |
+| `kHbmStackOffset` (0x05) / `kCmemStackOffset` (0x06) / `kHostStackOffset` (0x21) | region `word_offset` (stack base) | — |
+| `kHbmOffset` (0x03) / `kCmemOffset` (0x04) | `GetHeapWordOffset(., HBM/CMEM)` | heap slots |
+| `kTensorCoreStackSize` (0x1d) / `kSparseCoreStackSize` (0x1e) | per-gen stack-size-in-words | — |
+| `kTrapId` (0x23) | trap-id (0 if none) | — |
+| `kSparseCorePTState` (0x30) | `0xFFFFFFFF` (unset sentinel) | — |
+| `kTensorCoreAssertionArgs` (0x31) | `0xC0C0C0C0` (poison fill) | — |
 
 The `kProgramDescriptorState` / `kProgramEntryPointAddress` / `kProgramEntryPointSize` writes are confirmed byte-exact: `$_0(span, 22, *(Inputs+19), 0)` (`Inputs+0x4c`), `$_0(span, 23, *(Inputs+14), 0)` (`Inputs+0x38`), `$_0(span, 24, *(Inputs+15), 0)` (`Inputs+0x3c`); the poison fills are `$_0(span, 48, 0xFFFFFFFF, …)` and `$_0(span, 49, 0xC0C0C0C0, …)`.
 
@@ -174,26 +174,26 @@ The image is allocated by the `MaybeMappedBuffer` functor: first `PremappedMemor
 
 From the ctor `tpu::ContinuationQueue::ContinuationQueue(...)` @ `0x1d160ae0` (the `per_core[core]` element is selected by the `TpuCoreOnChip` arg's `int32 @+0x4`, vector stride `0x30`):
 
-| Off | Field | Source / role | Confidence |
-|---:|---|---|---|
-| `+0x00` | config head (ymm copy) | `ContinuationQueue` descriptor `+0..+0x1f` | CONFIRMED |
-| `+0x20` | int32 | descriptor `+0x20` | CONFIRMED |
-| `+0x28`/`+0x30`/`+0x38` | `per_core` vector `{begin, size, cap}` | heap copy of descriptor `per_core` | CONFIRMED |
-| `+0x40` | ring window **START** byte | `per_core[core]+0x10(word_offset) * wordsize` | CONFIRMED |
-| `+0x48` | ring window **END** byte | `(per_core[core]+0x8(word_count) + +0x10) * wordsize` | CONFIRMED |
-| `+0x50` | `granule_bytes_` | raw descriptor-size ctor arg (the divisor in all three `% granule_bytes_` CHECKs) | CONFIRMED |
-| `+0x58` | `min_descriptor_size_` | `max(arg, 0x200=512)` — 512-byte floor (CHECK `"min_descriptor_size_ % granule_bytes_ == 0"`) | CONFIRMED |
-| `+0x60` | `max_descriptor_size_` | `(END − START)/2 − descsize` (CHECK `"max_descriptor_size_ % granule_bytes_ == 0"`) | CONFIRMED |
-| `+0x68` | `TpuHostWorkQueue*` | ctor arg | CONFIRMED |
-| `+0x70` | core_type / completion interrupt | descriptor `+0xc` | CONFIRMED |
-| `+0x78` | user dispatch function | the `std::function` arg | CONFIRMED |
-| `+0x88` | `WriteMemory` writeback functor | ctor arg | CONFIRMED |
-| `+0xa0` | worker thread | set by `Initialize` (0x160-B state) | CONFIRMED |
-| `+0xa8` | `absl::Mutex` (queue lock) | `Enqueue`/`WorkerLoop`/`Completed` | CONFIRMED |
-| `+0xb0` | `SyncFlagRefcounts` | constructed if `count > 1`; valid-flag `+0xc8` | CONFIRMED |
-| `+0xe0..+0x100` | in-flight `std::deque<Request>` + count | `+0x100` = producer count (inc on `Enqueue`) | CONFIRMED |
-| `+0x110..+0x130` | completed container + idx | `+0x130` = consumer index (inc on dispatch) | CONFIRMED |
-| `+0x1b0` | running flag | set true by `Initialize`, polled by `WorkerLoop` | CONFIRMED |
+| Off | Field | Source / role |
+|---:|---|---|
+| `+0x00` | config head (ymm copy) | `ContinuationQueue` descriptor `+0..+0x1f` |
+| `+0x20` | int32 | descriptor `+0x20` |
+| `+0x28`/`+0x30`/`+0x38` | `per_core` vector `{begin, size, cap}` | heap copy of descriptor `per_core` |
+| `+0x40` | ring window **START** byte | `per_core[core]+0x10(word_offset) * wordsize` |
+| `+0x48` | ring window **END** byte | `(per_core[core]+0x8(word_count) + +0x10) * wordsize` |
+| `+0x50` | `granule_bytes_` | raw descriptor-size ctor arg (the divisor in all three `% granule_bytes_` CHECKs) |
+| `+0x58` | `min_descriptor_size_` | `max(arg, 0x200=512)` — 512-byte floor (CHECK `"min_descriptor_size_ % granule_bytes_ == 0"`) |
+| `+0x60` | `max_descriptor_size_` | `(END − START)/2 − descsize` (CHECK `"max_descriptor_size_ % granule_bytes_ == 0"`) |
+| `+0x68` | `TpuHostWorkQueue*` | ctor arg |
+| `+0x70` | core_type / completion interrupt | descriptor `+0xc` |
+| `+0x78` | user dispatch function | the `std::function` arg |
+| `+0x88` | `WriteMemory` writeback functor | ctor arg |
+| `+0xa0` | worker thread | set by `Initialize` (0x160-B state) |
+| `+0xa8` | `absl::Mutex` (queue lock) | `Enqueue`/`WorkerLoop`/`Completed` |
+| `+0xb0` | `SyncFlagRefcounts` | constructed if `count > 1`; valid-flag `+0xc8` |
+| `+0xe0..+0x100` | in-flight `std::deque<Request>` + count | `+0x100` = producer count (inc on `Enqueue`) |
+| `+0x110..+0x130` | completed container + idx | `+0x130` = consumer index (inc on dispatch) |
+| `+0x1b0` | running flag | set true by `Initialize`, polled by `WorkerLoop` |
 
 The ctor's ring-window arithmetic is the byte-exact proof that `per_core+0x10` is `word_offset` and `per_core+0x8` is `word_count`: START `= word_offset * wordsize`, END `= (word_count + word_offset) * wordsize` — a half-open `[base, base+size)` region. The decompile shows `obj+0x60 = v24/2 - descsize` (capacity) and a `CHECK(descriptor_state_word_offset_ < min_descriptor_size_ / sizeof(int32_t))`, confirming the record is sized in `int32` words.
 
@@ -317,33 +317,33 @@ Program termination is a *split-program* model. Without the continuation queue, 
 
 `scalar-halt` is `LloOpcode 0x25`, emitted only by `LloRegionBuilder::ShaltInternal` @ `0x1d520d20` (= `CreateNullaryOp(0x25)` + `AppendInstruction`). The opcode names come from the `LloOpcodeString` table @ `0x21cd0d60` (R_X86_64_RELATIVE addends):
 
-| Opcode | String | Confidence |
-|---:|---|---|
-| `0x25` | `"scalar-halt"` | CONFIRMED |
-| `0x26` | `"scalar-halt-yield-cond"` (NOT nullary-emitted in this build) | CONFIRMED |
-| `0x27` | `"scalar-halt-on-error"` (`LloRegionBuilder::ErrorIf` / `Error` — error halt, not program-end) | CONFIRMED |
+| Opcode | String |
+|---:|---|
+| `0x25` | `"scalar-halt"` |
+| `0x26` | `"scalar-halt-yield-cond"` (NOT nullary-emitted in this build) |
+| `0x27` | `"scalar-halt-on-error"` (`LloRegionBuilder::ErrorIf` / `Error` — error halt, not program-end) |
 
 ### Program-end emit / suppress sites
 
 The five `ShaltInternal` callers, whole-binary:
 
-| # | Caller | Site VMA | Gate / role | Confidence |
-|---:|---|---|---|---|
-| 1 | `barna_core::BcsLloProgramCreator::Build()` | `0xf9ce922` | unconditional — BarnaCore sequencer LLO program end | CONFIRMED |
-| 2 | `barna_core::BcsLloProgramCreator::BuildTop()` | `0xf9cebdd` | unconditional — BarnaCore top program end | CONFIRMED |
-| 3 | `DeepseaCompilerBase::LowerHloModuleImpl()` | `0x10920035` | per-sequencer gate (below) — main HLO lowering program end | CONFIRMED |
-| 4 | `DeepseaCompilerBase::CompileInternal()` | `0x10928095` | `test [Target+0x628],1; jne skip` — bit-0 SET **suppresses** the main halt | CONFIRMED |
-| 5 | `deepsea_compiler_backend::CompileContinuationTailCall()` | `0x10a28d21` | the continuator's own closing halt (iff `EmitContinuationTailcall` returned `rax==1`) | CONFIRMED |
+| # | Caller | Site VMA | Gate / role |
+|---:|---|---|---|
+| 1 | `barna_core::BcsLloProgramCreator::Build()` | `0xf9ce922` | unconditional — BarnaCore sequencer LLO program end |
+| 2 | `barna_core::BcsLloProgramCreator::BuildTop()` | `0xf9cebdd` | unconditional — BarnaCore top program end |
+| 3 | `DeepseaCompilerBase::LowerHloModuleImpl()` | `0x10920035` | per-sequencer gate (below) — main HLO lowering program end |
+| 4 | `DeepseaCompilerBase::CompileInternal()` | `0x10928095` | `test [Target+0x628],1; jne skip` — bit-0 SET **suppresses** the main halt |
+| 5 | `deepsea_compiler_backend::CompileContinuationTailCall()` | `0x10a28d21` | the continuator's own closing halt (iff `EmitContinuationTailcall` returned `rax==1`) |
 
 ### The `Target+0x628` bit-0 consumers
 
 Bit-0 (TC continuation-queue region present) is tested at three sites:
 
-| Site VMA | Enclosing function | Action when bit-0 SET | Confidence |
-|---|---|---|---|
-| `0x10928083` | `CompileInternal` | SKIP the trailing `ShaltInternal` (main program emits **no** halt) | CONFIRMED |
-| `0x1090eb6e` | `TpuCompactionIsaEmitterCodegen::Create` | EMIT the continuator: call `CompileContinuationTailCall` @ `0x1090eba0` | CONFIRMED |
-| `0x1091bcc7` | `LowerHloModuleImpl` | a `testb $0x4` IsMegachip recheck adjacent to the descriptor-state predicate | CONFIRMED |
+| Site VMA | Enclosing function | Action when bit-0 SET |
+|---|---|---|
+| `0x10928083` | `CompileInternal` | SKIP the trailing `ShaltInternal` (main program emits **no** halt) |
+| `0x1090eb6e` | `TpuCompactionIsaEmitterCodegen::Create` | EMIT the continuator: call `CompileContinuationTailCall` @ `0x1090eba0` |
+| `0x1091bcc7` | `LowerHloModuleImpl` | a `testb $0x4` IsMegachip recheck adjacent to the descriptor-state predicate |
 
 So bit-0 does two things in tandem: it suppresses the main program's halt **and** enables compilation of the continuator. The continuator (`CompileContinuationTailCall`) builds its own `LloRegionBuilder`, emits the producer ring-advance + descriptor DMA + tailcall (`EmitContinuationTailcall`), and ends with its own `Shalt` (byte-confirmed: the decompile shows `EmitContinuationTailcall(...)` then a conditional `ShaltInternal`).
 

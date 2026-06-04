@@ -68,17 +68,17 @@ The slot-0-only mask `0x18000000f00` has bits set at opcodes `{8, 9, 10, 11}` (t
 
 The slot lives at lane 0 of the scalar-ALU sub-bundle in every generation, but the surrounding sub-core taxonomy changes: each TPU generation hosts several **sequencer types** (`TpuSequencerType`), and each sequencer type has its own bundle with its own scalar-ALU sub-bundle. The companion page enumerates the [TpuSequencerType enum](sequencer-ops-per-gen.md#the-tpusequencertype-enum); the table below pins the slot position per (generation × sequencer-type).
 
-| Gen | Sequencer type | Bundle B | Sequencer lane | Lane 1 (no PC mutation) | Confidence |
-|---|---|---:|---|---|---|
-| Jellyfish (v2) | TensorCore | 41 | `SLOT_SCALAR_0` | `SLOT_SCALAR_1` (halt/fence/delay) | CONFIRMED |
-| Jellyfish (v2) | BarnaCoreAddressHandler | 16 | dedicated BCAH `Branch` ScalarSlot | n/a | HIGH |
-| Dragonfish (v3) | TC / BCAH | 41 / 16 | alias of Jellyfish codec | (as Jellyfish) | HIGH |
-| Pufferfish (v4) | TensorCore | 51 | `Scalar0` (`TensorCoreScalar0_*`) | `Scalar1` (halt/fence/delay) | CONFIRMED |
-| Pufferfish (v4) | BarnaCoreSequencer | 32 | `BarnaCoreSequencerScalar0` | `Scalar1` (halt/fence/delay + sync) | CONFIRMED |
-| Viperfish (v5e) | TensorCore | 64 | `ScalarAlu0` (`vxc::isa`) | `ScalarAlu1` | CONFIRMED |
-| Viperfish (v5e) | SCS / TAC / TEC | 32 / 64 / 64 | `ScalarAlu0` (`vxc::vfc::isa`) | `ScalarAlu1` | CONFIRMED |
-| Ghostlite (v6e) | TC / SCS / TAC / TEC | 64 / 32 / 64 / 64 | `ScalarAlu0` (`gxc::glc::isa`) | `ScalarAlu1` | CONFIRMED |
-| 6acc60406 (TPU7x) | TC / SCS / TEC | 64 / 32 / 64 | `ScalarAlu0` (`gxc::gfc::isa`) | `ScalarAlu1` | CONFIRMED |
+| Gen | Sequencer type | Bundle B | Sequencer lane | Lane 1 (no PC mutation) |
+|---|---|---:|---|---|
+| Jellyfish (v2) | TensorCore | 41 | `SLOT_SCALAR_0` | `SLOT_SCALAR_1` (halt/fence/delay) |
+| Jellyfish (v2) | BarnaCoreAddressHandler | 16 | dedicated BCAH `Branch` ScalarSlot | n/a |
+| Dragonfish (v3) | TC / BCAH | 41 / 16 | alias of Jellyfish codec | (as Jellyfish) |
+| Pufferfish (v4) | TensorCore | 51 | `Scalar0` (`TensorCoreScalar0_*`) | `Scalar1` (halt/fence/delay) |
+| Pufferfish (v4) | BarnaCoreSequencer | 32 | `BarnaCoreSequencerScalar0` | `Scalar1` (halt/fence/delay + sync) |
+| Viperfish (v5e) | TensorCore | 64 | `ScalarAlu0` (`vxc::isa`) | `ScalarAlu1` |
+| Viperfish (v5e) | SCS / TAC / TEC | 32 / 64 / 64 | `ScalarAlu0` (`vxc::vfc::isa`) | `ScalarAlu1` |
+| Ghostlite (v6e) | TC / SCS / TAC / TEC | 64 / 32 / 64 / 64 | `ScalarAlu0` (`gxc::glc::isa`) | `ScalarAlu1` |
+| 6acc60406 (TPU7x) | TC / SCS / TEC | 64 / 32 / 64 | `ScalarAlu0` (`gxc::gfc::isa`) | `ScalarAlu1` |
 
 > **NOTE — 6acc60406 (TPU7x) drops the TileAccess sequencer.** `gxc::gfc::isa::SparseCoreTac*` symbols are absent from the binary while `SparseCoreTec*` and `SparseCoreScs*` are present (`nm -C`). Viperfish and Ghostlite carry all three SparseCore sequencer engines (SCS + TAC + TEC); 6acc60406 carries SCS + TEC only. The TensorCore sequencer is present on every generation.
 
@@ -136,13 +136,13 @@ So a call is `{20-bit target in imm slot 0} + {dest = return-address scalar regi
 
 The indirect forms read a computed target from a register: `BranchSreg` has an `x()` field (the target sreg); `CallSreg` has both `x()` (target) and `dest()` (return address). On Jellyfish the indirect branch instead reads a Branch-Target-Register set by a scalar `SET_BRANCH_TARGET_REGISTER` op or a TTU `set_btr` op — the binary embeds the conflict assertion *"Cannot have a scalar SET_BRANCH_TARGET_REGISTER instruction and a TTU set_btr instruction in the same bundle."*
 
-| Field | Where | Width | Source | Confidence |
-|---|---|---:|---|---|
-| branch/call target | immediate slot 0 (bit 423 on GF) | 20 (signed) | `EmitBranchOp` @ `0x13a5d3e0`; `EmitImmediate` | CONFIRMED |
-| abs vs rel vs indirect | opcode discriminator | — | distinct proto message / `ScalarOpcode` | CONFIRMED |
-| call dest (return-addr sreg) | `dest` field, bundle `+0x18` (SCS); GF bit 467 | 5 | `EmitCallOp` @ `0x13a5d4c0` | CONFIRMED |
-| call link register (SCS) | `sreg #5` | — | `movq $0x5; GetSregno` @ `0x13a5d560` | CONFIRMED |
-| indirect target (`x()`) | `BranchSreg`/`CallSreg` reg field; GF bit 472 | 6 (GF) | compact ref `x()` accessors | CONFIRMED |
+| Field | Where | Width | Source |
+|---|---|---:|---|
+| branch/call target | immediate slot 0 (bit 423 on GF) | 20 (signed) | `EmitBranchOp` @ `0x13a5d3e0`; `EmitImmediate` |
+| abs vs rel vs indirect | opcode discriminator | — | distinct proto message / `ScalarOpcode` |
+| call dest (return-addr sreg) | `dest` field, bundle `+0x18` (SCS); GF bit 467 | 5 | `EmitCallOp` @ `0x13a5d4c0` |
+| call link register (SCS) | `sreg #5` | — | `movq $0x5; GetSregno` @ `0x13a5d560` |
+| indirect target (`x()`) | `BranchSreg`/`CallSreg` reg field; GF bit 472 | 6 (GF) | compact ref `x()` accessors |
 
 > **GOTCHA — the branch target does not live in the sequencer slot bytes.** Both abs and rel write a 20-bit value into a *shared immediate slot* (slot 0) of the bundle, and only an opcode bit in the sequencer slot says how to interpret it. A decoder that searches the sequencer-slot byte window for a 20-bit offset finds nothing; the offset is in the bundle's immediate region. This is the same immediate slot the sync ops reuse for the sflag id/threshold.
 
@@ -158,14 +158,14 @@ BitCopy(slot, 472, x_reg, 6);          // 6-bit operand / 2nd-source field
 
 The four immediate branch/call discriminators are field-identical except for the LOW value; the register-indirect forms (`BranchSreg`/`CallSreg`) instead carry their opcode in the **HIGH** field. A call's return-address sreg lands in a **5-bit field at bit 467** and the indirect target / link-source sreg in the **6-bit field at bit 472**:
 
-| Op | `oneof` case | opcode-HIGH @483 (w6) | opcode-LOW @478 (w5) | Encoder | Confidence |
-|---|---:|---:|---:|---|---|
-| `BranchAbsolute` | 62 | 0 | **4** | `0x1f87f5c0` | CONFIRMED |
-| `BranchRelative` | 63 | 0 | **5** | `0x1f87f660` | CONFIRMED |
-| `CallAbsolute` | 65 | 0 | **6** | `0x1f87f7e0` | CONFIRMED |
-| `CallRelative` | 66 | 0 | **7** | `0x1f87f8e0` | CONFIRMED |
-| `BranchSreg` | 64 | **4** | (x at 472, dest n/a) | `0x1f87f700` | CONFIRMED |
-| `CallSreg` | 67 | **5** | (x at 472, dest at 467) | `0x1f87f9e0` | CONFIRMED |
+| Op | `oneof` case | opcode-HIGH @483 (w6) | opcode-LOW @478 (w5) | Encoder |
+|---|---:|---:|---:|---|
+| `BranchAbsolute` | 62 | 0 | **4** | `0x1f87f5c0` |
+| `BranchRelative` | 63 | 0 | **5** | `0x1f87f660` |
+| `CallAbsolute` | 65 | 0 | **6** | `0x1f87f7e0` |
+| `CallRelative` | 66 | 0 | **7** | `0x1f87f8e0` |
+| `BranchSreg` | 64 | **4** | (x at 472, dest n/a) | `0x1f87f700` |
+| `CallSreg` | 67 | **5** | (x at 472, dest at 467) | `0x1f87f9e0` |
 
 `CallAbsolute`/`CallRelative` additionally write the return-address sreg into a **5-bit field at bit 467** (`BitCopy(slot, 467, dest, 5)`) and the call-target / link-source sreg into the 6-bit field at bit 472 — confirming the SCS-path return-address mechanism is present byte-for-byte on the TensorCore lane too. The opcode-HIGH `0` family is shared by the non-control sequencer ops as well (`ScalarFence` LOW=0, `Delay` LOW=3, `SetTag` LOW=8, `ReadRegisterLccLow` LOW=10), so the LOW discriminator alone identifies a branch/call only within the HIGH=0 family. This map matches [Bundle GF §Sequencer Slot](bundle-gf.md#sequencer-slot-and-the-20-bit-branch-offset).
 

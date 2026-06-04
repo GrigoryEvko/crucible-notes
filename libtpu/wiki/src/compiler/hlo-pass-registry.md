@@ -304,19 +304,19 @@ CreateHloPipeline (0x1093efe0)                 ── allocates the top HloPassP
 
 ## Confidence Summary
 
-| Claim | Evidence | Confidence |
-|---|---|---|
-| `HloPassPipeline::RunPassesInternal` is the HLO driver | decompiled `0x1c83ddc0`, source `hlo_pass_pipeline.cc` | CONFIRMED |
-| Passes/checkers share `HloPassInterface::Run` (`StatusOr<bool>`) | both `RunPassesInternal` and `RunInvariantCheckers` call `xla::HloPassInterface::Run` | CONFIRMED |
-| Two lists: `passes_`(+40/+48), `invariant_checkers_`(+56/+64), `run_called_`(+80) | offsets read by driver/`GetEnabledPasses`/`AddInvariantChecker` | CONFIRMED |
-| `AddInvariantChecker` `CHECK`-fails after `Run` | FATAL `"!run_called_"` @ `hlo_pass_pipeline.h:76` in `0x109459a0`, `0x1306d420` | CONFIRMED |
-| Three TPU checkers: `HloVerifier(TargetVerifierMetadata)`, `HloCycleDetection`, `LegalizeSchedulingAnnotations` | `AddInvariantChecker<…>` instantiations at the listed VAs | CONFIRMED |
-| `GetEnabledPasses` filters on `xla_disable_hlo_passes`/`xla_enable_hlo_passes_only`, mutually exclusive | decompiled `0x1c83d0a0`, byte strings `cc:238/243/247/251/256` | CONFIRMED |
-| Driver audits change bit vs HLO hash, FATAL on mismatch | `cc:116`/`cc:125` FATAL strings + `AbslHashValue(HloModule)` calls | CONFIRMED |
-| Checkers re-run after every changing pass (not once) | `if changed: RunInvariantCheckers` @ `cc:213` inside the loop | CONFIRMED |
-| `HloPassFix<HloPassPipeline>` re-runs a sub-pipeline to fixpoint | `RunToFixPoint` `0x10955dc0` + leaf-pass `HloPassFix` instances | CONFIRMED |
-| Crash-on-non-convergence flag for `HloPassFix` | flag string not located in sampled strings | LOW |
-| Builders are the only `AddPass`/`AddInvariantChecker` callers; per-compile instantiation | `CreateHloPipeline`/`MaybeAddInvariantCheckers` call structure | HIGH |
+| Claim | Evidence |
+|---|---|
+| `HloPassPipeline::RunPassesInternal` is the HLO driver | decompiled `0x1c83ddc0`, source `hlo_pass_pipeline.cc` |
+| Passes/checkers share `HloPassInterface::Run` (`StatusOr<bool>`) | both `RunPassesInternal` and `RunInvariantCheckers` call `xla::HloPassInterface::Run` |
+| Two lists: `passes_`(+40/+48), `invariant_checkers_`(+56/+64), `run_called_`(+80) | offsets read by driver/`GetEnabledPasses`/`AddInvariantChecker` |
+| `AddInvariantChecker` `CHECK`-fails after `Run` | FATAL `"!run_called_"` @ `hlo_pass_pipeline.h:76` in `0x109459a0`, `0x1306d420` |
+| Three TPU checkers: `HloVerifier(TargetVerifierMetadata)`, `HloCycleDetection`, `LegalizeSchedulingAnnotations` | `AddInvariantChecker<…>` instantiations at the listed VAs |
+| `GetEnabledPasses` filters on `xla_disable_hlo_passes`/`xla_enable_hlo_passes_only`, mutually exclusive | decompiled `0x1c83d0a0`, byte strings `cc:238/243/247/251/256` |
+| Driver audits change bit vs HLO hash, FATAL on mismatch | `cc:116`/`cc:125` FATAL strings + `AbslHashValue(HloModule)` calls |
+| Checkers re-run after every changing pass (not once) | `if changed: RunInvariantCheckers` @ `cc:213` inside the loop |
+| `HloPassFix<HloPassPipeline>` re-runs a sub-pipeline to fixpoint | `RunToFixPoint` `0x10955dc0` + leaf-pass `HloPassFix` instances |
+| Crash-on-non-convergence flag for `HloPassFix` | flag string not located in sampled strings |
+| Builders are the only `AddPass`/`AddInvariantChecker` callers; per-compile instantiation | `CreateHloPipeline`/`MaybeAddInvariantCheckers` call structure |
 
 ---
 

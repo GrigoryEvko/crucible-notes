@@ -122,21 +122,21 @@ The per-lane vector mask is independent of instruction-level predication. The la
 
 ### TABLE A — the vector-mask field `@bit0x104` (5b)
 
-| Property | Value | Confidence |
-|---|---|---|
-| Bundle bits | `bit0x104..0x108` (5 bits) | CONFIRMED |
-| Semantics | index naming one of 32 M-registers `M0..M31` (not a bitmask, not a count) | CONFIRMED |
-| Getter | `GetVectorMask<glc::isa::SparsecoreVectorMask>` `@0x13a33320` (Ghostlite; == `<glc::isa::SparsecoreVmask>` `@0x13a2d900`) | CONFIRMED |
-| Operand-kind check | `MCOperand.isReg()` (`isa_emitter_base.h:555`) | CONFIRMED |
-| Register band | `[0x5f, 0x7e]` = `M0..M31` (asserts `:557 / :558`) | CONFIRMED |
-| Encoded value | `regid − 0x5f` ∈ `[0,0x1f]` | CONFIRMED |
-| Mask source operand | `MCInst` operand[1] | CONFIRMED |
-| Scan-family proto | value `+0x38`, present `+0x11 & 0x1` | CONFIRMED |
-| Sort-family proto | value `+0x3c`, present `+0x11 & 0x2` | CONFIRMED |
-| Presence | always attached by the emit body (every VEX op is masked) | CONFIRMED |
-| Mask-write band | `GetVMDestregno` `@0x13a65b20` → `[0x5f, 0x6e]` = `M0..M15` (16) | CONFIRMED |
-| Inactive-lane output (zero/preserve/skip) | gated out, contributes reduction identity, no write | INFERRED |
-| Orthogonal to | whole-op predication (`EmitPredicationToSlot` `@0x13a4a160`, last operand) | CONFIRMED |
+| Property | Value |
+|---|---|
+| Bundle bits | `bit0x104..0x108` (5 bits) |
+| Semantics | index naming one of 32 M-registers `M0..M31` (not a bitmask, not a count) |
+| Getter | `GetVectorMask<glc::isa::SparsecoreVectorMask>` `@0x13a33320` (Ghostlite; == `<glc::isa::SparsecoreVmask>` `@0x13a2d900`) |
+| Operand-kind check | `MCOperand.isReg()` (`isa_emitter_base.h:555`) |
+| Register band | `[0x5f, 0x7e]` = `M0..M31` (asserts `:557 / :558`) |
+| Encoded value | `regid − 0x5f` ∈ `[0,0x1f]` |
+| Mask source operand | `MCInst` operand[1] |
+| Scan-family proto | value `+0x38`, present `+0x11 & 0x1` |
+| Sort-family proto | value `+0x3c`, present `+0x11 & 0x2` |
+| Presence | always attached by the emit body (every VEX op is masked) |
+| Mask-write band | `GetVMDestregno` `@0x13a65b20` → `[0x5f, 0x6e]` = `M0..M15` (16) |
+| Inactive-lane output (zero/preserve/skip) | gated out, contributes reduction identity, no write |
+| Orthogonal to | whole-op predication (`EmitPredicationToSlot` `@0x13a4a160`, last operand) |
 
 ---
 
@@ -206,23 +206,23 @@ The emit body `EmitVectorSort<...Sort>` `@0x13a4a3a0` fills proto `+0x18` and `+
 
 TABLE B-1 — cases of the `bit0x10c` field (the `VectorExtended`-slot dest read-port):
 
-| Op family | proto `+0x18` source → `bit0x10c` | Extra fields | Confidence |
-|---|---|---|---|
-| Pure scan (`AddScan`/`MinScan`/`MaxScan`/index-scans/`Segmented*`/`DuplicateCount`/`Uniquify`) | not written — field absent; result via `PopXrf` (`EmitXrfResultOp` `@0x13a14180`) | — | CONFIRMED |
-| `Sort` (asc/desc × int/float) | first source's **allocated read-port** (`FindAndEmitToUnusedPort<Sort>`) | second source's port → `+0x1c` → `bit0x109` (3b, present `+0x10 & 0x2`) | CONFIRMED |
+| Op family | proto `+0x18` source → `bit0x10c` | Extra fields |
+|---|---|---|
+| Pure scan (`AddScan`/`MinScan`/`MaxScan`/index-scans/`Segmented*`/`DuplicateCount`/`Uniquify`) | not written — field absent; result via `PopXrf` (`EmitXrfResultOp` `@0x13a14180`) | — |
+| `Sort` (asc/desc × int/float) | first source's **allocated read-port** (`FindAndEmitToUnusedPort<Sort>`) | second source's port → `+0x1c` → `bit0x109` (3b, present `+0x10 & 0x2`) |
 
 TABLE B-2 — `VresMove` shares the proto offsets but is a separate `VectorResult`-slot op (NOT `bit0x10c`):
 
-| Op | proto slot | bundle bit | width | source | Confidence |
-|---|---|---|---|---|---|
-| `VresMove` (oneof tag `13`) dest vreg | `+0x18` (present `+0x10 & 0x1`) | `245` | 6b | operand[0] (`GetVregno` `@0x13a659c0`) | CONFIRMED |
-| `VresMove` source read-port | `+0x1c` (present `+0x10 & 0x2`) | `235` | 3b | `FindAndEmitToUnusedPort<...VresMove>` | CONFIRMED |
-| `VresMove` slot opcode | — | `252` | 3b | constant `7` | CONFIRMED |
+| Op | proto slot | bundle bit | width | source |
+|---|---|---|---|---|
+| `VresMove` (oneof tag `13`) dest vreg | `+0x18` (present `+0x10 & 0x1`) | `245` | 6b | operand[0] (`GetVregno` `@0x13a659c0`) |
+| `VresMove` source read-port | `+0x1c` (present `+0x10 & 0x2`) | `235` | 3b | `FindAndEmitToUnusedPort<...VresMove>` |
+| `VresMove` slot opcode | — | `252` | 3b | constant `7` |
 
-| Field | Bits | proto | Present | Range | Confidence |
-|---|---|---|---|---|---|
-| Dest read-port 1 (`VectorExtended`) | `bit0x10c..0x10e` (3b) | `+0x18` | `+0x10 & 0x1` | 0..6 | CONFIRMED |
-| Dest read-port 2 (Sort) | `bit0x109..0x10b` (3b) | `+0x1c` | `+0x10 & 0x2` | 0..6 | CONFIRMED |
+| Field | Bits | proto | Present | Range |
+|---|---|---|---|---|
+| Dest read-port 1 (`VectorExtended`) | `bit0x10c..0x10e` (3b) | `+0x18` | `+0x10 & 0x1` | 0..6 |
+| Dest read-port 2 (Sort) | `bit0x109..0x10b` (3b) | `+0x1c` | `+0x10 & 0x2` | 0..6 |
 
 > **NOTE — `bit0x10c` ≠ the PopXrf write-group, even though both are at proto `+0x18`.** The dest read-port lives in the `VectorExtended` / `VectorResult` submessage and names which inline read-port carries the result for write-back. The PopXrf XRF write-group lives in the PopXrf submessage and names which XRF partition the out-of-line scan result commits to. They are distinct fields reached by distinct opcodes; do not conflate them.
 

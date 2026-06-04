@@ -44,14 +44,14 @@ Every cross-lane op that the conflict model prices is first reduced to one of si
 
 `XluInstrTypeToString` @ `0x1c8a16a0` emits the literal name for each value by inline `strcpy` (the first five) or a `.rodata` reference (the sixth, 25 chars @ `0x84ddb81`). The string lengths are written alongside, so the names are byte-exact:
 
-| value | name | width / family | `IsPacked`? | Confidence |
-|---|---|---|---|---|
-| 0 | `kReduceB32` | 32-bit cross-lane reduce | no | CONFIRMED |
-| 1 | `kReduceB16` | 16-bit cross-lane reduce | **yes** | CONFIRMED |
-| 2 | `kTransposeB32` | 32-bit transpose | no | CONFIRMED |
-| 3 | `kTransposeB16` | bf16-packed transpose | **yes** | CONFIRMED |
-| 4 | `kTransposeB8` | 8-bit-packed transpose | **yes** | CONFIRMED |
-| 5 | `kPermuteRotateOrBroadcast` | permute / rotate / broadcast-lane | no | CONFIRMED |
+| value | name | width / family | `IsPacked`? |
+|---|---|---|---|
+| 0 | `kReduceB32` | 32-bit cross-lane reduce | no |
+| 1 | `kReduceB16` | 16-bit cross-lane reduce | **yes** |
+| 2 | `kTransposeB32` | 32-bit transpose | no |
+| 3 | `kTransposeB16` | bf16-packed transpose | **yes** |
+| 4 | `kTransposeB8` | 8-bit-packed transpose | **yes** |
+| 5 | `kPermuteRotateOrBroadcast` | permute / rotate / broadcast-lane | no |
 
 The `B32`/`B16`/`B8` suffix is the element-width packing. The three **packed** variants `{1, 3, 4}` are the ones `IsPacked` (below) flags; the `B32` (and permute) types are unpacked.
 
@@ -165,14 +165,14 @@ All values below are the **raw `Set` arguments** (the table stores `value + 1`; 
 
 18 explicit `Set` calls (the propagating override auto-fills the `B16` siblings). Viperfish exercises all three `vxpose` modes:
 
-| from | to | vx=0 | vx=1 | vx=2 | Confidence |
-|---|---|---:|---:|---:|---|
-| `kReduceB32` | `kTransposeB32` | 40 | 57 | 40 | CONFIRMED |
-| `kReduceB32` | `Perm` | 19 | 24 | 23 | CONFIRMED |
-| `Perm` | `kReduceB32` | 41 | 41 | 40 | CONFIRMED |
-| `Perm` | `kTransposeB32` | 33 | 52 | 37 | CONFIRMED |
-| `kTransposeB32` | `kReduceB32` | 105 | 88 | 105 | CONFIRMED |
-| `kTransposeB32` | `Perm` | 102 | 82 | 97 | CONFIRMED |
+| from | to | vx=0 | vx=1 | vx=2 |
+|---|---|---:|---:|---:|
+| `kReduceB32` | `kTransposeB32` | 40 | 57 | 40 |
+| `kReduceB32` | `Perm` | 19 | 24 | 23 |
+| `Perm` | `kReduceB32` | 41 | 41 | 40 |
+| `Perm` | `kTransposeB32` | 33 | 52 | 37 |
+| `kTransposeB32` | `kReduceB32` | 105 | 88 | 105 |
+| `kTransposeB32` | `Perm` | 102 | 82 | 97 |
 
 The `B16` siblings of these rows/columns (`kReduceB16`, `kTransposeB16`) are filled at ctor time by propagation with the **same** values — e.g. `kReduceB16 → kTransposeB16` carries the same `40/57/40` as `kReduceB32 → kTransposeB32`.
 
@@ -180,13 +180,13 @@ The `B16` siblings of these rows/columns (`kReduceB16`, `kTransposeB16`) are fil
 
 10 explicit `Set` calls — 5 distinct `(from, to)` pairs, each installed at `vxpose 0` and `vxpose 1` with **identical** values (Pufferfish duplicates across the two modes rather than varying them):
 
-| from | to | vx=0 | vx=1 | Confidence |
-|---|---|---:|---:|---|
-| `kReduceB32` | `kTransposeB32` | 56 | 56 | CONFIRMED |
-| `Perm` | `kTransposeB32` | 46 | 46 | CONFIRMED |
-| `kReduceB32` | `Perm` | 17 | 17 | CONFIRMED |
-| `kTransposeB32` | `Perm` | 96 | 96 | CONFIRMED |
-| `kTransposeB32` | `kReduceB32` | 86 | 86 | CONFIRMED |
+| from | to | vx=0 | vx=1 |
+|---|---|---:|---:|
+| `kReduceB32` | `kTransposeB32` | 56 | 56 |
+| `Perm` | `kTransposeB32` | 46 | 46 |
+| `kReduceB32` | `Perm` | 17 | 17 |
+| `kTransposeB32` | `Perm` | 96 | 96 |
+| `kTransposeB32` | `kReduceB32` | 86 | 86 |
 
 > **NOTE —** The PF ctor (`@0x1c8a1960`) makes **10** `SetXluConflictPenaltyBetween` calls, including an explicit `(2, 0, 1, 86)` — so the `kTransposeB32 → kReduceB32` cell is set to 86 on **both** `vxpose` planes. The PF matrix is fully symmetric across `vxpose 0/1`.
 
@@ -194,35 +194,35 @@ The `B16` siblings of these rows/columns (`kReduceB16`, `kTransposeB16`) are fil
 
 56 explicit base `Set` calls covering 27 distinct `(from, to)` pairs (the non-propagating path sets the packed rows/columns directly). The full matrix:
 
-| from | to | vx=0 | vx=1 | Confidence |
-|---|---|---:|---:|---|
-| `kReduceB32` | `kTransposeB32` | 44 | 50 | CONFIRMED |
-| `kReduceB32` | `kTransposeB16` | 44 | 44 | CONFIRMED |
-| `kReduceB32` | `kTransposeB8` | 36 | 32 | CONFIRMED |
-| `kReduceB32` | `Perm` | 21 | 16 | CONFIRMED |
-| `kReduceB16` | `kTransposeB32` | 48 | 54 | CONFIRMED |
-| `kReduceB16` | `kTransposeB16` | 48 | 48 | CONFIRMED |
-| `kReduceB16` | `Perm` | 25 | 20 | CONFIRMED |
-| `kTransposeB32` | `kReduceB32` | 44 | 38 | CONFIRMED |
-| `kTransposeB32` | `kReduceB16` | 44 | 38 | CONFIRMED |
-| `kTransposeB32` | `kTransposeB16` | 35 | 29 | CONFIRMED |
-| `kTransposeB32` | `kTransposeB8` | 39 | 29 | CONFIRMED |
-| `kTransposeB32` | `Perm` | 40 | 29 | CONFIRMED |
-| `kTransposeB16` | `kReduceB32` | 12 | 12 | CONFIRMED |
-| `kTransposeB16` | `kReduceB16` | 12 | 12 | CONFIRMED |
-| `kTransposeB16` | `kTransposeB32` | 3 | 9 | CONFIRMED |
-| `kTransposeB16` | `kTransposeB8` | 7 | 3 | CONFIRMED |
-| `kTransposeB16` | `Perm` | 8 | 3 | CONFIRMED |
-| `kTransposeB8` | `kReduceB32` | 16 | 20 | CONFIRMED |
-| `kTransposeB8` | `kReduceB16` | 16 | 20 | CONFIRMED |
-| `kTransposeB8` | `kTransposeB32` | 15 | 25 | CONFIRMED |
-| `kTransposeB8` | `kTransposeB16` | 15 | 19 | CONFIRMED |
-| `kTransposeB8` | `Perm` | 4 | 3 | CONFIRMED |
-| `Perm` | `kReduceB32` | 30 | 35 | CONFIRMED |
-| `Perm` | `kReduceB16` | 30 | 35 | CONFIRMED |
-| `Perm` | `kTransposeB32` | 29 | 40 | CONFIRMED |
-| `Perm` | `kTransposeB16` | 29 | 34 | CONFIRMED |
-| `Perm` | `kTransposeB8` | 17 | 18 | CONFIRMED |
+| from | to | vx=0 | vx=1 |
+|---|---|---:|---:|
+| `kReduceB32` | `kTransposeB32` | 44 | 50 |
+| `kReduceB32` | `kTransposeB16` | 44 | 44 |
+| `kReduceB32` | `kTransposeB8` | 36 | 32 |
+| `kReduceB32` | `Perm` | 21 | 16 |
+| `kReduceB16` | `kTransposeB32` | 48 | 54 |
+| `kReduceB16` | `kTransposeB16` | 48 | 48 |
+| `kReduceB16` | `Perm` | 25 | 20 |
+| `kTransposeB32` | `kReduceB32` | 44 | 38 |
+| `kTransposeB32` | `kReduceB16` | 44 | 38 |
+| `kTransposeB32` | `kTransposeB16` | 35 | 29 |
+| `kTransposeB32` | `kTransposeB8` | 39 | 29 |
+| `kTransposeB32` | `Perm` | 40 | 29 |
+| `kTransposeB16` | `kReduceB32` | 12 | 12 |
+| `kTransposeB16` | `kReduceB16` | 12 | 12 |
+| `kTransposeB16` | `kTransposeB32` | 3 | 9 |
+| `kTransposeB16` | `kTransposeB8` | 7 | 3 |
+| `kTransposeB16` | `Perm` | 8 | 3 |
+| `kTransposeB8` | `kReduceB32` | 16 | 20 |
+| `kTransposeB8` | `kReduceB16` | 16 | 20 |
+| `kTransposeB8` | `kTransposeB32` | 15 | 25 |
+| `kTransposeB8` | `kTransposeB16` | 15 | 19 |
+| `kTransposeB8` | `Perm` | 4 | 3 |
+| `Perm` | `kReduceB32` | 30 | 35 |
+| `Perm` | `kReduceB16` | 30 | 35 |
+| `Perm` | `kTransposeB32` | 29 | 40 |
+| `Perm` | `kTransposeB16` | 29 | 34 |
+| `Perm` | `kTransposeB8` | 17 | 18 |
 
 > **GOTCHA —** The `kReduceB32 → kTransposeB8` pair is installed **twice** in the GL ctor: first `(0, 4, 0, 32)` / `(0, 4, 1, 28)`, then `(0, 4, 0, 36)` / `(0, 4, 1, 32)`. The second write wins, so the live stored values are **36 / 32** (raw), not the first pair's 32 / 28. A reader who stops at the first install of this cell records the wrong penalty.
 
@@ -299,12 +299,12 @@ So the XLU conflict penalty is charged when two cross-lane ops on the **same MXU
 
 The gating helpers (all byte-confirmed):
 
-| Helper | Address | Gate | Confidence |
-|---|---|---|---|
-| `HasSetPermutePatternReservation` | `0x1c89fe00` | one of A/B is `kVectorSetPermutePattern` (`0x8b`), `LloInstructionPushesToXluFifos`, same unit id | CONFIRMED |
-| `ArePushesToSameXluFifo` | `0x1c8a05a0` | both `LloInstructionPushesToXluFifos`, same unit id | CONFIRMED |
-| `IsFinalTransposeFollowedByResult` | `0x1c8a0500` | A is a final-in-sequence transpose feeding B's result | HIGH |
-| `GetXluPathReservation` (VF) | `0x1c8a3200` | op `0x8b` → `1` (or `8` if field `+0x40` set); else `ViperfishPerformance::GetResourceUsage(instr, 14)` | CONFIRMED |
+| Helper | Address | Gate |
+|---|---|---|
+| `HasSetPermutePatternReservation` | `0x1c89fe00` | one of A/B is `kVectorSetPermutePattern` (`0x8b`), `LloInstructionPushesToXluFifos`, same unit id |
+| `ArePushesToSameXluFifo` | `0x1c8a05a0` | both `LloInstructionPushesToXluFifos`, same unit id |
+| `IsFinalTransposeFollowedByResult` | `0x1c8a0500` | A is a final-in-sequence transpose feeding B's result |
+| `GetXluPathReservation` (VF) | `0x1c8a3200` | op `0x8b` → `1` (or `8` if field `+0x40` set); else `ViperfishPerformance::GetResourceUsage(instr, 14)` |
 
 > **NOTE —** `GetXluPathReservation` (`@0x1c8a3200`) special-cases op `0x8b` (`kVectorSetPermutePattern`): it returns `1`, or `8` when the field at `+0x40` is nonzero; every other op returns `ViperfishPerformance::GetResourceUsage(instr, /*resource=*/14)`. The `0x8b` branch also runs a soft `LloCheckForFailure` that the opcode is `kVectorSetPermutePattern`.
 

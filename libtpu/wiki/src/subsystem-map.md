@@ -34,17 +34,17 @@ For navigation, the contract of this page is:
 
 The nine functional subsystems, each pinned to its headline entry point, its rough `.text` band, and the wiki Part that owns it. Confidence reflects how directly the entry point and boundary were observed in the binary, not the maturity of the owning Part.
 
-| Subsystem | Job | Main entry point (addr) | Address band | Owning Part | Confidence |
-|---|---|---|---|---|---|
-| **PJRT plugin surface** | Framework-facing C ABI: client/device/buffer/executable/event, 140-slot `PJRT_Api` + extension chain | `GetPjrtApi` @ `0xe6a83a0` → `GetTpuPjrtApi` @ `0xe6aa440` → `CreatePjrtApi` @ `0xf874160` | `0xe6a…`–`0xf87…` (low `.text`) | [`pjrt/`](pjrt/overview.md) | CERTAIN |
-| **TfTpu C-API shim** | Internal C ABI between plugin and implementation; per-class roster of function pointers | `TfTpu_Initialize` @ `0xe6f54a0` | `0xe6f…`–`0xe8d…` | [`shim/`](shim/overview.md) | HIGH |
-| **XLA→TPU compiler** | HLO → MHLO → Mosaic/`tpu` dialect → LLO → bundles; the pass pipeline | compiler pass registry / `RunHloPasses` driver (mid-`.text`) | `0x10e…`–`0x1c0…` (broad middle) | [`compiler/`](compiler/overview.md) | HIGH |
-| **Per-gen ISA + encoders** | TensorCore / SparseCore / BarnaCore instruction emitters; LLO → bundle bytes | `tpu::TpuCodec::Create(TpuVersion)` @ `0x1e835fa0` | `0x1e8…`–`0x20f…` | [`isa/`](isa/overview.md) | HIGH |
-| **Cost model + schedulers** | Per-gen latency tables, `LatencyHidingScheduler`, MSA (memory-space assignment) | `XlaTpuMemorySpaceAssignment*` knobs; LHS / MSA drivers | `0x14…`–`0x1d…` (interleaved) | [`cost/`](cost/overview.md), [`sched/`](sched/overview.md) | MEDIUM |
-| **Runtime** | Executable load/execute, streams, infeed/outfeed, allocators, completion loop | PJRT `Execute` → stream-executor adapter (low-mid `.text`) | `0xf8…`–`0x13…` | [`runtime/`](runtime/overview.md) | HIGH |
-| **Collectives + network** | ICI fabric, Megascale control plane, route-table generation | ICI/Megascale slice-config factories | `0x130…`–`0x1f8…` (upper `.text`) | [`collectives/`](collectives/overview.md), [`ici/`](ici/overview.md), [`megascale/`](megascale/overview.md), [`routing/`](routing/overview.md) | MEDIUM |
-| **Profiling** | Per-core trace codec → XPlane/XStat → XSpace; TraceMe | `xprof::tpu::GetTraceCodec` @ `0xf5a2900` | `0xf3…`–`0xf5…` (trace factories) | [`profiling/`](profiling/overview.md) | HIGH |
-| **Memory** | HBM / VMEM / SMEM / CMEM / SFLAG pools and allocators; embedded tcmalloc | HBM allocator + tcmalloc (`MallocExtension_Internal_*` @ `0xe639600`) | `0xe63…` (tcmalloc) + per-pool sites | [`memory/`](memory/overview.md) | MEDIUM |
+| Subsystem | Job | Main entry point (addr) | Address band | Owning Part |
+|---|---|---|---|---|
+| **PJRT plugin surface** | Framework-facing C ABI: client/device/buffer/executable/event, 140-slot `PJRT_Api` + extension chain | `GetPjrtApi` @ `0xe6a83a0` → `GetTpuPjrtApi` @ `0xe6aa440` → `CreatePjrtApi` @ `0xf874160` | `0xe6a…`–`0xf87…` (low `.text`) | [`pjrt/`](pjrt/overview.md) |
+| **TfTpu C-API shim** | Internal C ABI between plugin and implementation; per-class roster of function pointers | `TfTpu_Initialize` @ `0xe6f54a0` | `0xe6f…`–`0xe8d…` | [`shim/`](shim/overview.md) |
+| **XLA→TPU compiler** | HLO → MHLO → Mosaic/`tpu` dialect → LLO → bundles; the pass pipeline | compiler pass registry / `RunHloPasses` driver (mid-`.text`) | `0x10e…`–`0x1c0…` (broad middle) | [`compiler/`](compiler/overview.md) |
+| **Per-gen ISA + encoders** | TensorCore / SparseCore / BarnaCore instruction emitters; LLO → bundle bytes | `tpu::TpuCodec::Create(TpuVersion)` @ `0x1e835fa0` | `0x1e8…`–`0x20f…` | [`isa/`](isa/overview.md) |
+| **Cost model + schedulers** | Per-gen latency tables, `LatencyHidingScheduler`, MSA (memory-space assignment) | `XlaTpuMemorySpaceAssignment*` knobs; LHS / MSA drivers | `0x14…`–`0x1d…` (interleaved) | [`cost/`](cost/overview.md), [`sched/`](sched/overview.md) |
+| **Runtime** | Executable load/execute, streams, infeed/outfeed, allocators, completion loop | PJRT `Execute` → stream-executor adapter (low-mid `.text`) | `0xf8…`–`0x13…` | [`runtime/`](runtime/overview.md) |
+| **Collectives + network** | ICI fabric, Megascale control plane, route-table generation | ICI/Megascale slice-config factories | `0x130…`–`0x1f8…` (upper `.text`) | [`collectives/`](collectives/overview.md), [`ici/`](ici/overview.md), [`megascale/`](megascale/overview.md), [`routing/`](routing/overview.md) |
+| **Profiling** | Per-core trace codec → XPlane/XStat → XSpace; TraceMe | `xprof::tpu::GetTraceCodec` @ `0xf5a2900` | `0xf3…`–`0xf5…` (trace factories) | [`profiling/`](profiling/overview.md) |
+| **Memory** | HBM / VMEM / SMEM / CMEM / SFLAG pools and allocators; embedded tcmalloc | HBM allocator + tcmalloc (`MallocExtension_Internal_*` @ `0xe639600`) | `0xe63…` (tcmalloc) + per-pool sites | [`memory/`](memory/overview.md) |
 
 > **NOTE —** the bands overlap because the binary is not partitioned by subsystem at link time. A band is the *center of mass* of a subsystem's code, useful for attributing an arbitrary address to a probable owner; it is not a hard boundary. When in doubt, resolve the symbol and read its owning Part. The [forensics](forensics/overview.md) Part documents how the bands were derived.
 

@@ -354,26 +354,26 @@ Then per scheme (toroidal-route-cache.md CacheRead):  skey = RotateId(src); dkey
 
 ## 7. Function & data map
 
-| Symbol | Address | Role | Confidence |
-|---|---|---|---|
-| `ToroidalRouteCache::DecodePathFromBits` | `0x20b5c5a0` | type-2 bit-stream decoder (584 lines) | HIGH |
-| `BitDecoder::GetVarInt` | `0x20b5cfa0` | self-delimiting varint reader (chunk=4 in route cache) | HIGH |
-| `BitDecoder::GetGamma` | `0x21073160` | Elias-gamma reader (Initialize self-test only) | HIGH |
-| `BitDecoder::GetBits64NoInline` | `0x21073760` | fixed n-bit reader (profiler) | HIGH |
-| `BitDecoder::SkipBitsNoInline` | `0x21073580` | advance n bits (profiler) | HIGH |
-| `BitEncoder::Initialize` | `0x21072d40` | gamma-table builder + encode/decode self-test (writer witness) | HIGH |
-| `Encoder::~Encoder` | `0x21073980` | byte-buffer dtor (`CHECK buf_ <= limit_`) | HIGH |
-| `BitEncoder::mask_` | `0xbe79440` | 65-qword `(1<<k)-1` table (.rodata) | HIGH |
-| `BitEncoder::gamma_` | `0x22593d00` | 256-uint32 runtime gamma table (.bss) | HIGH |
-| inferred path packer | — | `PutVarInt(4,n)`+`PutBits(2)/(1)`+`Flush` inverse | HIGH format / LOW policy |
-| `TopologyRotationHelper::Create` | `0x20bf2380` | builds actual+canonical Topology + orient list | HIGH |
-| `TopologyRotationHelper::RotateId` | `0x20bf3020` | id→coord→permute→id chip-key remap | HIGH |
-| `TopologyRotationHelper::RotateCoordinates` | `0x20bf2f00` | axis-gather of a coordinate vector | HIGH |
-| `TopologyRotationHelper::RotateOrientation` | `0x20bf3180` | inverse axis-label permutation (`wmemchr`) | HIGH |
-| `PermuteVector<int>` / `<bool>` | `0x20bf2900` / `0x20bf2c60` | `out[k]=in[orient[k]-1]` gather | HIGH |
-| `Direction::OrientationToDimension` | `0x20c027c0` | `o-1` (UNKNOWN → error) | HIGH |
-| `Direction::DimensionToOrientation` | `0x20c02700` | `d+1`, d∈[0,5] | HIGH |
-| `proto::Direction` ctor / vtable | `0x20c0ad60` / `0x22019600` | 0x20-byte hop element (orient+0x18, polarity+0x1c) | HIGH |
+| Symbol | Address | Role |
+|---|---|---|
+| `ToroidalRouteCache::DecodePathFromBits` | `0x20b5c5a0` | type-2 bit-stream decoder (584 lines) |
+| `BitDecoder::GetVarInt` | `0x20b5cfa0` | self-delimiting varint reader (chunk=4 in route cache) |
+| `BitDecoder::GetGamma` | `0x21073160` | Elias-gamma reader (Initialize self-test only) |
+| `BitDecoder::GetBits64NoInline` | `0x21073760` | fixed n-bit reader (profiler) |
+| `BitDecoder::SkipBitsNoInline` | `0x21073580` | advance n bits (profiler) |
+| `BitEncoder::Initialize` | `0x21072d40` | gamma-table builder + encode/decode self-test (writer witness) |
+| `Encoder::~Encoder` | `0x21073980` | byte-buffer dtor (`CHECK buf_ <= limit_`) |
+| `BitEncoder::mask_` | `0xbe79440` | 65-qword `(1<<k)-1` table (.rodata) |
+| `BitEncoder::gamma_` | `0x22593d00` | 256-uint32 runtime gamma table (.bss) |
+| inferred path packer | — | `PutVarInt(4,n)`+`PutBits(2)/(1)`+`Flush` inverse |
+| `TopologyRotationHelper::Create` | `0x20bf2380` | builds actual+canonical Topology + orient list |
+| `TopologyRotationHelper::RotateId` | `0x20bf3020` | id→coord→permute→id chip-key remap |
+| `TopologyRotationHelper::RotateCoordinates` | `0x20bf2f00` | axis-gather of a coordinate vector |
+| `TopologyRotationHelper::RotateOrientation` | `0x20bf3180` | inverse axis-label permutation (`wmemchr`) |
+| `PermuteVector<int>` / `<bool>` | `0x20bf2900` / `0x20bf2c60` | `out[k]=in[orient[k]-1]` gather |
+| `Direction::OrientationToDimension` | `0x20c027c0` | `o-1` (UNKNOWN → error) |
+| `Direction::DimensionToOrientation` | `0x20c02700` | `d+1`, d∈[0,5] |
+| `proto::Direction` ctor / vtable | `0x20c0ad60` / `0x22019600` | 0x20-byte hop element (orient+0x18, polarity+0x1c) |
 
 ---
 

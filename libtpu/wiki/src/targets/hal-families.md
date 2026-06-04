@@ -56,14 +56,14 @@ Each module is an internal-linkage (`_ZL44...`) static initializer that allocate
 
 The platform argument is `TpuPlatformType::kHardware` (0) in every call. The version is the second `Register` argument (an immediate). The codenames below are the exact `tpu::TpuVersion::k*` enumerators the source strings spell; the parenthetical external name in the last column is the canonical `TpuVersionToExternalName` (`0x20b3a500`) output, reproduced here only as a reader aid and verified against the [codename matrix](tpu-version-codename-matrix.md). The non-mnemonic codenames (`6acc60406`) and the external names that are *not* in the binary (`Trillium`, `Ironwood`) are kept off this page deliberately — every token here is a literal in `libtpu.so`.
 
-| Init module | Addr | Factory class | TpuVersion | Enum name | Codename (external) | Confidence |
-|---|---|---|---|---|---|---|
-| `google_init_module_tpu_hal_jxc_hardware_impl` (1st `Register`) | 0x213e9d80 | `TpuHalJxcHardwareFactory` | 0 | `kJellyfish` | jellyfish (`TPU v2`) | CERTAIN |
-| `google_init_module_tpu_hal_jxc_hardware_impl` (2nd `Register`) | 0x213e9d80 | `TpuHalJxcHardwareFactory` | 1 | `kDragonfish` | dragonfish (`TPU v3`) | CERTAIN |
-| `google_init_module_tpu_hal_pxc_hardware_impl` | 0x213e9ec0 | `TpuHalPxcHardwareFactory` | 2 | `kPufferfish` | pufferfish (`TPU v4`) | CERTAIN |
-| `google_init_module_tpu_hal_vxc_hardware_impl` | 0x213eed20 | `TpuHalVxcHardwareFactory` | 3 | `kViperfish` | viperfish (`TPU v5`) | CERTAIN |
-| `google_init_module_tpu_hal_glc_hardware_impl` | 0x213eb9e0 | `TpuHalVxcHardwareFactory` | 4 | `kGhostlite` | ghostlite (`TPU v6 lite`) | CERTAIN |
-| `google_init_module_tpu_hal_gfc_hardware_impl` | 0x213e9f60 | `TpuHalVxcHardwareFactory` | 5 | `k6acc60406` | 6acc60406 (`TPU7x`) | CERTAIN |
+| Init module | Addr | Factory class | TpuVersion | Enum name | Codename (external) |
+|---|---|---|---|---|---|
+| `google_init_module_tpu_hal_jxc_hardware_impl` (1st `Register`) | 0x213e9d80 | `TpuHalJxcHardwareFactory` | 0 | `kJellyfish` | jellyfish (`TPU v2`) |
+| `google_init_module_tpu_hal_jxc_hardware_impl` (2nd `Register`) | 0x213e9d80 | `TpuHalJxcHardwareFactory` | 1 | `kDragonfish` | dragonfish (`TPU v3`) |
+| `google_init_module_tpu_hal_pxc_hardware_impl` | 0x213e9ec0 | `TpuHalPxcHardwareFactory` | 2 | `kPufferfish` | pufferfish (`TPU v4`) |
+| `google_init_module_tpu_hal_vxc_hardware_impl` | 0x213eed20 | `TpuHalVxcHardwareFactory` | 3 | `kViperfish` | viperfish (`TPU v5`) |
+| `google_init_module_tpu_hal_glc_hardware_impl` | 0x213eb9e0 | `TpuHalVxcHardwareFactory` | 4 | `kGhostlite` | ghostlite (`TPU v6 lite`) |
+| `google_init_module_tpu_hal_gfc_hardware_impl` | 0x213e9f60 | `TpuHalVxcHardwareFactory` | 5 | `k6acc60406` | 6acc60406 (`TPU7x`) |
 
 Every row was read directly from the decompiled init module: the immediate `Register(0, N, ...)` operand and the `tpu::TpuVersion::k*` token inside the `make_unique<...>` `CHECK` string.
 

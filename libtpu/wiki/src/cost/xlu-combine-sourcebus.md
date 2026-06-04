@@ -196,10 +196,10 @@ Two adjacent XLU ops fuse into one cross-lane operation **iff** all three hold:
 
 ### The Two Fusion Keys
 
-| variant (idx) | key struct (byte-exact) | extractor | Confidence |
-|---|---|---|---|
-| `RpuOperation` (1) | `RpuOperationMetadata {u16 opcode@0, LloValue* op0@8, LloValue* op1@0x10 (gated u8@0x18==1)}` | `GetRpuTransposeOperationKeyFrom` @ `0x126d8520` | CONFIRMED |
-| `TransposeTile` (0) | `TransposeTileMetadata {i32 height@0, i64@8, u16@0x10, u8 vxpose_mode@0x12, u8@0x13}` | inline in `$_0` @ `0x126dce40` | CONFIRMED |
+| variant (idx) | key struct (byte-exact) | extractor |
+|---|---|---|
+| `RpuOperation` (1) | `RpuOperationMetadata {u16 opcode@0, LloValue* op0@8, LloValue* op1@0x10 (gated u8@0x18==1)}` | `GetRpuTransposeOperationKeyFrom` @ `0x126d8520` |
+| `TransposeTile` (0) | `TransposeTileMetadata {i32 height@0, i64@8, u16@0x10, u8 vxpose_mode@0x12, u8@0x13}` | inline in `$_0` @ `0x126dce40` |
 
 `GetRpuTransposeOperationKeyFrom` (`@0x126d8520`) reads `value = [[RpuOp+0x10]+0x10]`, sets `opcode = WORD[value]`, and fills the two operand identities:
 
@@ -366,12 +366,12 @@ Optimize @0x126cdb80
 
 The entire pass is gated on `Target::HasVexSourceBuses()` — vtable slot `+0x408` (`+1032` in the decompile). Per generation (byte-exact from the `Target` vtables):
 
-| Target (gen) | `HasVexSourceBuses()` | source-bus pass | Confidence |
-|---|---|---|---|
-| `JellyfishTarget` (v2/v3) | `false` (`xor eax,eax`) @ `0x1d4904a0` | no-op | CONFIRMED |
-| `PufferfishTarget` (v4) | `true` (`mov al,1`) @ `0x1d494b40` | **active** | CONFIRMED |
-| `ViperfishTarget` (v5p) | `false` @ `0x1d49ae40` | no-op | CONFIRMED |
-| `GhostliteTarget` (v6e) | `false` @ `0x1d497d00` | no-op | CONFIRMED |
+| Target (gen) | `HasVexSourceBuses()` | source-bus pass |
+|---|---|---|
+| `JellyfishTarget` (v2/v3) | `false` (`xor eax,eax`) @ `0x1d4904a0` | no-op |
+| `PufferfishTarget` (v4) | `true` (`mov al,1`) @ `0x1d494b40` | **active** |
+| `ViperfishTarget` (v5p) | `false` @ `0x1d49ae40` | no-op |
+| `GhostliteTarget` (v6e) | `false` @ `0x1d497d00` | no-op |
 
 So in libtpu 0.0.40 the VEX source-bus assignment is exercised for Pufferfish only.
 

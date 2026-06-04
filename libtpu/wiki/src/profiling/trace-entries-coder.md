@@ -139,13 +139,13 @@ GetBits64NoInline(dec, 48, &ts);    th[+0x20]=ts;                               
 
 The `|= 1 / 2 / 4` are the proto2 *has-bits* (presence byte at `TraceHeader+0x10`, bit0=id, bit1=block_id, bit2=timestamp). The widths per family:
 
-| Family | `DecodeTraceHeader` | `id` | `block_id` | `timestamp` | header bits | payload start | Confidence |
-|---|---|---|---|---|---|---|---|
-| pxc | `0xf5d4f20` | 8 | 3 | 48 | 59 | 61 | CERTAIN |
-| vfc | `0xf628080` | 8 | 6 | 45 | 59 | 61 | CERTAIN |
-| vlc | `0xf5f5b40` | 8 | 3 | **45** | **56** | **58** | CERTAIN |
-| glc | `0xf65eaa0` | 8 | 6 | 45 | 59 | 61 | CERTAIN |
-| gfc | `0xf697b00` | 8 | 6 | 45 | 59 | 61 | CERTAIN |
+| Family | `DecodeTraceHeader` | `id` | `block_id` | `timestamp` | header bits | payload start |
+|---|---|---|---|---|---|---|
+| pxc | `0xf5d4f20` | 8 | 3 | 48 | 59 | 61 |
+| vfc | `0xf628080` | 8 | 6 | 45 | 59 | 61 |
+| vlc | `0xf5f5b40` | 8 | 3 | **45** | **56** | **58** |
+| glc | `0xf65eaa0` | 8 | 6 | 45 | 59 | 61 |
+| gfc | `0xf697b00` | 8 | 6 | 45 | 59 | 61 |
 
 > **QUIRK —** the `timestamp` is the **raw device cycle counter** (48 or 45 bits), not picoseconds. The cycle→ps conversion (per-gen device clock rate) and the per-line `timestamp_ns` origin are applied *downstream* in `TpuXLineBuilder`, never in the codec. A reimplementation that treats the on-wire timestamp as picoseconds is off by the clock period and will mis-compute the counter wrap interval (≈`2^48` cycles at 48 bits). See [TraceEntry → XEvent/XStat](trace-entry-to-xevent.md).
 
@@ -308,14 +308,14 @@ The transport — the riegeli record framing around the `ZlibReader`, the zlib w
 
 The per-chip-family codec is a concrete `TraceCodecInterface<TraceEntry>` (abstract base; the four vtable slots are `DecodeEntry`/`EncodeEntry`/`GetMaxEntrySize`/`GetEntryPacketSize`). It is constructed by `CreateTraceCodec` per family and registered into a static type-factory keyed by `asic_sw::DeviceIdentifiers` (the chip codename), via `DeviceIdentifiersAsString`:
 
-| Family | `CreateTraceCodec` | `DecodeEntry` | `DecodeTraceHeader` | block/ts | `DecodeTraceBuffers` template | Confidence |
-|---|---|---|---|---|---|---|
-| pxc | `0xf5af2c0` (`plc` symbol) | `0xf5af3a0` | `0xf5d4f20` | 3/48 | `<pxc::…::TraceEntry>` | CERTAIN |
-| vfc | `0xf5f5da0` | (per family) | `0xf628080` | 6/45 | `<vxc::vfc::…::TraceEntry>` | CERTAIN |
-| vlc | `0xf5d5180` | (per family) | `0xf5f5b40` | **3/45** | `<vxc::vlc::…::TraceEntry>` | CERTAIN |
-| glc | `0xf6282e0` | (per family) | `0xf65eaa0` | 6/45 | `<gxc::glc::…::TraceEntry>` | CERTAIN |
-| gfc | `0xf65ed00` | (per family) | `0xf697b00` | 6/45 | `<gxc::gfc::…::TraceEntry>` | CERTAIN |
-| jxc | (legacy path) | — | — | — | `<jxc::PerformanceTraceEntry>` | HIGH |
+| Family | `CreateTraceCodec` | `DecodeEntry` | `DecodeTraceHeader` | block/ts | `DecodeTraceBuffers` template |
+|---|---|---|---|---|---|
+| pxc | `0xf5af2c0` (`plc` symbol) | `0xf5af3a0` | `0xf5d4f20` | 3/48 | `<pxc::…::TraceEntry>` |
+| vfc | `0xf5f5da0` | (per family) | `0xf628080` | 6/45 | `<vxc::vfc::…::TraceEntry>` |
+| vlc | `0xf5d5180` | (per family) | `0xf5f5b40` | **3/45** | `<vxc::vlc::…::TraceEntry>` |
+| glc | `0xf6282e0` | (per family) | `0xf65eaa0` | 6/45 | `<gxc::glc::…::TraceEntry>` |
+| gfc | `0xf65ed00` | (per family) | `0xf697b00` | 6/45 | `<gxc::gfc::…::TraceEntry>` |
+| jxc | (legacy path) | — | — | — | `<jxc::PerformanceTraceEntry>` |
 
 ### GetTraceCodec — the selector
 

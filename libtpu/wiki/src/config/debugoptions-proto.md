@@ -232,28 +232,28 @@ The full 183 are present in the descriptor but read by no TPU code. They are bes
 
 Also proto-only. Representative anchors confirming the family:
 
-| # | name | type | conf |
-|---:|---|---|:--:|
-| 60 | `xla_cpu_multi_thread_eigen` | bool | C |
-| 97 | `xla_cpu_use_onednn` | bool | C |
-| 99 | `xla_cpu_enable_fast_math` | bool | C |
-| 120 | `xla_cpu_fast_math_honor_nans` | bool | C |
-| 308 | `xla_cpu_prefer_vector_width` | int32 | C |
-| 333 | `xla_cpu_max_isa` | string | C |
-| 365 | `xla_cpu_experimental_xnn_graph_fusion_mode` | enum `XnnGraphFusionMode` | C |
-| 399 | `xla_cpu_experimental_onednn_fusion_type` | repeated enum `LibraryFusionType` | C |
-| 448 | `xla_cpu_scheduler_type` | enum `CpuSchedulerType` | C |
-| 467 | `xla_cpu_opt_preset` | enum `CpuOptPreset` | C |
+| # | name | type |
+|---:|---|---|
+| 60 | `xla_cpu_multi_thread_eigen` | bool |
+| 97 | `xla_cpu_use_onednn` | bool |
+| 99 | `xla_cpu_enable_fast_math` | bool |
+| 120 | `xla_cpu_fast_math_honor_nans` | bool |
+| 308 | `xla_cpu_prefer_vector_width` | int32 |
+| 333 | `xla_cpu_max_isa` | string |
+| 365 | `xla_cpu_experimental_xnn_graph_fusion_mode` | enum `XnnGraphFusionMode` |
+| 399 | `xla_cpu_experimental_onednn_fusion_type` | repeated enum `LibraryFusionType` |
+| 448 | `xla_cpu_scheduler_type` | enum `CpuSchedulerType` |
+| 467 | `xla_cpu_opt_preset` | enum `CpuOptPreset` |
 
 ### 3.10 LLVM IR metadata (`xla_llvm_*`) — 5 fields, proto-only
 
-| # | name | type | conf |
-|---:|---|---|:--:|
-| 70 | `xla_llvm_enable_alias_scope_metadata` | bool | C |
-| 71 | `xla_llvm_enable_noalias_metadata` | bool | C |
-| 72 | `xla_llvm_enable_invariant_load_metadata` | bool | C |
-| 73 | `xla_llvm_disable_expensive_passes` | bool | C |
-| 300 | `xla_llvm_force_inline_before_split` | bool | C |
+| # | name | type |
+|---:|---|---|
+| 70 | `xla_llvm_enable_alias_scope_metadata` | bool |
+| 71 | `xla_llvm_enable_noalias_metadata` | bool |
+| 72 | `xla_llvm_enable_invariant_load_metadata` | bool |
+| 73 | `xla_llvm_disable_expensive_passes` | bool |
+| 300 | `xla_llvm_force_inline_before_split` | bool |
 
 ### 3.11 Escape hatch — `map<string,string>`
 

@@ -41,39 +41,39 @@ GtcSpanConverter::GtcSpanConverter(DeviceType dt):     // sub_F2CB6E0
 
 `274 * 4 = 0x448`, confirming 274 int32 columns per entry. The field-offset map below classifies each populated field. Status legend: **C** = a `.text` reader was disassembled; **P** = byte-exact value, no in-binary reader pinned; **I** = semantics inferred from per-generation value scaling against an independent source.
 
-| off | type | field | meaning / consumer | Confidence |
-|---:|---|---|---|---|
-| `+0x00` | i32 | `core_multi_flag` | BYTE-read by `GetJobInfoFromResponse` (`cmp BYTE,1`); 1 on multi-core / SC gens | C |
-| `+0x04` | i32 | `gtc_freq_khz` | GTC clock; `GtcSpanConverter` divisor + `GetJobInfoFromResponse` ×1000 → Hz | C |
-| `+0x08` | i32 | `gtc_ts_width_bits` | GTC timestamp width `{48,45,64}`; matches the trace-codec `GetBits64` widths | P |
-| `+0x0C` | i32 | `cores_per_chip` | divisor in `ToDeviceOrdinal`/`HandleConvolution`/`GetCostAdjustment`/utilization | C |
-| `+0x10`/`+0x14` | i32 | `logical_devices_a/b` | `ToDeviceOrdinal` `idiv [+0x10 or +0x14] / [+0x0C]`; `+0x14` = SparseCore count on SC gens | C |
-| `+0x18`/`+0x1C` | i32 | `geom_c` / `tile_count` | per-chip multiplier / escalating tile-engine count | P |
-| `+0x20` | i32 | `sc_present_flag` | 1 on the 45-bit SC gens (DT10..13) | P |
-| `+0x28` | i32[8] | `dvfs_ladder_A_khz` | 8-point frequency ladder, DT12-only populated | P |
-| `+0x50` | i32 | `tensorcore_clk_khz` | TensorCore/compute clock; `GetJobInfoFromResponse` ×1000 → Hz | C |
-| `+0x58` | f64 | `peak_bf16_per_LD` | per-LD/sustained bf16 rate; no in-binary reader | I |
-| `+0x60` | f64 | `peak_flops_bf16` | per-precision peak (TFLOP/s); `HandleConvolution` + XPlane stat `0x62` | C |
-| `+0x68` | f64 | `peak_flops_int8_v7x` | v7x-only alternate int8 slot (1992.0) | I |
-| `+0x78` | f64 | `peak_flops_int8/fp8` | ≈2× `+0x60`; `HandleConvolution` (integer/fp8 element types) | C |
-| `+0x80` | f64 | `peak_flops_int4/fp4` | ≈4× `+0x60`; `HandleConvolution` (int4/fp4 element types) | C |
-| `+0xB8`..`+0xC8` | f64 | `eff_hbm_bw_0..2` | effective HBM bandwidth (GB/s class); host-side only | I |
-| `+0xD0` | f64 | `peak_hbm_bw` | HBM bandwidth; XPlane stat `0x63` (×1.073741824 GB→GiB) — byte-exact vs `chip_parts` HBM TB/s | C |
-| `+0xD8`..`+0xF0` | f64 | `mem_latency_0..3` | latency/cycle class; host-side only | I |
-| `+0xF8`..`+0x130` | f64 | per-mem-space bandwidth | `+0x100`/`+0x108` (SRAM/VMEM bw, stats `0x66`/`0x67`); `+0x120`/`+0x128` (CMEM bw, stats `0x64`/`0x65`, v4-only); `+0xF8`/`+0x110`/`+0x118`/`+0x130` host-side only | C / I |
-| `+0x138`..`+0x150` | f64 | `rate_b_0..3` | secondary throughput rate (v4+); host-side only | I |
-| `+0x178`..`+0x190` | f64 | `rate_c_0..3` | secondary peak-rate table (per-precision); host-side only | I |
-| `+0x2B8` | i32 | `packed_geom` | packed `{a,b,a,b}` byte descriptor; BYTE-read by `ProcessCounter` | P |
-| `+0x2C4` | i32 | `megacore_flag` | `GetCostAdjustment` `cmp BYTE[+0x2C4],1`; XPlane stat `0x6B` (`has_megacore`) | C |
-| `+0x2C8` | i32 | perf-counter-set mask | `ConvertTpuTraceToXPlane` → `GetPerformanceCounterNames<28>` (v7x) | C |
-| `+0x2D0` | i32[8] | `dvfs_ladder_B_khz` | second 8-point ladder, DT12-only populated | P |
-| `+0x2F8` | i32 | `sparsecore_clk_khz` | SparseCore clock; `GetJobInfoFromResponse` ×1000 → Hz | C |
-| `+0x300`/`+0x308` | f64 | `core_voltage/power_0/1` | voltage/power class; host-side only | I |
-| `+0x340` | i32 | `sc_lane_count` | 16 on SC gens; read at 18 SparseCore subscriber sites | C |
-| `+0x348`/`+0x350`/`+0x358` | i32 | perf-counter-set masks | `GetPerformanceCounterNames<28>` (v7x) | C |
-| `+0x360`..`+0x378` | f64 | power/thermal coeffs | `ConvertFirmwareTraceEntriesToXPlane` → `FirmwareEventBuilder` → "power"/"temperature" stats | C |
-| `+0x380`..`+0x398` | u64 | firmware-event ulongs | `FirmwareEventBuilder` `m m m m` args (`+0x380` first GP arg) | C |
-| `+0x438`/`+0x440` | i32 | perf-counter-set bases | `+0x438` = ICR set → `GetPerformanceCounterNames<12>`; `+0x440` = CMNUR/HBM set → `<3>` (v7x; nonzero DT12 only) | C |
+| off | type | field | meaning / consumer |
+|---:|---|---|---|
+| `+0x00` | i32 | `core_multi_flag` | BYTE-read by `GetJobInfoFromResponse` (`cmp BYTE,1`); 1 on multi-core / SC gens |
+| `+0x04` | i32 | `gtc_freq_khz` | GTC clock; `GtcSpanConverter` divisor + `GetJobInfoFromResponse` ×1000 → Hz |
+| `+0x08` | i32 | `gtc_ts_width_bits` | GTC timestamp width `{48,45,64}`; matches the trace-codec `GetBits64` widths |
+| `+0x0C` | i32 | `cores_per_chip` | divisor in `ToDeviceOrdinal`/`HandleConvolution`/`GetCostAdjustment`/utilization |
+| `+0x10`/`+0x14` | i32 | `logical_devices_a/b` | `ToDeviceOrdinal` `idiv [+0x10 or +0x14] / [+0x0C]`; `+0x14` = SparseCore count on SC gens |
+| `+0x18`/`+0x1C` | i32 | `geom_c` / `tile_count` | per-chip multiplier / escalating tile-engine count |
+| `+0x20` | i32 | `sc_present_flag` | 1 on the 45-bit SC gens (DT10..13) |
+| `+0x28` | i32[8] | `dvfs_ladder_A_khz` | 8-point frequency ladder, DT12-only populated |
+| `+0x50` | i32 | `tensorcore_clk_khz` | TensorCore/compute clock; `GetJobInfoFromResponse` ×1000 → Hz |
+| `+0x58` | f64 | `peak_bf16_per_LD` | per-LD/sustained bf16 rate; no in-binary reader |
+| `+0x60` | f64 | `peak_flops_bf16` | per-precision peak (TFLOP/s); `HandleConvolution` + XPlane stat `0x62` |
+| `+0x68` | f64 | `peak_flops_int8_v7x` | v7x-only alternate int8 slot (1992.0) |
+| `+0x78` | f64 | `peak_flops_int8/fp8` | ≈2× `+0x60`; `HandleConvolution` (integer/fp8 element types) |
+| `+0x80` | f64 | `peak_flops_int4/fp4` | ≈4× `+0x60`; `HandleConvolution` (int4/fp4 element types) |
+| `+0xB8`..`+0xC8` | f64 | `eff_hbm_bw_0..2` | effective HBM bandwidth (GB/s class); host-side only |
+| `+0xD0` | f64 | `peak_hbm_bw` | HBM bandwidth; XPlane stat `0x63` (×1.073741824 GB→GiB) — byte-exact vs `chip_parts` HBM TB/s |
+| `+0xD8`..`+0xF0` | f64 | `mem_latency_0..3` | latency/cycle class; host-side only |
+| `+0xF8`..`+0x130` | f64 | per-mem-space bandwidth | `+0x100`/`+0x108` (SRAM/VMEM bw, stats `0x66`/`0x67`); `+0x120`/`+0x128` (CMEM bw, stats `0x64`/`0x65`, v4-only); `+0xF8`/`+0x110`/`+0x118`/`+0x130` host-side only |
+| `+0x138`..`+0x150` | f64 | `rate_b_0..3` | secondary throughput rate (v4+); host-side only |
+| `+0x178`..`+0x190` | f64 | `rate_c_0..3` | secondary peak-rate table (per-precision); host-side only |
+| `+0x2B8` | i32 | `packed_geom` | packed `{a,b,a,b}` byte descriptor; BYTE-read by `ProcessCounter` |
+| `+0x2C4` | i32 | `megacore_flag` | `GetCostAdjustment` `cmp BYTE[+0x2C4],1`; XPlane stat `0x6B` (`has_megacore`) |
+| `+0x2C8` | i32 | perf-counter-set mask | `ConvertTpuTraceToXPlane` → `GetPerformanceCounterNames<28>` (v7x) |
+| `+0x2D0` | i32[8] | `dvfs_ladder_B_khz` | second 8-point ladder, DT12-only populated |
+| `+0x2F8` | i32 | `sparsecore_clk_khz` | SparseCore clock; `GetJobInfoFromResponse` ×1000 → Hz |
+| `+0x300`/`+0x308` | f64 | `core_voltage/power_0/1` | voltage/power class; host-side only |
+| `+0x340` | i32 | `sc_lane_count` | 16 on SC gens; read at 18 SparseCore subscriber sites |
+| `+0x348`/`+0x350`/`+0x358` | i32 | perf-counter-set masks | `GetPerformanceCounterNames<28>` (v7x) |
+| `+0x360`..`+0x378` | f64 | power/thermal coeffs | `ConvertFirmwareTraceEntriesToXPlane` → `FirmwareEventBuilder` → "power"/"temperature" stats |
+| `+0x380`..`+0x398` | u64 | firmware-event ulongs | `FirmwareEventBuilder` `m m m m` args (`+0x380` first GP arg) |
+| `+0x438`/`+0x440` | i32 | perf-counter-set bases | `+0x438` = ICR set → `GetPerformanceCounterNames<12>`; `+0x440` = CMNUR/HBM set → `<3>` (v7x; nonzero DT12 only) |
 
 > **NOTE —** the table carries **no pointer fields** (zero relocations across `[0x1C60480, 0x1C64D48)`). The device codename string and the trace-codec factory are keyed *separately* by the same captured device identity: `DeviceTypeString`'s pointer array at `0x21772F00` (indexed by ordinal) for the name, and the per-family `DeviceIdentifiers` `std::map` factory for the codec. The ordinal selects the clock/spec (this struct); the PCI tuple selects the codec.
 
@@ -124,16 +124,16 @@ The profiler does not evaluate a roofline in-binary; it *stamps the roofline inp
 
 The `kDeviceTypeInfo` index is the 1-based `xprof::DeviceType` enum. `DeviceTypeFromDeviceIdentifiers` (`0xF6993A0`) maps a captured 12-byte PCI tuple (all `vendor_id == 0x1AE0`, Google) to the ordinal, and `DeviceTypeString` (`0xF69C7C0`) maps the ordinal to the public name (`return DeviceTypeString[ord-1]`, default `"Cloud TPU"` for `ord-1 > 0xC`). The eight real silicon generations:
 
-| ordinal | public name | codename | family | GTC clk (kHz) | ts width | compute clk (kHz) | Confidence |
-|---:|---|---|---|---:|---:|---:|---|
-| 3 | TPU v2 | Jellyfish | `jxc` | 700000 | 48 | 700000 | CERTAIN |
-| 5 | TPU v3 | Dragonfish | `jxc` | 700000 | 48 | 940000 | CERTAIN |
-| 7 | TPU v4 | Pufferfish | `pxc::pfc` | 700000 | 48 | 1050000 | CERTAIN |
-| 8 | TPU v4 Lite | Puffylite | `pxc::plc` | 700000 | 48 | 1050000 | CERTAIN |
-| 10 | TPU v5 | Viperfish (v5p) | `vxc::vfc` | 800000 | 45 | 1750000 | CERTAIN |
-| 11 | TPU v5 Lite | Viperlite (v5e) | `vxc::vlc` | 800000 | 45 | 1500000 | CERTAIN |
-| 12 | TPU v7x | `6acc60406` (gfc) | `gxc::gfc` | 833000 | 45 | 1900000 | CERTAIN |
-| 13 | TPU v6 Lite | Ghostlite (v6e) | `gxc::glc` | 800000 | 45 | 1750000 | CERTAIN |
+| ordinal | public name | codename | family | GTC clk (kHz) | ts width | compute clk (kHz) |
+|---:|---|---|---|---:|---:|---:|
+| 3 | TPU v2 | Jellyfish | `jxc` | 700000 | 48 | 700000 |
+| 5 | TPU v3 | Dragonfish | `jxc` | 700000 | 48 | 940000 |
+| 7 | TPU v4 | Pufferfish | `pxc::pfc` | 700000 | 48 | 1050000 |
+| 8 | TPU v4 Lite | Puffylite | `pxc::plc` | 700000 | 48 | 1050000 |
+| 10 | TPU v5 | Viperfish (v5p) | `vxc::vfc` | 800000 | 45 | 1750000 |
+| 11 | TPU v5 Lite | Viperlite (v5e) | `vxc::vlc` | 800000 | 45 | 1500000 |
+| 12 | TPU v7x | `6acc60406` (gfc) | `gxc::gfc` | 833000 | 45 | 1900000 |
+| 13 | TPU v6 Lite | Ghostlite (v6e) | `gxc::glc` | 800000 | 45 | 1750000 |
 
 `DeviceTypeFromDeviceIdentifiers` matches each codename's `kXxxChipIdentifiers` tuple in turn (Jellyfish→3, Dragonfish→5, Puffylite→8, the three Pufferfish B0 SKUs→7, the four Viperlite SKUs→11, the two Viperfish SKUs→10) and dispatches the two Ghost families via `IsGlc`→13 and `IsGfc`→12. Ordinals 1/2/4/6/9/14..16 are the host-GPU plane and "Cloud TPU" placeholder/reserved slots (DeviceType 9 is a reserved 64-bit-timestamp, 1.333 GHz slot with no PCI tuple). `DeviceTypeToHardwareType` (`0xF69C7A0`) confirms the split: the eight named gens map to hardware-type 3 (TPU), the placeholders to 0/1, the GPU plane to 2.
 

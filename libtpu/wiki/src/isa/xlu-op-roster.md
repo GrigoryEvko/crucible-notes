@@ -85,24 +85,24 @@ v = LloInstruction::New(/*op=*/166, /*operands=*/&span, /*count=*/2, region, 0, 
 
 All factories are in namespace `xla::jellyfish::LloRegionBuilder::`. The emitted opcode is the `New` first-immediate; the operand count is the `Span` size. Decimal/hex both shown because the decompile prints decimals.
 
-| Factory @addr | `CreateVector*` @addr | Emitted op (dec / hex) | Ops | Confidence |
-|---|---|---|---|---|
-| `Vsetperm` @`1d52ba20` | `…SetPermutePattern` @`1d4d62a0` | 139 / `0x8b` `kVectorSetPermutePattern` | 1 | CONFIRMED |
-| `Vsetspr` @`1d52ba60` | `…SetSegmentPattern` @`1d4d64a0` | 140 / `0x8c` `kVectorSetSegmentPattern` | 1 | CONFIRMED |
-| `Vpermute` @`1d52c180` | `…Permute` @`1d4d55c0` | 54 / `0x36` `kVectorPermute` | 2 `{data,pat}` | CONFIRMED |
-| `Vpermuteres` @`1d52bfa0` | `…PermuteResult` @`1d4d5e40` | 336 / `0x150` `kVectorPermuteResult` | 1 | CONFIRMED |
-| `Vrotate` @`1d52c6c0` | `…Rotate` @`1d4d58a0` | 58 / `0x3a` `kVectorRotate` | 2 `{data,amt}` | CONFIRMED |
-| `Vbroadcastlane` @`1d52c9a0` | `…LaneBroadcast` @`1d4d6080` | 59 / `0x3b` `kVectorBroadcastLane` | 2 (+`0x3d`,1) | CONFIRMED |
-| `Vxpose` @`1d54f580` | `…Transpose` @`1d4dcfe0` | 166 / `0xa6` `kVectorTranspose` | 2 | CONFIRMED |
-| `Vxposeres` @`1d5501e0` | `…TransposeResult` @`1d4d5b60` | 340 / `0x154` `kVectorTransposeResult` | 0 (FIFO pop) | CONFIRMED |
-| `VxposeBinaryCompressedB16` @`1d550220` | `…TransposeBinaryCompressedB16` @`1d4dd7e0` | 167 / `0xa7` `kVectorTransposeBinary` | 3 (+scale) | CONFIRMED |
-| `VpackBf16` @`1d554680` | `…Weird` @`1d4d4e20` | 174 / `0xae` `kVectorWeird` | 1 | CONFIRMED |
-| `VunpackUpperCF32` @`1d567f20` | `…Unpack` @`1d4d37c0` | 271 / `0x10f` `kVectorDynamicUnpack` | … | LOW (arm not isolated) |
-| `VunpackLowerCF32` @`1d567e20` | `…Unpack` @`1d4d37c0` | 271 / `0x10f` `kVectorDynamicUnpack` | … | LOW (arm not isolated) |
-| `Vunpackf32` @`1d554620` | — composite — | `VunpackLowerF32`+`CastTo(0x12)`+`VunpackUpperF32`+`CastTo(0x12)` | — | CONFIRMED (composite) |
-| `VpermuteSync` @`1d52baa0` | — composite — | `Vpermute(0x36)` then `Vpermuteres(0x150)` | — | CONFIRMED (composite) |
-| `VpermuteSlane` @`1d52d220` | `CreateVectorBinop` @`1d4d27c0` | (opcode arg-driven) | — | LOW (op arg-driven) |
-| `VpackiB16` @`1d553380` / `VpackcB16` @`1d562700` | `CreateVectorPack` @`1d4d3140` | (opcode arg-driven) | 2 | LOW (op arg-driven) |
+| Factory @addr | `CreateVector*` @addr | Emitted op (dec / hex) | Ops |
+|---|---|---|---|
+| `Vsetperm` @`1d52ba20` | `…SetPermutePattern` @`1d4d62a0` | 139 / `0x8b` `kVectorSetPermutePattern` | 1 |
+| `Vsetspr` @`1d52ba60` | `…SetSegmentPattern` @`1d4d64a0` | 140 / `0x8c` `kVectorSetSegmentPattern` | 1 |
+| `Vpermute` @`1d52c180` | `…Permute` @`1d4d55c0` | 54 / `0x36` `kVectorPermute` | 2 `{data,pat}` |
+| `Vpermuteres` @`1d52bfa0` | `…PermuteResult` @`1d4d5e40` | 336 / `0x150` `kVectorPermuteResult` | 1 |
+| `Vrotate` @`1d52c6c0` | `…Rotate` @`1d4d58a0` | 58 / `0x3a` `kVectorRotate` | 2 `{data,amt}` |
+| `Vbroadcastlane` @`1d52c9a0` | `…LaneBroadcast` @`1d4d6080` | 59 / `0x3b` `kVectorBroadcastLane` | 2 (+`0x3d`,1) |
+| `Vxpose` @`1d54f580` | `…Transpose` @`1d4dcfe0` | 166 / `0xa6` `kVectorTranspose` | 2 |
+| `Vxposeres` @`1d5501e0` | `…TransposeResult` @`1d4d5b60` | 340 / `0x154` `kVectorTransposeResult` | 0 (FIFO pop) |
+| `VxposeBinaryCompressedB16` @`1d550220` | `…TransposeBinaryCompressedB16` @`1d4dd7e0` | 167 / `0xa7` `kVectorTransposeBinary` | 3 (+scale) |
+| `VpackBf16` @`1d554680` | `…Weird` @`1d4d4e20` | 174 / `0xae` `kVectorWeird` | 1 |
+| `VunpackUpperCF32` @`1d567f20` | `…Unpack` @`1d4d37c0` | 271 / `0x10f` `kVectorDynamicUnpack` | … |
+| `VunpackLowerCF32` @`1d567e20` | `…Unpack` @`1d4d37c0` | 271 / `0x10f` `kVectorDynamicUnpack` | … |
+| `Vunpackf32` @`1d554620` | — composite — | `VunpackLowerF32`+`CastTo(0x12)`+`VunpackUpperF32`+`CastTo(0x12)` | — |
+| `VpermuteSync` @`1d52baa0` | — composite — | `Vpermute(0x36)` then `Vpermuteres(0x150)` | — |
+| `VpermuteSlane` @`1d52d220` | `CreateVectorBinop` @`1d4d27c0` | (opcode arg-driven) | — |
+| `VpackiB16` @`1d553380` / `VpackcB16` @`1d562700` | `CreateVectorPack` @`1d4d3140` | (opcode arg-driven) | 2 |
 
 > **NOTE —** `VxposeBinaryCompressedB16` emits a single `0xa7` op (3 operands), not a multiply/pow chain. Its factory (`@0x1d550220`) and constructor (`@0x1d4dd7e0`) take the third operand as a `LloModule::ScalarU32ConstantImpl` scale value; the only extra action is a `target().SupportsVsupp()` gate (CHECK string at `llo_region_builder.cc:8617`). No `New(0x156/0x158/0x159)` call exists on the XLU path.
 
@@ -132,43 +132,43 @@ VectorExtendedUsesData(op) = (op != 3)                 // only op 3 reads no vec
 
 `mnemonic` is the `ParserJf` cross-lane parse-pair string (assembler side); `LLO` is the high-level `LloOpcode` the `LloRegionBuilder` factory emits.
 
-| val | name | classifier | mnemonic / LLO bridge | Confidence |
-|---|---|---|---|---|
-| 0 | `MATRIX_MULTIPLY` | `IsMatrixMultiply` | matmul | CONFIRMED |
-| 1 | `MATRIX_MULTIPLY_LOW` | `IsMatrixMultiply` | matmul.low | CONFIRMED |
-| 2 | `MATRIX_MULTIPLY_HIGH` | `IsMatrixMultiply` | matmul.hi | CONFIRMED |
-| 3 | `DONE_WITH_GAINS` | `UsesData=false` | done-with-gains (no vector operand) | CONFIRMED |
-| 4 | `MATRIX_MULTIPLY_DONE_WITH_GAINS` | `IsMatrixMultiply` | matmul.dwg | CONFIRMED |
-| 5 | `MATRIX_MULTIPLY_LOW_DONE_WITH_GAINS` | `IsMatrixMultiply` | matmul.low.dwg | CONFIRMED |
-| 6 | `MATRIX_MULTIPLY_HIGH_DONE_WITH_GAINS` | `IsMatrixMultiply` | matmul.hi.dwg | CONFIRMED |
-| 7 | `PUSH_GAINS` | `IsPushGains` | push-gains | CONFIRMED |
-| 8 | `PUSH_GAINS_LOW` | `IsPushGains` | push-gains.low | CONFIRMED |
-| 9 | `PUSH_GAINS_HIGH` | `IsPushGains` | push-gains.hi | CONFIRMED |
-| 10 | `PUSH_GAINS_TRANSPOSED` | `IsPushGains` | push-gains.xpose | CONFIRMED |
-| 11 | `PUSH_GAINS_LOW_TRANSPOSED` | `IsPushGains` | push-gains.low.xpose | CONFIRMED |
-| 12 | `PUSH_GAINS_HIGH_TRANSPOSED` | `IsPushGains` | push-gains.hi.xpose | CONFIRMED |
-| 13 | `SET_PERMUTE_CONTROL_REGISTER` | — | LLO `0x8b` `Vsetperm` | CONFIRMED |
-| 14 | `SET_SEGMENT_PATTERN_REGISTER` | — | LLO `0x8c` `Vsetspr` | CONFIRMED |
-| 15 | `TRANSPOSE` | `IsTranspose` | `vxpose` — LLO `0xa6` `Vxpose` | CONFIRMED |
-| 16 | `TRANSPOSE_START` | `IsTranspose` | `vxpose.start` — LLO `0xa7` `VxposeBinaryCompressedB16` | CONFIRMED |
-| 17 | `PERMUTE` | `IsRpu` | LLO `0x36` `Vpermute` | CONFIRMED |
-| 18 | `LANE_ROTATE` | `IsRpu` | LLO `0x3a` `Vrotate` | CONFIRMED |
-| 19 | `ROTATING_PERMUTE` | `IsRpu` | (rotating permute) | CONFIRMED |
-| 20 | `CROSS_LANE_ADD` | `IsRpu` | `vadd.xlane` — LLO reduce-add | CONFIRMED |
-| 21 | `CROSS_LANE_MAX` | `IsRpu` | `vmax.xlane` — LLO reduce-max | CONFIRMED |
-| 22 | `CROSS_LANE_MIN` | `IsRpu` | `vmin.xlane` — LLO reduce-min | CONFIRMED |
-| 23 | `CROSS_LANE_MAX_INDEX` | `IsRpu` | `vmax.index.xlane` | CONFIRMED |
-| 24 | `CROSS_LANE_MIN_INDEX` | `IsRpu` | `vmin.index.xlane` | CONFIRMED |
-| 25 | `CROSS_LANE_ADD_PERMUTE` | `IsRpu` | `vadd.xlane.perm` | CONFIRMED |
-| 26 | `CROSS_LANE_MAX_PERMUTE` | `IsRpu` | `vmax.xlane.perm` | CONFIRMED |
-| 27 | `CROSS_LANE_MIN_PERMUTE` | `IsRpu` | `vmin.xlane.perm` | CONFIRMED |
-| 28 | `CROSS_LANE_MAX_INDEX_PERMUTE` | `IsRpu` | `vmax.index.xlane.perm` | CONFIRMED |
-| 29 | `CROSS_LANE_MIN_INDEX_PERMUTE` | `IsRpu` | `vmin.index.xlane.perm` | CONFIRMED |
-| 30 | `CROSS_LANE_SEGMENTED_ADD_PERMUTE` | `IsRpu` | `vadd.xlane.seg.perm` — LLO `0xfc` seg-reduce | CONFIRMED |
-| 31 | `CROSS_LANE_SEGMENTED_MAX_PERMUTE` | `IsRpu` | `vmax.xlane.seg.perm` — LLO `0xfa` seg-reduce | CONFIRMED |
-| 32 | `CROSS_LANE_SEGMENTED_MIN_PERMUTE` | `IsRpu` | `vmin.xlane.seg.perm` — LLO `0xfb` seg-reduce | CONFIRMED |
-| 33 | `CROSS_LANE_SEGMENTED_MAX_INDEX_PERMUTE` | `IsRpu` | `vmax.index.xlane.seg.perm` | CONFIRMED |
-| 34 | `CROSS_LANE_SEGMENTED_MIN_INDEX_PERMUTE` | `IsRpu` | `vmin.index.xlane.seg.perm` | CONFIRMED |
+| val | name | classifier | mnemonic / LLO bridge |
+|---|---|---|---|
+| 0 | `MATRIX_MULTIPLY` | `IsMatrixMultiply` | matmul |
+| 1 | `MATRIX_MULTIPLY_LOW` | `IsMatrixMultiply` | matmul.low |
+| 2 | `MATRIX_MULTIPLY_HIGH` | `IsMatrixMultiply` | matmul.hi |
+| 3 | `DONE_WITH_GAINS` | `UsesData=false` | done-with-gains (no vector operand) |
+| 4 | `MATRIX_MULTIPLY_DONE_WITH_GAINS` | `IsMatrixMultiply` | matmul.dwg |
+| 5 | `MATRIX_MULTIPLY_LOW_DONE_WITH_GAINS` | `IsMatrixMultiply` | matmul.low.dwg |
+| 6 | `MATRIX_MULTIPLY_HIGH_DONE_WITH_GAINS` | `IsMatrixMultiply` | matmul.hi.dwg |
+| 7 | `PUSH_GAINS` | `IsPushGains` | push-gains |
+| 8 | `PUSH_GAINS_LOW` | `IsPushGains` | push-gains.low |
+| 9 | `PUSH_GAINS_HIGH` | `IsPushGains` | push-gains.hi |
+| 10 | `PUSH_GAINS_TRANSPOSED` | `IsPushGains` | push-gains.xpose |
+| 11 | `PUSH_GAINS_LOW_TRANSPOSED` | `IsPushGains` | push-gains.low.xpose |
+| 12 | `PUSH_GAINS_HIGH_TRANSPOSED` | `IsPushGains` | push-gains.hi.xpose |
+| 13 | `SET_PERMUTE_CONTROL_REGISTER` | — | LLO `0x8b` `Vsetperm` |
+| 14 | `SET_SEGMENT_PATTERN_REGISTER` | — | LLO `0x8c` `Vsetspr` |
+| 15 | `TRANSPOSE` | `IsTranspose` | `vxpose` — LLO `0xa6` `Vxpose` |
+| 16 | `TRANSPOSE_START` | `IsTranspose` | `vxpose.start` — LLO `0xa7` `VxposeBinaryCompressedB16` |
+| 17 | `PERMUTE` | `IsRpu` | LLO `0x36` `Vpermute` |
+| 18 | `LANE_ROTATE` | `IsRpu` | LLO `0x3a` `Vrotate` |
+| 19 | `ROTATING_PERMUTE` | `IsRpu` | (rotating permute) |
+| 20 | `CROSS_LANE_ADD` | `IsRpu` | `vadd.xlane` — LLO reduce-add |
+| 21 | `CROSS_LANE_MAX` | `IsRpu` | `vmax.xlane` — LLO reduce-max |
+| 22 | `CROSS_LANE_MIN` | `IsRpu` | `vmin.xlane` — LLO reduce-min |
+| 23 | `CROSS_LANE_MAX_INDEX` | `IsRpu` | `vmax.index.xlane` |
+| 24 | `CROSS_LANE_MIN_INDEX` | `IsRpu` | `vmin.index.xlane` |
+| 25 | `CROSS_LANE_ADD_PERMUTE` | `IsRpu` | `vadd.xlane.perm` |
+| 26 | `CROSS_LANE_MAX_PERMUTE` | `IsRpu` | `vmax.xlane.perm` |
+| 27 | `CROSS_LANE_MIN_PERMUTE` | `IsRpu` | `vmin.xlane.perm` |
+| 28 | `CROSS_LANE_MAX_INDEX_PERMUTE` | `IsRpu` | `vmax.index.xlane.perm` |
+| 29 | `CROSS_LANE_MIN_INDEX_PERMUTE` | `IsRpu` | `vmin.index.xlane.perm` |
+| 30 | `CROSS_LANE_SEGMENTED_ADD_PERMUTE` | `IsRpu` | `vadd.xlane.seg.perm` — LLO `0xfc` seg-reduce |
+| 31 | `CROSS_LANE_SEGMENTED_MAX_PERMUTE` | `IsRpu` | `vmax.xlane.seg.perm` — LLO `0xfa` seg-reduce |
+| 32 | `CROSS_LANE_SEGMENTED_MIN_PERMUTE` | `IsRpu` | `vmin.xlane.seg.perm` — LLO `0xfb` seg-reduce |
+| 33 | `CROSS_LANE_SEGMENTED_MAX_INDEX_PERMUTE` | `IsRpu` | `vmax.index.xlane.seg.perm` |
+| 34 | `CROSS_LANE_SEGMENTED_MIN_INDEX_PERMUTE` | `IsRpu` | `vmin.index.xlane.seg.perm` |
 
 The dense range `{0..34}` is confirmed by the `NameOfDenseEnum<descriptor,0,34>` instantiation @ `0x2239bce8`; the names are the protobuf `EnumValueDescriptorProto` identifiers (descriptor @ `0x1fa1fd00`). The two `SET_*` names are independently visible as `.rodata` strings; the `Is*` classifier bodies are decompiled byte-exact (above).
 
@@ -370,24 +370,24 @@ A fused transpose must fit the per-generation VEX-slot budget. The reemit transp
 
 `VxposeMode` is a 5-value enum; `ElementCount(mode)` is the elements-per-chunk for the mode, read from the table at `0xb53c830`. Confirmed byte-exact (`xxd` of `.rodata` gives `01 00 00 00  02 00 00 00  04 00 00 00  01 00 00 00  02 00 00 00`):
 
-| mode | name | ElementCount | meaning | Confidence |
-|---|---|---|---|---|
-| 0 | `B32` | 1 | full-width 32-bit transpose (default) | CONFIRMED |
-| 1 | `Compressed B16` | 2 | bf16-compressed, 2 elements/chunk | CONFIRMED |
-| 2 | `Compressed B8` | 4 | b8-compressed, 4 elements/chunk | CONFIRMED |
-| 3 | `Segmented B32` | 1 | segmented 32-bit transpose | CONFIRMED |
-| 4 | `Segmented B16` | 2 | segmented bf16 transpose | CONFIRMED |
+| mode | name | ElementCount | meaning |
+|---|---|---|---|
+| 0 | `B32` | 1 | full-width 32-bit transpose (default) |
+| 1 | `Compressed B16` | 2 | bf16-compressed, 2 elements/chunk |
+| 2 | `Compressed B8` | 4 | b8-compressed, 4 elements/chunk |
+| 3 | `Segmented B32` | 1 | segmented 32-bit transpose |
+| 4 | `Segmented B16` | 2 | segmented bf16 transpose |
 
 ### The Three-Gate Predicate
 
 Byte-exact from the reemit transpose block (`@0x126d5b1b..0x126d5f5a`):
 
-| gate | condition | accept / reject | Confidence |
-|---|---|---|---|
-| G1 | `target->SupportsVectorXpose(vxpose_mode) == true` (vtable `+0x100`) | reject (no fusion) if the gen does not support the mode | CONFIRMED |
-| G2 | `[tile+0x30] % (SublaneCount() * ElementCount(mode)) == 0` (imul + idiv + test-remainder) | reject if the chunk dimension is not a whole number of slot-sized element chunks | CONFIRMED |
-| G3 | `NumVexSlots() != 0` (vtable `+0x690`) | accept → emit; pack into `NumVexSlots()` VEX slots | CONFIRMED |
-| G3′ | if `NumVexSlots() == 0`: `ChunksPerTile() == (chunks >> mode_shift)` | reject if not equal (no-VEX-slot path) | CONFIRMED |
+| gate | condition | accept / reject |
+|---|---|---|
+| G1 | `target->SupportsVectorXpose(vxpose_mode) == true` (vtable `+0x100`) | reject (no fusion) if the gen does not support the mode |
+| G2 | `[tile+0x30] % (SublaneCount() * ElementCount(mode)) == 0` (imul + idiv + test-remainder) | reject if the chunk dimension is not a whole number of slot-sized element chunks |
+| G3 | `NumVexSlots() != 0` (vtable `+0x690`) | accept → emit; pack into `NumVexSlots()` VEX slots |
+| G3′ | if `NumVexSlots() == 0`: `ChunksPerTile() == (chunks >> mode_shift)` | reject if not equal (no-VEX-slot path) |
 
 A gen *with* VEX slots packs the fused transpose into `NumVexSlots()` vector_extended slots; a gen *without* can only fuse a transpose occupying exactly one tile's worth of chunks. (Before the gates, the two tiles must already match on `GetNumberOfChunksInTransposeSequence`, `vxpose_mode`, `TransposeResultChunkCount`, and `GetTransposeWidth`.)
 
@@ -395,13 +395,13 @@ A gen *with* VEX slots packs the fused transpose into `NumVexSlots()` vector_ext
 
 Byte-exact from the per-`Target` vtable slots. `NumVexSlots()` is the per-gen `vector_extended` slot count — the same slot the [MXU](slot-mxu.md) and [EUP](slot-eup-transcendental.md) use; on JF it is the single VEX slot of the [41-byte bundle](bundle-jf-41b.md).
 
-| Target (gen) | `NumVexSlots()` | `SupportsVectorXpose(mode)` | Confidence |
-|---|---|---|---|
-| `JellyfishTarget` (v2) | 1 (`return 1`) | `mode == 0` (B32 only) | CONFIRMED |
-| `PufferfishTarget` (v4) | 2 | `mode != 2` (all except Compressed B8) | CONFIRMED |
-| `GhostliteTarget` (v6e) | 2 | `mode < 3` (B32 / Compressed B16 / B8) | CONFIRMED |
-| `ViperfishTarget` (v5p) | 2 | `mode != 2` (all except Compressed B8) | CONFIRMED |
-| `Target` (base) | `LogFatal` | abstract | CONFIRMED |
+| Target (gen) | `NumVexSlots()` | `SupportsVectorXpose(mode)` |
+|---|---|---|
+| `JellyfishTarget` (v2) | 1 (`return 1`) | `mode == 0` (B32 only) |
+| `PufferfishTarget` (v4) | 2 | `mode != 2` (all except Compressed B8) |
+| `GhostliteTarget` (v6e) | 2 | `mode < 3` (B32 / Compressed B16 / B8) |
+| `ViperfishTarget` (v5p) | 2 | `mode != 2` (all except Compressed B8) |
+| `Target` (base) | `LogFatal` | abstract |
 
 > **NOTE —** the PF/VF `SupportsVectorXpose` bodies (`0x1d4940a0` / `0x1d49a000`) are `return a2 != 2;`: they accept every `VxposeMode` **except** mode 2 (Compressed B8). The `cmp esi, 2; ret` form is an inequality test, not `mode == 2`. See [Transpose Reservation Latency](../cost/xpose-reservation-latency.md) for the `VxposeMode` ordinal roster.
 

@@ -62,11 +62,11 @@ if (override & 0x100000000)   // optional<int> engaged-bit
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `ViperfishTarget::SupportsBf16AluInstructions` | `0x1d49c0e0` | returns FALSE → 32-bit (F32) lane | CERTAIN |
-| `GhostliteTarget::SupportsBf16AluInstructions` | `0x1d498ce0` | returns TRUE → 16-bit (BF16) lane | CERTAIN |
-| `Target::SupportsBf16AluInstructions` (base) | `0x1d61f580` | `LogFatal` pure-virtual; must be overridden | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `ViperfishTarget::SupportsBf16AluInstructions` | `0x1d49c0e0` | returns FALSE → 32-bit (F32) lane |
+| `GhostliteTarget::SupportsBf16AluInstructions` | `0x1d498ce0` | returns TRUE → 16-bit (BF16) lane |
+| `Target::SupportsBf16AluInstructions` (base) | `0x1d61f580` | `LogFatal` pure-virtual; must be overridden |
 
 ### Considerations
 
@@ -112,12 +112,12 @@ The four arms that matter for cost, as a truth table:
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `IsDynamicallyLegal` | `0x135ddd20` | 1:1-vs-1:N selector (4-arm truth table) | CERTAIN |
-| `ForceBF16ALUOperationsToUnpack` | `0x135dd6e0` | force-1:N flag; on the `f32-precision` attr drives a packed bf16 op to ILLEGAL (unpack to F32) | CERTAIN |
-| `IsPackedVectorType` | `0x13611720` | sub-element-packed vector test | CERTAIN |
-| `GetVpackFormat` | `0x13dad800` | pack-format enum (0=none,1=bf16,0xb=f16,0x7=sub-byte) | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `IsDynamicallyLegal` | `0x135ddd20` | 1:1-vs-1:N selector (4-arm truth table) |
+| `ForceBF16ALUOperationsToUnpack` | `0x135dd6e0` | force-1:N flag; on the `f32-precision` attr drives a packed bf16 op to ILLEGAL (unpack to F32) |
+| `IsPackedVectorType` | `0x13611720` | sub-element-packed vector test |
+| `GetVpackFormat` | `0x13dad800` | pack-format enum (0=none,1=bf16,0xb=f16,0x7=sub-byte) |
 
 ### Considerations
 
@@ -192,13 +192,13 @@ The compute-op count equals the deque length `N`. For a transcendental this is `
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `UnpackOperand<UnpackFOp>` | `0x1360fac0` | recursive halving; returns the `N`-deque | CERTAIN |
-| `GetUnpackResultElementType` | `0x1360ff20` | next-narrower sub-element type per lane width | CERTAIN |
-| `AluEp<math::ExpOp>` (representative) | `0x135df200` | `N` `ComputeOp::create` between one unpack and one pack | CERTAIN |
-| `PackResults<PackFOp>` | `0x13610940` | reassemble the `N` results into the wide output | CERTAIN |
-| `Target::SupportsSparseCore` | `0x1d48fd40` | AluEp entry guard (vtable `+0x260`), **not** a width input | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `UnpackOperand<UnpackFOp>` | `0x1360fac0` | recursive halving; returns the `N`-deque |
+| `GetUnpackResultElementType` | `0x1360ff20` | next-narrower sub-element type per lane width |
+| `AluEp<math::ExpOp>` (representative) | `0x135df200` | `N` `ComputeOp::create` between one unpack and one pack |
+| `PackResults<PackFOp>` | `0x13610940` | reassemble the `N` results into the wide output |
+| `Target::SupportsSparseCore` | `0x1d48fd40` | AluEp entry guard (vtable `+0x260`), **not** a width input |
 
 ### Considerations
 
@@ -250,16 +250,16 @@ The split is **mandatory** on v5+ because `HasEupRestrictions` is TRUE on Viperf
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `LloLateDecomposer` | `0x1269cb20` | splits fused AndPop → bare push + deferred pop | CERTAIN |
-| `DecomposeEupInstruction` | `0x126a0340` | `switch` dispatch (19 cases) to 10 `V*Decomposed` builders | CERTAIN |
-| `LloOpcodeIsPseudoEupInstruction` | `0x1d60c880` | classifies fused AndPop (range `[0x13b,0x14d]`, mask `0x7fdff`) | CERTAIN |
-| `VtanhDecomposed` / `VrsqrtDecomposed` | `0x1d555040` / `0x1d557b60` | bare push + bare pop builders (23 lines each) | CERTAIN |
-| `CreateVectorEup` | `0x1d4d78a0` | bare push (`0x128`..`0x13a`, 1 operand, asserts `ProducesVreg`) | CERTAIN |
-| `CreateVectorEupResult` | `0x1d4d9820` | deferred pop, hardcodes `0x14e`, asserts push ∈ `0x128`..`0x13a` | CERTAIN |
-| `HasEupRestrictions` (VF/GL/JF/PF) | `0x1c458620`/`0x1c458d80`/`0x1c457b80`/`0x1c4580c0` | v5+ separate-bundle constraint (TRUE/TRUE/FALSE/FALSE) | CERTAIN |
-| `DecomposeEupOperationsForBarnacore` | `0x1269c5c0` | BarnaCore EUP split (separate result-drain path) | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `LloLateDecomposer` | `0x1269cb20` | splits fused AndPop → bare push + deferred pop |
+| `DecomposeEupInstruction` | `0x126a0340` | `switch` dispatch (19 cases) to 10 `V*Decomposed` builders |
+| `LloOpcodeIsPseudoEupInstruction` | `0x1d60c880` | classifies fused AndPop (range `[0x13b,0x14d]`, mask `0x7fdff`) |
+| `VtanhDecomposed` / `VrsqrtDecomposed` | `0x1d555040` / `0x1d557b60` | bare push + bare pop builders (23 lines each) |
+| `CreateVectorEup` | `0x1d4d78a0` | bare push (`0x128`..`0x13a`, 1 operand, asserts `ProducesVreg`) |
+| `CreateVectorEupResult` | `0x1d4d9820` | deferred pop, hardcodes `0x14e`, asserts push ∈ `0x128`..`0x13a` |
+| `HasEupRestrictions` (VF/GL/JF/PF) | `0x1c458620`/`0x1c458d80`/`0x1c457b80`/`0x1c4580c0` | v5+ separate-bundle constraint (TRUE/TRUE/FALSE/FALSE) |
+| `DecomposeEupOperationsForBarnacore` | `0x1269c5c0` | BarnaCore EUP split (separate result-drain path) |
 
 ### Considerations
 

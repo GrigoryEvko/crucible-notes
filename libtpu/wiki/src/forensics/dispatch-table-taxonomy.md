@@ -139,27 +139,27 @@ the presence of a marker symbol such as `RegisteredOperationName::Model`), **not
 on table size — size-23 coincidences are resolved by the marker, not the arity.
 The column **Stride/Entry** gives the memory signature.
 
-| ID | Class | Count | % | Med | Max | Section | Stride / entry kind | Confidence |
-|----|-------|------:|----:|----:|----:|---------|---------------------|------------|
-| E  | TPU ISA encoder vtables (`asic_sw`) | 9,932 | 24.6% | 6 | 674 | `.data.rel.ro` | 8 B vtable; per-gen per-lane-cluster encoder/clone | HIGH |
-| A  | MLIR Op-Model arrays | 6,085 | 15.1% | 23 | 113 | `.data.rel.ro` | 8 B; 23-slot `Model<Op>` interface ABI | HIGH |
-| F  | `mlir::` vtables (non-Op-Model) | 4,270 | 10.6% | 8 | 108 | `.data.rel.ro` | 8 B vtable; pass/dialect/interface objects | HIGH |
-| I  | `llvm::` vtables | 2,611 | 6.5% | 10 | 336 | `.data.rel.ro` | 8 B vtable; TargetLowering/ISel/passes | HIGH |
-| D  | dnnl / Xbyak JIT vtables | 2,289 | 5.7% | 10 | 29 | `.data.rel.ro` | 8 B vtable; JIT primitive + code-gen | HIGH |
-| G  | `xla::` / `stablehlo::` vtables | 2,154 | 5.3% | 6 | 266 | `.data.rel.ro` | 8 B vtable; incl. 6× 266-slot per-gen Target | HIGH |
-| H  | `tensorflow::` / `tsl::` vtables | 2,153 | 5.3% | 7 | 89 | `.data.rel.ro` | 8 B vtable; grappler/runtime objects | HIGH |
-| P  | abseil hash-container policy thunks | 2,066 | 5.1% | 7 | 447 | `.data.rel.ro` | 8 B; type-erased `flat/node_hash` policy | HIGH |
-| O  | long-tail named-namespace vtables | 1,866 | 4.6% | 6 | 111 | `.data.rel.ro` | 8 B vtable; ~150 small namespaces | MEDIUM |
-| K  | libc++ `std::` thunks | 1,802 | 4.5% | 5 | 345 | `.data.rel.ro` | 8 B; `shared_ptr_emplace`/`__policy_func` | MEDIUM |
-| N  | TPU runtime / profiler vtables | 1,130 | 2.8% | 6 | 63 | `.data.rel.ro` | 8 B vtable; `TpuHal`/`TpuCore`/`TpuCodec` | HIGH |
-| M  | gRPC / `grpc_core` vtables | 931 | 2.3% | 5 | 30 | `.data.rel.ro` | 8 B vtable; channel/filter/promise state | HIGH |
-| C  | libpfm4 PMU event tables | 833 | 2.1% | 5 | 10 | `.data` (mutable) | 8 B; **C struct**, not vtable | HIGH |
-| L  | protobuf message/descriptor vtables | 712 | 1.8% | 6 | 117 | `.data.rel.ro` | 8 B vtable; reflection/`MapEntry` | HIGH |
-| Z1 | anonymous-namespace static helpers | 698 | 1.7% | 10 | 165 | `.data.rel.ro` | 8 B vtable; `_GLOBAL__N_` TU-local | MEDIUM |
-| B  | LLVM `UniqueFunctionBase` pools | 589 | 1.5% | 9 | 2,595 | `.data` (mutable) | 8 B; **type-erasure pool**, not vtable | HIGH |
-| R  | C-runtime / Rust handler tables | 33 | 0.1% | 9 | 30 | `.data.rel.ro` | 8 B; cURL/BoringSSL/zstd/Rust C structs | MEDIUM |
-| Q  | abseil AnyInvocable invokers | 2 | 0.0% | 4 | 4 | `.rodata` | 8 B; `InvokeObject` type-erasure | MEDIUM |
-| Z  | unclassified (IDA auto-named) | 157 | 0.4% | 6 | 60 | `.data.rel.ro` | 8 B; pure-virtual-only / no owner symbol | LOW |
+| ID | Class | Count | % | Med | Max | Section | Stride / entry kind |
+|----|-------|------:|----:|----:|----:|---------|---------------------|
+| E  | TPU ISA encoder vtables (`asic_sw`) | 9,932 | 24.6% | 6 | 674 | `.data.rel.ro` | 8 B vtable; per-gen per-lane-cluster encoder/clone |
+| A  | MLIR Op-Model arrays | 6,085 | 15.1% | 23 | 113 | `.data.rel.ro` | 8 B; 23-slot `Model<Op>` interface ABI |
+| F  | `mlir::` vtables (non-Op-Model) | 4,270 | 10.6% | 8 | 108 | `.data.rel.ro` | 8 B vtable; pass/dialect/interface objects |
+| I  | `llvm::` vtables | 2,611 | 6.5% | 10 | 336 | `.data.rel.ro` | 8 B vtable; TargetLowering/ISel/passes |
+| D  | dnnl / Xbyak JIT vtables | 2,289 | 5.7% | 10 | 29 | `.data.rel.ro` | 8 B vtable; JIT primitive + code-gen |
+| G  | `xla::` / `stablehlo::` vtables | 2,154 | 5.3% | 6 | 266 | `.data.rel.ro` | 8 B vtable; incl. 6× 266-slot per-gen Target |
+| H  | `tensorflow::` / `tsl::` vtables | 2,153 | 5.3% | 7 | 89 | `.data.rel.ro` | 8 B vtable; grappler/runtime objects |
+| P  | abseil hash-container policy thunks | 2,066 | 5.1% | 7 | 447 | `.data.rel.ro` | 8 B; type-erased `flat/node_hash` policy |
+| O  | long-tail named-namespace vtables | 1,866 | 4.6% | 6 | 111 | `.data.rel.ro` | 8 B vtable; ~150 small namespaces |
+| K  | libc++ `std::` thunks | 1,802 | 4.5% | 5 | 345 | `.data.rel.ro` | 8 B; `shared_ptr_emplace`/`__policy_func` |
+| N  | TPU runtime / profiler vtables | 1,130 | 2.8% | 6 | 63 | `.data.rel.ro` | 8 B vtable; `TpuHal`/`TpuCore`/`TpuCodec` |
+| M  | gRPC / `grpc_core` vtables | 931 | 2.3% | 5 | 30 | `.data.rel.ro` | 8 B vtable; channel/filter/promise state |
+| C  | libpfm4 PMU event tables | 833 | 2.1% | 5 | 10 | `.data` (mutable) | 8 B; **C struct**, not vtable |
+| L  | protobuf message/descriptor vtables | 712 | 1.8% | 6 | 117 | `.data.rel.ro` | 8 B vtable; reflection/`MapEntry` |
+| Z1 | anonymous-namespace static helpers | 698 | 1.7% | 10 | 165 | `.data.rel.ro` | 8 B vtable; `_GLOBAL__N_` TU-local |
+| B  | LLVM `UniqueFunctionBase` pools | 589 | 1.5% | 9 | 2,595 | `.data` (mutable) | 8 B; **type-erasure pool**, not vtable |
+| R  | C-runtime / Rust handler tables | 33 | 0.1% | 9 | 30 | `.data.rel.ro` | 8 B; cURL/BoringSSL/zstd/Rust C structs |
+| Q  | abseil AnyInvocable invokers | 2 | 0.0% | 4 | 4 | `.rodata` | 8 B; `InvokeObject` type-erasure |
+| Z  | unclassified (IDA auto-named) | 157 | 0.4% | 6 | 60 | `.data.rel.ro` | 8 B; pure-virtual-only / no owner symbol |
 
 > **NOTE —** the per-class library counts (E, F, I, G, …) are HIGH but not
 > CERTAIN: the boundary between a "thunk" table and the vtable it forwards into,
@@ -234,10 +234,10 @@ tables with >=1 Model entry (any size) .. 6,070
 
 ### Representative addresses
 
-| Address | Section | Entries | First symbol | Confidence |
-|---|---|---:|---|---|
-| `0x219bfbe8` | `.data.rel.ro` | 23 | `mlir::RegisteredOperationName::Model<mlir::ROCDL::BlockIdXOp>` | HIGH |
-| `0x219d4e48` | `.data.rel.ro` | 23 | `mlir::RegisteredOperationName::Model<xla::PureCallOp>` | HIGH |
+| Address | Section | Entries | First symbol |
+|---|---|---:|---|
+| `0x219bfbe8` | `.data.rel.ro` | 23 | `mlir::RegisteredOperationName::Model<mlir::ROCDL::BlockIdXOp>` |
+| `0x219d4e48` | `.data.rel.ro` | 23 | `mlir::RegisteredOperationName::Model<xla::PureCallOp>` |
 
 > **Note:** a Class A anchor must be the *address point* of a confirmed
 > `Model<Op>` vtable — i.e. `_ZTV…+0x10`, not the `_ZTV` symbol itself, and not a
@@ -292,10 +292,10 @@ lane-cluster partition of the 9,932 Class E tables:
 
 ### Representative addresses
 
-| Address | Section | Entries | First symbol | Confidence |
-|---|---|---:|---|---|
-| `0x21e0d0a0` | `.data.rel.ro` | 674 | `asic_sw::deepsea::gxc::gfc::isa::TensorCoreVectorAlu::Compact` (vtable `_ZTV…+0x10`) | HIGH |
-| `0x21e0d0a0…` | `.data.rel.ro` | 674/623/620 | per-lane-cluster `TensorCoreVectorAlu::Compact` encoders | HIGH |
+| Address | Section | Entries | First symbol |
+|---|---|---:|---|
+| `0x21e0d0a0` | `.data.rel.ro` | 674 | `asic_sw::deepsea::gxc::gfc::isa::TensorCoreVectorAlu::Compact` (vtable `_ZTV…+0x10`) |
+| `0x21e0d0a0…` | `.data.rel.ro` | 674/623/620 | per-lane-cluster `TensorCoreVectorAlu::Compact` encoders |
 
 ---
 
@@ -324,9 +324,9 @@ the const-after-reloc invariant of the vtable classes does *not* hold here.
 
 ### Representative address
 
-| Address | Section | Entries | First symbol | Confidence |
-|---|---|---:|---|---|
-| `0x223393a0` | `.data` | 2,595 | `UniqueFunctionBase<LogicalResult(Operation*,ArrayRef<Attribute>,…)>::CallImpl<…>` | HIGH |
+| Address | Section | Entries | First symbol |
+|---|---|---:|---|
+| `0x223393a0` | `.data` | 2,595 | `UniqueFunctionBase<LogicalResult(Operation*,ArrayRef<Attribute>,…)>::CallImpl<…>` |
 
 The 2,595-entry table at `0x223393a0` is the **unified MLIR op verify/parse/print/
 fold dispatch pool**: every registered op's fold-hook lambda is type-erased into a
@@ -357,9 +357,9 @@ Core/Atom through Sapphire Rapids, AMD fam10h–fam19h, NetBurst, and `perf_raw`
 
 ### Representative address
 
-| Address | Section | First symbol | Confidence |
-|---|---|---|---|
-| `0x222662f8` | `.data` | `pfm_perf_event_os_detect` | HIGH |
+| Address | Section | First symbol |
+|---|---|---|
+| `0x222662f8` | `.data` | `pfm_perf_event_os_detect` |
 
 ---
 
@@ -381,10 +381,10 @@ tables. Class Q's two tables are tiny (4 slots) invokers in `.rodata`.
 
 ### Representative addresses
 
-| Address | Section | Entries | First symbol | Confidence |
-|---|---|---:|---|---|
-| `0x21c1d590` | `.data.rel.ro` | 447 | `absl::container_internal::GetRefForEmptyClass` | HIGH |
-| `0xa30c788` | `.rodata` | 4 | `absl::functional_internal::InvokeObject<…>` | MEDIUM |
+| Address | Section | Entries | First symbol |
+|---|---|---:|---|
+| `0x21c1d590` | `.data.rel.ro` | 447 | `absl::container_internal::GetRefForEmptyClass` |
+| `0xa30c788` | `.rodata` | 4 | `absl::functional_internal::InvokeObject<…>` |
 
 > **Note:** the bulk of the apparent "AnyInvocable" tables are actually
 > `raw_hash_set` policy thunks — Class P is 2,066 tables and Class Q is only 2. The
@@ -472,21 +472,21 @@ offset arrays, structurally distinct from the function-pointer tables above. The
 total case-target count is 4,673,757 (≈140× the function-pointer table count's
 entry total), dominated by the TPU ISA encode/decode opcode switches.
 
-| ID | Class | Count | % | Max cases | Representative | Confidence |
-|----|-------|------:|----:|----:|----------------|------------|
-| S-ISA | TPU ISA encode/decode opcode switch | 11,746 | 35.6% | 7,529 | `…gxc::glc::profiler::PerformanceCounterNameToString` | HIGH |
-| S-OTH | other named-namespace switch | 6,454 | 19.5% | 685 | `tcmalloc::FindExperimentByName` | MEDIUM |
-| S-LLVM | LLVM IR / codegen switch | 3,566 | 10.8% | 4,111 | `function_ref<…>::callback_fn` (MLIR walk) | HIGH |
-| S-XLA | XLA HLO opcode / shape switch | 2,985 | 9.0% | 5,549 | `xla::primitive_util::PrimitiveTypeSwitch` | HIGH |
-| S-Z | unclassified switch | 2,155 | 6.5% | 5,501 | `TF_TString_ResizeUninitialized` | LOW |
-| S-DNNL | oneDNN primitive/isa switch | 2,002 | 6.1% | 765 | `memory_desc_wrapper::compute_blocking` | MEDIUM |
-| S-ANON | anonymous-namespace static switch | 1,651 | 5.0% | 2,594 | `(anonymous)::TpuToDmaCoreId` | MEDIUM |
-| S-MLIR | MLIR op/dialect/attr switch | 1,423 | 4.3% | 548 | `tf_device::ReplicateOp::getInherentAttr` | HIGH |
-| S-TF | TensorFlow op switch | 413 | 1.3% | 132 | `TPUPartitionedCallOp::SetDeviceOrdinal` | MEDIUM |
-| S-GRPC | gRPC state-machine switch | 336 | 1.0% | 94 | `channelz::BaseNode::KindToEntityType` | MEDIUM |
-| S-PROTO | protobuf field/wiretype switch | 200 | 0.6% | 90 | `TreeNode::MergeRepeatedField` | MEDIUM |
-| S-TG | LLVM TableGen instr-select/encode | 73 | 0.2% | 40,813 | `AMDGPUMCCodeEmitter::getBinaryCodeForInstr` | HIGH |
-| S-GEN | per-generation `TpuVersion` direct switch | 12 | 0.0% | 25 | `TpuCodec::Create(TpuVersion)` | HIGH |
+| ID | Class | Count | % | Max cases | Representative |
+|----|-------|------:|----:|----:|----------------|
+| S-ISA | TPU ISA encode/decode opcode switch | 11,746 | 35.6% | 7,529 | `…gxc::glc::profiler::PerformanceCounterNameToString` |
+| S-OTH | other named-namespace switch | 6,454 | 19.5% | 685 | `tcmalloc::FindExperimentByName` |
+| S-LLVM | LLVM IR / codegen switch | 3,566 | 10.8% | 4,111 | `function_ref<…>::callback_fn` (MLIR walk) |
+| S-XLA | XLA HLO opcode / shape switch | 2,985 | 9.0% | 5,549 | `xla::primitive_util::PrimitiveTypeSwitch` |
+| S-Z | unclassified switch | 2,155 | 6.5% | 5,501 | `TF_TString_ResizeUninitialized` |
+| S-DNNL | oneDNN primitive/isa switch | 2,002 | 6.1% | 765 | `memory_desc_wrapper::compute_blocking` |
+| S-ANON | anonymous-namespace static switch | 1,651 | 5.0% | 2,594 | `(anonymous)::TpuToDmaCoreId` |
+| S-MLIR | MLIR op/dialect/attr switch | 1,423 | 4.3% | 548 | `tf_device::ReplicateOp::getInherentAttr` |
+| S-TF | TensorFlow op switch | 413 | 1.3% | 132 | `TPUPartitionedCallOp::SetDeviceOrdinal` |
+| S-GRPC | gRPC state-machine switch | 336 | 1.0% | 94 | `channelz::BaseNode::KindToEntityType` |
+| S-PROTO | protobuf field/wiretype switch | 200 | 0.6% | 90 | `TreeNode::MergeRepeatedField` |
+| S-TG | LLVM TableGen instr-select/encode | 73 | 0.2% | 40,813 | `AMDGPUMCCodeEmitter::getBinaryCodeForInstr` |
+| S-GEN | per-generation `TpuVersion` direct switch | 12 | 0.0% | 25 | `TpuCodec::Create(TpuVersion)` |
 
 > **NOTE —** the single largest switch in the binary is
 > `AMDGPUMCCodeEmitter::getBinaryCodeForInstr` at **40,813 cases** — a

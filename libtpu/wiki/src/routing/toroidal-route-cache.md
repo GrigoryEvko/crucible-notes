@@ -122,13 +122,13 @@ Byte-anchored facts:
 
 ### Function map
 
-| Function | Addr | Size | Role | Confidence |
-|----------|------|------|------|------------|
-| `ToroidalRouteCache::Create` | `0x20b5d6e0` | 490 | load → decompress → construct → move into `StatusOr` | CERTAIN |
-| `GetRouteCacheData` | `0x20b5c420` | 368 | build path, `ReadBinaryProto`, `Decompress` | CERTAIN |
-| `GetRouteCacheDataPath` | `0x20bf2080` | 765 | `ToroidalRouteCacheType` + shape → `embed://…` path | HIGH |
-| `ToroidalRouteCache::ctor` | `0x20b5d8e0` | 310 | set `[obj+0]`, call `CacheRead` | CERTAIN |
-| `CacheRead` | `0x20b5da20` | 15157 | per-scheme decode into the four maps | CERTAIN |
+| Function | Addr | Size | Role |
+|----------|------|------|------|
+| `ToroidalRouteCache::Create` | `0x20b5d6e0` | 490 | load → decompress → construct → move into `StatusOr` |
+| `GetRouteCacheData` | `0x20b5c420` | 368 | build path, `ReadBinaryProto`, `Decompress` |
+| `GetRouteCacheDataPath` | `0x20bf2080` | 765 | `ToroidalRouteCacheType` + shape → `embed://…` path |
+| `ToroidalRouteCache::ctor` | `0x20b5d8e0` | 310 | set `[obj+0]`, call `CacheRead` |
+| `CacheRead` | `0x20b5da20` | 15157 | per-scheme decode into the four maps |
 
 ---
 
@@ -138,11 +138,11 @@ Byte-anchored facts:
 
 ### The three cache sets
 
-| Cache set | Symbol (`.data`) | N | Shapes | Confidence |
-|-----------|------------------|---|--------|------------|
-| `kRouteCacheSet` | `ResilientToroidalTopology::kRouteCacheSet` @`0x21f57380` | 12 | `4x4x4`, `4x4x8`, `4x4x8_twisted`, `4x4x12`, `4x4x16`, `4x8x8`, `4x8x8_twisted`, `8x8x8`, `8x8x16_twisted`, `8x16x16_twisted`, `12x12x12`, `12x12x24_twisted` | HIGH |
-| `kViperfishRouteCacheSet` | `ResilientToroidalTopology::kViperfishRouteCacheSet` @`0x21f57440` | 4 | `16x16x16`, `20x20x20`, `12x24x24_twisted`, `16x16x32_twisted` (the large pods) | HIGH |
-| `TwistedTorusTopology::kRouteCacheSet` | @`0x22011f88` | 8 | `4x8_twisted`, `4x4x8_twisted`, `4x8x8_twisted`, `8x8x16_twisted`, `8x16x16_twisted`, `12x12x24_twisted`, `12x24x24_twisted`, `16x16x32_twisted` | HIGH |
+| Cache set | Symbol (`.data`) | N | Shapes |
+|-----------|------------------|---|--------|
+| `kRouteCacheSet` | `ResilientToroidalTopology::kRouteCacheSet` @`0x21f57380` | 12 | `4x4x4`, `4x4x8`, `4x4x8_twisted`, `4x4x12`, `4x4x16`, `4x8x8`, `4x8x8_twisted`, `8x8x8`, `8x8x16_twisted`, `8x16x16_twisted`, `12x12x12`, `12x12x24_twisted` |
+| `kViperfishRouteCacheSet` | `ResilientToroidalTopology::kViperfishRouteCacheSet` @`0x21f57440` | 4 | `16x16x16`, `20x20x20`, `12x24x24_twisted`, `16x16x32_twisted` (the large pods) |
+| `TwistedTorusTopology::kRouteCacheSet` | @`0x22011f88` | 8 | `4x8_twisted`, `4x4x8_twisted`, `4x8x8_twisted`, `8x8x16_twisted`, `8x16x16_twisted`, `12x12x24_twisted`, `12x24x24_twisted`, `16x16x32_twisted` |
 
 (Shapes listed in alphabetical `flat_set` order; the `_twisted` suffix is the geometry tag, not a separate axis.)
 

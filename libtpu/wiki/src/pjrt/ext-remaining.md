@@ -63,15 +63,15 @@ The canonical `PJRT_Layouts` surface: opaque `PjRtLayout` handles, serialize, de
 | **struct_size** | 80 (`(80-24)/8 = 7` methods) |
 | **TPU-injected** | none — generic, TPU layout-assignment-backed |
 
-| Offset | Method | Impl symbol | Addr | Confidence |
-|---|---|---|---|---|
-| `+0x18` | `MemoryLayout_Destroy` | `pjrt::PJRT_Layouts_MemoryLayout_Destroy` | `0xF871360` | CERTAIN |
-| `+0x20` | `MemoryLayout_Serialize` | `pjrt::PJRT_Layouts_MemoryLayout_Serialize` | `0xF871400` | CERTAIN |
-| `+0x28` | `Client_GetDefaultLayout` | `pjrt::PJRT_Layouts_PJRT_Client_GetDefaultLayout` | `0xF8714A0` | CERTAIN |
-| `+0x30` | `Buffer_MemoryLayout` | `pjrt::PJRT_Layouts_PJRT_Buffer_MemoryLayout` | `0xF871620` | CERTAIN |
-| `+0x38` | `Topology_GetDefaultLayout` | `pjrt::PJRT_Layouts_PJRT_Topology_GetDefaultLayout` | `0xF8716A0` | CERTAIN |
-| `+0x40` | `Executable_GetOutputLayouts` | `pjrt::PJRT_Layouts_PJRT_Executable_GetOutputLayouts` | `0xF871C40` | CERTAIN |
-| `+0x48` | `Executable_GetParameterLayouts` | `pjrt::PJRT_Layouts_PJRT_Executable_GetParameterLayouts` | `0xF871820` | CERTAIN |
+| Offset | Method | Impl symbol | Addr |
+|---|---|---|---|
+| `+0x18` | `MemoryLayout_Destroy` | `pjrt::PJRT_Layouts_MemoryLayout_Destroy` | `0xF871360` |
+| `+0x20` | `MemoryLayout_Serialize` | `pjrt::PJRT_Layouts_MemoryLayout_Serialize` | `0xF871400` |
+| `+0x28` | `Client_GetDefaultLayout` | `pjrt::PJRT_Layouts_PJRT_Client_GetDefaultLayout` | `0xF8714A0` |
+| `+0x30` | `Buffer_MemoryLayout` | `pjrt::PJRT_Layouts_PJRT_Buffer_MemoryLayout` | `0xF871620` |
+| `+0x38` | `Topology_GetDefaultLayout` | `pjrt::PJRT_Layouts_PJRT_Topology_GetDefaultLayout` | `0xF8716A0` |
+| `+0x40` | `Executable_GetOutputLayouts` | `pjrt::PJRT_Layouts_PJRT_Executable_GetOutputLayouts` | `0xF871C40` |
+| `+0x48` | `Executable_GetParameterLayouts` | `pjrt::PJRT_Layouts_PJRT_Executable_GetParameterLayouts` | `0xF871820` |
 
 #### Algorithm
 
@@ -109,10 +109,10 @@ Enumerates the memory-space descriptions attached to a `PJRT_DeviceDescription` 
 | **struct_size** | 40 (2 methods) |
 | **TPU-injected** | none — generic |
 
-| Offset | Method | Impl symbol | Addr | Confidence |
-|---|---|---|---|---|
-| `+0x18` | `DeviceDescription_MemoryDescriptions` | `pjrt::PJRT_DeviceDescription_MemoryDescriptions` | `0xF865580` | CERTAIN |
-| `+0x20` | `MemoryDescription_Kind` | `pjrt::PJRT_MemoryDescription_Kind` | `0xF865920` | CERTAIN |
+| Offset | Method | Impl symbol | Addr |
+|---|---|---|---|
+| `+0x18` | `DeviceDescription_MemoryDescriptions` | `pjrt::PJRT_DeviceDescription_MemoryDescriptions` | `0xF865580` |
+| `+0x20` | `MemoryDescription_Kind` | `pjrt::PJRT_MemoryDescription_Kind` | `0xF865920` |
 
 `DeviceDescription_MemoryDescriptions` returns the array of opaque `PJRT_MemoryDescription*` for a device description; `MemoryDescription_Kind` returns the kind string for one description. Pairing is the standard "list then query" idiom.
 
@@ -128,12 +128,12 @@ The cross-host (DCN) buffer-transfer surface: receive-buffer allocation with a d
 | **struct_size** | 56 (4 methods) |
 | **TPU-injected** | none — generic |
 
-| Offset | Method | Impl symbol | Addr | Confidence |
-|---|---|---|---|---|
-| `+0x18` | `Client_MakeCrossHostReceiveBuffers` | `pjrt::PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers` | `0xF85C9A0` | CERTAIN |
-| `+0x20` | `Buffer_CopyToRemoteDevice` | `pjrt::PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice` | `0xF85CE20` | CERTAIN |
-| `+0x28` | `Client_CrossHostReceiveBuffers` | `pjrt::PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers` | `0xF85BBA0` | CERTAIN |
-| `+0x30` | `Client_CrossHostSendBuffers` | `pjrt::PJRT_Transfers_PJRT_Client_CrossHostSendBuffers` | `0xF85C2A0` | CERTAIN |
+| Offset | Method | Impl symbol | Addr |
+|---|---|---|---|
+| `+0x18` | `Client_MakeCrossHostReceiveBuffers` | `pjrt::PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers` | `0xF85C9A0` |
+| `+0x20` | `Buffer_CopyToRemoteDevice` | `pjrt::PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice` | `0xF85CE20` |
+| `+0x28` | `Client_CrossHostReceiveBuffers` | `pjrt::PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers` | `0xF85BBA0` |
+| `+0x30` | `Client_CrossHostSendBuffers` | `pjrt::PJRT_Transfers_PJRT_Client_CrossHostSendBuffers` | `0xF85C2A0` |
 
 > **NOTE —** `MakeCrossHostReceiveBuffers` (descriptor-returning) and `CrossHostReceiveBuffers` (caller-supplied descriptors) are two distinct receive idioms — the first hands the descriptors back to the sender out-of-band; the second consumes descriptors already exchanged. A reimplementation must wire both.
 
@@ -149,10 +149,10 @@ Exposes the per-parameter and per-output `xla::OpSharding` / `HloSharding` of a 
 | **struct_size** | 40 (2 methods) |
 | **TPU-injected** | none — generic |
 
-| Offset | Method | Impl symbol | Addr | Confidence |
-|---|---|---|---|---|
-| `+0x18` | `PJRT_Executable_ParameterShardings` | `pjrt::PJRT_Shardings_PJRT_Executable_ParameterShardings` | `0xF868000` | CERTAIN |
-| `+0x20` | `PJRT_Executable_OutputShardings` | `pjrt::PJRT_Shardings_PJRT_Executable_OutputShardings` | `0xF868A60` | CERTAIN |
+| Offset | Method | Impl symbol | Addr |
+|---|---|---|---|
+| `+0x18` | `PJRT_Executable_ParameterShardings` | `pjrt::PJRT_Shardings_PJRT_Executable_ParameterShardings` | `0xF868000` |
+| `+0x20` | `PJRT_Executable_OutputShardings` | `pjrt::PJRT_Shardings_PJRT_Executable_OutputShardings` | `0xF868A60` |
 
 This is the substitute for the absent Custom_Partitioner (type 2): a consumer cannot register a custom partitioner, but it can read back the shardings the compiler chose.
 
@@ -168,17 +168,17 @@ The canonical *in-process* XLA collectives surface — communicator lifecycle pl
 | **struct_size** | 96 (9 methods) |
 | **TPU-injected** | none — generic, CPU-executor-backed |
 
-| Offset | Method | Impl symbol | Addr | min/cur | Confidence |
-|---|---|---|---|---|---|
-| `+0x18` | `Collectives_Destroy` | `(anon)::CollectivesDestroy` | `0xE6F1A20` | 0x1D/0x10 | CERTAIN |
-| `+0x20` | `CreateCommunicators` | `(anon)::CollectivesCreateCommunicators` | `0xE6F1AA0` | 0x29/0x68 | CERTAIN |
-| `+0x28` | `Communicator_Destroy` | `(anon)::CommunicatorDestroy` | `0xE6F21A0` | — | CERTAIN |
-| `+0x30` | `Communicator_AllReduce` | `(anon)::CommunicatorAllReduce` | `0xE6F2220` | 0x2C/0x58 | CERTAIN |
-| `+0x38` | `Communicator_ReduceScatter` | `(anon)::CommunicatorReduceScatter` | `0xE6F2440` | — | CERTAIN |
-| `+0x40` | `Communicator_AllGather` | `(anon)::CommunicatorAllGather` | `0xE6F2660` | — | CERTAIN |
-| `+0x48` | `Communicator_CollectivePermute` | `(anon)::CommunicatorCollectivePermute` | `0xE6F2880` | — | CERTAIN |
-| `+0x50` | `Communicator_AllToAll` | `(anon)::CommunicatorAllToAll` | `0xE6F2CC0` | — | CERTAIN |
-| `+0x58` | `Communicator_ToString` | `(anon)::CommunicatorToString` | `0xE6F3280` | — | CERTAIN |
+| Offset | Method | Impl symbol | Addr | min/cur |
+|---|---|---|---|---|
+| `+0x18` | `Collectives_Destroy` | `(anon)::CollectivesDestroy` | `0xE6F1A20` | 0x1D/0x10 |
+| `+0x20` | `CreateCommunicators` | `(anon)::CollectivesCreateCommunicators` | `0xE6F1AA0` | 0x29/0x68 |
+| `+0x28` | `Communicator_Destroy` | `(anon)::CommunicatorDestroy` | `0xE6F21A0` | — |
+| `+0x30` | `Communicator_AllReduce` | `(anon)::CommunicatorAllReduce` | `0xE6F2220` | 0x2C/0x58 |
+| `+0x38` | `Communicator_ReduceScatter` | `(anon)::CommunicatorReduceScatter` | `0xE6F2440` | — |
+| `+0x40` | `Communicator_AllGather` | `(anon)::CommunicatorAllGather` | `0xE6F2660` | — |
+| `+0x48` | `Communicator_CollectivePermute` | `(anon)::CommunicatorCollectivePermute` | `0xE6F2880` | — |
+| `+0x50` | `Communicator_AllToAll` | `(anon)::CommunicatorAllToAll` | `0xE6F2CC0` | — |
+| `+0x58` | `Communicator_ToString` | `(anon)::CommunicatorToString` | `0xE6F3280` | — |
 
 #### Behavior
 
@@ -198,9 +198,9 @@ The generic XLA host-staging buffer allocator advertised at the chain head (walk
 | **struct_size** | 32 (1 method) |
 | **TPU-injected** | none — generic |
 
-| Offset | Method | Impl symbol | Addr | min/cur | Confidence |
-|---|---|---|---|---|---|
-| `+0x18` | `Allocate` | `(anon)::HostMemoryAllocator_Allocate` | `0xE6F5380` | 0x26/0x40 | CERTAIN |
+| Offset | Method | Impl symbol | Addr | min/cur |
+|---|---|---|---|---|
+| `+0x18` | `Allocate` | `(anon)::HostMemoryAllocator_Allocate` | `0xE6F5380` | 0x26/0x40 |
 
 #### Algorithm
 
@@ -247,20 +247,20 @@ Cross-version compatibility checking between the runtime ABI and serialized exec
 | **struct_size** | 120 (12 methods) |
 | **TPU-injected** | 2 slots (`+0x68`, `+0x70`) — see Group 3 |
 
-| Offset | Method | Impl symbol | Addr | Confidence |
-|---|---|---|---|---|
-| `+0x18` | `Client_RuntimeAbiVersion` | `(anon)::ClientRuntimeAbiVersion` | `0xE6B8A00` | CERTAIN |
-| `+0x20` | `Executable_GetAbiVersion` | `(anon)::ExecutableGetAbiVersion` | `0xE6B8AE0` | CERTAIN |
-| `+0x28` | `RuntimeAbiVersion_Destroy` | `(anon)::RuntimeAbiVersionDestroy` | `0xE6B8BC0` | CERTAIN |
-| `+0x30` | `RuntimeAbiVersion_IsCompatibleWithRuntime` | `(anon)::RuntimeAbiVersionIsCompatibleWithRuntime` | `0xE6B8C40` | CERTAIN |
-| `+0x38` | `RuntimeAbiVersion_IsCompatibleWithExecutable` | `(anon)::RuntimeAbiVersionIsCompatibleWithExecutable` | `0xE6B8CA0` | CERTAIN |
-| `+0x40` | `RuntimeAbiVersion_ToProto` | `(anon)::RuntimeAbiVersionToProto` | `0xE6B8D00` | CERTAIN |
-| `+0x48` | `RuntimeAbiVersion_PlatformId` | `(anon)::RuntimeAbiVersionPlatformId` | `0xE6B8EA0` | CERTAIN |
-| `+0x50` | `ExecutableAbiVersion_Destroy` | `(anon)::ExecutableAbiVersionDestroy` | `0xE6B8F00` | CERTAIN |
-| `+0x58` | `ExecutableAbiVersion_ToProto` | `(anon)::ExecutableAbiVersionToProto` | `0xE6B8F80` | CERTAIN |
-| `+0x60` | `ExecutableAbiVersion_PlatformId` | `(anon)::ExecutableAbiVersionPlatformId` | `0xE6B9120` | CERTAIN |
-| `+0x68` | `RuntimeAbiVersion_FromProto` *(TPU)* | `(anon)::TpuRuntimeAbiVersionFromProto` | `0xE6B7360` | CERTAIN |
-| `+0x70` | `ExecutableAbiVersion_FromProto` *(TPU)* | `(anon)::TpuExecutableAbiVersionFromProto` | `0xE6B7380` | CERTAIN |
+| Offset | Method | Impl symbol | Addr |
+|---|---|---|---|
+| `+0x18` | `Client_RuntimeAbiVersion` | `(anon)::ClientRuntimeAbiVersion` | `0xE6B8A00` |
+| `+0x20` | `Executable_GetAbiVersion` | `(anon)::ExecutableGetAbiVersion` | `0xE6B8AE0` |
+| `+0x28` | `RuntimeAbiVersion_Destroy` | `(anon)::RuntimeAbiVersionDestroy` | `0xE6B8BC0` |
+| `+0x30` | `RuntimeAbiVersion_IsCompatibleWithRuntime` | `(anon)::RuntimeAbiVersionIsCompatibleWithRuntime` | `0xE6B8C40` |
+| `+0x38` | `RuntimeAbiVersion_IsCompatibleWithExecutable` | `(anon)::RuntimeAbiVersionIsCompatibleWithExecutable` | `0xE6B8CA0` |
+| `+0x40` | `RuntimeAbiVersion_ToProto` | `(anon)::RuntimeAbiVersionToProto` | `0xE6B8D00` |
+| `+0x48` | `RuntimeAbiVersion_PlatformId` | `(anon)::RuntimeAbiVersionPlatformId` | `0xE6B8EA0` |
+| `+0x50` | `ExecutableAbiVersion_Destroy` | `(anon)::ExecutableAbiVersionDestroy` | `0xE6B8F00` |
+| `+0x58` | `ExecutableAbiVersion_ToProto` | `(anon)::ExecutableAbiVersionToProto` | `0xE6B8F80` |
+| `+0x60` | `ExecutableAbiVersion_PlatformId` | `(anon)::ExecutableAbiVersionPlatformId` | `0xE6B9120` |
+| `+0x68` | `RuntimeAbiVersion_FromProto` *(TPU)* | `(anon)::TpuRuntimeAbiVersionFromProto` | `0xE6B7360` |
+| `+0x70` | `ExecutableAbiVersion_FromProto` *(TPU)* | `(anon)::TpuExecutableAbiVersionFromProto` | `0xE6B7380` |
 
 > **QUIRK —** the creator writes `next` from its **`a4`** argument, not `a2`: `CreateAbiVersionExtension(node, runtime_fn, executable_fn, next)` stores `runtime_fn` at `+0x68`, `executable_fn` at `+0x70`, and `next` at `+0x10`. The thunk `CreateTpuAbiVersionExtension(node, next)` just tail-calls it with the two TPU `FromProto` functions wired in. A reimplementation that assumes the `next` is always the second creator argument will mis-link this node.
 
@@ -319,16 +319,16 @@ The most TPU-specific compiled-executable surface: target-argument and HLO-modul
 | **struct_size** | 88 (7 live + 1 reserved-NULL at `+0x28`) |
 | **TPU-injected** | all 7 live slots are anon-namespace TPU implementations |
 
-| Offset | Method | Impl symbol | Addr | min/cur | Confidence |
-|---|---|---|---|---|---|
-| `+0x18` | `GetTargetArguments` | `(anon)::GetTargetArguments` | `0xE6DC760` | — | CERTAIN |
-| `+0x20` | `GetHloModuleWithConfig` | `(anon)::GetHloModuleWithConfig` | `0xE6DC8A0` | — | CERTAIN |
-| `+0x28` | *(reserved, NULL)* | — | — | — | CERTAIN |
-| `+0x30` | `GetCompiledMemoryStats` | `(anon)::GetCompiledMemoryStats` | `0xE6DCA40` | — | CERTAIN |
-| `+0x38` | `RunHloCostAnalysis` | `(anon)::RunHloCostAnalysis` | `0xE6DCC40` | — | CERTAIN |
-| `+0x40` | `SetTpuCompilationEnv` | `(anon)::SetTpuCompilationEnv` | `0xE6DD400` | 0x2C/0x38 | CERTAIN |
-| `+0x48` | `GetTpuCompilationEnvFieldAsString` | `(anon)::GetTpuCompilationEnvFieldAsString` | `0xE6DD620` | — | CERTAIN |
-| `+0x50` | `IsTpuPredeterminedError` | `(anon)::IsTpuPredeterminedError` | `0xE6DD880` | 0x2F/0x19 | CERTAIN |
+| Offset | Method | Impl symbol | Addr | min/cur |
+|---|---|---|---|---|
+| `+0x18` | `GetTargetArguments` | `(anon)::GetTargetArguments` | `0xE6DC760` | — |
+| `+0x20` | `GetHloModuleWithConfig` | `(anon)::GetHloModuleWithConfig` | `0xE6DC8A0` | — |
+| `+0x28` | *(reserved, NULL)* | — | — | — |
+| `+0x30` | `GetCompiledMemoryStats` | `(anon)::GetCompiledMemoryStats` | `0xE6DCA40` | — |
+| `+0x38` | `RunHloCostAnalysis` | `(anon)::RunHloCostAnalysis` | `0xE6DCC40` | — |
+| `+0x40` | `SetTpuCompilationEnv` | `(anon)::SetTpuCompilationEnv` | `0xE6DD400` | 0x2C/0x38 |
+| `+0x48` | `GetTpuCompilationEnvFieldAsString` | `(anon)::GetTpuCompilationEnvFieldAsString` | `0xE6DD620` | — |
+| `+0x50` | `IsTpuPredeterminedError` | `(anon)::IsTpuPredeterminedError` | `0xE6DD880` | 0x2F/0x19 |
 
 #### Behavior
 
@@ -350,13 +350,13 @@ Queries a `PJRT_MultiSlice_Config` opaque wrapper — an 8-byte heap object hold
 | **struct_size** | 64 (5 methods) |
 | **TPU-injected** | all anon-namespace TPU implementations |
 
-| Offset | Method | Impl symbol | Addr | min/cur | Confidence |
-|---|---|---|---|---|---|
-| `+0x18` | `Config_Destroy` | `(anon)::ConfigDestroy` | `0xE6F3CA0` | 0x23/0x10 | CERTAIN |
-| `+0x20` | `Config_NumSlices` | `(anon)::ConfigNumSlices` | `0xE6F3D20` | 0x25/0x14 | CERTAIN |
-| `+0x28` | `Config_SliceId` | `(anon)::ConfigSliceId` | `0xE6F3D80` | — | CERTAIN |
-| `+0x30` | `Config_NumDevicesPerSlice` | `(anon)::ConfigNumDevicesPerSlice` | `0xE6F3DE0` | — | CERTAIN |
-| `+0x38` | `Config_Serialize` | `(anon)::ConfigSerialize` | `0xE6F3FE0` | — | CERTAIN |
+| Offset | Method | Impl symbol | Addr | min/cur |
+|---|---|---|---|---|
+| `+0x18` | `Config_Destroy` | `(anon)::ConfigDestroy` | `0xE6F3CA0` | 0x23/0x10 |
+| `+0x20` | `Config_NumSlices` | `(anon)::ConfigNumSlices` | `0xE6F3D20` | 0x25/0x14 |
+| `+0x28` | `Config_SliceId` | `(anon)::ConfigSliceId` | `0xE6F3D80` | — |
+| `+0x30` | `Config_NumDevicesPerSlice` | `(anon)::ConfigNumDevicesPerSlice` | `0xE6F3DE0` | — |
+| `+0x38` | `Config_Serialize` | `(anon)::ConfigSerialize` | `0xE6F3FE0` | — |
 
 #### Behavior
 
@@ -376,10 +376,10 @@ Host-side callbacks fired on TPU slice-builder fault events — the libtpu host-
 | **struct_size** | 40 (2 methods) |
 | **TPU-injected** | all anon-namespace TPU implementations |
 
-| Offset | Method | Impl symbol | Addr | min/cur | Confidence |
-|---|---|---|---|---|---|
-| `+0x18` | `RegisterCallback` | `(anon)::PJRT_Callback_RegisterCallback` | `0xE6B9220` | 0x23/0x28 | CERTAIN |
-| `+0x20` | `InvokeCallback` | `(anon)::PJRT_Callback_InvokeCallback` | `0xE6B94C0` | — | CERTAIN |
+| Offset | Method | Impl symbol | Addr | min/cur |
+|---|---|---|---|---|
+| `+0x18` | `RegisterCallback` | `(anon)::PJRT_Callback_RegisterCallback` | `0xE6B9220` | 0x23/0x28 |
+| `+0x20` | `InvokeCallback` | `(anon)::PJRT_Callback_InvokeCallback` | `0xE6B94C0` | — |
 
 #### Behavior
 
@@ -399,11 +399,11 @@ The TPU pinned-host memory allocator used for device-host DMA staging — distin
 | **struct_size** | 48 (3 methods) |
 | **TPU-injected** | all 3 slots (`a3`/`a4`/`a5`) |
 
-| Offset | Method | Impl symbol | Addr | Confidence |
-|---|---|---|---|---|
-| `+0x18` | `GetPreferredAlignment` | `tpu_plugin::TPU_PJRT_HostAllocator_GetPreferredAlignment` | `0xE6AA060` | CERTAIN |
-| `+0x20` | `Allocate` | `tpu_plugin::TPU_PJRT_HostAllocator_Allocate` | `0xE6AA140` | CERTAIN |
-| `+0x28` | `Free` | `tpu_plugin::TPU_PJRT_HostAllocator_Free` | `0xE6AA240` | CERTAIN |
+| Offset | Method | Impl symbol | Addr |
+|---|---|---|---|
+| `+0x18` | `GetPreferredAlignment` | `tpu_plugin::TPU_PJRT_HostAllocator_GetPreferredAlignment` | `0xE6AA060` |
+| `+0x20` | `Allocate` | `tpu_plugin::TPU_PJRT_HostAllocator_Allocate` | `0xE6AA140` |
+| `+0x28` | `Free` | `tpu_plugin::TPU_PJRT_HostAllocator_Free` | `0xE6AA240` |
 
 > **GOTCHA —** the two host allocators are the classic confusion in this chain. Type **23** (`HostMemoryAllocator`, 32 bytes, 1 method, generic, no `priv`, payload pointer at `+0x08`) is XLA host staging via the live client vtable. Type **15** (`HostAllocator`, 48 bytes, 3 methods, all TPU-injected) is TPU pinned-host DMA staging with plugin-supplied pointers. Different struct layouts, different layers; matching on the wrong type id returns the wrong allocator.
 
@@ -423,10 +423,10 @@ Returns serialized executable metadata (a TPU-specific blob describing a compile
 | **struct_size** | 40 (2 methods) |
 | **TPU-injected** | 1 slot (`+0x18`, the `Get` path) |
 
-| Offset | Method | Impl symbol | Addr | Confidence |
-|---|---|---|---|---|
-| `+0x18` | `GetExecutableMetadata` *(TPU)* | `tpu_plugin::GetTpuExecutableMetadata` | `0xE6A9E40` | CERTAIN |
-| `+0x20` | `DestroySerializedMetadata` | `pjrt::DestroySerializedMetadata` | `0xF8A3BA0` | CERTAIN |
+| Offset | Method | Impl symbol | Addr |
+|---|---|---|---|
+| `+0x18` | `GetExecutableMetadata` *(TPU)* | `tpu_plugin::GetTpuExecutableMetadata` | `0xE6A9E40` |
+| `+0x20` | `DestroySerializedMetadata` | `pjrt::DestroySerializedMetadata` | `0xF8A3BA0` |
 
 > **QUIRK —** the injected TPU function lands in the *first* slot (`+0x18`), with the generic deleter at `+0x20`. The creator stores its `a3` (the TPU `get` fn) at `+0x18` and the baked-in `DestroySerializedMetadata` at `+0x20`. This is the inverse arrangement from PhaseCompile (TPU factory first) and matches it conceptually: the producer is TPU, the destructor is generic.
 
@@ -434,10 +434,10 @@ Returns serialized executable metadata (a TPU-specific blob describing a compile
 
 The two TPU-injected slots of [AbiVersion](#abiversion-generic-portion--type-20-120-bytes) (documented above in Group 1 for the bulk of the node). The thunk `CreateTpuAbiVersionExtension` @ `0xE6B7340` supplies them:
 
-| Offset | Method | Impl symbol | Addr | Wraps | Confidence |
-|---|---|---|---|---|---|
-| `+0x68` | `RuntimeAbiVersion_FromProto` | `(anon)::TpuRuntimeAbiVersionFromProto` | `0xE6B7360` | `xla::PjRtRuntimeAbiVersionFromProto` @ `0xE6B73E0` | CERTAIN |
-| `+0x70` | `ExecutableAbiVersion_FromProto` | `(anon)::TpuExecutableAbiVersionFromProto` | `0xE6B7380` | `xla::PjRtExecutableAbiVersionFromProto` @ `0xE6B7660` | CERTAIN |
+| Offset | Method | Impl symbol | Addr | Wraps |
+|---|---|---|---|---|
+| `+0x68` | `RuntimeAbiVersion_FromProto` | `(anon)::TpuRuntimeAbiVersionFromProto` | `0xE6B7360` | `xla::PjRtRuntimeAbiVersionFromProto` @ `0xE6B73E0` |
+| `+0x70` | `ExecutableAbiVersion_FromProto` | `(anon)::TpuExecutableAbiVersionFromProto` | `0xE6B7380` | `xla::PjRtExecutableAbiVersionFromProto` @ `0xE6B7660` |
 
 Each consumes its proto (`xla::PjRtRuntimeAbiVersionProto` / `xla::PjRtExecutableAbiVersionProto`) and produces a `StatusOr<unique_ptr<...AbiVersion>>` through `pjrt::Common{Runtime,Executable}AbiVersionFromProto` @ `0xE6B86A0` / `0xE6B8800`. They are TPU-supplied because the proto carries the TPU platform id; the rest of the AbiVersion surface is platform-agnostic.
 

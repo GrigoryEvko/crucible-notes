@@ -135,14 +135,14 @@ The branch/call/sync target offset and all other immediates live in the immediat
 
 `SparseCoreImmediatesEncoder::Encode` reads proto fields `a2[6]..a2[11]` (proto +0x18..+0x2c, i.e. `imm_0`..`imm_5`) and `BitCopy`s each at width 20. Confirmed byte-identical across all three generations:
 
-| imm slot | proto field | dst_bit (hex) | dst_bit (dec) | width | Confidence |
-|---|---|---|---|---|---|
-| 0 (branch/call offset) | `+0x18` | `0x43` | 67 | 20 | CERTAIN |
-| 1 | `+0x1c` | `0x2f` | 47 | 20 | CERTAIN |
-| 2 | `+0x20` | `0x1b` | 27 | 20 | CERTAIN |
-| 3 | `+0x24` | `0x07` | 7 | 20 | CERTAIN |
-| 4 | `+0x28` | `0xd7` | 215 | 20 | CERTAIN |
-| 5 | `+0x2c` | `0xc3` | 195 | 20 | CERTAIN |
+| imm slot | proto field | dst_bit (hex) | dst_bit (dec) | width |
+|---|---|---|---|---|
+| 0 (branch/call offset) | `+0x18` | `0x43` | 67 | 20 |
+| 1 | `+0x1c` | `0x2f` | 47 | 20 |
+| 2 | `+0x20` | `0x1b` | 27 | 20 |
+| 3 | `+0x24` | `0x07` | 7 | 20 |
+| 4 | `+0x28` | `0xd7` | 215 | 20 |
+| 5 | `+0x2c` | `0xc3` | 195 | 20 |
 
 Encoder addresses: `vfc` `0x1ee75ee0`, `glc` `0x1eb563c0`, `gfc` `0x1ecd1760`. Slots 4 and 5 (bits 215/195) appear in the full `SparseCoreImmediatesEncoder`; the SCS branch/call path uses only slots 0..3. A second class, `SparseCoreScalarImmediatesEncoder` (`gfc` `0x1eb5bd20`), packs only slots 0..3 at the same bits 67/47/27/7 — it is the encoder the `gfc` SCS codec template names. The `gfc` SCS codec template (confirmed in the `EncodeBundle` `0x1e838cc0` `case 3` `SparseCoreScsCodecBase<…>` argument list) selects `SparseCoreScalarImmediatesEncoder`, so `0x1eb5bd20` is the function actually invoked on the SCS branch path; the full `SparseCoreImmediatesEncoder::Encode` (slots 0..5, bits 215/195) lives at `0x1ecd1760`. The branch/call offset (imm slot 0 = bit 67) is identical between the two encoders.
 
@@ -179,14 +179,14 @@ The sequencer slot (`ScalarAlu0`) carries the branch/call discriminator, the cal
 
 Every `ScalarAlu0` op writes an opcode-HIGH field (width 6, family) and an opcode-LOW field (width 5, addressing discriminator). For all branch/call control ops opcode-HIGH = 0; the scalar-ALU compute ops carry their opcode in opcode-HIGH instead (e.g. `CompareIntegerEq` = 0x1e). The opcode-LOW discriminator values are uniform across SCS and TC, all V5+ generations:
 
-| opcode-LOW | Op | Extra fields | Confidence |
-|---|---|---|---|
-| 4 | `BranchAbsolute` | offset → imm slot 0 | CERTAIN |
-| 5 | `BranchRelative` | offset → imm slot 0 | CERTAIN |
-| 6 | `CallAbsolute` | offset → imm slot 0; dest (link) sreg → dest field | CERTAIN |
-| 7 | `CallRelative` | offset → imm slot 0; dest (link) sreg → dest field | CERTAIN |
-| 4 (family field used) | `BranchSreg` | x-target sreg → x-target field | HIGH |
-| 0x18 (24) | `BranchRelativeRotatingPreg` | rotating-preg index → dedicated field (`gfc` SCS only) | CERTAIN |
+| opcode-LOW | Op | Extra fields |
+|---|---|---|
+| 4 | `BranchAbsolute` | offset → imm slot 0 |
+| 5 | `BranchRelative` | offset → imm slot 0 |
+| 6 | `CallAbsolute` | offset → imm slot 0; dest (link) sreg → dest field |
+| 7 | `CallRelative` | offset → imm slot 0; dest (link) sreg → dest field |
+| 4 (family field used) | `BranchSreg` | x-target sreg → x-target field |
+| 0x18 (24) | `BranchRelativeRotatingPreg` | rotating-preg index → dedicated field (`gfc` SCS only) |
 
 The branch offset range is signed 20-bit (`−0x80000..+0x7FFFF`) for absolute, relative, and call alike; the abs/rel distinction is purely the discriminator value. A return is not a dedicated op — it is a `BranchSreg` reading the link sreg.
 
@@ -194,15 +194,15 @@ The branch offset range is signed 20-bit (`−0x80000..+0x7FFFF`) for absolute, 
 
 The encoder writes a common predication header, then dispatches `jmp *jt[proto+0x50]` (bound 0x56 = 86 entries) to a per-op helper. Confirmed from `glc` `0x1e9d2140` and the `BranchAbsolute` helper `0x1e9d67c0`; Viperfish (`vfc` encoder `0x1ee82ce0`, `BranchAbsolute` helper `0x1ee873c0`) is byte-identical.
 
-| field | dst_bit | hex | width | Source / written by | Confidence |
-|---|---|---|---|---|---|
-| predication reg index | 187 | `0xbb` | 4 | proto +0x20, main encoder | CERTAIN |
-| predication inversion | 191 | `0xbf` | 1 | proto +0x18 (byte), main encoder | CERTAIN |
-| opcode-HIGH / family | 181 | `0xb5` | 6 | per-op helper (=0 for branch/call) | CERTAIN |
-| opcode-LOW / discriminator | 176 | `0xb0` | 5 | per-op helper (4/5/6/7/0x18) | CERTAIN |
-| x-target / 2nd operand | 170 (`gfc`) / 176 (`vfc`/`glc`) | `0xaa` / `0xb0` | 6 / 5 | `BranchSreg`/aux (`gfc` `0x1eb6dd40`, `vfc` `0x1ee87480`) | CERTAIN |
-| call dest (return-addr) sreg | 165 | `0xa5` | 5 | `CallAbsolute`/`CallRelative` | CERTAIN |
-| rotating-preg index (`gfc`) | 165 | `0xa5` | 4 | `BranchRelativeRotatingPreg` | CERTAIN |
+| field | dst_bit | hex | width | Source / written by |
+|---|---|---|---|---|
+| predication reg index | 187 | `0xbb` | 4 | proto +0x20, main encoder |
+| predication inversion | 191 | `0xbf` | 1 | proto +0x18 (byte), main encoder |
+| opcode-HIGH / family | 181 | `0xb5` | 6 | per-op helper (=0 for branch/call) |
+| opcode-LOW / discriminator | 176 | `0xb0` | 5 | per-op helper (4/5/6/7/0x18) |
+| x-target / 2nd operand | 170 (`gfc`) / 176 (`vfc`/`glc`) | `0xaa` / `0xb0` | 6 / 5 | `BranchSreg`/aux (`gfc` `0x1eb6dd40`, `vfc` `0x1ee87480`) |
+| call dest (return-addr) sreg | 165 | `0xa5` | 5 | `CallAbsolute`/`CallRelative` |
+| rotating-preg index (`gfc`) | 165 | `0xa5` | 4 | `BranchRelativeRotatingPreg` |
 
 On 6acc60406 (`gfc` encoder `0x1eb693c0`) the SCS predication narrows: a 3-bit selector at bit 187 (`0xbb`) + inversion at bit 190 (`0xbe`), overlaid with a 4-bit dual-predicate index also at bit 187 + inversion at bit 191. The `gfc` `BranchRelativeRotatingPreg` helper (`0x1eb6b9c0`) writes discriminator 24 at bit 176 (w5), opcode-HIGH 0 at bit 181 (w6), rotating-preg index at bit 165 (w4), and a 6-bit aux at bit 170.
 
@@ -210,15 +210,15 @@ On 6acc60406 (`gfc` encoder `0x1eb693c0`) the SCS predication narrows: a 3-bit s
 
 The slot `InstBits` could not hold. Confirmed from `vxc` `0x1eecb900` (and helper `0x1eecf960`), `glc` `0x1f219b40` (and helper `0x1f21da40`), and `gfc` `0x1f87b420`.
 
-| field | `vxc` (VF) | `glc` (GL) | `gfc` (GF) | Confidence |
-|---|---|---|---|---|
-| predication reg index | bit 499 w4 | bit 502 w4 | — (2-bit selector) | CERTAIN |
-| predication inversion | bit 503 w1 | bit 506 w1 | — | CERTAIN |
-| predication 2-bit selector | — | — | bit 489 w2 | CERTAIN |
-| opcode-HIGH / family | bit 493 w6 | bit 496 w6 | bit 483 w6 | CERTAIN |
-| opcode-LOW / discriminator | bit 488 w5 | bit 491 w5 | bit 478 w5 | CERTAIN |
-| x-target / 2nd operand | bit 482 w6 | bit 485 w6 | bit 472 w6 | CERTAIN |
-| call dest (return-addr) sreg | bit 477 w5 | bit 480 w5 | bit 467 w5 | CERTAIN |
+| field | `vxc` (VF) | `glc` (GL) | `gfc` (GF) |
+|---|---|---|---|
+| predication reg index | bit 499 w4 | bit 502 w4 | — (2-bit selector) |
+| predication inversion | bit 503 w1 | bit 506 w1 | — |
+| predication 2-bit selector | — | — | bit 489 w2 |
+| opcode-HIGH / family | bit 493 w6 | bit 496 w6 | bit 483 w6 |
+| opcode-LOW / discriminator | bit 488 w5 | bit 491 w5 | bit 478 w5 |
+| x-target / 2nd operand | bit 482 w6 | bit 485 w6 | bit 472 w6 |
+| call dest (return-addr) sreg | bit 477 w5 | bit 480 w5 | bit 467 w5 |
 
 Ghostlite shifts the entire TC scalar/sequencer region **+3 bits** above Viperfish, in lockstep with the +3-bit TC immediate-block shift (433 vs 430) — the whole TC scalar/sequencer/immediate block translates as one rigid window to absorb the 7→8-bit opcode widening (`glc::isa::TensorCoreScalarAlu0Encoder::Encode` `0x1f219b40` and its `BranchAbsolute` helper `0x1f21da40`: predicate reg @ 502 not 499, inversion @ 506 not 503, opcode-HIGH @ 496 not 493, opcode-LOW @ 491 not 488, x-target aux @ 485 not 482, call dest @ 480 not 477). The SCS sequencer is *not* shifted — there `glc` is byte-identical to `vxc` (`0x1e9d2140`); see [Ghostlite Bundle](bundle-gl.md). 6acc60406's TC scalar slot is the widest: it adds the 6-bit operand at bit 472 and shrinks per-slot predication to a 2-bit selector at bit 489, with the actual 16-register predicate pool moved to the dedicated `TensorCorePredicates` slot.
 
@@ -236,22 +236,22 @@ Pin the exact byte offset of the predicate field within each V5+ bundle slot —
 
 Every populated functional slot carries its own predicate: a 4-bit register index plus a 1-bit inversion (the 2-bit extension of the `encodePredicateOperand` layout is the high end of the field, 0 in non-rotating code). At the top of the scalar slot:
 
-| Slot | reg index | inversion | Encoder | Confidence |
-|---|---|---|---|---|
-| TC `ScalarAlu0` (`vxc`) | bit 499 w4 | bit 503 w1 | `0x1eecb900` | CERTAIN |
-| TC `ScalarAlu0` (`glc`) | bit 502 w4 | bit 506 w1 | `0x1f219b40` | CERTAIN |
-| SCS `ScalarAlu0` (`glc`/`vfc`) | bit 187 w4 | bit 191 w1 | `0x1e9d2140` / `0x1ee82ce0` | CERTAIN |
+| Slot | reg index | inversion | Encoder |
+|---|---|---|---|
+| TC `ScalarAlu0` (`vxc`) | bit 499 w4 | bit 503 w1 | `0x1eecb900` |
+| TC `ScalarAlu0` (`glc`) | bit 502 w4 | bit 506 w1 | `0x1f219b40` |
+| SCS `ScalarAlu0` (`glc`/`vfc`) | bit 187 w4 | bit 191 w1 | `0x1e9d2140` / `0x1ee82ce0` |
 
 ### 6acc60406 — Dedicated Dual-Predicate Slot
 
 `TensorCorePredicatesEncoder::Encode` (`gfc` `0x1f86e500`) writes two per-bundle predicates into the very top of the 64-byte TC bundle; each functional slot then carries only a 2-bit selector choosing among `{pred_0, pred_1, always, never}`:
 
-| field | dst_bit | hex | width | proto src | Confidence |
-|---|---|---|---|---|---|
-| pred_0 reg | 501 | `0x1f5` | 4 | msg word | CERTAIN |
-| pred_0 inversion | 505 | `0x1f9` | 1 | msg +0x20 (byte) | CERTAIN |
-| pred_1 reg | 496 | `0x1f0` | 4 | msg word | CERTAIN |
-| pred_1 inversion | 500 | `0x1f4` | 1 | msg +0x21 (byte) | CERTAIN |
+| field | dst_bit | hex | width | proto src |
+|---|---|---|---|---|
+| pred_0 reg | 501 | `0x1f5` | 4 | msg word |
+| pred_0 inversion | 505 | `0x1f9` | 1 | msg +0x20 (byte) |
+| pred_1 reg | 496 | `0x1f0` | 4 | msg word |
+| pred_1 inversion | 500 | `0x1f4` | 1 | msg +0x21 (byte) |
 
 The 16-register predicate pool (the `PredicationSlot` enum 0..15) is encoded into pred_0/pred_1; the per-slot 2-bit selector indexes the pool. The "predication overflow — both predicate slots already taken" condition is exactly the state where these two 4-bit `(reg, inversion)` entries at bits 496..505 are full. The exact value→`{pred_0,pred_1,always,never}` mapping of the 2-bit selector was not decoded (the selector's own jump table was not walked); the selector field offsets are confirmed (LOW confidence on the value semantics).
 
@@ -267,16 +267,16 @@ The MXU matmul/push/latch (`VectorExtended`), the matres/EUP pop (`VectorResult`
 
 Two MXU slots (`VectorExtended0`, `VectorExtended1`) — one per physical matrix unit. The two slots **share the source-vreg (systolic-feed) region** but have opcode/control regions offset by a 25-bit slot stride on 6acc60406. The opcode field widens 7→8 bits across generations, mirroring the VALU slot. Confirmed from `gfc MatrixMultiplyBf16` `0x1f99a920`:
 
-| field | `vxc` | `glc` | `gfc` VEx0 | `gfc` VEx1 | Confidence |
-|---|---|---|---|---|---|
-| MXU-id (unit) [proto +0x1c] | bit 64 w4 | bit 66 w4 | bit 70 w2 | bit 45 w2 | CERTAIN |
-| opcode-HIGH | bit 57 w7 | bit 58 w8 | bit 62 w8 | bit 37 w8 | CERTAIN |
-| data-format sub-disc | bit 51 w4 | bit 52 w4 | bit 57 w4 | bit 32 w4 | CERTAIN |
-| done-gains/latch flag | bit 55 w2 | bit 56 w1 | bit 61 w1 | bit 36 w1 | CERTAIN |
-| control (3-bit) | bit 48 w3 | bit 49 w3 | bit 54 w3 | bit 29 w3 | CERTAIN |
-| primary operand | bit 180 w6 | bit 183 w6 | bit 47 w7 | bit 22 w7 | CERTAIN |
-| src vregs (8 × 6-bit, `gfc`) | — | — | 156/276/287/243/254/210/221/177 | (same) | CERTAIN |
-| opcode bound (#ops) | 0x66 (103) | 0x70 (113) | 0x54 (85) | 0x54 (85) | HIGH |
+| field | `vxc` | `glc` | `gfc` VEx0 | `gfc` VEx1 |
+|---|---|---|---|---|
+| MXU-id (unit) [proto +0x1c] | bit 64 w4 | bit 66 w4 | bit 70 w2 | bit 45 w2 |
+| opcode-HIGH | bit 57 w7 | bit 58 w8 | bit 62 w8 | bit 37 w8 |
+| data-format sub-disc | bit 51 w4 | bit 52 w4 | bit 57 w4 | bit 32 w4 |
+| done-gains/latch flag | bit 55 w2 | bit 56 w1 | bit 61 w1 | bit 36 w1 |
+| control (3-bit) | bit 48 w3 | bit 49 w3 | bit 54 w3 | bit 29 w3 |
+| primary operand | bit 180 w6 | bit 183 w6 | bit 47 w7 | bit 22 w7 |
+| src vregs (8 × 6-bit, `gfc`) | — | — | 156/276/287/243/254/210/221/177 | (same) |
+| opcode bound (#ops) | 0x66 (103) | 0x70 (113) | 0x54 (85) | 0x54 (85) |
 
 Encoder addresses: `vxc` `0x1efa0f60`, `glc` `0x1f32fd00`, `gfc` VEx0 `0x1f996940` / VEx1 `0x1f9d3800`. The weight latch is `LoadMatrixRegister{Gmr,Lmr}{Msra,Msrb}` (opcode-HIGH 0x37 on `gfc`, `0x1f9a04a0`); the moving-operand push is `PushMatrix{fmt}` (opcode-HIGH 0xe). The 8 source-vreg fields being byte-identical between VEx0 and VEx1 is the encoding statement that both MXUs draw the same vector read ports.
 
@@ -284,12 +284,12 @@ Encoder addresses: `vxc` `0x1efa0f60`, `glc` `0x1f32fd00`, `gfc` VEx0 `0x1f99694
 
 `VectorResult0Encoder::Encode` reads a result-type discriminator (proto +0x1c), dispatches `jmp *jt[proto+0x50]`, sets the per-result-type sub-message present tag, then a common tail `BitCopy`s the dest vreg. Confirmed from `gfc` `0x1fa01820`:
 
-| field | `vxc` | `glc` | `gfc` | Confidence |
-|---|---|---|---|---|
-| result-type discriminator | bit 24 w4 | bit 24 w4 | bit 20 w2 | CERTAIN |
-| dest vreg | bit 14 w6 | bit 14 w6 | bit 11 w6 | CERTAIN |
-| PopMxu accum-mode/format | (per +0x1c) | (per +0x1c) | bit 323 w8 | CERTAIN |
-| result-opcode bound | 0x8 (9) | 0x8 (9) | 0x7 (8) | HIGH |
+| field | `vxc` | `glc` | `gfc` |
+|---|---|---|---|
+| result-type discriminator | bit 24 w4 | bit 24 w4 | bit 20 w2 |
+| dest vreg | bit 14 w6 | bit 14 w6 | bit 11 w6 |
+| PopMxu accum-mode/format | (per +0x1c) | (per +0x1c) | bit 323 w8 |
+| result-opcode bound | 0x8 (9) | 0x8 (9) | 0x7 (8) |
 
 The matres-pop opcode is 6 (`PopMxuResult`) and the EUP-pop opcode is 7 (`PopEupResult`) on all generations. Ghostlite adds `PopAddMxu01Result` (fused matres+accumulate, K>128 multi-pass); Viperfish adds `PopCcrfResult` (scalar/CRF pop). The result slot's own predication field accessor is `TensorCoreVectorResult1PredicationField::GetConcatenatedValue` (`gfc` `0x1fa02520`); its exact bit was not individually walked (the adjacent result-mode/format fields at bits 17..21 are decoded).
 
@@ -297,11 +297,11 @@ The matres-pop opcode is 6 (`PopMxuResult`) and the EUP-pop opcode is 7 (`PopEup
 
 On all V5+ generations the transcendental push is a VALU slot-3 (`Alu3`) op, not a `VectorExtended` op — confirmed by the EUP helpers existing only in the `Alu3` set. The VALU opcode field selects the EUP-push family (value 0x0); a 5-bit EUP-function selector picks the transcendental. Confirmed from `gfc F32Tanh` `0x1f96ae40`:
 
-| field | `vxc` | `glc` | `gfc` | Confidence |
-|---|---|---|---|---|
-| VALU opcode (EUP-push family = 0x0) | bit 197 w7 | bit 194 w8 | bit 194 w8 | CERTAIN |
-| EUP-function selector | bit 186 w5 | bit 183 w5 | bit 183 w5 | CERTAIN |
-| src vreg | (slot-3) | bit 188 w6 | bit 188 w6 | CERTAIN |
+| field | `vxc` | `glc` | `gfc` |
+|---|---|---|---|
+| VALU opcode (EUP-push family = 0x0) | bit 197 w7 | bit 194 w8 | bit 194 w8 |
+| EUP-function selector | bit 186 w5 | bit 183 w5 | bit 183 w5 |
+| src vreg | (slot-3) | bit 188 w6 | bit 188 w6 |
 
 The `gfc` 5-bit function selector value map (VALU op = 0x0, selector @ bit 183), confirmed per-helper:
 

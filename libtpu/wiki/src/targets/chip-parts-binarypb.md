@@ -52,17 +52,17 @@ The nine descriptors, in array order, with reloc-resolved data VAs:
 
 All nine `fp` fields, `data` reloc addends, sizes, and `version` bytes below were re-derived independently: each blob was carved at its reloc-resolved `blob VA`, md5-hashed, and matched against the on-disk `fp` — every row matches, so every row is CONFIRMED.
 
-| # | Resource key | desc VA | blob VA | size (B) | md5 (== `fp`) | first bytes | Confidence |
-|---|---|---|---|---:|---|---|---|
-| 0 | `6acc60406_tensornode_chip_parts.binarypb` | `0x22010ED0` | `0x0BDF29A0` | 504 | `d1e4bea3…dec694a5` | `08 06` | CONFIRMED |
-| 1 | `6acc60406_chip_parts.binarypb` | `0x22010EF8` | `0x0BDF2BA0` | 546 | `f5c490e6…02fd8029` | `08 06` | CONFIRMED |
-| 2 | `ghostlite_chip_parts.binarypb` | `0x22010F20` | `0x0BDF2DD0` | 564 | `010c6352…13f5807f` | `08 05` | CONFIRMED |
-| 3 | `viperfish_chip_parts.binarypb` | `0x22010F48` | `0x0BDF3010` | 601 | `fccc06a7…e84c9dcf` | `08 04` | CONFIRMED |
-| 4 | `viperfish_lite_chip_parts.binarypb` | `0x22010F70` | `0x0BDF3270` | 232 | `a8e02254…064cb465` | `08 04` | CONFIRMED |
-| 5 | `pufferfish_lite_chip_parts.binarypb` | `0x22010F98` | `0x0BDF3360` | 277 | `fb066c9a…d1ff501c` | `08 03` | CONFIRMED |
-| 6 | `pufferfish_chip_parts.binarypb` | `0x22010FC0` | `0x0BDF3480` | 624 | `acdf3a9e…49af3fb2` | `08 03` | CONFIRMED |
-| 7 | `jellyfish_chip_parts.binarypb` | `0x22010FE8` | `0x0BDF3700` | 435 | `f86192ba…c4adecda` | `08 01` | CONFIRMED |
-| 8 | `dragonfish_chip_parts.binarypb` | `0x22011010` | `0x0BDF38C0` | 504 | `d3d51f67…80f61047` | `08 02` | CONFIRMED |
+| # | Resource key | desc VA | blob VA | size (B) | md5 (== `fp`) | first bytes |
+|---|---|---|---|---:|---|---|
+| 0 | `6acc60406_tensornode_chip_parts.binarypb` | `0x22010ED0` | `0x0BDF29A0` | 504 | `d1e4bea3…dec694a5` | `08 06` |
+| 1 | `6acc60406_chip_parts.binarypb` | `0x22010EF8` | `0x0BDF2BA0` | 546 | `f5c490e6…02fd8029` | `08 06` |
+| 2 | `ghostlite_chip_parts.binarypb` | `0x22010F20` | `0x0BDF2DD0` | 564 | `010c6352…13f5807f` | `08 05` |
+| 3 | `viperfish_chip_parts.binarypb` | `0x22010F48` | `0x0BDF3010` | 601 | `fccc06a7…e84c9dcf` | `08 04` |
+| 4 | `viperfish_lite_chip_parts.binarypb` | `0x22010F70` | `0x0BDF3270` | 232 | `a8e02254…064cb465` | `08 04` |
+| 5 | `pufferfish_lite_chip_parts.binarypb` | `0x22010F98` | `0x0BDF3360` | 277 | `fb066c9a…d1ff501c` | `08 03` |
+| 6 | `pufferfish_chip_parts.binarypb` | `0x22010FC0` | `0x0BDF3480` | 624 | `acdf3a9e…49af3fb2` | `08 03` |
+| 7 | `jellyfish_chip_parts.binarypb` | `0x22010FE8` | `0x0BDF3700` | 435 | `f86192ba…c4adecda` | `08 01` |
+| 8 | `dragonfish_chip_parts.binarypb` | `0x22011010` | `0x0BDF38C0` | 504 | `d3d51f67…80f61047` | `08 02` |
 
 The `first bytes` column is `tag=0x08` (field 1, varint) followed by the `TpuVersionProto` value: jellyfish=1, dragonfish=2, pufferfish(+lite)=3, viperfish(+lite)=4, ghostlite=5, 6acc60406=6. The two `6acc60406` blobs differ only by package multiplicity — `tensornode` is one die (1 TensorCore, 2 SparseCores, 1 HBM stack); the bare `6acc60406` blob is the full two-die megachip (doubled counts). See [Per-Codename Constant Table](per-codename-hw-constants.md) for the full decode.
 
@@ -96,17 +96,17 @@ The full schema was recovered from the `FileDescriptorProto`s in the binary's `p
 
 Field names, numbers, types, and labels below are read directly from the `tpu_chip_parts.proto` `FileDescriptorProto` at `0xC18FD80` (each row's `type_name`/`label` is in the descriptor) and every numbered field was independently re-decoded out of all nine blobs — so every row is CONFIRMED.
 
-| Field | # | Type | Meaning | Confidence |
-|---|---:|---|---|---|
-| `version` | 1 | `TpuVersionProto` | generation tag (1..6) | CONFIRMED |
-| `cores` | 2 | repeated `Core` | one entry per core type (TensorCore + BarnaCore/SparseCore) | CONFIRMED |
-| `shared_memories` | 3 | repeated `SharedMemory` | HBM (always) and CMEM (Pufferfish only) | CONFIRMED |
-| `uhi_sync_flag_memory_parts` | 4 | `TpuMemoryPartsProto` | UHI sync-flag region (where present) | CONFIRMED |
-| `local_shared_memory_mappings` | 5 | repeated `LocalSharedMemoryMapping` | core -> HBM stack topology | CONFIRMED |
-| `dma_requirements` | 6 | `DmaRequirementsProto` | alignment / granule / max-single-DMA | CONFIRMED |
-| `variant_name` | 7 | string | `"lite"` on lite blobs, empty otherwise | CONFIRMED |
-| `misc` | 8 | `MiscPropertiesProto` | sync-flag feature flags | CONFIRMED |
-| `driver_abi_version` | 9 | int64 | `1` on every gen | CONFIRMED |
+| Field | # | Type | Meaning |
+|---|---:|---|---|
+| `version` | 1 | `TpuVersionProto` | generation tag (1..6) |
+| `cores` | 2 | repeated `Core` | one entry per core type (TensorCore + BarnaCore/SparseCore) |
+| `shared_memories` | 3 | repeated `SharedMemory` | HBM (always) and CMEM (Pufferfish only) |
+| `uhi_sync_flag_memory_parts` | 4 | `TpuMemoryPartsProto` | UHI sync-flag region (where present) |
+| `local_shared_memory_mappings` | 5 | repeated `LocalSharedMemoryMapping` | core -> HBM stack topology |
+| `dma_requirements` | 6 | `DmaRequirementsProto` | alignment / granule / max-single-DMA |
+| `variant_name` | 7 | string | `"lite"` on lite blobs, empty otherwise |
+| `misc` | 8 | `MiscPropertiesProto` | sync-flag feature flags |
+| `driver_abi_version` | 9 | int64 | `1` on every gen |
 
 ### Nested and companion messages
 

@@ -98,15 +98,15 @@ Every method's args struct follows the canonical `{ size_t struct_size; void* pr
 
 All seven methods are byte-confirmed against the decompile: the args-name string, the `(min, cur)` `struct_size` literals, the args-output offset, and the single `xla::PjRtRawBuffer` vtable offset each bounces through. The "vtable bounce" column is the offset into the inner object's vtable (object vptr base `0x2177cff0` for `TpuRawBuffer`).
 
-| Off | Method | C symbol | Addr | min/cur | vtable bounce / backing | Confidence |
-|---|---|---|---|---|---|---|
-| `0x18` | CreateRawAliasOfBuffer | `pjrt::PJRT_RawBuffer_CreateRawAliasOfBuffer` | `0xe6f4d40` | 42 / 32 | static `xla::PjRtRawBuffer::CreateRawAliasOfBuffer` @ `0xf93f540` | CERTAIN |
-| `0x20` | Destroy | `pjrt::PJRT_RawBuffer_Destroy` | `0xe6f4e40` | 27 / 24 | `RCReference` dec-ref + vtable+0x08 (deleting dtor) + `free(0x10)` | CERTAIN |
-| `0x28` | GetOnDeviceSizeInBytes | `pjrt::PJRT_RawBuffer_GetOnDeviceSizeInBytes` | `0xe6f4f20` | 42 / 32 | vtable+0x20 `GetOnDeviceSizeInBytes()` | CERTAIN |
-| `0x30` | GetMemorySpace | `pjrt::PJRT_RawBuffer_GetMemorySpace` | `0xe6f4f80` | 34 / 32 | vtable+0x10 `memory_space()` + `PJRT_Client_FindMemoryWrapper` @ `0xf8605e0` | CERTAIN |
-| `0x38` | CopyRawHostToDevice | `pjrt::PJRT_RawBuffer_CopyRawHostToDevice` | `0xe6f5040` | 39 / 56 | vtable+0x28 `CommonPjRtRawBufferImpl::CopyRawHostToDevice` @ `0xf91c640` | CERTAIN |
-| `0x40` | CopyRawDeviceToHost | `pjrt::PJRT_RawBuffer_CopyRawDeviceToHost` | `0xe6f5180` | 39 / 56 | vtable+0x30 `CommonPjRtRawBufferImpl::CopyRawDeviceToHost` @ `0xf91c780` | CERTAIN |
-| `0x48` | GetHostPointer | `pjrt::PJRT_RawBuffer_GetHostPointer` | `0xe6f4ec0` | 34 / 32 | vtable+0x18 `TpuRawBuffer::GetHostPointer` (pinned_host only) | CERTAIN |
+| Off | Method | C symbol | Addr | min/cur | vtable bounce / backing |
+|---|---|---|---|---|---|
+| `0x18` | CreateRawAliasOfBuffer | `pjrt::PJRT_RawBuffer_CreateRawAliasOfBuffer` | `0xe6f4d40` | 42 / 32 | static `xla::PjRtRawBuffer::CreateRawAliasOfBuffer` @ `0xf93f540` |
+| `0x20` | Destroy | `pjrt::PJRT_RawBuffer_Destroy` | `0xe6f4e40` | 27 / 24 | `RCReference` dec-ref + vtable+0x08 (deleting dtor) + `free(0x10)` |
+| `0x28` | GetOnDeviceSizeInBytes | `pjrt::PJRT_RawBuffer_GetOnDeviceSizeInBytes` | `0xe6f4f20` | 42 / 32 | vtable+0x20 `GetOnDeviceSizeInBytes()` |
+| `0x30` | GetMemorySpace | `pjrt::PJRT_RawBuffer_GetMemorySpace` | `0xe6f4f80` | 34 / 32 | vtable+0x10 `memory_space()` + `PJRT_Client_FindMemoryWrapper` @ `0xf8605e0` |
+| `0x38` | CopyRawHostToDevice | `pjrt::PJRT_RawBuffer_CopyRawHostToDevice` | `0xe6f5040` | 39 / 56 | vtable+0x28 `CommonPjRtRawBufferImpl::CopyRawHostToDevice` @ `0xf91c640` |
+| `0x40` | CopyRawDeviceToHost | `pjrt::PJRT_RawBuffer_CopyRawDeviceToHost` | `0xe6f5180` | 39 / 56 | vtable+0x30 `CommonPjRtRawBufferImpl::CopyRawDeviceToHost` @ `0xf91c780` |
+| `0x48` | GetHostPointer | `pjrt::PJRT_RawBuffer_GetHostPointer` | `0xe6f4ec0` | 34 / 32 | vtable+0x18 `TpuRawBuffer::GetHostPointer` (pinned_host only) |
 
 The args-name strings are present verbatim in `.rodata` (`"PJRT_RawBuffer_Destroy_Args"`, `"PJRT_RawBuffer_CopyRawHostToDevice_Args"`, etc.), confirming the public API names.
 
@@ -149,11 +149,11 @@ The factory `xla::PjRtRawBuffer::CreateRawAliasOfBuffer(PjRtBuffer*)` @ `0xf93f5
 
 #### Function Map
 
-| Function | Addr | Role | Confidence |
-|---|---|---|---|
-| `pjrt::PJRT_RawBuffer_CreateRawAliasOfBuffer` | `0xe6f4d40` | C wrapper; build raw alias wrapper | CERTAIN |
-| `xla::PjRtRawBuffer::CreateRawAliasOfBuffer` | `0xf93f540` | static factory; walks platform registry | CERTAIN |
-| `xla::GetFactoryFuncs()::funcs` | `0x224c70c8` | registry of per-platform raw-alias factories | HIGH |
+| Function | Addr | Role |
+|---|---|---|
+| `pjrt::PJRT_RawBuffer_CreateRawAliasOfBuffer` | `0xe6f4d40` | C wrapper; build raw alias wrapper |
+| `xla::PjRtRawBuffer::CreateRawAliasOfBuffer` | `0xf93f540` | static factory; walks platform registry |
+| `xla::GetFactoryFuncs()::funcs` | `0x224c70c8` | registry of per-platform raw-alias factories |
 
 ---
 
@@ -291,16 +291,16 @@ The vtable`+0x28`/`+0x30` slots both point into `xla::CommonPjRtRawBufferImpl` (
 
 #### Function Map
 
-| Function | Addr | Role | Confidence |
-|---|---|---|---|
-| `pjrt::PJRT_RawBuffer_CopyRawHostToDevice` | `0xe6f5040` | C wrapper H2D; wrap future as event | CERTAIN |
-| `pjrt::PJRT_RawBuffer_CopyRawDeviceToHost` | `0xe6f5180` | C wrapper D2H (mirror) | CERTAIN |
-| `xla::CommonPjRtRawBufferImpl::CopyRawHostToDevice` | `0xf91c640` | vtable+0x28; PjRtFuture-returning | CERTAIN |
-| `xla::CommonPjRtRawBufferImpl::CopyRawDeviceToHost` | `0xf91c780` | vtable+0x30 | CERTAIN |
-| `xla::TpuRawBuffer::CopyRawHostToDeviceAndReturnEvent` | `0xf8388c0` | vtable+0x40; bounds-check + DMA | HIGH |
-| `xla::TpuRawBuffer::CopyRawDeviceToHostAndReturnEvent` | `0xf838ea0` | vtable+0x48 | HIGH |
-| `tpu::System::TransferToDevice` | `0x1d0afa20` | hardware DMA (host→HBM) | HIGH |
-| `tpu::System::TransferFromDevice` | `0x1d0b0160` | hardware DMA (HBM→host) | HIGH |
+| Function | Addr | Role |
+|---|---|---|
+| `pjrt::PJRT_RawBuffer_CopyRawHostToDevice` | `0xe6f5040` | C wrapper H2D; wrap future as event |
+| `pjrt::PJRT_RawBuffer_CopyRawDeviceToHost` | `0xe6f5180` | C wrapper D2H (mirror) |
+| `xla::CommonPjRtRawBufferImpl::CopyRawHostToDevice` | `0xf91c640` | vtable+0x28; PjRtFuture-returning |
+| `xla::CommonPjRtRawBufferImpl::CopyRawDeviceToHost` | `0xf91c780` | vtable+0x30 |
+| `xla::TpuRawBuffer::CopyRawHostToDeviceAndReturnEvent` | `0xf8388c0` | vtable+0x40; bounds-check + DMA |
+| `xla::TpuRawBuffer::CopyRawDeviceToHostAndReturnEvent` | `0xf838ea0` | vtable+0x48 |
+| `tpu::System::TransferToDevice` | `0x1d0afa20` | hardware DMA (host→HBM) |
+| `tpu::System::TransferFromDevice` | `0x1d0b0160` | hardware DMA (HBM→host) |
 
 ---
 

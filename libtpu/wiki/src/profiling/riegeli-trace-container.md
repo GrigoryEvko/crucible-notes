@@ -229,14 +229,14 @@ function CreateTraceCodec():
     return codec;                                       // owns the TraceEntriesCoder
 ```
 
-| Family | `CreateTraceCodec` | `Create` | variant idx | `DecodeTraceBuffers` instantiation | Confidence |
-|---|---|---|---|---|---|
-| pxc (Puffylite/Pufferfish) | `0xf5af2c0` (`plc`), `0xf5ad5c0` | `0xf5a2c20` | 5 | `<pxc::…::TraceEntry>` @ `0xf59ffa0` | CERTAIN |
-| vlc (Viperlite) | `0xf5d5180` | `0xf5a3360` | 3 | `<vxc::vlc::…::TraceEntry>` @ `0xf59f560` | CERTAIN |
-| vfc (Viperfish) | `0xf5f5da0` | `0xf5a3aa0` | 4 | `<vxc::vfc::…::TraceEntry>` @ `0xf59fa80` | CERTAIN |
-| glc (Ghostlite) | `0xf6282e0` | `0xf5a41e0` | 1 | `<gxc::glc::…::TraceEntry>` @ `0xf59e540` | CERTAIN |
-| gfc (Ghostfish-band) | `0xf65ed00` | (anon wrapper `0xf5a2b60`) | 2 | `<gxc::gfc::…::TraceEntry>` @ `0xf59f040` | CERTAIN |
-| jxc (Jellyfish/Dragonfish) | (legacy) | ctor `0xf5a5060` | 6 | `<jxc::PerformanceTraceEntry>` @ `0xf5a04c0` | HIGH |
+| Family | `CreateTraceCodec` | `Create` | variant idx | `DecodeTraceBuffers` instantiation |
+|---|---|---|---|---|
+| pxc (Puffylite/Pufferfish) | `0xf5af2c0` (`plc`), `0xf5ad5c0` | `0xf5a2c20` | 5 | `<pxc::…::TraceEntry>` @ `0xf59ffa0` |
+| vlc (Viperlite) | `0xf5d5180` | `0xf5a3360` | 3 | `<vxc::vlc::…::TraceEntry>` @ `0xf59f560` |
+| vfc (Viperfish) | `0xf5f5da0` | `0xf5a3aa0` | 4 | `<vxc::vfc::…::TraceEntry>` @ `0xf59fa80` |
+| glc (Ghostlite) | `0xf6282e0` | `0xf5a41e0` | 1 | `<gxc::glc::…::TraceEntry>` @ `0xf59e540` |
+| gfc (Ghostfish-band) | `0xf65ed00` | (anon wrapper `0xf5a2b60`) | 2 | `<gxc::gfc::…::TraceEntry>` @ `0xf59f040` |
+| jxc (Jellyfish/Dragonfish) | (legacy) | ctor `0xf5a5060` | 6 | `<jxc::PerformanceTraceEntry>` @ `0xf5a04c0` |
 
 > **GOTCHA —** the variant *index* is not the predicate order. The `std::variant<monostate, glc, gfc, vlc, vfc, pxc, jxc::PerformanceTrace>` payload (8-byte ptr + 1-byte index at `+0x8`) numbers glc=1, gfc=2, vlc=3, vfc=4, pxc=5, jxc=6, monostate=0 — distinct from the `Is*` evaluation order. A reimplementation that conflates "the third predicate" with "variant index 3" mis-tags every codec.
 

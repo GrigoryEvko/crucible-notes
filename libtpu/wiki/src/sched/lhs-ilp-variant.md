@@ -100,14 +100,14 @@ xla::ILPMemoryScheduler::Run(HloComputation* comp,
                              HloAliasAnalysis const& alias) const;
 ```
 
-| Offset | Field (inferred) | Confidence |
-|-------:|------------------|------------|
-| 0 | vptr → `ILPMemoryScheduler` vtable first slot (`off_217FA470`, vtable base `0x217fa460`) | CERTAIN |
-| 8 | `AliasInfo const*` | HIGH |
-| 16 / 64 | size-function `AnyInvocable<int64_t(BufferValue const&)>` (RAII storage + live callable) | HIGH |
-| 48 | bool — alive marker for the inlined `AnyInvocable` | MEDIUM |
-| 88 / 96 | post-process `std::function<HloInstructionSequence(...)>` hook (empty by default) | HIGH |
-| 104 | bool — `use_backtrack_fallback` | CERTAIN |
+| Offset | Field (inferred) |
+|-------:|------------------|
+| 0 | vptr → `ILPMemoryScheduler` vtable first slot (`off_217FA470`, vtable base `0x217fa460`) |
+| 8 | `AliasInfo const*` |
+| 16 / 64 | size-function `AnyInvocable<int64_t(BufferValue const&)>` (RAII storage + live callable) |
+| 48 | bool — alive marker for the inlined `AnyInvocable` |
+| 88 / 96 | post-process `std::function<HloInstructionSequence(...)>` hook (empty by default) |
+| 104 | bool — `use_backtrack_fallback` |
 
 The fallback test is byte-exact in the decompile (outer Run line 122):
 
@@ -150,12 +150,12 @@ The worker `ILPMemorySchedulerForComputation::Run` (`@0x10acdf00`, ~6764 lines) 
 
 All three families are binary, built via `ModelStorage::AddVariable(model, /*is_int=*/1, name, name_len, /*lb=*/0, /*ub=*/1)`. The continuous `peak_memory` (built in the outer Run, `is_int = 0`) is the fourth.
 
-| Family | Name pattern | Decompile line | Indexed over | Meaning | Confidence |
-|--------|--------------|---------------|--------------|---------|------------|
-| `I_` | `"I_<inst>,<slot>"` | 817 / 843 | (instruction id, slot `0..N-1`) | `I_i,t = 1` iff instruction `i` is placed at slot `t` | CERTAIN |
-| `Vs_` | `"Vs_<value>,<slot>"` | 1685 / 1710 | (HloValue id, slot `0..N-1`) | `Vs_v,t = 1` iff value `v` has *started being live* by slot `t` | HIGH |
-| `Ve_` | `"Ve_<value>,<slot>"` | 1807 / 1833 | (HloValue id, slot `0..N-1`) | `Ve_v,t = 1` iff value `v` has *ended* by slot `t` | HIGH |
-| — | `peak_memory` | outer Run 175 | scalar | continuous; lower-bounded by every per-slot live total | CERTAIN |
+| Family | Name pattern | Decompile line | Indexed over | Meaning |
+|--------|--------------|---------------|--------------|---------|
+| `I_` | `"I_<inst>,<slot>"` | 817 / 843 | (instruction id, slot `0..N-1`) | `I_i,t = 1` iff instruction `i` is placed at slot `t` |
+| `Vs_` | `"Vs_<value>,<slot>"` | 1685 / 1710 | (HloValue id, slot `0..N-1`) | `Vs_v,t = 1` iff value `v` has *started being live* by slot `t` |
+| `Ve_` | `"Ve_<value>,<slot>"` | 1807 / 1833 | (HloValue id, slot `0..N-1`) | `Ve_v,t = 1` iff value `v` has *ended* by slot `t` |
+| — | `peak_memory` | outer Run 175 | scalar | continuous; lower-bounded by every per-slot live total |
 
 The prefix string literals `"I_"`, `"Vs_"`, `"Ve_"` are emitted by `absl::StrCat` with `absl::numbers_internal::FastIntToBuffer` for the index and slot. Variable-to-`Variable` maps are `absl::flat_hash_map<std::pair<HloInstruction*,int>, math_opt::Variable>` for instructions and `flat_hash_map<std::pair<long,int>, math_opt::Variable>` for values. `Vs_`/`Ve_` model liveness as monotone step functions (the cumulative "started by" / "ended by" indicators), which is what lets a per-slot memory sum be written as a linear expression.
 
@@ -163,19 +163,19 @@ The prefix string literals `"I_"`, `"Vs_"`, `"Ve_"` are emitted by `absl::StrCat
 
 There are exactly **eleven** `Model::AddLinearConstraint` call sites in the worker, at the byte-verified lines below. The functional grouping is inferred from the surrounding loop structure and the variable family each site iterates; the logical statements are reconstruction, not literal coefficient recovery.
 
-| # | Line | Family | Logical statement | Confidence |
-|---|------|--------|-------------------|------------|
-| 1 | 1362 | per-instruction | `Σ_t I_i,t == 1` — every instruction in exactly one slot | HIGH |
-| 2 | 1573 | per-slot | `Σ_i I_i,t == 1` — every slot holds exactly one instruction | HIGH |
-| 3 | 2252 | start init | `Vs_v,0 == I_def(v),0` — start CDF seeded by defining instruction | MEDIUM |
-| 4 | 2584 | start step | `Vs_v,t − Vs_v,t-1 == I_def(v),t` — monotone start stepped at defining slot | MEDIUM |
-| 5 | 2952 | start coupling | a user of `v` cannot run before `v` starts | MEDIUM |
-| 6 | 3356 | end step | `Ve_v,t − Ve_v,t-1 ≥ I_last_use(v),t` — end CDF stepped at last-use slot | MEDIUM |
-| 7 | 3583 | end ≤ start | `Ve_v,t ≤ Vs_v,t` — a value cannot end before it starts | MEDIUM |
-| 8 | 4084 | precedence (data) | `Σ_{t'≤t} I_pred,t' ≥ I_succ,(t+1)` for each HLO data edge | MEDIUM |
-| 9 | 4483 | precedence (control) | same shape for control dependencies | MEDIUM |
-| 10 | 4887 | per-slot memory | `Σ_v size(v)·(Vs_v,t − Ve_v,t) ≤ peak_memory` for each slot `t` | MEDIUM |
-| 11 | 5491 | objective coupling | closes `peak_memory` against the bounded per-slot expression | MEDIUM |
+| # | Line | Family | Logical statement |
+|---|------|--------|-------------------|
+| 1 | 1362 | per-instruction | `Σ_t I_i,t == 1` — every instruction in exactly one slot |
+| 2 | 1573 | per-slot | `Σ_i I_i,t == 1` — every slot holds exactly one instruction |
+| 3 | 2252 | start init | `Vs_v,0 == I_def(v),0` — start CDF seeded by defining instruction |
+| 4 | 2584 | start step | `Vs_v,t − Vs_v,t-1 == I_def(v),t` — monotone start stepped at defining slot |
+| 5 | 2952 | start coupling | a user of `v` cannot run before `v` starts |
+| 6 | 3356 | end step | `Ve_v,t − Ve_v,t-1 ≥ I_last_use(v),t` — end CDF stepped at last-use slot |
+| 7 | 3583 | end ≤ start | `Ve_v,t ≤ Vs_v,t` — a value cannot end before it starts |
+| 8 | 4084 | precedence (data) | `Σ_{t'≤t} I_pred,t' ≥ I_succ,(t+1)` for each HLO data edge |
+| 9 | 4483 | precedence (control) | same shape for control dependencies |
+| 10 | 4887 | per-slot memory | `Σ_v size(v)·(Vs_v,t − Ve_v,t) ≤ peak_memory` for each slot `t` |
+| 11 | 5491 | objective coupling | closes `peak_memory` against the bounded per-slot expression |
 
 Sites 1–2 (the `I_` placement constraints) are the assignment-problem core — a permutation of instructions onto slots. Sites 3–5 iterate the `Vs_` maps and sites 6–7 the `Ve_` maps (both two-loop: outer HloValue, inner slot). Sites 8–9 iterate the `OrderHloValuesById`-grouped predecessor/user map. Site 10 is the liveness-to-memory reduction.
 
@@ -329,14 +329,14 @@ bool EnableIlpLatencyHidingScheduler(env) {
 
 Either the proto override or the `xla_tpu_enable_ilp_latency_hiding_scheduler` absl flag (data `@0x223c1d50`) switches the classifier to `$_1`. The `(~v & 0x101) == 0` idiom is the `AutoOr<bool>` unwrap (the value bit and the present bit both set).
 
-| Field | Read in 0.0.40? | Effect | Confidence |
-|-------|-----------------|--------|------------|
-| `enable_ilp_latency_hiding_scheduler` (+48) | YES | switches the canonical-LHS async classifier `$_2 → $_1` | CERTAIN |
-| `max_solver_deterministic_time` | no | none — `SatParameters` left at defaults | HIGH |
-| `computation_size_threshold` | no | none — fallback threshold is hard-coded `8` | HIGH |
-| `use_ilp_schedule_sequence` | no | none | HIGH |
-| `also_minimize_total_lifetime` | no | none — single-term objective | HIGH |
-| `min_compute_latency` | no | none | HIGH |
+| Field | Read in 0.0.40? | Effect |
+|-------|-----------------|--------|
+| `enable_ilp_latency_hiding_scheduler` (+48) | YES | switches the canonical-LHS async classifier `$_2 → $_1` |
+| `max_solver_deterministic_time` | no | none — `SatParameters` left at defaults |
+| `computation_size_threshold` | no | none — fallback threshold is hard-coded `8` |
+| `use_ilp_schedule_sequence` | no | none |
+| `also_minimize_total_lifetime` | no | none — single-term objective |
+| `min_compute_latency` | no | none |
 
 The five inert fields appear only in generated reflection code (`_table_` `@0x21cfa308`, `Clear`, `MergeImpl`, `_InternalSerialize`, `ByteSizeLong`, `CopyFrom`, `InternalSwap`, `GetMetadata`, `GetClassData`). No `set_*`/`get_*` accessor is called from any non-generated function.
 
@@ -365,25 +365,25 @@ The MIP is a complete, reachable scheduler — `Model`, eleven constraints, `min
 
 ## Function & Symbol Map
 
-| Symbol | Address | Role | Confidence |
-|--------|---------|------|------------|
-| `xla::ILPMemoryScheduler::Run` | `0x10acd020` | outer Run: layout, `≤8` fallback, model bootstrap | CERTAIN |
-| `(anon)::ILPMemorySchedulerForComputation::Run` | `0x10acdf00` | worker: variables, 11 constraints, objective, solve | CERTAIN |
-| `xla::ILPMemoryScheduler::~ILPMemoryScheduler` | `0x10ad6900` | deleting dtor; resets base vptr | HIGH |
-| vtable `xla::ILPMemoryScheduler` | `0x217fa460` | vptr `off_217FA470`, typeinfo `0x217fa490`; one consumer (dispatcher case 6) | CERTAIN |
-| `xla::GetMemorySchedulerAlgorithm` | `0x10abd6a0` | enum dispatch; case `ILP (6)` builds the MIP | CERTAIN |
-| `xla::jellyfish::EnableIlpLatencyHidingScheduler` | `0x1d6b7e00` | live gate; reads proto +48 then flag | CERTAIN |
-| `xla::jellyfish::GetIlpLatencyHidingSchedulerOptions` | `0x1d6b7e60` | options accessor | HIGH |
-| `(anon)::RunHloScheduler` | `0x1096fac0` | gate caller; gate at line 1084 | CERTAIN |
-| classifier `$_1` (ILP-on) | `0x10977140` | wider async predicate + sequence-order pin | CERTAIN |
-| classifier `$_2` (regular) | `0x10977420` | narrower async predicate | CERTAIN |
-| `IlpLatencyHidingSchedulerOptions::Clear` | `0x1db24ea0` | 6-bit presence mask, payload `0x18..0x32` | HIGH |
-| `math_opt::Solve` | `0x10af9d20` | CP-SAT solve entry | HIGH |
-| `math_opt::Solver::New` | `0x10b259a0` | registry dispatch over `SolverType` | HIGH |
-| `math_opt::AllSolversRegistry::Register` | `0x10b273c0` | single caller registers CP-SAT only | CERTAIN |
-| `math_opt::CpSatSolver::New` | `0x10adff20` | the one registered backend | HIGH |
-| `_GLOBAL__sub_I_cp_sat_solver.cc` | `0x212ca300` | static-init: `Register(..., 4u, CpSatSolver::New)` | CERTAIN |
-| `RetrieveSchedule` stable-sort | `0x10adf140` / `0x10adf3a0` / `0x10adf5e0` | slot-keyed merge of the solved schedule | HIGH |
+| Symbol | Address | Role |
+|--------|---------|------|
+| `xla::ILPMemoryScheduler::Run` | `0x10acd020` | outer Run: layout, `≤8` fallback, model bootstrap |
+| `(anon)::ILPMemorySchedulerForComputation::Run` | `0x10acdf00` | worker: variables, 11 constraints, objective, solve |
+| `xla::ILPMemoryScheduler::~ILPMemoryScheduler` | `0x10ad6900` | deleting dtor; resets base vptr |
+| vtable `xla::ILPMemoryScheduler` | `0x217fa460` | vptr `off_217FA470`, typeinfo `0x217fa490`; one consumer (dispatcher case 6) |
+| `xla::GetMemorySchedulerAlgorithm` | `0x10abd6a0` | enum dispatch; case `ILP (6)` builds the MIP |
+| `xla::jellyfish::EnableIlpLatencyHidingScheduler` | `0x1d6b7e00` | live gate; reads proto +48 then flag |
+| `xla::jellyfish::GetIlpLatencyHidingSchedulerOptions` | `0x1d6b7e60` | options accessor |
+| `(anon)::RunHloScheduler` | `0x1096fac0` | gate caller; gate at line 1084 |
+| classifier `$_1` (ILP-on) | `0x10977140` | wider async predicate + sequence-order pin |
+| classifier `$_2` (regular) | `0x10977420` | narrower async predicate |
+| `IlpLatencyHidingSchedulerOptions::Clear` | `0x1db24ea0` | 6-bit presence mask, payload `0x18..0x32` |
+| `math_opt::Solve` | `0x10af9d20` | CP-SAT solve entry |
+| `math_opt::Solver::New` | `0x10b259a0` | registry dispatch over `SolverType` |
+| `math_opt::AllSolversRegistry::Register` | `0x10b273c0` | single caller registers CP-SAT only |
+| `math_opt::CpSatSolver::New` | `0x10adff20` | the one registered backend |
+| `_GLOBAL__sub_I_cp_sat_solver.cc` | `0x212ca300` | static-init: `Register(..., 4u, CpSatSolver::New)` |
+| `RetrieveSchedule` stable-sort | `0x10adf140` / `0x10adf3a0` / `0x10adf5e0` | slot-keyed merge of the solved schedule |
 
 ---
 

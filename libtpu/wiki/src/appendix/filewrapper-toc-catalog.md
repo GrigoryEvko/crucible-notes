@@ -181,69 +181,69 @@ read back from the live binary; the catalog matches the section byte-for-byte,
 so the whole table is `CERTAIN` unless a cell is an interpretation of content
 (those carry their own lower confidence in the detail sections).
 
-| #  | data VA      |      size | codec  | content (proto / type)                         | name | Confidence |
-|----|--------------|----------:|--------|------------------------------------------------|------|------------|
-|  0 | `0x189a3f0`  |       403 | text   | PJRT topology name-map (text-proto)            | `pjrt_tpu_topo_desc_name_map.txtpb` | CERTAIN |
-|  1 | `0x189a590`  |    94,037 | raw    | platform/topology config (9 generations)       | `tpu_platform_configs.binarypb` | CERTAIN |
-|  2 | `0x1c8df30`  |       412 | raw    | jellyfish BarnaCore constant params            | `barna_core_constant_param_jfc.binarypb` | CERTAIN |
-|  3 | `0x344d280`  |     1,124 | text   | LLO-IR HTML visualizer footer (JS template)    | `llo_ir_footer.tmpl` | CERTAIN |
-|  4 | `0x3451120`  |       171 | raw    | SparseCore embedding-loop kernel registry      | `embeddings_loop_configs_legacy.binarypb` | CERTAIN |
-|  5 | `0x3fad570`  |    12,480 | raw    | TpuCoreProgramProto (TC bootloader)            | `continuation_bootloader_program_tensorcore_dragonfish_default.binarypb` | CERTAIN |
-|  6 | `0x3fb0640`  |    12,480 | raw    | TpuCoreProgramProto (TC bootloader)            | `continuation_bootloader_program_tensorcore_jellyfish_default.binarypb` | CERTAIN |
-|  7 | `0x3fb3710`  |    14,016 | raw    | TpuCoreProgramProto (TC bootloader)            | `continuation_bootloader_program_tensorcore_pufferfish_default.binarypb` | CERTAIN |
-|  8 | `0x3fb6de0`  |    13,512 | raw    | TpuCoreProgramProto (TC bootloader)            | `continuation_bootloader_program_tensorcore_pufferfish_lite_default.binarypb` | CERTAIN |
-|  9 | `0x3fba2b0`  |    26,828 | raw    | TpuCoreProgramProto (TC bootloader)            | `continuation_bootloader_program_tensorcore_viperfish_lite_default.binarypb` | CERTAIN |
-| 10 | `0x3fc0b80`  |    40,648 | raw    | TpuCoreProgramProto (TC bootloader)            | `continuation_bootloader_program_tensorcore_viperfish_inference.binarypb` | CERTAIN |
-| 11 | `0x3ff21a0`  |    64,730 | raw    | TpuCoreProgramProto (TC, megachip tccontrol)   | `continuation_bootloader_program_tensorcore_smoothie_viperfish_megachip_tccontrol.binarypb` | CERTAIN |
-| 12 | `0x4021420`  |     1,718 | raw    | TpuCoreProgramProto (SC bootloader)            | `continuation_bootloader_program_sparsecore_viperfish_inference.binarypb` | CERTAIN |
-| 13 | `0x4024400`  |    34,504 | raw    | TpuCoreProgramProto (TC bootloader)            | `continuation_bootloader_program_tensorcore_ghostlite_inference.binarypb` | CERTAIN |
-| 14 | `0x4045f50`  |     1,718 | raw    | TpuCoreProgramProto (SC bootloader)            | `continuation_bootloader_program_sparsecore_ghostlite_inference.binarypb` | CERTAIN |
-| 15 | `0x40481b0`  |    41,178 | raw    | TpuCoreProgramProto (TC, megachip tccontrol)   | `continuation_bootloader_program_tensorcore_6acc60406_megachip_tccontrol.binarypb` | CERTAIN |
-| 16 | `0x4066430`  |     1,672 | raw    | TpuCoreProgramProto (SC, megachip tccontrol)   | `continuation_bootloader_program_sparsecore_6acc60406_megachip_tccontrol.binarypb` | CERTAIN |
-| 17 | `0x4067890`  |     1,334 | raw    | runtime ABI table (abi version 158)            | `current_tpu_runtime_abi.binarypb` | CERTAIN |
-| 18 | `0xb430db0`  |        32 | text   | compiler build hash (32 hex chars)             | `deepsea_compiler_hash.txt` | CERTAIN |
-| 19 | `0x40703d0`  |   181,284 | raw    | accuracy/transcendental table                  | `accuracy_table_dragonfish.binarypb` | CERTAIN |
-| 20 | `0x409c800`  |   180,617 | raw    | accuracy/transcendental table                  | `accuracy_table_ghostlite.binarypb` | CERTAIN |
-| 21 | `0x40c8990`  |   181,284 | raw    | accuracy/transcendental table                  | `accuracy_table_jellyfish.binarypb` | CERTAIN |
-| 22 | `0x40f4dc0`  |   181,284 | raw    | accuracy/transcendental table                  | `accuracy_table_pufferfish.binarypb` | CERTAIN |
-| 23 | `0x41211f0`  |   181,139 | raw    | accuracy/transcendental table                  | `accuracy_table_viperfish.binarypb` | CERTAIN |
-| 24 | `0x44cd160`  |    13,489 | raw    | arch resource-ID table (vfc / viperfish-fc)    | `architectural_resources.binarypb` | CERTAIN |
-| 25 | `0x44d0620`  |     8,136 | brotli | per-chip CSR map (vfc)                          | `vfc_pf_csrs.br` | CERTAIN |
-| 26 | `0x44d25f0`  |   177,789 | brotli | error-source catalog (vfc)                      | `vfc_error_collector_error_sources.br` | CERTAIN |
-| 27 | `0x44ff0d0`  |   171,623 | ctrc   | CompressedToroidalRouteCache 8x8x8             | `8x8x8.binarypb.compressed` | CERTAIN |
-| 28 | `0x50386d0`  |   724,766 | ctrc   | CompressedToroidalRouteCache 8x16x16 twisted    | `8x16x16_twisted.binarypb.compressed` | CERTAIN |
-| 29 | `0x5336180`  |   339,942 | ctrc   | CompressedToroidalRouteCache 8x8x16 twisted     | `8x8x16_twisted.binarypb.compressed` | CERTAIN |
-| 30 | `0x5a21f00`  |   253,765 | brotli | error-source catalog (gfc / 6acc60406)          | `gfc_error_collector_error_sources.br` | CERTAIN |
-| 31 | `0x5a5fe50`  |     4,916 | brotli | per-chip CSR map (gfc / 6acc60406)              | `gfc_pf_csrs.br` | CERTAIN |
-| 32 | `0x5ce8d10`  |     5,936 | raw    | arch resource-ID table (gfc / 6acc60406)        | `architectural_resources.binarypb` | CERTAIN |
-| 33 | `0x5e41bf0`  |     7,317 | raw    | arch resource-ID table (glc / ghostlite)        | `architectural_resources.binarypb` | CERTAIN |
-| 34 | `0x5e43890`  |     5,485 | brotli | per-chip CSR map (glc / ghostlite)              | `glc_pf_csrs.br` | CERTAIN |
-| 35 | `0x5e44e00`  |   115,260 | brotli | error-source catalog (glc / ghostlite)          | `glc_error_collector_error_sources.br` | CERTAIN |
-| 36 | `0x5ea8ec0`  |     3,043 | raw    | arch resource-ID table (vlc / viperfish-lite)   | `architectural_resources.binarypb` | CERTAIN |
-| 37 | `0xbd7a320`  |       856 | brotli | per-chip CSR map (vlc / viperfish-lite)         | `vlc_pf_csrs.br` | CERTAIN |
-| 38 | `0x5ea9ab0`  |    28,847 | brotli | error-source catalog (vlc / viperfish-lite)     | `vlc_error_collector_error_sources.br` | CERTAIN |
-| 39 | `0x5f01460`  |     1,309 | raw    | chip_configs (default)                          | `6acc60406_tensornode_chip_configs_default.binarypb` | CERTAIN |
-| 40 | `0x5f02fa0`  |     1,481 | raw    | chip_configs (inference)                        | `6acc60406_chip_configs_inference.binarypb` | CERTAIN |
-| 41 | `0x5f03ff0`  |     1,190 | raw    | chip_configs (legacy)                           | `6acc60406_tensornode_chip_configs_legacy.binarypb` | CERTAIN |
-| 42 | `0xbdf0830`  |       870 | raw    | chip_configs (legacy_dense)                     | `pufferfish_chip_configs_legacy_dense.binarypb` | CERTAIN |
-| 43 | `0xbdf0ba0`  |       985 | raw    | chip_configs (megacore, glp emulation)          | `viperfish_glp_emulation_chip_configs_megacore.binarypb` | CERTAIN |
-| 44 | `0xbdf19a0`  |       819 | raw    | chip_configs (megacore_dense)                   | `pufferfish_chip_configs_megacore_dense.binarypb` | CERTAIN |
-| 45 | `0xbdf1ce0`  |       786 | raw    | chip_configs (megacore_inference)               | `pufferfish_chip_configs_megacore_inference.binarypb` | CERTAIN |
-| 46 | `0x5f05b70`  |     1,458 | raw    | chip_configs (megacore)                         | `viperfish_chip_configs_megacore.binarypb` | CERTAIN |
-| 47 | `0x5f07af0`  |     1,174 | raw    | chip_configs (legacy_sparse_core)               | `6acc60406_tensornode_chip_configs_legacy_sparse_core.binarypb` | CERTAIN |
-| 48 | `0xbdf29a0`  |       504 | raw    | **TpuChipPartsProto (version 6)**               | `6acc60406_tensornode_chip_parts.binarypb` | CERTAIN |
-| 49 | `0x5f08e80`  |    68,780 | raw    | ICI resiliency route table (fault dim z)        | `cache_ici_resiliency_6acc60406_fault_dim_z.binarypb` | CERTAIN |
-| 50 | `0x5f3c060`  |     4,009 | raw    | ICI resiliency route table (fault dim z)        | `cache_ici_resiliency_pufferfish_fault_dim_z.binarypb` | CERTAIN |
-| 51 | `0x5f3f640`  |    34,504 | raw    | ICI resiliency route table (fault dim z)        | `cache_ici_resiliency_viperfish_fault_dim_z.binarypb` | CERTAIN |
-| 52 | `0xbe62e50`  |       134 | raw    | twisted-torus route-cache **index**             | `cache_twisted_torus_all.binarypb` | CERTAIN |
-| 53 | `0x5f59080`  |     5,230 | ctrc   | CompressedToroidalRouteCache 8x8x16 twisted     | `8x8x16_twisted.binarypb.compressed` | CERTAIN |
-| 54 | `0x6482ae0`  |   173,801 | ctrc   | CompressedToroidalRouteCache 8x8x8             | `8x8x8.binarypb.compressed` | CERTAIN |
-| 55 | `0x67f17c0`  |   702,686 | ctrc   | CompressedToroidalRouteCache 8x16x16 twisted    | `8x16x16_twisted.binarypb.compressed` | CERTAIN |
-| 56 | `0x68c3bb0`  |   367,927 | ctrc   | CompressedToroidalRouteCache 8x8x16 twisted     | `8x8x16_twisted.binarypb.compressed` | CERTAIN |
-| 57 | `0x6a92250`  |   176,905 | ctrc   | CompressedToroidalRouteCache 8x8x8             | `8x8x8.binarypb.compressed` | CERTAIN |
-| 58 | `0x783ac00`  |   722,765 | ctrc   | CompressedToroidalRouteCache 8x16x16 twisted    | `8x16x16_twisted.binarypb.compressed` | CERTAIN |
-| 59 | `0x7bac5b0`  |   367,795 | ctrc   | CompressedToroidalRouteCache 8x8x16 twisted     | `8x8x16_twisted.binarypb.compressed` | CERTAIN |
-| 60 | `0x845b240`  |     2,852 | tzif   | IANA zoneinfo (Pacific time, TZif2)             | `America/Los_Angeles` | CERTAIN |
+| #  | data VA      |      size | codec  | content (proto / type)                         | name |
+|----|--------------|----------:|--------|------------------------------------------------|------|
+|  0 | `0x189a3f0`  |       403 | text   | PJRT topology name-map (text-proto)            | `pjrt_tpu_topo_desc_name_map.txtpb` |
+|  1 | `0x189a590`  |    94,037 | raw    | platform/topology config (9 generations)       | `tpu_platform_configs.binarypb` |
+|  2 | `0x1c8df30`  |       412 | raw    | jellyfish BarnaCore constant params            | `barna_core_constant_param_jfc.binarypb` |
+|  3 | `0x344d280`  |     1,124 | text   | LLO-IR HTML visualizer footer (JS template)    | `llo_ir_footer.tmpl` |
+|  4 | `0x3451120`  |       171 | raw    | SparseCore embedding-loop kernel registry      | `embeddings_loop_configs_legacy.binarypb` |
+|  5 | `0x3fad570`  |    12,480 | raw    | TpuCoreProgramProto (TC bootloader)            | `continuation_bootloader_program_tensorcore_dragonfish_default.binarypb` |
+|  6 | `0x3fb0640`  |    12,480 | raw    | TpuCoreProgramProto (TC bootloader)            | `continuation_bootloader_program_tensorcore_jellyfish_default.binarypb` |
+|  7 | `0x3fb3710`  |    14,016 | raw    | TpuCoreProgramProto (TC bootloader)            | `continuation_bootloader_program_tensorcore_pufferfish_default.binarypb` |
+|  8 | `0x3fb6de0`  |    13,512 | raw    | TpuCoreProgramProto (TC bootloader)            | `continuation_bootloader_program_tensorcore_pufferfish_lite_default.binarypb` |
+|  9 | `0x3fba2b0`  |    26,828 | raw    | TpuCoreProgramProto (TC bootloader)            | `continuation_bootloader_program_tensorcore_viperfish_lite_default.binarypb` |
+| 10 | `0x3fc0b80`  |    40,648 | raw    | TpuCoreProgramProto (TC bootloader)            | `continuation_bootloader_program_tensorcore_viperfish_inference.binarypb` |
+| 11 | `0x3ff21a0`  |    64,730 | raw    | TpuCoreProgramProto (TC, megachip tccontrol)   | `continuation_bootloader_program_tensorcore_smoothie_viperfish_megachip_tccontrol.binarypb` |
+| 12 | `0x4021420`  |     1,718 | raw    | TpuCoreProgramProto (SC bootloader)            | `continuation_bootloader_program_sparsecore_viperfish_inference.binarypb` |
+| 13 | `0x4024400`  |    34,504 | raw    | TpuCoreProgramProto (TC bootloader)            | `continuation_bootloader_program_tensorcore_ghostlite_inference.binarypb` |
+| 14 | `0x4045f50`  |     1,718 | raw    | TpuCoreProgramProto (SC bootloader)            | `continuation_bootloader_program_sparsecore_ghostlite_inference.binarypb` |
+| 15 | `0x40481b0`  |    41,178 | raw    | TpuCoreProgramProto (TC, megachip tccontrol)   | `continuation_bootloader_program_tensorcore_6acc60406_megachip_tccontrol.binarypb` |
+| 16 | `0x4066430`  |     1,672 | raw    | TpuCoreProgramProto (SC, megachip tccontrol)   | `continuation_bootloader_program_sparsecore_6acc60406_megachip_tccontrol.binarypb` |
+| 17 | `0x4067890`  |     1,334 | raw    | runtime ABI table (abi version 158)            | `current_tpu_runtime_abi.binarypb` |
+| 18 | `0xb430db0`  |        32 | text   | compiler build hash (32 hex chars)             | `deepsea_compiler_hash.txt` |
+| 19 | `0x40703d0`  |   181,284 | raw    | accuracy/transcendental table                  | `accuracy_table_dragonfish.binarypb` |
+| 20 | `0x409c800`  |   180,617 | raw    | accuracy/transcendental table                  | `accuracy_table_ghostlite.binarypb` |
+| 21 | `0x40c8990`  |   181,284 | raw    | accuracy/transcendental table                  | `accuracy_table_jellyfish.binarypb` |
+| 22 | `0x40f4dc0`  |   181,284 | raw    | accuracy/transcendental table                  | `accuracy_table_pufferfish.binarypb` |
+| 23 | `0x41211f0`  |   181,139 | raw    | accuracy/transcendental table                  | `accuracy_table_viperfish.binarypb` |
+| 24 | `0x44cd160`  |    13,489 | raw    | arch resource-ID table (vfc / viperfish-fc)    | `architectural_resources.binarypb` |
+| 25 | `0x44d0620`  |     8,136 | brotli | per-chip CSR map (vfc)                          | `vfc_pf_csrs.br` |
+| 26 | `0x44d25f0`  |   177,789 | brotli | error-source catalog (vfc)                      | `vfc_error_collector_error_sources.br` |
+| 27 | `0x44ff0d0`  |   171,623 | ctrc   | CompressedToroidalRouteCache 8x8x8             | `8x8x8.binarypb.compressed` |
+| 28 | `0x50386d0`  |   724,766 | ctrc   | CompressedToroidalRouteCache 8x16x16 twisted    | `8x16x16_twisted.binarypb.compressed` |
+| 29 | `0x5336180`  |   339,942 | ctrc   | CompressedToroidalRouteCache 8x8x16 twisted     | `8x8x16_twisted.binarypb.compressed` |
+| 30 | `0x5a21f00`  |   253,765 | brotli | error-source catalog (gfc / 6acc60406)          | `gfc_error_collector_error_sources.br` |
+| 31 | `0x5a5fe50`  |     4,916 | brotli | per-chip CSR map (gfc / 6acc60406)              | `gfc_pf_csrs.br` |
+| 32 | `0x5ce8d10`  |     5,936 | raw    | arch resource-ID table (gfc / 6acc60406)        | `architectural_resources.binarypb` |
+| 33 | `0x5e41bf0`  |     7,317 | raw    | arch resource-ID table (glc / ghostlite)        | `architectural_resources.binarypb` |
+| 34 | `0x5e43890`  |     5,485 | brotli | per-chip CSR map (glc / ghostlite)              | `glc_pf_csrs.br` |
+| 35 | `0x5e44e00`  |   115,260 | brotli | error-source catalog (glc / ghostlite)          | `glc_error_collector_error_sources.br` |
+| 36 | `0x5ea8ec0`  |     3,043 | raw    | arch resource-ID table (vlc / viperfish-lite)   | `architectural_resources.binarypb` |
+| 37 | `0xbd7a320`  |       856 | brotli | per-chip CSR map (vlc / viperfish-lite)         | `vlc_pf_csrs.br` |
+| 38 | `0x5ea9ab0`  |    28,847 | brotli | error-source catalog (vlc / viperfish-lite)     | `vlc_error_collector_error_sources.br` |
+| 39 | `0x5f01460`  |     1,309 | raw    | chip_configs (default)                          | `6acc60406_tensornode_chip_configs_default.binarypb` |
+| 40 | `0x5f02fa0`  |     1,481 | raw    | chip_configs (inference)                        | `6acc60406_chip_configs_inference.binarypb` |
+| 41 | `0x5f03ff0`  |     1,190 | raw    | chip_configs (legacy)                           | `6acc60406_tensornode_chip_configs_legacy.binarypb` |
+| 42 | `0xbdf0830`  |       870 | raw    | chip_configs (legacy_dense)                     | `pufferfish_chip_configs_legacy_dense.binarypb` |
+| 43 | `0xbdf0ba0`  |       985 | raw    | chip_configs (megacore, glp emulation)          | `viperfish_glp_emulation_chip_configs_megacore.binarypb` |
+| 44 | `0xbdf19a0`  |       819 | raw    | chip_configs (megacore_dense)                   | `pufferfish_chip_configs_megacore_dense.binarypb` |
+| 45 | `0xbdf1ce0`  |       786 | raw    | chip_configs (megacore_inference)               | `pufferfish_chip_configs_megacore_inference.binarypb` |
+| 46 | `0x5f05b70`  |     1,458 | raw    | chip_configs (megacore)                         | `viperfish_chip_configs_megacore.binarypb` |
+| 47 | `0x5f07af0`  |     1,174 | raw    | chip_configs (legacy_sparse_core)               | `6acc60406_tensornode_chip_configs_legacy_sparse_core.binarypb` |
+| 48 | `0xbdf29a0`  |       504 | raw    | **TpuChipPartsProto (version 6)**               | `6acc60406_tensornode_chip_parts.binarypb` |
+| 49 | `0x5f08e80`  |    68,780 | raw    | ICI resiliency route table (fault dim z)        | `cache_ici_resiliency_6acc60406_fault_dim_z.binarypb` |
+| 50 | `0x5f3c060`  |     4,009 | raw    | ICI resiliency route table (fault dim z)        | `cache_ici_resiliency_pufferfish_fault_dim_z.binarypb` |
+| 51 | `0x5f3f640`  |    34,504 | raw    | ICI resiliency route table (fault dim z)        | `cache_ici_resiliency_viperfish_fault_dim_z.binarypb` |
+| 52 | `0xbe62e50`  |       134 | raw    | twisted-torus route-cache **index**             | `cache_twisted_torus_all.binarypb` |
+| 53 | `0x5f59080`  |     5,230 | ctrc   | CompressedToroidalRouteCache 8x8x16 twisted     | `8x8x16_twisted.binarypb.compressed` |
+| 54 | `0x6482ae0`  |   173,801 | ctrc   | CompressedToroidalRouteCache 8x8x8             | `8x8x8.binarypb.compressed` |
+| 55 | `0x67f17c0`  |   702,686 | ctrc   | CompressedToroidalRouteCache 8x16x16 twisted    | `8x16x16_twisted.binarypb.compressed` |
+| 56 | `0x68c3bb0`  |   367,927 | ctrc   | CompressedToroidalRouteCache 8x8x16 twisted     | `8x8x16_twisted.binarypb.compressed` |
+| 57 | `0x6a92250`  |   176,905 | ctrc   | CompressedToroidalRouteCache 8x8x8             | `8x8x8.binarypb.compressed` |
+| 58 | `0x783ac00`  |   722,765 | ctrc   | CompressedToroidalRouteCache 8x16x16 twisted    | `8x16x16_twisted.binarypb.compressed` |
+| 59 | `0x7bac5b0`  |   367,795 | ctrc   | CompressedToroidalRouteCache 8x8x16 twisted     | `8x8x16_twisted.binarypb.compressed` |
+| 60 | `0x845b240`  |     2,852 | tzif   | IANA zoneinfo (Pacific time, TZif2)             | `America/Los_Angeles` |
 
 > **NOTE —** the 16-byte fingerprint at descriptor `+0x18` is omitted from the
 > table (it is one value per row and adds no reimplementation signal at the

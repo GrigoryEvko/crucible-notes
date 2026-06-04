@@ -139,17 +139,17 @@ The XOR immediates are the little-endian byte triples read directly off the `cmp
 
 Every arm is byte-anchored to a specific `tpu_*_seg_scan*::create` call site in the lowering body:
 
-| reduction | result elt | → intrinsic | `::create` @ | gate | Confidence |
-|---|---|---|---|---|---|
-| `sum` | `i32` | `tpu_add_seg_scan1xNi` | `0x146d5c40` | — | CONFIRMED |
-| `sum` | `f32` | `tpu_add_seg_scan1xNf` | `0x146d5a80` | — | CONFIRMED |
-| `sum` | `i16` | `tpu_add_half_seg_scan2xN` | `0x146d45c0` | `+0x780` must be true | CONFIRMED |
-| `sum` | `bf16` | `tpu_add_half_seg_scan2xN` | `0x146d45c0` | `+0x780` must be true | CONFIRMED |
-| `max` | `f32` | `tpu_max_seg_scan1xNf` | `0x14730e00` | — | CONFIRMED |
-| `max` | `i32` | `tpu_max_seg_scan1xNi` | `0x14730fc0` | — | CONFIRMED |
-| `min` | `f32` | `tpu_min_seg_scan1xNf` | `0x147316c0` | — | CONFIRMED |
-| `min` | `i32` | `tpu_min_seg_scan1xNi` | `0x14731880` | — | CONFIRMED |
-| any | other elt | `emitError` → failure | — | — | CONFIRMED |
+| reduction | result elt | → intrinsic | `::create` @ | gate |
+|---|---|---|---|---|
+| `sum` | `i32` | `tpu_add_seg_scan1xNi` | `0x146d5c40` | — |
+| `sum` | `f32` | `tpu_add_seg_scan1xNf` | `0x146d5a80` | — |
+| `sum` | `i16` | `tpu_add_half_seg_scan2xN` | `0x146d45c0` | `+0x780` must be true |
+| `sum` | `bf16` | `tpu_add_half_seg_scan2xN` | `0x146d45c0` | `+0x780` must be true |
+| `max` | `f32` | `tpu_max_seg_scan1xNf` | `0x14730e00` | — |
+| `max` | `i32` | `tpu_max_seg_scan1xNi` | `0x14730fc0` | — |
+| `min` | `f32` | `tpu_min_seg_scan1xNf` | `0x147316c0` | — |
+| `min` | `i32` | `tpu_min_seg_scan1xNi` | `0x14731880` | — |
+| any | other elt | `emitError` → failure | — | — |
 
 `i16` and `bf16` share the single `tpu_add_half_seg_scan2xN` arm (the packed-pair `PartialSum` widen). `min` and `max` have **no** `i16`/`bf16` emitted arm: `tpu_{min,max}_seg_scan2xN` are registered as dialect ops with the `NOperands<2>` trait but carry **no `::create`/`::build`** — declared-but-uncodegen'd. The lowering never produces a 2xN min/max segmented scan; only `add` has the half/2xN widen.
 
@@ -257,14 +257,14 @@ function XlaSparseDenseMatmulWithCsrInputOp_Compile(ctx):   // 0xe650800
 
 The custom-call target name `"SparseDenseMatmulWithMinibatchingOp"` (35 bytes) is assembled inline from a 32-byte `.rodata` prefix plus a 4-byte `"ngOp"` tail (`strcpy(buf+31, "ngOp")`, line 883). The 7th operand (`activations_init`, the accumulator initializer) is read structurally from the operand span, not from a distinct `Input()` call (INFERRED = `activations_init`; matches the decomposed forward `operand[6]`).
 
-| # | named input | role | Confidence |
-|---|---|---|---|
-| 0 | `row_pointers` | CSR row-offsets = per-sample segment boundaries | CONFIRMED |
-| 1 | `sorted_sample_ids` | per-id output (minibatch) row index | CONFIRMED |
-| 2 | `sorted_token_ids` | per-id embedding-table row index (the gather index) | CONFIRMED |
-| 3 | `sorted_gains` | per-id scale / combiner gain (weight) | CONFIRMED |
-| 4 | `embedding_table` | the dense embedding matrix being gathered from | CONFIRMED |
-| (scalar) | `num_minibatches_per_physical_sparse_core` | bounds the minibatch count (validated scalar) | CONFIRMED |
+| # | named input | role |
+|---|---|---|
+| 0 | `row_pointers` | CSR row-offsets = per-sample segment boundaries |
+| 1 | `sorted_sample_ids` | per-id output (minibatch) row index |
+| 2 | `sorted_token_ids` | per-id embedding-table row index (the gather index) |
+| 3 | `sorted_gains` | per-id scale / combiner gain (weight) |
+| 4 | `embedding_table` | the dense embedding matrix being gathered from |
+| (scalar) | `num_minibatches_per_physical_sparse_core` | bounds the minibatch count (validated scalar) |
 
 ### Stage 2 — minibatching decomposition slices the CSR offsets
 
@@ -323,27 +323,27 @@ The complete embedding sum-lookup HLO → SC dialect → intrinsic → ISA datap
 
 ## Function Map
 
-| Symbol | Address | Role | Confidence |
-|---|---|---|---|
-| `SegmentedScanOpLowering::matchAndRewrite` | `0x13589d40` | reduction × dtype → `tpu_*_seg_scan*`; bf16 `+0x780` gate; no `i1` path | CONFIRMED |
-| `SegmentedScanOp::build` | `0x145fd4a0` | `addOperands(data)` then `addOperands(segment)` — operand[1]=boundary | CONFIRMED |
-| `SegmentedScanOp::create` | `0x145fd5a0` | builds `(data, segment, reductionStr)` | CONFIRMED |
-| `SegmentedScanOp::getReductionOp` | `0x145fd460` | property word `((w>>19)&0x10)+64` → `StringAttr::getValue` | CONFIRMED |
-| `ScanOpLowering<SegmentedScanOp>` (PackedOperands) | `0x135f3000` | unpack bf16 → re-create `SegmentedScanOp` → pack results | CONFIRMED |
-| `LowerToSparseCoreLlvmPass::lowerFunc` | `0x13568280` | sets `(pattern+0x68)=(Target+0x8)`, the bf16-ALU capability holder | CONFIRMED |
-| `EmitVectorResultUnop<…SegmentedAddScanF32>` | `0x13aaf560` | gfc emit; op[1]→mask `+0x38`, op[2]→`FindAndEmitToUnusedPort` | CONFIRMED |
-| `FindAndEmitToUnusedPort<…SegmentedAddScanF32>` | `0x13ab2aa0` (gfc) / `0x13a4b680` (glc) | 7-port greedy first-free; slots `+0x1c..+0x34`, present `+0x10` | CONFIRMED |
-| `mutable_segmented_add_scan_f32` | `0x13aaf600` | proto `inst` oneof `0x23` accessor (`proto+0x58 == 0x23`) | CONFIRMED |
-| `XlaSparseDenseMatmulWithCsrInputOp::Compile` | `0xe650800` | 5 named inputs → `SparseDenseMatmulWithMinibatchingOp` custom-call, 7 operands | CONFIRMED |
-| `XlaSparseDenseMatmulWithCsrInputOp` ctor | `0xe650140` | reads `table_name`/`input_size`/`num_sc_per_logical_device`/quant attrs | CONFIRMED |
-| `GetMaxIdsAndUniques` | `0xe651fa0` | delegates to `GetMaxIdsAndUniquesExternal` — gather/dedup window bounds | CONFIRMED |
-| `MinibatchingDecomposition::CreateDynamicSliceCsr` | `0x13489ea0` | slices `concatenated_csr_pointers` per minibatch (`GetPaddedRowCount`) | CONFIRMED |
-| `EmbeddingDataFormattingDecomposer` AddPass | `0x1095b6a0` | activations stack/unstack decomposition | CONFIRMED |
-| `tpu_add_seg_scan1xNi` / `1xNf` `::create` | `0x146d5c40` / `0x146d5a80` | `sum` i32 / f32 segmented leaves | CONFIRMED |
-| `tpu_add_half_seg_scan2xN::create` | `0x146d45c0` | `sum` i16/bf16 packed-pair leaf (gated) | CONFIRMED |
-| `tpu_min_seg_scan1xNf` / `1xNi` `::create` | `0x147316c0` / `0x14731880` | `min` f32 / i32 segmented leaves | CONFIRMED |
-| `tpu_max_seg_scan1xNf` / `1xNi` `::create` | `0x14730e00` / `0x14730fc0` | `max` f32 / i32 segmented leaves | CONFIRMED |
-| `tpu_{min,max}_seg_scan2xN` | (registered) | `NOperands<2>` trait, **no `::create`** — declared-but-uncodegen'd | CONFIRMED |
+| Symbol | Address | Role |
+|---|---|---|
+| `SegmentedScanOpLowering::matchAndRewrite` | `0x13589d40` | reduction × dtype → `tpu_*_seg_scan*`; bf16 `+0x780` gate; no `i1` path |
+| `SegmentedScanOp::build` | `0x145fd4a0` | `addOperands(data)` then `addOperands(segment)` — operand[1]=boundary |
+| `SegmentedScanOp::create` | `0x145fd5a0` | builds `(data, segment, reductionStr)` |
+| `SegmentedScanOp::getReductionOp` | `0x145fd460` | property word `((w>>19)&0x10)+64` → `StringAttr::getValue` |
+| `ScanOpLowering<SegmentedScanOp>` (PackedOperands) | `0x135f3000` | unpack bf16 → re-create `SegmentedScanOp` → pack results |
+| `LowerToSparseCoreLlvmPass::lowerFunc` | `0x13568280` | sets `(pattern+0x68)=(Target+0x8)`, the bf16-ALU capability holder |
+| `EmitVectorResultUnop<…SegmentedAddScanF32>` | `0x13aaf560` | gfc emit; op[1]→mask `+0x38`, op[2]→`FindAndEmitToUnusedPort` |
+| `FindAndEmitToUnusedPort<…SegmentedAddScanF32>` | `0x13ab2aa0` (gfc) / `0x13a4b680` (glc) | 7-port greedy first-free; slots `+0x1c..+0x34`, present `+0x10` |
+| `mutable_segmented_add_scan_f32` | `0x13aaf600` | proto `inst` oneof `0x23` accessor (`proto+0x58 == 0x23`) |
+| `XlaSparseDenseMatmulWithCsrInputOp::Compile` | `0xe650800` | 5 named inputs → `SparseDenseMatmulWithMinibatchingOp` custom-call, 7 operands |
+| `XlaSparseDenseMatmulWithCsrInputOp` ctor | `0xe650140` | reads `table_name`/`input_size`/`num_sc_per_logical_device`/quant attrs |
+| `GetMaxIdsAndUniques` | `0xe651fa0` | delegates to `GetMaxIdsAndUniquesExternal` — gather/dedup window bounds |
+| `MinibatchingDecomposition::CreateDynamicSliceCsr` | `0x13489ea0` | slices `concatenated_csr_pointers` per minibatch (`GetPaddedRowCount`) |
+| `EmbeddingDataFormattingDecomposer` AddPass | `0x1095b6a0` | activations stack/unstack decomposition |
+| `tpu_add_seg_scan1xNi` / `1xNf` `::create` | `0x146d5c40` / `0x146d5a80` | `sum` i32 / f32 segmented leaves |
+| `tpu_add_half_seg_scan2xN::create` | `0x146d45c0` | `sum` i16/bf16 packed-pair leaf (gated) |
+| `tpu_min_seg_scan1xNf` / `1xNi` `::create` | `0x147316c0` / `0x14731880` | `min` f32 / i32 segmented leaves |
+| `tpu_max_seg_scan1xNf` / `1xNi` `::create` | `0x14730e00` / `0x14730fc0` | `max` f32 / i32 segmented leaves |
+| `tpu_{min,max}_seg_scan2xN` | (registered) | `NOperands<2>` trait, **no `::create`** — declared-but-uncodegen'd |
 
 ---
 

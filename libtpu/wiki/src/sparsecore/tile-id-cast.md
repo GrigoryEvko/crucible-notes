@@ -124,16 +124,16 @@ LogicalResult CastTileSpmemPointerToSpmem(rw, op, base, /*out*/ outPtr, /*out*/ 
 
 ### Step-by-Step
 
-| Step | Action | Decompile anchor | Confidence |
-|---|---|---|---|
-| 1 | Walk `Block::getParentOp` up to the `LLVM::LLVMFuncOp` (TypeID-matched) | parent loop @ `0x135b8400`; `TypeIDResolver<LLVMFuncOp>` compare | CONFIRMED |
-| 2 | Read `sc.sequencer` inherent attr (string, len 12) | `getInherentAttr` @ `0x1d8cc800`, called `@0x135b8479` | CONFIRMED |
-| 3 | Compare to `"execute"` — len 7 and bytes `0x63657865`/`0x65747563` | compare `@0x135b84c5` | CONFIRMED |
-| 4 | If no tile id supplied: `getI32Type` then `tpu_tileid::create` | `getI32Type` @ `0x1d853c40`; `tpu_tileid::create` @ `0x149883a0` `@0x135b85f6` | CONFIRMED |
-| 5 | `LLVMPointerType::get(ctx, 0xca)` — Spmem ptr type | `0x1746eb40` `@0x135b8610` | CONFIRMED |
-| 6 | `tpu_addrspacecast_spmem::create(rw, loc, spmemPtr, base, tileId)` | `0x146d67e0` `@0x135b8629` | CONFIRMED |
-| 7 | Set out AS = `202` (`0xca`) | store `@0x135b8639` | CONFIRMED |
-| — | Non-TEC path emits the execute-only diagnostic | string `"DMA to or from TileSpmem only allowed on TEC, but got "` | CONFIRMED |
+| Step | Action | Decompile anchor |
+|---|---|---|
+| 1 | Walk `Block::getParentOp` up to the `LLVM::LLVMFuncOp` (TypeID-matched) | parent loop @ `0x135b8400`; `TypeIDResolver<LLVMFuncOp>` compare |
+| 2 | Read `sc.sequencer` inherent attr (string, len 12) | `getInherentAttr` @ `0x1d8cc800`, called `@0x135b8479` |
+| 3 | Compare to `"execute"` — len 7 and bytes `0x63657865`/`0x65747563` | compare `@0x135b84c5` |
+| 4 | If no tile id supplied: `getI32Type` then `tpu_tileid::create` | `getI32Type` @ `0x1d853c40`; `tpu_tileid::create` @ `0x149883a0` `@0x135b85f6` |
+| 5 | `LLVMPointerType::get(ctx, 0xca)` — Spmem ptr type | `0x1746eb40` `@0x135b8610` |
+| 6 | `tpu_addrspacecast_spmem::create(rw, loc, spmemPtr, base, tileId)` | `0x146d67e0` `@0x135b8629` |
+| 7 | Set out AS = `202` (`0xca`) | store `@0x135b8639` |
+| — | Non-TEC path emits the execute-only diagnostic | string `"DMA to or from TileSpmem only allowed on TEC, but got "` |
 
 > **GOTCHA — the lowering synthesises the tile id when none is passed.** The driver takes the candidate tile id as an in/out argument. If the call site already produced a `tpu_tileid` it reuses it; otherwise it *builds one in place* (step 4). Both branches end at the same emit. A reimplementer must not assume the tile id always arrives pre-built — the lowering is responsible for materialising the `STILEID` read at the cast site when the source IR did not.
 
@@ -220,11 +220,11 @@ For a TileSpmem load/store on the EXECUTE lane, the lowering emits, in order:
        and the tile context as the SparseCoreTecBundle it sits in.
 ```
 
-| Node | Op | Operands | Result | Confidence |
-|---|---|---|---|---|
-| 1 | `tpu_tileid` (`llvm_tpu.tileid`) | none | `i32` (STILEID) | CONFIRMED |
-| 2 | `tpu_addrspacecast_spmem` | op0 = `%base` (`0xc9`), op1 = `%tid` (`i32`) | `!ptr<0xca>` (Spmem) | CONFIRMED |
-| 3 | consume at ISA | base reg `MCOperand` + sequencer-lane bundle | — | HIGH |
+| Node | Op | Operands | Result |
+|---|---|---|---|
+| 1 | `tpu_tileid` (`llvm_tpu.tileid`) | none | `i32` (STILEID) |
+| 2 | `tpu_addrspacecast_spmem` | op0 = `%base` (`0xc9`), op1 = `%tid` (`i32`) | `!ptr<0xca>` (Spmem) |
+| 3 | consume at ISA | base reg `MCOperand` + sequencer-lane bundle | — |
 
 ### The Consumer
 
@@ -300,22 +300,22 @@ The `tpu_addrspacecast_*` op family and the `CastTileSpmemPointerToSpmem` driver
 
 ## Limits and Open Items
 
-| Item | Status | Confidence |
-|---|---|---|
-| `CastTileSpmemPointerToSpmem` lowering body (gate, tile-id synth, emit, out-AS) | full body decoded | CONFIRMED |
-| `tpu_tileid::create` 0-operand / 1-`i32`-result | body decoded; no `addOperands` | CONFIRMED |
-| `TileIdOp` → `tpu_tileid` lowering (getI32Type + create + replaceOp) | body decoded | CONFIRMED |
-| Operand order op0=base, op1=tileId | two `addOperands(...,1,...)` calls, base then tileId | CONFIRMED |
-| Arity split: 9 casts 2-op (7 TEC + 2 TAC), 7 casts 1-op (SCS/TC/generic) | per-op `NOperands<2u>` vs `OneOperand` trait; `::create` signatures (`ValueES6_` vs `ValueE`) where a body exists | CONFIRMED |
-| Sequencer gate == `"execute"` (len 7, `0x63657865`/`0x65747563`) | byte compare in body | CONFIRMED |
-| On-tile predicate `(ms & ~0x10) != 2` | body decoded | CONFIRMED |
-| Dst AS = `0xca` (202) Spmem for the spmem cast | store `@0x135b8639` | CONFIRMED |
-| Tile id is a paired operand, not pointer bits | no pack arithmetic in body; value-preserving re-tag | CONFIRMED (this lowering) / see [addrspacecast ISel](addrspacecast-isel.md) for the ISD half |
-| `%base` SSA result == load's `SparsecoreVectorBase` MCOperand | structural def-use, not single-getter-traced | HIGH |
-| `_tac` / `_sflag_tile_tac` arity (2-op) | `NOperands<2u>` trait on the `mlir::Op<…>` instantiation; no `::create` body | CONFIRMED (trait) |
-| The exact dst AS of the SCS/TC casts and the TAC 2-op casts | only `_spmem`/`_smem`/`_tec`/`_scs`/`_tc`/`_tec_sflag_tec`/`_scs_sflag_scs` producers re-decoded; others rest on the sflag-promotion table | LOW |
-| `SparsecoreVectorBase`/`Offset` field bit layout for the non-CB TileSpmem slot | not decoded here | LOW |
-| SelectCode MatcherTable arm threading op#1 into the tile-select MCOperand | not byte-walked here | LOW — see [addrspacecast ISel](addrspacecast-isel.md) |
+| Item | Status |
+|---|---|
+| `CastTileSpmemPointerToSpmem` lowering body (gate, tile-id synth, emit, out-AS) | full body decoded |
+| `tpu_tileid::create` 0-operand / 1-`i32`-result | body decoded; no `addOperands` |
+| `TileIdOp` → `tpu_tileid` lowering (getI32Type + create + replaceOp) | body decoded |
+| Operand order op0=base, op1=tileId | two `addOperands(...,1,...)` calls, base then tileId |
+| Arity split: 9 casts 2-op (7 TEC + 2 TAC), 7 casts 1-op (SCS/TC/generic) | per-op `NOperands<2u>` vs `OneOperand` trait; `::create` signatures (`ValueES6_` vs `ValueE`) where a body exists |
+| Sequencer gate == `"execute"` (len 7, `0x63657865`/`0x65747563`) | byte compare in body |
+| On-tile predicate `(ms & ~0x10) != 2` | body decoded |
+| Dst AS = `0xca` (202) Spmem for the spmem cast | store `@0x135b8639` |
+| Tile id is a paired operand, not pointer bits | no pack arithmetic in body; value-preserving re-tag |
+| `%base` SSA result == load's `SparsecoreVectorBase` MCOperand | structural def-use, not single-getter-traced |
+| `_tac` / `_sflag_tile_tac` arity (2-op) | `NOperands<2u>` trait on the `mlir::Op<…>` instantiation; no `::create` body |
+| The exact dst AS of the SCS/TC casts and the TAC 2-op casts | only `_spmem`/`_smem`/`_tec`/`_scs`/`_tc`/`_tec_sflag_tec`/`_scs_sflag_scs` producers re-decoded; others rest on the sflag-promotion table |
+| `SparsecoreVectorBase`/`Offset` field bit layout for the non-CB TileSpmem slot | not decoded here |
+| SelectCode MatcherTable arm threading op#1 into the tile-select MCOperand | not byte-walked here |
 
 ---
 

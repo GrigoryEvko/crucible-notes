@@ -66,15 +66,15 @@ function PlatformManager_AnyAccessor():
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `PlatformManager::RegisterPlatform` | `0x1d0fe120` | Install a `unique_ptr<Platform>`; CHECK `platform != nullptr` @ `platform_manager.cc:93`; query id via `platform->vtable+24` | CERTAIN |
-| `PlatformManager::PlatformWithName(string_view)` | `0x1d0fe5c0` | Name lookup | HIGH |
-| `PlatformManager::PlatformWithName(string_view, bool)` | `0x1d0fe820` | Name lookup with init flag | HIGH |
-| `PlatformManager::PlatformWithId(const PlatformIdInfo*)` | `0x1d0fe680` | Id lookup | HIGH |
-| `PlatformManager::PlatformsWithFilter(...)` | `0x1d0ff140` / `0x1d0ff160` | Filtered enumeration | HIGH |
-| `(anon)::PlatformManagerImpl::PlatformWithName` | `0x1d0fe8e0` | The real lookup body behind the static wrappers | HIGH |
-| `(anon)::PlatformManagerImpl::InitializedPlatformNames...` | `0x1d100260` | Enumerate already-initialised platforms (a `std::function` filter) | MEDIUM |
+| Function | Address | Role |
+|---|---|---|
+| `PlatformManager::RegisterPlatform` | `0x1d0fe120` | Install a `unique_ptr<Platform>`; CHECK `platform != nullptr` @ `platform_manager.cc:93`; query id via `platform->vtable+24` |
+| `PlatformManager::PlatformWithName(string_view)` | `0x1d0fe5c0` | Name lookup |
+| `PlatformManager::PlatformWithName(string_view, bool)` | `0x1d0fe820` | Name lookup with init flag |
+| `PlatformManager::PlatformWithId(const PlatformIdInfo*)` | `0x1d0fe680` | Id lookup |
+| `PlatformManager::PlatformsWithFilter(...)` | `0x1d0ff140` / `0x1d0ff160` | Filtered enumeration |
+| `(anon)::PlatformManagerImpl::PlatformWithName` | `0x1d0fe8e0` | The real lookup body behind the static wrappers |
+| `(anon)::PlatformManagerImpl::InitializedPlatformNames...` | `0x1d100260` | Enumerate already-initialised platforms (a `std::function` filter) |
 
 > **NOTE —** `RegisterPlatform` reads the platform's id through `(*platform)->vtable[+24]` before inserting — id is a *virtual* property of each `Platform`, not a constructor argument. The TPU id comes from `tensorflow::tpu::GetTpuPlatformId() @ 0x20818ec0`. A reimplementation must expose id as a virtual so the registry can key on it without knowing the concrete type.
 
@@ -128,18 +128,18 @@ The `+360 / +408 / +400 / +392 / +384` slot pattern — *get a status scratch ob
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `tpu::RegisterTpuPlatform` | `0xe99a3a0` | One-time construct + register; once-flag; fatal CHECK @ `:178` | CERTAIN |
-| `tpu::GetTpuPlatformId` | `0x20818ec0` | The TPU `PlatformId` the registry keys on | HIGH |
-| `TpuPlatform::TpuPlatform` (C2) | `0xe999960` | Ctor of the `0x98`-byte platform | HIGH |
-| `TpuPlatform::Initialize` | `0xe999ac0` | Driver bring-up via `ExecutorApiFn()+16`; status @ `status_helper.h:38` | CERTAIN |
-| `TpuPlatform::GetRegisteredPlatform` | `0xe999aa0` | `return tpu_registered_platform` | CERTAIN |
-| `TpuPlatform::FindExisting(int)` | `0xe99a4a0` | Per-ordinal cached executor lookup (no build) | HIGH |
-| `TpuPlatform::VisibleDeviceCount` | `0xe999d20` | Device count via shim (`ExecutorApiFn()+48`) | HIGH |
-| `TpuPlatform::Insert/Lookup/EraseEvent` | `0xe999fa0`/`0xe99a100`/`0xe99a160` | `Event*` ↔ `SE_Event*` registry (used by `WaitFor`/`RecordEvent`) | HIGH |
-| `TpuPlatform::TpuMemoryLimit` | `0xe99a2c0` | HBM size query | MEDIUM |
-| `TpuPlatform::GetTopologyPtr` | `0xe999f40` | Device topology handle | MEDIUM |
+| Function | Address | Role |
+|---|---|---|
+| `tpu::RegisterTpuPlatform` | `0xe99a3a0` | One-time construct + register; once-flag; fatal CHECK @ `:178` |
+| `tpu::GetTpuPlatformId` | `0x20818ec0` | The TPU `PlatformId` the registry keys on |
+| `TpuPlatform::TpuPlatform` (C2) | `0xe999960` | Ctor of the `0x98`-byte platform |
+| `TpuPlatform::Initialize` | `0xe999ac0` | Driver bring-up via `ExecutorApiFn()+16`; status @ `status_helper.h:38` |
+| `TpuPlatform::GetRegisteredPlatform` | `0xe999aa0` | `return tpu_registered_platform` |
+| `TpuPlatform::FindExisting(int)` | `0xe99a4a0` | Per-ordinal cached executor lookup (no build) |
+| `TpuPlatform::VisibleDeviceCount` | `0xe999d20` | Device count via shim (`ExecutorApiFn()+48`) |
+| `TpuPlatform::Insert/Lookup/EraseEvent` | `0xe999fa0`/`0xe99a100`/`0xe99a160` | `Event*` ↔ `SE_Event*` registry (used by `WaitFor`/`RecordEvent`) |
+| `TpuPlatform::TpuMemoryLimit` | `0xe99a2c0` | HBM size query |
+| `TpuPlatform::GetTopologyPtr` | `0xe999f40` | Device topology handle |
 
 > **NOTE —** `TpuPlatform::Insert/Lookup/EraseEvent` maintain the `Event* → SE_Event*` map that the TPU stream's `WaitFor(Event*)`/`RecordEvent` dereference. The *use* of that map is documented on [Stream Semantics](../runtime/stream-semantics.md); the platform *owns* the map, which is why the methods live on `TpuPlatform`.
 
@@ -220,16 +220,16 @@ The `TpuExecutor` is a `0x48` (72) byte object: the `StreamExecutorCommon` base 
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `TpuPlatform::ExecutorForDevice` | `0xe999d40` | Public mint-or-cache entry; cache @ `platform+40` | CERTAIN |
-| `TpuPlatform::GetUncachedExecutor` | `0xe999da0` | Factory: `ExecutorApiFn()+32` mint + `new(0x48)` `TpuExecutor` | CERTAIN |
-| `ExecutorCache::GetOrCreate` | `0x1d0fd2e0` | Double-checked per-ordinal cache; log @ `executor_cache.cc:44` | CERTAIN |
-| `ExecutorCache::Get` | `0x1d0fd580` | Fast-path cached lookup | HIGH |
-| `TpuExecutor::Init` | `0xe996980` | Per-executor init via shim | HIGH |
-| `TpuExecutor::CreateStream` | `0xe996ca0` | Mint a `TpuStream` | HIGH |
-| `TpuExecutor::CreateEvent` | `0xe996e60` | Mint a `TpuEvent` | HIGH |
-| `TpuExecutor::Allocate` | `0xe996fa0` | Device memory alloc via shim | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `TpuPlatform::ExecutorForDevice` | `0xe999d40` | Public mint-or-cache entry; cache @ `platform+40` |
+| `TpuPlatform::GetUncachedExecutor` | `0xe999da0` | Factory: `ExecutorApiFn()+32` mint + `new(0x48)` `TpuExecutor` |
+| `ExecutorCache::GetOrCreate` | `0x1d0fd2e0` | Double-checked per-ordinal cache; log @ `executor_cache.cc:44` |
+| `ExecutorCache::Get` | `0x1d0fd580` | Fast-path cached lookup |
+| `TpuExecutor::Init` | `0xe996980` | Per-executor init via shim |
+| `TpuExecutor::CreateStream` | `0xe996ca0` | Mint a `TpuStream` |
+| `TpuExecutor::CreateEvent` | `0xe996e60` | Mint a `TpuEvent` |
+| `TpuExecutor::Allocate` | `0xe996fa0` | Device memory alloc via shim |
 
 ---
 
@@ -253,14 +253,14 @@ stream_executor::Stream                          (abstract base)
 
 ### Base / common layer
 
-| Class | Role | Key symbols | Confidence |
-|---|---|---|---|
-| `StreamExecutor` | Abstract device executor; vtable `off_21FDAD98` | ctor `0x208193e0`, D2 `0x20819440` | HIGH |
-| `StreamExecutorCommon` | Concrete intermediate; holds `const Platform*` | ctor `0x1d0f03e0`, `GetDeviceDescription 0x1d0f04a0` | HIGH |
-| `Platform` | Abstract platform; `FindExisting(int)` | `FindExisting 0xe718b60` | HIGH |
-| `ExecutorCache` | Per-ordinal executor cache | `GetOrCreate 0x1d0fd2e0`, `Get 0x1d0fd580` | CERTAIN |
-| `DeviceDescription` | Copyable device-info bag | copy-ctor `0xe6b5ee0` | MEDIUM |
-| `RuntimeAbiVersionManager` | Singleton ABI guard | `GetInstance 0xe6b8040` | MEDIUM |
+| Class | Role | Key symbols |
+|---|---|---|
+| `StreamExecutor` | Abstract device executor; vtable `off_21FDAD98` | ctor `0x208193e0`, D2 `0x20819440` |
+| `StreamExecutorCommon` | Concrete intermediate; holds `const Platform*` | ctor `0x1d0f03e0`, `GetDeviceDescription 0x1d0f04a0` |
+| `Platform` | Abstract platform; `FindExisting(int)` | `FindExisting 0xe718b60` |
+| `ExecutorCache` | Per-ordinal executor cache | `GetOrCreate 0x1d0fd2e0`, `Get 0x1d0fd580` |
+| `DeviceDescription` | Copyable device-info bag | copy-ctor `0xe6b5ee0` |
+| `RuntimeAbiVersionManager` | Singleton ABI guard | `GetInstance 0xe6b8040` |
 
 > **QUIRK —** there is **no `stream_executor::interpreter::InterpreterExecutor`** in libtpu. The XLA standalone interpreter device (`xla/backends/interpreter/`) is not linked. The only "interpreter" symbols are ANTLR parser runtime and `mlir::interpreter::*`, both unrelated to device execution. A reimplementer expecting an interpreter `Platform` to fall back to will not find one — the host-interpreter role is split between compile-time `xla::HloEvaluator` (constant folding) and the runtime CPU thunk backend, **neither of which is an SE `Platform`**. When the compiler cannot fold something, the node is simply left in the graph for the real backend.
 
@@ -339,20 +339,20 @@ The split is deliberate: the outer `0x18`-byte wrapper is the `Event` the SE API
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `HostPlatform::HostPlatform` | `0xfe6d380` | Host platform ctor | HIGH |
-| `HostPlatform::ExecutorForDevice` | `0xfe6d580` | Mint-or-cache (mirrors TPU) | HIGH |
-| `HostPlatform::GetUncachedExecutor` | `0xfe6d5e0` | Build a `HostExecutor` | HIGH |
-| `HostExecutor::Init` | `0xfe6d780` | `ThreadPool("host-executor", NumSchedulableCPUs)` | CERTAIN |
-| `HostExecutor::CreateStream` | `0xfe6de20` | Factory or default `new(0x80)` `HostStream` | CERTAIN |
-| `HostExecutor::CreateEvent` | `0xfe6d9e0` | Two-object `Notification`-backed event | CERTAIN |
-| `HostExecutor::HostMemoryAllocate` | `0xfe6e0c0` | `new` + `AnyInvocable` deleter | HIGH |
-| `HostStream::HostStream` | `0xfe6ec80` | `StreamCommon` + vtable `off_217B0228`, `0x80` B | CERTAIN |
-| `HostStream::BlockHostUntilDone` | `0xfe6f000` | `return 1` (synchronous) | CERTAIN |
-| `HostStream::DoHostCallbackWithStatus` | `0xfe6efe0` | Inline call on caller thread | CERTAIN |
-| `HostStreamFactory::GetFactory` | `0xfe6eb40` | Pluggable stream-factory accessor | HIGH |
-| `HostStreamFactory::Register` | `0xfe6ea20` | Install a custom stream factory | MEDIUM |
+| Function | Address | Role |
+|---|---|---|
+| `HostPlatform::HostPlatform` | `0xfe6d380` | Host platform ctor |
+| `HostPlatform::ExecutorForDevice` | `0xfe6d580` | Mint-or-cache (mirrors TPU) |
+| `HostPlatform::GetUncachedExecutor` | `0xfe6d5e0` | Build a `HostExecutor` |
+| `HostExecutor::Init` | `0xfe6d780` | `ThreadPool("host-executor", NumSchedulableCPUs)` |
+| `HostExecutor::CreateStream` | `0xfe6de20` | Factory or default `new(0x80)` `HostStream` |
+| `HostExecutor::CreateEvent` | `0xfe6d9e0` | Two-object `Notification`-backed event |
+| `HostExecutor::HostMemoryAllocate` | `0xfe6e0c0` | `new` + `AnyInvocable` deleter |
+| `HostStream::HostStream` | `0xfe6ec80` | `StreamCommon` + vtable `off_217B0228`, `0x80` B |
+| `HostStream::BlockHostUntilDone` | `0xfe6f000` | `return 1` (synchronous) |
+| `HostStream::DoHostCallbackWithStatus` | `0xfe6efe0` | Inline call on caller thread |
+| `HostStreamFactory::GetFactory` | `0xfe6eb40` | Pluggable stream-factory accessor |
+| `HostStreamFactory::Register` | `0xfe6ea20` | Install a custom stream factory |
 
 > **NOTE —** `HostStreamFactory::Register` (`0xfe6ea20`) provides a hook to override the default `HostStream`, but no non-default factory registration was found at any traced call site — the `GetFactory` path returns null and `CreateStream` falls through to the default `new HostStream`. Confidence that the override is reachable in this build: LOW. A reimplementer can ignore the factory hook unless a custom host stream is needed.
 

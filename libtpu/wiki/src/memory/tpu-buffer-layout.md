@@ -46,15 +46,15 @@ Everything on this page operates on two C++ objects: `xla::Shape` and the `xla::
 
 `xla::Layout` is an `absl::InlinedVector`-rich struct; the device code touches only a handful of members. The C-ABI mirror `XLA_Layout` (built by `ApiConverter::ToC(const xla::Layout&, XLA_Layout*)` @ `0xfcb7ca0`) pins the offsets, and the on-device functions reach the same data through `xla::Shape::layout()` (returns a `Layout*`).
 
-| Field | `xla::Layout` access | `XLA_Layout` offset | Meaning | Confidence |
-|---|---|---|---|---|
-| `minor_to_major[]` | `layout()[2..3]` inlined vector (count at `[2]>>1`) | `+0` (ptr), `+48` (count) | Physical dim order, minor-first | CONFIRMED |
-| `dim_level_types` / flags | `layout()` low bytes | `+400`, `+404` | sparse/dense level kinds | HIGH |
-| `index_primitive_type` / `pointer_primitive_type` | `*((qword*)layout+1)` | `+408` | sparse index/pointer types | MEDIUM |
-| `element_size_in_bits` | `layout()[1]` | `+416` | non-zero for packed/odd-width elements; `0` ⇒ use dtype byte size | CONFIRMED |
-| `memory_space` | `*((char*)layout+2)` | `+424` | tier color (HBM/VMEM/…); see [overview.md](overview.md#2-the-memoryspace-enum) | CONFIRMED |
-| `tiles[]` | `layout()[9]` is `tiles().size()` | `+56` (ptr), `+392` (count) | the physical tile list (each `xla::Tile` is a dim vector) | CONFIRMED |
-| `tail_padding_alignment_in_elements` | `*((qword*)layout+24)` | `+432` | trailing-element pad quantum | HIGH |
+| Field | `xla::Layout` access | `XLA_Layout` offset | Meaning |
+|---|---|---|---|
+| `minor_to_major[]` | `layout()[2..3]` inlined vector (count at `[2]>>1`) | `+0` (ptr), `+48` (count) | Physical dim order, minor-first |
+| `dim_level_types` / flags | `layout()` low bytes | `+400`, `+404` | sparse/dense level kinds |
+| `index_primitive_type` / `pointer_primitive_type` | `*((qword*)layout+1)` | `+408` | sparse index/pointer types |
+| `element_size_in_bits` | `layout()[1]` | `+416` | non-zero for packed/odd-width elements; `0` ⇒ use dtype byte size |
+| `memory_space` | `*((char*)layout+2)` | `+424` | tier color (HBM/VMEM/…); see [overview.md](overview.md#2-the-memoryspace-enum) |
+| `tiles[]` | `layout()[9]` is `tiles().size()` | `+56` (ptr), `+392` (count) | the physical tile list (each `xla::Tile` is a dim vector) |
+| `tail_padding_alignment_in_elements` | `*((qword*)layout+24)` | `+432` | trailing-element pad quantum |
 
 The single most consulted field is `layout()[9]` — **the tile count**. `LinearIndex` (`0x1d6b0600`), `ShapeSizeBytesRaw` (`0x1d6add40`), and `HasLinearLayout` (`0x1d6b0160`) all branch on whether `tiles().size() >= 2` (or `> 1`): a populated tile list means the buffer is tiled and addressed via `ShapeUtil::ArraySize` / `LayoutUtil::LinearIndex`; an empty tile list means a *linear* (untiled) buffer.
 
@@ -76,12 +76,12 @@ XLA_Shape (536 bytes per element in a tuple array):
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `ApiConverter::ToC(const xla::Layout&, XLA_Layout*)` | `0xfcb7ca0` | `xla::Layout` → C ABI; pins layout offsets | CONFIRMED |
-| `ApiConverter::ToC(const xla::Shape&, XLA_Shape*)` | `0xfcb7940` | `xla::Shape` → C ABI; recurses tuple shapes | CONFIRMED |
-| `ApiConverter::FromC(XLA_Shape*)` | `0xfcb7400` | C ABI → `xla::Shape` for runtime calls | CONFIRMED |
-| `xla::jellyfish::TransferSizeUtil::HasLinearLayout(const Layout&)` | `0x1d6b0160` | tile list empty ⇒ linear | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `ApiConverter::ToC(const xla::Layout&, XLA_Layout*)` | `0xfcb7ca0` | `xla::Layout` → C ABI; pins layout offsets |
+| `ApiConverter::ToC(const xla::Shape&, XLA_Shape*)` | `0xfcb7940` | `xla::Shape` → C ABI; recurses tuple shapes |
+| `ApiConverter::FromC(XLA_Shape*)` | `0xfcb7400` | C ABI → `xla::Shape` for runtime calls |
+| `xla::jellyfish::TransferSizeUtil::HasLinearLayout(const Layout&)` | `0x1d6b0160` | tile list empty ⇒ linear |
 
 ---
 
@@ -154,16 +154,16 @@ function SetPaddedShape(topology, shape /*buffer leaf*/, out_shape):   // 0x1d6a
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `HardwareLayout::HostShapeToDeviceShape` | `0xeab0e20` | C-ABI host→device shape | CONFIRMED |
-| `TransferSizeUtil::SetPaddedShape` | `0x1d6ae0e0` | Per-leaf pad + tile stamp | CONFIRMED |
-| `TransferSizeUtil::GetUnpackedShape` | `0x1d6b2100` | Widen a packed dtype for the recursion | CONFIRMED |
-| `TransferSizeUtil::ShouldPackPREDAsSingleBit` | `0x1d6b0080` | PRED 1-bit packing predicate | CONFIRMED |
-| `TransferSizeUtil::ChunkBound` | `0x1d6b22e0` | Per-dim chunk bound used in the pad round-up | CONFIRMED |
-| `HardwareLayout::PopulateShape` | `0x1d6da360` | Stamp dims + tile + `memory_space` | CONFIRMED |
-| `XlaShapeToTpuPaddedShape` (C shim) | `0xeabf0e0` | `tensorflow::XlaTpuPaddedShapeFn` boundary | CONFIRMED |
-| `XlaShapeToTpuShapeRepresentation` (C shim) | `0xeabefa0` | Shape-representation boundary | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `HardwareLayout::HostShapeToDeviceShape` | `0xeab0e20` | C-ABI host→device shape |
+| `TransferSizeUtil::SetPaddedShape` | `0x1d6ae0e0` | Per-leaf pad + tile stamp |
+| `TransferSizeUtil::GetUnpackedShape` | `0x1d6b2100` | Widen a packed dtype for the recursion |
+| `TransferSizeUtil::ShouldPackPREDAsSingleBit` | `0x1d6b0080` | PRED 1-bit packing predicate |
+| `TransferSizeUtil::ChunkBound` | `0x1d6b22e0` | Per-dim chunk bound used in the pad round-up |
+| `HardwareLayout::PopulateShape` | `0x1d6da360` | Stamp dims + tile + `memory_space` |
+| `XlaShapeToTpuPaddedShape` (C shim) | `0xeabf0e0` | `tensorflow::XlaTpuPaddedShapeFn` boundary |
+| `XlaShapeToTpuShapeRepresentation` (C shim) | `0xeabefa0` | Shape-representation boundary |
 
 ---
 
@@ -225,15 +225,15 @@ The `kPackingFactors[35]` tables are per-`tc_max` (`<2>`, `<4>`, `<8>`, `<16>`, 
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `TransferSizeUtil::GetCompactTiles` | `0x1d6b11c0` | Build the `inlined_vector<xla::Tile,3>` for a leaf | CONFIRMED |
-| `TransferSizeUtil::Pad2ndMinorCompact` | `0x1d6af5c0` | 2nd-minor pad + per-tile rows | CONFIRMED |
-| `TransferSizeUtil::ElementPackingFactor` | `0x1d6b03e0` | Logical elements per 4-byte slot (table-driven) | CONFIRMED |
-| `TransferSizeUtil::GetSubtileForPacking` | `0x1d6b1f20` | Sub-byte subtile | CONFIRMED |
-| `TransferSizeUtil::GetSubtileForBreakingMinorDimensionForPacking` | `0x1d6b1fe0` (called in `0x1d6b11c0`) | Subtile when minor extent == 1 | CONFIRMED |
-| `TransferSizeUtil::DoesShapeRequireMultiChunkPacking` | `0x1d6b0720` | Multi-chunk packing predicate | CONFIRMED |
-| `Target::LaneCount` / `SublaneCount` | `0x1d60f400` / `0x1d60f300` | Tile dims from chip descriptor | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `TransferSizeUtil::GetCompactTiles` | `0x1d6b11c0` | Build the `inlined_vector<xla::Tile,3>` for a leaf |
+| `TransferSizeUtil::Pad2ndMinorCompact` | `0x1d6af5c0` | 2nd-minor pad + per-tile rows |
+| `TransferSizeUtil::ElementPackingFactor` | `0x1d6b03e0` | Logical elements per 4-byte slot (table-driven) |
+| `TransferSizeUtil::GetSubtileForPacking` | `0x1d6b1f20` | Sub-byte subtile |
+| `TransferSizeUtil::GetSubtileForBreakingMinorDimensionForPacking` | `0x1d6b1fe0` (called in `0x1d6b11c0`) | Subtile when minor extent == 1 |
+| `TransferSizeUtil::DoesShapeRequireMultiChunkPacking` | `0x1d6b0720` | Multi-chunk packing predicate |
+| `Target::LaneCount` / `SublaneCount` | `0x1d60f400` / `0x1d60f300` | Tile dims from chip descriptor |
 
 ---
 
@@ -288,15 +288,15 @@ function ShapeSizeBytesRaw(topology, shape):                      // 0x1d6add40
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `TransferSizeUtil::ShapeSizeBytesRaw` | `0x1d6add40` | Padded data bytes (family dispatch) | CONFIRMED |
-| `TransferSizeUtil::ShapeSizeCompact` | `0x1d6ae8a0` | Compact-tiled byte size | CONFIRMED |
-| `TransferSizeUtil::ShapeSizeCompactRaw` | `0x1d6aea60` | Compact bytes w/o metadata | CONFIRMED |
-| `TransferSizeUtil::ShapeWithMetadataSizeBytes` | `0x1d6aea00` (via `0xeab0ec0`) | Data + per-buffer metadata | CONFIRMED |
-| `HardwareLayout::ShapeSize` / `ShapeSizeCompact` | `0xeab0ec0` / `0xeab0f20` | C-ABI byte-size wrappers | CONFIRMED |
-| `HardwareLayout::ComponentShape<64>` / `<128>` | `0x1d6d9cc0` / `0x1d6d9e40` | 64/128-bit element split | CONFIRMED |
-| `xla::ShapeUtil::ArraySize` | (OSS) | Tiled-array byte size | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `TransferSizeUtil::ShapeSizeBytesRaw` | `0x1d6add40` | Padded data bytes (family dispatch) |
+| `TransferSizeUtil::ShapeSizeCompact` | `0x1d6ae8a0` | Compact-tiled byte size |
+| `TransferSizeUtil::ShapeSizeCompactRaw` | `0x1d6aea60` | Compact bytes w/o metadata |
+| `TransferSizeUtil::ShapeWithMetadataSizeBytes` | `0x1d6aea00` (via `0xeab0ec0`) | Data + per-buffer metadata |
+| `HardwareLayout::ShapeSize` / `ShapeSizeCompact` | `0xeab0ec0` / `0xeab0f20` | C-ABI byte-size wrappers |
+| `HardwareLayout::ComponentShape<64>` / `<128>` | `0x1d6d9cc0` / `0x1d6d9e40` | 64/128-bit element split |
+| `xla::ShapeUtil::ArraySize` | (OSS) | Tiled-array byte size |
 
 ---
 
@@ -344,14 +344,14 @@ function RepackToHardwareLayout<S,128>(dst, size_bytes, src, pad_flag):  // e.g.
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `TransferSizeUtil::LinearIndex` | `0x1d6b0600` | Tiled/linear multi-index → flat offset | CONFIRMED |
-| `TransferSizeUtil::UpdateLayout` | `0x1d6b05a0` | Stamp default device layout (per-subshape) | CONFIRMED |
-| `TransferSizeUtil::UpdateLeafLayout` | `0x1d6b08c0` | Stamp tile on a single leaf | CONFIRMED |
-| `RepackToHardwareLayout<2,128>` | `0x1d5c2880` | SIMD host→tile repack, sublane 2 | CONFIRMED |
-| `RepackToHardwareLayout<16,128>` | `0x1d5c3b40` | SIMD host→tile repack, sublane 16 | CONFIRMED |
-| `RepackToHardwareLayout<32,128>` | `0x1d5c3f80` | SIMD host→tile repack, sublane 32 | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `TransferSizeUtil::LinearIndex` | `0x1d6b0600` | Tiled/linear multi-index → flat offset |
+| `TransferSizeUtil::UpdateLayout` | `0x1d6b05a0` | Stamp default device layout (per-subshape) |
+| `TransferSizeUtil::UpdateLeafLayout` | `0x1d6b08c0` | Stamp tile on a single leaf |
+| `RepackToHardwareLayout<2,128>` | `0x1d5c2880` | SIMD host→tile repack, sublane 2 |
+| `RepackToHardwareLayout<16,128>` | `0x1d5c3b40` | SIMD host→tile repack, sublane 16 |
+| `RepackToHardwareLayout<32,128>` | `0x1d5c3f80` | SIMD host→tile repack, sublane 32 |
 
 ---
 
@@ -387,15 +387,15 @@ Below the XLA `ShapedBuffer`, the driver moves bytes through `MaybeOwningDmaBuff
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `ApiConverter::ToC(const xla::ShapedBuffer&, XLA_ShapedBuffer*)` | `0xfcb8580` | Residency record → C ABI | CONFIRMED |
-| `ApiConverter::FromC(XLA_ShapedBuffer*)` | `0xfcb7000` | C ABI → `xla::ShapedBuffer` | CONFIRMED |
-| `ApiConverter::ToC(const DeviceAddressBase&)` | `0xfcb78c0` | Per-leaf `(ptr,size)` → `SE_DeviceAddressBase` | CONFIRMED |
-| `ApiConverter::ToC(const xla::ShapeIndex&)` | `0xfcb82e0` | Leaf index within the tuple tree | HIGH |
-| `XlaComputationLaunchContext::PopulateOutputs` | `0xeadbb80` | Build output `ScopedShapedBuffer`s post-execute | HIGH |
-| `TpuTransferManager::CanShapedBufferBeAccessedNow` | `0xeaba6e0` | Residency-readiness check | HIGH |
-| `TpuTransferManager::ReadDynamicShapes` | `0xe9735a0` | Read back dynamic dims into the shape | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `ApiConverter::ToC(const xla::ShapedBuffer&, XLA_ShapedBuffer*)` | `0xfcb8580` | Residency record → C ABI |
+| `ApiConverter::FromC(XLA_ShapedBuffer*)` | `0xfcb7000` | C ABI → `xla::ShapedBuffer` |
+| `ApiConverter::ToC(const DeviceAddressBase&)` | `0xfcb78c0` | Per-leaf `(ptr,size)` → `SE_DeviceAddressBase` |
+| `ApiConverter::ToC(const xla::ShapeIndex&)` | `0xfcb82e0` | Leaf index within the tuple tree |
+| `XlaComputationLaunchContext::PopulateOutputs` | `0xeadbb80` | Build output `ScopedShapedBuffer`s post-execute |
+| `TpuTransferManager::CanShapedBufferBeAccessedNow` | `0xeaba6e0` | Residency-readiness check |
+| `TpuTransferManager::ReadDynamicShapes` | `0xe9735a0` | Read back dynamic dims into the shape |
 
 ---
 

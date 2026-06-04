@@ -282,23 +282,23 @@ The three phases advance the rings in turn; the exact per-axis division of labor
 
 ## Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `(anon)::GetShardIndex` | `0x13811600` | per-axis ring rotation `(base±step) mod ring_len` | HIGH (decompile-verified) |
-| `(anon)::GetOffset` | `0x138106c0` | minor-to-major mixed-radix linearizer | HIGH (decompile-verified) |
-| `ComputeAdjustedIndexAtRuntime` | `0x13800d00` | short-ring index rescale | HIGH |
-| `GetPhazeZeroShardIndexHelper` | `0x137f1780` | `GetShardIndex` + hierarchical-split wrapper | HIGH |
-| `MaybeMapShardIndexForHierarchicalSplit` | `0x138108e0` | per-chip core-split shard remap | LOW (partial trace) |
-| `AllGatherEmitter::UseAllGather2D` | `0x13801740` | 2-D selector (env `+0xbe` ∧ `plane_dim=2`) | HIGH (decompile-verified) |
-| `AllGatherEmitter::UseAllGather3D` | `0x13801a40` | 3-D selector (env `+0xc0` ∧ `plane_dim=3`) | HIGH |
-| `ReplicaGroupsOnNDPlane` | `0x1c890960` | plane projector / `MeshNDInfo` builder (cached) | HIGH (return type, plane_dim); internals LOW |
-| `GetCollectiveDeviceList` | `0x13801940` | device-list resolver for the projection | HIGH |
-| `AllGatherEmitter::Init1DAllGather` | `0x13807180` | single-axis install | HIGH |
-| `AllGatherEmitter::Init2DAllGather` | `0x13807720` | 2-axis install + popcount-2 verify | HIGH (decompile-verified) |
-| `AllGatherEmitter::Init3DAllGather` | `0x13807aa0` | 3-axis install + popcount-3 verify | HIGH |
-| `AllGatherEmitter::InitDim` | `0x13804980` | per-axis `RingLocation` fill into `this+0x408` | HIGH |
-| `net_util::GetRingLocation` | `0x1c6a0c40` | `RingLocation` from the ND-ring InfoTable | HIGH |
-| `MeshNDInfo` copy ctor | `0x127b5100` | 0x40-B geometry: axis-id / sizes / ring-order / bitmask | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `(anon)::GetShardIndex` | `0x13811600` | per-axis ring rotation `(base±step) mod ring_len` |
+| `(anon)::GetOffset` | `0x138106c0` | minor-to-major mixed-radix linearizer |
+| `ComputeAdjustedIndexAtRuntime` | `0x13800d00` | short-ring index rescale |
+| `GetPhazeZeroShardIndexHelper` | `0x137f1780` | `GetShardIndex` + hierarchical-split wrapper |
+| `MaybeMapShardIndexForHierarchicalSplit` | `0x138108e0` | per-chip core-split shard remap |
+| `AllGatherEmitter::UseAllGather2D` | `0x13801740` | 2-D selector (env `+0xbe` ∧ `plane_dim=2`) |
+| `AllGatherEmitter::UseAllGather3D` | `0x13801a40` | 3-D selector (env `+0xc0` ∧ `plane_dim=3`) |
+| `ReplicaGroupsOnNDPlane` | `0x1c890960` | plane projector / `MeshNDInfo` builder (cached) |
+| `GetCollectiveDeviceList` | `0x13801940` | device-list resolver for the projection |
+| `AllGatherEmitter::Init1DAllGather` | `0x13807180` | single-axis install |
+| `AllGatherEmitter::Init2DAllGather` | `0x13807720` | 2-axis install + popcount-2 verify |
+| `AllGatherEmitter::Init3DAllGather` | `0x13807aa0` | 3-axis install + popcount-3 verify |
+| `AllGatherEmitter::InitDim` | `0x13804980` | per-axis `RingLocation` fill into `this+0x408` |
+| `net_util::GetRingLocation` | `0x1c6a0c40` | `RingLocation` from the ND-ring InfoTable |
+| `MeshNDInfo` copy ctor | `0x127b5100` | 0x40-B geometry: axis-id / sizes / ring-order / bitmask |
 
 ---
 

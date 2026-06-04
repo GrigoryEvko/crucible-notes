@@ -4,11 +4,11 @@
 
 ## Abstract
 
-This page describes how the entire reconstruction was performed: where the binary came from, what tool read it, what the analysis emitted, how each claim in the rest of the book was cross-checked before it was written down, what could not be recovered and why, how a reader could repeat the work, and the legal basis for doing it. It is the process counterpart to [Evidence & Confidence Conventions](front/evidence-conventions.md), which defines the trust labels every other page applies; this page defines the pipeline those labels grade.
+This page describes how the entire reconstruction was performed: where the binary came from, what tool read it, what the analysis emitted, how each claim in the rest of the book was cross-checked before it was written down, what could not be recovered and why, how a reader could repeat the work, and the legal basis for doing it. It is the process counterpart to [Evidence & Citation Conventions](front/evidence-conventions.md), which defines the callout vocabulary and citation grammar every other page applies.
 
-The whole book derives from one act repeated across nearly a million functions: load a single shared object into a disassembler, let it recover code and data, decompile each function to C, and serialize everything — disassembly, decompiled bodies, control-flow graphs, type information, cross-references — into machine-readable sidecars. No source tree, no debugger, no running TPU, and no Google-internal artifact entered the process. The `libtpu.so` shipped in this wheel is **not stripped**: its `.symtab` survives, so the C++-looking identifiers throughout the book are demangled symbols read out of the binary's own symbol table, not reconstructions. That single fact is what makes a 745 MB object tractable — every function arrives pre-named, and the analyst's job is to recover *behavior*, not *names*.
+The whole book derives from one act repeated across nearly a million functions: load a single shared object into a disassembler, let it recover code and data, decompile each function to C, and serialize everything — disassembly, decompiled bodies, control-flow graphs, type information, cross-references — into machine-readable sidecars. No source tree, no debugger, no running TPU, and no internal artifact entered the process. The `libtpu.so` shipped in this wheel is **not stripped**: its `.symtab` survives, so the C++-looking identifiers throughout the book are demangled symbols read out of the binary's own symbol table, not reconstructions. That single fact is what makes a 745 MB object tractable — every function arrives pre-named, and the analyst's job is to recover *behavior*, not *names*.
 
-The method is adversarial by design. A symbol name is a hypothesis, not a fact; a function called `ValidateLength` is treated as un-validated until its decompiled body shows the length compare. Every headline claim is re-checked against the decompiled C or the raw bytes, and a claim earns a higher Confidence grade only when several independent indicators — body, callers, referenced strings, dispatch-table position — agree. The pipeline below is the machinery; the cross-validation discipline is what turns its output into a reference rather than a transcript.
+The method is adversarial by design. A symbol name is a hypothesis, not a fact; a function called `ValidateLength` is treated as un-validated until its decompiled body shows the length compare. Every headline claim is re-checked against the decompiled C or the raw bytes, and a conclusion is trusted only when several independent indicators — body, callers, referenced strings, dispatch-table position — agree. The pipeline below is the machinery; the cross-validation discipline is what turns its output into a reference rather than a transcript.
 
 For reproducing the methodology, the contract is:
 
@@ -30,7 +30,6 @@ For reproducing the methodology, the contract is:
 | **Switch tables** | 33,016 |
 | **Per-function artifact files** | 884,843 each in `context/`, `decompiled/`, `disasm/`, `graphs/` |
 | **Published limits** | 516 decompilation failures · 7,915 analysis problems |
-| **Confidence semantics** | Defined once in [evidence-conventions](front/evidence-conventions.md) — not re-defined here |
 
 ---
 
@@ -38,15 +37,15 @@ For reproducing the methodology, the contract is:
 
 Five stages take the wheel to a wiki page. Each stage's output is the next stage's input; the discipline lives in the fourth.
 
-| Stage | Input | Action | Output | Confidence |
-|---|---|---|---|---|
-| **Acquire** | PyPI wheel name | Download, unzip, locate `libtpu.so`, record build-id + hashes | A pinned 781,691,048-byte ELF | CERTAIN |
-| **Analyze** | The ELF | IDA 9.x auto-analysis: code/data recovery, function boundaries, xrefs, type propagation | An IDB with 884,832 functions | CERTAIN |
-| **Extract** | The IDB | Hex-Rays decompile + serialize every function and table to JSON sidecars and per-function files | The sidecar family + 884,843×4 per-function artifacts | CERTAIN |
-| **Cross-validate** | Sidecars + bodies | For each claim, require the decompiled body or raw bytes to support it; demand multiple agreeing indicators for High | A graded claim with an address anchor | per-claim |
-| **Write** | Graded claims | Synthesize into a reimplementation-grade page; mark gaps; file corrections in place | A wiki page | per-claim |
+| Stage | Input | Action | Output |
+|---|---|---|---|
+| **Acquire** | PyPI wheel name | Download, unzip, locate `libtpu.so`, record build-id + hashes | A pinned 781,691,048-byte ELF |
+| **Analyze** | The ELF | IDA 9.x auto-analysis: code/data recovery, function boundaries, xrefs, type propagation | An IDB with 884,832 functions |
+| **Extract** | The IDB | Hex-Rays decompile + serialize every function and table to JSON sidecars and per-function files | The sidecar family + 884,843×4 per-function artifacts |
+| **Cross-validate** | Sidecars + bodies | For each claim, require the decompiled body or raw bytes to support it; require multiple agreeing indicators | A claim with an address anchor |
+| **Write** | Validated claims | Synthesize into a reimplementation-grade page; mark gaps | A wiki page |
 
-> **NOTE —** the first three stages are mechanical and reproduce byte-for-byte from the same wheel and the same IDA version. The last two are analytical judgment, and that is exactly where the Confidence labels exist to tell a reader how far to trust each sentence.
+> **NOTE —** the first three stages are mechanical and reproduce byte-for-byte from the same wheel and the same IDA version. The last two are analytical judgment.
 
 ---
 
@@ -83,7 +82,7 @@ A single tool produced every primitive fact: **IDA Pro 9.x**, run in three capac
 - **The Hex-Rays decompiler** lifts each function from x86-64 to a C-like pseudocode body. These bodies — not the raw disassembly — are the primary evidence for behavioral claims, because a `switch` or a guard compare is legible in C in a way it is not in a screen of `mov`/`cmp`/`jne`.
 - **FLIRT** (Fast Library Identification and Recognition Technology) matches byte-pattern signatures of known library routines, so a statically-linked `memcpy` or libstdc++ helper is labeled as such instead of re-analyzed from scratch.
 
-> **NOTE —** FLIRT contributed *no* recognized matches on this binary's primary extraction pass (the metadata records `flirt_matches: 0`). That is expected, not a defect: the binary is already richly symbolized by its surviving `.symtab`, so library routines arrive pre-named and FLIRT has nothing left to add. The signature pass was run; it simply had no work to do here.
+> **NOTE —** FLIRT contributed *no* recognized matches on this binary's primary extraction pass (the metadata records `flirt_matches: 0`). That is expected, not a defect: the binary is already richly symbolized by its surviving `.symtab`, so library routines arrive pre-named and FLIRT has nothing left to add.
 
 ### The sidecar family
 
@@ -91,26 +90,26 @@ Auto-analysis and decompilation are not the deliverable — their serialized out
 
 The sidecar family, with verified presence and the count or size each carries:
 
-| Sidecar | Holds | Verified scope | Confidence |
-|---|---|---|---|
-| `functions` | One record per recovered function (address, size, name) | 884,832 records | CERTAIN |
-| `names` | The name/symbol table surface | ~847 MB | CERTAIN |
-| `strings` | Every recovered string literal | 1,249,324 strings | CERTAIN |
-| `segments` | ELF segment / section layout | 55 segments | CERTAIN |
-| `data_tables` | Recovered static data tables | ~114 MB | CERTAIN |
-| `switches` | Jump/switch dispatch tables | 33,016 tables | CERTAIN |
-| `rtti` | C++ RTTI: type-info, vtables, class hierarchy | ~65 MB | CERTAIN |
-| `fixups` | Relocations / address fixups | ~120 MB | CERTAIN |
-| `xrefs` | The global cross-reference graph (code + data edges) | ~41 GB | CERTAIN |
-| `enums` | Recovered enumeration types | present (small) | HIGH |
-| `structures` | Recovered struct/class layouts | present (~290 KB) | HIGH |
-| `frames` | Per-function stack-frame layouts | ~745 MB | CERTAIN |
-| `entries` | Exported / entry-point symbols | present | HIGH |
-| `imports` | Imported / external symbols | present | HIGH |
-| `prototypes` | Externally-supplied prototypes (empty here) | empty `[]` | CERTAIN |
-| `metadata` | The extraction manifest (counts, hashes, mode) | present | CERTAIN |
-| `problems` | IDA-flagged analysis problems | 7,915 records | CERTAIN |
-| per-function | `decompiled/*.c`, `disasm/*`, `context/*`, `graphs/*` | 884,843 files each | CERTAIN |
+| Sidecar | Holds | Verified scope |
+|---|---|---|
+| `functions` | One record per recovered function (address, size, name) | 884,832 records |
+| `names` | The name/symbol table surface | ~847 MB |
+| `strings` | Every recovered string literal | 1,249,324 strings |
+| `segments` | ELF segment / section layout | 55 segments |
+| `data_tables` | Recovered static data tables | ~114 MB |
+| `switches` | Jump/switch dispatch tables | 33,016 tables |
+| `rtti` | C++ RTTI: type-info, vtables, class hierarchy | ~65 MB |
+| `fixups` | Relocations / address fixups | ~120 MB |
+| `xrefs` | The global cross-reference graph (code + data edges) | ~41 GB |
+| `enums` | Recovered enumeration types | present (small) |
+| `structures` | Recovered struct/class layouts | present (~290 KB) |
+| `frames` | Per-function stack-frame layouts | ~745 MB |
+| `entries` | Exported / entry-point symbols | present |
+| `imports` | Imported / external symbols | present |
+| `prototypes` | Externally-supplied prototypes (empty here) | empty `[]` |
+| `metadata` | The extraction manifest (counts, hashes, mode) | present |
+| `problems` | IDA-flagged analysis problems | 7,915 records |
+| per-function | `decompiled/*.c`, `disasm/*`, `context/*`, `graphs/*` | 884,843 files each |
 
 > **NOTE —** the per-function artifact count (884,843) is slightly higher than the function-record count in the metadata (884,832). The directory count includes a small number of thunk/alias/data-stub entries that receive an artifact file without being counted as a full function record. When a page cites a function *count*, it cites 884,832; when it cites artifact *coverage*, the per-function directories hold one file per analyzed entry.
 
@@ -122,33 +121,17 @@ The sidecar family, with verified presence and the count or size each carries:
 
 A symbolized binary is seductive: a name like `xla::tpu::sparse_core::lowering_util::GetPadValue` reads like documentation. It is not. The name records what the original author *called* the function, which is a strong lead but not a verified behavior, and demangled C++ names routinely outlive the code that justified them. Every claim in the book is therefore re-checked against evidence one level more direct than the name.
 
-The rule has three tiers, mapped onto the Confidence scale defined in [evidence-conventions](front/evidence-conventions.md#the-four-confidence-levels) — that page owns the definitions; this section describes the *procedure* that earns each grade.
-
-```text
-To earn High:    The decompiled body (or a byte-exact table in the binary)
-                 literally contains the claimed construct — the switch, the
-                 guard compare, the constant, the vtable slot. A verifier
-                 opens decompiled/<addr>.c and points at the line.
-
-To earn Medium:  No single line states it, but >=3 independent indicators
-                 agree: the function's callers, the strings it references,
-                 its position in a dispatch table, its frame shape. The
-                 conclusion is trusted; the exact detail is re-checked.
-
-To earn Low:     One weak indicator, uncorroborated — a single suggestive
-                 string, one xref, a name that implies unseen behavior.
-                 Recorded as a lead, never a foundation.
-```
+The strongest evidence is the decompiled body (or a byte-exact table in the binary) literally containing the claimed construct — the switch, the guard compare, the constant, the vtable slot. Where no single line states a role, the conclusion rests on several independent indicators that agree: the function's callers, the strings it references, its position in a dispatch table, its frame shape. A single uncorroborated indicator — one suggestive string, one xref, a name implying unseen behavior — is recorded as a lead, not a foundation.
 
 The cross-checks draw on different sidecars on purpose, so that the indicators are genuinely independent:
 
-- **Body vs. name** — the `decompiled/*.c` file is read; the name is confirmed or demoted.
+- **Body vs. name** — the `decompiled/*.c` file is read; the name is confirmed or set aside.
 - **Callers vs. role** — the `xrefs` graph shows who calls the function and with what; a "validator" with no length-shaped caller is suspect.
 - **Strings vs. behavior** — a function that references `"request too large"` corroborates a rejection path; the `strings` and `data_tables` sidecars supply these.
 - **Dispatch position vs. purpose** — the `switches` and `rtti` sidecars place a function in a table or a vtable, which constrains what it can be.
 - **Raw bytes vs. decompiler** — where Hex-Rays is uncertain (it flags this with its own warnings), the `disasm/*` file and the raw bytes are the tiebreaker.
 
-Every claim carries an explicit Confidence grade (the four-level scale above), and where a value is *inferred* rather than read directly off the binary, a `> **NOTE —**` or `> **GOTCHA —**` callout flags exactly which step is inference and what would raise it. This is the book's core honesty mechanism: a reader can always tell how directly a stated value is backed, and where a later cross-check would tighten or loosen a grade.
+Where a value is inferred from structure rather than read directly off the binary, a `> **NOTE —**` or `> **GOTCHA —**` callout flags exactly which step is inference. This is the book's core honesty mechanism: a reader can always tell how directly a stated value is backed.
 
 > **QUIRK —** the heaviest cross-validation burden falls on the *most* symbolized functions, not the least. A 600-character demangled C++ template name (the `pxc::mnemonics::ProtoToEnvMiscGenerated...` family, for instance) is so specific that it *feels* authoritative, yet these template-heavy functions are precisely the ones where IDA's analysis stumbles (see below). The richest name and the weakest analysis often coincide; the discipline exists to catch exactly that trap.
 
@@ -156,7 +139,7 @@ Every claim carries an explicit Confidence grade (the four-level scale above), a
 
 ## Limits — What Could Not Be Recovered
 
-The credibility of every page rests on these limits being published, not hidden. Static analysis of one binary has a hard floor, and the floor has three distinct causes. [Evidence & Confidence Conventions](front/evidence-conventions.md#known-extraction-limits) states the floor as a trust contract; this section describes its mechanics.
+The credibility of every page rests on these limits being published, not hidden. Static analysis of one binary has a hard floor, and the floor has three distinct causes.
 
 ### Decompilation failures
 
@@ -166,7 +149,7 @@ Hex-Rays returned no `cfunc` for **516** functions: the decompiler ran, refused,
 - **Imported PLT/GOT stubs** — entries like `strlen`, `getenv`, `__tls_get_addr`, `MallocExtension_Internal_*` that are import thunks, not local code, and have no body to decompile.
 - **Hand-written assembly** — cryptographic and math routines from statically-linked libraries (`bn_sqr8x_mont`, `bn_power5_nohw`, `md5_sha1_final`) that are assembly with no C to recover.
 
-For these 516, the book relies on the disassembly, the surrounding xrefs, and the name — and grades any behavioral claim accordingly (rarely above Low without independent corroboration).
+For these 516, the book relies on the disassembly, the surrounding xrefs, and the name, and a page touching one says so.
 
 ### Analysis problems
 
@@ -186,7 +169,7 @@ Beyond the per-function failures, three categories are invisible *in principle* 
 
 ## Reproduction
 
-The mechanical stages reproduce exactly; the analytical stages reproduce to the same evidence, with judgment grading the conclusions. A reader who wants to re-derive any claim follows this path:
+The mechanical stages reproduce exactly; the analytical stages reproduce to the same evidence, with judgment driving the conclusions. A reader who wants to re-derive any claim follows this path:
 
 ```bash
 # 1. Acquire the identical artifact from PyPI.
@@ -203,7 +186,7 @@ readelf -n libtpu_wheel/libtpu/libtpu.so | grep -i 'build id'
                                              # -> 89edbbe81c5b328a958fe628a9f2207d
 ```
 
-From there, the analysis is: load `libtpu.so` into IDA Pro 9.x, run full auto-analysis, and decompile. The per-function evidence the book cites is the decompiled C body at a given virtual address — open the address in Hex-Rays (or read the corresponding `decompiled/<addr>.c` artifact) and the claim graded `High` is verifiable line-for-line. Claims graded `Medium` or below require reconstructing the indicator chain this page describes; the address anchor in the citation is the entry point for that reconstruction.
+From there, the analysis is: load `libtpu.so` into IDA Pro 9.x, run full auto-analysis, and decompile. The per-function evidence the book cites is the decompiled C body at a given virtual address — open the address in Hex-Rays (or read the corresponding `decompiled/<addr>.c` artifact) and the claim is verifiable line-for-line. The address anchor in every citation is the entry point for that reconstruction.
 
 > **GOTCHA —** reproduction fidelity depends on the IDA *version*. Auto-analysis heuristics, function-boundary recovery, and Hex-Rays output all shift between major IDA releases, so a different version may recover a slightly different function count or decompile a body this book lists as a failure (or vice-versa). Pin IDA 9.x to match the function and switch-table counts cited here. The binary's bytes are invariant; the analysis of them is not.
 
@@ -228,8 +211,7 @@ The book documents *what the binary does* — its functional behavior, data layo
 
 ## Cross-References
 
-- [Evidence & Confidence Conventions](front/evidence-conventions.md) — owns the four-level Confidence scale, callout vocabulary, and citation style this page grades against; read it before any other page.
-- [Methodology (Deep)](appendix/methodology-deep.md) — the exhaustive sibling: sidecar-by-sidecar schema detail, per-pass logs, and the full extraction frontier.
+- [Evidence & Citation Conventions](front/evidence-conventions.md) — the callout vocabulary and citation grammar this page's process produces; read it before any other page.
 - [Forensics Overview](forensics/overview.md) — the structural starting point for the binary itself: sections, sizes, and headline counts confirmed directly against the bytes.
 - [ELF Anatomy](forensics/elf-anatomy.md) — the segment/section layout the `segments` sidecar records, read at the `readelf` level.
 - [Dispatch-Table Taxonomy](forensics/dispatch-table-taxonomy.md) — how the 33,016 switch tables and the RTTI/vtable graph are read, the structured-evidence backbone of the behavioral pages.

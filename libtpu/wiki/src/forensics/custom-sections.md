@@ -28,31 +28,31 @@ For reimplementation / analysis, the contract is:
 
 The notable sections, at a glance (textbook `.text`/`.rodata`/`.data`/`.dynsym`/`.plt`/`.got` are omitted — see [ELF anatomy](elf-anatomy.md)):
 
-| Section | VAddr | Size | Flags | Contents | Confidence |
-|---|---|---|---|---|---|
-| `[10] .lrodata` | `0x1884a00` | `0x6c0e7d0` (108.1 MiB) | `AMSl` | Large-model read-only data: const tables, string pools, vtables | CERTAIN |
-| `[12] protodesc_cold` | `0xbe8af30` | `0x334180` (3.2 MiB) | `A` | protobuf `descriptor_table_protodef_*` + `TableStruct_*::offsets` | CERTAIN |
-| `[13] .gcc_except_table` | `0xc1bf0b0` | `0x10d584` (1.05 MiB) | `A` | LSDA tables for C++ exception landing pads | CERTAIN |
-| `[14] .eh_frame_hdr` | `0xc2cc634` | `0x6bd684` (6.74 MiB) | `A` | Binary-search index into `.eh_frame` | CERTAIN |
-| `[15] .eh_frame` | `0xc989cb8` | `0x1cab86c` (28.7 MiB) | `A` | DWARF CFI unwind descriptors | CERTAIN |
-| `[19] google_malloc` | `0xe6373c0` | `0x46f2` (17.7 KiB) | `AXo` | tcmalloc per-CPU rseq thunks + check-fail helpers | CERTAIN |
-| `[20] .text.split` | `0xe63bab2` | `0x0` (0 B) | `AXo` | Empty split-text marker section | CERTAIN |
-| `[24] google_init_cold` | `0x213e9d80` | `0x60f1` (24.2 KiB) | `AX` | Cold-path static-init code | HIGH |
-| `[25] malloc_hook` | `0x213efe80` | `0x89e` (2.2 KiB) | `AX` | Abseil `LowLevelAlloc` allocation hooks | CERTAIN |
-| `[26] __lcxx_override` | `0x213f0720` | `0x105` (261 B) | `AX` | Overridden libc++ `operator new`/`delete` thunks | CERTAIN |
-| `[30] .init_array` | `0x215f26f0` | `0x5aa0` (22.7 KiB) | `WAo` | 2900 constructor pointers (census → static-init) | CERTAIN |
-| `[31] .fini_array` | `0x215f8190` | `0x10` (16 B) | `WA` | 2 destructor pointers | CERTAIN |
-| `[33] .preinit_array` | `0x22048b30` | `0x10` (16 B) | `WA` | 2 pre-init pointers (rare in a library) | CERTAIN |
-| `[38] filewrapper_toc` | `0x224bf798` | `0x1e8` (488 B) | `WA` | Embedded-file table-of-contents (zero-filled on disk) | MEDIUM |
-| `[39] __rseq_cs` | `0x224bf980` | `0x2260` (8.8 KiB) | `WA` | tcmalloc restartable-sequence critical-section descriptors | CERTAIN |
-| `[40] __rseq_cs_ptr_array` | `0x224c1be0` | `0x898` (2.2 KiB) | `WA` | 275 pointers into `__rseq_cs` | HIGH |
-| `[41] linkarr_upb_AllExts` | `0x224c2480` | `0x4a0` (1.2 KiB) | `WAo` | 37 × 32 B upb proto-extension registrars | CERTAIN |
-| `[42] pb_defaults` | `0x224c2920` | `0x18` (24 B) | `WA` | protobuf C++-feature default-instance pointer | HIGH |
-| `[43] google_malloc_data` | `0x224c2938` | `0x48` (72 B) | `WA` | tcmalloc writable globals | HIGH |
-| `[46] .ldata` | `0x22798c30` | `0x21c00` (135 KiB) | `WAl` | Large-model writable data | CERTAIN |
-| `[47] .lbss` | `0x227ba840` | `0x9f940` (638 KiB) | `WAl` | Large-model zero-init data — **PJRT API singleton** | CERTAIN |
-| `[48] google_malloc_bss` | `0x2285a180` | `0x5100` (20.2 KiB) | `WAl` | tcmalloc large-model zero-init globals | HIGH |
-| `[1] .note.gnu.build-id` | `0x2a8` | `0x20` (32 B) | `A` | GNU build-id note (version anchor) | CERTAIN |
+| Section | VAddr | Size | Flags | Contents |
+|---|---|---|---|---|
+| `[10] .lrodata` | `0x1884a00` | `0x6c0e7d0` (108.1 MiB) | `AMSl` | Large-model read-only data: const tables, string pools, vtables |
+| `[12] protodesc_cold` | `0xbe8af30` | `0x334180` (3.2 MiB) | `A` | protobuf `descriptor_table_protodef_*` + `TableStruct_*::offsets` |
+| `[13] .gcc_except_table` | `0xc1bf0b0` | `0x10d584` (1.05 MiB) | `A` | LSDA tables for C++ exception landing pads |
+| `[14] .eh_frame_hdr` | `0xc2cc634` | `0x6bd684` (6.74 MiB) | `A` | Binary-search index into `.eh_frame` |
+| `[15] .eh_frame` | `0xc989cb8` | `0x1cab86c` (28.7 MiB) | `A` | DWARF CFI unwind descriptors |
+| `[19] google_malloc` | `0xe6373c0` | `0x46f2` (17.7 KiB) | `AXo` | tcmalloc per-CPU rseq thunks + check-fail helpers |
+| `[20] .text.split` | `0xe63bab2` | `0x0` (0 B) | `AXo` | Empty split-text marker section |
+| `[24] google_init_cold` | `0x213e9d80` | `0x60f1` (24.2 KiB) | `AX` | Cold-path static-init code |
+| `[25] malloc_hook` | `0x213efe80` | `0x89e` (2.2 KiB) | `AX` | Abseil `LowLevelAlloc` allocation hooks |
+| `[26] __lcxx_override` | `0x213f0720` | `0x105` (261 B) | `AX` | Overridden libc++ `operator new`/`delete` thunks |
+| `[30] .init_array` | `0x215f26f0` | `0x5aa0` (22.7 KiB) | `WAo` | 2900 constructor pointers (census → static-init) |
+| `[31] .fini_array` | `0x215f8190` | `0x10` (16 B) | `WA` | 2 destructor pointers |
+| `[33] .preinit_array` | `0x22048b30` | `0x10` (16 B) | `WA` | 2 pre-init pointers (rare in a library) |
+| `[38] filewrapper_toc` | `0x224bf798` | `0x1e8` (488 B) | `WA` | Embedded-file table-of-contents (zero-filled on disk) |
+| `[39] __rseq_cs` | `0x224bf980` | `0x2260` (8.8 KiB) | `WA` | tcmalloc restartable-sequence critical-section descriptors |
+| `[40] __rseq_cs_ptr_array` | `0x224c1be0` | `0x898` (2.2 KiB) | `WA` | 275 pointers into `__rseq_cs` |
+| `[41] linkarr_upb_AllExts` | `0x224c2480` | `0x4a0` (1.2 KiB) | `WAo` | 37 × 32 B upb proto-extension registrars |
+| `[42] pb_defaults` | `0x224c2920` | `0x18` (24 B) | `WA` | protobuf C++-feature default-instance pointer |
+| `[43] google_malloc_data` | `0x224c2938` | `0x48` (72 B) | `WA` | tcmalloc writable globals |
+| `[46] .ldata` | `0x22798c30` | `0x21c00` (135 KiB) | `WAl` | Large-model writable data |
+| `[47] .lbss` | `0x227ba840` | `0x9f940` (638 KiB) | `WAl` | Large-model zero-init data — **PJRT API singleton** |
+| `[48] google_malloc_bss` | `0x2285a180` | `0x5100` (20.2 KiB) | `WAl` | tcmalloc large-model zero-init globals |
+| `[1] .note.gnu.build-id` | `0x2a8` | `0x20` (32 B) | `A` | GNU build-id note (version anchor) |
 
 > **NOTE —** the `Flags` column uses `readelf`'s letters: `A` alloc, `W` write, `X` execute, `M` merge, `S` strings, `l` large (`SHF_X86_64_LARGE`), `o` OS-specific (`SHF_GNU_RETAIN` / link-order). The `l` flag on `.lrodata`/`.ldata`/`.lbss`/`google_malloc_bss` is the unambiguous large-code-model fingerprint.
 

@@ -88,15 +88,15 @@ return (*((u64*)this + 5) >> 27) & 0x3F;          // struct +0x28, shift 27, wid
 return (*((u32*)this + 12) >> 2) & 0x3F;           // struct +0x30, shift 2, width 6
 ```
 
-| Slot field | Struct word | Shift | Width | Accessor (gfc) | Role | Confidence |
-|---|---|:---:|:---:|---|---|---|
-| `IndirectOffsets` | `+0x28` | 27 | 6 | `0x1ebe30a0` | VREG selector — the offset stream | CONFIRMED |
-| `IndirectAccessLengths` | `+0x30` | 2 | 6 | `0x1ebe30c0` | VREG selector — per-lane access length | CONFIRMED |
-| `OffTileStartOffset` | `+0x10` | 41 | 5 | `0x1ebe3100` | gather base | CONFIRMED |
-| `OffTileStartOffsetValid` | `+0x10` | 46 | 1 | `0x1ebe30e0` | base-present bit | CONFIRMED |
-| `OffTileMemoryType` | `+0x10` | 47 | 3 | `0x1ebe3340` | HBM / HBM_4B / SPMEM pool | CONFIRMED |
-| `StreamOpcode` | `+0x18` | 9 | 3 | `0x1ebe32c0` | accumulate mode (shared tail) | CONFIRMED |
-| `TileLocalStride` | `+0x18` | 29 | 3 | `0x1ebe3160` | dst write granule (shared tail) | CONFIRMED |
+| Slot field | Struct word | Shift | Width | Accessor (gfc) | Role |
+|---|---|:---:|:---:|---|---|
+| `IndirectOffsets` | `+0x28` | 27 | 6 | `0x1ebe30a0` | VREG selector — the offset stream |
+| `IndirectAccessLengths` | `+0x30` | 2 | 6 | `0x1ebe30c0` | VREG selector — per-lane access length |
+| `OffTileStartOffset` | `+0x10` | 41 | 5 | `0x1ebe3100` | gather base |
+| `OffTileStartOffsetValid` | `+0x10` | 46 | 1 | `0x1ebe30e0` | base-present bit |
+| `OffTileMemoryType` | `+0x10` | 47 | 3 | `0x1ebe3340` | HBM / HBM_4B / SPMEM pool |
+| `StreamOpcode` | `+0x18` | 9 | 3 | `0x1ebe32c0` | accumulate mode (shared tail) |
+| `TileLocalStride` | `+0x18` | 29 | 3 | `0x1ebe3160` | dst write granule (shared tail) |
 
 The two VREG selectors are the entire delta of the *read* side. Everything else (`StreamOpcode`, `TileLocalStride`, `OffTileMemoryType`, the sync flag, the filter, the list stride) is the shared `IndirectStream` decode map — see [Stream Gather/Scatter § Decode Side](stream-gather-scatter.md#decode-side-decoded-struct-relative); only the leading operand words `+0x28`/`+0x30` carry VREG selectors rather than the SREG operands.
 
@@ -226,17 +226,17 @@ return op.emitError(
 
 The nine candidate emitters are the per-route specializations of the SparseCore stream-start. The dispatch key is the `(hbm4b-flag, src-memory-space, dst-memory-space)` triple — the same `(srcSpace, dstSpace)` pair that [`GetTransferKind`](getsequencertype.md#layer-1-gettransferkind--stream-vs-dma) used upstream to classify this as a Stream rather than a DMA. So the kStream decision (made during `getSequencerType` lowering) is here turned into the concrete per-route intrinsic. An unsupported pair falls through to the `emitError`, which builds the message via the LLVM `SmallVector<u32>` interpolation seen in the decompile.
 
-| Lowering element | Evidence (gfc) | Confidence |
-|---|---|---|
-| VREG offset operand at adaptor segment 5, dereferenced as a `Value` | `getODSOperandIndexAndLength(5)` + `dereference_iterator(0)` | CONFIRMED |
-| VREG length operand at adaptor segment 8 | `getODSOperandIndexAndLength(8)` + `dereference_iterator(0)` | CONFIRMED |
-| VREG mask operand at adaptor segment 9 | `getODSOperandIndexAndLength(9)` + `dereference_iterator(0)` | CONFIRMED |
-| `getHbm4b()` gates HBM_4B offset scaling | `getHbm4b` @ `0x145d9120`; `getHbm4bOffset` / `adjustOffsetForHbm4b` calls | CONFIRMED |
-| HBM_4B offset operands at adaptor segments 2 (src) / 4 (dst) | `getODSOperandIndexAndLength(2)` / `(4)` in the hbm4b branch | CONFIRMED |
-| 9-way `(hbm4b, src, dst)` triple dispatch over emitter lambdas | nine `operator new(0x50/0x58)` emitter closures + match chain on `(flag, *(+1), *(+2))` | CONFIRMED |
-| Optional `SetIndirectFilterValueOp` when operand 0 present | `OpBuilder::create<SetIndirectFilterValueOp>` on the matched branch | CONFIRMED |
-| Unsupported-route diagnostic | `"IndirectVectorStreamStartOp doesn't support transfer from source memory space: … to destination memory space: …"` | CONFIRMED |
-| Lane-parallel loop body / hardware per-lane address arithmetic | not a software loop — issued as one intrinsic; HW walks the VREG | HIGH |
+| Lowering element | Evidence (gfc) |
+|---|---|
+| VREG offset operand at adaptor segment 5, dereferenced as a `Value` | `getODSOperandIndexAndLength(5)` + `dereference_iterator(0)` |
+| VREG length operand at adaptor segment 8 | `getODSOperandIndexAndLength(8)` + `dereference_iterator(0)` |
+| VREG mask operand at adaptor segment 9 | `getODSOperandIndexAndLength(9)` + `dereference_iterator(0)` |
+| `getHbm4b()` gates HBM_4B offset scaling | `getHbm4b` @ `0x145d9120`; `getHbm4bOffset` / `adjustOffsetForHbm4b` calls |
+| HBM_4B offset operands at adaptor segments 2 (src) / 4 (dst) | `getODSOperandIndexAndLength(2)` / `(4)` in the hbm4b branch |
+| 9-way `(hbm4b, src, dst)` triple dispatch over emitter lambdas | nine `operator new(0x50/0x58)` emitter closures + match chain on `(flag, *(+1), *(+2))` |
+| Optional `SetIndirectFilterValueOp` when operand 0 present | `OpBuilder::create<SetIndirectFilterValueOp>` on the matched branch |
+| Unsupported-route diagnostic | `"IndirectVectorStreamStartOp doesn't support transfer from source memory space: … to destination memory space: …"` |
+| Lane-parallel loop body / hardware per-lane address arithmetic | not a software loop — issued as one intrinsic; HW walks the VREG |
 
 > **GOTCHA — there is no software per-element loop; the "loop" is the hardware stream engine.** The lowering does **not** emit a `scf.for` over the offset lanes and a per-lane `imul`/DMA. It emits a single stream-start intrinsic that hands the VREG selector, the length selector, the lane mask, and the base to the hardware Stream engine, which then walks the lanes itself — applying the same per-element row-stride multiply (`addr_i = base + offsets[lane] * indirect_list_stride`) documented for [`IndirectStream`](stream-gather-scatter.md#the-per-element-address-formula). The compiler's job is operand assignment and route selection, not loop emission. A reimplementer modelling the lowering must emit one intrinsic per stream-start, not an unrolled loop.
 
@@ -295,22 +295,22 @@ The discriminator is the field-accessor namespace prefix: every `IndirectVregStr
 
 ## Limits and Open Items
 
-| Item | Status | Confidence |
-|---|---|---|
-| Proto delta `#1…#4` (VREG offsets + mask + base replace 2 SREG operands) | decoded from descriptor; shared `#5…#22` identical to `IndirectStream` | CONFIRMED |
-| `IndirectOffsets` / `IndirectAccessLengths` slot selectors (6-bit, `+0x28>>27` / `+0x30>>2`) | accessor bodies read (`0x1ebe30a0` / `0x1ebe30c0`) | CONFIRMED |
-| Opcode `0x38` @ bundle bit 181; two width-6 VREG selectors @ bits 283 / 322 | `case 0xB` of TEC encoder `@0x1ebe33e0`: `BitCopy(…,181,…,6)`, `(…,283,…,6)`, `(…,322,…,6)` | CONFIRMED |
-| TEC-only (SCS bound `0xa`, no SCS/TAC field accessors) | encoder bounds + zero-accessor counts | CONFIRMED |
-| Op: 3 index groups, no `OffsetIndices`, no `getIndirectListType` | getters located; offset/list-type getters absent | CONFIRMED |
-| Index expansion runs 3 groups (Src/Dst/Sflag), no 4th | `expandSCStreamStart<IndirectVectorStreamStartOp>` `@0x134eb880` body | CONFIRMED |
-| VREG operands at adaptor segments 5/8/9, dereferenced as `Value`s | `rewriteSparseCoreStreamOpToLLVM` `@0x13560ce0` body | CONFIRMED |
-| 9-way `(hbm4b, src, dst)` per-route intrinsic dispatch + diagnostic | nine emitter closures + match chain; `emitError` string | CONFIRMED |
-| Builder validates transfer byte-count vs src/dst/min granularity | `InitiateIndirectVectorStreamOperation` `@0x13d870e0` body | CONFIRMED |
-| Per-lane HW address arithmetic (`base + offsets[lane] * list_stride`) | no software loop in lowering; HW intrinsic | HIGH |
-| Minibatch / variable-length use case | inferred from `valid_offset_mask` + register-sourced ids | HIGH |
-| Physical VREG-file size behind the 6-bit selector | selector width known; file size is chip_parts geometry, not enumerated | LOW |
-| Mapping of the 9 emitter lambdas to specific `(src,dst)` memory-space pairs | dispatch structure confirmed; per-lambda space triples not exhaustively decoded | LOW |
-| Absolute bit base of the TEC Stream slot in the 512-bit bundle | opcode @ 181 / `indirect_offsets` @ 322 known; full slot-base partition not mapped | LOW |
+| Item | Status |
+|---|---|
+| Proto delta `#1…#4` (VREG offsets + mask + base replace 2 SREG operands) | decoded from descriptor; shared `#5…#22` identical to `IndirectStream` |
+| `IndirectOffsets` / `IndirectAccessLengths` slot selectors (6-bit, `+0x28>>27` / `+0x30>>2`) | accessor bodies read (`0x1ebe30a0` / `0x1ebe30c0`) |
+| Opcode `0x38` @ bundle bit 181; two width-6 VREG selectors @ bits 283 / 322 | `case 0xB` of TEC encoder `@0x1ebe33e0`: `BitCopy(…,181,…,6)`, `(…,283,…,6)`, `(…,322,…,6)` |
+| TEC-only (SCS bound `0xa`, no SCS/TAC field accessors) | encoder bounds + zero-accessor counts |
+| Op: 3 index groups, no `OffsetIndices`, no `getIndirectListType` | getters located; offset/list-type getters absent |
+| Index expansion runs 3 groups (Src/Dst/Sflag), no 4th | `expandSCStreamStart<IndirectVectorStreamStartOp>` `@0x134eb880` body |
+| VREG operands at adaptor segments 5/8/9, dereferenced as `Value`s | `rewriteSparseCoreStreamOpToLLVM` `@0x13560ce0` body |
+| 9-way `(hbm4b, src, dst)` per-route intrinsic dispatch + diagnostic | nine emitter closures + match chain; `emitError` string |
+| Builder validates transfer byte-count vs src/dst/min granularity | `InitiateIndirectVectorStreamOperation` `@0x13d870e0` body |
+| Per-lane HW address arithmetic (`base + offsets[lane] * list_stride`) | no software loop in lowering; HW intrinsic |
+| Minibatch / variable-length use case | inferred from `valid_offset_mask` + register-sourced ids |
+| Physical VREG-file size behind the 6-bit selector | selector width known; file size is chip_parts geometry, not enumerated |
+| Mapping of the 9 emitter lambdas to specific `(src,dst)` memory-space pairs | dispatch structure confirmed; per-lambda space triples not exhaustively decoded |
+| Absolute bit base of the TEC Stream slot in the 512-bit bundle | opcode @ 181 / `indirect_offsets` @ 322 known; full slot-base partition not mapped |
 
 ---
 

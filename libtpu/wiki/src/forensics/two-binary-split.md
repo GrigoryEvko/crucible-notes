@@ -33,27 +33,27 @@ For reimplementation, the contract is:
 
 Every row is read directly from the two ELF files; the version pin fixes the build-ids.
 
-| Property | `libtpu.so` | `sdk.so` | Confidence |
-|---|---|---|---|
-| On-disk size | 781,691,048 B (745 MiB) | 22,541,240 B (21 MiB) | CERTAIN |
-| File mode in wheel | `0755` (executable bit set) | `0644` | CERTAIN |
-| ELF type | `DYN` (shared object), x86-64 | `DYN` (shared object), x86-64 | CERTAIN |
-| `file` ELF flavor | version 1 (SYSV) | version 1 (GNU/Linux) | CERTAIN |
-| Build-id format | `md5/uuid`, `89edbbe8…2207d` | `sha1`, `4e902546…44a0a` | CERTAIN |
-| Gold-version note | absent | present (`.note.gnu.gold-version`) | CERTAIN |
-| `DT_SONAME` | **none** | **none** | CERTAIN |
-| `DT_NEEDED` count | 6 | 6 | CERTAIN |
-| `DT_NEEDED` list | `libm libpthread libdl librt libc ld-linux` | `libpthread libm libstdc++ libgcc_s libc ld-linux` | CERTAIN |
-| Links `libstdc++`? | **no** (statically embedded) | **yes** | CERTAIN |
-| Symbol versioning | `VERS_1.0` (`@@VERS_1.0`) | **none** | CERTAIN |
-| `.dynsym` entries | 741 | 36,787 | CERTAIN |
-| Defined global exports | 226 (218 `@@VERS_1.0` FUNC + 8 linker-set bounds) | ~36,600 (module symbols) | CERTAIN |
-| `.symtab` `FUNC` count | 918,698 | 78,311 | CERTAIN |
-| IDA function count | 884,832 (record) / 884,843 (artifact coverage) | 94,732 | CERTAIN |
-| `DT_FLAGS` | absent | `BIND_NOW` (`FLAGS_1: NOW`) | CERTAIN |
-| `RELACOUNT` (RELATIVE relocs) | 1,069,006 | 618 | CERTAIN |
-| Loaded by | host runtime via `dlopen` | CPython via `import` | HIGH |
-| Module entry | `GetPjrtApi`, `GetLibtpuSdkApi`, … | `PyInit_sdk` | CERTAIN |
+| Property | `libtpu.so` | `sdk.so` |
+|---|---|---|
+| On-disk size | 781,691,048 B (745 MiB) | 22,541,240 B (21 MiB) |
+| File mode in wheel | `0755` (executable bit set) | `0644` |
+| ELF type | `DYN` (shared object), x86-64 | `DYN` (shared object), x86-64 |
+| `file` ELF flavor | version 1 (SYSV) | version 1 (GNU/Linux) |
+| Build-id format | `md5/uuid`, `89edbbe8…2207d` | `sha1`, `4e902546…44a0a` |
+| Gold-version note | absent | present (`.note.gnu.gold-version`) |
+| `DT_SONAME` | **none** | **none** |
+| `DT_NEEDED` count | 6 | 6 |
+| `DT_NEEDED` list | `libm libpthread libdl librt libc ld-linux` | `libpthread libm libstdc++ libgcc_s libc ld-linux` |
+| Links `libstdc++`? | **no** (statically embedded) | **yes** |
+| Symbol versioning | `VERS_1.0` (`@@VERS_1.0`) | **none** |
+| `.dynsym` entries | 741 | 36,787 |
+| Defined global exports | 226 (218 `@@VERS_1.0` FUNC + 8 linker-set bounds) | ~36,600 (module symbols) |
+| `.symtab` `FUNC` count | 918,698 | 78,311 |
+| IDA function count | 884,832 (record) / 884,843 (artifact coverage) | 94,732 |
+| `DT_FLAGS` | absent | `BIND_NOW` (`FLAGS_1: NOW`) |
+| `RELACOUNT` (RELATIVE relocs) | 1,069,006 | 618 |
+| Loaded by | host runtime via `dlopen` | CPython via `import` |
+| Module entry | `GetPjrtApi`, `GetLibtpuSdkApi`, … | `PyInit_sdk` |
 
 > **Note:** `libtpu.so` and `sdk.so` are **independent link units**, not two halves of one system: neither lists the other in `DT_NEEDED`, neither defines a symbol the other imports, and their dynamic-symbol roles are categorically different (a 226-entry PJRT C-ABI versus a CPython extension exporting `PyInit_sdk`). Any combined "function total" (e.g. ~979k) is the sum of two unrelated databases, not the size of one binary. Treat them as two binaries that happen to share a directory.
 
@@ -82,19 +82,19 @@ configure_library_path():
 
 The exports cluster into named C-ABI families, every member a `*_DoWork` / `Tpu*_*` / `TfTpu_*` style entry:
 
-| ABI family (prefix) | Role | Confidence |
-|---|---|---|
-| `GetPjrtApi` | PJRT C-API vtable root — the host runtime's primary entry | CERTAIN |
-| `GetLibtpuSdkApi` | libtpu "SDK" C-API vtable root (a second, distinct ABI surface) | HIGH |
-| `TpuCompiler_*` | XLA-for-TPU compiler: `New`, `Compile`, `RunHloPasses`, `RunBackend`, `ShapeSize`, `Free` | HIGH |
-| `TpuCompile_*` | Compilation-cache + program build: `CompileAndBuild`, `CreateCompilationCacheKey`, fingerprints | HIGH |
-| `TpuConfigurationApi_*` | Host/pod configuration: server address, memory limit, TPUs-per-host | HIGH |
-| `TpuComputationPlacer_*` | Device assignment: `New`, `AssignDevices`, `AssignLocalDevices` | HIGH |
-| `TpuCoreLocation_*`, `TpuDeviceDescription_*` | Topology / device-description accessors | HIGH |
-| `TfTpu_*`, `TfTpuOrdinalSelector_*` | Runtime bootstrap + core-ordinal selection | HIGH |
-| `HardwareLayout_*`, `SparseCore_*` | Layout math and SparseCore queries | MEDIUM |
-| `TF_InitKernel`, `TFNPD_InitPlugin` | TensorFlow kernel / next-pluggable-device init | MEDIUM |
-| `__start_*` / `__stop_*` | Linker-set bounds (`google_malloc`, `malloc_hook`, `pb_defaults`, `linkarr_upb_AllExts`) | HIGH |
+| ABI family (prefix) | Role |
+|---|---|
+| `GetPjrtApi` | PJRT C-API vtable root — the host runtime's primary entry |
+| `GetLibtpuSdkApi` | libtpu "SDK" C-API vtable root (a second, distinct ABI surface) |
+| `TpuCompiler_*` | XLA-for-TPU compiler: `New`, `Compile`, `RunHloPasses`, `RunBackend`, `ShapeSize`, `Free` |
+| `TpuCompile_*` | Compilation-cache + program build: `CompileAndBuild`, `CreateCompilationCacheKey`, fingerprints |
+| `TpuConfigurationApi_*` | Host/pod configuration: server address, memory limit, TPUs-per-host |
+| `TpuComputationPlacer_*` | Device assignment: `New`, `AssignDevices`, `AssignLocalDevices` |
+| `TpuCoreLocation_*`, `TpuDeviceDescription_*` | Topology / device-description accessors |
+| `TfTpu_*`, `TfTpuOrdinalSelector_*` | Runtime bootstrap + core-ordinal selection |
+| `HardwareLayout_*`, `SparseCore_*` | Layout math and SparseCore queries |
+| `TF_InitKernel`, `TFNPD_InitPlugin` | TensorFlow kernel / next-pluggable-device init |
+| `__start_*` / `__stop_*` | Linker-set bounds (`google_malloc`, `malloc_hook`, `pb_defaults`, `linkarr_upb_AllExts`) |
 
 > **QUIRK —** `GetPjrtApi@@VERS_1.0` is a **5-byte** `FUNC` at `0x0e6a83a0`, and `GetLibtpuSdkApi@@VERS_1.0` is likewise 5 bytes at `0x109028c0`. Five bytes is a single `jmp rel32` — these are tail-call thunks, not the implementations. The exported name is a stable trampoline into a statically-linked interior function whose own symbol is internal. A reimplementer must not look for the real PJRT-API constructor *at* the exported address; follow the jump. The thunk indirection is what lets the 745 MiB interior churn build-to-build while the 226-entry door stays binary-stable. (The `GetPjrtApi` thunk and the object it returns are detailed on its own page.)
 
@@ -155,28 +155,28 @@ The relationship between the two objects is **none**, and that is provable three
 
 The wheel is a single distribution — `libtpu` `0.0.40`, one wheel tag, import-root `libtpu` — with exactly **six payload files** under the `libtpu/` package directory and a `dist-info`. The two `.so` files dominate; everything else is small text.
 
-| File | Size | Kind | Role | Confidence |
-|---|---|---|---|---|
-| `libtpu/libtpu.so` | 781,691,048 B | ELF `DYN` | PJRT plugin (the loaded object) | CERTAIN |
-| `libtpu/sdk.so` | 22,541,240 B | ELF `DYN` | CPython extension (`libtpu.sdk`) | CERTAIN |
-| `libtpu/__init__.py` | 1,131 B | Python | Sets `TPU_LIBRARY_PATH` → `libtpu.so` | CERTAIN |
-| `libtpu/LICENSE` | 229 B | text | Google Cloud Platform terms | CERTAIN |
-| `libtpu/THIRD_PARTY_NOTICES.txt` | 731,537 B | text | OSS notices for `libtpu.so` | HIGH |
-| `libtpu/SDK_THIRD_PARTY_NOTICES.txt` | 103,306 B | text | OSS notices for `sdk.so` | HIGH |
+| File | Size | Kind | Role |
+|---|---|---|---|
+| `libtpu/libtpu.so` | 781,691,048 B | ELF `DYN` | PJRT plugin (the loaded object) |
+| `libtpu/sdk.so` | 22,541,240 B | ELF `DYN` | CPython extension (`libtpu.sdk`) |
+| `libtpu/__init__.py` | 1,131 B | Python | Sets `TPU_LIBRARY_PATH` → `libtpu.so` |
+| `libtpu/LICENSE` | 229 B | text | Google Cloud Platform terms |
+| `libtpu/THIRD_PARTY_NOTICES.txt` | 731,537 B | text | OSS notices for `libtpu.so` |
+| `libtpu/SDK_THIRD_PARTY_NOTICES.txt` | 103,306 B | text | OSS notices for `sdk.so` |
 
 > **NOTE —** The two **separate** third-party-notices files (`THIRD_PARTY_NOTICES.txt` for the plugin, `SDK_THIRD_PARTY_NOTICES.txt` for the SDK) are independent corroboration of the independence finding: the two objects have different OSS dependency closures and are licensed/audited as distinct deliverables. If `sdk.so` were merely a slice of `libtpu.so`, one notices file would suffice.
 
 ### Wheel metadata
 
-| Field | Value | Confidence |
-|---|---|---|
-| Distribution | `libtpu` 0.0.40 | CERTAIN |
-| Wheel tag | `cp314-cp314-manylinux_2_31_x86_64` | CERTAIN |
-| `Requires-Python` | `>=3.11` | CERTAIN |
-| `Requires-Dist` | *(none)* | CERTAIN |
-| Entry points | *(none)* | CERTAIN |
-| `purelib` | false (platform wheel) | CERTAIN |
-| Summary | "Google Cloud TPU runtime library." | CERTAIN |
+| Field | Value |
+|---|---|
+| Distribution | `libtpu` 0.0.40 |
+| Wheel tag | `cp314-cp314-manylinux_2_31_x86_64` |
+| `Requires-Python` | `>=3.11` |
+| `Requires-Dist` | *(none)* |
+| Entry points | *(none)* |
+| `purelib` | false (platform wheel) |
+| Summary | "Google Cloud TPU runtime library." |
 
 The wheel declares **no `Requires-Dist`** — it pulls in no Python packages. Its only Python file is the 1.1 KiB `__init__.py`; all functionality lives in the two native objects. The `cp314` ABI tag pins it to CPython 3.14, but note that `libtpu.so` itself imports no Python symbols — the ABI tag is dictated by **`sdk.so`** (`PyInit_sdk` against the CPython 3.14 C-ABI), not by the plugin. This is why the platform wheel is `cp314`-specific even though its primary payload is interpreter-agnostic native code.
 

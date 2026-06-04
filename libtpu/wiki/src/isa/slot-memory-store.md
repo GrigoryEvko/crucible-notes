@@ -24,7 +24,6 @@ For reimplementation, the contract is: the `LloOpcodeIsVectorStore` opcode windo
 | **Opcode classifier** | `xla::jellyfish::LloOpcodeIsVectorStore` @ `0x14024920` → window `{63,64,65,68,69,70}` + `460` |
 | **Store-data field** | 5-bit on JF/PF, **4-bit on VF/GL/GFC**; base/offset 5-bit → **6-bit** at v5 |
 | **Write ports** | `MaxVectorStoreSlots` = 1 on JF/PF/VF, **2 on GL/GFC** |
-| **Confidence** | CONFIRMED (byte-anchored) unless a cell says otherwise |
 
 ---
 
@@ -32,19 +31,19 @@ For reimplementation, the contract is: the `LloOpcodeIsVectorStore` opcode windo
 
 The store family in the `LloOpcode` enum (internal `k`-prefixed names; proto `LloOpcodeProto` `OPCODE_`-prefixed names):
 
-| LloOpcode internal | LloOpcodeProto name | Destination tier | Slot | Confidence |
-|--------------------|---------------------|------------------|------|------------|
-| `kVectorStore` | `OPCODE_VECTOR_STORE` | VMEM | `VECTOR_STORE` | CONFIRMED |
-| `kVectorStoreMasked` | `OPCODE_VECTOR_STORE_MASKED` | VMEM (masked) | `VECTOR_STORE` | CONFIRMED |
-| `kVectorStoreIndexed` | `OPCODE_VECTOR_STORE_INDEXED` | VMEM (scatter) | `VECTOR_STORE` | CONFIRMED |
-| `kVectorStoreIndexedMasked` | `OPCODE_VECTOR_STORE_INDEXED_MASKED` | VMEM (scatter+mask) | `VECTOR_STORE` | CONFIRMED |
-| `kVectorStoreSublaneShuffle` | `OPCODE_VECTOR_STORE_SUBLANE_SHUFFLE` | VMEM (shuffled) | `VECTOR_STORE` | CONFIRMED |
-| `kVectorStoreEvenOddSublanes` | `OPCODE_VECTOR_STORE_EVEN_ODD_SUBLANES` | VMEM (even/odd) | `VECTOR_STORE` | CONFIRMED |
-| `kVectorStoreFence` | `OPCODE_VECTOR_STORE_FENCE` | (ordering barrier) | `VECTOR_MISC` (GFC) | CONFIRMED |
-| `kVectorCmemStore` | `OPCODE_VECTOR_CMEM_STORE` | CMEM | `VECTOR_STORE` | CONFIRMED |
-| `kVectorCmemStorePseudo` | `OPCODE_VECTOR_CMEM_STORE_PSEUDO` | CMEM (pseudo) | `VECTOR_STORE` | CONFIRMED |
-| `kBarnaCoreVectorStore` | `OPCODE_BARNA_CORE_VECTOR_STORE` | BarnaCore VMEM | (BCS channel) | CONFIRMED |
-| `kScalarStore` | `OPCODE_SCALAR_STORE` | SMEM | `SCALAR_0/1` | CONFIRMED |
+| LloOpcode internal | LloOpcodeProto name | Destination tier | Slot |
+|--------------------|---------------------|------------------|------|
+| `kVectorStore` | `OPCODE_VECTOR_STORE` | VMEM | `VECTOR_STORE` |
+| `kVectorStoreMasked` | `OPCODE_VECTOR_STORE_MASKED` | VMEM (masked) | `VECTOR_STORE` |
+| `kVectorStoreIndexed` | `OPCODE_VECTOR_STORE_INDEXED` | VMEM (scatter) | `VECTOR_STORE` |
+| `kVectorStoreIndexedMasked` | `OPCODE_VECTOR_STORE_INDEXED_MASKED` | VMEM (scatter+mask) | `VECTOR_STORE` |
+| `kVectorStoreSublaneShuffle` | `OPCODE_VECTOR_STORE_SUBLANE_SHUFFLE` | VMEM (shuffled) | `VECTOR_STORE` |
+| `kVectorStoreEvenOddSublanes` | `OPCODE_VECTOR_STORE_EVEN_ODD_SUBLANES` | VMEM (even/odd) | `VECTOR_STORE` |
+| `kVectorStoreFence` | `OPCODE_VECTOR_STORE_FENCE` | (ordering barrier) | `VECTOR_MISC` (GFC) |
+| `kVectorCmemStore` | `OPCODE_VECTOR_CMEM_STORE` | CMEM | `VECTOR_STORE` |
+| `kVectorCmemStorePseudo` | `OPCODE_VECTOR_CMEM_STORE_PSEUDO` | CMEM (pseudo) | `VECTOR_STORE` |
+| `kBarnaCoreVectorStore` | `OPCODE_BARNA_CORE_VECTOR_STORE` | BarnaCore VMEM | (BCS channel) |
+| `kScalarStore` | `OPCODE_SCALAR_STORE` | SMEM | `SCALAR_0/1` |
 
 The classifier `xla::jellyfish::LloOpcodeIsVectorStore` (@ `0x14024920`) is byte-exact: it returns true when `(opcode - 63) <= 7 && _bittest(0xE7, opcode - 63)` **or** `opcode == 460`. `0xE7 = 0b1110_0111` selects offsets `{0,1,2,5,6,7}`, i.e. internal opcodes `{63,64,65,68,69,70}` plus `460`. Scalar-store, CMEM-store and BarnaCore-store are classified by separate predicates.
 
@@ -58,23 +57,23 @@ Each gen has a `<Bundle><Slot>StoreEncoder::Encode` and a matching `<…>StoreDe
 
 ### TensorCore vector-store slot
 
-| Gen | Namespace | Encode @ | Decode @ | Confidence |
-|-----|-----------|----------|----------|------------|
-| Jellyfish | `jellyfish::isa::EncoderJf::EncodeVectorStoreInstruction` | `0x1e868c40` | (paired in `DecoderJf`) | CONFIRMED |
-| Pufferfish | `pxc::isa::TensorCoreVectorStore{En,De}coder` | `0x1ee3b440` | `0x1ee2dae0` | CONFIRMED |
-| Viperfish | `vxc::isa::TensorCoreVectorStore{En,De}coder` | `0x1f01ff60` | `0x1f01a560` | CONFIRMED |
-| Ghostlite | `gxc::glc::isa::TensorCoreVectorStore{En,De}coder` | `0x1f3c3200` | `0x1f3bd780` | CONFIRMED |
-| `6acc60406` | `gxc::gfc::isa::TensorCoreVectorStore{En,De}coder` | `0x1fa08920` | `0x1fa02f00` | CONFIRMED |
+| Gen | Namespace | Encode @ | Decode @ |
+|-----|-----------|----------|----------|
+| Jellyfish | `jellyfish::isa::EncoderJf::EncodeVectorStoreInstruction` | `0x1e868c40` | (paired in `DecoderJf`) |
+| Pufferfish | `pxc::isa::TensorCoreVectorStore{En,De}coder` | `0x1ee3b440` | `0x1ee2dae0` |
+| Viperfish | `vxc::isa::TensorCoreVectorStore{En,De}coder` | `0x1f01ff60` | `0x1f01a560` |
+| Ghostlite | `gxc::glc::isa::TensorCoreVectorStore{En,De}coder` | `0x1f3c3200` | `0x1f3bd780` |
+| `6acc60406` | `gxc::gfc::isa::TensorCoreVectorStore{En,De}coder` | `0x1fa08920` | `0x1fa02f00` |
 
 Jellyfish's TensorCore store is not a standalone codec class; it is the monolithic `EncoderJf::EncodeVectorStoreInstruction(VectorStoreInstruction const&, Bundle const&)` (@ `0x1e868c40`) that fills the slot bits inline.
 
 ### SparseCore TEC tile-SPMEM store slot (V5+ only)
 
-| Gen | Namespace | Encode @ | Decode @ | Confidence |
-|-----|-----------|----------|----------|------------|
-| Viperfish | `vxc::vfc::isa::SparseCoreTecVectorStore{En,De}coder` | `0x1e9c2760` | `0x1e9bbf40` | CONFIRMED |
-| Ghostlite | `gxc::glc::isa::SparseCoreTecVectorStore{En,De}coder` | `0x1eb50ac0` | `0x1eb42300` | CONFIRMED |
-| `6acc60406` | `gxc::gfc::isa::SparseCoreTecVectorStore{En,De}coder` | `0x1eccbe20` | `0x1ecbd7a0` | CONFIRMED |
+| Gen | Namespace | Encode @ | Decode @ |
+|-----|-----------|----------|----------|
+| Viperfish | `vxc::vfc::isa::SparseCoreTecVectorStore{En,De}coder` | `0x1e9c2760` | `0x1e9bbf40` |
+| Ghostlite | `gxc::glc::isa::SparseCoreTecVectorStore{En,De}coder` | `0x1eb50ac0` | `0x1eb42300` |
+| `6acc60406` | `gxc::gfc::isa::SparseCoreTecVectorStore{En,De}coder` | `0x1eccbe20` | `0x1ecbd7a0` |
 
 There is no Jellyfish/Pufferfish SparseCore TEC store — the SparseCore TEC sequencer exists only from Viperfish onward. The **BarnaCore** channel vector-store (Pufferfish only) is `pxc::pfc::isa::BarnaCoreChannelVectorStore{En,De}coder` (Encode `0x1e8c5640`, Decode `0x1e8c4d40`).
 
@@ -109,16 +108,16 @@ Each per-slot Encoder fills the slot via `BitCopy(dst, abs_bit, src, 0, width)`;
 
 Byte-exact from the encoder body (`BitCopy(a3, 162, …, 5)` etc.):
 
-| Field | abs bit | width | meaning | Confidence |
-|-------|--------:|------:|---------|------------|
-| source vreg | 162 | 5 | store-data vreg (proto `+28`); = 31 ⇒ NOOP (`kNeverExecute`) | CONFIRMED |
-| sub-opcode | 157 | 5 | `VmemStore`=0 / `CmemStore`≠0 discriminator | CONFIRMED |
-| base address / Vmem offset | 152 | 5 | VregNumber base | CONFIRMED |
-| offset | 149 | 3 | immediate-offset slot index | CONFIRMED |
-| stride | 147 | 2 | stride select | CONFIRMED |
-| sublane-mask / vmask | 145 | 2 | sublane/vmask select | CONFIRMED |
-| (CMEM full-address words) | 304 / 288 / 272 | 16 | CMEM 16-bit immediate address (CmemStore only) | CONFIRMED |
-| (CMEM address regs) | 251 / 246 / 241 | 5 | shared Y-register selectors | CONFIRMED |
+| Field | abs bit | width | meaning |
+|-------|--------:|------:|---------|
+| source vreg | 162 | 5 | store-data vreg (proto `+28`); = 31 ⇒ NOOP (`kNeverExecute`) |
+| sub-opcode | 157 | 5 | `VmemStore`=0 / `CmemStore`≠0 discriminator |
+| base address / Vmem offset | 152 | 5 | VregNumber base |
+| offset | 149 | 3 | immediate-offset slot index |
+| stride | 147 | 2 | stride select |
+| sublane-mask / vmask | 145 | 2 | sublane/vmask select |
+| (CMEM full-address words) | 304 / 288 / 272 | 16 | CMEM 16-bit immediate address (CmemStore only) |
+| (CMEM address regs) | 251 / 246 / 241 | 5 | shared Y-register selectors |
 
 The PF store slot region (abs 142..166) matches the [Pufferfish 51B Bundle](bundle-pf-51b.md) page exactly. Sub-opcode dispatch (proto `+0x50`): `0`=Noop, `5`=NoopAlt, `6`=CmemStore, `7`=CmemStoreNoOffset, `8`=VmemStore, `9`=VmemStoreNoOffset, `0xA-0x11`=VmemStoreVmsk0..7, `0x12`=VmemStoreIndexed, `0x13`=VmemStoreIndexedNoOffset, `0x14-0x1B`=VmemStoreIndexedVmsk0..7, `0x1C`=SetIarLane, `0x1D`=SetIarSublane, `0x1E`=SetIarRaw, `0x1F`=PushV2s. 32 sub-ops total.
 
@@ -126,16 +125,16 @@ The PF store slot region (abs 142..166) matches the [Pufferfish 51B Bundle](bund
 
 Byte-exact (`BitCopy(a3, 170, …, 4)` etc.):
 
-| Field | abs bit | width | meaning | Confidence |
-|-------|--------:|------:|---------|------------|
-| source vreg | 170 | 4 | store-data vreg (proto `+28`) | CONFIRMED |
-| sub-opcode discriminator | 167 | 3 | addr-mode/family | CONFIRMED |
-| secondary opcode / vmsk | 163 | 4 | mask / sub-variant | CONFIRMED |
-| base address / offset | 157 | 6 | VregNumber base | CONFIRMED |
-| stride (Base variants) | 153 | 4 | stride select | CONFIRMED |
-| (Base-variant field) | 151 | 2 | — | CONFIRMED |
-| (trailing field) | 148 | 3 | Vs select / mask | CONFIRMED |
-| address / mask field | 144 | 4 | — | CONFIRMED |
+| Field | abs bit | width | meaning |
+|-------|--------:|------:|---------|
+| source vreg | 170 | 4 | store-data vreg (proto `+28`) |
+| sub-opcode discriminator | 167 | 3 | addr-mode/family |
+| secondary opcode / vmsk | 163 | 4 | mask / sub-variant |
+| base address / offset | 157 | 6 | VregNumber base |
+| stride (Base variants) | 153 | 4 | stride select |
+| (Base-variant field) | 151 | 2 | — |
+| (trailing field) | 148 | 3 | Vs select / mask |
+| address / mask field | 144 | 4 | — |
 
 The data-vreg @170 w4 and base @157 w6 match the [Viperfish 64B Bundle](bundle-vf-64b.md) page exactly. Sub-opcode dispatch (proto `+0x50`): `0`=Noop, `5`=VectorStore, `6`=VectorStoreBase, `7`=VectorStoreMasked, `8`=VectorStoreBaseMasked, `9`=VectorStoreShuffled, `0xA`=VectorStoreShuffledBase, `0xB`=VectorStoreShuffledMasked, `0xC`=VectorStoreShuffledBaseMasked, `0xD`=VectorStoreIndexed0, `0xE`=VectorStoreIndexed1, `0xF`=VectorStoreIndexed0Masked, `0x10`=VectorStoreIndexed1Masked, `0x11-0x16`=SetLaneIar0/1·SetSublaneIar0/1·SetRawIar0/1, `0x17`=PushV2s, `0x18`=SetPrng. 25 sub-ops.
 
@@ -143,16 +142,16 @@ The data-vreg @170 w4 and base @157 w6 match the [Viperfish 64B Bundle](bundle-v
 
 Byte-exact (`BitCopy(a3, 169, …, 2)` etc.):
 
-| Field | abs bit | width | Confidence |
-|-------|--------:|------:|------------|
-| sub-opcode top field | 169 | 2 | CONFIRMED |
-| sub-opcode | 166 | 3 | CONFIRMED |
-| secondary opcode | 162 | 4 | CONFIRMED |
-| base address / offset | 156 | 6 | CONFIRMED |
-| stride / mask | 152 | 4 | CONFIRMED |
-| (Base-variant field) | 150 | 2 | CONFIRMED |
-| (field) | 147 | 3 | CONFIRMED |
-| (field) | 143 | 4 | CONFIRMED |
+| Field | abs bit | width |
+|-------|--------:|------:|
+| sub-opcode top field | 169 | 2 |
+| sub-opcode | 166 | 3 |
+| secondary opcode | 162 | 4 |
+| base address / offset | 156 | 6 |
+| stride / mask | 152 | 4 |
+| (Base-variant field) | 150 | 2 |
+| (field) | 147 | 3 |
+| (field) | 143 | 4 |
 
 Sub-opcode dispatch is identical to Viperfish. Ghostlite's `TensorCoreVectorStoreEncoder` (@ `0x1f3c3200`) is structurally identical to VXC/GFC (same sub-op set, same template) with gen-shifted bit offsets; its field map was not separately dumped — **HIGH** by template identity.
 
@@ -160,16 +159,16 @@ Sub-opcode dispatch is identical to Viperfish. Ghostlite's `TensorCoreVectorStor
 
 Byte-exact (`BitCopy(a3, 359, …, 3)` etc.), store slot in the upper bit region — the richest store family:
 
-| Field | abs bit | width | Confidence |
-|-------|--------:|------:|------------|
-| opcode | 359 | 3 (4 alt) | CONFIRMED |
-| normal-predication | 362 | 1 | CONFIRMED |
-| rotate-predication | 363 | 1 | CONFIRMED |
-| base / source | 353 | 6 | CONFIRMED |
-| offset | 347 | 6 | CONFIRMED |
-| stride | 340 | 3 | CONFIRMED |
-| mask | 337 | 3 | CONFIRMED |
-| (field) | 333 | 4 | CONFIRMED |
+| Field | abs bit | width |
+|-------|--------:|------:|
+| opcode | 359 | 3 (4 alt) |
+| normal-predication | 362 | 1 |
+| rotate-predication | 363 | 1 |
+| base / source | 353 | 6 |
+| offset | 347 | 6 |
+| stride | 340 | 3 |
+| mask | 337 | 3 |
+| (field) | 333 | 4 |
 
 Sub-opcode dispatch (proto `+0x4c`, 34 cases): `0`=Noop, `8`=TileSpmemStore, `9`=TileSpmemStoreCircularBuffer, then the reduce-add matrix — `TileSpmemStoreAdd{S32,S16,F32,Bf16}`, `*CircularBufferAdd*`, `*CircularBufferPostUpdateAdd*`, `TileSpmemIndexedStore`, `*IndexedCircularBuffer*`, `*IndexedAdd{S32,S16,F32,Bf16}*`, `*IndexedReturnValueAdd*`, `*IndexedCircularBufferReturnValueAdd{S32,S16,F32,Bf16}*`. The per-variant inner field widths beyond the shared positions above are not exhaustively dumped (**HIGH**).
 
@@ -203,13 +202,13 @@ The IAR is set by dedicated store-slot sub-ops: PXC `SetIarLane`/`SetIarSublane`
 
 The destination tier is selected by **which sub-opcode** (not a tier bit), within the single VectorStore slot:
 
-| Destination tier | Sub-op family / path | Confidence |
-|------------------|----------------------|------------|
-| VMEM | `VmemStore*` (PXC 8-0x1B) / `VectorStore*` (VXC/GXC 5-0x10) | CONFIRMED |
-| CMEM | `CmemStore`/`CmemStoreNoOffset` (PXC cases 6-7; 16-bit imm address @304/288/272) | CONFIRMED |
-| SPMEM | `TileSpmemStore*` (SparseCore TEC slot) | CONFIRMED |
-| SMEM | `ScalarStoreSmemAbsolute`/`ScalarStoreXToSmemY` (SCALAR/SCALAR_ALU slot, not vector-store) | CONFIRMED |
-| BarnaCore VMEM | `BarnaCoreChannelVectorStore` (Pufferfish PFC channel slot) | CONFIRMED |
+| Destination tier | Sub-op family / path |
+|------------------|----------------------|
+| VMEM | `VmemStore*` (PXC 8-0x1B) / `VectorStore*` (VXC/GXC 5-0x10) |
+| CMEM | `CmemStore`/`CmemStoreNoOffset` (PXC cases 6-7; 16-bit imm address @304/288/272) |
+| SPMEM | `TileSpmemStore*` (SparseCore TEC slot) |
+| SMEM | `ScalarStoreSmemAbsolute`/`ScalarStoreXToSmemY` (SCALAR/SCALAR_ALU slot, not vector-store) |
+| BarnaCore VMEM | `BarnaCoreChannelVectorStore` (Pufferfish PFC channel slot) |
 
 The LLO opcode (`kVectorStore` vs `kVectorCmemStore` vs `kScalarStore`) carries the tier choice down from the IR; the per-gen lowering maps it to the matching sub-opcode in the matching slot. This is the same slot-selects-tier model the load slot uses, keyed off the runtime [MemorySpace Enum](memory-space-enum.md); the SMEM tier is asserted by the buffer-assignment invariant `dest_address->memory_space() == MemorySpace::kSmem`. CMEM-store sub-ops exist only on Pufferfish; higher gens fold CMEM into VMEM-class addressing or lower it via `kVectorCmemStorePseudo`.
 

@@ -36,27 +36,27 @@ This appendix is a pure-reference catalog: it carries no reimplementation contra
 
 Every prefix namespace in the catalog, with the registered-flag count (binary `AbslFlagHelpGenFor` census) and the rodata-name count (registered + rodata-only). The "rodata names" column matches the prior 2107-union tally; the "registered" column is what is actually settable. Confidence is `CERTAIN` for counts derived directly from the symbol census, `HIGH` where the rodata-name delta carries concatenation noise.
 
-| Prefix | Registered | Rodata names | Scope | Owner proto | Confidence |
-|---|---:|---:|---|---|---|
-| `xla_tpu_` | 909 | 968 | TPU-specific compiler + runtime knobs | TCE | CERTAIN (reg) / HIGH (names) |
-| `megascale_` | 150 | 150 | Megascale DCN collective runtime | standalone | CERTAIN |
-| `xla_jf_` | 148 | 148 | Jellyfish TPU XLA backend (all gens) | TCE | CERTAIN |
-| `xla_` (plain) | 121 | 138 | Generic XLA (scheduler / MSA / collective / dump) | DebugOptions | CERTAIN (reg) / HIGH (names) |
-| `xla_sc_` | 92 | 92 | SparseCore compiler (SCS/SCC LLVM backend) | TCE | CERTAIN |
-| `tpu_` | 69 | 69 | TPU runtime / compilation-cache / driver | standalone | CERTAIN |
-| `barna_core_` | 61 | 61 | BarnaCore embedding-engine runtime | standalone | CERTAIN |
-| `xla_msa_` | 22 | 22 | Memory-Space-Assignment (dedicated namespace) | TCE | CERTAIN |
-| `tf_` | 20 | 20 | TensorFlow-TPU bridge (`tf_jf_*` etc.) | standalone | CERTAIN |
-| `xla_vf_` | 16 | 16 | Gen-specific VMEM/MSA override mirror (`vf` codename) | TCE | CERTAIN |
-| `xla_gf_` | 14 | 14 | Gen-specific VMEM/MSA override mirror (`gf` codename) | TCE | CERTAIN |
-| `xla_mosaic_` | 8 | 8 | Mosaic MLIR custom-kernel dialect | TCE | CERTAIN |
-| `xla_ior_` | 4 | 4 | "IOR" fast-mem round-trip MSA variant | TCE | CERTAIN |
-| `xla_pf_` | 1 | 1 | Gen-specific ND-allreduce override (`pf` codename) | TCE | CERTAIN |
-| `xla_llo_` | 1 | 1 | LLO annotation lifecycle | TCE | CERTAIN |
-| `xla_gpu_` | 0 | — | GPU backend (proto-only, no flag) | DebugOptions | CERTAIN |
-| `xla_cpu_` | 0 | — | CPU backend (proto-only, no flag) | DebugOptions | CERTAIN |
-| `(other / no XLA prefix)` | 412 | 395 | abseil / grpc / protobuf / OR-tools library flags | standalone | HIGH |
-| **Total** | **2048** | **2107** | — | — | CERTAIN |
+| Prefix | Registered | Rodata names | Scope | Owner proto |
+|---|---:|---:|---|---|
+| `xla_tpu_` | 909 | 968 | TPU-specific compiler + runtime knobs | TCE |
+| `megascale_` | 150 | 150 | Megascale DCN collective runtime | standalone |
+| `xla_jf_` | 148 | 148 | Jellyfish TPU XLA backend (all gens) | TCE |
+| `xla_` (plain) | 121 | 138 | Generic XLA (scheduler / MSA / collective / dump) | DebugOptions |
+| `xla_sc_` | 92 | 92 | SparseCore compiler (SCS/SCC LLVM backend) | TCE |
+| `tpu_` | 69 | 69 | TPU runtime / compilation-cache / driver | standalone |
+| `barna_core_` | 61 | 61 | BarnaCore embedding-engine runtime | standalone |
+| `xla_msa_` | 22 | 22 | Memory-Space-Assignment (dedicated namespace) | TCE |
+| `tf_` | 20 | 20 | TensorFlow-TPU bridge (`tf_jf_*` etc.) | standalone |
+| `xla_vf_` | 16 | 16 | Gen-specific VMEM/MSA override mirror (`vf` codename) | TCE |
+| `xla_gf_` | 14 | 14 | Gen-specific VMEM/MSA override mirror (`gf` codename) | TCE |
+| `xla_mosaic_` | 8 | 8 | Mosaic MLIR custom-kernel dialect | TCE |
+| `xla_ior_` | 4 | 4 | "IOR" fast-mem round-trip MSA variant | TCE |
+| `xla_pf_` | 1 | 1 | Gen-specific ND-allreduce override (`pf` codename) | TCE |
+| `xla_llo_` | 1 | 1 | LLO annotation lifecycle | TCE |
+| `xla_gpu_` | 0 | — | GPU backend (proto-only, no flag) | DebugOptions |
+| `xla_cpu_` | 0 | — | CPU backend (proto-only, no flag) | DebugOptions |
+| `(other / no XLA prefix)` | 412 | 395 | abseil / grpc / protobuf / OR-tools library flags | standalone |
+| **Total** | **2048** | **2107** | — | — |
 
 > **NOTE —** "registered total 2048" and "rodata names 2107" are both byte-derived: the registered total is the count of distinct `AbslFlagHelpGenFor<name>8NonConstEv` symbols (2048, confirmed by `rg` over the names sidecar); the 2107 is that set unioned with the rodata-only references (deprecated aliases, error-string mentions). The "other / no XLA prefix" registered count is the residual (2048 − the 1636 XLA/TPU-prefixed registered flags = 412); those are statically-linked library flags (`alsologtostderr`, `alarm_on_failure`, OR-tools `cp_model_*`, grpc internals) of no compiler interest.
 
@@ -88,96 +88,96 @@ The dominant family — the TPU-private compiler and runtime knob surface, regis
 
 The scheduler family advertises five distinct engines, each behind its own gate. Defaults are unrecoverable from strings unless evidenced.
 
-| Flag | Type | Default | Purpose | Confidence |
-|---|---|---|---|---|
-| `xla_tpu_enable_latency_hiding_scheduler` | bool | — | master LHS gate | HIGH |
-| `xla_tpu_enable_ilp_latency_hiding_scheduler` | bool | — | ILP-based LHS engine | HIGH |
-| `xla_tpu_enable_brkga_latency_hiding_scheduler` | bool | — | genetic (BRKGA) scheduler engine | HIGH |
-| `xla_tpu_brkga_latency_hiding_scheduler_generation_limit` | int | — | BRKGA generation cap | HIGH |
-| `xla_tpu_brkga_latency_hiding_scheduler_num_chromosomes` | int | — | BRKGA population size | HIGH |
-| `xla_tpu_brkga_latency_hiding_scheduler_num_top_heap_computations` | int | — | BRKGA elite-set size | HIGH |
-| `xla_tpu_brgka_latency_hiding_scheduler_no_progress_limit` | int | — | BRKGA stall cutoff (note `brgka` typo) | HIGH |
-| `xla_tpu_enable_dozer_latency_hiding_scheduler` | bool | — | "Dozer" scheduler variant | HIGH |
-| `xla_tpu_enable_lem_scheduler` | bool | — | LEM scheduler variant | HIGH |
-| `xla_tpu_consider_lp_llo_scheduler` | bool | — | LP-based LLO scheduler | HIGH |
-| `xla_tpu_enable_depth_memory_pressure_reduction` | bool | — | depth-based memory-pressure reduction | HIGH |
-| `xla_tpu_enable_cp_send_done_scheduling` | bool | — | collective-permute send/done sched | HIGH |
-| `xla_tpu_aggressive_flexible_annotation_scheduling` | bool | — | scheduling-annotation aggressiveness | HIGH |
-| `xla_tpu_scheduling_annotation_deannotate_unsupported_groups` | bool | false (errstr remedy `=true`) | deannotate annotation gaps | HIGH |
-| `xla_tpu_enable_all_experimental_scheduler_features` | bool | — | enable all experimental sched features | HIGH |
+| Flag | Type | Default | Purpose |
+|---|---|---|---|
+| `xla_tpu_enable_latency_hiding_scheduler` | bool | — | master LHS gate |
+| `xla_tpu_enable_ilp_latency_hiding_scheduler` | bool | — | ILP-based LHS engine |
+| `xla_tpu_enable_brkga_latency_hiding_scheduler` | bool | — | genetic (BRKGA) scheduler engine |
+| `xla_tpu_brkga_latency_hiding_scheduler_generation_limit` | int | — | BRKGA generation cap |
+| `xla_tpu_brkga_latency_hiding_scheduler_num_chromosomes` | int | — | BRKGA population size |
+| `xla_tpu_brkga_latency_hiding_scheduler_num_top_heap_computations` | int | — | BRKGA elite-set size |
+| `xla_tpu_brgka_latency_hiding_scheduler_no_progress_limit` | int | — | BRKGA stall cutoff (note `brgka` typo) |
+| `xla_tpu_enable_dozer_latency_hiding_scheduler` | bool | — | "Dozer" scheduler variant |
+| `xla_tpu_enable_lem_scheduler` | bool | — | LEM scheduler variant |
+| `xla_tpu_consider_lp_llo_scheduler` | bool | — | LP-based LLO scheduler |
+| `xla_tpu_enable_depth_memory_pressure_reduction` | bool | — | depth-based memory-pressure reduction |
+| `xla_tpu_enable_cp_send_done_scheduling` | bool | — | collective-permute send/done sched |
+| `xla_tpu_aggressive_flexible_annotation_scheduling` | bool | — | scheduling-annotation aggressiveness |
+| `xla_tpu_scheduling_annotation_deannotate_unsupported_groups` | bool | false (errstr remedy `=true`) | deannotate annotation gaps |
+| `xla_tpu_enable_all_experimental_scheduler_features` | bool | — | enable all experimental sched features |
 
 > **QUIRK —** the name `xla_tpu_brgka_latency_hiding_scheduler_no_progress_limit` carries a transposed-letter typo (`brgka` vs the `brkga` used by its three siblings). It is a distinct registered flag string, not an alias — a reimplementer must register the misspelt name verbatim or this knob is unreachable.
 
 ### ICI / Collectives — largest subsystem (174)
 
-| Flag | Type | Default | Purpose | Confidence |
-|---|---|---|---|---|
-| `xla_tpu_debug_sflag_wait_timeout_ms` | int | — | TC sflag-wait watchdog | HIGH |
-| `xla_tpu_debug_sc_sflag_wait_timeout_ms` | int | — | SparseCore sflag-wait watchdog | HIGH |
-| `xla_tpu_use_resilient_collective_emitter` | bool | — | fault-aware route table | HIGH |
-| `xla_tpu_collect_sflag_wait_hang_core` | bool | — | hang-attribution telemetry | HIGH |
-| `xla_tpu_collect_sflag_wait_hang_rate` | float | — | hang-rate statistic | HIGH |
-| `xla_tpu_force_startup_barrier_in_binomial_all_reduce` | bool | — | startup barrier injection | HIGH |
-| `xla_tpu_binomial_all_reduce_use_physical_core_ids` | bool | — | physical-core-id binomial AR | HIGH |
-| `xla_tpu_all_gather_collective_matmul_mode` | enum/string | — | collective-matmul AG mode | HIGH |
-| `xla_tpu_all_gather_step_count` | int | — | AG ring step count | HIGH |
-| `xla_tpu_all_reduce_vmem_contingency_kib` | int | — | AR VMEM reserve | HIGH |
-| `xla_tpu_all_to_all_max_rdma_size_kib` | int | — | A2A RDMA chunk cap | HIGH |
-| `xla_tpu_async_ragged_all_to_all_max_rdma_size_kib` | int | — | ragged A2A RDMA cap | HIGH |
-| `xla_tpu_add_barriers_around_aggregated_collectives` | bool | — | barrier wrapping | HIGH |
-| `xla_tpu_aggressive_opt_barrier_removal` | bool | — | opt-barrier removal | HIGH |
-| `xla_tpu_checksum_all_reduce_transfers` | bool | — | checksum AR transfers | HIGH |
-| `xla_tpu_1d_uni_direction_ring_min_input_size_chunks` | int | — | 1-D ring threshold | HIGH |
+| Flag | Type | Default | Purpose |
+|---|---|---|---|
+| `xla_tpu_debug_sflag_wait_timeout_ms` | int | — | TC sflag-wait watchdog |
+| `xla_tpu_debug_sc_sflag_wait_timeout_ms` | int | — | SparseCore sflag-wait watchdog |
+| `xla_tpu_use_resilient_collective_emitter` | bool | — | fault-aware route table |
+| `xla_tpu_collect_sflag_wait_hang_core` | bool | — | hang-attribution telemetry |
+| `xla_tpu_collect_sflag_wait_hang_rate` | float | — | hang-rate statistic |
+| `xla_tpu_force_startup_barrier_in_binomial_all_reduce` | bool | — | startup barrier injection |
+| `xla_tpu_binomial_all_reduce_use_physical_core_ids` | bool | — | physical-core-id binomial AR |
+| `xla_tpu_all_gather_collective_matmul_mode` | enum/string | — | collective-matmul AG mode |
+| `xla_tpu_all_gather_step_count` | int | — | AG ring step count |
+| `xla_tpu_all_reduce_vmem_contingency_kib` | int | — | AR VMEM reserve |
+| `xla_tpu_all_to_all_max_rdma_size_kib` | int | — | A2A RDMA chunk cap |
+| `xla_tpu_async_ragged_all_to_all_max_rdma_size_kib` | int | — | ragged A2A RDMA cap |
+| `xla_tpu_add_barriers_around_aggregated_collectives` | bool | — | barrier wrapping |
+| `xla_tpu_aggressive_opt_barrier_removal` | bool | — | opt-barrier removal |
+| `xla_tpu_checksum_all_reduce_transfers` | bool | — | checksum AR transfers |
+| `xla_tpu_1d_uni_direction_ring_min_input_size_chunks` | int | — | 1-D ring threshold |
 
 The ICI-SDC test harness contributes a 10-flag sub-family: `xla_tpu_ici_sdc_test_{iterations, packet_size_chunks, buffer_size_chunks, delay_mask, pipeline_depth, max_distance}` (all int), `xla_tpu_ici_sdc_test_{emit_compact_code, run_on_program_start, inject_mismatch_for_testing_only}` (bool), `xla_tpu_ici_sdc_test_sflag_wait_timeout_ms` (int).
 
 ### Fusion (101)
 
-| Flag | Type | Default | Purpose | Confidence |
-|---|---|---|---|---|
-| `xla_tpu_rwb_fusion` | bool | true (errstr remedy `=false`) | read-write-buffer fusion | HIGH |
-| `xla_tpu_dot_dot_fusion` | bool | true (errstr remedy `=false`) | dot→dot fusion | HIGH |
-| `xla_tpu_nested_dot_fusion` | bool | false (errstr remedy `=true`) | nested-dot (PartialReduce) fusion | HIGH |
-| `xla_tpu_accumulate_into_mrb` | bool | true (errstr remedy `=false`) | MRB accumulation fusion | HIGH |
-| `xla_tpu_allow_deeply_nested_fusion_numerical_diff` | bool | — | tolerate deep-fusion numerics | HIGH |
-| `xla_tpu_allow_input_fusion_in_certain_reduce_ops` | bool | — | reduce-op input fusion | HIGH |
-| `xla_tpu_allow_conv_input_fusion_with_downcast_convert` | bool | — | conv input fusion w/ downcast | HIGH |
-| `xla_tpu_async_collective_fusion_fuse_multiple_collectives` | bool | — | multi-collective async fusion | HIGH |
-| `xla_tpu_enable_async_collective_fusion_fuse_all_gather` | bool | — | AG async collective-fusion fuse | HIGH |
-| `xla_tpu_enable_async_collective_fusion_fuse_all_reduce` | bool | — | AR async collective-fusion fuse | HIGH |
-| `xla_tpu_copy_fusion_minimum_copy_size_in_bytes` | int | — | copy-fusion size floor | HIGH |
-| `xla_tpu_enable_experimental_fusion_cost_model` | bool | — | experimental fusion cost model | HIGH |
-| `xla_tpu_fusion_debugger_instrument_inputs` | bool | — | fusion-debugger input instrumentation | HIGH |
+| Flag | Type | Default | Purpose |
+|---|---|---|---|
+| `xla_tpu_rwb_fusion` | bool | true (errstr remedy `=false`) | read-write-buffer fusion |
+| `xla_tpu_dot_dot_fusion` | bool | true (errstr remedy `=false`) | dot→dot fusion |
+| `xla_tpu_nested_dot_fusion` | bool | false (errstr remedy `=true`) | nested-dot (PartialReduce) fusion |
+| `xla_tpu_accumulate_into_mrb` | bool | true (errstr remedy `=false`) | MRB accumulation fusion |
+| `xla_tpu_allow_deeply_nested_fusion_numerical_diff` | bool | — | tolerate deep-fusion numerics |
+| `xla_tpu_allow_input_fusion_in_certain_reduce_ops` | bool | — | reduce-op input fusion |
+| `xla_tpu_allow_conv_input_fusion_with_downcast_convert` | bool | — | conv input fusion w/ downcast |
+| `xla_tpu_async_collective_fusion_fuse_multiple_collectives` | bool | — | multi-collective async fusion |
+| `xla_tpu_enable_async_collective_fusion_fuse_all_gather` | bool | — | AG async collective-fusion fuse |
+| `xla_tpu_enable_async_collective_fusion_fuse_all_reduce` | bool | — | AR async collective-fusion fuse |
+| `xla_tpu_copy_fusion_minimum_copy_size_in_bytes` | int | — | copy-fusion size floor |
+| `xla_tpu_enable_experimental_fusion_cost_model` | bool | — | experimental fusion cost model |
+| `xla_tpu_fusion_debugger_instrument_inputs` | bool | — | fusion-debugger input instrumentation |
 
 ### MSA / scoped memory (55)
 
-| Flag | Type | Default | Purpose | Confidence |
-|---|---|---|---|---|
-| `xla_tpu_alternate_memory_benefit_scaling_factor_for_large_buffers` | float | — | MSA benefit scaling | HIGH |
-| `xla_tpu_async_copy_bandwidth_scaling_factor` | float | — | async-copy BW model | HIGH |
-| `xla_tpu_allocate_scoped_vmem_at_same_offset` | int | — | scoped VMEM offset reuse | HIGH |
-| `xla_tpu_allocate_scoped_cmem_at_same_offset` | int | — | scoped CMEM offset reuse | HIGH |
-| `xla_tpu_allow_in_cmem_copy` | bool | — | permit copies into CMEM | HIGH |
-| `xla_tpu_scoped_cmem_for_all_reduce` | bool | — | AR result in scoped CMEM | HIGH |
-| `xla_tpu_cmem_max_outstanding_prefetches` | int | — | CMEM prefetch cap | HIGH |
-| `xla_tpu_cmem_max_overlap_to_mem_size_async_copy_ratio` | float | — | CMEM overlap ratio | HIGH |
-| `xla_tpu_vmem_use_telamalloc` | bool | — | telamalloc VMEM allocator | HIGH |
-| `xla_tpu_scoped_vmem_limit_kib` | int | — | scoped VMEM byte limit (KiB) | HIGH |
-| `xla_tpu_autotune_memory_space_assignment` | bool | — | MSA autotune | HIGH |
+| Flag | Type | Default | Purpose |
+|---|---|---|---|
+| `xla_tpu_alternate_memory_benefit_scaling_factor_for_large_buffers` | float | — | MSA benefit scaling |
+| `xla_tpu_async_copy_bandwidth_scaling_factor` | float | — | async-copy BW model |
+| `xla_tpu_allocate_scoped_vmem_at_same_offset` | int | — | scoped VMEM offset reuse |
+| `xla_tpu_allocate_scoped_cmem_at_same_offset` | int | — | scoped CMEM offset reuse |
+| `xla_tpu_allow_in_cmem_copy` | bool | — | permit copies into CMEM |
+| `xla_tpu_scoped_cmem_for_all_reduce` | bool | — | AR result in scoped CMEM |
+| `xla_tpu_cmem_max_outstanding_prefetches` | int | — | CMEM prefetch cap |
+| `xla_tpu_cmem_max_overlap_to_mem_size_async_copy_ratio` | float | — | CMEM overlap ratio |
+| `xla_tpu_vmem_use_telamalloc` | bool | — | telamalloc VMEM allocator |
+| `xla_tpu_scoped_vmem_limit_kib` | int | — | scoped VMEM byte limit (KiB) |
+| `xla_tpu_autotune_memory_space_assignment` | bool | — | MSA autotune |
 
 ### SparseCore TC-side (50)
 
-| Flag | Type | Default | Purpose | Confidence |
-|---|---|---|---|---|
-| `xla_tpu_enable_offloading_gather_to_sparsecore` | bool | — | gather offload to SC | HIGH |
-| `xla_tpu_enable_offloading_scatter_to_sparsecore` | bool | — | scatter offload to SC | HIGH |
-| `xla_tpu_enable_offloading_copy_to_sparsecore` | bool | — | copy offload to SC | HIGH |
-| `xla_tpu_enable_offloading_reduce_to_sparsecore` | bool | — | reduce offload to SC | HIGH |
-| `xla_tpu_enable_sparse_core_reduce_scatter_v2` | bool | false (errstr remedy `=true`) | SC ND reduce-scatter v2 | HIGH |
-| `xla_tpu_enable_sc_log_recorder` | bool | false (errstr remedy `=true`) | SC log recorder | HIGH |
-| `xla_tpu_enable_async_sc_call` | bool | — | async SC call | HIGH |
-| `xla_tpu_embedding_table_oblongness_threshold` | int | — (errstr remedy `=1`) | embedding-table oblongness cutoff | HIGH |
-| `xla_tpu_aggregate_data_dependent_sc_ops` | bool | — | data-dependent SC aggregation | HIGH |
+| Flag | Type | Default | Purpose |
+|---|---|---|---|
+| `xla_tpu_enable_offloading_gather_to_sparsecore` | bool | — | gather offload to SC |
+| `xla_tpu_enable_offloading_scatter_to_sparsecore` | bool | — | scatter offload to SC |
+| `xla_tpu_enable_offloading_copy_to_sparsecore` | bool | — | copy offload to SC |
+| `xla_tpu_enable_offloading_reduce_to_sparsecore` | bool | — | reduce offload to SC |
+| `xla_tpu_enable_sparse_core_reduce_scatter_v2` | bool | false (errstr remedy `=true`) | SC ND reduce-scatter v2 |
+| `xla_tpu_enable_sc_log_recorder` | bool | false (errstr remedy `=true`) | SC log recorder |
+| `xla_tpu_enable_async_sc_call` | bool | — | async SC call |
+| `xla_tpu_embedding_table_oblongness_threshold` | int | — (errstr remedy `=1`) | embedding-table oblongness cutoff |
+| `xla_tpu_aggregate_data_dependent_sc_ops` | bool | — | data-dependent SC aggregation |
 
 ### Other high-signal `xla_tpu_` knobs
 
@@ -194,22 +194,22 @@ The ICI-SDC test harness contributes a 10-flag sub-family: `xla_tpu_ici_sdc_test
 
 The `jf` codename is the TPU XLA backend namespace (shared across generations). Lands in TCE. Subsystem split: misc 63, debug/dump 24, memory/alloc 15, fusion 10, MSA 9, ICI 8, dot/conv 7, sharding 4, scheduler 3, SparseCore 2, cost-model 2, numerics 1.
 
-| Flag | Type | Default | Purpose | Confidence |
-|---|---|---|---|---|
-| `xla_jf_debug_level` | int | — (errstr remedy `=2` for stack traces) | JF backend debug verbosity | HIGH |
-| `xla_jf_run_verifier` | bool | — | run the JF HLO verifier | HIGH |
-| `xla_jf_vliw_scheduler` | bool | — | JF VLIW scheduler engine | HIGH |
-| `xla_jf_critical_path_scheduler` | bool | — | critical-path scheduler | HIGH |
-| `xla_jf_conv_{input,output,reshape}_fusion` | bool | — | conv fusion variants | HIGH |
-| `xla_jf_enable_multi_output_fusion` | bool | — | multi-output fusion | HIGH |
-| `xla_jf_fusion_max_vmem_mib` | int | — | fusion VMEM ceiling (MiB) | HIGH |
-| `xla_jf_conv_{full_precision,increased_precision}` | bool | — | conv precision controls | HIGH |
-| `xla_jf_auto_assign_mxu` | bool | — | auto MXU assignment | HIGH |
-| `xla_jf_use_cost_based_memory_coloring` | bool | — | cost-based memory coloring | HIGH |
-| `xla_jf_dump_{hlo_text,debug_info,llo_html}` | bool | — | JF dump variants | HIGH |
-| `xla_jf_dump_isa_program_proto` | string | — | ISA-program-proto dump path | HIGH |
-| `xla_jf_experimental_{cmem,vmem}_for_hlo_outputs` | bool | — | experimental output placement | HIGH |
-| `xla_jf_spmd_threshold_for_windowed_einsum_mib` | float | — | windowed-einsum SPMD threshold | HIGH |
+| Flag | Type | Default | Purpose |
+|---|---|---|---|
+| `xla_jf_debug_level` | int | — (errstr remedy `=2` for stack traces) | JF backend debug verbosity |
+| `xla_jf_run_verifier` | bool | — | run the JF HLO verifier |
+| `xla_jf_vliw_scheduler` | bool | — | JF VLIW scheduler engine |
+| `xla_jf_critical_path_scheduler` | bool | — | critical-path scheduler |
+| `xla_jf_conv_{input,output,reshape}_fusion` | bool | — | conv fusion variants |
+| `xla_jf_enable_multi_output_fusion` | bool | — | multi-output fusion |
+| `xla_jf_fusion_max_vmem_mib` | int | — | fusion VMEM ceiling (MiB) |
+| `xla_jf_conv_{full_precision,increased_precision}` | bool | — | conv precision controls |
+| `xla_jf_auto_assign_mxu` | bool | — | auto MXU assignment |
+| `xla_jf_use_cost_based_memory_coloring` | bool | — | cost-based memory coloring |
+| `xla_jf_dump_{hlo_text,debug_info,llo_html}` | bool | — | JF dump variants |
+| `xla_jf_dump_isa_program_proto` | string | — | ISA-program-proto dump path |
+| `xla_jf_experimental_{cmem,vmem}_for_hlo_outputs` | bool | — | experimental output placement |
+| `xla_jf_spmd_threshold_for_windowed_einsum_mib` | float | — | windowed-einsum SPMD threshold |
 
 ---
 
@@ -217,21 +217,21 @@ The `jf` codename is the TPU XLA backend namespace (shared across generations). 
 
 The non-codename `xla_*` flags. Unlike the TPU families, these bind to `xla::DebugOptions` fields via `MakeDebugOptionsFlags @ 0x1e66ce80`. Subsystem split over all 138 `xla_*` (plain) name strings (sums to 138, not the 121 registered subset): misc 32, ICI 23, scheduler 21, SparseCore 17, memory 15, MSA 14, debug 10, others 6.
 
-| Flag | Type | Default | Purpose | Confidence |
-|---|---|---|---|---|
-| `xla_enable_megacore_hbm_spill` | bool | false (errstr remedy `=true`, untested) | enable megacore HBM spill | HIGH |
-| `xla_enable_cross_program_prefetch` | bool | — | cross-program prefetch gate | HIGH |
-| `xla_default_cross_program_prefetch_heuristic` | bool | — | CPP heuristic default | HIGH |
-| `xla_enable_async_{all_gather,all_reduce,collective_permute}` | bool | — | async collective gates | HIGH |
-| `xla_enable_async_reduce_scatter_fusion` | bool | — | async RS fusion | HIGH |
-| `xla_{all_gather,all_reduce,all_to_all}_latency_bound_threshold_in_bytes` | float | — | latency-bound thresholds | HIGH |
-| `xla_all_gather_combiner_threshold_count` | float | — | AG combiner threshold | HIGH |
-| `xla_enable_all_gather_{2d,3d}_emitter` | bool | — | dimensional AG emitters | HIGH |
-| `xla_hlo_scheduling_brkga_{computation_limit,generation_limit}` | int | — | HLO BRKGA scheduler tuning | HIGH |
-| `xla_latency_hiding_scheduler_rerun` | int | — | LHS rerun count | HIGH |
-| `xla_hbm_logging_buffer_size_bytes` | int | — | HBM logging buffer size | HIGH |
-| `xla_enable_post_msa_sync_slice_fusion` | bool | — | post-MSA sync-slice fusion | HIGH |
-| `xla_hlo_parse_memory_schedule_from_file` | string | — | external memory schedule path | HIGH |
+| Flag | Type | Default | Purpose |
+|---|---|---|---|
+| `xla_enable_megacore_hbm_spill` | bool | false (errstr remedy `=true`, untested) | enable megacore HBM spill |
+| `xla_enable_cross_program_prefetch` | bool | — | cross-program prefetch gate |
+| `xla_default_cross_program_prefetch_heuristic` | bool | — | CPP heuristic default |
+| `xla_enable_async_{all_gather,all_reduce,collective_permute}` | bool | — | async collective gates |
+| `xla_enable_async_reduce_scatter_fusion` | bool | — | async RS fusion |
+| `xla_{all_gather,all_reduce,all_to_all}_latency_bound_threshold_in_bytes` | float | — | latency-bound thresholds |
+| `xla_all_gather_combiner_threshold_count` | float | — | AG combiner threshold |
+| `xla_enable_all_gather_{2d,3d}_emitter` | bool | — | dimensional AG emitters |
+| `xla_hlo_scheduling_brkga_{computation_limit,generation_limit}` | int | — | HLO BRKGA scheduler tuning |
+| `xla_latency_hiding_scheduler_rerun` | int | — | LHS rerun count |
+| `xla_hbm_logging_buffer_size_bytes` | int | — | HBM logging buffer size |
+| `xla_enable_post_msa_sync_slice_fusion` | bool | — | post-MSA sync-slice fusion |
+| `xla_hlo_parse_memory_schedule_from_file` | string | — | external memory schedule path |
 
 > **GOTCHA —** the classic XLA dump/HLO knobs (`xla_dump_to`, `xla_hlo_profile`, `xla_dump_hlo_as_proto`, `xla_step_marker_location`, `xla_disable_hlo_passes`) appear as `xla.DebugOptions` *fields* and as `.rodata` strings, but they are **not** registered `absl::Flag` globals in this build. A direct cross-match of all 290 DebugOptions field names against the registered-flag set finds exactly **two** overlaps: `xla_tpu_detect_nan` (DebugOptions field 135) and `xla_tpu_detect_inf` (field 136). Every other dump/HLO knob is settable only through the PJRT `CompileOptions.debug_options` proto path, never through `LIBTPU_INIT_ARGS`. A reimplementer who exposes `--xla_dump_to=` as a libtpu command-line flag is wrong about this build.
 
@@ -243,36 +243,36 @@ The non-codename `xla_*` flags. Unlike the TPU families, these bind to `xla::Deb
 
 ### `xla_sc_` representative subset
 
-| Flag | Type | Purpose | Confidence |
-|---|---|---|---|
-| `xla_sc_enable_instruction_fusion` | bool | SC instruction fusion | HIGH |
-| `xla_sc_enable_latency_hiding_scheduler` | bool | SC LHS | HIGH |
-| `xla_sc_enable_scheduler_memory_pressure_tracking` | bool | SC mem-pressure tracking | HIGH |
-| `xla_sc_enable_tile_overlays` / `_scs_overlays` | bool | SC tile/SCS overlays | HIGH |
-| `xla_sc_enable_stack_eliding` | bool | SC stack eliding | HIGH |
-| `xla_sc_enable_hbm_optimization_mode` | bool | SC HBM optimization mode | HIGH |
-| `xla_sc_detect_nan` | bool | SC NaN detection | HIGH |
-| `xla_sc_assert_level` | enum | SC assert level | HIGH |
-| `xla_sc_compiler_backtrace_depth` | int | SC backtrace depth | HIGH |
-| `xla_sc_elementwise_shape_scaling_factor` | float | SC elementwise scaling | HIGH |
-| `xla_sc_async_wrapper_fusion_type` | enum | SC async-wrapper fusion type | HIGH |
-| `xla_sc_dump_{llvm_ir_to,mlir_to,bundles_to}` | string | SC IR/MLIR/bundle dump paths | HIGH |
-| `xla_sc_use_legacy_embeddings_loop_configs` | bool | legacy embedding loop configs | HIGH |
+| Flag | Type | Purpose |
+|---|---|---|
+| `xla_sc_enable_instruction_fusion` | bool | SC instruction fusion |
+| `xla_sc_enable_latency_hiding_scheduler` | bool | SC LHS |
+| `xla_sc_enable_scheduler_memory_pressure_tracking` | bool | SC mem-pressure tracking |
+| `xla_sc_enable_tile_overlays` / `_scs_overlays` | bool | SC tile/SCS overlays |
+| `xla_sc_enable_stack_eliding` | bool | SC stack eliding |
+| `xla_sc_enable_hbm_optimization_mode` | bool | SC HBM optimization mode |
+| `xla_sc_detect_nan` | bool | SC NaN detection |
+| `xla_sc_assert_level` | enum | SC assert level |
+| `xla_sc_compiler_backtrace_depth` | int | SC backtrace depth |
+| `xla_sc_elementwise_shape_scaling_factor` | float | SC elementwise scaling |
+| `xla_sc_async_wrapper_fusion_type` | enum | SC async-wrapper fusion type |
+| `xla_sc_dump_{llvm_ir_to,mlir_to,bundles_to}` | string | SC IR/MLIR/bundle dump paths |
+| `xla_sc_use_legacy_embeddings_loop_configs` | bool | legacy embedding loop configs |
 
 ### `barna_core_` representative subset
 
-| Flag | Type | Purpose | Confidence |
-|---|---|---|---|
-| `barna_core_max_hbm_fraction_for_embeddings` | int | HBM fraction cap for embeddings | HIGH |
-| `barna_core_hbm_savings_threshold_for_optimized_hbm_packing` | float | optimized-packing savings threshold | HIGH |
-| `barna_core_fraction_batches_to_process_locally` | bool | local-batch processing fraction | HIGH |
-| `barna_core_master_partitioner_thread_count` | int | partitioner thread count | HIGH |
-| `barna_core_hot_id_profiler_top_n_multiple` | float | hot-id profiler top-N multiple | HIGH |
-| `barna_core_enable_software_deduplication` | bool | software dedup | HIGH |
-| `barna_core_enable_software_row_sharding` | bool | software row sharding | HIGH |
-| `barna_core_file_operation_timeout` | int | file-op timeout | HIGH |
-| `barna_core_embedding_common_config_proto_path` | string | embedding-config proto path | HIGH |
-| `barna_core_partitioner_optimization_objective` | enum | partitioner objective | HIGH |
+| Flag | Type | Purpose |
+|---|---|---|
+| `barna_core_max_hbm_fraction_for_embeddings` | int | HBM fraction cap for embeddings |
+| `barna_core_hbm_savings_threshold_for_optimized_hbm_packing` | float | optimized-packing savings threshold |
+| `barna_core_fraction_batches_to_process_locally` | bool | local-batch processing fraction |
+| `barna_core_master_partitioner_thread_count` | int | partitioner thread count |
+| `barna_core_hot_id_profiler_top_n_multiple` | float | hot-id profiler top-N multiple |
+| `barna_core_enable_software_deduplication` | bool | software dedup |
+| `barna_core_enable_software_row_sharding` | bool | software row sharding |
+| `barna_core_file_operation_timeout` | int | file-op timeout |
+| `barna_core_embedding_common_config_proto_path` | string | embedding-config proto path |
+| `barna_core_partitioner_optimization_objective` | enum | partitioner objective |
 
 ---
 
@@ -282,29 +282,29 @@ The dedicated memory-space-assignment namespaces. `xla_msa_*` is the generic MSA
 
 ### `xla_msa_` — full enumeration (22)
 
-| Flag | Type | Purpose | Confidence |
-|---|---|---|---|
-| `xla_msa_enable` | bool | MSA master gate | HIGH |
-| `xla_msa_max_cross_program_prefetches` | int | CPP prefetch cap | HIGH |
-| `xla_msa_max_outstanding_evictions` | int | eviction cap | HIGH |
-| `xla_msa_max_outstanding_prefetches` | int | prefetch cap | HIGH |
-| `xla_msa_max_repacks` | int | repack cap | HIGH |
-| `xla_msa_max_retries` | int | retry cap | HIGH |
-| `xla_msa_{min,preferred}_overlap_to_async_copy_ratio` | float | overlap-to-async-copy ratios | HIGH |
-| `xla_msa_max_overlap_to_mem_size_async_copy_ratio` | float | overlap-to-mem-size ratio | HIGH |
-| `xla_msa_enable_cross_program_prefetch_freeing` | bool | CPP freeing | HIGH |
-| `xla_msa_enable_sync_copy_replacement` | bool | sync-copy replacement | HIGH |
-| `xla_msa_enable_sync_slice_replacement` | bool | sync-slice replacement | HIGH |
-| `xla_msa_enable_while_redundant_eviction_elimination` | bool | redundant-eviction elimination | HIGH |
-| `xla_msa_enable_window_prefetch` | bool | window prefetch | HIGH |
-| `xla_msa_cross_program_prefetch_permissive_mode` | bool | permissive CPP mode | HIGH |
-| `xla_msa_default_cross_program_prefetch_heuristic` | bool | CPP heuristic default | HIGH |
-| `xla_msa_expanded_scoped_alternate_memory_mode` | enum | expanded scoped-AM mode | HIGH |
-| `xla_msa_use_bundle_aware_cost_model` | bool | bundle-aware cost model | HIGH |
-| `xla_msa_cost_model_options` | string | cost-model config | HIGH |
-| `xla_msa_experimental_ior_algorithm` | enum | experimental IOR algorithm | HIGH |
-| `xla_msa_experimental_use_telamalloc` | bool | experimental telamalloc | HIGH |
-| `xla_msa_allocate_scoped_memory_at_same_offset` | bool | scoped-mem offset reuse | HIGH |
+| Flag | Type | Purpose |
+|---|---|---|
+| `xla_msa_enable` | bool | MSA master gate |
+| `xla_msa_max_cross_program_prefetches` | int | CPP prefetch cap |
+| `xla_msa_max_outstanding_evictions` | int | eviction cap |
+| `xla_msa_max_outstanding_prefetches` | int | prefetch cap |
+| `xla_msa_max_repacks` | int | repack cap |
+| `xla_msa_max_retries` | int | retry cap |
+| `xla_msa_{min,preferred}_overlap_to_async_copy_ratio` | float | overlap-to-async-copy ratios |
+| `xla_msa_max_overlap_to_mem_size_async_copy_ratio` | float | overlap-to-mem-size ratio |
+| `xla_msa_enable_cross_program_prefetch_freeing` | bool | CPP freeing |
+| `xla_msa_enable_sync_copy_replacement` | bool | sync-copy replacement |
+| `xla_msa_enable_sync_slice_replacement` | bool | sync-slice replacement |
+| `xla_msa_enable_while_redundant_eviction_elimination` | bool | redundant-eviction elimination |
+| `xla_msa_enable_window_prefetch` | bool | window prefetch |
+| `xla_msa_cross_program_prefetch_permissive_mode` | bool | permissive CPP mode |
+| `xla_msa_default_cross_program_prefetch_heuristic` | bool | CPP heuristic default |
+| `xla_msa_expanded_scoped_alternate_memory_mode` | enum | expanded scoped-AM mode |
+| `xla_msa_use_bundle_aware_cost_model` | bool | bundle-aware cost model |
+| `xla_msa_cost_model_options` | string | cost-model config |
+| `xla_msa_experimental_ior_algorithm` | enum | experimental IOR algorithm |
+| `xla_msa_experimental_use_telamalloc` | bool | experimental telamalloc |
+| `xla_msa_allocate_scoped_memory_at_same_offset` | bool | scoped-mem offset reuse |
 
 ### `xla_vf_` (16), `xla_gf_` (14), `xla_ior_` (4), `xla_pf_` (1)
 
@@ -318,22 +318,22 @@ The dedicated memory-space-assignment namespaces. `xla_msa_*` is the generic MSA
 
 Standalone runtime flags (not compiler knobs). Representative subset:
 
-| Flag | Type | Default | Purpose | Confidence |
-|---|---|---|---|---|
-| `tpu_use_tfrt` | bool | — (errstr deprecates `=false`) | use TFRT runtime path | HIGH |
-| `tpu_compilation_cache_disable_coordination_service` | bool | — | disable cache coordination | HIGH |
-| `tpu_persistent_compilation_cache_location` | string | — | persistent cache path | HIGH |
-| `tpu_persistent_compilation_cache_ttl_secs` | int | — | cache TTL | HIGH |
-| `tpu_local_compilation_cache_size_bytes` | int | — | local cache size | HIGH |
-| `tpu_program_cache_eviction_policy` | enum | — | cache eviction policy | HIGH |
-| `tpu_program_proto_compression` | bool | — | proto compression | HIGH |
-| `tpu_link_up_check_timeout` | int | — | link-up check timeout | HIGH |
-| `tpu_driver_callback_watchdog_timeout` | int | — | driver-callback watchdog | HIGH |
-| `tpu_core_dump_directory` | string | — | core-dump directory | HIGH |
-| `tpu_hbm_report_enable` | bool | — | HBM report toggle | HIGH |
-| `tpu_log_allocations_on_oom` | bool | — | log allocations on OOM | HIGH |
-| `tpu_hlo_breakpoint_debugger_server_port` | int | — | HLO breakpoint debugger port | HIGH |
-| `DANGEROUS_tpu_runtime_abi_verification_disabled` | bool | — | disable ABI verification (dangerous) | HIGH |
+| Flag | Type | Default | Purpose |
+|---|---|---|---|
+| `tpu_use_tfrt` | bool | — (errstr deprecates `=false`) | use TFRT runtime path |
+| `tpu_compilation_cache_disable_coordination_service` | bool | — | disable cache coordination |
+| `tpu_persistent_compilation_cache_location` | string | — | persistent cache path |
+| `tpu_persistent_compilation_cache_ttl_secs` | int | — | cache TTL |
+| `tpu_local_compilation_cache_size_bytes` | int | — | local cache size |
+| `tpu_program_cache_eviction_policy` | enum | — | cache eviction policy |
+| `tpu_program_proto_compression` | bool | — | proto compression |
+| `tpu_link_up_check_timeout` | int | — | link-up check timeout |
+| `tpu_driver_callback_watchdog_timeout` | int | — | driver-callback watchdog |
+| `tpu_core_dump_directory` | string | — | core-dump directory |
+| `tpu_hbm_report_enable` | bool | — | HBM report toggle |
+| `tpu_log_allocations_on_oom` | bool | — | log allocations on OOM |
+| `tpu_hlo_breakpoint_debugger_server_port` | int | — | HLO breakpoint debugger port |
+| `DANGEROUS_tpu_runtime_abi_verification_disabled` | bool | — | disable ABI verification (dangerous) |
 
 > **NOTE —** the lowercase `libtpu_*` identifiers (`libtpu_init_utils`, `libtpu_lockfile`, `libtpu_sdk_*`, `libtpu_telemetry_*`, `libtpu_version`, the `libtpu_lts_20260413_b_` build tag) are **not flags** — they are translation-unit / module name strings in `.rodata`. They are excluded from the 2107 catalog.
 
@@ -351,21 +351,21 @@ Top knobs: `megascale_num_slices` (int), `megascale_slice_id` (int), `megascale_
 
 proto3 carries no descriptor-level defaults, and the per-flag defaults live in `xla::DefaultDebugOptions()` and the `FLAGS_<name>` static initializers — both in `.text`, **not recoverable from strings**. What *does* survive is a set of help/error strings that spell a `--flag=value` clause. Critically, every such surviving clause is a *remedy* — the value the message tells the user to set when something goes wrong ("use `--flag=false` in the meantime", "set `=true` to enable") — so the spelled value is the **non-default**, and the implied actual default is its opposite. **13** flags carry such a `=value` remedy clause; the remaining flags' defaults leave no string at all.
 
-| Flag | Type | Remedy `=value` (errstr) | Implied default | Confidence |
-|---|---|---|---|---|
-| `xla_tpu_accumulate_into_mrb` | bool | `=false` ("in the meantime") | true | HIGH |
-| `xla_tpu_rwb_fusion` | bool | `=false` (reverted-on-fallback) | true | HIGH |
-| `xla_tpu_dot_dot_fusion` | bool | `=false` (if failure persists) | true | HIGH |
-| `xla_tpu_nested_dot_fusion` | bool | `=true` ("did you forget to set") | false | HIGH |
-| `xla_tpu_scheduling_annotation_deannotate_unsupported_groups` | bool | `=true` (to deannotate gaps) | false | HIGH |
-| `xla_tpu_enable_tile_log_recorder` | bool | `=true` (to enable logging) | false | HIGH |
-| `xla_tpu_enable_sc_log_recorder` | bool | `=true` (to enable logging) | false | HIGH |
-| `xla_tpu_enable_sparse_core_reduce_scatter_v2` | bool | `=true` (SC ND RS needs) | false | HIGH |
-| `xla_tpu_impure_oom_fast_exit_threshold` | int | `=-1` (more detailed logging) | not string-recoverable | HIGH |
-| `xla_tpu_embedding_table_oblongness_threshold` | int | `=1` (avoid tiled layout) | not string-recoverable | HIGH |
-| `xla_enable_megacore_hbm_spill` | bool | `=true` (to activate, untested) | false | HIGH |
-| `xla_jf_debug_level` | int | `=2` (enable stack traces) | not string-recoverable | HIGH |
-| `megascale_use_numa_aware_threadpool` | bool | `=false` (to disable) | true | HIGH |
+| Flag | Type | Remedy `=value` (errstr) | Implied default |
+|---|---|---|---|
+| `xla_tpu_accumulate_into_mrb` | bool | `=false` ("in the meantime") | true |
+| `xla_tpu_rwb_fusion` | bool | `=false` (reverted-on-fallback) | true |
+| `xla_tpu_dot_dot_fusion` | bool | `=false` (if failure persists) | true |
+| `xla_tpu_nested_dot_fusion` | bool | `=true` ("did you forget to set") | false |
+| `xla_tpu_scheduling_annotation_deannotate_unsupported_groups` | bool | `=true` (to deannotate gaps) | false |
+| `xla_tpu_enable_tile_log_recorder` | bool | `=true` (to enable logging) | false |
+| `xla_tpu_enable_sc_log_recorder` | bool | `=true` (to enable logging) | false |
+| `xla_tpu_enable_sparse_core_reduce_scatter_v2` | bool | `=true` (SC ND RS needs) | false |
+| `xla_tpu_impure_oom_fast_exit_threshold` | int | `=-1` (more detailed logging) | not string-recoverable |
+| `xla_tpu_embedding_table_oblongness_threshold` | int | `=1` (avoid tiled layout) | not string-recoverable |
+| `xla_enable_megacore_hbm_spill` | bool | `=true` (to activate, untested) | false |
+| `xla_jf_debug_level` | int | `=2` (enable stack traces) | not string-recoverable |
+| `megascale_use_numa_aware_threadpool` | bool | `=false` (to disable) | true |
 
 > **GOTCHA —** none of these are byte-confirmed *defaults*. Each `=value` is the value the message tells the user to set (the remedy), which is the **non-default**; the "Implied default" column is the inferred opposite for the booleans, and is genuinely unrecoverable for the int-valued knobs (where the remedy is a specific tuning value, not a sentinel-vs-default flip). Do not read the remedy value as the default — it is the opposite. The authoritative defaults for every flag require disassembling `DefaultDebugOptions()` and the `FLAGS_*` ctors in `.text`. Four further flags sometimes cited with byte-defaults (`xla_tpu_allow_deeply_nested_fusion_numerical_diff`, `xla_tpu_enable_offloading_{gather,scatter}_to_sparsecore`, `xla_tpu_fusion_debugger_instrument_inputs`) carry **no** `=value` string at all and have no string-derivable default.
 

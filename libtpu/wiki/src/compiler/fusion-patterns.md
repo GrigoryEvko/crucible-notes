@@ -141,21 +141,21 @@ function ShouldFuseImpl(consumer, operand_index):          // 0x13086660
 
 ### Function Map
 
-| Function | Addr | Role | Confidence |
-|---|---|---|---|
-| `RunImpl` | `0x13080dc0` | Pass entry; runs pre-passes then base `Run` | CONFIRMED |
-| `ShouldFuse` | `0x13089b20` | Public hook; emits `"Not fusing MOF"` / boundary strings | CONFIRMED |
-| `ShouldFuseImpl` | `0x13086660` | The predicate cascade (~1779 lines) | CONFIRMED |
-| `ShouldFuseIntoMultiOutput` | `0x13089ce0` | MOF variant of the decision | CONFIRMED |
-| `FusionFitsInVmem` | `0x13084b40` | VMEM capacity gate | CONFIRMED |
-| `NonBroadcastOperandsSize` | `0x13084d80` | Operand-size measure called inside `ShouldFuseImpl` (line ~895) | CONFIRMED |
-| `ProducerCanBeLoopFused` | `0x1307f800` | kLoop-fusion legality | HIGH |
-| `CheckReduceBroadcastIntoReduceWindowFusionRequirements` | `0x1307ee60` | RWB window legality | HIGH |
-| `RwbPreliminaryCandidateCheck` | `0x13085700` | RWB pre-filter | HIGH |
-| `NumProducerDuplicationsIfFused` | `0x130896a0` | Duplication-cost count | HIGH |
-| `$_29` lambda | `0x130899c0` | Fusion-boundary structural predicate | HIGH |
-| `ChooseKind` | `0x13084a60` | Picks `kInput`/`kOutput`/`kLoop`/`kCustom` | CONFIRMED |
-| `GetFusionQueue` | `0x13083c40` | Returns `TpuPriorityFusionQueue` | CONFIRMED |
+| Function | Addr | Role |
+|---|---|---|
+| `RunImpl` | `0x13080dc0` | Pass entry; runs pre-passes then base `Run` |
+| `ShouldFuse` | `0x13089b20` | Public hook; emits `"Not fusing MOF"` / boundary strings |
+| `ShouldFuseImpl` | `0x13086660` | The predicate cascade (~1779 lines) |
+| `ShouldFuseIntoMultiOutput` | `0x13089ce0` | MOF variant of the decision |
+| `FusionFitsInVmem` | `0x13084b40` | VMEM capacity gate |
+| `NonBroadcastOperandsSize` | `0x13084d80` | Operand-size measure called inside `ShouldFuseImpl` (line ~895) |
+| `ProducerCanBeLoopFused` | `0x1307f800` | kLoop-fusion legality |
+| `CheckReduceBroadcastIntoReduceWindowFusionRequirements` | `0x1307ee60` | RWB window legality |
+| `RwbPreliminaryCandidateCheck` | `0x13085700` | RWB pre-filter |
+| `NumProducerDuplicationsIfFused` | `0x130896a0` | Duplication-cost count |
+| `$_29` lambda | `0x130899c0` | Fusion-boundary structural predicate |
+| `ChooseKind` | `0x13084a60` | Picks `kInput`/`kOutput`/`kLoop`/`kCustom` |
+| `GetFusionQueue` | `0x13083c40` | Returns `TpuPriorityFusionQueue` |
 
 ### Related Knobs
 
@@ -178,25 +178,25 @@ Some checks are unconditional: even a candidate the priority queue ranks first i
 
 ### Reject Predicates
 
-| Veto | Source method | Decision string (`.rodata`) | Confidence |
-|---|---|---|---|
-| VMEM capacity (whole fusion) | `FusionFitsInVmem` `0x13084b40` | `"No fusing: result is a fusion which will use too much VMEM for its operands."` | CONFIRMED |
-| Nested-dot VMEM | `ShouldFuseImpl` + `xla_tpu_nested_dot_fusion_vmem_fraction` | `"Nested dot fusion would exceed vmem capacity"` | HIGH |
-| Custom-call VMEM | `DoExtendedAnalysisForCustomCallConsumerFusion` `0x13082680` | `"Custom Fusion would exceed vmem capacity"` | HIGH |
-| Producer duplicated + expensive | `ShouldFuseImpl` + `NumProducerDuplicationsIfFused` | `"No fusing: producer is duplicated and expensive."` | CONFIRMED |
-| RNG with multiple users | `ShouldFuseImpl` | `"no fusing: rng is used by multiple users"` | CONFIRMED |
-| Elementwise not output-fusable | `ShouldFuseImpl` | `"No fusing: Should not fuse with elementwise"` | CONFIRMED |
-| Slice-like kept unfused (flag) | `ShouldFuseImpl` | `"No fusing: slice-like instruction kept unfused due to flag ..."` | CONFIRMED |
-| Non-trivial input into conv | `ShouldFuseImpl` | `"Refusing to fuse a non-trivial inputs into a convolution-like. ..."` | CONFIRMED |
-| Bitcast-reduce window not found | `CheckReduceBroadcastIntoReduceWindowFusionRequirements` | `"Cannot find window to lower for bitcast reduce fusion: ..."` | CONFIRMED |
-| Dim-collapsing bitcast outside must_fuse | `ShouldFuseImpl` | `"Dim collapsing bitcast is fused only in must_fuse mode."` | CONFIRMED |
-| Effective scalar w/o fusible DUS user | `ShouldFuseImpl` | `"... produces an effective scalar and does not have a fusible DUS user ..."` | CONFIRMED |
-| Output fusion globally disabled | `ShouldFuseImpl` | `"No fusing; output fusion is disabled."` | CONFIRMED |
-| MOF creates a cycle | `xla::MultiOutputFusion::Perform` `0x14bdb5a0` | `"multi-output fusion creates a cycle"` | CONFIRMED |
-| Too many result operands | `TpuMultiOutputFusion::TooManyResultOperands` `0x110ddec0` | (no string — silent cost pre-check) | CONFIRMED |
-| Too much reduce-output MOF | `TpuMultiOutputFusion::TooMuchReduceOutputMultiOutput` `0x110e1060` | `"TooMuchReduceOutputMultiOutput: "` | CONFIRMED |
-| HBM pressure high if fused | `TpuMultiOutputFusion::IsHBMPressureHighIfFused` `0x110de640` | (no string) | CONFIRMED |
-| Already has `must_fuse` (CCF) | `TpuUserGuidedFusionVerifier::VerifyMustFuseCalls` | `" already has must-fuse attribute, skipping ..."` | HIGH |
+| Veto | Source method | Decision string (`.rodata`) |
+|---|---|---|
+| VMEM capacity (whole fusion) | `FusionFitsInVmem` `0x13084b40` | `"No fusing: result is a fusion which will use too much VMEM for its operands."` |
+| Nested-dot VMEM | `ShouldFuseImpl` + `xla_tpu_nested_dot_fusion_vmem_fraction` | `"Nested dot fusion would exceed vmem capacity"` |
+| Custom-call VMEM | `DoExtendedAnalysisForCustomCallConsumerFusion` `0x13082680` | `"Custom Fusion would exceed vmem capacity"` |
+| Producer duplicated + expensive | `ShouldFuseImpl` + `NumProducerDuplicationsIfFused` | `"No fusing: producer is duplicated and expensive."` |
+| RNG with multiple users | `ShouldFuseImpl` | `"no fusing: rng is used by multiple users"` |
+| Elementwise not output-fusable | `ShouldFuseImpl` | `"No fusing: Should not fuse with elementwise"` |
+| Slice-like kept unfused (flag) | `ShouldFuseImpl` | `"No fusing: slice-like instruction kept unfused due to flag ..."` |
+| Non-trivial input into conv | `ShouldFuseImpl` | `"Refusing to fuse a non-trivial inputs into a convolution-like. ..."` |
+| Bitcast-reduce window not found | `CheckReduceBroadcastIntoReduceWindowFusionRequirements` | `"Cannot find window to lower for bitcast reduce fusion: ..."` |
+| Dim-collapsing bitcast outside must_fuse | `ShouldFuseImpl` | `"Dim collapsing bitcast is fused only in must_fuse mode."` |
+| Effective scalar w/o fusible DUS user | `ShouldFuseImpl` | `"... produces an effective scalar and does not have a fusible DUS user ..."` |
+| Output fusion globally disabled | `ShouldFuseImpl` | `"No fusing; output fusion is disabled."` |
+| MOF creates a cycle | `xla::MultiOutputFusion::Perform` `0x14bdb5a0` | `"multi-output fusion creates a cycle"` |
+| Too many result operands | `TpuMultiOutputFusion::TooManyResultOperands` `0x110ddec0` | (no string — silent cost pre-check) |
+| Too much reduce-output MOF | `TpuMultiOutputFusion::TooMuchReduceOutputMultiOutput` `0x110e1060` | `"TooMuchReduceOutputMultiOutput: "` |
+| HBM pressure high if fused | `TpuMultiOutputFusion::IsHBMPressureHighIfFused` `0x110de640` | (no string) |
+| Already has `must_fuse` (CCF) | `TpuUserGuidedFusionVerifier::VerifyMustFuseCalls` | `" already has must-fuse attribute, skipping ..."` |
 
 > **GOTCHA — VMEM is the gate that surprises a port.** The TPU has no general-purpose register file the way a GPU SM does; fusion materializes the whole fused region into VMEM scratch, and the union of *operand windows* (not just the output) must fit. `FusionFitsInVmem` (`0x13084b40`) sums the operand-window bytes directly — `Target::TileBytes` × tile count, plus `fusion_util::MinFusedOperandBytes`, `GetUnalignedDUSMinimumVmemOperandBytes` per DUS operand, and `ReduceEmitter::EvaluateReduceOutput` for reduce outputs — and rejects if that total (scaled against `DefaultScopedVmemBytes`, the `xla_jf_fusion_max_vmem_mib` budget) overflows; it also hard-rejects when the combined operand count exceeds `0x100` (256). A naive port that only checks output size will accept fusions that overflow VMEM and miscompile. The scavenging flags (`xla_tpu_scavenge_vmem_for_fusions`) let the queue *retry* a rejected fusion after other fusions free VMEM — so VMEM rejection is not necessarily final within one pass. The cycle-budget mechanics of that retry are owned by [fusion-cost-model.md](fusion-cost-model.md).
 
@@ -214,21 +214,21 @@ The dominant TPU fusion shape is a convolution (or a matmul that `DotCanonicaliz
 
 ### Shape Catalog
 
-| Pattern | HLO match expression | Recognizing method | Target lowering | Confidence |
-|---|---|---|---|---|
-| **Conv+Bias** | `Add(Conv(act,kernel), Broadcast(bias))` | `TpuInstructionFusion` output-fusion | MXU result + `vadd.f32`/`vadd.bf16` epilogue, same chunk | HIGH |
-| **Conv+Bias+ReLU** | `Maximum(Add(Conv(a,w),Broadcast(b)),Broadcast(0))` | output-fusion → `TpuLoopFusionEnhancer` | as above + `vmax.f32(_,0)` / per-gen `Relux` | HIGH |
-| **Conv+Bias+Sigmoid** | `Logistic(Add(Conv(a,w),Broadcast(b)))` | output-fusion (elementwise tail) | as above + `ShiftedSigmoid` ACT op (per-gen) | HIGH |
-| **Conv+Bias+Tanh** | `Tanh(Add(Conv(a,w),Broadcast(b)))` | output-fusion (elementwise tail) | as above + `vtanh` ACT op | HIGH |
-| **Conv+Bias+GELU** | `Mul(Add(Conv,b), Mul(0.5, Add(1, Erf(...))))` | output-fusion + `ElementwiseOutputFuser` | as above + `verf` + add/mul chain (ACT) | MEDIUM |
-| **Conv+Activation (no bias)** | `<act>(Conv(a,w))`, `<act>∈{Relu,Tanh,Sigmoid,Exp,Erf}` | output-fusion (no-bias variant) | as Conv+Bias+act, minus the bias add | HIGH |
-| **MatMul+Bias+ReLU (dense)** | post-`DotCanonicalizer`: identical to Conv+Bias+ReLU | `TpuInstructionFusion` | identical conv lowering | HIGH |
-| **MatMul→LayerNorm tail** | `Subtract(x,ReduceMean(x)); Mul(...); Rsqrt(ReduceMean(Square(...)))` | `TpuInstructionFusion` + `TpuLoopFusionEnhancer` | PE matmul + ACT (`vrsqrt`,`vmul`,`vadd`) bundle | MEDIUM |
-| **MatMul→RMSNorm tail** | `Mul(x, Rsqrt(ReduceMean(Square(x)) + eps))` | `TpuInstructionFusion` | ACT: `vrsqrt.f32` + `vmul.f32` | MEDIUM |
-| **AttentionMatMul (Q·Kᵀ)** | `Dot(Q,K)` (softmax in a separate fusion) | `TpuInstructionFusion` (dot-as-conv) | standard MXU lowering | HIGH |
-| **Attention + Softmax** | `Dot` then `Exp/Sum/Div` chain | gated by `xla_tpu_enable_multi_level_nested_dot_fusion` | one nested `kFusion` if enabled, else two | MEDIUM |
-| **DotDot (A·B·C)** | `Dot(Dot(A,B),C)` → two Convs | gated by `xla_tpu_dot_dot_fusion` | one nested super-fusion; needs VMEM for B+C | MEDIUM |
-| **RWB (Reduce-Window-Broadcast)** | `Broadcast(ReduceWindow(input,window))` matched as conv | `RwbPreliminaryCandidateCheck` + `CheckReduceBroadcastIntoReduceWindowFusionRequirements`, gated by `xla_tpu_rwb_fusion` | lowered as Conv with broadcast output-fusion | HIGH |
+| Pattern | HLO match expression | Recognizing method | Target lowering |
+|---|---|---|---|
+| **Conv+Bias** | `Add(Conv(act,kernel), Broadcast(bias))` | `TpuInstructionFusion` output-fusion | MXU result + `vadd.f32`/`vadd.bf16` epilogue, same chunk |
+| **Conv+Bias+ReLU** | `Maximum(Add(Conv(a,w),Broadcast(b)),Broadcast(0))` | output-fusion → `TpuLoopFusionEnhancer` | as above + `vmax.f32(_,0)` / per-gen `Relux` |
+| **Conv+Bias+Sigmoid** | `Logistic(Add(Conv(a,w),Broadcast(b)))` | output-fusion (elementwise tail) | as above + `ShiftedSigmoid` ACT op (per-gen) |
+| **Conv+Bias+Tanh** | `Tanh(Add(Conv(a,w),Broadcast(b)))` | output-fusion (elementwise tail) | as above + `vtanh` ACT op |
+| **Conv+Bias+GELU** | `Mul(Add(Conv,b), Mul(0.5, Add(1, Erf(...))))` | output-fusion + `ElementwiseOutputFuser` | as above + `verf` + add/mul chain (ACT) |
+| **Conv+Activation (no bias)** | `<act>(Conv(a,w))`, `<act>∈{Relu,Tanh,Sigmoid,Exp,Erf}` | output-fusion (no-bias variant) | as Conv+Bias+act, minus the bias add |
+| **MatMul+Bias+ReLU (dense)** | post-`DotCanonicalizer`: identical to Conv+Bias+ReLU | `TpuInstructionFusion` | identical conv lowering |
+| **MatMul→LayerNorm tail** | `Subtract(x,ReduceMean(x)); Mul(...); Rsqrt(ReduceMean(Square(...)))` | `TpuInstructionFusion` + `TpuLoopFusionEnhancer` | PE matmul + ACT (`vrsqrt`,`vmul`,`vadd`) bundle |
+| **MatMul→RMSNorm tail** | `Mul(x, Rsqrt(ReduceMean(Square(x)) + eps))` | `TpuInstructionFusion` | ACT: `vrsqrt.f32` + `vmul.f32` |
+| **AttentionMatMul (Q·Kᵀ)** | `Dot(Q,K)` (softmax in a separate fusion) | `TpuInstructionFusion` (dot-as-conv) | standard MXU lowering |
+| **Attention + Softmax** | `Dot` then `Exp/Sum/Div` chain | gated by `xla_tpu_enable_multi_level_nested_dot_fusion` | one nested `kFusion` if enabled, else two |
+| **DotDot (A·B·C)** | `Dot(Dot(A,B),C)` → two Convs | gated by `xla_tpu_dot_dot_fusion` | one nested super-fusion; needs VMEM for B+C |
+| **RWB (Reduce-Window-Broadcast)** | `Broadcast(ReduceWindow(input,window))` matched as conv | `RwbPreliminaryCandidateCheck` + `CheckReduceBroadcastIntoReduceWindowFusionRequirements`, gated by `xla_tpu_rwb_fusion` | lowered as Conv with broadcast output-fusion |
 
 > **QUIRK — every matmul fusion is a convolution fusion.** Because `DotCanonicalizer` runs *before* the main fusion pass, `TpuInstructionFusion` never sees a `kDot`. A dense layer (`MatMul+Bias+ReLU`) and a conv layer (`Conv+Bias+ReLU`) are the *same* fusion shape by the time this pass runs, and they share one lowering path. A reimplementation that branches on `kDot` vs `kConvolution` inside the fuser will find the `kDot` branch is dead — the canonicalizer already collapsed it. Match on `kConvolution` only.
 
@@ -236,12 +236,12 @@ The dominant TPU fusion shape is a convolution (or a matmul that `DotCanonicaliz
 
 Four `RunImpl` pre-passes reshape the graph so more candidates become matchable, before any priority fusion runs:
 
-| Pre-pass | Addr | What it rewrites | Confidence |
-|---|---|---|---|
-| `CreateFusionsAroundConvolutions` | `0x1307c2c0` | Wraps each bare `Conv` in a `kCustom` fusion so its operand windows are explicit | HIGH |
-| `BitcastConvOperands` | `0x1307c960` | Folds `Bitcast(a)`/`Bitcast(w)` into the conv's window-config (avoids materializing the reshape) | HIGH |
-| `PrefuseReduceBroadcastReuse` | `0x1307d9a0` | Keeps a `Reduce` result in the MXU latch so a downstream `Broadcast` amortizes it | HIGH |
-| `MoveReduceBroadcastTogether` | `0x1307f9c0` | Reorders so a `Reduce` and its distant `Broadcast` become adjacent and fusable | HIGH |
+| Pre-pass | Addr | What it rewrites |
+|---|---|---|
+| `CreateFusionsAroundConvolutions` | `0x1307c2c0` | Wraps each bare `Conv` in a `kCustom` fusion so its operand windows are explicit |
+| `BitcastConvOperands` | `0x1307c960` | Folds `Bitcast(a)`/`Bitcast(w)` into the conv's window-config (avoids materializing the reshape) |
+| `PrefuseReduceBroadcastReuse` | `0x1307d9a0` | Keeps a `Reduce` result in the MXU latch so a downstream `Broadcast` amortizes it |
+| `MoveReduceBroadcastTogether` | `0x1307f9c0` | Reorders so a `Reduce` and its distant `Broadcast` become adjacent and fusable |
 
 ---
 
@@ -251,10 +251,10 @@ Four `RunImpl` pre-passes reshape the graph so more candidates become matchable,
 
 `TpuMultiOutputFusion : public xla::MultiOutputFusion` (`RunImpl` inherited at `0x14bdaa80`) fuses the fan-out direction: a producer feeding several consumers, or several producers tied into one tuple root. It exposes two drivers — `DoProducerConsumerMultiOutputFusion` (`0x110e43e0`) and `DoAdvancedMultiOutputFusion` (`0x110e3300`).
 
-| Pattern | HLO shape | Driver | Lowering | Confidence |
-|---|---|---|---|---|
-| **MultiOutput conv** | one `Conv` → {ReLU, ReLU_grad} | `DoProducerConsumerMultiOutputFusion` | one `kFusion` with tuple root; PE+ACT bundle reused | HIGH |
-| **MultiOutput reduce** | two `Reduce` ops sharing an operand | `DoAdvancedMultiOutputFusion` | one `kFusion`, PE-side + ACT-side reduce in one iteration | HIGH |
+| Pattern | HLO shape | Driver | Lowering |
+|---|---|---|---|
+| **MultiOutput conv** | one `Conv` → {ReLU, ReLU_grad} | `DoProducerConsumerMultiOutputFusion` | one `kFusion` with tuple root; PE+ACT bundle reused |
+| **MultiOutput reduce** | two `Reduce` ops sharing an operand | `DoAdvancedMultiOutputFusion` | one `kFusion`, PE-side + ACT-side reduce in one iteration |
 
 The MOF legality chain is `ShapesCompatibleForFusion` (`0x110dcca0`) → `IsFusible` (`0x110dce20`) → `LegalToFuse` (`0x110ddc20`, includes the cycle check) → `GetProfit` (`0x110dd0a0`). The `TooMany*`/`TooMuch*`/`IsHBMPressureHighIfFused` predicates (see [hard gates](#reject-predicates)) run inside this chain.
 
@@ -262,18 +262,18 @@ The MOF legality chain is `ShapesCompatibleForFusion` (`0x110dcca0`) → `IsFusi
 
 These are recognized by dedicated passes that run in the "Pre main fusion" phase (B2) *before* `TpuInstructionFusion`, or are gated sub-modes of it.
 
-| Pattern | HLO shape | Recognizing pass / gate | Confidence |
-|---|---|---|---|
-| **Async collective** | `AllGatherStart → … → AllGatherDone` | `AsyncCollectiveFusion::RunImpl` `0x109b4ec0` | HIGH |
-| **AllReduce+Scatter** | `AllReduce(x) → Slice(x, my_shard)` | `TpuAllReduceScatterFusion::RunImpl` `0x127acd40` → internal `FusionOp::kAllReduceScatter` (emitted by `AsyncPincerFusionEmitter::EmitAllReduceScatterFusion`) | HIGH |
-| **Mosaic kernel** | `CustomCall(target="tpu_custom_call")` + neighbours | `MosaicFusion::RunImpl` `0x10f12500` (driven by `HloPassFix<MosaicFusion>`) | HIGH |
-| **Megacore conv+AR** | `Conv` paired with `AllReduce` across cores | `MegacoreFusion::RunImpl` `0x110d8f00` | HIGH |
-| **Copy (data-format)** | layout-only `Copy` ≥ `xla_tpu_copy_fusion_threshold` bytes | `TpuInstructionFusion` + `xla_tpu_enable_copy_fusion` | HIGH |
-| **Copy-permute-minor** | `Copy` swapping the 2nd-minor dim | + `xla_tpu_enable_copy_permute_minor_fusion` | HIGH |
-| **Pad/Unpad copy** | `Copy(Pad(x))` with ratio < `xla_tpu_copy_fusion_pad_unpad_ratio` | `TpuInstructionFusion` | MEDIUM |
-| **Bf16-packed matmul** | two bf16 ops sharing an operand | `FusedSpatialMajorConvolution::EmitPackedBf16Chunk` `0x130e3120` | MEDIUM |
-| **Int8 (x8)-packed matmul** | two int8 matmuls sharing an operand | conv lowering-strategy `ls_.generate_*_x8_packed_*` flags (e.g. `generate_x8_packed_vmatmuls`) | MEDIUM |
-| **DS_CC_DUS** | `DynamicSlice → CustomCall → DynamicUpdateSlice` | `TpuInstructionFusion-AdvancedDS_CC_DUS` (log string) | MEDIUM |
+| Pattern | HLO shape | Recognizing pass / gate |
+|---|---|---|
+| **Async collective** | `AllGatherStart → … → AllGatherDone` | `AsyncCollectiveFusion::RunImpl` `0x109b4ec0` |
+| **AllReduce+Scatter** | `AllReduce(x) → Slice(x, my_shard)` | `TpuAllReduceScatterFusion::RunImpl` `0x127acd40` → internal `FusionOp::kAllReduceScatter` (emitted by `AsyncPincerFusionEmitter::EmitAllReduceScatterFusion`) |
+| **Mosaic kernel** | `CustomCall(target="tpu_custom_call")` + neighbours | `MosaicFusion::RunImpl` `0x10f12500` (driven by `HloPassFix<MosaicFusion>`) |
+| **Megacore conv+AR** | `Conv` paired with `AllReduce` across cores | `MegacoreFusion::RunImpl` `0x110d8f00` |
+| **Copy (data-format)** | layout-only `Copy` ≥ `xla_tpu_copy_fusion_threshold` bytes | `TpuInstructionFusion` + `xla_tpu_enable_copy_fusion` |
+| **Copy-permute-minor** | `Copy` swapping the 2nd-minor dim | + `xla_tpu_enable_copy_permute_minor_fusion` |
+| **Pad/Unpad copy** | `Copy(Pad(x))` with ratio < `xla_tpu_copy_fusion_pad_unpad_ratio` | `TpuInstructionFusion` |
+| **Bf16-packed matmul** | two bf16 ops sharing an operand | `FusedSpatialMajorConvolution::EmitPackedBf16Chunk` `0x130e3120` |
+| **Int8 (x8)-packed matmul** | two int8 matmuls sharing an operand | conv lowering-strategy `ls_.generate_*_x8_packed_*` flags (e.g. `generate_x8_packed_vmatmuls`) |
+| **DS_CC_DUS** | `DynamicSlice → CustomCall → DynamicUpdateSlice` | `TpuInstructionFusion-AdvancedDS_CC_DUS` (log string) |
 
 > **NOTE — collective and Mosaic shapes are recognized before the main pass.** `AsyncCollectiveFusion`, `TpuAllReduceScatterFusion`, and `MosaicFusion` run in the "Pre main fusion" pipeline (Phase B2), so by the time `TpuInstructionFusion` runs in "Main fusion" (B3) these are already `kFusion`/`tpu_custom_call` nodes it treats as opaque. Per-pass placement is owned by [compile-phases.md](compile-phases.md); this page owns only the match shapes.
 
@@ -310,20 +310,20 @@ arith::NegFOp  math::AbsFOp  math::AbsIOp  math::ExpOp
 
 ### Fuser Map
 
-| Fuser | Addr (`GetFusionOp` / `CanFuse,Fuse`) | HLO ops handled | Confidence |
-|---|---|---|---|
-| `BinaryOpFuser` | `0x10f1be60` | Add/Sub/Mul/Div/Max/Min (F and I variants) | HIGH |
-| `UnaryOpFuser` | `0x10f2bf00` | `math::ExpOp`, `AbsFOp`, `AbsIOp`, `arith::NegFOp` | HIGH |
-| `TernaryOpFuser` | `0x10f2b7a0` | Select / Clamp (FMA-style ternary) | MEDIUM |
-| `CompareFuser` | `0x10f1e760` | `arith::CmpFOp`, `arith::CmpIOp` (all predicates) | HIGH |
-| `ConvertFuser` | `0x10f1f100` | ExtF/TruncF/SIToFP/UIToFP/FPToSI/FPToUI (~13 cases) | HIGH |
-| `BroadcastFuser` | `0x10f1c5a0` | `kBroadcast` → `vector::BroadcastOp` / `llo.vbcast_sublane_chunk` | HIGH |
-| `ReduceFuser` | `0x10f20120` | `kReduce` → `vector::MultiDimReductionOp` → `llo.vmax.{x,s}lane.*` | HIGH |
-| `ReshapeFuser` | `0x10f22680` | `kReshape` → `vector::ShapeCastOp` / `tensor::CollapseShapeOp` | HIGH |
-| `ConvertOutputFuser` | `0x10f2c480` / `0x10f2c4a0` | output-side `kConvert` (f32 → bf16 / f8 downcast) | CONFIRMED |
-| `ElementwiseOutputFuser` | `0x10f36aa0` / `0x10f36e20` | the 16-op carrier set above (via `OutputFusionOp::Create`) | CONFIRMED |
-| `ReduceOutputFuser` | `0x10f37920` / `0x10f37940` | `kReduce` consumed by the fusion root | CONFIRMED |
-| `CustomCallOutputFuser` | `0x10f2dac0` / `0x10f2dae0` | `kCustomCall` with target in `xla_tpu_nested_dot_fusion_supported_custom_ops` | HIGH |
+| Fuser | Addr (`GetFusionOp` / `CanFuse,Fuse`) | HLO ops handled |
+|---|---|---|
+| `BinaryOpFuser` | `0x10f1be60` | Add/Sub/Mul/Div/Max/Min (F and I variants) |
+| `UnaryOpFuser` | `0x10f2bf00` | `math::ExpOp`, `AbsFOp`, `AbsIOp`, `arith::NegFOp` |
+| `TernaryOpFuser` | `0x10f2b7a0` | Select / Clamp (FMA-style ternary) |
+| `CompareFuser` | `0x10f1e760` | `arith::CmpFOp`, `arith::CmpIOp` (all predicates) |
+| `ConvertFuser` | `0x10f1f100` | ExtF/TruncF/SIToFP/UIToFP/FPToSI/FPToUI (~13 cases) |
+| `BroadcastFuser` | `0x10f1c5a0` | `kBroadcast` → `vector::BroadcastOp` / `llo.vbcast_sublane_chunk` |
+| `ReduceFuser` | `0x10f20120` | `kReduce` → `vector::MultiDimReductionOp` → `llo.vmax.{x,s}lane.*` |
+| `ReshapeFuser` | `0x10f22680` | `kReshape` → `vector::ShapeCastOp` / `tensor::CollapseShapeOp` |
+| `ConvertOutputFuser` | `0x10f2c480` / `0x10f2c4a0` | output-side `kConvert` (f32 → bf16 / f8 downcast) |
+| `ElementwiseOutputFuser` | `0x10f36aa0` / `0x10f36e20` | the 16-op carrier set above (via `OutputFusionOp::Create`) |
+| `ReduceOutputFuser` | `0x10f37920` / `0x10f37940` | `kReduce` consumed by the fusion root |
+| `CustomCallOutputFuser` | `0x10f2dac0` / `0x10f2dae0` | `kCustomCall` with target in `xla_tpu_nested_dot_fusion_supported_custom_ops` |
 
 ### Why some activations never fuse
 

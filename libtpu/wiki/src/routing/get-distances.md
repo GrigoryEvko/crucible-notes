@@ -107,14 +107,14 @@ The result is a *set of equal-minimum-distance routes*, not a single distance. `
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `TwistedTorusTopology::GetDistances` | `0x20b420e0` | Candidate-set generator (vtable `+0xc0`) | CERTAIN |
-| `TwistedTorusTopology::GetDistanceFromOrigin` | `0x20b42980` | Per-axis toroidal-with-twist distance | CERTAIN |
-| `Coordinates::ManhattanNorm` | `0x20c0ba00` | `Σ\|coord\|` (vpabsd + horizontal add) | CERTAIN |
-| `Coordinates::operator<` | `0x20c0ba40` | Lexicographic order for the sorted set | CERTAIN |
-| `Coordinates::Subtract` | `0x20c0bfc0` | Plain mesh delta before normalization | CERTAIN |
-| `Topology::CheckBoundary` | `0x20bf5800` | In-bounds guard on src and dst | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `TwistedTorusTopology::GetDistances` | `0x20b420e0` | Candidate-set generator (vtable `+0xc0`) |
+| `TwistedTorusTopology::GetDistanceFromOrigin` | `0x20b42980` | Per-axis toroidal-with-twist distance |
+| `Coordinates::ManhattanNorm` | `0x20c0ba00` | `Σ\|coord\|` (vpabsd + horizontal add) |
+| `Coordinates::operator<` | `0x20c0ba40` | Lexicographic order for the sorted set |
+| `Coordinates::Subtract` | `0x20c0bfc0` | Plain mesh delta before normalization |
+| `Topology::CheckBoundary` | `0x20bf5800` | In-bounds guard on src and dst |
 
 ---
 
@@ -184,11 +184,11 @@ For the `k*2k*nk` shape the long `nK` axis is simply another entry in `dim_order
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `TwistedTorusTopology::GetDistanceFromOrigin` | `0x20b42980` | Per-axis distance + seam carry | CERTAIN |
-| `Coordinates::GetCoordinate` | `0x20c0b800` | Read axis `dim` from a coordinate | CERTAIN |
-| `Coordinates::Coordinates(int*, n)` | `0x20c0b1e0` | Build the result `Coordinates` from `res[]` | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `TwistedTorusTopology::GetDistanceFromOrigin` | `0x20b42980` | Per-axis distance + seam carry |
+| `Coordinates::GetCoordinate` | `0x20c0b800` | Read axis `dim` from a coordinate |
+| `Coordinates::Coordinates(int*, n)` | `0x20c0b1e0` | Build the result `Coordinates` from `res[]` |
 
 ---
 

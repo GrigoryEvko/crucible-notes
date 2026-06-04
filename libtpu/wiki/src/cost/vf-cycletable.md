@@ -130,40 +130,40 @@ int mxu_thru(VfCycleTable *this, uint16_t instr, int res, bool xpose) {
 
 The full jump table (`@0xb438490`, 32 × i32 self-relative) decoded to `(handler, call, role)`. Class ordinals are `CycleTable::Instruction`, the dense `0x00..0x20` enum shared across all gens (see [CycleTable Family](cycletable-family.md)); the role labels are the gen-stable class roles. Every row below is verified against the decompile at `@0x1c89e2c0`.
 
-| CT | handler | dispatch | role / value | Confidence |
-|---:|---------|----------|--------------|------------|
-| `0x00` | `1c89e2e5` | `MxuLat.GetResourceUsage(0xd4, res3, false)` | matmul' rate = `array[15]` = **THRU(CT0)** | CONFIRMED |
-| `0x01` | `1c89e380` | `MxuLat.GetResourceUsage(0xda, res3, false)` | matmul'' rate = `array[15]` | CONFIRMED |
-| `0x02` | `1c89e310` | `return 1` | matprep default | CONFIRMED |
-| `0x03` | `1c89e310` | `return 1` | matprep default | CONFIRMED |
-| `0x04` | `1c89e363` | `MxuLat.GetResourceUsage(0xe6, res3, false)` | matmul base rate = `array[15]` | CONFIRMED |
-| `0x05` | `1c89e394` | `MxuLat.GetResourceUsage(0x10b, res0xb, false)` | matpush rate = `array[0]` | CONFIRMED |
-| `0x06` | `1c89e3a3` | `MxuLat.GetResourceUsage(0x10f, res0xb, false)` | matpush' rate = `array[0]` | CONFIRMED |
-| `0x07` | `1c89e310` | `return 1` | default | CONFIRMED |
-| `0x08` | `1c89e310` | `return 1` | default | CONFIRMED |
-| `0x09` | `1c89e325` | `MxuLat.GetResourceUsage(0x115, res0xb, false)` | matpush'' rate = `array[0]` | CONFIRMED |
-| `0x0a` | `1c89e42c` | `LogMessageFatal` (`cycle_table.cc:682`) | unsupported (`PushGainsS4` abort) | CONFIRMED |
-| `0x0b` | `1c89e354` | `MxuLat.GetResourceUsage(0x10b, res0xb, TRUE)` | matpush rate (transposed) | CONFIRMED |
-| `0x0c` | `1c89e3d1` | `MxuLat.GetResourceUsage(0x10f, res0xb, TRUE)` | matpush' rate (transposed) | CONFIRMED |
-| `0x0d` | `1c89e310` | `return 1` | default | CONFIRMED |
-| `0x0e` | `1c89e310` | `return 1` | default | CONFIRMED |
-| `0x0f` | `1c89e334` | `MxuLat.GetResourceUsage(0x115, res0xb, TRUE)` | matpush'' rate (transposed) | CONFIRMED |
-| `0x10` | `1c89e42c` | `LogMessageFatal` | unsupported (`PushGainsS4t` abort) | CONFIRMED |
-| `0x11` | `1c89e310` | `return 1` | vector µop default | CONFIRMED |
-| `0x12` | `1c89e310` | `return 1` | default | CONFIRMED |
-| `0x13` | `1c89e310` | `return 1` | default | CONFIRMED |
-| `0x14` | `1c89e310` | `return 1` | default | CONFIRMED |
-| `0x15` | `1c89e310` | `return 1` | default | CONFIRMED |
-| `0x16` | `1c89e310` | `return 1` | default (the reduce-window `R[5]` CT 0x16) | CONFIRMED |
-| `0x17` | `1c89e346` | `VfPerf.GetResourceUsage(0x128, res0xe) + 1` | mxres-class throughput | CONFIRMED |
-| `0x18` | `1c89e310` | `return 1` | default | CONFIRMED |
-| `0x19` | `1c89e310` | `return 1` | default | CONFIRMED |
-| `0x1a` | `1c89e310` | `return 1` | default | CONFIRMED |
-| `0x1b` | `1c89e410` | `VfPerf.GetResourceUsage(0x12e, res0xe) + 1` | reduce-window Xlu (CT 0x1b) | CONFIRMED |
-| `0x1c` | `1c89e317` | `VfPerf.GetResourceUsage(0x11f, res0xe) + 1` | **THE conv MXRES/Xlu (CT 0x1c)** | CONFIRMED |
-| `0x1d` | `1c89e405` | `VfPerf.GetResourceUsage(0x123, res0xe) + 1` | mxres-class | CONFIRMED |
-| `0x1e` | `1c89e310` | `return 1` | default | CONFIRMED |
-| `0x1f` | `1c89e372` | `VfPerf.GetResourceUsage(0x12a, res0xe) + 1` | mxres-class | CONFIRMED |
+| CT | handler | dispatch | role / value |
+|---:|---------|----------|--------------|
+| `0x00` | `1c89e2e5` | `MxuLat.GetResourceUsage(0xd4, res3, false)` | matmul' rate = `array[15]` = **THRU(CT0)** |
+| `0x01` | `1c89e380` | `MxuLat.GetResourceUsage(0xda, res3, false)` | matmul'' rate = `array[15]` |
+| `0x02` | `1c89e310` | `return 1` | matprep default |
+| `0x03` | `1c89e310` | `return 1` | matprep default |
+| `0x04` | `1c89e363` | `MxuLat.GetResourceUsage(0xe6, res3, false)` | matmul base rate = `array[15]` |
+| `0x05` | `1c89e394` | `MxuLat.GetResourceUsage(0x10b, res0xb, false)` | matpush rate = `array[0]` |
+| `0x06` | `1c89e3a3` | `MxuLat.GetResourceUsage(0x10f, res0xb, false)` | matpush' rate = `array[0]` |
+| `0x07` | `1c89e310` | `return 1` | default |
+| `0x08` | `1c89e310` | `return 1` | default |
+| `0x09` | `1c89e325` | `MxuLat.GetResourceUsage(0x115, res0xb, false)` | matpush'' rate = `array[0]` |
+| `0x0a` | `1c89e42c` | `LogMessageFatal` (`cycle_table.cc:682`) | unsupported (`PushGainsS4` abort) |
+| `0x0b` | `1c89e354` | `MxuLat.GetResourceUsage(0x10b, res0xb, TRUE)` | matpush rate (transposed) |
+| `0x0c` | `1c89e3d1` | `MxuLat.GetResourceUsage(0x10f, res0xb, TRUE)` | matpush' rate (transposed) |
+| `0x0d` | `1c89e310` | `return 1` | default |
+| `0x0e` | `1c89e310` | `return 1` | default |
+| `0x0f` | `1c89e334` | `MxuLat.GetResourceUsage(0x115, res0xb, TRUE)` | matpush'' rate (transposed) |
+| `0x10` | `1c89e42c` | `LogMessageFatal` | unsupported (`PushGainsS4t` abort) |
+| `0x11` | `1c89e310` | `return 1` | vector µop default |
+| `0x12` | `1c89e310` | `return 1` | default |
+| `0x13` | `1c89e310` | `return 1` | default |
+| `0x14` | `1c89e310` | `return 1` | default |
+| `0x15` | `1c89e310` | `return 1` | default |
+| `0x16` | `1c89e310` | `return 1` | default (the reduce-window `R[5]` CT 0x16) |
+| `0x17` | `1c89e346` | `VfPerf.GetResourceUsage(0x128, res0xe) + 1` | mxres-class throughput |
+| `0x18` | `1c89e310` | `return 1` | default |
+| `0x19` | `1c89e310` | `return 1` | default |
+| `0x1a` | `1c89e310` | `return 1` | default |
+| `0x1b` | `1c89e410` | `VfPerf.GetResourceUsage(0x12e, res0xe) + 1` | reduce-window Xlu (CT 0x1b) |
+| `0x1c` | `1c89e317` | `VfPerf.GetResourceUsage(0x11f, res0xe) + 1` | **THE conv MXRES/Xlu (CT 0x1c)** |
+| `0x1d` | `1c89e405` | `VfPerf.GetResourceUsage(0x123, res0xe) + 1` | mxres-class |
+| `0x1e` | `1c89e310` | `return 1` | default |
+| `0x1f` | `1c89e372` | `VfPerf.GetResourceUsage(0x12a, res0xe) + 1` | mxres-class |
 
 > **QUIRK — `0x0a`/`0x10` are fatal on VF but not on later gens.** The `PushGainsS4` / `PushGainsS4t` classes hit `LogMessageFatal` ("Unsupported PushGainsS4.", `cycle_table.cc:682`) on Viperfish. The Ghostlite (`GlcCycleTable`) helper maps the same ordinals to a fourth matpush variant (`instr 0x166`) and the `6acc60406` (`GfcCycleTable`) helper turns them into a recoverable error string (`"Unsupported Matrix Operand type:"`) instead of a hard abort. A reimplementation that ports the VF fatal verbatim to a v6 table will crash on a class those gens legitimately price.
 
@@ -212,16 +212,16 @@ The matmul map lives at `this+0x20`, keyed by `MatmulModifier{format}`; the matp
 
 The *route* is byte-confirmed: `GetResourceUsage` returns `row[15]` (matmul, `MatmulAccA`) or `row[0]` (matpush, `MatpushPushPort`) of the per-`MatmulModifier` / per-`MatpushModifier` reservation `array<int,19>` it finds in the [MXU-latency](mxu-latency-vf.md) maps. The *value* in each cell is per-`MatmulDataFormat`:
 
-| `thru(CT 0)` = matmul rate (`array[15] = MatmulAccA`) | value | Confidence |
-|------------------------------------------------------|------:|------------|
-| bf16 (`instr 0xd4`, fmt 1) | 8 | CONFIRMED |
-| fmt 2 (`instr 0xda`) | 16 | CONFIRMED |
-| int8 / x8 (`instr 0xe6`, fmt 6) | 32 | CONFIRMED |
+| `thru(CT 0)` = matmul rate (`array[15] = MatmulAccA`) | value |
+|------------------------------------------------------|------:|
+| bf16 (`instr 0xd4`, fmt 1) | 8 |
+| fmt 2 (`instr 0xda`) | 16 |
+| int8 / x8 (`instr 0xe6`, fmt 6) | 32 |
 
-| `thru(CT 5)` = matpush rate (`array[0] = MatpushPushPort`) | value | Confidence |
-|-----------------------------------------------------------|------:|------------|
-| all formats (standard) | 4 | CONFIRMED |
-| f32, no-transpose (half-cost) | 2 | CONFIRMED |
+| `thru(CT 5)` = matpush rate (`array[0] = MatpushPushPort`) | value |
+|-----------------------------------------------------------|------:|
+| all formats (standard) | 4 |
+| f32, no-transpose (half-cost) | 2 |
 
 > **NOTE (VF-CT-1) — the cell magnitudes are byte-anchored.** The reservation rows are built as `{Modifier, array<int,19>}` pairs `insert_range`'d by the `MxuLatencyTable` constructor (`@0x1c8a52c0`), not a flat rodata table — but the relevant cells were traced through the ctor and confirmed: the matmul `array[15]` (`MatmulAccA`) entries are written `15 → 8` (fmt 1, ctor L1466/1467), `15 → 16` (fmt 2, L1946/1947), and `15 → 32` (fmt 6, L2855/2856 and L3287/3288), so `thru(CT 0) = {8,16,32}` per `MatmulDataFormat` is **CONFIRMED**. The same `{8,16,32}` triple is mirrored in the `ViperfishPerformance` grid column r3 (see [Performance: VF](performance-vf.md)); the throughput route here consumes the `MxuLatencyTable` copy via `res 3 → array[15]`. The matpush `array[0]` (`MatpushPushPort`, read by `thru(CT 5)`) is a **flat 4** for every format (ctor L683-688 / L722-726 build `{key0→4, …}`), dropping to `2` only for the f32-no-transpose half-cost case (L650-655) — i.e. the matpush reservation is the flat `{4,3,2}` row, **not** a `{2,4,8}` per-format ramp. The byte-confirmed dispatch this page owns is `thru(CT 0)` reads `row[15]`, `thru(CT 5)` reads `row[0]`; the full per-`MatmulModifier` matrix lives on [MXU-latency: VF](mxu-latency-vf.md).
 

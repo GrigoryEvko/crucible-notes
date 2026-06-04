@@ -74,16 +74,16 @@ Values the constructor writes on top of the zero base. Offset is the byte offset
 
 ### Confirmed scalar seeds (accessor-anchored)
 
-| Field# | Name | Type | Offset | Default | Confidence |
-|---|---|---|---|---|---|
-| 31 | `xla_backend_optimization_level` | int32 | 92 | **3** | CONFIRMED |
-| 123 | `xla_gpu_autotune_level` | int32 | 568 | **4** | CONFIRMED |
-| 142 | `xla_multiheap_size_constraint_per_heap` | int32 | 584 | **-1** | CONFIRMED |
-| 228 | `xla_gpu_redzone_padding_bytes` | int64 | 680 | **8388608** (8 MiB) | CONFIRMED |
-| 237 | `xla_gpu_collective_permute_decomposer_threshold` | int64 | 688 | **0x7FFFFFFFFFFFFFFF** (INT64_MAX) | CONFIRMED |
-| 311 | `xla_cmd_buffer_trace_cache_size` | int64 | 816 | **16** | CONFIRMED |
-| 327 | `xla_gpu_executable_warn_stuck_timeout_seconds` | int32 | 844 | **10** | CONFIRMED |
-| 328 | `xla_gpu_executable_terminate_timeout_seconds` | int32 | 848 | **30** | CONFIRMED |
+| Field# | Name | Type | Offset | Default |
+|---|---|---|---|---|
+| 31 | `xla_backend_optimization_level` | int32 | 92 | **3** |
+| 123 | `xla_gpu_autotune_level` | int32 | 568 | **4** |
+| 142 | `xla_multiheap_size_constraint_per_heap` | int32 | 584 | **-1** |
+| 228 | `xla_gpu_redzone_padding_bytes` | int64 | 680 | **8388608** (8 MiB) |
+| 237 | `xla_gpu_collective_permute_decomposer_threshold` | int64 | 688 | **0x7FFFFFFFFFFFFFFF** (INT64_MAX) |
+| 311 | `xla_cmd_buffer_trace_cache_size` | int64 | 816 | **16** |
+| 327 | `xla_gpu_executable_warn_stuck_timeout_seconds` | int32 | 844 | **10** |
+| 328 | `xla_gpu_executable_terminate_timeout_seconds` | int32 | 848 | **30** |
 
 The last two are the canonical packed pair: line 548 `*(_QWORD *)((char *)this + 844) = 0x1E0000000A` writes both with one move (`0x0A`=10 in the low lane at 844, `0x1E`=30 in the high lane at 848). Both offsets are accessor-confirmed.
 
@@ -91,52 +91,52 @@ The last two are the canonical packed pair: line 548 `*(_QWORD *)((char *)this +
 
 These stores are unambiguous in the body but their `set_*` accessors were not individually cross-checked within the grep budget; the offset and value are byte-exact, the field assignment is by layout adjacency to confirmed neighbours.
 
-| Offset | Store (body line) | Decoded value | Type inferred | Confidence |
-|---|---|---|---|---|
-| 568 (field 123) | `*((_DWORD*)this+142)=4` | 4 | int32 (autotune_level) | CONFIRMED |
-| 576 (field 132) | `*((_DWORD*)this+144)=-1` | -1 | int32 (`xla_dump_max_hlo_modules`) | CONFIRMED |
-| 644 | `*((_DWORD*)this+161)=5` | 5 | int32 | HIGH |
-| 712 | `*((_QWORD*)this+89)=15` | 15 | int64 | HIGH |
-| 724 | `*((_DWORD*)this+181)=95` | 95 | int32 | HIGH |
-| 728 | `*((_QWORD*)this+91)=100000` | 100000 | int64 | HIGH |
-| 768 | `*((_QWORD*)this+96)=100` | 100 | int64 | HIGH |
-| 792 | `*((_QWORD*)this+99)=16` | 16 | int64 | HIGH |
-| 812 | `*((_DWORD*)this+203)=256` | 256 | int32 | HIGH |
-| 836 | `*((_DWORD*)this+209)=32` | 32 | int32 | HIGH |
-| 956 | `*((_DWORD*)this+239)=2` | 2 | enum/int32 | HIGH |
-| 976 | `*((_DWORD*)this+244)=40` | 40 | int32 | HIGH |
-| 984 | `*((_DWORD*)this+246)=20` | 20 | int32 | HIGH |
-| 1008 | `*((_DWORD*)this+252)=1800` | 1800 | int32 (timeout s) | HIGH |
-| 1024 | `*((_QWORD*)this+128)=0x400000` | 4194304 (4 MiB) | int64 | HIGH |
-| 1040 | `*((_QWORD*)this+130)=2048` | 2048 | int64 | HIGH |
+| Offset | Store (body line) | Decoded value | Type inferred |
+|---|---|---|---|
+| 568 (field 123) | `*((_DWORD*)this+142)=4` | 4 | int32 (autotune_level) |
+| 576 (field 132) | `*((_DWORD*)this+144)=-1` | -1 | int32 (`xla_dump_max_hlo_modules`) |
+| 644 | `*((_DWORD*)this+161)=5` | 5 | int32 |
+| 712 | `*((_QWORD*)this+89)=15` | 15 | int64 |
+| 724 | `*((_DWORD*)this+181)=95` | 95 | int32 |
+| 728 | `*((_QWORD*)this+91)=100000` | 100000 | int64 |
+| 768 | `*((_QWORD*)this+96)=100` | 100 | int64 |
+| 792 | `*((_QWORD*)this+99)=16` | 16 | int64 |
+| 812 | `*((_DWORD*)this+203)=256` | 256 | int32 |
+| 836 | `*((_DWORD*)this+209)=32` | 32 | int32 |
+| 956 | `*((_DWORD*)this+239)=2` | 2 | enum/int32 |
+| 976 | `*((_DWORD*)this+244)=40` | 40 | int32 |
+| 984 | `*((_DWORD*)this+246)=20` | 20 | int32 |
+| 1008 | `*((_DWORD*)this+252)=1800` | 1800 | int32 (timeout s) |
+| 1024 | `*((_QWORD*)this+128)=0x400000` | 4194304 (4 MiB) | int64 |
+| 1040 | `*((_QWORD*)this+130)=2048` | 2048 | int64 |
 
 > **NOTE —** several of these are recognizable XLA defaults independent of the symbol match: 256 (`xla_gpu_memory_limit_slop_factor`-class), 1800 s (a 30-minute terminate timeout), 4 MiB / 8 MiB (collective-combine/redzone byte thresholds), `INT64_MAX` (a "no threshold" sentinel). The values are byte-exact; only the precise field name carries the HIGH (not CONFIRMED) caveat.
 
 ### Packed-pair int/enum seeds
 
-| Body line | Store | Low lane (offset → value) | High lane (offset → value) | Confidence |
-|---|---|---|---|---|
-| 548 | `+844 = 0x1E0000000A` | 844 → 10 (field 327) | 848 → 30 (field 328) | CONFIRMED |
-| 553 | `+936 = 0x2800000014` | 936 → 20 (0x14) | 940 → 40 (0x28) | HIGH |
-| 63 | `+92 = 0x101010100000003` | 92 → 3 (field 31) | 96–99 → bool 1,1,1,1 | CONFIRMED (92), HIGH (bools) |
+| Body line | Store | Low lane (offset → value) | High lane (offset → value) |
+|---|---|---|---|
+| 548 | `+844 = 0x1E0000000A` | 844 → 10 (field 327) | 848 → 30 (field 328) |
+| 553 | `+936 = 0x2800000014` | 936 → 20 (0x14) | 940 → 40 (0x28) |
+| 63 | `+92 = 0x101010100000003` | 92 → 3 (field 31) | 96–99 → bool 1,1,1,1 |
 
 ### Float seeds (upper-half packing)
 
 Two `float` fields exist in DebugOptions (`xla_gpu_auto_spmd_partitioning_memory_budget_ratio` field 225, `xla_gpu_autotune_gemm_rtol` field 316). Both are seeded via the upper half of a packed QWORD:
 
-| Body line | Store | Float lane | Value | Confidence |
-|---|---|---|---|---|
-| 491 | `*((_QWORD*)this+84)=0x3F8CCCCD00000000` | offset 676 = `0x3F8CCCCD` | **1.1f** | HIGH |
-| 543 | `*((_QWORD*)this+103)=0x53DCCCCCD` | offset 824 = `0x3DCCCCCD` | **0.1f** | HIGH |
+| Body line | Store | Float lane | Value |
+|---|---|---|---|
+| 491 | `*((_QWORD*)this+84)=0x3F8CCCCD00000000` | offset 676 = `0x3F8CCCCD` | **1.1f** |
+| 543 | `*((_QWORD*)this+103)=0x53DCCCCCD` | offset 824 = `0x3DCCCCCD` | **0.1f** |
 
 `0x3F8CCCCD` decodes to IEEE-754 single `1.1000000238…` and `0x3DCCCCCD` to `0.1000000015…` — the canonical `1.1` and `0.1` float literals. The `+103` store also carries `0x5` in the lane above the float, seeding an adjacent small int.
 
 ### String seeds (`ArenaStringPtr::Set`)
 
-| Body line | Offset | Value | Likely field | Confidence |
-|---|---|---|---|---|
-| 69 | 80 | `"./cuda_sdk_lib"` (len 14) | `xla_gpu_cuda_data_dir` (61) | HIGH |
-| 551 | 520 | `"inf"` (len 3) | a GPU string-typed timeout/mode field | MEDIUM |
+| Body line | Offset | Value | Likely field |
+|---|---|---|---|
+| 69 | 80 | `"./cuda_sdk_lib"` (len 14) | `xla_gpu_cuda_data_dir` (61) |
+| 551 | 520 | `"inf"` (len 3) | a GPU string-typed timeout/mode field |
 
 All other `ArenaStringPtr::Set(... &nptr, 0)` calls (offsets 408, 432, 464, 472, 480, 488, 496) set the **empty string** — they are explicit no-op seeds that re-establish `""`, matching the proto-zero default. They are listed for completeness but add no non-zero default.
 
@@ -185,10 +185,10 @@ Two `RepeatedField<int>` members are populated element-by-element with `GrowNoAn
 
 The append idiom is the same six-line `RepeatedField<int>::GrowNoAnnotate` / `*((_DWORD *)this + 41) = newcount` / `array[idx] = enumval` block repeated per element (body lines 98–285). The enabled-by-default command-buffer command set is therefore `{FUSION, CUBLAS, CUBLASLT, CUSTOM_CALL, CUDNN, DYNAMIC_SLICE_FUSION}`.
 
-| List offset | Element enum values | Decoded | Confidence |
-|---|---|---|---|
-| 160 | 1, 2, 8, 7, 3, 9 | FUSION, CUBLAS, CUBLASLT, CUSTOM_CALL, CUDNN, DYN_SLICE_FUSION | HIGH |
-| 288 | 4, 5, 3 | COLLECTIVES, CONDITIONAL, CUDNN | HIGH |
+| List offset | Element enum values | Decoded |
+|---|---|---|
+| 160 | 1, 2, 8, 7, 3, 9 | FUSION, CUBLAS, CUBLASLT, CUSTOM_CALL, CUDNN, DYN_SLICE_FUSION |
+| 288 | 4, 5, 3 | COLLECTIVES, CONDITIONAL, CUDNN |
 
 > **NOTE —** the two lists are distinct repeated fields (different base offsets, 160 vs 288, with independent count words at `this+41` and `this+73`). Which is `xla_gpu_enable_command_buffer` (258) versus a second command-buffer enable list was not disambiguated within budget; both are GPU-namespace fields inert on TPU but seeded because the shared upstream body seeds them.
 
@@ -209,14 +209,14 @@ gpus_per_node      -> "-1"
 
 Every value is the string `"-1"` — the AUTO/unknown sentinel for these GPU NCCL-modeling knobs. The `-1` convention here is the string form of the same "resolve later" sentinel documented in [`autoproto-autoor-resolution.md`](autoproto-autoor-resolution.md). On TPU these are inert (no GPU latency estimator runs), but the shared body seeds them regardless.
 
-| Key | Default value | Confidence |
-|---|---|---|
-| `nccl_op_launch_us` | `"-1"` | CONFIRMED (string literal in body) |
-| `nic_speed_gbps` | `"-1"` | CONFIRMED |
-| `chunk_prep_us` | `"-1"` | CONFIRMED |
-| `rtt_us` | `"-1"` | CONFIRMED |
-| `chunk_size_bytes` | `"-1"` | CONFIRMED |
-| `gpus_per_node` | `"-1"` | CONFIRMED |
+| Key | Default value |
+|---|---|
+| `nccl_op_launch_us` | `"-1"` |
+| `nic_speed_gbps` | `"-1"` |
+| `chunk_prep_us` | `"-1"` |
+| `rtt_us` | `"-1"` |
+| `chunk_size_bytes` | `"-1"` |
+| `gpus_per_node` | `"-1"` |
 
 ---
 

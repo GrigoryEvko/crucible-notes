@@ -210,19 +210,19 @@ The cost model itself — the 23-slot `ResourceVector`, the `MaxResourceCycles` 
 
 ## Confidence Summary
 
-| Claim | Evidence | Confidence |
-|---|---|---|
-| Stage 1 LHS is invoked from `RunHloScheduler` as two sequential pipelines (base then overlap) | `RunHloScheduler` @ `0x1096fac0` (Brkga / `final_scheduler` / `async_scheduling` strings) | CONFIRMED |
-| LHS `RunImpl` body is shared across all variants | single compiled `RunImpl` @ `0x136321a0` | CONFIRMED |
-| LHS comparator is the 22-key `ReadySetLt` chain, reverse-direction drain | `FindAndExtractBestNodeAvailable` @ `0x13618880`; `ScheduleComputation` @ `0x1362eb60` | CONFIRMED |
-| Stage 2 bin-packs matmuls into `MxuSequence`s and reserves MRB | `AssignMxusForSequenceGroup` @ `0x10f753c0`; `MrbChainAllocator::ExtendMrbReservation` @ `0x10f58800` | CONFIRMED |
-| Stage 2 commits latch indices read downstream by Stage 3 | `SetLatchIndices` @ `0x10f3b4c0`; `AllocateMrbEntriesAsFifo` @ `0x10f3ef80` | CONFIRMED |
-| Stage 3 is forward greedy earliest-legal-bundle list scheduling | `PackBundles` @ `0x10a30a20`; `GlobalBundlePacker::Pack` @ `0x10a86420`; `BundlePacker::Feed` @ `0x14021f20` | CONFIRMED |
-| Stage 3b modulo scheduler for hardware loops with RecMII/ResMII II search | `TPUScheduleDAGModulo::findSchedule` @ `0x13b1d7c0`; `calculateResourceMII` @ `0x13c0bee0`; `calculateLargestLatencyMII` @ `0x13c0b840` | CONFIRMED |
-| Stage 1 prices via `MaxResourceCycles` / `LatencyBetween`; gates via `TpuAsyncTracker` | `MaxResourceCycles` @ `0x1c89b9e0`; `LatencyBetween` @ `0x1c89f820`; `GetResourceHazardType` @ `0x110015e0` | CONFIRMED |
-| Per-gen slot legality is four `TpuBundleRestrictions` subclasses (Jellyfish/Pufferfish/Viperfish/Ghostlite) | only four `*BundleRestrictions::SetLimits` symbols exist (`0x1c457a40` / `0x1c457d80` / `0x1c458360` / `0x1c458860`); zero `Trillium`/`dragonfish` restriction symbols | CONFIRMED |
-| "ILP-LHS" flag swaps the async classifier only; ILP MIP is a separate opt-in memory scheduler (not dead) | `EnableIlpLatencyHidingScheduler` gate only re-classifies async ops; `ILPMemoryScheduler::Run` @ `0x10acd020` is reached via `GetMemorySchedulerAlgorithm` @ `0x10abd6a0` **case 6** (switch arms Default0..LocalOrder9, ILP=6, constructs `xla::ILPMemoryScheduler`) | CONFIRMED |
-| HLO scheduling annotations do not flow into bundle packing | LLO packer reads no HLO annotation; the two operate on disjoint IRs | HIGH |
+| Claim | Evidence |
+|---|---|
+| Stage 1 LHS is invoked from `RunHloScheduler` as two sequential pipelines (base then overlap) | `RunHloScheduler` @ `0x1096fac0` (Brkga / `final_scheduler` / `async_scheduling` strings) |
+| LHS `RunImpl` body is shared across all variants | single compiled `RunImpl` @ `0x136321a0` |
+| LHS comparator is the 22-key `ReadySetLt` chain, reverse-direction drain | `FindAndExtractBestNodeAvailable` @ `0x13618880`; `ScheduleComputation` @ `0x1362eb60` |
+| Stage 2 bin-packs matmuls into `MxuSequence`s and reserves MRB | `AssignMxusForSequenceGroup` @ `0x10f753c0`; `MrbChainAllocator::ExtendMrbReservation` @ `0x10f58800` |
+| Stage 2 commits latch indices read downstream by Stage 3 | `SetLatchIndices` @ `0x10f3b4c0`; `AllocateMrbEntriesAsFifo` @ `0x10f3ef80` |
+| Stage 3 is forward greedy earliest-legal-bundle list scheduling | `PackBundles` @ `0x10a30a20`; `GlobalBundlePacker::Pack` @ `0x10a86420`; `BundlePacker::Feed` @ `0x14021f20` |
+| Stage 3b modulo scheduler for hardware loops with RecMII/ResMII II search | `TPUScheduleDAGModulo::findSchedule` @ `0x13b1d7c0`; `calculateResourceMII` @ `0x13c0bee0`; `calculateLargestLatencyMII` @ `0x13c0b840` |
+| Stage 1 prices via `MaxResourceCycles` / `LatencyBetween`; gates via `TpuAsyncTracker` | `MaxResourceCycles` @ `0x1c89b9e0`; `LatencyBetween` @ `0x1c89f820`; `GetResourceHazardType` @ `0x110015e0` |
+| Per-gen slot legality is four `TpuBundleRestrictions` subclasses (Jellyfish/Pufferfish/Viperfish/Ghostlite) | only four `*BundleRestrictions::SetLimits` symbols exist (`0x1c457a40` / `0x1c457d80` / `0x1c458360` / `0x1c458860`); zero `Trillium`/`dragonfish` restriction symbols |
+| "ILP-LHS" flag swaps the async classifier only; ILP MIP is a separate opt-in memory scheduler (not dead) | `EnableIlpLatencyHidingScheduler` gate only re-classifies async ops; `ILPMemoryScheduler::Run` @ `0x10acd020` is reached via `GetMemorySchedulerAlgorithm` @ `0x10abd6a0` **case 6** (switch arms Default0..LocalOrder9, ILP=6, constructs `xla::ILPMemoryScheduler`) |
+| HLO scheduling annotations do not flow into bundle packing | LLO packer reads no HLO annotation; the two operate on disjoint IRs |
 
 ---
 

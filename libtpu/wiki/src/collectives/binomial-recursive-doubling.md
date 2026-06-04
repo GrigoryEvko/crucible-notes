@@ -127,13 +127,13 @@ check_pow2:
 
 `popcnt(N) == 1` forces `N` to be a power of two; `(bsr(N) ^ 7) < 8` is the clz-style cap — `bsr(N)` is `log₂(N)`, and the XOR-with-7 then `< 8` test rejects `log₂(N) > 7`, i.e. `N > 128`. So the binomial ring is restricted to **`N ∈ {2, 4, 8, 16, 32, 64, 128}`**. The cap is `kBinomialCounterpartsCount = 8` (the 8 columns of the replica table = self + up to 7 butterfly partners), which is why `receive_sync_flags_needed()` returns exactly `7` (`0x1376a680`).
 
-| Env field (offset) | Attributed name (from use) | Role | Confidence |
-|---|---|---|---|
-| `0xf48` | `xla_jf_*binomial_all_reduce` enable | must be `1` | Confirmed (offset); name inferred |
-| `0x10c8` | second binomial-AR enable | must be `1` | Confirmed (offset); name inferred |
-| `0x1006` | cross-module binomial enable | must be `1` if global ids | Confirmed (offset); name inferred |
-| `0xe1e` | `use_physical_core_ids` | must be `0` for global-id path | Confirmed (offset); name attributed |
-| `0xfa3` | cross-module gate | must be non-zero | Confirmed (offset); name inferred |
+| Env field (offset) | Attributed name (from use) | Role |
+|---|---|---|
+| `0xf48` | `xla_jf_*binomial_all_reduce` enable | must be `1` |
+| `0x10c8` | second binomial-AR enable | must be `1` |
+| `0x1006` | cross-module binomial enable | must be `1` if global ids |
+| `0xe1e` | `use_physical_core_ids` | must be `0` for global-id path |
+| `0xfa3` | cross-module gate | must be non-zero |
 
 > **NOTE —** the offsets are byte-confirmed (identical in `IsBinomial...Viable` and the table-build prologue). The flag *names* (`xla_jf_*` / `xla_tpu_binomial_all_reduce_*`) are attributed from how the bytes are used, not from a recovered proto descriptor — treat them as LOW-confidence labels on Confirmed offsets.
 

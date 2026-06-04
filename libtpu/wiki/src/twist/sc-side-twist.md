@@ -312,25 +312,25 @@ The SparseCore `TwistedTorusTopologyInfo` and the TensorCore `TwistedTorusND` de
 
 ## 5. Function Map
 
-| Function | Address | Role | Confidence |
-|----------|---------|------|------------|
-| `TwistedTorusTopologyInfo::TryCreateTwistedTorusTopologyInfo` | `0x133e1980` | SC twist factory + shape/divisibility gate | HIGH (RetCheck strings verified) |
-| `TwistedTorusTopologyInfo::TwistedTorusTopologyInfo` (ctor) | `0x133e1b40` | object layout + `(2K,R,K)` triple + 7 closures | MEDIUM (offsets from disasm, not re-walked) |
-| `TwistedTorusTopologyInfo::ConstructTwistedViews` | `0x133e1ea0` | two `TwistedView` build (RS + AG) | HIGH (two push_backs); per-group fold assignment LOW |
-| `TwistedView::ForEachPhase` | `0x133e17c0` | 3-axis fold; `CHECK==3` + `*0x10` dispatch | HIGH |
-| `TwistedView::SetToTwistedCoordinates::$_0` | `0x133e4140` | drives `ForEachPhase` per phase (forward twist) | HIGH (call-func policy) |
-| `TwistedView::SetToOriginalCoordinates::$_0` | `0x133e4580` | inverse twist partner of `SetToTwistedCoordinates` | HIGH (call-func policy) |
-| `ConstructTwistedViews()::$_0` / `$_1` | `0x133e6160` / `0x133e6180` | first view's two `TpuDimensions(TpuDimensions)` closures | HIGH (policy stores) |
-| fold closures `$_1..$_7` | `0x133e4ae0..0x133e4dc0` | the 7 coordinate-fold primitives | HIGH (closed forms verified) |
-| `TwistedTorusND::GetPhase0Cores` | `0x137d6de0` | `2K · LogicalDevicesPerChip` | HIGH (field arithmetic verified) |
-| `TwistedTorusND::GetPhase1Cores` | `0x137d6ec0` | `R = (num2K ≥ 2 ? 2K : K)` | HIGH (field arithmetic verified) |
-| `StrategyND::GetPhase0Cores` (base, contrast) | `0x137d6980` | per-color chip dim via `ComputeColorDimensions` | HIGH |
-| `TryParseColorwiseAllReduceFusion` | `0x137e34c0` | AR-fusion validator (reads slot `+0x50`) | HIGH (located) |
-| `TryParseAllGatherFusion` | `0x137e4ec0` | AG-fusion validator (reads slot `+0x58`) | HIGH (located) |
-| `EstimatePhysicalLinksUsed` | `0x1c8939c0` | sorted-set directional-`IciResource` link estimator | HIGH |
-| `EstimatePhysicalLinksUsed::$_0` (multi-slice) | `0x1c894ac0` | global → local logical-id resolver | HIGH (cross-slice RetCheck) |
-| `GetResourceFromIciResource` | `0x1c894c00` | `e-1+0xd` (slots `0xd..0x12`) | HIGH |
-| `ComputeAllToAllCyclesHelper` | `0x130d02a0` | maps `IciResource` → torus-dim extent (divisor) | HIGH (call site + dim read) |
+| Function | Address | Role |
+|----------|---------|------|
+| `TwistedTorusTopologyInfo::TryCreateTwistedTorusTopologyInfo` | `0x133e1980` | SC twist factory + shape/divisibility gate |
+| `TwistedTorusTopologyInfo::TwistedTorusTopologyInfo` (ctor) | `0x133e1b40` | object layout + `(2K,R,K)` triple + 7 closures |
+| `TwistedTorusTopologyInfo::ConstructTwistedViews` | `0x133e1ea0` | two `TwistedView` build (RS + AG) |
+| `TwistedView::ForEachPhase` | `0x133e17c0` | 3-axis fold; `CHECK==3` + `*0x10` dispatch |
+| `TwistedView::SetToTwistedCoordinates::$_0` | `0x133e4140` | drives `ForEachPhase` per phase (forward twist) |
+| `TwistedView::SetToOriginalCoordinates::$_0` | `0x133e4580` | inverse twist partner of `SetToTwistedCoordinates` |
+| `ConstructTwistedViews()::$_0` / `$_1` | `0x133e6160` / `0x133e6180` | first view's two `TpuDimensions(TpuDimensions)` closures |
+| fold closures `$_1..$_7` | `0x133e4ae0..0x133e4dc0` | the 7 coordinate-fold primitives |
+| `TwistedTorusND::GetPhase0Cores` | `0x137d6de0` | `2K · LogicalDevicesPerChip` |
+| `TwistedTorusND::GetPhase1Cores` | `0x137d6ec0` | `R = (num2K ≥ 2 ? 2K : K)` |
+| `StrategyND::GetPhase0Cores` (base, contrast) | `0x137d6980` | per-color chip dim via `ComputeColorDimensions` |
+| `TryParseColorwiseAllReduceFusion` | `0x137e34c0` | AR-fusion validator (reads slot `+0x50`) |
+| `TryParseAllGatherFusion` | `0x137e4ec0` | AG-fusion validator (reads slot `+0x58`) |
+| `EstimatePhysicalLinksUsed` | `0x1c8939c0` | sorted-set directional-`IciResource` link estimator |
+| `EstimatePhysicalLinksUsed::$_0` (multi-slice) | `0x1c894ac0` | global → local logical-id resolver |
+| `GetResourceFromIciResource` | `0x1c894c00` | `e-1+0xd` (slots `0xd..0x12`) |
+| `ComputeAllToAllCyclesHelper` | `0x130d02a0` | maps `IciResource` → torus-dim extent (divisor) |
 
 ---
 

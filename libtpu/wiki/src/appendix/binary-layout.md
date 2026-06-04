@@ -35,25 +35,25 @@ For navigation, the contract is:
 
 Before any band lookup, place the address in its section. The linker laid the file out in a strict ascending order — read-only data first, then a small ancillary-code cluster, then the giant `.text`, then the writable trailer. The full 51-row header dump lives in [`forensics/elf-anatomy.md`](../forensics/elf-anatomy.md); the rows below are the ones that bound the address bands.
 
-| Section | VA Start | VA End | Size | Type | Holds | Confidence |
-|---|---|---|---|---|---|---|
-| `.rela.dyn` | `0x00009170` | `0x01881da0` | 24.5 MiB | RELA | Dynamic relocations (RELRO) | CERTAIN |
-| `.lrodata` | `0x01884a00` | `0x084931d0` | 108.1 MiB | PROGBITS (`l`) | Large read-only data: vtables, typeinfo, jump tables, constant pools | CERTAIN |
-| `.rodata` | `0x084a0000` | `0x0be8af28` | 57.9 MiB | PROGBITS | Strings, small constants, format tables | CERTAIN |
-| `protodesc_cold` | `0x0be8af30` | `0x0c1bf0b0` | 3.2 MiB | PROGBITS | Cold protobuf descriptor tables | CERTAIN |
-| `.gcc_except_table` | `0x0c1bf0b0` | `0x0c2cc634` | 1.0 MiB | PROGBITS | C++ EH landing-pad tables | CERTAIN |
-| `.eh_frame_hdr` / `.eh_frame` | `0x0c2cc634` | `0x0e635524` | ~35 MiB | PROGBITS | Unwind tables (C++ EH; `.eh_frame` alone is ~28.7 MiB) | CERTAIN |
-| `.init` / `.text.hot` | `0x0e635524` | `0x0e63738e` | ~8 KiB | PROGBITS (X) | Init stub + 6 hot-promoted functions | CERTAIN |
-| `google_malloc` | `0x0e6373c0` | `0x0e63bab2` | 18.2 KiB | PROGBITS (X) | TCMalloc fast-path (72 functions) | CERTAIN |
-| **`.text`** | **`0x0e63c000`** | **`0x21217484`** | **299.9 MiB** | **PROGBITS (X)** | **All primary code — the band map below** | **CERTAIN** |
-| `.text.startup` | `0x21217490` | `0x213818e4` | 1.4 MiB | PROGBITS (X) | Static-initializer constructors (2,886 funcs) | CERTAIN |
-| `.text.unlikely` | `0x21381900` | `0x213e9d69` | 0.4 MiB | PROGBITS (X) | Cold/error-path code (2,798 funcs) | CERTAIN |
-| `google_init_cold` | `0x213e9d80` | `0x213efe71` | 24.8 KiB | PROGBITS (X) | Cold init (125 funcs) | CERTAIN |
-| `.plt` | `0x213f0830` | `0x213f25d0` | 7.5 KiB | PROGBITS (X) | PLT stubs for imported libc/libm/libdl symbols | CERTAIN |
-| `.data.rel.ro` | `0x215f81a0` | `0x22048b30` | 10.3 MiB | PROGBITS (W) | Relocated read-only: vtable pointers, RTTI graph | CERTAIN |
-| `.data` | `0x222551c0` | `0x224bf798` | 2.4 MiB | PROGBITS (W) | Initialized globals | CERTAIN |
-| `.bss` | `0x224c3880` | `0x22598c30` | 0.8 MiB | NOBITS | Zero-init globals | CERTAIN |
-| `.ldata` / `.lbss` | `0x22798c30` | `0x2285a180` | ~0.7 MiB | PROGBITS / NOBITS (`l`) | Large writable / large zero-init data | CERTAIN |
+| Section | VA Start | VA End | Size | Type | Holds |
+|---|---|---|---|---|---|
+| `.rela.dyn` | `0x00009170` | `0x01881da0` | 24.5 MiB | RELA | Dynamic relocations (RELRO) |
+| `.lrodata` | `0x01884a00` | `0x084931d0` | 108.1 MiB | PROGBITS (`l`) | Large read-only data: vtables, typeinfo, jump tables, constant pools |
+| `.rodata` | `0x084a0000` | `0x0be8af28` | 57.9 MiB | PROGBITS | Strings, small constants, format tables |
+| `protodesc_cold` | `0x0be8af30` | `0x0c1bf0b0` | 3.2 MiB | PROGBITS | Cold protobuf descriptor tables |
+| `.gcc_except_table` | `0x0c1bf0b0` | `0x0c2cc634` | 1.0 MiB | PROGBITS | C++ EH landing-pad tables |
+| `.eh_frame_hdr` / `.eh_frame` | `0x0c2cc634` | `0x0e635524` | ~35 MiB | PROGBITS | Unwind tables (C++ EH; `.eh_frame` alone is ~28.7 MiB) |
+| `.init` / `.text.hot` | `0x0e635524` | `0x0e63738e` | ~8 KiB | PROGBITS (X) | Init stub + 6 hot-promoted functions |
+| `google_malloc` | `0x0e6373c0` | `0x0e63bab2` | 18.2 KiB | PROGBITS (X) | TCMalloc fast-path (72 functions) |
+| **`.text`** | **`0x0e63c000`** | **`0x21217484`** | **299.9 MiB** | **PROGBITS (X)** | **All primary code — the band map below** |
+| `.text.startup` | `0x21217490` | `0x213818e4` | 1.4 MiB | PROGBITS (X) | Static-initializer constructors (2,886 funcs) |
+| `.text.unlikely` | `0x21381900` | `0x213e9d69` | 0.4 MiB | PROGBITS (X) | Cold/error-path code (2,798 funcs) |
+| `google_init_cold` | `0x213e9d80` | `0x213efe71` | 24.8 KiB | PROGBITS (X) | Cold init (125 funcs) |
+| `.plt` | `0x213f0830` | `0x213f25d0` | 7.5 KiB | PROGBITS (X) | PLT stubs for imported libc/libm/libdl symbols |
+| `.data.rel.ro` | `0x215f81a0` | `0x22048b30` | 10.3 MiB | PROGBITS (W) | Relocated read-only: vtable pointers, RTTI graph |
+| `.data` | `0x222551c0` | `0x224bf798` | 2.4 MiB | PROGBITS (W) | Initialized globals |
+| `.bss` | `0x224c3880` | `0x22598c30` | 0.8 MiB | NOBITS | Zero-init globals |
+| `.ldata` / `.lbss` | `0x22798c30` | `0x2285a180` | ~0.7 MiB | PROGBITS / NOBITS (`l`) | Large writable / large zero-init data |
 
 > **NOTE —** the `l` (large) section flag on `.lrodata`, `.ldata`, and `.lbss` is the x86-64 large-code-model marker. These sections are placed outside the ±2 GiB signed-displacement window of `.text`, so the compiler addresses them with full 64-bit `movabs` rather than RIP-relative `lea`. When you see a `movabs` loading a constant from `0x018xxxxx`–`0x084xxxxx`, it is reaching into `.lrodata` — almost always a vtable, a typeinfo record, or a large dispatch/jump table.
 
@@ -65,18 +65,18 @@ Before any band lookup, place the address in its section. The linker laid the fi
 
 `.text` is partitioned below into ten bands (B0 a ~15 MiB entry band, B1–B9 ~30 MiB each). Each row gives the band's VA range, the section (always `.text` here), the dominant namespace/subsystem by function count, the approximate live-function count in the band, and a confidence. The dominant-occupant column is the per-band namespace census: the leading C++ namespace among the functions whose address falls in that band, sampled from the symbol table. "~funcs" is the count of recovered functions whose entry address lands in the band.
 
-| Band | VA Range | Section | Dominant Subsystem / Namespace | ~Funcs | Confidence |
-|---|---|---|---|---|---|
-| **B0** Runtime / PJRT entry | `0x0e63c000` .. `0x0f53a2a0` | `.text` | TPU runtime driver (`asic_sw::driver::deepsea`) + PJRT/`Tpu*` exports + MLIR op registration | ~40,000 | HIGH |
-| **B1** MLIR core + SPIR-V | `0x0f53a2a0` .. `0x11336000` | `.text` | MLIR framework (`mlir::RegisteredOperationName`, `mlir::spirv`), LLVM support | ~115,000 | HIGH |
-| **B2** XLA / SparseCore + MLIR | `0x11336000` .. `0x14030fc0` | `.text` | MLIR op machinery + `xla::tpu::sparse_core`, `mlir::linalg` | ~120,000 | HIGH |
-| **B3** MLIR dialects (dense) | `0x14030fc0` .. `0x15e2d500` | `.text` | `mlir::RegisteredOperationName` peak, `mlir::stablehlo`, Eigen tensor evaluators | ~92,000 | HIGH |
-| **B4** MLIR linalg/bufferization | `0x15e2d500` .. `0x17c29a40` | `.text` | `mlir::linalg`, `mlir::bufferization`, `mlir::stablehlo`, Eigen | ~99,000 | HIGH |
-| **B5** LLVM backend + MLIR | `0x17c29a40` .. `0x19a25f80` | `.text` | LLVM (`llvm`, `llvm::cl`, SelectionDAG), residual MLIR interfaces | ~65,000 | MEDIUM |
-| **B6** oneDNN CPU kernels | `0x19a25f80` .. `0x1b8224c0` | `.text` | `dnnl::impl::cpu` (CPU fallback JIT/reference kernels) | ~39,000 | HIGH |
-| **B7** STL/variant + driver | `0x1b8224c0` .. `0x1d61ea00` | `.text` | `std::__u` instantiations, `asic_sw::driver::deepsea`, residual oneDNN/MLIR | ~58,000 | MEDIUM |
-| **B8** TPU codecs (vxc/gxc) | `0x1d61ea00` .. `0x1f41af40` | `.text` | TPU ISA codecs `asic_sw::deepsea::{vxc,gxc,pxc}`, `xla` literals | ~128,000 | HIGH |
-| **B9** TPU codecs (gxc peak) | `0x1f41af40` .. `0x21217484` | `.text` | `asic_sw::deepsea::gxc` density peak, `pxc`/`vxc`, protobuf arena | ~146,000 | HIGH |
+| Band | VA Range | Section | Dominant Subsystem / Namespace | ~Funcs |
+|---|---|---|---|---|
+| **B0** Runtime / PJRT entry | `0x0e63c000` .. `0x0f53a2a0` | `.text` | TPU runtime driver (`asic_sw::driver::deepsea`) + PJRT/`Tpu*` exports + MLIR op registration | ~40,000 |
+| **B1** MLIR core + SPIR-V | `0x0f53a2a0` .. `0x11336000` | `.text` | MLIR framework (`mlir::RegisteredOperationName`, `mlir::spirv`), LLVM support | ~115,000 |
+| **B2** XLA / SparseCore + MLIR | `0x11336000` .. `0x14030fc0` | `.text` | MLIR op machinery + `xla::tpu::sparse_core`, `mlir::linalg` | ~120,000 |
+| **B3** MLIR dialects (dense) | `0x14030fc0` .. `0x15e2d500` | `.text` | `mlir::RegisteredOperationName` peak, `mlir::stablehlo`, Eigen tensor evaluators | ~92,000 |
+| **B4** MLIR linalg/bufferization | `0x15e2d500` .. `0x17c29a40` | `.text` | `mlir::linalg`, `mlir::bufferization`, `mlir::stablehlo`, Eigen | ~99,000 |
+| **B5** LLVM backend + MLIR | `0x17c29a40` .. `0x19a25f80` | `.text` | LLVM (`llvm`, `llvm::cl`, SelectionDAG), residual MLIR interfaces | ~65,000 |
+| **B6** oneDNN CPU kernels | `0x19a25f80` .. `0x1b8224c0` | `.text` | `dnnl::impl::cpu` (CPU fallback JIT/reference kernels) | ~39,000 |
+| **B7** STL/variant + driver | `0x1b8224c0` .. `0x1d61ea00` | `.text` | `std::__u` instantiations, `asic_sw::driver::deepsea`, residual oneDNN/MLIR | ~58,000 |
+| **B8** TPU codecs (vxc/gxc) | `0x1d61ea00` .. `0x1f41af40` | `.text` | TPU ISA codecs `asic_sw::deepsea::{vxc,gxc,pxc}`, `xla` literals | ~128,000 |
+| **B9** TPU codecs (gxc peak) | `0x1f41af40` .. `0x21217484` | `.text` | `asic_sw::deepsea::gxc` density peak, `pxc`/`vxc`, protobuf arena | ~146,000 |
 
 > **QUIRK —** the namespace `asic_sw::deepsea::gxc` (the TPU "core-X" ISA codec family, ~60,700 functions in `.text`) appears across a ~197 MiB code span (`0x1391cd40` .. `0x1fe6f7a0`), but its *density* climbs toward the top of `.text`: ~13.7k functions land in B8 and ~46k in B9. A reimplementer who keys "codec land starts at X" off the first `gxc` function will be ~150 MiB too low. Use the **density centroid** (high `.text`, B8–B9), not the first occurrence.
 
@@ -92,12 +92,12 @@ Each band below names the anchor symbols that pin its edges and the most reliabl
 
 The bottom of `.text`. The linker front-loads the translation units that carry the library's exported `Tpu*` C API and the PJRT plugin surface, so this is where every externally-callable entry point lives. It is also where the `asic_sw::driver::deepsea` runtime/driver namespace is densest (~18,800 functions in the band) and where MLIR operation-registration constructors begin.
 
-| Anchor Symbol | Address | Role | Confidence |
-|---|---|---|---|
-| `GetPjrtApi` | `0x0e6a83a0` | PJRT plugin vtable accessor — the canonical entry point | CERTAIN |
-| `ConfigureDistributedTpuOp_DoWork` | `0x0e8cd400` | Distributed-TPU configuration op | CERTAIN |
-| `TpuExecutor_Init` | `0x0eab90c0` | TPU executor lifecycle | CERTAIN |
-| `TpuCompiler_New` | `0x0eabc4a0` | TPU compiler factory | CERTAIN |
+| Anchor Symbol | Address | Role |
+|---|---|---|
+| `GetPjrtApi` | `0x0e6a83a0` | PJRT plugin vtable accessor — the canonical entry point |
+| `ConfigureDistributedTpuOp_DoWork` | `0x0e8cd400` | Distributed-TPU configuration op |
+| `TpuExecutor_Init` | `0x0eab90c0` | TPU executor lifecycle |
+| `TpuCompiler_New` | `0x0eabc4a0` | TPU compiler factory |
 
 If you land between `0x0e6a0000` and `0x0eb00000`, you are almost certainly in the PJRT/executor lifecycle layer documented in [`subsystem-map.md`](../subsystem-map.md). The `Tpu*` exports are the only undecorated (non-mangled) names in this region, which makes them the fastest visual anchors in a disassembly listing.
 
@@ -107,13 +107,13 @@ The broad central mass of `.text`, ~60% of all code. It is dominated by the MLIR
 
 Interleaved with MLIR are the XLA compiler proper (`xla::jellyfish`, `xla::tpu::sparse_core`, `xla::HloEvaluator`), the LLVM backend used for host/CPU codegen (`llvm`, `llvm::SelectionDAG`, `llvm::cl` command-line registration), and Eigen tensor-evaluator template instantiations. The sub-band tilt:
 
-| Sub-band | Lean | Anchor namespace span | Confidence |
-|---|---|---|---|
-| B1 `0x0f53...`–`0x1133...` | MLIR core + SPIR-V dialect | `mlir::spirv` `0x1126faa0`+ | HIGH |
-| B2 `0x1133...`–`0x1403...` | XLA SparseCore + MLIR | `xla::tpu::sparse_core` `0x0f858f20`+ | HIGH |
-| B3 `0x1403...`–`0x15e2...` | MLIR op-name peak + stableHLO | `mlir::stablehlo` `0x0eba7a60`+ | HIGH |
-| B4 `0x15e2...`–`0x17c2...` | MLIR linalg + bufferization | `mlir::linalg` `0x10a7f2e0`+ | HIGH |
-| B5 `0x17c2...`–`0x19a2...` | LLVM backend + residual MLIR | `llvm` cluster | MEDIUM |
+| Sub-band | Lean | Anchor namespace span |
+|---|---|---|
+| B1 `0x0f53...`–`0x1133...` | MLIR core + SPIR-V dialect | `mlir::spirv` `0x1126faa0`+ |
+| B2 `0x1133...`–`0x1403...` | XLA SparseCore + MLIR | `xla::tpu::sparse_core` `0x0f858f20`+ |
+| B3 `0x1403...`–`0x15e2...` | MLIR op-name peak + stableHLO | `mlir::stablehlo` `0x0eba7a60`+ |
+| B4 `0x15e2...`–`0x17c2...` | MLIR linalg + bufferization | `mlir::linalg` `0x10a7f2e0`+ |
+| B5 `0x17c2...`–`0x19a2...` | LLVM backend + residual MLIR | `llvm` cluster |
 
 > **NOTE —** the `xla::megascale` (collectives), `xla::HloEvaluator`, and `tensorflow` namespaces are *scattered* across the entire middle rather than banded — their function spans run the full width of `.text` (e.g. `tensorflow` spans `0x0e63d5c0`–`0x20cccd80`). Do not expect a "collectives band"; collective and profiling code is sprinkled by translation-unit adjacency, not gathered. Use the [`subsystem-map.md`](../subsystem-map.md) entry-point table for these, not an address range.
 
@@ -131,13 +131,13 @@ A transitional band with no single dominant subsystem. It is led by `std::__u` S
 
 The top quarter of `.text` and the heart of the TPU-specific machinery: the instruction-set codecs that encode/decode TPU bundles for the three core families — `vxc` (vector core), `gxc` (general/grid core), and `pxc` (processing core). These are the `asic_sw::deepsea::{vxc,gxc,pxc}` namespaces, and they are densest here: B8 holds ~20k `vxc` + ~14k `gxc` + ~1.5k `pxc`; B9 holds ~46k `gxc` (its peak) + ~4.9k `pxc` + ~4.4k `vxc`. The codec class hierarchy is template-heavy — `SparseCoreTecCodecBase`, `TensorCoreCodecBase`, and the `platforms_deepsea::jellyfish::isa::{Encoder,Decoder}Base` templates — which is why function counts explode here: every codec instantiation generates a full set of encode/decode/validate methods.
 
-| Anchor (RTTI typeinfo string, `.rodata`) | Address | Pins | Confidence |
-|---|---|---|---|
-| `asic_sw::deepsea::vxc::isa::TensorCoreCodecBase<…>` | `0x0406f1d8` | `vxc` TensorCore codec family | HIGH |
-| `asic_sw::deepsea::gxc::gfc::isa::TensorCoreCodecBase<…>` | `0x0406fd20` | `gxc` TensorCore codec family | HIGH |
-| `platforms_deepsea::jellyfish::isa::EncoderBase<…>` | `0x044fdc6e` | ISA encoder base template | HIGH |
-| `platforms_deepsea::jellyfish::isa::DecoderBase<…>` | `0x044fe6b9` | ISA decoder base template | HIGH |
-| `tpu::TpuCompactionIsaEmitterCodegen` | `0x0abe3e38` | ISA-emitter codegen RTTI | MEDIUM |
+| Anchor (RTTI typeinfo string, `.rodata`) | Address | Pins |
+|---|---|---|
+| `asic_sw::deepsea::vxc::isa::TensorCoreCodecBase<…>` | `0x0406f1d8` | `vxc` TensorCore codec family |
+| `asic_sw::deepsea::gxc::gfc::isa::TensorCoreCodecBase<…>` | `0x0406fd20` | `gxc` TensorCore codec family |
+| `platforms_deepsea::jellyfish::isa::EncoderBase<…>` | `0x044fdc6e` | ISA encoder base template |
+| `platforms_deepsea::jellyfish::isa::DecoderBase<…>` | `0x044fe6b9` | ISA decoder base template |
+| `tpu::TpuCompactionIsaEmitterCodegen` | `0x0abe3e38` | ISA-emitter codegen RTTI |
 
 > **NOTE —** the RTTI typeinfo *strings* above live in `.rodata`/`.lrodata` (low addresses, `0x04xxxxxx`–`0x0axxxxxx`), not in `.text`. They are the names of classes whose *methods* execute in B8–B9. The `.data.rel.ro` vtable pointer arrays (`0x215f81a0`+) wire the two together; see [`forensics/rtti-vtable-census.md`](../forensics/rtti-vtable-census.md) for the full RTTI graph. Use the typeinfo strings to confirm a band's identity, but expect the executing code 200+ MiB higher.
 
@@ -147,15 +147,15 @@ The top quarter of `.text` and the heart of the TPU-specific machinery: the inst
 
 A few subsystems span sections rather than living inside `.text`. They are listed here so an address outside `.text` still resolves.
 
-| Region | VA Range | Section(s) | Subsystem | Confidence |
-|---|---|---|---|---|
-| Vtable / typeinfo pool | `0x01884a00`–`0x084931d0` | `.lrodata` | RTTI typeinfo strings, vtable bodies, jump/dispatch tables (large code model) | CERTAIN |
-| String / constant pool | `0x084a0000`–`0x0be8af28` | `.rodata` | Log messages, op-name strings, flag tables, format strings | CERTAIN |
-| Protobuf descriptors | `0x0be8af30`–`0x0c1bf0b0` | `protodesc_cold` | Cold protobuf reflection metadata | CERTAIN |
-| Unwind tables | `0x0c2cc634`–`0x0e635524` | `.eh_frame*` | C++ exception unwind (~35 MiB) | CERTAIN |
-| Static constructors | `0x21217490`–`0x213818e4` | `.text.startup` | 2,886 init functions (dialect/flag/proto registration) | CERTAIN |
-| Cold / error paths | `0x21381900`–`0x213efe71` | `.text.unlikely`, `google_init_cold` | 2,923 cold-promoted functions | CERTAIN |
-| Relocated RO data | `0x215f81a0`–`0x22048b30` | `.data.rel.ro` | Vtable pointer arrays, RTTI base-class lists, the RTTI graph backbone | CERTAIN |
+| Region | VA Range | Section(s) | Subsystem |
+|---|---|---|---|
+| Vtable / typeinfo pool | `0x01884a00`–`0x084931d0` | `.lrodata` | RTTI typeinfo strings, vtable bodies, jump/dispatch tables (large code model) |
+| String / constant pool | `0x084a0000`–`0x0be8af28` | `.rodata` | Log messages, op-name strings, flag tables, format strings |
+| Protobuf descriptors | `0x0be8af30`–`0x0c1bf0b0` | `protodesc_cold` | Cold protobuf reflection metadata |
+| Unwind tables | `0x0c2cc634`–`0x0e635524` | `.eh_frame*` | C++ exception unwind (~35 MiB) |
+| Static constructors | `0x21217490`–`0x213818e4` | `.text.startup` | 2,886 init functions (dialect/flag/proto registration) |
+| Cold / error paths | `0x21381900`–`0x213efe71` | `.text.unlikely`, `google_init_cold` | 2,923 cold-promoted functions |
+| Relocated RO data | `0x215f81a0`–`0x22048b30` | `.data.rel.ro` | Vtable pointer arrays, RTTI base-class lists, the RTTI graph backbone |
 
 > **GOTCHA —** the second ELF in the wheel, `sdk.so` (21.5 MiB, the Python `sdk` module), is a *separate* shared object with its own independent VA space. Do not confuse `sdk.so`'s addresses with `libtpu.so`'s — they overlap numerically but mean nothing across the boundary. Note the naming trap: the `GetLibtpuSdkApi` C-ABI export lives *inside `libtpu.so`* (at `0x109028c0`), not in `sdk.so` — `sdk.so` is a Python module that neither exports nor imports it. The two-binary split is documented in [`forensics/two-binary-split.md`](../forensics/two-binary-split.md). All addresses on *this* page are `libtpu.so` only.
 

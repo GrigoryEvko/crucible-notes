@@ -75,16 +75,16 @@ TpuCodec* TpuCodec::Create(TpuVersion v):     // 0x1e835fa0
 
 ## Naming Pitfall Quick Table
 
-| Tempting-but-wrong label | Why it tempts | Authoritative value | Evidence | Confidence |
-|---|---|---|---|---|
-| "5 TpuVersions" | viperfish folds into a neighbor | 6 (`0..5`) | `TpuVersionToString` bound `>= 6`; 6 relocs @ `0x22011bf0` | CERTAIN |
-| "2 HAL families" | VXC absorbs three codenames | 3 (JXC / PXC / VXC) | three factory typeinfos | CERTAIN |
-| "Ghostlite = v5p" | off-by-one Cloud name | `v6e` / "TPU v6 lite" | `TpuVersionToExternalName` case 4 | CERTAIN |
-| "6acc60406 = Trillium / v6e" | off-by-one marketing name | "TPU7x" / `tpu7x` | `TpuVersionToExternalName` case 5 | CERTAIN |
-| "v5 codec = TpuCodec6acc60406" | analogy to named codecs | anonymous codec (`sub_1E838380`) | no class symbol; only `tpu_codec_6acc60406.cc` path | CERTAIN |
-| "Ghostfish" (gfc codename) | analogy to `ghostlite`→`glc` | `6acc60406` (obfuscated tag) | `ghostfish` = 0 occurrences | CERTAIN |
-| "chip_parts internal version 6" | proto/internal conflation | proto 6 = internal 5 | `08 06` blob byte; `TpuVersionFromProto` `−1` | CERTAIN |
-| "v5 PCI DID has no record" | anonymous (no symbol) | chip DID `0x00f2` (anon records) | bytes `0xbdf3cc4`+; `IsGfc` immediates | CERTAIN |
+| Tempting-but-wrong label | Why it tempts | Authoritative value | Evidence |
+|---|---|---|---|
+| "5 TpuVersions" | viperfish folds into a neighbor | 6 (`0..5`) | `TpuVersionToString` bound `>= 6`; 6 relocs @ `0x22011bf0` |
+| "2 HAL families" | VXC absorbs three codenames | 3 (JXC / PXC / VXC) | three factory typeinfos |
+| "Ghostlite = v5p" | off-by-one Cloud name | `v6e` / "TPU v6 lite" | `TpuVersionToExternalName` case 4 |
+| "6acc60406 = Trillium / v6e" | off-by-one marketing name | "TPU7x" / `tpu7x` | `TpuVersionToExternalName` case 5 |
+| "v5 codec = TpuCodec6acc60406" | analogy to named codecs | anonymous codec (`sub_1E838380`) | no class symbol; only `tpu_codec_6acc60406.cc` path |
+| "Ghostfish" (gfc codename) | analogy to `ghostlite`→`glc` | `6acc60406` (obfuscated tag) | `ghostfish` = 0 occurrences |
+| "chip_parts internal version 6" | proto/internal conflation | proto 6 = internal 5 | `08 06` blob byte; `TpuVersionFromProto` `−1` |
+| "v5 PCI DID has no record" | anonymous (no symbol) | chip DID `0x00f2` (anon records) | bytes `0xbdf3cc4`+; `IsGfc` immediates |
 
 ---
 

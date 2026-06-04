@@ -103,12 +103,12 @@ function RunHloScheduler_lhs_gate(module, env, target, config):   // 0x1096fac0
 
 ### Related Knobs
 
-| Knob (effect) | Source | Default | Confidence |
-|---|---|---|---|
-| `async-op-scheduler` pass disable | `IsPassDisabled` name | enabled | HIGH |
-| `latency-hiding-scheduler` pass disable | `IsPassDisabled` name | enabled | HIGH |
-| `EnableLatencyHidingLayerScheduler` | `0x1d6b8960` / env+2144 | **false** | HIGH |
-| `xla_latency_hiding_scheduler_rerun` | rerun count | 1 | MEDIUM |
+| Knob (effect) | Source | Default |
+|---|---|---|
+| `async-op-scheduler` pass disable | `IsPassDisabled` name | enabled |
+| `latency-hiding-scheduler` pass disable | `IsPassDisabled` name | enabled |
+| `EnableLatencyHidingLayerScheduler` | `0x1d6b8960` / env+2144 | **false** |
+| `xla_latency_hiding_scheduler_rerun` | rerun count | 1 |
 
 ---
 
@@ -253,12 +253,12 @@ Both invoke the *same compiled* `RunImpl` at `0x136321a0` — the unmodified ups
 
 The core ctor (`0x10976ce0`) copies the 137-byte config POD (a `vmovups` block from `[rcx]…[rcx+0x69]` into `[core+0x10]…[core+0x79]`) and installs four `std::function` slots:
 
-| Core offset | Slot | post_layout default | Confidence |
-|---|---|---|---|
-| `+0xB8` | `target_overlap_limit` `fn(Shape const&)→long` | `RunTensorCoreAsyncOpScheduler::$_0` (line 1040) | HIGH |
-| `+0xD8` | `candidate_compare_` `fn(ScheduleCandidate&,…)→optional<CandidateResult>` | **empty** (line 1000) — built-in list-scheduler heuristic | HIGH |
-| `+0xF8` | `post_step_mutator_` `fn(SchedulingState&)→void` | **empty** (line 1002) | HIGH |
-| `+0x118` | `should_schedule_` `fn(HloInstruction const*)→bool` | `$_1` (ILP) or `$_2` (regular) (lines 1086/1097) | HIGH |
+| Core offset | Slot | post_layout default |
+|---|---|---|
+| `+0xB8` | `target_overlap_limit` `fn(Shape const&)→long` | `RunTensorCoreAsyncOpScheduler::$_0` (line 1040) |
+| `+0xD8` | `candidate_compare_` `fn(ScheduleCandidate&,…)→optional<CandidateResult>` | **empty** (line 1000) — built-in list-scheduler heuristic |
+| `+0xF8` | `post_step_mutator_` `fn(SchedulingState&)→void` | **empty** (line 1002) |
+| `+0x118` | `should_schedule_` `fn(HloInstruction const*)→bool` | `$_1` (ILP) or `$_2` (regular) (lines 1086/1097) |
 
 The `should_schedule_` classifier swap is the *ILP variant* (see [`lhs-ilp-variant`](lhs-ilp-variant.md)): `EnableIlpLatencyHidingScheduler(env)` (line 1084) selects the wider `$_1` async set vs the narrower `$_2`. This choice happens *before* `AddPass` and only changes which instructions the core treats as async candidates — the `RunImpl` body is unchanged.
 
@@ -340,23 +340,23 @@ The page therefore documents the *one* live LHS in the build. The pre-fusion slo
 
 ## Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `RunHloScheduler` | `0x1096fac0` | Phase-7 driver; builds both pipelines, gates and adds the LHS | HIGH |
-| `LatencyHidingScheduler::RunImpl` | `0x136321a0` | Shared pass body; has_schedule CHECK, list scheduler, retry loop | HIGH |
-| `GetSchedulerConfig` | `0x10974aa0` | 137-byte `SchedulerConfig` POD; `v45` rerun gate | HIGH |
-| `GetLatencyEstimator` | `0x10974e00` | Approximate / CostModel / PGLE estimator selection | HIGH |
-| `GetTpuAsyncTracker` | `0x10975520` | Wraps `TpuAsyncTracker::Create` | HIGH |
-| `TpuAsyncTracker::Create` | `0x10ffb3e0` | TPU resource model + reserved-SC set | MEDIUM |
-| `CostModelLatencyEstimator` ctor | `0x10ff8a60` | Real cost model (object size `0x3D0`) | MEDIUM |
-| `DefaultSchedulerCore` ctor | `0x10976ce0` | Copies config; installs four `std::function` hooks | HIGH |
-| `AddPass<LatencyHidingScheduler, …>` | `0x10975c40` | Templated pass adder (sites 1137/1411) | HIGH |
-| `IsPassDisabled` | `0x12fd8340` | Pass-enable/disable resolution | HIGH |
-| `EnableLatencyHidingLayerScheduler` | `0x1d6b8960` | Layer-scheduler gate (default false) | HIGH |
-| `EnableSchedulerMemoryPressureTracking` | `0x1d6b66e0` | `memory_limit` tri-state | HIGH |
-| `SchedulerUsingRealCostModel` | `0x1d6b6580` | Sets `use_real_cost_model` (off 123) | HIGH |
-| `EnableIlpLatencyHidingScheduler` | `0x1d6b7e00` | `$_1`/`$_2` classifier gate | MEDIUM |
-| `HloMemorySchedulerWithBrkgaFallback::RunImpl` | `0x10abe6e0` | Base memory schedule | MEDIUM |
+| Function | Address | Role |
+|---|---|---|
+| `RunHloScheduler` | `0x1096fac0` | Phase-7 driver; builds both pipelines, gates and adds the LHS |
+| `LatencyHidingScheduler::RunImpl` | `0x136321a0` | Shared pass body; has_schedule CHECK, list scheduler, retry loop |
+| `GetSchedulerConfig` | `0x10974aa0` | 137-byte `SchedulerConfig` POD; `v45` rerun gate |
+| `GetLatencyEstimator` | `0x10974e00` | Approximate / CostModel / PGLE estimator selection |
+| `GetTpuAsyncTracker` | `0x10975520` | Wraps `TpuAsyncTracker::Create` |
+| `TpuAsyncTracker::Create` | `0x10ffb3e0` | TPU resource model + reserved-SC set |
+| `CostModelLatencyEstimator` ctor | `0x10ff8a60` | Real cost model (object size `0x3D0`) |
+| `DefaultSchedulerCore` ctor | `0x10976ce0` | Copies config; installs four `std::function` hooks |
+| `AddPass<LatencyHidingScheduler, …>` | `0x10975c40` | Templated pass adder (sites 1137/1411) |
+| `IsPassDisabled` | `0x12fd8340` | Pass-enable/disable resolution |
+| `EnableLatencyHidingLayerScheduler` | `0x1d6b8960` | Layer-scheduler gate (default false) |
+| `EnableSchedulerMemoryPressureTracking` | `0x1d6b66e0` | `memory_limit` tri-state |
+| `SchedulerUsingRealCostModel` | `0x1d6b6580` | Sets `use_real_cost_model` (off 123) |
+| `EnableIlpLatencyHidingScheduler` | `0x1d6b7e00` | `$_1`/`$_2` classifier gate |
+| `HloMemorySchedulerWithBrkgaFallback::RunImpl` | `0x10abe6e0` | Base memory schedule |
 
 ---
 

@@ -240,15 +240,15 @@ Two shared TPU helpers underpin these: `SetupDerivedInstruction(HloInstruction*,
 
 The pass is configured by an `xla::AlgebraicSimplifierOptions` struct passed by reference to the constructor and copied inline into the pass at `+8`. It is the open-source XLA options struct (the same one the GPU/CPU backends use), so it carries the full XLA gate family; the decompile confirms its presence (dtor `0x1343ba00`), the `ReshapeIsBitcast(Shape, Shape)` accessor (`0x1dd0e0c0`) consulted by `HandleReshape`, and the `run_to_fixed_point` bool read by `RunImpl` at `+135`. The gates relevant to the TPU path:
 
-| Option (semantic) | How it gates a rule | Evidence | Confidence |
-|---|---|---|---|
-| `run_to_fixed_point` | enables the re-run-to-fixpoint loop in `RunImpl` (else one pass/computation) | byte at pass `+135`, read at `0x13443f40` | CONFIRMED |
-| `is_layout_sensitive` | makes the simplifier respect committed layouts (TPU runs it post-layout) | TPU overrides query `IsValidLayout` `0x13443660` | HIGH |
-| `enable_dot_strength_reduction` | enables `dot → reduce/multiply` rewrites in `HandleDot` | flag `xla_tpu_enable_dot_strength_reduction` (string-confirmed); `ShouldStrengthReduceDotToReduce` `0x13443800` | CONFIRMED on flag string |
-| `ReshapeIsBitcast(from, to)` | decides whether `HandleReshape` folds a reshape into a `bitcast` | accessor `0x1dd0e0c0`; called from `BitcastingOperandOfReshapeOrCopyChain` `0x1dd0df60` | CONFIRMED |
-| `enable_conv_simplification` | gates `HandleConvolution` fold/swap | TPU `FoldConvInputPad` `0x1343dca0` | HIGH |
-| `minmax_propagate_nan` | controls `min/max → clamp` NaN semantics in `MinMaxToClamp` | helper `0x1dd23380` | HIGH |
-| `enable_negative_padding_replacement` | gates negative-pad handling in `HandlePad` | base `HandlePad` body | MEDIUM |
+| Option (semantic) | How it gates a rule | Evidence |
+|---|---|---|
+| `run_to_fixed_point` | enables the re-run-to-fixpoint loop in `RunImpl` (else one pass/computation) | byte at pass `+135`, read at `0x13443f40` |
+| `is_layout_sensitive` | makes the simplifier respect committed layouts (TPU runs it post-layout) | TPU overrides query `IsValidLayout` `0x13443660` |
+| `enable_dot_strength_reduction` | enables `dot → reduce/multiply` rewrites in `HandleDot` | flag `xla_tpu_enable_dot_strength_reduction` (string-confirmed); `ShouldStrengthReduceDotToReduce` `0x13443800` |
+| `ReshapeIsBitcast(from, to)` | decides whether `HandleReshape` folds a reshape into a `bitcast` | accessor `0x1dd0e0c0`; called from `BitcastingOperandOfReshapeOrCopyChain` `0x1dd0df60` |
+| `enable_conv_simplification` | gates `HandleConvolution` fold/swap | TPU `FoldConvInputPad` `0x1343dca0` |
+| `minmax_propagate_nan` | controls `min/max → clamp` NaN semantics in `MinMaxToClamp` | helper `0x1dd23380` |
+| `enable_negative_padding_replacement` | gates negative-pad handling in `HandlePad` | base `HandlePad` body |
 
 > **NOTE — the only TPU-specific *flag string* recovered is `xla_tpu_enable_dot_strength_reduction`.** It surfaces verbatim in the strings table (e.g. `"4\n%xla_tpu_enable_dot_strength_reduction"` and the bare `xla_tpu_enable_dot_strength_reduction`), confirming dot-strength-reduction is a TPU-gated rule family. The other rows are the standard `AlgebraicSimplifierOptions` boolean members whose names are upstream-XLA; they are present as struct fields (the struct is constructed and copied), but their exact byte offsets and the corresponding `xla_*` flag strings were **not** individually pinned in the bounded grep budget. Treat the *existence* of these gates as CONFIRMED (it is the upstream options struct) and the per-field offset as unrecovered. [Confidence: as marked per row.]
 
@@ -265,20 +265,20 @@ The pass is configured by an `xla::AlgebraicSimplifierOptions` struct passed by 
 
 ## Confidence Summary
 
-| Claim | Evidence | Confidence |
-|---|---|---|
-| TPU pass is `jellyfish::TpuAlgebraicSimplifier`, subclass of `AlgebraicSimplifier` | symbols `TpuAlgebraicSimplifier::RunImpl` `0x13443f40`, `AddPass<TpuAlgebraicSimplifier,Target const&,AlgebraicSimplifierOptions&>` `0x10954400` | CONFIRMED |
-| Dispatch is opcode-keyed virtual table, not benefit pattern matching | `DfsHloVisitorBase<HloInstruction*>` vtable `0x21d2c320`, 140 slots; per-`Handle<Op>` emitted functions | CONFIRMED |
-| Base visitor emits 56 `Handle*`; TPU subclass emits 17 (16 overrides + 1 TPU-only) | 56 `AlgebraicSimplifierVisitor::Handle*` + 17 `TpuAlgebraicSimplifierVisitor::Handle*` emitted functions | CONFIRMED |
-| `HandleRngBitGenerator` is TPU-only | TPU `0x13443440`; no base `AlgebraicSimplifierVisitor` RngBitGenerator symbol emitted | CONFIRMED |
-| Per-computation entry `Run` returns a changed-bool | `AlgebraicSimplifierVisitor::Run` `0x1dd010e0`, signature recovered | CONFIRMED |
-| Run-to-fixpoint loop, cap 50, non-fatal log on stuck | `RunImpl` `0x13443f40`; cap `0x32`; `tpu_algebraic_simplifier.cc:985` log string | CONFIRMED |
-| Single-caller gate (skip computations with >1 caller) | `caller_instructions()` size check (`v19 > 1` skip) in `RunImpl` | CONFIRMED |
-| Options stored inline at pass `+8`; `run_to_fixed_point` at `+135` | `AddPass` trampoline `0x10954400` copies options to `+8`; `RunImpl` reads `+135` | CONFIRMED |
-| TPU overrides are layout-aware (`IsValidLayout`/`UpdateLayout`) | `IsValidLayout` `0x13443660`, `UpdateLayout` `0x13444860`, `SetupDerivedInstruction` `0x134445c0` | CONFIRMED |
-| `xla_tpu_enable_dot_strength_reduction` gates dot strength reduction | flag string in strings table; `ShouldStrengthReduceDotToReduce` `0x13443800` | CONFIRMED |
-| Source units `tpu_algebraic_simplifier.cc` / `…/simplifiers/algebraic_simplifier.cc` | string-anchored (lines 961/985/991; base file path) | CONFIRMED |
-| Full `AlgebraicSimplifierOptions` field layout / flag bindings | only 2 fields byte-pinned | LOW |
+| Claim | Evidence |
+|---|---|
+| TPU pass is `jellyfish::TpuAlgebraicSimplifier`, subclass of `AlgebraicSimplifier` | symbols `TpuAlgebraicSimplifier::RunImpl` `0x13443f40`, `AddPass<TpuAlgebraicSimplifier,Target const&,AlgebraicSimplifierOptions&>` `0x10954400` |
+| Dispatch is opcode-keyed virtual table, not benefit pattern matching | `DfsHloVisitorBase<HloInstruction*>` vtable `0x21d2c320`, 140 slots; per-`Handle<Op>` emitted functions |
+| Base visitor emits 56 `Handle*`; TPU subclass emits 17 (16 overrides + 1 TPU-only) | 56 `AlgebraicSimplifierVisitor::Handle*` + 17 `TpuAlgebraicSimplifierVisitor::Handle*` emitted functions |
+| `HandleRngBitGenerator` is TPU-only | TPU `0x13443440`; no base `AlgebraicSimplifierVisitor` RngBitGenerator symbol emitted |
+| Per-computation entry `Run` returns a changed-bool | `AlgebraicSimplifierVisitor::Run` `0x1dd010e0`, signature recovered |
+| Run-to-fixpoint loop, cap 50, non-fatal log on stuck | `RunImpl` `0x13443f40`; cap `0x32`; `tpu_algebraic_simplifier.cc:985` log string |
+| Single-caller gate (skip computations with >1 caller) | `caller_instructions()` size check (`v19 > 1` skip) in `RunImpl` |
+| Options stored inline at pass `+8`; `run_to_fixed_point` at `+135` | `AddPass` trampoline `0x10954400` copies options to `+8`; `RunImpl` reads `+135` |
+| TPU overrides are layout-aware (`IsValidLayout`/`UpdateLayout`) | `IsValidLayout` `0x13443660`, `UpdateLayout` `0x13444860`, `SetupDerivedInstruction` `0x134445c0` |
+| `xla_tpu_enable_dot_strength_reduction` gates dot strength reduction | flag string in strings table; `ShouldStrengthReduceDotToReduce` `0x13443800` |
+| Source units `tpu_algebraic_simplifier.cc` / `…/simplifiers/algebraic_simplifier.cc` | string-anchored (lines 961/985/991; base file path) |
+| Full `AlgebraicSimplifierOptions` field layout / flag bindings | only 2 fields byte-pinned |
 
 ---
 

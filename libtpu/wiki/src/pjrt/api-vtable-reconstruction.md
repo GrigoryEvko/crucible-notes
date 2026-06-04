@@ -168,192 +168,192 @@ The order is grouped by area (Error/Plugin/Event/Client/DeviceDescription/Device
 
 ### Error / Plugin / Event (slots 5..14)
 
-| Slot | Off | Field | Impl symbol (`pjrt::`…) | Addr | Conf |
-|---|---|---|---|---|---|
-| 5 | `+0x028` | PJRT_Error_Destroy | `PJRT_Error_Destroy` | `0x0F85ECE0` | CERTAIN (spot) |
-| 6 | `+0x030` | PJRT_Error_Message | `PJRT_Error_Message` | `0x0F85EDE0` | CERTAIN (spot) |
-| 7 | `+0x038` | PJRT_Error_GetCode | `PJRT_Error_GetCode` | `0x0F85EF40` | CERTAIN |
-| 8 | `+0x040` | PJRT_Plugin_Initialize | `tpu_plugin::PJRT_Plugin_Initialize` | `0x0E6A9D00` | CERTAIN (spot, injected) |
-| 9 | `+0x048` | PJRT_Plugin_Attributes | `PJRT_Plugin_Attributes_Xla` | `0x0F85F080` | CERTAIN (spot, injected) |
-| 10 | `+0x050` | PJRT_Event_Destroy | `PJRT_Event_Destroy` | `0x0F86F920` | CERTAIN |
-| 11 | `+0x058` | PJRT_Event_IsReady | `PJRT_Event_IsReady` | `0x0F86F9E0` | CERTAIN (spot) |
-| 12 | `+0x060` | PJRT_Event_Error | `PJRT_Event_Error` | `0x0F86FBA0` | CERTAIN |
-| 13 | `+0x068` | PJRT_Event_Await | `PJRT_Event_Await` | `0x0F86FA80` | CERTAIN |
-| 14 | `+0x070` | PJRT_Event_OnReady | `PJRT_Event_OnReady` | `0x0F86FC60` | CERTAIN |
+| Slot | Off | Field | Impl symbol (`pjrt::`…) | Addr |
+|---|---|---|---|---|
+| 5 | `+0x028` | PJRT_Error_Destroy | `PJRT_Error_Destroy` | `0x0F85ECE0` |
+| 6 | `+0x030` | PJRT_Error_Message | `PJRT_Error_Message` | `0x0F85EDE0` |
+| 7 | `+0x038` | PJRT_Error_GetCode | `PJRT_Error_GetCode` | `0x0F85EF40` |
+| 8 | `+0x040` | PJRT_Plugin_Initialize | `tpu_plugin::PJRT_Plugin_Initialize` | `0x0E6A9D00` |
+| 9 | `+0x048` | PJRT_Plugin_Attributes | `PJRT_Plugin_Attributes_Xla` | `0x0F85F080` |
+| 10 | `+0x050` | PJRT_Event_Destroy | `PJRT_Event_Destroy` | `0x0F86F920` |
+| 11 | `+0x058` | PJRT_Event_IsReady | `PJRT_Event_IsReady` | `0x0F86F9E0` |
+| 12 | `+0x060` | PJRT_Event_Error | `PJRT_Event_Error` | `0x0F86FBA0` |
+| 13 | `+0x068` | PJRT_Event_Await | `PJRT_Event_Await` | `0x0F86FA80` |
+| 14 | `+0x070` | PJRT_Event_OnReady | `PJRT_Event_OnReady` | `0x0F86FC60` |
 
 ### Client (slots 15..27)
 
-| Slot | Off | Field | Impl symbol (`pjrt::`…) | Addr | Conf |
-|---|---|---|---|---|---|
-| 15 | `+0x078` | PJRT_Client_Create | `tpu_plugin::PJRT_Client_Create` | `0x0E6A8840` | CERTAIN (spot, injected) |
-| 16 | `+0x080` | PJRT_Client_Destroy | `PJRT_Client_Destroy` | `0x0F85F0E0` | CERTAIN |
-| 17 | `+0x088` | PJRT_Client_PlatformName | `PJRT_Client_PlatformName` | `0x0F85F4A0` | CERTAIN |
-| 18 | `+0x090` | PJRT_Client_ProcessIndex | `PJRT_Client_ProcessIndex` | `0x0F85F440` | CERTAIN |
-| 19 | `+0x098` | PJRT_Client_PlatformVersion | `PJRT_Client_PlatformVersion` | `0x0F85F500` | CERTAIN |
-| 20 | `+0x0A0` | PJRT_Client_Devices | `PJRT_Client_Devices` | `0x0F85F600` | CERTAIN |
-| 21 | `+0x0A8` | PJRT_Client_AddressableDevices | `PJRT_Client_AddressableDevices` | `0x0F85F660` | CERTAIN |
-| 22 | `+0x0B0` | PJRT_Client_LookupDevice | `PJRT_Client_LookupDevice` | `0x0F85F6C0` | CERTAIN |
-| 23 | `+0x0B8` | PJRT_Client_LookupAddressableDevice | `PJRT_Client_LookupAddressableDevice` | `0x0F85F880` | CERTAIN |
-| 24 | `+0x0C0` | PJRT_Client_AddressableMemories | `PJRT_Client_AddressableMemories` | `0x0F85FC60` | CERTAIN |
-| 25 | `+0x0C8` | PJRT_Client_Compile | `PJRT_Client_Compile` | `0x0F861820` | CERTAIN |
-| 26 | `+0x0D0` | PJRT_Client_DefaultDeviceAssignment | `PJRT_Client_DefaultDeviceAssignment` | `0x0F8630C0` | CERTAIN |
-| 27 | `+0x0D8` | PJRT_Client_BufferFromHostBuffer | `PJRT_Client_BufferFromHostBuffer` | `0x0F8644C0` | CERTAIN |
+| Slot | Off | Field | Impl symbol (`pjrt::`…) | Addr |
+|---|---|---|---|---|
+| 15 | `+0x078` | PJRT_Client_Create | `tpu_plugin::PJRT_Client_Create` | `0x0E6A8840` |
+| 16 | `+0x080` | PJRT_Client_Destroy | `PJRT_Client_Destroy` | `0x0F85F0E0` |
+| 17 | `+0x088` | PJRT_Client_PlatformName | `PJRT_Client_PlatformName` | `0x0F85F4A0` |
+| 18 | `+0x090` | PJRT_Client_ProcessIndex | `PJRT_Client_ProcessIndex` | `0x0F85F440` |
+| 19 | `+0x098` | PJRT_Client_PlatformVersion | `PJRT_Client_PlatformVersion` | `0x0F85F500` |
+| 20 | `+0x0A0` | PJRT_Client_Devices | `PJRT_Client_Devices` | `0x0F85F600` |
+| 21 | `+0x0A8` | PJRT_Client_AddressableDevices | `PJRT_Client_AddressableDevices` | `0x0F85F660` |
+| 22 | `+0x0B0` | PJRT_Client_LookupDevice | `PJRT_Client_LookupDevice` | `0x0F85F6C0` |
+| 23 | `+0x0B8` | PJRT_Client_LookupAddressableDevice | `PJRT_Client_LookupAddressableDevice` | `0x0F85F880` |
+| 24 | `+0x0C0` | PJRT_Client_AddressableMemories | `PJRT_Client_AddressableMemories` | `0x0F85FC60` |
+| 25 | `+0x0C8` | PJRT_Client_Compile | `PJRT_Client_Compile` | `0x0F861820` |
+| 26 | `+0x0D0` | PJRT_Client_DefaultDeviceAssignment | `PJRT_Client_DefaultDeviceAssignment` | `0x0F8630C0` |
+| 27 | `+0x0D8` | PJRT_Client_BufferFromHostBuffer | `PJRT_Client_BufferFromHostBuffer` | `0x0F8644C0` |
 
 ### DeviceDescription / Device (slots 28..39)
 
-| Slot | Off | Field | Impl symbol (`pjrt::`…) | Addr | Conf |
-|---|---|---|---|---|---|
-| 28 | `+0x0E0` | PJRT_DeviceDescription_Id | `PJRT_DeviceDescription_Id` | `0x0F865360` | CERTAIN |
-| 29 | `+0x0E8` | PJRT_DeviceDescription_ProcessIndex | `PJRT_DeviceDescription_ProcessIndex` | `0x0F8653C0` | CERTAIN |
-| 30 | `+0x0F0` | PJRT_DeviceDescription_Attributes | `PJRT_DeviceDescription_Attributes` | `0x0F865420` | CERTAIN |
-| 31 | `+0x0F8` | PJRT_DeviceDescription_Kind | `PJRT_DeviceDescription_Kind` | `0x0F865480` | CERTAIN |
-| 32 | `+0x100` | PJRT_DeviceDescription_DebugString | `PJRT_DeviceDescription_DebugString` | `0x0F865500` | CERTAIN |
-| 33 | `+0x108` | PJRT_DeviceDescription_ToString | `PJRT_DeviceDescription_ToString` | `0x0F8658A0` | CERTAIN |
-| 34 | `+0x110` | PJRT_Device_GetDescription | `PJRT_Device_GetDescription` | `0x0F8659A0` | CERTAIN |
-| 35 | `+0x118` | PJRT_Device_IsAddressable | `PJRT_Device_IsAddressable` | `0x0F865A00` | CERTAIN |
-| 36 | `+0x120` | PJRT_Device_LocalHardwareId | `PJRT_Device_LocalHardwareId` | `0x0F865A60` | CERTAIN |
-| 37 | `+0x128` | PJRT_Device_AddressableMemories | `PJRT_Device_AddressableMemories` | `0x0F865AC0` | CERTAIN |
-| 38 | `+0x130` | PJRT_Device_DefaultMemory | `PJRT_Device_DefaultMemory` | `0x0F865B20` | CERTAIN |
-| 39 | `+0x138` | PJRT_Device_MemoryStats | `PJRT_Device_MemoryStats` | `0x0F865CE0` | CERTAIN |
+| Slot | Off | Field | Impl symbol (`pjrt::`…) | Addr |
+|---|---|---|---|---|
+| 28 | `+0x0E0` | PJRT_DeviceDescription_Id | `PJRT_DeviceDescription_Id` | `0x0F865360` |
+| 29 | `+0x0E8` | PJRT_DeviceDescription_ProcessIndex | `PJRT_DeviceDescription_ProcessIndex` | `0x0F8653C0` |
+| 30 | `+0x0F0` | PJRT_DeviceDescription_Attributes | `PJRT_DeviceDescription_Attributes` | `0x0F865420` |
+| 31 | `+0x0F8` | PJRT_DeviceDescription_Kind | `PJRT_DeviceDescription_Kind` | `0x0F865480` |
+| 32 | `+0x100` | PJRT_DeviceDescription_DebugString | `PJRT_DeviceDescription_DebugString` | `0x0F865500` |
+| 33 | `+0x108` | PJRT_DeviceDescription_ToString | `PJRT_DeviceDescription_ToString` | `0x0F8658A0` |
+| 34 | `+0x110` | PJRT_Device_GetDescription | `PJRT_Device_GetDescription` | `0x0F8659A0` |
+| 35 | `+0x118` | PJRT_Device_IsAddressable | `PJRT_Device_IsAddressable` | `0x0F865A00` |
+| 36 | `+0x120` | PJRT_Device_LocalHardwareId | `PJRT_Device_LocalHardwareId` | `0x0F865A60` |
+| 37 | `+0x128` | PJRT_Device_AddressableMemories | `PJRT_Device_AddressableMemories` | `0x0F865AC0` |
+| 38 | `+0x130` | PJRT_Device_DefaultMemory | `PJRT_Device_DefaultMemory` | `0x0F865B20` |
+| 39 | `+0x138` | PJRT_Device_MemoryStats | `PJRT_Device_MemoryStats` | `0x0F865CE0` |
 
 ### Memory (slots 40..44)
 
-| Slot | Off | Field | Impl symbol (`pjrt::`…) | Addr | Conf |
-|---|---|---|---|---|---|
-| 40 | `+0x140` | PJRT_Memory_Id | `PJRT_Memory_Id` | `0x0F865E80` | CERTAIN |
-| 41 | `+0x148` | PJRT_Memory_Kind | `PJRT_Memory_Kind` | `0x0F865EE0` | CERTAIN |
-| 42 | `+0x150` | PJRT_Memory_DebugString | `PJRT_Memory_DebugString` | `0x0F865FC0` | CERTAIN |
-| 43 | `+0x158` | PJRT_Memory_ToString | `PJRT_Memory_ToString` | `0x0F866040` | CERTAIN |
-| 44 | `+0x160` | PJRT_Memory_AddressableByDevices | `PJRT_Memory_AddressableByDevices` | `0x0F8660C0` | CERTAIN |
+| Slot | Off | Field | Impl symbol (`pjrt::`…) | Addr |
+|---|---|---|---|---|
+| 40 | `+0x140` | PJRT_Memory_Id | `PJRT_Memory_Id` | `0x0F865E80` |
+| 41 | `+0x148` | PJRT_Memory_Kind | `PJRT_Memory_Kind` | `0x0F865EE0` |
+| 42 | `+0x150` | PJRT_Memory_DebugString | `PJRT_Memory_DebugString` | `0x0F865FC0` |
+| 43 | `+0x158` | PJRT_Memory_ToString | `PJRT_Memory_ToString` | `0x0F866040` |
+| 44 | `+0x160` | PJRT_Memory_AddressableByDevices | `PJRT_Memory_AddressableByDevices` | `0x0F8660C0` |
 
 ### Executable (slots 45..54)
 
-| Slot | Off | Field | Impl symbol (`pjrt::`…) | Addr | Conf |
-|---|---|---|---|---|---|
-| 45 | `+0x168` | PJRT_Executable_Destroy | `PJRT_Executable_Destroy` | `0x0F8661C0` | CERTAIN |
-| 46 | `+0x170` | PJRT_Executable_Name | `PJRT_Executable_Name` | `0x0F866860` | CERTAIN |
-| 47 | `+0x178` | PJRT_Executable_NumReplicas | `PJRT_Executable_NumReplicas` | `0x0F8668C0` | CERTAIN |
-| 48 | `+0x180` | PJRT_Executable_NumPartitions | `PJRT_Executable_NumPartitions` | `0x0F866920` | CERTAIN |
-| 49 | `+0x188` | PJRT_Executable_NumOutputs | `PJRT_Executable_NumOutputs` | `0x0F866A40` | CERTAIN |
-| 50 | `+0x190` | PJRT_Executable_SizeOfGeneratedCodeInBytes | `PJRT_Executable_SizeOfGeneratedCodeInBytes` | `0x0F867240` | CERTAIN |
-| 51 | `+0x198` | PJRT_Executable_GetCostAnalysis | `PJRT_Executable_GetCostAnalysis` | `0x0F867B80` | CERTAIN |
-| 52 | `+0x1A0` | PJRT_Executable_OutputMemoryKinds | `PJRT_Executable_OutputMemoryKinds` | `0x0F869520` | CERTAIN |
-| 53 | `+0x1A8` | PJRT_Executable_OptimizedProgram | `PJRT_Executable_OptimizedProgram` | `0x0F8672A0` | CERTAIN |
-| 54 | `+0x1B0` | PJRT_Executable_Serialize | `PJRT_Executable_Serialize` | `0x0F86C5A0` | CERTAIN |
+| Slot | Off | Field | Impl symbol (`pjrt::`…) | Addr |
+|---|---|---|---|---|
+| 45 | `+0x168` | PJRT_Executable_Destroy | `PJRT_Executable_Destroy` | `0x0F8661C0` |
+| 46 | `+0x170` | PJRT_Executable_Name | `PJRT_Executable_Name` | `0x0F866860` |
+| 47 | `+0x178` | PJRT_Executable_NumReplicas | `PJRT_Executable_NumReplicas` | `0x0F8668C0` |
+| 48 | `+0x180` | PJRT_Executable_NumPartitions | `PJRT_Executable_NumPartitions` | `0x0F866920` |
+| 49 | `+0x188` | PJRT_Executable_NumOutputs | `PJRT_Executable_NumOutputs` | `0x0F866A40` |
+| 50 | `+0x190` | PJRT_Executable_SizeOfGeneratedCodeInBytes | `PJRT_Executable_SizeOfGeneratedCodeInBytes` | `0x0F867240` |
+| 51 | `+0x198` | PJRT_Executable_GetCostAnalysis | `PJRT_Executable_GetCostAnalysis` | `0x0F867B80` |
+| 52 | `+0x1A0` | PJRT_Executable_OutputMemoryKinds | `PJRT_Executable_OutputMemoryKinds` | `0x0F869520` |
+| 53 | `+0x1A8` | PJRT_Executable_OptimizedProgram | `PJRT_Executable_OptimizedProgram` | `0x0F8672A0` |
+| 54 | `+0x1B0` | PJRT_Executable_Serialize | `PJRT_Executable_Serialize` | `0x0F86C5A0` |
 
 ### LoadedExecutable (slots 55..62)
 
-| Slot | Off | Field | Impl symbol (`pjrt::`…) | Addr | Conf |
-|---|---|---|---|---|---|
-| 55 | `+0x1B8` | PJRT_LoadedExecutable_Destroy | `PJRT_LoadedExecutable_Destroy` | `0x0F866780` | CERTAIN |
-| 56 | `+0x1C0` | PJRT_LoadedExecutable_GetExecutable | `PJRT_LoadedExecutable_GetExecutable` | `0x0F86CFA0` | CERTAIN |
-| 57 | `+0x1C8` | PJRT_LoadedExecutable_AddressableDevices | `PJRT_LoadedExecutable_AddressableDevices` | `0x0F866980` | CERTAIN |
-| 58 | `+0x1D0` | PJRT_LoadedExecutable_Delete | `PJRT_LoadedExecutable_Delete` | `0x0F869A80` | CERTAIN |
-| 59 | `+0x1D8` | PJRT_LoadedExecutable_IsDeleted | `PJRT_LoadedExecutable_IsDeleted` | `0x0F869AE0` | CERTAIN |
-| 60 | `+0x1E0` | PJRT_LoadedExecutable_Execute | `PJRT_LoadedExecutable_Execute` | `0x0F869B40` | CERTAIN (spot) |
-| 61 | `+0x1E8` | PJRT_Executable_DeserializeAndLoad | `PJRT_Executable_DeserializeAndLoad` | `0x0F86CC40` | CERTAIN |
-| 62 | `+0x1F0` | PJRT_LoadedExecutable_Fingerprint | `PJRT_LoadedExecutable_Fingerprint` | `0x0F85FBE0` | CERTAIN |
+| Slot | Off | Field | Impl symbol (`pjrt::`…) | Addr |
+|---|---|---|---|---|
+| 55 | `+0x1B8` | PJRT_LoadedExecutable_Destroy | `PJRT_LoadedExecutable_Destroy` | `0x0F866780` |
+| 56 | `+0x1C0` | PJRT_LoadedExecutable_GetExecutable | `PJRT_LoadedExecutable_GetExecutable` | `0x0F86CFA0` |
+| 57 | `+0x1C8` | PJRT_LoadedExecutable_AddressableDevices | `PJRT_LoadedExecutable_AddressableDevices` | `0x0F866980` |
+| 58 | `+0x1D0` | PJRT_LoadedExecutable_Delete | `PJRT_LoadedExecutable_Delete` | `0x0F869A80` |
+| 59 | `+0x1D8` | PJRT_LoadedExecutable_IsDeleted | `PJRT_LoadedExecutable_IsDeleted` | `0x0F869AE0` |
+| 60 | `+0x1E0` | PJRT_LoadedExecutable_Execute | `PJRT_LoadedExecutable_Execute` | `0x0F869B40` |
+| 61 | `+0x1E8` | PJRT_Executable_DeserializeAndLoad | `PJRT_Executable_DeserializeAndLoad` | `0x0F86CC40` |
+| 62 | `+0x1F0` | PJRT_LoadedExecutable_Fingerprint | `PJRT_LoadedExecutable_Fingerprint` | `0x0F85FBE0` |
 
 > **NOTE —** slot 62 `PJRT_LoadedExecutable_Fingerprint` is the deprecated fingerprint entry; v0.103 hosts use slot 99 `PJRT_Executable_Fingerprint` instead. Both are populated; the deprecated one is kept for older-minor callers.
 
 ### Buffer (slots 63..81)
 
-| Slot | Off | Field | Impl symbol (`pjrt::`…) | Addr | Conf |
-|---|---|---|---|---|---|
-| 63 | `+0x1F8` | PJRT_Buffer_Destroy | `PJRT_Buffer_Destroy` | `0x0F86D020` | CERTAIN |
-| 64 | `+0x200` | PJRT_Buffer_ElementType | `PJRT_Buffer_ElementType` | `0x0F86D220` | CERTAIN |
-| 65 | `+0x208` | PJRT_Buffer_Dimensions | `PJRT_Buffer_Dimensions` | `0x0F86D280` | CERTAIN |
-| 66 | `+0x210` | PJRT_Buffer_UnpaddedDimensions | `PJRT_Buffer_UnpaddedDimensions` | `0x0F86D300` | CERTAIN |
-| 67 | `+0x218` | PJRT_Buffer_DynamicDimensionIndices | `PJRT_Buffer_DynamicDimensionIndices` | `0x0F86D4C0` | CERTAIN |
-| 68 | `+0x220` | PJRT_Buffer_GetMemoryLayout | `PJRT_Buffer_GetMemoryLayout` | `0x0F86D5E0` | CERTAIN |
-| 69 | `+0x228` | PJRT_Buffer_OnDeviceSizeInBytes | `PJRT_Buffer_OnDeviceSizeInBytes` | `0x0F86DA80` | CERTAIN |
-| 70 | `+0x230` | PJRT_Buffer_Device | `PJRT_Buffer_Device` | `0x0F86DB40` | CERTAIN |
-| 71 | `+0x238` | PJRT_Buffer_Memory | `PJRT_Buffer_Memory` | `0x0F86DC60` | CERTAIN |
-| 72 | `+0x240` | PJRT_Buffer_Delete | `PJRT_Buffer_Delete` | `0x0F86DD80` | CERTAIN |
-| 73 | `+0x248` | PJRT_Buffer_IsDeleted | `PJRT_Buffer_IsDeleted` | `0x0F86DDE0` | CERTAIN |
-| 74 | `+0x250` | PJRT_Buffer_CopyToDevice | `PJRT_Buffer_CopyToDevice` | `0x0F86E360` | CERTAIN |
-| 75 | `+0x258` | PJRT_Buffer_ToHostBuffer | `PJRT_Buffer_ToHostBuffer` | `0x0F86E640` | CERTAIN (spot) |
-| 76 | `+0x260` | PJRT_Buffer_IsOnCpu | `PJRT_Buffer_IsOnCpu` | `0x0F86ECC0` | CERTAIN |
-| 77 | `+0x268` | PJRT_Buffer_ReadyEvent | `PJRT_Buffer_ReadyEvent` | `0x0F86ED20` | CERTAIN |
-| 78 | `+0x270` | PJRT_Buffer_UnsafePointer | `PJRT_Buffer_UnsafePointer` | `0x0F86EE60` | CERTAIN |
-| 79 | `+0x278` | PJRT_Buffer_IncreaseExternalReferenceCount | `PJRT_Buffer_IncreaseExternalReferenceCount` | `0x0F86EF20` | CERTAIN |
-| 80 | `+0x280` | PJRT_Buffer_DecreaseExternalReferenceCount | `PJRT_Buffer_DecreaseExternalReferenceCount` | `0x0F86F100` | CERTAIN |
-| 81 | `+0x288` | PJRT_Buffer_OpaqueDeviceMemoryDataPointer | `PJRT_Buffer_OpaqueDeviceMemoryDataPointer` | `0x0F86F200` | CERTAIN |
+| Slot | Off | Field | Impl symbol (`pjrt::`…) | Addr |
+|---|---|---|---|---|
+| 63 | `+0x1F8` | PJRT_Buffer_Destroy | `PJRT_Buffer_Destroy` | `0x0F86D020` |
+| 64 | `+0x200` | PJRT_Buffer_ElementType | `PJRT_Buffer_ElementType` | `0x0F86D220` |
+| 65 | `+0x208` | PJRT_Buffer_Dimensions | `PJRT_Buffer_Dimensions` | `0x0F86D280` |
+| 66 | `+0x210` | PJRT_Buffer_UnpaddedDimensions | `PJRT_Buffer_UnpaddedDimensions` | `0x0F86D300` |
+| 67 | `+0x218` | PJRT_Buffer_DynamicDimensionIndices | `PJRT_Buffer_DynamicDimensionIndices` | `0x0F86D4C0` |
+| 68 | `+0x220` | PJRT_Buffer_GetMemoryLayout | `PJRT_Buffer_GetMemoryLayout` | `0x0F86D5E0` |
+| 69 | `+0x228` | PJRT_Buffer_OnDeviceSizeInBytes | `PJRT_Buffer_OnDeviceSizeInBytes` | `0x0F86DA80` |
+| 70 | `+0x230` | PJRT_Buffer_Device | `PJRT_Buffer_Device` | `0x0F86DB40` |
+| 71 | `+0x238` | PJRT_Buffer_Memory | `PJRT_Buffer_Memory` | `0x0F86DC60` |
+| 72 | `+0x240` | PJRT_Buffer_Delete | `PJRT_Buffer_Delete` | `0x0F86DD80` |
+| 73 | `+0x248` | PJRT_Buffer_IsDeleted | `PJRT_Buffer_IsDeleted` | `0x0F86DDE0` |
+| 74 | `+0x250` | PJRT_Buffer_CopyToDevice | `PJRT_Buffer_CopyToDevice` | `0x0F86E360` |
+| 75 | `+0x258` | PJRT_Buffer_ToHostBuffer | `PJRT_Buffer_ToHostBuffer` | `0x0F86E640` |
+| 76 | `+0x260` | PJRT_Buffer_IsOnCpu | `PJRT_Buffer_IsOnCpu` | `0x0F86ECC0` |
+| 77 | `+0x268` | PJRT_Buffer_ReadyEvent | `PJRT_Buffer_ReadyEvent` | `0x0F86ED20` |
+| 78 | `+0x270` | PJRT_Buffer_UnsafePointer | `PJRT_Buffer_UnsafePointer` | `0x0F86EE60` |
+| 79 | `+0x278` | PJRT_Buffer_IncreaseExternalReferenceCount | `PJRT_Buffer_IncreaseExternalReferenceCount` | `0x0F86EF20` |
+| 80 | `+0x280` | PJRT_Buffer_DecreaseExternalReferenceCount | `PJRT_Buffer_DecreaseExternalReferenceCount` | `0x0F86F100` |
+| 81 | `+0x288` | PJRT_Buffer_OpaqueDeviceMemoryDataPointer | `PJRT_Buffer_OpaqueDeviceMemoryDataPointer` | `0x0F86F200` |
 
 ### CopyToDeviceStream (slots 82..86)
 
-| Slot | Off | Field | Impl symbol (`pjrt::`…) | Addr | Conf |
-|---|---|---|---|---|---|
-| 82 | `+0x290` | PJRT_CopyToDeviceStream_Destroy | `PJRT_CopyToDeviceStream_Destroy` | `0x0F86F5E0` | CERTAIN |
-| 83 | `+0x298` | PJRT_CopyToDeviceStream_AddChunk | `PJRT_CopyToDeviceStream_AddChunk` | `0x0F86F660` | CERTAIN |
-| 84 | `+0x2A0` | PJRT_CopyToDeviceStream_TotalBytes | `PJRT_CopyToDeviceStream_TotalBytes` | `0x0F86F7E0` | CERTAIN |
-| 85 | `+0x2A8` | PJRT_CopyToDeviceStream_GranuleSize | `PJRT_CopyToDeviceStream_GranuleSize` | `0x0F86F840` | CERTAIN |
-| 86 | `+0x2B0` | PJRT_CopyToDeviceStream_CurrentBytes | `PJRT_CopyToDeviceStream_CurrentBytes` | `0x0F86F8A0` | CERTAIN |
+| Slot | Off | Field | Impl symbol (`pjrt::`…) | Addr |
+|---|---|---|---|---|
+| 82 | `+0x290` | PJRT_CopyToDeviceStream_Destroy | `PJRT_CopyToDeviceStream_Destroy` | `0x0F86F5E0` |
+| 83 | `+0x298` | PJRT_CopyToDeviceStream_AddChunk | `PJRT_CopyToDeviceStream_AddChunk` | `0x0F86F660` |
+| 84 | `+0x2A0` | PJRT_CopyToDeviceStream_TotalBytes | `PJRT_CopyToDeviceStream_TotalBytes` | `0x0F86F7E0` |
+| 85 | `+0x2A8` | PJRT_CopyToDeviceStream_GranuleSize | `PJRT_CopyToDeviceStream_GranuleSize` | `0x0F86F840` |
+| 86 | `+0x2B0` | PJRT_CopyToDeviceStream_CurrentBytes | `PJRT_CopyToDeviceStream_CurrentBytes` | `0x0F86F8A0` |
 
 ### TopologyDescription / Compile (slots 87..94)
 
-| Slot | Off | Field | Impl symbol (`pjrt::`…) | Addr | Conf |
-|---|---|---|---|---|---|
-| 87 | `+0x2B8` | PJRT_TopologyDescription_Create | `tpu_plugin::PJRT_TopologyDescription_Create` | `0x0E6A9B20` | CERTAIN (spot, injected) |
-| 88 | `+0x2C0` | PJRT_TopologyDescription_Destroy | `PJRT_TopologyDescription_Destroy` | `0x0F870040` | CERTAIN |
-| 89 | `+0x2C8` | PJRT_TopologyDescription_PlatformName | `PJRT_TopologyDescription_PlatformName` | `0x0F870200` | CERTAIN |
-| 90 | `+0x2D0` | PJRT_TopologyDescription_PlatformVersion | `PJRT_TopologyDescription_PlatformVersion` | `0x0F870260` | CERTAIN |
-| 91 | `+0x2D8` | PJRT_TopologyDescription_GetDeviceDescriptions | `PJRT_TopologyDescription_GetDeviceDescriptions` | `0x0F8702C0` | CERTAIN |
-| 92 | `+0x2E0` | PJRT_TopologyDescription_Serialize | `PJRT_TopologyDescription_Serialize` | `0x0F870320` | CERTAIN |
-| 93 | `+0x2E8` | PJRT_TopologyDescription_Attributes | `PJRT_TopologyDescription_Attributes` | `0x0F8705E0` | CERTAIN |
-| 94 | `+0x2F0` | PJRT_Compile | `PJRT_Compile` | `0x0F870640` | CERTAIN (spot) |
+| Slot | Off | Field | Impl symbol (`pjrt::`…) | Addr |
+|---|---|---|---|---|
+| 87 | `+0x2B8` | PJRT_TopologyDescription_Create | `tpu_plugin::PJRT_TopologyDescription_Create` | `0x0E6A9B20` |
+| 88 | `+0x2C0` | PJRT_TopologyDescription_Destroy | `PJRT_TopologyDescription_Destroy` | `0x0F870040` |
+| 89 | `+0x2C8` | PJRT_TopologyDescription_PlatformName | `PJRT_TopologyDescription_PlatformName` | `0x0F870200` |
+| 90 | `+0x2D0` | PJRT_TopologyDescription_PlatformVersion | `PJRT_TopologyDescription_PlatformVersion` | `0x0F870260` |
+| 91 | `+0x2D8` | PJRT_TopologyDescription_GetDeviceDescriptions | `PJRT_TopologyDescription_GetDeviceDescriptions` | `0x0F8702C0` |
+| 92 | `+0x2E0` | PJRT_TopologyDescription_Serialize | `PJRT_TopologyDescription_Serialize` | `0x0F870320` |
+| 93 | `+0x2E8` | PJRT_TopologyDescription_Attributes | `PJRT_TopologyDescription_Attributes` | `0x0F8705E0` |
+| 94 | `+0x2F0` | PJRT_Compile | `PJRT_Compile` | `0x0F870640` |
 
 ### Late-addition cluster (slots 95..139, addition order)
 
 These slots were appended across minors 0.40→0.103, in the order XLA added them — not regrouped by area. The Area column tags each back to its conceptual home.
 
-| Slot | Off | Field | Area | Impl symbol (`pjrt::`…) | Addr | Conf |
-|---|---|---|---|---|---|---|
-| 95 | `+0x2F8` | PJRT_Executable_OutputElementTypes | Executable | `PJRT_Executable_OutputElementTypes` | `0x0F868560` | CERTAIN |
-| 96 | `+0x300` | PJRT_Executable_OutputDimensions | Executable | `PJRT_Executable_OutputDimensions` | `0x0F8689E0` | CERTAIN |
-| 97 | `+0x308` | PJRT_Buffer_CopyToMemory | Buffer | `PJRT_Buffer_CopyToMemory` | `0x0F86E500` | CERTAIN |
-| 98 | `+0x310` | PJRT_Client_CreateViewOfDeviceBuffer | Client | `PJRT_Client_CreateViewOfDeviceBuffer` | `0x0F865040` | CERTAIN |
-| 99 | `+0x318` | PJRT_Executable_Fingerprint | Executable | `PJRT_Executable_Fingerprint` | `0x0F867AC0` | CERTAIN |
-| 100 | `+0x320` | PJRT_Client_TopologyDescription | Client | `PJRT_Client_TopologyDescription` | `0x0F85F560` | CERTAIN |
-| 101 | `+0x328` | PJRT_Executable_GetCompiledMemoryStats | Executable | `PJRT_Executable_GetCompiledMemoryStats` | `0x0F86CAC0` | CERTAIN |
-| 102 | `+0x330` | PJRT_Memory_Kind_Id | Memory | `PJRT_Memory_Kind_Id` | `0x0F865F60` | CERTAIN |
-| 103 | `+0x338` | PJRT_ExecuteContext_Create | ExecuteContext | `tpu_plugin::PJRT_ExecuteContext_Create` | `0x0E6A9A80` | CERTAIN (spot, injected) |
-| 104 | `+0x340` | PJRT_ExecuteContext_Destroy | ExecuteContext | `PJRT_ExecuteContext_Destroy` | `0x0F866120` | CERTAIN |
-| 105 | `+0x348` | PJRT_Buffer_CopyRawToHost | Buffer | `PJRT_Buffer_CopyRawToHost` | `0x0F86DE40` | CERTAIN |
-| 106 | `+0x350` | PJRT_AsyncHostToDeviceTransferManager_Destroy | AsyncH2D | `PJRT_AsyncHostToDeviceTransferManager_Destroy` | `0x0F860620` | CERTAIN |
-| 107 | `+0x358` | PJRT_AsyncHostToDeviceTransferManager_TransferData | AsyncH2D | `PJRT_AsyncHostToDeviceTransferManager_TransferData` | `0x0F8606A0` | CERTAIN |
-| 108 | `+0x360` | PJRT_Client_CreateBuffersForAsyncHostToDevice | Client | `PJRT_Client_CreateBuffersForAsyncHostToDevice` | `0x0F85FCC0` | CERTAIN |
-| 109 | `+0x368` | PJRT_AsyncHostToDeviceTransferManager_RetrieveBuffer | AsyncH2D | `PJRT_AsyncHostToDeviceTransferManager_RetrieveBuffer` | `0x0F8611A0` | CERTAIN |
-| 110 | `+0x370` | PJRT_AsyncHostToDeviceTransferManager_Device | AsyncH2D | `PJRT_AsyncHostToDeviceTransferManager_Device` | `0x0F861260` | CERTAIN |
-| 111 | `+0x378` | PJRT_AsyncHostToDeviceTransferManager_BufferCount | AsyncH2D | `PJRT_AsyncHostToDeviceTransferManager_BufferCount` | `0x0F861380` | CERTAIN |
-| 112 | `+0x380` | PJRT_AsyncHostToDeviceTransferManager_BufferSize | AsyncH2D | `PJRT_AsyncHostToDeviceTransferManager_BufferSize` | `0x0F8613E0` | CERTAIN |
-| 113 | `+0x388` | PJRT_AsyncHostToDeviceTransferManager_SetBufferError | AsyncH2D | `PJRT_AsyncHostToDeviceTransferManager_SetBufferError` | `0x0F861440` | CERTAIN |
-| 114 | `+0x390` | PJRT_AsyncHostToDeviceTransferManager_AddMetadata | AsyncH2D | `PJRT_AsyncHostToDeviceTransferManager_AddMetadata` | `0x0F861500` | CERTAIN |
-| 115 | `+0x398` | PJRT_Client_DmaMap | Client | `PJRT_Client_DmaMap` | `0x0F860500` | CERTAIN |
-| 116 | `+0x3A0` | PJRT_Client_DmaUnmap | Client | `PJRT_Client_DmaUnmap` | `0x0F860580` | CERTAIN |
-| 117 | `+0x3A8` | PJRT_Client_CreateUninitializedBuffer | Client | `PJRT_Client_CreateUninitializedBuffer` | `0x0F863660` | CERTAIN |
-| 118 | `+0x3B0` | PJRT_Client_UpdateGlobalProcessInfo | Client | `PJRT_Client_UpdateGlobalProcessInfo` | `0x0F85F940` | CERTAIN |
-| 119 | `+0x3B8` | PJRT_TopologyDescription_Deserialize | Topology | `PJRT_TopologyDescription_Deserialize` | `0x0F870B80` | CERTAIN |
-| 120 | `+0x3C0` | PJRT_Client_CreateAliasBuffer | Client | `PJRT_Client_CreateAliasBuffer` | `0x0F863D60` | CERTAIN |
-| 121 | `+0x3C8` | PJRT_Client_FulfillAliasBuffer | Client | `PJRT_Client_FulfillAliasBuffer` | `0x0F8641A0` | CERTAIN |
-| 122 | `+0x3D0` | PJRT_LoadedExecutable_GetDeviceAssignment | LoadedExec | `PJRT_LoadedExecutable_GetDeviceAssignment` | `0x0F870EA0` | CERTAIN |
-| 123 | `+0x3D8` | PJRT_Client_CreateErrorBuffer | Client | `PJRT_Client_CreateErrorBuffer` | `0x0F8638A0` | CERTAIN |
-| 124 | `+0x3E0` | PJRT_AsyncHostToDeviceTransferManager_TransferLiteral | AsyncH2D | `PJRT_AsyncHostToDeviceTransferManager_TransferLiteral` | `0x0F860960` | CERTAIN |
-| 125 | `+0x3E8` | PJRT_Buffer_CopyRawToHostFuture | Buffer | `PJRT_Buffer_CopyRawToHostFuture` | `0x0F86DFE0` | CERTAIN |
-| 126 | `+0x3F0` | PJRT_Device_PoisonExecution | Device | `PJRT_Device_PoisonExecution` | `0x0F860D00` | CERTAIN |
-| 127 | `+0x3F8` | PJRT_Device_CreateAsyncTrackingEvent | Device | `PJRT_Device_CreateAsyncTrackingEvent` | `0x0F861080` | CERTAIN |
-| 128 | `+0x400` | PJRT_AsyncTrackingEvent_Destroy | AsyncTracking | `PJRT_AsyncTrackingEvent_Destroy` | `0x0F861120` | CERTAIN |
-| 129 | `+0x408` | PJRT_Executable_GetCompileOptions | Executable | `PJRT_Executable_GetCompileOptions` | `0x0F86C6E0` | CERTAIN |
-| 130 | `+0x410` | PJRT_Buffer_DonateWithControlDependency | Buffer | `PJRT_Buffer_DonateWithControlDependency` | `0x0F86F2E0` | CERTAIN |
-| 131 | `+0x418` | PJRT_Event_Create | Event | `PJRT_Event_Create` | `0x0F86FE00` | CERTAIN |
-| 132 | `+0x420` | PJRT_Event_Set | Event | `PJRT_Event_Set` | `0x0F86FFA0` | CERTAIN |
-| 133 | `+0x428` | PJRT_Device_GetAttributes | Device | `PJRT_Device_GetAttributes` | `0x0F873AC0` | CERTAIN |
-| 134 | `+0x430` | PJRT_Client_Load | Client | `PJRT_Client_Load` | `0x0F8627E0` | CERTAIN |
-| 135 | `+0x438` | PJRT_LoadedExecutable_AddressableDeviceLogicalIds | LoadedExec | `PJRT_LoadedExecutable_AddressableDeviceLogicalIds` | `0x0F8669E0` | CERTAIN |
-| 136 | `+0x440` | PJRT_Buffer_Bitcast | Buffer | `PJRT_Buffer_Bitcast` | `0x0F862D00` | CERTAIN |
-| 137 | `+0x448` | PJRT_Error_ForEachPayload | Error | `PJRT_Error_ForEachPayload` | `0x0F85EFC0` | CERTAIN |
-| 138 | `+0x450` | PJRT_TopologyDescription_Fingerprint | Topology | `PJRT_TopologyDescription_Fingerprint` | `0x0F870520` | CERTAIN |
-| 139 | `+0x458` | PJRT_Executable_ParameterMemoryKinds | Executable | `PJRT_Executable_ParameterMemoryKinds` | `0x0F868FC0` | CERTAIN (spot) |
+| Slot | Off | Field | Area | Impl symbol (`pjrt::`…) | Addr |
+|---|---|---|---|---|---|
+| 95 | `+0x2F8` | PJRT_Executable_OutputElementTypes | Executable | `PJRT_Executable_OutputElementTypes` | `0x0F868560` |
+| 96 | `+0x300` | PJRT_Executable_OutputDimensions | Executable | `PJRT_Executable_OutputDimensions` | `0x0F8689E0` |
+| 97 | `+0x308` | PJRT_Buffer_CopyToMemory | Buffer | `PJRT_Buffer_CopyToMemory` | `0x0F86E500` |
+| 98 | `+0x310` | PJRT_Client_CreateViewOfDeviceBuffer | Client | `PJRT_Client_CreateViewOfDeviceBuffer` | `0x0F865040` |
+| 99 | `+0x318` | PJRT_Executable_Fingerprint | Executable | `PJRT_Executable_Fingerprint` | `0x0F867AC0` |
+| 100 | `+0x320` | PJRT_Client_TopologyDescription | Client | `PJRT_Client_TopologyDescription` | `0x0F85F560` |
+| 101 | `+0x328` | PJRT_Executable_GetCompiledMemoryStats | Executable | `PJRT_Executable_GetCompiledMemoryStats` | `0x0F86CAC0` |
+| 102 | `+0x330` | PJRT_Memory_Kind_Id | Memory | `PJRT_Memory_Kind_Id` | `0x0F865F60` |
+| 103 | `+0x338` | PJRT_ExecuteContext_Create | ExecuteContext | `tpu_plugin::PJRT_ExecuteContext_Create` | `0x0E6A9A80` |
+| 104 | `+0x340` | PJRT_ExecuteContext_Destroy | ExecuteContext | `PJRT_ExecuteContext_Destroy` | `0x0F866120` |
+| 105 | `+0x348` | PJRT_Buffer_CopyRawToHost | Buffer | `PJRT_Buffer_CopyRawToHost` | `0x0F86DE40` |
+| 106 | `+0x350` | PJRT_AsyncHostToDeviceTransferManager_Destroy | AsyncH2D | `PJRT_AsyncHostToDeviceTransferManager_Destroy` | `0x0F860620` |
+| 107 | `+0x358` | PJRT_AsyncHostToDeviceTransferManager_TransferData | AsyncH2D | `PJRT_AsyncHostToDeviceTransferManager_TransferData` | `0x0F8606A0` |
+| 108 | `+0x360` | PJRT_Client_CreateBuffersForAsyncHostToDevice | Client | `PJRT_Client_CreateBuffersForAsyncHostToDevice` | `0x0F85FCC0` |
+| 109 | `+0x368` | PJRT_AsyncHostToDeviceTransferManager_RetrieveBuffer | AsyncH2D | `PJRT_AsyncHostToDeviceTransferManager_RetrieveBuffer` | `0x0F8611A0` |
+| 110 | `+0x370` | PJRT_AsyncHostToDeviceTransferManager_Device | AsyncH2D | `PJRT_AsyncHostToDeviceTransferManager_Device` | `0x0F861260` |
+| 111 | `+0x378` | PJRT_AsyncHostToDeviceTransferManager_BufferCount | AsyncH2D | `PJRT_AsyncHostToDeviceTransferManager_BufferCount` | `0x0F861380` |
+| 112 | `+0x380` | PJRT_AsyncHostToDeviceTransferManager_BufferSize | AsyncH2D | `PJRT_AsyncHostToDeviceTransferManager_BufferSize` | `0x0F8613E0` |
+| 113 | `+0x388` | PJRT_AsyncHostToDeviceTransferManager_SetBufferError | AsyncH2D | `PJRT_AsyncHostToDeviceTransferManager_SetBufferError` | `0x0F861440` |
+| 114 | `+0x390` | PJRT_AsyncHostToDeviceTransferManager_AddMetadata | AsyncH2D | `PJRT_AsyncHostToDeviceTransferManager_AddMetadata` | `0x0F861500` |
+| 115 | `+0x398` | PJRT_Client_DmaMap | Client | `PJRT_Client_DmaMap` | `0x0F860500` |
+| 116 | `+0x3A0` | PJRT_Client_DmaUnmap | Client | `PJRT_Client_DmaUnmap` | `0x0F860580` |
+| 117 | `+0x3A8` | PJRT_Client_CreateUninitializedBuffer | Client | `PJRT_Client_CreateUninitializedBuffer` | `0x0F863660` |
+| 118 | `+0x3B0` | PJRT_Client_UpdateGlobalProcessInfo | Client | `PJRT_Client_UpdateGlobalProcessInfo` | `0x0F85F940` |
+| 119 | `+0x3B8` | PJRT_TopologyDescription_Deserialize | Topology | `PJRT_TopologyDescription_Deserialize` | `0x0F870B80` |
+| 120 | `+0x3C0` | PJRT_Client_CreateAliasBuffer | Client | `PJRT_Client_CreateAliasBuffer` | `0x0F863D60` |
+| 121 | `+0x3C8` | PJRT_Client_FulfillAliasBuffer | Client | `PJRT_Client_FulfillAliasBuffer` | `0x0F8641A0` |
+| 122 | `+0x3D0` | PJRT_LoadedExecutable_GetDeviceAssignment | LoadedExec | `PJRT_LoadedExecutable_GetDeviceAssignment` | `0x0F870EA0` |
+| 123 | `+0x3D8` | PJRT_Client_CreateErrorBuffer | Client | `PJRT_Client_CreateErrorBuffer` | `0x0F8638A0` |
+| 124 | `+0x3E0` | PJRT_AsyncHostToDeviceTransferManager_TransferLiteral | AsyncH2D | `PJRT_AsyncHostToDeviceTransferManager_TransferLiteral` | `0x0F860960` |
+| 125 | `+0x3E8` | PJRT_Buffer_CopyRawToHostFuture | Buffer | `PJRT_Buffer_CopyRawToHostFuture` | `0x0F86DFE0` |
+| 126 | `+0x3F0` | PJRT_Device_PoisonExecution | Device | `PJRT_Device_PoisonExecution` | `0x0F860D00` |
+| 127 | `+0x3F8` | PJRT_Device_CreateAsyncTrackingEvent | Device | `PJRT_Device_CreateAsyncTrackingEvent` | `0x0F861080` |
+| 128 | `+0x400` | PJRT_AsyncTrackingEvent_Destroy | AsyncTracking | `PJRT_AsyncTrackingEvent_Destroy` | `0x0F861120` |
+| 129 | `+0x408` | PJRT_Executable_GetCompileOptions | Executable | `PJRT_Executable_GetCompileOptions` | `0x0F86C6E0` |
+| 130 | `+0x410` | PJRT_Buffer_DonateWithControlDependency | Buffer | `PJRT_Buffer_DonateWithControlDependency` | `0x0F86F2E0` |
+| 131 | `+0x418` | PJRT_Event_Create | Event | `PJRT_Event_Create` | `0x0F86FE00` |
+| 132 | `+0x420` | PJRT_Event_Set | Event | `PJRT_Event_Set` | `0x0F86FFA0` |
+| 133 | `+0x428` | PJRT_Device_GetAttributes | Device | `PJRT_Device_GetAttributes` | `0x0F873AC0` |
+| 134 | `+0x430` | PJRT_Client_Load | Client | `PJRT_Client_Load` | `0x0F8627E0` |
+| 135 | `+0x438` | PJRT_LoadedExecutable_AddressableDeviceLogicalIds | LoadedExec | `PJRT_LoadedExecutable_AddressableDeviceLogicalIds` | `0x0F8669E0` |
+| 136 | `+0x440` | PJRT_Buffer_Bitcast | Buffer | `PJRT_Buffer_Bitcast` | `0x0F862D00` |
+| 137 | `+0x448` | PJRT_Error_ForEachPayload | Error | `PJRT_Error_ForEachPayload` | `0x0F85EFC0` |
+| 138 | `+0x450` | PJRT_TopologyDescription_Fingerprint | Topology | `PJRT_TopologyDescription_Fingerprint` | `0x0F870520` |
+| 139 | `+0x458` | PJRT_Executable_ParameterMemoryKinds | Executable | `PJRT_Executable_ParameterMemoryKinds` | `0x0F868FC0` |
 
 ---
 

@@ -247,21 +247,21 @@ The other 50-odd namespaces (TF 834, spirv 376, ROCDL 350, NVVM 197, the HLO inp
 
 ## Confidence Summary
 
-| Claim | Evidence | Confidence |
-|---|---|---|
-| `Model<Op>` is a 23-slot vtable; 6,050 instances binary-wide | `nm` count of `_ZTVN4mlir23RegisteredOperationName5ModelI…EEE` = 6,050; reference vtable `Model<xla::PureCallOp>` @ `0x219d4e38` | CONFIRMED |
-| All 21 dispatch-slot symbols present on a `tpu` op | every `Model<mlir::tpu::IotaOp>::<method>` (slots 2–22) resolves to a demangled symbol | CONFIRMED |
-| Slot 0 is one shared base dtor across all Models | addend `0xfea8820` = `OperationName::Impl::~Impl` on 30-Model stratified sample (tpu/llo/sc/mosaic_sc/xla) | CONFIRMED |
-| `tpu` dialect has exactly 86 registered ops | `Dialect::addOperations<mlir::tpu::AllReduceOp, …>` @ `0x14aa2c40` has 86 type args | CONFIRMED |
-| Registration sink is `RegisteredOperationName::insert` | demangled `insert(unique_ptr<OperationName::Impl,…>, ArrayRef<StringRef>)` @ `0x1d8c57a0` | CONFIRMED |
-| Inherent-attr slots tail-jmp to ODS statics | `Model<IotaOp>::getInherentAttr` (slot 10) tail-jmp → `mlir::tpu::IotaOp::getInherentAttr(MLIRContext*, …IotaOpGenericAdaptorBase::Properties const&, StringRef)` @ `0x14b220e0` | CONFIRMED |
-| Optional hooks wrapped in `UniqueFunction` callback-holders | `Model<IotaOp>::foldHook`/`printAssembly` load holder ptr + `call *(%rax)`/`*0x10(%rax)`; holders @ `0x223413f0`/`0x22341400` | CONFIRMED |
-| `getOpPropertyByteSize` is an inlined `sizeof(Properties)` | `Model<IotaOp>` = `mov $0x8;ret`; `Model<BarrierOp>` @ `0x14ab1960` = `xor %eax,%eax;ret` | CONFIRMED |
-| `tpu` MemoryEffect fan-out = 59 ops | `Op<>` trait scan = 59; independent `MemoryEffectOpInterfaceTraits::Model<mlir::tpu::*>` distinct count = 59 | CONFIRMED |
-| `tpu` in-dialect rewrite surface = 6 fold + 9 canon | demangled `mlir::tpu::*Op::fold` (6) and `*Op::getCanonicalizationPatterns` (9) present | CONFIRMED |
-| 53 `tpu` ops carry non-trivial `Properties`; 9 of those carry `AttrSizedOperandSegments` | slot 14 `getOpPropertyByteSize` non-zero on 53/86 ops (read directly: `mov $0xN;ret` vs `xor;ret`); the 9 segment-bearing ops carry the `AttrSizedOperandSegments` trait; `IotaOp` = 8-byte `dimensions` property | CONFIRMED |
-| `tpu` op interface signatures (family grouping) | read from `Op<OpName,Traits…>` template args in each op's `getFoldHookFn` holder symbol | HIGH (per-op trait set from one symbol source; aggregate cross-checked) |
-| Naive `*Op`-scan ~157 vs 86 registered | 86 = registrar arity; the ~71 extra are unregistered Pass/helper `*Op` symbols with no Model | CONFIRMED |
+| Claim | Evidence |
+|---|---|
+| `Model<Op>` is a 23-slot vtable; 6,050 instances binary-wide | `nm` count of `_ZTVN4mlir23RegisteredOperationName5ModelI…EEE` = 6,050; reference vtable `Model<xla::PureCallOp>` @ `0x219d4e38` |
+| All 21 dispatch-slot symbols present on a `tpu` op | every `Model<mlir::tpu::IotaOp>::<method>` (slots 2–22) resolves to a demangled symbol |
+| Slot 0 is one shared base dtor across all Models | addend `0xfea8820` = `OperationName::Impl::~Impl` on 30-Model stratified sample (tpu/llo/sc/mosaic_sc/xla) |
+| `tpu` dialect has exactly 86 registered ops | `Dialect::addOperations<mlir::tpu::AllReduceOp, …>` @ `0x14aa2c40` has 86 type args |
+| Registration sink is `RegisteredOperationName::insert` | demangled `insert(unique_ptr<OperationName::Impl,…>, ArrayRef<StringRef>)` @ `0x1d8c57a0` |
+| Inherent-attr slots tail-jmp to ODS statics | `Model<IotaOp>::getInherentAttr` (slot 10) tail-jmp → `mlir::tpu::IotaOp::getInherentAttr(MLIRContext*, …IotaOpGenericAdaptorBase::Properties const&, StringRef)` @ `0x14b220e0` |
+| Optional hooks wrapped in `UniqueFunction` callback-holders | `Model<IotaOp>::foldHook`/`printAssembly` load holder ptr + `call *(%rax)`/`*0x10(%rax)`; holders @ `0x223413f0`/`0x22341400` |
+| `getOpPropertyByteSize` is an inlined `sizeof(Properties)` | `Model<IotaOp>` = `mov $0x8;ret`; `Model<BarrierOp>` @ `0x14ab1960` = `xor %eax,%eax;ret` |
+| `tpu` MemoryEffect fan-out = 59 ops | `Op<>` trait scan = 59; independent `MemoryEffectOpInterfaceTraits::Model<mlir::tpu::*>` distinct count = 59 |
+| `tpu` in-dialect rewrite surface = 6 fold + 9 canon | demangled `mlir::tpu::*Op::fold` (6) and `*Op::getCanonicalizationPatterns` (9) present |
+| 53 `tpu` ops carry non-trivial `Properties`; 9 of those carry `AttrSizedOperandSegments` | slot 14 `getOpPropertyByteSize` non-zero on 53/86 ops (read directly: `mov $0xN;ret` vs `xor;ret`); the 9 segment-bearing ops carry the `AttrSizedOperandSegments` trait; `IotaOp` = 8-byte `dimensions` property |
+| `tpu` op interface signatures (family grouping) | read from `Op<OpName,Traits…>` template args in each op's `getFoldHookFn` holder symbol |
+| Naive `*Op`-scan ~157 vs 86 registered | 86 = registrar arity; the ~71 extra are unregistered Pass/helper `*Op` symbols with no Model |
 
 ---
 

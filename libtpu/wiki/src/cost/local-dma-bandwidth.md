@@ -60,12 +60,12 @@ The `MemorySpace` enum is recovered from the XOR comparands: `HBM=1`, `VMEM=3`, 
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `Target::LocalDmaBandwidth(MemorySpace,MemorySpace)` | `0x1d6168e0` | `(src,dst)→slot` router; miss → `{0,false}` | CERTAIN |
-| `Target::LocalDmaBandwidthHbmToHbm` (base) | `0x1d48fa00` | base default — returns `0` (each gen overrides) | CERTAIN |
-| `Target::ICIPerLinkDataRate` (vtable `+0x188`) | per-gen | per-SerDes-link ICI rate (consumer ceiling term) | CERTAIN |
-| `Target::ICIIngressEgressDataRate` (vtable `+0x190`) | per-gen | full bidirectional chip ICI aggregate | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `Target::LocalDmaBandwidth(MemorySpace,MemorySpace)` | `0x1d6168e0` | `(src,dst)→slot` router; miss → `{0,false}` |
+| `Target::LocalDmaBandwidthHbmToHbm` (base) | `0x1d48fa00` | base default — returns `0` (each gen overrides) |
+| `Target::ICIPerLinkDataRate` (vtable `+0x188`) | per-gen | per-SerDes-link ICI rate (consumer ceiling term) |
+| `Target::ICIIngressEgressDataRate` (vtable `+0x190`) | per-gen | full bidirectional chip ICI aggregate |
 
 ---
 
@@ -75,35 +75,35 @@ Each accessor returns a single IEEE-754 `double` (GB/s). The base `Target` acces
 
 ### Ghostlite (v6e) — `@0x1d4973c0 …`
 
-| (src→dst) | Accessor `@addr` | bit-pattern | GB/s | Confidence |
-|---|---|---|---|---|
-| HBM→HBM   | `0x1d4973c0` | `0x4050000000000000` | 64   | CERTAIN |
-| HBM→VMEM  | `0x1d4973e0` | `0x4094140000000000` | 1285 | CERTAIN |
-| HBM→SMEM  | `0x1d497400` | `0x404B800000000000` | 55   | CERTAIN |
-| VMEM→HBM  | `0x1d497420` | `0x4096600000000000` | 1432 | CERTAIN |
-| VMEM→VMEM | `0x1d497440` | `0x4050000000000000` | 64   | CERTAIN |
-| VMEM→SMEM | `0x1d497460` | `0x404B800000000000` | 55   | CERTAIN |
-| SMEM→HBM  | `0x1d497480` | `0x404B800000000000` | 55   | CERTAIN |
-| SMEM→VMEM | `0x1d4974a0` | `0x404B800000000000` | 55   | CERTAIN |
-| SMEM→SMEM | `0x1d4974c0` | `0x403C000000000000` | 28   | CERTAIN |
-| SPMEM→HBM | `0x1d4974e0` | `0x4082600000000000` | 588  | CERTAIN |
+| (src→dst) | Accessor `@addr` | bit-pattern | GB/s |
+|---|---|---|---|
+| HBM→HBM   | `0x1d4973c0` | `0x4050000000000000` | 64   |
+| HBM→VMEM  | `0x1d4973e0` | `0x4094140000000000` | 1285 |
+| HBM→SMEM  | `0x1d497400` | `0x404B800000000000` | 55   |
+| VMEM→HBM  | `0x1d497420` | `0x4096600000000000` | 1432 |
+| VMEM→VMEM | `0x1d497440` | `0x4050000000000000` | 64   |
+| VMEM→SMEM | `0x1d497460` | `0x404B800000000000` | 55   |
+| SMEM→HBM  | `0x1d497480` | `0x404B800000000000` | 55   |
+| SMEM→VMEM | `0x1d4974a0` | `0x404B800000000000` | 55   |
+| SMEM→SMEM | `0x1d4974c0` | `0x403C000000000000` | 28   |
+| SPMEM→HBM | `0x1d4974e0` | `0x4082600000000000` | 588  |
 
 ### Viperfish (v5p std / v5e lite) — `@0x1d49a320 …`
 
 Every Viperfish accessor branches on the variant string: it reads the libc++ `std::string variant_name` SSO flag byte at `this+951` (`+0x3b7`), its length (SSO inline or `this+0x3a8` heap length), and compares the 4-byte payload at `this+0x3a0` against `0x6574696c` (`"lite"`, little-endian). A 4-char `"lite"` match returns the **lite (v5e)** value; any other string falls through to the **std (v5p)** value.
 
-| (src→dst) | Accessor `@addr` | std (v5p) | lite (v5e) | Confidence |
-|---|---|---:|---:|---|
-| HBM→HBM   | `0x1d49a320` | 72   | 308 | CERTAIN |
-| HBM→VMEM  | `0x1d49a380` | 1198 | 822 | CERTAIN |
-| HBM→SMEM  | `0x1d49a3e0` | 55   | 56  | CERTAIN |
-| VMEM→HBM  | `0x1d49a440` | 1224 | 828 | CERTAIN |
-| VMEM→VMEM | `0x1d49a4a0` | 72   | 827 | CERTAIN |
-| VMEM→SMEM | `0x1d49a500` | 55   | 56  | CERTAIN |
-| SMEM→HBM  | `0x1d49a560` | 55   | 56  | CERTAIN |
-| SMEM→VMEM | `0x1d49a5c0` | 55   | 56  | CERTAIN |
-| SMEM→SMEM | `0x1d49a620` | 28 (both) | 28 (both) | CERTAIN |
-| SPMEM→HBM | `0x1d49a640` | 587.4 (both) | 587.4 (both) | CERTAIN |
+| (src→dst) | Accessor `@addr` | std (v5p) | lite (v5e) |
+|---|---|---:|---:|
+| HBM→HBM   | `0x1d49a320` | 72   | 308 |
+| HBM→VMEM  | `0x1d49a380` | 1198 | 822 |
+| HBM→SMEM  | `0x1d49a3e0` | 55   | 56  |
+| VMEM→HBM  | `0x1d49a440` | 1224 | 828 |
+| VMEM→VMEM | `0x1d49a4a0` | 72   | 827 |
+| VMEM→SMEM | `0x1d49a500` | 55   | 56  |
+| SMEM→HBM  | `0x1d49a560` | 55   | 56  |
+| SMEM→VMEM | `0x1d49a5c0` | 55   | 56  |
+| SMEM→SMEM | `0x1d49a620` | 28 (both) | 28 (both) |
+| SPMEM→HBM | `0x1d49a640` | 587.4 (both) | 587.4 (both) |
 
 > **GOTCHA —** the variant split is computed *inline in every accessor*, not via a numeric variant index. The single-TC v5e die uniformly reports *higher* intra-die loopback bandwidth (VMEM→VMEM 827 vs the std-die 72) because a lite part has no second core to contend for the local DMA fabric; conversely it reports *lower* HBM-bound bandwidth (HBM→VMEM 822 vs 1198) reflecting its halved HBM stack. A reimplementation that reads one variant's cells for both will misprice the async-copy decision on the other.
 
@@ -111,33 +111,33 @@ Every Viperfish accessor branches on the variant string: it reads the libc++ `st
 
 Pufferfish is the only gen with first-class CMEM, so its matrix is the widest (15 cells).
 
-| (src→dst) | Accessor `@addr` | bit-pattern | GB/s | Confidence |
-|---|---|---|---:|---|
-| HBM→HBM   | `0x1d494340` | `0x407E000000000000` | 480  | CERTAIN |
-| HBM→VMEM  | `0x1d494360` | `0x407E100000000000` | 481  | CERTAIN |
-| HBM→SMEM  | `0x1d494380` | `0x4041000000000000` | 34   | CERTAIN |
-| VMEM→HBM  | `0x1d4943a0` | `0x40915C0000000000` | 1111 | CERTAIN |
-| VMEM→VMEM | `0x1d4943c0` | `0x4081000000000000` | 544  | CERTAIN |
-| VMEM→CMEM | `0x1d4943e0` | `0x4091840000000000` | 1121 | CERTAIN |
-| VMEM→SMEM | `0x1d494400` | `0x4041000000000000` | 34   | CERTAIN |
-| CMEM→HBM  | `0x1d494420` | `0x4090E00000000000` | 1080 | CERTAIN |
-| CMEM→VMEM | `0x1d494440` | `0x40A2460000000000` | 2339 | CERTAIN |
-| CMEM→CMEM | `0x1d494460` | `0x4092A40000000000` | 1193 | CERTAIN |
-| CMEM→SMEM | `0x1d494480` | `0x4041000000000000` | 34   | CERTAIN |
-| SMEM→HBM  | `0x1d4944a0` | `0x4041000000000000` | 34   | CERTAIN |
-| SMEM→VMEM | `0x1d4944c0` | `0x4041000000000000` | 34   | CERTAIN |
-| SMEM→CMEM | `0x1d4944e0` | `0x4041000000000000` | 34   | CERTAIN |
-| SMEM→SMEM | `0x1d494500` | `0x4031000000000000` | 17   | CERTAIN |
+| (src→dst) | Accessor `@addr` | bit-pattern | GB/s |
+|---|---|---|---:|
+| HBM→HBM   | `0x1d494340` | `0x407E000000000000` | 480  |
+| HBM→VMEM  | `0x1d494360` | `0x407E100000000000` | 481  |
+| HBM→SMEM  | `0x1d494380` | `0x4041000000000000` | 34   |
+| VMEM→HBM  | `0x1d4943a0` | `0x40915C0000000000` | 1111 |
+| VMEM→VMEM | `0x1d4943c0` | `0x4081000000000000` | 544  |
+| VMEM→CMEM | `0x1d4943e0` | `0x4091840000000000` | 1121 |
+| VMEM→SMEM | `0x1d494400` | `0x4041000000000000` | 34   |
+| CMEM→HBM  | `0x1d494420` | `0x4090E00000000000` | 1080 |
+| CMEM→VMEM | `0x1d494440` | `0x40A2460000000000` | 2339 |
+| CMEM→CMEM | `0x1d494460` | `0x4092A40000000000` | 1193 |
+| CMEM→SMEM | `0x1d494480` | `0x4041000000000000` | 34   |
+| SMEM→HBM  | `0x1d4944a0` | `0x4041000000000000` | 34   |
+| SMEM→VMEM | `0x1d4944c0` | `0x4041000000000000` | 34   |
+| SMEM→CMEM | `0x1d4944e0` | `0x4041000000000000` | 34   |
+| SMEM→SMEM | `0x1d494500` | `0x4031000000000000` | 17   |
 
 ### Dragonfish (v3) and base Target
 
 Dragonfish overrides only two cells; every other slot falls through to the base `Target` accessor (which returns `0`). Jellyfish (v2) supplies no `LocalDmaBandwidth*` overrides at all in this build — its async-copy path never queries the matrix.
 
-| Gen | (src→dst) | Accessor `@addr` | GB/s | Confidence |
-|---|---|---|---:|---|
-| Dragonfish (v3) | HBM→VMEM | `0x1d48fa20` | 423 | CERTAIN |
-| Dragonfish (v3) | VMEM→HBM | `0x1d48fa60` | 423 | CERTAIN |
-| base `Target` | all cells | `0x1d48fa00…0x1d48fbe0` | 0 | CERTAIN |
+| Gen | (src→dst) | Accessor `@addr` | GB/s |
+|---|---|---|---:|
+| Dragonfish (v3) | HBM→VMEM | `0x1d48fa20` | 423 |
+| Dragonfish (v3) | VMEM→HBM | `0x1d48fa60` | 423 |
+| base `Target` | all cells | `0x1d48fa00…0x1d48fbe0` | 0 |
 
 > **QUIRK —** the SMEM cells cluster on a small set of repeated constants (Pufferfish `34` for every SMEM-touching pair except SMEM→SMEM = `17`; Ghostlite `55` for every SMEM pair except SMEM→SMEM = `28`; Viperfish std `55` / lite `56`). SMEM (the scalar register window) is a tiny, slow memory; the cost model treats every transfer that touches it as a single low fixed rate rather than modelling the source/destination pairing. Only the HBM/VMEM/CMEM cells carry per-pair-distinct figures.
 
@@ -232,13 +232,13 @@ function DefaultHbmInitLatency(MemUnit, wd, Target& t):                       //
 
 The once-paid DMA startup latency, in nanoseconds, that `DefaultHbmInitLatency` scales to cycles. Each per-gen accessor was decoded byte-exact; the `.rodata` immediates were decoded directly from the `.so`.
 
-| Gen | Accessor `@addr` | rule | non-special | special | Confidence |
-|---|---|---|---:|---:|---|
-| v2 Jellyfish | `0x1d48f3a0` | constant for all spaces (`@0xa2de6a8`) | 240 ns | — | CERTAIN |
-| v4 Pufferfish | `0x1d493d00` | `table[ms==CMEM]` (`@0xa2dcd40`) | 555 ns (HBM) | 50 ns (CMEM) | CERTAIN |
-| v5p/v5e Viperfish | `0x1d499ca0` | `(ms==VMEM) ? 0 : 1200` (`@0xa2df9f8`) | 1200 ns | 0 (VMEM) | CERTAIN |
-| v6e Ghostlite | `0x1d496dc0` | `(ms==VMEM) ? 0 : 1200` (`@0xa2df9f8`) | 1200 ns | 0 (VMEM) | CERTAIN |
-| base `Target` | `0x1d61c880` | `LogMessageFatal("Unimplemented")` — every gen overrides | — | — | CERTAIN |
+| Gen | Accessor `@addr` | rule | non-special | special |
+|---|---|---|---:|---:|
+| v2 Jellyfish | `0x1d48f3a0` | constant for all spaces (`@0xa2de6a8`) | 240 ns | — |
+| v4 Pufferfish | `0x1d493d00` | `table[ms==CMEM]` (`@0xa2dcd40`) | 555 ns (HBM) | 50 ns (CMEM) |
+| v5p/v5e Viperfish | `0x1d499ca0` | `(ms==VMEM) ? 0 : 1200` (`@0xa2df9f8`) | 1200 ns | 0 (VMEM) |
+| v6e Ghostlite | `0x1d496dc0` | `(ms==VMEM) ? 0 : 1200` (`@0xa2df9f8`) | 1200 ns | 0 (VMEM) |
+| base `Target` | `0x1d61c880` | `LogMessageFatal("Unimplemented")` — every gen overrides | — | — |
 
 > **GOTCHA —** v5p+/v6e charge **zero** DMA startup latency for VMEM transfers (`ms == 3` returns `0.0`) and the full 1200 ns only for HBM/SMEM/CMEM. The decompiled test is literally `if (ms != 3) return 1200ns;` — VMEM (MemorySpace `3`) is the cheap, latency-free path. Dragonfish (v3) inherits Jellyfish's flat 240 ns; v3-specific per-space values were not separately overridden in this build.
 

@@ -110,17 +110,17 @@ function runOnOperation(pass):                          // 0x13566d00
 
 ### Function Map
 
-| Function | VA | Role | Confidence |
-|---|---|---|---|
-| `runOnOperation` | `0x13566d00` | the three-substage driver | CONFIRMED |
-| `CreateLowerToSparseCoreLlvmPass` | `0x135667c0` | factory; takes `Target&`, `InlinedVector<long,4>`, `SparseCoreConfig&`, `DebugInfoTracker*` | CONFIRMED |
-| `lowerFunc` | `0x13568280` | per-`func.func` typed `ScDialect`→LLVM conversion (substage 2) | CONFIRMED |
-| `lowerScfToCfg` collector lambda | `0x13572640` | walk callback; pushes `scf.{for,if,parallel,while,index_switch}` to worklist | CONFIRMED |
-| `ForLowering::matchAndRewrite` | `0x135707c0` | `scf.for` → `cf` branches (custom, benefit 2) | CONFIRMED |
-| `IndexSwitchLowering::matchAndRewrite` | `0x13571ec0` | `scf.index_switch` → `cf` (custom, benefit 2) | CONFIRMED |
-| `AssertOpLowering::matchAndRewrite` | `0x135b7080` | `cf.assert` lowering with granule mask (substage 3) | CONFIRMED |
-| `getArgument` / `getDescription` | `0x13566cc0` / `0x13566ce0` | ODS pass registration metadata | CONFIRMED |
-| `getDependentDialects` | `0x13566c00` | declares the dialects the pass instantiates | CONFIRMED |
+| Function | VA | Role |
+|---|---|---|
+| `runOnOperation` | `0x13566d00` | the three-substage driver |
+| `CreateLowerToSparseCoreLlvmPass` | `0x135667c0` | factory; takes `Target&`, `InlinedVector<long,4>`, `SparseCoreConfig&`, `DebugInfoTracker*` |
+| `lowerFunc` | `0x13568280` | per-`func.func` typed `ScDialect`→LLVM conversion (substage 2) |
+| `lowerScfToCfg` collector lambda | `0x13572640` | walk callback; pushes `scf.{for,if,parallel,while,index_switch}` to worklist |
+| `ForLowering::matchAndRewrite` | `0x135707c0` | `scf.for` → `cf` branches (custom, benefit 2) |
+| `IndexSwitchLowering::matchAndRewrite` | `0x13571ec0` | `scf.index_switch` → `cf` (custom, benefit 2) |
+| `AssertOpLowering::matchAndRewrite` | `0x135b7080` | `cf.assert` lowering with granule mask (substage 3) |
+| `getArgument` / `getDescription` | `0x13566cc0` / `0x13566ce0` | ODS pass registration metadata |
+| `getDependentDialects` | `0x13566c00` | declares the dialects the pass instantiates |
 
 ### The Factory and the Test Flag
 

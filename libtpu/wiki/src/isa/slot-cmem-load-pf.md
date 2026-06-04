@@ -31,7 +31,6 @@ For reimplementation, the contract is:
 | **Constant address** | `LloAddress::MakeCmemConstant` @ `0x1d60ba20` → `LloAddress(MemorySpace=4=kCmem, off)` |
 | **Why v4-only** | `PufferfishTarget::MemBanks(kCmem)` @ `0x1d493900` = 32; JF/VF/GL/GF `LogFatal` |
 | **Has-bit (bundle dispatch)** | `0x040` in the 12-bit slot has-mask at `TensorCoreBundle` proto `+0x10` (7th slot); the slot submessage pointer is at proto `+0x48` |
-| **Confidence** | CONFIRMED (byte-anchored) unless a row says otherwise |
 
 ---
 
@@ -63,23 +62,23 @@ if (inner.has[0x11] & 0x02) BitCopy(buf, 272, &inner.Imm, 0, 16);  // shared imm
 if (inner.has[0x11] & 0x04) BitCopy(buf, 256, &inner.Imm, 0, 16);  // shared immediate word
 ```
 
-| Field | Abs bit | Width | proto off | has-bit | Role | Confidence |
-|---|---:|---:|---|---|---|---|
-| SublaneMask | 103 | 3 | `+0x24` | `[0x10]&0x08` | sublane predicate mask | CONFIRMED |
-| BaseAddress | 106 | 2 | `+0x20` | `[0x10]&0x04` | `BaseAddressEncoding`: ZERO / vs0 / vs1 / vs2 | CONFIRMED |
-| Offset | 108 | 2 | `+0x1c` | `[0x10]&0x02` | `OffsetEncoding` mode selector | CONFIRMED |
-| Stride | 110 | 3 | `+0x18` | `[0x10]&0x01` | stride / feature-length mode | CONFIRMED |
-| has-bit | 113 | 1 | (const 1) | — | slot-present marker | CONFIRMED |
-| Predication | 114 | 5 | `+0x20`(outer) | — | `0..14` pred reg / `15` always / `31` never (default `0x1f`) | CONFIRMED |
-| Vs0 | 241 | 5 | `+0x30` | `[0x10]&0x40` | Y-register selector — dest VREG / base (shared pool) | CONFIRMED |
-| Vs1 | 246 | 5 | `+0x2c` | `[0x10]&0x20` | Y-register selector (shared pool) | CONFIRMED |
-| Vs2 | 251 | 5 | `+0x28` | `[0x10]&0x10` | Y-register selector (shared pool) | CONFIRMED |
-| Imm | 304 | 16 | `+0x34` | `[0x10]&0x80` | shared immediate word (offset / index) | CONFIRMED |
-| Imm | 288 | 16 | `+0x38` | `[0x11]&0x01` | shared immediate word | CONFIRMED |
-| Imm | 272 | 16 | `+0x3c` | `[0x11]&0x02` | shared immediate word | CONFIRMED |
-| Imm | 256 | 16 | `+0x40` | `[0x11]&0x04` | shared immediate word | CONFIRMED |
+| Field | Abs bit | Width | proto off | has-bit | Role |
+|---|---:|---:|---|---|---|
+| SublaneMask | 103 | 3 | `+0x24` | `[0x10]&0x08` | sublane predicate mask |
+| BaseAddress | 106 | 2 | `+0x20` | `[0x10]&0x04` | `BaseAddressEncoding`: ZERO / vs0 / vs1 / vs2 |
+| Offset | 108 | 2 | `+0x1c` | `[0x10]&0x02` | `OffsetEncoding` mode selector |
+| Stride | 110 | 3 | `+0x18` | `[0x10]&0x01` | stride / feature-length mode |
+| has-bit | 113 | 1 | (const 1) | — | slot-present marker |
+| Predication | 114 | 5 | `+0x20`(outer) | — | `0..14` pred reg / `15` always / `31` never (default `0x1f`) |
+| Vs0 | 241 | 5 | `+0x30` | `[0x10]&0x40` | Y-register selector — dest VREG / base (shared pool) |
+| Vs1 | 246 | 5 | `+0x2c` | `[0x10]&0x20` | Y-register selector (shared pool) |
+| Vs2 | 251 | 5 | `+0x28` | `[0x10]&0x10` | Y-register selector (shared pool) |
+| Imm | 304 | 16 | `+0x34` | `[0x10]&0x80` | shared immediate word (offset / index) |
+| Imm | 288 | 16 | `+0x38` | `[0x11]&0x01` | shared immediate word |
+| Imm | 272 | 16 | `+0x3c` | `[0x11]&0x02` | shared immediate word |
+| Imm | 256 | 16 | `+0x40` | `[0x11]&0x04` | shared immediate word |
 
-The decode-side accessors confirm the widths independently: `TensorCoreCmemLoad{Field}::GetConcatenatedValue` (`0x1ecf8820..0x1ecf8980`) read the proto-internal struct with `shr`+`and` masks whose pop-counts match the on-wire `BitCopy` widths exactly — 5-bit predication, 3-bit sublane/stride, 2-bit base/offset, 5-bit Y-regs, 16-bit immediates. Round-trip width agreement is the strongest single-binary confirmation.
+The decode-side accessors confirm the widths independently: `TensorCoreCmemLoad{Field}::GetConcatenatedValue` (`0x1ecf8820..0x1ecf8980`) read the proto-internal struct with `shr`+`and` masks whose pop-counts match the on-wire `BitCopy` widths exactly — 5-bit predication, 3-bit sublane/stride, 2-bit base/offset, 5-bit Y-regs, 16-bit immediates.
 
 > **NOTE —** the [Pufferfish 51B Bundle](bundle-pf-51b.md) page lists this same @103..118 region (sublane-mask @103/3, stride @110/3, offset @108/2, base @106/2, has @113/1, pred @114/5) and the two pages agree bit-for-bit. The per-field roles are named identically on both pages from the dedicated `TensorCoreCmemLoad{Field}` accessor symbols; this page additionally resolves the shared-pool Y-register and immediate placements.
 
@@ -89,11 +88,11 @@ The decode-side accessors confirm the widths independently: `TensorCoreCmemLoad{
 
 The `TensorCoreCmemLoad` submessage carries a oneof discriminator at proto `+0x50`, read first by the encoder, that selects one of three behaviours:
 
-| Tag | Variant | Encoder behaviour | Confidence |
-|---:|---|---|---|
-| `0` | empty | only Predication @114 is written; encoder returns | CONFIRMED |
-| `5` | Noop | Predication forced to `31` (`kNeverExecute`); return | CONFIRMED |
-| `6` | CmemLoad | the issue variant — has-bit @113 set, all addressing + operand fields written | CONFIRMED |
+| Tag | Variant | Encoder behaviour |
+|---:|---|---|
+| `0` | empty | only Predication @114 is written; encoder returns |
+| `5` | Noop | Predication forced to `31` (`kNeverExecute`); return |
+| `6` | CmemLoad | the issue variant — has-bit @113 set, all addressing + operand fields written |
 
 An idle slot therefore carries Predication = `31` (`kNeverExecute`), the identical empty-slot value the rest of the Pufferfish bundle uses. When the bundle codec finds the slot's has-bit clear in the [twelve-slot dispatch](bundle-pf-51b.md), it substitutes the `TensorCoreCmemLoad_globals_` default instance (`0x223fb410`); within the issue variant, a field whose per-field has-bit is clear takes the `TensorCoreCmemLoad_CmemLoad_globals_` default (`0x223fb3c8`). The two-level default — one for an absent slot, one for an absent field inside a present slot — is what lets the encoder run branch-free over a partially-populated submessage.
 
@@ -149,13 +148,13 @@ return AddrScaled(base, idx, k, /*Granule=*/CmemWordSizeBytes);   // @0x1d538880
 
 `MakeCmemConstant` constructs an `LloAddress` with `MemorySpace = 4 = kCmem` — confirmed byte-exact (the constructor is called with `esi = 4`). `CmemAddrScaled` performs the byte→word scale by `CmemWordSizeBytes` so the bundle carries a word offset (the byte→word conversion happens in the bundle packer, not at issue time). The scaled word offset becomes the `Offset` immediate (via `PlaceOffsetImmediate`), and the CMEM base SREG (from `llo.saddr.cmem` / `ScalarAddressCmem`) becomes the `BaseAddress` Y-register (via `PlaceBaseAddressRegister`). There is no separate "CmemAllocator" — the address derivation shares the `ProgramMemoryAllocator(MS = kCmem)` / `BestFitAllocator` path described on the [CMEM Pool](../memory/cmem-pool.md) page.
 
-> **NOTE — there is no cmem_load → sparsity-DMA edge; the two never co-occur.** The cmem_load emit chain calls *only* SlotMap field binders, never a DMA-descriptor or sparsity emitter. Windowed disasm of `EmitVectorCmemLoad` (`0x14120a40`) shows its entire callee set is `CurrentBundle` (`0x140fea80`), `PopulatedSlotsInBundle` (`0x1d2ea840`, the one-per-bundle legality check), `Arena::DefaultConstruct<TensorCoreCmemLoad>` / `<…CmemLoad>`, `PlaceStride` (`0x1c4a9420`), and `EmitVectorLoadCommon<…CmemLoad>` (`0x14120f40`); and `EmitVectorLoadCommon`'s callee set is exactly `PlaceSublaneMask` (`0x1c492080`), `PlaceBaseAddressRegister` (`0x1c492b60`), `PlaceOffsetImmediate` (`0x1c4937a0`) plus `SregnoOrImm`/`ImmValue` accessors — no DMA, no sparsity. The "sparsity DMA" framing conflated two structurally disjoint things: (1) sparsity is a **v5+ SparseCore** ISA — every `SparseCore*Dma{Encoder,Decoder}` symbol lives under `asic_sw::deepsea::gxc::{gfc,glc}::isa` inside `SparseCoreScsCodecBase` / `SparseCoreTecCodecBase` / `SparseCoreTacCodecBase`, and the v4 `pxc::isa` namespace has **no** sparsity codec at all (its only "sparse" symbols are `pxc::profiler::BcFsmSparseReduce` trace events, not ISA slots); (2) the only `Dma*` near cmem_load is the codec-level **program-image** chunker `pxc::isa::TensorCoreCodecBase<…TensorCoreCmemLoadEncoder…>::Dma{Encode,Decode}`, where `GetBundlesPerDmaChunk` (`0x1d224f20`) = `0xa` (10 bundles) and `GetBytesPerDmaChunk` (`0x1d224f40`) = `0x200` (512 bytes) — i.e. ten 51-byte bundles packed into a 512-byte instruction-stream DMA chunk. `TensorCoreCmemLoadEncoder` is just one of ~14 slot encoders that codec template is parameterized on; the chunker streams the whole bundle image and is slot-agnostic. CMEM (v4-only read port) and SparseCore DMA (v5+) never share a target, a namespace, or a code path. Confidence: CONFIRMED (byte-anchored, both emit functions fully enumerated).
+> **NOTE — there is no cmem_load → sparsity-DMA edge; the two never co-occur.** The cmem_load emit chain calls *only* SlotMap field binders, never a DMA-descriptor or sparsity emitter. The entire callee set of `EmitVectorCmemLoad` (`0x14120a40`) is `CurrentBundle` (`0x140fea80`), `PopulatedSlotsInBundle` (`0x1d2ea840`, the one-per-bundle legality check), `Arena::DefaultConstruct<TensorCoreCmemLoad>` / `<…CmemLoad>`, `PlaceStride` (`0x1c4a9420`), and `EmitVectorLoadCommon<…CmemLoad>` (`0x14120f40`); and `EmitVectorLoadCommon`'s callee set is exactly `PlaceSublaneMask` (`0x1c492080`), `PlaceBaseAddressRegister` (`0x1c492b60`), `PlaceOffsetImmediate` (`0x1c4937a0`) plus `SregnoOrImm`/`ImmValue` accessors — no DMA, no sparsity. Two structurally disjoint things sit nearby: (1) sparsity is a **v5+ SparseCore** ISA — every `SparseCore*Dma{Encoder,Decoder}` symbol lives under `asic_sw::deepsea::gxc::{gfc,glc}::isa` inside `SparseCoreScsCodecBase` / `SparseCoreTecCodecBase` / `SparseCoreTacCodecBase`, and the v4 `pxc::isa` namespace has **no** sparsity codec at all (its only "sparse" symbols are `pxc::profiler::BcFsmSparseReduce` trace events, not ISA slots); (2) the only `Dma*` near cmem_load is the codec-level **program-image** chunker `pxc::isa::TensorCoreCodecBase<…TensorCoreCmemLoadEncoder…>::Dma{Encode,Decode}`, where `GetBundlesPerDmaChunk` (`0x1d224f20`) = `0xa` (10 bundles) and `GetBytesPerDmaChunk` (`0x1d224f40`) = `0x200` (512 bytes) — i.e. ten 51-byte bundles packed into a 512-byte instruction-stream DMA chunk. `TensorCoreCmemLoadEncoder` is just one of ~14 slot encoders that codec template is parameterized on; the chunker streams the whole bundle image and is slot-agnostic. CMEM (v4-only read port) and SparseCore DMA (v5+) never share a target, a namespace, or a code path.
 
 ---
 
 ## Why the Slot Is Pufferfish-Only
 
-The cmem_load slot exists on Pufferfish and on no other codename because Pufferfish is the only `Target` that models the CMEM tier. The structural evidence is decisive:
+The cmem_load slot exists on Pufferfish and on no other codename because Pufferfish is the only `Target` that models the CMEM tier:
 
 - **`PufferfishTarget::MemBanks(kCmem)`** (`0x1d493900`) returns `32` — it indexes a `{16, 32, 8}` rodata table at `0xb5305c8` by `(MemorySpace − 3)`, so `kCmem (= 4)` → index 1 → 32 banks. `JellyfishTarget`, `ViperfishTarget`, and `GhostliteTarget` all `LogFatal` on `MemBanks(kCmem)` — the decompiled `PufferfishTarget::MemBanks` is `v4 = MS − 3; if (v4 >= 3) LogFatal("Unsupported memory space specified for MemBanks()"); return table[v4];`, and the others handle only `kVmem (= 3)` and `kSmem (= 5)`.
 - Only `PufferfishTarget` overrides the `LocalDmaBandwidth*Cmem` virtuals (1121 GB/s VMEM→CMEM, 2339 GB/s CMEM→VMEM, 50 ns initial DMA latency). Every other codename inherits the base zero, which the cost model reads as "not modelled" and which gates MSA from placing anything in CMEM.
@@ -167,10 +166,10 @@ Because the dedicated cmem_load region (103..118) is disjoint from the vector_lo
 
 ## What Is Not Yet Pinned
 
-- **The cmem_load addressing-mode subset.** The slot reuses the `vector_load` addressing submessage; whether it supports all four vector_load addressing modes (Vmem / Shuffled / Indexed-Iar0 / Indexed-Iar1) or a CMEM-restricted subset was not separated branch-by-branch. The field bases are CONFIRMED; the per-mode role split is HIGH.
-- **The immediate-slot partition.** The encoder writes four of the six shared immediate slots (@256/272/288/304) for cmem_load; whether it can ever claim the @320/338 slots is decided at the SlotMap-allocation layer (`PlaceOffsetImmediate` over `SlotMap<ImmValue,6>`), not visible in the encoder. MEDIUM.
-- **The decode-side gap behaviour.** The encoder's field positions are confirmed against the `GetConcatenatedValue` width accessors, but the `TensorCoreCmemLoadDecoder::Decode` body (the on-wire→proto inverse) was not disassembled; the round-trip is confirmed by width agreement, not by reading the decoder.
-- **The literal CMEM word granule.** 16 bytes is inferred from the `Cmq16BIndirectStateFactory` naming; the exact value is supplied by the embedded `chip_parts.binarypb` and read at boot into `Target +0x510`. MEDIUM.
+- **The cmem_load addressing-mode subset.** The slot reuses the `vector_load` addressing submessage; whether it supports all four vector_load addressing modes (Vmem / Shuffled / Indexed-Iar0 / Indexed-Iar1) or a CMEM-restricted subset is not separated branch-by-branch here.
+- **The immediate-slot partition.** The encoder writes four of the six shared immediate slots (@256/272/288/304) for cmem_load; whether it can ever claim the @320/338 slots is decided at the SlotMap-allocation layer (`PlaceOffsetImmediate` over `SlotMap<ImmValue,6>`), not visible in the encoder.
+- **The decode-side gap behaviour.** The encoder's field positions agree with the `GetConcatenatedValue` width accessors; the `TensorCoreCmemLoadDecoder::Decode` body (the on-wire→proto inverse) is not disassembled here.
+- **The literal CMEM word granule.** The `Cmq16BIndirectStateFactory` naming points at 16 bytes; the exact value is supplied by the embedded `chip_parts.binarypb` and read at boot into `Target +0x510`.
 
 ---
 

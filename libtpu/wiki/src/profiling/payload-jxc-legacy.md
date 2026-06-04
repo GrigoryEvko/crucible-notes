@@ -198,18 +198,18 @@ hib_request.requester_id_value:   0=TC_OF 1=BC_OF 2=NF_OF 3=CHIP_DEBUG 4=STATUS_
 
 The jxc `ConvertTpuTraceToXPlaneV2<jxc::PerformanceTraceEntry>` setup lambda @ `0xf1da7c0` makes exactly **10** `RegisterSubscriber` calls (confirmed by an E8-rel32 caller scan). Eight reuse the deepsea begin/end-pairing trackers; two — `HbmMux` and `Dma` — are jxc-unique.
 
-| # | Subscriber (vtable) | Packed key(s) | jellyfish event(s) | Notes | Confidence |
-|---|---|---|---|---|---|
-| 1 | `HbmMux` (`0x21643ce0`, threaded) | `{0x728}` | `hbm_mux_switch` `EVENT`(40) | XLine 56 "HBM Mux"; 2-state fsm tracker | CERTAIN |
-| 2 | `Dma` (`0x21643dc0`, threaded) | `{0x603..0x617}` (17) | `nf` DMA cmd/data-end | `dma_id` pairing (FlatHashMap); XStat 0x38 | CERTAIN |
-| 3 | `Sync` (`0x21643e88`, threaded) | `{0x93c,0xa3d,0xa3e,0xa42,0xa43,0xa44}` | `cs_external` `DMA_DONE` + `cs_internal` sync set | in-body mask `0xe3` over id-base 61 | CERTAIN |
-| 4 | `ScalarFence` (`0x21643ed8`, threaded) | `{0xa45,0xa46}` | `cs_internal` `SCALAR_FENCE_{START,END}` | XLine 9 (Scalar Unit) | HIGH |
-| 5 | `TensorCoreStep` (`0x21643f28`) | `{0xa40}` | `cs_internal` `SET_TRACEMARK`(64) | → StepTracker (TraceMark id) | HIGH |
-| 6 | `TensorCoreHlo` (ctor `0xf1e27c0`) | `{0xa41}` | `cs_internal` `TRACE_INSTRUCTION`(65) | XLA Ops line | HIGH |
-| 7 | `TensorCoreOverlay` (`0x21644178`) | `{0xa41}` | `cs_internal` `TRACE_INSTRUCTION`(65) | → OverlayTracker | HIGH |
-| 8 | `TensorCoreOnDeviceTraceMe` (`0x216441c8`) | `{0xa41}` | `cs_internal` `TRACE_INSTRUCTION`(65) | XLA TraceMe | HIGH |
-| 9 | `LloOpEvent` (`0x21644218`, threaded) | `{0xa41}` | `cs_internal` `TRACE_INSTRUCTION`(65) | Tensor Core line | HIGH |
-| 10 | `ScalarFence` (`0x21643ed8`, threaded) | `{0xa45,0xa46}` | `cs_internal` `SCALAR_FENCE_{START,END}` | XLine 62 (Barna Core Fence) | HIGH |
+| # | Subscriber (vtable) | Packed key(s) | jellyfish event(s) | Notes |
+|---|---|---|---|---|
+| 1 | `HbmMux` (`0x21643ce0`, threaded) | `{0x728}` | `hbm_mux_switch` `EVENT`(40) | XLine 56 "HBM Mux"; 2-state fsm tracker |
+| 2 | `Dma` (`0x21643dc0`, threaded) | `{0x603..0x617}` (17) | `nf` DMA cmd/data-end | `dma_id` pairing (FlatHashMap); XStat 0x38 |
+| 3 | `Sync` (`0x21643e88`, threaded) | `{0x93c,0xa3d,0xa3e,0xa42,0xa43,0xa44}` | `cs_external` `DMA_DONE` + `cs_internal` sync set | in-body mask `0xe3` over id-base 61 |
+| 4 | `ScalarFence` (`0x21643ed8`, threaded) | `{0xa45,0xa46}` | `cs_internal` `SCALAR_FENCE_{START,END}` | XLine 9 (Scalar Unit) |
+| 5 | `TensorCoreStep` (`0x21643f28`) | `{0xa40}` | `cs_internal` `SET_TRACEMARK`(64) | → StepTracker (TraceMark id) |
+| 6 | `TensorCoreHlo` (ctor `0xf1e27c0`) | `{0xa41}` | `cs_internal` `TRACE_INSTRUCTION`(65) | XLA Ops line |
+| 7 | `TensorCoreOverlay` (`0x21644178`) | `{0xa41}` | `cs_internal` `TRACE_INSTRUCTION`(65) | → OverlayTracker |
+| 8 | `TensorCoreOnDeviceTraceMe` (`0x216441c8`) | `{0xa41}` | `cs_internal` `TRACE_INSTRUCTION`(65) | XLA TraceMe |
+| 9 | `LloOpEvent` (`0x21644218`, threaded) | `{0xa41}` | `cs_internal` `TRACE_INSTRUCTION`(65) | Tensor Core line |
+| 10 | `ScalarFence` (`0x21643ed8`, threaded) | `{0xa45,0xa46}` | `cs_internal` `SCALAR_FENCE_{START,END}` | XLine 62 (Barna Core Fence) |
 
 > **QUIRK —** key `0xa41` (`TRACE_INSTRUCTION`) is a **4-way fan-out** point: `Hlo`, `Overlay`, `OnDeviceTraceMe`, and `LloOp` all register on the *same* packed key and share one `TracePoints` buffer in the setup lambda. This mirrors the deepsea id-85 4-way fan-out exactly — the dispatcher delivers one entry to all four subscribers, each of which projects it onto a different XPlane line. A reimplementation that assumes one subscriber per key will drop three of the four TRACE_INSTRUCTION consumers.
 
@@ -330,20 +330,20 @@ The HBM-mux event payload is `{fsm switch-symbol, tensor_node}`; the four `fsm` 
 
 ## Relevant Struct and Table Offsets
 
-| Symbol | Address / offset | Role | Confidence |
-|---|---|---|---|
-| `PerformanceTraceEntry` (proto2) | `+0x30` `EntryDataCase`; `+0x28` active oneof member ptr; field 1 `timestamp` (GTC); field 2 `chip_id` | the decoded jxc message | CERTAIN |
-| `TracePoint<jxc>::FromTraceEntry` | `0xf1bace0` | `key = (case<<8)\|(member->[per-case off] & 0xff)` | CERTAIN |
-| `CoreDispatcher<jxc>::Dispatch` | `0xf1dcee0` | `FlatHashMap<u16, vector<subscriber>>`, crc32/vpcmpeqb probe, `call *0x10` | CERTAIN |
-| `JxcTracePointName` | `0xf69d800` | key → name (per-band `NameOfDenseEnum`; default `"Unknown"` @ `0x85dd1fd`) | CERTAIN |
-| `DecodeTrace(DeviceType, JfTrace*)` | `0xf59dba0` | picks codec via `GetTraceCodec` @ `0xf5a2900`; proto path, no `GetBits` | CERTAIN |
-| setup lambda | `0xf1da7c0` | 10 `RegisterSubscriber` sites; `RegisterSubscriber` @ `0xf1dca40` | CERTAIN |
-| `HbmMuxSubscriber<jxc>` | vtable `0x21643ce0`; `ProcessTraceEntry` `0xf1def00` | `+0x18`/`+0x20` direction XEvents; `+0x28` start gtc; `+0x38` current dir | CERTAIN |
-| `HbmMuxSwitchState` | `0xf6986e0` | `fsm` @ member+0x1c; returns `fsm \| 0x100000000` | CERTAIN |
-| `DmaSubscriber<jxc>` | vtable `0x21643dc0`; `ProcessTraceEntry` `0xf1dfee0` | `+0x18` XStat (StatType 0x38); `+0x20` `FlatHashMap<dma_id, vector<begin>>` | CERTAIN |
-| `GetDmaId` | `0xf698180` (arm jt `0xab88674`) | composite pairing key; HBM/VMEM-HBM arms full, simple arms `id & 0xff` | HIGH |
-| `nf` key table | `0xab53940` | 17 dwords (low byte = nf id, OR `0x600`) | CERTAIN |
-| `ThreadedSubscriber<jxc>` | `0x240` B; `+0x20` inner vtable; `+0x38` inner ptr; `+0xa0` worker | wraps both HbmMux and Dma | CERTAIN |
+| Symbol | Address / offset | Role |
+|---|---|---|
+| `PerformanceTraceEntry` (proto2) | `+0x30` `EntryDataCase`; `+0x28` active oneof member ptr; field 1 `timestamp` (GTC); field 2 `chip_id` | the decoded jxc message |
+| `TracePoint<jxc>::FromTraceEntry` | `0xf1bace0` | `key = (case<<8)\|(member->[per-case off] & 0xff)` |
+| `CoreDispatcher<jxc>::Dispatch` | `0xf1dcee0` | `FlatHashMap<u16, vector<subscriber>>`, crc32/vpcmpeqb probe, `call *0x10` |
+| `JxcTracePointName` | `0xf69d800` | key → name (per-band `NameOfDenseEnum`; default `"Unknown"` @ `0x85dd1fd`) |
+| `DecodeTrace(DeviceType, JfTrace*)` | `0xf59dba0` | picks codec via `GetTraceCodec` @ `0xf5a2900`; proto path, no `GetBits` |
+| setup lambda | `0xf1da7c0` | 10 `RegisterSubscriber` sites; `RegisterSubscriber` @ `0xf1dca40` |
+| `HbmMuxSubscriber<jxc>` | vtable `0x21643ce0`; `ProcessTraceEntry` `0xf1def00` | `+0x18`/`+0x20` direction XEvents; `+0x28` start gtc; `+0x38` current dir |
+| `HbmMuxSwitchState` | `0xf6986e0` | `fsm` @ member+0x1c; returns `fsm \| 0x100000000` |
+| `DmaSubscriber<jxc>` | vtable `0x21643dc0`; `ProcessTraceEntry` `0xf1dfee0` | `+0x18` XStat (StatType 0x38); `+0x20` `FlatHashMap<dma_id, vector<begin>>` |
+| `GetDmaId` | `0xf698180` (arm jt `0xab88674`) | composite pairing key; HBM/VMEM-HBM arms full, simple arms `id & 0xff` |
+| `nf` key table | `0xab53940` | 17 dwords (low byte = nf id, OR `0x600`) |
+| `ThreadedSubscriber<jxc>` | `0x240` B; `+0x20` inner vtable; `+0x38` inner ptr; `+0xa0` worker | wraps both HbmMux and Dma |
 
 ---
 

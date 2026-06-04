@@ -449,24 +449,24 @@ Given a SparseCore custom-fusion that gathers a window into VMEM inside `while (
 
 ## Confidence Summary
 
-| Claim | Evidence | Confidence |
-|---|---|---|
-| TileKind is a `(input,output)` 16-bit pair packed by `GetCopyTileKind` | decompiled `0x13dd0ca0`: `v18\|v23`, error lines 66/77, mem-space byte 312, has-bit byte 304 | CONFIRMED |
-| Four `TransferSizeUtil` predicates gate compact-vs-SparseCore | called in `GetCopyTileKind`; addrs `0x1d6af220/110b7440/1d6af3e0/1d6af2e0` | CONFIRMED |
-| Non-`kCopy` ops inherit layout via `GetDefaultLayout`; only kOutfeed/tuple/async-SC are special | `RunImpl 0x13dd10a0`, subshape visitors `0x13dd26a0/27e0`, dtype CHECK `:233` | CONFIRMED |
-| `VerifyOrAssignTiling` tri-state at env `+0xDFC` (3580); mode 1→ctor(0)+Verify, mode 2→ctor(1)+Run | decompiled `0x10922a20`; `deepsea_compiler_base.cc:3053/3056` | CONFIRMED |
-| `LoopConfig`/`LoopUnrollConfig` field layout (tags, offsets, oneof) | wire serializers `0x1d6eade0`/`0x1d6f2680` | CONFIRMED (layout); MEDIUM (field names) |
-| Auto unroll factor = `loop_bound / vectorizing_shape` with divisibility CHECK | decompiled `0x13d6c1c0`; CHECK `loop_config_wrapper.cc:358` | CONFIRMED |
-| `<3>` (viperfish, fallback) SC copy factor 16 (elementwise) / 8 (structured) | decompiled `0x139173a0`: `8*elementwise + 8` | CONFIRMED |
-| `<5>` (6acc60406) SC copy factors (transpose {16,8}; general 32/16; MD 16/pack) | decompiled `0x13916fe0` byte-for-byte | CONFIRMED |
-| `tpu::TpuVersion` C++ enum = proto−1; dispatch `version==5` ⇒ 6acc60406 | `GetCustomLoopUnrollPolicy 0x13916ec0`; `TPU_VERSION_*` proto descriptor numbers 1..6 | CONFIRMED |
-| Window selector picks largest scratchpad-fitting factor; writes `LoopConfig` | `Select 0x1385c360`, fit test `0x1385c240` (`8·((bytes>>2)+1)·f`) | CONFIRMED |
-| While-loop unroll thresholds 64/800/10000; gate at env `+4904` | `AddPass 0x1096ee60` object fields; `IsLoopUnrollable 0x12ee8620` | CONFIRMED |
-| `IsLoopUnrollable` 9-step gate; Send/Recv family forbidden | `0x12ee8620`, src lines 1222–1299 | CONFIRMED (gate); LOW (byte-exact opcode set) |
-| Pipeline depth = loop-carry rotation distance; depth ≥ 2 to pipeline | `ComputeWhileLoopPipelineDepth 0x12ee0fc0` | CONFIRMED |
-| Pipeliner clones body into `depth` chained calls; trip −= depth−1 | `RunImpl 0x12ee2200`; `IncrementWhileLoopTripCount(1-depth)` `0x1e3ae7c0` | CONFIRMED |
-| Unroll and pipeline gated independently, can both run | two gates in `PostOptimizationPipeline 0x1093fd40` (env+4904, `EnablePipelinedLoopUnrolling 0x1d6b71a0`) | CONFIRMED |
-| `TpuPostFusionTilingAssignment` propagates special tiling | `RunImpl 0x13dd85a0`, `AcceptsSpecialTiling 0x13dd6580`, `CanProduceSpecialTiling 0x13dd7760` | MEDIUM (predicates named, rule not fully decompiled) |
+| Claim | Evidence |
+|---|---|
+| TileKind is a `(input,output)` 16-bit pair packed by `GetCopyTileKind` | decompiled `0x13dd0ca0`: `v18\|v23`, error lines 66/77, mem-space byte 312, has-bit byte 304 |
+| Four `TransferSizeUtil` predicates gate compact-vs-SparseCore | called in `GetCopyTileKind`; addrs `0x1d6af220/110b7440/1d6af3e0/1d6af2e0` |
+| Non-`kCopy` ops inherit layout via `GetDefaultLayout`; only kOutfeed/tuple/async-SC are special | `RunImpl 0x13dd10a0`, subshape visitors `0x13dd26a0/27e0`, dtype CHECK `:233` |
+| `VerifyOrAssignTiling` tri-state at env `+0xDFC` (3580); mode 1→ctor(0)+Verify, mode 2→ctor(1)+Run | decompiled `0x10922a20`; `deepsea_compiler_base.cc:3053/3056` |
+| `LoopConfig`/`LoopUnrollConfig` field layout (tags, offsets, oneof) | wire serializers `0x1d6eade0`/`0x1d6f2680` |
+| Auto unroll factor = `loop_bound / vectorizing_shape` with divisibility CHECK | decompiled `0x13d6c1c0`; CHECK `loop_config_wrapper.cc:358` |
+| `<3>` (viperfish, fallback) SC copy factor 16 (elementwise) / 8 (structured) | decompiled `0x139173a0`: `8*elementwise + 8` |
+| `<5>` (6acc60406) SC copy factors (transpose {16,8}; general 32/16; MD 16/pack) | decompiled `0x13916fe0` byte-for-byte |
+| `tpu::TpuVersion` C++ enum = proto−1; dispatch `version==5` ⇒ 6acc60406 | `GetCustomLoopUnrollPolicy 0x13916ec0`; `TPU_VERSION_*` proto descriptor numbers 1..6 |
+| Window selector picks largest scratchpad-fitting factor; writes `LoopConfig` | `Select 0x1385c360`, fit test `0x1385c240` (`8·((bytes>>2)+1)·f`) |
+| While-loop unroll thresholds 64/800/10000; gate at env `+4904` | `AddPass 0x1096ee60` object fields; `IsLoopUnrollable 0x12ee8620` |
+| `IsLoopUnrollable` 9-step gate; Send/Recv family forbidden | `0x12ee8620`, src lines 1222–1299 |
+| Pipeline depth = loop-carry rotation distance; depth ≥ 2 to pipeline | `ComputeWhileLoopPipelineDepth 0x12ee0fc0` |
+| Pipeliner clones body into `depth` chained calls; trip −= depth−1 | `RunImpl 0x12ee2200`; `IncrementWhileLoopTripCount(1-depth)` `0x1e3ae7c0` |
+| Unroll and pipeline gated independently, can both run | two gates in `PostOptimizationPipeline 0x1093fd40` (env+4904, `EnablePipelinedLoopUnrolling 0x1d6b71a0`) |
+| `TpuPostFusionTilingAssignment` propagates special tiling | `RunImpl 0x13dd85a0`, `AcceptsSpecialTiling 0x13dd6580`, `CanProduceSpecialTiling 0x13dd7760` |
 
 ---
 

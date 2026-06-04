@@ -61,26 +61,26 @@ Read directly from the `.rodata` identifier-record block at `0x0bdf3c0c`–`0x0b
 
 The `rev-mask` column is the byte at record offset 8; `rev[11]` is the revision-equality byte at offset 11 that the recognizer actually compares (see the layout above). Every record's `revmask`/`rev[11]` pair was read directly from `.rodata`. The `External name` is the nominal `TpuVersionToExternalName` string for the row's `TpuVersion`; the `lite` discriminator is a *runtime* variant `string_view` (not part of the PCI record), so the `lite` codenames (Puffylite, Viperlite) display as `… lite` only when that variant arg is supplied.
 
-| Codename / variant | External name | hdrDID | chipDID | rev-mask | rev[11] | Device-type | Record addr | Recognized? | Confidence |
-|---|---|---|---|---|---|---|---|---|---|
-| Jellyfish | TPU v2 | `0x0027` | `0x004e` | `0xff` | `0x00` | **3** | `0xbdf3c0c` | funnel (inline) | CERTAIN |
-| Dragonfish | TPU v3 | `0x0027` | `0x004f` | `0xff` | `0x00` | **5** | `0xbdf3c18` | funnel (inline) | CERTAIN |
-| Pufferfish B0 Mfg | TPU v4 | `0x005e` | `0x0050` | `0xff` | `0x10` | **7** | `0xbdf3c28` | funnel (inline) | CERTAIN |
-| Pufferfish B0 Water | TPU v4 | `0x005e` | `0x0051` | `0xff` | `0x10` | **7** | `0xbdf3c34` | funnel (inline) | CERTAIN |
-| Pufferfish B0 Air | TPU v4 | `0x005e` | `0x0052` | `0xff` | `0x10` | **7** | `0xbdf3c40` | funnel (inline) | CERTAIN |
-| Puffylite (pxc::plc) | TPU v4 lite | `0x0056` | `0x007b` | `0xff` | `0x00` | **8** | `0xbdf3c4c` | funnel (inline) | CERTAIN |
-| Viperlite A0 PF | TPU v5 lite | `0x0063` | `0x00ae` | `0xff` | `0x00` | **11** | `0xbdf3c58` | funnel (inline) | CERTAIN |
-| Viperlite A0 VF | TPU v5 lite | `0x0063` | `0x00ae` | `0xff` | `0x01` | **11** | `0xbdf3c64` | funnel (inline) | CERTAIN |
-| Viperlite A1 PF | TPU v5 lite | `0x0063` | `0x00af` | `0xff` | `0x00` | **11** | `0xbdf3c70` | funnel (inline) | CERTAIN |
-| Viperlite A1 VF | TPU v5 lite | `0x0063` | `0x00af` | `0xff` | `0x01` | **11** | `0xbdf3c7c` | funnel (inline) | CERTAIN |
-| Viperfish PF | TPU v5 | `0x0062` | `0x00ac` | `0xff` | `0x00` | **10** | `0xbdf3c88` | funnel (inline) | CERTAIN |
-| Viperfish VF | TPU v5 | `0x0062` | `0x00ad` | `0xff` | `0x00` | **10** | `0xbdf3c94` | funnel (inline) | CERTAIN |
-| Ghostlite App PF | TPU v6 lite | `0x006e` | `0x00d1` | `0x12` | `0x00` | **13 (0xd)** | `0xbdf3ca0` | `IsGlc` | CERTAIN |
-| Ghostlite App VF | TPU v6 lite | `0x006f` | `0x00d1` | `0x12` | `0x00` | **13 (0xd)** | `0xbdf3cac` | `IsGlc` | CERTAIN |
-| Ghostlite Mgt PF | TPU v6 lite | `0x0070` | `0x00d1` | `0x12` | `0x00` | (none) | `0xbdf3cb8` | not recognized | CERTAIN |
-| 6acc60406 PF | TPU7x | `0x0075` | `0x00f2` | `0xff` | `0x00` | **12 (0xc)** | `0xbdf3cc4` | `IsGfc` | CERTAIN |
-| 6acc60406 VF | TPU7x | `0x0076` | `0x00f2` | `0xff` | `0x00` | **12 (0xc)** | `0xbdf3cd0` | `IsGfc` | CERTAIN |
-| 6acc60406 Mgt PF | TPU7x | `0x0077` | `0x00f2` | `0xff` | `0x00` | (none) | `0xbdf3cdc` | not recognized | CERTAIN |
+| Codename / variant | External name | hdrDID | chipDID | rev-mask | rev[11] | Device-type | Record addr | Recognized? |
+|---|---|---|---|---|---|---|---|---|
+| Jellyfish | TPU v2 | `0x0027` | `0x004e` | `0xff` | `0x00` | **3** | `0xbdf3c0c` | funnel (inline) |
+| Dragonfish | TPU v3 | `0x0027` | `0x004f` | `0xff` | `0x00` | **5** | `0xbdf3c18` | funnel (inline) |
+| Pufferfish B0 Mfg | TPU v4 | `0x005e` | `0x0050` | `0xff` | `0x10` | **7** | `0xbdf3c28` | funnel (inline) |
+| Pufferfish B0 Water | TPU v4 | `0x005e` | `0x0051` | `0xff` | `0x10` | **7** | `0xbdf3c34` | funnel (inline) |
+| Pufferfish B0 Air | TPU v4 | `0x005e` | `0x0052` | `0xff` | `0x10` | **7** | `0xbdf3c40` | funnel (inline) |
+| Puffylite (pxc::plc) | TPU v4 lite | `0x0056` | `0x007b` | `0xff` | `0x00` | **8** | `0xbdf3c4c` | funnel (inline) |
+| Viperlite A0 PF | TPU v5 lite | `0x0063` | `0x00ae` | `0xff` | `0x00` | **11** | `0xbdf3c58` | funnel (inline) |
+| Viperlite A0 VF | TPU v5 lite | `0x0063` | `0x00ae` | `0xff` | `0x01` | **11** | `0xbdf3c64` | funnel (inline) |
+| Viperlite A1 PF | TPU v5 lite | `0x0063` | `0x00af` | `0xff` | `0x00` | **11** | `0xbdf3c70` | funnel (inline) |
+| Viperlite A1 VF | TPU v5 lite | `0x0063` | `0x00af` | `0xff` | `0x01` | **11** | `0xbdf3c7c` | funnel (inline) |
+| Viperfish PF | TPU v5 | `0x0062` | `0x00ac` | `0xff` | `0x00` | **10** | `0xbdf3c88` | funnel (inline) |
+| Viperfish VF | TPU v5 | `0x0062` | `0x00ad` | `0xff` | `0x00` | **10** | `0xbdf3c94` | funnel (inline) |
+| Ghostlite App PF | TPU v6 lite | `0x006e` | `0x00d1` | `0x12` | `0x00` | **13 (0xd)** | `0xbdf3ca0` | `IsGlc` |
+| Ghostlite App VF | TPU v6 lite | `0x006f` | `0x00d1` | `0x12` | `0x00` | **13 (0xd)** | `0xbdf3cac` | `IsGlc` |
+| Ghostlite Mgt PF | TPU v6 lite | `0x0070` | `0x00d1` | `0x12` | `0x00` | (none) | `0xbdf3cb8` | not recognized |
+| 6acc60406 PF | TPU7x | `0x0075` | `0x00f2` | `0xff` | `0x00` | **12 (0xc)** | `0xbdf3cc4` | `IsGfc` |
+| 6acc60406 VF | TPU7x | `0x0076` | `0x00f2` | `0xff` | `0x00` | **12 (0xc)** | `0xbdf3cd0` | `IsGfc` |
+| 6acc60406 Mgt PF | TPU7x | `0x0077` | `0x00f2` | `0xff` | `0x00` | (none) | `0xbdf3cdc` | not recognized |
 
 > **QUIRK —** the two management-PF records (`0x0070`/Ghostlite, `0x0077`/6acc60406) are present in the `.rodata` table but **no device-type recognizer matches them**. `IsGlc` compares only `kGhostliteChipAppPFIdentifiers` (`0x006e`) and `kGhostliteChipAppVFIdentifiers` (`0x006f`); `IsGfc` compares only the `0x0075` (PF) and `0x0076` (VF) dwords. `kGhostliteChipMgtPFIdentifiers` is referenced from the HAL `hardware_attributes_factory.cc` init module, not from the `xprof::tpu` recognizers — the management function is registered for HAL routing but is intentionally not assigned a profiler device-type. A reimplementation that feeds a Mgt-PF record through `DeviceTypeFromDeviceIdentifiers` gets the `"Unsupported device identifiers"` error, by design.
 
@@ -137,13 +137,13 @@ The `0xF21AE000761AE0` immediate decodes little-endian as `e0 1a 76 00 00 e0 1a 
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `xprof::tpu::IsGlc` | `0xf6992a0` | Recognize Ghostlite App PF/VF records — chip `0x00d1` (`TpuVersion` 4) | CERTAIN |
-| `xprof::tpu::IsGfc` | `0xf699320` | Recognize 6acc60406 App PF/VF records — chip `0x00f2` (`TpuVersion` 5) | CERTAIN |
-| `xprof::tpu::DeviceTypeFromDeviceIdentifiers` | `0xf6993a0` | Map a record to its device-type integer (calls `IsGlc`/`IsGfc` last) | CERTAIN |
-| `xprof::tpu::DeviceIdentifiersFromDeviceType` | `0xf6996e0` | Reverse: device-type int → one canonical record per generation | CERTAIN |
-| `xprof::tpu::{IsDfc,IsPlc,IsPfc,IsVlc,IsVfc}` | `0xf699000`, `0xf699040`, `0xf699080`, `0xf699140`, `0xf699220` | Standalone per-codename recognizers (not called by the funnel) | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `xprof::tpu::IsGlc` | `0xf6992a0` | Recognize Ghostlite App PF/VF records — chip `0x00d1` (`TpuVersion` 4) |
+| `xprof::tpu::IsGfc` | `0xf699320` | Recognize 6acc60406 App PF/VF records — chip `0x00f2` (`TpuVersion` 5) |
+| `xprof::tpu::DeviceTypeFromDeviceIdentifiers` | `0xf6993a0` | Map a record to its device-type integer (calls `IsGlc`/`IsGfc` last) |
+| `xprof::tpu::DeviceIdentifiersFromDeviceType` | `0xf6996e0` | Reverse: device-type int → one canonical record per generation |
+| `xprof::tpu::{IsDfc,IsPlc,IsPfc,IsVlc,IsVfc}` | `0xf699000`, `0xf699040`, `0xf699080`, `0xf699140`, `0xf699220` | Standalone per-codename recognizers (not called by the funnel) |
 
 > **NOTE —** `DeviceIdentifiersFromDeviceType` (`0xf6996e0`) is the inverse map. For each device-type integer it returns one representative record: 3→Jellyfish, 5→Dragonfish, 7→Pufferfish B0 Water, 8→Puffylite, 10→Viperfish VF, 11→Viperlite A0 VF, 12→the anonymous 6acc60406 VF record (`&dword_BDF3CD0`), 13→Ghostlite App VF. An unknown device-type returns `"Unsupported device type"` (`device_identifiers_utils.cc:191`). Note it is not a true inverse — a generation with several variant records collapses to a single canonical one (e.g. all three Pufferfish B0 variants map back only to Water).
 
@@ -176,16 +176,16 @@ DeviceType DeviceTypeFromDeviceIdentifiers(record):    // 0xf6993a0
 
 The full device-type integer space recovered from the funnel. Note device-type is denser than `TpuVersion`: chip variants within one codename collapse to one device-type (all Pufferfish B0 → 7; all Viperlite → 11), and pre-production Puffylite gets its own value (8).
 
-| Device-type | Codename / family | TpuVersion | Confidence |
-|---|---|---|---|
-| 3 | Jellyfish | 0 | CERTAIN |
-| 5 | Dragonfish | 1 | CERTAIN |
-| 7 | Pufferfish (B0 Mfg/Water/Air) | 2 | CERTAIN |
-| 8 | Puffylite (pxc::plc pre-production) | (2 family) | CERTAIN |
-| 10 | Viperfish (PF/VF) | 3 | CERTAIN |
-| 11 | Viperlite (A0/A1 PF/VF) | (3 family) | CERTAIN |
-| 12 (`0xc`) | 6acc60406 (gfc) | 5 | CERTAIN |
-| 13 (`0xd`) | Ghostlite (glc) | 4 | CERTAIN |
+| Device-type | Codename / family | TpuVersion |
+|---|---|---|
+| 3 | Jellyfish | 0 |
+| 5 | Dragonfish | 1 |
+| 7 | Pufferfish (B0 Mfg/Water/Air) | 2 |
+| 8 | Puffylite (pxc::plc pre-production) | (2 family) |
+| 10 | Viperfish (PF/VF) | 3 |
+| 11 | Viperlite (A0/A1 PF/VF) | (3 family) |
+| 12 (`0xc`) | 6acc60406 (gfc) | 5 |
+| 13 (`0xd`) | Ghostlite (glc) | 4 |
 
 > **QUIRK —** the device-type integers are not in `TpuVersion` order, and Ghostlite (`TpuVersion` 4) gets the **higher** device-type (13) while 6acc60406 (`TpuVersion` 5) gets 12. Device-type is assigned by recognizer evaluation order and identity convenience, not by chronology. A reimplementation must not infer generation ordering from the device-type value; use the chip-DID → `TpuVersion` mapping for that. Likewise, the funnel tests Puffylite (8) *before* the Pufferfish B0 variants (7) — the inline-comparison order does not follow the device-type integers either.
 

@@ -130,11 +130,11 @@ This band sits just above the dictionary-A boundary and is dominated by the SDC
 (silent-data-corruption) checker family and the memory-space-assignment (MSA)
 large-buffer scaling controls. Two anchored fields pin the band.
 
-| Field# | Name | Type / wrapper | Confidence |
-|---|---|---|---|
-| #578 | `xla_tpu_alternate_memory_benefit_scaling_factor_for_large_buffers` | string (default `"SQRT"`) | CERTAIN |
-| #583 | `xla_tpu_sdc_checker_checksum_algo` | enum / `ChecksumAlgoProto.Value` | CERTAIN |
-| #592 | `xla_tpu_msa_inefficient_use_to_copy_ratio` | float (default `0.5`) | CERTAIN |
+| Field# | Name | Type / wrapper |
+|---|---|---|
+| #578 | `xla_tpu_alternate_memory_benefit_scaling_factor_for_large_buffers` | string (default `"SQRT"`) |
+| #583 | `xla_tpu_sdc_checker_checksum_algo` | enum / `ChecksumAlgoProto.Value` |
+| #592 | `xla_tpu_msa_inefficient_use_to_copy_ratio` | float (default `0.5`) |
 
 > **QUIRK —** #578 is a **string** flag whose value is a discrete enum-like token
 > (`"SQRT"`, also `"LINEAR"` / `"NONE"` in the code paths), not a number. The
@@ -156,10 +156,10 @@ This band carries the register-allocator selection policy and the MXU
 SDC-injection overhead. The register-selection policy is the most consequential
 enum in the upper half.
 
-| Field# | Name | Type / wrapper | Confidence |
-|---|---|---|---|
-| #611 | `xla_tpu_sdc_inject_mxu_sequences_overhead` | float (default `1.2`) | CERTAIN |
-| #631 | `xla_tpu_register_selection_policy` | enum / `RegSelectPolicyProto.Value` | CERTAIN |
+| Field# | Name | Type / wrapper |
+|---|---|---|
+| #611 | `xla_tpu_sdc_inject_mxu_sequences_overhead` | float (default `1.2`) |
+| #631 | `xla_tpu_register_selection_policy` | enum / `RegSelectPolicyProto.Value` |
 
 `RegSelectPolicyProto.Value` has seven values: `NONE=0`, `LEGACY=1`,
 `BALANCE_PREV_NEXT_USES_IGNORE_FREE=2`, `BALANCE_PREV_NEXT_FREE_SPILL=3`,
@@ -181,9 +181,9 @@ HIGH on individual names.
 
 A band of scheduler and sflag-wait instrumentation. One anchored string default.
 
-| Field# | Name | Type / wrapper | Confidence |
-|---|---|---|---|
-| #656 | `xla_tpu_collect_sflag_wait_stats_filter` | string (default `"all"`) | CERTAIN |
+| Field# | Name | Type / wrapper |
+|---|---|---|
+| #656 | `xla_tpu_collect_sflag_wait_stats_filter` | string (default `"all"`) |
 
 > **NOTE —** #656 and its sibling #739 (below) both default to the string `"all"`
 > and act as instrumentation *filters* — a comma-list of sflag-wait sites, with
@@ -199,10 +199,10 @@ The band's remaining fields are bool/int64 scheduler tunables (HIGH).
 This band introduces the precision-tracer mode enum and the second sflag-wait
 string filter.
 
-| Field# | Name | Type / wrapper | Confidence |
-|---|---|---|---|
-| #723 | `xla_tpu_precision_tracer_mode` | enum / `PrecisionTracerModeProto.Value` | CERTAIN |
-| #739 | `xla_tpu_synthetic_compute_in_sflag_wait_filter` | string (default `"all"`) | CERTAIN |
+| Field# | Name | Type / wrapper |
+|---|---|---|
+| #723 | `xla_tpu_precision_tracer_mode` | enum / `PrecisionTracerModeProto.Value` |
+| #739 | `xla_tpu_synthetic_compute_in_sflag_wait_filter` | string (default `"all"`) |
 
 `PrecisionTracerModeProto.Value` has six values: `NONE=0`,
 `LOG_ORIGINAL_AND_SHADOW=1`, `LOG_ABS_DIFF=2`, `LOG_ABS_DIFF_SUMMARY=3`,
@@ -222,15 +222,15 @@ the bundle-aware cost model. The Tristate fields all carry
 `TristateProto.Value` (`AUTO=0`, `DISABLED=1`, `ENABLED=2`), and many default
 `ENABLED`.
 
-| Field# | Name | Type / wrapper | Confidence |
-|---|---|---|---|
-| #758 | `xla_tpu_move_dot_parameters_to_rhs` | enum / `TristateProto.Value` (default `ENABLED`) | CERTAIN |
-| #766 | `xla_tpu_enable_large_2nd_minor_layout_for_x8` | enum / `TristateProto.Value` (default `ENABLED`) | HIGH |
-| #777 | `xla_tpu_override_scavenge_vmem_for_fusions` | enum / `TristateProto.Value` (default `ENABLED`) | HIGH |
-| #787 | `xla_msa_enable` | enum / `TristateProto.Value` (default `ENABLED`) | CERTAIN |
-| #788 | `xla_msa_min_overlap_to_async_copy_ratio` | float (default `1.0`) | CERTAIN |
-| #789 | `xla_msa_preferred_overlap_to_async_copy_ratio` | float (default `2.0`) | CERTAIN |
-| #790 | `xla_msa_max_overlap_to_mem_size_async_copy_ratio` | float (default `8.0`) | CERTAIN |
+| Field# | Name | Type / wrapper |
+|---|---|---|
+| #758 | `xla_tpu_move_dot_parameters_to_rhs` | enum / `TristateProto.Value` (default `ENABLED`) |
+| #766 | `xla_tpu_enable_large_2nd_minor_layout_for_x8` | enum / `TristateProto.Value` (default `ENABLED`) |
+| #777 | `xla_tpu_override_scavenge_vmem_for_fusions` | enum / `TristateProto.Value` (default `ENABLED`) |
+| #787 | `xla_msa_enable` | enum / `TristateProto.Value` (default `ENABLED`) |
+| #788 | `xla_msa_min_overlap_to_async_copy_ratio` | float (default `1.0`) |
+| #789 | `xla_msa_preferred_overlap_to_async_copy_ratio` | float (default `2.0`) |
+| #790 | `xla_msa_max_overlap_to_mem_size_async_copy_ratio` | float (default `8.0`) |
 
 > **QUIRK —** the MSA overlap-ratio triple at #788/#789/#790 is **not** named
 > uniformly. min/preferred use `..._overlap_to_async_copy_ratio`, but the max
@@ -254,15 +254,15 @@ the bundle-aware cost model. The Tristate fields all carry
 The SparseCore collective-offload and bundle-aware cost-model Tristate cluster,
 plus the async-wrapper fusion-type enum. This band is heavily ENABLED-by-default.
 
-| Field# | Name | Type / wrapper | Confidence |
-|---|---|---|---|
-| #802 | `xla_tpu_enable_offloading_scatter_to_sparsecore` | enum / `TristateProto.Value` (default `ENABLED`) | CERTAIN |
-| #804 | `xla_tpu_use_bundle_aware_cost_model_for_fusions` | enum / `TristateProto.Value` (default `ENABLED`) | HIGH |
-| #807 | `xla_tpu_experimental_do_not_use_fusion_estimate_cost_changes` | enum / `TristateProto.Value` (default `ENABLED`) | HIGH |
-| #816 | `xla_msa_use_bundle_aware_cost_model` | enum / `TristateProto.Value` (default `ENABLED`) | HIGH |
-| #822 | `xla_tpu_enable_sparse_core_collective_offload_all_gather` | enum / `TristateProto.Value` (default `ENABLED`) | CERTAIN |
-| #827 | `xla_sc_async_wrapper_fusion_type` | enum / `ScAsyncWrapperFusionTypeProto.Value` | CERTAIN |
-| #839 | `xla_tpu_enable_sparse_core_collective_offload_all_reduce` | enum / `TristateProto.Value` (default `ENABLED`) | HIGH |
+| Field# | Name | Type / wrapper |
+|---|---|---|
+| #802 | `xla_tpu_enable_offloading_scatter_to_sparsecore` | enum / `TristateProto.Value` (default `ENABLED`) |
+| #804 | `xla_tpu_use_bundle_aware_cost_model_for_fusions` | enum / `TristateProto.Value` (default `ENABLED`) |
+| #807 | `xla_tpu_experimental_do_not_use_fusion_estimate_cost_changes` | enum / `TristateProto.Value` (default `ENABLED`) |
+| #816 | `xla_msa_use_bundle_aware_cost_model` | enum / `TristateProto.Value` (default `ENABLED`) |
+| #822 | `xla_tpu_enable_sparse_core_collective_offload_all_gather` | enum / `TristateProto.Value` (default `ENABLED`) |
+| #827 | `xla_sc_async_wrapper_fusion_type` | enum / `ScAsyncWrapperFusionTypeProto.Value` |
+| #839 | `xla_tpu_enable_sparse_core_collective_offload_all_reduce` | enum / `TristateProto.Value` (default `ENABLED`) |
 
 `ScAsyncWrapperFusionTypeProto.Value` (the wrapper for #827) has four values:
 `DEFAULT=0`, `SINGLE_SPARSE_DENSE_CALL=1`, `SINGLE_MINIBATCHING_STEP=2`,
@@ -286,12 +286,12 @@ collective-by-collective offload toggle set.
 The tail of the SparseCore-offload Tristate set, the constant-table collective
 optimization, advanced multi-output fusion, and a quantized-collective threshold.
 
-| Field# | Name | Type / wrapper | Confidence |
-|---|---|---|---|
-| #852 | `xla_collective_optimize_constant_table` | enum / `TristateProto.Value` (default `ENABLED`) | CERTAIN |
-| #860 | `xla_tpu_enable_sparse_core_collective_offload_reduce_scatter` | enum / `TristateProto.Value` (default `ENABLED`) | HIGH |
-| #866 | `xla_jf_enable_advanced_multi_output_fusion` | enum / `TristateProto.Value` (default `ENABLED`) | CERTAIN |
-| #890 | `xla_tpu_quantized_all_reduce_size_threshold_mib` | float (default `3.0`) | CERTAIN |
+| Field# | Name | Type / wrapper |
+|---|---|---|
+| #852 | `xla_collective_optimize_constant_table` | enum / `TristateProto.Value` (default `ENABLED`) |
+| #860 | `xla_tpu_enable_sparse_core_collective_offload_reduce_scatter` | enum / `TristateProto.Value` (default `ENABLED`) |
+| #866 | `xla_jf_enable_advanced_multi_output_fusion` | enum / `TristateProto.Value` (default `ENABLED`) |
+| #890 | `xla_tpu_quantized_all_reduce_size_threshold_mib` | float (default `3.0`) |
 
 > **NOTE —** #852's flag name drops the `_tpu` infix used by most of its
 > neighbors — it is `xla_collective_optimize_constant_table`, confirmed verbatim,
@@ -358,12 +358,12 @@ Four of the 7 dedicated (non-Tristate) TCE wrapper enums are the type of a *dire
 (versus appearing only inside the AutoProto oneof). Their value tables, read
 verbatim from the FileDescriptorProto value-name stream (`@0xbfa6060+`):
 
-| Field# | Wrapper enum | Values | Default | Confidence |
-|---|---|---|---|---|
-| #583 | `ChecksumAlgoProto.Value` | `DEFAULT=0`, `XOR=1`, `SIP_HASH_1_3=2` | `0 DEFAULT` | CERTAIN |
-| #631 | `RegSelectPolicyProto.Value` | `NONE=0`, `LEGACY=1`, `BALANCE_PREV_NEXT_USES_IGNORE_FREE=2`, `BALANCE_PREV_NEXT_FREE_SPILL=3`, `DOUBLE=4`, `WORST=5`, `DISREGARD_RECENTLY_USED=6` | `6` | CERTAIN |
-| #723 | `PrecisionTracerModeProto.Value` | `NONE=0`, `LOG_ORIGINAL_AND_SHADOW=1`, `LOG_ABS_DIFF=2`, `LOG_ABS_DIFF_SUMMARY=3`, `CHECK_ABS_DIFF=4`, `CHECK_ABS_DIFF_NONFATAL=5` | `0 NONE` | CERTAIN |
-| #827 | `ScAsyncWrapperFusionTypeProto.Value` | `DEFAULT=0`, `SINGLE_SPARSE_DENSE_CALL=1`, `SINGLE_MINIBATCHING_STEP=2`, `SINGLE_TPU_CUSTOM_CALL=3` | `3` | CERTAIN |
+| Field# | Wrapper enum | Values | Default |
+|---|---|---|---|
+| #583 | `ChecksumAlgoProto.Value` | `DEFAULT=0`, `XOR=1`, `SIP_HASH_1_3=2` | `0 DEFAULT` |
+| #631 | `RegSelectPolicyProto.Value` | `NONE=0`, `LEGACY=1`, `BALANCE_PREV_NEXT_USES_IGNORE_FREE=2`, `BALANCE_PREV_NEXT_FREE_SPILL=3`, `DOUBLE=4`, `WORST=5`, `DISREGARD_RECENTLY_USED=6` | `6` |
+| #723 | `PrecisionTracerModeProto.Value` | `NONE=0`, `LOG_ORIGINAL_AND_SHADOW=1`, `LOG_ABS_DIFF=2`, `LOG_ABS_DIFF_SUMMARY=3`, `CHECK_ABS_DIFF=4`, `CHECK_ABS_DIFF_NONFATAL=5` | `0 NONE` |
+| #827 | `ScAsyncWrapperFusionTypeProto.Value` | `DEFAULT=0`, `SINGLE_SPARSE_DENSE_CALL=1`, `SINGLE_MINIBATCHING_STEP=2`, `SINGLE_TPU_CUSTOM_CALL=3` | `3` |
 
 Every other enum field in this range carries `TristateProto.Value`
 (`AUTO=0`, `DISABLED=1`, `ENABLED=2`). The wrapper-to-flag bridge is the

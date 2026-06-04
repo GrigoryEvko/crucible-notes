@@ -70,16 +70,16 @@ A stat's value arm is **not** chosen by a per-name table — it is chosen by the
 
 Eight `AddStatValue<T>` instantiations are present as mangled symbols on the `XStatsBuilder<tensorflow::profiler::XEvent>` (per-event) and `XStatsBuilder<XEventMetadata>` (per-event-type) builders. The arm each writes:
 
-| `T` (mangled fragment) | C++ type | `oneof` arm (field) | Used for | Confidence |
-|---|---|---|---|---|
-| `Il` | `long` | `int64_value` (f4) | `device_offset_ps`/`device_duration_ps`, step/counter ids | CERTAIN |
-| `Im` | `unsigned long` | `uint64_value` (f3) | DMA byte count, transaction/correlation ids | CERTAIN |
-| `IRd` | `double&` | `double_value` (f2) | SPI power(W) samples, bandwidth, occupancy_pct | CERTAIN |
-| `IRNSt…basic_string…` | `std::string&` | `str_value` (f5) | tensor_shapes, kernel_details, source_stack | CERTAIN |
-| `IRNSt…basic_string_view…` | `string_view&` | `str_value` (f5) | hlo_op/hlo_module names, fixed labels | CERTAIN |
-| `IRNS3_13XStatMetadataE` | `XStatMetadata&` | `ref_value` (f7) | sync wait reason (interned-string ref) | CERTAIN |
-| `IRNS3_11CoreDetailsE` | `CoreDetails&` | `bytes_value` (f6) | per-core hardware identity blob | HIGH |
-| `IRNS3_21PowerComponentMetricsE` | `PowerComponentMetrics&` | `bytes_value` (f6) | power/thermal component metrics blob | HIGH |
+| `T` (mangled fragment) | C++ type | `oneof` arm (field) | Used for |
+|---|---|---|---|
+| `Il` | `long` | `int64_value` (f4) | `device_offset_ps`/`device_duration_ps`, step/counter ids |
+| `Im` | `unsigned long` | `uint64_value` (f3) | DMA byte count, transaction/correlation ids |
+| `IRd` | `double&` | `double_value` (f2) | SPI power(W) samples, bandwidth, occupancy_pct |
+| `IRNSt…basic_string…` | `std::string&` | `str_value` (f5) | tensor_shapes, kernel_details, source_stack |
+| `IRNSt…basic_string_view…` | `string_view&` | `str_value` (f5) | hlo_op/hlo_module names, fixed labels |
+| `IRNS3_13XStatMetadataE` | `XStatMetadata&` | `ref_value` (f7) | sync wait reason (interned-string ref) |
+| `IRNS3_11CoreDetailsE` | `CoreDetails&` | `bytes_value` (f6) | per-core hardware identity blob |
+| `IRNS3_21PowerComponentMetricsE` | `PowerComponentMetrics&` | `bytes_value` (f6) | power/thermal component metrics blob |
 
 > **NOTE —** the two message-typed instantiations (`CoreDetails`, `PowerComponentMetrics`) serialize the protobuf message into the `bytes` arm. There is **no** dedicated arm for sub-messages; a structured stat is a serialized blob in `bytes_value` (f6), the same arm the device-event `TraceEntry` payload uses in `XEventMetadata.metadata`. A reimplementer must serialize these to bytes, not invent a new arm.
 
@@ -95,10 +95,10 @@ Two stats are stamped on **every** device `XEvent` that carries timing, uncondit
 
 ### The pair
 
-| Stat name | StatType id | Value arm | Producer | Confidence |
-|---|---|---|---|---|
-| `device_offset_ps` | **147** | `int64_value` (f4) | `TpuXLineBuilder::AddEvent(GtcSpan)` @ `0xf1df1e0`, cached `+0x38` | CERTAIN |
-| `device_duration_ps` | **148** | `int64_value` (f4) | `TpuXLineBuilder::AddEvent(GtcSpan)` @ `0xf1df1e0`, cached `+0x40` | CERTAIN |
+| Stat name | StatType id | Value arm | Producer |
+|---|---|---|---|
+| `device_offset_ps` | **147** | `int64_value` (f4) | `TpuXLineBuilder::AddEvent(GtcSpan)` @ `0xf1df1e0`, cached `+0x38` |
+| `device_duration_ps` | **148** | `int64_value` (f4) | `TpuXLineBuilder::AddEvent(GtcSpan)` @ `0xf1df1e0`, cached `+0x40` |
 
 Both carry **absolute** device wall time in picoseconds, computed by the GTC→ps math (`round(gtc_ticks × 1e9 / (clock × 16))`, 128-bit). They duplicate the `XEvent.offset_ps`/`duration_ps` fields, which are *line-relative*. The full mechanism — why both exist, the conditional gate, the 128-bit divide — is documented on [TraceEntry to XEvent](trace-entry-to-xevent.md#the-universal-stamp--addeventgtcspan). What this page adds: these two are the catalog's anchor row, the only stat names whose integer id is observable in the binary (as the `+0x28` offset into the cached `XStatMetadata` written into `XStat.metadata_id`).
 
@@ -112,14 +112,14 @@ Both carry **absolute** device wall time in picoseconds, computed by the GTC→p
 
 The stateful sync subscriber surfaces *why* a wait happened and *which* sync flag, as dynamic stats on the `SyncWait:<n>` duration event ([begin/end pairing](trace-entry-to-xevent.md#beginend-pairing--duration-events)). These are the highest-value TPU-specific device stats.
 
-| Stat name | Value arm | Producer trace-point / field | Confidence |
-|---|---|---|---|
-| sync wait reason — e.g. `"TensorCore waiting for Host Infeed"` (`@0x871cd36`, len `0x22`) | `ref_value` (f7) | id 86/87/80 sync pair, interned via `AddStatValue<XStatMetadata&>` @ `0xf1e1da0` | CERTAIN |
-| `sync_flag_id` | `int64_value` (f4) | `SyncFlagValue()` / `sync_flag_number` on TCS sync events (80–88) | HIGH |
-| `overlay_id` | `int64_value` (f4) | overlay subscriber, overlay trace-points → TC Overlay line (7) | HIGH |
-| `step_id` | `int64_value` (f4) | step tracker, `SET_TRACEMARK` (84) step marks | MEDIUM |
-| `step_num` | `int64_value` (f4) | step tracker, step sequence | MEDIUM |
-| `group_id` | `int64_value` (f4) | step/event grouping (tsl canonical) | MEDIUM |
+| Stat name | Value arm | Producer trace-point / field |
+|---|---|---|
+| sync wait reason — e.g. `"TensorCore waiting for Host Infeed"` (`@0x871cd36`, len `0x22`) | `ref_value` (f7) | id 86/87/80 sync pair, interned via `AddStatValue<XStatMetadata&>` @ `0xf1e1da0` |
+| `sync_flag_id` | `int64_value` (f4) | `SyncFlagValue()` / `sync_flag_number` on TCS sync events (80–88) |
+| `overlay_id` | `int64_value` (f4) | overlay subscriber, overlay trace-points → TC Overlay line (7) |
+| `step_id` | `int64_value` (f4) | step tracker, `SET_TRACEMARK` (84) step marks |
+| `step_num` | `int64_value` (f4) | step tracker, step sequence |
+| `group_id` | `int64_value` (f4) | step/event grouping (tsl canonical) |
 
 > **NOTE —** for the `id==255` dummy/sentinel sync entry the wait-reason `XStatMetadata.name` is the **empty string** (len 0) — the stat is still emitted, but its interned name is empty, so a consumer sees a `ref_value` arm pointing at a nameless stat. A reimplementation that asserts non-empty stat names will trip on the sentinel.
 
@@ -131,14 +131,14 @@ The stateful sync subscriber surfaces *why* a wait happened and *which* sync fla
 
 The DMA subscriber surfaces the transferred byte count of a matched DMA span; the OCI/HDE/ICI bands surface byte counts and chunk counts read straight from the decoded `TraceEntry` variant fields. These ride the `uint64`/`int64` arms.
 
-| Stat name | Value arm | Producer trace-point / field | Confidence |
-|---|---|---|---|
-| DMA byte count (interned `bytes_transferred` or a per-line label) | `uint64_value` (f3) | `MemoryDataEnd()` on DMA completion, `AddStatValue<unsigned long>` @ `0xf1df460` | CERTAIN |
-| `bytes_transferred` | `uint64_value` (f3) | DMA / memcpy events (tsl canonical, string confirmed) | HIGH |
-| `bytes_accessed` | `uint64_value` (f3) | memory-access events (tsl canonical) | HIGH |
-| `bytes` | `uint64_value` (f3) | generic byte-count (tsl canonical) | MEDIUM |
-| `memory_bandwidth` | `double_value` (f2) | derived BW on memory events (tsl canonical) | MEDIUM |
-| `queue_id` | `int64_value` (f4) | DMA/queue events (tsl canonical) | MEDIUM |
+| Stat name | Value arm | Producer trace-point / field |
+|---|---|---|
+| DMA byte count (interned `bytes_transferred` or a per-line label) | `uint64_value` (f3) | `MemoryDataEnd()` on DMA completion, `AddStatValue<unsigned long>` @ `0xf1df460` |
+| `bytes_transferred` | `uint64_value` (f3) | DMA / memcpy events (tsl canonical, string confirmed) |
+| `bytes_accessed` | `uint64_value` (f3) | memory-access events (tsl canonical) |
+| `bytes` | `uint64_value` (f3) | generic byte-count (tsl canonical) |
+| `memory_bandwidth` | `double_value` (f2) | derived BW on memory events (tsl canonical) |
+| `queue_id` | `int64_value` (f4) | DMA/queue events (tsl canonical) |
 
 > **NOTE —** the DMA match key (`dma_id`, from `GetDmaId()` @ `0xf698180`) is the *pairing* key, **not** a stat — it is never interned into `stat_metadata`. The string `"dma_id"` is absent from the binary (confirmed MISS), consistent with it being an in-memory `FlatHashMap` key rather than a serialized stat name. Do not look for a `dma_id` stat; the surfaced DMA scalar is the byte count.
 
@@ -150,12 +150,12 @@ The DMA subscriber surfaces the transferred byte count of a matched DMA span; th
 
 Counter lines and the firmware power/thermal subsystem surface samples as stats. The counter sample uses a fixed rodata label; power components ride the message-valued `bytes` arm.
 
-| Stat name | Value arm | Producer | Confidence |
-|---|---|---|---|
-| `"Available Count"` (`@0x84e8ef6`, len `0xf`) | `int64_value` (f4) | TC0 infeed-buffer counter line sample | CERTAIN |
-| SPI power sample (W) | `double_value` (f2) | `SpiSamplerSubscriber`, ids 168/169 → SPI Meter lines (118/119) | MEDIUM |
-| `PowerComponentMetrics` blob | `bytes_value` (f6) | firmware power/thermal subscriber, `AddStatValue<PowerComponentMetrics&>` | HIGH |
-| throttle counters (num_thermal/electrical_throttles) | `int64_value` (f4) | id 97 / 200.. throttle events → Power Throttle line (58) | MEDIUM |
+| Stat name | Value arm | Producer |
+|---|---|---|
+| `"Available Count"` (`@0x84e8ef6`, len `0xf`) | `int64_value` (f4) | TC0 infeed-buffer counter line sample |
+| SPI power sample (W) | `double_value` (f2) | `SpiSamplerSubscriber`, ids 168/169 → SPI Meter lines (118/119) |
+| `PowerComponentMetrics` blob | `bytes_value` (f6) | firmware power/thermal subscriber, `AddStatValue<PowerComponentMetrics&>` |
+| throttle counters (num_thermal/electrical_throttles) | `int64_value` (f4) | id 97 / 200.. throttle events → Power Throttle line (58) |
 
 > **NOTE —** the counter-sample line uses a constant rodata stat name (`"Available Count"`), interned via `GetOrCreateStatMetadata(string_view)`, in contrast to the canonical-tsl-named stats above. Fixed-label stats and tsl-enum stats share the same `stat_metadata` map — they differ only in where the name string originates (a rodata literal vs the `GetStatTypeStrMap` table).
 
@@ -167,20 +167,20 @@ Counter lines and the firmware power/thermal subsystem surface samples as stats.
 
 The HLO subscriber and the post-hoc symbolizer attach compiler-side identity to XLA-op events on the `"XLA Ops"` line. These are the canonical tsl names, all string-valued except the numeric ids.
 
-| Stat name | Value arm | Producer | Confidence |
-|---|---|---|---|
-| `hlo_op` | `str_value` (f5, string_view) | `TRACE_INSTRUCTION`/`SET_TRACEMARK` (85/84) via symbolizer | HIGH |
-| `hlo_module` | `str_value` (f5) | HLO module name via `GetOrCreateXlaEventMetadata(pair)` | HIGH |
-| `hlo_category` | `str_value` (f5) | symbolizer (tsl canonical) | MEDIUM |
-| `program_id` | `int64_value` (f4) | per-program identity | HIGH |
-| `tf_op` | `str_value` (f5) | TF-op name (tsl canonical) | MEDIUM |
-| `tf_function_call` | `str_value` (f5) | TF function call (tsl canonical) | LOW |
-| `tensor_shapes` | `str_value` (f5) | op tensor-shape string (tsl canonical) | MEDIUM |
-| `kernel_details` | `str_value` (f5) | kernel detail string (tsl canonical) | LOW |
-| `source_stack` | `str_value` (f5) | source-location stack (tsl canonical) | LOW |
-| `flops` | `int64_value` (f4) | op FLOP count (tsl canonical) | MEDIUM |
-| `long_name` | `str_value` (f5) | full op name (tsl canonical) | LOW |
-| `level` | `int64_value` (f4) | nesting level (tsl canonical) | LOW |
+| Stat name | Value arm | Producer |
+|---|---|---|
+| `hlo_op` | `str_value` (f5, string_view) | `TRACE_INSTRUCTION`/`SET_TRACEMARK` (85/84) via symbolizer |
+| `hlo_module` | `str_value` (f5) | HLO module name via `GetOrCreateXlaEventMetadata(pair)` |
+| `hlo_category` | `str_value` (f5) | symbolizer (tsl canonical) |
+| `program_id` | `int64_value` (f4) | per-program identity |
+| `tf_op` | `str_value` (f5) | TF-op name (tsl canonical) |
+| `tf_function_call` | `str_value` (f5) | TF function call (tsl canonical) |
+| `tensor_shapes` | `str_value` (f5) | op tensor-shape string (tsl canonical) |
+| `kernel_details` | `str_value` (f5) | kernel detail string (tsl canonical) |
+| `source_stack` | `str_value` (f5) | source-location stack (tsl canonical) |
+| `flops` | `int64_value` (f4) | op FLOP count (tsl canonical) |
+| `long_name` | `str_value` (f5) | full op name (tsl canonical) |
+| `level` | `int64_value` (f4) | nesting level (tsl canonical) |
 
 > **NOTE —** these stat *names* are confirmed present as ASCII in the binary, but the exact subscriber→stat-emission for each on each chip family was not byte-traced — only the `hlo_op`/`hlo_module` path (via `GetOrCreateXlaEventMetadata`) and the symbolizer enrichment are confirmed. Treat the value-arm assignment of the canonical-tsl rows as derived from the tsl `StatType` schema (which fixes the arm per name), HIGH where a producer is named, LOW where only the string is confirmed present.
 
@@ -192,24 +192,24 @@ The HLO subscriber and the post-hoc symbolizer attach compiler-side identity to 
 
 Plane- and host-level identity stats, plus the build-provenance stat. These appear on `/host:<n>` planes and as plane-level stats; they are interned the same way but are largely host-side (dynamic name-interning through `tsl::profiler::XPlaneBuilder`).
 
-| Stat name | Value arm | Source | Confidence |
-|---|---|---|---|
-| `device_id` | `int64_value` (f4) | plane/event device identity (tsl canonical) | HIGH |
-| `core_id` | `int64_value` (f4) | TPU core ordinal, `CoreId()` on device events | HIGH |
-| `chip_id` | `int64_value` (f4) | TPU chip ordinal (TPU-specific) | HIGH |
-| `device_type` | `str_value` (f5) | device-type label (tsl canonical) | MEDIUM |
-| `run_id` | `int64_value` (f4) | execution run identity (tsl canonical) | MEDIUM |
-| `correlation_id` | `uint64_value` (f3) | host↔device correlation (tsl canonical) | MEDIUM |
-| `context_id` | `int64_value` (f4) | context identity (tsl canonical) | LOW |
-| `producer_id` | `int64_value` (f4) | flow producer (tsl canonical, flow events) | LOW |
-| `is_eager` | `int64_value` (f4, bool) | eager-mode flag (tsl canonical) | LOW |
-| `step_name` | `str_value` (f5) | step label (tsl canonical) | MEDIUM |
-| `self_duration_ps` | `int64_value` (f4) | self (exclusive) duration (tsl canonical) | HIGH |
-| `min_duration_ps` | `int64_value` (f4) | min instance duration (tsl canonical, event-type stat) | MEDIUM |
-| `total_profile_duration_ps` | `int64_value` (f4) | profile span (tsl canonical, plane stat) | MEDIUM |
-| `max_iteration_num` | `int64_value` (f4) | iteration count (tsl canonical) | LOW |
-| `num_occurrences` | `int64_value` (f4) | aggregated occurrence count (tsl canonical) | MEDIUM |
-| build provenance — `"<timestamp> cl/<changelist>"` (`absl::StrFormat("%s cl/%s", BuildData::Timestamp(), BuildData::Changelist())`) | `str_value` (f5) | `AddPluginMetadata()` @ `0xf3165c0`, StatType **0xA6 = 166** | HIGH |
+| Stat name | Value arm | Source |
+|---|---|---|
+| `device_id` | `int64_value` (f4) | plane/event device identity (tsl canonical) |
+| `core_id` | `int64_value` (f4) | TPU core ordinal, `CoreId()` on device events |
+| `chip_id` | `int64_value` (f4) | TPU chip ordinal (TPU-specific) |
+| `device_type` | `str_value` (f5) | device-type label (tsl canonical) |
+| `run_id` | `int64_value` (f4) | execution run identity (tsl canonical) |
+| `correlation_id` | `uint64_value` (f3) | host↔device correlation (tsl canonical) |
+| `context_id` | `int64_value` (f4) | context identity (tsl canonical) |
+| `producer_id` | `int64_value` (f4) | flow producer (tsl canonical, flow events) |
+| `is_eager` | `int64_value` (f4, bool) | eager-mode flag (tsl canonical) |
+| `step_name` | `str_value` (f5) | step label (tsl canonical) |
+| `self_duration_ps` | `int64_value` (f4) | self (exclusive) duration (tsl canonical) |
+| `min_duration_ps` | `int64_value` (f4) | min instance duration (tsl canonical, event-type stat) |
+| `total_profile_duration_ps` | `int64_value` (f4) | profile span (tsl canonical, plane stat) |
+| `max_iteration_num` | `int64_value` (f4) | iteration count (tsl canonical) |
+| `num_occurrences` | `int64_value` (f4) | aggregated occurrence count (tsl canonical) |
+| build provenance — `"<timestamp> cl/<changelist>"` (`absl::StrFormat("%s cl/%s", BuildData::Timestamp(), BuildData::Changelist())`) | `str_value` (f5) | `AddPluginMetadata()` @ `0xf3165c0`, StatType **0xA6 = 166** |
 
 > **QUIRK —** `num_occurrences` is *also* an `XEvent` `oneof data` field (f5), not only a stat. An aggregated `XEvent` (one event-type, many instances folded) stores its count in `XEvent.num_occurrences`; the `num_occurrences` *stat* is the per-event-type variant. A reimplementer must not store the same count in both places — pick the event field for aggregated events and the stat for type-level aggregation.
 

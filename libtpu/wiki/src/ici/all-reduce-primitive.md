@@ -163,16 +163,16 @@ When the topology resolves to a single usable axis, `EmitAllReduce` takes the 1-
 
 The full set of terminal sub-emitters `EmitAllReduce` can construct, with the decompile call site and the gate. All `make_unique`/`operator new`/`CreateIfFeasible` sites are confirmed present in `0x13742200`.
 
-| Sub-emitter | Built by | Arm | Gate | Conf |
-|---|---|---|---|---|
-| `BinomialSinglePhaseRingSumEmitter` | `RingSumEmitter::CreateEmitter` @ line 1054 | binomial | `MayUseSinglePhaseRingEmitter` + power-of-2 `N≤128` | HIGH |
-| `SinglePhaseRingSumEmitter` (plain ring) | `RingSumEmitter::CreateEmitter` @ line 1054 | binomial | `MayUseSinglePhaseRingEmitter`, non-binomial fallback | HIGH |
-| `UniDirection1DRingStrategy` | `make_unique` @ line 1120 | 1-D | single axis, unidirectional | HIGH |
-| `StrategyRing` | `make_unique` @ line 1134 | 1-D | single axis, ring (non-unidir) | HIGH |
-| `UniDirectionNDRingStrategy` | `operator new(0x5B0)` @ line 815 | N-D | multi-axis, no pincer | HIGH |
-| `RotatedPincerEmitter` | `make_unique` @ lines 907 / 1241 | both | bandwidth-bound, pincer prefer-flag | HIGH |
-| `RotatedPincerShortEmitter` | `CreateIfFeasible` @ lines 847 / 1170 | both | latency-bound bidirectional | HIGH |
-| `RotatedPincerQuantizedEmitter` | `make_unique` @ lines 886 / 1227 | both | `CanLowerToQuantizedAllReduce` (line 699) | HIGH |
+| Sub-emitter | Built by | Arm | Gate |
+|---|---|---|---|
+| `BinomialSinglePhaseRingSumEmitter` | `RingSumEmitter::CreateEmitter` @ line 1054 | binomial | `MayUseSinglePhaseRingEmitter` + power-of-2 `N≤128` |
+| `SinglePhaseRingSumEmitter` (plain ring) | `RingSumEmitter::CreateEmitter` @ line 1054 | binomial | `MayUseSinglePhaseRingEmitter`, non-binomial fallback |
+| `UniDirection1DRingStrategy` | `make_unique` @ line 1120 | 1-D | single axis, unidirectional |
+| `StrategyRing` | `make_unique` @ line 1134 | 1-D | single axis, ring (non-unidir) |
+| `UniDirectionNDRingStrategy` | `operator new(0x5B0)` @ line 815 | N-D | multi-axis, no pincer |
+| `RotatedPincerEmitter` | `make_unique` @ lines 907 / 1241 | both | bandwidth-bound, pincer prefer-flag |
+| `RotatedPincerShortEmitter` | `CreateIfFeasible` @ lines 847 / 1170 | both | latency-bound bidirectional |
+| `RotatedPincerQuantizedEmitter` | `make_unique` @ lines 886 / 1227 | both | `CanLowerToQuantizedAllReduce` (line 699) |
 
 `RotatedPincerQuantizedEmitter::CanLowerToQuantizedAllReduce` is consulted early (line 699) — if the quantized level and size threshold are met and the dtype is in `kSupportedQuantizationTypes` (`{S8, F8E5M2, F8E4M3B11FNUZ}`), the quantized wrap is taken in whichever arm fires. The constructor takes an extra `PrimitiveType` and a `QuantizedAllReduceStage` argument absent from the non-quantized pincer (compare the mangled `make_unique` signatures at line 886 vs 907). Detail on [FP8 Quantized Collective](../collectives/fp8-quantized-collective.md).
 

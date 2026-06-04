@@ -131,13 +131,13 @@ The three checks are a complete precondition for the chunking arithmetic that fo
 
 Because the inputs are pre-floored, every chunk boundary is automatically 1024-aligned and the per-chunk descriptor address that eventually reaches `SetHbmAddress` is guaranteed to pass the fatal mask check below. The issue-time `RetCheck`s are the *recoverable* front line; the descriptor-time `CHECK` is the *fatal* backstop.
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `WritePremappedHbm` | `0xe73db80` | premapped HBM write; 3 issue-time alignment `RetCheck`s + chunk split | CONFIRMED |
-| `WritePremappedHbmSingleChunk` | `0xe73eec0` | single-chunk variant; same checks, lines 551/553/555 | CONFIRMED |
-| `ReadPremappedHbm` | `0xe73c880` | premapped HBM read; mirror checks at lines 344/346/348 | CONFIRMED |
-| `RetCheckFailSlowPath` | (issuer-local) | builds the error `Status`, fed to `ScheduleCallbackOnError` | CONFIRMED |
-| `ScheduleCallbackOnError` | (issuer-local) | fires `on_done` with the error; no abort | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `WritePremappedHbm` | `0xe73db80` | premapped HBM write; 3 issue-time alignment `RetCheck`s + chunk split |
+| `WritePremappedHbmSingleChunk` | `0xe73eec0` | single-chunk variant; same checks, lines 551/553/555 |
+| `ReadPremappedHbm` | `0xe73c880` | premapped HBM read; mirror checks at lines 344/346/348 |
+| `RetCheckFailSlowPath` | (issuer-local) | builds the error `Status`, fed to `ScheduleCallbackOnError` |
+| `ScheduleCallbackOnError` | (issuer-local) | fires `on_done` with the error; no abort |
 
 ---
 
@@ -197,16 +197,16 @@ Two facts make this the *backstop*, not the *front line*:
 
 `CHECK A` additionally bounds the address to `kAddressOffsetMaxBytes = 0x4000000000000 = 2^50`, i.e. the JXC HBM-address field is 50 bits wide (a 1 PiB addressable span). The descriptor field layout that this address feeds into is documented on [../dma/intra-chip-descriptor.md](../dma/intra-chip-descriptor.md).
 
-| Constant / check | Value / message | Severity | Confidence |
-|---|---|---|---|
-| `kHbmMinimumDmaAlignment` | `1024` (`0x400`); mask `0x3FF` | — | CONFIRMED |
-| `kMinimumDmaLengthBytes` | `1024` (same constant) | — | CONFIRMED |
-| `kAddressOffsetMaxBytes` | `0x4000000000000` (`2^50`) | — | CONFIRMED |
-| `byte_offset % 1024 == 0` | issue-time, `WritePremappedHbm:440` | recoverable `RetCheck` | CONFIRMED |
-| `size % 1024 == 0` | issue-time, `WritePremappedHbm:442` | recoverable `RetCheck` | CONFIRMED |
-| `size >= 1024` | issue-time, `WritePremappedHbm:444` | recoverable `RetCheck` | CONFIRMED |
-| `(address & 1023) == 0` | descriptor-time, `SetHbmAddress:38` | **fatal** `CHECK` | CONFIRMED |
-| `address < 2^50` | descriptor-time, `SetHbmAddress:37` | **fatal** `CHECK` | CONFIRMED |
+| Constant / check | Value / message | Severity |
+|---|---|---|
+| `kHbmMinimumDmaAlignment` | `1024` (`0x400`); mask `0x3FF` | — |
+| `kMinimumDmaLengthBytes` | `1024` (same constant) | — |
+| `kAddressOffsetMaxBytes` | `0x4000000000000` (`2^50`) | — |
+| `byte_offset % 1024 == 0` | issue-time, `WritePremappedHbm:440` | recoverable `RetCheck` |
+| `size % 1024 == 0` | issue-time, `WritePremappedHbm:442` | recoverable `RetCheck` |
+| `size >= 1024` | issue-time, `WritePremappedHbm:444` | recoverable `RetCheck` |
+| `(address & 1023) == 0` | descriptor-time, `SetHbmAddress:38` | **fatal** `CHECK` |
+| `address < 2^50` | descriptor-time, `SetHbmAddress:37` | **fatal** `CHECK` |
 
 ---
 

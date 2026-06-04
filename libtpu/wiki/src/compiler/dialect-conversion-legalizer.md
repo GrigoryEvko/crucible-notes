@@ -244,13 +244,13 @@ The three TPU conversion passes each construct a `ConversionTarget` and declare 
 
 `createLowerToLLOPass` ([tpu → LLO Lowering](tpu-to-llo-ods.md)); the legality declarations re-pinned against the `addDynamicallyLegalOp<…>` typeinfo names:
 
-| Entity | Action | Mechanism | Confidence |
-|---|---|---|---|
-| `llo` dialect (entire) | Legal | `setDialectAction(["llo"], 0)` | HIGH |
-| `scf.{If,For,While,Condition,Yield}` | Dynamic | `addDynamicallyLegalOp` — legal when region/yield types are in the converted set | HIGH |
-| `func.{FuncOp,ReturnOp}` | Dynamic | `addDynamicallyLegalOp` — legal when arg + result types are converted | HIGH |
-| `builtin.unrealized_conversion_cast` | Legal | allowed in transit (reconciled at the end) | HIGH |
-| all `tpu` / `arith` / `math` / `vector` / `cf` / ... | Illegal | default ⇒ must match a pattern | HIGH |
+| Entity | Action | Mechanism |
+|---|---|---|
+| `llo` dialect (entire) | Legal | `setDialectAction(["llo"], 0)` |
+| `scf.{If,For,While,Condition,Yield}` | Dynamic | `addDynamicallyLegalOp` — legal when region/yield types are in the converted set |
+| `func.{FuncOp,ReturnOp}` | Dynamic | `addDynamicallyLegalOp` — legal when arg + result types are converted |
+| `builtin.unrealized_conversion_cast` | Legal | allowed in transit (reconciled at the end) |
+| all `tpu` / `arith` / `math` / `vector` / `cf` / ... | Illegal | default ⇒ must match a pattern |
 
 Driver: `applyFullConversion` (mode = 1) — aborts if any `tpu.*` op survives.
 
@@ -258,12 +258,12 @@ Driver: `applyFullConversion` (mode = 1) — aborts if any `tpu.*` op survives.
 
 `LowerToMloPass::runOnOperation` (`0x1322b200`). The legal-dialect set is the `MloConversionTarget` (ctor confirmed: `mlir::tpu::MloConversionTarget::MloConversionTarget(MLIRContext&)`; `insertLegalDialects(DialectRegistry&)` confirmed):
 
-| Entity | Action | Mechanism | Confidence |
-|---|---|---|---|
-| `MloConversionTarget` legal dialects | Legal | ctor `SmallDenseMap<TypeID>`: Builtin, `LLVM::LLVMDialect`, `sparse_core::LlvmTpuDialect`, `arith`, `cf`, `func`, `math`, `memref`, `scf`, `sparse_core::ScDialect`, `vector` | HIGH |
-| `func.FuncOp` | Dynamic | `addDynamicallyLegalOp<func::FuncOp>` — legal when arg/result types converted | HIGH |
-| `builtin.unrealized_conversion_cast` | Dynamic | `addDynamicallyLegalOp<UnrealizedConversionCastOp>` | HIGH |
-| 2× `setOpAction` + 2× `setLegalityCallback` | mixed | per-op overrides (specific op names + predicates not per-lambda decoded) | MEDIUM |
+| Entity | Action | Mechanism |
+|---|---|---|
+| `MloConversionTarget` legal dialects | Legal | ctor `SmallDenseMap<TypeID>`: Builtin, `LLVM::LLVMDialect`, `sparse_core::LlvmTpuDialect`, `arith`, `cf`, `func`, `math`, `memref`, `scf`, `sparse_core::ScDialect`, `vector` |
+| `func.FuncOp` | Dynamic | `addDynamicallyLegalOp<func::FuncOp>` — legal when arg/result types converted |
+| `builtin.unrealized_conversion_cast` | Dynamic | `addDynamicallyLegalOp<UnrealizedConversionCastOp>` |
+| 2× `setOpAction` + 2× `setLegalityCallback` | mixed | per-op overrides (specific op names + predicates not per-lambda decoded) |
 
 Type converter: a shared `populateTypeConverter` with 10 `registerConversion` entries (`TupleType`, `IndexType`, `FloatType`, `LLVM::LLVMPointerType`, `tpu::DMASemaphoreType`, `tpu::SemaphoreType`, `sparse_core::WordType`, `IntegerType`, `VectorType`, `MemRefType`) plus 3 `registerTypeAttributeConversion` (`BaseMemRefType` ↔ {`tpu::MemorySpaceAttr`, `sparse_core::MemorySpaceAttr`, `IntegerAttr`}). Patterns: `populateTpuToMloConversionPatterns` (`0x1322c920`, ~180) + `populateSCFStructuralTypeConversions`. Driver: `applyFullConversion` (mode = 1). Detail: [LowerToMlo DMA Bridge](lower-to-mlo-dma-bridge.md).
 
@@ -271,13 +271,13 @@ Type converter: a shared `populateTypeConverter` with 10 `registerConversion` en
 
 `LowerToSparseCoreLlvmPass::runOnOperation` (`0x13566d00`; `CreateLowerToSparseCoreLlvmPass` confirmed). This pass runs two `applyFullConversion`s — first an SCF→CFG leg (`lowerScfToCfg`), then the LLVM leg:
 
-| Entity | Action | Mechanism | Confidence |
-|---|---|---|---|
-| `LLVMConversionTarget` (`llvm` dialect) | Legal | `mlir::LLVMConversionTarget(ctx)` marks the LLVM dialect legal | HIGH |
-| `scf.{for,if,parallel,while,index_switch}` | Recursively-Legal | `markOpRecursivelyLegal` ×5 (op-name strings read byte-exact: `scf.for`, `scf.if`, `scf.parallel`, `scf.while`, `scf.index_switch`) | HIGH |
-| `scf.{If,Parallel,While,IndexSwitch}` | Dynamic | `addDynamicallyLegalOp<scf::IfOp, ParallelOp, WhileOp, IndexSwitchOp>` | HIGH |
-| 4× `setOpAction` + 2× `setLegalityCallback` | mixed | per-op overrides | MEDIUM |
-| arith/math packed-operand ops (40+) | Dynamic | `PackedOperandsLowering::AddDynamicallyLegalAluEpOps<Op, UnpackFOp, PackFOp>` / `AddDynamicallyLegalCmp<Op, {UnpackFOp,PackFOp} or {UnpackSIOp,PackSIOp}>` — legal iff operands already unpacked | HIGH |
+| Entity | Action | Mechanism |
+|---|---|---|
+| `LLVMConversionTarget` (`llvm` dialect) | Legal | `mlir::LLVMConversionTarget(ctx)` marks the LLVM dialect legal |
+| `scf.{for,if,parallel,while,index_switch}` | Recursively-Legal | `markOpRecursivelyLegal` ×5 (op-name strings read byte-exact: `scf.for`, `scf.if`, `scf.parallel`, `scf.while`, `scf.index_switch`) |
+| `scf.{If,Parallel,While,IndexSwitch}` | Dynamic | `addDynamicallyLegalOp<scf::IfOp, ParallelOp, WhileOp, IndexSwitchOp>` |
+| 4× `setOpAction` + 2× `setLegalityCallback` | mixed | per-op overrides |
+| arith/math packed-operand ops (40+) | Dynamic | `PackedOperandsLowering::AddDynamicallyLegalAluEpOps<Op, UnpackFOp, PackFOp>` / `AddDynamicallyLegalCmp<Op, {UnpackFOp,PackFOp} or {UnpackSIOp,PackSIOp}>` — legal iff operands already unpacked |
 
 Type converter: `mlir::LLVMTypeConverter(ctx, LowerToLLVMOptions)` + custom `registerConversion` for SparseCore types: `I32PairType` (1:N → 2×i32), `TupleType` (1:N → element types), `VectorType`, `Float8E4M3B11FNUZ`/`Float8E4M3FN`/`Float8E5M2`, `WordType`, plus `registerTypeAttributeConversion` `BaseMemRefType` ↔ `sparse_core::MemorySpaceAttr`. Patterns: `populateSCFToControlFlowConversionPatterns` + `populateFinalizeMemRefToLLVMConversionPatterns` + the 115 `SCConvertOpToLLVMPattern<Op>`. Detail: [LowerToSparseCoreLlvm](lower-to-sparsecore-llvm.md).
 
@@ -350,26 +350,26 @@ The pass driver selects the mode the legalizer reads:
 
 ## Function Map
 
-| Function | VA | Role | Confidence |
-|---|---|---|---|
-| `OperationLegalizer::computeOpLegalizationDepth` | `0x1c9607c0` | per-op depth recurrence (memoized, sentinel-broken) | CONFIRMED |
-| `OperationLegalizer::applyCostModelToPatterns` | `0x1c960940` | per-pattern depth + stable sort + min | CONFIRMED |
-| `applyCostModelToPatterns::$_0` (in `__stable_sort_move`) | `0x1c9614a0` | comparator: primary depth, tie-break benefit `+0xc` | CONFIRMED |
-| `buildLegalizationGraph::$_0` | `0x1c95eea0` | builds the `op → patterns → produced ops` graph | HIGH |
-| `computeLegalizationGraphBenefit::$_0` | `0x1c961d60` | cost `function_ref` injected into `applyCostModel` | HIGH |
-| `OperationLegalizer::legalize` | `0x1c953820` | recursive legalize-to-fixpoint driver | CONFIRMED |
-| `OperationLegalizer::legalizeWithFold` | `0x1c95baa0` | `tryFold` + recurse on materialized constants | CONFIRMED |
-| `ConversionTarget::setOpAction` | `0x1c957780` | write `LegalizationAction` into 48-byte `LegalizationInfo+0x8` | CONFIRMED |
-| `ConversionTarget::setDialectAction` | `0x1c957880` | set a whole dialect's action by name | CONFIRMED |
-| `ConversionTarget::getOpAction` | `0x1c9579a0` | read an op's action | CONFIRMED |
-| `ConversionTarget::getOpInfo` | `0x1c957a20` | fetch `LegalizationInfo` (+ recursively-legal pack) | HIGH |
-| `ConversionTarget::isLegal` | `0x1c957ce0` | 16-bit packed legality (bit0 legal, bit8 recursive) | CONFIRMED |
-| `ConversionTarget::setLegalityCallback` | `0x1c9583c0` | install dynamic legality predicate | CONFIRMED |
-| `mlir::applyFullConversion` | `0x1c958ac0` | mode=1 driver (errors on leftover) | CONFIRMED |
-| `mlir::applyPartialConversion` | `0x1c958a60` | mode=0 driver (records leftover) | CONFIRMED |
-| `applyConversion` (internal) | `0x1c958840` | mode-carrying conversion entry | CONFIRMED |
-| `MloConversionTarget` ctor / `insertLegalDialects` | confirmed symbols | LowerToMlo legal-dialect set | HIGH |
-| `LowerToSparseCoreLlvmPass::runOnOperation` | `0x13566d00` | SparseCore → LLVM driver (2× full conversion) | CONFIRMED |
+| Function | VA | Role |
+|---|---|---|
+| `OperationLegalizer::computeOpLegalizationDepth` | `0x1c9607c0` | per-op depth recurrence (memoized, sentinel-broken) |
+| `OperationLegalizer::applyCostModelToPatterns` | `0x1c960940` | per-pattern depth + stable sort + min |
+| `applyCostModelToPatterns::$_0` (in `__stable_sort_move`) | `0x1c9614a0` | comparator: primary depth, tie-break benefit `+0xc` |
+| `buildLegalizationGraph::$_0` | `0x1c95eea0` | builds the `op → patterns → produced ops` graph |
+| `computeLegalizationGraphBenefit::$_0` | `0x1c961d60` | cost `function_ref` injected into `applyCostModel` |
+| `OperationLegalizer::legalize` | `0x1c953820` | recursive legalize-to-fixpoint driver |
+| `OperationLegalizer::legalizeWithFold` | `0x1c95baa0` | `tryFold` + recurse on materialized constants |
+| `ConversionTarget::setOpAction` | `0x1c957780` | write `LegalizationAction` into 48-byte `LegalizationInfo+0x8` |
+| `ConversionTarget::setDialectAction` | `0x1c957880` | set a whole dialect's action by name |
+| `ConversionTarget::getOpAction` | `0x1c9579a0` | read an op's action |
+| `ConversionTarget::getOpInfo` | `0x1c957a20` | fetch `LegalizationInfo` (+ recursively-legal pack) |
+| `ConversionTarget::isLegal` | `0x1c957ce0` | 16-bit packed legality (bit0 legal, bit8 recursive) |
+| `ConversionTarget::setLegalityCallback` | `0x1c9583c0` | install dynamic legality predicate |
+| `mlir::applyFullConversion` | `0x1c958ac0` | mode=1 driver (errors on leftover) |
+| `mlir::applyPartialConversion` | `0x1c958a60` | mode=0 driver (records leftover) |
+| `applyConversion` (internal) | `0x1c958840` | mode-carrying conversion entry |
+| `MloConversionTarget` ctor / `insertLegalDialects` | confirmed symbols | LowerToMlo legal-dialect set |
+| `LowerToSparseCoreLlvmPass::runOnOperation` | `0x13566d00` | SparseCore → LLVM driver (2× full conversion) |
 
 ---
 

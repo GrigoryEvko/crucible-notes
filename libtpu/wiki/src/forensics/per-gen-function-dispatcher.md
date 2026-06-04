@@ -35,14 +35,14 @@ For reimplementation, the contract is:
 
 Six distinct families select a per-generation implementation. Five are `TpuVersion`-keyed registries; one is keyed on the `(version, sequencer-type)` pair. Each row names the selector entry point, where it reads its version key, and what happens on a lookup miss — the miss policy is deliberately *different* per family and is the most important reimplementation detail in the table.
 
-| # | Family (constructed object) | Selector `Get` @ | `Register` @ | Key source | Miss policy | Confidence |
-|---|---|---|---|---|---|---|
-| 1 | `Target` (per-gen descriptor, 266-slot vtable) | `0x1d49f580` | `0x1d49f760` | `TpuTopology+0x8` | `InvalidArgument` (`StatusOr` error) | CERTAIN |
-| 2 | `CycleTable` (cost model, 5-slot vtable) | `0x1c89cd20` | `0x1c89d400` | `Target+0x398` | `LogMessageFatal` (hard crash) | CERTAIN |
-| 3 | LLO ATR op (`LloValue*` factory) | `0x1d545280` | `0x1d5ae3c0` | `TpuVersion` | empty functor | HIGH |
-| 4 | LLO DMA op (`LloValue*` factory) | `0x1d546600` | `0x1d5aebe0` | `TpuVersion` | empty functor | HIGH |
-| 5 | LLO route op (`LloValue*` factory) | `0x1d54e020` | `0x1d5aa7a0` | `TpuVersion` | empty functor | HIGH |
-| 6 | `IsaEmitter` (152-slot vtable) | `0x140af4e0` | `0x140c2360` | `(version, seqtype)` pair | empty functor | CERTAIN |
+| # | Family (constructed object) | Selector `Get` @ | `Register` @ | Key source | Miss policy |
+|---|---|---|---|---|---|
+| 1 | `Target` (per-gen descriptor, 266-slot vtable) | `0x1d49f580` | `0x1d49f760` | `TpuTopology+0x8` | `InvalidArgument` (`StatusOr` error) |
+| 2 | `CycleTable` (cost model, 5-slot vtable) | `0x1c89cd20` | `0x1c89d400` | `Target+0x398` | `LogMessageFatal` (hard crash) |
+| 3 | LLO ATR op (`LloValue*` factory) | `0x1d545280` | `0x1d5ae3c0` | `TpuVersion` | empty functor |
+| 4 | LLO DMA op (`LloValue*` factory) | `0x1d546600` | `0x1d5aebe0` | `TpuVersion` | empty functor |
+| 5 | LLO route op (`LloValue*` factory) | `0x1d54e020` | `0x1d5aa7a0` | `TpuVersion` | empty functor |
+| 6 | `IsaEmitter` (152-slot vtable) | `0x140af4e0` | `0x140c2360` | `(version, seqtype)` pair | empty functor |
 
 The same `FunctionRegistry` machinery also backs eight *non*-per-generation registries keyed on op-name strings (custom-call `ShouldFuse`, `OperandData` lowering, `HloCostAnalysis`, SPMD partitioning, the system profiler, the DMA-descriptor-state factory). They share the identical `Register`/`Get`/`find` swiss-table code but key on strings, not versions — they are the custom-call / op-emitter registries, not per-generation dispatchers, and are out of scope here.
 
@@ -126,14 +126,14 @@ The factory functor is a raw function pointer wrapped in a `std::function` via l
 
 ### Function map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `target::GetForVersion` | `0x1d49f500` | Lazy-init + selector entry for the `Target` registry | CERTAIN |
-| `FunctionRegistry<TpuVersion,…Target>::Get` | `0x1d49f580` | Shared-locked swiss-table lookup → `std::function` | CERTAIN |
-| `raw_hash_set<…>::find` (Target) | `0x1d49fac0` | SSE group-match + `tzcnt` + int32 key compare | CERTAIN |
-| `target::RegisterTargetCreationFunctor` | `0x1d49f680` | Static-init registration entry (one per codename) | CERTAIN |
-| `FunctionRegistry<…>::Register` | `0x1d49f760` | Exclusive-locked `find_or_prepare_insert` | CERTAIN |
-| `find_or_prepare_insert_large` | `0x1d49fc80` | Slot allocation + key-int store for `Register` | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `target::GetForVersion` | `0x1d49f500` | Lazy-init + selector entry for the `Target` registry |
+| `FunctionRegistry<TpuVersion,…Target>::Get` | `0x1d49f580` | Shared-locked swiss-table lookup → `std::function` |
+| `raw_hash_set<…>::find` (Target) | `0x1d49fac0` | SSE group-match + `tzcnt` + int32 key compare |
+| `target::RegisterTargetCreationFunctor` | `0x1d49f680` | Static-init registration entry (one per codename) |
+| `FunctionRegistry<…>::Register` | `0x1d49f760` | Exclusive-locked `find_or_prepare_insert` |
+| `find_or_prepare_insert_large` | `0x1d49fc80` | Slot allocation + key-int store for `Register` |
 
 ---
 
@@ -143,14 +143,14 @@ The factory functor is a raw function pointer wrapped in a `std::function` via l
 
 Every per-generation table is indexed by the `tpu::TpuVersion` enum. The ordinals are dense, 0..5, and map to codenames as follows. The mapping is recovered from the codec `switch` cases (which are literal `case 0..5`), the `Target` registration thunks (each `mov $N,%edi`), and the codename in each leaf factory's symbol.
 
-| Ordinal | Codename | Short tag | Confidence |
-|---|---|---|---|
-| 0 | Jellyfish | jxc (legacy) | CERTAIN |
-| 1 | Dragonfish | — (shares Jf cost model) | CERTAIN |
-| 2 | Pufferfish | pxc / plc | CERTAIN |
-| 3 | Viperfish | vfc / vlc | CERTAIN |
-| 4 | Ghostlite | glc | CERTAIN |
-| 5 | (anon, `6acc60406` / TPU7x) | gfc (mktg "Ironwood") | HIGH |
+| Ordinal | Codename | Short tag |
+|---|---|---|
+| 0 | Jellyfish | jxc (legacy) |
+| 1 | Dragonfish | — (shares Jf cost model) |
+| 2 | Pufferfish | pxc / plc |
+| 3 | Viperfish | vfc / vlc |
+| 4 | Ghostlite | glc |
+| 5 | (anon, `6acc60406` / TPU7x) | gfc (mktg "Ironwood") |
 
 > **GOTCHA —** the `TpuVersion` enum used to *index the per-generation tables* is **not** the same axis as the `DeviceType`/`DeviceIdentifiers` ordinals returned by `DeviceTypeFromDeviceIdentifiers` (`0xf6993a0`). That function maps external device identifiers onto a *different* numbering (one axis places Jellyfish at 3 and Ghostlite at 13). The registries are keyed on the dense internal `TpuVersion` (0..5), reached after the device-identifier layer has normalized to it. Conflating the two will index the wrong table. The internal `TpuVersion` is the canonical index for everything on this page; treat `DeviceTypeFromDeviceIdentifiers` as an upstream normalizer, not the table index.
 
@@ -188,14 +188,14 @@ CreateFromTopology(topology, l, l)          0x1d48e520
 
 There are **six** `Target` factories registered — versions 0..5. Five are the named `…Target::Create` modules (jellyfish..ghostlite); the sixth is a v5 (`gfc`/TPU7x) registration thunk that lives in the `google_init_cold` section with no own module symbol. Its `__invoke` (`0x1d49f100`) does not tail-call any of the five named `…Target::Create` functions — it runs an outlined factory body (`0x1d49c9c0`) that `new`s and `Target::Init`s a **`ViperfishSparseCoreTarget`** (typeinfo `_ZTIN…25ViperfishSparseCoreTargetE`, `0x21cc9080`), constructed via `Target::Init(…, unique_ptr<SparseCoreTarget>, …)` (`0x1d60fc20`). So v5 has its own (anonymous, SparseCore-derived) `Target`, not a reuse of the v4 Ghostlite descriptor — the same full-population as `CycleTable` (`GfcCycleTable`) and the codec's distinct v5 case.
 
-| `TpuVersion` | Codename | `…Target::Create` @ | `GoogleInitializer` module @ | Confidence |
-|---|---|---|---|---|
-| 0 | jellyfish | `0x1d492040` | `xla_target_jellyfish` `0x213eeea0` (edi=0, via `xor`) | CERTAIN |
-| 1 | dragonfish | `0x1d48f0a0` | `xla_target_dragonfish` `0x213eee80` (edi=1) | CERTAIN |
-| 2 | pufferfish | `0x1d493620` | `xla_target_pufferfish` `0x213eeec0` (edi=2) | CERTAIN |
-| 3 | viperfish | `0x1d4995a0` | `xla_target_viperfish` `0x213eef00` (edi=3) | CERTAIN |
-| 4 | ghostlite | `0x1d496640` | `xla_target_ghostlite` `0x213eeee0` (edi=4) | CERTAIN |
-| 5 | (anon, `gfc`/TPU7x) | `ViperfishSparseCoreTarget` via `0x1d49f100`→`0x1d49c9c0` | thunk in `google_init_cold` `0x213eef20` (edi=5) | HIGH |
+| `TpuVersion` | Codename | `…Target::Create` @ | `GoogleInitializer` module @ |
+|---|---|---|---|
+| 0 | jellyfish | `0x1d492040` | `xla_target_jellyfish` `0x213eeea0` (edi=0, via `xor`) |
+| 1 | dragonfish | `0x1d48f0a0` | `xla_target_dragonfish` `0x213eee80` (edi=1) |
+| 2 | pufferfish | `0x1d493620` | `xla_target_pufferfish` `0x213eeec0` (edi=2) |
+| 3 | viperfish | `0x1d4995a0` | `xla_target_viperfish` `0x213eef00` (edi=3) |
+| 4 | ghostlite | `0x1d496640` | `xla_target_ghostlite` `0x213eeee0` (edi=4) |
+| 5 | (anon, `gfc`/TPU7x) | `ViperfishSparseCoreTarget` via `0x1d49f100`→`0x1d49c9c0` | thunk in `google_init_cold` `0x213eef20` (edi=5) |
 
 Each module's `$_0::__invoke` thunk (e.g. ghostlite `__invoke` `0x1d499040`) `lea`s itself into `%rsi`, sets the version in `%edi`, and tail-calls `RegisterTargetCreationFunctor`; `__invoke` in turn tail-calls the named `…Target::Create`. The `Target` registry's singleton lives at `target_registry` (`0x2257e170`, guard `0x2257e178`), and a miss produces the graceful string `"No Target registered for "` (`0xa1e75db`).
 
@@ -219,13 +219,13 @@ The rationale: any reachable generation *must* have a cost model, so a missing r
 
 The `CycleTable` registry differs from `Target` in one structural way: it has **six** leaves, 0..5 — the cost model is per-generation all the way down to v5, even though the v5 `Target` is shared. The named per-codename `CycleTable` vtables:
 
-| `TpuVersion` | Leaf | `_ZTV` vtable symbol @ | First-slot address (+0x10) | Confidence |
-|---|---|---|---|---|
-| 0 / 1 | `JfCycleTable` | `0x21c1ffb8` | `0x21c1ffc8` | CERTAIN |
-| 2 | `PfCycleTable` | `0x21c20048` | `0x21c20058` | CERTAIN |
-| 3 | `VfCycleTable` | `0x21c200c8` | `0x21c200d8` | CERTAIN |
-| 4 | `GlcCycleTable` | `0x21c20148` | `0x21c20158` | CERTAIN |
-| 5 | `GfcCycleTable` | `0x21c201c8` | `0x21c201d8` | CERTAIN |
+| `TpuVersion` | Leaf | `_ZTV` vtable symbol @ | First-slot address (+0x10) |
+|---|---|---|---|
+| 0 / 1 | `JfCycleTable` | `0x21c1ffb8` | `0x21c1ffc8` |
+| 2 | `PfCycleTable` | `0x21c20048` | `0x21c20058` |
+| 3 | `VfCycleTable` | `0x21c200c8` | `0x21c200d8` |
+| 4 | `GlcCycleTable` | `0x21c20148` | `0x21c20158` |
+| 5 | `GfcCycleTable` | `0x21c201c8` | `0x21c201d8` |
 
 > **Note (vptr convention):** the two columns above are the two correct ways to cite a vtable. The `_ZTV` symbol address (`0x21c1ffb8` …) is the group base, which begins with the 16-byte `{offset-to-top, typeinfo-ptr}` header; the first-slot address (`0x21c1ffc8` …) is `_ZTV+0x10`, the value an object's vtable pointer actually holds. When matching a `call *0xN(%rax)` site against a symbol, the slot index is measured from `_ZTV+0x10`, not from the `_ZTV` symbol. The named-leaf stride is `0x80` bytes (the base `CycleTable` vtable sits between Jf and Pf, widening that one gap to `0x90`).
 

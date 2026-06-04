@@ -137,15 +137,15 @@ This is the per-link enforcement point for `max_ici_retries_per_minute`. The deq
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `IciControl::IsLinkUp(int)` | `0xe7afe80` | Firmware port-ready read, port `< 5` bound | HIGH |
-| `IciControl::HandleIciLinkStatusChange` | `0x21381e40` | Interrupt status handler → `Link error.` | HIGH |
-| `IciControl::AllLinksUp(Span<int>,bool)` | `0xe7b0200` | Expected-up set compare | HIGH |
-| `IciControl::IsHealthy(int)` | `0xe7af720` | Per-link health = up AND retry-in-budget | HIGH |
-| `IciControl::UpdateAndGetRetriesPerMinute` | `0xe7af540` | 60 s sliding-window deque sum | HIGH |
-| `Ici::HandleIciLinkInterrupt` | `0xe7adc80` (jfc) / `0xe76fe80` (dfc) | Driver IRQ entry, under mutex | HIGH |
-| `LinkChecker::CheckLinks` | `0x1fc38580` | Post-bring-up active liveness probe | MEDIUM |
+| Function | Address | Role |
+|---|---|---|
+| `IciControl::IsLinkUp(int)` | `0xe7afe80` | Firmware port-ready read, port `< 5` bound |
+| `IciControl::HandleIciLinkStatusChange` | `0x21381e40` | Interrupt status handler → `Link error.` |
+| `IciControl::AllLinksUp(Span<int>,bool)` | `0xe7b0200` | Expected-up set compare |
+| `IciControl::IsHealthy(int)` | `0xe7af720` | Per-link health = up AND retry-in-budget |
+| `IciControl::UpdateAndGetRetriesPerMinute` | `0xe7af540` | 60 s sliding-window deque sum |
+| `Ici::HandleIciLinkInterrupt` | `0xe7adc80` (jfc) / `0xe76fe80` (dfc) | Driver IRQ entry, under mutex |
+| `LinkChecker::CheckLinks` | `0x1fc38580` | Post-bring-up active liveness probe |
 
 ### Considerations
 
@@ -258,15 +258,15 @@ During the retrain window, errors are suppressed through the mask map so the in-
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `ici::SliceConfiguration::LinksDownReset` | `0x1fdb5c00` | Bring links down, confirm DL down/disabled | HIGH |
-| `SliceConfiguration::LinksDownReset` (legacy) | `0x1fe82f20` | Pre-`ici`-namespace variant | HIGH |
-| `ici::SliceConfiguration::CollectDataLinkState` | (callee of above) | Snapshot per-port DL state | HIGH |
-| `ici::SliceConfiguration::MaskIciErrorsInternal` | `0x1fdb6ec0` | `flat_hash_map<IciErrorType, vector<MaskedErrors>>` | HIGH |
-| `ici::SliceConfiguration::PerformReset` | `0x1fdb71a0` | Slice-wide reset (chip reset path) | MEDIUM |
-| `ici::SliceConfiguration::GenerateAndSerializeCoreDump` | `0x1fdb5fa0` | Forensic `CORE_DUMP_ICI_DUMP` artifact | HIGH |
-| `KernelPrivilegedInterface::PerformReset(ResetType)` | (per-gen) | Chip-level hard reset when LinksDownReset is insufficient | MEDIUM |
+| Function | Address | Role |
+|---|---|---|
+| `ici::SliceConfiguration::LinksDownReset` | `0x1fdb5c00` | Bring links down, confirm DL down/disabled |
+| `SliceConfiguration::LinksDownReset` (legacy) | `0x1fe82f20` | Pre-`ici`-namespace variant |
+| `ici::SliceConfiguration::CollectDataLinkState` | (callee of above) | Snapshot per-port DL state |
+| `ici::SliceConfiguration::MaskIciErrorsInternal` | `0x1fdb6ec0` | `flat_hash_map<IciErrorType, vector<MaskedErrors>>` |
+| `ici::SliceConfiguration::PerformReset` | `0x1fdb71a0` | Slice-wide reset (chip reset path) |
+| `ici::SliceConfiguration::GenerateAndSerializeCoreDump` | `0x1fdb5fa0` | Forensic `CORE_DUMP_ICI_DUMP` artifact |
+| `KernelPrivilegedInterface::PerformReset(ResetType)` | (per-gen) | Chip-level hard reset when LinksDownReset is insufficient |
 
 ### Considerations
 
@@ -306,12 +306,12 @@ The faulty-link axis is reduced to three degraded bytes by `tpu::OrientationsToT
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `xla::jellyfish::GetDegradedAxis` | `0x1c894c20` | Reduce faulty bitset to one axis index or `-1` | HIGH |
-| `xla::jellyfish::UseResilientAlgorithmTwistedTorus` | `0x1c894fc0` | Gate the resilient path | HIGH |
-| `tpu::OrientationsToTpuDegradedAxes` | `0x1fc57d00` | Faulty `Orientation` enum → X/Y/Z degraded bytes | HIGH |
-| Resilient route caches | (rodata blobs) | `cache_ici_resiliency_{pufferfish,viperfish,6acc60406}_*.binarypb` | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `xla::jellyfish::GetDegradedAxis` | `0x1c894c20` | Reduce faulty bitset to one axis index or `-1` |
+| `xla::jellyfish::UseResilientAlgorithmTwistedTorus` | `0x1c894fc0` | Gate the resilient path |
+| `tpu::OrientationsToTpuDegradedAxes` | `0x1fc57d00` | Faulty `Orientation` enum → X/Y/Z degraded bytes |
+| Resilient route caches | (rodata blobs) | `cache_ici_resiliency_{pufferfish,viperfish,6acc60406}_*.binarypb` |
 
 ---
 
@@ -442,16 +442,16 @@ TIER 5  Megascale — ReportError → MegascaleErrorAggregator::ProcessAndShutdo
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `Master::ControlIciErrorReport` | `0x1fbc0d00` | Master fan-out broadcast (deadline + IsLimitedIciRouting) | HIGH |
-| `Worker::ControlIciErrorReport` | `0x1fc40d80` | Parallel peer re-broadcast on ThreadPool | HIGH |
-| `WorkerService::ControlIciErrorReport` | `0x1fc3cda0` | gRPC server entry | HIGH |
-| `Ici::SignalDeferredFailure(Status)` | `0xe7aeb20` (jfc) / `0xe770ec0` (dfc) | Post deferred-failure closure | HIGH |
-| `Ici::FailDevice(Status)` | `0xe7ae320` (jfc) / `0xe7706a0` (dfc) | Whole-chip teardown entry | HIGH |
-| `AsyncDriver::HandleFatalError(b,b,b,b)` | `0x1fe993c0` | 4-category fatal classifier | HIGH |
-| `Master::FailSlice(SliceFailureType)` | `0x1fbc1760` | Per-slice failure transition | HIGH |
-| `ErrorHandler::InterruptFired` | `0x21382040` | Generic error-IRQ handler | MEDIUM |
+| Function | Address | Role |
+|---|---|---|
+| `Master::ControlIciErrorReport` | `0x1fbc0d00` | Master fan-out broadcast (deadline + IsLimitedIciRouting) |
+| `Worker::ControlIciErrorReport` | `0x1fc40d80` | Parallel peer re-broadcast on ThreadPool |
+| `WorkerService::ControlIciErrorReport` | `0x1fc3cda0` | gRPC server entry |
+| `Ici::SignalDeferredFailure(Status)` | `0xe7aeb20` (jfc) / `0xe770ec0` (dfc) | Post deferred-failure closure |
+| `Ici::FailDevice(Status)` | `0xe7ae320` (jfc) / `0xe7706a0` (dfc) | Whole-chip teardown entry |
+| `AsyncDriver::HandleFatalError(b,b,b,b)` | `0x1fe993c0` | 4-category fatal classifier |
+| `Master::FailSlice(SliceFailureType)` | `0x1fbc1760` | Per-slice failure transition |
+| `ErrorHandler::InterruptFired` | `0x21382040` | Generic error-IRQ handler |
 
 ### Considerations
 
@@ -471,12 +471,12 @@ Expose continuous, host-readable health telemetry that feeds both the soft/hard 
 
 ### Streamz Metrics
 
-| Metric | Producer | Meaning | Confidence |
-|---|---|---|---|
-| `ici_link_health` | telemetry harvest | 0–10 per-link scale: 0 healthy, 1–5 transient, 6–9 persistent minor, 10 unusable; `.int`/`.ext` suffix = intra-/inter-host cable | HIGH |
-| `missed_health_check` | `IciSessionMonitorImpl::IncrementMissedHealthCheck` (`0x1ff94a60`) | Cross-host heartbeat watchdog, keyed by `TpuType`; cleared by `ClearMissedHealthCheck` (`0x1ff94c80`) | HIGH |
-| `session_health` | `RecordSessionHealth` | Session state-transition health | HIGH |
-| `broadcast_latency` / `notification_latency` | `RecordBroadcastLatency` / `RecordNotificationLatency` | Cross-host barrier/notify timing | MEDIUM |
+| Metric | Producer | Meaning |
+|---|---|---|
+| `ici_link_health` | telemetry harvest | 0–10 per-link scale: 0 healthy, 1–5 transient, 6–9 persistent minor, 10 unusable; `.int`/`.ext` suffix = intra-/inter-host cable |
+| `missed_health_check` | `IciSessionMonitorImpl::IncrementMissedHealthCheck` (`0x1ff94a60`) | Cross-host heartbeat watchdog, keyed by `TpuType`; cleared by `ClearMissedHealthCheck` (`0x1ff94c80`) |
+| `session_health` | `RecordSessionHealth` | Session state-transition health |
+| `broadcast_latency` / `notification_latency` | `RecordBroadcastLatency` / `RecordNotificationLatency` | Cross-host barrier/notify timing |
 
 ### Considerations
 

@@ -109,12 +109,12 @@ The three VLOG strings are byte-confirmed semantic labels of the three branches 
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `RoutingTableGenerator::GetNextHopAction` | `0x1fbda6a0` | Resolve hop + select VC via the cascade | CERTAIN |
-| `slice_builder::Direction::IsSame` | `0x20c025e0` | Compare two `proto::Direction` (turn predicate) | CERTAIN |
-| `RoutingTableGenerator::CrossesDateline` (Coord,Coord) | `0x1fbdb120` | Per-axis wrap-boundary side-flip | CERTAIN |
-| `RoutingTableGenerator::GetVcBalanceUsage` | `0x1fbdb4c0` | Per-axis hop-count balance gate | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `RoutingTableGenerator::GetNextHopAction` | `0x1fbda6a0` | Resolve hop + select VC via the cascade |
+| `slice_builder::Direction::IsSame` | `0x20c025e0` | Compare two `proto::Direction` (turn predicate) |
+| `RoutingTableGenerator::CrossesDateline` (Coord,Coord) | `0x1fbdb120` | Per-axis wrap-boundary side-flip |
+| `RoutingTableGenerator::GetVcBalanceUsage` | `0x1fbdb4c0` | Per-axis hop-count balance gate |
 
 ---
 
@@ -172,12 +172,12 @@ The path-walking overload exists because a packed `DirectionHops` entry can enco
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `CrossesDateline` (Coord, Coord) | `0x1fbdb120` | Single-hop side-flip on the hop's axis | CERTAIN |
-| `CrossesDateline` (Coord, DirectionHops) | `0x1fbdd200` | OR per-hop crossings over a multi-hop direction | CERTAIN |
-| `Coordinates::GetCoordinate` | — | Read per-axis coordinate value | HIGH |
-| topology `Walk` | `vtable+0xa0` | Step one chip along a direction (path walk) | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `CrossesDateline` (Coord, Coord) | `0x1fbdb120` | Single-hop side-flip on the hop's axis |
+| `CrossesDateline` (Coord, DirectionHops) | `0x1fbdd200` | OR per-hop crossings over a multi-hop direction |
+| `Coordinates::GetCoordinate` | — | Read per-axis coordinate value |
+| topology `Walk` | `vtable+0xa0` | Step one chip along a direction (path walk) |
 
 ---
 
@@ -214,10 +214,10 @@ The gate fires only when `hops ≤ threshold`, i.e. for *short* dateline hops. C
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `GetVcBalanceUsage` | `0x1fbdb4c0` | Four-way balance gate, per-axis threshold compare | CERTAIN |
-| `CreateVcBalanceThreshold` | `0x1fbd8320` | Build the `gen+0x60` per-axis threshold vector | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `GetVcBalanceUsage` | `0x1fbdb4c0` | Four-way balance gate, per-axis threshold compare |
+| `CreateVcBalanceThreshold` | `0x1fbd8320` | Build the `gen+0x60` per-axis threshold vector |
 
 ---
 
@@ -268,13 +268,13 @@ The scaling multipliers (`0.175`, `0.222`, `0.207`, and the direct `0.145`) plac
 
 ### The axis-kind selector
 
-| Axis kind (`[topo+0xe8]`) | Threshold source | Scaling | Confidence |
-|---|---|---|---|
-| 1 | `t_kind1` (`var_58`) | `round(min_dim · 0.175 − 0.15)` | CERTAIN |
-| 2 | `t_kind2` (`var_60`) | `round(min_dim · 0.222 − 0.1)` | CERTAIN |
-| 3 | `t_kind3` (`var_50`), or direct if `[topo+0x134]==1 && i==[topo+0x130]` | `round(min_dim · 0.207 − 0.2)` | CERTAIN |
-| *(default / kind-3 skip)* | direct per-axis | `round(axis_size[i] · 0.145 − 0.3)` | CERTAIN |
-| *(axis-property == 2)* | skipped (threshold stays 0) | — | HIGH |
+| Axis kind (`[topo+0xe8]`) | Threshold source | Scaling |
+|---|---|---|
+| 1 | `t_kind1` (`var_58`) | `round(min_dim · 0.175 − 0.15)` |
+| 2 | `t_kind2` (`var_60`) | `round(min_dim · 0.222 − 0.1)` |
+| 3 | `t_kind3` (`var_50`), or direct if `[topo+0x134]==1 && i==[topo+0x130]` | `round(min_dim · 0.207 − 0.2)` |
+| *(default / kind-3 skip)* | direct per-axis | `round(axis_size[i] · 0.145 − 0.3)` |
+| *(axis-property == 2)* | skipped (threshold stays 0) | — |
 
 > **NOTE —** the `vc_balance_enabled` / `flag_0x14` gate is enforced in **two** places, not just at runtime in `GetVcBalanceUsage`. `CreateVcBalanceThreshold` carries the **same** gate (`BYTE[gen+9]==1 && !BYTE[gen+0x14]`, line 56): if balancing is disabled, the threshold vector is resized but left zeroed and the function returns early. A zeroed threshold makes `GetVcBalanceUsage`'s `hops ≤ threshold[orient-1]` true only for `hops ≤ 0` (i.e. essentially never for a real hop), so the runtime gate and the build-time construction redundantly disable balancing — the construction does not rely on the runtime gate alone.
 
@@ -327,13 +327,13 @@ function GeneratesDeadlockFreeTables(this):               // 0x1fbf2e40
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `multipod::SetNextHopRoutingTableEntry` | `0x1fbf1a80` | Next-hop writer + fixed VC=1 | CERTAIN |
-| `multipod::SetEgressRoutingTableEntry` | `0x1fbf17c0` | Egress writer (no VcControl) | CERTAIN |
-| `multipod::SetChannelMerges` | `0x1fbf2100` | `AddChannelMerge` on high-latency links | HIGH |
-| `multipod::GeneratesDeadlockFreeTables` | `0x1fbf2e40` | Returns `false` (defers to per-pod) | CERTAIN |
-| `multipod::CreateDateline` | `0x1fbf0b20` | Build multipod dateline (call site only) | LOW |
+| Function | Address | Role |
+|---|---|---|
+| `multipod::SetNextHopRoutingTableEntry` | `0x1fbf1a80` | Next-hop writer + fixed VC=1 |
+| `multipod::SetEgressRoutingTableEntry` | `0x1fbf17c0` | Egress writer (no VcControl) |
+| `multipod::SetChannelMerges` | `0x1fbf2100` | `AddChannelMerge` on high-latency links |
+| `multipod::GeneratesDeadlockFreeTables` | `0x1fbf2e40` | Returns `false` (defers to per-pod) |
+| `multipod::CreateDateline` | `0x1fbf0b20` | Build multipod dateline (call site only) |
 
 > **NOTE —** the multipod `CreateDateline` @ `0x1fbf0b20` is called from `Generate` (`0x1fbf0617`) but its body was not byte-decoded. Given the inter-pod next-hop uses a fixed VC=1, the multipod dateline is presumably per-pod only (intra-pod wrap); the inter-pod mesh hops are acyclic by construction. Marked LOW until the body is decoded.
 
@@ -341,23 +341,23 @@ function GeneratesDeadlockFreeTables(this):               // 0x1fbf2e40
 
 ## Relevant struct offsets
 
-| Offset (`gen`) | Field | Read by | Confidence |
-|---|---|---|---|
-| `+0x9` | `vc_balance_enabled` (bool) | `GetVcBalanceUsage` (`0x1fbdb4ed`), `CreateVcBalanceThreshold` (line 56) | CERTAIN |
-| `+0x14` | gating flag / `use_limited_ici` (bool) | `GetVcBalanceUsage` (`0x1fbdb4f4`), `CreateVcBalanceThreshold`, `GetStaticPath` | HIGH |
-| `+0x60` / `+0x68` | `vc_balance_threshold` `vector<int>` base/end | `GetVcBalanceUsage` (`0x1fbdb55c`), `CreateVcBalanceThreshold` (`0x1fbd8746`) | CERTAIN |
-| `+0x20` | primary topology (twist / resilient) | distance + `Walk` + axis metadata | CERTAIN |
+| Offset (`gen`) | Field | Read by |
+|---|---|---|
+| `+0x9` | `vc_balance_enabled` (bool) | `GetVcBalanceUsage` (`0x1fbdb4ed`), `CreateVcBalanceThreshold` (line 56) |
+| `+0x14` | gating flag / `use_limited_ici` (bool) | `GetVcBalanceUsage` (`0x1fbdb4f4`), `CreateVcBalanceThreshold`, `GetStaticPath` |
+| `+0x60` / `+0x68` | `vc_balance_threshold` `vector<int>` base/end | `GetVcBalanceUsage` (`0x1fbdb55c`), `CreateVcBalanceThreshold` (`0x1fbd8746`) |
+| `+0x20` | primary topology (twist / resilient) | distance + `Walk` + axis metadata |
 
-| Offset (`topo`) | Field | Used by | Confidence |
-|---|---|---|---|
-| `+0x30` | axis-property (`== 2` ⇒ skip balance) | `CreateVcBalanceThreshold` (line 178) | HIGH |
-| `+0x48` | per-axis size vector | `CrossesDateline` (`0x1fbdb246`) | CERTAIN |
-| `+0x50` | `GetDimensionSizes` / `num_dimensions` | `CreateVcBalanceThreshold` (line 58) | CERTAIN |
-| `+0x78` | dateline-applies bitmap | `CrossesDateline` (`0x1fbdb1be`) | CERTAIN |
-| `+0x90` | per-axis dateline coordinate | `CrossesDateline` (`0x1fbdb223`) | CERTAIN |
-| `+0xa0` | `Walk(Coord, Direction)` | `CrossesDateline` (path walk) | CERTAIN |
-| `+0xe8` | axis "kind" `∈ {1,2,3}` | `CreateVcBalanceThreshold` (`0x1fbd8770`) | HIGH |
-| `+0x130` / `+0x134` | single-axis skip pair (kind 3) | `CreateVcBalanceThreshold` (line 232) | MEDIUM |
+| Offset (`topo`) | Field | Used by |
+|---|---|---|
+| `+0x30` | axis-property (`== 2` ⇒ skip balance) | `CreateVcBalanceThreshold` (line 178) |
+| `+0x48` | per-axis size vector | `CrossesDateline` (`0x1fbdb246`) |
+| `+0x50` | `GetDimensionSizes` / `num_dimensions` | `CreateVcBalanceThreshold` (line 58) |
+| `+0x78` | dateline-applies bitmap | `CrossesDateline` (`0x1fbdb1be`) |
+| `+0x90` | per-axis dateline coordinate | `CrossesDateline` (`0x1fbdb223`) |
+| `+0xa0` | `Walk(Coord, Direction)` | `CrossesDateline` (path walk) |
+| `+0xe8` | axis "kind" `∈ {1,2,3}` | `CreateVcBalanceThreshold` (`0x1fbd8770`) |
+| `+0x130` / `+0x134` | single-axis skip pair (kind 3) | `CreateVcBalanceThreshold` (line 232) |
 
 ---
 

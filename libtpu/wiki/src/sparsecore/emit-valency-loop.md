@@ -29,7 +29,6 @@ For reimplementation, the contract is:
 | **Accumulator scope** | `memref::AllocaScopeOp::create` `@0x18304960` + `AllocaScopeReturnOp::create` `@0x18304e40` |
 | **Division ops** | **none** — no `DivFOp`/`RsqrtOp`/reciprocal/`sqrt`/`divsd`/`vdiv` in the body |
 | **Source file** | `platforms/xla/sparse_core/sparse_dense_matmul_dot_combiner_emitter.cc` (`@0x87610c0`) |
-| **Confidence** | CONFIRMED (op-create order and `scf::ForOp` bounds read from the function body) unless a row says otherwise |
 
 ---
 
@@ -148,7 +147,7 @@ gain_f32  = arith::BitcastOp(loc, getF32Type(), gain_bits);                     
 
 `gain_f32` is passed to `EmitVectorizedLoop` as `v2`, where it becomes `BroadcastScalarToVector(gain) → MulFOp(emb·gain) → AddFOp(+acc)`. The combiner is therefore a weighted-sum FMA; the divisor lives *inside* the supplied gain.
 
-> **QUIRK — both `UnalignedLoadScalarFromHbm` calls share operand `v1` and `ComputeType=1`; the offsets distinguish valency from gain.** The CSR-valency load (`@0x1332d185`) and the per-id gain load (`@0x1332da93`) pass the identical `SmallVector<Value,6>={v1}` and `ComputeType=1`; only the computed token offset differs. This is consistent with `v1` being a single packed/strided HBM buffer carrying *both* the CSR row pointers and the sorted gains, keyed by the differing offsets — **INFERRED** (the shared operand and ComputeType are CONFIRMED; the single-buffer multiplexing is not bit-proven, the gain could alternatively be a distinct buffer reached through the same `Value` at a different base).
+> **QUIRK — both `UnalignedLoadScalarFromHbm` calls share operand `v1` and `ComputeType=1`; the offsets distinguish valency from gain.** The CSR-valency load (`@0x1332d185`) and the per-id gain load (`@0x1332da93`) pass the identical `SmallVector<Value,6>={v1}` and `ComputeType=1`; only the computed token offset differs. This is consistent with `v1` being a single packed/strided HBM buffer carrying *both* the CSR row pointers and the sorted gains, keyed by the differing offsets — though the single-buffer multiplexing is not bit-proven; the gain could alternatively be a distinct buffer reached through the same `Value` at a different base.
 
 ### No Runtime Valency Division — Exhaustive
 
@@ -186,7 +185,7 @@ InitiateSynchronousStreamOperation(/*Target&*/, /*Array=*/token_off_operands,
                                    /*edx=*/1, /*r8d=*/1, /*StreamOptions by value*/);  // @0x1332defb → @0x13d896a0
 ```
 
-This issues the indirect HBM→SPMEM gather of this id's embedding row, keyed by `token_off`. The two leading scalar args are both `1` (`edx=1`, `r8d=1`); these are the `StreamOptions` discriminant bits that select an **indirect id-keyed load** rather than a linear DMA. The per-id token offset is confirmed to be the gather index; the precise meaning of the two `StreamOptions` bools is **LOW** (not bit-decoded — same open item carried from the broader DotCombiner survey). The producer/consumer side of this stream is the `LinearStreamStartOp` / `IndirectStreamStartOp` family on the [Stream Gather/Scatter](stream-gather-scatter.md) page.
+This issues the indirect HBM→SPMEM gather of this id's embedding row, keyed by `token_off`. The two leading scalar args are both `1` (`edx=1`, `r8d=1`); these are the `StreamOptions` discriminant bits that select an **indirect id-keyed load** rather than a linear DMA. The per-id token offset is the gather index; the precise meaning of the two `StreamOptions` bools is not bit-decoded. The producer/consumer side of this stream is the `LinearStreamStartOp` / `IndirectStreamStartOp` family on the [Stream Gather/Scatter](stream-gather-scatter.md) page.
 
 ### `EmitVectorizedLoop` Call Wiring
 
@@ -292,22 +291,22 @@ The generation-namespaced families (`gxc`/`glc`/`gfc`, `vxc`/`vfc`) that exist e
 
 ## Limits and Open Items
 
-| Item | Status | Confidence |
-|---|---|---|
-| `EmitValencyLoop` full op-create order + `scf::ForOp` bounds (Const0, IndexCast(valency), Const1, {acc}) | read from the function body | CONFIRMED |
-| Runtime valency load → `IndexCast` → loop upper bound | both load sites + IndexCast read | CONFIRMED |
-| Absence of any runtime division / sqrt / reciprocal in the loop | exhaustive op-create + x86 instruction sweep | CONFIRMED |
-| Per-id gain load + i32→f32 `BitcastOp` | accessor + `BitcastOp::create` read | CONFIRMED |
-| Token-offset arithmetic (`feat << 2`, MulIOp + AddIOp) → gather index | read from body | CONFIRMED |
-| `EmitVectorizedLoop` call args (`v1=gather_buf, v2=gain, v3=outer_acc, v4=unset`) | reg/slot + 4-Value mangling | CONFIRMED |
-| `ReduceDuplicates` contract (2 inputs + 1 reduce-fn, CSR→ELL) + `SparseMapRow`(0x4)/`DynamicBoundedSlice`(0x11) | verifier strings + jump table | CONFIRMED |
-| SC-dialect `Sort`/`Unique`/`UniqueWithLaneIds`/`SegmentedScan` `::create` signatures | symbol mangling + producer sites | CONFIRMED |
-| `DuplicateCountUniqueOpLowering<T>` → struct-extract multiplicity | 4 template instantiations + pattern-set | CONFIRMED |
-| Whether `v1` is a single packed CSR+gain buffer vs. two buffers via one `Value` | shared operand + ComputeType confirmed; multiplexing not bit-proven | INFERRED |
-| `StreamOptions` bits (edx=1/r8d=1) selecting indirect vs. linear DMA | per-id offset confirmed as gather index; the bools not decoded | LOW |
-| `SortOp` `"dscd"` per-char semantics (direction / stability per key column) | read as a 4-char attr; per-char meaning not cross-decoded | LOW |
-| Exact `ReduceDuplicates`→`SparseMapRow`→(`SortOp`+`ScanOp`) inlining chain | `SparseMapRow` carries the reduce fn + builds Sort/Scan window (strong); body not fully decoded | INFERRED |
-| The precise emitter that creates the dialect `DuplicateCountOp` (no standalone `::create`; built inline) | LLVM lowering + `UniqueWithLaneIds` lane outputs confirmed; dialect-create producer not isolated | LOW |
+| Item | Notes |
+|---|---|
+| `EmitValencyLoop` full op-create order + `scf::ForOp` bounds (Const0, IndexCast(valency), Const1, {acc}) | read from the function body |
+| Runtime valency load → `IndexCast` → loop upper bound | both load sites + IndexCast read |
+| Absence of any runtime division / sqrt / reciprocal in the loop | exhaustive op-create + x86 instruction sweep |
+| Per-id gain load + i32→f32 `BitcastOp` | accessor + `BitcastOp::create` read |
+| Token-offset arithmetic (`feat << 2`, MulIOp + AddIOp) → gather index | read from body |
+| `EmitVectorizedLoop` call args (`v1=gather_buf, v2=gain, v3=outer_acc, v4=unset`) | reg/slot + 4-Value mangling |
+| `ReduceDuplicates` contract (2 inputs + 1 reduce-fn, CSR→ELL) + `SparseMapRow`(0x4)/`DynamicBoundedSlice`(0x11) | verifier strings + jump table |
+| SC-dialect `Sort`/`Unique`/`UniqueWithLaneIds`/`SegmentedScan` `::create` signatures | symbol mangling + producer sites |
+| `DuplicateCountUniqueOpLowering<T>` → struct-extract multiplicity | 4 template instantiations + pattern-set |
+| Whether `v1` is a single packed CSR+gain buffer vs. two buffers via one `Value` | shared operand + ComputeType read; multiplexing not bit-proven |
+| `StreamOptions` bits (edx=1/r8d=1) selecting indirect vs. linear DMA | per-id offset is the gather index; the bools not decoded |
+| `SortOp` `"dscd"` per-char semantics (direction / stability per key column) | read as a 4-char attr; per-char meaning not cross-decoded |
+| Exact `ReduceDuplicates`→`SparseMapRow`→(`SortOp`+`ScanOp`) inlining chain | `SparseMapRow` carries the reduce fn + builds Sort/Scan window; body not fully decoded |
+| The precise emitter that creates the dialect `DuplicateCountOp` (no standalone `::create`; built inline) | LLVM lowering + `UniqueWithLaneIds` lane outputs read; dialect-create producer not isolated |
 
 ---
 

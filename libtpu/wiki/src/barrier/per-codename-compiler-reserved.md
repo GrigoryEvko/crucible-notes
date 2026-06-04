@@ -34,14 +34,14 @@ For reimplementation, the contract is:
 
 This is the authoritative table. Every cell was decoded from the embedded blob bytes (§4) and is consistent with the `Target::Init` / `SparseCoreTarget::Init` writers (§3). The `TpuVersion` proto-wire value (field 1 of each blob) names the generation; the runtime enum is wire `− 1` (`TpuVersionFromProto`).
 
-| Gen | Codename | Proto ver | TC `cr` range (raw) | TC `base` | TC `count` (`−5`) | TC usable window `[base, base+count)` | TC reserved top-5 (mega/gap/AR1/AR2/global) | TC `sequencer_overlay` | SC `cr` range | SC `base` | SC `count` | SC local/global/seq/tile | Conf. |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| JF | jellyfish | 1 | `[8..24]` (17) | `8` | `12` | `[8..19]` | `20 / 21 / 22 / 23 / 24` | `254` (`0xFE`) | — (no SC) | — | — | — | CONFIRMED |
-| DF | dragonfish | 2 | `[8..24]` (17) | `8` | `12` | `[8..19]` | `20 / 21 / 22 / 23 / 24` | `254` (`0xFE`) | — (no SC) | — | — | — | CONFIRMED |
-| PF | pufferfish | 3 | `[8..50]` (43) | `8` | `38` | `[8..45]` | `46 / 47 / 48 / 49 / 50` | `511` (`0x1FF`) | — (no SC) | — | — | — | CONFIRMED |
-| VF | viperfish | 4 | `[8..50]` (43) | `8` | `38` | `[8..45]` | `46 / 47 / 48 / 49 / 50` | `511` (`0x1FF`) | `[7055..7154]` (100) | `7055` | `100` | `7155 / 7156 / 7157 / 7167` | CONFIRMED |
-| GL | ghostlite | 5 | `[8..50]` (43) | `8` | `38` | `[8..45]` | `46 / 47 / 48 / 49 / 50` | `511` (`0x1FF`) | `[7055..7154]` (100) | `7055` | `100` | `7155 / 7156 / 7157 / 7167` | CONFIRMED |
-| GF | 6acc60406 | 6 | `[8..50]` (43) | `8` | `38` | `[8..45]` | `46 / 47 / 48 / 49 / 50` | `4095` (`0xFFF`) | `[7055..7154]` (100) | `7055` | `100` | `7155 / 7156 / 7157 / 7167` | CONFIRMED |
+| Gen | Codename | Proto ver | TC `cr` range (raw) | TC `base` | TC `count` (`−5`) | TC usable window `[base, base+count)` | TC reserved top-5 (mega/gap/AR1/AR2/global) | TC `sequencer_overlay` | SC `cr` range | SC `base` | SC `count` | SC local/global/seq/tile |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| JF | jellyfish | 1 | `[8..24]` (17) | `8` | `12` | `[8..19]` | `20 / 21 / 22 / 23 / 24` | `254` (`0xFE`) | — (no SC) | — | — | — |
+| DF | dragonfish | 2 | `[8..24]` (17) | `8` | `12` | `[8..19]` | `20 / 21 / 22 / 23 / 24` | `254` (`0xFE`) | — (no SC) | — | — | — |
+| PF | pufferfish | 3 | `[8..50]` (43) | `8` | `38` | `[8..45]` | `46 / 47 / 48 / 49 / 50` | `511` (`0x1FF`) | — (no SC) | — | — | — |
+| VF | viperfish | 4 | `[8..50]` (43) | `8` | `38` | `[8..45]` | `46 / 47 / 48 / 49 / 50` | `511` (`0x1FF`) | `[7055..7154]` (100) | `7055` | `100` | `7155 / 7156 / 7157 / 7167` |
+| GL | ghostlite | 5 | `[8..50]` (43) | `8` | `38` | `[8..45]` | `46 / 47 / 48 / 49 / 50` | `511` (`0x1FF`) | `[7055..7154]` (100) | `7055` | `100` | `7155 / 7156 / 7157 / 7167` |
+| GF | 6acc60406 | 6 | `[8..50]` (43) | `8` | `38` | `[8..45]` | `46 / 47 / 48 / 49 / 50` | `4095` (`0xFFF`) | `[7055..7154]` (100) | `7055` | `100` | `7155 / 7156 / 7157 / 7167` |
 
 Reads a reimplementer must carry from this:
 

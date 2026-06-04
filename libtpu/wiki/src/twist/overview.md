@@ -190,26 +190,26 @@ The collective half (§2–§5) produces the *ring schedule* and *replica groups
 
 ## 7. Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `TwistedTorusND::TwistedTorusND` (ctor) | `0x137d0040` | constructed by `SelectNDStrategy` C-ii | HIGH |
-| `TwistedTorusND::UpdateMinMaxDims` | `0x137d0260` | `K`/`2K` classifier + the two twist CHECKs | HIGH (CHECK strings verified) |
-| `TwistedTorusND::InitColorDimensions` | `0x137d0800` | `color_dims[6][3]` cyclic fill / degraded remap | HIGH |
-| `TwistedTorusND::BuildStrategy` | `0x137d0c00` | base ND ring + per-color seam phases | HIGH (phase dispatch verified) |
-| `TwistedTorusND::UpdateNeighborsKTo2K` | `0x137d24c0` | `K→2K` neighbour seam | HIGH |
-| `TwistedTorusND::UpdateNeighbors2KToK` | `0x137d29c0` | `2K→K` neighbour seam | HIGH |
-| `TwistedTorusND::UpdateOrdinal2K` | `0x137d2c60` | `2K` ordinal fold | HIGH |
-| `TwistedTorusND::UpdateOrdinal2KToK` | `0x137d28c0` | inverse `2K→K` ordinal fold | HIGH |
-| `TwistedTorusND::GetPhase0ReplicaGroups` | `0x137d3560` | RS-along-`2K` group lists | HIGH |
-| `TwistedTorusND::GetPhase1ReplicaGroups` | `0x137d3de0` | AG-over-plane group lists + megacore split | HIGH |
-| `TwistedTorusND::GetPhase0Cores / GetPhase1Cores` | `0x137d6de0 / 0x137d6ec0` | per-phase core-ID vectors (cost model) | MEDIUM (located, body not transcribed) |
-| `TwistedTorusND::GetPerColorShardIdTable` | `0x137d2d80` | 1-phase-only gate (Unimplemented string) | HIGH |
-| `GetReplicaPair3DOnTwistedTorus` | `0x1c893400` | the `+K`-mod-`2K` coordinate fold; `num_max_dims == 2` CHECK | HIGH (fold emulation-verified) |
-| `GetPhysicalToLogicalMapping3D` | `0x1c88a280` | `[Y][X][Z] → {core0, core1}` map | HIGH |
-| `TwistedTorusND::ToStringName` | `0x137d6da0` | emits `"TwistedTorusND"` | HIGH |
-| `TwistedTorusTopology::InitRouteSolution` | `0x20b3f7c0` | routing-side twisted route table | HIGH (symbol; body in routing section) |
-| `TwistedTorusTopology::GetTiebreak / GetDistance` | `0x20b41320 / 0x20b408e0` | route distance / tiebreak on a twisted slice | MEDIUM (located; n-dependent math not decoded) |
-| `TwistedTorusTopologyInfo::TryCreate…` | `0x133e1980` | SparseCore twisted collective | MEDIUM (located; body not decoded) |
+| Function | Address | Role |
+|---|---|---|
+| `TwistedTorusND::TwistedTorusND` (ctor) | `0x137d0040` | constructed by `SelectNDStrategy` C-ii |
+| `TwistedTorusND::UpdateMinMaxDims` | `0x137d0260` | `K`/`2K` classifier + the two twist CHECKs |
+| `TwistedTorusND::InitColorDimensions` | `0x137d0800` | `color_dims[6][3]` cyclic fill / degraded remap |
+| `TwistedTorusND::BuildStrategy` | `0x137d0c00` | base ND ring + per-color seam phases |
+| `TwistedTorusND::UpdateNeighborsKTo2K` | `0x137d24c0` | `K→2K` neighbour seam |
+| `TwistedTorusND::UpdateNeighbors2KToK` | `0x137d29c0` | `2K→K` neighbour seam |
+| `TwistedTorusND::UpdateOrdinal2K` | `0x137d2c60` | `2K` ordinal fold |
+| `TwistedTorusND::UpdateOrdinal2KToK` | `0x137d28c0` | inverse `2K→K` ordinal fold |
+| `TwistedTorusND::GetPhase0ReplicaGroups` | `0x137d3560` | RS-along-`2K` group lists |
+| `TwistedTorusND::GetPhase1ReplicaGroups` | `0x137d3de0` | AG-over-plane group lists + megacore split |
+| `TwistedTorusND::GetPhase0Cores / GetPhase1Cores` | `0x137d6de0 / 0x137d6ec0` | per-phase core-ID vectors (cost model) |
+| `TwistedTorusND::GetPerColorShardIdTable` | `0x137d2d80` | 1-phase-only gate (Unimplemented string) |
+| `GetReplicaPair3DOnTwistedTorus` | `0x1c893400` | the `+K`-mod-`2K` coordinate fold; `num_max_dims == 2` CHECK |
+| `GetPhysicalToLogicalMapping3D` | `0x1c88a280` | `[Y][X][Z] → {core0, core1}` map |
+| `TwistedTorusND::ToStringName` | `0x137d6da0` | emits `"TwistedTorusND"` |
+| `TwistedTorusTopology::InitRouteSolution` | `0x20b3f7c0` | routing-side twisted route table |
+| `TwistedTorusTopology::GetTiebreak / GetDistance` | `0x20b41320 / 0x20b408e0` | route distance / tiebreak on a twisted slice |
+| `TwistedTorusTopologyInfo::TryCreate…` | `0x133e1980` | SparseCore twisted collective |
 
 ---
 

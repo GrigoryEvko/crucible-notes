@@ -77,11 +77,11 @@ __asm { vucomisd xmm0, xmm0 }                    // get<1>(key) NaN-check (secon
 // ... then __tree __emplace_unique into the map keyed on the tuple.
 ```
 
-| tuple slot | type | meaning | confidence |
-|---|---|---|---|
-| `get<0>` *(primary)* | `double` | the priority score (current- or bundle-model formula below); the ranking key | CONFIRMED |
-| `get<1>` *(secondary)* | `double` | a re-stored copy of the priority value (a stability re-score); used as a same-primary discriminator | HIGH — re-stored from the same `priority` slot at several `rbp` offsets; exact role not byte-pinned |
-| `get<2>` *(tie)* | `long` | deterministic tie-break: `InputSizeAt` accumulation / chunk count (current); `0x3ffffffffffffffe` for the current-model must-fuse boost, `100` for the bundle-model must-fuse boost; ensures stable order across runs | CONFIRMED structurally; exact long composition spans the 0x1d8-byte frame (PARTIAL) |
+| tuple slot | type | meaning |
+|---|---|---|
+| `get<0>` *(primary)* | `double` | the priority score (current- or bundle-model formula below); the ranking key |
+| `get<1>` *(secondary)* | `double` | a re-stored copy of the priority value (a stability re-score); used as a same-primary discriminator |
+| `get<2>` *(tie)* | `long` | deterministic tie-break: `InputSizeAt` accumulation / chunk count (current); `0x3ffffffffffffffe` for the current-model must-fuse boost, `100` for the bundle-model must-fuse boost; ensures stable order across runs |
 
 The NaN guard is a hard `CHECK` at `tpu_instruction_fusion.cc:1678` (and a second `vucomisd` for the second `double`). Any formula that can produce `NaN` — e.g. a `0/0` in a bytes-per-cycle conversion — aborts compilation rather than corrupting the map order. A reimplementer must therefore guarantee finite scores or assert likewise.
 

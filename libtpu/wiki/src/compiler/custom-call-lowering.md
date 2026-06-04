@@ -400,19 +400,19 @@ Representative recovered status/DCHECK strings (verbatim in `.rodata` / decompil
 
 ## Confidence Summary
 
-| Claim | Evidence | Confidence |
-|---|---|---|
-| Five-facet registry with the listed `Register*` entry points/signatures | `FunctionRegistry<std::string, CompilationProperties(HloInstruction const*)>::Register` + `RegisterCanFuse`/`RegisterSpmdPartitioningVisitor` demangled signatures; `Register*` source-quotes in `.rodata` | HIGH |
-| `LoweringEmitter` callback signature incl. `BackendConfigMap = flat_hash_map<HloInstruction const*, unique_ptr<BackendConfig>>` | recovered from `__policy_func` thunk + verbatim lambda bodies | HIGH |
-| `CompilationProperties` six-field struct + per-target values | designated-initializer source-quotes (`kSharding`, `WindowPrefetch`, SDC keys, …) | HIGH |
-| ~52-target catalog with handler constants | `k…` rodata anchors + per-handler `google_init_module_*` symbols; each verbatim string confirmed present in the binary | HIGH |
-| Mosaic import seam (`GetCachedCustomCallBody`/`GetMlirModule`/`MosaicMlirCacheEntry`/`CustomCallEmitter::Emit`) | all symbols present at listed addresses; `Fprint128`-keyed `HloModule::{Set,Get}CacheEntry<MosaicMlirCacheEntry>`; ctor param list recovered | HIGH |
-| Three legalization passes + signatures | `TpuCustomCallLegalizer`/`MemorySpacePolicy`/`ScopedVmemAdjuster` `RunImpl` and helper signatures demangled; ctor `AnyInvocable<…BufferAssignment…>` recovered | HIGH |
-| Error/DCHECK strings | reserved-`$` and unimplemented strings confirmed in decompiled output; remainder from `.rodata` quoted source | HIGH |
-| `CustomCallConfig` proto **field tag numbers** | descriptor present (submessage names, accessors) but tag numbers not extracted from FileDescriptorProto | LOW |
-| Per-handler emit-helper LLO bodies (exact op sequences) | handler→target mapping HIGH; the `OpEmitter` subclass LLO rewrites not decompiled per-op | LOW |
-| `MosaicMlirCacheEntry::GetCacheKey` field composition | returns `tsl::Fprint128` over the body; whether `kernel_name`/`cost_estimate` participate not recovered | LOW |
-| `xla.sdy.GlobalToLocalShape` per-axis reshape protocol | target-name constants HIGH; flatten/pack/relabel semantics not disassembled | LOW |
+| Claim | Evidence |
+|---|---|
+| Five-facet registry with the listed `Register*` entry points/signatures | `FunctionRegistry<std::string, CompilationProperties(HloInstruction const*)>::Register` + `RegisterCanFuse`/`RegisterSpmdPartitioningVisitor` demangled signatures; `Register*` source-quotes in `.rodata` |
+| `LoweringEmitter` callback signature incl. `BackendConfigMap = flat_hash_map<HloInstruction const*, unique_ptr<BackendConfig>>` | recovered from `__policy_func` thunk + verbatim lambda bodies |
+| `CompilationProperties` six-field struct + per-target values | designated-initializer source-quotes (`kSharding`, `WindowPrefetch`, SDC keys, …) |
+| ~52-target catalog with handler constants | `k…` rodata anchors + per-handler `google_init_module_*` symbols; each verbatim string confirmed present in the binary |
+| Mosaic import seam (`GetCachedCustomCallBody`/`GetMlirModule`/`MosaicMlirCacheEntry`/`CustomCallEmitter::Emit`) | all symbols present at listed addresses; `Fprint128`-keyed `HloModule::{Set,Get}CacheEntry<MosaicMlirCacheEntry>`; ctor param list recovered |
+| Three legalization passes + signatures | `TpuCustomCallLegalizer`/`MemorySpacePolicy`/`ScopedVmemAdjuster` `RunImpl` and helper signatures demangled; ctor `AnyInvocable<…BufferAssignment…>` recovered |
+| Error/DCHECK strings | reserved-`$` and unimplemented strings confirmed in decompiled output; remainder from `.rodata` quoted source |
+| `CustomCallConfig` proto **field tag numbers** | descriptor present (submessage names, accessors) but tag numbers not extracted from FileDescriptorProto |
+| Per-handler emit-helper LLO bodies (exact op sequences) | handler→target mapping HIGH; the `OpEmitter` subclass LLO rewrites not decompiled per-op |
+| `MosaicMlirCacheEntry::GetCacheKey` field composition | returns `tsl::Fprint128` over the body; whether `kernel_name`/`cost_estimate` participate not recovered |
+| `xla.sdy.GlobalToLocalShape` per-axis reshape protocol | target-name constants HIGH; flatten/pack/relabel semantics not disassembled |
 
 ---
 

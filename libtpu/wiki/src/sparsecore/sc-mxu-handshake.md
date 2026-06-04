@@ -27,7 +27,6 @@ For reimplementation, the contract is:
 | **Cross-sub-engine sync** | `OffloadFactory::SyncScsWithTec` (`0x133e9260`) / `SyncTecWithScs` (`0x133e8fe0`) |
 | **MXU contracting depth** | `Target::MxuContractingSize` = 128 base / **256** Ghostlite class; `MxuSparseContractingSize` = 0 (unused) |
 | **Double-buffer** | `OffloadFactory::AllocateSflag(b, false, 2)` — one flag per buffer |
-| **Confidence** | CONFIRMED (decompile-anchored) unless a row or callout says otherwise |
 
 ---
 
@@ -80,14 +79,14 @@ The short form skips the SPMEM aggregation stage when a per-tile result is desti
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `LowerMemrefToMlo::lowerEnqueueDma` | `0x135105a0` | `tpu.enqueue_dma` → `sc_tpu.dma_{simple,general,single_strided}_start` + `sc_tpu.dma_wait` | CONFIRMED |
-| `LowerMemrefToMlo::lowerEnqueueIndirectDma` | `0x13511da0` | `tpu.enqueue_indirect_dma` → indirect-stream ops | CONFIRMED |
-| `LowerMemrefToMlo::lowerWaitDma` | `0x135135e0` | `tpu.wait_dma2` → `sc_tpu.dma_wait` | CONFIRMED |
-| `LowerMemrefToMlo::getVerifiedDmaShapes` | `0x13509dc0` | extract + verify the DMA shapes | CONFIRMED |
-| `LowerMemrefToMlo::checkShapeTileAlignment` | `0x135053a0` | verify shape-tile alignment for cross-engine DMA | CONFIRMED |
-| `LowerMemrefToMlo::convertDeviceIdFromSubsliceToFullSlice` | `0x13505a40` | logical → physical core id for the routing key | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `LowerMemrefToMlo::lowerEnqueueDma` | `0x135105a0` | `tpu.enqueue_dma` → `sc_tpu.dma_{simple,general,single_strided}_start` + `sc_tpu.dma_wait` |
+| `LowerMemrefToMlo::lowerEnqueueIndirectDma` | `0x13511da0` | `tpu.enqueue_indirect_dma` → indirect-stream ops |
+| `LowerMemrefToMlo::lowerWaitDma` | `0x135135e0` | `tpu.wait_dma2` → `sc_tpu.dma_wait` |
+| `LowerMemrefToMlo::getVerifiedDmaShapes` | `0x13509dc0` | extract + verify the DMA shapes |
+| `LowerMemrefToMlo::checkShapeTileAlignment` | `0x135053a0` | verify shape-tile alignment for cross-engine DMA |
+| `LowerMemrefToMlo::convertDeviceIdFromSubsliceToFullSlice` | `0x13505a40` | logical → physical core id for the routing key |
 
 ---
 
@@ -230,12 +229,12 @@ SC-produced VMEM tile  --(matprep.subr/.mubr)-->  MSRA/MSRB  --(vmatmul, K steps
 
 The contracting depth is a per-codename C++ literal in the `Target` subclass — not a `chip_parts` field. The byte-exact values (owned by [SparseCoreTarget (`Target+0x948`)](../targets/sparsecore-target-descriptor.md), reproduced here as the *consumer*):
 
-| MXU constant | v3 Jelly | v4 Puffer | v5p Viperfish | v6e Ghostlite | TPU7x (6acc60406) | Source · Confidence |
+| MXU constant | v3 Jelly | v4 Puffer | v5p Viperfish | v6e Ghostlite | TPU7x (6acc60406) | Source |
 |---|:--:|:--:|:--:|:--:|:--:|---|
-| `MxuContractingSize` | 128 | 128 | 128 | **256** | **256** | base `0x1D490060`; Ghostlite `0x1D497840` · CONFIRMED |
-| `MxuNoncontractingSize` | 128 | 128 | 128 | **256** | **256** | base `0x1D490080`; Ghostlite `0x1D497860` · CONFIRMED |
-| `MxuSparseContractingSize` | 0 | 0 | 0 | 0 | 0 | base `0x1D4900C0`; no override · CONFIRMED |
-| `MxuContractingSizeIsDoubled(mode)` | false | false | predicate | predicate | predicate | base `0x1D4900A0`; VF `0x1D49AA60`; GL `0x1D497880` · CONFIRMED |
+| `MxuContractingSize` | 128 | 128 | 128 | **256** | **256** | base `0x1D490060`; Ghostlite `0x1D497840` |
+| `MxuNoncontractingSize` | 128 | 128 | 128 | **256** | **256** | base `0x1D490080`; Ghostlite `0x1D497860` |
+| `MxuSparseContractingSize` | 0 | 0 | 0 | 0 | 0 | base `0x1D4900C0`; no override |
+| `MxuContractingSizeIsDoubled(mode)` | false | false | predicate | predicate | predicate | base `0x1D4900A0`; VF `0x1D49AA60`; GL `0x1D497880` |
 
 Three facts a reimplementer must encode:
 
@@ -243,7 +242,7 @@ Three facts a reimplementer must encode:
 2. **`MxuSparseContractingSize` is 0 on every generation** — no `Target` subclass overrides it. The sparse-MXU contracting path is *unused* in this build. The SC/MXU division of labor is at the *engine* level (SC gathers, MXU does dense matmul), not at the level of a sparse contracting mode inside the MXU. A reimplementer should not look for a sparse-MXU latch on the embedding feed.
 3. **The doubling predicate is orthogonal to sparsity.** Both `ViperfishTarget` and `GhostliteTarget` override `MxuContractingSizeIsDoubled` with the identical predicate `(mode - 22) < 4u` — true for raw `GainLatchMode ∈ {22,23,24,25}`, the 4-bit packed-nibble (S4/U4) matmul modes that pack two nibbles into one physical systolic row (doubling effective contracting depth). This is a dtype-packing feature of the dense MXU and applies to embedding-feed matmuls only insofar as the activation dtype is 4-bit — it is not an SC-specific path.
 
-> **GOTCHA —** the SC `SparseCoreLaneCount` (`Target::SparseCoreLaneCount`, `0x0F7906E0` reading the per-gen target descriptor; the runtime `tensorflow::GetSparseCoreLaneCount` is flag-overridable, so the exact per-gen integer is not a fixed literal — LOW confidence on a specific value) is the vector width SC reduces over, and is **not** the MXU contracting depth. They are independent: SC's lane count is the TEC vector engine's SIMD width for the *gather/reduce* upstream; the MXU contracting size (128 / 256) is the systolic *row depth* the dense matmul reduces over downstream. The handoff is a reshape boundary — SC produces a `[rows × embedding_dim]` tile in its lane geometry; the MXU re-tiles it into `[contracting × noncontracting]` for the systolic array. Conflating the two will mis-size the VMEM staging buffer. See [SparseCore Architecture](architecture.md) for the SC lane geometry and [MXU Slot](../isa/slot-mxu.md) for the systolic tiling.
+> **GOTCHA —** the SC `SparseCoreLaneCount` (`Target::SparseCoreLaneCount`, `0x0F7906E0` reading the per-gen target descriptor; the runtime `tensorflow::GetSparseCoreLaneCount` is flag-overridable, so the exact per-gen integer is not a fixed literal) is the vector width SC reduces over, and is **not** the MXU contracting depth. They are independent: SC's lane count is the TEC vector engine's SIMD width for the *gather/reduce* upstream; the MXU contracting size (128 / 256) is the systolic *row depth* the dense matmul reduces over downstream. The handoff is a reshape boundary — SC produces a `[rows × embedding_dim]` tile in its lane geometry; the MXU re-tiles it into `[contracting × noncontracting]` for the systolic array. Conflating the two will mis-size the VMEM staging buffer. See [SparseCore Architecture](architecture.md) for the SC lane geometry and [MXU Slot](../isa/slot-mxu.md) for the systolic tiling.
 
 ---
 
@@ -347,19 +346,19 @@ The verifier can be opted out per-kernel via the `sc.disable_before_use_sync_fla
 
 ## Limits and Open Items
 
-| Item | Status | Confidence |
-|---|---|---|
-| 40 `tpu_dma_*_sc_*` ops; only 3 name `vmem`; `general`-form only | enumerated in decompile | CONFIRMED |
-| `GetTransferKind` signature `(Target&, MemorySpace, MemorySpace, 4×bool)` | demangled symbol + `kStream`/`kDma` asserts | CONFIRMED |
-| SFLAG 3-subspace model + region-scoping assertions | assertion strings read | CONFIRMED |
-| TC-side `Semaphore{Wait,Signal,Read}Op` + `FetchAndAddSyncOp` | symbols present | CONFIRMED |
-| `SyncScsWithTec` / `SyncTecWithScs` / `AllocateSflag(.,false,2)` double-buffer | function bodies located; `SyncWait` in body | CONFIRMED |
-| `MxuContractingSize` 128/256; `MxuSparseContractingSize` = 0 | per-codename literals (see target descriptor) | CONFIRMED |
-| `DeviceAndCoreIds` byte layout (routing key) | recovered as `optional<>`; field widths not decomposed | LOW |
-| Per-gen SFLAG remote-address bit-encoding | encoders located; bit composition not decoded | LOW |
-| `EmbeddingsPassType` enum value list | parameter of `GetLogicalReplicaInfo`; values not exposed as strings | LOW |
-| `TileTaskOp` access-vs-execute region content rules | op present (`MloModuleVerifier::Verify(TileTaskOp)` `0x146aca00`); exact region count and per-region legality predicate not cleanly decompiled | LOW |
-| Exact `EnqueueDMAOp::getPriority()` value space | getter present; arbitration rules not traced | LOW |
+| Item | Status |
+|---|---|
+| 40 `tpu_dma_*_sc_*` ops; only 3 name `vmem`; `general`-form only | enumerated in decompile |
+| `GetTransferKind` signature `(Target&, MemorySpace, MemorySpace, 4×bool)` | demangled symbol + `kStream`/`kDma` asserts |
+| SFLAG 3-subspace model + region-scoping assertions | assertion strings read |
+| TC-side `Semaphore{Wait,Signal,Read}Op` + `FetchAndAddSyncOp` | symbols present |
+| `SyncScsWithTec` / `SyncTecWithScs` / `AllocateSflag(.,false,2)` double-buffer | function bodies located; `SyncWait` in body |
+| `MxuContractingSize` 128/256; `MxuSparseContractingSize` = 0 | per-codename literals (see target descriptor) |
+| `DeviceAndCoreIds` byte layout (routing key) | recovered as `optional<>`; field widths not decomposed |
+| Per-gen SFLAG remote-address bit-encoding | encoders located; bit composition not decoded |
+| `EmbeddingsPassType` enum value list | parameter of `GetLogicalReplicaInfo`; values not exposed as strings |
+| `TileTaskOp` access-vs-execute region content rules | op present (`MloModuleVerifier::Verify(TileTaskOp)` `0x146aca00`); exact region count and per-region legality predicate not cleanly decompiled |
+| Exact `EnqueueDMAOp::getPriority()` value space | getter present; arbitration rules not traced |
 
 ---
 

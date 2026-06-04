@@ -63,12 +63,12 @@ function register_vxc_codename(version):    // one of three init modules
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `google_init_module_tpu_hal_vxc_hardware_impl` | 0x213eed20 | Register v3 (Viperfish) | CERTAIN |
-| `google_init_module_tpu_hal_glc_hardware_impl` | 0x213eb9e0 | Register v4 (Ghostlite) — GXC module | CERTAIN |
-| `google_init_module_tpu_hal_gfc_hardware_impl` | 0x213e9f60 | Register v5 (6acc60406) — GXC module | CERTAIN |
-| `TpuHalFactory::Register` | 0x1fbb16a0 | registry insert (shared) | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `google_init_module_tpu_hal_vxc_hardware_impl` | 0x213eed20 | Register v3 (Viperfish) |
+| `google_init_module_tpu_hal_glc_hardware_impl` | 0x213eb9e0 | Register v4 (Ghostlite) — GXC module |
+| `google_init_module_tpu_hal_gfc_hardware_impl` | 0x213e9f60 | Register v5 (6acc60406) — GXC module |
+| `TpuHalFactory::Register` | 0x1fbb16a0 | registry insert (shared) |
 
 ---
 
@@ -80,13 +80,13 @@ VXC's factory vtable has the same 5-slot shape as JXC and PXC; only the namespac
 
 ### Vtable Layout
 
-| vaddr | slot | resolves to | base/override | Confidence |
-|---|---|---|---|---|
-| 0x21cabf80 | 0 — `~TpuHalFactory()` D2 | 0x0e723a80 (`ret`) | INHERITED | CERTAIN |
-| 0x21cabf88 | 1 — `~TpuHalVxcHardwareFactory()` D0 | 0x1d110e80 | **OVERRIDE** | CERTAIN |
-| 0x21cabf90 | 2 — `HardwareFactoryBase::Create(wq)` | 0x1e80f560 | INHERITED | CERTAIN |
-| 0x21cabf98 | 3 — `HardwareFactoryBase::CanCreate()` | 0x1e80f520 | INHERITED | CERTAIN |
-| 0x21cabfa0 | 4 — `TpuHalVxcHardwareFactory::CreateImpl(wq)` | 0x1d110e00 | **OVERRIDE** | CERTAIN |
+| vaddr | slot | resolves to | base/override |
+|---|---|---|---|
+| 0x21cabf80 | 0 — `~TpuHalFactory()` D2 | 0x0e723a80 (`ret`) | INHERITED |
+| 0x21cabf88 | 1 — `~TpuHalVxcHardwareFactory()` D0 | 0x1d110e80 | **OVERRIDE** |
+| 0x21cabf90 | 2 — `HardwareFactoryBase::Create(wq)` | 0x1e80f560 | INHERITED |
+| 0x21cabf98 | 3 — `HardwareFactoryBase::CanCreate()` | 0x1e80f520 | INHERITED |
+| 0x21cabfa0 | 4 — `TpuHalVxcHardwareFactory::CreateImpl(wq)` | 0x1d110e00 | **OVERRIDE** |
 
 Slot 1 encodes `operator delete(this, 0x10)` — the factory is 16 bytes, like all four families.
 
@@ -178,17 +178,17 @@ Below the fetch-core sit `vxc::vfc::isa` (67K symbols), `vxc::vfc::profiler` (40
 
 The three codenames behind VXC differ in data (chip-parts) and in their *codec* classes, but share one HAL impl, one `TpuVxcDriver`, one V2 descriptor. Viperfish has its own named workers under `viperfish::isa` (`EncoderVfTensorCore`, `DecoderVfTensorCore`); Ghostlite and 6acc60406 are detailed on the [GXC page](gxc-family.md).
 
-| Axis | Viperfish (v3) | Ghostlite (v4) | 6acc60406 (v5) | Source | Confidence |
-|---|---|---|---|---|---|
-| TpuVersion enum | kViperfish = 3 | kGhostlite = 4 | k6acc60406 = 5 | `TpuVersionToString` 0x20b3a480 | CERTAIN |
-| ToString | "viperfish" | "ghostlite" | "6acc60406" | rel.ro table 0x22011bf0 | CERTAIN |
-| External name | "TPU v5" (v5p / v5e) | "TPU v6 lite" (v6e) | "TPU7x" (tpu7x) | `TpuVersionToExternalName` 0x20b3a500 | CERTAIN |
-| Init module | vxc 0x213eed20 | glc 0x213eb9e0 | gfc 0x213e9f60 | symtab | CERTAIN |
-| Codec (case in `TpuCodec::Create` 0x1e835fa0) | `CreateTpuCodecViperfish` (case 3) | `CreateTpuCodecGhostlite` (case 4) | anonymous `sub_1E838380` (case 5) | symtab | CERTAIN (v3/v4); MEDIUM (v5 anon) |
-| TensorCore / BarnaCore | yes / no | yes / no | yes / no | TpuChipParts | CERTAIN |
-| SparseCore | yes (first gen) | yes | yes | TpuChipParts | CERTAIN |
-| Driver sub-core ISA | `vxc::vfc/vlc::isa` | `gxc::glc::isa` | `gxc::gfc::isa` | symtab | CERTAIN |
-| Flag prefixes | `xla_vf_` (50), `xla_sc_` (164) | `xla_gf_` (44), `xla_sc_` | `xla_gf_`, `xla_sc_` | flag scan | HIGH |
+| Axis | Viperfish (v3) | Ghostlite (v4) | 6acc60406 (v5) | Source |
+|---|---|---|---|---|
+| TpuVersion enum | kViperfish = 3 | kGhostlite = 4 | k6acc60406 = 5 | `TpuVersionToString` 0x20b3a480 |
+| ToString | "viperfish" | "ghostlite" | "6acc60406" | rel.ro table 0x22011bf0 |
+| External name | "TPU v5" (v5p / v5e) | "TPU v6 lite" (v6e) | "TPU7x" (tpu7x) | `TpuVersionToExternalName` 0x20b3a500 |
+| Init module | vxc 0x213eed20 | glc 0x213eb9e0 | gfc 0x213e9f60 | symtab |
+| Codec (case in `TpuCodec::Create` 0x1e835fa0) | `CreateTpuCodecViperfish` (case 3) | `CreateTpuCodecGhostlite` (case 4) | anonymous `sub_1E838380` (case 5) | symtab |
+| TensorCore / BarnaCore | yes / no | yes / no | yes / no | TpuChipParts |
+| SparseCore | yes (first gen) | yes | yes | TpuChipParts |
+| Driver sub-core ISA | `vxc::vfc/vlc::isa` | `gxc::glc::isa` | `gxc::gfc::isa` | symtab |
+| Flag prefixes | `xla_vf_` (50), `xla_sc_` (164) | `xla_gf_` (44), `xla_sc_` | `xla_gf_`, `xla_sc_` | flag scan |
 
 > **GOTCHA —** Ghostlite and 6acc60406 register into *this* (VXC) factory, but their driver-layer ISA lives under the **`gxc`** namespace (`gxc::glc::isa`, `gxc::gfc::isa`), not `vxc`. Only Viperfish's ISA is under `vxc`. The HAL family and the driver sub-namespace are decoupled for v4/v5 — the reason both pages cross-link. See [GXC Family](gxc-family.md).
 

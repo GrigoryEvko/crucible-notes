@@ -41,26 +41,26 @@ The Task message is profiler session metadata: a `Map<uint32 task_id, Task>` pop
 
 All 18 fields are singular (label 1) proto3 scalars, carved from the 417-byte `DescriptorProto` (message_type[0] inside the `FileDescriptorProto` @ `0xbe999a0`, field-4 at `+0x5e`) and cross-checked by `protoc --decode_raw`. Proto type codes: `1=double`, `3=int64`, `4=uint64`, `8=bool`, `9=string`, `13=uint32`. Every field name was confirmed verbatim against `.rodata` (see [Field-String Anchors](#field-string-anchors)).
 
-| f# | Name | Type | Group | Meaning | Confidence |
-|---|---|---|---|---|---|
-| 1 | `changelist` | int64 | build | source revision the binary was built from | CERTAIN |
-| 2 | `clean_build` | bool | build | clean vs dirty workspace at build time | CERTAIN |
-| 3 | `build_time` | int64 | build | unix build timestamp | CERTAIN |
-| 4 | `build_target` | string | build | build-target label (serves as the version string) | CERTAIN |
-| 5 | `command_line` | string | host | the launch command-line args | CERTAIN |
-| 6 | `start_time` | int64 | host | process start time | CERTAIN |
-| 7 | `task_address` | string | host | worker BNS / network address | CERTAIN |
-| 8 | `profile_time_ns` | uint64 | window | profile start wall-clock, ns | CERTAIN |
-| 9 | `profile_duration_ms` | uint32 | window | profile length, ms | CERTAIN |
-| 10 | `host_trace_level` | uint32 | window | host `TraceMe` verbosity level | CERTAIN |
-| **11** | **`tensor_core_freq_hz`** | **uint64** | **clock** | **TensorCore cycle clock (Hz)** | **CERTAIN** |
-| **12** | **`sparse_core_freq_hz`** | **uint64** | **clock** | **SparseCore cycle clock (Hz)** | **CERTAIN** |
-| **13** | **`gtc_freq_hz`** | **uint64** | **clock** | **Global Time Counter clock (Hz) — the timebase divisor** | **CERTAIN** |
-| 14 | `peak_memory_usage` | uint64 | resource | peak host RSS | CERTAIN |
-| 15 | `cpu_limit` | double | resource | Borg CPU limit | CERTAIN |
-| 16 | `cpu_usage` | double | resource | Borg CPU usage | CERTAIN |
-| 17 | `workspace_id` | string | build | workspace identifier | CERTAIN |
-| 18 | `snapshot` | int64 | build | workspace snapshot id | CERTAIN |
+| f# | Name | Type | Group | Meaning |
+|---|---|---|---|---|
+| 1 | `changelist` | int64 | build | source revision the binary was built from |
+| 2 | `clean_build` | bool | build | clean vs dirty workspace at build time |
+| 3 | `build_time` | int64 | build | unix build timestamp |
+| 4 | `build_target` | string | build | build-target label (serves as the version string) |
+| 5 | `command_line` | string | host | the launch command-line args |
+| 6 | `start_time` | int64 | host | process start time |
+| 7 | `task_address` | string | host | worker BNS / network address |
+| 8 | `profile_time_ns` | uint64 | window | profile start wall-clock, ns |
+| 9 | `profile_duration_ms` | uint32 | window | profile length, ms |
+| 10 | `host_trace_level` | uint32 | window | host `TraceMe` verbosity level |
+| **11** | **`tensor_core_freq_hz`** | **uint64** | **clock** | **TensorCore cycle clock (Hz)** |
+| **12** | **`sparse_core_freq_hz`** | **uint64** | **clock** | **SparseCore cycle clock (Hz)** |
+| **13** | **`gtc_freq_hz`** | **uint64** | **clock** | **Global Time Counter clock (Hz) — the timebase divisor** |
+| 14 | `peak_memory_usage` | uint64 | resource | peak host RSS |
+| 15 | `cpu_limit` | double | resource | Borg CPU limit |
+| 16 | `cpu_usage` | double | resource | Borg CPU usage |
+| 17 | `workspace_id` | string | build | workspace identifier |
+| 18 | `snapshot` | int64 | build | workspace snapshot id |
 
 The five semantic groups are not declared in the proto — they are the natural partition of the field set and the same grouping the [host XStat dictionary](#the-taskenvstattype-xstat-dictionary) follows: **build provenance** (1, 2, 3, 4, 17, 18), **host/task identity** (5, 6, 7), **profile window** (8, 9, 10), **clock rates** (11, 12, 13), **resource caps** (14, 15, 16).
 
@@ -149,25 +149,25 @@ The profiler does not surface the Task proto as a proto on the timeline — it r
 
 17 records, stride `0x18` (enum at `+0x10` = values 1..17, string `{ptr@+0, len@+8}` with the ptr relocated at load via `R_X86_64_RELATIVE`). Every name was confirmed verbatim in `.rodata`. The "← Task field" column is the provenance of each stat:
 
-| Enum | XStat name | `.rodata` str | ← Task field / derivation | Confidence |
-|---|---|---|---|---|
-| 1 | `build_changelist` | `0x84d97b6` | `changelist` (f1) | CERTAIN |
-| 2 | `build_snapshot` | `0x84e35fb` | `snapshot` (f18) | CERTAIN |
-| 3 | `build_workspace_id` | `0x86fd57b` | `workspace_id` (f17) | CERTAIN |
-| 4 | `clean_build` | `0x86f91d7` | `clean_build` (f2) | CERTAIN |
-| 5 | `build_time` | `0x86bf23b` | `build_time` (f3) | CERTAIN |
-| 6 | `build_target` | `0x8503333` | `build_target` (f4) | CERTAIN |
-| 7 | `command_line_args` | `0x854efee` | `command_line` (f5) | CERTAIN |
-| 8 | `process_start_time` | `0x86be930` | `start_time` (f6) | CERTAIN |
-| 9 | `task_bns` | `0x8544af9` | `task_address` (f7) | CERTAIN |
-| 10 | `profile_start_time` | `0x86beaa0` | `profile_time_ns` (f8) | CERTAIN |
-| 11 | `profile_stop_time` | `0x86bec17` | `profile_time_ns` + `profile_duration_ms` (f8+f9) | HIGH |
-| 12 | `peak_memory_usage` | `0x86d7111` | `peak_memory_usage` (f14) | CERTAIN |
-| 13 | `borg_cpu_limit` | `0x84f9429` | `cpu_limit` (f15) | CERTAIN |
-| 14 | `borg_cpu_usage` | `0x86d7123` | `cpu_usage` (f16) | CERTAIN |
-| 15 | `system_topology` | `0x84b9c7f` | topology coords (free-form string, not a Task scalar) | HIGH |
-| 16 | `compilation_task_info` | `0x85db5e3` | compiler/version metadata | HIGH |
-| 17 | `profile_options` | `0x85363f2` | the requested profile options | HIGH |
+| Enum | XStat name | `.rodata` str | ← Task field / derivation |
+|---|---|---|---|
+| 1 | `build_changelist` | `0x84d97b6` | `changelist` (f1) |
+| 2 | `build_snapshot` | `0x84e35fb` | `snapshot` (f18) |
+| 3 | `build_workspace_id` | `0x86fd57b` | `workspace_id` (f17) |
+| 4 | `clean_build` | `0x86f91d7` | `clean_build` (f2) |
+| 5 | `build_time` | `0x86bf23b` | `build_time` (f3) |
+| 6 | `build_target` | `0x8503333` | `build_target` (f4) |
+| 7 | `command_line_args` | `0x854efee` | `command_line` (f5) |
+| 8 | `process_start_time` | `0x86be930` | `start_time` (f6) |
+| 9 | `task_bns` | `0x8544af9` | `task_address` (f7) |
+| 10 | `profile_start_time` | `0x86beaa0` | `profile_time_ns` (f8) |
+| 11 | `profile_stop_time` | `0x86bec17` | `profile_time_ns` + `profile_duration_ms` (f8+f9) |
+| 12 | `peak_memory_usage` | `0x86d7111` | `peak_memory_usage` (f14) |
+| 13 | `borg_cpu_limit` | `0x84f9429` | `cpu_limit` (f15) |
+| 14 | `borg_cpu_usage` | `0x86d7123` | `cpu_usage` (f16) |
+| 15 | `system_topology` | `0x84b9c7f` | topology coords (free-form string, not a Task scalar) |
+| 16 | `compilation_task_info` | `0x85db5e3` | compiler/version metadata |
+| 17 | `profile_options` | `0x85363f2` | the requested profile options |
 
 The mapping is mostly 1:1 with Task fields, with three derived/external entries: `profile_stop_time` (11) is computed (`start + duration`), and `system_topology` (15) / `compilation_task_info` (16) / `profile_options` (17) come from elsewhere in the profiler session, not from scalar Task fields. Names 1–14 are byte-exact projections of Task; 15–17 are HIGH-confidence on the *binding to a source* (the strings are byte-exact, the exact producer was not traced for the three non-Task entries).
 
@@ -224,23 +224,23 @@ Map<uint32 task_id, Task>            (one Task per host/worker; TryEmplaceIntern
 
 ## Relevant Symbols and Offsets
 
-| Symbol | Address | Role | Confidence |
-|---|---|---|---|
-| `FileDescriptorProto` (task.proto) | `0xbe999a0` | the 417-byte descriptor the 18-field map is carved from | CERTAIN |
-| Field-name run | `0xbe99a03`–`0xbe99b50` | `Task`, `changelist`, … `gtc_freq_hz` | CERTAIN |
-| `Task::_table_` | `0x2164fed0` | runtime reflection table | CERTAIN |
-| `Task_globals_` | `0x22266028` | proto default-instance globals | CERTAIN |
-| `Map<uint32,Task>::TryEmplaceInternal` | `0xf2fa900` | the per-worker map insert | CERTAIN |
-| `MapEntryFuncs<uint32,Task,…>` | `0xf2f8060` | map-entry serialization funcs (key=u32, value=Task) | CERTAIN |
-| `XlaJfProfileCheapOps(Task const&)` | `0xf2ca280` | the consumer that reads clocks/version | HIGH |
-| `TaskEnvStatType` init list | `0x21c20f00` | 17 `{str,enum}` records, stride `0x18` | CERTAIN |
-| `kTaskEnvPlaneName` | `0x21c9e0e8` | the host Task-env plane name | CERTAIN |
-| `GetTaskEnvStatTypeStr` | `0x1c8eb8c0` | enum→string accessor | CERTAIN |
-| `FindTaskEnvStatType` | `0x1c8eba20` | string→enum accessor | CERTAIN |
-| `TaskEnvStatType` map guard / fwd / rev | `0x22579b38` / `0x22579b30` / `0x22579b20` | the once-built `flat_hash_map`s | CERTAIN |
-| Baked per-DeviceType GTC clk table | `0x1c60480` (`.lrodata`) | stride `0x448`; `+4` clk(kHz), `+8` ts-width | CERTAIN |
-| `GtcSpanConverter::ctor(DeviceType)` | `0xf2cb6e0` | loads `clk` from the baked table — the actual divisor source | CERTAIN |
-| `TpuXLineBuilder::AddEvent(GtcSpan)` | `0xf1df1e0` | the GTC→ps divide that consumes the clock | CERTAIN |
+| Symbol | Address | Role |
+|---|---|---|
+| `FileDescriptorProto` (task.proto) | `0xbe999a0` | the 417-byte descriptor the 18-field map is carved from |
+| Field-name run | `0xbe99a03`–`0xbe99b50` | `Task`, `changelist`, … `gtc_freq_hz` |
+| `Task::_table_` | `0x2164fed0` | runtime reflection table |
+| `Task_globals_` | `0x22266028` | proto default-instance globals |
+| `Map<uint32,Task>::TryEmplaceInternal` | `0xf2fa900` | the per-worker map insert |
+| `MapEntryFuncs<uint32,Task,…>` | `0xf2f8060` | map-entry serialization funcs (key=u32, value=Task) |
+| `XlaJfProfileCheapOps(Task const&)` | `0xf2ca280` | the consumer that reads clocks/version |
+| `TaskEnvStatType` init list | `0x21c20f00` | 17 `{str,enum}` records, stride `0x18` |
+| `kTaskEnvPlaneName` | `0x21c9e0e8` | the host Task-env plane name |
+| `GetTaskEnvStatTypeStr` | `0x1c8eb8c0` | enum→string accessor |
+| `FindTaskEnvStatType` | `0x1c8eba20` | string→enum accessor |
+| `TaskEnvStatType` map guard / fwd / rev | `0x22579b38` / `0x22579b30` / `0x22579b20` | the once-built `flat_hash_map`s |
+| Baked per-DeviceType GTC clk table | `0x1c60480` (`.lrodata`) | stride `0x448`; `+4` clk(kHz), `+8` ts-width |
+| `GtcSpanConverter::ctor(DeviceType)` | `0xf2cb6e0` | loads `clk` from the baked table — the actual divisor source |
+| `TpuXLineBuilder::AddEvent(GtcSpan)` | `0xf1df1e0` | the GTC→ps divide that consumes the clock |
 
 > **NOTE —** the Task proto's *population site* — the host-side function that writes `tensor_core_freq_hz`/`sparse_core_freq_hz`/`gtc_freq_hz`, the build/version fields, and the topology into a `Task` at profile time — was not located as a single setter. The consumer (`XlaJfProfileCheapOps` @ `0xf2ca280`) reads it; the producer is likely a host-side xprof session-info collector not present in the device-side decode path traced here (gap, not a guess).
 

@@ -33,10 +33,10 @@ The named barrier numbers are all relative offsets above one anchor, `base + cou
 
 The two scalars live adjacent on the `Target` object. The decompiler addresses them as `_DWORD` indices off the `Target` base pointer; the byte offsets are the index times four:
 
-| Name | Decompiler form | Byte offset | Meaning | Confidence |
-|---|---|---|---|---|
-| `base` | `*((_DWORD *)this + 560)` | `Target+0x8c0` | first SFLAG number of the TC reserved range = `CR_TC[0]` | CERTAIN |
-| `count` | `*((_DWORD *)this + 561)` | `Target+0x8c4` | usable per-id slot count = `\|CR_TC\| − 5` | CERTAIN |
+| Name | Decompiler form | Byte offset | Meaning |
+|---|---|---|---|
+| `base` | `*((_DWORD *)this + 560)` | `Target+0x8c0` | first SFLAG number of the TC reserved range = `CR_TC[0]` |
+| `count` | `*((_DWORD *)this + 561)` | `Target+0x8c4` | usable per-id slot count = `\|CR_TC\| − 5` |
 
 > **NOTE —** `count` is **not** the size of the reserved range. It is the size *minus the five named top slots*. The reserved range has `|CR_TC|` integers; `count = |CR_TC| − 5` of them are the per-id window, and the remaining five are the named cross-core barriers this page computes. Confusing `count` with `|CR_TC|` over-counts the usable ids by exactly five and collides the per-key barriers with the global slot.
 
@@ -165,13 +165,13 @@ SFLAG number space (TC compiler_reserved range = [base, base+|CR_TC|) ):
                                                             permanent gap (no phase maps here)
 ```
 
-| Slot | Accessor | Formula | Gate / bound | Confidence |
-|---|---|---|---|---|
-| `base + count + 0` | `GetMegacoreBarrierSyncFlagNumber` @`0x1d60f4e0` | `base + count` | `chip_config().Megacore()` (line 154) | CERTAIN |
-| `base + count + 1` | — (permanent gap) | `base + count + 1` | not producible by any accessor | CERTAIN |
-| `base + count + 2` | `GetAllReduceSyncFlagNumber(1)` @`0x1d60f440` | `base + count + phase + 1`, `phase=1` | `0 < phase < 3` (lines 143/144) | CERTAIN |
-| `base + count + 3` | `GetAllReduceSyncFlagNumber(2)` @`0x1d60f440` | `base + count + phase + 1`, `phase=2` | `0 < phase < 3` (lines 143/144) | CERTAIN |
-| `base + count + 4` | `GetGlobalBarrierSyncFlagNumber` @`0x1d60f420` | `base + count + 4` | (none) | CERTAIN |
+| Slot | Accessor | Formula | Gate / bound |
+|---|---|---|---|
+| `base + count + 0` | `GetMegacoreBarrierSyncFlagNumber` @`0x1d60f4e0` | `base + count` | `chip_config().Megacore()` (line 154) |
+| `base + count + 1` | — (permanent gap) | `base + count + 1` | not producible by any accessor |
+| `base + count + 2` | `GetAllReduceSyncFlagNumber(1)` @`0x1d60f440` | `base + count + phase + 1`, `phase=1` | `0 < phase < 3` (lines 143/144) |
+| `base + count + 3` | `GetAllReduceSyncFlagNumber(2)` @`0x1d60f440` | `base + count + phase + 1`, `phase=2` | `0 < phase < 3` (lines 143/144) |
+| `base + count + 4` | `GetGlobalBarrierSyncFlagNumber` @`0x1d60f420` | `base + count + 4` | (none) |
 
 The `−5` in `Target::Init` and these five slots are two views of one fact: the carve reserves five integers off the top of the range, and the accessors index back into exactly those five. The gap at `+1` means only four of the five reserved slots are ever materialised by an accessor — the fifth integer is a deliberate spacer.
 

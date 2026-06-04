@@ -118,19 +118,19 @@ per_opcode_switch:                                        // 0x13098b62
 
 `root` is `inst.shape`; `ChunksIn(s) = Target::ChunksIn(s)` (@ `0x1d619900`) is the op's chunk-granule element count. Jump-table targets are byte-verified from `.rodata 0xae0dcdc`; weight constants are byte-verified from `.rodata`.
 
-| Weight / path | Constant | Block @ | Opcodes (hex = name) | Confidence |
-|---|---|---|---|---|
-| `0.0` — no cost | (xmm0 pre-zeroed, `ret`) | `0x130995ee` | `0x18` bitcast, `0x27` concatenate, `0x29` constant, `0x2A` convert, `0x43` iota, `0x61` reshape, `0x81` tuple | CERTAIN |
-| `1.0` — `ChunksIn(root)` (DEFAULT) | (no `vmulsd`) | `0x13098e2f` | every opcode `0x19..0x80` not listed below (cheap unary/binary elementwise, structural, collective, control-flow, I/O) | CERTAIN |
-| `2.0` — `ChunksIn(root) × 2` | `vaddsd` self | `0x13098de1` | `0x52` parameter — **only** when `operand_index ≤ 1`; else `0.0` | CERTAIN |
-| `4.0` — `ChunksIn(root) × 4` | `0xa2de830` = `4.0` | `0x13098d8e` | `0x47` logistic | CERTAIN |
-| `4.0` — `ChunksIn(operand(0)) × 4` | `0xa2de830` = `4.0` | `0x13098d74` | `0x5B` reduce (priced over the **reduced-over** operand, not the root) | CERTAIN |
-| `4.0` — broadcast cross-lane | `0xa2de830` = `4.0` | `0x13098b87` | `0x1A` broadcast (conditional — see BROADCAST PATH) | CERTAIN |
-| `10.0` — `ChunksIn(root) × 10` | `0xa2df498` = `10.0` | `0x13098d52` | `0x32` divide | CERTAIN |
-| `42.0` — `ChunksIn(root) × 42` | `0xa2df1a0` = `42.0` | `0x13098e49` | `0x38` erf | CERTAIN |
-| conv flop path | (see CONV FORMULA) | `0x13098db0` | `0x2B` convolution | CERTAIN |
-| fusion recurse / cache | `flat_hash_map` @ `this+0x80` | `0x13098e09` | `0x3D` fusion | CERTAIN |
-| dot CHECK-fatal | `LogMessageFatal` | `0x130996c5` | `0x34` dot | CERTAIN |
+| Weight / path | Constant | Block @ | Opcodes (hex = name) |
+|---|---|---|---|
+| `0.0` — no cost | (xmm0 pre-zeroed, `ret`) | `0x130995ee` | `0x18` bitcast, `0x27` concatenate, `0x29` constant, `0x2A` convert, `0x43` iota, `0x61` reshape, `0x81` tuple |
+| `1.0` — `ChunksIn(root)` (DEFAULT) | (no `vmulsd`) | `0x13098e2f` | every opcode `0x19..0x80` not listed below (cheap unary/binary elementwise, structural, collective, control-flow, I/O) |
+| `2.0` — `ChunksIn(root) × 2` | `vaddsd` self | `0x13098de1` | `0x52` parameter — **only** when `operand_index ≤ 1`; else `0.0` |
+| `4.0` — `ChunksIn(root) × 4` | `0xa2de830` = `4.0` | `0x13098d8e` | `0x47` logistic |
+| `4.0` — `ChunksIn(operand(0)) × 4` | `0xa2de830` = `4.0` | `0x13098d74` | `0x5B` reduce (priced over the **reduced-over** operand, not the root) |
+| `4.0` — broadcast cross-lane | `0xa2de830` = `4.0` | `0x13098b87` | `0x1A` broadcast (conditional — see BROADCAST PATH) |
+| `10.0` — `ChunksIn(root) × 10` | `0xa2df498` = `10.0` | `0x13098d52` | `0x32` divide |
+| `42.0` — `ChunksIn(root) × 42` | `0xa2df1a0` = `42.0` | `0x13098e49` | `0x38` erf |
+| conv flop path | (see CONV FORMULA) | `0x13098db0` | `0x2B` convolution |
+| fusion recurse / cache | `flat_hash_map` @ `this+0x80` | `0x13098e09` | `0x3D` fusion |
+| dot CHECK-fatal | `LogMessageFatal` | `0x130996c5` | `0x34` dot |
 
 The jump table has exactly **11 distinct targets**: the ten listed above plus the shared `0.0` block (`0x130995ee`). Opcode→name resolution follows the alphabetical XLA `HloOpcode` enum (`0x18` kBitcast … `0x81` kTuple); the load-time values used by the function — `0x34` dot (fatal), `0x38` erf, `0x47` logistic, `0x52` parameter, `0x5B` reduce — are corroborated by the function's own opcode comparisons (e.g. `GetCyclesIfFused` tests `opcode != 91` for the reduce special-case, `91 == 0x5B`).
 
@@ -435,41 +435,41 @@ For the body's `multiply` leaf (default tier) the per-op weight is `ChunksIn([25
 
 ## Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `TpuPriorityFusionQueue::NormalizedComputationCost` | `0x130989a0` | opcode→weight scalar + conv/fusion escapes | CERTAIN |
-| `Target::ChunksIn(Shape&)` | `0x1d619900` | chunk-granule element count (the ×multiplier base) | CERTAIN |
-| `TpuHloCostAnalysis` ctor | `0x130a1620` | conv flop sub-analysis | CERTAIN |
-| `HloCostAnalysis::HandleConvolution` | `0x1e480be0` | conv flop emitter | CERTAIN |
-| `HloCostAnalysis::flop_count` | `0x1e4841e0` | reads cached flop property | CERTAIN |
-| `LhsFormatForConvInstruction` | `0x1307bd40` | conv LHS → `MatmulDataFormat` (peak select) | MEDIUM |
-| `Target::FlopsPerSecond` | `0x1d61f280` | per-format peak (vtable+0x718) | HIGH |
-| `Target::VectorAluSlotsPerTensorCore` | `0x1d61e380` | VALU slot count (vtable+0x500) | HIGH |
-| `Target::TensorCoreFrequencyInMegaHertz` | `0x1d615b60` | TC clock (cycles ← seconds) | CERTAIN |
-| `CostModel::GetCyclesIfFused` | `0x130aba40` | fused-pair bundle cost driver | CERTAIN |
-| `IsFusionSupportedHlo` | `0x130abee0` | eligibility gate (→ 1-cycle trivial) | CERTAIN |
-| `IsConvLowerable` | `0x14553620` | conv-lowerable predicate | CERTAIN |
-| `ExtractConvLikeHlo` | `0x1d6aa140` | pull the conv/reduce-window root | CERTAIN |
-| `GetReduceWindowType` | `0x1454d4a0` | `−1`/`2` max-pool sentinel | HIGH |
-| `FusionState::Create` | `0x130ab320` | combined operand set + internal-edge map | CERTAIN |
-| `CostModel::IsProducerUse` | `0x130ab0c0` | drops internal-edge input DMA | HIGH |
-| `CostModel::GetHloResourcesImpl` | `0x130aa580` | prices the merged op | CERTAIN |
-| `ScaleAndSumOutputFusionResourceVectors` | `0x130b8320` | 4-emitter combine; slots 9/11 MAX | CERTAIN |
-| `ResourceVector::Add` | `0x1c89b820` | per-slot accumulate (Defaults) | CERTAIN |
-| `ResourceVector::MaxResourceCycles` | `0x1c89b9e0` | scalar bundle-cycle reduction | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `TpuPriorityFusionQueue::NormalizedComputationCost` | `0x130989a0` | opcode→weight scalar + conv/fusion escapes |
+| `Target::ChunksIn(Shape&)` | `0x1d619900` | chunk-granule element count (the ×multiplier base) |
+| `TpuHloCostAnalysis` ctor | `0x130a1620` | conv flop sub-analysis |
+| `HloCostAnalysis::HandleConvolution` | `0x1e480be0` | conv flop emitter |
+| `HloCostAnalysis::flop_count` | `0x1e4841e0` | reads cached flop property |
+| `LhsFormatForConvInstruction` | `0x1307bd40` | conv LHS → `MatmulDataFormat` (peak select) |
+| `Target::FlopsPerSecond` | `0x1d61f280` | per-format peak (vtable+0x718) |
+| `Target::VectorAluSlotsPerTensorCore` | `0x1d61e380` | VALU slot count (vtable+0x500) |
+| `Target::TensorCoreFrequencyInMegaHertz` | `0x1d615b60` | TC clock (cycles ← seconds) |
+| `CostModel::GetCyclesIfFused` | `0x130aba40` | fused-pair bundle cost driver |
+| `IsFusionSupportedHlo` | `0x130abee0` | eligibility gate (→ 1-cycle trivial) |
+| `IsConvLowerable` | `0x14553620` | conv-lowerable predicate |
+| `ExtractConvLikeHlo` | `0x1d6aa140` | pull the conv/reduce-window root |
+| `GetReduceWindowType` | `0x1454d4a0` | `−1`/`2` max-pool sentinel |
+| `FusionState::Create` | `0x130ab320` | combined operand set + internal-edge map |
+| `CostModel::IsProducerUse` | `0x130ab0c0` | drops internal-edge input DMA |
+| `CostModel::GetHloResourcesImpl` | `0x130aa580` | prices the merged op |
+| `ScaleAndSumOutputFusionResourceVectors` | `0x130b8320` | 4-emitter combine; slots 9/11 MAX |
+| `ResourceVector::Add` | `0x1c89b820` | per-slot accumulate (Defaults) |
+| `ResourceVector::MaxResourceCycles` | `0x1c89b9e0` | scalar bundle-cycle reduction |
 
 ### Weight / Formula Constants (`.rodata`, byte-verified)
 
-| Address | Value | Used by | Confidence |
-|---|---|---|---|
-| `0xa2df230` | `1.0` | default weight / conv derate `+1.0` / multiplier base | CERTAIN |
-| `0xa2de830` | `4.0` | logistic, reduce, cross-lane broadcast | CERTAIN |
-| `0xa2df498` | `10.0` | divide | CERTAIN |
-| `0xa2df1a0` | `42.0` | erf | CERTAIN |
-| `0xa2e0530` | `3.4028e38` (FLT_MAX) | max-pool `GetCyclesIfFused` sentinel | CERTAIN |
-| `0xa2e0208` | `1.0e6` | conv `freq_MHz → Hz` | CERTAIN |
-| `0xa2e05a8` | `-0.03` | conv derate slope `1 − 0.03·Target[+0x4ac]` | CERTAIN |
-| `0xa2e0118` | `0.00048828125` (1/2048) | grouped-conv flop→cost factor | CERTAIN |
+| Address | Value | Used by |
+|---|---|---|
+| `0xa2df230` | `1.0` | default weight / conv derate `+1.0` / multiplier base |
+| `0xa2de830` | `4.0` | logistic, reduce, cross-lane broadcast |
+| `0xa2df498` | `10.0` | divide |
+| `0xa2df1a0` | `42.0` | erf |
+| `0xa2e0530` | `3.4028e38` (FLT_MAX) | max-pool `GetCyclesIfFused` sentinel |
+| `0xa2e0208` | `1.0e6` | conv `freq_MHz → Hz` |
+| `0xa2e05a8` | `-0.03` | conv derate slope `1 − 0.03·Target[+0x4ac]` |
+| `0xa2e0118` | `0.00048828125` (1/2048) | grouped-conv flop→cost factor |
 
 ---
 

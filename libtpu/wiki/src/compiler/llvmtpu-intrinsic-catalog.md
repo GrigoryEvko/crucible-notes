@@ -181,21 +181,21 @@ The operand/result declaration of each intrinsic is recoverable from the binary 
 
 466 of the 1356 carry a typed `create`; the other 890 use the generic `(TypeRange, ValueRange, ArrayRef<NamedAttribute>)` default builder (result type inferred via `SameOperandsAndResultType`/`InferType`, operand count by name-family arity). The typed forms verified against the binary:
 
-| intrinsic (class) | `create` args (after Location) | operands | Conf |
-|---|---|---|---|
-| `tpu_addrspacecast` (addrspacecast) | `Type, Value` | 1 res, 1 opnd | CERTAIN |
-| `tpu_addrspacecast_smem` / `_spmem` / `_*_tec` | `Type, Value, Value` | + tile-window/base | CERTAIN |
-| `tpu_dma_*_sc_simple` (DMA) | `Value ×8` | 8-field descriptor | CERTAIN |
-| `tpu_dma_*_sc_single_strided` (DMA) | `Value ×10` | + stride | CERTAIN |
-| `tpu_dma_*_sc_general` (DMA) | `Value ×16` | multi-dim | CERTAIN |
-| `tpu_stream_linear_*` (stream) | `Value ×6` | stream descriptor | HIGH |
-| `tpu_stream_indirect_*` (stream) | `Value ×8` | + index/offset stream | HIGH |
-| `tpu_syncadd` (sync) | `Value, Value` | sflag, delta | CERTAIN |
-| `tpu_fetch_and_add` (sync) | `Value, Value, Value` | sflag, addr, value | CERTAIN |
-| `tpu_*_macro` (EUP, e.g. `tpu_sin_macro`) | `Type, Value` | 1 res, 1 opnd | HIGH |
-| `tpu_rdcbreg_offset` / `_size` (CBREG) | `Type, Value` | result, cbreg | HIGH |
-| `tpu_wrcbreg_offset` (CBREG) | `Type, Value, Value` | cbreg, value | HIGH |
-| `tpu_inttoptr` / `tpu_ptrtoint` (ptr) | `Type, Value` | result, val | HIGH |
+| intrinsic (class) | `create` args (after Location) | operands |
+|---|---|---|
+| `tpu_addrspacecast` (addrspacecast) | `Type, Value` | 1 res, 1 opnd |
+| `tpu_addrspacecast_smem` / `_spmem` / `_*_tec` | `Type, Value, Value` | + tile-window/base |
+| `tpu_dma_*_sc_simple` (DMA) | `Value ×8` | 8-field descriptor |
+| `tpu_dma_*_sc_single_strided` (DMA) | `Value ×10` | + stride |
+| `tpu_dma_*_sc_general` (DMA) | `Value ×16` | multi-dim |
+| `tpu_stream_linear_*` (stream) | `Value ×6` | stream descriptor |
+| `tpu_stream_indirect_*` (stream) | `Value ×8` | + index/offset stream |
+| `tpu_syncadd` (sync) | `Value, Value` | sflag, delta |
+| `tpu_fetch_and_add` (sync) | `Value, Value, Value` | sflag, addr, value |
+| `tpu_*_macro` (EUP, e.g. `tpu_sin_macro`) | `Type, Value` | 1 res, 1 opnd |
+| `tpu_rdcbreg_offset` / `_size` (CBREG) | `Type, Value` | result, cbreg |
+| `tpu_wrcbreg_offset` (CBREG) | `Type, Value, Value` | cbreg, value |
+| `tpu_inttoptr` / `tpu_ptrtoint` (ptr) | `Type, Value` | result, val |
 
 The DMA `_single_strided` tier carries **10** SSA operands: the demangled `tpu_dma_hbm_to_hbm_sc_single_strided::create` arg list is `Value` + 9×`S5_` (a back-reference to the prior `Value` type), placing the stride tier two operands above the `_simple` 8 and below the `_general` 16. The stream family is likewise not uniform — `linear`/`strided` patterns carry 6 operands, but `indirect` patterns carry 8, the two extras being the index/offset stream and its CBREG window.
 

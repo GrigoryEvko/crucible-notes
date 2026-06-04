@@ -35,12 +35,12 @@ For reimplementation — i.e. to rebuild this census from the binary — the con
 
 The RTTI sidecar is an array of 160,351 records, each a `(struct-address, mangled-symbol, name-string)` tuple harvested from `.rodata` / `.data.rel.ro`. Grouping by the three-letter Itanium prefix of the mangled symbol gives the top-level shape of the type system:
 
-| Record kind | Prefix | Count | Meaning | Confidence |
-|---|---|---:|---|---|
-| Typeinfo struct | `_ZTI` | 60,457 | one per polymorphic *type* (class/si/vmi + pointer/pbase/fundamental) | CERTAIN |
-| Vtable group | `_ZTV` | 39,244 | one per *concrete* polymorphic class (has at least one instantiable object) | CERTAIN |
-| Typeinfo-name string | `_ZTS` | 60,650 | the human-readable mangled type name a `_ZTI` points at | CERTAIN |
-| Demangler-prefix strings | (none) | 2 | the literals `"typeinfo for "` / `"typeinfo name for "` used by the in-binary demangler | CERTAIN |
+| Record kind | Prefix | Count | Meaning |
+|---|---|---:|---|
+| Typeinfo struct | `_ZTI` | 60,457 | one per polymorphic *type* (class/si/vmi + pointer/pbase/fundamental) |
+| Vtable group | `_ZTV` | 39,244 | one per *concrete* polymorphic class (has at least one instantiable object) |
+| Typeinfo-name string | `_ZTS` | 60,650 | the human-readable mangled type name a `_ZTI` points at |
+| Demangler-prefix strings | (none) | 2 | the literals `"typeinfo for "` / `"typeinfo name for "` used by the in-binary demangler |
 
 The arithmetic closes exactly: `60,457 + 39,244 + 60,650 + 2 = 160,351`. The three counts are independent measurements — `_ZTI` and `_ZTV` are *struct* addresses in `.data.rel.ro`, `_ZTS` are *string* addresses in `.rodata` — and they are internally consistent: there are more typeinfos than vtables (60,457 vs 39,244) precisely because **20,638 of the 59,881 class-kind typeinfos are abstract** — pure-virtual interface bases that carry identity but own no vtable (see [§ Cross-Validation](#cross-validation-rtti--vtable)). There are slightly more `_ZTS` strings than `_ZTI` structs (60,650 vs 60,457) because a handful of name strings are shared or were emitted for types whose `_ZTI` was folded.
 
@@ -52,18 +52,18 @@ The arithmetic closes exactly: `60,457 + 39,244 + 60,650 + 2 = 160,351`. The thr
 
 Bucketing each typeinfo by the **leading namespace token of its mangled `_ZTIN<len><namespace>` symbol** gives the demographic of the type forest — and confirms that the compiler/runtime core, not the vendored support libraries, dominates the polymorphic surface. (These are leading-namespace buckets, *not* demangled top-token counts: the latter over-credit `xla`/`tensorflow` for every `absl::StatusOr<xla::…>` / `std::unique_ptr<…>` wrapper whose owning class lives elsewhere. The [namespace census appendix](../appendix/rtti-namespace-census.md) owns the full breakdown.)
 
-| Namespace | Typeinfos | Role | Confidence |
-|---|---:|---|---|
-| `mlir` | 13,091 | MLIR dialects, ops, passes, patterns, interfaces | CERTAIN |
-| `asic_sw` | 11,379 | TPU driver / profiler / ISA event-control trees | CERTAIN |
-| `tensorflow` | 3,108 | TF op-kernels, graph, TFRT TPU | CERTAIN |
-| `xla` | 3,036 | HLO, thunks, HLO passes, jellyfish codegen | CERTAIN |
-| `llvm` | 2,940 | embedded LLVM backend (codegen, Attributor, VPlan) | CERTAIN |
-| *(anon ns)* | 2,352 | translation-unit-local classes (`_GLOBAL__N_`) | CERTAIN |
-| `dnnl` | 1,888 | oneDNN primitive descriptors / JIT kernels | CERTAIN |
-| `std` | 1,787 | libstdc++ template plumbing | CERTAIN |
-| `grpc_core` | 1,502 | gRPC ref-counted / orphanable object trees | CERTAIN |
-| `platforms_deepsea` | 576 | TPU ISA encoders, debugger services | CERTAIN |
+| Namespace | Typeinfos | Role |
+|---|---:|---|
+| `mlir` | 13,091 | MLIR dialects, ops, passes, patterns, interfaces |
+| `asic_sw` | 11,379 | TPU driver / profiler / ISA event-control trees |
+| `tensorflow` | 3,108 | TF op-kernels, graph, TFRT TPU |
+| `xla` | 3,036 | HLO, thunks, HLO passes, jellyfish codegen |
+| `llvm` | 2,940 | embedded LLVM backend (codegen, Attributor, VPlan) |
+| *(anon ns)* | 2,352 | translation-unit-local classes (`_GLOBAL__N_`) |
+| `dnnl` | 1,888 | oneDNN primitive descriptors / JIT kernels |
+| `std` | 1,787 | libstdc++ template plumbing |
+| `grpc_core` | 1,502 | gRPC ref-counted / orphanable object trees |
+| `platforms_deepsea` | 576 | TPU ISA encoders, debugger services |
 
 Of the 60,457 `_ZTI` structs, 46,078 carry a leading namespace and 14,379 are global-scope or compound types (pointer/function/substitution). The sum `mlir + xla + llvm + tensorflow + asic_sw + platforms_deepsea` is the compiler/runtime core; `std`, `absl`, `dnnl`, `Eigen`, `grpc`, OR-tools are vendored support. The single largest *tree*, however, lives under `proto2` (the protobuf message universe) — wide but shallow, and not the largest *namespace*.
 
@@ -73,31 +73,31 @@ Of the 60,457 `_ZTI` structs, 46,078 carry a leading namespace and 14,379 are gl
 
 A hierarchy's **width** is its count of transitive descendants; its **depth** is the longest downward chain from the root. The forest has 16,761 class roots, of which 2,094 are "real" hierarchies (≥ 2 descendants). The table below is the curated top tier — the structurally central trees, with pure template/plumbing trees (e.g. `std::__shared_count` at width 1,338, the four `mlir::spirv::Query*InterfaceTraits::Concept` at 376 each) excluded except where they are the binary's defining structure.
 
-| Width | Depth | Root class | Root `_ZTI` | Root `_ZTV` | Role | Confidence |
-|---:|---:|---|---|---|---|---|
-| 8013 | 3 | `proto2::MessageLite` | `0x22034138` | abstract | protobuf message reflection (Message + 8,007 generated msgs) | HIGH |
-| 6142 | 9 | `mlir::Pattern` | `0x21cea698` | abstract | MLIR rewrite / conversion / lowering pattern tree | HIGH |
-| 6052 | 2 | `mlir::OperationName::InterfaceConcept` | `0x217b1000` | abstract | MLIR op-interface `Model<Op>` dispatch | HIGH |
-| 2069 | 6 | `dnnl::impl::c_compatible` | `0x21b69258` | abstract | oneDNN primitive-descriptor / JIT base | HIGH |
-| 1122 | 4 | `tensorflow::OpKernel` | `0x218114c8` | `0x218113d8` | TF op-kernel base (TPU embedding / XLA kernels) | HIGH |
-| 821 | 1 | `asic_sw::…::profiler::EventControlInterface` | `0x2175c798` | abstract | per-lane-cluster TPU perf-counter event control | HIGH |
-| 628 | 5 | `llvm::Pass` | `0x21ced3b8` | `0x21ced328` | LLVM legacy pass-manager hierarchy | HIGH |
-| 606 | 7 | `mlir::Pass` | `0x21c2c450` | `0x21c2c3d8` | MLIR pass hierarchy (Op/Module/Function passes) | HIGH |
-| 551 | 5 | `Xbyak::CodeArray` | `0x21b6d738` | `0x21b6d818` | Xbyak JIT code-generator base (oneDNN backend) | HIGH |
-| 442 | 6 | `grpc_core::PolymorphicRefCount` | `0x21ca0128` | abstract | gRPC ref-counted object base | HIGH |
-| 361 | 4 | `xla::HloPassInterface` | `0x217f4428` | abstract | XLA HLO compiler-pass interface | HIGH |
-| 329 | 9 | `llvm::AbstractState` | `0x218540e8` | abstract | LLVM Attributor abstract-attribute state machine | HIGH |
-| 299 | 8 | `llvm::IRPosition` | `0x21b345d8` | abstract | LLVM Attributor IR-position abstraction | HIGH |
-| 299 | 8 | `llvm::AADepGraphNode` | `0x21854120` | `0x218540f8` | LLVM Attributor dependency-graph node | HIGH |
-| 184 | 4 | `grpc_core::Orphanable` | `0x21ca01b8` | abstract | gRPC orphanable object base | HIGH |
-| 166 | 3 | `llvm::cl::Option` | `0x21fe0cc0` | `0x21fe0c58` | LLVM command-line option base (feeds MLIR `PassOptions`) | HIGH |
-| 140 | 4 | `tsl::core::RefCounted` | `0x215f9b18` | abstract | TSL/TF ref-counted base | HIGH |
-| 114 | 6 | `riegeli::Object` | `0x220291a8` | `0x22029168` | riegeli record-IO object base | HIGH |
-| 100 | 3 | `mlir::DialectInterface` | `0x21cea480` | abstract | MLIR dialect-interface base | HIGH |
-| 68 | 4 | `xla::HloInstruction` | `0x21d2ce88` | `0x21d2cde8` | XLA HLO instruction tree | HIGH |
-| 53 | 3 | `xla::cpu::Thunk` | `0x219b15a0` | `0x219b1550` | XLA:CPU runtime thunk tree | HIGH |
-| 44 | 10 | `grpc::Service` | `0x216162d8` | `0x216162e8` | gRPC generated-service base (**deepest in the binary**) | HIGH |
-| 23 | 3 | `llvm::MCStreamer` | `0x21b60b70` | `0x21b60630` | LLVM MC streamer tree (+ TPU SparseCore `SCStreamer`) | HIGH |
+| Width | Depth | Root class | Root `_ZTI` | Root `_ZTV` | Role |
+|---:|---:|---|---|---|---|
+| 8013 | 3 | `proto2::MessageLite` | `0x22034138` | abstract | protobuf message reflection (Message + 8,007 generated msgs) |
+| 6142 | 9 | `mlir::Pattern` | `0x21cea698` | abstract | MLIR rewrite / conversion / lowering pattern tree |
+| 6052 | 2 | `mlir::OperationName::InterfaceConcept` | `0x217b1000` | abstract | MLIR op-interface `Model<Op>` dispatch |
+| 2069 | 6 | `dnnl::impl::c_compatible` | `0x21b69258` | abstract | oneDNN primitive-descriptor / JIT base |
+| 1122 | 4 | `tensorflow::OpKernel` | `0x218114c8` | `0x218113d8` | TF op-kernel base (TPU embedding / XLA kernels) |
+| 821 | 1 | `asic_sw::…::profiler::EventControlInterface` | `0x2175c798` | abstract | per-lane-cluster TPU perf-counter event control |
+| 628 | 5 | `llvm::Pass` | `0x21ced3b8` | `0x21ced328` | LLVM legacy pass-manager hierarchy |
+| 606 | 7 | `mlir::Pass` | `0x21c2c450` | `0x21c2c3d8` | MLIR pass hierarchy (Op/Module/Function passes) |
+| 551 | 5 | `Xbyak::CodeArray` | `0x21b6d738` | `0x21b6d818` | Xbyak JIT code-generator base (oneDNN backend) |
+| 442 | 6 | `grpc_core::PolymorphicRefCount` | `0x21ca0128` | abstract | gRPC ref-counted object base |
+| 361 | 4 | `xla::HloPassInterface` | `0x217f4428` | abstract | XLA HLO compiler-pass interface |
+| 329 | 9 | `llvm::AbstractState` | `0x218540e8` | abstract | LLVM Attributor abstract-attribute state machine |
+| 299 | 8 | `llvm::IRPosition` | `0x21b345d8` | abstract | LLVM Attributor IR-position abstraction |
+| 299 | 8 | `llvm::AADepGraphNode` | `0x21854120` | `0x218540f8` | LLVM Attributor dependency-graph node |
+| 184 | 4 | `grpc_core::Orphanable` | `0x21ca01b8` | abstract | gRPC orphanable object base |
+| 166 | 3 | `llvm::cl::Option` | `0x21fe0cc0` | `0x21fe0c58` | LLVM command-line option base (feeds MLIR `PassOptions`) |
+| 140 | 4 | `tsl::core::RefCounted` | `0x215f9b18` | abstract | TSL/TF ref-counted base |
+| 114 | 6 | `riegeli::Object` | `0x220291a8` | `0x22029168` | riegeli record-IO object base |
+| 100 | 3 | `mlir::DialectInterface` | `0x21cea480` | abstract | MLIR dialect-interface base |
+| 68 | 4 | `xla::HloInstruction` | `0x21d2ce88` | `0x21d2cde8` | XLA HLO instruction tree |
+| 53 | 3 | `xla::cpu::Thunk` | `0x219b15a0` | `0x219b1550` | XLA:CPU runtime thunk tree |
+| 44 | 10 | `grpc::Service` | `0x216162d8` | `0x216162e8` | gRPC generated-service base (**deepest in the binary**) |
+| 23 | 3 | `llvm::MCStreamer` | `0x21b60b70` | `0x21b60630` | LLVM MC streamer tree (+ TPU SparseCore `SCStreamer`) |
 
 > **GOTCHA —** four of the widest trees are *abstract* — their `_ZTV` column reads "abstract" because the root carries `_ZTI` but **owns no vtable**. `proto2::MessageLite`, `mlir::Pattern`, `mlir::OperationName::InterfaceConcept`, `HloPassInterface`, `AbstractState`, `IRPosition`, `EventControlInterface` are all pure-virtual interface bases. A reimplementer hunting for "the MessageLite vtable" to hook will not find one: dispatch lives one level down, in each concrete subclass's own `_ZTV`. This is the recurring **per-generation-family** pattern — an interface root with a flat fan of concrete leaves that each fully override (see the TPU codec / cycle-table / encoder families, [Per-Generation Function Dispatcher](per-gen-function-dispatcher.md)).
 
@@ -132,17 +132,17 @@ The `Model<Op>` arrays are exactly the MLIR-Op-Model class of the [dispatch-tabl
 
 The HLO instruction tree is the canonical mid-size hierarchy and the one most likely to be hooked, so it is worth its full structure. Root `_ZTI` `0x21d2ce88`, root `_ZTV` `0x21d2cde8`; 68 transitive descendants over 38 direct subclasses; 9 internal (multi-level) nodes, 59 concrete leaves; depth 4.
 
-| Internal node | children | flavor | vtable | Confidence |
-|---|---:|---|---|---|
-| `HloDimensionsInstruction` | 7 | si | `0x21d2fb20` | HIGH |
-| `HloCollectiveInstruction` | 5 | si | `0x21d2dd40` | HIGH |
-| `HloSendRecvInstruction` | 4 | si | `0x21d2d9f8` | HIGH |
-| `HloChannelInstruction` | 3 | si | `0x21d2d8b0` | HIGH |
-| `HloCallableInstruction` | 3 | **vmi** | `0x21d2ea00` | HIGH |
-| `HloBatchNormInstruction` | 3 | si | `0x21d2d1b0` | HIGH |
-| `HloDynamicIndexInstruction` | 2 | si | abstract | HIGH |
-| `HloAllReduceInstructionBase` | 2 | si | `0x21d2de90` | HIGH |
-| `HloAsyncInstruction` | 1 | si | `0x21d2d4d0` | HIGH |
+| Internal node | children | flavor | vtable |
+|---|---:|---|---|
+| `HloDimensionsInstruction` | 7 | si | `0x21d2fb20` |
+| `HloCollectiveInstruction` | 5 | si | `0x21d2dd40` |
+| `HloSendRecvInstruction` | 4 | si | `0x21d2d9f8` |
+| `HloChannelInstruction` | 3 | si | `0x21d2d8b0` |
+| `HloCallableInstruction` | 3 | **vmi** | `0x21d2ea00` |
+| `HloBatchNormInstruction` | 3 | si | `0x21d2d1b0` |
+| `HloDynamicIndexInstruction` | 2 | si | abstract |
+| `HloAllReduceInstructionBase` | 2 | si | `0x21d2de90` |
+| `HloAsyncInstruction` | 1 | si | `0x21d2d4d0` |
 
 The deepest chain (depth 4) is `HloInstruction → HloChannelInstruction → HloCollectiveInstruction → HloAllReduceInstructionBase → HloAllReduceInstruction`. The paired `xla::DfsHloVisitorBase<HloInstruction const*>` (52 descendants, `_ZTI` `0x21d2c790`) is the double-dispatch visitor counterpart. `HloCallableInstruction` is the lone multiple-inheritance node in the tree — a `__vmi` class mixing `HloInstruction` (`0x21d2ce88`) with the empty `HloAliasible` mixin (`0x21d2ce98`); because the second base is empty it produces no secondary sub-vtable, so the `__vmi` group at `0x21d2ea00` still carries a single own-typeinfo pointer at `+8`.
 
@@ -152,15 +152,15 @@ The deepest chain (depth 4) is `HloInstruction → HloChannelInstruction → Hlo
 
 Every `_ZTI` is one of the Itanium ABI's `type_info` flavors, and the flavor is encoded in the **first word** of the typeinfo struct: it is a pointer into the address point of the *metatype* vtable (the vtable of the `type_info` subclass itself), which is one of a tiny fixed set. Histogramming the word at `_ZTI+0` therefore classifies all 60,457 typeinfos with no parsing of names:
 
-| Metatype vtable @`_ZTI+0` | Count | `type_info` flavor | Base info | Confidence |
-|---|---:|---|---|---|
-| `0x220485b0` | 16,754 | `__class_type_info` | none — a root with no base | CERTAIN |
-| `0x22048600` | 42,447 | `__si_class_type_info` | single public base @ `+0x10` | CERTAIN |
-| `0x22048668` | 680 | `__vmi_class_type_info` | base array @ `+0x18`, count @ `+0x14` | CERTAIN |
-| `0x220486d0` | 282 | `__pointer_type_info` | — (not a class hierarchy) | CERTAIN |
-| `0x22048528` | 261 | `__function_type_info` | — (not a class hierarchy) | CERTAIN |
-| `0x22048560` | 22 | `__enum_type_info` | — | CERTAIN |
-| *(tail)* | 11 | `__fundamental_type_info` (10, `0x220483d8`) + `__pointer_to_member_type_info` (1, `0x22048708`) | — | HIGH |
+| Metatype vtable @`_ZTI+0` | Count | `type_info` flavor | Base info |
+|---|---:|---|---|
+| `0x220485b0` | 16,754 | `__class_type_info` | none — a root with no base |
+| `0x22048600` | 42,447 | `__si_class_type_info` | single public base @ `+0x10` |
+| `0x22048668` | 680 | `__vmi_class_type_info` | base array @ `+0x18`, count @ `+0x14` |
+| `0x220486d0` | 282 | `__pointer_type_info` | — (not a class hierarchy) |
+| `0x22048528` | 261 | `__function_type_info` | — (not a class hierarchy) |
+| `0x22048560` | 22 | `__enum_type_info` | — |
+| *(tail)* | 11 | `__fundamental_type_info` (10, `0x220483d8`) + `__pointer_to_member_type_info` (1, `0x22048708`) | — |
 
 Class-kind typeinfos (`class` + `si` + `vmi`) total **59,881**; the 576 pointer/function/enum/fundamental records are not class hierarchies and are correctly left as forest roots.
 
@@ -220,14 +220,14 @@ function recover_edges(zti_addr, flavor):
 
 The 680 `__vmi` classes are rare (1.1% of class typeinfos) but structurally important. Their base-count distribution is `1→121, 2→503, 3→34, 4→4, 7→18`. The 121 single-base `__vmi` records are `__vmi` only to carry a non-zero sub-object offset; the 18 seven-base records are abseil `raw_hash_set` policy CRTP plumbing, not compiler logic. The genuine compiler-core diamonds — with their decoded sub-object offsets — are:
 
-| Derived class | bases | sub-object offsets (`offset_flags >> 8`) | Confidence |
-|---|---:|---|---|
-| `llvm::TPUScheduleDAGSlackModulo` | 4 | `ScheduleDAGInstrs` +0 · `TPUScheduleDAGModulo` +3424 · `TPUScheduleDAGComposeFifo` +4528 · `ScheduleDAGInstrsWrapper` +4672 | HIGH |
-| `llvm::TPUScheduleDAGSwingModulo` | 3 | `TPUScheduleDAGSwing` +0 · `TPUScheduleDAGModulo` +3728 · `ScheduleDAGInstrsWrapper` +4832 | HIGH |
-| `llvm::RABasic` | 3 | `MachineFunctionPass` +0 · `RegAllocBase` +56 · `LiveRangeEdit::Delegate` +784 (non-public) | HIGH |
-| `llvm::VPRecipeBase` | 3 | `VPDef` +0 · `ilist_node_with_parent` +16 · `VPUser` +32 | HIGH |
-| `llvm::legacy::FunctionPassManagerImpl` | 3 | `Pass` +0 · `PMDataManager` +32 · `PMTopLevelManager` +416 | HIGH |
-| `xla::TpuHostTransferManager` | 3 | `TransferManager` +0 · `PjRtHostTransferManager` +8 · `enable_shared_from_this<…>` +72 | HIGH |
+| Derived class | bases | sub-object offsets (`offset_flags >> 8`) |
+|---|---:|---|
+| `llvm::TPUScheduleDAGSlackModulo` | 4 | `ScheduleDAGInstrs` +0 · `TPUScheduleDAGModulo` +3424 · `TPUScheduleDAGComposeFifo` +4528 · `ScheduleDAGInstrsWrapper` +4672 |
+| `llvm::TPUScheduleDAGSwingModulo` | 3 | `TPUScheduleDAGSwing` +0 · `TPUScheduleDAGModulo` +3728 · `ScheduleDAGInstrsWrapper` +4832 |
+| `llvm::RABasic` | 3 | `MachineFunctionPass` +0 · `RegAllocBase` +56 · `LiveRangeEdit::Delegate` +784 (non-public) |
+| `llvm::VPRecipeBase` | 3 | `VPDef` +0 · `ilist_node_with_parent` +16 · `VPUser` +32 |
+| `llvm::legacy::FunctionPassManagerImpl` | 3 | `Pass` +0 · `PMDataManager` +32 · `PMTopLevelManager` +416 |
+| `xla::TpuHostTransferManager` | 3 | `TransferManager` +0 · `PjRtHostTransferManager` +8 · `enable_shared_from_this<…>` +72 |
 
 > **NOTE —** every genuine compiler-core diamond decodes to `offset_flags & 1 == 0` — **non-virtual inheritance throughout the core.** There are no virtual bases in the MLIR/XLA/LLVM/TPU code, which means construction vtables (`_ZTC`) and VTTs (`_ZTT`) are effectively absent for the core; only the abseil/std plumbing tail might carry them. The `bit1` public flag is set everywhere except `RABasic → LiveRangeEdit::Delegate` (the delegate mixin is non-public). The single most common `__vmi` pattern overall is `mlir::detail::PassOptions::Option = {llvm::cl::opt, PassOptions::OptionBase}` — the MLIR pass command-line-option adapter, appearing hundreds of times.
 
@@ -251,16 +251,16 @@ For a multiple-inheritance class the group repeats:
 
 The cross-validation walks every `_ZTV`, reads the relocation addend at `_ZTV+8`, and confirms it lands on the `_ZTI` of the same class (join key = the mangled class suffix shared by the `_ZTV`/`_ZTI`/`_ZTS` triple). The result is decisive:
 
-| Quantity | Count | Confidence |
-|---|---:|---|
-| Vtable groups (`_ZTV`) | 39,244 | CERTAIN |
-| Vtable → own-class `_ZTI` at `+8` (direct) | 39,185 | HIGH |
-| Vtable → own-class `_ZTI` via MI secondary structure | 58 | HIGH |
-| Vtable → own-class `_ZTI` (total) | 39,243 | HIGH |
-| Vtable → **different**-class `_ZTI` (mismatch) | **0** | HIGH |
-| Vtable with **no** `_ZTI` anywhere (RTTI-less) | 1 (`libunwind`) | CERTAIN |
-| Concrete class typeinfos (own a vtable) | 39,243 | HIGH |
-| Abstract class typeinfos (no vtable) | 20,638 | HIGH |
+| Quantity | Count |
+|---|---:|
+| Vtable groups (`_ZTV`) | 39,244 |
+| Vtable → own-class `_ZTI` at `+8` (direct) | 39,185 |
+| Vtable → own-class `_ZTI` via MI secondary structure | 58 |
+| Vtable → own-class `_ZTI` (total) | 39,243 |
+| Vtable → **different**-class `_ZTI` (mismatch) | **0** |
+| Vtable with **no** `_ZTI` anywhere (RTTI-less) | 1 (`libunwind`) |
+| Concrete class typeinfos (own a vtable) | 39,243 |
+| Abstract class typeinfos (no vtable) | 20,638 |
 
 39,243 of 39,244 vtables bind to their own-class typeinfo with **zero** cross-class mismatches; the binding is verified bidirectionally. The lone exception is fully explained:
 
@@ -280,11 +280,11 @@ Three structural checks turn the `+8` invariant into a hierarchy cross-check:
 
 The typeinfo↔vtable binding is the bridge between this page and the [Dispatch-Table Taxonomy](dispatch-table-taxonomy.md): every dispatch-table the taxonomy recovers is a vtable group whose `+8` pointer now names its class with certainty. Each top hierarchy maps to a taxonomy class, and the per-generation TPU families resolve to concrete leaf vtables:
 
-| TPU family root (abstract) | Concrete leaf vtables | Confidence |
-|---|---|---|
-| `tpu::TpuCodec` (`0x21d35858`) | Jellyfish `0x21d360f0` · Dragonfish `0x21d35800` · Pufferfish `0x21d36148` · Viperfish `0x21d361a0` · Ghostlite `0x21d35c00` | HIGH |
-| `xla::jellyfish::CycleTable` (`0x21c20008`) | Jf `0x21c1ffb8` · Pf `0x21c20048` · Vf `0x21c200c8` · Glc `0x21c20148` · Gfc `0x21c201c8` | HIGH |
-| `platforms_deepsea::…::isa::Encoder` (`0x21cb6a20`) | EncoderJf `0x21d36ca8` · EncoderDf `0x21d36be0` · per-family `EncoderGl*`/`EncoderVf*`/`EncoderPf*` leaves | HIGH |
+| TPU family root (abstract) | Concrete leaf vtables |
+|---|---|
+| `tpu::TpuCodec` (`0x21d35858`) | Jellyfish `0x21d360f0` · Dragonfish `0x21d35800` · Pufferfish `0x21d36148` · Viperfish `0x21d361a0` · Ghostlite `0x21d35c00` |
+| `xla::jellyfish::CycleTable` (`0x21c20008`) | Jf `0x21c1ffb8` · Pf `0x21c20048` · Vf `0x21c200c8` · Glc `0x21c20148` · Gfc `0x21c201c8` |
+| `platforms_deepsea::…::isa::Encoder` (`0x21cb6a20`) | EncoderJf `0x21d36ca8` · EncoderDf `0x21d36be0` · per-family `EncoderGl*`/`EncoderVf*`/`EncoderPf*` leaves |
 
 Each codec leaf is a `__si` single-inheritance class with no intermediate; the consecutive `CycleTable` leaf addresses (`0x21c1ffb8`…`0x21c201c8`) are the group bases of the per-generation cost-model tables the dispatch taxonomy enumerates as the cycle-table family. The pattern is uniform: an abstract interface root with no own vtable, and a flat fan of per-codename concrete leaves that each fully override — exactly the per-generation vtable-family dispatch documented in the [Per-Generation Function Dispatcher](per-gen-function-dispatcher.md).
 

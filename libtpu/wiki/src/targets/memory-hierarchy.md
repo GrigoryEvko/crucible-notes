@@ -59,13 +59,13 @@ Each tier is a physically distinct on-chip (or, for HBM, on-package) memory with
 ```
 
 
-| Tier | Role | Scope | Word | First gen | Confidence |
-|---|---|---|---|---|---|
-| **HBM** | Device-global backing store; all program inputs/outputs, spill, embeddings | whole chip / per-die | 32 B – 1024 B (per gen) | v2 (all) | CONFIRMED |
-| **VMEM** | Vector working set — the tiled scratchpad MXU/VPU operands stage through | per TensorCore | 512 B (all gens) | v2 (all) | CONFIRMED |
-| **SMEM** | Scalar / sequencer scratchpad — addresses, loop bounds, scalar operands | per TensorCore | 4 B (all gens) | v2 (all) | CONFIRMED |
-| **SFLAG** | Sync-flag tier — the DMA/barrier completion words polled for cross-engine sync | per TensorCore | 4 B (all gens) | v2 (all) | CONFIRMED |
-| **CMEM** | Second large scratchpad (`SharedMemory[CMEM]`) — staging buffer above VMEM | whole chip | 512 B | v4 only | CONFIRMED |
+| Tier | Role | Scope | Word | First gen |
+|---|---|---|---|---|
+| **HBM** | Device-global backing store; all program inputs/outputs, spill, embeddings | whole chip / per-die | 32 B – 1024 B (per gen) | v2 (all) |
+| **VMEM** | Vector working set — the tiled scratchpad MXU/VPU operands stage through | per TensorCore | 512 B (all gens) | v2 (all) |
+| **SMEM** | Scalar / sequencer scratchpad — addresses, loop bounds, scalar operands | per TensorCore | 4 B (all gens) | v2 (all) |
+| **SFLAG** | Sync-flag tier — the DMA/barrier completion words polled for cross-engine sync | per TensorCore | 4 B (all gens) | v2 (all) |
+| **CMEM** | Second large scratchpad (`SharedMemory[CMEM]`) — staging buffer above VMEM | whole chip | 512 B | v4 only |
 
 > **NOTE —** the tiers are software-managed scratchpads, not caches. A reimplementation that models VMEM/SMEM as a coherent cache backed by HBM is wrong: the only data path between tiers is an explicit DMA, priced by `LocalDmaBandwidth`. The compiler chooses each buffer's home tier; nothing migrates a buffer at runtime.
 
@@ -99,20 +99,20 @@ CMEM is a 128 MiB chip-level `SharedMemory[CMEM]` present **only on Pufferfish (
 
 This is the orientation copy of the size/word/bank rows; the authoritative, fully-sourced master table (with bandwidth, clocks, MXU geometry, register files, SparseCore tiers) is [Per-Codename Constants](per-codename-hw-constants.md). The values here are the proto-decoded sizes (`bytes_per_word × word_count`) for the data tiers and the C++ `MemBanks` literals for the bank counts. All CONFIRMED unless flagged.
 
-| Tier / field | v2 JF | v3 DF | v4 PF (std / lite) | v5p / v5e VF | v6e GL | v7x | Confidence |
-|---|---|---|---|---|---|---|---|
-| **HBM size** | 16 GiB | 32 GiB | 32 / 8 GiB | 96 / 16 GiB | 31.5 GiB | 95 / 190 GiB | CONFIRMED |
-| HBM word | 1024 B | 1024 B | 512 B | 32 / 512 B | 32 B | 32 B | CONFIRMED |
-| **VMEM / TensorCore** | 16 MiB | 16 MiB | 16 MiB | 64 / 128 MiB | 128 MiB | 64 MiB | CONFIRMED |
-| VMEM word | 512 B | 512 B | 512 B | 512 B | 512 B | 512 B | CONFIRMED |
-| **SMEM / TensorCore** | 16 KiB | 16 KiB | 1 MiB | 1 MiB | 1 MiB | 1 MiB | CONFIRMED |
-| SMEM word | 4 B | 4 B | 4 B | 4 B | 4 B | 4 B | CONFIRMED |
-| **SFLAG / TensorCore** | 1 KiB | 1 KiB | 2 KiB | 2 KiB | 2 KiB | 16 KiB | CONFIRMED |
-| SFLAG word | 4 B | 4 B | 4 B | 4 B | 4 B | 4 B | CONFIRMED |
-| **CMEM (chip)** | absent | absent | 128 MiB | absent | absent | absent | CONFIRMED |
-| VMEM banks | 8 | 8 | 16 | 32 | 32 | 32 | CONFIRMED |
-| SMEM banks | 2 | 2 | 8 | 8 | 8 | 8 | CONFIRMED |
-| CMEM banks | FATAL | FATAL | 32 | FATAL | FATAL | FATAL | CONFIRMED |
+| Tier / field | v2 JF | v3 DF | v4 PF (std / lite) | v5p / v5e VF | v6e GL | v7x |
+|---|---|---|---|---|---|---|
+| **HBM size** | 16 GiB | 32 GiB | 32 / 8 GiB | 96 / 16 GiB | 31.5 GiB | 95 / 190 GiB |
+| HBM word | 1024 B | 1024 B | 512 B | 32 / 512 B | 32 B | 32 B |
+| **VMEM / TensorCore** | 16 MiB | 16 MiB | 16 MiB | 64 / 128 MiB | 128 MiB | 64 MiB |
+| VMEM word | 512 B | 512 B | 512 B | 512 B | 512 B | 512 B |
+| **SMEM / TensorCore** | 16 KiB | 16 KiB | 1 MiB | 1 MiB | 1 MiB | 1 MiB |
+| SMEM word | 4 B | 4 B | 4 B | 4 B | 4 B | 4 B |
+| **SFLAG / TensorCore** | 1 KiB | 1 KiB | 2 KiB | 2 KiB | 2 KiB | 16 KiB |
+| SFLAG word | 4 B | 4 B | 4 B | 4 B | 4 B | 4 B |
+| **CMEM (chip)** | absent | absent | 128 MiB | absent | absent | absent |
+| VMEM banks | 8 | 8 | 16 | 32 | 32 | 32 |
+| SMEM banks | 2 | 2 | 8 | 8 | 8 | 8 |
+| CMEM banks | FATAL | FATAL | 32 | FATAL | FATAL | FATAL |
 
 Three discontinuities are worth memorizing because they break a "scale everything linearly" reimplementation:
 
@@ -128,20 +128,20 @@ Three discontinuities are worth memorizing because they break a "scale everythin
 
 The runtime view of the whole hierarchy is one contiguous block of `Target` struct fields filled by `Target::Init` from the chip-parts proto. Every tier accessor is a one-instruction getter, verified against the decompiled bodies: `HbmSizeBytes` is `return *((int64_t*)this + 138)` (= `+0x450`), `VmemSizeBytes` is `return *((int*)this + 278)` (= `+0x458`), `SflagSizeBytes` is `return *((uint*)this + 282)` (= `+0x468`). The map below is the field layout a reimplementation must reproduce so the same accessors resolve to the same offsets.
 
-| Target off | Accessor (VA) | Type | Tier datum | Confidence |
-|---|---|---|---|---|
-| `+0x438` / `+0x448` | user-alloc shared-mem limit clamp | int64 | HBM / scoped (CMEM) user-alloc cap | HIGH |
-| `+0x450` | `HbmSizeBytes` (`0x1d615320`) | int64 | HBM size | CONFIRMED |
-| `+0x458` | `VmemSizeBytes` (`0x1d615e00`, `movslq`) | int32 | VMEM size | CONFIRMED |
-| `+0x460` | `CmemSizeBytes` (`0x1d615e20`) | int64 | CMEM size (0 ⇒ absent) | CONFIRMED |
-| `+0x468` | `SflagSizeBytes` (`0x1d615e60`) | int32 | SFLAG size | CONFIRMED |
-| `+0x470` | `SmemSizeBytes` (`0x1d615e40`) | int32 | SMEM size | CONFIRMED |
-| `+0x478` | `BarnaCoreSflagSizeBytes` (`0x1d615f80`) | int32 | BarnaCore SFLAG (v2–v4, gated by `HasBarnaCore`) | CONFIRMED |
-| `+0x4c8` / `+0x4cc` / `+0x4d0` | Sflag/Smem/Vmem `WordSizeLog2` | int32 | per-tier word log2 (byte→word shift) | CONFIRMED |
-| `+0x4f0` | `HbmFullChipBytesPerSecond` (`0x1d6172a0`) | int64 | HBM bandwidth | CONFIRMED |
-| `+0x4f8` | `CmemFullChipBytesPerSecond` (`0x1d6172c0`) | int64 | CMEM bandwidth (0 off-v4) | CONFIRMED |
-| `+0x504` / `+0x508` / `+0x50c` / `+0x510` | Sflag/Smem/Vmem/Cmem `WordSizeBytes` | int32 | per-tier word size | CONFIRMED |
-| `+0x90c` / `+0x910` | TC freq / HBM freq MHz | int32 | clocks (boot-filled, `0xFFFFFFFF` sentinel pre-init) | CONFIRMED |
+| Target off | Accessor (VA) | Type | Tier datum |
+|---|---|---|---|
+| `+0x438` / `+0x448` | user-alloc shared-mem limit clamp | int64 | HBM / scoped (CMEM) user-alloc cap |
+| `+0x450` | `HbmSizeBytes` (`0x1d615320`) | int64 | HBM size |
+| `+0x458` | `VmemSizeBytes` (`0x1d615e00`, `movslq`) | int32 | VMEM size |
+| `+0x460` | `CmemSizeBytes` (`0x1d615e20`) | int64 | CMEM size (0 ⇒ absent) |
+| `+0x468` | `SflagSizeBytes` (`0x1d615e60`) | int32 | SFLAG size |
+| `+0x470` | `SmemSizeBytes` (`0x1d615e40`) | int32 | SMEM size |
+| `+0x478` | `BarnaCoreSflagSizeBytes` (`0x1d615f80`) | int32 | BarnaCore SFLAG (v2–v4, gated by `HasBarnaCore`) |
+| `+0x4c8` / `+0x4cc` / `+0x4d0` | Sflag/Smem/Vmem `WordSizeLog2` | int32 | per-tier word log2 (byte→word shift) |
+| `+0x4f0` | `HbmFullChipBytesPerSecond` (`0x1d6172a0`) | int64 | HBM bandwidth |
+| `+0x4f8` | `CmemFullChipBytesPerSecond` (`0x1d6172c0`) | int64 | CMEM bandwidth (0 off-v4) |
+| `+0x504` / `+0x508` / `+0x50c` / `+0x510` | Sflag/Smem/Vmem/Cmem `WordSizeBytes` | int32 | per-tier word size |
+| `+0x90c` / `+0x910` | TC freq / HBM freq MHz | int32 | clocks (boot-filled, `0xFFFFFFFF` sentinel pre-init) |
 
 The word-size pairs (`WordSizeBytes` + `WordSizeLog2`) exist because every tier address the ISA produces is a *word* address, not a byte address: a buffer's byte size is converted to a hardware word count by `>> WordSizeLog2`, and the allocator asserts each buffer is a multiple of the tier word. The bounds-check assertions that gate addressing are visible verbatim in the binary as `byte_address < target().HbmSizeBytes()`, `< target().VmemSizeBytes()`, `< target().SmemSizeBytes()`, `< target().SflagSizeBytes()` — one per data tier — which is the cleanest evidence that each tier's `Target` size field is the addressing ceiling, not merely a capacity hint.
 
@@ -155,21 +155,21 @@ A reimplementer hits three distinct numberings for the same physical tiers. Keep
 
 The compiler-side `xla::jellyfish::MemorySpace` enum is the string table at `0x21ce6b08`, indexed directly by the enum value (`MemorySpaceToString(e)` is literally `off_21CE6B08[e]`). The cost-model DMA dispatcher `Target::LocalDmaBandwidth` uses a narrower set of the *same* integers — its decompiled body XORs the argument against `1` (Hbm), `3` (Vmem), `4` (Cmem), `5` (Smem) to pick a vtable offset, confirming those four enum values for the data tiers. The LLVM-level address-space IDs are a separate numbering carried in `addrspace(N)` and detailed on [Address-Space IDs](address-space-ids.md).
 
-| Physical tier | `MemorySpace` name | enum int | DMA-dispatcher int | Confidence |
-|---|---|---|---|---|
-| HBM | `hbm` (also `kDefault`) | 1 | 1 | CONFIRMED |
-| HIB (host-interface) | `hib` | 2 | — | CONFIRMED |
-| VMEM | `vmem` | 3 | 3 | CONFIRMED |
-| CMEM | `cmem` | 4 | 4 | CONFIRMED |
-| SMEM | `smem` | 5 | 5 | CONFIRMED |
-| SFLAG | `sflag` | 6 | — | CONFIRMED |
-| IMEM (instr.) | `imem` | 7 | — | CONFIRMED |
-| BarnaCore SMEM | `barna_core_smem` | 9 | — | CONFIRMED |
-| BarnaCore SFLAG | `barna_core_sflag` | 10 | — | CONFIRMED |
-| SC sequencer SFLAG | `sparse_core_sequencer_sflag` | 12 | — | CONFIRMED |
-| host | `host` | 13 | — | CONFIRMED |
-| SC sequencer SMEM | `sparse_core_sequencer_smem` | 14 | — | CONFIRMED |
-| pinned HBM | `pinned_hbm` | 16 | — | CONFIRMED |
+| Physical tier | `MemorySpace` name | enum int | DMA-dispatcher int |
+|---|---|---|---|
+| HBM | `hbm` (also `kDefault`) | 1 | 1 |
+| HIB (host-interface) | `hib` | 2 | — |
+| VMEM | `vmem` | 3 | 3 |
+| CMEM | `cmem` | 4 | 4 |
+| SMEM | `smem` | 5 | 5 |
+| SFLAG | `sflag` | 6 | — |
+| IMEM (instr.) | `imem` | 7 | — |
+| BarnaCore SMEM | `barna_core_smem` | 9 | — |
+| BarnaCore SFLAG | `barna_core_sflag` | 10 | — |
+| SC sequencer SFLAG | `sparse_core_sequencer_sflag` | 12 | — |
+| host | `host` | 13 | — |
+| SC sequencer SMEM | `sparse_core_sequencer_smem` | 14 | — |
+| pinned HBM | `pinned_hbm` | 16 | — |
 
 > **NOTE —** the canonical enum assignment is `hib = 2`, `sflag = 6`, `imem = 7`, all CONFIRMED — there is no extra slot near `hib`. Four independent byte-exact probes pin it: the `MemorySpaceToString` flat lookup (string table `0x21ce6b08`), the `MemorySpaceToDriverResource` (`0x1d6223e0`) per-case switch, the `MakeCmemConstant`/`MakeSparseCoreSequencerSmemConstant` ctors, and the `MemBanks` overrides (see [MemorySpace Enum](../isa/memory-space-enum.md) and [Memory-Space Master Table](../appendix/memory-space-table.md)). The data-tier values (Hbm 1, Vmem 3, Cmem 4, Smem 5) are independently confirmed by the `LocalDmaBandwidth` XOR constants.
 

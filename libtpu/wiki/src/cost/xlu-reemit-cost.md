@@ -120,12 +120,12 @@ return cost;
 
 ### The Three Terms, Interpreted
 
-| Term | When | Value | Confidence |
-|---|---|---|---|
-| Main edge | always (`cur != null`) | `LatencyBetween(cur_anchor, prev_anchor)` on the PreXlu table | CONFIRMED |
-| RPU source-0 miss | `prev` is RPU, `cur` not transpose, `s0->operands(0) != from` | `+ LatencyBetween(cur_anchor, s0)` | CONFIRMED |
-| RPU source-1 miss | same, `s1->operands(0) != to` | `+ LatencyBetween(cur_anchor, s1)` | CONFIRMED |
-| Transpose chain | `prev` is TransposeTile | `+ (read_set_size − 1) * LatencyBetween(elem0, elem1)` | CONFIRMED |
+| Term | When | Value |
+|---|---|---|
+| Main edge | always (`cur != null`) | `LatencyBetween(cur_anchor, prev_anchor)` on the PreXlu table |
+| RPU source-0 miss | `prev` is RPU, `cur` not transpose, `s0->operands(0) != from` | `+ LatencyBetween(cur_anchor, s0)` |
+| RPU source-1 miss | same, `s1->operands(0) != to` | `+ LatencyBetween(cur_anchor, s1)` |
+| Transpose chain | `prev` is TransposeTile | `+ (read_set_size − 1) * LatencyBetween(elem0, elem1)` |
 
 The dominant term is the per-`(op,op)` edge — the cost of issuing the new op behind the XLU's last op. For an RPU op, **each source operand that is not the cross-region boundary value** (`from`/`to`) adds one more edge: the fan-in hazard of materializing a non-boundary source on the XLU. Boundary operands — the values that cross the region edge — are free, because they are already resident at the boundary. For a transpose chain, the added cost is one inter-element latency per *extra* chunk beyond the first: a longer transpose sequence costs proportionally more.
 
@@ -214,14 +214,14 @@ After the per-pair emission and the boundary fix-up, `Reemit` deletes every supe
 
 Byte-exact from the per-element constructor (`@0x126d3530`/`@0x126d3590`), Phase A accumulation, and the `$_1`/`$_2`/`$_3` lambda accesses.
 
-| Offset | Type | Field | Written by / Read by | Confidence |
-|---|---|---|---|---|
-| `+0x00 .. +0x38` | `absl::btree_set<long, less, alloc, 256>` | per-XLU **pending op-index set** | ctor seeds two `EmptyNode` ptrs (`@0x2181d930`); Phase A inserts indices; `$_1` erases the scheduled index (`@0x126d8ccd`) | CONFIRMED |
-| `+0x38` | `i64` | **remaining running-cycle accumulator** (Σ cost of not-yet-scheduled ops) | Phase A `+= cost[i]` (`@0x126d3942`, `[+56] += v28`); `$_1` `−= cycles[idx]` (`@0x126d8fdc`, `v20[7] -= …`) | CONFIRMED |
-| `+0x40` | `LloValue*` | anchor **"from"** = last-scheduled op's source operand 0 | `$_1` writes `v65[8] = src0` (`@0x126d8f41`); read as `from` by next `$_3`/`CyclesAdded` | CONFIRMED |
-| `+0x48` | `LloValue*` | anchor **"to"** = last-scheduled op's source operand 1 | `$_1` writes `v20[9] = src1` (`@0x126d8f73`); read as `to` by next cost | CONFIRMED |
-| `+0x50` | `variant*` | **last-scheduled op** on this XLU (the `prev`) | `$_1` writes `v20[10] = *op` (`@0x126d8fe3`); read by Phase A and `$_3` (`@0x126d92c2`) | CONFIRMED |
-| `+0x58` | `i64` | per-XLU **completion-time clock** (critical-path frontier) | `$_1` `[+0x58] = max([+0x58] + cost, finish[idx])` (`@0x126d8fad`, `v20[11]`); `$_2` critical-path test `setge` (`@0x126d91f0`) | CONFIRMED |
+| Offset | Type | Field | Written by / Read by |
+|---|---|---|---|
+| `+0x00 .. +0x38` | `absl::btree_set<long, less, alloc, 256>` | per-XLU **pending op-index set** | ctor seeds two `EmptyNode` ptrs (`@0x2181d930`); Phase A inserts indices; `$_1` erases the scheduled index (`@0x126d8ccd`) |
+| `+0x38` | `i64` | **remaining running-cycle accumulator** (Σ cost of not-yet-scheduled ops) | Phase A `+= cost[i]` (`@0x126d3942`, `[+56] += v28`); `$_1` `−= cycles[idx]` (`@0x126d8fdc`, `v20[7] -= …`) |
+| `+0x40` | `LloValue*` | anchor **"from"** = last-scheduled op's source operand 0 | `$_1` writes `v65[8] = src0` (`@0x126d8f41`); read as `from` by next `$_3`/`CyclesAdded` |
+| `+0x48` | `LloValue*` | anchor **"to"** = last-scheduled op's source operand 1 | `$_1` writes `v20[9] = src1` (`@0x126d8f73`); read as `to` by next cost |
+| `+0x50` | `variant*` | **last-scheduled op** on this XLU (the `prev`) | `$_1` writes `v20[10] = *op` (`@0x126d8fe3`); read by Phase A and `$_3` (`@0x126d92c2`) |
+| `+0x58` | `i64` | per-XLU **completion-time clock** (critical-path frontier) | `$_1` `[+0x58] = max([+0x58] + cost, finish[idx])` (`@0x126d8fad`, `v20[11]`); `$_2` critical-path test `setge` (`@0x126d91f0`) |
 
 The `[+0x08..+0x38)` region was previously read structurally as opaque; it is the `absl::btree_set` internals (root + rightmost `EmptyNode` pointers at `+0x00`/`+0x08`, then size/height/internal). The per-element destructor clears only the btree_set over `[+0x00..+0x38)`; the four scheduler fields `[+0x38..+0x60)` are trivial `i64`/`ptr`.
 

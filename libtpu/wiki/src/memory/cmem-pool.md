@@ -57,12 +57,12 @@ The ctor (`0x1e817500`) asserts `alignment % granule == 0` and `alignment` is a 
 
 ### The addressing model
 
-| Level | Unit | Mechanism | Confidence |
-|---|---|---|---|
-| Allocator | **byte** offset, base 0 | `BestFitAllocator` hands out byte offsets relative to `base_offset = 0` | CONFIRMED |
-| Bundle / LLO | **word** index | `CmemAddrScaled` (`0x1d539980`) divides the byte address by `CmemWordSizeBytes` (the `Granule` arg to `AddrScaled` `0x1d538880`); the bundle `Offset` field carries the *word* index | CONFIRMED |
-| Bank (PF) | `(word_index) mod 32` | low bits of the word index pick one of `MemBanks(kCmem)=32` banks | HIGH |
-| Issue | **indirect-state slot** | `CmemIndirectState` pre-builds 16-byte slots; the bundle `base_address` field carries a slot index | HIGH |
+| Level | Unit | Mechanism |
+|---|---|---|
+| Allocator | **byte** offset, base 0 | `BestFitAllocator` hands out byte offsets relative to `base_offset = 0` |
+| Bundle / LLO | **word** index | `CmemAddrScaled` (`0x1d539980`) divides the byte address by `CmemWordSizeBytes` (the `Granule` arg to `AddrScaled` `0x1d538880`); the bundle `Offset` field carries the *word* index |
+| Bank (PF) | `(word_index) mod 32` | low bits of the word index pick one of `MemBanks(kCmem)=32` banks |
+| Issue | **indirect-state slot** | `CmemIndirectState` pre-builds 16-byte slots; the bundle `base_address` field carries a slot index |
 
 `CmemAddrScaled` is the linkage between the byte allocator and the word-indexed bundle. Its decompiled body asserts the address operand is `kCmem` before scaling:
 
@@ -124,14 +124,14 @@ The base `Target::MemBanks` and every non-Pufferfish override land `kCmem` in a 
 
 Sizes come from `chip_parts.binarypb` at boot; alignment = granule = `CmemWordSizeBytes()` for every codename. The Pufferfish bandwidth/latency immediates were decoded from the `PufferfishTarget::LocalDmaBandwidth*` / `InitialDmaLatencyInNs` bodies and re-verified here against the decompile.
 
-| TpuVersion / family | `Target` class | CMEM size (B) | Word / granule (B) | `MemBanks(kCmem)` | CMEM ISA opcodes | BW VMEM→CMEM (GB/s) | InitialDmaLatency (kCmem, ns) | Conf. |
-|---|---|---|---|---:|---|---:|---:|---|
-| Dragonfish (DF) | `DragonfishTarget` | `chip_parts` (≈ 0) | `chip_parts` | n/a (`LogFatal`) | none | 0 (base, unmodelled) | 240 (inherited) | HIGH |
-| Jellyfish (JF) | `JellyfishTarget` | `chip_parts` (≈ 0) | `chip_parts` | n/a (`LogFatal`) | none | 0 (base) | 240 (constant) | HIGH |
-| **Pufferfish (PXC, TPU v4)** | `PufferfishTarget` | **`chip_parts` (non-zero)** | **~16** (`Cmq16B`) | **32** | **dedicated PXC slot + VS + Misc** | **1121** | **50** | CONFIRMED (size LOW) |
-| Viperfish (VFC) | `ViperfishTarget` | `chip_parts` (= 0) | `chip_parts` | n/a (`LogFatal`) | emitters only, lower to VL/VS | 0 (base) | 1200 / 0 (lite) | HIGH |
-| Ghostlite (GLC / glc, v6e) | `GhostliteTarget` | `chip_parts` (= 0) | `chip_parts` | n/a (`LogFatal`) | none (`no gxc::glc::isa::*Cmem*`) | 0 (base) | 1200 | HIGH |
-| 6acc60406 (GFC / gfc, TPU7x) | `GhostliteTarget` | `chip_parts` (= 0) | `chip_parts` | n/a (`LogFatal`) | none (`no gxc::gfc::isa::*Cmem*`) | 0 (base) | 1200 | HIGH |
+| TpuVersion / family | `Target` class | CMEM size (B) | Word / granule (B) | `MemBanks(kCmem)` | CMEM ISA opcodes | BW VMEM→CMEM (GB/s) | InitialDmaLatency (kCmem, ns) |
+|---|---|---|---|---:|---|---:|---:|
+| Dragonfish (DF) | `DragonfishTarget` | `chip_parts` (≈ 0) | `chip_parts` | n/a (`LogFatal`) | none | 0 (base, unmodelled) | 240 (inherited) |
+| Jellyfish (JF) | `JellyfishTarget` | `chip_parts` (≈ 0) | `chip_parts` | n/a (`LogFatal`) | none | 0 (base) | 240 (constant) |
+| **Pufferfish (PXC, TPU v4)** | `PufferfishTarget` | **`chip_parts` (non-zero)** | **~16** (`Cmq16B`) | **32** | **dedicated PXC slot + VS + Misc** | **1121** | **50** |
+| Viperfish (VFC) | `ViperfishTarget` | `chip_parts` (= 0) | `chip_parts` | n/a (`LogFatal`) | emitters only, lower to VL/VS | 0 (base) | 1200 / 0 (lite) |
+| Ghostlite (GLC / glc, v6e) | `GhostliteTarget` | `chip_parts` (= 0) | `chip_parts` | n/a (`LogFatal`) | none (`no gxc::glc::isa::*Cmem*`) | 0 (base) | 1200 |
+| 6acc60406 (GFC / gfc, TPU7x) | `GhostliteTarget` | `chip_parts` (= 0) | `chip_parts` | n/a (`LogFatal`) | none (`no gxc::gfc::isa::*Cmem*`) | 0 (base) | 1200 |
 
 > **GOTCHA (literal byte size is LOW) —** the literal per-codename CMEM byte size lives in the embedded `chip_parts.binarypb` proto's `TpuMemoryParts` record and has *not* been extracted from the binary; the C++ reads it blindly from `Target+0x460`. The word/granule "16 B" for Pufferfish is **inferred** from the `Cmq16BIndirectStateFactory` template-parameter name, not read from the proto. Public Pufferfish materials describe CMEM at the per-TensorCore-MiB scale, but a reimplementer should treat the literal size and word as `chip_parts`-supplied data, not as binary-derived constants.
 
@@ -143,15 +143,15 @@ The dedicated CMEM bundle slot exists because Pufferfish alone *models* CMEM. Th
 
 The Pufferfish CMEM cost-model immediates, re-decoded from the decompiled `movabs`/`return` bodies (IEEE-754 doubles):
 
-| Pair (`PufferfishTarget::…`) | Addr | Raw immediate | Value (GB/s) | Conf. |
-|---|---|---|---:|---|
-| `LocalDmaBandwidthVmemToCmem` | `0x1d4943e0` | `0x4091840000000000` | **1121.0** | CONFIRMED |
-| `LocalDmaBandwidthCmemToVmem` | `0x1d494440` | `0x40A2460000000000` | **2339.0** | CONFIRMED |
-| `LocalDmaBandwidthCmemToSmem` | `0x1d494480` | `0x4041000000000000` | **34.0** | CONFIRMED |
-| `LocalDmaBandwidthSmemToCmem` | `0x1d4944e0` | `0x4041000000000000` | **34.0** | CONFIRMED |
-| `LocalDmaBandwidthCmemToHbm` | `0x1d494420` | `0x4090E00000000000` | **1080.0** | CONFIRMED |
-| `LocalDmaBandwidthCmemToCmem` | `0x1d494460` | `0x4092A40000000000` | **1193.0** | CONFIRMED |
-| `InitialDmaLatencyInNs(kCmem)` | `0x1d493d00` | table `[555.0, 50.0][ms==4]` | **50 ns** | CONFIRMED |
+| Pair (`PufferfishTarget::…`) | Addr | Raw immediate | Value (GB/s) |
+|---|---|---|---:|
+| `LocalDmaBandwidthVmemToCmem` | `0x1d4943e0` | `0x4091840000000000` | **1121.0** |
+| `LocalDmaBandwidthCmemToVmem` | `0x1d494440` | `0x40A2460000000000` | **2339.0** |
+| `LocalDmaBandwidthCmemToSmem` | `0x1d494480` | `0x4041000000000000` | **34.0** |
+| `LocalDmaBandwidthSmemToCmem` | `0x1d4944e0` | `0x4041000000000000` | **34.0** |
+| `LocalDmaBandwidthCmemToHbm` | `0x1d494420` | `0x4090E00000000000` | **1080.0** |
+| `LocalDmaBandwidthCmemToCmem` | `0x1d494460` | `0x4092A40000000000` | **1193.0** |
+| `InitialDmaLatencyInNs(kCmem)` | `0x1d493d00` | table `[555.0, 50.0][ms==4]` | **50 ns** |
 
 The asymmetry (read side 2339 GB/s vs. write side 1121 GB/s) reflects a CMEM physical bus whose read path has roughly twice the wire count; the 50 ns startup is an order of magnitude below the 555 ns VMEM/HBM startup, reflecting CMEM's per-tile-resident short bus. There is **no `LocalDmaBandwidthHbmToCmem` accessor** at all — HBM↔CMEM traffic is cost-modelled as the VMEM-bridged formula (HBM→VMEM latency + VMEM→CMEM bandwidth).
 
@@ -167,16 +167,16 @@ CMEM is the "tile-resident operand store" for compile-time-known, read-mostly da
 
 Recovered from the PXC ISA opcode family, the `xla_tpu_cmem_*` flag family, and the runtime error strings:
 
-| Packed content | Why CMEM | Source evidence | Conf. |
-|---|---|---|---|
-| **Convolution-filter / matmul weights** for fixed-shape models | streamed in once at program start, then read many times to feed the MXU operand pipe | dominant `kDmaHbmToCmem` → `TensorCoreCmemLoad` flow | HIGH |
-| **Look-up tables** (activation, saturation, quantisation) | materialise-once, read-many-per-element | LUT placement; high CMEM read BW | HIGH |
-| **Indirect-state descriptor blocks** | drive indirect-address resolution for vectorised reads | `CmemIndirectState` (16-B `Cmq16B` records) | CONFIRMED (class) |
-| **All-reduce staging buffers** | frees VMEM for operand staging during collectives | `FLAGS_xla_tpu_scoped_cmem_for_all_reduce` @ `0x223b8de8` | HIGH |
-| **MXU result direct-to-CMEM** | bypasses the VMEM round-trip on matmul output | `kVectorCmemResult` (`CreateVectorCmemResult` @ `0x1d4d99a0`) | CONFIRMED |
-| **HLO output buffers (experimental)** | a configured fraction of CMEM for top-level outputs | `FLAGS_xla_tpu_experimental_cmem_fraction_for_hlo_outputs` @ `0x223b8cc8` | HIGH |
-| **CMEM stack scalars** (loop counters) | runtime-mutable; streamed by load-and-pop | `kCmemStackOffset`, `kVectorCmemLoadAndPop` | HIGH |
-| **In-CMEM copy spans** (`CmemSpan`) | sliding-window sequential reads | `FLAGS_xla_tpu_allow_in_cmem_copy` @ `0x223b30d0` (default off) | HIGH |
+| Packed content | Why CMEM | Source evidence |
+|---|---|---|
+| **Convolution-filter / matmul weights** for fixed-shape models | streamed in once at program start, then read many times to feed the MXU operand pipe | dominant `kDmaHbmToCmem` → `TensorCoreCmemLoad` flow |
+| **Look-up tables** (activation, saturation, quantisation) | materialise-once, read-many-per-element | LUT placement; high CMEM read BW |
+| **Indirect-state descriptor blocks** | drive indirect-address resolution for vectorised reads | `CmemIndirectState` (16-B `Cmq16B` records) |
+| **All-reduce staging buffers** | frees VMEM for operand staging during collectives | `FLAGS_xla_tpu_scoped_cmem_for_all_reduce` @ `0x223b8de8` |
+| **MXU result direct-to-CMEM** | bypasses the VMEM round-trip on matmul output | `kVectorCmemResult` (`CreateVectorCmemResult` @ `0x1d4d99a0`) |
+| **HLO output buffers (experimental)** | a configured fraction of CMEM for top-level outputs | `FLAGS_xla_tpu_experimental_cmem_fraction_for_hlo_outputs` @ `0x223b8cc8` |
+| **CMEM stack scalars** (loop counters) | runtime-mutable; streamed by load-and-pop | `kCmemStackOffset`, `kVectorCmemLoadAndPop` |
+| **In-CMEM copy spans** (`CmemSpan`) | sliding-window sequential reads | `FLAGS_xla_tpu_allow_in_cmem_copy` @ `0x223b30d0` (default off) |
 
 ### The MSA placement decision
 

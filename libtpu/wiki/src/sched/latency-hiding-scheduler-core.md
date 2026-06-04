@@ -111,14 +111,14 @@ ScheduleComputation(const HloComputation *comp, shared_ptr<SchedulingState> st) 
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `ScheduleComputation(comp)` | `0x1362e920` | thin wrapper: state build + force-delay RE2 gate + vtable dispatch | CONFIRMED |
-| `ScheduleComputation(comp, state)` | `0x1362eb60` | worker: the drain loop (src 3633–3783) | CONFIRMED |
-| `MakeSchedulingState` | `0x1362e620` | per-computation `SchedulingState` ctor (vtable `+24`) | HIGH |
-| `InitializeScheduler` | `0x1362c180` | one-time scheduler init | MEDIUM |
-| `TryScheduleOneAnnotationGroup` | `0x1362e360` | per-iteration body; max- then min-resource retry | HIGH |
-| `ComputationScheduleToProto` | `0x13630780` | optional schedule-dump populator (src 3783) | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `ScheduleComputation(comp)` | `0x1362e920` | thin wrapper: state build + force-delay RE2 gate + vtable dispatch |
+| `ScheduleComputation(comp, state)` | `0x1362eb60` | worker: the drain loop (src 3633–3783) |
+| `MakeSchedulingState` | `0x1362e620` | per-computation `SchedulingState` ctor (vtable `+24`) |
+| `InitializeScheduler` | `0x1362c180` | one-time scheduler init |
+| `TryScheduleOneAnnotationGroup` | `0x1362e360` | per-iteration body; max- then min-resource retry |
+| `ComputationScheduleToProto` | `0x13630780` | optional schedule-dump populator (src 3783) |
 
 ---
 
@@ -274,13 +274,13 @@ VLOG diagnostics inside the comparator narrate the choice: `"Choosing from ready
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `FindAndExtractBestNodeAvailable` | `0x13618880` | ready-set iteration + 22-key `ReadySetLt` chain + pop | CONFIRMED |
-| `FindAndExtractBestAnnotatedNode` | `0x1361e2c0` | annotation-group-restricted variant | HIGH |
-| `ReadySetLt::ShouldScheduleAsyncDone` | (inlined) | key 10 predicate; called twice on the pair (lines 969–977) | CONFIRMED |
-| `ReadySetLt::UpdateCandidateResourceConstrained` | (inlined) | folds resource occupancy into keys 13/15 (lines 581–583); body not dumped | MEDIUM |
-| `GetNumConflictingSerialResources` | (inlined) | key 13 conflict count; recovered as call target | MEDIUM |
+| Function | Address | Role |
+|---|---|---|
+| `FindAndExtractBestNodeAvailable` | `0x13618880` | ready-set iteration + 22-key `ReadySetLt` chain + pop |
+| `FindAndExtractBestAnnotatedNode` | `0x1361e2c0` | annotation-group-restricted variant |
+| `ReadySetLt::ShouldScheduleAsyncDone` | (inlined) | key 10 predicate; called twice on the pair (lines 969–977) |
+| `ReadySetLt::UpdateCandidateResourceConstrained` | (inlined) | folds resource occupancy into keys 13/15 (lines 581–583); body not dumped |
+| `GetNumConflictingSerialResources` | (inlined) | key 13 conflict count; recovered as call target |
 
 ---
 
@@ -332,14 +332,14 @@ The hazard codes are: `0` = unsharable (single-issue), `1` = serial (one in flig
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `TpuAsyncTracker::GetResourceName` | `0x10fff420` | resource id → name; 0..46 dispatch | CONFIRMED |
-| `TpuAsyncTracker::GetResourceHazardType` | `0x110015e0` | resource id → hazard class; collective override | CONFIRMED |
-| `TpuAsyncTracker::GetNumAvailableResources` | `0x10fff600` | resource id → per-kind overlap limit | HIGH |
-| `TpuAsyncTracker::MayAddIciLinks` | `0x10fffb20` | deposit collective cost into directional ICI counter | HIGH |
-| `TpuAsyncTracker::MayAddHostTransfers` | `0x11000280` | host send/recv → host-DMA counters | MEDIUM |
-| `TpuAsyncTracker::ctor` | `0x10ffba60` | assigns the per-kind limits (`a5/a6` env-anchored) | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `TpuAsyncTracker::GetResourceName` | `0x10fff420` | resource id → name; 0..46 dispatch |
+| `TpuAsyncTracker::GetResourceHazardType` | `0x110015e0` | resource id → hazard class; collective override |
+| `TpuAsyncTracker::GetNumAvailableResources` | `0x10fff600` | resource id → per-kind overlap limit |
+| `TpuAsyncTracker::MayAddIciLinks` | `0x10fffb20` | deposit collective cost into directional ICI counter |
+| `TpuAsyncTracker::MayAddHostTransfers` | `0x11000280` | host send/recv → host-DMA counters |
+| `TpuAsyncTracker::ctor` | `0x10ffba60` | assigns the per-kind limits (`a5/a6` env-anchored) |
 
 ---
 
@@ -388,21 +388,21 @@ The matmul's `NodeCost` is `212 / (f·1e6)` s; the all-reduce's transfer cost is
 
 ## Confidence Summary
 
-| Claim | Evidence | Confidence |
-|---|---|---|
-| Drain loop is `while (ready_set @ +208 \|\| pending @ +504)` | `ScheduleComputation(comp,state)` @ `0x1362eb60` line 539 | CONFIRMED |
-| `SchedulingStep` = vtable+128 select, vtable+112 `ScheduleNode`, write `current_time` @ `+0x138` | `0x1362d480` lines 32/53/60 | CONFIRMED |
-| Schedule built reversed, flipped at end; `byte+440` chooses direction | `FindTopRoots`/`FindBottomRoots` + reverse @ `0x1362eb60` | HIGH |
-| Comparator is the 22-key `ReadySetLt` chain (all reason strings present) | `0x13618880`, lines 534–1553 (22 `kXxx` strings) | CONFIRMED |
-| Latency-hiding term `max(0, current_time − ready_time)` | `vsubsd [r14+138h]−[r12+28h]` + `vmaxsd` @ lines 988-991 | CONFIRMED |
-| Async depth/height read at `[+0x38]`/`[+0x40]`, precomputed by max-propagation | `InitializeGraphAnalysis` @ `0x1362a860` lines 481-1000 | CONFIRMED |
-| Memory-peak gate (key 6) precedes all overlap keys | `kMemoryPeakOverLimit` branch @ line 771, before async keys | CONFIRMED |
-| `TpuAsyncTracker` 0..46 split; base hazard `4*(r!=5)`; TPU table `[0,1,1,…,2]` | `GetResourceName`/`GetResourceHazardType` @ `0x10fff420`/`0x110015e0` | CONFIRMED |
-| Collectives overlap by ICI direction (byte `+208`), priced via `GetCycles` | `MayAddIciLinks` @ `0x10fffb20` lines 130/187 | HIGH |
-| `next_memory_limit` shrinks budget by 0.9 each retry | `qword_A2DFD10` @ RunImpl `0x136321a0` line 918 | CONFIRMED |
-| Fragmentation = `GlobalDecreasingSizeBestFitHeap` HeapSimulator run | `EstimateFragmentationSize` @ `0x13633c00` lines 39/52/73 | CONFIRMED |
-| `ScheduleNode` interior (clock-advance/resource-release) inferred, not dumped | comparator reads + `current_time` write-back | HIGH |
-| Per-kind async overlap limits (`a13..a20`) default `INT64_MAX` | `TpuAsyncTracker` ctor @ `0x10ffba60`; only `a5/a6` env-anchored | PARTIAL |
+| Claim | Evidence |
+|---|---|
+| Drain loop is `while (ready_set @ +208 \|\| pending @ +504)` | `ScheduleComputation(comp,state)` @ `0x1362eb60` line 539 |
+| `SchedulingStep` = vtable+128 select, vtable+112 `ScheduleNode`, write `current_time` @ `+0x138` | `0x1362d480` lines 32/53/60 |
+| Schedule built reversed, flipped at end; `byte+440` chooses direction | `FindTopRoots`/`FindBottomRoots` + reverse @ `0x1362eb60` |
+| Comparator is the 22-key `ReadySetLt` chain (all reason strings present) | `0x13618880`, lines 534–1553 (22 `kXxx` strings) |
+| Latency-hiding term `max(0, current_time − ready_time)` | `vsubsd [r14+138h]−[r12+28h]` + `vmaxsd` @ lines 988-991 |
+| Async depth/height read at `[+0x38]`/`[+0x40]`, precomputed by max-propagation | `InitializeGraphAnalysis` @ `0x1362a860` lines 481-1000 |
+| Memory-peak gate (key 6) precedes all overlap keys | `kMemoryPeakOverLimit` branch @ line 771, before async keys |
+| `TpuAsyncTracker` 0..46 split; base hazard `4*(r!=5)`; TPU table `[0,1,1,…,2]` | `GetResourceName`/`GetResourceHazardType` @ `0x10fff420`/`0x110015e0` |
+| Collectives overlap by ICI direction (byte `+208`), priced via `GetCycles` | `MayAddIciLinks` @ `0x10fffb20` lines 130/187 |
+| `next_memory_limit` shrinks budget by 0.9 each retry | `qword_A2DFD10` @ RunImpl `0x136321a0` line 918 |
+| Fragmentation = `GlobalDecreasingSizeBestFitHeap` HeapSimulator run | `EstimateFragmentationSize` @ `0x13633c00` lines 39/52/73 |
+| `ScheduleNode` interior (clock-advance/resource-release) inferred, not dumped | comparator reads + `current_time` write-back |
+| Per-kind async overlap limits (`a13..a20`) default `INT64_MAX` | `TpuAsyncTracker` ctor @ `0x10ffba60`; only `a5/a6` env-anchored |
 
 ---
 

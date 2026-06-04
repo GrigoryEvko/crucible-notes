@@ -44,12 +44,12 @@ Every C-ABI event method is a one-page wrapper over a single C++ object. Underst
 
 `PJRT_Event_Create` (`0xf86fe00`) is the byte-clearest evidence of the struct. It `operator new`s **0x50 bytes** and populates them, and `PJRT_Event_Destroy` tears the same layout down field by field. Cross-referencing the two:
 
-| Field | Offset | Type | Meaning | Confidence |
-|---|---:|---|---|---|
-| `future_av` | `+0x00` | `tsl::AsyncValue*` | the async value the future observes (readiness / error live here) | HIGH |
-| `profiling_cb_a` | `+0x08`..`+0x20` | `std::function`-style policy pair | `ProfilingKeys()` open callback (`__policy_func` + policy ptr) | HIGH |
-| `profiling_cb_b` | `+0x28`..`+0x40` | `std::function`-style policy pair | `void(ProfilingKeys)` close callback | HIGH |
-| `promise` | `+0x48` | `tsl::internal::PromiseBase<absl::Status>` | the promise half; `obj[9]` in qword terms | HIGH |
+| Field | Offset | Type | Meaning |
+|---|---:|---|---|
+| `future_av` | `+0x00` | `tsl::AsyncValue*` | the async value the future observes (readiness / error live here) |
+| `profiling_cb_a` | `+0x08`..`+0x20` | `std::function`-style policy pair | `ProfilingKeys()` open callback (`__policy_func` + policy ptr) |
+| `profiling_cb_b` | `+0x28`..`+0x40` | `std::function`-style policy pair | `void(ProfilingKeys)` close callback |
+| `promise` | `+0x48` | `tsl::internal::PromiseBase<absl::Status>` | the promise half; `obj[9]` in qword terms |
 
 The two profiling callbacks are the TraceMe span open/close pair keyed by `tsl::FutureHelpers::ProfilingKeys` — the same profiling wrapper the runtime applies in `TpuClient::CreateProfiledFuture` ([completion loop §5](../runtime/completion-loop.md#5-the-done-callback-fan-out-and-buffer-release)). On the C-API mint path (`PJRT_Event_Create`) both default to the empty policy (`__create_empty`), so an explicitly-created event carries no profiling spans.
 
@@ -297,14 +297,14 @@ A caller never constructs the runtime's events with `PJRT_Event_Create`; that is
 
 ### Producer Map
 
-| Producer slot | Function | Event semantics | Confidence |
-|---|---|---|---|
-| `PJRT_LoadedExecutable_Execute` (60) | `pjrt::PJRT_LoadedExecutable_Execute` @ `0xf869b40` | per-launch completion; ready = program retired on device | HIGH |
-| `PJRT_Buffer_ReadyEvent` (77) | `pjrt::PJRT_Buffer_ReadyEvent` @ `0xf86ed20` | buffer definition event; ready = backing HBM is valid | HIGH |
-| `PJRT_Buffer_ToHostBuffer` (75) | `pjrt::PJRT_Buffer_ToHostBuffer` @ `0xf86e640` | D2H copy completion; ready = host bytes landed | HIGH |
-| `PJRT_Buffer_CopyRawToHostFuture` (125) | `pjrt::PJRT_Buffer_CopyRawToHostFuture` @ `0xf86dfe0` | raw D2H copy; ready = host bytes landed | HIGH |
-| `PJRT_Client_BufferFromHostBuffer` (27) | `pjrt::PJRT_Client_BufferFromHostBuffer` @ `0xf8644c0` | H2D upload done-event | HIGH |
-| transfer-manager slots (106–114, 124) | `PJRT_AsyncHostToDeviceTransferManager_*` | per-chunk / per-buffer transfer events | MEDIUM |
+| Producer slot | Function | Event semantics |
+|---|---|---|
+| `PJRT_LoadedExecutable_Execute` (60) | `pjrt::PJRT_LoadedExecutable_Execute` @ `0xf869b40` | per-launch completion; ready = program retired on device |
+| `PJRT_Buffer_ReadyEvent` (77) | `pjrt::PJRT_Buffer_ReadyEvent` @ `0xf86ed20` | buffer definition event; ready = backing HBM is valid |
+| `PJRT_Buffer_ToHostBuffer` (75) | `pjrt::PJRT_Buffer_ToHostBuffer` @ `0xf86e640` | D2H copy completion; ready = host bytes landed |
+| `PJRT_Buffer_CopyRawToHostFuture` (125) | `pjrt::PJRT_Buffer_CopyRawToHostFuture` @ `0xf86dfe0` | raw D2H copy; ready = host bytes landed |
+| `PJRT_Client_BufferFromHostBuffer` (27) | `pjrt::PJRT_Client_BufferFromHostBuffer` @ `0xf8644c0` | H2D upload done-event |
+| transfer-manager slots (106–114, 124) | `PJRT_AsyncHostToDeviceTransferManager_*` | per-chunk / per-buffer transfer events |
 
 The execute event is minted by [`CreateLinkedUserPromise`](../runtime/completion-loop.md#2-creating-the-per-execution-event--the-linked-promise-pair) and fulfilled by [`tpu::System::Execute`'s completion lambda](../runtime/completion-loop.md#tpusystemexecute--carrying-define_events) via the `TpuEventIssuer`. The buffer/transfer events ride the same `tsl::AsyncValue` primitive; their fulfilment is a transfer-completion lambda rather than a device-retirement one. In every case the C-API event the caller receives is the *same* 0x50-byte wrapper this page documents — the producer differs, the surface does not.
 

@@ -32,25 +32,25 @@ For navigation, the contract is:
 
 Each hub is one indirect-call site that a navigator will hit repeatedly. `slot = off / 8`. Slot labels are the [RTTI census](rtti-vtable-census.md) per-slot names; "fan-out" is the count of distinct implementors a single site can reach.
 
-| Hub | Call-site VA | Through (vtable / shape) | Slot / off | Fan-out | Confidence |
-|---|---|---|---|---|---|
-| HLO visitor opcode dispatch | `0x1e585660` (`Visit`) | `DfsHloVisitor` @ `0x21d2c320` | 132 distinct slots, off `0x20`–`0x438` | one `Handle<Op>` per opcode | CERTAIN |
-| HLO per-node pre-hook | `0x1e5866e0` (`PostOrderDFS`) | same vtable | 137 / `0x448` (`Preprocess`) | per concrete visitor | CERTAIN |
-| HLO per-node post-hook | `0x1e5866e0` | same vtable | 138 / `0x450` (`Postprocess`) | per concrete visitor | CERTAIN |
-| HLO per-node gate | `0x1e5866e0` | same vtable | 139 / `0x458` (`ShouldProcessNode`) | per concrete visitor | CERTAIN |
-| HLO finish-hook | `0x1e584660` (`Accept`) | same vtable | 136 / `0x440` (`FinishVisit`) | per concrete visitor | CERTAIN |
-| HLO pass body | `0x1e472a60` (`Run`) | `HloPassInterface` | 5 / `0x28` (`RunImpl`) | every HLO pass | CERTAIN |
-| HLO pass body (uptr) | `0x1e472a80` (`Run`) | `HloPassInterface` | 6 / `0x30` (`RunImpl` uptr) | every nested pipeline | CERTAIN |
-| MLIR pass body | `0x1cb6dc20` (`OpToOpPassAdaptor::run`) | `mlir::Pass` | 7 / `0x38` (`runOnOperation`) | every MLIR pass | CERTAIN |
-| MLIR Op-Model fold | `0x1d8cd480` (`Operation::fold`) | Op `Model` concept | 2 / `0x10` (`foldHook`) | every registered MLIR op | CERTAIN |
-| CPU thunk execute | `0x1c0f0320` (`TracedExecute`) | `xla::cpu::Thunk` | 5 / `0x28` (`Execute`) | every thunk kind | CERTAIN |
-| TPU ISA emit | `0x14043a40` (`EmitInstruction`) | `IsaEmitter` (152-slot) | 81 slots, off `0x50`–`0x490` | per-gen `{Pf,Vf,Gl,Gf}` emitters | HIGH |
-| TpuHal hardware bring-up | `0x1e811ea0` (`InitializeInternal`) | `TpuHal`/`HardwareImpl` | 19 / `0x98`, 20 / `0xa0` | per-gen `HardwareImpl` | CERTAIN |
-| TPU codec factory | `0x1e835fa0` (`TpuCodec::Create`) | `TpuVersion` switch | n/a (factory) | 6 per-gen `CreateTpuCodec<X>` | CERTAIN |
-| TF op-kernel dispatch | `0xe99b000` (`Device::Compute`) | `OpKernel` | 2 / `0x10` (`Compute`) | every TF op kernel | CERTAIN |
-| MLIR pattern match | `0x1c9971e0` (`PatternApplicator::matchAndRewrite`) | `function_ref` (`call *%reg`) | n/a (fn-ptr) | every rewrite pattern | HIGH |
-| gRPC service handler | `0xf993000` (`RpcMethodHandler::RunHandler`) | `std::function`/`AnyInvocable` | `0x18` invoke (`call *%reg`) | per registered RPC | HIGH |
-| PJRT C entry surface | `0xe6aa440` (`GetTpuPjrtApi`) | flat `PJRT_Api` struct | C fn-ptr table | one C callable per API slot | HIGH |
+| Hub | Call-site VA | Through (vtable / shape) | Slot / off | Fan-out |
+|---|---|---|---|---|
+| HLO visitor opcode dispatch | `0x1e585660` (`Visit`) | `DfsHloVisitor` @ `0x21d2c320` | 132 distinct slots, off `0x20`–`0x438` | one `Handle<Op>` per opcode |
+| HLO per-node pre-hook | `0x1e5866e0` (`PostOrderDFS`) | same vtable | 137 / `0x448` (`Preprocess`) | per concrete visitor |
+| HLO per-node post-hook | `0x1e5866e0` | same vtable | 138 / `0x450` (`Postprocess`) | per concrete visitor |
+| HLO per-node gate | `0x1e5866e0` | same vtable | 139 / `0x458` (`ShouldProcessNode`) | per concrete visitor |
+| HLO finish-hook | `0x1e584660` (`Accept`) | same vtable | 136 / `0x440` (`FinishVisit`) | per concrete visitor |
+| HLO pass body | `0x1e472a60` (`Run`) | `HloPassInterface` | 5 / `0x28` (`RunImpl`) | every HLO pass |
+| HLO pass body (uptr) | `0x1e472a80` (`Run`) | `HloPassInterface` | 6 / `0x30` (`RunImpl` uptr) | every nested pipeline |
+| MLIR pass body | `0x1cb6dc20` (`OpToOpPassAdaptor::run`) | `mlir::Pass` | 7 / `0x38` (`runOnOperation`) | every MLIR pass |
+| MLIR Op-Model fold | `0x1d8cd480` (`Operation::fold`) | Op `Model` concept | 2 / `0x10` (`foldHook`) | every registered MLIR op |
+| CPU thunk execute | `0x1c0f0320` (`TracedExecute`) | `xla::cpu::Thunk` | 5 / `0x28` (`Execute`) | every thunk kind |
+| TPU ISA emit | `0x14043a40` (`EmitInstruction`) | `IsaEmitter` (152-slot) | 81 slots, off `0x50`–`0x490` | per-gen `{Pf,Vf,Gl,Gf}` emitters |
+| TpuHal hardware bring-up | `0x1e811ea0` (`InitializeInternal`) | `TpuHal`/`HardwareImpl` | 19 / `0x98`, 20 / `0xa0` | per-gen `HardwareImpl` |
+| TPU codec factory | `0x1e835fa0` (`TpuCodec::Create`) | `TpuVersion` switch | n/a (factory) | 6 per-gen `CreateTpuCodec<X>` |
+| TF op-kernel dispatch | `0xe99b000` (`Device::Compute`) | `OpKernel` | 2 / `0x10` (`Compute`) | every TF op kernel |
+| MLIR pattern match | `0x1c9971e0` (`PatternApplicator::matchAndRewrite`) | `function_ref` (`call *%reg`) | n/a (fn-ptr) | every rewrite pattern |
+| gRPC service handler | `0xf993000` (`RpcMethodHandler::RunHandler`) | `std::function`/`AnyInvocable` | `0x18` invoke (`call *%reg`) | per registered RPC |
+| PJRT C entry surface | `0xe6aa440` (`GetTpuPjrtApi`) | flat `PJRT_Api` struct | C fn-ptr table | one C callable per API slot |
 
 > **NOTE —** "Confidence CERTAIN" means the call-site address, the offset, and the slot label were all read directly from the IDA decompilation of the named driver function. The two `HIGH` rows where a register holds the target (`PatternApplicator`, gRPC) are certain about the *shape* but the concrete callee is loaded dynamically, so the implementor cannot be pinned from the site alone.
 
@@ -191,12 +191,12 @@ function OpToOpPassAdaptor_run(pass, op, am, ...):   // 0x1cb6dc20
 
 The dispatch sites inside the adaptor that read the **pass** vtable (`mov (pass),%rax ; call *0xNN(%rax)`): `*0x10` (slot 2, `getName`), `*0x20` (slot 4, the `hasTrait<IsIsolatedFromAbove>` query that gates scheduling), `*0x50` (slot 10, `canScheduleOn(Operation*)`), and `*0x38` (slot 7, `runOnOperation` — the per-pass body, reached via `runOnOperationImpl`/`runOnOperationAsyncImpl`). Slot 7 is the only one that runs user pass logic; the rest are the auto-generated `*PassBase` CRTP metadata.
 
-| Off | Slot | Method | Confidence |
-|---|---|---|---|
-| `0x38` | 7 | `runOnOperation()` — the pass body | CERTAIN |
-| `0x10` | 2 | `getName()` | CERTAIN |
-| `0x20` | 4 | `hasTrait<IsIsolatedFromAbove>()` query | CERTAIN |
-| `0x50` | 10 | `canScheduleOn(Operation*)` | CERTAIN |
+| Off | Slot | Method |
+|---|---|---|
+| `0x38` | 7 | `runOnOperation()` — the pass body |
+| `0x10` | 2 | `getName()` |
+| `0x20` | 4 | `hasTrait<IsIsolatedFromAbove>()` query |
+| `0x50` | 10 | `canScheduleOn(Operation*)` |
 
 > **NOTE —** the driver also contains `call *0x20`, `*0x28`, and `*0x30` sites that dispatch on a *different* object — the `PassInstrumentation` list it iterates (`mov (list[i]),%rax ; call *0xNN(%rax)`), the per-pass `runBeforePass`/`runAfterPass`/`runAfterPassFailed` callbacks — not the pass vtable. A sweep that attributes every indirect call in this function to the pass vtable will mislabel those instrumentation slots; only the four sites above read the pass object itself.
 

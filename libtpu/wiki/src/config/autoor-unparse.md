@@ -70,17 +70,17 @@ The present byte tested is the resolver's present-bit, *positioned in the byte w
 
 The present/has byte sits at a class-specific offset because the packed layouts differ — and the unparse `cmpb` offset is the byte-exact witness of that layout. Extracted from the leading `cmpb $0x0, OFF(%rsi)` of all 25 family members:
 
-| Type-class | Unparse symbol | Present/has byte | Packed layout | Confidence |
-|---|---|---|---|---|
-| `bool` | `AbslUnparseFlag<AutoOr<bool>> @ 0x1d6ba240` | `+0x01` | `(present<<8)\|val8` | CONFIRMED — `if (a2[1])` |
-| `int32` | `@ 0x1d744180` | `+0x04` | `(present<<32)\|val32` | CONFIRMED |
-| `uint32` | `@ 0x1d743f60` | `+0x04` | `(present<<32)\|val32` | HIGH (int-class twin) |
-| `float` | `@ 0x1d743d40` | `+0x04` | `(present<<32)\|f32` | CONFIRMED — `if (*(BYTE*)(rsi+4))`, `vmovss [rsi]` |
-| `int64` (`long`) | `@ 0x1d743560` | `+0x08` | `{value@+0, has@+8}` | CONFIRMED |
-| `double` | `@ 0x1d744ce0` | `+0x08` | `{value@+0, has@+8}` | CONFIRMED |
-| `string` | `@ 0x1d743b00` | `+0x20` | `{body, variant-idx@+0x18, has@+0x20}` | CONFIRMED |
-| enum (7 arms) | `@ 0x1d748380` etc. | `+0x04` | `(present<<32)\|val32` | CONFIRMED (`ScavengingMode`) |
-| message (11 arms) | `@ 0x1d7453c0` etc. | `+0x28..+0x50` | `{variant idx, sub-msg, has}` | HIGH (offsets recovered, not sizeof-derived) |
+| Type-class | Unparse symbol | Present/has byte | Packed layout |
+|---|---|---|---|
+| `bool` | `AbslUnparseFlag<AutoOr<bool>> @ 0x1d6ba240` | `+0x01` | `(present<<8)\|val8` |
+| `int32` | `@ 0x1d744180` | `+0x04` | `(present<<32)\|val32` |
+| `uint32` | `@ 0x1d743f60` | `+0x04` | `(present<<32)\|val32` |
+| `float` | `@ 0x1d743d40` | `+0x04` | `(present<<32)\|f32` |
+| `int64` (`long`) | `@ 0x1d743560` | `+0x08` | `{value@+0, has@+8}` |
+| `double` | `@ 0x1d744ce0` | `+0x08` | `{value@+0, has@+8}` |
+| `string` | `@ 0x1d743b00` | `+0x20` | `{body, variant-idx@+0x18, has@+0x20}` |
+| enum (7 arms) | `@ 0x1d748380` etc. | `+0x04` | `(present<<32)\|val32` |
+| message (11 arms) | `@ 0x1d7453c0` etc. | `+0x28..+0x50` | `{variant idx, sub-msg, has}` |
 
 > **GOTCHA —** `float` shares the `+0x04` 8-byte-packed slot with `int32`/`enum`, **not** the `+0x08` has-byte slot of `int64`/`double`. A `float` is 4 bytes, so its present bit fits at bit 32 of the 8-byte pack (present byte `+4`); a `double` is 8 bytes and needs the separate has-byte at `+8`. A reimplementer who lumps "floating point ⇒ has-byte at +8" will read the `float` present bit from the wrong byte. `float` packs `(present<<32)|f32`, witnessed by `AbslUnparseFlag<AutoOr<float>> @ 0x1d743d40` testing `+4` and `vmovss`-loading the value at `+0`.
 
@@ -198,12 +198,12 @@ The double path uses mask `0x7FFFFFFFFFFFFFFF >= 0x7FF0000000000000` (the 11-bit
 
 ### Edge tokens
 
-| Input value | Test | Printed token | Re-parse | Confidence |
-|---|---|---|---|---|
-| `+inf` | `(bits & exp-mask) >= exp-all-ones`, mantissa 0 | `"inf"` (the `%g` infinity spelling) | accepted by `SimpleAtof`/`SimpleAtod` | HIGH |
-| `-inf` | same, sign set | `"-inf"` | accepted | HIGH |
-| `nan` | exp all-ones, mantissa ≠ 0 | `"nan"` | accepted | HIGH |
-| finite | else | shortest `%g` form that re-parses to the same bits | identity by construction | CONFIRMED (round-trip check present) |
+| Input value | Test | Printed token | Re-parse |
+|---|---|---|---|
+| `+inf` | `(bits & exp-mask) >= exp-all-ones`, mantissa 0 | `"inf"` (the `%g` infinity spelling) | accepted by `SimpleAtof`/`SimpleAtod` |
+| `-inf` | same, sign set | `"-inf"` | accepted |
+| `nan` | exp all-ones, mantissa ≠ 0 | `"nan"` | accepted |
+| finite | else | shortest `%g` form that re-parses to the same bits | identity by construction |
 
 > **QUIRK —** the inf/nan branch *bypasses the round-trip check*: a non-finite value is emitted directly as its `%g` special token and never re-parsed. Only the finite path runs `SimpleAtof`/`SimpleAtod` + `vucomiss`/`vucomisd` to confirm the printed text round-trips. This means a float-typed `AUTO`-or knob can legitimately hold and print `inf`/`nan` — a reimplementer must accept those as valid stored values for the float/double arms, not reject them as parse errors.
 
@@ -219,17 +219,17 @@ The 18 int64-sentinel knobs (§[resolution Idiom C](autoproto-autoor-resolution.
 
 This is the user-facing reference: what each type-class prints for `AUTO` vs a present value, and what the ingest re-parses that string back to. Confirmed against the 25 family bodies and the parse grammar.
 
-| Type | `AUTO` prints | Present value prints | Re-parses to | Confidence |
-|---|---|---|---|---|
-| `bool` | `"auto"` | `"true"` / `"false"` | present/value (`0x101`/`0x100`) | CONFIRMED |
-| `int32` | `"auto"` | signed decimal (e.g. `"-1"`) | `(v\|0x100000000)` | CONFIRMED |
-| `uint32` | `"auto"` | decimal | `(v\|0x100000000)` | HIGH |
-| `float` | `"auto"` | shortest-RT float, or `inf`/`-inf`/`nan` | `(present<<32)\|f32` (byte `+4`) | CONFIRMED |
-| `int64` | `"auto"` | signed decimal | `{v, has=1}` (byte `+8`) | CONFIRMED |
-| `double` | `"auto"` | shortest-RT double, or `inf`/`-inf`/`nan` | `{v, has=1}` (byte `+8`) | CONFIRMED |
-| `string` | `"auto"` | the string VERBATIM | `{body, idx 0, has 1}` (byte `+0x20`) | CONFIRMED |
-| enum | `"auto"` | value NAME (registered case) / bare decimal if unnamed | `(number\|0x100000000)` | CONFIRMED |
-| message | `"auto"` | `"text:<TextFormat>"` / `"serialized:…"` / `"base64:…"` | sub-message + has | HIGH |
+| Type | `AUTO` prints | Present value prints | Re-parses to |
+|---|---|---|---|
+| `bool` | `"auto"` | `"true"` / `"false"` | present/value (`0x101`/`0x100`) |
+| `int32` | `"auto"` | signed decimal (e.g. `"-1"`) | `(v\|0x100000000)` |
+| `uint32` | `"auto"` | decimal | `(v\|0x100000000)` |
+| `float` | `"auto"` | shortest-RT float, or `inf`/`-inf`/`nan` | `(present<<32)\|f32` (byte `+4`) |
+| `int64` | `"auto"` | signed decimal | `{v, has=1}` (byte `+8`) |
+| `double` | `"auto"` | shortest-RT double, or `inf`/`-inf`/`nan` | `{v, has=1}` (byte `+8`) |
+| `string` | `"auto"` | the string VERBATIM | `{body, idx 0, has 1}` (byte `+0x20`) |
+| enum | `"auto"` | value NAME (registered case) / bare decimal if unnamed | `(number\|0x100000000)` |
+| message | `"auto"` | `"text:<TextFormat>"` / `"serialized:…"` / `"base64:…"` | sub-message + has |
 
 Three asymmetries a reimplementer must reproduce:
 

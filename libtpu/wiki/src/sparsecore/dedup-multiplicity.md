@@ -29,7 +29,6 @@ For reimplementation, the contract is:
 | **HLO decomposer** | `SparseDenseMatmulGradOpDecomposer` (`Deduplicate{RowIds,GradientVectors}ToApply`, `CumsumExclusive`, `LocalReduction`) |
 | **Fetch-and-add** | `tpu_vst_msk_idx_ret_add_np` — `NOperands<4>`, `OneResult`, `AccessGroup`+`AliasAnalysis`, **no AtomicOrdering** |
 | **Dedup flag** | `xla_tpu_enable_sparse_core_computation_deduplication` (`0x223c5f10`) |
-| **Confidence** | CONFIRMED (decompile / `inferReturnTypes`, lowering, decomposer, trait-pack anchored) unless a row or callout says otherwise |
 
 > **NOTE — this page owns the count→multiplicity arithmetic, the `WithLaneIds` inverse permutation, and the in-vector commit ordering.** The bundle-level `Sort`/`Uniquify`/`DuplicateCount` opcodes live in [VectorExtended](vectorextended-vex.md); the SSA emission sequence (Unique → IdxAdd → Permute → StoreIdx) lives in [RankAndPermute](rank-and-permute-radixsort.md); the fetch-and-add return path and `SourceOne` seed live in [VectorLoad Slot](vectorload-slot.md); the per-sample valency loop lives in [Emit Valency Loop](emit-valency-loop.md). They are linked, not repeated.
 
@@ -43,12 +42,12 @@ Four MLIR `sc_tpu.*` ops express the dedup primitive. `unique` and `duplicate_co
 
 ### The Four Ops
 
-| MLIR op (`sc_tpu.*`) | operands | results | intrinsic (int / float) | extract idx | Confidence |
-|---|---:|---:|---|---|---|
-| `unique` | 2 | 2 | `uniqi` / `uniqf` | `{0,1}` | CONFIRMED |
-| `unique_with_lane_ids` | 2 | 3 | `uniqi` / `uniqf` | `{0,1,2}` | CONFIRMED |
-| `duplicate_count` | 2 | 2 | `dupcnti` / `dupcntf` | `{0,1}` | CONFIRMED |
-| `duplicate_count_with_lane_ids` | 2 | 3 | `dupcnti` / `dupcntf` | `{0,1,2}` | CONFIRMED |
+| MLIR op (`sc_tpu.*`) | operands | results | intrinsic (int / float) | extract idx |
+|---|---:|---:|---|---|
+| `unique` | 2 | 2 | `uniqi` / `uniqf` | `{0,1}` |
+| `unique_with_lane_ids` | 2 | 3 | `uniqi` / `uniqf` | `{0,1,2}` |
+| `duplicate_count` | 2 | 2 | `dupcnti` / `dupcntf` | `{0,1}` |
+| `duplicate_count_with_lane_ids` | 2 | 3 | `dupcnti` / `dupcntf` | `{0,1,2}` |
 
 The result types are set by `inferReturnTypes` (see [§The Result Types](#the-result-types)):
 
@@ -95,17 +94,17 @@ rewriter.replaceOp(op, ValueRange(results));           // (**v9)(...) vtable cal
 
 ### Lowering / Intrinsic Address Map
 
-| Symbol (gfc) | Address | Role | Confidence |
-|---|---|---|---|
-| `DuplicateCountUniqueOpLowering<DuplicateCountOp>::matchAndRewrite` | `0x13599d40` | plain count lowering (extract `{0,1}`) | CONFIRMED |
-| `…<DuplicateCountWithLaneIdsOp>::matchAndRewrite` | `0x1359a7e0` | count + lane_ids (extract `{0,1,2}`) | CONFIRMED |
-| `…<UniqueOp>::matchAndRewrite` | `0x1359b280` | plain unique lowering (extract `{0,1}`) | CONFIRMED |
-| `…<UniqueWithLaneIdsOp>::matchAndRewrite` | `0x1359bd20` | unique + lane_ids (extract `{0,1,2}`) | CONFIRMED |
-| `ReplaceOpWithExtracts` | `0x135b82a0` | per-index `ExtractValueOp` + `replaceOp` | CONFIRMED |
-| `tpu_dupcnti::create` / `tpu_dupcntf::create` | `0x146e23c0` / `0x146e1bc0` | integer / float count intrinsic | CONFIRMED |
-| `tpu_uniquei::create` / `tpu_uniquef::create` | `0x149895c0` / `0x14988dc0` | integer / float unique intrinsic | CONFIRMED |
+| Symbol (gfc) | Address | Role |
+|---|---|---|
+| `DuplicateCountUniqueOpLowering<DuplicateCountOp>::matchAndRewrite` | `0x13599d40` | plain count lowering (extract `{0,1}`) |
+| `…<DuplicateCountWithLaneIdsOp>::matchAndRewrite` | `0x1359a7e0` | count + lane_ids (extract `{0,1,2}`) |
+| `…<UniqueOp>::matchAndRewrite` | `0x1359b280` | plain unique lowering (extract `{0,1}`) |
+| `…<UniqueWithLaneIdsOp>::matchAndRewrite` | `0x1359bd20` | unique + lane_ids (extract `{0,1,2}`) |
+| `ReplaceOpWithExtracts` | `0x135b82a0` | per-index `ExtractValueOp` + `replaceOp` |
+| `tpu_dupcnti::create` / `tpu_dupcntf::create` | `0x146e23c0` / `0x146e1bc0` | integer / float count intrinsic |
+| `tpu_uniquei::create` / `tpu_uniquef::create` | `0x149895c0` / `0x14988dc0` | integer / float unique intrinsic |
 
-> **NOTE — the intrinsic op itself is `NOperands<2>`, `OneResult`, `OneTypedResult<Type>`.** The single result is the `LLVMStructType` literal; the *lowering* (not the intrinsic) splits it into 2 or 3 op results. The LLVM intrinsic names are `llvm.tpu.dupcnti` / `.dupcntf` / `.uniquei` / `.uniquef`. The exact value semantics of `result[0]` for `duplicate_count` (the per-position broadcast count) vs `unique` (the unique values) are read from the op name, not a per-field accessor — `HIGH` for that role split; the field *type* (`= input dtype`) is CONFIRMED.
+> **NOTE — the intrinsic op itself is `NOperands<2>`, `OneResult`, `OneTypedResult<Type>`.** The single result is the `LLVMStructType` literal; the *lowering* (not the intrinsic) splits it into 2 or 3 op results. The LLVM intrinsic names are `llvm.tpu.dupcnti` / `.dupcntf` / `.uniquei` / `.uniquef`. The value semantics of `result[0]` for `duplicate_count` (the per-position broadcast count) vs `unique` (the unique values) are read from the op name, not a per-field accessor; the field *type* is `= input dtype`.
 
 ---
 
@@ -147,14 +146,14 @@ results.push_back(vecI32)                                // result[1] = vector<N
 return 1
 ```
 
-| inferReturnTypes | Address | Results pushed | Confidence |
-|---|---|---|---|
-| `UniqueWithLaneIdsOp` | `0x145a0040` | input · vec<i32> · vec<i32> (3) | CONFIRMED |
-| `DuplicateCountWithLaneIdsOp` | `0x1459ff00` | input · vec<i32> · vec<i32> (3) | CONFIRMED |
-| `UniqueOp` | `0x1459fe00` | input · vec<i32> (2) | CONFIRMED |
-| `DuplicateCountOp` | `0x1459fd00` | input · vec<i32> (2) | CONFIRMED |
+| inferReturnTypes | Address | Results pushed |
+|---|---|---|
+| `UniqueWithLaneIdsOp` | `0x145a0040` | input · vec<i32> · vec<i32> (3) |
+| `DuplicateCountWithLaneIdsOp` | `0x1459ff00` | input · vec<i32> · vec<i32> (3) |
+| `UniqueOp` | `0x1459fe00` | input · vec<i32> (2) |
+| `DuplicateCountOp` | `0x1459fd00` | input · vec<i32> (2) |
 
-> **GOTCHA — `result[1]` and `result[2]` are the *same type* `vector<N×i32>`, but not the same semantics.** They are built by one shared `VectorType::get` call and pushed twice, so a type-only check cannot tell them apart. `result[2]` is the `lane_ids` inverse permutation (consumed by `PermuteOp`); `result[1]` is a secondary i32 map (forward permutation / segment-start / count-index). The role split of `[1]` vs `[2]` is read from the op-name suffix and the `PermuteOp` consumer convention, not from a distinct per-field accessor — `HIGH` for the `[1]` role, CONFIRMED that `[2]` is the lane-id map.
+> **GOTCHA — `result[1]` and `result[2]` are the *same type* `vector<N×i32>`, but not the same semantics.** They are built by one shared `VectorType::get` call and pushed twice, so a type-only check cannot tell them apart. `result[2]` is the `lane_ids` inverse permutation (consumed by `PermuteOp`); `result[1]` is a secondary i32 map (forward permutation / segment-start / count-index). The role split of `[1]` vs `[2]` is read from the op-name suffix and the `PermuteOp` consumer convention, not from a distinct per-field accessor.
 
 ---
 
@@ -207,15 +206,15 @@ SparseDenseMatmulGradOpDecomposer — backward dedup-reduce
 
 The forward reduction is a segmented sum scaled by a per-id **gain**. The combiner is one of three, byte-confirmed from the backend-config attr strings `"sum"` / `"mean"` / `"sqrtn"`:
 
-| Combiner | `gains` | realized by | Confidence |
-|---|---|---|---|
-| `sum` | `1` | (no scale) | CONFIRMED |
-| `mean` | `1 / valency` | `ReciprocalF32` (`EmitExtendedVectorVxUnop` `0x13a1dc00`) | CONFIRMED |
-| `sqrtn` | `1 / sqrt(valency)` | `ReciprocalSqrtF32` (`0x13a1de00`) | CONFIRMED |
+| Combiner | `gains` | realized by |
+|---|---|---|
+| `sum` | `1` | (no scale) |
+| `mean` | `1 / valency` | `ReciprocalF32` (`EmitExtendedVectorVxUnop` `0x13a1dc00`) |
+| `sqrtn` | `1 / sqrt(valency)` | `ReciprocalSqrtF32` (`0x13a1de00`) |
 
 `valency` = the per-sample id count = the multiplicity. The gains are applied per-sample inside `SparseDenseMatmulDotCombinerEmitter::EmitValencyLoop` (@0x1332cee0); `SortVectorsAndGainsBySampleIds` (@0x1367c5a0) sorts the gathered rows *and* their gains by sample id before the segmented reduce. The config fields carrying this are `gains`, `csr_row_pointers`, `has_reciprocal`, `has_reciprocal_sqrt`, `divisor`, `max_valency`, `feature_length`, `valency`. Bf16 reciprocal variants (`0x13a1dd00` / `0x13a1df00`) exist for the half-precision path.
 
-> **NOTE — whether the TEC in-vector `DuplicateCount` and the HLO CSR multiplicity are ever combined was not bit-traced.** Both produce a count, but the per-tile in-vector primitive and the cross-minibatch CSR row-pointer count are parallel mechanisms; which one feeds which scatter at which granularity was not resolved — `LOW` for the handoff. The custom-combiner gains arithmetic (`SparseDenseMatmulCustomCombinerOpDecomposer` `0x1366cf80`) defines gains beyond `sum`/`mean`/`sqrtn` and was not traced — `LOW`.
+> **NOTE — whether the TEC in-vector `DuplicateCount` and the HLO CSR multiplicity are ever combined is not bit-traced.** Both produce a count, but the per-tile in-vector primitive and the cross-minibatch CSR row-pointer count are parallel mechanisms; which one feeds which scatter at which granularity is not resolved. The custom-combiner gains arithmetic (`SparseDenseMatmulCustomCombinerOpDecomposer` `0x1366cf80`) defines gains beyond `sum`/`mean`/`sqrtn` and is not traced.
 
 ---
 
@@ -243,7 +242,7 @@ VectorStoreIdxOp          create @0x134049cb   (write the permutation index vect
 
 `PermuteOp` is `NOperands<2>`, `OneResult` (`create` @0x145f3920; lowering @0x135a1640 → `tpu_sc_permute` / `llvm.tpu.vperm.sublane`). It takes `(data, lane_ids)` and applies the permutation, routing each per-unique-row result back to the original input lane positions, immediately before the `VectorStoreIdx` / fetch-and-add scatter writes the result. The second caller is `(anon)::TransferOperandSlices` (@0x13d202e0), within an `ElementScatterContext` — the scatter consumer that uses the lane-id map to route slices.
 
-> **NOTE — the plain `unique` op has no `lane_ids` and skips the `PermuteOp`.** The emitter selects `UniqueWithLaneIds` (3 results) vs `Unique` (2 results) by a target capability query; in the plain path the `lane_id` Value is null and the `PermuteOp` step is omitted entirely (see [RankAndPermute](rank-and-permute-radixsort.md#the-unique-ssa-shape)). A reimplementation that always emits `PermuteOp` will fault on a null operand in the no-lane-ids path. The HW datapath of `tpu_sc_permute` (the sublane-permute network width / cycles) is silicon — `LOW`.
+> **NOTE — the plain `unique` op has no `lane_ids` and skips the `PermuteOp`.** The emitter selects `UniqueWithLaneIds` (3 results) vs `Unique` (2 results) by a target capability query; in the plain path the `lane_id` Value is null and the `PermuteOp` step is omitted entirely (see [RankAndPermute](rank-and-permute-radixsort.md#the-unique-ssa-shape)). A reimplementation that always emits `PermuteOp` will fault on a null operand in the no-lane-ids path. The HW datapath of `tpu_sc_permute` (the sublane-permute network width / cycles) is silicon.
 
 ---
 
@@ -276,7 +275,7 @@ cross-vector order:
 
 The hardware *detects* same-address conflicts: the SC telemetry counter "Address match conflict count" (in the `.rodata` string pool next to "Stream wait count") and the conflict-stall strings ("must wait more that 16 cycles due to conflicting accesses by Vector Store instructions") establish that the HW serializes conflicting same-address accesses with stall cycles — the combine is an *ordered* read-modify-add, not a free parallel reduce.
 
-> **GOTCHA — for a raw scatter the intra-vector commit order is undefined here.** The exact per-lane priority (low-lane-first / high-lane-wins / tree-combine) for concurrent same-address fetch-and-adds within one vector is not in the C++ — it is silicon. This matters only for a deduplication-*disabled* scatter (gated by `xla_tpu_enable_sparse_core_computation_deduplication` @0x223c5f10); for the dedup path it is moot. `LOW` for the raw-scatter order.
+> **GOTCHA — for a raw scatter the intra-vector commit order is undefined here.** The exact per-lane priority (low-lane-first / high-lane-wins / tree-combine) for concurrent same-address fetch-and-adds within one vector is not in the C++ — it is silicon. This matters only for a deduplication-*disabled* scatter (gated by `xla_tpu_enable_sparse_core_computation_deduplication` @0x223c5f10); for the dedup path it is moot.
 
 ### Why Dedup Makes It Moot
 
@@ -330,30 +329,30 @@ Per-gen `Matches()` anchors for the TEC opcodes: gfc `DuplicateCountInteger` @0x
 
 ## Function Map
 
-| Symbol (gfc) | Address | Role | Confidence |
-|---|---|---|---|
-| `DuplicateCountUniqueOpLowering<DuplicateCountOp>::matchAndRewrite` | `0x13599d40` | plain count lowering, extract `{0,1}` | CONFIRMED |
-| `…<DuplicateCountWithLaneIdsOp>::matchAndRewrite` | `0x1359a7e0` | count + lane_ids, extract `{0,1,2}` | CONFIRMED |
-| `…<UniqueOp>::matchAndRewrite` | `0x1359b280` | plain unique lowering | CONFIRMED |
-| `…<UniqueWithLaneIdsOp>::matchAndRewrite` | `0x1359bd20` | unique + lane_ids | CONFIRMED |
-| `ReplaceOpWithExtracts` | `0x135b82a0` | per-index `ExtractValueOp` + `replaceOp` | CONFIRMED |
-| `UniqueWithLaneIdsOp::inferReturnTypes` | `0x145a0040` | 3 results (input · vec<i32> · vec<i32>) | CONFIRMED |
-| `DuplicateCountWithLaneIdsOp::inferReturnTypes` | `0x1459ff00` | 3 results (identical structure) | CONFIRMED |
-| `UniqueOp::inferReturnTypes` | `0x1459fe00` | 2 results (input · vec<i32>) | CONFIRMED |
-| `DuplicateCountOp::inferReturnTypes` | `0x1459fd00` | 2 results | CONFIRMED |
-| `EmitVectorResultUnop<…DuplicateCountInteger>` | `0x13aaf660` | TEC in-vector count emitter (op 24) | CONFIRMED |
-| `DeduplicateGradientVectorsToApply` | `0x134b4e40` | Add-combiner scatter, `unique_indices=TRUE` | CONFIRMED |
-| `DeduplicateRowIdsToApply` | `0x134b4560` | Overwrite scatter, collapse ids | CONFIRMED |
-| `CumsumExclusive` | `0x134b3ec0` | `Pad` + `ReduceWindow(Add)` → CSR row index | CONFIRMED |
-| `LocalReduction` | `0x134b01e0` | windowed sum over duplicate run | CONFIRMED |
-| `CooToSparseMatrixFormat` | `0x13412480` | COO → CSR; row-pointer run lengths | CONFIRMED |
-| `SortVectorsAndGainsBySampleIds` | `0x1367c5a0` | sort rows + gains by sample id | CONFIRMED |
-| `EmitValencyLoop` | `0x1332cee0` | per-sample gains application | CONFIRMED |
-| `ReciprocalF32` / `ReciprocalSqrtF32` emitters | `0x13a1dc00` / `0x13a1de00` | `mean` / `sqrtn` gain | CONFIRMED |
-| `PermuteOp::create` / lowering | `0x145f3920` / `0x135a1640` | apply lane_ids inverse perm | CONFIRMED |
-| `tpu_vst_msk_idx_ret_add_np` trait fn | `0x14a6ac60` | fetch-and-add traits (no AtomicOrdering) | CONFIRMED |
-| `VectorLoadStoreIdxAddOpLowering::matchAndRewrite` | `0x135c3ba0` | one HW op, no serialization | CONFIRMED |
-| `MemrefAliasScopeAnnotationPass::runOnOperation` | `0x135d2060` | `!noalias` on dedup scatters | CONFIRMED |
+| Symbol (gfc) | Address | Role |
+|---|---|---|
+| `DuplicateCountUniqueOpLowering<DuplicateCountOp>::matchAndRewrite` | `0x13599d40` | plain count lowering, extract `{0,1}` |
+| `…<DuplicateCountWithLaneIdsOp>::matchAndRewrite` | `0x1359a7e0` | count + lane_ids, extract `{0,1,2}` |
+| `…<UniqueOp>::matchAndRewrite` | `0x1359b280` | plain unique lowering |
+| `…<UniqueWithLaneIdsOp>::matchAndRewrite` | `0x1359bd20` | unique + lane_ids |
+| `ReplaceOpWithExtracts` | `0x135b82a0` | per-index `ExtractValueOp` + `replaceOp` |
+| `UniqueWithLaneIdsOp::inferReturnTypes` | `0x145a0040` | 3 results (input · vec<i32> · vec<i32>) |
+| `DuplicateCountWithLaneIdsOp::inferReturnTypes` | `0x1459ff00` | 3 results (identical structure) |
+| `UniqueOp::inferReturnTypes` | `0x1459fe00` | 2 results (input · vec<i32>) |
+| `DuplicateCountOp::inferReturnTypes` | `0x1459fd00` | 2 results |
+| `EmitVectorResultUnop<…DuplicateCountInteger>` | `0x13aaf660` | TEC in-vector count emitter (op 24) |
+| `DeduplicateGradientVectorsToApply` | `0x134b4e40` | Add-combiner scatter, `unique_indices=TRUE` |
+| `DeduplicateRowIdsToApply` | `0x134b4560` | Overwrite scatter, collapse ids |
+| `CumsumExclusive` | `0x134b3ec0` | `Pad` + `ReduceWindow(Add)` → CSR row index |
+| `LocalReduction` | `0x134b01e0` | windowed sum over duplicate run |
+| `CooToSparseMatrixFormat` | `0x13412480` | COO → CSR; row-pointer run lengths |
+| `SortVectorsAndGainsBySampleIds` | `0x1367c5a0` | sort rows + gains by sample id |
+| `EmitValencyLoop` | `0x1332cee0` | per-sample gains application |
+| `ReciprocalF32` / `ReciprocalSqrtF32` emitters | `0x13a1dc00` / `0x13a1de00` | `mean` / `sqrtn` gain |
+| `PermuteOp::create` / lowering | `0x145f3920` / `0x135a1640` | apply lane_ids inverse perm |
+| `tpu_vst_msk_idx_ret_add_np` trait fn | `0x14a6ac60` | fetch-and-add traits (no AtomicOrdering) |
+| `VectorLoadStoreIdxAddOpLowering::matchAndRewrite` | `0x135c3ba0` | one HW op, no serialization |
+| `MemrefAliasScopeAnnotationPass::runOnOperation` | `0x135d2060` | `!noalias` on dedup scatters |
 
 ---
 
@@ -365,7 +364,7 @@ Per-gen `Matches()` anchors for the TEC opcodes: gfc `DuplicateCountInteger` @0x
 - **The forward divisor is the gains, applied per-sample.** `sum → 1`, `mean → 1/valency`, `sqrtn → 1/sqrt(valency)` via the SC reciprocal ops in `EmitValencyLoop`; `valency` is the multiplicity.
 - **Skip `PermuteOp` in the plain-unique path.** `lane_ids` exists only on the `…_with_lane_ids` ops; the plain path stores the rank directly and emits no `PermuteOp`.
 - **In-vector ordering is silicon; dedup makes it moot.** The fetch-and-add has no atomic-ordering trait; rely on `unique_indices=TRUE` + alias-scope, not on a deterministic per-lane commit order.
-- **Unmapped (LOW/inferred).** The raw (dedup-disabled) intra-vector commit priority; the `result[1]` vs `result[2]` role split (CONFIRMED `[2]`=lane_ids, `HIGH` `[1]`); the `result[0]` value semantics for `duplicate_count` (count broadcast); the custom-combiner gains arithmetic; the TEC-in-vector vs HLO-CSR multiplicity handoff; the `tpu_sc_permute` HW datapath.
+- **Unmapped.** The raw (dedup-disabled) intra-vector commit priority; the `result[1]` vs `result[2]` role split (`[2]`=lane_ids, `[1]` secondary map); the `result[0]` value semantics for `duplicate_count` (count broadcast); the custom-combiner gains arithmetic; the TEC-in-vector vs HLO-CSR multiplicity handoff; the `tpu_sc_permute` HW datapath.
 
 ---
 

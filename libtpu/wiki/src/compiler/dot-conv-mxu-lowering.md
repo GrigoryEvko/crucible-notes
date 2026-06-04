@@ -129,12 +129,12 @@ Candidates over budget are rejected with `"Giving up on potential kernel window 
 
 The visitor callback is handed `(window6, cycles, MemUnit, granules, WindowConfig_CostModelType)`; the consumer keeps the best by this ordering:
 
-| Rank | Key | Rule | Confidence |
-|---|---|---|---|
-| 1 | MXU cycles | lowest wins | HIGH |
-| 2 | VMEM fit (`MemUnit`) | among equal cycles, the candidate wasting the least scratchpad | HIGH |
-| 3 | `best_granules` | among equal cycles+VMEM, the tile granule best matching `Target::ChunkGranules()` (preserves largest-contiguous DMA) | MEDIUM |
-| 4 | enumeration order | last resort: output-window outer loop, kernel-window inner loop → first-enumerated equal candidate wins | MEDIUM |
+| Rank | Key | Rule |
+|---|---|---|
+| 1 | MXU cycles | lowest wins |
+| 2 | VMEM fit (`MemUnit`) | among equal cycles, the candidate wasting the least scratchpad |
+| 3 | `best_granules` | among equal cycles+VMEM, the tile granule best matching `Target::ChunkGranules()` (preserves largest-contiguous DMA) |
+| 4 | enumeration order | last resort: output-window outer loop, kernel-window inner loop → first-enumerated equal candidate wins |
 
 `SetupBestConfig` logs the frozen choice: `"Chosen kernel window: <…> output window: <…> cycles <N> hlo <name> best_granules <G> max vmem: <M>"`.
 
@@ -142,14 +142,14 @@ The visitor callback is handed `(window6, cycles, MemUnit, granules, WindowConfi
 
 ### Data Tables
 
-| Knob / table | Address | Value / role | Confidence |
-|---|---|---|---|
-| `precision_mult_table` | `0xa2c6050` | `{2.0, 1.0}` doubles; index = `GetConvPrecision` | HIGH |
-| `WindowConfig_CostModelType` | proto enum | `COST_MODEL_TYPE_INVALID`(0), `COST_MODEL_TYPE_CLASSIC`(1), `COST_MODEL_TYPE_ML_PGN_V1`(2) | HIGH |
-| `Target::LaneCount` | `0x1d60f400` | 128 | HIGH |
-| `Target::SublaneCount` | `0x1d60f300` | 8 | HIGH |
-| `Target::MemUnitFromBytes` | `0x1d61bfe0` | bytes → quantized `MemUnit` | HIGH |
-| `xla::Product(Span<long>)` | `0x20cf5200` | tile-byte product | CERTAIN |
+| Knob / table | Address | Value / role |
+|---|---|---|
+| `precision_mult_table` | `0xa2c6050` | `{2.0, 1.0}` doubles; index = `GetConvPrecision` |
+| `WindowConfig_CostModelType` | proto enum | `COST_MODEL_TYPE_INVALID`(0), `COST_MODEL_TYPE_CLASSIC`(1), `COST_MODEL_TYPE_ML_PGN_V1`(2) |
+| `Target::LaneCount` | `0x1d60f400` | 128 |
+| `Target::SublaneCount` | `0x1d60f300` | 8 |
+| `Target::MemUnitFromBytes` | `0x1d61bfe0` | bytes → quantized `MemUnit` |
+| `xla::Product(Span<long>)` | `0x20cf5200` | tile-byte product |
 
 > **QUIRK —** the callback carries a `WindowConfig_CostModelType` so the consumer knows whether to rank on the classic cycle/VMEM model or the `COST_MODEL_TYPE_ML_PGN_V1` learned-model field. In this build the learned path is a data-table fallback: no `LearnedCostModelClient` is shipped (see [Learned Cost Model Client](../cost/learned-cost-model-client.md)), so `ML_PGN_V1` resolves to the same classic numbers. A reimplementation can implement only `CLASSIC` and be behaviourally exact for this binary.
 
@@ -165,27 +165,27 @@ Once the tiling is frozen, `MatrixMultiplyAccumulateFunctor::operator()` must pi
 
 `GetEmitFunctorFromEmitFunctorEnum` (`0x130e8de0`) is a `switch (ord)` with `case 0..18`; the out-of-range default FATALs at `matrix_multiply_accumulate_functor.cc` line `586`. The decompile confirms `case 18` is the highest ordinal (19 strategies). The companion `EmitFunctorToString` (`0x130e88a0`) is a parallel `switch (ord)` whose `case 0..18` build the debug names from inline `.rodata` constants — its ordinal-3/4 string fragments (`"...wSublane"`, `"...Lane"`) match the table below byte-for-byte, and its default FATALs at `matrix_multiply_accumulate_functor.cc` line `495`. Both are plain switches, not table-indexed dispatch; the member-function pointers in the table below are the `case`-arm targets read straight from the dispatch decompile.
 
-| Ord | `EmitFunctor` value | member fn | MXU strategy | Confidence |
-|----:|---|---|---|---|
-| 0 | `kBatchGroupDepthwiseInputBatchInLanesOutputBatchInSublanes` | `0x130e8f40` | grouped depthwise: input batch lanes, out sublanes | HIGH |
-| 1 | `kBatchGroupDepthwiseInputBatchInSublanesOutputBatchInSublanes` | `0x130e9b80` | grouped depthwise: both batches in sublanes | HIGH |
-| 2 | `kDepthwiseAllBatchInLanes` | `0x130ea960` | depthwise: all batch in lanes (1 latch/channel) | HIGH |
-| 3 | `kReduceWindowSublane` | `0x130eb860` | `kReduceWindow`-as-conv, sublane-major reduce | HIGH |
-| 4 | `kReduceWindowLane` | `0x130ebd80` | `kReduceWindow`-as-conv, lane-major reduce | HIGH |
-| 5 | `kDepthwiseInputBatchInLanes` | `0x130ec2a0` | depthwise: input batch in lanes | HIGH |
-| 6 | `kDepthwiseAllBatchInSublanesPacked` | `0x130ed3c0` | depthwise: all batch sublanes, packed | HIGH |
-| 7 | `kDepthwiseInputBatchInSublanes` | `0x130ef2e0` | depthwise: input batch in sublanes | HIGH |
-| 8 | `kInputFeaturePackedInputBatchInLanes` | `0x130f01a0` | feature-packed K reuse, input batch lanes | HIGH |
-| 9 | `kInputBatchInLanes` | `0x130f0740` | classic: input batch rolled into lanes | HIGH |
-| 10 | `kAllInputFeaturePackedInSublanesOutputBatchInSublanes` | `0x130f48a0` | full K in sublanes, packed; out batch sublanes | HIGH |
-| 11 | `kAllInputFeatureInSublanesOutputBatchInSublanes` | `0x130f5d00` | full K (≤128) in sublanes — single matmul covers K | HIGH |
-| 12 | `kAllInputFeatureInSublanesOutputBatchInSublanesXposeReuse` | `0x130f7e20` | as 11, reusing transposed activations | HIGH |
-| 13 | `kOutputBatchInLanesKernelOutputFeatureInLanes` | `0x130fb360` | dual-lane: out batch + kernel out-feature in lanes | HIGH |
-| 14 | `kOutputBatchInLanesInputBatchInSublanes` | `0x130fee80` | transposed MAC: out batch lanes, in batch sublanes | HIGH |
-| 15 | `kOutputBatchInLanesKernelOutputFeatureInSublanes` | `0x131021a0` | hybrid: out batch lanes + out feature sublanes | HIGH |
-| 16 | `kAllBatchInSublanes` | `0x131055c0` | batch packed into sublanes (common default) | HIGH |
-| 17 | `kInputBatchInSublanesOutputBatchInSublanesPacked` | `0x131064c0` | in+out batch both in sublanes, packed | HIGH |
-| 18 | `kOutputBatchInSublanes` | `0x13108b60` | output batch in sublanes (the broad default) | HIGH |
+| Ord | `EmitFunctor` value | member fn | MXU strategy |
+|----:|---|---|---|
+| 0 | `kBatchGroupDepthwiseInputBatchInLanesOutputBatchInSublanes` | `0x130e8f40` | grouped depthwise: input batch lanes, out sublanes |
+| 1 | `kBatchGroupDepthwiseInputBatchInSublanesOutputBatchInSublanes` | `0x130e9b80` | grouped depthwise: both batches in sublanes |
+| 2 | `kDepthwiseAllBatchInLanes` | `0x130ea960` | depthwise: all batch in lanes (1 latch/channel) |
+| 3 | `kReduceWindowSublane` | `0x130eb860` | `kReduceWindow`-as-conv, sublane-major reduce |
+| 4 | `kReduceWindowLane` | `0x130ebd80` | `kReduceWindow`-as-conv, lane-major reduce |
+| 5 | `kDepthwiseInputBatchInLanes` | `0x130ec2a0` | depthwise: input batch in lanes |
+| 6 | `kDepthwiseAllBatchInSublanesPacked` | `0x130ed3c0` | depthwise: all batch sublanes, packed |
+| 7 | `kDepthwiseInputBatchInSublanes` | `0x130ef2e0` | depthwise: input batch in sublanes |
+| 8 | `kInputFeaturePackedInputBatchInLanes` | `0x130f01a0` | feature-packed K reuse, input batch lanes |
+| 9 | `kInputBatchInLanes` | `0x130f0740` | classic: input batch rolled into lanes |
+| 10 | `kAllInputFeaturePackedInSublanesOutputBatchInSublanes` | `0x130f48a0` | full K in sublanes, packed; out batch sublanes |
+| 11 | `kAllInputFeatureInSublanesOutputBatchInSublanes` | `0x130f5d00` | full K (≤128) in sublanes — single matmul covers K |
+| 12 | `kAllInputFeatureInSublanesOutputBatchInSublanesXposeReuse` | `0x130f7e20` | as 11, reusing transposed activations |
+| 13 | `kOutputBatchInLanesKernelOutputFeatureInLanes` | `0x130fb360` | dual-lane: out batch + kernel out-feature in lanes |
+| 14 | `kOutputBatchInLanesInputBatchInSublanes` | `0x130fee80` | transposed MAC: out batch lanes, in batch sublanes |
+| 15 | `kOutputBatchInLanesKernelOutputFeatureInSublanes` | `0x131021a0` | hybrid: out batch lanes + out feature sublanes |
+| 16 | `kAllBatchInSublanes` | `0x131055c0` | batch packed into sublanes (common default) |
+| 17 | `kInputBatchInSublanesOutputBatchInSublanesPacked` | `0x131064c0` | in+out batch both in sublanes, packed |
+| 18 | `kOutputBatchInSublanes` | `0x13108b60` | output batch in sublanes (the broad default) |
 
 > **QUIRK —** the enum's *ordinal* order and its *grouping* are unrelated. Ordinals 0–7 are the depthwise / grouped / reduce-window family, 8–18 are the dense dot/conv core — but the selector reaches them out of ordinal order (it can pick ord 18 before ever testing ord 8). Drive a reimplementation off the **decision tree**, not the ordinal sequence; the ordinals exist only to select the `case` arm in the two parallel switches (`GetEmitFunctorFromEmitFunctorEnum` → member fn, `EmitFunctorToString` → debug name).
 
@@ -314,18 +314,18 @@ LLO shape per output tile (K = 256 → 2 passes, bf16):
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `operator()` | `0x1310cd80` | per-chunk MXU sequence driver | HIGH |
-| `GetEmitFunctorEnumAndLoweringDecisions` | `0x1310c720` | 19-way strategy selector | HIGH |
-| `GetEmitFunctorFromEmitFunctorEnum` | `0x130e8de0` | enum → member fn ptr | HIGH |
-| `EmitFunctorToString` | `0x130e88a0` | debug name (parallel jump table) | HIGH |
-| `AccumFirstZero` | `0x13124e80` | first K-tile, accumulator seeded zero | HIGH |
-| `Accumulate` | `0x13123f20` | subsequent K-tile, `VaddF32`/`VaddS32` | HIGH |
-| `ReorderLatchesMatmulsAndAccums` | `0x1311f880` | (latch, matmul, accum) ordering + gain staging | HIGH |
-| `CreateMatprepOrLatch` | `0x1311bf00` | emit latch / matprep (carries `GainLatchMode`, `PrimitiveType`) | HIGH |
-| `CreateMatprepOrMatmul` | `0x1311bb40` | emit matprep / matmul (carries `MatmulMode`, `MatmulDataFormat`) | HIGH |
-| `GroupLatchGroupsForX4` | `0x1311c8a0` | group 4 latches into one x4 packed issue | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `operator()` | `0x1310cd80` | per-chunk MXU sequence driver |
+| `GetEmitFunctorEnumAndLoweringDecisions` | `0x1310c720` | 19-way strategy selector |
+| `GetEmitFunctorFromEmitFunctorEnum` | `0x130e8de0` | enum → member fn ptr |
+| `EmitFunctorToString` | `0x130e88a0` | debug name (parallel jump table) |
+| `AccumFirstZero` | `0x13124e80` | first K-tile, accumulator seeded zero |
+| `Accumulate` | `0x13123f20` | subsequent K-tile, `VaddF32`/`VaddS32` |
+| `ReorderLatchesMatmulsAndAccums` | `0x1311f880` | (latch, matmul, accum) ordering + gain staging |
+| `CreateMatprepOrLatch` | `0x1311bf00` | emit latch / matprep (carries `GainLatchMode`, `PrimitiveType`) |
+| `CreateMatprepOrMatmul` | `0x1311bb40` | emit matprep / matmul (carries `MatmulMode`, `MatmulDataFormat`) |
+| `GroupLatchGroupsForX4` | `0x1311c8a0` | group 4 latches into one x4 packed issue |
 
 ---
 
@@ -414,17 +414,17 @@ Guard helpers: `MaskAndVregForLatchOrLatchprep` (`0x10f74aa0`) builds the predic
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `PackLatches` | `0x10f726c0` | greedy same-mode adjacent latch packer | HIGH |
-| `CreatePackedVlatchOrVlatchprep` | `0x10f74c20` | emit the single packed latch | HIGH |
-| `MaskAndVregForLatchOrLatchprep` | `0x10f74aa0` | predicate mask + source vreg | HIGH |
-| `VectorS8FeedingF32Latch` | `0x10f74840` | int8→fp32-latch guard | HIGH |
-| `LloRegionBuilder::VpackCBf16` | `0x1d5669a0` | pack bf16 pair → one vreg | HIGH |
-| `LloRegionBuilder::VmpackCLow` | `0x1d55d520` | pack int8/byte → one vreg | HIGH |
-| `VunpackUpper/LowerCB8ToBf16` | `0x1d5696e0` / `0x1d569600` | result split at consumer | HIGH |
-| `LloInstruction::latch_mode` | `0x1d4e7500` | the packing equivalence key | HIGH |
-| `LloInstruction::matrix_staging_register` | `0x1d4e7b80` | MSR compat check | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `PackLatches` | `0x10f726c0` | greedy same-mode adjacent latch packer |
+| `CreatePackedVlatchOrVlatchprep` | `0x10f74c20` | emit the single packed latch |
+| `MaskAndVregForLatchOrLatchprep` | `0x10f74aa0` | predicate mask + source vreg |
+| `VectorS8FeedingF32Latch` | `0x10f74840` | int8→fp32-latch guard |
+| `LloRegionBuilder::VpackCBf16` | `0x1d5669a0` | pack bf16 pair → one vreg |
+| `LloRegionBuilder::VmpackCLow` | `0x1d55d520` | pack int8/byte → one vreg |
+| `VunpackUpper/LowerCB8ToBf16` | `0x1d5696e0` / `0x1d569600` | result split at consumer |
+| `LloInstruction::latch_mode` | `0x1d4e7500` | the packing equivalence key |
+| `LloInstruction::matrix_staging_register` | `0x1d4e7b80` | MSR compat check |
 
 > **GOTCHA —** `PackLatches` is *adjacency-greedy*, not optimal: it packs `(cur, nxt)` only when their `latch_mode` matches exactly, and it never reorders across a mode boundary. A run `[bf16, bf16, int8, bf16]` packs the first pair, emits the int8 unpacked, and leaves the trailing bf16 unpacked ("skipping last latch") — even though reordering would pair the two bf16 ends. A reimplementation that performs a global min-cost pairing will diverge from this binary's output. The `num_latches == num_latchpreps` CHECK is the hard invariant: every packed latch must keep the latch/latchprep count balanced.
 
@@ -465,14 +465,14 @@ int GetMatmulDataFormat(prim, s, hlo, target):
         default  -> FATAL (convolution_util.h line 297)
 ```
 
-| dtype | `MatmulDataFormat` | packed-VLATCH path | latch GainLatchMode group | Confidence |
-|---|---|---|---|---|
-| bf16 | 1 (`kBf16`) | `VpackCBf16` pairs | `_PACKED_BF16` | HIGH |
-| fp32 | 4 (`kF32`) | none (½ throughput, ×2.0 precision) | `_NO_XPOSE_F32`/`_HI`/`_LOW` | HIGH |
-| int8 (x8) | 6 | `VmpackCLow` ×8 | `_NO_XPOSE_S8`/`_U8` | MEDIUM |
-| int4 (x4) | 6/8 | x4 packed VLATCH | `_NO_XPOSE_S4`/`_U4`/`_NIBBLE` | MEDIUM |
-| fp8 E4M3Fn | 3/9 | `_PACKED_E4M3FN` | `_F8E4M3*_TO_BF16` | MEDIUM |
-| fp8 E5M2 | 5/7 | `_PACKED_E5M2` | `_F8E5M2_TO_BF16` | MEDIUM |
+| dtype | `MatmulDataFormat` | packed-VLATCH path | latch GainLatchMode group |
+|---|---|---|---|
+| bf16 | 1 (`kBf16`) | `VpackCBf16` pairs | `_PACKED_BF16` |
+| fp32 | 4 (`kF32`) | none (½ throughput, ×2.0 precision) | `_NO_XPOSE_F32`/`_HI`/`_LOW` |
+| int8 (x8) | 6 | `VmpackCLow` ×8 | `_NO_XPOSE_S8`/`_U8` |
+| int4 (x4) | 6/8 | x4 packed VLATCH | `_NO_XPOSE_S4`/`_U4`/`_NIBBLE` |
+| fp8 E4M3Fn | 3/9 | `_PACKED_E4M3FN` | `_F8E4M3*_TO_BF16` |
+| fp8 E5M2 | 5/7 | `_PACKED_E5M2` | `_F8E5M2_TO_BF16` |
 
 > **NOTE —** the jump-table *targets* (`0x1307bec0`…`0x1307bf1f`) are byte-exact, but this build's `PrimitiveType` ordinals are the in-libtpu enum (`prim - 2` index), not the upstream XLA values. The dtype labels above are inferred from the resulting format code matching the `MatmulDataFormat` enum (1=bf16, 4=F32, 5=F8E5M2, 6=int8, etc.), so the int4/fp8 rows are MEDIUM. `GetConvPrecision` (`0x131916e0`) compares `primitive_util::SignificandWidth` against the `PrecisionConfig` and returns the 0/1 index feeding the ×2.0/×1.0 cycle multiplier.
 

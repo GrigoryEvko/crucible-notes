@@ -92,41 +92,41 @@ bit:     32                    ...                              0
 
 The class→byte-offset table, transcribed directly from `.rodata @0xb438b70` as 33 little-endian `int64`. Each priced entry's resolved value is the cell read back from the reconstructed `PerformanceJf` in-memory image at that byte offset (every MXU-band cell is explicit in the [PerformanceJf constructor](performance-jf-df.md#the-rodata-constant-blocks); the 8-cycle cells come from `xmmword_A2DA220 = {8,8,8,1}` at `[+0x910]`, the `dword_84A2D0C = 8` broadcasts over `[+0x920..+0x980]`, and `xmmword_A2CF810 = {8,1,1,8}` at `[+0x940]`).
 
-| Class | `offsetLUT[cls]` | priced | JF/DF cyc | Source idiom (where the cell is written) | Confidence |
-|------:|-----------------:|:------:|----------:|------------------------------------------|------------|
-| `0x00` | `0x910` | yes | **8** | block `xmmword_A2DA220 = {8,8,8,1}` `[0]` | CONFIRMED |
-| `0x01` | `0x000` | no  | 1 | — (mask short-circuits) | CONFIRMED |
-| `0x02` | `0x000` | no  | 1 | — | CONFIRMED |
-| `0x03` | `0x000` | no  | 1 | — | CONFIRMED |
-| `0x04` | `0x000` | no  | 1 | — | CONFIRMED |
-| `0x05` | `0x92c` | yes | **8** | bcast `dword_84A2D0C = 8` (`[+0x920..+0x930]` run) | CONFIRMED |
-| `0x06` | `0x000` | no  | 1 | — | CONFIRMED |
-| `0x07` | `0x000` | no  | 1 | — | CONFIRMED |
-| `0x08` | `0x000` | no  | 1 | — | CONFIRMED |
-| `0x09` | `0x000` | no  | 1 | — | CONFIRMED |
-| `0x0a` | `0x000` | no  | 1 | — | CONFIRMED |
-| `0x0b` | `0x92c` | yes | **8** | bcast `8` (**shares offset `0x92c` with `0x05`**) | CONFIRMED |
-| `0x0c` | `0x000` | no  | 1 | — | CONFIRMED |
-| `0x0d` | `0x000` | no  | 1 | — | CONFIRMED |
-| `0x0e` | `0x000` | no  | 1 | — | CONFIRMED |
-| `0x0f` | `0x000` | no  | 1 | — | CONFIRMED |
-| `0x10` | `0x000` | no  | 1 | — | CONFIRMED |
-| `0x11` | `0x000` | no  | 1 | — | CONFIRMED |
-| `0x12` | `0x33c` | yes | 1 | bcast `dword_84A2B08 = 1` (`[+0x334]` run) | CONFIRMED |
-| `0x13` | `0x340` | yes | 1 | bcast `1` (`[+0x344]` run) | CONFIRMED |
-| `0x14` | `0x344` | yes | 1 | bcast `1` | CONFIRMED |
-| `0x15` | `0x39c` | yes | 1 | bcast `1` (`[+0x394]` run) | CONFIRMED |
-| `0x16` | `0x398` | yes | 1 | bcast `1` | CONFIRMED |
-| `0x17` | `0x954` | yes | **8** | bcast `8` (`[+0x950..+0x980]` run) | CONFIRMED |
-| `0x18` | `0x3f8` | yes | 1 | imm `1` (`*((_DWORD*)this+254) = 1`) | CONFIRMED |
-| `0x19` | `0x368` | yes | 1 | bcast `1` (`[+0x364]` run) | CONFIRMED |
-| `0x1a` | `0x3f4` | yes | 1 | bcast `1` (`[+0x3e8]` run) | CONFIRMED |
-| `0x1b` | `0x960` | yes | **8** | bcast `8` | CONFIRMED |
-| `0x1c` | `0x94c` | yes | **8** | block `xmmword_A2CF810 = {8,1,1,8}` `[3]` | CONFIRMED |
-| `0x1d` | `0x000` | no  | 1 | — | CONFIRMED |
-| `0x1e` | `0x000` | no  | 1 | — | CONFIRMED |
-| `0x1f` | `0x958` | yes | **8** | bcast `8` | CONFIRMED |
-| `0x20` | `0x39c` | yes | 1 | bcast `1` (**shares offset `0x39c` with `0x15`**) | CONFIRMED |
+| Class | `offsetLUT[cls]` | priced | JF/DF cyc | Source idiom (where the cell is written) |
+|------:|-----------------:|:------:|----------:|------------------------------------------|
+| `0x00` | `0x910` | yes | **8** | block `xmmword_A2DA220 = {8,8,8,1}` `[0]` |
+| `0x01` | `0x000` | no  | 1 | — (mask short-circuits) |
+| `0x02` | `0x000` | no  | 1 | — |
+| `0x03` | `0x000` | no  | 1 | — |
+| `0x04` | `0x000` | no  | 1 | — |
+| `0x05` | `0x92c` | yes | **8** | bcast `dword_84A2D0C = 8` (`[+0x920..+0x930]` run) |
+| `0x06` | `0x000` | no  | 1 | — |
+| `0x07` | `0x000` | no  | 1 | — |
+| `0x08` | `0x000` | no  | 1 | — |
+| `0x09` | `0x000` | no  | 1 | — |
+| `0x0a` | `0x000` | no  | 1 | — |
+| `0x0b` | `0x92c` | yes | **8** | bcast `8` (**shares offset `0x92c` with `0x05`**) |
+| `0x0c` | `0x000` | no  | 1 | — |
+| `0x0d` | `0x000` | no  | 1 | — |
+| `0x0e` | `0x000` | no  | 1 | — |
+| `0x0f` | `0x000` | no  | 1 | — |
+| `0x10` | `0x000` | no  | 1 | — |
+| `0x11` | `0x000` | no  | 1 | — |
+| `0x12` | `0x33c` | yes | 1 | bcast `dword_84A2B08 = 1` (`[+0x334]` run) |
+| `0x13` | `0x340` | yes | 1 | bcast `1` (`[+0x344]` run) |
+| `0x14` | `0x344` | yes | 1 | bcast `1` |
+| `0x15` | `0x39c` | yes | 1 | bcast `1` (`[+0x394]` run) |
+| `0x16` | `0x398` | yes | 1 | bcast `1` |
+| `0x17` | `0x954` | yes | **8** | bcast `8` (`[+0x950..+0x980]` run) |
+| `0x18` | `0x3f8` | yes | 1 | imm `1` (`*((_DWORD*)this+254) = 1`) |
+| `0x19` | `0x368` | yes | 1 | bcast `1` (`[+0x364]` run) |
+| `0x1a` | `0x3f4` | yes | 1 | bcast `1` (`[+0x3e8]` run) |
+| `0x1b` | `0x960` | yes | **8** | bcast `8` |
+| `0x1c` | `0x94c` | yes | **8** | block `xmmword_A2CF810 = {8,1,1,8}` `[3]` |
+| `0x1d` | `0x000` | no  | 1 | — |
+| `0x1e` | `0x000` | no  | 1 | — |
+| `0x1f` | `0x958` | yes | **8** | bcast `8` |
+| `0x20` | `0x39c` | yes | 1 | bcast `1` (**shares offset `0x39c` with `0x15`**) |
 
 The seven **8-cycle** cells are the MXU matprep/matmul/matrix-result throughput ports — classes `0x00, 0x05, 0x0b, 0x17, 0x1b, 0x1c, 0x1f`. The nine **1-cycle** priced cells are the vector-ALU / cross-lane / EUP result stages — classes `0x12, 0x13, 0x14, 0x15, 0x16, 0x18, 0x19, 0x1a, 0x20`.
 
@@ -207,15 +207,15 @@ RV[Matpush: %.0f, Matmul: %.0f, Xlu: %.0f, VectorAlu0: %.0f, VectorAlu1: %.0f,
 
 The first seven `%.0f` slots map one-for-one onto the `resLUT` values `0..6`:
 
-| Res | `ResourceVector` slot | Name | JF/DF occupant classes | Throughput | Confidence |
-|----:|-----------------------|------|------------------------|-----------:|------------|
-| `0` | `R[0]` `+0x00` | `Matpush` | `0x05`–`0x10` (latch / push-gains band) | `0x05`,`0x0b` = 8; rest dflt 1 | CONFIRMED |
-| `1` | `R[1]` `+0x08` | `Matmul` | `0x00`–`0x04` (matprep band) | `0x00` = 8; rest dflt 1 | CONFIRMED |
-| `2` | `R[2]` `+0x10` | `Xlu` | `0x17`, `0x1b`–`0x1f` (matrix-result / cross-lane) | `0x17`,`0x1b`,`0x1c`,`0x1f` = 8 | CONFIRMED |
-| `3` | `R[3]` `+0x18` | `VectorAlu0` | `0x14` | 1 | CONFIRMED |
-| `4` | `R[4]` `+0x20` | `VectorAlu1` | `0x12`, `0x13` | 1 | CONFIRMED |
-| `5` | `R[5]` `+0x28` | `VectorAluAny` | `0x15`, `0x16`, `0x19`, `0x20` | 1 | CONFIRMED |
-| `6` | `R[6]` `+0x30` | `VectorEup` | `0x11`, `0x18`, `0x1a` | `0x18`,`0x1a` = 1; `0x11` dflt 1 | CONFIRMED |
+| Res | `ResourceVector` slot | Name | JF/DF occupant classes | Throughput |
+|----:|-----------------------|------|------------------------|-----------:|
+| `0` | `R[0]` `+0x00` | `Matpush` | `0x05`–`0x10` (latch / push-gains band) | `0x05`,`0x0b` = 8; rest dflt 1 |
+| `1` | `R[1]` `+0x08` | `Matmul` | `0x00`–`0x04` (matprep band) | `0x00` = 8; rest dflt 1 |
+| `2` | `R[2]` `+0x10` | `Xlu` | `0x17`, `0x1b`–`0x1f` (matrix-result / cross-lane) | `0x17`,`0x1b`,`0x1c`,`0x1f` = 8 |
+| `3` | `R[3]` `+0x18` | `VectorAlu0` | `0x14` | 1 |
+| `4` | `R[4]` `+0x20` | `VectorAlu1` | `0x12`, `0x13` | 1 |
+| `5` | `R[5]` `+0x28` | `VectorAluAny` | `0x15`, `0x16`, `0x19`, `0x20` | 1 |
+| `6` | `R[6]` `+0x30` | `VectorEup` | `0x11`, `0x18`, `0x1a` | `0x18`,`0x1a` = 1; `0x11` dflt 1 |
 
 This is how the JF/DF cost model expresses **resource conflict**: two classes mapped to the same column add (they serialize on that functional-unit lane); two classes in different columns overlap (the bundle's contribution is the per-lane max, not the sum — `MaxResourceCycles`). Note the column index is decoupled from the matmul/matprep *opcode* intuition — `resLUT` maps the matprep band (`0x00`–`0x04`) to `R[1] Matmul` and the latch band (`0x05`–`0x10`) to `R[0] Matpush`, which is the matmul-pipeline ordering, not a naive opcode-to-name pairing.
 

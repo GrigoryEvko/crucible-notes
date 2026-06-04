@@ -118,12 +118,12 @@ Five subclasses serve six versions: `LatencyTableJellyfish` is registered twice 
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `LatencyTable::Create` | `0x1c89fba0` | Version-indexed registry dispatch → per-gen factory | CERTAIN |
-| `LatencyTable::Register` | `0x1c89fac0` | Resize-to-`version+1` + store `{manager,invoker}` at slot `version*0x20` | CERTAIN |
-| `Storage::Resize<DefaultValueAdapter>` | `0x1c8a07c0` | `InlinedVector` growth in `Register` | HIGH |
-| `LatencyTable` base ctor | `0x1c89f800` | Zero body, set base vtable, forward version | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `LatencyTable::Create` | `0x1c89fba0` | Version-indexed registry dispatch → per-gen factory |
+| `LatencyTable::Register` | `0x1c89fac0` | Resize-to-`version+1` + store `{manager,invoker}` at slot `version*0x20` |
+| `Storage::Resize<DefaultValueAdapter>` | `0x1c8a07c0` | `InlinedVector` growth in `Register` |
+| `LatencyTable` base ctor | `0x1c89f800` | Zero body, set base vtable, forward version |
 
 ---
 

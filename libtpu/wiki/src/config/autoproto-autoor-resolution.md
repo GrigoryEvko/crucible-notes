@@ -180,20 +180,20 @@ function DcnTransferCountThreshold(env):                    // 0x1d6b64e0
 
 The `AUTO` sentinel is per-knob — it is the constant the accessor `cmove`s in. 12 are decoded; the remaining 6 follow the same `test $1,%dl; cmove rcx` idiom with their own constant:
 
-| Knob | Env offset | `AUTO` sentinel | Confidence |
-|---|---|---|---|
-| `DcnTransferCountThreshold` | `+0xbd0` | `INT64_MAX` (`0x7fffffffffffffff`) | CONFIRMED |
-| `IciRsPipeliningThresholdBytes` | `+0xa98` | `INT64_MAX` | HIGH |
-| `AllGatherMinBytesForSparseCoreOffload` | `+0xaf0` | `0` | HIGH |
-| `AllGatherStepCount` | `+0x8a0` | `1` | HIGH |
-| `GatherExpanderConcatElementGatherThreshold` | `+0x600` | `4` | HIGH |
-| `RaggedAllToAllMaxRdmaSizeKib` | `+0x658` | `8` | HIGH |
-| `SparseCoreOffloadQueuingOverlapLimit` | `+0x738` | `64` | HIGH |
-| `RotatedPincerVmemShardCopyLoopIterNum` | `+0xbd8` | `64` | HIGH |
-| `MaxNumOperandsToEnableWindowCheck` | `+0xb60` | `128` | HIGH |
-| `HostCommandHandlerReapInterval` | `+0xba0` | `1024` | HIGH |
-| `AutoMaxMetadataStringLength` | `+0x688` | `100000` | HIGH |
-| `MaxFetchAndAddValue` | `+0x8c8` | `1000000000` | HIGH |
+| Knob | Env offset | `AUTO` sentinel |
+|---|---|---|
+| `DcnTransferCountThreshold` | `+0xbd0` | `INT64_MAX` (`0x7fffffffffffffff`) |
+| `IciRsPipeliningThresholdBytes` | `+0xa98` | `INT64_MAX` |
+| `AllGatherMinBytesForSparseCoreOffload` | `+0xaf0` | `0` |
+| `AllGatherStepCount` | `+0x8a0` | `1` |
+| `GatherExpanderConcatElementGatherThreshold` | `+0x600` | `4` |
+| `RaggedAllToAllMaxRdmaSizeKib` | `+0x658` | `8` |
+| `SparseCoreOffloadQueuingOverlapLimit` | `+0x738` | `64` |
+| `RotatedPincerVmemShardCopyLoopIterNum` | `+0xbd8` | `64` |
+| `MaxNumOperandsToEnableWindowCheck` | `+0xb60` | `128` |
+| `HostCommandHandlerReapInterval` | `+0xba0` | `1024` |
+| `AutoMaxMetadataStringLength` | `+0x688` | `100000` |
+| `MaxFetchAndAddValue` | `+0x8c8` | `1000000000` |
 
 ### Idiom D — `AUTO` → enum-0 / int-default (11 knobs)
 
@@ -252,20 +252,20 @@ The census across the band: 45 `AUTO=off` bool, 26 `AUTO=on` bool, 18 int64 sent
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `AutoOr<bool>::FromProtoOrDie` | `0xf795300` | bool resolver — `(present<<8)\|val8` packing | CONFIRMED |
-| `AutoOrTypeTraits<bool>::FromAutoProto` | `0xf7953e0` | bool arm reader — `+0x1c==1`, body `+0x10` | CONFIRMED |
-| `AutoOr<long>::FromProtoOrDie` | `0x1092f7e0` | int64 resolver — `{rax, dl}` has-pair | CONFIRMED |
-| `AutoOr<int>::FromProtoOrDie` | `0x10979760` | int32 resolver — `(present<<32)\|val32` | HIGH |
-| `AutoOr<ExecutionOptions_EffortLevel>::FromProtoOrDie` | `0x109294a0` | enum resolver — `\| 0x100000000` | CONFIRMED |
-| `AutoProto::_table_` | `0x21cfa788` | parse table for the 30-arm oneof | CONFIRMED |
-| `AutoProto_globals_` | `0x223c8968` | all-AUTO default instance | CONFIRMED |
-| `MxuLatencyBalancingUseSequenceDependencies` | `0x1d6b9c80` | `AUTO=off` exemplar (`+0xbe8`) | CONFIRMED |
-| `AllowSplitVmem` | `0x1d6b70a0` | `AUTO=on` exemplar (`+0x4a8`) | CONFIRMED |
-| `DcnTransferCountThreshold` | `0x1d6b64e0` | int64 sentinel exemplar (`+0xbd0`, INT64_MAX) | CONFIRMED |
-| `GetBufferAssignmentAlgorithm` | `0x1d6b9cc0` | enum bt-32 exemplar (`+0xc18`) | HIGH |
-| `EnableLloLinter` | `0x1d6b6740` | inline-Tristate exemplar (`+0x15ac`, §5) | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `AutoOr<bool>::FromProtoOrDie` | `0xf795300` | bool resolver — `(present<<8)\|val8` packing |
+| `AutoOrTypeTraits<bool>::FromAutoProto` | `0xf7953e0` | bool arm reader — `+0x1c==1`, body `+0x10` |
+| `AutoOr<long>::FromProtoOrDie` | `0x1092f7e0` | int64 resolver — `{rax, dl}` has-pair |
+| `AutoOr<int>::FromProtoOrDie` | `0x10979760` | int32 resolver — `(present<<32)\|val32` |
+| `AutoOr<ExecutionOptions_EffortLevel>::FromProtoOrDie` | `0x109294a0` | enum resolver — `\| 0x100000000` |
+| `AutoProto::_table_` | `0x21cfa788` | parse table for the 30-arm oneof |
+| `AutoProto_globals_` | `0x223c8968` | all-AUTO default instance |
+| `MxuLatencyBalancingUseSequenceDependencies` | `0x1d6b9c80` | `AUTO=off` exemplar (`+0xbe8`) |
+| `AllowSplitVmem` | `0x1d6b70a0` | `AUTO=on` exemplar (`+0x4a8`) |
+| `DcnTransferCountThreshold` | `0x1d6b64e0` | int64 sentinel exemplar (`+0xbd0`, INT64_MAX) |
+| `GetBufferAssignmentAlgorithm` | `0x1d6b9cc0` | enum bt-32 exemplar (`+0xc18`) |
+| `EnableLloLinter` | `0x1d6b6740` | inline-Tristate exemplar (`+0x15ac`, §5) |
 
 > **NOTE —** do not confuse the two parse tables. `AutoProto::_table_ @ 0x21cfa788` is the AutoProto message's own `TcParseTableBase`, the descriptor that drives the 30-arm `FromAutoProto` reflection. The TCE's master `_table_ @ 0x21cfa9e0` (the 1121-field#→offset oracle) is a *different* table at a nearby address — they sit adjacent in `.data.rel.ro` because both protos are in the same translation unit. Cross-reference by symbol, not by eyeballing the address.
 

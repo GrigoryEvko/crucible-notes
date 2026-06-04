@@ -56,13 +56,13 @@ The section-header table runs to the **exact** last byte of the file. There is n
 
 The carve anchor `0x20F99BEF` (file offset 553,229,295) is **not** at or past EOF. It lands inside section `[21] .text`:
 
-| Region | File range | Confidence |
-|---|---|---|
-| `[21] .text` (PROGBITS, R+X) | `0xE63C000 .. 0x21217484` | CERTAIN |
-| `[11] .rodata` (PROGBITS, R) | `0x84A0000 .. 0xBE8AF28` | CERTAIN |
-| `[51] .strtab` (last data section) | `0x23DF76C3 .. 0x2E979BA1` | CERTAIN |
-| Section-header table | `0x2E979BA8 .. 0x2E97A8A8` (= EOF) | CERTAIN |
-| Anchor `0x20F99BEF` | inside `.text`, ~2.6 MB before its end | CERTAIN |
+| Region | File range |
+|---|---|
+| `[21] .text` (PROGBITS, R+X) | `0xE63C000 .. 0x21217484` |
+| `[11] .rodata` (PROGBITS, R) | `0x84A0000 .. 0xBE8AF28` |
+| `[51] .strtab` (last data section) | `0x23DF76C3 .. 0x2E979BA1` |
+| Section-header table | `0x2E979BA8 .. 0x2E97A8A8` (= EOF) |
+| Anchor `0x20F99BEF` | inside `.text`, ~2.6 MB before its end |
 
 `.text` ends at `0xE63C000 + 0x12BDB484 = 0x21217484`. The anchor sits `0x21217484 − 0x20F99BEF = 0x27D895 ≈ 2.6 MB` before the end of the code section — squarely in executable code, not in any data region and not appended anywhere.
 
@@ -91,13 +91,13 @@ total occurrences of 28 b5 2f fd: 5
 
 Each occurrence is an immediate operand of a libzstd instruction. None is data. The table is the complete inventory.
 
-| File offset | Containing function | Function base | Instruction | Role | Confidence |
-|---|---|---|---|---|---|
-| `0x20F99BEF` | `ZSTD_compressEnd_public` | `0x20F99AC0` | `movl $0xfd2fb528,(%r14)` (at `0x20F99BEC`, +0x12C) | Emit magic into output buffer (empty-frame epilogue) | CERTAIN |
-| `0x20F9B2FE` | `ZSTD_writeFrameHeader` | `0x20F9B200` | `movl $0xfd2fb528,(%rdi)` (at `0x20F9B2FC`, +0xFC) | Emit magic at the start of every written frame | CERTAIN |
-| `0x2100C714` | `ZSTD_getFrameHeader_advanced` | `0x2100C6C0` | `movl $0xfd2fb528,-0x1c(%rbp)` (at `0x2100C711`, +0x51) | Sentinel write to a stack-local before the header `memcpy` | CERTAIN |
-| `0x2100C72A` | `ZSTD_getFrameHeader_advanced` | `0x2100C6C0` | `cmpl $0xfd2fb528,-0x1c(%rbp)` (at `0x2100C727`, +0x67) | Compare the copied stack-local against the magic | CERTAIN |
-| `0x2100C77D` | `ZSTD_getFrameHeader_advanced` | `0x2100C6C0` | `cmp $0xfd2fb528,%ecx` (at `0x2100C77B`, +0xBB) | Verify input frame magic; `jne` to error on mismatch | CERTAIN |
+| File offset | Containing function | Function base | Instruction | Role |
+|---|---|---|---|---|
+| `0x20F99BEF` | `ZSTD_compressEnd_public` | `0x20F99AC0` | `movl $0xfd2fb528,(%r14)` (at `0x20F99BEC`, +0x12C) | Emit magic into output buffer (empty-frame epilogue) |
+| `0x20F9B2FE` | `ZSTD_writeFrameHeader` | `0x20F9B200` | `movl $0xfd2fb528,(%rdi)` (at `0x20F9B2FC`, +0xFC) | Emit magic at the start of every written frame |
+| `0x2100C714` | `ZSTD_getFrameHeader_advanced` | `0x2100C6C0` | `movl $0xfd2fb528,-0x1c(%rbp)` (at `0x2100C711`, +0x51) | Sentinel write to a stack-local before the header `memcpy` |
+| `0x2100C72A` | `ZSTD_getFrameHeader_advanced` | `0x2100C6C0` | `cmpl $0xfd2fb528,-0x1c(%rbp)` (at `0x2100C727`, +0x67) | Compare the copied stack-local against the magic |
+| `0x2100C77D` | `ZSTD_getFrameHeader_advanced` | `0x2100C6C0` | `cmp $0xfd2fb528,%ecx` (at `0x2100C77B`, +0xBB) | Verify input frame magic; `jne` to error on mismatch |
 
 The third and fourth rows are 22 bytes apart (`0x2100C711`/`0x2100C727`) within the same basic block of `ZSTD_getFrameHeader_advanced`: the first writes the magic into a stack-local as a sentinel, then a `memcpy` copies the candidate header over it, and the second compares the result back against the magic. They participate in the same header-validation logic and are not independent finds.
 
@@ -168,18 +168,18 @@ Disassembled as x86-64 they are a coherent instruction stream — `movl $magic,(
 
 The dictionary-recovery hypothesis required finding `ZSTD_DCtx_loadDictionary` call sites, back-tracing each to a fixed dictionary offset in `.rodata`/`.data`, and matching a dictionary-ID in the frame header. The premise dies at step one: the public **decompression-side** dictionary-loader does not exist in this binary.
 
-| Symbol the recovery plan assumed | Present in `libtpu.so`? | Address | Confidence |
-|---|---|---|---|
-| `ZSTD_DCtx_loadDictionary` | **NO** | — | CERTAIN |
-| `ZSTD_DCtx_loadDictionary_byReference` | **NO** | — | CERTAIN |
-| `ZSTD_DDict_createByReference` | **NO** | — | CERTAIN |
-| `ZSTD_loadDictionaryContent` | YES (compressor-internal) | `0x20FA0020` | CERTAIN |
-| `ZSTD_dedicatedDictSearch_lazy_loadDictionary` | YES (compressor match-finder) | `0x20FBB120` | CERTAIN |
-| `ZSTD_DDict_dictContent` | YES | `0x2100C100` | CERTAIN |
-| `ZSTD_createDDict_advanced` | YES | `0x2100C200` | CERTAIN |
-| `ZSTD_DCtx_refDDict` | YES | `0x2100E300` | CERTAIN |
-| `ZSTD_decompressDCtx` | YES | `0x2100D3E0` | CERTAIN |
-| `ZSTD_decompressStream` | YES | `0x2100E840` | CERTAIN |
+| Symbol the recovery plan assumed | Present in `libtpu.so`? | Address |
+|---|---|---|
+| `ZSTD_DCtx_loadDictionary` | **NO** | — |
+| `ZSTD_DCtx_loadDictionary_byReference` | **NO** | — |
+| `ZSTD_DDict_createByReference` | **NO** | — |
+| `ZSTD_loadDictionaryContent` | YES (compressor-internal) | `0x20FA0020` |
+| `ZSTD_dedicatedDictSearch_lazy_loadDictionary` | YES (compressor match-finder) | `0x20FBB120` |
+| `ZSTD_DDict_dictContent` | YES | `0x2100C100` |
+| `ZSTD_createDDict_advanced` | YES | `0x2100C200` |
+| `ZSTD_DCtx_refDDict` | YES | `0x2100E300` |
+| `ZSTD_decompressDCtx` | YES | `0x2100D3E0` |
+| `ZSTD_decompressStream` | YES | `0x2100E840` |
 
 The two "loadDictionary"-named symbols that *are* present are **compressor** internals (`ZSTD_loadDictionaryContent` ingests a dictionary into a `ZSTD_CCtx`; `ZSTD_dedicatedDictSearch_lazy_loadDictionary` is a lazy match-finder helper). Neither loads a dictionary into a decompression context, and neither is wired to a static buffer in this image. With no `ZSTD_DCtx_loadDictionary`, there is no "load a fixed embedded dictionary into a DCtx and decompress the blob" path to reverse-engineer.
 
@@ -200,9 +200,9 @@ These name a streaming compression facility for RPC payloads and TPU-core progra
 
 The single zstd-parameter region baked into the image is **8 bytes**, not a dictionary:
 
-| Symbol | Vaddr / file off | Section | Bytes | Decoded | Confidence |
-|---|---|---|---|---|---|
-| `tpu::(anonymous)::kZstdParams` | `0x0B831ACC` | `[11] .rodata` | `01 00 00 00 1B 00 00 00` | `{ level = 1, window_log = 27 }` | HIGH |
+| Symbol | Vaddr / file off | Section | Bytes | Decoded |
+|---|---|---|---|---|
+| `tpu::(anonymous)::kZstdParams` | `0x0B831ACC` | `[11] .rodata` | `01 00 00 00 1B 00 00 00` | `{ level = 1, window_log = 27 }` |
 
 This is the default `tpu::ZStdParams` struct used when a TPU zstd compressor is constructed with no override (level 1, 128 MiB window). It is configuration, not content — and certainly not a 4 MB dictionary.
 

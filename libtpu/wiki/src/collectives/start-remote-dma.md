@@ -256,20 +256,20 @@ The headline negative result: **the cross-chip pointer the DMA engine consumes d
 
 ## Function Map
 
-| Function | @VA | Role | Confidence |
-|---|---|---|---|
-| `OffloadFactory::StartRemoteDma` | `0x133EBCC0` | the per-target remote-DMA launcher (this page) | CONFIRMED |
-| `SubsliceToFullSliceGlobalCoreId` | `0x133E7900` | subslice core id → flat global core id | CONFIRMED |
-| `ToGlobalCoreId` | `0x133E6880` | `chip × SparseCoresPerLogicalDevice + localCore` | CONFIRMED |
-| `GlobalCoreIdToPhysicalChipId` | `0x133E7BC0` | `coreId / SparseCoresPerLogicalDevice` (inverse) | CONFIRMED |
-| `SubsliceToFullSlice` | `0x133E79A0` | coords + subslice-origin → full-slice chip id | CONFIRMED |
-| `LoadSubsliceOrigin` | `0x133E7840` | `SubsliceOriginOp` (runtime origin chip id) → coords | CONFIRMED |
-| `ChipIdToCoordinates` | `0x133E7640` | radix decompose chip id → `(x, y, z)` | CONFIRMED |
-| `ComputeRemoteCoreIndex` | `0x133E7F80` | megacore-aware destination core index | CONFIRMED |
-| `IdxConst` | `0x133E6BA0` | `arith.ConstantIndexOp` (with `value < kMaxNumberOfElements` = `< 2³²` check) | CONFIRMED |
-| `GetRemoteMemBase` | `0x13D88660` | remote data base (fed the global core id) | CONFIRMED |
-| `ConvertDmaStridesToIsaStrides` | `0x133EAFC0` | `DmaStrides` → ISA stride form | CONFIRMED |
-| `DmaGeneralStartOp::create` | `0x145B1880` / `0x145B16E0` | emit `sc_tpu.dma_general_start` (strided / contiguous) | HIGH (operand→field map) |
+| Function | @VA | Role |
+|---|---|---|
+| `OffloadFactory::StartRemoteDma` | `0x133EBCC0` | the per-target remote-DMA launcher (this page) |
+| `SubsliceToFullSliceGlobalCoreId` | `0x133E7900` | subslice core id → flat global core id |
+| `ToGlobalCoreId` | `0x133E6880` | `chip × SparseCoresPerLogicalDevice + localCore` |
+| `GlobalCoreIdToPhysicalChipId` | `0x133E7BC0` | `coreId / SparseCoresPerLogicalDevice` (inverse) |
+| `SubsliceToFullSlice` | `0x133E79A0` | coords + subslice-origin → full-slice chip id |
+| `LoadSubsliceOrigin` | `0x133E7840` | `SubsliceOriginOp` (runtime origin chip id) → coords |
+| `ChipIdToCoordinates` | `0x133E7640` | radix decompose chip id → `(x, y, z)` |
+| `ComputeRemoteCoreIndex` | `0x133E7F80` | megacore-aware destination core index |
+| `IdxConst` | `0x133E6BA0` | `arith.ConstantIndexOp` (with `value < kMaxNumberOfElements` = `< 2³²` check) |
+| `GetRemoteMemBase` | `0x13D88660` | remote data base (fed the global core id) |
+| `ConvertDmaStridesToIsaStrides` | `0x133EAFC0` | `DmaStrides` → ISA stride form |
+| `DmaGeneralStartOp::create` | `0x145B1880` / `0x145B16E0` | emit `sc_tpu.dma_general_start` (strided / contiguous) |
 
 ---
 

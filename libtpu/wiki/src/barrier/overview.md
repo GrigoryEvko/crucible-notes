@@ -58,13 +58,13 @@ Two consequences for a reimplementer:
 
 Every barrier the compiler emits is tagged with one of five `BarrierType` values. The enum is a proto enum carried in the `BarrierConfig` submessage of each collective's `BackendConfig`; the numeric values are the protobuf field values, recovered from the `movl $N,-0x30` / `cmp $N` byte patterns in the producers and normaliser. The named string `"barrier.barrier_type() != BarrierType::BARRIER_INVALID"` (the RetCheck at `InferBarrierConfig` line 115) anchors the `INVALID` enumerator at 0.
 
-| Value | Enumerator | Meaning | Lowered SFLAG | Confidence |
-|---|---|---|---|---|
-| 0 | `BARRIER_INVALID` | sentinel / unset; always rejected by both touchpoints | — | CERTAIN |
-| 1 | `GLOBAL` | all-cores device-wide barrier; `id = -1` sentinel | `base + count + 4` (`GetGlobalBarrierSyncFlagNumber` @`0x1d60f420`) | CERTAIN |
-| 2 | `REPLICA` | within-replica-group tree barrier; shares an id | `base + id` (top reserved per-id slot when set by normaliser, `id = count − 1`) | HIGH |
-| 3 | `CUSTOM` | per-key dedicated barrier; coloring assigns a fresh `id` | `base + id` (per-key slot, [Barrier-to-SFLAG Binding](barrier-to-sflag-binding.md)) | HIGH |
-| 4 | `MEGACORE` | two-tensorcore-per-chip barrier; reserved in the enum | `base + count` (`GetMegacoreBarrierSyncFlagNumber` @`0x1d60f4e0`, `Megacore()`-gated) | HIGH |
+| Value | Enumerator | Meaning | Lowered SFLAG |
+|---|---|---|---|
+| 0 | `BARRIER_INVALID` | sentinel / unset; always rejected by both touchpoints | — |
+| 1 | `GLOBAL` | all-cores device-wide barrier; `id = -1` sentinel | `base + count + 4` (`GetGlobalBarrierSyncFlagNumber` @`0x1d60f420`) |
+| 2 | `REPLICA` | within-replica-group tree barrier; shares an id | `base + id` (top reserved per-id slot when set by normaliser, `id = count − 1`) |
+| 3 | `CUSTOM` | per-key dedicated barrier; coloring assigns a fresh `id` | `base + id` (per-key slot, [Barrier-to-SFLAG Binding](barrier-to-sflag-binding.md)) |
+| 4 | `MEGACORE` | two-tensorcore-per-chip barrier; reserved in the enum | `base + count` (`GetMegacoreBarrierSyncFlagNumber` @`0x1d60f4e0`, `Megacore()`-gated) |
 
 `BarrierConfig` itself is a small proto: the type field sits at byte offset `+0x20` of the runtime message, the presence hasbits at `+0x10` (the normaliser ORs in `0x3` to mark type-and-id present). When a collective has no `barrier_config` submessage, both touchpoints fall back to the default-instance `BarrierConfig_globals_` @`0x223a9450`.
 
@@ -203,13 +203,13 @@ The `SpecialPurposeSyncFlags` message also carries four named scalar SFLAG numbe
 
 The top 5 slots of the TC range are the named cross-core barrier sync flags. All three accessor formulas are byte-exact (`this[560]` = `Target+0x8c0` = base, `this[561]` = `Target+0x8c4` = count):
 
-| Slot | Accessor | Formula | Confidence |
-|---|---|---|---|
-| `base+count+0` | `GetMegacoreBarrierSyncFlagNumber` @`0x1d60f4e0` | `base + count` (`Megacore()`-gated; CHECK `"…chip_config().Megacore()"`) | CERTAIN |
-| `base+count+1` | (gap; `GetAllReduceSyncFlagNumber(0)` is illegal — CHECK `phase > 0`) | `base+count+1` | CERTAIN |
-| `base+count+2` | `GetAllReduceSyncFlagNumber(1)` @`0x1d60f440` | `base + 1 + count + 1` (pincer InitSyncFlags) | CERTAIN |
-| `base+count+3` | `GetAllReduceSyncFlagNumber(2)` @`0x1d60f440` | `base + 2 + count + 1` (pincer InitSyncFlags) | CERTAIN |
-| `base+count+4` | `GetGlobalBarrierSyncFlagNumber` @`0x1d60f420` | `base + count + 4` (global / tree barriers) | CERTAIN |
+| Slot | Accessor | Formula |
+|---|---|---|
+| `base+count+0` | `GetMegacoreBarrierSyncFlagNumber` @`0x1d60f4e0` | `base + count` (`Megacore()`-gated; CHECK `"…chip_config().Megacore()"`) |
+| `base+count+1` | (gap; `GetAllReduceSyncFlagNumber(0)` is illegal — CHECK `phase > 0`) | `base+count+1` |
+| `base+count+2` | `GetAllReduceSyncFlagNumber(1)` @`0x1d60f440` | `base + 1 + count + 1` (pincer InitSyncFlags) |
+| `base+count+3` | `GetAllReduceSyncFlagNumber(2)` @`0x1d60f440` | `base + 2 + count + 1` (pincer InitSyncFlags) |
+| `base+count+4` | `GetGlobalBarrierSyncFlagNumber` @`0x1d60f420` | `base + count + 4` (global / tree barriers) |
 
 `GetAllReduceSyncFlagNumber(phase)` is `LogMessageFatal`-bounded to `0 < phase < 3` (lines 143/144), so the `+1` slot is a permanent gap. The usable per-id window `[base, base+count)` (REPLICA/CUSTOM ids, `id < count`) sits *below* these 5.
 
@@ -238,10 +238,10 @@ The `−5` is a compile-time constant in `Target::Init` (`add $0xfffffffb`), gen
 
 It is worth stating plainly that the `BarrierConfig` field has **two** writers that a reimplementer must keep distinct:
 
-| Producer | When it runs | Writes | id source | Confidence |
-|---|---|---|---|---|
-| `DetermineBarrierConfigForKey` @`0x109c6fa0` | HLO barrier-assignment pass (per key) | `GLOBAL(1)` / `CUSTOM(3 fresh)` / `REPLICA(2 shared)` | `-1` (GLOBAL) / fresh / shared key id | HIGH |
-| `InferBarrierConfig` @`0x1376c240` | pincer fusion emit (per fusion, 8 callers) | `CUSTOM→GLOBAL(1, id=-1)` if channelled; `CUSTOM→REPLICA(2, id=count−1)` if not | `-1` (GLOBAL) / `count−1` (REPLICA) | CERTAIN |
+| Producer | When it runs | Writes | id source |
+|---|---|---|---|
+| `DetermineBarrierConfigForKey` @`0x109c6fa0` | HLO barrier-assignment pass (per key) | `GLOBAL(1)` / `CUSTOM(3 fresh)` / `REPLICA(2 shared)` | `-1` (GLOBAL) / fresh / shared key id |
+| `InferBarrierConfig` @`0x1376c240` | pincer fusion emit (per fusion, 8 callers) | `CUSTOM→GLOBAL(1, id=-1)` if channelled; `CUSTOM→REPLICA(2, id=count−1)` if not | `-1` (GLOBAL) / `count−1` (REPLICA) |
 
 `DetermineBarrierConfigForKey` is the authoritative coloring producer at HLO-pass time. `InferBarrierConfig` is a per-fusion *normaliser*: it only downgrades a `CUSTOM` choice to `GLOBAL`/`REPLICA` when the pincer fusion's actual participant set is known, and never upgrades or rewrites an already-set `GLOBAL`/`REPLICA`. Neither writes `MEGACORE(4)`. Both results feed the same lowering (§3.3) → the same SFLAG number space (§5).
 

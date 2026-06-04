@@ -66,12 +66,12 @@ function google_init_module_tpu_hal_jxc_hardware_impl():   // 0x213e9d80
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `google_init_module_tpu_hal_jxc_hardware_impl` | 0x213e9d80 | 2× Register (v0, v1) | CERTAIN |
-| `TpuHalFactory::Register` | 0x1fbb16a0 | registry insert `[platform][version]` | CERTAIN |
-| `TpuHalFactory::Get` | 0x1fbb19c0 | runtime registry lookup under mutex | CERTAIN |
-| `TpuHal::Create` | 0x1e814180 | public entry: Get → Create → bind profiler | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `google_init_module_tpu_hal_jxc_hardware_impl` | 0x213e9d80 | 2× Register (v0, v1) |
+| `TpuHalFactory::Register` | 0x1fbb16a0 | registry insert `[platform][version]` |
+| `TpuHalFactory::Get` | 0x1fbb19c0 | runtime registry lookup under mutex |
+| `TpuHal::Create` | 0x1e814180 | public entry: Get → Create → bind profiler |
 
 ---
 
@@ -83,13 +83,13 @@ The factory exposes the abstract 5-slot `TpuHalFactory` interface. JXC overrides
 
 ### Vtable Layout
 
-| vaddr | slot | resolves to | base/override | Confidence |
-|---|---|---|---|---|
-| 0x215fe540 | 0 — `~TpuHalFactory()` D2 | 0x0e723a80 (`ret`) | INHERITED | CERTAIN |
-| 0x215fe548 | 1 — `~TpuHalJxcHardwareFactory()` D0 | 0x0e723aa0 | **OVERRIDE** | CERTAIN |
-| 0x215fe550 | 2 — `HardwareFactoryBase::Create(wq)` | 0x1e80f560 | INHERITED | CERTAIN |
-| 0x215fe558 | 3 — `HardwareFactoryBase::CanCreate()` | 0x1e80f520 | INHERITED | CERTAIN |
-| 0x215fe560 | 4 — `TpuHalJxcHardwareFactory::CreateImpl(wq)` | 0x0e723ac0 | **OVERRIDE** | CERTAIN |
+| vaddr | slot | resolves to | base/override |
+|---|---|---|---|
+| 0x215fe540 | 0 — `~TpuHalFactory()` D2 | 0x0e723a80 (`ret`) | INHERITED |
+| 0x215fe548 | 1 — `~TpuHalJxcHardwareFactory()` D0 | 0x0e723aa0 | **OVERRIDE** |
+| 0x215fe550 | 2 — `HardwareFactoryBase::Create(wq)` | 0x1e80f560 | INHERITED |
+| 0x215fe558 | 3 — `HardwareFactoryBase::CanCreate()` | 0x1e80f520 | INHERITED |
+| 0x215fe560 | 4 — `TpuHalJxcHardwareFactory::CreateImpl(wq)` | 0x0e723ac0 | **OVERRIDE** |
 
 Slot 1 (the deleting destructor) is `tpu::(anonymous namespace)::TpuHalJxcHardwareFactory::~TpuHalJxcHardwareFactory` (0x0e723aa0), a bare `free(this)` after `operator delete(this, 0x10)` is inlined — proof the factory object is 16 bytes. Slot 2 is the GoF template method: `Create` calls slot 3 (`CanCreate`) then slot 4 (`CreateImpl`), else builds a `NotFoundError`. Slot 3 reads the factory's stored `TpuVersion` at `+8` and matches it against `ScanHardwareDevices` (0x1fba53c0).
 
@@ -164,14 +164,14 @@ The `*_trace_entry` family includes `bcs_internal`, `brn_fabric_sync`, `brn_sync
 
 Jellyfish and Dragonfish differ only in data, never in C++ type. Both produce the same `TpuHalJxcHardwareImpl`, the same `TpuChipJxcDriverImpl`/`TpuCoreJxcDriverImpl`, and share one DMA descriptor model (the V1 `jxc::DmaDescriptor`, 8×32-bit = 32 bytes). Each generation has its own named codec class — `TpuCodecJellyfish` and `TpuCodecDragonfish` (both fully named, RTTI-symbol-bearing) — selected by `TpuCodec::Create` case 0/1, but these are codec objects, not HAL types.
 
-| Axis | Jellyfish (v0) | Dragonfish (v1) | Source | Confidence |
-|---|---|---|---|---|
-| TpuVersion enum | kJellyfish = 0 | kDragonfish = 1 | `TpuVersionToString` 0x20b3a480 | CERTAIN |
-| ToString | "jellyfish" | "dragonfish" | rodata pointer table 0x22011bf0 | CERTAIN |
-| Codec class | `TpuCodecJellyfish` (named) | `TpuCodecDragonfish` (named) | symtab; `TpuCodec::Create` case 0/1 | CERTAIN |
-| TensorCore / BarnaCore | yes / yes | yes / yes | TpuChipParts (`Core.type` BARNA_CORE) | CERTAIN |
-| SparseCore | no | no | TpuChipParts (no SPARSE_CORE `Core`) | CERTAIN |
-| Flag prefix | `xla_jf_` (417 flags) | `xla_jf_` (no `xla_df_`) | flag scan | HIGH |
+| Axis | Jellyfish (v0) | Dragonfish (v1) | Source |
+|---|---|---|---|
+| TpuVersion enum | kJellyfish = 0 | kDragonfish = 1 | `TpuVersionToString` 0x20b3a480 |
+| ToString | "jellyfish" | "dragonfish" | rodata pointer table 0x22011bf0 |
+| Codec class | `TpuCodecJellyfish` (named) | `TpuCodecDragonfish` (named) | symtab; `TpuCodec::Create` case 0/1 |
+| TensorCore / BarnaCore | yes / yes | yes / yes | TpuChipParts (`Core.type` BARNA_CORE) |
+| SparseCore | no | no | TpuChipParts (no SPARSE_CORE `Core`) |
+| Flag prefix | `xla_jf_` (417 flags) | `xla_jf_` (no `xla_df_`) | flag scan |
 
 ---
 

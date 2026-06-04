@@ -93,19 +93,19 @@ Enumerate the LLVM components statically linked in — this is a full code-gener
 
 Every row is a defined-symbol hit (`nm -C libtpu.so | rg …`). Confidence is `CERTAIN` where a concrete class symbol is present.
 
-| LLVM component | Present | Primary evidence (defined symbol) | Confidence |
-|---|---|---|---|
-| Core IR | YES | `llvm::Module`, `llvm::Function`, `llvm::BasicBlock`, `llvm::Instruction`, `llvm::LLVMContext` | CERTAIN |
-| Bitcode reader/writer | YES | `llvm::BitcodeReader`, `llvm::parseBitcodeFile`, `llvm::WriteBitcodeToFile` | CERTAIN |
-| SelectionDAG ISel | YES | `llvm::SelectionDAG`, `llvm::SelectionDAGISel`, `llvm::TargetLowering` | CERTAIN |
-| GlobalISel infra | YES (linked) | `llvm::InstructionSelect`, `llvm::LegalizerInfo`, `llvm::RegisterBankInfo` | CERTAIN |
-| MachineCodeGen | YES | `llvm::MachineFunction`, `llvm::MachineInstr`, `llvm::LiveIntervals` | CERTAIN |
-| MC layer | YES | `llvm::MCStreamer`, `llvm::MCInst`, `llvm::MCCodeEmitter` (+ `TPUMCCodeEmitter`) | CERTAIN |
-| TPU target backend | YES | `llvm::TPUTargetMachine` + the `llvm::TPU*` family (below) | CERTAIN |
-| Analysis passes | YES | `llvm::ScalarEvolution`, `llvm::PassBuilder` (NewPM) | CERTAIN |
-| MLGO advisor models | YES (2) | `RegAllocEvictModel`, `InlinerSizeModel` (AOT, see below) | CERTAIN |
-| Embedded LLVM bitcode | YES | `kEigenUnaryLlIr_constant_buffer_contents` @ `0xaf58000` | CERTAIN |
-| MCJIT / ORC | YES | `llvm::MCJIT`, `llvm::orc::*` (LLVM ExecutionEngine — note: distinct from `mlir::ExecutionEngine`, which is absent); XLA CPU backend JITs `llvm::Module`s | CERTAIN |
+| LLVM component | Present | Primary evidence (defined symbol) |
+|---|---|---|
+| Core IR | YES | `llvm::Module`, `llvm::Function`, `llvm::BasicBlock`, `llvm::Instruction`, `llvm::LLVMContext` |
+| Bitcode reader/writer | YES | `llvm::BitcodeReader`, `llvm::parseBitcodeFile`, `llvm::WriteBitcodeToFile` |
+| SelectionDAG ISel | YES | `llvm::SelectionDAG`, `llvm::SelectionDAGISel`, `llvm::TargetLowering` |
+| GlobalISel infra | YES (linked) | `llvm::InstructionSelect`, `llvm::LegalizerInfo`, `llvm::RegisterBankInfo` |
+| MachineCodeGen | YES | `llvm::MachineFunction`, `llvm::MachineInstr`, `llvm::LiveIntervals` |
+| MC layer | YES | `llvm::MCStreamer`, `llvm::MCInst`, `llvm::MCCodeEmitter` (+ `TPUMCCodeEmitter`) |
+| TPU target backend | YES | `llvm::TPUTargetMachine` + the `llvm::TPU*` family (below) |
+| Analysis passes | YES | `llvm::ScalarEvolution`, `llvm::PassBuilder` (NewPM) |
+| MLGO advisor models | YES (2) | `RegAllocEvictModel`, `InlinerSizeModel` (AOT, see below) |
+| Embedded LLVM bitcode | YES | `kEigenUnaryLlIr_constant_buffer_contents` @ `0xaf58000` |
+| MCJIT / ORC | YES | `llvm::MCJIT`, `llvm::orc::*` (LLVM ExecutionEngine — note: distinct from `mlir::ExecutionEngine`, which is absent); XLA CPU backend JITs `llvm::Module`s |
 
 > **QUIRK —** **both** ISel infrastructures are linked. GlobalISel (`InstructionSelect`/`LegalizerInfo`/`RegisterBankInfo`) is present, but the TPU path's MC-emitter (`TPUMCCodeEmitter::getBinaryCodeForInstr` @ `0x13c74da0`, a 5,667-case switch over `InstBits`) is downstream of `MachineInstr`, consistent with a SelectionDAG-primary backend. Whether the TPU target also has a GlobalISel path for some opcodes is not resolved from the symbol surface alone — it needs a disassembly of the pass-pipeline constructor.
 
@@ -133,15 +133,15 @@ The set of `LLVMInitialize*Target` (codegen) initializers is the same seven, and
 
 The out-of-tree `TPU` target is the single most distinctive LLVM component — a complete `llvm::Target` named "TPU" that does not exist upstream. Its TableGen tables are located and sized at fixed addresses:
 
-| Table / function | Address | Role | Confidence |
-|---|---|---|---|
-| `TPUMCCodeEmitter::…::InstBits` | `0x3366d90` | Per-opcode instruction encoding bits (TensorCore) | CERTAIN |
-| `…::InstBits_BarnaCorePxcHwMode` | `0x33931f0` | BarnaCore (Pufferfish PXC) HwMode encoding variant | CERTAIN |
-| `llvm::TPUDescs` | `0x33bf650` | Per-instr `MCInstrDesc` table | CERTAIN |
-| `llvm::TPUInstrNameData` | `0x33f2be0` | Instr mnemonic string pool | CERTAIN |
-| `llvm::TPUFeatureKV` | `0x21934550` | `SubtargetFeatureKV` key/value (16 features; 1,152 B / 72 B-stride) | CERTAIN |
-| `llvm::TPUSubTypeKV` | `0x21934ca0` | Subtype/CPU key/value (9 CPU variants; 1,008 B / 112 B-stride) | CERTAIN |
-| `TPUMCCodeEmitter::getBinaryCodeForInstr` | `0x13c74da0` | 5,667-case encoder switch (selects `InstBits` per HwMode) | CERTAIN |
+| Table / function | Address | Role |
+|---|---|---|
+| `TPUMCCodeEmitter::…::InstBits` | `0x3366d90` | Per-opcode instruction encoding bits (TensorCore) |
+| `…::InstBits_BarnaCorePxcHwMode` | `0x33931f0` | BarnaCore (Pufferfish PXC) HwMode encoding variant |
+| `llvm::TPUDescs` | `0x33bf650` | Per-instr `MCInstrDesc` table |
+| `llvm::TPUInstrNameData` | `0x33f2be0` | Instr mnemonic string pool |
+| `llvm::TPUFeatureKV` | `0x21934550` | `SubtargetFeatureKV` key/value (16 features; 1,152 B / 72 B-stride) |
+| `llvm::TPUSubTypeKV` | `0x21934ca0` | Subtype/CPU key/value (9 CPU variants; 1,008 B / 112 B-stride) |
+| `TPUMCCodeEmitter::getBinaryCodeForInstr` | `0x13c74da0` | 5,667-case encoder switch (selects `InstBits` per HwMode) |
 
 Five silicon subtarget classes (plus a generated `llvm::TPUGenMCSubtarget`) cover the TensorCore generations across the HAL families (the abbreviations map to TPU codenames; the SparseCore sequencer split is documented in the [tpu dialect](../compiler/tpu-dialect-and-ops.md) and lowering pages):
 
@@ -168,10 +168,10 @@ SparseCoreTec{GF,GL,VF}SchedModelSchedClasses           ── TEC sequencer (3 
 
 Two ML-guided-optimization models are AOT-compiled (via `tfcompile`) directly into native code plus constant-buffer rodata — there is **no** TF runtime or interpreter for them. They are the LLVM "release-mode" MLGO models baked in through the upstream `LLVM_RAEVICT_MODEL_PATH` / `LLVM_INLINER_MODEL_PATH` build mechanism:
 
-| Model | Consumer | Evidence | Confidence |
-|---|---|---|---|
-| `RegAllocEvictModel` | LLVM greedy RA `MLRegAllocEvictAdvisor` | `…RegAllocEvictModel…` symbol family | CERTAIN |
-| `InlinerSizeModel` | LLVM inliner `MLInlineAdvisor` | `_llvm__InlinerSizeModel_*_fusion_` constant-buffer symbols | CERTAIN |
+| Model | Consumer | Evidence |
+|---|---|---|
+| `RegAllocEvictModel` | LLVM greedy RA `MLRegAllocEvictAdvisor` | `…RegAllocEvictModel…` symbol family |
+| `InlinerSizeModel` | LLVM inliner `MLInlineAdvisor` | `_llvm__InlinerSizeModel_*_fusion_` constant-buffer symbols |
 
 These are **LLVM-backend** MLGO advisors, not an XLA learned cost model. The `InlinerSizeModel` constant buffers are even named per fusion shape (`dot_add_fusion`, `iota_reduce_fusion`, `compare_convert_fusion`, …), confirming they are the trained inliner-for-size weights.
 
@@ -196,15 +196,15 @@ Enumerate the MLIR components. MLIR ships from the *same* monorepo commit as LLV
 
 ### Core IR and Infrastructure
 
-| MLIR component | Present | Primary evidence | Confidence |
-|---|---|---|---|
-| Core IR | YES | `mlir::MLIRContext`, `mlir::OpBuilder`, `mlir::Operation` (+ `Block`/`Region`/`Value`/`Type`) | CERTAIN |
-| Dialect registry | YES | 67 concrete `*Dialect` classes (unique `vtable for …Dialect`, excl. base `mlir::Dialect`) | CERTAIN |
-| Pass infrastructure | YES | `mlir::PassManager`, `mlir::Pass` | CERTAIN |
-| Bytecode reader/writer | YES | `mlir::BytecodeReader`, `mlir::writeBytecodeToFile` | CERTAIN |
-| Conversion framework | YES | `mlir::ConversionTarget`, `mlir::TypeConverter`, `mlir::RewritePatternSet` | CERTAIN |
-| LLVM-IR translation | YES | `mlir::translateModuleToLLVMIR` | CERTAIN |
-| ExecutionEngine / JIT | **NO** | no `mlir::ExecutionEngine` symbol | CERTAIN |
+| MLIR component | Present | Primary evidence |
+|---|---|---|
+| Core IR | YES | `mlir::MLIRContext`, `mlir::OpBuilder`, `mlir::Operation` (+ `Block`/`Region`/`Value`/`Type`) |
+| Dialect registry | YES | 67 concrete `*Dialect` classes (unique `vtable for …Dialect`, excl. base `mlir::Dialect`) |
+| Pass infrastructure | YES | `mlir::PassManager`, `mlir::Pass` |
+| Bytecode reader/writer | YES | `mlir::BytecodeReader`, `mlir::writeBytecodeToFile` |
+| Conversion framework | YES | `mlir::ConversionTarget`, `mlir::TypeConverter`, `mlir::RewritePatternSet` |
+| LLVM-IR translation | YES | `mlir::translateModuleToLLVMIR` |
+| ExecutionEngine / JIT | **NO** | no `mlir::ExecutionEngine` symbol |
 
 > **NOTE —** the bytecode reader/writer and the LLVM-IR translation path are both present, but `mlir::ExecutionEngine` is **absent**. MLIR is used purely as an AOT translate path: the SparseCore lowering chain runs `translateModuleToLLVMIR` and hands the resulting `llvm::Module` to the LLVM TPU backend ([LowerToSparseCoreLlvm](../compiler/lower-to-sparsecore-llvm.md)). There is no MLIR JIT, which resolves a standing question about whether an MLIR ExecutionEngine is linked: it is not.
 
@@ -246,18 +246,18 @@ Pin the headline versions of the third-party libraries the toolchain is compiled
 
 Versions are pinned three ways: a versioned **path literal** (decisive), a **version-tagged namespace** (decisive), or a **feature-floor** (a symbol that first appeared in a known release — pins a floor, not the exact version).
 
-| Library | Version | Version evidence | Confidence |
-|---|---|---|---|
-| LLVM | 23-dev (trunk) | `LLVM version g3_____-trunk 8918319853fbdf…` @ `0xb1fa070` | HIGH (window) |
-| MLIR | = LLVM (same commit) | same monorepo commit; no separate version | HIGH |
-| libc++ | = LLVM commit | `std::__u::` ABI tag (Google libc++ inline-namespace build) | CERTAIN (provenance), HIGH (point) |
-| Intel oneDNN | **v3.3** | path literal `third_party/intel_dnnl/v3_3/` | CERTAIN |
-| ICU | **icu_78** | versioned namespace `icu_78::` | CERTAIN |
-| Protobuf | v32+ (EDITION_2024 production) | edition enums `EDITION_2023`, `EDITION_2024`, `EDITION_2026`, `EDITION_UNSTABLE` (no `EDITION_2025`) | HIGH |
-| Abseil | >= LTS 20240722 (floor) | `absl::AnyInvocable`, `absl::log_internal::SetTimeZone`, `absl::CordBuilder`, `absl::StatusOr` | HIGH (floor) |
-| Eigen | 3.4.x branch | `Eigen::bfloat16` (modern), `Eigen::half`; no `EIGEN_*_VERSION` literal survives | MEDIUM |
-| gRPC | google3-tip (>= 1.66-dev) | `chaotic_good` transport, `filter_fusion` (trunk-only) | MEDIUM |
-| tcmalloc | 2024+ (rseq per-CPU) | `google_malloc` ELF section, `__rseq_cs`, rseq cmpxchg family | HIGH (floor) |
+| Library | Version | Version evidence |
+|---|---|---|
+| LLVM | 23-dev (trunk) | `LLVM version g3_____-trunk 8918319853fbdf…` @ `0xb1fa070` |
+| MLIR | = LLVM (same commit) | same monorepo commit; no separate version |
+| libc++ | = LLVM commit | `std::__u::` ABI tag (Google libc++ inline-namespace build) |
+| Intel oneDNN | **v3.3** | path literal `third_party/intel_dnnl/v3_3/` |
+| ICU | **icu_78** | versioned namespace `icu_78::` |
+| Protobuf | v32+ (EDITION_2024 production) | edition enums `EDITION_2023`, `EDITION_2024`, `EDITION_2026`, `EDITION_UNSTABLE` (no `EDITION_2025`) |
+| Abseil | >= LTS 20240722 (floor) | `absl::AnyInvocable`, `absl::log_internal::SetTimeZone`, `absl::CordBuilder`, `absl::StatusOr` |
+| Eigen | 3.4.x branch | `Eigen::bfloat16` (modern), `Eigen::half`; no `EIGEN_*_VERSION` literal survives |
+| gRPC | google3-tip (>= 1.66-dev) | `chaotic_good` transport, `filter_fusion` (trunk-only) |
+| tcmalloc | 2024+ (rseq per-CPU) | `google_malloc` ELF section, `__rseq_cs`, rseq cmpxchg family |
 
 > **NOTE —** the **path-literal** and **versioned-namespace** pins (oneDNN `v3_3`, ICU `icu_78`) are the only `CERTAIN` exact versions; they survive as literal strings the build embeds. Everything else is a **floor** — the binary exhibits features added in a known release but no `*_VERSION_MAJOR` macro literal survives, so the exact point release cannot be read from this binary alone. The Atlas page documents the per-library reproduction recipe for tightening each floor.
 
@@ -279,13 +279,13 @@ No behavioural patch to LLVM/MLIR *core* algorithms is visible in the symbol sur
 
 LLVM and MLIR together are the largest single category of code in the binary. The figures below are symbol-bucketed (summed `nm -S` sizes by namespace); the underlying ELF section sizes that bound them are confirmed directly: `.text` = `0x12bdb484` (314,422,404 B), `.lrodata` = `0x6c0e7d0` (113,305,552 B), `.rodata` = `0x39eaf28` (60,731,176 B).
 
-| Bucket | Combined bytes | % of code+rodata symbol bytes | Confidence |
-|---|---|---|---|
-| LLVM (`llvm::` + TableGen tables) | ~84.1 MB | ~19.8% | HIGH |
-| MLIR (`mlir::` + dialect templates) | ~72.2 MB | ~17.0% | HIGH |
-| MLGO models (RegAllocEvict + InlinerSize) | ~0.59 MB | ~0.14% | HIGH |
-| `kEigenUnaryLlIr` bitcode blob | 16,384 B | ~0.004% | CERTAIN |
-| **LLVM + MLIR + MLGO + bitcode** | **~156.9 MB** | **~36.9%** | HIGH |
+| Bucket | Combined bytes | % of code+rodata symbol bytes |
+|---|---|---|
+| LLVM (`llvm::` + TableGen tables) | ~84.1 MB | ~19.8% |
+| MLIR (`mlir::` + dialect templates) | ~72.2 MB | ~17.0% |
+| MLGO models (RegAllocEvict + InlinerSize) | ~0.59 MB | ~0.14% |
+| `kEigenUnaryLlIr` bitcode blob | 16,384 B | ~0.004% |
+| **LLVM + MLIR + MLGO + bitcode** | **~156.9 MB** | **~36.9%** |
 
 > **NOTE —** MLIR's `.rodata` share is tiny relative to its `.text` because MLIR is template-heavy code with few large constant tables; LLVM's `.rodata` is large because the TPU TableGen tables (`InstBits` 181,344 B, `TPUDescs`, `TPUInstrNameData`) and the in-tree-target `InstBits` tables live in rodata/lrodata. These are *symbol-bucketed* sizes — they exclude anonymous-namespace TU-local residue, an estimated 70-80% of which belongs to LLVM/MLIR/XLA, so the true footprint is modestly higher than 156.9 MB.
 

@@ -33,12 +33,12 @@ For reimplementation, the contract is:
 
 ## At a Glance — The Four ICR DMA Bands
 
-| Band ID | Message class (`asic_sw::driver::deepsea::pxc::profiler::`) | Oneof | Direction / map | Producer role | Payload it carries | Confidence |
-|---|---|---|---|---|---|---|
-| **48** | `IciPacketDataPacketQueuedForLocalIngress` | 29 (0x1d) | ingress / MAP_B | begin **or** end marker | first/last-packet bools | CERTAIN |
-| **50** | `OciMessageGeneratedInIcrEgressDma` | 31 (0x1f) | egress / MAP_A | end timestamp only | `done` gate, `msg_data` (unused here) | CERTAIN |
-| **51** | `OciMessageGeneratedInIcrIngressDma` | 32 (0x20) | ingress / MAP_B | byte-count accumulate | `msg_data` << 9 | CERTAIN |
-| **91** | `OciDescriptorCommonIssuedFromTcs` | 48 (0x30) | egress / MAP_A | begin + byte-count | `length` << granule, `dma_type` gate | CERTAIN |
+| Band ID | Message class (`asic_sw::driver::deepsea::pxc::profiler::`) | Oneof | Direction / map | Producer role | Payload it carries |
+|---|---|---|---|---|---|
+| **48** | `IciPacketDataPacketQueuedForLocalIngress` | 29 (0x1d) | ingress / MAP_B | begin **or** end marker | first/last-packet bools |
+| **50** | `OciMessageGeneratedInIcrEgressDma` | 31 (0x1f) | egress / MAP_A | end timestamp only | `done` gate, `msg_data` (unused here) |
+| **51** | `OciMessageGeneratedInIcrIngressDma` | 32 (0x20) | ingress / MAP_B | byte-count accumulate | `msg_data` << 9 |
+| **91** | `OciDescriptorCommonIssuedFromTcs` | 48 (0x30) | egress / MAP_A | begin + byte-count | `length` << granule, `dma_type` gate |
 
 > **NOTE —** the four ids are *not* contiguous and do *not* share a message class. They share only the `TraceIdHeader` (proto field 1, C++ offset `+0x18`) that yields the `dma_id`. The grouping is behavioural: these are the four trace points the DMA-timeline pass keys on. Every other id in the registry that `GetDmaId` can decode (the OCI command band 22/26/96, etc.) is never fed to this pass — `GetDmaId` has exactly one caller (`@0xf26c8d9`), and it keys on only these four.
 
@@ -125,23 +125,23 @@ function GetDmaId(wrapper, selector):            // 0xf699ca0
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `GetDmaId(int)` | `0xf699ca0` | per-id `TraceIdHeader` → 38-bit `dma_id`; single caller | CERTAIN |
-| single-header compose tail | `0xf69a444` | the 38-bit bitfield pack | CERTAIN |
-| `CmdDmaIdFromEntry<...>` | (per-class) | OCI command-band path, **unused** by the DMA pass | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `GetDmaId(int)` | `0xf699ca0` | per-id `TraceIdHeader` → 38-bit `dma_id`; single caller |
+| single-header compose tail | `0xf69a444` | the 38-bit bitfield pack |
+| `CmdDmaIdFromEntry<...>` | (per-class) | OCI command-band path, **unused** by the DMA pass |
 
 ### Per-ID Globals Prototypes
 
 The "globals_" fallback used when a live message is absent. Each is the zero-initialized message prototype; `GetDmaId` reads its `TraceIdHeader` slot at `+0x18` (the addresses below are the `globals_` base; the arm dereferences `base+0x18`).
 
-| Band ID | `globals_` symbol | Address | Confidence |
-|---|---|---|---|
-| 48 | `IciPacketDataPacketQueuedForLocalIngress_globals_` | `0x2237b578` | CERTAIN |
-| 50 | `OciMessageGeneratedInIcrEgressDma_globals_` | `0x2237af10` | CERTAIN |
-| 51 | `OciMessageGeneratedInIcrIngressDma_globals_` | `0x2237aed8` | CERTAIN |
-| 91 | `OciDescriptorCommonIssuedFromTcs_globals_` | `0x2237b228` | CERTAIN |
-| — (null default) | `TraceIdHeader_globals_` (all-zero → `dma_id` 0) | `0x2237a308` | CERTAIN |
+| Band ID | `globals_` symbol | Address |
+|---|---|---|
+| 48 | `IciPacketDataPacketQueuedForLocalIngress_globals_` | `0x2237b578` |
+| 50 | `OciMessageGeneratedInIcrEgressDma_globals_` | `0x2237af10` |
+| 51 | `OciMessageGeneratedInIcrIngressDma_globals_` | `0x2237aed8` |
+| 91 | `OciDescriptorCommonIssuedFromTcs_globals_` | `0x2237b228` |
+| — (null default) | `TraceIdHeader_globals_` (all-zero → `dma_id` 0) | `0x2237a308` |
 
 > **GOTCHA —** the presence bit (`dl`) is checked by the caller (`test dl,1; je drop` `@0xf26c8de`). The all-zero `TraceIdHeader_globals_` default still yields presence == 1 with `dma_id == 0`; a span keyed on 0 is technically built but, lacking a real begin/end pair, is dropped downstream. Do not assume `dma_id == 0` is impossible.
 
@@ -164,17 +164,17 @@ elif v23 == 91:                <descriptor arm>
 
 The ICI data-packet trace point carries the *begin* and *end* of an ingress DMA as two trailing bool flags. It writes into MAP_B (ingress) with kind tag 2.
 
-| Field | Proto # | C++ off | Type | Role | Confidence |
-|---|---|---|---|---|---|
-| `trace_id_header` | f1 | `+0x18` | submessage | `dma_id` source | CERTAIN |
-| `router_link_port_id` | f2 | `+0x20` | enum | (decoded, dropped) | HIGH |
-| `virtual_channel` | f3 | `+0x24` | uint32 | (decoded, dropped) | HIGH |
-| `link_targets` | f4 | `+0x28` | uint32 | (decoded, dropped) | HIGH |
-| `local_ingress_target` | f5 | `+0x30` | bool | (decoded, dropped) | HIGH |
-| `multicast` | f6 | `+0x31` | bool | (decoded, dropped) | HIGH |
-| `dst_chip_id` | f7 | `+0x2c` | uint32 | (decoded, dropped) | HIGH |
-| **`first_packet_in_dma`** | f8 | `+0x32` | bool | **begin marker** | CERTAIN |
-| **`last_packet_in_dma`** | f9 | `+0x33` | bool | **end marker** | CERTAIN |
+| Field | Proto # | C++ off | Type | Role |
+|---|---|---|---|---|
+| `trace_id_header` | f1 | `+0x18` | submessage | `dma_id` source |
+| `router_link_port_id` | f2 | `+0x20` | enum | (decoded, dropped) |
+| `virtual_channel` | f3 | `+0x24` | uint32 | (decoded, dropped) |
+| `link_targets` | f4 | `+0x28` | uint32 | (decoded, dropped) |
+| `local_ingress_target` | f5 | `+0x30` | bool | (decoded, dropped) |
+| `multicast` | f6 | `+0x31` | bool | (decoded, dropped) |
+| `dst_chip_id` | f7 | `+0x2c` | uint32 | (decoded, dropped) |
+| **`first_packet_in_dma`** | f8 | `+0x32` | bool | **begin marker** |
+| **`last_packet_in_dma`** | f9 | `+0x33` | bool | **end marker** |
 
 ```c
 function Band48(msg, slot):                      // arm @0xf26ca2f, stores @0xf26ce60..
@@ -195,15 +195,15 @@ function Band48(msg, slot):                      // arm @0xf26ca2f, stores @0xf2
 
 Egress messages contribute *only* the end timestamp of an egress span, and only when `done == 1`. They carry `msg_data` (the same field id 51 uses for bytes), but the producer routes id 50 to the end-timestamp store, not the byte-count store — the egress bytes come from the descriptor (id 91) instead.
 
-| Field | Proto # | C++ off | Type | Role | Confidence |
-|---|---|---|---|---|---|
-| `trace_id_header` | f1 | `+0x18` | submessage | `dma_id` source | CERTAIN |
-| `msg_data` | f2 | `+0x20` | uint32 | (present, **not** read by id 50) | CERTAIN |
-| **`done`** | f3 | `+0x24` | bool | **gate** (`done == 1`) | CERTAIN |
-| `msg_type` | f4 | `+0x28` | enum | (decoded, dropped) | HIGH |
-| `opcode` | f5 | `+0x2c` | enum | (decoded, dropped) | HIGH |
-| `node_type` | f7 | `+0x30` | enum | label, **not** a line key | HIGH |
-| `addr` | f6 | `+0x34` | uint32 | (decoded, dropped) | HIGH |
+| Field | Proto # | C++ off | Type | Role |
+|---|---|---|---|---|
+| `trace_id_header` | f1 | `+0x18` | submessage | `dma_id` source |
+| `msg_data` | f2 | `+0x20` | uint32 | (present, **not** read by id 50) |
+| **`done`** | f3 | `+0x24` | bool | **gate** (`done == 1`) |
+| `msg_type` | f4 | `+0x28` | enum | (decoded, dropped) |
+| `opcode` | f5 | `+0x2c` | enum | (decoded, dropped) |
+| `node_type` | f7 | `+0x30` | enum | label, **not** a line key |
+| `addr` | f6 | `+0x34` | uint32 | (decoded, dropped) |
 
 ```c
 function Band50(msg, slot):                      // arm @0xf26c919, store @0xf26cf41
@@ -229,20 +229,20 @@ The shift is fixed at 9: the OCI message length unit is a fixed 512-byte granule
 
 The node-fabric descriptor is the richest of the four (17 fields), but the DMA pass reads only three: `dma_type` (gate), `length` (byte source), and `length_granule` (shift selector). It writes the egress span's begin timestamp **and** its byte count, with kind tag 3, into MAP_A (egress). The full src/dst endpoint and sync-flag fields are decoded into the proto but dropped by this pass.
 
-| Field | Proto # | C++ off | Type | Role | Confidence |
-|---|---|---|---|---|---|
-| `trace_id_header` | f1 | `+0x18` | submessage | `dma_id` source | CERTAIN |
-| **`dma_type`** | f2 | `+0x20` | enum | **gate** (`== REMOTEUNICAST`) | CERTAIN |
-| `src_mem_mem_id` | f3 | `+0x24` | enum | (decoded, dropped) | HIGH |
-| `src_mem_core_id` | f4 | `+0x28` | uint32 | (decoded, dropped) | HIGH |
-| `src_opcode` | f5 | `+0x2c` | enum | (decoded, dropped) | HIGH |
-| `dst_mem_mem_id` | f6 | `+0x30` | enum | (decoded, dropped) | HIGH |
-| `dst_mem_core_id` | f7 | `+0x34` | uint32 | (decoded, dropped) | HIGH |
-| `dst_opcode` | f8 | `+0x38` | enum | (decoded, dropped) | HIGH |
-| `src_sync_flag_id` … `dst_sync_flag_1_core_id` | f9–f14 | `+0x3c`–`+0x50` | uint32 | (decoded, dropped) | HIGH |
-| `program_counter` | f15 | `+0x54` | uint32 | (decoded, **not** the byte source) | HIGH |
-| **`length`** | f16 | `+0x58` | uint32 | **byte-count source** | CERTAIN |
-| **`length_granule`** | f17 | `+0x5c` | enum | **shift selector** | CERTAIN |
+| Field | Proto # | C++ off | Type | Role |
+|---|---|---|---|---|
+| `trace_id_header` | f1 | `+0x18` | submessage | `dma_id` source |
+| **`dma_type`** | f2 | `+0x20` | enum | **gate** (`== REMOTEUNICAST`) |
+| `src_mem_mem_id` | f3 | `+0x24` | enum | (decoded, dropped) |
+| `src_mem_core_id` | f4 | `+0x28` | uint32 | (decoded, dropped) |
+| `src_opcode` | f5 | `+0x2c` | enum | (decoded, dropped) |
+| `dst_mem_mem_id` | f6 | `+0x30` | enum | (decoded, dropped) |
+| `dst_mem_core_id` | f7 | `+0x34` | uint32 | (decoded, dropped) |
+| `dst_opcode` | f8 | `+0x38` | enum | (decoded, dropped) |
+| `src_sync_flag_id` … `dst_sync_flag_1_core_id` | f9–f14 | `+0x3c`–`+0x50` | uint32 | (decoded, dropped) |
+| `program_counter` | f15 | `+0x54` | uint32 | (decoded, **not** the byte source) |
+| **`length`** | f16 | `+0x58` | uint32 | **byte-count source** |
+| **`length_granule`** | f17 | `+0x5c` | enum | **shift selector** |
 
 ```c
 function Band91(descr, slot):                     // arm @0xf26c9b2, store @0xf26c865..88b
@@ -262,12 +262,12 @@ function Band91(descr, slot):                     // arm @0xf26c9b2, store @0xf2
 
 `byte_count` lives at `DmaTransfer+0x28` (map-value form) / `+0x20` (merge/span form). There are two distinct accumulation rules; which one applies is fixed per band.
 
-| Side | Band | Source field | Scale | Store op | Producer site | Confidence |
-|---|---|---|---|---|---|---|
-| OCI message | 51 | `msg_data` (f2, `+0x20`) | `<< 9` (×512, fixed) | `add` | `0xf26cedb` | CERTAIN |
-| OCI message | 50 | — (end timestamp only) | — | — | — | CERTAIN |
-| Descriptor | 91 | `length` (f16, `+0x58`) | `<< (granule==0 ? 9 : 2)` | `mov` | `0xf26c880` | CERTAIN |
-| ICI packet | 48 | — (markers only) | — | — | — | CERTAIN |
+| Side | Band | Source field | Scale | Store op | Producer site |
+|---|---|---|---|---|---|
+| OCI message | 51 | `msg_data` (f2, `+0x20`) | `<< 9` (×512, fixed) | `add` | `0xf26cedb` |
+| OCI message | 50 | — (end timestamp only) | — | — | — |
+| Descriptor | 91 | `length` (f16, `+0x58`) | `<< (granule==0 ? 9 : 2)` | `mov` | `0xf26c880` |
+| ICI packet | 48 | — (markers only) | — | — | — |
 
 The descriptor shift is chosen by the descriptor's own `length_granule` enum:
 
@@ -334,14 +334,14 @@ function PairSpans(merged_entries):              // 0xf26c6e0 main loop
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `flat_hash_map` policy | `0x21646fe8` | `FlatHashMapPolicy<unsigned long, DmaTransfer>` | CERTAIN |
-| `PrepareInsertSmallNonSoo` | `0x21118e20` | small-table insert | HIGH |
-| `PrepareInsertLarge` | `0x2111a600` | large-table insert | HIGH |
-| `HashKey` | `0xe867c60` | `Hash<unsigned long>` over `dma_id` | HIGH |
-| `vector<DmaTransfer>::push_back` | `0xf2547e0` | flush a complete span (88-byte copy) | CERTAIN |
-| `MergeOverlappingTransfers` | `0xf26dae0` | coalesce overlapping spans per vector | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `flat_hash_map` policy | `0x21646fe8` | `FlatHashMapPolicy<unsigned long, DmaTransfer>` |
+| `PrepareInsertSmallNonSoo` | `0x21118e20` | small-table insert |
+| `PrepareInsertLarge` | `0x2111a600` | large-table insert |
+| `HashKey` | `0xe867c60` | `Hash<unsigned long>` over `dma_id` |
+| `vector<DmaTransfer>::push_back` | `0xf2547e0` | flush a complete span (88-byte copy) |
+| `MergeOverlappingTransfers` | `0xf26dae0` | coalesce overlapping spans per vector |
 
 > **GOTCHA —** the "flush-and-reopen" path (`slot.begin_present && slot.end_present` → `push_back`, clear flags) means a re-touched complete slot is *emitted and reused*, not overwritten in place. A reimplementation that simply overwrites a full slot will lose spans whenever one `dma_id` is reused across multiple transfers in a capture.
 
@@ -351,15 +351,15 @@ function PairSpans(merged_entries):              // 0xf26c6e0 main loop
 
 The map value type, 0x58 (88) bytes. The map stores the `dma_id` key at `+0x0` and the span body from `+0x8`; the merge/span form (what `push_back` copies and what the renderer reads) is the body alone.
 
-| Field | Map-value off | Span/merge off | Type | Meaning | Confidence |
-|---|---|---|---|---|---|
-| `dma_id` | `+0x0` | (key) | uint64 | pairing key (38-bit) | CERTAIN |
-| `begin_gtc` | `+0x8` | `+0x0` | uint64 | begin GTC tick (sort key) | CERTAIN |
-| `begin_present` | `+0x10` | `+0x8` | bool | begin written | CERTAIN |
-| `end_gtc` | `+0x18` | `+0x10` | uint64 | end GTC tick | CERTAIN |
-| `end_present` | `+0x20` | `+0x18` | bool | end written | CERTAIN |
-| `byte_count` | `+0x28` | `+0x20` | uint64 | accumulated bytes | CERTAIN |
-| `kind_tag` | `+0x40` | `+0x38` | uint32 | 2 = ingress, 3 = egress | CERTAIN |
+| Field | Map-value off | Span/merge off | Type | Meaning |
+|---|---|---|---|---|
+| `dma_id` | `+0x0` | (key) | uint64 | pairing key (38-bit) |
+| `begin_gtc` | `+0x8` | `+0x0` | uint64 | begin GTC tick (sort key) |
+| `begin_present` | `+0x10` | `+0x8` | bool | begin written |
+| `end_gtc` | `+0x18` | `+0x10` | uint64 | end GTC tick |
+| `end_present` | `+0x20` | `+0x18` | bool | end written |
+| `byte_count` | `+0x28` | `+0x20` | uint64 | accumulated bytes |
+| `kind_tag` | `+0x40` | `+0x38` | uint32 | 2 = ingress, 3 = egress |
 
 > **NOTE —** `gtc` is the event's `TraceHeader.timestamp` (proto field 3, uint64 at `TraceHeader+0x20`), loaded once per entry (`@0xf26c8cd`). It is a raw GTC tick; the GTC→picosecond conversion happens later, in the renderer's `AddEvent(GtcSpan)` path.
 
@@ -401,13 +401,13 @@ function ConvertDmaTransfersToXPlane(spans, plane):  // 0xf254bc0
 
 ### Lane / Tag Map
 
-| Kind tag | Source bands | XEvent name | Line (component) rendered on | Confidence |
-|---|---|---|---|---|
-| **2** | 48 (markers) + 51 (bytes) | "ICI Ingress" | **64** ("MemcpyD2H" line, component 64) | CERTAIN |
-| **3** | 91 (begin+bytes) + 50 (end) | "ICI Egress" | **54** ("From ICI Router", component 54) | CERTAIN |
-| 6 | (host H2D, unused) | "MemcpyH2D" | 63 "MemcpyH2D" | HIGH |
-| 7 | (host D2H, unused) | "MemcpyD2H" | 63 "MemcpyH2D" | HIGH |
-| 0 / 4 / 5 | — | dropped | (none) | HIGH |
+| Kind tag | Source bands | XEvent name | Line (component) rendered on |
+|---|---|---|---|
+| **2** | 48 (markers) + 51 (bytes) | "ICI Ingress" | **64** ("MemcpyD2H" line, component 64) |
+| **3** | 91 (begin+bytes) + 50 (end) | "ICI Egress" | **54** ("From ICI Router", component 54) |
+| 6 | (host H2D, unused) | "MemcpyH2D" | 63 "MemcpyH2D" |
+| 7 | (host D2H, unused) | "MemcpyD2H" | 63 "MemcpyH2D" |
+| 0 / 4 / 5 | — | dropped | (none) |
 
 The tag → metadata pairing is byte-confirmed in `ConvertDmaTransfersToXPlane` @ `0xf254bc0`: id 91 writes tag 3 into MAP_A (egress), id 48 writes tag 2 into MAP_B (ingress), and each map flushes to its own vector. The renderer's `case 2` pairs the "ICI Ingress" metadata (`v120`) and `case 3` the "ICI Egress" metadata (`v121`). The *line* each lands on, however, is **not** the symmetric 54/55 pair one would expect: the byte-exact switch routes `case 2` (ingress) onto the line-64 builder (`v131`, component 64) and `case 3` (egress) onto the line-54 builder (`v137`, component 54). `TpuComponentName(54)` = "From ICI Router", `TpuComponentName(55)` = "To ICI Router", `TpuComponentName(64)` = "MemcpyD2H" — so the rendered line names do **not** read as a clean "From/To ICI Router" pair; the egress span lands on "From ICI Router" and the ingress span on the "MemcpyD2H" line. Component 55 ("To ICI Router") is created in the line setup but is **not** selected by any switch arm. A reimplementation must follow the byte-exact `case→builder` binding (`2→line64`, `3→line54`), not an assumed direction↔component symmetry. (See [DMA Endpoint Rendering](dma-endpoint-rendering.md), whose renderer table carries the same binding.)
 
@@ -417,12 +417,12 @@ The tag → metadata pairing is byte-confirmed in `ConvertDmaTransfersToXPlane` 
 
 ## Enums Referenced by the Band Decodes
 
-| Enum | Values | Used by | Confidence |
-|---|---|---|---|
-| `DmaTypeValues` | 0=LOCAL, 1=CHIP2HOST, **2=REMOTEUNICAST**, 3=REMOTEMULTICAST | id 91 gate | CERTAIN |
-| `LengthGranuleValues` | **0=LENGTH_GRANULE_512B**, 1=LENGTH_GRANULE_4B | id 91 shift | CERTAIN |
-| `NodeTypeValues` | 0..6 = TCS/BC/CMQ/HBMQ/UHI/ICR/QNM | id 50/51 label (dropped) | HIGH |
-| `RouterLinkPortIdValues` | 0..5 = LINK0..LINK5 | id 48 label (dropped) | HIGH |
+| Enum | Values | Used by |
+|---|---|---|
+| `DmaTypeValues` | 0=LOCAL, 1=CHIP2HOST, **2=REMOTEUNICAST**, 3=REMOTEMULTICAST | id 91 gate |
+| `LengthGranuleValues` | **0=LENGTH_GRANULE_512B**, 1=LENGTH_GRANULE_4B | id 91 shift |
+| `NodeTypeValues` | 0..6 = TCS/BC/CMQ/HBMQ/UHI/ICR/QNM | id 50/51 label (dropped) |
+| `RouterLinkPortIdValues` | 0..5 = LINK0..LINK5 | id 48 label (dropped) |
 
 > **NOTE —** only `REMOTEUNICAST` descriptors reach the egress timeline: id 91 is gated on `dma_type == 2`. Local, host, and multicast DMAs are filtered out before the span is built. A reimplementation that renders all `dma_type` values will over-populate the "To ICI Router" lane.
 

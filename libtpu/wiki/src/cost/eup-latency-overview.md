@@ -81,13 +81,13 @@ function <Gen>Performance::GetLatency(perf, instr):   // VF @0x1c8cbc20, PF @0x1
 
 The push value is uniform across every classified EUP function on a given generation — `tanh = pow2 = recip = log2 = rsqrt = sigshft = sinq = cosq = erf` — so the EUP unit has a single transcendental latency per datatype, not a per-function table. Ghostlite is the only generation that splits F32 from BF16 (it keeps the 16-bit BF16 lane, so the BF16 transcendental costs one extra cycle); Viperfish and Pufferfish classify only the F32 pushes and widen BF16 EUP to the F32 push, so they have one latency.
 
-| Gen | TpuVersion | EUP push latency | Pop latency | Mechanism | Byte anchor | Confidence |
-|---|---|---|---|---|---|---|
-| Jellyfish | v2 | 4 | (clamp) | `Performance[+0x30]` = 4, clamped in `LatencyBetweenInternal` | clamp field `+0x1c` | CERTAIN |
-| Dragonfish | v3 | 4 | (clamp) | inherits JF `+0x30` = 4 | (= JF) | CERTAIN |
-| Pufferfish | v4 | 7 | 1 | `PufferfishPerformance` `latencies[]` | ctor `[ptr+0x19c..0x1b0]=7`, `[+0x1d8]=1` | CERTAIN |
-| Viperfish | v5p | 6 | 1 | `ViperfishPerformance` `latencies[]` | ctor `[ptr+0x330..0x348]=6`, `[+0x5a0]=1` | CERTAIN |
-| Ghostlite | v6e | 13 (F32) / 14 (BF16) | 1 | `GhostlitePerformance` `latencies[]` | ctor `[ptr+0x418..0x43c]=0xd`, `[+0x440..0x460]=0xe`, `[+0x710]=1` | CERTAIN |
+| Gen | TpuVersion | EUP push latency | Pop latency | Mechanism | Byte anchor |
+|---|---|---|---|---|---|
+| Jellyfish | v2 | 4 | (clamp) | `Performance[+0x30]` = 4, clamped in `LatencyBetweenInternal` | clamp field `+0x1c` |
+| Dragonfish | v3 | 4 | (clamp) | inherits JF `+0x30` = 4 | (= JF) |
+| Pufferfish | v4 | 7 | 1 | `PufferfishPerformance` `latencies[]` | ctor `[ptr+0x19c..0x1b0]=7`, `[+0x1d8]=1` |
+| Viperfish | v5p | 6 | 1 | `ViperfishPerformance` `latencies[]` | ctor `[ptr+0x330..0x348]=6`, `[+0x5a0]=1` |
+| Ghostlite | v6e | 13 (F32) / 14 (BF16) | 1 | `GhostlitePerformance` `latencies[]` | ctor `[ptr+0x418..0x43c]=0xd`, `[+0x440..0x460]=0xe`, `[+0x710]=1` |
 
 The byte anchors above were confirmed cell-by-cell against the constructors: Pufferfish's `PufferfishPerformance::PufferfishPerformance @0x1c8be080` stores `latencies[0x67..0x6c] = 7` (six EUP-push ordinals) and `latencies[0x76] = 1` (the pop ordinal); Ghostlite's ctor stores `latencies[0x106..0x10f] = 13` (ten F32 pushes), `latencies[0x110..0x118] = 14` (nine BF16 pushes), `latencies[0x1c4] = 1`; Viperfish's stores `latencies[0xcc..0xd2] = 6` and `latencies[0x168] = 1`. The per-gen opcode→Instruction classifier that turns an LLO push opcode into the array index, and the full nine-function block, are owned by [EUP Per-Gen Integers](eup-per-gen-integers.md).
 
@@ -95,17 +95,17 @@ The byte anchors above were confirmed cell-by-cell against the constructors: Puf
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `LatencyTable::LatencyBetween` | `0x1c89f820` | edge dispatcher; calls virtual `LatencyBetweenInternal`, floors only `0x82`/`0x84` | CERTAIN |
-| `LatencyTableJellyfish::LatencyBetweenInternal` | `0x1c8a0d60` | JF/DF EUP clamp to field `+0x1c` (= `Performance[+0x30]` = 4) | CERTAIN |
-| `LatencyTablePufferfish::LatencyBetweenInternal` | `0x1c8a2aa0` | PF path; `__fmatrix` variant dispatch (EUP = variant 0) | CERTAIN |
-| `LatencyTableViperfish::LatencyBetweenInternal` | `0x1c8a4ac0` | VF path; `GetViperfishInstruction` → `GetLatency` | CERTAIN |
-| `LatencyTableGhostlite::LatencyBetweenInternal` | `0x1c8b22e0` | GL path; `GetGhostliteInstruction` → `GetLatency(this+0x1d0)` | CERTAIN |
-| `<Gen>Performance::GetLatency` | `0x1c8c3860` (PF), `0x1c8cbc20` (VF), `0x1c8d36e0` (GL) | bounds-checked `latencies[Instruction]` | CERTAIN |
-| `PufferfishPerformance` ctor | `0x1c8be080` | fills EUP=7 (TensorCore variant 0), pop=1 | CERTAIN |
-| `ViperfishPerformance` ctor | `0x1c8c4840` | fills EUP=6, pop=1 | CERTAIN |
-| `GhostlitePerformance` ctor | `0x1c8cbc80` | fills F32 EUP=13, BF16=14, pop=1 | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `LatencyTable::LatencyBetween` | `0x1c89f820` | edge dispatcher; calls virtual `LatencyBetweenInternal`, floors only `0x82`/`0x84` |
+| `LatencyTableJellyfish::LatencyBetweenInternal` | `0x1c8a0d60` | JF/DF EUP clamp to field `+0x1c` (= `Performance[+0x30]` = 4) |
+| `LatencyTablePufferfish::LatencyBetweenInternal` | `0x1c8a2aa0` | PF path; `__fmatrix` variant dispatch (EUP = variant 0) |
+| `LatencyTableViperfish::LatencyBetweenInternal` | `0x1c8a4ac0` | VF path; `GetViperfishInstruction` → `GetLatency` |
+| `LatencyTableGhostlite::LatencyBetweenInternal` | `0x1c8b22e0` | GL path; `GetGhostliteInstruction` → `GetLatency(this+0x1d0)` |
+| `<Gen>Performance::GetLatency` | `0x1c8c3860` (PF), `0x1c8cbc20` (VF), `0x1c8d36e0` (GL) | bounds-checked `latencies[Instruction]` |
+| `PufferfishPerformance` ctor | `0x1c8be080` | fills EUP=7 (TensorCore variant 0), pop=1 |
+| `ViperfishPerformance` ctor | `0x1c8c4840` | fills EUP=6, pop=1 |
+| `GhostlitePerformance` ctor | `0x1c8cbc80` | fills F32 EUP=13, BF16=14, pop=1 |
 
 ---
 
@@ -154,12 +154,12 @@ bundle(push_i+1) >= bundle(push_i) + VectorEupReservationCycles // throughput (e
 
 `VectorEupReservationCycles` is a pure-virtual on `Target` at vtable slot `+0x480`. The four concrete generations return a single constant each — confirmed by reading the accessor bodies directly:
 
-| Gen | Accessor | Returns | Confidence |
-|---|---|---|---|
-| Jellyfish | `JellyfishTarget::VectorEupReservationCycles` `@0x1d490660` | 1 | CERTAIN |
-| Pufferfish | `PufferfishTarget::VectorEupReservationCycles` `@0x1d494cc0` | 2 | CERTAIN |
-| Viperfish | `ViperfishTarget::VectorEupReservationCycles` `@0x1d49b060` | 1 | CERTAIN |
-| Ghostlite | `GhostliteTarget::VectorEupReservationCycles` `@0x1d497ee0` | 1 | CERTAIN |
+| Gen | Accessor | Returns |
+|---|---|---|
+| Jellyfish | `JellyfishTarget::VectorEupReservationCycles` `@0x1d490660` | 1 |
+| Pufferfish | `PufferfishTarget::VectorEupReservationCycles` `@0x1d494cc0` | 2 |
+| Viperfish | `ViperfishTarget::VectorEupReservationCycles` `@0x1d49b060` | 1 |
+| Ghostlite | `GhostliteTarget::VectorEupReservationCycles` `@0x1d497ee0` | 1 |
 
 > **NOTE —** the `+0x480` vtable slot collides with ~160 unrelated vtables (LLVM TTI cost functions, proto facades), so the single bundle-resource call site that consumes the reservation was not isolated to one instruction (HIGH that it is the resource-model caller, not the latency edge). The orthogonality itself — that the latency edge is provably *not* scaled by the reservation — is byte-confirmed from the `LatencyBetween`/`LatencyBetweenInternal` disassembly. Which of the per-gen `Performance::Resource` columns is the EUP unit, and whether its `resourceUsage[push][EUP]` cell equals `VectorEupReservationCycles`, was read structurally only; the EUP resource row was not isolated from the ctor's template-fill (LOW), so the reservation→grid binding is the one unverified link in the model.
 
@@ -179,11 +179,11 @@ The EUP result FIFO is **not** a fixed compile-time depth. The hardware-state si
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `BaseFifoTracker<LloValue*>::FindBlockingPushesAndPops` | `0x14442f60` | FIFO push/pop ordering edges (calls `LatencyBetween`) | HIGH |
-| `LloInstructionsPopAndThenPushSameFifo` | `0x1d4f3c80` | FIFO-ordering head-check pairing a pop to its push | HIGH |
-| `EupResultFifoEntry` (proto ctor) | `0x0e7a6cc0` | runtime `repeated`-message FIFO list (not a fixed depth) | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `BaseFifoTracker<LloValue*>::FindBlockingPushesAndPops` | `0x14442f60` | FIFO push/pop ordering edges (calls `LatencyBetween`) |
+| `LloInstructionsPopAndThenPushSameFifo` | `0x1d4f3c80` | FIFO-ordering head-check pairing a pop to its push |
+| `EupResultFifoEntry` (proto ctor) | `0x0e7a6cc0` | runtime `repeated`-message FIFO list (not a fixed depth) |
 
 ---
 

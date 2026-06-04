@@ -146,22 +146,22 @@ The default fallback (step 1) is what makes the table sparse-by-default: for the
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `viperfish::MxuLatencyTable::MxuLatencyTable` | `0x1c8a52c0` | VF ctor — fills all four family maps (~27 KB) | CERTAIN |
-| `viperfish::MxuLatencyTable::GetResourceUsage` | `0x1c8ae5c0` | VF lookup — family dispatch + `find` + `array[resource]` | CERTAIN |
-| `ghostlite::MxuLatencyTable::MxuLatencyTable` | `0x1c8b2920` | GL ctor — `array<int,11>` | CERTAIN |
-| `ghostlite::MxuLatencyTable::GetResourceUsage` | `0x1c8b7560` | GL lookup — defaults `res4→3`, `res9→9` | CERTAIN |
-| TPU7x `MxuLatencyTable::GetResourceUsage` | `0x1c8bdb20` | TPU7x lookup — `array<int,11>`; own `gf.cc`, CHECK `mxu_resource_idx < kNumMxuResources` (11) at gf.cc:415 | CERTAIN |
-| `viperfish::SetReservations<MatpushModifier>` | `0x1c8abde0` | densify `{resource→cycles}` → `array<int,19>`, `try_emplace` | CERTAIN |
-| `viperfish::SetReservations<VlxmrModifier>` | `0x1c8accc0` | vlxmr family row builder | CERTAIN |
-| `viperfish::SetReservations<MatresModifier>` | `0x1c8acea0` | matres family row builder | CERTAIN |
-| `viperfish::AddOverrunCheckReservations` | `0x1c8abfe0` | inserts the four `kMsr{A,B}OverrunCheck0..3` slots (cycles `5/13/21/29`); `Msr` arg selects the A-set vs B-set | CERTAIN |
-| `GainLatchModeToMatmulDataFormat` | `0x1d629260` | matpush key byte[0] — `GainLatchMode` → format code | CERTAIN |
-| `LatchModeIsTranspose` | `0x1d628ea0` | matpush key byte[1..2] — transpose flag | HIGH |
-| `LatchOpcodeToMsr` | `0x1c8a1300` | matpush key byte[3] — staging-register selector | HIGH |
-| `MxuOpHoldIssues` | `0x1c8ad3a0` | issue-stall recurrence — the table's consumer | HIGH |
-| `MxuOpResourceReservations` | `0x1c8ad080` | resource-reservation accumulation over a window | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `viperfish::MxuLatencyTable::MxuLatencyTable` | `0x1c8a52c0` | VF ctor — fills all four family maps (~27 KB) |
+| `viperfish::MxuLatencyTable::GetResourceUsage` | `0x1c8ae5c0` | VF lookup — family dispatch + `find` + `array[resource]` |
+| `ghostlite::MxuLatencyTable::MxuLatencyTable` | `0x1c8b2920` | GL ctor — `array<int,11>` |
+| `ghostlite::MxuLatencyTable::GetResourceUsage` | `0x1c8b7560` | GL lookup — defaults `res4→3`, `res9→9` |
+| TPU7x `MxuLatencyTable::GetResourceUsage` | `0x1c8bdb20` | TPU7x lookup — `array<int,11>`; own `gf.cc`, CHECK `mxu_resource_idx < kNumMxuResources` (11) at gf.cc:415 |
+| `viperfish::SetReservations<MatpushModifier>` | `0x1c8abde0` | densify `{resource→cycles}` → `array<int,19>`, `try_emplace` |
+| `viperfish::SetReservations<VlxmrModifier>` | `0x1c8accc0` | vlxmr family row builder |
+| `viperfish::SetReservations<MatresModifier>` | `0x1c8acea0` | matres family row builder |
+| `viperfish::AddOverrunCheckReservations` | `0x1c8abfe0` | inserts the four `kMsr{A,B}OverrunCheck0..3` slots (cycles `5/13/21/29`); `Msr` arg selects the A-set vs B-set |
+| `GainLatchModeToMatmulDataFormat` | `0x1d629260` | matpush key byte[0] — `GainLatchMode` → format code |
+| `LatchModeIsTranspose` | `0x1d628ea0` | matpush key byte[1..2] — transpose flag |
+| `LatchOpcodeToMsr` | `0x1c8a1300` | matpush key byte[3] — staging-register selector |
+| `MxuOpHoldIssues` | `0x1c8ad3a0` | issue-stall recurrence — the table's consumer |
+| `MxuOpResourceReservations` | `0x1c8ad080` | resource-reservation accumulation over a window |
 
 ---
 

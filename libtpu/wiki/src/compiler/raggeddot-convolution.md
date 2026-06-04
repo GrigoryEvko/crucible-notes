@@ -56,12 +56,12 @@ PostMainFusionHloOptimize          0x10966560  (AddPass block at 0x109673b3)
 
 ### Member Layout
 
-| Field | Offset | Type | Meaning | Confidence |
-|---|---|---|---|---|
-| vtable | `+0x00` | ptr | `HloModulePass` vtable | CERTAIN |
-| `use_iteration_mask` | `+0x08` | bool | gate the masked lowering; written `mov %al,0x8` in the ctor | CERTAIN |
-| contraction mode | `+0x09` | enum (1 byte) | `reduce`=0 / `dynamic_slice`=1; written `mov %cl,0x9` | CERTAIN |
-| `window_bounds` | `+0x10`/`+0x20` | `vector<string>` | 4 strings `{g,m,k,n}` | CERTAIN |
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| vtable | `+0x00` | ptr | `HloModulePass` vtable |
+| `use_iteration_mask` | `+0x08` | bool | gate the masked lowering; written `mov %al,0x8` in the ctor |
+| contraction mode | `+0x09` | enum (1 byte) | `reduce`=0 / `dynamic_slice`=1; written `mov %cl,0x9` |
+| `window_bounds` | `+0x10`/`+0x20` | `vector<string>` | 4 strings `{g,m,k,n}` |
 
 > **NOTE —** the three knobs are *impure* (read at compile time, not part of the compilation environment proto). `use_iteration_mask` and `enable_masked_fusion_iteration_skipper` are `AutoOr<bool>` read directly off their `FlagImpl+0x58` cache; `contract_ragged_conv_with` is a `RaggedConvContractionMode` `FixedOptionSetFlag`; `ragged_dot_window_bounds` is a `vector<string>`. The full impure-flag mechanics (AUTO polarity, the `FlagImpl` read path) are owned by [Registry-Mediated Flags](../config/registry-mediated-flags.md).
 
@@ -69,11 +69,11 @@ PostMainFusionHloOptimize          0x10966560  (AddPass block at 0x109673b3)
 
 Two distinct gate functions exist because the mask is consulted at two pipeline levels — the HLO expander and the LLO conv emitter — and they read different predicates. All three gate on TPU Tc-version ≥ 3 first (`mov 0x8(view),%rax; cmpl $0x3,(%rax); jl ret-false`).
 
-| Gate | Address | Predicate | Consumer | Confidence |
-|---|---|---|---|---|
-| `RaggedDotExpanderShouldUseIterationMask` | `0x1d6b5d60` | v≥3 AND `use_iteration_mask` (AUTO=ON) | `PostMainFusionHloOptimize` `0x10966560` (the `+0x08` ctor arg) | CERTAIN |
-| `ShouldUseIterationMask` | `0x1d6b5dc0` | v≥3 AND (`use_iteration_mask` OR `enable_masked_fusion_iteration_skipper`) | `SpatialMajorConvolution` ctor / Emit (LLO level) | CERTAIN |
-| `ShouldEnableMaskedFusionIterationSkipper` | `0x1d6b5d20` | v≥3 AND plain-bool skipper | (the skipper disjunct above) | CERTAIN |
+| Gate | Address | Predicate | Consumer |
+|---|---|---|---|
+| `RaggedDotExpanderShouldUseIterationMask` | `0x1d6b5d60` | v≥3 AND `use_iteration_mask` (AUTO=ON) | `PostMainFusionHloOptimize` `0x10966560` (the `+0x08` ctor arg) |
+| `ShouldUseIterationMask` | `0x1d6b5dc0` | v≥3 AND (`use_iteration_mask` OR `enable_masked_fusion_iteration_skipper`) | `SpatialMajorConvolution` ctor / Emit (LLO level) |
+| `ShouldEnableMaskedFusionIterationSkipper` | `0x1d6b5d20` | v≥3 AND plain-bool skipper | (the skipper disjunct above) |
 
 The expander gate (`0x1d6b5d60`) consults only `use_iteration_mask`; the LLO gate (`0x1d6b5dc0`) also honors the masked-fusion-iteration-skipper. The AUTO=ON polarity is the `AutoOr` idiom: the cached word is read, and the result is `(word & 0x101) != 0x100` — true unless the flag is explicitly present-and-false.
 
@@ -105,15 +105,15 @@ function ShouldUseIterationMask(env, topology):     // 0x1d6b5dc0
 
 The offsets below are read from the disassembly of the single `CreateConvolve` call site (`0x10fb31e0`, line ~1288) and the surrounding loads. The spec pointer is held as a `int64*` (`v108`), so the decompiler renders the conv sub-object pointers as **qword indices** — `v108 + 6`, `v108 + 24`, `v108 + 29`, `v108 + 72` — which are byte offsets `8 ×` the index. The contraction-mode selector is the lone exception: it is read with a byte access `*(int8*)(a7 + 24)`, i.e. genuine **byte offset 24**, not qword index 24. The call is `CreateConvolve(builder, lhs, rhs, feature_group_count, batch_group_count, &window, &dim_numbers, &precision_config, &sparsity, 0)` with `v108+24`, `v108+6`, `v108+72` as the window/dim-numbers/precision args (line 1288) and `Shape::Shape(&v417, v108+29)` as the output shape (line 1272, also `a7+232` at line 453):
 
-| Field | Byte offset | Qword index in decompile | Type | Role in `CreateConvolve` | Confidence |
-|---|---|---|---|---|---|
-| contraction-mode byte | `+0x18` (24) | — (byte access `*(int8*)(a7+24)`) | u8 | `0`=reduce arm, `1`=dynamic_slice arm; tested to pick the fold | CERTAIN |
-| `dim_numbers` | `+0x30` (48) | `v108 + 6` | `ConvolutionDimensionNumbers` | conv dim numbers arg | HIGH |
-| `window` | `+0xC0` (192) | `v108 + 24` | `Window` | window arg | HIGH |
-| conv `Shape` | `+0xE8` (232) | `v108 + 29` | `Shape` | output/conv shape (`Shape::Shape(&v417, a7+232)`) | HIGH |
-| `feature_group_count` | `+0x230` (560) | `v108[70]` | i64 | conv feature-group arg | MEDIUM |
-| `batch_group_count` | `+0x238` (568) | `v108[71]` | i64 | conv batch-group arg | MEDIUM |
-| `precision_config` | `+0x240` (576) | `v108 + 72` | `PrecisionConfig` | precision arg | HIGH |
+| Field | Byte offset | Qword index in decompile | Type | Role in `CreateConvolve` |
+|---|---|---|---|---|
+| contraction-mode byte | `+0x18` (24) | — (byte access `*(int8*)(a7+24)`) | u8 | `0`=reduce arm, `1`=dynamic_slice arm; tested to pick the fold |
+| `dim_numbers` | `+0x30` (48) | `v108 + 6` | `ConvolutionDimensionNumbers` | conv dim numbers arg |
+| `window` | `+0xC0` (192) | `v108 + 24` | `Window` | window arg |
+| conv `Shape` | `+0xE8` (232) | `v108 + 29` | `Shape` | output/conv shape (`Shape::Shape(&v417, a7+232)`) |
+| `feature_group_count` | `+0x230` (560) | `v108[70]` | i64 | conv feature-group arg |
+| `batch_group_count` | `+0x238` (568) | `v108[71]` | i64 | conv batch-group arg |
+| `precision_config` | `+0x240` (576) | `v108 + 72` | `PrecisionConfig` | precision arg |
 
 > **GOTCHA —** the contraction-mode byte sits at byte 24, but the `Window` proto is at qword index 24 — *byte 192*, not byte 24. The decompiler renders both as a literal `24`, but the mode is a one-byte read (`*(int8*)(a7+24)`) and the window is a qword-indexed sub-object pointer (`v108 + 24` → `a7 + 192`); they are distinct fields ~168 bytes apart. Multiply every qword index by 8 to recover the byte offset. The byte-offset column is HIGH/MEDIUM where the load is unambiguous.
 
@@ -151,12 +151,12 @@ function RunImpl(module, …):                         // 0x10fae060
 
 When `use_iteration_mask` is set, the expander parses the four `window_bounds` strings into a `PipelineWindowSpec {g, m, k, n}` by `absl::SimpleAtoi` / `safe_strto64_base(…, 10)`. The mapping is positional and fixed (each parse target is named in its `CHECK` string at `0x10fae060+1295…1359`):
 
-| Index | Field | Source CHECK string | Confidence |
-|---|---|---|---|
-| `window_bounds[0]` | `pipeline_window_spec.g` | `"absl::SimpleAtoi(window_bounds[0], &pipeline_window_spec.g)"` | CERTAIN |
-| `window_bounds[1]` | `pipeline_window_spec.m` | `"…window_bounds[1], &pipeline_window_spec.m)"` | CERTAIN |
-| `window_bounds[2]` | `pipeline_window_spec.k` | `"…window_bounds[2], &pipeline_window_spec.k)"` | CERTAIN |
-| `window_bounds[3]` | `pipeline_window_spec.n` | `"…window_bounds[3], &pipeline_window_spec.n)"` | CERTAIN |
+| Index | Field | Source CHECK string |
+|---|---|---|
+| `window_bounds[0]` | `pipeline_window_spec.g` | `"absl::SimpleAtoi(window_bounds[0], &pipeline_window_spec.g)"` |
+| `window_bounds[1]` | `pipeline_window_spec.m` | `"…window_bounds[1], &pipeline_window_spec.m)"` |
+| `window_bounds[2]` | `pipeline_window_spec.k` | `"…window_bounds[2], &pipeline_window_spec.k)"` |
+| `window_bounds[3]` | `pipeline_window_spec.n` | `"…window_bounds[3], &pipeline_window_spec.n)"` |
 
 `g/m/k/n` are the grouped-matmul axes (groups, lhs-non-contracting M, contracting K, rhs-non-contracting N). The `PipelineWindowSpec` is the *pipeline* window — distinct from the conv `Window` proto inside the `RaggedConvSpec` — and is threaded as an `optional` argument into `ExpandRaggedDot` and on to `CreateConvolutionSelectFusion`. It is only populated on the masked path; the unmasked path passes `nullopt`.
 
@@ -324,17 +324,17 @@ function SpatialMajorConvolution::UpdateLoweringStrategyWithWindowInfo(   // 0x1
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `SpatialMajorConvolution::SetLoweringStrategy` | `0x13167e40` | store strategy at `+0x882` | CERTAIN |
-| `SpatialMajorConvolution::GetLoweringStrategyString` | `0x13167e60` | render strategy for diagnostics | CERTAIN |
-| `SpatialMajorConvolution::UpdateLoweringStrategyWithWindowInfo` | `0x13167e80` | window geometry → `GetConvolutionLoweringStrategy` → store | CERTAIN |
-| `SpatialMajorConvolution::RoundUpWindowBoundToFactorAndCompact` | `0x1315b2a0` | round ragged window bound up to a hardware factor | HIGH |
-| `SpatialMajorConvolution::InitFromFusion` | `0x13155fc0` | bind emitter to the expander's `kFusion` | HIGH |
-| `SpatialMajorConvolution::InitFusionEmitters` | `0x13173b60` | per-operand window emitters | HIGH |
-| `SpatialMajorConvolution::MatrixMultiplyAccumulate` | `0x131792e0` | the MXU MMA inner emit | HIGH |
-| `SpatialMajorConvolution::EmitZeroByteCase` / `EmitZeroElementCases` | `0x13178100` / `0x13178020` | degenerate-window short circuits | HIGH |
-| `SpatialMajorConvolution::PopulateNestedOutputFusions` | `0x13155d40` | wire the select/reduce sub-fusions | MEDIUM |
+| Function | Address | Role |
+|---|---|---|
+| `SpatialMajorConvolution::SetLoweringStrategy` | `0x13167e40` | store strategy at `+0x882` |
+| `SpatialMajorConvolution::GetLoweringStrategyString` | `0x13167e60` | render strategy for diagnostics |
+| `SpatialMajorConvolution::UpdateLoweringStrategyWithWindowInfo` | `0x13167e80` | window geometry → `GetConvolutionLoweringStrategy` → store |
+| `SpatialMajorConvolution::RoundUpWindowBoundToFactorAndCompact` | `0x1315b2a0` | round ragged window bound up to a hardware factor |
+| `SpatialMajorConvolution::InitFromFusion` | `0x13155fc0` | bind emitter to the expander's `kFusion` |
+| `SpatialMajorConvolution::InitFusionEmitters` | `0x13173b60` | per-operand window emitters |
+| `SpatialMajorConvolution::MatrixMultiplyAccumulate` | `0x131792e0` | the MXU MMA inner emit |
+| `SpatialMajorConvolution::EmitZeroByteCase` / `EmitZeroElementCases` | `0x13178100` / `0x13178020` | degenerate-window short circuits |
+| `SpatialMajorConvolution::PopulateNestedOutputFusions` | `0x13155d40` | wire the select/reduce sub-fusions |
 
 > **NOTE —** `MatrixMultiplyAccumulate` (`0x131792e0`) is the bridge to the MXU emitter shared with dense dot/conv. This page stops at the strategy decision; the tile-cost comparator and `EmitFunctorEnum` it dispatches into are the subject of [Dot / Conv → MXU Lowering](dot-conv-mxu-lowering.md).
 
@@ -342,21 +342,21 @@ function SpatialMajorConvolution::UpdateLoweringStrategyWithWindowInfo(   // 0x1
 
 ## Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `RaggedDotExpander::RunImpl` | `0x10fae060` | per-instruction validate + window parse + dispatch | CERTAIN |
-| `ExpandRaggedDot` | `0x10fafa20` | build the conv subgraph, replace the `kRaggedDot` | CERTAIN |
-| `FromRaggedDot` (error lambda `$_0`) | `0x10fb2160` | `RaggedConvSpec` build-failure formatter | CERTAIN |
-| `ExpandShape` | `0x10fb2360` | append the conv spatial dim to operand shapes | HIGH |
-| `CreateOutputMask` | `0x10fb2900` | `Iota + Broadcast + Compare(≥)·Compare(<) + And` mask | CERTAIN |
-| `CreateConvolutionSelectFusion` | `0x10fb31e0` | `Convolve + Select(mask,·,0)` + reduce/dynamic_slice fold | CERTAIN |
-| `DynamicSliceMaskedConv` | `0x10fb6a00` | the `dynamic_slice` arm scatter-accumulate | CERTAIN |
-| `GetRaggedConvContractionModeParser` | `0x1db15340` | `FixedOptionSetFlag` (`reduce`/`dynamic_slice`) | CERTAIN |
-| `RaggedDotExpanderShouldUseIterationMask` | `0x1d6b5d60` | expander-level mask gate | CERTAIN |
-| `ShouldUseIterationMask` | `0x1d6b5dc0` | LLO-level mask gate | CERTAIN |
-| `ShouldEnableMaskedFusionIterationSkipper` | `0x1d6b5d20` | skipper disjunct | CERTAIN |
-| `make_unique<RaggedDotExpander>` | `0x1096e360` | ctor + member layout | CERTAIN |
-| `AddPass<RaggedDotExpander,…>` | `0x1096d2e0` | pipeline wiring | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `RaggedDotExpander::RunImpl` | `0x10fae060` | per-instruction validate + window parse + dispatch |
+| `ExpandRaggedDot` | `0x10fafa20` | build the conv subgraph, replace the `kRaggedDot` |
+| `FromRaggedDot` (error lambda `$_0`) | `0x10fb2160` | `RaggedConvSpec` build-failure formatter |
+| `ExpandShape` | `0x10fb2360` | append the conv spatial dim to operand shapes |
+| `CreateOutputMask` | `0x10fb2900` | `Iota + Broadcast + Compare(≥)·Compare(<) + And` mask |
+| `CreateConvolutionSelectFusion` | `0x10fb31e0` | `Convolve + Select(mask,·,0)` + reduce/dynamic_slice fold |
+| `DynamicSliceMaskedConv` | `0x10fb6a00` | the `dynamic_slice` arm scatter-accumulate |
+| `GetRaggedConvContractionModeParser` | `0x1db15340` | `FixedOptionSetFlag` (`reduce`/`dynamic_slice`) |
+| `RaggedDotExpanderShouldUseIterationMask` | `0x1d6b5d60` | expander-level mask gate |
+| `ShouldUseIterationMask` | `0x1d6b5dc0` | LLO-level mask gate |
+| `ShouldEnableMaskedFusionIterationSkipper` | `0x1d6b5d20` | skipper disjunct |
+| `make_unique<RaggedDotExpander>` | `0x1096e360` | ctor + member layout |
+| `AddPass<RaggedDotExpander,…>` | `0x1096d2e0` | pipeline wiring |
 
 ---
 

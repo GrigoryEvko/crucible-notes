@@ -227,19 +227,19 @@ The single caller is `AssignMxusForSequenceGroup @0x10f753c0`. When the flag is 
 
 ## Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `MxuLatencyTable::GetLatencyBetween` (VF) | `0x1c8ae320` | the max-over-shared-resource stall recurrence | CERTAIN |
-| `MxuLatencyTable::GetLatencyBetween` (GL) | `0x1c8b71e0` | same, bound res ≤ 10 | CERTAIN |
-| `MxuOpResourceReservations` (VF / GL) | `0x1c8ad080` / `0x1c8b6300` | A's `array<int,N>` hold-cycle vector | CERTAIN |
-| `MxuOpHoldIssues` (VF / GL) | `0x1c8ad3a0` / `0x1c8b6760` | B's `flat_hash_set<MxuResource>` issue footprint | CERTAIN |
-| `LatencyTableViperfish::LatencyBetweenInternal` | `0x1c8a4ac0` | per-edge gate (vtable +0x18) | CERTAIN |
-| `LatencyTableGhostlite::LatencyBetweenInternal` | `0x1c8b22e0` | GL per-edge gate | CERTAIN |
-| `IsTrueDependencyBetween` | `0x1c89fdc0` | `FindOperandIndexFull ≥ 0` ∨ both op `0x14e` | CERTAIN |
-| `LloOpcodeUsesMxu` | `0x10a433e0` | op ∈ `[0x8d,0xa5] ∪ [0xa8,0xab] ∪ [0x152,0x153]` | CERTAIN |
-| `MxuLatencyBalancingUseSequenceDependencies` | `0x1d6b9c80` | env `+0xbe8` AutoOr<bool> gate | CERTAIN |
-| `AssignMxusForSequenceGroup` | `0x10f753c0` | sole consumer of the env flag | HIGH |
-| `flat_hash_set<MxuResource>` held-set ctor | `0x1c8ae0a0` | builds B's footprint set | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `MxuLatencyTable::GetLatencyBetween` (VF) | `0x1c8ae320` | the max-over-shared-resource stall recurrence |
+| `MxuLatencyTable::GetLatencyBetween` (GL) | `0x1c8b71e0` | same, bound res ≤ 10 |
+| `MxuOpResourceReservations` (VF / GL) | `0x1c8ad080` / `0x1c8b6300` | A's `array<int,N>` hold-cycle vector |
+| `MxuOpHoldIssues` (VF / GL) | `0x1c8ad3a0` / `0x1c8b6760` | B's `flat_hash_set<MxuResource>` issue footprint |
+| `LatencyTableViperfish::LatencyBetweenInternal` | `0x1c8a4ac0` | per-edge gate (vtable +0x18) |
+| `LatencyTableGhostlite::LatencyBetweenInternal` | `0x1c8b22e0` | GL per-edge gate |
+| `IsTrueDependencyBetween` | `0x1c89fdc0` | `FindOperandIndexFull ≥ 0` ∨ both op `0x14e` |
+| `LloOpcodeUsesMxu` | `0x10a433e0` | op ∈ `[0x8d,0xa5] ∪ [0xa8,0xab] ∪ [0x152,0x153]` |
+| `MxuLatencyBalancingUseSequenceDependencies` | `0x1d6b9c80` | env `+0xbe8` AutoOr<bool> gate |
+| `AssignMxusForSequenceGroup` | `0x10f753c0` | sole consumer of the env flag |
+| `flat_hash_set<MxuResource>` held-set ctor | `0x1c8ae0a0` | builds B's footprint set |
 
 ---
 

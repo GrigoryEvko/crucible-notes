@@ -33,33 +33,33 @@ For a reader using this index, the contract is:
 
 One row per message this wiki has reconstructed field-by-field. The **Fields** column is this build's descriptor count; the **Owning page** is where the field roster lives; the **Descriptor VA** is the enclosing `FileDescriptorProto` in `protodesc_cold`. Descriptor VAs for the HLO core (`hlo.proto`, `xla_data.proto`, `xla.proto`) are from the file-record map; the per-message VA is the VA of the file that declares it.
 
-| Message | Fields | Owning page | Descriptor VA (file) | Confidence |
-|---|---:|---|---|---|
-| `xla.HloModuleProto` | 25 | [compiler/hlo-ingestion](../compiler/hlo-ingestion.md) | `0xc189a60` (hlo.proto) | HIGH |
-| `xla.HloComputationProto` | 8 | [compiler/hlo-ingestion](../compiler/hlo-ingestion.md) | `0xc189a60` (hlo.proto) | HIGH |
-| `xla.HloInstructionProto` | 70 | [compiler/hlo-ingestion](../compiler/hlo-ingestion.md) | `0xc189a60` (hlo.proto) | HIGH |
-| `xla.HloScheduleProto` | 1 | [compiler/hlo-ingestion](../compiler/hlo-ingestion.md) | `0xc189a60` (hlo.proto) | HIGH |
-| `xla.HloProto` | 2 | [compiler/hlo-ingestion](../compiler/hlo-ingestion.md) | `0xc189a60` (hlo.proto) | HIGH |
-| `xla.ShapeProto` | 5 | [compiler/hlo-ingestion](../compiler/hlo-ingestion.md) | `0xc1b7e20` (xla_data.proto) | HIGH |
-| `xla.OpSharding` | 14 | [compiler/hlo-ingestion](../compiler/hlo-ingestion.md) | `0xc1b7e20` (xla_data.proto) | HIGH |
-| `xla.OpMetadata` | 16 | [compiler/hlo-ingestion](../compiler/hlo-ingestion.md) | `0xc1b7e20` (xla_data.proto) | HIGH |
-| `xla.HloModuleConfigProto` | 42 | [compiler/hlo-ingestion](../compiler/hlo-ingestion.md) | `0xc021470` (xla.proto) | HIGH |
-| `xla.DebugOptions` | **290** | [config/debugoptions-proto](../config/debugoptions-proto.md) | `0xc021470` (xla.proto) | CERTAIN |
-| `xla::jellyfish.TpuCompilationEnvironment` | **1121** | [config/tpu-compilation-environment](../config/tpu-compilation-environment.md) | (tpu_compilation_environment.proto) | CERTAIN |
-| `tpu.TpuCoreProgramProto` | 11 | [compiler/tpu-program-serialization](../compiler/tpu-program-serialization.md) | (tpu_core_program.proto) | HIGH |
-| `tpu.TpuSequencerProgramProto` | 5 | [compiler/tpu-program-serialization](../compiler/tpu-program-serialization.md) | (tpu_sequencer_program.proto) | HIGH |
-| `tpu.TpuChipPartsProto` | 9 | [targets/chip-parts-binarypb](../targets/chip-parts-binarypb.md) | (tpu_chip_parts.proto) | HIGH |
-| `tpu.TpuSharedMemoryOnChipProto` | 2 | [dma/continuation-queue](../dma/continuation-queue.md) | (tpu_chip_parts_locators.proto) | HIGH |
-| `TpuChipConfigProto.ContinuationQueue` | 7+ | [dma/continuation-queue](../dma/continuation-queue.md) | (tpu_chip_config.proto) | HIGH |
-| `…tpu_telemetry.CurrentCoreStateSummary` | 7 | [profiling/tpu-telemetry-proto](../profiling/tpu-telemetry-proto.md) | (tpu_telemetry.proto) | HIGH |
-| `…tpu_telemetry.AllCoreStateSummaries` | 1 | [profiling/tpu-telemetry-proto](../profiling/tpu-telemetry-proto.md) | (tpu_telemetry.proto) | HIGH |
-| `xla.megascale.runtime.MegaScaleInfoProto` | 8 | [megascale/overview](../megascale/overview.md) | (megascale_info.proto) | HIGH |
-| `xla.megascale.runtime.MegaScaleRuntimeError` | 13 | [megascale/error-aggregator](../megascale/error-aggregator.md) | (megascale_status.proto) | HIGH |
-| `xla.megascale.runtime.RapidEyeErrorDigestProto` | 17 | [megascale/error-aggregator](../megascale/error-aggregator.md) | `0xc169340` (rapideye_logging.proto) | CERTAIN |
-| `CompressedToroidalRouteCache` | — | [routing/toroidal-route-cache](../routing/toroidal-route-cache.md) | (route_cache.proto) | MEDIUM |
-| `tensorflow.profiler.Task` | 18 | [profiling/task-proto](../profiling/task-proto.md) | `0xbe999a0` (task.proto) | CERTAIN |
-| `tensorflow.profiler.XPlane` | 6 | [profiling/xplane-xstat-traceme](../profiling/xplane-xstat-traceme.md) | (xplane.proto) | HIGH |
-| `tensorflow.profiler.XEvent` | 4 | [profiling/trace-entry-to-xevent](../profiling/trace-entry-to-xevent.md) | (xplane.proto) | HIGH |
+| Message | Fields | Owning page | Descriptor VA (file) |
+|---|---:|---|---|
+| `xla.HloModuleProto` | 25 | [compiler/hlo-ingestion](../compiler/hlo-ingestion.md) | `0xc189a60` (hlo.proto) |
+| `xla.HloComputationProto` | 8 | [compiler/hlo-ingestion](../compiler/hlo-ingestion.md) | `0xc189a60` (hlo.proto) |
+| `xla.HloInstructionProto` | 70 | [compiler/hlo-ingestion](../compiler/hlo-ingestion.md) | `0xc189a60` (hlo.proto) |
+| `xla.HloScheduleProto` | 1 | [compiler/hlo-ingestion](../compiler/hlo-ingestion.md) | `0xc189a60` (hlo.proto) |
+| `xla.HloProto` | 2 | [compiler/hlo-ingestion](../compiler/hlo-ingestion.md) | `0xc189a60` (hlo.proto) |
+| `xla.ShapeProto` | 5 | [compiler/hlo-ingestion](../compiler/hlo-ingestion.md) | `0xc1b7e20` (xla_data.proto) |
+| `xla.OpSharding` | 14 | [compiler/hlo-ingestion](../compiler/hlo-ingestion.md) | `0xc1b7e20` (xla_data.proto) |
+| `xla.OpMetadata` | 16 | [compiler/hlo-ingestion](../compiler/hlo-ingestion.md) | `0xc1b7e20` (xla_data.proto) |
+| `xla.HloModuleConfigProto` | 42 | [compiler/hlo-ingestion](../compiler/hlo-ingestion.md) | `0xc021470` (xla.proto) |
+| `xla.DebugOptions` | **290** | [config/debugoptions-proto](../config/debugoptions-proto.md) | `0xc021470` (xla.proto) |
+| `xla::jellyfish.TpuCompilationEnvironment` | **1121** | [config/tpu-compilation-environment](../config/tpu-compilation-environment.md) | (tpu_compilation_environment.proto) |
+| `tpu.TpuCoreProgramProto` | 11 | [compiler/tpu-program-serialization](../compiler/tpu-program-serialization.md) | (tpu_core_program.proto) |
+| `tpu.TpuSequencerProgramProto` | 5 | [compiler/tpu-program-serialization](../compiler/tpu-program-serialization.md) | (tpu_sequencer_program.proto) |
+| `tpu.TpuChipPartsProto` | 9 | [targets/chip-parts-binarypb](../targets/chip-parts-binarypb.md) | (tpu_chip_parts.proto) |
+| `tpu.TpuSharedMemoryOnChipProto` | 2 | [dma/continuation-queue](../dma/continuation-queue.md) | (tpu_chip_parts_locators.proto) |
+| `TpuChipConfigProto.ContinuationQueue` | 7+ | [dma/continuation-queue](../dma/continuation-queue.md) | (tpu_chip_config.proto) |
+| `…tpu_telemetry.CurrentCoreStateSummary` | 7 | [profiling/tpu-telemetry-proto](../profiling/tpu-telemetry-proto.md) | (tpu_telemetry.proto) |
+| `…tpu_telemetry.AllCoreStateSummaries` | 1 | [profiling/tpu-telemetry-proto](../profiling/tpu-telemetry-proto.md) | (tpu_telemetry.proto) |
+| `xla.megascale.runtime.MegaScaleInfoProto` | 8 | [megascale/overview](../megascale/overview.md) | (megascale_info.proto) |
+| `xla.megascale.runtime.MegaScaleRuntimeError` | 13 | [megascale/error-aggregator](../megascale/error-aggregator.md) | (megascale_status.proto) |
+| `xla.megascale.runtime.RapidEyeErrorDigestProto` | 17 | [megascale/error-aggregator](../megascale/error-aggregator.md) | `0xc169340` (rapideye_logging.proto) |
+| `CompressedToroidalRouteCache` | — | [routing/toroidal-route-cache](../routing/toroidal-route-cache.md) | (route_cache.proto) |
+| `tensorflow.profiler.Task` | 18 | [profiling/task-proto](../profiling/task-proto.md) | `0xbe999a0` (task.proto) |
+| `tensorflow.profiler.XPlane` | 6 | [profiling/xplane-xstat-traceme](../profiling/xplane-xstat-traceme.md) | (xplane.proto) |
+| `tensorflow.profiler.XEvent` | 4 | [profiling/trace-entry-to-xevent](../profiling/trace-entry-to-xevent.md) | (xplane.proto) |
 
 > **NOTE —** the **Fields** column is the count of *top-level declared fields on that one message*, not the file's total. `HloModuleProto` declares 25 fields directly; `HloInstructionProto` is the wide "union of all op attributes" at 70 fields; the file `hlo.proto` as a whole carries 22 messages. The file totals are on the [protodesc-cold-catalog](protodesc-cold-catalog.md) sibling.
 

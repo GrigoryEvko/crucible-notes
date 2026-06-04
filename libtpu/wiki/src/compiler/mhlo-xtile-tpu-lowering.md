@@ -321,20 +321,20 @@ The `tpu` dialect is therefore **authored upstream and imported**, never produce
 
 ## Confidence Summary
 
-| Claim | Evidence | Confidence |
-|---|---|---|
-| Four XTile front-end passes with the listed CLI names/create-functions | `StablehloLowerToXtilePass` `0x150602c0`, `StablehloLowerToArithPass` `0x1505a880`, `ConvertElementwise0DTensorToScalarPass` `0x15059440`, `VerifyLegalXTileOpsPass` `0x15062300`; CLI strings recovered | HIGH |
-| Six registered XTile ops with the listed classes | `addOperations<DotScaledOp, EntryFuncOp, EntryFuncReturnOp, ExtractTileOp, InsertTileOp, MaskOp>` in `XTileDialect::initialize`; op-name strings `xtile.entry_func/return/extract/insert/mask/dot_scaled` | HIGH |
-| StableHLO→`arith` table (10 binary-op rows) | `LowerStableHloOpToArith<…>` template instantiations recovered from demangled names | HIGH |
-| `Emit*` fusion-emitter helper map + `EmitXTileModule` signature | `EmitXTileModule` `0x14c1c9e0`, `EmitSingleTileDot` `0x14c277a0`, `EmitTiledTranspose` `0x15069860`, … ; log anchor "Emitting XTile IR for fusion" | HIGH |
-| XTile attributes `xtile.layout`/`xtile.tiling_info` and the workgroup model | `XTile_LayoutAttr`/`minor_to_major` and `XTile_TilingInfoAttr`/`tile_count`/`tiles_per_workgroup` parse-error strings; CPU-thunk `NumWorkGroups{%d, %d, %d}`/`XLA_CPU_NumWorkGroups`/`xla.cpu.KernelThunkProto` strings | HIGH |
-| `tensor`→`memref` via One-Shot Bufferize on `BufferizableOpInterface` | `ExtractTileOp`/`InsertTileOp` implement `BufferizableOpInterface` + `TiledBufferInterface`; `xtile-cpu-bufferization` CLI string | HIGH |
-| Failure anchors at the XTile boundary | all 10 anchor strings recovered in the decompiled output | HIGH |
-| **XTile is NOT on the TPU MXU path** | XTile dep-set = `XlaCpuDialect`/`memref`/`vector`/`LLVM` (no `tpu`/`llo`); `xtile-cpu-*` pipeline; `codegen/xtile/` source paths | HIGH |
-| **No MHLO/HLO→`tpu` conversion pass exists** | grep of functions table: 0 hits for `*ToTpuPass`/`MhloToTpu`/`StablehloToTpu`/`LegalizeToTpu` | HIGH |
-| `tpu` dialect is imported only, via `tpu_custom_call` | `GetMlirModuleOpFromCustomCall` `0x13e327a0`, `RunMLIRPasses` `0x111fefa0`, `MosaicSerdePass`, `tpu_custom_call` all present | HIGH |
-| Plain tile dot is emitted to `linalg`/`vector`, not an `xtile.dot` op | no `DotOp` class / `xtile.dot` string in binary; `EmitSingleTileDot`/`dot_algorithms.cc` bodies not decompiled per-algorithm | LOW (per-algorithm bodies only) |
-| Full `LowerConvertOp` ext/trunc/itofp/fptoi type-pair table | `LowerConvertOp` class present (119 refs); per-pair mapping inferred, not enumerated | LOW |
+| Claim | Evidence |
+|---|---|
+| Four XTile front-end passes with the listed CLI names/create-functions | `StablehloLowerToXtilePass` `0x150602c0`, `StablehloLowerToArithPass` `0x1505a880`, `ConvertElementwise0DTensorToScalarPass` `0x15059440`, `VerifyLegalXTileOpsPass` `0x15062300`; CLI strings recovered |
+| Six registered XTile ops with the listed classes | `addOperations<DotScaledOp, EntryFuncOp, EntryFuncReturnOp, ExtractTileOp, InsertTileOp, MaskOp>` in `XTileDialect::initialize`; op-name strings `xtile.entry_func/return/extract/insert/mask/dot_scaled` |
+| StableHLO→`arith` table (10 binary-op rows) | `LowerStableHloOpToArith<…>` template instantiations recovered from demangled names |
+| `Emit*` fusion-emitter helper map + `EmitXTileModule` signature | `EmitXTileModule` `0x14c1c9e0`, `EmitSingleTileDot` `0x14c277a0`, `EmitTiledTranspose` `0x15069860`, … ; log anchor "Emitting XTile IR for fusion" |
+| XTile attributes `xtile.layout`/`xtile.tiling_info` and the workgroup model | `XTile_LayoutAttr`/`minor_to_major` and `XTile_TilingInfoAttr`/`tile_count`/`tiles_per_workgroup` parse-error strings; CPU-thunk `NumWorkGroups{%d, %d, %d}`/`XLA_CPU_NumWorkGroups`/`xla.cpu.KernelThunkProto` strings |
+| `tensor`→`memref` via One-Shot Bufferize on `BufferizableOpInterface` | `ExtractTileOp`/`InsertTileOp` implement `BufferizableOpInterface` + `TiledBufferInterface`; `xtile-cpu-bufferization` CLI string |
+| Failure anchors at the XTile boundary | all 10 anchor strings recovered in the decompiled output |
+| **XTile is NOT on the TPU MXU path** | XTile dep-set = `XlaCpuDialect`/`memref`/`vector`/`LLVM` (no `tpu`/`llo`); `xtile-cpu-*` pipeline; `codegen/xtile/` source paths |
+| **No MHLO/HLO→`tpu` conversion pass exists** | grep of functions table: 0 hits for `*ToTpuPass`/`MhloToTpu`/`StablehloToTpu`/`LegalizeToTpu` |
+| `tpu` dialect is imported only, via `tpu_custom_call` | `GetMlirModuleOpFromCustomCall` `0x13e327a0`, `RunMLIRPasses` `0x111fefa0`, `MosaicSerdePass`, `tpu_custom_call` all present |
+| Plain tile dot is emitted to `linalg`/`vector`, not an `xtile.dot` op | no `DotOp` class / `xtile.dot` string in binary; `EmitSingleTileDot`/`dot_algorithms.cc` bodies not decompiled per-algorithm |
+| Full `LowerConvertOp` ext/trunc/itofp/fptoi type-pair table | `LowerConvertOp` class present (119 refs); per-pair mapping inferred, not enumerated |
 
 ---
 

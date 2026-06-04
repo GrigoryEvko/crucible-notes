@@ -87,14 +87,14 @@ field = *(double*)(row + disp);                               // vmovsd [base+id
 
 The compiler's per-generation hardware constants live in the embedded `chip_parts` protos (see [chip_parts.binarypb](../targets/chip-parts-binarypb.md)); the profiler's live here. They are **two parallel spec stores joined only by the `DeviceType` ordinal**, not one frozen copy. Decoding the `chip_parts` `FlopsPerSecond` tables and comparing against the `kDeviceTypeInfo +0x60/+0x78/+0x80` peak doubles shows the bf16 figure and *all* v5p slots diverge:
 
-| Slot (`kDeviceTypeInfo` offset) | `kDeviceTypeInfo` TFLOP/s | `chip_parts` /1e12 | Ratio | Match | Confidence |
-|---|---|---|---|---|---|
-| v5p bf16 `+0x60` | 236.7 | 197.0 | 1.202 | NO | High |
-| v5p int8 `+0x78` | 466.2 | 394.0 | 1.183 | NO | High |
-| v5p int4 `+0x80` | 925.2 | 788.0 | 1.174 | NO | High |
-| v6e bf16 `+0x60` | 946.7 | 918.0 | 1.031 | NO | High |
-| v6e int8 `+0x78` | 1835.0 | 1835.0 | 1.000 | YES | High |
-| v6e int4 `+0x80` | 3670.0 | 3670.0 | 1.000 | YES | High |
+| Slot (`kDeviceTypeInfo` offset) | `kDeviceTypeInfo` TFLOP/s | `chip_parts` /1e12 | Ratio | Match |
+|---|---|---|---|---|
+| v5p bf16 `+0x60` | 236.7 | 197.0 | 1.202 | NO |
+| v5p int8 `+0x78` | 466.2 | 394.0 | 1.183 | NO |
+| v5p int4 `+0x80` | 925.2 | 788.0 | 1.174 | NO |
+| v6e bf16 `+0x60` | 946.7 | 918.0 | 1.031 | NO |
+| v6e int8 `+0x78` | 1835.0 | 1835.0 | 1.000 | YES |
+| v6e int4 `+0x80` | 3670.0 | 3670.0 | 1.000 | YES |
 
 Only the v6e int8/int4 slots coincide byte-exactly — and that is because both derive from the same `systolic_dim² × clock` hardware spec, not because the profiler copied the compiler blob. The bf16 figures track a higher-clock derivation (the v6e `+0x60` 946.7 implies the raw `256² × clock` figure, where `chip_parts` 918 is the post-overhead public number). For a reimplementer this means the profiler's roofline ceiling and the compiler's cost model can legitimately disagree per generation; they must not be unified.
 
@@ -144,15 +144,15 @@ The GB→GiB factor `1.073741824` is exactly `2³⁰ / 10⁹`: the spec table st
 
 Each row was confirmed by the disassembled `vmovsd` displacement at the cited site; the multiply is present iff the member is a bandwidth.
 
-| StatType | `GetStatTypeStr` arg | Table offset | Scaling | Stat string (`.rodata`) | Site | Confidence |
-|---|---|---|---|---|---|---|
-| `0x62` | 98 | `+0x60` | none | `peak_teraflops_per_second` (`0x86ed48f`) | `0xf1daa9b` | High |
-| `0x63` | 99 | `+0xd0` | ×GiB | `peak_hbm_bw_gigabytes_per_second` (`0x86ed53b`) | `0xf1dab40` | High |
-| `0x64` | 100 | `+0x120` | ×GiB | a `peak_*_bw_…` (CMEM-class, v4-only nonzero) | `0xf1dabe6` | Medium |
-| `0x65` | 101 | `+0x128` | ×GiB | a `peak_*_bw_…` (CMEM-class, v4-only nonzero) | `0xf1dac8c` | Medium |
-| `0x66` | 102 | `+0x100` | ×GiB | a `peak_sram/vmem_*_bw_…` | `0xf1dad32` | Medium |
-| `0x67` | 103 | `+0x108` | ×GiB | a `peak_sram/vmem_*_bw_…` | `0xf1dadd8` | Medium |
-| `0x6b` | 107 | `+0x2c4` (BYTE) | none | `has_megacore` (`0x86a4474`) | `0xf1db020` | High |
+| StatType | `GetStatTypeStr` arg | Table offset | Scaling | Stat string (`.rodata`) | Site |
+|---|---|---|---|---|---|
+| `0x62` | 98 | `+0x60` | none | `peak_teraflops_per_second` (`0x86ed48f`) | `0xf1daa9b` |
+| `0x63` | 99 | `+0xd0` | ×GiB | `peak_hbm_bw_gigabytes_per_second` (`0x86ed53b`) | `0xf1dab40` |
+| `0x64` | 100 | `+0x120` | ×GiB | a `peak_*_bw_…` (CMEM-class, v4-only nonzero) | `0xf1dabe6` |
+| `0x65` | 101 | `+0x128` | ×GiB | a `peak_*_bw_…` (CMEM-class, v4-only nonzero) | `0xf1dac8c` |
+| `0x66` | 102 | `+0x100` | ×GiB | a `peak_sram/vmem_*_bw_…` | `0xf1dad32` |
+| `0x67` | 103 | `+0x108` | ×GiB | a `peak_sram/vmem_*_bw_…` | `0xf1dadd8` |
+| `0x6b` | 107 | `+0x2c4` (BYTE) | none | `has_megacore` (`0x86a4474`) | `0xf1db020` |
 
 The eight `peak_*` stat strings are contiguous in `.rodata`:
 
@@ -242,11 +242,11 @@ ConvertTpuTraceToXPlane<…jxc::PerformanceTraceEntry>  @0xf23f8c0   (G-copy)
 
 The six fields are passed as the resolver's `base` argument (`a4`), which the resolver uses as `PerformanceCounterNameToString(base + 8*ordinal)`. Mapping the six call-site GOT displacements back through `base + ordinal*0x448` resolves them to exactly `+0x2c8/+0x348/+0x350/+0x358` (the four `<28>` TensorCore/SparseCore sets), `+0x440` (the `<3>` CMNUR/HBM set), and `+0x438` (the `<12>` ICR set) — the same six descriptor fields the sibling page recovered from the DT12 row at `0x1c637e0`.
 
-| Counter set | Resolver | Table field | Confidence |
-|---|---|---|---|
-| TCS / SCS / SCTC / SCTD | `<28>` @ `0xf240980` | `+0x2c8` / `+0x348` / `+0x350` / `+0x358` | High |
-| CMNUR (HBM/mem-net) | `<3>` @ `0xf240ac0` | `+0x440` | High |
-| ICR (router) | `<12>` @ `0xf240c00` | `+0x438` | High |
+| Counter set | Resolver | Table field |
+|---|---|---|
+| TCS / SCS / SCTC / SCTD | `<28>` @ `0xf240980` | `+0x2c8` / `+0x348` / `+0x350` / `+0x358` |
+| CMNUR (HBM/mem-net) | `<3>` @ `0xf240ac0` | `+0x440` |
+| ICR (router) | `<12>` @ `0xf240c00` | `+0x438` |
 
 ---
 
@@ -277,18 +277,18 @@ Combining the four readers above with the geometry/clock readers, the table part
 
 ### Read by libtpu (CONFIRMED-CONSUMED)
 
-| Offset(s) | Field | Reader | Confidence |
-|---|---|---|---|
-| `+0x00` | core/multi flag (BYTE) | plane setup, `GetJobInfoFromResponse` | High |
-| `+0x04` / `+0x50` / `+0x2f8` | GTC / TensorCore / SparseCore clock (kHz) | `GetJobInfoFromResponse` (`×1000` → Hz) | High |
-| `+0x0c` / `+0x10` / `+0x14` | cores/chip, logical-device counts | `ToDeviceOrdinal` (`÷`), `HandleConvolution`, `ExtractUtilizationCounters` | High |
-| `+0x60` / `+0x78` / `+0x80` | peak FLOP/s bf16 / int8 / int4 | `HandleConvolution` (`vminsd`), V2 stat `0x62` | High |
-| `+0xd0` | peak HBM bandwidth (GB/s) | V2 stat `0x63` (`×GiB`) | High |
-| `+0x100` / `+0x108` / `+0x120` / `+0x128` | per-mem-space bandwidth (GB/s) | V2 stats `0x66/0x67/0x64/0x65` (`×GiB`) | High |
-| `+0x2c4` | has_megacore (BYTE) | V2 stat `0x6b`, `GetCostAdjustmentFunction` | High |
-| `+0x2c8` / `+0x348` / `+0x350` / `+0x358` / `+0x438` / `+0x440` | perf-counter-set bases | `GetPerformanceCounterNames<28/12/3>` | High |
-| `+0x360..+0x378` (d) / `+0x380..+0x398` (m) | power/thermal bundle | `FirmwareEventBuilder` | High |
-| `+0x2b8` / `+0x2f8` / `+0x340` | packed geom, SC clock, SC lane count | `ProcessCounter`, SC subscribers | High |
+| Offset(s) | Field | Reader |
+|---|---|---|
+| `+0x00` | core/multi flag (BYTE) | plane setup, `GetJobInfoFromResponse` |
+| `+0x04` / `+0x50` / `+0x2f8` | GTC / TensorCore / SparseCore clock (kHz) | `GetJobInfoFromResponse` (`×1000` → Hz) |
+| `+0x0c` / `+0x10` / `+0x14` | cores/chip, logical-device counts | `ToDeviceOrdinal` (`÷`), `HandleConvolution`, `ExtractUtilizationCounters` |
+| `+0x60` / `+0x78` / `+0x80` | peak FLOP/s bf16 / int8 / int4 | `HandleConvolution` (`vminsd`), V2 stat `0x62` |
+| `+0xd0` | peak HBM bandwidth (GB/s) | V2 stat `0x63` (`×GiB`) |
+| `+0x100` / `+0x108` / `+0x120` / `+0x128` | per-mem-space bandwidth (GB/s) | V2 stats `0x66/0x67/0x64/0x65` (`×GiB`) |
+| `+0x2c4` | has_megacore (BYTE) | V2 stat `0x6b`, `GetCostAdjustmentFunction` |
+| `+0x2c8` / `+0x348` / `+0x350` / `+0x358` / `+0x438` / `+0x440` | perf-counter-set bases | `GetPerformanceCounterNames<28/12/3>` |
+| `+0x360..+0x378` (d) / `+0x380..+0x398` (m) | power/thermal bundle | `FirmwareEventBuilder` |
+| `+0x2b8` / `+0x2f8` / `+0x340` | packed geom, SC clock, SC lane count | `ProcessCounter`, SC subscribers |
 
 ### Read only off-binary (INFERRED — no in-libtpu reader)
 

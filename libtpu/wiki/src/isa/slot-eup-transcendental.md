@@ -85,16 +85,16 @@ The 5-bit function selector (gfc/glc @ bit 183, vxc @ bit 186) takes a distinct 
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `gfc::EncodeTensorCoreVectorAlu3F32Tanh` | `0x1f96ae40` | gfc Tanh push (sel `0x13` @183, op@194 w8, src@188) | CERTAIN |
-| `gfc::EncodeTensorCoreVectorAlu3F32Reciprocal` | `0x1f96afc0` | gfc Reciprocal push (sel `0x15`) | CERTAIN |
-| `gfc::EncodeTensorCoreVectorAlu3F32ReciprocalSqrt` | `0x1f96ac00` | gfc Rsqrt push (sel `0x10`) | CERTAIN |
-| `gfc::EncodeTensorCoreVectorAlu3F32Erf` | `0x1f96b200` | gfc Erf push (sel `0x0e`) | CERTAIN |
-| `gfc::EncodeTensorCoreVectorAlu3Bf16Reciprocal` | `0x1f96b680` | gfc BF16 Reciprocal push (sel `0x1d`) | CERTAIN |
-| `gfc::EncodeTensorCoreVectorAlu3Bf16Tanh` | `0x1f96b500` | gfc BF16 Tanh push (sel `0x1b`) | CERTAIN |
-| `vxc::EncodeTensorCoreVectorAlu3EupPush` | `0x1ef6e400` | vxc generic EUP push (sel `0x16` @186, op@197 w7, src@191) | CERTAIN |
-| `BitCopy` | `0x1fa0a900` | universal bit-granular packer (`_Z7BitCopyPviPKvii`) | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `gfc::EncodeTensorCoreVectorAlu3F32Tanh` | `0x1f96ae40` | gfc Tanh push (sel `0x13` @183, op@194 w8, src@188) |
+| `gfc::EncodeTensorCoreVectorAlu3F32Reciprocal` | `0x1f96afc0` | gfc Reciprocal push (sel `0x15`) |
+| `gfc::EncodeTensorCoreVectorAlu3F32ReciprocalSqrt` | `0x1f96ac00` | gfc Rsqrt push (sel `0x10`) |
+| `gfc::EncodeTensorCoreVectorAlu3F32Erf` | `0x1f96b200` | gfc Erf push (sel `0x0e`) |
+| `gfc::EncodeTensorCoreVectorAlu3Bf16Reciprocal` | `0x1f96b680` | gfc BF16 Reciprocal push (sel `0x1d`) |
+| `gfc::EncodeTensorCoreVectorAlu3Bf16Tanh` | `0x1f96b500` | gfc BF16 Tanh push (sel `0x1b`) |
+| `vxc::EncodeTensorCoreVectorAlu3EupPush` | `0x1ef6e400` | vxc generic EUP push (sel `0x16` @186, op@197 w7, src@191) |
+| `BitCopy` | `0x1fa0a900` | universal bit-granular packer (`_Z7BitCopyPviPKvii`) |
 
 ### Considerations
 
@@ -132,12 +132,12 @@ function CreateVectorEupResult(eup_push, region):    // @0x1d4d9820
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `CreateVectorEupResult` | `0x1d4d9820` | builds the `0x14e` pop; asserts push ∈ [0x128,0x13a] | CERTAIN |
-| `gfc::TensorCoreVectorResult0Encoder::Encode` | `0x1fa01820` | result slot switch: op5=PopEup, op6=Transpose, op7=PopMxu | CERTAIN |
-| `vxc::TensorCoreVectorResult0Encoder::Encode` | `0x1f018f40` | vxc result slot (disc @bit24 w4, dest @bit14 w6) | HIGH |
-| `glc::TensorCoreVectorResult0Encoder::Encode` | `0x1f3bc160` | glc result slot; adds `PopAddMxu01Result` | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `CreateVectorEupResult` | `0x1d4d9820` | builds the `0x14e` pop; asserts push ∈ [0x128,0x13a] |
+| `gfc::TensorCoreVectorResult0Encoder::Encode` | `0x1fa01820` | result slot switch: op5=PopEup, op6=Transpose, op7=PopMxu |
+| `vxc::TensorCoreVectorResult0Encoder::Encode` | `0x1f018f40` | vxc result slot (disc @bit24 w4, dest @bit14 w6) |
+| `glc::TensorCoreVectorResult0Encoder::Encode` | `0x1f3bc160` | glc result slot; adds `PopAddMxu01Result` |
 
 ### Considerations
 
@@ -191,14 +191,14 @@ The opcode space is three contiguous bands plus the pop:
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `DecomposeEupInstruction` | `0x126a0340` | dispatch to 9 `V*Decomposed` builders | CERTAIN |
-| `LloLateDecomposer` | `0x1269cb20` | splits fused AndPop → bare push + deferred pop | CERTAIN |
-| `LloOpcodeIsPseudoEupInstruction` | `0x1d60c880` | classifies fused AndPop (bitmask `0x7fdff`) | CERTAIN |
-| `CreateVectorEup` | `0x1d4d78a0` | emits a bare hardware EUP push (1 operand) | CERTAIN |
-| `VtanhDecomposed` / `VrsqrtDecomposed` | `0x1d555040` / `0x1d557b60` | bare push+pop builders | CERTAIN |
-| `DecomposeEupOperationsForBarnacore` | `0x1269c5c0` | BarnaCore EUP split (separate result-drain path) | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `DecomposeEupInstruction` | `0x126a0340` | dispatch to 9 `V*Decomposed` builders |
+| `LloLateDecomposer` | `0x1269cb20` | splits fused AndPop → bare push + deferred pop |
+| `LloOpcodeIsPseudoEupInstruction` | `0x1d60c880` | classifies fused AndPop (bitmask `0x7fdff`) |
+| `CreateVectorEup` | `0x1d4d78a0` | emits a bare hardware EUP push (1 operand) |
+| `VtanhDecomposed` / `VrsqrtDecomposed` | `0x1d555040` / `0x1d557b60` | bare push+pop builders |
+| `DecomposeEupOperationsForBarnacore` | `0x1269c5c0` | BarnaCore EUP split (separate result-drain path) |
 
 ---
 
@@ -262,17 +262,17 @@ GHOSTLITE (SupportsBf16AluInstructions = true, elem bw == 16):
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `UnpackOperand<UnpackFOp>` | `0x1360fac0` | recursive sub-element halving; returns the N-deque | CERTAIN |
-| `GetUnpackResultElementType` | `0x1360ff20` | next-narrower sub-element type per lane width | CERTAIN |
-| `IsDynamicallyLegal` | `0x135ddd20` | 1:1 vs 1:N selector (4-arm truth table) | CERTAIN |
-| `Target::SupportsBf16AluInstructions` | `0x1d498ce0` (GL) / `0x1d49c0e0` (VF) | lane sub-element width (vtable +0x780) | CERTAIN |
-| `GetVpackFormat` | `0x13dad800` | pack-format enum (0=none,1=bf16,0xb=f16,0x7=sub-byte) | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `UnpackOperand<UnpackFOp>` | `0x1360fac0` | recursive sub-element halving; returns the N-deque |
+| `GetUnpackResultElementType` | `0x1360ff20` | next-narrower sub-element type per lane width |
+| `IsDynamicallyLegal` | `0x135ddd20` | 1:1 vs 1:N selector (4-arm truth table) |
+| `Target::SupportsBf16AluInstructions` | `0x1d498ce0` (GL) / `0x1d49c0e0` (VF) | lane sub-element width (vtable +0x780) |
+| `GetVpackFormat` | `0x13dad800` | pack-format enum (0=none,1=bf16,0xb=f16,0x7=sub-byte) |
 
 ### Considerations
 
-`SupportsSparseCore` (vtable `+0x260`, `@0x1d48fd40`) is the AluEp *entry guard* (the lowering bails if the target has no SparseCore), not a lane-width input — easy to conflate with `+0x780` because both gate the same lowering. The `optional<int>` lane-width override that `UnpackOperand` honors (the `bt $0x20`/`cmovb` path) lets a caller force a non-default lane width for `f8`/sub-byte staging; which callers pass it was not enumerated, so the override-driven fan-out variants are LOW confidence. See [Pack/Unpack Precision](pack-unpack-precision.md) for the full vpack-format model.
+`SupportsSparseCore` (vtable `+0x260`, `@0x1d48fd40`) is the AluEp *entry guard* (the lowering bails if the target has no SparseCore), not a lane-width input — easy to conflate with `+0x780` because both gate the same lowering. The `optional<int>` lane-width override that `UnpackOperand` honors (the `bt $0x20`/`cmovb` path) lets a caller force a non-default lane width for `f8`/sub-byte staging; which callers pass it is not enumerated here. See [Pack/Unpack Precision](pack-unpack-precision.md) for the full vpack-format model.
 
 ---
 
@@ -312,7 +312,7 @@ The reduced argument is r = `VcomposeF32(0x00c90fdb, ...)` with the −30 binary
 
 ### Considerations
 
-The k-mod-4 → {+sin, +cos, −sin, −cos} sign/swap truth table is computed by the function's 16 `SimplifySelect` arms but was read structurally, not transcribed — that 4-way table is LOW confidence and not reproduced here. The table is **1/(2π), not 2/π**, despite the conventional "2/π reduction" name: the leading word is floor(2³²/(2π)), and the reconstruction sums to 1/(2π) exactly. See [Payne-Hanek Range Reduction](../cost/eup-paynehanek.md) for the cost-model framing.
+The k-mod-4 → {+sin, +cos, −sin, −cos} sign/swap truth table is computed by the function's 16 `SimplifySelect` arms and is not reproduced here. The table is **1/(2π), not 2/π**, despite the conventional "2/π reduction" name: the leading word is floor(2³²/(2π)), and the reconstruction sums to 1/(2π) exactly. See [Payne-Hanek Range Reduction](../cost/eup-paynehanek.md) for the cost-model framing.
 
 ---
 
@@ -382,7 +382,7 @@ The EUP-using exp/ln variants apply a small fp32 correction over the hardware po
 
 ### Considerations
 
-The exact gen×datatype gating of "no-EUP fallback vs bare push" is owned by the per-gen `SupportsXxxInstruction` Target accessors, not re-derived here — so the *binding* of a fallback to a specific gen is INFERRED, though the coefficient values are byte-exact. See [EUP Correction Coefficients](../cost/eup-correction-coeffs.md) for the complete coefficient catalog.
+The exact gen×datatype gating of "no-EUP fallback vs bare push" is owned by the per-gen `SupportsXxxInstruction` Target accessors, not re-derived here; the binding of a fallback to a specific gen lives in those accessors. See [EUP Correction Coefficients](../cost/eup-correction-coeffs.md) for the complete coefficient catalog.
 
 ---
 
@@ -438,20 +438,20 @@ The EUP result FIFO is **not a fixed compile-time depth**. The HW-state simulato
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `LatencyTable::LatencyBetween` | `0x1c89f820` | dispatcher; returns EUP edge unmodified | CERTAIN |
-| `LatencyTableJellyfish::LatencyBetweenInternal` | `0x1c8a0d60` | JF/DF EUP clamp to `Performance[+0x30]`=4 | CERTAIN |
-| `GhostlitePerformance` ctor | `0x1c8cbc80` | fills F32 EUP=13, BF16=14, pop=1 | CERTAIN |
-| `ViperfishPerformance` ctor | `0x1c8c4840` | fills EUP=6, pop=1 | CERTAIN |
-| `PufferfishPerformance` ctor | `0x1c8be080` | fills EUP=7 (TensorCore variant 0) | CERTAIN |
-| `<Gen>Performance::GetLatency` | `0x1c8cbc20` (VF) etc. | `latencies[Instruction]` heap lookup | CERTAIN |
-| `EupResultFifoEntry` (proto) | `0x0e7a6cc0` (ctor) | runtime `repeated`-message FIFO list | HIGH |
-| `BaseFifoTracker<LloValue*>::FindBlockingPushesAndPops` | `0x14442f60` | FIFO push/pop ordering edges | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `LatencyTable::LatencyBetween` | `0x1c89f820` | dispatcher; returns EUP edge unmodified |
+| `LatencyTableJellyfish::LatencyBetweenInternal` | `0x1c8a0d60` | JF/DF EUP clamp to `Performance[+0x30]`=4 |
+| `GhostlitePerformance` ctor | `0x1c8cbc80` | fills F32 EUP=13, BF16=14, pop=1 |
+| `ViperfishPerformance` ctor | `0x1c8c4840` | fills EUP=6, pop=1 |
+| `PufferfishPerformance` ctor | `0x1c8be080` | fills EUP=7 (TensorCore variant 0) |
+| `<Gen>Performance::GetLatency` | `0x1c8cbc20` (VF) etc. | `latencies[Instruction]` heap lookup |
+| `EupResultFifoEntry` (proto) | `0x0e7a6cc0` (ctor) | runtime `repeated`-message FIFO list |
+| `BaseFifoTracker<LloValue*>::FindBlockingPushesAndPops` | `0x14442f60` | FIFO push/pop ordering edges |
 
 ### Considerations
 
-The Pufferfish `kVectorSigShftF32` (0x12d) Instruction ordinal falls to the classifier default (the other six F32 EUP pushes are all 7), so the shifted-sigmoid edge on PF is most plausibly 7 by the uniform-EUP-latency pattern but was not pinned — INFERRED. Which of the 31 `GhostlitePerformance` resources is the EUP unit (and whether its `GetResourceUsage` cycle count equals `VectorEupReservationCycles`) was read structurally; the EUP resource row was not isolated from the ctor's template fill (LOW). See [EUP Latency Overview](../cost/eup-latency-overview.md) for the cost-model integration.
+The Pufferfish `kVectorSigShftF32` (0x12d) Instruction ordinal falls to the classifier default (the other six F32 EUP pushes are all 7), so the shifted-sigmoid edge on PF follows the uniform-EUP-latency pattern of 7, though that specific edge is not pinned here. Which of the 31 `GhostlitePerformance` resources is the EUP unit (and whether its `GetResourceUsage` cycle count equals `VectorEupReservationCycles`) is not isolated here from the ctor's template fill. See [EUP Latency Overview](../cost/eup-latency-overview.md) for the cost-model integration.
 
 ---
 

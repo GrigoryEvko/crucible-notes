@@ -70,25 +70,25 @@ Templates marked **CERTAIN** were spot-confirmed verbatim in the decompiled call
 
 The single largest block. These are the shape-inference and HLO-verifier diagnostics a JAX/XLA user hits when a program is malformed: rank checks, dimension-range checks, shape-equality checks, layout mismatches. Almost all are `%s`/`%d`-heavy and almost all wrap `InvalidArgument` (a few RET_CHECK → `Internal`). The verifier's signature is the **`vs.` comparison style** — `"%d vs. %d"`, `"%s vs. %s"` — which appears wherever two quantities must match.
 
-| Offset | Template (`%`-spec) | Placeholders | Code | Conf. |
-|---|---|---|---|---|
-| `0x857d595` | `Argument to Cholesky must have rank >= 2; shape was %s` | `%s`=Shape | InvalidArgument | CERTAIN |
-| `0x857c6ef` | `Argument to symmetrize must have >= 2 dimensions, got %s` | `%s`=Shape | InvalidArgument | HIGH |
-| `0x8580369` | `All reduced tensors must have the same dimension. Tensor 0 has shape %s, Tensor %d has shape %s` | `%s`=Shape, `%d`=index, `%s`=Shape | InvalidArgument | HIGH |
-| `0x85803c9` | `All operands to AfterAll must be tokens; operand %d has shape %s` | `%d`=operand idx, `%s`=Shape | InvalidArgument | HIGH |
-| `0x872a259` | `broadcast_dimensions contains invalid value %d for result with rank %d` | `%d`=value, `%d`=rank | InvalidArgument | CERTAIN |
-| `0xa02f654` | `Broadcast dimension %d mismatch: %d != %d; %s and %s.` | `%d`=dim, `%d`/`%d`=sizes, `%s`/`%s`=Shapes | InvalidArgument | HIGH |
-| `0xa02c26f` | `Cannot concatenate arrays that differ in dimensions other than the one being concatenated. Dimension %d in both shapes must be equal (or compatible): %s vs %s.` | `%d`=dim, `%s`/`%s`=Shapes | InvalidArgument | HIGH |
-| `0xa02f9ba` | `Cannot bitcast types with undivisible bit-widths: %s => %s.` | `%s`/`%s`=PrimitiveType | InvalidArgument | HIGH |
-| `0xa01cdc3` | `Bitcast requires a new on-device shape to have the same size of %d bytes, but got %d bytes.` | `%d`/`%d`=byte sizes | InvalidArgument | HIGH |
-| `0xa030ae8` | `Cannot infer shape: attempting to index into non-tuple: %s.` | `%s`=Shape | InvalidArgument | HIGH |
-| `0x857b3fa` | `sharding's tile count and device count does not match: %d vs. %d; shape=%s, sharding=%s` | `%d`/`%d`=counts, `%s`/`%s`=Shape/Sharding | InvalidArgument | HIGH |
-| `0x858b317` | `Arguments to TriangularSolve have shapes with different ranks: %s vs. %s` | `%s`/`%s`=Shapes | InvalidArgument | HIGH |
-| `0xa0a2a82` | `Binary op shape inference: %s; lhs: %s; rhs: %s is not implemented.` | `%s`=op, `%s`/`%s`=Shapes | Unimplemented | HIGH |
-| `0x8728000` | `Binary op expects 2 operands, but got %d` | `%d`=count | RET_CHECK→Internal | HIGH |
-| `0x858400c` | `Bad scalar opcode in slot 0, opcode: %d bundle: %v, bits: %s` | `%d`=opcode, `%v`=TensorCoreBundle, `%s`=bits | InvalidArgument | CERTAIN |
-| `0x857b280` | `Cannot feed constants into bundle packer.  Copy them to registers first. instr=%s` | `%s`=instruction | Internal | HIGH |
-| `0x8584e00` | `Cannot find a free bundle slot in bundle %s: %s` | `%s`/`%s`=bundle/reason | Internal | HIGH |
+| Offset | Template (`%`-spec) | Placeholders | Code |
+|---|---|---|---|
+| `0x857d595` | `Argument to Cholesky must have rank >= 2; shape was %s` | `%s`=Shape | InvalidArgument |
+| `0x857c6ef` | `Argument to symmetrize must have >= 2 dimensions, got %s` | `%s`=Shape | InvalidArgument |
+| `0x8580369` | `All reduced tensors must have the same dimension. Tensor 0 has shape %s, Tensor %d has shape %s` | `%s`=Shape, `%d`=index, `%s`=Shape | InvalidArgument |
+| `0x85803c9` | `All operands to AfterAll must be tokens; operand %d has shape %s` | `%d`=operand idx, `%s`=Shape | InvalidArgument |
+| `0x872a259` | `broadcast_dimensions contains invalid value %d for result with rank %d` | `%d`=value, `%d`=rank | InvalidArgument |
+| `0xa02f654` | `Broadcast dimension %d mismatch: %d != %d; %s and %s.` | `%d`=dim, `%d`/`%d`=sizes, `%s`/`%s`=Shapes | InvalidArgument |
+| `0xa02c26f` | `Cannot concatenate arrays that differ in dimensions other than the one being concatenated. Dimension %d in both shapes must be equal (or compatible): %s vs %s.` | `%d`=dim, `%s`/`%s`=Shapes | InvalidArgument |
+| `0xa02f9ba` | `Cannot bitcast types with undivisible bit-widths: %s => %s.` | `%s`/`%s`=PrimitiveType | InvalidArgument |
+| `0xa01cdc3` | `Bitcast requires a new on-device shape to have the same size of %d bytes, but got %d bytes.` | `%d`/`%d`=byte sizes | InvalidArgument |
+| `0xa030ae8` | `Cannot infer shape: attempting to index into non-tuple: %s.` | `%s`=Shape | InvalidArgument |
+| `0x857b3fa` | `sharding's tile count and device count does not match: %d vs. %d; shape=%s, sharding=%s` | `%d`/`%d`=counts, `%s`/`%s`=Shape/Sharding | InvalidArgument |
+| `0x858b317` | `Arguments to TriangularSolve have shapes with different ranks: %s vs. %s` | `%s`/`%s`=Shapes | InvalidArgument |
+| `0xa0a2a82` | `Binary op shape inference: %s; lhs: %s; rhs: %s is not implemented.` | `%s`=op, `%s`/`%s`=Shapes | Unimplemented |
+| `0x8728000` | `Binary op expects 2 operands, but got %d` | `%d`=count | RET_CHECK→Internal |
+| `0x858400c` | `Bad scalar opcode in slot 0, opcode: %d bundle: %v, bits: %s` | `%d`=opcode, `%v`=TensorCoreBundle, `%s`=bits | InvalidArgument |
+| `0x857b280` | `Cannot feed constants into bundle packer.  Copy them to registers first. instr=%s` | `%s`=instruction | Internal |
+| `0x8584e00` | `Cannot find a free bundle slot in bundle %s: %s` | `%s`/`%s`=bundle/reason | Internal |
 
 > **NOTE —** `0x858400c` ("Bad scalar opcode in slot 0…") resolves in the decompile to `platforms_deepsea::jellyfish::isa::DecoderBcsDf::DecodeScalar0Slot` (and a per-gen `DecoderJf` twin). Its `%v` is the `TensorCoreBundle`'s `AbslStringify`, and it is one of the 6 `TensorCoreBundle`-bearing `<Code>StrCat` factories (see [Arg-Type Decode](#status-code-mapping)). The per-generation decoder variants (gxc/gfc, gxc/glc, vxc) each emit their own copy, so near-identical templates with the same prose are *separate* rodata strings.
 
@@ -98,20 +98,20 @@ The single largest block. These are the shape-inference and HLO-verifier diagnos
 
 Latency-hiding scheduler, annotation-range checks, the `--xla_fuel` budget, and the on-device FIFO push/pop ordering. The annotation templates lean on `%c` for the literal brace/bracket characters; the FIFO templates chain `%s :: %s` to attach instruction context.
 
-| Offset | Template | Placeholders | Code | Conf. |
-|---|---|---|---|---|
-| `0x8796ba8` | `annotation arg must be in correct order as given; expected %c{%d%c but got %c{%d%c` | `%c`=brace, `%d`=id | Internal | HIGH |
-| `0x8571b33` | `annotation %c{%d%c is out of bounds` | `%c`=brace, `%d`=id | Internal | HIGH |
-| `0x858a654` | `annotation range was not closed; expected %c}%c: %s` | `%c`=brace, `%s`=context | Internal | HIGH |
-| `0x857fa91` | `async-done for %s must be scheduled before %s` | `%s`/`%s`=instructions | RET_CHECK→Internal | HIGH |
-| `0x857fabf` | `async-done for %s must be scheduled on core %d before %s` | `%s`=instr, `%d`=core | RET_CHECK→Internal | HIGH |
-| `0x858a9b8` | `Cannot schedule FIFO pop instruction when the FIFO is empty %s :: %s` | `%s :: %s`=instr context | Internal | HIGH |
-| `0x857ad7e` | `Cannot schedule FIFO push instruction when the FIFO is full.  FIFO name: %s. (element count %d vs %d). %s :: %s%s` | `%s`=name, `%d vs %d`=counts | Internal | HIGH |
-| `0xa02bf0c` | `Conflicting schedule type requirements in computation rooted at %s.` | `%s`=computation | Internal | HIGH |
-| `0xa086733` | `Reference instruction %s was not found in the schedule.` | `%s`=instruction | Internal | HIGH |
-| `0x862868f` | `GVN: Not replacing %s because GVN is out of fuel` | `%s`=instruction | (LOG, not Status) | MEDIUM |
-| `0x8628660` | `halt before %s because lowering is out of fuel` | `%s`=instruction | (LOG, not Status) | MEDIUM |
-| `0xa03ca6a` | `Illegal value for --xla_fuel. Saw %s, but expected token %s to be an integer.` | `%s`/`%s`=value/token | InvalidArgument | CERTAIN |
+| Offset | Template | Placeholders | Code |
+|---|---|---|---|
+| `0x8796ba8` | `annotation arg must be in correct order as given; expected %c{%d%c but got %c{%d%c` | `%c`=brace, `%d`=id | Internal |
+| `0x8571b33` | `annotation %c{%d%c is out of bounds` | `%c`=brace, `%d`=id | Internal |
+| `0x858a654` | `annotation range was not closed; expected %c}%c: %s` | `%c`=brace, `%s`=context | Internal |
+| `0x857fa91` | `async-done for %s must be scheduled before %s` | `%s`/`%s`=instructions | RET_CHECK→Internal |
+| `0x857fabf` | `async-done for %s must be scheduled on core %d before %s` | `%s`=instr, `%d`=core | RET_CHECK→Internal |
+| `0x858a9b8` | `Cannot schedule FIFO pop instruction when the FIFO is empty %s :: %s` | `%s :: %s`=instr context | Internal |
+| `0x857ad7e` | `Cannot schedule FIFO push instruction when the FIFO is full.  FIFO name: %s. (element count %d vs %d). %s :: %s%s` | `%s`=name, `%d vs %d`=counts | Internal |
+| `0xa02bf0c` | `Conflicting schedule type requirements in computation rooted at %s.` | `%s`=computation | Internal |
+| `0xa086733` | `Reference instruction %s was not found in the schedule.` | `%s`=instruction | Internal |
+| `0x862868f` | `GVN: Not replacing %s because GVN is out of fuel` | `%s`=instruction | (LOG, not Status) |
+| `0x8628660` | `halt before %s because lowering is out of fuel` | `%s`=instruction | (LOG, not Status) |
+| `0xa03ca6a` | `Illegal value for --xla_fuel. Saw %s, but expected token %s to be an integer.` | `%s`/`%s`=value/token | InvalidArgument |
 
 > **NOTE —** `0xa03ca6a` ("Illegal value for --xla_fuel…") was confirmed inside the `xla::MakeDebugOptionsFlags` flag-parsing closure — it is a flag-value validator, the error counterpart to the `--xla_fuel` flag documented on the flag-name side. The two "out of fuel" strings at `0x8628660`/`0x862868f` are diagnostic LOG output, not Status payloads (no factory wraps them); they are catalogued for completeness but should not be assumed to be recoverable as a Status code.
 
@@ -121,20 +121,20 @@ Latency-hiding scheduler, annotation-range checks, the `--xla_fuel` budget, and 
 
 Memory-space assignment, prefetch/alternate-memory, HBM defragmentation, and the heap allocator. Byte-size placeholders dominate (`%lld`, `%zu`). The two over-budget templates wrap `ResourceExhausted`; mismatch/verification templates wrap `Internal`.
 
-| Offset | Template | Placeholders | Code | Conf. |
-|---|---|---|---|---|
-| `0xa030cd9` | `AllocateBufferForMemorySpace: Unsupported memory space: %s.` | `%s`=memory space | InvalidArgument | HIGH |
-| `0x858aa58` | `Allocation (size=%lld) would exceed memory (size=%lld) :: %s :: %s` | `%lld`/`%lld`=sizes, `%s :: %s`=context | ResourceExhausted | HIGH |
-| `0xa083c62` | `BufferAllocation::Slice for instruction %s at index %s cannot be determined at compile-time.` | `%s`/`%s`=instr/index | Internal | HIGH |
-| `0x857ce50` | `DefineBuffer: Mismatch in memory spaces: %s vs %s` | `%s vs %s`=spaces | Internal | HIGH |
-| `0x8584ecd` | `Error defragmenting HBM %s: %s` | `%s`/`%s`=region/reason | Internal | HIGH |
-| `0xa1300d0` | `Failed to allocate %zu bytes. Memory limit: %zu bytes. Used: %zu bytes.)` | `%zu`×3=req/limit/used | ResourceExhausted | HIGH |
-| `0x8728f50` | `Invalid HBM offset %d` | `%d`=offset | InvalidArgument | HIGH |
-| `0x872cb26` | `Invalid memory space for input memory space colors: %d` | `%d`=color | InvalidArgument | HIGH |
-| `0xa01cf08` | `Out of memory allocating %d bytes.` | `%d`=byte size | ResourceExhausted | CERTAIN |
-| `0xa09a63e` | `Number of bytes %lld allocated must be a multiple of chunk size %lld.` | `%lld`/`%lld`=size/chunk | InvalidArgument | HIGH |
-| `0x857eed1` | `Register allocator verification failure: live range %s; instruction %s` | `%s`/`%s`=range/instr | Internal | HIGH |
-| `0xa02b12f` | `Scoped allocation with size %s and limit %s exceeded scoped %s limit by %s.` | `%s`×4=sizes/labels | ResourceExhausted | HIGH |
+| Offset | Template | Placeholders | Code |
+|---|---|---|---|
+| `0xa030cd9` | `AllocateBufferForMemorySpace: Unsupported memory space: %s.` | `%s`=memory space | InvalidArgument |
+| `0x858aa58` | `Allocation (size=%lld) would exceed memory (size=%lld) :: %s :: %s` | `%lld`/`%lld`=sizes, `%s :: %s`=context | ResourceExhausted |
+| `0xa083c62` | `BufferAllocation::Slice for instruction %s at index %s cannot be determined at compile-time.` | `%s`/`%s`=instr/index | Internal |
+| `0x857ce50` | `DefineBuffer: Mismatch in memory spaces: %s vs %s` | `%s vs %s`=spaces | Internal |
+| `0x8584ecd` | `Error defragmenting HBM %s: %s` | `%s`/`%s`=region/reason | Internal |
+| `0xa1300d0` | `Failed to allocate %zu bytes. Memory limit: %zu bytes. Used: %zu bytes.)` | `%zu`×3=req/limit/used | ResourceExhausted |
+| `0x8728f50` | `Invalid HBM offset %d` | `%d`=offset | InvalidArgument |
+| `0x872cb26` | `Invalid memory space for input memory space colors: %d` | `%d`=color | InvalidArgument |
+| `0xa01cf08` | `Out of memory allocating %d bytes.` | `%d`=byte size | ResourceExhausted |
+| `0xa09a63e` | `Number of bytes %lld allocated must be a multiple of chunk size %lld.` | `%lld`/`%lld`=size/chunk | InvalidArgument |
+| `0x857eed1` | `Register allocator verification failure: live range %s; instruction %s` | `%s`/`%s`=range/instr | Internal |
+| `0xa02b12f` | `Scoped allocation with size %s and limit %s exceeded scoped %s limit by %s.` | `%s`×4=sizes/labels | ResourceExhausted |
 
 > **NOTE —** do **not** attribute the near-identical template `0xa13e8e5` ("Failed to allocate node (%zu bytes). Memory limit: %zu [bytes]. Used: %zu [bytes].)") to TPU memory-space assignment. It lives in `perfetto::protovm::RwProtoCursor::CreateNodeFromField` — the **Perfetto tracing library's** arena allocator, not the TPU MSA path. The genuine TPU heap-allocator over-budget string is `0xa1300d0` ("Failed to allocate %zu bytes…", row above), confirmed in `xla::AlignedAllocator::Allocate`.
 
@@ -144,23 +144,23 @@ Memory-space assignment, prefetch/alternate-memory, HBM defragmentation, and the
 
 Inter-chip-interconnect link health, routing, GTC synchronization, and the collective (all-reduce / all-gather / reduce-scatter / all-to-all) buffer-size validators. This block mixes printf-style ICI driver errors with the positional `$N` collective validators (which are megascale-tagged — see the next section). Codes lean `Internal` and `DeadlineExceeded`.
 
-| Offset | Template | Idiom | Placeholders | Code | Conf. |
-|---|---|---|---|---|---|
-| `0xa0b3abc` | `Cannot find unicast link next hop routing table for link port %d.` | printf | `%d`=port | Internal | HIGH |
-| `0xa030c51` | `Coordinate assignment failed for the slice's target %s ICI network because there are chips disconnected from the rest of the slice: %s.` | printf | `%s`/`%s`=target/chips | Internal | HIGH |
-| `0xa0d5412` | `Detected ICI link failures along %d dimensions, but only 1-dimensional link fault is allowed..` | printf | `%d`=dim count | FailedPrecondition | HIGH |
-| `0xa05e59a` | `Failed to add link information: chip %d already has a %c direction link.` | printf | `%d`=chip, `%c`=axis | Internal | HIGH |
-| `0x855f8c6` | `Failed to detect GTC reset before timeout %s expires` | printf | `%s`=duration | DeadlineExceeded | HIGH |
-| `0x8727005` | `Failed to turn down ICI link %d during slice reset, state=%d` | printf | `%d`=link, `%d`=state | Internal | HIGH |
-| `0x871106b` | `GTC failed to converge (max diff %d > %d) before timeout (%s) expired` | printf | `%d > %d`=diff, `%s`=timeout | DeadlineExceeded | HIGH |
-| `0x872a345` | `Hop ID %d is out of bound of ICI route path with length %d` | printf | `%d`/`%d`=hop/len | Internal | HIGH |
-| `0x8583d20` | `ICI Probe failed.  local port: %d name: %s took %d us. status: %s` | printf | `%d`=port, `%s`=name, `%d`=us, `%s`=status | Internal | CERTAIN |
-| `0xa0a81a9` | `ICI resiliency only allow 1-dimensional link failures, but link failures along %d dimensions are discovered.` | printf | `%d`=dim count | FailedPrecondition | HIGH |
-| `0xa0ba533` | `ICI routing failed to retrieve %dth hop dimension from bit encoded cache data.` | printf | `%d`=hop | Internal | HIGH |
-| `0x9a573e9` | `ALL_REDUCE Output buffer size is not == Input buffer size. Input size: $0 Output size: $1 Group Size $2 Key: $3 Module: $4 MegascaleInfo: $5` | positional | `$0..$5`=sizes/key/module/info | InvalidArgument | HIGH |
-| `0x9c142f9` | `ALL_GATHER Input buffer size is not (Output buffer size /  group size). Input size: $0 …` | positional | `$0…`=sizes/info | InvalidArgument | HIGH |
-| `0x9c14380` | `REDUCE_SCATTER Output buffer size is not (Input buffer size /  group size). …` | positional | `$0…`=sizes/info | InvalidArgument | HIGH |
-| `0x9d1493e` | `ALL_TO_ALL not supported when buffer size is not divisble by number of endpoints. Buffer Size: $0 Number of endpoints: $1. MegascaleInfo: $2` | positional | `$0`/`$1`/`$2` | Unimplemented | CERTAIN |
+| Offset | Template | Idiom | Placeholders | Code |
+|---|---|---|---|---|
+| `0xa0b3abc` | `Cannot find unicast link next hop routing table for link port %d.` | printf | `%d`=port | Internal |
+| `0xa030c51` | `Coordinate assignment failed for the slice's target %s ICI network because there are chips disconnected from the rest of the slice: %s.` | printf | `%s`/`%s`=target/chips | Internal |
+| `0xa0d5412` | `Detected ICI link failures along %d dimensions, but only 1-dimensional link fault is allowed..` | printf | `%d`=dim count | FailedPrecondition |
+| `0xa05e59a` | `Failed to add link information: chip %d already has a %c direction link.` | printf | `%d`=chip, `%c`=axis | Internal |
+| `0x855f8c6` | `Failed to detect GTC reset before timeout %s expires` | printf | `%s`=duration | DeadlineExceeded |
+| `0x8727005` | `Failed to turn down ICI link %d during slice reset, state=%d` | printf | `%d`=link, `%d`=state | Internal |
+| `0x871106b` | `GTC failed to converge (max diff %d > %d) before timeout (%s) expired` | printf | `%d > %d`=diff, `%s`=timeout | DeadlineExceeded |
+| `0x872a345` | `Hop ID %d is out of bound of ICI route path with length %d` | printf | `%d`/`%d`=hop/len | Internal |
+| `0x8583d20` | `ICI Probe failed.  local port: %d name: %s took %d us. status: %s` | printf | `%d`=port, `%s`=name, `%d`=us, `%s`=status | Internal |
+| `0xa0a81a9` | `ICI resiliency only allow 1-dimensional link failures, but link failures along %d dimensions are discovered.` | printf | `%d`=dim count | FailedPrecondition |
+| `0xa0ba533` | `ICI routing failed to retrieve %dth hop dimension from bit encoded cache data.` | printf | `%d`=hop | Internal |
+| `0x9a573e9` | `ALL_REDUCE Output buffer size is not == Input buffer size. Input size: $0 Output size: $1 Group Size $2 Key: $3 Module: $4 MegascaleInfo: $5` | positional | `$0..$5`=sizes/key/module/info | InvalidArgument |
+| `0x9c142f9` | `ALL_GATHER Input buffer size is not (Output buffer size /  group size). Input size: $0 …` | positional | `$0…`=sizes/info | InvalidArgument |
+| `0x9c14380` | `REDUCE_SCATTER Output buffer size is not (Input buffer size /  group size). …` | positional | `$0…`=sizes/info | InvalidArgument |
+| `0x9d1493e` | `ALL_TO_ALL not supported when buffer size is not divisble by number of endpoints. Buffer Size: $0 Number of endpoints: $1. MegascaleInfo: $2` | positional | `$0`/`$1`/`$2` | Unimplemented |
 
 > **NOTE —** `0x8583d20` ("ICI Probe failed…") was confirmed in `asic_sw::driver::deepsea::ici::SliceConfiguration::GetLocalTopology`; `0x9d1493e` ("ALL_TO_ALL not supported…") in `xla::megascale::runtime::HostCommandSchedulerFactory…GenerateCommunicationIrsFromTransferRegistry`. The collective buffer-size validators are positional (`$N`) even though they sit on the ICI/collective path — they are emitted from the megascale runtime, which is the positional-idiom stronghold.
 
@@ -170,13 +170,13 @@ Inter-chip-interconnect link health, routing, GTC synchronization, and the colle
 
 Cross-host data-center-network coordination: barrier-participant accounting, the corrupted-buffer detector, launch-id timeouts, and the coordinator's error digest. This is the heart of the positional `$N` idiom. The coordinator's hang-digest emits one prose variant per cause branch.
 
-| Offset | Template | Placeholders | Code | Conf. |
-|---|---|---|---|---|
-| `0x9e6f85e` | `Extra barrier participant. Expected: $0 Message $1` | `$0`=expected, `$1`=msg | Internal | HIGH |
-| `0x9e6fa4d` | `Mismatched number of barrier participants: Expected: $0 Msg: $1` | `$0`=expected, `$1`=msg | Internal | HIGH |
-| `0x9d149cb` | `MegaScale Corrupted Buffer Detected. Key: $0 Checksum at Sender: $1 Current checksum: $2` | `$0`=key, `$1`/`$2`=checksums | DataLoss/Internal | HIGH |
-| `0x9b273a4` | `Timed out waiting for $0 graphs to complete at launch_id $1. Already completed: $2. StepGloballyInProgress: $3 Timeout: $4` | `$0..$4`=count/id/state | DeadlineExceeded | HIGH |
-| `0xa122d03` | `MegaScale devices cannot be queried except from jax. (%d)` | `%d`=error code | FailedPrecondition | MEDIUM |
+| Offset | Template | Placeholders | Code |
+|---|---|---|---|
+| `0x9e6f85e` | `Extra barrier participant. Expected: $0 Message $1` | `$0`=expected, `$1`=msg | Internal |
+| `0x9e6fa4d` | `Mismatched number of barrier participants: Expected: $0 Msg: $1` | `$0`=expected, `$1`=msg | Internal |
+| `0x9d149cb` | `MegaScale Corrupted Buffer Detected. Key: $0 Checksum at Sender: $1 Current checksum: $2` | `$0`=key, `$1`/`$2`=checksums | DataLoss/Internal |
+| `0x9b273a4` | `Timed out waiting for $0 graphs to complete at launch_id $1. Already completed: $2. StepGloballyInProgress: $3 Timeout: $4` | `$0..$4`=count/id/state | DeadlineExceeded |
+| `0xa122d03` | `MegaScale devices cannot be queried except from jax. (%d)` | `%d`=error code | FailedPrecondition |
 
 The coordinator's hang digest emits the prose `"Megascale detects a hang that is likely caused by …"` once per cause branch (BAD_TPU_CHIP, BAD_SC_CHIP, DATA_INPUT_STALL, DIFFERENT_MODULE, FINGERPRINT_MISMATCH, NETWORKING_ISSUE, PROGRAM_NOT_QUEUED, UNKNOWN_CAUSE), and the operator-actionable follow-ups (`"Please remove the hosts from the fleet and restart the workload"`, `"Please check the workers to make sure the data input pipeline is working properly"`). The abort path is in [Fatal / Abort Surface](#fatal--abort-surface).
 
@@ -186,20 +186,20 @@ The coordinator's hang digest emits the prose `"Megascale detects a hang that is
 
 SparseCore (`xla_sc_`) and BarnaCore embedding configuration: alignment requirements, table/feature counts, the partitioner objective enum, and the SMEM row-pointer budget. User-facing (a model-config error) and almost all `InvalidArgument`.
 
-| Offset | Template | Placeholders | Code | Conf. |
-|---|---|---|---|---|
-| `0xa0a9715` | `barna_core_infeed_queue_hbm_address must be %d-byte aligned.` | `%d`=alignment | InvalidArgument | HIGH |
-| `0xa0b6320` | `barna_core_infeed_queue_hbm_size must be a multiple of %d.` | `%d`=multiple | InvalidArgument | HIGH |
-| `0xa030dd4` | `Could not find valid TPU batch of length at least %d at position %d for row %d. The embedding work in one sample exceeds what the BarnaCore can process: %s. %s.` | `%d`×3=len/pos/row, `%s`/`%s`=detail | InvalidArgument | HIGH |
-| `0x872d950` | `Dynamic learning rate tag: %d not found in the TPU embedding configuration, instead found: %d. tag set size: %d` | `%d`×3=tag/found/size | InvalidArgument | HIGH |
-| `0xa02cd93` | `Embedding table is expected to have element type %s or %s.` | `%s`/`%s`=types | InvalidArgument | HIGH |
-| `0x86fa1ad` | `Failed to parse TPU embedding partitioner optimization objective "%s". Valid options: performance, hbm_usage, hybrid` | `%s`=value | InvalidArgument | HIGH |
-| `0xa11773a` | `hbm_limits_for_embeddings.min_fraction (%f) must be <= hbm_limits_for_embeddings.max_fraction (%f)` | `%f`/`%f`=fractions | InvalidArgument | HIGH |
-| `0xa0d36d1` | `Invalid num_features: %d found for table: %s in the TPU embedding configuration. Valid values are >0.` | `%d`=count, `%s`=table | InvalidArgument | CERTAIN |
-| `0xa0b7076` | `Logical replicas must evenly divide the SparseCores in the system. logical_replicas = %d, physical_sparse_cores = %d.` | `%d`/`%d`=counts | InvalidArgument | HIGH |
-| `0xa069f4e` | `Number of TPU tables on row: %d exceeds what the BarnaCore hardware supports: %d > %d. This is mostly likely a result of incorrect partitioning.` | `%d`×3=row/got/max | InvalidArgument | HIGH |
-| `0xa0ff40e` | `Row pointers would exceed available SCS Smem (%d bytes > %d bytes)` | `%d`/`%d`=used/avail | ResourceExhausted | HIGH |
-| `0xa07d172` | `Scatter operand has %d elements, which exceeds the 32-bit limit. Unsupported on SparseCore.` | `%d`=count | Unimplemented | HIGH |
+| Offset | Template | Placeholders | Code |
+|---|---|---|---|
+| `0xa0a9715` | `barna_core_infeed_queue_hbm_address must be %d-byte aligned.` | `%d`=alignment | InvalidArgument |
+| `0xa0b6320` | `barna_core_infeed_queue_hbm_size must be a multiple of %d.` | `%d`=multiple | InvalidArgument |
+| `0xa030dd4` | `Could not find valid TPU batch of length at least %d at position %d for row %d. The embedding work in one sample exceeds what the BarnaCore can process: %s. %s.` | `%d`×3=len/pos/row, `%s`/`%s`=detail | InvalidArgument |
+| `0x872d950` | `Dynamic learning rate tag: %d not found in the TPU embedding configuration, instead found: %d. tag set size: %d` | `%d`×3=tag/found/size | InvalidArgument |
+| `0xa02cd93` | `Embedding table is expected to have element type %s or %s.` | `%s`/`%s`=types | InvalidArgument |
+| `0x86fa1ad` | `Failed to parse TPU embedding partitioner optimization objective "%s". Valid options: performance, hbm_usage, hybrid` | `%s`=value | InvalidArgument |
+| `0xa11773a` | `hbm_limits_for_embeddings.min_fraction (%f) must be <= hbm_limits_for_embeddings.max_fraction (%f)` | `%f`/`%f`=fractions | InvalidArgument |
+| `0xa0d36d1` | `Invalid num_features: %d found for table: %s in the TPU embedding configuration. Valid values are >0.` | `%d`=count, `%s`=table | InvalidArgument |
+| `0xa0b7076` | `Logical replicas must evenly divide the SparseCores in the system. logical_replicas = %d, physical_sparse_cores = %d.` | `%d`/`%d`=counts | InvalidArgument |
+| `0xa069f4e` | `Number of TPU tables on row: %d exceeds what the BarnaCore hardware supports: %d > %d. This is mostly likely a result of incorrect partitioning.` | `%d`×3=row/got/max | InvalidArgument |
+| `0xa0ff40e` | `Row pointers would exceed available SCS Smem (%d bytes > %d bytes)` | `%d`/`%d`=used/avail | ResourceExhausted |
+| `0xa07d172` | `Scatter operand has %d elements, which exceeds the 32-bit limit. Unsupported on SparseCore.` | `%d`=count | Unimplemented |
 
 > **NOTE —** `0xa0d36d1` ("Invalid num_features…") was confirmed in `tensorflow::PopulateMissingFieldsInTPUEmbeddingConfig`. The `%f` floats in `0xa11773a` are a rare case where `%f` is genuinely a configuration ratio, not a cost-model internal.
 
@@ -209,22 +209,22 @@ SparseCore (`xla_sc_`) and BarnaCore embedding configuration: alignment requirem
 
 The driver state machine, device/ordinal validation, firmware-queue transitions, DMA-buffer accounting, and the PJRT C-API boundary. The most idiom-mixed block: `%p` and `errno` (`%d`) appear here, and codes split between `FailedPrecondition` (state-machine guards) and `Internal`.
 
-| Offset | Template | Placeholders | Code | Conf. |
-|---|---|---|---|---|
-| `0xa0b7366` | `Attempted to register programmable interrupt with bad index: %d. Number of programmable interrupts: %d.` | `%d`/`%d`=index/count | InvalidArgument | HIGH |
-| `0xa0430a3` | `Cannot remove a driver for %s, was not found in map.` | `%s`=driver name | NotFound | HIGH |
-| `0xa077a78` | `Cannot transition to %s: the firmware queues are not in %s state; they are in %s state.` | `%s`×3=states | FailedPrecondition | HIGH |
-| `0x96c33b2` | `Can't close driver while in state %s; are multiple threads trying to open / close?` | `%s`=state | FailedPrecondition | HIGH |
-| `0x94b68ce` | `Can't get the optimized program for executable \`%s\`: MPMD execution is not supported by PJRT C API` | `%s`=executable | Unimplemented | HIGH |
-| `0xa09fdcd` | `Chip count (%d) is not supported.` | `%d`=count | InvalidArgument | HIGH |
-| `0x872d1a0` | `Close of core dump fd failed with errno: %d` | `%d`=errno | Internal | HIGH |
-| `0xa0a9937` | `%d DMA buffers were still outstanding when the driver was re-opened. These buffers must be unmapped before the driver can be re-opened.` | `%d`=count | FailedPrecondition | HIGH |
-| `0xa0d10bd` | `Device id '$0' is out of bound. Number of devices is $1.` | `$0`/`$1`=id/count | InvalidArgument | HIGH |
-| `0x8679159` | `device ordinal value (%d) must be non-negative` | `%d`=ordinal | InvalidArgument | CERTAIN |
-| `0xa1a96ba` | `executable is built for device %s of type "%s"; cannot run it on device %s of type "%s"` | `%s`×4=device/type | InvalidArgument | HIGH |
-| `0xa00ab4b` | `Expected %d chips per tray, actually found a tray with %d chips.` | `%d`/`%d`=expected/found | FailedPrecondition | HIGH |
-| `0x858a3de` | `failed initializing StreamExecutor for device ordinal %d: %s` | `%d`=ordinal, `%s`=reason | Internal | HIGH |
-| `0xa09b555` | `Failed to convert multipod chip id %d to single-pod chip id.` | `%d`=chip id | Internal | HIGH |
+| Offset | Template | Placeholders | Code |
+|---|---|---|---|
+| `0xa0b7366` | `Attempted to register programmable interrupt with bad index: %d. Number of programmable interrupts: %d.` | `%d`/`%d`=index/count | InvalidArgument |
+| `0xa0430a3` | `Cannot remove a driver for %s, was not found in map.` | `%s`=driver name | NotFound |
+| `0xa077a78` | `Cannot transition to %s: the firmware queues are not in %s state; they are in %s state.` | `%s`×3=states | FailedPrecondition |
+| `0x96c33b2` | `Can't close driver while in state %s; are multiple threads trying to open / close?` | `%s`=state | FailedPrecondition |
+| `0x94b68ce` | `Can't get the optimized program for executable \`%s\`: MPMD execution is not supported by PJRT C API` | `%s`=executable | Unimplemented |
+| `0xa09fdcd` | `Chip count (%d) is not supported.` | `%d`=count | InvalidArgument |
+| `0x872d1a0` | `Close of core dump fd failed with errno: %d` | `%d`=errno | Internal |
+| `0xa0a9937` | `%d DMA buffers were still outstanding when the driver was re-opened. These buffers must be unmapped before the driver can be re-opened.` | `%d`=count | FailedPrecondition |
+| `0xa0d10bd` | `Device id '$0' is out of bound. Number of devices is $1.` | `$0`/`$1`=id/count | InvalidArgument |
+| `0x8679159` | `device ordinal value (%d) must be non-negative` | `%d`=ordinal | InvalidArgument |
+| `0xa1a96ba` | `executable is built for device %s of type "%s"; cannot run it on device %s of type "%s"` | `%s`×4=device/type | InvalidArgument |
+| `0xa00ab4b` | `Expected %d chips per tray, actually found a tray with %d chips.` | `%d`/`%d`=expected/found | FailedPrecondition |
+| `0x858a3de` | `failed initializing StreamExecutor for device ordinal %d: %s` | `%d`=ordinal, `%s`=reason | Internal |
+| `0xa09b555` | `Failed to convert multipod chip id %d to single-pod chip id.` | `%d`=chip id | Internal |
 
 > **NOTE —** `0x8679159` ("device ordinal value (%d) must be non-negative") was confirmed in `stream_executor::StreamExecutorAddressAllocator::GetStreamExecutor`. Many runtime templates feed the executor's async stream path; see [`execute-async-on-stream.md`](execute-async-on-stream.md) for where these surface during enqueue.
 
@@ -244,16 +244,16 @@ The positional `$N` family is also populated by a statically-linked protobuf ext
 
 The absl `CHECK`/`QCHECK`/`DCHECK` family and XLA's `TPU_RET_CHECK` do not carry full message templates — they emit a fixed *prefix* and then append the stringified source expression and any streamed `<< "msg"`. The comparison macros (`CHECK_EQ`/`NE`/`GE`) append the operand values with the `"%d vs. %d"` / `"%s vs. %s"` format that recurs across the verifier block.
 
-| Offset | Template | Macro / origin | Conf. |
-|---|---|---|---|
-| `0xa1a64de` | `Check failed: '` | absl `CHECK`/`QCHECK` prefix (quoted) | HIGH |
-| `0xa1f4a87` | `Check failed in ` | absl CHECK with file/line | HIGH |
-| `0xa285fb1` | `Check failed: ` | absl CHECK prefix (no quote) | HIGH |
-| `0xa183292` | `TPU_RET_CHECK failure (` | XLA TPU RET_CHECK macro | CERTAIN |
-| `0xa0ab3ca` | `Hostname Verification Check failed.` | gRPC TLS hostname-verify CHECK | HIGH |
-| `0xa2300c5` | `MakeErrorStream destructed without getting absl::Status: ` | XLA status_macros self-check | CERTAIN |
-| `0xa2300ff` | `MakeErrorStream shift called after getting absl::Status: ` | XLA status_macros self-check | HIGH |
-| `0xa27f1b3` | `MakeErrorStream got absl::Status more than once: ` | XLA status_macros self-check | HIGH |
+| Offset | Template | Macro / origin |
+|---|---|---|
+| `0xa1a64de` | `Check failed: '` | absl `CHECK`/`QCHECK` prefix (quoted) |
+| `0xa1f4a87` | `Check failed in ` | absl CHECK with file/line |
+| `0xa285fb1` | `Check failed: ` | absl CHECK prefix (no quote) |
+| `0xa183292` | `TPU_RET_CHECK failure (` | XLA TPU RET_CHECK macro |
+| `0xa0ab3ca` | `Hostname Verification Check failed.` | gRPC TLS hostname-verify CHECK |
+| `0xa2300c5` | `MakeErrorStream destructed without getting absl::Status: ` | XLA status_macros self-check |
+| `0xa2300ff` | `MakeErrorStream shift called after getting absl::Status: ` | XLA status_macros self-check |
+| `0xa27f1b3` | `MakeErrorStream got absl::Status more than once: ` | XLA status_macros self-check |
 
 > **GOTCHA —** the `CHECK(expr) << "msg"` macro inlines the *source expression text* (`spmem_buffer_type != nullptr`, `dynamic_size, nullptr`) into `.rodata`. Large fragments of literal C++ source — even whole lambda bodies — appear in the string table as a side effect. These are CHECK-condition evidence, **not** error templates in the printf sense, and are excluded from the template count. A reimplementer scanning strings for "templates" must filter them out or be flooded with source fragments.
 
@@ -265,14 +265,14 @@ The absl `CHECK`/`QCHECK`/`DCHECK` family and XLA's `TPU_RET_CHECK` do not carry
 
 The intentional-abort surface is small and centralized — ICI hard failures, the megascale coordinator abort, internal-bug `LOG(FATAL)`s, and one library guard that is not TPU-specific.
 
-| Offset | Template | Path | Conf. |
-|---|---|---|---|
-| `0xa1e7cb3` | `!!!! FATAL ERROR !!!! for ` | ICI `FatalErrorCheck` | HIGH |
-| `0x8864055` | `!!!! FATAL ERROR !!!! observed errors are: [` | `AsyncDriver::HandleFatalError` composite | HIGH |
-| `0xa046045` | `Fatal error occurred. Data links will go down.` | ICI hard-failure marker | HIGH |
-| `0xa1b3810` | `FATAL ERROR RECEIVED FROM HARDWARE!!!` | hardware fatal interrupt | HIGH |
-| `0x8a2941d` | `Fatal error in creation of RWB Fusion. Please file a bug with XLA-TPU` | fusion internal-bug `LOG(FATAL)` | CERTAIN |
-| `0xbe7d460` | `FATAL ERROR: This binary was compiled with <isa> enabled, but this feature is not available on this processor (go/sigill-fail-fast).` | absl CPU-feature startup guard (12 ISA variants) | HIGH |
+| Offset | Template | Path |
+|---|---|---|
+| `0xa1e7cb3` | `!!!! FATAL ERROR !!!! for ` | ICI `FatalErrorCheck` |
+| `0x8864055` | `!!!! FATAL ERROR !!!! observed errors are: [` | `AsyncDriver::HandleFatalError` composite |
+| `0xa046045` | `Fatal error occurred. Data links will go down.` | ICI hard-failure marker |
+| `0xa1b3810` | `FATAL ERROR RECEIVED FROM HARDWARE!!!` | hardware fatal interrupt |
+| `0x8a2941d` | `Fatal error in creation of RWB Fusion. Please file a bug with XLA-TPU` | fusion internal-bug `LOG(FATAL)` |
+| `0xbe7d460` | `FATAL ERROR: This binary was compiled with <isa> enabled, but this feature is not available on this processor (go/sigill-fail-fast).` | absl CPU-feature startup guard (12 ISA variants) |
 
 The megascale coordinator's abort prose — `"Aborting the coordinator after collecting errors from all workers as megascale_error_reporter_abort_on_hang is set to true. All workers will also abort after they detect the coordinator is shutdown."` — is a `LOG(FATAL)` gated on a flag.
 

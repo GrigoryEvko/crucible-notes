@@ -52,17 +52,17 @@ A wheel is a ZIP archive; extracting it yields a `libtpu/` package directory con
 
 Every figure here is directly observable: sizes from `ls -l` or `stat`, build-ids and ELF class from `readelf -n` / `readelf -h` / `file`.
 
-| Property | `libtpu.so` | `sdk.so` | How confirmed | Confidence |
-|---|---|---|---|---|
-| Size on disk (bytes) | 781,691,048 | 22,541,240 | `ls -l` on extracted file | CERTAIN |
-| ELF class | ELF64 LSB, x86-64 | ELF64 LSB, x86-64 | `readelf -h` / `file` | CERTAIN |
-| ELF type | `ET_DYN` shared object | `ET_DYN` shared object | `readelf -h` | CERTAIN |
-| OS/ABI | SYSV | GNU/Linux | `file` | CERTAIN |
-| Build-id | `89edbbe81c5b328a958fe628a9f2207d` | `4e9025466f71009fccb46a803806411c63744a0a` | `readelf -n` (`NT_GNU_BUILD_ID`) | CERTAIN |
-| Build-id format | md5/uuid (16 B) | sha1 (20 B) | `readelf -n` note length | CERTAIN |
-| Symbol table | present (`.symtab` survives) | present | `file` reports "not stripped" | CERTAIN |
-| Role | the compiler + runtime; "745 MB" object | the smaller SDK/host shim | size + [two-binary-split](forensics/two-binary-split.md) | HIGH |
-| Embedded LLVM/MLIR | 23-dev trunk, commit `8918319853fbdf…` | — | `.rodata` literals; see [manifest](forensics/llvm-mlir-manifest.md) | HIGH |
+| Property | `libtpu.so` | `sdk.so` | How confirmed |
+|---|---|---|---|
+| Size on disk (bytes) | 781,691,048 | 22,541,240 | `ls -l` on extracted file |
+| ELF class | ELF64 LSB, x86-64 | ELF64 LSB, x86-64 | `readelf -h` / `file` |
+| ELF type | `ET_DYN` shared object | `ET_DYN` shared object | `readelf -h` |
+| OS/ABI | SYSV | GNU/Linux | `file` |
+| Build-id | `89edbbe81c5b328a958fe628a9f2207d` | `4e9025466f71009fccb46a803806411c63744a0a` | `readelf -n` (`NT_GNU_BUILD_ID`) |
+| Build-id format | md5/uuid (16 B) | sha1 (20 B) | `readelf -n` note length |
+| Symbol table | present (`.symtab` survives) | present | `file` reports "not stripped" |
+| Role | the compiler + runtime; "745 MB" object | the smaller SDK/host shim | size + [two-binary-split](forensics/two-binary-split.md) |
+| Embedded LLVM/MLIR | 23-dev trunk, commit `8918319853fbdf…` | — | `.rodata` literals; see [manifest](forensics/llvm-mlir-manifest.md) |
 
 > **NOTE (provenance) —** the two build-ids use different note formats: `libtpu.so` carries a 16-byte md5/uuid build-id, `sdk.so` carries a 20-byte sha1. `readelf -n` reports the note payload length (`0x10` vs `0x14`), which is itself the discriminator. This asymmetry is one of several signals that the two objects come off different build rules in the same release; the full argument is in [The Two-Binary Split](forensics/two-binary-split.md).
 

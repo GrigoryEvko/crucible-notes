@@ -88,15 +88,15 @@ The matmul family is keyed by a 32-bit `MatmulModifier` whose `byte[0]` is the `
 
 The reservation triple is `{res3, res9, res2}` for formats 1/2, and `{res3, res9}` for formats 9/0xa, byte-confirmed in the constructor at `@0x1c8bb7c9..0x1c8bbb31`.
 
-| `MatmulModifier` key | format | `res2` (issue stage) | `res3` (**thru**) | `res9` (acc latch) | Confidence |
-|---|---|---|---|---|---|
-| `0x00000001` `0x00000101` `0x00010001` `0x00010101` | 1 (bf16) | 16 | **4** | 3 | CERTAIN |
-| `0x00000002` `0x00010002` | 2 (bf16-alt) | 20 | **8** | 7 | CERTAIN |
-| `0x00000102` `0x00010102` | 2, transpose | 16 | **4** | 3 | CERTAIN |
-| `0x00000009` `0x00010009` | 9 (F8E5M2) | — | **8** | 7 | CERTAIN |
-| `0x00000109` `0x00010109` | 9, transpose | — | **2** | 1 | CERTAIN |
-| `0x0000000a` `0x0001000a` | 0xa (F8E4M3Fn) | — | **8** | 7 | CERTAIN |
-| `0x0000010a` `0x0001010a` | 0xa, transpose | — | **2** | 1 | CERTAIN |
+| `MatmulModifier` key | format | `res2` (issue stage) | `res3` (**thru**) | `res9` (acc latch) |
+|---|---|---|---|---|
+| `0x00000001` `0x00000101` `0x00010001` `0x00010101` | 1 (bf16) | 16 | **4** | 3 |
+| `0x00000002` `0x00010002` | 2 (bf16-alt) | 20 | **8** | 7 |
+| `0x00000102` `0x00010102` | 2, transpose | 16 | **4** | 3 |
+| `0x00000009` `0x00010009` | 9 (F8E5M2) | — | **8** | 7 |
+| `0x00000109` `0x00010109` | 9, transpose | — | **2** | 1 |
+| `0x0000000a` `0x0001000a` | 0xa (F8E4M3Fn) | — | **8** | 7 |
+| `0x0000010a` `0x0001010a` | 0xa, transpose | — | **2** | 1 |
 
 `res3` is the value `GetResourceUsage` returns for a matmul; `res2` is the larger issue-stage hold (16/20 cy) that gates the issue cursor; `res9` is the secondary accumulate latch.
 
@@ -114,12 +114,12 @@ The matpush (latch / matprep) family is keyed by a `MatpushModifier` whose low t
 
 The reservation widens with the format, falling into three value-sets — `narrow` `{res5/4:1, res7/6:1, res8:2, res10:7}`, `mid` `{:3, :2, res8:4, res10:9}`, `wide` `{:7, :6, res8:8}` — byte-confirmed at `@0x1c8bb28d..0x1c8bb737`.
 
-| `MatpushModifier` key | variant | staging A · B | `res8` (**thru**) | `res10` (latch) | width | Confidence |
-|---|---|---|---|---|---|---|
-| `0x..010001` | v1/v3 | 1 · 1 | **2** | 7 | narrow | CERTAIN |
-| `0x..010101` | v1/v3, xpose | 3 · 2 | **4** | — | mid | CERTAIN |
-| `0x..010002` `0x..010009` `0x..01000a` | v1/v3 | 3 · 2 | **4** | 9 | mid | CERTAIN |
-| `0x..010102` `0x..010109` `0x..01010a` | v1/v3, xpose | 7 · 6 | **8** | — | wide | CERTAIN |
+| `MatpushModifier` key | variant | staging A · B | `res8` (**thru**) | `res10` (latch) | width |
+|---|---|---|---|---|---|
+| `0x..010001` | v1/v3 | 1 · 1 | **2** | 7 | narrow |
+| `0x..010101` | v1/v3, xpose | 3 · 2 | **4** | — | mid |
+| `0x..010002` `0x..010009` `0x..01000a` | v1/v3 | 3 · 2 | **4** | 9 | mid |
+| `0x..010102` `0x..010109` `0x..01010a` | v1/v3, xpose | 7 · 6 | **8** | — | wide |
 
 > **GOTCHA —** the staging-port *indices* depend on the MSR variant the row is built for. The constructor selects `res4`/`res6` for one MSR and `res5`/`res7` for the other (a per-variant `Unexpected MSR` CHECK at `mxu_latency_table_gf.cc:94` guards the selector). The throughput cell read by the lookup is always `res8`; the staging holds are what shift. Treating the staging indices as fixed across variants will mis-place a hold.
 
@@ -129,16 +129,16 @@ The reservation widens with the format, falling into three value-sets — `narro
 
 `GetResourceUsage` forces transpose to 0 when building the lookup key, so the convolution cost model reads the non-transpose rows. The `GfcCycleTable::GetCyclesForThroughputHelper` `@0x1c89f400` binds each cost-table `Instruction` (CT ordinal) to an LLO opcode, a resource index, and a transpose flag:
 
-| CT | LLO opcode | family | key fmt | res read | cycles | Confidence |
-|---|---|---|---|---|---|---|
-| 0 | 289 (`0x121`) | matmul | 1 (bf16) | `array[3]` | **4** | cycles CERTAIN; opcode HIGH |
-| 1 | 295 (`0x127`) | matmul | 2 | `array[3]` | **8** | cycles CERTAIN; opcode HIGH |
-| 2 / 4 | 301 (`0x12d`) | matmul | 9 (F8E5M2) | `array[3]` | **8** | cycles CERTAIN; opcode HIGH |
-| 3 | 307 (`0x133`) | matmul | 0xa (F8E4M3Fn) | `array[3]` | **8** | cycles CERTAIN; opcode HIGH |
-| 5 | 324 (`0x144`) | matpush | 1 (bf16, direct GLM) | `array[8]` | **2** | CERTAIN |
-| 6 | 326 (`0x146`) | matpush | GLM `^0xB` (transpose flip) | `array[8]` | per fmt | HIGH |
-| 7 / 9 | 327 (`0x147`) | matpush | GLM `\|0x30` → fmt 9 | `array[8]` | **4** | CERTAIN |
-| 8 | 325 (`0x145`) | matpush | GLM `\|0x32` → fmt 0xa | `array[8]` | **4** | CERTAIN |
+| CT | LLO opcode | family | key fmt | res read | cycles |
+|---|---|---|---|---|---|
+| 0 | 289 (`0x121`) | matmul | 1 (bf16) | `array[3]` | **4** |
+| 1 | 295 (`0x127`) | matmul | 2 | `array[3]` | **8** |
+| 2 / 4 | 301 (`0x12d`) | matmul | 9 (F8E5M2) | `array[3]` | **8** |
+| 3 | 307 (`0x133`) | matmul | 0xa (F8E4M3Fn) | `array[3]` | **8** |
+| 5 | 324 (`0x144`) | matpush | 1 (bf16, direct GLM) | `array[8]` | **2** |
+| 6 | 326 (`0x146`) | matpush | GLM `^0xB` (transpose flip) | `array[8]` | per fmt |
+| 7 / 9 | 327 (`0x147`) | matpush | GLM `\|0x30` → fmt 9 | `array[8]` | **4** |
+| 8 | 325 (`0x145`) | matpush | GLM `\|0x32` → fmt 0xa | `array[8]` | **4** |
 
 The matpush transpose CTs (11–15) re-enter `sub_1C8BDB20` as `sub_1C8BDB20(a1, op, opcode, 8, 1)` — resource `8`, `latch_mode = 1` — selecting the transposed (`wide`) value-set (`res8 = 8`). The CT→opcode binding for the matmul CTs (0–4) is inferred from the resource index (`3`) and transpose (`0`) the helper passes plus the opcode the dispatch consumes; the matpush opcodes (324–327) are byte-confirmed in both the helper and `sub_1C8BDB20`.
 
@@ -146,10 +146,10 @@ The matpush transpose CTs (11–15) re-enter `sub_1C8BDB20` as `sub_1C8BDB20(a1,
 
 The base op latency is a separate `MatmulDataFormat → int` map at `this+0x80`, named by the constructor's four `try_emplace` CHECK strings:
 
-| `MatmulDataFormat` | base latency | Confidence |
-|---|---|---|
-| `kF32`, `kBf16` | **211** | CERTAIN |
-| `kF8E5M2`, `kF8E4M3Fn` | **204** | CERTAIN |
+| `MatmulDataFormat` | base latency |
+|---|---|
+| `kF32`, `kBf16` | **211** |
+| `kF8E5M2`, `kF8E4M3Fn` | **204** |
 
 These are the v7 per-format op latencies; the v6e (Ghostlite) constructor stores 192/182 for the same formats, the clearest single number proving the two tables are distinct instances.
 
@@ -193,18 +193,18 @@ The Vlxmr map at `this+0x40` carries two rows, inserted by `sub_1C8BC760(0, &unk
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `GfcCycleTable::GfcCycleTable` | `0x1c89eec0` | allocs `0x30` perf + `0xa0` MxuLatency | CERTAIN |
-| GF `MxuLatencyTable` ctor | `0x1c8bb1c0` | fills 16 matpush + 16 matmul + 2 vlxmr + cost map | CERTAIN |
-| GF `MxuLatencyTable::GetResourceUsage` | `0x1c8bdb20` | opcode dispatch + `find` + direct `array[res]` | CERTAIN |
-| matpush insert helper | `0x1c8bc2e0` | `array[res & 0xf] = cy`, `< 11` bound | CERTAIN |
-| matmul insert helper | `0x1c8bc540` | as above, MatmulModifier map | CERTAIN |
-| vlxmr insert helper | `0x1c8bc760` | VlxmrModifier rows from rodata pairs | CERTAIN |
-| `GfcCycleTable::GetCyclesForThroughputHelper` | `0x1c89f400` | CT → opcode/res/transpose dispatch | CERTAIN |
-| `GainLatchModeToMatmulDataFormat` | `0x1d629260` | matpush key byte[0] | CERTAIN |
-| `LatchModeIsTranspose` | `0x1d628ea0` | matpush key byte[1] | HIGH |
-| `LatchOpcodeToMsr` | `0x1c8a1300` | matpush key byte[3]; `(0x91) → 0` | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `GfcCycleTable::GfcCycleTable` | `0x1c89eec0` | allocs `0x30` perf + `0xa0` MxuLatency |
+| GF `MxuLatencyTable` ctor | `0x1c8bb1c0` | fills 16 matpush + 16 matmul + 2 vlxmr + cost map |
+| GF `MxuLatencyTable::GetResourceUsage` | `0x1c8bdb20` | opcode dispatch + `find` + direct `array[res]` |
+| matpush insert helper | `0x1c8bc2e0` | `array[res & 0xf] = cy`, `< 11` bound |
+| matmul insert helper | `0x1c8bc540` | as above, MatmulModifier map |
+| vlxmr insert helper | `0x1c8bc760` | VlxmrModifier rows from rodata pairs |
+| `GfcCycleTable::GetCyclesForThroughputHelper` | `0x1c89f400` | CT → opcode/res/transpose dispatch |
+| `GainLatchModeToMatmulDataFormat` | `0x1d629260` | matpush key byte[0] |
+| `LatchModeIsTranspose` | `0x1d628ea0` | matpush key byte[1] |
+| `LatchOpcodeToMsr` | `0x1c8a1300` | matpush key byte[3]; `(0x91) → 0` |
 
 ---
 
@@ -263,14 +263,14 @@ The number of emitted `DmaLevel`s equals the number of contiguity breaks; the pr
 
 `WindowCyclesGenericTargetAgnostic` `@0x14552180` reads the level vector and buckets the fragment product `v18` (the running `access_multiplier` from the merge loop), byte-exact:
 
-| fragment product `v18` | multiplier | rodata | Confidence |
-|---|---|---|---|
-| `≤ 1` level (no fragmentation) | **1.0** | `@0xa2df230` | CERTAIN |
-| `== 1` | **1.6** | `@0xa2d71a0` | CERTAIN |
-| `∈ [2, 3]` | **1.3** | `@0xa2d71a8` | CERTAIN |
-| `∈ [4, 7]` | **1.1** | `@0xa2df4c8` | CERTAIN |
-| `∈ [8, 31]` | **1.05** | `@0xa2df2a8` | CERTAIN |
-| `> 31` | **1.0** (falls through to default) | `@0xa2df230` | CERTAIN |
+| fragment product `v18` | multiplier | rodata |
+|---|---|---|
+| `≤ 1` level (no fragmentation) | **1.0** | `@0xa2df230` |
+| `== 1` | **1.6** | `@0xa2d71a0` |
+| `∈ [2, 3]` | **1.3** | `@0xa2d71a8` |
+| `∈ [4, 7]` | **1.1** | `@0xa2df4c8` |
+| `∈ [8, 31]` | **1.05** | `@0xa2df2a8` |
+| `> 31` | **1.0** (falls through to default) | `@0xa2df230` |
 
 All four read doubles are byte-confirmed in `.rodata`: `1.0` (`@0xa2df230`), `1.6` (`@0xa2d71a0`), `1.3` (`@0xa2d71a8`), `1.1` (`@0xa2df4c8`), `1.05` (`@0xa2df2a8`). The `{1.6, 1.3}` pair is a 2-entry table at `@0xa2d71a0` indexed by `setge(v18 ≥ 2)`; `1.1` and `1.05` are standalone constants. The bandwidth deposit returned is `(byte_count · elem_size / bytes_per_cycle) · multiplier + residual`.
 

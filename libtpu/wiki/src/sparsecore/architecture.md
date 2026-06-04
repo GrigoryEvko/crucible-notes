@@ -28,7 +28,6 @@ For reimplementation, the contract is:
 | **Allocator** | `AllocationAssignmentPass` (`0x134D8240`) — per-address-space bump + scope stack; `Deallocate` elided |
 | **SPMEM stripe** | 32 bytes (`SparseCoreSpmemStripeGranularityBytes` = `0x1D499440` → `optional<32>`) |
 | **Alloc alignment** | `SpmemAlignment` = `(SparseCoreTiles × lane_count) / 4` words (`0x13DC5500`) |
-| **Confidence** | CONFIRMED (decompile-anchored) unless a row or callout says otherwise |
 
 ---
 
@@ -86,15 +85,15 @@ function Target_SparseCoreTiles(this):              // 0xFAAFA40
     return *(u32*)(this[297] + 0x90);                // [0x948] + 0x90  (v7x = 16)
 ```
 
-| Accessor | Address | Reads | v7x value | Confidence |
-|---|---|---|---|---|
-| `SparseCoreTiles` | `0xFAAFA40` | `[0x948]+0x90` | 16 | CONFIRMED |
-| `SparseCoreLaneCount` | `0xF7906E0` | `[0x948]+0x94` | 16 | CONFIRMED |
-| `SparseCoreHbm4bWordSizeBytes` | `0x1320C220` | `[0x948]+0x58` | 4 | CONFIRMED |
-| `SparseCoreStreamGranuleSizeBytes` | `0x13886EE0` | `[0x948]+0xA4` | 4 | CONFIRMED |
-| `GetSparseCoreBarrierSyncFlagCount` | `0x10972FA0` | `[0x948]+0x1D4` | — | CONFIRMED |
-| `SupportsSparseCore` | `0x1D48FD40` | `TpuTopology[+0x98] > 0` | true | CONFIRMED |
-| `SparseCoresPerLogicalDevice` | `0x135159C0` | `CoresPerChip / LogicalDevicesPerChip` | 2 | CONFIRMED |
+| Accessor | Address | Reads | v7x value |
+|---|---|---|---|
+| `SparseCoreTiles` | `0xFAAFA40` | `[0x948]+0x90` | 16 |
+| `SparseCoreLaneCount` | `0xF7906E0` | `[0x948]+0x94` | 16 |
+| `SparseCoreHbm4bWordSizeBytes` | `0x1320C220` | `[0x948]+0x58` | 4 |
+| `SparseCoreStreamGranuleSizeBytes` | `0x13886EE0` | `[0x948]+0xA4` | 4 |
+| `GetSparseCoreBarrierSyncFlagCount` | `0x10972FA0` | `[0x948]+0x1D4` | — |
+| `SupportsSparseCore` | `0x1D48FD40` | `TpuTopology[+0x98] > 0` | true |
+| `SparseCoresPerLogicalDevice` | `0x135159C0` | `CoresPerChip / LogicalDevicesPerChip` | 2 |
 
 > **GOTCHA —** the gate is a *runtime topology* test, not a class test. `SupportsSparseCore` reads `*(u32*)(TpuTopology* /*Target+0x3B8*/ + 0x98) > 0`, not the `[0x948]` pointer. A reimplementation must set the SparseCore-count field of its topology descriptor *before* any SC accessor is reachable; otherwise the whole accessor surface traps with the `target.h:1704` FATAL. On the BarnaCore generations (Jellyfish/Dragonfish/Pufferfish) and TC-only lite dies, that count is zero, so `Target::Init` never builds the sub-object.
 
@@ -312,25 +311,25 @@ When the on-chip working set exceeds SPMEM/TILE_SPMEM, `PrepareHbmSpillPass` (`0
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `AllocationAssignmentPass::runOnOperation` | `0x134D8240` | bump-allocate driver (reserve HW regions, walk allocas, walk tile tasks) | CONFIRMED |
-| `…::Allocate(MemRefType, opt<Core>, bool)` | `0x134DB1E0` | allocate one memref → base word offset; the VFC guard | CONFIRMED |
-| `…::GetMemRefSize(MemRefType)` | `0x134DC1C0` | byte→word + padding/alignment round-up | CONFIRMED |
-| `…::MemoryUsage::Reserve(MemorySpace, long)` | `0x134D9700` | the bump primitive (flat_hash_map) | CONFIRMED |
-| `…::PushToStack` / `PopStack` | `0x134DA8C0` / `0x134DAB00` | scope-frame push (copy parent ptrs) / pop (`size >= 2`) | CONFIRMED |
-| `…::PushToStackForTileAllocations(bool)` | `0x134DD340` | tile sub-frame; carve TILE_SPMEM from SPMEM at stripe boundary | CONFIRMED |
-| `GlobalAllocationAssignmentPass::DoAllocations` | `0x1351BF80` | capacity check + `llvm_tpu.spill_ranges` emit | CONFIRMED |
-| `TileOverlayAllocationPass::runOnOperation` | `0x136025E0` | TIMEM overlay bump alloc; elide deallocs | CONFIRMED |
-| `PrepareHbmSpillPass::runOnOperation` | `0x135F3B60` | per-SC HBM spill stack | CONFIRMED |
-| `lowering_util::GetUserAllocatableWordOffsets` | `0x13DABC00` | per-space user-window upper bound | CONFIRMED |
-| `xla_mlo_util::{WordSizeInBytes,WordAlignmentInBytes,CapacityInBytes}` | `0x14A89D00` / `0x14A89E20` / `0x14A89EE0` | per-tier word width / alignment / capacity | CONFIRMED |
-| `mlir::sparse_core::MemorySpaceToAddressSpace` | `0x14B78780` | enum → LLVM addrspace (table `0xAF36CE8`) | CONFIRMED |
-| `LlvmTpuDialect::SpmemAlignment` | `0x13DC5500` | `(tiles × lane_count) / 4` words | CONFIRMED |
-| `logical_replica_util::GetLogicalReplicaInfo` | `0x13CA1AE0` | row-shard / replica-count solver (pow-2, divides #SC) | CONFIRMED |
-| `logical_replica_util::GetNumSparseCores` | `0x13C9EBA0` | total SC count across the mesh | CONFIRMED |
-| `lowering_util::SparseCoreCountPerTensorCore` | `0x1C6CB760` | `SCs_per_chip / TCs_per_chip` (4:1) | CONFIRMED |
-| `VariableWindowAllocationEstimator::CalculateVariableSizeWords` | `0x13CA3F20` | the TILE_SPMEM minibatch-fit inequality | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `AllocationAssignmentPass::runOnOperation` | `0x134D8240` | bump-allocate driver (reserve HW regions, walk allocas, walk tile tasks) |
+| `…::Allocate(MemRefType, opt<Core>, bool)` | `0x134DB1E0` | allocate one memref → base word offset; the VFC guard |
+| `…::GetMemRefSize(MemRefType)` | `0x134DC1C0` | byte→word + padding/alignment round-up |
+| `…::MemoryUsage::Reserve(MemorySpace, long)` | `0x134D9700` | the bump primitive (flat_hash_map) |
+| `…::PushToStack` / `PopStack` | `0x134DA8C0` / `0x134DAB00` | scope-frame push (copy parent ptrs) / pop (`size >= 2`) |
+| `…::PushToStackForTileAllocations(bool)` | `0x134DD340` | tile sub-frame; carve TILE_SPMEM from SPMEM at stripe boundary |
+| `GlobalAllocationAssignmentPass::DoAllocations` | `0x1351BF80` | capacity check + `llvm_tpu.spill_ranges` emit |
+| `TileOverlayAllocationPass::runOnOperation` | `0x136025E0` | TIMEM overlay bump alloc; elide deallocs |
+| `PrepareHbmSpillPass::runOnOperation` | `0x135F3B60` | per-SC HBM spill stack |
+| `lowering_util::GetUserAllocatableWordOffsets` | `0x13DABC00` | per-space user-window upper bound |
+| `xla_mlo_util::{WordSizeInBytes,WordAlignmentInBytes,CapacityInBytes}` | `0x14A89D00` / `0x14A89E20` / `0x14A89EE0` | per-tier word width / alignment / capacity |
+| `mlir::sparse_core::MemorySpaceToAddressSpace` | `0x14B78780` | enum → LLVM addrspace (table `0xAF36CE8`) |
+| `LlvmTpuDialect::SpmemAlignment` | `0x13DC5500` | `(tiles × lane_count) / 4` words |
+| `logical_replica_util::GetLogicalReplicaInfo` | `0x13CA1AE0` | row-shard / replica-count solver (pow-2, divides #SC) |
+| `logical_replica_util::GetNumSparseCores` | `0x13C9EBA0` | total SC count across the mesh |
+| `lowering_util::SparseCoreCountPerTensorCore` | `0x1C6CB760` | `SCs_per_chip / TCs_per_chip` (4:1) |
+| `VariableWindowAllocationEstimator::CalculateVariableSizeWords` | `0x13CA3F20` | the TILE_SPMEM minibatch-fit inequality |
 
 ### Per-Generation Deltas
 

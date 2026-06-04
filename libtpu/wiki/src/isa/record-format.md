@@ -21,7 +21,6 @@ Three facts drive the page, and a reimplementer needs all three:
 | **First real opcode** | `0x1f3 = 499` (`ADDri`); opcodes `≤ 498` are pseudo/target-independent |
 | **Operand primitive** | `APInt::insertBits(value, pos, width)` |
 | **Padding** | bits `[239:255]` (top 17 of the 256-bit storage) unused |
-| **Confidence** | CONFIRMED (byte-anchored) unless a row says otherwise |
 
 ---
 
@@ -74,11 +73,11 @@ The set bits in the base encode the fixed opcode discriminator and any default f
 
 For the **default** (TensorCore / V5+) opcodes the base row is all-zero and the encoding class is the no-op default case: the record is constructed, no `insertBits` runs, and the emitter returns the zero record. The instruction's real field bits are written elsewhere — by the proto-bundle `EmitX` populators and the per-slot `<Slot>Encoder::Encode` `BitCopy` calls — never through this 239-bit record. This is why the default `InstBits` table is genuinely zero on disk and carries no relocations: there is nothing to relocate because nothing reads it.
 
-| Opcode group | Base row | insertBits in `getBinaryCodeForInstr` | Where the bytes come from | Confidence |
-|---|---|---|---|---|
-| BarnaCore-Pxc (`_V0/_V1/_V2/_VM`, `bc*`) | populated (`InstBits_BarnaCorePxcHwMode`) | yes — per encoding class | the 239-bit record | CONFIRMED |
-| TensorCore / Viperfish / Ghostlite / `6acc60406` | all-zero (`InstBits` default) | none (default case) | proto-bundle `EmitX` + `<Slot>Encoder::Encode` | CONFIRMED |
-| pseudo / target-independent (`opcode ≤ 498`) | n/a | n/a — `reportUnsupportedInst` | expanded before MC emission | CONFIRMED |
+| Opcode group | Base row | insertBits in `getBinaryCodeForInstr` | Where the bytes come from |
+|---|---|---|---|
+| BarnaCore-Pxc (`_V0/_V1/_V2/_VM`, `bc*`) | populated (`InstBits_BarnaCorePxcHwMode`) | yes — per encoding class | the 239-bit record |
+| TensorCore / Viperfish / Ghostlite / `6acc60406` | all-zero (`InstBits` default) | none (default case) | proto-bundle `EmitX` + `<Slot>Encoder::Encode` |
+| pseudo / target-independent (`opcode ≤ 498`) | n/a | n/a — `reportUnsupportedInst` | expanded before MC emission |
 
 ---
 
@@ -129,14 +128,14 @@ The descriptor consult ties the record format to the descriptor table: a reimple
 
 The 239-bit record is wider than any single per-generation bundle slot but narrower than a whole bundle. It is a *per-instruction* intermediate, not a *per-bundle* one: one LLO machine instruction → one 239-bit record → (via the bundle packer) one slot's worth of bytes in the gen-specific bundle word. The bundle widths it feeds are fixed per generation:
 
-| Codename (ordinal) | Public name | Bundle bytes | Bundle bits | MC record path | Confidence |
-|---|---|---|---|---|---|
-| Jellyfish (0) | TPU v2 | 41 | 328 | proto-direct (no `insertBits` record) | CONFIRMED |
-| Dragonfish (1) | TPU v3 | 41 | 328 | shares the Jellyfish codec path | CONFIRMED |
-| Pufferfish (2, BarnaCore) | TPU v4 | 51 | 408 | **239-bit record + insertBits** (`InstBits_BarnaCorePxcHwMode`) | CONFIRMED |
-| Viperfish (3) | TPU v5p (+v5e lite) | 64 | 512 | zero base → proto-bundle `EmitX` | CONFIRMED |
-| Ghostlite (4) | TPU v6e | 64 | 512 | zero base → proto-bundle `EmitX` | CONFIRMED |
-| `6acc60406` (5) | TPU v7 | 64 | 512 | zero base → proto-bundle `EmitX` | CONFIRMED |
+| Codename (ordinal) | Public name | Bundle bytes | Bundle bits | MC record path |
+|---|---|---|---|---|
+| Jellyfish (0) | TPU v2 | 41 | 328 | proto-direct (no `insertBits` record) |
+| Dragonfish (1) | TPU v3 | 41 | 328 | shares the Jellyfish codec path |
+| Pufferfish (2, BarnaCore) | TPU v4 | 51 | 408 | **239-bit record + insertBits** (`InstBits_BarnaCorePxcHwMode`) |
+| Viperfish (3) | TPU v5p (+v5e lite) | 64 | 512 | zero base → proto-bundle `EmitX` |
+| Ghostlite (4) | TPU v6e | 64 | 512 | zero base → proto-bundle `EmitX` |
+| `6acc60406` (5) | TPU v7 | 64 | 512 | zero base → proto-bundle `EmitX` |
 
 The single generation whose bundle bytes actually flow through this 239-bit record is the **Pufferfish BarnaCore** HwMode: its vector-ALU lanes (`_V0/_V1/_V2/_VM`) and native ops (`bc*`) are the **704 populated rows** of `InstBits_BarnaCorePxcHwMode` (verified by counting non-zero 32-byte rows; the first is opcode `2855`), and their field positions are recoverable from the record. The highest-positioned deposits seen in `getBinaryCodeForInstr` are a 16-bit field at `pos = 0xCF = 207` (bits `[207:222]`), a 16-bit field at `pos = 0xDF = 223` (bits `[223:238]`), and a 64-bit field at `pos = 0xAF = 175` (bits `[175:238]`) — all ending at **bit 238**, the highest bit the emitter writes. That bit-238 ceiling is why the 239-bit window is sized as it is: it must hold the largest single BarnaCore slot with room for the opcode discriminator below it. For the V5+ generations the record is a formality: it is built, found all-zero, and bypassed in favour of the bundle byte buffer the proto-bundle encoders write directly. See [Bundle Model](bundle-model-overview.md) for the per-generation bundle word layout and slot map.
 

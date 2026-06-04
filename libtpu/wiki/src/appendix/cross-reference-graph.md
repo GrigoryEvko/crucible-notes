@@ -63,27 +63,27 @@ The 18 Parts and their page counts, parsed directly from `SUMMARY.md` by assigni
 
 Pages ranked by **distinct inbound source pages** (page-level in-degree), excluding `index.md`. These are the central junctions: rename one and you rewrite dozens of links; they are also the pages a cross-referencing editor should always remember to point new pages at.
 
-| Page | Inbound | Role | Confidence |
-|---|---:|---|---|
-| [`isa/slot-mxu.md`](../isa/slot-mxu.md) | ~50 | The MXU VLIW slot — every lowering/cost/sched page references it | CERTAIN |
-| [`sparsecore/overview.md`](../sparsecore/overview.md) | ~48 | SparseCore landing — most Part-IX pages link up to it | CERTAIN |
-| [`isa/bundle-model-overview.md`](../isa/bundle-model-overview.md) | ~45 | The VLIW bundle model — the ISA's central concept | CERTAIN |
-| [`compiler/overview.md`](../compiler/overview.md) | ~37 | Compiler pipeline landing | CERTAIN |
-| [`collectives/overview.md`](../collectives/overview.md) | ~35 | On-pod collectives landing | CERTAIN |
-| [`cost/resource-enum.md`](../cost/resource-enum.md) | ~34 | The resource enum shared by sched + cost + ISA | CERTAIN |
-| [`targets/tpu-version-codename-matrix.md`](../targets/tpu-version-codename-matrix.md) | ~33 | The authoritative codename reconciliation table | CERTAIN |
-| [`cost/mxu-latency-overview.md`](../cost/mxu-latency-overview.md) | ~31 | MXU latency reference, cited by lowering and sched | CERTAIN |
-| [`routing/overview.md`](../routing/overview.md) | ~28 | Routing landing | CERTAIN |
-| [`cost/overview.md`](../cost/overview.md) | ~28 | Cost-model landing | CERTAIN |
-| [`profiling/overview.md`](../profiling/overview.md) | ~27 | Profiling landing | CERTAIN |
-| [`compiler/compile-phases.md`](../compiler/compile-phases.md) | ~27 | The phase ordering, cited from runtime and ISA | CERTAIN |
-| [`isa/mc-emitter.md`](../isa/mc-emitter.md) | ~26 | The machine-code emitter | CERTAIN |
-| [`pjrt/overview.md`](../pjrt/overview.md) | ~25 | PJRT API landing | CERTAIN |
-| [`sparsecore/tec-engine.md`](../sparsecore/tec-engine.md) | ~24 | TEC sequencer engine | CERTAIN |
-| [`sparsecore/stream-gather-scatter.md`](../sparsecore/stream-gather-scatter.md) | ~24 | SC gather/scatter primitive | CERTAIN |
-| [`compiler/tpu-to-llo-ods.md`](../compiler/tpu-to-llo-ods.md) | ~23 | The TPU→LLO ODS dialect definition | CERTAIN |
-| [`sched/overview.md`](../sched/overview.md) | ~23 | Scheduling landing | CERTAIN |
-| [`index.md`](../index.md) | ~146 | The prefix landing — the universal "back to index" target | CERTAIN |
+| Page | Inbound | Role |
+|---|---:|---|
+| [`isa/slot-mxu.md`](../isa/slot-mxu.md) | ~50 | The MXU VLIW slot — every lowering/cost/sched page references it |
+| [`sparsecore/overview.md`](../sparsecore/overview.md) | ~48 | SparseCore landing — most Part-IX pages link up to it |
+| [`isa/bundle-model-overview.md`](../isa/bundle-model-overview.md) | ~45 | The VLIW bundle model — the ISA's central concept |
+| [`compiler/overview.md`](../compiler/overview.md) | ~37 | Compiler pipeline landing |
+| [`collectives/overview.md`](../collectives/overview.md) | ~35 | On-pod collectives landing |
+| [`cost/resource-enum.md`](../cost/resource-enum.md) | ~34 | The resource enum shared by sched + cost + ISA |
+| [`targets/tpu-version-codename-matrix.md`](../targets/tpu-version-codename-matrix.md) | ~33 | The authoritative codename reconciliation table |
+| [`cost/mxu-latency-overview.md`](../cost/mxu-latency-overview.md) | ~31 | MXU latency reference, cited by lowering and sched |
+| [`routing/overview.md`](../routing/overview.md) | ~28 | Routing landing |
+| [`cost/overview.md`](../cost/overview.md) | ~28 | Cost-model landing |
+| [`profiling/overview.md`](../profiling/overview.md) | ~27 | Profiling landing |
+| [`compiler/compile-phases.md`](../compiler/compile-phases.md) | ~27 | The phase ordering, cited from runtime and ISA |
+| [`isa/mc-emitter.md`](../isa/mc-emitter.md) | ~26 | The machine-code emitter |
+| [`pjrt/overview.md`](../pjrt/overview.md) | ~25 | PJRT API landing |
+| [`sparsecore/tec-engine.md`](../sparsecore/tec-engine.md) | ~24 | TEC sequencer engine |
+| [`sparsecore/stream-gather-scatter.md`](../sparsecore/stream-gather-scatter.md) | ~24 | SC gather/scatter primitive |
+| [`compiler/tpu-to-llo-ods.md`](../compiler/tpu-to-llo-ods.md) | ~23 | The TPU→LLO ODS dialect definition |
+| [`sched/overview.md`](../sched/overview.md) | ~23 | Scheduling landing |
+| [`index.md`](../index.md) | ~146 | The prefix landing — the universal "back to index" target |
 
 > **NOTE —** `index.md` is in a class by itself at roughly 146 inbound. Almost every page closes with a `[back to index](../index.md)` link, so its in-degree tracks the page count, not topical importance. It is the structural sink of the graph and is listed last so it does not distort the topical ranking. The real topical hubs are the `overview.md` pages and the shared ISA/cost reference pages — exactly the pages [`front/how-to-read.md`](../front/how-to-read.md) recommends as section entry points.
 

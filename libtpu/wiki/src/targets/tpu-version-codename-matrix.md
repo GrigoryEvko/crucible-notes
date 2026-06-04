@@ -48,14 +48,14 @@ const char *TpuVersionToString(unsigned version) {     // sub_20B3A480
 
 The disassembly pins the table address and the first entry directly — `lea rax, off_22011BF0` is annotated `"jellyfish"` by the symbolizer, and the second `lea rdx, unk_BDF3BD8` loads the parallel length table indexed by the same register. Reading the relocation addend at each of the six slots yields the codenames in enum order:
 
-| `TpuVersion` | Table slot (rel.ro) | `.rodata` target | Codename literal | Length | Confidence |
-|---:|---|---|---|---:|---|
-| 0 | `0x22011BF0` | `0x863F064` | `jellyfish` | 9 | CERTAIN |
-| 1 | `0x22011BF8` | `0x863F392` | `dragonfish` | 10 | CERTAIN |
-| 2 | `0x22011C00` | `0x863F1C4` | `pufferfish` | 10 | CERTAIN |
-| 3 | `0x22011C08` | `0x863F172` | `viperfish` | 9 | CERTAIN |
-| 4 | `0x22011C10` | `0x86864E0` | `ghostlite` | 9 | CERTAIN |
-| 5 | `0x22011C18` | `0x863F0CF` | `6acc60406` | 9 | CERTAIN |
+| `TpuVersion` | Table slot (rel.ro) | `.rodata` target | Codename literal | Length |
+|---:|---|---|---|---:|
+| 0 | `0x22011BF0` | `0x863F064` | `jellyfish` | 9 |
+| 1 | `0x22011BF8` | `0x863F392` | `dragonfish` | 10 |
+| 2 | `0x22011C00` | `0x863F1C4` | `pufferfish` | 10 |
+| 3 | `0x22011C08` | `0x863F172` | `viperfish` | 9 |
+| 4 | `0x22011C10` | `0x86864E0` | `ghostlite` | 9 |
+| 5 | `0x22011C18` | `0x863F0CF` | `6acc60406` | 9 |
 
 The parallel length table at `0xBDF3BD8` stores `{9, 10, 10, 9, 9, 9}` so the codename can be returned as a length-counted `string_view` without a `strlen`. The lengths are confirmed by the external-name builders, which embed the same byte counts as immediates (see below).
 
@@ -118,14 +118,14 @@ The relationship is uniformly `internal = proto − 1` across all six valid case
 
 `TpuVersion` is the hub of five identity spaces. The table below is the consolidated cross-walk; each column is verified against a distinct binary artifact, so a reimplementation can reconstruct any one axis from the integer and check it against the others.
 
-| `TpuVersion` (int) | Enum tag | Codename (`ToString`) | `TpuVersionProto` (wire) | External name (`ToExternalName`) | HAL family / factory | Confidence |
-|---:|---|---|---:|---|---|---|
-| 0 | `kJellyfish` | `jellyfish` | 1 (`TPU_VERSION_JELLYFISH`) | `TPU v2` | JXC / `TpuHalJxcHardwareFactory` | HIGH |
-| 1 | `kDragonfish` | `dragonfish` | 2 (`TPU_VERSION_DRAGONFISH`) | `TPU v3` | JXC / `TpuHalJxcHardwareFactory` | HIGH |
-| 2 | `kPufferfish` | `pufferfish` | 3 (`TPU_VERSION_PUFFERFISH`) | `TPU v4` (`… lite`) | PXC / `TpuHalPxcHardwareFactory` | HIGH |
-| 3 | `kViperfish` | `viperfish` | 4 (`TPU_VERSION_VIPERFISH`) | `TPU v5` (`… lite`) | VXC / `TpuHalVxcHardwareFactory` | HIGH |
-| 4 | `kGhostlite` | `ghostlite` | 5 (`TPU_VERSION_GHOSTLITE`) | `TPU v6 lite` | VXC / `TpuHalVxcHardwareFactory` | HIGH |
-| 5 | `k6acc60406` | `6acc60406` | 6 (`TPU_VERSION_6acc60406`) | `TPU7x` | VXC / `TpuHalVxcHardwareFactory` | HIGH |
+| `TpuVersion` (int) | Enum tag | Codename (`ToString`) | `TpuVersionProto` (wire) | External name (`ToExternalName`) | HAL family / factory |
+|---:|---|---|---:|---|---|
+| 0 | `kJellyfish` | `jellyfish` | 1 (`TPU_VERSION_JELLYFISH`) | `TPU v2` | JXC / `TpuHalJxcHardwareFactory` |
+| 1 | `kDragonfish` | `dragonfish` | 2 (`TPU_VERSION_DRAGONFISH`) | `TPU v3` | JXC / `TpuHalJxcHardwareFactory` |
+| 2 | `kPufferfish` | `pufferfish` | 3 (`TPU_VERSION_PUFFERFISH`) | `TPU v4` (`… lite`) | PXC / `TpuHalPxcHardwareFactory` |
+| 3 | `kViperfish` | `viperfish` | 4 (`TPU_VERSION_VIPERFISH`) | `TPU v5` (`… lite`) | VXC / `TpuHalVxcHardwareFactory` |
+| 4 | `kGhostlite` | `ghostlite` | 5 (`TPU_VERSION_GHOSTLITE`) | `TPU v6 lite` | VXC / `TpuHalVxcHardwareFactory` |
+| 5 | `k6acc60406` | `6acc60406` | 6 (`TPU_VERSION_6acc60406`) | `TPU7x` | VXC / `TpuHalVxcHardwareFactory` |
 
 > **NOTE — proto enumerator names are codename-based, not marketing-based.** The `TpuVersionProto` enumerators are spelled `TPU_VERSION_<CODENAME>` (`TPU_VERSION_INVALID`=0, then `TPU_VERSION_JELLYFISH`=1 … `TPU_VERSION_6acc60406`=6), confirmed as a contiguous descriptor string block at `0xC1928DB`–`0xC19297D`. There is **no** `TPU_V2`/`TPU_V3`/`TPU_V7X` enumerator anywhere in the binary — the `TPU v2…TPU7x` strings are the separate *external/marketing* axis emitted by `TpuVersionToExternalName` (`0x20b3a500`). Do not conflate the wire enumerator name with the external name: `TPU_VERSION_JELLYFISH` (wire) and `TPU v2` (external) name the same silicon on two different axes.
 
@@ -190,14 +190,14 @@ The pairing 0+1 (JfDf) and 4+5 (GlGf) is direct binary evidence that Dragonfish 
 
 The feature presence below is derived from the per-codename C++ classes, bundle-restriction registrations, and the SparseCore / BarnaCore namespace populations. The architecture arc is the familiar one for an accelerator line: a fused first-generation dataflow engine (BarnaCore on HBM embeddings), a mid-life pivot to a fetch/load core split, and a late addition of a dedicated SparseCore.
 
-| Codename | TensorCore | BarnaCore | SparseCore | Bundle restrictions | Confidence |
-|---|:---:|:---:|:---:|---|---|
-| jellyfish | yes | yes | no | `JellyfishBundleRestrictions` | HIGH |
-| dragonfish | yes | yes | no | shares `JellyfishBundleRestrictions` | HIGH |
-| pufferfish | yes | yes | no | `PufferfishBundleRestrictions` | HIGH |
-| viperfish | yes | no | yes | `ViperfishBundleRestrictions` | HIGH |
-| ghostlite | yes | no | yes | `GhostliteBundleRestrictions` | HIGH |
-| 6acc60406 | yes | no | yes | `6acc60406BundleRestrictions` (string-registered) | MEDIUM |
+| Codename | TensorCore | BarnaCore | SparseCore | Bundle restrictions |
+|---|:---:|:---:|:---:|---|
+| jellyfish | yes | yes | no | `JellyfishBundleRestrictions` |
+| dragonfish | yes | yes | no | shares `JellyfishBundleRestrictions` |
+| pufferfish | yes | yes | no | `PufferfishBundleRestrictions` |
+| viperfish | yes | no | yes | `ViperfishBundleRestrictions` |
+| ghostlite | yes | no | yes | `GhostliteBundleRestrictions` |
+| 6acc60406 | yes | no | yes | `6acc60406BundleRestrictions` (string-registered) |
 
 Reading the matrix:
 

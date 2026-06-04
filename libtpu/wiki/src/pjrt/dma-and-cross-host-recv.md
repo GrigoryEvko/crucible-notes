@@ -107,19 +107,19 @@ function TpuClient::DmaMap(this, data, size):            // 0xf80ba80
 
 ### Function Map
 
-| Function | Addr | Role | Confidence |
-|---|---|---|---|
-| `pjrt::PJRT_Client_DmaMap` | `0xf860500` | slot wrapper; validate + bounce vtable `+0x160` | CERTAIN |
-| `pjrt::PJRT_Client_DmaUnmap` | `0xf860580` | slot wrapper; validate + bounce vtable `+0x168` | CERTAIN |
-| `xla::TpuClient::DmaMap(void*, size_t)` | `0xf80ba80` | fan-out over all host shared-memory locations | CERTAIN |
-| `xla::TpuClient::DmaUnmap(void*)` | `0xf80bb80` | unmap fan-out (mirror) | HIGH |
-| `xla::PjRtClient::DmaMap` (base default) | `0xf8fff60` | abstract-base default (returns Unimplemented unless overridden) | HIGH |
-| `xla::MegaScalePjRtClient::DmaMap` | `0xe6eda80` | cross-pod client override | HIGH |
-| `tpu::System::DmaMap(TpuSharedMemoryLocation, void*, size_t)` | `0x1d0b6260` | per-location map | CERTAIN |
-| `tpu::System::DmaUnmap(TpuSharedMemoryLocation, void*)` | `0x1d0b62a0` | per-location unmap | HIGH |
-| `tpu::TpuSharedMemory::DmaMap(Span<const uint8>)` | `0x1d4bdac0` | shared-memory map entry | HIGH |
-| `tpu::TpuSharedMemoryPxcDriverImpl::DmaMapImpl` | `0xe804460` | physical-driver kernel map | HIGH |
-| `asic_sw::driver::KernelDmaMapper::MapMemory` | `0xe896dc0` | kernel DMA-mapper ioctl | HIGH |
+| Function | Addr | Role |
+|---|---|---|
+| `pjrt::PJRT_Client_DmaMap` | `0xf860500` | slot wrapper; validate + bounce vtable `+0x160` |
+| `pjrt::PJRT_Client_DmaUnmap` | `0xf860580` | slot wrapper; validate + bounce vtable `+0x168` |
+| `xla::TpuClient::DmaMap(void*, size_t)` | `0xf80ba80` | fan-out over all host shared-memory locations |
+| `xla::TpuClient::DmaUnmap(void*)` | `0xf80bb80` | unmap fan-out (mirror) |
+| `xla::PjRtClient::DmaMap` (base default) | `0xf8fff60` | abstract-base default (returns Unimplemented unless overridden) |
+| `xla::MegaScalePjRtClient::DmaMap` | `0xe6eda80` | cross-pod client override |
+| `tpu::System::DmaMap(TpuSharedMemoryLocation, void*, size_t)` | `0x1d0b6260` | per-location map |
+| `tpu::System::DmaUnmap(TpuSharedMemoryLocation, void*)` | `0x1d0b62a0` | per-location unmap |
+| `tpu::TpuSharedMemory::DmaMap(Span<const uint8>)` | `0x1d4bdac0` | shared-memory map entry |
+| `tpu::TpuSharedMemoryPxcDriverImpl::DmaMapImpl` | `0xe804460` | physical-driver kernel map |
+| `asic_sw::driver::KernelDmaMapper::MapMemory` | `0xe896dc0` | kernel DMA-mapper ioctl |
 
 > **NOTE —** the exact `args` field count vs. byte size differs between the two slots (`DmaMap` min 23 fields / 40 bytes; `DmaUnmap` min 25 fields / 32 bytes). The "min" value passed to `ActualStructSizeIsGreaterOrEqual` is the source-line count of named fields the wrapper was compiled against, the "cur" value is the current `struct_size` in bytes; they are *not* the same quantity and should not be reconciled. Both are read verbatim from the `mov esi/edx` immediates in the validation call. See [api-vtable-reconstruction.md](api-vtable-reconstruction.md) for how this two-number versioning works across the whole API.
 
@@ -157,12 +157,12 @@ The four offsets, sizes, and `type=12` / `struct_size=56` are read directly from
 
 ### Method Map
 
-| Off | Method | C symbol | Addr | Backing (inner client/buffer vtable) | Confidence |
-|---|---|---|---|---|---|
-| `+0x18` | Client_MakeCrossHostReceiveBuffers | `PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers` | `0xf85c9a0` | client vtable `+0x150` (`MakeCrossHostReceiveBuffers`) | CERTAIN |
-| `+0x20` | Buffer_CopyToRemoteDevice | `PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice` | `0xf85ce20` | buffer vtable `+0xc8` (`CopyToRemoteDevice`) | CERTAIN |
-| `+0x28` | Client_CrossHostReceiveBuffers | `PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers` | `0xf85bba0` | point-to-point recv | HIGH |
-| `+0x30` | Client_CrossHostSendBuffers | `PJRT_Transfers_PJRT_Client_CrossHostSendBuffers` | `0xf85c2a0` | point-to-point send | HIGH |
+| Off | Method | C symbol | Addr | Backing (inner client/buffer vtable) |
+|---|---|---|---|---|
+| `+0x18` | Client_MakeCrossHostReceiveBuffers | `PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers` | `0xf85c9a0` | client vtable `+0x150` (`MakeCrossHostReceiveBuffers`) |
+| `+0x20` | Buffer_CopyToRemoteDevice | `PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice` | `0xf85ce20` | buffer vtable `+0xc8` (`CopyToRemoteDevice`) |
+| `+0x28` | Client_CrossHostReceiveBuffers | `PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers` | `0xf85bba0` | point-to-point recv |
+| `+0x30` | Client_CrossHostSendBuffers | `PJRT_Transfers_PJRT_Client_CrossHostSendBuffers` | `0xf85c2a0` | point-to-point send |
 
 > **NOTE —** the canonical upstream PJRT C API names this extension `PJRT_CrossHostTransfers`; in libtpu the implementing symbols are prefixed `pjrt::PJRT_Transfers_*` (the namespace short-name), and the args structs are `PJRT_Transfers_*_Args`. They are the same surface; the symbol prefix is a libtpu naming artifact, confirmed by the `MakeCrossHostReceiveBuffers` validator string `"PJRT_Client_MakeCrossHostReceiveBuffers_Args"`.
 
@@ -227,13 +227,13 @@ The recv-descriptor delivery is a callback bridge. The C caller supplies a `PJRT
 
 ### Function Map
 
-| Function | Addr | Role | Confidence |
-|---|---|---|---|
-| `pjrt::PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers` | `0xf85c9a0` | C wrapper; build shapes, call, wrap buffers | CERTAIN |
-| `pjrt::BuildXlaShapeFromC` | `0xf8a59e0` | C shape tuple → `xla::Shape` (320 bytes) | CERTAIN |
-| `pjrt::(anon)::CCrossHostRecvNotifierToCpp` | `0xf85d6e0` | C notifier → `std::function` adapter | CERTAIN |
-| `xla::TpuClient::MakeCrossHostReceiveBuffers` | `0xf808e60` | TPU inner impl (client vtable `+0x150`) | CERTAIN |
-| `xla::MegaScalePjRtClient::MakeCrossHostReceiveBuffers` | `0xe6ed9e0` | cross-pod inner impl | HIGH |
+| Function | Addr | Role |
+|---|---|---|
+| `pjrt::PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers` | `0xf85c9a0` | C wrapper; build shapes, call, wrap buffers |
+| `pjrt::BuildXlaShapeFromC` | `0xf8a59e0` | C shape tuple → `xla::Shape` (320 bytes) |
+| `pjrt::(anon)::CCrossHostRecvNotifierToCpp` | `0xf85d6e0` | C notifier → `std::function` adapter |
+| `xla::TpuClient::MakeCrossHostReceiveBuffers` | `0xf808e60` | TPU inner impl (client vtable `+0x150`) |
+| `xla::MegaScalePjRtClient::MakeCrossHostReceiveBuffers` | `0xe6ed9e0` | cross-pod inner impl |
 
 ---
 
@@ -290,15 +290,15 @@ function CommonPjRtBufferImpl::CopyToRemoteDevice(this, desc_future, on_done):  
 
 ### Function Map
 
-| Function | Addr | Role | Confidence |
-|---|---|---|---|
-| `pjrt::PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice` | `0xf85ce20` | C wrapper; descriptor promise + on_done bridge | CERTAIN |
-| `tsl::internal::PromiseMaker<std::string>::Make` | (inlined) | builds the serialized-descriptor future | HIGH |
-| `xla::CommonPjRtBufferImpl::CopyToRemoteDevice` | `0xf91c8c0` | buffer vtable `+0xc8`; pin + schedule DCN send | CERTAIN |
-| `xla::CommonPjRtBuffer::AcquireScopedRawBuffer` | (called) | pin source device bytes for the transfer | HIGH |
-| `xla::MegaScalePjRtBuffer::CopyToRemoteDevice` | `0xe6eb100` | cross-pod buffer override | HIGH |
-| `xla::TfPjRtBuffer::CopyToRemoteDevice` | `0x10852700` | TF-wrapper override (non-TPU client) | HIGH |
-| `std::function<void(absl::Status,bool)>::__call_func<...$_2>` | `0xf85ec60` | on_done C-callback policy thunk | HIGH |
+| Function | Addr | Role |
+|---|---|---|
+| `pjrt::PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice` | `0xf85ce20` | C wrapper; descriptor promise + on_done bridge |
+| `tsl::internal::PromiseMaker<std::string>::Make` | (inlined) | builds the serialized-descriptor future |
+| `xla::CommonPjRtBufferImpl::CopyToRemoteDevice` | `0xf91c8c0` | buffer vtable `+0xc8`; pin + schedule DCN send |
+| `xla::CommonPjRtBuffer::AcquireScopedRawBuffer` | (called) | pin source device bytes for the transfer |
+| `xla::MegaScalePjRtBuffer::CopyToRemoteDevice` | `0xe6eb100` | cross-pod buffer override |
+| `xla::TfPjRtBuffer::CopyToRemoteDevice` | `0x10852700` | TF-wrapper override (non-TPU client) |
+| `std::function<void(absl::Status,bool)>::__call_func<...$_2>` | `0xf85ec60` | on_done C-callback policy thunk |
 
 ---
 
@@ -308,10 +308,10 @@ function CommonPjRtBufferImpl::CopyToRemoteDevice(this, desc_future, on_done):  
 
 These two were not byte-traced beyond their C wrappers and backing symbols; the args-struct field layouts are **not** confirmed (marked HIGH for the symbol/backing identity, LOW for the precise offsets). A reimplementer should cross-check the args structs against upstream `pjrt_c_api.h`'s `PJRT_Transfers_PJRT_Client_CrossHost{Send,Receive}Buffers_Args`.
 
-| Function | Addr | Backing | Confidence |
-|---|---|---|---|
-| `pjrt::PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers` | `0xf85bba0` | `xla::PjRtClient::CrossHostReceiveBuffers` @ `0xe6edb00` | HIGH |
-| `pjrt::PJRT_Transfers_PJRT_Client_CrossHostSendBuffers` | `0xf85c2a0` | `xla::PjRtClient::CrossHostSendBuffers` @ `0xe6edac0` | HIGH |
+| Function | Addr | Backing |
+|---|---|---|
+| `pjrt::PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers` | `0xf85bba0` | `xla::PjRtClient::CrossHostReceiveBuffers` @ `0xe6edb00` |
+| `pjrt::PJRT_Transfers_PJRT_Client_CrossHostSendBuffers` | `0xf85c2a0` | `xla::PjRtClient::CrossHostSendBuffers` @ `0xe6edac0` |
 
 ---
 

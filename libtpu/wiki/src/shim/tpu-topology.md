@@ -84,25 +84,25 @@ There is no `PJRT_Error`/`absl::Status` plumbing on this surface and no args-str
 
 The 14 canonical accessors form a contiguous block `0xEABBFC0`–`0xEABC2A0`; the three "available" accessors live in a separate block at `0xF6A1CA0`–`0xF6A1EA0` because they first fetch the topology from the mesh/ops-util singleton rather than receiving it as `a1`. "Reads" names the field offset on `tpu::TpuTopology` (the inner object) or the C++ member it thunks to.
 
-| Function | Addr | Reads / Backs | Output | Confidence |
-|---|---|---|---|---|
-| `TpuTopology_LogicalDevicesPerHost` | `0xEABBFC0` | `tpu::TpuTopology::LogicalDevicesPerHost` (`0x20AD3920`) after enum remap | scalar | CERTAIN |
-| `TpuTopology_LogicalDevicesPerChip` | `0xEABBFE0` | `tpu::TpuTopology::LogicalDevicesPerChip` after enum remap | scalar | CERTAIN |
-| `TpuTopology_HostCount` | `0xEABC000` | `*(uint32*)(topo + 108)` | scalar | CERTAIN |
-| `TpuTopology_ChipsPerHost` | `0xEABC020` | `*(uint32*)(topo + 116)` | scalar | CERTAIN |
-| `TpuTopology_ChipBounds_X` | `0xEABC040` | `*(uint32*)(topo + 88)` | scalar | CERTAIN |
-| `TpuTopology_ChipBounds_Y` | `0xEABC060` | `*(uint32*)(topo + 92)` | scalar | CERTAIN |
-| `TpuTopology_ChipBounds_Z` | `0xEABC080` | `*(uint32*)(topo + 96)` | scalar | CERTAIN |
-| `TpuTopology_HasChip` | `0xEABC0A0` | `tpu::TpuTopology::HasChip(topo, x, y, z)` | bool | CERTAIN |
-| `TpuTopology_CoreForId` | `0xEABC0E0` | thunk → `tpu::TpuTopology::LogicalDeviceForId` | `TpuCoreLocation` | HIGH |
-| `TpuTopology_Core` | `0xEABC100` | `tpu::TpuTopology::Core(topo, type, x, y, z, idx)` | `TpuCoreLocation` | CERTAIN |
-| `TpuTopology_NumCores` | `0xEABC140` | `tpu::TpuTopology::logical_devices()` (count) | scalar | HIGH |
-| `TpuTopology_Cores` | `0xEABC160` | `tpu::TpuTopology::logical_devices()` → fills `TpuCoreLocation*[]` | array fill | HIGH |
-| `TpuTopology_IdForHost` | `0xEABC260` | `tpu::TpuTopology::IdForHost(topo, x, y, z)` | scalar | CERTAIN |
-| `TpuTopology_Version` | `0xEABC2A0` | `**(uint32**)(topo + 8)` → codename ordinal, remapped | scalar | CERTAIN |
-| `TpuTopology_AvailableCoreCount` | `0xF6A1CA0` | `*(uint32*)(GetTpuTopology() + 12*type + 128)` | scalar | HIGH |
-| `TpuTopology_AvailableCoresPerChip` | `0xF6A1DE0` | `*(uint32*)(GetTpuTopology() + 12*type + 124)` | scalar | HIGH |
-| `TpuTopology_MaybeAvailableSparseCoresPerLogicalDevice` | `0xF6A1EA0` | `xla::jellyfish::NumEmbeddingDevices(...)` (StatusOr<int>) | StatusOr | MEDIUM |
+| Function | Addr | Reads / Backs | Output |
+|---|---|---|---|
+| `TpuTopology_LogicalDevicesPerHost` | `0xEABBFC0` | `tpu::TpuTopology::LogicalDevicesPerHost` (`0x20AD3920`) after enum remap | scalar |
+| `TpuTopology_LogicalDevicesPerChip` | `0xEABBFE0` | `tpu::TpuTopology::LogicalDevicesPerChip` after enum remap | scalar |
+| `TpuTopology_HostCount` | `0xEABC000` | `*(uint32*)(topo + 108)` | scalar |
+| `TpuTopology_ChipsPerHost` | `0xEABC020` | `*(uint32*)(topo + 116)` | scalar |
+| `TpuTopology_ChipBounds_X` | `0xEABC040` | `*(uint32*)(topo + 88)` | scalar |
+| `TpuTopology_ChipBounds_Y` | `0xEABC060` | `*(uint32*)(topo + 92)` | scalar |
+| `TpuTopology_ChipBounds_Z` | `0xEABC080` | `*(uint32*)(topo + 96)` | scalar |
+| `TpuTopology_HasChip` | `0xEABC0A0` | `tpu::TpuTopology::HasChip(topo, x, y, z)` | bool |
+| `TpuTopology_CoreForId` | `0xEABC0E0` | thunk → `tpu::TpuTopology::LogicalDeviceForId` | `TpuCoreLocation` |
+| `TpuTopology_Core` | `0xEABC100` | `tpu::TpuTopology::Core(topo, type, x, y, z, idx)` | `TpuCoreLocation` |
+| `TpuTopology_NumCores` | `0xEABC140` | `tpu::TpuTopology::logical_devices()` (count) | scalar |
+| `TpuTopology_Cores` | `0xEABC160` | `tpu::TpuTopology::logical_devices()` → fills `TpuCoreLocation*[]` | array fill |
+| `TpuTopology_IdForHost` | `0xEABC260` | `tpu::TpuTopology::IdForHost(topo, x, y, z)` | scalar |
+| `TpuTopology_Version` | `0xEABC2A0` | `**(uint32**)(topo + 8)` → codename ordinal, remapped | scalar |
+| `TpuTopology_AvailableCoreCount` | `0xF6A1CA0` | `*(uint32*)(GetTpuTopology() + 12*type + 128)` | scalar |
+| `TpuTopology_AvailableCoresPerChip` | `0xF6A1DE0` | `*(uint32*)(GetTpuTopology() + 12*type + 124)` | scalar |
+| `TpuTopology_MaybeAvailableSparseCoresPerLogicalDevice` | `0xF6A1EA0` | `xla::jellyfish::NumEmbeddingDevices(...)` (StatusOr<int>) | StatusOr |
 
 > **QUIRK —** the roster mixes pure field reads with member thunks, and the distinction is critical for a reimplementer. `ChipBounds_X/Y/Z`, `HostCount`, `ChipsPerHost` are flat `*(uint32*)(topo+off)` reads — the bounds and counts are pre-materialised scalars on the topology object. But `HasChip`, `Core`, `IdForHost`, `CoreForId` call into `tpu::TpuTopology` member functions that walk the chip/core layout. Copying only the field offsets reproduces the cheap accessors but not the lookups; copying only the thunks misses that the common geometry is a flat read with no computation.
 
@@ -171,22 +171,22 @@ A `tpu::TpuCoreLocation` is the per-core coordinate record minted by `TpuTopolog
 
 ### Function Map
 
-| Function | Addr | Reads / Backs | Output | Confidence |
-|---|---|---|---|---|
-| `TpuCoreLocation_ChipCoordinates` | `0xEABC2C0` | `tpu::TpuCoreLocation::chip_coordinates()` → (x,y,z) | 3× `int32*` out + scalar | CERTAIN |
-| `TpuCoreLocation_HostCoordinates` | `0xEABC300` | `*(uint32*)(loc + 8/12/16)` → (x,y,z) | 3× `int32*` out + scalar | CERTAIN |
-| `TpuCoreLocation_Index` | `0xEABC320` | `*(uint32*)(loc + 52)` | scalar | CERTAIN |
-| `TpuCoreLocation_Id` | `0xEABC340` | thunk → `tpu::TpuCoreLocation::LogicalDeviceId` | scalar | CERTAIN |
+| Function | Addr | Reads / Backs | Output |
+|---|---|---|---|
+| `TpuCoreLocation_ChipCoordinates` | `0xEABC2C0` | `tpu::TpuCoreLocation::chip_coordinates()` → (x,y,z) | 3× `int32*` out + scalar |
+| `TpuCoreLocation_HostCoordinates` | `0xEABC300` | `*(uint32*)(loc + 8/12/16)` → (x,y,z) | 3× `int32*` out + scalar |
+| `TpuCoreLocation_Index` | `0xEABC320` | `*(uint32*)(loc + 52)` | scalar |
+| `TpuCoreLocation_Id` | `0xEABC340` | thunk → `tpu::TpuCoreLocation::LogicalDeviceId` | scalar |
 
 ### Field map
 
-| Offset | Field | Read by | Confidence |
-|---|---|---|---|
-| `+0` | chip coords / id base (via member fn) | `ChipCoordinates`, `Id` | HIGH |
-| `+8` | `host_coord.x` | `HostCoordinates` (`loc[2]`) | CERTAIN |
-| `+12` | `host_coord.y` | `HostCoordinates` (`loc[3]`) | CERTAIN |
-| `+16` | `host_coord.z` | `HostCoordinates` (`loc[4]`) | CERTAIN |
-| `+52` | core-on-chip index | `Index` | CERTAIN |
+| Offset | Field | Read by |
+|---|---|---|
+| `+0` | chip coords / id base (via member fn) | `ChipCoordinates`, `Id` |
+| `+8` | `host_coord.x` | `HostCoordinates` (`loc[2]`) |
+| `+12` | `host_coord.y` | `HostCoordinates` (`loc[3]`) |
+| `+16` | `host_coord.z` | `HostCoordinates` (`loc[4]`) |
+| `+52` | core-on-chip index | `Index` |
 
 ### Algorithm
 

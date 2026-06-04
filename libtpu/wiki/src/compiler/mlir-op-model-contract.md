@@ -262,20 +262,20 @@ This page owns the *contract*; the dialect pages own the *instantiations* — th
 
 ## Confidence Summary
 
-| Claim | Evidence | Confidence |
-|---|---|---|
-| `OperationName::Impl` is the abstract op record; ctor takes `(StringRef, Dialect*, TypeID, InterfaceMap)` | demangled `OperationName::Impl::Impl(StringRef, Dialect*, TypeID, detail::InterfaceMap)` @ `0x1d8c4d80` | CONFIRMED |
-| `Impl` has two concrete impls: `Model<Op>` and `UnregisteredOpModel` | both carry the full 21-hook surface (`UnregisteredOpModel::{foldHook,hasTrait,…}` symbols present) | CONFIRMED |
-| `Model<Op>` is a 23-slot vtable; 6,050 instances binary-wide | count of distinct `Model<…>::~Model` (D0) symbols = 6,050; reference walk on `Model<xla::PureCallOp>` slots `0x150d56c0…0x150d5c20` | CONFIRMED |
-| All 21 dispatch-slot symbols present per op, same order across dialects | `Model<{PureCallOp, tpu::IotaOp, llo::ConstantOp, mosaic_sc::RelayoutOp}>::<method>` resolve identically | CONFIRMED |
-| Slot 0 is one shared base dtor across all Models | `OperationName::Impl::~Impl` (D2) = addend `0xfea8820`; 30-Model stratified sample shares it | CONFIRMED |
-| Registration sink is `RegisteredOperationName::insert` | demangled `insert(unique_ptr<OperationName::Impl,…>, ArrayRef<StringRef>)` @ `0x1d8c57a0`; 243 `addOperations<…>`-family symbols (224 `Dialect::addOperations` + 19 `addOperationsChecked`), all 243 demangle distinctly | CONFIRMED |
-| Inherent-attr slots tail-call ODS statics via inline-prop unpack | `Model<IotaOp>::getInherentAttr` body computes `op + ((flags>>19)&0x10) + 64` then calls `IotaOp::getInherentAttr(...)` @ `0x14b220e0` | CONFIRMED |
-| Indirect hooks (2,3,4,7,8) wrapped in `UniqueFunction` callback-holders carrying the `Op<…>` trait list | `Model<IotaOp>::hasTrait` holder names `Op<tpu::IotaOp, …, MemoryEffectOpInterface::Trait>::getHasTraitFn()::lambda` | CONFIRMED |
-| `getOpPropertyByteSize` is an inlined `sizeof(Properties)` | `Model<IotaOp>::getOpPropertyByteSize` @ `0x14ac19c0` decompiles to `return 8;`; zero-prop ops return 0 | CONFIRMED |
-| Second interface layer `<Iface>InterfaceTraits::Model<Op>` carries interface bodies; slot-4 `hasTrait` gates it | `MemoryEffectOpInterfaceInterfaceTraits::Model<PureCallOp>::getEffects`, `InterfaceMap::insertModel<…>` symbols; `Concept const*` self-arg | CONFIRMED |
-| Caller dispatch loads `Impl` at `op+0x30`, vptr, `call *0x10` = slot 2 | `Operation::fold` @ `0x1d8cd480`, indirect call @ `0x1d8cd4ad` | CONFIRMED |
-| Slot ordering is version-pinned to this binary's LLVM SHA | indices specific to one build; not cross-validated against upstream MLIR | LOW (cross-version stability) |
+| Claim | Evidence |
+|---|---|
+| `OperationName::Impl` is the abstract op record; ctor takes `(StringRef, Dialect*, TypeID, InterfaceMap)` | demangled `OperationName::Impl::Impl(StringRef, Dialect*, TypeID, detail::InterfaceMap)` @ `0x1d8c4d80` |
+| `Impl` has two concrete impls: `Model<Op>` and `UnregisteredOpModel` | both carry the full 21-hook surface (`UnregisteredOpModel::{foldHook,hasTrait,…}` symbols present) |
+| `Model<Op>` is a 23-slot vtable; 6,050 instances binary-wide | count of distinct `Model<…>::~Model` (D0) symbols = 6,050; reference walk on `Model<xla::PureCallOp>` slots `0x150d56c0…0x150d5c20` |
+| All 21 dispatch-slot symbols present per op, same order across dialects | `Model<{PureCallOp, tpu::IotaOp, llo::ConstantOp, mosaic_sc::RelayoutOp}>::<method>` resolve identically |
+| Slot 0 is one shared base dtor across all Models | `OperationName::Impl::~Impl` (D2) = addend `0xfea8820`; 30-Model stratified sample shares it |
+| Registration sink is `RegisteredOperationName::insert` | demangled `insert(unique_ptr<OperationName::Impl,…>, ArrayRef<StringRef>)` @ `0x1d8c57a0`; 243 `addOperations<…>`-family symbols (224 `Dialect::addOperations` + 19 `addOperationsChecked`), all 243 demangle distinctly |
+| Inherent-attr slots tail-call ODS statics via inline-prop unpack | `Model<IotaOp>::getInherentAttr` body computes `op + ((flags>>19)&0x10) + 64` then calls `IotaOp::getInherentAttr(...)` @ `0x14b220e0` |
+| Indirect hooks (2,3,4,7,8) wrapped in `UniqueFunction` callback-holders carrying the `Op<…>` trait list | `Model<IotaOp>::hasTrait` holder names `Op<tpu::IotaOp, …, MemoryEffectOpInterface::Trait>::getHasTraitFn()::lambda` |
+| `getOpPropertyByteSize` is an inlined `sizeof(Properties)` | `Model<IotaOp>::getOpPropertyByteSize` @ `0x14ac19c0` decompiles to `return 8;`; zero-prop ops return 0 |
+| Second interface layer `<Iface>InterfaceTraits::Model<Op>` carries interface bodies; slot-4 `hasTrait` gates it | `MemoryEffectOpInterfaceInterfaceTraits::Model<PureCallOp>::getEffects`, `InterfaceMap::insertModel<…>` symbols; `Concept const*` self-arg |
+| Caller dispatch loads `Impl` at `op+0x30`, vptr, `call *0x10` = slot 2 | `Operation::fold` @ `0x1d8cd480`, indirect call @ `0x1d8cd4ad` |
+| Slot ordering is version-pinned to this binary's LLVM SHA | indices specific to one build; not cross-validated against upstream MLIR |
 
 ---
 

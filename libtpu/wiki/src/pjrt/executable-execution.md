@@ -57,32 +57,32 @@ The split mirrors upstream XLA exactly: `PJRT_Executable` is the *ahead-of-launc
 
 ### Function Map — the executable surface
 
-| Slot | Field | Symbol (`pjrt::`…) | Addr | Wrapped virtual | Confidence |
-|---|---|---|---|---|---|
-| 25 | PJRT_Client_Compile | `PJRT_Client_Compile` | `0x0F861820` | client compile → loaded exec | CERTAIN |
-| 45 | PJRT_Executable_Destroy | `PJRT_Executable_Destroy` | `0x0F8661C0` | box dtor | CERTAIN |
-| 46 | PJRT_Executable_Name | `PJRT_Executable_Name` | `0x0F866860` | `+40` `name()` | CERTAIN |
-| 47 | PJRT_Executable_NumReplicas | `PJRT_Executable_NumReplicas` | `0x0F8668C0` | `num_replicas()` | CERTAIN |
-| 48 | PJRT_Executable_NumPartitions | `PJRT_Executable_NumPartitions` | `0x0F866920` | `num_partitions()` | CERTAIN |
-| 49 | PJRT_Executable_NumOutputs | `PJRT_Executable_NumOutputs` | `0x0F866A40` | cached field `+272` | CERTAIN |
-| 50 | PJRT_Executable_SizeOfGeneratedCodeInBytes | `…SizeOfGeneratedCodeInBytes` | `0x0F867240` | `SizeOfGeneratedCodeInBytes()` | CERTAIN |
-| 51 | PJRT_Executable_GetCostAnalysis | `PJRT_Executable_GetCostAnalysis` | `0x0F867B80` | `GetCostAnalysis()` | CERTAIN |
-| 52 | PJRT_Executable_OutputMemoryKinds | `PJRT_Executable_OutputMemoryKinds` | `0x0F869520` | `+104` `GetOutputMemoryKinds()` | CERTAIN |
-| 53 | PJRT_Executable_OptimizedProgram | `PJRT_Executable_OptimizedProgram` | `0x0F8672A0` | `GetHloModules()` | HIGH |
-| 54 | PJRT_Executable_Serialize | `PJRT_Executable_Serialize` | `0x0F86C5A0` | `+144` `SerializeExecutable()` | CERTAIN |
-| 56 | PJRT_LoadedExecutable_GetExecutable | `PJRT_LoadedExecutable_GetExecutable` | `0x0F86CFA0` | `+32` `executable()` | CERTAIN |
-| 58 | PJRT_LoadedExecutable_Delete | `PJRT_LoadedExecutable_Delete` | `0x0F869A80` | `Delete()` | CERTAIN |
-| 59 | PJRT_LoadedExecutable_IsDeleted | `PJRT_LoadedExecutable_IsDeleted` | `0x0F869AE0` | `IsDeleted()` | CERTAIN |
-| 60 | PJRT_LoadedExecutable_Execute | `PJRT_LoadedExecutable_Execute` | `0x0F869B40` | `Execute` / `+80` ExecutePortable / `+72` ExecuteSharded | CERTAIN |
-| 61 | PJRT_Executable_DeserializeAndLoad | `PJRT_Executable_DeserializeAndLoad` | `0x0F86CC40` | client deserialize+load | CERTAIN |
-| 95 | PJRT_Executable_OutputElementTypes | `PJRT_Executable_OutputElementTypes` | `0x0F868560` | cached dims/types | CERTAIN |
-| 96 | PJRT_Executable_OutputDimensions | `PJRT_Executable_OutputDimensions` | `0x0F8689E0` | cached dims/types | CERTAIN |
-| 99 | PJRT_Executable_Fingerprint | `PJRT_Executable_Fingerprint` | `0x0F867AC0` | `FingerprintExecutable()` | CERTAIN |
-| 101 | PJRT_Executable_GetCompiledMemoryStats | `PJRT_Executable_GetCompiledMemoryStats` | `0x0F86CAC0` | `GetCompiledMemoryStats()` | CERTAIN |
-| 129 | PJRT_Executable_GetCompileOptions | `PJRT_Executable_GetCompileOptions` | `0x0F86C6E0` | `GetCompileOptions()` | CERTAIN |
-| 139 | PJRT_Executable_ParameterMemoryKinds | `PJRT_Executable_ParameterMemoryKinds` | `0x0F868FC0` | `GetParameterMemoryKinds()` | CERTAIN |
-| 122 | PJRT_LoadedExecutable_GetDeviceAssignment | `…GetDeviceAssignment` | `0x0F870EA0` | `device_assignment()` | CERTAIN |
-| 135 | PJRT_LoadedExecutable_AddressableDeviceLogicalIds | `…AddressableDeviceLogicalIds` | `0x0F8669E0` | `addressable_device_logical_ids()` | CERTAIN |
+| Slot | Field | Symbol (`pjrt::`…) | Addr | Wrapped virtual |
+|---|---|---|---|---|
+| 25 | PJRT_Client_Compile | `PJRT_Client_Compile` | `0x0F861820` | client compile → loaded exec |
+| 45 | PJRT_Executable_Destroy | `PJRT_Executable_Destroy` | `0x0F8661C0` | box dtor |
+| 46 | PJRT_Executable_Name | `PJRT_Executable_Name` | `0x0F866860` | `+40` `name()` |
+| 47 | PJRT_Executable_NumReplicas | `PJRT_Executable_NumReplicas` | `0x0F8668C0` | `num_replicas()` |
+| 48 | PJRT_Executable_NumPartitions | `PJRT_Executable_NumPartitions` | `0x0F866920` | `num_partitions()` |
+| 49 | PJRT_Executable_NumOutputs | `PJRT_Executable_NumOutputs` | `0x0F866A40` | cached field `+272` |
+| 50 | PJRT_Executable_SizeOfGeneratedCodeInBytes | `…SizeOfGeneratedCodeInBytes` | `0x0F867240` | `SizeOfGeneratedCodeInBytes()` |
+| 51 | PJRT_Executable_GetCostAnalysis | `PJRT_Executable_GetCostAnalysis` | `0x0F867B80` | `GetCostAnalysis()` |
+| 52 | PJRT_Executable_OutputMemoryKinds | `PJRT_Executable_OutputMemoryKinds` | `0x0F869520` | `+104` `GetOutputMemoryKinds()` |
+| 53 | PJRT_Executable_OptimizedProgram | `PJRT_Executable_OptimizedProgram` | `0x0F8672A0` | `GetHloModules()` |
+| 54 | PJRT_Executable_Serialize | `PJRT_Executable_Serialize` | `0x0F86C5A0` | `+144` `SerializeExecutable()` |
+| 56 | PJRT_LoadedExecutable_GetExecutable | `PJRT_LoadedExecutable_GetExecutable` | `0x0F86CFA0` | `+32` `executable()` |
+| 58 | PJRT_LoadedExecutable_Delete | `PJRT_LoadedExecutable_Delete` | `0x0F869A80` | `Delete()` |
+| 59 | PJRT_LoadedExecutable_IsDeleted | `PJRT_LoadedExecutable_IsDeleted` | `0x0F869AE0` | `IsDeleted()` |
+| 60 | PJRT_LoadedExecutable_Execute | `PJRT_LoadedExecutable_Execute` | `0x0F869B40` | `Execute` / `+80` ExecutePortable / `+72` ExecuteSharded |
+| 61 | PJRT_Executable_DeserializeAndLoad | `PJRT_Executable_DeserializeAndLoad` | `0x0F86CC40` | client deserialize+load |
+| 95 | PJRT_Executable_OutputElementTypes | `PJRT_Executable_OutputElementTypes` | `0x0F868560` | cached dims/types |
+| 96 | PJRT_Executable_OutputDimensions | `PJRT_Executable_OutputDimensions` | `0x0F8689E0` | cached dims/types |
+| 99 | PJRT_Executable_Fingerprint | `PJRT_Executable_Fingerprint` | `0x0F867AC0` | `FingerprintExecutable()` |
+| 101 | PJRT_Executable_GetCompiledMemoryStats | `PJRT_Executable_GetCompiledMemoryStats` | `0x0F86CAC0` | `GetCompiledMemoryStats()` |
+| 129 | PJRT_Executable_GetCompileOptions | `PJRT_Executable_GetCompileOptions` | `0x0F86C6E0` | `GetCompileOptions()` |
+| 139 | PJRT_Executable_ParameterMemoryKinds | `PJRT_Executable_ParameterMemoryKinds` | `0x0F868FC0` | `GetParameterMemoryKinds()` |
+| 122 | PJRT_LoadedExecutable_GetDeviceAssignment | `…GetDeviceAssignment` | `0x0F870EA0` | `device_assignment()` |
+| 135 | PJRT_LoadedExecutable_AddressableDeviceLogicalIds | `…AddressableDeviceLogicalIds` | `0x0F8669E0` | `addressable_device_logical_ids()` |
 
 > **NOTE —** slot 62 `PJRT_LoadedExecutable_Fingerprint` (`0x0F85FBE0`) is the *deprecated* fingerprint entry; v0.103 hosts use slot 99 `PJRT_Executable_Fingerprint`. Both are populated. The deprecated one is kept only so an older-minor host's smaller args struct still resolves a non-null pointer.
 
@@ -125,23 +125,23 @@ Slot 60 is the throughput-critical entry: it launches a loaded program onto one 
 
 The wrapper reads the outer `PJRT_LoadedExecutable_Execute_Args` (current `struct_size` = 80 B = 10 qwords) and the nested `PJRT_ExecuteOptions` it points at (current `struct_size` = 112 B = 14 qwords). Offsets below are recovered directly from the field reads in the decompiled body.
 
-| Struct | Off | Field | Meaning (recovered) | Conf |
-|---|---|---|---|---|
-| Execute_Args | `+0x00` | `struct_size` | guard input; min 34, cur 80 | CERTAIN |
-| Execute_Args | `+0x08` | `priv` / extension | walked for an extension ID == 1 (lines 257-268) | HIGH |
-| Execute_Args | `+0x10` | `executable` | `PJRT_LoadedExecutable*` (`v117+16` = wrapped ptr) | CERTAIN |
-| Execute_Args | `+0x18` | `options` | `PJRT_ExecuteOptions*` (`v14`) | CERTAIN |
-| Execute_Args | `+0x40` | `num_devices` | replica/partition count; CHECK'd against callbacks | CERTAIN |
-| Execute_Args | `+0x48` | `num_args` | per-device argument count | HIGH |
-| Execute_Args | `+0x60` | `argument_lists` | `PJRT_Buffer*** ` — `[device][arg]` (line 468-469) | CERTAIN |
-| Execute_Args | `+0x68` | `output_lists` | `PJRT_Buffer*** ` out — `[device][output]` | CERTAIN |
-| Execute_Args | `+0x70` | `device_complete_events` | optional `PJRT_Event**` out, one per device | HIGH |
-| Execute_Args | `+0x78` | `execute_device` | optional `PJRT_Device*`; non-null ⇒ single-device fork | CERTAIN |
-| ExecuteOptions | `+0x00` | `struct_size` | guard input; min 19, cur 112 | CERTAIN |
-| ExecuteOptions | `+0x30` | `launch_id` | int, copied into the run state (line 311) | CERTAIN |
-| ExecuteOptions | `+0x50` | `context` (str ptr) | optional `const char*`, `strlen`'d for the TraceMe span (line 312-316) | HIGH |
-| ExecuteOptions | (vec) | `send_callbacks` | CHECK `size() == num_devices` (line 954) | CERTAIN |
-| ExecuteOptions | (vec) | `recv_callbacks` | CHECK `size() == num_devices` (line 1215) | CERTAIN |
+| Struct | Off | Field | Meaning (recovered) |
+|---|---|---|---|
+| Execute_Args | `+0x00` | `struct_size` | guard input; min 34, cur 80 |
+| Execute_Args | `+0x08` | `priv` / extension | walked for an extension ID == 1 (lines 257-268) |
+| Execute_Args | `+0x10` | `executable` | `PJRT_LoadedExecutable*` (`v117+16` = wrapped ptr) |
+| Execute_Args | `+0x18` | `options` | `PJRT_ExecuteOptions*` (`v14`) |
+| Execute_Args | `+0x40` | `num_devices` | replica/partition count; CHECK'd against callbacks |
+| Execute_Args | `+0x48` | `num_args` | per-device argument count |
+| Execute_Args | `+0x60` | `argument_lists` | `PJRT_Buffer*** ` — `[device][arg]` (line 468-469) |
+| Execute_Args | `+0x68` | `output_lists` | `PJRT_Buffer*** ` out — `[device][output]` |
+| Execute_Args | `+0x70` | `device_complete_events` | optional `PJRT_Event**` out, one per device |
+| Execute_Args | `+0x78` | `execute_device` | optional `PJRT_Device*`; non-null ⇒ single-device fork |
+| ExecuteOptions | `+0x00` | `struct_size` | guard input; min 19, cur 112 |
+| ExecuteOptions | `+0x30` | `launch_id` | int, copied into the run state (line 311) |
+| ExecuteOptions | `+0x50` | `context` (str ptr) | optional `const char*`, `strlen`'d for the TraceMe span (line 312-316) |
+| ExecuteOptions | (vec) | `send_callbacks` | CHECK `size() == num_devices` (line 954) |
+| ExecuteOptions | (vec) | `recv_callbacks` | CHECK `size() == num_devices` (line 1215) |
 
 > **GOTCHA —** the two `struct_size` checks are chained in one expression (line 250): the outer `Execute_Args` is validated first, then `**(a1+24)` — the *nested* `PJRT_ExecuteOptions` — is validated as a second `ActualStructSizeIsGreaterOrEqual("PJRT_ExecuteOptions", 19, 112, …)`. A host that passes a valid outer struct but a too-small `options` struct still gets a `PJRT_Error*`, not a crash. A reimplementation that validates only the outer struct reads past the caller's `options` buffer.
 
@@ -319,18 +319,18 @@ function PJRT_Executable_OutputMemoryKinds(args):             // 0xf869520
 
 The remaining accessors follow the identical guard-dispatch-pack shape; only the virtual and the packed type differ.
 
-| Slot | Field | Returns | Wrapped virtual | Conf |
-|---|---|---|---|---|
-| 47 | NumReplicas | `size_t` | `num_replicas()` | CERTAIN |
-| 48 | NumPartitions | `size_t` | `num_partitions()` | CERTAIN |
-| 50 | SizeOfGeneratedCodeInBytes | `int64` | `SizeOfGeneratedCodeInBytes()` | CERTAIN |
-| 51 | GetCostAnalysis | named-value list | `GetCostAnalysis()` | CERTAIN |
-| 95 | OutputElementTypes | `PJRT_Buffer_Type[]` | cached (via Ensure…) | CERTAIN |
-| 96 | OutputDimensions | dim spans + sizes | cached (via Ensure…) | CERTAIN |
-| 99 | Fingerprint | `(ptr, len)` | `FingerprintExecutable()` | CERTAIN |
-| 101 | GetCompiledMemoryStats | `PJRT_Executable_GetCompiledMemoryStats` fields | `GetCompiledMemoryStats()` | CERTAIN |
-| 129 | GetCompileOptions | serialized `CompileOptionsProto` | `GetCompileOptions()` | CERTAIN |
-| 139 | ParameterMemoryKinds | `(ptr array, sizes)` | `GetParameterMemoryKinds()` | CERTAIN |
+| Slot | Field | Returns | Wrapped virtual |
+|---|---|---|---|
+| 47 | NumReplicas | `size_t` | `num_replicas()` |
+| 48 | NumPartitions | `size_t` | `num_partitions()` |
+| 50 | SizeOfGeneratedCodeInBytes | `int64` | `SizeOfGeneratedCodeInBytes()` |
+| 51 | GetCostAnalysis | named-value list | `GetCostAnalysis()` |
+| 95 | OutputElementTypes | `PJRT_Buffer_Type[]` | cached (via Ensure…) |
+| 96 | OutputDimensions | dim spans + sizes | cached (via Ensure…) |
+| 99 | Fingerprint | `(ptr, len)` | `FingerprintExecutable()` |
+| 101 | GetCompiledMemoryStats | `PJRT_Executable_GetCompiledMemoryStats` fields | `GetCompiledMemoryStats()` |
+| 129 | GetCompileOptions | serialized `CompileOptionsProto` | `GetCompileOptions()` |
+| 139 | ParameterMemoryKinds | `(ptr array, sizes)` | `GetParameterMemoryKinds()` |
 
 > **NOTE —** `GetCompileOptions` (slot 129) round-trips the *original* `CompileOptions` back out as a serialized `CompileOptionsProto` — the same proto `DeserializeAndLoad` consumes. It is how a host recovers the build settings of an executable it received pre-compiled, so it can deserialize-and-load a serialized copy with matching options.
 

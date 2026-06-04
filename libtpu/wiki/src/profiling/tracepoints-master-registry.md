@@ -29,18 +29,18 @@ For reimplementation, the contract is:
 
 ### At-a-glance — bands and their id ranges
 
-| Band | Base / range (deepsea) | Origin | Subscribers | Payload page | Conf. |
-|---|---|---|---|---|---|
-| UHI | OCI sub-channel (`*UhiBridge`) | Host bridge | (raw path) | [uhi-oci-ici-dma](payload-uhi-oci-ici-dma.md) | HIGH |
-| OCI | `OciMessage*` (20 events) | On-chip interconnect | (raw path) | [uhi-oci-ici-dma](payload-uhi-oci-ici-dma.md) | HIGH |
-| ICI | `IciPacket*` | Inter-chip interconnect | (raw path) | [uhi-oci-ici-dma](payload-uhi-oci-ici-dma.md) | HIGH |
-| DMA | CMQ/CMN/HDE req+data-end | DMA engines | DmaSubscriber (jxc) | [uhi-oci-ici-dma](payload-uhi-oci-ici-dma.md) | MEDIUM |
-| Sync/Fence | base **80** (80..90) | TensorCore | Sync + ScalarFence ×2 | [sc-band](payload-sc-band.md) / [vfc-vlc-gfc](payload-vfc-vlc-gfc.md) | CERTAIN |
-| Throttle | base **104** (vfc/vlc) / **200** (gfc/glc) | Power mgmt | PowerThrottle | [vfc-vlc-gfc](payload-vfc-vlc-gfc.md) | HIGH |
-| SparseCore | base **109** (109..120) | SparseCore | 6 SC subscribers | [sc-band](payload-sc-band.md) | CERTAIN |
-| MGR/Power | base **160** + 168/169 | MGR firmware | PState/Firmware/Spi | [vfc-vlc-gfc](payload-vfc-vlc-gfc.md) | HIGH |
-| BarnaCore | pxc — no SC band | pxc-only | (TC fan-out only) | [jxc-legacy](payload-jxc-legacy.md) | HIGH |
-| jxc legacy | 16-bit jellyfish ns | jellyfish gen | HbmMux + Dma + 8 | [jxc-legacy](payload-jxc-legacy.md) | MEDIUM |
+| Band | Base / range (deepsea) | Origin | Subscribers | Payload page |
+|---|---|---|---|---|
+| UHI | OCI sub-channel (`*UhiBridge`) | Host bridge | (raw path) | [uhi-oci-ici-dma](payload-uhi-oci-ici-dma.md) |
+| OCI | `OciMessage*` (20 events) | On-chip interconnect | (raw path) | [uhi-oci-ici-dma](payload-uhi-oci-ici-dma.md) |
+| ICI | `IciPacket*` | Inter-chip interconnect | (raw path) | [uhi-oci-ici-dma](payload-uhi-oci-ici-dma.md) |
+| DMA | CMQ/CMN/HDE req+data-end | DMA engines | DmaSubscriber (jxc) | [uhi-oci-ici-dma](payload-uhi-oci-ici-dma.md) |
+| Sync/Fence | base **80** (80..90) | TensorCore | Sync + ScalarFence ×2 | [sc-band](payload-sc-band.md) / [vfc-vlc-gfc](payload-vfc-vlc-gfc.md) |
+| Throttle | base **104** (vfc/vlc) / **200** (gfc/glc) | Power mgmt | PowerThrottle | [vfc-vlc-gfc](payload-vfc-vlc-gfc.md) |
+| SparseCore | base **109** (109..120) | SparseCore | 6 SC subscribers | [sc-band](payload-sc-band.md) |
+| MGR/Power | base **160** + 168/169 | MGR firmware | PState/Firmware/Spi | [vfc-vlc-gfc](payload-vfc-vlc-gfc.md) |
+| BarnaCore | pxc — no SC band | pxc-only | (TC fan-out only) | [jxc-legacy](payload-jxc-legacy.md) |
+| jxc legacy | 16-bit jellyfish ns | jellyfish gen | HbmMux + Dma + 8 | [jxc-legacy](payload-jxc-legacy.md) |
 
 > **NOTE —** "raw path" means the band has **no dedicated subscriber** in the deepsea CoreContext lambda. UHI/OCI/ICI ids fall through to the raw `TraceEventSubscriber` decimal-string XEvent path (the FastIntToBuffer name fallback) rather than a semantic subscriber. See [§ Unbound bands](#unbound-bands--uhi-oci-ici-dma-on-deepsea). The *names* below are still the authoritative codec decode names; the routing is what is absent.
 
@@ -99,18 +99,18 @@ The TensorCore sync-flag and scalar-fence band: the 80..90 id range carrying eve
 
 ### Registry
 
-| id | event name (codec) | subscriber(s) | tracker / key | Conf. |
-|---|---|---|---|---|
-| 80 | `TCS_EXTERNAL_SYNC_FLAG_UPDATE_DMA_DONE` | SyncSubscriber | SyncTracker (END, DMA-done) | CERTAIN |
-| 81 | `TCS_INTERNAL_SET_SYNC_FLAG` | SyncSubscriber | (instant) | CERTAIN |
-| 82 | `TCS_INTERNAL_ADD_SYNC_FLAG` | SyncSubscriber | (instant) | CERTAIN |
-| 84 | `TCS_INTERNAL_SET_TRACEMARK` | TensorCoreStepSubscriber | StepTracker (TraceMark id) | CERTAIN |
-| 85 | `TCS_INTERNAL_TRACE_INSTRUCTION` | Hlo + Overlay + OnDeviceTraceMe + LloOp | OverlayTracker (overlay_id) | CERTAIN |
-| 86 | `TCS_INTERNAL_UNSUCCESSFUL_SYNC_ATTEMPT` | SyncSubscriber | SyncTracker (wait BEGIN) | CERTAIN |
-| 87 | `TCS_INTERNAL_SUCCESSFUL_SYNC_ATTEMPT` | SyncSubscriber | (instant — not tracker-paired in pxc) | CERTAIN |
-| 88 | `TCS_INTERNAL_READ_SYNC_FLAG` | SyncSubscriber | (instant) | CERTAIN |
-| 89 | `TCS_INTERNAL_SCALAR_FENCE_START` | ScalarFenceSubscriber ×2 | fence span (lines 9 + 62) | CERTAIN |
-| 90 | `TCS_INTERNAL_SCALAR_FENCE_END` | ScalarFenceSubscriber ×2 | fence span | CERTAIN |
+| id | event name (codec) | subscriber(s) | tracker / key |
+|---|---|---|---|
+| 80 | `TCS_EXTERNAL_SYNC_FLAG_UPDATE_DMA_DONE` | SyncSubscriber | SyncTracker (END, DMA-done) |
+| 81 | `TCS_INTERNAL_SET_SYNC_FLAG` | SyncSubscriber | (instant) |
+| 82 | `TCS_INTERNAL_ADD_SYNC_FLAG` | SyncSubscriber | (instant) |
+| 84 | `TCS_INTERNAL_SET_TRACEMARK` | TensorCoreStepSubscriber | StepTracker (TraceMark id) |
+| 85 | `TCS_INTERNAL_TRACE_INSTRUCTION` | Hlo + Overlay + OnDeviceTraceMe + LloOp | OverlayTracker (overlay_id) |
+| 86 | `TCS_INTERNAL_UNSUCCESSFUL_SYNC_ATTEMPT` | SyncSubscriber | SyncTracker (wait BEGIN) |
+| 87 | `TCS_INTERNAL_SUCCESSFUL_SYNC_ATTEMPT` | SyncSubscriber | (instant — not tracker-paired in pxc) |
+| 88 | `TCS_INTERNAL_READ_SYNC_FLAG` | SyncSubscriber | (instant) |
+| 89 | `TCS_INTERNAL_SCALAR_FENCE_START` | ScalarFenceSubscriber ×2 | fence span (lines 9 + 62) |
+| 90 | `TCS_INTERNAL_SCALAR_FENCE_END` | ScalarFenceSubscriber ×2 | fence span |
 
 Two further codec names exist in this neighborhood but are not bound by any deepsea lambda subscriber: `TCS_INTERNAL_CORE_INTERRUPT` and `TCS_INTERNAL_HOST_INTERRUPT` (decode names confirmed in `.rodata`; routing not installed — `(unbound, HIGH)`).
 
@@ -138,18 +138,18 @@ The SparseCore instruction/task/sync band: ids 109..120 carrying SC tracemarks, 
 
 ### Registry
 
-| id | event name (codec) | subscriber(s) | tracker / key | Conf. |
-|---|---|---|---|---|
-| 109 | `ScInstructionSetTracemark` | SC-Hlo + SC-Task + SC-Step | StepTracker (SC TraceMark) | CERTAIN |
-| 110 | `ScInstructionTraceInstruction` | SC-Hlo + SC-Task + SC-Overlay + SC-OnDeviceTraceMe | OverlayTracker (SC overlay_id) | CERTAIN |
-| 111 | `ScInstructionSfenceStart` | SparseCoreSyncsSubscriber | sfence span | CERTAIN |
-| 112 | `ScInstructionSfenceStop` | SparseCoreSyncsSubscriber | sfence span | CERTAIN |
-| 113 | `ScInstructionSyncStart` | SparseCoreSyncsSubscriber | sync span | CERTAIN |
-| 114 | `ScInstructionSyncStop` | SparseCoreSyncsSubscriber | sync span | CERTAIN |
-| 115 | `ScInstructionBarrierStart` | SparseCoreSyncsSubscriber | barrier span | CERTAIN |
-| 116 | `ScInstructionBarrierStop` | SparseCoreSyncsSubscriber | barrier span | CERTAIN |
-| 119 | `ScTaskIssueFromScs` | SC-Hlo + SC-Task | TaskTracker (task tag, ISSUE) | CERTAIN |
-| 120 | `ScTaskCommitOnSct` | SC-Hlo + SC-Task | TaskTracker (task tag, COMMIT) | CERTAIN |
+| id | event name (codec) | subscriber(s) | tracker / key |
+|---|---|---|---|
+| 109 | `ScInstructionSetTracemark` | SC-Hlo + SC-Task + SC-Step | StepTracker (SC TraceMark) |
+| 110 | `ScInstructionTraceInstruction` | SC-Hlo + SC-Task + SC-Overlay + SC-OnDeviceTraceMe | OverlayTracker (SC overlay_id) |
+| 111 | `ScInstructionSfenceStart` | SparseCoreSyncsSubscriber | sfence span |
+| 112 | `ScInstructionSfenceStop` | SparseCoreSyncsSubscriber | sfence span |
+| 113 | `ScInstructionSyncStart` | SparseCoreSyncsSubscriber | sync span |
+| 114 | `ScInstructionSyncStop` | SparseCoreSyncsSubscriber | sync span |
+| 115 | `ScInstructionBarrierStart` | SparseCoreSyncsSubscriber | barrier span |
+| 116 | `ScInstructionBarrierStop` | SparseCoreSyncsSubscriber | barrier span |
+| 119 | `ScTaskIssueFromScs` | SC-Hlo + SC-Task | TaskTracker (task tag, ISSUE) |
+| 120 | `ScTaskCommitOnSct` | SC-Hlo + SC-Task | TaskTracker (task tag, COMMIT) |
 
 Adjacent codec names not bound by the SC lambda subscribers: `ScInstructionSyncWatchStart` / `ScInstructionSyncWatchStop` and `ScInstructionCoreInterrupt` (decode names present; `(unbound, HIGH)`). The SC-Syncs subscriber's id-set is written `movabs $0x7200000071 {113,114}` then grown `+0x73{115}+0x74{116}+0x6f{111}+0x70{112}`, size 6 (`movq $0x6,-0x110 @0xf22af00`).
 
@@ -178,17 +178,17 @@ The on-chip (OCI), inter-chip (ICI), and host-bridge (UHI) interconnect bands. T
 
 The OCI band's decode names form a 20-event `OciMessage*` family naming each hop of an on-chip message:
 
-| event name (codec) | meaning | Conf. |
-|---|---|---|
-| `OciMessageIssuedFromTcs` | message issued from TensorCore sequencer | HIGH |
-| `OciMessageIssuedFromMgr` | message issued from MGR firmware | HIGH |
-| `OciMessageMsgIssuedFromEngine` / `...FromQnm` | engine / QNM issue | HIGH |
-| `OciMessageSentByBc` / `...BySc` / `...ByCmnde` / `...ByHde` | egress per source block | HIGH |
-| `OciMessageSentByUhiBridge` / `OciMessageReceivedByUhiBridge` | **UHI band** — host-bridge hop | HIGH |
-| `OciMessageReceivedByBc` / `...BySc` / `...ByMgr` | ingress per dest block | HIGH |
-| `OciMessageGeneratedInIcrEgressDma` / `...IngressDma` | ICR DMA-bridge generation | HIGH |
-| `OciMessagePacketReceivedInIcr` / `OciMessagePacketSentToOci` | OCI/ICR boundary | HIGH |
-| `OciMessageSyncFlagUpdateFromDstEngine` | sync-flag update carried over OCI | HIGH |
+| event name (codec) | meaning |
+|---|---|
+| `OciMessageIssuedFromTcs` | message issued from TensorCore sequencer |
+| `OciMessageIssuedFromMgr` | message issued from MGR firmware |
+| `OciMessageMsgIssuedFromEngine` / `...FromQnm` | engine / QNM issue |
+| `OciMessageSentByBc` / `...BySc` / `...ByCmnde` / `...ByHde` | egress per source block |
+| `OciMessageSentByUhiBridge` / `OciMessageReceivedByUhiBridge` | **UHI band** — host-bridge hop |
+| `OciMessageReceivedByBc` / `...BySc` / `...ByMgr` | ingress per dest block |
+| `OciMessageGeneratedInIcrEgressDma` / `...IngressDma` | ICR DMA-bridge generation |
+| `OciMessagePacketReceivedInIcr` / `OciMessagePacketSentToOci` | OCI/ICR boundary |
+| `OciMessageSyncFlagUpdateFromDstEngine` | sync-flag update carried over OCI |
 
 ICI link flow uses the parallel `IciPacket*` decode family: `IciPacketControlPacketInjectedByIcrDmaBridge` / `...QueuedForLocalIngress` / `...ReceivedByIcrDmaBridge`, the matching `IciPacketDataPacket*` trio, and the link-side `IciPacketPacketQueuedForLinkTransmission` / `...ReceivedOnLinkInput` / `...TransmittedOnLinkOutput`.
 
@@ -210,13 +210,13 @@ The DMA started/completed band: CMQ/CMN/HDE descriptor request + data-end events
 
 ### Registry
 
-| element | value | Conf. |
-|---|---|---|
-| request decode names | `CmnDmaRequestEastSideLane` / `...WestSideLane` / `CmnDmaRequestSet` | HIGH |
-| DMA engines | CMQ (queue), CMN/CMNDE (notify), HDE (host) | HIGH |
-| pairing key | `dma_id = GetDmaId()` — first descriptor = BEGIN, data-end = END | HIGH |
-| jxc subscriber | `DmaSubscriber` — routes on `MemoryCommand()`/`GetDmaId()`, **not** a static id-set | MEDIUM |
-| jxc HBM mux | `HbmMuxSubscriber` — HBM-mux band, routes on `MemoryCommand` | MEDIUM |
+| element | value |
+|---|---|
+| request decode names | `CmnDmaRequestEastSideLane` / `...WestSideLane` / `CmnDmaRequestSet` |
+| DMA engines | CMQ (queue), CMN/CMNDE (notify), HDE (host) |
+| pairing key | `dma_id = GetDmaId()` — first descriptor = BEGIN, data-end = END |
+| jxc subscriber | `DmaSubscriber` — routes on `MemoryCommand()`/`GetDmaId()`, **not** a static id-set |
+| jxc HBM mux | `HbmMuxSubscriber` — HBM-mux band, routes on `MemoryCommand` |
 
 > **GOTCHA —** the jxc `DmaSubscriber` and `HbmMuxSubscriber` do not register a `TracePoints` int32 set at all. They route dynamically on the decoded `MemoryCommand()` accessor, not on the wire `trace_point_id`. A reimplementation that expects every subscriber to carry an id-set will mis-model these two — they are the exception to the registration mechanism.
 
@@ -230,10 +230,10 @@ The power-management cycle-skip band: throttle events keyed by a `RunLengthTrack
 
 ### Registry
 
-| id | event | subscriber | Conf. |
-|---|---|---|---|
-| 104 | ThrottleCycleSkip band base (vfc/vlc) | PowerThrottleSubscriber | HIGH |
-| 200 | ThrottleCycleSkip band base (gfc/glc) | PowerThrottleSubscriber | HIGH |
+| id | event | subscriber |
+|---|---|---|
+| 104 | ThrottleCycleSkip band base (vfc/vlc) | PowerThrottleSubscriber |
+| 200 | ThrottleCycleSkip band base (gfc/glc) | PowerThrottleSubscriber |
 
 The deepsea throttle decode names form a deep `ThrottleCycleSkip*` taxonomy by brake source: `...ElectricalBrakeEventCycleSkipLdidtBrake`, `...ElectricalDroopEvent...LdidtDroop`, `...ExternalBrakeEvent...ExtBrake`, `...ExternalThrottleEvent...ExtThrottle`, and the PPM family (`...PpmBrakeEventDidtAggressive/Nominal`, `...OvershootAggressive/Nominal`, `...SustainedAggressive/Nominal`, plus the rising/falling-edge variants). The `RunLengthTracker` per-sample accumulation key (which thermal/power counter line each run targets) was **not** decoded `(LOW)`. The vfc base is written `movl $0x68 = 104 @0xf2027ae`; gfc `movl $0xc8 = 200 @0xf229cee`.
 
@@ -247,11 +247,11 @@ The MGR firmware power/p-state band: the 160 base plus the 168/169 SPI sampler p
 
 ### Registry
 
-| id | event | subscriber(s) | Conf. |
-|---|---|---|---|
-| 160 | `MgrFwEvent` / MGR band base | PStateTrackerSubscriber + FirmwareSubscriber (+ 2nd component FW on gfc/glc) | HIGH |
-| 168 | SPI sampler (gfc/glc) | SpiSamplerSubscriber | HIGH |
-| 169 | SPI sampler (gfc/glc) | SpiSamplerSubscriber | HIGH |
+| id | event | subscriber(s) |
+|---|---|---|
+| 160 | `MgrFwEvent` / MGR band base | PStateTrackerSubscriber + FirmwareSubscriber (+ 2nd component FW on gfc/glc) |
+| 168 | SPI sampler (gfc/glc) | SpiSamplerSubscriber |
+| 169 | SPI sampler (gfc/glc) | SpiSamplerSubscriber |
 
 The 2nd `FirmwareSubscriber` (gfc/glc only) wraps `RunLengthTracker<FirmwareComponentEventBuilder>` and emits per-component power lines (kComponents 120..130 / 134..138). The `SpiSamplerSubscriber` (`SpiSamplerSubscriber` / `PowerSpiSamplerEventBuilder` confirmed) wraps `RunLengthTracker<PowerSpiSamplerEventBuilder>`, lines 118/119, id-set `{168,169}` (`movabs $0xa9000000a8 @0xf22c3aa`). vfc/vlc have **neither** the 2nd Firmware nor the SPI sampler. The MGR base is `movl $0xa0 = 160`.
 
@@ -288,18 +288,18 @@ jxc (jellyfish) is the legacy `PerformanceTraceEntry` gen — the only family on
 
 ### Registry (jellyfish 16-bit ids)
 
-| # | subscriber | TracePoints (jellyfish ids) | Conf. |
-|---|---|---|---|
-| 1 | HbmMuxSubscriber (threaded) | (HBM-mux band; routes on `MemoryCommand`) | MEDIUM |
-| 2 | DmaSubscriber | (routes on `MemoryCommand()`/`GetDmaId()`) | MEDIUM |
-| 3 | SyncSubscriber (threaded) | {0xa3d,0xa3e,0xa42,0xa43,0xa44,0x93c} | HIGH |
-| 4 | ScalarFenceSubscriber (threaded) | {0xa45,0xa46} = {2629,2630} | HIGH |
-| 5 | TensorCoreStepSubscriber (threaded) | (TC SetTracemark, jellyfish id) | MEDIUM |
-| 6 | TensorCoreHloSubscriber | (TC TraceInstruction, jellyfish id) | MEDIUM |
-| 7 | TensorCoreOverlaySubscriber (threaded) | (same) | MEDIUM |
-| 8 | TensorCoreOnDeviceTraceMeSubscriber | (same) | MEDIUM |
-| 9 | LloOpEventSubscriber (threaded) | (same) | MEDIUM |
-| 10 | ScalarFenceSubscriber (threaded) | {0xa45,0xa46} | HIGH |
+| # | subscriber | TracePoints (jellyfish ids) |
+|---|---|---|
+| 1 | HbmMuxSubscriber (threaded) | (HBM-mux band; routes on `MemoryCommand`) |
+| 2 | DmaSubscriber | (routes on `MemoryCommand()`/`GetDmaId()`) |
+| 3 | SyncSubscriber (threaded) | {0xa3d,0xa3e,0xa42,0xa43,0xa44,0x93c} |
+| 4 | ScalarFenceSubscriber (threaded) | {0xa45,0xa46} = {2629,2630} |
+| 5 | TensorCoreStepSubscriber (threaded) | (TC SetTracemark, jellyfish id) |
+| 6 | TensorCoreHloSubscriber | (TC TraceInstruction, jellyfish id) |
+| 7 | TensorCoreOverlaySubscriber (threaded) | (same) |
+| 8 | TensorCoreOnDeviceTraceMeSubscriber | (same) |
+| 9 | LloOpEventSubscriber (threaded) | (same) |
+| 10 | ScalarFenceSubscriber (threaded) | {0xa45,0xa46} |
 
 The sync id-set is packed `movabs $0xa430a440a3e0a3d @0xf1db880` (16-bit halves `0xa3d/0xa3e/0xa44/0xa43`) + `movl $0x93c0a42` (`{0xa42,0x93c}`). The ScalarFence set is `movl $0xa460a45` (`{0xa45,0xa46}`). The TC single-id sets (subscribers 5..9) and the HbmMux band were **not** individually enumerated `(LOW)`; the jellyfish-id → event-name cross-walk is owned by the [jxc legacy payload page](payload-jxc-legacy.md). `jellyfish::TraceOperand` and `PerformanceTraceEntry` symbols confirmed present.
 
@@ -311,13 +311,13 @@ The sync id-set is packed `movabs $0xa430a440a3e0a3d @0xf1db880` (16-bit halves 
 
 The trackers are the begin/end pairing layer above the subscribers. Each consumes a fixed id subset and pairs spans on one field; this is the analog of `SyncTracker(sync_flag_number)` and `DmaSubscriber(dma_id)`.
 
-| tracker | feeds (trace_point_ids) | begin event | end event | MATCH KEY | Conf. |
-|---|---|---|---|---|---|
-| SyncTracker | 80,86 (+81,82,87,88 instant) | 86 UNSUCCESSFUL_SYNC (`ProcessSyncBlock`) | 80 DMA_DONE (`ProcessSyncUnblock`) | `sync_flag_number` | CERTAIN |
-| DmaSubscriber | CMQ/CMN/HDE req + data-end | `First()`/`MemoryCommand` | `Last()`/`MemoryDataEnd` | `dma_id = GetDmaId()` | HIGH |
-| StepTracker | 84 (TC) / 109 (SC) | TraceMark `0x7fffffff` | TraceMark `0x7ffffffe` | TraceMark id (state+0x8) | CERTAIN |
-| TaskTracker | 119,120 (SC only) | 119 `ScTaskIssueFromScs` | 120 `ScTaskCommitOnSct` | task `tag` (FlatHashMap) | CERTAIN |
-| OverlayTracker | 85 (TC) / 110 (SC) | operand kind `0xd` (open) | operand kind `0x9` (close) | `overlay_id` (state+0x8) | CERTAIN |
+| tracker | feeds (trace_point_ids) | begin event | end event | MATCH KEY |
+|---|---|---|---|---|
+| SyncTracker | 80,86 (+81,82,87,88 instant) | 86 UNSUCCESSFUL_SYNC (`ProcessSyncBlock`) | 80 DMA_DONE (`ProcessSyncUnblock`) | `sync_flag_number` |
+| DmaSubscriber | CMQ/CMN/HDE req + data-end | `First()`/`MemoryCommand` | `Last()`/`MemoryDataEnd` | `dma_id = GetDmaId()` |
+| StepTracker | 84 (TC) / 109 (SC) | TraceMark `0x7fffffff` | TraceMark `0x7ffffffe` | TraceMark id (state+0x8) |
+| TaskTracker | 119,120 (SC only) | 119 `ScTaskIssueFromScs` | 120 `ScTaskCommitOnSct` | task `tag` (FlatHashMap) |
+| OverlayTracker | 85 (TC) / 110 (SC) | operand kind `0xd` (open) | operand kind `0x9` (close) | `overlay_id` (state+0x8) |
 
 ### StepTracker — TraceMark id, sentinel-discriminated
 
@@ -350,16 +350,16 @@ Both ride on id 85 (TC) / 110 (SC); the open/close discriminant is the operand k
 
 ## Relevant Struct / Table Offsets
 
-| Structure | Layout | Conf. |
-|---|---|---|
-| `TracePoints<TraceEntry>` | `std::vector<int32>` {ptr@+0x0, size@+0x8, cap@+0x10}; built on stack, freed after each register | CERTAIN |
-| `CoreDispatcher` map | `FlatHashMap<u16 id (TraceHeader+0x18), vector<shared_ptr<TraceEventSubscriber>>>` | CERTAIN |
-| `TraceEventSubscriber` base | +0x08/+0x0c core_id/chip_id filter; +0x10 `TpuXPlaneBuilder*`; +0x18 per-id `XEventMetadata*` cache / line field | HIGH |
-| `ThreadedSubscriber` | vtable + `ClosureThread` worker (`ThreadLoop @0xf1ede60` pxc) at +0xa0; wrapped vtable set inline | HIGH |
-| `StepTracker` state | +0x8 step id (key), +0x10 start gtc, +0x28 flag, +0x30 present | CERTAIN |
-| `TaskTracker` state | `FlatHashMap<tag, pending>`; `TaskInfo{+0x8 tag, +0x50 present}` | HIGH |
-| `OverlayTracker` state | +0x8 overlay_id (key), +0xc active flag, +0x10 start gtc | CERTAIN |
-| sync id rodata | `@0xa2d6b40` = {81,82,88,87}; +{86,80} via `movabs $0x5000000056` | CERTAIN |
+| Structure | Layout |
+|---|---|
+| `TracePoints<TraceEntry>` | `std::vector<int32>` {ptr@+0x0, size@+0x8, cap@+0x10}; built on stack, freed after each register |
+| `CoreDispatcher` map | `FlatHashMap<u16 id (TraceHeader+0x18), vector<shared_ptr<TraceEventSubscriber>>>` |
+| `TraceEventSubscriber` base | +0x08/+0x0c core_id/chip_id filter; +0x10 `TpuXPlaneBuilder*`; +0x18 per-id `XEventMetadata*` cache / line field |
+| `ThreadedSubscriber` | vtable + `ClosureThread` worker (`ThreadLoop @0xf1ede60` pxc) at +0xa0; wrapped vtable set inline |
+| `StepTracker` state | +0x8 step id (key), +0x10 start gtc, +0x28 flag, +0x30 present |
+| `TaskTracker` state | `FlatHashMap<tag, pending>`; `TaskInfo{+0x8 tag, +0x50 present}` |
+| `OverlayTracker` state | +0x8 overlay_id (key), +0xc active flag, +0x10 start gtc |
+| sync id rodata | `@0xa2d6b40` = {81,82,88,87}; +{86,80} via `movabs $0x5000000056` |
 
 ---
 

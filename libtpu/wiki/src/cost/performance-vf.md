@@ -112,36 +112,36 @@ The grid's INNER axis is the `ViperfishPerformance::Resource` enum: the 28 intra
 
 `kResources` `@0xb43cda8` is the 28-byte traversal order `13 18 1a 19 08 02 03 16 09 0a 04 05 06 07 0b 12 0f 14 1b 0c 10 01 15 0d 11 17 00 0e` (all of `{0..27}` exactly once). Naming each column by dominant occupant:
 
-| col | cells | val(s) | occupant LLO band (classifier-named) | physical reservation port | Confidence |
-|---|---|---|---|---|---|
-| r0 | 2 | 2 | low-ordinal MXU/setup band (ins 0x0, 0x2) | MXU/setup address port A | MEDIUM |
-| r1 | 2 | 2,3 | `kDmaGeneral..` (ins 0x38) | DMA address/issue port | HIGH |
-| r2 | 27 | 7 | MXU matmul band 0xd4..0x106 (MatmulPackedMsk/Lmr) | MXU matmul prep/issue port | HIGH |
-| r3 | 51 | 8,16,32 | MXU matmul/matprep band | **MXU matmul throughput port** (×51) | HIGH |
-| r4 | 38 | 4,5 | matprep band + DoneWithGains/LoadLmr (0xd5..0x10a) | MXU matprep throughput stage A | HIGH |
-| r5 | 38 | 12,13 | same band | MXU matprep throughput stage B | HIGH |
-| r6 | 38 | 20,21 | same band | MXU matprep throughput stage C | HIGH |
-| r7 | 38 | 28,29 | same band | MXU matprep throughput stage D | HIGH |
-| r8 | 2 | 32 | `kVectorLoadLmr` (0x109..0x10a) | LMR / gain-load port | HIGH |
-| r9 | 16 | 2,6 | result-pop FIFO band (0x10b..0x11a) | MXU/EUP result-pop FIFO stage A | HIGH |
-| r10 | 16 | 1,5 | same | result-pop FIFO stage B | HIGH |
-| r11 | 16 | 3,7 | same | result-pop FIFO stage C | HIGH |
-| r12 | 9 | 41,48 | `kVectorPermute/Rotate/BroadcastLane` (0x11b..) | cross-lane result stage A | HIGH |
-| r13 | 14 | 52,57,59 | same + reduce band | cross-lane / reduce result stage B | HIGH |
-| **r14** | 23 | 8,16 | TransposeBinary(0x123)/Permute/Rotate/Broadcast | **Xlu / matrix-result deposit** (conv `R[2]`) | CERTAIN |
-| r15 | 5 | 109,117 | `kVectorTransposeBinary` (0x11f..0x127) | transpose-binary result sub-stage A | HIGH |
-| r16 | 5 | 112,120 | same | transpose-binary result sub-stage B | HIGH |
-| r17 | 3 | 7,15 | same | transpose-binary result sub-stage C | MEDIUM |
-| r18 | 5 | 24 | `kVector{Add,Max,Min,..}ReduceF32` (0x12e..0x132) | reduce-result port | HIGH |
-| r19 | 1 | 3 | `kVectorCcfPush` (0x134) | CCF push port | HIGH |
-| r20 | 1 | 1 | `kVectorPrng` (0x13e) | PRNG port | HIGH |
-| r21 | 14 | 1 | `kVectorSyncFlag*/kVectorWait*/SfrfPush` (0x13f..) | sync-flag / wait / SFRF port | HIGH |
-| r22 | 1 | 8 | `kVectorMatres` (0x169) | matrix-result (Matres) port | HIGH |
-| r23 | 1 | 8 | `kVectorXlaneResult/Transpose-result` (0x16a) | cross-lane / transpose result port | HIGH |
-| r24 | 1 | 3 | `kVectorCcfPop` (0x16b) | CCF pop port | HIGH |
-| r25 | 4 | 5 | `kVectorStoreEvenOddSublanes` (0x174..0x177) | sublane-store port | HIGH |
-| r26 | 6 | 6 | barnacore/store band (0x178..0x17d) | sublane-store / scatter port | MEDIUM |
-| r27 | 1 | 3 | `kVectorSetRngSeed` (0x17f) | RNG seed port | HIGH |
+| col | cells | val(s) | occupant LLO band (classifier-named) | physical reservation port |
+|---|---|---|---|---|
+| r0 | 2 | 2 | low-ordinal MXU/setup band (ins 0x0, 0x2) | MXU/setup address port A |
+| r1 | 2 | 2,3 | `kDmaGeneral..` (ins 0x38) | DMA address/issue port |
+| r2 | 27 | 7 | MXU matmul band 0xd4..0x106 (MatmulPackedMsk/Lmr) | MXU matmul prep/issue port |
+| r3 | 51 | 8,16,32 | MXU matmul/matprep band | **MXU matmul throughput port** (×51) |
+| r4 | 38 | 4,5 | matprep band + DoneWithGains/LoadLmr (0xd5..0x10a) | MXU matprep throughput stage A |
+| r5 | 38 | 12,13 | same band | MXU matprep throughput stage B |
+| r6 | 38 | 20,21 | same band | MXU matprep throughput stage C |
+| r7 | 38 | 28,29 | same band | MXU matprep throughput stage D |
+| r8 | 2 | 32 | `kVectorLoadLmr` (0x109..0x10a) | LMR / gain-load port |
+| r9 | 16 | 2,6 | result-pop FIFO band (0x10b..0x11a) | MXU/EUP result-pop FIFO stage A |
+| r10 | 16 | 1,5 | same | result-pop FIFO stage B |
+| r11 | 16 | 3,7 | same | result-pop FIFO stage C |
+| r12 | 9 | 41,48 | `kVectorPermute/Rotate/BroadcastLane` (0x11b..) | cross-lane result stage A |
+| r13 | 14 | 52,57,59 | same + reduce band | cross-lane / reduce result stage B |
+| **r14** | 23 | 8,16 | TransposeBinary(0x123)/Permute/Rotate/Broadcast | **Xlu / matrix-result deposit** (conv `R[2]`) |
+| r15 | 5 | 109,117 | `kVectorTransposeBinary` (0x11f..0x127) | transpose-binary result sub-stage A |
+| r16 | 5 | 112,120 | same | transpose-binary result sub-stage B |
+| r17 | 3 | 7,15 | same | transpose-binary result sub-stage C |
+| r18 | 5 | 24 | `kVector{Add,Max,Min,..}ReduceF32` (0x12e..0x132) | reduce-result port |
+| r19 | 1 | 3 | `kVectorCcfPush` (0x134) | CCF push port |
+| r20 | 1 | 1 | `kVectorPrng` (0x13e) | PRNG port |
+| r21 | 14 | 1 | `kVectorSyncFlag*/kVectorWait*/SfrfPush` (0x13f..) | sync-flag / wait / SFRF port |
+| r22 | 1 | 8 | `kVectorMatres` (0x169) | matrix-result (Matres) port |
+| r23 | 1 | 8 | `kVectorXlaneResult/Transpose-result` (0x16a) | cross-lane / transpose result port |
+| r24 | 1 | 3 | `kVectorCcfPop` (0x16b) | CCF pop port |
+| r25 | 4 | 5 | `kVectorStoreEvenOddSublanes` (0x174..0x177) | sublane-store port |
+| r26 | 6 | 6 | barnacore/store band (0x178..0x17d) | sublane-store / scatter port |
+| r27 | 1 | 3 | `kVectorSetRngSeed` (0x17f) | RNG seed port |
 
 Column population (cells/col), summing to 378: `r0:2 r1:2 r2:27 r3:51 r4:38 r5:38 r6:38 r7:38 r8:2 r9:16 r10:16 r11:16 r12:9 r13:14 r14:23 r15:5 r16:5 r17:3 r18:5 r19:1 r20:1 r21:14 r22:1 r23:1 r24:1 r25:4 r26:6 r27:1`.
 

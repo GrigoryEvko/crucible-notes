@@ -38,16 +38,16 @@ For reimplementation, the contract is:
 
 `TpuProgram_New @ 0xe8bda60` allocates `0xB8` (184) bytes, runs `tensorflow::TPUExecutableProto::TPUExecutableProto(this, /*arena=*/0)` over the first 0x98 bytes, then zero-fills the remaining trailing slots. The handle therefore is a `TPUExecutableProto` with five extra pointer slots appended; every accessor reads one of them. The destructor `XLA_TpuProgram::~XLA_TpuProgram @ 0xe8bdb20` walks those slots in reverse and confirms each slot's type by how it is released.
 
-| Field | Offset | Type | Meaning | Confidence |
-|---|---|---|---|---|
-| `executable_proto` | `+0` | `tensorflow::TPUExecutableProto` (base) | The serializable executable proto; `New` constructs it, `SharedDtor` finalizes it | CERTAIN |
-| `isa_program` | `+104` (q13) | `xla::IsaProgramProto*` | Backing ISA program; source of host-transfer info; logged in `UnloadAndDestroy` | HIGH |
-| `may_modify_variables` | `+136` (q17) | `uint8` | Whether the program may mutate resource variables | CERTAIN |
-| `compiler_metadata` | `+144` (q18) | HLO/`CompilerMetadata` proto ptr | HLO module proto + program-memory metadata; read by `GetHloMetadata`, `GetProgramSize`, `LogProgramMemorySummary`, `SerializeCompilerMetadata` | HIGH |
-| `shared_obj` | `+152` (q19) | refcounted shared object | Released via `__shared_weak_count::__release_weak`; set during deserialize | MEDIUM |
-| `tpu_core_program` | `+160` (q20) | `unique_ptr<tpu::TpuCoreProgram const>` | The loaded core program; fingerprint bytes live at `+648` inside it | HIGH |
-| `sharding_child_0` | `+168` (q21) | `XLA_TpuProgram*` | Sharding sub-program; recursively destroyed; fetch-target 2 | HIGH |
-| `sharding_child_1` | `+176` (q22) | `XLA_TpuProgram*` | Second sharding sub-program; recursively destroyed; fetch-target 3 | HIGH |
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `executable_proto` | `+0` | `tensorflow::TPUExecutableProto` (base) | The serializable executable proto; `New` constructs it, `SharedDtor` finalizes it |
+| `isa_program` | `+104` (q13) | `xla::IsaProgramProto*` | Backing ISA program; source of host-transfer info; logged in `UnloadAndDestroy` |
+| `may_modify_variables` | `+136` (q17) | `uint8` | Whether the program may mutate resource variables |
+| `compiler_metadata` | `+144` (q18) | HLO/`CompilerMetadata` proto ptr | HLO module proto + program-memory metadata; read by `GetHloMetadata`, `GetProgramSize`, `LogProgramMemorySummary`, `SerializeCompilerMetadata` |
+| `shared_obj` | `+152` (q19) | refcounted shared object | Released via `__shared_weak_count::__release_weak`; set during deserialize |
+| `tpu_core_program` | `+160` (q20) | `unique_ptr<tpu::TpuCoreProgram const>` | The loaded core program; fingerprint bytes live at `+648` inside it |
+| `sharding_child_0` | `+168` (q21) | `XLA_TpuProgram*` | Sharding sub-program; recursively destroyed; fetch-target 2 |
+| `sharding_child_1` | `+176` (q22) | `XLA_TpuProgram*` | Second sharding sub-program; recursively destroyed; fetch-target 3 |
 
 ```c
 // XLA_TpuProgram::~XLA_TpuProgram(this)                          0xe8bdb20
@@ -111,13 +111,13 @@ void UnloadAndDestroy(p, status_out):
 
 ### Function Map
 
-| Function | Address | Size | Role | Confidence |
-|---|---|---|---|---|
-| `TpuProgram_New` | `0xe8bda60` | 107 | Allocate + construct one 184-byte handle | CERTAIN |
-| `TpuProgram_Free` | `0xe8bdae0` | 39 | `~XLA_TpuProgram` + `free` | CERTAIN |
-| `TpuProgram_NewArray` | `0xe8bdbe0` | 103 | Allocate `XLA_TpuProgram*[count]` (CHECK count>0) | CERTAIN |
-| `TpuProgram_FreeArray` | `0xe8bdc60` | 10 | `free` the pointer array (not its elements) | CERTAIN |
-| `TpuProgram_UnloadAndDestroy` | `0xe8bdc80` | 382 | Unload core program from device + status-out | HIGH |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `TpuProgram_New` | `0xe8bda60` | 107 | Allocate + construct one 184-byte handle |
+| `TpuProgram_Free` | `0xe8bdae0` | 39 | `~XLA_TpuProgram` + `free` |
+| `TpuProgram_NewArray` | `0xe8bdbe0` | 103 | Allocate `XLA_TpuProgram*[count]` (CHECK count>0) |
+| `TpuProgram_FreeArray` | `0xe8bdc60` | 10 | `free` the pointer array (not its elements) |
+| `TpuProgram_UnloadAndDestroy` | `0xe8bdc80` | 382 | Unload core program from device + status-out |
 
 ---
 
@@ -196,12 +196,12 @@ void DeserializeFromGetTpuProgramResponseProto(exec_bytes, exec_len, handle, sta
 
 ### Function Map
 
-| Function | Address | Size | Role | Confidence |
-|---|---|---|---|---|
-| `TpuProgram_SerializeTpuExecutable` | `0xe8be720` | 268 | Serialize the full executable proto → `{bytes,len}` blob (err line 201) | CERTAIN |
-| `TpuProgram_SerializeCompilerMetadata` | `0xe8be840` | 275 | Serialize the compiler-metadata proto (slot +144) → blob (err line 218) | CERTAIN |
-| `TpuProgram_GetExecutableInfo` | `0xe8bdf40` | 277 | Serialize a stripped executable proto (no ISA/profile) → blob (err line 99) | CERTAIN |
-| `TpuProgram_DeserializeFromGetTpuProgramResponseProto` | `0xe8be960` | 792 | Parse a `GetTpuProgramResponse` proto → populate handle + load core program | HIGH |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `TpuProgram_SerializeTpuExecutable` | `0xe8be720` | 268 | Serialize the full executable proto → `{bytes,len}` blob (err line 201) |
+| `TpuProgram_SerializeCompilerMetadata` | `0xe8be840` | 275 | Serialize the compiler-metadata proto (slot +144) → blob (err line 218) |
+| `TpuProgram_GetExecutableInfo` | `0xe8bdf40` | 277 | Serialize a stripped executable proto (no ISA/profile) → blob (err line 99) |
+| `TpuProgram_DeserializeFromGetTpuProgramResponseProto` | `0xe8be960` | 792 | Parse a `GetTpuProgramResponse` proto → populate handle + load core program |
 
 ---
 
@@ -285,17 +285,17 @@ bool LogProgramMemorySummary(handle):
 
 ### Function Map
 
-| Function | Address | Size | Role | Confidence |
-|---|---|---|---|---|
-| `TpuProgram_GetProgramSize` | `0xe8bde00` | 50 | `SpaceUsedLong(proto) + SpaceUsedLong(compiler_metadata)` | CERTAIN |
-| `TpuProgram_GetMayModifyVariables` | `0xe8be520` | 83 | Read `+136` bool into out-param (CHECK out!=null, line 163) | CERTAIN |
-| `TpuProgram_HasSharding` | `0xe8be580` | 98 | True iff both sharding children (`+168`,`+176`) set (CHECK handle, line 168) | CERTAIN |
-| `TpuProgram_GetTpuProgram` | `0xe8be600` | 282 | Fetch-target switch → handle / child0 / child1 (FATAL otherwise, line 185) | CERTAIN |
-| `TpuProgram_GetFingerprint` | `0xe8bed60` | 447 | Heap copy of fingerprint at `core+648`; null if uninitialized (VLOG line 275) | HIGH |
-| `TpuProgram_DestroyFingerprint` | `0xe8bef20` | 10 | `free` the fingerprint buffer | CERTAIN |
-| `TpuProgram_GetHostTransferInfo` | `0xe8be060` | 508 | Serialize `TPUHostTransferInfoProto` from ISA program → blob | HIGH |
-| `TpuProgram_GetHloMetadata` | `0xe8be260` | 694 | Serialize `HloProto` (module + IO-alias) from compiler metadata → blob | HIGH |
-| `TpuProgram_LogProgramMemorySummary` | `0xe8bde40` | 249 | `LOG` the program-memory summary if present (line 80); false if no metadata | HIGH |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `TpuProgram_GetProgramSize` | `0xe8bde00` | 50 | `SpaceUsedLong(proto) + SpaceUsedLong(compiler_metadata)` |
+| `TpuProgram_GetMayModifyVariables` | `0xe8be520` | 83 | Read `+136` bool into out-param (CHECK out!=null, line 163) |
+| `TpuProgram_HasSharding` | `0xe8be580` | 98 | True iff both sharding children (`+168`,`+176`) set (CHECK handle, line 168) |
+| `TpuProgram_GetTpuProgram` | `0xe8be600` | 282 | Fetch-target switch → handle / child0 / child1 (FATAL otherwise, line 185) |
+| `TpuProgram_GetFingerprint` | `0xe8bed60` | 447 | Heap copy of fingerprint at `core+648`; null if uninitialized (VLOG line 275) |
+| `TpuProgram_DestroyFingerprint` | `0xe8bef20` | 10 | `free` the fingerprint buffer |
+| `TpuProgram_GetHostTransferInfo` | `0xe8be060` | 508 | Serialize `TPUHostTransferInfoProto` from ISA program → blob |
+| `TpuProgram_GetHloMetadata` | `0xe8be260` | 694 | Serialize `HloProto` (module + IO-alias) from compiler metadata → blob |
+| `TpuProgram_LogProgramMemorySummary` | `0xe8bde40` | 249 | `LOG` the program-memory summary if present (line 80); false if no metadata |
 
 ---
 
@@ -303,26 +303,26 @@ bool LogProgramMemorySummary(handle):
 
 The full 18-function `TpuProgram_*` surface, grouped by area, as recovered from the function table. Span `0xe8bda60`–`0xe8bef20`.
 
-| Function | Address | Area | Confidence |
-|---|---|---|---|
-| `TpuProgram_New` | `0xe8bda60` | Lifecycle | CERTAIN |
-| `TpuProgram_Free` | `0xe8bdae0` | Lifecycle | CERTAIN |
-| `TpuProgram_NewArray` | `0xe8bdbe0` | Lifecycle | CERTAIN |
-| `TpuProgram_FreeArray` | `0xe8bdc60` | Lifecycle | CERTAIN |
-| `TpuProgram_UnloadAndDestroy` | `0xe8bdc80` | Lifecycle | HIGH |
-| `TpuProgram_GetProgramSize` | `0xe8bde00` | Metadata | CERTAIN |
-| `TpuProgram_LogProgramMemorySummary` | `0xe8bde40` | Metadata | HIGH |
-| `TpuProgram_GetExecutableInfo` | `0xe8bdf40` | Serialization | CERTAIN |
-| `TpuProgram_GetHostTransferInfo` | `0xe8be060` | Metadata | HIGH |
-| `TpuProgram_GetHloMetadata` | `0xe8be260` | Metadata | HIGH |
-| `TpuProgram_GetMayModifyVariables` | `0xe8be520` | Metadata | CERTAIN |
-| `TpuProgram_HasSharding` | `0xe8be580` | Metadata | CERTAIN |
-| `TpuProgram_GetTpuProgram` | `0xe8be600` | Metadata | CERTAIN |
-| `TpuProgram_SerializeTpuExecutable` | `0xe8be720` | Serialization | CERTAIN |
-| `TpuProgram_SerializeCompilerMetadata` | `0xe8be840` | Serialization | CERTAIN |
-| `TpuProgram_DeserializeFromGetTpuProgramResponseProto` | `0xe8be960` | Serialization | HIGH |
-| `TpuProgram_GetFingerprint` | `0xe8bed60` | Metadata | HIGH |
-| `TpuProgram_DestroyFingerprint` | `0xe8bef20` | Metadata | CERTAIN |
+| Function | Address | Area |
+|---|---|---|
+| `TpuProgram_New` | `0xe8bda60` | Lifecycle |
+| `TpuProgram_Free` | `0xe8bdae0` | Lifecycle |
+| `TpuProgram_NewArray` | `0xe8bdbe0` | Lifecycle |
+| `TpuProgram_FreeArray` | `0xe8bdc60` | Lifecycle |
+| `TpuProgram_UnloadAndDestroy` | `0xe8bdc80` | Lifecycle |
+| `TpuProgram_GetProgramSize` | `0xe8bde00` | Metadata |
+| `TpuProgram_LogProgramMemorySummary` | `0xe8bde40` | Metadata |
+| `TpuProgram_GetExecutableInfo` | `0xe8bdf40` | Serialization |
+| `TpuProgram_GetHostTransferInfo` | `0xe8be060` | Metadata |
+| `TpuProgram_GetHloMetadata` | `0xe8be260` | Metadata |
+| `TpuProgram_GetMayModifyVariables` | `0xe8be520` | Metadata |
+| `TpuProgram_HasSharding` | `0xe8be580` | Metadata |
+| `TpuProgram_GetTpuProgram` | `0xe8be600` | Metadata |
+| `TpuProgram_SerializeTpuExecutable` | `0xe8be720` | Serialization |
+| `TpuProgram_SerializeCompilerMetadata` | `0xe8be840` | Serialization |
+| `TpuProgram_DeserializeFromGetTpuProgramResponseProto` | `0xe8be960` | Serialization |
+| `TpuProgram_GetFingerprint` | `0xe8bed60` | Metadata |
+| `TpuProgram_DestroyFingerprint` | `0xe8bef20` | Metadata |
 
 > **NOTE —** there is no `TpuProgram_SerializedSize` or `TpuProgram_HasSparseCoreProgram` in this build — the size query is `GetProgramSize` (proto `SpaceUsedLong`, not a serialized byte count), and SparseCore presence is not a `TpuProgram_*` predicate here. The closest sharding/sub-program predicate is `HasSharding`, and the host-transfer surface is `GetHostTransferInfo`. The roster is exactly the 18 functions above.
 

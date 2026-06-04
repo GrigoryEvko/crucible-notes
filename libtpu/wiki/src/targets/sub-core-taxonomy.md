@@ -68,15 +68,15 @@ The fetch/load split decouples instruction issue from data movement, letting the
 
 This roster is taken directly from the `*_functions.json` symbol table — the strongest available evidence for what actually exists. Counts are occurrence counts of the mangled namespace token; "—" means the namespace is absent.
 
-| Sub-namespace | JXC | PXC | VXC | GXC | Confidence |
-|---|---|---|---|---|---|
-| fetch-core | — (fused) | `pfc` | `vfc` | `gfc` | CERTAIN |
-| load-core | — (fused) | `plc` | `vlc` | `glc` | CERTAIN |
-| family-level `isa` | — | `pxc::isa` (137K) | `vxc::isa` (170K) | — (absent) | CERTAIN |
-| family-level `profiler` | — | `pxc::profiler` (8K) | — | — | CERTAIN |
-| sub-core `isa` | — | `pfc::isa` (46K) | `vfc::isa` (69K) | `gfc::isa` (270K), `glc::isa` (294K) | CERTAIN |
-| sub-core `profiler` | — | `pfc`, `plc` | `vfc`, `vlc` | `gfc`, `glc` | CERTAIN |
-| engine blocks | `dfc`, `jfc`, `registers`, `snap` | `internal`, `pfc::b0` | — | — | CERTAIN |
+| Sub-namespace | JXC | PXC | VXC | GXC |
+|---|---|---|---|---|
+| fetch-core | — (fused) | `pfc` | `vfc` | `gfc` |
+| load-core | — (fused) | `plc` | `vlc` | `glc` |
+| family-level `isa` | — | `pxc::isa` (137K) | `vxc::isa` (170K) | — (absent) |
+| family-level `profiler` | — | `pxc::profiler` (8K) | — | — |
+| sub-core `isa` | — | `pfc::isa` (46K) | `vfc::isa` (69K) | `gfc::isa` (270K), `glc::isa` (294K) |
+| sub-core `profiler` | — | `pfc`, `plc` | `vfc`, `vlc` | `gfc`, `glc` |
+| engine blocks | `dfc`, `jfc`, `registers`, `snap` | `internal`, `pfc::b0` | — | — |
 
 > **NOTE —** the `bcs`/`brn`/`hbm`/`hib`/`ici` tokens are *not* JXC sub-namespaces — they are prefixes inside `*_trace_entry` type names (e.g. `bcs_internal_trace_entry`, `ici_packet_trace_entry`). JXC has **no `jxc::isa`** at all: the Jellyfish/Dragonfish compiler-side ISA lives in `platforms_deepsea::jellyfish::isa` (the shared compiler-base namespace, e.g. `platforms_deepsea::jellyfish::isa::BundleSlot`, `MiscOpcode`; the demangled-symbol search `xla::jellyfish::isa` returns zero, `platforms_deepsea::jellyfish::isa` returns 3122). `jellyfish`/`dragonfish` appear only as `jellyfish_performance_counters` / `dragonfish_performance_counters`, never as bare namespaces.
 
@@ -88,15 +88,15 @@ This roster is taken directly from the `*_functions.json` symbol table — the s
 
 The six sub-cores map to silicon codenames as follows. JXC is included for completeness as the fused predecessor; it has no fetch/load sub-cores, so its row names the family rather than a sub-core.
 
-| Sub-core | Family | Role | Codename(s) | TpuVersion | Confidence |
-|---|---|---|---|---|---|
-| (fused) | JXC | single fused dataflow | Jellyfish, Dragonfish | 0, 1 | CERTAIN |
-| `pfc` | PXC | Pufferfish fetch-core | Pufferfish | 2 | CERTAIN |
-| `plc` | PXC | Pufferfish load-core | Pufferfish | 2 | CERTAIN |
-| `vfc` | VXC | vector fetch-core | Viperfish | 3 | CERTAIN |
-| `vlc` | VXC | vector load-core | Viperfish (Viperlite) | 3 | CERTAIN |
-| `glc` | GXC | general load-core | **Ghostlite** | **4** | CERTAIN |
-| `gfc` | GXC | general fetch-core | **6acc60406** | **5** | CERTAIN |
+| Sub-core | Family | Role | Codename(s) | TpuVersion |
+|---|---|---|---|---|
+| (fused) | JXC | single fused dataflow | Jellyfish, Dragonfish | 0, 1 |
+| `pfc` | PXC | Pufferfish fetch-core | Pufferfish | 2 |
+| `plc` | PXC | Pufferfish load-core | Pufferfish | 2 |
+| `vfc` | VXC | vector fetch-core | Viperfish | 3 |
+| `vlc` | VXC | vector load-core | Viperfish (Viperlite) | 3 |
+| `glc` | GXC | general load-core | **Ghostlite** | **4** |
+| `gfc` | GXC | general fetch-core | **6acc60406** | **5** |
 
 > **GOTCHA —** the GXC codename pairing is the easiest thing on this page to get wrong. **Ghostlite (v4) = `glc`** (load-core); **6acc60406 (v5) = `gfc`** (fetch-core). The codec walks pin it at the symbol level: `TpuCodecGhostlite` dispatches only to `gxc::glc::isa` + `ghostlite::isa::EncoderGl*`; the anonymous v5 codec dispatches only to `gxc::gfc::isa`. The binary's external-name strings keep the two a generation apart — Ghostlite resolves to `TPU v6 lite` (the `TPU v6e`/`TPU v6 lite` band), 6acc60406 to `TPU7x` — so pairing `gfc` with a "v6" name is a generation off-by-one. The canonical version↔external-name reconciliation is the [Codename Matrix](tpu-version-codename-matrix.md).
 
@@ -106,13 +106,13 @@ The six sub-cores map to silicon codenames as follows. JXC is included for compl
 
 The sub-cores were originally grouped because the profiler emits a per-sub-core `profiler::TraceEntry` event class. The symbol table shows this class exists in **five** namespaces, not six — and not in the obvious one-per-sub-core pattern:
 
-| Namespace holding `profiler::TraceEntry` | Token count | Granularity | Confidence |
-|---|---|---|---|
-| `pxc::profiler::TraceEntry` | 3087 | **family-level** (not split into pfc/plc) | CERTAIN |
-| `vxc::vfc::profiler::TraceEntry` | 4338 | sub-core (fetch) | CERTAIN |
-| `vxc::vlc::profiler::TraceEntry` | 3326 | sub-core (load) | CERTAIN |
-| `gxc::gfc::profiler::TraceEntry` | 4781 | sub-core (fetch) | CERTAIN |
-| `gxc::glc::profiler::TraceEntry` | 4590 | sub-core (load) | CERTAIN |
+| Namespace holding `profiler::TraceEntry` | Token count | Granularity |
+|---|---|---|
+| `pxc::profiler::TraceEntry` | 3087 | **family-level** (not split into pfc/plc) |
+| `vxc::vfc::profiler::TraceEntry` | 4338 | sub-core (fetch) |
+| `vxc::vlc::profiler::TraceEntry` | 3326 | sub-core (load) |
+| `gxc::gfc::profiler::TraceEntry` | 4781 | sub-core (fetch) |
+| `gxc::glc::profiler::TraceEntry` | 4590 | sub-core (load) |
 
 The `TraceEntry` class consumes a `TpuXPlaneBuilder` and produces `tsl::profiler::XEventBuilder` events (`ProcessTraceEntry`, `UpdateContext` methods), feeding the XLA profiler's XPlane. Each instance is keyed by a `ChipCoreId` and threads `JfTrace_RunDebugInfo` vectors and offload-context lookup maps.
 
@@ -148,12 +148,12 @@ The two trees meet at the codec layer: a `TpuCodec*` object (compiler-side, unde
 
 The sub-core that matters most for a compiler-backend reimplementation is the one that owns the on-chip bundle ISA. For the split families this is a per-sub-core `isa` namespace, and its central type is a `TensorCoreBundleCompact` (the packed instruction bundle the codec encodes and decodes):
 
-| Sub-core ISA | Bundle-compact type present | Token count | Confidence |
-|---|---|---|---|
-| `pxc::pfc::isa` | `BarnaCoreChannelBundle`, `VectorBase` | 46K | CERTAIN |
-| `vxc::vfc::isa` | SparseCore Scs/Tac bundle types | 69K | CERTAIN |
-| `gxc::glc::isa` | `TensorCoreBundleCompact` (Ghostlite/v4) | 294K | CERTAIN |
-| `gxc::gfc::isa` | `TensorCoreBundleCompact` (6acc60406/v5) | 270K | CERTAIN |
+| Sub-core ISA | Bundle-compact type present | Token count |
+|---|---|---|
+| `pxc::pfc::isa` | `BarnaCoreChannelBundle`, `VectorBase` | 46K |
+| `vxc::vfc::isa` | SparseCore Scs/Tac bundle types | 69K |
+| `gxc::glc::isa` | `TensorCoreBundleCompact` (Ghostlite/v4) | 294K |
+| `gxc::gfc::isa` | `TensorCoreBundleCompact` (6acc60406/v5) | 270K |
 
 The codec for each version binds *exclusively* to one sub-core ISA. The `TpuCodecGhostlite` codec dispatches only to `gxc::glc::isa` (+ the named `ghostlite::isa::EncoderGl*` workers); the anonymous v5 codec dispatches only to `gxc::gfc::isa`; the `TpuCodecViperfish` codec binds to `vxc::vfc`/`vlc` and `viperfish::isa`. This exclusive binding is the surest symbol-level evidence for the codename ↔ sub-core map, because the codec methods are decoded function bodies, not heuristics.
 

@@ -77,14 +77,14 @@ llvm::TPUGfcSubtarget::getNumPredicateRegisters()  @ 0x13c630e0  -> 16
 
 The base `llvm::TPUSubtarget` provides no override — JF/DF/PF-TensorCore inherit the 15-register `HardwareBundleBits` model. The `15` vs `16` is not a contradiction: `15` is the count of **allocatable** named registers (`ValidatePredicateRegister` accepts only index `< 15`, `cmp $0xf; jb`), while `16` is the size of the **encodable** 4-bit index namespace `0..15`, where index 15 maps to the always-execute sentinel as a constant-true register.
 
-| Codename | TpuVer | Family | `getNumPredicateRegisters` | Named usable regs | Notes | Confidence |
-|---|---|---|---|---|---|---|
-| Jellyfish | 0 | JXC | 15 (`HardwareBundleBits`) | P0..P14 | + always(15), never(31) | CONFIRMED |
-| Dragonfish | 1 | JXC | 15 (inherits JF) | P0..P14 | alias of Jellyfish model | HIGH |
-| Pufferfish | 2 | PXC | TC 15 (base) / BC 16 (`TPUBcSubtarget`) | P0..P14 (TC) / P0..P15 (BC) | BC subtarget bumps to 16-index | CONFIRMED |
-| Viperfish | 3 | VXC | 16 (`TPUVfcSubtarget`) | P0..P15 | full 16-index namespace | CONFIRMED |
-| Ghostlite | 4 | GXC/GLC | 16 (`TPUGlcSubtarget`) | P0..P15 | | CONFIRMED |
-| `6acc60406` (TPU7x) | 5 | GXC/GFC | 16 (`TPUGfcSubtarget`) | P0..P15 | + rotating predicates, + dual-slot pool | CONFIRMED |
+| Codename | TpuVer | Family | `getNumPredicateRegisters` | Named usable regs | Notes |
+|---|---|---|---|---|---|
+| Jellyfish | 0 | JXC | 15 (`HardwareBundleBits`) | P0..P14 | + always(15), never(31) |
+| Dragonfish | 1 | JXC | 15 (inherits JF) | P0..P14 | alias of Jellyfish model |
+| Pufferfish | 2 | PXC | TC 15 (base) / BC 16 (`TPUBcSubtarget`) | P0..P14 (TC) / P0..P15 (BC) | BC subtarget bumps to 16-index |
+| Viperfish | 3 | VXC | 16 (`TPUVfcSubtarget`) | P0..P15 | full 16-index namespace |
+| Ghostlite | 4 | GXC/GLC | 16 (`TPUGlcSubtarget`) | P0..P15 | |
+| `6acc60406` (TPU7x) | 5 | GXC/GFC | 16 (`TPUGfcSubtarget`) | P0..P15 | + rotating predicates, + dual-slot pool |
 
 > **NOTE —** the always-execute register appears as index `15` in the proto/`HardwareBundleBits` view but as LLVM register `#6` in the MC printer (`printPredicateOperandAux` @ `0x13c73c80` tests `reg == 6` and emits no `@Pn`). The two numbering schemes are different register-ID spaces for the same architectural "unpredicated" register; a decoder must not assume the LLVM register number equals the hardware index.
 
@@ -199,12 +199,12 @@ Integer equality needs no signedness; only the ordering comparisons split into s
 
 The scalar predicate file is combined via four dedicated emitter ops, decoded from the Pufferfish TensorCore emitter (other gens analogous):
 
-| Op | Address | Semantics | Confidence |
-|---|---|---|---|
-| `EmitPredicateOr(dst, a, b)` | `0x14105300` | `dst = a OR b`; the only logical-combine primitive the hardware exposes | CONFIRMED |
-| `EmitPredicateNegate(src, dst)` | `0x141052e0` | `dst = NOT src`; implemented as `dst \| 0x100000000` dispatched via vtable `+0xe0` (the high dword sets the negate flag) | CONFIRMED |
-| `EmitPredicateMove(src, dst)` | `0x141052c0` | `dst = src` (predicate copy) | CONFIRMED |
-| `EmitPredicateImmediate(dst, value)` | `0x141033e0` | `dst = const` (true/false materialization) | CONFIRMED |
+| Op | Address | Semantics |
+|---|---|---|
+| `EmitPredicateOr(dst, a, b)` | `0x14105300` | `dst = a OR b`; the only logical-combine primitive the hardware exposes |
+| `EmitPredicateNegate(src, dst)` | `0x141052e0` | `dst = NOT src`; implemented as `dst \| 0x100000000` dispatched via vtable `+0xe0` (the high dword sets the negate flag) |
+| `EmitPredicateMove(src, dst)` | `0x141052c0` | `dst = src` (predicate copy) |
+| `EmitPredicateImmediate(dst, value)` | `0x141033e0` | `dst = const` (true/false materialization) |
 
 The `EmitPredicateNegate` body confirms the negate mechanism byte-exactly:
 

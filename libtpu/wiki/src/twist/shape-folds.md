@@ -218,17 +218,17 @@ The megacore split pairs with the plane, not the ring: the reduce-scatter ring i
 
 ## 6. Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `TwistedTorusND::UpdateMinMaxDims` | `0x137d0260` | `K`/`2K` reduction + the two shape CHECKs + `(num2K, numK)` counts | HIGH (CHECK strings verbatim) |
-| `GetReplicaPair3DOnTwistedTorus` | `0x1c893400` | the per-shape coordinate fold (dispatch on `num2K`, `arg`); `num_max_dims == 2` gate | HIGH (fold emulation-verified for `num2K=2`) |
-| `TwistedTorusND::GetPhase1ReplicaGroups` | `0x137d3de0` | Phase1 AG-over-plane groups + megacore even/odd split | HIGH (group-count `imul`, split appends verified) |
-| `TwistedTorusND::GetPerColorShardIdTable` | `0x137d2d80` | 1-phase-only gate (forces `arg = 0`) | HIGH |
-| `TpuTopology::LogicalDevicesPerChip` | `0x20ad3020` | `Megacore() ? 1 : CoreCount()` — keys the split | HIGH |
-| `Target::CoresPerChip` | `0x1d615b40` | `int32[topology+0x7c + coreType*12]` | HIGH |
-| `CreateTpuSliceTopology` | `0x1ff939c0` | emits the verbatim three-shape error string | HIGH (string verified) |
-| `GetReplicaPair3D arg==1 fold` | `0x1c893535` | distinct `≥2-phase` seam | LOW (located; CHECK-gated unreachable in v0.0.40) |
-| `TwistedTorusTopology::GetTiebreak` | `0x20b41320` | routing-side literal `nK` distance/tiebreak | MEDIUM (located; n-dependent math not decoded) |
+| Function | Address | Role |
+|---|---|---|
+| `TwistedTorusND::UpdateMinMaxDims` | `0x137d0260` | `K`/`2K` reduction + the two shape CHECKs + `(num2K, numK)` counts |
+| `GetReplicaPair3DOnTwistedTorus` | `0x1c893400` | the per-shape coordinate fold (dispatch on `num2K`, `arg`); `num_max_dims == 2` gate |
+| `TwistedTorusND::GetPhase1ReplicaGroups` | `0x137d3de0` | Phase1 AG-over-plane groups + megacore even/odd split |
+| `TwistedTorusND::GetPerColorShardIdTable` | `0x137d2d80` | 1-phase-only gate (forces `arg = 0`) |
+| `TpuTopology::LogicalDevicesPerChip` | `0x20ad3020` | `Megacore() ? 1 : CoreCount()` — keys the split |
+| `Target::CoresPerChip` | `0x1d615b40` | `int32[topology+0x7c + coreType*12]` |
+| `CreateTpuSliceTopology` | `0x1ff939c0` | emits the verbatim three-shape error string |
+| `GetReplicaPair3D arg==1 fold` | `0x1c893535` | distinct `≥2-phase` seam |
+| `TwistedTorusTopology::GetTiebreak` | `0x20b41320` | routing-side literal `nK` distance/tiebreak |
 
 ---
 

@@ -65,20 +65,20 @@ MatrixMultiplyAccumulateFunctor::operator()                       // 0x1310cd80
 
 The elementwise op chain is JIT-emitted by the handlers:
 
-| Handler | Address | Role | Confidence |
-|---|---|---|---|
-| `HandleBroadcast` | `0x136f1d60` | Bias broadcast (splat to tile) | CERTAIN |
-| `HandleAdd` | `0x13e22e80` | Bias add (`VaddF32`/`VaddS32`, dtype-keyed) | CERTAIN |
-| `HandleConvert` | `0x13e22040` | In-fusion (re)quant/dequant | CERTAIN |
-| `HandleMaximum` | `0x13e21f80` | ReLU / clip-low | CERTAIN |
-| `HandleClamp` | `0x13e21f20` | Clamp both sides | CERTAIN |
-| `HandleMultiply` | `0x13e228c0` | Scale multiply | CERTAIN |
-| `HandleReducePrecision` | `0x13e23a40` | bf16 round-to-nearest-even | CERTAIN |
-| `HandleStochasticConvert` | `0x13e22520` | HLO `kStochasticConvert` | CERTAIN |
+| Handler | Address | Role |
+|---|---|---|
+| `HandleBroadcast` | `0x136f1d60` | Bias broadcast (splat to tile) |
+| `HandleAdd` | `0x13e22e80` | Bias add (`VaddF32`/`VaddS32`, dtype-keyed) |
+| `HandleConvert` | `0x13e22040` | In-fusion (re)quant/dequant |
+| `HandleMaximum` | `0x13e21f80` | ReLU / clip-low |
+| `HandleClamp` | `0x13e21f20` | Clamp both sides |
+| `HandleMultiply` | `0x13e228c0` | Scale multiply |
+| `HandleReducePrecision` | `0x13e23a40` | bf16 round-to-nearest-even |
+| `HandleStochasticConvert` | `0x13e22520` | HLO `kStochasticConvert` |
 
 `HandleBroadcast` reads the broadcast operand, splats the bias across the output tile (`PackOrMakeTuple`), and materializes it via `OpaqueCopy`. The bias operand enters through `FusionEmitter::AddInput` (`0x136d5f20`).
 
-> **NOTE —** a symbol-and-string sweep finds no `BiasAddEmitter` / `EmitBias`. Bias-add is the generic fusion vectorizer emitting `Add(value, Broadcast(bias))`. Treat "bias" as an ordinary fused input edge, not a special op.
+> **NOTE —** there is no `BiasAddEmitter` / `EmitBias`. Bias-add is the generic fusion vectorizer emitting `Add(value, Broadcast(bias))`. Treat "bias" as an ordinary fused input edge, not a special op.
 
 ---
 
@@ -97,12 +97,12 @@ The accumulate op is selected by the output element type, and the high-accuracy 
 
 The bf16-in-f32 multi-pass accumulation (the `bf16x2`/`bf16x3` high-accuracy modes) uses two dedicated mixed adds that fold a bf16 result half into an f32 accumulator:
 
-| Builder method | Address | LLO opcode | Role | Confidence |
-|---|---|---|---|---|
-| `VaddF32MixedBF16HighInst` | `0x1d55dd40` | `0x11e` | Accumulate bf16 HIGH pass into f32 | CERTAIN |
-| `VaddF32MixedBF16LowInst` | `0x1d55dd80` | `0x11f` | Accumulate bf16 LOW pass into f32 | CERTAIN |
-| `VaddF32` | `0x1d525160` | (binop) | Plain f32 accumulate | CERTAIN |
-| `VaddS32` | `0x1d51e9c0` | (binop) | Plain int32 accumulate | CERTAIN |
+| Builder method | Address | LLO opcode | Role |
+|---|---|---|---|
+| `VaddF32MixedBF16HighInst` | `0x1d55dd40` | `0x11e` | Accumulate bf16 HIGH pass into f32 |
+| `VaddF32MixedBF16LowInst` | `0x1d55dd80` | `0x11f` | Accumulate bf16 LOW pass into f32 |
+| `VaddF32` | `0x1d525160` | (binop) | Plain f32 accumulate |
+| `VaddS32` | `0x1d51e9c0` | (binop) | Plain int32 accumulate |
 
 The decompile confirms `VaddF32MixedBF16HighInst` calling `CreateVectorBinop(0x11E, …)`. The accumulate is always f32-wide (the systolic array multiplies bf16 but partial products accumulate in an f32 register file), which is why fp32 and bf16 share the same per-matmul MXU latency.
 
@@ -123,13 +123,13 @@ function VcvtEXMYToE4M3(in, exp_bits):                  // 0x1d52b440
     return region->AppendInstruction(inst)
 ```
 
-| Method | Address | LLO opcode | Creator | Confidence |
-|---|---|---|---|---|
-| `VcvtEXMYToE4M3` | `0x1d52b440` | `0x6e` | `CreateVectorEXMYConversion` (gate `SupportsFloat8EXMY`) | CERTAIN |
-| `VcvtEXMYToE5M2` | `0x1d52b520` | `0x6f` | `CreateVectorEXMYConversion` | CERTAIN |
-| `VpackCBf16ToE5M2` | `0x1d567a40` | `0x126` | `CreateVectorPack` (VpackFormat) | HIGH |
-| `VpackCBf16ToE4M3Fn` | `0x1d567b20` | `0x126` | `CreateVectorPack` (VpackFormat) | HIGH |
-| `VcvtF32ToNarrowFloat` | `0x1d560960` | (composite) | `VimmIf`+`VabsF32`+`SimplifyPackF16` (software RNE) | MEDIUM |
+| Method | Address | LLO opcode | Creator |
+|---|---|---|---|
+| `VcvtEXMYToE4M3` | `0x1d52b440` | `0x6e` | `CreateVectorEXMYConversion` (gate `SupportsFloat8EXMY`) |
+| `VcvtEXMYToE5M2` | `0x1d52b520` | `0x6f` | `CreateVectorEXMYConversion` |
+| `VpackCBf16ToE5M2` | `0x1d567a40` | `0x126` | `CreateVectorPack` (VpackFormat) |
+| `VpackCBf16ToE4M3Fn` | `0x1d567b20` | `0x126` | `CreateVectorPack` (VpackFormat) |
+| `VcvtF32ToNarrowFloat` | `0x1d560960` | (composite) | `VimmIf`+`VabsF32`+`SimplifyPackF16` (software RNE) |
 
 ### Encoding — stochastic rounding
 
@@ -141,13 +141,13 @@ function VcvtSrF32ToE5M2(src_f32, rng_bits):            // 0x1d52b600
     return region->AppendInstruction(inst)
 ```
 
-| Method | Address | LLO opcode | Confidence |
-|---|---|---|---|
-| `VcvtSrF32ToE5M2` | `0x1d52b600` | `0x70` | CERTAIN |
-| `VcvtSrF32ToE4M3` | `0x1d52b640` | `0x71` | CERTAIN |
-| `VcvtSrF32ToIf8` | `0x1d52b680` | `0x72` | HIGH |
-| `VcvtSrF32ToBf16` | `0x1d52b6c0` | `0x73` | HIGH |
-| `VcvtF32ToS32Stochastic` | `0x1d52ade0` | `0x5e` (fast) / `0x15c` (sw fallback) | HIGH |
+| Method | Address | LLO opcode |
+|---|---|---|
+| `VcvtSrF32ToE5M2` | `0x1d52b600` | `0x70` |
+| `VcvtSrF32ToE4M3` | `0x1d52b640` | `0x71` |
+| `VcvtSrF32ToIf8` | `0x1d52b680` | `0x72` |
+| `VcvtSrF32ToBf16` | `0x1d52b6c0` | `0x73` |
+| `VcvtF32ToS32Stochastic` | `0x1d52ade0` | `0x5e` (fast) / `0x15c` (sw fallback) |
 
 The decompile confirms `VcvtSrF32ToE5M2` → `CreateVectorBinop(0x70u, …)` and `VcvtSrF32ToE4M3` → `CreateVectorBinop(0x71u, …)`. There is no software emulation for the fp8/bf16 Sr converts on capable targets — they are one op each. The HLO `kStochasticConvert` (`HandleStochasticConvert` `0x13e22520`) dispatches to this family for fp8/bf16 outputs and to `VcvtF32ToS32Stochastic` for integer outputs.
 
@@ -177,14 +177,14 @@ function VclampSymmetricF32(value, bound):              // 0x1d527fc0
     return region->AppendInstruction(inst)
 ```
 
-| Method | Address | Body | Confidence |
-|---|---|---|---|
-| `VclampSymmetricF32` | `0x1d527fc0` | `CreateVectorClampSymmetric` + min/max (`0x15f`) fallback | CERTAIN |
-| `VclampSymmetricBf16` | `0x1d5283a0` | same | HIGH |
-| `VclampAsymmetricF32` | `0x1d528480` | binop `0x4c` + `Minimum`/`Maximum` (lo ≠ −hi) | HIGH |
-| `VclampAsymmetricBF16` | `0x1d528740` | same | HIGH |
-| `VclampGezF32` / `Bf16` | `0x1d527ea0` / `0x1d527ee0` | clamp ≥ 0 (ReLU) | HIGH |
-| `VclampS32` / `U32` / `Float` | `0x1d528820` / `0x1d528c40` / `0x1d528fe0` | integer / generic clamp | HIGH |
+| Method | Address | Body |
+|---|---|---|
+| `VclampSymmetricF32` | `0x1d527fc0` | `CreateVectorClampSymmetric` + min/max (`0x15f`) fallback |
+| `VclampSymmetricBf16` | `0x1d5283a0` | same |
+| `VclampAsymmetricF32` | `0x1d528480` | binop `0x4c` + `Minimum`/`Maximum` (lo ≠ −hi) |
+| `VclampAsymmetricBF16` | `0x1d528740` | same |
+| `VclampGezF32` / `Bf16` | `0x1d527ea0` / `0x1d527ee0` | clamp ≥ 0 (ReLU) |
+| `VclampS32` / `U32` / `Float` | `0x1d528820` / `0x1d528c40` / `0x1d528fe0` | integer / generic clamp |
 
 The decompile of `VclampSymmetricF32` shows both the native `CreateVectorClampSymmetric` arm and the `CreateVectorMinimumF32`/`CreateVectorMaximumF32` fallback with opcode `0x15f`. **Symmetric** saturates to `[-bound, +bound]` (zero-point 0) — the int8/fp8 device saturate. **Asymmetric** saturates to `[lo, hi]` with `lo ≠ -hi` — the with-zero-point / unsigned host path.
 
@@ -215,22 +215,22 @@ function UpdateScale(dtype, builder, max_abs_addr, scale_addr):   // 0x137b75c0
 
 The decompile fixes the dtype switch and the three `.rodata` floats exactly, and — importantly — fixes the division operand order as `VdivF32(dtype_max, max_abs)`, i.e. the stored scale factor is `qmax / absmax` (the **quantize** multiplier). Quantize is then `q = round(x * scale_factor)`; dequantize is `x = q / scale_factor`. The per-dtype max constants:
 
-| `.rodata` address | Value | dtype | PrimitiveType | Confidence |
-|---|---|---|---|---|
-| `0x84a2a28` | `127.0` | int8 max | `0x2` | CERTAIN |
-| `0x84a27fc` | `30.0` | F8E4M3B11FNUZ max finite | `0x17` | CERTAIN |
-| `0x84a2530` | `57344.0` | F8E5M2 max finite | `0x13` | CERTAIN |
+| `.rodata` address | Value | dtype | PrimitiveType |
+|---|---|---|---|
+| `0x84a2a28` | `127.0` | int8 max | `0x2` |
+| `0x84a27fc` | `30.0` | F8E4M3B11FNUZ max finite | `0x17` |
+| `0x84a2530` | `57344.0` | F8E5M2 max finite | `0x13` |
 
 The five-stage round trip:
 
-| Helper | Address | Role | Confidence |
-|---|---|---|---|
-| `UpdateMaxLocalChunk` | `0x137b73a0` | Running absmax: `Vld` → `VunpackCF32` (if bf16) → `VabsF32` → `VmaxF32` → `Vst` | HIGH |
-| `UpdateScale` | `0x137b75c0` | absmax → scale (`qmax/absmax`); 3 dtype-max consts | CERTAIN |
-| `SymmetricallyQuantizeShardInPlaceTo8Bits` | `0x137b7740` | `round(x*scale)` → `VpackcB16` → `VpackcB8` (×4 unrolled) | HIGH |
-| `SymmetricallyDequantizeShardInPlace8Bit` | `0x137b7fc0` | `unpack` → `VcvtS32ToF32` → `/scale` → `VpackCBf16` | HIGH |
-| `ReduceSymmetricallyQuantized8BitShardInPlace` | `0x137b8880` | f32 requant-reduce (dequant → merge → re-track absmax) | HIGH |
-| `GetUnpackFunction` | `0x137b8720` | dtype → unpack fn pointer | CERTAIN |
+| Helper | Address | Role |
+|---|---|---|
+| `UpdateMaxLocalChunk` | `0x137b73a0` | Running absmax: `Vld` → `VunpackCF32` (if bf16) → `VabsF32` → `VmaxF32` → `Vst` |
+| `UpdateScale` | `0x137b75c0` | absmax → scale (`qmax/absmax`); 3 dtype-max consts |
+| `SymmetricallyQuantizeShardInPlaceTo8Bits` | `0x137b7740` | `round(x*scale)` → `VpackcB16` → `VpackcB8` (×4 unrolled) |
+| `SymmetricallyDequantizeShardInPlace8Bit` | `0x137b7fc0` | `unpack` → `VcvtS32ToF32` → `/scale` → `VpackCBf16` |
+| `ReduceSymmetricallyQuantized8BitShardInPlace` | `0x137b8880` | f32 requant-reduce (dequant → merge → re-track absmax) |
+| `GetUnpackFunction` | `0x137b8720` | dtype → unpack fn pointer |
 
 `GetUnpackFunction` (`0x137b8720`) maps `S8(0x2)→VunpackCS8`, `F8E5M2(0x13)→VunpackCF8E5M2`, `F8E4M3B11FNUZ(0x17)→VunpackCF8E4M3B11`, else a `StatusOr` error carrying the PrimitiveType name. The ring reduction (`ReduceSymmetricallyQuantized8BitShardInPlace`) is done in **f32** — dequant → merge functor → re-track absmax — so the 8-bit format is only the *wire* representation, not the arithmetic. `RotatedPincerQuantizedEmitter::kSupportedQuantizationTypes` (`0xae5b90c`) = `{2, 19, 23}` = `{S8, F8E5M2, F8E4M3B11FNUZ}`.
 
@@ -242,12 +242,12 @@ The five-stage round trip:
 
 On the device codegen path quantization is symmetric and the granularity is the shard / vector tile (one scale, implicit zero-point 0). The richer scale + zero-point model lives in the host-side MLIR quant dialect, fully linked in `libtpu`:
 
-| MLIR type | Scale | Zero-point | Extra fields | Granularity | Confidence |
-|---|---|---|---|---|---|
-| `UniformQuantizedType` | `getScale()` | `getZeroPoint()` | — | Per-tensor | HIGH |
-| `UniformQuantizedPerAxisType` | `getScales()[]` | `getZeroPoints()[]` | `getQuantizedDimension()` | Per-channel | HIGH |
-| `UniformQuantizedSubChannelType` | `getScales()[]` | `getZeroPoints()[]` | `getBlockSizes()[]`, `getQuantizedDimensions()[]` | Block-wise | HIGH |
-| `CalibratedQuantizedType` | `getMin()`/`getMax()` | — | (no scale yet) | Calibration | HIGH |
+| MLIR type | Scale | Zero-point | Extra fields | Granularity |
+|---|---|---|---|---|
+| `UniformQuantizedType` | `getScale()` | `getZeroPoint()` | — | Per-tensor |
+| `UniformQuantizedPerAxisType` | `getScales()[]` | `getZeroPoints()[]` | `getQuantizedDimension()` | Per-channel |
+| `UniformQuantizedSubChannelType` | `getScales()[]` | `getZeroPoints()[]` | `getBlockSizes()[]`, `getQuantizedDimensions()[]` | Block-wise |
+| `CalibratedQuantizedType` | `getMin()`/`getMax()` | — | (no scale yet) | Calibration |
 
 These lower through `mlir::quant::stablehlo::ConvertUniform{Quantize,Dequantize,Requantize,QuantizedDotGeneral,QuantizedConvolution,QuantizedAdd,QuantizedClipByValue,...}Op` (ten distinct `ConvertUniform*Op` families, exposed as 40 `QuantizedStablehloOpConversion::matchAndRewrite` instantiations) to integer dot/conv + affine requant `round((scale_in/scale_out)·(acc - zp_in)) + zp_out`. The guard string `"Cannot requantize while changing quantization_axis"` confirms a requantize cannot move the per-channel axis. A TPU dynamic per-column int8 quantizer (`convert_dynamic_quantize_ops` → `damax_output` → per-column scale) is flag-gated by `xla_tpu_experimental_enable_dynamic_int8_quantization`.
 

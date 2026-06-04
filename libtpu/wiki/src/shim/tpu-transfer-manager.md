@@ -83,10 +83,10 @@ The `mgr.is_error()` check is the recovered `StatusOr` idiom: the success sentin
 
 ### Function Map
 
-| Function | Address | Size | Impl | Confidence |
-|---|---|---|---|---|
-| `TpuTransferManager_New` | `0xeaba0a0` | 10 | `return operator new(1u);` — a 1-byte opaque placeholder handle | CERTAIN |
-| `TpuTransferManager_Free` | `0xeaba0c0` | 16 | `if (h) free(h);` — releases the placeholder | CERTAIN |
+| Function | Address | Size | Impl |
+|---|---|---|---|
+| `TpuTransferManager_New` | `0xeaba0a0` | 10 | `return operator new(1u);` — a 1-byte opaque placeholder handle |
+| `TpuTransferManager_Free` | `0xeaba0c0` | 16 | `if (h) free(h);` — releases the placeholder |
 
 ```c
 // TpuTransferManager_New   sub_EABA0A0
@@ -108,12 +108,12 @@ Move a host `xla::Literal` into device memory (`ShapedBuffer`), and answer the l
 
 ### Function Map
 
-| Function | Address | Size | Vtable slot | C++ call (unwrapped) | Confidence |
-|---|---|---|---|---|---|
-| `TpuTransferManager_TransferLiteralToDeviceAsync` | `0xeaba240` | 287 | `+40` | `m->TransferLiteralToDevice(stream, LiteralSlice(lit), shaped_buf, opts=0)` | CERTAIN |
-| `TpuTransferManager_GetByteSizeRequirement` | `0xeaba4c0` | 165 | `+80` | `m->GetByteSizeRequirement(host_shape)` → `int64` | CERTAIN |
-| `TpuTransferManager_HostShapeToDeviceShape` | `0xeaba160` | 207 | `+24` | `m->HostShapeToDeviceShape(host_shape)` → `Shape` (out via `ToC`) | CERTAIN |
-| `TpuTransferManager_ChooseCompactLayoutForShape` | `0xeaba580` | 339 | `+88` | `m->ChooseCompactLayoutForShape(host_shape)` → `StatusOr<Shape>` | CERTAIN |
+| Function | Address | Size | Vtable slot | C++ call (unwrapped) |
+|---|---|---|---|---|
+| `TpuTransferManager_TransferLiteralToDeviceAsync` | `0xeaba240` | 287 | `+40` | `m->TransferLiteralToDevice(stream, LiteralSlice(lit), shaped_buf, opts=0)` |
+| `TpuTransferManager_GetByteSizeRequirement` | `0xeaba4c0` | 165 | `+80` | `m->GetByteSizeRequirement(host_shape)` → `int64` |
+| `TpuTransferManager_HostShapeToDeviceShape` | `0xeaba160` | 207 | `+24` | `m->HostShapeToDeviceShape(host_shape)` → `Shape` (out via `ToC`) |
+| `TpuTransferManager_ChooseCompactLayoutForShape` | `0xeaba580` | 339 | `+88` | `m->ChooseCompactLayoutForShape(host_shape)` → `StatusOr<Shape>` |
 
 ### Algorithm — `TransferLiteralToDeviceAsync`
 
@@ -144,10 +144,10 @@ Pull a device `ShapedBuffer` back into a host literal, and read the dynamic dime
 
 ### Function Map
 
-| Function | Address | Size | Vtable slot | C++ call (unwrapped) | Confidence |
-|---|---|---|---|---|---|
-| `TpuTransferManager_TransferLiteralFromDevice` | `0xeaba360` | 352 | `+32` | `m->TransferLiteralFromDevice(stream, shaped_buf, MutableBorrowingLiteral, done_cb, opts=0)` | CERTAIN |
-| `TpuTransferManager_ReadDynamicShapes` | `0xeabb660` | 455 | `+48` | `m->ReadDynamicShapes(stream, shaped_buf, &out_shape)` | CERTAIN |
+| Function | Address | Size | Vtable slot | C++ call (unwrapped) |
+|---|---|---|---|---|
+| `TpuTransferManager_TransferLiteralFromDevice` | `0xeaba360` | 352 | `+32` | `m->TransferLiteralFromDevice(stream, shaped_buf, MutableBorrowingLiteral, done_cb, opts=0)` |
+| `TpuTransferManager_ReadDynamicShapes` | `0xeabb660` | 455 | `+48` | `m->ReadDynamicShapes(stream, shaped_buf, &out_shape)` |
 
 ### Algorithm — `TransferLiteralFromDevice`
 
@@ -181,12 +181,12 @@ The streaming host↔device channels: enqueue a host literal into the on-chip in
 
 ### Function Map
 
-| Function | Address | Size | Vtable slot | C++ call (unwrapped) | Confidence |
-|---|---|---|---|---|---|
-| `TpuTransferManager_TransferLiteralToInfeed` | `0xeabafa0` | 241 | `+56` | `m->TransferLiteralToInfeed(executor, LiteralSlice(lit))` | CERTAIN |
-| `TpuTransferManager_TransferBuffersToInfeed` | `0xeabb0a0` | 638 | `+136` | infeed of pre-linearized device buffers | CERTAIN |
-| `TpuTransferManager_TransferLiteralFromOutfeed` | `0xeabb320` | 260 | `+64` | `m->TransferLiteralFromOutfeed(executor, MutableBorrowingLiteral)` | CERTAIN |
-| `TpuTransferManager_GetInfeedLayout` | `0xf6a1a80` | 163 | (no vtable — see §7) | `TransferSizeUtil::ChooseGoodInfeedLayout(topology, shape)` | CERTAIN |
+| Function | Address | Size | Vtable slot | C++ call (unwrapped) |
+|---|---|---|---|---|
+| `TpuTransferManager_TransferLiteralToInfeed` | `0xeabafa0` | 241 | `+56` | `m->TransferLiteralToInfeed(executor, LiteralSlice(lit))` |
+| `TpuTransferManager_TransferBuffersToInfeed` | `0xeabb0a0` | 638 | `+136` | infeed of pre-linearized device buffers |
+| `TpuTransferManager_TransferLiteralFromOutfeed` | `0xeabb320` | 260 | `+64` | `m->TransferLiteralFromOutfeed(executor, MutableBorrowingLiteral)` |
+| `TpuTransferManager_GetInfeedLayout` | `0xf6a1a80` | 163 | (no vtable — see §7) | `TransferSizeUtil::ChooseGoodInfeedLayout(topology, shape)` |
 
 ### Algorithm — `TransferLiteralToInfeed` / `FromOutfeed`
 
@@ -226,13 +226,13 @@ The synchronous metadata side: write a tuple index table into a device buffer (s
 
 ### Function Map
 
-| Function | Address | Size | Vtable slot | C++ call (unwrapped) | Confidence |
-|---|---|---|---|---|---|
-| `TpuTransferManager_WriteSingleTupleIndexTable` | `0xeaba840` | 689 | `+120` | `m->WriteSingleTupleIndexTable(stream, device_addrs[], shape, &out_addr)` | CERTAIN |
-| `TpuTransferManager_CanShapedBufferBeAccessedNow` | `0xeaba6e0` | 174 | `+104` | `m->CanShapedBufferBeAccessedNow(executor, shaped_buf)` → `bool` | CERTAIN |
-| `TpuTransferManager_CanBufferBeAccessedNow` | `0xeaba7a0` | 141 | `+112` | `m->CanBufferBeAccessedNow(executor, device_addr)` → `bool` | CERTAIN |
-| `TpuTransferManager_PlatformId` | `0xeaba0e0` | 117 | `+16` | `m->PlatformId()` → `se::Platform::Id` | CERTAIN |
-| `TpuTransferManager_ResetDevices` | `0xeabb440` | 525 | `+72` | `m->ResetDevices(executors[])` | CERTAIN |
+| Function | Address | Size | Vtable slot | C++ call (unwrapped) |
+|---|---|---|---|---|
+| `TpuTransferManager_WriteSingleTupleIndexTable` | `0xeaba840` | 689 | `+120` | `m->WriteSingleTupleIndexTable(stream, device_addrs[], shape, &out_addr)` |
+| `TpuTransferManager_CanShapedBufferBeAccessedNow` | `0xeaba6e0` | 174 | `+104` | `m->CanShapedBufferBeAccessedNow(executor, shaped_buf)` → `bool` |
+| `TpuTransferManager_CanBufferBeAccessedNow` | `0xeaba7a0` | 141 | `+112` | `m->CanBufferBeAccessedNow(executor, device_addr)` → `bool` |
+| `TpuTransferManager_PlatformId` | `0xeaba0e0` | 117 | `+16` | `m->PlatformId()` → `se::Platform::Id` |
+| `TpuTransferManager_ResetDevices` | `0xeabb440` | 525 | `+72` | `m->ResetDevices(executors[])` |
 
 ### Algorithm — the predicates and `WriteSingleTupleIndexTable`
 
@@ -271,10 +271,10 @@ m  = GetForPlatform(platform).value()
 
 ### Function Map
 
-| Function | Address | Size | Direct callee | Confidence |
-|---|---|---|---|---|
-| `TpuTransferManager_LinearizeToBuffers` | `0xeabab00` | 594 | `xla::jellyfish::LiteralLinearizer::LinearizeToBuffers(topology, …)` | CERTAIN |
-| `TpuTransferManager_GetInfeedLayout` | `0xf6a1a80` | 163 | `xla::jellyfish::TransferSizeUtil::ChooseGoodInfeedLayout(topology, shape)` | CERTAIN |
+| Function | Address | Size | Direct callee |
+|---|---|---|---|
+| `TpuTransferManager_LinearizeToBuffers` | `0xeabab00` | 594 | `xla::jellyfish::LiteralLinearizer::LinearizeToBuffers(topology, …)` |
+| `TpuTransferManager_GetInfeedLayout` | `0xf6a1a80` | 163 | `xla::jellyfish::TransferSizeUtil::ChooseGoodInfeedLayout(topology, shape)` |
 
 ### Algorithm
 
@@ -314,9 +314,9 @@ void TpuTransferManager_FreeBuffers(void** ptrs, void* sizes, int64 count):
     if sizes: free(sizes)                            // the size array
 ```
 
-| Function | Address | Size | Role | Confidence |
-|---|---|---|---|---|
-| `TpuTransferManager_FreeBuffers` | `0xeabaf20` | 114 | frees the `LinearizeToBuffers` pointer array + each buffer + size array | CERTAIN |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `TpuTransferManager_FreeBuffers` | `0xeabaf20` | 114 | frees the `LinearizeToBuffers` pointer array + each buffer + size array |
 
 > **GOTCHA —** `LinearizeToBuffers` allocates with `operator new` (per-buffer + two `new[]` arrays) but `FreeBuffers` releases with `free()`. On this glibc build `operator new` forwards to `malloc`, so the pair is balanced — but a reimplementer who wires `operator new`/`operator delete[]` to a *different* allocator than `malloc`/`free` will corrupt the heap. The ABI contract is "allocate so that `free()` releases it." Pair every `LinearizeToBuffers` with exactly one `FreeBuffers(ptrs, sizes, count)`.
 
@@ -326,27 +326,27 @@ void TpuTransferManager_FreeBuffers(void** ptrs, void* sizes, int64 count):
 
 The single table a reimplementer needs: each C function, its address, and the `xla::TransferManager` vtable byte offset it bounces through. Every offset was read directly from the decompiled `(*(*m + N))(…)` expression and cross-checked against the `call *0xNN(%rax)` disassembly, so all rows are CERTAIN.
 
-| C function | Address | Vtable off | C++ method (inferred) | Conf |
-|---|---|---|---|---|
-| `New` | `0xeaba0a0` | — | `operator new(1)` | CERTAIN |
-| `Free` | `0xeaba0c0` | — | `free` | CERTAIN |
-| `PlatformId` | `0xeaba0e0` | `+16` | `PlatformId()` | CERTAIN |
-| `HostShapeToDeviceShape` | `0xeaba160` | `+24` | `HostShapeToDeviceShape(Shape)` | CERTAIN |
-| `TransferLiteralFromDevice` | `0xeaba360` | `+32` | `TransferLiteralFromDevice(…, cb)` | CERTAIN |
-| `TransferLiteralToDeviceAsync` | `0xeaba240` | `+40` | `TransferLiteralToDevice(…)` | CERTAIN |
-| `ReadDynamicShapes` | `0xeabb660` | `+48` | `ReadDynamicShapes(…)` | CERTAIN |
-| `TransferLiteralToInfeed` | `0xeabafa0` | `+56` | `TransferLiteralToInfeed(exec, LiteralSlice)` | CERTAIN |
-| `TransferLiteralFromOutfeed` | `0xeabb320` | `+64` | `TransferLiteralFromOutfeed(exec, MBL)` | CERTAIN |
-| `ResetDevices` | `0xeabb440` | `+72` | `ResetDevices(executors)` | CERTAIN |
-| `GetByteSizeRequirement` | `0xeaba4c0` | `+80` | `GetByteSizeRequirement(Shape)` | CERTAIN |
-| `ChooseCompactLayoutForShape` | `0xeaba580` | `+88` | `ChooseCompactLayoutForShape(Shape)` | CERTAIN |
-| `CanShapedBufferBeAccessedNow` | `0xeaba6e0` | `+104` | `CanShapedBufferBeAccessedNow(exec, buf)` | CERTAIN |
-| `CanBufferBeAccessedNow` | `0xeaba7a0` | `+112` | `CanBufferBeAccessedNow(exec, addr)` | CERTAIN |
-| `WriteSingleTupleIndexTable` | `0xeaba840` | `+120` | `WriteSingleTupleIndexTable(…)` | CERTAIN |
-| `TransferBuffersToInfeed` | `0xeabb0a0` | `+136` | infeed of device buffers | CERTAIN |
-| `LinearizeToBuffers` | `0xeabab00` | — (direct) | `jellyfish::LiteralLinearizer::LinearizeToBuffers` | CERTAIN |
-| `FreeBuffers` | `0xeabaf20` | — (free) | n/a | CERTAIN |
-| `GetInfeedLayout` | `0xf6a1a80` | — (direct) | `jellyfish::TransferSizeUtil::ChooseGoodInfeedLayout` | CERTAIN |
+| C function | Address | Vtable off | C++ method (inferred) |
+|---|---|---|---|
+| `New` | `0xeaba0a0` | — | `operator new(1)` |
+| `Free` | `0xeaba0c0` | — | `free` |
+| `PlatformId` | `0xeaba0e0` | `+16` | `PlatformId()` |
+| `HostShapeToDeviceShape` | `0xeaba160` | `+24` | `HostShapeToDeviceShape(Shape)` |
+| `TransferLiteralFromDevice` | `0xeaba360` | `+32` | `TransferLiteralFromDevice(…, cb)` |
+| `TransferLiteralToDeviceAsync` | `0xeaba240` | `+40` | `TransferLiteralToDevice(…)` |
+| `ReadDynamicShapes` | `0xeabb660` | `+48` | `ReadDynamicShapes(…)` |
+| `TransferLiteralToInfeed` | `0xeabafa0` | `+56` | `TransferLiteralToInfeed(exec, LiteralSlice)` |
+| `TransferLiteralFromOutfeed` | `0xeabb320` | `+64` | `TransferLiteralFromOutfeed(exec, MBL)` |
+| `ResetDevices` | `0xeabb440` | `+72` | `ResetDevices(executors)` |
+| `GetByteSizeRequirement` | `0xeaba4c0` | `+80` | `GetByteSizeRequirement(Shape)` |
+| `ChooseCompactLayoutForShape` | `0xeaba580` | `+88` | `ChooseCompactLayoutForShape(Shape)` |
+| `CanShapedBufferBeAccessedNow` | `0xeaba6e0` | `+104` | `CanShapedBufferBeAccessedNow(exec, buf)` |
+| `CanBufferBeAccessedNow` | `0xeaba7a0` | `+112` | `CanBufferBeAccessedNow(exec, addr)` |
+| `WriteSingleTupleIndexTable` | `0xeaba840` | `+120` | `WriteSingleTupleIndexTable(…)` |
+| `TransferBuffersToInfeed` | `0xeabb0a0` | `+136` | infeed of device buffers |
+| `LinearizeToBuffers` | `0xeabab00` | — (direct) | `jellyfish::LiteralLinearizer::LinearizeToBuffers` |
+| `FreeBuffers` | `0xeabaf20` | — (free) | n/a |
+| `GetInfeedLayout` | `0xf6a1a80` | — (direct) | `jellyfish::TransferSizeUtil::ChooseGoodInfeedLayout` |
 
 > **QUIRK —** the vtable offsets are *not* contiguous-by-roster-order. The C functions are emitted in source order (`New`, `Free`, `PlatformId`, …) but their slots track the `xla::TransferManager` base-class vtable layout (`+16`, `+24`, `+32`, …), which interleaves base-class virtuals the C shim does not expose. A reimplementer building the C++ `TransferManager` subclass must reproduce the *base-class* vtable order, not the C-roster order, or every slot offset above is wrong by a frame.
 

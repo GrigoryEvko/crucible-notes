@@ -52,10 +52,10 @@ return info;
 
 The index space splits at opcode `499`:
 
-| Opcode band | Count | Role | Tables that cover it | Confidence |
-|---|---:|---|---|---|
-| `0..498` (`≤ 0x1F2`) | 499 | pseudo / target-independent (`PHI`, `INLINEASM`, MC pseudo branches) | name + desc only; **not** InstBits | CONFIRMED |
-| `499..6165` (`0x1F3..0x1815`) | 5667 | TPU MC opcodes | name + desc + InstBits (`index = opcode − 499`) | CONFIRMED |
+| Opcode band | Count | Role | Tables that cover it |
+|---|---:|---|---|
+| `0..498` (`≤ 0x1F2`) | 499 | pseudo / target-independent (`PHI`, `INLINEASM`, MC pseudo branches) | name + desc only; **not** InstBits |
+| `499..6165` (`0x1F3..0x1815`) | 5667 | TPU MC opcodes | name + desc + InstBits (`index = opcode − 499`) |
 
 The `5667` count in the second band is exactly the InstBits row count — the same opcodes, indexed at `opcode − 499` there and at `opcode` directly in the name and descriptor tables. So a reimplementer holds one opcode enum across all four tables, subtracting `499` only for the InstBits bit-layout lookup. See [InstBits DB](instbits-master-db.md#in-binary-representation).
 
@@ -80,25 +80,25 @@ The two-level form (offset array + pooled strings) is the standard LLVM `getInst
 
 These rows are the primary anchors that pin the index space; they are read directly from the two tables, not inferred:
 
-| Opcode | Hex | Mnemonic | Note | Confidence |
-|---:|---|---|---|---|
-| 0 | `0x000` | `PHI` | target-independent | CONFIRMED |
-| 1 | `0x001` | `INLINEASM` | | CONFIRMED |
-| 239 | `0x0ef` | `G_PTRMASK` | the `0xEF` generic opcode | CONFIRMED |
-| 499 | `0x1f3` | `ADDri` | first TPU MC opcode (InstBits index 0) | CONFIRMED |
-| 505 | `0x1f9` | `BRabs` | sequencer: absolute branch | CONFIRMED |
-| 507 | `0x1fb` | `BRind` | sequencer: indirect branch | CONFIRMED |
-| 508 | `0x1fc` | `BRrel` | sequencer: relative branch | CONFIRMED |
-| 509 | `0x1fd` | `BRrelrot` | sequencer: rel branch + rotate | CONFIRMED |
-| 514 | `0x202` | `CALLabs` | sequencer: absolute call | CONFIRMED |
-| 515 | `0x203` | `CALLrel` | sequencer: relative call | CONFIRMED |
-| 540 | `0x21c` | `EVENT` | special-cased in the predicate-index finder | CONFIRMED |
-| 571 | `0x23b` | `HALT` | sequencer: halt | CONFIRMED |
-| 3977 | `0xf89` | `bcHALT` | BarnaCore halt | CONFIRMED |
-| 3978 | `0xf8a` | `bcLOOP_START` | BarnaCore loop slot | CONFIRMED |
-| 3982 | `0xf8e` | `bcVLDi` | BarnaCore vector load (imm) | CONFIRMED |
-| 3983 | `0xf8f` | `bcVLDr` | BarnaCore vector load (reg) | CONFIRMED |
-| 3991 | `0xf97` | `bcVSTr` | BarnaCore vector store (reg) | CONFIRMED |
+| Opcode | Hex | Mnemonic | Note |
+|---:|---|---|---|
+| 0 | `0x000` | `PHI` | target-independent |
+| 1 | `0x001` | `INLINEASM` | |
+| 239 | `0x0ef` | `G_PTRMASK` | the `0xEF` generic opcode |
+| 499 | `0x1f3` | `ADDri` | first TPU MC opcode (InstBits index 0) |
+| 505 | `0x1f9` | `BRabs` | sequencer: absolute branch |
+| 507 | `0x1fb` | `BRind` | sequencer: indirect branch |
+| 508 | `0x1fc` | `BRrel` | sequencer: relative branch |
+| 509 | `0x1fd` | `BRrelrot` | sequencer: rel branch + rotate |
+| 514 | `0x202` | `CALLabs` | sequencer: absolute call |
+| 515 | `0x203` | `CALLrel` | sequencer: relative call |
+| 540 | `0x21c` | `EVENT` | special-cased in the predicate-index finder |
+| 571 | `0x23b` | `HALT` | sequencer: halt |
+| 3977 | `0xf89` | `bcHALT` | BarnaCore halt |
+| 3978 | `0xf8a` | `bcLOOP_START` | BarnaCore loop slot |
+| 3982 | `0xf8e` | `bcVLDi` | BarnaCore vector load (imm) |
+| 3983 | `0xf8f` | `bcVLDr` | BarnaCore vector load (reg) |
+| 3991 | `0xf97` | `bcVSTr` | BarnaCore vector store (reg) |
 
 > **NOTE —** the sequencer `BR` (325), `BRcond` (328), `BRcondrot` (330), `BRret` (331) opcodes sit *below* 499 — they are MC pseudo branches expanded before MC emission and never reach the InstBits switch. The *concrete* forms (`BRabs`/`BRind`/`BRrel`/`BRrelrot`/`CALLabs`/`CALLrel`/`HALT`) are `≥ 499` and do reach the encoder, but route to the zero-base default and are encoded by the proto-bundle path. A reimplementer driving instruction selection off the mnemonic table must distinguish the pseudo band (`< 499`) from the MC band (`≥ 499`); only the latter has InstBits and descriptor encoding semantics. See [InstBits DB §Field Mapping](instbits-master-db.md#field-mapping-slot-to-absolute-bit-positions).
 
@@ -159,10 +159,10 @@ In `encodePredicateOperand` this is the exact deposit `insertBits(dst, *(u16*)(t
 
 The table partitions the register-number space into blocks that align with the register classes. The visible structure:
 
-| Block | Register numbers | Encoding values | Field width | Confidence |
-|---|---|---|---:|---|
-| predicate | `P0..P14` | `1..15` | 4 bits (in the predicate field) | CONFIRMED |
-| scalar / vector | descending blocks | `0..128` | per-class | MEDIUM |
+| Block | Register numbers | Encoding values | Field width |
+|---|---|---|---:|
+| predicate | `P0..P14` | `1..15` | 4 bits (in the predicate field) |
+| scalar / vector | descending blocks | `0..128` | per-class |
 
 The predicate block holding `1..15` (`P0..P14`) is the byte-anchored reason the predicate field's register index is exactly 4 bits — the same `15` that appears as `kPredicateRegisterCount` / `kAlwaysExecute` in the per-gen hardware-bundle constants and as the `kNeverExecute = 31` skip encoding (a 5-bit field where `0..14` reference registers, `15` is always-execute, `31` is never-execute). The full reg# → (class, encoding) partition for the scalar and vector blocks needs the `TPURegClassInfos` (`0x334ea60`) and `TPURegDesc` (`0x343e7b0`) cross-decode and is left MEDIUM confidence here. See [ArchRegno Numbering](archregno-numbering.md) for the runtime register-numbering side.
 

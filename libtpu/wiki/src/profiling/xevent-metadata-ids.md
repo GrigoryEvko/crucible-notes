@@ -86,22 +86,22 @@ The hardware does not name a matmul or a convolution as a trace point — those 
 
 The TCS band is present on every family and is the most stable part of the catalog. Ids are nearly constant across generations; one name changes (`HOST_INTERRUPT` → `CORE_INTERRUPT` from viperfish on), and glc/gfc append OCI-completion and PPM ids at 97–100.
 
-| TracePointId value | Name | Category | Families | Confidence |
-|---|---|---|---|---|
-| 80 | `TCS_EXTERNAL_SYNC_FLAG_UPDATE_DMA_DONE` | sync | all | CERTAIN |
-| 81 | `TCS_INTERNAL_SET_SYNC_FLAG` | sync | all | CERTAIN |
-| 82 | `TCS_INTERNAL_ADD_SYNC_FLAG` | sync | all | CERTAIN |
-| 83 | `TCS_INTERNAL_HOST_INTERRUPT` (pxc) / `TCS_INTERNAL_CORE_INTERRUPT` (vfc+) | control | all | CERTAIN |
-| 84 | `TCS_INTERNAL_SET_TRACEMARK` | control | all | CERTAIN |
-| 85 | `TCS_INTERNAL_TRACE_INSTRUCTION` | control | all | CERTAIN |
-| 86 | `TCS_INTERNAL_UNSUCCESSFUL_SYNC_ATTEMPT` | sync | all | CERTAIN |
-| 87 | `TCS_INTERNAL_SUCCESSFUL_SYNC_ATTEMPT` | sync | all | CERTAIN |
-| 88 | `TCS_INTERNAL_READ_SYNC_FLAG` | sync | all | CERTAIN |
-| 89 | `TCS_INTERNAL_SCALAR_FENCE_START` | sync | all | CERTAIN |
-| 90 | `TCS_INTERNAL_SCALAR_FENCE_END` | sync | all | CERTAIN |
-| 91–96 | `OCI_DESCRIPTOR_*_ISSUED_FROM_TCS` / `OCI_MESSAGE_ISSUED_FROM_TCS` / `OCI_COMMON_*_COMPLETED_IN_TCS` | memory | all | HIGH |
-| 99 | `TCS_PPM_ENTRY_PPM_UPDATE_EVENT` | throttle | glc/gfc | HIGH |
-| 100 | `STATS_COUNTER_SAMPLE_ISSUED_FROM_TCS` | perf-sample | gfc | HIGH |
+| TracePointId value | Name | Category | Families |
+|---|---|---|---|
+| 80 | `TCS_EXTERNAL_SYNC_FLAG_UPDATE_DMA_DONE` | sync | all |
+| 81 | `TCS_INTERNAL_SET_SYNC_FLAG` | sync | all |
+| 82 | `TCS_INTERNAL_ADD_SYNC_FLAG` | sync | all |
+| 83 | `TCS_INTERNAL_HOST_INTERRUPT` (pxc) / `TCS_INTERNAL_CORE_INTERRUPT` (vfc+) | control | all |
+| 84 | `TCS_INTERNAL_SET_TRACEMARK` | control | all |
+| 85 | `TCS_INTERNAL_TRACE_INSTRUCTION` | control | all |
+| 86 | `TCS_INTERNAL_UNSUCCESSFUL_SYNC_ATTEMPT` | sync | all |
+| 87 | `TCS_INTERNAL_SUCCESSFUL_SYNC_ATTEMPT` | sync | all |
+| 88 | `TCS_INTERNAL_READ_SYNC_FLAG` | sync | all |
+| 89 | `TCS_INTERNAL_SCALAR_FENCE_START` | sync | all |
+| 90 | `TCS_INTERNAL_SCALAR_FENCE_END` | sync | all |
+| 91–96 | `OCI_DESCRIPTOR_*_ISSUED_FROM_TCS` / `OCI_MESSAGE_ISSUED_FROM_TCS` / `OCI_COMMON_*_COMPLETED_IN_TCS` | memory | all |
+| 99 | `TCS_PPM_ENTRY_PPM_UPDATE_EVENT` | throttle | glc/gfc |
+| 100 | `STATS_COUNTER_SAMPLE_ISSUED_FROM_TCS` | perf-sample | gfc |
 
 > **NOTE —** `TCS_INTERNAL_TRACE_INSTRUCTION` (85) and `TCS_INTERNAL_SET_TRACEMARK` (84) are the closest the device catalog comes to a "compute step" marker: they bracket instrumented instruction spans that a consumer aligns with HLO ops. The actual matmul/conv identity is supplied later by the HLO symbolizer (`TpuXPlaneSymbolizer::SetEventMetadataFromSymbol`), which fills `display_name` and HLO source stats — see [TraceEntry → XEvent/XStat](trace-entry-to-xevent.md).
 
@@ -109,19 +109,19 @@ The TCS band is present on every family and is the most stable part of the catal
 
 Pufferfish carries a 29-event BarnaCore band that no later family has; it was replaced by the SparseCore band from viperfish on. The FSM channel-controller ids (100–115) are a 16-deep numbered family; the named compute and sequencer-control events are the interesting rows.
 
-| TracePointId value | Name | Category | Confidence |
-|---|---|---|---|
-| 100–115 | `BC_FSM_CHANNEL_CONTROLLER0` … `CONTROLLER15` | compute FSM | HIGH |
-| 116 | `BC_FSM_PROCESS_HOSTID` | compute | HIGH |
-| 117 | `BC_FSM_SPARSE_REDUCE` | compute | CERTAIN |
-| 118 | `BC_FSM_PROCESS_BCID` | compute | HIGH |
-| 119 | `BC_FSM_CONCAT` | compute | HIGH |
-| 120 | `BCS_TRACE_INSTRUCTION` | control | HIGH |
-| 121 | `BCS_SET_TRACEMARK` | control | HIGH |
-| 122 | `BCS_SYNC_START_STOP_TRACE` | sync | HIGH |
-| 123 | `BCS_HOST_INTERRUPT` | control | HIGH |
-| 124 | `BCS_FENCE` | sync | HIGH |
-| 125–134 | `BC_OCI_{READ,WRITE}_{REQUEST,RESPONSE}` / `OCI_DESCRIPTOR_*_ISSUED_BY_BC` / `OCI_MESSAGE_{RECEIVED,SENT}_BY_BC` | memory | HIGH |
+| TracePointId value | Name | Category |
+|---|---|---|
+| 100–115 | `BC_FSM_CHANNEL_CONTROLLER0` … `CONTROLLER15` | compute FSM |
+| 116 | `BC_FSM_PROCESS_HOSTID` | compute |
+| 117 | `BC_FSM_SPARSE_REDUCE` | compute |
+| 118 | `BC_FSM_PROCESS_BCID` | compute |
+| 119 | `BC_FSM_CONCAT` | compute |
+| 120 | `BCS_TRACE_INSTRUCTION` | control |
+| 121 | `BCS_SET_TRACEMARK` | control |
+| 122 | `BCS_SYNC_START_STOP_TRACE` | sync |
+| 123 | `BCS_HOST_INTERRUPT` | control |
+| 124 | `BCS_FENCE` | sync |
+| 125–134 | `BC_OCI_{READ,WRITE}_{REQUEST,RESPONSE}` / `OCI_DESCRIPTOR_*_ISSUED_BY_BC` / `OCI_MESSAGE_{RECEIVED,SENT}_BY_BC` | memory |
 
 ---
 
@@ -133,10 +133,10 @@ The largest category by event count. Every host↔chip transfer, on-chip-interco
 
 ### Host-DMA front end
 
-| Family | Band ids | Names (representative) | Confidence |
-|---|---|---|---|
-| pxc (UHI) | 0–10 | `UHI_HOST_DMA_TRANSACTION_STARTED_ADDRESS_TRANSLATION`, `UHI_HOST_PHYSICAL_{REQUEST,RESPONSE}_{READ,WRITE}`, `UHI_OCI_REQUEST_{READ,WRITE}`, `OCI_*_BY_UHI_*` | CERTAIN |
-| vfc/vlc/glc/gfc (HDE) | 8–14 (glc) / 1–14 (gfc) | `HDE_HOST_REQUEST_WRITE`, `HDE_HOST_RESPONSE_WRITE`, `HDE_HOST_REQUEST_READ`, `HDE_HOST_RESPONSE_READ`, `OCI_COMMON_HDE_{READ,WRITE}_REQUEST`, `OCI_MESSAGE_SENT_BY_HDE` | CERTAIN |
+| Family | Band ids | Names (representative) |
+|---|---|---|
+| pxc (UHI) | 0–10 | `UHI_HOST_DMA_TRANSACTION_STARTED_ADDRESS_TRANSLATION`, `UHI_HOST_PHYSICAL_{REQUEST,RESPONSE}_{READ,WRITE}`, `UHI_OCI_REQUEST_{READ,WRITE}`, `OCI_*_BY_UHI_*` |
+| vfc/vlc/glc/gfc (HDE) | 8–14 (glc) / 1–14 (gfc) | `HDE_HOST_REQUEST_WRITE`, `HDE_HOST_RESPONSE_WRITE`, `HDE_HOST_REQUEST_READ`, `HDE_HOST_RESPONSE_READ`, `OCI_COMMON_HDE_{READ,WRITE}_REQUEST`, `OCI_MESSAGE_SENT_BY_HDE` |
 
 ### OCI engine descriptor / message lifecycle — the dominant band
 
@@ -154,21 +154,21 @@ A reimplementer reconstructs the full per-family list from `trace_entries.proto`
 
 ### VPU / scratchpad DMA — CMQ (pxc) and VDQ (vlc)
 
-| Family | Band ids | Name family | Confidence |
-|---|---|---|---|
-| pxc (CMQ) | 140–149 | `CMQ_VPU_DMA_DESC`, `OCI_MESSAGE_CMQ_VPU_DMA_MSG`, `CMQ_VPU_DMA_REQ_{VMEM0,VMEM1,CMEM}_TO_{CMEM,VMEM0,VMEM1}_{READ,WRITE}` (8 directions) | CERTAIN |
-| vlc (VDQ) | 142–149 | `VDQ_TRANSACTION_{READ,WRITE}_{REQ,RESP}_CHAN0/1` (8 events) | HIGH |
+| Family | Band ids | Name family |
+|---|---|---|
+| pxc (CMQ) | 140–149 | `CMQ_VPU_DMA_DESC`, `OCI_MESSAGE_CMQ_VPU_DMA_MSG`, `CMQ_VPU_DMA_REQ_{VMEM0,VMEM1,CMEM}_TO_{CMEM,VMEM0,VMEM1}_{READ,WRITE}` (8 directions) |
+| vlc (VDQ) | 142–149 | `VDQ_TRANSACTION_{READ,WRITE}_{REQ,RESP}_CHAN0/1` (8 events) |
 
 > **QUIRK —** the CMQ band names *both endpoints and direction* in the enum string (`VMEM0_TO_CMEM_READ` vs `CMEM_TO_VMEM1_WRITE`), so the eight ids 142–149 fully enumerate the {VMEM0,VMEM1}×{read,write}×{to-CMEM,from-CMEM} cross product. A reimplementation that collapses these to a single "VPU DMA" event loses the source/destination scratchpad identity that the timeline renders.
 
 ### Memory-network controller & HBM (glc/gfc) and address translation (gfc)
 
-| Family | Band ids | Name family | Category | Confidence |
-|---|---|---|---|---|
-| vfc/glc/gfc | 70–79 | `OCI_DESCRIPTOR_COMMON_RECEIVED_BY_CMNDE`, `OCI_MESSAGE_SENT_BY_CMNDE`, `CMN_DMA_REQUEST_{EAST,WEST}_SIDE_LANE0..3` | memory | HIGH |
-| glc/gfc | 170–173 | `CMNUR_HBMC_{RD_REQ,RD_RSP,WR_REQ,WR_RSP}` (HBM controller) | memory | CERTAIN |
-| glc/gfc | 174–185 | `CMNDE_CMNUR_{SRC,DST}_{REQ,RSP}`, `OCI_CMNUR_{RD,WR}_{REQ,RSP}`, `CMNUR_CMNUCB_CONTROL_*` | memory | HIGH |
-| gfc | 183–188 | `O2CUR_L2P_{WR_REQ_FIRST,WR_RSP_LAST,RD_REQ,RD_RSP}`, `CMNDE_UR_L2P_DMA_{REQ,RSP}` (logical→physical addr translation) | memory | HIGH |
+| Family | Band ids | Name family | Category |
+|---|---|---|---|
+| vfc/glc/gfc | 70–79 | `OCI_DESCRIPTOR_COMMON_RECEIVED_BY_CMNDE`, `OCI_MESSAGE_SENT_BY_CMNDE`, `CMN_DMA_REQUEST_{EAST,WEST}_SIDE_LANE0..3` | memory |
+| glc/gfc | 170–173 | `CMNUR_HBMC_{RD_REQ,RD_RSP,WR_REQ,WR_RSP}` (HBM controller) | memory |
+| glc/gfc | 174–185 | `CMNDE_CMNUR_{SRC,DST}_{REQ,RSP}`, `OCI_CMNUR_{RD,WR}_{REQ,RSP}`, `CMNUR_CMNUCB_CONTROL_*` | memory |
+| gfc | 183–188 | `O2CUR_L2P_{WR_REQ_FIRST,WR_RSP_LAST,RD_REQ,RD_RSP}`, `CMNDE_UR_L2P_DMA_{REQ,RSP}` (logical→physical addr translation) | memory |
 
 ---
 
@@ -180,11 +180,11 @@ Semaphore, barrier, and fence operations. On all families this is the TCS sync-f
 
 ### The sync vocabulary
 
-| Layer | Names | Ids | Families | Confidence |
-|---|---|---|---|---|
-| TCS sync flags | `TCS_EXTERNAL_SYNC_FLAG_UPDATE_DMA_DONE`, `TCS_INTERNAL_{SET,ADD,READ}_SYNC_FLAG`, `TCS_INTERNAL_{SUCCESSFUL,UNSUCCESSFUL}_SYNC_ATTEMPT`, `TCS_INTERNAL_SCALAR_FENCE_{START,END}` | 80–90 | all | CERTAIN |
-| SparseCore fences/barriers | `SC_INSTRUCTION_SFENCE_{START,STOP}` (111/112), `SC_INSTRUCTION_SYNC_{START,STOP}` (113/114), `SC_INSTRUCTION_BARRIER_{START,STOP}` (115/116), `SC_INSTRUCTION_SYNC_WATCH_{START,STOP}` (117/118) | 111–118 | vfc/glc/gfc | CERTAIN |
-| BarnaCore (pxc) | `BCS_SYNC_START_STOP_TRACE` (122), `BCS_FENCE` (124) | 122/124 | pxc | HIGH |
+| Layer | Names | Ids | Families |
+|---|---|---|---|
+| TCS sync flags | `TCS_EXTERNAL_SYNC_FLAG_UPDATE_DMA_DONE`, `TCS_INTERNAL_{SET,ADD,READ}_SYNC_FLAG`, `TCS_INTERNAL_{SUCCESSFUL,UNSUCCESSFUL}_SYNC_ATTEMPT`, `TCS_INTERNAL_SCALAR_FENCE_{START,END}` | 80–90 | all |
+| SparseCore fences/barriers | `SC_INSTRUCTION_SFENCE_{START,STOP}` (111/112), `SC_INSTRUCTION_SYNC_{START,STOP}` (113/114), `SC_INSTRUCTION_BARRIER_{START,STOP}` (115/116), `SC_INSTRUCTION_SYNC_WATCH_{START,STOP}` (117/118) | 111–118 | vfc/glc/gfc |
+| BarnaCore (pxc) | `BCS_SYNC_START_STOP_TRACE` (122), `BCS_FENCE` (124) | 122/124 | pxc |
 
 > **NOTE —** the sync events come in `_START`/`_STOP` (or `_SUCCESSFUL`/`_UNSUCCESSFUL`) pairs because the timeline renders a sync attempt as a duration span, not a point. A consumer pairs the start id with the next matching stop id on the same line, using the `sync_flag_id`/`sync_flag_number` stat ([XStat Metadata IDs](xstat-metadata-ids.md)) to disambiguate concurrent flags. The unsuccessful/successful split lets the UI color a stalled sync differently from one that completed immediately.
 
@@ -196,15 +196,15 @@ Semaphore, barrier, and fence operations. On all families this is the TCS sync-f
 
 The events that mark the instrumentation stream itself — tracemark insertion, the trace-instruction span, and host/core interrupts. These are not workload events; they are the scaffolding the profiler uses to align hardware time with software intent.
 
-| Name | Id (pxc) | Id (glc/gfc) | Subsystem | Confidence |
-|---|---|---|---|---|
-| `TCS_INTERNAL_SET_TRACEMARK` | 84 | 84 | TCS | CERTAIN |
-| `TCS_INTERNAL_TRACE_INSTRUCTION` | 85 | 85 | TCS | CERTAIN |
-| `TCS_INTERNAL_HOST_INTERRUPT` / `..._CORE_INTERRUPT` | 83 | 83 | TCS | CERTAIN |
-| `SC_INSTRUCTION_CORE_INTERRUPT` | — | 108 | SparseCore | CERTAIN |
-| `SC_INSTRUCTION_SET_TRACEMARK` | — | 109 | SparseCore | CERTAIN |
-| `SC_INSTRUCTION_TRACE_INSTRUCTION` | — | 110 | SparseCore | CERTAIN |
-| `BCS_TRACE_INSTRUCTION` / `BCS_SET_TRACEMARK` / `BCS_HOST_INTERRUPT` | 120/121/123 | — | BarnaCore | HIGH |
+| Name | Id (pxc) | Id (glc/gfc) | Subsystem |
+|---|---|---|---|
+| `TCS_INTERNAL_SET_TRACEMARK` | 84 | 84 | TCS |
+| `TCS_INTERNAL_TRACE_INSTRUCTION` | 85 | 85 | TCS |
+| `TCS_INTERNAL_HOST_INTERRUPT` / `..._CORE_INTERRUPT` | 83 | 83 | TCS |
+| `SC_INSTRUCTION_CORE_INTERRUPT` | — | 108 | SparseCore |
+| `SC_INSTRUCTION_SET_TRACEMARK` | — | 109 | SparseCore |
+| `SC_INSTRUCTION_TRACE_INSTRUCTION` | — | 110 | SparseCore |
+| `BCS_TRACE_INSTRUCTION` / `BCS_SET_TRACEMARK` / `BCS_HOST_INTERRUPT` | 120/121/123 | — | BarnaCore |
 
 > **QUIRK —** the interrupt event renames across generations (`HOST_INTERRUPT` on pufferfish, `CORE_INTERRUPT` from viperfish on) but keeps the *same enum value* (83). The id is the stable contract; the string is not. A consumer that switches on the enum value sees one event; one that switches on the name string must handle both spellings. This is the general rule for the device catalog — ids are wire-stable, names can be re-spelled.
 
@@ -216,14 +216,14 @@ The events that mark the instrumentation stream itself — tracemark insertion, 
 
 Collectives have two views. The *semantic* view (`AllReduce`, `AllGather`, `ReduceScatter`, …) is a host `TraceMe` label, catalogued in the host section below. The *physical* view is the inter-chip-interconnect (ICI) packet band — the actual link-level packet rx/tx/queue/inject events the silicon stamps. The ICI band is identical in shape across all five families (9 events, ids 40–48, plus the ICR-DMA bridge events 43–53), because the link layer did not change.
 
-| TracePointId value | Name | Confidence |
-|---|---|---|
-| 40 | `ICI_PACKET_PACKET_RECEIVED_ON_LINK_INPUT` | CERTAIN |
-| 41 | `ICI_PACKET_PACKET_TRANSMITTED_ON_LINK_OUTPUT` | CERTAIN |
-| 42 | `ICI_PACKET_PACKET_QUEUED_FOR_LINK_TRANSMISSION` | CERTAIN |
-| 43–46 | `ICI_PACKET_{CONTROL,DATA}_PACKET_{INJECTED,RECEIVED}_BY_ICR_DMA_BRIDGE` | CERTAIN |
-| 47–48 | `ICI_PACKET_{CONTROL,DATA}_PACKET_QUEUED_FOR_LOCAL_INGRESS` | HIGH |
-| 49–53 | `OCI_DESCRIPTOR_ENQUEUED_IN_ICR_EGRESS_DMA`, `OCI_MESSAGE_GENERATED_IN_ICR_{EGRESS,INGRESS}_DMA`, `OCI_MESSAGE_PACKET_{SENT_TO_OCI,RECEIVED_IN_ICR}` | HIGH |
+| TracePointId value | Name |
+|---|---|
+| 40 | `ICI_PACKET_PACKET_RECEIVED_ON_LINK_INPUT` |
+| 41 | `ICI_PACKET_PACKET_TRANSMITTED_ON_LINK_OUTPUT` |
+| 42 | `ICI_PACKET_PACKET_QUEUED_FOR_LINK_TRANSMISSION` |
+| 43–46 | `ICI_PACKET_{CONTROL,DATA}_PACKET_{INJECTED,RECEIVED}_BY_ICR_DMA_BRIDGE` |
+| 47–48 | `ICI_PACKET_{CONTROL,DATA}_PACKET_QUEUED_FOR_LOCAL_INGRESS` |
+| 49–53 | `OCI_DESCRIPTOR_ENQUEUED_IN_ICR_EGRESS_DMA`, `OCI_MESSAGE_GENERATED_IN_ICR_{EGRESS,INGRESS}_DMA`, `OCI_MESSAGE_PACKET_{SENT_TO_OCI,RECEIVED_IN_ICR}` |
 
 > **NOTE —** the link layer events carry `router_link_port_id ∈ {LINK0..LINK5}` and `virtual_channel` stats, so a consumer reconstructs per-link, per-VC bandwidth from this band even though the band itself names no collective. The mapping from these physical packets to a semantic `AllReduce` span is done host-side by correlating the `MegaScale:` TraceMe scope's time window with the ICI traffic in it — the two views are joined by time, not by a shared id.
 
@@ -235,17 +235,17 @@ Collectives have two views. The *semantic* view (`AllReduce`, `AllGather`, `Redu
 
 From viperfish on, sparse/embedding compute moved off the pufferfish BarnaCore FSM onto a dedicated SparseCore (SC) with its own sequencer (SCS), tile (SCT), and crossbar (XBAR). The SC instruction/task/stream/message band (18 events, ids 108–135) is its trace surface. The control and sync sub-bands were already listed above; this section catalogs the task/stream/message names that represent SparseCore *progress*.
 
-| TracePointId value | Name | Category | Confidence |
-|---|---|---|---|
-| 119 | `SC_TASK_ISSUE_FROM_SCS` | compute | CERTAIN |
-| 120 | `SC_TASK_COMMIT_ON_SCT` | compute | CERTAIN |
-| 121 | `SC_STREAM_ISSUE_FROM_CORE` | compute | CERTAIN |
-| 122 | `SC_STREAM_PROGRESS_XBAR` | compute | CERTAIN |
-| 123 | `SC_STREAM_PROGRESS_CMN` | compute | CERTAIN |
-| 131 | `SC_MESSAGE_OUTBOUND_INTERNAL_MESSAGE` | memory/msg | HIGH |
-| 132 | `SC_MESSAGE_INBOUND_INTERNAL_MESSAGE` | memory/msg | HIGH |
-| 124–130 | `OCI_DESCRIPTOR_*_ISSUED_BY_SC`, `OCI_MESSAGE_{RECEIVED,SENT}_BY_SC` | memory | HIGH |
-| 129/134/135 | `STATS_COUNTER_SAMPLE_ISSUED_FROM_{SCS,SCTD,SCTC}` | perf-sample | HIGH (gfc) |
+| TracePointId value | Name | Category |
+|---|---|---|
+| 119 | `SC_TASK_ISSUE_FROM_SCS` | compute |
+| 120 | `SC_TASK_COMMIT_ON_SCT` | compute |
+| 121 | `SC_STREAM_ISSUE_FROM_CORE` | compute |
+| 122 | `SC_STREAM_PROGRESS_XBAR` | compute |
+| 123 | `SC_STREAM_PROGRESS_CMN` | compute |
+| 131 | `SC_MESSAGE_OUTBOUND_INTERNAL_MESSAGE` | memory/msg |
+| 132 | `SC_MESSAGE_INBOUND_INTERNAL_MESSAGE` | memory/msg |
+| 124–130 | `OCI_DESCRIPTOR_*_ISSUED_BY_SC`, `OCI_MESSAGE_{RECEIVED,SENT}_BY_SC` | memory |
+| 129/134/135 | `STATS_COUNTER_SAMPLE_ISSUED_FROM_{SCS,SCTD,SCTC}` | perf-sample |
 
 > **NOTE —** `SC_TASK_ISSUE_FROM_SCS` → `SC_TASK_COMMIT_ON_SCT` brackets a SparseCore task's lifetime across the issue/commit boundary, and the three `SC_STREAM_PROGRESS_*` ids mark its movement through the crossbar (XBAR) and memory network (CMN). These are how a profile shows a SparseCore op's pipeline occupancy; they are the SparseCore analogue of the TCS instruction-stream events.
 
@@ -257,12 +257,12 @@ From viperfish on, sparse/embedding compute moved off the pufferfish BarnaCore F
 
 The fastest-growing band in the catalog and a first-class trace category. Pufferfish has exactly one throttle event; gfc has twenty-five (20 throttle + 2 SPI samplers + 3 FLL). The growth tracks the power-delivery complexity of newer silicon — cycle-skip arbitration, PPM (peak-power-management) brake edges, LDIDT voltage tracking, and frequency-locked-loop lock/select all became observable.
 
-| Family | Count | Band ids | Name families | Confidence |
-|---|---:|---|---|---|
-| pxc | 1 | 97 | `THROTTLE_STATE_THERMAL_AND_ELECTRICAL_THROTTLE_STATE` | CERTAIN |
-| vfc/vlc | 7 | 98–104 | `THROTTLE_CYCLE_SKIP_*` (7-event family, lower band than glc) | HIGH |
-| glc | 7+2 | 200–206, 168–169 | `THROTTLE_CYCLE_SKIP_{THERMAL,EXT_BRAKE,EXT_THROTTLE,LDIDT_BRAKE,LDIDT_DROOP,ARBITRATION}` (200–205), `THROTTLE_CYCLE_SKIP_PPM_SUSTAINED_AGGRESSIVE_BRAKE_RISING_EDGE` (206), `SPI_SAMPLER_{VDD_CORE,HBM}_FRAME_EXEC` (168/169) | CERTAIN |
-| gfc | 20+3+2 | 200–222, 168–169 | glc set restructured + the PPM brake cross-product `THROTTLE_CYCLE_SKIP_PPM_BRAKE_EVENT_{SUSTAINED,DIDT,OVERSHOOT}_{AGGRESSIVE,NOMINAL}` (206–211), `THROTTLE_LDIDT_VOLTAGE_*`, `THROTTLE_MAX_VALUE_THROTTLE_MAX_{FAST,SLOW}`, `THROTTLE_MAXIMUM_TEMPERATURE_*`, `FLL_LOCK_FLL_{0,1}_LOCK` (220/221), `FLL_SELECT_FLL_SELECT` (222) | CERTAIN |
+| Family | Count | Band ids | Name families |
+|---|---:|---|---|
+| pxc | 1 | 97 | `THROTTLE_STATE_THERMAL_AND_ELECTRICAL_THROTTLE_STATE` |
+| vfc/vlc | 7 | 98–104 | `THROTTLE_CYCLE_SKIP_*` (7-event family, lower band than glc) |
+| glc | 7+2 | 200–206, 168–169 | `THROTTLE_CYCLE_SKIP_{THERMAL,EXT_BRAKE,EXT_THROTTLE,LDIDT_BRAKE,LDIDT_DROOP,ARBITRATION}` (200–205), `THROTTLE_CYCLE_SKIP_PPM_SUSTAINED_AGGRESSIVE_BRAKE_RISING_EDGE` (206), `SPI_SAMPLER_{VDD_CORE,HBM}_FRAME_EXEC` (168/169) |
+| gfc | 20+3+2 | 200–222, 168–169 | glc set restructured + the PPM brake cross-product `THROTTLE_CYCLE_SKIP_PPM_BRAKE_EVENT_{SUSTAINED,DIDT,OVERSHOOT}_{AGGRESSIVE,NOMINAL}` (206–211), `THROTTLE_LDIDT_VOLTAGE_*`, `THROTTLE_MAX_VALUE_THROTTLE_MAX_{FAST,SLOW}`, `THROTTLE_MAXIMUM_TEMPERATURE_*`, `FLL_LOCK_FLL_{0,1}_LOCK` (220/221), `FLL_SELECT_FLL_SELECT` (222) |
 
 > **QUIRK —** the throttle band sits at a *high* id range (200–206 on glc, 200–222 on gfc) but at a *low* range (97–104) on the earlier families — the band was relocated, not extended in place. A reimplementation that assumes throttle events live near id 97 on all chips will mis-classify every glc/gfc throttle event as memory or SparseCore. Key on the name prefix (`THROTTLE_`, `FLL_`, `SPI_SAMPLER_`), not on the numeric band.
 
@@ -280,31 +280,31 @@ Every event on a `/host:<n>`, `XLA Modules`, `XLA Ops`, or `Steps` plane comes f
 
 ### Runtime execution & transfer
 
-| Label | Role | Confidence |
-|---|---|---|
-| `TpuExecuteOp` | top-level device-execute scope | CERTAIN |
-| `DoEnqueueProgram` / `DoEnqueueContinuationProgram` | program enqueue onto the device queue | CERTAIN |
-| `EnqueueRequestLocked` / `EnqueueProgram` / `ExecuteProgram` / `LoadProgram` / `RunHlo` | queue submission & execution stages | CERTAIN |
-| `InfeedEnqueueTuple` / `InfeedEnqueue` / `WaitForInfeed` | infeed path | CERTAIN |
-| `OutfeedDequeueTuple` / `OutfeedDequeue` / `WaitForOutfeed` | outfeed path | CERTAIN |
-| `TransferBufferToDevice` / `TransferBufferFromDevice` / `TransferToDevice` / `TransferFromDevice` / `HostToDevice` / `DeviceToHost` / `Memcpy` | host↔device buffer transfer | CERTAIN |
-| `InitializeTpu` / `StepInfo` / `SessionRun` / `ExecutorState::Process` | session/step framing | HIGH |
+| Label | Role |
+|---|---|
+| `TpuExecuteOp` | top-level device-execute scope |
+| `DoEnqueueProgram` / `DoEnqueueContinuationProgram` | program enqueue onto the device queue |
+| `EnqueueRequestLocked` / `EnqueueProgram` / `ExecuteProgram` / `LoadProgram` / `RunHlo` | queue submission & execution stages |
+| `InfeedEnqueueTuple` / `InfeedEnqueue` / `WaitForInfeed` | infeed path |
+| `OutfeedDequeueTuple` / `OutfeedDequeue` / `WaitForOutfeed` | outfeed path |
+| `TransferBufferToDevice` / `TransferBufferFromDevice` / `TransferToDevice` / `TransferFromDevice` / `HostToDevice` / `DeviceToHost` / `Memcpy` | host↔device buffer transfer |
+| `InitializeTpu` / `StepInfo` / `SessionRun` / `ExecutorState::Process` | session/step framing |
 
 ### Compiler
 
-| Label | Role | Confidence |
-|---|---|---|
-| `TpuCompile` | TPU backend compile scope | CERTAIN |
-| `XlaCompile` | XLA compile scope | CERTAIN |
-| `CompileOp` / `JitCompile` | op/JIT compile scopes | CERTAIN |
+| Label | Role |
+|---|---|
+| `TpuCompile` | TPU backend compile scope |
+| `XlaCompile` | XLA compile scope |
+| `CompileOp` / `JitCompile` | op/JIT compile scopes |
 
 ### Collective (semantic view)
 
-| Label | Role | Confidence |
-|---|---|---|
-| `MegaScale:` (prefix) | megascale transport scope prefix | CERTAIN |
-| `AllReduce` / `AllGather` / `ReduceScatter` / `SendRecv` / `collective-permute` | semantic collective op names | CERTAIN |
-| `MegaScaleAction` / `MegaScaleActionGraph` | megascale action-trace scopes | CERTAIN |
+| Label | Role |
+|---|---|
+| `MegaScale:` (prefix) | megascale transport scope prefix |
+| `AllReduce` / `AllGather` / `ReduceScatter` / `SendRecv` / `collective-permute` | semantic collective op names |
+| `MegaScaleAction` / `MegaScaleActionGraph` | megascale action-trace scopes |
 
 > **GOTCHA —** these labels are interned *by name*, so two TraceMe scopes with the same label on the same plane share one `XEventMetadata` (and one id), while the same label on a different plane gets a fresh id. A reimplementation must not assume `AllReduce` has a fixed id — it has whatever plane-local id the first `AllReduce` scope on that plane was assigned. The names are stable; the ids are emphatically not. This is the dual of the device rule (device ids are stable, names can be re-spelled).
 

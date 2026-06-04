@@ -239,11 +239,11 @@ CurrentCoreStateSummary  (one wire type, three callers)
         RapidEye's on-device TpuCoreHLO {chip_id, core_idx, hlo, pc, tag, …} mirrors CurrentCoreStateSummary
 ```
 
-| Consumer | Surface | What it does | Confidence |
-|---|---|---|---|
-| `TpuDebugService.GetCurrentTpuStateSummary` | xdb debugger gRPC (live + post-mortem) | Returns the host's per-core state; `GetMachineInfo` returns the core inventory | CERTAIN |
-| `RuntimeMetricService.GetTpuRuntimeStatus` | Public Cloud TPU monitoring gRPC | Feeds Google Cloud Monitoring; same service also carries the generic `TPUMetric` streamz envelope (`MetricType ∈ {UNKNOWN, LIBTPU}`) | CERTAIN |
-| Megascale hang-detector | `MegaScaleTransport.ReportError` | Embeds per-host state into a slice-wide `RapidEyeInfo` hang report; `RapidEyeInfo` adds `tpu_version`/`chip_config_name` (the gen identity) | HIGH |
+| Consumer | Surface | What it does |
+|---|---|---|
+| `TpuDebugService.GetCurrentTpuStateSummary` | xdb debugger gRPC (live + post-mortem) | Returns the host's per-core state; `GetMachineInfo` returns the core inventory |
+| `RuntimeMetricService.GetTpuRuntimeStatus` | Public Cloud TPU monitoring gRPC | Feeds Google Cloud Monitoring; same service also carries the generic `TPUMetric` streamz envelope (`MetricType ∈ {UNKNOWN, LIBTPU}`) |
+| Megascale hang-detector | `MegaScaleTransport.ReportError` | Embeds per-host state into a slice-wide `RapidEyeInfo` hang report; `RapidEyeInfo` adds `tpu_version`/`chip_config_name` (the gen identity) |
 
 > **NOTE —** the local profiler (PJRT Profiler extension → `XSpace`) is **not** a consumer of `tpu_telemetry`. `PLUGIN_Profiler_CollectData` serves only serialized `XSpace` bytes and explicitly does not emit `TpuCoreStateSummary` / `AllCoreStateSummaries`; conversely the two state-summary RPCs never emit `XSpace`. The boundary is enforced at the wire, not by convention. See [TpuProfiler ABI](tpu-profiler-abi.md) and [overview](overview.md).
 
@@ -277,20 +277,20 @@ The two profiling formats answer opposite questions and never share a blob. This
 
 The biggest reimplementation hazard is *expecting fields that are not here*. `tpu_telemetry.proto` carries **core execution state only** — PC, tag, tracemark, program, queue, HLO location. Every hardware-environment metric a reader might expect lives in a separate, purpose-built proto. This catalog draws the boundary so a reimplementer routes each category to the right file.
 
-| Category a reader expects | Where it actually lives | Field(s) / enum | Confidence |
-|---|---|---|---|
-| Core execution state (PC/tag/tracemark/program/queue) | **`tpu_telemetry.proto`** — `CurrentCoreStateSummary`, `SequencerInfo` | `pc`, `tag`, `tracemark`, `program_id`, `run_id`, `queued_program_info` | CERTAIN |
-| Utilization (TensorCore / HBM / ICI / SparseCore) | `utilization_metrics.proto` / `UtilizationMetricData.UtilizationMetric` | `metric_type ∈ UtilizationMetricType`, `utilization`, `usage`, `duty_cycle` (float) | HIGH |
-| HBM usage | `utilization_metrics.proto` | `UtilizationMetricType.HBM_UTILIZATION (=2)` + `usage` float | HIGH |
-| Temperature (proxy) | `utilization_metrics.proto` / `ChipThrottlingMetric` | `tray_id`, `chip_id`, `throttling_score` (int64) | HIGH |
-| ICI link state / health | `utilization_metrics.proto` / `IciLinkMetric` | `port_id` (string), `link_health` (int64) | HIGH |
-| ICI link topology | `ici_link_map.proto` / `IciLinkMapEntry`, `IciLinkMap` | `local_chip`, `ici_connector ∈ IciConnector(ICI0..ICI15)`, `orientation`, `polarity`, `remote_chip` | HIGH |
-| Power | `power_metrics.proto` (xprof) / `PowerMetrics`, `PowerComponentMetrics` | `component_name`, `max_power`, `avg_power`, `max_moving_avg_power_{100us,1ms,10ms,1s}` | HIGH |
-| ECC / thermal / power / PCIe / ICI-fatal errors | `error_report.proto` / `Error` | 12 typed sub-messages: `ecc_correctable`, `ecc_uncorrectable`, `thermal`, `power`, `pcie`, `ici_link_fatal`, `firmware`, `network`, `system_{software,hardware}`, `user`, `internal` | HIGH |
-| Error / anomaly aggregation | `anomalies.proto` / `Anomaly`, `EccErrorAnomaly`, `Anomalies` | ECC + general error anomaly carriers | MEDIUM |
-| Generic numeric runtime metric envelope | `tpu_metric_service.proto` / `TPUMetric`, `Metric` | gauge / counter / distribution / summary + `Attribute`; `MetricType ∈ {UNKNOWN, LIBTPU}` | HIGH |
-| Per-chip throttling rollup | `utilization_metrics.proto` / `TpuHealthMetrics` | `chip_throttling_metric` + `repeated ici_link_metrics` | HIGH |
-| Per-event device trace (not telemetry at all) | `xplane.proto` + per-family `trace_entries.proto` | `XEvent` + `TracePointId` enums | CERTAIN |
+| Category a reader expects | Where it actually lives | Field(s) / enum |
+|---|---|---|
+| Core execution state (PC/tag/tracemark/program/queue) | **`tpu_telemetry.proto`** — `CurrentCoreStateSummary`, `SequencerInfo` | `pc`, `tag`, `tracemark`, `program_id`, `run_id`, `queued_program_info` |
+| Utilization (TensorCore / HBM / ICI / SparseCore) | `utilization_metrics.proto` / `UtilizationMetricData.UtilizationMetric` | `metric_type ∈ UtilizationMetricType`, `utilization`, `usage`, `duty_cycle` (float) |
+| HBM usage | `utilization_metrics.proto` | `UtilizationMetricType.HBM_UTILIZATION (=2)` + `usage` float |
+| Temperature (proxy) | `utilization_metrics.proto` / `ChipThrottlingMetric` | `tray_id`, `chip_id`, `throttling_score` (int64) |
+| ICI link state / health | `utilization_metrics.proto` / `IciLinkMetric` | `port_id` (string), `link_health` (int64) |
+| ICI link topology | `ici_link_map.proto` / `IciLinkMapEntry`, `IciLinkMap` | `local_chip`, `ici_connector ∈ IciConnector(ICI0..ICI15)`, `orientation`, `polarity`, `remote_chip` |
+| Power | `power_metrics.proto` (xprof) / `PowerMetrics`, `PowerComponentMetrics` | `component_name`, `max_power`, `avg_power`, `max_moving_avg_power_{100us,1ms,10ms,1s}` |
+| ECC / thermal / power / PCIe / ICI-fatal errors | `error_report.proto` / `Error` | 12 typed sub-messages: `ecc_correctable`, `ecc_uncorrectable`, `thermal`, `power`, `pcie`, `ici_link_fatal`, `firmware`, `network`, `system_{software,hardware}`, `user`, `internal` |
+| Error / anomaly aggregation | `anomalies.proto` / `Anomaly`, `EccErrorAnomaly`, `Anomalies` | ECC + general error anomaly carriers |
+| Generic numeric runtime metric envelope | `tpu_metric_service.proto` / `TPUMetric`, `Metric` | gauge / counter / distribution / summary + `Attribute`; `MetricType ∈ {UNKNOWN, LIBTPU}` |
+| Per-chip throttling rollup | `utilization_metrics.proto` / `TpuHealthMetrics` | `chip_throttling_metric` + `repeated ici_link_metrics` |
+| Per-event device trace (not telemetry at all) | `xplane.proto` + per-family `trace_entries.proto` | `XEvent` + `TracePointId` enums |
 
 Companion-proto string anchors confirmed in the binary: `HBM_UTILIZATION`, `TENSORCORE_UTILIZATION`, `SPARSECORE_UTILIZATION`, `throttling_score`, `TpuHealthMetrics`, `ChipThrottlingMetric`, `IciLinkMetric`, `PowerComponentMetrics`. The companion-proto *internals* are out of scope for this page — only the routing boundary is owned here.
 

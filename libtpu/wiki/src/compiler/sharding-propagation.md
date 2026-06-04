@@ -159,21 +159,21 @@ The forward sweep, `InferShardingFromOperands` (`0x1c856780`, the largest helper
 
 The forward rule is opcode-dependent. The shape of the rule space — confirmed by the opcode-specific diagnostics in the decompiled body (`"Not applying sharding to reduce window because dilatation isn't supported yet"`, the `"sort"` handling, the `SPMDShardToFullShape` boundary check) — is a switch over `HloOpcode` families:
 
-| Opcode family | Forward rule (operand sharding → instruction sharding) | Confidence |
-|---|---|---|
-| Elementwise (`add`, `mul`, `select`, unary math, …) | Pass-through: instruction takes the (merged) sharding of its operands; all operands and the result share dims one-to-one | HIGH |
-| `broadcast` | Operand sharding lifted onto the broadcast result, mapping operand dims to their broadcast positions; new dims replicated | HIGH |
-| `reshape` | Map operand tiled dims through the reshape: a split dim propagates to the split factors, a merged dim only if both inputs agree; otherwise no inference (left for backward) | MEDIUM |
-| `transpose` / `reverse` | Permute / mirror the operand's tile assignment by the dimension map | HIGH |
-| `dot` | Map LHS/RHS batch dims → output batch dims; a sharded **contracting** dim implies the output is *unreduced* (partial-sum) and forces an AllReduce later; non-contracting dims map to output dims | HIGH |
-| `convolution` | Same dimension-numbers machinery as dot: batch/feature/spatial dims mapped LHS→output; sharded spatial dims propagate to output spatial dims | HIGH |
-| `reduce` | Drop the reduced dims from the operand sharding; a sharded reduced dim yields an unreduced result | HIGH |
-| `reduce-window` | Like `reduce` but **guarded**: if the window has dilation the rule bails (`"… because dilatation isn't supported yet"`) and leaves the op unsharded | HIGH |
-| `gather` | Operand-data sharding maps to the gathered output through the gather dim-numbers; index sharding handled separately | MEDIUM |
-| `scatter` | Map the updates/operand shardings; the index operand constrains which output dims may shard | MEDIUM |
-| `pad` / `slice` / `dynamic-slice` | Tiling pass-through on untouched dims; padded/sliced dims only propagate when the boundary aligns to the tile | MEDIUM |
-| `sort` | Sorted dim must be replicated (cannot tile the comparison axis); other dims pass through | HIGH |
-| `kCustomCall` | Delegated to the `CustomCallShardingHelper` vtable (see below) | HIGH |
+| Opcode family | Forward rule (operand sharding → instruction sharding) |
+|---|---|
+| Elementwise (`add`, `mul`, `select`, unary math, …) | Pass-through: instruction takes the (merged) sharding of its operands; all operands and the result share dims one-to-one |
+| `broadcast` | Operand sharding lifted onto the broadcast result, mapping operand dims to their broadcast positions; new dims replicated |
+| `reshape` | Map operand tiled dims through the reshape: a split dim propagates to the split factors, a merged dim only if both inputs agree; otherwise no inference (left for backward) |
+| `transpose` / `reverse` | Permute / mirror the operand's tile assignment by the dimension map |
+| `dot` | Map LHS/RHS batch dims → output batch dims; a sharded **contracting** dim implies the output is *unreduced* (partial-sum) and forces an AllReduce later; non-contracting dims map to output dims |
+| `convolution` | Same dimension-numbers machinery as dot: batch/feature/spatial dims mapped LHS→output; sharded spatial dims propagate to output spatial dims |
+| `reduce` | Drop the reduced dims from the operand sharding; a sharded reduced dim yields an unreduced result |
+| `reduce-window` | Like `reduce` but **guarded**: if the window has dilation the rule bails (`"… because dilatation isn't supported yet"`) and leaves the op unsharded |
+| `gather` | Operand-data sharding maps to the gathered output through the gather dim-numbers; index sharding handled separately |
+| `scatter` | Map the updates/operand shardings; the index operand constrains which output dims may shard |
+| `pad` / `slice` / `dynamic-slice` | Tiling pass-through on untouched dims; padded/sliced dims only propagate when the boundary aligns to the tile |
+| `sort` | Sorted dim must be replicated (cannot tile the comparison axis); other dims pass through |
+| `kCustomCall` | Delegated to the `CustomCallShardingHelper` vtable (see below) |
 
 ```c
 // InferShardingFromOperands  @ 0x1c856780  (post-order visit)
@@ -322,12 +322,12 @@ The decompiled control flow shows the nested `do { … } while (changed)` over t
 
 The decompiled `TpuCustomCallShardingHelper::InferShardingFromOperands` (`0x1278bf80`) tests `IsCustomCall` against a fixed set of targets, in this order; any target it does not match returns `std::nullopt` (the no-sharding sentinel, same as the base). The matched branches:
 
-| Custom-call target | Sharding rule | Confidence |
-|---|---|---|
-| `xla-sdc-checker-get-checksums` | Returns `std::nullopt` — the SDC-checker debug custom call is left unsharded (falls to the same exit as an unmatched target) | HIGH |
-| `QrDecompositionBlock` | Non-trivial: when operand 0 carries a sharding, builds a **two-element tuple sharding** — the operand's sharding plus a derived block sharding (`(anonymous)::DeriveQrBlockShardingFromOtherSharding`); otherwise `nullopt` | HIGH |
-| `MoveToHost` | Operand-following: result takes operand 0's sharding — **unless** the instruction's own sharding is already replicated, in which case it returns `nullopt` | HIGH |
-| `PartialReduce` | Non-trivial: when operand 0 is sharded, consults `reduction_dim` from the backend config (`"PartialReduce backend config cannot be null."` guard); the reduced dim drops, the rest pass through | HIGH |
+| Custom-call target | Sharding rule |
+|---|---|
+| `xla-sdc-checker-get-checksums` | Returns `std::nullopt` — the SDC-checker debug custom call is left unsharded (falls to the same exit as an unmatched target) |
+| `QrDecompositionBlock` | Non-trivial: when operand 0 carries a sharding, builds a **two-element tuple sharding** — the operand's sharding plus a derived block sharding (`(anonymous)::DeriveQrBlockShardingFromOtherSharding`); otherwise `nullopt` |
+| `MoveToHost` | Operand-following: result takes operand 0's sharding — **unless** the instruction's own sharding is already replicated, in which case it returns `nullopt` |
+| `PartialReduce` | Non-trivial: when operand 0 is sharded, consults `reduction_dim` from the backend config (`"PartialReduce backend config cannot be null."` guard); the reduced dim drops, the rest pass through |
 
 The function also matches one further target compared with length 7 (via a float-taking `IsCustomCall` overload) whose branch is operand-following; its literal was not recovered from the decompile (the comparison reads through a `.data` pointer, not a `.rodata` string), so it is omitted here.
 

@@ -73,30 +73,30 @@ The range check `ms - 1 > 0x15` admits `MemorySpace` ∈ 1..22; the bitmask `0x3
 
 The SCTypeConverter result for `!llvm.ptr<N>` is `N = MemorySpaceToAddressSpace(MS)`. Index = `MS − 1`; `MemorySpace 8` is a gap (invalid → `LOG(FATAL)`). The **flatten** column is the `lowerFunc` override (next section); the `lowerAsserts` lambda omits it.
 
-| MS | pool | → addrspace (= `ptr<N>`) | sequencer flatten | Confidence |
-|---|---|---|---|---|
-| 1 | `smem` | 0 (`0x00`) | — | CONFIRMED |
-| 2 | `tile_spmem` | 201 (`0xC9`) | — | CONFIRMED |
-| 3 | `spmem` | 202 (`0xCA`) | — | CONFIRMED |
-| 4 | `hbm` | 203 (`0xCB`) | — | CONFIRMED |
-| 5 | `sflag` | 204 (`0xCC`) | — | CONFIRMED |
-| 6 | `vmem` | 205 (`0xCD`) | — | CONFIRMED |
-| 7 | `dreg` | 208 (`0xD0`) | — | CONFIRMED |
-| 8 | *(gap)* | invalid → `LOG(FATAL)` | — | CONFIRMED |
-| 9 | `smem_any` | 212 (`0xD4`) | — | CONFIRMED |
-| 10 | `hbm_any` | 213 (`0xD5`) | — | CONFIRMED |
-| 11 | `timem` | 214 (`0xD6`) | — | CONFIRMED |
-| 12 | `simem` | 215 (`0xD7`) | — | CONFIRMED |
-| 13 | `iova` | 216 (`0xD8`) | — | CONFIRMED |
-| 14 | `sflag_tile` | 217 (`0xD9`) | → **204** if `!execute-seq` | CONFIRMED |
-| 15 | `spmem_any` | 218 (`0xDA`) | — | CONFIRMED |
-| 16 | `smem_tile` | 219 (`0xDB`) | → **0** if `!execute-seq` | CONFIRMED |
-| 17 | `mar` | 220 (`0xDC`) | — | CONFIRMED |
-| 18 | `tile_spmem_cb` | 501 (`0x1F5`) | — | CONFIRMED |
-| 19 | `smem_cb` | 502 (`0x1F6`) | — | CONFIRMED |
-| 20 | `sflag_scs` | 223 (`0xDF`) | → **204** if `!core-seq` | CONFIRMED |
-| 21 | `smem_scs` | 224 (`0xE0`) | → **0** if `!core-seq` | CONFIRMED |
-| 22 | `sflag_tc` | 204 (`0xCC`) | **always 204** | CONFIRMED |
+| MS | pool | → addrspace (= `ptr<N>`) | sequencer flatten |
+|---|---|---|---|
+| 1 | `smem` | 0 (`0x00`) | — |
+| 2 | `tile_spmem` | 201 (`0xC9`) | — |
+| 3 | `spmem` | 202 (`0xCA`) | — |
+| 4 | `hbm` | 203 (`0xCB`) | — |
+| 5 | `sflag` | 204 (`0xCC`) | — |
+| 6 | `vmem` | 205 (`0xCD`) | — |
+| 7 | `dreg` | 208 (`0xD0`) | — |
+| 8 | *(gap)* | invalid → `LOG(FATAL)` | — |
+| 9 | `smem_any` | 212 (`0xD4`) | — |
+| 10 | `hbm_any` | 213 (`0xD5`) | — |
+| 11 | `timem` | 214 (`0xD6`) | — |
+| 12 | `simem` | 215 (`0xD7`) | — |
+| 13 | `iova` | 216 (`0xD8`) | — |
+| 14 | `sflag_tile` | 217 (`0xD9`) | → **204** if `!execute-seq` |
+| 15 | `spmem_any` | 218 (`0xDA`) | — |
+| 16 | `smem_tile` | 219 (`0xDB`) | → **0** if `!execute-seq` |
+| 17 | `mar` | 220 (`0xDC`) | — |
+| 18 | `tile_spmem_cb` | 501 (`0x1F5`) | — |
+| 19 | `smem_cb` | 502 (`0x1F6`) | — |
+| 20 | `sflag_scs` | 223 (`0xDF`) | → **204** if `!core-seq` |
+| 21 | `smem_scs` | 224 (`0xE0`) | → **0** if `!core-seq` |
+| 22 | `sflag_tc` | 204 (`0xCC`) | **always 204** |
 
 The address-space ID is used **directly** as the LLVM `addrspace` — there is no remap. Sweeping `LLVMPointerType::get` immediates across the SC lowering band `0x13530000..0x135c0000` recovers exactly these IDs as literals: `0xCA` (Spmem), `0xCB` (HBM), `0xCC` (Sflag, ×5), `0xD0` (Dreg), `0xD3` (SflagAny, ×4), `0xD4` (SmemAny), `0xD5` (HBMAny), `0xDB` (TileSmem), `0xE1` (SflagAnySynctile). The pool/`MemorySpace`/on-tile semantics of each ID belong to the [fat-pointers page](../sparsecore/fat-pointers-as789.md).
 
@@ -154,12 +154,12 @@ __int64 CheckAddressSpaces(SparseCoreTarget *tgt, Operation *op, int srcAS, int 
 
 ### Table D — the legality conditions (short-circuit OR, top to bottom)
 
-| # | condition (any one ⇒ legal) | source | Confidence |
-|---|---|---|---|
-| 1 | `tgt.SupportsTileSmemDma()` | vtable `+0xd8`; VF = false, GL = false | CONFIRMED |
-| 2 | enclosing `llvm.func`'s `sc.sequencer` inherent attr == `"scs"` | `getInherentAttr("sc.sequencer", 12)` → 3-char cmp | CONFIRMED |
-| 3 | `srcAS != 0` **AND** `dstAS != 0` (neither endpoint is generic SMEM) | the two `int` params (post-cast Table-A IDs) | CONFIRMED |
-| — | else → `emitError("Simple DMAs on SMEM only supported on SCS")` → failure | error string @ `0x91b1ca3` | CONFIRMED |
+| # | condition (any one ⇒ legal) | source |
+|---|---|---|
+| 1 | `tgt.SupportsTileSmemDma()` | vtable `+0xd8`; VF = false, GL = false |
+| 2 | enclosing `llvm.func`'s `sc.sequencer` inherent attr == `"scs"` | `getInherentAttr("sc.sequencer", 12)` → 3-char cmp |
+| 3 | `srcAS != 0` **AND** `dstAS != 0` (neither endpoint is generic SMEM) | the two `int` params (post-cast Table-A IDs) |
+| — | else → `emitError("Simple DMAs on SMEM only supported on SCS")` → failure | error string @ `0x91b1ca3` |
 
 The decompile pins each arm: vtable slot `+216` (`= 0xd8`) is `SupportsTileSmemDma` (line gate at `*(this+216)(this)`); the parent walk stops at `mlir::detail::TypeIDResolver<mlir::LLVM::LLVMFuncOp>` (the enclosing `llvm.func`); the `"scs"` compare is the literal `(s[0..1] ^ 0x6373) | (s[2] ^ 0x73)` with `s.size == 3`; and the failure arm builds the 41-byte string `"Simple DMAs on SMEM only supported on SCS"`.
 
@@ -190,20 +190,20 @@ The same source op can appear in **both** families: `sparse_core::RsqrtOp` has a
 
 Each row's source op fans into the macro intrinsic at the body tail. All 12 `matchAndRewrite` symbols and their template parameters are confirmed in the decompile.
 
-| `matchAndRewrite` @VA | source op | → EUP macro intrinsic | EUP selector | Confidence |
-|---|---|---|---|---|
-| `0x1357e2c0` | `math::TanhOp` | `tpu_tanh_macro` (`0x14988180`) | Tanh `0x13`/`0x1b` | CONFIRMED |
-| `0x1357e540` | `sparse_core::RsqrtOp` | `tpu_rsqrt_macro` (`0x14735840`) | ReciprocalSqrt `0x10`/`0x0c` | CONFIRMED |
-| `0x1357e880` | `math::Log2Op` | `tpu_log2_macro` (`0x14730640`) | LogTwo `0x12`/`0x1a` | CONFIRMED |
-| `0x1357eb00` | `sparse_core::ReciprocalOp` | `tpu_rcp_macro` (`0x147346c0`) | Reciprocal `0x15`/`0x1d` | CONFIRMED |
-| `0x1357ef40` | `sparse_core::Log2Op` | `tpu_log2_macro` (`0x14730640`) | LogTwo `0x12`/`0x1a` | CONFIRMED |
-| `0x1357f380` | `sparse_core::Pow2Op` | `tpu_pow2_macro` (`0x147339c0`) | PowTwo `0x11`/`0x19` | CONFIRMED |
-| `0x1357f6c0` | `math::SinOp` | `tpu_sin_macro` (`0x14736880`) | Sinq `0x17`/`0x1e` | CONFIRMED |
-| `0x1357f840` | `math::CosOp` | `tpu_cos_macro` (`0x146d8540`) | Cosq `0x18`/`0x1f` | CONFIRMED |
-| `0x1357fac0` | `sparse_core::VsinqOp` | `tpu_sin_macro` (`0x14736880`) | Sinq `0x17`/`0x1e` | CONFIRMED |
-| `0x1357ff00` | `sparse_core::VcosqOp` | `tpu_cos_macro` (`0x146d8540`) | Cosq `0x18`/`0x1f` | CONFIRMED |
-| `0x13580240` | `math::ErfOp` | `tpu_erf_macro` (`0x1472efa0`) | Erf `0x0e`/`0x0f` | CONFIRMED |
-| `0x135804c0` | `sparse_core::VsigshftOp` | `tpu_sigshft` (`0x147365e0`) | ShiftedSigmoid `0x14`/`0x1c` | CONFIRMED |
+| `matchAndRewrite` @VA | source op | → EUP macro intrinsic | EUP selector |
+|---|---|---|---|
+| `0x1357e2c0` | `math::TanhOp` | `tpu_tanh_macro` (`0x14988180`) | Tanh `0x13`/`0x1b` |
+| `0x1357e540` | `sparse_core::RsqrtOp` | `tpu_rsqrt_macro` (`0x14735840`) | ReciprocalSqrt `0x10`/`0x0c` |
+| `0x1357e880` | `math::Log2Op` | `tpu_log2_macro` (`0x14730640`) | LogTwo `0x12`/`0x1a` |
+| `0x1357eb00` | `sparse_core::ReciprocalOp` | `tpu_rcp_macro` (`0x147346c0`) | Reciprocal `0x15`/`0x1d` |
+| `0x1357ef40` | `sparse_core::Log2Op` | `tpu_log2_macro` (`0x14730640`) | LogTwo `0x12`/`0x1a` |
+| `0x1357f380` | `sparse_core::Pow2Op` | `tpu_pow2_macro` (`0x147339c0`) | PowTwo `0x11`/`0x19` |
+| `0x1357f6c0` | `math::SinOp` | `tpu_sin_macro` (`0x14736880`) | Sinq `0x17`/`0x1e` |
+| `0x1357f840` | `math::CosOp` | `tpu_cos_macro` (`0x146d8540`) | Cosq `0x18`/`0x1f` |
+| `0x1357fac0` | `sparse_core::VsinqOp` | `tpu_sin_macro` (`0x14736880`) | Sinq `0x17`/`0x1e` |
+| `0x1357ff00` | `sparse_core::VcosqOp` | `tpu_cos_macro` (`0x146d8540`) | Cosq `0x18`/`0x1f` |
+| `0x13580240` | `math::ErfOp` | `tpu_erf_macro` (`0x1472efa0`) | Erf `0x0e`/`0x0f` |
+| `0x135804c0` | `sparse_core::VsigshftOp` | `tpu_sigshft` (`0x147365e0`) | ShiftedSigmoid `0x14`/`0x1c` |
 
 Eight distinct macros — `rsqrt`, `rcp`, `tanh`, `sin`, `cos`, `erf`, `log2`, `pow2` — plus the bare `tpu_sigshft`. The `math::` and `sparse_core::` source ops fan into the *same* macro: `math.tanh` and a `sc.tanh` both reach `tpu_tanh_macro`; the `sc::Vsinq`/`Vcosq`/`Vsigshft` ops are the EUP-native dialect forms.
 
@@ -211,38 +211,38 @@ Eight distinct macros — `rsqrt`, `rcp`, `tanh`, `sin`, `cos`, `erf`, `log2`, `
 
 Each `AluEpOpLowering<Src, Compute, Unpack, Pack>` unpacks the operand, re-emits the `Compute` op per sub-element piece, and repacks. Column 3 is the re-emitted `Compute` op; the pack family (`F`=float, `SI`=signed-int, `UI`=unsigned-int) is the `Unpack`/`Pack` template pair. All 30 template signatures are confirmed in the decompile.
 
-| `matchAndRewrite` @VA | source op | re-emitted Compute | pack | class | Confidence |
-|---|---|---|---|---|---|
-| `0x135de780` | `math::RsqrtOp` | `math::RsqrtOp` | F | transcendental | CONFIRMED |
-| `0x135df200` | `math::ExpOp` | `math::ExpOp` | F | transcendental | CONFIRMED |
-| `0x135dfca0` | `math::Log2Op` | `math::Log2Op` | F | transcendental | CONFIRMED |
-| `0x135e0740` | `math::TanhOp` | `math::TanhOp` | F | transcendental | CONFIRMED |
-| `0x135e11e0` | `math::FloorOp` | `math::FloorOp` | F | rounding | CONFIRMED |
-| `0x135e1c80` | `sparse_core::RsqrtOp` | `sparse_core::RsqrtOp` | F | transcendental | CONFIRMED |
-| `0x135e2720` | `sparse_core::ReciprocalOp` | `sparse_core::ReciprocalOp` | F | transcendental | CONFIRMED |
-| `0x135e31c0` | `math::AbsFOp` | `math::AbsFOp` | F | abs | CONFIRMED |
-| `0x135e3c60` | `arith::FPToSIOp` | `arith::FPToSIOp` | F→SI | convert | CONFIRMED |
-| `0x135e4700` | `math::CeilOp` | `math::CeilOp` | F | rounding | CONFIRMED |
-| `0x135e51a0` | `sparse_core::Pow2Op` | `sparse_core::Pow2Op` | F | transcendental | CONFIRMED |
-| `0x135e5c40` | `sparse_core::Log2Op` | `sparse_core::Log2Op` | F | transcendental | CONFIRMED |
-| `0x135e66e0` | `arith::AddFOp` | `arith::AddFOp` | F | binary float | CONFIRMED |
-| `0x135e7160` | `arith::DivFOp` | `arith::DivFOp` | F | binary float | CONFIRMED |
-| `0x135e7c00` | `math::CopySignOp` | `math::CopySignOp` | F | binary float | CONFIRMED |
-| `0x135e86a0` | `arith::MaximumFOp` | `arith::MaximumFOp` | F | binary float | CONFIRMED |
-| `0x135e9140` | `arith::MinimumFOp` | `arith::MinimumFOp` | F | binary float | CONFIRMED |
-| `0x135e9be0` | `arith::MulFOp` | `arith::MulFOp` | F | binary float | CONFIRMED |
-| `0x135ea680` | `arith::NegFOp` | `arith::NegFOp` | F | unary float | CONFIRMED |
-| `0x135eb120` | `arith::SubFOp` | `arith::SubFOp` | F | binary float | CONFIRMED |
-| `0x135ebbc0` | `sparse_core::ClampFOp` | `sparse_core::ClampFOp` | F | clamp | CONFIRMED |
-| `0x135ec660` | `arith::MaxSIOp` | `arith::MaxSIOp` | SI | binary int | CONFIRMED |
-| `0x135ed100` | `arith::MinSIOp` | `arith::MinSIOp` | SI | binary int | CONFIRMED |
-| `0x135edba0` | `arith::MaxUIOp` | `arith::MaxUIOp` | UI | binary uint | CONFIRMED |
-| `0x135ee640` | `arith::MinUIOp` | `arith::MinUIOp` | UI | binary uint | CONFIRMED |
-| `0x135ef0e0` | `arith::MulIOp` | `arith::MulIOp` | SI | binary int | CONFIRMED |
-| `0x135efb80` | `arith::AddIOp` | `arith::AddIOp` | SI | binary int | CONFIRMED |
-| `0x135f0620` | `arith::SubIOp` | `arith::SubIOp` | SI | binary int | CONFIRMED |
-| `0x135f10c0` | `sparse_core::AddSIOp` | `arith::AddIOp` | SI | int alias | CONFIRMED |
-| `0x135f1b20` | `sparse_core::AddUIOp` | `arith::AddIOp` | UI | uint alias | CONFIRMED |
+| `matchAndRewrite` @VA | source op | re-emitted Compute | pack | class |
+|---|---|---|---|---|
+| `0x135de780` | `math::RsqrtOp` | `math::RsqrtOp` | F | transcendental |
+| `0x135df200` | `math::ExpOp` | `math::ExpOp` | F | transcendental |
+| `0x135dfca0` | `math::Log2Op` | `math::Log2Op` | F | transcendental |
+| `0x135e0740` | `math::TanhOp` | `math::TanhOp` | F | transcendental |
+| `0x135e11e0` | `math::FloorOp` | `math::FloorOp` | F | rounding |
+| `0x135e1c80` | `sparse_core::RsqrtOp` | `sparse_core::RsqrtOp` | F | transcendental |
+| `0x135e2720` | `sparse_core::ReciprocalOp` | `sparse_core::ReciprocalOp` | F | transcendental |
+| `0x135e31c0` | `math::AbsFOp` | `math::AbsFOp` | F | abs |
+| `0x135e3c60` | `arith::FPToSIOp` | `arith::FPToSIOp` | F→SI | convert |
+| `0x135e4700` | `math::CeilOp` | `math::CeilOp` | F | rounding |
+| `0x135e51a0` | `sparse_core::Pow2Op` | `sparse_core::Pow2Op` | F | transcendental |
+| `0x135e5c40` | `sparse_core::Log2Op` | `sparse_core::Log2Op` | F | transcendental |
+| `0x135e66e0` | `arith::AddFOp` | `arith::AddFOp` | F | binary float |
+| `0x135e7160` | `arith::DivFOp` | `arith::DivFOp` | F | binary float |
+| `0x135e7c00` | `math::CopySignOp` | `math::CopySignOp` | F | binary float |
+| `0x135e86a0` | `arith::MaximumFOp` | `arith::MaximumFOp` | F | binary float |
+| `0x135e9140` | `arith::MinimumFOp` | `arith::MinimumFOp` | F | binary float |
+| `0x135e9be0` | `arith::MulFOp` | `arith::MulFOp` | F | binary float |
+| `0x135ea680` | `arith::NegFOp` | `arith::NegFOp` | F | unary float |
+| `0x135eb120` | `arith::SubFOp` | `arith::SubFOp` | F | binary float |
+| `0x135ebbc0` | `sparse_core::ClampFOp` | `sparse_core::ClampFOp` | F | clamp |
+| `0x135ec660` | `arith::MaxSIOp` | `arith::MaxSIOp` | SI | binary int |
+| `0x135ed100` | `arith::MinSIOp` | `arith::MinSIOp` | SI | binary int |
+| `0x135edba0` | `arith::MaxUIOp` | `arith::MaxUIOp` | UI | binary uint |
+| `0x135ee640` | `arith::MinUIOp` | `arith::MinUIOp` | UI | binary uint |
+| `0x135ef0e0` | `arith::MulIOp` | `arith::MulIOp` | SI | binary int |
+| `0x135efb80` | `arith::AddIOp` | `arith::AddIOp` | SI | binary int |
+| `0x135f0620` | `arith::SubIOp` | `arith::SubIOp` | SI | binary int |
+| `0x135f10c0` | `sparse_core::AddSIOp` | `arith::AddIOp` | SI | int alias |
+| `0x135f1b20` | `sparse_core::AddUIOp` | `arith::AddIOp` | UI | uint alias |
 
 Two structural facts the template signatures pin down:
 

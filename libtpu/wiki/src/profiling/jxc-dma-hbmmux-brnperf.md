@@ -97,16 +97,16 @@ function DmaSubscriber_ProcessTraceEntry(self, entry):       // 0xf1dfee0
 
 The seventeen DMA edges resolve to six XLines. `XLine` is a `TpuComponent` ordinal, decoded from `TpuComponentName` @ `0x1c8ebb60`; the display-name blobs live at `off_21643E10/E20/E30` (`R_X86_64_RELATIVE` addends → `"Receive"`/`"Read"`/`"Write"`).
 
-| arm (`nf.id`) | Event | XLine | Display name | kind | Confidence |
-|---|---|---|---|---|---|
-| 0 (3) | HBM_READ_COMMAND | 57 `"HBM"` | Read | 4 | High |
-| 1 (4) / 2 (5) | HBM_WRITE cmd / data-end | 57 `"HBM"` | Write | 5 | High |
-| 3 (6) / 4 (7) / 5 (8) | VMEM↔HBM read/write cmd / data-end | 19 `"Tensor Core VMEM"` | Read/Write | 4/5 | High |
-| 6 (9) / 7 (10) / 8 (11) | VMEM↔ICI read/write cmd / data-end | 19 `"Tensor Core VMEM"` | Read/Write | 4/5 | High |
-| 9 (12) / 10 (13) / 11 (14) | SMEM read/write cmd / data-end | 20 `"Tensor Core SMEM"` | Read/Write | 4/5 | High |
-| 12 (15) / 13 (16) | IMEM write cmd / data-end | 18 `"Tensor Core IMEM"` | Write | 5 | High |
-| 17 (20) | HIB_WRITE_RECEIVE | 51 `"From Host Interface"` | Receive | 7 | High |
-| 19 (22) / 20 (23) | HIB write cmd / data-end | 52 `"To Host Interface"` | Write | 5 | High |
+| arm (`nf.id`) | Event | XLine | Display name | kind |
+|---|---|---|---|---|
+| 0 (3) | HBM_READ_COMMAND | 57 `"HBM"` | Read | 4 |
+| 1 (4) / 2 (5) | HBM_WRITE cmd / data-end | 57 `"HBM"` | Write | 5 |
+| 3 (6) / 4 (7) / 5 (8) | VMEM↔HBM read/write cmd / data-end | 19 `"Tensor Core VMEM"` | Read/Write | 4/5 |
+| 6 (9) / 7 (10) / 8 (11) | VMEM↔ICI read/write cmd / data-end | 19 `"Tensor Core VMEM"` | Read/Write | 4/5 |
+| 9 (12) / 10 (13) / 11 (14) | SMEM read/write cmd / data-end | 20 `"Tensor Core SMEM"` | Read/Write | 4/5 |
+| 12 (15) / 13 (16) | IMEM write cmd / data-end | 18 `"Tensor Core IMEM"` | Write | 5 |
+| 17 (20) | HIB_WRITE_RECEIVE | 51 `"From Host Interface"` | Receive | 7 |
+| 19 (22) / 20 (23) | HIB write cmd / data-end | 52 `"To Host Interface"` | Write | 5 |
 
 > **NOTE —** `nf.id` 17/18/19 (BMEM) and 27 (ICI_SEND_END) have switch arms that route to the drop exit — BMEM has a `GetDmaId` composer but the Dma subscriber never registers it. Reads (`First`) open a pending begin; the matching write/receive `DATA_END` (`Last`) closes it. The byte count of a transfer is *not* in the flow stat; it is available separately via `GetDmaSize` @ `0xf6982a0` (`length << 10`, 1 KiB units — `EntryDataCase` 3 reads `source_offset+0x48`, case 19 reads `+0x2c`).
 
@@ -175,12 +175,12 @@ A `TAIL_A` `dma_id` packs four proto2 fields into 27 bits:
   bits 16..26 : chip_id[0:11]     (chip in pod, (chip << 16) & 0x7FF0000)
 ```
 
-| Bit window | Field (`EntryDataCase` 3) | Source field | Confidence |
-|---|---|---|---|
-| 0..12 | `trace_id` | `field[8]` (+0x20) | High |
-| 13..14 | `resource` | `descriptor_source` `field[32]` (+0x80) | High |
-| 15 | `node_id` | `field[9]` (+0x24) | High |
-| 16..26 | `chip_id` | `field[10]` (+0x28) | High |
+| Bit window | Field (`EntryDataCase` 3) | Source field |
+|---|---|---|
+| 0..12 | `trace_id` | `field[8]` (+0x20) |
+| 13..14 | `resource` | `descriptor_source` `field[32]` (+0x80) |
+| 15 | `node_id` | `field[9]` (+0x24) |
+| 16..26 | `chip_id` | `field[10]` (+0x28) |
 
 > **QUIRK —** a command and its data-end read the *resource* slot from different proto fields (e.g. a command's `descriptor_source` vs a data-end's `destination_*` field) yet still collide, because the dominant bits (`trace_id` + `node` + `chip`) are identical across the pair. The pairing invariant — same `trace_id` ⇒ same `dma_id` — is decoded here, but a *proof* that the 2-bit resource slot is always equal across a pair is a property of the firmware emitter, not the decoder (it is observable only on a captured trace). Treat begin/end collision as a firmware contract, not a decoder guarantee.
 
@@ -247,11 +247,11 @@ The duration math subtracts `DurationCycles(prev) << 4` (cycle→subtick scale, 
 
 The richer cousin of the nf band, `nf_descriptor_trace_entry` (`EntryDataCase` 3, 27 fields), carries a full src/dst endpoint plus three independent sync-flag-update channels and multicast/segmented flags — the on-wire view of a staged Node-Fabric DMA descriptor. Three accessors surface the sync-flag targets, each gated on its channel's enable field:
 
-| Accessor | Address | Gate field | Packs | Confidence |
-|---|---|---|---|---|
-| `SourceSyncFlagTarget` | `0xf6982e0` | `source_update` (+0x60) | `{node_id (+0x24), source_update_sync_flag (+0x64)}` via OCI fold | High |
-| `DestinationSyncFlagTarget` | `0xf698340` | `destination_update` (+0x54) | explicit pack (below) | High |
-| `AckSyncFlagTarget` | `0xf6983a0` | `ack_update` (+0x6c) | `{node_id (+0x24), ack_update_sync_flag (+0x70)}` via OCI fold | High |
+| Accessor | Address | Gate field | Packs |
+|---|---|---|---|
+| `SourceSyncFlagTarget` | `0xf6982e0` | `source_update` (+0x60) | `{node_id (+0x24), source_update_sync_flag (+0x64)}` via OCI fold |
+| `DestinationSyncFlagTarget` | `0xf698340` | `destination_update` (+0x54) | explicit pack (below) |
+| `AckSyncFlagTarget` | `0xf6983a0` | `ack_update` (+0x6c) | `{node_id (+0x24), ack_update_sync_flag (+0x70)}` via OCI fold |
 
 `SourceSyncFlagTarget` and `AckSyncFlagTarget` load two 32-bit fields into the low quadwords of an XMM register and fold them with the OCI SyncFlag-target packer (`vpmulld` against `xmmword_A2C2560`, `vpand` mask `xmmword_A2D5E00`, then a horizontal OR reduction) — the same packer the OCI bands use. `DestinationSyncFlagTarget` packs explicitly:
 
@@ -276,11 +276,11 @@ The destination raises a "data arrived" flag, the source raises a "buffer free" 
 
 `brn_perf1_trace_entry` (`EntryDataCase` 13, `id` at `+0x38`). TracePoint ids and field names are byte-exact from the embedded `FileDescriptorProto`; all field name strings (`cycles_of_execution`, `input0_stall_cycles`, `input1_stall_cycles`, `output_stall_cycles`, `sync_flag_location`, `is_sync_update`) are present in `.rodata`.
 
-| TracePoint | id | XLine (`TpuComponent`) | Confidence |
-|---|---|---|---|
-| `CONCAT` | 109 (0x6d) | 24 `"Barna Core Concat"` | High |
-| `PROCESS_HOSTID` | 110 (0x6e) | 25 `"Barna Core Process Host ID"` | High |
-| `SPARSE_REDUCE` | 111 (0x6f) | 26 `"Barna Core Sparse Reduce"` | High |
+| TracePoint | id | XLine (`TpuComponent`) |
+|---|---|---|
+| `CONCAT` | 109 (0x6d) | 24 `"Barna Core Concat"` |
+| `PROCESS_HOSTID` | 110 (0x6e) | 25 `"Barna Core Process Host ID"` |
+| `SPARSE_REDUCE` | 111 (0x6f) | 26 `"Barna Core Sparse Reduce"` |
 
 The shape is **2-input / 1-output** (`input0_stall_cycles`, `input1_stall_cycles`, `output_stall_cycles`) — the embedding-gather reduce topology: two gathered streams in, one reduced stream out. `cycles_of_execution` is the total run time; the stall fields count cycles blocked on each stream; `sync_flag_location` + `is_sync_update` name the flag the op raises on completion.
 
@@ -288,11 +288,11 @@ The shape is **2-input / 1-output** (`input0_stall_cycles`, `input1_stall_cycles
 
 `brn_perf2_trace_entry` (`EntryDataCase` 14, `id` at `+0x38`). Same C++ field shape as `brn_perf1` but with an **inverted stall topology**: one input stall (`input_stall_cycles`) and two output stalls (`output0_stall_cycles`, `output1_stall_cycles`) — a channel controller pulls one descriptor stream in and fans it to two output queues.
 
-| TracePoint | id range | XLine | Confidence |
-|---|---|---|---|
-| `CHANNEL0..7` | 100..107 (0x64..0x6b) | 28..35 `"Barna Core Channel 0..7"` | High |
-| `PROCESS_BRNID` | 108 (0x6c) | 27 `"Barna Core Process BRN ID"` | High |
-| `CHANNEL8..15` | 114..121 (0x72..0x79) | 36..43 `"Barna Core Channel 8..15"` | High |
+| TracePoint | id range | XLine |
+|---|---|---|
+| `CHANNEL0..7` | 100..107 (0x64..0x6b) | 28..35 `"Barna Core Channel 0..7"` |
+| `PROCESS_BRNID` | 108 (0x6c) | 27 `"Barna Core Process BRN ID"` |
+| `CHANNEL8..15` | 114..121 (0x72..0x79) | 36..43 `"Barna Core Channel 8..15"` |
 
 Channel `n` → XLine `28 + n` (`TpuComponentName` cases 28..43 are contiguous `"Barna Core Channel 0".."15"`). The id range has a gap (107 → 114) bridged by `PROCESS_BRNID` (108) on its own XLine 27 — the chip-in-pod routing step that bookends a channel burst (exact role not isolated, Inferred).
 
@@ -304,41 +304,41 @@ Channel `n` → XLine `28 + n` (`TpuComponentName` cases 28..43 are contiguous `
 
 The complete `jxc` DMA/HbmMux/BarnaCore band-to-XLine assignment (`TpuComponent` decoded from `TpuComponentName` @ `0x1c8ebb60`):
 
-| `TpuComponent` | XLine name | Band / source | Confidence |
-|---|---|---|---|
-| 18 | Tensor Core IMEM | nf IMEM cmd/data-end (Dma) | High |
-| 19 | Tensor Core VMEM | nf VMEM↔HBM / VMEM↔ICI (Dma) | High |
-| 20 | Tensor Core SMEM | nf SMEM cmd/data-end (Dma) | High |
-| 24 | Barna Core Concat | brn_perf1 CONCAT(109) | High |
-| 25 | Barna Core Process Host ID | brn_perf1 PROCESS_HOSTID(110) | High |
-| 26 | Barna Core Sparse Reduce | brn_perf1 SPARSE_REDUCE(111) | High |
-| 27 | Barna Core Process BRN ID | brn_perf2 PROCESS_BRNID(108) | High |
-| 28..43 | Barna Core Channel 0..15 | brn_perf2 CHANNEL0..15 | High |
-| 51 | From Host Interface | nf HIB_WRITE_RECEIVE (Dma) | High |
-| 52 | To Host Interface | nf HIB write cmd/data-end (Dma) | High |
-| 56 | HBM Mux | hbm_mux_switch EVENT (HbmMux FSM) | High |
-| 57 | HBM | nf HBM read/write cmd/data-end (Dma) | High |
+| `TpuComponent` | XLine name | Band / source |
+|---|---|---|
+| 18 | Tensor Core IMEM | nf IMEM cmd/data-end (Dma) |
+| 19 | Tensor Core VMEM | nf VMEM↔HBM / VMEM↔ICI (Dma) |
+| 20 | Tensor Core SMEM | nf SMEM cmd/data-end (Dma) |
+| 24 | Barna Core Concat | brn_perf1 CONCAT(109) |
+| 25 | Barna Core Process Host ID | brn_perf1 PROCESS_HOSTID(110) |
+| 26 | Barna Core Sparse Reduce | brn_perf1 SPARSE_REDUCE(111) |
+| 27 | Barna Core Process BRN ID | brn_perf2 PROCESS_BRNID(108) |
+| 28..43 | Barna Core Channel 0..15 | brn_perf2 CHANNEL0..15 |
+| 51 | From Host Interface | nf HIB_WRITE_RECEIVE (Dma) |
+| 52 | To Host Interface | nf HIB write cmd/data-end (Dma) |
+| 56 | HBM Mux | hbm_mux_switch EVENT (HbmMux FSM) |
+| 57 | HBM | nf HBM read/write cmd/data-end (Dma) |
 
 ---
 
 ## Infrastructure Functions
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `DmaSubscriber<jxc>::ProcessTraceEntry` | `0xf1dfee0` | Dma band span builder + flow stat | High |
-| `HbmMuxSubscriber<jxc>::ProcessTraceEntry` | `0xf1def00` | HbmMux open/close FSM span builder | High |
-| `GetDmaId` | `0xf698180` | Composite begin/end pairing key | High |
-| `MemoryCommand` | `0xf698560` | COMMAND gate (mask `0x56B6D8`, `nf.id ≤ 0x16`) | High |
-| `MemoryDataEnd` | `0xf6985a0` | DATA_END gate (mask `0x894920`, `nf.id ≤ 0x17`) | High |
-| `HbmMuxSwitchState` | `0xf6986e0` | fsm read (`+0x1c`), returns `0x100000000 \| fsm` | High |
-| `DurationCycles` | `0xf698720` | cycle gap (cases 13/14 → `+0x20`, 12 → `+0x24`) | High |
-| `GetDmaSize` | `0xf6982a0` | transfer size `length << 10` (cases 3/19) | High |
-| `First` / `Last` | `0xf698620` / `0xf698660` | begin/end markers (cases 5/6/8) | High |
-| `SourceSyncFlagTarget` | `0xf6982e0` | nf_descriptor source sync flag | High |
-| `DestinationSyncFlagTarget` | `0xf698340` | nf_descriptor destination sync flag | High |
-| `AckSyncFlagTarget` | `0xf6983a0` | nf_descriptor ack sync flag | High |
-| `TpuComponentName` | `0x1c8ebb60` | `TpuComponent` ordinal → XLine name | High |
-| `GetStatTypeMap` | `0x1cf8c660` | `StatType` 56 = `"flow"` | High |
+| Function | Address | Role |
+|---|---|---|
+| `DmaSubscriber<jxc>::ProcessTraceEntry` | `0xf1dfee0` | Dma band span builder + flow stat |
+| `HbmMuxSubscriber<jxc>::ProcessTraceEntry` | `0xf1def00` | HbmMux open/close FSM span builder |
+| `GetDmaId` | `0xf698180` | Composite begin/end pairing key |
+| `MemoryCommand` | `0xf698560` | COMMAND gate (mask `0x56B6D8`, `nf.id ≤ 0x16`) |
+| `MemoryDataEnd` | `0xf6985a0` | DATA_END gate (mask `0x894920`, `nf.id ≤ 0x17`) |
+| `HbmMuxSwitchState` | `0xf6986e0` | fsm read (`+0x1c`), returns `0x100000000 \| fsm` |
+| `DurationCycles` | `0xf698720` | cycle gap (cases 13/14 → `+0x20`, 12 → `+0x24`) |
+| `GetDmaSize` | `0xf6982a0` | transfer size `length << 10` (cases 3/19) |
+| `First` / `Last` | `0xf698620` / `0xf698660` | begin/end markers (cases 5/6/8) |
+| `SourceSyncFlagTarget` | `0xf6982e0` | nf_descriptor source sync flag |
+| `DestinationSyncFlagTarget` | `0xf698340` | nf_descriptor destination sync flag |
+| `AckSyncFlagTarget` | `0xf6983a0` | nf_descriptor ack sync flag |
+| `TpuComponentName` | `0x1c8ebb60` | `TpuComponent` ordinal → XLine name |
+| `GetStatTypeMap` | `0x1cf8c660` | `StatType` 56 = `"flow"` |
 
 ---
 

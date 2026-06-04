@@ -237,15 +237,15 @@ All seven methods follow the standard generated-stub signature
 plus an `async` inner-class variant with a `ClientUnaryReactor`. Request
 and response type pairs are recovered from the mangled per-method symbols.
 
-| RPC | Request | Response | Stub addr | Confidence |
-|---|---|---|---|---|
-| `StartSession` | `superpod.tpunetd.StartSessionRequest` | `…StartSessionResponse` | `0x1ffce0e0` | CERTAIN |
-| `StopSession` | `…StopSessionRequest` | `…StopSessionResponse` | `0x1ffce2c0` | CERTAIN |
-| `StatSession` | `…StatSessionRequest` | `…StatSessionResponse` | `0x1ffce4a0` | CERTAIN |
-| `CheckSessionHealth` | `…CheckSessionHealthRequest` | `…CheckSessionHealthResponse` | `0x1ffce6a0` | CERTAIN |
-| `GetChipCoordinates` | `…GetChipCoordinatesRequest` | `…GetChipCoordinatesResponse` | `0x1ffceaa0` | CERTAIN |
-| `GetCoreDump` | `…GetCoreDumpRequest` | `…GetCoreDumpResponse` | `0x1ffce8a0` | CERTAIN |
-| `GrantSessionPermission` | `…GrantSessionPermissionRequest` | `…GrantSessionPermissionResponse` | `0x1ffcdf00` | CERTAIN |
+| RPC | Request | Response | Stub addr |
+|---|---|---|---|
+| `StartSession` | `superpod.tpunetd.StartSessionRequest` | `…StartSessionResponse` | `0x1ffce0e0` |
+| `StopSession` | `…StopSessionRequest` | `…StopSessionResponse` | `0x1ffce2c0` |
+| `StatSession` | `…StatSessionRequest` | `…StatSessionResponse` | `0x1ffce4a0` |
+| `CheckSessionHealth` | `…CheckSessionHealthRequest` | `…CheckSessionHealthResponse` | `0x1ffce6a0` |
+| `GetChipCoordinates` | `…GetChipCoordinatesRequest` | `…GetChipCoordinatesResponse` | `0x1ffceaa0` |
+| `GetCoreDump` | `…GetCoreDumpRequest` | `…GetCoreDumpResponse` | `0x1ffce8a0` |
+| `GrantSessionPermission` | `…GrantSessionPermissionRequest` | `…GrantSessionPermissionResponse` | `0x1ffcdf00` |
 
 ### Client wrapper
 
@@ -253,14 +253,14 @@ and response type pairs are recovered from the mangled per-method symbols.
 wraps the `SessionControl` stub and translates an internal `SessionData`
 struct into proto requests. Confirmed entry points:
 
-| Wrapper method | Addr | Confidence |
-|---|---|---|
-| `TpunetdControl::StartSession(const SessionData&)` | `0x1ffcb660` | CERTAIN |
-| `TpunetdControl::StopSession(const SessionData&)` | `0x1ffcbc80` | CERTAIN |
-| `TpunetdControl::StatSession` | `0x1ffcc2a0` | HIGH |
-| `TpunetdControl::CheckSessionHealth` | `0x1ffcc9a0` | HIGH |
-| `TpunetdControl::GetCoreDump` | `0x1ffcd040` | HIGH |
-| `TpunetdControl::GetChipCoordinates` | `0x1ffcd7c0` | HIGH |
+| Wrapper method | Addr |
+|---|---|
+| `TpunetdControl::StartSession(const SessionData&)` | `0x1ffcb660` |
+| `TpunetdControl::StopSession(const SessionData&)` | `0x1ffcbc80` |
+| `TpunetdControl::StatSession` | `0x1ffcc2a0` |
+| `TpunetdControl::CheckSessionHealth` | `0x1ffcc9a0` |
+| `TpunetdControl::GetCoreDump` | `0x1ffcd040` |
+| `TpunetdControl::GetChipCoordinates` | `0x1ffcd7c0` |
 
 Each wrapper sets the `grpc::ClientContext` deadline from the global
 constant `superpod::tpunetd_client::kSessionControlTimeout` (mangled
@@ -295,16 +295,16 @@ NewStub     : 0x1ffd2360   (Stub ctor at 0x1ffd23a0)
 Source proto: learning/45eac/tfrc/tpunetd/proto/vbar_control.proto  (TFRC team)
 ```
 
-| RPC | Request | Response | Stub addr | Confidence |
-|---|---|---|---|---|
-| `StartSession` | `libtpu.tpunetd.StartSessionRequest` | `…StartSessionResponse` | `0x1ffd2580` | CERTAIN |
-| `StopSession` | `…StopSessionRequest` | `…StopSessionResponse` | `0x1ffd2760` | CERTAIN |
-| `StatSession` | `…StatSessionRequest` | `…StatSessionResponse` | `0x1ffd2940` | CERTAIN |
-| `CheckSessionHealth` | `…CheckSessionHealthRequest` | `…CheckSessionHealthResponse` | `0x1ffd2b20` | CERTAIN |
-| `GetChipCoordinates` | `…GetChipCoordinatesRequest` | `…GetChipCoordinatesResponse` | `0x1ffd3120` | CERTAIN |
-| `GetCoreDump` | `…GetCoreDumpRequest` | `…GetCoreDumpResponse` | `0x1ffd2d20` | CERTAIN |
-| `GetHostMetrics` | `…GetHostMetricsRequest` | `…GetHostMetricsResponse` | `0x1ffd3320` | CERTAIN |
-| `TPUBackendConnectionTest` | `…TPUBackendConnectionTestRequest` | `…TPUBackendConnectionTestResponse` | `0x1ffd2f20` | CERTAIN |
+| RPC | Request | Response | Stub addr |
+|---|---|---|---|
+| `StartSession` | `libtpu.tpunetd.StartSessionRequest` | `…StartSessionResponse` | `0x1ffd2580` |
+| `StopSession` | `…StopSessionRequest` | `…StopSessionResponse` | `0x1ffd2760` |
+| `StatSession` | `…StatSessionRequest` | `…StatSessionResponse` | `0x1ffd2940` |
+| `CheckSessionHealth` | `…CheckSessionHealthRequest` | `…CheckSessionHealthResponse` | `0x1ffd2b20` |
+| `GetChipCoordinates` | `…GetChipCoordinatesRequest` | `…GetChipCoordinatesResponse` | `0x1ffd3120` |
+| `GetCoreDump` | `…GetCoreDumpRequest` | `…GetCoreDumpResponse` | `0x1ffd2d20` |
+| `GetHostMetrics` | `…GetHostMetricsRequest` | `…GetHostMetricsResponse` | `0x1ffd3320` |
+| `TPUBackendConnectionTest` | `…TPUBackendConnectionTestRequest` | `…TPUBackendConnectionTestResponse` | `0x1ffd2f20` |
 
 All eight stub functions and their `async` / `ClientUnaryReactor`
 variants are present as distinct decompiled functions; the request and
@@ -317,11 +317,11 @@ StartSessionResponse*)`).
 Beyond the request/response pairs, the VBAR proto declares the envelope
 machinery used to multiplex BAR pokes:
 
-| Message / enum | Role | Confidence |
-|---|---|---|
-| `libtpu.tpunetd.Status` | status wrapper carrying nested `Status.StatusCode` enum | HIGH |
-| `libtpu.tpunetd.VBARRequestType` | oneof-tag enum selecting which VBAR poke an envelope carries | HIGH |
-| `libtpu.tpunetd.VBARRequestInput` | request envelope union over the poke types | HIGH |
+| Message / enum | Role |
+|---|---|
+| `libtpu.tpunetd.Status` | status wrapper carrying nested `Status.StatusCode` enum |
+| `libtpu.tpunetd.VBARRequestType` | oneof-tag enum selecting which VBAR poke an envelope carries |
+| `libtpu.tpunetd.VBARRequestInput` | request envelope union over the poke types |
 
 > **NOTE —** `TPUBackendConnectionTest` is gated by the
 > `TPU_BACKEND_CONNECTION_TEST` env var. The on-the-wire serialization of
@@ -351,12 +351,12 @@ Package     : superpod.tpunetd_client
 Transport   : gRPC over TCP (peer hosts)  /  in-process loopback (local node)
 ```
 
-| RPC | Request | Response | Confidence |
-|---|---|---|---|
-| `CheckHeartbeat` | `superpod.tpunetd_client.CheckHeartbeatRequest` | `…CheckHeartbeatResponse` | CERTAIN |
-| `GetSessionInfo` | `…GetSessionInfoRequest` | `…GetSessionInfoResponse` | CERTAIN |
-| `UpdateSessionInfo` | `…UpdateSessionInfoRequest` | `…UpdateSessionInfoResponse` | CERTAIN |
-| `CollectCoreDump` | `…CollectCoreDumpRequest` | `…CollectCoreDumpResponse` | CERTAIN |
+| RPC | Request | Response |
+|---|---|---|
+| `CheckHeartbeat` | `superpod.tpunetd_client.CheckHeartbeatRequest` | `…CheckHeartbeatResponse` |
+| `GetSessionInfo` | `…GetSessionInfoRequest` | `…GetSessionInfoResponse` |
+| `UpdateSessionInfo` | `…UpdateSessionInfoRequest` | `…UpdateSessionInfoResponse` |
+| `CollectCoreDump` | `…CollectCoreDumpRequest` | `…CollectCoreDumpResponse` |
 
 ### Stub implementations
 
@@ -381,11 +381,11 @@ is the Megascale coordinator (`MEGASCALE_COORDINATOR_ADDRESS`). See
 Recovered from validator error texts confirmed verbatim in the binary
 (`session_worker_validation.cc`):
 
-| Field | Type | Rule | Confidence |
-|---|---|---|---|
-| `in_session` | bool | required (`"in_session must be specified"`) | HIGH |
-| `session_id` | string | required iff `in_session == true` (`"session_id must be present iff in_session is true"`) | HIGH |
-| `failure_type` | enum | must be absent iff `in_session == true`; value `SLICE_FAILURE_UNKNOWN` rejected | HIGH |
+| Field | Type | Rule |
+|---|---|---|
+| `in_session` | bool | required (`"in_session must be specified"`) |
+| `session_id` | string | required iff `in_session == true` (`"session_id must be present iff in_session is true"`) |
+| `failure_type` | enum | must be absent iff `in_session == true`; value `SLICE_FAILURE_UNKNOWN` rejected |
 
 The `failure_type` enum is shared with the SliceBuilder code path
 (`accel_ssw::deepsea::slice_builder::SliceFailureType`).
@@ -434,10 +434,10 @@ Package     : superpod.tpunetd_client.proto      (note the extra .proto sub-name
 Client class: BroadcastBarrier  (tpunetd_client/lib/broadcast_barrier.cc)
 ```
 
-| RPC | Request | Response | Confidence |
-|---|---|---|---|
-| `Notify` | `superpod.tpunetd_client.proto.NotifyRequest` (barrier_id string + chip_locations) | `…NotifyResponse` (status only) | CERTAIN |
-| `WaitForReady` | `…WaitForReadyRequest` (barrier_id string) | `…WaitForReadyResponse` (status only) | CERTAIN |
+| RPC | Request | Response |
+|---|---|---|
+| `Notify` | `superpod.tpunetd_client.proto.NotifyRequest` (barrier_id string + chip_locations) | `…NotifyResponse` (status only) |
+| `WaitForReady` | `…WaitForReadyRequest` (barrier_id string) | `…WaitForReadyResponse` (status only) |
 
 ### Algorithm
 
@@ -478,13 +478,13 @@ internal struct `TpunetdControl` marshals into every Start/Stop/Stat/
 CheckHealth/GetCoreDump/GetChipCoordinates request. Layout recovered from
 the decompiled call sites (offsets in bytes):
 
-| Offset | Type | Meaning | Confidence |
-|---|---|---|---|
-| `+0` | `vector<DriverInterface*>::begin` | per-chip driver pointer array (start) | HIGH |
-| `+8` | `vector<DriverInterface*>::end` | drivers vector end — used as the for-loop bound | HIGH |
-| `+24` | `superpod::routing::proto::Topology` | topology proto attached to the session | HIGH |
-| `+104` | `NetworkContextId` | network identity, copied into request iff flag at `+144 == 1` | HIGH |
-| `+144` | bool | `has_network_context` — gates the `+104` copy | HIGH |
+| Offset | Type | Meaning |
+|---|---|---|
+| `+0` | `vector<DriverInterface*>::begin` | per-chip driver pointer array (start) |
+| `+8` | `vector<DriverInterface*>::end` | drivers vector end — used as the for-loop bound |
+| `+24` | `superpod::routing::proto::Topology` | topology proto attached to the session |
+| `+104` | `NetworkContextId` | network identity, copied into request iff flag at `+144 == 1` |
+| `+144` | bool | `has_network_context` — gates the `+104` copy |
 
 Each driver in the `[+0, +8)` array exposes a virtual function at vtable
 offset `+56` returning an `asic_sw::ChipLocation`; libtpu calls it per

@@ -161,19 +161,19 @@ The remaining Part V pages own the detail this overview only places. Grouped by 
 
 ## Confidence Summary
 
-| Claim | Evidence | Confidence |
-|---|---|---|
-| Five compile phases named `CompilePhase0..3` (with 2a/2b split) | symbols `CompilePhase0StablehloToHlo` `0xf84de60`, `…1HloOptimizations` `0xf84ee00`, `…2aTlpLowering` `0xf850840`, `…2bDedupedLowering` `0xf852180`, `…3Linking` `0xf852f40` | CONFIRMED |
-| Phases registered by one registry, take/return `PjRtPartialProgramProto` spans | `TpuCompiler::RegisterAllPhases` `0xf849ec0`; phase signatures `absl::Span<const PjRtPartialProgramProto>` | CONFIRMED |
-| HLO pass pipeline driven by `DeepseaCompilerBase::RunHloPasses` | `RunHloPasses` `0x109152a0`; C wrapper `TpuCompiler_RunHloPasses` `0xeabcd80`; `RunBackendOnModuleInternal`, `LowerHloModuleImpl` (seen in `XLA_Timer*` guard variables) | CONFIRMED |
-| IR stack: StableHLO/CHLO/VHLO → HLO → MHLO/`tpu` → LLO → bundles | RTTI `mlir::{stablehlo,chlo,vhlo,mhlo,tpu}::*`; `jellyfish::Llo{Module,Instruction,Region,Opcode}` | CONFIRMED |
-| Phase 0 is a legalization crossing | `ConvertStablehloToHlo`, `StablehloLegalizeToHlo`, `ChloLegalizeToHlo`, `HloLegalizeToStablehlo`, `VhloToVersion` | CONFIRMED |
-| `tpu` dialect lowers to LLO via `LowerToLLOPass`/`createLowerToLLOPass` | `mlir::tpu::createLowerToLLOPass` `0x11203ba0`; `mlir::tpu::LowerPassBase`, `ApplyVectorLayoutPass`, `createLowerToMloPass` `0x1322adc0` | CONFIRMED |
-| Layout assignment, MSA, fusion are the HLO-side codegen families | `LayoutAssignment`, `MemorySpaceAssignment`, `HloFusion`, `FusionPipeline` symbols present | CONFIRMED |
-| LLO is packed to bundles by the back end | `PackBundles` `0x10a30a20`; `jellyfish::BundlePacker`, `GlobalBundlePacker` | CONFIRMED |
-| Mosaic enters the `tpu` dialect via `tpu_custom_call` | `tpu_custom_call` strings, `CanonicalizeMosaicPass`, `CustomCallEmitter::Emit` (driver), `MosaicEmitter::EmitWindow` (helper), `MosaicSerdePass`, `MosaicFusion` | CONFIRMED |
-| TLP is the HLO→MLIR import vehicle, same level as MHLO (no separate op enum) | phase symbol `CompilePhase2aTlpLowering` `0xf850840`, `llvm::TPU::isTLPFunction` `0x13b67a60`; no isolable `tlp.` op-model vtables or standalone `TlpLowering`/`TLPFunction` type | LOW |
-| Phase 2b key is cross-region lowered-output deduplication | name `CompilePhase2bDedupedLowering` + LLO-in/LLO-out position; dedup key not traced | MEDIUM |
+| Claim | Evidence |
+|---|---|
+| Five compile phases named `CompilePhase0..3` (with 2a/2b split) | symbols `CompilePhase0StablehloToHlo` `0xf84de60`, `…1HloOptimizations` `0xf84ee00`, `…2aTlpLowering` `0xf850840`, `…2bDedupedLowering` `0xf852180`, `…3Linking` `0xf852f40` |
+| Phases registered by one registry, take/return `PjRtPartialProgramProto` spans | `TpuCompiler::RegisterAllPhases` `0xf849ec0`; phase signatures `absl::Span<const PjRtPartialProgramProto>` |
+| HLO pass pipeline driven by `DeepseaCompilerBase::RunHloPasses` | `RunHloPasses` `0x109152a0`; C wrapper `TpuCompiler_RunHloPasses` `0xeabcd80`; `RunBackendOnModuleInternal`, `LowerHloModuleImpl` (seen in `XLA_Timer*` guard variables) |
+| IR stack: StableHLO/CHLO/VHLO → HLO → MHLO/`tpu` → LLO → bundles | RTTI `mlir::{stablehlo,chlo,vhlo,mhlo,tpu}::*`; `jellyfish::Llo{Module,Instruction,Region,Opcode}` |
+| Phase 0 is a legalization crossing | `ConvertStablehloToHlo`, `StablehloLegalizeToHlo`, `ChloLegalizeToHlo`, `HloLegalizeToStablehlo`, `VhloToVersion` |
+| `tpu` dialect lowers to LLO via `LowerToLLOPass`/`createLowerToLLOPass` | `mlir::tpu::createLowerToLLOPass` `0x11203ba0`; `mlir::tpu::LowerPassBase`, `ApplyVectorLayoutPass`, `createLowerToMloPass` `0x1322adc0` |
+| Layout assignment, MSA, fusion are the HLO-side codegen families | `LayoutAssignment`, `MemorySpaceAssignment`, `HloFusion`, `FusionPipeline` symbols present |
+| LLO is packed to bundles by the back end | `PackBundles` `0x10a30a20`; `jellyfish::BundlePacker`, `GlobalBundlePacker` |
+| Mosaic enters the `tpu` dialect via `tpu_custom_call` | `tpu_custom_call` strings, `CanonicalizeMosaicPass`, `CustomCallEmitter::Emit` (driver), `MosaicEmitter::EmitWindow` (helper), `MosaicSerdePass`, `MosaicFusion` |
+| TLP is the HLO→MLIR import vehicle, same level as MHLO (no separate op enum) | phase symbol `CompilePhase2aTlpLowering` `0xf850840`, `llvm::TPU::isTLPFunction` `0x13b67a60`; no isolable `tlp.` op-model vtables or standalone `TlpLowering`/`TLPFunction` type |
+| Phase 2b key is cross-region lowered-output deduplication | name `CompilePhase2bDedupedLowering` + LLO-in/LLO-out position; dedup key not traced |
 
 ---
 

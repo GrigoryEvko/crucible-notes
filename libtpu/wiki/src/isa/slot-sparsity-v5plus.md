@@ -51,12 +51,12 @@ The presence of `lhs` / `rhs` is tracked by a 32-bit `_has_bits_` word at offset
 
 Inside each `TensorSparsityConfig`, the four `int64` fields and the message's own `_has_bits_` byte are laid out from the parser's stores and the `ToString` reader as:
 
-| Field | Object offset | `_has_bits_` (byte @ `+0x10`) | `ToString` vtable slot | Confidence |
-|---|---|---|---|---|
-| `num_non_zero` | `+0x18` | bit 0 (`\|1`) | `vt[3]` | High — parser store @ `0x1e4fb500:320`, reader @ `0x1e5a50c0:95` |
-| `block_size` | `+0x20` | bit 1 (combined `\|3`) | `vt[4]` | High — parser store @ `0x1e4fb500:323`, reader @ `0x1e5a50c0:105` |
-| `dimension` | `+0x28` | bit 2 (`\|4`) | `vt[5]` | High — parser store @ `0x1e4fb500:294`, reader @ `0x1e5a50c0:118` |
-| `stride` | `+0x30` | bit 3 (`\|8`) | `vt[6]` | High — parser store @ `0x1e4fb500:270`, reader @ `0x1e5a50c0:141` |
+| Field | Object offset | `_has_bits_` (byte @ `+0x10`) | `ToString` vtable slot |
+|---|---|---|---|
+| `num_non_zero` | `+0x18` | bit 0 (`\|1`) | `vt[3]` |
+| `block_size` | `+0x20` | bit 1 (combined `\|3`) | `vt[4]` |
+| `dimension` | `+0x28` | bit 2 (`\|4`) | `vt[5]` |
+| `stride` | `+0x30` | bit 3 (`\|8`) | `vt[6]` |
 
 > **NOTE (bit numbering / offsets) —** all bit positions on this page are **LSB-first**: `_has_bits_` "bit 0" is the `0x1` mask, "bit 1" is `0x2`, and so on, matching the `|1`/`|2`/`|4`/`|8` ORs the parser actually emits. The per-field object offsets above are read off the proto `Clear`/`InternalSerialize`/parser stores (`*(_QWORD*)(cfg + 24)`, `+ 32`, `+ 40`, `+ 48`). The proto-runtime *field numbers* are not recoverable from the binary (proto3 lite drops the field-number → name map), so the wire tags are not pinned; only the in-memory layout and the textual format are. The `ToString` vtable slots `vt[3..6]` are the message's accessor thunks, used here only to confirm field identity.
 
@@ -132,16 +132,16 @@ The semantic is exact: the *stored* (compressed) RHS holds one kept value per `b
 
 Once shape inference passes, the TensorCore lowering re-validates against a far stricter set in `ConvolutionEmitter::ValidateConvolutionWithSparseKernel` @ `0x130d6300` (`convolution_emitter.h`). Every constraint below is a separate `InvalidArgument` with its own format string; all are owned by this single function:
 
-| Constraint | Rejection message (abridged) | Confidence |
-|---|---|---|
-| Sparse dimension == kernel **input-feature** dim | *"expected kernel input feature dimension to be the sparse dimension."* | High — string @ `0xe6_…`, owner pinned |
-| Sparse dim laid out **on sublanes** | *"expected kernel sparse dimension to be on sublanes."* | High |
-| `stride == 1` | *"sparse conv with kernel_sparsity_stride not equal to 1 is not supported yet."* | High — @ `0xe53__` |
-| **No spatial dims** | *"sparse conv with spatial dimensions is not supported yet."* | High |
-| `feature_group_count == batch_group_count == 1` | *"…feature_group_count or batch_group_count not equal to 1 is not supported yet."* | High |
-| batch a multiple of *N* | *"expected batch to be a multiple of %d."* | High |
-| input-feature a multiple of *N* | *"expected input feature to be a multiple of %d."* | High |
-| kernel / indices type in allowed set | *"expected kernel type to be one of %s and indices type to be one of %s."* | High |
+| Constraint | Rejection message (abridged) |
+|---|---|
+| Sparse dimension == kernel **input-feature** dim | *"expected kernel input feature dimension to be the sparse dimension."* |
+| Sparse dim laid out **on sublanes** | *"expected kernel sparse dimension to be on sublanes."* |
+| `stride == 1` | *"sparse conv with kernel_sparsity_stride not equal to 1 is not supported yet."* |
+| **No spatial dims** | *"sparse conv with spatial dimensions is not supported yet."* |
+| `feature_group_count == batch_group_count == 1` | *"…feature_group_count or batch_group_count not equal to 1 is not supported yet."* |
+| batch a multiple of *N* | *"expected batch to be a multiple of %d."* |
+| input-feature a multiple of *N* | *"expected input feature to be a multiple of %d."* |
+| kernel / indices type in allowed set | *"expected kernel type to be one of %s and indices type to be one of %s."* |
 
 Read together these say: a structured-sparse matmul on this TPU is a **pointwise** (1×1, no spatial window) convolution whose RHS (kernel) is compressed along its **input-feature** axis, that axis lives on the **sublane** dimension of the VMEM tile, the compression `stride` is `1`, there is no feature/batch grouping, and both the batch and the input-feature extents are exact multiples of the block factor `N`. The `%d` multiple in the batch/input-feature messages is the `block_size`.
 
@@ -177,12 +177,12 @@ Three string clusters look relevant and are not. Pinning them down is part of th
 
 ### NVGPU / NVVM (`mma.sp`) — dead NVIDIA path
 
-| Symbol | Owner | Why it is not the TPU path | Confidence |
-|---|---|---|---|
-| `getSparsitySelector` | `mlir::nvgpu::MmaSparseSyncOp` @ `0x17052500` | NVGPU dialect op for NVIDIA `mma.sync` sparse; never lowered on TPU | High |
-| `sparsitySelector` attr | `MmaSparseSyncOp::setPropertiesFromAttr` @ `0x17067b40` | the *"Invalid attribute `sparsitySelector` in property conversion:"* error @ `0xa255171` is NVGPU property conversion | High |
-| *"sparsity selector should be 0 or 1"* | `MmaSparseSyncOp::verify` @ … | NVIDIA's 2-bit metadata selector, not a TPU concept | High |
-| *"sparsity selector must be i32 type"* | `mlir::NVVM::MmaSpOp::verify` @ `0x1658c500` | NVVM intrinsic verifier for `mma.sp`; targets PTX | High |
+| Symbol | Owner | Why it is not the TPU path |
+|---|---|---|
+| `getSparsitySelector` | `mlir::nvgpu::MmaSparseSyncOp` @ `0x17052500` | NVGPU dialect op for NVIDIA `mma.sync` sparse; never lowered on TPU |
+| `sparsitySelector` attr | `MmaSparseSyncOp::setPropertiesFromAttr` @ `0x17067b40` | the *"Invalid attribute `sparsitySelector` in property conversion:"* error @ `0xa255171` is NVGPU property conversion |
+| *"sparsity selector should be 0 or 1"* | `MmaSparseSyncOp::verify` @ … | NVIDIA's 2-bit metadata selector, not a TPU concept |
+| *"sparsity selector must be i32 type"* | `mlir::NVVM::MmaSpOp::verify` @ `0x1658c500` | NVVM intrinsic verifier for `mma.sp`; targets PTX |
 
 These ship because libtpu statically links the upstream MLIR `NVGPU`/`NVVM` dialect libraries; none of them are reachable from the `jellyfish` TPU backend. The "selector operand" in the original topic framing is *this* selector — a 2-bit-per-pair metadata index that NVIDIA tensor cores read — and it has **no TPU analogue**. The TPU keeps its kept-lane information in the packed operand layout instead.
 
@@ -196,13 +196,13 @@ These ship because libtpu statically links the upstream MLIR `NVGPU`/`NVVM` dial
 
 The availability signal is the SME structured-sparsity outer-product instruction family and its emission flag.
 
-| External name | Codename | `TpuVersion` ordinal | SME structured sparsity | Confidence |
-|---|---|---|---|---|
-| TPU v2 / v3 | Jellyfish / Dragonfish | `kJellyfish`=0 / `kDragonfish`=1 | No | High — no SME path; MXU is the v2/v3 single-slot encoder |
-| TPU v4 | Pufferfish | `kPufferfish`=2 | No | High — SME family absent on the pre-v5 encoder |
-| **TPU v5** | **Viperfish** | **`kViperfish`=3** | **Yes** | Med — first gen with the SME outer-product path; gen boundary inferred (see NOTE below) |
-| TPU v6 lite | Ghostlite | `kGhostlite`=4 | Yes | Med — v5+ family member; SME path shared with Viperfish |
-| TPU7x | 6acc60406 | `k6acc60406`=5 | Yes | Med — v5+ family member; SME path shared |
+| External name | Codename | `TpuVersion` ordinal | SME structured sparsity |
+|---|---|---|---|
+| TPU v2 / v3 | Jellyfish / Dragonfish | `kJellyfish`=0 / `kDragonfish`=1 | No |
+| TPU v4 | Pufferfish | `kPufferfish`=2 | No |
+| **TPU v5** | **Viperfish** | **`kViperfish`=3** | **Yes** |
+| TPU v6 lite | Ghostlite | `kGhostlite`=4 | Yes |
+| TPU7x | 6acc60406 | `k6acc60406`=5 | Yes |
 
 The gate itself is a compiler flag whose help string *"Enable SME Structured sparsity outer product instructions."* sits at `0xa00bed8` (identifier `aEnableSmeStructuredSparsityOuterProductInstructions`; the string offset is byte-confirmed in the binary). The help string is reached only from a flag-registration table, not from any decompiled function — a sweep of the decompiled corpus finds **no code reference** to the string or the `enable_sme_structured_sparsity_outer_product_instructions` identifier — confirming it is a **boolean compiler flag** that toggles whether the lowering may emit the SME family, rather than a per-call runtime branch.
 

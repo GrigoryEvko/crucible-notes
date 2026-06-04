@@ -148,20 +148,20 @@ The StableHLO→MHLO op mapping is implemented by the templated pattern `mlir::s
 
 ### Related Function Map
 
-| Function | VA | Role | Confidence |
-|---|---|---|---|
-| `xla::CompilePhase0StablehloToHlo` | `0xf84de60` | phase entry; parse + convert + repackage as partial program | CONFIRMED |
-| `xla::ParseMlirModuleString` | `0xf908580` | StableHLO text/bytecode → `mlir::ModuleOp` | CONFIRMED |
-| `xla::MlirToXlaComputation` | `0xf907d40` | the conversion driver (PassManager + emit) | CONFIRMED |
-| `xla::ConvertStablehloToHlo` | `0x16a3d200` | thin wrapper, default options | CONFIRMED |
-| `xla::ConvertStablehloToHloWithOptions` | `0x16a3d3a0` | wrapper exposing the two bool flags; tail-calls `ConvertStablehloToHloInternal` | CONFIRMED |
-| `xla::(anon)::ConvertStablehloToHloInternal` | `0x16a3d220` | wraps `ConvertStablehloToHloProtoInternal`, returns `XlaComputation` | CONFIRMED |
-| `xla::(anon)::ConvertStablehloToHloProtoInternal` | `0x16a3d400` | the real pass-pipeline + `ConvertMlirHloToHlo` emit (verifier disabled) | CONFIRMED |
-| `xla::ConvertStablehloWithManyArgsToHloProto` | `0x16a3d7c0` | multi-argument-bundle variant | CONFIRMED |
-| `mlir::ConvertMlirHloToHlo` | `0x16a64920` | MHLO module walk → `HloProto` | CONFIRMED |
-| `mlir::mhlo::getDefaultChloToHighLevelMhloOptions` | `0x16ad78e0` | default CHLO-legalization options | CONFIRMED |
-| `mlir::mhlo::StablehloLegalizeToHloPass::runOnOperation` | `0x16ae0320` | StableHLO→HLO pass (standalone) | CONFIRMED |
-| `mlir::mhlo::ChloLegalizeToHloPass::runOnOperation` | `0x16adbd00` | CHLO→HLO pass (standalone) | CONFIRMED |
+| Function | VA | Role |
+|---|---|---|
+| `xla::CompilePhase0StablehloToHlo` | `0xf84de60` | phase entry; parse + convert + repackage as partial program |
+| `xla::ParseMlirModuleString` | `0xf908580` | StableHLO text/bytecode → `mlir::ModuleOp` |
+| `xla::MlirToXlaComputation` | `0xf907d40` | the conversion driver (PassManager + emit) |
+| `xla::ConvertStablehloToHlo` | `0x16a3d200` | thin wrapper, default options |
+| `xla::ConvertStablehloToHloWithOptions` | `0x16a3d3a0` | wrapper exposing the two bool flags; tail-calls `ConvertStablehloToHloInternal` |
+| `xla::(anon)::ConvertStablehloToHloInternal` | `0x16a3d220` | wraps `ConvertStablehloToHloProtoInternal`, returns `XlaComputation` |
+| `xla::(anon)::ConvertStablehloToHloProtoInternal` | `0x16a3d400` | the real pass-pipeline + `ConvertMlirHloToHlo` emit (verifier disabled) |
+| `xla::ConvertStablehloWithManyArgsToHloProto` | `0x16a3d7c0` | multi-argument-bundle variant |
+| `mlir::ConvertMlirHloToHlo` | `0x16a64920` | MHLO module walk → `HloProto` |
+| `mlir::mhlo::getDefaultChloToHighLevelMhloOptions` | `0x16ad78e0` | default CHLO-legalization options |
+| `mlir::mhlo::StablehloLegalizeToHloPass::runOnOperation` | `0x16ae0320` | StableHLO→HLO pass (standalone) |
+| `mlir::mhlo::ChloLegalizeToHloPass::runOnOperation` | `0x16adbd00` | CHLO→HLO pass (standalone) |
 
 > **NOTE — `StablehloLegalizeToHloPass` (`0x16ae0320`) and the inline converter pipeline coexist.** The standalone `mlir::mhlo::StablehloLegalizeToHloPass` and `ChloLegalizeToHloPass` are registered passes (their full `…PassBase` vtables — `getName`, `getArgument`, `clonePass`, `getDependentDialects` — are present). The `MlirToXlaComputation` driver does *not* invoke them by name; it assembles its own `createChlo…` / `createStablehlo…` pass chain. Both routes produce the same legalization. The standalone passes exist for the reverse and round-trip paths (`HloLegalizeToStablehloPass`, `0x16adcea0`, runs at the *end* of the HLO pipeline to re-emit StableHLO for the MLIR descent — see [compile-phases.md](compile-phases.md)). A reimplementer should treat the inline chain as authoritative for ingestion.
 

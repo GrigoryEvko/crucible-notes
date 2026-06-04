@@ -91,11 +91,11 @@ The integers in the `array<int,11>` are the throughput model: how many cycles ea
 
 The matpush body is a three-resource reservation `{R_0, R_a, R_b}` whose magnitudes scale with the `MatmulDataFormat` width. The value-set is the same `{2,1,1} → {4,3,2} → {8,7,6}` progression seen on Viperfish — GL stages these triplets at `[rbp-0x7c]/[rbp-0x74]/[rbp-0x6c]` in the ctor (`@0x1c8b2a72/2f9a/39fa`) before feeding them to `SetReservations`:
 
-| matpush format / pass | reservation triplet | Confidence |
-|---|---|---|
-| bf16 single (format 1) | `{2, 1, 1}` | CERTAIN |
-| bf16 transposed / doubled | `{4, 3, 2}` | CERTAIN |
-| int8 x8 (4-byte-plane quad) | `{8, 7, 6}` | CERTAIN |
+| matpush format / pass | reservation triplet |
+|---|---|
+| bf16 single (format 1) | `{2, 1, 1}` |
+| bf16 transposed / doubled | `{4, 3, 2}` |
+| int8 x8 (4-byte-plane quad) | `{8, 7, 6}` |
 
 The leading element is the gain-array hold; the other two are the matrix-staging-register A/B holds. The `{2,1,1}` bf16 set means a bf16 matpush holds its staging registers for only 1 cycle, so a bf16 latch stream pipelines at ~1-cycle issue while the ~192-cycle latency is hidden across the systolic depth. The `{8,7,6}` int8-x8 set — four times the bf16 hold — reflects the four byte-plane latch sequence and throttles an x8 stream to roughly a quarter of the bf16 issue rate.
 
@@ -103,12 +103,12 @@ The leading element is the gain-array hold; the other two are the matrix-staging
 
 The `Vlxmr` (vector-latch-into-MRB) and `Matres` (matrix-result-read) families take their reservations from `.rodata` pair arrays:
 
-| Family | key(s) | reservation | rodata | Confidence |
-|---|---|---|---|---|
-| `Vlxmr` | `0` | `{res0: 2}` | `@0xb43bfc0` | CERTAIN |
-| `Vlxmr` | `257` (MSR `0x101`) | `{res0: 2, res1: 49}` | `@0xb43bfc8` | CERTAIN |
-| `Matres` | `1,2,3,4` | `{res4: 2}` | `@0xb43bfd8` | CERTAIN |
-| `Matres` | `5,6,7,8` | `{res4: 1}` | `@0xb43bfe0` | CERTAIN |
+| Family | key(s) | reservation | rodata |
+|---|---|---|---|
+| `Vlxmr` | `0` | `{res0: 2}` | `@0xb43bfc0` |
+| `Vlxmr` | `257` (MSR `0x101`) | `{res0: 2, res1: 49}` | `@0xb43bfc8` |
+| `Matres` | `1,2,3,4` | `{res4: 2}` | `@0xb43bfd8` |
+| `Matres` | `5,6,7,8` | `{res4: 1}` | `@0xb43bfe0` |
 
 The MSR-driven matpush walk reads the GL `kMsrs` list `{1,2,3,3,4,5,6,7,8}` at `@0xb43bfb4`; the inline matpush value-set bytes are `{0,0,1,1,9,0,3,7,a,8,a,4,3,3,3,3,1,1,2,2,3,3}` at `@0xb43bfe8`. These are the v6e-specific MxuResource indices — the `array<int,11>` resource numbering differs from Viperfish's `array<int,19>`, so the *physical* sub-unit at a given index is not shared between the two generations.
 
@@ -156,19 +156,19 @@ The `MatpushKey` is `{ byte[0]=GainLatchModeToMatmulDataFormat(mode), byte[1]=La
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `ghostlite::MxuLatencyTable::MxuLatencyTable` | `0x1c8b2920` | GL ctor — data-driven `SetReservations`; `matmul_latencies_` 192/182 | CERTAIN |
-| `ghostlite::MxuLatencyTable::GetResourceUsage` | `0x1c8b7560` | GL lookup — defaults `res4→3`, `res9→9`; bound `< 11` | CERTAIN |
-| `ghostlite::SetReservations<MatpushModifier>` | `0x1c8b5d80` | densify `{res→cy}` → `array<int,11>`; CHECK `< 11` (gl.cc:60), `try_emplace` (gl.cc:63) | CERTAIN |
-| `ghostlite::SetReservations<VlxmrModifier>` | `0x1c8b5f60` | vlxmr family row builder | CERTAIN |
-| `ghostlite::SetReservations<MatresModifier>` | `0x1c8b6140` | matres family row builder | CERTAIN |
-| `GlcCycleTable::GlcCycleTable` | `0x1c89e7e0` | owning CycleTable — wires GL perf (`+0x10`) + MXU table (`+0x18`) | CERTAIN |
-| `GainLatchModeToMatmulDataFormat` | `0x1d629260` | matpush key byte[0] — shared with VF/GF | CERTAIN |
-| `LatchModeIsTranspose` | `0x1d628ea0` | matpush key byte[1] — shared | HIGH |
-| `LatchOpcodeToMsr` | `0x1c8a1300` | matpush key byte[3] — GL arg `0x95` | HIGH |
-| GF (`6acc60406`) ctor | `0x1c8bb1c0` | the divergent twin — inline build, 211/204 | CERTAIN |
-| GF (`6acc60406`) `GetResourceUsage` | `0x1c8bdb20` | GF lookup — `mxu_latency_table_gf.cc`, no res4/res9 remap | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `ghostlite::MxuLatencyTable::MxuLatencyTable` | `0x1c8b2920` | GL ctor — data-driven `SetReservations`; `matmul_latencies_` 192/182 |
+| `ghostlite::MxuLatencyTable::GetResourceUsage` | `0x1c8b7560` | GL lookup — defaults `res4→3`, `res9→9`; bound `< 11` |
+| `ghostlite::SetReservations<MatpushModifier>` | `0x1c8b5d80` | densify `{res→cy}` → `array<int,11>`; CHECK `< 11` (gl.cc:60), `try_emplace` (gl.cc:63) |
+| `ghostlite::SetReservations<VlxmrModifier>` | `0x1c8b5f60` | vlxmr family row builder |
+| `ghostlite::SetReservations<MatresModifier>` | `0x1c8b6140` | matres family row builder |
+| `GlcCycleTable::GlcCycleTable` | `0x1c89e7e0` | owning CycleTable — wires GL perf (`+0x10`) + MXU table (`+0x18`) |
+| `GainLatchModeToMatmulDataFormat` | `0x1d629260` | matpush key byte[0] — shared with VF/GF |
+| `LatchModeIsTranspose` | `0x1d628ea0` | matpush key byte[1] — shared |
+| `LatchOpcodeToMsr` | `0x1c8a1300` | matpush key byte[3] — GL arg `0x95` |
+| GF (`6acc60406`) ctor | `0x1c8bb1c0` | the divergent twin — inline build, 211/204 |
+| GF (`6acc60406`) `GetResourceUsage` | `0x1c8bdb20` | GF lookup — `mxu_latency_table_gf.cc`, no res4/res9 remap |
 
 ---
 

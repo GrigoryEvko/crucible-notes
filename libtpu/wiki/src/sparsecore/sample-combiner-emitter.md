@@ -52,11 +52,11 @@ Both `MulFOp::create` and `AddFOp::create` are emitted with `FastMathFlags = non
 
 The three pooling combiners a TPU-embedding feature can request map onto this single FMA as follows. The combiner divisor is **folded into the per-id gain** before it reaches the XLA custom-call; the emitter never sees the combiner name:
 
-| Combiner | Per-id gain the front-end supplies | What the emitter does | Confidence |
-|---|---|---|---|
-| `sum` | `gain` unchanged | `acc += emb · gain` | HIGH (gain applied verbatim CONFIRMED; divisor convention INFERRED) |
-| `mean` | `gain · (1 / valency)` | `acc += emb · gain` (same op) | HIGH |
-| `sqrtn` | `gain · (1 / sqrt(valency))` | `acc += emb · gain` (same op) | HIGH |
+| Combiner | Per-id gain the front-end supplies | What the emitter does |
+|---|---|---|
+| `sum` | `gain` unchanged | `acc += emb · gain` |
+| `mean` | `gain · (1 / valency)` | `acc += emb · gain` (same op) |
+| `sqrtn` | `gain · (1 / sqrt(valency))` | `acc += emb · gain` (same op) |
 
 > **NOTE — `sum`/`mean`/`sqrtn` is a gain scale, not a code path.** There is no `combiner_type` field in the `SparseDenseMatmulConfig` backend-config, and the emitter contains no branch on a combiner enum. The divisor (`1/n`, `1/sqrt(n)`) is applied above the XLA layer, in the TF/JAX TPU-embedding API, by pre-scaling each id's gain. The front-end op that computes `gain = 1/n` or `1/sqrt(n)` is **not** present in `libtpu.so` (it lives in the layer above the custom-call). What is CONFIRMED in the binary is that the emitter multiplies the gain in verbatim; that this gain *carries* the combiner divisor is INFERRED from the absence of any combiner field and the API convention.
 
@@ -64,13 +64,13 @@ The three pooling combiners a TPU-embedding feature can request map onto this si
 
 The `DotCombiner` is one of three embedding-combine lowerings the binary carries. Each is a distinct emitter / decomposer:
 
-| Emitter / decomposer | Address | Reduction form | Confidence |
-|---|---|---|---|
-| `SparseDenseMatmulDotCombinerEmitter::Emit` | `0x1332bda0` | fixed weighted-sum FMA (this page) | CONFIRMED |
-| `LoweringEmitter::EmitSparseDenseMatmulDotCombiner` | `0x131a7ca0` | dispatcher: 2 `FoldAllDimensions` operands → ctor → `Emit` | CONFIRMED |
-| `XlaSparseDenseMatmulCustomCombinerOnTc{,Grad}WithCsrInputOp` (+ `…GradWith{Sgd,Adagrad,AdagradMomentum,…}AndCsrInputOp`) | `0xe653640` (Compile) ff. | user reduce computation inlined in place of the FMA | CONFIRMED (symbol-anchored) |
-| `GatherMulScatterSparseDenseMatmulOpDecomposer` (`AddPass`) | `0x1306d740` | non-minibatch HLO decomposition (no CSR-window decomposition) | CONFIRMED (pass + symbol) |
-| `SparseGatherEmitter::Emit` | `0x133f9120` | standalone SC gather (the gather half the non-minibatch path lowers through) | CONFIRMED (symbol) |
+| Emitter / decomposer | Address | Reduction form |
+|---|---|---|
+| `SparseDenseMatmulDotCombinerEmitter::Emit` | `0x1332bda0` | fixed weighted-sum FMA (this page) |
+| `LoweringEmitter::EmitSparseDenseMatmulDotCombiner` | `0x131a7ca0` | dispatcher: 2 `FoldAllDimensions` operands → ctor → `Emit` |
+| `XlaSparseDenseMatmulCustomCombinerOnTc{,Grad}WithCsrInputOp` (+ `…GradWith{Sgd,Adagrad,AdagradMomentum,…}AndCsrInputOp`) | `0xe653640` (Compile) ff. | user reduce computation inlined in place of the FMA |
+| `GatherMulScatterSparseDenseMatmulOpDecomposer` (`AddPass`) | `0x1306d740` | non-minibatch HLO decomposition (no CSR-window decomposition) |
+| `SparseGatherEmitter::Emit` | `0x133f9120` | standalone SC gather (the gather half the non-minibatch path lowers through) |
 
 The `CustomCombiner` family is the generalization: instead of the fixed `acc += emb · gain`, it inlines a user-supplied `HloComputation` reduce over the gathered rows (it carries `BuildCombinerVjpComputation` and `EmitSparseCoreComputations` members for the forward/backward reduce). The `GatherMulScatter` decomposer is the simpler counterpart the embedding lowers to when the CSR minibatching decomposition is *not* applied — a different lowering of the same sum-lookup, named in this binary but not body-decoded here.
 
@@ -110,14 +110,14 @@ EmitVectorizedLoop weight application (0x1332e1c0)
 
 `BroadcastScalarToVector` is invoked once with the per-id gain (`lowering_util::BroadcastScalarToVector`, `0x13d94460`); the resulting vector is the second `MulFOp` operand for every chunk. This is the entire per-combiner weight application: a single broadcast of the (already combiner-scaled) gain, fused-multiply-added into the accumulator chunk by chunk. The `mean`/`sqrtn` divisor, if present, was baked into `g_f32` before it ever reached HBM — this loop is combiner-agnostic.
 
-| Op | `lowering_util` symbol | Role | Confidence |
-|---|---|---|---|
-| `UnalignedLoadScalarFromHbm` | (per-id scalar load) | load the raw 32-bit gain word from `sorted_gains` | CONFIRMED |
-| `arith::BitcastOp` | `getF32Type` + `BitcastOp::create` | reinterpret the i32 word as the f32 gain | CONFIRMED |
-| `BroadcastScalarToVector` | `0x13d94460` | fan the scalar gain to a lane-width vector (hoisted) | CONFIRMED |
-| `arith::MulFOp` | `MulFOp::create`, `FastMathFlags=none` | `emb_chunk · gain` | CONFIRMED |
-| `arith::AddFOp` | `AddFOp::create`, `FastMathFlags=none` | `+ accumulator_chunk` | CONFIRMED |
-| `LoadChunk` / `StoreChunk` | `0x13d97620` / `0x13d99960` | read the embedding/accumulator chunk; write back | CONFIRMED |
+| Op | `lowering_util` symbol | Role |
+|---|---|---|
+| `UnalignedLoadScalarFromHbm` | (per-id scalar load) | load the raw 32-bit gain word from `sorted_gains` |
+| `arith::BitcastOp` | `getF32Type` + `BitcastOp::create` | reinterpret the i32 word as the f32 gain |
+| `BroadcastScalarToVector` | `0x13d94460` | fan the scalar gain to a lane-width vector (hoisted) |
+| `arith::MulFOp` | `MulFOp::create`, `FastMathFlags=none` | `emb_chunk · gain` |
+| `arith::AddFOp` | `AddFOp::create`, `FastMathFlags=none` | `+ accumulator_chunk` |
+| `LoadChunk` / `StoreChunk` | `0x13d97620` / `0x13d99960` | read the embedding/accumulator chunk; write back |
 
 ---
 

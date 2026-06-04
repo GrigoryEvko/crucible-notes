@@ -79,19 +79,19 @@ One `BarrierCoordinator` exists per live `barrier_id` on the coordinator process
 
 Allocated with `operator new(0xf8)` in `OnBarrierRequestReceived` (`0x1ccac5c0`). Offsets confirmed from the ctor `0x1ccb3fa0` plus member accesses in `ProcessRequest` / `IsComplete` / the dtor.
 
-| Offset | Size | Field | Confidence |
-|---|---|---|---|
-| `+0x00` | 8 | vptr (`0x21c9bb70`) | CERTAIN |
-| `+0x08`–`+0x57` | 0x50 | embedded `Coordinator<>` base: `TracedMutex(kind=9)` | HIGH |
-| `+0x58` | 1 | `state_` (0 init / 1 ready / 2 completed / 3 error) | CERTAIN |
-| `+0x60`–`+0x87` | 0x28 | `StatusOr<BarrierResponse>` (init = `UNAVAILABLE` "IN_PROGRESS") | CERTAIN |
-| `+0x88` | 8 | `response_setters_.data` — `vector<AnyInvocable<void(StatusOr<BarrierResponse> const&)>>` | CERTAIN |
-| `+0x90` / `+0x98` | 8 / 8 | `response_setters_.size` / `.capacity` | HIGH |
-| `+0xa0`–`+0xbf` | 0x20 | `absl::Notification` | CERTAIN |
-| `+0xb0` | 8 | status-report cancellable alarm handle | HIGH |
-| `+0xb8`–`+0xcf` | 0x18 | `std::string barrier_id` (SSO; cap byte at `+0xcf`) | CERTAIN |
-| `+0xd0` | 4 | `num_participants_` (CHECK `> 0` at `topology_coordinator.h:299`) | CERTAIN |
-| `+0xd8`–`+0xf7` | 0x20 | `flat_hash_set<tuple<int,int>> seen_workers` (size = `*(this+0xe0) >> 17`) | CERTAIN |
+| Offset | Size | Field |
+|---|---|---|
+| `+0x00` | 8 | vptr (`0x21c9bb70`) |
+| `+0x08`–`+0x57` | 0x50 | embedded `Coordinator<>` base: `TracedMutex(kind=9)` |
+| `+0x58` | 1 | `state_` (0 init / 1 ready / 2 completed / 3 error) |
+| `+0x60`–`+0x87` | 0x28 | `StatusOr<BarrierResponse>` (init = `UNAVAILABLE` "IN_PROGRESS") |
+| `+0x88` | 8 | `response_setters_.data` — `vector<AnyInvocable<void(StatusOr<BarrierResponse> const&)>>` |
+| `+0x90` / `+0x98` | 8 / 8 | `response_setters_.size` / `.capacity` |
+| `+0xa0`–`+0xbf` | 0x20 | `absl::Notification` |
+| `+0xb0` | 8 | status-report cancellable alarm handle |
+| `+0xb8`–`+0xcf` | 0x18 | `std::string barrier_id` (SSO; cap byte at `+0xcf`) |
+| `+0xd0` | 4 | `num_participants_` (CHECK `> 0` at `topology_coordinator.h:299`) |
+| `+0xd8`–`+0xf7` | 0x20 | `flat_hash_set<tuple<int,int>> seen_workers` (size = `*(this+0xe0) >> 17`) |
 
 The base-class offsets (`+0x58` `state_`, `+0x60` `StatusOr`, `+0x88` callbacks, `+0xa0` `Notification`, `+0xb0` alarm) are shared verbatim with `TopologyCoordinator`; only the derived tail (`+0xb8` onward) differs.
 
@@ -119,17 +119,17 @@ The two vtable writes (base then derived) are the standard C++ vtable transition
 
 Resolved from `.data.rel.ro` `R_X86_64_RELATIVE` relocations.
 
-| Slot | VA | Method | Confidence |
-|---|---|---|---|
-| `+0x00` | `0x1cf55760` | `~BarrierCoordinator` (D2/D1) | CERTAIN |
-| `+0x08` | `0x1cf55960` | `~BarrierCoordinator` (D0, deleting) | CERTAIN |
-| `+0x10` | `0x1ccb42a0` | `Coordinator<Barrier>::AddRequest(req, cb)` (base) | CERTAIN |
-| `+0x18` | `0x1ccb4a80` | `Coordinator<Barrier>::GetState() const` (base) | CERTAIN |
-| `+0x20` | `0x1cf54e60` | `ProcessRequest(req)` — arrival accounting | CERTAIN |
-| `+0x28` | `0x1cf559a0` | `IsComplete() const` | CERTAIN |
-| `+0x30` | `0x213b7e20` | `CreateResponse()` | CERTAIN |
-| `+0x38` | `0x213b7ce0` | `ReportStatus() const` | CERTAIN |
-| `+0x40` | `0x22048600` | base accessor (GetNumWorkers-style; not on the barrier hot path) | LOW |
+| Slot | VA | Method |
+|---|---|---|
+| `+0x00` | `0x1cf55760` | `~BarrierCoordinator` (D2/D1) |
+| `+0x08` | `0x1cf55960` | `~BarrierCoordinator` (D0, deleting) |
+| `+0x10` | `0x1ccb42a0` | `Coordinator<Barrier>::AddRequest(req, cb)` (base) |
+| `+0x18` | `0x1ccb4a80` | `Coordinator<Barrier>::GetState() const` (base) |
+| `+0x20` | `0x1cf54e60` | `ProcessRequest(req)` — arrival accounting |
+| `+0x28` | `0x1cf559a0` | `IsComplete() const` |
+| `+0x30` | `0x213b7e20` | `CreateResponse()` |
+| `+0x38` | `0x213b7ce0` | `ReportStatus() const` |
+| `+0x40` | `0x22048600` | base accessor (GetNumWorkers-style; not on the barrier hot path) |
 
 > **NOTE —** `AddRequest` (`+0x10`) and `GetState` (`+0x18`) are *base*-class entries shared with `TopologyCoordinator`; `ProcessRequest`/`IsComplete`/`CreateResponse`/`ReportStatus` (`+0x20`…`+0x38`) are the *derived* overrides that give the base its barrier-specific behaviour. The base calls them through the vtable — this is the template-method pattern.
 
@@ -259,11 +259,11 @@ The barrier must bound how long a host waits for the others. The bound is entire
 
 ### Flags
 
-| Flag (VA) | Type | Default | Effect | Confidence |
-|---|---|---|---|---|
-| `FLAGS_tf_tpu_enable_preexecution_barrier` `0x222564a0` | bool | (gate) | master switch for the pre-execution barrier in the executor | HIGH |
-| `FLAGS_tf_tpu_preexecution_barrier_timeout` `0x22256500` | `absl::Duration` | **30 s** | client gRPC deadline applied to the `Barrier` RPC | CERTAIN |
-| `FLAGS_xla_tpu_enable_megascale_barrier` `0x223b4d08` | bool | (gate) | higher-level enable for the megascale barrier path | HIGH |
+| Flag (VA) | Type | Default | Effect |
+|---|---|---|---|
+| `FLAGS_tf_tpu_enable_preexecution_barrier` `0x222564a0` | bool | (gate) | master switch for the pre-execution barrier in the executor |
+| `FLAGS_tf_tpu_preexecution_barrier_timeout` `0x22256500` | `absl::Duration` | **30 s** | client gRPC deadline applied to the `Barrier` RPC |
+| `FLAGS_xla_tpu_enable_megascale_barrier` `0x223b4d08` | bool | (gate) | higher-level enable for the megascale barrier path |
 
 The 30-second default is written by `AbslFlagDefaultGenFortf_tpu_preexecution_barrier_timeout::Gen` `0xe6fd5c0` as the `absl::Duration {sec=30, ns=0}` (`*this = 30; *(this+2) = 0`). Both the timeout and the enable flag are registered in `learning/45eac/tfrt/tf_tpu/tpu_execute.cc` (the TFRT TPU executor), confirming the pre-execution barrier is driven from the per-launch execute path.
 

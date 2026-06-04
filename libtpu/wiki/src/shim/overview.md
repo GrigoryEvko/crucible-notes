@@ -122,18 +122,18 @@ Every C++ object that must cross the seam has a flattened C twin. The naming is 
 
 The concrete C++↔C pairs recovered from the symbol table:
 
-| C++ type | C struct (handle) | Marshalling verbs | Confidence |
-|---|---|---|---|
-| `xla::Shape` | `XLA_Shape` | `ToC(const Shape&, XLA_Shape*)`, `FromC(const XLA_Shape*)`, `Destroy(XLA_Shape*)` | CERTAIN |
-| `xla::Layout` | `XLA_Layout` | `ToC(const Layout&, XLA_Layout*)`, `FromC(const XLA_Layout*)` | CERTAIN |
-| `xla::LiteralSlice` / `Literal` | `XLA_Literal` | `ToC(const LiteralSlice&, XLA_Literal*)`, `FromC(XLA_Literal*)`, `Destroy(XLA_Literal*)` | CERTAIN |
-| `xla::ShapedBuffer` | `XLA_ShapedBuffer` | `ToC(const ShapedBuffer&, XLA_ShapedBuffer*)`, `FromC(XLA_ShapedBuffer*)`, `Destroy(XLA_ShapedBuffer*)` | CERTAIN |
-| `xla::HloModule` | (C module handle) | `ToC(const HloModule&)` | HIGH |
-| `xla::HloModuleConfig` | `XLA_HloModuleConfig` | `ToC(const HloModuleConfig&)`, `FromC(const XLA_HloModuleConfig&)` | CERTAIN |
-| `xla::ShapeIndex` | (C index) | `ToC(const ShapeIndex&)` | HIGH |
-| `stream_executor::DeviceAddressBase` | `SE_DeviceAddressBase` | `ToC(const DeviceAddressBase&)`, `FromC(const SE_DeviceAddressBase&)` | CERTAIN |
-| `stream_executor::ScopedDeviceAddress<uint8>` | `SE_ScopedDeviceAddress` | `ToC(ScopedDeviceAddress<uchar>*)` | HIGH |
-| `stream_executor::DeviceAddressAllocator` | (allocate/free callback pair) | `ToC(DeviceAddressAllocator*)` — `$_0::__invoke` emits `SE_ScopedDeviceAddress*`, `$_1::__invoke` frees `SE_DeviceAddressBase*` | HIGH |
+| C++ type | C struct (handle) | Marshalling verbs |
+|---|---|---|
+| `xla::Shape` | `XLA_Shape` | `ToC(const Shape&, XLA_Shape*)`, `FromC(const XLA_Shape*)`, `Destroy(XLA_Shape*)` |
+| `xla::Layout` | `XLA_Layout` | `ToC(const Layout&, XLA_Layout*)`, `FromC(const XLA_Layout*)` |
+| `xla::LiteralSlice` / `Literal` | `XLA_Literal` | `ToC(const LiteralSlice&, XLA_Literal*)`, `FromC(XLA_Literal*)`, `Destroy(XLA_Literal*)` |
+| `xla::ShapedBuffer` | `XLA_ShapedBuffer` | `ToC(const ShapedBuffer&, XLA_ShapedBuffer*)`, `FromC(XLA_ShapedBuffer*)`, `Destroy(XLA_ShapedBuffer*)` |
+| `xla::HloModule` | (C module handle) | `ToC(const HloModule&)` |
+| `xla::HloModuleConfig` | `XLA_HloModuleConfig` | `ToC(const HloModuleConfig&)`, `FromC(const XLA_HloModuleConfig&)` |
+| `xla::ShapeIndex` | (C index) | `ToC(const ShapeIndex&)` |
+| `stream_executor::DeviceAddressBase` | `SE_DeviceAddressBase` | `ToC(const DeviceAddressBase&)`, `FromC(const SE_DeviceAddressBase&)` |
+| `stream_executor::ScopedDeviceAddress<uint8>` | `SE_ScopedDeviceAddress` | `ToC(ScopedDeviceAddress<uchar>*)` |
+| `stream_executor::DeviceAddressAllocator` | (allocate/free callback pair) | `ToC(DeviceAddressAllocator*)` — `$_0::__invoke` emits `SE_ScopedDeviceAddress*`, `$_1::__invoke` frees `SE_DeviceAddressBase*` |
 
 ### The ownership rule
 
@@ -149,26 +149,26 @@ This convention is what lets the roster functions take and return rich data with
 
 The C-ABI surface is partitioned into clusters by the SE abstraction each backs. Counts are the number of `extern "C"` free functions IDA recovered for each prefix in this build. Every cluster has a dedicated sibling page that inventories its functions, signatures, and slot offsets; this map gives only the one-line role and the link.
 
-| Roster | C-ABI count | Backs | Detail page | Confidence |
-|---|---|---|---|---|
-| `TpuCompiler_*` | 7 | XLA→TPU compilation: `New`, `Compile`, `RunHloPasses`, `RunBackend`, `ShapeSize`, `DefaultDeviceShapeRepresentation`, `Free` | [TpuCompiler Roster](tpu-compiler-roster.md) | CERTAIN |
-| `TpuExecutable_*` | 9 | Compiled-executable handle: deserialize, fingerprint, query HLO modules / layouts / cost | [TpuExecutable Roster](tpu-executable-roster.md) | CERTAIN |
-| `TpuExecutor_*` | 25 | Per-device runtime: `Allocate`, stream/event creation, dependency wiring, memory ops | [TpuExecutor Roster](tpu-executor-roster.md) | CERTAIN |
-| `TpuTransferManager_*` | 19 | Host↔device transfer: literal-to/from-device, infeed/outfeed, buffer-access predicates | [TpuTransferManager Roster](tpu-transfer-manager.md) | CERTAIN |
-| `TpuProgram_*` | 18 | Serialized program object: `New`, deserialize-from-proto, fingerprint, executable-info, free | [TpuProgram Roster](tpu-program-roster.md) | CERTAIN |
-| `TpuPlatform_*` | 11 | Platform lifecycle / device enumeration backing `TpuPlatform` | [TpuPlatform & TpuNodeContext](tpu-platform-and-topology.md) | CERTAIN |
-| `TpuTopology_*` | 17 | Mesh geometry: chip bounds (X/Y/Z), core counts, host counts, core lookup | [TpuTopology & TpuCoreLocation](tpu-topology.md) | CERTAIN |
-| `TpuEmbeddingEngine_*` | 15 | SparseCore embedding: configure host/memory, connect hosts, dedup-data computation | [TpuEmbeddingEngine ABI](tpu-embedding-engine.md) | CERTAIN |
-| `TpuConfigurationApi_*` | 8 | Runtime config: compilation-cache server address, pod-state queries, array frees | [TpuConfigurationApi](tpu-configuration-api.md) | CERTAIN |
+| Roster | C-ABI count | Backs | Detail page |
+|---|---|---|---|
+| `TpuCompiler_*` | 7 | XLA→TPU compilation: `New`, `Compile`, `RunHloPasses`, `RunBackend`, `ShapeSize`, `DefaultDeviceShapeRepresentation`, `Free` | [TpuCompiler Roster](tpu-compiler-roster.md) |
+| `TpuExecutable_*` | 9 | Compiled-executable handle: deserialize, fingerprint, query HLO modules / layouts / cost | [TpuExecutable Roster](tpu-executable-roster.md) |
+| `TpuExecutor_*` | 25 | Per-device runtime: `Allocate`, stream/event creation, dependency wiring, memory ops | [TpuExecutor Roster](tpu-executor-roster.md) |
+| `TpuTransferManager_*` | 19 | Host↔device transfer: literal-to/from-device, infeed/outfeed, buffer-access predicates | [TpuTransferManager Roster](tpu-transfer-manager.md) |
+| `TpuProgram_*` | 18 | Serialized program object: `New`, deserialize-from-proto, fingerprint, executable-info, free | [TpuProgram Roster](tpu-program-roster.md) |
+| `TpuPlatform_*` | 11 | Platform lifecycle / device enumeration backing `TpuPlatform` | [TpuPlatform & TpuNodeContext](tpu-platform-and-topology.md) |
+| `TpuTopology_*` | 17 | Mesh geometry: chip bounds (X/Y/Z), core counts, host counts, core lookup | [TpuTopology & TpuCoreLocation](tpu-topology.md) |
+| `TpuEmbeddingEngine_*` | 15 | SparseCore embedding: configure host/memory, connect hosts, dedup-data computation | [TpuEmbeddingEngine ABI](tpu-embedding-engine.md) |
+| `TpuConfigurationApi_*` | 8 | Runtime config: compilation-cache server address, pod-state queries, array frees | [TpuConfigurationApi](tpu-configuration-api.md) |
 
 Four smaller clusters sit alongside the nine named rosters and are documented within the pages above rather than getting their own:
 
-| Roster | C-ABI count | Backs | Documented on | Confidence |
-|---|---|---|---|---|
-| `TpuCoreLocation_*` | 4 | Single-core coordinates / id (`TpuCoreLocationExternal`) | [TpuTopology & TpuCoreLocation](tpu-topology.md) | HIGH |
-| `TpuNodeContext_*` | 5 | Per-node driver context bring-up | [TpuPlatform & TpuNodeContext](tpu-platform-and-topology.md) | HIGH |
-| `TpuMeshState_*` | 3 | Distributed mesh state handle | [TpuPlatform & TpuNodeContext](tpu-platform-and-topology.md) | MEDIUM |
-| `TpuCompile_*` | 6 | Standalone compile entry (distinct from `TpuCompiler_*` class methods) | [TpuCompiler Roster](tpu-compiler-roster.md) | MEDIUM |
+| Roster | C-ABI count | Backs | Documented on |
+|---|---|---|---|
+| `TpuCoreLocation_*` | 4 | Single-core coordinates / id (`TpuCoreLocationExternal`) | [TpuTopology & TpuCoreLocation](tpu-topology.md) |
+| `TpuNodeContext_*` | 5 | Per-node driver context bring-up | [TpuPlatform & TpuNodeContext](tpu-platform-and-topology.md) |
+| `TpuMeshState_*` | 3 | Distributed mesh state handle | [TpuPlatform & TpuNodeContext](tpu-platform-and-topology.md) |
+| `TpuCompile_*` | 6 | Standalone compile entry (distinct from `TpuCompiler_*` class methods) | [TpuCompiler Roster](tpu-compiler-roster.md) |
 
 ### How a roster call flows
 

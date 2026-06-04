@@ -128,14 +128,14 @@ struct Block {                         // 48 B value materialised by GetBlockIf
 
 A single offset-ordered tree would give O(log n) neighbour lookup but a *linear* best-fit search (you would have to scan for the smallest fitting gap). A single size-ordered tree would give O(log n) best-fit but *no* way to find the physical neighbour of a freed block for coalescing. The boundary-tag map + size tree pairing gives **O(log n) best-fit and O(1) amortised neighbour lookup** simultaneously. The cost is keeping the two in sync on every split and merge, which is exactly what `SplitBlock`/`MergeBlock`/`ShrinkFreeListEntry`/`AddToFreeList` do.
 
-| Field / structure | Address or offset | Role | Confidence |
-|---|---|---|---|
-| `blocks_by_offset_` | `this+0x08` | boundary-tag map of all blocks | CONFIRMED |
-| `free_tree_` | `this+0x28` (size `+0x38`, end `+0x48`) | size-ordered free RB-tree | CONFIRMED |
-| `policy_b_` | `this+0x50` | read by `Find`/`Split`/`Dealloc` to pick best-fit vs first-fit | CONFIRMED |
-| `reserved_bottom_limit_` | `this+0xA8` | bottom watermark; skipped by the search | CONFIRMED |
-| `BlockOrder` `lower_bound` | `0x1e824960` | comparator `(size, then lo)` ascending | CONFIRMED |
-| `BlockOrder` `find_equal` | `0x1e824640` | same comparator; prev/next coalesce lookups | CONFIRMED |
+| Field / structure | Address or offset | Role |
+|---|---|---|
+| `blocks_by_offset_` | `this+0x08` | boundary-tag map of all blocks |
+| `free_tree_` | `this+0x28` (size `+0x38`, end `+0x48`) | size-ordered free RB-tree |
+| `policy_b_` | `this+0x50` | read by `Find`/`Split`/`Dealloc` to pick best-fit vs first-fit |
+| `reserved_bottom_limit_` | `this+0xA8` | bottom watermark; skipped by the search |
+| `BlockOrder` `lower_bound` | `0x1e824960` | comparator `(size, then lo)` ascending |
+| `BlockOrder` `find_equal` | `0x1e824640` | same comparator; prev/next coalesce lookups |
 
 ---
 
@@ -177,13 +177,13 @@ The first-fit branch walks the tree in *offset* order? No — it walks in *in-or
 
 `ReserveBottomOfMemory` (`0x1e81b0c0`) sets `reserved_bottom_limit_` (`+0xA8`). The search treats a free block whose `lo` equals that watermark as off-limits *when other free blocks exist* and steps to the next candidate. This is how the runtime carves out a protected region at the bottom of the tier (the XLA flag `xla_tpu_user_reserved_hbm_bytes` flows here at boot). The `free_tree_size_ >= 2` guard ensures that if the reserved block is the *only* free block, it is still returned rather than failing the allocation outright.
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `FindAllocatableBlock` | `0x1e818540` | best-fit `lower_bound` + reserved-bottom skip; first-fit walk | CONFIRMED |
-| `__lower_upper_bound_unique_impl<FreeBlock>` | `0x1e824960` | the `lower_bound` over the size-ordered tree | CONFIRMED |
-| `ReserveBottomOfMemory` | `0x1e81b0c0` | sets the `+0xA8` watermark | CONFIRMED |
-| `GetBlockIf` | `0x1e818f20` | SwissTable H2 probe → 48-B `Block` (or null-slot Block) | CONFIRMED |
-| `BytesAllocatable` (vt+0x70) / `BytesAvailable` (vt+0x68) | `0x1e819b80` / `0x1e81dd60` | largest-free-run / total-free; supply the OOM diagnostic's $largest$ / $free$ values | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `FindAllocatableBlock` | `0x1e818540` | best-fit `lower_bound` + reserved-bottom skip; first-fit walk |
+| `__lower_upper_bound_unique_impl<FreeBlock>` | `0x1e824960` | the `lower_bound` over the size-ordered tree |
+| `ReserveBottomOfMemory` | `0x1e81b0c0` | sets the `+0xA8` watermark |
+| `GetBlockIf` | `0x1e818f20` | SwissTable H2 probe → 48-B `Block` (or null-slot Block) |
+| `BytesAllocatable` (vt+0x70) / `BytesAvailable` (vt+0x68) | `0x1e819b80` / `0x1e81dd60` | largest-free-run / total-free; supply the OOM diagnostic's $largest$ / $free$ values |
 
 ---
 
@@ -264,13 +264,13 @@ This matters for fragmentation analysis. A min-remainder threshold (like `dlmall
 
 `ShrinkFreeListEntry` (`0x1e819520`) keeps the free tree consistent after the split: if the free block was fully consumed (`remaining == 0`) it erases the node and `operator delete`s it; otherwise it removes and re-inserts the node at its new sorted position (the block shrank, so its size key changed).
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `Allocate` | `0x1e817820` | round-up → find → split-at-top → shrink → stats → `base+offset` | CONFIRMED |
-| `SplitBlock` | `0x1e819060` | left/right states; exact-fit → no right entry; no min-remainder | CONFIRMED |
-| `ShrinkFreeListEntry` | `0x1e819520` | delete-if-empty / remove+reinsert on size change | CONFIRMED |
-| `BadSizeError` | `0x1e818240` | size `< 0` or `> max_aligned_size_` | CONFIRMED |
-| `GetFragmentation` | `0x1e819c80` | `(free − largest_run) / free` | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `Allocate` | `0x1e817820` | round-up → find → split-at-top → shrink → stats → `base+offset` |
+| `SplitBlock` | `0x1e819060` | left/right states; exact-fit → no right entry; no min-remainder |
+| `ShrinkFreeListEntry` | `0x1e819520` | delete-if-empty / remove+reinsert on size change |
+| `BadSizeError` | `0x1e818240` | size `< 0` or `> max_aligned_size_` |
+| `GetFragmentation` | `0x1e819c80` | `(free − largest_run) / free` |
 
 ---
 
@@ -334,13 +334,13 @@ After up to two merges, `self` is the maximal coalesced free run, and `AddToFree
 
 > **NOTE —** the byte trace shows the prev-merge, next-merge, and the free-node (re)insertion fused into one code path that reuses the merged `self` Block and re-keys an existing tree node in place where possible (rather than always erase-then-`operator new`). The pseudocode above is the semantic equivalent; the fused form avoids a node allocation when one of the neighbours already had a tree node that can be widened.
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `Deallocate` | `0x1e819dc0` | validate → dec stats → coalesce prev+next → reinsert free | CONFIRMED |
-| `MergeBlock` | `0x1e819700` | extend lower entry, erase upper entry | CONFIRMED |
-| `AddToFreeList` | `0x1e81a700` | `find_equal`-then-insert `FreeBlock` RB node | CONFIRMED |
-| `__find_equal<FreeBlock>` | `0x1e824640` | prev/next coalesce lookups (same comparator) | CONFIRMED |
-| `GetBlockIf` | `0x1e818f20` | neighbour materialisation; null-slot Block if absent/wrong-state | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `Deallocate` | `0x1e819dc0` | validate → dec stats → coalesce prev+next → reinsert free |
+| `MergeBlock` | `0x1e819700` | extend lower entry, erase upper entry |
+| `AddToFreeList` | `0x1e81a700` | `find_equal`-then-insert `FreeBlock` RB node |
+| `__find_equal<FreeBlock>` | `0x1e824640` | prev/next coalesce lookups (same comparator) |
+| `GetBlockIf` | `0x1e818f20` | neighbour materialisation; null-slot Block if absent/wrong-state |
 
 ---
 

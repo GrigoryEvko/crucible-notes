@@ -37,31 +37,31 @@ Three areas, one table. "Impl symbol + address" is the `extern "C"` bridge in `l
 
 ### Actions (`*Op_DoWork`)
 
-| C-ABI function | Address | Bridges to (`tensorflow::`) | Role | Confidence |
-|---|---|---|---|---|
-| `ConfigureDistributedTpuOp_DoWork` | `0xe8cd400` | `ConfigureDistributedTpu` (`0xe975cc0`) | Negotiate the global TPU mesh from this host's chip list; emit serialized pod topology | CERTAIN |
-| `WaitForDistributedTpuOp_DoWork` | `0xe8cd640` | `WaitForDistributedTpu` (`0xe9767c0`) | Block until every host's per-core mapping has arrived; emit the merged mesh-common-state blob | CERTAIN |
-| `InitializeHostForDistributedTpuOp_DoWork` | `0xe8cd9a0` | `InitializeHostForDistributedTpu` (`0xe9771c0`) | Bind this host into the configured pod; emit the local core-id `int32` array | CERTAIN |
-| `SetGlobalTPUArrayOp_DoWork` | `0xe8cda80` | `SetGlobalTPUArray` (`0xe977880`) | Install the pod-wide topology proto (string) into global state; status only | CERTAIN |
-| `DisconnectDistributedTpuChipsOp_DoWork` | `0xe8cdb80` | `DisconnectDistributedTpuChips` (`0xe977aa0`) | Tear the host out of the pod; status only | CERTAIN |
+| C-ABI function | Address | Bridges to (`tensorflow::`) | Role |
+|---|---|---|---|
+| `ConfigureDistributedTpuOp_DoWork` | `0xe8cd400` | `ConfigureDistributedTpu` (`0xe975cc0`) | Negotiate the global TPU mesh from this host's chip list; emit serialized pod topology |
+| `WaitForDistributedTpuOp_DoWork` | `0xe8cd640` | `WaitForDistributedTpu` (`0xe9767c0`) | Block until every host's per-core mapping has arrived; emit the merged mesh-common-state blob |
+| `InitializeHostForDistributedTpuOp_DoWork` | `0xe8cd9a0` | `InitializeHostForDistributedTpu` (`0xe9771c0`) | Bind this host into the configured pod; emit the local core-id `int32` array |
+| `SetGlobalTPUArrayOp_DoWork` | `0xe8cda80` | `SetGlobalTPUArray` (`0xe977880`) | Install the pod-wide topology proto (string) into global state; status only |
+| `DisconnectDistributedTpuChipsOp_DoWork` | `0xe8cdb80` | `DisconnectDistributedTpuChips` (`0xe977aa0`) | Tear the host out of the pod; status only |
 
 ### Queries (pod state + compilation-cache server)
 
-| C-ABI function | Address | Bridges to (`tensorflow::`) | Role | Confidence |
-|---|---|---|---|---|
-| `TpuConfigurationApi_HasTPUPodState` | `0xe8cdca0` | `HasTPUPodState` (`0xeaa17c0`) via `GetTPUConfigResourceMgr` (`0x10854020`) | Predicate: is a pod-state resource registered in the config `ResourceMgr`? | CERTAIN |
-| `TpuConfigurationApi_TpusPerHost` | `0xe8cdc00` | `TpusPerHost` (`0xe9742a0`) | Out-param `int32`: TPU chips attached to this host | CERTAIN |
-| `TpuConfigurationApi_TpuMemoryLimit` | `0xe8cdc40` | `TpuMemoryLimit` (`0xe974440`) | Out-param `int64` (a `tsl::gtl::IntType<Bytes_tag_>`): per-core HBM byte budget | CERTAIN |
-| `TpuConfigurationApi_RemoteCompilationCacheSizeInBytes` | `0xe8cdcc0` | reads `FLAGS_tpu_remote_compilation_cache_size_bytes` | Out-param `int64`: remote compile-cache max size; `CHECK`s ptr non-null and value `>= 0` | CERTAIN |
-| `TpuConfigurationApi_CompilationCacheServerAddressFromConfig` | `0xe8cdda0` | parses `tensorflow::tpu::TPUHostConfiguration` proto | Decode the compile-cache server address from a serialized `TPUHostConfiguration`; emit a `char[]` | CERTAIN |
-| `TpuConfigurationApi_GetServerAddressAndPort` | `0xe8cdf80` | `GetServerAddressAndPort` (`0xe975a60`) | Resolve the compile-cache server `host:port` from `FLAGS_uberdriver_port` + `FLAGS_tpu_hostname_override`; emit a `char[]` | CERTAIN |
+| C-ABI function | Address | Bridges to (`tensorflow::`) | Role |
+|---|---|---|---|
+| `TpuConfigurationApi_HasTPUPodState` | `0xe8cdca0` | `HasTPUPodState` (`0xeaa17c0`) via `GetTPUConfigResourceMgr` (`0x10854020`) | Predicate: is a pod-state resource registered in the config `ResourceMgr`? |
+| `TpuConfigurationApi_TpusPerHost` | `0xe8cdc00` | `TpusPerHost` (`0xe9742a0`) | Out-param `int32`: TPU chips attached to this host |
+| `TpuConfigurationApi_TpuMemoryLimit` | `0xe8cdc40` | `TpuMemoryLimit` (`0xe974440`) | Out-param `int64` (a `tsl::gtl::IntType<Bytes_tag_>`): per-core HBM byte budget |
+| `TpuConfigurationApi_RemoteCompilationCacheSizeInBytes` | `0xe8cdcc0` | reads `FLAGS_tpu_remote_compilation_cache_size_bytes` | Out-param `int64`: remote compile-cache max size; `CHECK`s ptr non-null and value `>= 0` |
+| `TpuConfigurationApi_CompilationCacheServerAddressFromConfig` | `0xe8cdda0` | parses `tensorflow::tpu::TPUHostConfiguration` proto | Decode the compile-cache server address from a serialized `TPUHostConfiguration`; emit a `char[]` |
+| `TpuConfigurationApi_GetServerAddressAndPort` | `0xe8cdf80` | `GetServerAddressAndPort` (`0xe975a60`) | Resolve the compile-cache server `host:port` from `FLAGS_uberdriver_port` + `FLAGS_tpu_hostname_override`; emit a `char[]` |
 
 ### Free helpers
 
-| C-ABI function | Address | Body | Role | Confidence |
-|---|---|---|---|---|
-| `TpuConfigurationApi_FreeCharArray` | `0xe8cdbc0` | `if (p) free(p);` | Release a `char[]` produced by a query | CERTAIN |
-| `TpuConfigurationApi_FreeInt32Array` | `0xe8cdbe0` | `if (p) free(p);` | Release an `int32[]` produced by an action | CERTAIN |
+| C-ABI function | Address | Body | Role |
+|---|---|---|---|
+| `TpuConfigurationApi_FreeCharArray` | `0xe8cdbc0` | `if (p) free(p);` | Release a `char[]` produced by a query |
+| `TpuConfigurationApi_FreeInt32Array` | `0xe8cdbe0` | `if (p) free(p);` | Release an `int32[]` produced by an action |
 
 > **NOTE —** the file-string `tpu_config_c_api.cc` (visible in the `RemoteCompilationCacheSizeInBytes` `CHECK` site at line 158 and the `CompilationCacheServerAddressFromConfig` error at line 175) confirms all three trios live in one translation unit. The `*Op_DoWork` symbols carry no `TpuConfigurationApi_` prefix in IDA, but they share the same source file and the same op-args bridging pattern, so they are documented here as one cluster.
 

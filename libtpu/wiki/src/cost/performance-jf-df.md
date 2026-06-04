@@ -78,10 +78,10 @@ PerformanceJf::PerformanceJf(this, dev);          // build the full JF image fir
 
 `this + 5` (qword) is `Performance[+0x28]`. The qword `0xD00000042` writes `[+0x28] = 0x42 = 66` and `[+0x2c] = 0x0D = 13`:
 
-| cell | JF | DF | role | Confidence |
-|---|---|---|---|---|
-| `Performance[+0x28]` | 88 | **66** | MXU matmul base latency (→ `LatencyTable[+0x50]`) | CERTAIN |
-| `Performance[+0x2c]` | 8 | **13** | MXU matprep base latency (→ `LatencyTable[+0x4c]`) | CERTAIN |
+| cell | JF | DF | role |
+|---|---|---|---|
+| `Performance[+0x28]` | 88 | **66** | MXU matmul base latency (→ `LatencyTable[+0x50]`) |
+| `Performance[+0x2c]` | 8 | **13** | MXU matprep base latency (→ `LatencyTable[+0x4c]`) |
 
 A diff of the two reconstructed in-memory images shows **exactly these two cells** change; every other one of the 419 populated slots is byte-identical. Because neither `+0x28` nor `+0x2c` is an `offsetLUT` target, `GetCyclesForThroughput` returns the same value on JF and DF for all 16 priced ordinals — the entire v2→v3 cost difference is these two latency-feeding integers, consumed downstream by `LatencyTableJellyfish` (covered on [MXU Latency: JF / DF](mxu-latency-jf-df.md)).
 
@@ -133,15 +133,15 @@ __int64 ResourceVector::Acc(this, unsigned int resource, double cycles) {
 
 So the seven JF/DF `Resource` columns are the **first seven** `ResourceVector` slots. The JF/DF cost model populates only the MXU/vector head of the 23-slot accumulator; the memory, ICI, and SparseCore slots `R[7..22]` are deposited into by other cost paths, not by this flat LUT. See [Resource Enum](resource-enum.md) for the full 23-slot vector and `MaxResourceCycles` reduction.
 
-| Res | `ResourceVector` slot | name | occupant JF `Instruction` band | Confidence |
-|---|---|---|---|---|
-| r0 | `R[0]` `+0x00` | `Matpush` | matmul/latch ops (`Instr 0x05..0x10`; `GainLatchMode` expansion) | CERTAIN |
-| r1 | `R[1]` `+0x08` | `Matmul` | matprep ops (`Instr 0x00..0x04`; `MatmulDataFormat` expansion) | CERTAIN |
-| r2 | `R[2]` `+0x10` | `Xlu` | matrix-result / cross-lane (`Instr 0x17, 0x1b..0x1f`) | CERTAIN |
-| r3 | `R[3]` `+0x18` | `VectorAlu0` | vector ALU lane 0 (`Instr 0x14`) | CERTAIN |
-| r4 | `R[4]` `+0x20` | `VectorAlu1` | vector ALU lane 1 (`Instr 0x12, 0x13`) | CERTAIN |
-| r5 | `R[5]` `+0x28` | `VectorAluAny` | vector ALU "any" lane (`Instr 0x15, 0x16, 0x19, 0x20`) | CERTAIN |
-| r6 | `R[6]` `+0x30` | `VectorEup` | vector extended-precision (`Instr 0x11, 0x18, 0x1a`) | CERTAIN |
+| Res | `ResourceVector` slot | name | occupant JF `Instruction` band |
+|---|---|---|---|
+| r0 | `R[0]` `+0x00` | `Matpush` | matmul/latch ops (`Instr 0x05..0x10`; `GainLatchMode` expansion) |
+| r1 | `R[1]` `+0x08` | `Matmul` | matprep ops (`Instr 0x00..0x04`; `MatmulDataFormat` expansion) |
+| r2 | `R[2]` `+0x10` | `Xlu` | matrix-result / cross-lane (`Instr 0x17, 0x1b..0x1f`) |
+| r3 | `R[3]` `+0x18` | `VectorAlu0` | vector ALU lane 0 (`Instr 0x14`) |
+| r4 | `R[4]` `+0x20` | `VectorAlu1` | vector ALU lane 1 (`Instr 0x12, 0x13`) |
+| r5 | `R[5]` `+0x28` | `VectorAluAny` | vector ALU "any" lane (`Instr 0x15, 0x16, 0x19, 0x20`) |
+| r6 | `R[6]` `+0x30` | `VectorEup` | vector extended-precision (`Instr 0x11, 0x18, 0x1a`) |
 
 > **GOTCHA —** Mind the r0/r1 pairing: the `resLUT` maps matprep (`Instr 0x00`) → `r1` `Matmul`, and the matmul/latch ordinals (`Instr 0x05`) → `r0` `Matpush` — the opposite of the intuitive "r0 = matmul-issue, r1 = matprep" reading. The names above come from the `AccumulateInstructionUsage → Acc` consumer path and match `ResourceVectorToString` `@0x1c89bde0` slot-for-slot; the column index *is* the `ResourceVector` slot index.
 
@@ -151,41 +151,41 @@ So the seven JF/DF `Resource` columns are the **first seven** `ResourceVector` s
 
 This is the full reconstruction of the JF/DF throughput grid over all 33 `CycleTable::Instruction` ordinals. The `offsetLUT` (`@0xb438b70`) and `resLUT` (`@0xb438aec`) columns were read byte-for-byte out of `.rodata`; the cycle value is the priced cell resolved in the reconstructed `PerformanceJf` in-memory image. JF and DF are identical for every cell (none of the priced offsets is `+0x28` or `+0x2c`, the only two DF overrides), so one column serves both.
 
-| `Instr` | `offsetLUT[I]` | `Res` | `ResourceVector` slot | priced | JF/DF cyc | source modifier (MXU band) | Confidence |
-|---|---|---|---|---|---|---|---|
-| `0x00` | `0x910` | r1 | `Matmul` | yes | **8** | matprep · `MatmulDataFormat=0` | CERTAIN |
-| `0x01` | `0x000` | r1 | `Matmul` | no | 1 | matprep · fmt 1,2,3,10 | CERTAIN |
-| `0x02` | `0x000` | r1 | `Matmul` | no | 1 | matprep · fmt 8 | CERTAIN |
-| `0x03` | `0x000` | r1 | `Matmul` | no | 1 | matprep · fmt 9 | CERTAIN |
-| `0x04` | `0x000` | r1 | `Matmul` | no | 1 | matprep · fmt 4,5,6,7 | CERTAIN |
-| `0x05` | `0x92c` | r0 | `Matpush` | yes | **8** | matmul · `GainLatchMode` 0x0,0x2,0x4 | CERTAIN |
-| `0x06` | `0x000` | r0 | `Matpush` | no | 1 | matmul · latch 0xb,0xe,0x10 | CERTAIN |
-| `0x07` | `0x000` | r0 | `Matpush` | no | 1 | matmul · latch 0x30 | CERTAIN |
-| `0x08` | `0x000` | r0 | `Matpush` | no | 1 | matmul · latch 0x32 | CERTAIN |
-| `0x09` | `0x000` | r0 | `Matpush` | no | 1 | matmul · latch 0xc,0x12,0x14,0x16,0x18 | CERTAIN |
-| `0x0a` | `0x000` | r0 | `Matpush` | no | 1 | (unmapped) | CERTAIN |
-| `0x0b` | `0x92c` | r0 | `Matpush` | yes | **8** | matmul · `GainLatchMode` 0x1,0x3,0x5 | CERTAIN |
-| `0x0c` | `0x000` | r0 | `Matpush` | no | 1 | matmul · latch 0xa,0xf,0x11 | CERTAIN |
-| `0x0d` | `0x000` | r0 | `Matpush` | no | 1 | matmul · latch 0x31 | CERTAIN |
-| `0x0e` | `0x000` | r0 | `Matpush` | no | 1 | matmul · latch 0x33 | CERTAIN |
-| `0x0f` | `0x000` | r0 | `Matpush` | no | 1 | matmul · latch 0xd,0x13,0x15,0x17,0x19 | CERTAIN |
-| `0x10` | `0x000` | r0 | `Matpush` | no | 1 | (unmapped) | CERTAIN |
-| `0x11` | `0x000` | r6 | `VectorEup` | no | 1 | (non-MXU) | CERTAIN |
-| `0x12` | `0x33c` | r4 | `VectorAlu1` | yes | 1 | (non-MXU; EUP/vector-result) | CERTAIN |
-| `0x13` | `0x340` | r4 | `VectorAlu1` | yes | 1 | (non-MXU) | CERTAIN |
-| `0x14` | `0x344` | r3 | `VectorAlu0` | yes | 1 | (non-MXU; cross-lane) | CERTAIN |
-| `0x15` | `0x39c` | r5 | `VectorAluAny` | yes | 1 | (non-MXU; vector-ALU) | CERTAIN |
-| `0x16` | `0x398` | r5 | `VectorAluAny` | yes | 1 | (non-MXU) | CERTAIN |
-| `0x17` | `0x954` | r2 | `Xlu` | yes | **8** | (MXU matrix-result) | CERTAIN |
-| `0x18` | `0x3f8` | r6 | `VectorEup` | yes | 1 | (non-MXU) | CERTAIN |
-| `0x19` | `0x368` | r5 | `VectorAluAny` | yes | 1 | (non-MXU) | CERTAIN |
-| `0x1a` | `0x3f4` | r6 | `VectorEup` | yes | 1 | (non-MXU) | CERTAIN |
-| `0x1b` | `0x960` | r2 | `Xlu` | yes | **8** | (MXU matrix-result) | CERTAIN |
-| `0x1c` | `0x94c` | r2 | `Xlu` | yes | **8** | (MXU matrix-result) | CERTAIN |
-| `0x1d` | `0x000` | r2 | `Xlu` | no | 1 | (MXU-result, default) | CERTAIN |
-| `0x1e` | `0x000` | r2 | `Xlu` | no | 1 | (MXU-result, default) | CERTAIN |
-| `0x1f` | `0x958` | r2 | `Xlu` | yes | **8** | (MXU matrix-result) | CERTAIN |
-| `0x20` | `0x39c` | r5 | `VectorAluAny` | yes | 1 | (non-MXU) | CERTAIN |
+| `Instr` | `offsetLUT[I]` | `Res` | `ResourceVector` slot | priced | JF/DF cyc | source modifier (MXU band) |
+|---|---|---|---|---|---|---|
+| `0x00` | `0x910` | r1 | `Matmul` | yes | **8** | matprep · `MatmulDataFormat=0` |
+| `0x01` | `0x000` | r1 | `Matmul` | no | 1 | matprep · fmt 1,2,3,10 |
+| `0x02` | `0x000` | r1 | `Matmul` | no | 1 | matprep · fmt 8 |
+| `0x03` | `0x000` | r1 | `Matmul` | no | 1 | matprep · fmt 9 |
+| `0x04` | `0x000` | r1 | `Matmul` | no | 1 | matprep · fmt 4,5,6,7 |
+| `0x05` | `0x92c` | r0 | `Matpush` | yes | **8** | matmul · `GainLatchMode` 0x0,0x2,0x4 |
+| `0x06` | `0x000` | r0 | `Matpush` | no | 1 | matmul · latch 0xb,0xe,0x10 |
+| `0x07` | `0x000` | r0 | `Matpush` | no | 1 | matmul · latch 0x30 |
+| `0x08` | `0x000` | r0 | `Matpush` | no | 1 | matmul · latch 0x32 |
+| `0x09` | `0x000` | r0 | `Matpush` | no | 1 | matmul · latch 0xc,0x12,0x14,0x16,0x18 |
+| `0x0a` | `0x000` | r0 | `Matpush` | no | 1 | (unmapped) |
+| `0x0b` | `0x92c` | r0 | `Matpush` | yes | **8** | matmul · `GainLatchMode` 0x1,0x3,0x5 |
+| `0x0c` | `0x000` | r0 | `Matpush` | no | 1 | matmul · latch 0xa,0xf,0x11 |
+| `0x0d` | `0x000` | r0 | `Matpush` | no | 1 | matmul · latch 0x31 |
+| `0x0e` | `0x000` | r0 | `Matpush` | no | 1 | matmul · latch 0x33 |
+| `0x0f` | `0x000` | r0 | `Matpush` | no | 1 | matmul · latch 0xd,0x13,0x15,0x17,0x19 |
+| `0x10` | `0x000` | r0 | `Matpush` | no | 1 | (unmapped) |
+| `0x11` | `0x000` | r6 | `VectorEup` | no | 1 | (non-MXU) |
+| `0x12` | `0x33c` | r4 | `VectorAlu1` | yes | 1 | (non-MXU; EUP/vector-result) |
+| `0x13` | `0x340` | r4 | `VectorAlu1` | yes | 1 | (non-MXU) |
+| `0x14` | `0x344` | r3 | `VectorAlu0` | yes | 1 | (non-MXU; cross-lane) |
+| `0x15` | `0x39c` | r5 | `VectorAluAny` | yes | 1 | (non-MXU; vector-ALU) |
+| `0x16` | `0x398` | r5 | `VectorAluAny` | yes | 1 | (non-MXU) |
+| `0x17` | `0x954` | r2 | `Xlu` | yes | **8** | (MXU matrix-result) |
+| `0x18` | `0x3f8` | r6 | `VectorEup` | yes | 1 | (non-MXU) |
+| `0x19` | `0x368` | r5 | `VectorAluAny` | yes | 1 | (non-MXU) |
+| `0x1a` | `0x3f4` | r6 | `VectorEup` | yes | 1 | (non-MXU) |
+| `0x1b` | `0x960` | r2 | `Xlu` | yes | **8** | (MXU matrix-result) |
+| `0x1c` | `0x94c` | r2 | `Xlu` | yes | **8** | (MXU matrix-result) |
+| `0x1d` | `0x000` | r2 | `Xlu` | no | 1 | (MXU-result, default) |
+| `0x1e` | `0x000` | r2 | `Xlu` | no | 1 | (MXU-result, default) |
+| `0x1f` | `0x958` | r2 | `Xlu` | yes | **8** | (MXU matrix-result) |
+| `0x20` | `0x39c` | r5 | `VectorAluAny` | yes | 1 | (non-MXU) |
 
 The sixteen priced ordinals are exactly `{0x00, 0x05, 0x0b, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1f, 0x20}`. The seven **8-cycle** cells are the MXU matprep/matmul/matrix-result throughput ports (`0x00`, `0x05`, `0x0b`, `0x17`, `0x1b`, `0x1c`, `0x1f`); the nine **1-cycle** priced cells are vector-ALU / EUP result stages.
 
@@ -203,23 +203,23 @@ The `Instr 0x00..0x10` band (the MXU ordinals) is produced by the MXU classifier
 
 The 15 distinct 16-byte blocks, all read byte-exact out of `.rodata`:
 
-| `.rodata` block | bytes (4 × `int32`) | lands at | role | Confidence |
-|---|---|---|---|---|
-| `@0xa2c8a30` | `{4, 105, 7, 92}` | `Performance[+0x18]` | RPU producer / matres-self conflict floors (latency-table head) | CERTAIN |
-| `@0xa2dcd30` | `{88, 8, 4, 1}` | `Performance[+0x28]` | matmul base (`+0x28`), matprep base (`+0x2c`), **EUP push→pop edge** (`+0x30`=4) | CERTAIN |
-| `@0xa2db650` | `{1, 1, 2, 2}` | `Performance[+0x3c]`, `[+0x10c]` | vector-result floors | CERTAIN |
-| `@0xa2c8a40` | `{2, 1, 1, 1}` | `Performance[+0x4c]`, `[+0x178]` | vector-result floors | CERTAIN |
-| `@0xa2d2df0` | `{1, 1, 1, 2}` | `Performance[+0xbc]` | vector-result floors | CERTAIN |
-| `@0xa2cea00` | `{2, 2, 1, 1}` | `Performance[+0xcc]` | vector-result floors | CERTAIN |
-| `@0xa2c5b90` | `{1, 1, 1, 4}` | `Performance[+0x168]` | vector-result floors | CERTAIN |
-| `@0xa2d7660` | `{1, 1, 8, 1}` | `Performance[+0x410]` | branch-op cell (`[+0x418]`=8) | CERTAIN |
-| `@0xa2d3c30` | `{8, 1, 1, 1}` | `Performance[+0x420]` | branch-op cell (`[+0x420]`=8) | CERTAIN |
-| `@0xa2da220` | `{8, 8, 8, 1}` | `Performance[+0x910]` | MXU throughput band head (`Instr 0x00` at `+0x910`) | CERTAIN |
-| `@0xa2cf810` | `{8, 1, 1, 8}` | `Performance[+0x940]` | MXU throughput cell (`Instr 0x1c` at `+0x94c`) | CERTAIN |
-| `@0xa2c5ba0` | `{1, 1, 5, 5}` | `Performance[+0xa0c]` | deep conflict floors | CERTAIN |
-| `@0xa2c2f40` | `{5, 1, 1, 1}` | `Performance[+0xa1c]` | deep conflict floors | CERTAIN |
-| `@0xa2d2090` | `{1, 1, 4, 4}` | `Performance[+0xb08]` | deep conflict floors | CERTAIN |
-| `@0xa2daf10` | `{4, 2, 1, 1}` | `Performance[+0xb18]` | deep conflict floors | CERTAIN |
+| `.rodata` block | bytes (4 × `int32`) | lands at | role |
+|---|---|---|---|
+| `@0xa2c8a30` | `{4, 105, 7, 92}` | `Performance[+0x18]` | RPU producer / matres-self conflict floors (latency-table head) |
+| `@0xa2dcd30` | `{88, 8, 4, 1}` | `Performance[+0x28]` | matmul base (`+0x28`), matprep base (`+0x2c`), **EUP push→pop edge** (`+0x30`=4) |
+| `@0xa2db650` | `{1, 1, 2, 2}` | `Performance[+0x3c]`, `[+0x10c]` | vector-result floors |
+| `@0xa2c8a40` | `{2, 1, 1, 1}` | `Performance[+0x4c]`, `[+0x178]` | vector-result floors |
+| `@0xa2d2df0` | `{1, 1, 1, 2}` | `Performance[+0xbc]` | vector-result floors |
+| `@0xa2cea00` | `{2, 2, 1, 1}` | `Performance[+0xcc]` | vector-result floors |
+| `@0xa2c5b90` | `{1, 1, 1, 4}` | `Performance[+0x168]` | vector-result floors |
+| `@0xa2d7660` | `{1, 1, 8, 1}` | `Performance[+0x410]` | branch-op cell (`[+0x418]`=8) |
+| `@0xa2d3c30` | `{8, 1, 1, 1}` | `Performance[+0x420]` | branch-op cell (`[+0x420]`=8) |
+| `@0xa2da220` | `{8, 8, 8, 1}` | `Performance[+0x910]` | MXU throughput band head (`Instr 0x00` at `+0x910`) |
+| `@0xa2cf810` | `{8, 1, 1, 8}` | `Performance[+0x940]` | MXU throughput cell (`Instr 0x1c` at `+0x94c`) |
+| `@0xa2c5ba0` | `{1, 1, 5, 5}` | `Performance[+0xa0c]` | deep conflict floors |
+| `@0xa2c2f40` | `{5, 1, 1, 1}` | `Performance[+0xa1c]` | deep conflict floors |
+| `@0xa2d2090` | `{1, 1, 4, 4}` | `Performance[+0xb08]` | deep conflict floors |
+| `@0xa2daf10` | `{4, 2, 1, 1}` | `Performance[+0xb18]` | deep conflict floors |
 
 The xpose-result cells `[+0x71c]=8` / `[+0x720]=8` come from a `movabs 0x800000001` qword (`[+0x718]=1`, `[+0x71c]=8`) plus an immediate (`[+0x720]=8`); the MXU `0x920..0x98c` and `0x990..0x998` runs are `8`-broadcasts and `movabs 0x800000008`. The head block `@0xa2dcd30 = {88,8,4,1}` is the one block the DF override touches — its first two elements are the matmul/matprep base latencies, its third is the EUP push→pop edge (=4), its fourth is an unused `1`.
 
@@ -231,14 +231,14 @@ The xpose-result cells `[+0x71c]=8` / `[+0x720]=8` come from a `movabs 0x8000000
 
 The flat one-cell-per-`Instruction` model is unique to v2/v3. From Pufferfish onward, `Performance` becomes a heap `latency[]` array plus a 2-D `GetResourceUsage(Instruction, Resource)` grid, the resource-column count widens, and `PfCycleTable::GetCyclesForThroughput` `@0x1c89de60` wraps `GetResourceUsage` calls rather than a flat offset-LUT read.
 
-| Gen | Codename | TpuVer | Performance model | Resource cols | grid cells | JF→ next delta | Confidence |
-|---|---|---|---|---|---|---|---|
-| **JF** | Jellyfish | 0 (v2) | flat inline POD `0xe00` + offset LUT | **7** | 16 priced (1 cell each) | — | CERTAIN |
-| **DF** | Dragonfish | 1 (v3) | = JF + 2 cells | **7** | 16 priced (= JF) | 2 cells (`+0x28`/`+0x2c`) | CERTAIN |
-| PF | Pufferfish | 2 (v4) | heap `latency[336]` + grid 336×20 | 20 | 265 | architecture change | HIGH |
-| VF | Viperfish | 3 (v5p) | heap `latency[384]` + grid 384×28 | 28 | 378 | — | HIGH |
-| GL | Ghostlite | 4 (v6e) | heap `latency[476]` + grid 476×31 | 31 | 358 | — | HIGH |
-| GF | `6acc60406` | 5 (v7) | heap `latency[465]` + grid 465×31 | 31 | 285 | — | HIGH |
+| Gen | Codename | TpuVer | Performance model | Resource cols | grid cells | JF→ next delta |
+|---|---|---|---|---|---|---|
+| **JF** | Jellyfish | 0 (v2) | flat inline POD `0xe00` + offset LUT | **7** | 16 priced (1 cell each) | — |
+| **DF** | Dragonfish | 1 (v3) | = JF + 2 cells | **7** | 16 priced (= JF) | 2 cells (`+0x28`/`+0x2c`) |
+| PF | Pufferfish | 2 (v4) | heap `latency[336]` + grid 336×20 | 20 | 265 | architecture change |
+| VF | Viperfish | 3 (v5p) | heap `latency[384]` + grid 384×28 | 28 | 378 | — |
+| GL | Ghostlite | 4 (v6e) | heap `latency[476]` + grid 476×31 | 31 | 358 | — |
+| GF | `6acc60406` | 5 (v7) | heap `latency[465]` + grid 465×31 | 31 | 285 | — |
 
 The resource-column progression is **7 → 7 → 20 → 28 → 31 → 31** (JF→DF→PF→VF→GL→GF). The architecture changed at Pufferfish: the inline-POD-plus-offset-LUT model (no 2-D grid, no `GetResourceUsage`) gave way to the heap latency-array-plus-grid model the rest of the line uses. The per-generation grids — populated cells, latency arrays, column-by-column naming — get their own pages; see [Performance Family Overview](performance-overview.md) for the framing and the per-gen page index.
 

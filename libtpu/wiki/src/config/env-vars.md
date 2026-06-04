@@ -42,11 +42,11 @@ Each row carries a **Reader** (the function and address that consumes the variab
 
 The primary configuration channel. A plugin `.so` has no command line of its own, so libtpu fabricates one from `LIBTPU_INIT_ARGS` and feeds it to the absl flag parser. The *mechanics* of the ingest — the space split, the `argv[0]` synthesis, the `vector<string>` → `char**` flatten — are documented in full on [../lifecycle/tftpu-initialize-bootstrap.md](../lifecycle/tftpu-initialize-bootstrap.md) §2; the *flags that string carries* are catalogued on [xla-flag-atlas.md](xla-flag-atlas.md). This page records only the env-var reads themselves.
 
-| Variable | Reader (symbol @ addr) | Effect | Default | Confidence |
-|---|---|---|---|---|
-| `LIBTPU_INIT_ARGS` | `tensorflow::tpu::GetLibTpuInitArguments @ 0x20ccca20` | Read by literal `getenv`; the value is space-split (on ASCII 0x20) into a `vector<string>` and a parallel `vector<char const*>` argv, which the function returns. The `argv[0]` synthesis, prepend of Cloud-TPU defaults, and the `ParseCommandLineNonHelpFlags` call happen in the bootstrap *caller*, not in this function. The injection point for every `--xla_*` / `--tpu_*` flag. | unset → empty argv (no injected flags) | CONFIRMED |
-| `XLA_FLAGS` | absl/tsl `ParseFlagsFromEnvAndDieIfUnknown` (string `@ .rodata`, **not** `getenv`'d by TPU code) | Standard XLA flag-from-env channel; merged with the `LIBTPU_INIT_ARGS` argv into the same absl flag tables. | unset → no env flags | CONFIRMED (string present; parsed by flag machinery, not `getenv`) |
-| `TF_XLA_FLAGS` | `xla::ParseFlagsFromEnvAndDieIfUnknown("TF_XLA_FLAGS", …)` (in `AllocateAndParseFlags @ 0xfe5fe80`, **not** `getenv`'d) | TensorFlow-bridge XLA flag channel; same flag tables. | unset | CONFIRMED (string present; parsed by flag machinery, not `getenv`) |
+| Variable | Reader (symbol @ addr) | Effect | Default |
+|---|---|---|---|
+| `LIBTPU_INIT_ARGS` | `tensorflow::tpu::GetLibTpuInitArguments @ 0x20ccca20` | Read by literal `getenv`; the value is space-split (on ASCII 0x20) into a `vector<string>` and a parallel `vector<char const*>` argv, which the function returns. The `argv[0]` synthesis, prepend of Cloud-TPU defaults, and the `ParseCommandLineNonHelpFlags` call happen in the bootstrap *caller*, not in this function. The injection point for every `--xla_*` / `--tpu_*` flag. | unset → empty argv (no injected flags) |
+| `XLA_FLAGS` | absl/tsl `ParseFlagsFromEnvAndDieIfUnknown` (string `@ .rodata`, **not** `getenv`'d by TPU code) | Standard XLA flag-from-env channel; merged with the `LIBTPU_INIT_ARGS` argv into the same absl flag tables. | unset → no env flags |
+| `TF_XLA_FLAGS` | `xla::ParseFlagsFromEnvAndDieIfUnknown("TF_XLA_FLAGS", …)` (in `AllocateAndParseFlags @ 0xfe5fe80`, **not** `getenv`'d) | TensorFlow-bridge XLA flag channel; same flag tables. | unset |
 
 > **NOTE —** `LIBTPU_INIT_ARGS` is the *only* TPU-specific variable in this group read by a literal `getenv`. `XLA_FLAGS` / `TF_XLA_FLAGS` are read by the generic absl flag-from-env code (`absl::ParseCommandLine` reads them by way of `ABSL_FLAGS_FROM_ENV`-style scanning), so they are environment variables in effect but are not `getenv`'d at any TPU call site. A reimplementer must wire all three into one flag parse, but only `LIBTPU_INIT_ARGS` is a hand-rolled `getenv` in the TPU layer.
 
@@ -58,25 +58,25 @@ These variables describe the slice geometry the process should see. The split he
 
 ### Direct `getenv` reads
 
-| Variable | Reader (symbol @ addr) | Effect | Default | Confidence |
-|---|---|---|---|---|
-| `TPU_CHIPS_PER_HOST_BOUNDS` | `tensorflow::tpu::TryAcquireTpuLock @ 0x20ccbc40` | Per-host chip grid (`x,y,z`) used when computing the device lock and the local topology footprint. Read alongside the lock acquisition. | unset → derived from detected hardware | CONFIRMED |
-| `TPU_CHIPS_PER_PROCESS_BOUNDS` | `tensorflow::tpu::TryAcquireTpuLock @ 0x20ccbc40` | Per-process chip grid; bounds the chips this process claims, narrowing the host bounds for multi-process-per-host layouts. | unset → equals host bounds | CONFIRMED |
-| `ALLOW_MULTIPLE_LIBTPU_LOAD` | `tensorflow::tpu::TryAcquireTpuLock @ 0x20ccbc40` | When set, relaxes the single-loader cross-process lock so more than one libtpu instance may bind the device. | unset → single-load enforced | CONFIRMED |
-| `TPU_LOAD_LIBRARY` | `tensorflow::tpu::TryAcquireTpuLock @ 0x20ccbc40` | Gates whether the cross-process TPU lock is even attempted (see [../lifecycle/tftpu-initialize-bootstrap.md](../lifecycle/tftpu-initialize-bootstrap.md) §5). | unset → lock attempted | CONFIRMED |
+| Variable | Reader (symbol @ addr) | Effect | Default |
+|---|---|---|---|
+| `TPU_CHIPS_PER_HOST_BOUNDS` | `tensorflow::tpu::TryAcquireTpuLock @ 0x20ccbc40` | Per-host chip grid (`x,y,z`) used when computing the device lock and the local topology footprint. Read alongside the lock acquisition. | unset → derived from detected hardware |
+| `TPU_CHIPS_PER_PROCESS_BOUNDS` | `tensorflow::tpu::TryAcquireTpuLock @ 0x20ccbc40` | Per-process chip grid; bounds the chips this process claims, narrowing the host bounds for multi-process-per-host layouts. | unset → equals host bounds |
+| `ALLOW_MULTIPLE_LIBTPU_LOAD` | `tensorflow::tpu::TryAcquireTpuLock @ 0x20ccbc40` | When set, relaxes the single-loader cross-process lock so more than one libtpu instance may bind the device. | unset → single-load enforced |
+| `TPU_LOAD_LIBRARY` | `tensorflow::tpu::TryAcquireTpuLock @ 0x20ccbc40` | Gates whether the cross-process TPU lock is even attempted (see [../lifecycle/tftpu-initialize-bootstrap.md](../lifecycle/tftpu-initialize-bootstrap.md) §5). | unset → lock attempted |
 
 ### Flag-bound names (NOT `getenv`'d)
 
-| Name | Where bound | Effect | Confidence |
-|---|---|---|---|
-| `TPU_VISIBLE_DEVICES` | absl flag table | Comma-separated device index allow-list; consumed by the device enumerator via the flag parser, not `getenv`. | CONFIRMED (string present; flag-bound) |
-| `TPU_VISIBLE_CHIPS` | absl flag table | Chip-level visibility allow-list (newer spelling alongside `TPU_VISIBLE_DEVICES`). | HIGH |
-| `TPU_VISIBLE_DEVICE_PATHS` | absl flag table | Explicit device node paths to bind. | HIGH |
-| `TPU_HOST_BOUNDS` | absl flag table | Host grid (`x,y,z`) — the *flag* form, distinct from the `getenv`'d `TPU_CHIPS_PER_HOST_BOUNDS`. | CONFIRMED (string present; flag-bound) |
-| `TPU_SKIP_MDS_QUERY` | absl flag table | Skips the metadata-server topology query, forcing reliance on the locally supplied bounds/topology. | CONFIRMED (string present; flag-bound) |
-| `TPU_TOPOLOGY_WRAP` / `TPU_TOPOLOGY_ALT` | absl flag table | Torus wrap mode / alternate topology selector for the slice geometry. | HIGH |
-| `TPU_MEGACORE` | absl flag table | Megacore pairing mode for the chip generation. | LOW |
-| `TPU_ACCELERATOR_TYPE` | absl flag table | Accelerator-type label (e.g. `v5e-4`), mapped to a topology by the PJRT topology name table. | LOW |
+| Name | Where bound | Effect |
+|---|---|---|
+| `TPU_VISIBLE_DEVICES` | absl flag table | Comma-separated device index allow-list; consumed by the device enumerator via the flag parser, not `getenv`. |
+| `TPU_VISIBLE_CHIPS` | absl flag table | Chip-level visibility allow-list (newer spelling alongside `TPU_VISIBLE_DEVICES`). |
+| `TPU_VISIBLE_DEVICE_PATHS` | absl flag table | Explicit device node paths to bind. |
+| `TPU_HOST_BOUNDS` | absl flag table | Host grid (`x,y,z`) — the *flag* form, distinct from the `getenv`'d `TPU_CHIPS_PER_HOST_BOUNDS`. |
+| `TPU_SKIP_MDS_QUERY` | absl flag table | Skips the metadata-server topology query, forcing reliance on the locally supplied bounds/topology. |
+| `TPU_TOPOLOGY_WRAP` / `TPU_TOPOLOGY_ALT` | absl flag table | Torus wrap mode / alternate topology selector for the slice geometry. |
+| `TPU_MEGACORE` | absl flag table | Megacore pairing mode for the chip generation. |
+| `TPU_ACCELERATOR_TYPE` | absl flag table | Accelerator-type label (e.g. `v5e-4`), mapped to a topology by the PJRT topology name table. |
 
 > **QUIRK —** there are *two* host-bounds knobs with different plumbing. `TPU_CHIPS_PER_HOST_BOUNDS` is a real `getenv` read inside `TryAcquireTpuLock`; `TPU_HOST_BOUNDS` is a flag name parsed by absl. They overlap in meaning but reach the runtime by different paths — a reimplementer must reproduce the first as `getenv` and the second as a flag, or one of the two will silently do nothing.
 
@@ -86,15 +86,15 @@ These variables describe the slice geometry the process should see. The split he
 
 Direct `getenv` reads that select the runtime backend and tune transfer buffers.
 
-| Variable | Reader (symbol @ addr) | Effect | Default | Confidence |
-|---|---|---|---|---|
-| `ENABLE_TFRT_TPU_RUNTIME` | `tpu::ShouldUseTfrt @ 0x1d0fc800` (lambda `$_0`) | Selects the TfRT-based TPU runtime path over the legacy StreamExecutor path. Read once by a `ShouldUseTfrt` predicate. | unset → backend default | CONFIRMED |
-| `SKIP_MEGASCALE_PJRT_CLIENT` | `pjrt::tpu_plugin::PJRT_Client_Create @ 0xe6a8840` | When set, `PJRT_Client_Create` (PJRT slot 15) bypasses wrapping the client in the Megascale multi-slice client and returns the single-slice client directly. | unset → Megascale client built when multi-slice config present | CONFIRMED |
-| `TPU_PREMAPPED_BUFFER_SIZE` | `xla::TpuStatesManager::GetOrCreateTpuSystemState @ 0xf956e40` | Size (bytes) of the pre-mapped DMA staging buffer reserved per TPU system. | unset → runtime-chosen size | CONFIRMED |
-| `TPU_PREMAPPED_BUFFER_TRANSFER_THRESHOLD_BYTES` | `xla::TpuStatesManager::GetOrCreateTpuSystemState @ 0xf956e40` | Transfer-size threshold above which the pre-mapped buffer path is used instead of per-transfer mapping. | unset → runtime default threshold | CONFIRMED |
-| `DISABLE_HOST_SEND_RECV_REGISTRATION` | `_GLOBAL__sub_I_sendrecv_ops.cc @ 0x212c9af0` (static ctor) | Suppresses registration of the host-side send/recv ops at module-init time. Read in a file-static constructor during the `dlopen` storm. | unset → host send/recv registered | CONFIRMED |
-| `PJRT_NPROC` | `xla::DefaultThreadPoolSize @ 0x1d7f4800` | Process count used to size the default thread pool; falls back to `NPROC` when unset. Read by literal `getenv`. | unset → falls back to `NPROC`, then a derived size | CONFIRMED |
-| `CLOUD_TPU_TASK_ID` | `tpu::TpuHal::GetTaskId @ 0x1e8142c0` | This process's task index within the Cloud-TPU job; required for multi-host jobs (the reader errors with `"'CLOUD_TPU_TASK_ID' not specified for a multi-host job."` if absent and one is needed). Read by literal `getenv`. | unset → single-host / derived | CONFIRMED |
+| Variable | Reader (symbol @ addr) | Effect | Default |
+|---|---|---|---|
+| `ENABLE_TFRT_TPU_RUNTIME` | `tpu::ShouldUseTfrt @ 0x1d0fc800` (lambda `$_0`) | Selects the TfRT-based TPU runtime path over the legacy StreamExecutor path. Read once by a `ShouldUseTfrt` predicate. | unset → backend default |
+| `SKIP_MEGASCALE_PJRT_CLIENT` | `pjrt::tpu_plugin::PJRT_Client_Create @ 0xe6a8840` | When set, `PJRT_Client_Create` (PJRT slot 15) bypasses wrapping the client in the Megascale multi-slice client and returns the single-slice client directly. | unset → Megascale client built when multi-slice config present |
+| `TPU_PREMAPPED_BUFFER_SIZE` | `xla::TpuStatesManager::GetOrCreateTpuSystemState @ 0xf956e40` | Size (bytes) of the pre-mapped DMA staging buffer reserved per TPU system. | unset → runtime-chosen size |
+| `TPU_PREMAPPED_BUFFER_TRANSFER_THRESHOLD_BYTES` | `xla::TpuStatesManager::GetOrCreateTpuSystemState @ 0xf956e40` | Transfer-size threshold above which the pre-mapped buffer path is used instead of per-transfer mapping. | unset → runtime default threshold |
+| `DISABLE_HOST_SEND_RECV_REGISTRATION` | `_GLOBAL__sub_I_sendrecv_ops.cc @ 0x212c9af0` (static ctor) | Suppresses registration of the host-side send/recv ops at module-init time. Read in a file-static constructor during the `dlopen` storm. | unset → host send/recv registered |
+| `PJRT_NPROC` | `xla::DefaultThreadPoolSize @ 0x1d7f4800` | Process count used to size the default thread pool; falls back to `NPROC` when unset. Read by literal `getenv`. | unset → falls back to `NPROC`, then a derived size |
+| `CLOUD_TPU_TASK_ID` | `tpu::TpuHal::GetTaskId @ 0x1e8142c0` | This process's task index within the Cloud-TPU job; required for multi-host jobs (the reader errors with `"'CLOUD_TPU_TASK_ID' not specified for a multi-host job."` if absent and one is needed). Read by literal `getenv`. | unset → single-host / derived |
 
 ---
 
@@ -102,19 +102,19 @@ Direct `getenv` reads that select the runtime backend and tune transfer buffers.
 
 The multi-slice (Megascale) layer is configured almost entirely by **flag-bound** `MEGASCALE_*` strings, not by `getenv`. The one direct `getenv` in the Megascale path is the bypass switch in §3 (`SKIP_MEGASCALE_PJRT_CLIENT`). The coordination/topology exchange that consumes these is documented on [../megascale/bootstrap/overview.md](../megascale/bootstrap/overview.md).
 
-| Name | Consumer | Effect | Confidence |
-|---|---|---|---|
-| `MEGASCALE_COORDINATOR_ADDRESS` | Megascale bootstrap (flag/option) | Address of the coordination service used for cross-slice rendezvous and coordinator election. | CONFIRMED (string present; option-bound) |
-| `MEGASCALE_NUM_SLICES` | Megascale bootstrap | Total slice count in the multi-slice job; drives barrier and topology-exchange sizing. | CONFIRMED (string present) |
-| `MEGASCALE_SLICE_ID` | Megascale bootstrap | This process's slice index. | CONFIRMED (string present) |
-| `MEGASCALE_PORT` / `MEGASCALE_DEBUG_PORT` | Megascale transport | Service / debug listen ports for the inter-slice transport. | HIGH |
-| `MEGASCALE_TRANSPORT_TYPE` | Megascale transport | Selects the cross-slice transport (e.g. gRPC vs. DCN). | HIGH |
-| `MEGASCALE_TOPOLOGY` | Megascale bootstrap | Multi-slice topology descriptor. | HIGH |
-| `MEGASCALE_AUTHENTICATION` | Megascale transport | Auth mode for the coordination channel. | LOW |
-| `MEGASCALE_TRACING` / `MEGASCALE_GRPC_ENABLE_XOR_TRACER` | Megascale tracing | Enables Megascale request tracing / the gRPC XOR tracer. | LOW |
-| `TPU_WORKER_ID` | distributed init (flag/string) | Worker index within the distributed TPU job. | HIGH |
-| `TPU_WORKER_HOSTNAMES` | distributed init (flag/string) | Comma-separated worker hostnames for the job. | HIGH |
-| `TF_TASK_ID` / `TF_JOB_NAME` | `getenv` (TF distributed identity) | Task index / job name in a TensorFlow distributed setup. Read by literal `getenv`. | CONFIRMED |
+| Name | Consumer | Effect |
+|---|---|---|
+| `MEGASCALE_COORDINATOR_ADDRESS` | Megascale bootstrap (flag/option) | Address of the coordination service used for cross-slice rendezvous and coordinator election. |
+| `MEGASCALE_NUM_SLICES` | Megascale bootstrap | Total slice count in the multi-slice job; drives barrier and topology-exchange sizing. |
+| `MEGASCALE_SLICE_ID` | Megascale bootstrap | This process's slice index. |
+| `MEGASCALE_PORT` / `MEGASCALE_DEBUG_PORT` | Megascale transport | Service / debug listen ports for the inter-slice transport. |
+| `MEGASCALE_TRANSPORT_TYPE` | Megascale transport | Selects the cross-slice transport (e.g. gRPC vs. DCN). |
+| `MEGASCALE_TOPOLOGY` | Megascale bootstrap | Multi-slice topology descriptor. |
+| `MEGASCALE_AUTHENTICATION` | Megascale transport | Auth mode for the coordination channel. |
+| `MEGASCALE_TRACING` / `MEGASCALE_GRPC_ENABLE_XOR_TRACER` | Megascale tracing | Enables Megascale request tracing / the gRPC XOR tracer. |
+| `TPU_WORKER_ID` | distributed init (flag/string) | Worker index within the distributed TPU job. |
+| `TPU_WORKER_HOSTNAMES` | distributed init (flag/string) | Comma-separated worker hostnames for the job. |
+| `TF_TASK_ID` / `TF_JOB_NAME` | `getenv` (TF distributed identity) | Task index / job name in a TensorFlow distributed setup. Read by literal `getenv`. |
 
 > **NOTE —** the `MEGASCALE_*` family is consumed by the multi-slice runtime through its options/flag parsing rather than discrete `getenv` calls, which is why none appear in the literal-`getenv` set even though all ten strings are present in `.rodata`. The bypass (`SKIP_MEGASCALE_PJRT_CLIENT`) is the exception: it is a genuine `getenv` inside `PJRT_Client_Create`, because it must short-circuit *before* any Megascale option parsing happens.
 
@@ -124,21 +124,21 @@ The multi-slice (Megascale) layer is configured almost entirely by **flag-bound*
 
 A mix of direct `getenv` reads (telemetry platform labels, TF graph dumps) and flag-bound dump directives. The `XLA_FLAGS`-driven HLO dump knobs (`--xla_dump_to`, etc.) are **not** env vars — they are flags carried through the `LIBTPU_INIT_ARGS` channel (see [xla-flag-atlas.md](xla-flag-atlas.md)).
 
-| Variable | Reader / Consumer | Effect | Confidence |
-|---|---|---|---|
-| `TPU_ML_PLATFORM` | `libtpu::telemetry::InitializeUptimeMetricViaEnvironmentVariables @ 0x20a65720` | ML-platform label (e.g. the framework name) stamped onto the uptime/runtime telemetry gauge. | CONFIRMED |
-| `TPU_ML_PLATFORM_VERSION` | `libtpu::telemetry::InitializeUptimeMetricViaEnvironmentVariables @ 0x20a65720` | Platform version string for the same telemetry gauge. | CONFIRMED |
-| `TF_DUMP_GRAPH_PREFIX` | `getenv` (TF graph dump) | Directory prefix for TensorFlow graph dumps. Read by literal `getenv` (multiple sites). | CONFIRMED |
-| `TF_DUMP_GRAPH_NAME_FILTER` / `_GROUPS` / `_WRAPPED` | `getenv` (TF graph dump) | Name filter / grouping / wrap controls for graph dumps. Read by literal `getenv` (`DebugDataDumper::LoadEnvvars`). | CONFIRMED |
-| `TF_DUMP_GRAPH_FMT` | `tsl::ReadStringFromEnvVar` (`GetDumpGraphFormatLowerCase @ 0x10d8cf60`) | Output format for graph dumps (default `"TXT"`). Read through the tsl env-var helper, **not** a literal `getenv`. | CONFIRMED (string present; read via `ReadStringFromEnvVar`, not `getenv`) |
-| `TF_GRAPH_TO_HLO_COMPILER_DUMP_DIR` | `getenv` | Dump directory for the graph→HLO compiler. | CONFIRMED |
-| `TF_LOG_XLA_ACTIVITY` | `getenv` | Enables XLA activity logging. | CONFIRMED |
-| `MLIR_CRASH_REPRODUCER_DIRECTORY` | `getenv` (MLIR) | Directory for MLIR crash reproducers. | CONFIRMED |
-| `MLIR_BRIDGE_LOG_ENABLE_ONLY_TOP_LEVEL_PASSES` | `getenv` (MLIR) | Restricts MLIR bridge logging to top-level passes. | CONFIRMED |
-| `XPROF_SKIP_DROP_EXCESS_XPLANE_BYTES` | `getenv` (xprof) | Profiler XPlane byte-budget control. | CONFIRMED |
-| `TPU_CORE_DUMP_DIRECTORY` | flag/option (string present) | Directory for TPU core dumps. | LOW |
-| `TPU_LOG_DIR` / `TPU_MAX_LOG_SIZE_MB` | flag/option (string present) | TPU log directory / size cap. | LOW |
-| `TPU_VMODULE` / `TPU_VLOG_LEVEL` / `TPU_STDERR_LOG_LEVEL` | flag/option (string present) | Per-module / global / stderr verbose-logging levels. | LOW |
+| Variable | Reader / Consumer | Effect |
+|---|---|---|
+| `TPU_ML_PLATFORM` | `libtpu::telemetry::InitializeUptimeMetricViaEnvironmentVariables @ 0x20a65720` | ML-platform label (e.g. the framework name) stamped onto the uptime/runtime telemetry gauge. |
+| `TPU_ML_PLATFORM_VERSION` | `libtpu::telemetry::InitializeUptimeMetricViaEnvironmentVariables @ 0x20a65720` | Platform version string for the same telemetry gauge. |
+| `TF_DUMP_GRAPH_PREFIX` | `getenv` (TF graph dump) | Directory prefix for TensorFlow graph dumps. Read by literal `getenv` (multiple sites). |
+| `TF_DUMP_GRAPH_NAME_FILTER` / `_GROUPS` / `_WRAPPED` | `getenv` (TF graph dump) | Name filter / grouping / wrap controls for graph dumps. Read by literal `getenv` (`DebugDataDumper::LoadEnvvars`). |
+| `TF_DUMP_GRAPH_FMT` | `tsl::ReadStringFromEnvVar` (`GetDumpGraphFormatLowerCase @ 0x10d8cf60`) | Output format for graph dumps (default `"TXT"`). Read through the tsl env-var helper, **not** a literal `getenv`. |
+| `TF_GRAPH_TO_HLO_COMPILER_DUMP_DIR` | `getenv` | Dump directory for the graph→HLO compiler. |
+| `TF_LOG_XLA_ACTIVITY` | `getenv` | Enables XLA activity logging. |
+| `MLIR_CRASH_REPRODUCER_DIRECTORY` | `getenv` (MLIR) | Directory for MLIR crash reproducers. |
+| `MLIR_BRIDGE_LOG_ENABLE_ONLY_TOP_LEVEL_PASSES` | `getenv` (MLIR) | Restricts MLIR bridge logging to top-level passes. |
+| `XPROF_SKIP_DROP_EXCESS_XPLANE_BYTES` | `getenv` (xprof) | Profiler XPlane byte-budget control. |
+| `TPU_CORE_DUMP_DIRECTORY` | flag/option (string present) | Directory for TPU core dumps. |
+| `TPU_LOG_DIR` / `TPU_MAX_LOG_SIZE_MB` | flag/option (string present) | TPU log directory / size cap. |
+| `TPU_VMODULE` / `TPU_VLOG_LEVEL` / `TPU_STDERR_LOG_LEVEL` | flag/option (string present) | Per-module / global / stderr verbose-logging levels. |
 
 ---
 
@@ -146,17 +146,17 @@ A mix of direct `getenv` reads (telemetry platform labels, TF graph dumps) and f
 
 libtpu statically links a large stack of Google and third-party libraries, each of which reads its own environment. These are present and *functional* in the loaded `.so` but are **not** part of the TPU configuration surface a reimplementer of the TPU runtime needs to reproduce. They are catalogued by family rather than enumerated, because the list runs to ~180 distinct strings and reproducing them is reproducing those libraries, not libtpu.
 
-| Family | Example variables | Origin | Confidence |
-|---|---|---|---|
-| Process bring-up | `GOOGLE_LOG_DIR`, `GOOGLE_STDERRTHRESHOLD`, `GOOGLE_MLOCK_HINT`, `GOOGLE_MAX_LOG_MB`, `GOOGLE_DEBUG_ON_FAILURE` | Google `base/` init runtime (runs inside `RealInitGoogle`) | CONFIRMED |
-| Topology discovery | `HWLOC_*` (~50 vars: `HWLOC_XMLFILE`, `HWLOC_COMPONENTS`, `HWLOC_FSROOT`, …) | vendored hwloc | CONFIRMED |
-| PMU / profiling | `LIBPFM_*`, `CPUPROFILE_*`, `FREQUENCY`, `JITDUMPDIR` | vendored libpfm / CPU profiler | CONFIRMED |
-| gRPC | `GRPC_*` (large family) | vendored gRPC | CONFIRMED (strings present; read by gRPC, not TPU code) |
-| Cloud storage | `GCS_*` (~30 vars), `GCE_METADATA_HOST`, `GOOGLE_APPLICATION_CREDENTIALS`, `NO_GCE_CHECK` | TF/GCS filesystem | CONFIRMED |
-| Symbolization | `LLVM_SYMBOLIZER_PATH`, `LLVM_DISABLE_SYMBOLIZATION`, `LLVM_OVERRIDE_PRODUCER` | vendored LLVM | CONFIRMED |
-| Accelerator paths | `CUDA_HOME` / `CUDA_PATH` / `CUDA_ROOT`, `ROCM_HOME` / `ROCM_PATH` / `ROCM_ROOT` | XLA host probes (no effect on the TPU path) | CONFIRMED |
-| Test harness | `TEST_TMPDIR`, `TEST_SRCDIR`, `TEST_UNDECLARED_OUTPUTS_DIR`, `UNITTEST_ON_BORG`, `XML_OUTPUT_FILE` | Google test runtime (dormant in production) | CONFIRMED |
-| Standard POSIX | `HOME`, `PATH`, `PWD`, `TMPDIR` / `TMP` / `TEMP`, `TZ` / `TZDIR` | libc / TF utilities | CONFIRMED |
+| Family | Example variables | Origin |
+|---|---|---|
+| Process bring-up | `GOOGLE_LOG_DIR`, `GOOGLE_STDERRTHRESHOLD`, `GOOGLE_MLOCK_HINT`, `GOOGLE_MAX_LOG_MB`, `GOOGLE_DEBUG_ON_FAILURE` | Google `base/` init runtime (runs inside `RealInitGoogle`) |
+| Topology discovery | `HWLOC_*` (~50 vars: `HWLOC_XMLFILE`, `HWLOC_COMPONENTS`, `HWLOC_FSROOT`, …) | vendored hwloc |
+| PMU / profiling | `LIBPFM_*`, `CPUPROFILE_*`, `FREQUENCY`, `JITDUMPDIR` | vendored libpfm / CPU profiler |
+| gRPC | `GRPC_*` (large family) | vendored gRPC |
+| Cloud storage | `GCS_*` (~30 vars), `GCE_METADATA_HOST`, `GOOGLE_APPLICATION_CREDENTIALS`, `NO_GCE_CHECK` | TF/GCS filesystem |
+| Symbolization | `LLVM_SYMBOLIZER_PATH`, `LLVM_DISABLE_SYMBOLIZATION`, `LLVM_OVERRIDE_PRODUCER` | vendored LLVM |
+| Accelerator paths | `CUDA_HOME` / `CUDA_PATH` / `CUDA_ROOT`, `ROCM_HOME` / `ROCM_PATH` / `ROCM_ROOT` | XLA host probes (no effect on the TPU path) |
+| Test harness | `TEST_TMPDIR`, `TEST_SRCDIR`, `TEST_UNDECLARED_OUTPUTS_DIR`, `UNITTEST_ON_BORG`, `XML_OUTPUT_FILE` | Google test runtime (dormant in production) |
+| Standard POSIX | `HOME`, `PATH`, `PWD`, `TMPDIR` / `TMP` / `TEMP`, `TZ` / `TZDIR` | libc / TF utilities |
 
 > **NOTE —** `XLA_ALLOW_GET_DEFAULT_PLATFORM` is a genuine literal `getenv` read (in the XLA platform-manager layer), but it gates XLA's *default-platform fallback*, not anything TPU-specific. It is listed here rather than in §2 because a TPU-only reimplementation never reaches the code that consults it.
 

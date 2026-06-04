@@ -23,7 +23,6 @@ This page is therefore short by design: it documents the shared-codec evidence a
 | **Encoder factory** | `CreateEncoderJfDf` services versions 0 (Jellyfish) + 1 (Dragonfish) |
 | **Bundle restrictions** | shares `JellyfishBundleRestrictions` (no Dragonfish-specific class) |
 | **Dragonfish delta** | `CheckMxuValid<T>` (`mxu_num < 2`) in `EncodeVectorExtended/Result/MiscInstruction` |
-| **Confidence** | CONFIRMED (byte-anchored) unless a row says otherwise |
 
 ---
 
@@ -85,11 +84,11 @@ function CheckMxuValid(inst, mxu_num):
 
 The three overrides and the slot whose `mxu_num` they validate:
 
-| Slot encoder (`EncoderDf`) | Address | Validates `mxu_num` of | Delegates to (JF base) | `CheckMxuValid<T>` | Confidence |
-|---|---|---|---|---|---|
-| `EncodeVectorExtendedInstruction` | `0x1e85e520` | the vector-extended / matmul / latch op (`inst+0x70`) | `EncoderJf::EncodeVectorExtendedInstruction` @ `0x1e869f00` | `0x1e85e5c0` | CONFIRMED |
-| `EncodeVectorResultInstruction` | `0x1e85e380` | the matres / result-FIFO op (`inst+0x4C`) | `EncoderJf::EncodeVectorResultInstruction` @ `0x1e865ae0` | `0x1e85e420` | CONFIRMED |
-| `EncodeMiscInstruction` | `0x1e85e6c0` | the misc op's MXU operand — the `ClearResultFifoOperands` sub-message (or its `_globals_` default), `mxu_num` at sub-message `+0x1C` | `EncoderJf::EncodeMiscInstruction` @ `0x1e86be80` | `0x1e85e7a0` | CONFIRMED |
+| Slot encoder (`EncoderDf`) | Address | Validates `mxu_num` of | Delegates to (JF base) | `CheckMxuValid<T>` |
+|---|---|---|---|---|
+| `EncodeVectorExtendedInstruction` | `0x1e85e520` | the vector-extended / matmul / latch op (`inst+0x70`) | `EncoderJf::EncodeVectorExtendedInstruction` @ `0x1e869f00` | `0x1e85e5c0` |
+| `EncodeVectorResultInstruction` | `0x1e85e380` | the matres / result-FIFO op (`inst+0x4C`) | `EncoderJf::EncodeVectorResultInstruction` @ `0x1e865ae0` | `0x1e85e420` |
+| `EncodeMiscInstruction` | `0x1e85e6c0` | the misc op's MXU operand — the `ClearResultFifoOperands` sub-message (or its `_globals_` default), `mxu_num` at sub-message `+0x1C` | `EncoderJf::EncodeMiscInstruction` @ `0x1e86be80` | `0x1e85e7a0` |
 
 These are precisely the three slots that name an MXU. The vector-ALU, scalar, vector-load, and vector-store slots have *no* `EncoderDf` override at all — they are encoded by the inherited Jellyfish writers without any Dragonfish-specific check, because they do not address the matrix unit.
 

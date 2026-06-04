@@ -296,26 +296,26 @@ The picker reads four flag bytes from the `ObjectView<TpuCompilationEnvironment>
 
 ## Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `BaseStrategyND::SelectNDStrategy` | `0x137c78e0` | the picker (1999 B) | HIGH (decompile-verified) |
-| `IsCrossReplicaAllReduce` | `0x1e5a0020` | entry fold | HIGH |
-| `ReplicaGroupsOnNDPlane` | `0x1c890960` | Path A single-ND-plane test (plane=2) | HIGH |
-| `BaseStrategyND::IsGroupNDPlane` | `0x137c6700` | Path B 2-D-plane gate | HIGH (env`[0x1015]` read confirmed) |
-| `BaseStrategyND::UseSpecialStrategyNDNWay` | `0x137c6be0` | C-i N-way gate | HIGH |
-| `BaseStrategyND::UseStridedStrategyND` | `0x137c72e0` | C-iii strided gate | HIGH |
-| `StrategyND::StrategyND` | `0x137c2f40` | ND-ring ctor (12 params) | HIGH |
-| `StrategyND::BuildStrategy` | `0x137c4660` | `[obj+0xa8]` 1-D-vs-ND ring | HIGH (gate); per-color `RingLocation` LOW |
-| `BaseStrategyND::ComputeColorDimensions` | `0x137c3ba0` | `[6][3]` color-dim producer | HIGH |
-| `BaseStrategyND::GetColorCount` | `0x137c6260` | env`[0xf45]` color count | HIGH |
-| `StrategySubgroupND::StrategySubgroupND` | `0x137d4c00` | sub-plane ctor | HIGH |
-| `TwistedTorusND::TwistedTorusND` | `0x137d0040` | twisted-torus ctor | HIGH |
-| `GetResourceFromIciResource` | `0x1c894c00` | ICI slot map | HIGH (byte-exact) |
-| `GetDegradedAxis` | `0x1c894c20` | per-axis reducer (363 B) | HIGH (byte-exact) |
-| `Target::IsXDegraded / IsYDegraded / IsZDegraded` | `0x1d615940 / …960 / …980` | per-axis flag bytes `Target+0x3f8..3fa` | HIGH |
-| `UseResilientAlgorithmBase` | `0x1c894da0` | resilient gate | HIGH (env`[0x1116]` confirmed) |
-| `UseResilientAlgorithmTwistedTorus` | `0x1c894fc0` | twisted resilient gate | HIGH |
-| `BaseStrategyND::InitColorDimensionsDegraded` | `0x137c6580` | `[6][3]` degraded remap | HIGH (byte-exact) |
+| Function | Address | Role |
+|---|---|---|
+| `BaseStrategyND::SelectNDStrategy` | `0x137c78e0` | the picker (1999 B) |
+| `IsCrossReplicaAllReduce` | `0x1e5a0020` | entry fold |
+| `ReplicaGroupsOnNDPlane` | `0x1c890960` | Path A single-ND-plane test (plane=2) |
+| `BaseStrategyND::IsGroupNDPlane` | `0x137c6700` | Path B 2-D-plane gate |
+| `BaseStrategyND::UseSpecialStrategyNDNWay` | `0x137c6be0` | C-i N-way gate |
+| `BaseStrategyND::UseStridedStrategyND` | `0x137c72e0` | C-iii strided gate |
+| `StrategyND::StrategyND` | `0x137c2f40` | ND-ring ctor (12 params) |
+| `StrategyND::BuildStrategy` | `0x137c4660` | `[obj+0xa8]` 1-D-vs-ND ring |
+| `BaseStrategyND::ComputeColorDimensions` | `0x137c3ba0` | `[6][3]` color-dim producer |
+| `BaseStrategyND::GetColorCount` | `0x137c6260` | env`[0xf45]` color count |
+| `StrategySubgroupND::StrategySubgroupND` | `0x137d4c00` | sub-plane ctor |
+| `TwistedTorusND::TwistedTorusND` | `0x137d0040` | twisted-torus ctor |
+| `GetResourceFromIciResource` | `0x1c894c00` | ICI slot map |
+| `GetDegradedAxis` | `0x1c894c20` | per-axis reducer (363 B) |
+| `Target::IsXDegraded / IsYDegraded / IsZDegraded` | `0x1d615940 / …960 / …980` | per-axis flag bytes `Target+0x3f8..3fa` |
+| `UseResilientAlgorithmBase` | `0x1c894da0` | resilient gate |
+| `UseResilientAlgorithmTwistedTorus` | `0x1c894fc0` | twisted resilient gate |
+| `BaseStrategyND::InitColorDimensionsDegraded` | `0x137c6580` | `[6][3]` degraded remap |
 
 ---
 

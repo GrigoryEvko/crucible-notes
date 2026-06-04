@@ -65,12 +65,12 @@ A builder whose *only* form is the generic `(TypeRange, ValueRange, ArrayRef<Nam
 
 ### Function Map
 
-| Source | Count | What it means | Confidence |
-|---|---|---|---|
-| `mlir::llo::*Op` classes | 322 | distinct LLO targets (matches the `tpu`-dialect inventory's LLO count) | CERTAIN |
-| `*Op::build(` symbols | 231 | 225 typed + 6 generic occurrences across 215 distinct ops | HIGH |
-| `*Op::create(` symbols | 329 | 301 distinct ops covered by `build` OR `create` (every `build` op also has a `create`) | HIGH |
-| default-builder ops | 21 | no typed factory; signature taken from sibling op ([SIB]) | MEDIUM |
+| Source | Count | What it means |
+|---|---|---|
+| `mlir::llo::*Op` classes | 322 | distinct LLO targets (matches the `tpu`-dialect inventory's LLO count) |
+| `*Op::build(` symbols | 231 | 225 typed + 6 generic occurrences across 215 distinct ops |
+| `*Op::create(` symbols | 329 | 301 distinct ops covered by `build` OR `create` (every `build` op also has a `create`) |
+| default-builder ops | 21 | no typed factory; signature taken from sibling op ([SIB]) |
 
 > **QUIRK —** for the ~95 elementwise scalar/vector arithmetic and transcendental ops the builder *omits* the result `Type` because the op declares `SameOperandsAndResultType`. Their result type is therefore not in the factory signature; it is recovered from the `F32`/`BF16`/`S16`/`S32`/`U32` suffix in the op name and confirmed by `verifyInvariantsImpl`. A reimplementer must restore the `let results =` constraint from the name, not the builder.
 
@@ -177,12 +177,12 @@ The matmul-triple ODS attributes are the densest reimplementation hazard in the 
 
 ### The four enums
 
-| Enum | MLIR mnemonic | Members (binary strings) | Role | Confidence |
-|---|---|---|---|---|
-| `llo::MatmulMode` | `round` / `high` / `low` | round (`kRound`, normal/value 0), high (`kHigh`, value 1), low (`kLow`, value 2), plus `soft_low_of_eight`/`soft_middle_of_eight` variants | which precision pass of the f32-on-bf16-MXU emulation (rounded vs high/low mantissa half) the matmul performs | HIGH |
-| `llo::GainLatchMode` | `xpose.*` / `packed_*` | `GAIN_LATCH_MODE_{NONE, NO_XPOSE_F32, NO_XPOSE_HI_F32, XPOSE_F32, XPOSE_HI_F32, XPOSE_LOW_F32, XPOSE_NIBBLE0/1, XPOSE_S4/S8/U4/U8, PACKED_*}` | how the STATIONARY operand is latched (transpose + dtype staging) | HIGH |
-| `llo::GainMatrixRegister` | `gmr` | gmr0, gmr1, gmr2, gmr3 | which of the 4 GMR banks the gains reside in | HIGH |
-| `llo::MatrixStagingRegister` | `msr` | MSRA, MSRB (= `MATPUSH_TARGET_MSRA`/`_MSRB`) | which MSR stages the MOVING operand | HIGH |
+| Enum | MLIR mnemonic | Members (binary strings) | Role |
+|---|---|---|---|
+| `llo::MatmulMode` | `round` / `high` / `low` | round (`kRound`, normal/value 0), high (`kHigh`, value 1), low (`kLow`, value 2), plus `soft_low_of_eight`/`soft_middle_of_eight` variants | which precision pass of the f32-on-bf16-MXU emulation (rounded vs high/low mantissa half) the matmul performs |
+| `llo::GainLatchMode` | `xpose.*` / `packed_*` | `GAIN_LATCH_MODE_{NONE, NO_XPOSE_F32, NO_XPOSE_HI_F32, XPOSE_F32, XPOSE_HI_F32, XPOSE_LOW_F32, XPOSE_NIBBLE0/1, XPOSE_S4/S8/U4/U8, PACKED_*}` | how the STATIONARY operand is latched (transpose + dtype staging) |
+| `llo::GainMatrixRegister` | `gmr` | gmr0, gmr1, gmr2, gmr3 | which of the 4 GMR banks the gains reside in |
+| `llo::MatrixStagingRegister` | `msr` | MSRA, MSRB (= `MATPUSH_TARGET_MSRA`/`_MSRB`) | which MSR stages the MOVING operand |
 
 All four are registered as MLIR attributes by one `Dialect::addAttributes<MatrixStagingRegisterAttr, GainMatrixRegisterAttr, GainLatchModeAttr, MatmulModeAttr, …>` call (`0x13e5e860`). Attribute factories: `GainMatrixRegisterAttr::get(MLIRContext*, GainMatrixRegister)` (`0x13e4f5c0`, parse `0x13e4f6a0`); `MatmulModeAttr` via `symbolizeMatmulMode` (`0x13e4e660`); the storage classes `llo::detail::{GainMatrixRegisterAttrStorage, MatrixStagingRegisterAttrStorage}` are present. The enum string literals `GAIN_LATCH_MODE_*`, `DONE_WITH_GAINS_MODE_{NONE,TRANSPOSED}`, `MATPUSH_TARGET_MSR{A,B}`, and `MRF_SOURCE_MRF_{0,1,2,3}` are all live in `.rodata`.
 

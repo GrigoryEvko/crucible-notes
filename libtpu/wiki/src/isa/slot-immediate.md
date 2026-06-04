@@ -33,7 +33,6 @@ For reimplementation, the contract is:
 | **PF / JF imm** | 6 × 16-bit — PF @ `256/272/288/304/320/338`; JF proto `+0x68..+0x7C` (not subtarget-virtual) |
 | **Branch target home** | immediate slot 0 (signed 20-bit; `EmitImmediate<…Immediates>(slot=0, …)`) |
 | **Overlay DMA sflag** | `Target::GetOverlayReservedSyncFlagNumber()` = `Target+0x534`; `EncodeOverlaysForDma` @ `0x14095f40` |
-| **Confidence** | CONFIRMED (byte-anchored) unless a row says otherwise |
 
 ---
 
@@ -79,14 +78,14 @@ v17[0] = a2[11]; BitCopy(buf, 330, v17, 0, 20);   // imm slot 5
 
 The ladder is a uniform stride of −20 bits, slot 0 highest. Ghostlite (`0x1f20d520`) and 6acc60406 (`0x1f86de20`) are field-identical structurally — same six proto reads, same width 20 — but shifted by a constant per generation:
 
-| imm slot | proto field | Viperfish (VXC) bit | Ghostlite (GLC) bit | 6acc60406 (GFC) bit | width | Confidence |
-|---|---|---|---|---|---|---|
-| 0 | `+0x18` | 430 | 433 | 423 | 20 | CONFIRMED |
-| 1 | `+0x1c` | 410 | 413 | 403 | 20 | CONFIRMED |
-| 2 | `+0x20` | 390 | 393 | 383 | 20 | CONFIRMED |
-| 3 | `+0x24` | 370 | 373 | 363 | 20 | CONFIRMED |
-| 4 | `+0x28` | 350 | 353 | 343 | 20 | CONFIRMED |
-| 5 | `+0x2c` | 330 | 333 | 323 | 20 | CONFIRMED |
+| imm slot | proto field | Viperfish (VXC) bit | Ghostlite (GLC) bit | 6acc60406 (GFC) bit | width |
+|---|---|---|---|---|---|
+| 0 | `+0x18` | 430 | 433 | 423 | 20 |
+| 1 | `+0x1c` | 410 | 413 | 403 | 20 |
+| 2 | `+0x20` | 390 | 393 | 383 | 20 |
+| 3 | `+0x24` | 370 | 373 | 363 | 20 |
+| 4 | `+0x28` | 350 | 353 | 343 | 20 |
+| 5 | `+0x2c` | 330 | 333 | 323 | 20 |
 
 The per-generation delta is exact: **Ghostlite = Viperfish + 3**, **6acc60406 = Viperfish − 7**, applied uniformly to every slot. The shift reflects a different layout of the slots *above* the immediate region (the scalar/sequencer slots at the top of the 512-bit word differ per gen); the immediate ladder itself keeps its −20 internal stride. Slot 0 is the home of the sequencer branch/call target — on 6acc60406 it is bit 423, matching the [Sequencer Slot](slot-sequencer.md) page's branch-target observation.
 
@@ -115,14 +114,14 @@ v17[0] = a2[10]; BitCopy(buf, 215, v17, 0, 20);  // imm slot 4 (GLC only)
 v17[0] = a2[11]; BitCopy(buf, 195, v17, 0, 20);  // imm slot 5 (GLC only)
 ```
 
-| imm slot | proto field | VFC bit | GLC bit | GFC bit | width | Confidence |
-|---|---|---|---|---|---|---|
-| 0 | `+0x18` | 67 | 67 | 67 | 20 | CONFIRMED |
-| 1 | `+0x1c` | 47 | 47 | 47 | 20 | CONFIRMED |
-| 2 | `+0x20` | 27 | 27 | 27 | 20 | CONFIRMED |
-| 3 | `+0x24` | 7 | 7 | 7 | 20 | CONFIRMED |
-| 4 | `+0x28` | — | 215 | — | 20 | CONFIRMED (GLC only) |
-| 5 | `+0x2c` | — | 195 | — | 20 | CONFIRMED (GLC only) |
+| imm slot | proto field | VFC bit | GLC bit | GFC bit | width |
+|---|---|---|---|---|---|
+| 0 | `+0x18` | 67 | 67 | 67 | 20 |
+| 1 | `+0x1c` | 47 | 47 | 47 | 20 |
+| 2 | `+0x20` | 27 | 27 | 27 | 20 |
+| 3 | `+0x24` | 7 | 7 | 7 | 20 |
+| 4 | `+0x28` | — | 215 | — | 20 |
+| 5 | `+0x2c` | — | 195 | — | 20 |
 
 The base 4-slot ladder (`67/47/27/7`) is byte-identical across all three V5+ gens — unlike the TensorCore ladder, the SCS ladder has *no* per-gen offset. Only Ghostlite adds the high pair (`215/195`), in a separate higher region of the 32-byte word, for ops needing more than four constants.
 
@@ -185,16 +184,16 @@ The pre-V5 generations carry **6 immediate slots, each 16 bits**, but through a 
 - **Pufferfish (51-byte bundle, [PF 51B](bundle-pf-51b.md))** packs the 6 immediates as a `SlotMap<ImmValue, 6>` in the shared operand pool at absolute bits **`256 / 272 / 288 / 304 / 320 / 338`** (16 bits each), bound at proto-build time by `SetImmOrDie` / `VisitImmediateSlots<0..5>` rather than by a `getImmediateSizeInBits`-driven `BitCopy` ladder. The slot allocation is a SlotMap over one shared pool — Pufferfish's analog of the `ResourceSolver` walk — and a bundle can name at most six distinct immediates across all of its present slots combined.
 - **Jellyfish (41-byte bundle, [JF 41B](bundle-jf-41b.md))** carries the six 16-bit immediates as `Bundle` proto fields `+0x68 .. +0x7C`, validated `< 0x10000` by `ValidateImmediate` (`0x1e86da20`), keyed off the `proto+0x10` slot mask. Slot assignment is `JellyfishEmitter::FindFreeSlot`.
 
-| gen | bundle | imm slots | width | positions / proto | codec | Confidence |
+| gen | bundle | imm slots | width | positions / proto | codec | reference |
 |---|---|---|---|---|---|---|
-| Jellyfish (v2) | 41 B | 6 | 16 | proto `+0x68..+0x7C` | `Bundle` proto + `FindFreeSlot` | CONFIRMED (see [JF 41B](bundle-jf-41b.md)) |
-| Pufferfish (v4) | 51 B | 6 | 16 | `256/272/288/304/320/338` | shared SlotMap + `SetImmOrDie` | CONFIRMED (see [PF 51B](bundle-pf-51b.md)) |
-| BarnaCore (v4 BC) | — | — | 16 (`getImmediateSizeInBits`) | `BarnaCore*MinImm` fields | subtarget width only | LOW (positions not walked) |
-| Viperfish (v5p) | 64 B TC / 32 B SCS | 6 / 4 | 20 | TC `430/410/390/370/350/330`; SCS `67/47/27/7` | `TensorCoreImmediatesEncoder` / `SparseCoreImmediatesEncoder` | CONFIRMED |
-| Ghostlite (v6e) | 64 B TC / 32 B SCS | 6 / 4(+2) | 20 | TC `433/413/393/373/353/333`; SCS `67/47/27/7(+215/195)` | same (GLC) | CONFIRMED |
-| 6acc60406 (TPU7x) | 64 B TC / 32 B SCS | 6 / 4 | 20 | TC `423/403/383/363/343/323`; SCS `67/47/27/7` | same (GFC) | CONFIRMED |
+| Jellyfish (v2) | 41 B | 6 | 16 | proto `+0x68..+0x7C` | `Bundle` proto + `FindFreeSlot` | [JF 41B](bundle-jf-41b.md) |
+| Pufferfish (v4) | 51 B | 6 | 16 | `256/272/288/304/320/338` | shared SlotMap + `SetImmOrDie` | [PF 51B](bundle-pf-51b.md) |
+| BarnaCore (v4 BC) | — | — | 16 (`getImmediateSizeInBits`) | `BarnaCore*MinImm` fields | subtarget width only | positions not walked |
+| Viperfish (v5p) | 64 B TC / 32 B SCS | 6 / 4 | 20 | TC `430/410/390/370/350/330`; SCS `67/47/27/7` | `TensorCoreImmediatesEncoder` / `SparseCoreImmediatesEncoder` | — |
+| Ghostlite (v6e) | 64 B TC / 32 B SCS | 6 / 4(+2) | 20 | TC `433/413/393/373/353/333`; SCS `67/47/27/7(+215/195)` | same (GLC) | — |
+| 6acc60406 (TPU7x) | 64 B TC / 32 B SCS | 6 / 4 | 20 | TC `423/403/383/363/343/323`; SCS `67/47/27/7` | same (GFC) | — |
 
-> **NOTE — the BarnaCore bit positions are not recovered.** `getImmediateSizeInBits` confirms the BarnaCore immediate slot is 16 bits wide, but the bit positions live in the `BarnaCoreSequencerScalar*ScalarFloatMinImm0..3` / `BarnaCoreChannelVectorAlu*VectorFloatMinImm0..5` accessors (a different `GetConcatenatedValue` codec, not a `BitCopy` ladder) and were not walked. This is the only gap in the per-gen ladder. Marked LOW. The clean V5+ table (VF/GL/GF, w20) and the PF/JF 16-bit pool are complete.
+> **NOTE — the BarnaCore bit positions are not recovered.** `getImmediateSizeInBits` confirms the BarnaCore immediate slot is 16 bits wide, but the bit positions live in the `BarnaCoreSequencerScalar*ScalarFloatMinImm0..3` / `BarnaCoreChannelVectorAlu*VectorFloatMinImm0..5` accessors (a different `GetConcatenatedValue` codec, not a `BitCopy` ladder) and are not pinned here. This is the only gap in the per-gen ladder; the V5+ table (VF/GL/GF, w20) and the PF/JF 16-bit pool are complete.
 
 ---
 
@@ -218,14 +217,14 @@ LloRegionBuilder::DmaDoneInGranules(rb, ..., sflag);                  // "contin
 
 So the DMA descriptor's sflag operand is an `SflagImmPtr` immediate — the same immediate-operand machinery, here carrying a reserved sync-flag id rather than a branch target. The next-segment source and size come from program-descriptor words held in Target-local SMEM, all `mov rax,[rdi+N]; ret` accessors:
 
-| descriptor field | source (compile time) | on-chip realisation | Confidence |
-|---|---|---|---|
-| hbm-src address | `OverlayMetadata_Overlay.overlay_address(_byte_offset)` | `Target::OverlayAddressWordOffset()` = `Target+0x810`; `CastAddr` | CONFIRMED |
-| local/timem dst | overlay workspace | `Target::OverlayWorkspaceWordOffset/SizeWords()` = `Target+0x738`/`+0x740` | CONFIRMED |
-| size | `OverlayMetadata_Overlay.overlay_size` | `LloMemUnitFromGranules` (granule count) | CONFIRMED |
-| **sflag (immediate)** | overlay-reserved sync flag | `Target::GetOverlayReservedSyncFlagNumber()` = `Target+0x534`; `SflagImmPtr` | CONFIRMED |
-| segment-begin | `OverlayMetadata_Overlay.overlay_begin` | first bundle index of segment | CONFIRMED |
-| order | `OverlayMetadata_Overlay.overlay_order` | "natural" pack/fetch order | CONFIRMED |
+| descriptor field | source (compile time) | on-chip realisation |
+|---|---|---|
+| hbm-src address | `OverlayMetadata_Overlay.overlay_address(_byte_offset)` | `Target::OverlayAddressWordOffset()` = `Target+0x810`; `CastAddr` |
+| local/timem dst | overlay workspace | `Target::OverlayWorkspaceWordOffset/SizeWords()` = `Target+0x738`/`+0x740` |
+| size | `OverlayMetadata_Overlay.overlay_size` | `LloMemUnitFromGranules` (granule count) |
+| **sflag (immediate)** | overlay-reserved sync flag | `Target::GetOverlayReservedSyncFlagNumber()` = `Target+0x534`; `SflagImmPtr` |
+| segment-begin | `OverlayMetadata_Overlay.overlay_begin` | first bundle index of segment |
+| order | `OverlayMetadata_Overlay.overlay_order` | "natural" pack/fetch order |
 
 The SparseCore tile-overlay path (`overlayer::OverlayProgram` @ `0x1395bba0`) hand-builds an `scDMA_HBM_TO_TIMEM_SIMPLErrrii` (opcode `0xfd7`) whose sflag operand is the tile-overlay sflag (`SCTarget+0x1e8`) wrapped as a **`SyImm32` (encoding-id `0x2c`)** via `getFirstSyImm32Encoding` — the same integer-immediate family the `ResourceSolver` allocates into a slot. This is the direct link between the immediate-slot codec and the overlay DMA: the overlay sflag is a `SyImm32` immediate (see [TPUMCImm / SyImm32](tpumcimm-syimm32.md)).
 

@@ -75,25 +75,25 @@ One C++ enumeration, `xla::jellyfish::MemorySpace`, labels every region througho
 
 Recovered byte-exactly from the `MemorySpaceToString` string-pointer table at rodata `0x21ce6b08` — `MemorySpaceToString` (`0x1d6ffae0`) is a one-instruction lookup `mov rax, [0x21ce6b08 + ms*8]`, so the integer *is* the table index and each slot's C-string is the canonical lowercase region name (resolved through its `R_X86_64_RELATIVE` reloc). The region enum is **17 values** (`0`..`16`). The two MSA aliases `kDefault`/`kAlternate` belong to a *separate* two-value enum, `xla::memory_space_assignment::MemorySpace` (decoded by `0x1dcda1c0`, values `kDefault`=0 / `kAlternate`=1) — they are the colors MSA assigns ("abundant"=HBM vs. "scarce" on-chip tier), **not** members of `xla::jellyfish::MemorySpace`.
 
-| `MemorySpace` | Value | String | Physical tier | Owner | Confidence |
-|---:|---:|---|---|---|---|
-| `kNone` | 0 | `<no memory space>` | — (no space) | — | CONFIRMED |
-| `kHbm` | 1 | `hbm` | HBM (off-chip) | per-chip | CONFIRMED |
-| `kHib` | 2 | `hib` | HBM↔host interface-buffer staging tier | per-chip | CONFIRMED |
-| `kVmem` | 3 | `vmem` | VMEM | per-TensorCore | CONFIRMED |
-| `kCmem` | 4 | `cmem` | CMEM | per-TensorCore (PF) | CONFIRMED |
-| `kSmem` | 5 | `smem` | SMEM | per-SPU | CONFIRMED |
-| `kSflag` | 6 | `sflag` | SFLAG (chip sync-flag tier) | per-engine banks | CONFIRMED |
-| `kImem` | 7 | `imem` | instruction memory | per-core | CONFIRMED |
-| `kBarnaCoreBmem` | 8 | `barna_core_bmem` | BarnaCore buffer memory | BarnaCore | CONFIRMED |
-| `kBarnaCoreSmem` | 9 | `barna_core_smem` | BarnaCore scalar memory | BarnaCore | CONFIRMED |
-| `kBarnaCoreSflag` | 10 | `barna_core_sflag` | BarnaCore sync-flag tier | BarnaCore | CONFIRMED |
-| `kBarnaCoreImem` | 11 | `barna_core_imem` | BarnaCore instruction memory | BarnaCore | CONFIRMED |
-| `kSparseCoreSequencerSflag` | 12 | `sparse_core_sequencer_sflag` | SC sequencer sync-flag region | SparseCore | CONFIRMED |
-| `kHost` | 13 | `host` | Host RAM (offload spill target) | host | CONFIRMED |
-| `kSparseCoreSequencerSmem` | 14 | `sparse_core_sequencer_smem` | SC sequencer scalar memory | SparseCore | CONFIRMED |
-| `kSparseCorePrivateStackHbm` | 15 | `sparse_core_private_stack_hbm` | SC private-stack HBM region | SparseCore | CONFIRMED |
-| `kPinnedHbm` | 16 | `pinned_hbm` | HBM, runtime-locked (peer-DMA inputs; repacker may not relocate) | per-chip | CONFIRMED |
+| `MemorySpace` | Value | String | Physical tier | Owner |
+|---:|---:|---|---|---|
+| `kNone` | 0 | `<no memory space>` | — (no space) | — |
+| `kHbm` | 1 | `hbm` | HBM (off-chip) | per-chip |
+| `kHib` | 2 | `hib` | HBM↔host interface-buffer staging tier | per-chip |
+| `kVmem` | 3 | `vmem` | VMEM | per-TensorCore |
+| `kCmem` | 4 | `cmem` | CMEM | per-TensorCore (PF) |
+| `kSmem` | 5 | `smem` | SMEM | per-SPU |
+| `kSflag` | 6 | `sflag` | SFLAG (chip sync-flag tier) | per-engine banks |
+| `kImem` | 7 | `imem` | instruction memory | per-core |
+| `kBarnaCoreBmem` | 8 | `barna_core_bmem` | BarnaCore buffer memory | BarnaCore |
+| `kBarnaCoreSmem` | 9 | `barna_core_smem` | BarnaCore scalar memory | BarnaCore |
+| `kBarnaCoreSflag` | 10 | `barna_core_sflag` | BarnaCore sync-flag tier | BarnaCore |
+| `kBarnaCoreImem` | 11 | `barna_core_imem` | BarnaCore instruction memory | BarnaCore |
+| `kSparseCoreSequencerSflag` | 12 | `sparse_core_sequencer_sflag` | SC sequencer sync-flag region | SparseCore |
+| `kHost` | 13 | `host` | Host RAM (offload spill target) | host |
+| `kSparseCoreSequencerSmem` | 14 | `sparse_core_sequencer_smem` | SC sequencer scalar memory | SparseCore |
+| `kSparseCorePrivateStackHbm` | 15 | `sparse_core_private_stack_hbm` | SC private-stack HBM region | SparseCore |
+| `kPinnedHbm` | 16 | `pinned_hbm` | HBM, runtime-locked (peer-DMA inputs; repacker may not relocate) | per-chip |
 
 > **QUIRK —** the string-pointer table at `0x21ce6b08` is **longer than the 17-value region enum**: slots `17`/`18`/`19` resolve to `absolute` (`0x868144c`), `heap_relative` (`0x8678cad`), and `stack_relative` (`0x8678cbb`). Those three are pointer-*relativity* tags of the `LloAddress` relocation model that share storage with the region-name array — they are **not** memory pools. A reimplementation that sizes the `MemorySpace` enum by the string-table length, or treats `absolute`/`heap_relative`/`stack_relative` as tiers, is wrong: the region enum is exactly 17 values (`0`..`16`). The ordering is also *not* a clean physical-tier ordering and is wider than the spaces any one generation uses (CMEM is alive only on Pufferfish). Drive tier tables off the named constants, never off contiguous integers. The per-codename byte sizes that populate each tier's `Config` are absent from the C++ (they live in `chip_parts.binarypb`); the enum is the label, not the size. The full enum↔`MemorySpaceProto` field-number remap lives on [memory-space-enum.md](../isa/memory-space-enum.md).
 
@@ -147,15 +147,15 @@ The ctor (`0x1e817500`) asserts, as `LogMessageFatal` checks: `base_offset_in_by
 
 ### Per-tier `Config` and alignment
 
-| Tier | `base_offset` | `end` (capacity) | `alignment` | `granule` | Confidence |
-|---|---|---|---|---|---|
-| **HBM** | 0 | `chip_parts.binarypb` HBM bytes (`− xla_tpu_user_reserved_hbm_bytes`) | **16 KiB** compile-time (`xla_jf_program_hbm_alignment_in_kib`=16); **1024 B** runtime DMA floor | `chip_parts` HBM granule | CONFIRMED |
-| **VMEM** | 0 | `Target::VmemSizeBytes()` (`Target+0x458`) or `xla_tpu_override_vmem_size_kib` | `VmemAlignmentBoundaryInBytes()` — `ChunkBytes` (JF) / `max(Granule, VmemWord)` (PF/VF/GL) | `VmemWordSizeBytes()` (`Target+0x50C`) | CONFIRMED |
-| **CMEM** | 0 | `Target::CmemSizeBytes()` (`Target+0x460`) | `CmemWordSizeBytes()` | `CmemWordSizeBytes()` (`Target+0x510`, ~16 B PF) | CONFIRMED |
-| **SMEM** | 0 | `Target::SmemSizeBytes()` (`Target+0x470`) | `SmemWordSizeBytes()` | `SmemWordSizeBytes()` (`Target+0x508`) | CONFIRMED |
-| **SFLAG** | 0 | `Target::SflagSizeBytes()` (`Target+0x468`) | `SflagWordSizeBytes()` (`Target+0x504`) | `SflagWordSizeBytes()` | CONFIRMED |
-| **Host (premapped)** | per-partition `partition_size * i` | `partition_size` | 4 KiB if size ≤ 2 MiB, else 2 MiB (`PickPageAlignment`) | = alignment | CONFIRMED |
-| **Host (BFC offload)** | 0 | 256 GiB cap (`0x40'0000'0000`, the `tsl::BFCAllocator` ctor size arg) | ≥ 16 B (`posix_memalign`) | 2 MiB region growth | CONFIRMED |
+| Tier | `base_offset` | `end` (capacity) | `alignment` | `granule` |
+|---|---|---|---|---|
+| **HBM** | 0 | `chip_parts.binarypb` HBM bytes (`− xla_tpu_user_reserved_hbm_bytes`) | **16 KiB** compile-time (`xla_jf_program_hbm_alignment_in_kib`=16); **1024 B** runtime DMA floor | `chip_parts` HBM granule |
+| **VMEM** | 0 | `Target::VmemSizeBytes()` (`Target+0x458`) or `xla_tpu_override_vmem_size_kib` | `VmemAlignmentBoundaryInBytes()` — `ChunkBytes` (JF) / `max(Granule, VmemWord)` (PF/VF/GL) | `VmemWordSizeBytes()` (`Target+0x50C`) |
+| **CMEM** | 0 | `Target::CmemSizeBytes()` (`Target+0x460`) | `CmemWordSizeBytes()` | `CmemWordSizeBytes()` (`Target+0x510`, ~16 B PF) |
+| **SMEM** | 0 | `Target::SmemSizeBytes()` (`Target+0x470`) | `SmemWordSizeBytes()` | `SmemWordSizeBytes()` (`Target+0x508`) |
+| **SFLAG** | 0 | `Target::SflagSizeBytes()` (`Target+0x468`) | `SflagWordSizeBytes()` (`Target+0x504`) | `SflagWordSizeBytes()` |
+| **Host (premapped)** | per-partition `partition_size * i` | `partition_size` | 4 KiB if size ≤ 2 MiB, else 2 MiB (`PickPageAlignment`) | = alignment |
+| **Host (BFC offload)** | 0 | 256 GiB cap (`0x40'0000'0000`, the `tsl::BFCAllocator` ctor size arg) | ≥ 16 B (`posix_memalign`) | 2 MiB region growth |
 
 > **GOTCHA —** HBM has **two** alignment numbers, and confusing them silently corrupts a DMA. `kHbmMinimumDmaAlignment` = 1024 B is the *hardware* floor: every DMA issue site masks size and address with `& 0x3FF` and `LogMessageFatal`s on a non-zero remainder (`byte_offset % jf_driver::kHbmMinimumDmaAlignment == 0`, `size % … == 0`, in `WritePremappedHbm` @ `0xe73db80`). The 16 KiB compile-time figure (`xla_jf_program_hbm_alignment_in_kib`) is *stricter* — it rounds every program-level HBM tensor up to 16 KiB before MSA places it, to accommodate XLA's stride/sub-tile addressing and slice-prefetch boundaries. A reimplementer who aligns HBM allocations to 1024 B at compile time will produce a layout MSA's slice machinery cannot address; one who enforces 16 KiB at DMA-issue time wastes nothing but is needlessly strict. The 1024-B floor is the wire contract; the 16-KiB rule is the placement contract. See [hbm-dma-alignment.md](hbm-dma-alignment.md).
 

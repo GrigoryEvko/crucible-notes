@@ -40,18 +40,18 @@ The topology is reachable two ways with deliberately different shapes. The **gen
 
 The seven core slots sit contiguously at `PJRT_Api+0x2B8..+0x2E8`; the three v0.103 late additions are scattered at the slot positions assigned when they were appended to the ABI.
 
-| Slot | Field | libtpu impl | Addr | Min/Cur sz | Confidence |
-|---|---|---|---|---|---|
-| 87 | `_Create` | `pjrt::tpu_plugin::PJRT_TopologyDescription_Create` | `0xE6A9B20` | `0x24` / `0x38` | CERTAIN |
-| 88 | `_Destroy` | `pjrt::PJRT_TopologyDescription_Destroy` | `0xF870040` | `0x25` / `0x18` | CERTAIN |
-| 89 | `_PlatformName` | `pjrt::PJRT_TopologyDescription_PlatformName` | `0xF870200` | `0x2A` / `0x28` | HIGH |
-| 90 | `_PlatformVersion` | `pjrt::PJRT_TopologyDescription_PlatformVersion` | `0xF870260` | `0x2D` / `0x28` | HIGH |
-| 91 | `_GetDeviceDescriptions` | `pjrt::PJRT_TopologyDescription_GetDeviceDescriptions` | `0xF8702C0` | `0x33` / `0x28` | CERTAIN |
-| 92 | `_Serialize` | `pjrt::PJRT_TopologyDescription_Serialize` | `0xF870320` | `0x27` / `0x38` | HIGH |
-| 93 | `_Attributes` | `pjrt::PJRT_TopologyDescription_Attributes` | `0xF8705E0` | `0x28` / `0x28` | HIGH |
-| 100 | `Client_TopologyDescription` | `pjrt::PJRT_Client_TopologyDescription` | `0xF85F560` | — | CERTAIN |
-| 119 | `_Deserialize` | `pjrt::PJRT_TopologyDescription_Deserialize` | `0xF870B80` | `0x28` / `0x28` | HIGH |
-| 138 | `_Fingerprint` | `pjrt::PJRT_TopologyDescription_Fingerprint` | `0xF870520` | `0x29` / `0x20` | HIGH |
+| Slot | Field | libtpu impl | Addr | Min/Cur sz |
+|---|---|---|---|---|
+| 87 | `_Create` | `pjrt::tpu_plugin::PJRT_TopologyDescription_Create` | `0xE6A9B20` | `0x24` / `0x38` |
+| 88 | `_Destroy` | `pjrt::PJRT_TopologyDescription_Destroy` | `0xF870040` | `0x25` / `0x18` |
+| 89 | `_PlatformName` | `pjrt::PJRT_TopologyDescription_PlatformName` | `0xF870200` | `0x2A` / `0x28` |
+| 90 | `_PlatformVersion` | `pjrt::PJRT_TopologyDescription_PlatformVersion` | `0xF870260` | `0x2D` / `0x28` |
+| 91 | `_GetDeviceDescriptions` | `pjrt::PJRT_TopologyDescription_GetDeviceDescriptions` | `0xF8702C0` | `0x33` / `0x28` |
+| 92 | `_Serialize` | `pjrt::PJRT_TopologyDescription_Serialize` | `0xF870320` | `0x27` / `0x38` |
+| 93 | `_Attributes` | `pjrt::PJRT_TopologyDescription_Attributes` | `0xF8705E0` | `0x28` / `0x28` |
+| 100 | `Client_TopologyDescription` | `pjrt::PJRT_Client_TopologyDescription` | `0xF85F560` | — |
+| 119 | `_Deserialize` | `pjrt::PJRT_TopologyDescription_Deserialize` | `0xF870B80` | `0x28` / `0x28` |
+| 138 | `_Fingerprint` | `pjrt::PJRT_TopologyDescription_Fingerprint` | `0xF870520` | `0x29` / `0x20` |
 
 `Min sz` is the `min_size` constant passed to `ActualStructSizeIsGreaterOrEqual` — the oldest historic args struct accepted; `Cur sz` is the size this build's own callers pass.
 
@@ -275,39 +275,39 @@ function ChipBounds(args):                                 // 0xE6E0AE0, ext slo
 
 Offsets are within the 272-byte extension struct; "vtable" is the offset on the abstract `xla::PjRtTopologyDescription` the bouncer calls. Category: **VB** = vtable-bouncer, **HLP** = downcast-to-`tpu::TpuTopology` helper, **CFG** = `kPlatformConfigs` lookup.
 
-| Off | Method | Impl addr | vtable / via | Cat | Confidence |
-|---|---|---|---|---|---|
-| `+0x18` | `Subslice` | `0xE6DE7A0` | input-array, computed | VB | MEDIUM |
-| `+0x20` | `IsSubsliceTopology` | `0xE6DEC20` | `+0x38` (bool) | VB | HIGH |
-| `+0x28` | `SubsliceDeviceIdFromFullDeviceId` | `0xE6DEC80` | computed cast | VB | LOW |
-| `+0x30` | `ReplaceHostBounds` | `0xE6DEF40` | helper | HLP | MEDIUM |
-| `+0x38` | `IsEnhancedBarrierEnabled` | `0xE6DF200` | helper (`TpuTopology+0x188/+0x190`) | HLP | HIGH |
-| `+0x40` | `HasLimitedIciConnectivity` | `0xE6DF2A0` | helper | HLP | HIGH |
-| `+0x48` | `IsReachableOverLimitedIci` | `0xE6DF340` | helper | HLP | MEDIUM |
-| `+0x50` | `ProcessCount` | `0xE6DF400` | `+0x40` (int) | VB | HIGH |
-| `+0x58` | `ChipsPerProcess` | `0xE6DF4A0` | `+0x48` (int) | VB | HIGH |
-| `+0x60` | `CoreCountPerChip` | `0xE6DF540` | `+0x80` (int) | VB | CERTAIN |
-| `+0x68` | `ChipCount` | `0xE6DF5E0` | `+0x50` (int) | VB | HIGH |
-| `+0x70` | `CoreCount` | `0xE6DF680` | `+0x58` (int) | VB | HIGH |
-| `+0x78` | `LogiDeviceCountPerProcess` | `0xE6DF720` | `+0x60` (int) | VB | HIGH |
-| `+0x80` | `LogiDeviceCount` | `0xE6DF7C0` | `+0x68` (int) | VB | HIGH |
-| `+0x88` | `LogiDeviceCountPerChip` | `0xE6DF860` | `+0x70` (int) | VB | HIGH |
-| `+0x90` | `CoreCountPerProcess` | `0xE6DF900` | `+0x78` (int) | VB | HIGH |
-| `+0x98` | `ProcessIds` | `0xE6DF9A0` | `+0x88` (vector) | VB | HIGH |
-| `+0xA0` | `LogiDeviceIdsOnProcess` | `0xE6DFB80` | computed (vector) | VB | MEDIUM |
-| `+0xA8` | `ProcIdAndIdxOnProcForChip` | `0xE6DFD60` | `+0x98` | VB | MEDIUM |
-| `+0xB0` | `ProcIdAndIdxOnProcForLogiDevice` | `0xE6DFE20` | `+0xA0` | VB | MEDIUM |
-| `+0xB8` | `ProcessCoordFromId` | `0xE6DFEE0` | `+0xA8` | VB | MEDIUM |
-| `+0xC0` | `ChipIdFromCoord` | `0xE6E00A0` | computed | VB | MEDIUM |
-| `+0xC8` | `LogiDeviceIdFromChipCoordAndIdx` | `0xE6E03C0` | computed | VB | MEDIUM |
-| `+0xD0` | `ChipCoordAndIdxForLogiDevice` | `0xE6E06E0` | `+0xC0` | VB | MEDIUM |
-| `+0xD8` | `ChipsPerProcessBounds` | `0xE6E0920` | `+0xC8` (vector) | VB | HIGH |
-| `+0xE0` | `ChipBounds` | `0xE6E0AE0` | `+0xD0` (vector) | VB | CERTAIN |
-| `+0xE8` | `ProcessBounds` | `0xE6E0CA0` | computed (vector) | VB | HIGH |
-| `+0xF0` | `GetRoutingStrategy` | `0xE6E0E60` | helper | HLP | MEDIUM |
-| `+0xF8` | `GetSliceConfig` | `0xE6E1080` | `kPlatformConfigs` | CFG | MEDIUM |
-| `+0x100` | `GetSliceConfigs` | `0xE6E13A0` | `kPlatformConfigs` | CFG | MEDIUM |
-| `+0x108` | `GetDefaultPlatformConfig` | `0xE6E16A0` | `kPlatformConfigs` | CFG | MEDIUM |
+| Off | Method | Impl addr | vtable / via | Cat |
+|---|---|---|---|---|
+| `+0x18` | `Subslice` | `0xE6DE7A0` | input-array, computed | VB |
+| `+0x20` | `IsSubsliceTopology` | `0xE6DEC20` | `+0x38` (bool) | VB |
+| `+0x28` | `SubsliceDeviceIdFromFullDeviceId` | `0xE6DEC80` | computed cast | VB |
+| `+0x30` | `ReplaceHostBounds` | `0xE6DEF40` | helper | HLP |
+| `+0x38` | `IsEnhancedBarrierEnabled` | `0xE6DF200` | helper (`TpuTopology+0x188/+0x190`) | HLP |
+| `+0x40` | `HasLimitedIciConnectivity` | `0xE6DF2A0` | helper | HLP |
+| `+0x48` | `IsReachableOverLimitedIci` | `0xE6DF340` | helper | HLP |
+| `+0x50` | `ProcessCount` | `0xE6DF400` | `+0x40` (int) | VB |
+| `+0x58` | `ChipsPerProcess` | `0xE6DF4A0` | `+0x48` (int) | VB |
+| `+0x60` | `CoreCountPerChip` | `0xE6DF540` | `+0x80` (int) | VB |
+| `+0x68` | `ChipCount` | `0xE6DF5E0` | `+0x50` (int) | VB |
+| `+0x70` | `CoreCount` | `0xE6DF680` | `+0x58` (int) | VB |
+| `+0x78` | `LogiDeviceCountPerProcess` | `0xE6DF720` | `+0x60` (int) | VB |
+| `+0x80` | `LogiDeviceCount` | `0xE6DF7C0` | `+0x68` (int) | VB |
+| `+0x88` | `LogiDeviceCountPerChip` | `0xE6DF860` | `+0x70` (int) | VB |
+| `+0x90` | `CoreCountPerProcess` | `0xE6DF900` | `+0x78` (int) | VB |
+| `+0x98` | `ProcessIds` | `0xE6DF9A0` | `+0x88` (vector) | VB |
+| `+0xA0` | `LogiDeviceIdsOnProcess` | `0xE6DFB80` | computed (vector) | VB |
+| `+0xA8` | `ProcIdAndIdxOnProcForChip` | `0xE6DFD60` | `+0x98` | VB |
+| `+0xB0` | `ProcIdAndIdxOnProcForLogiDevice` | `0xE6DFE20` | `+0xA0` | VB |
+| `+0xB8` | `ProcessCoordFromId` | `0xE6DFEE0` | `+0xA8` | VB |
+| `+0xC0` | `ChipIdFromCoord` | `0xE6E00A0` | computed | VB |
+| `+0xC8` | `LogiDeviceIdFromChipCoordAndIdx` | `0xE6E03C0` | computed | VB |
+| `+0xD0` | `ChipCoordAndIdxForLogiDevice` | `0xE6E06E0` | `+0xC0` | VB |
+| `+0xD8` | `ChipsPerProcessBounds` | `0xE6E0920` | `+0xC8` (vector) | VB |
+| `+0xE0` | `ChipBounds` | `0xE6E0AE0` | `+0xD0` (vector) | VB |
+| `+0xE8` | `ProcessBounds` | `0xE6E0CA0` | computed (vector) | VB |
+| `+0xF0` | `GetRoutingStrategy` | `0xE6E0E60` | helper | HLP |
+| `+0xF8` | `GetSliceConfig` | `0xE6E1080` | `kPlatformConfigs` | CFG |
+| `+0x100` | `GetSliceConfigs` | `0xE6E13A0` | `kPlatformConfigs` | CFG |
+| `+0x108` | `GetDefaultPlatformConfig` | `0xE6E16A0` | `kPlatformConfigs` | CFG |
 
 > **NOTE —** there is **no `TpuGetMeshShape` / `TpuGetCoreIds` method**. Mesh shape is recovered by composing `ChipBounds` + `ProcessBounds` + `ChipsPerProcessBounds`; core IDs from `LogiDeviceIdFromChipCoordAndIdx` ↔ `ChipCoordAndIdxForLogiDevice` and `ProcIdAndIdxOnProcForLogiDevice`. A dead args string, `PJRT_TpuTopology_ProcessIdAndIndexOnProcessForLogiDeviceOfDefaultType_Args` (file offset `0x8551469`), is the renamed predecessor of `ProcIdAndIdxOnProcForLogiDevice` and is not referenced by any slot.
 

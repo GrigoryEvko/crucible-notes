@@ -29,7 +29,6 @@ For reimplementation, the contract is:
 | **Latency axis** | `LatencyTable::LatencyBetween(LloValue,LloValue)` @ `0x1c89f820`; JF `LatencyBetweenInternal` @ `0x1c8a0d60` |
 | **Schedule entry** | `CostModelLatencyEstimator::GetLatencyBetween(HloGraphNode,HloGraphNode)` @ `0x10ff8f00` |
 | **Blend constant** | `qword_A2DF5C8` = `0.5` (vector-ALU port-balance factor) |
-| **Confidence** | CONFIRMED (byte-anchored) unless a row says otherwise |
 
 ---
 
@@ -268,24 +267,6 @@ The per-gen `LatencyBetweenInternal` is itself a per-op-pair `max` over the rele
 The scheduler then uses these two quantities — per-node bundle cost (this page's `MaxResourceCycles`) and per-edge dependency latency (`LatencyBetween`) — to compute its list-scheduling priority: it overlaps async work under compute when the dependency latency permits, packing independent ops into bundles whose cost is the max-lane occupancy rather than the sum. The scheduler internals (list priority, async tracking, the distinct 47-ID `ResourceType` concurrency model) live on the [Scheduler Overview](../sched/overview.md) and [ResourceType Taxonomy](../sched/scheduler-resourcetype-model.md) pages.
 
 > **GOTCHA —** The bundle cost is a per-lane `max`, never a global sum. The only addition in the whole pipeline is the four-term memory group inside the reduction and the per-slot `Add` across packed vectors (which itself `max`-combines the two DMA-startup terms). Pricing a bundle as a sum of slot costs mis-prices every multi-lane bundle.
-
----
-
-## Confidence Summary
-
-| Claim | Evidence | Confidence |
-|---|---|---|
-| Bundle cost is per-lane `max`, not sum | `MaxResourceCycles` @ `0x1c89b9e0` (flat `vmaxsd` chain) | CONFIRMED |
-| 50% vector-ALU blend on `R[3..5]` via `0.5` | `qword_A2DF5C8` read in the blend block | CONFIRMED |
-| Memory group `R[9..12]` is a serial sum | four `vaddsd` of `[+0x48..+0x60]` before the `max` chain | CONFIRMED |
-| MXU pipes `R[0]`/`R[1]` overlap (plain `max`) | `vmaxsd [+0x00]` / `[+0x08]` in group C | CONFIRMED |
-| Per-op deposit = `Acc(GetResource, GetCyclesForThroughput)` | `AccumulateInstructionUsage::operator()` @ `0x144fd720` | CONFIRMED |
-| `Add` `max`-combines the two DMA-latency slots | `(i & 0x1D) == 9` selector + `vmaskmovpd` block @ `0x1c89b820` | CONFIRMED |
-| `ScaleResource` skips the two DMA-latency slots | `(r & 0xFFFFFFFD) == 9` early return @ `0x1c89b6a0` | CONFIRMED |
-| `MaxResourceCycles` is the terminal bundle-cost step | `vcvttsd2si` + `+ compute` in `PartialReduceEmitter::EstimateCycles` @ `0x10eac440` and 6 other callers | CONFIRMED |
-| `LatencyBetween` combines per-op-pair by `max` | `if (v15 <= field) v15 = field` chain in `LatencyBetweenInternal` @ `0x1c8a0d60` | CONFIRMED |
-| Floors: matmul→matmul 16, matprep family 2, indexed store→load 4/5 | opcode-pair branches @ `0x1c89f820` / `0x1c8a0d60` | CONFIRMED |
-| Schedule estimator routes compute edges through `GetCycles`→reduction | `CostModelLatencyEstimator::GetLatencyBetween` @ `0x10ff8f00` | HIGH |
 
 ---
 

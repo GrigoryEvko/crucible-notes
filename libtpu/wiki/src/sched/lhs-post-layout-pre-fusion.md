@@ -278,39 +278,39 @@ The single live LHS in v0.0.40 is `post_layout`. This variant is the same `RunIm
 
 ## Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `HloOptimizeAfterLayoutAssignment` | `0x10962660` | Phase-6 driver; builds `"Pre main fusion"` pipeline (line 1169) — no LHS added | HIGH |
-| `PostOptimizationPipeline` | `0x1093fd40` | Phase-7 driver; calls `RunHloScheduler` (reached from `RunHloPasses` line 1987) | HIGH |
-| `RunHloScheduler` | `0x1096fac0` | The only LHS `AddPass` sites (1137 / 1411); built by `PostOptimizationPipeline` | HIGH |
-| `LatencyHidingScheduler::RunImpl` | `0x136321a0` | Shared pass body; `has_schedule()` FATAL at line 280, retry loop | HIGH |
-| `GetSchedulerConfig` | `0x10974aa0` | 137-byte `SchedulerConfig`; `v45 = env[4097]` at line 29 | HIGH |
-| `GetLatencyEstimator` | `0x10974e00` | Approximate / CostModel / PGLE selection (byte 123) | HIGH |
-| `GetTpuAsyncTracker` | `0x10975520` | Wraps `TpuAsyncTracker::Create`; takes reserved-SC `flat_hash_set` | HIGH |
-| `TpuAsyncTracker::Create` | `0x10ffb3e0` | TPU resource model + reserved-SC set (line 179 callsite) | MEDIUM |
-| `DefaultSchedulerCore` ctor | `0x10976ce0` | Copies config POD (`vmovups`); installs four `std::function` hooks | HIGH |
-| `AddPass<LatencyHidingScheduler, …>` | `0x10975c40` | Templated pass adder — referenced only from `RunHloScheduler` | HIGH |
-| `HloMemorySchedulerWithBrkgaFallback` ctor | (line 567 of `0x1096fac0`) | Phase-7 base memory schedule (the `has_schedule()` precondition) | MEDIUM |
-| `IsPassDisabled` | `0x12fd8340` | `"latency-hiding-scheduler"` / `"async-op-scheduler"` gates | HIGH |
-| `EnableSchedulerMemoryPressureTracking` | `0x1d6b66e0` | `memory_limit` tri-state | HIGH |
-| `EnableIlpLatencyHidingScheduler` | `0x1d6b7e00` | `$_1`/`$_2` classifier gate (ILP variant) | MEDIUM |
+| Function | Address | Role |
+|---|---|---|
+| `HloOptimizeAfterLayoutAssignment` | `0x10962660` | Phase-6 driver; builds `"Pre main fusion"` pipeline (line 1169) — no LHS added |
+| `PostOptimizationPipeline` | `0x1093fd40` | Phase-7 driver; calls `RunHloScheduler` (reached from `RunHloPasses` line 1987) |
+| `RunHloScheduler` | `0x1096fac0` | The only LHS `AddPass` sites (1137 / 1411); built by `PostOptimizationPipeline` |
+| `LatencyHidingScheduler::RunImpl` | `0x136321a0` | Shared pass body; `has_schedule()` FATAL at line 280, retry loop |
+| `GetSchedulerConfig` | `0x10974aa0` | 137-byte `SchedulerConfig`; `v45 = env[4097]` at line 29 |
+| `GetLatencyEstimator` | `0x10974e00` | Approximate / CostModel / PGLE selection (byte 123) |
+| `GetTpuAsyncTracker` | `0x10975520` | Wraps `TpuAsyncTracker::Create`; takes reserved-SC `flat_hash_set` |
+| `TpuAsyncTracker::Create` | `0x10ffb3e0` | TPU resource model + reserved-SC set (line 179 callsite) |
+| `DefaultSchedulerCore` ctor | `0x10976ce0` | Copies config POD (`vmovups`); installs four `std::function` hooks |
+| `AddPass<LatencyHidingScheduler, …>` | `0x10975c40` | Templated pass adder — referenced only from `RunHloScheduler` |
+| `HloMemorySchedulerWithBrkgaFallback` ctor | (line 567 of `0x1096fac0`) | Phase-7 base memory schedule (the `has_schedule()` precondition) |
+| `IsPassDisabled` | `0x12fd8340` | `"latency-hiding-scheduler"` / `"async-op-scheduler"` gates |
+| `EnableSchedulerMemoryPressureTracking` | `0x1d6b66e0` | `memory_limit` tri-state |
+| `EnableIlpLatencyHidingScheduler` | `0x1d6b7e00` | `$_1`/`$_2` classifier gate (ILP variant) |
 
 ---
 
 ## Confidence Summary
 
-| Claim | Evidence | Confidence |
-|---|---|---|
-| Pre-fusion slot has no `AddPass<LatencyHidingScheduler>` | `0x10962660` — only `"Pre main fusion"` (1169) / `"Main fusion"` (2279); no LHS / no `RunHloScheduler` ref | HIGH |
-| Canonical `AddPass<LHS>` template referenced only from `RunHloScheduler` | `rg --no-ignore` for `AddPassINS_22LatencyHidingScheduler` → 1 file (its own body) | HIGH |
-| Both live LHS sites are Phase 7 (post-fusion) | `RunHloScheduler` lines 1137 / 1411 | HIGH |
-| Slot is dead because `RunImpl` FATALs on `!has_schedule()` | `0x136321a0` line 280 `LogMessageFatal` + precondition string | HIGH |
-| Base schedule only exists in Phase 7 | `HloMemorySchedulerWithBrkgaFallback` at `RunHloScheduler` line 567 | MEDIUM |
-| `v45 = env[4097]`; drives `memory_limit`/`schedule_send_recvs`/aggregation | `GetSchedulerConfig` lines 29 / 66-71 / 76 / 90 | HIGH |
-| Pre-fusion config delta = `v45==0`, pre-fusion budget, empty reserved-SC | derived from `GetSchedulerConfig` + `GetReservedSparseCores` (line 873) phase-ordering | HIGH |
-| `next_memory_limit` relax factor `qword_A2DFD10` | `RunImpl` lines 892 / 918 `vmulsd` (decimal `0.9` resolved on core page) | HIGH |
-| Empty reserved-SC set is the AsyncTracker delta | `GetTpuAsyncTracker` final `flat_hash_set<long>` arg; SC assignment post-dates pre-fusion | HIGH |
-| `GetLatencyEstimator` branch + PGLE FATAL identical | `0x10974e00` lines 55 / 70 / 91 / 104 | HIGH |
+| Claim | Evidence |
+|---|---|
+| Pre-fusion slot has no `AddPass<LatencyHidingScheduler>` | `0x10962660` — only `"Pre main fusion"` (1169) / `"Main fusion"` (2279); no LHS / no `RunHloScheduler` ref |
+| Canonical `AddPass<LHS>` template referenced only from `RunHloScheduler` | `rg --no-ignore` for `AddPassINS_22LatencyHidingScheduler` → 1 file (its own body) |
+| Both live LHS sites are Phase 7 (post-fusion) | `RunHloScheduler` lines 1137 / 1411 |
+| Slot is dead because `RunImpl` FATALs on `!has_schedule()` | `0x136321a0` line 280 `LogMessageFatal` + precondition string |
+| Base schedule only exists in Phase 7 | `HloMemorySchedulerWithBrkgaFallback` at `RunHloScheduler` line 567 |
+| `v45 = env[4097]`; drives `memory_limit`/`schedule_send_recvs`/aggregation | `GetSchedulerConfig` lines 29 / 66-71 / 76 / 90 |
+| Pre-fusion config delta = `v45==0`, pre-fusion budget, empty reserved-SC | derived from `GetSchedulerConfig` + `GetReservedSparseCores` (line 873) phase-ordering |
+| `next_memory_limit` relax factor `qword_A2DFD10` | `RunImpl` lines 892 / 918 `vmulsd` (decimal `0.9` resolved on core page) |
+| Empty reserved-SC set is the AsyncTracker delta | `GetTpuAsyncTracker` final `flat_hash_set<long>` arg; SC assignment post-dates pre-fusion |
+| `GetLatencyEstimator` branch + PGLE FATAL identical | `0x10974e00` lines 55 / 70 / 91 / 104 |
 
 ---
 

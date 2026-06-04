@@ -28,7 +28,6 @@ For reimplementation, the contract is:
 | **Scalar slot width** | 27 bits; 6-bit primary opcode `@+16` |
 | **Opcode counts (gfc)** | ScalarAlu 95 (union; Alu0 78 / Alu1 82) · ScsScalarMisc 82 · Dma 3 forms · Stream 3 forms · Immediates 1 · VectorScalar 1 |
 | **Cross-gen layout** | Bundle + slot bases byte-identical on VF / GL / GF |
-| **Confidence** | CONFIRMED (decompile-anchored) unless a row or callout says otherwise |
 
 ---
 
@@ -73,17 +72,17 @@ bit:  0      7                 87        111       138       165       192      
       Stream(oneof of a scalar lane): opcode @181/@154, descriptor payload @99..142
 ```
 
-| Slot | Base | End | Width | Opcode bit | Internal template | Confidence |
-|---|---:|---:|---:|---:|---|---|
-| (reserved header) | 0 | 6 | 7 | — | bundle prefix; meaning not decoded | MEDIUM |
-| `ScalarImmediates` | 7 | 86 | 80 | — | 4 × 20-bit (`@7,@27,@47,@67`) | CONFIRMED |
-| `VectorScalar` | 87 | 110 | 24 | — | scalar→vector bridge (4 × {5-bit,1-bit} pairs) | CONFIRMED |
-| `ScsScalarMisc` | 111 | 137 | 27 | 127 | 27-bit scalar template | CONFIRMED |
-| `ScalarAlu1` (lane 1) | 138 | 164 | 27 | 154 | 27-bit scalar template | CONFIRMED |
-| `ScalarAlu0` (lane 0) | 165 | 191 | 27 | 181 | 27-bit scalar template | CONFIRMED |
-| (reserved / pad) | 192 | 255 | 64 | — | unwritten by any slot encoder | HIGH |
-| `Dma` (oneof of lane) | 87 | 191 | — | 181 / 154 | scalar opcode + payload `@87..142` | CONFIRMED |
-| `Stream` (oneof of lane) | 99 | 191 | — | 181 / 154 | scalar opcode + payload `@99..142` | CONFIRMED |
+| Slot | Base | End | Width | Opcode bit | Internal template |
+|---|---:|---:|---:|---:|---|
+| (reserved header) | 0 | 6 | 7 | — | bundle prefix; meaning not decoded |
+| `ScalarImmediates` | 7 | 86 | 80 | — | 4 × 20-bit (`@7,@27,@47,@67`) |
+| `VectorScalar` | 87 | 110 | 24 | — | scalar→vector bridge (4 × {5-bit,1-bit} pairs) |
+| `ScsScalarMisc` | 111 | 137 | 27 | 127 | 27-bit scalar template |
+| `ScalarAlu1` (lane 1) | 138 | 164 | 27 | 154 | 27-bit scalar template |
+| `ScalarAlu0` (lane 0) | 165 | 191 | 27 | 181 | 27-bit scalar template |
+| (reserved / pad) | 192 | 255 | 64 | — | unwritten by any slot encoder |
+| `Dma` (oneof of lane) | 87 | 191 | — | 181 / 154 | scalar opcode + payload `@87..142` |
+| `Stream` (oneof of lane) | 99 | 191 | — | 181 / 154 | scalar opcode + payload `@99..142` |
 
 > **QUIRK — there is no separate "DMA slot" or "Stream slot."** A SparseCore DMA or Stream instruction is a `oneof` *form* of a scalar lane: it writes its opcode into the lane's 6-bit opcode field (`@181` for lane 0, `@154` for lane 1) and spills its multi-word descriptor into the lower payload region (the immediate / VectorScalar / Misc area, bits `87..142`). This is why prior decode work reported the Stream opcode "at bit 181" — that is the *absolute* scalar-lane-0 opcode base, not a Stream-specific position. A reimplementer who allocates a physically separate DMA/Stream region will mis-size the bundle and double-book bits `87..142`.
 
@@ -139,7 +138,7 @@ So the absolute opcode bits fall out as `base + 16`: `ScsScalarMisc` opcode `@12
 
 > **NOTE — the predication header is a 3-bit/4-bit overlap, not two fields.** `normal_predication` (3 bits) and `rotate_predication` (4 bits) share the same starting bit `@+22`; the 1-bit `is_rotate_predication` `@+26` selects which interpretation applies. When rotating predication is active the 4-bit field indexes a 16-entry rotating-predicate ring (6acc60406 adds `SetRotatingPredicateRegister` and `BranchRelativeRotatingPreg` to drive it). A reimplementer must not allocate 3+4 distinct bits — it is 4 bits with two meanings.
 
-> **GOTCHA — the two 5-bit operand fields are operand selectors, not a result selector (HIGH confidence).** The opcode and predication-header positions are bit-exact; the precise operand-vs-result role of x0/x1 was inferred from the scalar-ALU operand model (`ScalarY @+5` is the operand-or-immediate selector documented in the ScalarY field work). Treat x0/x1 as register-source selectors; the destination encoding was not independently bit-traced here.
+> **GOTCHA — the two 5-bit operand fields are operand selectors, not a result selector.** The opcode and predication-header positions are bit-exact; the precise operand-vs-result role of x0/x1 follows the scalar-ALU operand model (`ScalarY @+5` is the operand-or-immediate selector documented in the ScalarY field work). Treat x0/x1 as register-source selectors; the destination encoding is not independently bit-traced here.
 
 ---
 
@@ -167,26 +166,26 @@ A **6-bit primary opcode** selects a concrete op or an op-*class*. Op-classes (S
 
 The two ALU lanes share one opcode namespace — `IntegerAdd=0x0a`, `BitwiseAnd=0x0e`, `CompareIntegerEq=0x1e`, the FP-compare block `0x2a..0x2f` are identical on both — and differ only in (a) bundle bit position (`@181` vs `@154`) and (b) a few lane-exclusive ops. Values are gen-invariant for shared ops (vfc `IntegerAdd` is `0x0a`, byte-identical to gfc).
 
-| Opcode | Mnemonic | Class | Lane | Confidence |
-|---:|---|---|---|---|
-| `0x0a` | `IntegerAdd` | integer ALU | Alu0+Alu1 | CONFIRMED |
-| `0x0b` | `IntegerAddWithOverflowCheck` | integer ALU | both | CONFIRMED |
-| `0x0c`/`0x0d` | `IntegerSubtractYX` / `…WithOverflowCheck` | integer ALU | both | CONFIRMED |
-| `0x0e`/`0x0f`/`0x10` | `BitwiseAnd` / `BitwiseOr` / `BitwiseXor` | bitwise | both | CONFIRMED |
-| `0x11`/`0x12` | `FloatingPointAdd` / `FloatingPointSubtractYX` | FP ALU | Alu1 | HIGH |
-| `0x13` | `FloatingPointMultiply` | FP ALU | Alu0 | HIGH |
-| `0x14`/`0x15` | `Multiply32BitIntegers` / `…UnsignedReturningHighHalf` | integer mul | Alu0 | HIGH |
-| `0x16` | `DivideWithRemainderXY` | integer div | Alu0 | HIGH |
-| `0x17`/`0x18`/`0x19` | `LogicalShiftLeft/Right`, `ArithmeticShiftRight` `XByYPlaces` | shift | both | CONFIRMED |
-| `0x1a`/`0x1b` | `MaxOfTwoFloatingPointValues` / `MinOf…` | FP minmax | both | HIGH |
-| `0x1c`/`0x1d` | `MaxOfTwoUnsignedIntValues` / `MinOf…` | int minmax | both | CONFIRMED |
-| `0x1e`–`0x27` | `CompareInteger{Eq,Ne}` + signed/unsigned `Gt/Gte/Lt/Lte` | compare | both | CONFIRMED |
-| `0x28` | `CarryOutFromIntegerUnsigned` | carry | both | CONFIRMED |
-| `0x29` | `PredicateOr` | predicate | both | CONFIRMED |
-| `0x2a`–`0x2f` | `CompareFloatingPoint{Eq,Neq,Gt,Gte,Lt,Lte}` | FP compare | both | HIGH |
-| `0x30` | `IsInfOrNan` | FP classify | both | HIGH |
-| `0x31` | `ArithmeticShiftLeftXByYPlacesCheckOverflow` | shift | both | CONFIRMED |
-| `0x3e` | `LogicalShiftLeftOnesXByYPlaces` | shift (GF-only) | Alu0 | HIGH |
+| Opcode | Mnemonic | Class | Lane |
+|---:|---|---|---|
+| `0x0a` | `IntegerAdd` | integer ALU | Alu0+Alu1 |
+| `0x0b` | `IntegerAddWithOverflowCheck` | integer ALU | both |
+| `0x0c`/`0x0d` | `IntegerSubtractYX` / `…WithOverflowCheck` | integer ALU | both |
+| `0x0e`/`0x0f`/`0x10` | `BitwiseAnd` / `BitwiseOr` / `BitwiseXor` | bitwise | both |
+| `0x11`/`0x12` | `FloatingPointAdd` / `FloatingPointSubtractYX` | FP ALU | Alu1 |
+| `0x13` | `FloatingPointMultiply` | FP ALU | Alu0 |
+| `0x14`/`0x15` | `Multiply32BitIntegers` / `…UnsignedReturningHighHalf` | integer mul | Alu0 |
+| `0x16` | `DivideWithRemainderXY` | integer div | Alu0 |
+| `0x17`/`0x18`/`0x19` | `LogicalShiftLeft/Right`, `ArithmeticShiftRight` `XByYPlaces` | shift | both |
+| `0x1a`/`0x1b` | `MaxOfTwoFloatingPointValues` / `MinOf…` | FP minmax | both |
+| `0x1c`/`0x1d` | `MaxOfTwoUnsignedIntValues` / `MinOf…` | int minmax | both |
+| `0x1e`–`0x27` | `CompareInteger{Eq,Ne}` + signed/unsigned `Gt/Gte/Lt/Lte` | compare | both |
+| `0x28` | `CarryOutFromIntegerUnsigned` | carry | both |
+| `0x29` | `PredicateOr` | predicate | both |
+| `0x2a`–`0x2f` | `CompareFloatingPoint{Eq,Neq,Gt,Gte,Lt,Lte}` | FP compare | both |
+| `0x30` | `IsInfOrNan` | FP classify | both |
+| `0x31` | `ArithmeticShiftLeftXByYPlacesCheckOverflow` | shift | both |
+| `0x3e` | `LogicalShiftLeftOnesXByYPlaces` | shift (GF-only) | Alu0 |
 
 Lane-exclusive primary ALU ops (Alu1-only): `0x01 ScalarLoadSmemY`, `0x02 ScalarLoadSmemXY`, `0x03 ScalarStoreXToSmemY`, `0x09 DescriptorBasedDma`, `0x32 ScalarStoreXToSmemSumDestAndY`, `0x33 AddCbreg`, `0x34 TaskRequestClearIbuf`, `0x35 WriteCbreg`, `0x36 ReadCbreg`, `0x37 TaskRequest`, `0x3c ScalarStoreCircularBuffer`, `0x3d ScalarLoadCircularBuffer`. (`AddCbreg=0x33` confirmed: `(word6 & 0xFC000000) == 0xCC000000`, `0xCC000000 >> 26 = 0x33`.)
 
@@ -194,12 +193,12 @@ Lane-exclusive primary ALU ops (Alu1-only): `0x01 ScalarLoadSmemY`, `0x02 Scalar
 
 When the primary value names a *class*, the concrete op lives in a wider escape field. Bit positions are lane-specific (Alu0 lives higher in the struct than Alu1); the *values* are slot-independent.
 
-| Escape | Field width | Value range | Examples | Confidence |
-|---|---|---|---|---|
-| Control | 11-bit | `0x00..0x1d` | `Halt=0x00`, `BranchAbsolute=0x04`, `BranchRelative=0x05`, `CallAbsolute=0x06`, `CallRelative=0x07`, `ScalarFence=0x09`, `ConvertInt32ToFloat32=0x0b`, `Delay=0x03`, `BranchRelativeRotatingPreg=0x18` (GF) | CONFIRMED |
-| Register-read | 17-bit | `0x280..0x28d` | `ReadRegisterLccLow=0x280`, `…GtcLow=0x282`, `…SparseCoreId=0x286`, `…Tileid=0x289`, `…TaskBitmap=0x28a`, `…DmaCreditRegister=0x28d` | CONFIRMED |
-| Config-set | 16-bit | `0x4001..0x4005` | `SetTag=0x4001`, `SetIndirectFilterValue=0x4002`, `SetDmaCredit=0x4003`, `SetDmaThrottleSflagRange=0x4004`, `SetRotatingPredicateRegister=0x4005` (GF) | HIGH |
-| Divide-push | 11-bit (Alu0) | `0x160001..0x160002` | `DivideWithRemainderXYPushQuotient`, `…PushRemainder` | HIGH |
+| Escape | Field width | Value range | Examples |
+|---|---|---|---|
+| Control | 11-bit | `0x00..0x1d` | `Halt=0x00`, `BranchAbsolute=0x04`, `BranchRelative=0x05`, `CallAbsolute=0x06`, `CallRelative=0x07`, `ScalarFence=0x09`, `ConvertInt32ToFloat32=0x0b`, `Delay=0x03`, `BranchRelativeRotatingPreg=0x18` (GF) |
+| Register-read | 17-bit | `0x280..0x28d` | `ReadRegisterLccLow=0x280`, `…GtcLow=0x282`, `…SparseCoreId=0x286`, `…Tileid=0x289`, `…TaskBitmap=0x28a`, `…DmaCreditRegister=0x28d` |
+| Config-set | 16-bit | `0x4001..0x4005` | `SetTag=0x4001`, `SetIndirectFilterValue=0x4002`, `SetDmaCredit=0x4003`, `SetDmaThrottleSflagRange=0x4004`, `SetRotatingPredicateRegister=0x4005` (GF) |
+| Divide-push | 11-bit (Alu0) | `0x160001..0x160002` | `DivideWithRemainderXYPushQuotient`, `…PushRemainder` |
 
 Verified anchors: `Halt` `(word15 & 0x7FF) == 0` → control 0x00; `BranchAbsolute` `(word3 & 0x7FF000000000000) == 0x4000000000000` → `0x4000000000000>>48 = 0x04`; `ReadRegisterLccLow` `(word3 & 0x7FFFC…) == 0xA000…` → `0xA000…>>42 = 0x280`.
 
@@ -209,17 +208,17 @@ Verified anchors: `Halt` `(word15 & 0x7FF) == 0` → control 0x00; `BranchAbsolu
 
 `ScsScalarMisc` (base 111, opcode `@127`) is the sync/atomic engine. It carries no FP and no branch; it holds the sync-flag family that coordinates SC tiles with each other and with the TensorCore, plus an integer-ALU subset duplicated from the ALU lanes. The opcode space is heavily composite: a 6-bit base names a class, and a 5-bit sub-opcode (the sync/atomic *mode*, at struct-relative bit 47, or an extended-ALU class at bit 58) picks the op.
 
-| Base | Class | Sub-opcode field | Members | Confidence |
-|---:|---|---|---|---|
-| `0x00` | extended-ALU | sub `@bit58` | `CoreInterrupt(0)`, `CountLeadingZeros(14)`, `MoveY(13)` | HIGH |
-| `0x01` | Sync compare-and-set | mode `@bit47` | `SyncDone/Equal/NotEqual/Greater/GreaterOrEqual/Less/NotDone/…/…OrDone` (12 modes) | CONFIRMED |
-| `0x02` | SyncWatch | mode `@bit47` | `SyncWatch{Done,Equal,…,LessOrDone}` (12 modes) | CONFIRMED |
-| `0x03` | SyncWatch escape | sub `@bit58` | `SyncWatchWait(0)`, `SyncWatchWaitSelect(1)` | HIGH |
-| `0x04` | SyncWatch escape | sub `@bit58` | `SyncWatchEnd(0)`, `SyncWatchEndSelect(1)` | HIGH |
-| `0x05` | set-sync | mode `@bit47` | `SetSyncFlag(0)`, `SetSyncDone(1)`, `AddSyncFlag(2)` | CONFIRMED |
-| `0x06` | read-sync | sub `@bit58` | `ReadSyncFlag(0)`, `ReadSyncDone(1)`, `ReadSyncPublicAccess(2)` | HIGH |
-| `0x07` | barrier | mode `@bit47` | `SyncBarrier(0)`, `SetPOrTState(4)` | HIGH |
-| `0x08` | Atomic | op×set-done `@bit47` | `AtomicTile{Write,Add}[SetDone][Inverted]`, `AtomicRemote{Write,Add}…` (12 forms) | CONFIRMED |
+| Base | Class | Sub-opcode field | Members |
+|---:|---|---|---|
+| `0x00` | extended-ALU | sub `@bit58` | `CoreInterrupt(0)`, `CountLeadingZeros(14)`, `MoveY(13)` |
+| `0x01` | Sync compare-and-set | mode `@bit47` | `SyncDone/Equal/NotEqual/Greater/GreaterOrEqual/Less/NotDone/…/…OrDone` (12 modes) |
+| `0x02` | SyncWatch | mode `@bit47` | `SyncWatch{Done,Equal,…,LessOrDone}` (12 modes) |
+| `0x03` | SyncWatch escape | sub `@bit58` | `SyncWatchWait(0)`, `SyncWatchWaitSelect(1)` |
+| `0x04` | SyncWatch escape | sub `@bit58` | `SyncWatchEnd(0)`, `SyncWatchEndSelect(1)` |
+| `0x05` | set-sync | mode `@bit47` | `SetSyncFlag(0)`, `SetSyncDone(1)`, `AddSyncFlag(2)` |
+| `0x06` | read-sync | sub `@bit58` | `ReadSyncFlag(0)`, `ReadSyncDone(1)`, `ReadSyncPublicAccess(2)` |
+| `0x07` | barrier | mode `@bit47` | `SyncBarrier(0)`, `SetPOrTState(4)` |
+| `0x08` | Atomic | op×set-done `@bit47` | `AtomicTile{Write,Add}[SetDone][Inverted]`, `AtomicRemote{Write,Add}…` (12 forms) |
 
 `ScsScalarMisc` also carries flat 6-bit ops mirrored from the ALU set: `IntegerAdd=0x0a`, `BitwiseAnd=0x0e`, the integer compare block `0x1e..0x27`, plus `ReadSyncStateValue=0x2a`, `ReadSyncStateDone=0x2b`, `SetTracemark=0x2d`, `Trace=0x2e`, `SetSyncFlagPublicAccess=0x2f`, `SmemFetchAndAdd=0x38`. (`AtomicTileAdd` confirmed base 8 / sub 1; `IntegerAdd` confirmed `==0x0a`.)
 
@@ -267,7 +266,7 @@ per-engine codec selected by TpuSequencerType {3=SCS, 4=TAC, 5=TEC}
 
 The outliner (`TileTaskOutliningPass`, `0x13606220`) walks each `sc_tpu.tile_task`, collects the region's live-in `mlir::Value`s as the outlined func's arguments (`getUsedValuesDefinedAbove`), builds a `FunctionType` from the live-in memref shapes, clones the region into a new `func.func` (`Region::cloneInto`), wires the entry with a `cf.BranchOp`, replaces the `tile_task` with a `LaunchTileTaskOp`, erases the original, and stamps the new func `sc.sequencer="execute"`. The enclosing function — the SCS control program that issues the launches — carries `sc.sequencer="scs"`. The downstream `LowerSequencerFunctionsPass` reads the string back through the `ScDialect` predicates and selects the SCS/TAC/TEC encoder by the codec-template `TpuSequencerType` ({3,4,5}).
 
-> **QUIRK — the only `sc.sequencer` string values the binary carries are `"scs"` and `"execute"`.** Both string literals are present (`"execute"` at 5 sites, `"scs"` at 1; verified by `qmemcpy(…, "execute", 7)` in the outliner callback and a `"scs", 3` literal elsewhere). There is **no `"access"` string** anywhere in the binary — the SCS↔TEC partition is the only one the attribute model expresses, and TileTaskOp carries the `ParentFuncHasCoreSequencerTypeAttribute` trait rather than a per-engine string. TAC's presence on Viperfish/Ghostlite is a codec-namespace fact (`vxc.vfc`/`gxc.glc` ship `SparseCoreTacCodecBase`), not an outliner-string fact; on 6acc60406 the `gfc` namespace ships zero `SparseCoreTac*` symbols, so tile-fetch folds into the `"execute"` (TEC) function. UNVERIFIED: that any pass ever stamps a distinct `"access"` attribute for TAC.
+> **QUIRK — the only `sc.sequencer` string values the binary carries are `"scs"` and `"execute"`.** Both string literals are present (`"execute"` at 5 sites, `"scs"` at 1; verified by `qmemcpy(…, "execute", 7)` in the outliner callback and a `"scs", 3` literal elsewhere). There is **no `"access"` string** anywhere in the binary — the SCS↔TEC partition is the only one the attribute model expresses, and TileTaskOp carries the `ParentFuncHasCoreSequencerTypeAttribute` trait rather than a per-engine string. TAC's presence on Viperfish/Ghostlite is a codec-namespace fact (`vxc.vfc`/`gxc.glc` ship `SparseCoreTacCodecBase`), not an outliner-string fact; on 6acc60406 the `gfc` namespace ships zero `SparseCoreTac*` symbols, so tile-fetch folds into the `"execute"` (TEC) function. No pass is observed to stamp a distinct `"access"` attribute for TAC.
 
 ### The control / sync primitives SCS uses to issue
 
@@ -285,28 +284,28 @@ The SCS-side mechanics of a launch and handoff are built from the scalar roster 
 
 ## Function Map
 
-| Symbol | Address | Role | Confidence |
-|---|---|---|---|
-| `SparseCoreScsCodecBase::Encode` (gfc) | `0x1391ef60` | bundle dispatcher; shared-Span call to each slot encoder | CONFIRMED |
-| `BitCopy` | `0x1fa0a900` | little-endian bit packer (`dst, dst_bitoff, src, src_bitoff, nbits`) | CONFIRMED |
-| `SparseCoreScalarImmediatesEncoder::Encode` | `0x1eb5bd20` | 4 × 20-bit immediates `@7/27/47/67` | CONFIRMED |
-| `SparseCoreVectorScalarEncoder::Encode` | `0x1ecd1e00` | scalar→vector bridge `@87..110` | CONFIRMED |
-| `SparseCoreScsScalarMiscEncoder::Encode` | `0x1eb914a0` | misc/sync/atomic slot, opcode `@127` | CONFIRMED |
-| `SparseCoreScalarAlu1Encoder::Encode` | `0x1eb7cd00` | scalar lane 1, opcode `@154` | CONFIRMED |
-| `SparseCoreScalarAlu0Encoder::Encode` | `0x1eb693c0` | scalar lane 0, opcode `@181`; template bit-exact | CONFIRMED |
-| `SparseCoreStreamEncoder::Encode` | `0x1eb9b4c0` | Stream oneof-of-lane, opcode `@181/154`, payload `@99` | CONFIRMED |
-| `SparseCoreDmaEncoder::Encode` | `0x1eb5a3a0` | Dma oneof-of-lane, opcode `@181/154`, payload `@87` | CONFIRMED |
-| `EncoderBase<…gfc Scs…>::BundleSizeBytes` | `0x1e835260` | dispatches codec-metadata `vtable[+0x30]` → 32 | CONFIRMED |
-| `SparseCoreScalarMiscIntegerAddOpcode::Matches` | `0x1ebabf00` | flat-6 predicate, `==0x0a` (form A) | CONFIRMED |
-| `SparseCoreScalarMiscAtomicTileAddOpcode::Matches` | `0x1ebabbe0` | composite predicate, base 8 / sub 1 (form B) | CONFIRMED |
-| `SparseCoreScalarAlu0IntegerAddOpcode::Matches` | `0x1eb67660` | mask-compare, `(w&0x7E0…)==0x140…` → 0x0a (form C) | CONFIRMED |
-| `SparseCoreScalarAlu0HaltOpcode::Matches` | `0x1eb67500` | control escape, `(w15&0x7FF)==0` → 0x00 | CONFIRMED |
-| `SparseCoreScalarAlu0BranchAbsoluteOpcode::Matches` | `0x1eb67d40` | control escape → 0x04 | CONFIRMED |
-| `SparseCoreScalarAlu0ReadRegisterLccLowOpcode::Matches` | `0x1eb67560` | 17-bit escape → 0x280 | CONFIRMED |
-| `SparseCoreScalarAlu1AddCbregOpcode::Matches` | `0x1eb7b5a0` | `(w6&0xFC000000)==0xCC000000` → 0x33 | CONFIRMED |
-| `TileTaskOutliningPass::runOnOperation` | `0x13606220` | region→sequencer outliner driver | CONFIRMED |
-| `LowerSequencerFunctionsPass::runOnOperation` | `0x13532120` | reads `sc.sequencer`, lowers per-engine body | CONFIRMED |
-| `ScDialect::HasCoreSequencerTypeAttribute` | `0x14599ec0` | predicate: `sc.sequencer == "scs"` | CONFIRMED |
+| Symbol | Address | Role |
+|---|---|---|
+| `SparseCoreScsCodecBase::Encode` (gfc) | `0x1391ef60` | bundle dispatcher; shared-Span call to each slot encoder |
+| `BitCopy` | `0x1fa0a900` | little-endian bit packer (`dst, dst_bitoff, src, src_bitoff, nbits`) |
+| `SparseCoreScalarImmediatesEncoder::Encode` | `0x1eb5bd20` | 4 × 20-bit immediates `@7/27/47/67` |
+| `SparseCoreVectorScalarEncoder::Encode` | `0x1ecd1e00` | scalar→vector bridge `@87..110` |
+| `SparseCoreScsScalarMiscEncoder::Encode` | `0x1eb914a0` | misc/sync/atomic slot, opcode `@127` |
+| `SparseCoreScalarAlu1Encoder::Encode` | `0x1eb7cd00` | scalar lane 1, opcode `@154` |
+| `SparseCoreScalarAlu0Encoder::Encode` | `0x1eb693c0` | scalar lane 0, opcode `@181`; template bit-exact |
+| `SparseCoreStreamEncoder::Encode` | `0x1eb9b4c0` | Stream oneof-of-lane, opcode `@181/154`, payload `@99` |
+| `SparseCoreDmaEncoder::Encode` | `0x1eb5a3a0` | Dma oneof-of-lane, opcode `@181/154`, payload `@87` |
+| `EncoderBase<…gfc Scs…>::BundleSizeBytes` | `0x1e835260` | dispatches codec-metadata `vtable[+0x30]` → 32 |
+| `SparseCoreScalarMiscIntegerAddOpcode::Matches` | `0x1ebabf00` | flat-6 predicate, `==0x0a` (form A) |
+| `SparseCoreScalarMiscAtomicTileAddOpcode::Matches` | `0x1ebabbe0` | composite predicate, base 8 / sub 1 (form B) |
+| `SparseCoreScalarAlu0IntegerAddOpcode::Matches` | `0x1eb67660` | mask-compare, `(w&0x7E0…)==0x140…` → 0x0a (form C) |
+| `SparseCoreScalarAlu0HaltOpcode::Matches` | `0x1eb67500` | control escape, `(w15&0x7FF)==0` → 0x00 |
+| `SparseCoreScalarAlu0BranchAbsoluteOpcode::Matches` | `0x1eb67d40` | control escape → 0x04 |
+| `SparseCoreScalarAlu0ReadRegisterLccLowOpcode::Matches` | `0x1eb67560` | 17-bit escape → 0x280 |
+| `SparseCoreScalarAlu1AddCbregOpcode::Matches` | `0x1eb7b5a0` | `(w6&0xFC000000)==0xCC000000` → 0x33 |
+| `TileTaskOutliningPass::runOnOperation` | `0x13606220` | region→sequencer outliner driver |
+| `LowerSequencerFunctionsPass::runOnOperation` | `0x13532120` | reads `sc.sequencer`, lowers per-engine body |
+| `ScDialect::HasCoreSequencerTypeAttribute` | `0x14599ec0` | predicate: `sc.sequencer == "scs"` |
 
 Cross-gen anchors: vfc SCS `ScalarAlu0` `0x1ee82ce0` (op `@181`), `ScsScalarMisc` `0x1eeac160` (op `@127`); glc SCS `ScalarAlu0` `0x1e9d2140` (op `@181`) — all byte-identical to gfc. The `Encode` dispatcher and slot bases do not change across VF/GL/GF.
 
@@ -317,7 +316,7 @@ Cross-gen anchors: vfc SCS `ScalarAlu0` `0x1ee82ce0` (op `@181`), `ScsScalarMisc
 - **No FP and no branch in the Misc slot.** `ScsScalarMisc` is sync/atomic + integer-ALU only; FP arithmetic, FP compare, branches, calls, and SMEM load/store live in the ALU lanes. A scheduler must not place a sync op into an ALU lane or an FP op into Misc.
 - **Lane asymmetry.** `ScalarAlu1` holds the SMEM load/store, CBREG, and task-request ops (`ScalarLoadSmemY`, `AddCbreg`/`WriteCbreg`/`ReadCbreg`, `TaskRequest`, `DescriptorBasedDma` — each present only in the Alu1 namespace, Alu0=0); `ScalarAlu0` holds the branch/call and divide-push ops (`BranchAbsolute`, `CallAbsolute`, `DivideWithRemainderXYPushQuotient` — Alu0-only). Many ops (`IntegerAdd`, `Halt`, `ConvertInt32ToFloat32`) appear in *both* lanes. The two lanes are not interchangeable despite sharing the opcode namespace.
 - **6acc60406's non-yielding scheduler.** The dropped `Yieldable*` and dual-channel sync families mean a 6acc60406 SCS program cannot express cooperative yield-on-sync; it relies on the rotating-predicate ring and deterministic latency instead.
-- **Unmapped regions (LOW/inferred).** The 7-bit bundle prefix (`@0..6`) and the `192..255` padding are unwritten by any slot encoder; whether the codec sets a version/valid nibble in an epilogue is not decoded (the bundle carries no `0x55` trailer). The absolute bundle bit of each composite `ScsScalarMisc` sub-opcode field (the sync/atomic mode at struct-relative bit 47/58) is recovered as a within-struct offset but is not pinned to its absolute bundle bit for all 50 composite Misc ops.
+- **Unmapped regions.** The 7-bit bundle prefix (`@0..6`) and the `192..255` padding are unwritten by any slot encoder; whether the codec sets a version/valid nibble in an epilogue is not decoded (the bundle carries no `0x55` trailer). The absolute bundle bit of each composite `ScsScalarMisc` sub-opcode field (the sync/atomic mode at struct-relative bit 47/58) is recovered as a within-struct offset but is not pinned to its absolute bundle bit for all 50 composite Misc ops.
 
 ---
 

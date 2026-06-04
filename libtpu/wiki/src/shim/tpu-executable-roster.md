@@ -36,17 +36,17 @@ For reimplementation, the contract is:
 
 The nine functions, grouped by area, with the impl symbol (always the C-ABI free function itself), its address and size, and the C++ method it dispatches into. Confidence reflects how directly the bounce target was observed in the decompiled body.
 
-| `TpuExecutable_*` | Address | Size | Bounces to (C++) | Area | Confidence |
-|---|---|---|---|---|---|
-| `LoadProgramAndEnqueueToStream` | `0xeaafba0` | 4496 | `xla::jellyfish::DeepseaExecutable::LoadProgramAndEnqueueToStream` @ `0x13426260` (via vtable+96) | Execution | CERTAIN |
-| `ExecuteAsyncOnStream` | `0xeabd500` | 4708 | `xla::legacy::TpuExecutableInterface::ExecuteAsyncOnStream` @ `0x1342cd20` (via vtable+24) | Execution | CERTAIN |
-| `Serialize` | `0xeabea80` | 178 | `xla::jellyfish::DeepseaExecutable::ToProto` @ `0x134282e0` | Serialization | CERTAIN |
-| `Deserialize` | `0xeabede0` | 288 | `xla::jellyfish::DeepseaExecutable::FromProto` @ `0x134283e0` | Serialization | CERTAIN |
-| `Fingerprint` | `0xeabea40` | 54 | `DeepseaExecutable::fingerprint` @ `0x13428a80` (cached field at `obj+96` → `+648/+656`) | Metadata | CERTAIN |
-| `HloModule` | `0xeabef00` | 86 | `ApiConverter::ToC(xla::HloModule const&)` over `executable.hlo_module_` | Metadata | CERTAIN |
-| `Free` | `0xeabef60` | 51 | C++ virtual destructor via vtable `+8`, then `free()` | Lifecycle | CERTAIN |
-| `FreeXlaShapeIndexArray` | `0xeabea00` | 10 | bare `free(ptr)` | Lifecycle | CERTAIN |
-| `FreeMaybeOwningDeviceAddressArray` | `0xeabea20` | 10 | bare `free(ptr)` | Lifecycle | CERTAIN |
+| `TpuExecutable_*` | Address | Size | Bounces to (C++) | Area |
+|---|---|---|---|---|
+| `LoadProgramAndEnqueueToStream` | `0xeaafba0` | 4496 | `xla::jellyfish::DeepseaExecutable::LoadProgramAndEnqueueToStream` @ `0x13426260` (via vtable+96) | Execution |
+| `ExecuteAsyncOnStream` | `0xeabd500` | 4708 | `xla::legacy::TpuExecutableInterface::ExecuteAsyncOnStream` @ `0x1342cd20` (via vtable+24) | Execution |
+| `Serialize` | `0xeabea80` | 178 | `xla::jellyfish::DeepseaExecutable::ToProto` @ `0x134282e0` | Serialization |
+| `Deserialize` | `0xeabede0` | 288 | `xla::jellyfish::DeepseaExecutable::FromProto` @ `0x134283e0` | Serialization |
+| `Fingerprint` | `0xeabea40` | 54 | `DeepseaExecutable::fingerprint` @ `0x13428a80` (cached field at `obj+96` → `+648/+656`) | Metadata |
+| `HloModule` | `0xeabef00` | 86 | `ApiConverter::ToC(xla::HloModule const&)` over `executable.hlo_module_` | Metadata |
+| `Free` | `0xeabef60` | 51 | C++ virtual destructor via vtable `+8`, then `free()` | Lifecycle |
+| `FreeXlaShapeIndexArray` | `0xeabea00` | 10 | bare `free(ptr)` | Lifecycle |
+| `FreeMaybeOwningDeviceAddressArray` | `0xeabea20` | 10 | bare `free(ptr)` | Lifecycle |
 
 > **NOTE —** the `PJRT_TpuExecutable_*` family (`PJRT_TpuExecutable_RunHloCostAnalysis_Args`, `..._GetCompiledMemoryStats_Args`, `..._GetHloModuleWithConfig_Args`, `..._SetTpuCompilationEnv_Args`, and friends) is a **different surface** and is *not* on this roster. Those are PJRT-extension argument structs handled by `pjrt::(anonymous namespace)::RunHloCostAnalysis` / `GetCompiledMemoryStats` / etc., and belong to the PJRT pages. The C-ABI roster owned here is exactly the nine functions whose dynamic-symbol name *begins* with `TpuExecutable_` (no `PJRT_` prefix). Filtering on the prefix is the only reliable separator — the two families share verbs (`HloModule`, cost analysis) but live on opposite sides of the ABI.
 
@@ -98,10 +98,10 @@ function TpuExecutable_ExecuteAsyncOnStream(handle /*a1*/, run_opts /*a2*/,
 
 ### Function Map
 
-| Function | Size | Role | Confidence |
-|---|---|---|---|
-| `TpuExecutable_LoadProgramAndEnqueueToStream` @ `0xeaafba0` | 4496 | C-ABI marshal → `DeepseaExecutable::LoadProgramAndEnqueueToStream` (vtable+96) | CERTAIN |
-| `TpuExecutable_ExecuteAsyncOnStream` @ `0xeabd500` | 4708 | C-ABI marshal → `TpuExecutableInterface::ExecuteAsyncOnStream` (vtable+24) | CERTAIN |
+| Function | Size | Role |
+|---|---|---|
+| `TpuExecutable_LoadProgramAndEnqueueToStream` @ `0xeaafba0` | 4496 | C-ABI marshal → `DeepseaExecutable::LoadProgramAndEnqueueToStream` (vtable+96) |
+| `TpuExecutable_ExecuteAsyncOnStream` @ `0xeabd500` | 4708 | C-ABI marshal → `TpuExecutableInterface::ExecuteAsyncOnStream` (vtable+24) |
 
 ### Considerations
 
@@ -157,10 +157,10 @@ cleanup:
 
 ### Function Map
 
-| Function | Size | Role | Confidence |
-|---|---|---|---|
-| `TpuExecutable_Serialize` @ `0xeabea80` | 178 | `ToProto` + arena-aware swap/copy into a heap `DeepseaExecutableProto` | CERTAIN |
-| `TpuExecutable_Deserialize` @ `0xeabede0` | 288 | `ParseFromArray` + `FromProto`; boxes the result, sets a `StatusRep` out-param | CERTAIN |
+| Function | Size | Role |
+|---|---|---|
+| `TpuExecutable_Serialize` @ `0xeabea80` | 178 | `ToProto` + arena-aware swap/copy into a heap `DeepseaExecutableProto` |
+| `TpuExecutable_Deserialize` @ `0xeabede0` | 288 | `ParseFromArray` + `FromProto`; boxes the result, sets a `StatusRep` out-param |
 
 ### Considerations
 
@@ -205,10 +205,10 @@ function TpuExecutable_HloModule(out /*a1*/, handle /*a2*/):
 
 ### Function Map
 
-| Function | Size | Role | Confidence |
-|---|---|---|---|
-| `TpuExecutable_Fingerprint` @ `0xeabea40` | 54 | borrow `(ptr,len)` of the cached fingerprint field at `obj+96`; SSO-decoded | CERTAIN |
-| `TpuExecutable_HloModule` @ `0xeabef00` | 86 | `ApiConverter::ToC` of `hlo_module_` into a caller `XLA_HloModule`; FATAL if null | CERTAIN |
+| Function | Size | Role |
+|---|---|---|
+| `TpuExecutable_Fingerprint` @ `0xeabea40` | 54 | borrow `(ptr,len)` of the cached fingerprint field at `obj+96`; SSO-decoded |
+| `TpuExecutable_HloModule` @ `0xeabef00` | 86 | `ApiConverter::ToC` of `hlo_module_` into a caller `XLA_HloModule`; FATAL if null |
 
 ### Considerations
 
@@ -245,11 +245,11 @@ function TpuExecutable_FreeMaybeOwningDeviceAddressArray(p):  if p: free(p)
 
 ### Function Map
 
-| Function | Size | Role | Confidence |
-|---|---|---|---|
-| `TpuExecutable_Free` @ `0xeabef60` | 51 | virtual-destruct `*box` via vtable+8, then `free(box)` | CERTAIN |
-| `TpuExecutable_FreeXlaShapeIndexArray` @ `0xeabea00` | 10 | `if (p) free(p)` — frees a `XLA_ShapeIndex[]` | CERTAIN |
-| `TpuExecutable_FreeMaybeOwningDeviceAddressArray` @ `0xeabea20` | 10 | `if (p) free(p)` — frees a `SE_MaybeOwningDeviceAddress[]` | CERTAIN |
+| Function | Size | Role |
+|---|---|---|
+| `TpuExecutable_Free` @ `0xeabef60` | 51 | virtual-destruct `*box` via vtable+8, then `free(box)` |
+| `TpuExecutable_FreeXlaShapeIndexArray` @ `0xeabea00` | 10 | `if (p) free(p)` — frees a `XLA_ShapeIndex[]` |
+| `TpuExecutable_FreeMaybeOwningDeviceAddressArray` @ `0xeabea20` | 10 | `if (p) free(p)` — frees a `SE_MaybeOwningDeviceAddress[]` |
 
 ### Considerations
 

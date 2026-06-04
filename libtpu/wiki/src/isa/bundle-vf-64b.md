@@ -42,18 +42,18 @@ A Viperfish bundle is a 512-bit flat buffer. Every functional unit reads one con
 
 The slot taxonomy is the same `Bundle` sub-instruction set as Pufferfish (see [Bundle Model](bundle-model-overview.md)), with the V5+ doubling of the MXU and the EUP moved into the VALU. The table below gives each slot, the encoder that serializes it, and the bit region it occupies (from the verified `BitCopy` offsets of the representative ops).
 
-| Slot | Engine | Encoder (`asic_sw::deepsea::vxc::isa::…`) | Region (bits) | Confidence |
-|---|---|---|---|---|
-| `VectorExtended0` | MXU 0 (matmul / latch / push / transpose / lane / xlane) | `TensorCoreVectorExtended0Encoder::Encode` @ `0x1efa0f60` | opcode/ctl ~48–64; operand pool 157–293 | CERTAIN |
-| `VectorExtended1` | MXU 1 | `TensorCoreVectorExtended1Encoder::Encode` @ `0x1efec020` | opcode/ctl ~28–44; shares the 157–293 pool | CERTAIN |
-| `VectorResult0` | MXU/EUP/transpose result pop | `TensorCoreVectorResult0Encoder::Encode` @ `0x1f018f40` | 11–24 (dest @ 14) | CERTAIN |
-| `VectorResult1` | second result pop | `TensorCoreVectorResult1Encoder::Encode` @ `0x1f019d80` | mirror of Result0 | HIGH |
-| `VectorAlu0…3` | 4 VALU lanes (`Alu3` also issues the EUP push) | `TensorCoreVectorAlu{0..3}Encoder::Encode` | VALU0 opcode @ 299 w7; Alu3 EUP @ 186/197 | CERTAIN |
-| `VectorLoad0/1` | vector memory load | `TensorCoreVectorLoad{0,1}Encoder` | per-gen repacked (see [Memory Load](slot-memory-load.md)) | HIGH |
-| `VectorStore` | vector memory store | `TensorCoreVectorStoreEncoder` | data-vreg @ 170 w4; base @ 157 w6 | HIGH |
-| `ScalarAlu0/1` | sequencer / scalar pipe (branch/call/halt/LCC) | `TensorCoreScalarAlu0Encoder::Encode` @ `0x1eecb900` | opcode-low @ 488 w5; pred @ 499/503 | CERTAIN |
-| `Immediates` | 6 immediate slots (branch/call offset home) | `TensorCoreImmediatesEncoder::Encode` @ `0x1eebee40` | imm0 @ 430 … imm5 @ 330, each w20 | CERTAIN |
-| `Predicates` | predicate pool (per-slot field on VF) | per-slot 4+1 field at slot top | TC ScalarAlu0 @ 499/503 | CERTAIN |
+| Slot | Engine | Encoder (`asic_sw::deepsea::vxc::isa::…`) | Region (bits) |
+|---|---|---|---|
+| `VectorExtended0` | MXU 0 (matmul / latch / push / transpose / lane / xlane) | `TensorCoreVectorExtended0Encoder::Encode` @ `0x1efa0f60` | opcode/ctl ~48–64; operand pool 157–293 |
+| `VectorExtended1` | MXU 1 | `TensorCoreVectorExtended1Encoder::Encode` @ `0x1efec020` | opcode/ctl ~28–44; shares the 157–293 pool |
+| `VectorResult0` | MXU/EUP/transpose result pop | `TensorCoreVectorResult0Encoder::Encode` @ `0x1f018f40` | 11–24 (dest @ 14) |
+| `VectorResult1` | second result pop | `TensorCoreVectorResult1Encoder::Encode` @ `0x1f019d80` | mirror of Result0 |
+| `VectorAlu0…3` | 4 VALU lanes (`Alu3` also issues the EUP push) | `TensorCoreVectorAlu{0..3}Encoder::Encode` | VALU0 opcode @ 299 w7; Alu3 EUP @ 186/197 |
+| `VectorLoad0/1` | vector memory load | `TensorCoreVectorLoad{0,1}Encoder` | per-gen repacked (see [Memory Load](slot-memory-load.md)) |
+| `VectorStore` | vector memory store | `TensorCoreVectorStoreEncoder` | data-vreg @ 170 w4; base @ 157 w6 |
+| `ScalarAlu0/1` | sequencer / scalar pipe (branch/call/halt/LCC) | `TensorCoreScalarAlu0Encoder::Encode` @ `0x1eecb900` | opcode-low @ 488 w5; pred @ 499/503 |
+| `Immediates` | 6 immediate slots (branch/call offset home) | `TensorCoreImmediatesEncoder::Encode` @ `0x1eebee40` | imm0 @ 430 … imm5 @ 330, each w20 |
+| `Predicates` | predicate pool (per-slot field on VF) | per-slot 4+1 field at slot top | TC ScalarAlu0 @ 499/503 |
 
 > **NOTE —** the byte regions are *not* contiguous per slot in the obvious way. The MXU operand pool (bits 157–293, the eight 6-bit source vregs) lives physically in the middle of the bundle and is *shared* between `VectorExtended0` and `VectorExtended1`; only the opcode/control words at the top of each MXU slot are distinct. A reimplementation that assumes each slot owns a private contiguous run of bytes will mis-pack the second MXU.
 
@@ -132,26 +132,26 @@ Each `VectorExtended` slot drives one MXU and carries the full matrix-unit op vo
 
 The MXU control region for Viperfish, verified from the decompiled `MatrixMultiplyBf16` (@ `0x1efa2e40`), `PushmatrixBf16` (@ `0x1efaf820`), and `LoadMatrixRegisterGmrMsra` helpers:
 
-| Field | Abs bit | Width | Written by | Value (Bf16 case) | Confidence |
-|---|---|---|---|---|---|
-| MXU-id (unit) | 64 | 4 | dispatcher (proto + 0x1c) | 0 (MXU 0) | CERTAIN |
-| opcode-HIGH (matmul) | 57 | 7 | `MatrixMultiply<fmt>` | `0x1` | CERTAIN |
-| opcode-HIGH (latch) | 57 | 7 | `LoadMatrixRegister*` | `0x37` (55) | CERTAIN |
-| opcode-HIGH (push) | 59 | 5 | `Pushmatrix<fmt>` | `0xe` (14) | CERTAIN |
-| data-format sub-disc | 51 | 4 | per-op | matmul Bf16=1 / push Bf16=3 / latch=0 | CERTAIN |
-| control (3-bit) | 48 | 3 | per-op | proto + 0x18 | CERTAIN |
-| done-gains / latch flag | 55 | 2 | per-op | proto + 0x1c | CERTAIN |
-| Transpose field (push/latch) | 57 | 1 | `Pushmatrix*` (proto + 0x20) | — | CERTAIN |
-| Target field (push/latch) | 58 | 1 | `Pushmatrix*` (proto + 0x24) | — | CERTAIN |
-| push-src vreg | 180 | 6 | `Pushmatrix*` (proto + 0x44) | — | CERTAIN |
-| primary operand (matmul) | 180 | 6 | `MatrixMultiply*` | proto + 0x3c | CERTAIN |
-| src vreg #1 (proto + 0x20) | 157 | 6 | matmul | systolic feed | CERTAIN |
-| src vreg #2 (proto + 0x24) | 282 | 6 | matmul | systolic feed | CERTAIN |
-| src vreg #3 (proto + 0x28) | 293 | 6 | matmul | systolic feed | CERTAIN |
-| src vreg #4 (proto + 0x2c) | 248 | 6 | matmul | systolic feed | CERTAIN |
-| src vreg #5 (proto + 0x30) | 259 | 6 | matmul | systolic feed | CERTAIN |
-| src vreg #6 (proto + 0x34) | 214 | 6 | matmul | systolic feed | CERTAIN |
-| src vreg #7 (proto + 0x38) | 225 | 6 | matmul | systolic feed | CERTAIN |
+| Field | Abs bit | Width | Written by | Value (Bf16 case) |
+|---|---|---|---|---|
+| MXU-id (unit) | 64 | 4 | dispatcher (proto + 0x1c) | 0 (MXU 0) |
+| opcode-HIGH (matmul) | 57 | 7 | `MatrixMultiply<fmt>` | `0x1` |
+| opcode-HIGH (latch) | 57 | 7 | `LoadMatrixRegister*` | `0x37` (55) |
+| opcode-HIGH (push) | 59 | 5 | `Pushmatrix<fmt>` | `0xe` (14) |
+| data-format sub-disc | 51 | 4 | per-op | matmul Bf16=1 / push Bf16=3 / latch=0 |
+| control (3-bit) | 48 | 3 | per-op | proto + 0x18 |
+| done-gains / latch flag | 55 | 2 | per-op | proto + 0x1c |
+| Transpose field (push/latch) | 57 | 1 | `Pushmatrix*` (proto + 0x20) | — |
+| Target field (push/latch) | 58 | 1 | `Pushmatrix*` (proto + 0x24) | — |
+| push-src vreg | 180 | 6 | `Pushmatrix*` (proto + 0x44) | — |
+| primary operand (matmul) | 180 | 6 | `MatrixMultiply*` | proto + 0x3c |
+| src vreg #1 (proto + 0x20) | 157 | 6 | matmul | systolic feed |
+| src vreg #2 (proto + 0x24) | 282 | 6 | matmul | systolic feed |
+| src vreg #3 (proto + 0x28) | 293 | 6 | matmul | systolic feed |
+| src vreg #4 (proto + 0x2c) | 248 | 6 | matmul | systolic feed |
+| src vreg #5 (proto + 0x30) | 259 | 6 | matmul | systolic feed |
+| src vreg #6 (proto + 0x34) | 214 | 6 | matmul | systolic feed |
+| src vreg #7 (proto + 0x38) | 225 | 6 | matmul | systolic feed |
 
 > **QUIRK —** the opcode field changes both position and width by op family at the *same* slot. `MatrixMultiply<fmt>` writes a 7-bit opcode at bit 57; `Pushmatrix<fmt>` writes a 5-bit opcode-HIGH at bit 59 (with the 4-bit data-format at bit 51 below it); `LoadMatrixRegister*` reuses the 7-bit @ 57 window but with value `0x37`. On the push path, bits 57 and 58 are *repurposed* as the 1-bit **Transpose** and **Target** fields — the same physical bits that on the matmul path are the two high bits of the 7-bit opcode. The decoder distinguishes them by the opcode-HIGH value (a push/latch has opcode-HIGH `0xe`, a matmul `0x1`), so the LSB region is free to carry latch control. On the decode side the `Pushmatrix*TransposeField` reads `[base+8]>>0x39&1` = abs57 and the `…TargetField` reads `>>0x3a&1` = abs58.
 
@@ -207,21 +207,21 @@ The `VectorResult` slot is the *pop* side of the push-pop protocols. It drains a
 
 Verified from `TensorCoreVectorResult0Encoder::Encode` (@ `0x1f018f40`):
 
-| Field | Abs bit | Width | Notes | Confidence |
-|---|---|---|---|---|
-| header field (proto + 0x1c) | 24 | 4 | written first, every result-type | CERTAIN |
-| sub-type selector | 22 | 2 | constant 0/1/2/3 = PopEup / PopMxu / Transpose / PopCcrf | CERTAIN |
-| result mode (proto + 0x18) | 20 | 2 | per result-type (Mxu/Transpose only) | CERTAIN |
-| dest vreg | 14 | 6 | common tail | CERTAIN |
+| Field | Abs bit | Width | Notes |
+|---|---|---|---|
+| header field (proto + 0x1c) | 24 | 4 | written first, every result-type |
+| sub-type selector | 22 | 2 | constant 0/1/2/3 = PopEup / PopMxu / Transpose / PopCcrf |
+| result mode (proto + 0x18) | 20 | 2 | per result-type (Mxu/Transpose only) |
+| dest vreg | 14 | 6 | common tail |
 
 The four Viperfish sub-messages (proto types under `asic_sw::deepsea::vxc::isa`), dispatched by the `proto + 0x50` opcode and tagged by the 2-bit selector at bit 22:
 
-| Sub-message | proto opcode | bit-22 selector | Role | Confidence |
-|---|---|---|---|---|
-| `TensorCoreVectorResult_PopEupResult` | 5 | 0 | drain an EUP/transcendental result | CERTAIN |
-| `TensorCoreVectorResult_PopMxuResult` | 6 | 1 | drain a finished MXU matmul accumulator | CERTAIN |
-| `TensorCoreVectorResult_TransposeResult` | 7 | 2 | drain a systolic transpose | CERTAIN |
-| `TensorCoreVectorResult_PopCcrfResult` | 8 | 3 | scalar/cross-core-register-file pop (vxc-only) | CERTAIN |
+| Sub-message | proto opcode | bit-22 selector | Role |
+|---|---|---|---|
+| `TensorCoreVectorResult_PopEupResult` | 5 | 0 | drain an EUP/transcendental result |
+| `TensorCoreVectorResult_PopMxuResult` | 6 | 1 | drain a finished MXU matmul accumulator |
+| `TensorCoreVectorResult_TransposeResult` | 7 | 2 | drain a systolic transpose |
+| `TensorCoreVectorResult_PopCcrfResult` | 8 | 3 | scalar/cross-core-register-file pop (vxc-only) |
 
 > **GOTCHA —** the 2-bit selector at bit 22 (values 0/1/2/3) is the field a decoder keys on, and it does **not** equal the `proto + 0x50` opcode (5/6/7/8). The encoder reads the opcode to choose a `switch` arm, then writes the *selector* constant. PopEup is reachable from two arms — opcode 5 and opcode 8 (the `else` of the PopCcrf branch falls through to the PopEup default-instance), so a reimplementation that maps opcode→selector 1:1 will mis-tag those. The dest vreg lands at the common tail bit 14 (w6) regardless of sub-type.
 
@@ -239,11 +239,11 @@ The Extended Unary Processor (the transcendental unit) has no dedicated bundle s
 
 Verified from `EncodeTensorCoreVectorAlu3EupPush` (@ `0x1ef6e400`):
 
-| Field | Abs bit | Width | Value | Confidence |
-|---|---|---|---|---|
-| VALU opcode (EUP-push family) | 197 | 7 | `0x0` | CERTAIN |
-| EUP-function selector | 186 | 5 | `0x16` (22) for the generic `EupPush` | CERTAIN |
-| src vreg | 191 | 6 | proto + 0x18 (present-gated) | CERTAIN |
+| Field | Abs bit | Width | Value |
+|---|---|---|---|
+| VALU opcode (EUP-push family) | 197 | 7 | `0x0` |
+| EUP-function selector | 186 | 5 | `0x16` (22) for the generic `EupPush` |
+| src vreg | 191 | 6 | proto + 0x18 (present-gated) |
 
 ```c
 function EncodeTensorCoreVectorAlu3EupPush(out, proto):   // @0x1ef6e400
@@ -274,27 +274,27 @@ These slots are not MXU-specific but pin the rest of the 512-bit map. They come 
 
 `TensorCoreImmediatesEncoder::Encode` (@ `0x1eebee40`) writes six 20-bit immediate slots, each from `proto + 0x18 … 0x2c`. The branch/call/sync 20-bit signed offset lands in **immediate slot 0**:
 
-| imm slot | proto field | VF abs bit | Width | Confidence |
-|---|---|---|---|---|
-| 0 (branch/call offset) | proto + 0x18 | 430 | 20 | CERTAIN |
-| 1 | proto + 0x1c | 410 | 20 | CERTAIN |
-| 2 | proto + 0x20 | 390 | 20 | CERTAIN |
-| 3 | proto + 0x24 | 370 | 20 | CERTAIN |
-| 4 | proto + 0x28 | 350 | 20 | CERTAIN |
-| 5 | proto + 0x2c | 330 | 20 | CERTAIN |
+| imm slot | proto field | VF abs bit | Width |
+|---|---|---|---|
+| 0 (branch/call offset) | proto + 0x18 | 430 | 20 |
+| 1 | proto + 0x1c | 410 | 20 |
+| 2 | proto + 0x20 | 390 | 20 |
+| 3 | proto + 0x24 | 370 | 20 |
+| 4 | proto + 0x28 | 350 | 20 |
+| 5 | proto + 0x2c | 330 | 20 |
 
 ### Sequencer slot
 
 `TensorCoreScalarAlu0Encoder::Encode` (@ `0x1eecb900`) writes a common predication header then dispatches on the proto opcode. The control-op layout:
 
-| Field | Abs bit | Width | Notes | Confidence |
-|---|---|---|---|---|
-| predication reg index | 499 | 4 | proto + 0x20 | CERTAIN |
-| predication inversion | 503 | 1 | proto + 0x18 (byte) | CERTAIN |
-| opcode-HIGH / family | 493 | 6 | 0 for branch/call | CERTAIN |
-| opcode-LOW / discriminator | 488 | 5 | 4/5/6/7 | CERTAIN |
-| x-target sreg (`BranchSreg`) | 488 | 5 | sreg `x()` | HIGH |
-| dest (return-addr) sreg | 477 | 5 | `Call` dest | HIGH |
+| Field | Abs bit | Width | Notes |
+|---|---|---|---|
+| predication reg index | 499 | 4 | proto + 0x20 |
+| predication inversion | 503 | 1 | proto + 0x18 (byte) |
+| opcode-HIGH / family | 493 | 6 | 0 for branch/call |
+| opcode-LOW / discriminator | 488 | 5 | 4/5/6/7 |
+| x-target sreg (`BranchSreg`) | 488 | 5 | sreg `x()` |
+| dest (return-addr) sreg | 477 | 5 | `Call` dest |
 
 Discriminator: `BranchAbsolute=4`, `BranchRelative=5`, `CallAbsolute=6`, `CallRelative=7`. The branch offset is a signed 20-bit value in immediate slot 0 (bit 430); there is no dedicated return op — a return is a `BranchSreg` reading the link sreg.
 
@@ -308,17 +308,17 @@ Viperfish uses a **per-slot** 4+1 predicate field (4-bit reg index + 1-bit inver
 
 ## How Viperfish Differs from the JF/PF Bundle Model
 
-| Axis | Jellyfish (41 B) / Pufferfish (51 B) | Viperfish (64 B) | Confidence |
-|---|---|---|---|
-| Encode entry | one `Encoder<gen>::EncodeBundleInternal` packing all slots | `TpuCodecViperfish::EncodeBundle` → `EncoderVfTensorCore::EncodeBundle` → per-slot `<Slot>Encoder::Encode` | CERTAIN |
-| Field write | JF direct `and`/`shl`/`or`; PF `BitCopy` | every field via `BitCopy`; no direct-pack | CERTAIN |
-| Layout source | per-slot `Encode` methods on the `Bundle` | `isa_emitter::EmitX` proto templates + slot encoders | CERTAIN |
-| InstBits table | (n/a) | InstBits is all-zero on disk; positions live in the encoders | CERTAIN |
-| MXU slots | JF 1 `VectorExtended`; PF 2 (`VE0/1`) | 2 (`VectorExtended0/1`), 94 helpers each, 0 `Extended2/3` | CERTAIN |
-| MXU operand model | JF single moving-operand vreg | 8×6-bit systolic-feed pool, *shared* between the two MXU slots | CERTAIN |
-| Latch encoding | JF 6-entry `GainLatchMode→VEOpcode` table | named `LoadMatrixRegister{Gmr,Lmr}{Msra,Msrb}` opcode family (opcode-HIGH `0x37`) | CERTAIN |
-| EUP transcendental | issued from the VALU slot, popped by result slot | pinned to VALU **slot 3** (`Alu3`); 5-bit fn-selector @ bit 186 | CERTAIN |
-| Bundle width source | inline constant in the encoder | `ViperfishCodecMetadata::BundleSizeBytes` → `64` (codec-metadata cell) | CERTAIN |
+| Axis | Jellyfish (41 B) / Pufferfish (51 B) | Viperfish (64 B) |
+|---|---|---|
+| Encode entry | one `Encoder<gen>::EncodeBundleInternal` packing all slots | `TpuCodecViperfish::EncodeBundle` → `EncoderVfTensorCore::EncodeBundle` → per-slot `<Slot>Encoder::Encode` |
+| Field write | JF direct `and`/`shl`/`or`; PF `BitCopy` | every field via `BitCopy`; no direct-pack |
+| Layout source | per-slot `Encode` methods on the `Bundle` | `isa_emitter::EmitX` proto templates + slot encoders |
+| InstBits table | (n/a) | InstBits is all-zero on disk; positions live in the encoders |
+| MXU slots | JF 1 `VectorExtended`; PF 2 (`VE0/1`) | 2 (`VectorExtended0/1`), 94 helpers each, 0 `Extended2/3` |
+| MXU operand model | JF single moving-operand vreg | 8×6-bit systolic-feed pool, *shared* between the two MXU slots |
+| Latch encoding | JF 6-entry `GainLatchMode→VEOpcode` table | named `LoadMatrixRegister{Gmr,Lmr}{Msra,Msrb}` opcode family (opcode-HIGH `0x37`) |
+| EUP transcendental | issued from the VALU slot, popped by result slot | pinned to VALU **slot 3** (`Alu3`); 5-bit fn-selector @ bit 186 |
+| Bundle width source | inline constant in the encoder | `ViperfishCodecMetadata::BundleSizeBytes` → `64` (codec-metadata cell) |
 
 The clean way to state the break: Pufferfish's `EncodeBundleInternal` *is* the kIsaTable for its slots, baked into one function. Viperfish has no such function — its kIsaTable is the *set* of per-slot `BitCopy` offsets, distributed across ~200 per-op helpers, orchestrated by `TpuCodecViperfish::EncodeBundle` → `EncoderVfTensorCore::EncodeBundle`. The InstBits table that LLVM-MC would normally hold the fixed instruction bits in is entirely zero on disk for all V5+ generations, which is the binary's confirmation that the bits come from the emitter path, not from a static table.
 

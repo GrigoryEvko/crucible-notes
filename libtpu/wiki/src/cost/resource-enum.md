@@ -48,31 +48,31 @@ RV[Matpush: %.0f, Matmul: %.0f, Xlu: %.0f, VectorAlu0: %.0f, VectorAlu1: %.0f,
 
 Since each `double` is an 8-byte slot read in order, the enum value equals the array index equals `offset / 8`:
 
-| idx | offset | name | functional unit | Confidence |
-|---|---|---|---|---|
-| R[0] | +0x00 | `Matpush` | MXU gain/latch-push (matpush) pipe | CERTAIN |
-| R[1] | +0x08 | `Matmul` | MXU matmul-issue (matprep) pipe | CERTAIN |
-| R[2] | +0x10 | `Xlu` | cross-lane unit (matres read / EUP / transcendental staging) | CERTAIN |
-| R[3] | +0x18 | `VectorAlu0` | vector ALU lane 0 (dedicated) | CERTAIN |
-| R[4] | +0x20 | `VectorAlu1` | vector ALU lane 1 (dedicated) | CERTAIN |
-| R[5] | +0x28 | `VectorAluAny` | vector ALU "any" (load-balanced) lane | CERTAIN |
-| R[6] | +0x30 | `VectorEup` | vector extended-precision unit | CERTAIN |
-| R[7] | +0x38 | `VectorLoad` | vector load port | CERTAIN |
-| R[8] | +0x40 | `VectorStore` | vector store port | CERTAIN |
-| R[9] | +0x48 | `MemXferInputLatency` | input-DMA startup-latency term | CERTAIN |
-| R[10] | +0x50 | `MemXferInputBandwidth` | input-DMA per-byte bandwidth term | CERTAIN |
-| R[11] | +0x58 | `MemXferOutputLatency` | output-DMA startup-latency term | CERTAIN |
-| R[12] | +0x60 | `MemXferOutputBandwidth` | output-DMA per-byte bandwidth term | CERTAIN |
-| R[13] | +0x68 | `IciYPlus` | ICI ring link +Y | CERTAIN |
-| R[14] | +0x70 | `IciYMinus` | ICI ring link −Y | CERTAIN |
-| R[15] | +0x78 | `IciXPlus` | ICI ring link +X | CERTAIN |
-| R[16] | +0x80 | `IciXMinus` | ICI ring link −X | CERTAIN |
-| R[17] | +0x88 | `IciZPlus` | ICI ring link +Z | CERTAIN |
-| R[18] | +0x90 | `IciZMinus` | ICI ring link −Z | CERTAIN |
-| R[19] | +0x98 | `ScScs` | SparseCore SCS sequencer | CERTAIN |
-| R[20] | +0xa0 | `ScTile` | SparseCore tile-execute core | CERTAIN |
-| R[21] | +0xa8 | `ScCollective` | SparseCore collective engine | CERTAIN |
-| R[22] | +0xb0 | (unnamed; valid) | reserved/scalar — read by `MaxResourceCycles`, written by `Acc`; never printed | MEDIUM |
+| idx | offset | name | functional unit |
+|---|---|---|---|
+| R[0] | +0x00 | `Matpush` | MXU gain/latch-push (matpush) pipe |
+| R[1] | +0x08 | `Matmul` | MXU matmul-issue (matprep) pipe |
+| R[2] | +0x10 | `Xlu` | cross-lane unit (matres read / EUP / transcendental staging) |
+| R[3] | +0x18 | `VectorAlu0` | vector ALU lane 0 (dedicated) |
+| R[4] | +0x20 | `VectorAlu1` | vector ALU lane 1 (dedicated) |
+| R[5] | +0x28 | `VectorAluAny` | vector ALU "any" (load-balanced) lane |
+| R[6] | +0x30 | `VectorEup` | vector extended-precision unit |
+| R[7] | +0x38 | `VectorLoad` | vector load port |
+| R[8] | +0x40 | `VectorStore` | vector store port |
+| R[9] | +0x48 | `MemXferInputLatency` | input-DMA startup-latency term |
+| R[10] | +0x50 | `MemXferInputBandwidth` | input-DMA per-byte bandwidth term |
+| R[11] | +0x58 | `MemXferOutputLatency` | output-DMA startup-latency term |
+| R[12] | +0x60 | `MemXferOutputBandwidth` | output-DMA per-byte bandwidth term |
+| R[13] | +0x68 | `IciYPlus` | ICI ring link +Y |
+| R[14] | +0x70 | `IciYMinus` | ICI ring link −Y |
+| R[15] | +0x78 | `IciXPlus` | ICI ring link +X |
+| R[16] | +0x80 | `IciXMinus` | ICI ring link −X |
+| R[17] | +0x88 | `IciZPlus` | ICI ring link +Z |
+| R[18] | +0x90 | `IciZMinus` | ICI ring link −Z |
+| R[19] | +0x98 | `ScScs` | SparseCore SCS sequencer |
+| R[20] | +0xa0 | `ScTile` | SparseCore tile-execute core |
+| R[21] | +0xa8 | `ScCollective` | SparseCore collective engine |
+| R[22] | +0xb0 | (unnamed; valid) | reserved/scalar — read by `MaxResourceCycles`, written by `Acc`; never printed |
 
 `ResourceVector::Acc(Resource, double)` @ `0x1c89adc0` bounds-checks `resource >= 0x17` (23) with a trapping `ud1`, then does `vector[resource] += cycles` over an 8-byte stride. So 23 slots are valid (R[0..22]); the print path covers only the first 22. The total vector body is `0xf8` bytes: 23 doubles (`+0x00..+0xb0`), an operand-bytes `flat_hash_map` (`+0xb8`), and an output-bytes `flat_hash_map` (`+0xd8`).
 
@@ -136,12 +136,12 @@ Each LLO instruction's throughput cycles are deposited into one named slot. The 
 
 The 23-slot enum is the TensorCore `ResourceVector` print surface, but the per-gen `Performance::GetResources()::kResources` arrays declare how many slots each gen actually populates — and in what iteration order. Each `kResources` is a 1-byte-per-entry **permutation** of the contiguous range `[0..N-1]`, with `N` = the per-gen resource count. The first three rows are byte-anchored to named symbols (`nm -C` resolves each address to a `…Performance::GetResources() const::kResources` symbol); the decoded bytes are permutations of exactly `[0..N-1]`:
 
-| Gen | `kResources` address | slot count `N` | extends past R[22]? | Confidence |
-|---|---|---|---|---|
-| Pufferfish | `0xb43cd94` (named `PufferfishPerformance` symbol) | 20 | no (no SparseCore / extra-ICI slots) | CERTAIN |
-| Viperfish | `0xb43cda8` (named `ViperfishPerformance` symbol) | 28 | yes (adds ICI / Sc sub-slots) | CERTAIN |
-| Ghostlite | `0xb43cdc4` (named `GhostlitePerformance` symbol) | 31 | yes | CERTAIN |
-| 6acc60406 (GF) | `0xb43cde3` (unnamed; inferred) | 31 | yes | UNVERIFIED |
+| Gen | `kResources` address | slot count `N` | extends past R[22]? |
+|---|---|---|---|
+| Pufferfish | `0xb43cd94` (named `PufferfishPerformance` symbol) | 20 | no (no SparseCore / extra-ICI slots) |
+| Viperfish | `0xb43cda8` (named `ViperfishPerformance` symbol) | 28 | yes (adds ICI / Sc sub-slots) |
+| Ghostlite | `0xb43cdc4` (named `GhostlitePerformance` symbol) | 31 | yes |
+| 6acc60406 (GF) | `0xb43cde3` (unnamed; inferred) | 31 | yes |
 
 Pufferfish's 20-slot permutation never references `R[20]`/`R[21]`/`R[22]` — it has no SparseCore or extra-ICI resources. The wider gens (VF/GL) extend the enum past `R[22]` with additional ICI sub-links and SparseCore sub-units; those high-index slots have **no name** in the TensorCore `ResourceVectorToString` (it only prints 22). Naming them would require a SparseCore-side print path that this build does not expose through the TensorCore estimator (LOW / not recovered).
 

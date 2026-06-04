@@ -35,14 +35,14 @@ For reimplementation, the contract is:
 
 The complete cross-walk, one row per generation. The four axes are kept separate: the 0-based `TpuVersion` is the display-switch index; the external-display column is the `const char*` that switch returns; the **Public TpuType** column is the integer the Cloud-string parser emits (a *different* axis); the Cloud-API column lists the exact literals the parser accepts. The `TpuVersion`, display, TpuType, and Cloud-API columns are all **byte-traced** from the two switch/compare bodies; only the marketing column is external-only where marked.
 
-| TpuVersion | Codename (internal) | External display | Public TpuType | Cloud-TPU API (parser literals) | Marketing | Confidence |
-|---|---|---|---|---|---|---|
-| 0 | `jellyfish` | `"TPU v2"` | 1 | `v2` | TPU v2 | CERTAIN |
-| 1 | `dragonfish` | `"TPU v3"` | 2 | `v3` | TPU v3 | CERTAIN |
-| 2 | `pufferfish` | `"TPU v4"` / `"TPU v4 lite"` | 3 / 4 | `v4` / `v4lite` | TPU v4 | CERTAIN |
-| 3 | `viperfish` | `"TPU v5"` / `"TPU v5 lite"` | 6 / 5 | `v5p` (→6) · `v5e`,`v5lite` (→5) | TPU v5p / v5e | CERTAIN |
-| 4 | `ghostlite` | `"TPU v6 lite"` | 7 | `v6e`, `v6ea` | **Trillium** | CERTAIN (display+Cloud); marketing LOW (external) |
-| 5 | `6acc60406` | `"TPU7x"` | 8 | `tpu7x`, `tpu7` | **Ironwood** (external) | CERTAIN (display+Cloud); marketing LOW (external, 0 binary occ.) |
+| TpuVersion | Codename (internal) | External display | Public TpuType | Cloud-TPU API (parser literals) | Marketing |
+|---|---|---|---|---|---|
+| 0 | `jellyfish` | `"TPU v2"` | 1 | `v2` | TPU v2 |
+| 1 | `dragonfish` | `"TPU v3"` | 2 | `v3` | TPU v3 |
+| 2 | `pufferfish` | `"TPU v4"` / `"TPU v4 lite"` | 3 / 4 | `v4` / `v4lite` | TPU v4 |
+| 3 | `viperfish` | `"TPU v5"` / `"TPU v5 lite"` | 6 / 5 | `v5p` (→6) · `v5e`,`v5lite` (→5) | TPU v5p / v5e |
+| 4 | `ghostlite` | `"TPU v6 lite"` | 7 | `v6e`, `v6ea` | **Trillium** |
+| 5 | `6acc60406` | `"TPU7x"` | 8 | `tpu7x`, `tpu7` | **Ironwood** (external) |
 
 > **GOTCHA —** the Cloud name `v5p` belongs to **Viperfish (`TpuVersion` 3)**, and so does `v5e`: the parser maps **both** `v5p`→TpuType 6 and `v5e`/`v5lite`→TpuType 5, and both share Viperfish's display name `"TPU v5"` / `"TPU v5 lite"` (string `"TPU v5p"` @ `0x85c9e34`). The next generation, **Ghostlite (`TpuVersion` 4)**, is `v6e`/`v6ea`→TpuType 7. Sliding `v5p` up to Ghostlite — or sliding `v6e` down to Viperfish — is the single most common naming error; see [Superseded-Label Correction List](codename-superseded-labels.md). Canonically: **Viperfish = v5p AND v5e; Ghostlite = v6e (= marketing "Trillium"); 6acc60406 = tpu7x.** No binary string ties `6acc60406` to `v6e` or to "Trillium".
 
@@ -150,12 +150,12 @@ The accelerator-type string is split on `-` and the leading token matched agains
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `TpuVersionToExternalName` | `0x20b3a500` | `TpuVersion` → display string (explicit switch) | CERTAIN |
-| `AcceleratorTypeToTpuVersionEnum` | `0x204cf620` | Cloud accelerator-type string → public TpuType (every literal byte-traced) | CERTAIN |
-| `IsAtLeastTPU7x` | `0x204cfda0` | Resolve string, test public TpuType `>= 8` (only `tpu7x`/`tpu7`) | CERTAIN |
-| `TpuVersionAndVariantToHumanReadableName` | `0x20b3b040` | `TpuVersion` → human-readable name (same switch arms) | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `TpuVersionToExternalName` | `0x20b3a500` | `TpuVersion` → display string (explicit switch) |
+| `AcceleratorTypeToTpuVersionEnum` | `0x204cf620` | Cloud accelerator-type string → public TpuType (every literal byte-traced) |
+| `IsAtLeastTPU7x` | `0x204cfda0` | Resolve string, test public TpuType `>= 8` (only `tpu7x`/`tpu7`) |
+| `TpuVersionAndVariantToHumanReadableName` | `0x20b3b040` | `TpuVersion` → human-readable name (same switch arms) |
 
 > **NOTE —** the parser is **byte-traced in full**, not inferred. After lowercasing and the `-` split, it dispatches the leading token by length: a 2-byte token is compared against the dwords/words `v2`/`v3`/`v4` (`*(_WORD*) == 0x3276`/`0x3376`/`0x3476` → TpuType 1/2/3), a 6-byte token against `v4lite` (`0x696C3476`+`0x6574` → 4), and the remaining literals through `starts_with`/`operator==` chains: `starts_with("v5lite") || == "v5e"` → 5, `== "v5p"` → 6, `== "v6e" || == "v6ea"` → 7, `== "tpu7x" || == "tpu7"` → 8. Anything else returns `Error("Unsupported accelerator type: …")` at `libtpu_init_utils.cc:67`. Every literal and its resulting TpuType above is recovered from the `0x204cf620` body — the **Public TpuType** column is CERTAIN, not inference.
 

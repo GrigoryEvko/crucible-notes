@@ -31,11 +31,11 @@ The single-axis binomial / recursive-doubling emitter loop and the ring offset *
 
 The three SparseCore-offload collective builders are the same template, `ConstructConfigForCollectiveUniDirNDGroups<OffloadConfig, HloInst>`, instantiated three times. The ND wrappers differ in exactly one thing: the value of the `HierarchicalKind` argument they push.
 
-| Collective | Builder body | `HierarchicalKind` source | Can reach hierarchical? | Confidence |
-|---|---|---|---|---|
-| AllReduce | `0x133c2dc0` | wrapper `0x133c2c80` pushes a real `optional<int>` gated by `ShouldEnableSparseCoreHierarchicalAllReduce` (`0x1d6b6d80`) | **yes** | Confirmed |
-| AllGather | `0x133c82c0` | wrapper `0x133c76c0` pins `r9d = 0x100` | no (always flat) | Confirmed |
-| ReduceScatter | `0x133cd800` | wrapper `0x133ccbe0` pins `r9d = 0x100` | no (always flat) | Confirmed |
+| Collective | Builder body | `HierarchicalKind` source | Can reach hierarchical? |
+|---|---|---|---|
+| AllReduce | `0x133c2dc0` | wrapper `0x133c2c80` pushes a real `optional<int>` gated by `ShouldEnableSparseCoreHierarchicalAllReduce` (`0x1d6b6d80`) | **yes** |
+| AllGather | `0x133c82c0` | wrapper `0x133c76c0` pins `r9d = 0x100` | no (always flat) |
+| ReduceScatter | `0x133cd800` | wrapper `0x133ccbe0` pins `r9d = 0x100` | no (always flat) |
 
 `HierarchicalKind` is a 16-bit `AutoOr<bool>`: bit `0x100` is the *engaged* discriminant, bit `0x1` is the boolean value. The dispatch masks both bits and tests against the engaged-but-false encoding:
 
@@ -113,15 +113,15 @@ if (logical_devices_per_chip >= 2 && adjustment > 0)// megacore adjust (v141 bra
 
 The decisive divergence: the flat arm sets `core_count` (the ring length) **directly** and carries a precomputed `ring_neighbor_table_offset` (a flat-map lookup keyed by `IciStrategyRingDim`); the hierarchical arm sets **no** explicit length and **no** neighbour table — it carries the `ring_dim` per axis and lets the consumer derive the length from `ring_dim` plus the megacore `core_count_adjustment`. The hierarchical decomposition is the SparseCore analog of the TensorCore reduce-scatter / all-gather phase split: a phase per *torus dimension* instead of a single collapsed ring.
 
-| Aspect | FLAT (`kind & 0x101 == 0x100`) | HIERARCHICAL (`kind & 0x101 == 0x101`) | Confidence |
-|---|---|---|---|
-| `phase_rings` per color | `[D2D?] +` **one** explicit ring | `[D2D?] +` **one ring per torus axis** | Confirmed |
-| inter-chip neighbour | `ICI_RING_NEIGHBOR_EXPLICIT` (1) | `ICI_RING_NEIGHBOR_IMPLICIT` (2) | Confirmed |
-| ring length carried | `core_count` (`0x18`) set directly | implicit; `core_count_adjustment` (`0x40`) megacore delta | Confirmed |
-| neighbour table | `ring_neighbor_table_offset` (`0x28`) + `has_reordering_map` (`0x3d`) | none (implicit ordering) | Confirmed |
-| ring-dim field | `explicit_strategy_ring_dim` (`0x48`) | `ring_dim` (`0x38`) per axis | Confirmed |
-| D2D intra-chip ring | emitted if megacore (Phase 0) | emitted if megacore (Phase 0) | Confirmed |
-| reached by | AG/RS (pinned) + AR (flag off) | AllReduce only (flag engaged + true) | Confirmed |
+| Aspect | FLAT (`kind & 0x101 == 0x100`) | HIERARCHICAL (`kind & 0x101 == 0x101`) |
+|---|---|---|
+| `phase_rings` per color | `[D2D?] +` **one** explicit ring | `[D2D?] +` **one ring per torus axis** |
+| inter-chip neighbour | `ICI_RING_NEIGHBOR_EXPLICIT` (1) | `ICI_RING_NEIGHBOR_IMPLICIT` (2) |
+| ring length carried | `core_count` (`0x18`) set directly | implicit; `core_count_adjustment` (`0x40`) megacore delta |
+| neighbour table | `ring_neighbor_table_offset` (`0x28`) + `has_reordering_map` (`0x3d`) | none (implicit ordering) |
+| ring-dim field | `explicit_strategy_ring_dim` (`0x48`) | `ring_dim` (`0x38`) per axis |
+| D2D intra-chip ring | emitted if megacore (Phase 0) | emitted if megacore (Phase 0) |
+| reached by | AG/RS (pinned) + AR (flag off) | AllReduce only (flag engaged + true) |
 
 > **NOTE —** the per-axis `ringDim` is `2 - (NDPlaneInfo[+0xa0] & 1)`, i.e. `ICI_RING_DIM_X_TORUS` (1) or `ICI_RING_DIM_X_MESH` (2) per the low parity bit (and the Y/Z analogs via the deque tuple). The flat arm instead routes through `GetDimensionRings` (`0x133df520`), whose 7-entry jump table at `0xae2eaac` maps each `IciStrategyRingDim` to a chip torus extent (`X=0x58`, `Y=0x5c`, `Z=0x60`) and a torus-vs-mesh flag, then divides the extent by device count (megacore-aware) to fill the `RingConfigAttributes`. What physical property the `[+0xa0]` parity bit encodes is not pinned (LOW) — see [Tensor-split ND-plane](tensor-split-ndplane.md).
 
@@ -131,21 +131,21 @@ The decisive divergence: the flat arm sets `core_count` (the ring length) **dire
 
 The per-ring leaf is a standard proto2 message: vptr at `+0x00`, `InternalMetadata` at `+0x08`, the hasbits `int32` at `+0x10`, then the scalars packed `0x18..0x53`. Every `{offset, width, hasbit, number}` triple **agrees across three independently generated methods** — `_InternalSerialize` (`0x1d6ec320`), `ByteSizeLong` (`0x1d6ec700`), and `MergeImpl` (`0x1d6ec120`) — and the names/numbers come from the serialized `FieldDescriptorProto`.
 
-| # | Field | Proto type | Offset | Width | Hasbit | Wire tag | Confidence |
-|---|---|---|---|---|---|---|---|
-| 1 | `ring_type` | enum | `0x20` | 4 | `0x0002` | `0x08` | Confirmed |
-| 2 | `core_count` | int64 | `0x18` | 8 | `0x0001` | `0x10` | Confirmed |
-| 3 | `ring_neighbor` | enum | `0x24` | 4 | `0x0004` | `0x18` | Confirmed |
-| 4 | `ring_dim` | enum | `0x38` | 4 | `0x0020` | `0x20` | Confirmed |
-| 5 | `ring_neighbor_table_offset` | int64 | `0x28` | 8 | `0x0008` | `0x28` | Confirmed |
-| 6 | `barrier_id` | int64 | `0x30` | 8 | `0x0010` | `0x30` | Confirmed |
-| 7 | `across_cores_on_chip` | bool | `0x3c` | 1 | `0x0040` | `0x38` | Confirmed |
-| 8 | `has_reordering_map` | bool | `0x3d` | 1 | `0x0080` | `0x40` | Confirmed |
-| 9 | `explicit_strategy_ring_dim` | enum | `0x48` | 4 | `0x0400` | `0x48` | Confirmed |
-| 10 | `core_count_adjustment` | int64 | `0x40` | 8 | `0x0200` | `0x50` | Confirmed |
-| 11 | `partner_transfers_outside_the_ring` | bool | `0x3e` | 1 | `0x0100` | `0x58` | Confirmed |
-| 12 | `id_info_offset` | int64 | `0x50` | 8 | `0x1000` | `0x60` | Confirmed |
-| 13 | `group_info_table_offset` | int32 | `0x4c` | 4 | `0x0800` | `0x68` | Confirmed |
+| # | Field | Proto type | Offset | Width | Hasbit | Wire tag |
+|---|---|---|---|---|---|---|
+| 1 | `ring_type` | enum | `0x20` | 4 | `0x0002` | `0x08` |
+| 2 | `core_count` | int64 | `0x18` | 8 | `0x0001` | `0x10` |
+| 3 | `ring_neighbor` | enum | `0x24` | 4 | `0x0004` | `0x18` |
+| 4 | `ring_dim` | enum | `0x38` | 4 | `0x0020` | `0x20` |
+| 5 | `ring_neighbor_table_offset` | int64 | `0x28` | 8 | `0x0008` | `0x28` |
+| 6 | `barrier_id` | int64 | `0x30` | 8 | `0x0010` | `0x30` |
+| 7 | `across_cores_on_chip` | bool | `0x3c` | 1 | `0x0040` | `0x38` |
+| 8 | `has_reordering_map` | bool | `0x3d` | 1 | `0x0080` | `0x40` |
+| 9 | `explicit_strategy_ring_dim` | enum | `0x48` | 4 | `0x0400` | `0x48` |
+| 10 | `core_count_adjustment` | int64 | `0x40` | 8 | `0x0200` | `0x50` |
+| 11 | `partner_transfers_outside_the_ring` | bool | `0x3e` | 1 | `0x0100` | `0x58` |
+| 12 | `id_info_offset` | int64 | `0x50` | 8 | `0x1000` | `0x60` |
+| 13 | `group_info_table_offset` | int32 | `0x4c` | 4 | `0x0800` | `0x68` |
 
 The serializer reads exactly these word offsets — e.g. `WriteInt64ToArrayWithField<2>(… *((_QWORD*)this + 3) …)` reads byte `0x18` (`core_count`), `<5>` reads `+5`=`0x28` (`ring_neighbor_table_offset`), `<6>` reads `+6`=`0x30` (`barrier_id`), `<10>` reads `+8`=`0x40` (`core_count_adjustment`), `<12>` reads `+10`=`0x50` (`id_info_offset`), and `WriteInt32<13>` reads `+19`=`0x4c` (`group_info_table_offset`); the three bool bytes are read at `60`/`61`/`62` (`0x3c`/`0x3d`/`0x3e`). `Clear` (`0x1d6ec2c0`) zeroes the block with `vmovups %ymm0, 0x18` (`0x18..0x37`) + `movq $0, 0x36`, then `vmovups %xmm0, 0x48` + `vmovups %xmm0, 0x3e`, and resets the hasbits — a tight match for the packed layout.
 
@@ -178,15 +178,15 @@ The pincer is a different emitter family from the hierarchical config builder ab
 
 `MayFuseAllReduce` (`0x127acfc0`) decides whether an `HloAllReduceInstruction` is fused into the pincer form; the `TpuAllReduceScatterFusion` HLO pass (`GetFusionSpec` `0x127a8d60`, `MaybeGetAllReduceScatterLayout` `0x127a8b60`) handles the reduce-scatter side. At lowering time the arms are emitted by `EmitAllReduceScatterFusion` and `EmitAllGatherFusion` (the `EmitAllGatherFusion` thunk at `0x1374e580` takes a `Span<ShardingConfig>`, an `InfoTable`, and a `std::function` provider) through the `AsyncPincerFusionEmitter` / `RotatedPincerEmitter` hierarchy.
 
-| | Binomial butterfly | Pincer fusion | Confidence |
-|---|---|---|---|
-| Emitter | `BinomialSinglePhaseRingSumEmitter` (`0x13769be0`) | `RotatedPincerEmitter` / `AsyncPincerFusionEmitter` | Confirmed |
-| Reduce arm / broadcast arm | fused into one traversal (not separable) | **separable** — RS arm and AG arm exposed for windowing | Confirmed |
-| Fusion arm emitters | — | `EmitAllReduceScatterFusion` (`0x1376c4e0`/`0x13776fc0`) / `EmitAllGatherFusion` (`0x13771640`; anon-ns thunk `0x1374e580`) | Confirmed |
-| Schedule source | binomial replica table (ConstantMapper Type 7) | `net_util::GetRingLocation` (no precomputed table) | Confirmed |
-| Sflags | 7 general recv sflags | **reserved** AllReduce slots (`GetAllReduceSyncFlagNumber`) | Confirmed |
-| Directions / step | one (butterfly partner) | two (rotated CW + counter-rotated CCW) | Confirmed |
-| Fits when | small power-of-2 ring, latency-bound | large ring, bandwidth-bound, windowed-einsum overlap | Inferred |
+| | Binomial butterfly | Pincer fusion |
+|---|---|---|
+| Emitter | `BinomialSinglePhaseRingSumEmitter` (`0x13769be0`) | `RotatedPincerEmitter` / `AsyncPincerFusionEmitter` |
+| Reduce arm / broadcast arm | fused into one traversal (not separable) | **separable** — RS arm and AG arm exposed for windowing |
+| Fusion arm emitters | — | `EmitAllReduceScatterFusion` (`0x1376c4e0`/`0x13776fc0`) / `EmitAllGatherFusion` (`0x13771640`; anon-ns thunk `0x1374e580`) |
+| Schedule source | binomial replica table (ConstantMapper Type 7) | `net_util::GetRingLocation` (no precomputed table) |
+| Sflags | 7 general recv sflags | **reserved** AllReduce slots (`GetAllReduceSyncFlagNumber`) |
+| Directions / step | one (butterfly partner) | two (rotated CW + counter-rotated CCW) |
+| Fits when | small power-of-2 ring, latency-bound | large ring, bandwidth-bound, windowed-einsum overlap |
 
 ### The pincer sflag table — the bidirectionality smoking-gun
 

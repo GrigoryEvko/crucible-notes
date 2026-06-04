@@ -99,14 +99,14 @@ The decompile (`sub_10F3B4C0`) is byte-exact: the latch list base is `QWORD[*v2 
 
 The gate is a per-generation virtual on `Target`. The base body is an `Unimplemented` `LogFatal` stub (`target.h:2472`); every concrete generation overrides it. Four overrides return a flat `FALSE`; only Viperfish has a real body.
 
-| Gen (TPU) | `GainLatchModeHasOverrunChecks` (`+0x358`) | body | Confidence |
-|---|---|---|---|
-| Jellyfish (v2) | `sub_1D4925E0` | `return 0` ⇒ always FALSE | CERTAIN |
-| Dragonfish (v3) | `sub_1D4901C0` | `return 0` ⇒ always FALSE | CERTAIN |
-| Pufferfish (v4) | `sub_1D494880` | `return 0` ⇒ always FALSE | CERTAIN |
-| Viperfish (v5, v5e+v5p) | `sub_1D49AB20` | non-trivial (below) | CERTAIN |
-| Ghostlite (v6e) | `sub_1D497940` | `return 0` ⇒ always FALSE | CERTAIN |
-| base `Target` | `sub_1D61D8C0` | `LogFatal "Unimplemented"` (`target.h:2472`) | CERTAIN |
+| Gen (TPU) | `GainLatchModeHasOverrunChecks` (`+0x358`) | body |
+|---|---|---|
+| Jellyfish (v2) | `sub_1D4925E0` | `return 0` ⇒ always FALSE |
+| Dragonfish (v3) | `sub_1D4901C0` | `return 0` ⇒ always FALSE |
+| Pufferfish (v4) | `sub_1D494880` | `return 0` ⇒ always FALSE |
+| Viperfish (v5, v5e+v5p) | `sub_1D49AB20` | non-trivial (below) |
+| Ghostlite (v6e) | `sub_1D497940` | `return 0` ⇒ always FALSE |
+| base `Target` | `sub_1D61D8C0` | `LogFatal "Unimplemented"` (`target.h:2472`) |
 
 The Viperfish body (`sub_1D49AB20`) is byte-exact:
 
@@ -197,14 +197,14 @@ Ten `LloOpcode`s, `0x8d..0x96`, all routed through one of two constructors:
 
 The constructed latch op carries its operands in these fields, byte-exact from the setters and their symmetric readers:
 
-| Offset | Field | Setter / reader | Meaning | Confidence |
-|---|---|---|---|---|
-| `WORD[+0x00]` | `LloOpcode` | `New()` arg | `0x8d..0x96` | CERTAIN |
-| `BYTE[+0x0a]` | `register_number` | `set_register_number` / `sub_1D5A8E20` | gain-source VREG number | CERTAIN |
-| `WORD[+0x0b]` | control word | `set_unit_id` / `ValidateAndSetMxuAndSourceBus` | unit-id + source-bus (below) | CERTAIN |
-| `BYTE[+0x40]` | `latch_mode` (GLM) | `set_latch_mode` `sub_1D4D7C20` / `latch_mode` `sub_1D4E7500` | gate key | CERTAIN |
-| `WORD[+0x42]` | `latch_index_in_sequence` | `set_latch_index_in_sequence` `sub_1D4E7960` | assigned by `SetLatchIndices` | CERTAIN |
-| `BYTE[+0x44]` | `matrix_staging_register` (Msr) | `set_matrix_staging_register` `sub_1D4D7D40` | latch-bank / MSR destination | CERTAIN |
+| Offset | Field | Setter / reader | Meaning |
+|---|---|---|---|
+| `WORD[+0x00]` | `LloOpcode` | `New()` arg | `0x8d..0x96` |
+| `BYTE[+0x0a]` | `register_number` | `set_register_number` / `sub_1D5A8E20` | gain-source VREG number |
+| `WORD[+0x0b]` | control word | `set_unit_id` / `ValidateAndSetMxuAndSourceBus` | unit-id + source-bus (below) |
+| `BYTE[+0x40]` | `latch_mode` (GLM) | `set_latch_mode` `sub_1D4D7C20` / `latch_mode` `sub_1D4E7500` | gate key |
+| `WORD[+0x42]` | `latch_index_in_sequence` | `set_latch_index_in_sequence` `sub_1D4E7960` | assigned by `SetLatchIndices` |
+| `BYTE[+0x44]` | `matrix_staging_register` (Msr) | `set_matrix_staging_register` `sub_1D4D7D40` | latch-bank / MSR destination |
 
 The control word `WORD[+0x0b]` packs two bitfields (`set_unit_id` `sub_12698C00` for the unit-id; the source-bus inline in `ValidateAndSetMxuAndSourceBus`):
 
@@ -251,10 +251,10 @@ function CreateVectorLatchLsf(gain_src, glm, unit_id, region):   // sub_1D4D7AA0
 
 The two constructors admit different GLM sets (byte-exact `movabs` masks):
 
-| Constructor | GLM-validity mask | Accepts GLM | Confidence |
-|---|---|---|---|
-| `CreateVectorLatchLsf` | `0xf0000003c0c03` | `{0,1,10,11,18,19,20,21,48,49,50,51}` (bf16, F8E5M2, S8, fp8-conv) | CERTAIN |
-| `CreateVectorLatchHelper` | `0xf000003fffc3f` | `{0-5,10-25,48-51}` (full set incl. F8E4M3FN/F32 and nibble fmt7/8) | CERTAIN |
+| Constructor | GLM-validity mask | Accepts GLM |
+|---|---|---|
+| `CreateVectorLatchLsf` | `0xf0000003c0c03` | `{0,1,10,11,18,19,20,21,48,49,50,51}` (bf16, F8E5M2, S8, fp8-conv) |
+| `CreateVectorLatchHelper` | `0xf000003fffc3f` | `{0-5,10-25,48-51}` (full set incl. F8E4M3FN/F32 and nibble fmt7/8) |
 
 `ValidateAndSetMxuAndSourceBus` (`sub_1D4D7E80`) bounds the MXU id (`mxu_id >= 0`, `mxu_id < MxusPerTensorCore()` = `DWORD[Target+0x4ac]`, the same `+0x4ac` index `LatchLhs` uses), stamps the unit-id, and — only if `HasVexSourceBuses()` (vtable `+0x408`, **`TRUE` only on Pufferfish**, `sub_1D494B40`) and `LloOpcodeUsesSourceBus(op)` — stamps the source bus.
 
@@ -290,24 +290,24 @@ The GLM byte table at `0xac0913e` reads `{0,0,0,0,0,0,0,0,0xb,0xb}` (10 entries 
 
 ## Confidence Summary
 
-| Claim | Evidence | Confidence |
-|---|---|---|
-| `SetLatchIndices` walks each sequence's latch list and indexes until break | `sub_10F3B4C0` — list `@+0x18`, count `@+0x20`, opcode check `(op-141)<0xa` | CONFIRMED |
-| First-latch gate is `idx==0 && !GainLatchModeHasOverrunChecks(glm)` → `break` | `sub_10F3B4C0` — `if (!(DWORD)idx && !has_overrun) break` after `vtbl[+0x358]` call | CONFIRMED |
-| Gate keyed on `latch_mode(op)` = `BYTE[op+0x40]` | `latch_mode` `sub_1D4E7500` called at `+0x358` arg | CONFIRMED |
-| Jellyfish/Dragonfish/Pufferfish/Ghostlite `+0x358` flat `FALSE` | `sub_1D4925E0`/`1D4901C0`/`1D494880`/`1D497940` = `return 0` | CONFIRMED |
-| Viperfish `+0x358` = `!transpose && fmt∈{3..8}` → GLM `{14,16,18,20,22,24}` | `sub_1D49AB20` body + `GainLatchModeToMatmulDataFormat` `sub_1D629260` switch | CONFIRMED |
-| `LatchModeIsTranspose` mask `0xAAAAAAAAAA6AA`; `IsIntegral` = `(fmt-5)<4` | `sub_1D628EA0` / `sub_1D629240` | CONFIRMED |
-| `HasMsrOverrunChecks` `TRUE` only on Viperfish; base `LogFatal` | `sub_1D49AAC0` = `return 1`; others `return 0`; `sub_1D61D800` LogFatal | CONFIRMED |
-| `latch_index_in_sequence` at `WORD[op+0x42]`, bound `≤ 0xFFFF` | `set_latch_index_in_sequence` `sub_1D4E7960` (`index <= 65535`, `WORD[op+33*2]`) | CONFIRMED |
-| MSR opcode-mux: latch→`+0x44`, matmul→`+0x46`, load-LMR→`+0x42`, dwg→`+0x41` | `set_matrix_staging_register` `sub_1D4D7D40` | CONFIRMED |
-| `CreateVectorLatchLsf` GLM mask `0xf0000003c0c03`; helper `0xf000003fffc3f` | `sub_1D4D7AA0` / `sub_1D4D8360` `movabs` + `_bittest64` | CONFIRMED |
-| `CreateVectorLatchLsf` stamps `New(0x8d)`, GLM`@+0x40`, Msr=1`@+0x44`, unit-id`@+0x0b` | `sub_1D4D7AA0` build sequence | CONFIRMED |
-| unit-id pack `bits 8-9 + 0x400`; source-bus pack `bits 11-12 + 0x2000` | `set_unit_id` `sub_12698C00`; `ValidateAndSetMxuAndSourceBus` `sub_1D4D7E80` | CONFIRMED |
-| Source bus stamped only when `HasVexSourceBuses` (Pufferfish-only) AND `UsesSourceBus` (`0x8f..0x96`) | `sub_1D494B40`=1, others 0; `LloOpcodeUsesSourceBus` `sub_10C0D420` | CONFIRMED |
-| `num_mxus` = `DWORD[Target+0x4ac]` (index 299) | `ValidateAndSetMxuAndSourceBus` `v6[299]`; `LatchLhs` `*((int*)v32+299)` | CONFIRMED |
-| `LatchLhs` GLM byte table `@0xac0913e` = `{0×8, 0xb, 0xb}` | binary read at file off `0xac0913e` | CONFIRMED |
-| Gain-source reg-type-4 producer class identity | `opcode_produced_register_type[…]` table indexed by producer; class not isolated | LOW (INFERRED) |
+| Claim | Evidence |
+|---|---|
+| `SetLatchIndices` walks each sequence's latch list and indexes until break | `sub_10F3B4C0` — list `@+0x18`, count `@+0x20`, opcode check `(op-141)<0xa` |
+| First-latch gate is `idx==0 && !GainLatchModeHasOverrunChecks(glm)` → `break` | `sub_10F3B4C0` — `if (!(DWORD)idx && !has_overrun) break` after `vtbl[+0x358]` call |
+| Gate keyed on `latch_mode(op)` = `BYTE[op+0x40]` | `latch_mode` `sub_1D4E7500` called at `+0x358` arg |
+| Jellyfish/Dragonfish/Pufferfish/Ghostlite `+0x358` flat `FALSE` | `sub_1D4925E0`/`1D4901C0`/`1D494880`/`1D497940` = `return 0` |
+| Viperfish `+0x358` = `!transpose && fmt∈{3..8}` → GLM `{14,16,18,20,22,24}` | `sub_1D49AB20` body + `GainLatchModeToMatmulDataFormat` `sub_1D629260` switch |
+| `LatchModeIsTranspose` mask `0xAAAAAAAAAA6AA`; `IsIntegral` = `(fmt-5)<4` | `sub_1D628EA0` / `sub_1D629240` |
+| `HasMsrOverrunChecks` `TRUE` only on Viperfish; base `LogFatal` | `sub_1D49AAC0` = `return 1`; others `return 0`; `sub_1D61D800` LogFatal |
+| `latch_index_in_sequence` at `WORD[op+0x42]`, bound `≤ 0xFFFF` | `set_latch_index_in_sequence` `sub_1D4E7960` (`index <= 65535`, `WORD[op+33*2]`) |
+| MSR opcode-mux: latch→`+0x44`, matmul→`+0x46`, load-LMR→`+0x42`, dwg→`+0x41` | `set_matrix_staging_register` `sub_1D4D7D40` |
+| `CreateVectorLatchLsf` GLM mask `0xf0000003c0c03`; helper `0xf000003fffc3f` | `sub_1D4D7AA0` / `sub_1D4D8360` `movabs` + `_bittest64` |
+| `CreateVectorLatchLsf` stamps `New(0x8d)`, GLM`@+0x40`, Msr=1`@+0x44`, unit-id`@+0x0b` | `sub_1D4D7AA0` build sequence |
+| unit-id pack `bits 8-9 + 0x400`; source-bus pack `bits 11-12 + 0x2000` | `set_unit_id` `sub_12698C00`; `ValidateAndSetMxuAndSourceBus` `sub_1D4D7E80` |
+| Source bus stamped only when `HasVexSourceBuses` (Pufferfish-only) AND `UsesSourceBus` (`0x8f..0x96`) | `sub_1D494B40`=1, others 0; `LloOpcodeUsesSourceBus` `sub_10C0D420` |
+| `num_mxus` = `DWORD[Target+0x4ac]` (index 299) | `ValidateAndSetMxuAndSourceBus` `v6[299]`; `LatchLhs` `*((int*)v32+299)` |
+| `LatchLhs` GLM byte table `@0xac0913e` = `{0×8, 0xb, 0xb}` | binary read at file off `0xac0913e` |
+| Gain-source reg-type-4 producer class identity | `opcode_produced_register_type[…]` table indexed by producer; class not isolated |
 
 ---
 

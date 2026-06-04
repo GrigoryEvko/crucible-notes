@@ -119,20 +119,20 @@ The matpush key is assembled from three helpers: `byte[0] = GainLatchModeToMatmu
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `viperfish::MxuLatencyTable::MxuLatencyTable` | `0x1c8a52c0` | VF ctor — fills all four maps (~27 KB) | CERTAIN |
-| `viperfish::MxuLatencyTable::GetResourceUsage` | `0x1c8ae5c0` | VF lookup — family dispatch + `find` + `array[resource]` | CERTAIN |
-| `viperfish::SetReservations<MatpushModifier>` | `0x1c8abde0` | densify `{res→cyc}` → `array<int,19>`, `try_emplace` | CERTAIN |
-| `viperfish::SetReservations<VlxmrModifier>` | `0x1c8accc0` | vlxmr row builder (bound 0x13) | CERTAIN |
-| `viperfish::SetReservations<MatresModifier>` | `0x1c8acea0` | matres row builder (bound 0x13) | CERTAIN |
-| `viperfish::AddOverrunCheckReservations` | `0x1c8abfe0` | inserts `kMsr{A,B}OverrunCheck{0..3}` → `{5,13,21,29}` | CERTAIN |
-| `GainLatchModeToMatmulDataFormat` | `0x1d629260` | matpush key byte[0] | CERTAIN |
-| `LatchModeIsTranspose` | `0x1d628ea0` | matpush key byte[1..2] | HIGH |
-| `LatchOpcodeToMsr` | `0x1c8a1300` | matpush key byte[3] | HIGH |
-| `viperfish::MxuLatencyTable::MxuOpResourceReservations` | `0x1c8ad080` | accumulate per-resource reservations over a window | HIGH |
-| `viperfish::MxuLatencyTable::MxuOpHoldIssues` | `0x1c8ad3a0` | back-to-back issue stall recurrence | HIGH |
-| `LatencyTableViperfish::GetXluPathReservation` | `0x1c8a3200` | reads Xlu deposit via `ViperfishPerformance` res 0x0e (anchors `MxuResource` col 14) | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `viperfish::MxuLatencyTable::MxuLatencyTable` | `0x1c8a52c0` | VF ctor — fills all four maps (~27 KB) |
+| `viperfish::MxuLatencyTable::GetResourceUsage` | `0x1c8ae5c0` | VF lookup — family dispatch + `find` + `array[resource]` |
+| `viperfish::SetReservations<MatpushModifier>` | `0x1c8abde0` | densify `{res→cyc}` → `array<int,19>`, `try_emplace` |
+| `viperfish::SetReservations<VlxmrModifier>` | `0x1c8accc0` | vlxmr row builder (bound 0x13) |
+| `viperfish::SetReservations<MatresModifier>` | `0x1c8acea0` | matres row builder (bound 0x13) |
+| `viperfish::AddOverrunCheckReservations` | `0x1c8abfe0` | inserts `kMsr{A,B}OverrunCheck{0..3}` → `{5,13,21,29}` |
+| `GainLatchModeToMatmulDataFormat` | `0x1d629260` | matpush key byte[0] |
+| `LatchModeIsTranspose` | `0x1d628ea0` | matpush key byte[1..2] |
+| `LatchOpcodeToMsr` | `0x1c8a1300` | matpush key byte[3] |
+| `viperfish::MxuLatencyTable::MxuOpResourceReservations` | `0x1c8ad080` | accumulate per-resource reservations over a window |
+| `viperfish::MxuLatencyTable::MxuOpHoldIssues` | `0x1c8ad3a0` | back-to-back issue stall recurrence |
+| `LatencyTableViperfish::GetXluPathReservation` | `0x1c8a3200` | reads Xlu deposit via `ViperfishPerformance` res 0x0e (anchors `MxuResource` col 14) |
 
 ---
 
@@ -144,27 +144,27 @@ The 19 `MxuResource` indices are the MXU micro-pipeline reservation ports. The e
 
 ### The columns
 
-| col | name | anchor | written by | Confidence |
-|---|---|---|---|---|
-| 0 | MXU issue / dispatch port | `GetResourceUsage` `ViperfishPerformance::Resource 0xb → col0` | matpush, matmul | CERTAIN |
-| 1 | vlxmr load-feed stage 0 | ctor vlxmr map | vlxmr (No + Xpose) | HIGH |
-| 2 | `kMsrAOverrunCheck0` | `AddOverrunCheckReservations` CHECK `vf.cc:78` | overrun (MSR-A), matmul | CERTAIN |
-| 3 | `kMsrAOverrunCheck1` | overrun CHECK `vf.cc:80` | overrun (MSR-A) | CERTAIN |
-| 4 | `kMsrAOverrunCheck2` | overrun CHECK `vf.cc:82` | overrun (MSR-A), matmul | CERTAIN |
-| 5 | `kMsrAOverrunCheck3` | overrun CHECK `vf.cc:84` | overrun (MSR-A), matmul | CERTAIN |
-| 6 | `kMsrBOverrunCheck0` | overrun CHECK `vf.cc:87` | overrun (MSR-B) | CERTAIN |
-| 7 | `kMsrBOverrunCheck1` | overrun CHECK `vf.cc:89` | overrun (MSR-B) | CERTAIN |
-| 8 | `kMsrBOverrunCheck2` | overrun CHECK `vf.cc:91` | overrun (MSR-B), matmul | CERTAIN |
-| 9 | `kMsrBOverrunCheck3` | overrun CHECK `vf.cc:93` | overrun (MSR-B) | CERTAIN |
-| 10 | matpush PUSH port — MSR bank 0 | ctor `Msr0` push pair | matpush(Msr0), matmul | CERTAIN |
-| 11 | matpush PUSH port — MSR bank 1 | ctor `Msr1` push pair | matpush(Msr1) | CERTAIN |
-| 12 | matpush LATCH port — MSR bank 0 | ctor `Msr0` latch pair | matpush(Msr0), matmul | CERTAIN |
-| 13 | matpush LATCH port — MSR bank 1 | ctor `Msr1` latch pair | matpush(Msr1), matmul | CERTAIN |
-| 14 | Xlu / matrix-result deposit | `GetXluPathReservation` → `ViperfishPerformance` res 0xe | vlxmr(Xpose) | CERTAIN |
-| 15 | MXU-result port (matmul throughput `{8,16,32}`) | `GetResourceUsage` `Resource 3 → col15`; ctor key `15 → {8,16,32}` (fmt 1/2/6) | matmul | CERTAIN |
-| 16 | MXU-result sub-stage A | ctor matmul map | matmul | MEDIUM |
-| 17 | MXU-result sub-stage B | ctor matmul map | matmul | MEDIUM |
-| 18 | matmul-result-feed / accumulate tail | matres row `[18] = 8 \| 4` | matres | CERTAIN |
+| col | name | anchor | written by |
+|---|---|---|---|
+| 0 | MXU issue / dispatch port | `GetResourceUsage` `ViperfishPerformance::Resource 0xb → col0` | matpush, matmul |
+| 1 | vlxmr load-feed stage 0 | ctor vlxmr map | vlxmr (No + Xpose) |
+| 2 | `kMsrAOverrunCheck0` | `AddOverrunCheckReservations` CHECK `vf.cc:78` | overrun (MSR-A), matmul |
+| 3 | `kMsrAOverrunCheck1` | overrun CHECK `vf.cc:80` | overrun (MSR-A) |
+| 4 | `kMsrAOverrunCheck2` | overrun CHECK `vf.cc:82` | overrun (MSR-A), matmul |
+| 5 | `kMsrAOverrunCheck3` | overrun CHECK `vf.cc:84` | overrun (MSR-A), matmul |
+| 6 | `kMsrBOverrunCheck0` | overrun CHECK `vf.cc:87` | overrun (MSR-B) |
+| 7 | `kMsrBOverrunCheck1` | overrun CHECK `vf.cc:89` | overrun (MSR-B) |
+| 8 | `kMsrBOverrunCheck2` | overrun CHECK `vf.cc:91` | overrun (MSR-B), matmul |
+| 9 | `kMsrBOverrunCheck3` | overrun CHECK `vf.cc:93` | overrun (MSR-B) |
+| 10 | matpush PUSH port — MSR bank 0 | ctor `Msr0` push pair | matpush(Msr0), matmul |
+| 11 | matpush PUSH port — MSR bank 1 | ctor `Msr1` push pair | matpush(Msr1) |
+| 12 | matpush LATCH port — MSR bank 0 | ctor `Msr0` latch pair | matpush(Msr0), matmul |
+| 13 | matpush LATCH port — MSR bank 1 | ctor `Msr1` latch pair | matpush(Msr1), matmul |
+| 14 | Xlu / matrix-result deposit | `GetXluPathReservation` → `ViperfishPerformance` res 0xe | vlxmr(Xpose) |
+| 15 | MXU-result port (matmul throughput `{8,16,32}`) | `GetResourceUsage` `Resource 3 → col15`; ctor key `15 → {8,16,32}` (fmt 1/2/6) | matmul |
+| 16 | MXU-result sub-stage A | ctor matmul map | matmul |
+| 17 | MXU-result sub-stage B | ctor matmul map | matmul |
+| 18 | matmul-result-feed / accumulate tail | matres row `[18] = 8 \| 4` | matres |
 
 > **NOTE —** Cols 2..9 are the `OverrunCheck` reservations, installed by `AddOverrunCheckReservations` `@0x1c8abfe0`: the named enumerators `kMsrAOverrunCheck{0,1,2,3}` (cols 2,3,4,5) and `kMsrBOverrunCheck{0,1,2,3}` (cols 6,7,8,9), each carrying a **graduated ramp `{5,13,21,29}`** (not a flat value), behind a distinct `try_emplace(...).second` CHECK string at `vf.cc:78..93`. The MSR-A set is taken on the `a1 != 1` (MSR0) path and the MSR-B set on `a1 == 1` (MSR1); `a1 ∉ {0,1}` is a `LogFatal("Invalid MSR.")` at `vf.cc:95`. The vlxmr feed occupies col 1 in its own rows, but the overrun augmentation is what gives cols 2..9 their names.
 

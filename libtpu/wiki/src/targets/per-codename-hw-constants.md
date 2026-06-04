@@ -24,54 +24,54 @@ All nine blobs were carved from `.rodata`, md5-verified against their `FileWrapp
 
 All values are per TensorCore unless noted. "std" is the full part; "lite" is the `viperfish_lite` (v5e) or `pufferfish_lite` (v4 lite) blob, distinguished at resolution by the `variant_name` field. `6acc60406` is shown as die / full-chip (the `tensornode` blob vs the full two-die package). HBM size cells show the exact byte product; the GiB figure is `bytes / 2^30`.
 
-| Constant | v2 Jellyfish | v3 Dragonfish | v4 Pufferfish (std / lite) | v5p/v5e Viperfish (std / lite) | v6e Ghostlite | v7x 6acc60406 (die / full) | Source · Confidence |
-|---|---|---|---|---|---|---|---|
-| TpuVersionProto | 1 | 2 | 3 | 4 | 5 | 6 | proto f1 · CONFIRMED |
-| `driver_abi_version` | 1 | 1 | 1 | 1 | 1 | 1 | proto f9 · CONFIRMED |
-| **HBM size** | 16 GiB | 32 GiB | 32 GiB / 8 GiB | 96 GiB / 16 GiB | 31.5 GiB | 95 GiB / 190 GiB | `SharedMemory[HBM]` bpw×wc · CONFIRMED |
-| HBM stacks × per-stack | 2 × 8 GiB | 2 × 16 GiB | 1 × 32 GiB / 1 × 8 GiB | 1 × 96 GiB / 1 × 16 GiB | 1 × 31.5 GiB | 1 / 2 × 95 GiB | `SharedMemory.count` · CONFIRMED |
-| HBM word (`bytes_per_word`) | 1024 B | 1024 B | 512 B | 32 B / 512 B | 32 B | 32 B | proto f3 · CONFIRMED |
-| HBM clock | 1400 MHz | 1800 MHz | 2400 MHz | 3600 / 3200 MHz | 6400 MHz | 7200 MHz | proto f5 · CONFIRMED |
-| HBM bandwidth / stack | 0.317 TB/s | 0.430 TB/s | 0.982 / 0.492 TB/s | 2.350 / 0.738 TB/s | 1.638 TB/s | 3.686 TB/s | `bytes_per_second` · CONFIRMED |
-| **VMEM / TensorCore** | 16 MiB | 16 MiB | 16 MiB | 64 / 128 MiB | 128 MiB | 64 MiB | `Memory[VMEM]` bpw×wc · CONFIRMED |
-| VMEM word | 512 B | 512 B | 512 B | 512 B | 512 B | 512 B | proto f5 · CONFIRMED |
-| **SMEM (TensorCore)** | 16 KiB | 16 KiB | 1 MiB | 1 MiB | 1 MiB | 1 MiB | `Memory[SMEM]` bpw×wc · CONFIRMED |
-| SMEM word | 4 B | 4 B | 4 B | 4 B | 4 B | 4 B | proto f5 · CONFIRMED |
-| **SFLAG (TensorCore)** | 1 KiB | 1 KiB | 2 KiB | 2 KiB | 2 KiB | 16 KiB | `Memory[SFLAG]` bpw×wc · CONFIRMED |
-| SFLAG word | 4 B | 4 B | 4 B | 4 B | 4 B | 4 B | proto f5 · CONFIRMED |
-| **CMEM (SharedMemory)** | absent | absent | 128 MiB / 128 MiB | absent | absent | absent | `SharedMemory[CMEM]` · CONFIRMED |
-| CMEM word / clock / bw | — | — | 512 B / 1050 MHz / 2.151 TB/s | — | — | — | proto · CONFIRMED |
-| **MXU lane × sublane** | 128 × 8 | 128 × 8 | 128 × 8 | 128 × 8 | 128 × 8 | 128 × 8 | `VectorIsa` f2/f3 · CONFIRMED |
-| **MXU count / TensorCore** | 1 | 2 | 4 | 4 | 2 | 2 | `VectorIsa.mxu_count` f5 · CONFIRMED |
-| XLU count / TensorCore | 1 | 1 | 2 | 3 | 2 | 2 | `VectorIsa.xlu_count` f6 · CONFIRMED |
-| IAR count / TensorCore | 2 | 2 | 2 | 2 | 2 | 2 | `VectorIsa.iar_count` f7 · CONFIRMED |
-| MXU systolic dim | 128×128 | 128×128 | 128×128 | 128×128 | 256×256 | 256×256 | `*Target` C++ override · CONFIRMED |
-| **TensorCore freq** | 700 MHz | 940 MHz | 1050 MHz | 1750 / 1500 MHz | 1750 MHz | 1900 MHz | `Core[TC].frequency_mhz` f5 · CONFIRMED |
-| TensorCores / chip (std/lite) | 2 | 2 | 2 / 1 | 2 / 1 | 1 | 1 / 2 | `Core[TC].count` f3 · CONFIRMED |
-| **Reg file SREG/VREG/PREG/VMREG** | 32/32/15/8 | 32/32/15/8 | 32/32/15/8 | 32/64/14/16 | 32/64/14/16 | 32/64/14/16 | `Register.count` · CONFIRMED |
-| **Accelerator core type** | BARNA_CORE | BARNA_CORE | BARNA_CORE | SPARSE_CORE | SPARSE_CORE | SPARSE_CORE | `Core.type` f1 · CONFIRMED |
-| accelerator count / chip (std/lite) | 2 | 2 | 4 / 0 | 4 / 0 | 2 | 2 / 4 | `Core.count` f3 · CONFIRMED |
-| SparseCore freq | — | — | — | 1475 MHz | 1350 MHz | 1750 MHz | `Core[SC].frequency_mhz` · CONFIRMED |
-| SC sequencers (SEQ/TAC/TEC) | — | — | — | 1 / 16 / 16 | 1 / 16 / 16 | 1 / 0 / 16 | `Sequencer.count` · CONFIRMED |
-| SC TEC VectorIsa lane × sublane | — | — | — | 8 × 1 | 8 × 1 | 16 × 1 | `VectorIsa` (SC_TEC) · CONFIRMED |
-| SC SPMEM / TILESPMEM | — | — | — | 8 MiB / 512 KiB | 4 MiB / 256 KiB | 8 MiB / 512 KiB | `Memory` bpw×wc · CONFIRMED |
-| SC SMEM (SCS) / SFLAG (SCS) | — | — | — | 64 KiB / 28 KiB | 64 KiB / 28 KiB | 64 KiB / 28 KiB | `Memory` bpw×wc · CONFIRMED |
-| SC `tile_hbm_bw` / `stream_granule` | — | — | — | 32 B/cyc / 4 B | 32 B/cyc / 4 B | 64 B/cyc / 4 B | `SparseCore` f3/f4 · CONFIRMED |
-| **DMA granule bytes** | 1024 B | 1024 B | 512 B | 32 B / 512 B | 32 B | 32 B | `DmaRequirements.granule_bytes` f3 · CONFIRMED |
-| DMA host / device align | 16 / 1024 | 16 / 1024 | 32 / 512 | 32 / 32 (lite 32 / 512) | 32 / 32 | 32 / 32 | `DmaRequirements` f1/f2 · CONFIRMED |
-| `sync_flag_granule` | 1024 B | 1024 B | 512 B | 32 B | 32 B | 32 B | `DmaRequirements` f4 · CONFIRMED |
-| `max_single_host_dma` | 8 MiB | 16 MiB | 2 GiB | 128 GiB | 64 GiB | 32 GiB | `DmaRequirements` f5 · CONFIRMED |
-| misc: extra_done / host_async / count_dones | n/n/n | n/n/n | y/n/n | y/y/y (lite y/y/n) | y/y/y | y/y/y | `MiscPropertiesProto` · CONFIRMED |
+| Constant | v2 Jellyfish | v3 Dragonfish | v4 Pufferfish (std / lite) | v5p/v5e Viperfish (std / lite) | v6e Ghostlite | v7x 6acc60406 (die / full) |
+|---|---|---|---|---|---|---|
+| TpuVersionProto | 1 | 2 | 3 | 4 | 5 | 6 |
+| `driver_abi_version` | 1 | 1 | 1 | 1 | 1 | 1 |
+| **HBM size** | 16 GiB | 32 GiB | 32 GiB / 8 GiB | 96 GiB / 16 GiB | 31.5 GiB | 95 GiB / 190 GiB |
+| HBM stacks × per-stack | 2 × 8 GiB | 2 × 16 GiB | 1 × 32 GiB / 1 × 8 GiB | 1 × 96 GiB / 1 × 16 GiB | 1 × 31.5 GiB | 1 / 2 × 95 GiB |
+| HBM word (`bytes_per_word`) | 1024 B | 1024 B | 512 B | 32 B / 512 B | 32 B | 32 B |
+| HBM clock | 1400 MHz | 1800 MHz | 2400 MHz | 3600 / 3200 MHz | 6400 MHz | 7200 MHz |
+| HBM bandwidth / stack | 0.317 TB/s | 0.430 TB/s | 0.982 / 0.492 TB/s | 2.350 / 0.738 TB/s | 1.638 TB/s | 3.686 TB/s |
+| **VMEM / TensorCore** | 16 MiB | 16 MiB | 16 MiB | 64 / 128 MiB | 128 MiB | 64 MiB |
+| VMEM word | 512 B | 512 B | 512 B | 512 B | 512 B | 512 B |
+| **SMEM (TensorCore)** | 16 KiB | 16 KiB | 1 MiB | 1 MiB | 1 MiB | 1 MiB |
+| SMEM word | 4 B | 4 B | 4 B | 4 B | 4 B | 4 B |
+| **SFLAG (TensorCore)** | 1 KiB | 1 KiB | 2 KiB | 2 KiB | 2 KiB | 16 KiB |
+| SFLAG word | 4 B | 4 B | 4 B | 4 B | 4 B | 4 B |
+| **CMEM (SharedMemory)** | absent | absent | 128 MiB / 128 MiB | absent | absent | absent |
+| CMEM word / clock / bw | — | — | 512 B / 1050 MHz / 2.151 TB/s | — | — | — |
+| **MXU lane × sublane** | 128 × 8 | 128 × 8 | 128 × 8 | 128 × 8 | 128 × 8 | 128 × 8 |
+| **MXU count / TensorCore** | 1 | 2 | 4 | 4 | 2 | 2 |
+| XLU count / TensorCore | 1 | 1 | 2 | 3 | 2 | 2 |
+| IAR count / TensorCore | 2 | 2 | 2 | 2 | 2 | 2 |
+| MXU systolic dim | 128×128 | 128×128 | 128×128 | 128×128 | 256×256 | 256×256 |
+| **TensorCore freq** | 700 MHz | 940 MHz | 1050 MHz | 1750 / 1500 MHz | 1750 MHz | 1900 MHz |
+| TensorCores / chip (std/lite) | 2 | 2 | 2 / 1 | 2 / 1 | 1 | 1 / 2 |
+| **Reg file SREG/VREG/PREG/VMREG** | 32/32/15/8 | 32/32/15/8 | 32/32/15/8 | 32/64/14/16 | 32/64/14/16 | 32/64/14/16 |
+| **Accelerator core type** | BARNA_CORE | BARNA_CORE | BARNA_CORE | SPARSE_CORE | SPARSE_CORE | SPARSE_CORE |
+| accelerator count / chip (std/lite) | 2 | 2 | 4 / 0 | 4 / 0 | 2 | 2 / 4 |
+| SparseCore freq | — | — | — | 1475 MHz | 1350 MHz | 1750 MHz |
+| SC sequencers (SEQ/TAC/TEC) | — | — | — | 1 / 16 / 16 | 1 / 16 / 16 | 1 / 0 / 16 |
+| SC TEC VectorIsa lane × sublane | — | — | — | 8 × 1 | 8 × 1 | 16 × 1 |
+| SC SPMEM / TILESPMEM | — | — | — | 8 MiB / 512 KiB | 4 MiB / 256 KiB | 8 MiB / 512 KiB |
+| SC SMEM (SCS) / SFLAG (SCS) | — | — | — | 64 KiB / 28 KiB | 64 KiB / 28 KiB | 64 KiB / 28 KiB |
+| SC `tile_hbm_bw` / `stream_granule` | — | — | — | 32 B/cyc / 4 B | 32 B/cyc / 4 B | 64 B/cyc / 4 B |
+| **DMA granule bytes** | 1024 B | 1024 B | 512 B | 32 B / 512 B | 32 B | 32 B |
+| DMA host / device align | 16 / 1024 | 16 / 1024 | 32 / 512 | 32 / 32 (lite 32 / 512) | 32 / 32 | 32 / 32 |
+| `sync_flag_granule` | 1024 B | 1024 B | 512 B | 32 B | 32 B | 32 B |
+| `max_single_host_dma` | 8 MiB | 16 MiB | 2 GiB | 128 GiB | 64 GiB | 32 GiB |
+| misc: extra_done / host_async / count_dones | n/n/n | n/n/n | y/n/n | y/y/y (lite y/y/n) | y/y/y | y/y/y |
 
 The exact byte products behind the headline HBM and VMEM cells: Jellyfish HBM `1024 × 8,388,608 = 8,589,934,592 B` per stack × 2; Pufferfish HBM `512 × 67,108,864 = 34,359,738,368 B` (32 GiB) + CMEM `512 × 262,144 = 134,217,728 B` (128 MiB); Viperfish HBM `32 × 3,221,225,472 = 103,079,215,104 B` (exactly 96 GiB); Ghostlite HBM `32 × 1,056,964,608 = 33,822,867,456 B` (31.5 GiB, 32 GiB nominal less ECC); 6acc60406 HBM `32 × 3,187,671,040 = 102,005,473,280 B` (95 GiB per die).
 
 ### Bank counts (not a proto field — `*Target::MemBanks` C++ literals)
 
-| MemBanks(space) | v2 JF | v3 DF | v4 PF | v5p VF | v6e GL | v7x | Confidence |
-|---|---|---|---|---|---|---|---|
-| VMEM (space 3) | 8 | 8 | 16 | 32 | 32 | 32 | CONFIRMED |
-| CMEM (space 4) | FATAL | FATAL | 32 | FATAL | FATAL | FATAL | CONFIRMED |
-| SMEM (space 5) | 2 | 2 | 8 | 8 | 8 | 8 | CONFIRMED |
+| MemBanks(space) | v2 JF | v3 DF | v4 PF | v5p VF | v6e GL | v7x |
+|---|---|---|---|---|---|---|
+| VMEM (space 3) | 8 | 8 | 16 | 32 | 32 | 32 |
+| CMEM (space 4) | FATAL | FATAL | 32 | FATAL | FATAL | FATAL |
+| SMEM (space 5) | 2 | 2 | 8 | 8 | 8 | 8 |
 
 `JellyfishTarget::MemBanks` @ `0x1d48fc80` returns 8 for space 3, 2 for space 5, and `LOG(FATAL)` otherwise (`target_jellyfish.h:215`). `PufferfishTarget::MemBanks` @ `0x1d493900` indexes the table at `.rodata` `0xb5305c8 = {16, 32, 8}` for spaces 3/4/5 (`target_pufferfish.h:228`). `ViperfishTarget::MemBanks` @ `0x1d4999c0` and `GhostliteTarget::MemBanks` @ `0x1d4969c0` return 32 / 8 / FATAL. Dragonfish overrides none of these and inherits Jellyfish's 8 / 2.
 

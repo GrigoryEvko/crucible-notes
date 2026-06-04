@@ -112,17 +112,17 @@ This is a hard `CHECK` (`absl::log_internal::LogMessageFatal`), not a recoverabl
 
 Field names are recovered from the `CHECK_EQ` string literals (`p.src_byte_strides` / `p.tgt_byte_strides` / `p.steps_per_stride`); offsets and access widths from the decompiled reads:
 
-| Offset | Size | Field | Type | Evidence |
-|---|---:|---|---|---|
-| `+0x00` | 8 | `src` | `mlir::Value` | `getMemRefType` → `GetMemorySpace` |
-| `+0x08` | 8 | `dst` | `mlir::Value` | `getMemRefType` → `GetMemorySpace` |
-| `+0x10` | 8 | `src_byte_strides.data()` | `int*` (4-B entries) | read `*(u32*)(p+0x10)`; entries `movsxd` |
-| `+0x18` | 4 | `src_byte_strides.size()` | `u32` | **form selector**; `CHECK_EQ` source |
-| `+0x50` | 8 | `tgt_byte_strides.data()` | `int*` (4-B entries) | per-side stride array |
-| `+0x58` | 4 | `tgt_byte_strides.size()` | `u32` | `CHECK_EQ == +0x18` |
-| `+0x90` | 8 | transfer length / sflag | `mlir::Value` | passed as `len`/`sflag` create arg |
-| `+0x98` | 8 | `steps_per_stride.data()` | `Value*` (8-B entries) | read `*(Value*)(p+0x98)` |
-| `+0xA0` | 4 | `steps_per_stride.size()` | `u32` | `CHECK_EQ == +0x18 + 1` |
+| Offset | Size | Field | Type |
+|---|---:|---|---|
+| `+0x00` | 8 | `src` | `mlir::Value` |
+| `+0x08` | 8 | `dst` | `mlir::Value` |
+| `+0x10` | 8 | `src_byte_strides.data()` | `int*` (4-B entries) |
+| `+0x18` | 4 | `src_byte_strides.size()` | `u32` |
+| `+0x50` | 8 | `tgt_byte_strides.data()` | `int*` (4-B entries) |
+| `+0x58` | 4 | `tgt_byte_strides.size()` | `u32` |
+| `+0x90` | 8 | transfer length / sflag | `mlir::Value` |
+| `+0x98` | 8 | `steps_per_stride.data()` | `Value*` (8-B entries) |
+| `+0xA0` | 4 | `steps_per_stride.size()` | `u32` |
 
 > **NOTE —** `+0x90` is a `Value` used as the `len`/`sflag` create argument; the exact field name (transfer length vs. sync-flag) is not in any `CHECK` string and is **INFERRED**. Offset, 8-byte `Value` type, and use as the create arg are byte-pinned.
 

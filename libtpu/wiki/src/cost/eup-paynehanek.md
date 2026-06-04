@@ -56,14 +56,14 @@ The full six-word reconstruction `Σᵢ wᵢ·2^(−32(i+1))` evaluates to `0.15
 
 Six 32-bit words, loaded MSB-first (word 0 is the most-significant fraction limb). Each is an `imm32` operand of a distinct `VectorU32Constant` call; the `.text` offset is the address of the `mov esi, imm32` that materializes it (VMA == file offset). The decompiled order at lines 522–527 of `PayneHanekRangeReduction` is byte-identical to the disassembly.
 
-| word | `u32` | `.text` off (imm) | bit range of `1/(2π)` | confidence |
-|---|---|---|---|---|
-| w0 | `0x28be60db` | `0x1d581b8a` | bits[191..160] (MSB limb) = `floor(2³²/(2π))` = 683565275 | CERTAIN |
-| w1 | `0x9391054a` | `0x1d581b9e` | bits[159..128] | CERTAIN |
-| w2 | `0x7f09d5f4` | `0x1d581bb3` | bits[127..96] | CERTAIN |
-| w3 | `0x7d4d3770` | `0x1d581bc8` | bits[95..64] | CERTAIN |
-| w4 | `0x36d8a566` | `0x1d581bdd` | bits[63..32] | CERTAIN |
-| w5 | `0x4f10e410` | `0x1d581bf2` | bits[31..0] (LSB limb) | CERTAIN |
+| word | `u32` | `.text` off (imm) | bit range of `1/(2π)` |
+|---|---|---|---|
+| w0 | `0x28be60db` | `0x1d581b8a` | bits[191..160] (MSB limb) = `floor(2³²/(2π))` = 683565275 |
+| w1 | `0x9391054a` | `0x1d581b9e` | bits[159..128] |
+| w2 | `0x7f09d5f4` | `0x1d581bb3` | bits[127..96] |
+| w3 | `0x7d4d3770` | `0x1d581bc8` | bits[95..64] |
+| w4 | `0x36d8a566` | `0x1d581bdd` | bits[63..32] |
+| w5 | `0x4f10e410` | `0x1d581bf2` | bits[31..0] (LSB limb) |
 
 ```text
 1/(2π) ≈ 0.  28be60db 9391054a 7f09d5f4 7d4d3770 36d8a566 4f10e410   (base 2³², MSB→LSB)
@@ -77,16 +77,16 @@ Six 32-bit words, loaded MSB-first (word 0 is the most-significant fraction limb
 
 The same `VectorU32Constant` channel carries the scalar control constants for the windowed multiply and the final compose. All are `.text` immediates inside the same function; offsets are the materializing `mov`.
 
-| `u32` | value | role | `.text` off | confidence |
-|---|---|---|---|---|
-| `0x00000020` | 32 | per-limb shift width; window index = `0x20 − exp_window` (`@line 528`) | `0x1d581c0a` | CERTAIN |
-| `0x0000001f` | 31 | low-5-bit exponent mask (`SimplifyAndU32`, `@line 509`) | — | CERTAIN |
-| `0x00000005` | 5 | `>>5` to split exponent into (limb-index, intra-limb shift) (`@line 495`) | — | CERTAIN |
-| `0x00000fff` | 4095 | 12-bit fraction window / round mask (`@line 911`) | — | CERTAIN |
-| `0x0000001e` | 30 | window-bit count for the fractional-product extraction (`@lines 1495,1508`) | — | CERTAIN |
-| `0xffffffe2` | −30 | binary-point exponent offset → `SubS32` → `CreateVectorBinop(0x121)` (`@line 1593`) | — | CERTAIN |
-| `0x20000000` | 2²⁹ | rounding / half-ULP bias for the fraction (`@line 1482`) | — | CERTAIN |
-| `0x00c90fdb` | — | 24-bit significand of float `π/2` (`π/2 = 0x3fc90fdb`) → `VcomposeF32` (`@line 1606`) | — | CERTAIN |
+| `u32` | value | role | `.text` off |
+|---|---|---|---|
+| `0x00000020` | 32 | per-limb shift width; window index = `0x20 − exp_window` (`@line 528`) | `0x1d581c0a` |
+| `0x0000001f` | 31 | low-5-bit exponent mask (`SimplifyAndU32`, `@line 509`) | — |
+| `0x00000005` | 5 | `>>5` to split exponent into (limb-index, intra-limb shift) (`@line 495`) | — |
+| `0x00000fff` | 4095 | 12-bit fraction window / round mask (`@line 911`) | — |
+| `0x0000001e` | 30 | window-bit count for the fractional-product extraction (`@lines 1495,1508`) | — |
+| `0xffffffe2` | −30 | binary-point exponent offset → `SubS32` → `CreateVectorBinop(0x121)` (`@line 1593`) | — |
+| `0x20000000` | 2²⁹ | rounding / half-ULP bias for the fraction (`@line 1482`) | — |
+| `0x00c90fdb` | — | 24-bit significand of float `π/2` (`π/2 = 0x3fc90fdb`) → `VcomposeF32` (`@line 1606`) | — |
 
 The exponent-window split is the heart of the trick: the low 5 bits of the (biased) exponent become an intra-limb shift, and `exp >> 5` selects which 32-bit limb of the product window straddles the binary point. `0x20 − shift` is the complementary shift for the `Shll`/`Shrl`/`Or` limb-join, so the chosen 64-bit window of the `x · 1/(2π)` product is assembled regardless of how large `|x|` is — the fraction bits are never lost to cancellation.
 
@@ -179,15 +179,15 @@ The fraction `f ∈ [0,1)` carries the full 24 surviving significand bits *regar
 
 The reduction is built entirely from generic `LloRegionBuilder` simplifiers and `CreateVectorBinop`/`CreateVectorUnop` ops — there is no dedicated "PayneHanek" LLO opcode. The opcodes touched, all confirmed in the decompile:
 
-| LLO op | helper | meaning | confidence |
-|---|---|---|---|
-| `0x108` | `CreateVectorUnop` / `SimplifyConvertS32ToF32` | `s32 → f32` (turn-count and fraction to float) | CERTAIN |
-| `0x11b` | `CreateVectorBinop` / `SimplifyAddS32` | `+` (exponent seed, `@line 473`) | CERTAIN |
-| `0x121` | `CreateVectorBinop` / `SimplifySubS32` | `−` (window index and binary-point offset) | CERTAIN |
-| `0x15c` | `CreateVectorBinop` / `SimplifyAndU32` | bitwise AND (exponent mask `0x1f`) | CERTAIN |
-| `0x15e` | `CreateVectorBinop` / `SimplifyOrU32` | bitwise OR (limb window join) | CERTAIN |
-| `0x19a` | `CreateVectorBinop` / `SimplifyShrlU32` | logical shift right (limb realign) | CERTAIN |
-| `0x19c` | `CreateVectorBinop` / `SimplifyShllU32` | logical shift left (limb realign) | CERTAIN |
+| LLO op | helper | meaning |
+|---|---|---|
+| `0x108` | `CreateVectorUnop` / `SimplifyConvertS32ToF32` | `s32 → f32` (turn-count and fraction to float) |
+| `0x11b` | `CreateVectorBinop` / `SimplifyAddS32` | `+` (exponent seed, `@line 473`) |
+| `0x121` | `CreateVectorBinop` / `SimplifySubS32` | `−` (window index and binary-point offset) |
+| `0x15c` | `CreateVectorBinop` / `SimplifyAndU32` | bitwise AND (exponent mask `0x1f`) |
+| `0x15e` | `CreateVectorBinop` / `SimplifyOrU32` | bitwise OR (limb window join) |
+| `0x19a` | `CreateVectorBinop` / `SimplifyShrlU32` | logical shift right (limb realign) |
+| `0x19c` | `CreateVectorBinop` / `SimplifyShllU32` | logical shift left (limb realign) |
 
 The argument enters as an `LloValue*` (the float `x`); its mantissa and exponent are decomposed by the `CastTo(0x12, …)` (`@line 470`) and the exponent arithmetic above. No state is held across calls — the function is a pure SSA expander emitting a fixed DAG of these ops into the current `LloRegion`.
 
@@ -205,15 +205,15 @@ A faithful reimplementation must therefore hard-code the eight constants into th
 
 ## Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `PayneHanekRangeReduction` | `0x1d5819c0` | the full trig argument reduction (emits the windowed multiply + reconstruction) | CERTAIN |
-| `LloModule::VectorU32Constant` | `0x1d506400` | materializes each `imm32` (the six `1/(2π)` words + control constants) as an LLO op | CERTAIN |
-| `VshllU64High` | `0x1d583ac0` | unsigned 64×64 → high-64 product (limb-by-limb windowed multiply) | CERTAIN |
-| `LloRegionBuilder::VcomposeF32` | `0x1d555860` | assembles the reduced argument float from (exponent, π/2 significand) | CERTAIN |
-| `SimplifyConvertS32ToF32` | (inline) | `s32 → f32` for turn-count `k` and the fraction | CERTAIN |
-| `LloRegionBuilder::VcmpHelper` | (inline) | the four window comparisons (`<= 1,2,3,4`) feeding the selects | HIGH |
-| `VsinReduced` / `Vsinq` / `VcosqDecomposed` | (trig builders) | wrap the EUP `sinq`/`cosq` push around `r`; apply the `k`-quadrant sign/swap | INFERRED |
+| Function | Address | Role |
+|---|---|---|
+| `PayneHanekRangeReduction` | `0x1d5819c0` | the full trig argument reduction (emits the windowed multiply + reconstruction) |
+| `LloModule::VectorU32Constant` | `0x1d506400` | materializes each `imm32` (the six `1/(2π)` words + control constants) as an LLO op |
+| `VshllU64High` | `0x1d583ac0` | unsigned 64×64 → high-64 product (limb-by-limb windowed multiply) |
+| `LloRegionBuilder::VcomposeF32` | `0x1d555860` | assembles the reduced argument float from (exponent, π/2 significand) |
+| `SimplifyConvertS32ToF32` | (inline) | `s32 → f32` for turn-count `k` and the fraction |
+| `LloRegionBuilder::VcmpHelper` | (inline) | the four window comparisons (`<= 1,2,3,4`) feeding the selects |
+| `VsinReduced` / `Vsinq` / `VcosqDecomposed` | (trig builders) | wrap the EUP `sinq`/`cosq` push around `r`; apply the `k`-quadrant sign/swap |
 
 ### Considerations
 

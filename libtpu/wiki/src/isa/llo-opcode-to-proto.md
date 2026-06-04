@@ -39,17 +39,17 @@ The decompiler renders the table address GOT-relatively: `(uint32_t*)&_GLOBAL_OF
 
 Reading all 461 entries confirms the structure: each maps to a distinct proto value, the set of produced values is `{1, 2, …, 499} \ {38 gaps}` (exactly 461 distinct values), and the map is **not monotonic at the tail**. The early run is the clean `+1` shift (in-memory 0 → proto 1, in-memory 1 → proto 2, …), but late-added opcodes break it:
 
-| In-memory `LloOpcode` | Name | → Proto value | Confidence |
-|---|---|---:|---|
-| `0x000` (0) `kEvent` | base | 1 | CONFIRMED |
-| `0x001` (1) `kVectorReadIar` | base | 2 | CONFIRMED |
-| `0x086` (134) `kScalarAddressCalculation` | base | 158 | CONFIRMED |
-| `0x14E` (334) `kVectorEupResult` | base | 371 | CONFIRMED |
-| `0x151` (337) `kVectorCmemResult` | base | 374 | CONFIRMED |
-| `0x17B` (379) `kScalarMove` | base | 417 | CONFIRMED |
-| `0x084` (132) `kVectorTraceArg` | **late** | 498 | CONFIRMED |
-| `0x197` (407) `kVectorMaskPackCompressedEven` | **late** | 499 | CONFIRMED |
-| `0x1CC` (460) `kBarnaCoreVectorStore` | base | 497 | CONFIRMED |
+| In-memory `LloOpcode` | Name | → Proto value |
+|---|---|---:|
+| `0x000` (0) `kEvent` | base | 1 |
+| `0x001` (1) `kVectorReadIar` | base | 2 |
+| `0x086` (134) `kScalarAddressCalculation` | base | 158 |
+| `0x14E` (334) `kVectorEupResult` | base | 371 |
+| `0x151` (337) `kVectorCmemResult` | base | 374 |
+| `0x17B` (379) `kScalarMove` | base | 417 |
+| `0x084` (132) `kVectorTraceArg` | **late** | 498 |
+| `0x197` (407) `kVectorMaskPackCompressedEven` | **late** | 499 |
+| `0x1CC` (460) `kBarnaCoreVectorStore` | base | 497 |
 
 > **QUIRK — proto 498 and 499 are the newest wire slots and map to *low* in-memory opcodes.** `kVectorTraceArg` (in-memory `0x084`) and `kVectorMaskPackCompressedEven` (in-memory `0x197`) were inserted mid-enum in `LloOpcode` but appended at the end of `LloOpcodeProto`. So the highest two wire values decode to opcodes that sit deep inside the in-memory enum. The map is a permutation-with-gaps, not a shift — port the actual table, not a formula.
 

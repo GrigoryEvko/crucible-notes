@@ -78,13 +78,13 @@ PXC and VXC `CreateImpl` are byte-for-byte the same shape; only the allocation s
 
 All three leaf factories share one vtable shape: five function-pointer slots. Slots 0, 2, and 3 point at inherited base code (the complete-object destructor, `Create`, `CanCreate`); only slot 1 (the deleting destructor) and slot 4 (`CreateImpl`) carry family-specific code. The deleting destructors are trivially `free(this)` in every family — the 16-byte factory owns no members.
 
-| Slot | Method | JXC | PXC | VXC | Confidence |
-|---|---|---|---|---|---|
-| 0 | `~Factory()` D2 (complete-obj dtor) | inherited 0x0e723a80 | inherited 0x0e723a80 | inherited 0x0e723a80 | HIGH |
-| 1 | `~Factory()` D0 (deleting dtor) | **override 0x0e723aa0** | **override 0x0e7f8260** | **override 0x1d110e80** | CERTAIN |
-| 2 | `Create(TpuHostWorkQueue*) const` | inherited 0x1e80f560 | inherited 0x1e80f560 | inherited 0x1e80f560 | CERTAIN |
-| 3 | `CanCreate() const` | inherited 0x1e80f520 | inherited 0x1e80f520 | inherited 0x1e80f520 | CERTAIN |
-| 4 | `CreateImpl(TpuHostWorkQueue*) const` | **override 0x0e723ac0** | **override 0x0e7f8280** | **override 0x1d110e00** | CERTAIN |
+| Slot | Method | JXC | PXC | VXC |
+|---|---|---|---|---|
+| 0 | `~Factory()` D2 (complete-obj dtor) | inherited 0x0e723a80 | inherited 0x0e723a80 | inherited 0x0e723a80 |
+| 1 | `~Factory()` D0 (deleting dtor) | **override 0x0e723aa0** | **override 0x0e7f8260** | **override 0x1d110e80** |
+| 2 | `Create(TpuHostWorkQueue*) const` | inherited 0x1e80f560 | inherited 0x1e80f560 | inherited 0x1e80f560 |
+| 3 | `CanCreate() const` | inherited 0x1e80f520 | inherited 0x1e80f520 | inherited 0x1e80f520 |
+| 4 | `CreateImpl(TpuHostWorkQueue*) const` | **override 0x0e723ac0** | **override 0x0e7f8280** | **override 0x1d110e00** |
 
 Each leaf factory's D0 destructor (slot 1) decompiles to `free(this)` — verified for all three at the addresses above. The override addresses for slot 4 are the `CreateImpl` stubs whose bodies are shown in the dispatch section.
 
@@ -96,31 +96,31 @@ The `TpuHal` abstract base declares 23 virtual slots. Two are `__cxa_pure_virtua
 
 The matrix below shows every slot. Cells reading "inherited" point at the `TpuHal` base implementation in the second column; bold cells are family overrides with their addresses.
 
-| Slot | Method | Base (`TpuHal`) | JXC | PXC | VXC | Confidence |
-|---|---|---|---|---|---|---|
-| 0 | `~Impl()` D2 | base dtor | **0x0e724de0** | **0x0e7f8a40** | **0x1d111740** | CERTAIN |
-| 1 | `~Impl()` D0 | base dtor | **0x0e724e40** | **0x0e7f8ac0** | **0x1d1117a0** | CERTAIN |
-| 2 | `Type() const` | `__cxa_pure_virtual` | mid-base 0x1d3b5480 | mid-base 0x1d3b5480 | mid-base 0x1d3b5480 | CERTAIN |
-| 3 | `Initialize(TpuHalOptions const&)` | 0x1e8132a0 | inherited | inherited | inherited | HIGH |
-| 4 | `TearDown()` | 0x1e813440 | inherited | inherited | inherited | HIGH |
-| 5 | `topology() const` | 0x1e8140a0 | inherited | inherited | inherited | HIGH |
-| 6 | `host_location() const` | 0x1e814100 | inherited | inherited | inherited | HIGH |
-| 7 | `hal_location() const` | 0x1e814160 | inherited | inherited | inherited | HIGH |
-| 8 | `GetConfiguredProperties() const` | 0x0e724ea0 | inherited | **0x0e7f82e0** | **0x1d110ea0** | CERTAIN |
-| 9 | `GetChip(int)` | 0x1e811e80 | inherited | inherited | inherited | HIGH |
-| 10 | `GetChip(TpuChipLocation const&)` | 0x1e811e40 | inherited | inherited | inherited | HIGH |
-| 11 | `AllocatePremapped(unsigned long)` | 0x1e8143a0 | inherited | inherited | inherited | HIGH |
-| 12 | `DeallocatePremapped(void*)` | 0x1e8143c0 | inherited | inherited | inherited | HIGH |
-| 13 | `PremappedAllocatorStats() const` | 0x1e8143e0 | inherited | inherited | inherited | HIGH |
-| 14 | `GetPremappedAlignment() const` | 0x1e814420 | inherited | inherited | inherited | HIGH |
-| 15 | `Throttle(TpuChipLocation const&)` | 0x1e814440 | inherited | inherited | inherited | HIGH |
-| 16 | `Unthrottle(TpuChipLocation const&)` | 0x1e814460 | inherited | inherited | inherited | HIGH |
-| 17 | `GetThrottleState(TpuChipLocation const&)` | 0x1e814480 | inherited | inherited | inherited | HIGH |
-| 18 | `WaitForCoreDumpComplete()` | 0x213d7760 | inherited | inherited | **0x1d110f00** | CERTAIN |
-| 19 | `ValidateTopology()` | 0x1e8139c0 | mid-base 0x1d3b54a0 | mid-base 0x1d3b54a0 | mid-base 0x1d3b54a0 | CERTAIN |
-| 20 | `CreateAndInitializeChips(TpuHalOptions const&)` | `__cxa_pure_virtual` | **0x0e723c20** | **0x0e7f8300** | **0x1d110f20** | CERTAIN |
-| 21 | `PreTearDownChips()` | 0x1d3b5a20 (no-op) | **0x0e724da0** | **0x0e7f8a20** | **0x1d111720** | CERTAIN |
-| 22 | `PostTearDownChips()` | 0x0e7f8b40 (no-op) | **0x0e724dc0** | inherited | inherited | CERTAIN |
+| Slot | Method | Base (`TpuHal`) | JXC | PXC | VXC |
+|---|---|---|---|---|---|
+| 0 | `~Impl()` D2 | base dtor | **0x0e724de0** | **0x0e7f8a40** | **0x1d111740** |
+| 1 | `~Impl()` D0 | base dtor | **0x0e724e40** | **0x0e7f8ac0** | **0x1d1117a0** |
+| 2 | `Type() const` | `__cxa_pure_virtual` | mid-base 0x1d3b5480 | mid-base 0x1d3b5480 | mid-base 0x1d3b5480 |
+| 3 | `Initialize(TpuHalOptions const&)` | 0x1e8132a0 | inherited | inherited | inherited |
+| 4 | `TearDown()` | 0x1e813440 | inherited | inherited | inherited |
+| 5 | `topology() const` | 0x1e8140a0 | inherited | inherited | inherited |
+| 6 | `host_location() const` | 0x1e814100 | inherited | inherited | inherited |
+| 7 | `hal_location() const` | 0x1e814160 | inherited | inherited | inherited |
+| 8 | `GetConfiguredProperties() const` | 0x0e724ea0 | inherited | **0x0e7f82e0** | **0x1d110ea0** |
+| 9 | `GetChip(int)` | 0x1e811e80 | inherited | inherited | inherited |
+| 10 | `GetChip(TpuChipLocation const&)` | 0x1e811e40 | inherited | inherited | inherited |
+| 11 | `AllocatePremapped(unsigned long)` | 0x1e8143a0 | inherited | inherited | inherited |
+| 12 | `DeallocatePremapped(void*)` | 0x1e8143c0 | inherited | inherited | inherited |
+| 13 | `PremappedAllocatorStats() const` | 0x1e8143e0 | inherited | inherited | inherited |
+| 14 | `GetPremappedAlignment() const` | 0x1e814420 | inherited | inherited | inherited |
+| 15 | `Throttle(TpuChipLocation const&)` | 0x1e814440 | inherited | inherited | inherited |
+| 16 | `Unthrottle(TpuChipLocation const&)` | 0x1e814460 | inherited | inherited | inherited |
+| 17 | `GetThrottleState(TpuChipLocation const&)` | 0x1e814480 | inherited | inherited | inherited |
+| 18 | `WaitForCoreDumpComplete()` | 0x213d7760 | inherited | inherited | **0x1d110f00** |
+| 19 | `ValidateTopology()` | 0x1e8139c0 | mid-base 0x1d3b54a0 | mid-base 0x1d3b54a0 | mid-base 0x1d3b54a0 |
+| 20 | `CreateAndInitializeChips(TpuHalOptions const&)` | `__cxa_pure_virtual` | **0x0e723c20** | **0x0e7f8300** | **0x1d110f20** |
+| 21 | `PreTearDownChips()` | 0x1d3b5a20 (no-op) | **0x0e724da0** | **0x0e7f8a20** | **0x1d111720** |
+| 22 | `PostTearDownChips()` | 0x0e7f8b40 (no-op) | **0x0e724dc0** | inherited | inherited |
 
 **Override counts:** JXC = 7 (slots 0,1,2,19,20,21,22), PXC = 7 (slots 0,1,2,8,19,20,21), VXC = 8 (slots 0,1,2,8,18,19,20,21).
 

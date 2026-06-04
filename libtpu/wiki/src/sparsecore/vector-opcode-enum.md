@@ -88,12 +88,12 @@ Three facts fall out, and they are the spine of the whole roster: (a) the opcode
 
 Confirmed byte-exact against the gfc `VectorAlu0Encoder::Encode` (`0x1ec11100`), whose `BitCopy` calls write four 6-bit VREG selectors, the 8-bit opcode, and the predication header at fixed absolute bundle bits. The three lanes share one template (see [TEC Engine](tec-engine.md#the-37-bit-vector-alu-slot-template)); only the slot base shifts.
 
-| Lane | Slot base (GF) | VREG selectors | Opcode bit | Opcode width | Pred header | Confidence |
-|---|---:|---:|---:|---:|---:|---|
-| `VectorAlu0` | 438 | 438 / 444 / 450 / 456 | **462** | 8 | 470 / 473 / 474 | CONFIRMED |
-| `VectorAlu1` | 401 | 401 / 407 / 413 / 419 | **425** | 8 | 433 / 436 / 437 | CONFIRMED |
-| `VectorAlu2` | 364 | 364 / 370 / 376 / 382 | **388** | 8 | 396 / 399 / 400 | CONFIRMED |
-| `VectorAlu0` (VF) | 432 | 432 / 438 / 444 / 450 | **456** | 7 | 463 / 467 | HIGH |
+| Lane | Slot base (GF) | VREG selectors | Opcode bit | Opcode width | Pred header |
+|---|---:|---:|---:|---:|---:|
+| `VectorAlu0` | 438 | 438 / 444 / 450 / 456 | **462** | 8 | 470 / 473 / 474 |
+| `VectorAlu1` | 401 | 401 / 407 / 413 / 419 | **425** | 8 | 433 / 436 / 437 |
+| `VectorAlu2` | 364 | 364 / 370 / 376 / 382 | **388** | 8 | 396 / 399 / 400 |
+| `VectorAlu0` (VF) | 432 | 432 / 438 / 444 / 450 | **456** | 7 | 463 / 467 |
 
 The opcode always lands at `slot_base + 24`. The Viperfish lane is one bit narrower (7-bit opcode → 36-bit slot), so its lane-0 opcode sits at `@456` rather than `@462`; the VF predication header is the single-channel 4-bit form rather than GF's 3+4 overlap (see [TEC Engine](tec-engine.md#the-37-bit-vector-alu-slot-template)).
 
@@ -147,23 +147,23 @@ The tally is byte-confirmed: the consumer body references exactly **135 distinct
 
 The bulk of the ISA is direct binary ops whose opcode is the field value. Values are gen-invariant for the integer/bitwise ops (`VectorBitwiseAnd=6`, `ByteNez=55` byte-identical VF/GF). The dtype suffix is part of the opcode, not an operand — `VectorAddS32`, `VectorAddS16`, `VectorAddBf16`, `VectorAddF32` are four distinct opcodes.
 
-| Opcode | Mnemonic | Opcode | Mnemonic | Confidence |
-|---:|---|---:|---|---|
-| 3 | `VectorAddS32` | 32 | `VectorMultiplyBf16` | CONFIRMED |
-| 4 | `VectorSubtractS32` | 33 | `VectorMaxBf16` | CONFIRMED |
-| 5 | `VectorMultiplyU32` | 34 | `VectorMinBf16` | CONFIRMED |
-| 6 | `VectorBitwiseAnd` | 44 | `VectorCarryU32` | CONFIRMED |
-| 7 | `VectorBitwiseOr` | 45 | `VectorBitwiseAndn` | CONFIRMED |
-| 8 | `VectorBitwiseXor` | 55 | `ByteNez` | CONFIRMED |
-| 9 | `VectorLogicalShiftLeft` | 84 | `VectorMaxU32` | CONFIRMED |
-| 10 | `VectorLogicalShiftRight` | 85 | `VectorMinU32` | CONFIRMED |
-| 11 | `VectorArithmeticShiftRight` | 86 | `VectorMultiplyReturningHighHalfU32` | CONFIRMED |
-| 14 | `VectorMultiplyF32` | 87 | `VectorAddS16` | CONFIRMED |
-| 15 | `VectorMaxF32` | 88 | `VectorSubtractS16` | CONFIRMED |
-| 16 | `VectorMinF32` | 89 | `VectorMultiplyU16` | CONFIRMED |
-| 17 | `VectorReluxF32` | 56 | `VectorMaxU16` | HIGH |
-| 18 | `VectorClampF32` | 57 | `VectorMinU16` | HIGH |
-| 22 | `VectorMove` | 75 | `VectorCarryU16` | HIGH |
+| Opcode | Mnemonic | Opcode | Mnemonic |
+|---:|---|---:|---|
+| 3 | `VectorAddS32` | 32 | `VectorMultiplyBf16` |
+| 4 | `VectorSubtractS32` | 33 | `VectorMaxBf16` |
+| 5 | `VectorMultiplyU32` | 34 | `VectorMinBf16` |
+| 6 | `VectorBitwiseAnd` | 44 | `VectorCarryU32` |
+| 7 | `VectorBitwiseOr` | 45 | `VectorBitwiseAndn` |
+| 8 | `VectorBitwiseXor` | 55 | `ByteNez` |
+| 9 | `VectorLogicalShiftLeft` | 84 | `VectorMaxU32` |
+| 10 | `VectorLogicalShiftRight` | 85 | `VectorMinU32` |
+| 11 | `VectorArithmeticShiftRight` | 86 | `VectorMultiplyReturningHighHalfU32` |
+| 14 | `VectorMultiplyF32` | 87 | `VectorAddS16` |
+| 15 | `VectorMaxF32` | 88 | `VectorSubtractS16` |
+| 16 | `VectorMinF32` | 89 | `VectorMultiplyU16` |
+| 17 | `VectorReluxF32` | 56 | `VectorMaxU16` |
+| 18 | `VectorClampF32` | 57 | `VectorMinU16` |
+| 22 | `VectorMove` | 75 | `VectorCarryU16` |
 
 `VectorAddS32=3`, `VectorAddS16=87`, `VectorSubtractS32=4`, `VectorSubtractS16=88` are confirmed against the gfc lane-0 encoder, whose proto-oneof switch writes those exact values at bit 462. `ByteNez=55` is confirmed against the `Matches()` immediate on all three lanes and gens.
 
@@ -171,32 +171,32 @@ The bulk of the ISA is direct binary ops whose opcode is the field value. Values
 
 The compares are laid out as dense per-dtype runs of `{Eq, Neq, Gt, Gte, Lt, Lte}`. The S32/S16/U32/U16/Bf16 blocks are direct opcodes; the **F32 block is the shared oneof chain** (opcodes `0x28..0x2d`), not direct values.
 
-| Block | Opcodes | Ops | Confidence |
-|---|---|---|---|
-| S16 compare | 65 / 66 / 67 / 68 / 69 / 70 | `Eq Neq Gt Gte Lt Lte S16` | CONFIRMED |
-| S32 compare | 38 / 39 / 40 / 41 / 42 / 43 | `Eq Neq Gt Gte Lt Lte S32` | CONFIRMED |
-| U32 compare | 80 / 81 / 82 / 83 | `Gt Gte Lt Lte U32` | CONFIRMED |
-| U16 compare | 71 / 72 / 73 / 74 | `Gt Gte Lt Lte U16` | CONFIRMED |
-| Bf16 compare | 76 / 77 / 78 / 79 | `Eq Neq Gt Gte … Bf16` | CONFIRMED |
-| F32 compare | `0x28..0x2d` (oneof) | `Eq Neq Gt Gte Lt Lte F32` | CONFIRMED |
-| F32 total | 53 / 54 | `VectorTotalLtF32` / `VectorTotalLteF32` | CONFIRMED |
-| Bf16 total | 26 / 36 | `VectorTotalLtBf16` / `VectorTotalLteBf16` | HIGH |
+| Block | Opcodes | Ops |
+|---|---|---|
+| S16 compare | 65 / 66 / 67 / 68 / 69 / 70 | `Eq Neq Gt Gte Lt Lte S16` |
+| S32 compare | 38 / 39 / 40 / 41 / 42 / 43 | `Eq Neq Gt Gte Lt Lte S32` |
+| U32 compare | 80 / 81 / 82 / 83 | `Gt Gte Lt Lte U32` |
+| U16 compare | 71 / 72 / 73 / 74 | `Gt Gte Lt Lte U16` |
+| Bf16 compare | 76 / 77 / 78 / 79 | `Eq Neq Gt Gte … Bf16` |
+| F32 compare | `0x28..0x2d` (oneof) | `Eq Neq Gt Gte Lt Lte F32` |
+| F32 total | 53 / 54 | `VectorTotalLtF32` / `VectorTotalLteF32` |
+| Bf16 total | 26 / 36 | `VectorTotalLtBf16` / `VectorTotalLteBf16` |
 
 ### Cross-lane, mask, and broadcast/permute
 
 The high-opcode region is the cross-lane and mask group: broadcast, rotate, permute, lane-shift-insert, and the vmsk ALU. Several use `EmitCrossLaneUnop` or `EmitVectorModifyMask*` rather than `EmitVectorBinop`.
 
-| Opcode | Mnemonic | Template | Confidence |
-|---:|---|---|---|
-| 52 | `CreateMask` | `EmitVectorVyUnop` | CONFIRMED |
-| 91 / 92 / 93 | `VmskAnd` / `VmskOr` / `VmskXor` | `EmitVectorModifyMaskBinop` | CONFIRMED |
-| 94 | `VmskPackLow` | `EmitVectorModifyMaskBinop` | CONFIRMED |
-| 138 | `VmskPackEven` | `EmitVectorModifyMaskBinop` | HIGH |
-| 129 / 130 | `VectorBroadcastB32` / `…B16` | `EmitVectorBinop` | CONFIRMED |
-| 131 / 132 | `VectorRotateB32` / `…B16` | `EmitVectorBinop` | HIGH |
-| 133 / 134 / 135 | `VectorPermuteB32` / `…B16` / `…B8` | `EmitVectorBinop` | CONFIRMED |
-| 136 / 137 | `VectorLaneLeftShiftInsertB32` / `…B16` | `EmitVectorLaneLeftShiftInsert` | CONFIRMED |
-| 139 / 140 / 141 | `VectorMaskPermuteB32` / `…B16` / `…B8` | `EmitCrossLaneUnop` | HIGH |
+| Opcode | Mnemonic | Template |
+|---:|---|---|
+| 52 | `CreateMask` | `EmitVectorVyUnop` |
+| 91 / 92 / 93 | `VmskAnd` / `VmskOr` / `VmskXor` | `EmitVectorModifyMaskBinop` |
+| 94 | `VmskPackLow` | `EmitVectorModifyMaskBinop` |
+| 138 | `VmskPackEven` | `EmitVectorModifyMaskBinop` |
+| 129 / 130 | `VectorBroadcastB32` / `…B16` | `EmitVectorBinop` |
+| 131 / 132 | `VectorRotateB32` / `…B16` | `EmitVectorBinop` |
+| 133 / 134 / 135 | `VectorPermuteB32` / `…B16` / `…B8` | `EmitVectorBinop` |
+| 136 / 137 | `VectorLaneLeftShiftInsertB32` / `…B16` | `EmitVectorLaneLeftShiftInsert` |
+| 139 / 140 / 141 | `VectorMaskPermuteB32` / `…B16` / `…B8` | `EmitCrossLaneUnop` |
 
 > **NOTE — the high opcodes (129..151) are GF/GL-only and several are gfc-only.** The broadcast/rotate/permute/lane-shift block at 129..141 and the FP8/Exmy pack family at 142..151 are 8-bit values (> 127) that cannot exist in the 7-bit Viperfish space. They are part of the 257-op gfc (6acc60406) union but above the Ghostlite jt's reachable arms for the FP8 family; the Ghostlite jt reaches `vector_permute_b32` (`0x10e8`), `vector_broadcast_b32` (`0x107b`), and the mask-permute / cross-lane ops, but the FP8 `PackCompressed*ToExmy` ops are gfc-only (see [Per-Generation Deltas](#per-generation-deltas)).
 
@@ -206,15 +206,15 @@ The high-opcode region is the cross-lane and mask group: broadcast, rotate, perm
 
 A few primary opcodes do not name a concrete op; they name a *group*, and a 6-bit sub-opcode field (at struct-word `0x40` bit 2) picks the member. This is how the EUP transcendentals and the full pack/unpack matrix fit a finite primary-opcode space. The escape primaries are `0` (unary float), `1` (unpack-to-32), `2` (unpack-to-16 / round), `27` (pack), `90` (vmsk move), `128` (vmsk-count / E-format unpack); `VectorSelect`/`VectorSelectNot` use a separate 4-bit select sub-field at bit 18.
 
-| Primary | Group | Sub field | Representative members (sub value) | Confidence |
-|---:|---|---|---|---|
-| 0 | unary float / convert | 6-bit `@bit2` | `VectorPopulationCount(1)`, `VectorCountLeadingZeros(2)`, `VectorCeilingF32(3)`, `VectorFloorF32(4)`, `VectorConvertS32ToF32(5)`, `VectorConvertF32ToS32(6)`, `ErfF32(14)`, `LogTwoF32(18)`, `TanhF32(19)`, `ReciprocalF32(21)`, `SinqF32(23)`, `CosqF32(24)` | HIGH |
-| 1 | unpack-to-32 | 6-bit `@bit2` | `Unpack{Compressed,Interleaved}{Bf16,Hf16,S16,E5m2,S8,…}…ToF32/ToS32` (32 sub-ops) | HIGH |
-| 2 | unpack-to-16 / round | 6-bit `@bit2` | `UnpackCompressed{S8,U8}…To{Bf16,S16,U16}`, `VectorRoundToIntegral{Even,Away}{F32,Bf16}` (32 sub-ops) | HIGH |
-| 27 | pack | 6-bit `@bit2` | `Pack{Interleaved,Compressed}{F32→Bf16,B32→B16,B16→B8,…}`, `VectorTruncateFractional{F32,Bf16}` (32 sub-ops) | HIGH |
-| 90 | vmsk move | 6-bit `@bit2` | `VmskMove(0)`, `VmskNegate(1)` | HIGH |
-| 128 | vmsk-count / E-unpack | 6-bit `@bit2` | `VectorMaskPopulationCountB32(0)/B16(1)`, `VectorMaskPrefixSumB32(2)/B16(3)`, `VectorMaskCountTrailingZerosB32(4)/B16(5)`, `UnpackCompressed{E5m2,E4m3}…ToBf16` | HIGH |
-| — | select | 4-bit `@bit18` | `VectorSelect(6)`, `VectorSelectNot(7)` | HIGH |
+| Primary | Group | Sub field | Representative members (sub value) |
+|---:|---|---|---|
+| 0 | unary float / convert | 6-bit `@bit2` | `VectorPopulationCount(1)`, `VectorCountLeadingZeros(2)`, `VectorCeilingF32(3)`, `VectorFloorF32(4)`, `VectorConvertS32ToF32(5)`, `VectorConvertF32ToS32(6)`, `ErfF32(14)`, `LogTwoF32(18)`, `TanhF32(19)`, `ReciprocalF32(21)`, `SinqF32(23)`, `CosqF32(24)` |
+| 1 | unpack-to-32 | 6-bit `@bit2` | `Unpack{Compressed,Interleaved}{Bf16,Hf16,S16,E5m2,S8,…}…ToF32/ToS32` (32 sub-ops) |
+| 2 | unpack-to-16 / round | 6-bit `@bit2` | `UnpackCompressed{S8,U8}…To{Bf16,S16,U16}`, `VectorRoundToIntegral{Even,Away}{F32,Bf16}` (32 sub-ops) |
+| 27 | pack | 6-bit `@bit2` | `Pack{Interleaved,Compressed}{F32→Bf16,B32→B16,B16→B8,…}`, `VectorTruncateFractional{F32,Bf16}` (32 sub-ops) |
+| 90 | vmsk move | 6-bit `@bit2` | `VmskMove(0)`, `VmskNegate(1)` |
+| 128 | vmsk-count / E-unpack | 6-bit `@bit2` | `VectorMaskPopulationCountB32(0)/B16(1)`, `VectorMaskPrefixSumB32(2)/B16(3)`, `VectorMaskCountTrailingZerosB32(4)/B16(5)`, `UnpackCompressed{E5m2,E4m3}…ToBf16` |
+| — | select | 4-bit `@bit18` | `VectorSelect(6)`, `VectorSelectNot(7)` |
 
 > **NOTE — the Ghostlite jt reaches the group members directly, so the page lists them under flat opcodes too.** The escape model above is the *encoding* (how the silicon opcode field stores a group + sub-opcode); the Ghostlite consumer jt indexes the full `MCInst` opcode space and reaches each member through its own arm (`cosq_f32 @0xc9f`, `pack_compressed_b16_to_b8 @0xe87`, the 24 `unpack_compressed_*` arms). A reimplementer encoding to silicon writes the group primary + the 6-bit sub; one driving off the `MCInst` jt uses the per-member arm. The two views are the same op set; the sub-opcode `@bit2` is the bridge.
 
@@ -226,17 +226,17 @@ A few primary opcodes do not name a concrete op; they name a *group*, and a 6-bi
 
 The consumer routes each op through one of eight `Emit*` templates. The template is not cosmetic — it fixes which read ports (Vx / Vy) the op consumes and therefore the `SparsecoreVregReadPort` conflict the bundle scheduler must satisfy across the three lanes (see [TEC Engine](tec-engine.md#immediate-slot-indexing)).
 
-| Template | Ops it serves | Count (glc) | Confidence |
-|---|---|---:|---|
-| `EmitVectorBinop<…VregReadPort>` | the arithmetic/compare/bitwise/shift/clamp/relux/classify/carry/total/broadcast/permute core | 66 | CONFIRMED |
-| `EmitVectorVxUnop` | ceiling/floor/convert/popcount/clz/lane_id/inf_or_nan + **all `unpack_*`** | 34 | CONFIRMED |
-| `EmitExtendedVectorVxUnop` | the **18 transcendentals** (`cosq`/`erf`/`log_two`/`pow_two`/`reciprocal`/`reciprocal_sqrt`/`shifted_sigmoid`/`sinq`/`tanh` × {f32,bf16}) | 18 | CONFIRMED |
-| `EmitVectorVyUnop` | `byte_nez`, `create_mask`, `VectorMove` (Vy read port) | 3 | CONFIRMED |
-| `EmitVectorModifyMask{Unop,Binop}` | the `vmsk_*` ALU (`and/or/xor/negate/move/pack_even/pack_low`) | 7 | CONFIRMED |
-| `EmitVectorSelect` | `vector_select`, `vector_select_not` | 2 | CONFIRMED |
-| `EmitPackVectorBinop` | the 6 `pack_*` ops (each first calls `GetOperandAndVsEncoding`) | 6 | CONFIRMED |
-| `EmitCrossLaneUnop` | `vector_mask_{count_trailing_zeros,population_count_b16/b32,prefix_sum}_b32` | 4 | CONFIRMED |
-| `EmitVectorLaneLeftShiftInsert` | `vector_lane_left_shift_insert_b32` | 1 | CONFIRMED |
+| Template | Ops it serves | Count (glc) |
+|---|---|---:|
+| `EmitVectorBinop<…VregReadPort>` | the arithmetic/compare/bitwise/shift/clamp/relux/classify/carry/total/broadcast/permute core | 66 |
+| `EmitVectorVxUnop` | ceiling/floor/convert/popcount/clz/lane_id/inf_or_nan + **all `unpack_*`** | 34 |
+| `EmitExtendedVectorVxUnop` | the **18 transcendentals** (`cosq`/`erf`/`log_two`/`pow_two`/`reciprocal`/`reciprocal_sqrt`/`shifted_sigmoid`/`sinq`/`tanh` × {f32,bf16}) | 18 |
+| `EmitVectorVyUnop` | `byte_nez`, `create_mask`, `VectorMove` (Vy read port) | 3 |
+| `EmitVectorModifyMask{Unop,Binop}` | the `vmsk_*` ALU (`and/or/xor/negate/move/pack_even/pack_low`) | 7 |
+| `EmitVectorSelect` | `vector_select`, `vector_select_not` | 2 |
+| `EmitPackVectorBinop` | the 6 `pack_*` ops (each first calls `GetOperandAndVsEncoding`) | 6 |
+| `EmitCrossLaneUnop` | `vector_mask_{count_trailing_zeros,population_count_b16/b32,prefix_sum}_b32` | 4 |
+| `EmitVectorLaneLeftShiftInsert` | `vector_lane_left_shift_insert_b32` | 1 |
 
 > **NOTE — `EmitExtendedVectorVxUnop` is the transcendental path and routes through the EUP pipeline.** The 18 ops served by this template are the SC's nonlinear-activation engine — they take a Vx read port, run on the extended (EUP) pipeline, and their results drain through the [VectorResult](tec-engine.md) slot, the same way the [VectorExtended](vectorextended-vex.md) scans do. A reimplementer must model these as multi-cycle EUP ops distinct from the single-cycle `EmitVectorBinop` arithmetic; the per-op operand→function→result binding is the largest remaining gap (the unary-group sub-opcode `@bit2` selects the function but the VREG selectors it consumes were not traced).
 
@@ -285,20 +285,20 @@ The presence claims are confirmed by the existence of the corresponding type / a
 
 All addresses are gfc (6acc60406) unless noted; the `Matches()` immediate and the `BitCopy` value are the authoritative opcode values.
 
-| Symbol | Address | Opcode evidence | Confidence |
-|---|---|---|---|
-| `ConsumeVectorAluInstruction<glc::SparseCoreTecBundle>` | `0x13a0b580` | the opcode→op jt (base `0xb26`, bound `0x5cf`); 135 single-op arms + 7 shared | CONFIRMED |
-| `ConsumeVectorAluInstruction<viperfish>` | `0x1399ffe0` | VF consumer (86 distinct `_internal_mutable_*` accessors; no cosq/erf/sinq; `SparseCoreImmediates` path) | CONFIRMED |
-| `VectorAlu` jt (glc) | `0xae9d3dc` | 1488×int32 rel offsets; 143 targets (142 ops + default) | CONFIRMED |
-| `SparseCoreTecVectorAlu0ByteNezOpcode::Matches` (gfc) | `0x1ec09e00` | `(dword[+0x40] & 0x3FC000) == 0xDC000` → 55, 8-bit `@bit14` | CONFIRMED |
-| `SparseCoreTecVectorAlu0ByteNezOpcode::Matches` (vfc) | `0x1e94fd00` | `(dword[+0x40] & 0x7F00) == 0x3700` → 55, 7-bit `@bit8` | CONFIRMED |
-| `SparseCoreTecVectorAlu1ByteNezOpcode::Matches` (gfc) | `0x1ec4a6a0` | `(qword[+0x38] & 0x1FE0…) == 0x6E0…` → 55, `@bit41` (lane 1) | CONFIRMED |
-| `SparseCoreTecVectorAlu0Encoder::Encode` (gfc) | `0x1ec11100` | opcode `BitCopy(.,462,.,8)`; sel `@438/444/450/456`; pred `@470/473/474`; case8→3, case9→87, case10→4, case11→88 | CONFIRMED |
-| `SparseCoreTecVectorAlu0Encoder::Encode` (vfc) | `0x1e954ae0` | opcode `BitCopy(.,456,.,7)` (7-bit VF form) | CONFIRMED |
-| `EmitExtendedVectorVxUnop<…CosqF32>` (glc) | `0x13a1d800` | the transcendental emission template; tail-jump from `case 0xc9f` | CONFIRMED |
-| `EmitVectorBinop<…VectorAddBf16>` (glc) | `0x13a1b000` | the arithmetic-core template; tail-jump from `case 0xb26` | CONFIRMED |
-| `EmitPackVectorBinop<…PackCompressedB16ToB8>` (glc) | `0x13a1ff20` | the pack template; preceded by `GetOperandAndVsEncoding` | CONFIRMED |
-| `BitCopy` | `0x1fa0a900` | LE packer `(dst, dst_bitoff, src, src_bitoff, nbits)` | CONFIRMED |
+| Symbol | Address | Opcode evidence |
+|---|---|---|
+| `ConsumeVectorAluInstruction<glc::SparseCoreTecBundle>` | `0x13a0b580` | the opcode→op jt (base `0xb26`, bound `0x5cf`); 135 single-op arms + 7 shared |
+| `ConsumeVectorAluInstruction<viperfish>` | `0x1399ffe0` | VF consumer (86 distinct `_internal_mutable_*` accessors; no cosq/erf/sinq; `SparseCoreImmediates` path) |
+| `VectorAlu` jt (glc) | `0xae9d3dc` | 1488×int32 rel offsets; 143 targets (142 ops + default) |
+| `SparseCoreTecVectorAlu0ByteNezOpcode::Matches` (gfc) | `0x1ec09e00` | `(dword[+0x40] & 0x3FC000) == 0xDC000` → 55, 8-bit `@bit14` |
+| `SparseCoreTecVectorAlu0ByteNezOpcode::Matches` (vfc) | `0x1e94fd00` | `(dword[+0x40] & 0x7F00) == 0x3700` → 55, 7-bit `@bit8` |
+| `SparseCoreTecVectorAlu1ByteNezOpcode::Matches` (gfc) | `0x1ec4a6a0` | `(qword[+0x38] & 0x1FE0…) == 0x6E0…` → 55, `@bit41` (lane 1) |
+| `SparseCoreTecVectorAlu0Encoder::Encode` (gfc) | `0x1ec11100` | opcode `BitCopy(.,462,.,8)`; sel `@438/444/450/456`; pred `@470/473/474`; case8→3, case9→87, case10→4, case11→88 |
+| `SparseCoreTecVectorAlu0Encoder::Encode` (vfc) | `0x1e954ae0` | opcode `BitCopy(.,456,.,7)` (7-bit VF form) |
+| `EmitExtendedVectorVxUnop<…CosqF32>` (glc) | `0x13a1d800` | the transcendental emission template; tail-jump from `case 0xc9f` |
+| `EmitVectorBinop<…VectorAddBf16>` (glc) | `0x13a1b000` | the arithmetic-core template; tail-jump from `case 0xb26` |
+| `EmitPackVectorBinop<…PackCompressedB16ToB8>` (glc) | `0x13a1ff20` | the pack template; preceded by `GetOperandAndVsEncoding` |
+| `BitCopy` | `0x1fa0a900` | LE packer `(dst, dst_bitoff, src, src_bitoff, nbits)` |
 
 Cross-gen anchors: the per-op `Matches()` types exist in all three `isa` namespaces (`vxc::vfc`, `gxc::glc`, `gxc::gfc`); the 3-lane name union is **148 / 229 / 257** by symbol enumeration. The Ghostlite consumer error string is "`Unsupported opcode for Vector Alu slot: $0 : $1`" (`isa_emitter.cc`, an `absl::Substitute` template). Match the `SparseCoreTecVectorAlu[012]` prefix exactly to avoid pulling the scalar (`SparseCoreScalar*`) or TensorCore (`TensorCore*`) predicate types into the vector roster.
 

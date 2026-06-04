@@ -8,7 +8,7 @@ Before the systolic array of the [MXU slot](slot-mxu.md) can clock a single mult
 
 If you have read the LLVM NVPTX backend, the closest analog to the latch is the implicit register-file write that precedes a `wgmma` accumulator group, and the closest analog to the IAR is a base+index addressing mode — except the TPU exposes the index register *as an architectural object* (`IAR0`/`IAR1`) that a `SetIar` op explicitly loads and a `VectorLoadIndexed` op implicitly consumes. There is no per-element index operand; the IAR *is* the index. The latch is weight-stationary in the same sense `wgmma` is accumulator-stationary: one latch amortizes across many matmul steps.
 
-The page is built in three units that mirror those three jobs, plus the per-gen cost-model treatment that ties them together. Each unit names the builder function that constructs the op, the exact `LloInstruction` field offsets it writes, and the per-gen field/count tables. Every offset and every perf-row ordinal below was cross-checked against the IDA decompile of the named `sub_ADDR`; the verification status is in the Confidence columns.
+The page is built in three units that mirror those three jobs, plus the per-gen cost-model treatment that ties them together. Each unit names the builder function that constructs the op, the exact `LloInstruction` field offsets it writes, and the per-gen field/count tables.
 
 For reimplementation, the contract is:
 
@@ -73,18 +73,18 @@ At the ISA level the three `SetIar` forms differ only in a 5-bit opcode subfield
 
 > **NOTE — bit numbering.** Every absolute bit position on this page is **LSB-first**, matching the universal v5+ packer convention documented on [Bundle Model](bundle-model-overview.md#abstract): bit 0 is the least-significant bit of byte 0, so `word@0x18 bit 13` is bit 13 of the 8-byte little-endian word at byte `0x18`, and the predicate-mask `word@0x18 & 0x3e0000000` selects the five bits 33..37 of that same word. There is no MSB-first ordering anywhere in the encode/decode path.
 
-| Form | Matches predicate (`word@0x18 & 0x3e0000000`) | slot opcode | accessor `sub_ADDR` | Confidence |
-|---|---|---|---|---|
-| `SetIarLane` | `== 0x40000000` | 2 | `sub_1EE390E0` | CERTAIN |
-| `SetIarSublane` | `== 0x60000000` | 3 | `sub_1EE39100` | CERTAIN |
-| `SetIarRaw` | `== 0x80000000` | 4 | `sub_1EE39120` | CERTAIN |
+| Form | Matches predicate (`word@0x18 & 0x3e0000000`) | slot opcode | accessor `sub_ADDR` |
+|---|---|---|---|
+| `SetIarLane` | `== 0x40000000` | 2 | `sub_1EE390E0` |
+| `SetIarSublane` | `== 0x60000000` | 3 | `sub_1EE39100` |
+| `SetIarRaw` | `== 0x80000000` | 4 | `sub_1EE39120` |
 
-| Field | Bit position | Width | Confirmed accessor | Confidence |
-|---|---|---|---|---|
-| `IarField` (which IAR register) | `word@0x18` bit 13 | 1 bit (`IAR0`/`IAR1`) | `sub_1EE3B380` (`>>13 & 1`) | CERTAIN |
-| `VsrcField` (source VREG) | `byte@0x1b` | 5 bits | `sub_1EE3B360` (`& 0x1f`) | CERTAIN |
+| Field | Bit position | Width | Confirmed accessor |
+|---|---|---|---|
+| `IarField` (which IAR register) | `word@0x18` bit 13 | 1 bit (`IAR0`/`IAR1`) | `sub_1EE3B380` (`>>13 & 1`) |
+| `VsrcField` (source VREG) | `byte@0x1b` | 5 bits | `sub_1EE3B360` (`& 0x1f`) |
 
-The read/use side lives in the `TensorCoreVectorLoad` family (major opcode `word@0x10` bits[60:62]=7), where a 2-bit subfield at `word@0x18` bit 11 selects the form: `VectorLoadIndexed0` = 0, `VectorLoadIndexed1` = 1, `ReadIar0` = 2 (`ReadIar1` is the complement form, not bit-resolved to a single integer — LOW). The indexed-load carries `DestVreg` (6-bit @bit5), `Stride` (4-bit @byte0x17), a cross-word 2-bit `BaseAddress`, and a 4-bit `SublaneMask` — but no `Index` field.
+The read/use side lives in the `TensorCoreVectorLoad` family (major opcode `word@0x10` bits[60:62]=7), where a 2-bit subfield at `word@0x18` bit 11 selects the form: `VectorLoadIndexed0` = 0, `VectorLoadIndexed1` = 1, `ReadIar0` = 2 (`ReadIar1` is the complement form, not bit-resolved to a single integer here). The indexed-load carries `DestVreg` (6-bit @bit5), `Stride` (4-bit @byte0x17), a cross-word 2-bit `BaseAddress`, and a 4-bit `SublaneMask` — but no `Index` field.
 
 ### IarsPerTensorCore — the Register Count
 
@@ -97,13 +97,13 @@ function Target::IarsPerTensorCore(this):   // sub_1D617280
 
 The sole writer of `Target+0x4a8` is the shared `Target::Init` (`sub_1D60FC20`) — no per-gen `*Target` constructor writes it. `Init` reads it from the `VectorIsa` field 7 of the embedded per-gen `*_chip_parts.binarypb` proto (loaded at runtime via `embed://tpu_chip_parts/<version>_chip_parts.binarypb`). Extracted from the embedded blobs, the value is **2 on every generation** — the IAR file is gen-stable, matching the 1-bit `IarField` ceiling.
 
-| Gen (codename) | IarsPerTensorCore (`Target+0x4a8`) | source | Confidence |
-|---|---|---|---|
-| v2 Jellyfish / v3 Dragonfish | 2 | `jellyfish`/`dragonfish` blob `VectorIsa.f7` | HIGH |
-| v4 Pufferfish | 2 | `pufferfish` blob | HIGH |
-| v5p Viperfish | 2 | `viperfish` blob | HIGH |
-| v6e Ghostlite | 2 | `ghostlite` blob | HIGH |
-| v7x (6acc60406) | 2 | `6acc60406` blob | HIGH |
+| Gen (codename) | IarsPerTensorCore (`Target+0x4a8`) | source |
+|---|---|---|
+| v2 Jellyfish / v3 Dragonfish | 2 | `jellyfish`/`dragonfish` blob `VectorIsa.f7` |
+| v4 Pufferfish | 2 | `pufferfish` blob |
+| v5p Viperfish | 2 | `viperfish` blob |
+| v6e Ghostlite | 2 | `ghostlite` blob |
+| v7x (6acc60406) | 2 | `6acc60406` blob |
 
 > **NOTE —** the value is data, not code, so the version pin above is necessary but not sufficient: a future chip whose `VectorIsa.f7` differs would widen the `IarField`. The 1-bit `IarField` accessor (`sub_1EE3B380`) and the count of 2 are mutually consistent *for this binary's chip-parts blobs only*. See [Chip-Parts Binarypb](../targets/chip-parts-binarypb.md) for the load path.
 
@@ -122,15 +122,15 @@ case 0x40 StoreIndexed:   /* no bit-32 gate */         return ((iar & 0x1fffffff
 case 0x44 StoreIndexedMsk:/* no bit-32 gate */         return ((iar & 0x1ffffffff) == S) ^ 0x1d3;    // 0x1d2 / 0x1d3
 ```
 
-| LLO op | name | arm `sub_ADDR` | sentinel-S row | non-S row | Confidence |
-|---|---|---|---|---|---|
-| `0x01` | `kVectorReadIar` | `sub_1C8B1A94` | `0x18c` (low32==0) | `0x18e` | CERTAIN |
-| `0x02` | `kVectorSetIarLane` | `sub_1C8B19DE` | `0x1d4` | `0x1d5` | CERTAIN |
-| `0x03` | `kVectorSetIarRaw` | `sub_1C8B1A71` | `0x1d8` | `0x1d9` | CERTAIN |
-| `0x04` | `kVectorSetIarSublane` | `sub_1C8B1959` | `0x1d6` | `0x1d7` | CERTAIN |
-| `0x32` | `kVectorLoadIndexed` | `sub_1C8B1926` | `0x188` | `0x18a` | CERTAIN |
-| `0x40` | `kVectorStoreIndexed` | `sub_1C8B19AD` | `0x1d0` | `0x1d1` | CERTAIN |
-| `0x44` | `kVectorStoreIndexedMasked` | `sub_1C8B197C` | `0x1d2` | `0x1d3` | CERTAIN |
+| LLO op | name | arm `sub_ADDR` | sentinel-S row | non-S row |
+|---|---|---|---|---|
+| `0x01` | `kVectorReadIar` | `sub_1C8B1A94` | `0x18c` (low32==0) | `0x18e` |
+| `0x02` | `kVectorSetIarLane` | `sub_1C8B19DE` | `0x1d4` | `0x1d5` |
+| `0x03` | `kVectorSetIarRaw` | `sub_1C8B1A71` | `0x1d8` | `0x1d9` |
+| `0x04` | `kVectorSetIarSublane` | `sub_1C8B1959` | `0x1d6` | `0x1d7` |
+| `0x32` | `kVectorLoadIndexed` | `sub_1C8B1926` | `0x188` | `0x18a` |
+| `0x40` | `kVectorStoreIndexed` | `sub_1C8B19AD` | `0x1d0` | `0x1d1` |
+| `0x44` | `kVectorStoreIndexedMasked` | `sub_1C8B197C` | `0x1d2` | `0x1d3` |
 
 The symbolic *enumerator names* for these `GhPerf::Instruction` ordinals are not in the binary (no `ToString`); the ordinals are byte-exact but unnamed (a uniform gap shared with the matmul perf rows).
 
@@ -146,18 +146,18 @@ The latch ops load the prepared stationary gain (weight) matrix into the MXU's p
 
 Each `LloRegionBuilder::Vlatch*` wrapper routes through an `LloInstruction::Create*` constructor, which routes through either `CreateVectorLatchLsf` (the LSF special case) or `CreateVectorLatchHelper` (general).
 
-| `LloOpcode` | name | builder | constructor | Confidence |
-|---|---|---|---|---|
-| `0x8d` | `kVectorLatchLsf` | `VlatchLsf` | `CreateVectorLatchLsf` (`sub_1D4D7AA0`) | CERTAIN |
-| `0x8e` | `kVectorLatchLsfMsk` | `VlatchLsfMsk` | `CreateVectorLatchLsfMasked` (`sub_1D4D8140`) | CERTAIN |
-| `0x8f` | `kVectorLatch` | `Vlatch` | `CreateVectorLatch` (`sub_1D4D8900`) | CERTAIN |
-| `0x90` | `kVectorLatchMsk` | `VlatchMsk` | `CreateVectorLatchMasked` (`sub_1D4D8C40`) | CERTAIN |
-| `0x91` | `kVectorLatch1` | `Vlatch1` | `CreateVectorLatch1` (`sub_1D4D8940`) | CERTAIN |
-| `0x92` | `kVectorLatch1Msk` | `Vlatch1Msk` | `CreateVectorLatch1Masked` (`sub_1D4D8C80`) | CERTAIN |
-| `0x93` | `kVectorLatch2` | `Vlatch2` | `CreateVectorLatch2` (`sub_1D4D8A80`) | CERTAIN |
-| `0x94` | `kVectorLatch2Msk` | `Vlatch2Msk` | `CreateVectorLatch2Masked` (`sub_1D4D8CC0`) | CERTAIN |
-| `0x95` | `kVectorLatch3` | `Vlatch3` | `CreateVectorLatch3` (`sub_1D4D8B60`) | CERTAIN |
-| `0x96` | `kVectorLatch3Msk` | `Vlatch3Msk` | `CreateVectorLatch3Masked` (`sub_1D4D8D00`) | CERTAIN |
+| `LloOpcode` | name | builder | constructor |
+|---|---|---|---|
+| `0x8d` | `kVectorLatchLsf` | `VlatchLsf` | `CreateVectorLatchLsf` (`sub_1D4D7AA0`) |
+| `0x8e` | `kVectorLatchLsfMsk` | `VlatchLsfMsk` | `CreateVectorLatchLsfMasked` (`sub_1D4D8140`) |
+| `0x8f` | `kVectorLatch` | `Vlatch` | `CreateVectorLatch` (`sub_1D4D8900`) |
+| `0x90` | `kVectorLatchMsk` | `VlatchMsk` | `CreateVectorLatchMasked` (`sub_1D4D8C40`) |
+| `0x91` | `kVectorLatch1` | `Vlatch1` | `CreateVectorLatch1` (`sub_1D4D8940`) |
+| `0x92` | `kVectorLatch1Msk` | `Vlatch1Msk` | `CreateVectorLatch1Masked` (`sub_1D4D8C80`) |
+| `0x93` | `kVectorLatch2` | `Vlatch2` | `CreateVectorLatch2` (`sub_1D4D8A80`) |
+| `0x94` | `kVectorLatch2Msk` | `Vlatch2Msk` | `CreateVectorLatch2Masked` (`sub_1D4D8CC0`) |
+| `0x95` | `kVectorLatch3` | `Vlatch3` | `CreateVectorLatch3` (`sub_1D4D8B60`) |
+| `0x96` | `kVectorLatch3Msk` | `Vlatch3Msk` | `CreateVectorLatch3Masked` (`sub_1D4D8D00`) |
 
 `VlatchI(value, long idx, glm)` (`sub_1D574580`) dispatches its `long idx` to `Vlatch1` (`0x91`) or `Vlatch2` (`0x93`) — the indexed latch picks a sub-bank. The general `Create*` route through `CreateVectorLatchHelper`.
 
@@ -165,14 +165,14 @@ Each `LloRegionBuilder::Vlatch*` wrapper routes through an `LloInstruction::Crea
 
 The constructed latch op carries its operands in these fields, byte-exact from the setters and their symmetric readers:
 
-| Offset | Field | Setter / reader | Meaning | Confidence |
-|---|---|---|---|---|
-| `WORD[+0x00]` | `LloOpcode` | `New()` | `0x8d..0x96` | CERTAIN |
-| `BYTE[+0x0a]` | `register_number` | `set_register_number` / `sub_1D5A8E20` | gain-source VREG number | CERTAIN |
-| `WORD[+0x0b]` | control word | `set_unit_id` / `ValidateAndSetMxuAndSourceBus` | unit-id + source-bus (below) | CERTAIN |
-| `BYTE[+0x40]` | `latch_mode` (GLM) | `set_latch_mode` `sub_1D4D7C20` / `latch_mode` `sub_1D4E7500` | the GainLatchMode | CERTAIN |
-| `WORD[+0x42]` | `latch_index_in_sequence` | `set_latch_index_in_sequence` `sub_1D4E7960` | assigned by `SetLatchIndices` | CERTAIN |
-| `BYTE[+0x44]` | `matrix_staging_register` (Msr) | `set_matrix_staging_register` `sub_1D4D7D40` | latch-bank / MSR destination | CERTAIN |
+| Offset | Field | Setter / reader | Meaning |
+|---|---|---|---|
+| `WORD[+0x00]` | `LloOpcode` | `New()` | `0x8d..0x96` |
+| `BYTE[+0x0a]` | `register_number` | `set_register_number` / `sub_1D5A8E20` | gain-source VREG number |
+| `WORD[+0x0b]` | control word | `set_unit_id` / `ValidateAndSetMxuAndSourceBus` | unit-id + source-bus (below) |
+| `BYTE[+0x40]` | `latch_mode` (GLM) | `set_latch_mode` `sub_1D4D7C20` / `latch_mode` `sub_1D4E7500` | the GainLatchMode |
+| `WORD[+0x42]` | `latch_index_in_sequence` | `set_latch_index_in_sequence` `sub_1D4E7960` | assigned by `SetLatchIndices` |
+| `BYTE[+0x44]` | `matrix_staging_register` (Msr) | `set_matrix_staging_register` `sub_1D4D7D40` | latch-bank / MSR destination |
 
 The control word `WORD[+0x0b]` is two packed bitfields:
 
@@ -221,10 +221,10 @@ function CreateVectorLatchLsf(gain_src, glm, unit_id, region):   // sub_1D4D7AA0
 
 `VprepareForLatch` (`sub_1D573BA0`) runs before the constructor: if the gen does not natively `SupportsGainLatchMode(glm)` (vtable `+0x368`) it rewrites the gain source into a software byte-plane representation before re-checking. The two constructors admit different GLM sets:
 
-| Constructor | GLM-validity mask | Accepts GLM | Confidence |
-|---|---|---|---|
-| `CreateVectorLatchLsf` | `0xf0000003c0c03` | `{0,1,10,11,18,19,20,21,48,49,50,51}` (bf16, F8E5M2, S8, fp8-conv) | CERTAIN |
-| `CreateVectorLatchHelper` | `0xf000003fffc3f` | `{0-5,10-25,48-51}` (full set incl. F8E4M3FN/F32 and nibble fmt7/8) | CERTAIN |
+| Constructor | GLM-validity mask | Accepts GLM |
+|---|---|---|
+| `CreateVectorLatchLsf` | `0xf0000003c0c03` | `{0,1,10,11,18,19,20,21,48,49,50,51}` (bf16, F8E5M2, S8, fp8-conv) |
+| `CreateVectorLatchHelper` | `0xf000003fffc3f` | `{0-5,10-25,48-51}` (full set incl. F8E4M3FN/F32 and nibble fmt7/8) |
 
 `ValidateAndSetMxuAndSourceBus` (`sub_1D4D7E80`) bounds the MXU id (`>= 0`, `< MxusPerTensorCore()` = `Target+0x4ac`), stamps the unit-id, and — only if `HasVexSourceBuses()` (vtable `+0x408`, **true only on Pufferfish**) and `LloOpcodeUsesSourceBus(op)` (true for `0x8f..0x96`, false for the `0x8d`/`0x8e` LSF forms) — stamps the source-bus. So the VEX source-bus field is populated only on Pufferfish (v4), and only for the non-LSF latch ops.
 
@@ -254,14 +254,14 @@ function ViperfishTarget::GainLatchModeHasOverrunChecks(glm):   // sub_1D49AB20
     return MatmulDataFormatIsIntegral(fmt) | ((fmt - 3) < 2);   // ⇒ fmt ∈ {3,4,5,6,7,8}
 ```
 
-| Gen | `GainLatchModeHasOverrunChecks` (`+0x358`) | `HasMsrOverrunChecks` | Confidence |
-|---|---|---|---|
-| Jellyfish (`sub_1D4925E0`) | `FALSE` (always) | `FALSE` | CERTAIN |
-| Dragonfish (`sub_1D4901C0`) | `FALSE` | `FALSE` | CERTAIN |
-| Pufferfish (`sub_1D494880`) | `FALSE` | `FALSE` | CERTAIN |
-| Viperfish (`sub_1D49AB20`) | non-transpose AND fmt∈{3..8} → GLM `{14,16,18,20,22,24}` | **`TRUE`** (`sub_1D49AAC0`) | CERTAIN |
-| Ghostlite (`sub_1D497940`) | `FALSE` | `FALSE` | CERTAIN |
-| base Target (`sub_1D61D8C0`) | `LogFatal` stub | `LogFatal` | CERTAIN |
+| Gen | `GainLatchModeHasOverrunChecks` (`+0x358`) | `HasMsrOverrunChecks` |
+|---|---|---|
+| Jellyfish (`sub_1D4925E0`) | `FALSE` (always) | `FALSE` |
+| Dragonfish (`sub_1D4901C0`) | `FALSE` | `FALSE` |
+| Pufferfish (`sub_1D494880`) | `FALSE` | `FALSE` |
+| Viperfish (`sub_1D49AB20`) | non-transpose AND fmt∈{3..8} → GLM `{14,16,18,20,22,24}` | **`TRUE`** (`sub_1D49AAC0`) |
+| Ghostlite (`sub_1D497940`) | `FALSE` | `FALSE` |
+| base Target (`sub_1D61D8C0`) | `LogFatal` stub | `LogFatal` |
 
 > **NOTE —** Viperfish (TPU v5p) is the only generation with the MSR/first-latch overrun handshake at the gen level, which is exactly why its per-GLM `+0x358` override is the only non-trivial body and why the overrun-cost reservation lives in the Viperfish namespace. The full overrun behavior — first-latch index assignment, MSR reservation cost — is detailed on [Latch Assignment & Overrun](../sched/latch-assignment-overrun.md).
 
@@ -275,41 +275,41 @@ Matprep stages the moving operand (activations) and prepares the gain matrix for
 
 The key reimplementation fact is that matprep has **no uniform cost representation** — each generation expresses it differently, which is the divergence a reimplementer must reproduce:
 
-| Family | Jellyfish/Dragonfish (v2/v3) | Pufferfish (v4) | Viperfish (v5p) | Ghostlite/GF (v6e/v7) | Confidence |
-|---|---|---|---|---|---|
-| matmul | flat cell (LUT collapse to 5 instrs) | raw 2-bit plane + base | `matmul_data_format → a2d05c0` | `matmul_data_format → a2d05d0` | HIGH |
-| matprep `0x97..0x9a` | folded into matmul (transpose-of-gains) | via Latch ops `0xdc`/`0xe6` | matprep ops **FATAL**; via matmul-fmt + modifier reservation | fixed binary-search rows | HIGH |
-| transpose accepted | `{B32}` only | `{B32,CompB16,SegB32,SegB16}` | `{B32,CompB16,SegB32,SegB16}` | `{B32,CompB16,CompB8}` | HIGH |
+| Family | Jellyfish/Dragonfish (v2/v3) | Pufferfish (v4) | Viperfish (v5p) | Ghostlite/GF (v6e/v7) |
+|---|---|---|---|---|
+| matmul | flat cell (LUT collapse to 5 instrs) | raw 2-bit plane + base | `matmul_data_format → a2d05c0` | `matmul_data_format → a2d05d0` |
+| matprep `0x97..0x9a` | folded into matmul (transpose-of-gains) | via Latch ops `0xdc`/`0xe6` | matprep ops **FATAL**; via matmul-fmt + modifier reservation | fixed binary-search rows |
+| transpose accepted | `{B32}` only | `{B32,CompB16,SegB32,SegB16}` | `{B32,CompB16,SegB32,SegB16}` | `{B32,CompB16,CompB8}` |
 
 ### GL / GF — Fixed Binary-Search Rows
 
 On Ghostlite/GF the matprep opcodes are not in the classifier jump table (`opcode-1 ≥ 0x96` falls to default-FATAL), so they resolve through the 258-entry binary-search remap (`@0x4067dc8`) to **fixed** perf rows — one row per matprep variant, *not* fanned out per data format:
 
-| LLO op | name | `GhPerf::Instruction` | GF flat latency | Confidence |
-|---|---|---|---|---|
-| `0x97` | `kVectorMatprepSubr` | `0x120` | 1 | HIGH |
-| `0x98` | `kVectorMatprepSubrMsk` | `0x121` | (matprep) | HIGH |
-| `0x99` | `kVectorMatprepMubr` | `0x11c` | 1 | HIGH |
-| `0x9a` | `kVectorMatprepMubrMsk` | `0x11d` | 1 | HIGH |
-| `0xa5` | `kVectorMatmulLmr` | `0x154` | −1 default (grid-priced) | HIGH |
-| `0xa8`/`0xa9` | `kVectorDoneWithGains` / `kVectorLoadGmr` | `0x157` (shared) | −1 default | HIGH |
+| LLO op | name | `GhPerf::Instruction` | GF flat latency |
+|---|---|---|---|
+| `0x97` | `kVectorMatprepSubr` | `0x120` | 1 |
+| `0x98` | `kVectorMatprepSubrMsk` | `0x121` | (matprep) |
+| `0x99` | `kVectorMatprepMubr` | `0x11c` | 1 |
+| `0x9a` | `kVectorMatprepMubrMsk` | `0x11d` | 1 |
+| `0xa5` | `kVectorMatmulLmr` | `0x154` | −1 default (grid-priced) |
+| `0xa8`/`0xa9` | `kVectorDoneWithGains` / `kVectorLoadGmr` | `0x157` (shared) | −1 default |
 
-The matprep band `0x11c..0x121` sits just below the matmul band `0x124..`; the rows carry flat latency 1 and are throughput-priced through the resource grid. The flat-latency-1 reading is from the GF perf constructor `sub_1C8D3740` (which Hex-Rays does not decompile — read at the disassembly level only, hence the HIGH rather than CERTAIN grade on this band).
+The matprep band `0x11c..0x121` sits just below the matmul band `0x124..`; the rows carry flat latency 1 and are throughput-priced through the resource grid. The flat-latency-1 value comes from the GF perf constructor `sub_1C8D3740`.
 
 ### VF — Folded into the Matmul-Format Table + Modifier Reservation
 
 On Viperfish the matprep opcodes `0x97..0x9a` **FATAL** in `GetViperfishInstruction` (`sub_1C8A3300`, default arm `sub_1C8A3E6A`). The matmul opcode `0x9b` reads `matmul_data_format()` and indexes the new VF table `a2d05c0`:
 
-| `MatmulDataFormat` | dtype | VFinstr ordinal | flat latency | grid (r2 prep / r3 throughput) | Confidence |
-|---|---|---|---|---|---|
-| 1 | f32 | `0xd4` | 131 | r2:7 r3:8 | HIGH |
-| 2 | bf16 | `0xda` | 131 | r2:7 r3:16 | HIGH |
-| 3 | f8e5m2→bf16 | `0xf8` | 131 | r2:7 r3:32 | HIGH |
-| 4 | f8e4m3b11→bf16 | `0xfe` | 131 | r2:7 r3:32 | HIGH |
-| 5 | u8 | `0xe0` | 121 | r3:16 | HIGH |
-| 6 | s8 | `0xe6` | 121 | r3:16 | HIGH |
-| 7 | u4 | `0xec` | 121 | r3:16 | HIGH |
-| 8 | s4 | `0xf2` | 121 | r3:16 | HIGH |
+| `MatmulDataFormat` | dtype | VFinstr ordinal | flat latency | grid (r2 prep / r3 throughput) |
+|---|---|---|---|---|
+| 1 | f32 | `0xd4` | 131 | r2:7 r3:8 |
+| 2 | bf16 | `0xda` | 131 | r2:7 r3:16 |
+| 3 | f8e5m2→bf16 | `0xf8` | 131 | r2:7 r3:32 |
+| 4 | f8e4m3b11→bf16 | `0xfe` | 131 | r2:7 r3:32 |
+| 5 | u8 | `0xe0` | 121 | r3:16 |
+| 6 | s8 | `0xe6` | 121 | r3:16 |
+| 7 | u4 | `0xec` | 121 | r3:16 |
+| 8 | s4 | `0xf2` | 121 | r3:16 |
 
 The throughput port `r3` is the per-format reservation width: f32=8, bf16=16, fp8=32, int8/int4=16. The bf16-class (`0xd4..0xfe`) carries a separate prep port (`r2:7`) and base latency 131; the int-class (`0xe0..0xf7`) drops `r2` and uses 121. Each matmul-format ordinal is followed by a group of matprep-stage ordinals (e.g. `0xd5/0xd6/0xd8/0xd9` between `0xd4` and `0xda`) that add the 4-stage systolic-feed pipeline `r4:4 r5:12 r6:20 r7:28`.
 
@@ -319,10 +319,10 @@ The matprep stages do *not* carry standalone classifier ordinals — they are pr
 
 On Pufferfish the matprep opcodes `0x97..0x9a` also FATAL (default arm `sub_1C8A2A08`). PF expresses matprep through the single-ordinal Latch / LatchMsk arms, gated by `SupportsGainLatchMode` (vtable `+0x368`):
 
-| LLO op | name | arm `sub_ADDR` | PFinstr | Confidence |
-|---|---|---|---|---|
-| `0x8f` | `kVectorLatch` | `sub_1C8A2781` | `0xdc` | HIGH |
-| `0x90` | `kVectorLatchMsk` | `sub_1C8A226F` | `0xe6` | HIGH |
+| LLO op | name | arm `sub_ADDR` | PFinstr |
+|---|---|---|---|
+| `0x8f` | `kVectorLatch` | `sub_1C8A2781` | `0xdc` |
+| `0x90` | `kVectorLatchMsk` | `sub_1C8A226F` | `0xe6` |
 
 `0xdc`/`0xe6` are the entry into the PF "MXU matprep band"; PF's matprep is just this single Latch/LatchMsk pair, throughput-priced through resource-grid ports.
 
@@ -344,14 +344,14 @@ On Jellyfish/Dragonfish there is no standalone matprep classifier — `CycleTabl
 
 Recovered from the deleter `default_delete<MxuSequence>::operator()` (`sub_14504C00`), which frees five `{ptr, count, cap}` lists then `free(seq, 0x78)`:
 
-| Offset | List | Element opcodes / consumer | Confidence |
-|---|---|---|---|
-| `+0x00` | list0 (setup/head latches) | INFERRED head-of-sequence | MEDIUM |
-| `+0x18` | latches / matpushes | `0x8d..0x96` — `SetLatchIndices` count @`+0x20`; `Bounce` MSR stamp | CERTAIN |
-| `+0x30` | list2 (prep / xpose aux) | INFERRED matprep/transpose `0xa6`/`0xa7` | MEDIUM |
-| `+0x48` | matreses | `0x152` — `AllocateMrb` pop; `LatchLhs` ΣPackingFactor, count @`+0x50` | CERTAIN |
-| `+0x60` | matmuls | `0x9b`/`0xa3` — `AllocateMrb` push; `LatchLhs` balance, count @`+0x68` | CERTAIN |
-| `0x78` | sizeof | `free(seq, 0x78)` | CERTAIN |
+| Offset | List | Element opcodes / consumer |
+|---|---|---|
+| `+0x00` | list0 (setup/head latches) | head-of-sequence (inferred by category) |
+| `+0x18` | latches / matpushes | `0x8d..0x96` — `SetLatchIndices` count @`+0x20`; `Bounce` MSR stamp |
+| `+0x30` | list2 (prep / xpose aux) | matprep/transpose `0xa6`/`0xa7` (inferred by category) |
+| `+0x48` | matreses | `0x152` — `AllocateMrb` pop; `LatchLhs` ΣPackingFactor, count @`+0x50` |
+| `+0x60` | matmuls | `0x9b`/`0xa3` — `AllocateMrb` push; `LatchLhs` balance, count @`+0x68` |
+| `0x78` | sizeof | `free(seq, 0x78)` |
 
 The `+0x18`, `+0x48`, `+0x60` list identities are byte-exact (confirmed by the deleter and three independent consumers); the `+0x00` and `+0x30` identities are inferred by category. The full record and the `set_mxu` commit are on [MxuSequence / SequenceInfo](../sched/mxu-sequence-struct.md).
 

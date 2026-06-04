@@ -103,14 +103,14 @@ The per-form leading operands:
 
 ### Function Map
 
-| Function | Address (gfc) | Role | Confidence |
-|---|---|---|---|
-| `SparseCoreStreamEncoder::Encode` | `0x1eb9b4c0` | encode `SparseCoreStream` into the SCS 32 B bundle slot | CONFIRMED |
-| `SparseCoreStreamDecoder::Decode` | `0x1eb96be0` | decode the SCS Stream slot back to `SparseCoreStream` | CONFIRMED |
-| `SparseCoreTecStreamEncoder::Encode` | `0x1ebe33e0` | encode into the TEC 64 B bundle slot | CONFIRMED |
-| `SparseCoreTecStreamDecoder::Decode` | `0x1ebdd440` | decode the TEC Stream slot | CONFIRMED |
-| `SparseCoreTacStreamEncoder::Encode` | `0x1e8ee040` (vfc) | encode into the TAC 64 B bundle slot (vfc/glc only) | CONFIRMED |
-| `BitCopy` (generic bit-field packer) | `0x1fa0a900` | little-endian field packer `(dst, dst_off, src, src_off, nbits)` | HIGH |
+| Function | Address (gfc) | Role |
+|---|---|---|
+| `SparseCoreStreamEncoder::Encode` | `0x1eb9b4c0` | encode `SparseCoreStream` into the SCS 32 B bundle slot |
+| `SparseCoreStreamDecoder::Decode` | `0x1eb96be0` | decode the SCS Stream slot back to `SparseCoreStream` |
+| `SparseCoreTecStreamEncoder::Encode` | `0x1ebe33e0` | encode into the TEC 64 B bundle slot |
+| `SparseCoreTecStreamDecoder::Decode` | `0x1ebdd440` | decode the TEC Stream slot |
+| `SparseCoreTacStreamEncoder::Encode` | `0x1e8ee040` (vfc) | encode into the TAC 64 B bundle slot (vfc/glc only) |
+| `BitCopy` (generic bit-field packer) | `0x1fa0a900` | little-endian field packer `(dst, dst_off, src, src_off, nbits)` |
 
 ---
 
@@ -201,34 +201,34 @@ Common control tail (selected fields):
 
 The `IndirectStream` `…Field::GetConcatenatedValue()` accessors are the authoritative field labels. The struct is read as 64-bit words; `+0x10` is QWORD index 2, `+0x18` is QWORD index 3. Each row below was confirmed by reading the accessor body:
 
-| Field | Struct word | Shift | Width | Accessor addr (gfc) | Confidence |
-|---|---|---|---|---|---|
-| `IndirectOffsetSource` | `+0x18` | 0 | 1 | `0x1eb9b320` | CONFIRMED |
-| `PostUpdateIndirectOffsetCircularBuffer` | `+0x18` | 3 | 1 | — | CONFIRMED |
-| `TraceEn` | `+0x18` | 4 | 1 | — | CONFIRMED |
-| `IndirectMask` | `+0x18` | 5 | 4 | — | CONFIRMED |
-| `StreamOpcode` | `+0x18` | 9 | 3 | `0x1eb9b3a0` | CONFIRMED |
-| `GatherScatterAddIsB16` | `+0x18` | 12 | 1 | `0x1eb9b3c0` | CONFIRMED |
-| `TileLocalMemoryType` | `+0x18` | 13 | 1 | — | CONFIRMED |
-| `TileLocalStreamType` | `+0x18` | 14 | 1 | — | CONFIRMED |
-| `S1Y` | `+0x18` | 15 | 6 | — | CONFIRMED |
-| `S1X` | `+0x18` | 21 | 5 | — | CONFIRMED |
-| `SyncFlagCountType` | `+0x18` | 27 | 1 | — | CONFIRMED |
-| `SetDoneBit` | `+0x18` | 28 | 1 | — | CONFIRMED |
-| `TileLocalStride` | `+0x18` | 29 | 3 | `0x1eb9b240` | CONFIRMED |
-| `PostUpdateCircularBuffer` | `+0x18` | 32 | 1 | — | CONFIRMED |
-| `IndirectListType` | `+0x18` | 33 | 1 | `0x1eb9b280` | CONFIRMED |
-| `IndirectListStride` | `+0x18` | 34 | 6 | `0x1eb9b2a0` | CONFIRMED |
-| `IndirectFilterEn` | `+0x18` | 40 | 1 | — | CONFIRMED |
-| `IndirectFilterMode` | `+0x18` | 41 | 1 | `0x1eb9b2e0` | CONFIRMED |
-| `S0Y` | `+0x18` | 42 | 6 | — | CONFIRMED |
-| `IndirectSizeAndHbm4bOffset` | `+0x10` | 35 | 5 | — | CONFIRMED |
-| `IndirectSizeAndHbm4bOffsetValid` | `+0x10` | 40 | 1 | — | CONFIRMED |
-| `IndirectOffset` | `+0x10` | 41 | 5 | `0x1eb9b1a0` | CONFIRMED |
-| `IndirectOffsetValid` | `+0x10` | 46 | 1 | `0x1eb9b180` | CONFIRMED |
-| `OffTileMemoryType` | `+0x10` | 47 | 3 | `0x1eb9b420` | CONFIRMED |
-| `IndirectLengthType` | `+0x10` | 63 | 1 | `0x1eb9b300` | CONFIRMED |
-| `S0X` | `+0x1e` (u16) | 0 | 5 | `0x1eb9b440` | CONFIRMED |
+| Field | Struct word | Shift | Width | Accessor addr (gfc) |
+|---|---|---|---|---|
+| `IndirectOffsetSource` | `+0x18` | 0 | 1 | `0x1eb9b320` |
+| `PostUpdateIndirectOffsetCircularBuffer` | `+0x18` | 3 | 1 | — |
+| `TraceEn` | `+0x18` | 4 | 1 | — |
+| `IndirectMask` | `+0x18` | 5 | 4 | — |
+| `StreamOpcode` | `+0x18` | 9 | 3 | `0x1eb9b3a0` |
+| `GatherScatterAddIsB16` | `+0x18` | 12 | 1 | `0x1eb9b3c0` |
+| `TileLocalMemoryType` | `+0x18` | 13 | 1 | — |
+| `TileLocalStreamType` | `+0x18` | 14 | 1 | — |
+| `S1Y` | `+0x18` | 15 | 6 | — |
+| `S1X` | `+0x18` | 21 | 5 | — |
+| `SyncFlagCountType` | `+0x18` | 27 | 1 | — |
+| `SetDoneBit` | `+0x18` | 28 | 1 | — |
+| `TileLocalStride` | `+0x18` | 29 | 3 | `0x1eb9b240` |
+| `PostUpdateCircularBuffer` | `+0x18` | 32 | 1 | — |
+| `IndirectListType` | `+0x18` | 33 | 1 | `0x1eb9b280` |
+| `IndirectListStride` | `+0x18` | 34 | 6 | `0x1eb9b2a0` |
+| `IndirectFilterEn` | `+0x18` | 40 | 1 | — |
+| `IndirectFilterMode` | `+0x18` | 41 | 1 | `0x1eb9b2e0` |
+| `S0Y` | `+0x18` | 42 | 6 | — |
+| `IndirectSizeAndHbm4bOffset` | `+0x10` | 35 | 5 | — |
+| `IndirectSizeAndHbm4bOffsetValid` | `+0x10` | 40 | 1 | — |
+| `IndirectOffset` | `+0x10` | 41 | 5 | `0x1eb9b1a0` |
+| `IndirectOffsetValid` | `+0x10` | 46 | 1 | `0x1eb9b180` |
+| `OffTileMemoryType` | `+0x10` | 47 | 3 | `0x1eb9b420` |
+| `IndirectLengthType` | `+0x10` | 63 | 1 | `0x1eb9b300` |
+| `S0X` | `+0x1e` (u16) | 0 | 5 | `0x1eb9b440` |
 
 The form opcode itself is a 6-bit field at `+0x18` bit 53 (a contiguous part of the decode word). The opcode matcher `SparseCoreStreamIndirectStreamOpcode::Matches` @ `0x1eb9aaa0` reads `(*((QWORD*)this + 3) & 0x7E0000000000000) == 0x720000000000000`, i.e. bits 53–58 == `0x39`.
 
@@ -439,20 +439,20 @@ The `TacStream` function count is the discriminator: **gfc = 0**, **vfc = 68**, 
 
 ## Limits and Open Items
 
-| Item | Status | Confidence |
-|---|---|---|
-| `SparseCoreStream` proto + 4-form `oneof`, all field numbers/names/types | decoded from descriptor; 3 copies (vfc/glc/gfc) | CONFIRMED |
-| All Stream enums with numeric values | proto-descriptor confirmed | CONFIRMED |
-| Per-form opcodes `0x3b/0x3a/0x39/0x38` @ bit 181 | bit-exact from SCS + TEC encoders | CONFIRMED |
-| `IndirectStream` encode offsets + decode shifts | both sides agree; accessor bodies read | CONFIRMED |
-| Scatter-add slot `{Mask,Stride,Offset,BaseAddress,Cbreg,Source}` @ `+0x30` | accessor bodies read | CONFIRMED |
-| Indirect-DMA descriptor operand groups + attribute getters | op getters located in decompile | CONFIRMED |
-| Per-element address formula (`table_base + offset*stride`, HW multiply) | inferred from field names; no per-element `imul` in lowering | HIGH |
-| Which engine issues a given Stream op per gen | `getSequencerType` located, not bit-traced | MEDIUM |
-| Physical HW width of `indirect_list_stride` / SREG operands | proto `uint32`; slot encodes 4-bit @ SCS, 6-bit decode; HW counter width unknown | LOW |
-| `IndirectVregStream` VREG-read micro-op datapath | field positions decoded; VREG source not traced | LOW |
-| `ROW_OFFSET` vs logical-replica row sharding (per-shard vs global row) | not resolved | LOW |
-| Absolute bit base of the SCS Stream slot within the 256-bit bundle | opcode @ bit 181 known; full SCS slot-base partition not cross-checked | LOW |
+| Item | Status |
+|---|---|
+| `SparseCoreStream` proto + 4-form `oneof`, all field numbers/names/types | decoded from descriptor; 3 copies (vfc/glc/gfc) |
+| All Stream enums with numeric values | proto-descriptor confirmed |
+| Per-form opcodes `0x3b/0x3a/0x39/0x38` @ bit 181 | bit-exact from SCS + TEC encoders |
+| `IndirectStream` encode offsets + decode shifts | both sides agree; accessor bodies read |
+| Scatter-add slot `{Mask,Stride,Offset,BaseAddress,Cbreg,Source}` @ `+0x30` | accessor bodies read |
+| Indirect-DMA descriptor operand groups + attribute getters | op getters located in decompile |
+| Per-element address formula (`table_base + offset*stride`, HW multiply) | inferred from field names; no per-element `imul` in lowering |
+| Which engine issues a given Stream op per gen | `getSequencerType` located, not bit-traced |
+| Physical HW width of `indirect_list_stride` / SREG operands | proto `uint32`; slot encodes 4-bit @ SCS, 6-bit decode; HW counter width unknown |
+| `IndirectVregStream` VREG-read micro-op datapath | field positions decoded; VREG source not traced |
+| `ROW_OFFSET` vs logical-replica row sharding (per-shard vs global row) | not resolved |
+| Absolute bit base of the SCS Stream slot within the 256-bit bundle | opcode @ bit 181 known; full SCS slot-base partition not cross-checked |
 
 ---
 

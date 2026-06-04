@@ -59,14 +59,14 @@ if ( *(uint8_t*)(v93 + 0x18) == 1 ) {             // VectorIsa-present gate (seq
 
 The per-gen blobs are embedded **uncompressed** in `.rodata`. Parsing the `VectorIsa` submessage out of each blob (the `f2=128, f3=8` prefix locates it; `f7` is the IAR count) gives, byte-exact:
 
-| Gen (codename) | `lane_count` f2 | `sublane_count` f3 | `mxu_count` f5 | `xlu_count` f6 | `iar_count` f7 = `IarsPerTensorCore` | Confidence |
-|---|---|---|---|---|---|---|
-| v2 Jellyfish | 128 | 8 | 1 | 1 | **2** | CERTAIN |
-| v3 Dragonfish | 128 | 8 | 2 | 1 | **2** | CERTAIN |
-| v4 Pufferfish | 128 | 8 | 4 | 2 | **2** | CERTAIN |
-| v5p Viperfish | 128 | 8 | 4 | 3 | **2** | CERTAIN |
-| v6e Ghostlite | 128 | 8 | 2 | 2 | **2** | CERTAIN |
-| v7 6acc60406 | 128 | 8 | 2 | 2 | **2** | CERTAIN |
+| Gen (codename) | `lane_count` f2 | `sublane_count` f3 | `mxu_count` f5 | `xlu_count` f6 | `iar_count` f7 = `IarsPerTensorCore` |
+|---|---|---|---|---|---|
+| v2 Jellyfish | 128 | 8 | 1 | 1 | **2** |
+| v3 Dragonfish | 128 | 8 | 2 | 1 | **2** |
+| v4 Pufferfish | 128 | 8 | 4 | 2 | **2** |
+| v5p Viperfish | 128 | 8 | 4 | 3 | **2** |
+| v6e Ghostlite | 128 | 8 | 2 | 2 | **2** |
+| v7 6acc60406 | 128 | 8 | 2 | 2 | **2** |
 
 So `IarsPerTensorCore = 2` on every generation — the IAR file does not grow v2→v7. This is exactly consistent with the ISA-encoding ceiling: the `SetIar` slot's `IarField` accessor (`0x1ee3b380`) is `>>13 & 1`, a single bit, which can address only IAR0/IAR1. The `VectorIsa` field names are not inferred — `TpuSequencerParts::FromProto` (`0x20b30700`) validates each by name (`"Invalid lane_count in vector_isa field"`, `"Invalid sublane_count …"`, `"Invalid mxu_count …"`, `"Invalid xlu_count …"`, `"Invalid iar_count …"`), so f2=`lane_count`=128 (constant across all gens), f5=`mxu_count` (1/2/4/4/2/2), and f6=`xlu_count` (1/1/2/3/2/2) are CONFIRMED, not merely positional.
 
@@ -76,14 +76,14 @@ So `IarsPerTensorCore = 2` on every generation — the IAR file does not grow v2
 
 `IarsPerTensorCore` is the last column of the per-gen register-file block at `Target+0x498..+0x4a8`, all written by the same `Target::Init` from the same chip-parts blobs. The four register counts are re-derived byte-exact from the embedded protos:
 
-| Gen | `SREG` `+0x498` | `VREG` `+0x49c` | `VMREG` `+0x4a0` | `PREG` `+0x4a4` | `IARS` `+0x4a8` | Confidence |
-|---|---|---|---|---|---|---|
-| v2 Jellyfish | 32 | 32 | 8 | 15 | 2 | HIGH |
-| v3 Dragonfish | 32 | 32 | 8 | 15 | 2 | HIGH |
-| v4 Pufferfish | 32 | 32 | 8 | 15 | 2 | HIGH |
-| v5p Viperfish | 32 | 64 | 16 | 14 | 2 | HIGH |
-| v6e Ghostlite | 32 | 64 | 16 | 14 | 2 | HIGH |
-| v7 6acc60406 | 32 | 64 | 16 | 14 | 2 | HIGH |
+| Gen | `SREG` `+0x498` | `VREG` `+0x49c` | `VMREG` `+0x4a0` | `PREG` `+0x4a4` | `IARS` `+0x4a8` |
+|---|---|---|---|---|---|
+| v2 Jellyfish | 32 | 32 | 8 | 15 | 2 |
+| v3 Dragonfish | 32 | 32 | 8 | 15 | 2 |
+| v4 Pufferfish | 32 | 32 | 8 | 15 | 2 |
+| v5p Viperfish | 32 | 64 | 16 | 14 | 2 |
+| v6e Ghostlite | 32 | 64 | 16 | 14 | 2 |
+| v7 6acc60406 | 32 | 64 | 16 | 14 | 2 |
 
 (Field offsets byte-exact from `Target::Init` + `RegisterCount`; values from the embedded chip-parts protos. The `SREG`/`VREG`/`VMREG`/`PREG` order follows `Init`'s seq-0 type dispatch.)
 
@@ -102,24 +102,24 @@ The MXU classifier `CycleTableInstruction` (`0x1c89ca80`) maps **only** the MXU 
 
 The `offsetLUT` (`0xb438b70`) and `resLUT` (`0xb438aec`) were re-read byte-exact; the cycle value is the priced `PerformanceJf` cell under the valid mask `0x19FFC0821`. JF == DF for the entire band (none of these offsets is the DF-override `+0x28`/`+0x2c`).
 
-| `Instr` | `Res` | `ResourceVector` | priced | PerfOff | JF/DF cyc | emitting context | Confidence |
-|---|---|---|---|---|---|---|---|
-| `0x11` | `r6` | VectorEup | no | `0x0` | 1 | unpriced (SparseCore decomposer) | CERTAIN |
-| `0x12` | `r4` | VectorAlu1 | yes | `0x33c` | 1 | elementwise vector-ALU (`RecordHloCycles`) | CERTAIN |
-| `0x13` | `r4` | VectorAlu1 | yes | `0x340` | 1 | elementwise vector-ALU (`RecordHloCycles`) | CERTAIN |
-| `0x14` | `r3` | VectorAlu0 | yes | `0x344` | 1 | vector-ALU lane0 (reduction-fn) | CERTAIN |
-| `0x15` | `r5` | VectorAluAny | yes | `0x39c` | 1 | vector-ALU any (sublane reduce-window) | CERTAIN |
-| `0x16` | `r5` | VectorAluAny | yes | `0x398` | 1 | pack-and-store / reduce-window / conv-kernel | CERTAIN |
-| `0x17` | `r2` | Xlu | yes | `0x954` | 8 | broadcast / cross-lane (`Broadcast::RecordCostCycles`) | CERTAIN |
-| `0x18` | `r6` | VectorEup | yes | `0x3f8` | 1 | EUP / transcendental (`RecordHloCycles`) | CERTAIN |
-| `0x19` | `r5` | VectorAluAny | yes | `0x368` | 1 | vector-ALU any (`RecordConvolutionCycles`) | CERTAIN |
-| `0x1a` | `r6` | VectorEup | yes | `0x3f4` | 1 | EUP / transcendental (`RecordHloCycles`) | CERTAIN |
-| `0x1b` | `r2` | Xlu | yes | `0x960` | 8 | cross-lane reduce-window | CERTAIN |
-| `0x1c` | `r2` | Xlu | yes | `0x94c` | 8 | conv-kernel cross-lane | CERTAIN |
-| `0x1d` | `r2` | Xlu | no | `0x0` | 1 | unpriced | CERTAIN |
-| `0x1e` | `r2` | Xlu | no | `0x0` | 1 | unpriced | CERTAIN |
-| `0x1f` | `r2` | Xlu | yes | `0x958` | 8 | spatial-conv window-MXU | CERTAIN |
-| `0x20` | `r5` | VectorAluAny | yes | `0x39c` | 1 | vector-ALU any (shares `0x39c` with `0x15`) | CERTAIN |
+| `Instr` | `Res` | `ResourceVector` | priced | PerfOff | JF/DF cyc | emitting context |
+|---|---|---|---|---|---|---|
+| `0x11` | `r6` | VectorEup | no | `0x0` | 1 | unpriced (SparseCore decomposer) |
+| `0x12` | `r4` | VectorAlu1 | yes | `0x33c` | 1 | elementwise vector-ALU (`RecordHloCycles`) |
+| `0x13` | `r4` | VectorAlu1 | yes | `0x340` | 1 | elementwise vector-ALU (`RecordHloCycles`) |
+| `0x14` | `r3` | VectorAlu0 | yes | `0x344` | 1 | vector-ALU lane0 (reduction-fn) |
+| `0x15` | `r5` | VectorAluAny | yes | `0x39c` | 1 | vector-ALU any (sublane reduce-window) |
+| `0x16` | `r5` | VectorAluAny | yes | `0x398` | 1 | pack-and-store / reduce-window / conv-kernel |
+| `0x17` | `r2` | Xlu | yes | `0x954` | 8 | broadcast / cross-lane (`Broadcast::RecordCostCycles`) |
+| `0x18` | `r6` | VectorEup | yes | `0x3f8` | 1 | EUP / transcendental (`RecordHloCycles`) |
+| `0x19` | `r5` | VectorAluAny | yes | `0x368` | 1 | vector-ALU any (`RecordConvolutionCycles`) |
+| `0x1a` | `r6` | VectorEup | yes | `0x3f4` | 1 | EUP / transcendental (`RecordHloCycles`) |
+| `0x1b` | `r2` | Xlu | yes | `0x960` | 8 | cross-lane reduce-window |
+| `0x1c` | `r2` | Xlu | yes | `0x94c` | 8 | conv-kernel cross-lane |
+| `0x1d` | `r2` | Xlu | no | `0x0` | 1 | unpriced |
+| `0x1e` | `r2` | Xlu | no | `0x0` | 1 | unpriced |
+| `0x1f` | `r2` | Xlu | yes | `0x958` | 8 | spatial-conv window-MXU |
+| `0x20` | `r5` | VectorAluAny | yes | `0x39c` | 1 | vector-ALU any (shares `0x39c` with `0x15`) |
 
 The four 8-cycle Xlu cells (`0x17`/`0x1b`/`0x1c`/`0x1f`) are the cross-lane throughput ports (broadcast-sublane, reduce-window, conv-kernel-window, spatial-conv-window). The 1-cycle cells are vector-ALU (`0x12..0x16`, `0x19`, `0x20`) or VectorEup (`0x18`/`0x1a`). The `Res` column is the `ResourceVector` slot R[2]..R[6] (Xlu / VectorAlu0 / VectorAlu1 / VectorAluAny / VectorEup).
 
@@ -133,16 +133,16 @@ The four 8-cycle Xlu cells (`0x17`/`0x1b`/`0x1c`/`0x1f`) are the cross-lane thro
 
 On Viperfish the matprep opcodes (`0x97..0x9a`) are **not** classified into a standalone `Instruction` ordinal — they hit the `FATAL` arm of `GetViperfishInstruction` (`0x1c8a3300`, opcode jump table `0xb43a104`, default arm `0x1c8a3e6a`). The matmul opcode `0x9b` instead reads `matmul_data_format()` and indexes the VF matmul-format WORD table `@0xa2d05c0`, read byte-exact as `{0xd4, 0xda, 0xf8, 0xfe, 0xe0, 0xe6, 0xec, 0xf2}` (fmt 1..8 = f32/bf16/fp8e5m2/fp8e4m3/u8/s8/u4/s4):
 
-| `MatmulDataFormat` | dtype | VFinstr ordinal (`@0xa2d05c0`) | Confidence |
-|---|---|---|---|
-| 1 | f32 | `0xd4` | CERTAIN |
-| 2 | bf16 | `0xda` | CERTAIN |
-| 3 | f8e5m2→bf16 | `0xf8` | CERTAIN |
-| 4 | f8e4m3→bf16 | `0xfe` | CERTAIN |
-| 5 | u8 | `0xe0` | CERTAIN |
-| 6 | s8 | `0xe6` | CERTAIN |
-| 7 | u4 | `0xec` | CERTAIN |
-| 8 | s4 | `0xf2` | CERTAIN |
+| `MatmulDataFormat` | dtype | VFinstr ordinal (`@0xa2d05c0`) |
+|---|---|---|
+| 1 | f32 | `0xd4` |
+| 2 | bf16 | `0xda` |
+| 3 | f8e5m2→bf16 | `0xf8` |
+| 4 | f8e4m3→bf16 | `0xfe` |
+| 5 | u8 | `0xe0` |
+| 6 | s8 | `0xe6` |
+| 7 | u4 | `0xec` |
+| 8 | s4 | `0xf2` |
 
 ### The Reservation-Table Producer
 
@@ -150,12 +150,12 @@ The matprep stages are produced by `MxuLatencyTable::GetResourceUsage` (`0x1c8ae
 
 The four modifier keys, each built by `SetReservations<...>` in the `ViperfishPerformance` constructor:
 
-| Modifier | key fields | role | Confidence |
-|---|---|---|---|
-| `MatmulModifier` | `{MatmulDataFormat}` | the pure matmul step | HIGH |
-| `MatpushModifier` | `{MatmulDataFormat, is_transpose, Msr}` | the matprep/matpush stages | HIGH |
-| `MatresModifier` | (matmul-result key) | matmul-result stages | HIGH |
-| `VlxmrModifier` | (vector-load matrix-result key) | vector-load matrix-result | HIGH |
+| Modifier | key fields | role |
+|---|---|---|
+| `MatmulModifier` | `{MatmulDataFormat}` | the pure matmul step |
+| `MatpushModifier` | `{MatmulDataFormat, is_transpose, Msr}` | the matprep/matpush stages |
+| `MatresModifier` | (matmul-result key) | matmul-result stages |
+| `VlxmrModifier` | (vector-load matrix-result key) | vector-load matrix-result |
 
 The `MatpushModifier` is the matprep-opcode → reservation binding: a matprep stage's reservation is keyed by `{MatmulDataFormat × transpose-of-gains × matpush-Msr-stage}` → a 19-entry `MxuResource` reservation array. The matprep opcode carries a Modifier that indexes the table, not a standalone ordinal. This is the VF realization of the same job JF folds into a flat offset-LUT cell. See [Matmul-Mode Modifiers](matmul-mode-modifiers.md) and [MXU Latency: VF](mxu-latency-vf.md).
 

@@ -75,14 +75,14 @@ The arithmetic `base + 8*ordinal` is the whole encoding (`lea rdi,[r14 + rax*8]`
 
 The six `kDeviceTypeInfo` trailing fields are packed 32-bit `PerformanceCounterName` enum **bases**, one per counter set. They are stored in the low 32 bits with the high 32 zero, and on v7x (DT12, row `0x1c637e0`) they read byte-exact:
 
-| kDTI field | Resolver | Inline cap | Subsystem (`STATS_COUNTER` source) | v7x base | Confidence |
-|---|---|---|---|---|---|
-| `+0x2c8` | `<28>` | 28 | TCS — TensorCore Sequencer | `0xa668a008` | High |
-| `+0x348` | `<28>` | 28 | SCS — SparseCore Scalar | `0xa7f61008` | High |
-| `+0x350` | `<28>` | 28 | SCTC — SparseCore Tile Compute | `0xa7724008` | High |
-| `+0x358` | `<28>` | 28 | SCTD — SparseCore Tile DMA / TEC | `0xa6726008` | High |
-| `+0x440` | `<3>` | 3 | CMNUR — memory-network / HBM controller | `0xa5463408` | High |
-| `+0x438` | `<12>` | 12 | ICR — ICI router (data) | `0xd6438c08` | High |
+| kDTI field | Resolver | Inline cap | Subsystem (`STATS_COUNTER` source) | v7x base |
+|---|---|---|---|---|
+| `+0x2c8` | `<28>` | 28 | TCS — TensorCore Sequencer | `0xa668a008` |
+| `+0x348` | `<28>` | 28 | SCS — SparseCore Scalar | `0xa7f61008` |
+| `+0x350` | `<28>` | 28 | SCTC — SparseCore Tile Compute | `0xa7724008` |
+| `+0x358` | `<28>` | 28 | SCTD — SparseCore Tile DMA / TEC | `0xa6726008` |
+| `+0x440` | `<3>` | 3 | CMNUR — memory-network / HBM controller | `0xa5463408` |
+| `+0x438` | `<12>` | 12 | ICR — ICI router (data) | `0xd6438c08` |
 
 > **NOTE —** these six fields are not bit-masks. Each is a packed `PerformanceCounterName` enum **base** that is *added* to `ordinal*8`. The `base + ordinal*8` arithmetic in the resolver body (`lea rdi,[r14+rax*8]`) is direct evidence the field is an additive base, not a mask. There are six counter sets, including `+0x440` → `<3>` CMNUR and `+0x438` → `<12>` ICR.
 
@@ -92,14 +92,14 @@ Every other `DeviceType` row is `0x00000000` at all six fields — verified by s
 
 The actual counter strings live in the `gfc` name tables (`SamplingData::kNames` / `kOffsets`) reached through the 20 band sub-decoders. Resolving `base + ordinal*8` for the first few ordinals of each set recovers names byte-exact (all confirmed present in `.rodata`); the full register prefix is the `VF_` (Viperfish-register) namespace that v7x reuses:
 
-| Set | base | ordinal 0..3 (suffix after `..._UNPRIVILEGED_`) | Confidence |
-|---|---|---|---|
-| SCS (`+0x348`) | `0xa7f61008` | `COUNT_CYCLES` / `COUNT_SCALAR_ISSUE` / `COUNT_BRANCH_TAKEN` / `COUNT_S0_INSTRUCTION` | High |
-| SCTC (`+0x350`) | `0xa7724008` | `COUNT_CYCLES` / `COUNT_VECTOR_ISSUE` / `COUNT_V0_INSTRUCTION` / `COUNT_V1_INSTRUCTION` | High |
-| SCTD (`+0x358`) | `0xa6726008` | `COUNT_CYCLES` / `TEC_SCALAR_ISSUE` / `TEC_BRANCH_TAKEN` / `TEC_S0_INSTRUCTION` | Medium |
-| CMNUR (`+0x440`) | `0xa5463408` | `CYCLE_COUNTER_WINDOW` / `RD_RSP_BEAT_FROM_HBM` / `WR_REQ_BEAT_TO_HBM` | High |
-| ICR (`+0x438`) | `0xd6438c08` | `LINK0_EGRESS_CONTROL_PACKET_SENT` / `LINK0_EGRESS_DATA_PACKET_SENT` / `LINK0_INGRESS_CONTROL_PACKET_RECEIVED` / `LINK0_INGRESS_DATA_PACKET_RECEIVED` | High |
-| TCS (`+0x2c8`) | `0xa668a008` | *(not named — see GOTCHA)* | Low |
+| Set | base | ordinal 0..3 (suffix after `..._UNPRIVILEGED_`) |
+|---|---|---|
+| SCS (`+0x348`) | `0xa7f61008` | `COUNT_CYCLES` / `COUNT_SCALAR_ISSUE` / `COUNT_BRANCH_TAKEN` / `COUNT_S0_INSTRUCTION` |
+| SCTC (`+0x350`) | `0xa7724008` | `COUNT_CYCLES` / `COUNT_VECTOR_ISSUE` / `COUNT_V0_INSTRUCTION` / `COUNT_V1_INSTRUCTION` |
+| SCTD (`+0x358`) | `0xa6726008` | `COUNT_CYCLES` / `TEC_SCALAR_ISSUE` / `TEC_BRANCH_TAKEN` / `TEC_S0_INSTRUCTION` |
+| CMNUR (`+0x440`) | `0xa5463408` | `CYCLE_COUNTER_WINDOW` / `RD_RSP_BEAT_FROM_HBM` / `WR_REQ_BEAT_TO_HBM` |
+| ICR (`+0x438`) | `0xd6438c08` | `LINK0_EGRESS_CONTROL_PACKET_SENT` / `LINK0_EGRESS_DATA_PACKET_SENT` / `LINK0_INGRESS_CONTROL_PACKET_RECEIVED` / `LINK0_INGRESS_DATA_PACKET_RECEIVED` |
+| TCS (`+0x2c8`) | `0xa668a008` | *(not named — see GOTCHA)* |
 
 Sample full names (verified verbatim in the binary):
 
@@ -141,14 +141,14 @@ function GetTpuCounterIndicesFromRequest(XprofRequest* req,        // 0xf2c5000
 
 ### Request → Set Wiring
 
-| Flag bit | `TpuCounterIndices` member | `Assign<N>` | Resolver fed | kDTI base | Set | Confidence |
-|---|---|---|---|---|---|---|
-| `+0x10 & 0x10000000` | `+0x000` | `<28>` | `<28>` | `+0x2c8` | TCS | High |
-| `+0x10 & 0x20000000` | `+0x078` | `<28>` | `<28>` | `+0x348` | SCS | High |
-| `+0x10 & 0x40000000` | `+0x0f0` | `<28>` | `<28>` | `+0x350` | SCTC | High |
-| `+0x10 & 0x00000020` | `+0x168` | `<28>` | `<28>` | `+0x358` | SCTD | High |
-| `+0x10 & 0x80000000` (sign) | `+0x1e0` | `<3>` | `<3>` | `+0x440` | CMNUR | High |
-| `+0x14 & 0x1` | `+0x1f8` | `<12>` | `<12>` | `+0x438` | ICR | High |
+| Flag bit | `TpuCounterIndices` member | `Assign<N>` | Resolver fed | kDTI base | Set |
+|---|---|---|---|---|---|
+| `+0x10 & 0x10000000` | `+0x000` | `<28>` | `<28>` | `+0x2c8` | TCS |
+| `+0x10 & 0x20000000` | `+0x078` | `<28>` | `<28>` | `+0x348` | SCS |
+| `+0x10 & 0x40000000` | `+0x0f0` | `<28>` | `<28>` | `+0x350` | SCTC |
+| `+0x10 & 0x00000020` | `+0x168` | `<28>` | `<28>` | `+0x358` | SCTD |
+| `+0x10 & 0x80000000` (sign) | `+0x1e0` | `<3>` | `<3>` | `+0x440` | CMNUR |
+| `+0x14 & 0x1` | `+0x1f8` | `<12>` | `<12>` | `+0x438` | ICR |
 
 > **NOTE —** the first member is at struct offset `+0x000`, not `+0x8`. The decompiled `Assign` target is the bare struct pointer, so the six members sit at `0x000 / 0x078 / 0x0f0 / 0x168 / 0x1e0 / 0x1f8`. The downstream caller (`ConvertTpuTraceToXPlaneV2`) reads `.data()` of each `InlinedVector` from those offsets and pairs it with the matching kDTI base before calling the resolver.
 
@@ -196,18 +196,18 @@ function ConvertFirmwareTraceEntriesToXPlane_gfc(entries, gtc_span,    // 0xf2b1
 
 The `FirmwareEventBuilder` ctor (`0xf2b8780`) lays out:
 
-| obj offset | Source | Meaning | Confidence |
-|---|---|---|---|
-| `+0x00` | `xb` | `TpuXPlaneBuilder*` | High |
-| `+0x08 / +0x0c` | `xb[+0x8c] / xb[+0x90]` | core / chip id | High |
-| `+0x10 / +0x18 / +0x20 / +0x28` | kDTI `+0x360..+0x378` | 4 calibration doubles (bias/scale) | High |
-| `+0x30 / +0x38 / +0x40 / +0x48` | kDTI `+0x380..+0x398` | 4 calibration ulongs (counts) | High |
-| `+0x60 / +0x58` | `19` | 19-entry `TpuComponent` vector size | High |
-| `+0x80` | `"power"` (id 5) | XStatMetadata | High |
-| `+0x88` | `"temperature"` (id 11) | XStatMetadata | High |
-| `+0x90` | `"throttle %"` (id 10) | XStatMetadata | High |
-| `+0x98` | `"P State"` (id 7) | XStatMetadata | High |
-| `+0xa0` | `"PCIe BW (GB/s)"` (id 14) | XStatMetadata | High |
+| obj offset | Source | Meaning |
+|---|---|---|
+| `+0x00` | `xb` | `TpuXPlaneBuilder*` |
+| `+0x08 / +0x0c` | `xb[+0x8c] / xb[+0x90]` | core / chip id |
+| `+0x10 / +0x18 / +0x20 / +0x28` | kDTI `+0x360..+0x378` | 4 calibration doubles (bias/scale) |
+| `+0x30 / +0x38 / +0x40 / +0x48` | kDTI `+0x380..+0x398` | 4 calibration ulongs (counts) |
+| `+0x60 / +0x58` | `19` | 19-entry `TpuComponent` vector size |
+| `+0x80` | `"power"` (id 5) | XStatMetadata |
+| `+0x88` | `"temperature"` (id 11) | XStatMetadata |
+| `+0x90` | `"throttle %"` (id 10) | XStatMetadata |
+| `+0x98` | `"P State"` (id 7) | XStatMetadata |
+| `+0xa0` | `"PCIe BW (GB/s)"` (id 14) | XStatMetadata |
 
 The 19 firmware XLine components are read byte-exact from `ymmword_AB59ACC` (an `int32[19]` at `0xab59acc`): `{120,121,122,123,124,125,126,127,128,129,130,134,135,136,137,138,139,141,143}`. By `TpuComponentName`, these are the VDD-core power meters PL1..PL4, VDD-core throttle, HBM power meters PL1..PL4, HBM throttle, HBM max temperature, PCIe read utilization 1..4, PCIe write utilization 1..2, ICR Stats, and Compute-Die max temperature — all confirmed as `.rodata` strings (e.g. `"VDD Core FW Power Meter PL1(W)"`, `"Compute Die FW Max Temperature(C)"`).
 
@@ -215,13 +215,13 @@ The 19 firmware XLine components are read byte-exact from `ymmword_AB59ACC` (an 
 
 The firmware `TraceEntry` is a oneof; `FirmwareEventBuilder::Get` (`0xf2b8b00`) dispatches on the variant and computes the per-event value using the obj-stored calibration constants:
 
-| Variant (proto message) | Get() value formula | XLine(s) / XStat | Confidence |
-|---|---|---|---|
-| `PowerLevelEvent` | `power(W) = (raw_energy/Δt − bias) / (meter_count·1000.0)`, scaled by obj `+0x10/+0x18` and biased by `+0x20/+0x28` | 120..128 / `"power"`; PCIe 134..139 / `"PCIe BW (GB/s)"` | High |
-| `ThermalEvent` | `temperature(C) = cvtsi2sd(thermal_sensor_int)` | 130/143 / `"temperature"` | High |
-| `ThrottleEvent` | `throttle% = (throttle_cycles·100.0) / cycle_window` | 124/129 / `"throttle %"` | High |
-| `DvfsEvent` | `P-state = cvttsd2si(dvfs_p_state)`; push `pair<u64 ts, PState>` | DVFS timeline / `"P State"` | High |
-| `MgrFwEvent` (tag 94) | manager-firmware status passthrough | mgr line | Medium |
+| Variant (proto message) | Get() value formula | XLine(s) / XStat |
+|---|---|---|
+| `PowerLevelEvent` | `power(W) = (raw_energy/Δt − bias) / (meter_count·1000.0)`, scaled by obj `+0x10/+0x18` and biased by `+0x20/+0x28` | 120..128 / `"power"`; PCIe 134..139 / `"PCIe BW (GB/s)"` |
+| `ThermalEvent` | `temperature(C) = cvtsi2sd(thermal_sensor_int)` | 130/143 / `"temperature"` |
+| `ThrottleEvent` | `throttle% = (throttle_cycles·100.0) / cycle_window` | 124/129 / `"throttle %"` |
+| `DvfsEvent` | `P-state = cvttsd2si(dvfs_p_state)`; push `pair<u64 ts, PState>` | DVFS timeline / `"P State"` |
+| `MgrFwEvent` (tag 94) | manager-firmware status passthrough | mgr line |
 
 The constants are pinned in `.rodata`: `100.0` at `qword_A2DF5C0`, `1000.0` at `qword_A2E0430`, `1.0` at `qword_A2DF230`, and the `u64→double` `2^52` reconstruction magic at `xmmword_A2C1520` / `xmmword_A2C5F90`. The PowerLevel path uses obj `+0x10`/`+0x18` as the per-rail scale and `+0x20`/`+0x28` as the bias (two rails — the `v35 == 1` and `v35 == 2` branches select which double pair).
 
@@ -241,12 +241,12 @@ The `DvfsEvent` stream builds a `vector<pair<u64 gtc, PState>>` — the convert 
 
 The `+0x360..+0x398` bundle is per-`DeviceType`, read byte-exact from `kDeviceTypeInfo`:
 
-| Gen (row) | `+0x360` | `+0x368` | `+0x370` | `+0x378` | `+0x380` | `+0x388` | `+0x390` | `+0x398` | Confidence |
-|---|---|---|---|---|---|---|---|---|---|
-| v7x (idx 12, `0x1c637e0`) | `0.2` | `0.0` | `0.2` | `0.0` | `0` | `30` | `26` | `50` | High |
-| v6e (idx 13, `0x1c63c28`) | `0.785` | `9.04` | `0.887` | `0.225` | `0` | `31` | `11` | `50` | High |
-| (idx 10, 11) | `0` | `0` | `0` | `0` | `0` | `31` | `0` | `0` | High |
-| (other rows) | `0` | `0` | `0` | `0` | `0` | `0` | `0` | `0` | High |
+| Gen (row) | `+0x360` | `+0x368` | `+0x370` | `+0x378` | `+0x380` | `+0x388` | `+0x390` | `+0x398` |
+|---|---|---|---|---|---|---|---|---|
+| v7x (idx 12, `0x1c637e0`) | `0.2` | `0.0` | `0.2` | `0.0` | `0` | `30` | `26` | `50` |
+| v6e (idx 13, `0x1c63c28`) | `0.785` | `9.04` | `0.887` | `0.225` | `0` | `31` | `11` | `50` |
+| (idx 10, 11) | `0` | `0` | `0` | `0` | `0` | `31` | `0` | `0` |
+| (other rows) | `0` | `0` | `0` | `0` | `0` | `0` | `0` | `0` |
 
 The four doubles are power/thermal calibration coefficients (per-rail energy→W bias/scale): v7x uses a flat `0.2` pair, v6e a richer `0.785 / 9.04 / 0.887 / 0.225` curve. The four ulongs are per-generation counts used as divisors / ranges in `Get()`: `+0x388` = number of power meters (30 on v7x, 31 on v6e), `+0x390` = number of thermal/throttle items (26 on v7x, 11 on v6e), `+0x398` = a sample/window count (50).
 

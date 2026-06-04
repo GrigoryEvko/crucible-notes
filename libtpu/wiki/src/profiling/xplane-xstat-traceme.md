@@ -94,12 +94,12 @@ The two `map<int64, *Metadata>` fields on each `XPlane` are the dictionaries an 
 
 From the decompiled builders, an `XPlaneBuilder` holds the backing `XPlane*` and three side caches:
 
-| Field | Offset (qword index) | Type | Meaning | Confidence |
-|---|---|---|---|---|
-| plane backing | `+0x10` (`*((q*)this+2)`) | `XPlane*` | the proto being built; all `RepeatedPtrFieldBase::Add` targets resolve from here | CERTAIN |
-| line map | `+0x68` (`this+104`) | `absl flat_hash_map<int64, XLine*>` (SOO) | id → line cache; small-object-optimized for ≤1 entry | CERTAIN |
-| SOO single-slot key | `+0x70`/`+0x78` (`this+14/15`) | `int64` | inline last-line id/ptr before the map grows past SOO | HIGH |
-| event-metadata cache | `+0x80` (`this+16`) | hash-set storage | backing for the metadata lookups | MEDIUM |
+| Field | Offset (qword index) | Type | Meaning |
+|---|---|---|---|
+| plane backing | `+0x10` (`*((q*)this+2)`) | `XPlane*` | the proto being built; all `RepeatedPtrFieldBase::Add` targets resolve from here |
+| line map | `+0x68` (`this+104`) | `absl flat_hash_map<int64, XLine*>` (SOO) | id → line cache; small-object-optimized for ≤1 entry |
+| SOO single-slot key | `+0x70`/`+0x78` (`this+14/15`) | `int64` | inline last-line id/ptr before the map grows past SOO |
+| event-metadata cache | `+0x80` (`this+16`) | hash-set storage | backing for the metadata lookups |
 
 > **QUIRK —** `GetOrCreateLine` (@ `0x1cf4d9a0`) does *not* go straight to a hash map. For the first line it stores the id inline in two builder qwords (`this+14`, `this+15`) guarded by a thread-local fast-path counter (`__tls_get_addr(&qword_22048D78)`), and only calls `GrowSooTableToNextCapacityAndPrepareInsert` once a second distinct line id appears. A reimplementation that allocates a full `flat_hash_map` per plane up front matches the *semantics* but not the layout, and will read the wrong offsets if it tries to cross-check against the binary.
 
@@ -158,19 +158,19 @@ function GetOrCreateStatMetadata(builder, id):          // 0x1cf4d500
 
 The name-keyed overloads (`GetOrCreateEventMetadata(string_view)` @ `0x1cf4d0c0`, plus `string`/`&&` variants at `0x1cf4d380`/`0x1cf4d0c0`, and the stat equivalents at `0x1cf4d5e0`/`0x1cf4d8a0`) maintain a *second* index: a name→id hash so two producers naming the same event get the same interned entry. They allocate a fresh id when the name is new, create the metadata via the id path above, and set its `name` field. The read-only companions `GetEventMetadata(string_view)` @ `0x1cf4d480` and `GetStatMetadata(*)` @ `0x1cf4d4c0`/`0x1cf4d560` look up without creating — used by consumers that must find an existing id.
 
-| Builder method | Key | Address | Creates? | Confidence |
-|---|---|---|---|---|
-| `GetOrCreateEventMetadata(int64)` | id | `0x1cf4cfe0` | yes | CERTAIN |
-| `GetOrCreateEventMetadata(string_view)` | name | `0x1cf4d0c0` | yes | CERTAIN |
-| `GetOrCreateEventMetadata(string&&)` | name | `0x1cf4d380` | yes | HIGH |
-| `GetEventMetadata(string_view)` | name | `0x1cf4d480` | no (lookup) | CERTAIN |
-| `GetOrCreateStatMetadata(int64)` | id | `0x1cf4d500` | yes | CERTAIN |
-| `GetOrCreateStatMetadata(string_view)` | name | `0x1cf4d5e0` | yes | CERTAIN |
-| `GetOrCreateStatMetadata(string&&)` | name | `0x1cf4d8a0` | yes | HIGH |
-| `GetStatMetadata(int64)` | id | `0x1cf4d560` | no (lookup) | CERTAIN |
-| `GetStatMetadata(string_view)` | name | `0x1cf4d4c0` | no (lookup) | CERTAIN |
-| `CreateEventMetadata()` | — | `0x1cf4d040` | yes (no key) | HIGH |
-| `GetOrCreateCounterLine()` | — | `0x1cf4db20` | yes | HIGH |
+| Builder method | Key | Address | Creates? |
+|---|---|---|---|
+| `GetOrCreateEventMetadata(int64)` | id | `0x1cf4cfe0` | yes |
+| `GetOrCreateEventMetadata(string_view)` | name | `0x1cf4d0c0` | yes |
+| `GetOrCreateEventMetadata(string&&)` | name | `0x1cf4d380` | yes |
+| `GetEventMetadata(string_view)` | name | `0x1cf4d480` | no (lookup) |
+| `GetOrCreateStatMetadata(int64)` | id | `0x1cf4d500` | yes |
+| `GetOrCreateStatMetadata(string_view)` | name | `0x1cf4d5e0` | yes |
+| `GetOrCreateStatMetadata(string&&)` | name | `0x1cf4d8a0` | yes |
+| `GetStatMetadata(int64)` | id | `0x1cf4d560` | no (lookup) |
+| `GetStatMetadata(string_view)` | name | `0x1cf4d4c0` | no (lookup) |
+| `CreateEventMetadata()` | — | `0x1cf4d040` | yes (no key) |
+| `GetOrCreateCounterLine()` | — | `0x1cf4db20` | yes |
 
 ---
 
@@ -202,12 +202,12 @@ The function is dense but unambiguous: it allocates an `XEvent` on the line's re
 
 After `AddEvent`, the `XEventBuilder` carries `{line*, event*}` and exposes inline setters that write directly into the `XEvent` proto:
 
-| Setter (logical) | Writes | XEvent offset | Confidence |
-|---|---|---|---|
-| `SetOffsetPs` / `SetTimestampNs(line_ns)` | `offset_ps` (relative to line origin) | `+0x18` | HIGH |
-| `SetDurationPs` / `SetEndTimestampPs` | `duration_ps` | `+0x20` | HIGH |
-| `SetNumOccurrences` | `num_occurrences` | `+0x30` | MEDIUM |
-| `AddStatValue(XStatMetadata&, value)` | appends `XStat` to `XEvent.stats` | repeated `+0x38` | HIGH |
+| Setter (logical) | Writes | XEvent offset |
+|---|---|---|
+| `SetOffsetPs` / `SetTimestampNs(line_ns)` | `offset_ps` (relative to line origin) | `+0x18` |
+| `SetDurationPs` / `SetEndTimestampPs` | `duration_ps` | `+0x20` |
+| `SetNumOccurrences` | `num_occurrences` | `+0x30` |
+| `AddStatValue(XStatMetadata&, value)` | appends `XStat` to `XEvent.stats` | repeated `+0x38` |
 
 `AddStatValue` is the `XEvent`-level analogue of `AddEvent`: it appends an `XStat` to the event's repeated `stats` field, sets `XStat.metadata_id` from the passed (already-interned) `XStatMetadata`, and writes the value into the `oneof`. The value variants observed in the proto schema are `int64`/`uint64`/`double`/`bytes (str_value)`/`int64 (ref_value)` — `ref_value` references an interned string in the plane's string table, used for large/repeated string stats.
 
@@ -323,24 +323,24 @@ The result: host `TraceMe` scopes and device hardware trace-entries arrive on di
 
 ## Builder Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `XPlaneBuilder::GetOrCreateLine(int64)` | `0x1cf4d9a0` | id → `XLine`, SOO-cached, lazy append | CERTAIN |
-| `XPlaneBuilder::GetOrCreateEventMetadata(int64)` | `0x1cf4cfe0` | intern event metadata by id | CERTAIN |
-| `XPlaneBuilder::GetOrCreateEventMetadata(string_view)` | `0x1cf4d0c0` | intern event metadata by name | CERTAIN |
-| `XPlaneBuilder::GetOrCreateStatMetadata(int64)` | `0x1cf4d500` | intern stat metadata by id | CERTAIN |
-| `XPlaneBuilder::GetOrCreateStatMetadata(string_view)` | `0x1cf4d5e0` | intern stat metadata by name | CERTAIN |
-| `XPlaneBuilder::CreateEventMetadata()` | `0x1cf4d040` | allocate metadata without a key | HIGH |
-| `XPlaneBuilder::GetOrCreateCounterLine()` | `0x1cf4db20` | dedicated counter timeline | HIGH |
-| `XLineBuilder::AddEvent(const XEventMetadata&)` | `0x1cf4dc40` | append `XEvent`, copy metadata id | CERTAIN |
-| `TpuXLineBuilder::AddEvent(GtcSpan, XEventMetadata&)` | `0xf1df1e0` | device dialect wrapper | CERTAIN |
-| `TpuXPlaneBuilder::GetOrCreateLine(TpuComponent)` | `0xf1df120` | device-semantic line key | CERTAIN |
-| `TpuXPlaneBuilder::GetOrCreateLine(IciPort)` | `0xf25af20` | ICI-port line key | CERTAIN |
-| `TraceMeRecorder::Record(Event&&)` | `0x207ff580` | lock-free per-thread capture | CERTAIN |
-| `TraceMeRecorder::NewActivityId()` | `0x207ff7a0` | `(thread<<32)\|counter` id | CERTAIN |
-| `TraceMeRecorder::Consume()` | `0x207fe700` | drain per-thread chunks | CERTAIN |
-| `TraceMeEncode(name, args)` | `0x10885f20` | `name#k=v,…#` wire format | CERTAIN |
-| `ConvertCompleteEventsToXPlane(...)` | `0xf32ff00` | host events → `/host` XPlane | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `XPlaneBuilder::GetOrCreateLine(int64)` | `0x1cf4d9a0` | id → `XLine`, SOO-cached, lazy append |
+| `XPlaneBuilder::GetOrCreateEventMetadata(int64)` | `0x1cf4cfe0` | intern event metadata by id |
+| `XPlaneBuilder::GetOrCreateEventMetadata(string_view)` | `0x1cf4d0c0` | intern event metadata by name |
+| `XPlaneBuilder::GetOrCreateStatMetadata(int64)` | `0x1cf4d500` | intern stat metadata by id |
+| `XPlaneBuilder::GetOrCreateStatMetadata(string_view)` | `0x1cf4d5e0` | intern stat metadata by name |
+| `XPlaneBuilder::CreateEventMetadata()` | `0x1cf4d040` | allocate metadata without a key |
+| `XPlaneBuilder::GetOrCreateCounterLine()` | `0x1cf4db20` | dedicated counter timeline |
+| `XLineBuilder::AddEvent(const XEventMetadata&)` | `0x1cf4dc40` | append `XEvent`, copy metadata id |
+| `TpuXLineBuilder::AddEvent(GtcSpan, XEventMetadata&)` | `0xf1df1e0` | device dialect wrapper |
+| `TpuXPlaneBuilder::GetOrCreateLine(TpuComponent)` | `0xf1df120` | device-semantic line key |
+| `TpuXPlaneBuilder::GetOrCreateLine(IciPort)` | `0xf25af20` | ICI-port line key |
+| `TraceMeRecorder::Record(Event&&)` | `0x207ff580` | lock-free per-thread capture |
+| `TraceMeRecorder::NewActivityId()` | `0x207ff7a0` | `(thread<<32)\|counter` id |
+| `TraceMeRecorder::Consume()` | `0x207fe700` | drain per-thread chunks |
+| `TraceMeEncode(name, args)` | `0x10885f20` | `name#k=v,…#` wire format |
+| `ConvertCompleteEventsToXPlane(...)` | `0xf32ff00` | host events → `/host` XPlane |
 
 ---
 

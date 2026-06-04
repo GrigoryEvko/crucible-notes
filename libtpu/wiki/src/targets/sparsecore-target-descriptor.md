@@ -46,15 +46,15 @@ It is wired into vtable slot `+0x260`. Every scalar accessor in the next section
 
 Six `Target::SparseCore*` accessors reach into `Target+0x948` and read one scalar each. They share an identical shape: dispatch the `+0x260` gate, `LOG(FATAL)` if false, then load `*(*(this+0x948) + field)`. The decompiled bodies confirm the base and every field offset (the decompiler renders `Target+0x948` as `*((_QWORD *)this + 297)`; `297 × 8 = 0x948`).
 
-| Accessor | Address | Reads | v7x value | Confidence |
-|---|---|---|---|---|
-| `SparseCoreTiles` | `0xFAAFA40` | `[0x948] + 0x90` | 16 | CONFIRMED |
-| `SparseCoreLaneCount` | `0xF7906E0` | `[0x948] + 0x94` | 16 | CONFIRMED |
-| `SparseCoreHbm4bWordSizeBytes` | `0x1320C220` | `[0x948] + 0x58` | 4 | CONFIRMED |
-| `SparseCoreStreamGranuleSizeBytes` | `0x13886EE0` | `[0x948] + 0xA4` | 4 | CONFIRMED |
-| `GetSparseCoreBarrierSyncFlagCount` | `0x10972FA0` | `[0x948] + 0x1D4` | — | CONFIRMED |
-| `SupportsSparseCore` | `0x1D48FD40` | `[0x3B8 TpuTopology] + 0x98 > 0` | true | CONFIRMED |
-| `SparseCoresPerLogicalDevice` | `0x135159C0` | `CoresPerChip / LogicalDevicesPerChip` | 2 | CONFIRMED |
+| Accessor | Address | Reads | v7x value |
+|---|---|---|---|
+| `SparseCoreTiles` | `0xFAAFA40` | `[0x948] + 0x90` | 16 |
+| `SparseCoreLaneCount` | `0xF7906E0` | `[0x948] + 0x94` | 16 |
+| `SparseCoreHbm4bWordSizeBytes` | `0x1320C220` | `[0x948] + 0x58` | 4 |
+| `SparseCoreStreamGranuleSizeBytes` | `0x13886EE0` | `[0x948] + 0xA4` | 4 |
+| `GetSparseCoreBarrierSyncFlagCount` | `0x10972FA0` | `[0x948] + 0x1D4` | — |
+| `SupportsSparseCore` | `0x1D48FD40` | `[0x3B8 TpuTopology] + 0x98 > 0` | true |
+| `SparseCoresPerLogicalDevice` | `0x135159C0` | `CoresPerChip / LogicalDevicesPerChip` | 2 |
 
 A representative body (`SparseCoreTiles`, `0xFAAFA40`):
 
@@ -75,45 +75,45 @@ __int64 Target::SparseCoreTiles(Target *this) {
 
 The sub-object is one struct with two consumer views: the SC-MLO allocator view (the `+0x10..+0x54` word/capacity block) and the HAL/cost-model view (`+0x58..+0x1D4`). Offsets are read from the `SparseCoreTarget::Init` (`0x1D612B20`) store sites or from the matching accessor deref. The struct spans at least `0x240` bytes; its constructor is inlined, so the destructor (`0x1D499060`) is a bare `ret`.
 
-| Off | Type | Field / meaning | Source · Confidence |
-|---|---|---|---|
-| `+0x08` | ptr | back-pointer (`Target*` / core ptr) | Init store · CONFIRMED |
-| `+0x10` | i32 | TIMEM/SCS-sflag capacity (group 0) | `MemoryParts(SFLAG)` · CONFIRMED |
-| `+0x14` | i32 | TAC-sflag capacity (group 1) | Init store · CONFIRMED |
-| `+0x18` | i32 | TEC-sflag / per-tile sflag pool (group 2) | Init store · CONFIRMED |
-| `+0x1C` | i32 | SCS-SMEM capacity (group 0) | `MemoryParts(SMEM)` · CONFIRMED |
-| `+0x20` | i32 | TAC-SMEM capacity (group 1) | Init store · CONFIRMED |
-| `+0x24` | i32 | TEC-SMEM capacity (group 2) | Init store · CONFIRMED |
-| `+0x28` | i32 | **TILE_SPMEM capacity (bytes)** | `MemoryParts(TILESPMEM)` · CONFIRMED |
-| `+0x2C` | i32 | **SPMEM capacity (bytes)** | `MemoryParts(SPMEM)` · CONFIRMED |
-| `+0x30` | i32 | sparse-core SFLAG capacity | Init store · CONFIRMED |
-| `+0x38` | i64 | HBM 4b-word count = `(Target[0x450]+3) >> 2` | Init store · CONFIRMED |
-| `+0x40` | i32 | TIMEM/sflag word size (group 0) | `MemoryParts(SFLAG).bpw` · CONFIRMED |
-| `+0x44` | i32 | SMEM word size | `MemoryParts(SMEM).bpw` · CONFIRMED |
-| `+0x48` | i32 | TILE_SPMEM word size | `MemoryParts(TILESPMEM).bpw` · CONFIRMED |
-| `+0x4C` | i32 | SPMEM word size | `MemoryParts(SPMEM).bpw` · CONFIRMED |
-| `+0x50` | i32 | TILE-instr (TIMEM) word size | `MemoryParts(TILEIMEM).bpw` · CONFIRMED |
-| `+0x54` | i32 | per-group word-size slot | Init store · CONFIRMED |
-| `+0x58` | i32 | **`SparseCoreHbm4bWordSizeBytes` = 4** | Init literal `= 4` · CONFIRMED |
-| `+0x5C..+0x70` | i32×N | group-mirrored sflag/smem word sizes + capacities | Init stores · CONFIRMED |
-| `+0x74` | i32 | **literal `2`** (SCS sequencer/group count) | Init literal `= 2` · CONFIRMED |
-| `+0x78..+0x8C` | i32×N | per-coretype memory counts (TENSOR/SC group fanout) | `MemoryCount(TILEIMEM)` · CONFIRMED |
-| `+0x90` | i32 | **`SparseCoreTiles` = `SequencerCount(5)`** | Init store · CONFIRMED |
-| `+0x94` | i32 | **`SparseCoreLaneCount` = `vector_isa(5).lane_count`** | Init store · CONFIRMED |
-| `+0x98` | i32 | SC lane bytes = `lane_count << 2` | Init `= 4 * lane` · CONFIRMED |
-| `+0x9C` | i32 | SC freq / host-irq block (`TpuCoreParts[0x138]`) | Init store · CONFIRMED |
-| `+0xA0` | i32 | `tile_hbm_bandwidth_bytes_per_cycle` (`cp[0x1E0]`, gated `cp[0x1E8]`) | Init store · CONFIRMED |
-| `+0xA4` | i32 | **`stream_granule_size`** (`cp[0x1E4]`) | Init store · CONFIRMED |
-| `+0xA8..+0x238` | ptr×N | per-tile reserved-region vectors (SMEM/SPMEM/SFLAG windows) | Init stores · HIGH (base offsets only) |
-| `+0x188` | u8 | bool flag | Init store · CONFIRMED |
-| `+0x190` | i64 | **embedding param-region base word offset** | `SparseCoreParamPtrLocationWordOffset` deref · CONFIRMED |
-| `+0x198` | u8 | bool flag | Init store · CONFIRMED |
-| `+0x1D0` | i32 | SC barrier sync-flag base (`SpecialPurposeSyncFlags[0]`) | Init store · CONFIRMED |
-| `+0x1D4` | i32 | **`GetSparseCoreBarrierSyncFlagCount`** (`SpecialPurposeSyncFlags[+0x10]`) | accessor `0x10972FA0` · CONFIRMED |
-| `+0x1E8` | u8 | SparseCore-proto-present flag | Init store · CONFIRMED |
-| `+0x1EC..+0x22C` | i32×N | compiler-reserved SFLAG watermarks + per-tile reserved-SFLAG block | Init stores · CONFIRMED |
-| `+0x230/+0x238` | ptr×2 | tail region vectors | Init stores · CONFIRMED |
-| `~0x240` | — | `sizeof(SparseCoreTarget) >= 0x240` | Init store range · HIGH |
+| Off | Type | Field / meaning |
+|---|---|---|
+| `+0x08` | ptr | back-pointer (`Target*` / core ptr) |
+| `+0x10` | i32 | TIMEM/SCS-sflag capacity (group 0) |
+| `+0x14` | i32 | TAC-sflag capacity (group 1) |
+| `+0x18` | i32 | TEC-sflag / per-tile sflag pool (group 2) |
+| `+0x1C` | i32 | SCS-SMEM capacity (group 0) |
+| `+0x20` | i32 | TAC-SMEM capacity (group 1) |
+| `+0x24` | i32 | TEC-SMEM capacity (group 2) |
+| `+0x28` | i32 | **TILE_SPMEM capacity (bytes)** |
+| `+0x2C` | i32 | **SPMEM capacity (bytes)** |
+| `+0x30` | i32 | sparse-core SFLAG capacity |
+| `+0x38` | i64 | HBM 4b-word count = `(Target[0x450]+3) >> 2` |
+| `+0x40` | i32 | TIMEM/sflag word size (group 0) |
+| `+0x44` | i32 | SMEM word size |
+| `+0x48` | i32 | TILE_SPMEM word size |
+| `+0x4C` | i32 | SPMEM word size |
+| `+0x50` | i32 | TILE-instr (TIMEM) word size |
+| `+0x54` | i32 | per-group word-size slot |
+| `+0x58` | i32 | **`SparseCoreHbm4bWordSizeBytes` = 4** |
+| `+0x5C..+0x70` | i32×N | group-mirrored sflag/smem word sizes + capacities |
+| `+0x74` | i32 | **literal `2`** (SCS sequencer/group count) |
+| `+0x78..+0x8C` | i32×N | per-coretype memory counts (TENSOR/SC group fanout) |
+| `+0x90` | i32 | **`SparseCoreTiles` = `SequencerCount(5)`** |
+| `+0x94` | i32 | **`SparseCoreLaneCount` = `vector_isa(5).lane_count`** |
+| `+0x98` | i32 | SC lane bytes = `lane_count << 2` |
+| `+0x9C` | i32 | SC freq / host-irq block (`TpuCoreParts[0x138]`) |
+| `+0xA0` | i32 | `tile_hbm_bandwidth_bytes_per_cycle` (`cp[0x1E0]`, gated `cp[0x1E8]`) |
+| `+0xA4` | i32 | **`stream_granule_size`** (`cp[0x1E4]`) |
+| `+0xA8..+0x238` | ptr×N | per-tile reserved-region vectors (SMEM/SPMEM/SFLAG windows) |
+| `+0x188` | u8 | bool flag |
+| `+0x190` | i64 | **embedding param-region base word offset** |
+| `+0x198` | u8 | bool flag |
+| `+0x1D0` | i32 | SC barrier sync-flag base (`SpecialPurposeSyncFlags[0]`) |
+| `+0x1D4` | i32 | **`GetSparseCoreBarrierSyncFlagCount`** (`SpecialPurposeSyncFlags[+0x10]`) |
+| `+0x1E8` | u8 | SparseCore-proto-present flag |
+| `+0x1EC..+0x22C` | i32×N | compiler-reserved SFLAG watermarks + per-tile reserved-SFLAG block |
+| `+0x230/+0x238` | ptr×2 | tail region vectors |
+| `~0x240` | — | `sizeof(SparseCoreTarget) >= 0x240` |
 
 > **GOTCHA —** the `+0xA8..+0x238` block is a run of libc++ vectors holding per-tile reserved-region descriptors. The store offsets are byte-confirmed, but the element layout of each vector (which reserved tile region each holds) was not individually walked — those rows are HIGH, not CONFIRMED.
 
@@ -152,11 +152,11 @@ The tile/lane geometry is sourced from `TpuCoreParts::SequencerCount(cp, 5)` and
 
 The base `SparseCoreTarget` defines three non-virtual helpers the SC-MLO allocator reads. All byte-confirmed:
 
-| Helper | Address | Body | Confidence |
-|---|---|---|---|
-| `SparseCoreSpmemStripeGranularityBytes` | `0x1D499440` | `return 0x100000020LL;` → `optional<32>` (value `0x20`=32, engaged-flag in high dword) | CONFIRMED |
-| `SparseCoreParamPtrLocationWordOffset(i)` | `0x1D618080` | `return [0x190] - i;` with `CHECK(result >= 0)` | CONFIRMED |
-| `SparseCoreStartReservedSmemWordOffset(i)` | `0x1D618060` | tail-jumps to the above | CONFIRMED |
+| Helper | Address | Body |
+|---|---|---|
+| `SparseCoreSpmemStripeGranularityBytes` | `0x1D499440` | `return 0x100000020LL;` → `optional<32>` (value `0x20`=32, engaged-flag in high dword) |
+| `SparseCoreParamPtrLocationWordOffset(i)` | `0x1D618080` | `return [0x190] - i;` with `CHECK(result >= 0)` |
+| `SparseCoreStartReservedSmemWordOffset(i)` | `0x1D618060` | tail-jumps to the above |
 
 These pin field `+0x190` as the embedding param-region base word offset: the allocator places parameter pointers at descending offsets `[0x190] - i` and fatals on underflow (`"Parameter number N causes underflow"`).
 
@@ -166,15 +166,15 @@ These pin field `+0x190` as the embedding param-region base word offset: the all
 
 The MXU contracting dimension is a per-codename C++ literal in the `Target` subclass, not a `chip_parts` field. The base `Target` returns 128; only `GhostliteTarget` overrides to 256. "inherit" means the subclass does not override and uses the base value. Every numeric cell is a byte-exact literal read from the named method.
 
-| MXU constant (CODE) | v2 Jelly | v3 Dragon | v4 Puffer | v5p Viperfish | v6e Ghostlite | v7x 6acc60406 | Source · Confidence |
-|---|---|---|---|---|---|---|---|
-| `MxuContractingSize` | 128 | 128 | 128 | 128 | **256** | **256** | base `0x1D490060`; Ghostlite `0x1D497840` · CONFIRMED |
-| `MxuNoncontractingSize` | 128 | 128 | 128 | 128 | **256** | **256** | base `0x1D490080`; Ghostlite `0x1D497860` · CONFIRMED |
-| `MxuSparseContractingSize` | 0 | 0 | 0 | 0 | 0 (inherit) | 0 (inherit) | base `0x1D4900C0`; no override · CONFIRMED |
-| `MxuContractingSizeIsDoubled(mode)` | false | false | false | **predicate** | **predicate** | **predicate** | base `0x1D4900A0` = false; VF `0x1D49AA60`; GL `0x1D497880` · CONFIRMED |
-| └ doubled-mode set (raw GainLatchMode) | — | — | — | {22,23,24,25} | {22,23,24,25} | {22,23,24,25} | `(mode - 22) < 4u` · CONFIRMED |
-| `MinLmrWidthInColumns` | FATAL | FATAL | FATAL | **8** | **16** | **16** | base `0x1D4900E0` FATAL; VF `0x1D49AA80`; GL `0x1D4978A0` · CONFIRMED |
-| `MaxLmrWidthInColumns` | FATAL | FATAL | FATAL | **128** | **128** | **128** | VF `0x1D49AAA0`; GL `0x1D4978C0` · CONFIRMED |
+| MXU constant (CODE) | v2 Jelly | v3 Dragon | v4 Puffer | v5p Viperfish | v6e Ghostlite | v7x 6acc60406 |
+|---|---|---|---|---|---|---|
+| `MxuContractingSize` | 128 | 128 | 128 | 128 | **256** | **256** |
+| `MxuNoncontractingSize` | 128 | 128 | 128 | 128 | **256** | **256** |
+| `MxuSparseContractingSize` | 0 | 0 | 0 | 0 | 0 (inherit) | 0 (inherit) |
+| `MxuContractingSizeIsDoubled(mode)` | false | false | false | **predicate** | **predicate** | **predicate** |
+| └ doubled-mode set (raw GainLatchMode) | — | — | — | {22,23,24,25} | {22,23,24,25} | {22,23,24,25} |
+| `MinLmrWidthInColumns` | FATAL | FATAL | FATAL | **8** | **16** | **16** |
+| `MaxLmrWidthInColumns` | FATAL | FATAL | FATAL | **128** | **128** | **128** |
 
 > **NOTE —** v7x `6acc60406` reuses the `GhostliteTarget` TensorCore subclass; no separate `Tpu7xTarget`/`TpuV7xTarget` class exists in this build. The v6e/v7 distinction is data-driven via `chip_parts`, so both get `MxuContractingSize` = 256.
 
@@ -188,15 +188,15 @@ How a reimplementer should read this:
 
 ## SparseCore Presence and Geometry Per Generation
 
-| Generation | TpuVersionProto | SparseCore? | SparseCoreTarget class | Tiles × Lane | MXU contracting | Source · Confidence |
-|---|---|---|---|---|---|---|
-| v2 Jellyfish | 1 | no (BarnaCore) | — | — | 128 | `chip_parts` `Core.type` · CONFIRMED |
-| v3 Dragonfish | 2 | no (BarnaCore) | — | — | 128 | `chip_parts` `Core.type` · CONFIRMED |
-| v4 Pufferfish | 3 | no (BarnaCore) | — | — | 128 | `chip_parts` `Core.type` · CONFIRMED |
-| v5p Viperfish | 4 | yes | `ViperfishSparseCoreTarget` | — × 8 (SC_TEC lane) | 128 | vtable + `chip_parts` · CONFIRMED |
-| v6e Ghostlite | 5 | yes | `GhostLiteSparseCoreTarget` | — × 8 (SC_TEC lane) | 256 | vtable + `chip_parts` · CONFIRMED |
-| v7x `6acc60406` | 6 | yes | `GhostLiteSparseCoreTarget` | 16 × 16 | 256 | Init + `chip_parts` · CONFIRMED |
-| v4 lite / v5e lite | — | no (TC-only) | — | — | 128 | `chip_parts` (no SC core) · CONFIRMED |
+| Generation | TpuVersionProto | SparseCore? | SparseCoreTarget class | Tiles × Lane | MXU contracting |
+|---|---|---|---|---|---|
+| v2 Jellyfish | 1 | no (BarnaCore) | — | — | 128 |
+| v3 Dragonfish | 2 | no (BarnaCore) | — | — | 128 |
+| v4 Pufferfish | 3 | no (BarnaCore) | — | — | 128 |
+| v5p Viperfish | 4 | yes | `ViperfishSparseCoreTarget` | — × 8 (SC_TEC lane) | 128 |
+| v6e Ghostlite | 5 | yes | `GhostLiteSparseCoreTarget` | — × 8 (SC_TEC lane) | 256 |
+| v7x `6acc60406` | 6 | yes | `GhostLiteSparseCoreTarget` | 16 × 16 | 256 |
+| v4 lite / v5e lite | — | no (TC-only) | — | — | 128 |
 
 The `Tiles × Lane` column shows the `chip_parts` `SC_TEC VectorIsa` lane width; v7x widens that to 16 (and `SparseCoreTiles`/`SparseCoreLaneCount` both report 16 after `Init`). v5p/v6e carry the narrower 8-lane TEC. The lite dies (`pufferfish_lite`, `viperfish_lite`) carry neither BarnaCore nor SparseCore — their `TpuTopology[+0x98]` SC count is zero, so `SupportsSparseCore` is false and no `SparseCoreTarget` is built.
 

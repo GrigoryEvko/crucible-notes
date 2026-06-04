@@ -87,13 +87,13 @@ function WriteField(struct_member, value, shift, clear_mask):
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `tpu::EncodeBarnaCoreAddressHandler<EncoderJf,…>` | `0x1e841640` | top encoder; `23*N` DMA buffer, 32-byte aligned | CONFIRMED |
-| `tpu::EncodeBarnaCoreAddressHandler<EncoderDf,…>` | `0x1e836ea0` | DF top encoder; identical `23*N` stride | CONFIRMED |
-| `tpu::EncodeBarnaCoreAddressHandlerBundle<EncoderJf>` | `0x1e837980` | `std::vector<uint8>` single-bundle form | HIGH |
-| `EncoderJf::EncodeBarnaCoreAddressHandlerBundle` | `0x1e86fd80` | per-bundle dispatcher; kNeverExecute prefill + Common + slot calls | CONFIRMED |
-| `ApplyEupResultTargetWorkaround` | `0x1e8478a0` | only known reader; reuses `23*N` stride; patches result region | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `tpu::EncodeBarnaCoreAddressHandler<EncoderJf,…>` | `0x1e841640` | top encoder; `23*N` DMA buffer, 32-byte aligned |
+| `tpu::EncodeBarnaCoreAddressHandler<EncoderDf,…>` | `0x1e836ea0` | DF top encoder; identical `23*N` stride |
+| `tpu::EncodeBarnaCoreAddressHandlerBundle<EncoderJf>` | `0x1e837980` | `std::vector<uint8>` single-bundle form |
+| `EncoderJf::EncodeBarnaCoreAddressHandlerBundle` | `0x1e86fd80` | per-bundle dispatcher; kNeverExecute prefill + Common + slot calls |
+| `ApplyEupResultTargetWorkaround` | `0x1e8478a0` | only known reader; reuses `23*N` stride; patches result region |
 
 ---
 
@@ -137,24 +137,24 @@ byte:  0        8        16       20   22
 
 #### TABLE A — top-level bit map
 
-| Region | Bits | Source field | Role | Conf. |
-|---|---|---|---|---|
-| `ScalarSlot.Loop` | 0..5 | `Loop.loop_size_minus_one` (5b @1) | loop trip-count (size − 1) | CONFIRMED |
-| `ShiftMask` pred | 6..10 | `ScalarSlot.ShiftMask.predication` | 5-bit BCS pred (§3) | CONFIRMED |
-| `compared_feature_id` | 13..17 | `Common.compared_feature_id` (5b) | operand for `COMPARE_FEATURE_ID` | CONFIRMED |
-| `indexed_*` | 18..23 | `Common.indexed_{load_dst,store_src,alu0_x,alu0_dst,alu1_x,alu1_dst}` | 6 per-operand index overrides | CONFIRMED |
-| `vs0/vs1/vs2` | 24..29 | `Common.vs0/vs1/vs2` (2b each) | scalar-reg selectors (§4 TABLE G) | CONFIRMED |
-| `Branch` pred | 30..34 | `ScalarSlot.Branch.predication` | 5-bit BCS pred (DF only) | CONFIRMED |
-| `branch_type` | 36 | `ScalarSlot.Branch.branch_type` (1b) | branch kind (DF) | CONFIRMED |
-| `branch_target_pc` | 37..43 | `ScalarSlot.Branch.branch_target_pc` (7b) | branch target PC (DF) | CONFIRMED |
-| `prog_end` | 44 | `ScalarSlot.prog_end` (1b) | program-end marker (DF) | CONFIRMED |
-| `Alu0` pred | 48..52 | `VectorSlot.alu_0.predication` | 5-bit BCS pred, lane 0 | CONFIRMED |
-| `Alu1` pred | 79..83 | `VectorSlot.alu_1.predication` | 5-bit BCS pred, lane 1 | CONFIRMED |
-| `Store` slot | 110..125 | `VectorSlot.store` (TABLE B) | embedding-row store | CONFIRMED |
-| `Load` slot | 126..140 | `VectorSlot.load` (TABLE C) | embedding-row load | CONFIRMED |
-| `Result` slot | 141..146 | `VectorSlot.result` (TABLE D) | EUP-result drain | CONFIRMED |
-| `imm_0` | 149..164 | `Common.imm_0` (f11, 16b) | 16-bit literal slot 0 (`<<21` into dword, gated by has-bit `0x400`) | CONFIRMED |
-| `imm_1` | 165..180 | `Common.imm_1` (f12, 16b) | 16-bit literal slot 1 (`<<37` into dword, gated by has-bit `0x800`) | CONFIRMED |
+| Region | Bits | Source field | Role |
+|---|---|---|---|
+| `ScalarSlot.Loop` | 0..5 | `Loop.loop_size_minus_one` (5b @1) | loop trip-count (size − 1) |
+| `ShiftMask` pred | 6..10 | `ScalarSlot.ShiftMask.predication` | 5-bit BCS pred (§3) |
+| `compared_feature_id` | 13..17 | `Common.compared_feature_id` (5b) | operand for `COMPARE_FEATURE_ID` |
+| `indexed_*` | 18..23 | `Common.indexed_{load_dst,store_src,alu0_x,alu0_dst,alu1_x,alu1_dst}` | 6 per-operand index overrides |
+| `vs0/vs1/vs2` | 24..29 | `Common.vs0/vs1/vs2` (2b each) | scalar-reg selectors (§4 TABLE G) |
+| `Branch` pred | 30..34 | `ScalarSlot.Branch.predication` | 5-bit BCS pred (DF only) |
+| `branch_type` | 36 | `ScalarSlot.Branch.branch_type` (1b) | branch kind (DF) |
+| `branch_target_pc` | 37..43 | `ScalarSlot.Branch.branch_target_pc` (7b) | branch target PC (DF) |
+| `prog_end` | 44 | `ScalarSlot.prog_end` (1b) | program-end marker (DF) |
+| `Alu0` pred | 48..52 | `VectorSlot.alu_0.predication` | 5-bit BCS pred, lane 0 |
+| `Alu1` pred | 79..83 | `VectorSlot.alu_1.predication` | 5-bit BCS pred, lane 1 |
+| `Store` slot | 110..125 | `VectorSlot.store` (TABLE B) | embedding-row store |
+| `Load` slot | 126..140 | `VectorSlot.load` (TABLE C) | embedding-row load |
+| `Result` slot | 141..146 | `VectorSlot.result` (TABLE D) | EUP-result drain |
+| `imm_0` | 149..164 | `Common.imm_0` (f11, 16b) | 16-bit literal slot 0 (`<<21` into dword, gated by has-bit `0x400`) |
+| `imm_1` | 165..180 | `Common.imm_1` (f12, 16b) | 16-bit literal slot 1 (`<<37` into dword, gated by has-bit `0x800`) |
 
 The `Common` header fields above are recovered from the dispatcher `@0x1e86fd80`: `compared_feature_id` at `v7 |= v12<<13`; the six `indexed_*` bools at `<<18/19/20/22/21/23`; `vs0/vs1/vs2` at `<<24/26/28`; `imm_0` as a 16-bit field `<<21` into the dword (bundle bit 149, has-bit `0x400`) and `imm_1` `<<37` into the dword (bundle bit 165, has-bit `0x800`). The DF `branch_target_pc` is written `<<37` into **qword0** (bundle bit 37) by the DF scalar-slot encoder `@0x1e85e8a0` — a distinct Branch sub-form field that happens to share the literal shift 37 but lands in qword0, not the dword `imm_1`.
 
@@ -166,14 +166,14 @@ The `Common` header fields above are recovered from the dispatcher `@0x1e86fd80`
 
 Struct base in `r15`; all stores target qword1 (`+8`, base bit 64), so bundle bit = 64 + shift.
 
-| Field | Bundle bit | Width | Proto field | Shift (on qword1) | Conf. |
-|---|---|---|---|---|---|
-| `predication` | 110 | 5 | `Store.predication` | `<<46` | CONFIRMED |
-| `use_loop_index` | 115 | 1 | `Store.use_loop_index` (f5) | `<<51` | CONFIRMED |
-| `source` (`VectorRegister`) | 116 | 5 | `Store.source` (f7) | `<<52` | CONFIRMED |
-| `base` (`BaseAddressEncoding`) | 121 | 2 | `Store.base` (f3) | `<<57` | CONFIRMED |
-| `feature_length_multiplier` | 123 | 2 | `Store.feature_length_multiplier` (f4) | `<<59` | CONFIRMED |
-| `push_to_concat_register` | 125 | 1 | `Store.push_to_concat_register` (f6) | `<<61` | CONFIRMED |
+| Field | Bundle bit | Width | Proto field | Shift (on qword1) |
+|---|---|---|---|---|
+| `predication` | 110 | 5 | `Store.predication` | `<<46` |
+| `use_loop_index` | 115 | 1 | `Store.use_loop_index` (f5) | `<<51` |
+| `source` (`VectorRegister`) | 116 | 5 | `Store.source` (f7) | `<<52` |
+| `base` (`BaseAddressEncoding`) | 121 | 2 | `Store.base` (f3) | `<<57` |
+| `feature_length_multiplier` | 123 | 2 | `Store.feature_length_multiplier` (f4) | `<<59` |
+| `push_to_concat_register` | 125 | 1 | `Store.push_to_concat_register` (f6) | `<<61` |
 
 Store extent: bits 110..125 (16 bits). Has-bit test `~hasword & 0x22` requires `source` + one more field; the `base` and `feature_length_multiplier` widths are confirmed by the `< 4` range checks before their stores.
 
@@ -181,24 +181,24 @@ Store extent: bits 110..125 (16 bits). Has-bit test `~hasword & 0x22` requires `
 
 The Load predication straddles the qword1/dword boundary; the remaining fields live in the dword (`+16`) window.
 
-| Field | Bundle bit | Width | Proto field | Placement | Conf. |
-|---|---|---|---|---|---|
-| `predication` | 126 | 5 | `Load.predication` | bits 126,127 (qword1) + 128..130 (dword) | CONFIRMED |
-| `use_loop_index` | 131 | 1 | `Load.use_loop_index` (f5) | dword window `<<3` | HIGH |
-| `destination` (`VectorRegister`) | 132 | 5 | `Load.destination` (f6) | dword window `<<4` | HIGH |
-| `base` (`BaseAddressEncoding`) | 137 | 2 | `Load.base` (f3) | dword window `<<9` | HIGH |
-| `feature_length_multiplier` | 139 | 2 | `Load.feature_length_multiplier` (f4) | dword window `<<11` | HIGH |
+| Field | Bundle bit | Width | Proto field | Placement |
+|---|---|---|---|---|
+| `predication` | 126 | 5 | `Load.predication` | bits 126,127 (qword1) + 128..130 (dword) |
+| `use_loop_index` | 131 | 1 | `Load.use_loop_index` (f5) | dword window `<<3` |
+| `destination` (`VectorRegister`) | 132 | 5 | `Load.destination` (f6) | dword window `<<4` |
+| `base` (`BaseAddressEncoding`) | 137 | 2 | `Load.base` (f3) | dword window `<<9` |
+| `feature_length_multiplier` | 139 | 2 | `Load.feature_length_multiplier` (f4) | dword window `<<11` |
 
 Load extent: bits 126..140 (15 bits). Has-bit test `~hasword & 0x12`.
 
 #### TABLE D — `VectorSlot.Result` (`EncodeBarnaCoreAddressHandlerVectorResult` `@0x1e86eb40`)
 
-| Field | Bundle bit | Width | Proto field | Notes | Conf. |
-|---|---|---|---|---|---|
-| `predication` | 141 | 5 | `Result.predication` | dword window `<<13` | CONFIRMED |
-| result-valid | 146 | 1 | (slot-present) | dword bit 18 (= byte18 bit 2) | HIGH |
-| `which_destination` | (sub-form) | — | `Result.which_destination` (f2) | `cmp 1/2` inside `@0x1e86eb40` selects EUP target form | HIGH |
-| `destination` (`VectorRegister`) | (in merge) | 5 | `Result.destination` (f4) | EUP result target vreg | HIGH |
+| Field | Bundle bit | Width | Proto field | Notes |
+|---|---|---|---|---|
+| `predication` | 141 | 5 | `Result.predication` | dword window `<<13` |
+| result-valid | 146 | 1 | (slot-present) | dword bit 18 (= byte18 bit 2) |
+| `which_destination` | (sub-form) | — | `Result.which_destination` (f2) | `cmp 1/2` inside `@0x1e86eb40` selects EUP target form |
+| `destination` (`VectorRegister`) | (in merge) | 5 | `Result.destination` (f4) | EUP result target vreg |
 
 Bit 146 (dword bit 18) is the EUP-result-present bit that `ApplyEupResultTargetWorkaround` `@0x1e8478a0` re-targets on Jellyfish silicon (it tests the result region — dword bits 13..17 = `Result.predication`, dword bits 19..20 = the 2-bit result-target it patches).
 
@@ -238,25 +238,25 @@ The two constructors pin the boundary values. `MakeBarnaCorePredication(cond, va
 
 #### TABLE E — `BarnaCorePredication.Condition` (4-bit; `EnumDescriptorProto` `@0xc017b98`)
 
-| Value | Name | Conf. |
-|---|---|---|
-| 0 | `FIRST_ID` | CONFIRMED |
-| 1 | `FIRST_ID_IN_FEATURE` | CONFIRMED |
-| 2 | `NEW_FEATURE_ID` | CONFIRMED |
-| 3 | `NEW_TOKEN_ID` | CONFIRMED |
-| 4 | `NEW_SAMPLE` | CONFIRMED |
-| 5 | `LAST_ID_IN_BATCH` | CONFIRMED |
-| 5 | `ONLY_ID_IN_FEATURE_SAMPLE` *(alias of value 5)* | CONFIRMED |
-| 6 | `FIRST_ID_IN_BATCH` | CONFIRMED |
-| 7 | `NEW_TILE` | CONFIRMED |
-| 8 | `COMPARE_FEATURE_ID` *(compares against `Common.compared_feature_id` @13..17)* | CONFIRMED |
-| 9 | `REPEATED_TOKEN_FEATURE` | CONFIRMED |
-| 10 | `FIRST_ITERATION` | CONFIRMED |
-| 11 | `LAST_ITERATION` | CONFIRMED |
-| 12 | `NEW_SAMPLE_OR_TILE_FOR_THE_SAME_ID` | CONFIRMED |
-| 13 | `REPEATED_TILE_SAMPLE` | CONFIRMED |
-| 14 | `NEW_FEATURE_OR_TOKEN_FOR_THE_SAME_ID` | CONFIRMED |
-| 15 | `ALWAYS` | CONFIRMED |
+| Value | Name |
+|---|---|
+| 0 | `FIRST_ID` |
+| 1 | `FIRST_ID_IN_FEATURE` |
+| 2 | `NEW_FEATURE_ID` |
+| 3 | `NEW_TOKEN_ID` |
+| 4 | `NEW_SAMPLE` |
+| 5 | `LAST_ID_IN_BATCH` |
+| 5 | `ONLY_ID_IN_FEATURE_SAMPLE` *(alias of value 5)* |
+| 6 | `FIRST_ID_IN_BATCH` |
+| 7 | `NEW_TILE` |
+| 8 | `COMPARE_FEATURE_ID` *(compares against `Common.compared_feature_id` @13..17)* |
+| 9 | `REPEATED_TOKEN_FEATURE` |
+| 10 | `FIRST_ITERATION` |
+| 11 | `LAST_ITERATION` |
+| 12 | `NEW_SAMPLE_OR_TILE_FOR_THE_SAME_ID` |
+| 13 | `REPEATED_TILE_SAMPLE` |
+| 14 | `NEW_FEATURE_OR_TOKEN_FOR_THE_SAME_ID` |
+| 15 | `ALWAYS` |
 
 Seventeen names over sixteen values: `ONLY_ID_IN_FEATURE_SAMPLE` aliases `LAST_ID_IN_BATCH` (both value 5), proving `allow_alias`. `ALWAYS` = 15 is the all-ones default. The set is the embedding-table iteration-boundary predicate alphabet — the hardware-evaluated "feature-row / token / sample / tile / iteration boundary" conditions that gate which slots fire on each loop iteration of an embedding gather/scatter handler.
 
@@ -295,10 +295,10 @@ function YIsImm(v, slot):
 
 #### TABLE F — immediate slots
 
-| Field | Bundle bits | Width | Proto field | Allocator | Conf. |
-|---|---|---|---|---|---|
-| `imm_0` | 149..164 | 16 | `Common.imm_0` (f11, uint32) | `YIsImm` `@0x14169c20` | CONFIRMED (position) |
-| `imm_1` | 165..180 | 16 | `Common.imm_1` (f12, uint32) | `YIsImm` `@0x14169c20` | CONFIRMED (position) |
+| Field | Bundle bits | Width | Proto field | Allocator |
+|---|---|---|---|---|
+| `imm_0` | 149..164 | 16 | `Common.imm_0` (f11, uint32) | `YIsImm` `@0x14169c20` |
+| `imm_1` | 165..180 | 16 | `Common.imm_1` (f12, uint32) | `YIsImm` `@0x14169c20` |
 
 > **NOTE —** the encoder writes the full 16-bit literal into each slot (`YIsImm` enforces a 16-bit fit). The two literals occupy bits 149..180, entirely within the 184-bit struct. Whether the *hardware* immediate field is the full 16 bits or a narrower sub-field is INFERRED — the encode side writes 16; no decode-side reader was found to cross-validate the consumed width. [Confidence: CONFIRMED the struct holds 16 bits per slot; INFERRED the hardware reads all 16.]
 
@@ -308,12 +308,12 @@ function YIsImm(v, slot):
 
 #### TABLE G — `BarnaCoreAddressHandlerScalarRegister` (2-bit; `EnumDescriptorProto` `@0xc018caf`)
 
-| Value | Name | Role | Conf. |
-|---|---|---|---|
-| 0 | `BARNA_CORE_ID_VMEM_ADDRESS` | embedding-row VMEM base (gather/scatter dest/src pointer) | CONFIRMED |
-| 1 | `GRADIENT_VMEM_ADDRESS` | gradient VMEM base (backward-pass scatter source) | CONFIRMED |
-| 2 | `BARNA_CORE_ID_WEIGHT` | weight-id register | CONFIRMED |
-| 3 | `BARNA_CORE_ID_ARGUMENTS` | arguments pointer (descriptor / metadata base) | CONFIRMED |
+| Value | Name | Role |
+|---|---|---|
+| 0 | `BARNA_CORE_ID_VMEM_ADDRESS` | embedding-row VMEM base (gather/scatter dest/src pointer) |
+| 1 | `GRADIENT_VMEM_ADDRESS` | gradient VMEM base (backward-pass scatter source) |
+| 2 | `BARNA_CORE_ID_WEIGHT` | weight-id register |
+| 3 | `BARNA_CORE_ID_ARGUMENTS` | arguments pointer (descriptor / metadata base) |
 
 The six `indexed_*` bools (`Common` fields 2..7, bundle bits 18..23: `indexed_load_destination`, `indexed_store_source`, `indexed_alu_0_x`, `indexed_alu_0_destination`, `indexed_alu_1_x`, `indexed_alu_1_destination`) select, per vector operand, whether its register index is the loop-advanced BarnaCore-ID index (`indexed = true`) or a direct register. `compared_feature_id` (f1, 5-bit, bits 13..17) is the operand to the `COMPARE_FEATURE_ID` predicate condition (§3 TABLE E value 8).
 

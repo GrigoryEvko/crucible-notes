@@ -39,22 +39,22 @@ For reimplementation, the contract is:
 
 The learned cost model is a textbook "future-extension hook": the schema, the gflag, the consumer call sites, and the failure-fallback all ship; the predictor does not. The split is exact and verifiable by symbol scan.
 
-| Component | Present? | Status | Evidence |
-|---|---|---|---|
-| `EmitterLearnedCostModelOptions` proto | YES | Reachable | vtable @ `0x21cff958`; ctor `0x1db63f20` |
-| `LearnedCostModelClientOptions` proto | YES | Reachable | vtable @ `0x21cffc10`; copy-ctor `0x1db653e0` |
-| `FusionDataProtoGenerationOptions` proto | YES | Reachable | vtable @ `0x21cffbd0` |
-| `EmbeddingCacheEntry` / `EmbeddingCacheDB` protos | YES | Reachable | typeinfo `0x21d00068` / `0x21d00080` |
-| `LearnedCostModelMode` / `DbQueryType` / `MLOutputValidationStrategy` / `ServiceType` enums | YES | Decoded | value-name strings present (e.g. `SERVICE_TYPE_REMOTE`) |
-| gflag `xla_tpu_emitter_learned_cost_model_options` | YES | Parsed | `AbslFlagDefaultGenForxla_tpu_emitter_learned_cost_model_options::Gen` @ `0x1d72ac00` |
-| Consumer call sites (4 vtable slots) | YES | Code-present, runtime-dead | `ComputeWindowConfigInternal` @ `0x13172c80` + lambda `0x1317fe00` |
-| `CHECK_OK` on `RegisterCandidateWindow` result | YES | Source `spatial_major_convolution.cc:3996` | literal @ `.rodata` |
-| `Failed to get fastest window …` analytic fallback | YES | Source `spatial_major_convolution.cc:4006` | literal @ `.rodata` |
-| `EmitterLearnedCostModelBase` vtable / typeinfo | **NO** | Type-only | appears solely in mangled ctor *parameter* names |
-| concrete `LearnedCostModelClient` class | **NO** | Absent | no symbol beyond the `…ClientOptions` proto |
-| `LearnedCostModelService::Stub` (gRPC) | **NO** | Absent | no `*::Stub` / `NewStub` (cf. `BarnaCoreInterWorkerCommunicationRpc::Stub` which *does* ship) |
-| `Predict` / `Inference` / `Score` / `EstimateCycles` method | **NO** | Absent | no matching symbol |
-| embedded model (SavedModel / ONNX / TFLite blob) | **NO** | Absent | only LLVM MLGO `RegAllocEvictModel`/`InlinerSizeModel`, unrelated |
+| Component | Present? | Status |
+|---|---|---|
+| `EmitterLearnedCostModelOptions` proto | YES | Reachable |
+| `LearnedCostModelClientOptions` proto | YES | Reachable |
+| `FusionDataProtoGenerationOptions` proto | YES | Reachable |
+| `EmbeddingCacheEntry` / `EmbeddingCacheDB` protos | YES | Reachable |
+| `LearnedCostModelMode` / `DbQueryType` / `MLOutputValidationStrategy` / `ServiceType` enums | YES | Decoded |
+| gflag `xla_tpu_emitter_learned_cost_model_options` | YES | Parsed |
+| Consumer call sites (4 vtable slots) | YES | Code-present, runtime-dead |
+| `CHECK_OK` on `RegisterCandidateWindow` result | YES | Source `spatial_major_convolution.cc:3996` |
+| `Failed to get fastest window …` analytic fallback | YES | Source `spatial_major_convolution.cc:4006` |
+| `EmitterLearnedCostModelBase` vtable / typeinfo | **NO** | Type-only |
+| concrete `LearnedCostModelClient` class | **NO** | Absent |
+| `LearnedCostModelService::Stub` (gRPC) | **NO** | Absent |
+| `Predict` / `Inference` / `Score` / `EstimateCycles` method | **NO** | Absent |
+| embedded model (SavedModel / ONNX / TFLite blob) | **NO** | Absent |
 
 > **NOTE —** the absence is positive evidence, not a gap in analysis. Scanning the (non-stripped) symbol table finds the `…ClientOptions` proto family and its ser/deser methods, but `EmitterLearnedCostModelBase` exists *only* as a function-parameter type in the mangled names of `ConvolutionEmitter::Create`, `SpatialMajorConvolution::SpatialMajorConvolution`, and `LoweringEmitter::LoweringEmitter`. A class used only as a borrowed pointer needs no emitted vtable or typeinfo in the consumer's translation unit — which is exactly the footprint of an interface whose only implementation lives out-of-tree.
 
@@ -293,22 +293,22 @@ When a client *is* present and a query fails, the soft fallback at `spatial_majo
 
 ## Function & Symbol Map
 
-| Symbol | Address | Role | Confidence |
-|---|---|---|---|
-| `SpatialMajorConvolution::ComputeWindowConfigInternal` | `0x13172c80` | hook site: enable check, fingerprint, query, fallback | CERTAIN |
-| `…::ComputeWindowConfigInternal(…)::$_0` (policy_func) | `0x1317fe00` | per-candidate `RegisterCandidateWindow` call + `CHECK_OK` | CERTAIN |
-| `SpatialMajorConvolution::SpatialMajorConvolution` (C2) | `0x130dd180` | stores `EmitterLearnedCostModelBase*` at `this+0x20d0` | CERTAIN |
-| `ConvolutionEmitter::Create` | `0x130d86c0` | forwards the (null) client pointer | CERTAIN |
-| `LoweringEmitter::LoweringEmitter` (C1) | `0x10c309c0` | originates the borrowed client pointer | HIGH |
-| `xla::GetHloInstructionFingerprint` | `0x13180b80` | builds the `+0x30` query key | CERTAIN |
-| `LearnedCostModelClientOptions(Arena*, const&)` | `0x1db653e0` | copy-ctor → struct layout | CERTAIN |
-| `LearnedCostModelClientOptions::_InternalSerialize` | `0x1db65920` | proto wire encode | HIGH |
-| `EmitterLearnedCostModelOptions(Arena*)` | `0x1db63f20` | owning options proto ctor | CERTAIN |
-| `AutoOr<EmitterLearnedCostModelOptions>::ParseFlag` | `0x1d745680` | gflag → proto parse | HIGH |
-| `LearnedCostModelClientOptions` vtable | `0x21cffc10` | proto vtable | CERTAIN |
-| `EmitterLearnedCostModelBase` vtable / typeinfo | — | **does not exist** (interface only) | CERTAIN |
-| `LearnedCostModelClient` concrete class | — | **does not exist** | CERTAIN |
-| `LearnedCostModelService::Stub` (gRPC) | — | **does not exist** | CERTAIN |
+| Symbol | Address | Role |
+|---|---|---|
+| `SpatialMajorConvolution::ComputeWindowConfigInternal` | `0x13172c80` | hook site: enable check, fingerprint, query, fallback |
+| `…::ComputeWindowConfigInternal(…)::$_0` (policy_func) | `0x1317fe00` | per-candidate `RegisterCandidateWindow` call + `CHECK_OK` |
+| `SpatialMajorConvolution::SpatialMajorConvolution` (C2) | `0x130dd180` | stores `EmitterLearnedCostModelBase*` at `this+0x20d0` |
+| `ConvolutionEmitter::Create` | `0x130d86c0` | forwards the (null) client pointer |
+| `LoweringEmitter::LoweringEmitter` (C1) | `0x10c309c0` | originates the borrowed client pointer |
+| `xla::GetHloInstructionFingerprint` | `0x13180b80` | builds the `+0x30` query key |
+| `LearnedCostModelClientOptions(Arena*, const&)` | `0x1db653e0` | copy-ctor → struct layout |
+| `LearnedCostModelClientOptions::_InternalSerialize` | `0x1db65920` | proto wire encode |
+| `EmitterLearnedCostModelOptions(Arena*)` | `0x1db63f20` | owning options proto ctor |
+| `AutoOr<EmitterLearnedCostModelOptions>::ParseFlag` | `0x1d745680` | gflag → proto parse |
+| `LearnedCostModelClientOptions` vtable | `0x21cffc10` | proto vtable |
+| `EmitterLearnedCostModelBase` vtable / typeinfo | — | **does not exist** (interface only) |
+| `LearnedCostModelClient` concrete class | — | **does not exist** |
+| `LearnedCostModelService::Stub` (gRPC) | — | **does not exist** |
 
 > **QUIRK —** the failure-log call site reads `spatial_major_convolution.cc:4006` and the `RegisterCandidateWindow` `CHECK_OK` reads `:3996` in this build (`0.0.40`). Source line numbers are build-version-specific; the surrounding VAs and the wire contract are the stable anchors.
 

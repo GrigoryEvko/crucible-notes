@@ -78,19 +78,19 @@ This is the byte-level decode of the `0x448` record. Only two fields have a dire
 
 ### The Head Scalars and Clocks
 
-| Field | Offset | Type | Meaning | Confidence |
-|---|---|---|---|---|
-| `core_multi_flag` | `+0x00` | `int32` (BYTE-used) | `1` on the 2-core / mega / SparseCore gens (`DT 3,5,7,8,10,11,12,13`), `0` on single-core placeholder slots | High |
-| `gtc_freq_khz` | `+0x04` | `int32` (kHz) | GTC (Global Time Counter) frequency. The picosecond timebase divides by `(khz << 4)`. **The only field `GtcSpanConverter` reads.** | CERTAIN |
-| `gtc_ts_width_bits` | `+0x08` | `int32` (bits) | GTC timestamp counter width `{48, 45, 64}`. Byte-matches the per-family codec `GetBits64` widths; wrap period = `2^width / (khz·1000)` s | High |
-| `cores_per_chip` | `+0x0c` | `int32` | `2` on the megacore gens (`DT 3,5,7,10,12`), `1` elsewhere — TensorCore count | High |
-| `geom_a` | `+0x10` | `int32` | `{1,2,4}` on pre-SparseCore gens, `0` on SC gens — a TensorCore-side lane/MXU group count | Inferred |
-| `geom_b` | `+0x14` | `int32` | nonzero only on SC gens (`DT10=4, DT12=4, DT13=2`) — a SparseCore-side count | Inferred |
-| `geom_c` | `+0x18` | `int32` | mostly `1`; `2` on `DT3/DT5` — a per-chip multiplier | Inferred |
-| `geom_d` | `+0x1c` | `int32` | escalating `{1,2,4,6,8}` (`DT7=4, DT9=2, DT10=6, DT12=8`) — a per-gen tile/engine count | Inferred |
-| `sc_present_flag` | `+0x20` | `int32` | `1` only on the 45-bit SC gens (`DT10..13`), `0` else | Inferred |
-| `dvfs_ladder_1` | `+0x28` | `int32[8]` (kHz) | 8-point DVFS operating-point ladder; populated on `DT12` (`{1600000..2200000}`) | Inferred |
-| `compute_clk_khz` | `+0x50` | `int32` (kHz) | TensorCore/compute clock, distinct from the GTC clock at `+0x04`; escalates per gen | High |
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `core_multi_flag` | `+0x00` | `int32` (BYTE-used) | `1` on the 2-core / mega / SparseCore gens (`DT 3,5,7,8,10,11,12,13`), `0` on single-core placeholder slots |
+| `gtc_freq_khz` | `+0x04` | `int32` (kHz) | GTC (Global Time Counter) frequency. The picosecond timebase divides by `(khz << 4)`. **The only field `GtcSpanConverter` reads.** |
+| `gtc_ts_width_bits` | `+0x08` | `int32` (bits) | GTC timestamp counter width `{48, 45, 64}`. Byte-matches the per-family codec `GetBits64` widths; wrap period = `2^width / (khz·1000)` s |
+| `cores_per_chip` | `+0x0c` | `int32` | `2` on the megacore gens (`DT 3,5,7,10,12`), `1` elsewhere — TensorCore count |
+| `geom_a` | `+0x10` | `int32` | `{1,2,4}` on pre-SparseCore gens, `0` on SC gens — a TensorCore-side lane/MXU group count |
+| `geom_b` | `+0x14` | `int32` | nonzero only on SC gens (`DT10=4, DT12=4, DT13=2`) — a SparseCore-side count |
+| `geom_c` | `+0x18` | `int32` | mostly `1`; `2` on `DT3/DT5` — a per-chip multiplier |
+| `geom_d` | `+0x1c` | `int32` | escalating `{1,2,4,6,8}` (`DT7=4, DT9=2, DT10=6, DT12=8`) — a per-gen tile/engine count |
+| `sc_present_flag` | `+0x20` | `int32` | `1` only on the 45-bit SC gens (`DT10..13`), `0` else |
+| `dvfs_ladder_1` | `+0x28` | `int32[8]` (kHz) | 8-point DVFS operating-point ladder; populated on `DT12` (`{1600000..2200000}`) |
+| `compute_clk_khz` | `+0x50` | `int32` (kHz) | TensorCore/compute clock, distinct from the GTC clock at `+0x04`; escalates per gen |
 
 > **QUIRK —** the GTC clock (`+0x04`) and the compute clock (`+0x50`) are different frequencies on most generations and must not be conflated. `DT12` (v7x) runs a `833000` kHz GTC counter but a `1900000` kHz compute clock; `DT5` (v3) a `700000` kHz GTC clock against a `940000` kHz compute clock. The trace timestamps are in the GTC domain (`+0x04`); the compute clock (`+0x50`) is the cycle clock the cost model uses. A reimplementation that timestamps off the compute clock will skew every event.
 
@@ -98,21 +98,21 @@ This is the byte-level decode of the `0x448` record. Only two fields have a dire
 
 Below `+0x50` the record is dominated by IEEE-754 doubles and a second DVFS ladder. These are per-generation hardware-spec constants — peak compute, memory bandwidth, latency, and DVFS/voltage class — frozen per row. Their exact member identity is not recoverable from this binary (no `ToString`, no per-field named accessor in a profiler-clock context), so the regions are described by their *shape* and per-gen scaling, not transcribed row-by-row.
 
-| Region | Offset range | Type | Character (per-gen scaling) | Confidence |
-|---|---|---|---|---|
-| Compute-class doubles | `+0x58 .. +0x80` | `double` | monotonic peak-compute metrics; `+0x60` tracks a TFLOP/s-like figure (`24.3` DT3 → `1029` DT12), `+0x78`/`+0x80` ≈ 2×/4× of `+0x60` (precision tiers) | Inferred |
-| Bandwidth-class doubles | `+0xb8 .. +0xd0` | `double` | GB/s-like bandwidths; `+0xb8` `280`(DT3) → `3433`(DT12); the authoritative HBM figure is `+0xd0` | Inferred |
-| Latency-class doubles | `+0xd8 .. +0xf0` | `double` | latency/cycle-class; `+0xe8`==`+0xe0` and `+0xf0`==`+0xd8` (per-gen duplicates) | Inferred |
-| Count-class doubles | `+0xf8 .. +0x130` | `double` | large counts (peak-ops / systolic-cell scale); per-precision variants | Inferred |
-| Secondary-rate groups | `+0x138 .. +0x194` | `double` | DT7+ only (`56.6`, `453` families at `+0x13c`/`+0x17c`) | Inferred |
-| `packed_geom` | `+0x2b8` | `int32` | packed `{a,b,a,b}` 4-byte geometry descriptor (e.g. `DT3 = 01 08 01 08`) | Inferred |
-| `has_megacore`-class | `+0x2c4` | `int32` (BYTE) | `1` on `DT7/DT10` — a megacore-style flag | Inferred |
-| Perf-counter-set bases | `+0x2c8 / +0x348 / +0x350 / +0x358 / +0x438 / +0x440` | `int32` | packed enum bases for the v7x perf-counter sets (nonzero on `DT12` only) — owned by [v7x Perf-Counters](v7x-perf-counters.md) | High |
-| `dvfs_ladder_2` | `+0x2d0` | `int32[8]` (kHz) | second 8-point DVFS ladder; `DT12` = `{1400000..1900000}` | Inferred |
-| `dvfs_nominal_khz` | `+0x2f8` | `int32` (kHz) | nominal DVFS / SparseCore operating point (`1750000` DT12, `0` on pre-SC gens) | Inferred |
-| Voltage/power doubles | `+0x300 / +0x308` | `double` | voltage/power-class (`3.6`/`5.85` DT12) | Inferred |
-| `sc_lane_count` | `+0x340` | `int32` | `16` on SC gens (`DT10/12/13`), `0` else | Inferred |
-| Firmware calib bundle | `+0x360 .. +0x398` | `double`×4 + `ulong`×4 | per-gen power/thermal coefficients fed to `FirmwareEventBuilder` | High |
+| Region | Offset range | Type | Character (per-gen scaling) |
+|---|---|---|---|
+| Compute-class doubles | `+0x58 .. +0x80` | `double` | monotonic peak-compute metrics; `+0x60` tracks a TFLOP/s-like figure (`24.3` DT3 → `1029` DT12), `+0x78`/`+0x80` ≈ 2×/4× of `+0x60` (precision tiers) |
+| Bandwidth-class doubles | `+0xb8 .. +0xd0` | `double` | GB/s-like bandwidths; `+0xb8` `280`(DT3) → `3433`(DT12); the authoritative HBM figure is `+0xd0` |
+| Latency-class doubles | `+0xd8 .. +0xf0` | `double` | latency/cycle-class; `+0xe8`==`+0xe0` and `+0xf0`==`+0xd8` (per-gen duplicates) |
+| Count-class doubles | `+0xf8 .. +0x130` | `double` | large counts (peak-ops / systolic-cell scale); per-precision variants |
+| Secondary-rate groups | `+0x138 .. +0x194` | `double` | DT7+ only (`56.6`, `453` families at `+0x13c`/`+0x17c`) |
+| `packed_geom` | `+0x2b8` | `int32` | packed `{a,b,a,b}` 4-byte geometry descriptor (e.g. `DT3 = 01 08 01 08`) |
+| `has_megacore`-class | `+0x2c4` | `int32` (BYTE) | `1` on `DT7/DT10` — a megacore-style flag |
+| Perf-counter-set bases | `+0x2c8 / +0x348 / +0x350 / +0x358 / +0x438 / +0x440` | `int32` | packed enum bases for the v7x perf-counter sets (nonzero on `DT12` only) — owned by [v7x Perf-Counters](v7x-perf-counters.md) |
+| `dvfs_ladder_2` | `+0x2d0` | `int32[8]` (kHz) | second 8-point DVFS ladder; `DT12` = `{1400000..1900000}` |
+| `dvfs_nominal_khz` | `+0x2f8` | `int32` (kHz) | nominal DVFS / SparseCore operating point (`1750000` DT12, `0` on pre-SC gens) |
+| Voltage/power doubles | `+0x300 / +0x308` | `double` | voltage/power-class (`3.6`/`5.85` DT12) |
+| `sc_lane_count` | `+0x340` | `int32` | `16` on SC gens (`DT10/12/13`), `0` else |
+| Firmware calib bundle | `+0x360 .. +0x398` | `double`×4 + `ulong`×4 | per-gen power/thermal coefficients fed to `FirmwareEventBuilder` |
 
 > **NOTE —** the `+0x438`/`+0x440` tail holds two `int32` **perf-counter-set enum bases** — for the v7x ICR (`+0x438`) and CMNUR/HBM (`+0x440`) counter sets, the same six descriptor fields the [v7x Perf-Counters](v7x-perf-counters.md) page recovers from the `DT12` row at `0x1c637e0`. They are nonzero only on `DT12`, contain no pointer (high dword is zero), and are *not* roofline doubles. The resolver call sites confirm the additive `base + ordinal*8` use.
 
@@ -187,22 +187,22 @@ function DeviceTypeString(int ordinal):           // 0xf69c7c0
 
 The eight real silicon generations are exactly the ordinals `DeviceTypeFromDeviceIdentifiers` can return (all hardware-type 3 = TPU). The remaining ordinals are GPU/placeholder/reserved slots that carry a default clock but no codename and no PCI tuple. Public names, codec families, clocks, and timestamp widths below are byte-confirmed against `DeviceTypeString`, the codec namespaces in `DeviceTypeFromDeviceIdentifiers`, and a direct read of the `+0x04`/`+0x08` columns of the struct.
 
-| DT | Public name | Codename | Codec family | GTC kHz (`+0x04`) | ts-width (`+0x08`) | compute kHz (`+0x50`) | hwtype | Confidence |
-|---|---|---|---|---|---|---|---|---|
-| 1 | GPU | (host GPU plane) | — | 700000 | 48 | 700000 | 2 (GPU) | High |
-| 2 | Cloud TPU | (generic placeholder) | — | 700000 | 48 | 700000 | 0 | High |
-| 3 | TPU v2 | Jellyfish | `jxc` | 700000 | 48 | 700000 | 3 (TPU) | CERTAIN |
-| 4 | Cloud TPU | (placeholder; bind → err) | — | 700000 | 48 | 700000 | 1 | High |
-| 5 | TPU v3 | Dragonfish | `jxc` | 700000 | 48 | 940000 | 3 | CERTAIN |
-| 6 | Cloud TPU | (generic placeholder) | — | 700000 | 48 | 700000 | 0 | High |
-| 7 | TPU v4 | Pufferfish | `pxc::pfc` | 700000 | 48 | 1050000 | 3 | CERTAIN |
-| 8 | TPU v4 Lite | Puffylite | `pxc::plc` | 700000 | 48 | 1050000 | 3 | CERTAIN |
-| 9 | Cloud TPU | (reserved 64-bit slot) | — | 1333000 | 64 | 1333000 | 0 | High |
-| 10 | TPU v5 | Viperfish | `vxc::vfc` | 800000 | 45 | 1750000 | 3 | CERTAIN |
-| 11 | TPU v5 Lite | Viperlite | `vxc::vlc` | 800000 | 45 | 1500000 | 3 | CERTAIN |
-| 12 | TPU v7x | Ghostfish | `gxc::gfc` | 833000 | 45 | 1900000 | 3 | CERTAIN |
-| 13 | TPU v6 Lite | Ghostlite | `gxc::glc` | 800000 | 45 | 1750000 | 3 | CERTAIN |
-| 14–16 | Cloud TPU | (legacy placeholders) | — | 700000 | 48 | 700000 | — | High |
+| DT | Public name | Codename | Codec family | GTC kHz (`+0x04`) | ts-width (`+0x08`) | compute kHz (`+0x50`) | hwtype |
+|---|---|---|---|---|---|---|---|
+| 1 | GPU | (host GPU plane) | — | 700000 | 48 | 700000 | 2 (GPU) |
+| 2 | Cloud TPU | (generic placeholder) | — | 700000 | 48 | 700000 | 0 |
+| 3 | TPU v2 | Jellyfish | `jxc` | 700000 | 48 | 700000 | 3 (TPU) |
+| 4 | Cloud TPU | (placeholder; bind → err) | — | 700000 | 48 | 700000 | 1 |
+| 5 | TPU v3 | Dragonfish | `jxc` | 700000 | 48 | 940000 | 3 |
+| 6 | Cloud TPU | (generic placeholder) | — | 700000 | 48 | 700000 | 0 |
+| 7 | TPU v4 | Pufferfish | `pxc::pfc` | 700000 | 48 | 1050000 | 3 |
+| 8 | TPU v4 Lite | Puffylite | `pxc::plc` | 700000 | 48 | 1050000 | 3 |
+| 9 | Cloud TPU | (reserved 64-bit slot) | — | 1333000 | 64 | 1333000 | 0 |
+| 10 | TPU v5 | Viperfish | `vxc::vfc` | 800000 | 45 | 1750000 | 3 |
+| 11 | TPU v5 Lite | Viperlite | `vxc::vlc` | 800000 | 45 | 1500000 | 3 |
+| 12 | TPU v7x | Ghostfish | `gxc::gfc` | 833000 | 45 | 1900000 | 3 |
+| 13 | TPU v6 Lite | Ghostlite | `gxc::glc` | 800000 | 45 | 1750000 | 3 |
+| 14–16 | Cloud TPU | (legacy placeholders) | — | 700000 | 48 | 700000 | — |
 
 > **QUIRK —** `DeviceType` 12 ("TPU v7x", Ghostfish/`gfc`) and `DeviceType` 13 ("TPU v6 Lite", Ghostlite/`glc`) are sibling members of the same `gxc` chip family but distinct `DeviceType`s with distinct GTC clocks (833 vs 800 MHz) and distinct compute clocks (1.9 vs 1.75 GHz). Both dispatch through predicate functions (`IsGfc`/`IsGlc`) rather than a single constant, because each spans several App/Mgt PCI SKUs. A reimplementation that treats the whole `gxc` family as one `DeviceType` will pick the wrong clock divisor for half of them.
 

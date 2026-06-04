@@ -221,11 +221,11 @@ The interpretation is a deliberate port-pressure split for the embedding sequenc
 
 The BCS does not have a wide embedding datapath. Everything an embedding op needs — address arithmetic, the DMA that moves a row, and the sync that orders it — is expressed in the scalar ISA above plus a handful of LLO-level DMA/sync builders. These are the **13 priced primitives**: the operations the BarnaCore latency model (`PufferfishBarnaCorePerformance`) actually costs. They fall in three families.
 
-| Family | Primitive (`LloRegionBuilder::Bc*` / scalar op) | Role | Confidence |
-|---|---|---|---|
-| **Scalar address math** | the shared BCS scalar ALU (`ScalarIntAdd/Sub`, `ScalarAnd`, `ScalarUintMul`, `ScalarIntLess`, `ScalarMove`, `ScalarPredicateOr`, plus the emitter helpers `SimmS32`/`SneS32`/`SsubS32`/`SandU32`/`SltS32`/`Sselect`/`Pand`/`SdivU32`/`SmulU32`/`SmodU32`) | compute the bmem/HBM word address, granule align, modulo-partition columns across cores | CONFIRMED |
-| **DMA** | `BcDma` (→ `kBarnaCoreDma` `0x1bb`, 19-arg), `barna_core::DmaGeneral`, `EnqueueDmaLocalInGranules` | move an embedding row HBM↔bmem↔VMEM; cross-core remote DMA | CONFIRMED |
-| **Sync** | `BcSwaitInfeedSV` (`0x1ae`), `BcSwaitEqSV` (`0x1b2`), `BcSwaitGeSV` (`0x1b0`), `BcSwaitGtSV` (`0x1b1`), `BcSwaitNeSV` (`0x1b3`), `BcSwaitDone` (`0x1ac`), `BcSsyncAdd` (`0x1ad`), `BcSdoneWrite` (`0x1b5`), `BcSpop` (`0x1b8`) | wait/signal sync flags; gather/scatter completion ordering | CONFIRMED |
+| Family | Primitive (`LloRegionBuilder::Bc*` / scalar op) | Role |
+|---|---|---|
+| **Scalar address math** | the shared BCS scalar ALU (`ScalarIntAdd/Sub`, `ScalarAnd`, `ScalarUintMul`, `ScalarIntLess`, `ScalarMove`, `ScalarPredicateOr`, plus the emitter helpers `SimmS32`/`SneS32`/`SsubS32`/`SandU32`/`SltS32`/`Sselect`/`Pand`/`SdivU32`/`SmulU32`/`SmodU32`) | compute the bmem/HBM word address, granule align, modulo-partition columns across cores |
+| **DMA** | `BcDma` (→ `kBarnaCoreDma` `0x1bb`, 19-arg), `barna_core::DmaGeneral`, `EnqueueDmaLocalInGranules` | move an embedding row HBM↔bmem↔VMEM; cross-core remote DMA |
+| **Sync** | `BcSwaitInfeedSV` (`0x1ae`), `BcSwaitEqSV` (`0x1b2`), `BcSwaitGeSV` (`0x1b0`), `BcSwaitGtSV` (`0x1b1`), `BcSwaitNeSV` (`0x1b3`), `BcSwaitDone` (`0x1ac`), `BcSsyncAdd` (`0x1ad`), `BcSdoneWrite` (`0x1b5`), `BcSpop` (`0x1b8`) | wait/signal sync flags; gather/scatter completion ordering |
 
 The `BcSwait*` family is the LLO-level surface of the Scalar0/Scalar1 `Sync*` ops (ords 4..10) — `BcSwaitEqSV` emits a `SyncEqualTo`, `BcSwaitGeSV` a `SyncGreaterOrEqualTo`, `BcSsyncAdd` a `SyncAdd`, `BcSdoneWrite` a `WriteDone`. The decompile shows all of `BcSwait{Done,EqSV,GeSV,GtSV,NeSV,InfeedSV}`, `BcSsyncAdd`, `BcSpop`, `BcSdoneWrite`, `BcSfence` as `LloRegionBuilder` methods, alongside the address helpers `BcBmemAddrScaled` and the channel moves `BcVectorLoad`/`BcVectorLoadImmediateOffset`/`BcVectorStore`.
 
@@ -246,19 +246,19 @@ The high-level embedding surface is a set of 20 `kBarnaCore*` LLO ops — local/
 
 `LloRegionBuilder::Bc<Op>` @ `0x1d57d560..` dispatches a legacy arm and a Pufferfish (`Pf`) arm; the `Pf` arm takes more `LloValue*` operands (the extra remote-buffer / multi-core addressing). Each emits `LloInstruction::CreateBarnaCore<Op>`, whose opcode constant is byte-pinned from the `mov edi,0x1XX` before the `LloInstruction::New` call. The decompiled ctors confirm the constants exactly: `CreateBarnaCoreDma` calls `LloInstruction::New(443, ...)` = `0x1bb`; `CreateBarnaCoreLocalGather` passes `449` = `0x1c1`; `CreateBarnaCoreSparseReduce` passes `451` = `0x1c3`.
 
-| high-level op | `Bc*` builder | `Create*` ctor | LLO opcode | Confidence |
-|---|---|---|---:|---|
-| `kBarnaCoreDma` | `BcDma` (19-arg) | `CreateBarnaCoreDma` (`New(443,…)`) | `0x1bb` | CONFIRMED |
-| `kBarnaCoreRemoteScalarWrite` | `BcRemoteScalarWrite` / `BcPf…` | `CreateBarnaCoreRemoteScalarWrite` / `Pf` | `0x1bc` / `0x1bd` | CONFIRMED |
-| `kBarnaCoreGlobalScatterIds` | `BcGlobalScatterIds` / `BcPf…` (7 args) | `CreateBarnaCoreGlobalScatterIds` / `Pf` | `0x1bf` / `0x1c0` | CONFIRMED |
-| `kBarnaCoreLocalGather` | `BcLocalGather` (6-arg) / `BcPf…` (10 args) | `CreateBarnaCoreLocalGather` (`New(449,…)`) / `Pf` | `0x1c1` / `0x1c2` | CONFIRMED |
-| `kBarnaCoreSparseReduce` | `BcSparseReduce` (4-arg) / `BcPf…` (7 args) | `CreateBarnaCoreSparseReduce` (`New(451,…)`) / `Pf` | `0x1c3` / `0x1c4` | CONFIRMED |
-| `kBarnaCoreGlobalScatterGradients` | `BcGlobalScatterGradients` (8 args) / `BcPf…` | `CreateBarnaCoreGlobalScatterGradients` / `Pf` | `0x1c6` / `0x1c5` | CONFIRMED |
-| `kBarnaCoreLocalScatterGradients` | `BcLocalScatterGradients` / `BcPf…` | `CreateBarnaCoreLocalScatterGradients` / `Pf` | `0x1c7` / `0x1c8` | CONFIRMED |
-| `kBarnaCoreIssueFsm` | `BcIssueFsm` | (emits `IssueFsm`) | `0x1b9` | CONFIRMED |
-| `kBarnaCoreScalarFence` | `BcSfence` | (emits `ScalarFence`) | `0x1ba` | CONFIRMED |
-| `kBarnaCoreScalarWaitInfeed` | `BcSwaitInfeedSV` | (emits a `Sync*` wait) | `0x1ae` | CONFIRMED |
-| `kBarnaCoreMoveScalarReg` | `EmitBarnaCoreMoveScalarReg` (`@0x140c9400`) | — | `0x1cb` | CONFIRMED |
+| high-level op | `Bc*` builder | `Create*` ctor | LLO opcode |
+|---|---|---|---:|
+| `kBarnaCoreDma` | `BcDma` (19-arg) | `CreateBarnaCoreDma` (`New(443,…)`) | `0x1bb` |
+| `kBarnaCoreRemoteScalarWrite` | `BcRemoteScalarWrite` / `BcPf…` | `CreateBarnaCoreRemoteScalarWrite` / `Pf` | `0x1bc` / `0x1bd` |
+| `kBarnaCoreGlobalScatterIds` | `BcGlobalScatterIds` / `BcPf…` (7 args) | `CreateBarnaCoreGlobalScatterIds` / `Pf` | `0x1bf` / `0x1c0` |
+| `kBarnaCoreLocalGather` | `BcLocalGather` (6-arg) / `BcPf…` (10 args) | `CreateBarnaCoreLocalGather` (`New(449,…)`) / `Pf` | `0x1c1` / `0x1c2` |
+| `kBarnaCoreSparseReduce` | `BcSparseReduce` (4-arg) / `BcPf…` (7 args) | `CreateBarnaCoreSparseReduce` (`New(451,…)`) / `Pf` | `0x1c3` / `0x1c4` |
+| `kBarnaCoreGlobalScatterGradients` | `BcGlobalScatterGradients` (8 args) / `BcPf…` | `CreateBarnaCoreGlobalScatterGradients` / `Pf` | `0x1c6` / `0x1c5` |
+| `kBarnaCoreLocalScatterGradients` | `BcLocalScatterGradients` / `BcPf…` | `CreateBarnaCoreLocalScatterGradients` / `Pf` | `0x1c7` / `0x1c8` |
+| `kBarnaCoreIssueFsm` | `BcIssueFsm` | (emits `IssueFsm`) | `0x1b9` |
+| `kBarnaCoreScalarFence` | `BcSfence` | (emits `ScalarFence`) | `0x1ba` |
+| `kBarnaCoreScalarWaitInfeed` | `BcSwaitInfeedSV` | (emits a `Sync*` wait) | `0x1ae` |
+| `kBarnaCoreMoveScalarReg` | `EmitBarnaCoreMoveScalarReg` (`@0x140c9400`) | — | `0x1cb` |
 
 The 20-op count is the F-routed block (the gather/scatter/reduce/FSM/remote-buffer ops) counted across the legacy + `Pf` arms; the seven core ops above (`Dma`, `RemoteScalarWrite`, `GlobalScatterIds`, `LocalGather`, `SparseReduce`, `GlobalScatterGradients`, `LocalScatterGradients`) plus their `Pf` variants and the `IssueFsm`/`Fence`/`WaitInfeed`/`MoveScalarReg` adjuncts make up the surface.
 
@@ -266,13 +266,13 @@ The 20-op count is the F-routed block (the gather/scatter/reduce/FSM/remote-buff
 
 `platforms_deepsea::jellyfish::barna_core::BcsLloEmitter` (`@0xf9d7700..0xf9d87a0`, disassembled byte-exact) is the embedding datapath. Each high-level op expands into scalar address math + a DMA + sync. The descriptor fetch goes through `BcsMetadataAccessor` (`LoadBmemWordAddressFromMetadata @0xf9d9140`, `LoadPassHeaderMetadata @0xf9d8d40`, `LoadPayloadLocationMetadata @0xf9d8da0`, `LoadPartitionColumn @0xf9d92e0`, `LoadBarnaCoreLocation`, `LoadRemoteBufferOffset`, `GetBarnaCoreAbsoluteHbmAddress`, `LoadFsmTransferSizeMemUnit`) — the BarnaCore equivalent of the SparseCore TAC descriptor table.
 
-| high-level op | `BcsLloEmitter` path | expansion shape | Confidence |
-|---|---|---|---|
-| `kBarnaCoreLocalGather` | `IssueDmaInfeedToVmem` (`@0xf9d77e0`) | metadata loads → ~10 scalar ALU (`SimmS32`/`SneS32`/`SandU32`/`SsubS32`/`SltS32`/`Sselect`/`Pand`/`SdivU32`) → `SmemWordAddress`/`BcBmemAddrScaled` → `EnqueueDmaLocalInGranules` (×2, predicated) → `BcDma` + `BcSwait` sync | CONFIRMED |
-| `kBarnaCoreGlobalScatterGradients` | `IssueDmaScatter` (`@0xf9d8400`) → `IssueDmaScatterOne` (`@0xf9d8560`) | `TpuCoreLocation::Id` → `SimpleLoop` over columns → per-column `SmulU32`×2/`SaddS32`/`SmodU32` (modulo-partition) → `LoadPartitionColumn` → `LoadBarnaCoreLocation`/`LoadRemoteBufferOffset`/`GetBarnaCoreAbsoluteHbmAddress`/`LoadFsmTransferSizeMemUnit` → `barna_core::DmaGeneral` (cross-core remote) | CONFIRMED |
-| gather sync (`WaitForInfeedOfHostIds` `@0xf9d7700`, `WaitForInfeedToVmemDma` `@0xf9d7bc0`) | `WaitOnInfeedSyncFlag` (`@0xf9d9e00`) / `WaitOnValueAndClearSyncFlag` (`@0xf9d9d40`) | `BcSwaitInfeedSV` + `BcSwaitGeSV` + `BcSsyncAdd`; `BcSwaitEqSV`/`BcSwaitGeSV` + `BcSdoneWrite` | CONFIRMED |
-| `kBarnaCoreAllocateRemoteBuffers` | `AllocateRemoteBuffers` (`@0xf9d7ca0`) | → `LloRegionBuilder::BcIssueFsm` (programs the address-handler FSM); `AllocateRemoteBufferForPadding @0xf9d8340` the padding variant | CONFIRMED |
-| `kBarnaCoreSparseReduce` | `BcSparseReduce @0x1d57d920` → `CreateBarnaCoreSparseReduce` (`451`) | realized via the **address-handler FSM + DMA**, not an on-engine wide reduce (see callout) | CONFIRMED |
+| high-level op | `BcsLloEmitter` path | expansion shape |
+|---|---|---|
+| `kBarnaCoreLocalGather` | `IssueDmaInfeedToVmem` (`@0xf9d77e0`) | metadata loads → ~10 scalar ALU (`SimmS32`/`SneS32`/`SandU32`/`SsubS32`/`SltS32`/`Sselect`/`Pand`/`SdivU32`) → `SmemWordAddress`/`BcBmemAddrScaled` → `EnqueueDmaLocalInGranules` (×2, predicated) → `BcDma` + `BcSwait` sync |
+| `kBarnaCoreGlobalScatterGradients` | `IssueDmaScatter` (`@0xf9d8400`) → `IssueDmaScatterOne` (`@0xf9d8560`) | `TpuCoreLocation::Id` → `SimpleLoop` over columns → per-column `SmulU32`×2/`SaddS32`/`SmodU32` (modulo-partition) → `LoadPartitionColumn` → `LoadBarnaCoreLocation`/`LoadRemoteBufferOffset`/`GetBarnaCoreAbsoluteHbmAddress`/`LoadFsmTransferSizeMemUnit` → `barna_core::DmaGeneral` (cross-core remote) |
+| gather sync (`WaitForInfeedOfHostIds` `@0xf9d7700`, `WaitForInfeedToVmemDma` `@0xf9d7bc0`) | `WaitOnInfeedSyncFlag` (`@0xf9d9e00`) / `WaitOnValueAndClearSyncFlag` (`@0xf9d9d40`) | `BcSwaitInfeedSV` + `BcSwaitGeSV` + `BcSsyncAdd`; `BcSwaitEqSV`/`BcSwaitGeSV` + `BcSdoneWrite` |
+| `kBarnaCoreAllocateRemoteBuffers` | `AllocateRemoteBuffers` (`@0xf9d7ca0`) | → `LloRegionBuilder::BcIssueFsm` (programs the address-handler FSM); `AllocateRemoteBufferForPadding @0xf9d8340` the padding variant |
+| `kBarnaCoreSparseReduce` | `BcSparseReduce @0x1d57d920` → `CreateBarnaCoreSparseReduce` (`451`) | realized via the **address-handler FSM + DMA**, not an on-engine wide reduce (see callout) |
 
 A `LocalGather` therefore costs `{≈10 scalar ALU ops + 2 BcDma + sync}`; a `GlobalScatterGradients` costs `{loop × [scalar partition math + DmaGeneral remote]}`. Because the cost is the sum of primitive latencies (scalar = 1, etc.) over a runtime-dynamic loop trip count (feature length / partition count), the high-level op cannot be priced as a single constant — which is precisely why the 20 ops LogFatal in the direct classifier.
 
@@ -303,28 +303,28 @@ The mapping is direct: BarnaCore `LocalGather` ≈ SparseCore `STREAM_OPCODE_GAT
 
 All addresses are Pufferfish (`pxc::pfc`) BCS; the proto-oneof ordinal is the opcode, the `mov edi,0x1XX` constant is the LLO opcode.
 
-| Symbol | Address | Evidence | Confidence |
-|---|---|---|---|
-| `BarnaCoreSequencerBundle::_table_` | `0x21e868d8` | 2 submessage aux slots {Scalar0, Scalar1} | CONFIRMED |
-| `BarnaCoreSequencerScalar0::_table_` | `0x21e8b7f0` | `max_field_number=62`; 58 oneof aux @ `0x21e8bb68` | CONFIRMED |
-| `BarnaCoreSequencerScalar1::_table_` | `0x21e90b98` | `max_field_number=60`; 56 oneof aux @ `0x21e90ef8` | CONFIRMED |
-| `BarnaCoreSequencerScalar0` abstract base `_ZTV` | `0x21e87840` | vtable for typeinfo reconciliation | CONFIRMED |
-| `FindFreeScalarSlot<…SyncAdd, …SyncAdd>` | `0x140efa80` | dual-issue binding (38 such pairs) | CONFIRMED |
-| `FindFreeScalarSlot<…ScalarFloatMul, void>` | `0x140ee020` | Scalar0-only binding (`EvE` marker) | CONFIRMED |
-| `FindFreeScalarSlot<…ScalarHalt, …ScalarHalt>` | `0x140e79e0` | Halt is dual-issuable | CONFIRMED |
-| `LloInstruction::CreateBarnaCoreDma` | `0x1d4e1c20` | `LloInstruction::New(443,…)` = `0x1bb` | CONFIRMED |
-| `LloInstruction::CreateBarnaCoreLocalGather` | `0x1d4e2040` | `New(449,…)` = `0x1c1` | CONFIRMED |
-| `LloInstruction::CreateBarnaCoreSparseReduce` | `0x1d4e2120` | `New(451,…)` = `0x1c3` | CONFIRMED |
-| `LloRegionBuilder::BcDma` | `0x1d57d5a0` | 19-arg `kBarnaCoreDma` builder | CONFIRMED |
-| `LloRegionBuilder::BcLocalGather` | `0x1d57d880` | 6-arg local-gather builder | CONFIRMED |
-| `LloRegionBuilder::BcSparseReduce` | `0x1d57d920` | 4-arg sparse-reduce builder | CONFIRMED |
-| `barna_core::BcsLloEmitter::IssueDmaInfeedToVmem` | `0xf9d77e0` | local-gather expansion | CONFIRMED |
-| `barna_core::BcsLloEmitter::IssueDmaScatter` | `0xf9d8400` | gradient-scatter column loop | CONFIRMED |
-| `barna_core::BcsLloEmitter::WaitForInfeedOfHostIds` | `0xf9d7700` | gather sync → `BcSwait*`/`BcSsyncAdd` | CONFIRMED |
-| `barna_core::BcsLloEmitter::AllocateRemoteBuffers` | `0xf9d7ca0` | remote-buffer FSM via `BcIssueFsm` | CONFIRMED |
-| `BcsMetadataAccessor::LoadBmemWordAddressFromMetadata` | `0xf9d9140` | embedding descriptor fetch | CONFIRMED |
-| `PufferfishBarnaCoreChannelEmitter::EmitVectorSegmentedReduce` | `0x140cf3a0` | LogFatal "Not implemented" (no native reduce) | CONFIRMED |
-| `InstBits_BarnaCorePxcHwMode` | `0x33931f0` | 181,344 B bit-encoding table (bundle page) | HIGH |
+| Symbol | Address | Evidence |
+|---|---|---|
+| `BarnaCoreSequencerBundle::_table_` | `0x21e868d8` | 2 submessage aux slots {Scalar0, Scalar1} |
+| `BarnaCoreSequencerScalar0::_table_` | `0x21e8b7f0` | `max_field_number=62`; 58 oneof aux @ `0x21e8bb68` |
+| `BarnaCoreSequencerScalar1::_table_` | `0x21e90b98` | `max_field_number=60`; 56 oneof aux @ `0x21e90ef8` |
+| `BarnaCoreSequencerScalar0` abstract base `_ZTV` | `0x21e87840` | vtable for typeinfo reconciliation |
+| `FindFreeScalarSlot<…SyncAdd, …SyncAdd>` | `0x140efa80` | dual-issue binding (38 such pairs) |
+| `FindFreeScalarSlot<…ScalarFloatMul, void>` | `0x140ee020` | Scalar0-only binding (`EvE` marker) |
+| `FindFreeScalarSlot<…ScalarHalt, …ScalarHalt>` | `0x140e79e0` | Halt is dual-issuable |
+| `LloInstruction::CreateBarnaCoreDma` | `0x1d4e1c20` | `LloInstruction::New(443,…)` = `0x1bb` |
+| `LloInstruction::CreateBarnaCoreLocalGather` | `0x1d4e2040` | `New(449,…)` = `0x1c1` |
+| `LloInstruction::CreateBarnaCoreSparseReduce` | `0x1d4e2120` | `New(451,…)` = `0x1c3` |
+| `LloRegionBuilder::BcDma` | `0x1d57d5a0` | 19-arg `kBarnaCoreDma` builder |
+| `LloRegionBuilder::BcLocalGather` | `0x1d57d880` | 6-arg local-gather builder |
+| `LloRegionBuilder::BcSparseReduce` | `0x1d57d920` | 4-arg sparse-reduce builder |
+| `barna_core::BcsLloEmitter::IssueDmaInfeedToVmem` | `0xf9d77e0` | local-gather expansion |
+| `barna_core::BcsLloEmitter::IssueDmaScatter` | `0xf9d8400` | gradient-scatter column loop |
+| `barna_core::BcsLloEmitter::WaitForInfeedOfHostIds` | `0xf9d7700` | gather sync → `BcSwait*`/`BcSsyncAdd` |
+| `barna_core::BcsLloEmitter::AllocateRemoteBuffers` | `0xf9d7ca0` | remote-buffer FSM via `BcIssueFsm` |
+| `BcsMetadataAccessor::LoadBmemWordAddressFromMetadata` | `0xf9d9140` | embedding descriptor fetch |
+| `PufferfishBarnaCoreChannelEmitter::EmitVectorSegmentedReduce` | `0x140cf3a0` | LogFatal "Not implemented" (no native reduce) |
+| `InstBits_BarnaCorePxcHwMode` | `0x33931f0` | 181,344 B bit-encoding table (bundle page) |
 
 ---
 

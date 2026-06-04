@@ -101,17 +101,17 @@ function InitializeDriver(bool driver_flag, int argc, char const** argv_in, bool
 
 ### Function Map
 
-| Function | Address | Size | Role | Confidence |
-|---|---|---|---|---|
-| `tpu::driver::InitializeDriver` | `0x204cecc0` | 1764 B | the bootstrap body (guard, argv, InitGoogle, telemetry) | CONFIRMED |
-| `TfTpu_Initialize` | `0xe6f54a0` | 10 B | 2-instruction tail-shim (`mov $1,%ecx; jmp`) → `InitializeDriver` (legacy/alternate entry) | CONFIRMED |
-| `tpu::driver::AppendNewCloudTPUArgs` | `0x204c7340` | — | folds Cloud-TPU default flags into the argv `vector<string>` | CONFIRMED |
-| `InitGoogleExceptChangeRootAndUser` | `0x210b0180` | 8 B | thin wrapper → `RealInitGoogle(…, change_root=0)` | CONFIRMED |
-| `RealInitGoogle` | `0x210ae860` | large | flag parse + `RunInitializers` + process-wide init | CONFIRMED |
-| `GoogleInitializer::RunInitializers` | `0x210b2d20` | — | the topological module-DAG run (PHASE B) | CONFIRMED |
-| `RegisterLibtpuGaugeTelemetry` | — | — | registers a named telemetry gauge | CONFIRMED |
-| `RegisterMegascaleErrorHandler` | — | — | installs the Megascale error-detection handler | CONFIRMED |
-| `EnableRuntimeUptimeTelemetry` | — | — | anon-ns predicate gating uptime metrics | HIGH |
+| Function | Address | Size | Role |
+|---|---|---|---|
+| `tpu::driver::InitializeDriver` | `0x204cecc0` | 1764 B | the bootstrap body (guard, argv, InitGoogle, telemetry) |
+| `TfTpu_Initialize` | `0xe6f54a0` | 10 B | 2-instruction tail-shim (`mov $1,%ecx; jmp`) → `InitializeDriver` (legacy/alternate entry) |
+| `tpu::driver::AppendNewCloudTPUArgs` | `0x204c7340` | — | folds Cloud-TPU default flags into the argv `vector<string>` |
+| `InitGoogleExceptChangeRootAndUser` | `0x210b0180` | 8 B | thin wrapper → `RealInitGoogle(…, change_root=0)` |
+| `RealInitGoogle` | `0x210ae860` | large | flag parse + `RunInitializers` + process-wide init |
+| `GoogleInitializer::RunInitializers` | `0x210b2d20` | — | the topological module-DAG run (PHASE B) |
+| `RegisterLibtpuGaugeTelemetry` | — | — | registers a named telemetry gauge |
+| `RegisterMegascaleErrorHandler` | — | — | installs the Megascale error-detection handler |
+| `EnableRuntimeUptimeTelemetry` | — | — | anon-ns predicate gating uptime metrics |
 
 ### Considerations
 
@@ -241,14 +241,14 @@ function IsInitialized(table):                           // 0x208193c0
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `stream_executor::tpu::ExecutorApiFn` | `0x20819360` | returns `&executor_api_fn` (Meyers singleton, executor roster table) | CONFIRMED |
-| `stream_executor::tpu::OpsApiFn` | `0x10900e80` | returns `&ops_api_fn` (Meyers singleton, ops roster table) | CONFIRMED |
-| `stream_executor::tpu::ProfilerApiFn` | `0x10900ea0` | returns `&profiler_api_fn` (Meyers singleton, profiler roster table) | CONFIRMED |
-| `stream_executor::tpu::IsStreamExecutorEnabled` | `0x20819380` | slot-0 probe + init/finalize handshake (gates `TpuPlatform`) | CONFIRMED |
-| `stream_executor::tpu::IsInitialized` | `0x208193c0` | cheap `table[0] != NULL` liveness probe | CONFIRMED |
-| `tensorflow::tpu::RegisterTpuPlatform` | `0xe99a3a0` | reads executor table, installs StreamExecutor `TpuPlatform` | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `stream_executor::tpu::ExecutorApiFn` | `0x20819360` | returns `&executor_api_fn` (Meyers singleton, executor roster table) |
+| `stream_executor::tpu::OpsApiFn` | `0x10900e80` | returns `&ops_api_fn` (Meyers singleton, ops roster table) |
+| `stream_executor::tpu::ProfilerApiFn` | `0x10900ea0` | returns `&profiler_api_fn` (Meyers singleton, profiler roster table) |
+| `stream_executor::tpu::IsStreamExecutorEnabled` | `0x20819380` | slot-0 probe + init/finalize handshake (gates `TpuPlatform`) |
+| `stream_executor::tpu::IsInitialized` | `0x208193c0` | cheap `table[0] != NULL` liveness probe |
+| `tensorflow::tpu::RegisterTpuPlatform` | `0xe99a3a0` | reads executor table, installs StreamExecutor `TpuPlatform` |
 
 ### Considerations
 
@@ -264,16 +264,16 @@ The point a reimplementer must hold onto: `InitializeDriver` does **not** popula
 
 The bootstrap is re-entrant-safe by stacking three independent once-mechanisms. A reimplementer reproducing only the PJRT gate, or only the driver guard, gets a different idempotence profile.
 
-| Guard | Where | Address / token | What re-calling skips | Confidence |
-|---|---|---|---|---|
-| `absl::Mutex` once-lock | `TryAcquireTpuLock::mu` | guard `0x225925d0` / obj `0x225925c8` | the cross-process acquisition; second call sees the lock held | CONFIRMED |
-| function-static byte | `InitializeDriver::has_initialized` | `0x225899e0` (`.bss`) | the entire `InitializeDriver` body (argv build, InitGoogle, telemetry) | CONFIRMED |
-| `absl::Mutex` + per-module run-state | `GoogleInitializer::RunInitializers` | inside `0x210b2d20` | re-running any module whose state is already `DONE` | HIGH |
-| function-static byte | `RegisterTpuPlatform::tpu_platform_registered` | `0x224c5388` | re-installing the StreamExecutor `TpuPlatform` | CONFIRMED |
-| `__cxa_guard` for `InitGoogleDoneNotification` | inside `RealInitGoogle` | guard in `.bss` | re-arming the init-done notification | HIGH |
-| init-type selector | `kPjRtCApiTpuInitType` (= 2) | `0x22255b40` (`.data`) | the whole bring-up if it is 0 | CONFIRMED |
-| env gate | `TPU_LOAD_LIBRARY` (in `TryAcquireTpuLock`) | str `@ file 0x887356a` | — controls whether the lock is even attempted | CONFIRMED |
-| env args | `LIBTPU_INIT_ARGS` (in `GetLibTpuInitArguments`) | str `@ file 0x918c880` | — supplies the flag string | CONFIRMED |
+| Guard | Where | Address / token | What re-calling skips |
+|---|---|---|---|
+| `absl::Mutex` once-lock | `TryAcquireTpuLock::mu` | guard `0x225925d0` / obj `0x225925c8` | the cross-process acquisition; second call sees the lock held |
+| function-static byte | `InitializeDriver::has_initialized` | `0x225899e0` (`.bss`) | the entire `InitializeDriver` body (argv build, InitGoogle, telemetry) |
+| `absl::Mutex` + per-module run-state | `GoogleInitializer::RunInitializers` | inside `0x210b2d20` | re-running any module whose state is already `DONE` |
+| function-static byte | `RegisterTpuPlatform::tpu_platform_registered` | `0x224c5388` | re-installing the StreamExecutor `TpuPlatform` |
+| `__cxa_guard` for `InitGoogleDoneNotification` | inside `RealInitGoogle` | guard in `.bss` | re-arming the init-done notification |
+| init-type selector | `kPjRtCApiTpuInitType` (= 2) | `0x22255b40` (`.data`) | the whole bring-up if it is 0 |
+| env gate | `TPU_LOAD_LIBRARY` (in `TryAcquireTpuLock`) | str `@ file 0x887356a` | — controls whether the lock is even attempted |
+| env args | `LIBTPU_INIT_ARGS` (in `GetLibTpuInitArguments`) | str `@ file 0x918c880` | — supplies the flag string |
 
 > **NOTE —** `kPjRtCApiTpuInitType` is statically `2` in `.data`; init-type 2 takes the full bring-up (`InitializeDriver(…, init_type_is_2 = true)`), init-type 0 makes `PJRT_Plugin_Initialize` a no-op. Whether init-type `2` vs a hypothetical `1` changes `InitializeDriver`'s behavior was not traced — the `init_type_is_2` argument is computed and passed, but the decompiled `InitializeDriver` body does not visibly branch on it within the traced region (LOW confidence that init-type alters the driver path; the static selector value `2` and the pass-through are CONFIRMED).
 

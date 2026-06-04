@@ -69,14 +69,14 @@ The prologue — run by the `TwistedTorusND` constructor (`0x137d0040`) at `0x13
 
 ### Fields it leaves for BuildStrategy
 
-| Field | Offset | qword idx | Meaning | Confidence |
-|---|---|---|---|---|
-| `min_dim_size_` (`K`) | `[obj+0x5f8]` | 191 | short axis size | HIGH |
-| `max_dim_size_` (`2K`) | `[obj+0x5f0]` | 190 | long axis size; `CHECK max == 2·min` | HIGH |
-| `num_max_dims_` | `[obj+0x600]` | 192 | count of axes equal to `2K` (the 2K-count) | HIGH |
-| `num_min_dims_` | `[obj+0x608]` | 193 | count of axes equal to `K` (the K-count) | HIGH |
-| `NumNetworkDimensions` | `[obj+0x598]` | 179 | `3` on a healthy slice, `2` when degraded | HIGH |
-| `dim_sizes_[i]` | `[obj+0xb8..0xc8]` | 23/24/25 | per-axis extents (load order `Y,X,Z`) | HIGH |
+| Field | Offset | qword idx | Meaning |
+|---|---|---|---|
+| `min_dim_size_` (`K`) | `[obj+0x5f8]` | 191 | short axis size |
+| `max_dim_size_` (`2K`) | `[obj+0x5f0]` | 190 | long axis size; `CHECK max == 2·min` |
+| `num_max_dims_` | `[obj+0x600]` | 192 | count of axes equal to `2K` (the 2K-count) |
+| `num_min_dims_` | `[obj+0x608]` | 193 | count of axes equal to `K` (the K-count) |
+| `NumNetworkDimensions` | `[obj+0x598]` | 179 | `3` on a healthy slice, `2` when degraded |
+| `dim_sizes_[i]` | `[obj+0xb8..0xc8]` | 23/24/25 | per-axis extents (load order `Y,X,Z`) |
 
 The classifier fields are produced by a vectorised `vpcmpeqq` count (decompiled in `UpdateMinMaxDims`) and define the shape: `num_max_dims_ == 1` is K_K_2K (one long axis), `num_max_dims_ == 2` with `num_min_dims_ == 1` is K_2K_2K (two long axes). BuildStrategy keys its top-level Stage-2 branch on exactly these two fields.
 
@@ -252,34 +252,34 @@ The ordinal slot offset `[obj + color*0x18 + phase*8 + 0x1a8]` makes the `phase`
 
 ### Seam builder map
 
-| Builder | Address | Column class | Role | Confidence |
-|---|---|---|---|---|
-| `UpdateNeighborsKTo2K` | `0x137d24c0` | `K`-axis | `K→2K` neighbour seam (`+K`-mod-`2K` jump) | HIGH |
-| `UpdateOrdinal2KToK` | `0x137d28c0` | `K`-axis | inverse `2K→K` ordinal fold | HIGH |
-| `UpdateNeighbors2KToK` | `0x137d29c0` | `2K`-axis | `2K→K` neighbour seam | HIGH |
-| `UpdateOrdinal2K` | `0x137d2c60` | `2K`-axis | `2K` ordinal fold (phases 0,1 only) | HIGH |
+| Builder | Address | Column class | Role |
+|---|---|---|---|
+| `UpdateNeighborsKTo2K` | `0x137d24c0` | `K`-axis | `K→2K` neighbour seam (`+K`-mod-`2K` jump) |
+| `UpdateOrdinal2KToK` | `0x137d28c0` | `K`-axis | inverse `2K→K` ordinal fold |
+| `UpdateNeighbors2KToK` | `0x137d29c0` | `2K`-axis | `2K→K` neighbour seam |
+| `UpdateOrdinal2K` | `0x137d2c60` | `2K`-axis | `2K` ordinal fold (phases 0,1 only) |
 
 ---
 
 ## 6. Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `TwistedTorusND::BuildStrategy` | `0x137d0c00` | driver: prologue + base ND ring + per-color seam | HIGH (phase dispatch verified) |
-| `TwistedTorusND::UpdateMinMaxDims` | `0x137d0260` | prologue: `K`/`2K` scalars + axis counts | HIGH (CHECK strings verified) |
-| `TwistedTorusND::InitColorDimensions` | `0x137d0800` | `color_dims[6][3]` cyclic fill / degraded remap | HIGH |
-| `UseResilientAlgorithmTwistedTorus` | `0x1c894fc0` | `env[0x1116]` + `GetDegradedAxis != -1` resilient gate | HIGH |
-| `BaseStrategyND::InitColorDimensionsDegraded` | `0x137c6580` | degraded `[6][3]` remap (resilient tail) | HIGH |
-| `StrategyND::ComputeOrdinal` | `0x137c5300` | coord → ring ordinal (Stage 1) | HIGH |
-| `BaseStrategyND::Torus2DevicePhase0Neighbor` | `0x137c57a0` | `+1`/`-1` neighbour, no-wrap fast path | HIGH |
-| `BaseStrategyND::MeshStrideNPhasekNeighbor` | `0x137c5cc0` | neighbour with inline `ModuloRingSize` fold | HIGH |
-| `BaseStrategyND::UpdateNeighborLocation` | `0x137c5fa0` | deposit into Cw/CounterCw neighbour buffers | HIGH |
-| `TwistedTorusND::UpdateNeighborsKTo2K` | `0x137d24c0` | `K→2K` neighbour seam | HIGH |
-| `TwistedTorusND::UpdateOrdinal2KToK` | `0x137d28c0` | inverse `2K→K` ordinal fold | HIGH |
-| `TwistedTorusND::UpdateNeighbors2KToK` | `0x137d29c0` | `2K→K` neighbour seam | HIGH |
-| `TwistedTorusND::UpdateOrdinal2K` | `0x137d2c60` | `2K` ordinal fold (phases 0,1) | HIGH |
-| `ModuloRingSize` | `0x137c61a0` | `+K`-mod-`2K` coordinate wrap | HIGH |
-| `ToChipId` | `0x1d519cc0` | folded coordinate → chip ID | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `TwistedTorusND::BuildStrategy` | `0x137d0c00` | driver: prologue + base ND ring + per-color seam |
+| `TwistedTorusND::UpdateMinMaxDims` | `0x137d0260` | prologue: `K`/`2K` scalars + axis counts |
+| `TwistedTorusND::InitColorDimensions` | `0x137d0800` | `color_dims[6][3]` cyclic fill / degraded remap |
+| `UseResilientAlgorithmTwistedTorus` | `0x1c894fc0` | `env[0x1116]` + `GetDegradedAxis != -1` resilient gate |
+| `BaseStrategyND::InitColorDimensionsDegraded` | `0x137c6580` | degraded `[6][3]` remap (resilient tail) |
+| `StrategyND::ComputeOrdinal` | `0x137c5300` | coord → ring ordinal (Stage 1) |
+| `BaseStrategyND::Torus2DevicePhase0Neighbor` | `0x137c57a0` | `+1`/`-1` neighbour, no-wrap fast path |
+| `BaseStrategyND::MeshStrideNPhasekNeighbor` | `0x137c5cc0` | neighbour with inline `ModuloRingSize` fold |
+| `BaseStrategyND::UpdateNeighborLocation` | `0x137c5fa0` | deposit into Cw/CounterCw neighbour buffers |
+| `TwistedTorusND::UpdateNeighborsKTo2K` | `0x137d24c0` | `K→2K` neighbour seam |
+| `TwistedTorusND::UpdateOrdinal2KToK` | `0x137d28c0` | inverse `2K→K` ordinal fold |
+| `TwistedTorusND::UpdateNeighbors2KToK` | `0x137d29c0` | `2K→K` neighbour seam |
+| `TwistedTorusND::UpdateOrdinal2K` | `0x137d2c60` | `2K` ordinal fold (phases 0,1) |
+| `ModuloRingSize` | `0x137c61a0` | `+K`-mod-`2K` coordinate wrap |
+| `ToChipId` | `0x1d519cc0` | folded coordinate → chip ID |
 
 ---
 

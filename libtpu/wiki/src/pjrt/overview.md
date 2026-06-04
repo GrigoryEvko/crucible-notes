@@ -75,13 +75,13 @@ The caller then reads `api->struct_size` to learn how many slots this plugin act
 
 The first five slots are not function pointers. They are the self-describing header that makes the ABI forward/backward compatible. Confirmed byte-for-byte against `CreatePjrtApi @ 0xf874160` (`*a1 = 1120; a1[2] = 24; a1[4] = 0x6700000000`).
 
-| Slot | Offset | Field | Value | Confidence |
-|---|---|---|---|---|
-| 0 | +0x00 | `struct_size` | 1120 (= 140 × 8) | CONFIRMED |
-| 1 | +0x08 | `extension_start` | → `host_memory_allocator_extension @ 0x224C3F68` | CONFIRMED |
-| 2 | +0x10 | `pjrt_api_version.struct_size` | 24 (the sub-struct's own size) | CONFIRMED |
-| 3 | +0x18 | `pjrt_api_version.priv` | NULL (reserved) | CONFIRMED |
-| 4 | +0x20 | `pjrt_api_version.{major,minor}` | `{0, 103}` (qword `0x6700000000`) | CONFIRMED |
+| Slot | Offset | Field | Value |
+|---|---|---|---|
+| 0 | +0x00 | `struct_size` | 1120 (= 140 × 8) |
+| 1 | +0x08 | `extension_start` | → `host_memory_allocator_extension @ 0x224C3F68` |
+| 2 | +0x10 | `pjrt_api_version.struct_size` | 24 (the sub-struct's own size) |
+| 3 | +0x18 | `pjrt_api_version.priv` | NULL (reserved) |
+| 4 | +0x20 | `pjrt_api_version.{major,minor}` | `{0, 103}` (qword `0x6700000000`) |
 
 `pjrt_api_version` is an embedded `PJRT_Api_Version { size_t struct_size; void* priv; int major; int minor }` (24 bytes), so slots 2..4 are one logical field. The major/minor pack into the slot-4 qword little-endian: low 32 bits = major (0), high 32 = minor (0x67 = 103).
 
@@ -163,13 +163,13 @@ Type IDs 0, 2, 3, 5, 7, 10, 11 are unused in this build. Public XLA also registe
 
 Confirmed against `CreatePjrtApi @ 0xf874160`: the body is a flat header-write plus `lea`/`mov` slot-fill with no loop, and exactly five slots are written from incoming register args (`a1[8]=a5`, `a1[9]=a7`, `a1[15]=a2`, `a1[87]=a4`, `a1[103]=a3`); slot 1 (`a1[1]=a6`) is the chain head.
 
-| Slot | Field | libtpu impl | Addr | Role | Confidence |
-|---|---|---|---|---|---|
-| 8 | `PJRT_Plugin_Initialize` | `tpu_plugin::PJRT_Plugin_Initialize` | `0xE6A9D00` | One-time TPU driver bring-up (lifecycle) | CONFIRMED |
-| 9 | `PJRT_Plugin_Attributes` | `pjrt::PJRT_Plugin_Attributes_Xla` | `0xF85F080` | Plugin attribute table — generic XLA impl, not a TPU override | CONFIRMED |
-| 15 | `PJRT_Client_Create` | `tpu_plugin::PJRT_Client_Create` | `0xE6A8840` | Silicon scan + live client construction | CONFIRMED |
-| 87 | `PJRT_TopologyDescription_Create` | `tpu_plugin::PJRT_TopologyDescription_Create` | `0xE6A9B20` | TPU pod topology (AOT, no client) | CONFIRMED |
-| 103 | `PJRT_ExecuteContext_Create` | `tpu_plugin::PJRT_ExecuteContext_Create` | `0xE6A9A80` | Per-execution context | CONFIRMED |
+| Slot | Field | libtpu impl | Addr | Role |
+|---|---|---|---|---|
+| 8 | `PJRT_Plugin_Initialize` | `tpu_plugin::PJRT_Plugin_Initialize` | `0xE6A9D00` | One-time TPU driver bring-up (lifecycle) |
+| 9 | `PJRT_Plugin_Attributes` | `pjrt::PJRT_Plugin_Attributes_Xla` | `0xF85F080` | Plugin attribute table — generic XLA impl, not a TPU override |
+| 15 | `PJRT_Client_Create` | `tpu_plugin::PJRT_Client_Create` | `0xE6A8840` | Silicon scan + live client construction |
+| 87 | `PJRT_TopologyDescription_Create` | `tpu_plugin::PJRT_TopologyDescription_Create` | `0xE6A9B20` | TPU pod topology (AOT, no client) |
+| 103 | `PJRT_ExecuteContext_Create` | `tpu_plugin::PJRT_ExecuteContext_Create` | `0xE6A9A80` | Per-execution context |
 
 The remaining 130 function-pointer slots are compile-fixed `pjrt::PJRT_*` wrappers (`lea`-loaded constants in `CreatePjrtApi`), shared with the generic XLA PJRT layer. The single most-called slot is **slot 60 `PJRT_LoadedExecutable_Execute @ 0xF869B40`** — the per-step program launch — which is a generic wrapper that bottoms out in the runtime's `CommonPjRtLoadedExecutable::Execute`; see [executable-execution.md](executable-execution.md) and [../runtime/overview.md](../runtime/overview.md).
 

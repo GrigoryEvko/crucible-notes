@@ -150,21 +150,21 @@ The grid's inner axis is `GhostlitePerformance::Resource`, a 31-value enum of in
 
 ### The columns, by occupant LLO class
 
-| col | role (functional name) | occupant LLO band (GF) | example cells | Confidence |
-|---|---|---|---|---|
-| r0 | address / indexed load-store generation | `kParameterAddress`, `kVectorLoadIndexed` | 2 | HIGH |
-| r1 | vector load/store sublane-shuffle (Cmem) | `kVectorLoadSublaneShuffle`, `kVectorLoadIndexed` | 2 | HIGH |
-| r2 | scalar store / sync-flag (SFRF) | `kScalarStore`, `kVectorSyncFlag{Add,Set}*` | 1, 2 | HIGH |
-| r3..r6 | EUP transcendental-prep stages A–D | `kVector{Subtract,Pack,Tanh,Pow2,Rsqrt,…}` F32/Bf16 | 16/4/9/3, 20/8/13/7 | HIGH |
-| r7 | EUP gain-latch / AndPop setup | `kVector{SigShft,Sinq,Cosq,Erf}F32AndPop` | 52 | HIGH |
-| r8..r11 | EUP-result-pop FIFO stages A–D | `kVector{Tanh,Pow2,Reciprocal,…}Bf16AndPop` | 2/1/3/9, 6/5/7/13 | HIGH |
-| r12..r15 | cross-lane / transpose-result stages A–D | `kVector{EupResult,XlaneResult}*`, `kVectorMultiply*` | 35/34/40/18 | HIGH |
-| **r16** | **Xlu / matrix-result deposit port** | `kVectorCmemResult`, `kVectorMatresAdd`, `kVectorTransposeClear`, `kVectorMultiplyF32` | **4** | CERTAIN |
-| r17..r20 | mxres-result sub-stages A–D (cmem/matres extended) | `kVectorCmemResult`/`MatresAdd`/`TransposeClear` | 40/44/25/3 | HIGH |
-| r21..r24 | pack / extract / U64-multiply stages A–D | `kVector{Xor,PseudoPack,MultiplyU64,Extract}*` | 21/50/50/32 | HIGH |
-| r25 | scalar-move | `kScalarMove` | 1 | MEDIUM |
-| r26..r27 | vector-min (bf16 / u32) | `kVectorMinimum{Bf16,U32}` | 4, 1 | MEDIUM |
-| r28..r30 | BarnaCore scalar-sync-wait / public-access read | `kVsetptstate`, `kBarnaCoreScalarWait{Lt,Ge,Gt,Eq,Ne}*`, `…SyncPublicAccessRead` | 5/7/3 | HIGH |
+| col | role (functional name) | occupant LLO band (GF) | example cells |
+|---|---|---|---|
+| r0 | address / indexed load-store generation | `kParameterAddress`, `kVectorLoadIndexed` | 2 |
+| r1 | vector load/store sublane-shuffle (Cmem) | `kVectorLoadSublaneShuffle`, `kVectorLoadIndexed` | 2 |
+| r2 | scalar store / sync-flag (SFRF) | `kScalarStore`, `kVectorSyncFlag{Add,Set}*` | 1, 2 |
+| r3..r6 | EUP transcendental-prep stages A–D | `kVector{Subtract,Pack,Tanh,Pow2,Rsqrt,…}` F32/Bf16 | 16/4/9/3, 20/8/13/7 |
+| r7 | EUP gain-latch / AndPop setup | `kVector{SigShft,Sinq,Cosq,Erf}F32AndPop` | 52 |
+| r8..r11 | EUP-result-pop FIFO stages A–D | `kVector{Tanh,Pow2,Reciprocal,…}Bf16AndPop` | 2/1/3/9, 6/5/7/13 |
+| r12..r15 | cross-lane / transpose-result stages A–D | `kVector{EupResult,XlaneResult}*`, `kVectorMultiply*` | 35/34/40/18 |
+| **r16** | **Xlu / matrix-result deposit port** | `kVectorCmemResult`, `kVectorMatresAdd`, `kVectorTransposeClear`, `kVectorMultiplyF32` | **4** |
+| r17..r20 | mxres-result sub-stages A–D (cmem/matres extended) | `kVectorCmemResult`/`MatresAdd`/`TransposeClear` | 40/44/25/3 |
+| r21..r24 | pack / extract / U64-multiply stages A–D | `kVector{Xor,PseudoPack,MultiplyU64,Extract}*` | 21/50/50/32 |
+| r25 | scalar-move | `kScalarMove` | 1 |
+| r26..r27 | vector-min (bf16 / u32) | `kVectorMinimum{Bf16,U32}` | 4, 1 |
+| r28..r30 | BarnaCore scalar-sync-wait / public-access read | `kVsetptstate`, `kBarnaCoreScalarWait{Lt,Ge,Gt,Eq,Ne}*`, `…SyncPublicAccessRead` | 5/7/3 |
 
 The Xlu/matrix-result deposit column (res `0x10`) is the only column the convolution cost model reads through the throughput dispatch, and its cell is uniformly **4**. It is named CERTAIN because two independent anchors agree: the disassembly stores `4` into it for every matrix-result op, and the dedicated accessor `GetXluPathReservation` (the GL twin) reads exactly this column.
 
@@ -200,14 +200,14 @@ xlu:    result = sub_1C8DA1A0(perf /*GfcCycleTable+0x10*/, instr, 16);   // res 
 
 So `thru(CT 0x17/0x1b/0x1c/0x1d/0x1e/0x1f) = grid[instr][0x10] = 4` for all six. The six mxres rows and their full populated cells, byte-exact from the constructor:
 
-| `Instruction` | LLO name | `GetLatency` | populated cells (res:cy) | Confidence |
-|---|---|---|---|---|
-| `0x151` | `kVectorCmemResult` | 127 | r16:4 r17:40 r18:44 r19:25 r20:3 | CERTAIN |
-| `0x153` | `kVectorMatresAdd` | 101 | r16:4 r17:8 r18:11 r19:35 r20:3 | CERTAIN |
-| `0x155` | `kVectorTransposeClear` | 113 | r16:4 r17:4 r18:20 r19:39 r20:3 | CERTAIN |
-| `0x158` | `kVectorMultiplyF32` | 127 | r12:35 r13:34 r14:40 r15:18 r16:4 | CERTAIN |
-| `0x159` | `kVectorMultiplyU32` | 114 | r12:35 r13:34 r14:40 r15:18 r16:4 | CERTAIN |
-| `0x15f` | `kVectorXorU32` | 141 | r16:4 r21:21 r22:50 r23:50 r24:32 | CERTAIN |
+| `Instruction` | LLO name | `GetLatency` | populated cells (res:cy) |
+|---|---|---|---|
+| `0x151` | `kVectorCmemResult` | 127 | r16:4 r17:40 r18:44 r19:25 r20:3 |
+| `0x153` | `kVectorMatresAdd` | 101 | r16:4 r17:8 r18:11 r19:35 r20:3 |
+| `0x155` | `kVectorTransposeClear` | 113 | r16:4 r17:4 r18:20 r19:39 r20:3 |
+| `0x158` | `kVectorMultiplyF32` | 127 | r12:35 r13:34 r14:40 r15:18 r16:4 |
+| `0x159` | `kVectorMultiplyU32` | 114 | r12:35 r13:34 r14:40 r15:18 r16:4 |
+| `0x15f` | `kVectorXorU32` | 141 | r16:4 r21:21 r22:50 r23:50 r24:32 |
 
 > **CONTRAST —** `LatencyTableGhostlite::GetXluPathReservation @0x1c8b21c0` tail-calls `GetResourceUsage(perf, GetGhostliteInstruction(v), 15)` — res `0x0f` — after a direct-handled case for `kVectorSetPermutePattern` (opcode `0x8b` = 139, returns `3·(is_transpose != 0) + 1`). This `LatencyTableGhostlite` accessor (shared `ghostlite` namespace) is *not* the GF convolution path; the GF conv `R[2]` is read by `GfcCycleTable::GetCyclesForThroughputHelper` with res `0x10` (16), while `GlcCycleTable::GetCyclesForThroughputHelper @0x1c89ed20` reads res `0x0f` (15). The Xlu column index is therefore bound per **cost-table helper**, not per `kResources` array: GF helper `0x10`, GL helper `0x0f`, both indexing the one shared 31-column grid.
 
@@ -302,20 +302,20 @@ The op's `GetLatency(0x151) = 127` separately bounds its pipeline depth on depen
 
 ## Function and Data Map
 
-| Name | Address | Role | Confidence |
-|---|---|---|---|
-| `GfcCycleTable::GfcCycleTable` | `0x1c89eec0` | allocs `0x30` perf grid + `0xa0` MxuLatency | CERTAIN |
-| GF `GhostlitePerformance` ctor | `0x1c8d3740` | fills 465 latency + 285 grid cells (unnamed; no decompile) | CERTAIN |
-| `GhostlitePerformance::GetResourceUsage` | `0x1c8d3700` | `grid[instr][res]`; outer `[+0x20]`, 24-B stride, inner `[row+8]` | CERTAIN |
-| inline `GetResourceUsage` twin | `0x1c8da1a0` | byte-identical; the CT-throughput call target | CERTAIN |
-| `GhostlitePerformance::GetLatency` | `0x1c8d36e0` | `latency[instr]`, bound `[+0x8]` | CERTAIN |
-| `GhostlitePerformance::GetResources` | `0x1c8d36c0` | returns `kResources` | CERTAIN |
-| `GhostlitePerformance::…::kResources` | `0xb43cdc4` | 31-byte column traversal order (shared GL/GF) | CERTAIN |
-| `GfcCycleTable::GetCyclesForThroughputHelper` | `0x1c89f400` | Xlu cases → `GetResourceUsage(instr, 16)` | CERTAIN |
-| `GetGhostliteInstruction` | `0x1c8b1740` | LloOpcode → `GhPerf::Instruction` (binary search) | HIGH |
-| `LatencyTableGhostlite::GetResourceLatency` | `0x1c8b1e60` | iterates all 31 columns, per-column overlap reduce | HIGH |
-| `LatencyTableGhostlite::GetXluPathReservation` | `0x1c8b21c0` | `ghostlite` accessor — reads res `0x0f`; not the GF conv path | CERTAIN |
-| `CycleTable::GetResource` | `0x1c89ce20` | fallback op→slot table for `0xff`-default rows | CERTAIN |
+| Name | Address | Role |
+|---|---|---|
+| `GfcCycleTable::GfcCycleTable` | `0x1c89eec0` | allocs `0x30` perf grid + `0xa0` MxuLatency |
+| GF `GhostlitePerformance` ctor | `0x1c8d3740` | fills 465 latency + 285 grid cells (unnamed; no decompile) |
+| `GhostlitePerformance::GetResourceUsage` | `0x1c8d3700` | `grid[instr][res]`; outer `[+0x20]`, 24-B stride, inner `[row+8]` |
+| inline `GetResourceUsage` twin | `0x1c8da1a0` | byte-identical; the CT-throughput call target |
+| `GhostlitePerformance::GetLatency` | `0x1c8d36e0` | `latency[instr]`, bound `[+0x8]` |
+| `GhostlitePerformance::GetResources` | `0x1c8d36c0` | returns `kResources` |
+| `GhostlitePerformance::…::kResources` | `0xb43cdc4` | 31-byte column traversal order (shared GL/GF) |
+| `GfcCycleTable::GetCyclesForThroughputHelper` | `0x1c89f400` | Xlu cases → `GetResourceUsage(instr, 16)` |
+| `GetGhostliteInstruction` | `0x1c8b1740` | LloOpcode → `GhPerf::Instruction` (binary search) |
+| `LatencyTableGhostlite::GetResourceLatency` | `0x1c8b1e60` | iterates all 31 columns, per-column overlap reduce |
+| `LatencyTableGhostlite::GetXluPathReservation` | `0x1c8b21c0` | `ghostlite` accessor — reads res `0x0f`; not the GF conv path |
+| `CycleTable::GetResource` | `0x1c89ce20` | fallback op→slot table for `0xff`-default rows |
 
 ---
 

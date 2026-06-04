@@ -45,34 +45,34 @@ Three classes share one algorithm and one object layout; they differ only in the
 
 ### Function Map
 
-| Class | vtable | `PathType` | Overrides | Confidence |
-|---|---|---|---|---|
-| `ToroidalWildFirstPaths` (abstract) | `0x21f57bd8` | — | `PathFromDistance`, `AppendHopsToPath`, `IsFaultFreeLink`, `IsFaultFreePath`, `HalfwayDirections`, `UpdateSymmetryForHalfway`, `CreateInternal`, ctor | CERTAIN |
-| `RandomizedToroidalWildFirstPaths` | `0x21f57c00` | 1 | `Paths` `0x1fbe9fc0`, `PathsWithFaults` `0x1fbea380`, `PathsWithoutFaults` `0x213dc800`, `WildHopToPath` `0x1fbeb2c0` | CERTAIN |
-| `NonRandomizedToroidalWildFirstPaths` | `0x21f57b88` | 0 | `Paths` `0x1fbe6ae0`, `WildFirstHops` `0x1fbe81e0`, `WildHopToPath` `0x1fbe95a0`, `AddWildHopPathIfValid` `0x1fbe8f20`, `GenerateFirstValidPathOnRing` `0x1fbe7ac0` | CERTAIN |
+| Class | vtable | `PathType` | Overrides |
+|---|---|---|---|
+| `ToroidalWildFirstPaths` (abstract) | `0x21f57bd8` | — | `PathFromDistance`, `AppendHopsToPath`, `IsFaultFreeLink`, `IsFaultFreePath`, `HalfwayDirections`, `UpdateSymmetryForHalfway`, `CreateInternal`, ctor |
+| `RandomizedToroidalWildFirstPaths` | `0x21f57c00` | 1 | `Paths` `0x1fbe9fc0`, `PathsWithFaults` `0x1fbea380`, `PathsWithoutFaults` `0x213dc800`, `WildHopToPath` `0x1fbeb2c0` |
+| `NonRandomizedToroidalWildFirstPaths` | `0x21f57b88` | 0 | `Paths` `0x1fbe6ae0`, `WildFirstHops` `0x1fbe81e0`, `WildHopToPath` `0x1fbe95a0`, `AddWildHopPathIfValid` `0x1fbe8f20`, `GenerateFirstValidPathOnRing` `0x1fbe7ac0` |
 
 ### Object Layout
 
 The ctor `ToroidalWildFirstPaths(…)` at `0x1fbedc40` stores its arguments into a single flat object. Layout recovered from the ctor store sequence:
 
-| Field | Offset | Type | Meaning | Confidence |
-|---|---|---|---|---|
-| `vptr` | `+0x00` | ptr | vtable | CERTAIN |
-| `topology` | `+0x08` | `ToroidalTopologyInterface*` | the discovered topology (distance/walk oracle) | CERTAIN |
-| `faults` | `+0x10`/`+0x18`/`+0x20` | `vector<IciLink>` | copied seed-fault set, `0x58 B` each | CERTAIN |
-| ctor coords `a`..`d` | `+0x28`,`+0x44`,`+0x60`,`+0x7c` | `Coordinates` | endpoint/box parameters | HIGH |
-| `dimension_order` | `+0x98`/`+0xa0`/`+0xa8` | `vector<int>` | the DOR index list (per-instance copy) | CERTAIN |
-| `symmetry` | `+0xb0` | `Coordinates` | the fault symmetry period `S` | CERTAIN |
-| `path_type` | `+0xcc` | `int` | 1 = Randomized, 0 = Non | CERTAIN |
-| `wild_mask` | `+0xd0`/`+0xd8`/`+0xe0` | `vector<bool>` | per-dim "wild-eligible" bitmap (read by `bt`) | HIGH |
+| Field | Offset | Type | Meaning |
+|---|---|---|---|
+| `vptr` | `+0x00` | ptr | vtable |
+| `topology` | `+0x08` | `ToroidalTopologyInterface*` | the discovered topology (distance/walk oracle) |
+| `faults` | `+0x10`/`+0x18`/`+0x20` | `vector<IciLink>` | copied seed-fault set, `0x58 B` each |
+| ctor coords `a`..`d` | `+0x28`,`+0x44`,`+0x60`,`+0x7c` | `Coordinates` | endpoint/box parameters |
+| `dimension_order` | `+0x98`/`+0xa0`/`+0xa8` | `vector<int>` | the DOR index list (per-instance copy) |
+| `symmetry` | `+0xb0` | `Coordinates` | the fault symmetry period `S` |
+| `path_type` | `+0xcc` | `int` | 1 = Randomized, 0 = Non |
+| `wild_mask` | `+0xd0`/`+0xd8`/`+0xe0` | `vector<bool>` | per-dim "wild-eligible" bitmap (read by `bt`) |
 
 The `topology` object is accessed only through its vtable. The slots the algorithm uses (resolved by call pattern):
 
-| Slot | Method | Confidence |
-|---|---|---|
-| `+0x48` | `num_dimensions()` → 3 for a 3D torus | CERTAIN |
-| `+0xa0` | `Walk(coord, direction)` — one-hop walk, returns reached `Coordinates` | HIGH |
-| `+0xb8` | `GetDistances(src, dst)` — per-dim signed shortest distance (torus-wrap-reduced, twist included) | HIGH |
+| Slot | Method |
+|---|---|
+| `+0x48` | `num_dimensions()` → 3 for a 3D torus |
+| `+0xa0` | `Walk(coord, direction)` — one-hop walk, returns reached `Coordinates` |
+| `+0xb8` | `GetDistances(src, dst)` — per-dim signed shortest distance (torus-wrap-reduced, twist included) |
 
 > **NOTE —** `Paths` at `0x1fbe9fc0` calls `topology` vtable `+0x48` (decompiled as `(*(...)(*(_QWORD*)v9 + 72LL))(v9)`, i.e. byte offset 72 = `0x48`) to get the dimension count before allocating the distance seed. The offset is byte-confirmed in the decompile.
 
@@ -269,13 +269,13 @@ The two subclasses implement the same DOR + wild-first search but differ in *how
 
 ### Policy Comparison
 
-| Aspect | Randomized (`PathType=1`) | Non-Randomized (`PathType=0`) | Confidence |
-|---|---|---|---|
-| Wild-path policy | keep **all** fault-free wild paths | keep **first** fault-free wild path | CERTAIN |
-| Emitted `RouteScheme` | `RandomHop` (set of equal-cost directions) | `StaticPath` (one direction sequence) | HIGH |
-| Path enumerator | inline loop in `PathsWithFaults` | `GenerateFirstValidPathOnRing` `0x1fbe7ac0`, `AddWildHopPathIfValid` `0x1fbe8f20` | CERTAIN |
-| Valid accessor | `GetStaticPaths` (plural) `0x1fbe1e20` | `GetStaticPath` (singular) `0x1fbe1ce0` | CERTAIN |
-| Factory | `CreateRandomized` `0x1fbedc20` | `CreateNonRandomized` `0x1fbedc00` | CERTAIN |
+| Aspect | Randomized (`PathType=1`) | Non-Randomized (`PathType=0`) |
+|---|---|---|
+| Wild-path policy | keep **all** fault-free wild paths | keep **first** fault-free wild path |
+| Emitted `RouteScheme` | `RandomHop` (set of equal-cost directions) | `StaticPath` (one direction sequence) |
+| Path enumerator | inline loop in `PathsWithFaults` | `GenerateFirstValidPathOnRing` `0x1fbe7ac0`, `AddWildHopPathIfValid` `0x1fbe8f20` |
+| Valid accessor | `GetStaticPaths` (plural) `0x1fbe1e20` | `GetStaticPath` (singular) `0x1fbe1ce0` |
+| Factory | `CreateRandomized` `0x1fbedc20` | `CreateNonRandomized` `0x1fbedc00` |
 
 `GetStaticPath` (singular, `0x1fbe1ce0`) hard-errors with the string **"GetStaticPath … is not defined when randomized_paths is enabled, use GetStaticPaths (plural)"** — byte-confirmed: that string lives in `0x1fbe1ce0`. There is no single canonical path under the randomized policy, only a candidate set.
 

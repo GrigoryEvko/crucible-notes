@@ -133,20 +133,20 @@ dlopen("libtpu.so")
 
 The gate checks **eleven** features via the `__cpu_indicator_init` mask, in a fixed fall-through order, plus a separate `cpuid` leaf-1 ECX probe for CMPXCHG16B. The full set (mask bit → feature) is below.
 
-| Order | Mask test (`dword_22598A0C &`) | Feature | Confidence |
-|---|---|---|---|
-| 1 | `0x40000` | AES | CONFIRMED |
-| 2 | `0x200` | AVX | CONFIRMED |
-| 3 | `0x2` | MMX | CONFIRMED |
-| 4 | `0x80000` | PCLMUL | CONFIRMED |
-| 5 | `0x4` | POPCNT | CONFIRMED |
-| 6 | `0x8` | SSE | CONFIRMED |
-| 7 | `0x10` | SSE2 | CONFIRMED |
-| 8 | `0x20` | SSE3 | CONFIRMED |
-| 9 | `0x80` | SSE4.1 | CONFIRMED |
-| 10 | `0x100` | SSE4.2 | CONFIRMED |
-| 11 | `0x40` | SSSE3 | CONFIRMED |
-| 12 | `cpuid(1).ecx & 0x2000` | CMPXCHG16B | CONFIRMED |
+| Order | Mask test (`dword_22598A0C &`) | Feature |
+|---|---|---|
+| 1 | `0x40000` | AES |
+| 2 | `0x200` | AVX |
+| 3 | `0x2` | MMX |
+| 4 | `0x80000` | PCLMUL |
+| 5 | `0x4` | POPCNT |
+| 6 | `0x8` | SSE |
+| 7 | `0x10` | SSE2 |
+| 8 | `0x20` | SSE3 |
+| 9 | `0x80` | SSE4.1 |
+| 10 | `0x100` | SSE4.2 |
+| 11 | `0x40` | SSSE3 |
+| 12 | `cpuid(1).ecx & 0x2000` | CMPXCHG16B |
 
 ```c
 function cpu_feature_fail_fast():                 // 0x2110abc0
@@ -169,15 +169,15 @@ function cpu_feature_fail_fast():                 // 0x2110abc0
 
 `INIT_ARRAY @ 0x215f26f0` is 23200 bytes = 2900 entries, every one an `R_X86_64_RELATIVE` reloc (in-file slots zero, linker-filled). The first entries are `__cpu_indicator_init`, then the Rust runtime's `std::sys::args::unix::imp::ARGV_INIT_ARRAY` (libtpu statically links a Rust component), then the remaining 2898 C++ static constructors. By symbol category (counts byte-exact over all 2900 slots):
 
-| Constructor kind | Count | What it does | Confidence |
-|---|---|---|---|
-| `_GLOBAL__sub_I_<file>.cc/.cpp` | 1885 | per-translation-unit static init | CONFIRMED |
-| `_GLOBAL__I_NNNNNN` | 759 | grouped C++ ctors | CONFIRMED |
-| `__cxx_global_var_init[.N]` | 221 | single global-var inits | CONFIRMED |
-| anon / no-symbol ctors + `__do_init` + `upb_GeneratedRegistry_Constructor` | 33 | remaining C++ ctors | CONFIRMED |
-| `__cpu_indicator_init` | 1 | GCC ifunc support (first slot) | CONFIRMED |
-| Rust `ARGV_INIT_ARRAY` | 1 | Rust std args bootstrap | CONFIRMED |
-| **Total** | **2900** | matches `INIT_ARRAYSZ`/8 | CONFIRMED |
+| Constructor kind | Count | What it does |
+|---|---|---|
+| `_GLOBAL__sub_I_<file>.cc/.cpp` | 1885 | per-translation-unit static init |
+| `_GLOBAL__I_NNNNNN` | 759 | grouped C++ ctors |
+| `__cxx_global_var_init[.N]` | 221 | single global-var inits |
+| anon / no-symbol ctors + `__do_init` + `upb_GeneratedRegistry_Constructor` | 33 | remaining C++ ctors |
+| `__cpu_indicator_init` | 1 | GCC ifunc support (first slot) |
+| Rust `ARGV_INIT_ARRAY` | 1 | Rust std args bootstrap |
+| **Total** | **2900** | matches `INIT_ARRAYSZ`/8 |
 
 These constructors register, but do not execute, the order-critical TPU stack. They populate: absl command-line flag tables (`_GLOBAL__sub_I_*_flags.cc`, `commandlineflags.cc`) and absl logging; protobuf descriptors (7 `*proto/descriptor` TUs + the upb `linkarr_upb_AllExts` mini-table array `@ 0x224c2480..0x224c2920`); LLVM target backends (X86/AArch64/AMDGPU/ARM `*TargetMachine.cpp`, `AsmPrinter.cpp`); MLIR dialect/pass registrations (mhlo/stablehlo/`mlir_bridge_pass`); and — the discovery-critical part — the `GoogleInitializer` **module descriptors** plus their dependency edges.
 
@@ -290,16 +290,16 @@ This installs the legacy StreamExecutor `TpuPlatform` beneath the PJRT `PjRtClie
 
 Three distinct once-guard mechanisms keep the whole chain idempotent — re-calling `GetPjrtApi` or `PJRT_Plugin_Initialize` is a fast no-op:
 
-| Mechanism | Where | Address(es) | Confidence |
-|---|---|---|---|
-| C++ `__cxa_guard` (libtpu's own libc++abi, not glibc's) | `GetTpuPjrtApi` 16 ext + `pjrt_api` (×17) | acquire/release/abort `0x213e9ac0`/`0x213e9be0`/`0x213e9c20`; e.g. raw_buffer guard `0x224c39e0` | CONFIRMED |
-| `absl::Mutex` once-lock | `TryAcquireTpuLock::mu` | guard `0x225925d0` / obj `0x225925c8` | CONFIRMED |
-| `absl::Mutex` registry lock | `GoogleInitializer::RunInitializers` | inside `0x210b2d20` | HIGH |
-| function-static byte guard | `RegisterTpuPlatform::tpu_platform_registered` | `0x224c5388` | CONFIRMED |
-| function-static byte guard | `__do_init` / `__do_fini` | `0xe63c000` / `0xe63c020` | HIGH |
-| env-var gate | `TPU_LOAD_LIBRARY` (in `TryAcquireTpuLock`) | str `@ 0x887356a` | CONFIRMED |
-| env-var args | `LIBTPU_INIT_ARGS` (in `GetLibTpuInitArguments`) | str `@ 0x918c880` | CONFIRMED |
-| init-type selector | `kPjRtCApiTpuInitType` (= 2) | `0x22255b40` (`.data`) | CONFIRMED |
+| Mechanism | Where | Address(es) |
+|---|---|---|
+| C++ `__cxa_guard` (libtpu's own libc++abi, not glibc's) | `GetTpuPjrtApi` 16 ext + `pjrt_api` (×17) | acquire/release/abort `0x213e9ac0`/`0x213e9be0`/`0x213e9c20`; e.g. raw_buffer guard `0x224c39e0` |
+| `absl::Mutex` once-lock | `TryAcquireTpuLock::mu` | guard `0x225925d0` / obj `0x225925c8` |
+| `absl::Mutex` registry lock | `GoogleInitializer::RunInitializers` | inside `0x210b2d20` |
+| function-static byte guard | `RegisterTpuPlatform::tpu_platform_registered` | `0x224c5388` |
+| function-static byte guard | `__do_init` / `__do_fini` | `0xe63c000` / `0xe63c020` |
+| env-var gate | `TPU_LOAD_LIBRARY` (in `TryAcquireTpuLock`) | str `@ 0x887356a` |
+| env-var args | `LIBTPU_INIT_ARGS` (in `GetLibTpuInitArguments`) | str `@ 0x918c880` |
+| init-type selector | `kPjRtCApiTpuInitType` (= 2) | `0x22255b40` (`.data`) |
 
 > **NOTE —** `kPjRtCApiTpuInitType` is statically `2` in `.data`. Type 2 takes the full TPU bring-up path (`InitializeDriver(…, init_type_is_2 = true, …)`); type 0 makes `PJRT_Plugin_Initialize` a no-op. Whether any path rewrites the selector to `0`/`1` (e.g. to select the legacy TF init-type) was not traced (LOW confidence on the rewrite existence; the static value `2` is CONFIRMED).
 

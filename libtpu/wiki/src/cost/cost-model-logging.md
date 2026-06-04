@@ -65,14 +65,6 @@ The `TcParseTable` `_table_` @ `0x21cfa1e8` (size `0x78`) opens with `has_bits_o
 
 > **NOTE —** the two booleans are independent observability levels, not a count. Field#1 (`enable_analysis_logging`) turns the per-op cost dump ON. Field#2 (`log_codegen_and_non_codegen_window_costs_in_analysis`) is a *widener*: it makes the dump emit BOTH the codegen-window and the good-enough-window cost variants so the per-op delta between window strategies is visible. Field#2 has no effect unless field#1 is also set — see [The Consumer Closure](#the-consumer-closure-per-hlo).
 
-### Confidence
-
-| Item | Address | Evidence | Confidence |
-|---|---|---|---|
-| 2-bool schema | `_InternalSerialize` @ `0x1db24760` | wire tags `0x08`/`0x10`, byte reads `+0x18`/`+0x19` | CERTAIN |
-| has-bits offset | `_table_` @ `0x21cfa1e8` (size `0x78`) | `has_bits_offset 0x10` (first dword of table) | CERTAIN |
-| field NAMES | descriptor strings in `.rodata` | `enable_analysis_logging` / `log_codegen_and_non_codegen_window_costs_in_analysis` present verbatim | CERTAIN |
-
 ---
 
 ## AutoOr Storage and the Non-TCE Resolve Path
@@ -133,13 +125,13 @@ function AbslUnparseFlag(out, autoor):                   // sub_12FD01A0
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `FlagOps<AutoOr<CostModelLoggingOptions>>` | `0x12fc0e00` | the flag-storage TypeId (FlagImpl `+0x20`) | CERTAIN |
-| `AbslFlagDefaultGenFor…::Gen` | `0x12fc1260` | sets present `+0x00`=0, has `+0x28`=0 → AUTO | CERTAIN |
-| `AbslUnparseFlag(AutoOr<…>)` | `0x12fd01a0` | AUTO→`"auto"`, present→TextFormat | CERTAIN |
-| `RunMemorySpaceAssignment` | `0x12fc3080` | resolve site (fast `0x12fc440b` / slow `0x12fc46d3`) | HIGH |
-| `FlagImpl::Read` | `0x21111940` | lazy first-touch slow-path initialiser | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `FlagOps<AutoOr<CostModelLoggingOptions>>` | `0x12fc0e00` | the flag-storage TypeId (FlagImpl `+0x20`) |
+| `AbslFlagDefaultGenFor…::Gen` | `0x12fc1260` | sets present `+0x00`=0, has `+0x28`=0 → AUTO |
+| `AbslUnparseFlag(AutoOr<…>)` | `0x12fd01a0` | AUTO→`"auto"`, present→TextFormat |
+| `RunMemorySpaceAssignment` | `0x12fc3080` | resolve site (fast `0x12fc440b` / slow `0x12fc46d3`) |
+| `FlagImpl::Read` | `0x21111940` | lazy first-touch slow-path initialiser |
 
 ---
 
@@ -208,13 +200,13 @@ function ShouldUseCodegenWindows(hlo, flag_opts):        // sub_130D3D40
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `CreateCostModelWindowSettingDelegator` | `0x1304e100` | builds the delegator node; captures `CostModelLoggingOptions` by value | CERTAIN |
-| window-setting closure (`RemoteInvoker`) | `0x1304ff00` | per-HLO `DelegationInfo`; field#2 (`+0x61`) gates dual charge | CERTAIN |
-| `ShouldUseCodegenWindows` | `0x130d3d40` | codegen-window eligibility (fusion-kind jump-table) | CERTAIN |
-| `NeverUseCodegenWindows` | `0x130d3e80` | negation/override sibling | HIGH |
-| `CostModelLoggingOptions` ctor (capture) | `0x1db24640` | copies the message into capture `+0x48` | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `CreateCostModelWindowSettingDelegator` | `0x1304e100` | builds the delegator node; captures `CostModelLoggingOptions` by value |
+| window-setting closure (`RemoteInvoker`) | `0x1304ff00` | per-HLO `DelegationInfo`; field#2 (`+0x61`) gates dual charge |
+| `ShouldUseCodegenWindows` | `0x130d3d40` | codegen-window eligibility (fusion-kind jump-table) |
+| `NeverUseCodegenWindows` | `0x130d3e80` | negation/override sibling |
+| `CostModelLoggingOptions` ctor (capture) | `0x1db24640` | copies the message into capture `+0x48` |
 
 ---
 
@@ -233,16 +225,16 @@ So the observable side-effect of field#1 is: for every HLO op, the cost values p
 
 Field#2 widens those rows. As shown in [The Consumer Closure](#the-consumer-closure-per-hlo), it makes the window-setting delegator charge *both* the codegen-window and the good-enough-window cost into the analysis pass, so each logged row carries both variants and the per-op codegen-vs-good-enough delta is visible.
 
-> **NOTE —** the exact `OpCostManager` member offset where field#1 latches into the per-pass "emit `AnalysisLoggingColumns`/`Line`" decision was **not** traced (the delegator captures the whole message; the field#1 read site that gates the log emission lives in the `OpCostManager` metric-value / compute path, `GetMetricValue` @ `0x1e475160` / `ComputeSeconds` @ `0x1e475a40`, which were not byte-walked). What is CERTAIN is that field#1 enables the dump and field#2 widens it; the precise latch offset is the one open seam (LOW confidence on the exact offset, HIGH on the behaviour).
+> **NOTE —** the exact `OpCostManager` member offset where field#1 latches into the per-pass "emit `AnalysisLoggingColumns`/`Line`" decision is not pinned here (the delegator captures the whole message; the field#1 read site that gates the log emission lives in the `OpCostManager` metric-value / compute path, `GetMetricValue` @ `0x1e475160` / `ComputeSeconds` @ `0x1e475a40`). Field#1 enables the dump and field#2 widens it; the precise latch offset is the one open seam.
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `OpCostManager::AnalysisLoggingColumns` | `0x1e474c00` | header row (column labels) | CERTAIN |
-| `OpCostManager::AnalysisLoggingLine` | `0x1e475d20` | one row per (metric, HLO) | CERTAIN |
-| `OpCostManager::GetMetricValue` | `0x1e475160` | metric read path (field#1 latch — not traced) | LOW |
-| `OpCostManager::ComputeSeconds` | `0x1e475a40` | per-op seconds compute (not traced) | LOW |
+| Function | Address | Role |
+|---|---|---|
+| `OpCostManager::AnalysisLoggingColumns` | `0x1e474c00` | header row (column labels) |
+| `OpCostManager::AnalysisLoggingLine` | `0x1e475d20` | one row per (metric, HLO) |
+| `OpCostManager::GetMetricValue` | `0x1e475160` | metric read path (field#1 latch — not traced) |
+| `OpCostManager::ComputeSeconds` | `0x1e475a40` | per-op seconds compute (not traced) |
 
 ---
 
@@ -297,33 +289,33 @@ function SimpleAtod(begin, end, out):                    // sub_21171580
 
 ### Edge-Token Table
 
-The accepted/rejected token set for any `float`/`double` AutoOr knob value (confirmed CERTAIN for the WS-strip, sign-guard, format=3, hex-gate, and overflow-clamp; the exact inf/nan keyword spelling set is what abseil's `from_chars` keyword path accepts and was not individually byte-walked):
+The accepted/rejected token set for any `float`/`double` AutoOr knob value (the exact inf/nan keyword spelling set is whatever abseil's `from_chars` keyword path accepts):
 
-| Token | Ingest | Unparse renders | Confidence |
-|---|---|---|---|
-| `auto` | AUTO sentinel | `"auto"` | CERTAIN |
-| `1.5` / `-0.25` | OK (general) | shortest `%g` (6/15 then 9/17 sig-figs) | CERTAIN |
-| `1e9` / `1E-3` | OK (scientific) | shortest `%g` | CERTAIN |
-| `inf` / `-inf` / `Infinity` | OK → ±inf | `"inf"` / `"-inf"` | HIGH |
-| `nan` / `NAN` / `nan(0x1)` | OK → nan(payload) | `"nan"` | HIGH |
-| overflow (e.g. `1e400`) | OK → CLAMP to ±inf | `"inf"` / `"-inf"` | CERTAIN |
-| `0x1.8p3` / `0x10` (hex-float) | REJECT (`fmt` has no hex bit) | n/a (never stored) | CERTAIN |
-| `""` / `"+"` / `"-"` / `"  "` | REJECT (empty / bare sign) | n/a | CERTAIN |
-| leading/trailing whitespace | stripped (`kPropertyBits & 0x8`) | n/a | CERTAIN |
+| Token | Ingest | Unparse renders |
+|---|---|---|
+| `auto` | AUTO sentinel | `"auto"` |
+| `1.5` / `-0.25` | OK (general) | shortest `%g` (6/15 then 9/17 sig-figs) |
+| `1e9` / `1E-3` | OK (scientific) | shortest `%g` |
+| `inf` / `-inf` / `Infinity` | OK → ±inf | `"inf"` / `"-inf"` |
+| `nan` / `NAN` / `nan(0x1)` | OK → nan(payload) | `"nan"` |
+| overflow (e.g. `1e400`) | OK → CLAMP to ±inf | `"inf"` / `"-inf"` |
+| `0x1.8p3` / `0x10` (hex-float) | REJECT (`fmt` has no hex bit) | n/a (never stored) |
+| `""` / `"+"` / `"-"` / `"  "` | REJECT (empty / bare sign) | n/a |
+| leading/trailing whitespace | stripped (`kPropertyBits & 0x8`) | n/a |
 
 > **GOTCHA —** float/double AutoOr knobs accept `inf`/`nan` and clamp overflow to ±inf, but **reject hex-float** — unlike *integer* AutoOr knobs, which accept `0x`-radix via `safe_strto*_base`. A reimplementer who routes all numeric knobs through one parser will wrongly accept `0x10` as `16.0` for a float knob. Also note the radix asymmetry on the integer side: int knobs ingest hex but always *unparse* as decimal. The float unparse is never radix-ambiguous (always `%g` decimal).
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `UnparseFloatingPointVal<float>` | `0x21113460` | shortest `%.*g` 6→9, inf/nan bypass, reparse-verify | CERTAIN |
-| `UnparseFloatingPointVal<double>` | `0x211135a0` | shortest `%.*g` 15→17, inf/nan bypass | CERTAIN |
-| `SimpleAtof` | `0x21171440` | WS-strip + sign-guard + `from_chars(fmt=3)` float | CERTAIN |
-| `SimpleAtod` | `0x21171580` | WS-strip + sign-guard + `from_chars(fmt=3)` double | CERTAIN |
-| `from_chars` (float) | `0x2116ada0` | general format; hex bit clear; ±inf clamp constants | CERTAIN |
-| `from_chars` (double) | `0x2116a340` | general format; `nan@plt` keyword path | HIGH |
-| `kPropertyBits` | `0xbe7fb70` | ASCII property table; bit `0x8` = whitespace | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `UnparseFloatingPointVal<float>` | `0x21113460` | shortest `%.*g` 6→9, inf/nan bypass, reparse-verify |
+| `UnparseFloatingPointVal<double>` | `0x211135a0` | shortest `%.*g` 15→17, inf/nan bypass |
+| `SimpleAtof` | `0x21171440` | WS-strip + sign-guard + `from_chars(fmt=3)` float |
+| `SimpleAtod` | `0x21171580` | WS-strip + sign-guard + `from_chars(fmt=3)` double |
+| `from_chars` (float) | `0x2116ada0` | general format; hex bit clear; ±inf clamp constants |
+| `from_chars` (double) | `0x2116a340` | general format; `nan@plt` keyword path |
+| `kPropertyBits` | `0xbe7fb70` | ASCII property table; bit `0x8` = whitespace |
 
 ---
 
@@ -331,15 +323,15 @@ The accepted/rejected token set for any `float`/`double` AutoOr knob value (conf
 
 `xla_tpu_impure_cost_model_logging_options` is one of exactly five `AutoOr`-typed flags that are NOT TCE AutoProto fields. The other four share the "read via `GetFlag`, not via a TCE resolver" property. They are listed here because a reimplementer enumerating the `AutoOr` flag surface must account for them — the perfect `330 ↔ 330` `AutoOr ↔ AutoProto` identity has exactly these five residuals.
 
-| Flag | FlagOps | Inner type | Default | Consumer | Confidence |
-|---|---|---|---|---|---|
-| `xla_tpu_impure_cost_model_logging_options` | `0x12fc0e00` | `CostModelLoggingOptions` | AUTO | `CreateCostModelWindowSettingDelegator` @ `0x1304e100` | CERTAIN |
-| `xla_tpu_impure_use_iteration_mask` | `0x1d6b5840` | bool | AUTO (=ON) | `ShouldUseIterationMask` @ `0x1d6b5dc0` | HIGH |
-| `xla_tpu_comparison_mode_target_module_regex` | `0x1d700400` | string | AUTO | `EnableComparisonMode` @ `0x1d6b8ec0` (RE2 vs module name) | HIGH |
-| `xla_tpu_enable_lem_scheduler` | `0x1d6b5840` | bool | AUTO | registry-mediated (no direct FLAGS_ xref) | MEDIUM |
-| `xla_tpu_explicit_evict_memory_limit_kib` | `0x1d700120` | int64 | AUTO | registry-mediated (no direct FLAGS_ xref) | MEDIUM |
+| Flag | FlagOps | Inner type | Default | Consumer |
+|---|---|---|---|---|
+| `xla_tpu_impure_cost_model_logging_options` | `0x12fc0e00` | `CostModelLoggingOptions` | AUTO | `CreateCostModelWindowSettingDelegator` @ `0x1304e100` |
+| `xla_tpu_impure_use_iteration_mask` | `0x1d6b5840` | bool | AUTO (=ON) | `ShouldUseIterationMask` @ `0x1d6b5dc0` |
+| `xla_tpu_comparison_mode_target_module_regex` | `0x1d700400` | string | AUTO | `EnableComparisonMode` @ `0x1d6b8ec0` (RE2 vs module name) |
+| `xla_tpu_enable_lem_scheduler` | `0x1d6b5840` | bool | AUTO | registry-mediated (no direct FLAGS_ xref) |
+| `xla_tpu_explicit_evict_memory_limit_kib` | `0x1d700120` | int64 | AUTO | registry-mediated (no direct FLAGS_ xref) |
 
-> **NOTE —** `xla_tpu_impure_use_iteration_mask` has polarity AUTO=ON: its consumer reads `FlagImpl+0x58`, `and $0x101 ; cmp $0x100 ; setne` — true unless the user explicitly sets `=false`, and additionally gated on TC version ≥ 3. `enable_lem_scheduler` and `explicit_evict_memory_limit_kib` have NO direct `lea FLAGS_…` reference in `.text`; their effective reads go through the absl flag registry by some inlined `GetFlag<T>` path that a static FLAGS_-address scan cannot pin (MEDIUM confidence on the consumer identity).
+> **NOTE —** `xla_tpu_impure_use_iteration_mask` has polarity AUTO=ON: its consumer reads `FlagImpl+0x58`, `and $0x101 ; cmp $0x100 ; setne` — true unless the user explicitly sets `=false`, and additionally gated on TC version ≥ 3. `enable_lem_scheduler` and `explicit_evict_memory_limit_kib` have NO direct `lea FLAGS_…` reference in `.text`; their effective reads go through the absl flag registry by some inlined `GetFlag<T>` path that a static FLAGS_-address scan cannot pin.
 
 ---
 

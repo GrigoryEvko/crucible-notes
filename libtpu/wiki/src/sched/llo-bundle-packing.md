@@ -63,16 +63,16 @@ StatusOr<vector<Bundle>> Pack() {
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `(anon)::PackBundles` | `0x10a30a20` | top-level driver: timer, build `BundlePackerOptions`, construct `GlobalBundlePacker` | CONFIRMED |
-| `GlobalBundlePacker::Pack` | `0x10a86420` | region topo walk; per-op dispatch; `ConsumeBundles` | CONFIRMED |
-| `GlobalBundlePacker::PackPhis` | `0x10a87160` | collect opcodes 233..236, feed each via `PackInstruction` | CONFIRMED |
-| `GlobalBundlePacker::PackInstruction` | `0x10a875a0` | regular op → `Feed(instr, pack_counter)` | CONFIRMED |
-| `GlobalBundlePacker::PackBranch` | `0x10a877a0` | branch op → `Feed` + delay-slot padding + branch barrier | CONFIRMED |
-| `BundlePacker::Feed` | `0x14021f20` | schedule one op: earliest-bundle + place | CONFIRMED |
-| `BundlePacker::ConsumeBundles` | `0x14026c40` | clear alias analysis, hand `vector<Bundle>` to caller | HIGH |
-| `ValidatePacking` | `0x14026ca0` | post-pack correctness re-check | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `(anon)::PackBundles` | `0x10a30a20` | top-level driver: timer, build `BundlePackerOptions`, construct `GlobalBundlePacker` |
+| `GlobalBundlePacker::Pack` | `0x10a86420` | region topo walk; per-op dispatch; `ConsumeBundles` |
+| `GlobalBundlePacker::PackPhis` | `0x10a87160` | collect opcodes 233..236, feed each via `PackInstruction` |
+| `GlobalBundlePacker::PackInstruction` | `0x10a875a0` | regular op → `Feed(instr, pack_counter)` |
+| `GlobalBundlePacker::PackBranch` | `0x10a877a0` | branch op → `Feed` + delay-slot padding + branch barrier |
+| `BundlePacker::Feed` | `0x14021f20` | schedule one op: earliest-bundle + place |
+| `BundlePacker::ConsumeBundles` | `0x14026c40` | clear alias analysis, hand `vector<Bundle>` to caller |
+| `ValidatePacking` | `0x14026ca0` | post-pack correctness re-check |
 
 ---
 
@@ -159,14 +159,14 @@ The dependency-floor variable is named `MinSafeHoistBundleNo` in the decompile, 
 
 Five distinct fatal/error sites in subsystem (A), all anchored to `bundle_packer.cc` / `global_bundle_packer.cc` line numbers in the decompile:
 
-| Condition | Site | Status returned | Confidence |
-|---|---|---|---|
-| Complement halves in different bundles | `bundle_packer.cc:875` | `RET_CHECK` → FailedPrecondition | CONFIRMED |
-| Complement is null / not in bundle | `bundle_packer.cc:872`/`873` | `RET_CHECK` | CONFIRMED |
-| Constant fed to packer | "Cannot feed constants…" | FailedPrecondition | CONFIRMED |
-| Constant operand where only non-constants allowed | `bundle_packer.cc:928` | `RET_CHECK` | CONFIRMED |
-| Requirement exceeds empty-bundle limit | `slot_tracker.cc:23` | `LogMessageFatal` "requirement doesn't fit in an empty bundle!" | CONFIRMED |
-| `has_branch` / instruction mismatch (post-walk) | `global_bundle_packer.cc:79` | `RET_CHECK` | CONFIRMED |
+| Condition | Site | Status returned |
+|---|---|---|
+| Complement halves in different bundles | `bundle_packer.cc:875` | `RET_CHECK` → FailedPrecondition |
+| Complement is null / not in bundle | `bundle_packer.cc:872`/`873` | `RET_CHECK` |
+| Constant fed to packer | "Cannot feed constants…" | FailedPrecondition |
+| Constant operand where only non-constants allowed | `bundle_packer.cc:928` | `RET_CHECK` |
+| Requirement exceeds empty-bundle limit | `slot_tracker.cc:23` | `LogMessageFatal` "requirement doesn't fit in an empty bundle!" |
+| `has_branch` / instruction mismatch (post-walk) | `global_bundle_packer.cc:79` | `RET_CHECK` |
 
 ---
 
@@ -215,15 +215,15 @@ The four AND-masks are the bitfield layout of the `BundleRequirement` struct: ea
 
 `BundleRequirement` is a packed struct of `BasicBitmap<uint64>` fields plus scalar counters. The exact bit boundaries are not fully decoded, but the field roster is recovered from the per-gen `SetLimits` mask writes and the `OverflowingFields` reporter (`0x1c623e00`):
 
-| Field group | Tracks | Confidence |
-|---|---|---|
-| scalar slots | SPU / sequencer slot occupancy (2 on JF/PF, up to 3 on V5+) | HIGH |
-| vector-ALU slots | VPU lane occupancy (2 on JF, up to 2–3 on V5+) | HIGH |
-| immediate slots | immediate-field occupancy (6 on JF; per-gen) | HIGH |
-| vector source ports | vs0..vs2 (3 on JF, 4 on V5+) | MEDIUM |
-| XLU resource | transcendental-unit demand (1 on JF/PF, 2 on V5+) | MEDIUM |
-| MXU resource | matrix-unit demand (1 on JF, up to 2–4 on V5+) | MEDIUM |
-| ttu / branch / vmem-load / vmem-store | TTU (JF), terminator flag, fence-position counters | MEDIUM |
+| Field group | Tracks |
+|---|---|
+| scalar slots | SPU / sequencer slot occupancy (2 on JF/PF, up to 3 on V5+) |
+| vector-ALU slots | VPU lane occupancy (2 on JF, up to 2–3 on V5+) |
+| immediate slots | immediate-field occupancy (6 on JF; per-gen) |
+| vector source ports | vs0..vs2 (3 on JF, 4 on V5+) |
+| XLU resource | transcendental-unit demand (1 on JF/PF, 2 on V5+) |
+| MXU resource | matrix-unit demand (1 on JF, up to 2–4 on V5+) |
+| ttu / branch / vmem-load / vmem-store | TTU (JF), terminator flag, fence-position counters |
 
 > **GOTCHA — the limit vector is per `(version, sequencer-type)`, not per chip.** `BundleRequirementTracker::GetBundleLimits(Target, TpuSequencerType)` (`0x1c6232e0`) indexes `trackers[*(int*)(target+920)]` (the `TpuVersion`) then offsets by the sequencer type: **`+32`** for `TensorCore` (type 0), **`+128`** for type 1, **`+224`** for type 2; types **3, 4, 5 FATAL** with `"Unsupported sequencer type"` in this build. A reimplementation that assumes one limit vector per chip will mis-size BarnaCore / SparseCore sub-bundles. The raw mapping of higher sequencer types to SparseCore/TAC/TEC limit offsets is **not** present in `0.0.40` (LOW confidence; only types 0–2 are wired).
 
@@ -235,16 +235,16 @@ Per-generation slot rules are encapsulated in polymorphic `TpuBundleRestrictions
 
 ### The Virtual Interface
 
-| vtable slot | Method | Decides | Confidence |
-|---|---|---|---|
-| +16 | `SetLimits(tc, sparse, misc)` | writes the per-sequencer-type slot-limit vectors via masked AND/OR | CONFIRMED |
-| +24 | `AddXluRequirements(instr, req)` | per-opcode XLU (transcendental) slot demand | HIGH |
-| +32 | `AddMxuRequirements(instr, req)` | per-opcode MXU (matmul) slot demand | HIGH |
-| +40 | `HasVectorSlotRestrictions()` | gen forbids certain VPU slot pairings? | MEDIUM |
-| +48 | `HasEupRestrictions()` | EUP-modulo alignment required? | MEDIUM |
-| +56/+64 | `HasVectorOdd/EvenSlotRestrictions()` | odd/even VPU-slot constraint for shuffle/reduce | MEDIUM |
-| +72 | `LaneBroadcastSpecifierIsImplicitImmediate(int)` | lane-broadcast field encoded as implicit immediate (saves a slot)? | MEDIUM |
-| +80 | `MatchScalar(op_idx, ImmediateOperandType)` | which scalar/immediate slot can hold this immediate | HIGH |
+| vtable slot | Method | Decides |
+|---|---|---|
+| +16 | `SetLimits(tc, sparse, misc)` | writes the per-sequencer-type slot-limit vectors via masked AND/OR |
+| +24 | `AddXluRequirements(instr, req)` | per-opcode XLU (transcendental) slot demand |
+| +32 | `AddMxuRequirements(instr, req)` | per-opcode MXU (matmul) slot demand |
+| +40 | `HasVectorSlotRestrictions()` | gen forbids certain VPU slot pairings? |
+| +48 | `HasEupRestrictions()` | EUP-modulo alignment required? |
+| +56/+64 | `HasVectorOdd/EvenSlotRestrictions()` | odd/even VPU-slot constraint for shuffle/reduce |
+| +72 | `LaneBroadcastSpecifierIsImplicitImmediate(int)` | lane-broadcast field encoded as implicit immediate (saves a slot)? |
+| +80 | `MatchScalar(op_idx, ImmediateOperandType)` | which scalar/immediate slot can hold this immediate |
 
 `JellyfishBundleRestrictions::SetLimits` (`0x1c457a40`) is the clearest anchor: it fills the three limit vectors (`tc`, `sparse`, `misc`) with vectorized `vandps`/`vorps`/`vpblendw` against per-gen constant blobs, including the documented `0xFE07FF8000007000` mask and the `0xAA9428404` / `0xC7FE607FFFFFFFFF` immediate-field constants. Each masked word sets one sequencer type's slot ceilings.
 
@@ -254,12 +254,12 @@ Slot counts per generation, reconstructed from the `SetLimits` constants, the `B
 
 Only the four codenames with a concrete `*BundleRestrictions` subclass appear in this build; `dragonfish` (v3) shares the `JellyfishBundleRestrictions` class (no separate subclass is registered). Version labels follow the SM/codename map: jellyfish = v2, dragonfish = v3, pufferfish = v4, viperfish = v5, ghostlite = v6 lite.
 
-| Restriction class | Codename / ver | Bundle B | scalar | vec-ALU | imm | vs | XLU | MXU | ttu | Confidence |
-|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| `JellyfishBundleRestrictions` | jellyfish (v2); also serves dragonfish (v3) | 41 | 2 | 2 | 6 | 3 | 1 | 1 | 1 | HIGH |
-| `PufferfishBundleRestrictions` | pufferfish (v4) | 51 | 2 | 2 | 6 | 3 | 1 | 1 | – | MEDIUM |
-| `ViperfishBundleRestrictions` | viperfish (v5) | 64 | 2 | 2 | 6–7 | 4 | 2 | 1–2 | – | LOW |
-| `GhostliteBundleRestrictions` | ghostlite (v6 lite) | 64 | 2–3 | 2 | 6–7 | 4 | 2 | 2 | – | LOW |
+| Restriction class | Codename / ver | Bundle B | scalar | vec-ALU | imm | vs | XLU | MXU | ttu |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `JellyfishBundleRestrictions` | jellyfish (v2); also serves dragonfish (v3) | 41 | 2 | 2 | 6 | 3 | 1 | 1 | 1 |
+| `PufferfishBundleRestrictions` | pufferfish (v4) | 51 | 2 | 2 | 6 | 3 | 1 | 1 | – |
+| `ViperfishBundleRestrictions` | viperfish (v5) | 64 | 2 | 2 | 6–7 | 4 | 2 | 1–2 | – |
+| `GhostliteBundleRestrictions` | ghostlite (v6 lite) | 64 | 2–3 | 2 | 6–7 | 4 | 2 | 2 | – |
 
 > **NOTE — `MatchScalar` is the immediate-slot legalizer.** When an op carries an immediate operand, `(anon)::RequiredImmSlotCount` (`0x1c625ea0`) and `ImmediateSlotsRequired` (`0x1c626680`) count the immediate-slot contribution, and the per-gen `MatchScalar` (vtable +80) picks which physical immediate/scalar slot can satisfy each. Multiple immediates in one bundle compete; the `SlotTracker` tracks consumption. Constants too wide for any slot are spilled to a constant pool **upstream** of this packer — `Feed`'s `op == 44` rejection confirms the packer assumes per-instruction immediates already fit. See [Immediate Slot](../isa/slot-immediate.md).
 
@@ -408,27 +408,27 @@ A second, structurally identical packer lives in the LLVM TPU backend as a `Mach
 
 ## Confidence Summary
 
-| Claim | Evidence | Confidence |
-|---|---|---|
-| Forward greedy list scheduling, no spill-to-next-bundle | `Pack` `0x10a86420` + `Feed` `0x14021f20` (emplace-only grow) | CONFIRMED |
-| `Pack` walks regions topo-order, dispatches by opcode | `0x10a86420` (`op-233>=4` filter; `(op-135)<2 \|\| op==239` audit) | CONFIRMED |
-| `Feed` earliest bundle = `max` over dependency floors | `0x14021f20` `MinSafeHoistBundleNo` raised by each contributor | CONFIRMED |
-| Operand RAW floor = `producer_bno + LatencyBetween` | `0x14021f20` operand loop calling `LatencyTable::LatencyBetween` | CONFIRMED |
-| `FindFeasibleBundleAfter` is the resource-conflict check | `0x140340a0` IsWithin masks + `FindNextSetBitBeforeLimit` + `CombinationIsWithin` | CONFIRMED |
-| Four bitmap carry-masks for `IsWithin` | `0x140340a0` (`0x4925555552A84888`, …, `0x524`) | CONFIRMED |
-| `PlaceInstructionInBundle`: AddInstruction + scheduled_bundleno + complement + branch tag | `0x1401fe80` | CONFIRMED |
-| `LloOpcodeIsComplement` ⇔ opcode 355 or 36 | `0x1d60c960` `return a1==355 \|\| a1==36` | CONFIRMED |
-| Branch delay slots read from `subtarget + 0x914` | `0x10a877a0` (`subtarget + 2324`); delay byte +29 | CONFIRMED |
-| `EstablishBranchBarrier`: NoteSchedulingBarrier + UpdatePointOfNoReturn | `0x14026880` | CONFIRMED |
-| `GetBundleLimits` seq-type offsets 32 / 128 / 224; 3–5 FATAL | `0x1c6232e0` switch | CONFIRMED |
-| `SetLimits` writes 3 limit vectors via masked AND/OR (`0xFE07FF8000007000`) | `0x1c457a40` | CONFIRMED |
-| Subsystem (B) `canAddMI` order (VRegSrcs, Solver, VResDestPort, Imm, last-in-bundle) | `0x13b2b0e0` | CONFIRMED |
-| `PackPhis` collects opcodes 233..236, feeds via `PackInstruction` | `0x10a87160` (`op-233<=3` filter; AddSourceLocation 104) | CONFIRMED |
-| Semantic role of opcodes 233..236 as SSA-edge resolution | inferred from pass partitioning, not byte-anchored | UNVERIFIED |
-| `BundleRequirement::operator+=` is integer add + carry-mask validity check | `0x140237a0` (`bundle_requirement.h:629` FATAL) | CONFIRMED |
-| Four concrete `*BundleRestrictions` subclasses (JF/PF/VF/Ghostlite) | `nm` symbol roster; dragonfish shares JF class | CONFIRMED |
-| Per-gen slot counts beyond Jellyfish | derived from `BundleRequirement` size growth + bundle widths | MEDIUM/LOW |
-| Seq types 3–5 → SparseCore/TAC/TEC offsets | not wired in `0.0.40` (FATAL) | LOW |
+| Claim | Evidence |
+|---|---|
+| Forward greedy list scheduling, no spill-to-next-bundle | `Pack` `0x10a86420` + `Feed` `0x14021f20` (emplace-only grow) |
+| `Pack` walks regions topo-order, dispatches by opcode | `0x10a86420` (`op-233>=4` filter; `(op-135)<2 \|\| op==239` audit) |
+| `Feed` earliest bundle = `max` over dependency floors | `0x14021f20` `MinSafeHoistBundleNo` raised by each contributor |
+| Operand RAW floor = `producer_bno + LatencyBetween` | `0x14021f20` operand loop calling `LatencyTable::LatencyBetween` |
+| `FindFeasibleBundleAfter` is the resource-conflict check | `0x140340a0` IsWithin masks + `FindNextSetBitBeforeLimit` + `CombinationIsWithin` |
+| Four bitmap carry-masks for `IsWithin` | `0x140340a0` (`0x4925555552A84888`, …, `0x524`) |
+| `PlaceInstructionInBundle`: AddInstruction + scheduled_bundleno + complement + branch tag | `0x1401fe80` |
+| `LloOpcodeIsComplement` ⇔ opcode 355 or 36 | `0x1d60c960` `return a1==355 \|\| a1==36` |
+| Branch delay slots read from `subtarget + 0x914` | `0x10a877a0` (`subtarget + 2324`); delay byte +29 |
+| `EstablishBranchBarrier`: NoteSchedulingBarrier + UpdatePointOfNoReturn | `0x14026880` |
+| `GetBundleLimits` seq-type offsets 32 / 128 / 224; 3–5 FATAL | `0x1c6232e0` switch |
+| `SetLimits` writes 3 limit vectors via masked AND/OR (`0xFE07FF8000007000`) | `0x1c457a40` |
+| Subsystem (B) `canAddMI` order (VRegSrcs, Solver, VResDestPort, Imm, last-in-bundle) | `0x13b2b0e0` |
+| `PackPhis` collects opcodes 233..236, feeds via `PackInstruction` | `0x10a87160` (`op-233<=3` filter; AddSourceLocation 104) |
+| Semantic role of opcodes 233..236 as SSA-edge resolution | inferred from pass partitioning, not byte-anchored |
+| `BundleRequirement::operator+=` is integer add + carry-mask validity check | `0x140237a0` (`bundle_requirement.h:629` FATAL) |
+| Four concrete `*BundleRestrictions` subclasses (JF/PF/VF/Ghostlite) | `nm` symbol roster; dragonfish shares JF class |
+| Per-gen slot counts beyond Jellyfish | derived from `BundleRequirement` size growth + bundle widths |
+| Seq types 3–5 → SparseCore/TAC/TEC offsets | not wired in `0.0.40` (FATAL) |
 
 ---
 

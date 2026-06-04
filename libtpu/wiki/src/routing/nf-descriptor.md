@@ -41,35 +41,35 @@ The descriptor describes one inter-node fabric transfer end to end: both endpoin
 
 The C++ offsets below are byte-exact from `_InternalSerialize` @`0x1cf0ed20`: each field appears as a `*((_DWORD *)this + N)` read paired with its proto wire tag stored into the output stream (`*a2 = TAG` for a one-byte tag, `*(_WORD *)a2 = TAG` for the two-byte tags of fields ≥16). The descriptor-pointer index `N` maps to byte offset `4*N`.
 
-| proto# | Name | Type | C++ off | Wire tag | Confidence |
-|---|---|---|---|---|---|
-| 1 | `id` (`TracePoint`) | enum | `0x18` | `0x08` | CERTAIN |
-| 2 | `tensor_node` | uint32 | `0x1c` | `0x10` | CERTAIN |
-| 3 | `trace_id` | uint32 | `0x20` | `0x18` | CERTAIN |
-| 4 | `descriptor_source` | enum | `0x80` | `0x20` | CERTAIN |
-| 5 | `node_id` | uint32 | `0x24` | `0x28` | CERTAIN |
-| 6 | `chip_id` | uint32 | `0x28` | `0x30` | CERTAIN |
-| 7 | `program_counter` | uint32 | `0x2c` | `0x38` | CERTAIN |
-| 8 | `source_offset` | uint32 | `0x30` | `0x40` | CERTAIN |
-| 9 | `source_resource` | uint32 | `0x34` | `0x48` | CERTAIN |
-| 10 | `destination_offset` | uint32 | `0x38` | `0x50` | CERTAIN |
-| 11 | `destination_resource` | uint32 | `0x3c` | `0x58` | CERTAIN |
-| 12 | `destination_node_id` | uint32 | `0x40` | `0x60` | CERTAIN |
-| 13 | `destination_chip_id` | uint32 | `0x44` | `0x68` | CERTAIN |
-| 14 | `length` | uint32 | `0x48` | `0x70` | CERTAIN |
-| 15 | `destination_is_multicast` | uint32 | `0x4c` | `0x78` | CERTAIN |
-| 16 | `destination_is_segmented` | uint32 | `0x50` | `0x80 01` | CERTAIN |
-| 17 | `destination_update` | uint32 | `0x54` | `0x88 01` | CERTAIN |
-| 18 | `destination_update_sync_flag` | uint32 | `0x58` | `0x90 01` | CERTAIN |
-| 19 | `destination_update_resource` | uint32 | `0x5c` | `0x98 01` | CERTAIN |
-| 20 | `source_update` | uint32 | `0x60` | `0xa0 01` | CERTAIN |
-| 21 | `source_update_sync_flag` | uint32 | `0x64` | `0xa8 01` | CERTAIN |
-| 22 | `source_update_resource` | uint32 | `0x68` | `0xb0 01` | CERTAIN |
-| 23 | `ack_update` | uint32 | `0x6c` | `0xb8 01` | CERTAIN |
-| 24 | `ack_update_sync_flag` | uint32 | `0x70` | `0xc0 01` | CERTAIN |
-| 25 | `ack_update_resource` | uint32 | `0x74` | `0xc8 01` | CERTAIN |
-| 26 | `hib_update` | uint32 | `0x78` | `0xd0 01` | CERTAIN |
-| 27 | `hib_ack_update` | uint32 | `0x7c` | `0xd8 01` | CERTAIN |
+| proto# | Name | Type | C++ off | Wire tag |
+|---|---|---|---|---|
+| 1 | `id` (`TracePoint`) | enum | `0x18` | `0x08` |
+| 2 | `tensor_node` | uint32 | `0x1c` | `0x10` |
+| 3 | `trace_id` | uint32 | `0x20` | `0x18` |
+| 4 | `descriptor_source` | enum | `0x80` | `0x20` |
+| 5 | `node_id` | uint32 | `0x24` | `0x28` |
+| 6 | `chip_id` | uint32 | `0x28` | `0x30` |
+| 7 | `program_counter` | uint32 | `0x2c` | `0x38` |
+| 8 | `source_offset` | uint32 | `0x30` | `0x40` |
+| 9 | `source_resource` | uint32 | `0x34` | `0x48` |
+| 10 | `destination_offset` | uint32 | `0x38` | `0x50` |
+| 11 | `destination_resource` | uint32 | `0x3c` | `0x58` |
+| 12 | `destination_node_id` | uint32 | `0x40` | `0x60` |
+| 13 | `destination_chip_id` | uint32 | `0x44` | `0x68` |
+| 14 | `length` | uint32 | `0x48` | `0x70` |
+| 15 | `destination_is_multicast` | uint32 | `0x4c` | `0x78` |
+| 16 | `destination_is_segmented` | uint32 | `0x50` | `0x80 01` |
+| 17 | `destination_update` | uint32 | `0x54` | `0x88 01` |
+| 18 | `destination_update_sync_flag` | uint32 | `0x58` | `0x90 01` |
+| 19 | `destination_update_resource` | uint32 | `0x5c` | `0x98 01` |
+| 20 | `source_update` | uint32 | `0x60` | `0xa0 01` |
+| 21 | `source_update_sync_flag` | uint32 | `0x64` | `0xa8 01` |
+| 22 | `source_update_resource` | uint32 | `0x68` | `0xb0 01` |
+| 23 | `ack_update` | uint32 | `0x6c` | `0xb8 01` |
+| 24 | `ack_update_sync_flag` | uint32 | `0x70` | `0xc0 01` |
+| 25 | `ack_update_resource` | uint32 | `0x74` | `0xc8 01` |
+| 26 | `hib_update` | uint32 | `0x78` | `0xd0 01` |
+| 27 | `hib_ack_update` | uint32 | `0x7c` | `0xd8 01` |
 
 > **QUIRK —** the C++ layout is *not* proto-field order. Fields 1–3 and 5–27 are packed contiguously from `0x18` to `0x7c`; field 4 (`descriptor_source`) is split out to `0x80`. A reimplementer who lays the struct out in declaration order — or who assumes proto field order equals memory order — will mis-read every field from `node_id` onward. The serializer reads field 4 as `*((int *)this + 32)` (i.e. `0x80`) while emitting wire tag `0x20`, between the field-3 (`0x18`) and field-5 (`0x28`) wire emissions; the proto *wire* order is correct, only the in-memory placement is reordered. This is a protobuf field-arena packing decision (the enum with a non-zero default is grouped with the trailing block), not an error in the table.
 
@@ -173,15 +173,15 @@ Two more wrapper accessors read this record without packing a SyncFlag target:
 
 The 7-field layout is byte-exact from `_InternalSerialize` @`0x1cf152a0` and `::Clear` @`0x1cf15260`:
 
-| proto# | Name | Type | C++ off | Wire tag | Confidence |
-|---|---|---|---|---|---|
-| 1 | `id` (`TracePoint`) | enum | `0x30` | `0x08` | CERTAIN |
-| 2 | `tensor_node` | uint32 | `0x18` | `0x10` | CERTAIN |
-| 3 | `data_field` | uint32 | `0x1c` | `0x18` | CERTAIN |
-| 4 | `sync_flag_number` | uint32 | `0x20` | `0x20` | CERTAIN |
-| 5 | `program_counter` | uint32 | `0x24` | `0x28` | CERTAIN |
-| 6 | `sync_sfence_end` | uint32 | `0x28` | `0x30` | CERTAIN |
-| 7 | `sync_sfence_start` | uint32 | `0x2c` | `0x38` | CERTAIN |
+| proto# | Name | Type | C++ off | Wire tag |
+|---|---|---|---|---|
+| 1 | `id` (`TracePoint`) | enum | `0x30` | `0x08` |
+| 2 | `tensor_node` | uint32 | `0x18` | `0x10` |
+| 3 | `data_field` | uint32 | `0x1c` | `0x18` |
+| 4 | `sync_flag_number` | uint32 | `0x20` | `0x20` |
+| 5 | `program_counter` | uint32 | `0x24` | `0x28` |
+| 6 | `sync_sfence_end` | uint32 | `0x28` | `0x30` |
+| 7 | `sync_sfence_start` | uint32 | `0x2c` | `0x38` |
 
 hasbits @`0x10`; `_table_` @`0x21c56e80`. As with `nf_descriptor`, field 1 (`id`) is out of line: the serializer reads it as `*((int *)this + 12)` (`0x30`) while fields 2–7 are contiguous from `0x18`. `::Clear` zeroes an `xmm` block at `0x18` (16 bytes, `0x18`–`0x27`) plus a qword at `0x28`, then writes `*(u32*)(this + 0x30) = 122` — confirming `id` at `0x30` with **default `0x7a` = 122**.
 
@@ -189,14 +189,14 @@ hasbits @`0x10`; `_table_` @`0x21c56e80`. As with `nf_descriptor`, field 1 (`id`
 
 The 6 `TracePoint` ids map to BarnaCore device lines via `Component()` @`0xf697f40` (case-15 arm → bcs sub-table @`0xab885fc`); names verified from `TpuComponentName` @`0x1c8ebb60`:
 
-| id | TracePoint | TpuComponent | XLine name | Confidence |
-|---|---|---|---|---|
-| 122 | `BRN_TRACE_INSTRUCTION` | `0x3b` (59) | "Barna Core Trace Instruction" | HIGH |
-| 123 | `BRN_SET_TRACEMARK` | `0x3c` (60) | "Barna Core Step" | HIGH |
-| 124 | `BRN_SYNC_START_STOP_TRACE` | `0x16` (22) | "Barna Core Sync Flag" | HIGH |
-| 125 | `BRN_HOST_INTERRUPT` | `0x3d` (61) | "Barna Core Host Interrupt" | HIGH |
-| 126 | `BRN_FENCE_START` | `0x3e` (62) | "Barna Core Fence" | HIGH |
-| 127 | `BRN_FENCE_END` | `0x3e` (62) | "Barna Core Fence" | HIGH |
+| id | TracePoint | TpuComponent | XLine name |
+|---|---|---|---|
+| 122 | `BRN_TRACE_INSTRUCTION` | `0x3b` (59) | "Barna Core Trace Instruction" |
+| 123 | `BRN_SET_TRACEMARK` | `0x3c` (60) | "Barna Core Step" |
+| 124 | `BRN_SYNC_START_STOP_TRACE` | `0x16` (22) | "Barna Core Sync Flag" |
+| 125 | `BRN_HOST_INTERRUPT` | `0x3d` (61) | "Barna Core Host Interrupt" |
+| 126 | `BRN_FENCE_START` | `0x3e` (62) | "Barna Core Fence" |
+| 127 | `BRN_FENCE_END` | `0x3e` (62) | "Barna Core Fence" |
 
 `Constants: NUM_LOG_LINES = 1`.
 
@@ -284,26 +284,26 @@ jxc dma_id (27 bits):              deepsea correspondence:
 
 ## 6. Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `nf_descriptor_trace_entry::_InternalSerialize` | `0x1cf0ed20` | 27-field serializer (offset/tag witness) | CERTAIN |
-| `nf_descriptor_trace_entry::Clear` | `0x1cf0eca0` | zeroing + `descriptor_source=1` default | CERTAIN |
-| `nf_descriptor_trace_entry::_table_` | `0x21c55ba0` | parse table | HIGH |
-| `…SourceSyncFlagTarget` | `0xf6982e0` | "buffer free" flag (OCI fold) | HIGH |
-| `…DestinationSyncFlagTarget` | `0xf698340` | "data arrived" flag (explicit pack) | CERTAIN |
-| `…AckSyncFlagTarget` | `0xf6983a0` | "completion" flag (OCI fold) | HIGH |
-| `…UpdatedSyncFlagTarget` | `0xf698400` | NOT nf — `brn_sync_wait`/`cs_external` band | CERTAIN |
-| `…GetDmaSize` | `0xf6982a0` | `length << 10` (KiB→bytes) | CERTAIN |
-| `…GetDmaTransactionId` | `0xf698260` | BMEM transaction id (0 for nf) | HIGH |
-| OCI SyncFlag fold (mul / mask) | `0xa2c2560` / `0xa2d5e00` | `[1,0x400,0x800,0x1000]` / `[0x3ff,0x400,0x800,0x7ff000]` | HIGH |
-| `bcs_internal_trace_entry::_InternalSerialize` | `0x1cf152a0` | 7-field serializer | CERTAIN |
-| `bcs_internal_trace_entry::Clear` | `0x1cf15260` | zeroing + `id=122` default | CERTAIN |
-| `Component` | `0xf697f40` | band→XLine (bcs sub-table @`0xab885fc`) | HIGH |
-| `ConvertTraceMarksAndInstructionsToXPlane<jxc>` | `0xf260960` | V1 bcs consumer | HIGH |
-| jxc `GetDmaId` | `0xf698180` | 27-bit key (jt @`0xab88674`) | HIGH |
-| deepsea `GetDmaId(int)` | `0xf699ca0` | 38-bit key (jt @`0xab88c40`) | CERTAIN |
-| `CmdDmaIdFromEntry<…>` × 6 | `0xf69a500`–`0xf69a6e0` | OCI command-header key helpers | HIGH |
-| `ConvertTpuTraceToXPlane<pxc>` | `0xf26c8d9` | sole `GetDmaId(0)` caller | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `nf_descriptor_trace_entry::_InternalSerialize` | `0x1cf0ed20` | 27-field serializer (offset/tag witness) |
+| `nf_descriptor_trace_entry::Clear` | `0x1cf0eca0` | zeroing + `descriptor_source=1` default |
+| `nf_descriptor_trace_entry::_table_` | `0x21c55ba0` | parse table |
+| `…SourceSyncFlagTarget` | `0xf6982e0` | "buffer free" flag (OCI fold) |
+| `…DestinationSyncFlagTarget` | `0xf698340` | "data arrived" flag (explicit pack) |
+| `…AckSyncFlagTarget` | `0xf6983a0` | "completion" flag (OCI fold) |
+| `…UpdatedSyncFlagTarget` | `0xf698400` | NOT nf — `brn_sync_wait`/`cs_external` band |
+| `…GetDmaSize` | `0xf6982a0` | `length << 10` (KiB→bytes) |
+| `…GetDmaTransactionId` | `0xf698260` | BMEM transaction id (0 for nf) |
+| OCI SyncFlag fold (mul / mask) | `0xa2c2560` / `0xa2d5e00` | `[1,0x400,0x800,0x1000]` / `[0x3ff,0x400,0x800,0x7ff000]` |
+| `bcs_internal_trace_entry::_InternalSerialize` | `0x1cf152a0` | 7-field serializer |
+| `bcs_internal_trace_entry::Clear` | `0x1cf15260` | zeroing + `id=122` default |
+| `Component` | `0xf697f40` | band→XLine (bcs sub-table @`0xab885fc`) |
+| `ConvertTraceMarksAndInstructionsToXPlane<jxc>` | `0xf260960` | V1 bcs consumer |
+| jxc `GetDmaId` | `0xf698180` | 27-bit key (jt @`0xab88674`) |
+| deepsea `GetDmaId(int)` | `0xf699ca0` | 38-bit key (jt @`0xab88c40`) |
+| `CmdDmaIdFromEntry<…>` × 6 | `0xf69a500`–`0xf69a6e0` | OCI command-header key helpers |
+| `ConvertTpuTraceToXPlane<pxc>` | `0xf26c8d9` | sole `GetDmaId(0)` caller |
 
 ---
 

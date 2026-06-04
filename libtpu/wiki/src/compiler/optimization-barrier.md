@@ -64,12 +64,12 @@ The verifier and the analyses enforce a minimal contract:
 
 Before the program reaches XLA HLO it can carry the op in any of four MLIR dialects, all of them variadic identity ops with `PairwiseSameOperandAndResultType` + `InferTypeOpInterface`. Shape/type inference is the identity map: `mlir::hlo::inferOptimizationBarrierOp` (`0x18145ae0`) sets each result type to the corresponding operand type.
 
-| Dialect / op | Mnemonic | Notes (verified) | Confidence |
-|---|---|---|---|
-| `mlir::TF::XlaOptimizationBarrierOp` | `tf.XlaOptimizationBarrier` | Traits incl. `ConditionallySpeculatable`, `AlwaysSpeculatableImplTrait`, `MemoryEffectOpInterface`, `DerivedAttributeOpInterface`; `getEffects()` @ `0x1041f600` is **empty** (no declared memory effect) | CONFIRMED |
-| `mlir::mhlo::OptimizationBarrierOp` | `mhlo.optimization_barrier` | build/create/parse/print @ `0x17da03c0`/`04e0`/`0580`/`0760` | CONFIRMED |
-| `mlir::stablehlo::OptimizationBarrierOp` | `stablehlo.optimization_barrier` | reference interpreter @ `0x12645ee0` copies operands → results (identity) | CONFIRMED |
-| `mlir::vhlo::OptimizationBarrierOpV1` | `vhlo.optimization_barrier_v1` | versioned serialization form | CONFIRMED |
+| Dialect / op | Mnemonic | Notes (verified) |
+|---|---|---|
+| `mlir::TF::XlaOptimizationBarrierOp` | `tf.XlaOptimizationBarrier` | Traits incl. `ConditionallySpeculatable`, `AlwaysSpeculatableImplTrait`, `MemoryEffectOpInterface`, `DerivedAttributeOpInterface`; `getEffects()` @ `0x1041f600` is **empty** (no declared memory effect) |
+| `mlir::mhlo::OptimizationBarrierOp` | `mhlo.optimization_barrier` | build/create/parse/print @ `0x17da03c0`/`04e0`/`0580`/`0760` |
+| `mlir::stablehlo::OptimizationBarrierOp` | `stablehlo.optimization_barrier` | reference interpreter @ `0x12645ee0` copies operands → results (identity) |
+| `mlir::vhlo::OptimizationBarrierOpV1` | `vhlo.optimization_barrier_v1` | versioned serialization form |
 
 The TF op's `foldHook` (`0x1012fac0`) is the generic op-fold trampoline; it does **not** fold the barrier away to its operand (there is no const-fold of the barrier). Because the op carries `AlwaysSpeculatableImpl` and an **empty** `getEffects`, its barrier semantics at the MLIR level come *purely from being a structural data-flow node* (operand → result dependency), not from a side-effect or memory-fence attribute. The fence is the edge, not a flag.
 
@@ -114,20 +114,20 @@ The cost model agrees the op is free: `HloCostAnalysis::HandleOptimizationBarrie
 
 Twelve classes provide an explicit handler for opcode 78. Every one is pass-through / opaque **except** `AlgebraicSimplifier`, which may prune dead tuple legs (but not reorder or merge compute). Each handler is byte-anchored to a decompiled function at the named address.
 
-| # | Class / handler | Addr | Behaviour (recovered) | Anchor | Confidence |
-|---|---|---|---|---|---|
-| 1 | `ShapeVerifier` | `0x1e441ce0` | `CheckOperandCount(inst, 1)`; then `CheckShape(inst, operand(0)->shape())` | `hlo_verifier.cc:342` | CONFIRMED |
-| 2 | `HloDataflowAnalysis::UpdateOptimizationBarrierValueSet` | `0x1e4d18c0` | barrier value set := `operand(0)` value set; `CHECK` opcode == `kOptimizationBarrier` | `hlo_dataflow_analysis.cc:674` | CONFIRMED |
-| 3 | `TuplePointsToAnalysis` | `0x1e387940` | `CreateCopiedPointsToSet(barrier, operand(0))` — alias operand buffers | — | CONFIRMED |
-| 4 | `HloCostAnalysis` | `0x1e4812e0` | return OK; zero cost | — | CONFIRMED |
-| 5 | `HloEvaluator` | `0x1ddb0040` | `SetEvaluatedLiteralFor(barrier, Clone(GetEvaluatedLiteralFor(operand(0))))` (const-fold passthrough) | — | CONFIRMED |
-| 6 | `AlgebraicSimplifierVisitor` | `0x1dd27360` | dead-tuple-element pruning: walk GTE (opcode 64) users, rebuild a smaller tuple operand + re-index GTEs; `CHECK use->opcode() == kGetTupleElement` | `algebraic_simplifier.cc:5299,5302` | CONFIRMED |
-| 7 | `SpmdPartitioningVisitor` | `0x1c7f3540` | thunks to `HandleElementwise` (sharding flows through unchanged) | — | CONFIRMED |
-| 8 | `HloValueSemanticsPropagation` | `0x111bece0` | `DeepCopyHloValueSemantics(barrier, GetInstructionSemantics(operand(0)))` | — | CONFIRMED |
-| 9 | `HloDimensionInfoPropagation` | `0x10a07d80` | copy `operand(0)` DimensionInfo through; `CHECK operand_count == 1` | `hlo_dimension_analysis.cc:371,378` | CONFIRMED |
-| 10 | `jellyfish::XPrecisionRewriteVisitor` (TPU) | `0x1115be20` | on precision rewrite, set barrier output shape := `operand(0)` new shape | `xprecision_rewriter.cc:4465` | CONFIRMED |
-| 11 | `jellyfish::semantics_guided_sharding::DimLabelPropagation` (TPU) | `0x11197a80` | forward dim labels through | — | CONFIRMED |
-| 12 | `DfsHloVisitorWithDefaultBase` (ptr / const-ptr) | `0x10946240` / `0x10c5b560` | route to `DefaultAction` (vtable `+1120`) — generic opaque handling | — | CONFIRMED |
+| # | Class / handler | Addr | Behaviour (recovered) | Anchor |
+|---|---|---|---|---|
+| 1 | `ShapeVerifier` | `0x1e441ce0` | `CheckOperandCount(inst, 1)`; then `CheckShape(inst, operand(0)->shape())` | `hlo_verifier.cc:342` |
+| 2 | `HloDataflowAnalysis::UpdateOptimizationBarrierValueSet` | `0x1e4d18c0` | barrier value set := `operand(0)` value set; `CHECK` opcode == `kOptimizationBarrier` | `hlo_dataflow_analysis.cc:674` |
+| 3 | `TuplePointsToAnalysis` | `0x1e387940` | `CreateCopiedPointsToSet(barrier, operand(0))` — alias operand buffers | — |
+| 4 | `HloCostAnalysis` | `0x1e4812e0` | return OK; zero cost | — |
+| 5 | `HloEvaluator` | `0x1ddb0040` | `SetEvaluatedLiteralFor(barrier, Clone(GetEvaluatedLiteralFor(operand(0))))` (const-fold passthrough) | — |
+| 6 | `AlgebraicSimplifierVisitor` | `0x1dd27360` | dead-tuple-element pruning: walk GTE (opcode 64) users, rebuild a smaller tuple operand + re-index GTEs; `CHECK use->opcode() == kGetTupleElement` | `algebraic_simplifier.cc:5299,5302` |
+| 7 | `SpmdPartitioningVisitor` | `0x1c7f3540` | thunks to `HandleElementwise` (sharding flows through unchanged) | — |
+| 8 | `HloValueSemanticsPropagation` | `0x111bece0` | `DeepCopyHloValueSemantics(barrier, GetInstructionSemantics(operand(0)))` | — |
+| 9 | `HloDimensionInfoPropagation` | `0x10a07d80` | copy `operand(0)` DimensionInfo through; `CHECK operand_count == 1` | `hlo_dimension_analysis.cc:371,378` |
+| 10 | `jellyfish::XPrecisionRewriteVisitor` (TPU) | `0x1115be20` | on precision rewrite, set barrier output shape := `operand(0)` new shape | `xprecision_rewriter.cc:4465` |
+| 11 | `jellyfish::semantics_guided_sharding::DimLabelPropagation` (TPU) | `0x11197a80` | forward dim labels through | — |
+| 12 | `DfsHloVisitorWithDefaultBase` (ptr / const-ptr) | `0x10946240` / `0x10c5b560` | route to `DefaultAction` (vtable `+1120`) — generic opaque handling | — |
 
 ### The one rewriting handler: AlgebraicSimplifier dead-tuple pruning
 
@@ -171,12 +171,12 @@ The free function `xla::OptimizationBarrier(XlaOp)` (`0x1e421e40`) is a thin wra
 
 The `CreateOptimizationBarrier` factory is inlined into the helper methods of several upstream passes, so it could not be isolated as a distinct symbol. The candidate producers are identified by behaviour and by the presence of opcode-78 construction sites; each is present as a decompiled function in this build:
 
-| Producer pass | Entry | Why it wraps a value in a barrier (recovered behaviour) | Confidence |
-|---|---|---|---|
-| `HloRematerialization::RunImpl` | `0x1d6c8300` | rematerialization under memory pressure — a barrier pins a recomputed value so it is not re-fused/CSE'd back into the original, forcing the recompute to materialize at the chosen point | HIGH |
-| `HostOffloader::RunImpl` | `0x1107d5e0` | host-offload buffer wrapping — host buffers get wrapped to force materialization across the offload boundary | HIGH |
-| `CollectivePipeliner::RunPipeliner` | `0x12ffb100` | collective pipelining ordering — a barrier pins the start/done boundary of a pipelined collective so it cannot be reordered into the steady state | HIGH |
-| `WhileLoopUnroller::RunImpl` | `0x12eeb500` | while-loop unrolling — barriers separate unrolled iteration bodies that must not be re-merged by CSE | MEDIUM |
+| Producer pass | Entry | Why it wraps a value in a barrier (recovered behaviour) |
+|---|---|---|
+| `HloRematerialization::RunImpl` | `0x1d6c8300` | rematerialization under memory pressure — a barrier pins a recomputed value so it is not re-fused/CSE'd back into the original, forcing the recompute to materialize at the chosen point |
+| `HostOffloader::RunImpl` | `0x1107d5e0` | host-offload buffer wrapping — host buffers get wrapped to force materialization across the offload boundary |
+| `CollectivePipeliner::RunPipeliner` | `0x12ffb100` | collective pipelining ordering — a barrier pins the start/done boundary of a pipelined collective so it cannot be reordered into the steady state |
+| `WhileLoopUnroller::RunImpl` | `0x12eeb500` | while-loop unrolling — barriers separate unrolled iteration bodies that must not be re-merged by CSE |
 
 > **WARNING —** the inlined `CreateOptimizationBarrier` create-site could **not** be isolated as a distinct symbol in ~12 decompile greps. The producer list above is recovered by behaviour and by the presence of these passes in the binary, not by a clean producer-by-producer trace of the opcode-78 construction. A precise producer trace is a follow-up; treat the per-producer *rationale* as HIGH/MEDIUM as marked, not byte-exact.
 

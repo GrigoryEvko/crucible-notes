@@ -144,12 +144,12 @@ The decisive point: the builders treat **only `0x100`** as flat. Every other val
 
 The four discriminant values and what each selects. The hierarchical decomposition itself (D2D intra-chip phase + per-torus-axis inter-chip phases) is detailed on **[Hierarchical AllReduce / Pincer](allreduce-hierarchical-pincer.md)**; here only the *selection*.
 
-| `kind & 0x101` | engaged | value | decomposition selected | reached by | Confidence |
-|----------------|---------|-------|-------------------------|------------|------------|
-| `0x101` | yes | true | **HIERARCHICAL** — multi-phase ring list (D2D intra-chip + one inter-chip ring per torus axis, `IMPLICIT` neighbour) | AllReduce only (flag engaged + true) | Confirmed |
-| `0x100` | yes | false | **EXPLICITLY FLAT** — single inter-chip ring (`EXPLICIT` neighbour + precomputed neighbour-table offset) | AG/RS (pinned) + AR (flag off) | Confirmed |
-| `0x001` | no | — | flat fallback (engaged bit clear → `ShouldEnable`/`(~v&0x101)==0` both false) | not forwarded by wrappers | Confirmed (arithmetic) |
-| `0x000` | no | — | **DEFAULT** non-hierarchical (flat fallback) | the packer's not-engaged return | Confirmed |
+| `kind & 0x101` | engaged | value | decomposition selected | reached by |
+|----------------|---------|-------|-------------------------|------------|
+| `0x101` | yes | true | **HIERARCHICAL** — multi-phase ring list (D2D intra-chip + one inter-chip ring per torus axis, `IMPLICIT` neighbour) | AllReduce only (flag engaged + true) |
+| `0x100` | yes | false | **EXPLICITLY FLAT** — single inter-chip ring (`EXPLICIT` neighbour + precomputed neighbour-table offset) | AG/RS (pinned) + AR (flag off) |
+| `0x001` | no | — | flat fallback (engaged bit clear → `ShouldEnable`/`(~v&0x101)==0` both false) | not forwarded by wrappers |
+| `0x000` | no | — | **DEFAULT** non-hierarchical (flat fallback) | the packer's not-engaged return |
 
 The semantic split between the flat and hierarchical decompositions, summarised (full byte map on the pincer page):
 

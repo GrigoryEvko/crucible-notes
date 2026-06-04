@@ -27,25 +27,25 @@ For reimplementation, the contract is the 17-value runtime enum (the integers `M
 
 `MemorySpaceToString` is the ground truth for the integer→region mapping: it is a single `mov rax, [off_21CE6B08 + rax*8]`, so the enum value is a direct index into a pointer array, and the C-string at each slot is the canonical lowercase region name. The 17 slots (`0`..`16`) and the string each resolves to (after following its `R_X86_64_RELATIVE` reloc) are below; the "Region / tier" column maps the name to the physical memory it backs, drawn from the [Memory Hierarchy](../targets/memory-hierarchy.md) tier model and the BarnaCore/SparseCore sub-core taxonomy.
 
-| Enum# | String (`off_21CE6B08[n]`) | Region / tier | Meaning | Confidence |
-|------:|----------------------------|---------------|---------|------------|
-| 0 | `<no memory space>` | — (sentinel) | unset / invalid; the default-constructed value | CONFIRMED |
-| 1 | `hbm` | HBM (off-chip) | device-global backing store: program I/O, spill, embeddings | CONFIRMED |
-| 2 | `hib` | Host-Interface Buffer | HBM↔host staging tier the HIB DMA engine drives | CONFIRMED |
-| 3 | `vmem` | VMEM (per-TensorCore) | vector working set — MXU/VPU operands stage through it | CONFIRMED |
-| 4 | `cmem` | CMEM (Pufferfish/v4 only) | second large chip-level scratchpad above VMEM | CONFIRMED |
-| 5 | `smem` | SMEM (per-TensorCore) | scalar / sequencer scratchpad: addresses, loop bounds | CONFIRMED |
-| 6 | `sflag` | SFLAG (per-TensorCore) | sync-flag words polled by DMA-completion and barriers | CONFIRMED |
-| 7 | `imem` | IMEM (per-TensorCore) | instruction memory the sequencer fetches bundles from | CONFIRMED |
-| 8 | `barna_core_bmem` | BarnaCore BMEM | BarnaCore (embedding-engine) bulk scratchpad | CONFIRMED |
-| 9 | `barna_core_smem` | BarnaCore SMEM | BarnaCore scalar scratchpad | CONFIRMED |
-| 10 | `barna_core_sflag` | BarnaCore SFLAG | BarnaCore sync-flag tier (distinct from TC SFLAG) | CONFIRMED |
-| 11 | `barna_core_imem` | BarnaCore IMEM | BarnaCore instruction memory | CONFIRMED |
-| 12 | `sparse_core_sequencer_sflag` | SparseCore sequencer SFLAG | SC-sequencer sync-flag bank | CONFIRMED |
-| 13 | `host` | Host DRAM | host-resident buffer (transfer source/sink) | CONFIRMED |
-| 14 | `sparse_core_sequencer_smem` | SparseCore sequencer SMEM | SC-sequencer scalar scratchpad | CONFIRMED |
-| 15 | `sparse_core_private_stack_hbm` | SC private-stack HBM window | per-SC private stack carved from HBM | CONFIRMED |
-| 16 | `pinned_hbm` | Pinned HBM | page-pinned HBM region for host-visible DMA | CONFIRMED |
+| Enum# | String (`off_21CE6B08[n]`) | Region / tier | Meaning |
+|------:|----------------------------|---------------|---------|
+| 0 | `<no memory space>` | — (sentinel) | unset / invalid; the default-constructed value |
+| 1 | `hbm` | HBM (off-chip) | device-global backing store: program I/O, spill, embeddings |
+| 2 | `hib` | Host-Interface Buffer | HBM↔host staging tier the HIB DMA engine drives |
+| 3 | `vmem` | VMEM (per-TensorCore) | vector working set — MXU/VPU operands stage through it |
+| 4 | `cmem` | CMEM (Pufferfish/v4 only) | second large chip-level scratchpad above VMEM |
+| 5 | `smem` | SMEM (per-TensorCore) | scalar / sequencer scratchpad: addresses, loop bounds |
+| 6 | `sflag` | SFLAG (per-TensorCore) | sync-flag words polled by DMA-completion and barriers |
+| 7 | `imem` | IMEM (per-TensorCore) | instruction memory the sequencer fetches bundles from |
+| 8 | `barna_core_bmem` | BarnaCore BMEM | BarnaCore (embedding-engine) bulk scratchpad |
+| 9 | `barna_core_smem` | BarnaCore SMEM | BarnaCore scalar scratchpad |
+| 10 | `barna_core_sflag` | BarnaCore SFLAG | BarnaCore sync-flag tier (distinct from TC SFLAG) |
+| 11 | `barna_core_imem` | BarnaCore IMEM | BarnaCore instruction memory |
+| 12 | `sparse_core_sequencer_sflag` | SparseCore sequencer SFLAG | SC-sequencer sync-flag bank |
+| 13 | `host` | Host DRAM | host-resident buffer (transfer source/sink) |
+| 14 | `sparse_core_sequencer_smem` | SparseCore sequencer SMEM | SC-sequencer scalar scratchpad |
+| 15 | `sparse_core_private_stack_hbm` | SC private-stack HBM window | per-SC private stack carved from HBM |
+| 16 | `pinned_hbm` | Pinned HBM | page-pinned HBM region for host-visible DMA |
 
 > **GOTCHA —** the `MemorySpaceToString` table does **not** stop at index 16. Indices 17/18/19 resolve to `absolute` (VA `0x868144c`), `heap_relative` (`0x8678cad`), and `stack_relative` (`0x8678cbb`). These are pointer-*relativity* tags appended to the same string array, not members of `MemorySpaceProto` (which has exactly 17 values, `0`..`16` — see below). A reimplementation that sizes the `MemorySpace` enum by the string-table length, or that treats `absolute`/`heap_relative`/`stack_relative` as memory pools, is wrong: they belong to the `LloAddress` relocation model, not the region enum. The canonical region enum is 17 values; the string table is over-long because it shares storage with the relativity tags.
 

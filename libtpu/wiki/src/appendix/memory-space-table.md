@@ -34,25 +34,25 @@ This is a pure reference catalog — there is no algorithm to reimplement, only 
 
 The rows are keyed on the **LLO `MemorySpace` enum** (the operand-space tag, the one number that flows end-to-end through the TensorCore compiler and runtime). `AS-id` is the SparseCore LLVM address-space integer for the *physically corresponding* SparseCore pool, where one exists — the two enums meet only at the SparseCore/SC-sequencer pools, and the AS-id column is blank for pure-TensorCore tiers that the SparseCore backend never names. `Allocator/owner` names the manager that owns the tier's bytes; `Owning page` is the deep page that documents it. Per-gen size/geometry literals live in `chip_parts.binarypb` (boot-filled) and are not in `.text`; the *formulas* and field offsets are exact, the literal byte counts are not asserted here (see [chip-parts-binarypb.md](../targets/chip-parts-binarypb.md)).
 
-| LLO# | Space | AS-id | Purpose | Per-gen size / geometry | Allocator / owner | Owning page | Conf. |
-|-----:|-------|------:|---------|-------------------------|-------------------|-------------|-------|
-| 0 | `<no memory space>` | — | unset / invalid sentinel (default-constructed) | — | — | [memory-space-enum.md](../isa/memory-space-enum.md) | CONFIRMED |
-| 1 | `hbm` | 203 (`0xCB`) | off-chip DRAM main store: program I/O, spill, embeddings | tens of GiB; `Config{base=0, end=chip_parts HBM −reserved, align=1024 B DMA / 16 KiB compile, granule=chip_parts}` | `BestFitAllocator` (runtime) / `ProgramMemoryAllocator` (compile) | [hbm-allocator.md](../memory/hbm-allocator.md), [hbm-dma-alignment.md](../memory/hbm-dma-alignment.md) | CONFIRMED |
-| 2 | `hib` | — | Host-Interface Buffer: HBM↔host staging tier the HIB DMA engine drives | chip_parts | HIB DMA engine | [memory-space-enum.md](../isa/memory-space-enum.md) | CONFIRMED |
-| 3 | `vmem` | 205 (`0xCD`) | vector memory: MXU/VPU operand staging, the MSA `kAlternate` fast tier | ~16–64 MiB/TensorCore; `align=VmemAlignmentBoundaryInBytes()`, `granule=VmemWordSizeBytes()` (`Target+0x50C`); banks JF8/PF16/VF32/GL32 | `BestFitAllocator` / MSA + `ProgramMemoryAllocator` | [vmem-allocator.md](../memory/vmem-allocator.md) | CONFIRMED |
-| 4 | `cmem` | — | constant memory: Pufferfish-only read-mostly operand pool (dedicated co-issue load slot) | `CmemSizeBytes()` (`Target+0x460`); word=granule=`CmemWordSizeBytes()` (`Target+0x510`, ~16 B PF); banks PF=32 only | `BestFitAllocator` / MSA (`xla_tpu_cmem_*`) | [cmem-pool.md](../memory/cmem-pool.md) | CONFIRMED |
-| 5 | `smem` | 0 (`0x0`) | scalar memory: SPU spill/parameter store, loop counters, completion descriptors | `SmemSizeBytes()` (`Target+0x470`); word=`SmemWordSizeBytes()`=4 B (`Target+0x508`); banks JF2/PF8/VF8/GL8 | `BestFitAllocator` / `ProgramMemoryAllocator` (opcode-driven, **not** MSA) | [smem-scalar-memory.md](../memory/smem-scalar-memory.md), [smem-register-window.md](../memory/smem-register-window.md) | CONFIRMED |
-| 6 | `sflag` | 204 (`0xCC`) | sync-flag register file: DMA-completion/barrier handshake words, atomic counter/done-bit | word-granular S32; `SflagWordSizeBytes()` (`Target+0x504`), log2 cached `Target+0x4c8`; `byte_off = 4·n` | `BestFitAllocator` (size) + fixed number-space partition | [sflag-protocol.md](../memory/sflag-protocol.md) | CONFIRMED |
-| 7 | `imem` | 214 (`0xD6`) † | instruction memory: bundles the sequencer fetches | chip_parts | sequencer | [memory-space-enum.md](../isa/memory-space-enum.md) | CONFIRMED |
-| 8 | `barna_core_bmem` | — | BarnaCore (embedding-engine) bulk scratchpad | chip_parts; PXC family only | BarnaCore | [memory-space-enum.md](../isa/memory-space-enum.md) | CONFIRMED |
-| 9 | `barna_core_smem` | — | BarnaCore scalar scratchpad | `Target+0x47C` size, `+0x480` base, `+0x51C` word | BarnaCore (`BarnaCoreSflagImmPtr`, scoped trampoline) | [smem-scalar-memory.md](../memory/smem-scalar-memory.md) | CONFIRMED |
-| 10 | `barna_core_sflag` | — | BarnaCore sync-flag tier (distinct from TC SFLAG) | `Target+0x478` (`BarnaCoreSflagSizeBytes`) | BarnaCore | [sflag-protocol.md](../memory/sflag-protocol.md) | CONFIRMED |
-| 11 | `barna_core_imem` | — | BarnaCore instruction memory | chip_parts | BarnaCore | [memory-space-enum.md](../isa/memory-space-enum.md) | CONFIRMED |
-| 12 | `sparse_core_sequencer_sflag` | 223 (`0xDF`) ‡ | SC-sequencer sync-flag bank | chip_parts; SC sequencer | SparseCore sequencer | [sflag-protocol.md](../memory/sflag-protocol.md) | CONFIRMED |
-| 13 | `host` | — | host-resident buffer (transfer source/sink; MSA offload spill target) | host DRAM | `PremappedMemoryManager` / `tsl::BFCAllocator` over `posix_memalign` | [overview.md](../memory/overview.md) | CONFIRMED |
-| 14 | `sparse_core_sequencer_smem` | 224 (`0xE0`) ‡ | SC-sequencer scalar scratchpad (well-known constants: `chip_id`, `replica_id`, …) | SCS SMEM 64 KiB hard immediate on VF/GL/GF | SparseCore sequencer | [smem-scalar-memory.md](../memory/smem-scalar-memory.md) | CONFIRMED |
-| 15 | `sparse_core_private_stack_hbm` | 203 (`0xCB`) | per-SC private stack carved from HBM | HBM-backed | HBM-backed | [memory-space-enum.md](../isa/memory-space-enum.md) | CONFIRMED |
-| 16 | `pinned_hbm` | — | page-pinned HBM for host-visible DMA (repacker may not relocate) | 1024 B DMA floor + host pin | HBM (pinned) | [hbm-dma-alignment.md](../memory/hbm-dma-alignment.md) | HIGH |
+| LLO# | Space | AS-id | Purpose | Per-gen size / geometry | Allocator / owner | Owning page |
+|-----:|-------|------:|---------|-------------------------|-------------------|-------------|
+| 0 | `<no memory space>` | — | unset / invalid sentinel (default-constructed) | — | — | [memory-space-enum.md](../isa/memory-space-enum.md) |
+| 1 | `hbm` | 203 (`0xCB`) | off-chip DRAM main store: program I/O, spill, embeddings | tens of GiB; `Config{base=0, end=chip_parts HBM −reserved, align=1024 B DMA / 16 KiB compile, granule=chip_parts}` | `BestFitAllocator` (runtime) / `ProgramMemoryAllocator` (compile) | [hbm-allocator.md](../memory/hbm-allocator.md), [hbm-dma-alignment.md](../memory/hbm-dma-alignment.md) |
+| 2 | `hib` | — | Host-Interface Buffer: HBM↔host staging tier the HIB DMA engine drives | chip_parts | HIB DMA engine | [memory-space-enum.md](../isa/memory-space-enum.md) |
+| 3 | `vmem` | 205 (`0xCD`) | vector memory: MXU/VPU operand staging, the MSA `kAlternate` fast tier | ~16–64 MiB/TensorCore; `align=VmemAlignmentBoundaryInBytes()`, `granule=VmemWordSizeBytes()` (`Target+0x50C`); banks JF8/PF16/VF32/GL32 | `BestFitAllocator` / MSA + `ProgramMemoryAllocator` | [vmem-allocator.md](../memory/vmem-allocator.md) |
+| 4 | `cmem` | — | constant memory: Pufferfish-only read-mostly operand pool (dedicated co-issue load slot) | `CmemSizeBytes()` (`Target+0x460`); word=granule=`CmemWordSizeBytes()` (`Target+0x510`, ~16 B PF); banks PF=32 only | `BestFitAllocator` / MSA (`xla_tpu_cmem_*`) | [cmem-pool.md](../memory/cmem-pool.md) |
+| 5 | `smem` | 0 (`0x0`) | scalar memory: SPU spill/parameter store, loop counters, completion descriptors | `SmemSizeBytes()` (`Target+0x470`); word=`SmemWordSizeBytes()`=4 B (`Target+0x508`); banks JF2/PF8/VF8/GL8 | `BestFitAllocator` / `ProgramMemoryAllocator` (opcode-driven, **not** MSA) | [smem-scalar-memory.md](../memory/smem-scalar-memory.md), [smem-register-window.md](../memory/smem-register-window.md) |
+| 6 | `sflag` | 204 (`0xCC`) | sync-flag register file: DMA-completion/barrier handshake words, atomic counter/done-bit | word-granular S32; `SflagWordSizeBytes()` (`Target+0x504`), log2 cached `Target+0x4c8`; `byte_off = 4·n` | `BestFitAllocator` (size) + fixed number-space partition | [sflag-protocol.md](../memory/sflag-protocol.md) |
+| 7 | `imem` | 214 (`0xD6`) † | instruction memory: bundles the sequencer fetches | chip_parts | sequencer | [memory-space-enum.md](../isa/memory-space-enum.md) |
+| 8 | `barna_core_bmem` | — | BarnaCore (embedding-engine) bulk scratchpad | chip_parts; PXC family only | BarnaCore | [memory-space-enum.md](../isa/memory-space-enum.md) |
+| 9 | `barna_core_smem` | — | BarnaCore scalar scratchpad | `Target+0x47C` size, `+0x480` base, `+0x51C` word | BarnaCore (`BarnaCoreSflagImmPtr`, scoped trampoline) | [smem-scalar-memory.md](../memory/smem-scalar-memory.md) |
+| 10 | `barna_core_sflag` | — | BarnaCore sync-flag tier (distinct from TC SFLAG) | `Target+0x478` (`BarnaCoreSflagSizeBytes`) | BarnaCore | [sflag-protocol.md](../memory/sflag-protocol.md) |
+| 11 | `barna_core_imem` | — | BarnaCore instruction memory | chip_parts | BarnaCore | [memory-space-enum.md](../isa/memory-space-enum.md) |
+| 12 | `sparse_core_sequencer_sflag` | 223 (`0xDF`) ‡ | SC-sequencer sync-flag bank | chip_parts; SC sequencer | SparseCore sequencer | [sflag-protocol.md](../memory/sflag-protocol.md) |
+| 13 | `host` | — | host-resident buffer (transfer source/sink; MSA offload spill target) | host DRAM | `PremappedMemoryManager` / `tsl::BFCAllocator` over `posix_memalign` | [overview.md](../memory/overview.md) |
+| 14 | `sparse_core_sequencer_smem` | 224 (`0xE0`) ‡ | SC-sequencer scalar scratchpad (well-known constants: `chip_id`, `replica_id`, …) | SCS SMEM 64 KiB hard immediate on VF/GL/GF | SparseCore sequencer | [smem-scalar-memory.md](../memory/smem-scalar-memory.md) |
+| 15 | `sparse_core_private_stack_hbm` | 203 (`0xCB`) | per-SC private stack carved from HBM | HBM-backed | HBM-backed | [memory-space-enum.md](../isa/memory-space-enum.md) |
+| 16 | `pinned_hbm` | — | page-pinned HBM for host-visible DMA (repacker may not relocate) | 1024 B DMA floor + host pin | HBM (pinned) | [hbm-dma-alignment.md](../memory/hbm-dma-alignment.md) |
 
 > **NOTE —** † The AS-id column maps each TensorCore tier to the *physically corresponding* SparseCore pool, not to an identity. `imem`(LLO 7) ↔ SC `timem` (AS 214) and `sparse_core_sequencer_sflag`/`_smem` (LLO 12/14) ↔ SC `sflag_scs`/`smem_scs` (AS 223/224) are physical-identity correspondences, not arithmetic conversions. ‡ The SparseCore sequencer banks are the per-SCS variants; the AS-id band also carries per-tile (`AS217 sflag_tile`, `AS219 smem_tile`) and chip-shared (`AS202 spmem`) SC pools that have **no** LLO `MemorySpace` equivalent (they live only inside the SparseCore LLVM lowering). See the SparseCore AS section below.
 
@@ -74,12 +74,12 @@ const char *MemorySpaceToString(int ms):
 
 The ordinal assignment is re-verified four independent ways, all byte-exact and mutually consistent:
 
-| Probe | Function | What it pins | Conf. |
-|-------|----------|--------------|-------|
-| String-table index | `MemorySpaceToString` @ `0x1d6ffae0` | `off_21CE6B08[ms]` flat lookup | CONFIRMED |
-| DMA-render switch | `MemorySpaceToDriverResource` @ `0x1d6223e0` | input ordinals: `1=hbm,2=hib,3=vmem,4=cmem,5=smem,6=sflag,7=imem,8..11=barna_core_*,12..16=sparse_core_*` (FATAL on cmem + SC) | CONFIRMED |
-| CMEM constant ctor | `LloAddress::MakeCmemConstant` @ `0x1d60ba20` | `LloAddress(MemorySpace=4, off)` → `cmem = 4` | CONFIRMED |
-| SC-seq SMEM ctor | `LloAddress::MakeSparseCoreSequencerSmemConstant` @ `0x1d60bc60` | `LloAddress(MemorySpace=14, off)` → `sparse_core_sequencer_smem = 14` | CONFIRMED |
+| Probe | Function | What it pins |
+|-------|----------|--------------|
+| String-table index | `MemorySpaceToString` @ `0x1d6ffae0` | `off_21CE6B08[ms]` flat lookup |
+| DMA-render switch | `MemorySpaceToDriverResource` @ `0x1d6223e0` | input ordinals: `1=hbm,2=hib,3=vmem,4=cmem,5=smem,6=sflag,7=imem,8..11=barna_core_*,12..16=sparse_core_*` (FATAL on cmem + SC) |
+| CMEM constant ctor | `LloAddress::MakeCmemConstant` @ `0x1d60ba20` | `LloAddress(MemorySpace=4, off)` → `cmem = 4` |
+| SC-seq SMEM ctor | `LloAddress::MakeSparseCoreSequencerSmemConstant` @ `0x1d60bc60` | `LloAddress(MemorySpace=14, off)` → `sparse_core_sequencer_smem = 14` |
 
 The `MemBanks(MemorySpace)` overrides independently confirm the mid-range ordinals: `GhostliteTarget::MemBanks` (`0x1d4969c0`) returns `32` for `ms==3` and `8` for `ms==5`, FATAL otherwise — i.e. `kVmem=3`, `kSmem=5`. `PufferfishTarget::MemBanks` (`0x1d493900`) indexes `qword_B5305C8[ms-3] = {16,32,8}` over `ms ∈ {3,4,5}` — i.e. vmem/cmem/smem = banks 16/32/8.
 
@@ -137,33 +137,33 @@ The validity mask `0x3FFF7F` is the bit-set of the 22 valid `MemorySpace` values
 
 `MS#` is the 1-based `mlir::sparse_core::MemorySpace`; `tile?` is `IsOffTileMemory == false`, true only for MS 2 and MS 18. A blank MS# means the ID is an alias-analysis grouping or a reserved gap with no physical pool.
 
-| AS# | hex | Pool (`stringifyMemorySpace`) | MS# | tile? | Notes | Conf. |
-|----:|-----|-------------------------------|----:|:-----:|-------|-------|
-| 0 | `0x00` | `smem` | 1 | off | inherited base TPU scalar memory | CONFIRMED |
-| 201 | `0xC9` | `tile_spmem` | 2 | **ON** | per-tile SC SRAM (KB) | CONFIRMED |
-| 202 | `0xCA` | `spmem` | 3 | off | chip-shared SC SRAM (MB) | CONFIRMED |
-| 203 | `0xCB` | `hbm` | 4 | off | global (GB) embedding tables | CONFIRMED |
-| 204 | `0xCC` | `sflag` | 5 | off | sync-flag memory (MS 22 `sflag_tc` also maps here) | CONFIRMED |
-| 205 | `0xCD` | `vmem` | 6 | off | TC vector memory (TC↔SC handoff) | CONFIRMED |
-| 206/207 | `0xCE`/`0xCF` | — | — | — | reserved gap | CONFIRMED |
-| 208 | `0xD0` | `dreg` | 7 | off | data-register window | CONFIRMED |
-| 209/210 | `0xD1`/`0xD2` | — | — | — | reserved gap | CONFIRMED |
-| 211 | `0xD3` | — (`SflagAny`) | — | off | sflag may-alias superset (no pool) | CONFIRMED |
-| 212 | `0xD4` | `smem_any` | 9 | off | smem may-alias superset | CONFIRMED |
-| 213 | `0xD5` | `hbm_any` | 10 | off | hbm may-alias superset | CONFIRMED |
-| 214 | `0xD6` | `timem` | 11 | off | per-tile instruction memory | CONFIRMED |
-| 215 | `0xD7` | `simem` | 12 | off | SC instruction memory (empty `desc`) | CONFIRMED |
-| 216 | `0xD8` | `iova` | 13 | off | I/O virtual address (GB) | CONFIRMED |
-| 217 | `0xD9` | `sflag_tile` | 14 | off | per-tile sflag bank | CONFIRMED |
-| 218 | `0xDA` | `spmem_any` | 15 | off | spmem may-alias superset | CONFIRMED |
-| 219 | `0xDB` | `smem_tile` (`TileSmem`) | 16 | off | per-tile SMEM (KB) | CONFIRMED |
-| 220 | `0xDC` | `mar` | 17 | off | memory-access-region (empty `desc`) | CONFIRMED |
-| 221/222 | `0xDD`/`0xDE` | — | — | — | reserved gap | CONFIRMED |
-| 223 | `0xDF` | `sflag_scs` | 20 | off | per-SCS sflag bank | CONFIRMED |
-| 224 | `0xE0` | `smem_scs` | 21 | off | per-SCS SMEM (KB) | CONFIRMED |
-| 225 | `0xE1` | — (`SflagAnySynctile`) | — | off | sflag-any-synctile (no pool) | CONFIRMED |
-| 501 | `0x1F5` | `tile_spmem_cb` | 18 | **ON** | CBREG-windowed TILE_SPMEM | CONFIRMED |
-| 502 | `0x1F6` | `smem_cb` | 19 | off | CBREG-windowed SMEM | CONFIRMED |
+| AS# | hex | Pool (`stringifyMemorySpace`) | MS# | tile? | Notes |
+|----:|-----|-------------------------------|----:|:-----:|-------|
+| 0 | `0x00` | `smem` | 1 | off | inherited base TPU scalar memory |
+| 201 | `0xC9` | `tile_spmem` | 2 | **ON** | per-tile SC SRAM (KB) |
+| 202 | `0xCA` | `spmem` | 3 | off | chip-shared SC SRAM (MB) |
+| 203 | `0xCB` | `hbm` | 4 | off | global (GB) embedding tables |
+| 204 | `0xCC` | `sflag` | 5 | off | sync-flag memory (MS 22 `sflag_tc` also maps here) |
+| 205 | `0xCD` | `vmem` | 6 | off | TC vector memory (TC↔SC handoff) |
+| 206/207 | `0xCE`/`0xCF` | — | — | — | reserved gap |
+| 208 | `0xD0` | `dreg` | 7 | off | data-register window |
+| 209/210 | `0xD1`/`0xD2` | — | — | — | reserved gap |
+| 211 | `0xD3` | — (`SflagAny`) | — | off | sflag may-alias superset (no pool) |
+| 212 | `0xD4` | `smem_any` | 9 | off | smem may-alias superset |
+| 213 | `0xD5` | `hbm_any` | 10 | off | hbm may-alias superset |
+| 214 | `0xD6` | `timem` | 11 | off | per-tile instruction memory |
+| 215 | `0xD7` | `simem` | 12 | off | SC instruction memory (empty `desc`) |
+| 216 | `0xD8` | `iova` | 13 | off | I/O virtual address (GB) |
+| 217 | `0xD9` | `sflag_tile` | 14 | off | per-tile sflag bank |
+| 218 | `0xDA` | `spmem_any` | 15 | off | spmem may-alias superset |
+| 219 | `0xDB` | `smem_tile` (`TileSmem`) | 16 | off | per-tile SMEM (KB) |
+| 220 | `0xDC` | `mar` | 17 | off | memory-access-region (empty `desc`) |
+| 221/222 | `0xDD`/`0xDE` | — | — | — | reserved gap |
+| 223 | `0xDF` | `sflag_scs` | 20 | off | per-SCS sflag bank |
+| 224 | `0xE0` | `smem_scs` | 21 | off | per-SCS SMEM (KB) |
+| 225 | `0xE1` | — (`SflagAnySynctile`) | — | off | sflag-any-synctile (no pool) |
+| 501 | `0x1F5` | `tile_spmem_cb` | 18 | **ON** | CBREG-windowed TILE_SPMEM |
+| 502 | `0x1F6` | `smem_cb` | 19 | off | CBREG-windowed SMEM |
 
 > **NOTE —** the on-tile gate is a single masked compare: `IsOffTileMemory(ms) = (ms & ~0x10) != 2` (`0x13d7ac00`). Clearing bit 4 folds MS 2 (`tile_spmem`) and MS 18 = `0x12` (`tile_spmem_cb`) together, so **only** those two are on-tile; every other pool requires a DMA/stream/sync to reach. This is the predicate the DMA and stream lowerings consult before selecting a data-movement intrinsic, and it is why a TEC needs the tile-id cast to turn an on-tile `TileSpmem`(201) pointer into an off-tile-addressable `Spmem`(202) pointer.
 
@@ -197,15 +197,15 @@ Every runtime tier — HBM, VMEM, CMEM, SMEM, SFLAG — is a single `tpu::BestFi
 
 ### Per-tier alignment / geometry
 
-| Tier | `base_offset` | `alignment` | `granule` | Geometry source | Conf. |
-|------|---------------|-------------|-----------|-----------------|-------|
-| HBM | 0 | **1024 B** DMA floor (`kHbmMinimumDmaAlignment`); **16 KiB** compile-time (`xla_jf_program_hbm_alignment_in_kib`) | chip_parts HBM granule | dual-quantum; DMA floor enforced at issue (`WritePremappedHbm`) + descriptor (`SetHbmAddress`, fatal) | CONFIRMED |
-| VMEM | 0 | `VmemAlignmentBoundaryInBytes()` — `ChunkBytes` (JF) / `max(GranuleBytes, VmemWordSizeBytes)` (PF/VF/GL) | `VmemWordSizeBytes()` (`Target+0x50C`) | `ChunkBytes = 4·topology.word_count` (`0x1d619f40`) | CONFIRMED |
-| CMEM | 0 | `CmemWordSizeBytes()` (`Target+0x510`, ~16 B PF) | `CmemWordSizeBytes()` | alignment == granule; Pufferfish only | CONFIRMED |
-| SMEM | 0 | `SmemWordSizeBytes()` (4 B; `Target+0x508`) | `SmemWordSizeBytes()` | word-flat; `SmemWordImmPtr` asserts word == 4 B | CONFIRMED |
-| SFLAG | 0 | `SflagWordSizeBytes()` (`Target+0x504`) | `SflagWordSizeBytes()` | `byte_off = 4·n` per flag; log2 cached `Target+0x4c8` | CONFIRMED |
-| Host (premapped) | per-partition `partition_size·i` | 4 KiB if ≤ 2 MiB, else 2 MiB (`PickPageAlignment`) | = alignment | `PremappedMemoryManager` over `posix_memalign` | CONFIRMED |
-| Host (BFC offload) | 0 | ≥ 16 B (`posix_memalign`) | 2 MiB region growth | `tsl::BFCAllocator` (256 GiB cap) | CONFIRMED |
+| Tier | `base_offset` | `alignment` | `granule` | Geometry source |
+|------|---------------|-------------|-----------|-----------------|
+| HBM | 0 | **1024 B** DMA floor (`kHbmMinimumDmaAlignment`); **16 KiB** compile-time (`xla_jf_program_hbm_alignment_in_kib`) | chip_parts HBM granule | dual-quantum; DMA floor enforced at issue (`WritePremappedHbm`) + descriptor (`SetHbmAddress`, fatal) |
+| VMEM | 0 | `VmemAlignmentBoundaryInBytes()` — `ChunkBytes` (JF) / `max(GranuleBytes, VmemWordSizeBytes)` (PF/VF/GL) | `VmemWordSizeBytes()` (`Target+0x50C`) | `ChunkBytes = 4·topology.word_count` (`0x1d619f40`) |
+| CMEM | 0 | `CmemWordSizeBytes()` (`Target+0x510`, ~16 B PF) | `CmemWordSizeBytes()` | alignment == granule; Pufferfish only |
+| SMEM | 0 | `SmemWordSizeBytes()` (4 B; `Target+0x508`) | `SmemWordSizeBytes()` | word-flat; `SmemWordImmPtr` asserts word == 4 B |
+| SFLAG | 0 | `SflagWordSizeBytes()` (`Target+0x504`) | `SflagWordSizeBytes()` | `byte_off = 4·n` per flag; log2 cached `Target+0x4c8` |
+| Host (premapped) | per-partition `partition_size·i` | 4 KiB if ≤ 2 MiB, else 2 MiB (`PickPageAlignment`) | = alignment | `PremappedMemoryManager` over `posix_memalign` |
+| Host (BFC offload) | 0 | ≥ 16 B (`posix_memalign`) | 2 MiB region growth | `tsl::BFCAllocator` (256 GiB cap) |
 
 > **GOTCHA —** HBM has **two** alignment numbers and confusing them silently corrupts a DMA. `kHbmMinimumDmaAlignment = 1024 B` is the *hardware* floor: every DMA site masks with `& 0x3FF` and rejects a non-zero remainder (recoverable `RetCheck` at issue, fatal `CHECK` at descriptor). The 16 KiB compile-time figure rounds every program-level HBM tensor up *before* MSA places it. The 1024-B floor is the wire contract; the 16-KiB rule is the placement contract. See [hbm-dma-alignment.md](../memory/hbm-dma-alignment.md).
 
@@ -215,12 +215,12 @@ Every runtime tier — HBM, VMEM, CMEM, SMEM, SFLAG — is a single `tpu::BestFi
 
 The one piece of on-chip geometry that *is* baked into `.text` (not `chip_parts`) is the bank count, returned by the per-`Target` `MemBanks(MemorySpace)` virtual. The bank index for a byte offset `B` is `(B / <tier>WordSizeBytes) mod MemBanks(tier)`. Banking is an access-scheduling property, not an allocation property — the allocator hands out byte offsets and the LLO bundle packer derives the `(bank, sub-bank)` coordinate at issue time. Decompile-confirmed:
 
-| Target (gen) | VMEM (MS 3) | CMEM (MS 4) | SMEM (MS 5) | `MemBanks` accessor | Conf. |
-|---|---:|---:|---:|---|---|
-| JellyfishTarget (v2) | 8 | — (`LogFatal`) | 2 | `0x1d48fc80` | CONFIRMED |
-| PufferfishTarget (v4) | 16 | **32** | 8 | `0x1d493900` (`qword_B5305C8[ms-3]={16,32,8}`) | CONFIRMED |
-| ViperfishTarget (v5p) | 32 | — (`LogFatal`) | 8 | `0x1d4999c0` | HIGH |
-| GhostliteTarget (v6e) | 32 | — (`LogFatal`) | 8 | `0x1d4969c0` | CONFIRMED |
+| Target (gen) | VMEM (MS 3) | CMEM (MS 4) | SMEM (MS 5) | `MemBanks` accessor |
+|---|---:|---:|---:|---|
+| JellyfishTarget (v2) | 8 | — (`LogFatal`) | 2 | `0x1d48fc80` |
+| PufferfishTarget (v4) | 16 | **32** | 8 | `0x1d493900` (`qword_B5305C8[ms-3]={16,32,8}`) |
+| ViperfishTarget (v5p) | 32 | — (`LogFatal`) | 8 | `0x1d4999c0` |
+| GhostliteTarget (v6e) | 32 | — (`LogFatal`) | 8 | `0x1d4969c0` |
 
 Pufferfish is the only generation where `MemBanks(kCmem)` returns a value rather than `LogFatal` — the structural marker that CMEM is a real tier only on Pufferfish (PXC, TPU v4). Viperfish (`0x1d4999c0`) is graded HIGH (symbol-table body, source-identical to the confirmed Ghostlite shape, not separately re-read).
 

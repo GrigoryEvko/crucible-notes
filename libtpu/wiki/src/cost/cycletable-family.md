@@ -30,7 +30,6 @@ The contract a reimplementer must honor:
 | **Throughput accessor** | `GetCyclesForThroughput(Instruction)` — per-gen virtual; default `1` |
 | **Resource accessor** | `CycleTable::GetResource(Instruction)` @ `0x1c89ce20` — flat LUT `dword_B438AEC` |
 | **Underlying grid** | per-gen [`Performance`](performance-overview.md) object held at `CycleTable+0x10` |
-| **Confidence** | CONFIRMED (byte-anchored) unless a row says otherwise |
 
 ---
 
@@ -61,14 +60,14 @@ JfCycleTable (TpuVersion 0 + 1)   PfCycleTable     VfCycleTable   GlcCycleTable 
 
 The six factories are registered once by the `cycle_table.cc` static initializer (`_GLOBAL__sub_I_cycle_table.cc` @ `0x21353460`), each as a `FunctionRegistry<TpuVersion, unique_ptr<CycleTable>(const Target&)>` entry. Selection happens in `CycleTable::Create` @ `0x1c89cc00`, which reads the version off the `Target`, looks up the lambda, and invokes it; a missing registration is a fatal log (`"No cycle table registered for platform: "`, `cycle_table.cc:960`).
 
-| `TpuVersion` | Codename            | Subclass        | `GetCyclesForThroughput` | Read strategy | Confidence |
-|-------------:|---------------------|-----------------|--------------------------|---------------|------------|
-| 0            | jellyfish (v2)      | `JfCycleTable`  | `0x1c89dce0`             | flat offset-LUT (`kUnusedRegisterJfCycleTable`) | CONFIRMED |
-| 1            | dragonfish (v3)     | `JfCycleTable`  | `0x1c89dce0`             | flat offset-LUT (`kUnusedRegisterDfCycleTable`) | CONFIRMED |
-| 2            | pufferfish (v4)     | `PfCycleTable`  | `0x1c89de60`             | `switch` → `GetResourceUsage(instr,res)` | CONFIRMED |
-| 3            | viperfish (v5)      | `VfCycleTable`  | `0x1c89e2c0`             | `switch` → `GetResourceUsage(instr,res)` | CONFIRMED |
-| 4            | ghostlite (v6 lite) | `GlcCycleTable` | `0x1c89e980` (wrapper)   | helper `0x1c89ed20` + `CHECK(ok)` | CONFIRMED |
-| 5            | `6acc60406` (TPU7x) | `GfcCycleTable` | `0x1c89f060` (wrapper)   | helper `0x1c89f400` + `CHECK(ok)` | CONFIRMED |
+| `TpuVersion` | Codename            | Subclass        | `GetCyclesForThroughput` | Read strategy |
+|-------------:|---------------------|-----------------|--------------------------|---------------|
+| 0            | jellyfish (v2)      | `JfCycleTable`  | `0x1c89dce0`             | flat offset-LUT (`kUnusedRegisterJfCycleTable`) |
+| 1            | dragonfish (v3)     | `JfCycleTable`  | `0x1c89dce0`             | flat offset-LUT (`kUnusedRegisterDfCycleTable`) |
+| 2            | pufferfish (v4)     | `PfCycleTable`  | `0x1c89de60`             | `switch` → `GetResourceUsage(instr,res)` |
+| 3            | viperfish (v5)      | `VfCycleTable`  | `0x1c89e2c0`             | `switch` → `GetResourceUsage(instr,res)` |
+| 4            | ghostlite (v6 lite) | `GlcCycleTable` | `0x1c89e980` (wrapper)   | helper `0x1c89ed20` + `CHECK(ok)` |
+| 5            | `6acc60406` (TPU7x) | `GfcCycleTable` | `0x1c89f060` (wrapper)   | helper `0x1c89f400` + `CHECK(ok)` |
 
 > **NOTE — `TpuVersion` 0 and 1 share one class.** Both the jellyfish (v0) and dragonfish (v1) factories produce a `JfCycleTable` — the two registry entries bind the symbols `kUnusedRegisterJfCycleTable` and `kUnusedRegisterDfCycleTable` respectively, both to the same `JfCycleTable` factory lambda. Both read `GetCyclesForThroughput` @ `0x1c89dce0` over the same throughput offset-LUT; the gens differ only in their `Performance` grids, and the cells that differ are not throughput-LUT targets — so `GetCyclesForThroughput` is identical for JF and DF. See [JfCycleTable](jf-cycletable.md).
 
@@ -100,14 +99,14 @@ unique_ptr<LatencyTable> LatencyTable::Create(tpu::TpuVersion v) {
 
 The version→ctor binding is therefore **not visible inside `Create`** — it is written at static-init time by five separate translation-unit initializers, each calling `LatencyTable::Register(version, AnyInvocable)` @ `0x1c89fac0` (which `Resize`s the vector to `version+1` and stores the invoker at slot `+0x18`). The dispatch tail is the union of those five initializers:
 
-| Ordinal | Codename | Initializer (`.text.startup`) | `Register(v, λ)` arg | Factory invoker λ | Concrete ctor (`new` size) | Confidence |
-|--------:|----------|-------------------------------|---------------------:|-------------------|----------------------------|------------|
-| 0 | jellyfish (v2) | `_GLOBAL__sub_I_latency_table_jf.cc` @ `0x21353860` | `mov $0x0,%edi` @ `0x21353885` | `LocalInvoker<jellyfish::$_0>` @ `0x1c8a1280` | `LatencyTableJellyfish::C1` @ `0x1c8a0c20` (`new 0x58`) | HIGH |
-| 1 | dragonfish (v3) | `_GLOBAL__sub_I_latency_table_jf.cc` @ `0x21353860` | `mov $0x1,%edi` @ `0x213538a9` | `LocalInvoker<jellyfish::$_1>` @ `0x1c8a12c0` | `LatencyTableJellyfish::C1` @ `0x1c8a0c20` (`new 0x58`) | HIGH |
-| 2 | pufferfish (v4) | `_GLOBAL__sub_I_latency_table_pf.cc` @ `0x213538d0` | `mov $0x2,%edi` @ `0x213538f3` | `LocalInvoker<pufferfish::$_0>` @ `0x1c8a31c0` | `LatencyTablePufferfish::C1` @ `0x1c8a1960` (`new 0x1e0`) | HIGH |
-| 3 | viperfish (v5) | `_GLOBAL__sub_I_latency_table_vf.cc` @ `0x21353920` | `mov $0x3,%edi` @ `0x21353943` | `LocalInvoker<viperfish::$_0>` @ `0x1c8a5280` | `LatencyTableViperfish::C1` @ `0x1c8a3f20` (`new 0x1e0`) | HIGH |
-| 4 | ghostlite (v6 lite) | `_GLOBAL__sub_I_latency_table_gl.cc` @ `0x21353970` | `mov $0x4,%edi` @ `0x21353993` | `LocalInvoker<ghostlite::$_0>` @ `0x1c8b28e0` | `LatencyTableGhostlite::C1` @ `0x1c8b0c00` (`new 0x1e0`) | HIGH |
-| 5 | `6acc60406` (TPU7x) | `_GLOBAL__sub_I_latency_table_gf.cc` @ `0x213539c0` | `mov $0x5,%edi` @ `0x213539e3` | GF invoker λ @ `0x1c8bb180` (symbol-coalesced) | GF `LatencyTable` ctor @ `0x1c8b9520` (`new 0x1e0`) | HIGH |
+| Ordinal | Codename | Initializer (`.text.startup`) | `Register(v, λ)` arg | Factory invoker λ | Concrete ctor (`new` size) |
+|--------:|----------|-------------------------------|---------------------:|-------------------|----------------------------|
+| 0 | jellyfish (v2) | `_GLOBAL__sub_I_latency_table_jf.cc` @ `0x21353860` | `mov $0x0,%edi` @ `0x21353885` | `LocalInvoker<jellyfish::$_0>` @ `0x1c8a1280` | `LatencyTableJellyfish::C1` @ `0x1c8a0c20` (`new 0x58`) |
+| 1 | dragonfish (v3) | `_GLOBAL__sub_I_latency_table_jf.cc` @ `0x21353860` | `mov $0x1,%edi` @ `0x213538a9` | `LocalInvoker<jellyfish::$_1>` @ `0x1c8a12c0` | `LatencyTableJellyfish::C1` @ `0x1c8a0c20` (`new 0x58`) |
+| 2 | pufferfish (v4) | `_GLOBAL__sub_I_latency_table_pf.cc` @ `0x213538d0` | `mov $0x2,%edi` @ `0x213538f3` | `LocalInvoker<pufferfish::$_0>` @ `0x1c8a31c0` | `LatencyTablePufferfish::C1` @ `0x1c8a1960` (`new 0x1e0`) |
+| 3 | viperfish (v5) | `_GLOBAL__sub_I_latency_table_vf.cc` @ `0x21353920` | `mov $0x3,%edi` @ `0x21353943` | `LocalInvoker<viperfish::$_0>` @ `0x1c8a5280` | `LatencyTableViperfish::C1` @ `0x1c8a3f20` (`new 0x1e0`) |
+| 4 | ghostlite (v6 lite) | `_GLOBAL__sub_I_latency_table_gl.cc` @ `0x21353970` | `mov $0x4,%edi` @ `0x21353993` | `LocalInvoker<ghostlite::$_0>` @ `0x1c8b28e0` | `LatencyTableGhostlite::C1` @ `0x1c8b0c00` (`new 0x1e0`) |
+| 5 | `6acc60406` (TPU7x) | `_GLOBAL__sub_I_latency_table_gf.cc` @ `0x213539c0` | `mov $0x5,%edi` @ `0x213539e3` | GF invoker λ @ `0x1c8bb180` (symbol-coalesced) | GF `LatencyTable` ctor @ `0x1c8b9520` (`new 0x1e0`) |
 
 > **NOTE — `LatencyTable` and `CycleTable` factories are *not* the same machine.** `CycleTable::Create` uses a `FunctionRegistry` hash map and dispatches by lambda lookup; `LatencyTable::Create` uses a flat ordinal-indexed `inlined_vector<AnyInvocable, 8>` (file-local `registry` @ `0x225799f8`) and dispatches by `registry[version](entry)` (`call *0x18(%rdi,version<<5)`). The "no factory registered" failure modes also differ: `CycleTable` logs `"No cycle table registered for platform: "`; `LatencyTable::Create` instead emits three distinct fatal CHECKs (`registry` non-null at `latency_table.cc:0x78`, ordinal in-bounds at `0x7a`/`0x7b`, slot non-null at `0x7c`). A reimplementer can collapse both into one ordinal-keyed table but must preserve the bounds CHECK before the indirect call.
 
@@ -123,33 +122,33 @@ The version→ctor binding is therefore **not visible inside `Create`** — it i
 
 `CycleTable::Instruction` is a dense enum `0x00..0x20` (33 values). It is **not** an LLO opcode and **not** the `Performance`/`GhPerf::Instruction` grid index — it is a coarse bucketing of MXU and vector functional behavior, shared verbatim across all six gens. The role each class plays is stable across gens even though the cycle integers differ.
 
-| Class | Role | JF/DF | Confidence |
-|------:|------|------:|------------|
-| `0x00` | Vector matprep, bf16 | 8 | CONFIRMED |
-| `0x01`–`0x04` | matprep variants (bf16/fp8 family) | default 1 | CONFIRMED |
-| `0x05` | Latch / push gains, bf16 | 8 | CONFIRMED |
-| `0x06` | Latch, int4 | default 1 | CONFIRMED |
-| `0x07`,`0x08` | `6acc60406` new latch paths (latch_mode 48/50) | default 1 | CONFIRMED |
-| `0x09` | Latch, fp8 | default 1 | CONFIRMED |
-| `0x0a` | `PushGainsS4` — fatal on PF/VF (`"Unsupported PushGainsS4."`, `cycle_table.cc:682`) | default 1 | CONFIRMED |
-| `0x0b` | Transposed bf16 latch | 8 | CONFIRMED |
-| `0x0c` | Transposed int8 latch | default 1 | CONFIRMED |
-| `0x0d`,`0x0e` | `6acc60406` transposed latch (latch_mode 49/51) | default 1 | CONFIRMED |
-| `0x0f` | Transposed fp8 latch | default 1 | CONFIRMED |
-| `0x10` | transposed `PushGainsS4` — fatal on PF/VF, same `"Unsupported PushGainsS4."` string as `0x0a` | default 1 | CONFIRMED |
-| `0x11` | Vector EUP class | default 1 | CONFIRMED |
-| `0x12`,`0x13` | XLU rotate in/out (RotIn/RotOut) | 1 | CONFIRMED |
-| `0x14` | Shuffle / permute | 1 | CONFIRMED |
-| `0x15`,`0x16` | Broadcast / reduce | 1 | CONFIRMED |
-| `0x17` | Matrix-result read (TC) | 8 | CONFIRMED |
-| `0x18` | Read/write transpose register | 1 | CONFIRMED |
-| `0x19` | Cross-lane reduction | 1 | CONFIRMED |
-| `0x1a` | Lane comparison / EUP edge | 1 | CONFIRMED |
-| `0x1b` | Matrix-result read, primary | 8 | CONFIRMED |
-| `0x1c` | Matrix-result read, secondary | 8 | CONFIRMED |
-| `0x1d`,`0x1e` | EUP unary primary/secondary | default 1 | CONFIRMED |
-| `0x1f` | Matrix-result read | 8 | CONFIRMED |
-| `0x20` | Transcendental class (vector ALU "any") | 1 | CONFIRMED |
+| Class | Role | JF/DF |
+|------:|------|------:|
+| `0x00` | Vector matprep, bf16 | 8 |
+| `0x01`–`0x04` | matprep variants (bf16/fp8 family) | default 1 |
+| `0x05` | Latch / push gains, bf16 | 8 |
+| `0x06` | Latch, int4 | default 1 |
+| `0x07`,`0x08` | `6acc60406` new latch paths (latch_mode 48/50) | default 1 |
+| `0x09` | Latch, fp8 | default 1 |
+| `0x0a` | `PushGainsS4` — fatal on PF/VF (`"Unsupported PushGainsS4."`, `cycle_table.cc:682`) | default 1 |
+| `0x0b` | Transposed bf16 latch | 8 |
+| `0x0c` | Transposed int8 latch | default 1 |
+| `0x0d`,`0x0e` | `6acc60406` transposed latch (latch_mode 49/51) | default 1 |
+| `0x0f` | Transposed fp8 latch | default 1 |
+| `0x10` | transposed `PushGainsS4` — fatal on PF/VF, same `"Unsupported PushGainsS4."` string as `0x0a` | default 1 |
+| `0x11` | Vector EUP class | default 1 |
+| `0x12`,`0x13` | XLU rotate in/out (RotIn/RotOut) | 1 |
+| `0x14` | Shuffle / permute | 1 |
+| `0x15`,`0x16` | Broadcast / reduce | 1 |
+| `0x17` | Matrix-result read (TC) | 8 |
+| `0x18` | Read/write transpose register | 1 |
+| `0x19` | Cross-lane reduction | 1 |
+| `0x1a` | Lane comparison / EUP edge | 1 |
+| `0x1b` | Matrix-result read, primary | 8 |
+| `0x1c` | Matrix-result read, secondary | 8 |
+| `0x1d`,`0x1e` | EUP unary primary/secondary | default 1 |
+| `0x1f` | Matrix-result read | 8 |
+| `0x20` | Transcendental class (vector ALU "any") | 1 |
 
 > **QUIRK — "33 classes" vs "16 priced."** The enum spans `0x00..0x20` but `JfCycleTable` prices only 16 of them (the rest fall through to the default `1`). The priced set is pinned by the literal mask `0x19FFC0821` (see [JfCycleTable](jf-cycletable.md)); later gens price additional bf16/fp8 latch and matprep variants. The JF/DF column above shows `8` for the seven MXU classes and `1` for the nine priced vector classes; "default 1" marks the classes the JF mask leaves unpriced. The *role* labels are stable across gens — a reimplementer ports the role-to-class map once and re-prices per gen.
 
@@ -179,10 +178,10 @@ uint32_t CycleTableInstruction(const LloInstruction *insn) {
 
 Two `.rodata` lookup tables turn the MXU modifier into a cycle class:
 
-| Table | Address | Shape | Maps | Confidence |
-|-------|---------|-------|------|------------|
-| `latchLUT` (`unk_B4389F4`) | `0xb4389f4` | 52 × `int32`, valid mask `0xF000003FFFC3F` | `GainLatchMode` → `Instruction` | CONFIRMED |
-| `fmtLUT` (`unk_B438AC4`) | `0xb438ac4` | `int32[]`, indexed by `matmul_data_format()-1`; classifier reads indices `0..9` only (`< 0xA` guard) | `MatmulDataFormat` → `Instruction` | CONFIRMED |
+| Table | Address | Shape | Maps |
+|-------|---------|-------|------|
+| `latchLUT` (`unk_B4389F4`) | `0xb4389f4` | 52 × `int32`, valid mask `0xF000003FFFC3F` | `GainLatchMode` → `Instruction` |
+| `fmtLUT` (`unk_B438AC4`) | `0xb438ac4` | `int32[]`, indexed by `matmul_data_format()-1`; classifier reads indices `0..9` only (`< 0xA` guard) | `MatmulDataFormat` → `Instruction` |
 
 The latch LUT (mask bits verified against the raw table): `0x00/0x02/0x04 → 5`, `0x01/0x03/0x05 → 11`, `0x0a → 12`, `0x0b/0x0e/0x10 → 6`, `0x0c → 9`, `0x0d → 15`, `0x0f/0x11 → 12`, `0x12/0x14/0x16/0x18 → 9`, `0x13/0x15/0x17/0x19 → 15`, `0x30 → 7`, `0x31 → 13`, `0x32 → 8`, `0x33 → 14`. The fmt LUT (index = `format-1`) reads `[0,1,1,1,4,4,4,4,2,3,1]`; the `< 0xA` guard means only indices `0..9` are reachable, i.e. `fmt 1 → 0`, `fmt 2/3/4 → 1`, `fmt 5/6/7/8 → 4`, `fmt 9 → 2`, `fmt 10 → 3`. The 11th entry (`fmt 11 → 1`) exists in `.rodata` but is rejected by this classifier as a fatal `"Unsupported matmul data format "` (`cycle_table.cc:464`); it is read only by later-gen paths. `CycleTableInstruction` itself is gen-independent — the same classifier produces MXU cycle classes for every gen. The vector/EUP/matrix-result classes (`0x11`..`0x20`) are produced by non-MXU emitter paths, not by `CycleTableInstruction`.
 
@@ -213,7 +212,7 @@ The returned value is *directly* the slot index into a per-op `ResourceVector` �
 | 5 | `R[5]` | VectorAluAny | `0x15`, `0x16`, `0x19`, `0x20` |
 | 6 | `R[6]` | VectorEup | `0x11`, `0x18`, `0x1a` |
 
-This is the mechanism by which the cost model models *resource conflict*: two classes that map to the same lane add (sequential on that unit); two that map to different lanes overlap (the scheduler takes the per-lane max across a bundle). The semantic micro-port mapping under each `R[k]` name is INFERRED beyond the binding-confirmed `ResourceVector` enum names.
+This is the mechanism by which the cost model models *resource conflict*: two classes that map to the same lane add (sequential on that unit); two that map to different lanes overlap (the scheduler takes the per-lane max across a bundle). The `ResourceVector` enum names are the binding from the symbol table; the semantic micro-port mapping under each `R[k]` name is an interpretation.
 
 ---
 

@@ -282,17 +282,17 @@ LLO instruction stream → bundle packer → ISA bundles   (SparseCore: LLVM IR 
 
 ## Confidence Summary
 
-| Claim | Evidence | Confidence |
-|---|---|---|
-| Mosaic (`tpu_custom_call` import) is the only `tpu`-dialect producer | 0 `*ToTpuPass`/`MhloToTpu`/`StablehloToTpu` symbols; ~3225 jellyfish `*Emitter` + 3037 `LloRegionBuilder` refs for the general path | HIGH |
-| Import seam = `GetMlirModuleOpFromCustomCall` → `GetCachedCustomCallBody` → `GetMlirModule`/`ParseModule`/`LoadDialects` | `0x13e327a0`, `0x13e31860`, `0x13e31220`, `0x13e30dc0`, `0x13e32140` decompiled; CityHash128 key + `MosaicMlirCacheEntry` cache | HIGH |
-| Serde is a per-op version-migration engine; 8 ops; default v=11; attr `stable_mosaic.version` | `MosaicSerdePass::runOnOperation` `0x145307a0`, `RunSerde` `0x14533b20`; `kMangledDialect`/`kVersionAttrName` from `.data` relocs | HIGH |
-| Driver entry is `CustomCallEmitter::Emit` (3657 lines), calling `GetCachedCustomCallBody`/`GetFuncWithCoreType`/`MemorySpaceToColor`/`PipelineEmitter`/`MegacoreAdjuster`/`RunMLIRPasses` | `0x111ef740` decompiled; 1/1/2/39/4/1 references confirmed; verbatim ABI/memory/window/semaphore error strings | HIGH |
-| `MosaicEmitter` is a window-emit helper, not the driver | `MosaicEmitter::EmitWindow` `0xfaadcc0`, sibling of `MosaicBroadcast`/`PipelineEmitter::OperandWindow`; not called as the lowering driver | HIGH |
-| 16-stage `RunMLIRPasses` pipeline with the listed stage names + create-functions | `0x111fefa0` (source `mosaic_passes.cc`); `createInferMemRefLayoutPass` `0x132c0f00`, `createCanonicalizeMosaicPass` `0x132a2ac0`, `createInferVectorLayoutPass` `0x132c2c20`, `createApplyVectorLayoutPass` `0x1325cda0`, `createLowerToLLOPass` `0x11203ba0`, `createEliminateLLOExtensionsPass` `0x13e668a0` | HIGH |
-| Entry-func selection by `tpu.core_type` via `GetFuncWithCoreType` | `0x14aa61a0`; error strings `"No function with tpu.core_type = %v …"` | HIGH |
-| SparseCore arm = `mosaic_sc` layout → `createLowerToMloPass` → `MloModuleVerifier` → `CreateLowerToSparseCoreLlvmPass` → LLVM-TPU | `createLowerToMloPass` `0x1322adc0`, `CreateLowerToSparseCoreLlvmPass` `0x135667c0`, `mosaic_sc::createInferVectorLayoutPass` `0x132ecf60` | HIGH |
-| Exact `hlo-conversion`/megacore/large-2nd-minor arm gating per TPU generation | call sequence recovered; per-gen flag selection not fully traced | LOW |
+| Claim | Evidence |
+|---|---|
+| Mosaic (`tpu_custom_call` import) is the only `tpu`-dialect producer | 0 `*ToTpuPass`/`MhloToTpu`/`StablehloToTpu` symbols; ~3225 jellyfish `*Emitter` + 3037 `LloRegionBuilder` refs for the general path |
+| Import seam = `GetMlirModuleOpFromCustomCall` → `GetCachedCustomCallBody` → `GetMlirModule`/`ParseModule`/`LoadDialects` | `0x13e327a0`, `0x13e31860`, `0x13e31220`, `0x13e30dc0`, `0x13e32140` decompiled; CityHash128 key + `MosaicMlirCacheEntry` cache |
+| Serde is a per-op version-migration engine; 8 ops; default v=11; attr `stable_mosaic.version` | `MosaicSerdePass::runOnOperation` `0x145307a0`, `RunSerde` `0x14533b20`; `kMangledDialect`/`kVersionAttrName` from `.data` relocs |
+| Driver entry is `CustomCallEmitter::Emit` (3657 lines), calling `GetCachedCustomCallBody`/`GetFuncWithCoreType`/`MemorySpaceToColor`/`PipelineEmitter`/`MegacoreAdjuster`/`RunMLIRPasses` | `0x111ef740` decompiled; 1/1/2/39/4/1 references confirmed; verbatim ABI/memory/window/semaphore error strings |
+| `MosaicEmitter` is a window-emit helper, not the driver | `MosaicEmitter::EmitWindow` `0xfaadcc0`, sibling of `MosaicBroadcast`/`PipelineEmitter::OperandWindow`; not called as the lowering driver |
+| 16-stage `RunMLIRPasses` pipeline with the listed stage names + create-functions | `0x111fefa0` (source `mosaic_passes.cc`); `createInferMemRefLayoutPass` `0x132c0f00`, `createCanonicalizeMosaicPass` `0x132a2ac0`, `createInferVectorLayoutPass` `0x132c2c20`, `createApplyVectorLayoutPass` `0x1325cda0`, `createLowerToLLOPass` `0x11203ba0`, `createEliminateLLOExtensionsPass` `0x13e668a0` |
+| Entry-func selection by `tpu.core_type` via `GetFuncWithCoreType` | `0x14aa61a0`; error strings `"No function with tpu.core_type = %v …"` |
+| SparseCore arm = `mosaic_sc` layout → `createLowerToMloPass` → `MloModuleVerifier` → `CreateLowerToSparseCoreLlvmPass` → LLVM-TPU | `createLowerToMloPass` `0x1322adc0`, `CreateLowerToSparseCoreLlvmPass` `0x135667c0`, `mosaic_sc::createInferVectorLayoutPass` `0x132ecf60` |
+| Exact `hlo-conversion`/megacore/large-2nd-minor arm gating per TPU generation | call sequence recovered; per-gen flag selection not fully traced |
 
 ---
 

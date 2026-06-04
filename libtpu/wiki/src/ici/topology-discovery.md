@@ -67,11 +67,11 @@ message PortEntry {
 
 The enum value mappings recovered from `.rodata` are:
 
-| Enum | Values | Confidence |
-|---|---|---|
-| `Polarity` | `UNKNOWN_POLARITY=0`, `POSITIVE=1`, `NEGATIVE=2` | HIGH |
-| `Orientation` | `UNKNOWN_ORIENTATION=0`, `X=1`, `Y=2`, `Z=3` | HIGH |
-| `Direction` (axis × sign) | `kIciXPlus/XMinus/YPlus/YMinus/ZPlus/ZMinus` (string anchors present; numeric order LOW) | HIGH names / LOW numeric |
+| Enum | Values |
+|---|---|
+| `Polarity` | `UNKNOWN_POLARITY=0`, `POSITIVE=1`, `NEGATIVE=2` |
+| `Orientation` | `UNKNOWN_ORIENTATION=0`, `X=1`, `Y=2`, `Z=3` |
+| `Direction` (axis × sign) | `kIciXPlus/XMinus/YPlus/YMinus/ZPlus/ZMinus` (string anchors present; numeric order LOW) |
 
 `orientation` is **physical** — it is baked into the cabling and exposed identically on both ends of a link by firmware. What discovery adds is the *sign* (polarity), the Cartesian coordinates, the global validation, and the direction→port map that routing consumes. `Direction::Opposite` (referenced inline in `IciDiscoverer::Init`) maps each `Direction` to its sign-flipped counterpart — the invariant every bidirectional link is checked against (§2.3).
 

@@ -174,13 +174,13 @@ A square transpose pays only the static cell plus the 7-cycle setup; a tall/wide
 
 Five ordinals, confirmed three independent ways — the string table, the `ElementCount` packing factor, and the `XluInstrType` subtable all agree. From `VxposeModeString` `@0x1d629f60` (five `switch` cases, inline string stores), `ElementCount` `@0x1d62a140` (`int[5]` at `0xb53c830`, `xxd` = `01 00 00 00  02 00 00 00  04 00 00 00  01 00 00 00  02 00 00 00`), and the `GetXluInstrType` transpose subtable at `0xa2dcce0` (`xxd` = `02 00 00 00  03 00 00 00  04 00 00 00  02 00 00 00`):
 
-| ordinal | `VxposeModeString` | `ElementCount` | packed elems / 32-bit lane | `XluInstrType` | Confidence |
-|---|---|---|---|---|---|
-| 0 | `"B32"` | 1 | 1 (unpacked 32-bit) | 2 = `kTransposeB32` | CONFIRMED |
-| 1 | `"Compressed B16"` | 2 | 2 (packed 16-bit) | 3 = `kTransposeB16` | CONFIRMED |
-| 2 | `"Compressed B8"` | 4 | 4 (packed 8-bit) | 4 = `kTransposeB8` | CONFIRMED |
-| 3 | `"Segmented B32"` | 1 | 1 (segmented 32-bit) | 2 = `kTransposeB32` | CONFIRMED |
-| 4 | `"Segmented B16"` | 2 | 2 (segmented 16-bit) | 3 = `kTransposeB16` (default; subtable size 4) | CONFIRMED |
+| ordinal | `VxposeModeString` | `ElementCount` | packed elems / 32-bit lane | `XluInstrType` |
+|---|---|---|---|---|
+| 0 | `"B32"` | 1 | 1 (unpacked 32-bit) | 2 = `kTransposeB32` |
+| 1 | `"Compressed B16"` | 2 | 2 (packed 16-bit) | 3 = `kTransposeB16` |
+| 2 | `"Compressed B8"` | 4 | 4 (packed 8-bit) | 4 = `kTransposeB8` |
+| 3 | `"Segmented B32"` | 1 | 1 (segmented 32-bit) | 2 = `kTransposeB32` |
+| 4 | `"Segmented B16"` | 2 | 2 (segmented 16-bit) | 3 = `kTransposeB16` (default; subtable size 4) |
 
 `ElementCount` is the number of packed elements per 32-bit lane: `B32 → 1`, `B16 → 2`, `B8 → 4`. The string-table case 0 stores the literal as three bytes (`0x3342` then `'2'` ⇒ `"B32"`); cases 1–4 are `strcpy` of the named literals. The subtable is indexed by `vxpose_mode` directly for `vx ∈ {0,1,2,3}`; `GetXluInstrType` `@0x1c89ff20` reads `subtable[vx]` and clamps `vx ≥ 4` to `XluInstrType = 3` (`kTransposeB16`), so `Segmented B16` presents as `kTransposeB16`.
 
@@ -203,13 +203,13 @@ The mask `& 0xFFFE` makes the test cover both `0xa6` (`kVectorTranspose`) and `0
 
 Whether a generation can emit a given `VxposeMode` is gated by `Target::SupportsVectorXpose(VxposeMode)`. Byte-exact from each per-gen override:
 
-| Target (gen) | `SupportsVectorXpose(vx)` | accepts | Confidence |
-|---|---|---|---|
-| `JellyfishTarget` `@0x1d48f780` | `vx == 0` | `B32` only | CONFIRMED |
-| `GhostliteTarget` `@0x1d497160` | `vx < 3` | `B32`, `Compressed B16`, `Compressed B8` | CONFIRMED |
-| `ViperfishTarget` `@0x1d49a000` | `vx != 2` | everything except `Compressed B8` | CONFIRMED |
-| `PufferfishTarget` `@0x1d4940a0` | `vx != 2` | everything except `Compressed B8` | CONFIRMED |
-| `Target` (base) `@0x1d61ce00` | abstract | — | CONFIRMED |
+| Target (gen) | `SupportsVectorXpose(vx)` | accepts |
+|---|---|---|
+| `JellyfishTarget` `@0x1d48f780` | `vx == 0` | `B32` only |
+| `GhostliteTarget` `@0x1d497160` | `vx < 3` | `B32`, `Compressed B16`, `Compressed B8` |
+| `ViperfishTarget` `@0x1d49a000` | `vx != 2` | everything except `Compressed B8` |
+| `PufferfishTarget` `@0x1d4940a0` | `vx != 2` | everything except `Compressed B8` |
+| `Target` (base) `@0x1d61ce00` | abstract | — |
 
 > **NOTE —** The PF/VF `SupportsVectorXpose` mask is `mode != 2`: PF/VF support **every mode except `Compressed B8`** (`vx == 2`), not only `B8`. This matches the Pufferfish transpose emitter, which rejects `Compressed B8` with `InvalidArgument("compressed B8 format is not supported on PxC")`. (The ICF-folded `cmp esi,2; ret` thunk can read as `mode == 2` if the `setne`/`sete` polarity is misjudged; the decompiled bodies are `return a2 != 2`.) See the [XLU op roster](../isa/xlu-op-roster.md) for the full mode set.
 
@@ -294,25 +294,25 @@ A second-pass rebalance, `MxuStat::LatencyChangeIfMoveTo` `@0x10f7fb40`, re-scor
 
 ## Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `jellyfish::…::XposeXLUReservationLatency` | `0x1c8a0640` | base/GL dynamic reservation; `cell + max(0, shape/(2·EC))` | CONFIRMED |
-| `viperfish::…::XposeXLUReservationLatency` | `0x1c8a4e60` | VF override; `cell + max(0, w−h) + 7` (thunk `0x1c8a4f00`) | CONFIRMED |
-| `pufferfish::…::XposeXLUReservationLatency` | `0x1c8a13e0` | PF override; floor-1, `+7`, no divisor (thunk `0x1c8a1480`) | CONFIRMED |
-| `XluConflictPenaltyBetween(LloValue*, LloValue*)` | `0x1c8a01c0` | dispatcher; selects dynamic path on `IsFinalTransposeInSequence` | CONFIRMED |
-| `XluConflictPenaltyBetween(InstrType, InstrType, uint)` | `0x1c8a0180` | raw static-cell reader `base + 72·f + 12·t + 4·m + 8` | CONFIRMED |
-| `IsTranspose(XluInstrType)` | `0x1c8a04e0` | `(t − 2) < 3` ⇒ `{2,3,4}` | CONFIRMED |
-| `GetXluInstrType(LloValue*)` | `0x1c89ff20` | op → `XluInstrType`; transpose subtable `0xa2dcce0` = `{2,3,4,2}` | CONFIRMED |
-| `VxposeModeString(VxposeMode)` | `0x1d629f60` | 5-case enum-name table | CONFIRMED |
-| `ElementCount(VxposeMode)` | `0x1d62a140` | `int[5]` at `0xb53c830` = `{1,2,4,1,2}` | CONFIRMED |
-| `LloInstruction::vxpose_mode()` | `0x1d4e7440` | `byte[inst + 0x44]` for op `0xa6`/`0xa7` | CONFIRMED |
-| `JellyfishTarget::SupportsVectorXpose` | `0x1d48f780` | `vx == 0` | CONFIRMED |
-| `GhostliteTarget::SupportsVectorXpose` | `0x1d497160` | `vx < 3` | CONFIRMED |
-| `ViperfishTarget::SupportsVectorXpose` | `0x1d49a000` | `vx != 2` | CONFIRMED |
-| `PufferfishTarget::SupportsVectorXpose` | `0x1d4940a0` | `vx != 2` | CONFIRMED |
-| `AssignMxusForSequenceGroupInternal` | `0x10f77ca0` | bin-packer; init `0x10f77d30`, select `0x10f784d0` | CONFIRMED |
-| `MxuStat::LatchLatencyChangeAfterAdding` | `0x10f7f3e0` | interval-extension delta `c + x − y2` (FATAL 236) | CONFIRMED |
-| `MxuStat::LatencyChangeIfMoveTo` | `0x10f7fb40` | pass-2 rebalance score (FATAL 267) | CONFIRMED |
+| Function | Address | Role |
+|---|---|---|
+| `jellyfish::…::XposeXLUReservationLatency` | `0x1c8a0640` | base/GL dynamic reservation; `cell + max(0, shape/(2·EC))` |
+| `viperfish::…::XposeXLUReservationLatency` | `0x1c8a4e60` | VF override; `cell + max(0, w−h) + 7` (thunk `0x1c8a4f00`) |
+| `pufferfish::…::XposeXLUReservationLatency` | `0x1c8a13e0` | PF override; floor-1, `+7`, no divisor (thunk `0x1c8a1480`) |
+| `XluConflictPenaltyBetween(LloValue*, LloValue*)` | `0x1c8a01c0` | dispatcher; selects dynamic path on `IsFinalTransposeInSequence` |
+| `XluConflictPenaltyBetween(InstrType, InstrType, uint)` | `0x1c8a0180` | raw static-cell reader `base + 72·f + 12·t + 4·m + 8` |
+| `IsTranspose(XluInstrType)` | `0x1c8a04e0` | `(t − 2) < 3` ⇒ `{2,3,4}` |
+| `GetXluInstrType(LloValue*)` | `0x1c89ff20` | op → `XluInstrType`; transpose subtable `0xa2dcce0` = `{2,3,4,2}` |
+| `VxposeModeString(VxposeMode)` | `0x1d629f60` | 5-case enum-name table |
+| `ElementCount(VxposeMode)` | `0x1d62a140` | `int[5]` at `0xb53c830` = `{1,2,4,1,2}` |
+| `LloInstruction::vxpose_mode()` | `0x1d4e7440` | `byte[inst + 0x44]` for op `0xa6`/`0xa7` |
+| `JellyfishTarget::SupportsVectorXpose` | `0x1d48f780` | `vx == 0` |
+| `GhostliteTarget::SupportsVectorXpose` | `0x1d497160` | `vx < 3` |
+| `ViperfishTarget::SupportsVectorXpose` | `0x1d49a000` | `vx != 2` |
+| `PufferfishTarget::SupportsVectorXpose` | `0x1d4940a0` | `vx != 2` |
+| `AssignMxusForSequenceGroupInternal` | `0x10f77ca0` | bin-packer; init `0x10f77d30`, select `0x10f784d0` |
+| `MxuStat::LatchLatencyChangeAfterAdding` | `0x10f7f3e0` | interval-extension delta `c + x − y2` (FATAL 236) |
+| `MxuStat::LatencyChangeIfMoveTo` | `0x10f7fb40` | pass-2 rebalance score (FATAL 267) |
 
 ---
 

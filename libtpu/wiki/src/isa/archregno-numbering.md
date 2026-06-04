@@ -76,18 +76,18 @@ The count-field offsets are byte-confirmed in the decompile via the `*((_DWORD *
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `Target::InitRegisterNumbering` | `0x1d614200` | Builds the 3 `RegisterNumbering` objects | CERTAIN |
-| `Target::RegisterCount` | `0x1d617120` | Read side of the same 4 count fields, `(seq, type)`-keyed | CERTAIN |
-| `Target::SregCount` | `0x1d6152c0` | `mov 0x498(rdi),eax` — confirms Sreg offset | CERTAIN |
-| `Target::VregCount` | `0x1d6152e0` | `mov 0x49c(rdi),eax` — confirms Vreg offset | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `Target::InitRegisterNumbering` | `0x1d614200` | Builds the 3 `RegisterNumbering` objects |
+| `Target::RegisterCount` | `0x1d617120` | Read side of the same 4 count fields, `(seq, type)`-keyed |
+| `Target::SregCount` | `0x1d6152c0` | `mov 0x498(rdi),eax` — confirms Sreg offset |
+| `Target::VregCount` | `0x1d6152e0` | `mov 0x49c(rdi),eax` — confirms Vreg offset |
 
 `Target::RegisterCount` @ `0x1d617120` is the read-side accessor and cross-confirms the `(seq, type) → offset` map byte-for-byte: sequencer 0 maps `{kPreg→0x4a4, kSreg→0x498, kVmreg→0x4a0, kVreg→0x49c}`; sequencer 1 `{kPreg→0x4c0, kSreg→0x4b4}`; sequencer 2 `{kVmreg→0x4bc, kVreg→0x4b8}` — matching the three maps exactly, so each `RegisterNumbering` object is precisely one sequencer's register file.
 
 > **NOTE —** the per-class name strings are configurable per `TargetEnvironment` (`env+0x18/0x20/0x28/0x30`), defaulting to the `{p, s, vm, v}` mnemonics of `RegisterTypeToMnemonic`. A reimplementation must read the names from the environment, not hardcode them, although every shipped target uses the defaults.
 
-> **GOTCHA —** the second and third `RegisterNumbering` objects are partial — map 2 has only preg+sreg counts, map 3 only vmreg+vreg, with the other two classes set to count 0. The non-primary sequencer's `RegisterNumbering` therefore numbers a strict subset of register classes. The precise `TpuSequencerType` label of these two (a BarnaCore address-handler vs a SparseCore-tile sequencer) is inferred from the count subsets and the `RegisterCount` sequencer arms, not from a decoded sequencer-type table. (LOW confidence on the labels; CERTAIN on the count subsets.)
+> **GOTCHA —** the second and third `RegisterNumbering` objects are partial — map 2 has only preg+sreg counts, map 3 only vmreg+vreg, with the other two classes set to count 0. The non-primary sequencer's `RegisterNumbering` therefore numbers a strict subset of register classes. The precise `TpuSequencerType` label of these two (a BarnaCore address-handler vs a SparseCore-tile sequencer) is inferred from the count subsets and the `RegisterCount` sequencer arms, not from a decoded sequencer-type table.
 
 ---
 
@@ -162,18 +162,18 @@ function AddRegister(this, type, regno, arch_regno, is_pseudo):  // sub_1d622bc0
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `RegisterNumbering::Init` | `0x1d622520` | Prefix-sum + two-pass assignment | CERTAIN |
-| `RegisterNumbering::AddRegister` | `0x1d622bc0` | Assigns one `arch_regno`, builds both maps | CERTAIN |
-| `RegisterTypeToMnemonic` | `0x1d640600` | Class prefix for the name (`p`/`s`/`vm`/`v`) | CERTAIN |
-| `FastIntToBuffer` | `0x211719e0` | Integer→ASCII for the regno suffix | CERTAIN |
-| `RangeSpec::Match` | `0x1d624c80` | Config-driven per-regno filter (sets `is_pseudo`) | MEDIUM |
-| `~RegisterNumbering` | `0x1d491e60` | Frees the bit-vector / map buffers (confirms `0x130` size) | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `RegisterNumbering::Init` | `0x1d622520` | Prefix-sum + two-pass assignment |
+| `RegisterNumbering::AddRegister` | `0x1d622bc0` | Assigns one `arch_regno`, builds both maps |
+| `RegisterTypeToMnemonic` | `0x1d640600` | Class prefix for the name (`p`/`s`/`vm`/`v`) |
+| `FastIntToBuffer` | `0x211719e0` | Integer→ASCII for the regno suffix |
+| `RangeSpec::Match` | `0x1d624c80` | Config-driven per-regno filter (sets `is_pseudo`) |
+| `~RegisterNumbering` | `0x1d491e60` | Frees the bit-vector / map buffers (confirms `0x130` size) |
 
 > **QUIRK —** the prefix-sum starts `total_registers_` at 1 and the second pass assigns `arch_regno`s starting at 1, while `AddRegister(kNone, 0, 0, false)` claims `arch_regno 0`. So index 0 is always the `kNoRegister` sentinel, the final assigned count equals `total_registers_`, and the assertion `total_registers_ == reg_num` enforces it. A reimplementation that numbers from 0 will collide with the sentinel and fail this check.
 
-> **NOTE —** `RangeSpec::Match` gates which regnos are numbered and whether each is a *pseudo* (excluded from the allocatable masks/lists but still numbered). Its config source — a `TargetEnvironment` register name/range filter that can reserve or rename registers — was not chased; the mechanism (it returns the `is_pseudo` flag passed to `AddRegister`) is confirmed, the exact reserved set is not. The nominal class count may therefore exceed the usable (allocatable) count.
+> **NOTE —** `RangeSpec::Match` gates which regnos are numbered and whether each is a *pseudo* (excluded from the allocatable masks/lists but still numbered). Its config source is a `TargetEnvironment` register name/range filter that can reserve or rename registers; the mechanism returns the `is_pseudo` flag passed to `AddRegister`. The nominal class count may therefore exceed the usable (allocatable) count.
 
 ---
 
@@ -188,11 +188,11 @@ The four count fields the numbering consumes are populated from the chip-parts s
 
 The `TpuVersion` enum has **six** values: `{kJellyfish=0, kDragonfish=1, kPufferfish=2, kViperfish=3, kGhostlite=4, <gen-5>=5}` (the sixth, the v7 generation, has codename `6acc60406` in this binary). The total arch-register count is `1 + PREG + SREG + VMREG + VREG` (the +1 is `arch_regno 0`). The assignment order is always `Preg → Sreg → Vmreg → Vreg`, so the Preg block occupies `arch_regno [1, 1+PREG)`, the Sreg block `[1+PREG, 1+PREG+SREG)`, and so on.
 
-| | | Confidence |
-|---|---|---|
-| Count-field offsets (`0x498/0x49c/0x4a0/0x4a4`) | `SregCount`/`VregCount` + `RegisterCount` jump-table decode | CERTAIN |
-| Prefix-sum total, `Preg→Sreg→Vmreg→Vreg` block order | `Init` decompile | CERTAIN |
-| Numeric counts per generation | Chip-parts sequencer descriptor (not re-read from this build) | MEDIUM |
+| | |
+|---|---|
+| Count-field offsets (`0x498/0x49c/0x4a0/0x4a4`) | `SregCount`/`VregCount` + `RegisterCount` jump-table decode |
+| Prefix-sum total, `Preg→Sreg→Vmreg→Vreg` block order | `Init` decompile |
+| Numeric counts per generation | Chip-parts sequencer descriptor |
 
 > **QUIRK —** VREG doubles from 32 (v2/v3/v4) to 64 (v5p/v6e/v7), VMREG doubles 8→16, while PREG actually *shrinks* 15→14. A reimplementer numbering registers for a v5+ target who assumes the v2-era file sizes will mis-place every Sreg, Vmreg, and Vreg `arch_regno`, because the block bases shift with the per-class counts.
 
@@ -226,11 +226,11 @@ function ToRegNum(this, type, regno):                // sub_1d5a9000
 
 `ToArchRegString` @ `0x1275e2a0` resolves a slot to its printable form: `StrCat(RegisterTypeToMnemonic(type), FastIntToBuffer(regno))` after `(type, regno) = ToArchRegno(arch_regno)`. So arch register `arch_regno` prints as `"<p|s|vm|v><regno>"` — e.g. `v3`, `s12`, `vm5`, `p2`.
 
-| Function | Address | Reads | Confidence |
-|---|---|---|---|
-| `ToArchRegno` | `0x1275f580` | `[this+0x80]` reverse vector | CERTAIN |
-| `ToRegNum` | `0x1d5a9000` | `[this+0x98]` forward map | CERTAIN |
-| `ToArchRegString` | `0x1275e2a0` | `ToArchRegno` + mnemonic | CERTAIN |
+| Function | Address | Reads |
+|---|---|---|
+| `ToArchRegno` | `0x1275f580` | `[this+0x80]` reverse vector |
+| `ToRegNum` | `0x1d5a9000` | `[this+0x98]` forward map |
+| `ToArchRegString` | `0x1275e2a0` | `ToArchRegno` + mnemonic |
 
 > **GOTCHA —** `ToRegNum` returns 0 (the `kNoRegister` sentinel) on a *miss*, not a fatal error, and asserts the found `arch_regno` fits in a `uint8`. A virtual register whose `(type, regno)` was never numbered for this target silently resolves to "no register". `ToArchRegno`, by contrast, fatals on `arch_regno == 0`. The two directions are not symmetric in their error handling.
 
@@ -293,15 +293,15 @@ function XluOperationIsReady(tracker, op):            // sub_126cd920
 
 `RemoveScheduledXluOperation` @ `0x126ccfa0` is the "fire" step — it removes a scheduled op and decrements its successors' in-edge counts. The edges are exactly the `LloValue` def-use chains: a producer XLU op whose written `ArchRegister` is read by a later XLU op becomes its predecessor (`IsOperandOf` confirms the genuine RAW/WAR relation). The consumers of the tracker are `ComputeCombinablePairs` (`0x126d2480`, fuses ops with equal `RpuOperationMetadata`), `ReorderToShortenCriticalPath` (`0x126d3460`), `AssignXlu` (`0x126d3100`), and `AssignSourceBus` (`0x126d70e0`).
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `CrossXlu...::Create` | `0x126cc9a0` | Topo-mark → new tracker → per-node edge build | CERTAIN |
-| `CrossXlu...::ctor` | `0x126cda80` | Internal `LloDependencyGraph` + `LatencyTable` | CERTAIN |
-| `XluOperationIsReady` | `0x126cd920` | Readiness = in-edge count == 0 | CERTAIN |
-| `RemoveScheduledXluOperation` | `0x126ccfa0` | List-scheduler fire step | CERTAIN |
-| `LloDependencyGraphNode::IsOperandOf` | `0x14427d60` | Confirms RAW/WAR data dependency | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `CrossXlu...::Create` | `0x126cc9a0` | Topo-mark → new tracker → per-node edge build |
+| `CrossXlu...::ctor` | `0x126cda80` | Internal `LloDependencyGraph` + `LatencyTable` |
+| `XluOperationIsReady` | `0x126cd920` | Readiness = in-edge count == 0 |
+| `RemoveScheduledXluOperation` | `0x126ccfa0` | List-scheduler fire step |
+| `LloDependencyGraphNode::IsOperandOf` | `0x14427d60` | Confirms RAW/WAR data dependency |
 
-> **NOTE —** the dependency-edge mechanism (readiness, fusion-key, fire step) is decoded; the *edge weights* it feeds the critical-path reorder are the per-version op latencies in the `LatencyTable` (`LatencyTable::Create` @ `0x1c89fba0`), and the exact source-bus assignment heuristic in `AssignSourceBus` is not traced here.
+> **NOTE —** the *edge weights* the dependency tracker feeds the critical-path reorder are the per-version op latencies in the `LatencyTable` (`LatencyTable::Create` @ `0x1c89fba0`).
 
 ---
 

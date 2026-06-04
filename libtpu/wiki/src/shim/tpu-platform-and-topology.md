@@ -87,14 +87,14 @@ function TpuPlatform_New():                              // 0xEAB8B80
 
 The Deepsea platform vtable offsets the roster dispatches through, confirmed by the call expressions in each body:
 
-| Offset | Deepsea method (inferred) | C-ABI caller | Confidence |
-|---|---|---|---|
-| `+16` | platform id | `TpuPlatform_Id` (`0xEAB8DE0`) | HIGH |
-| `+32` | visible device count | `TpuPlatform_VisibleDeviceCount` (`0xEAB8E40`) | CERTAIN |
-| `+48` | initialize (returns `absl::Status`) | `TpuPlatform_Initialize` (`0xEAB8C20`) | CERTAIN |
-| `+72` | get executor for ordinal (returns `StatusOr<exec*>`) | `TpuPlatform_GetExecutor` (`0xEAB8CC0`) | CERTAIN |
-| `+96` | should register D2D copy | `TpuPlatform_ShouldRegisterTpuDeviceToDeviceCopy` (`0xEAB8EA0`) | CERTAIN |
-| `+104` | get topology pointer | `TpuPlatform_GetTopologyPtr` (`0xEAB8F00`) | CERTAIN |
+| Offset | Deepsea method (inferred) | C-ABI caller |
+|---|---|---|
+| `+16` | platform id | `TpuPlatform_Id` (`0xEAB8DE0`) |
+| `+32` | visible device count | `TpuPlatform_VisibleDeviceCount` (`0xEAB8E40`) |
+| `+48` | initialize (returns `absl::Status`) | `TpuPlatform_Initialize` (`0xEAB8C20`) |
+| `+72` | get executor for ordinal (returns `StatusOr<exec*>`) | `TpuPlatform_GetExecutor` (`0xEAB8CC0`) |
+| `+96` | should register D2D copy | `TpuPlatform_ShouldRegisterTpuDeviceToDeviceCopy` (`0xEAB8EA0`) |
+| `+104` | get topology pointer | `TpuPlatform_GetTopologyPtr` (`0xEAB8F00`) |
 
 `GetHostLocation` does **not** go through the vtable — it calls the non-virtual `deepsea::executor::DeepseaPlatform::GetHostLocation @ 0x1d0e79a0` directly on the singleton. `Initialized` and `GetRuntimeVersion` do not touch the singleton's vtable at all (see §2).
 
@@ -106,19 +106,19 @@ The Deepsea platform vtable offsets the roster dispatches through, confirmed by 
 
 Eleven `extern "C"` functions, three lifecycle and eight query/accessor. "Backs" names the Deepsea vtable offset or helper each dispatches to.
 
-| Function | Addr | Backs | Output / Convention | Confidence |
-|---|---|---|---|---|
-| `TpuPlatform_New` | `0xEAB8B80` | `EnsureDeepseaSingleton`; box the ptr | `void*` handle (8-byte box) or `NULL` | CERTAIN |
-| `TpuPlatform_Free` | `0xEAB8C00` | `free(handle)` — frees the box only | void | CERTAIN |
-| `TpuPlatform_Initialize` | `0xEAB8C20` | singleton vtable `+48` | `absl::Status`-out (`StatusRep**`) | CERTAIN |
-| `TpuPlatform_Initialized` | `0xEAB8CA0` | nothing — constant | `char` → always `1` | CERTAIN |
-| `TpuPlatform_GetExecutor` | `0xEAB8CC0` | singleton vtable `+72` | `StatusOr<executor*>` (boxed) | HIGH |
-| `TpuPlatform_Id` | `0xEAB8DE0` | singleton vtable `+16` | scalar id | HIGH |
-| `TpuPlatform_VisibleDeviceCount` | `0xEAB8E40` | singleton vtable `+32` | `int` | CERTAIN |
-| `TpuPlatform_ShouldRegisterTpuDeviceToDeviceCopy` | `0xEAB8EA0` | singleton vtable `+96` | bool | CERTAIN |
-| `TpuPlatform_GetTopologyPtr` | `0xEAB8F00` | singleton vtable `+104` | `tpu::TpuTopology*` (opaque) | CERTAIN |
-| `TpuPlatform_GetHostLocation` | `0xEAB8F60` | `DeepseaPlatform::GetHostLocation @ 0x1d0e79a0` (non-virtual) | host-location handle | CERTAIN |
-| `TpuPlatform_GetRuntimeVersion` | `0xEAB8FC0` | `BuildData::Timestamp` + `Changelist`; static `kMetadata` | fills caller struct (version + string) | HIGH |
+| Function | Addr | Backs | Output / Convention |
+|---|---|---|---|
+| `TpuPlatform_New` | `0xEAB8B80` | `EnsureDeepseaSingleton`; box the ptr | `void*` handle (8-byte box) or `NULL` |
+| `TpuPlatform_Free` | `0xEAB8C00` | `free(handle)` — frees the box only | void |
+| `TpuPlatform_Initialize` | `0xEAB8C20` | singleton vtable `+48` | `absl::Status`-out (`StatusRep**`) |
+| `TpuPlatform_Initialized` | `0xEAB8CA0` | nothing — constant | `char` → always `1` |
+| `TpuPlatform_GetExecutor` | `0xEAB8CC0` | singleton vtable `+72` | `StatusOr<executor*>` (boxed) |
+| `TpuPlatform_Id` | `0xEAB8DE0` | singleton vtable `+16` | scalar id |
+| `TpuPlatform_VisibleDeviceCount` | `0xEAB8E40` | singleton vtable `+32` | `int` |
+| `TpuPlatform_ShouldRegisterTpuDeviceToDeviceCopy` | `0xEAB8EA0` | singleton vtable `+96` | bool |
+| `TpuPlatform_GetTopologyPtr` | `0xEAB8F00` | singleton vtable `+104` | `tpu::TpuTopology*` (opaque) |
+| `TpuPlatform_GetHostLocation` | `0xEAB8F60` | `DeepseaPlatform::GetHostLocation @ 0x1d0e79a0` (non-virtual) | host-location handle |
+| `TpuPlatform_GetRuntimeVersion` | `0xEAB8FC0` | `BuildData::Timestamp` + `Changelist`; static `kMetadata` | fills caller struct (version + string) |
 
 > **NOTE —** `GetTopologyPtr` is the seam between this page and [TpuTopology & TpuCoreLocation](tpu-topology.md). It returns the opaque `tpu::TpuTopology*` (vtable `+104`); the host then hands that pointer to every `TpuTopology_*` accessor as their `a1`. The platform *produces* the topology pointer; the topology roster *consumes* it. Neither side passes the C++ object by value — only the `void*` crosses.
 
@@ -173,13 +173,13 @@ A `tensorflow::TPUNodeInterfaces` is the per-process attachment to the TPU node 
 
 ### Function Map
 
-| Function | Addr | Backs (C++ method) | Output / Convention | Confidence |
-|---|---|---|---|---|
-| `TpuNodeContext_Create` | `0xEACA260` | `TPUNodeInterfaces::InitScopedRef` | `ScopedRef**` handle + `absl::Status`-out | CERTAIN |
-| `TpuNodeContext_Free` | `0xEACA2E0` | `~ScopedRef` + `free`; two fatal CHECKs | void | CERTAIN |
-| `TpuNodeContext_CloseTpuHost` | `0xEACA3C0` | `TPUNodeInterfaces::CloseTPUHost` | `absl::Status`-out | CERTAIN |
-| `TpuNodeContext_Initialize` | `0xEACA400` | `TPUNodeInterfaces::Get` | `absl::Status`-out (+ resolves `TPUNodeInterfaces**`) | CERTAIN |
-| `TpuNodeContext_CompactionSupported` | `0xEACA440` | `InitScopedRef` → `TpuChipConfig::Megacore` | bool | HIGH |
+| Function | Addr | Backs (C++ method) | Output / Convention |
+|---|---|---|---|
+| `TpuNodeContext_Create` | `0xEACA260` | `TPUNodeInterfaces::InitScopedRef` | `ScopedRef**` handle + `absl::Status`-out |
+| `TpuNodeContext_Free` | `0xEACA2E0` | `~ScopedRef` + `free`; two fatal CHECKs | void |
+| `TpuNodeContext_CloseTpuHost` | `0xEACA3C0` | `TPUNodeInterfaces::CloseTPUHost` | `absl::Status`-out |
+| `TpuNodeContext_Initialize` | `0xEACA400` | `TPUNodeInterfaces::Get` | `absl::Status`-out (+ resolves `TPUNodeInterfaces**`) |
+| `TpuNodeContext_CompactionSupported` | `0xEACA440` | `InitScopedRef` → `TpuChipConfig::Megacore` | bool |
 
 ### Algorithm — the RAII pair
 

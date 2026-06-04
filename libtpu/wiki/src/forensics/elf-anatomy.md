@@ -57,14 +57,14 @@ Three header facts shape everything below.
 
 > **NOTE —** the binary is `not_stripped` in the `.symtab` sense: a full `.symtab` of `1,233,710` entries (size `0x1c3cc50` ÷ 24) plus an `0xab824de`-byte (~172 MiB) `.strtab` is present on disk. These give every internal function a name for static analysis, but they are non-`SHF_ALLOC` and contribute nothing to the runtime image. The runtime sees only the 741-entry `.dynsym`.
 
-| | | Confidence |
-|---|---|---|
-| ELF class / endianness / type | ELF64 · LSB · `ET_DYN` | High |
-| Machine | `EM_X86_64` (`Advanced Micro Devices X86-64`) | High |
-| Entry point | `0x0` (no `_start`) | High |
-| PHDR count / size | 11 × 56 bytes at offset `0x40` | High |
-| SHDR count / size | 52 × 64 bytes at offset `0x2e979ba8` | High |
-| `.shstrtab` index | `[50]` | High |
+| | |
+|---|---|
+| ELF class / endianness / type | ELF64 · LSB · `ET_DYN` |
+| Machine | `EM_X86_64` (`Advanced Micro Devices X86-64`) |
+| Entry point | `0x0` (no `_start`) |
+| PHDR count / size | 11 × 56 bytes at offset `0x40` |
+| SHDR count / size | 52 × 64 bytes at offset `0x2e979ba8` |
+| `.shstrtab` index | `[50]` |
 
 ---
 
@@ -89,12 +89,12 @@ NOTE           0x0002a8   0x000002a8   0x000020   0x000020   R    0x4
 
 ### The four load segments
 
-| Seg | Perms | File offset | Vaddr | FileSiz | MemSiz | Holds | Confidence |
-|---|---|---|---|---|---|---|---|
-| LOAD 1 | `R E` | `0x0` | `0x0` | `0x213f25d0` (~534 MiB) | same | metadata, `.lrodata`, `.rodata`, EH tables, **all `.text*`**, `.plt` | High |
-| LOAD 2 | `RW` | `0x213f25e0` | `0x215f25e0` | `0xa62bc0` (~10.4 MiB) | `0xa63a20` | TLS template, init/fini/preinit arrays, `.data.rel.ro`, `.dynamic`, `.got` | High |
-| LOAD 3 | `RW` | `0x21e551c0` | `0x222551c0` | `0x26e6a0` (~2.5 MiB) | `0x343a70` | `.data`, the `google_*`/`__rseq_cs`/`linkarr_*` sections, `.got.plt`, `.bss` | High |
-| LOAD 4 | `RW` | `0x22198c30` | `0x22798c30` | `0x021c00` | `0x0c6650` (~806 KiB) | `.ldata`, **`.lbss`**, `google_malloc_bss` (large-model writable) | High |
+| Seg | Perms | File offset | Vaddr | FileSiz | MemSiz | Holds |
+|---|---|---|---|---|---|---|
+| LOAD 1 | `R E` | `0x0` | `0x0` | `0x213f25d0` (~534 MiB) | same | metadata, `.lrodata`, `.rodata`, EH tables, **all `.text*`**, `.plt` |
+| LOAD 2 | `RW` | `0x213f25e0` | `0x215f25e0` | `0xa62bc0` (~10.4 MiB) | `0xa63a20` | TLS template, init/fini/preinit arrays, `.data.rel.ro`, `.dynamic`, `.got` |
+| LOAD 3 | `RW` | `0x21e551c0` | `0x222551c0` | `0x26e6a0` (~2.5 MiB) | `0x343a70` | `.data`, the `google_*`/`__rseq_cs`/`linkarr_*` sections, `.got.plt`, `.bss` |
+| LOAD 4 | `RW` | `0x22198c30` | `0x22798c30` | `0x021c00` | `0x0c6650` (~806 KiB) | `.ldata`, **`.lbss`**, `google_malloc_bss` (large-model writable) |
 
 > **GOTCHA —** the file-offset ≡ vaddr identity holds **only for LOAD 1**, where both start at `0`. From LOAD 2 onward the linker page-shifts the vaddr ahead of the file offset by a growing 2 MiB step: vaddr − offset is `0x200000` for LOAD 2, `0x400000` for LOAD 3, `0x600000` for LOAD 4. A tool that computes `file_offset = vaddr` (correct inside `.text`) will read the wrong bytes for anything in the writable segments — including `.dynamic`, `.got`, and the `.lbss` singletons. Always translate through the owning `PT_LOAD`, never with a single global delta.
 
@@ -119,95 +119,95 @@ The three writable segments are split rather than merged because the large-code-
 
 ### Dynamic-linking metadata (LOAD 1 head)
 
-| `[Nr]` Name | Type | Address | Offset | Size | Flg | Confidence |
-|---|---|---|---|---|---|---|
-| `[1] .note.gnu.build-id` | NOTE | `0x2a8` | `0x2a8` | `0x20` | `A` | High |
-| `[2] .dynsym` | DYNSYM | `0x2c8` | `0x2c8` | `0x4578` | `A` | High |
-| `[3] .gnu.version` | VERSYM | `0x4840` | `0x4840` | `0x5ca` | `A` | High |
-| `[4] .gnu.version_d` | VERDEF | `0x4e0c` | `0x4e0c` | `0x38` | `A` | High |
-| `[5] .gnu.version_r` | VERNEED | `0x4e44` | `0x4e44` | `0x270` | `A` | High |
-| `[6] .gnu.hash` | GNU_HASH | `0x50b8` | `0x50b8` | `0x678` | `A` | High |
-| `[7] .dynstr` | STRTAB | `0x5730` | `0x5730` | `0x3a3c` | `A` | High |
-| `[8] .rela.dyn` | RELA | `0x9170` | `0x9170` | `0x1878c30` | `A` | High |
-| `[9] .rela.plt` | RELA | `0x1881da0` | `0x1881da0` | `0x2c58` | `AI` | High |
+| `[Nr]` Name | Type | Address | Offset | Size | Flg |
+|---|---|---|---|---|---|
+| `[1] .note.gnu.build-id` | NOTE | `0x2a8` | `0x2a8` | `0x20` | `A` |
+| `[2] .dynsym` | DYNSYM | `0x2c8` | `0x2c8` | `0x4578` | `A` |
+| `[3] .gnu.version` | VERSYM | `0x4840` | `0x4840` | `0x5ca` | `A` |
+| `[4] .gnu.version_d` | VERDEF | `0x4e0c` | `0x4e0c` | `0x38` | `A` |
+| `[5] .gnu.version_r` | VERNEED | `0x4e44` | `0x4e44` | `0x270` | `A` |
+| `[6] .gnu.hash` | GNU_HASH | `0x50b8` | `0x50b8` | `0x678` | `A` |
+| `[7] .dynstr` | STRTAB | `0x5730` | `0x5730` | `0x3a3c` | `A` |
+| `[8] .rela.dyn` | RELA | `0x9170` | `0x9170` | `0x1878c30` | `A` |
+| `[9] .rela.plt` | RELA | `0x1881da0` | `0x1881da0` | `0x2c58` | `AI` |
 
 ### Read-only data (LOAD 1 body)
 
-| `[Nr]` Name | Type | Address | Size | Flg | Holds | Confidence |
-|---|---|---|---|---|---|---|
-| `[10] .lrodata` | PROGBITS | `0x1884a00` | `0x6c0e7d0` (~108 MiB) | `AMSl` | large-model RO constants & merged strings | High |
-| `[11] .rodata` | PROGBITS | `0x84a0000` | `0x39eaf28` (~58 MiB) | `AMSo` | small-model RO constants, 64 KiB-aligned | High |
-| `[12] protodesc_cold` | PROGBITS | `0xbe8af30` | `0x334180` (~3.2 MiB) | `A` | cold protobuf descriptor tables | High |
-| `[13] .gcc_except_table` | PROGBITS | `0xc1bf0b0` | `0x10d584` (~1.0 MiB) | `A` | LSDA exception tables | High |
-| `[14] .eh_frame_hdr` | PROGBITS | `0xc2cc634` | `0x6bd684` (~6.7 MiB) | `A` | unwind search index | High |
-| `[15] .eh_frame` | PROGBITS | `0xc989cb8` | `0x1cab86c` (~28.7 MiB) | `A` | DWARF CFI unwind records | High |
+| `[Nr]` Name | Type | Address | Size | Flg | Holds |
+|---|---|---|---|---|---|
+| `[10] .lrodata` | PROGBITS | `0x1884a00` | `0x6c0e7d0` (~108 MiB) | `AMSl` | large-model RO constants & merged strings |
+| `[11] .rodata` | PROGBITS | `0x84a0000` | `0x39eaf28` (~58 MiB) | `AMSo` | small-model RO constants, 64 KiB-aligned |
+| `[12] protodesc_cold` | PROGBITS | `0xbe8af30` | `0x334180` (~3.2 MiB) | `A` | cold protobuf descriptor tables |
+| `[13] .gcc_except_table` | PROGBITS | `0xc1bf0b0` | `0x10d584` (~1.0 MiB) | `A` | LSDA exception tables |
+| `[14] .eh_frame_hdr` | PROGBITS | `0xc2cc634` | `0x6bd684` (~6.7 MiB) | `A` | unwind search index |
+| `[15] .eh_frame` | PROGBITS | `0xc989cb8` | `0x1cab86c` (~28.7 MiB) | `A` | DWARF CFI unwind records |
 
 ### Executable code (LOAD 1 tail)
 
-| `[Nr]` Name | Type | Address | Size | Flg | Role | Confidence |
-|---|---|---|---|---|---|---|
-| `[16] .init` | PROGBITS | `0xe635524` | `0x17` | `AX` | `DT_INIT` legacy ctor stub | High |
-| `[17] .fini` | PROGBITS | `0xe63553c` | `0x9` | `AX` | `DT_FINI` legacy dtor stub | High |
-| `[18] .text.hot` | PROGBITS | `0xe635560` | `0x1e2e` | `AXo` | profile-hot functions | High |
-| `[19] google_malloc` | PROGBITS | `0xe6373c0` | `0x46f2` | `AXo` | TCMalloc fast-path code | High |
-| `[20] .text.split` | PROGBITS | `0xe63bab2` | `0x0` | `AXo` | empty placeholder section | High |
-| `[21] .text` | PROGBITS | `0xe63c000` | `0x12bdb484` (~299 MiB) | `AX` | the main code body | High |
-| `[22] .text.startup` | PROGBITS | `0x21217490` | `0x16a454` (~1.4 MiB) | `AX` | constructor/startup code | High |
-| `[23] .text.unlikely` | PROGBITS | `0x21381900` | `0x68469` (~427 KiB) | `AX` | cold/unlikely paths | High |
-| `[24] google_init_cold` | PROGBITS | `0x213e9d80` | `0x60f1` | `AX` | cold init code | High |
-| `[25] malloc_hook` | PROGBITS | `0x213efe80` | `0x89e` | `AX` | allocator hook trampolines | High |
-| `[26] __lcxx_override` | PROGBITS | `0x213f0720` | `0x105` | `AX` | libc++ `operator new`/`delete` overrides | High |
-| `[27] .plt` | PROGBITS | `0x213f0830` | `0x1da0` | `AX` | procedure linkage table (473 slots) | High |
+| `[Nr]` Name | Type | Address | Size | Flg | Role |
+|---|---|---|---|---|---|
+| `[16] .init` | PROGBITS | `0xe635524` | `0x17` | `AX` | `DT_INIT` legacy ctor stub |
+| `[17] .fini` | PROGBITS | `0xe63553c` | `0x9` | `AX` | `DT_FINI` legacy dtor stub |
+| `[18] .text.hot` | PROGBITS | `0xe635560` | `0x1e2e` | `AXo` | profile-hot functions |
+| `[19] google_malloc` | PROGBITS | `0xe6373c0` | `0x46f2` | `AXo` | TCMalloc fast-path code |
+| `[20] .text.split` | PROGBITS | `0xe63bab2` | `0x0` | `AXo` | empty placeholder section |
+| `[21] .text` | PROGBITS | `0xe63c000` | `0x12bdb484` (~299 MiB) | `AX` | the main code body |
+| `[22] .text.startup` | PROGBITS | `0x21217490` | `0x16a454` (~1.4 MiB) | `AX` | constructor/startup code |
+| `[23] .text.unlikely` | PROGBITS | `0x21381900` | `0x68469` (~427 KiB) | `AX` | cold/unlikely paths |
+| `[24] google_init_cold` | PROGBITS | `0x213e9d80` | `0x60f1` | `AX` | cold init code |
+| `[25] malloc_hook` | PROGBITS | `0x213efe80` | `0x89e` | `AX` | allocator hook trampolines |
+| `[26] __lcxx_override` | PROGBITS | `0x213f0720` | `0x105` | `AX` | libc++ `operator new`/`delete` overrides |
+| `[27] .plt` | PROGBITS | `0x213f0830` | `0x1da0` | `AX` | procedure linkage table (473 slots) |
 
 ### Writable: TLS, init arrays, RELRO data (LOAD 2)
 
-| `[Nr]` Name | Type | Address | Offset | Size | Flg | Confidence |
-|---|---|---|---|---|---|---|
-| `[28] .tdata` | PROGBITS | `0x215f25e0` | `0x213f25e0` | `0x110` | `WAT` | High |
-| `[29] .tbss` | NOBITS | `0x215f26f0` | `0x213f26f0` | `0xd68` | `WAT` | High |
-| `[30] .init_array` | INIT_ARRAY | `0x215f26f0` | `0x213f26f0` | `0x5aa0` (23200 B) | `WAo` | High |
-| `[31] .fini_array` | FINI_ARRAY | `0x215f8190` | `0x213f8190` | `0x10` | `WA` | High |
-| `[32] .data.rel.ro` | PROGBITS | `0x215f81a0` | `0x213f81a0` | `0xa50990` (~10.3 MiB) | `WA` | High |
-| `[33] .preinit_array` | PREINIT_ARRAY | `0x22048b30` | `0x21e48b30` | `0x10` | `WA` | High |
-| `[34] .dynamic` | DYNAMIC | `0x22048b40` | `0x21e48b40` | `0x210` | `WA` | High |
-| `[35] .got` | PROGBITS | `0x22048d50` | `0x21e48d50` | `0xc450` | `WA` | High |
-| `[36] .relro_padding` | NOBITS | `0x220551a0` | `0x21e551a0` | `0xe60` | `WA` | High |
+| `[Nr]` Name | Type | Address | Offset | Size | Flg |
+|---|---|---|---|---|---|
+| `[28] .tdata` | PROGBITS | `0x215f25e0` | `0x213f25e0` | `0x110` | `WAT` |
+| `[29] .tbss` | NOBITS | `0x215f26f0` | `0x213f26f0` | `0xd68` | `WAT` |
+| `[30] .init_array` | INIT_ARRAY | `0x215f26f0` | `0x213f26f0` | `0x5aa0` (23200 B) | `WAo` |
+| `[31] .fini_array` | FINI_ARRAY | `0x215f8190` | `0x213f8190` | `0x10` | `WA` |
+| `[32] .data.rel.ro` | PROGBITS | `0x215f81a0` | `0x213f81a0` | `0xa50990` (~10.3 MiB) | `WA` |
+| `[33] .preinit_array` | PREINIT_ARRAY | `0x22048b30` | `0x21e48b30` | `0x10` | `WA` |
+| `[34] .dynamic` | DYNAMIC | `0x22048b40` | `0x21e48b40` | `0x210` | `WA` |
+| `[35] .got` | PROGBITS | `0x22048d50` | `0x21e48d50` | `0xc450` | `WA` |
+| `[36] .relro_padding` | NOBITS | `0x220551a0` | `0x21e551a0` | `0xe60` | `WA` |
 
 > **NOTE —** `.init_array` is `0x5aa0` = 23,200 bytes at vaddr `0x215f26f0`, exactly matching `DT_INIT_ARRAY`/`DT_INIT_ARRAYSZ` below. At 8 bytes per pointer that is 2,900 constructor function pointers — an enormous static-initialization fan-out. The roster of which constructors these are (and the ordering hazards) is owned by [`forensics/static-init.md`](static-init.md); this page only fixes the array's location and extent.
 
 ### Writable: small-model data and the custom sections (LOAD 3)
 
-| `[Nr]` Name | Type | Address | Offset | Size | Flg | Confidence |
-|---|---|---|---|---|---|---|
-| `[37] .data` | PROGBITS | `0x222551c0` | `0x21e551c0` | `0x26a5d8` (~2.5 MiB) | `WA` | High |
-| `[38] filewrapper_toc` | PROGBITS | `0x224bf798` | `0x220bf798` | `0x1e8` | `WA` | High |
-| `[39] __rseq_cs` | PROGBITS | `0x224bf980` | `0x220bf980` | `0x2260` | `WA` | High |
-| `[40] __rseq_cs_ptr_array` | PROGBITS | `0x224c1be0` | `0x220c1be0` | `0x898` | `WA` | High |
-| `[41] linkarr_upb_AllExts` | PROGBITS | `0x224c2480` | `0x220c2480` | `0x4a0` | `WAo` | High |
-| `[42] pb_defaults` | PROGBITS | `0x224c2920` | `0x220c2920` | `0x18` | `WA` | High |
-| `[43] google_malloc_data` | PROGBITS | `0x224c2938` | `0x220c2938` | `0x48` | `WA` | High |
-| `[44] .got.plt` | PROGBITS | `0x224c2980` | `0x220c2980` | `0xee0` | `WA` | High |
-| `[45] .bss` | NOBITS | `0x224c3880` | `0x220c3860` | `0xd53b0` (~853 KiB) | `WAo` | High |
+| `[Nr]` Name | Type | Address | Offset | Size | Flg |
+|---|---|---|---|---|---|
+| `[37] .data` | PROGBITS | `0x222551c0` | `0x21e551c0` | `0x26a5d8` (~2.5 MiB) | `WA` |
+| `[38] filewrapper_toc` | PROGBITS | `0x224bf798` | `0x220bf798` | `0x1e8` | `WA` |
+| `[39] __rseq_cs` | PROGBITS | `0x224bf980` | `0x220bf980` | `0x2260` | `WA` |
+| `[40] __rseq_cs_ptr_array` | PROGBITS | `0x224c1be0` | `0x220c1be0` | `0x898` | `WA` |
+| `[41] linkarr_upb_AllExts` | PROGBITS | `0x224c2480` | `0x220c2480` | `0x4a0` | `WAo` |
+| `[42] pb_defaults` | PROGBITS | `0x224c2920` | `0x220c2920` | `0x18` | `WA` |
+| `[43] google_malloc_data` | PROGBITS | `0x224c2938` | `0x220c2938` | `0x48` | `WA` |
+| `[44] .got.plt` | PROGBITS | `0x224c2980` | `0x220c2980` | `0xee0` | `WA` |
+| `[45] .bss` | NOBITS | `0x224c3880` | `0x220c3860` | `0xd53b0` (~853 KiB) | `WAo` |
 
 The `filewrapper_toc`, `__rseq_cs`/`__rseq_cs_ptr_array` (restartable-sequences critical-section descriptors for TCMalloc), `linkarr_upb_AllExts` (upb proto-extension link array), `pb_defaults`, and `google_malloc_data` sections are non-standard, linker-script-placed sections. Their internal layout and purpose are the subject of [`forensics/custom-sections.md`](custom-sections.md); they are listed here only to fix their addresses in the global map.
 
 ### Writable: large-model data (LOAD 4)
 
-| `[Nr]` Name | Type | Address | Offset | Size | Flg | Confidence |
-|---|---|---|---|---|---|---|
-| `[46] .ldata` | PROGBITS | `0x22798c30` | `0x22198c30` | `0x21c00` | `WAl` | High |
-| `[47] .lbss` | NOBITS | `0x227ba840` | `0x221ba830` | `0x9f940` (~654 KiB) | `WAl` | High |
-| `[48] google_malloc_bss` | NOBITS | `0x2285a180` | `0x221ba830` | `0x5100` | `WAl` | High |
+| `[Nr]` Name | Type | Address | Offset | Size | Flg |
+|---|---|---|---|---|---|
+| `[46] .ldata` | PROGBITS | `0x22798c30` | `0x22198c30` | `0x21c00` | `WAl` |
+| `[47] .lbss` | NOBITS | `0x227ba840` | `0x221ba830` | `0x9f940` (~654 KiB) | `WAl` |
+| `[48] google_malloc_bss` | NOBITS | `0x2285a180` | `0x221ba830` | `0x5100` | `WAl` |
 
 > **QUIRK —** the runtime's PJRT API singleton lives in `.lbss`, near vaddr `0x227ba840` (the section base), not in `.bss`. Because the binary is large-code-model, any global whose address the compiler could not prove reachable with a 32-bit displacement was forced into the `l`-flagged large tier. For the dispatcher that hands out the PJRT function-pointer table this means the table is reached by 64-bit absolute load, and a reverse engineer tracing `GetPjrtApi` must map LOAD 4 (delta `0x600000`) to find the backing bytes. See [`lifecycle/get-pjrt-api-thunk.md`](../lifecycle/get-pjrt-api-thunk.md).
 
 ### Non-allocated tail (not in any segment)
 
-| `[Nr]` Name | Type | Offset | Size | Confidence |
-|---|---|---|---|---|
-| `[49] .symtab` | SYMTAB | `0x221ba830` | `0x1c3cc50` (~28.2 MiB, 1,233,710 entries) | High |
-| `[50] .shstrtab` | STRTAB | `0x23df7480` | `0x243` | High |
-| `[51] .strtab` | STRTAB | `0x23df76c3` | `0xab824de` (~172 MiB) | High |
+| `[Nr]` Name | Type | Offset | Size |
+|---|---|---|---|
+| `[49] .symtab` | SYMTAB | `0x221ba830` | `0x1c3cc50` (~28.2 MiB, 1,233,710 entries) |
+| `[50] .shstrtab` | STRTAB | `0x23df7480` | `0x243` |
+| `[51] .strtab` | STRTAB | `0x23df76c3` | `0xab824de` (~172 MiB) |
 
 These three carry no `SHF_ALLOC` flag (address `0x0`): they exist on disk for static tooling and are never mapped. Together they account for roughly 200 MiB of the file — over a quarter of its on-disk size is symbol names that the loader never touches.
 
@@ -245,17 +245,17 @@ The `.dynamic` array (section `[34]`, `PT_DYNAMIC`) is 33 entries / `0x210` byte
 
 ### What the loader is told
 
-| Aspect | Value | Implication | Confidence |
-|---|---|---|---|
-| `DT_NEEDED` × 6 | `libm`, `libpthread`, `libdl`, `librt`, `libc`, `ld-linux-x86-64` | Self-contained: no C++ runtime, no CUDA, no driver `.so`. `libstdc++`/`libgcc_s` are *not* needed — the C++ runtime is statically linked in. | High |
-| `DT_SONAME` | absent | The object names itself only by path; nothing `dlopen`s it by SONAME. | High |
-| `DT_RPATH`/`DT_RUNPATH` | absent | No embedded search path. | High |
-| Symbol hash | `DT_GNU_HASH` only (`0x50b8`); no legacy `DT_HASH` | Loader must support GNU hash; a DT_HASH-only loader cannot resolve symbols here. | High |
-| `DT_INIT` / `DT_FINI` | `0xe635524` / `0xe63553c` | Legacy single-function ctor/dtor stubs in `.init`/`.fini`. | High |
-| `DT_INIT_ARRAY` / size | `0x215f26f0` / 23,200 B (2,900 ptrs) | The real constructor fan-out — see [static-init](static-init.md). | High |
-| `DT_FINI_ARRAY` / size | `0x215f8190` / 16 B (2 ptrs) | Two destructors only. | High |
-| `DT_PREINIT_ARRAY` / size | `0x22048b30` / 16 B (2 ptrs) | Runs *before* `.init_array` — rare in libraries. | High |
-| `DT_VERSYM`/`VERDEF`/`VERNEED` | `0x4840` / `0x4e0c` / `0x4e44` | Symbol versioning active: 2 version definitions, 6 version-need records. | High |
+| Aspect | Value | Implication |
+|---|---|---|
+| `DT_NEEDED` × 6 | `libm`, `libpthread`, `libdl`, `librt`, `libc`, `ld-linux-x86-64` | Self-contained: no C++ runtime, no CUDA, no driver `.so`. `libstdc++`/`libgcc_s` are *not* needed — the C++ runtime is statically linked in. |
+| `DT_SONAME` | absent | The object names itself only by path; nothing `dlopen`s it by SONAME. |
+| `DT_RPATH`/`DT_RUNPATH` | absent | No embedded search path. |
+| Symbol hash | `DT_GNU_HASH` only (`0x50b8`); no legacy `DT_HASH` | Loader must support GNU hash; a DT_HASH-only loader cannot resolve symbols here. |
+| `DT_INIT` / `DT_FINI` | `0xe635524` / `0xe63553c` | Legacy single-function ctor/dtor stubs in `.init`/`.fini`. |
+| `DT_INIT_ARRAY` / size | `0x215f26f0` / 23,200 B (2,900 ptrs) | The real constructor fan-out — see [static-init](static-init.md). |
+| `DT_FINI_ARRAY` / size | `0x215f8190` / 16 B (2 ptrs) | Two destructors only. |
+| `DT_PREINIT_ARRAY` / size | `0x22048b30` / 16 B (2 ptrs) | Runs *before* `.init_array` — rare in libraries. |
+| `DT_VERSYM`/`VERDEF`/`VERNEED` | `0x4840` / `0x4e0c` / `0x4e44` | Symbol versioning active: 2 version definitions, 6 version-need records. |
 
 > **QUIRK —** `DT_NEEDED` lists only six bare system libraries for a 745 MiB plugin. Everything else — the LLVM/MLIR compiler, XLA, gRPC, protobuf, Abseil, Eigen, the libstdc++ ABI, and the TPU driver — is statically archived into this one file. The dependency surface is deliberately minimal so the plugin drops into any manylinux_2_31 host without dragging in a transitive `.so` graph. A reimplementer who expects to find these as shared dependencies will find them as `.text` instead.
 
@@ -269,21 +269,21 @@ The runtime-visible symbol surface is tiny relative to the binary; the relocatio
 
 ### Dynamic symbols
 
-| Metric | Value | Confidence |
-|---|---|---|
-| `.dynsym` entries | 741 (size `0x4578` / 24) | High |
-| of which imports (`UND`) | 515 with `Ndx == UND` (the index-0 `NULL` + imports) and 226 with a defined section index (the exports) | High |
-| Exported symbol families | `Tpu*` C API (`TpuExecutor`, `TpuCompiler`, `TpuProgram`, …), plus `GetPjrtApi`, `TfTpu_Initialize`, Abseil internal entry points | High |
-| Symbol versions | `GLIBC_2.x` (libc/libm/librt), `VERS_1.0` (the object's own definition) | High |
+| Metric | Value |
+|---|---|
+| `.dynsym` entries | 741 (size `0x4578` / 24) |
+| of which imports (`UND`) | 515 with `Ndx == UND` (the index-0 `NULL` + imports) and 226 with a defined section index (the exports) |
+| Exported symbol families | `Tpu*` C API (`TpuExecutor`, `TpuCompiler`, `TpuProgram`, …), plus `GetPjrtApi`, `TfTpu_Initialize`, Abseil internal entry points |
+| Symbol versions | `GLIBC_2.x` (libc/libm/librt), `VERS_1.0` (the object's own definition) |
 
 The export surface is intentionally narrow: a host loads this library and calls a handful of C entry points — chiefly `GetPjrtApi` and the `TfTpu_*` bootstrap — and the entire compiler/runtime hides behind them as internal (`LOCAL`) symbols. The polymorphic dispatch behind those few exports is covered in [`forensics/polymorphic-entry-points.md`](polymorphic-entry-points.md) and [`lifecycle/get-pjrt-api-thunk.md`](../lifecycle/get-pjrt-api-thunk.md).
 
 ### Relocations
 
-| Table | Address | Entries | Type mix | Confidence |
-|---|---|---|---|---|
-| `.rela.dyn` | `0x9170` | 1,069,186 (size `0x1878c30` / 24) | `R_X86_64_RELATIVE` dominates (`DT_RELACOUNT` = 1,069,006 ≈ 99.98%) | High |
-| `.rela.plt` | `0x1881da0` | 473 (size `0x2c58` / 24, `PLTRELSZ` 11,352) | `R_X86_64_JUMP_SLOT` (PLT GOT entries) | High |
+| Table | Address | Entries | Type mix |
+|---|---|---|---|
+| `.rela.dyn` | `0x9170` | 1,069,186 (size `0x1878c30` / 24) | `R_X86_64_RELATIVE` dominates (`DT_RELACOUNT` = 1,069,006 ≈ 99.98%) |
+| `.rela.plt` | `0x1881da0` | 473 (size `0x2c58` / 24, `PLTRELSZ` 11,352) | `R_X86_64_JUMP_SLOT` (PLT GOT entries) |
 
 > **GOTCHA —** of the ~1.07 M dynamic relocations, all but ~180 are `R_X86_64_RELATIVE` — pure load-bias adds with no symbol reference. This is the cost of a 534 MiB position-independent text segment: every absolute pointer baked into `.data.rel.ro`, vtables, and jump tables must be rebased. The relocation table (`RELASZ` = 25,660,464 bytes ≈ 24.5 MiB) is itself larger than many complete shared libraries. A loader processes over a million relocations before the first constructor runs; this, more than `.init_array`, dominates `dlopen` latency for this plugin.
 

@@ -99,13 +99,13 @@ Clearing bit 4 (`0x10`) folds MS 2 (`tile_spmem`) and MS 18 = `0x12` (`tile_spme
 
 When a pointer's exact tile or core is statically unknown, the SparseCore LLVM backend widens it to a wildcard `*Any` space for alias analysis. `GetAnyTypeFromAddressSpace(int)` is the canonicaliser:
 
-| concrete ID (name) | → canonical ID (name) | Confidence |
-|---|---|---|
-| 201 `TileSpmem`, 202 `Spmem` | 218 `SpmemAny` | CONFIRMED |
-| 203 `HBM` | 213 `HBMAny` | CONFIRMED |
-| 204 `Sflag` | 211 `SflagAny` | CONFIRMED |
-| 205 `Vmem` | 205 `Vmem` (self — no separate wildcard) | CONFIRMED |
-| 219 `TileSmem`, 0 `Smem` | 212 `SmemAny` | CONFIRMED |
+| concrete ID (name) | → canonical ID (name) |
+|---|---|
+| 201 `TileSpmem`, 202 `Spmem` | 218 `SpmemAny` |
+| 203 `HBM` | 213 `HBMAny` |
+| 204 `Sflag` | 211 `SflagAny` |
+| 205 `Vmem` | 205 `Vmem` (self — no separate wildcard) |
+| 219 `TileSmem`, 0 `Smem` | 212 `SmemAny` |
 
 The `*Any` IDs (211/212/213/218) carry a description but **no** `MemorySpace` pool — they are alias-analysis groupings, not physical pools. Calling `GetAnyTypeFromAddressSpace` on an already-wildcard or leaf space (`Dreg`, `Timem`, `IOVA`, `SflagTile`, the `*Any` IDs themselves) hits the `LogFatal("Unsupported address space: ")` arm (`llvm_tpu_dialect_only.h:100`), so the canonicaliser is total only over the concrete spaces above.
 

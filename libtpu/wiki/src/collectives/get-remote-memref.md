@@ -58,13 +58,13 @@ GetRemoteMemRef::build(OpBuilder, OperationState &st, Type resultTy,
 
 There are **no** `Properties` writes — the op carries no inherent attributes. `getLocalMemrefMemorySpace` (`0x146B0000`) confirms operand 0 is the local memref: it reads operand 0's `MemRefType` (`[impl+8] & ~7`) and returns its `GetMemorySpace`.
 
-| Operand | Role | Type class | Confidence |
-|---|---|---|---|
-| 0 | `localMemref` — the data base whose type is read and promoted | `MemRefType` (constraint `sc_ops12`) | CONFIRMED |
-| 1 | `remoteCoreId` — a peer core-id component | index-like (constraint `sc_ops2`) | CONFIRMED |
-| 2 | `v3` — the second id component (device vs core) | index-like (constraint `sc_ops2`) | CONFIRMED |
-| 3 | `v4` — optional 4th operand (a remote sflag/offset component) | added only when non-null | HIGH |
-| result | the remote `MemRefType` base | `OneTypedResult<MemRefType>` | CONFIRMED |
+| Operand | Role | Type class |
+|---|---|---|
+| 0 | `localMemref` — the data base whose type is read and promoted | `MemRefType` (constraint `sc_ops12`) |
+| 1 | `remoteCoreId` — a peer core-id component | index-like (constraint `sc_ops2`) |
+| 2 | `v3` — the second id component (device vs core) | index-like (constraint `sc_ops2`) |
+| 3 | `v4` — optional 4th operand (a remote sflag/offset component) | added only when non-null |
+| result | the remote `MemRefType` base | `OneTypedResult<MemRefType>` |
 
 > **GOTCHA —** the *semantic* split of operands 1 (`remoteCoreId`) and 2 (`v3`) between the remote **device** (chip) id and the remote **core** id within the chip is HIGH, not CONFIRMED. The verifier type-checks both with the *same* constraint (`sc_ops2`), so they are two interchangeable index-like ids; the device-vs-core assignment is read from the `GetRemoteMemBase` call-site marshalling order (§3), not from any per-operand check string. A reimplementation must fix the order at the call site, not infer it from the op.
 

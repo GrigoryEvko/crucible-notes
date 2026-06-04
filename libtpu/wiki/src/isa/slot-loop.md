@@ -32,7 +32,6 @@ For reimplementation, the contract is:
 | **AddressHandler per-gen insert** | `JellyfishTarget::InsertAddressHandlerLoop` @ `0x1d490e00` (live) / `PufferfishTarget` @ `0x1d495340` (live) / `ViperfishTarget` @ `0x1d49b980` (`__noreturn` stub) |
 | **BarnaCore HW opcodes** | `bcLOOP_SETUP` (0x194), `bcLOOP_START` (0xf8a), `bcLOOP_END` (0x193) |
 | **LLO loop kinds** | `LloLoopKindProto { LOOP_KIND_NONE, LOOP_KIND_WHILE, LOOP_KIND_DOWHILE }` |
-| **Confidence** | CONFIRMED (byte-anchored) unless a row says otherwise |
 
 ---
 
@@ -48,7 +47,7 @@ int dest = a2;                               // the scalar destination index
 return BitCopy(buf, /*dst_bit=*/467, &dest, /*src_bit=*/0, /*width=*/5);   // 5-bit dest, abs bit 467
 ```
 
-`BitCopy(buf, 467, &dest, 0, 5)` writes the 5-bit destination at absolute bundle bit 467 (`0x1d3`) — and it is the **only** field this op writes. All bit positions on this page are **LSB-first** (bit 0 = least-significant bit of byte 0), matching the universal `BitCopy(dst, dst_bit, src, src_bit, nbits)` packer (`0x1fa0a900`) and the convention pinned in [Bundle Model §bit-numbering](bundle-model-overview.md). This is the same 5-bit dest at bit 467 that the [Sequencer Slot](slot-sequencer.md#branch--jump--call-encoding) call/return-address encoder writes. There is no loop-counter-index operand, which is the structural proof that V5+ exposes a single implicit counter (see [Per-Generation Count](#per-generation-count-and-read-mechanism)). The maximum trip count the counter can represent is `2^64 − 1`; whether the silicon down-counter is the full 64 bits or narrower is not separable from the binary (the 64-bit *readback* is certain, the counter width is inferred — MEDIUM).
+`BitCopy(buf, 467, &dest, 0, 5)` writes the 5-bit destination at absolute bundle bit 467 (`0x1d3`) — and it is the **only** field this op writes. All bit positions on this page are **LSB-first** (bit 0 = least-significant bit of byte 0), matching the universal `BitCopy(dst, dst_bit, src, src_bit, nbits)` packer (`0x1fa0a900`) and the convention pinned in [Bundle Model §bit-numbering](bundle-model-overview.md). This is the same 5-bit dest at bit 467 that the [Sequencer Slot](slot-sequencer.md#branch--jump--call-encoding) call/return-address encoder writes. There is no loop-counter-index operand, which is the structural proof that V5+ exposes a single implicit counter (see [Per-Generation Count](#per-generation-count-and-read-mechanism)). The maximum trip count the counter can represent is `2^64 − 1`; the 64-bit readback (lo+hi) is fixed, while whether the silicon down-counter is the full 64 bits or narrower is not separable from the binary.
 
 > **NOTE —** the LLVM-generic `hardware-loop-counter-bitwidth` `cl::opt` ("Set the loop counter bitwidth") belongs to the target-independent `HardwareLoops` pass, not to the silicon LCC. The TPU LCC is fixed at 64-bit per the lo/hi read structure; do not conflate the two.
 
@@ -76,14 +75,14 @@ The active counter is selected by the `reg` enum field of the scalar read-regist
 
 **Jellyfish (v2) / Dragonfish (v3) — NO LCC read on the TensorCore.** No `jellyfish::isa::*ReadRegisterLcc*` symbol exists and no Jellyfish read-register enum names LCC; the JF TensorCore has only the cycle-counter reads. Jellyfish exposes a hardware loop **only** through the AddressHandler `Loop` slot (below), never via an LCC read on the TensorCore.
 
-| Gen | TC LCC regs | SC/BCS LCC regs | Read mechanism | Confidence |
-|---|---:|---|---|---|
-| Jellyfish (v2) | 0 | n/a (BCAH `Loop` slot) | cycle-counter only on TC | CONFIRMED (no symbol) |
-| Dragonfish (v3) | 0 (alias JF) | n/a | inherits Jellyfish | HIGH |
-| Pufferfish (v4) | 2 (LCC0/LCC1) | 2 (BCS LCC0/LCC1) | `Tcs`/`Bcs` read-register enum | CONFIRMED |
-| Viperfish (v5p) | 1 (implicit) | 1 (implicit) | `ReadRegisterLcc{Low,High}` (dest-only) | CONFIRMED |
-| Ghostlite (v6e) | 1 (implicit) | 1 (implicit) | `ReadRegisterLcc{Low,High}` (dest-only) | CONFIRMED |
-| 6acc60406 (TPU7x) | 1 (implicit) | 1 (implicit) | `ReadRegisterLcc{Low,High}` (dest-only) | CONFIRMED |
+| Gen | TC LCC regs | SC/BCS LCC regs | Read mechanism |
+|---|---:|---|---|
+| Jellyfish (v2) | 0 | n/a (BCAH `Loop` slot) | cycle-counter only on TC |
+| Dragonfish (v3) | 0 (alias JF) | n/a | inherits Jellyfish |
+| Pufferfish (v4) | 2 (LCC0/LCC1) | 2 (BCS LCC0/LCC1) | `Tcs`/`Bcs` read-register enum |
+| Viperfish (v5p) | 1 (implicit) | 1 (implicit) | `ReadRegisterLcc{Low,High}` (dest-only) |
+| Ghostlite (v6e) | 1 (implicit) | 1 (implicit) | `ReadRegisterLcc{Low,High}` (dest-only) |
+| 6acc60406 (TPU7x) | 1 (implicit) | 1 (implicit) | `ReadRegisterLcc{Low,High}` (dest-only) |
 
 > **GOTCHA —** Pufferfish genuinely lacks the V5+ `ReadRegisterLcc{Low,High}` opcode form, but it still has **two** LCC registers: it reads them through the indexed `TcsReadRegister` / `BcsReadRegister` enum instead. A reimplementation that drives off the V5+ opcode shape will miss the PF loop counters entirely.
 
@@ -186,17 +185,17 @@ The loop body is **not** an offset field — the per-generation `Target::InsertA
 
 > **GOTCHA —** the diagnostics *"loop end is out of range or not a positive multiple of 2"* / *"loop start is out of range or not a negative multiple of 2"* belong to LLVM's bundled **ARM** backend (`(anon)::ARMAsmParser::matchAndEmitInstruction` @ `0x15185a20`, the Armv8.1-M low-overhead-loop `WLS`/`LE` validation), **not** to any TPU `InsertAddressHandlerLoop` path. The TPU AddressHandler loop carries an iteration **count** (`bundles − 1`), not a signed even byte-offset; there is no even-multiple constraint in the TPU encode path.
 
-The AddressHandler loop persists across **v3/v4 only** (`JellyfishTarget` / `PufferfishTarget` overrides, both live with real proto construction). The `ViperfishTarget::InsertAddressHandlerLoop` override (`0x1d49b980`) exists but is a `__noreturn` stub that fatals *"Deepsea version not supported"* (`target_viperfish.h:320`) — so the AddressHandler-style hardware loop is **dropped at Viperfish (v5)**; there is no Ghostlite or 6acc60406 override at all. CONFIRMED (the Viperfish override is present-but-dead, traced byte-exactly).
+The AddressHandler loop persists across **v3/v4 only** (`JellyfishTarget` / `PufferfishTarget` overrides, both live with real proto construction). The `ViperfishTarget::InsertAddressHandlerLoop` override (`0x1d49b980`) exists but is a `__noreturn` stub that fatals *"Deepsea version not supported"* (`target_viperfish.h:320`) — so the AddressHandler-style hardware loop is **dropped at Viperfish (v5)**; there is no Ghostlite or 6acc60406 override at all.
 
-| Element | BarnaCore / AddressHandler (HW loop) | TC / SparseCore (SW loop) | Confidence |
-|---|---|---|---|
-| Loop begin | `bcLOOP_SETUP` (load count) + `bcLOOP_START` (1 bound operand); BCAH `BeginLoop` sets `loop_start_` | preheader: init scalar IV (`MOV` / `ADDri`) | CONFIRMED |
-| Body length | `loop_count = bundles − 1` in the `ScalarSlot_Loop` proto; body `≥ 2` instr | implicit (basic-block span) | CONFIRMED |
-| Loop end | `bcLOOP_END` — HW decrement+test+branch-back | `ADDri` + `CMPxx` + `BRcond` back-edge | CONFIRMED |
-| Counter | dedicated HW loop register (1; LCC0/LCC1 on PF) | scalar-reg IV; HW LCC mirrors count (readable) | CONFIRMED |
-| Trip source | bound operand (reg / immediate via SETUP) | `CMPxxri` (imm) or `CMPxxrr` (reg, dynamic) | CONFIRMED |
-| Live index read | `bc.extractvalue.loopindex` | `ReadRegisterLcc{Low,High}` / indexed `Tcs`/`Bcs` enum | CONFIRMED |
-| Nesting | single active loop (`loop_start_ != kNoLoopActive` CHECK) | software IVs nest freely; only innermost HW-counted | CONFIRMED |
+| Element | BarnaCore / AddressHandler (HW loop) | TC / SparseCore (SW loop) |
+|---|---|---|
+| Loop begin | `bcLOOP_SETUP` (load count) + `bcLOOP_START` (1 bound operand); BCAH `BeginLoop` sets `loop_start_` | preheader: init scalar IV (`MOV` / `ADDri`) |
+| Body length | `loop_count = bundles − 1` in the `ScalarSlot_Loop` proto; body `≥ 2` instr | implicit (basic-block span) |
+| Loop end | `bcLOOP_END` — HW decrement+test+branch-back | `ADDri` + `CMPxx` + `BRcond` back-edge |
+| Counter | dedicated HW loop register (1; LCC0/LCC1 on PF) | scalar-reg IV; HW LCC mirrors count (readable) |
+| Trip source | bound operand (reg / immediate via SETUP) | `CMPxxri` (imm) or `CMPxxrr` (reg, dynamic) |
+| Live index read | `bc.extractvalue.loopindex` | `ReadRegisterLcc{Low,High}` / indexed `Tcs`/`Bcs` enum |
+| Nesting | single active loop (`loop_start_ != kNoLoopActive` CHECK) | software IVs nest freely; only innermost HW-counted |
 
 ---
 
@@ -206,7 +205,7 @@ Hardware-loop nesting is intentionally bounded:
 
 - **AddressHandler / BarnaCore**: one active hardware loop at a time, enforced by the single `loop_start_` field and the `BeginLoop` CHECK above. There is no loop-counter stack at this level — no nested AddressHandler / BarnaCore hardware loops.
 - The LLVM-generic option strings *"force-nested-hardware-loop"* / *"nested hardware-loops not supported"* confirm the default TPU `HardwareLoops` path does not support nested hardware loops; the common case is one hardware-counted innermost loop with outer loops handled as software back-edges.
-- **Pufferfish's two LCC registers (LCC0, LCC1)** allow reading two distinct loop counters — supporting at most a depth-2 nest where inner and outer each have a distinct counter, selected by the read-register enum value. Whether LCC0/LCC1 correspond to (outer, inner) nest levels or (TC-issued, BC-issued) loops is not traced (the two counters are CONFIRMED; the assignment policy is LOW).
+- **Pufferfish's two LCC registers (LCC0, LCC1)** allow reading two distinct loop counters — supporting at most a depth-2 nest where inner and outer each have a distinct counter, selected by the read-register enum value. Whether LCC0/LCC1 correspond to (outer, inner) nest levels or (TC-issued, BC-issued) loops is not traced here.
 - **V5+ has a single implicit LCC**, so only the innermost hardware-counted loop's count is directly readable; outer loops use software IVs.
 - The LLO loop region (`LloRegionMember::kLoop`) can nest in the IR — a `kLoop` member's sub-region may contain another `kLoop` — but only the innermost gets the hardware counter; the compiler flattens, unrolls, or software-counts the rest.
 
@@ -214,10 +213,10 @@ Hardware-loop nesting is intentionally bounded:
 
 ## What Is Not Yet Pinned
 
-- **The bcLOOP field bit positions.** The trip-count immediate field of `bcLOOP_SETUP` and the body-offset fields of `bcLOOP_START` / `bcLOOP_END` within the BarnaCore bundle are routed by the LLVM MC encoder (`TPUMCCodeEmitter`) but the per-opcode `InstBits` records were not byte-decoded. HIGH (the ops and their roles are CONFIRMED; the exact field widths are not).
-- **The silicon counter width.** The 64-bit *readback* (lo+hi) is CONFIRMED; whether the down-counter is the full 64 bits or narrower is not separable from the binary. MEDIUM.
-- **PF LCC0 vs LCC1 assignment policy.** Two counters CONFIRMED; which compiler pass picks LCC0 vs LCC1, and whether the choice tracks nest level or issuing engine, is not traced. LOW.
-- **The three loop-terminator MC opcodes (`325`, `403`, `328`) and the predicate opcode `540`.** The integers `analyzeLoopForTPUPipelining` matches are byte-exact; their symbolic LLVM-MC names (which of `bcLOOP_END` / branch terminators they correspond to) were not individually resolved. MEDIUM.
+- **The bcLOOP field bit positions.** The trip-count immediate field of `bcLOOP_SETUP` and the body-offset fields of `bcLOOP_START` / `bcLOOP_END` within the BarnaCore bundle are routed by the LLVM MC encoder (`TPUMCCodeEmitter`); the per-opcode `InstBits` records are not byte-decoded here. The ops and their roles are pinned; the exact field widths are not.
+- **The silicon counter width.** The 64-bit readback (lo+hi) is fixed; whether the down-counter is the full 64 bits or narrower is not separable from the binary.
+- **PF LCC0 vs LCC1 assignment policy.** Two counters exist; which compiler pass picks LCC0 vs LCC1, and whether the choice tracks nest level or issuing engine, is not traced here.
+- **The three loop-terminator MC opcodes (`325`, `403`, `328`) and the predicate opcode `540`.** The integers `analyzeLoopForTPUPipelining` matches are byte-exact; their symbolic LLVM-MC names (which of `bcLOOP_END` / branch terminators they correspond to) are not individually resolved here.
 
 ---
 

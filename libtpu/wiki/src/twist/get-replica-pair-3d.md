@@ -282,20 +282,20 @@ So a coordinate delta on the n-hop ladder is always one of the four power-of-two
 
 ## 6. Function & Table Map
 
-| Symbol | Address | Role | Confidence |
-|---|---|---|---|
-| `GetReplicaPair3DOnTwistedTorus` | `0x1c893400` | coord fold; returns `map[cY][cX][cZ]` pair | HIGH (dispatch + CHECK + leaf access verified) |
-| `CHECK("num_max_dims == 2")` | `group_utils.cc:1558/1571/1584` | per-orientation fatal precondition | HIGH (3 string occurrences) |
-| `GetPhysicalToLogicalMapping3D` | `0x1c88a280` | builds the `[Y][X][Z] → {core0,core1}` map | HIGH (see [2-phase page](replica-group-2phase.md)) |
-| `DmaDestinationRoutingTableEntryMapper::Map` | `0x1fc584e0` | `RoutingScheme` dispatch (2 ⇒ two-axes, 1 ⇒ n-hop, 0 ⇒ all-to-all, else fatal) | HIGH |
-| `MapOneTwoFourEightHopNeighborsReachable` | `0x1fc588a0` | single-axis n-hop lookup + mod-8 port fold | HIGH |
-| `MapTwoAxesReachable` | `0x1fc58fa0` | diagonal two-axes table lookup | HIGH |
-| `GetHopLength` | `0x1fc59c80` | `±{1,2,4,8} → {1,2,4,8}` snap (`utils.cc:105`) | HIGH |
-| `kCaseHopsSignToOffsets` | `0xb8f0fb0` | 32 × 4 int32 single-axis `(case,hop,sign)→offset` | HIGH (byte-exact) |
-| `y_routing` | `0xb8f0e70` | 4 × 8 int32 diagonal port table (X-dim 8) | HIGH (byte-exact) |
-| `y_routing_0` | `0xb8f0f30` | 2 × 8 int32 diagonal port table (X-dim 4) | HIGH (byte-exact) |
-| `x_routing` | `0xb8f0ef0` | 4 × 4 int32 diagonal port table (X-dim 8) | HIGH (byte-exact) |
-| `x_routing_0` | `0xb8f0f70` | 4 × 4 int32 diagonal port table (X-dim 4) | HIGH (byte-exact) |
+| Symbol | Address | Role |
+|---|---|---|
+| `GetReplicaPair3DOnTwistedTorus` | `0x1c893400` | coord fold; returns `map[cY][cX][cZ]` pair |
+| `CHECK("num_max_dims == 2")` | `group_utils.cc:1558/1571/1584` | per-orientation fatal precondition |
+| `GetPhysicalToLogicalMapping3D` | `0x1c88a280` | builds the `[Y][X][Z] → {core0,core1}` map |
+| `DmaDestinationRoutingTableEntryMapper::Map` | `0x1fc584e0` | `RoutingScheme` dispatch (2 ⇒ two-axes, 1 ⇒ n-hop, 0 ⇒ all-to-all, else fatal) |
+| `MapOneTwoFourEightHopNeighborsReachable` | `0x1fc588a0` | single-axis n-hop lookup + mod-8 port fold |
+| `MapTwoAxesReachable` | `0x1fc58fa0` | diagonal two-axes table lookup |
+| `GetHopLength` | `0x1fc59c80` | `±{1,2,4,8} → {1,2,4,8}` snap (`utils.cc:105`) |
+| `kCaseHopsSignToOffsets` | `0xb8f0fb0` | 32 × 4 int32 single-axis `(case,hop,sign)→offset` |
+| `y_routing` | `0xb8f0e70` | 4 × 8 int32 diagonal port table (X-dim 8) |
+| `y_routing_0` | `0xb8f0f30` | 2 × 8 int32 diagonal port table (X-dim 4) |
+| `x_routing` | `0xb8f0ef0` | 4 × 4 int32 diagonal port table (X-dim 8) |
+| `x_routing_0` | `0xb8f0f70` | 4 × 4 int32 diagonal port table (X-dim 4) |
 
 ---
 

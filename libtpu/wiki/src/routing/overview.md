@@ -170,11 +170,11 @@ function InitRouteSolution():                                  // 0x1fbdf8a0
 
 `GetCacheDeduplicator(int)` switches on the generation enum and returns one of three lazily-constructed static deduplicator instances. Each combines the common `kRouteCacheSet` with at most one generation-specific set:
 
-| Deduplicator (switch case) | Generation | Cache sets loaded | Set-2 lambda | Confidence |
-|---|---|---|---|---|
-| `pf_deduplicator` (case 1) | pufferfish (default) | `kRouteCacheSet` only | — (base via `RouteCacheDeduplicator::Create`) | HIGH |
-| `vf_deduplicator` (case 2) | viperfish | `kRouteCacheSet` + `kViperfishRouteCacheSet` | `RouteCacheDeduplicator::CreateResilientViperfish` | HIGH |
-| `gf_deduplicator` (case 4) | `6acc60406` / TPU7x | `kRouteCacheSet` + `k6acc60406RouteCacheSet` | inlined sub @`0x1fbe4140` (not named in symtab) | HIGH |
+| Deduplicator (switch case) | Generation | Cache sets loaded | Set-2 lambda |
+|---|---|---|---|
+| `pf_deduplicator` (case 1) | pufferfish (default) | `kRouteCacheSet` only | — (base via `RouteCacheDeduplicator::Create`) |
+| `vf_deduplicator` (case 2) | viperfish | `kRouteCacheSet` + `kViperfishRouteCacheSet` | `RouteCacheDeduplicator::CreateResilientViperfish` |
+| `gf_deduplicator` (case 4) | `6acc60406` / TPU7x | `kRouteCacheSet` + `k6acc60406RouteCacheSet` | inlined sub @`0x1fbe4140` (not named in symtab) |
 
 `kRouteCacheSet` is the shared base set every generation loads; the generation-specific set is layered on top of it for viperfish and the `6acc60406` generation only. Of the three sets, only `kRouteCacheSet` @`0x21f57380` and `kViperfishRouteCacheSet` @`0x21f57440` resolve as independent `nm` data symbols; `k6acc60406RouteCacheSet` is recovered from the decompile's CHECK strings (it is folded behind `GetCacheDeduplicator`).
 

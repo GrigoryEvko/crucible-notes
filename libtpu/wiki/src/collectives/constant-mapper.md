@@ -64,20 +64,20 @@ function GetConstant_MeshDim(this, mesh_dim):
 
 Each row pins the table-builder that feeds the `AddConstant(Type=k)` call (so the table *content* is anchored) and the consumer that reads it back. The English role names for the overloaded/opaque tags are attributed from the producing builder, not read from an enumerator descriptor — flagged `HIGH` where the producer is the only evidence.
 
-| Type | Carrier | Table builder (producer) | Content / role | Confidence |
-|---|---|---|---|---|
-| 0 | `MeshDim 0` | `CreateStaticNDRingReplicaInfoTable` / `CreateNDRingReplicaInfoTable` | ND-ring replica table, mesh **axis 0** | HIGH |
-| 1 | `MeshDim 1` | (same, axis 1) | ND-ring replica table, mesh **axis 1** | HIGH |
-| 2 | `MeshDim 2` | (same, axis 2) | ND-ring replica table, mesh **axis 2** | HIGH |
-| 3 | `Type` (overloaded) | AllReduce: `CreateReplicaInfoTable[ForLimitedIciRouting]`; AllGather: `CreateStaticNDRingReplicaInfoTable` | flat within-group replica/ordinal table (AR) **or** ND-ring table (AG) | HIGH |
-| 4 | `Type` (overloaded) | `CreateReplicaInfoTableForLimitedIciRouting` / `CreateStaticReplicaInfoTableForLimitedIciRouting` | limited-ICI-routing replica table / routing-table index | HIGH |
-| 5 | `Type` (**cross-collective**) | `net_router::CreateRoutingScheduleLiteral` / `CreateAllToAllRoutingScheduleTable` | the per-transfer ICI **route schedule** literal | CERTAIN |
-| 6 | `Type` | `net_util::CreateNDRingReplicaInfoTable` (AllReduce) | ring AllReduce ND reorder table | HIGH |
-| 7 | `Type` (+`Status`) | `CreateBinomialReplicaInfoTable` | binomial recursive-doubling butterfly table | CERTAIN |
-| 8 | `Type` | `GenerateAllToAllTables` (table A) | AllToAll barrier membership table A | CERTAIN |
-| 9 | `Type` | `GenerateAllToAllTables` (table B) | AllToAll barrier membership table B | CERTAIN |
-| 0xa | `Type` (`HasConstant`-gated) | `GenerateAllToAllTables` (table C) | AllToAll **optional** membership table C | CERTAIN |
-| 0xb | `Type` | `CreateCollectivePermuteTransfers` | CollectivePermute transfer/source-target table | HIGH |
+| Type | Carrier | Table builder (producer) | Content / role |
+|---|---|---|---|
+| 0 | `MeshDim 0` | `CreateStaticNDRingReplicaInfoTable` / `CreateNDRingReplicaInfoTable` | ND-ring replica table, mesh **axis 0** |
+| 1 | `MeshDim 1` | (same, axis 1) | ND-ring replica table, mesh **axis 1** |
+| 2 | `MeshDim 2` | (same, axis 2) | ND-ring replica table, mesh **axis 2** |
+| 3 | `Type` (overloaded) | AllReduce: `CreateReplicaInfoTable[ForLimitedIciRouting]`; AllGather: `CreateStaticNDRingReplicaInfoTable` | flat within-group replica/ordinal table (AR) **or** ND-ring table (AG) |
+| 4 | `Type` (overloaded) | `CreateReplicaInfoTableForLimitedIciRouting` / `CreateStaticReplicaInfoTableForLimitedIciRouting` | limited-ICI-routing replica table / routing-table index |
+| 5 | `Type` (**cross-collective**) | `net_router::CreateRoutingScheduleLiteral` / `CreateAllToAllRoutingScheduleTable` | the per-transfer ICI **route schedule** literal |
+| 6 | `Type` | `net_util::CreateNDRingReplicaInfoTable` (AllReduce) | ring AllReduce ND reorder table |
+| 7 | `Type` (+`Status`) | `CreateBinomialReplicaInfoTable` | binomial recursive-doubling butterfly table |
+| 8 | `Type` | `GenerateAllToAllTables` (table A) | AllToAll barrier membership table A |
+| 9 | `Type` | `GenerateAllToAllTables` (table B) | AllToAll barrier membership table B |
+| 0xa | `Type` (`HasConstant`-gated) | `GenerateAllToAllTables` (table C) | AllToAll **optional** membership table C |
+| 0xb | `Type` | `CreateCollectivePermuteTransfers` | CollectivePermute transfer/source-target table |
 
 Three structural facts drive the table:
 
@@ -91,12 +91,12 @@ Three structural facts drive the table:
 
 The enum was reconstructed by reading the `Type`/`MeshDim` immediate at every call site. The producer/consumer split (every `AddConstant` is a producer, every `GetConstant`/`HasConstant` a consumer):
 
-| Emitter | Producer — `GenerateConstants` | Tags added | Consumers | Confidence |
-|---|---|---|---|---|
-| AllToAll | `AllToAllEmitterBase::GenerateConstants` @ `0x10f089a0` | 8, 9, 0xa, 5 | `CalculateWithLimitedIciRouting` (5), `GetConstantTables` (8/9/0xa) | CERTAIN |
-| CollectivePermute | `CollectivePermuteEmitter::GenerateConstants` @ `0x1346ff60` | 0xb, 5 | `EmitForLimitedIciRouting` (5), `Emit` (0xb) | HIGH |
-| AllReduce | `AllReduceEmitter::GenerateConstants` @ `0x1373cb60` | 3, 4, 6, 7(+Status); `MeshDim 0/1` (separate cross-module-ARS mapper) | `GetRingLocation` (3), `GetRingLocationWithReordering` (4), `EmitAllReduceFusion`/`ConstructAsyncFusionEmitter` (6), `BuildStrategyForCrossModuleARS` (0,1), `BinomialGroupData $_1` (7) | HIGH |
-| AllGather | `AllGatherEmitter::GenerateConstants` @ `0x13801be0` | `MeshDim 0/1/2`, 3, 4, 5 | `InitDim` (3/4/`MeshDim`), `EmitAllGatherWithExplicitRouting` (5) | HIGH |
+| Emitter | Producer — `GenerateConstants` | Tags added | Consumers |
+|---|---|---|---|
+| AllToAll | `AllToAllEmitterBase::GenerateConstants` @ `0x10f089a0` | 8, 9, 0xa, 5 | `CalculateWithLimitedIciRouting` (5), `GetConstantTables` (8/9/0xa) |
+| CollectivePermute | `CollectivePermuteEmitter::GenerateConstants` @ `0x1346ff60` | 0xb, 5 | `EmitForLimitedIciRouting` (5), `Emit` (0xb) |
+| AllReduce | `AllReduceEmitter::GenerateConstants` @ `0x1373cb60` | 3, 4, 6, 7(+Status); `MeshDim 0/1` (separate cross-module-ARS mapper) | `GetRingLocation` (3), `GetRingLocationWithReordering` (4), `EmitAllReduceFusion`/`ConstructAsyncFusionEmitter` (6), `BuildStrategyForCrossModuleARS` (0,1), `BinomialGroupData $_1` (7) |
+| AllGather | `AllGatherEmitter::GenerateConstants` @ `0x13801be0` | `MeshDim 0/1/2`, 3, 4, 5 | `InitDim` (3/4/`MeshDim`), `EmitAllGatherWithExplicitRouting` (5) |
 
 > **GOTCHA —** a reimplementation that drives off "all 12 tags exist for every collective" is wrong. Each emitter populates only the tags its algorithm needs; AllToAll never adds Type 3, AllReduce never adds Type 8. The `Type` space is the *union* over emitters, not a per-instance schema. Add only what the chosen algorithm produces, fetch only what it consumes.
 
@@ -169,17 +169,17 @@ The decompiled body shows the three `GetConstant` calls and the `HasConstant(a2,
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `ConstantMapper::AddConstant(Type, StatusOr<Literal>)` | `0x1c885ce0` | static-`Literal` registrar; 448-byte record keyed by `record[+0]==Type` | CERTAIN |
-| `ConstantMapper::AddConstant(Type, StatusOr<vector<int>>)` | `0x1c886300` | dynamic-`vector<int>` registrar | HIGH |
-| `ConstantMapper::AddConstant(Type, Status)` | `0x1c8866c0` | error-carrier registrar (Type 7 not-viable path) | HIGH |
-| `ConstantMapper::GetConstant(Type)` | `0x1c886b00` | SwissTable lookup (CRC32 hash of `Type`) | CERTAIN |
-| `ConstantMapper::HasConstant(Type)` | `0x1c886920` | presence probe (gates Type 0xa) | CERTAIN |
-| `ConstantMapper::AddConstant(MeshDim, …)` | `0x1c886260` / `0x1c886620` | `MeshDim`→`Type` forwarders (esi unchanged) | CERTAIN |
-| `ConstantMapper::GetConstant(MeshDim)` | `0x1c887560` | thunk `jmp 0x1c886b00` | CERTAIN |
-| `GetConstantFnForCollective` | `0x10c46f60` | per-HLO factory; closures `$_0..$_3` | HIGH |
-| `GetConstantTables` | `0x10f07860` | reads Types 8/9/0xa → `InfoTable` triple | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `ConstantMapper::AddConstant(Type, StatusOr<Literal>)` | `0x1c885ce0` | static-`Literal` registrar; 448-byte record keyed by `record[+0]==Type` |
+| `ConstantMapper::AddConstant(Type, StatusOr<vector<int>>)` | `0x1c886300` | dynamic-`vector<int>` registrar |
+| `ConstantMapper::AddConstant(Type, Status)` | `0x1c8866c0` | error-carrier registrar (Type 7 not-viable path) |
+| `ConstantMapper::GetConstant(Type)` | `0x1c886b00` | SwissTable lookup (CRC32 hash of `Type`) |
+| `ConstantMapper::HasConstant(Type)` | `0x1c886920` | presence probe (gates Type 0xa) |
+| `ConstantMapper::AddConstant(MeshDim, …)` | `0x1c886260` / `0x1c886620` | `MeshDim`→`Type` forwarders (esi unchanged) |
+| `ConstantMapper::GetConstant(MeshDim)` | `0x1c887560` | thunk `jmp 0x1c886b00` |
+| `GetConstantFnForCollective` | `0x10c46f60` | per-HLO factory; closures `$_0..$_3` |
+| `GetConstantTables` | `0x10f07860` | reads Types 8/9/0xa → `InfoTable` triple |
 
 > **QUIRK —** the Type-3/Type-4 overload is collision-free *only* because the mapper is per-lowered-instruction. That `GetConstantFnForCollective` returns a fresh closure per HLO is byte-confirmed; that this yields exactly one mapper per instruction is the structural basis and is `HIGH`, not `CERTAIN` — a reimplementer who shares one mapper across instructions would alias AllReduce's flat Type 3 onto AllGather's ND-ring Type 3.
 
@@ -249,15 +249,15 @@ When there is no model parallelism (`partition_count == 1`) the partition id is 
 
 ### Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `net_util::GetReplicaId` | `0x1c69a440` | U32 `Sld` at `Target+0x6f8`, annotation "replica id location" | CERTAIN |
-| `net_util::GetPartitionId` | `0x1c69a4a0` | U32 `Sld` at `Target+0x700`, annotation "partition id location" | CERTAIN |
-| `LloRegionBuilder::SmemWordImmPtr` | `0x1d516880` | builds `ImmPtr(off, U32, MS=kSmem)`; asserts word size == 4 | CERTAIN |
-| `LloRegionBuilder::Sld` | `0x1d516a20` | MS-validates then `CreateScalarLoad` + `AppendInstruction` | CERTAIN |
-| `LoweringEmitter::HandleReplicaId` | `0x10c34260` | HLO `replica-id` op → `GetReplicaId` | CERTAIN |
-| `LoweringEmitter::HandlePartitionId` | `0x10c33940` | HLO `partition-id` op → `GetPartitionId` | CERTAIN |
-| `collective_lowering_utils::GetPartitionId` | `0x13819500` | `partition_count==1` → `SimmS32(0)`, else `net_util::GetPartitionId` | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `net_util::GetReplicaId` | `0x1c69a440` | U32 `Sld` at `Target+0x6f8`, annotation "replica id location" |
+| `net_util::GetPartitionId` | `0x1c69a4a0` | U32 `Sld` at `Target+0x700`, annotation "partition id location" |
+| `LloRegionBuilder::SmemWordImmPtr` | `0x1d516880` | builds `ImmPtr(off, U32, MS=kSmem)`; asserts word size == 4 |
+| `LloRegionBuilder::Sld` | `0x1d516a20` | MS-validates then `CreateScalarLoad` + `AppendInstruction` |
+| `LoweringEmitter::HandleReplicaId` | `0x10c34260` | HLO `replica-id` op → `GetReplicaId` |
+| `LoweringEmitter::HandlePartitionId` | `0x10c33940` | HLO `partition-id` op → `GetPartitionId` |
+| `collective_lowering_utils::GetPartitionId` | `0x13819500` | `partition_count==1` → `SimmS32(0)`, else `net_util::GetPartitionId` |
 
 ---
 
@@ -271,19 +271,19 @@ The word offsets the id reads use (`Target+0x6f8`, `+0x700`, …) are not hardco
 
 Each accessor is a one-line field read (`mov <off>(%rdi),%rax; ret`); the fields are `long` (8-byte) SMEM word indices.
 
-| Target off | Accessor (@VMA) | Datum | Confidence |
-|---|---|---|---|
-| `0x6c0` | `OutfeedBasePtrWordOffset` @ `0x1d617bc0` | outfeed base ptr | HIGH |
-| `0x6c8` | `OutfeedProducerHostSyncFlagNumberWordOffset` @ `0x1d617be0` | outfeed producer host sflag # | HIGH |
-| `0x6d0` | `CachedOutfeedProducerOffsetWordOffset` @ `0x1d617c00` | cached outfeed producer offset | HIGH |
-| `0x6d8` | `InfeedPtrLocationWordOffset` @ `0x1d617ba0` | infeed ptr | HIGH |
-| `0x6e0` | `ChipIdLocationWordOffset` @ `0x1d617c20` | chip id | HIGH |
-| `0x6e8` | `CoreIndexLocationWordOffset` @ `0x1d617c40` | core index | HIGH |
-| `0x6f0` | `PhysicalChipBoundsLocationWordOffset` @ `0x1d617c60` | physical chip bounds | HIGH |
-| `0x6f8` | `ReplicaIdLocationWordOffset` @ `0x1d617c80` | **replica id** | CERTAIN |
-| `0x700` | `PartitionIdLocationWordOffset` @ `0x1d617ca0` | **partition id** | CERTAIN |
-| `0x708` | `SliceIdLocationWordOffset` @ `0x1d617cc0` | slice id | CERTAIN |
-| `0x710` | `SubsliceOriginLocationWordOffset` @ `0x1d617ce0` | subslice origin | CERTAIN |
+| Target off | Accessor (@VMA) | Datum |
+|---|---|---|
+| `0x6c0` | `OutfeedBasePtrWordOffset` @ `0x1d617bc0` | outfeed base ptr |
+| `0x6c8` | `OutfeedProducerHostSyncFlagNumberWordOffset` @ `0x1d617be0` | outfeed producer host sflag # |
+| `0x6d0` | `CachedOutfeedProducerOffsetWordOffset` @ `0x1d617c00` | cached outfeed producer offset |
+| `0x6d8` | `InfeedPtrLocationWordOffset` @ `0x1d617ba0` | infeed ptr |
+| `0x6e0` | `ChipIdLocationWordOffset` @ `0x1d617c20` | chip id |
+| `0x6e8` | `CoreIndexLocationWordOffset` @ `0x1d617c40` | core index |
+| `0x6f0` | `PhysicalChipBoundsLocationWordOffset` @ `0x1d617c60` | physical chip bounds |
+| `0x6f8` | `ReplicaIdLocationWordOffset` @ `0x1d617c80` | **replica id** |
+| `0x700` | `PartitionIdLocationWordOffset` @ `0x1d617ca0` | **partition id** |
+| `0x708` | `SliceIdLocationWordOffset` @ `0x1d617cc0` | slice id |
+| `0x710` | `SubsliceOriginLocationWordOffset` @ `0x1d617ce0` | subslice origin |
 
 ### Algorithm — `Target::Init` reserves from the chip-config
 

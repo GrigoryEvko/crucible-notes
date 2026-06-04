@@ -81,41 +81,41 @@ So the seven JF/DF `Resource` columns are the first seven `ResourceVector` slots
 
 This is the full reconstruction of `JfCycleTable::GetCyclesForThroughput` over all 33 `CycleTable::Instruction` ordinals. The `offsetLUT` (`0xb438b70`) and `resLUT` (`0xb438aec`) columns were read byte-for-byte out of `.rodata`; the cycle value is the priced cell resolved in the reconstructed `PerformanceJf` image. JF and DF are identical for every cell (none of the priced offsets is `+0x28` or `+0x2c`, the only two DF overrides).
 
-| `Instr` | `offsetLUT[I]` | `Res` | `ResourceVector` slot | priced | JF cyc | DF cyc | Confidence |
-|---|---|---|---|---|---|---|---|
-| `0x00` | `0x910` | `r1` | Matmul | yes | 8 | 8 | CERTAIN |
-| `0x01` | `0x000` | `r1` | Matmul | no | 1 | 1 | CERTAIN |
-| `0x02` | `0x000` | `r1` | Matmul | no | 1 | 1 | CERTAIN |
-| `0x03` | `0x000` | `r1` | Matmul | no | 1 | 1 | CERTAIN |
-| `0x04` | `0x000` | `r1` | Matmul | no | 1 | 1 | CERTAIN |
-| `0x05` | `0x92c` | `r0` | Matpush | yes | 8 | 8 | CERTAIN |
-| `0x06` | `0x000` | `r0` | Matpush | no | 1 | 1 | CERTAIN |
-| `0x07` | `0x000` | `r0` | Matpush | no | 1 | 1 | CERTAIN |
-| `0x08` | `0x000` | `r0` | Matpush | no | 1 | 1 | CERTAIN |
-| `0x09` | `0x000` | `r0` | Matpush | no | 1 | 1 | CERTAIN |
-| `0x0a` | `0x000` | `r0` | Matpush | no | 1 | 1 | CERTAIN |
-| `0x0b` | `0x92c` | `r0` | Matpush | yes | 8 | 8 | CERTAIN |
-| `0x0c` | `0x000` | `r0` | Matpush | no | 1 | 1 | CERTAIN |
-| `0x0d` | `0x000` | `r0` | Matpush | no | 1 | 1 | CERTAIN |
-| `0x0e` | `0x000` | `r0` | Matpush | no | 1 | 1 | CERTAIN |
-| `0x0f` | `0x000` | `r0` | Matpush | no | 1 | 1 | CERTAIN |
-| `0x10` | `0x000` | `r0` | Matpush | no | 1 | 1 | CERTAIN |
-| `0x11` | `0x000` | `r6` | VectorEup | no | 1 | 1 | CERTAIN |
-| `0x12` | `0x33c` | `r4` | VectorAlu1 | yes | 1 | 1 | CERTAIN |
-| `0x13` | `0x340` | `r4` | VectorAlu1 | yes | 1 | 1 | CERTAIN |
-| `0x14` | `0x344` | `r3` | VectorAlu0 | yes | 1 | 1 | CERTAIN |
-| `0x15` | `0x39c` | `r5` | VectorAluAny | yes | 1 | 1 | CERTAIN |
-| `0x16` | `0x398` | `r5` | VectorAluAny | yes | 1 | 1 | CERTAIN |
-| `0x17` | `0x954` | `r2` | Xlu | yes | 8 | 8 | CERTAIN |
-| `0x18` | `0x3f8` | `r6` | VectorEup | yes | 1 | 1 | CERTAIN |
-| `0x19` | `0x368` | `r5` | VectorAluAny | yes | 1 | 1 | CERTAIN |
-| `0x1a` | `0x3f4` | `r6` | VectorEup | yes | 1 | 1 | CERTAIN |
-| `0x1b` | `0x960` | `r2` | Xlu | yes | 8 | 8 | CERTAIN |
-| `0x1c` | `0x94c` | `r2` | Xlu | yes | 8 | 8 | CERTAIN |
-| `0x1d` | `0x000` | `r2` | Xlu | no | 1 | 1 | CERTAIN |
-| `0x1e` | `0x000` | `r2` | Xlu | no | 1 | 1 | CERTAIN |
-| `0x1f` | `0x958` | `r2` | Xlu | yes | 8 | 8 | CERTAIN |
-| `0x20` | `0x39c` | `r5` | VectorAluAny | yes | 1 | 1 | CERTAIN |
+| `Instr` | `offsetLUT[I]` | `Res` | `ResourceVector` slot | priced | JF cyc | DF cyc |
+|---|---|---|---|---|---|---|
+| `0x00` | `0x910` | `r1` | Matmul | yes | 8 | 8 |
+| `0x01` | `0x000` | `r1` | Matmul | no | 1 | 1 |
+| `0x02` | `0x000` | `r1` | Matmul | no | 1 | 1 |
+| `0x03` | `0x000` | `r1` | Matmul | no | 1 | 1 |
+| `0x04` | `0x000` | `r1` | Matmul | no | 1 | 1 |
+| `0x05` | `0x92c` | `r0` | Matpush | yes | 8 | 8 |
+| `0x06` | `0x000` | `r0` | Matpush | no | 1 | 1 |
+| `0x07` | `0x000` | `r0` | Matpush | no | 1 | 1 |
+| `0x08` | `0x000` | `r0` | Matpush | no | 1 | 1 |
+| `0x09` | `0x000` | `r0` | Matpush | no | 1 | 1 |
+| `0x0a` | `0x000` | `r0` | Matpush | no | 1 | 1 |
+| `0x0b` | `0x92c` | `r0` | Matpush | yes | 8 | 8 |
+| `0x0c` | `0x000` | `r0` | Matpush | no | 1 | 1 |
+| `0x0d` | `0x000` | `r0` | Matpush | no | 1 | 1 |
+| `0x0e` | `0x000` | `r0` | Matpush | no | 1 | 1 |
+| `0x0f` | `0x000` | `r0` | Matpush | no | 1 | 1 |
+| `0x10` | `0x000` | `r0` | Matpush | no | 1 | 1 |
+| `0x11` | `0x000` | `r6` | VectorEup | no | 1 | 1 |
+| `0x12` | `0x33c` | `r4` | VectorAlu1 | yes | 1 | 1 |
+| `0x13` | `0x340` | `r4` | VectorAlu1 | yes | 1 | 1 |
+| `0x14` | `0x344` | `r3` | VectorAlu0 | yes | 1 | 1 |
+| `0x15` | `0x39c` | `r5` | VectorAluAny | yes | 1 | 1 |
+| `0x16` | `0x398` | `r5` | VectorAluAny | yes | 1 | 1 |
+| `0x17` | `0x954` | `r2` | Xlu | yes | 8 | 8 |
+| `0x18` | `0x3f8` | `r6` | VectorEup | yes | 1 | 1 |
+| `0x19` | `0x368` | `r5` | VectorAluAny | yes | 1 | 1 |
+| `0x1a` | `0x3f4` | `r6` | VectorEup | yes | 1 | 1 |
+| `0x1b` | `0x960` | `r2` | Xlu | yes | 8 | 8 |
+| `0x1c` | `0x94c` | `r2` | Xlu | yes | 8 | 8 |
+| `0x1d` | `0x000` | `r2` | Xlu | no | 1 | 1 |
+| `0x1e` | `0x000` | `r2` | Xlu | no | 1 | 1 |
+| `0x1f` | `0x958` | `r2` | Xlu | yes | 8 | 8 |
+| `0x20` | `0x39c` | `r5` | VectorAluAny | yes | 1 | 1 |
 
 The sixteen priced ordinals are exactly `{0x00, 0x05, 0x0b, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1f, 0x20}`. The seven **8-cycle** cells are the MXU matprep/matmul/matrix-result throughput ports (`0x00`, `0x05`, `0x0b`, `0x17`, `0x1b`, `0x1c`, `0x1f`); the nine **1-cycle** priced cells are vector-ALU / EUP result stages.
 
@@ -153,10 +153,10 @@ PerformanceJf::PerformanceJf(this, dev);          // build the full JF image fir
 
 `this + 5` (qword) is `Performance[+0x28]`. The qword `0xD00000042` writes `[+0x28] = 0x42 = 66` and `[+0x2c] = 0x0D = 13`. So:
 
-| cell | JF | DF | role | Confidence |
-|---|---|---|---|---|
-| `Performance[+0x28]` | 88 | **66** | MXU matmul base latency | CERTAIN |
-| `Performance[+0x2c]` | 8 | **13** | MXU matprep base latency | CERTAIN |
+| cell | JF | DF | role |
+|---|---|---|---|
+| `Performance[+0x28]` | 88 | **66** | MXU matmul base latency |
+| `Performance[+0x2c]` | 8 | **13** | MXU matprep base latency |
 
 Every other one of the 419 populated slots is byte-identical JF vs DF. Because neither `+0x28` nor `+0x2c` is an `offsetLUT` target, `GetCyclesForThroughput` returns the same value on JF and DF for all 16 priced ordinals — the entire v2→v3 cost difference is these two latency-table integers.
 
@@ -190,23 +190,23 @@ LT[+0x50] = v2[10];   // Performance[+0x28]   ← MXU matmul  base  (JF 88 / DF 
 
 The resolved values (JF / DF), with the role inferred from the `LatencyBetweenInternal` predicate that reads each field:
 
-| `LatencyTable` off | ← `Performance` off | JF | DF | role | Confidence |
-|---|---|---|---|---|---|
-| `+0x18` | `+0x44` | 1 | 1 | matres-result FIFO floor (UNVERIFIED role) | HIGH |
-| `+0x1c` | `+0x30` | 4 | 4 | **EUP push→pop edge** | CERTAIN |
-| `+0x20` | `+0x24` | 92 | 92 | RPU-result floor | HIGH |
-| `+0x24` | `+0x1c` | 105 | 105 | RPU op→op / matres-self conflict | HIGH |
-| `+0x28` | `+0x20` | 7 | 7 | UsesRpu producer floor | HIGH |
-| `+0x2c` | `+0x954` | 8 | 8 | MXU-result cell (`Instr 0x17`) | CERTAIN |
-| `+0x30` | `+0x94c` | 8 | 8 | MXU-result cell (`Instr 0x1c`) | CERTAIN |
-| `+0x34` | `+0x910` | 8 | 8 | matprep throughput cell (`Instr 0x00`) | CERTAIN |
-| `+0x38` | `+0x92c` | 8 | 8 | matmul throughput cell (`Instr 0x05`) | CERTAIN |
-| `+0x3c` | `+0x720` | 8 | 8 | xpose-result cell | HIGH |
-| `+0x40` | `+0x71c` | 8 | 8 | xpose-result B cell | HIGH |
-| `+0x44` | `+0x418` | 8 | 8 | branch-op cell | HIGH |
-| `+0x48` | `+0x420` | 8 | 8 | branch-op cell | HIGH |
-| `+0x4c` | `+0x2c` | **8** | **13** | **MXU matprep base** | CERTAIN |
-| `+0x50` | `+0x28` | **88** | **66** | **MXU matmul base** | CERTAIN |
+| `LatencyTable` off | ← `Performance` off | JF | DF | role |
+|---|---|---|---|---|
+| `+0x18` | `+0x44` | 1 | 1 | matres-result FIFO floor (UNVERIFIED role) |
+| `+0x1c` | `+0x30` | 4 | 4 | **EUP push→pop edge** |
+| `+0x20` | `+0x24` | 92 | 92 | RPU-result floor |
+| `+0x24` | `+0x1c` | 105 | 105 | RPU op→op / matres-self conflict |
+| `+0x28` | `+0x20` | 7 | 7 | UsesRpu producer floor |
+| `+0x2c` | `+0x954` | 8 | 8 | MXU-result cell (`Instr 0x17`) |
+| `+0x30` | `+0x94c` | 8 | 8 | MXU-result cell (`Instr 0x1c`) |
+| `+0x34` | `+0x910` | 8 | 8 | matprep throughput cell (`Instr 0x00`) |
+| `+0x38` | `+0x92c` | 8 | 8 | matmul throughput cell (`Instr 0x05`) |
+| `+0x3c` | `+0x720` | 8 | 8 | xpose-result cell |
+| `+0x40` | `+0x71c` | 8 | 8 | xpose-result B cell |
+| `+0x44` | `+0x418` | 8 | 8 | branch-op cell |
+| `+0x48` | `+0x420` | 8 | 8 | branch-op cell |
+| `+0x4c` | `+0x2c` | **8** | **13** | **MXU matprep base** |
+| `+0x50` | `+0x28` | **88** | **66** | **MXU matmul base** |
 
 Three of the first columns (`+0x20`/`+0x24`/`+0x28` ← `Performance[+0x24]`/`[+0x1c]`/`[+0x20]`) come from the head block `@0xa2c8a30 = {4,105,7,92}` (note the `92`/`105`/`7` reorder through the copy indices, with the leading `4` at `Performance[+0x18]` left uncopied); `+0x18` (← `Performance[+0x44]` = `1`) is the second cell of the `@0xa2c8a40 = {2,1,1,1}` block, not the head block. The last two (`+0x4c`/`+0x50`) come from `@0xa2dcd30 = {88,8,4,1}` and are the only two the DF override touches. The version guard at the top of the constructor `CHECK`s `tpu_version_ ∈ {kJellyfish, kDragonfish}`, confirming this table serves only v2/v3.
 
@@ -222,10 +222,10 @@ Three of the first columns (`+0x20`/`+0x24`/`+0x28` ← `Performance[+0x24]`/`[+
 
 The `JfCycleTable` vtable carries two transcendental estimate slots beyond the throughput reader. Both are constant-return functions, read verbatim:
 
-| Function | vtable slot | value | Confidence |
-|---|---|---|---|
-| `JfCycleTable::EstimateSinCosCost` `0x1c89dd20` | `+0x18` | **198** (`0xc6`) | CERTAIN |
-| `JfCycleTable::EstimateTanCost` `0x1c89dd40` | `+0x20` | **219** (`0xdb`) | CERTAIN |
+| Function | vtable slot | value |
+|---|---|---|
+| `JfCycleTable::EstimateSinCosCost` `0x1c89dd20` | `+0x18` | **198** (`0xc6`) |
+| `JfCycleTable::EstimateTanCost` `0x1c89dd40` | `+0x20` | **219** (`0xdb`) |
 
 These price the Payne–Hanek-style range-reduced transcendentals on JF/DF; DF inherits them (one `JfCycleTable` registration serves both gens). See [EUP Payne–Hanek](eup-paynehanek.md).
 
@@ -235,14 +235,14 @@ These price the Payne–Hanek-style range-reduced transcendentals on JF/DF; DF i
 
 The flat one-cell-per-`Instruction` model is unique to v2/v3. From Pufferfish onward, `Performance` becomes a heap `latency[]` array plus a 2-D `GetResourceUsage(Instruction, Resource)` grid, and `PfCycleTable::GetCyclesForThroughput` (`0x1c89de60`) wraps `GetResourceUsage` calls rather than a flat offset-LUT read. Viperfish goes further: `VfCycleTable::GetCyclesForThroughput` (`0x1c89e2c0`) dispatches into `viperfish::MxuLatencyTable::GetResourceUsage` (confirmed in the decompile), a `FlatHashMap<Modifier, array<int,19>>` reservation table keyed by `{MatmulDataFormat, is_transpose, Msr}` — the matprep stages there are not flat cells at all but four of nineteen `MxuResource` ports.
 
-| Gen | Codename | TpuVer | throughput model | resource cols | matmul base | matprep base | EUP edge | Confidence |
-|---|---|---|---|---|---|---|---|---|
-| JF | Jellyfish | v2 | flat inline POD + offset-LUT | 7 | 88 | 8 | 4 | CERTAIN |
-| DF | Dragonfish | v3 | = JF + 2 cells | 7 | 66 | 13 | 4 | CERTAIN |
-| PF | Pufferfish | v4 | heap `latency[]` + 2-D grid | 20 | (grid) | (grid) | 7 | HIGH |
-| VF | Viperfish | v5p | `Modifier → array<19>` reservation | 28 | 131 | reservation | 6 | HIGH |
-| GL | Ghostlite | v6e | `Modifier → array<11>` reservation | 31 | (grid) | fixed rows | 13/14 | HIGH |
-| GF | 6acc60406 | v7 | `array<11>` reservation | 31 | (grid) | fixed rows | 12 | HIGH |
+| Gen | Codename | TpuVer | throughput model | resource cols | matmul base | matprep base | EUP edge |
+|---|---|---|---|---|---|---|---|
+| JF | Jellyfish | v2 | flat inline POD + offset-LUT | 7 | 88 | 8 | 4 |
+| DF | Dragonfish | v3 | = JF + 2 cells | 7 | 66 | 13 | 4 |
+| PF | Pufferfish | v4 | heap `latency[]` + 2-D grid | 20 | (grid) | (grid) | 7 |
+| VF | Viperfish | v5p | `Modifier → array<19>` reservation | 28 | 131 | reservation | 6 |
+| GL | Ghostlite | v6e | `Modifier → array<11>` reservation | 31 | (grid) | fixed rows | 13/14 |
+| GF | 6acc60406 | v7 | `array<11>` reservation | 31 | (grid) | fixed rows | 12 |
 
 The systolic contract — weight-stationary 128×128 array, matpush 8×128/4×256 tiles, latch / push / matmul / matres sequence — never changes; only the cost-model encoding widens. See [MXU Latency Overview](mxu-latency-overview.md) for the cross-gen reservation-matrix concept and the per-gen pages [MXU Latency: PF](mxu-latency-pf.md), [VF](mxu-latency-vf.md), [GL](mxu-latency-gl.md), [GF](mxu-latency-gf.md).
 

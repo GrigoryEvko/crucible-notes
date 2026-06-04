@@ -174,20 +174,20 @@ The grid's INNER axis is the `GhostlitePerformance::Resource` enum: 31 intra-op 
 
 The 31 columns group into recognizable bands that track the EUP/Xlu/MXU-result micro-pipeline. The table below names each band by its occupant LLO class rather than dumping all 358 cells. Column indices are GL-specific (the GF (`6acc60406`) variant has a +1 shift on the result bands because its EUP-prep group is 4 columns wide vs GL's 3):
 
-| GL cols | Band | Occupant LLO class | Typical cells | Confidence |
-|---|---|---|---|---|
-| r0–r2 | Address / load-store / sync | `kVectorStoreIndexed/Masked`, `kVectorCmemStore`, `kScalarLoad/Store` | 2–3 | HIGH |
-| r3–r5 | EUP transcendental-prep | `kVector{Subtract,Compose,Pack,Tanh,Pow2,Rsqrt,…}` F32/Bf16 | {13,4,3} / {17,8,7} / {25,16,15} | HIGH |
-| r6 | EUP gain-push setup | `kVectorMultiplyU32/U16` | 48 | HIGH |
-| r7–r10 | EUP-result-pop FIFO (4 stages) | `kVector{…}Bf16AndPop`, `kVectorXorU32/AndU32` | {2,1,3,19} / {6,5,7,39} | HIGH |
-| r11–r14 | Cross-lane / transpose result (4 stages) | `kScalar{Compare,AddCarry,Multiply}` | {35,34,40,18} | HIGH |
-| **r15** | **Xlu / matrix-result deposit** | `kScalarMultiplyU32/F32`, `kScalarAddS32`, `kScalarSubtractF32` (matres) | **4** | CERTAIN |
-| r16–r19 | mxres-result sub-stages (4) | matres-result extensions (`kScalar{Multiply,Add,Subtract}` F32/S32) | {40,44,25,3} / {8,11,35,3} | HIGH |
-| r20–r23 | Pack / extract / U64 stages (4) | `kScalar{Ceil,CLZ}`, `kVectorCLZ`, extract/U64 ops | {21,25}/{48,50}/{50,54}/{32,36} | HIGH |
-| r24 | Mask-move | `kVectorMaskMove` | 1 | HIGH |
-| r25 | Shift / saturate (v6e-only band) | `kVectorShift{RightLogical,RightArithmetic,LeftLogical}`, `kScalar*Max` | 1 (×14) | HIGH |
-| r26–r27 | BarnaCore scatter-gradients | `kBarnaCore{Global,Local}ScatterGradients` | 5 / 4 | MEDIUM |
-| r28–r30 | BarnaCore scalar-sync-wait tail | barnacore-wait band (opcodes `0x1d0..0x1db`) | 5 / 7 / 3 | MEDIUM |
+| GL cols | Band | Occupant LLO class | Typical cells |
+|---|---|---|---|
+| r0–r2 | Address / load-store / sync | `kVectorStoreIndexed/Masked`, `kVectorCmemStore`, `kScalarLoad/Store` | 2–3 |
+| r3–r5 | EUP transcendental-prep | `kVector{Subtract,Compose,Pack,Tanh,Pow2,Rsqrt,…}` F32/Bf16 | {13,4,3} / {17,8,7} / {25,16,15} |
+| r6 | EUP gain-push setup | `kVectorMultiplyU32/U16` | 48 |
+| r7–r10 | EUP-result-pop FIFO (4 stages) | `kVector{…}Bf16AndPop`, `kVectorXorU32/AndU32` | {2,1,3,19} / {6,5,7,39} |
+| r11–r14 | Cross-lane / transpose result (4 stages) | `kScalar{Compare,AddCarry,Multiply}` | {35,34,40,18} |
+| **r15** | **Xlu / matrix-result deposit** | `kScalarMultiplyU32/F32`, `kScalarAddS32`, `kScalarSubtractF32` (matres) | **4** |
+| r16–r19 | mxres-result sub-stages (4) | matres-result extensions (`kScalar{Multiply,Add,Subtract}` F32/S32) | {40,44,25,3} / {8,11,35,3} |
+| r20–r23 | Pack / extract / U64 stages (4) | `kScalar{Ceil,CLZ}`, `kVectorCLZ`, extract/U64 ops | {21,25}/{48,50}/{50,54}/{32,36} |
+| r24 | Mask-move | `kVectorMaskMove` | 1 |
+| r25 | Shift / saturate (v6e-only band) | `kVectorShift{RightLogical,RightArithmetic,LeftLogical}`, `kScalar*Max` | 1 (×14) |
+| r26–r27 | BarnaCore scatter-gradients | `kBarnaCore{Global,Local}ScatterGradients` | 5 / 4 |
+| r28–r30 | BarnaCore scalar-sync-wait tail | barnacore-wait band (opcodes `0x1d0..0x1db`) | 5 / 7 / 3 |
 
 The defining column is **r15** (`0x0f`): the Xlu / matrix-result deposit port. Its cell is `4` for every matrix-result, cmem-result, and transpose-result op — `kScalarMultiplyU32` (`0x16f`), `kScalarMultiplyF32` (`0x170`), `kScalarAddS32` (`0x172`), `kScalarSubtractF32` (`0x174`). This is the value the convolution cost model reads as its `R[2]` Xlu term. The full per-cell rows are not transcribed here; the structure above lets a reimplementer reconstruct any populated row from its band and its occupant class.
 
@@ -260,17 +260,17 @@ So the GL conv `R[2]` Xlu term is `4 · ChunksPerTile · rem`. The `R[0]` matpus
 
 ## Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `ghostlite::GhostlitePerformance::GhostlitePerformanceC1Ev` | `0x1c8cbc80` | GL grid ctor — latency `new 0x770`, grid `new 0x2ca0`; 834 stores (476 lat + 358 grid) | CERTAIN |
-| `ghostlite::GhostlitePerformance::GetResourceUsage` | `0x1c8d3700` | grid read — outer bound `[this+0x20]`, 24-byte stride, inner bound `[row+8]` | CERTAIN |
-| `ghostlite::GhostlitePerformance::GetLatency` | `0x1c8d36e0` | latency read — `latency[instr]`, bound `[this+0x08]` | CERTAIN |
-| `ghostlite::GhostlitePerformance::GetResources` | `0x1c8d36c0` | returns `kResources @0xb43cdc4` (31-byte traversal order) | CERTAIN |
-| `ghostlite::GetGhostliteInstruction` | `0x1c8b1740` | LLO opcode → `Instruction` row; WORD bsearch + MXU latch fan-out (jt `@0xb43b34c`) | HIGH |
-| `ghostlite::LatencyTableGhostlite::GetXluPathReservation` | `0x1c8b21c0` | reads Xlu column res `0x0f`; conv `R[2]` accessor | CERTAIN |
-| `ghostlite::LatencyTableGhostlite::GetResourceLatency` | `0x1c8b1e60` | pairwise hazard sum over the 31 columns; per-column `switch` | HIGH |
-| `GlcCycleTable::GlcCycleTable` | `0x1c89e7e0` | owning CycleTable — grid at `this+0x10`, `MxuLatencyTable` at `this+0x18` | CERTAIN |
-| `CycleTable::GetResource` | `0x1c89ce20` | fallback cost path for the `0xff`-default unpriced rows | HIGH |
+| Function | Address | Role |
+|---|---|---|
+| `ghostlite::GhostlitePerformance::GhostlitePerformanceC1Ev` | `0x1c8cbc80` | GL grid ctor — latency `new 0x770`, grid `new 0x2ca0`; 834 stores (476 lat + 358 grid) |
+| `ghostlite::GhostlitePerformance::GetResourceUsage` | `0x1c8d3700` | grid read — outer bound `[this+0x20]`, 24-byte stride, inner bound `[row+8]` |
+| `ghostlite::GhostlitePerformance::GetLatency` | `0x1c8d36e0` | latency read — `latency[instr]`, bound `[this+0x08]` |
+| `ghostlite::GhostlitePerformance::GetResources` | `0x1c8d36c0` | returns `kResources @0xb43cdc4` (31-byte traversal order) |
+| `ghostlite::GetGhostliteInstruction` | `0x1c8b1740` | LLO opcode → `Instruction` row; WORD bsearch + MXU latch fan-out (jt `@0xb43b34c`) |
+| `ghostlite::LatencyTableGhostlite::GetXluPathReservation` | `0x1c8b21c0` | reads Xlu column res `0x0f`; conv `R[2]` accessor |
+| `ghostlite::LatencyTableGhostlite::GetResourceLatency` | `0x1c8b1e60` | pairwise hazard sum over the 31 columns; per-column `switch` |
+| `GlcCycleTable::GlcCycleTable` | `0x1c89e7e0` | owning CycleTable — grid at `this+0x10`, `MxuLatencyTable` at `this+0x18` |
+| `CycleTable::GetResource` | `0x1c89ce20` | fallback cost path for the `0xff`-default unpriced rows |
 
 ---
 

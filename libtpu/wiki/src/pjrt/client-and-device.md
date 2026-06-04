@@ -248,15 +248,15 @@ function PJRT_Client_Devices(args):                      // 0xF85F600, slot 20
 
 ### Function Map
 
-| Slot | Function | Addr | Behavior | Confidence |
-|---|---|---|---|---|
-| 20 | `PJRT_Client_Devices` | `0xF85F600` | span of `PJRT_Device` (begin/end) | CERTAIN |
-| 21 | `PJRT_Client_AddressableDevices` | `0xF85F660` | span of `PJRT_Device*` | CERTAIN |
-| 22 | `PJRT_Client_LookupDevice` | `0xF85F6C0` | id → `PJRT_Device*` via cached lookup | HIGH |
-| 23 | `PJRT_Client_LookupAddressableDevice` | `0xF85F880` | id → addressable `PJRT_Device*` | HIGH |
-| 18 | `PJRT_Client_ProcessIndex` | `0xF85F440` | int from `client->process_index()` | HIGH |
-| 17 | `PJRT_Client_PlatformName` | `0xF85F4A0` | string view (`"tpu"`) | HIGH |
-| 19 | `PJRT_Client_PlatformVersion` | `0xF85F500` | string view (TPU gen / topology) | HIGH |
+| Slot | Function | Addr | Behavior |
+|---|---|---|---|
+| 20 | `PJRT_Client_Devices` | `0xF85F600` | span of `PJRT_Device` (begin/end) |
+| 21 | `PJRT_Client_AddressableDevices` | `0xF85F660` | span of `PJRT_Device*` |
+| 22 | `PJRT_Client_LookupDevice` | `0xF85F6C0` | id → `PJRT_Device*` via cached lookup |
+| 23 | `PJRT_Client_LookupAddressableDevice` | `0xF85F880` | id → addressable `PJRT_Device*` |
+| 18 | `PJRT_Client_ProcessIndex` | `0xF85F440` | int from `client->process_index()` |
+| 17 | `PJRT_Client_PlatformName` | `0xF85F4A0` | string view (`"tpu"`) |
+| 19 | `PJRT_Client_PlatformVersion` | `0xF85F500` | string view (TPU gen / topology) |
 
 ---
 
@@ -285,20 +285,20 @@ function PJRT_DeviceDescription_Id(args):                // 0xF865360, slot 28
 
 ### Function Map
 
-| Slot | Function | Addr | Returns | Confidence |
-|---|---|---|---|---|
-| 28 | `PJRT_DeviceDescription_Id` | `0xF865360` | `int32` device id (vtable +16) | CERTAIN |
-| 29 | `PJRT_DeviceDescription_ProcessIndex` | `0xF8653C0` | `int32` process index | HIGH |
-| 30 | `PJRT_DeviceDescription_Attributes` | `0xF865420` | named-value list (carries coords) | HIGH |
-| 31 | `PJRT_DeviceDescription_Kind` | `0xF865480` | string view (device kind) | HIGH |
-| 32 | `PJRT_DeviceDescription_DebugString` | `0xF865500` | string view | HIGH |
-| 33 | `PJRT_DeviceDescription_ToString` | `0xF8658A0` | string view | HIGH |
-| 34 | `PJRT_Device_GetDescription` | `0xF8659A0` | `PJRT_DeviceDescription*` | CERTAIN |
-| 35 | `PJRT_Device_IsAddressable` | `0xF865A00` | bool (vtable +24) | CERTAIN |
-| 36 | `PJRT_Device_LocalHardwareId` | `0xF865A60` | `int32` local hw id | HIGH |
-| 37 | `PJRT_Device_AddressableMemories` | `0xF865AC0` | span of `PJRT_Memory*` | HIGH |
-| 38 | `PJRT_Device_DefaultMemory` | `0xF865B20` | `PJRT_Memory*` (vtable +152 → `GetCMemory`) | CERTAIN |
-| 39 | `PJRT_Device_MemoryStats` | `0xF865CE0` | HBM stats struct | MEDIUM |
+| Slot | Function | Addr | Returns |
+|---|---|---|---|
+| 28 | `PJRT_DeviceDescription_Id` | `0xF865360` | `int32` device id (vtable +16) |
+| 29 | `PJRT_DeviceDescription_ProcessIndex` | `0xF8653C0` | `int32` process index |
+| 30 | `PJRT_DeviceDescription_Attributes` | `0xF865420` | named-value list (carries coords) |
+| 31 | `PJRT_DeviceDescription_Kind` | `0xF865480` | string view (device kind) |
+| 32 | `PJRT_DeviceDescription_DebugString` | `0xF865500` | string view |
+| 33 | `PJRT_DeviceDescription_ToString` | `0xF8658A0` | string view |
+| 34 | `PJRT_Device_GetDescription` | `0xF8659A0` | `PJRT_DeviceDescription*` |
+| 35 | `PJRT_Device_IsAddressable` | `0xF865A00` | bool (vtable +24) |
+| 36 | `PJRT_Device_LocalHardwareId` | `0xF865A60` | `int32` local hw id |
+| 37 | `PJRT_Device_AddressableMemories` | `0xF865AC0` | span of `PJRT_Memory*` |
+| 38 | `PJRT_Device_DefaultMemory` | `0xF865B20` | `PJRT_Memory*` (vtable +152 → `GetCMemory`) |
+| 39 | `PJRT_Device_MemoryStats` | `0xF865CE0` | HBM stats struct |
 
 > **NOTE —** the `(min, current)` pair in each `ActualStructSizeIsGreaterOrEqual` call is the backward-compat envelope: `PJRT_DeviceDescription_Id_Args` accepts down to 30 bytes against a current 28 — note `min > current` here, an artifact of how the v0.103 args struct shrank a reserved field relative to the recorded minimum; the check is `actual >= min`. A reimplementer should copy the exact constants per slot rather than assume a uniform rule.
 

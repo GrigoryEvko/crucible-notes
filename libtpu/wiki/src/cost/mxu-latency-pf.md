@@ -97,13 +97,13 @@ function XposeXLUReservationLatency(this, mode, earlier, later, a, b):  // @0x1c
 
 `XluConflictPenaltyBetween` `@0x1c8a0180` is a 3-axis lookup — `penalty[XluInstrType][lo<6][hi<3]`, stride `72*type + 12*lo + 4*hi + 8`, returning the stored `penalty + 1`. `IsTranspose(type)` is `(type - 2) < 3`, so `XluInstrType` ordinals `{2,3,4}` are the transpose ops; the `CHECK` enforces that the *earlier* op in a pair is a transpose. The 10 penalty pairs the ctor installs price the conflict cycles between a transpose-result producer and a later Xlu consumer (`(0→2)=56`, `(2→5)=96`, `(2→0)=86`, `(5→2)=46`, `(0→5)=17`, each duplicated across the two `hi` planes).
 
-| Accessor | Address | Role | Confidence |
-|---|---|---|---|
-| `XposeXLUReservationLatency` | `0x1c8a13e0` | transpose/Xlu reservation = `(b−a) + penalty + 7`, clamped | CERTAIN |
-| `LatencyBetweenXposeInstrAndResult` | `0x1c8a1520` | transpose-instr → result edge via the penalty table | HIGH |
-| `XluConflictPenaltyBetween` | `0x1c8a0180` | 3-axis read `[type][6][3]`, returns `penalty+1` | CERTAIN |
-| `XluConflictPenaltyTable::IsTranspose` | `0x1c8a04e0` | `(type − 2) < 3` → types {2,3,4} | CERTAIN |
-| `SetXluConflictPenaltyBetween` (PF) | `0x1c8a17e0` | installs a penalty; `CHECK(!IsPacked(earlier) && !IsPacked(later))` | CERTAIN |
+| Accessor | Address | Role |
+|---|---|---|
+| `XposeXLUReservationLatency` | `0x1c8a13e0` | transpose/Xlu reservation = `(b−a) + penalty + 7`, clamped |
+| `LatencyBetweenXposeInstrAndResult` | `0x1c8a1520` | transpose-instr → result edge via the penalty table |
+| `XluConflictPenaltyBetween` | `0x1c8a0180` | 3-axis read `[type][6][3]`, returns `penalty+1` |
+| `XluConflictPenaltyTable::IsTranspose` | `0x1c8a04e0` | `(type − 2) < 3` → types {2,3,4} |
+| `SetXluConflictPenaltyBetween` (PF) | `0x1c8a17e0` | installs a penalty; `CHECK(!IsPacked(earlier) && !IsPacked(later))` |
 
 > **GOTCHA —** the conflict-penalty model is **directional and pairwise**, not a per-op reservation. A VF/GL/GF `GetXluPathReservation` returns one number for one op (the cycles it holds the Xlu deposit port); the PF `XluConflictPenaltyBetween` returns the penalty *between* an earlier transpose and a later Xlu op. A reimplementation that maps the PF penalty matrix onto a single-op Xlu reservation will lose the conflict structure entirely — PF models the Xlu hazard as a producer→consumer edge, the later gens as a port hold.
 
@@ -127,17 +127,17 @@ So the resource-count answer for Pufferfish is: the MXU occupancy lives in the *
 
 ## Function Map
 
-| Function | Address | Role | Confidence |
-|---|---|---|---|
-| `LatencyTablePufferfish::LatencyTablePufferfish` | `0x1c8a1960` | ctor — wires both `Performance` grids + the conflict table; **no** `MxuLatencyTable` | CERTAIN |
-| `PufferfishPerformance::GetResourceUsage` | `0x1c8c3880` | the MXU throughput read — `grid[instr][res 9]` etc. | CERTAIN |
-| `PufferfishPerformance::PufferfishPerformance` | `0x1c8be080` | the grid ctor — res 9 matmul column (96 cells, `{8,16}`) | CERTAIN |
-| `XposeXLUReservationLatency` | `0x1c8a13e0` | the transpose/Xlu reservation in place of a reservation map | CERTAIN |
-| `XluConflictPenaltyBetween` | `0x1c8a0180` | 3-axis penalty table read | CERTAIN |
-| `SetXluConflictPenaltyBetween` (PF) | `0x1c8a17e0` | the 10 ctor penalty installs | CERTAIN |
-| `ResourceUsageFromInstruction` (variant 0/1) | `0x1c8a3180` / `0x1c8a31a0` | TC/BarnaCore grid dispatch — the analog of an `MxuLatencyTable` family select | CERTAIN |
-| `GetSharedPufferfishPerformance` singleton | `0x22579a10` | the grid PF prices MXU ops through | CERTAIN |
-| `viperfish::MxuLatencyTable::MxuLatencyTable` | `0x1c8a52c0` | the v5p reservation-table ctor PF does **not** have — for contrast | CERTAIN |
+| Function | Address | Role |
+|---|---|---|
+| `LatencyTablePufferfish::LatencyTablePufferfish` | `0x1c8a1960` | ctor — wires both `Performance` grids + the conflict table; **no** `MxuLatencyTable` |
+| `PufferfishPerformance::GetResourceUsage` | `0x1c8c3880` | the MXU throughput read — `grid[instr][res 9]` etc. |
+| `PufferfishPerformance::PufferfishPerformance` | `0x1c8be080` | the grid ctor — res 9 matmul column (96 cells, `{8,16}`) |
+| `XposeXLUReservationLatency` | `0x1c8a13e0` | the transpose/Xlu reservation in place of a reservation map |
+| `XluConflictPenaltyBetween` | `0x1c8a0180` | 3-axis penalty table read |
+| `SetXluConflictPenaltyBetween` (PF) | `0x1c8a17e0` | the 10 ctor penalty installs |
+| `ResourceUsageFromInstruction` (variant 0/1) | `0x1c8a3180` / `0x1c8a31a0` | TC/BarnaCore grid dispatch — the analog of an `MxuLatencyTable` family select |
+| `GetSharedPufferfishPerformance` singleton | `0x22579a10` | the grid PF prices MXU ops through |
+| `viperfish::MxuLatencyTable::MxuLatencyTable` | `0x1c8a52c0` | the v5p reservation-table ctor PF does **not** have — for contrast |
 
 ---
 

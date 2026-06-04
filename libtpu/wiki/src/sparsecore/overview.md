@@ -166,18 +166,18 @@ The retired predecessor, **BarnaCore** (the embedding accelerator on Jellyfish /
 
 ## Confidence Summary
 
-| Claim | Evidence | Confidence |
-|---|---|---|
-| Three engine classes SCS/TAC/TEC, selected by `TpuSequencerType` 3/4/5 | `TpuSequencerType` enum (`TpuSequencerTypeToString` @ `0x20b362e0` jump table over `off_22010DE0`); `EncoderBase<…, TpuSequencerType=3/5>` template instantiations | CONFIRMED |
-| Per-gen codec roots `SparseCore{Scs,Tac,Tec}CodecBase` scoped `vxc.vfc` / `gxc.glc` / `gxc.gfc` | demangled codec-base class symbols in the decompiled set | CONFIRMED |
-| Viperfish + Ghostlite ship all three engines | `vxc.vfc` and `gxc.glc` each have Scs/Tac/Tec codec bases; fn counts Scs≈500, Tac≈760, Tec 4218/5961 | CONFIRMED |
-| `6acc60406` drops TAC (SCS+TEC only) | zero `gfc::…SparseCoreTac*` symbols / functions; no `gxc.gfc` `SparseCoreTacCodecBase`; TEC fn count 6526 | CONFIRMED |
-| Jellyfish / Dragonfish / Pufferfish carry no SparseCore | no `SparseCore*CodecBase` under `jxc` / `pxc.pfc`; these are BarnaCore-era gens | HIGH |
-| SCv0 is enum-only (no codec) | `TpuSequencerTypeProto` 7/8 (proto-only; no C++ value, `FromProto` rejects) + `kHloSparseCoreV0{Infeed,Outfeed}` profiler labels; no SCv0 encoder/decoder/descriptor ships | CONFIRMED |
-| SCS=32 B, TAC=64 B, TEC=64 B bundles; no check byte | `BundleSizeBytes` reads codec-metadata vtable slot returning 32/64; SC bundles carry no `0x55` trailer | HIGH |
-| In-HBM atomic FP scatter-add is the keystone primitive | `STREAM_OPCODE_SCATTER_FLOAT_ADD` + `DMA_DEST_OPCODE_READ_AND_ADD` enum strings | HIGH |
-| `V0` suffix on `6acc60406` TEC field symbols is an operand-version tag, not SCv0 | `gfc::isa::SparseCoreTecVectorExtended*V0XField` are live `6acc60406` TEC ops | CONFIRMED |
-| Marketing names v5p/v6e/v7x for codenames Viperfish/Ghostlite/`6acc60406` | follows sibling [SparseCore Target Descriptor](../targets/sparsecore-target-descriptor.md); binary keys on codename family ns, not marketing name | MEDIUM |
+| Claim | Evidence |
+|---|---|
+| Three engine classes SCS/TAC/TEC, selected by `TpuSequencerType` 3/4/5 | `TpuSequencerType` enum (`TpuSequencerTypeToString` @ `0x20b362e0` jump table over `off_22010DE0`); `EncoderBase<…, TpuSequencerType=3/5>` template instantiations |
+| Per-gen codec roots `SparseCore{Scs,Tac,Tec}CodecBase` scoped `vxc.vfc` / `gxc.glc` / `gxc.gfc` | demangled codec-base class symbols in the decompiled set |
+| Viperfish + Ghostlite ship all three engines | `vxc.vfc` and `gxc.glc` each have Scs/Tac/Tec codec bases; fn counts Scs≈500, Tac≈760, Tec 4218/5961 |
+| `6acc60406` drops TAC (SCS+TEC only) | zero `gfc::…SparseCoreTac*` symbols / functions; no `gxc.gfc` `SparseCoreTacCodecBase`; TEC fn count 6526 |
+| Jellyfish / Dragonfish / Pufferfish carry no SparseCore | no `SparseCore*CodecBase` under `jxc` / `pxc.pfc`; these are BarnaCore-era gens |
+| SCv0 is enum-only (no codec) | `TpuSequencerTypeProto` 7/8 (proto-only; no C++ value, `FromProto` rejects) + `kHloSparseCoreV0{Infeed,Outfeed}` profiler labels; no SCv0 encoder/decoder/descriptor ships |
+| SCS=32 B, TAC=64 B, TEC=64 B bundles; no check byte | `BundleSizeBytes` reads codec-metadata vtable slot returning 32/64; SC bundles carry no `0x55` trailer |
+| In-HBM atomic FP scatter-add is the keystone primitive | `STREAM_OPCODE_SCATTER_FLOAT_ADD` + `DMA_DEST_OPCODE_READ_AND_ADD` enum strings |
+| `V0` suffix on `6acc60406` TEC field symbols is an operand-version tag, not SCv0 | `gfc::isa::SparseCoreTecVectorExtended*V0XField` are live `6acc60406` TEC ops |
+| Marketing names v5p/v6e/v7x for codenames Viperfish/Ghostlite/`6acc60406` | follows sibling [SparseCore Target Descriptor](../targets/sparsecore-target-descriptor.md); binary keys on codename family ns, not marketing name |
 
 ---
 

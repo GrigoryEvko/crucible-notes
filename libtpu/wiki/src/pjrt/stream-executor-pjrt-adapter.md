@@ -221,22 +221,22 @@ The constructor body's exact field stores were not dereferenced from the binary.
 
 ### Function Map
 
-| Function | Addr | Role | Confidence |
-|---|---|---|---|
-| `TpuClient::TpuClient` (ctor) | `0xF801980` | Build the adapter from enumerated devices + infra | CERTAIN |
-| `TpuClient::LookupDevice` | `0xF8033A0` | global device id → `PjRtDevice*` | HIGH |
-| `TpuClient::platform_name` | `0xF816D20` | `"tpu"` | HIGH |
-| `TpuClient::platform_id` | `0xF816D00` | TPU platform id constant | HIGH |
-| `TpuClient::process_index` | `0xF816C40` | host process index | HIGH |
-| `TpuClient::memory_spaces` | `0xF816CE0` | HBM + pinned/unpinned host spaces | HIGH |
-| `TpuClient::AllocateBuffer` | `0xF7FC5A0` | device HBM alloc → `tpu::AllocateBuffer` | HIGH |
-| `TpuClient::AllocateRawBuffer` | `0xF7FB1E0` | host/CPU-space alloc dispatch | HIGH |
-| `TpuClient::CompileAndLoad` (XlaComputation) | `0xF804F20` | compile entry → jellyfish JIT | HIGH |
-| `TpuClient::CompileAndLoad` (MLIR) | `0xF8068E0` | MLIR compile entry | HIGH |
-| `TpuClient::TrackFuture` | `0xF7FAD60` | `tsl::AsyncValue` → `PJRT_Event` future | HIGH |
-| `TpuClient::CreateProfiledFuture` | `0xF7FAE80` | profiled completion future | HIGH |
-| `TpuClient::CreateErrorEvent` | `0xF808420` | `tpu::TpuEvent` set to error status | HIGH |
-| `TpuClient::CreateDeviceEventSet` | `0xF813D40` | mint wait/define event sets | MEDIUM |
+| Function | Addr | Role |
+|---|---|---|
+| `TpuClient::TpuClient` (ctor) | `0xF801980` | Build the adapter from enumerated devices + infra |
+| `TpuClient::LookupDevice` | `0xF8033A0` | global device id → `PjRtDevice*` |
+| `TpuClient::platform_name` | `0xF816D20` | `"tpu"` |
+| `TpuClient::platform_id` | `0xF816D00` | TPU platform id constant |
+| `TpuClient::process_index` | `0xF816C40` | host process index |
+| `TpuClient::memory_spaces` | `0xF816CE0` | HBM + pinned/unpinned host spaces |
+| `TpuClient::AllocateBuffer` | `0xF7FC5A0` | device HBM alloc → `tpu::AllocateBuffer` |
+| `TpuClient::AllocateRawBuffer` | `0xF7FB1E0` | host/CPU-space alloc dispatch |
+| `TpuClient::CompileAndLoad` (XlaComputation) | `0xF804F20` | compile entry → jellyfish JIT |
+| `TpuClient::CompileAndLoad` (MLIR) | `0xF8068E0` | MLIR compile entry |
+| `TpuClient::TrackFuture` | `0xF7FAD60` | `tsl::AsyncValue` → `PJRT_Event` future |
+| `TpuClient::CreateProfiledFuture` | `0xF7FAE80` | profiled completion future |
+| `TpuClient::CreateErrorEvent` | `0xF808420` | `tpu::TpuEvent` set to error status |
+| `TpuClient::CreateDeviceEventSet` | `0xF813D40` | mint wait/define event sets |
 
 > **NOTE —** the compile, execute, buffer, and event surfaces above are documented in depth on their owning pages ([Executable & Execution](executable-execution.md), [Buffer & Memory](buffer-and-memory.md), [Events & Async](events-and-async.md)). They appear here only to show what the *adapter client* exposes; this page owns their wiring into the SE→PJRT bridge, not their slot-level details.
 
@@ -252,14 +252,14 @@ The constructor body's exact field stores were not dereferenced from the binary.
 
 The `TpuDevice` object is `0x1E0` (480) bytes (the `operator new(0x1E0)` in the enumeration loop). Its members, recovered from the ctor signature (`0xF7FDC40`) and `SetClient` (`0xF7FE520`):
 
-| Member | Source | Role | Confidence |
-|---|---|---|---|
-| `tpu::System*` | ctor arg 4 | The **shared** device runtime — same pointer in every `TpuDevice` | CERTAIN |
-| `tpu::TpuCoreLocation` | from the enumeration loop's `core_loc` | The physical core this PjRt device maps to | HIGH |
-| `xla::TpuDeviceDescription` | ctor arg 1 | Static identity: id/process/kind/attributes/memory | CERTAIN |
-| `xla::TpuClient*` | `SetClient` arg 1 | Back-pointer to the owning client | CERTAIN |
-| `xla::AsyncWorkRunner*` | `SetClient` arg 2 | Host scheduler for this device's continuations | CERTAIN |
-| `xla::Semaphore` | constructed; fenced by `ExecutablesStart`/`Complete` | In-flight-computation throttle (bounded by `max_inflight_computations`) | HIGH |
+| Member | Source | Role |
+|---|---|---|
+| `tpu::System*` | ctor arg 4 | The **shared** device runtime — same pointer in every `TpuDevice` |
+| `tpu::TpuCoreLocation` | from the enumeration loop's `core_loc` | The physical core this PjRt device maps to |
+| `xla::TpuDeviceDescription` | ctor arg 1 | Static identity: id/process/kind/attributes/memory |
+| `xla::TpuClient*` | `SetClient` arg 1 | Back-pointer to the owning client |
+| `xla::AsyncWorkRunner*` | `SetClient` arg 2 | Host scheduler for this device's continuations |
+| `xla::Semaphore` | constructed; fenced by `ExecutablesStart`/`Complete` | In-flight-computation throttle (bounded by `max_inflight_computations`) |
 
 The `tpu::System*` being *identical* across all devices is the structural difference from SE. In upstream XLA, `device[i]->local_device_state()->executor()` returns a distinct `StreamExecutor` per device. Here, `device[i]` and `device[j]` share one `tpu::System`; what distinguishes them is the `TpuCoreLocation`, which `tpu::System::Execute` and `LoadProgram` consume to target the right core.
 
@@ -290,12 +290,12 @@ The canonical kind constants are `xla::kBuiltinTpuMemorySpaces` / `xla::kTpuHbmM
 
 ### Function Map
 
-| Function | Addr | Role | Confidence |
-|---|---|---|---|
-| `TpuDevice::TpuDevice` (ctor) | `0xF7FDC40` | Build device from desc + name + ordinal + `tpu::System*` | CERTAIN |
-| `TpuDevice::SetClient` | `0xF7FE520` | Install client back-pointer + `AsyncWorkRunner` | CERTAIN |
-| `TpuDevice::ExecutablesStart` | `0xF800300` | Acquire the in-flight semaphore before launch | HIGH |
-| `TpuDevice::ExecutablesComplete` | `0xF800740` | Release the in-flight semaphore on completion | HIGH |
+| Function | Addr | Role |
+|---|---|---|
+| `TpuDevice::TpuDevice` (ctor) | `0xF7FDC40` | Build device from desc + name + ordinal + `tpu::System*` |
+| `TpuDevice::SetClient` | `0xF7FE520` | Install client back-pointer + `AsyncWorkRunner` |
+| `TpuDevice::ExecutablesStart` | `0xF800300` | Acquire the in-flight semaphore before launch |
+| `TpuDevice::ExecutablesComplete` | `0xF800740` | Release the in-flight semaphore on completion |
 
 > **NOTE —** the `TpuDeviceDescription` (vtable `0x21787AC0`, typeinfo `0x21787C38`) is the PjRt device description carrying id / process_index / device_kind / Attributes / memory. The SE-flavoured `PjRtStreamExecutorDeviceDescription` (vtable `0x2177D950`, typeinfo `0x2177D9B0`) is GPU-only dead code in this binary — its presence is the *only* residual SE-PjRt symbol, and it is never reached on the TPU path. Do not confuse the two when reading the binary.
 
