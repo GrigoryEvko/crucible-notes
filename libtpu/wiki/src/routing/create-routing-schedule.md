@@ -187,7 +187,7 @@ function buffer_release(capture):                       // 0x13826dc0
     entry = FlatHashMap<XY, Allocator>.find_or_prepare_insert(set, &capture.XY)  // 0x13826de1
     available_at = capture.available_at + 1              // inc @0x13826e14
     RET_CHECK available.empty() || available.back().second <= available_at       // sorted by release step; str @0x8509fa3 (line 389)
-    RET_CHECK ptr.type == PointerType::kAlloc            // str "type != net_router::PointerType::kAlloc" @0x873065f (line 390)
+    RET_CHECK ptr.type == PointerType::kAlloc            // str "ptr.type == PointerType::kAlloc" @line 390
     RET_CHECK ptr.index.has_value()                      // str @0xa16fa09 (line 391)
     RET_CHECK *ptr.index < size                          // str @0x8672033 (line 396)
     RET_CHECK c_none_of(available, e -> e.first == *ptr.index)  // NO double-release; str @0xa0f3a0c (line 395)
@@ -199,7 +199,7 @@ Two invariants are the buffer handoff:
 - **Availability** — a buffer index is added to a per-destination-XY ordered `available` list keyed by release step. A hop reads a buffer only after it appears in this list, which (combined with the pipeline factor) is why the next hop runs `kPipelineFactor` steps later.
 - **In-flight serialization** — the `(index, step)` pair is pushed onto the `latest_dma_out` deque. The conflict invariant `!latest_dma_out.contains({src, block})` (checked in `LogAndValidatePaths`) forbids launching a second DMA from the same source block while one is still in flight on that path.
 
-> **QUIRK —** the relay buffers tracked here are **always `kAlloc`** — the `RET_CHECK ptr.type == PointerType::kAlloc` (string `"type != net_router::PointerType::kAlloc"`, confirmed at decompile line 23 of `$_1`) rejects any other kind. The collective's real input/output buffers (`kInput`/`kOutput`) never enter the in-flight tracker; only intermediate scratch hops do.
+> **QUIRK —** the relay buffers tracked here are **always `kAlloc`** — the `RET_CHECK ptr.type == PointerType::kAlloc` (string `"ptr.type == PointerType::kAlloc"`, `net_router_emitter.cc` line 390, rejecting any `type != 2`) rejects any other kind. The collective's real input/output buffers (`kInput`/`kOutput`) never enter the in-flight tracker; only intermediate scratch hops do.
 
 ### `$_2` — commit the per-hop endpoint placement
 
@@ -289,6 +289,73 @@ The address is built as an SSA `Predicated`/`Phi` chain (the `LloRegionBuilder` 
 
 ---
 
+## Serialization Into The Type-5 Literal
+
+`CreateRoutingScheduleLiteral` @ `0x13822400` runs `CreateRoutingSchedule`, then flattens the resulting `Schedule` into a flat `int32` array wrapped as an `xla::Literal` (the Type-5 route literal the runtime replays). Each schedule `Action` is encoded by `SerializeAction` @ `0x13829300` into a single packed `int32`.
+
+### `SerializeAction` — the packed-Action bit layout
+
+```c
+function SerializeAction(action):                       // 0x13829300
+    if action.dma.is_set:                                // *(action+56) == 1
+        RET_CHECK action.dma.src_ptr.index.has_value()    // str "action.dma->src_ptr.index.has_value()"  (line 301)
+        RET_CHECK *src_ptr.index < (1 << 13)              // str "*action.dma->src_ptr.index < 1 << kActionAddressIndexSize" (line 302)
+        RET_CHECK action.dma.dst_ptr.index.has_value()    // str "action.dma->dst_ptr.index.has_value()"  (line 312)
+        RET_CHECK *dst_ptr.index < (1 << 13)              // str "*action.dma->dst_ptr.index < 1 << kActionAddressIndexSize" (line 313)
+        return  (src_ptr.index & 0x1FFF)                  //  b0-12   13-bit source index
+              | ((src_ptr.type & 3) << 13)                //  b13-14  2-bit  source PointerType
+              | ((dst_ptr.index << 15) & 0xFFF8000)       //  b15-27  13-bit dest index
+              | ((dst_ptr.type  & 3) << 28)               //  b28-29  2-bit  dest PointerType
+              + 0x40000000                                //  b30     "DMA action" marker bit
+    return 0                                              // no-DMA action → 0
+```
+
+The encoding is byte-confirmed from the single return expression (decompile line 37):
+`((dst.type & 3) << 28) + (src.index & 0x1FFF | ((src.type & 3) << 13) | (dst.index << 15) & 0xFFF8000) + 0x40000000`.
+`kActionAddressIndexSize = 13` is fixed by the two `< 1 << kActionAddressIndexSize` bounds (the literal divisor `0x2000` = `1 << 13` in the `MakeCheckOpString` calls). The bit field map:
+
+| field | bits | width | mask / shift | Confidence |
+|---|---|---|---|---|
+| `src_ptr.index` | b0–12 | 13 | `& 0x1FFF` | CERTAIN |
+| `src_ptr.type` | b13–14 | 2 | `(& 3) << 13` | CERTAIN |
+| `dst_ptr.index` | b15–27 | 13 | `(<< 15) & 0xFFF8000` | CERTAIN |
+| `dst_ptr.type` | b28–29 | 2 | `(& 3) << 28` | CERTAIN |
+| DMA-action marker | b30 | 1 | `+ 0x40000000` | CERTAIN |
+
+A null (no-DMA) action encodes as `0`; the b30 marker therefore distinguishes a live DMA from an empty slot. The `index` fields are exactly the `Pointer::index` ordinals; the `type` fields are the 2-bit `PointerType` documented above.
+
+### Literal size and record index
+
+`CreateRoutingScheduleLiteral` allocates one flat `int32` buffer and walks every iteration × core, writing four `SerializeAction` words per record (one per compass column):
+
+```c
+num_steps = schedule.iterations                          // v191
+X = topology.ChipBounds.X                                 // topology+88
+Y = topology.ChipBounds.Y                                 // topology+92
+total_values = 4 * num_steps * X * Y + 4                  // line 935: 4*v191*X*Y + 4
+                                                          //   header word [0] = num_steps, words [1..3] = 0
+for step in [0, num_steps):
+    for core dma-chain at this step:
+        record = step + num_steps * core.Id()             // line 982: v22 + v15*Id  ==  core_id*num_steps + step
+        offset = 4 * record
+        RET_CHECK offset + 4 <= total_value_count          // str "offset + kRoutingScheduleValuesPerRecord <= kTotalValueCount" (lines 491/680)
+        buf[offset+0..3] = SerializeAction(action[N/W/S/E]) // 4 columns; kRoutingScheduleValuesPerRecord = 4
+```
+
+- **Literal-size formula** — `4 * num_steps * X * Y + 4` (byte-confirmed @ line 935). The trailing `+ 4` is the 4-word header: word `[0]` holds `num_steps`, words `[1..3]` are zeroed (lines 949–952).
+- **Record index** — `core_id * num_steps + step` (byte-confirmed @ line 982 as `step + num_steps * core.Id()`). Records are laid out core-major, step-minor.
+- **`kRoutingScheduleValuesPerRecord = 4`** — four `SerializeAction` words per record (lines 983–986 / 1004–1007), bounded by the `offset + kRoutingScheduleValuesPerRecord <= kTotalValueCount` RET_CHECK.
+
+| Function | VMA | Role | Confidence |
+|---|---|---|---|
+| `CreateRoutingScheduleLiteral` | `0x13822400` | `Schedule` → flat `int32` `xla::Literal` | CERTAIN |
+| `SerializeAction` | `0x13829300` | `Action` → packed `int32` | CERTAIN |
+| `EmitRoutingCode` | `0x13819ca0` | route-code emitter consuming the schedule at runtime | CERTAIN |
+
+`EmitRoutingCode` @ `0x13819ca0` is the runtime-side emitter (it threads the `GetDataPointerAddress` callback through to materialize each `Pointer`); its full body is documented in [route-table-generation](route-table-generation.md).
+
+---
+
 ## The Solver Pipeline At A Glance
 
 | stage | function / site (VMA) | output |
@@ -302,6 +369,8 @@ The address is built as an SSA `Predicated`/`Phi` chain (the `LloRegionBuilder` 
 | buffer release / in-flight record | `$_1` @ `0x13826dc0` | `available` list + `latest_dma_out` deque |
 | commit `Action` placement (per direction) | `$_2` @ `0x13827760` | `placement[transfer]` `Action` slot |
 | validate (pipeline / source / step order) | `LogAndValidatePaths` @ `0x13823dc0` | `Schedule` (`kPipelineFactor=3`) |
+| serialize each `Action` to int32 | `SerializeAction` @ `0x13829300` | packed word (`kActionAddressIndexSize=13`) |
+| flatten `Schedule` to route literal | `CreateRoutingScheduleLiteral` @ `0x13822400` | `4*num_steps*X*Y+4` int32 Type-5 literal |
 | resolve a pointer address (runtime) | `GetDataPointerAddress` @ `0x13828220` | `LloMemoryAddress` (scratch or callback) |
 
 ---
