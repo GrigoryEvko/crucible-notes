@@ -13,7 +13,7 @@ Everything here was reconstructed **purely from static analysis of the binary** 
 - **884,832 functions** in the analysis database (the disassembler's materialized count; a near-but-unequal 884,843 manifest figure is reconciled to 884,832 per CORRECTION FOR-02 in [Binary Forensics Overview](forensics/overview.md)); 1,249,324 strings; ~52 GB of extracted IDA sidecars.
 - **40,313 dispatch tables** (≈100× ptxas's 409), classified into 19 taxonomy classes.
 - **160,351 RTTI records** (`_ZTI` 60,457 · `_ZTV` 39,244 · `_ZTS` 60,650 · 2), the 60,457 typeinfos led by `mlir::` (13,091), `asic_sw::` (11,379), `tensorflow::` (3,108), `xla::` (3,036), `llvm::` (2,940), with `dnnl::` / `std::` / `grpc_core::` and a long vendored tail behind them.
-- **~2,900 static constructors** in `.init_array`; **1,069,006 relocations**.
+- **~2,900 static constructors** in `.init_array`; **1,069,659 relocations** (of which 1,069,006 are `R_X86_64_RELATIVE`).
 - The section-header table ends **exactly at EOF** — there is **no** trailing payload past it; the carved "4.1 MB zstd-dictionary blob" was a false positive (a `zstd` magic immediate inside `.text`, not a stored frame — see Part I).
 - Custom ELF sections (`google_malloc`, `malloc_hook`, `protodesc_cold`, `filewrapper_toc`, `__rseq_cs`, `__lcxx_override`).
 - Six TPU silicon generations under a Google-internal codename ladder: `jellyfish → dragonfish → pufferfish → viperfish → ghostlite → 6acc60406`, each with its own ISA encoding, cost model, and HAL family.
