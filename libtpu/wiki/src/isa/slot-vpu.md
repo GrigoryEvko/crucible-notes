@@ -346,7 +346,7 @@ The vector-mask file is **16 registers** (`Vmsk0..15`), distinct from the predic
 
 The lineage is a coherent story of a widening compute fabric, not arbitrary per-generation churn:
 
-| Axis | JF (v3) | PF (v4) | VF (v5e) | GL (v5p) | GF (v6e) |
+| Axis | JF (v2) | PF (v4) | VF (v5p) | GL (v6e) | GF (TPU7x) |
 |---|---|---|---|---|---|
 | VALU slots | 2 | 2 (distinct structs) | 4 | 4 | 4 |
 | Encoder | direct `and`/`shl`/`or` | `BitCopy` | `BitCopy` | `BitCopy` | `BitCopy` |

@@ -8,7 +8,7 @@ The `tpu` dialect is the TPU's *machine dialect* — the MLIR target dialect tha
 
 Concretely, MLIR registers an op not by C++ inheritance but by instantiating a type-erased concept class — `mlir::RegisteredOperationName::Model<Op>` — once per op, and inserting it as the op's `OperationName::Impl`. Each `Model<Op>` is a vtable with a fixed **23-slot contract**: a shared base destructor, a per-op deleting destructor, and 21 dispatch slots (fold, canonicalize, verify, parse/print, the four inherent-attribute accessors, and nine property-management methods). The binary holds **6,050** such `Model<Op>` vtables — one per registered op across 60-plus dialect namespaces — of which the `tpu` dialect owns **86**.
 
-This page owns three things, because the sibling [MLIR Op-Model Contract](mlir-op-model-contract.md) page is presently a stub:
+The binary-wide `Model<Op>` ABI is owned by the sibling [MLIR Op-Model Contract](mlir-op-model-contract.md) page; this page is the worked `tpu`-dialect instantiation of it and reproduces the 23-slot walk only as far as needed to read the 86 `tpu` ops against it. This page owns three things:
 
 - **The `Model<Op>` 23-slot contract** — every slot labelled to its demangled `Model<Op>::<method>` symbol, the 1-shared + 22-per-op layout, and what each slot does. (Verified on `Model<mlir::tpu::IotaOp>`: all 21 dispatch-slot symbols present.)
 - **The Op↔Model binding** — how a concrete `tpu` op fills its 23 slots: the `Dialect::addOperations<…>` registrar, the single `RegisteredOperationName::insert`, and the three-level delegation from the type-erased Model thunk to the op's ODS-generated statics.
@@ -18,7 +18,7 @@ This page owns three things, because the sibling [MLIR Op-Model Contract](mlir-o
 |---|---|
 | **Op-registration concept** | `mlir::RegisteredOperationName::Model<Op>` (one per registered op) |
 | **Model vtable count (all dialects)** | **6,050** across 60-plus namespaces (= total registered-op count) |
-| **`tpu` dialect Model count** | **86** (exact `addOperations<>` arity; reconciles the overview's "157" estimate below) |
+| **`tpu` dialect Model count** | **86** (exact `addOperations<>` arity; corrects the ~157 a naive `*Op`-string scan over-counts — see below) |
 | **Vtable slots per Model** | **23** = slot 0 shared base dtor + slot 1 per-op dtor + slots 2–22 dispatch |
 | **Shared slot-0 dtor** | `mlir::OperationName::Impl::~Impl` (addend `0xfea8820`, identical across all 6,050 Models) |
 | **`tpu` op registrar** | `Dialect::addOperations<mlir::tpu::AllReduceOp, …>` @ `0x14aa2c40` (86 args) |
@@ -217,7 +217,7 @@ The fold and canonicalize slots (2 and 3) are present on all 86 ops, but each wr
 
 Everything else in the `tpu` dialect is transformed *structurally* by the dialect-conversion lowering ([tpu → LLO Lowering](tpu-to-llo-ods.md)), not rewritten in place. The fold/canonicalize *bodies* (the rewrite algebra inside, e.g., `MatmulOp::getCanonicalizationPatterns`) are not decompiled on this page — only the census (which ops rewrite) is established here.
 
-> **NOTE — the "86" here reconciles the overview's "157 ops" estimate.** The [Compiler Overview](overview.md) cites ~157 `tpu` ops from an earlier RTTI string scan. The exact figure from the `addOperations<>` registrar arity is **86 registered ops**, each with a 23-slot Model. The difference is `*Op`-suffixed symbols that are *not* registered ops — Pass classes and helpers (e.g. `LinalgVectorizationPass`, `MosaicSerdePass`, `PreCanonicalization`, `applyLayout`) that match a naive scan but never reach `addOperations`, so they have no Model. For dispatch-ABI purposes, 86 is the authoritative count.
+> **NOTE — the "86" corrects a naive `*Op`-string scan that over-counts to ~157.** A surface RTTI scan for `mlir::tpu::*Op` symbols returns ~157 hits, but the exact figure from the `addOperations<>` registrar arity is **86 registered ops**, each with a 23-slot Model. The difference is `*Op`-suffixed symbols that are *not* registered ops — Pass classes and helpers (e.g. `LinalgVectorizationPass`, `MosaicSerdePass`, `PreCanonicalization`, `applyLayout`) that match a naive scan but never reach `addOperations`, so they have no Model. The [Compiler Overview](overview.md) deliberately asserts no `tpu` op count for exactly this reason. For dispatch-ABI purposes, 86 is the authoritative count.
 
 ---
 
@@ -261,14 +261,14 @@ The other 50-odd namespaces (TF 834, spirv 376, ROCDL 350, NVVM 197, the HLO inp
 | `tpu` in-dialect rewrite surface = 6 fold + 9 canon | demangled `mlir::tpu::*Op::fold` (6) and `*Op::getCanonicalizationPatterns` (9) present | CONFIRMED |
 | 53 `tpu` ops carry non-trivial `Properties`; 9 of those carry `AttrSizedOperandSegments` | slot 14 `getOpPropertyByteSize` non-zero on 53/86 ops (read directly: `mov $0xN;ret` vs `xor;ret`); the 9 segment-bearing ops carry the `AttrSizedOperandSegments` trait; `IotaOp` = 8-byte `dimensions` property | CONFIRMED |
 | `tpu` op interface signatures (family grouping) | read from `Op<OpName,Traits…>` template args in each op's `getFoldHookFn` holder symbol | HIGH (per-op trait set from one symbol source; aggregate cross-checked) |
-| Overview's "157 ops" vs 86 registered | 86 = registrar arity; the ~71 extra are unregistered Pass/helper `*Op` symbols with no Model | CONFIRMED |
+| Naive `*Op`-scan ~157 vs 86 registered | 86 = registrar arity; the ~71 extra are unregistered Pass/helper `*Op` symbols with no Model | CONFIRMED |
 
 ---
 
 ## Cross-References
 
 - [Compiler Overview](overview.md) — where the `tpu` dialect sits in the five-phase descent and the six-level IR stack; the convergence point of the optimizer and Mosaic paths.
-- [MLIR Op-Model Contract](mlir-op-model-contract.md) — the binary-wide `Model<Op>` ABI and the full 6,050-Model census (this page owns the contract while that page is a stub; relate, do not duplicate).
+- [MLIR Op-Model Contract](mlir-op-model-contract.md) — the binary-wide `Model<Op>` ABI and the full 6,050-Model census; that page owns the contract, this page is its worked `tpu`-dialect instantiation (relate, do not duplicate).
 - [tpu → LLO Lowering](tpu-to-llo-ods.md) — how the 86 `tpu` ops are lowered structurally into the 325-op `llo` dialect, the layer below this one.
 - [MHLO → XTile → tpu](mhlo-xtile-tpu-lowering.md) — the mid-level lowering that produces the `tpu` ops this page registers.
 - [DialectConversion Legalizer](dialect-conversion-legalizer.md) — the conversion-pattern machinery that consumes `tpu` ops during lowering.

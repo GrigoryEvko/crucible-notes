@@ -201,7 +201,7 @@ Pufferfish is distinctive in that its EUP push reserves **grid** ports in additi
 | PF | 0x67..0x6c | 7 | 0x76 | 1 | r2:1, r3:2 | 2 (half-rate) |
 | VF | 0xcc..0xd2 | 6 | 0x168 | 1 | (none) | 1 |
 
-> **NOTE —** the push→pop dependency edge weight is `GetLatency(push) = 7` on PF, then doubled by `VectorEupReservationCycles = 2` for the half-rate EUP unit; on VF the edge is 6 with reservation 1. A reimplementation that models the EUP as full-rate on PF under-costs every transcendental.
+> **NOTE —** the push→pop dependency edge weight is `GetLatency(push) = 7` on PF, returned **unmodified** — it is *not* scaled by `VectorEupReservationCycles`. The reservation (PF = 2, the half-rate EUP issue rate) is an orthogonal axis bounding push→push spacing, not the push→pop window; the two compose as a `max`, never a product (see [EUP Latency Overview](eup-latency-overview.md) and [EUP Per-Gen Integers](eup-per-gen-integers.md)). On VF the edge is 6 with reservation 1. A reimplementation that multiplies the 7-cycle latency by the 2-cycle reservation over-costs every PF transcendental; one that models the EUP as full-rate (reservation 1) on PF under-costs back-to-back chains.
 
 ---
 

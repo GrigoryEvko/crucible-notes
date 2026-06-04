@@ -6,7 +6,7 @@
 
 Every TPU VLIW bundle carries exactly one **sequencer slot**: the single scalar-ALU lane that owns program-counter mutation. It is the lane that encodes branch / jump, call, halt, the pipeline-balancing delay op, the hardware-loop-counter read, and (on the SparseCore engines) the sync-flag and barrier ops. The matrix unit, the vector lanes, and the memory ports are *issued* by the bundle, but only the sequencer slot can change what executes next cycle. Functionally this is the on-chip control CPU of the TensorCore reduced to one slot in the issue word.
 
-The slot's identity is byte-anchored across the silicon line. On Jellyfish (TPU v3) and Pufferfish (TPU v4) it is named `SLOT_SCALAR_0`; from Viperfish (v5e) onward it is `SLOT_SCALAR_ALU_0`. In both naming schemes the PC-mutating opcodes are legal **only in lane 0** — lane 1 (`SLOT_SCALAR_1` / `SLOT_SCALAR_ALU_1`) carries halt / fence / delay and a mirror of the scalar ALU, but never a branch or a call. On Jellyfish this rule is a literal bitmask in `ProtoUtils::ScalarOpAllowedInSlot` (`0x1e875a20`); on V5+ it is the proto-message structure `bundle.scalar_alu().scalar_alu_0().branch_relative()`. This page documents the slot as a reimplementation target: which lane it is per generation, the three-layer encode path that turns a control-flow intent into bundle bytes, the branch / call / halt / delay / loop-read field layout, and how the predication field doubles as the conditional-branch condition. The per-(generation × sequencer-type) op inventory lives on the [companion page](sequencer-ops-per-gen.md); the hardware-loop-counter detail on [Hardware Loop-Counter](slot-loop.md).
+The slot's identity is byte-anchored across the silicon line. On Jellyfish (TPU v2) and Pufferfish (TPU v4) it is named `SLOT_SCALAR_0`; from Viperfish (v5e) onward it is `SLOT_SCALAR_ALU_0`. In both naming schemes the PC-mutating opcodes are legal **only in lane 0** — lane 1 (`SLOT_SCALAR_1` / `SLOT_SCALAR_ALU_1`) carries halt / fence / delay and a mirror of the scalar ALU, but never a branch or a call. On Jellyfish this rule is a literal bitmask in `ProtoUtils::ScalarOpAllowedInSlot` (`0x1e875a20`); on V5+ it is the proto-message structure `bundle.scalar_alu().scalar_alu_0().branch_relative()`. This page documents the slot as a reimplementation target: which lane it is per generation, the three-layer encode path that turns a control-flow intent into bundle bytes, the branch / call / halt / delay / loop-read field layout, and how the predication field doubles as the conditional-branch condition. The per-(generation × sequencer-type) op inventory lives on the [companion page](sequencer-ops-per-gen.md); the hardware-loop-counter detail on [Hardware Loop-Counter](slot-loop.md).
 
 For reimplementation, the contract is:
 
@@ -70,9 +70,9 @@ The slot lives at lane 0 of the scalar-ALU sub-bundle in every generation, but t
 
 | Gen | Sequencer type | Bundle B | Sequencer lane | Lane 1 (no PC mutation) | Confidence |
 |---|---|---:|---|---|---|
-| Jellyfish (v3) | TensorCore | 41 | `SLOT_SCALAR_0` | `SLOT_SCALAR_1` (halt/fence/delay) | CONFIRMED |
-| Jellyfish (v3) | BarnaCoreAddressHandler | 16 | dedicated BCAH `Branch` ScalarSlot | n/a | HIGH |
-| Dragonfish (v3′) | TC / BCAH | 41 / 16 | alias of Jellyfish codec | (as Jellyfish) | HIGH |
+| Jellyfish (v2) | TensorCore | 41 | `SLOT_SCALAR_0` | `SLOT_SCALAR_1` (halt/fence/delay) | CONFIRMED |
+| Jellyfish (v2) | BarnaCoreAddressHandler | 16 | dedicated BCAH `Branch` ScalarSlot | n/a | HIGH |
+| Dragonfish (v3) | TC / BCAH | 41 / 16 | alias of Jellyfish codec | (as Jellyfish) | HIGH |
 | Pufferfish (v4) | TensorCore | 51 | `Scalar0` (`TensorCoreScalar0_*`) | `Scalar1` (halt/fence/delay) | CONFIRMED |
 | Pufferfish (v4) | BarnaCoreSequencer | 32 | `BarnaCoreSequencerScalar0` | `Scalar1` (halt/fence/delay + sync) | CONFIRMED |
 | Viperfish (v5e) | TensorCore | 64 | `ScalarAlu0` (`vxc::isa`) | `ScalarAlu1` | CONFIRMED |

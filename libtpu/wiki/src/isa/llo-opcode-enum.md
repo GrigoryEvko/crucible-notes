@@ -47,7 +47,7 @@ Every opcode is indexed in lock-step into two parallel per-opcode tables the LLO
 | Table | Address | Stride | Carries | Confidence |
 |---|---|---|---|---|
 | `opcode_info` | `0x223a1320` | 2 B (`uint16`) | LOW byte = property bitfield (bit0 Push / bit1 Pop / bit4 Remat / bit5 Fold-const / bit6 Cse / bit7 pred-mask tag); HIGH byte = register-file class (0 none/pred, 1 scalar/mask, 2 vector) | CONFIRMED |
-| `opcode_info_big` | `0x227b5570` | 28 B | `int8 result_fifos[8]` @+0x00 (neg-terminated, ResultFifo 0..0xF), 12-B reserved gap @+0x08, `int8 arch_registers_written[8]` @+0x14 (neg-terminated, ArchRegister 1..0x32) | CONFIRMED |
+| `opcode_info_big` | `0x227b5570` | 28 B | `int8 result_fifos[8]` @+0x00 (neg-terminated, ResultFifo 0..0x18), `int8 arch_registers_read[12]` @+0x08 (neg-terminated, ArchRegister 1..0x32), `int8 arch_registers_written[8]` @+0x14 (neg-terminated, ArchRegister 1..0x32) | CONFIRMED |
 
 Both are indexed by the raw `LloOpcode` value with the same `< 0x1CE` bound. They are documented in their own pages; this page references them only to anchor each family's scheduler behavior (which opcodes push/pop result FIFOs, which are CSE-able, which write registers).
 

@@ -20,7 +20,7 @@ For reimplementation, the phase-sequence contract is:
 
 | | |
 |---|---|
-| **Top-level orchestrator (monolithic)** | `xla::jellyfish::DeepseaCompilerBase::RunHloPasses` @ `0x1093a420` |
+| **Top-level orchestrator (monolithic)** | `xla::jellyfish::DeepseaCompilerBase::RunHloPasses(Target const&, RunHloPassesConfig const&, …)` @ `0x1093a420` — the pipeline-building overload; the `xla::Compiler` virtual entry `RunHloPasses(unique_ptr<HloModule>, StreamExecutor*, CompileOptions const&)` @ `0x109152a0` delegates here (see [overview.md](overview.md)) |
 | **Separate-compilation phase fns** | `Phase0` @ `0xf84de60` · `Phase1` @ `0xf84ee00` · `Phase2a` @ `0xf850840` · `Phase2b` @ `0xf852180` · `Phase3` @ `0xf852f40` |
 | **Pipeline builders** | `CreateHloPipeline` @ `0x1093efe0` · `PreOptimizationPipeline` (in `0x10948840` AddPass thunk) · `HloOptimizeThroughLayoutAssignment` @ `0x1094ad80` · `PostOptimizationPipeline` @ `0x1093fd40` · `MaybeAddInvariantCheckers` @ `0x10944600` |
 | **Sharding / SPMD** | `AddAutoShardingAndRelatedPasses` @ `0x10939c40` · `AddTpuPartitioningPasses` @ `0x1278a440` · `TpuSpmdPartitioner` (AddPass `0x1278b8a0`) |

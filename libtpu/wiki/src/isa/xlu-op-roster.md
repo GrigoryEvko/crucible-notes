@@ -8,7 +8,7 @@ The **XLU** (Cross-Lane Unit) is the TensorCore engine that moves data *across* 
 
 This page is the authoritative XLU reference. It has three parts, each anchored to the binary:
 
-1. **The op roster.** Two views of the same hardware. At the IR level the back end emits high-level `LloOpcode`s through the `LloRegionBuilder` cross-lane factory set (`Vsetperm`/`Vxpose`/`Vpermute`/`Vrotate`/`Vsetspr`/the reduce family/…); each factory is a thin wrapper that calls one `LloInstruction::CreateVector*` op-constructor, which calls `LloInstruction::New(LloOpcode, operand-Span, …)` with a fixed opcode immediate. At the wire level the per-generation encoder packs those ops into the bundle's VEX slot as a Jellyfish (v3) `VectorExtendedOpcode` — a dense 35-value protobuf enum `{0..34}` whose upper range `{13..34}` *is* the XLU/transpose/permute/cross-lane family. The roster tables both numbering spaces and the bridge between them.
+1. **The op roster.** Two views of the same hardware. At the IR level the back end emits high-level `LloOpcode`s through the `LloRegionBuilder` cross-lane factory set (`Vsetperm`/`Vxpose`/`Vpermute`/`Vrotate`/`Vsetspr`/the reduce family/…); each factory is a thin wrapper that calls one `LloInstruction::CreateVector*` op-constructor, which calls `LloInstruction::New(LloOpcode, operand-Span, …)` with a fixed opcode immediate. At the wire level the per-generation encoder packs those ops into the bundle's VEX slot as a Jellyfish (v2) `VectorExtendedOpcode` — a dense 35-value protobuf enum `{0..34}` whose upper range `{13..34}` *is* the XLU/transpose/permute/cross-lane family. The roster tables both numbering spaces and the bridge between them.
 
 2. **The combining pipeline.** `LloXluGraphOptimizer::Optimize` runs a five-stage XLU op-graph rewrite — `ComputeCombinablePairs` (fuse adjacent identical XLU ops) → `AssignXlu` (greedy least-loaded XLU-unit balance) → `ReorderToShortenCriticalPath` (latency-weighted list scheduler) → `ReemitReorderedCombinedXluOperations` (emit fused ops, share the permute/segment-pattern prologue) → `AssignSourceBus` (VEX source-bus pack). Every placement, order, and fuse decision keys on one cost function.
 
@@ -46,7 +46,7 @@ A reimplementer's first source of confusion is that an XLU operation has two dis
 
 The **IR identity** is the `LloOpcode` — a value in the back end's ~461-entry opcode space (`opcode_name` table @ `0x21ccfef0`). This is what the `LloRegionBuilder` factories emit and what every optimizer pass switches on. The XLU-relevant `LloOpcode`s are: `0x36` `kVectorPermute`, `0x3a` `kVectorRotate`, `0x3b` `kVectorBroadcastLane`, `0x8b` `kVectorSetPermutePattern`, `0x8c` `kVectorSetSegmentPattern`, `0xa6` `kVectorTranspose`, `0xa7` `kVectorTransposeBinary`, the reduce family `0xf5..0x101`, `0x150` `kVectorPermuteResult`, `0x154` `kVectorTransposeResult`, and `0x155` `kVectorTransposeClear`.
 
-The **wire identity** is the per-generation bundle-slot opcode. On Jellyfish (v3) that is the `VectorExtendedOpcode` proto enum, a dense 35-value enum `{0..34}` carved into three op classes: matmul `{0..6}`, push-gains/latch `{7..12}`, and the XLU/transpose/permute/cross-lane family `{13..34}`. The matmul and latch bands belong to the [MXU](slot-mxu.md) and [matprep/latch](slot-matprep-iar-latch.md) slots; the `{13..34}` band is the XLU family this page documents.
+The **wire identity** is the per-generation bundle-slot opcode. On Jellyfish (v2) that is the `VectorExtendedOpcode` proto enum, a dense 35-value enum `{0..34}` carved into three op classes: matmul `{0..6}`, push-gains/latch `{7..12}`, and the XLU/transpose/permute/cross-lane family `{13..34}`. The matmul and latch bands belong to the [MXU](slot-mxu.md) and [matprep/latch](slot-matprep-iar-latch.md) slots; the `{13..34}` band is the XLU family this page documents.
 
 The two spaces are bridged at bundle-encode time: the high-level `LloOpcode` the factory emitted is lowered onto its `VectorExtendedOpcode` ordinal as the bundle's VEX slot is packed. The roster below tables both.
 
@@ -397,7 +397,7 @@ Byte-exact from the per-`Target` vtable slots. `NumVexSlots()` is the per-gen `v
 
 | Target (gen) | `NumVexSlots()` | `SupportsVectorXpose(mode)` | Confidence |
 |---|---|---|---|
-| `JellyfishTarget` (v3) | 1 (`return 1`) | `mode == 0` (B32 only) | CONFIRMED |
+| `JellyfishTarget` (v2) | 1 (`return 1`) | `mode == 0` (B32 only) | CONFIRMED |
 | `PufferfishTarget` (v4) | 2 | `mode != 2` (all except Compressed B8) | CONFIRMED |
 | `GhostliteTarget` (v6e) | 2 | `mode < 3` (B32 / Compressed B16 / B8) | CONFIRMED |
 | `ViperfishTarget` (v5p) | 2 | `mode != 2` (all except Compressed B8) | CONFIRMED |

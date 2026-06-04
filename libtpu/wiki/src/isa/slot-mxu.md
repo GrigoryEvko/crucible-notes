@@ -6,14 +6,14 @@
 
 The MXU slot is the bundle field that drives the systolic matrix-multiply array — the single most important slot in the TensorCore ISA, because it is the only path to the TPU's flagship dense-linear-algebra throughput. It is not one opcode but a small instruction *family* threaded through one or two physical bundle slots: a **latch** (load the stationary weight matrix into the array), a **matpush** (stage the moving operand), a **matmul** (clock one systolic step), and a **matres / result-pop** (drain the accumulator). Across five hardware generations this family is encoded five different ways, but the underlying contract — weight-stationary systolic multiply, fed by a shared vector-register operand pool, drained through a separate result slot — is invariant.
 
-The slot has two structurally distinct encoder lineages. On **Jellyfish (v3)** and **Dragonfish (v3')** the MXU is one `VectorExtended` slot whose 6-bit opcode is packed by `shl`/`and`/`or` arithmetic into qword 0 of a scratch struct and decoded by a two-level jump table. From **Pufferfish (v4)** onward the encoder becomes the generic `TensorCoreCodecBase` template: two `VectorExtended` slots (one control region per physical MXU), each field placed by a universal `BitCopy(dst, dst_bit, src, 0, width)` call, and decoded by a linear `Opcode::Matches` sweep. The two MXU control regions are a fixed **−N-bit twin** (−20 on PF/VF, −21 on Ghostlite, −25 on 6acc60406), packed over one shared 8×6-bit operand pool. This page synthesizes the slot's *semantics* across all gens; the absolute bit positions live on the per-gen bundle pages and are referenced, not re-derived, here.
+The slot has two structurally distinct encoder lineages. On **Jellyfish (v2)** and **Dragonfish (v3)** the MXU is one `VectorExtended` slot whose 6-bit opcode is packed by `shl`/`and`/`or` arithmetic into qword 0 of a scratch struct and decoded by a two-level jump table. From **Pufferfish (v4)** onward the encoder becomes the generic `TensorCoreCodecBase` template: two `VectorExtended` slots (one control region per physical MXU), each field placed by a universal `BitCopy(dst, dst_bit, src, 0, width)` call, and decoded by a linear `Opcode::Matches` sweep. The two MXU control regions are a fixed **−N-bit twin** (−20 on PF/VF, −21 on Ghostlite, −25 on 6acc60406), packed over one shared 8×6-bit operand pool. This page synthesizes the slot's *semantics* across all gens; the absolute bit positions live on the per-gen bundle pages and are referenced, not re-derived, here.
 
 If you have read the LLVM NVPTX backend, the closest analog is `wgmma`/`mma.sync`: a single machine op whose operand registers, accumulation half, and data format are all encoded fields, and whose result is drained separately. The TPU differs in being explicitly multi-instruction — the latch, the push, the multiply, and the pop are *distinct bundle slots* the compiler schedules, not one fused intrinsic — and in being weight-stationary, so the latch amortizes across many matmul steps.
 
 For reimplementation, the contract is:
 
 - The MXU op family and its mapping to physical bundle slots: latch + matprep + matmul share the `VectorExtended` slot; matres uses `VectorResult`.
-- The per-gen field layout of the `VectorExtended` slot: opcode, data-format / dtype sub-discriminator, MXU-id, the done-gains / transpose / target control bits, and the 5-bit (v3) / 4-bit (v5+) predicate.
+- The per-gen field layout of the `VectorExtended` slot: opcode, data-format / dtype sub-discriminator, MXU-id, the done-gains / transpose / target control bits, and the 5-bit (v2/v3) / 4-bit (v5+) predicate.
 - The opcode-encoding rules: how the JF emitter maps `LloOpcode × DoneWithGainsMode` to a 6-bit opcode, and how the v5+ codec splits a 7/8-bit opcode field into `{matmul, PushGains/latch, transpose}` families with per-dtype values.
 - The −N-bit twin geometry and the shared-operand-pool model that lets two MXU control regions coexist in one bundle.
 
@@ -69,14 +69,14 @@ The same matrix ops register as MLIR LLO dialect operations — `VectorMatmulOp`
 
 The array has two operands, fed by two different ops:
 
-- **Stationary (weights / gains)** — loaded by the **latch** ops (`vlatch`/`vlatchi`, the v5+ `LoadMatrixRegister*` / `PushGains*` family). The stationary operand stays resident in the array across many matmul steps until re-latched. *How* it is loaded — transpose, packing, dtype staging — is the `GainLatchMode` enum (v3) or the per-dtype `PushGains<fmt>` / `Pushmatrix<fmt>` opcode (v5+).
+- **Stationary (weights / gains)** — loaded by the **latch** ops (`vlatch`/`vlatchi`, the v5+ `LoadMatrixRegister*` / `PushGains*` family). The stationary operand stays resident in the array across many matmul steps until re-latched. *How* it is loaded — transpose, packing, dtype staging — is the `GainLatchMode` enum (v2/v3) or the per-dtype `PushGains<fmt>` / `Pushmatrix<fmt>` opcode (v5+).
 - **Moving (activations / multiplicand)** — staged by the **matprep** ops (`vmatprep.subr` = sub-row, `.mubr` = multiplicand-block-row). The moving operand is staged into a matrix-staging register, `MATPUSH_TARGET_MSRA` or `MATPUSH_TARGET_MSRB` (both strings present in `.rodata`), then clocked through the array.
 
 The matpush tile granularity is fixed by the hardware perf-counter help string, byte-exact in the binary: *"This counts the number of 8x128 or 4x256 matrices that are pushed to MXUn by a vmatpush instruction."* So each push delivers an **8×128** (sublanes × lanes) or **4×256** tile; sixteen 8×128 tiles fill a 128×128 array (the JF–VF geometry — Ghostlite/6acc60406 widen the array to 256×256, see [Systolic-Array Geometry](#systolic-array-geometry)).
 
 ---
 
-## Jellyfish (v3) — The Direct-Pack VectorExtended Slot
+## Jellyfish (v2) — The Direct-Pack VectorExtended Slot
 
 ### Slot Assignment
 
@@ -189,7 +189,7 @@ The 2-bit result-mode (proto `+0x44`, value 0/1/2) selects which MRF/MSR FIFO th
 
 ### The Single-MXU Constraint
 
-`JellyfishEmitter::CheckMxuNum(int)` (`0x140b9780`) `CHECK`s `mxu == 0` on plain Jellyfish (device == `kJellyfishIdentifiers`, assertion *"0 != mxu"*). On **Dragonfish** (`kDragonfishIdentifiers`, the v3' multi-MXU package) the 2-bit MXU-id field is allowed to be non-zero and is stamped into the slot. So the 2-bit MXU-id field exists in the v3 codec, is fixed to 0 on Jellyfish, and is live on Dragonfish — the encoders are otherwise identical (`EncoderDf::EncodeVectorExtendedInstruction` @ `0x1e85e520` shares the layout).
+`JellyfishEmitter::CheckMxuNum(int)` (`0x140b9780`) `CHECK`s `mxu == 0` on plain Jellyfish (device == `kJellyfishIdentifiers`, assertion *"0 != mxu"*). On **Dragonfish** (`kDragonfishIdentifiers`, the v3 multi-MXU package) the 2-bit MXU-id field is allowed to be non-zero and is stamped into the slot. So the 2-bit MXU-id field exists in the shared JF/DF (v2/v3) codec, is fixed to 0 on Jellyfish, and is live on Dragonfish — the encoders are otherwise identical (`EncoderDf::EncodeVectorExtendedInstruction` @ `0x1e85e520` shares the layout).
 
 ---
 
@@ -300,14 +300,14 @@ The MXU control region, synthesized across all five generations (matmul opcode-H
 
 | Gen | Codename | Bundle | VE slots | Physical MXUs | Matmul opcode bit | Latch opcode bit | Twin | MSR count | dtype set |
 |---|---|---|---|---|---|---|---|---|---|
-| v3 | jellyfish | 41 B | 1 | 1 | (6-bit VEopcode @ 29..34, jump table) | — | n/a | 1 | `GainLatchMode 0..5` subset |
-| v3' | dragonfish | 41 B | 1 | 2 | (same codec; mxu-id live) | — | n/a | 1 | as JF |
+| v2 | jellyfish | 41 B | 1 | 1 | (6-bit VEopcode @ 29..34, jump table) | — | n/a | 1 | `GainLatchMode 0..5` subset |
+| v3 | dragonfish | 41 B | 1 | 2 | (same codec; mxu-id live) | — | n/a | 1 | as JF |
 | v4 | pufferfish | 51 B | 2 | 4 | 91 (9b w/ mxu-num @ 89..90) | 91 (PushGains `0x20`..`0x34`) | −20 | 1 | 8 (int + float) |
 | v5p | viperfish | 64 B | 2 | 4 | 57 (7b) | 59 (Pushmatrix `0xe`) | −20 | 2 | 8 (int + float) |
 | v6e | ghostlite (`glc`) | 64 B | 2 | 2 | 58 (8b) | 58 (unified 8b, low-2 == 3) | −21 | 2 | 8 (int + float) |
 | v7 | 6acc60406 (`gfc`) | 64 B | 2 | 2 | 62 (8b) | 62 (unified 8b) | −25 | 2 | 4 (float only) |
 
-The evolution is a clean progression: a single 6-bit jump-table opcode (v3) → a dual-slot 7/9-bit opcode carrying the physical MXU in its low bits (v4) → named per-dtype opcode families with standalone Transpose/Target latch bits (v5p) → wider 8-bit unified opcodes with the latch discriminator folded into the opcode low bits (v6e) → a float-only FP8 remap (v7). The systolic *contract* — weight-stationary array, matpush 8×128/4×256 tiles, latch / push / matmul / matres sequence over a shared operand pool — never changes; only the encoding widens, the dtype set shifts, and the array dimension steps 128×128 (JF–VF) → 256×256 (Ghostlite, 6acc60406).
+The evolution is a clean progression: a single 6-bit jump-table opcode (v2/v3) → a dual-slot 7/9-bit opcode carrying the physical MXU in its low bits (v4) → named per-dtype opcode families with standalone Transpose/Target latch bits (v5p) → wider 8-bit unified opcodes with the latch discriminator folded into the opcode low bits (v6e) → a float-only FP8 remap (v7). The systolic *contract* — weight-stationary array, matpush 8×128/4×256 tiles, latch / push / matmul / matres sequence over a shared operand pool — never changes; only the encoding widens, the dtype set shifts, and the array dimension steps 128×128 (JF–VF) → 256×256 (Ghostlite, 6acc60406).
 
 ---
 

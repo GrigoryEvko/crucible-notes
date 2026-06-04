@@ -10,14 +10,14 @@ The SparseCore back-end places every lowered op onto exactly one of the three Sp
 2. A **region outliner** (`LowerSequencerFunctionsPass` / `OutlineSequencerFunction`) that stamps each per-engine outlined `func.func` with `sc.sequencer = "scs"` / `"access"` / `"execute"`.
 3. A trivial **attribute accessor**, `LowerMemrefToMlo::getSequencerType` (`@0x13507760`), that reads that string back so later passes pick the matching per-engine bundle codec (`SparseCoreScsCodecBase` / `…TacCodecBase` / `…TecCodecBase`).
 
-Sitting underneath all of this is the `tpu::TpuSequencerType` enum and its `TpuSequencerTypeToString` jump table — the runtime numbering used to size per-engine resource arrays — which is **off by one** from the codec template-parameter numbering. This page reconciles both.
+Sitting underneath all of this is the `tpu::TpuSequencerType` C++ enum and its `TpuSequencerTypeToString` jump table — the runtime numbering used to size per-engine resource arrays. That C++ enum numbers SparseCore engines `{SCS=3, TAC=4, TEC=5}`, **identical** to the codec template-parameter numbering. The **off-by-one peer** is the *protobuf* enum `TpuSequencerTypeProto`, which inserts an `INVALID=0` slot and so numbers `{SCS=4, TAC=5, TEC=6}`; a `TpuSequencerTypeFromProto` switch subtracts one to cross from proto into the C++ enum. This page reconciles all three.
 
 The reimplementation contract:
 
 - **The op-level engine tag is a string, not a number.** Every op's engine membership is the `sc.sequencer` StringAttr on its enclosing outlined function — one of exactly three byte-confirmed values `"scs"` / `"access"` / `"execute"`. A reimplementer must route on the string; the two numeric `TpuSequencerType` enums never appear *at the op*.
 - **`getSequencerType` is an accessor, not a decision.** `LowerMemrefToMlo::getSequencerType(Operation&)` returns `optional<StringRef>` — it reads `sc.sequencer` (via inherent-attr then dictionary-attr fallback) and returns its value, or `nullopt`. The decision was made upstream by `GetTransferKind` + outlining.
 - **Stream-vs-DMA is decided by memory spaces + one capability bit.** `GetTransferKind` normalizes each `mlir::sparse_core::MemorySpace`, jump-tables on the source space, and sets *kStream* only when the destination space is in the HBM/SPMEM/TILE_SPMEM gather set (bitmasks `0x210018` / `0x210004`) and the target reports the SparseCore-variable capability (`vtable[+0xa0]`, =0 in this wheel); otherwise *kDma*, with an `InvalidArgument` diagnostic for an illegal pair.
-- **Two `TpuSequencerType` enums, off by one.** The runtime proto numbering (the `TpuSequencerTypeToString` table index) is `{INVALID=0, TC=1, BARNA=2, BARNA_ADDR=3, SCS=4, TAC=5, TEC=6, …}`; the codec `EncoderBase` non-type template parameter is `{SCS=3, TAC=4, TEC=5}`. The `gfc` (6acc60406) family carries codec params 3 and 5 only — its `SparseCoreTacCodecBase` is entirely absent.
+- **Two numberings, off by one — but the split is proto-vs-C++, not runtime-vs-codec.** The C++ `tpu::TpuSequencerType` enum (the one `TpuSequencerTypeToString` renders *and* the one the codec `EncoderBase` non-type template parameter uses) numbers `{TC=0, BARNA=1, BARNA_ADDR=2, SCS=3, TAC=4, TEC=5}` — there is **no** `INVALID` slot at index 0, and SCS is `3`, the same as the codec template. The off-by-one peer is the *protobuf* enum `TpuSequencerTypeProto`, which does begin with `INVALID=0` and so numbers `{TC=1, BARNA=2, BARNA_ADDR=3, SCS=4, TAC=5, TEC=6, SCv0=7/8}`. `TpuSequencerTypeFromProto` (`@0x20b36300`) is the one-subtracting bridge (proto `4` → C++ `3`, etc.). The `gfc` (6acc60406) family carries codec params 3 and 5 only — its `SparseCoreTacCodecBase` is entirely absent.
 
 | | |
 |---|---|
@@ -27,8 +27,9 @@ The reimplementation contract:
 | **Policy classifier** | `xla::tpu::sparse_core::GetTransferKind` `@0x1351b140` (kStream vs kDma) |
 | **Outliner** | `LowerSequencerFunctionsPass::runOnOperation` `@0x13532120`; `OutlineSequencerFunction` |
 | **Enum** | `tpu::TpuSequencerType`; `TpuSequencerTypeToString` `@0x20b362e0` over `off_22010DE0` |
-| **Runtime enum** | INVALID=0 · TC=1 · BARNA=2 · BARNA_ADDR=3 · **SCS=4 · TAC=5 · TEC=6** · SCv0=7/8 |
-| **Codec template enum** | **SCS=3 · TAC=4 · TEC=5** (`EncoderBase<…, TpuSequencerType=N>`) |
+| **C++ enum (ToString + codec)** | TC=0 · BARNA=1 · BARNA_ADDR=2 · **SCS=3 · TAC=4 · TEC=5** (no `INVALID` slot) |
+| **Codec template enum** | **SCS=3 · TAC=4 · TEC=5** (`EncoderBase<…, TpuSequencerType=N>`) — same as the C++ enum |
+| **Proto enum (off-by-one peer)** | `TpuSequencerTypeProto`: INVALID=0 · TC=1 · BARNA=2 · BARNA_ADDR=3 · **SCS=4 · TAC=5 · TEC=6** · SCv0=7/8 |
 | **6acc60406 (`gfc`)** | No TAC: `gfc::…SparseCoreTacCodecBase` = 0 files; only codec params 3 & 5 |
 | **Confidence** | CONFIRMED (function-byte / symbol / string-table anchored) unless a row says otherwise |
 
@@ -230,7 +231,7 @@ The mapping the outliner produces:
 | Access | `"access"` | **TAC** | tile-fetch DMA issue, gather-stream issue, address staging | vfc · glc only |
 | Execute | `"execute"` | **TEC** | vector reductions, pack/unpack, the TEC Stream slot (incl. IndirectVreg) | vfc · glc · gfc |
 
-> **CONFIRMED — 6acc60406 folds "access" into "execute".** On Viperfish/Ghostlite the three regions outline to three engines; on the 6acc60406 (`gfc`) family there is no TAC engine to receive an `"access"` function, so the tile-fetch/gather work that would be tagged `"access"` is instead emitted into the `"execute"` (TEC) function — the TEC Stream slot issues the gather directly. This is the binary-level corollary of [IndirectVregStream](indirect-vreg-stream.md) being TEC-exclusive and of the missing `SparseCoreTacCodecBase` (next section). The absence of a `HasAccessSequencerTypeAttribute` predicate is the structural tell that the pipeline does not need to *query* for `"access"` on the newest gen.
+> **NOTE — the MLIR tile-task pipeline emits only `"scs"` and `"execute"`; `"access"` is a codec/proto-path engine.** The `"access"` row above is the engine the *`TpuSequencerType=4` TAC codec* serves, and it is real on Viperfish/Ghostlite. But decompilation of the outlining callback (`0x136066e0`) shows it references only the `"execute"` value string (`@0x8681624`, 7 chars) and `sc.sequencer` — it stamps tile bodies `"execute"` unconditionally on **every** gen, and never writes `"access"` (there is no `HasAccessSequencerTypeAttribute` predicate, and no length-6 `"access"` compare anywhere in the lowering chain). The TAC engine is reached through the legacy `ProgramWrapper.tac` proto field and the standalone `SparseCoreTacCodecBase`, not through the MLIR tile-task outliner. So on VF/GL the *MLIR* path also folds gather/scatter into the `"execute"` (TEC) function via the TEC Stream slot — the same shape as 6acc60406, which additionally has no TAC codec at all. See [TEC Engine — CORRECTION (TEC-ACCESS)](tec-engine.md) for the full byte-level account, and [IndirectVregStream](indirect-vreg-stream.md) for the TEC-exclusive Stream form that anchors this.
 
 The exact per-op rule that chooses the Access region versus the Execute region for a given lowered op was not bit-traced in this analysis (the `GetTransferKind` result plus the op's tile-data dependencies feed it). It is flagged LOW here and owned by [Region → Sequencer Outliner](region-to-sequencer-outliner.md).
 
@@ -247,33 +248,32 @@ __int64 TpuSequencerTypeToString(unsigned a1) {
 }
 ```
 
-The `off_22010DE0` table indexes directly into the string-table literals confirmed in `.rodata`. Their order fixes the **runtime** numbering:
+The `off_22010DE0` table indexes directly into the string-table literals confirmed in `.rodata` (resolved through the array's `R_X86_64_RELATIVE` relocations). Their order fixes the **C++ runtime** numbering — and the first entry is the TensorCore sequencer, **not** an `INVALID` placeholder:
 
-| Runtime value (table index) | `TpuSequencerType` literal | Short | Bundle |
+| C++ enum value (table index) | `off_22010DE0[i]` string literal | Short | Bundle |
 |:---:|---|---|---|
-| 0 | `TPU_SEQUENCER_TYPE_INVALID` | — | — |
-| 1 | `TPU_SEQUENCER_TYPE_TENSOR_CORE_SEQUENCER` | TC | — |
-| 2 | `TPU_SEQUENCER_TYPE_BARNA_CORE_SEQUENCER` | Barna | — |
-| 3 | `TPU_SEQUENCER_TYPE_BARNA_CORE_ADDRESS_HANDLER` | Barna-AH | — |
-| 4 | `TPU_SEQUENCER_TYPE_SPARSE_CORE_SEQUENCER` | **SCS** | 32 B |
-| 5 | `TPU_SEQUENCER_TYPE_SPARSE_CORE_TILE_ACCESS_CORE_SEQUENCER` | **TAC** | 64 B |
-| 6 | `TPU_SEQUENCER_TYPE_SPARSE_CORE_TILE_EXECUTE_CORE_SEQUENCER` | **TEC** | 64 B |
-| 7 | `TPU_SEQUENCER_TYPE_SPARSE_CORE_V0_SEQUENCER` | SCv0 | (legacy) |
-| 8 | `TPU_SEQUENCER_TYPE_SPARSE_CORE_V0_ADDRESS_HANDLER` | SCv0-AH | (legacy) |
+| 0 | `"TensorCoreSequencer"` | TC | — |
+| 1 | `"BarnaCoreSequencer"` | Barna | — |
+| 2 | `"BarnaCoreAddressHandler"` | Barna-AH | — |
+| 3 | `"SparseCoreSequencer"` | **SCS** | 32 B |
+| 4 | `"SparseCoreTileAccessCoreSequencer"` | **TAC** | 64 B |
+| 5 | `"SparseCoreTileExecuteCoreSequencer"` | **TEC** | 64 B |
 
-All nine literal strings were read from the binary's string table; the index ordering is fixed by the `off_22010DE0` array that `TpuSequencerTypeToString` walks.
+The `off_22010DE0` array has exactly these six SparseCore/TensorCore/BarnaCore entries; index 6 already belongs to an adjacent unrelated string array (`"IMEM"`). So the C++ enum carries **no** `INVALID` slot and **no** SCv0 entries — SCv0 lives only in the protobuf enum (below). Resolving the relocations: index 0 → `0x85b767c "TensorCoreSequencer"`, index 3 → `0x85b76b3 "SparseCoreSequencer"`, index 5 → `0x85b7690 "SparseCoreTileExecuteCoreSequencer"`.
 
-### The off-by-one: runtime enum vs codec template enum
+### The off-by-one: C++/codec enum vs the protobuf enum
 
-The **codec** layer uses a *different* numbering. The per-engine codecs are template-parameterized on `TpuSequencerType` as a non-type template argument — `EncoderBase<…SparseCore{Scs,Tac,Tec}CodecBase…, TpuSequencerType=N>` — and there the values are `{SCS=3, TAC=4, TEC=5}`. The two enums are off by one (the codec numbering omits the `INVALID` slot, or equivalently the runtime numbering inserts one ahead of the SparseCore block):
+The codec layer and the `TpuSequencerTypeToString` layer share the **same** C++ enum. The per-engine codecs are template-parameterized on `TpuSequencerType` as a non-type template argument — `EncoderBase<…SparseCore{Scs,Tac,Tec}CodecBase…, TpuSequencerType=N>` — and there the values are `{SCS=3, TAC=4, TEC=5}`, exactly matching the `off_22010DE0` indices above (`nm` shows the demangled template literals `(TpuSequencerType)3` ×32 and `(TpuSequencerType)4` ×16; codec-metadata `BundleSizeBytes(TpuVersion, TpuSequencerType)` `@0x1ecf7180` consumes the same C++ enum). There is **no** off-by-one between codec and runtime — both are `{SCS=3, TAC=4, TEC=5}`.
 
-| Engine | `sc.sequencer` string | Runtime proto enum | Codec template enum |
+The off-by-one is against a *third* numbering: the protobuf enum `TpuSequencerTypeProto` (descriptor `TpuSequencerTypeProto` in `.rodata`, full `TPU_SEQUENCER_TYPE_*` literals), which **does** begin with `INVALID=0` and numbers `{INVALID=0, TC=1, BARNA=2, BARNA_ADDR=3, SCS=4, TAC=5, TEC=6, SCv0=7, SCv0-AH=8}`. The proto→C++ bridge is `tpu::TpuSequencerTypeFromProto` (`@0x20b36300`), whose `switch` maps proto `1→0, 2→1, 3→2, 4→3, 5→4, 6→5` (a literal subtract-one over the SparseCore block) and **rejects proto 7/8 (SCv0) as `Invalid sequencer type`** — confirming SCv0 has no C++ enum value at all:
+
+| Engine | `sc.sequencer` string | C++ enum (ToString + codec) | Proto enum |
 |---|---|:---:|:---:|
-| SCS | `"scs"` | 4 | 3 |
-| TAC | `"access"` | 5 | 4 (vfc/glc only) |
-| TEC | `"execute"` | 6 | 5 |
+| SCS | `"scs"` | 3 | 4 |
+| TAC | `"access"` | 4 (vfc/glc only) | 5 |
+| TEC | `"execute"` | 5 | 6 |
 
-> **GOTCHA — never cross the two numberings without the +1.** The runtime proto value (the `TpuSequencerTypeToString` index, used by per-engine resource arrays like the bundle-limit tracker) is one *greater* than the codec template parameter for the same engine. A reimplementer that feeds a runtime `TpuSequencerType` directly into a codec template selector will pick the wrong engine (or `INVALID`). The two values serve different layers; the *op-level* assignment uses neither — it uses the `sc.sequencer` string. The exact conversion site where a numeric value crosses from the runtime proto into codec selection was not located (flagged LOW).
+> **GOTCHA — the +1 is at the proto boundary, not the codec boundary.** A protobuf `TpuSequencerTypeProto` value is one *greater* than the C++ `TpuSequencerType` (and codec template) value for the same engine, because only the proto enum reserves `INVALID=0`. `TpuSequencerTypeFromProto` `@0x20b36300` is the sanctioned conversion site (subtract one). A reimplementer that feeds a *proto* ordinal directly into a codec template selector will pick the wrong engine; one that feeds the C++ enum straight through is correct. The *op-level* assignment uses neither number — it uses the `sc.sequencer` string.
 
 ### Codec-base presence confirms the missing TAC on `gfc`
 
@@ -291,7 +291,7 @@ The 6acc60406 (`gfc`) namespace has **zero** `SparseCoreTacCodecBase` files agai
 
 ## SCv0 — Enum-Only
 
-The two trailing `TpuSequencerType` values (`SPARSE_CORE_V0_SEQUENCER`, `SPARSE_CORE_V0_ADDRESS_HANDLER`) name the legacy monolithic SparseCore predecessor. They survive in this build only as the two string-table literals indexed by `TpuSequencerTypeToString`; no SCv0 codec, encoder, decoder, or `sc.sequencer` value (`"scs0"` etc.) ships. The engine-selection machinery never produces an SCv0 tag — `getSequencerType` returns only the three live values. See [SparseCore Overview](overview.md) for the full SCv0-deprecation account.
+The two trailing **proto** values (`TPU_SEQUENCER_TYPE_SPARSE_CORE_V0_SEQUENCER` = 7, `…_V0_ADDRESS_HANDLER` = 8) name the legacy monolithic SparseCore predecessor. They survive in this build only as proto-descriptor literals on `TpuSequencerTypeProto` — they are **not** in the `off_22010DE0` C++ `TpuSequencerTypeToString` table (which stops at TEC, index 5), and `TpuSequencerTypeFromProto` `@0x20b36300` rejects them as `Invalid sequencer type`, so they have **no** C++ `TpuSequencerType` value at all. No SCv0 codec, encoder, decoder, or `sc.sequencer` value (`"scs0"` etc.) ships. The engine-selection machinery never produces an SCv0 tag — `getSequencerType` returns only the three live values. See [SparseCore Overview](overview.md) for the full SCv0-deprecation account.
 
 ---
 
@@ -303,7 +303,7 @@ To reproduce SparseCore engine selection:
 2. **Implement `getSequencerType` as a pure accessor** — inherent-attr lookup with dictionary-attr fallback, StringAttr type guard, returning `optional<StringRef>`. It makes no decisions.
 3. **Implement `GetTransferKind` as the kStream/kDma gate** with the exact memory-space normalization (`1 → 5*(¬cap)+16`), the both-local gate, the `0x210018`/`0x210004` destination bitmasks per source space, the `SupportsScVar` capability call (false on these chips), and the `InvalidArgument` fallback for illegal pairs.
 4. **Outline by region, fold "access" into "execute" when TAC is absent** (the 6acc60406 / `gfc` family). Gate the existence of an `"access"` function on whether the target ships a `SparseCoreTacCodecBase`.
-5. **Keep the two `TpuSequencerType` numberings separate** — runtime `{SCS=4,TAC=5,TEC=6}` for resource arrays, codec template `{SCS=3,TAC=4,TEC=5}` for codec selection, with a +1 at any boundary that crosses them.
+5. **Keep the proto and C++ numberings separate** — the C++ `TpuSequencerType` `{SCS=3,TAC=4,TEC=5}` is used by *both* the resource-sizing tables (`TpuSequencerTypeToString`, codec-metadata) *and* codec selection (the template parameter), so no conversion is needed between those two. The only +1 is at the protobuf boundary: `TpuSequencerTypeProto` `{SCS=4,TAC=5,TEC=6}` must pass through `TpuSequencerTypeFromProto` (subtract one) before it can index any C++-enum-keyed table.
 
 ---
 
@@ -321,8 +321,9 @@ To reproduce SparseCore engine selection:
 | Outliner stamps `sc.sequencer` per region | `LowerSequencerFunctionsPass::runOnOperation` `@0x13532120` + `OutlineSequencerFunction` | HIGH |
 | 6acc60406 (`gfc`) folds "access" into "execute" (no TAC) | `gfc::…SparseCoreTacCodecBase` = 0 files vs 13/30; no `HasAccessSequencerTypeAttribute` | CONFIRMED |
 | `TpuSequencerTypeToString` is a jump table over `off_22010DE0` | decompiled `@0x20b362e0`: `*(&off_22010DE0 + a1)` | CONFIRMED |
-| Runtime enum order {INVALID=0…SCS=4,TAC=5,TEC=6,SCv0=7/8} | nine string-table literals + table index order | CONFIRMED |
-| Codec template enum {SCS=3,TAC=4,TEC=5}, off by one from runtime | `EncoderBase<…, TpuSequencerType=N>` instantiations; gfc carries codec bases for Scs/Tec, none for Tac | HIGH |
+| C++ enum order via `off_22010DE0` = {TC=0, BARNA=1, BARNA_ADDR=2, SCS=3, TAC=4, TEC=5}; no INVALID slot | `R_X86_64_RELATIVE` relocs resolve idx0→`"TensorCoreSequencer"`, idx3→`"SparseCoreSequencer"`, idx5→`"SparseCoreTileExecuteCoreSequencer"`; idx6→`"IMEM"` (adjacent table) | CONFIRMED |
+| Codec template enum {SCS=3,TAC=4,TEC=5} == the C++ enum (no off-by-one) | `nm` `(TpuSequencerType)3`×32 / `)4`×16; codec-metadata `BundleSizeBytes` `@0x1ecf7180` keys on the same C++ enum | CONFIRMED |
+| Proto enum {INVALID=0…SCS=4,TAC=5,TEC=6,SCv0=7/8}; +1 vs C++ enum, bridged by `TpuSequencerTypeFromProto` | `TpuSequencerTypeProto` descriptor literals; `FromProto` `@0x20b36300` switch maps proto `4→3,5→4,6→5`, rejects 7/8 | CONFIRMED |
 | Per-op Access-vs-Execute region rule; runtime→codec conversion site | not bit-traced in this analysis | LOW |
 
 ---

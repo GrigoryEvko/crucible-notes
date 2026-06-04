@@ -46,11 +46,11 @@ SCS exists on every generation that ships SparseCore. TAC is the engine that var
 
 | Marketing | Codename | Family ns | SCS | bundle | Notes |
 |---|---|:---:|:---:|---|---|
-| TPU v5e | Viperfish | `vxc.vfc` | Y | 32 B | first three-engine split SCS+TAC+TEC |
-| TPU v6 lite | Ghostlite | `gxc.glc` | Y | 32 B | full SCS+TAC+TEC; widened TEC |
+| TPU v5p | Viperfish | `vxc.vfc` | Y | 32 B | first three-engine split SCS+TAC+TEC |
+| TPU v6e | Ghostlite | `gxc.glc` | Y | 32 B | full SCS+TAC+TEC; widened TEC |
 | TPU7x | 6acc60406 | `gxc.gfc` | Y | 32 B | no TAC; SCS gains rotating-preg ops |
 
-> **CORRECTION (SCS-ENUM) —** two enum spaces number the SparseCore sequencers and they are off by one. This page and [SparseCore Overview](overview.md) use the **codec-template** enum that the encoder instantiations carry as a non-type parameter — `TpuSequencerType` = 3 SCS / 4 TAC / 5 TEC — confirmed in the demangled `EncoderBase<… SparseCoreScsCodecBase …, LN3tpu16TpuSequencerTypeE3E>` symbol (the `3E` suffix is the literal 3). The [Architecture](architecture.md) page documents a *second*, internal `SparseCoreTarget`-keyed enum where the tile-execute geometry is read at sequencer type 5 (so SCS=4 there). Use the codec-template `{3,4,5}` values when selecting an engine encoder; use the `SparseCoreTarget`-internal value only when indexing `TpuCoreParts`. Do not mix the two.
+> **CORRECTION (SCS-ENUM) —** two enum spaces number the SparseCore sequencers and they are off by one, but the split is **proto-vs-C++**, not codec-vs-anything. The C++ `tpu::TpuSequencerType` enum numbers SCS=3 / TAC=4 / TEC=5 — confirmed in the demangled `EncoderBase<… SparseCoreScsCodecBase …, LN3tpu16TpuSequencerTypeE3E>` symbol (the `3E` suffix is the literal 3), and the same `{3,4,5}` numbering is what `TpuSequencerTypeToString` renders (`off_22010DE0[3]="SparseCoreSequencer"`), what the codec-metadata tables take, and what `TpuCoreParts::SequencerParts` is indexed with (see [Architecture](architecture.md) — geometry is read at codec-enum TEC=5, so SCS=3, not 4). Every C++-side use shares this one numbering. The off-by-one peer is the **protobuf** enum `TpuSequencerTypeProto`, which reserves `INVALID=0` and so numbers SCS=4 / TAC=5 / TEC=6; `TpuSequencerTypeFromProto` subtracts one when a proto value crosses into the C++ enum. Use `{3,4,5}` for every encoder, codec, and core-parts index; only a raw `TpuSequencerTypeProto` field carries `{4,5,6}`. Do not mix the two.
 
 ---
 
@@ -333,7 +333,7 @@ Cross-gen anchors: vfc SCS `ScalarAlu0` `0x1ee82ce0` (op `@181`), `ScsScalarMisc
 ## Cross-References
 
 - [SparseCore Overview](overview.md) — the three engine classes, per-gen presence, and the `TpuSequencerType` codec-template enum.
-- [SparseCore Hardware Architecture](architecture.md) — the geometry SCS targets and the `SparseCoreTarget`-internal sequencer enum (the off-by-one).
+- [SparseCore Hardware Architecture](architecture.md) — the geometry SCS targets and the `SparseCoreTarget`/`TpuCoreParts` sequencer indexing (the C++ `{3,4,5}` enum, with the proto off-by-one reconciled).
 - [TAC Engine](tac-engine.md) — the tile-fetch DMA issuer that reuses the SCS low-region bundle layout (VF/GL only).
 - [TEC (Vector) Engine](tec-engine.md) — the wide vector engine the SCS program launches via `LaunchTileTaskOp`.
 - [Scalar Opcode Enum](scalar-opcode-enum.md) — the full SCS / TAC scalar ALU and scalar-misc opcode roster.

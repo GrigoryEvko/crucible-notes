@@ -21,13 +21,13 @@ For reimplementation, the contract is:
 - **Three sub-engine classes, three independent bundle streams.** SCS, TAC, and TEC are distinct codecs (`SparseCore{Scs,Tac,Tec}CodecBase` per gen), each selected by its `TpuSequencerType` non-type template parameter (3 / 4 / 5). A reimplementer must treat them as three separate VLIW machines that coordinate through sync flags and shared memory, not one machine with three modes.
 - **Per-gen presence is part of the contract.** Viperfish and Ghostlite ship all three engines; 6acc60406 ships SCS + TEC only. Emitting a TAC program for a 6acc60406 target is a codec error — the `gfc` namespace contains zero `SparseCoreTac*` symbols.
 - **The data path is HBM-mediated and indirect.** Embedding tables live in HBM; SC gathers tile rows into a per-tile SRAM (`TILE_SPMEM`), the TEC reduces them, and the dense result is DMA'd to the TensorCore's VMEM (or scattered back to HBM). SC's `STREAM_OPCODE_SCATTER_FLOAT_ADD` runs atomic FP-add directly in HBM with no TC round-trip — the primitive that justifies SC as a separate engine.
-- **SCv0 is enum-only.** The legacy single-personality SparseCore is preserved as `TpuSequencerType` values 6 / 7 and two profiler labels; no encoder, decoder, codec, or descriptor ships for it.
+- **SCv0 is enum-only.** The legacy single-personality SparseCore is preserved only as `TpuSequencerTypeProto` values 7 / 8 (the proto enum) and two profiler labels; it has no C++ `TpuSequencerType` value (`TpuSequencerTypeFromProto` rejects it) and no encoder, decoder, codec, or descriptor ships for it.
 
 | | |
 |---|---|
 | **What it is** | On-die embedding / sparse-gather coprocessor, co-located with the TensorCore, sharing HBM |
 | **Engine classes** | SCS (scalar sequencer) · TAC (tile-access / DMA) · TEC (vector compute) |
-| **Sequencer enum** | `tpu::TpuSequencerType` — SCS=3, TAC=4, TEC=5, SCv0=6, SCv0-AddrHandler=7 |
+| **Sequencer enum** | C++ `tpu::TpuSequencerType` — SCS=3, TAC=4, TEC=5 (same as the codec template). SCv0 has no C++ value — see [getSequencerType](getsequencertype.md) for the proto-enum +1 peer |
 | **Codec class roots** | `SparseCore{Scs,Tac,Tec}CodecBase` (per-gen, in `asic_sw::deepsea::<fam>::isa`) |
 | **Gens with SC** | Viperfish (all 3) · Ghostlite (all 3) · 6acc60406 (SCS+TEC, no TAC) |
 | **Gens without SC** | Jellyfish / Dragonfish / Pufferfish (BarnaCore era — see [BarnaCore Overview](../barnacore/overview.md)) |
@@ -50,13 +50,15 @@ SparseCore exists to absorb exactly that traffic. It is a peer engine on the sam
 
 Inside SparseCore the compute fabric is partitioned into three sub-engine classes, each a separate VLIW machine with its own bundle stream, its own program type, and its own codec. They are distinguished in the binary by the `tpu::TpuSequencerType` enum that the encoder template carries as a non-type parameter, and by the engine-specific name strings.
 
-| Enum | `TpuSequencerType` literal | Short | Bundle | Role |
-|---|---|---|---|---|
-| 3 | `TPU_SEQUENCER_TYPE_SPARSE_CORE_SEQUENCER` | SCS | 32 B | Scalar control / addressing sequencer |
-| 4 | `TPU_SEQUENCER_TYPE_SPARSE_CORE_TILE_ACCESS_CORE_SEQUENCER` | TAC | 64 B | Address generation + tile-fetch DMA issuer |
-| 5 | `TPU_SEQUENCER_TYPE_SPARSE_CORE_TILE_EXECUTE_CORE_SEQUENCER` | TEC | 64 B | Wide vector compute over loaded tiles |
-| 6 | `TPU_SEQUENCER_TYPE_SPARSE_CORE_V0_SEQUENCER` | SCv0 | (legacy) | Monolithic predecessor — enum only, no codec |
-| 7 | `TPU_SEQUENCER_TYPE_SPARSE_CORE_V0_ADDRESS_HANDLER` | SCv0-AH | (legacy) | SCv0 address handler — enum only, no codec |
+The value columns split the two numberings: **C++** is the `tpu::TpuSequencerType` enum the codec templates and `TpuSequencerTypeToString` both use (the wiki-canonical numbering); **proto** is the `TpuSequencerTypeProto` peer, which reserves an `INVALID=0` slot and so runs one higher (see [getSequencerType](getsequencertype.md) for the `FromProto` bridge).
+
+| C++ | proto | `TpuSequencerTypeProto` literal | Short | Bundle | Role |
+|:---:|:---:|---|---|---|---|
+| 3 | 4 | `TPU_SEQUENCER_TYPE_SPARSE_CORE_SEQUENCER` | SCS | 32 B | Scalar control / addressing sequencer |
+| 4 | 5 | `TPU_SEQUENCER_TYPE_SPARSE_CORE_TILE_ACCESS_CORE_SEQUENCER` | TAC | 64 B | Address generation + tile-fetch DMA issuer |
+| 5 | 6 | `TPU_SEQUENCER_TYPE_SPARSE_CORE_TILE_EXECUTE_CORE_SEQUENCER` | TEC | 64 B | Wide vector compute over loaded tiles |
+| — | 7 | `TPU_SEQUENCER_TYPE_SPARSE_CORE_V0_SEQUENCER` | SCv0 | (legacy) | Monolithic predecessor — proto-only, no C++ value, no codec |
+| — | 8 | `TPU_SEQUENCER_TYPE_SPARSE_CORE_V0_ADDRESS_HANDLER` | SCv0-AH | (legacy) | SCv0 address handler — proto-only, no C++ value, no codec |
 
 **SCS — the scalar sequencer.** SCS is the control plane: it runs the program counter, computes addresses, manages circular buffers, reads chip registers (GTC clocks, tile id, sparse-core id, DMA credits), and issues the sync-flag and atomic operations that coordinate the SC tiles with each other and with the TensorCore. Its 32-byte bundle is the narrowest of the three. Its instruction set is dominated by a scalar ALU slot (integer + F32 arithmetic, compares, shifts, branches) and a "scalar misc" slot that holds the atomic-and-sync family. See [SCS (Scalar) Engine](scs-engine.md) and the [Scalar Opcode Enum](scalar-opcode-enum.md).
 
@@ -79,11 +81,11 @@ The discriminator is the codec class family. SparseCore codecs are scoped under 
 | TPU v2 | Jellyfish | `jxc` | – | – | – | – | No SparseCore (BarnaCore era) |
 | TPU v3 | Dragonfish | `jxc` | – | – | – | – | No SparseCore (shares Jellyfish codec) |
 | TPU v4 | Pufferfish | `pxc.pfc` | – | – | – | – | No SparseCore (BarnaCore VLIW) |
-| TPU v5e | Viperfish | `vxc.vfc` | **Y** | **Y** | **Y** | – | First gen with the three-engine split |
-| TPU v6 lite | Ghostlite | `gxc.glc` | **Y** | **Y** | **Y** | – | Full SCS+TAC+TEC; widened vector set |
+| TPU v5p | Viperfish | `vxc.vfc` | **Y** | **Y** | **Y** | – | First gen with the three-engine split |
+| TPU v6e | Ghostlite | `gxc.glc` | **Y** | **Y** | **Y** | – | Full SCS+TAC+TEC; widened vector set |
 | TPU7x | 6acc60406 | `gxc.gfc` | **Y** | **–** | **Y** | – | **TAC removed**; TEC widened (FP8/FP4 pack/unpack) |
 
-> **NOTE — codename-to-marketing-name mapping.** SparseCore appears in the binary under the silicon codenames Viperfish, Ghostlite, and `6acc60406` — never under any marketing string. The marketing-name column above follows the convention used by the sibling [ISA Overview](../isa/overview.md); the binary itself keys everything on the codename family namespace and the `TpuVersion` ordinal carried inside the SC codec templates, not on the marketing name. (For the record, Google's *Trillium* marketing name is TPU v6e, i.e. codename Ghostlite — **not** `6acc60406`, which is TPU7x.) Treat the codename + family namespace as the authoritative discriminator.
+> **NOTE — codename-to-marketing-name mapping.** SparseCore appears in the binary under the silicon codenames Viperfish, Ghostlite, and `6acc60406` — never under any marketing string. The marketing-name column above follows the SparseCore-specific sibling [SparseCore Target Descriptor](../targets/sparsecore-target-descriptor.md) (`nSparseCoreTarget` = v5p; `GhostLiteSparseCoreTarget` = v6e Ghostlite + v7x `6acc60406`); the binary itself keys everything on the codename family namespace and the `TpuVersion` ordinal carried inside the SC codec templates, not on the marketing name. (Some sibling parts label Viperfish `v5`/`v5e`; the codename + family namespace is the only binary-authoritative discriminator. For the record, Google's *Trillium* marketing name is TPU v6e, i.e. codename Ghostlite — **not** `6acc60406`, which is TPU7x.) Treat the codename + family namespace as authoritative; the marketing column is MEDIUM confidence.
 
 ### Decompile cross-check — engine roster and TAC absence
 
@@ -101,7 +103,7 @@ The `gfc` (6acc60406) namespace has **zero** `SparseCoreTac*` decompiled functio
 
 ### SCv0 — the legacy monolithic predecessor
 
-`TpuSequencerType` reserves two values (6, 7) for a single-personality SparseCore that predates the SCS/TAC/TEC split, plus a `TPU_CORE_TYPE_SPARSE_CORE_V0` core-type. In this build SCv0 survives **only** as two profiler-label constants — `kHloSparseCoreV0Infeed` and `kHloSparseCoreV0Outfeed`, referenced from the XLA HLO profiler's `DisambiguateInfeedOutfeed`. No SCv0 encoder, decoder, codec metadata, scheduling table, or descriptor proto ships. A user proto naming SCv0 will fail at codec lookup. The enum values are retained for schema back-compat only.
+The proto enum `TpuSequencerTypeProto` reserves two values (7, 8) for a single-personality SparseCore that predates the SCS/TAC/TEC split (the C++ `TpuSequencerType` enum has no SCv0 value — `TpuSequencerTypeFromProto` rejects proto 7/8), plus a `TPU_CORE_TYPE_SPARSE_CORE_V0` core-type. In this build SCv0 survives **only** as two profiler-label constants — `kHloSparseCoreV0Infeed` and `kHloSparseCoreV0Outfeed`, referenced from the XLA HLO profiler's `DisambiguateInfeedOutfeed`. No SCv0 encoder, decoder, codec metadata, scheduling table, or descriptor proto ships. A user proto naming SCv0 will fail at codec lookup. The enum values are retained for schema back-compat only.
 
 > **GOTCHA — the `V0` suffix on `6acc60406` TEC field symbols is *not* SCv0.** Decompiled symbols such as `gfc::isa::SparseCoreTecVectorExtendedAddScanF32V0XField` carry a `V0` that is an operand-field version tag on a live `6acc60406` TEC vector-extended op — unrelated to the SCv0 core type. The only genuine SCv0 references are the two profiler labels above.
 
@@ -171,11 +173,11 @@ The retired predecessor, **BarnaCore** (the embedding accelerator on Jellyfish /
 | Viperfish + Ghostlite ship all three engines | `vxc.vfc` and `gxc.glc` each have Scs/Tac/Tec codec bases; fn counts Scs≈500, Tac≈760, Tec 4218/5961 | CONFIRMED |
 | `6acc60406` drops TAC (SCS+TEC only) | zero `gfc::…SparseCoreTac*` symbols / functions; no `gxc.gfc` `SparseCoreTacCodecBase`; TEC fn count 6526 | CONFIRMED |
 | Jellyfish / Dragonfish / Pufferfish carry no SparseCore | no `SparseCore*CodecBase` under `jxc` / `pxc.pfc`; these are BarnaCore-era gens | HIGH |
-| SCv0 is enum-only (no codec) | `TpuSequencerType` 6/7 + `kHloSparseCoreV0{Infeed,Outfeed}` profiler labels; no SCv0 encoder/decoder/descriptor ships | CONFIRMED |
+| SCv0 is enum-only (no codec) | `TpuSequencerTypeProto` 7/8 (proto-only; no C++ value, `FromProto` rejects) + `kHloSparseCoreV0{Infeed,Outfeed}` profiler labels; no SCv0 encoder/decoder/descriptor ships | CONFIRMED |
 | SCS=32 B, TAC=64 B, TEC=64 B bundles; no check byte | `BundleSizeBytes` reads codec-metadata vtable slot returning 32/64; SC bundles carry no `0x55` trailer | HIGH |
 | In-HBM atomic FP scatter-add is the keystone primitive | `STREAM_OPCODE_SCATTER_FLOAT_ADD` + `DMA_DEST_OPCODE_READ_AND_ADD` enum strings | HIGH |
 | `V0` suffix on `6acc60406` TEC field symbols is an operand-version tag, not SCv0 | `gfc::isa::SparseCoreTecVectorExtended*V0XField` are live `6acc60406` TEC ops | CONFIRMED |
-| Marketing names v5e/v5p/v6e for codenames Viperfish/Ghostlite/`6acc60406` | follows sibling [ISA Overview](../isa/overview.md); binary keys on codename family ns, not marketing name | MEDIUM |
+| Marketing names v5p/v6e/v7x for codenames Viperfish/Ghostlite/`6acc60406` | follows sibling [SparseCore Target Descriptor](../targets/sparsecore-target-descriptor.md); binary keys on codename family ns, not marketing name | MEDIUM |
 
 ---
 

@@ -170,7 +170,7 @@ Decoded from each gen's `GetCyclesForThroughput` (or `…Helper`) switch, cross-
 | `0x00` | Vector matprep, bf16 | 8 | 79 | 131 | 192 | 212 | CONFIRMED |
 | `0x05` | Latch, bf16 | 8 | 79 | 131 | 192 | 212 | CONFIRMED |
 | `0x0b` | Transposed bf16 latch | 8 | 79 | 131 | 192 | 212 | CONFIRMED |
-| `0x09` | Latch, fp8 | (dflt 1) | — | 131 | 192 | 212 | CONFIRMED |
+| `0x09` | Latch, fp8 | (dflt 1) | — | 114 | 192 | 204 | CONFIRMED |
 | `0x12`–`0x16` | XLU rot / shuffle / bcast / reduce | 1 | 1 | 1 | 1 | 2 | CONFIRMED |
 | `0x17` | Matrix-result read (TC) | 8 | 53 | 114 | 192 | 212 | CONFIRMED |
 | `0x18`/`0x19`/`0x1a` | RW-xpose / cross-lane / lane-cmp | 1 | 1 | 1 | 1 | 1 | CONFIRMED |

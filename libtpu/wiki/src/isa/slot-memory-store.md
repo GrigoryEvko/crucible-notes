@@ -241,7 +241,7 @@ Predicated store = bundle-predicate gating; masked store = vmask/sublane write-e
 
 ## Per-Gen Deltas
 
-| Property | JF (v3) | PF (v4) | VF (v5e) | GL (v5p) | GFC (v6e) |
+| Property | JF (v2) | PF (v4) | VF (v5p) | GL (v6e) | GFC (TPU7x) |
 |----------|:-------:|:-------:|:--------:|:--------:|:---------:|
 | TC bundle width (B) | 41 | 51 | 64 | 64 | 64 |
 | `MaxVectorStoreSlots` (write ports) | 1 | 1 | 1 | **2** | 2* |
@@ -257,13 +257,13 @@ Predicated store = bundle-predicate gating; masked store = vmask/sublane write-e
 | Scalar-store SMEM atomic add | no | no | no | no | **yes (SumDestAndY / FetchAndAdd)** |
 | `SupportsVectorStoreFence` | false | false | false | false | misc-slot |
 
-Verified target overrides: `JellyfishTarget::MaxVectorStoreSlots`=1 (@`0x1d4916a0`), Pufferfish=1 (@`0x1d495be0`), Viperfish=1 (@`0x1d49c0a0`), **Ghostlite=2** (@`0x1d498ca0`). `CanOverlayInMiscSlot`: Jellyfish=false (@`0x1d491680`), Ghostlite=true (@`0x1d498c80`). `SupportsVectorStoreFence`=false on JF/PF/VF/GL (@`0x1d48f660`/`0x1d493fa0`/`0x1d499f00`/`0x1d497060`). Dragonfish (v3') shares the Jellyfish codec.
+Verified target overrides: `JellyfishTarget::MaxVectorStoreSlots`=1 (@`0x1d4916a0`), Pufferfish=1 (@`0x1d495be0`), Viperfish=1 (@`0x1d49c0a0`), **Ghostlite=2** (@`0x1d498ca0`). `CanOverlayInMiscSlot`: Jellyfish=false (@`0x1d491680`), Ghostlite=true (@`0x1d498c80`). `SupportsVectorStoreFence`=false on JF/PF/VF/GL (@`0x1d48f660`/`0x1d493fa0`/`0x1d499f00`/`0x1d497060`). Dragonfish (v3) shares the Jellyfish codec.
 
 Structural deltas:
-- **v3→v4 (JF→PF)**: bundle 41→51 B; CMEM-store sub-ops added; 8 explicit hardware vmask registers (`VmemStoreVmsk0..7`).
-- **v4→v5e (PF→VF)**: bundle 51→64 B; store-data field 5→4 bits while base/offset 5→6 bits; CMEM-store dropped from the TC slot; sublane-shuffle store added; 2 scatter index ports; SparseCore TEC tile-SPMEM store family (with reduce-add) introduced.
-- **v5e→v5p (VF→GL)**: `MaxVectorStoreSlots` 1→2 (two VMEM write ports); `CanOverlayInMiscSlot` fully true — the store slot can overlay the misc slot, sharing the vmask (`CheckVectorStoreSlotAndMiscSlotShareVmsk` in `TensorCoreCodecBase`).
-- **v5p→v6e (GL→GFC)**: store-fence moves into the VectorMisc compact message; scalar SMEM stores gain atomic add (`ScalarStoreXToSmemSumDestAndY`, `SmemFetchAndAdd`); SparseCore TEC store reaches 34 sub-ops (full reduce-add + circular-buffer + indexed + return-value matrix).
+- **v2→v4 (JF→PF)**: bundle 41→51 B; CMEM-store sub-ops added; 8 explicit hardware vmask registers (`VmemStoreVmsk0..7`).
+- **v4→v5p (PF→VF)**: bundle 51→64 B; store-data field 5→4 bits while base/offset 5→6 bits; CMEM-store dropped from the TC slot; sublane-shuffle store added; 2 scatter index ports; SparseCore TEC tile-SPMEM store family (with reduce-add) introduced.
+- **v5p→v6e (VF→GL)**: `MaxVectorStoreSlots` 1→2 (two VMEM write ports); `CanOverlayInMiscSlot` fully true — the store slot can overlay the misc slot, sharing the vmask (`CheckVectorStoreSlotAndMiscSlotShareVmsk` in `TensorCoreCodecBase`).
+- **v6e→TPU7x (GL→GFC)**: store-fence moves into the VectorMisc compact message; scalar SMEM stores gain atomic add (`ScalarStoreXToSmemSumDestAndY`, `SmemFetchAndAdd`); SparseCore TEC store reaches 34 sub-ops (full reduce-add + circular-buffer + indexed + return-value matrix).
 
 (*) The `6acc60406` (gfc) store reuses the gxc `EncoderBase` template; the V5+ property values are confirmed for VF/GL via the Target overrides, and the gfc-specific values marked `*` follow from the shared template plus the verified gfc store-encoder bit map (`0x1fa08920`).
 

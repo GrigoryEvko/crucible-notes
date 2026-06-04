@@ -198,7 +198,7 @@ The availability signal is the SME structured-sparsity outer-product instruction
 
 | External name | Codename | `TpuVersion` ordinal | SME structured sparsity | Confidence |
 |---|---|---|---|---|
-| TPU v2 / v3 | Jellyfish / Dragonfish | `kJellyfish`=0 / `kDragonfish`=1 | No | High — no SME path; MXU is the v3 single-slot encoder |
+| TPU v2 / v3 | Jellyfish / Dragonfish | `kJellyfish`=0 / `kDragonfish`=1 | No | High — no SME path; MXU is the v2/v3 single-slot encoder |
 | TPU v4 | Pufferfish | `kPufferfish`=2 | No | High — SME family absent on the pre-v5 encoder |
 | **TPU v5** | **Viperfish** | **`kViperfish`=3** | **Yes** | Med — first gen with the SME outer-product path; gen boundary inferred (see NOTE below) |
 | TPU v6 lite | Ghostlite | `kGhostlite`=4 | Yes | Med — v5+ family member; SME path shared with Viperfish |

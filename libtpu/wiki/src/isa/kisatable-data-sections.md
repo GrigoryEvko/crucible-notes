@@ -21,7 +21,7 @@ For reimplementation, the contract is:
 | | |
 |---|---|
 | **Literal `kIsaTable` symbol** | none — role split across 5 structures |
-| **Generations** | Jellyfish / Dragonfish / Pufferfish / Viperfish / Ghostlite / 6acc60406 (TPU v6e) (`TpuVersion 0..5`) |
+| **Generations** | Jellyfish / Dragonfish / Pufferfish / Viperfish / Ghostlite / 6acc60406 (TPU7x) (`TpuVersion 0..5`) |
 | **Codec registry** | `CodecMetadataRegistry` (`absl::flat_hash_map<TpuVersion, pair<char*, CodecMetadata*>>`, `StaticMapBase` singleton) |
 | **Codec lookup** | `GetMetadataOrDie(TpuVersion)` → dies *"Codec metadata not registered for TpuVersion"* |
 | **MC base-bits** | `InstBits` @ `0x3366d90` (`0x2c460` B) / `InstBits_BarnaCorePxcHwMode` @ `0x33931f0` |
@@ -43,11 +43,11 @@ Every table and encoder symbol is named by a three-axis taxonomy: codename, HAL 
 | Pufferfish | 2 | PXC | `asic_sw::deepsea::pxc::isa` | base + `TPUBcSubtarget` | CONFIRMED |
 | Viperfish | 3 | VXC | `asic_sw::deepsea::vxc::isa` | `TPUVfcSubtarget` | CONFIRMED |
 | Ghostlite | 4 | VXC=GXC | `asic_sw::deepsea::gxc::glc::isa` | `TPUGlcSubtarget` | CONFIRMED |
-| 6acc60406 (TPU v6e) | 5 | VXC=GXC | `asic_sw::deepsea::gxc::gfc::isa` | `TPUGfcSubtarget` | CONFIRMED |
+| 6acc60406 (TPU7x) | 5 | VXC=GXC | `asic_sw::deepsea::gxc::gfc::isa` | `TPUGfcSubtarget` | CONFIRMED |
 
 The SparseCore sub-namespaces (`vxc::vfc::isa`, `gxc::glc::isa::sparsecore`, `gxc::gfc::isa::sparsecore`) and the Pufferfish BarnaCore (`pxc::pfc::isa`) carry their own encoders. The `(TpuVersion, TpuSequencerType)` pair is the full key into the codec metadata — one chip has several sequencer types with different bundle widths (see [Bundle Model](bundle-model-overview.md)). The eight `TpuSequencerType` values are `TC=0, BCS=1, BCAH=2, SCS=3, TAC=4, TEC=5, SCv0=6, SCv0AH=7`; the presence matrix per gen is documented on [Bundle Model](bundle-model-overview.md#per-generation-bundle-widths).
 
-> **NOTE —** The v5 generation appears in the binary only as the codename `6acc60406` (the `tpu::TpuVersion::k6acc60406` enumerator, `TPU_VERSION_6acc60406`, `xla_target_6acc60406`, and the `.../target/6acc60406/` source paths); the marketing names "Trillium" and "Ironwood" occur **0 times** in `libtpu.so`. This page uses the binary codename, glossed `(TPU v6e)` once.
+> **NOTE —** The v5 generation appears in the binary only as the codename `6acc60406` (the `tpu::TpuVersion::k6acc60406` enumerator, `TPU_VERSION_6acc60406`, `xla_target_6acc60406`, and the `.../target/6acc60406/` source paths); the marketing names "Trillium" and "Ironwood" occur **0 times** in `libtpu.so`. This page uses the binary codename, glossed `(TPU7x)` once.
 >
 > Ghostlite (`glc`) and 6acc60406 (`gfc`) are both the GXC family, which is why their symbols share the `gxc::` prefix. The one structural delta visible in the tables: there is a `SparseCoreTacGL*` SchedModel but **no `SparseCoreTacGF*`** — 6acc60406 has no TAC sequencer (confirmed by symbol absence below).
 

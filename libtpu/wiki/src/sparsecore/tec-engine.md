@@ -31,7 +31,7 @@ For reimplementation, the contract is:
 | **Present on** | Viperfish · Ghostlite · 6acc60406 (and absorbs TAC's role on 6acc60406) |
 | **Confidence** | CONFIRMED (decompile / `BitCopy`-immediate anchored) unless a row or callout says otherwise |
 
-> **QUIRK — two enum numbering schemes; this page uses the codec-template numbering (TEC = 5).** The codec-template / proto-enum convention is `{3 = SCS, 4 = TAC, 5 = TEC}`, carried as the non-type template literal on the codec — verified byte-exact in the gfc `SparseCoreTecCodecBase` symbol's `LN3tpu16TpuSequencerTypeE5E` suffix (16 such gfc-namespace `SparseCoreTec*` symbols carry the literal; 32 across all three gen namespaces). The *runtime* `TpuSequencerType` proto enum is off by one — `{… SCS = 4, TAC = 5, TEC = 6}` — and the `SparseCoreTarget` geometry descriptor reads the tile-execute geometry at its own internal sequencer-type 5 as well. Use **5** for the TEC codec and engine name (matching [overview](overview.md), [scs-engine](scs-engine.md), [tac-engine](tac-engine.md)); follow the geometry descriptor's own enum only when indexing `TpuCoreParts`. Do not mix the two.
+> **QUIRK — two enum numbering schemes; this page uses the C++/codec numbering (TEC = 5).** The C++ `tpu::TpuSequencerType` enum numbers `{3 = SCS, 4 = TAC, 5 = TEC}`, carried as the non-type template literal on the codec — verified byte-exact in the gfc `SparseCoreTecCodecBase` symbol's `LN3tpu16TpuSequencerTypeE5E` suffix (16 such gfc-namespace `SparseCoreTec*` symbols carry the literal; 32 across all three gen namespaces). This same C++ numbering is what `TpuSequencerTypeToString` renders and what the `SparseCoreTarget` geometry descriptor uses to index `TpuCoreParts` (tile-execute geometry read at C++ sequencer-type 5 = TEC). The *off-by-one* peer is the **protobuf** enum `TpuSequencerTypeProto`, which reserves `INVALID=0` and so numbers `{… SCS = 4, TAC = 5, TEC = 6}`; `TpuSequencerTypeFromProto` subtract-one-converts it to the C++ enum before any in-memory use. Use **5** for the TEC codec, engine name, *and* the `TpuCoreParts` index (matching [overview](overview.md), [scs-engine](scs-engine.md), [tac-engine](tac-engine.md)); only a raw `TpuSequencerTypeProto` field carries TEC = 6. Do not mix the two.
 
 ---
 
@@ -382,7 +382,7 @@ Cross-gen anchors: vfc TEC `VectorAlu0` `0x1e954ae0` (opcode `@456/7`, **7-bit**
 ## Cross-References
 
 - [SparseCore Overview](overview.md) — the three engine classes, per-gen presence, and the `TpuSequencerType` codec-template enum.
-- [SparseCore Hardware Architecture](architecture.md) — the geometry the TEC targets and the `SparseCoreTarget`-internal sequencer enum (the off-by-one).
+- [SparseCore Hardware Architecture](architecture.md) — the geometry the TEC targets and the `SparseCoreTarget`/`TpuCoreParts` sequencer indexing (the C++ `{3,4,5}` enum, with the proto off-by-one reconciled).
 - [SCS (Scalar) Engine](scs-engine.md) — the control sequencer whose low-region bundle and 27-bit scalar template the TEC reuses, and that launches the TEC via `LaunchTileTaskOp`.
 - [TAC Engine](tac-engine.md) — the VF/GL-only tile-fetch issuer whose access role the TEC absorbs (removed on 6acc60406).
 - [Vector Opcode Enum](vector-opcode-enum.md) — the full per-slot, per-gen vector op roster the TEC executes.

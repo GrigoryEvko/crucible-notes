@@ -42,7 +42,7 @@ The transcendental enters the EUP through a VALU-slot-3 push. There is exactly o
 
 ### Encoding
 
-Two layouts exist, one per opcode width. On 6acc60406 (`gfc`, the v6e TC bundle; external name TPU7x) and Ghostlite (`glc`) the VALU opcode is 8 bits at bit 194; on Viperfish (`vxc`) it is 7 bits at bit 197. The function selector is always 5 bits, at bit 183 on gfc/glc and bit 186 on vxc. The source vreg is 6 bits. Every field is written by the universal `BitCopy(dst, dst_bit, src, src_bit, nbits)` packer (`@0x1fa0a900`). **All bit positions on this page are LSB-first** — bit 0 is the least-significant bit of byte 0 (byte = `dst_bit >> 3`, bit-in-byte = `dst_bit & 7`), matching the `BitCopy` convention used throughout [Bundle Model](bundle-model-overview.md) and the [VPU Slot](slot-vpu.md); the packer writes `nbits` upward from the LSB-numbered `dst_bit`.
+Two layouts exist, one per opcode width. On 6acc60406 (`gfc`, the TPU7x TC bundle; external name TPU7x) and Ghostlite (`glc`) the VALU opcode is 8 bits at bit 194; on Viperfish (`vxc`) it is 7 bits at bit 197. The function selector is always 5 bits, at bit 183 on gfc/glc and bit 186 on vxc. The source vreg is 6 bits. Every field is written by the universal `BitCopy(dst, dst_bit, src, src_bit, nbits)` packer (`@0x1fa0a900`). **All bit positions on this page are LSB-first** — bit 0 is the least-significant bit of byte 0 (byte = `dst_bit >> 3`, bit-in-byte = `dst_bit & 7`), matching the `BitCopy` convention used throughout [Bundle Model](bundle-model-overview.md) and the [VPU Slot](slot-vpu.md); the packer writes `nbits` upward from the LSB-numbered `dst_bit`.
 
 ```c
 function EncodeTensorCoreVectorAlu3F32Tanh(bundle, alu_proto):   // gfc @0x1f96ae40

@@ -151,7 +151,7 @@ SparseCore presence and the engine roster are read directly from the codec-class
 | TPU gen | Codename | Family ns | SparseCore | Engines | Notes |
 |---|---|---|:--:|---|---|
 | v2 / v3 / v4 | Jellyfish / Dragonfish / Pufferfish | — | **NO** | — | BarnaCore era; `Target::SupportsSparseCore` = false |
-| v5e / v5p | Viperfish | `vxc.vfc` | **YES** | SCS + TAC + TEC | first three-engine split |
+| v5p | Viperfish | `vxc.vfc` | **YES** | SCS + TAC + TEC | first three-engine split |
 | v6e ("Trillium") | Ghostlite | `gxc.glc` | **YES** | SCS + TAC + TEC | all three engines; `GhostliteTarget::MxuContractingSize` = 256 |
 | TPU7x ("Ironwood") | 6acc60406 | `gxc.gfc` | **YES** | SCS + TEC (no TAC) | TAC folded into SCS+TEC; 0 `gfc::*SparseCoreTac*` symbols |
 
