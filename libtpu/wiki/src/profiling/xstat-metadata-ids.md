@@ -209,7 +209,7 @@ Plane- and host-level identity stats, plus the build-provenance stat. These appe
 | `total_profile_duration_ps` | `int64_value` (f4) | profile span (tsl canonical, plane stat) | MEDIUM |
 | `max_iteration_num` | `int64_value` (f4) | iteration count (tsl canonical) | LOW |
 | `num_occurrences` | `int64_value` (f4) | aggregated occurrence count (tsl canonical) | MEDIUM |
-| build provenance — `"<changelist> @ <timestamp>"` | `str_value` (f5) | `AddPluginMetadata()`, StatType **0xA6 = 166** | HIGH |
+| build provenance — `"<timestamp> cl/<changelist>"` (`absl::StrFormat("%s cl/%s", BuildData::Timestamp(), BuildData::Changelist())`) | `str_value` (f5) | `AddPluginMetadata()` @ `0xf3165c0`, StatType **0xA6 = 166** | HIGH |
 
 > **QUIRK —** `num_occurrences` is *also* an `XEvent` `oneof data` field (f5), not only a stat. An aggregated `XEvent` (one event-type, many instances folded) stores its count in `XEvent.num_occurrences`; the `num_occurrences` *stat* is the per-event-type variant. A reimplementer must not store the same count in both places — pick the event field for aggregated events and the stat for type-level aggregation.
 
