@@ -430,6 +430,77 @@ The 890 default-builder ops (bare transcendentals `tpu_sin`/`tpu_rcp`, the `tpu_
 
 ---
 
+## Default-Builder Arity (byte-read from the ODS trait pack)
+
+The 890 default-builder ops do **not** need their operand count guessed from name-family heuristics: TableGen bakes the result-count and operand-count traits into the mangled `Op<…>` class template, and that template name is byte-present in the symbol table. Every `tpu_*` op is instantiated as
+
+```text
+mlir::Op<sparse_core::tpu_NAME,
+         OpTrait::ZeroRegions, OneResult|ZeroResults,
+         OneTypedResult<mlir::Type>::Impl, ZeroSuccessors,
+         OneOperand | ZeroOperands | NOperands<Lj N>::Impl,
+         OpInvariants [, MemoryEffectOpInterface::Trait]>
+```
+
+and that trait list appears verbatim inside the per-op `getHasTraitFn` / `getFoldHookFn` / `printAssembly` callback symbols (`nm` token `OpINS…sparse_core<len>tpu_NAME EJ … OpInvariants`). The operand count is the literal `OneOperand` (1), `ZeroOperands` (0), or `NOperands<Lj N>` (N) token; the result count is `OneResult` (1) vs `ZeroResults` (0). No disassembly is required — the arity is a string in the symbol.
+
+> **NOTE — the result `TypeConstraint` is *not* a refined `Vreg`/`Mask`/`Scalar`/`Ptr` predicate at this layer.** Every op's result trait is the generic `OneTypedResult<mlir::Type>` — `mlir::Type`, not a register-class subtype. The verifier body (`tpu_NAME::verifyInvariantsImpl`) discharges its single result-type check through one shared constraint function, `__mlir_ods_local_type_constraint_…llvm_tpu_ops1` (e.g. `@0x149de120`), whose *entire* body is `if (!LLVM::isCompatibleOuterType(t)) emitOpError(...)` (`call isCompatibleOuterType @0x17473060` at `149de146`, byte-verified). The `StringRef` argument that distinguishes call sites is only the diagnostic role label — `"result"` (`.rodata @0x84f7815`) vs `"operand"` (`.rodata @0x86f4942`), read by `xxd` — not a predicate selector. There is **no per-op `Vreg`/`Mask`/`Scalar`/`Ptr` result constraint encoded in this MLIR layer**; the register-class refinement lives only in the LLVM intrinsic signature consumed downstream by ISel, not in the ODS verifier. So the "result `TypeConstraint`" half of this gap is *not statically separable per op* here — every leaf carries the same generic LLVM-compatible-type result check. (`HIGH`)
+
+### Arity distribution — 1060 of 1356 byte-read
+
+Parsing the `OneResult`/`ZeroResults` × `OneOperand`/`ZeroOperands`/`NOperands<Lj N>` token from each op's `Op<…>` symbol recovers the exact `(#results, #operands)` shape for **1060 distinct `tpu_*` ops** (the 296 not listed have their `Op<…>` pack emitted only inline and carry no standalone callback symbol; their arity follows the same name-family pattern). The full byte-read distribution:
+
+| #res | #operands | # ops | Dominant family in this bucket |
+|---:|---:|---:|---|
+| 0 | 8 | 358 | `stream_{strided,indirect}_*` (342) + `dma_*_sc_simple` non-iova-windowed (16) |
+| 1 | 1 | 147 | bare EUP (`sin`/`rcp`/`eup_pop`/`sigshft`/`exponent`), `unpackl`/`unpacku`, `inttoptr`/`ptrtoint`, `i1`-width casts |
+| 0 | 6 | 118 | `stream_linear_*` + `sync{add,set}_remote_*` |
+| 0 | 9 | 114 | `stream_indirect_vreg_vreg_*` (gather+scatter) |
+| 1 | 2 | 94 | `sld_cb`, `pack_c_*`, `dupcnt{f,i}`, `uniquef`, `sshllo`, `vclass`, `wrcbreg_*` |
+| 0 | 2 | 51 | `syncadd`/`waiteq`/… (sflag, threshold) |
+| 0 | 4 | 29 | strided / multi-arg sync + vst variants |
+| 0 | 1 | 26 | `delay`, single-arg stores |
+| 1 | 0 | 25 | `tileid` + all `rdreg_*` counters (0-operand register reads) |
+| 0 | 5 | 23 | sync/dma mid-tier |
+| 0 | 3 | 21 | `vst_msk`-class stores, `fetch_and_add`-class, `barrier` |
+| 1 | 3 | 14 | `sort_{asc,dsc}d{f,i}`, 3-operand vector ops |
+| 0 | 16 | 12 | `dma_*_sc_general` |
+| 1 | 4 | 9 | 4-operand typed ops |
+| 0 | 11 | 10 | `dma_*_sc_single_strided` (non-iova) |
+| 0 | 0 | 6 | `nop`-class zero-everything ops |
+| 0 | 12 | 2 | `dma_{hbm_to_iova,iova_to_hbm}_sc_single_strided` (iova adds one operand) |
+| 1 | 10 | 1 | `tpu_sfence` (10 sflag operands) |
+
+Sum = 1060.
+
+### Byte-verified leaf sample (token read straight from the symbol)
+
+Each row's `#res`/`#operands` is the `OneResult`/`ZeroResults` and `OneOperand`/`ZeroOperands`/`NOperands<Lj N>` token extracted from that op's mangled `Op<…sparse_core…tpu_NAME EJ…OpInvariants>` callback symbol in the `nm` table — the exact string is the evidence.
+
+| Intrinsic (class) | result token | operand token | (#res, #opnd) | Conf |
+|---|---|---|---:|---|
+| `tpu_sin` (bare EUP) | `OneResult` | `OneOperand` | (1, 1) | HIGH |
+| `tpu_addrspacecast` | `OneResult` | `OneOperand` | (1, 1) | HIGH |
+| `tpu_tileid` | `OneResult` | `ZeroOperands` | (1, 0) | HIGH |
+| `tpu_vld_msk` | `OneResult` | `NOperands<Lj2>` | (1, 2) | HIGH |
+| `tpu_sld_cb` | `OneResult` | `NOperands<Lj2>` | (1, 2) | HIGH |
+| `tpu_pack_c_b32_b16` | `OneResult` | `NOperands<Lj2>` | (1, 2) | HIGH |
+| `tpu_sort_ascdf` | `OneResult` | `NOperands<Lj3>` | (1, 3) | HIGH |
+| `tpu_vst_msk` | `ZeroResults` | `NOperands<Lj3>` | (0, 3) | HIGH |
+| `tpu_syncadd` | `ZeroResults` | `NOperands<Lj2>` | (0, 2) | HIGH |
+| `tpu_stream_linear_gather_hbm_to_tilespmem` | `ZeroResults` | `NOperands<Lj6>` | (0, 6) | HIGH |
+| `tpu_stream_strided_gather_hbm_to_tilespmem` | `ZeroResults` | `NOperands<Lj8>` | (0, 8) | HIGH |
+| `tpu_stream_indirect_vreg_vreg_gather_hbm_to_tilespmem` | `ZeroResults` | `NOperands<Lj9>` | (0, 9) | HIGH |
+| `tpu_dma_hbm_to_spmem_sc_single_strided` | `ZeroResults` | `NOperands<Lj11>` | (0, 11) | HIGH |
+| `tpu_dma_hbm_to_iova_sc_single_strided` | `ZeroResults` | `NOperands<Lj12>` | (0, 12) | HIGH |
+| `tpu_sfence` | `OneResult` | `NOperands<Lj10>` | (1, 10) | HIGH |
+
+> **QUIRK — the stream family is *not* uniform `V×6`.** The [§Stream](#stream-engine-the-dominant-family) typed-create example shows a 6-operand linear form, but the byte-read arity splits the 834 stream ops into **three operand counts keyed by addressing pattern**: `stream_linear_*` = 6, `stream_{strided,indirect}_*` = 8, `stream_indirect_vreg_vreg_*` = 9. The extra operands carry the stride/index/vreg-offset sources the more complex patterns need. A reimplementer who builds every stream op with a fixed 6-operand list will under-supply the strided/indirect forms. Likewise the DMA `single.strided` tier is **11 operands normally but 12 when an `iova` endpoint is involved** (`dma_hbm_to_iova` / `dma_iova_to_hbm`), refining the flat "11 Value" in [§DMA](#dma-descriptor-builders).
+
+> **NOTE — coverage, no silent cap.** 15 leaves are byte-verified above (token read directly from each op's mangled `Op<…>` symbol), spanning EUP / addrspacecast / task / vld / cbreg / pack / sort / vst / sync / stream-{linear,strided,indirect-vreg} / dma-{single-strided,iova} / fence families. The full `(#res, #operands)` shape is byte-read for **1060 of the 1356** ops (every one whose `Op<…>` pack survives as a standalone callback symbol); the distribution table above is the exact census of those 1060. The remaining 296 ops emit their trait pack only inline and are **not** individually transcribed — their arity follows the same name-family layout (each is one `rg -o 'sparse_core…tpu_NAME EJ…OpInvariants'` token away). This covers the **arity** half of the "890 default-builder ops" gap in full; the **result-`TypeConstraint`** half is closed by the NOTE above (uniformly generic `mlir::Type` + `isCompatibleOuterType`, no per-op `Vreg`/`Mask`/`Scalar`/`Ptr`).
+
+---
+
 ## Per-Intrinsic IntrProperties (LLVM attribute table)
 
 Each `llvm.tpu.*` intrinsic carries an `IntrProperties` set — the `IntrNoMem`/`IntrArgMemOnly`/`IntrReadMem`/`IntrWillReturn`/… bits TableGen lowers into the LLVM function-attribute list returned by `llvm::Intrinsic::getAttributes` (`@0x1da0b460`). This is the backend's alias-analysis and scheduling contract for the call. The set is byte-recoverable from a two-table lookup; the sample below is read directly from those tables.
@@ -542,7 +613,7 @@ Honest gaps in this catalog:
 
 - **Per-leaf stream→HW opcode** — for all 834 stream ops the class→engine mapping is confirmed and the lowering pass located, but the per-`(pattern,verb,dtype,memspace)` numeric stream-engine command value is not individually byte-dumped. (`INFERRED` for the leaf opcode.)
 - **Per-intrinsic LLVM `IntrProperties`** — *recovered* (see [§Per-Intrinsic IntrProperties](#per-intrinsic-intrproperties-llvm-attribute-table)): all 12 fn-attr sets the surface uses are byte-decoded and the per-set census is exact (sums to 1356); the `set = IntrinsicsToAttributesMap[ID−1] >> 9` lookup is deterministic. Only the per-leaf assignment for the 1340 non-sampled IDs is not individually transcribed (each is one halfword load away). The OpInterface presence on the MLIR side (`MemoryEffect` 285, `AliasAnalysis` 546, `AccessGroup` 180, `Bytecode` 188) is the dialect-layer counterpart.
-- **The 890 default-builder ops' exact arity + result `TypeConstraint`** — recovered by name family; the per-op `verifyInvariantsImpl` byte-decode would confirm 1-vs-2 operands and the `Vreg`/`Mask`/`Scalar`/`Ptr` result predicate.
+- **The 890 default-builder ops' exact arity + result `TypeConstraint`** — *arity recovered* (see [§Default-Builder Arity](#default-builder-arity-byte-read-from-the-ods-trait-pack)): the `(#results, #operands)` shape is byte-read from each op's mangled `Op<…OneResult/ZeroResults…OneOperand/NOperands<Lj N>…>` trait pack for 1060 of the 1356 ops, with the full distribution tabulated. The result `TypeConstraint` half is *resolved as a negative result*: there is no per-op `Vreg`/`Mask`/`Scalar`/`Ptr` predicate at the MLIR layer — every result trait is the generic `OneTypedResult<mlir::Type>` and the verifier discharges it through one shared `isCompatibleOuterType` check; the register-class refinement is carried only by the downstream LLVM intrinsic signature, not the ODS verifier.
 - **The scan/sort/unique-engine opcode bit layouts** — mapped to the SparseCore scan/sort/dedup units by name; the per-op HW command bit layout is not decoded (SparseCore-specific compute units, not TensorCore LLO slots).
 - **The full numeric address-space ID table** — the `AddressSpaceDescription` switch base (201) and sampled case strings are known; the complete ID↔space map (and which `addrspacecast` leaf casts between which numeric IDs) needs the full switch-arm walk.
 
