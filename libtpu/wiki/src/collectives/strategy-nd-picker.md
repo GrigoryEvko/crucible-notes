@@ -4,7 +4,7 @@
 
 ## Abstract
 
-`xla::jellyfish::BaseStrategyND::SelectNDStrategy` (`0x137c78e0`, 2016 bytes) is the single function that decides *which collective-ring algorithm* an ICI all-reduce / reduce-scatter / all-gather is compiled into. Given the slice topology (a 1-D / 2-D / 3-D ICI torus), the `HloInstruction`, and a fistful of `TpuCompilationEnvironment` flag bytes, it walks a fixed decision tree and constructs exactly one of five terminal strategy objects: a **sub-plane subgroup** strategy, a generic **ND-ring** `StrategyND` (which itself resolves to a 1-D or N-D unidirectional ring at build time), an **N-way model-parallel** ring, a **twisted-torus** ring, or a **strided** ND ring. There is no cost-comparison search here — the picker is a sequence of predicate gates; the *cost* of the chosen ring is computed separately in the link-count model (see [SPMD Link-Count Cost](spmd-link-count-cost.md)), and the *neighbour schedule* the ring traverses is built downstream in `StrategyND::BuildStrategy`.
+`xla::jellyfish::BaseStrategyND::SelectNDStrategy` (`0x137c78e0`, 0x7cf = 1999 bytes) is the single function that decides *which collective-ring algorithm* an ICI all-reduce / reduce-scatter / all-gather is compiled into. Given the slice topology (a 1-D / 2-D / 3-D ICI torus), the `HloInstruction`, and a fistful of `TpuCompilationEnvironment` flag bytes, it walks a fixed decision tree and constructs exactly one of five terminal strategy objects: a **sub-plane subgroup** strategy, a generic **ND-ring** `StrategyND` (which itself resolves to a 1-D or N-D unidirectional ring at build time), an **N-way model-parallel** ring, a **twisted-torus** ring, or a **strided** ND ring. There is no cost-comparison search here — the picker is a sequence of predicate gates; the *cost* of the chosen ring is computed separately in the link-count model (see [SPMD Link-Count Cost](spmd-link-count-cost.md)), and the *neighbour schedule* the ring traverses is built downstream in `StrategyND::BuildStrategy`.
 
 Layered on top of the picker is the **degraded-axis fault-tolerant remap**: when one torus axis has a partially-failed ICI link, the resilient path folds that axis out of the primary ring. `GetDegradedAxis` (`0x1c894c20`) reduces three per-axis "this dimension is degraded" flags to a single degraded-axis index (or `-1` = "cannot isolate, give up"); `InitColorDimensionsDegraded` (`0x137c6580`) then rewrites the `[6][3]` per-color ring-dimension table so the dead axis is demoted to the innermost ring dimension and the two healthy axes carry the rings. `GetResourceFromIciResource` (`0x1c894c00`) maps the resulting ring dimensions onto the ICI `ResourceVector` slots the cost model deposits cycles into.
 
@@ -16,14 +16,14 @@ A reader who knows MPI ring/recursive-doubling collectives owns the frame: this 
 
 | | |
 |---|---|
-| **Picker entry** | `xla::jellyfish::BaseStrategyND::SelectNDStrategy` @ `0x137c78e0` (0x7e0 = 2016 B) |
+| **Picker entry** | `xla::jellyfish::BaseStrategyND::SelectNDStrategy` @ `0x137c78e0` (0x7cf = 1999 B) |
 | **Single-ND-plane test** | `xla::jellyfish::ReplicaGroupsOnNDPlane(…, plane=2, false)` @ `0x1c890960` |
-| **2-D-plane gate** | `BaseStrategyND::IsGroupNDPlane` @ `0x137c6700` (`NumNetworkDimensions==3`, NDtopo dims not all 1, env`[0x1015]==1`) |
+| **2-D-plane gate** | `BaseStrategyND::IsGroupNDPlane` @ `0x137c6700` (`NumNetworkDimensions>=3`, NDtopo dims not all 1, env`[0x1015]==1`) |
 | **N-way gate** | `BaseStrategyND::UseSpecialStrategyNDNWay` @ `0x137c6be0` (single-slice, comp-count ∈ {2,4}) |
-| **Strided gate** | `BaseStrategyND::UseStridedStrategyND` @ `0x137c72e0` (single-slice, `NumNetworkDimensions==3`, `LogicalDevicesPerChip==1`) |
+| **Strided gate** | `BaseStrategyND::UseStridedStrategyND` @ `0x137c72e0` (single-slice, `NumNetworkDimensions>=3`, `LogicalDevicesPerChip==1`) |
 | **Terminal classes** | `StrategySubgroupND` (0x638), `StrategyND` (0x5f0), `TwistedTorusND` (0x610) |
 | **`StrategyND` ctor** | `0x137c2f40` → `ComputeColorDimensions` `0x137c3ba0` → `BuildStrategy` `0x137c4660` |
-| **Degraded-axis reducer** | `xla::jellyfish::GetDegradedAxis` @ `0x1c894c20` (0x180 = 384 B) |
+| **Degraded-axis reducer** | `xla::jellyfish::GetDegradedAxis` @ `0x1c894c20` (0x16b = 363 B) |
 | **Color-dim remap** | `BaseStrategyND::InitColorDimensionsDegraded` @ `0x137c6580` |
 | **Resilient gate** | `UseResilientAlgorithmBase` @ `0x1c894da0` (env`[0x1116]==1`, `NumNetworkDimensions==3`, `GetDegradedAxis≠-1`) |
 | **ICI slot map** | `GetResourceFromIciResource` @ `0x1c894c00` |
@@ -84,19 +84,21 @@ Two top-level paths split on the `enable_sub_plane` argument. Each path either c
 
 ### Path A — `enable_sub_plane == true`: the sub-plane subgroup
 
-This is the 2-D-algorithm-on-a-sub-plane-of-the-3-D-torus all-reduce. **All** of the following must hold (`0x137c7936`..`0x137c79c3`):
+This is the 2-D-algorithm-on-a-sub-plane-of-the-3-D-torus all-reduce. **All** of the following must hold (decompiled body lines 67..125):
 
 ```text
 hlo != nullptr
-AND !is_cross_module                          (folded value)
-AND env[0xe1f] != 0                           (xla_pf_enable_nd_allreduce)
-AND hlo->opcode == kAllReduce  (0xd)
-AND cast<HloAllReduceInstructionBase>(hlo)->field[0xe1] == 1   (use-global / constrain-layout)
+AND !is_cross_module                          (folded value v14 != 1)
+AND env[0xe1f] != 0                           (xla_pf_enable_nd_allreduce; *(a4+3615))
+AND hlo->opcode != kAnd  (0xd)                (decompiled: **((DWORD**)hlo + 11) != 13)
+AND cast<HloAllReduceInstructionBase>(hlo)->field[0xe1] == 1   (offset 225; use-global / constrain-layout)
 AND ReplicaGroupsOnNDPlane(target, dev_assign, hlo->device_list(), plane=2, false).ok
 AND the returned vector<MeshNDInfo> is a SINGLE group   (begin == end)
 ```
 
-On success: VLOG `"Enabling ND sub-plane allreduce"` (`.rodata 0x86df4d5`, 31 B) and construct **`StrategySubgroupND`** (`operator new(0x638)` @ `0x137c79d7`; ctor `StrategySubgroupND::StrategySubgroupND` @ `0x137d4c00`) with `(lrb, target, env, psr, dev_assign, hlo, ring_locs)`. If any guard fails, fall through to the common tail.
+On success: VLOG `"Enable StrategySubgroupND."` (`.rodata 0xa0c5fc7`, 26 B; decompiled body line 89) and construct **`StrategySubgroupND`** (`operator new(0x638)`; ctor `StrategySubgroupND::StrategySubgroupND` @ `0x137d4c00`) with `(lrb, target, env, psr, dev_assign, hlo, ring_locs)`. If any guard fails, fall through to the common tail.
+
+> **GOTCHA —** opcode `0xd` decodes to `kAnd` (`.rodata 0x86f5a47 "and"`), *not* `kAllReduce`. `kAllReduce` is opcode `0x9` (`.rodata 0x86dfb36 "all-reduce"`). The decompiled guard is `opcode != 13`, i.e. exclude the `kAnd` elementwise opcode; the instruction is otherwise cast to `HloAllReduceInstructionBase`.
 
 > **NOTE —** the `ReplicaGroupsOnNDPlane(plane=2)` call here is the same plane-count primitive the cost model uses; `SelectNDStrategy` reads only its `ok` byte and the begin==end single-group test (decompiled at `0x137c79bf`). The internal `MeshNDInfo` field layout — what "plane=2" means beyond "the ND sub-plane" — is not decoded; see [SPMD Link-Count Cost](spmd-link-count-cost.md). The `xla_pf_enable_nd_allreduce` flag carries the documentation string *"Use 2-D algorithm on a sub-plane of the 3-D torus"* (`.rodata 0x850c910`).
 
@@ -105,16 +107,17 @@ On success: VLOG `"Enabling ND sub-plane allreduce"` (`.rodata 0x86df4d5`, 31 B)
 Call `IsGroupNDPlane(target, env, dev_assign, hlo, &NDtopo, is_cross_module)` (`0x137c6700`). It returns true when the slice is a 3-D torus whose collective fits a single 2-D plane:
 
 ```text
-Target::NumNetworkDimensions() == 3                    (0x137c6725)
+Target::NumNetworkDimensions() >= 3                    (decompiled: v9 >= 3)
 AND !multi-slice  (GetMultiSliceTopology / IsMultiSliceDeviceAssignment)
-AND hlo->opcode == kAllGather (0x9)  AND  hlo->field[0xe1] use-global    (0x137c67ef..0x137c67f7)
-AND the NDtopo dims are not all 1   (decompiled: v28[22]!=1 && v28[23]!=1 && (v28[24]!=1 | …))
-AND env[0x1015] == 1                                    (0x137c6921; the 2-D-algorithm enable)
+AND the instruction is an HloAllReduceInstruction      (cast guard: (opcode & 0xFD) == 9 ⇒ opcode ∈ {kAllReduce 0x9, kAllReduceStart 0xb}; a kFusion (0x3d) wrapper is unwrapped via ExtractInstruction first)
+AND  cast.field[0xe1] (offset 225) use-global  OR  IsCrossModuleReduceInstruction
+AND the NDtopo dims are not all 1   (decompiled: v28[23]!=1 && v28[22]!=1 && (v28[24]==1 | …))
+AND env[0x1015] == 1                                    (*(a2 + 4117) == 1; the 2-D-algorithm enable)
 ```
 
-The `env[0x1015]` byte read is confirmed in the decompile as `*(a2 + 4117) == 1` (4117 = 0x1015). On `IsGroupNDPlane == true`: VLOG `"Enabling 2-D algorithm …"` (string family `0x85a31f0 / 0xa00b8b8`) and construct **`StrategyND`** (`operator new(0x5f0)`) with the ND-ring parameter set — the decompiled ctor call passes `p7 = 1` (ND-ring) and the NDtopo extent in `p8`. If `IsGroupNDPlane == false`, fall through to the common tail.
+The `env[0x1015]` byte read is confirmed in the decompile as `*(a2 + 4117) == 1` (4117 = 0x1015). On `IsGroupNDPlane == true`: VLOG `"Enabling ND sub-plane allreduce"` (`.rodata 0x86df4d5`, 31 B; decompiled body line 144) and construct **`StrategyND`** (`operator new(0x5f0)`) with the ND-ring parameter set — the decompiled ctor call passes `p7 = 1` (ND-ring) and the NDtopo extent in the ring-dim params. If `IsGroupNDPlane == false`, fall through to the common tail.
 
-> **GOTCHA —** the sub-plane (Path A) gate keys on `kAllReduce (0xd)` while the ND-plane (Path B) gate keys on `kAllGather (0x9)`. They are not interchangeable: a reimplementer must dispatch the opcode test per path. The `IsGroupNDPlane` skip emits `"Skipping because 2D subplane wasn't detected"` (`.rodata 0xa212791`).
+> **GOTCHA —** the sub-plane (Path A) gate excludes `kAnd (0xd)` and otherwise targets all-reduce instructions; the ND-plane (Path B / `IsGroupNDPlane`) gate also targets all-reduce instructions (cast to `HloAllReduceInstruction`, `(opcode & 0xFD) == 9`). Note `0x9` decodes to `kAllReduce`, not `kAllGather`. The two VLOG strings are easy to swap: Path A (the `StrategySubgroupND` arm) emits `"Enable StrategySubgroupND."`; Path B (the `StrategyND` ND-plane arm) emits `"Enabling ND sub-plane allreduce"`. The `"Skipping because 2D subplane wasn't detected"` string (`.rodata 0xa212791`) is *not* emitted here — it lives in the upstream `SplitAllReducePhases::RunImpl` (`0x10ff0040`).
 
 ### Common tail — N-way / twisted / strided / default
 
@@ -124,20 +127,20 @@ Reached when neither Path A nor Path B fires. Evaluated in order:
 
 **C-ii — twisted torus.** Otherwise (single-module path) read the chip-part torus dims from `[Target+0x3b8]` (X = `+0x58`, Y = `+0x5c`, Z = `+0x60`) and run the twisted-torus shape probe (`0x137c7c39`..`0x137c7c7d`): take the min/mid of the three extents and test whether `2·(smaller dim) == (a dim extent)`. On a twisted shape: VLOG `"AllReduceEmitter: Choosing twisted topology"` (`.rodata 0x84b9da0`, 43 B) and construct **`TwistedTorusND`** (`operator new(0x610)` @ `0x137c7c8d`; ctor `0x137d0040`) with `(target, lrb)`. See [TwistedTorusND::BuildStrategy](../twist/buildstrategy.md) for the resulting non-rectangular ring.
 
-**C-iii — strided ND.** If not twisted, probe `UseStridedStrategyND(target, &stride0, &stride1, dev_assign, hlo)` (`0x137c72e0`): true when single-slice (`0x137c731e`), `NumNetworkDimensions == 3` (`0x137c734d`), and `LogicalDevicesPerChip == 1` (`0x137c7361`). On true: VLOG `"Enable StridedStrategyND"` (`.rodata 0x960d0b9`, 24 B) and construct **`StrategyND`** (0x5f0) with the computed `stride0/stride1` passed as the ring-dimension parameters.
+**C-iii — strided ND.** If not twisted, probe `UseStridedStrategyND(target, &stride0, &stride1, dev_assign, hlo)` (`0x137c72e0`): true when single-slice (`GetMultiSliceTopology == 0`), `NumNetworkDimensions >= 3`, and `LogicalDevicesPerChip == 1`. On true: VLOG `"Enable StridedStrategyND"` (`.rodata 0x960d0b9`, 24 B) and construct **`StrategyND`** (0x5f0) with the computed `stride0/stride1` passed as the ring-dimension parameters.
 
-**D — default ND ring / subgroup fallback.** If none of the above fires, construct the plain default **`StrategyND`** (0x5f0, ctor `0x137c2f40`) as an ND ring. The default-fallback subgroup arm carries VLOG `"Enable StrategySubgroupND."` (`.rodata 0xa0c5fc7`, 26 B; decompiled at line 89 of the body).
+**D — default ND ring.** If none of the above fires, construct the plain default **`StrategyND`** (0x5f0, ctor `0x137c2f40`) as an ND ring (decompiled body LABEL_50, lines 282..297; ring-kind code `7`, ND-ring selector `1`). The default tail emits **no** VLOG string. (The `"Enable StrategySubgroupND."` string — `.rodata 0xa0c5fc7`, 26 B, decompiled body line 89 — belongs to Path A, not this fallback.)
 
 ### Summary table
 
 | Order | Guard (all conditions) | VLOG / name | Class built (size, ctor) |
 |---|---|---|---|
-| A | `enable_sub_plane && hlo && !cross_module && env[0xe1f] && opcode==kAllReduce(0xd) && cast.field[0xe1]==1 && ReplicaGroupsOnNDPlane(plane=2).ok && single-group` | `"Enabling ND sub-plane allreduce"` | `StrategySubgroupND` (0x638, `0x137d4c00`) |
-| B | `!enable_sub_plane && IsGroupNDPlane && env[0x1015]==1` | `"Enabling 2-D algorithm …"` | `StrategyND` ND-ring (0x5f0, `0x137c2f40`) |
-| C-i | `cross_module && UseSpecialStrategyNDNWay` (single-slice, comp-count ∈ {2,4}) | `"Enable Strategy NDNway"` | `StrategyND` N-way (0x5f0) |
-| C-ii | single-module && twisted shape (`2·a == dim`) | `"AllReduceEmitter: Choosing twisted topology"` | `TwistedTorusND` (0x610, `0x137d0040`) |
-| C-iii | `UseStridedStrategyND` (single-slice, `NumNetDims==3`, `LDPC==1`) | `"Enable StridedStrategyND"` | `StrategyND` strided (0x5f0) |
-| D | else | `"Enable StrategySubgroupND."` | `StrategyND` default ND ring (0x5f0) |
+| A | `enable_sub_plane && hlo && !cross_module && env[0xe1f] && opcode!=kAnd(0xd) && cast.field[0xe1]==1 && ReplicaGroupsOnNDPlane(plane=2).ok && single-group` | `"Enable StrategySubgroupND."` (`0xa0c5fc7`) | `StrategySubgroupND` (0x638, `0x137d4c00`) |
+| B | `!enable_sub_plane && IsGroupNDPlane && env[0x1015]==1` | `"Enabling ND sub-plane allreduce"` (`0x86df4d5`) | `StrategyND` ND-ring (0x5f0, `0x137c2f40`) |
+| C-i | `cross_module && UseSpecialStrategyNDNWay` (single-slice, comp-count ∈ {2,4}) | `"Enable Strategy NDNway"` (`0x84bec52`) | `StrategyND` N-way (0x5f0) |
+| C-ii | single-module && twisted shape (`2·a == dim`) | `"AllReduceEmitter: Choosing twisted topology"` (`0x84b9da0`) | `TwistedTorusND` (0x610, `0x137d0040`) |
+| C-iii | `UseStridedStrategyND` (single-slice, `NumNetDims>=3`, `LDPC==1`) | `"Enable StridedStrategyND"` (`0x960d0b9`) | `StrategyND` strided (0x5f0) |
+| D | else | (no VLOG) | `StrategyND` default ND ring (0x5f0) |
 
 `env` = `ObjectView<TpuCompilationEnvironment>`; the bracketed values are byte offsets into the flag struct. Each `StrategyND` further resolves to a 1-D vs N-D ring inside `BuildStrategy` (next section).
 
@@ -172,7 +175,7 @@ StrategyND(Target&, LloRegionBuilder*, ProgramSharedRegistry*, ObjectView<TpuCom
 | `p10` | — | a size/count — `LogicalDeviceCount` (`movsxd` from the dev-assign group) in the N-way / ND-plane branches |
 | `p13` | `[obj+0x5a8]` | from the picker's `b12` argument |
 
-The ctor sets the strategy-name slot `[obj+0x5b0]` (initialized referencing the `"UniDirection1DRingStrategy"` type-name string @ `0xae5cdb0+0x2e`), then calls `Target::LogicalDevicesPerChip` (`0x1d615b00`), `ComputeColorDimensions` (`0x137c3ba0` — the `[6][3]` color-dim producer), and `StrategyND::BuildStrategy` (`0x137c4660`).
+The ctor initializes two 16-byte slots `[obj+0x5b0]` and `[obj+0x5c8]` from the constant `xmmword 0xae5cdb0` (which is `{1, 1}`, not a string pointer — the `"UniDirection1DRingStrategy"` type-name string actually lives at `.rodata 0x84ba569`), then sets `[obj+0x5c0]=1`, `[obj+0x5d8]=1`, `[obj+0xa8]=p6`, `[obj+0x5e1]=p7`, `[obj+0x5a8]=p13`, and finally calls `Target::LogicalDevicesPerChip` (`0x1d615b00`), `ComputeColorDimensions` (`0x137c3ba0` — the `[6][3]` color-dim producer), and `StrategyND::BuildStrategy` (`0x137c4660`).
 
 > **NOTE —** `SelectNDStrategy` chooses the *class*; `BuildStrategy` (`0x137c4660`) turns the `[6][3]` color-dim table into the per-color `RingLocation` neighbour schedule, gating `UniDirection1DRingStrategy` vs `UniDirectionNDRingStrategy` on `[obj+0xa8]` (`0x137c4689`). The per-color `RingLocation` construction inside `BuildStrategy` was not fully decoded (LOW); the partner schedule it emits is documented on [Binomial / Recursive-Doubling](binomial-recursive-doubling.md).
 
@@ -194,7 +197,7 @@ __int64 GetResourceFromIciResource(int ici_resource) {   // 0x1c894c00
 }
 ```
 
-`IciResource e ∈ [1..6]` → packed pair `{slot = 0xc + e, valid = 1}`; otherwise `{0, 0}`. The six slots `{0xd, 0xe | 0xf, 0x10 | 0x11, 0x12}` are the **3 torus dimensions × 2 ring directions** of the cost model's `ResourceVector` (see [SPMD Link-Count Cost](spmd-link-count-cost.md)). The high dword (`valid = 1`, from the constant `0x10000000D`) is the per-resource "this slot is a real ICI link" marker used when accumulating link counts / depositing cycles.
+For `ici_resource ∈ [1..6]` (so `e = ici_resource - 1 ∈ [0..5]`) → packed pair `{slot = 0xd + e = 0xc + ici_resource, valid = 1}`; otherwise `{0, 0}`. The six slots `{0xd, 0xe, 0xf, 0x10, 0x11, 0x12}` are the **3 torus dimensions × 2 ring directions** of the cost model's `ResourceVector` (see [SPMD Link-Count Cost](spmd-link-count-cost.md)). The high dword (`valid = 1`, from the constant `0x10000000D`) is the per-resource "this slot is a real ICI link" marker used when accumulating link counts / depositing cycles.
 
 ### `Target::Is{X,Y,Z}Degraded` — the per-axis failed-link flags
 
@@ -295,7 +298,7 @@ The picker reads four flag bytes from the `ObjectView<TpuCompilationEnvironment>
 
 | Function | Address | Role | Confidence |
 |---|---|---|---|
-| `BaseStrategyND::SelectNDStrategy` | `0x137c78e0` | the picker (2016 B) | HIGH (decompile-verified) |
+| `BaseStrategyND::SelectNDStrategy` | `0x137c78e0` | the picker (1999 B) | HIGH (decompile-verified) |
 | `IsCrossReplicaAllReduce` | `0x1e5a0020` | entry fold | HIGH |
 | `ReplicaGroupsOnNDPlane` | `0x1c890960` | Path A single-ND-plane test (plane=2) | HIGH |
 | `BaseStrategyND::IsGroupNDPlane` | `0x137c6700` | Path B 2-D-plane gate | HIGH (env`[0x1015]` read confirmed) |
@@ -308,7 +311,7 @@ The picker reads four flag bytes from the `ObjectView<TpuCompilationEnvironment>
 | `StrategySubgroupND::StrategySubgroupND` | `0x137d4c00` | sub-plane ctor | HIGH |
 | `TwistedTorusND::TwistedTorusND` | `0x137d0040` | twisted-torus ctor | HIGH |
 | `GetResourceFromIciResource` | `0x1c894c00` | ICI slot map | HIGH (byte-exact) |
-| `GetDegradedAxis` | `0x1c894c20` | per-axis reducer (384 B) | HIGH (byte-exact) |
+| `GetDegradedAxis` | `0x1c894c20` | per-axis reducer (363 B) | HIGH (byte-exact) |
 | `Target::IsXDegraded / IsYDegraded / IsZDegraded` | `0x1d615940 / …960 / …980` | per-axis flag bytes `Target+0x3f8..3fa` | HIGH |
 | `UseResilientAlgorithmBase` | `0x1c894da0` | resilient gate | HIGH (env`[0x1116]` confirmed) |
 | `UseResilientAlgorithmTwistedTorus` | `0x1c894fc0` | twisted resilient gate | HIGH |
