@@ -1,6 +1,6 @@
 # protodesc_cold Catalog
 
-> *All addresses on this page apply to `libtpu.so` v0.103 from the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`). Other builds renumber the section and rehash the descriptor symbols.*
+> *All addresses on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`). Other builds renumber the section and rehash the descriptor symbols.*
 
 ## Abstract
 
@@ -172,7 +172,7 @@ The five `trace_entries.proto` carry per-chip `TracePointId` enums (up to ~135 v
 
 ### Megascale — cross-slice collectives runtime
 
-Exactly 15 files under `platforms/xla/megascale/runtime/`. The complete control plane above ICI/DCN.
+Exactly 15 files under the `platforms/xla/megascale/` tree (most under `runtime/`, with `megascale_info.proto`/`runtime.proto` under `common/` and `addresses.proto`/`dcn_topology.proto` under the `third_party/.../xla/megascale/` mirror). The complete control plane above ICI/DCN.
 
 | Schema | Role | Confidence |
 |---|---|---|
