@@ -106,7 +106,7 @@ These headline figures are confirmed directly against the binary and its sidecar
 | ↳ named / anonymous | 881,784 / 3,048 | `functions` (name prefix split) | CERTAIN |
 | ↳ with demangled C++ name | 822,847 (~93 %) | `functions` (`demangled` non-null) | CERTAIN |
 | String literals | 1,249,324 | `strings` sidecar | CERTAIN |
-| RTTI records | 160,566 | `rtti` sidecar | CERTAIN |
+| RTTI records | 160,351 | `rtti` sidecar | CERTAIN |
 | Data tables | 40,313 | `data_tables` sidecar | CERTAIN |
 | Switch dispatches | 33,016 | `switches` sidecar | CERTAIN |
 | Pointer fixups | 1,069,603 | `fixups` sidecar | CERTAIN |
@@ -204,5 +204,5 @@ Taken together: trust the headline counts and the named, cleanly-decompiled bodi
 - [Codename Cheat-Sheet](codename-cheatsheet.md) — sibling front-matter page; the vocabulary glossary to this page's evidence grammar.
 - [Binary Forensics Overview](../forensics/overview.md) — the canonical headline structural counts, confirmed against the raw binary; the source of the version-pin numbers reused here.
 - [Dispatch-Table Taxonomy](../forensics/dispatch-table-taxonomy.md) — how the 33,016 switches and 40,313 data tables are read; a worked example of Medium-confidence structural inference.
-- [RTTI & Vtable Census](../forensics/rtti-vtable-census.md) — how the 160,566 RTTI records become High-confidence class-hierarchy claims.
+- [RTTI & Vtable Census](../forensics/rtti-vtable-census.md) — how the 160,351 RTTI records become High-confidence class-hierarchy claims.
 - [ELF Anatomy](../forensics/elf-anatomy.md) — the segment/section layout behind every absolute address cited in this book.

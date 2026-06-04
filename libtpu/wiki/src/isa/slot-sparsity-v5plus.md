@@ -1,6 +1,6 @@
 # Structured-Sparsity Slot (v5+)
 
-> *Addresses apply to libtpu.so from the libtpu-0.0.40-cp314 wheel (version 0.103, BuildID md5 `89edbbe81c5b328a958fe628a9f2207d`, not stripped — full C++ symbols). Other versions differ.*
+> *Addresses apply to libtpu.so from the libtpu-0.0.40-cp314 wheel (BuildID md5 `89edbbe81c5b328a958fe628a9f2207d` — the unambiguous anchor; the runtime-reported `0.103` is not statically verifiable in the binary; not stripped — full C++ symbols). Other versions differ.*
 
 ## Abstract
 

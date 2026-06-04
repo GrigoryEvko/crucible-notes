@@ -8,7 +8,7 @@
 
 The database is not one table but two, laid out back-to-back in `.lrodata`: the default `InstBits` (`0x3366d90`) and `InstBits_BarnaCorePxcHwMode` (`0x33931f0`). Both are `5667 × 32` bytes — one 4-word (`4 × uint64`) row per opcode, indexed by `opcode − 499`, interpreted as a [239-bit `APInt`](record-format.md). The emitter selects between them by a HwMode query on the `MCSubtargetInfo`. The counter-intuitive finding, byte-verified, is that the **default table is entirely zero on disk** and carries no relocations, while **only the BarnaCore variant is populated** (704 non-zero rows in the opcode range `2855..3991`). For every TensorCore and V5+ (Viperfish / Ghostlite / `6acc60406`) instruction the base contributes nothing; their bytes come from the proto-bundle emitter path, not this table.
 
-This page describes the database's axes — generation/HwMode × instruction-class × field — its in-binary representation as static `.lrodata` arrays plus the emitter-prologue accessor arithmetic, and how a slot's fields map to absolute bit positions in the 239-bit record. It shows the load-bearing rows (the BarnaCore vector-load, vector-store, loop, and predicate slot layouts) rather than dumping the 11,334 rows of the two tables.
+This page describes the database's axes — generation/HwMode × instruction-class × field — its in-binary representation as static `.lrodata` arrays plus the emitter-prologue accessor arithmetic, and how a slot's fields map to absolute bit positions in the 239-bit record. It shows the rows that carry data (the BarnaCore vector-load, vector-store, loop, and predicate slot layouts) rather than dumping the 11,334 rows of the two tables.
 
 For reimplementation, the contract is:
 

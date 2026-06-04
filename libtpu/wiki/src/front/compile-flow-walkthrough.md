@@ -1,6 +1,6 @@
 # Compile-Flow Walkthrough
 
-> *All addresses on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel (package version `0.103` — metadata only; the build-id is the unambiguous anchor: `89edbbe81c5b328a958fe628a9f2207d`, 781,691,048 bytes, not stripped — full C++ symbols; `.text` VA == file offset). Other wheel versions will differ; treat every VA as version-pinned.*
+> *All addresses on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel (wheel version `0.0.40`; the runtime-reported `0.103` is not statically verifiable in the binary, so the build-id is the unambiguous anchor: `89edbbe81c5b328a958fe628a9f2207d`, 781,691,048 bytes, not stripped — full C++ symbols; `.text` VA == file offset). Other wheel versions will differ; treat every VA as version-pinned.*
 
 ## Abstract
 

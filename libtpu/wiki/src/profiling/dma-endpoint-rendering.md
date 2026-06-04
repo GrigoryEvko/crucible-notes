@@ -1,6 +1,6 @@
 # DMA Endpoint Rendering
 
-> *All addresses on this page apply to `libtpu.so` v0.0.40 (PJRT plugin 0.103, build-id `89edbbe81c5b328a958fe628a9f2207d`). Other builds will differ. All offsets are VMA; `.text` and `.rodata` are mapped VMA == file offset; `.data.rel.ro` is VMA − 0x200000.*
+> *All addresses on this page apply to `libtpu.so` from the wheel `libtpu-0.0.40` (build-id `89edbbe81c5b328a958fe628a9f2207d` — the unambiguous anchor; the runtime-reported `0.103` is not statically verifiable in the binary). Other builds will differ. All offsets are VMA; `.text` and `.rodata` are mapped VMA == file offset; `.data.rel.ro` is VMA − 0x200000.*
 
 ## Abstract
 

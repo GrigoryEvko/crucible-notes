@@ -1,6 +1,6 @@
 # NOP / Unused-Slot Canonical Encoding
 
-> *Every offset, opcode value, and address on this page was read byte-exactly from `libtpu.so` in the `libtpu-0.0.40-cp314` wheel (libtpu 0.103, BuildID md5 `89edbbe81c5b328a958fe628a9f2207d`). Other versions differ.*
+> *Every offset, opcode value, and address on this page was read byte-exactly from `libtpu.so` in the `libtpu-0.0.40-cp314` wheel (BuildID md5 `89edbbe81c5b328a958fe628a9f2207d` — the unambiguous anchor; the runtime-reported `0.103` is not statically verifiable in the binary). Other versions differ.*
 
 ## Abstract
 

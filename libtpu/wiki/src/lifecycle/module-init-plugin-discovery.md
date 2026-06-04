@@ -12,7 +12,7 @@ This separation is the classic Google `base/init_google` pattern (`REGISTER_MODU
 
 For reimplementation, the contract is:
 
-- **The discovery handshake** — exactly one exported entry symbol (`GetPjrtApi`, lowercase `jrt`), `@@VERS_1.0`; the spelling, casing, and zero-argument signature are load-bearing.
+- **The discovery handshake** — exactly one exported entry symbol (`GetPjrtApi`, lowercase `jrt`), `@@VERS_1.0`; the spelling, casing, and zero-argument signature are all critical.
 - **The load-time init chain** — a PREINIT CPU gate that `raise(SIGILL)`s on a missing ISA feature *before any constructor runs*, then a register-only `.init_array` storm that builds the `GoogleInitializer` module DAG without executing any module.
 - **The one-time bootstrap gate** — `PJRT_Plugin_Initialize` (slot 8): a `struct_size` compat check, a `kPjRtCApiTpuInitType` selector, `TryAcquireTpuLock`, `GetLibTpuInitArguments`, `InitializeDriver` → `RealInitGoogle` → `RunInitializers` (the DAG run), all idempotent through stacked once-guards.
 
@@ -54,7 +54,7 @@ framework PJRT plugin registry (Python side)
               └─ pjrt::tpu_plugin::GetTpuPjrtApi  0xe6aa440   (lazy 140-slot build — §1.2)
 ```
 
-> **GOTCHA —** spelling and casing are load-bearing. The exported symbol is `GetPjrtApi` (lowercase `jrt`), matching the public PJRT plugin convention, versioned `GetPjrtApi@@VERS_1.0`. It is the *only* `GLOBAL FUNC` export matching `/Pjrt/`. `GetTpuPjrtApi` is an internal helper and is **not** exported. A loader that `dlsym`s `GetTpuPjrtApi`, or a build that exports only `Tpu`-prefixed names, fails discovery silently. The 194 `Tpu*_*` exports that share this binary are the *legacy* StreamExecutor C-ABI (`TpuExecutor_*` ×25, `TpuTransferManager_*` ×19, `TpuProgram_*` ×18, `TpuTopology_*` ×17, `TpuPlatform_*` ×11, …), all `@@VERS_1.0`, linked directly by `tensorflow/core/tpu/` — never reached through PJRT.
+> **GOTCHA —** spelling and casing are critical. The exported symbol is `GetPjrtApi` (lowercase `jrt`), matching the public PJRT plugin convention, versioned `GetPjrtApi@@VERS_1.0`. It is the *only* `GLOBAL FUNC` export matching `/Pjrt/`. `GetTpuPjrtApi` is an internal helper and is **not** exported. A loader that `dlsym`s `GetTpuPjrtApi`, or a build that exports only `Tpu`-prefixed names, fails discovery silently. The 194 `Tpu*_*` exports that share this binary are the *legacy* StreamExecutor C-ABI (`TpuExecutor_*` ×25, `TpuTransferManager_*` ×19, `TpuProgram_*` ×18, `TpuTopology_*` ×17, `TpuPlatform_*` ×11, …), all `@@VERS_1.0`, linked directly by `tensorflow/core/tpu/` — never reached through PJRT.
 
 ### The entry contract
 

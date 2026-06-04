@@ -1,6 +1,6 @@
 # How to Read This Book
 
-> *This book reverse-engineers one file: `libtpu.so` v0.103 from the `libtpu-0.0.40-cp314` wheel — a 781,691,048-byte (745.5 MiB) ELF64 shared object, build-id `89edbbe81c5b328a958fe628a9f2207d`. Every address on every page is an absolute virtual address in that one binary, recovered purely by static analysis. Another wheel will differ in every address.*
+> *This book reverse-engineers one file: `libtpu.so` from the `libtpu-0.0.40-cp314` wheel — a 781,691,048-byte (745.5 MiB) ELF64 shared object, build-id `89edbbe81c5b328a958fe628a9f2207d` (the unambiguous anchor; the runtime-reported `0.103` is not statically verifiable in the binary, so pin to the build-id and wheel `0.0.40`). Every address on every page is an absolute virtual address in that one binary, recovered purely by static analysis. Another wheel will differ in every address.*
 
 ## Abstract
 
@@ -20,7 +20,7 @@ For navigating this book, the contract is:
 |---|---|
 | **Subject binary** | `libtpu/libtpu.so` (in the `cp314` manylinux wheel), 781,691,048 B (745.5 MiB) |
 | **Build-id** | `89edbbe81c5b328a958fe628a9f2207d` (NT_GNU_BUILD_ID) |
-| **Reported version** | `0.103` (package metadata; pin to the build-id, which is unambiguous) |
+| **Reported version** | wheel `0.0.40` (pinned by build-id); the runtime-reported `0.103` is **not** statically verifiable in the binary — pin to the build-id, which is unambiguous |
 | **What it is** | The Google TPU PJRT plugin — compiler + runtime + driver + fabric in one object |
 | **Recovered functions** | 884,832 (881,784 named / 3,048 anonymous; ~93 % demangled) |
 | **ELF shape** | 52 sections, 11 program headers, 4 × `PT_LOAD`; entry point `0x0` (a library) |
@@ -107,7 +107,7 @@ Part II for the [PJRT_Api 140-Slot Reconstruction](../pjrt/api-vtable-reconstruc
 
 ### "I want to navigate the binary itself"
 
-Part I is the forensic map. [Forensics Overview](../forensics/overview.md) establishes the container shape; [ELF Anatomy](../forensics/elf-anatomy.md) walks every section and the VA==offset rule; [Dispatch-Table Taxonomy](../forensics/dispatch-table-taxonomy.md) and [RTTI ↔ Vtable Cross-Validation](../forensics/rtti-vtable-census.md) explain how the 40,313 data tables and 160,566 RTTI records were read. Pair it with [Methodology](../methodology.md) for the extraction pipeline.
+Part I is the forensic map. [Forensics Overview](../forensics/overview.md) establishes the container shape; [ELF Anatomy](../forensics/elf-anatomy.md) walks every section and the VA==offset rule; [Dispatch-Table Taxonomy](../forensics/dispatch-table-taxonomy.md) and [RTTI ↔ Vtable Cross-Validation](../forensics/rtti-vtable-census.md) explain how the 40,313 data tables and 160,351 RTTI records were read. Pair it with [Methodology](../methodology.md) for the extraction pipeline.
 
 > **NOTE —** the book is heavily per-generation. To trace one silicon family end-to-end, use the per-generation cross-index on the [landing page](../index.md): it gives, for each `TpuVersion` 0–5, the family page (IV), the ISA bundle page (VI), the MXU-latency page, and the performance grid (VII) in a single row.
 

@@ -178,8 +178,8 @@ These are the static-analysis terms the wiki uses to describe *how* a fact was r
 
 | Term | Definition |
 |---|---|
-| **vtable** | The C++ virtual-method dispatch table; emitted as `_ZTV…` symbols (39,246 hits). Because the binary is unstripped, a vtable address resolves to the class it belongs to. See [RTTI/Vtable Census](forensics/rtti-vtable-census.md). |
-| **RTTI / typeinfo** | Run-Time Type Information — the `_ZTI…` type-info records (60,471 hits) and the `typeinfo` name strings (141,445 hits) the compiler emits per polymorphic class; the primary lever for naming otherwise-anonymous objects. See [RTTI/Vtable Census](forensics/rtti-vtable-census.md). |
+| **vtable** | The C++ virtual-method dispatch table; emitted as `_ZTV…` symbols (39,244 hits). Because the binary is unstripped, a vtable address resolves to the class it belongs to. See [RTTI/Vtable Census](forensics/rtti-vtable-census.md). |
+| **RTTI / typeinfo** | Run-Time Type Information — the `_ZTI…` type-info records (60,457 hits) and the `typeinfo` name strings (141,445 hits) the compiler emits per polymorphic class; the primary lever for naming otherwise-anonymous objects. See [RTTI/Vtable Census](forensics/rtti-vtable-census.md). |
 | **`.lrodata` / `.lbss`** | Large-code-model ELF sections (both present in this binary). `.lrodata` holds large read-only data (the codename tables, proto descriptors) and `.lbss` the large zero-init data, addressed with 64-bit relocations rather than the ±2 GB small model. See [ELF Anatomy](forensics/elf-anatomy.md). |
 | **FLIRT** | Fast Library Identification and Recognition Technology — IDA's library-function fingerprinting, used to label the statically-linked Abseil/protobuf/tcmalloc/dnnl code so it can be excluded from TPU-specific analysis. Embedded libraries catalogued in [Embedded-Library Atlas](forensics/embedded-library-atlas.md). |
 | **sidecar** | A machine-readable export of the disassembly (the `_names.json`, `_strings.json`, `_segments.json`, callgraph, and ctree files) that the wiki greps instead of re-running the decompiler. Every count on this page is a sidecar hit. |

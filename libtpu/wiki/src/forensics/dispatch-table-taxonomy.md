@@ -53,7 +53,7 @@ For reimplementation, the contract is:
 | **Total pointers across tables** | 516,323 |
 | **Section split** | `.data.rel.ro` 38,664 · `.data` 1,442 · `.rodata` 207 |
 | **Switch jump tables (separate)** | 33,016 / 4,673,757 case targets |
-| **"vtable for" RTTI records** | 39,155 (of 160,566 RTTI records total) |
+| **"vtable for" RTTI records** | 39,155 (of 160,351 RTTI records total) |
 | **`R_X86_64_RELATIVE` relocations** | 1,069,006 (`DT_RELACOUNT`; 924,033 in `.data.rel.ro`) |
 | **Largest table** | `0x223393a0` — 2,595 entries (`UniqueFunctionBase`, `.data`) |
 | **Op-Model fingerprint** | size-23: 6,129 tables, 6,050 carry a `Model` entry |

@@ -1,6 +1,6 @@
 # Subsystem Map
 
-> *All addresses on this page apply to `libtpu.so` v0.103 from the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`). Other versions will differ. This is the root-level map for the whole wiki; every Part links back here.*
+> *All addresses on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d` — the unambiguous anchor; the runtime-reported `0.103` is not statically verifiable in the binary). Other versions will differ. This is the root-level map for the whole wiki; every Part links back here.*
 
 ## Abstract
 

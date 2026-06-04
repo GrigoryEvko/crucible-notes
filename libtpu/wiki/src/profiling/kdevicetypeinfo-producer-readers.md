@@ -1,6 +1,6 @@
 # kDeviceTypeInfo Producer and Roofline Readers
 
-> *All addresses on this page apply to `libtpu.so` v0.103 from the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`). The binary is **not** stripped — every symbol is a demangled C++ name. `.text`, `.rodata`, and `.lrodata` map VMA == file offset; `kDeviceTypeInfo` lives at VMA `0x1c60480` in `.lrodata`. Other builds will differ.*
+> *All addresses on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d` — the unambiguous anchor; the runtime-reported `0.103` is not statically verifiable in the binary). The binary is **not** stripped — every symbol is a demangled C++ name. `.text`, `.rodata`, and `.lrodata` map VMA == file offset; `kDeviceTypeInfo` lives at VMA `0x1c60480` in `.lrodata`. Other builds will differ.*
 
 ## Abstract
 
