@@ -79,9 +79,9 @@ The chip-level identity a reimplementer might expect here — PCI vendor/device 
 
 ### Field-String Anchors
 
-The field names sit consecutively in `.rodata` immediately after the `DescriptorProto`. The three clock-rate fields are the load-bearing anchors for the timebase and were confirmed byte-exact:
+The field names sit consecutively in the serialized descriptor blob (`protodesc_cold` section) immediately after the message header. The three clock-rate fields are the primary anchors for the timebase and were confirmed byte-exact:
 
-| Field string | `.rodata` addr | Status |
+| Field string | descriptor addr | Status |
 |---|---|---|
 | `tensor_core_freq_hz` | `0xbe99b16` | CERTAIN (verbatim in binary) |
 | `sparse_core_freq_hz` | `0xbe99b33` | CERTAIN (verbatim in binary) |
