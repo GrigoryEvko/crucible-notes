@@ -143,7 +143,7 @@ function GetPhase1ReplicaGroups(target, da, da2, arg, all_cores, b):   // 0x137d
     ldpc     = target.LogicalDevicesPerChip(0)                         // 0x1d615b00
     n_groups = 2K * ldpc                                               // v20 = v18[2K] * ldpc
     groups   = vector<ReplicaGroup>(n_groups)                          // operator new(48 * n_groups)
-    cores_per_chip = target.CoresPerChip(0)                            // 0x137d3ea... (v93)
+    cores_per_chip = target.CoresPerChip(0)                            // call @ 0x137d3e8a (v93)
 
     for m = 0 .. 2K-1:                                                 // OUTER  (v96 == 2K)
         g_single = m                                                   // 48*m offset (v94)
