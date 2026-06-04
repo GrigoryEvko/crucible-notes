@@ -6,7 +6,7 @@
 
 `TwistedTorusND::BuildStrategy` (`0x137d0c00`) is the driver that turns a classified twisted slice into the per-color ring neighbour/ordinal tables the all-reduce emitter rides. It is the twisted-torus override of `StrategyND::BuildStrategy`: it builds the *same* rectangular ND ring that any torus strategy builds, then **overwrites the doubled-axis edges** with the twist fold so the two length-`K` rings of the short axis join end-to-end into one length-`2K` ring while each long axis carries an ordinary doubled ring. The reference frame is a per-axis ring schedule the way LLVM's reduce-scatter lowering would emit one — except that one logical ring is re-threaded across two physical axes by the dateline seam.
 
-The function is a strict **phase pipeline**. First a setup prologue (`UpdateMinMaxDims` → `InitColorDimensions`) reduces the three torus extents to the `(K, 2K)` scalars and the two axis-count fields, then fills the `color_dims[6][3]` permutation table. Then **Stage 1** builds the unwrapped base ND ring for every color and active dimension (`ComputeOrdinal`, `Torus2DevicePhase0Neighbor` / `MeshStrideNPhasekNeighbor`, deposited via `UpdateNeighborLocation`). Then **Stage 2** runs a per-color, per-ring-dimension loop whose inner index `p ∈ {0,1,2}` is the **ring-dimension column** of `color_dims[c]`; the physical axis stored in that column decides whether the phase seams `K→2K` or `2K→K`, dispatching to the four seam builders.
+The function is a strict **phase pipeline** running on top of a setup prologue. The prologue (`UpdateMinMaxDims` → `InitColorDimensions`) runs in the **`TwistedTorusND` constructor** (`0x137d0040`, call sites `0x137d00df` / `0x137d0115`) — *not* in `BuildStrategy`'s own body — and reduces the three torus extents to the `(K, 2K)` scalars and the two axis-count fields, then fills the `color_dims[6][3]` permutation table. `BuildStrategy` then **reads** those already-populated fields (`[obj+0x5f0]`/`[obj+0x5f8]`/`[obj+0x600]`/`[obj+0x608]`/`color_dims`) rather than recomputing them. **Stage 1** builds the unwrapped base ND ring for every color and active dimension (`ComputeOrdinal`, `Torus2DevicePhase0Neighbor` / `MeshStrideNPhasekNeighbor`, deposited via `UpdateNeighborLocation`). Then **Stage 2** runs a per-color, per-ring-dimension loop whose inner index `p ∈ {0,1,2}` is the **ring-dimension column** of `color_dims[c]`; the physical axis stored in that column decides whether the phase seams `K→2K` or `2K→K`, dispatching to the four seam builders.
 
 The single insight a reimplementer must carry from this page: **the phase index `p` is literally the third argument to every seam builder, and it is also the column index into `color_dims[c]`**. The fold direction is not chosen by `p` — it is chosen by *which physical axis* `color_dims[c][p]` names (the `K`-axis or one of the `2K`-axes). `p` only selects which of the three RingLocation neighbour/ordinal slots the result lands in. This page owns the BuildStrategy driver, the phase→column mapping, `InitColorDimensions`, and the four seam builders' roles; it does **not** re-derive the twist predicate ([Twist Predicate & Orientation](twist-predicate-orientation.md)), the per-shape coordinate fold ([Shape Folds](shape-folds.md), [GetReplicaPair3DOnTwistedTorus](get-replica-pair-3d.md)), or the downstream 2-phase replica-group build ([2-Phase Replica-Group Construction](replica-group-2phase.md)).
 
@@ -19,7 +19,7 @@ For reimplementation, the contract is:
 
 | | |
 |---|---|
-| **Entry point** | `TwistedTorusND::BuildStrategy` `0x137d0c00` (~0x1180 B) |
+| **Entry point** | `TwistedTorusND::BuildStrategy` `0x137d0c00` (~0x18c0 B, ends at next symbol `0x137d24c0`) |
 | **Signature** | `(TwistedTorusND* this, const Target&, LloRegionBuilder*)` |
 | **Prologue** | `UpdateMinMaxDims` `0x137d0260` · `InitColorDimensions` `0x137d0800` |
 | **ND-ring gate** | `[obj+0xa8] == 1` (ND ring vs 1-D ring; same as base `StrategyND`) |
@@ -35,11 +35,14 @@ For reimplementation, the contract is:
 ## 1. Entry Point and Phase Pipeline
 
 ```text
+TwistedTorusND::TwistedTorusND  (ctor)   0x137d0040   ── runs the setup prologue BEFORE BuildStrategy
+  ├─ UpdateMinMaxDims                    0x137d0260   ── @0x137d00df: K/2K scalars + num-K/num-2K counts  (§3 of overview)
+  └─ InitColorDimensions                 0x137d0800   ── @0x137d0115: color_dims[6][3] cyclic fill / degraded remap
+       └─ UseResilientAlgorithmTwistedTorus 0x1c894fc0   ── env[0x1116] + GetDegradedAxis != -1 gate
+            └─ InitColorDimensionsDegraded  0x137c6580   ── (resilient tail) degraded [6][3] remap
+
 TwistedTorusND::BuildStrategy            0x137d0c00   ── twisted-torus override of StrategyND::BuildStrategy
-  ├─ UpdateMinMaxDims                    0x137d0260   ── K/2K scalars + num-K/num-2K counts  (prologue, §3 of overview)
-  ├─ InitColorDimensions                 0x137d0800   ── color_dims[6][3] cyclic fill / degraded remap
-  │    └─ UseResilientAlgorithmTwistedTorus 0x1c894fc0   ── env[0x1116] + GetDegradedAxis != -1 gate
-  │         └─ InitColorDimensionsDegraded  0x137c6580   ── (resilient tail) degraded [6][3] remap
+  │   (reads the prologue fields above; does not call the prologue itself)
   ├─ STAGE 1 — base ND ring  (0x137d0e62..0x137d13ad, per color × dim)
   │    ├─ StrategyND::ComputeOrdinal     0x137c5300   ── coord -> ring ordinal
   │    ├─ Torus2DevicePhase0Neighbor     0x137c57a0   ── +1/-1 neighbour, no-wrap fast path
@@ -52,7 +55,7 @@ TwistedTorusND::BuildStrategy            0x137d0c00   ── twisted-torus overr
        └─ UpdateOrdinal2K                0x137d2c60   ── 2K-axis column: 2K ordinal fold
 ```
 
-The function body is one prologue, one base-ring loop, and then a **two-way branch** on the 2K-axis count (`num_max_dims_`) into two nearly identical Stage-2 loops — one for the single-2K-axis shape (K_K_2K) and one for the double-2K-axis shape (K_2K_2K). Both Stage-2 loops walk colors × phases with the same seam-builder vocabulary; they differ only in the axis-identification CHECKs and in how many phases land in the `2K→K` branch.
+The function body (with the prologue already done by the constructor) is one base-ring loop, and then a **two-way branch** on the 2K-axis count (`num_max_dims_`) into two nearly identical Stage-2 loops — one for the single-2K-axis shape (K_K_2K) and one for the double-2K-axis shape (K_2K_2K). Both Stage-2 loops walk colors × phases with the same seam-builder vocabulary; they differ only in the axis-identification CHECKs and in how many phases land in the `2K→K` branch.
 
 > **NOTE —** `BuildStrategy` does **not** decide which physical ICI links carry each hop — it produces the *logical* neighbour ordinals only. The physical link assignment is the routing half's job (`TwistedTorusTopology`, [routing overview](../routing/overview.md)). A reimplementer who stops at this page has a ring schedule that knows its partners but not its wires.
 
@@ -62,7 +65,7 @@ The function body is one prologue, one base-ring loop, and then a **two-way bran
 
 ### Purpose
 
-The prologue reduces the slice to the four numbers the rest of the function keys on and fills the color-dimension permutation table. `UpdateMinMaxDims` (`0x137d0260`) is documented as the shape gate on [Twist Predicate & Orientation](twist-predicate-orientation.md) and summarized in the [section overview](overview.md#3-the-shape-gate-and-the-shape-fold-catalog); only the fields BuildStrategy consumes are repeated here.
+The prologue — run by the `TwistedTorusND` constructor (`0x137d0040`) at `0x137d00df`/`0x137d0115`, before `BuildStrategy` is ever entered — reduces the slice to the four numbers the rest of the function keys on and fills the color-dimension permutation table. `BuildStrategy` consumes these fields read-only. `UpdateMinMaxDims` (`0x137d0260`) is documented as the shape gate on [Twist Predicate & Orientation](twist-predicate-orientation.md) and summarized in the [section overview](overview.md#3-the-shape-gate-and-the-shape-fold-catalog); only the fields BuildStrategy consumes are repeated here.
 
 ### Fields it leaves for BuildStrategy
 
@@ -169,7 +172,7 @@ The dispatch table, with the byte-exact call sites and their `edx` phase immedia
 | 2 | `K`-axis | `UpdateNeighborsKTo2K` `@0x137d1beb` + `UpdateOrdinal2KToK` `@0x137d1c19` |
 | 2 | `2K`-axis | `UpdateNeighbors2KToK` `@0x137d1c63` (no `UpdateOrdinal2K`) |
 
-> **QUIRK —** phase 2 has **no** `UpdateOrdinal2K` call. The `UpdateOrdinal2K` ordinal fold fires only on phases 0 and 1 (`@0x137d1a24` and `@0x137d1ad9`); the phase-2 `2K`-axis branch updates only the neighbour table (`UpdateNeighbors2KToK @0x137d1c63`). A reimplementer who symmetrically calls the ordinal fold on all three phases will corrupt the third ring dimension's ordinal — the third dimension's `2K` ordinal is left as the base-ring value by design. This is decompile-verified: there is no eleventh ordinal call site, only ten seam calls (three `KTo2K`, three `2KToK`, three `Ordinal2KToK`, two `Ordinal2K`).
+> **QUIRK —** phase 2 has **no** `UpdateOrdinal2K` call. The `UpdateOrdinal2K` ordinal fold fires only on phases 0 and 1 (`@0x137d1a24` and `@0x137d1ad9`); the phase-2 `2K`-axis branch updates only the neighbour table (`UpdateNeighbors2KToK @0x137d1c63`). A reimplementer who symmetrically calls the ordinal fold on all three phases will corrupt the third ring dimension's ordinal — the third dimension's `2K` ordinal is left as the base-ring value by design. This is decompile-verified: there is no third `UpdateOrdinal2K` call site — the Stage-2 loop tabulated above (the `num_max_dims_ != 1` / K_2K_2K branch, `0x137d168a..0x137d1c70`) emits exactly eleven seam calls (three `KTo2K`, three `Ordinal2KToK`, three `2KToK`, two `Ordinal2K`).
 
 > **GOTCHA —** the fold direction is chosen by the *axis class of the column*, **not** by the phase number. Phase `p` is just a slot index. The same phase `p=0` folds `K→2K` for one color (whose column 0 holds the `K`-axis) and `2K→K` for another color (whose column 0 holds a `2K`-axis), because `InitColorDimensions` rotated the permutation. Driving the fold off `p` instead of off `color_dims[c][p]` is the single most likely reimplementation bug.
 
@@ -205,12 +208,16 @@ Each Stage-2 phase calls one neighbour seam plus (usually) one ordinal seam. The
 Joins the two length-`K` rings end-to-end into the length-`2K` ring. The seam predicate fires at the last chip of a `K`-segment and jumps `+K` along the long axis:
 
 ```c
-function UpdateNeighborsKTo2K(this, color, phase, …):   // 0x137d24c0
-    seam = SeqS32(coord, K-1)                            // at the high end of a K-segment
+function UpdateNeighborsKTo2K(this, color, phase, dim, …):   // 0x137d24c0
+    seam = SeqS32(coord, K-1)                            // K-1 = [obj+0x5f8]-1; high end of a K-segment
            AND (Pimm(dir == 1) OR SeqS32([obj+0x180], dir-1))
-    wrapped = ModuloRingSize(SaddS32(coord_long, K), 2K) // 0x137c61a0 — the +K-mod-2K jump
-    chip    = Sselect(seam, ToChipId(wrapped, …), base_chip)   // ToChipId 0x1d519cc0
-    neighbor_table[obj+0x238 + chip*0x48 + dim*0x18] = chip    // overwrite base-ring entry
+    // per coordinate in the ring: fold the long axis by +K mod 2K, gated by seam
+    wrapped = ModuloRingSize(SaddS32(coord_long, K), 2K) // 0x137c61a0 — modulus = [obj+0x5f0] (2K)
+    folded  = Sselect(seam, wrapped, base_coord)
+    fwd_chip = ToChipId(folded, …)                       // ToChipId 0x1d519cc0
+    // forward neighbour (CwCore), then backward (CounterCwCore) via a second seam pass
+    [obj + color*0x48 + dim*0x18 + 0x238] = fwd_chip      // overwrite base-ring CwCore entry
+    [obj + color*0x48 + dim*0x18 + 0x3e8] = bwd_chip      //   and the CounterCwCore entry
 ```
 
 ### UpdateOrdinal2KToK — `0x137d28c0` (K-axis column, inverse ordinal)
@@ -219,8 +226,9 @@ Maps a `2K` ring ordinal back into `[0, K)` — the inverse fold that re-numbers
 
 ```c
 function UpdateOrdinal2KToK(this, color, phase, dim, …):  // 0x137d28c0
-    in_lower = SltS32(coord, K)
-    ordinal' = Sselect(in_lower, SmodU32(ordinal, K), SsubS32(ordinal, K))
+    in_lower = SltS32(coord, K)                          // K = [obj+0x5f8] (min_dim_size_)
+    ordinal' = Sselect(in_lower, SmodU32(ordinal, K), SsubS32(ordinal, K/2))
+    // else branch subtracts K/2 = [obj+0x5f8]/2, not K; slot [obj + color*0x18 + phase*8 + 0x1a8]
 ```
 
 ### UpdateNeighbors2KToK — `0x137d29c0` (2K-axis column, 2K→K)
