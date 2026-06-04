@@ -13,7 +13,7 @@ The SFLAG *number* formulas (the local reserved-block arithmetic) are on [Barrie
 For reimplementation, the contract is:
 
 - **The remote SFLAG address is a bit-packed VMEM word, not a recomputed flat pointer.** It is built as a chain of LLO scalar ops (`SimmU32` const, `SandU32` mask, `SshllU32` shift-left, `SshrlU32` shift-right, `SaddS32` add, `SorU32` or) on a by-value `LloRegionBuilder`; the simplifier constant-folds when the chip-coord operands are compile-time constants. The result is tagged with annotation `"remote sync flag address"`.
-- **Dispatch is keyed on `TpuVersion` via a `FunctionRegistry` populated by one static initializer.** Five keys (`0/1/2/3/4`) map to four distinct encoders (JfDf is shared by `kJellyfish` and `kDragonfish`). An unknown version `LOG(FATAL)`s `"Unsupported version: "`.
+- **Dispatch is keyed on `TpuVersion` via a `FunctionRegistry` populated by four sibling static initializers.** Five `Register` calls (keys `0/1/2/3/4`, split across the jellyfish/pufferfish/viperfish/ghostlite static-init TUs) map to four distinct encoders (JfDf is shared by `kJellyfish` and `kDragonfish`). An unknown version `LOG(FATAL)`s `"Unsupported version: "`.
 - **Only JfDf consumes the physical chip-id and supports multicast.** The dispatcher always runs `MapLogicalToPhysicalChipId` and always passes the result + the peer `CoreLocationBase` to every encoder, but the V2 wrappers discard both and rebuild their chip field from the logical coordinate. Pufferfish `LOG(FATAL)`s on multicast; Viperfish/Ghostlite silently drop the bool.
 - **`MapLogicalToPhysicalChipId` is a pure topology-coordinate transform, not a DeviceAssignment lookup.** It un-linearizes the logical chip-id to `(row, col, z)` over the program mesh, translates by the per-core subslice origin, bound-checks against the physical chip bounds, and re-linearizes over the physical bounds — feeding JfDf's bit-21 field only.
 
@@ -22,7 +22,7 @@ For reimplementation, the contract is:
 | **Consumer** | `VsyncAddRemote` @`0x1d522f40` → `EncodeRemoteSyncFlagAddress` + `CreateVectorSyncFlagAddRemote` |
 | **Dispatcher** | `LloRegionBuilder::EncodeRemoteSyncFlagAddress` @`0x1d54da40` |
 | **Registry** | `GetRemoteSyncFlagEncoderRegistry()::r` @`0x2257e488` (`FunctionRegistry<tpu::TpuVersion, …>`) |
-| **Registrar** | `_GLOBAL__sub_I_remote_sync_flag_encoder_jellyfish.cc` @`0x2135b720` (5 `Register` calls) |
+| **Registrars** | `…_jellyfish.cc` @`0x2135b720` (keys 0,1 → JfDf) · `…_pufferfish.cc` @`0x2135bb30` (key 2) · `…_viperfish.cc` @`0x2135bc00` (key 3) · `ghostlite_dma_utils.cc` @`0x2135be70` (key 4) — 5 `Register` calls into the address registry, split across 4 TUs |
 | **V1 encoder (gen 0/1)** | `EncodeRemoteSyncFlagAddressJfDf` @`0x1d5aa620` (coordinate-based, phys-chip + multicast) |
 | **V2 encoders (gen 2/3/4)** | `pufferfish` @`0x1d5ae1a0` / `viperfish` @`0x1d5af9c0` / `ghostlite` @`0x1d5affc0` (core-index-relative) |
 | **Chip-id remap** | `MapLogicalToPhysicalChipId` @`0x1d519f40` (3-D mixed-radix; JfDf-only) |
@@ -82,7 +82,14 @@ function EncodeRemoteSyncFlagAddress(builder, sflag, peer, multicast):          
 
 `GetRemoteSyncFlagEncoderRegistry()::r` @`0x2257e488` (guard @`0x2257e490`) is a lazy singleton `FunctionRegistry<tpu::TpuVersion, LloValue*(LloValue* sflag, CoreLocationBase const&, bool multicast, LloValue* phys_chip_id, LloRegionBuilder)>` — internally an `absl::flat_hash_map<TpuVersion, shared_ptr<MapValue>>`. The `Get` path @`0x1d54e020` takes a shared mutex (`Mutex::lock_shared`), does a `raw_hash_set::find`, and returns the default empty-`std::function` on miss (which the dispatcher's `LOG(FATAL)` then catches).
 
-It is populated once by the static initializer `_GLOBAL__sub_I_remote_sync_flag_encoder_jellyfish.cc` @`0x2135b720` (with the sibling Pufferfish/Viperfish/Ghostlite static-init TUs folded into the same `.text.startup` run), which calls `FunctionRegistry::Register` @`0x1d5aa7a0` five times. The `TpuVersion` key is the first `Register` argument; the `Register` bool return is discarded into per-gen `kUnused…` globals.
+It is populated across **four** sibling static-init TUs, each running `FunctionRegistry::Register` @`0x1d5aa7a0` once or twice into the address registry (`r` @`0x2257e488`) — for **five** total registrations:
+
+- `_GLOBAL__sub_I_remote_sync_flag_encoder_jellyfish.cc` @`0x2135b720` registers JfDf @`0x1d5aa620` **twice** — key `1` (`movl $0x1` @`0x2135b74d`) then key `0` (`movl $0x0` @`0x2135b7be`) — and also seeds the sibling core-id and DMA-overrides registries.
+- `_GLOBAL__sub_I_remote_sync_flag_encoder_pufferfish.cc` @`0x2135bb30` registers Pufferfish @`0x1d5af8a0` for key `2` (`movl $0x2` @`0x2135bb51`).
+- `_GLOBAL__sub_I_remote_sync_flag_encoder_viperfish.cc` @`0x2135bc00` registers Viperfish @`0x1d5af900` for key `3` (`movl $0x3` @`0x2135bc21`).
+- `_GLOBAL__sub_I_ghostlite_dma_utils.cc` @`0x2135be70` registers Ghostlite @`0x1d5b01e0` for key `4` (`movl $0x4` @`0x2135be95`).
+
+The `TpuVersion` key is the third `Register` argument (stack-`movl` immediate); the `Register` bool return is discarded into per-gen `kRegister…`/`kUnused…` globals.
 
 | `TpuVersion` key | mnemonic | encoder registered (registry wrapper) | arithmetic impl | family |
 |---|---|---|---|---|
@@ -92,7 +99,7 @@ It is populated once by the static initializer `_GLOBAL__sub_I_remote_sync_flag_
 | 3 | `kViperfish` | `EncodeRemoteSyncFlagAddressViperfish` @`0x1d5af900` | `viperfish::dma_utils::…` @`0x1d5af9c0` (14-bit chip) | V2 |
 | 4 | `kGhostlite` | `EncodeRemoteSyncFlagAddressGhostlite` @`0x1d5b01e0` | `ghostlite::dma_utils::…` @`0x1d5affc0` (14-bit, byte-identical to VF) | V2 |
 
-`Ghostlite` is the `glc`-family v6 (the marketing name is "Trillium"). The keys `0/1/2/3/4` were byte-confirmed from the registrar's `[rbp]`-stored immediates; the `LEA` of each encoder address in the full `.text` matches *only* this registrar.
+`Ghostlite` is the `glc`-family v6e (the marketing name is "Trillium"). The keys `0/1/2/3/4` were byte-confirmed from each registrar's `[rbp]`-stored `movl` immediates (§2); the `LEA` of each encoder address in the full `.text` matches *only* its registrar.
 
 > **NOTE —** the registry wrappers (the symbols named `EncodeRemoteSyncFlagAddress{Pufferfish,Viperfish,Ghostlite}`) carry the full 5-argument registry signature `(LloValue*, CoreLocationBase const&, bool, LloValue*, LloRegionBuilder)`. The per-gen *arithmetic impls* in the `dma_utils` namespaces carry the slimmer 3-argument signature `(LloValue* sflag, CoreLocationBase const&, LloRegionBuilder)` — no `phys_chip_id`, no `multicast`. The wrappers exist purely to discard those two extra arguments (and, for Pufferfish, to `LOG(FATAL)` if `multicast` is set) before tail-calling the impl. `EncodeRemoteSyncFlagAddressViperfish` @`0x1d5af900` and `…Ghostlite` @`0x1d5b01e0` are bare one-line tail-calls.
 
@@ -100,7 +107,7 @@ It is populated once by the static initializer `_GLOBAL__sub_I_remote_sync_flag_
 
 ## 3. The per-gen bit-packing formulas
 
-All encoders build the address as a chain of LLO scalar ops and tag the result `set_annotation_if_not_constant("remote sync flag address")`. The two families differ in what they pack.
+All encoders build the address as a chain of LLO scalar ops. **Only JfDf tags the result** `set_annotation_if_not_constant("remote sync flag address")`; the V2 `dma_utils` impls (@`0x1d5ae1a0`/`0x1d5af9c0`/`0x1d5affc0`) carry **no** annotation call — byte-confirmed. The two families differ in what they pack.
 
 ### 3.1 The two-family table
 
@@ -171,7 +178,7 @@ return pufferfish::dma_utils::EncodeRemoteSyncFlagAddress(sflag, peer, builder) 
 
 ### 3.4 What the address encoder is NOT — the sibling core-id encoder
 
-Each V2 `dma_utils` TU also defines `RemoteSyncFlagCoreIdEncoder(TpuSequencerType, sflag, core, builder)` (PF @`0x1d5ae2e0` / VF @`0x1d5afb00` / GL @`0x1d5b0100`): `SimmU32(seq==TC?2 : seq==SC?4 : FATAL)` → `SaddS32(., core ?: CoreIndex())` → `SshllU32(., 0xd)` → `SorU32(sflag, .)`. This builds the **core-selector** field of the *DMA descriptor's* sflag slot (the `CoreIndex() << 0xd`, bit 13), and it is registered in a **separate** registry, `GetRemoteSyncFlagCoreIdEncoderRegistry()::r` @`0x2257e470` — not the address registry documented here. The two are easy to conflate: the **address** encoder (this page) packs the *chip coordinate*; the **core-id** encoder packs the *core index*. They are distinct functions in distinct registries.
+Each V2 `dma_utils` TU also defines `RemoteSyncFlagCoreIdEncoder(TpuSequencerType, sflag, core, builder)` (PF @`0x1d5ae2e0` / VF @`0x1d5afb00` / GL @`0x1d5b0100`): `SimmU32(seq==TC?2 : seq==SC?4 : FATAL)` → `SaddS32(., core ?: CoreIndex())` → `SshllU32(., 0xd)` → `SorU32(sflag, .)`. This builds the **core-selector** field of the *DMA descriptor's* sflag slot (the `CoreIndex() << 0xd`, bit 13), and it is registered in a **separate** registry, `GetRemoteSyncFlagCoreIdEncoderRegistry()::r` @`0x2257e468` (guard @`0x2257e470`) — not the address registry documented here. The two are easy to conflate: the **address** encoder (this page) packs the *chip coordinate*; the **core-id** encoder packs the *core index*. They are distinct functions in distinct registries.
 
 ### 3.5 The 12→14 chip-field widening
 
@@ -268,7 +275,7 @@ Putting the dispatcher, the remap, and the per-gen encoders together, the cross-
 | Pufferfish encode (gen 2) | `pufferfish::dma_utils::…` @`0x1d5ae1a0` | `sflag\|(0x8000\|core<<14)\|((chip&0xfff)<<18)` |
 | Viperfish encode (gen 3) | `viperfish::dma_utils::…` @`0x1d5af9c0` | `sflag\|(0x8000\|core<<14)\|((chip&0x3fff)<<17)` |
 | Ghostlite encode (gen 4) | `ghostlite::dma_utils::…` @`0x1d5affc0` | (byte-identical to Viperfish) |
-| annotate | `set_annotation_if_not_constant` | `"remote sync flag address"` |
+| annotate (JfDf only) | `set_annotation_if_not_constant` | `"remote sync flag address"` (V2 impls do not annotate) |
 | (consumer) emit | `CreateVectorSyncFlagAddRemote` | the remote SFLAG-add instruction with the encoded address as operand 0 |
 
 ---
@@ -282,6 +289,7 @@ Putting the dispatcher, the remap, and the per-gen encoders together, the cross-
 > - **Pufferfish** @`0x1d5ae1a0`: `core_sub = CLB[+8]&3`, MS-gate `((sflag[+0xb]>>2)&0x1f)−9 ≤ 1` → `+2`, chip `(CLB[+0]&0xfff)<<0x12`, fold `(SimmU32(0x20000)+core<<0x10)>>2`, `SorU32(.,sflag)`, `SorU32(chip,.)` — exact.
 > - **Viperfish** @`0x1d5af9c0`: MS-gate `(((sflag[+0xb]>>2)&0x1d)|2)==0xe`, chip `(CLB[+0]&0x3fff)<<0x11` — exact; **Ghostlite** @`0x1d5affc0` byte-identical (`0x3fff`/`<<0x11`).
 > - **PF wrapper** @`0x1d5af8a0`: `if(multicast) LOG(FATAL) "is_multicast == false"` (pufferfish.cc:13) then 3-arg tail-call; **VF/GL wrappers** @`0x1d5af900`/`0x1d5b01e0` bare tail-calls dropping `phys`+`multicast`.
+> - **Registrars** (address registry `r` @`0x2257e488`, `Register` @`0x1d5aa7a0`): five registrations across four TUs — `…_jellyfish.cc` @`0x2135b720` (JfDf @`0x1d5aa620`, keys `1` @`0x2135b74d` & `0` @`0x2135b7be`), `…_pufferfish.cc` @`0x2135bb30` (key `2` @`0x2135bb51`), `…_viperfish.cc` @`0x2135bc00` (key `3` @`0x2135bc21`), `ghostlite_dma_utils.cc` @`0x2135be70` (key `4` @`0x2135be95`, encoder LEA `0x1d5b01e0` @`0x2135beb2`) — exact. The jellyfish TU also seeds the core-id registry (`r` @`0x2257e468`, `Register` @`0x1d5ae3c0`) and the DMA-overrides registry (`r` @`0x2257e478`). Only JfDf annotates its result; the V2 `dma_utils` impls carry no `set_annotation` call.
 > - **`MapLogicalToPhysicalChipId`** @`0x1d519f40`: gate `Target[+0x930]==1`, `!multicast && vtable[+0x18]()` passthrough, the `(opcode−219)>=0xA && !=44` + `kSubslicePhysicalChipId` annotation idempotence guard, `ToChipCoordinates → LoadSubsliceOffset → 3× SaddS32 → LoadPhysicalChipBounds → 3× ScheckLt (column/row/z) → SmulU32/SaddS32/SmulU32/SaddS32 → annotation "subslice-physical-chip-id"` — exact.
 > - **`DefaultSyncFlagSegmentId`** @`0x1d62da60` = `0x40` (`mov eax,0x40; ret`).
 >
