@@ -148,23 +148,32 @@ Byte-anchored facts:
 
 ### Per-codename which-set rule
 
-The default set is loaded by `RouteCacheDeduplicator::Create` (lambda `@0x21f574c0`); viperfish *adds* the large-pod set via `CreateResilientViperfish` (`@0x21f57510`, reached through `0x1fbe3e60`) **after** the default set, so it covers `12 + 4 = 16` shapes. The codename→set mapping is:
+The selector is **not** the TPU version. `InitRouteSolution` switches on `HIDWORD(v90)` — the `ocs_fault_links_symmetry` discriminant returned by `TopologyFaults::GetSymmetryProperty` — whose **only** valid values are `{1, 2, 4}` (any other value yields `MakeErrorImpl<12>("Invalid ocs_fault_links_symmetry: …")` at source line 266). Each case lazily constructs one of three function-local `RouteCacheDeduplicator` singletons inside `GetCacheDeduplicator(int)` — `pf_deduplicator`, `vf_deduplicator`, `gf_deduplicator` — then `UpdateDeduplicator`s it with the bounding `flat_set`s. The default set is built by `RouteCacheDeduplicator::Create` (lambda `@0x21f574c0`); viperfish *adds* the large-pod set via `CreateResilientViperfish` (reached through `0x1fbe3e60`) **after** the default set, so it covers `12 + 4 = 16` shapes. The symmetry→deduplicator→sets mapping (each `UpdateDeduplicator` is `CHECK`-asserted OK) is:
 
-| Codename | TpuVersion | Sets loaded | Effect |
-|----------|------------|-------------|--------|
-| pufferfish | 3 (PXC) | `kRouteCacheSet` (12) | default inventory |
-| ghostlite | 5 (VXC) | `kRouteCacheSet` (12) | shares the default inventory |
-| viperfish | 4 (VXC) | `kRouteCacheSet` (12) + `kViperfishRouteCacheSet` (4) = 16 | protects the large pods (`16x16x16`, `20x20x20`, `12x24x24_twisted`, `16x16x32_twisted`) that the others cannot |
-| `6acc60406` (ghostfish) | 6 (GXC) | own `cache_ici_resiliency_6acc60406_fault_dim_z` config (densest fault set) | newest part; ~2× viperfish's per-shape fault tolerance |
-| jellyfish / dragonfish | — | **none** | no resilient cache; a fault fails the symmetry gate and the slice reshapes (see [`route-table-generation.md`](route-table-generation.md)) |
+| `ocs_fault_links_symmetry` | Deduplicator | Sets loaded (asserted by `CHECK`-fail strings) | Codename family |
+|----------------------------|--------------|------------------------------------------------|-----------------|
+| `1` | `pf_deduplicator` | `kRouteCacheSet` (12) | pufferfish (v4) |
+| `2` | `vf_deduplicator` | `kRouteCacheSet` (12) + `kViperfishRouteCacheSet` (4) = 16, via `CreateResilientViperfish` | viperfish (v5) |
+| `4` | `gf_deduplicator` | `kRouteCacheSet` (12) + `k6acc60406RouteCacheSet` (4) = 16 | `6acc60406` / TPU7x (gen 6) |
+| any other | — | none — `MakeErrorImpl<12>("Invalid ocs_fault_links_symmetry: …")`, line 266 | invalid |
 
-> **QUIRK — the codename split is *coverage* and *fault density*, not algorithm.** All baked tables are the same `*ToroidalWildFirstPaths` output; viperfish and `6acc60406` differ from pufferfish only in (a) which *shapes* have a baked table and (b) how *many* fault links each shape's table tolerates. The newest part (`6acc60406`) bakes roughly double the fault descriptors per shape — it hardens the densest fault patterns. A reimplementer who copies pufferfish's 12-shape set onto viperfish silicon will silently lose protection for the four large pods and fall to the live generator on a large-pod fault.
+The codename string is bound separately: a secondary `switch(HIDWORD(v90))` (lines 429/432/435) maps `1→2`, `2→3`, `4→4` into a `proto::ToroidalRouteCacheType` value, which `GetRouteCacheDataPath` lowercases into the `embed://<codename>_data/…` path — so symmetry-1 loads `pufferfish_*`, symmetry-2 loads `viperfish_*`, symmetry-4 loads `6acc60406_*`. Codenames that never reach this switch (jellyfish v2, dragonfish v3, ghostlite v6e) have **no** resilient cache deduplicator here; a fault on those parts fails the symmetry gate and the slice reshapes (see [`route-table-generation.md`](route-table-generation.md)).
 
-> **CORRECTION (CACHE-1) —** the resilient set count is **two** distinct `flat_set` arrays (`kRouteCacheSet` 12 + `kViperfishRouteCacheSet` 4), with the twisted topology carrying its **own** third set (`TwistedTorusTopology::kRouteCacheSet`, 8). This is the *shape-name* split. It is orthogonal to the **three dedup *sets*** documented in [`overview.md`](overview.md#3-the-cache-vs-generate-decision) (`kRouteCacheSet`, `k6acc60406RouteCacheSet`, `kViperfishRouteCacheSet`) — those are the populated `RouteCacheDeduplicator` instances keyed at runtime, of which `6acc60406` is a separately registered one. The `flat_set<string_view>` arrays here bound *which shape strings can hit*; the dedup sets are *which populated lookup table answers*. Do not conflate the two. Marked HIGH.
+> **QUIRK — the split is *coverage*, not algorithm.** All baked tables are the same `*ToroidalWildFirstPaths` output; `vf`/`gf` differ from `pf` only in (a) which *shapes* have a baked table — `vf` and `gf` each add their own 4-shape large-pod set on top of the shared 12 — and (b) how *many* fault links each shape's table tolerates (`6acc60406`'s `_fault_dim_*` fault catalog is materially larger than viperfish's, which is in turn larger than pufferfish's — the exact `FileToc` sizes were not re-derived here). A reimplementer who copies the pufferfish 12-shape set onto `vf`/`gf` silicon silently loses protection for the four large pods and falls to the live generator on a large-pod fault.
+
+> **CANON — `6acc60406` is TPU7x, not "ghostfish."** The deduplicator variable is named `gf_deduplicator`, but that abbreviation is not a binary-attested codename; the only attested token is the hash `6acc60406`, which is the TPU7x generation (gen 6, distinct from ghostlite/v6e). The earlier "ghostfish" gloss is dropped — it was an inference from the `gf_` prefix, not a string in the binary.
+
+> **CORRECTION (CACHE-1) —** the exported resilient shape-name arrays are **two** `flat_set<string_view>`s: `ResilientToroidalTopology::kRouteCacheSet` (12) and `ResilientToroidalTopology::kViperfishRouteCacheSet` (4); the twisted topology carries its **own** third (`TwistedTorusTopology::kRouteCacheSet`, 8). A fourth, `k6acc60406RouteCacheSet` (4), is referenced only via the `gf_deduplicator` `UpdateDeduplicator` `CHECK`-fail string and the `off_21F57480` local — it is the symmetry-4 (`6acc60406`/TPU7x) large-pod set, structurally the `gf` counterpart of `kViperfishRouteCacheSet`. So three deduplicators (`pf`/`vf`/`gf`) draw from four bounding arrays: `pf`→{12}, `vf`→{12,4}, `gf`→{12,4}. The `flat_set` arrays bound *which shape strings can hit*; the deduplicators are *which populated lookup table answers*. Marked CERTAIN (each `UpdateDeduplicator` target is named verbatim in a `CHECK` assertion string).
 
 ### Embedded resources
 
-The shapes resolve to a small number of `tsl::memfile`-registered blobs (registered at static-init via `GlobalRegisterFiles(name, FileToc*)` @`0x20c04960`), **not** one file per shape. There are 11 embedded resources: three raw `*_fault_dim_z.binarypb` config catalogs (pufferfish 4009 B, viperfish 34504 B, `6acc60406` 68780 B), one `cache_twisted_torus_all.binarypb` shape catalog (134 B), and seven Brotli `.binarypb.compressed` route tables (one twisted, plus per-axis `_x/_y/_z_data` for each of pufferfish and viperfish). The `FileToc` struct is `{+0x00 name*, +0x08 data*, +0x10 size:u64, +0x18 hash[16]}`. The compressed-resource decode is owned by [`route-cache-decompress.md`](route-cache-decompress.md); the dedup-key→shape-name selection by [`route-cache-dedup.md`](route-cache-dedup.md).
+The shapes resolve to a small number of `tsl::memfile`-registered blobs (registered at static-init via `GlobalRegisterFiles(name, FileToc*)` @`0x20c04960`), **not** one file per shape. The embedded route-cache resources are, by `cache_ici_resiliency_*` / `cache_twisted_torus_*` name prefix in `.rodata`:
+
+- a `_config` and per-axis `_fault_dim_x` / `_fault_dim_y` / `_fault_dim_z` fault catalog for **each** of `pufferfish`, `viperfish`, and `6acc60406` (`6acc60406`'s fault catalogs are the largest);
+- per-axis `_x_data` / `_y_data` / `_z_data` Brotli `.binarypb.compressed` route tables for **each** of `pufferfish`, `viperfish`, **and `6acc60406`** — i.e. `6acc60406`/TPU7x *does* ship baked route tables, not just a fault config;
+- the twisted pair `cache_twisted_torus_config` + `cache_twisted_torus_data` (plus a `cache_twisted_torus_all` shape catalog).
+
+The `FileToc` struct is `{+0x00 name*, +0x08 data*, +0x10 size:u64, +0x18 hash[16]}`. The compressed-resource decode is owned by [`route-cache-decompress.md`](route-cache-decompress.md); the dedup-key→shape-name selection by [`route-cache-dedup.md`](route-cache-dedup.md).
 
 ---
 
