@@ -8,7 +8,7 @@ An `XEvent` on a device or host timeline carries no name — it carries an `int6
 
 The single fact that governs the whole catalog: **an XEvent metadata id is not a global type number — it is a per-plane interning key.** The integer `7` on `/device:TPU:0` and the integer `7` on `/host:0` denote different events, because each `XPlane` builds its own `event_metadata` map at collection time. A consumer must read the plane's dictionary to resolve any id; there is no cross-plane id namespace. Consequently the catalog has two halves with two different id-assignment regimes. **Device-plane events** are seeded by a *static, wire-stable* hardware enum: each chip family's `TraceEntries.TracePointId` value (banded 0–255, with gaps) is stamped into the hardware ring buffer's `TraceHeader.trace_point_id`, and its enum-value *string* becomes the `XEventMetadata.name`. **Host-plane events** are *dynamically name-interned*: a `tsl::profiler::TraceMe` label flows through `XPlaneBuilder::GetOrCreateEventMetadata(string_view)`, which hashes the label and hands out the next free plane-local id on first sight.
 
-The device half is therefore catalogable by the enum it derives from. There are five per-chip `TraceEntries.TracePointId` enums (one per silicon family), 99/122/78/135/144 values each, re-banded across generations rather than strictly additive. The host half is catalogable only by name — the integers are a `tsl` build detail (`HostEventType`), not a wire contract — so this page lists host events by their confirmed ASCII label. Both halves are grouped below by the cross-cutting category a profile consumer sees on the timeline: TensorCore-sequencer / compute, DMA & memory transfer, sync & fence, control & instrumentation, collective substrate, throttle & power, SparseCore, and the host-scope band.
+The device half is therefore catalogable by the enum it derives from. There are five per-chip `TraceEntries.TracePointId` enums (one per silicon family), 99/122/78/122/144 values each, re-banded across generations rather than strictly additive. The host half is catalogable only by name — the integers are a `tsl` build detail (`HostEventType`), not a wire contract — so this page lists host events by their confirmed ASCII label. Both halves are grouped below by the cross-cutting category a profile consumer sees on the timeline: TensorCore-sequencer / compute, DMA & memory transfer, sync & fence, control & instrumentation, collective substrate, throttle & power, SparseCore, and the host-scope band.
 
 The catalog this page reconstructs covers:
 
@@ -23,7 +23,7 @@ The catalog this page reconstructs covers:
 | **Device id regime** | static — `TraceEntries.TracePointId` enum value string |
 | **Host id regime** | dynamic — `GetOrCreateEventMetadata(string_view)` name intern |
 | **Device chip families** | 5 — pxc, vfc, vlc, glc, gfc |
-| **Device event counts** | 99 / 122 / 78 / 135 / 144 (pxc/vfc/vlc/glc/gfc) |
+| **Device event counts** | 99 / 122 / 78 / 122 / 144 (pxc/vfc/vlc/glc/gfc) |
 | **TracePointId value range** | banded 0–255 with reserved gaps; sentinel `255` (pxc only) |
 | **Device builder** | `xprof::TpuXPlaneBuilder` / `TpuXLineBuilder::AddEvent` |
 | **Host builder** | `tsl::profiler::XPlaneBuilder::GetOrCreateEventMetadata` |
@@ -37,7 +37,7 @@ The catalog this page reconstructs covers:
 | Sync / fence (TCS sync flags, SC barriers) | 8 | 8 | 8 | 14 | 14 | TracePointId |
 | Control / instrumentation (tracemark, interrupt, fence) | ~9 | ~6 | ~3 | ~9 | ~9 | TracePointId |
 | Collective substrate (ICI packet, ICR DMA) | 9 | 9 | 9 | 9 | 9 | TracePointId |
-| Throttle / power (+ FLL, SPI sampler) | 1 | 7 | 7 | 21 | 25 | TracePointId |
+| Throttle / power (+ FLL, SPI sampler) | 1 | 7 | 7 | 9 | 25 | TracePointId |
 | SparseCore band (SC instruction/task/stream/message) | — | 18 | — | 18 | 18 | TracePointId |
 | Perf-counter sampling (STATS_COUNTER) | — | — | — | — | 6 | TracePointId |
 | Host scope band (TraceMe labels) | dynamic, name-interned (shared across host planes) | | | | | name intern |
@@ -261,10 +261,10 @@ The fastest-growing band in the catalog and a first-class trace category. Puffer
 |---|---:|---|---|---|
 | pxc | 1 | 97 | `THROTTLE_STATE_THERMAL_AND_ELECTRICAL_THROTTLE_STATE` | CERTAIN |
 | vfc/vlc | 7 | 98–104 | `THROTTLE_CYCLE_SKIP_*` (7-event family, lower band than glc) | HIGH |
-| glc | 19+2 | 200–218, 168–169 | `THROTTLE_CYCLE_SKIP_{THERMAL,EXT_BRAKE,EXT_THROTTLE,LDIDT_*,ARBITRATION}`, `THROTTLE_CYCLE_SKIP_PPM_{SUSTAINED,DIDT,OVERSHOOT}_{AGGRESSIVE,NOMINAL}_BRAKE_{RISING,FALLING}_EDGE`, `THROTTLE_LDIDT_RUNNING_MEAN_VOLTAGE`, `SPI_SAMPLER_{VDD_CORE,HBM}_FRAME_EXEC` | CERTAIN |
-| gfc | 20+2+3 | 200–222, 168–169 | glc set restructured + `THROTTLE_MAXIMUM_TEMPERATURE_*`, `THROTTLE_MAX_VALUE_THROTTLE_MAX_{FAST,SLOW}`, `THROTTLE_LDIDT_VOLTAGE_THROTTLE_{MAX,MIN}_VOLTAGE_*`, `FLL_LOCK_FLL_{0,1}_LOCK` (220/221), `FLL_SELECT_FLL_SELECT` (222) | HIGH |
+| glc | 7+2 | 200–206, 168–169 | `THROTTLE_CYCLE_SKIP_{THERMAL,EXT_BRAKE,EXT_THROTTLE,LDIDT_BRAKE,LDIDT_DROOP,ARBITRATION}` (200–205), `THROTTLE_CYCLE_SKIP_PPM_SUSTAINED_AGGRESSIVE_BRAKE_RISING_EDGE` (206), `SPI_SAMPLER_{VDD_CORE,HBM}_FRAME_EXEC` (168/169) | CERTAIN |
+| gfc | 20+3+2 | 200–222, 168–169 | glc set restructured + the PPM brake cross-product `THROTTLE_CYCLE_SKIP_PPM_BRAKE_EVENT_{SUSTAINED,DIDT,OVERSHOOT}_{AGGRESSIVE,NOMINAL}` (206–211), `THROTTLE_LDIDT_VOLTAGE_*`, `THROTTLE_MAX_VALUE_THROTTLE_MAX_{FAST,SLOW}`, `THROTTLE_MAXIMUM_TEMPERATURE_*`, `FLL_LOCK_FLL_{0,1}_LOCK` (220/221), `FLL_SELECT_FLL_SELECT` (222) | CERTAIN |
 
-> **QUIRK —** the throttle band sits at a *high* id range (200–222) on glc/gfc but at a *low* range (97–104) on the earlier families — the band was relocated, not extended in place. A reimplementation that assumes throttle events live near id 97 on all chips will mis-classify every glc/gfc throttle event as memory or SparseCore. Key on the name prefix (`THROTTLE_`, `FLL_`, `SPI_SAMPLER_`), not on the numeric band.
+> **QUIRK —** the throttle band sits at a *high* id range (200–206 on glc, 200–222 on gfc) but at a *low* range (97–104) on the earlier families — the band was relocated, not extended in place. A reimplementation that assumes throttle events live near id 97 on all chips will mis-classify every glc/gfc throttle event as memory or SparseCore. Key on the name prefix (`THROTTLE_`, `FLL_`, `SPI_SAMPLER_`), not on the numeric band.
 
 ### Perf-counter sampling — STATS_COUNTER (gfc only)
 
@@ -318,12 +318,12 @@ The device catalog grows monotonically in count but is re-banded, not strictly a
 
 | Dimension | pufferfish (pxc) | viperfish (vfc) | viperfish-lite (vlc) | ghostlite (glc) | 6acc60406 (gfc) |
 |---|---|---|---|---|---|
-| total events | 99 | 122 | 78 | 135 | 144 |
+| total events | 99 | 122 | 78 | 122 | 144 |
 | host-DMA band | UHI (7) | HDE (4) | HDE (4) | HDE (4) | HDE (4) |
 | sparse compute | BarnaCore `BC/BCS/B7b2m` (29) | SparseCore `SC_*` (18) | none | `SC_*` (18) | `SC_*` (18) |
 | VPU DMA | CMQ (9) | — | VDQ (8) | — | — |
 | mem-net controller | — | CMN/CMNUR/CMNDE (20) | — | CMN/CMNUR/CMNDE (16) | + O2CUR (4) |
-| throttle/power | 1 | 7 | 7 | 19 + SPI(2) | 20 + SPI(2) + FLL(3) |
+| throttle/power | 1 | 7 | 7 | 7 + SPI(2) | 20 + SPI(2) + FLL(3) |
 | perf-counter sampling | — | — | — | — | `STATS_COUNTER` (6) |
 | addr translation | — | — | — | — | `O2CUR_L2P` (4) |
 | TCS interrupt name | `HOST_INTERRUPT` | `CORE_INTERRUPT` | `CORE_INTERRUPT` | `CORE_INTERRUPT` | `CORE_INTERRUPT` |
