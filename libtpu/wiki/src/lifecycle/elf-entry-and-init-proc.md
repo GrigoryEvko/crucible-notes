@@ -48,7 +48,7 @@ For reimplementation, the contract is:
 | **CRT init stub** | `__do_init @ 0xe63c000` (17 B), guard `__do_init.__initialized` |
 | **CRT fini stub** | `__do_fini @ 0xe63c020` (39 B), guard `__do_fini.__finalized` → `__cxa_finalize(__dso_handle)` |
 | **GOT / PLT** | `.got @ 0x22048d50` (50256 B), `.got.plt @ 0x224c2980` (3808 B), `.plt @ 0x213f0830` (7584 B) |
-| **CRT flavor** | LLVM/clang — **no** `frame_dummy` / `register_tm_clones` / `__do_global_ctors_aux`; `.tm_clone_table` is zero-length |
+| **CRT flavor** | LLVM/clang — **no** `frame_dummy` / `register_tm_clones` / `__do_global_ctors_aux`; no `.tm_clone_table` section emitted |
 | **Confidence** | CONFIRMED (byte-anchored vs `readelf -d`, segment table, and disassembly) unless a row says otherwise |
 
 ---
@@ -253,7 +253,7 @@ because they do not exist in this binary:
 | GCC `crtbegin.o` artifact | Status in libtpu | Consequence |
 |---|---|---|
 | `frame_dummy` | absent | EH-frame registration is handled by `.eh_frame_hdr` + the loader, not a ctor |
-| `register_tm_clones` / `deregister_tm_clones` | absent | `.tm_clone_table` is **zero-length** (W030 fingerprint); no TM clone fixup |
+| `register_tm_clones` / `deregister_tm_clones` | absent | no `.tm_clone_table` section emitted (W030 fingerprint); no TM clone fixup |
 | `__do_global_ctors_aux` (ctor loop) | absent | constructors are direct `DT_INIT_ARRAY` entries; loader iterates |
 | `__do_global_dtors_aux` (dtor loop) | replaced by `__do_fini` | `__cxa_finalize(__dso_handle)` only; no `.dtors` walk |
 | `.ctors` / `.dtors` sections | absent | superseded by `.init_array` / `.fini_array` |
@@ -285,11 +285,16 @@ lifecycle, logically prior to `DT_PREINIT_ARRAY`.
 
 The dominant relocation kind across libtpu is `R_X86_64_RELATIVE` (the three
 init arrays are entirely `RELATIVE`); imported-symbol slots use
-`R_X86_64_GLOB_DAT` / `R_X86_64_JUMP_SLOT`. The 12 system imports the loader
-must satisfy come from six `DT_NEEDED` libraries: `libm.so.6`,
-`libpthread.so.0`, `libdl.so.2`, `librt.so.1`, `libc.so.6`,
-`ld-linux-x86-64.so.2` — `dlopen`/`dlsym`/`dlerror`/`dlclose` (from `libdl`)
-are the symbols the framework's discovery handshake later rides on.
+`R_X86_64_GLOB_DAT` (99 entries) / `R_X86_64_JUMP_SLOT` (`.rela.plt`, 473
+entries). The system imports the loader must satisfy come from six `DT_NEEDED`
+libraries — `libm.so.6`, `libpthread.so.0`, `libdl.so.2`, `librt.so.1`,
+`libc.so.6`, `ld-linux-x86-64.so.2` — and number **383 versioned `UND FUNC`
+imports** (`@GLIBC_*` / `@GCC_*`) in `.dynsym`; `dlopen`/`dlsym`/`dlerror`/`dlclose`
+(from `libdl`) are the symbols the framework's discovery handshake later rides
+on. (A further **123** weak `UND NOTYPE` symbols — 67 `TF_*` optional
+TensorFlow C-API hooks plus 56 other weak references (`__gmon_start__`,
+`_ZTH*` thread-init helpers, `__morestack`, grpc/xla weak globals) — are
+satisfied only if a host binds them, not loader-mandated.)
 
 > **NOTE —** the GOT/PLT mechanics here are entirely standard x86-64 PSABI; libtpu adds nothing custom at this layer. The single reimplementation-relevant fact is the *ordering dependency*: the init arrays are themselves relocation targets, so a loader that ran `DT_INIT_ARRAY` before completing `R_X86_64_RELATIVE` processing would jump through zeroed slots. Relocation strictly precedes all init firing.
 

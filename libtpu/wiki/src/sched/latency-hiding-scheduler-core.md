@@ -220,32 +220,33 @@ The keys, in evaluation order, with the compared `HloGraphNode` field, the `Cand
 | # | Reason string | Compares (`HloGraphNode` field) | Prefer |
 |--:|---|---|---|
 | 1 | `kForceEarly` | `[+16]` force-early flag | flag-set first |
-| 2 | `kForceDelay` / `kForceDelayAfterTarget` | `[+18]` force-delay flag (post-target variant) | flag-NOT-set first (delay later) |
-| 3 | `kForceDelayPriority` | `[+12]` force-delay priority (int) | LOWER priority first |
-| 4 | `kPreference` | `[+0x14]` preference (float) | HIGHER first |
-| 5 | `kMemoryPeakOverLimit` | `(live_peak + ΔMemoryPressure)` vs `memory_limit` | the one that stays UNDER limit |
-| 6 | `kOnlyDecreaseMemoryOverLimit` | only-this-reduces-pressure while over limit | the decreasing one |
-| 7 | `kDecreaseMemoryOverLimit` | both `ΔMemoryPressure < 0`, magnitude | larger reduction |
-| 8 | `kScheduleAsyncStart` | `[+24] & 9 == 9` (async-start kind) | async-start first (when "schedule ASAP") |
-| 9 | `kScheduleDone` | `ReadySetLt::ShouldScheduleAsyncDone(node)` | the async-done that should fire |
-| 10 | `kScheduleStart` | `[+17] == 1` and operand-shape match | the matching start |
-| 11 | `kReleaseNonextendable` | `[+0x28]` ready_time vs current_time, occupier count ≥ 2 | the one releasing a non-extendable resource |
-| 12 | `kLessSerialResourceConflict` | `GetNumConflictingSerialResources(node)` | FEWER conflicts first |
-| 13 | `kNotValuableForSelectiveOverlap` | `[+24] >> 7` selective bit and ready-min ≤ cfg`[+88]` | the valuable one (gated by config `+130`) |
-| 14 | `kFreeBackedupResource` | `[+40]` frees-backed-up + `UpdateCandidateResourceConstrained` | the freeing one |
-| 15 | `kAsyncDepth` | `[+0x38]` async depth | DEEPER first (when schedule-ASAP) |
-| 16 | `kAsyncHeight` | `[+0x40]` async height (critical path to async) | HIGHER first |
-| 17 | `kUnlockStart` | `[+24] & 0x20` (unlock-start bit) | unlocking-start first |
-| 18 | `kUnlockDone` | `[+24] & 0x10` (unlock-done bit) | unlocking-done first |
-| 19 | `kCreatesMoreReadyNodes` | `[+100]` #successors-made-ready (uint) | MORE first |
-| 20 | `kDecreaseMemory` | `ΔMemoryPressure` sign (one `<0`, one `≥0`) | the pressure-reducing one |
-| 21 | `kOriginalOrder` | `[+28]` original sequence index (int) | LOWER index first (stable; flips in schedule-ASAP) |
+| 2 | `kForceDelay` | `[+18]` force-delay flag | flag-NOT-set first (delay later) |
+| 3 | `kForceDelayAfterTarget` | `[+18]` force-delay flag (post-target variant) | flag-NOT-set first (delay later) |
+| 4 | `kForceDelayPriority` | `[+12]` force-delay priority (int) | LOWER priority first |
+| 5 | `kPreference` | `[+0x14]` preference (float) | HIGHER first |
+| 6 | `kMemoryPeakOverLimit` | `(live_peak + ΔMemoryPressure)` vs `memory_limit` | the one that stays UNDER limit |
+| 7 | `kOnlyDecreaseMemoryOverLimit` | only-this-reduces-pressure while over limit | the decreasing one |
+| 8 | `kDecreaseMemoryOverLimit` | both `ΔMemoryPressure < 0`, magnitude | larger reduction |
+| 9 | `kScheduleAsyncStart` | `[+24] & 9 == 9` (async-start kind) | async-start first (when "schedule ASAP") |
+| 10 | `kScheduleDone` | `ReadySetLt::ShouldScheduleAsyncDone(node)` | the async-done that should fire |
+| 11 | `kScheduleStart` | `[+17] == 1` and operand-shape match | the matching start |
+| 12 | `kReleaseNonextendable` | `[+0x28]` ready_time vs current_time, occupier count ≥ 2 | the one releasing a non-extendable resource |
+| 13 | `kLessSerialResourceConflict` | `GetNumConflictingSerialResources(node)` | FEWER conflicts first |
+| 14 | `kNotValuableForSelectiveOverlap` | `[+24] >> 7` selective bit and ready-min ≤ cfg`[+88]` | the valuable one (gated by config `+130`) |
+| 15 | `kFreeBackedupResource` | `[+40]` frees-backed-up + `UpdateCandidateResourceConstrained` | the freeing one |
+| 16 | `kAsyncDepth` | `[+0x38]` async depth | DEEPER first (when schedule-ASAP) |
+| 17 | `kAsyncHeight` | `[+0x40]` async height (critical path to async) | HIGHER first |
+| 18 | `kUnlockStart` | `[+24] & 0x20` (unlock-start bit) | unlocking-start first |
+| 19 | `kUnlockDone` | `[+24] & 0x10` (unlock-done bit) | unlocking-done first |
+| 20 | `kCreatesMoreReadyNodes` | `[+100]` #successors-made-ready (uint) | MORE first |
+| 21 | `kDecreaseMemory` | `ΔMemoryPressure` sign (one `<0`, one `≥0`) | the pressure-reducing one |
+| 22 | `kOriginalOrder` | `[+28]` original sequence index (int) | LOWER index first (stable; flips in schedule-ASAP) |
 
-Keys 5–7 are gated by config byte `+129` (prioritize-pressure) combined with the over-limit state; key 13 by config byte `+130`. The schedule-ASAP flag (the decompile's `v36`) flips the direction of several keys (async-start, async-depth, original-order) so that, in the ASAP regime, async work and long-critical-path nodes are pulled as early as possible.
+Keys 6–8 are gated by config byte `+129` (prioritize-pressure) combined with the over-limit state; key 14 by config byte `+130`. The schedule-ASAP flag (the decompile's `v36`) flips the direction of several keys (async-start, async-depth, original-order) so that, in the ASAP regime, async work and long-critical-path nodes are pulled as early as possible.
 
 ### The latency-hiding term
 
-The core of the latency-hiding heuristic is a single clamped subtraction that appears in keys 11, 15, and 16:
+The core of the latency-hiding heuristic is a single clamped subtraction that appears in keys 12, 16, and 17:
 
 ```c
 // remaining latency of a candidate node  (lines 988-991, 1025-1028, 1463-1493)
@@ -255,9 +256,9 @@ double remaining = max(0.0, st->current_time - node->ready_time);
 //   vmaxsd  xmm1, xmm2, xmm1        ; clamp at 0
 ```
 
-`ready_time` (`node[+0x28]`) is the earliest cycle a node *can* be scheduled given its operands; `current_time` (`state+0x138`) is the clock at the current step. When `current_time` has already passed the node's `ready_time`, `remaining` is 0 — the node's inputs are retired and it can issue with no stall. When `ready_time` is still ahead of the clock, the node would stall, and the comparator uses this term (together with the async height key 16) to prefer issuing a *different* node now and the stalling one later. This is exactly the dependency stall from `GetLatencyBetween` ([Bundle-Aware Cost](../cost/bundle-aware-cost.md)) re-surfacing at scheduling time. When neither the async-height (`[+0x40]`) nor async-depth (`[+0x38]`) keys separate the pair, the comparator falls to a clock-distance tie-break (lines 1207–1218): it forms `first_root.ready_time − current_time − candidate[+0x30]` for each candidate, takes the absolute value via `vandpd` against `qword_A2DF238` (`0x7FFFFFFFFFFFFFFF`, the IEEE abs-value mask, byte-confirmed) at line 1212, and prefers the smaller magnitude — the candidate whose `[+0x30]` estimate lands closest to the current clock.
+`ready_time` (`node[+0x28]`) is the earliest cycle a node *can* be scheduled given its operands; `current_time` (`state+0x138`) is the clock at the current step. When `current_time` has already passed the node's `ready_time`, `remaining` is 0 — the node's inputs are retired and it can issue with no stall. When `ready_time` is still ahead of the clock, the node would stall, and the comparator uses this term (together with the async height key 17) to prefer issuing a *different* node now and the stalling one later. This is exactly the dependency stall from `GetLatencyBetween` ([Bundle-Aware Cost](../cost/bundle-aware-cost.md)) re-surfacing at scheduling time. When neither the async-height (`[+0x40]`) nor async-depth (`[+0x38]`) keys separate the pair, the comparator falls to a clock-distance tie-break (lines 1207–1218): it forms `first_root.ready_time − current_time − candidate[+0x30]` for each candidate, takes the absolute value via `vandpd` against `qword_A2DF238` (`0x7FFFFFFFFFFFFFFF`, the IEEE abs-value mask, byte-confirmed) at line 1212, and prefers the smaller magnitude — the candidate whose `[+0x30]` estimate lands closest to the current clock.
 
-> **GOTCHA — the memory-peak gate (key 5) can override every later key.** `kMemoryPeakOverLimit` adds the candidate's `MemoryPressureTracker::MemoryPressureDifference` to the live peak and compares the result against `memory_limit` (the `SchedulerConfig` copy at `state→config + 672`). If only one candidate keeps the peak `≤ limit`, it wins *regardless of async depth, height, or any latency-hiding key below it.* A reimplementation that places the memory keys after the async keys will hide latency at the cost of OOM. The gate sits at position 5, above all overlap heuristics, on purpose.
+> **GOTCHA — the memory-peak gate (key 6) can override every later key.** `kMemoryPeakOverLimit` adds the candidate's `MemoryPressureTracker::MemoryPressureDifference` to the live peak and compares the result against `memory_limit` (the `SchedulerConfig` copy at `state→config + 672`). If only one candidate keeps the peak `≤ limit`, it wins *regardless of async depth, height, or any latency-hiding key below it.* A reimplementation that places the memory keys after the async keys will hide latency at the cost of OOM. The gate sits at position 6, above all overlap heuristics, on purpose.
 
 ### Failure diagnostics
 
@@ -277,9 +278,9 @@ VLOG diagnostics inside the comparator narrate the choice: `"Choosing from ready
 |---|---|---|---|
 | `FindAndExtractBestNodeAvailable` | `0x13618880` | ready-set iteration + 22-key `ReadySetLt` chain + pop | CONFIRMED |
 | `FindAndExtractBestAnnotatedNode` | `0x1361e2c0` | annotation-group-restricted variant | HIGH |
-| `ReadySetLt::ShouldScheduleAsyncDone` | (inlined) | key 9 predicate; called twice on the pair (lines 969–977) | CONFIRMED |
-| `ReadySetLt::UpdateCandidateResourceConstrained` | (inlined) | folds resource occupancy into keys 12/14 (lines 581–583); body not dumped | MEDIUM |
-| `GetNumConflictingSerialResources` | (inlined) | key 12 conflict count; recovered as call target | MEDIUM |
+| `ReadySetLt::ShouldScheduleAsyncDone` | (inlined) | key 10 predicate; called twice on the pair (lines 969–977) | CONFIRMED |
+| `ReadySetLt::UpdateCandidateResourceConstrained` | (inlined) | folds resource occupancy into keys 13/15 (lines 581–583); body not dumped | MEDIUM |
+| `GetNumConflictingSerialResources` | (inlined) | key 13 conflict count; recovered as call target | MEDIUM |
 
 ---
 
@@ -378,10 +379,10 @@ A 4-op fragment on `6acc60406` (TensorCore clock `f` MHz), base schedule already
 
 The matmul's `NodeCost` is `212 / (f·1e6)` s; the all-reduce's transfer cost is `CostModel::GetCycles` deposited into the ICI X+ counter (resource 16). Walking the comparator after `%ar` is issued at `t0`:
 
-- `ready_set = {%mm}` (`%ar.d` is not ready until the ICI latency elapses; `%add` waits on both). `%mm` is the only candidate, so it is scheduled at `t0` and `current_time` advances by 212 cycles. During that window the ICI transfer for `%ar` is in flight on a *different* resource (ICI X+, not the MXU slot) → **OVERLAP**: the matmul hides the all-reduce latency. The async-height key (16) had already biased the scheduler to issue `%ar` early (its `[+0x40]` reaches `%add`), and the matmul filled the bubble.
-- If ICI latency `< 212` cycles, `%ar.d` becomes ready before `%mm` finishes; `kScheduleDone` (key 9) fires it next, then `%add`. Total ≈ 212 cycles — the collective is fully hidden, zero stall.
-- If ICI latency `> 212` cycles (cross-host DCN), after `%mm` there is no other ready non-async node, so `current_time` jumps to `%ar.d`'s `ready_time`. **STALL** = `(latency − 212)` cycles, accounted as wasted all-reduce cycles. A second independent matmul would let key 16/19 (`kAsyncHeight`/`kCreatesMoreReadyNodes`) slot into the bubble and cut the stall.
-- If `memory_limit` is tight, `kMemoryPeakOverLimit` (key 5) can force `%ar.d` (which frees the all-reduce buffer) ahead of `%mm` even though that loses the overlap — trading latency-hiding for a lower HBM peak. The 0.9 retry shrink is what drives the scheduler into this regime across reruns.
+- `ready_set = {%mm}` (`%ar.d` is not ready until the ICI latency elapses; `%add` waits on both). `%mm` is the only candidate, so it is scheduled at `t0` and `current_time` advances by 212 cycles. During that window the ICI transfer for `%ar` is in flight on a *different* resource (ICI X+, not the MXU slot) → **OVERLAP**: the matmul hides the all-reduce latency. The async-height key (17) had already biased the scheduler to issue `%ar` early (its `[+0x40]` reaches `%add`), and the matmul filled the bubble.
+- If ICI latency `< 212` cycles, `%ar.d` becomes ready before `%mm` finishes; `kScheduleDone` (key 10) fires it next, then `%add`. Total ≈ 212 cycles — the collective is fully hidden, zero stall.
+- If ICI latency `> 212` cycles (cross-host DCN), after `%mm` there is no other ready non-async node, so `current_time` jumps to `%ar.d`'s `ready_time`. **STALL** = `(latency − 212)` cycles, accounted as wasted all-reduce cycles. A second independent matmul would let key 17/20 (`kAsyncHeight`/`kCreatesMoreReadyNodes`) slot into the bubble and cut the stall.
+- If `memory_limit` is tight, `kMemoryPeakOverLimit` (key 6) can force `%ar.d` (which frees the all-reduce buffer) ahead of `%mm` even though that loses the overlap — trading latency-hiding for a lower HBM peak. The 0.9 retry shrink is what drives the scheduler into this regime across reruns.
 
 ---
 

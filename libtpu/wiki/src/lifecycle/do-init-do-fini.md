@@ -14,14 +14,14 @@ For reimplementation, the static-init/fini contract is:
 
 - **The constructor walk model** — `.init_array` is an array of function pointers the linker calls in array order; slot 0 is `__cpu_indicator_init` (CPU/IFUNC detection), `__do_init` is a guarded stub at slot 761, and the bulk are per-TU `_GLOBAL__sub_I_*` functions. Each constructs file-scope globals and, for any with a non-trivial destructor, registers teardown with `__cxa_atexit(dtor, obj, &__dso_handle)`.
 - **The register-only discipline** — none of the ~2900 constructors runs order-critical TPU bring-up. They fill tables and build the `GoogleInitializer` registry; the order-sensitive work is deferred to the DAG. A reimplementer who runs HAL/platform setup inside a static ctor reintroduces the static-init-order fiasco the design exists to avoid.
-- **The two byte guards** — `__do_init`'s `_do_init___initialized` and `__do_fini`'s `_do_fini___finalized` make the array-bracketing slots idempotent; the per-singleton `__cxa_guard` bytes make each function-local static one-shot and thread-safe.
+- **The two byte guards** — `__do_init`'s `__do_init.__initialized` and `__do_fini`'s `__do_fini.__finalized` make the array-bracketing slots idempotent; the per-singleton `__cxa_guard` bytes make each function-local static one-shot and thread-safe.
 - **The symmetric teardown** — `__do_fini` calls `__cxa_finalize(__dso_handle)`, which drains the `__cxa_atexit` list LIFO, calling each registered destructor once. The PJRT surface is deliberately *not* on this list — it is a leaked Meyers singleton.
 
 | | |
 |---|---|
 | **Constructor array** | `INIT_ARRAY @ 0x215f26f0` — 23200 B = 2900 × 8, all `R_X86_64_RELATIVE` |
-| **Constructor entry stub** | `__do_init @ 0xe63c000` — guard byte `_do_init___initialized` |
-| **Destructor entry stub** | `__do_fini @ 0xe63c020` — guard byte `_do_fini___finalized` |
+| **Constructor entry stub** | `__do_init @ 0xe63c000` — guard byte `__do_init.__initialized @ 0x224c3880` |
+| **Destructor entry stub** | `__do_fini @ 0xe63c020` — guard byte `__do_fini.__finalized @ 0x224c3881` |
 | **Per-TU ctor symbols** | `_GLOBAL__sub_I_<file>.cc/.cpp` — **1885 distinct** symbols (1764 distinct base names; 71 names recur across statically-linked components) |
 | **Grouped / single-var ctors** | `_GLOBAL__I_NNNNNN` (759), `__cxx_global_var_init[.N]` (89 distinct names / 221 instances) |
 | **Function-local-static guards** | libtpu's own `__cxa_guard_acquire/release/abort @ 0x213e9ac0 / 0x213e9be0 / 0x213e9c20` |
@@ -66,8 +66,8 @@ function run_init_array():
 
 // __do_init @ 0xe63c000 — the guarded array-bracket stub
 function __do_init():
-    if !_do_init___initialized:                  // function-static byte guard
-        _do_init___initialized = 1               // set-and-return; NO ctor body
+    if !__do_init.__initialized:                 // function-static byte guard
+        __do_init.__initialized = 1              // set-and-return; NO ctor body
     // intentionally empty: real ctors are the OTHER array slots
 
 // representative per-TU ctor — register-only, no order-critical work
@@ -174,8 +174,8 @@ dynamic linker (DT_FINI_ARRAY walk, reverse of init)
 // __do_fini @ 0xe63c020 — the guarded teardown stub (byte-exact from decompile)
 function __do_fini():
     int result                                   // uninitialized return (see GOTCHA)
-    if !_do_fini___finalized:                     // function-static byte guard
-        _do_fini___finalized = 1                  // set BEFORE the call → reentrancy-safe
+    if !__do_fini.__finalized:                    // function-static byte guard
+        __do_fini.__finalized = 1                 // set BEFORE the call → reentrancy-safe
         if &_cxa_finalize:                        // weak-symbol presence check
             return __cxa_finalize(_dso_handle)    // drain THIS image's atexit LIFO
     return result
@@ -190,9 +190,9 @@ function __cxa_finalize(dso):
     // entries are cleared so a second finalize is a no-op
 ```
 
-> **GOTCHA —** the `int result` in `__do_fini` is read uninitialized on the already-finalized path (`_do_fini___finalized` already 1) and on the no-`__cxa_finalize` path. This is a decompiler artifact of a `void`-semantics tail-call function whose return register is simply not written on those paths — the caller (the linker's fini walk) ignores the return value, so the garbage `eax` is harmless. A reimplementer should model `__do_fini` as returning `void`; do not propagate the spurious `int`.
+> **GOTCHA —** the `int result` in `__do_fini` is read uninitialized on the already-finalized path (`__do_fini.__finalized` already 1) and on the no-`__cxa_finalize` path. This is a decompiler artifact of a `void`-semantics tail-call function whose return register is simply not written on those paths — the caller (the linker's fini walk) ignores the return value, so the garbage `eax` is harmless. A reimplementer should model `__do_fini` as returning `void`; do not propagate the spurious `int`.
 
-> **QUIRK —** `__do_fini` set-then-checks: it writes `_do_fini___finalized = 1` *before* calling `__cxa_finalize`, so if a registered destructor (running inside `__cxa_finalize`) somehow re-enters `__do_fini`, the guard is already set and the re-entry is a no-op. The `if (&_cxa_finalize)` weak-symbol check is the standard `crtstuff` guard for the case where the image was linked without a finalizer; in libtpu the symbol is always present (libtpu carries its own), so the branch is effectively always taken. Both details mirror glibc's `__do_global_dtors_aux`, but the `__cxa_finalize` here is libtpu's internal one, draining libtpu's private atexit list.
+> **QUIRK —** `__do_fini` set-then-checks: it writes `__do_fini.__finalized = 1` *before* calling `__cxa_finalize`, so if a registered destructor (running inside `__cxa_finalize`) somehow re-enters `__do_fini`, the guard is already set and the re-entry is a no-op. The `if (&_cxa_finalize)` weak-symbol check is the standard `crtstuff` guard for the case where the image was linked without a finalizer; in libtpu the symbol is always present (libtpu carries its own), so the branch is effectively always taken. Both details mirror glibc's `__do_global_dtors_aux`, but the `__cxa_finalize` here is libtpu's internal one, draining libtpu's private atexit list.
 
 ### What is NOT torn down
 
@@ -217,7 +217,7 @@ libtpu also provides its own `atexit` / `__cxa_thread_atexit` shims (`0x21217360
 | Component | Relationship |
 |---|---|
 | `INIT_ARRAY @ 0x215f26f0` | The 2900-slot constructor array the linker walks at `dlopen` |
-| `__do_init @ 0xe63c000` | Guarded array-bracket stub at `.init_array` slot 761, sets `_do_init___initialized` |
+| `__do_init @ 0xe63c000` | Guarded array-bracket stub at `.init_array` slot 761, sets `__do_init.__initialized` |
 | `_GLOBAL__sub_I_*` (1885 symbols) | The per-TU static-init functions that do the actual registration |
 | `GoogleInitializer` ctor `@ 0x210b2780` | Constructed by `*_registration.cc` ctors; binds module name → run-later fn |
 | `__cxa_guard_acquire/release/abort @ 0x213e9ac0 / 0x213e9be0 / 0x213e9c20` | libtpu's own libc++abi function-local-static guards |
