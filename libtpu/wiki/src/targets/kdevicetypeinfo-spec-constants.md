@@ -132,7 +132,7 @@ The `kDeviceTypeInfo` index is the 1-based `xprof::DeviceType` enum. `DeviceType
 | 8 | TPU v4 Lite | Puffylite | `pxc::plc` | 700000 | 48 | 1050000 | CERTAIN |
 | 10 | TPU v5 | Viperfish (v5p) | `vxc::vfc` | 800000 | 45 | 1750000 | CERTAIN |
 | 11 | TPU v5 Lite | Viperlite (v5e) | `vxc::vlc` | 800000 | 45 | 1500000 | CERTAIN |
-| 12 | TPU v7x | Ghostfish (gfc) | `gxc::gfc` | 833000 | 45 | 1900000 | CERTAIN |
+| 12 | TPU v7x | `6acc60406` (gfc) | `gxc::gfc` | 833000 | 45 | 1900000 | CERTAIN |
 | 13 | TPU v6 Lite | Ghostlite (v6e) | `gxc::glc` | 800000 | 45 | 1750000 | CERTAIN |
 
 `DeviceTypeFromDeviceIdentifiers` matches each codename's `kXxxChipIdentifiers` tuple in turn (Jellyfish→3, Dragonfish→5, Puffylite→8, the three Pufferfish B0 SKUs→7, the four Viperlite SKUs→11, the two Viperfish SKUs→10) and dispatches the two Ghost families via `IsGlc`→13 and `IsGfc`→12. Ordinals 1/2/4/6/9/14..16 are the host-GPU plane and "Cloud TPU" placeholder/reserved slots (DeviceType 9 is a reserved 64-bit-timestamp, 1.333 GHz slot with no PCI tuple). `DeviceTypeToHardwareType` (`0xF69C7A0`) confirms the split: the eight named gens map to hardware-type 3 (TPU), the placeholders to 0/1, the GPU plane to 2.

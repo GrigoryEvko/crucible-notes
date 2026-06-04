@@ -53,9 +53,9 @@ The fish and codec codenames are *internal* names baked into symbols and `.rodat
 | 2 | Pufferfish | `TPU v4` / `TPU v4 lite` | `v4`, `v4lite` | TPU v4 | HIGH (string in binary) |
 | 3 | Viperfish | `TPU v5` / `TPU v5 lite` | `v5`, `v5e`, `v5p` | TPU v5p / v5e | HIGH (string in binary) |
 | 4 | Ghostlite | `TPU v6 lite` | `v6e` | **Trillium** | LOW — *"Trillium" is NOT in the binary* |
-| 5 | `6acc60406` | `TPU7x` | `tpu7x`, `tpu7` | *(unpublished)* | LOW — *no fish/product name in binary* |
+| 5 | `6acc60406` | `TPU7x` | `tpu7x`, `tpu7` | **Ironwood** | LOW — *"Ironwood" is NOT in the binary (external name)* |
 
-> **GOTCHA —** the string `Trillium` has **zero** occurrences in `libtpu.so`; so does `Ironwood`; so does `Ghostfish`. Trillium = Cloud `v6e` = `Ghostlite`/`glc`/`TpuVersion` 4 is an *external* fact (Cloud-TPU documentation), correct but un-sourceable from the binary. The newest generation's only internal name is the obfuscated tag `6acc60406`; its `gxc::gfc` directory abbreviation plausibly stands for a "Ghostfish"-style fish name, but that name is **not present** — do not assert it. Cite `6acc60406` (or `TPU7x` for the display string) as the canonical internal name for `TpuVersion` 5.
+> **GOTCHA —** the string `Trillium` has **zero** occurrences in `libtpu.so`; so does `Ironwood`; so does `Ghostfish`. Trillium = Cloud `v6e` = `Ghostlite`/`glc`/`TpuVersion` 4 and Ironwood = Cloud `tpu7x` = `6acc60406`/`gfc`/`TpuVersion` 5 are both *external* facts (Cloud-TPU documentation), correct but un-sourceable from the binary. The newest generation's only internal name is the obfuscated tag `6acc60406`; its `gxc::gfc` directory abbreviation plausibly stands for a "Ghostfish"-style fish name, but that name is **not present** — do not assert it. Cite `6acc60406` (or `TPU7x` for the display string) as the canonical internal name for `TpuVersion` 5, and treat **Ironwood** as the external-only marketing label.
 
 ---
 

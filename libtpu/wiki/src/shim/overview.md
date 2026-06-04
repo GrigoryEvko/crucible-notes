@@ -151,7 +151,7 @@ The C-ABI surface is partitioned into clusters by the SE abstraction each backs.
 
 | Roster | C-ABI count | Backs | Detail page | Confidence |
 |---|---|---|---|---|
-| `TpuCompiler_*` | 7 | XLA→TPU compilation: `New`, `Compile`, `RunHloPasses`, `RunBackend`, `DefaultDeviceShapeRepresentation`, `Free` | [TpuCompiler Roster](tpu-compiler-roster.md) | CERTAIN |
+| `TpuCompiler_*` | 7 | XLA→TPU compilation: `New`, `Compile`, `RunHloPasses`, `RunBackend`, `ShapeSize`, `DefaultDeviceShapeRepresentation`, `Free` | [TpuCompiler Roster](tpu-compiler-roster.md) | CERTAIN |
 | `TpuExecutable_*` | 9 | Compiled-executable handle: deserialize, fingerprint, query HLO modules / layouts / cost | [TpuExecutable Roster](tpu-executable-roster.md) | CERTAIN |
 | `TpuExecutor_*` | 25 | Per-device runtime: `Allocate`, stream/event creation, dependency wiring, memory ops | [TpuExecutor Roster](tpu-executor-roster.md) | CERTAIN |
 | `TpuTransferManager_*` | 19 | Host↔device transfer: literal-to/from-device, infeed/outfeed, buffer-access predicates | [TpuTransferManager Roster](tpu-transfer-manager.md) | CERTAIN |

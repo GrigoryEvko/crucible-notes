@@ -38,7 +38,7 @@ Three orthogonal naming systems describe one chip: the **codec/ISA codename** (a
 | **Pufferfish / `pxc` / `pfc`** | Codec family for "TPU v4"; `pxc::pfc` is the fetch sub-core (16,999 hits). `TpuVersion` 2. Owned by [PXC Family](targets/pxc-family.md). |
 | **Puffylite / `plc`** | The v4-class *lite* variant; the load sub-core `pxc::plc` (2,174 hits). Has its own profiler `DeviceType` (8) but **no own `TpuVersion`** — it folds into Pufferfish (`TpuVersion` 2). |
 | **Viperfish / `vxc` / `vfc`** | Codec family for "TPU v5"; `vxc::vfc` fetch sub-core (35,203 hits). `TpuVersion` 3. Owned by [VXC Family](targets/vxc-family.md). |
-| **Viperfish-lite / `vlc`** | The v5-class lite variant; load sub-core `vxc::vlc` (4,223 hits). `DeviceType` 11, folds into Viperfish (`TpuVersion` 3). |
+| **Viperlite / `vlc`** | The v5-class lite variant (Viperfish-lite); load sub-core `vxc::vlc` (4,223 hits). `DeviceType` 11, folds into Viperfish (`TpuVersion` 3). |
 | **Ghostlite / `glc`** | `gxc` family, load sub-core `gxc::glc` (126,927 hits). `TpuVersion` 4, `DeviceType` 13, Cloud `v6e`. Ships a **named** codec class `tpu::TpuCodecGhostlite`. |
 | **`gfc` / `6acc60406` / Ironwood** | `gxc` family, fetch sub-core `gxc::gfc` (126,696 hits). `TpuVersion` 5, `DeviceType` 12, display string "TPU7x". The chip's only *internal* name in the binary is the obfuscated tag `6acc60406`; "Ironwood" (the v7x marketing name) and "Ghostfish" are **not in the binary** (external names). Do not confuse with "Trillium", which is the prior v6e/Ghostlite generation. |
 | **`TpuVersion`** | Internal dense `0..5` codec/HAL axis; `TpuVersionToString` indexes a 6-pointer table at `off_22011BF0`. This is the axis the codec, HAL, and ISA emitter switch on. |

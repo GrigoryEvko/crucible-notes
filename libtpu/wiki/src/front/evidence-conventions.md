@@ -1,6 +1,6 @@
 # Evidence & Confidence Conventions
 
-> *Every fact in this book is recovered by static reverse engineering of `libtpu.so` from the `libtpu-0.0.40-cp314` wheel: a 781,691,048-byte ELF64 shared object, build-id `89edbbe81c5b328a958fe628a9f2207d` (the unambiguous anchor — the reported `0.103` is package metadata, not a literal string in the binary). All addresses are absolute virtual addresses in that one binary; another wheel will differ in every address.*
+> *Every fact in this book is recovered by static reverse engineering of `libtpu.so` from the `libtpu-0.0.40-cp314` wheel: a 781,691,048-byte ELF64 shared object, build-id `89edbbe81c5b328a958fe628a9f2207d` (the unambiguous anchor; the wheel's package metadata reports version `0.0.40`, and the runtime-reported `0.103` is not a literal string in the binary, so pin to the build-id). All addresses are absolute virtual addresses in that one binary; another wheel will differ in every address.*
 
 ## Abstract
 

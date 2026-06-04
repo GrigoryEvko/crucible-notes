@@ -4,7 +4,7 @@
 
 ## Abstract
 
-This is the references page. Every other page in the book makes claims about a single stripped-but-symbol-bearing shared object; this page records the apparatus those claims rest on. It is organized as five citation registers: the **provenance** of the exact analyzed artifact (down to byte counts and build-ids); the **legal basis** under which reverse engineering a publicly distributed binary for interoperability and research is lawful; the **tools** that performed the analysis; the external **standards and specifications** the binary's layout and contents conform to (so a reader can decode an Itanium-mangled symbol, a System V ABI relocation, or a protobuf descriptor without re-deriving the format); and the **public technical references** for the TPU/XLA/PJRT domain that frame what the binary *is*.
+This is the references page. Every other page in the book makes claims about a single (not stripped) symbol-bearing shared object; this page records the apparatus those claims rest on. It is organized as five citation registers: the **provenance** of the exact analyzed artifact (down to byte counts and build-ids); the **legal basis** under which reverse engineering a publicly distributed binary for interoperability and research is lawful; the **tools** that performed the analysis; the external **standards and specifications** the binary's layout and contents conform to (so a reader can decode an Itanium-mangled symbol, a System V ABI relocation, or a protobuf descriptor without re-deriving the format); and the **public technical references** for the TPU/XLA/PJRT domain that frame what the binary *is*.
 
 The book's central discipline is that nothing here was read from source. All analysis is from static reverse engineering of the compiled `libtpu.so` and `sdk.so` ELF objects using IDA Pro 9.x. No source code or any other restricted or copyrighted material was used — all findings derive solely from analysis of compiled binaries. The provenance section below is therefore written in the same pure-RE register as the rest of the book: sizes, build-ids, and section facts that anyone with the wheel and `readelf` can independently confirm. The legal, standards, and reference sections are ordinary citations — they point outward to public, stable documents and do not assert anything about the binary's internals.
 
@@ -24,7 +24,7 @@ The contract for this page:
 | **Wheel version** | `0.0.40` (from the wheel `METADATA`; surfaced by `__init__.py` as `__version__`) |
 | **Embedded toolchain** | LLVM/MLIR 23-dev (trunk), monorepo commit `8918319853fbdf9e6f6cb69e96848f913a22bc31` |
 | **Analysis tool** | IDA Pro 9.x (Hex-Rays decompiler + FLIRT) |
-| **Method** | Static reverse engineering of stripped-but-symbol-bearing x86-64 ELF — no source, no debugger, no running TPU |
+| **Method** | Static reverse engineering of a not-stripped, symbol-bearing x86-64 ELF — no source, no debugger, no running TPU |
 
 ---
 
