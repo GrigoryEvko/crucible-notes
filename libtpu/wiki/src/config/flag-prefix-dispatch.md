@@ -1,6 +1,6 @@
 # TpuVersion-Aware Flag-Prefix Dispatch
 
-> *All addresses, symbols, and counts on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel (PJRT plugin v0.103, build `libtpu_lts_20260413_b_RC00`, build-id md5 `89edbbe81c5b328a958fe628a9f2207d`, ELF x86-64 DYN, not stripped). Other versions differ.*
+> *All addresses, symbols, and counts on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel (build `libtpu_lts_20260413_b_RC00`, build-id md5 `89edbbe81c5b328a958fe628a9f2207d`, ELF x86-64 DYN, not stripped). Other versions differ.*
 
 ## Abstract
 
@@ -38,7 +38,7 @@ The per-prefix counts are the registration-symbol-true figures from [flag-famili
 
 | Prefix | Authoring gen / codename | Count | Gating mechanism | Confidence |
 |---|---|---:|---|---|
-| `xla_tpu_*` | none (all gens) | 904 | unconditional register; gen-blind reflection apply | CERTAIN |
+| `xla_tpu_*` | none (all gens) | 909 | unconditional register; gen-blind reflection apply | CERTAIN |
 | `xla_jf_*` | Jellyfish (v0) namespace, all-gen compiler core | 148 | unconditional register; gen-blind reflection apply | CERTAIN |
 | `xla_sc_*` | none (SparseCore backend) | 92 | unconditional register; gen-blind reflection apply | CERTAIN |
 | `barna_core_*` | none (embedding runtime) | 61 | unconditional register; gen-blind reflection apply | CERTAIN |
@@ -94,7 +94,7 @@ function OverrideTpuCompEnvByCmdLineFlags(env):        // sub_1d73e640
         // log "Overriding flag <name> to <new>; Old value was: <old>"
         if field.is_deprecated():                        // *(field+56)+125 == 1
             overridden.push(field.name)
-        value = ReadFlag(flag, field)                    // current flag value → 18-arm variant
+        value = ReadFlag(flag, field)                    // current flag value → 20-arm variant
         SetEnvField(value, field, env)                   // write into env's proto field
     if overridden not empty:
         LOG(WARNING) << "[DEPRECATED_XLA_TPU_FLAG_USE] Deprecated "
@@ -136,7 +136,7 @@ function GetFlagForField(field):                         // sub_1d74ad40
 
 ### Considerations
 
-The 18-arm `std::variant` woven through every reflection call (`a/h/i/l/j/m/d/f/b/string/RangeSpecProto/RepeatedStrings/SparseDenseMatmulFdoConfig/SlicedPrefetchOptions/MemoryBoundLoopOptimizerOptions/PreferredPrefetchOverrides/MsaSortOrderOverrides/BufferContentsSanitizerConfig/BufferIsolationConfig/AutoProto`) is the field-type universe, not a generation universe. A reimplementer matching the binary must reproduce the variant type list and the per-type `NormalizeFieldType<T>` specializations (one `.text` function per arm, e.g. `NormalizeFieldType<TristateFlag> @ 0x1d761080`), but needs no `TpuVersion`-conditional logic in any of them.
+The 20-arm `std::variant` woven through every reflection call (`a/h/i/l/j/m/d/f/b/string/RangeSpecProto/RepeatedStrings/SparseDenseMatmulFdoConfig/SlicedPrefetchOptions/MemoryBoundLoopOptimizerOptions/PreferredPrefetchOverrides/MsaSortOrderOverrides/BufferContentsSanitizerConfig/BufferIsolationConfig/AutoProto`) is the field-type universe, not a generation universe. A reimplementer matching the binary must reproduce the variant type list and the per-type `NormalizeFieldType<T>` specializations (one `.text` function per arm, e.g. `NormalizeFieldType<TristateFlag> @ 0x1d761080`), but needs no `TpuVersion`-conditional logic in any of them.
 
 ---
 
@@ -245,7 +245,7 @@ i.e. a `TpuVersion` → flag-name map. At static-init each generation that has a
 
 ### Why It Is the Exception
 
-These two registries exist because the legacy MSA eviction/prefetch knobs predate the uniform TCE reflection surface and kept their per-generation flag *names* (rather than one TCE field consumed conditionally). They are the only `flat_hash_map<TpuVersion, …>` flag registries in the binary; the bulk surface (904 `xla_tpu_*`, all codename families, `xla_sc_*`, `barna_core_*`) routes through the single gen-blind `FlagFieldMappings`. A reimplementer should model the general case as §1 and treat these two registries as a bounded legacy carve-out.
+These two registries exist because the legacy MSA eviction/prefetch knobs predate the uniform TCE reflection surface and kept their per-generation flag *names* (rather than one TCE field consumed conditionally). They are the only `flat_hash_map<TpuVersion, …>` flag registries in the binary; the bulk surface (909 `xla_tpu_*`, all codename families, `xla_sc_*`, `barna_core_*`) routes through the single gen-blind `FlagFieldMappings`. A reimplementer should model the general case as §1 and treat these two registries as a bounded legacy carve-out.
 
 ### Function Map
 
