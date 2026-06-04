@@ -20,7 +20,7 @@ For reimplementation, the contract is:
 |---|---|
 | **Flag ingest** | `tensorflow::tpu::GetLibTpuInitArguments @ 0x20ccca20` → `absl::ParseCommandLine` (inside `RealInitGoogle @ 0x210ae860`) |
 | **Env funnel** | `LIBTPU_INIT_ARGS` (str @ file `0x918c880`); the *whole* registered flag set is settable through it |
-| **Registered flags** | ~2048 `absl::Flag<T> FLAGS_<name>` globals (P-3-193 family breakdown); 2107 distinct names |
+| **Registered flags** | ~2048 `absl::Flag<T> FLAGS_<name>` globals; 2107 distinct names |
 | **DebugOptions proto** | `xla::DebugOptions`, 290 wire-fields, 17 nested enums; `DefaultDebugOptionsIgnoringFlags @ 0x1e66a860` |
 | **TCE proto** | `xla::jellyfish::TpuCompilationEnvironment`, 1121 fields, `sizeof 0x15e8`; `_table_ @ 0x21cfa9e0` |
 | **Flag→TCE bridge** | `OverrideTpuCompEnvByCmdLineFlags @ 0x1d73e640` · `SetFieldFromFlagString @ 0x1d73fcc0` · `CreateDefaultTpuCompEnv @ 0x1d73dfa0` |

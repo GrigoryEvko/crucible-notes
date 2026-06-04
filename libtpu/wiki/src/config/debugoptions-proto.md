@@ -10,7 +10,7 @@ This page owns the **field-by-field schema**: field number → name → wire typ
 
 The reference frame for a reimplementer is OpenXLA's own `xla.proto`. The two TPU-specific facts that bend it: first, the TPU build does **not** prune the GPU/CPU fields from the proto — 183 `xla_gpu_*` + 31 `xla_cpu_*` + 5 `xla_llvm_*` fields survive in the descriptor so a GPU-built XLA can round-trip them, but no TPU code reads them and no flag sets them. Second, the field numbers are sparse and tombstoned by *deletion*, not by declared `reserved` ranges: the descriptor carries no `reserved_range` / `reserved_name`, so the 211 gaps are deleted-flag holes guarded only by review discipline.
 
-> **NOTE —** the [configuration overview](overview.md) and earlier flag-catalog work (P-3-193) quote "111 wire-fields" for DebugOptions. That was a *partial* tag recovery from a 111-entry sample. The full descriptor decode at pool index 403 carries **290 live fields**; this page uses 290 as the authoritative schema count and supersedes the 111 figure for the field roster. (CONFIRMED — full descriptor decode; 290 field names cross-matched against the binary.)
+> **NOTE —** DebugOptions carries **290 live fields**, decoded in full from the descriptor at pool index 403 (290 field names cross-matched against the binary). This is the authoritative schema count for the field roster; a partial 111-entry tag sample elsewhere undercounts it.
 
 For reimplementation, the contract is:
 
@@ -90,7 +90,7 @@ The 12 non-`optional` fields are 10 repeated-scalar/enum (4 `repeated string`, 6
 
 proto3 carries no descriptor-level field defaults — every scalar's *wire* default is the zero value (`false`/`0`/`""`/enum-0). The *effective* runtime default is whatever `DefaultDebugOptionsIgnoringFlags` @ `0x1e66a860` writes before the front-end overrides it. That function is a single large constructor in `.text`; the recovered per-field default values are owned by [`default-debugoptions.md`](default-debugoptions.md). This page owns the schema; that page owns the values.
 
-> **CORRECTION (P-3-193) —** P-3-193 estimated "94 of 111 fields flag-wired," extrapolating from `xla_foo` field ↔ `--xla_foo` flag 1:1. A direct cross-match of all 290 field names against the binary's registered `AbslFlagHelpGenForxla_*` symbols finds exactly **two** intersections: `xla_tpu_detect_nan` (135) and `xla_tpu_detect_inf` (136). The classic dump/HLO knobs (`xla_dump_to`, `xla_hlo_profile`, …) are **not** standalone absl flags in this build — they reach DebugOptions only through the PJRT `CompileOptions.debug_options` proto path. (CONFIRMED — both `detect` flag-gen symbols present; the 1328 other registered `xla_*` flags land in the TCE, not here.)
+> **NOTE —** only **two** DebugOptions fields are flag-wired: a cross-match of all 290 field names against the binary's registered `AbslFlagHelpGenForxla_*` symbols finds exactly two intersections, `xla_tpu_detect_nan` (135) and `xla_tpu_detect_inf` (136) (both `detect` flag-gen symbols present). The classic dump/HLO knobs (`xla_dump_to`, `xla_hlo_profile`, …) are **not** standalone absl flags in this build — they reach DebugOptions only through the PJRT `CompileOptions.debug_options` proto path. The other 1328 registered `xla_*` flags land in the TCE, not here.
 
 ---
 

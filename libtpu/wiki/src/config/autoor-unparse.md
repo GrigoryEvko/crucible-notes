@@ -82,7 +82,7 @@ The present/has byte sits at a class-specific offset because the packed layouts 
 | enum (7 arms) | `@ 0x1d748380` etc. | `+0x04` | `(present<<32)\|val32` | CONFIRMED (`ScavengingMode`) |
 | message (11 arms) | `@ 0x1d7453c0` etc. | `+0x28..+0x50` | `{variant idx, sub-msg, has}` | HIGH (offsets recovered, not sizeof-derived) |
 
-> **GOTCHA —** `float` shares the `+0x04` 8-byte-packed slot with `int32`/`enum`, **not** the `+0x08` has-byte slot of `int64`/`double`. A `float` is 4 bytes, so its present bit fits at bit 32 of the 8-byte pack (present byte `+4`); a `double` is 8 bytes and needs the separate has-byte at `+8`. A reimplementer who lumps "floating point ⇒ has-byte at +8" will read the `float` present bit from the wrong byte. This was a correction to an earlier ingest sketch (KF#3 in the source: `float` packs `(present<<32)|f32`, witnessed by `AbslUnparseFlag<AutoOr<float>> @ 0x1d743d40` testing `+4` and `vmovss`-loading the value at `+0`).
+> **GOTCHA —** `float` shares the `+0x04` 8-byte-packed slot with `int32`/`enum`, **not** the `+0x08` has-byte slot of `int64`/`double`. A `float` is 4 bytes, so its present bit fits at bit 32 of the 8-byte pack (present byte `+4`); a `double` is 8 bytes and needs the separate has-byte at `+8`. A reimplementer who lumps "floating point ⇒ has-byte at +8" will read the `float` present bit from the wrong byte. `float` packs `(present<<32)|f32`, witnessed by `AbslUnparseFlag<AutoOr<float>> @ 0x1d743d40` testing `+4` and `vmovss`-loading the value at `+0`.
 
 ### Why 30 arms → 25 unparse symbols
 

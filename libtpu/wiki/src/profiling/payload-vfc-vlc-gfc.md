@@ -38,9 +38,7 @@ payload_bits = CHECK - (family == vlc ? 58 : 61);   // vlc header is 56→58 fra
 pkts         = (CHECK <= 128) ? 1 : 2;               // movq $0x10 / $0x20 → 0x8(%rbx)
 ```
 
-> **GOTCHA —** the vlc 58-bit header is the trap that breaks every cross-family assumption. `DecodeTraceHeader` @ `0xf5f5b40` reads `GetBits64(8)` (trace_point_id), `GetBits64(3)` (block_id), `GetBits64(45)` (timestamp) = 56 header bits → 58 frame+header. Every other family reads a 59-bit header (block_id 6 *or* timestamp 48). A reimplementation that hardcodes the 61-bit payload origin will mis-position **every** vlc field and fail **every** vlc `CHECK` by exactly 3 bits. Confirmed against vlc `DecodeTcsInternalSetSyncFlag` @ `0xf5e1460`: payload `32,1,9,16,1,1` = 60 bits, CHECK `0x76`=118 = 58+60, `movq $0x10` (1 pkt).
-
-> **CORRECTION (VGG-1) —** an earlier per-gen header table (the device-trace-wire-format draft) listed vlc `timestamp = 48` (a 59-bit header). The binary shows `GetBits64(…, 45, …)` @ `0xf5f5b40+0x?` — vlc's timestamp is **45** (0x2d), its header **56** bits, its frame+header **58**. This page uses the byte-exact 58. The pin is CERTAIN: the `45` immediate is in the `DecodeTraceHeader` disassembly.
+> **GOTCHA —** the vlc 58-bit header is the trap that breaks every cross-family assumption. `DecodeTraceHeader` @ `0xf5f5b40` reads `GetBits64(8)` (trace_point_id), `GetBits64(3)` (block_id), `GetBits64(45)` (timestamp) = 56 header bits → 58 frame+header. The `45` immediate (0x2d) is in the `DecodeTraceHeader` disassembly. Every other family reads a 59-bit header (block_id 6 *or* timestamp 48). A reimplementation that hardcodes the 61-bit payload origin will mis-position **every** vlc field and fail **every** vlc `CHECK` by exactly 3 bits. Confirmed against vlc `DecodeTcsInternalSetSyncFlag` @ `0xf5e1460`: payload `32,1,9,16,1,1` = 60 bits, CHECK `0x76`=118 = 58+60, `movq $0x10` (1 pkt).
 
 ---
 
@@ -470,7 +468,7 @@ The non-named bands not decoded here — the SparseCore `SC_*` family on vfc/glc
 ## Cross-References
 
 - [Profiling and Telemetry Overview](overview.md) — the capture→encode→decode→xplane pipeline; these per-gen payloads are the device-event content of the decode stage
-- [TraceEntriesCoder](trace-entries-coder.md) — read first: the universal frame every payload here extends; the vlc 58-bit-header correction re-bases its per-gen table
+- [TraceEntriesCoder](trace-entries-coder.md) — read first: the universal frame every payload here extends; vlc re-bases its per-gen table on the 58-bit header documented above
 - [Trace Payload: UHI / OCI / ICI / DMA](payload-uhi-oci-ici-dma.md) — the pxc/glc baseline this page completes for vfc/vlc/gfc; the shape-A/B/C and band definitions live there
 - [Payload: SparseCore Band](payload-sc-band.md) — the SparseCore `SC_*` band, the largest residual non-named band on the newer gens
 - [Payload: jxc Legacy](payload-jxc-legacy.md) — the legacy `PerformanceTraceEntry` codec, decoded separately from the per-gen `Decode<Name>` family

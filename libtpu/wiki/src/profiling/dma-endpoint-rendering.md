@@ -137,7 +137,7 @@ The source and destination tables differ. pxc values:
 
 The three sync-flag *core* fields each carry their own 8-value enum — `SrcSyncFlagCoreIdValues`, `DstSyncFlag0CoreIdValues`, `DstSyncFlag1CoreIdValues`. All three share the value sequence `RESERVED, NONCORE, TC0, TC1, BC0, BC1, BC2, BC3` (numbers 0–7), the same shape as the mem-core enum.
 
-> **CORRECTION (DMA-ENDPT-1) —** an earlier reading held that the three sync-flag core enums were *the same enum* as `SrcMemCoreId` (a shared type). The FDP shows them as three *distinct* `EnumDescriptorProto`s with their own prefixed value names (`SRC_SYNC_FLAG_CORE_ID_TC0`, `DST_SYNC_FLAG_0_CORE_ID_TC0`, `DST_SYNC_FLAG_1_CORE_ID_TC0`), nested under the descriptor message at `0xbef9eb5`, `0xbef9fd2`, `0xbefa100`. The *value→number binding* is identical; the *enum types* are not. A reimplementation that interns them as one type loses three message-distinct names.
+> **NOTE —** the three sync-flag core enums are three *distinct* `EnumDescriptorProto`s, not one shared type with `SrcMemCoreId`. Each has its own prefixed value names (`SRC_SYNC_FLAG_CORE_ID_TC0`, `DST_SYNC_FLAG_0_CORE_ID_TC0`, `DST_SYNC_FLAG_1_CORE_ID_TC0`), nested under the descriptor message at `0xbef9eb5`, `0xbef9fd2`, `0xbefa100`. The *value→number binding* is identical across all three; the *enum types* are not. A reimplementation that interns them as one type loses three message-distinct names.
 
 ### `LengthGranule` — the byte-count shift (f17)
 
@@ -340,7 +340,7 @@ function AddEvent(line, GtcSpan{begin, dur}, meta):    // 0xf1df1e0
     xevent.duration_ps[+0x30] = duration_ps
 ```
 
-> **CORRECTION (DMA-ENDPT-2) —** the begin-offset numerator masks with `~0xf` (`0xFFFFFFFFFFFFFFF0`, clearing only the low 4 bits), while the *duration* path masks the end with `0x1FFFFFFFFFF0` (bits 4–44, a 41-bit window). An earlier note used a single `~0xf within bits[4:45]` mask for both. The two masks differ in the binary: `begin & 0xFFFFFFFFFFFFFFF0` at the offset multiply, `… & 0x1FFFFFFFFFF0` at the duration. For in-range GTC values they coincide, but a reimplementation must use the two distinct masks to be byte-faithful.
+> **NOTE —** the begin-offset and duration paths use **two distinct masks**. The begin-offset numerator masks with `~0xf` (`0xFFFFFFFFFFFFFFF0`, clearing only the low 4 bits) at the offset multiply, while the duration path masks the end with `0x1FFFFFFFFFF0` (bits 4–44, a 41-bit window). For in-range GTC values they coincide, but a reimplementation must use both masks to be byte-faithful: `begin & 0xFFFFFFFFFFFFFFF0`, `end & 0x1FFFFFFFFFF0`.
 
 `1e9` appears as the immediate `0x3B9ACA00`; the round-half (`+ div/2`) is folded into the 128-bit numerator before the unsigned 128-bit divide. The two stats are stamped through the converter's pre-interned metadata (`meta+0x38` offset, `meta+0x40` duration). The `clk` provenance — the per-silicon nominal GTC frequency that fills `CycleConverter+0x10` — is a separate decode (the `TpuVersion → GTC-Hz` table) not on this page.
 

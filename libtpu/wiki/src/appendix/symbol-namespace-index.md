@@ -14,7 +14,7 @@ For a reimplementer, the contract this page satisfies is:
 
 - **The counting rule** — what "owns a symbol" means (the `_ZN<quals><len><ns>` top-level anchor), and why prefix-anywhere and raw-substring counts give different, larger answers.
 - **The ranking** — the per-namespace function count, byte footprint, and role for the largest top-level owners, with a *(other)* catch-all so the listed rows plus the residual reach the 884,832-function total.
-- **The reconciliation** — why earlier library-family substring tallies (absl, Eigen, re2) overshoot the owner counts, and which surface each number describes.
+- **The surfaces** — why library-family substring tallies (absl, Eigen, re2) overshoot the owner counts, and which surface each number describes.
 
 | | |
 |---|---|
@@ -144,19 +144,19 @@ The pattern is a `<x>xc` core with `<x>lc` / `<x>fc` lane/fabric sub-cores and, 
 
 ---
 
-## Reconciling Earlier Library-Family Tallies
+## Library-Family Tallies Across the Three Surfaces
 
-An earlier embedded-library accounting reported absl ≈271,942, Eigen ≈48,153, and re2 ≈19,463 symbols. Re-derived against the name sidecar with the surfaces defined above, the numbers come apart, because each was measuring a different surface than the owner count this page ranks on.
+The substring tallies a casual `nm | grep` produces for embedded library families overshoot the owner counts this page ranks on, because each measures a different surface. The three surfaces for the three largest vendored libraries:
 
-| Namespace | Top-level owner | Mangled token anywhere | Raw substring (mangled-or-not) | Earlier tally |
-|---|---:|---:|---:|---:|
-| `absl` | 28,189 | 117,015 | 117,804 | ≈271,942 |
-| `Eigen` | 10,419 | 27,577 | 28,818 | ≈48,153 |
-| `re2` | 226 (496 strict) | 591 | 18,572 | ≈19,463 |
+| Namespace | Top-level owner | Mangled token anywhere | Raw substring (mangled-or-not) |
+|---|---:|---:|---:|
+| `absl` | 28,189 | 117,015 | 117,804 |
+| `Eigen` | 10,419 | 27,577 | 28,818 |
+| `re2` | 226 (496 strict) | 591 | 18,572 |
 
-> **CORRECTION (SYM-NS-1) —** the earlier re2 figure (≈19,463) and the raw-substring count here (18,572) agree: both are the literal `re2` substring across all names, which catches RE2's API surface *plus* every symbol that merely mentions a regex type. RE2's actual owned function surface is two orders of magnitude smaller — **226** functions, 496 top-level-owner names. The page ranks re2 by ownership; the ≈19k is a participation/substring metric and is not comparable to the per-namespace owner ranking.
+> **NOTE —** for `re2`, the raw-substring count (18,572) catches RE2's API surface *plus* every symbol that merely mentions a regex type. RE2's actual owned function surface is two orders of magnitude smaller — **226** functions, 496 top-level-owner names. The ~18.5k is a participation/substring metric and is not comparable to the per-namespace owner ranking; the page ranks re2 by ownership.
 
-> **CORRECTION (SYM-NS-2) —** the earlier absl (≈271,942) and Eigen (≈48,153) figures do not reproduce against this name sidecar on any of the three surfaces — the largest absl surface here is ~117.8k (substring) and the largest Eigen surface is ~28.8k. The discrepancy is most likely a different counting base (a pre-dedup name list, or a count that summed multiple surfaces). Trusting the sidecar: absl owns **27,777** functions / 28,189 names and participates in ~117k symbols; Eigen owns **10,419** functions / 10,419 names and participates in ~28.6k. Use the owner counts for the "who owns the binary" question.
+> **NOTE —** `absl` owns **27,777** functions / 28,189 names but participates in ~117k symbols (substring), and `Eigen` owns **10,419** functions / 10,419 names but participates in ~28.6k. Use the owner counts for the "who owns the binary" question; a raw substring count inflates both by roughly 3–4×.
 
 The lesson generalizes: any single number for "how much absl is in the binary" is ambiguous until the surface is named. Abseil's vocabulary (`absl::Status`, `absl::StatusOr`, the flat-hash containers, `absl::Span`) is in the *signature* of a large fraction of all functions, so its participation count (~117k, ~13% of names) dwarfs its owned-function count (~28k, ~3%). Both are true; they answer different questions.
 
@@ -181,5 +181,5 @@ A reimplementer sizing a component should consult both: this page for *code volu
 - [RTTI Namespace Census](rtti-namespace-census.md) — the type-record counterpart; counts polymorphic classes per namespace, not functions
 - [RTTI / Vtable Census](../forensics/rtti-vtable-census.md) — the data half of the symbol surface: vtables and typeinfo records
 - [LLVM / MLIR Manifest](../forensics/llvm-mlir-manifest.md) — version evidence for the embedded LLVM and MLIR (the two largest compiler namespaces here)
-- [Embedded Library Atlas](../forensics/embedded-library-atlas.md) — per-library identification and the family tallies reconciled in SYM-NS-1/2
+- [Embedded Library Atlas](../forensics/embedded-library-atlas.md) — per-library identification; this page resolves the absl/Eigen/re2 owner-vs-substring surfaces those families span
 - [Forensics Overview](../forensics/overview.md) — binary-level facts: build-id, segments, the `.symtab` presence this index depends on

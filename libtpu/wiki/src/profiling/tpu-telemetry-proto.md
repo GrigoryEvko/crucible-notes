@@ -8,7 +8,7 @@
 
 The whole schema is generation-agnostic. The single gen-aware surface is the `TpuCoreTypeProto` / `TpuSequencerTypeProto` enum pair, which encodes the SparseCore evolution: an older `SPARSE_CORE_V0` (one sequencer + one address handler) versus the current `SPARSE_CORE` (a scalar sequencer plus the Tile-Access-Core and Tile-Execute-Core sequencers). Everything that a reader might expect to be here but is *not* — HBM bytes, die temperature, watts, ICI link health, ECC counts, clock frequency — lives in purpose-built companion protos outside this file; this page maps that boundary so a reimplementer does not look for those fields here and find a hole.
 
-This page owns the **field-by-field schema** (every message, field number → name → type → label, grouped by message and ordered by field number), the **two enums in full**, the **identity-and-grain model** (per-host → per-chip → per-core → per-sequencer), the **producer/consumer RPC graph**, and the **companion-proto boundary catalog**. The xprof trace model is owned by [XPlane / XStat / TraceMe](xplane-xstat-traceme.md); the surrounding xprof task/session descriptor by [Task Proto](task-proto.md). Neither is re-derived here.
+This page owns the **field-by-field schema** (every message, field number → name → type → label, grouped by message and ordered by field number), the **two enums in full**, the **identity-and-grain model** (per-host → per-chip → per-core → per-sequencer), the **producer/consumer RPC graph**, and the **companion-proto boundary catalog**. The xprof trace model is owned by [XPlane / XStat / TraceMe](xplane-xstat-traceme.md); the surrounding xprof task/session descriptor by [Task Proto](task-proto.md). Neither is repeated here.
 
 For reimplementation, the contract is:
 
@@ -217,9 +217,9 @@ One producer, three consumers, all sharing the single `CurrentCoreStateSummary` 
 
 ### Producer — the xdb state server
 
-The per-host xdb (TPU debugger) state server samples each core's sequencer registers (PC, tag, tracemark, bound program, launch queue) on demand and packs them into `CurrentCoreStateSummary`. The binary names the producer object `…tpu_telemetry::TpuTelemetryHarvester`, owned by `…tpu_debugger::TpuDebugServiceImpl` (the constructor takes a `unique_ptr<TpuTelemetryHarvester>`). The harvester is the symbol that fills `SequencerInfo` from the live registers; `xdb_server_running` reflects whether that server is up per core.
+The per-host xdb (TPU debugger) state server samples each core's sequencer registers (PC, tag, tracemark, bound program, launch queue) on demand and packs them into `CurrentCoreStateSummary`. The binary names the producer object `…tpu_telemetry::TpuTelemetryHarvester` (mangled `…13tpu_telemetry21TpuTelemetryHarvester`), owned by `…tpu_debugger::TpuDebugServiceImpl` (the constructor takes a `unique_ptr<TpuTelemetryHarvester>`). The harvester fills `SequencerInfo` from the live registers via the internal-type→proto mappers `ToLocalProto(tpu::TpuSequencerType)` and `GetUniversalCoreId(tpu::TpuCoreLocation)`; `xdb_server_running` reflects whether that server is up per core.
 
-> **CORRECTION (TELEM-1) —** an earlier analysis pass recorded the producer-side packer as *not yet located* ("we have the consumer RPC bindings but not the decompiled writer"). The symbol table resolves it: `…13tpu_telemetry21TpuTelemetryHarvester*` is the producer class, instantiated and held by `TpuDebugServiceImpl`. The internal-type→proto mappers `ToLocalProto(tpu::TpuSequencerType)` and `GetUniversalCoreId(tpu::TpuCoreLocation)` are the conversion helpers it calls. The register-read body inside the harvester was not decompiled (MEDIUM confidence on the read sequence; CERTAIN that the harvester is the producer).
+> **NOTE —** the register-read body inside the harvester is not decompiled here (MEDIUM confidence on the exact read sequence; CERTAIN that `TpuTelemetryHarvester` is the producer, instantiated and held by `TpuDebugServiceImpl`).
 
 ### Consumers
 

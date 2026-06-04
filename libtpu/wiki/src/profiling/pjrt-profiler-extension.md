@@ -120,7 +120,7 @@ function CreateProfilers(out /* vector<unique_ptr<ProfilerInterface>> */, opts):
     return out;
 ```
 
-> **CORRECTION (PROF-EXT-1) —** [`../pjrt/ext-profiler.md`](../pjrt/ext-profiler.md) states the mutex is "released before factory bodies run." The decompiled body at `0x1CF50860` shows `mu` is **held across the entire walk**, including the indirect `factory(opts)` calls — `mu.Unlock()` is the last statement before the return. A factory body therefore runs with `mu` held and **must not** call `RegisterProfilerFactory` or `CreateProfilers` re-entrantly (`mu` is a non-recursive `absl::Mutex`); doing so self-deadlocks. The "released early" claim is incorrect; the rest of the cross-handle threading analysis on that page (distinct handles share no mutable state beyond this serialized walk) stands.
+> **NOTE —** `mu` is **held across the entire walk** at `0x1CF50860`, including the indirect `factory(opts)` calls — `mu.Unlock()` is the last statement before the return. A factory body therefore runs with `mu` held and **must not** call `RegisterProfilerFactory` or `CreateProfilers` re-entrantly (`mu` is a non-recursive `absl::Mutex`); doing so self-deadlocks. Distinct PJRT handles share no mutable state beyond this serialized walk.
 
 > **QUIRK —** a factory returning `NULL` is silently dropped, not an error. Combined with the no-inspection-here rule, a `ProfileOptions` whose `device_type` no factory matches yields an *empty* `ProfilerCollection`. Every subsequent `Start`/`Stop`/`CollectData` then succeeds against zero collectors and produces an empty `XSpace`. A reimplementation must treat empty-collection success as valid, not a misconfiguration to reject.
 
@@ -216,7 +216,7 @@ The vtable at `0x217738A0` is the source of the offsets the [PJRT layer](../pjrt
 
 ### Algorithm
 
-All three fan-out methods share a status-merge idiom: walk the inner vector in order, call the member's matching vtable slot, and keep the **first** non-trivial status while `Unref`-ing every later non-inline status. `CollectData` adds a destructive second pass.
+All three fan-out methods share a status-merge idiom: walk the inner vector in order, call the member's matching vtable slot, and keep the **first** non-trivial status while `Unref`-ing every later non-inline status. `CollectData` adds a destructive clearing pass after the walk.
 
 ```c
 function ProfilerCollection::Start(this):                 // 0xF6A1640
@@ -245,7 +245,7 @@ function ProfilerCollection::CollectData(this, xspace):    // 0xF6A1740
 
 `Stop` @ `0xF6A16C0` is structurally identical to `Start` at vtable slot `+0x18` and has no destroy pass.
 
-> **CORRECTION (PROF-EXT-2) —** [`../pjrt/ext-profiler.md`](../pjrt/ext-profiler.md) describes the status merge as "last status wins." The decompiled `Start`/`Stop`/`CollectData` bodies show the opposite: `merged` is initialized to the inline Ok sentinel and only overwritten while it still equals that sentinel, so it captures the **first** member to return a status (OK or not) and `Unref`s all subsequent ones. With the empty-collection early-out returning OK, the net effect is: the first collector that produces a real status determines the merged result.
+> **NOTE —** the status merge is **first-status-wins**: in `Start`/`Stop`/`CollectData`, `merged` is initialized to the inline Ok sentinel and only overwritten while it still equals that sentinel, so it captures the **first** member to return a status (OK or not) and `Unref`s all subsequent ones. With the empty-collection early-out returning OK, the first collector that produces a real status determines the merged result.
 
 > **GOTCHA —** the single shared `XSpace*` is the append contract. Every member writes into the *same* proto: `TpuProfilerImpl` adds device `XPlane`s, `ThreadpoolProfilerInterface` may add an `errors` string, `HostTracer` adds the host plane. Member order therefore determines plane order in the output. The destructive reverse-destroy pass then resets the collection to empty, which is exactly the one-shot behavior the PJRT `CollectData` relies on — a second call runs against an empty vector and re-serializes the cached bytes.
 
@@ -416,7 +416,7 @@ JAX / PT-XLA ──Create──► PLUGIN_Profiler_Create  (0xE6F0C60)
 
 ## Cross-References
 
-- [PJRT Profiler Extension](../pjrt/ext-profiler.md) — the extension struct, `PLUGIN_Profiler_Api` vtable, handle layout, and 5-method lifecycle that sit *above* this factory/collection machine; see the two in-place corrections here on its mutex-scope and status-merge claims
+- [PJRT Profiler Extension](../pjrt/ext-profiler.md) — the extension struct, `PLUGIN_Profiler_Api` vtable, handle layout, and 5-method lifecycle that sit *above* this factory/collection machine; this page documents the held-across-walk mutex scope and first-status-wins merge that govern it
 - [Profiling Overview](overview.md) — where this collector pipeline sits in libtpu's overall telemetry architecture
 - [Legacy TpuProfiler C-ABI](tpu-profiler-abi.md) — the second consumer of the same `CreateProfilers` registry, contrasted by handle size and error channel
 - [XPlane / XStat / TraceMe](xplane-xstat-traceme.md) — the `XSpace` proto the collectors fan their planes into

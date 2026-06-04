@@ -114,7 +114,7 @@ Below `+0x50` the record is dominated by IEEE-754 doubles and a second DVFS ladd
 | `sc_lane_count` | `+0x340` | `int32` | `16` on SC gens (`DT10/12/13`), `0` else | Inferred |
 | Firmware calib bundle | `+0x360 .. +0x398` | `double`×4 + `ulong`×4 | per-gen power/thermal coefficients fed to `FirmwareEventBuilder` | High |
 
-> **CORRECTION (PDT-1) —** the `+0x438`/`+0x440` tail was provisionally read as a small packed sub-field or hash. Cross-checking against the resolver call sites shows these two `int32` slots are the **perf-counter-set enum bases** for the v7x ICR (`+0x438`) and CMNUR/HBM (`+0x440`) counter sets — the same six descriptor fields the [v7x Perf-Counters](v7x-perf-counters.md) page recovers from the `DT12` row at `0x1c637e0`. They are nonzero only on `DT12`, contain no pointer (high dword is zero), and are *not* roofline doubles.
+> **NOTE —** the `+0x438`/`+0x440` tail holds two `int32` **perf-counter-set enum bases** — for the v7x ICR (`+0x438`) and CMNUR/HBM (`+0x440`) counter sets, the same six descriptor fields the [v7x Perf-Counters](v7x-perf-counters.md) page recovers from the `DT12` row at `0x1c637e0`. They are nonzero only on `DT12`, contain no pointer (high dword is zero), and are *not* roofline doubles. The resolver call sites confirm the additive `base + ordinal*8` use.
 
 ### The Picosecond Timebase
 

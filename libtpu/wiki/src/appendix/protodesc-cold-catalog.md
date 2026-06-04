@@ -25,7 +25,7 @@ This is an appendix reference page: it consolidates counts and representative na
 | **Companion sections** | `linkarr_upb_AllExts` (37 upb extension registrars), `pb_defaults` (feature default-instance) |
 | **Confidence** | CERTAIN (section + count byte-anchored to the symbol table) |
 
-> **CORRECTION (PDC-01) —** earlier scratch analysis reported the section as "3.27 MiB". The section header size is `0x334180 = 3,359,104 bytes`, which is **3.20 MiB** (`3359104 / 1024 / 1024`). The page and [Custom Sections](../forensics/custom-sections.md) both use the correct 3.20 MiB figure.
+> **NOTE —** the section header size is `0x334180 = 3,359,104 bytes`, which is **3.20 MiB** (`3359104 / 1024 / 1024`). This page and [Custom Sections](../forensics/custom-sections.md) both use the 3.20 MiB figure.
 
 ---
 
@@ -246,7 +246,7 @@ The pool defines 27 gRPC services across 184 RPCs. The largest surfaces are the 
 
 ## Architectural Enum Highlights
 
-Several enums in the pool are large enough to be the spine of a subsystem. Re-derived from the descriptor blobs:
+Several enums in the pool are large enough to be the spine of a subsystem, read from the descriptor blobs:
 
 | Values | Enum | File | Confidence |
 |---:|---|---|---|

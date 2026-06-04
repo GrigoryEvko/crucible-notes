@@ -25,7 +25,7 @@ This page is a census, not a reimplementation guide. It does not re-explain the 
 
 A tool that walks `libtpu.so`'s dispatch surface must:
 
-- **Distinguish the two populations.** The 40,313 function-pointer tables and the 33,016 switch tables are disjoint structural objects living in different sections. Conflating them — as an early pass that reported "40,313 dispatch tables" without splitting did — double-counts nothing but mislabels everything.
+- **Distinguish the two populations.** The 40,313 function-pointer tables and the 33,016 switch tables are disjoint structural objects living in different sections. A bare "40,313 dispatch tables" figure that does not split the two double-counts nothing but mislabels everything.
 - **Key the MLIR Op-Model class on a symbol, not a size.** Size 23 is the Op-Model fingerprint, but 79 unrelated 23-method vtables coincide in arity. The classifier must key on the `RegisteredOperationName::Model<Op>` symbol.
 - **Treat soft class boundaries as classifier-dependent.** The hard structural anchors (section split, size-23 count, largest tables, switch maximum) reproduce to the digit. The per-class *counts* depend on how thunk-prefixed (`_ZThn`/`_ZTv`), local-scope (`_ZZ`), and `std::` symbols are normalized; the figures below carry confidence labels accordingly.
 
@@ -57,7 +57,7 @@ The 19 classes cover 99.6% of the 40,313 tables; 157 (0.4%) are IDA-auto-named (
 | Q | abseil `AnyInvocable` invoker thunks | 2 | 0.0% | `.rodata` | `0xa30c788` — 4 | HIGH |
 | Z | unclassified (IDA auto-named) | 157 | 0.4% | `.data.rel.ro` | `0x21c3c558` — 345 | LOW |
 
-> **CORRECTION (DTT-FULL-1) —** the parent taxonomy reports Class B (`UniqueFunctionBase`) at 589 tables / 11,530 entries. Re-deriving directly from the table sidecar, the strict "first resolved symbol is `UniqueFunctionBase`" criterion yields 586 tables / 11,516 entries; broadening to include the `unique_function` template spelling yields 591 / 11,591. The figure is therefore **586–591 depending on the symbol-prefix criterion**; the 2,595-entry top table at `0x223393a0` and the `.data` residency are unchanged. The discrepancy is a classifier boundary (two `.data.rel.ro` and one `.rodata` table whose first slot resolves to a non-`UniqueFunctionBase` base before the pool body), not a count error in the source data.
+> **NOTE —** the Class B (`UniqueFunctionBase`) table count is **586–591 depending on the symbol-prefix criterion**. The strict "first resolved symbol is `UniqueFunctionBase`" criterion yields 586 tables / 11,516 entries; broadening to include the `unique_function` template spelling yields 591 / 11,591. The 2,595-entry top table at `0x223393a0` and the `.data` residency are constant either way. The boundary cases are two `.data.rel.ro` and one `.rodata` table whose first slot resolves to a non-`UniqueFunctionBase` base before the pool body.
 
 > **NOTE —** the Op-Model size-23 fingerprint reproduces exactly: 6,129 tables have 23 entries; 6,050 contain a `RegisteredOperationName::Model` slot; 79 are 23-method vtables that merely coincide in arity (e.g. `xla::MegaScalePjRtDevice`, the 23-slot `PjRtDevice` family). Class A is keyed on the Model symbol, so it does not mis-bucket the 79; its 6,085 count is the Model population across all sizes, not just size-23.
 
@@ -126,7 +126,7 @@ addr          entries  note
 
 The two structurally central F-class bases are `mlir::Pass` (13 slots, a CRTP contract where the concrete pass fills only `runOnOperation`) and `mlir::Pattern` (the second-widest inheritance tree in the binary). Their per-slot ABIs are walked in [RTTI / Vtable Census](../forensics/rtti-vtable-census.md).
 
-> **NOTE —** F is a MEDIUM-confidence count because the `mlir::` namespace prefix attracts thunk-prefixed symbols whose owning namespace must be normalized before bucketing. The parent taxonomy folded ~310 such thunks into F that an earlier pass had left in the unclassified bucket.
+> **NOTE —** F is a MEDIUM-confidence count because the `mlir::` namespace prefix attracts thunk-prefixed symbols whose owning namespace must be normalized before bucketing. About ~310 such thunks belong in F rather than the unclassified bucket once the prefix is normalized.
 
 ---
 
@@ -185,7 +185,7 @@ addr          entries  first symbol
 0x21cce6b0    266      xla::jellyfish::Target
 ```
 
-> **CORRECTION (DTT-FULL-2) —** an early pass reported "9 vtables at size 266". The table sidecar contains **exactly 7** 266-slot tables (2 `JellyfishTarget` + 5 `Target`), at `0x21cc6358`–`0x21cce6b0`. These are the per-generation target descriptors that install the per-gen cost model. The 7-not-9 count is confirmed by enumerating every 266-entry record. See [Per-Generation Function Dispatcher](../forensics/per-gen-function-dispatcher.md) for how these are reached through hand-written `GoogleInitializer` forwarders.
+> **NOTE —** there are **exactly 7** 266-slot tables (2 `JellyfishTarget` + 5 `Target`), at `0x21cc6358`–`0x21cce6b0`, confirmed by enumerating every 266-entry record. These are the per-generation target descriptors that install the per-gen cost model. See [Per-Generation Function Dispatcher](../forensics/per-gen-function-dispatcher.md) for how they are reached through hand-written `GoogleInitializer` forwarders.
 
 ---
 
@@ -221,7 +221,7 @@ addr          entries  first symbol
 0x21c1d590    447      absl::container_internal::GetRefForEmptyClass
 ```
 
-> **NOTE —** the 447-entry `GetRefForEmptyClass` table at `0x21c1d590` is the global flat-hash policy thunk — one table fanning out to 447 distinct hashmap instantiations. An earlier pass under-counted Class P at 70, having lumped most `raw_hash_set` policy thunks into the long-tail; the correct figure is 2,066, the largest single reclassification in the taxonomy.
+> **NOTE —** the 447-entry `GetRefForEmptyClass` table at `0x21c1d590` is the global flat-hash policy thunk — one table fanning out to 447 distinct hashmap instantiations. Class P totals **2,066** tables once every `raw_hash_set` policy thunk is bucketed correctly rather than lumped into the long-tail — a count easy to undershoot by an order of magnitude if those thunks are missed.
 
 ---
 
@@ -254,7 +254,7 @@ addr          entries  first symbol
 0x21c0c0c8    231      std::__u::__variant_detail::__visitation::__base::__dispatcher
 ```
 
-> **NOTE —** the 231-slot `__variant_detail::__dispatcher` is a `std::variant` visitation table — one slot per alternative type. K was the biggest beneficiary of `_ZNSt` symbol-routing fixes: an earlier pass mis-parsed the `St` mangling prefix and routed ~422 std tables into the unclassified bucket.
+> **NOTE —** the 231-slot `__variant_detail::__dispatcher` is a `std::variant` visitation table — one slot per alternative type. Class K depends on correct `_ZNSt` symbol routing: the `St` mangling prefix, if mis-parsed, routes ~422 std tables into the unclassified bucket instead of K.
 
 ---
 
@@ -348,7 +348,7 @@ addr          entries  first symbol
 
 Three small classes complete the 99.6% coverage.
 
-**R — C-runtime / Rust I/O & codec handler tables (33).** cURL (`Curl_nghttp2_*`), BoringSSL connection-filter (`ssl_cf_*`), zstd (`ZSTD_*`), hwloc, and Rust v0-mangled (`_RNv*`) handler tables. Real dispatch structures, not the trampoline false-positives an earlier pass labeled them. Top table `0x21fbfee8` — 30 entries.
+**R — C-runtime / Rust I/O & codec handler tables (33).** cURL (`Curl_nghttp2_*`), BoringSSL connection-filter (`ssl_cf_*`), zstd (`ZSTD_*`), hwloc, and Rust v0-mangled (`_RNv*`) handler tables. These are real dispatch structures, not trampoline false-positives. Top table `0x21fbfee8` — 30 entries.
 
 **Q — abseil `AnyInvocable` invoker thunks (2).** `absl::functional_internal::InvokeObject<...>` type-erasure invoker thunks. Top table `0xa30c788` — 4 entries, `.rodata`-resident.
 
@@ -364,7 +364,7 @@ The 33,016 compiled switch jump tables are a structurally separate population fr
 
 ### Size Distribution
 
-Re-derived directly by bucketing every switch's case count:
+By bucketing every switch's case count:
 
 | Case-count bucket | Switches | Cumulative | Confidence |
 |-------------------|---------:|-----------:|------------|
@@ -402,7 +402,7 @@ The switch classes break down by owning namespace: the `asic_sw` ISA encode/deco
 
 ## Verification Anchors
 
-Every figure on this page was re-derived from the table, switch, RTTI, and fixup sidecars. The hard anchors, confirmed exact:
+Every figure on this page is grounded in the table, switch, RTTI, and fixup sidecars. The hard anchors, confirmed exact:
 
 ```text
 function-pointer tables  = 40,313 ; entries sum = 516,323

@@ -84,7 +84,7 @@ The six `kDeviceTypeInfo` trailing fields are packed 32-bit `PerformanceCounterN
 | `+0x440` | `<3>` | 3 | CMNUR — memory-network / HBM controller | `0xa5463408` | High |
 | `+0x438` | `<12>` | 12 | ICR — ICI router (data) | `0xd6438c08` | High |
 
-> **CORRECTION (PERF-01) —** earlier triage labeled four of these fields "mask words." They are not bit-masks. Each is a packed `PerformanceCounterName` enum **base** that is *added* to `ordinal*8`. Two further sets (`+0x440` → `<3>` CMNUR, `+0x438` → `<12>` ICR) were also missed by that earlier pass; there are six sets, not four. The `base + ordinal*8` arithmetic in the resolver body (`lea rdi,[r14+rax*8]`) is direct evidence the field is an additive base, not a mask.
+> **NOTE —** these six fields are not bit-masks. Each is a packed `PerformanceCounterName` enum **base** that is *added* to `ordinal*8`. The `base + ordinal*8` arithmetic in the resolver body (`lea rdi,[r14+rax*8]`) is direct evidence the field is an additive base, not a mask. There are six counter sets, including `+0x440` → `<3>` CMNUR and `+0x438` → `<12>` ICR.
 
 Every other `DeviceType` row is `0x00000000` at all six fields — verified by sweeping all 17 rows: only index 12 (`0x1c637e0`) is nonzero. The whole named-counter machinery is therefore v7x-exclusive in this build.
 
@@ -150,7 +150,7 @@ function GetTpuCounterIndicesFromRequest(XprofRequest* req,        // 0xf2c5000
 | `+0x10 & 0x80000000` (sign) | `+0x1e0` | `<3>` | `<3>` | `+0x440` | CMNUR | High |
 | `+0x14 & 0x1` | `+0x1f8` | `<12>` | `<12>` | `+0x438` | ICR | High |
 
-> **NOTE —** the first member is at struct offset `+0x000`, not `+0x8`. Earlier triage placed it at `+0x8`; the decompiled `Assign` target is the bare struct pointer, so the six members sit at `0x000 / 0x078 / 0x0f0 / 0x168 / 0x1e0 / 0x1f8`. The downstream caller (`ConvertTpuTraceToXPlaneV2`) reads `.data()` of each `InlinedVector` from those offsets and pairs it with the matching kDTI base before calling the resolver.
+> **NOTE —** the first member is at struct offset `+0x000`, not `+0x8`. The decompiled `Assign` target is the bare struct pointer, so the six members sit at `0x000 / 0x078 / 0x0f0 / 0x168 / 0x1e0 / 0x1f8`. The downstream caller (`ConvertTpuTraceToXPlaneV2`) reads `.data()` of each `InlinedVector` from those offsets and pairs it with the matching kDTI base before calling the resolver.
 
 The six populated vectors are then handed, one per call site, to the six `GetPerformanceCounterNames` invocations inside `ConvertTpuTraceToXPlaneV2`. The request flags therefore decide *which* counters to collect; the resolver decides *what they are named*.
 

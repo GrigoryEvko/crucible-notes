@@ -219,9 +219,7 @@ The Step/Overlay/Sync trackers reuse the deepsea begin/end-pairing model: `StepT
 
 ## The DMA Subscriber — the Node-Fabric DMA Band
 
-The `DmaSubscriber<jxc>` (vtable `0x21643dc0`) is the second subscriber registered. It is wrapped in a `0x240`-byte `ThreadedSubscriber` (`ThreadLoop` @ `0xf1ddd60`); its inner object holds an XStat `StatMetadata` at `+0x18` (StatType `0x38`). It consumes the `nf` band (case 6) — the jxc DMA band that the newer gens fold into the [ICI/intra-DMA payloads](payload-uhi-oci-ici-dma.md).
-
-> **CORRECTION (P-3-421) —** an earlier reading listed the `Dma` subscriber as non-threaded. The byte-level read of the setup lambda shows **both** `HbmMux` and `Dma` are `ThreadedSubscriber`-wrapped (the `0x240`-byte wrapper with the `ClosureThread` worker at `+0xa0`). Treat both as threaded.
+The `DmaSubscriber<jxc>` (vtable `0x21643dc0`) is the second subscriber registered. Both it and `HbmMux` are wrapped in a `0x240`-byte `ThreadedSubscriber` (`ThreadLoop` @ `0xf1ddd60`, `ClosureThread` worker at `+0xa0`) — treat both as threaded. Its inner object holds an XStat `StatMetadata` at `+0x18` (StatType `0x38`). It consumes the `nf` band (case 6) — the jxc DMA band that the newer gens fold into the [ICI/intra-DMA payloads](payload-uhi-oci-ici-dma.md).
 
 ### Registered keys — the 17 nf DMA bands
 

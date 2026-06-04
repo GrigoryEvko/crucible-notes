@@ -189,7 +189,7 @@ function Band48(msg, slot):                      // arm @0xf26ca2f, stores @0xf2
         slot.kind_tag[+0x40]  = 2
 ```
 
-> **CORRECTION (ICR-1) —** an earlier reading held that a single id-48 event "can set BOTH first and last, producing a self-contained span." The decompiled store block (`@0xf26ce5c..` in `0xf26c6e0`) is an `if (first) {...} else { if (last) {...} }` chain: a single id-48 event writes **either** the begin marker **or** the end marker, never both. A self-contained span therefore requires two distinct id-48 events (one with `first_packet_in_dma`, one with `last_packet_in_dma`) sharing the same `dma_id`.
+> **NOTE —** a single id-48 event writes **either** the begin marker **or** the end marker, never both. The store block (`@0xf26ce5c..` in `0xf26c6e0`) is an `if (first) {...} else { if (last) {...} }` chain, so a self-contained span requires two distinct id-48 events (one with `first_packet_in_dma`, one with `last_packet_in_dma`) sharing the same `dma_id`.
 
 ### Band 50 — `OciMessageGeneratedInIcrEgressDma` (egress end timestamp)
 
@@ -254,7 +254,7 @@ function Band91(descr, slot):                     // arm @0xf26c9b2, store @0xf2
     slot.kind_tag[+0x40]    = 3                    // egress
 ```
 
-> **CORRECTION (ICR-2) —** the byte-count source for id 91 is **`length`** (f16, `+0x58`), **not** `program_counter`. In the descriptor's in-memory layout `program_counter` (`+0x54`) immediately precedes `length` (`+0x58`); an earlier note read the `+0x58` source as `program_counter`. The producer's `mov eax,[r14+0x58]; shl rax,cl` (`@0xf26c880`) reads `length`, and the shift selector `cmp [r14+0x5c],0` reads `length_granule`. The `program_counter` field is decoded but never used by this pass.
+> **NOTE —** the byte-count source for id 91 is **`length`** (f16, `+0x58`), not `program_counter`. In the descriptor's in-memory layout `program_counter` (`+0x54`) immediately precedes `length` (`+0x58`), so the two are easy to confuse. The producer's `mov eax,[r14+0x58]; shl rax,cl` (`@0xf26c880`) reads `length`, and the shift selector `cmp [r14+0x5c],0` reads `length_granule`. The `program_counter` field is decoded but never used by this pass.
 
 ---
 

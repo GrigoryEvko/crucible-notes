@@ -83,7 +83,7 @@ Three offsets that were previously pinned by hand-disassembling consumer gates r
 | #648 | `xla_while_loop_unroll_count` (int64) | 591 | `+0x1328` | parse-table FieldEntry[591] | CERTAIN |
 | #867 | `xla_tpu_enable_pipelined_loop_unrolling` (message) | 787 | `+0x2f0` | parse-table FieldEntry[787] | CERTAIN |
 
-> **CORRECTION (OFFMAP-1) —** an earlier ad-hoc analysis placed field **#2** (`xla_tpu_sdc_checker_instrument_megacore_fusion`, bool) "in the `+0x1206` region". The parse table places #2 at `+0xBC`. `+0x1206` (4614) is a *different* field — the collective-producer "must-fuse" bool that the producer-priority cost model reads. The hedged "region" attribution was imprecise; the `FieldEntry` array resolves it to the byte.
+> **NOTE —** field **#2** (`xla_tpu_sdc_checker_instrument_megacore_fusion`, bool) sits at `+0xBC` in the parse table, not in the `+0x1206` region. `+0x1206` (4614) is a *different* field — the collective-producer "must-fuse" bool that the producer-priority cost model reads. The `FieldEntry` array resolves each field to the exact byte offset.
 
 ### The `type_card` cross-check
 
@@ -180,7 +180,7 @@ The 1121 defaults break down by base type as follows. The census is the reimplem
 | uint32 | 11 | — | HIGH |
 | uint64 | 4 | — | HIGH |
 
-> **GOTCHA —** the registered absl flag default is the **byte-authoritative** source for a field's default. Help-string text is *not*. Two fields, `xla_tpu_rwb_fusion` and `xla_tpu_accumulate_into_mrb`, were read `false` from `=value` help-string text by an earlier pass; their `FlagImpl+0x48` inline literal is `01 00 00 00` = **true** in both cases. The help string describes behavior, not the seeded default. When the two disagree, trust the union at `+0x48`.
+> **GOTCHA —** the registered absl flag default is the **byte-authoritative** source for a field's default. Help-string text is *not*. For `xla_tpu_rwb_fusion` and `xla_tpu_accumulate_into_mrb`, the `=value` help-string text reads `false`, but their `FlagImpl+0x48` inline literal is `01 00 00 00` = **true** in both cases. The help string describes behavior, not the seeded default. When the two disagree, trust the union at `+0x48`.
 
 ---
 

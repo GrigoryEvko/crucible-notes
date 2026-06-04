@@ -194,7 +194,7 @@ ICI link flow uses the parallel `IciPacket*` decode family: `IciPacketControlPac
 
 The **UHI band** is not a separate id range — it is the subset of OCI/ICR events naming the UHI host bridge (`*UhiBridge`). The `UhiBridge` symbol is present; the UHI events ride the OCI codec.
 
-> **NOTE —** the per-id numeric values for the OCI/ICI/UHI bands are owned by the [codec decode table](trace-entries-coder.md) (the gappy 0..255 jump-table index). This page asserts the *names* and the *band membership*, both byte-confirmed from `.rodata`. The exact id→name numeric pairing for the interconnect bands was read from the codec, not re-derived here — see the codec page for the jump-table indices.
+> **NOTE —** the per-id numeric values for the OCI/ICI/UHI bands are owned by the [codec decode table](trace-entries-coder.md) (the gappy 0..255 jump-table index). This page asserts the *names* and the *band membership*, both byte-confirmed from `.rodata`; the exact id→name numeric pairing for the interconnect bands lives on the codec page as the jump-table indices.
 
 ### Unbound bands — UHI/OCI/ICI/DMA on deepsea
 

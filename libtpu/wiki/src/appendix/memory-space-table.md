@@ -228,9 +228,9 @@ Pufferfish is the only generation where `MemBanks(kCmem)` returns a value rather
 
 Only VMEM (and CMEM on Pufferfish) is MSA-managed — the `kAlternate`/`kDefault` tug-of-war that colors `HloValue`s. SMEM is placed by scalar load/store **opcode semantics** (the operand declares `MemorySpace=kSmem`); SFLAG is placed out of a fixed **number-space partition**, never the byte heap. All tiers nonetheless flow through the same `ProgramMemoryAllocator` → `ProgramMemoryMetadata_Allocation` proto → `CreateFromProto` → `BestFitAllocator` hand-off. A reimplementer who routes SMEM/SFLAG through the MSA cost model will mis-place them.
 
-### Correction — the buffer-layout sequencer-SMEM label
+### The buffer-layout sequencer-SMEM label
 
-> **CORRECTION (MST-2) —** [tpu-buffer-layout.md §4](../memory/tpu-buffer-layout.md#4-byte-sizes--shapesizebytesraw-and-friends) annotates the `ShapeSizeBytesRaw` (`0x1d6add40`) untiled-dense branch as `ColorToMemorySpace(layout.memory_space) == kSparseCoreSequencerSmem (12)`. The decompile confirms the literal `12`, but `12` is `sparse_core_sequencer_sflag` in the canonical LLO enum, not `sparse_core_sequencer_smem` (which is `14`, byte-confirmed by `MakeSparseCoreSequencerSmemConstant` @ `0x1d60bc60`). The *constant* `12` is correct; the *name* attached to it is the off-by-one neighbour. The branch routes a `sparse_core_sequencer_sflag`-colored buffer to the dense, untiled byte-size path. Note `ColorToMemorySpace` (`0x1d6ffb00`) is a `byte_B5435CA[color]` remap with `color < 0xA`, so its *output* is the canonical `MemorySpace` enum — the `12` is an enum value, not a raw layout color.
+> **NOTE —** the `ShapeSizeBytesRaw` (`0x1d6add40`) untiled-dense branch tests `ColorToMemorySpace(layout.memory_space) == 12`. The constant `12` is `sparse_core_sequencer_sflag` in the canonical LLO enum, **not** `sparse_core_sequencer_smem` (which is `14`, byte-confirmed by `MakeSparseCoreSequencerSmemConstant` @ `0x1d60bc60`) — the two are off-by-one neighbours and easy to mislabel. The branch routes a `sparse_core_sequencer_sflag`-colored buffer to the dense, untiled byte-size path. `ColorToMemorySpace` (`0x1d6ffb00`) is a `byte_B5435CA[color]` remap with `color < 0xA`, so its *output* is the canonical `MemorySpace` enum — the `12` is an enum value, not a raw layout color.
 
 ---
 
@@ -245,7 +245,7 @@ Only VMEM (and CMEM on Pufferfish) is MSA-managed — the `kAlternate`/`kDefault
 - [smem-scalar-memory.md](../memory/smem-scalar-memory.md) — the SPU scalar tier (`kSmem`=5); `SmemWordImmPtr`, opcode-driven placement, the BarnaCore SMEM sibling
 - [smem-register-window.md](../memory/smem-register-window.md) — why no SMEM register window exists; the flat 32-entry SREG file and CBREG/OperandWindow disambiguation
 - [sflag-protocol.md](../memory/sflag-protocol.md) — the sync-flag atomic tier (`kSflag`=6); the `4·n` stride, counter/done-bit semantics, the `Vsync*`/`Vwait*` primitives
-- [tpu-buffer-layout.md](../memory/tpu-buffer-layout.md) — how a logical XLA buffer maps to padded, tiled physical offsets in these tiers (its §4 sequencer-SMEM label is corrected — see CORRECTION MST-2)
+- [tpu-buffer-layout.md](../memory/tpu-buffer-layout.md) — how a logical XLA buffer maps to padded, tiled physical offsets in these tiers (its §4 sequencer-SMEM `12` label is the `sparse_core_sequencer_sflag` enum value, not SMEM — see the note above)
 - [address-space-ids.md](../targets/address-space-ids.md) — the full SparseCore AS-ID table, the `*Any` may-alias canonicalisation, and `CheckAddressSpaces`
 - [fat-pointers-as789.md](../sparsecore/fat-pointers-as789.md) — the dead AS7/8/9 fat-pointer reserve and the actual 64-bit/32-bit-word SparseCore pointer representation
 - [chip-parts-binarypb.md](../targets/chip-parts-binarypb.md) — the boot-time resource that supplies the per-codename size/word/granule literals absent from `.text`

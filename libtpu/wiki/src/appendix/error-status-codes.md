@@ -197,9 +197,7 @@ These are the abort paths — they do not return a `Status`, they terminate. The
 | `0xbe7d460` | `"FATAL ERROR: This binary was compiled with aes enabled, but this feature is not available on this processor (go/sigill-fail-fast).\n"` | absl CPU-feature startup guard | HIGH |
 | `0xa045d37` | `"Aborting the coordinator after collecting errors from all workers as megascale_error_reporter_abort_on_hang is set to true. …"` | Megascale `LOG(FATAL)` | HIGH |
 
-> **QUIRK —** the `go/sigill-fail-fast` fatal is **not** a TPU path. It is the statically-linked absl CPU-feature startup guard, one variant per ISA feature the build requires: `aes`, `avx`, `mmx`, `pclmul`, `popcnt`, `sse`, `sse2`, `sse3`, `sse4.1`, `sse4.2`, `ssse3`, `cmpxchg16b` (12 in total). It fires before any TPU code runs if the host CPU lacks the feature. A reimplementation of the TPU surface need not reproduce it; an operator seeing it has a host-CPU problem, not a TPU one.
-
-> **CORRECTION (ERR-1) —** an earlier note listed the `go/sigill-fail-fast` CPU-feature guard as having 12 variants but named only 11. The binary confirms 12: the missing twelfth is `cmpxchg16b`. The variant strings are a contiguous run beginning at `0xbe7d460`.
+> **QUIRK —** the `go/sigill-fail-fast` fatal is **not** a TPU path. It is the statically-linked absl CPU-feature startup guard, one variant per ISA feature the build requires: `aes`, `avx`, `mmx`, `pclmul`, `popcnt`, `sse`, `sse2`, `sse3`, `sse4.1`, `sse4.2`, `ssse3`, `cmpxchg16b` (12 in total). It fires before any TPU code runs if the host CPU lacks the feature. The 12 variant strings are a contiguous run beginning at `0xbe7d460`. A reimplementation of the TPU surface need not reproduce it; an operator seeing it has a host-CPU problem, not a TPU one.
 
 The `MakeErrorStream` self-check strings (`"MakeErrorStream destructed without getting absl::Status:"`, `"…shift called after getting absl::Status:"`, `"…got absl::Status more than once:"`) are diagnostics the status-macro machinery emits about its own misuse, not about the program under compilation.
 
@@ -281,7 +279,7 @@ Distinct from the error *template* (the format string), a **hint** is the action
 | `0xa011573` | `". See go/scoped-vmem for more details."` | doc-link | MEDIUM |
 | `0x9feecc8` | `"--xla_tpu_impure_enable_packed_bf16_math_ops is deprecated. Please use --xla_tpu_bf16_emission_mode in TpuCompilationEnvironment."` | deprecation | HIGH |
 
-> **CORRECTION (ERR-2) —** the deeply-nested-fusion remedy was anchored at `0x858bbcf` in scratch notes. The string-table entry begins at `0x858bb17` (`"Found a deeply - nested fusion …"`); `0x858bbcf` is an interior offset pointing at the `"(1) Please use --xla_tpu_rwb_fusion=false …"` segment within the same literal. Use the entry-start address `0x858bb17` for a verbatim grep.
+> **NOTE —** the deeply-nested-fusion remedy string-table entry begins at `0x858bb17` (`"Found a deeply - nested fusion …"`). `0x858bbcf` is an interior offset pointing at the `"(1) Please use --xla_tpu_rwb_fusion=false …"` segment within the same literal — use the entry-start address `0x858bb17` for a verbatim grep.
 
 > **GOTCHA —** a `--flag=value` hint tells you the *workaround*, which is often the **non-default**. `"Please use --xla_tpu_rwb_fusion=false"` means the default is `true`; `"Did you forget to set --xla_tpu_nested_dot_fusion=true?"` means the default is `false`. Read the advised value as a direction-of-default signal, not a confirmed default — the byte-confirmed defaults are a separate (smaller) set.
 
@@ -328,7 +326,7 @@ The per-host `MegaScaleRuntimeError.ErrorType` is the *input* category — `NO_E
 
 > **NOTE —** the digest is the only place where an error is *scoped to hosts*. A single-process `absl::Status` names an op or a shape; the Megascale digest names the culprit `worker_id` / `host_name` / `chip_id` set. Aggregation is gated by `--megascale_error_aggregation_enabled` (default on); whether the digest aborts the coordinator is gated by `--megascale_error_reporter_abort_on_hang` / `--megascale_error_reporter_abort_on_error` (both default off — a digest is logged but the process survives unless one is set).
 
-> **CORRECTION (ERR-3) —** the per-host `ErrorType` enum (`NO_ERROR`/`HANG_DETECTED`/`UNRECOVERABLE_ERROR`/`CANCELLED`) and the cross-host `Cause` enum are distinct. `UNRECOVERABLE_ERROR` exists in both, but `Cause` is the classifier *output* over the full set, not a relabeling of the input type — e.g. all-`HANG_DETECTED` inputs can classify to `BAD_TPU_CHIP`, `NETWORKING_ISSUE`, `DATA_INPUT_STALL`, etc. Do not conflate the two enums when reimplementing.
+> **NOTE —** the per-host `ErrorType` enum (`NO_ERROR`/`HANG_DETECTED`/`UNRECOVERABLE_ERROR`/`CANCELLED`) and the cross-host `Cause` enum are distinct. `UNRECOVERABLE_ERROR` exists in both, but `Cause` is the classifier *output* over the full set, not a relabeling of the input type — e.g. all-`HANG_DETECTED` inputs can classify to `BAD_TPU_CHIP`, `NETWORKING_ISSUE`, `DATA_INPUT_STALL`, etc. Do not conflate the two enums when reimplementing.
 
 ---
 

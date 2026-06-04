@@ -173,7 +173,7 @@ via `_ZL7toc_ptr`.
 
 ## Full Entry Catalog
 
-All 61 entries, re-derived directly from the binary by walking the TOC
+All 61 entries, recovered directly from the binary by walking the TOC
 pointers, resolving each descriptor's `name`/`data` relocations, and reading
 `size`. `data VA` is the address of the resource blob (in `.lrodata` or
 `.rodata`). The codec column applies the suffix→codec rule above. Every row was

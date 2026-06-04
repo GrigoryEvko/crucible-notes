@@ -130,9 +130,9 @@ xla_vf_allow_split_vmem  ·  xla_vf_allow_replicated_vmem_writes  (vf-only)
 
 This is the static face of the `TpuVersion`-aware overlay: the per-codename MSA overlay (`baseline ⊕ family-overlay`, v0/1→jf, v2→cmem, v3→vf, v4/5→gf) rewrites a family of TCE fields per generation. The prefix-strip/version-select dispatch that resolves *which* codename family applies at compile time is owned by [flag-prefix-dispatch.md](flag-prefix-dispatch.md).
 
-> **CORRECTION (FAMILY-1) —** the flag catalog's family table lists `xla_gf_*` (14) as the only per-gen VMEM family. Registration-symbol counting shows a co-resident `xla_vf_*` family of 16 (Viperfish) and a 1-flag `xla_pf_*` (Pufferfish), both carrying the same VMEM/MSA knob names. The catalog under-counted the codename families to `gf` alone; `vf` and `pf` are real, byte-confirmed peers. (CONFIRMED — `AbslFlagHelpGenForxla_{vf,pf}_*` symbols.)
+> **NOTE —** `xla_gf_*` (14) is not the only per-gen VMEM family. Registration-symbol counting shows a co-resident `xla_vf_*` family of 16 (Viperfish) and a 1-flag `xla_pf_*` (Pufferfish), both carrying the same VMEM/MSA knob names (`AbslFlagHelpGenForxla_{vf,pf}_*` symbols present). All three are real, byte-confirmed codename families.
 
-> **GOTCHA —** the task brief names a `gl` codename family. **No `gl` family exists in this build** — zero `xla_gl_*` strings and zero `AbslFlagHelpGenForxla_gl_*` symbols. A reimplementer must not reserve a routing arm for it. The live codename set is `{jf, pf, vf, gf}`. (CONFIRMED — empty grep.)
+> **GOTCHA —** **no `gl` codename family exists in this build** — zero `xla_gl_*` strings and zero `AbslFlagHelpGenForxla_gl_*` symbols. A reimplementer must not reserve a routing arm for it. The live codename set is `{jf, pf, vf, gf}`.
 
 ### `xla_sc_*` and `barna_core_*` — SparseCore / embedding
 

@@ -328,7 +328,7 @@ The 33 highest opcodes are the BarnaCore (SparseCore) instruction set — embedd
 
 ## Verification Provenance
 
-A representative sample of this table's value↔mnemonic↔slot bindings was re-derived from the binary (classifiers, builders, converters) and matched the deep-page aggregation source exactly — no `CORRECTION` was warranted. Probes (all CONFIRMED byte-exact):
+A representative sample of this table's value↔mnemonic↔slot bindings is grounded directly in the binary (classifiers, builders, converters). Probes (all CONFIRMED byte-exact):
 
 | Probe | Binary fact | Confirms |
 |---|---|---|

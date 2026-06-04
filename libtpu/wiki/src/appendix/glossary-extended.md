@@ -91,7 +91,7 @@ The short register/latch abbreviations that the ISA-slot pages use without expan
 | **LSF** (`Lsf`) | A **L**atch-**S**tate **F**lag on the vector matrix-push (11 hits; `VlatchLsf`, `EmitVectorLatchLsf`, `LsfGainLatchMode`, "Instruction vmatpush.lsf not supported on this platform.") — a per-platform-gated latch modifier. Owned by [Encoder Latch Serialization](../sched/encoder-latch-serialization.md). |
 | **RPU** (`Rpu`) | The vector-**R**otate / cross-lane op kind (103 hits; `RpuOp`, the assertion `first_rpu_inst->opcode() == LloOpcode::kVectorRotate`, "filtered_xlu_ops should have only TransposeTiles and RpuOperations.") — an XLU-family rotate operation. Owned by [XLU Op Roster](../isa/xlu-op-roster.md). |
 
-> **CORRECTION (GLOSS-X1) — `IAR` is `Iar`, not `IAR`.** A literal `IAR` (all-caps) has **zero** hits in the name table; the grounded symbol is the CamelCase `Iar` (4,793 hits). Likewise `MatPush` is absent — the binary spells it `Matpush` (97). Grep with the binary's casing or conclude the feature is missing when it is not.
+> **NOTE — casing matters when grepping the name table.** A literal `IAR` (all-caps) has **zero** hits; the grounded symbol is the CamelCase `Iar` (4,793 hits). Likewise `MatPush` is absent — the binary spells it `Matpush` (97). Grep with the binary's casing, or you will conclude a feature is missing when it is not.
 
 ---
 

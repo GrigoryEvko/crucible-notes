@@ -80,13 +80,13 @@ Before any band lookup, place the address in its section. The linker laid the fi
 
 > **QUIRK —** the namespace `asic_sw::deepsea::gxc` (the TPU "core-X" ISA codec family, ~60,700 functions in `.text`) appears across a ~197 MiB code span (`0x1391cd40` .. `0x1fe6f7a0`), but its *density* climbs toward the top of `.text`: ~13.7k functions land in B8 and ~46k in B9. A reimplementer who keys "codec land starts at X" off the first `gxc` function will be ~150 MiB too low. Use the **density centroid** (high `.text`, B8–B9), not the first occurrence.
 
-> **CORRECTION (LAYOUT-1) —** an earlier scratch hypothesis placed the codec/ISA-emitter cluster at "≈0x1e8xxxxx–0x14xxxxxx" — a descending, self-crossing range that cannot be a band. The binary shows the codec namespaces (`gxc`/`vxc`/`pxc`) cluster *ascending* with a density peak in the top quarter of `.text` (`~0x1d6xxxxx`–`0x21217484`). The "0x14xxxxxx" figure is where the lower codec stragglers begin, not where the cluster sits. Trust the per-band census: B8–B9 are the codec bands.
+> **NOTE —** the codec namespaces (`gxc`/`vxc`/`pxc`) cluster *ascending* with a density peak in the top quarter of `.text` (`~0x1d6xxxxx`–`0x21217484`); B8–B9 are the codec bands. The lower codec stragglers begin around `0x14xxxxxx`, far below where the cluster actually sits — key off the per-band census, not the first occurrence.
 
 ---
 
 ## Band Detail
 
-Each band below names the anchor symbols that pin its edges and the most reliable landmarks for orientation. Anchors are real exported or RTTI symbols whose addresses survive in the `.symtab`; they are the re-verification points if this map is re-derived against a future build.
+Each band below names the anchor symbols that pin its edges and the most reliable landmarks for orientation. Anchors are real exported or RTTI symbols whose addresses survive in the `.symtab`; they are the re-verification points for checking this map against a future build.
 
 ### B0 — Runtime / PJRT Entry (`0x0e63c000`–`0x0f53a2a0`)
 

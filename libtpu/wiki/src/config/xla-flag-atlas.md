@@ -350,7 +350,7 @@ Allocation knobs (27 `xla_tpu_` + generic) control OOM handling, HBM/VMEM/SMEM s
 | `tpu_log_allocations_on_oom` | bool | (unrec) | log allocations on OOM | HIGH |
 | `DANGEROUS_tpu_runtime_abi_verification_disabled` | bool | (unrec) | **disables ABI verification** | HIGH |
 
-> **QUIRK —** `xla_tpu_impure_oom_fast_exit_threshold` defaults to **10** (byte-evidenced: inline `FlagImpl+0x48` = `0x0a`, no `Gen` reloc) — a positive count, not the `-1` "disabled" sentinel an earlier pass assumed. The `impure_` prefix is a libtpu naming convention marking ~30 non-deterministic / logging / side-effecting knobs (`impure_cost_model_logging_options`, `impure_llo_lifecycle_log_mode`, `impure_probability_of_host_offloading`). A reimplementer should treat `impure_` flags as runtime-observable side channels, not pure compile decisions.
+> **QUIRK —** `xla_tpu_impure_oom_fast_exit_threshold` defaults to **10** (byte-evidenced: inline `FlagImpl+0x48` = `0x0a`, no `Gen` reloc) — a positive count, not a `-1` "disabled" sentinel. The `impure_` prefix is a libtpu naming convention marking ~30 non-deterministic / logging / side-effecting knobs (`impure_cost_model_logging_options`, `impure_llo_lifecycle_log_mode`, `impure_probability_of_host_offloading`). A reimplementer should treat `impure_` flags as runtime-observable side channels, not pure compile decisions.
 
 ---
 

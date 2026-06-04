@@ -343,13 +343,12 @@ the tail is anchored and HIGH:
 > For dictionary purposes a tail `message` field's row is `field# | name |
 > message/AutoProto | LOW`; the decode of the oneof is not per-field.
 
-> **CORRECTION (TCE-B) —** an earlier reading of this range assumed field numbers
-> were dense and that "#1121" meant proto field number 1121. The parse-table
-> header (`max_field_number=1218`, `num_field_entries=1121`) shows the numbers are
-> sparse: there are 97 dead numbers, so the live-entry *count* (1121) is not a
-> field number. The two dictionary pages tile by field *number* (A: #1–#560; B:
-> #561–#1218), and any reader mapping a serialized tag must use the live
-> FieldEntry, never assume tag == index.
+> **NOTE —** the TCE field numbers are **sparse**, not dense. The parse-table
+> header (`max_field_number=1218`, `num_field_entries=1121`) carries 97 dead
+> numbers, so the live-entry *count* (1121) is not a field number. The two
+> dictionary pages tile by field *number* (A: #1–#560; B: #561–#1218), and any
+> reader mapping a serialized tag must use the live FieldEntry, never assume
+> tag == index.
 
 ---
 

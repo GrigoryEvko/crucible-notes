@@ -128,7 +128,7 @@ The low 56 bits of `dma_id` are the flow identity; the low two-bit tag `3` marks
 
 `GetDmaId` @ `0xf698180` derives the synthetic 27-bit key that pairs a `*_COMMAND` with its `*_DATA_END`. It is the `jxc` proto2-field analog of the deepsea bit-packed composer `TraceEntryWrapper<pxc>::GetDmaId(int)` @ `0xf699ca0`: where the deepsea path slices bit windows out of a 16-byte packet, the `jxc` path folds proto2 message fields.
 
-> **CORRECTION (JXC-DMA-1) —** the composer's switch dispatches on the **`EntryDataCase`** discriminator (`*(submsg_ptr + 0x30)`, the proto2 oneof tag), **not** on `(nf.id − 3)`. The `(nf.id − 3)` switch is the *Dma subscriber's* engine selector (`0xf1dfee0`); `GetDmaId` is a separate function whose `case 3` reads the `nf_descriptor` layout, `case 4/5/6/8` read the cmd/data-end layouts, and `case 0x12/0x13` read two further oneof arms. Cases `7,9..0x11` jump straight to the composite-merge label (`0xf69824e`) without ever loading a field — at entry the function zeroes `eax`/`edx` (`xor eax,eax; xor edx,edx`), so the merge (`movzbl al; or ecx`) folds `0 | 0` and these arms return `0`, *not* `id & 0xff`. Treat the two switches as distinct dispatch keys.
+> **NOTE —** `GetDmaId`'s switch dispatches on the **`EntryDataCase`** discriminator (`*(submsg_ptr + 0x30)`, the proto2 oneof tag), not on `(nf.id − 3)`. The `(nf.id − 3)` switch is a separate key — the *Dma subscriber's* engine selector (`0xf1dfee0`). In `GetDmaId`, `case 3` reads the `nf_descriptor` layout, `case 4/5/6/8` read the cmd/data-end layouts, and `case 0x12/0x13` read two further oneof arms. Cases `7,9..0x11` jump straight to the composite-merge label (`0xf69824e`) without ever loading a field — at entry the function zeroes `eax`/`edx` (`xor eax,eax; xor edx,edx`), so the merge (`movzbl al; or ecx`) folds `0 | 0` and these arms return `0`, not `id & 0xff`. Treat the two switches as distinct dispatch keys.
 
 ### Algorithm
 
@@ -234,7 +234,7 @@ function HbmMuxSubscriber_ProcessTraceEntry(self, entry):   // 0xf1def00
         clear()
 ```
 
-> **CORRECTION (JXC-DMA-2) —** the FSM is a **four-symbol open/close machine**, not a two-state toggle. `{1,2}` open a direction span; `{0,3}` close it. State 3 is *not* a third mux mode — it is the close marker for the direction that `fsm==1` opened, exactly as `fsm==0` closes what `fsm==2` opened. The two pairs:
+> **NOTE —** the FSM is a **four-symbol open/close machine**, not a two-state toggle. `{1,2}` open a direction span; `{0,3}` close it. State 3 is *not* a third mux mode — it is the close marker for the direction that `fsm==1` opened, exactly as `fsm==0` closes what `fsm==2` opened. The two pairs:
 >
 > ```text
 > fsm 1 = open(BFIFO->NF)  ...  fsm 3 = close  -> emit "Node Fabric to BFIFO" (meta +0x20)

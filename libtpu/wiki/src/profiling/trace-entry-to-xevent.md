@@ -63,7 +63,7 @@ RepeatedPtrField<TraceEntry>                       ── one entry per 16-byte 
 
 ```c
 function ConvertTpuTraceToXPlaneV2(decoded_entries):     // pxc 0xf1d4360
-    ids   = GetDeviceIdentifiers()                        // P-3-399 transport identity
+    ids   = GetDeviceIdentifiers()                        // transport identity
     codec = GetTraceCodec(ids)                            // 0xf5a2900
     for each ChipCoreId core in ids:
         ctx = CoreContext(core)                           // owns one /device:TPU:<core> XPlane
