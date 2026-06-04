@@ -105,13 +105,13 @@ function GetDimensionRings(target, ring_dim, devcount, b, megacore_aware):  // s
     ldpc_tc  = Target::LogicalDevicesPerChip(target, 0)    // sub_1D615B00 (TensorCore)
     megacore = (ldpc_tc >= 2) && megacore_aware            // setge AND'd with arg
     // THE SPLIT — how many ring segments this axis carries:
-    segments = extent / devcount - 1                       // idiv ebx=devcount ; dec eax ; [-0xb8] @0x133df942
+    segments = extent / devcount - 1                       // idiv ebx=devcount @0x133df670 ; dec eax @0x133df672 ; mov [-0xb8] @0x133df674
     ...                                                    // build RingConfigAttributes from segments + flags
 ```
 
 The flat-path caller (the AllGather builder, `@0x133c8d3e`..`@0x133c8d5c`) passes the **running remaining device count** in `rcx = [rbp-0x150]`, initialized from the per-axis deque tuple's `hi` field. The quotient `extent / devcount` becomes the next axis's `devcount`, so the offload devices are partitioned **multiplicatively** across the X/Y/Z ring axes — each axis consumes `devcount` devices, and the remainder flows to the next. The cumulative products accumulate in a `std::__tree` (set) rooted at `[rbp-0x228]` — the device-offset / color-index map. `NumScOffloadDevices` is fetched in `rbx` immediately before this tree is initialized (`@0x133c89d3`..`@0x133c89e3`, via `GetTpuCompEnv` `@0x1d73de80`), bounding the total devices the per-axis rings may consume.
 
-> **NOTE —** the `−1` in `segments = extent / devcount − 1` is the off-by-one that converts a count of devices-per-ring into a count of *inter-device hops* (a ring of N devices has N−1 forward steps before wrap). It is byte-confirmed at `@0x133df942` (`(int)v12 / v10 - 1`), where `v12` holds the axis extent and `v10` the device count.
+> **NOTE —** the `−1` in `segments = extent / devcount − 1` is the off-by-one that converts a count of devices-per-ring into a count of *inter-device hops* (a ring of N devices has N−1 forward steps before wrap). It is byte-confirmed at `@0x133df670`–`@0x133df674` (`idiv %ebx` then `dec %eax` then `mov %eax,-0xb8(%rbp)`; decompile `(int)v12 / v10 - 1`), where `v12` holds the axis extent and `v10` the device count.
 
 ---
 
@@ -138,7 +138,7 @@ function ExtractNDPlaneInfo(target, device_assignment, hlo, Span<vector<int>> gr
     return NDPlaneInfo{ size_x, size_y, size_z, NDPlaneStrideInfo{...} }
 ```
 
-The axis-name strings (`"x"` `@0x8a106a1`, etc.) are passed to the `$_0` lambda purely for the diagnostic messages on a failed span check. The reduction-mod-`LogicalDevicesPerChip` collapses each global core ID to its chip coordinate, so two cores on the same chip (megacore) map to the same coordinate and contribute one entry to the sorted-unique set.
+The axis-name strings (`"X"` `@0x8a106a1`, `"Y"` `@0x8a0f71b`, `"Z"` `@0x886531a`) are passed to the `$_0` lambda purely for the diagnostic messages on a failed span check. The reduction-mod-`LogicalDevicesPerChip` collapses each global core ID to its chip coordinate, so two cores on the same chip (megacore) map to the same coordinate and contribute one entry to the sorted-unique set.
 
 ### 2.2 `ExtractNDPlaneInfo::$_0` — the per-axis projection (`IsNDPlaneSpanAcrossEntireDimension`)
 
@@ -241,7 +241,7 @@ The `NumScOffloadDevices` total bounds the running `devcount` that `GetDimension
 > **[CONFIRMED]** Cross-checked against the IDA decompile of `libtpu.so` v0.0.40 (build-id `89edbbe8…`):
 > - **`NumScOffloadDevices`** (`@0x1d6b8b00`) — `sc_total = topo[+0x94]`; `ldpc_sc = LogicalDevicesPerChip(2)`; `sc_dev = sc_total/ldpc_sc` (idiv, `ldpc_sc>0` guard); `AutoOr<long>::FromProtoOrDie(compEnv[+0x898])` engaged-bit; both FATAL CHECKs (`"num_embedding_devices >= 0"` line 1803, `"num_embedding_devices <= sc_per_device"` line 1805); `return sc_dev − n_emb` — all byte-exact. Sibling `NumEmbeddingDevices` (`@0x1d6b8a00`) confirmed as the complement partition.
 > - **`tensor_split_factor`** gate (AllGather builder `@0x133c82c0`) — `value_or(1)`; `cmp 2` `>= 2` gate; RetCheck `"!use_single_core.value_or(kDefaultUseSingleCore)"` → `"A larger than 1 tensor split factor requires more than one sparse core to split the tensor on."`; RetCheck `"tensor_split_factor.value_or(kDefaultTensorSplitFactor) == 2"` (line 1558) → `"We currently only support tensor split factor of 2 across two sparse cores."`; VLOG `"Adopting split tensor mode."`; the mode-2 effect VLOG `"Twisted torus: duplicate colors as indicated by tensor split factor."` — all byte-exact. Forwarding from AR (`push [rbp+0x10] @0x133c2d01`) / RS confirmed; AllGather wrapper `@0x133c76c0` confirmed to have no `optional<int>` parameter.
-> - **`GetDimensionRings`** (`@0x133df520`) — X/Y/Z extents `[+0x3b8][0x58/0x5c/0x60]`; `LogicalDevicesPerChip(0)` (TC) megacore detect; the split `extent / devcount − 1` byte-confirmed at `@0x133df942` (`(int)v12 / v10 − 1`) — exact.
+> - **`GetDimensionRings`** (`@0x133df520`) — X/Y/Z extents `[+0x3b8][0x58/0x5c/0x60]`; `LogicalDevicesPerChip(0)` (TC) megacore detect; the split `extent / devcount − 1` byte-confirmed at `@0x133df670` (`idiv %ebx`) / `@0x133df672` (`dec %eax`) / `@0x133df674` (`mov %eax,-0xb8(%rbp)`; decompile `(int)v12 / v10 − 1`) — exact.
 > - **`ExtractNDPlaneInfo::$_0`** (`@0x133bf700`) — `coords.size()==1` fast path (`has_size=0`); `stride = coords[1] − coords[0]`; the three RetChecks at lines 922/923/925 (`"Stride must be larger or equal to 1."` / `"Stride must be less than the dimension size."` / `"Stride must divide the dimension size."`); the per-pair stride-consistency scan (line 931); the `has_size=1, size=stride` success store — all byte-exact.
 > - **`NDPlaneInfo` / `NDPlaneStrideInfo` layout** — `NDPlaneInfo::ToString @0x10fdf2a0` labels `"size_x: "`/`"size_y: "`/`"size_z: "`/`"stride_info: "`; `NDPlaneStrideInfo::ToString @0x10fe62e0` labels `"stride_x: "`/`"stride_y: "`/`"stride_z: "`/`"across_cores_on_chip: "` with reads at `+0`/`+4`, `+8`/`+0xc`, `+0x10`/`+0x14`, `+0x18`; the two consumers `GetCollectiveNDPlaneDimensionCount @0x133bb6e0` (has-bits) and `GetMinorToMajorOrder @0x133c1c40` (`has`@`+0x10`/`+0x18`/`+0x20`, `size`@`+0xc`/`+0x14`/`+0x1c`) agree with the ToString-derived layout — byte-exact.
 > - **`GetCollectiveNDPlaneDimensionCount`** (`@0x133bb6e0`) — `*((_DWORD *)this + 2) = v26 + v27 + v28` (sum of the three has-bytes) confirmed; CHECK `"collective != nullptr"` line 845; `AddSourceLocation` lines 849/852 — exact.
