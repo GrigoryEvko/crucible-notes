@@ -24,7 +24,7 @@ For reimplementation, the contract is:
 | **`sizeof`** | `0x15E8` (5608 B); field data region `+0xA8 .. +0x15E0` |
 | **Parse table** | `_table_ @ 0x21cfa9e0` (`TcParseTableBase` + 1121-entry `FieldEntry` array @ `+0x370`) |
 | **Default instance** | `TpuCompilationEnvironment_globals_ @ 0x227b87e0` |
-| **Class data** | `TpuCompilationEnvironment_class_data_ @ 0x223c96a0` (`sizeof 0x15e8` at `+0x2c`) |
+| **Class data** | `TpuCompilationEnvironment_class_data_ @ 0x223c96a0` (`sizeof 0x15e8` at `+0x20`) |
 | **Construct default** | `CreateDefaultTpuCompEnv @ 0x1d73dfa0` (takes `SparseDenseMatmulFdoConfig*`) |
 | **Cached default** | `GetTpuCompEnvWithDefaultValues @ 0x1d73f100` (`NoDestructor`, `cxa_guard`) |
 | **Flag→TCE bridge** | `OverrideTpuCompEnvByCmdLineFlags @ 0x1d73e640` · `SetFieldFromFlagString @ 0x1d73fcc0` |

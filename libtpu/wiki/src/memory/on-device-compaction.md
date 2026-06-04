@@ -4,7 +4,7 @@
 
 ## Abstract
 
-This page answers one question precisely, with binary evidence: **does the libtpu runtime perform HBM defragmentation by relocating live buffers, and how?** The answer is **yes** — and that is the non-obvious result, because the device allocator (`tpu::BestFitAllocator`, see [hbm-allocator.md](hbm-allocator.md)) is a classic non-moving boundary-tag allocator whose `Allocate`/`Deallocate` paths *only* coalesce adjacent free blocks. Live-buffer relocation lives in a single, separate, OOM-triggered method: **`tpu::BestFitAllocator::Compact`** (`0x1e81c360`, vtable slot `vt+0x90`).
+This page answers one question precisely, with binary evidence: **does the libtpu runtime perform HBM defragmentation by relocating live buffers, and how?** The answer is **yes** — and that is the non-obvious result, because the device allocator (`tpu::BestFitAllocator`, see [hbm-allocator.md](hbm-allocator.md)) is a classic non-moving boundary-tag allocator whose `Allocate`/`Deallocate` paths *only* coalesce adjacent free blocks. Live-buffer relocation lives in a single, separate, OOM-triggered method: **`tpu::BestFitAllocator::Compact`** (`0x1e81c360`, vtable slot `vt+0xA0`).
 
 The clean way to state the architecture is a three-way split of "where does each buffer sit in HBM":
 
@@ -18,7 +18,7 @@ So the page is a present/absent inventory. **PRESENT:** a full live-buffer reloc
 |---|---|
 | **Compaction performed?** | **YES** — live movable buffers are relocated to consolidate free space |
 | **Trigger** | OOM only (allocation failure → retry); never periodic/background |
-| **Relocation engine** | `tpu::BestFitAllocator::Compact(flat_hash_set<long> pinned)` @ `0x1e81c360` (vt+0x90) |
+| **Relocation engine** | `tpu::BestFitAllocator::Compact(flat_hash_set<long> pinned)` @ `0x1e81c360` (vt+0xA0) |
 | **Output** | `std::vector<tpu::TpuMemmoves::Memmove>` — a relocation *plan*; bytes moved by a later codegen step |
 | **Byte movement** | `TpuCompactionIsaEmitterCodegen::Generate` @ `0x1090ece0` (VMEM-staged DMA) → `EnqueueCompactionImpl` @ `0x1d12ed00` → `CompactionRunner` |
 | **Device driver entry** | `tpu::System::CompactMemory` @ `0x1d0b6000` (shrink program stacks → `EnqueueCompaction`) |
@@ -72,7 +72,7 @@ The headline inventory, each line byte-verified in the decompile (see [Evidence]
 
 ## The Relocation Method: `Compact`
 
-`BestFitAllocator::Compact` (`0x1e81c360`, vt+0x90) is the only method in the allocator that produces buffer relocations. Its signature (demangled from the binary symbol) is:
+`BestFitAllocator::Compact` (`0x1e81c360`, vt+0xA0) is the only method in the allocator that produces buffer relocations. Its signature (demangled from the binary symbol) is:
 
 ```cpp
 // 0x1e81c360 — returns the relocation plan by value (NRVO into a1).

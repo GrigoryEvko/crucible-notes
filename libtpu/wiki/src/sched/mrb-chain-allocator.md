@@ -1,6 +1,6 @@
 # MRB Chain Allocator
 
-> *All addresses on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`, **not** stripped — every symbol below is a demangled C++ name). Section map: `.text`/`.rodata` VMA == file offset; `.data`/`.data.rel.ro` VMA − 0x200000 == file offset. Other versions will differ.*
+> *All addresses on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`, **not** stripped — every symbol below is a demangled C++ name). Section map: `.text`/`.rodata` VMA == file offset; `.data.rel.ro` VMA − 0x200000 == file offset; `.data` VMA − 0x400000 == file offset. Other versions will differ.*
 
 ## Abstract
 

@@ -268,7 +268,7 @@ PJRT_LoadedExecutable_Execute
 | `CommonPjRtBuffer::ConfirmDonation` | `0xf93dd40` | — | dispatch to tracked-buffer confirm | CONFIRMED |
 | `TrackedTpuDeviceBuffer::ConfirmDonation` | `0xf840660` | `tracked_tpu_device_buffer.cc:88` | clear `in_use_`, release events | CONFIRMED |
 | `TrackedCpuDeviceBuffer::ConfirmDonation` | `0xf916b20` | — | CPU sibling | CONFIRMED |
-| `ScopedHold::DropDonationHold` | `0xf93d900` | — | return buffer on failure / no-donate | CONFIRMED |
+| `CommonPjRtBuffer::DropDonationHold` | `0xf93d900` | — | return buffer on failure / no-donate | CONFIRMED |
 | `CommonPjRtBuffer::GetBufferForDonationHoldLocked` | `0xf93d3a0` | — | fetch buffer under lock for the hold | CONFIRMED |
 | `PjRtBuffer::DonateWithControlDependency` | `0xe6eb260` | — | standalone future-gated donation | CONFIRMED |
 | `CommonPjRtBufferImpl::DonateWithControlDependency` | `0xf92a740` | — | TPU impl of the above | CONFIRMED |
