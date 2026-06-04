@@ -275,7 +275,7 @@ function EmitInstruction(codegen, llo_instr, bundle):   // 0x14043a40
 
 The dispatch is real virtual dispatch through the emitter's vptr: `(*(...)(*(_QWORD *)emitter_obj + 0x418LL))(IsaEmitter*, ...)`. Confirmed sites include `0x418` (slot 131, `EmitVectorMatmulMsk`) and `0x478` (slot 143, `EmitVectorAccumulatorBinop`). The slots are the per-generation ISA-encoder hooks filled by the `{Pf, Vf, Gl, Gf}` concrete emitter classes; see [per-generation function dispatch](per-gen-function-dispatcher.md) for how each generation's emitter is selected.
 
-> **CORRECTION (PEP-2) —** the fan-out is **81** distinct `IsaEmitter` vtable-slot offsets, not ~94 or 96. Counting the distinct dispatch operands whose receiver IDA types as `xla::jellyfish::IsaEmitter *` in the decompilation of `0x14043a40` yields 81 unique emitter slots, spanning offsets `0x50`–`0x490` (not the `0xf0`–`0x478` band an earlier note assumed). A handful of other indirect calls in the same function target `LloInstruction`/helper objects, not the emitter, and are excluded. The order of magnitude — "the densest dispatch region in the binary" — is unaffected.
+> **Note:** the fan-out is **81** distinct `IsaEmitter` vtable-slot offsets, spanning `0x50`–`0x490`. The count is the distinct dispatch operands whose receiver IDA types as `xla::jellyfish::IsaEmitter *` in the decompilation of `0x14043a40`; a handful of other indirect calls in the same function target `LloInstruction`/helper objects, not the emitter, and are excluded.
 
 ---
 
@@ -302,7 +302,7 @@ function TpuHal_InitializeInternal(hal, options):     // 0x1e811ea0
 
 Slot 19 (`0x98`) is the topology validation hook and slot 20 (`0xa0`) is `CreateAndInitializeChips` — both overridden by the per-generation `HardwareImpl` subclasses. The driver also dispatches slot 9 (`0x48`, `GetChip`) per chip and slot 4 (`0x20`, `TearDown`) on the error path.
 
-> **CORRECTION (PEP-3) —** `GetChip` was previously characterized as a non-virtual delegation to the chip vector. The decompilation of `InitializeInternal` shows it dispatched **virtually** through slot 9 (`call *0x48(%rax)`) inside the per-chip validation loop. Other named `TpuHal::` methods (`InitializeAllocator`, the page-alignment checks) are indeed non-virtual; `GetChip` is not.
+> **Note:** `GetChip` is dispatched **virtually** through slot 9 (`call *0x48(%rax)`) inside the per-chip validation loop of `InitializeInternal`, not as a non-virtual chip-vector access. Other named `TpuHal::` methods (`InitializeAllocator`, the page-alignment checks) are non-virtual; `GetChip` is not.
 
 ---
 
@@ -330,7 +330,7 @@ function TpuCodec_Create(out, version):       // 0x1e835fa0
 
 The returned object exposes a 6-slot `TpuCodec` vtable: `Encode` (slot 2 / `0x10`), `Decode` (slot 3 / `0x18`), `EncodeBundle` (slot 4 / `0x20`), `DecodeBundle` (slot 5 / `0x28`). The encode/decode consumers route through `pro::v4::proxy` facades — a third dispatch mechanism (a proxy-table) distinct from both C++ vtables and function pointers, whose internal slot layout is not decoded here.
 
-> **CORRECTION (PEP-4) —** the `TpuVersion` case-to-codec mapping is **`{0:Jellyfish, 1:Dragonfish, 2:Pufferfish, 3:Viperfish, 4:Ghostlite, 5:anon-v5}`**. An earlier note ordered the factory targets `{Jellyfish, Ghostlite, Pufferfish, Viperfish, Dragonfish}`, which swaps Dragonfish and Ghostlite. The decompilation of `0x1e835fa0` is authoritative: case 1 is Dragonfish, case 4 is Ghostlite.
+> **Note:** the `TpuVersion` case-to-codec mapping is **`{0:Jellyfish, 1:Dragonfish, 2:Pufferfish, 3:Viperfish, 4:Ghostlite, 5:anon-v5}`**, read directly from the `0x1e835fa0` decompilation — case 1 is Dragonfish, case 4 is Ghostlite. This matches the `TpuVersion` ordinal ladder on the [per-generation dispatcher](per-gen-function-dispatcher.md) page.
 
 ---
 

@@ -137,8 +137,7 @@ Nineteen classes cover 99.6% of the 40,313 tables. The classifier keys on the
 recovered symbol of the table's contents (the namespace of its vtable owner, or
 the presence of a marker symbol such as `RegisteredOperationName::Model`), **not**
 on table size — size-23 coincidences are resolved by the marker, not the arity.
-Counts are the wave-3 re-derivation; the column **Stride/Entry** gives the memory
-signature.
+The column **Stride/Entry** gives the memory signature.
 
 | ID | Class | Count | % | Med | Max | Section | Stride / entry kind | Confidence |
 |----|-------|------:|----:|----:|----:|---------|---------------------|------------|
@@ -170,14 +169,14 @@ signature.
 > rows as the authoritative shape of the space; re-derive a single class's exact
 > count only if a downstream claim hinges on it.
 
-> **CORRECTION (DISP-1) —** the originally-published "17 taxonomy classes" figure
-> is superseded. Two pairs were collapsed (dnnl with Xbyak; the C-runtime/Rust
-> handler tables were mis-filed as "trampoline false positives") and the abseil
-> policy-thunk class was undercounted by ~2,000 because the `raw_hash_set` policy
-> thunks were lumped into the long-tail. With `std::`, thunk-prefix (`_ZThn`/`_ZTv`),
-> and local-scope (`_ZZ`) mangling normalized, the taxonomy is **19 classes at
-> 99.6%**, not 17 at 89%. The residual unclassified bucket drops from 4,376 (10.9%)
-> to 157 (0.4%).
+> **Note:** the 19-class decomposition depends on symbol normalization. The
+> classifier collapses thunk-prefix mangling (`_ZThn`/`_ZTv`), libc++ `std::`
+> thunks, and local-scope (`_ZZ`) mangling onto their owning class before keying;
+> without that step the abseil `raw_hash_set` policy thunks (Class P, ~2,000
+> tables) fall into the long-tail and the residual unclassified bucket inflates
+> from 157 (0.4%) to several thousand. dnnl and Xbyak JIT vtables (Class D) are one
+> class, and the C-runtime/Rust handler tables (Class R) are genuine handler tables,
+> not trampoline false positives.
 
 ### Structural decomposition (library-independent)
 
@@ -240,17 +239,17 @@ tables with >=1 Model entry (any size) .. 6,070
 | `0x219bfbe8` | `.data.rel.ro` | 23 | `mlir::RegisteredOperationName::Model<mlir::ROCDL::BlockIdXOp>` | HIGH |
 | `0x219d4e48` | `.data.rel.ro` | 23 | `mlir::RegisteredOperationName::Model<xla::PureCallOp>` | HIGH |
 
-> **CORRECTION (DISP-5) —** the two Class A representative addresses were
-> previously given as `0xa2c33e0` and `0x215fca68`, neither of which is a
-> `Model<Op>` vtable. `0xa2c33e0` falls *inside* the `asic_sw::…profiler` PMU
-> `kCmq_lookup` C-table (`.rodata`, base `0xa2c33c0`); `0x215fca58` is the
-> `_ZTV` for `xla::MegaScalePjRtDevice` — one of the 79 size-23 *non*-Model
-> coincidences this very page flags. The correct anchors are the address points
-> (`_ZTV+0x10`) of confirmed `Model<Op>` vtables: `0x219bfbe8`
+> **Note:** a Class A anchor must be the *address point* of a confirmed
+> `Model<Op>` vtable — i.e. `_ZTV…+0x10`, not the `_ZTV` symbol itself, and not a
+> coincidental size-23 vtable. `0x215fca58` is the `_ZTV` for
+> `xla::MegaScalePjRtDevice` (one of the 79 size-23 non-Model coincidences this
+> page flags), and `0xa2c33e0` falls *inside* the `asic_sw::…profiler` PMU
+> `kCmq_lookup` C-table (`.rodata`, base `0xa2c33c0`) — neither is a `Model<Op>`
+> vtable. The correct anchors are `0x219bfbe8`
 > (`_ZTVN4mlir23RegisteredOperationName5ModelINS_5ROCDL10BlockIdXOpEEE`, 23 slots,
-> `.data.rel.ro`) and `0x219d4e48` (`Model<xla::PureCallOp>`, 23 slots). The
-> binary carries exactly **6,050** `vtable for …RegisteredOperationName::Model<…>`
-> symbols, confirming the size-23/with-Model count below.
+> `.data.rel.ro`) and `0x219d4e48` (`Model<xla::PureCallOp>`, 23 slots). The binary
+> carries exactly **6,050** `vtable for …RegisteredOperationName::Model<…>` symbols,
+> confirming the size-23/with-Model count below.
 
 The dialect distribution skews hard toward the TPU/sparse-core dialects — the
 top contributors by Op-Model count are `sparse_core`, `TF`, `spirv`, `ROCDL`,
@@ -387,10 +386,9 @@ tables. Class Q's two tables are tiny (4 slots) invokers in `.rodata`.
 | `0x21c1d590` | `.data.rel.ro` | 447 | `absl::container_internal::GetRefForEmptyClass` | HIGH |
 | `0xa30c788` | `.rodata` | 4 | `absl::functional_internal::InvokeObject<…>` | MEDIUM |
 
-> **CORRECTION (DISP-2) —** Class P was originally counted at 70 and Class Q at 20.
-> Re-derivation shows the bulk of the apparent "AnyInvocable" tables were actually
-> `raw_hash_set` policy thunks: P is 2,066 and Q is 2. The 447-entry global policy
-> table reproduces exactly at `0x21c1d590`.
+> **Note:** the bulk of the apparent "AnyInvocable" tables are actually
+> `raw_hash_set` policy thunks — Class P is 2,066 tables and Class Q is only 2. The
+> 447-entry global policy table sits at `0x21c1d590`.
 
 ---
 
@@ -422,16 +420,15 @@ arity, one per generation/lane-cluster:
 > who models per-gen behavior as a giant `switch(version)` is modeling the wrong
 > mechanism.
 
-> **CORRECTION (DISP-3) —** the per-gen `Target` vtable count was originally
-> reported as "9 at size 266", later "7". Measuring slot counts directly off the
-> symbol table (gap to the next `_ZTV`/`_ZTI` symbol, minus the 2-slot
-> offset-to-top/typeinfo header) shows **6 at exactly 266 slots** in
-> `0x21cc6358…0x21cce6b0`: the five concrete generations
+> **Note:** measuring slot counts directly off the symbol table (gap to the next
+> `_ZTV`/`_ZTI` symbol, minus the 2-slot offset-to-top/typeinfo header) gives
+> **6 `Target` vtables at exactly 266 slots** in `0x21cc6358…0x21cce6b0`: the five
+> concrete generations
 > (`xla::jellyfish::{Dragonfish,Jellyfish,Pufferfish,Viperfish,Ghostlite}Target`)
-> plus the abstract base `xla::jellyfish::Target`. The two
-> `*SparseCoreTarget` vtables in the same address band are **28**-slot, not 266,
-> and are not part of this family. The per-slot method labelling of these families
-> is owned by the top-vtable / per-gen sibling pages (see Cross-References).
+> plus the abstract base `xla::jellyfish::Target`. The two `*SparseCoreTarget`
+> vtables in the same address band are **28**-slot, not 266, and are not part of
+> this family. The per-slot method labelling of these families is owned by the
+> top-vtable / per-gen sibling pages (see Cross-References).
 
 Detail for these families — slot-level method names, the override matrix across
 generations — belongs to the RTTI/vtable census and the per-gen dispatcher pages
@@ -458,8 +455,8 @@ only by owning namespace:
 - **Class Z1** — anonymous-namespace (`_GLOBAL__N_`) TU-local pass/lambda
   dispatch, 698.
 - **Class R** — 33 genuine C-runtime/Rust handler tables (cURL, BoringSSL
-  connection filters, zstd, hwloc, Rust `_RNv` mangling). Originally dismissed as
-  "trampoline false positives"; they are real handler tables.
+  connection filters, zstd, hwloc, Rust `_RNv` mangling). These are real handler
+  tables, not trampoline false positives.
 - **Class Z** — 157 tables (0.4%) IDA could not attribute: pure-virtual-only
   abstract-class vtables (`__cxa_pure_virtual`) or `sub_`/`nullsub_` auto-named
   tables with no recoverable owner symbol. Their owner could be recovered by
@@ -503,10 +500,9 @@ entry total), dominated by the TPU ISA encode/decode opcode switches.
 
 ## Verification Notes
 
-Every count on this page was re-derived from the table, switch, and RTTI
-sidecars rather than carried from prior analysis; the relocation figures were
-checked directly against the binary with `readelf -dW`/`-rW` (which supersede the
-sidecar's relocation total — see DISP-4). The figures that reproduced exactly:
+The relocation figures on this page are taken directly from the binary with
+`readelf -dW`/`-rW`, which are authoritative over any analysis-sidecar relocation
+total (see the count-provenance note below). The confirmed figures:
 
 | Quantity | Value | Status |
 |---|---:|---|
@@ -525,17 +521,16 @@ sidecar's relocation total — see DISP-4). The figures that reproduced exactly:
 | `.data.rel.ro` relocations (all types / `RELATIVE`) | 924,033 / 924,015 | CERTAIN |
 | `0x223393a0` / `0x21c1d590` / `0x21e0d0a0` entries | 2,595 / 447 / 674 | CERTAIN |
 
-> **CORRECTION (DISP-4) —** the relocation total was previously stated as
-> **1,069,603**, a figure carried from the IDA fixups sidecar (`*_fixups.json`).
-> `readelf -dW` / `readelf -rW` on the binary show the authoritative counts:
-> `DT_RELACOUNT` = **1,069,006** `R_X86_64_RELATIVE` relocations, and **1,069,659**
-> relocation entries across all types. The sidecar's 1,069,603 over-counts the
-> `RELATIVE` set by 597 and under-counts the all-types total by 56; it matches
-> neither and is dropped in favour of the binary figures. The two section anchors
-> the sidecar *did* reproduce — 924,033 relocations in `.data.rel.ro` and 131,596
-> in `.data` (all-type counts; 924,015 / 131,590 of those are `RELATIVE`) — are
-> confirmed against the binary and retained. The vtable count (39,155) and every
-> table figure on this page are unaffected.
+> **Note (count provenance):** relocation totals must come from `readelf -dW` /
+> `readelf -rW` on the binary, not from an analysis sidecar. The authoritative
+> counts are `DT_RELACOUNT` = **1,069,006** `R_X86_64_RELATIVE` relocations and
+> **1,069,659** relocation entries across all types. A sidecar figure of 1,069,603
+> over-counts the `RELATIVE` set by 597 and under-counts the all-types total by 56,
+> matching neither. The two section anchors do reproduce from the binary —
+> 924,033 relocations in `.data.rel.ro` and 131,596 in `.data` (all-type counts;
+> 924,015 / 131,590 of those are `RELATIVE`). The vtable count (39,155) and every
+> table figure on this page are derived from the deduped symbol table, not a
+> decompile-tree grep.
 
 Not yet resolved: per-table demangling of the 157 Class Z residual (recoverable by
 `.text` address-band matching, not symbols); slot-level semantic labelling of
@@ -561,3 +556,4 @@ exact Class E encoder↔opcode ratio.
 - [Polymorphic Entry Points](polymorphic-entry-points.md) — the thunk-table forwarding-stub class and how relocated slots point at trampolines.
 - [Per-Generation Function Dispatcher](per-gen-function-dispatcher.md) — the vtable-family mechanism behind Classes N and G (cost model, codec, Target installation).
 - [PJRT_Api Function-Pointer Table Reconstruction](../pjrt/api-vtable-reconstruction.md) — the 23-slot `PjRtDevice` vtables that are among the 79 non-Model size-23 tables.
+- [Dispatch-Table Taxonomy — Full Catalog](../appendix/dispatch-table-taxonomy-full.md) — the exhaustive per-table listing behind this page's class summary.

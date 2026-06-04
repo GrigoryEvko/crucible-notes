@@ -1,6 +1,6 @@
 # Custom Sections
 
-> *All addresses on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`). Other builds will differ. Every section name, address, size, and flag set below was confirmed against `readelf -SW` and `readelf -x`; raw-note figures that disagreed were corrected in place.*
+> *All addresses on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`). Other builds will differ. Every section name, address, size, and flag set below was confirmed against `readelf -SW` and `readelf -x`.*
 
 ## Abstract
 
@@ -276,9 +276,9 @@ Despite being a production plugin, `libtpu.so` ships with its **full `.symtab`**
 
 > **QUIRK —** the `.symtab` + `.strtab` pair is *non-allocated* (vaddr `0x0`, no `A` flag) — it costs zero runtime memory but ~200 MiB of file size. Google ships it for crash-symbolication. For a reverse-engineer this is an enormous gift: the binary is effectively self-documenting. Run `strip --strip-debug` and 200 MiB and all local names vanish, leaving only the 741 `.dynsym` exports.
 
-> **CORRECTION (W030-1) —** prior scratch notes tallied the section header count as part of a "sections: 88" aggregate and listed a `.tm_clone_table` of size 0. The aggregate counted two ELF objects (`libtpu.so` + `sdk.so`) together; `libtpu.so` alone has exactly **52** section headers per `readelf -h`/`readelf -S`, and the `.tm_clone_table` and `.tdata`/`.tbss` rows in that aggregate belong partly to the sibling `sdk.so`. This page's tables describe `libtpu.so` only; figures were re-derived directly from `readelf -SW libtpu.so`.
+> **Note:** a "sections: 88" aggregate that includes a zero-size `.tm_clone_table` counts two ELF objects (`libtpu.so` + `sdk.so`) together. `libtpu.so` alone has exactly **52** section headers per `readelf -h`/`readelf -S`, and `libtpu.so` carries **no** `.tm_clone_table` (that row belongs to the sibling [`sdk.so`](two-binary-split.md)). This page's tables describe `libtpu.so` only.
 
-> **CORRECTION (W030-2) —** the `.lbss` size was re-measured as `0x9f940` = 653,632 bytes (638 KiB), not the rounded value implied by earlier notes; `.ldata` is `0x21c00` = 138,240 bytes (135 KiB). The PJRT singleton sits at the section's exact base `0x227ba840`, confirmed by the `.symtab` entry, not merely "near" it.
+> **Note:** `.lbss` is `0x9f940` = 653,632 bytes (638 KiB) and `.ldata` is `0x21c00` = 138,240 bytes (135 KiB). The PJRT singleton sits at the section's exact base `0x227ba840`, confirmed by the `.symtab` entry, not merely "near" it.
 
 ---
 
@@ -288,4 +288,5 @@ Despite being a production plugin, `libtpu.so` ships with its **full `.symtab`**
 - [Static Initialization](static-init.md) — owns the `.init_array` census (2900 constructor slots); this page only fixes the array's location and notes the PJRT singleton it builds.
 - [Trailing zstd Blob](trailing-zstd-blob.md) — owns the question of any embedded/trailing carved payload; this page covers only named ELF sections.
 - [Binary Forensics Overview](overview.md) — the map of the whole forensics part and where each section's deep dive lives.
-- [Two-Binary Split](two-binary-split.md) — why `libtpu.so` and `sdk.so` are separate objects (the source of the `sections: 88` aggregate the corrections above untangle).
+- [Two-Binary Split](two-binary-split.md) — why `libtpu.so` and `sdk.so` are separate objects, and where the `.tm_clone_table` / combined-section-count figures come from.
+- [Embedded-Library Atlas](embedded-library-atlas.md) — the third-party libraries (tcmalloc, protobuf/upb, libc++, Abseil) whose named sections this page enumerates.

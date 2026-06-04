@@ -227,7 +227,7 @@ The `CycleTable` registry differs from `Target` in one structural way: it has **
 | 4 | `GlcCycleTable` | `0x21c20148` | `0x21c20158` | CERTAIN |
 | 5 | `GfcCycleTable` | `0x21c201c8` | `0x21c201d8` | CERTAIN |
 
-> **CORRECTION (PGD-1) —** an earlier pass listed the `CycleTable` vtable addresses as `Jf 0x21c1ffc8`, `Pf 0x21c20058`, `Vf 0x21c200d8`, `Glc 0x21c20158`, `Gfc 0x21c201d8`. Those are the addresses of the first virtual-function *slot*, i.e. the value an object's vtable pointer holds — each is exactly `+0x10` past the `_ZTV` symbol, which begins with the 16-byte `{offset-to-top, typeinfo-ptr}` header. The canonical vtable-object symbols are `0x21c1ffb8 / 0x21c20048 / 0x21c200c8 / 0x21c20148 / 0x21c201c8`. Both forms are correct references; the table above gives both so a verifier can reconcile either convention. The named-leaf stride is `0x80` bytes (the base `CycleTable` vtable sits between Jf and Pf, widening that one gap to `0x90`).
+> **Note (vptr convention):** the two columns above are the two correct ways to cite a vtable. The `_ZTV` symbol address (`0x21c1ffb8` …) is the group base, which begins with the 16-byte `{offset-to-top, typeinfo-ptr}` header; the first-slot address (`0x21c1ffc8` …) is `_ZTV+0x10`, the value an object's vtable pointer actually holds. When matching a `call *0xN(%rax)` site against a symbol, the slot index is measured from `_ZTV+0x10`, not from the `_ZTV` symbol. The named-leaf stride is `0x80` bytes (the base `CycleTable` vtable sits between Jf and Pf, widening that one gap to `0x90`).
 
 ### The IsaEmitter registry — the widest, pair-keyed
 

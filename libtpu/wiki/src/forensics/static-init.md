@@ -88,7 +88,7 @@ Of the 2900 slots, IDA's symbol table names 2644 distinct constructors. They spl
 
 The arithmetic closes: 1885 + 759 = 2644 named; the named-constructor code span is `[0x21217490, 0x21380980]`, and **2878** of the 2900 relocation addends land inside that span, leaving 2878 − 2644 = **234 anonymous ctors** in the span and **22** addends *below* it (`< 0x21217490`). No addend exceeds the span. The 234 anonymous entries are real constructors — the relocation points into executable code in the same region — that simply lack a `_GLOBAL__` symbol because clang emitted them for an anonymous-namespace object or because the symbol was stripped.
 
-> **CORRECTION (SINIT-01) —** an earlier estimate put the named `_GLOBAL__sub_I_*` population near 1764. The binary's symbol table contains **1885** distinct `_GLOBAL__sub_I_*` symbols (a line-exact `rg` count over `*_names.json`, all unique). The 2900-slot / 23200-byte table size is confirmed unchanged; only the named-TU figure is revised upward, and the priority-init family (`_GLOBAL__I_*`, 759 symbols) was not separately broken out before.
+> **Note:** the binary's symbol table contains **1885** distinct `_GLOBAL__sub_I_*` symbols (all unique) and a separate priority-init family of **759** `_GLOBAL__I_*` symbols. These are deduped symbol-table counts; a grep over the decompile tree (which carries one record per artifact file) inflates them and should not be used for the slot accounting here. The `.init_array` table size is 2900 slots / 23200 bytes.
 
 ### The two naming families
 

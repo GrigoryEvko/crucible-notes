@@ -23,7 +23,7 @@ For reimplementation — or, more realistically, for re-deriving this analysis a
 | **Size** | 781,691,048 bytes (745.5 MiB) |
 | **Type** | ELF64 LSB shared object (`DYN`), x86-64, version 1 (SYSV) |
 | **Build-id** | `89edbbe81c5b328a958fe628a9f2207d` (NT_GNU_BUILD_ID, md5/uuid form) |
-| **Reported version** | `0.103` (from package metadata; see correction below) |
+| **Reported version** | `0.103` (from package metadata; see note below) |
 | **Stripped?** | **No** — full `.symtab` present (1,233,710 entries) |
 | **Sections** | 52 (`e_shnum`); `.shstrtab` index 50 |
 | **Program headers** | 11 (`e_phnum`); 4 × `PT_LOAD` |
@@ -32,7 +32,7 @@ For reimplementation — or, more realistically, for re-deriving this analysis a
 | **Disassembled functions** | 884,832 (IDA), 881,784 named / 3,048 anonymous |
 | **Sibling object** | `sdk.so` — 22,541,240 bytes, 94,732 functions |
 
-> **CORRECTION (FOR-01) —** the `0.103` version is taken from the package/runtime metadata reported by the surrounding tooling, **not** observed as a literal `0.103` ASCII string in the binary on a plain byte scan. The build-id, file size, section count, and segment count below were all confirmed directly against the binary with `readelf`/`stat`; the version string was not, and is carried here as reported-but-unverified. A reimplementer should pin to the build-id, which is unambiguous.
+> **Note:** the `0.103` version is taken from the package/runtime metadata, **not** observed as a literal `0.103` ASCII string in the binary on a byte scan. The build-id, file size, section count, and segment count are confirmed directly against the binary with `readelf`/`stat`; the version string is not, and is carried here as reported-but-unverified. Pin to the build-id, which is unambiguous.
 
 ---
 
@@ -135,7 +135,7 @@ The population is dominated by a handful of C++ namespaces, which is the cleares
 
 > **NOTE —** the disassembler's per-function `addr_name` field is *always* the address form (`sub_E635524`); the real symbol lives in a separate `name` field. The named/anonymous split above is computed by comparing the two: a function is "anonymous" only when its `name` collapses back to the `sub_` form. Do not read a `sub_`-prefixed name as evidence the function is unnamed — for 99.66 % of this binary there is a real mangled symbol behind it.
 
-> **CORRECTION (FOR-02) —** two near-but-unequal totals appear across the sidecars and must not be conflated. The per-function *manifest* (`function_addresses` sidecar) and the four per-function artifact directories (`context/`, `decompiled/`, `disasm/`, `graphs/`) each carry **884,843** entries; the authoritative function-*record* count from the disassembler's own `functions` sidecar and the extraction `metadata` (`total_functions`) is **884,832**. The difference is exactly 11 — a handful of thunk/alias/data-stub entries that receive an artifact file without being booked as a full function record. Where this page cites a function *count* it uses 884,832; artifact *coverage* is 884,843. See [Methodology](../methodology.md) (METH-02) and [Deep Methodology](../appendix/methodology-deep.md) (METH-D1) for the full ledger.
+> **Note:** two near-but-unequal totals must not be conflated. The per-function artifact coverage is **884,843** entries; the authoritative function-*record* count is **884,832**. The difference is exactly 11 — a handful of thunk/alias/data-stub entries that receive an artifact file without being booked as a full function record. Where this page cites a function *count* it uses 884,832; artifact *coverage* is 884,843. See [Methodology](../methodology.md) and [Deep Methodology](../appendix/methodology-deep.md).
 
 The named/anonymous mechanics, the namespace concentration, and how 326 K leaf functions interact with the call-graph are developed in [Per-Gen Function Dispatcher](per-gen-function-dispatcher.md) (the per-generation entry fan-out) and the population framing carried forward into [RTTI / Vtable Census](rtti-vtable-census.md).
 

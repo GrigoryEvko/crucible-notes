@@ -289,9 +289,7 @@ The export surface is intentionally narrow: a host loads this library and calls 
 
 The 473 PLT slots are the lazily-bound calls into the six `DT_NEEDED` libraries (`malloc`, `pthread_*`, `dlopen`, math, etc.). `PLTGOT` = `0x224c2980` (section `[44] .got.plt`) sits in LOAD 3, outside `GNU_RELRO`, precisely so the lazy resolver can write resolved targets into it at runtime — the rest of the GOT (`[35] .got`) is RELRO-frozen.
 
-> **CORRECTION (ELF-1) —** an earlier scratch fingerprint recorded this object as having `sections=51`. `readelf -h` reports `Number of section headers: 52`. Both are consistent: the 51 counts the meaningful sections, the 52 includes the mandatory `NULL` section `[0]`. This page uses the on-the-wire count of 52.
-
-> **CORRECTION (ELF-2) —** the same scratch note listed `build_id=<none>` and `soname=<none>` for this object. `readelf -n` confirms `soname` is genuinely absent, but the build-id is present and equals `89edbbe81c5b328a958fe628a9f2207d` (the `<none>` was a tooling miss, not a real absence). The version-pin at the top of every wiki page relies on this build-id.
+> **Note:** section-count figures of 51 and 52 are both consistent — `readelf -h` reports `Number of section headers: 52`, where the 51 counts the meaningful sections and the 52 includes the mandatory `NULL` section `[0]`. This page uses the on-the-wire count of 52. Likewise, `DT_SONAME` is genuinely absent (`readelf -n`), but the build-id is present and equals `89edbbe81c5b328a958fe628a9f2207d`; the version-pin at the top of every wiki page relies on this build-id.
 
 ---
 

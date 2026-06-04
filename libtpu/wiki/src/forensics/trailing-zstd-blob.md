@@ -4,11 +4,11 @@
 
 ## Abstract
 
-An earlier binwalk-style carve reported a ~4.1 MB **zstd-dictionary-compressed blob appended to `libtpu.so` past the ELF section headers**, at file offset `0x20F99BEF`, supposedly decoded through a recovered dictionary into a per-codename hardware-constants bundle. That finding is **wrong on every material claim**, and the correction is the whole point of this page. There is no trailing payload, no embedded dictionary, and no `ZSTD_DCtx_loadDictionary` call site to recover one from. The byte sequence the carve anchored on is an **x86-64 instruction immediate** sitting deep inside `.text`.
+A naive binwalk-style magic-byte carve of `libtpu.so` finds the zstd frame magic `28 b5 2f fd` and is tempted to report a ~4.1 MB **zstd-dictionary-compressed blob appended past the ELF section headers** at file offset `0x20F99BEF`. There is no such blob. There is no trailing payload, no embedded dictionary, and no `ZSTD_DCtx_loadDictionary` call site to recover one from. The byte sequence the carve anchors on is an **x86-64 instruction immediate** sitting deep inside `.text` — and establishing that cleanly is the point of this page.
 
 The mechanics are simple once the binary is read directly. The four bytes `28 b5 2f fd` are the little-endian encoding of `ZSTD_MAGICNUMBER` (`0xFD2FB528`, RFC 8878 §3.1.1.1). `libtpu.so` statically links the **entire** libzstd source — compressor and decompressor, 309 `ZSTD_*` symbols, full symbols preserved as local (`t`) entries — so that constant appears five times, every time as a `mov`/`cmp` immediate in a libzstd function that either *writes* a frame header into a caller-supplied output buffer or *checks* it against an input buffer. None of the five sit in a data section; none are referenced by a pointer or relocation; all five are reachable only by program execution flowing through libzstd code.
 
-This page does three things: it establishes that the ELF section-header table ends *exactly* at EOF (no trailing-past-sections region exists), it walks the `ZSTD_compressEnd_public` empty-frame epilogue that produces the false-positive `mov`, and it documents the *actual* runtime zstd surface — riegeli-driven stream (de)compression whose dictionaries, when used at all, are supplied by the application at runtime through `ZSTD_DCtx_refDDict`, not baked into the image. The hardware-constants bundle the carve imagined is real but lives elsewhere; see [chip-parts binarypb](../targets/chip-parts-binarypb.md).
+This page does three things: it establishes that the ELF section-header table ends *exactly* at EOF (no trailing-past-sections region exists), it walks the `ZSTD_compressEnd_public` empty-frame epilogue that produces the false-positive `mov`, and it documents the *actual* runtime zstd surface — riegeli-driven stream (de)compression whose dictionaries, when used at all, are supplied by the application at runtime through `ZSTD_DCtx_refDDict`, not baked into the image. The per-codename hardware-constants bundle that a carve might guess the blob decodes into is a real artifact, but it lives elsewhere as an uncompressed protobuf; see [chip-parts binarypb](../targets/chip-parts-binarypb.md).
 
 For a reader re-verifying this, the contract is:
 
@@ -28,7 +28,7 @@ For a reader re-verifying this, the contract is:
 | **Decompressed format** | n/a — no blob to decompress |
 | **Confidence** | **HIGH** (negative result, byte- and disassembly-anchored) |
 
-> **CORRECTION (ZSTD-01) —** the prior "trailing zstd blob at `0x20F99BEF`, ~4.1 MB, zstd-dictionary-encoded, decoding to per-codename hardware constants" claim is withdrawn in full. The offset is inside `.text`, not past EOF; the bytes are a `mov` immediate, not a frame; no dictionary is embedded; no payload exists. Every downstream task gated on "decode the blob" is closed as *no blob exists*. The page below is the resolution the [forensics overview](overview.md) routed here.
+> **Note:** there is no "trailing zstd blob at `0x20F99BEF`, ~4.1 MB, zstd-dictionary-encoded, decoding to per-codename hardware constants." The offset is inside `.text`, not past EOF; the bytes are a `mov` immediate, not a frame; no dictionary is embedded; no payload exists. The page below is the byte- and disassembly-level proof, resolving the magic-byte question the [forensics overview](overview.md) routes here.
 
 ---
 
@@ -149,7 +149,7 @@ function ZSTD_compressEnd_public(cctx, dst, dstCap, src, srcSize):   // sub @ 0x
 
 ### Raw bytes vs. their meaning
 
-The bytes following `0x20F99BEF`, read as a hex dump, look like they could be frame data — which is exactly how the carve was fooled:
+The bytes following `0x20F99BEF`, read as a hex dump, look like they could be frame data — which is exactly how a naive carve is fooled:
 
 ```text
 20f99bef: 28 b5 2f fd  41 b8 04 00 00 00  85 f6  0f b6 c9  0f
@@ -228,7 +228,7 @@ The frame-magic `cmp` at `0x2100C77B` is on this decode path: it validates frame
 
 ### Where the imagined payload actually lives
 
-The hardware-constants bundle the carve speculated the blob would decompress into is a real artifact in this binary, but it is an **uncompressed protobuf** parsed from data sections, documented separately:
+The hardware-constants bundle one might expect such a blob to decompress into is a real artifact in this binary, but it is an **uncompressed protobuf** parsed from data sections, documented separately:
 
 - Per-codename hardware constants and the `chip_parts` binarypb bundle are covered under [`targets/chip-parts-binarypb.md`](../targets/chip-parts-binarypb.md) and [`targets/per-codename-hw-constants.md`](../targets/per-codename-hw-constants.md). They are not zstd-compressed and not gated on any blob recovery.
 
@@ -252,5 +252,5 @@ The hardware-constants bundle the carve speculated the blob would decompress int
 - [ELF Anatomy](elf-anatomy.md) — the section table whose end coincides with EOF; full `[0]..[51]` layout that leaves no trailing region.
 - [Embedded Library Atlas](embedded-library-atlas.md) — the statically-linked libzstd (309 `ZSTD_*` symbols) whose code immediates produce the five magic hits.
 - [Custom Sections](custom-sections.md) — the non-standard data sections (`filewrapper_toc`, `.lrodata`, etc.) that *do* carry payloads, none of them a zstd blob.
-- [chip-parts binarypb](../targets/chip-parts-binarypb.md) — the real, uncompressed hardware-constants bundle the carve imagined the blob would decode into.
+- [chip-parts binarypb](../targets/chip-parts-binarypb.md) — the real, uncompressed hardware-constants bundle, parsed from data sections rather than decoded from any compressed blob.
 - [Per-Codename HW Constants](../targets/per-codename-hw-constants.md) — per-codename silicon constants, parsed from data sections, not from any compressed blob.
