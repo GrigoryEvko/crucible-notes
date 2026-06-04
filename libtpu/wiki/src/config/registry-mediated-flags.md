@@ -21,7 +21,7 @@ For reimplementation, the contract is:
 | **By-name reader** | `GetFieldValueIfNotDefault<long> @ 0x1c6f1a80` — `FindFieldByName` + `TpuCompEnvReflection::GetFieldValue` + diff vs defaults |
 | **Flag↔field bridge** | `FlagFieldMappings::GetInstance @ 0x2257ef50` · ctor `@ 0x1d753ce0` (dual `FlatHashMap`, `FindCommandLineFlag` per field) |
 | **Write side** | `SetFieldFromFlagString @ 0x1d73fcc0` — `GetFieldForFlag` + `ParseFlagFromString` into the proto field |
-| **Legacy sync-flag registries** | `LegacyEvictionsFlagRegistry @ 0x22579860` · `LegacyPrefetchesFlagRegistry @ 0x225798d8` (per-`TpuVersion` `StaticMap`) |
+| **Legacy sync-flag registries** | `LegacyEvictionsFlagRegistry @ 0x22579860` · `LegacyPrefetchesFlagRegistry @ 0x225798a0` (per-`TpuVersion` `StaticMap`) |
 | **MSA consumer** | `ComputeMemoryManagementSflagUsage @ 0x1c6f1580` — 2× `GetFieldValueIfNotDefault<long>` (`@ 0x1c6f185e`/`0x1c6f1888`) |
 | **Unwired flags** | `FLAGS_xla_tpu_enable_lem_scheduler @ 0x223c72a8` · `FLAGS_xla_tpu_explicit_evict_memory_limit_kib @ 0x223c50d0` — 1 xref each (registration only) |
 | **Registrar** | `_GLOBAL__sub_I_tpu_compilation_environment.cc @ 0x2135cba0..0x21360ef0` (`RegisterCommandLineFlag @ 0x21114cc0` per flag) |
@@ -140,7 +140,7 @@ The companion accessor `TpuCompEnvReflection::GetFlagForField @ 0x1d74ad40` read
 | `TpuCompEnvReflection::GetFieldValue` | `0x1d7523a0` | reflection read → variant over all arm types | CONFIRMED |
 | `GetTpuCompEnvWithDefaultValues` | `0x1d73f100` | the all-defaults env the read diffs against | CONFIRMED |
 | `FlagFieldMappings` ctor | `0x1d753ce0` | builds dual `FlatHashMap` (flag↔field) | CONFIRMED |
-| `FlagFieldMappings::GetInstance` | `0x2257ef50` | the `NoDestructor` singleton accessor | CONFIRMED |
+| `FlagFieldMappings::GetInstance()::mappings` | `0x2257ef50` | the `NoDestructor` singleton storage (accessor is inlined) | CONFIRMED |
 | `TpuCompEnvReflection::GetFlagForField` | `0x1d74ad40` | field→flag lookup (FATALs when absent) | CONFIRMED |
 | `SetFieldFromFlagString` | `0x1d73fcc0` | write side — flag string → proto field by reflection | CONFIRMED |
 | `RegisterCommandLineFlag` | `0x21114cc0` | the registrar's per-flag registration call | CONFIRMED |
@@ -159,7 +159,7 @@ The cleanest live class-(B) consumer is the MSA (memory-space assignment) evicti
 function ComputeMemoryManagementSflagUsage(ObjectView<TCE> env, Target& target):  // 0x1c6f1580
     ver = target.tpu_version
     evict_name    = LegacyEvictionsFlagRegistry[ver]    // StaticMap<TpuVersion, string_view> @ 0x22579860
-    prefetch_name = LegacyPrefetchesFlagRegistry[ver]   //                                    @ 0x225798d8
+    prefetch_name = LegacyPrefetchesFlagRegistry[ver]   //                                    @ 0x225798a0
     evict_opt     = GetFieldValueIfNotDefault<long>(evict_name, env)       // 0x1c6f185e
     prefetch_opt  = GetFieldValueIfNotDefault<long>(prefetch_name, env)    // 0x1c6f1888
     // "legacy_non_default_value" (str @ 0x94adace): use the field only if it differs from default
@@ -173,7 +173,7 @@ The two registries are `util_registration::StaticMapBase` singletons keyed by `t
 | Registry | Field-name pattern (per family) | Anchors |
 |---|---|---|
 | `LegacyEvictionsFlagRegistry @ 0x22579860` | `xla_{zf,vf,jf,gf}_vmem_max_outstanding_evictions` (+ `cmem` variant) | `"xla_jf_vmem_max_outstanding_evictions" @ 0x853d9d7` |
-| `LegacyPrefetchesFlagRegistry @ 0x225798d8` | `xla_{zf,vf,jf,gf}_vmem_max_outstanding_prefetches` | `"xla_jf_vmem_max_outstanding_prefetches" @ 0x8569c57` |
+| `LegacyPrefetchesFlagRegistry @ 0x225798a0` | `xla_{zf,vf,jf,gf}_vmem_max_outstanding_prefetches` | `"xla_jf_vmem_max_outstanding_prefetches" @ 0x8569c57` |
 
 All of these names ARE TCE proto fields (present in the serialized `descriptor_table_protodef_AiDtBo5TtCO`), so `FindFieldByName` succeeds and the differential read returns a real value when the user set the flag. This is the canonical registry-mediated path: a registry maps a runtime key (`TpuVersion`) to a field *name*, and the value is read by that name.
 
@@ -317,7 +317,7 @@ The ragged contracting dimension becomes a convolution spatial dimension with a 
 | `GetFieldValueIfNotDefault<T> @ 0x1c6f1a80` | the by-name reflection reader — the registry-mediated read |
 | `FlagFieldMappings @ 0x2257ef50` (ctor `0x1d753ce0`) | the flag↔field bridge that makes a name resolvable |
 | `SetFieldFromFlagString @ 0x1d73fcc0` | the write side — CLI flag string → TCE proto field |
-| `LegacyEvictions/PrefetchesFlagRegistry @ 0x22579860 / 0x225798d8` | per-`TpuVersion` field-name registries (canonical class-B example) |
+| `LegacyEvictions/PrefetchesFlagRegistry @ 0x22579860 / 0x225798a0` | per-`TpuVersion` field-name registries (canonical class-B example) |
 | `RaggedDotExpander @ 0x10fae060` + `CreateOutputMask @ 0x10fb2900` | the worked flag→transform: iteration-mask ragged-conv lowering |
 | `AutoOr<bool>::FromProtoOrDie @ 0xf795300` | the inline resolver class-(A) consumers use instead of the by-name path |
 
