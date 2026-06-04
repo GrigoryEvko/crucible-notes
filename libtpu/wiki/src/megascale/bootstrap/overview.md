@@ -99,17 +99,17 @@ worker N (slice_id=S, host_id=H)
     │     host_id       = H
     │     host_addresses = [HostNetworkAddress { ... }]
     │     topology_args  = TpuTopologyArgsProto (from tpunetd)
-    │     incarnation_id = NewGlobalID()
-    │   }
+    │     incarnation_id = per-process util::random::NewGlobalID()
+    │   }                    (computed once in the backend ctor, stored at +0x28)
     ▼
 gRPC /xla.megascale.runtime.MegaScaleTransport/GetMultiSliceTopology
     │
     ▼
 coordinator process:
   CommunicationBackend::OnTopologyRequestReceived(req, reply_cb)
-      ├─ TracedMutexLock backend.mu (kind=6)
-      ├─ topology_coordinator_ = backend->+0x1a0
-      ├─ if null → "TopologyCoordinator not initialized." error
+      ├─ TracedMutexLock backend.mu (TracedMutex at +0xe0)
+      ├─ topology_coordinator_ = *(backend + 0x1a0)
+      ├─ if null → MakeErrorImpl<13> "TopologyCoordinator not initialized." error
       └─ topology_coordinator_->AddRequest(req, reply_cb)
                 │
                 ├─ stash reply_cb into pending vector
@@ -131,16 +131,16 @@ coordinator process:
                 │     ├─ Notification.Notify()
                 │     └─ for every pending callback: cb(response)
                 └─ else if state_ == 0 → ScheduleStatusReport()
-worker N receives the response, installs endpoint addresses
-into backend.+0x170..+0x1e0 and the runtime returns from
-CommunicationBackend::DiscoverTopologyAndAddressBindings.
+worker N receives the response; CommunicationBackend::DiscoverTopologyAndAddressBindings
+returns it as a StatusOr<tuple<MultiSliceTopologyAndLocationProto,
+EndpointAddresses>> that the caller uses to populate the address table.
 ```
 
 The same template-based `Coordinator<Req, Resp, Callback>`
 machinery drives the `BarrierCoordinator` flow: one
 `BarrierCoordinator` per `barrier_id`, indexed by a
 `flat_hash_map<string, unique_ptr<BarrierCoordinator>>` at offset
-`+0x228` of `CommunicationBackend`.
+`+0x1b0` of `CommunicationBackend`.
 
 ## How this section is organised
 
