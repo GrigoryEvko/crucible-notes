@@ -107,7 +107,7 @@ The TensorCore sync-flag and scalar-fence band: the 80..90 id range carrying eve
 | 84 | `TCS_INTERNAL_SET_TRACEMARK` | TensorCoreStepSubscriber | StepTracker (TraceMark id) | CERTAIN |
 | 85 | `TCS_INTERNAL_TRACE_INSTRUCTION` | Hlo + Overlay + OnDeviceTraceMe + LloOp | OverlayTracker (overlay_id) | CERTAIN |
 | 86 | `TCS_INTERNAL_UNSUCCESSFUL_SYNC_ATTEMPT` | SyncSubscriber | SyncTracker (wait BEGIN) | CERTAIN |
-| 87 | `TCS_INTERNAL_SUCCESSFUL_SYNC_ATTEMPT` | SyncSubscriber | SyncTracker (wait END) | CERTAIN |
+| 87 | `TCS_INTERNAL_SUCCESSFUL_SYNC_ATTEMPT` | SyncSubscriber | (instant — not tracker-paired in pxc) | CERTAIN |
 | 88 | `TCS_INTERNAL_READ_SYNC_FLAG` | SyncSubscriber | (instant) | CERTAIN |
 | 89 | `TCS_INTERNAL_SCALAR_FENCE_START` | ScalarFenceSubscriber ×2 | fence span (lines 9 + 62) | CERTAIN |
 | 90 | `TCS_INTERNAL_SCALAR_FENCE_END` | ScalarFenceSubscriber ×2 | fence span | CERTAIN |
@@ -313,7 +313,7 @@ The trackers are the begin/end pairing layer above the subscribers. Each consume
 
 | tracker | feeds (trace_point_ids) | begin event | end event | MATCH KEY | Conf. |
 |---|---|---|---|---|---|
-| SyncTracker | 80,86,87 (+81,82,88 instant) | 86 UNSUCCESSFUL_SYNC | 87 SUCCESSFUL / 80 DMA_DONE | `sync_flag_number` | CERTAIN |
+| SyncTracker | 80,86 (+81,82,87,88 instant) | 86 UNSUCCESSFUL_SYNC (`ProcessSyncBlock`) | 80 DMA_DONE (`ProcessSyncUnblock`) | `sync_flag_number` | CERTAIN |
 | DmaSubscriber | CMQ/CMN/HDE req + data-end | `First()`/`MemoryCommand` | `Last()`/`MemoryDataEnd` | `dma_id = GetDmaId()` | HIGH |
 | StepTracker | 84 (TC) / 109 (SC) | TraceMark `0x7fffffff` | TraceMark `0x7ffffffe` | TraceMark id (state+0x8) | CERTAIN |
 | TaskTracker | 119,120 (SC only) | 119 `ScTaskIssueFromScs` | 120 `ScTaskCommitOnSct` | task `tag` (FlatHashMap) | CERTAIN |
