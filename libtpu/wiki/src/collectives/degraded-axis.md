@@ -93,7 +93,7 @@ if ((v4 & 4) && *((_BYTE *)this + 26) == 1) { *a2 = 24; a2[1] = 1; a2 += 2; }   
 
 ### `tpu::TpuConfiguredProperties` — the flat 8-byte POD
 
-The in-process form is an 8-byte POD distinct from the wire proto. It is passed by `const&` through the compile path (`TpuJitCompileTF`, `BuildXLADeviceAssignment`, the `TpuMeshCommonState` ctor, `TpuTopologyDescription`, the compilation cache) and formatted as `"degraded_axes("` in the cache raw-key (`GenerateCacheRawKey`, `.rodata 0xa17d7d5`):
+The in-process form is an 8-byte POD distinct from the wire proto. It is passed by `const&` through the compile path (`TpuJitCompileTF`, `BuildXLADeviceAssignment`, the `TpuMeshCommonState` ctor, `TpuTopologyDescription`, the compilation cache) and formatted as `"degraded_axes("` in the cache raw-key (`GenerateCacheRawKey`, `.rodata 0xa17d7d6`, immediately after the `:` separator at `0xa17d7d5`):
 
 | Offset | Field | Source |
 |---|---|---|
@@ -186,7 +186,7 @@ The offsets are byte-exact: `1016 = 0x3f8`, `1017 = 0x3f9`, `1018 = 0x3fa`, `101
 | `+0x928` | `MultiSliceTopologyAndLocation*` | argument `a6` |
 | `+0x930` | bool | argument `a7` |
 
-The 3-argument `CreateFromTopology` wrapper (`0x1d48e4c0`) first calls `GetDefaultConfiguredProperties`, then this 5-argument writer; `tensorflow::GetTargetDescription` (`0xe9745e0`) and `CreateTargetFromDeepseaPlatform` (`0x10a4efe0`) both reach it via `target::CreateFromTopology`.
+Two thin default-config wrappers feed this writer. Both first call `GetDefaultConfiguredProperties` (so the degraded bytes are zero) and then tail-call this writer: the `(TpuTopology const*, long)` overload (`0x1d48e460`, called by `CreateTargetFromDeepseaPlatform`, `0x10a4efe0`) and the `(TpuTopology const*, long, long, MultiSliceTopologyAndLocation const*)` overload (`0x1d48e4c0`, called by `tensorflow::GetTargetDescription`, `0xe9745e0`). The degraded bytes only become non-zero when a caller threads a `TpuConfiguredProperties` populated by `OrientationsToTpuDegradedAxes` directly into this writer overload.
 
 > **NOTE —** the `routing_strategy` zero-means-default rule (`if (!cfg[+4]) cfg[+4] = topo[+0xa4]`) is the only branch in the byte ingest — every degraded byte is an unconditional copy. A reimplementer must apply the topo default only to the routing dword, not to the degraded bytes.
 
@@ -257,9 +257,9 @@ The decompile confirms the three division stores at the loop body — `*v19 = (u
 Each color/dim coordinate is then turned into a ring ordinal and a forward/backward neighbour:
 
 - `StrategyND::ComputeOrdinal` (`0x137c5300`) — coordinate → ring-ordinal `LloValue`; called once per (color, active dim). The decompile shows the three per-dim calls (`dim` arg `0`/`1`/`2`) passing the per-dim wrap byte `*(&v101 + …)`.
-- `StrategyND::ComputeNeighbor` (`0x137c5600`) — called **twice** per (color, active dim): offset `+1` (clockwise) and `-1` (counter-clockwise). The decompile confirms the six calls (dims `0`/`1`/`2`, each with `1` and `-1`). It dispatches on `wrap` and a `(stride≥2 && dim==0)` "special" predicate to one of four builders:
+- `StrategyND::ComputeNeighbor` (`0x137c5600`) — called **twice** per (color, active dim): offset `+1` (clockwise) and `-1` (counter-clockwise). The decompile confirms the six calls (dims `0`/`1`/`2`, each with `1` and `-1`). The dispatch reads `logical_devices = *(_QWORD*)(strat + 8*dim + 1480)` and a per-dim degree byte `*(strat + 24*color + 8*dim + 208)`, then branches on the per-dim `wrap` byte (arg `a6`, the `*(&v101 + dim_idx)` value threaded from `BuildStrategy`) and a `(logical_devices≥2 && dim==0)` "special" predicate to one of four builders. The non-special path `CHECK`s `logical_devices == 1` (`.rodata`, `target_factory`/`all_reduce_strategies.cc:314,322`):
 
-| `wrap` | `special` (stride≥2 & dim0) | `stride==1` | Builder |
+| `wrap` | `special` (`logical_devices≥2` & dim0) | `logical_devices==1` | Builder |
 |---:|---|---|---|
 | 1 | yes | — | `Torus2DevicePhase0Neighbor` |
 | 0 | yes | — | `Mesh2DevicePhase0Neighbor` |
@@ -295,8 +295,9 @@ All four deposit through `BaseStrategyND::UpdateNeighborLocation` (`0x137c5fa0`)
 | `SliceBuilderHelper::StatSession` | `0x1fbb5b80` | faulty-link `Orientation` source; pack dword | HIGH (sole caller, scan-verified) |
 | `TpuDegradedAxesProto::_InternalSerialize` | `0x20adb880` | proto byte layout proof | HIGH (byte-exact) |
 | `tpu::GetDefaultConfiguredProperties` | `0x20acee40` | no-degraded default POD | HIGH (byte-exact) |
-| `target::CreateFromTopology` (5-arg) | `0x1d48e520` | the writer: cfg → `Target[+0x3f8..+0x3fc]` | HIGH (byte-exact) |
-| `target::CreateFromTopology` (3-arg wrapper) | `0x1d48e4c0` | default-config wrapper | HIGH |
+| `target::CreateFromTopology` (`…,TpuConfiguredProperties&,…`) | `0x1d48e520` | the writer: cfg → `Target[+0x3f8..+0x3fc]` | HIGH (byte-exact) |
+| `target::CreateFromTopology` (`…,MultiSliceTopologyAndLocation*`) | `0x1d48e4c0` | default-config wrapper (called by `GetTargetDescription`) | HIGH |
+| `target::CreateFromTopology` (`TpuTopology*,long`) | `0x1d48e460` | default-config wrapper (called by `CreateTargetFromDeepseaPlatform`) | HIGH |
 | `Target::IsXDegraded` / `IsYDegraded` / `IsZDegraded` | `0x1d615940` / `…960` / `…980` | read `Target[+0x3f8..+0x3fa]` | HIGH (byte-exact) |
 | `StrategyND::BuildStrategy` | `0x137c4660` | `[obj+0xa8]` gate, color_dims fan-out, `RingLocation` build | HIGH (gate + coord build); emitter walk MEDIUM |
 | `StrategyND::ComputeOrdinal` | `0x137c5300` | coord → ring-ordinal `LloValue` | HIGH |
