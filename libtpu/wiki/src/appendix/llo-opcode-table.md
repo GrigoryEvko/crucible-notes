@@ -1,6 +1,6 @@
 # LLO Opcode Master Table
 
-> *Every opcode value, mnemonic, slot name, and address on this page was read byte-exactly from `libtpu.so` in the `libtpu-0.0.40-cp314` wheel (BuildID md5 `89edbbe81c5b328a958fe628a9f2207d`, not stripped, version 0.103). Other versions differ.*
+> *Every opcode value, mnemonic, slot name, and address on this page was read byte-exactly from `libtpu.so` in the `libtpu-0.0.40-cp314` wheel (BuildID `89edbbe81c5b328a958fe628a9f2207d`, not stripped). Other versions differ.*
 
 ## Abstract
 
@@ -141,7 +141,7 @@ Type conversions across three bands: `f32→{s32,f8,hf16}` and `{s8,s4,u8,u4}↔
 | `0x066`..`0x06D` | `kVectorConvertS8ToBf16` … `kVectorConvertBf16ToU4` | VALU | int↔Bf16 (`s8`/`s4`/`u8`/`u4`) | **S4/U4 = PF+** | CONFIRMED |
 | `0x06E`/`0x06F` | `kVectorConvertEXMYToE4M3` / `…ToE5M2` | VALU | generic FP8 reformat | PF+ | CONFIRMED |
 | `0x070`..`0x074` | `kVectorConvertF32ToE5M2Stochastic` … `…ToHf16Stochastic` | VALU | stochastic-rounding converts | **VF+** | CONFIRMED |
-| `0x107`..`0x10F` | `kVectorUnpack` … `kVectorDynamicUnpack` | VALU | unpack + B2→B4 / B4→B8 join + EXMY/dynamic | all | CONFIRMED |
+| `0x107`..`0x10F` | `kScalarConvertS32ToF32` … `kVectorDynamicUnpack` | VALU/scalar | S32→F32 convert + unpack (`kVectorUnpack` `0x109`) + B2→B4 / B4→B8 join + EXMY/dynamic | all | CONFIRMED |
 | `0x110`..`0x11A` | `kVectorCeilF32` … `kVectorTruncateBf16` | VALU | round-to-int / RTNA / RTNE / truncate | all | CONFIRMED |
 | `0x125`..`0x127` | `kVectorComposeF32` / `kVectorPack` / `kVectorPackEXMY` | VALU | compose + pack | all | CONFIRMED |
 
@@ -199,7 +199,7 @@ The systolic-array op family: latch the stationary weights, matprep the moving o
 | `0x09B` | `kVectorMatmul` | VectorExtended | one systolic step | `EmitVectorMatmul` @ `0x140b92c0` | CONFIRMED |
 | `0x09C`/`0x0A0` | `kVectorMatmulMubr` (`+Msk`) | VectorExtended | conv block-row matmul | `((op-156)&0xFFFB)==0` @ `0x1d60c3c0` | CONFIRMED |
 | `0x09D`/`0x09E` | `kVectorMatmulHigh` / `kVectorMatmulLow` | VectorExtended | high-half / low-half accumulator step | `EmitVectorMatmul` | CONFIRMED |
-| `0x09F`..`0x0A5` | `kVectorMatmulPacked` … `kVectorMatmulLmr` | VectorExtended | packed / LMR-fused matmul | — | CONFIRMED |
+| `0x09F`..`0x0A5` | `kVectorMatmulMsk` … `kVectorMatmulLmr` | VectorExtended | masked / packed (`kVectorMatmulPacked` `0x0A3`) / LMR-fused matmul | — | CONFIRMED |
 | `0x0A6`/`0x0A7` | `kVectorTranspose` / `kVectorTransposeBinary` | VectorExtended | XLU transpose (vxpose-mode dispatched) | — | CONFIRMED |
 | `0x0A8`..`0x0AB` | `kVectorDoneWithGains` … `kVectorLoadLmrWithBf16Conversion` | VectorExtended | gain handshake + GMR/LMR loads | — | CONFIRMED |
 | `0x152`/`0x153` | `kVectorMatres` / `kVectorMatresAdd` | VectorResult | matmul result collection (plain / accumulate) | `a3 != 338` @ EmitVectorMatres | CONFIRMED |
@@ -302,7 +302,7 @@ The 33 highest opcodes are the BarnaCore (SparseCore) instruction set — embedd
 |---|---|---|---|
 | `0x1AC`..`0x1B3` | `kBarnaCoreScalarWaitDone` … `kBarnaCoreScalarWaitNe` | scalar wait / sync primitives | CONFIRMED |
 | `0x1B4`..`0x1B7` | `kBarnaCoreScalarSyncDoneRead` … `…SyncPublicAccessWrite` | sync-flag read / write | CONFIRMED |
-| `0x1B8`..`0x1BB` | `kBarnaCoreScalarPop` … `kBarnaCoreScalarFence` | pop / FSM issue / fence | CONFIRMED |
+| `0x1B8`..`0x1BB` | `kBarnaCoreScalarPop` … `kBarnaCoreDma` | pop / FSM issue / fence (`kBarnaCoreScalarFence` `0x1BA`) / DMA | CONFIRMED |
 | `0x1BC`..`0x1C8` | `kBarnaCoreRemoteScalarWrite` … `kBarnaCorePfLocalScatterGradients` | remote write / scatter-gather / sparse-reduce | CONFIRMED |
 | `0x1C9`..`0x1CC` | `kBarnaCoreVectorLoad` … `kBarnaCoreVectorStore` | BarnaCore vector load / store / move | CONFIRMED |
 
