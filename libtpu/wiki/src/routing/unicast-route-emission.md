@@ -241,9 +241,9 @@ The `use_cache_` flag (`gen+0x129`) chooses between two `IciRoutePath` providers
 | `1` | `RouteTargetCache::GetPath(src, dst)` `@0x1fbd42c0` | O(1) array index | precomputed in `PopulatePathCache` |
 | `0` | `GetStaticPath(src_coord, dst_coord)` `@0x1fbdbd00` | computed now | live DOR/twist construction |
 
-`GetPath` indexes a 2-D array: `idx = GetTableIndex(src) · numdst + dst`, `IciRoutePath` stride `0x50` (`lea rax,[rax+rax*4]; shl 4`), base at `cache+0x0`, `numdst` at `cache+0x40`. See **[Static-Path Generation](get-static-path.md)** for the live generator's internals.
+`GetPath` indexes a 2-D array: `idx = GetTableIndex(src) · numdst + dst`, `IciRoutePath` stride `0x50` (`lea rax,[rax+rax*4]; shl 4`), base pointer at `cache+0x0`, `numdst` read indirectly via the `cache+0x48` field (`*(int*)([cache+0x48]+0x40)`). See **[Static-Path Generation](get-static-path.md)** for the live generator's internals.
 
-> **[CONFIRMED]** `RouteTargetCache::GetPath @0x1fbd42c0` computes `idx = TableIndex(src)·[cache+0x40] + dst` (`@0x1fbd42f4`) and returns `&path_array[idx]` with the `IciRoutePath` 0x50-byte stride (`@0x1fbd4304`). `[cache+0x40]` is the destination count.
+> **[CONFIRMED]** `RouteTargetCache::GetPath @0x1fbd42c0` computes `idx = TableIndex(src)·numdst + dst` with `numdst = *(_DWORD*)([cache+0x48]+0x40)` (`mov 0x48(%rdi),%rsi; imul 0x40(%rsi),%edx` at `@0x1fbd42f4`) and returns `*(qword*)cache + 0x50·idx` (`lea (rax,rax,4); shl 4` at `@0x1fbd4304`). The destination count lives one indirection deep through the `cache+0x48` pointer, not at `cache+0x40` directly; the `cache+0x8` field is the path-array element count used for the bounds check. `GetTableIndex(src)` is applied only on the non-fast-path branch (when `*(_BYTE*)([cache+0x48]+24) == 0`).
 
 ---
 
@@ -265,7 +265,7 @@ function GetNextHopAction(src_coord, dst_coord, IciRoutePath& path, int hop):  /
             output_link = 0xff                       // TERMINAL — next chip IS the destination
         else: ...                                    // (defensive; reached-dst-but-more-hops)
     else:                                            // intermediate — next chip must forward on
-        next_dir = path.RemainDirectionHops(hop+1)   // @0x20c01ba0 — its outgoing direction
+        next_dir = path.RemainDirectionHops(hop)     // @0x20c01ba0 — its outgoing direction
         output_link = LinkMap::GetLink(next_chip, next_dir)   // @0x1ffe3940 — its egress link byte
     // VC selection — deadlock-free torus VC allocation (rule not fully reduced)
     vc = vc_select( CrossesDateline(src,dst),        // @0x1fbdb120
@@ -274,7 +274,7 @@ function GetNextHopAction(src_coord, dst_coord, IciRoutePath& path, int hop):  /
     return { next_chip @+8, output_link @+0xc, vc @+0x10 }
 ```
 
-> **[CONFIRMED]** `GetNextHopAction @0x1fbda6a0`: `HopDirection` (`@0x1fbda6d4`), `Walk` via vtable `+0xa0` (`@0x1fbda702`), `GetId` via vtable `+0x90` (`@0x1fbda74b`), `Coordinates::operator==` vs `dst_coord` (`@0x1fbda773`), last-hop terminal `0xff` (`@0x1fbda79c`), `RemainDirectionHops(hop+1)` (`@0x1fbda7bb`), `LinkMap::GetLink` (`@0x1fbda863`). The VC inputs `CrossesDateline` (`@0x1fbda8b5`), `Direction::IsSame` (`@0x1fbda8fd`), `GetVcBalanceUsage` (`@0x1fbda921`) feed `vc ∈ {0,1,2}`. The result struct packs `{next_chip(int32)@+8, output_link(int8)@+0xc, vc(int32)@+0x10}` (`@0x1fbdaa6a`).
+> **[CONFIRMED]** `GetNextHopAction @0x1fbda6a0`: `HopDirection` (`@0x1fbda6d4`), `Walk` via vtable `+0xa0` (`@0x1fbda702`), `GetId` via vtable `+0x90` (`@0x1fbda74b`), `Coordinates::operator==` vs `dst_coord` (`@0x1fbda773`), last-hop terminal `0xff` (`@0x1fbda79c`), `RemainDirectionHops(hop)` (the raw hop index, `@0x1fbda7bb`), `LinkMap::GetLink` (`@0x1fbda863`). The VC inputs `CrossesDateline` (`@0x1fbda8b5`), `Direction::IsSame` (`@0x1fbda8fd`), `GetVcBalanceUsage` (`@0x1fbda921`) feed `vc ∈ {0,1,2}`. The result struct packs `{next_chip(int32)@+8, output_link(int8)@+0xc, vc(int32)@+0x10}` (`@0x1fbdaa6a`).
 
 ### 4.3 `PopulateRoutingTable`
 
