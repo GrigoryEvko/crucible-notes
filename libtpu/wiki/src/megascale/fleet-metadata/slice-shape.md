@@ -5,7 +5,7 @@ distribute across hosts — is described by `tpu.TpuTopologyArgsProto`.
 The same proto is embedded by every Megascale-runtime message that needs
 the per-slice shape: it is field 3 of `SliceInfo`
 ([field decode](field-decode.md)), field 2 of
-`xla.megascale.runtime.NetworkAddressMapping`, and field 6 of
+`xla.megascale.runtime.GetMultiSliceTopologyRequest`, and field 6 of
 `TargetArgumentsProto`; the runtime also carries it inside
 `TPUHostConfiguration` (field 8) and `TpuPjRtTopologyDescriptionProto`
 (field 1). The slice shape is computed once during in-slice bringup and
