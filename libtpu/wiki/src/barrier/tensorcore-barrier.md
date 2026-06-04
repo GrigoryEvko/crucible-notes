@@ -114,7 +114,7 @@ The numeric layout (`this+0x20` is the DWORD type at byte offset `0x20`; `this+0
 | `REPLICA` (shared) | `2` | `replica_group_count` | saturation (`rgc == num_groups − 1`) AND `config+0x50 != 1`; **or** map dedup found the key present | CONFIRMED |
 | `CUSTOM` (fresh) | `3` | `replica_group_count` | otherwise, on a `std::map` cache miss | CONFIRMED |
 
-> **CORRECTION — the saturation arm.** An earlier reading (P-3-392 §1d) summarised the saturation case (`replica_group_count == num_groups − 1`) as "also GLOBAL". The decompile shows it is more subtle: saturation produces a shared `REPLICA(2)` (id = the real `replica_group_count`) **unless** the module-config flag `config+0x50 == 1`, in which case it falls to `GLOBAL(1)`. The `2` write (`*(int*)(this+0x20) = 2`) at `0x109c704d` is reached both from the saturation arm and from the `std::map` cache-hit `CopyFrom`. `MEGACORE(4)` is never written — there is no `movl $4` into `+0x20` in this function (full-`.text` xref confirmed; [overview §2](overview.md)).
+> **GOTCHA — the saturation arm.** The saturation case (`replica_group_count == num_groups − 1`) does not simply produce GLOBAL. It produces a shared `REPLICA(2)` (id = the real `replica_group_count`) **unless** the module-config flag `config+0x50 == 1`, in which case it falls to `GLOBAL(1)`. The `2` write (`*(int*)(this+0x20) = 2`) at `0x109c704d` is reached both from the saturation arm and from the `std::map` cache-hit `CopyFrom`. `MEGACORE(4)` is never written — there is no `movl $4` into `+0x20` in this function (full-`.text` xref; [overview §2](overview.md)).
 
 ### 1.4 `ForEachCollective` @`0x109c7060` — which ops are TC collectives
 
@@ -230,7 +230,7 @@ return AddSourceLocationImpl(362);                               // line 362
 
 The three writeback fields are named in the `LogMessageFatal` strings the decompile carries: `ordinal_` at `strategy+0x58`, `next_chip_` at `+0x60`, `reordering_map_` at `+0x78` — each guarded against a second init (a re-init dies fatal). `next_chip_` is then consumed by `next_chip()` @`0x1337a200` → `GlobalCoreIdToPhysicalChipId` → `ComputeRemoteCoreIndex` → the `SyncAddOp` the SC custom-barrier emits ([Barrier → SFLAG Binding](barrier-to-sflag-binding.md)).
 
-> **NOTE — line numbers.** The `RetCheck` / `AddSourceLocationImpl` line constants (`351`, `354`, `362`) and the writeback `CHECK` lines (`245`/`250`/`255`) match `platforms/xla/sparse_core/offload_collective_strategies.cc` exactly (P-3-392 §2a anchors `0x15f`=351, `0x162`=354, `0x16a`=362). The `CoresPerChip(2)` / `LogicalDevicesPerChip(2)` fold is the same megacore-fold divisor used by `ToPartnerGlobalCoreId`.
+> **NOTE — line numbers.** The `RetCheck` / `AddSourceLocationImpl` line constants (`351`, `354`, `362`) and the writeback `CHECK` lines (`245`/`250`/`255`) match `platforms/xla/sparse_core/offload_collective_strategies.cc` exactly (the immediates `0x15f`=351, `0x162`=354, `0x16a`=362). The `CoresPerChip(2)` / `LogicalDevicesPerChip(2)` fold is the same megacore-fold divisor used by `ToPartnerGlobalCoreId`.
 
 ### 2.2 The callback body — `ExplicitRingRecord` @`0x133a9a40` (plain) / `ExplicitAllToAllRingRecord` @`0x133a94a0` (a2a)
 
@@ -242,7 +242,7 @@ The `strategy+0x98` slot is installed by the per-color factory closures inside `
 | `$_1` @`0x133a91e0` | `ExplicitUniDirAllToAllRingStrategy` (sizeof `0xe8`, vtable @`0x21908ec8`) | `+0xb0` = `0x133a94a0` | `ExplicitAllToAllRingRecord` | `0x2` |
 | `$_2` @`0x133a9840` | **plain** `ExplicitUniDirRingStrategy` (sizeof `0xc0`, vtable @`0x21908e30`) | `+0x98` = `0x133a9a40` | `ExplicitRingRecord` | `0x4` |
 
-> **CORRECTION — the factory map.** An earlier reading labelled `$_0` as the implicit/explicit slot; the demangled symbols confirm `$_0` builds `D2DUniDirRingStrategy`, `$_1` builds the all-to-all strategy (returning `ExplicitAllToAllRingRecord`), and `$_2` builds the plain explicit ring (returning `ExplicitRingRecord`). The `$_2` install at `0x133a99d9` writes the `0x133a9a40` lambda into `strategy+0x98` — the exact call target of §2.1.
+> **NOTE — the factory map.** The demangled symbols pin the three lambda slots: `$_0` builds `D2DUniDirRingStrategy`, `$_1` builds the all-to-all strategy (returning `ExplicitAllToAllRingRecord`), and `$_2` builds the plain explicit ring (returning `ExplicitRingRecord`). The `$_2` install at `0x133a99d9` writes the `0x133a9a40` lambda into `strategy+0x98` — the exact call target of §2.1.
 
 The plain lookup `ExplicitRingRecord` @`0x133a9a40` body:
 
@@ -276,7 +276,7 @@ The split is purely in **how** a barrier identity is chosen and bound: the TC pa
 
 ## 4. Verification notes
 
-> **[CONFIRMED]** Re-derived from the IDA decompile of `libtpu.so` v0.0.40 for this page:
+> **[CONFIRMED]** Byte-exact in `libtpu.so` v0.0.40:
 > - `DetermineBarrierConfigForKey` @`0x109c6fa0`: `BarrierConfig::BarrierConfig(this,0)`; `IsGlobalBarrierBeneficial`; `force_global || beneficial` → `type=1`, `id=-1`; saturation (`key+0x10 == key+0x20 − 1`) with `config+0x50 != 1` → `type=2`, `id=replica_group_count`; else `type=3` fresh + `std::map __try_key_extraction_impl` → cache hit `CopyFrom(node+0x80)`. Type at `+0x20`, id at `+0x18`, hasbits `+0x10 |= 3`. **No `movl $4`** — exact.
 > - `ExplicitUniDirRingStrategy::InitializeOnScs` @`0x1337aa60`: `if (!config) RetCheck` line 351; base `UniDirRingStrategy::InitializeOnScs` → `AddSourceLocationImpl(354)`; `GetCoreIndex`; `CoresPerChip(2) / LogicalDevicesPerChip(2)` unsigned-divide fold; `IdxConst`; `DivU`; `ToGlobalCoreId`; `call [a1+0x98]` with `(&record, a1+0x88, a1+0x08, OpBuilder, &global_core_id, &ordinal)`; writeback `*(a1+0x58)=ordinal_`, `*(a1+0x60)=next_chip_`, `*(a1+0x78)=reordering_map_`, each `LogMessageFatal`-guarded (lines 250/245/255); `AddSourceLocationImpl(362)` — exact.
 > - Symbol confirmation: `TensorCoreBarrierAssignment::{Run, ForEachCollective, IsGlobalBarrierBeneficial, DetermineBarrierConfigForKey}` and `TensorCoreBarrierKey` present with full demangled symbols; `ExplicitUniDirRingStrategy::InitializeOnScs` and the `CreateRingStrategiesForNdFromExplicitTable` `$_1` (→ `ExplicitAllToAllRingRecord`) / `$_2` (→ `ExplicitRingRecord`) lambdas present, confirming the factory→record map and the `(OffloadFactory&, OpBuilder&, Value, Value) → StatusOr<…Record>` callback signature.

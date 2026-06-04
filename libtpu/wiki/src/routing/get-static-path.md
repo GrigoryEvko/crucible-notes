@@ -234,7 +234,7 @@ function Generate(gen, topo, linkmap, opts):              // 0x1fbf03a0
     SetChannelMerges(...)                                 // 0x1fbf2100
 ```
 
-> **CORRECTION (P-3-355) —** the `1024` hard cap is on `per_pod` — the **per-pod chip count** (the routing-table `num_entries`, `kNumRoutingTableEntries`), checked at `0x1fbf0608` as `num_entries <= 1024`. It is *not* a cap on the pod count. The divisibility requirement (`total_chips % per_pod == 0`, `0x1fbf051e`) is the only constraint tying `num_pods = total_chips / per_pod` to the topology. The error string at `0xa053c08` names the concatenation axis explicitly: *"concatenated along X dimension."*
+> **GOTCHA —** the `1024` hard cap is on `per_pod` — the **per-pod chip count** (the routing-table `num_entries`, `kNumRoutingTableEntries`), checked at `0x1fbf0608` as `num_entries <= 1024`. It is *not* a cap on the pod count. The divisibility requirement (`total_chips % per_pod == 0`, `0x1fbf051e`) is the only constraint tying `num_pods = total_chips / per_pod` to the topology. The error string at `0xa053c08` names the concatenation axis explicitly: *"concatenated along X dimension."*
 
 ### GetMultipodCoordinate — chip → pod-aligned multipod coord
 
@@ -321,7 +321,7 @@ function SetNextHopRoutingTableEntry(this, src, dst, idx, table):  // 0x1fbf1a80
 | `multipod::GeneratesDeadlockFreeTables` | `0x1fbf2e40` | Returns `false` (defers to per-pod) | CERTAIN |
 | `multipod::CreateDateline` | `0x1fbf0b20` | Build the multipod dateline (call site only) | LOW |
 
-> **NOTE —** `CreateDateline` @ `0x1fbf0b20` was traced to its call site in `Generate` (`0x1fbf0617`) but its body was not byte-decoded. Given the inter-pod next-hop uses a fixed VC=1, the multipod dateline is presumably per-pod only (intra-pod wrap); the inter-pod mesh hops are acyclic by construction. Marked LOW until the body is decoded.
+> **NOTE —** `CreateDateline` @ `0x1fbf0b20` was traced to its call site in `Generate` (`0x1fbf0617`) but its body was not byte-decoded. Given the inter-pod next-hop uses a fixed VC=1, the multipod dateline is presumably per-pod only (intra-pod wrap); the inter-pod mesh hops are acyclic by construction. Confidence: LOW until the body is decoded.
 
 ---
 

@@ -209,13 +209,13 @@ This **flat star** membership is the structural counterpart of the *binomial* Al
 
 ## 5. Why REPLICA never lowers on SparseCore
 
-`REPLICA(2)` is a **TensorCore-only** barrier type. Both SparseCore custom-kernel barrier entry points RetCheck it: `EmitScsBarrier` @`0x13352500` accepts only `GLOBAL(1)`/`CUSTOM(3)`, and `EmitAllToAllBarrierStart` @`0x133500e0` rejects type 2 with `"Only custom and global barriers are supported for all-to-all collectives on SparseCore"` (`offload_a2a_util.cc:124`). The SparseCore function literally named `EmitReplicaGroupCustomBarrierStart` @`0x13353620` is, despite its name, the lowering for the SC A2A `CUSTOM(3)` barrier (SMEM-buffer membership), **not** for `BarrierType::REPLICA`. The full reconciliation of the three "global barrier" sources and the name trap is on [Global-Barrier SFLAG Window](global-barrier-window.md) §4.4; this page documents only the TC emission.
+`REPLICA(2)` is a **TensorCore-only** barrier type. Both SparseCore custom-kernel barrier entry points RetCheck it: `EmitScsBarrier` @`0x13352500` accepts only `GLOBAL(1)`/`CUSTOM(3)`, and `EmitAllToAllBarrierStart` @`0x133500e0` rejects type 2 with `"Only custom and global barriers are supported for all-to-all collectives on SparseCore"` (`offload_a2a_util.cc:124`). The SparseCore function literally named `EmitReplicaGroupCustomBarrierStart` @`0x13353620` is, despite its name, the lowering for the SC A2A `CUSTOM(3)` barrier (SMEM-buffer membership), **not** for `BarrierType::REPLICA`. The three distinct "global barrier" sources and this SC name trap are detailed on [Global-Barrier SFLAG Window](global-barrier-window.md) §4.4; this page documents only the TC emission.
 
 ---
 
 ## 6. Verification notes
 
-> **[CONFIRMED]** Re-derived from the IDA decompile of `libtpu.so` v0.0.40 for this page:
+> **[CONFIRMED]** Byte-exact in `libtpu.so` v0.0.40:
 > - `BarrierCoresTree` @`0x1c6a75c0` (4186 bytes): binds the GLOBAL slot only when the caller's `sflag` is null — `GetGlobalBarrierSyncFlagNumber()` → `SflagImmPtr(n, "global barrier sync flag", 24)` (decompile lines 188-191); RetCheck `"tree_info_provider != nullptr"` (`net_util.cc:3855`); `TreeBarrierType` dispatch annotates `"global-barrier-wait"` (`!a6`) / `"start-global-barrier-wait"` (`a6`) for `kAll`, `"cross-partition-barrier-wait"` (`PARTITIONED`, `!a6`) and `"cross-replica-barrier-wait"` (`REPLICATED(1)`, `!a6`); the `a6`/is-start branch of both cross-group arms hits the `"!start_barrier"` RetCheck (`net_util.cc:3908`/`3904`); the `barrier_type == TreeBarrierType::kAll` RetCheck string (`net_util.cc:3843`) and `"b.target().HasLimitedIciRouting()"` (`net_util.cc:3836`) are present — exact.
 > - `BarrierWithinReplicaGroupStartImpl` @`0x1c698080` (852 bytes): `group_size <= 1` → install `$_0` and return (lines 45, 156-157); `cores_per_chip = *(int*)(*(Target+0x3b8) + 0x70)` (line 49); `GetReplicaGroupCoreInfo` (lines 66/76/81); `Pneg` → `Predicated` master gate (lines 83-85); `master_check` arm `ScheckGe(.,0)` / `ScheckLt(., cores_per_chip)` / `ToGlobalCoreId` / `GlobalCoreId` / `ScheckNe(.,., "Non-master core has same location as master core!", 49)` (lines 89-122); `VsyncAddRemote(sflag, peer, SimmS32(1), 0)` (lines 124-126); deferred `BarrierWithinReplicaGroupJoin::$_1` into `operator new(0x48)` (lines 131-150) — exact.
 > - `BarrierWithinReplicaGroupDone` @`0x1c6984e0` (581 bytes), `GetReplicaGroupCoreInfo` @`0x1c698740` (4283 bytes), `CreateStaticReplicaInfoTable` @`0x1c69b780` (2133 bytes): demangled signatures and sizes confirmed in the functions index.
@@ -231,7 +231,7 @@ This **flat star** membership is the structural counterpart of the *binomial* Al
 
 **Barrier algorithms (this section)**
 - [Barriers and Sync-Flags — Section Map](overview.md) — the subsystem map: `BarrierType` enum, producer → normaliser → lowering flow
-- [Global-Barrier SFLAG Window and the REPLICA Path](global-barrier-window.md) — the shared `net_util::GetBarrierSyncFlag` mapper, the GLOBAL-window reservation, the three-source reconciliation, and the SC name trap
+- [Global-Barrier SFLAG Window and the REPLICA Path](global-barrier-window.md) — the shared `net_util::GetBarrierSyncFlag` mapper, the GLOBAL-window reservation, the three distinct global-barrier number spaces, and the SC name trap
 - [Barrier-to-SFLAG Binding](barrier-to-sflag-binding.md) — the `base + id` / `base + count + 4` SFLAG-number formulas this page's actuator consumes (computed in `BarrierCoresTree`/`GetBarrierSyncFlag`, never here)
 - [Infer Barrier Config](infer-barrier-config.md) — the classification (`DetermineBarrierConfigForKey` / `IsGlobalBarrierBeneficial`) that produces the `REPLICA(2)` config this page lowers
 - [Tree-Barrier / vSync](tree-barrier-vsync.md) — the signal-all-then-wait tree protocol, `GetTreeNodeRecord`/`SimpleLoop`, and the Done-side wait this page defers

@@ -1,7 +1,7 @@
 # Global-Barrier SFLAG Window and the REPLICA Path
 
 > **Binary:** `extracted/libtpu-0.0.40-cp314-cp314-manylinux_2_31_x86_64/libtpu/libtpu.so` (build-id `89edbbe81c5b328a958fe628a9f2207d`, build `libtpu_lts_20260413_b_RC00`; `.text` VMA == file offset `0xe63c000`, `.rodata` VMA == file offset).
-> **Status:** Reimplementation-grade · **Evidence grade:** Confirmed (byte-anchored) — the `GetGlobalBarrierSyncFlagNumber` formula, the `GetBarrierSyncFlag` dispatch, the `MaybeInsertGlobalBarrier` insertion gate, and the REPLICA tree path (`BarrierWithinReplicaGroupStartImpl` → `VsyncAddRemote`) were re-derived from the IDA decompile; the literal per-gen reserved integers are an embedded-memfile dependency (LOW, see §5) · **Part XIII — On-Pod Collectives & Barriers** / SFLAG & barriers · [back to index](../index.md)
+> **Status:** Reimplementation-grade · **Evidence grade:** Confirmed (byte-anchored) — the `GetGlobalBarrierSyncFlagNumber` formula, the `GetBarrierSyncFlag` dispatch, the `MaybeInsertGlobalBarrier` insertion gate, and the REPLICA tree path (`BarrierWithinReplicaGroupStartImpl` → `VsyncAddRemote`) are byte-exact; the literal per-gen reserved integers are an embedded-memfile dependency (LOW, see §5) · **Part XIII — On-Pod Collectives & Barriers** / SFLAG & barriers · [back to index](../index.md)
 
 ## Abstract
 
@@ -105,7 +105,7 @@ Because the word "global" is overloaded, a reimplementer must keep three distinc
 | **(b)** | SC **per-collective** global barrier | `EmitScsBarrier(type1)` / `EmitAllToAllBarrierStart(type1)` → `EmitGlobalBarrier` @`0x13352820` | `GetSyncFlagForBarrierId(reserved id)` = `id + SC_base` (SC barrier block) | SC sequencer `sc_tpu.sync_add` tree over SC cores | CONFIRMED |
 | **(c)** | **TC LLO reserved GLOBAL slot** | `net_util::GetBarrierSyncFlag(type1)` @`0x1c69ad00`; `BarrierCoresTree` etc. (§1) | `GetGlobalBarrierSyncFlagNumber()` = `base + count + 4` (TC barrier block) | TC sequencer Vsync* / `net_util` tree barrier | CONFIRMED |
 
-The three live in three number spaces: (a) the SparseCore Mosaic per-core window (`mlir::sparse_core::MemorySpace` value 14 — the SC MLIR enum, distinct from the jellyfish `MemorySpace` enum where 14 = `sparse_core_sequencer_smem`); (b) the SC barrier block; (c) the TC barrier block `[base, base+count]` with the GLOBAL slot at `+count+4`. (a) and (b) are SparseCore; (c) is TensorCore. **`GetGlobalBarrierSyncFlagNumber` belongs to the TC engine only** — which is exactly why the SparseCore `MaybeInsertGlobalBarrier` never calls it. An earlier reading that attributed source (c) to the SC tree barrier (a) is corrected here: they are different `Target`/`SparseCoreTarget` fields and different sequencers.
+The three live in three number spaces: (a) the SparseCore Mosaic per-core window (`mlir::sparse_core::MemorySpace` value 14 — the SC MLIR enum, distinct from the jellyfish `MemorySpace` enum where 14 = `sparse_core_sequencer_smem`); (b) the SC barrier block; (c) the TC barrier block `[base, base+count]` with the GLOBAL slot at `+count+4`. (a) and (b) are SparseCore; (c) is TensorCore. **`GetGlobalBarrierSyncFlagNumber` belongs to the TC engine only** — which is exactly why the SparseCore `MaybeInsertGlobalBarrier` never calls it. Source (c) is not the SC tree barrier (a): they are different `Target`/`SparseCoreTarget` fields and different sequencers.
 
 ---
 
@@ -250,7 +250,7 @@ Both SparseCore custom-kernel barrier entry points **RetCheck** type 2:
 
 ## 5. Verification notes
 
-> **[CONFIRMED]** Re-derived from the IDA decompile of `libtpu.so` v0.0.40 for this page:
+> **[CONFIRMED]** Byte-exact in `libtpu.so` v0.0.40:
 > - `GetGlobalBarrierSyncFlagNumber` @`0x1d60f420`: `this[561] + this[560] + 4` = `base + count + 4` — exact.
 > - `net_util::GetBarrierSyncFlag` @`0x1c69ad00`: `type==1` → `target()->GetGlobalBarrierSyncFlagNumber()` → `SflagImmPtr("global barrier sync flag")`; `type==0` → CHECK-fail (`net_util.cc:2065`); else → CHECK `id < target[0x8c4]` (`:2070`) → `id + target[0x8c0]` → `SflagImmPtr("barrier sync flag number")` — exact, offsets `0x8c0`/`0x8c4` (=`2240`/`2244`) confirmed.
 > - `MaybeInsertGlobalBarrier` @`0x1321ac20`: flags read from `cfg[+0x10]` (bits `0x200`/`0x2000`/`0x40`), `cfg[+0x90]`/`cfg[+0x94]`, `bc->type [+0x20] == 3`; three error sites `custom_kernel_emitter.cc:3560`/`:3572`/`:3681`; **no call to `GetGlobalBarrierSyncFlagNumber`** anywhere in the body; insert via `mlir::detail::walk(MaybeInsertGlobalBarrier::$_0)` with `v12 = 2 − HasAnyCoreType(...)` — exact.

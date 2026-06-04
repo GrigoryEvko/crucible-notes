@@ -163,7 +163,7 @@ dedup.find_or_prepare_insert(canonical) = {canonical, rotation};   // 0x20b5b680
 
 ## 4. The three codename sets and per-singleton selection
 
-There are **three** topology-string sets and **two distinct families of singleton** that consume them. This is the structural heart of the page and the one place earlier reconstruction conflated the sets.
+There are **three** topology-string sets and **two distinct families of singleton** that consume them. This is the structural heart of the page, and the distinction between the three sets is easy to conflate.
 
 ### 4.1 The base set — `kRouteCacheSet` @0x22011f88
 
@@ -206,9 +206,9 @@ The exact decompiled `CHECK` strings, verbatim:
 "UpdateDeduplicator( **gf_deduplicator, ResilientToroidalTopology::k6acc60406RouteCacheSet) is OK"
 ```
 
-> **CORRECTION (DEDUP-1) — the codename sets are *additive*, not replacements.** Pufferfish loads only the base `kRouteCacheSet`. Viperfish and `6acc60406` each load the base set **and then** their codename-specific set — viperfish's via the `RouteCacheDeduplicator::CreateResilientViperfish()` `Create` lambda (its `__policy_func` is wired before the second `UpdateDeduplicator`), `6acc60406`'s via `k6acc60406RouteCacheSet`. So a viperfish slice can hit *either* a base twisted shape *or* a viperfish-only shape. Earlier reconstruction folded `6acc60406` into the base set or treated the three as mutually exclusive; the distinct symbol names, the two-call-per-singleton structure, and the verbatim `CHECK` literals confirm three sets with the base set common to all. Marked HIGH.
+> **NOTE — the codename sets are *additive*, not replacements.** Pufferfish loads only the base `kRouteCacheSet`. Viperfish and `6acc60406` each load the base set **and then** their codename-specific set — viperfish's via the `RouteCacheDeduplicator::CreateResilientViperfish()` `Create` lambda (its `__policy_func` is wired before the second `UpdateDeduplicator`), `6acc60406`'s via `k6acc60406RouteCacheSet`. So a viperfish slice can hit *either* a base twisted shape *or* a viperfish-only shape — they are not mutually exclusive, and `6acc60406` is not folded into the base set. The distinct symbol names, the two-call-per-singleton structure, and the verbatim `CHECK` literals confirm three sets with the base set common to all. Confidence: HIGH.
 
-The `code` value comes from the fault topology (traced to `TopologyFaults::GetSymmetryProperty` @ `0x20bfbd60` / `GetMinFaultLocation` @ `0x20bfbc00`). After the `Find`, a *second* `switch` in the same function (cases `1 → 4 → 2` at the post-Find branch) re-derives the `ToroidalRouteCacheType` passed to `GetRouteCacheData` (the per-codename baked blob). The structural binding (`pf → PUFFERFISH`, `vf → VIPERFISH`, `gf → 6acc60406`) is byte-confirmed via the dedup singletons; the precise `code → enum` integer arithmetic of that second switch was read structurally, not exhaustively tabulated. Marked LOW.
+The `code` value comes from the fault topology (traced to `TopologyFaults::GetSymmetryProperty` @ `0x20bfbd60` / `GetMinFaultLocation` @ `0x20bfbc00`). After the `Find`, a *second* `switch` in the same function (cases `1 → 4 → 2` at the post-Find branch) re-derives the `ToroidalRouteCacheType` passed to `GetRouteCacheData` (the per-codename baked blob). The structural binding (`pf → PUFFERFISH`, `vf → VIPERFISH`, `gf → 6acc60406`) is byte-confirmed via the dedup singletons; the precise `code → enum` integer arithmetic of that second switch is read structurally, not exhaustively tabulated. Confidence: LOW.
 
 > **NOTE — `6acc60406` is a redacted silicon codename, not a hex address.** It appears verbatim as a string token in the enum name (`CACHE_ICI_RESILIENCY_6acc60406`), the set symbol (`k6acc60406RouteCacheSet`), and the resource-path prefix. It denotes the TPU7x silicon generation; treat it as an opaque identifier.
 

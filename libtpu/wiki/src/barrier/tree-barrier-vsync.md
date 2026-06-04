@@ -1,7 +1,7 @@
 # Tree-Barrier Vsync
 
 > **Binary:** `extracted/libtpu-0.0.40-cp314-cp314-manylinux_2_31_x86_64/libtpu/libtpu.so` (build-id `89edbbe81c5b328a958fe628a9f2207d`, build `libtpu_lts_20260413_b_RC00`; `.text` VMA == file offset `0xe63c000`, `.rodata` VMA == file offset).
-> **Status:** Reimplementation-grade · **Evidence grade:** Confirmed (byte-anchored) — the two-phase `BarrierCoresTree` sweep, the `Vsync`/`VsyncAdd`/`VsyncAddRemote` builder→creator→MLIR-op chain, and the `InfoTable` build/read arithmetic were re-derived from the IDA decompile + `functions.json` demangled signatures; the SMEM `Replica/PartitionIdLocationWordOffset` literal values and the 2D `DeviceAssignment` flatten ordering are LOW (memfile / partially decoded, see §6) · **Part XIII — On-Pod Collectives & Barriers** / SFLAG & barriers · [back to index](../index.md)
+> **Status:** Reimplementation-grade · **Evidence grade:** Confirmed (byte-anchored) — the two-phase `BarrierCoresTree` sweep, the `Vsync`/`VsyncAdd`/`VsyncAddRemote` builder→creator→MLIR-op chain, and the `InfoTable` build/read arithmetic are byte-exact (cross-checked against the demangled symbol signatures); the SMEM `Replica/PartitionIdLocationWordOffset` literal values and the 2D `DeviceAssignment` flatten ordering are LOW (memfile / partially decoded, see §6) · **Part XIII — On-Pod Collectives & Barriers** / SFLAG & barriers · [back to index](../index.md)
 
 ## Abstract
 
@@ -251,7 +251,7 @@ The three tables are keyed and registered once per program:
 
 ## 7. Verification notes
 
-> **[CONFIRMED]** Re-derived from the IDA decompile of `libtpu.so` v0.0.40 + the demangled `functions.json` for this page:
+> **[CONFIRMED]** Byte-exact in `libtpu.so` v0.0.40 (cross-checked against the demangled symbol table):
 > - `VsyncAddRemote` @`0x1d522f40`: body is exactly `EncodeRemoteSyncFlagAddress` @`0x1d54da40` → `CreateVectorSyncFlagAddRemote` @`0x1d4dc340` → `LloRegion::AppendInstruction` @`0x1d50f9a0` — exact.
 > - The Vsync creators: `CreateVectorSyncFlagAddRemote(LloValue*, LloValue*, LloRegion*)` and `CreateVectorSyncFlagAdd(LloValue*, LloValue*, optional<bool>, LloRegion*)` present in `functions.json`; MLIR ops `VSyncAddRemoteOp` / `VSyncAddOp` / `VWaitGeOp` / `VWaitEqOp` / `VSyncReadOp` confirmed in the `addOperations` registration list.
 > - `BarrierCoresTree` @`0x1c6a75c0`: the GLOBAL-sflag materialisation (`GetGlobalBarrierSyncFlagNumber` @`0x1d60f420` + `SflagImmPtr "global barrier sync flag"`); the **two-phase** sweep (`.rodata` `"tree-barrier-phase-1"` / `"tree-barrier-phase-2"`, each `GetLimitedIciRoutingTableIndex` @`0x1c6a5e80` + `SimpleLoop` @`0x1d57d4a0` stride `0x10` + `VsyncAddRemote`); the `VwaitGeSV` + `VsyncAdd` rendezvous; the `BarrierCoresTreeCustom` `"custom-tree-barrier"` variant — confirmed.

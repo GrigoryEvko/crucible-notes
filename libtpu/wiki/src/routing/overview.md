@@ -50,7 +50,7 @@ replica groups (HLO ReplicaGroup device lists)
         │                       + HalfwayDirections / UpdateSymmetryForHalfway (dateline phase)
         ▼
 [4] DMA route-table emission    Direction[] → PerLinksRoutingTable row {output_link_index, next_hop_chip_id}
-        │                       installed via Master::SetRoutingTable (P-3-53; bring-up only)
+        │                       installed via Master::SetRoutingTable (bring-up only)
         ▼
 [5] net_router runtime          two consumers of the installed table:
             (a) auto-route:  DMA descriptor carries dest chip id → on-chip routing engine indexes the table
@@ -160,11 +160,11 @@ function InitRouteSolution():                                  // 0x1fbdf8a0
     else:                                                      // PATH A — cache miss (live fallback)
         table = PopulateUnoptimizedRouteCache()                // line 354  — 0x1fbe0a20
     CreateIciResilientFaults(symmetric_fault_set)              // line 204  — record faults for telemetry/install
-    install table  (PerLinksRoutingTable, P-3-53 Master::SetRoutingTable)
+    install table  (PerLinksRoutingTable, Master::SetRoutingTable)
     // if any (src,dst) has no fault-free path → "No route solution for topology %s." (.rodata 0xa02af1b)
 ```
 
-> **CORRECTION (ROUTE-1) —** the dedup population is **per-generation**, selected by a `switch` (decompile line 260) inside the inlined `GetCacheDeduplicator(int)`, not a single deduplicator that loads all sets. The switch picks one of three lazily-constructed static instances: `gf_deduplicator` (case 4 — the `6acc60406` / TPU7x generation) loads `kRouteCacheSet` + `k6acc60406RouteCacheSet`; `vf_deduplicator` (case 2 — viperfish) loads `kRouteCacheSet` + `kViperfishRouteCacheSet`; `pf_deduplicator` (case 1 — pufferfish/default) loads `kRouteCacheSet` alone. `kRouteCacheSet` is the common base every generation shares; the generation-specific set (`k6acc60406RouteCacheSet` or `kViperfishRouteCacheSet`) is layered on top. The `k6acc60406RouteCacheSet` name is recovered from the decompile's CHECK strings (lines 295/303); it does not surface as an independent `nm` data symbol (folded behind `GetCacheDeduplicator`). Marked HIGH.
+> **NOTE — dedup population is per-generation.** A `switch` inside the inlined `GetCacheDeduplicator(int)` picks one of three lazily-constructed static instances — there is no single deduplicator that loads all sets. `gf_deduplicator` (case 4 — the `6acc60406` / TPU7x generation) loads `kRouteCacheSet` + `k6acc60406RouteCacheSet`; `vf_deduplicator` (case 2 — viperfish) loads `kRouteCacheSet` + `kViperfishRouteCacheSet`; `pf_deduplicator` (case 1 — pufferfish/default) loads `kRouteCacheSet` alone. `kRouteCacheSet` is the common base every generation shares; the generation-specific set is layered on top. The `k6acc60406RouteCacheSet` name surfaces only in the `GetCacheDeduplicator` `CHECK` strings, not as an independent `nm` data symbol. Confidence: HIGH. See [Toroidal Route Cache](toroidal-route-cache.md).
 
 ### 3.1 The per-generation deduplicators and their cache sets
 
@@ -221,7 +221,7 @@ each int32 element (SerializeAction @0x13829300):
 
 The three direct producers, confirmed by the full-text caller xref and the decompile, are `CollectivePermuteEmitter::GenerateConstants`, `AllGatherEmitter::GenerateConstants`, and `AllToAllEmitterBase::CreateAllToAllRoutingScheduleTable`. The runtime replay is `EmitRoutingCode` @`0x13819ca0`: per core it computes its base record index (`GetLimitedIciRoutingTableIndex`), reads the 4 direction columns (`GetRoutingTableElement` ×4), and issues `RoutingTableStartDma` / `WaitForDmaInFlight` / `StartPrefetchIfNeeded` around per-step sync flags. Full byte-exact derivation in [Create Routing Schedule](create-routing-schedule.md) and [Net-Router Pipeline](net-router-pipeline.md).
 
-> **CORRECTION (ROUTE-2) —** AllReduce is **not** a direct `CreateRoutingScheduleLiteral` caller. The full-text xref finds only AllGather, AllToAll, and CollectivePermute. AllReduce reaches the per-step program through `EmitRoutingCode`'s direct `CreateRoutingSchedule` @`0x13819d53` (the runtime, non-literal path), not the compiled Type-5 literal. "Universal" Type-5 literal is confirmed for AG/A2A/CP only. Marked HIGH.
+> **GOTCHA —** AllReduce is **not** a direct `CreateRoutingScheduleLiteral` caller: the full-text xref finds only AllGather, AllToAll, and CollectivePermute. AllReduce reaches the per-step program through `EmitRoutingCode`'s direct `CreateRoutingSchedule` @`0x13819d53` (the runtime, non-literal path), not the compiled Type-5 literal. The Type-5 literal is therefore AG/A2A/CP only. Confidence: HIGH.
 
 > **QUIRK —** the schedule literal and the route table answer different questions and a reimplementer must build both. The literal's element encodes *(src_ptr, dst_ptr)* — the buffer pointers a core DMAs between at one step on one port; it says nothing about *which physical chips the bytes traverse*. That multi-hop link path comes from the route table of §1–§3. Confusing the two yields a program that knows what to send but not where to route it.
 

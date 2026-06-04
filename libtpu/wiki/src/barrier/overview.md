@@ -1,7 +1,7 @@
 # Barriers and Sync-Flags — Section Map
 
 > **Binary:** `extracted/libtpu-0.0.40-cp314-cp314-manylinux_2_31_x86_64/libtpu/libtpu.so` (build-id `89edbbe81c5b328a958fe628a9f2207d`, build `libtpu_lts_20260413_b_RC00`; `.text` VMA == file offset `0xe63c000`, `.rodata` VMA == file offset).
-> **Status:** Reimplementation-grade map · **Evidence grade:** Confirmed (byte-anchored) — the `BarrierType` enum, the `InferBarrierConfig` normaliser tree, and the three TC reserved-slot SFLAG formulas were re-derived from the IDA decompile; the literal per-generation SFLAG ranges are an embedded-memfile dependency (LOW, see §5) · **Part XIII — On-Pod Collectives & Barriers** / SFLAG & barriers · [back to index](../index.md)
+> **Status:** Reimplementation-grade map · **Evidence grade:** Confirmed (byte-anchored) — the `BarrierType` enum, the `InferBarrierConfig` normaliser tree, and the three TC reserved-slot SFLAG formulas are byte-exact; the literal per-generation SFLAG ranges are an embedded-memfile dependency (LOW, see §5) · **Part XIII — On-Pod Collectives & Barriers** / SFLAG & barriers · [back to index](../index.md)
 
 ## Abstract
 
@@ -191,9 +191,9 @@ function GetSpecialPurposeSyncFlags(chip_config, core):       // 0x20afcf40
     return chip_config + 0x2a0 + (core << 6)                  // element `core`, 0x40-byte stride
 ```
 
-> **CORRECTION (P-3-424) —** an earlier reading had the accessor return `+0x2a0 + core` (a byte index). The decompile shows `shl $6` — the index is `core << 6` = `core * 0x40` (element stride of the `EnumMap`). A reimplementation using `+core` reads garbage for `kSparseCore`/`kBarnaCore`. The TensorCore entry (`core=0`) is **mandatory**: `Target::Init` dereferences the result and dies via `DieBecauseNull` (`"chip_config.GetSpecialPurposeSyncFlags(::tpu::TpuCoreType::kTensorCore)"`) if absent.
+> **GOTCHA —** the index is `core << 6` = `core * 0x40` (`shl $6` — the element stride of the `EnumMap`), **not** `+core`. A reimplementation using a byte index `+core` reads garbage for `kSparseCore`/`kBarnaCore`. The TensorCore entry (`core=0`) is **mandatory**: `Target::Init` dereferences the result and dies via `DieBecauseNull` (`"chip_config.GetSpecialPurposeSyncFlags(::tpu::TpuCoreType::kTensorCore)"`) if absent.
 
-The `SpecialPurposeSyncFlags` message also carries four named scalar SFLAG numbers — `sequencer_overlay` (f4), `tile_overlay` (f5), `global_barrier_sflag` (f6), `local_barrier_sflag` (f7) — at proto offsets `+0x30..+0x3c. Whether these survive into the runtime element (vs being consumed in `FromProto`) was not separately traced; `Target::Init` reads only the `compiler_reserved` vector. See [Special-Purpose Sync Flags](special-purpose-sync-flags.md).
+The `SpecialPurposeSyncFlags` message also carries four named scalar SFLAG numbers — `sequencer_overlay` (f4), `tile_overlay` (f5), `global_barrier_sflag` (f6), `local_barrier_sflag` (f7) — at proto offsets `+0x30..+0x3c`. Whether these survive into the runtime element (vs being consumed in `FromProto`) was not separately traced; `Target::Init` reads only the `compiler_reserved` vector. See [Special-Purpose Sync Flags](special-purpose-sync-flags.md).
 
 ### 5.2 The carve: `Target::Init` / `SparseCoreTarget::Init`
 
@@ -201,7 +201,7 @@ The `SpecialPurposeSyncFlags` message also carries four named scalar SFLAG numbe
 
 ### 5.3 The TC reserved-slot map (the `−5`)
 
-The top 5 slots of the TC range are the named cross-core barrier sync flags. All three accessor formulas were re-derived byte-exact from the decompile (`this[560]` = `Target+0x8c0` = base, `this[561]` = `Target+0x8c4` = count):
+The top 5 slots of the TC range are the named cross-core barrier sync flags. All three accessor formulas are byte-exact (`this[560]` = `Target+0x8c0` = base, `this[561]` = `Target+0x8c4` = count):
 
 | Slot | Accessor | Formula | Confidence |
 |---|---|---|---|
@@ -230,7 +230,7 @@ The `−5` is a compile-time constant in `Target::Init` (`add $0xfffffffb`), gen
 
 > **GOTCHA —** the literal per-`(codename, deployment-name)` integers (`CR_TC[0]`, `|CR_TC|`, `CR_SC[0]`, `|CR_SC|`) are **not statically extractable** from `.rodata`. They live in embedded chip-config memfile binarypb blobs (`tpu_chip_config_memfile_{default,megacore,megachip,…}_embed_internal_create` @`0x20b18fa0..`), resolved at runtime via a `flat_hash_map<tuple<TpuVersion, name, TpuCoreType>, FileToc*>` keyed by `FLAGS_deepsea_chip_config_name` @`0x224714b0`. The block geometry above is CONFIRMED; the integers are LOW (memfile-dependency). See [Per-Codename Compiler-Reserved](per-codename-compiler-reserved.md).
 
-> **CORRECTION (P-3-409) —** `SparseCoreTarget+0x90` is **not** an SFLAG-window base — it is `TpuCoreParts::SequencerCount(TpuSequencerType=5)`, a per-core sequencer count. `+0x1fc` is the `GetMemoryReservation → GetUserRegion` length (the Mosaic per-core tree-barrier window, jellyfish `MemorySpace::kSparseCoreSequencerSmem` = 14), a third disjoint region not drawn from the SFLAG vector. Neither is part of the `compiler_reserved` block.
+> **GOTCHA —** two nearby `SparseCoreTarget` fields are *not* SFLAG-window bases. `SparseCoreTarget+0x90` is `TpuCoreParts::SequencerCount(TpuSequencerType=5)`, a per-core sequencer count. `+0x1fc` is the `GetMemoryReservation → GetUserRegion` length (the Mosaic per-core tree-barrier window, jellyfish `MemorySpace::kSparseCoreSequencerSmem` = 14), a third disjoint region not drawn from the SFLAG vector. Neither is part of the `compiler_reserved` block.
 
 ---
 
@@ -249,12 +249,12 @@ It is worth stating plainly that the `BarrierConfig` field has **two** writers t
 
 ## 7. Verification notes
 
-> **[CONFIRMED]** The following were re-derived from the IDA decompile of `libtpu.so` v0.0.40 for this page:
+> **[CONFIRMED]** Byte-exact in `libtpu.so` v0.0.40:
 > - `InferBarrierConfig` @`0x1376c240`: the singleton predicate `*((__int64*)a4 + 1) <= 1 && *((__int64*)a4 + 2) <= 1` (Strategy+0x8/+0x10); `if (v35 == 3)` (CUSTOM); `channel_id(a3)` then `v15 == 1` → `v35 = 1` (GLOBAL), `v16 = -1`; else `v35 = 2` (REPLICA), `v16 = *((int*)a2 + 561) - 1` (Target+0x8c4 − 1); RetCheck line 115 `"barrier.barrier_type() != BarrierType::BARRIER_INVALID"`; **no `movl $4`** anywhere — exact.
 > - `GetGlobalBarrierSyncFlagNumber` @`0x1d60f420`: `this[561] + this[560] + 4` = `base + count + 4` — exact.
 > - `GetAllReduceSyncFlagNumber` @`0x1d60f440`: CHECK `phase > 0` / `phase < 3`; `this[560] + phase + this[561] + 1` = `base + count + phase + 1` — exact.
 > - `GetMegacoreBarrierSyncFlagNumber` @`0x1d60f4e0`: `Megacore()`-gated (`"topology_->chip_config().Megacore()"`), `this[560] + this[561]` = `base + count` — exact.
-> - `GetSpecialPurposeSyncFlags` @`0x20afcf40`: `bt core, *(chip+0x360)` gate; `core >= 3` → `ud1`; `return chip + 0x2a0 + (core << 6)` — exact (confirms the `core<<6` correction, not `+core`).
+> - `GetSpecialPurposeSyncFlags` @`0x20afcf40`: `bt core, *(chip+0x360)` gate; `core >= 3` → `ud1`; `return chip + 0x2a0 + (core << 6)` — exact (the stride is `core<<6`, not `+core`).
 > - Symbol confirmation: `DetermineBarrierConfigForKey(...HloModuleConfig, bool)` @`0x109c6fa0` and both `BarrierColoring<…>::Run` policies present in the decompile.
 >
 > **[LOW]** The literal per-generation `compiler_reserved` integers (§5.4) — the proto field, the carve formula, and the memfile lookup are CONFIRMED, but the integers are runtime-resolved from embedded binarypb blobs and were not statically extracted. The `BarrierType` numeric values `2`/`4` (`REPLICA`/`MEGACORE`) are recovered from `movl`/`cmp` byte patterns and proto-value arithmetic; only `INVALID(0)`, `GLOBAL(1)`, `CUSTOM(3)` appear as named `.rodata` strings.

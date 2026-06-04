@@ -6,7 +6,7 @@
 
 Three small, byte-pinned facts gate the entire twisted-torus subsystem, and this page owns all three. First, the **twist eligibility predicate**: a slice may be lowered as a twisted torus only when its longest axis is *exactly* twice its shortest axis — `max_dim_size_ == 2 * min_dim_size_` — a fatal `CHECK` inside `TwistedTorusND::UpdateMinMaxDims`. Second, the **`Orientation` enum**, the dense `0..6` enum that names a torus axis on a faulty-link record and on every static route hop. Third, the **`is_nhop_source_relative` flag** (`Target[+0x3fb]`), the one-byte gate that selects whether the ICI next-hop route table is computed relative to each source chip or keyed by absolute destination IDs.
 
-The `Orientation` enum is the page's center of gravity because the wider documentation previously carried a *wrong inference* about it. An earlier reading — recorded as a LOW-confidence note on the [degraded-axis ingest page](../collectives/degraded-axis.md) — guessed that orientation values `4/5/6` might be the *negative* axes (`-X/-Y/-Z`). That is **not** what the binary says. `Direction::OrientationToDimension` and the proto descriptor both show `4/5/6 = A/B/C`, three *additional logical dimensions* (logical dims `3/4/5`) beyond the physical `X/Y/Z` torus axes. The negative SerDes direction is carried by a **separate** `polarity` field on the `Direction` message, not by an extra orientation value. This page documents the corrected enum, proves it from the decompile, and explains why `OrientationsToTpuDegradedAxes` correctly folds only `1/2/3`.
+The `Orientation` enum is the page's center of gravity. `Direction::OrientationToDimension` and the proto descriptor both show `4/5/6 = A/B/C`: three *additional logical dimensions* (logical dims `3/4/5`) beyond the physical `X/Y/Z` torus axes — **not** signed/negative variants of the physical axes. The negative SerDes direction is carried by a **separate** `polarity` field on the `Direction` message, not by an extra orientation value. This page documents the enum, proves it from the binary, and explains why `OrientationsToTpuDegradedAxes` folds only `1/2/3` (the physical-axis subset consumed by the [degraded-axis ingest path](../collectives/degraded-axis.md)).
 
 A reader who knows torus collectives and dimension-order routing owns the frame: a "twist" needs a doubled axis to fold (hence the `2·min` predicate); an axis-naming enum to describe where each link points (hence `Orientation`); and a routing-table convention bit (hence `is_nhop_source_relative`). The reimplementation contract is:
 
@@ -119,7 +119,7 @@ Read byte-exact from the `EnumDescriptorProto` value list in the embedded `FileD
 
 The ASCII bytes are literally `'X'`/`'Y'`/`'Z'`/`'A'`/`'B'`/`'C'` (`0x58`/`0x59`/`0x5a`/`0x41`/`0x42`/`0x43`). The dense-enum range `0..6` is confirmed by the `NameOfDenseEnum<Orientation, 0, 6>` instantiation (`0x22471c50`) and the `Orientation_descriptor` (`0x20c0ad20`).
 
-> **CORRECTION — `4/5/6` are NOT negative axes.** A prior LOW-confidence note (carried on [Degraded-Axis Ingest](../collectives/degraded-axis.md), "What Was Not Resolved") guessed that `4/5/6` might be `-X/-Y/-Z`. The descriptor names them `A/B/C`. They are three *additional logical dimensions* (logical dims `3/4/5`), not signed variants of the physical `X/Y/Z`. The negative SerDes direction is the `polarity` field (§2.3), a wholly separate concept. This page supersedes the earlier inference.
+> **NOTE — `4/5/6` are not negative axes.** The descriptor names them `A/B/C`: three *additional logical dimensions* (logical dims `3/4/5`), not signed variants of the physical `X/Y/Z`. The negative SerDes direction is the `polarity` field (§2.3), a wholly separate concept.
 
 ### 2.2 `Direction::OrientationToDimension` — `0x20c027c0`
 
@@ -194,7 +194,7 @@ __int64 DragonfishTarget::IsNhopSourceRelative(DragonfishTarget *this) {
 
 `this+296` qwords `= +0x940` (the slice/topology struct adjacent to the `MultiSliceTopologyAndLocation*` stored at `Target+0x928`); `+73 = +0x49`. So Dragonfish *replaces* the configured-properties byte with a per-slice source-relative byte and enforces that the generic `Target[+0x3fb]` byte was never set on this path.
 
-> **CORRECTION — this is a replace-and-assert, not an OR.** An earlier characterisation read this accessor as `base || byte[[+0x940]+0x49]` (an inclusive-or fallback). The decompile shows it is a *fatal `CHECK`* that the base byte is `false`, followed by an unconditional return of the per-slice byte. If the base byte were ever set on a Dragonfish target the process aborts; it does not silently OR. The offsets (`+0x940`, `+0x49`, `target_dragonfish.cc:28`) are otherwise as expected.
+> **GOTCHA — this is a replace-and-assert, not an OR.** The accessor is a *fatal `CHECK`* that the base byte is `false`, followed by an unconditional return of the per-slice byte (`[[+0x940]+0x49]`, `target_dragonfish.cc:28`). It is not an inclusive-or fallback `base || per_slice`: if the base byte were ever set on a Dragonfish target the process aborts rather than silently OR-ing.
 
 ### 3.3 The default — `GetDefaultConfiguredProperties` @ `0x20acee40`
 

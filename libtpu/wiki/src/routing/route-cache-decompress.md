@@ -288,7 +288,7 @@ Create: move the 4 maps into StatusOr<ToroidalRouteCache>                  # 0x2
 - [ ] **`CacheRead`**: build the `TopologyRotationHelper` from the dedup orientation vector; per scheme, `RotateId` both chip ids into the key; decode per layout type with `RetCheck` on the matching `has_*()`; insert into the per-type map; reject duplicate keys with the exact `"Duplicate insertion associated with source: …"` message.
 - [ ] Keep the four value types byte-exact: distance → `superpod::routing::Coordinates`; static/bit-encoded → `vector<proto::Direction>` (same map); random-hop → `vector<vector<proto::Direction>>` plus a parallel `vector<int8_t>` weight map.
 
-> **LOW confidence.** The `random_first_hop` field tag is reported as wire tag 7 in the upstream descriptor decode; this page anchors only the in-memory `[scheme+0x20]` count read used by the constructor's escalation and the per-element `hop`/`probability` access — the exact proto field *number* (7) was not re-derived from the `EnumDescriptorProto` bytes here. Treat the `(7)` annotation in the diagrams as descriptor-sourced, not independently re-confirmed on this page.
+> **NOTE (LOW confidence on the field number).** The `random_first_hop` field tag is wire tag 7 per the upstream descriptor decode; this page anchors only the in-memory `[scheme+0x20]` count read used by the constructor's escalation and the per-element `hop`/`probability` access. The exact proto field *number* (7) is descriptor-sourced rather than confirmed from the `EnumDescriptorProto` bytes on this page — treat the `(7)` annotation in the diagrams accordingly.
 
 ---
 

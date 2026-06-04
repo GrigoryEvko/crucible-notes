@@ -103,7 +103,7 @@ The result is a *set of equal-minimum-distance routes*, not a single distance. `
 | `3` | mid | `k*2k*2k` | (same) |
 | `2` | edge | `k*2k*2k` | (same) |
 
-> **NOTE —** the `|routes|` → vertex-class mapping (above) is the count the [twist tiebreaker](../twist/get-tiebreak.md) reads to pick a single canonical route; the byte-exact class boundaries belong to that page. This page owns *why the set has that cardinality* (the `2^(#wrap-axes)` tie structure), not the selection. Confidence on the specific counts: HIGH (cross-referenced, not re-derived here).
+> **NOTE —** the `|routes|` → vertex-class mapping (above) is the count the [twist tiebreaker](../twist/get-tiebreak.md) reads to pick a single canonical route; the byte-exact class boundaries belong to that page. This page owns *why the set has that cardinality* (the `2^(#wrap-axes)` tie structure), not the selection. Confidence on the specific counts: HIGH (anchored on the tiebreaker page).
 
 ### Function Map
 
@@ -174,7 +174,7 @@ function GetDistanceFromOrigin(this, coord, pol, wmask):  // 0x20b42980
     return Coordinates(res, ndims)                          // 0x20b42c34
 ```
 
-> **GOTCHA —** the seam-carry modulus folds by `dimsize[j]` — the *target* axis `j`'s size — **not** by `dimsize[dim]`, the wrapping axis. The decompile is unambiguous: the modulus operand is `dimsize_base[this+0x10] + 4*j` inside the `j` loop (`0x20b42b3f`/`0x20b42b98`), indexed by the inner counter. A reimplementation that folds the whole carry by the wrapping axis's size silently corrupts every partner axis whose size differs from `dim`'s — which on a `k*2k*nk` shape is most of them. (The one-line distance diagram in earlier reconstructions left this ambiguous; the byte-exact reading is `mod dimsize[j]`.)
+> **GOTCHA —** the seam-carry modulus folds by `dimsize[j]` — the *target* axis `j`'s size — **not** by `dimsize[dim]`, the wrapping axis. The decompile is unambiguous: the modulus operand is `dimsize_base[this+0x10] + 4*j` inside the `j` loop (`0x20b42b3f`/`0x20b42b98`), indexed by the inner counter. A reimplementation that folds the whole carry by the wrapping axis's size silently corrupts every partner axis whose size differs from `dim`'s — which on a `k*2k*nk` shape is most of them. The byte-exact reading is `mod dimsize[j]`.
 
 > **QUIRK —** the coordinate is read from the *argument* (`coord` / the normalized `base` `GetDistances` passes), and the accumulator threads the carry *forward* as axes are visited in dimension order — `accum[dim]` is only set to `c` (`0x20b42b..`) *after* the seam carry has already mutated `accum[j]` for the partner axes. So a wrap on an early-order axis shifts the reference point that later-order axes measure their delta against. This ordering coupling is the twist: the axes are not independent, and visiting them out of `dim_order` produces a different (wrong) displacement.
 
@@ -212,7 +212,7 @@ function Init(this, dim_sizes, twisted):                 // 0x20b3e5e0
     // wrap bits for doubled axes are also set here (this+0xf0[d] |= 1)   (0x20b3e870-ish)
 ```
 
-> **NOTE —** the *structure* of the fill (doubled-axis detection via the `size==2K` test, the partner-axis store into `seam[d][j]`, and the wrap-bit set on `this+0xf0`) is byte-confirmed in `Init`. The exact per-`(d,j)` seam **value matrix** — which axis carries `+K` vs `+2K` vs `0` onto which, for each of the `k*k*2k` / `k*2k*2k` / `k*2k*nk` orientations — was read to its `+K` diagonal arithmetic but not exhaustively tabulated per orientation. The carry consumer (`GetDistanceFromOrigin`, above) is fully decoded; the table that feeds it is HIGH-confidence on shape, LOW on the complete per-orientation value matrix. Treat `seam[d][j]` as "the twist offset axis-`d`-wrap induces on axis `j`", reconstructed from `Init`'s `+K` fill, not as a re-derived constant table.
+> **NOTE —** the *structure* of the fill (doubled-axis detection via the `size==2K` test, the partner-axis store into `seam[d][j]`, and the wrap-bit set on `this+0xf0`) is byte-confirmed in `Init`. The exact per-`(d,j)` seam **value matrix** — which axis carries `+K` vs `+2K` vs `0` onto which, for each of the `k*k*2k` / `k*2k*2k` / `k*2k*nk` orientations — was read to its `+K` diagonal arithmetic but not exhaustively tabulated per orientation. The carry consumer (`GetDistanceFromOrigin`, above) is fully decoded; the table that feeds it is HIGH-confidence on shape, LOW on the complete per-orientation value matrix. Treat `seam[d][j]` as "the twist offset axis-`d`-wrap induces on axis `j`", inferred from `Init`'s `+K` fill rather than as a fully tabulated constant matrix.
 
 | Field | Offset | Type | Meaning |
 |---|---|---|---|
@@ -246,7 +246,7 @@ function GetDistance(this, src, dst):                    // 0x20b408e0, vtable+0
     return  the single twisted-torus distance (the GetDistances min-norm route)
 ```
 
-> **NOTE —** the per-pair cache-miss fall-through to the live metric is byte-confirmed structurally: after `GetDistanceFromCache` (`0x20b40fa0`) returns, `GetDistance` branches on the `StatusOr` ok-bit (`0x20b40922`) and proceeds to `LABEL_8` — the live computation — when the lookup is *not* ok. This is distinct from the *whole-cache* miss in `InitRouteSolution`, which hard-errors `"Cannot find route cache: "` with no live fallback (see [`toroidal-route-cache`](toroidal-route-cache.md)). A single absent `(src,dst)` pair degrades to the live metric; an absent baked cache *file* for the slice shape aborts bring-up. Confidence: HIGH (the fall-through path is observed; the exact live-recompute inline body was traced to the branch, not re-derived line-by-line for every cache type).
+> **NOTE —** the per-pair cache-miss fall-through to the live metric is byte-confirmed structurally: after `GetDistanceFromCache` (`0x20b40fa0`) returns, `GetDistance` branches on the `StatusOr` ok-bit (`0x20b40922`) and proceeds to `LABEL_8` — the live computation — when the lookup is *not* ok. This is distinct from the *whole-cache* miss in `InitRouteSolution`, which hard-errors `"Cannot find route cache: "` with no live fallback (see [`toroidal-route-cache`](toroidal-route-cache.md)). A single absent `(src,dst)` pair degrades to the live metric; an absent baked cache *file* for the slice shape aborts bring-up. Confidence: HIGH (the fall-through branch is byte-confirmed; the inline live-recompute body is traced to the branch but not decoded line-by-line for every cache type).
 
 > **GOTCHA —** the `DropDimnesion` spelling (one transposed letter) is the real symbol in the binary (`accel_ssw::deepsea::slice_builder::(anonymous namespace)::DropDimnesion` @ `0x20b3f4e0`, called at `0x20b40999`). Grep for it verbatim; do not "correct" it.
 

@@ -1,7 +1,7 @@
 # SpecialPurposeSyncFlags — the chip-config SFLAG reservation message, its FromProto sink, and the `GetSpecialPurposeSyncFlags` accessor
 
 > **Binary:** `extracted/libtpu-0.0.40-cp314-cp314-manylinux_2_31_x86_64/libtpu/libtpu.so` (build-id `89edbbe81c5b328a958fe628a9f2207d`, build `libtpu_lts_20260413_b_RC00`; `.text` VMA == file offset `0xe63c000`, `.rodata` VMA == file offset `0x84a0000`).
-> **Status:** Reimplementation-grade · **Evidence grade:** Confirmed (byte-anchored) — the `GetSpecialPurposeSyncFlags` accessor, the `TpuChipConfig::FromProto` element build, the 0x40-byte runtime element layout, the `EnumMap::Clear` scalar-persistence, and the `Target::Init` / `SparseCoreTarget::Init` struct sinks were all re-derived from the IDA decompile (`+core<<6`, `& 0x100000000` presence gates, `size − 5`). The literal per-gen SFLAG integers are an embedded-memfile dependency (LOW — see [Per-Codename Compiler-Reserved](per-codename-compiler-reserved.md)). · **Part XIII — On-Pod Collectives & Barriers** / SFLAG & barriers · [back to index](../index.md)
+> **Status:** Reimplementation-grade · **Evidence grade:** Confirmed (byte-anchored) — the `GetSpecialPurposeSyncFlags` accessor, the `TpuChipConfig::FromProto` element build, the 0x40-byte runtime element layout, the `EnumMap::Clear` scalar-persistence, and the `Target::Init` / `SparseCoreTarget::Init` struct sinks are all byte-exact (`+core<<6`, `& 0x100000000` presence gates, `size − 5`). The literal per-gen SFLAG integers are an embedded-memfile dependency (LOW — see [Per-Codename Compiler-Reserved](per-codename-compiler-reserved.md)). · **Part XIII — On-Pod Collectives & Barriers** / SFLAG & barriers · [back to index](../index.md)
 
 ## Abstract
 
@@ -43,7 +43,7 @@ The generated-C++ message struct offsets (recovered from the generated `_Interna
 | f6 | `global_barrier_sflag` | int32 | `@+0x38` | SC global-barrier SFLAG number (single index) |
 | f7 | `local_barrier_sflag` | int32 | `@+0x3c` | SC local-barrier SFLAG number (single index) |
 
-> **NOTE —** the hasbits word sits at `@+0x10`. The `core_type` slot is `+0x2c` in the *runtime message struct*; an earlier reading of `+0x1c` was the proto field-NUMBER / descriptor list offset, not the runtime struct offset (corrected against the generated serializer). The `compiler_reserved` field-3 range, and the general SFLAG number formulas built from its `base`/`count` (`base+count+4` global, `base+count` megacore, `base+id` per-key), are documented on [Barrier-to-SFLAG Binding](barrier-to-sflag-binding.md); the per-`(codename, deployment)` literal integers are on [Per-Codename Compiler-Reserved](per-codename-compiler-reserved.md). This page does not re-derive those.
+> **NOTE —** the hasbits word sits at `@+0x10`. The `core_type` slot is `+0x2c` in the *runtime message struct* — distinct from `+0x1c`, which is the proto field-NUMBER / descriptor list offset, not the runtime struct offset. The `compiler_reserved` field-3 range, and the general SFLAG number formulas built from its `base`/`count` (`base+count+4` global, `base+count` megacore, `base+id` per-key), are documented on [Barrier-to-SFLAG Binding](barrier-to-sflag-binding.md); the per-`(codename, deployment)` literal integers are on [Per-Codename Compiler-Reserved](per-codename-compiler-reserved.md).
 
 ---
 
@@ -228,7 +228,7 @@ The `compiler_reserved` carve (the `−5` reservation on TC, the SC full-range, 
 
 ## 7. Verification notes
 
-> **[CONFIRMED]** Re-derived from the IDA decompile of `libtpu.so` v0.0.40 for this page:
+> **[CONFIRMED]** Byte-exact in `libtpu.so` v0.0.40:
 > - `GetSpecialPurposeSyncFlags` @`0x20afcf40`: `v2 = *(chip+864)`; `if (!_bittest64(&v2, core)) return 0`; `if ((unsigned)core >= 3) ud1`; `return chip + 672 + (core<<6)` — i.e. `+0x360` bitmask, `+0x2a0` base, `core<<6` stride — byte-exact.
 > - `TpuChipConfig::FromProto` @`0x20aea100`: in the `special_purpose_sync_flags` loop the element base is `core << 6`; the four scalars are stored verbatim (`>>8`/`<<8|low-byte` reconstruction), `sequencer_overlay` presence carried as `v705 + 0x100000000` and the other three as `setg (value > 0)` bytes at element `+0x24`/`+0x34`/`+0x3c`; `compiler_reserved` via `operator new(4*count)` + `memcpy` — confirms the element build and the (value, present) packing.
 > - `Target::Init` @`0x1d60fc20`: `*((_DWORD*)target + 560) = *base` (= `Target+0x8c0` base); `*((_DWORD*)target + 561) = size − 5` (= `Target+0x8c4` count); sequencer_overlay gated by `& 0x100000000` at element `+0x28`; `DieBecauseNull("…GetSpecialPurposeSyncFlags( ::tpu::TpuCoreType::kTensorCore)")` on `NULL` — exact.

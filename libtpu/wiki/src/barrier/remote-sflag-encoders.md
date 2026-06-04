@@ -144,7 +144,7 @@ return addr
 
 This is the only encoder that reads `phys_chip_id` (the `MapLogicalToPhysicalChipId` output, argument 4) and the only one whose multicast bit is conditional. The `VLOG(1)` site (`remote_sync_flag_encoder_jellyfish.cc:30`) is the only diagnostic on the multicast path.
 
-> **CORRECTION —** an earlier sample listed the `0x80000` multicast bit as *fixed*. The decompile shows it is gated on the `multicast` argument (`if (v8) … SorU32(.., 0x80000)`); a non-multicast JfDf remote write does **not** set bit 19.
+> **GOTCHA —** the `0x80000` multicast bit is **not** fixed: it is gated on the `multicast` argument (`if (v8) … SorU32(.., 0x80000)`). A non-multicast JfDf remote write does *not* set bit 19.
 
 ### 3.3 Pufferfish / Viperfish / Ghostlite — the V2 core-index-relative encoders (byte-exact)
 
@@ -174,7 +174,7 @@ if (multicast):
 return pufferfish::dma_utils::EncodeRemoteSyncFlagAddress(sflag, peer, builder)   // drops phys + multicast
 ```
 
-> **CORRECTION —** an earlier sample read the V2 chip field as `sflag & 0xfff`. The decompile shows it is the **chip coordinate** `CLB[+0]` that is masked (`& 0xfff` on PF, `& 0x3fff` on VF/GL) and shifted; the `sflag` is OR'd in *raw*. The `CoreIndex() << 0xd` that the earlier sample attributed to the address encoder belongs to a *different* function — see §3.4.
+> **GOTCHA —** the masked V2 field is the **chip coordinate** `CLB[+0]` (`& 0xfff` on PF, `& 0x3fff` on VF/GL), shifted, with the `sflag` OR'd in *raw* — it is not `sflag & 0xfff`. The `CoreIndex() << 0xd` shift belongs to a *different* function — see §3.4.
 
 ### 3.4 What the address encoder is NOT — the sibling core-id encoder
 
@@ -282,7 +282,7 @@ Putting the dispatcher, the remap, and the per-gen encoders together, the cross-
 
 ## 6. Verification notes
 
-> **[CONFIRMED]** Re-derived from the IDA decompile of `libtpu.so` v0.0.40 for this page:
+> **[CONFIRMED]** Byte-exact in `libtpu.so` v0.0.40:
 > - **Dispatcher** `EncodeRemoteSyncFlagAddress` @`0x1d54da40`: the `(sflag[+0xb]&0x7c)==0x18` kSflag gate with the SupportsRemoteSyncFlagInTpuEmbeddingSpace (vtable+0x7b0, MS ∈ {9,10}) and SupportsSparseCore (vtable+0x260, MS `0x30`) alternates; the RetCheck string `"remote_sync_flag->memory_space() == MemorySpace::kSflag || …kBarnaCoreSmem … kBarnaCoreSflag … kSparseCoreSequencerSflag"`; `MapLogicalToPhysicalChipId(…, operand "EncodeRemoteSyncFlagAddress()" [29 chars], multicast=0)`; `version = Target[+0x398]`; the registry `Get` then invoke with `(sflag, &x_coord, multicast, phys_chip_val, &builder)`; `LOG(FATAL) "Unsupported version: "` at line 8252 — exact.
 > - **`VsyncAddRemote`** @`0x1d522f40`: `EncodeRemoteSyncFlagAddress` then `CreateVectorSyncFlagAddRemote(addr, value)` then `AppendInstruction` — exact.
 > - **JfDf** @`0x1d5aa620`: `SshllU32(CLB[+8],0x14)`, `SshllU32(phys_chip,0x15)`, `0x40000`, `DefaultSyncFlagSegmentId()<<0xc`, conditional `0x80000` under `if(multicast)` with the `VLOG(1) "Set multicast in EncodeRemoteSyncFlagAddress"` site, annotation `"remote sync flag address"` — exact (multicast bit is CONDITIONAL).

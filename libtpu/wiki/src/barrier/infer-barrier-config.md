@@ -99,7 +99,7 @@ WRITE:                                                          // LABEL_24, lin
     return OK
 ```
 
-> **NOTE —** the source line numbers in the RetCheck calls are decimal in the decompiler (`93`, `115`). The earlier raw analysis cited them in hex (`0x5d = 93`, `0x73 = 115`); both refer to the same two `rotated_pincer_fusion_emitter.cc` lines. The `INVALID` RetCheck string `"barrier.barrier_type() != BarrierType::BARRIER_INVALID"` is the only `.rodata` anchor that pins `BARRIER_INVALID = 0` by name.
+> **NOTE —** the source line numbers in the RetCheck calls are `93` and `115` decimal (`0x5d` and `0x73` in the raw immediates), both referring to the same two `rotated_pincer_fusion_emitter.cc` lines. The `INVALID` RetCheck string `"barrier.barrier_type() != BarrierType::BARRIER_INVALID"` is the only `.rodata` anchor that pins `BARRIER_INVALID = 0` by name.
 
 ### The three arms, restated
 
@@ -195,7 +195,7 @@ The SC block is full and reserves its global-barrier id *within* `[SC_base, SC_b
 | TensorCore | `Target+0x8c0` (`target[560]`) | `Target+0x8c4` (`target[561]`) | `\|CR_TC\| − 5` | CERTAIN |
 | SparseCore | `SparseCoreTarget+0x1d0` (`+464`) | `SparseCoreTarget+0x1d4` (`+468`) | `\|CR_SC\|` (no `−5`) | CERTAIN |
 
-> **CORRECTION (P-3-409) —** `SparseCoreTarget+0x90` is **not** an SFLAG-window base. The decompile shows `*(sctgt+144) = TpuCoreParts::SequencerCount(core, 5)` — a per-core sequencer count, not a barrier id. `SparseCoreTarget+0x1fc` (`*(sctgt+508) = v77 − 4`) is the `GetMemoryReservation → GetUserRegion` length (the Mosaic per-core tree-barrier window, MemorySpace 14), a third disjoint region. Neither is part of the `compiler_reserved` SFLAG block. The SC tree-barrier window is on [Tree-Barrier / vSync](tree-barrier-vsync.md).
+> **GOTCHA —** `SparseCoreTarget+0x90` is **not** an SFLAG-window base: `*(sctgt+144) = TpuCoreParts::SequencerCount(core, 5)`, a per-core sequencer count, not a barrier id. `SparseCoreTarget+0x1fc` (`*(sctgt+508) = v77 − 4`) is the `GetMemoryReservation → GetUserRegion` length (the Mosaic per-core tree-barrier window, MemorySpace 14), a third disjoint region. Neither is part of the `compiler_reserved` SFLAG block. The SC tree-barrier window is on [Tree-Barrier / vSync](tree-barrier-vsync.md).
 
 ### The five reserved TC top slots (the `−5`)
 
@@ -258,7 +258,7 @@ Megacore deployments (`megacore*`, `megachip`) are the ones for which `CoresPerC
 
 ## 6. Verification Notes
 
-> **[CONFIRMED]** Re-derived from the IDA decompile of `libtpu.so` v0.0.40 for this page:
+> **[CONFIRMED]** Byte-exact in `libtpu.so` v0.0.40:
 > - `InferBarrierConfig` @`0x1376c240` full body: predicate `*((__int64*)a4+1) <= 1 && *((__int64*)a4+2) <= 1` (line 79); `if (v35 == 3)` CUSTOM (line 86); `channel_id(a3)` then `v15 == 1` → `v35=1, v16=-1` GLOBAL (lines 88-92) else `v35=2, v16 = *((int*)a2+561) − 1` REPLICA (lines 97-99); `v33 = v17 | 3` hasbits (line 102); `if (v14)` keep-else-RetCheck line 115 `"barrier.barrier_type() != BarrierType::BARRIER_INVALID"` (line 148); default `BarrierConfig_globals_` @`0x223a9450` (line 76); **no `movl $4`** — exact.
 > - `Target::Init` @`0x1d60fc20`: `target[560] = arr[0]` (base → `+0x8c0`), `target[561] = size − 5` (count → `+0x8c4`) — exact (decompile lines 2067-2068).
 > - `SparseCoreTarget::Init` @`0x1d612b20`: `(sctgt+464) = SPSF[1]` (SC base → `+0x1d0`), `(sctgt+468) = SPSF->size` (SC count → `+0x1d4`, no `−5`); `(sctgt+144) = SequencerCount(core, 5)` (`+0x90`, not SFLAG) — exact.

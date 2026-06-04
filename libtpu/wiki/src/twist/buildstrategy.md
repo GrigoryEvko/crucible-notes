@@ -287,7 +287,7 @@ The ordinal slot offset `[obj + color*0x18 + phase*8 + 0x1a8]` makes the `phase`
 
 - **The 2K-second-index resolution for K_2K_2K.** The `cmov` chain (`0x137d15e1..0x137d165c`) that distinguishes the first 2K-axis index (`[rbp-0x48]`) from the second (`[rbp-0x80]`) was traced to its class effect but not reduced to a closed per-shape formula for which physical axis becomes the "primary" 2K seam. LOW. See [Shape Folds](shape-folds.md).
 - **`UpdateNeighbors2KToK` byte-level math.** Located and confirmed symmetric to `UpdateNeighborsKTo2K`, but the `2K→K` seam predicate was not transcribed instruction-by-instruction. MEDIUM.
-- **The downstream phase split.** `BuildStrategy` builds the per-color ring neighbour/ordinal tables; how the `2K` ring is then partitioned into the Phase0 reduce-scatter and Phase1 all-gather replica groups is owned by [2-Phase Replica-Group Construction](replica-group-2phase.md). Not re-derived here.
+- **The downstream phase split.** `BuildStrategy` builds the per-color ring neighbour/ordinal tables; how the `2K` ring is then partitioned into the Phase0 reduce-scatter and Phase1 all-gather replica groups is owned by [2-Phase Replica-Group Construction](replica-group-2phase.md).
 
 ---
 

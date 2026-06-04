@@ -150,7 +150,7 @@ return inner[cZ];                                       // pair{core0, core1}
 
 The `24 * v12` / `24 * v14` strides are the 24-byte `std::vector` control block; the `16 * v10` stride is `sizeof(pair<long,long>)`. The returned `pair.first` is `core0`'s logical device ID, `pair.second` is `core1`'s — the megacore pair the builders split across groups.
 
-> **CORRECTION (PAIR3D-1) —** an earlier reconstruction labelled the fold's value-CHECK'd scalar as `num2K` and the outer dispatch as the same scalar. Decompile-exact, the dispatch is on `a6` (the orientation / long-axis selector) and the `CHECK("num_max_dims == 2")` is on the *separate* scalar `a5` (`num_max_dims`, the count of `2K` axes). The two are distinct arguments; the `K_K_2K` (`a5 == 1`) fast path never triggers the CHECK, and only the two-doubled-axis arms assert `a5 == 2`. Marked HIGH (three CHECK-string occurrences + the `a5 != 2` branch verified).
+> **GOTCHA —** the outer dispatch and the value-CHECK scalar are **two distinct arguments**, not one. The dispatch is on `a6` (the orientation / long-axis selector); the `CHECK("num_max_dims == 2")` is on `a5` (`num_max_dims`, the count of `2K` axes). The `K_K_2K` (`a5 == 1`) fast path never triggers the CHECK, and only the two-doubled-axis arms assert `a5 == 2`. Confidence: HIGH (three CHECK-string occurrences + the `a5 != 2` branch).
 
 ---
 

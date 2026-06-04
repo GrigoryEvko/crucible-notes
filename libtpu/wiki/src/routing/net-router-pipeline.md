@@ -165,7 +165,7 @@ Byte anchors: `HloAllGatherInstruction` cast @ `0x1380ea44`; `GetCollectiveOpGro
 | AllToAll | `CreateAllToAllTransfers` `0x10f05580` | replica-group ordered position pairs | bidirectional **PAIR** (`i→j` and `j→i`); `src/dst_index` = within-group position | CERTAIN |
 | AllGather | `CreateAllGatherTransfers` `0x1380ea20` | replica-group members `i, j` | `i→j` broadcast; `src_index=0`, `dst_index=i` | CERTAIN |
 
-> **CORRECTION —** AllReduce is **not** in this table. The full-text caller xref of `CreateRoutingScheduleLiteral` finds only AllGather, AllToAll, and CollectivePermute. AllReduce reaches the per-step program through `EmitRoutingCode`'s direct `CreateRoutingSchedule` call (§4, the runtime non-literal path), so it does not use these per-collective `Transfer` builders at all. Marked HIGH (consistent with the [overview](overview.md#42-explicit-schedule--the-net_router-route-program) ROUTE-2 correction).
+> **GOTCHA —** AllReduce is **not** in this table. The full-text caller xref of `CreateRoutingScheduleLiteral` finds only AllGather, AllToAll, and CollectivePermute. AllReduce reaches the per-step program through `EmitRoutingCode`'s direct `CreateRoutingSchedule` call (§4, the runtime non-literal path), so it does not use these per-collective `Transfer` builders at all. Confidence: HIGH (consistent with the [overview](overview.md#42-explicit-schedule--the-net_router-route-program)).
 
 ---
 
@@ -240,7 +240,7 @@ The emitter builds and defers the two closures inside the `CreateRoutingSchedule
 | `$_1` (buffer-release) | `new $0x28` @ `0x13820aa1` | payload @ `0x13820ab8`, ctx `r12=0x20(*(-0x30))` @ `0x13820ac5`, `int -0xa8` step @ `0x13820ad0` | `0x13820ae8` (then free @ `0x13820af5`) |
 | `$_2` (commit-placement) | `new $0x30` @ `0x13820f6f` | IV head @ `0x13820f90`, IV body @ `0x13820f9a`, `Action16` @ `0x13820fb0` | `0x13820fd1` (cleanup @ `0x13820fe0`) |
 
-Both are heap (`"large"`) `std::function` policies. The defer step is read as `-0xa8(rbp)` at both sites; `$_1` adds `+1` internally. The precise arithmetic relating these to the popped step and `kPipelineFactor` was read at the immediate level only — whether `available_at = step+3` exactly or `step+1` with the `+3` enforced solely in `LogAndValidatePaths` was not isolated to a single constant. Marked **HIGH** for the exact defer-step computation.
+Both are heap (`"large"`) `std::function` policies. The defer step is read as `-0xa8(rbp)` at both sites; `$_1` adds `+1` internally. The precise arithmetic relating these to the popped step and `kPipelineFactor` was read at the immediate level only — whether `available_at = step+3` exactly or `step+1` with the `+3` enforced solely in `LogAndValidatePaths` is not isolated to a single constant. Confidence: HIGH for the exact defer-step computation.
 
 | callback | VMA | role | capture (bytes) | key CHECK (str / line) | Confidence |
 |---|---|---|---|---|---|

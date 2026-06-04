@@ -6,7 +6,7 @@
 
 `nf_descriptor_trace_entry` is the on-wire trace of one **staged Node-Fabric DMA descriptor**: the record the deepsea fabric stages to move a buffer from a source endpoint on one chip to a destination endpoint on another (or several others, for multicast). "Node-Fabric" (nf) is the inter-node DMA layer that sits below the routing schedule — the route table answers "which output link for this destination chip" and the net_router schedule answers "at step k, DMA this src→dst", but it is the nf_descriptor that names the *actual* `{src_offset, src_resource, src_node, src_chip}` → `{dst_offset, dst_resource, dst_node, dst_chip}` transfer, its length, its multicast/segmented flags, and the three independent SyncFlag completions it raises. This descriptor is the jxc analog of the deepsea OCI SHAPE-B `DmaDescriptor` and the on-the-wire form of the `jxc::DmaDescriptor` V1 record.
 
-The record is a proto2 message `asic_sw::driver::deepsea::jxc::nf_descriptor_trace_entry`, case 3 of the `PerformanceTraceEntry` oneof. It has **27 fields** — all `uint32` except field 1 (`id`, a `TracePoint` enum) and field 4 (`descriptor_source`, a `descriptor_source_value` enum). The C++ in-memory layout is *not* in proto field order: fields 1–3 and 5–27 are laid out contiguously from offset `0x18` to `0x7c`, but field 4 (`descriptor_source`) is parked out of line at offset `0x80` with a non-zero in-memory default of `1` (`BARNA_CORE`). Both facts are re-derived twice below — once from the serializer's offset/wire-tag pairs and once from `::Clear`'s zeroing blocks.
+The record is a proto2 message `asic_sw::driver::deepsea::jxc::nf_descriptor_trace_entry`, case 3 of the `PerformanceTraceEntry` oneof. It has **27 fields** — all `uint32` except field 1 (`id`, a `TracePoint` enum) and field 4 (`descriptor_source`, a `descriptor_source_value` enum). The C++ in-memory layout is *not* in proto field order: fields 1–3 and 5–27 are laid out contiguously from offset `0x18` to `0x7c`, but field 4 (`descriptor_source`) is parked out of line at offset `0x80` with a non-zero in-memory default of `1` (`BARNA_CORE`). Both facts are pinned twice below — once from the serializer's offset/wire-tag pairs and once from `::Clear`'s zeroing blocks.
 
 This page documents the 27-field layout field-by-field with authoritative C++ offsets; the three SyncFlag-update channels (`Source` = "buffer free", `Destination` = "data arrived", `Ack` = "completion") and their shared 23-bit `SyncFlagTarget` pack; the HIB host-DMA channel (fields 26/27); the `GetDmaSize` / `GetDmaTransactionId` accessors; the related `bcs_internal` BarnaCore-sequencer band; and the **deepsea `GetDmaId` bit codec** that proves the cross-gen DMA-pairing key is the same logical `(tag, resource/core, node, chip)` tuple, widened on the modern silicon. The ICR DMA *bands* that carry these descriptors live on [ICR Node-Fabric DMA](icr-node-fabric-dma.md); the routing table that resolves the multi-hop link path lives on [Route-Table Generation](route-table-generation.md).
 
@@ -39,7 +39,7 @@ The descriptor describes one inter-node fabric transfer end to end: both endpoin
 
 ### Layout
 
-The C++ offsets below are re-derived byte-exact from `_InternalSerialize` @`0x1cf0ed20`: each field appears as a `*((_DWORD *)this + N)` read paired with its proto wire tag stored into the output stream (`*a2 = TAG` for a one-byte tag, `*(_WORD *)a2 = TAG` for the two-byte tags of fields ≥16). The descriptor-pointer index `N` maps to byte offset `4*N`.
+The C++ offsets below are byte-exact from `_InternalSerialize` @`0x1cf0ed20`: each field appears as a `*((_DWORD *)this + N)` read paired with its proto wire tag stored into the output stream (`*a2 = TAG` for a one-byte tag, `*(_WORD *)a2 = TAG` for the two-byte tags of fields ≥16). The descriptor-pointer index `N` maps to byte offset `4*N`.
 
 | proto# | Name | Type | C++ off | Wire tag | Confidence |
 |---|---|---|---|---|---|
@@ -147,7 +147,7 @@ The five reads `nf[16]/nf[17]/nf[21]/nf[22]/nf[23]` are at C++ offsets `0x40`/`0
 
 There is no fourth `SyncFlagTarget` accessor. Instead, fields 26/27 (`hib_update`@`0x78`, `hib_ack_update`@`0x7c`) form a host-interface (HIB) channel: the two bits select whether the descriptor also raises a HIB-side flag and/or ack. They are consumed by the jxc-only host-DMA aggregator (`DeriveHostDmaTransfers`'s `nf_descriptor_hib` path), which folds them into the host-DMA timeline. A reimplementer building only the device-side fabric path can treat them as opaque enable bits.
 
-> **CORRECTION (P-3-431 follow-up) —** a fourth wrapper accessor, `UpdatedSyncFlagTarget` @`0xf698400`, exists alongside the three above, but it is **not** an `nf_descriptor` channel. It gates `EntryDataCase` `0xb` (`brn_sync_wait`) / `0x9` (`cs_external_sync_flag_update`) — it belongs to the TC/BarnaCore sync band, not the Node-Fabric descriptor. `nf_descriptor` carries exactly **three** SyncFlag channels plus the HIB channel. The "four accessors" reading is wrong.
+> **GOTCHA —** a fourth wrapper accessor, `UpdatedSyncFlagTarget` @`0xf698400`, exists alongside the three above but is **not** an `nf_descriptor` channel. It gates `EntryDataCase` `0xb` (`brn_sync_wait`) / `0x9` (`cs_external_sync_flag_update`) — it belongs to the TC/BarnaCore sync band, not the Node-Fabric descriptor. `nf_descriptor` carries exactly **three** SyncFlag channels plus the HIB channel; do not wire the fourth accessor into this path.
 
 ---
 
@@ -171,7 +171,7 @@ Two more wrapper accessors read this record without packing a SyncFlag target:
 
 ### Layout
 
-The 7-field layout is re-derived byte-exact from `_InternalSerialize` @`0x1cf152a0` and `::Clear` @`0x1cf15260`:
+The 7-field layout is byte-exact from `_InternalSerialize` @`0x1cf152a0` and `::Clear` @`0x1cf15260`:
 
 | proto# | Name | Type | C++ off | Wire tag | Confidence |
 |---|---|---|---|---|---|
@@ -276,7 +276,7 @@ jxc dma_id (27 bits):              deepsea correspondence:
 
 > **QUIRK —** the deepsea / modern gens widen the `dma_id` chip field to **14 bits** (mask `0x3fff`), the same chip_id 11/12→14 widening the trace header undergoes across gens. The proto2 `chip_id` field is `uint32` in every gen; the 14-bit mask is the maximally-widened value — it over-allocates for pxc (12-bit chip in the header) but exactly fits the widened vfc/vlc/glc/gfc gens. So the DMA-pairing key tracks the same pod-address widening as the trace header. This proves the cross-gen pairing key is the **same logical `(tag, resource/core, node, chip)` tuple**, widened per generation.
 
-> **CORRECTION (P-3-431 follow-up) —** the jxc `GetDmaId` simple arm @`0xf69824e` (the fall-through for VMEM-ICI / SMEM / IMEM / HIB engines) enters with `eax = 0`, `ecx = 0` and returns `dma_id = 0` with presence `dl = 0` — i.e. **no valid dma_id**, dropped by the subscriber's presence test. It does **not** return `id & 0xff`. Only HBM, VMEM_HBM, and BMEM arms produce a rich composite key.
+> **GOTCHA —** the jxc `GetDmaId` simple arm @`0xf69824e` (the fall-through for VMEM-ICI / SMEM / IMEM / HIB engines) enters with `eax = 0`, `ecx = 0` and returns `dma_id = 0` with presence `dl = 0` — i.e. **no valid dma_id**, dropped by the subscriber's presence test. It does *not* return `id & 0xff`. Only the HBM, VMEM_HBM, and BMEM arms produce a rich composite key.
 
 > **NOTE —** no per-gen `GetDmaId` exists for vfc/glc/gfc. `GetDmaId(int)` is a pxc template only; the modern gens fold the DMA band into the ICI/intra-DMA band (see [Intra-Chip DMA Descriptor](../dma/intra-chip-descriptor.md)). The cross-gen *key* is proven the same tuple, but the modern-gen DMA-end consumer that recomputes it inline was not located (CONFIRMED-PARTIAL).
 

@@ -150,7 +150,7 @@ for each dir still in key.directions:
 
 The main loop pops the highest-priority transfer, advances it one hop in its chosen direction (Phase C), installs the resulting `Action`, and re-pushes the transfer with its new coordinate and shrunken candidate set — until it arrives. Scheduling the longest-remaining path first keeps the critical path from being starved by short transfers competing for the same ports.
 
-> **QUIRK —** the ordering *metric* (remaining ring distance) and the `__sift_up` direction are byte-confirmed, but the heap-pop polarity (strictly longest-first vs shortest-first) depends on the `pop_heap`/`sort_heap` convention the main loop uses, which was not re-derived from the disassembly. The comparator's `cmovg`/`max` accumulation reads as a *max-by-distance* heap, hence "longest-first"; treat the polarity as **HIGH confidence**, the metric as **CERTAIN**.
+> **QUIRK —** the ordering *metric* (remaining ring distance) and the `__sift_up` direction are byte-confirmed, but the heap-pop polarity (strictly longest-first vs shortest-first) depends on the `pop_heap`/`sort_heap` convention the main loop uses, which is not pinned in the disassembly. The comparator's `cmovg`/`max` accumulation reads as a *max-by-distance* heap, hence "longest-first"; treat the polarity as **HIGH confidence**, the metric as **CERTAIN**.
 
 ### Phase C — the per-direction torus step
 

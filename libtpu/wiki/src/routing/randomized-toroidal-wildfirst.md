@@ -257,7 +257,7 @@ The `phase` plays a double role:
 
 The dateline-edge predicate itself is `ResilientToroidalTopology::CheckOnEdge(coord, orientation)` (`0x1fbe36e0`) — it tells the topology which coordinates sit on the wrap boundary. The actual one-hop wrap math (incrementing past the last coordinate of an axis back to 0) lives in the topology's `Walk` (`0x1fbe3640` / vtable `+0xa0`) and `GetDistances` (`0x1fbe36c0` / vtable `+0xb8`), which the generator treats as black-box oracles. Twist adjustments for the `_twisted` shapes are baked into `GetDistances` — see [GetDistances](get-distances.md) and [Twist Overview](../twist/overview.md).
 
-> **NOTE —** the `phase` is computed only for axes whose halfway symmetry is **positive** (decompile `0x1fbea380` line 414 walks `while (*(int*)&v48[v53] >= 0)`). The GCD-reduce + doubling is the canonicalization that makes two physically distinct but symmetry-equivalent pairs hash to one scheme. (HIGH confidence on the GCD-against-2 shape; the exact rounding of the doubled fraction is inferred from the `tzcnt`/`shr` binary-GCD idiom, marked HIGH.)
+> **NOTE —** the `phase` is computed only for axes whose halfway symmetry is **positive** (decompile `0x1fbea380` line 414 walks `while (*(int*)&v48[v53] >= 0)`). The GCD-reduce + doubling is the canonicalization that makes two physically distinct but symmetry-equivalent pairs hash to one scheme. (Confidence: HIGH on the GCD-against-2 shape; the exact rounding of the doubled fraction is inferred from the `tzcnt`/`shr` binary-GCD idiom.)
 
 ---
 
@@ -316,7 +316,7 @@ Decompile cross-check (`0x1fbeb720`):
 | per-fault lattice consistency | lines 983/1031/1072 (`v % m`) | (no string — silent reject path) |
 | **the gate** | line 1532 `if (v17 % v250[0])` → line 1534 | `"The topology size must be a multiple of the fault symmetry"` |
 
-> **CORRECTION —** an earlier reconstruction paraphrased the dimension-agreement check as "topology `num_dimensions()` must equal the symmetry vector's dimension count." The binary string is exactly **"Faulty symmetry and topology must have a matching number of dimensions"** (`0x1fbeb720` line 260). Same meaning, but the page uses the verbatim diagnostic.
+> **NOTE —** the dimension-agreement check (topology dimension count must match the symmetry vector's) emits the verbatim diagnostic **"Faulty symmetry and topology must have a matching number of dimensions"** (`0x1fbeb720` line 260).
 
 ### When No Resilient Route Exists (Chip Isolation)
 

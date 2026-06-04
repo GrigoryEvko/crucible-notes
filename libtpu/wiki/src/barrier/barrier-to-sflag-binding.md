@@ -195,13 +195,13 @@ function GetSparseCoreBarrierSyncFlagCount(target):            // 0x10972fa0
 - **The TC and SC ranges never alias.** They come from different `SpecialPurposeSyncFlags` proto messages (one per `TpuCoreType`), so `[TC_base, TC_base+|CR_TC|)` and `[SC_base, SC_base+|CR_SC|)` are disjoint by construction. A SparseCore barrier id and a TensorCore barrier id with the same numeric value are *different* SFLAG counters.
 - **The SC side has no five-slot reservation.** `count_SC = |CR_SC|` (full range); the SC global barrier is a reserved id inside the window, reached through `GetSyncFlagForBarrierId` (the per-id arithmetic owned by the SparseCore barrier pages), not through any `base+count+k` accessor. The five named slots above the window are a TensorCore-only construct.
 
-> **CORRECTION (P-3-409) —** an earlier reading attributed the Mosaic TC tree barrier's SFLAG window to a `SparseCoreTarget+0x90` "SFLAG-window base". That field is `TpuCoreParts::SequencerCount(kSparseCore sequencer)`, a per-core sequencer count, **not** an SFLAG base, and the tree-barrier window length comes from `+0x1fc` (`GetUserRegion`, jellyfish `MemorySpace::kSparseCoreSequencerSmem` = 14) — a third region disjoint from the `compiler_reserved` block. Neither is part of the `[base, base+count)` window this page documents. The TC tree barrier ([Global-Barrier Window](global-barrier-window.md)) is the only "global" path that does **not** use `GetGlobalBarrierSyncFlagNumber`.
+> **GOTCHA —** `SparseCoreTarget+0x90` is **not** an SFLAG-window base. That field is `TpuCoreParts::SequencerCount(kSparseCore sequencer)`, a per-core sequencer count; the tree-barrier window length comes instead from `+0x1fc` (`GetUserRegion`, jellyfish `MemorySpace::kSparseCoreSequencerSmem` = 14) — a third region disjoint from the `compiler_reserved` block. Neither is part of the `[base, base+count)` window this page documents. The TC tree barrier ([Global-Barrier Window](global-barrier-window.md)) is the only "global" path that does **not** use `GetGlobalBarrierSyncFlagNumber`.
 
 ---
 
 ## 7. Verification notes
 
-> **[CONFIRMED]** Re-derived byte-exact from the IDA decompile of `libtpu.so` v0.0.40 for this page:
+> **[CONFIRMED]** Byte-exact in `libtpu.so` v0.0.40:
 > - `GetGlobalBarrierSyncFlagNumber` @`0x1d60f420`: `return (uint32)(this[561] + this[560] + 4)` = `base + count + 4` — exact, no gate.
 > - `GetAllReduceSyncFlagNumber` @`0x1d60f440`: CHECK `phase > 0` (`target.cc:143`) and `phase < 3` (`target.cc:144`); `return (uint32)(this[560] + phase + this[561] + 1)` = `base + phase + count + 1`; legal phases `{1,2}` → slots `{base+count+2, base+count+3}` — exact.
 > - `GetMegacoreBarrierSyncFlagNumber` @`0x1d60f4e0`: gate `tpu::TpuChipConfig::Megacore(*(*(this+119)+24))` (`target.cc:154`, `"topology_->chip_config().Megacore()"`); `return (uint32)(this[560] + this[561])` = `base + count` — exact.

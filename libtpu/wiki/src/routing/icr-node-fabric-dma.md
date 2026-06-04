@@ -61,7 +61,7 @@ call GetMerged @0xf26ba80  @0xf26c81d   ; size-4 set {91, 50, 48, 51}
 
 ## 2. The per-ID payload decode
 
-Field offsets below are the C++ in-memory layout (`cpp_offset`, re-derived from each message's `TcParseTable` FieldEntry rows, stride `0x10`, `cpp_offset` at row+6) and the field names are confirmed from the carved descriptor pool. Only the bold fields are read by the DMA pass; the rest are decoded into the proto but **dropped** by this producer (it keeps only the `trace_id_header`-derived `dma_id`, the GTC timestamp, and the size).
+Field offsets below are the C++ in-memory layout (`cpp_offset`, taken from each message's `TcParseTable` FieldEntry rows, stride `0x10`, `cpp_offset` at row+6) and the field names are confirmed from the carved descriptor pool. Only the bold fields are read by the DMA pass; the rest are decoded into the proto but **dropped** by this producer (it keeps only the `trace_id_header`-derived `dma_id`, the GTC timestamp, and the size).
 
 ### 2.1 ID 48 — `IciPacketDataPacketQueuedForLocalIngress` (9 fields)
 
@@ -191,7 +191,7 @@ length_granule == 0 (LENGTH_GRANULE_512B) → shift 9 → length × 512   (512-b
 length_granule == 1 (LENGTH_GRANULE_4B)   → shift 2 → length × 4     (4-byte words)
 ```
 
-> **CORRECTION —** Earlier control-flow notes labeled the `+0x58` source `program_counter`; the byte-exact decode shows the source is `length` (f16, `+0x58`), with `program_counter` (f15) at `+0x54` left unread. The 512-B / 4-B granule meanings are confirmed from the `LengthGranuleValues` enum, not inferred from the shift magnitude.
+> **GOTCHA —** the `+0x58` source is `length` (f16), **not** `program_counter`; `program_counter` (f15) sits at `+0x54` and is left unread on this path. The 512-B / 4-B granule meanings come from the `LengthGranuleValues` enum, not from the shift magnitude.
 
 **Why ID 91 overwrites but ID 51 adds.** ID 91 is the descriptor *begin*: it zero-inits the slot then writes `byte_count = length << g`. ID 51 is an OCI-message *arrival* into a slot that may already hold a descriptor's begin (in the egress case) or a prior ingress message — so it `+=`'s. In practice the two never share a slot: ID 91/50 land in MAP_A, ID 48/51 in MAP_B.
 
