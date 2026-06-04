@@ -60,11 +60,12 @@ Three independent facts each suffice; together they are conclusive.
 The symbol resolves cleanly in the name table:
 
 ```text
-_ZN5xprofL15kDeviceTypeInfoE        → xprof::kDeviceTypeInfo        (0x1c60480, the MAIN copy)
-_ZN5xprofL15kDeviceTypeInfoE_0..    → 12 further ICF data folds (_0, _1, …)
+_ZN5xprofL15kDeviceTypeInfoE  → xprof::kDeviceTypeInfo  (13 entries, all same name, size 0x48c8 each)
+   0x1c3a910 0x1c3f1e0 0x1c43ab0 0x1c48380 0x1c4e140 0x1c52a10 0x1c572e0
+   0x1c5bbb0 0x1c60480 0x1c7bbf0 0x1c804c0 0x1c84d90 0x1c89660
 ```
 
-The `L` in the mangling (`...L15kDeviceTypeInfoE`) marks it `static` (internal linkage) — a translation-unit-local `const` array, exactly what `static const DeviceTypeInfo kDeviceTypeInfo[17] = { … }` produces. Because it is internal-linkage and referenced from 13 distinct template/pass instantiations, the linker's ICF pass folded the identical *data* into duplicates rather than collapsing them to one symbol; the 13 copies are a folding artifact, not 13 different tables.
+nm reports thirteen LOCAL OBJECT entries, all carrying the **identical** mangled name `_ZN5xprofL15kDeviceTypeInfoE` (no `_0`/`_1` disambiguator suffix) and the identical size `0x48c8`; `0x1c60480` is the copy this page's reader VAs resolve against. The `L` in the mangling (`...L15kDeviceTypeInfoE`) marks it `static` (internal linkage) — a translation-unit-local `const` array, exactly what `static const DeviceTypeInfo kDeviceTypeInfo[17] = { … }` produces. Because it is internal-linkage and referenced from many distinct template/pass instantiations, the linker's ICF pass folded the identical *data* into duplicates rather than collapsing them to one symbol; the 13 copies are a folding artifact, not 13 different tables.
 
 > **NOTE —** "no producer function" does not mean "no producer." The producer is the compiler emitting a `static const` aggregate initializer. A reimplementation reproduces it as a `constexpr`/`static const` array, not as an `__attribute__((constructor))` or a lazy-init singleton. Treating it as runtime-initialized would add a writer the original does not have.
 
