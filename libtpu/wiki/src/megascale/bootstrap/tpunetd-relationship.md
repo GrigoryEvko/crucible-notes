@@ -24,8 +24,9 @@ the source-of-truth `P-3-11_tpunetd_protocol.txt`.
 |  GetMultiSliceTopology gRPC over MEGASCALE_PORT                 |
 |  Coordinator (one process per job)                              |
 +──────────────────────────────────────────────────────────────────+
-        ▲ reads TpuTopologyArgsProto and host_addresses
-        │ that tpunetd published earlier
+        ▲ reads tpu_topology_args (TpuTopologyArgsProto) and the
+        │ address_mapping (NetworkAddressMapping) derived from the
+        │ chip coordinates that tpunetd published earlier
         │
 +──────────────────────────────────────────────────────────────────+
 | tpunetd_client (superpod::tpunetd_client::TpunetdClient)         |
@@ -69,12 +70,13 @@ plugin's `do_init`:
    chips. The daemon assigns chip coordinates, programs ICI
    routing tables, configures the global time counter, brings up
    ICI data links, and signals back when the session is ready.
-3. **In-slice rendezvous (`SessionMaster::BroadcastBarrier`).**
-   The `tpunetd_client::SessionMaster` runs the
-   `TpuNetworkSessionBarrier.Notify` /
-   `TpuNetworkSessionBarrier.WaitForReady` RPCs across every host
-   in the slice. This is a peer-to-peer barrier; tpunetd itself
-   is not involved.
+3. **In-slice rendezvous (`tpunetd_client::BroadcastBarrier`).**
+   The `tpunetd_client::BroadcastBarrier` class
+   (`BroadcastNotification` / `BroadcastWaitForReady`, gated by
+   `SyncWithTimeout`) drives the
+   `superpod.tpunetd_client.proto.TpuNetworkSessionBarrier/Notify`
+   and `.../WaitForReady` RPCs across every host in the slice.
+   This is a peer-to-peer barrier; tpunetd itself is not involved.
 4. **TpuTopologyArgsProto extraction.** Once the in-slice
    rendezvous is complete, the runtime queries
    `SessionControl/GetChipCoordinates` to fetch the assigned
@@ -103,16 +105,17 @@ Megascale without tpunetd — does not happen in the binary.
 
 ## Data flow through the boundary
 
-The Megascale request carries two pieces of state derived from
-tpunetd:
+The Megascale request (`GetMultiSliceTopologyRequest`, whose proto
+descriptor lives at file offset `0xbf81634`) carries the following
+state, two pieces of which are derived from tpunetd:
 
 | Field of `GetMultiSliceTopologyRequest` | Derived from tpunetd RPC |
 |---|---|
-| `topology_args` (`tpu.TpuTopologyArgsProto`) | `SessionControl/GetChipCoordinates` plus the local `TpuTopologyArgs` construction in the runtime (uses chip layout fields populated by `SetChipCoordinates`). |
-| `host_addresses[].host` | Local hostname or `MEGASCALE_PORT_NAME` resolution; not directly from tpunetd, but the binding depends on tpunetd having assigned the chip coordinates that determined which network the host uses. |
-| `host_addresses[].port` | `MEGASCALE_PORT` flag — independent of tpunetd. |
+| `tpu_topology_args` (field 2, `tpu.TpuTopologyArgsProto`) | `SessionControl/GetChipCoordinates` plus the local `TpuTopologyArgs` construction in the runtime (uses chip layout fields populated by `SetChipCoordinates`). |
+| `address_mapping` (field 1, `xla.megascale.runtime.NetworkAddressMapping`) — carries `slice_id`, `host_id`, and repeated `HostNetworkAddress` entries (each a single `address` string plus `interface_name`, `numa_node`, `host_name_for_debugging`). | Not directly from tpunetd: the `address` value comes from local resolution governed by the `megascale_port` / `megascale_port_name` flags, but the binding depends on tpunetd having assigned the `slice_id` / `host_id` chip coordinates that determine which network the host uses. |
+| `incarnation_id` (field 3, int) | Process-local; independent of tpunetd. |
 
-The coordinator validates the `topology_args` field by running
+The coordinator validates the `tpu_topology_args` field by running
 `proto2::util::MessageDifferencer::Compare` over every inbound
 request (see [Topology Exchange](topology-exchange.md)). The
 implication: two hosts in the same slice that completed tpunetd
