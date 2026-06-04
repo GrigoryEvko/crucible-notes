@@ -14,7 +14,7 @@ For reimplementation, the contract is:
 - **The `Barrier` RPC wire format** — the 4-field `BarrierRequest`, the id-only `BarrierResponse`, and the server callback chain `GrpcAsyncCbServiceImpl::Barrier → OnBarrierRequestReceived → AddRequest`.
 - **The centralised algorithm** — lazy per-`barrier_id` coordinator allocation, arrival accounting, count/duplicate validation, early-fire on `seen.size() == num_participants_`, and the callback fan-out release.
 - **`barrier_id` keying and the two flavours** — the `flat_hash_map` keyed by id, the named pre-execution barrier with replay protection, and the auto-minted `__global-auto-<N>` collective barrier.
-- **Timeout and failure** — there is **no** coordinator-side timeout; the only bound is the per-RPC gRPC deadline from `FLAGS_tf_tpu_preexecution_barrier_timeout` (default 30 s), with a 10-second client retry loop and a "could not converge" destructor log.
+- **Timeout and failure** — there is **no** coordinator-side timeout; the only bound is the per-RPC gRPC deadline from `FLAGS_tf_tpu_preexecution_barrier_timeout` (default 30 s), with a 10-second client retry loop and an "Unable to wait for all slices to connect" destructor log.
 
 | | |
 |---|---|
@@ -109,7 +109,7 @@ function ctor(this, id, num_participants):
     this.vptr        = &off_21C9BB70                       // overwrite with derived vtable
     store_sso_string(this + 0xb8, id)                      // barrier_id (heap if len > 0x16)
     this.num_participants_ = num_participants               // +0xd0
-    this.seen_workers_ = empty flat_hash_set               // +0xd8 (ctrl @ +0xe0 = 1, soo ptr = 0)
+    this.seen_workers_ = empty flat_hash_set               // +0xd8 (+0xd8 = 1, growth-info word @ +0xe0 = 0)
     CHECK(num_participants > 0) @ topology_coordinator.h:299  // FATAL otherwise
 ```
 
@@ -312,7 +312,7 @@ When `AddRequest` moves the coordinator from state 0 → 1, it arms a periodic a
 | Duplicate arrival (distinct host) | `ProcessRequest` | `INVALID_ARGUMENT` "Extra barrier participant"; same poisoning |
 | Re-used named id | `Communicator::Barrier` `0x1cca8ee0` | `ALREADY_EXISTS` client-side, before any RPC |
 | No coordinator endpoint set | `Communicator::Barrier` | `INTERNAL` "Barriers not available without coordinator set." (`:384`) |
-| Transport uninitialised | `Communicator::Barrier` | `INTERNAL` "Transport not initialized." (`:1473`, wrapped at `:406`) |
+| Transport uninitialised | `Communicator::Barrier` | `INTERNAL` "Transport not initialized." (`:1473`, source-location stamped at `:929`) |
 
 ### The "Unable to wait" Destructor Path
 
