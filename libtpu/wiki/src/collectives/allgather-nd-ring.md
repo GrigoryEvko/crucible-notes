@@ -112,16 +112,16 @@ function UseAllGather2D(target, hlo, dev_assign, env, bidir):
     return {planes, true}                                             // has_value byte at result+0x10
 ```
 
-`UseAllGather3D` (`0x13801a40`) is byte-identical in shape with two substitutions: the enable byte is `env[0xc0]` (`0x13801a65`) and the projection is `ReplicaGroupsOnNDPlane(..., plane_dim=3)` (`0x13801b52`, `mov $0x3,%r8d`); its success byte is read at `result+0xc1`.
+`UseAllGather3D` (`0x13801a40`) is byte-identical in shape with two substitutions: the enable byte is `env[0xc0]` (`0x13801a65`) and the projection is `ReplicaGroupsOnNDPlane(..., plane_dim=3)` (`0x13801b52`, `mov $0x3,%r8d`); its projection-success byte sits at the same frame slot as the 2-D version (`cmpb $0x1,-0x38(%rbp)` @ `0x13801b5d`, i.e. the `optional`'s `has_value` byte), and its continuation-fusion override reads the env byte `env[0xc1]` (`cmpb $0x0,0xc1(%rax)` @ `0x13801b6a`) — the 3-D analog of the 2-D `env[0xbf]` arm.
 
 | Selector | Enable byte | Projection | Success / shape test | Init path |
 |---|---|---|---|---|
-| `UseAllGather2D` | `TpuCompEnv[+0xbe]` | `ReplicaGroupsOnNDPlane(plane_dim=2)` | `result+0x18`, `X==Y` (square plane) | `Init2DAllGather` (2 axes) |
-| `UseAllGather3D` | `TpuCompEnv[+0xc0]` | `ReplicaGroupsOnNDPlane(plane_dim=3)` | `result+0xc1` | `Init3DAllGather` (3 axes) |
+| `UseAllGather2D` | `TpuCompEnv[+0xbe]` | `ReplicaGroupsOnNDPlane(plane_dim=2)` | `has_value` byte @ `rsp+0x18` (`cmpb $0x1` @ `0x138018ae`); square-plane `X==Y` arm gated by env `+0xbf` | `Init2DAllGather` (2 axes) |
+| `UseAllGather3D` | `TpuCompEnv[+0xc0]` | `ReplicaGroupsOnNDPlane(plane_dim=3)` | `has_value` byte @ `rsp+0x18` (`cmpb $0x1` @ `0x13801b5d`); continuation-fusion arm gated by env `+0xc1` | `Init3DAllGather` (3 axes) |
 
 > **QUIRK —** the 2-D arm imposes a **square-plane** requirement: when the continuation-fusion path is *not* taken, it rejects `X != Y` (the two projected ring lengths must match). A reimplementer who allows rectangular 2-D planes unconditionally will over-select the 2-D ring on shapes the binary routes to 1-D. The continuation-fusion override (`ShouldUseContinuationFusionAllGather`) is the documented escape hatch from this; the `(ShapeSize & 3) == 0` alignment probe (`0x13801740` body) also forces the device-list path before projection.
 
-> **GOTCHA —** `ReplicaGroupsOnNDPlane` is not a predicate — it is the **builder** of the `MeshNDInfo` vector, called with the desired `plane_dim`. Its `plane_dim` argument equals the `MeshNDInfo` count it returns, which equals the number of ND-ring tables and the popcount the installer re-verifies. A reimplementation that splits "decide dimensionality" from "build the ring tables" into two passes will diverge from the binary, which fuses them: the projection *is* the decision and the construction in one call. It is memoized on an `NDPlaneCacheKey → optional<vector<MeshNDInfo>>` cache (`0x225799b8`), so re-querying the same device list with the same `plane_dim` is free. The internal coordinate-projection math (`imul`/`idiv` at `0x1c891402..`) that decides a device list fits a `k`-axis plane was not traced (LOW).
+> **GOTCHA —** `ReplicaGroupsOnNDPlane` is not a predicate — it is the **builder** of the `MeshNDInfo` vector, called with the desired `plane_dim`. Its `plane_dim` argument equals the `MeshNDInfo` count it returns, which equals the number of ND-ring tables and the popcount the installer re-verifies. A reimplementation that splits "decide dimensionality" from "build the ring tables" into two passes will diverge from the binary, which fuses them: the projection *is* the decision and the construction in one call. It is memoized on an `NDPlaneCacheKey → optional<vector<MeshNDInfo>>` cache (`0x225799b8`), so re-querying the same device list with the same `plane_dim` is free. The internal coordinate-projection math (the stride arithmetic around `0x1c891402..`, inside `ReplicaGroupsOnNDPlane+0xaa0`) that decides a device list fits a `k`-axis plane was not traced (LOW).
 
 ---
 
@@ -129,7 +129,7 @@ function UseAllGather2D(target, hlo, dev_assign, env, bidir):
 
 ### Purpose
 
-Once a `MeshNDInfo` vector is selected, `Init{1,2,3}DAllGather` install the rings: re-verify the dimensionality, drive `InitDim` once per mesh axis to materialize each axis's `RingLocation`, and copy the ring-order and per-dim-size vectors into the emitter so the readers can index them.
+Once a `MeshNDInfo` vector is selected, `Init{1,2,3}DAllGather` install the rings: re-verify the dimensionality, drive `InitDim` once per mesh axis to materialize each axis's `RingLocation`, and copy the axis-order vector (`m0.minor_to_major` → `this+0x218`) and the per-dim-size vector (`m0.dim_sizes` → `this+0x1e8`) into the emitter so the readers can index them. The `MeshNDInfo`'s own `ring_order` field (`m0+0x28`) is *not* read by the installer; the emitter's order vector at `this+0x218` is built from `minor_to_major`.
 
 ### Algorithm
 
@@ -146,14 +146,14 @@ function Init2DAllGather(meshes /*Span<MeshNDInfo>*/, hlo):
     m0 = meshes[0]
     RET_CHECK(m0.minor_to_major[0] == y || == x)      // "could only be x or y" (line 2980)
     RET_CHECK(m0.minor_to_major.size == 2              // m0+0x08
-              && m0.ring_order.size == 2               // m0+0x20
+              && m0.dim_sizes.size == 2                // m0+0x20  (cmpq $0x2,0x20(%r14) @0x138077e3)
               && popcount(m0.dim_bitmask & 7) == 2)    // m0+0x38 — "mesh_info[0].Is2D()" (line 2982)
-    this->ring_order /*this+0x218*/ = m0.ring_order    // count 2  (0x13807814)
+    this->ring_order /*this+0x218*/ = m0.minor_to_major // from m0+0x00, count 2 (0x13807819)
     this->dim_sizes  /*this+0x1e8*/ = m0.dim_sizes     // from m0+0x18, count 2 (0x13807838)
     return ok
 ```
 
-`Init3DAllGather` (`0x13807aa0`) is the same with the count-3 substitutions: `this+0x19d=1` (3D-initialized), the install copies count-3 ring-order and sizes, and the popcount check is implemented as `not(bitmask); test $7` (all low-3 bits set ⇔ popcount 3) rather than an explicit `popcnt == 3`. `Init1DAllGather` (`0x13807180`) calls `InitHierarchicalStates`, assigns a single-element axis list, and runs `InitDim` once with `reorder=1`.
+`Init3DAllGather` (`0x13807aa0`) is the same with the count-3 substitutions: `this+0x19d=1` (3D-initialized), the install copies count-3 `minor_to_major` (into `this+0x218`) and `dim_sizes` (into `this+0x1e8`), and the popcount check is implemented as `not(bitmask); test $7` (all low-3 bits set ⇔ popcount 3) rather than an explicit `popcnt == 3` (`mov 0x38(%r14),%eax; not %eax; test $0x7,%al` @ `0x13807b6e`). `Init1DAllGather` (`0x13807180`) calls `InitHierarchicalStates`, assigns a single-element axis list, and runs `InitDim` once with `reorder=1`.
 
 > **NOTE —** the redundant popcount re-verification inside `Init2D`/`Init3D` is deliberate, not paranoia: `ReplicaGroupsOnNDPlane`'s result is cached and may be reused across selector calls, so the installer asserts the cached `MeshNDInfo` actually matches the dimensionality it is about to install. The two `RET_CHECK`s are different facts — `minor_to_major[0] ∈ {x, y}` (the minor axis is a real torus axis, line 2980) and `Is2D()` (exactly two active axes, line 2982).
 
@@ -236,8 +236,8 @@ function GetOffset(minor_to_major, coords, bounds, rb):
         term = coords[minor_to_major[k]]
         for j in [0, k):                          // running radix product
             term = rb.SmulU32(term, rb.SimmS32(bounds[minor_to_major[j]]))
-        acc = rb.SaddS32(acc, term)               // 0x13810747
-    radix = Π_k bounds[minor_to_major[k]]          // vectorized vpmulld @0x13810810
+        acc = rb.SaddS32(acc, term)               // 0x1381074e
+    radix = Π_k bounds[minor_to_major[k]]          // vectorized vpmulld @0x13810816
     return rb.SmodU32(acc, radix)                  // 0x13810898
 ```
 
@@ -256,14 +256,15 @@ function ComputeAdjustedIndexAtRuntime(rb, core_idx, idx, dim):
     p1 = rb.SeqS32(core_idx, 1)                       // 0x13800d62
     is2d = (this->mesh_axes.size /*this+0x1d8*/ == 2) // 0x13800d6c
     mask = p0 | (~is2d & p1)                           // Pimm/Pneg/Pand/Por (0x13800d7c..)
-    if GetTpuCompEnv[+0x13f2]: return idx              // 0x13800db5 — rescale disabled
-    max_dim = max_element(this->dim_sizes)            // this+0x1e8 / size this+0x1f0 (0x13800e10..)
-    ratio   = max_dim / dim_sizes[dim]                // idiv (0x13800f10)
+    ratio = 1                                          // default (LODWORD(v10)=1)
+    if !GetTpuCompEnv[+0x13f2]:                         // 0x13800db5 — rescale enabled when byte is 0
+        max_dim = max_element(this->dim_sizes)        // this+0x1e8 / size this+0x1f0 (0x13800e10..)
+        ratio   = max_dim / dim_sizes[dim]            // idiv (0x13800f10)
     scaled  = rb.SdivS32(idx, ratio)                  // 0x13800f30
-    return rb.Sselect(mask, scaled, idx)              // 0x13800f41
+    return rb.Sselect(mask, idx, scaled)              // 0x13800f41 — args: (mask, idx, scaled)
 ```
 
-The rescale divides the index by `max_dim / ring_len[dim]` and selects the scaled value only for the masked core positions. It is reached through `MaybeMapShardIndexForHierarchicalSplit` from `GetPhazeZeroShardIndexHelper` (`0x137f1780`), which wraps `GetShardIndex`. The full hierarchical-split recurrence (`MaybeMapShardIndexForHierarchicalSplit` @ `0x138108e0`, the per-chip core-split fold) was only partially traced (LOW).
+The rescale divides the index by `max_dim / ring_len[dim]` and emits an `Sselect` over the per-core predicate `mask`; the binary passes the arguments as `Sselect(mask, idx, scaled)` (verified at `0x13800f3b`: `%rdx`=idx, `%rcx`=scaled). When the env byte `+0x13f2` is set, the `max_element` scan is skipped and `ratio` stays `1`, so the scaled branch collapses to `idx`. Its callers are the async window-emission path: `AsyncAllGatherEmitter::EmitWindow` (`0x137eec20`, call `0x137eed9a`) and `AsyncAllGatherEmitter::MaybeEmitWindow` (`0x137eefa0`, calls `0x137ef393` / `0x137ef583`) — not the `GetPhazeZeroShardIndexHelper` / `GetShardIndex` chain. The separate hierarchical-split recurrence (`MaybeMapShardIndexForHierarchicalSplit` @ `0x138108e0`, the per-chip core-split fold reached from `GetPhazeZeroShardIndexHelper` @ call `0x137f1818`) was only partially traced (LOW).
 
 ### Call sites — one ring per DMA phase
 
