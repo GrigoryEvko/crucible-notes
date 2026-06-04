@@ -165,7 +165,7 @@ The family is a modifier cross-product on a `vld`/`vst` base. Every load is mask
 
 ## Sync / Wait / Watch (sflag atomics)
 
-The sflag (semaphore-flag) atomic surface splits into three sub-families that this page counts together (91 ops total). All target the sflag bank via the VPU/SPU sync/wait slots (see [`isa/slot-vpu.md`](../isa/slot-vpu.md), [`isa/slot-spu-scalar.md`](../isa/slot-spu-scalar.md)).
+The sflag (semaphore-flag) atomic surface splits into sub-families that this page counts together. The byte-confirmed union (`^llvm\.tpu\.(sync|sfence|wait|watch|fetch)`) is **73 ops**: `sync*`/`sfence` = 25, `wait*` = 31, `watch*` = 16, `fetch.and.add` = 1. (The taxonomy rows above split this differently — wait/watch = 47, sync set/add = 22 — with the three `sync{donemov,pamov,readpa}` ops and `fetch.and.add` carried in adjacent rows.) All target the sflag bank via the VPU/SPU sync/wait slots (see [`isa/slot-vpu.md`](../isa/slot-vpu.md), [`isa/slot-spu-scalar.md`](../isa/slot-spu-scalar.md)).
 
 ### sync / set / add — 22 ops → `llo.vsync.{add,set}`
 
@@ -209,7 +209,7 @@ The sflag (semaphore-flag) atomic surface splits into three sub-families that th
 | single-strided | `.sc.single.strided` | 12 | 11 Value (+1 stride triple) |
 | general | `.sc.general` | 12 | 16 Value (+ multi-dim strides/sizes) |
 
-`src`/`dst` range over `hbm`, `iova`, `smem`, `spmem`, `timem`, `simem`. Representative: `llvm.tpu.dma.hbm.to.spmem.sc.simple`, `llvm.tpu.dma.spmem.to.hbm.sc.single.strided`, `llvm.tpu.dma.hbm.to.iova.sc.general`. These are the SparseCore equivalents of the high-level `DmaSimpleStart` / `DmaSingleStridedStart` / `DmaGeneralStart` dialect ops; the intrinsic is the post-lowering form the backend turns into the DMA engine command.
+`src`/`dst` range over `hbm`, `iova`, `smem`, `spmem`, `timem`, `simem`. Representative: `llvm.tpu.dma.hbm.to.spmem.sc.simple`, `llvm.tpu.dma.spmem.to.hbm.sc.single.strided`, `llvm.tpu.dma.hbm.to.spmem.sc.general`. (The `iova` src/dst appears only in the `simple`/`single.strided` tiers, not in `general`.) These are the SparseCore equivalents of the high-level `DmaSimpleStart` / `DmaSingleStridedStart` / `DmaGeneralStart` dialect ops; the intrinsic is the post-lowering form the backend turns into the DMA engine command.
 
 ---
 
@@ -344,7 +344,7 @@ The plain cast is 1-operand (`create(Type, Value)`); the per-core (`tec`/`tac`/`
 
 ## Lane / sublane permute
 
-14 ops. VPU cross-lane slot — sublane shuffle/rotate/permute and SC permute. Representative: `llvm.tpu.vrot.sublane`, `llvm.tpu.vrot.sublane.down`, `llvm.tpu.vperm.sublane`, `llvm.tpu.vshift.insert`, `llvm.tpu.sc.permute`, `llvm.tpu.sc.mask.permute`, plus the `vslaneseq` sequence-generator forms. See [`sparsecore/rank-and-permute-radixsort.md`](../sparsecore/rank-and-permute-radixsort.md) for the permute-driven radix-sort use. (`MEDIUM` — `sc.permute`/`sc.mask.permute` straddle lane-op vs sc-control.)
+14 ops. VPU cross-lane slot — sublane shuffle/rotate/permute and SC permute. Representative: `llvm.tpu.vrot.sublane`, `llvm.tpu.vrot.sublane.down`, `llvm.tpu.vperm.sublane`, `llvm.tpu.vshift.insert`, `llvm.tpu.sc.permute`, `llvm.tpu.sc.mask.permute`, plus the `vlaneseq` sequence-generator forms (`llvm.tpu.vlaneseq.c.bf16`, `.i.bf16`, `.u32`). See [`sparsecore/rank-and-permute-radixsort.md`](../sparsecore/rank-and-permute-radixsort.md) for the permute-driven radix-sort use. (`MEDIUM` — `sc.permute`/`sc.mask.permute` straddle lane-op vs sc-control.)
 
 ---
 
@@ -368,7 +368,7 @@ The dual base (`smem.base` vs `tilespmem.base`) is the dual-address-space window
 
 ## Trace / Telemetry / sc-control
 
-12 ops. SparseCore control/trace and telemetry. Representative: `llvm.tpu.sc.strace`, `llvm.tpu.event`, `llvm.tpu.spill.debug`, `llvm.tpu.log`, `llvm.tpu.mprefix`, `llvm.tpu.read.global.cycle.count`, `llvm.tpu.read.local.cycle.count`, `llvm.tpu.ssetpstate`, `llvm.tpu.sc.ssettm`, `llvm.tpu.sc.dma.core.id`, `llvm.tpu.sc.sint`. (`MEDIUM` — boundary with task/structural.)
+12 ops. SparseCore control/trace and telemetry. Representative: `llvm.tpu.sc.strace`, `llvm.tpu.event`, `llvm.tpu.spill.debug`, `llvm.tpu.mprefix`, `llvm.tpu.read.global.cycle.count`, `llvm.tpu.read.local.cycle.count`, `llvm.tpu.ssetpstate`, `llvm.tpu.sc.ssettm`, `llvm.tpu.sc.dma.core.id`, `llvm.tpu.sc.sint`. (`MEDIUM` — boundary with task/structural.)
 
 ---
 
