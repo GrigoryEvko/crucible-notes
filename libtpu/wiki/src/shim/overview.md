@@ -25,7 +25,7 @@ For reimplementation, the contract is:
 | **Accessor (profiler)** | `stream_executor::tpu::ProfilerApiFn() @ 0x10900ea0` → `&ProfilerApiFn()::profiler_api_fn` |
 | **Enable probe** | `stream_executor::tpu::IsStreamExecutorEnabled(TfTpu_ExecutorApiFn*) @ 0x20819380` |
 | **Init probe** | `stream_executor::tpu::IsInitialized(TfTpu_ExecutorApiFn*) @ 0x208193c0` |
-| **Opaque-handle marshalling** | `ApiConverter::ToC` (18 overloads) / `FromC` (6) / `Destroy` (3) |
+| **Opaque-handle marshalling** | `ApiConverter::ToC` (9 overloads) / `FromC` (6) / `Destroy` (3) |
 | **C-ABI roster (this binary side)** | 9 named clusters, ~150 free functions (`TpuCompiler_*` 7, `TpuExecutor_*` 25, `TpuTransferManager_*` 19, `TpuProgram_*` 18, `TpuTopology_*` 17, `TpuEmbeddingEngine_*` 15, `TpuPlatform_*` 11, `TpuExecutable_*` 9, `TpuConfigurationApi_*` 8) |
 | **Coexisting modern ABI** | PJRT C-API (`PJRT_*`) — see scope note |
 | **Evidence grade** | Reimplementation-grade / byte-confirmed against IDA decompile |

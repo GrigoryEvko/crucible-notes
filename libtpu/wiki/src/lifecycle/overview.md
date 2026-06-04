@@ -211,7 +211,7 @@ A reimplementer's other essential mental model: what data/state flows in and out
 | `PJRT_Plugin_Initialize @ 0xe6a9d00` | Stage-3 one-time bootstrap gate (PJRT slot 8) |
 | `PJRT_Client_Create @ 0xe6a8840` | Stage-4 silicon scan + live client (PJRT slot 15) |
 | `__do_fini @ 0xe63c020` + FINI_ARRAY | Stage-5 teardown (guarded `__cxa_finalize` + RNG clear) |
-| `Tpu*_*` C-ABI (~217 exports) | The legacy StreamExecutor surface that shares the binary, never reached through PJRT |
+| `Tpu*_*` C-ABI (194 exports) | The legacy StreamExecutor surface that shares the binary, never reached through PJRT |
 
 ## Cross-References
 
