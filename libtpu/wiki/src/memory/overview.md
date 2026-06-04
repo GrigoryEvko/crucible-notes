@@ -69,7 +69,7 @@ Three facts cut across all tiers and a reimplementer must internalize them befor
 
 ### Purpose
 
-One C++ enumeration, `xla::jellyfish::MemorySpace`, labels every region throughout the compiler and runtime. A reimplementer must reproduce *exactly this enum* because it is the operand-space tag on every LLO load/store, the `ProgramMemoryAllocator::AllocateBytes` selector, and the key the `kAllocatedMemorySpaces` array (`0xb42ff10`) iterates. The trap — and this page's central correction — is that a *second*, unrelated numbering governs how a memory space renders into a DMA descriptor's address word, and the two disagree on almost every value.
+One C++ enumeration, `xla::jellyfish::MemorySpace`, labels every region throughout the compiler and runtime. A reimplementer must reproduce *exactly this enum* because it is the operand-space tag on every LLO load/store, the `ProgramMemoryAllocator::AllocateBytes` selector, and the key the `kAllocatedMemorySpaces` array (`0xb42ff10`) iterates. A *second*, unrelated numbering governs how a memory space renders into a DMA descriptor's address word; the two disagree on almost every value, and the boundary between them is the subject of [§2.3](#the-dma-driver-resource-numbering-is-a-different-integer-space).
 
 ### Encoding — the compile-time `MemorySpace` enum
 
@@ -97,7 +97,7 @@ Recovered byte-exactly from the `MemorySpaceToString` string-pointer table at ro
 
 > **QUIRK —** the string-pointer table at `0x21ce6b08` is **longer than the 17-value region enum**: slots `17`/`18`/`19` resolve to `absolute` (`0x868144c`), `heap_relative` (`0x8678cad`), and `stack_relative` (`0x8678cbb`). Those three are pointer-*relativity* tags of the `LloAddress` relocation model that share storage with the region-name array — they are **not** memory pools. A reimplementation that sizes the `MemorySpace` enum by the string-table length, or treats `absolute`/`heap_relative`/`stack_relative` as tiers, is wrong: the region enum is exactly 17 values (`0`..`16`). The ordering is also *not* a clean physical-tier ordering and is wider than the spaces any one generation uses (CMEM is alive only on Pufferfish). Drive tier tables off the named constants, never off contiguous integers. The per-codename byte sizes that populate each tier's `Config` are absent from the C++ (they live in `chip_parts.binarypb`); the enum is the label, not the size. The full enum↔`MemorySpaceProto` field-number remap lives on [memory-space-enum.md](../isa/memory-space-enum.md).
 
-### Correction — the DMA-driver-resource numbering is a *different* integer space
+### The DMA-driver-resource numbering is a *different* integer space
 
 `xla::jellyfish::MemorySpaceToDriverResource(MemorySpace)` (`0x1d6223e0`) maps the LLO `MemorySpace` enum to a hardware *driver-resource id* stamped into a DMA descriptor's address word. Its switch (verified arm-by-arm in the decompile) does **not** return the enum value — it returns a permuted, non-monotone id, and it *traps* on `cmem` and the SparseCore spaces:
 
@@ -120,7 +120,9 @@ function MemorySpaceToDriverResource(ms):
         case 12..16 (sparse_core_*): FATAL("Unsupported memory space")
 ```
 
-> **CORRECTION (MEM-1) —** the switch *consumes* the very `MemorySpace` enum of [§2 table](#encoding--the-compile-time-memoryspace-enum) (its `case` labels are `hbm=1, hib=2, vmem=3, cmem=4, smem=5, sflag=6, imem=7, …`, identical to the placer constants), but it *returns* a **different integer space** — the hardware driver-resource id — and that id is permuted and non-monotone: `sflag(6)→0`, `barna_core_sflag(10)→1`, `hbm(1)→2`, `hib(2)→3`, `vmem(3)→4`, `imem(7)→5`, `smem(5)→6`, `barna_core_bmem(8)→7`, `barna_core_imem(11)→8`, `barna_core_smem(9)→9`, `kNone(0)→10`; `cmem(4)` and every SparseCore space (`12`..`16`) `LogMessageFatal("Unsupported memory space")`. The returned id therefore never equals the `MemorySpace` integer for any tier. A reimplementer must carry the `MemorySpace` enum end-to-end and convert to a driver-resource id *only* at the descriptor boundary via this explicit switch — deriving the id by reusing the enum integer is wrong for every tier. The full resource-id table lives on [intra-chip-descriptor.md](../dma/intra-chip-descriptor.md#3-endpoint-rendering).
+The switch *consumes* the `MemorySpace` enum of the [§2 table](#encoding--the-compile-time-memoryspace-enum) — its `case` labels (`hbm=1, hib=2, vmem=3, cmem=4, smem=5, sflag=6, imem=7, …`) are identical to the placer constants — but it *returns* a **different integer space**, the permuted, non-monotone driver-resource id tabulated above. The returned id never equals the `MemorySpace` integer for any tier.
+
+> **GOTCHA —** carry the `MemorySpace` enum end-to-end and convert to a driver-resource id *only* at the descriptor boundary, via this explicit switch. Deriving the id by reusing the enum integer is wrong for every tier, and `cmem(4)` plus every SparseCore space (`12`..`16`) is not DMA-addressable here at all (`LogMessageFatal("Unsupported memory space")`). The full resource-id table lives on [intra-chip-descriptor.md](../dma/intra-chip-descriptor.md#3-endpoint-rendering).
 
 ---
 
