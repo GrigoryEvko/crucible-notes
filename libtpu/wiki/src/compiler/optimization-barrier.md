@@ -276,7 +276,7 @@ So the expander runs **after** the LatencyHidingScheduler / AsyncOpScheduler hav
 ### Sequence intuition for the TPU path
 
 ```text
-... LayoutAssignment → fusion (P-3-76, fusion-patterns) → scheduling
+... LayoutAssignment → fusion (see fusion-patterns) → scheduling
     (LatencyHidingScheduler / AsyncOpScheduler honour the barrier edges to
      pin async-copy / collective boundaries)
   → cse_barrier_expander + TupleSimplifier   (barrier erased; GTE/tuple

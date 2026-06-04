@@ -137,7 +137,7 @@ function ShouldFuseImpl(consumer, operand_index):          // 0x13086660
 
 > **NOTE — the lambdas, not the named methods, carry most of the logic.** `ShouldFuseImpl` defines `$_0`–`$_30` (30 distinct lambda symbols survive in `nm -C`; the index `$_12` is not emitted). Several are tiny structural predicates with no log string of their own (e.g. `$_29` at `0x130899c0`, which takes `(producer, consumer, consumer, Target&, HloReachabilityMap*)` and is the fusion-boundary test). The named methods (`FusionFitsInVmem`, `ProducerCanBeLoopFused`, `CheckReduceBroadcastIntoReduceWindowFusionRequirements`) are the heavyweight gates; the lambdas are the cheap structural filters that run first. [Confidence: HIGH — call sites and strings are in the decompile; the exact per-lambda body of each `$_*` was not individually unwound.]
 
-> **CORRECTION (FUSE-01) — the HardSwish anti-fuse string is NOT in the TPU fusion pass.** The string `" HardSwish pattern was found, so fusion failed."` resolves to `tensorflow::grappler::Remapper::Optimize` (`0x105aa960`), a CPU TensorFlow graph rewriter compiled into the same `.so`, not to `TpuInstructionFusion`. The functional claim still holds on the TPU side — HardSwish has no direct ACT ALU opcode and so is not output-fusable (see [the activation discussion below](#why-some-activations-never-fuse)) — but the *string* is mis-attributed in the raw notes. Do not key a TPU reimplementation off that log line. [Confidence: CONFIRMED by symbol resolution.]
+> **GOTCHA — the HardSwish anti-fuse string is NOT in the TPU fusion pass.** The string `" HardSwish pattern was found, so fusion failed."` resolves to `tensorflow::grappler::Remapper::Optimize` (`0x105aa960`), a CPU TensorFlow graph rewriter compiled into the same `.so`, not to `TpuInstructionFusion`. The functional claim still holds on the TPU side — HardSwish has no direct ACT ALU opcode and so is not output-fusable (see [the activation discussion below](#why-some-activations-never-fuse)) — but a reimplementer must not key the TPU behavior off that log line. [Confidence: CONFIRMED by symbol resolution.]
 
 ### Function Map
 
@@ -329,7 +329,7 @@ arith::NegFOp  math::AbsFOp  math::AbsIOp  math::ExpOp
 
 Independent of the carrier split, three activation families are never output-fusable on any generation and must lower as standalone HLO computations reading the matmul output through VMEM:
 
-- **HardSwish** — no direct ACT ALU opcode (see [CORRECTION FUSE-01](#algorithm) on the mis-attributed string).
+- **HardSwish** — no direct ACT ALU opcode (the "HardSwish pattern was found" log string belongs to the CPU TF Remapper, not the TPU fusion pass — see the GOTCHA in [Algorithm](#algorithm)).
 - **LeakyReLU / ELU / SELU / Mish / Swish** — synthesized via `select` or multi-op polynomial; the cost model rejects the polynomial expansion.
 - **Softmax** when `xla_tpu_enable_multi_level_nested_dot_fusion=false` — kept as a separate fusion.
 

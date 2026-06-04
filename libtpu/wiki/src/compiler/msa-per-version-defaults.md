@@ -104,7 +104,7 @@ These are the literal values a reimplementer must reproduce. Every float is mate
 
 ### Overlap-to-async-copy ratios
 
-The three floats feed the `PrefetchIntervalPicker` constructor (P-3-220 #5, `@0x1dcd6b60`): `picker+0x80` ← min, `picker+0x84` ← preferred, `picker+0x88` ← a product derived from preferred × max. `min` seeds the latest legal prefetch time (`use_time − ⌈min × async_copy_elapsed⌉`); `max` bounds how far ahead of the use a prefetch may be hoisted.
+The three floats feed the `PrefetchIntervalPicker` constructor (`@0x1dcd6b60`): `picker+0x80` ← min, `picker+0x84` ← preferred, `picker+0x88` ← a product derived from preferred × max. `min` seeds the latest legal prefetch time (`use_time − ⌈min × async_copy_elapsed⌉`); `max` bounds how far ahead of the use a prefetch may be hoisted.
 
 | Option | jf | vf | gf | cmem | msa | Confidence |
 |---|---:|---:|---:|---:|---:|---|
@@ -281,7 +281,7 @@ AbslFlagDefaultGenForxla_gf_vmem_max_overlap_…::Gen   // @ 0x1d72dfa0
 // (had this been Jellyfish, jf gen @ 0x1d72cae0 = 0x42000000 = 32.0)
 
 // 4. consumed by the prefetch window
-PrefetchIntervalPicker.ctor(...)                      // @ 0x1dcd6b60 (P-3-220 #5)
+PrefetchIntervalPicker.ctor(...)                      // @ 0x1dcd6b60
     picker[0x80] = min(1.0);
     picker[0x84] = preferred(2.0);
     picker[0x88] = derived(preferred × max=8.0);

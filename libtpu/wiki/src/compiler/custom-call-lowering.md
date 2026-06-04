@@ -331,7 +331,7 @@ message CustomCallConfig {
 }
 ```
 
-> The `input_memory_space_colors` / `output_memory_colors` field-name pair is recovered from descriptor strings and `custom_call_config.output_memory_colors()` accessor call sites; the asymmetric naming (`_space_` on input only) is as observed in the binary, not a transcription artifact. The submessage types are `CustomCallConfig_InputMemorySpaceColor` / `CustomCallConfig_OutputMemorySpaceColor`. A standalone `metadata` field is **not** confirmed; metadata is attached via `SetCustomCallMetadata` on the instruction rather than a named proto field — that earlier claim is removed.
+> The `input_memory_space_colors` / `output_memory_colors` field-name pair is recovered from descriptor strings and `custom_call_config.output_memory_colors()` accessor call sites; the asymmetric naming (`_space_` on input only) is as observed in the binary, not a transcription artifact. The submessage types are `CustomCallConfig_InputMemorySpaceColor` / `CustomCallConfig_OutputMemorySpaceColor`. A standalone `metadata` field is **not** confirmed; metadata is attached via `SetCustomCallMetadata` on the instruction rather than a named proto field.
 
 ### Pipeline: HLO entry → cached body → LLO
 

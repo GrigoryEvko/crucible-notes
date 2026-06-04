@@ -9,9 +9,7 @@ This page documents the `MHLO/StableHLO → XTile → tpu` lowering as it actual
 - **`MHLO/StableHLO → XTile` is real.** XTile (`xla::xtile::XTileDialect`) is a tiled-tensor MLIR dialect with six registered ops, a four-pass front-end lowering, and a verbatim StableHLO→`arith` pattern table. It lives under `third_party/.../xla/codegen/xtile/` and lowers to the **CPU/LLVM** stack via a `xtile-cpu-*` pipeline.
 - **`XTile → tpu` is not real.** No pass produces the `tpu` dialect from XTile. The binary contains **zero** `*ToTpuPass` / `MhloToTpu` / `StablehloToTpu` conversion-pass functions. XTile's dependent-dialect set is the CPU/LLVM set (`xla::cpu::XlaCpuDialect`, `memref`, `vector`, `LLVM`) — `tpu`, `llo`, and `sparse_core` appear nowhere in any XTile pass.
 
-The `tpu` dialect that the [compiler overview](overview.md) names as Level 2 is therefore **not** produced by lowering general MHLO. On the TPU device path, general HLO is emitted straight to LLO by ~3225 `xla::jellyfish::*Emitter` classes; the `tpu` dialect is only ever *imported* — authored by the Pallas/Mosaic frontend, embedded in an HLO `kCustomCall("tpu_custom_call")`, and extracted by `xla::jellyfish::mlir_utils::GetMlirModuleOpFromCustomCall`. This page documents Tree B (XTile, in full) and pins down where Tree A's `tpu` dialect actually originates.
-
-> **CORRECTION — this page supersedes the "XTile sits between MHLO and `tpu`" claim.** The [overview](overview.md) IR-stack diagram and the dialect inventory describe XTile as an MHLO→`tpu` mid-level. The symbol, string, and dependent-dialect evidence in *this* binary contradicts the XTile→`tpu` link (see [The Two-Tree Picture](#the-two-tree-picture)). Read this page's tree split as the authoritative refinement of the overview's Level 2.
+The `tpu` dialect that the [compiler overview](overview.md) names as Level 2 is therefore **not** produced by lowering general MHLO. On the TPU device path, general HLO is emitted straight to LLO by ~3225 `xla::jellyfish::*Emitter` classes; the `tpu` dialect is only ever *imported* — authored by the Pallas/Mosaic frontend, embedded in an HLO `kCustomCall("tpu_custom_call")`, and extracted by `xla::jellyfish::mlir_utils::GetMlirModuleOpFromCustomCall`. This page documents Tree B (XTile, in full) and pins down where Tree A's `tpu` dialect actually originates. The "XTile sits between MHLO and `tpu`" reading is two disconnected trees: the symbol, string, and dependent-dialect evidence in this binary shows no XTile→`tpu` link (see [The Two-Tree Picture](#the-two-tree-picture)).
 
 For reimplementation, the contract this page fixes is:
 
@@ -52,7 +50,7 @@ TREE A — TPU device (the real product path)
 │       ──[GetMlirModuleOpFromCustomCall  0x13e327a0]──►  tpu-dialect IR    │
 │       ──[RunMLIRPasses 16-stage pipeline]──►  LLO                         │
 └────────────────────────────────────────────────────────────────────────┘
-        the `tpu` dialect is AUTHORED upstream and IMPORTED — never
+        the `tpu` dialect is authored upstream and imported — never
         produced by lowering MHLO
 
 TREE B — XLA CPU/GPU codegen (bundled, off the TPU device path)
@@ -332,7 +330,7 @@ The `tpu` dialect is therefore **authored upstream and imported**, never produce
 | XTile attributes `xtile.layout`/`xtile.tiling_info` and the workgroup model | `XTile_LayoutAttr`/`minor_to_major` and `XTile_TilingInfoAttr`/`tile_count`/`tiles_per_workgroup` parse-error strings; CPU-thunk `NumWorkGroups{%d, %d, %d}`/`XLA_CPU_NumWorkGroups`/`xla.cpu.KernelThunkProto` strings | HIGH |
 | `tensor`→`memref` via One-Shot Bufferize on `BufferizableOpInterface` | `ExtractTileOp`/`InsertTileOp` implement `BufferizableOpInterface` + `TiledBufferInterface`; `xtile-cpu-bufferization` CLI string | HIGH |
 | Failure anchors at the XTile boundary | all 10 anchor strings recovered in the decompiled output | HIGH |
-| **XTile is NOT on the TPU MXU path** (CORRECTION) | XTile dep-set = `XlaCpuDialect`/`memref`/`vector`/`LLVM` (no `tpu`/`llo`); `xtile-cpu-*` pipeline; `codegen/xtile/` source paths | HIGH |
+| **XTile is NOT on the TPU MXU path** | XTile dep-set = `XlaCpuDialect`/`memref`/`vector`/`LLVM` (no `tpu`/`llo`); `xtile-cpu-*` pipeline; `codegen/xtile/` source paths | HIGH |
 | **No MHLO/HLO→`tpu` conversion pass exists** | grep of functions table: 0 hits for `*ToTpuPass`/`MhloToTpu`/`StablehloToTpu`/`LegalizeToTpu` | HIGH |
 | `tpu` dialect is imported only, via `tpu_custom_call` | `GetMlirModuleOpFromCustomCall` `0x13e327a0`, `RunMLIRPasses` `0x111fefa0`, `MosaicSerdePass`, `tpu_custom_call` all present | HIGH |
 | Plain tile dot is emitted to `linalg`/`vector`, not an `xtile.dot` op | no `DotOp` class / `xtile.dot` string in binary; `EmitSingleTileDot`/`dot_algorithms.cc` bodies not decompiled per-algorithm | LOW (per-algorithm bodies only) |

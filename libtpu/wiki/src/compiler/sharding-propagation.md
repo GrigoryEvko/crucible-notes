@@ -331,7 +331,7 @@ The decompiled `TpuCustomCallShardingHelper::InferShardingFromOperands` (`0x1278
 
 The function also matches one further target compared with length 7 (via a float-taking `IsCustomCall` overload) whose branch is operand-following; its literal was not recovered from the decompile (the comparison reads through a `.data` pointer, not a `.rodata` string), so it is omitted here.
 
-> **CORRECTION (SP-1) —** an earlier recovered claim named `PartialReduce` as "the only TPU CustomCall with non-trivial sharding propagation," and a prior revision of this page listed the handled set as `{PartialReduce, MoveToHost, MoveToDevice, xla-sdc-checker-get-checksums}`. Decompilation of `0x1278bf80` corrects both: (1) there is **no `MoveToDevice` branch** — it does not appear in this function; (2) `xla-sdc-checker-get-checksums` returns `nullopt`, it does **not** follow the operand; (3) besides `PartialReduce`, the `QrDecompositionBlock` branch is also *dimension/shape-changing* (it synthesizes a tuple sharding), so `PartialReduce` is not the only non-trivial rule.
+> **NOTE —** `PartialReduce` is *not* the only non-trivial rule: `QrDecompositionBlock` is also dimension/shape-changing (it synthesizes a tuple sharding). There is **no `MoveToDevice`** branch in this function, and `xla-sdc-checker-get-checksums` returns `nullopt` rather than following its operand.
 
 The sibling helpers `ShardBarrierFromPartitioner` / `ShardBarrierToPartitioner` (`InferShardingFromOperands` @ `0x1c863740` / `0x1c863800`) and `InspectShardingCallPartitioner` (`jax::…` @ `0xe8b8cc0`) implement the barrier-fence and debug-inspect behaviors referenced above.
 

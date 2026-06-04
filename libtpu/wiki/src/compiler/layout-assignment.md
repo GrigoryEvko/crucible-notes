@@ -187,7 +187,7 @@ The cost is **two keys in priority order**:
 
 The only numeric constants in the function are the element-type validity bitmask `0x2FFF91FFE` (bit *i* set ⇒ primitive type *i* is searchable) and the lane/sublane divisors (read from the chip descriptor, not literals). The decompile confirms both directly: `if ( v10 > 0x21 || (v11 = 0x2FFF91FFELL, !_bittest64(&v11, v10)) )` at the entry, and the `vcvtsi2sd xmm0,…,r12 / vcvtsi2sd xmm1,…,r15 / vdivsd` sequence building the ratio from the two minor-dim chunk counts.
 
-> **CORRECTION (LAYOUT-1) —** an earlier reconstruction described this cost as a weighted combination of *bytes* and a *predicted-copy-count* term sourced from `adaptive_layout_map_`, gated by a float constant `dword_84A28E8` ("factor = 1.0"). Decompilation shows no such term and no such constant in this function. The cost is **min compact bytes, tie-broken by minor-dim fill ratio**; there is no discrete transpose/copy/bitcast penalty and no copy-count feedback inside `FindMemoryMinimizingLayout`. (The copy-count adaptivity that does exist lives elsewhere — `AdaptiveHloLayoutMap::RemoveOnCopyOverhead` @ `0x110accc0` — and acts on profile-loaded overrides between passes, not on this chooser.)
+> **NOTE —** there is no copy-count feedback inside `FindMemoryMinimizingLayout`: the cost is purely min compact bytes tie-broken by minor-dim fill ratio, with no discrete transpose/copy/bitcast penalty and no `adaptive_layout_map_` term. The copy-count adaptivity that does exist lives elsewhere — `AdaptiveHloLayoutMap::RemoveOnCopyOverhead` @ `0x110accc0` — and acts on profile-loaded overrides *between* passes, not inside this chooser.
 
 > **GOTCHA —** the rank gate is `> 3`, not `>= 3`. Rank-1/2/3 tensors are never searched; they keep the OSS `GetDefaultLayoutForRank` layout. A reimplementation that searches at rank 3 will produce different (and slower-to-converge) layouts than libtpu for the very common 3-D activation shapes.
 
@@ -343,7 +343,7 @@ function InstructionCanChangeLayoutDeepsea(inst):                       // 0x110
       default:               return OSS::InstructionCanChangeLayout(inst)     // 0x169c19c0
 ```
 
-> **QUIRK —** `OutputLayoutAlwaysPropagateToOperands` returning true for **transpose (opcode 127)** is what lets a transpose be realised as a *pure layout change* (free) rather than a data copy: the desired output layout is forced onto the transpose's operand, so the transpose becomes a relabel of `minor_to_major`. The decompile is unambiguous — `if ( *((_BYTE *)a2 + 12) == 127 ) return 1;`. An earlier note guessed opcode 127 was `kCopy`; the authoritative HloOpcode map pins 127 = `transpose`.
+> **QUIRK —** `OutputLayoutAlwaysPropagateToOperands` returning true for **transpose (opcode 127)** is what lets a transpose be realised as a *pure layout change* (free) rather than a data copy: the desired output layout is forced onto the transpose's operand, so the transpose becomes a relabel of `minor_to_major`. The decompile is unambiguous — `if ( *((_BYTE *)a2 + 12) == 127 ) return 1;`, and 127 = `transpose` in the `HloOpcode` map (the enum's last value).
 
 > **NOTE —** the custom-call branch of `InstructionCanChangeLayoutDeepsea` is the pass's extensibility hook. Every TPU custom kernel (`tpu_custom_call`, `XlaMosaic`, `TopK`, `Sharding`, …) registers a `CompilationProperties` struct whose `instruction_can_change_layout` boolean is consulted here. A reimplementer adding a custom op must register it or layout assignment will treat it with the OSS default.
 
@@ -360,7 +360,7 @@ The per-op dispatches above are byte tests against the upstream `HloOpcode` enum
 | collective-permute | 34 (`0x22`) | ragged-all-to-all | 86 (`0x56`) | ragged-dot | 87 (`0x57`) |
 | concatenate | 39 (`0x27`) | transpose | 127 (`0x7f`) | sort | 120 (`0x78`) |
 
-> **CORRECTION (LAYOUT-2) —** the opcode integers above supersede an earlier table that read several wrong: it had convolution=49 (49 is custom-call), broadcast=0x78 (0x78 is sort), and listed a nonexistent opcode 130 (the enum ends at 127). Treat any opcode integer not in the table above as re-derive-before-use.
+> **NOTE —** the `HloOpcode` enum ends at 127 (`transpose`); there is no opcode 130. Watch the easy confusions: convolution is 43 (not 49 — 49 is custom-call) and 0x78 is sort (not broadcast). Treat any opcode integer not in the table above as re-derive-before-use.
 
 ### Function Map
 

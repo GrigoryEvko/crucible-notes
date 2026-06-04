@@ -190,7 +190,7 @@ TpuExecutable_Deserialize (0xeabede0) ── C runtime shim:
     on failure: "TpuExecutable_Deserialize: proto deserialization failed"
 ```
 
-> **CORRECTION (TPSER-1) —** the AOT/C-API deserializers parse a `DeepseaExecutableProto`, **not** the full delimited `TpuExecutableProto` stream that `TpuExecutableProtoToString` produces. These are two different serialized forms sharing the inner container: the AOT path (`DeepseaCompiler`) round-trips just the compiler container as a plain protobuf, while the PJRT path (`TpuExecutableProtoToString`) wraps it plus the HLO module, compile options, and target block in the four-segment delimited envelope. A reimplementer must pick the matching reader for the writer that produced the bytes; they are not interchangeable.
+> **GOTCHA —** the AOT/C-API deserializers parse a `DeepseaExecutableProto`, **not** the full delimited `TpuExecutableProto` stream that `TpuExecutableProtoToString` produces. These are two different serialized forms sharing the inner container: the AOT path (`DeepseaCompiler`) round-trips just the compiler container as a plain protobuf, while the PJRT path (`TpuExecutableProtoToString`) wraps it plus the HLO module, compile options, and target block in the four-segment delimited envelope. A reimplementer must pick the matching reader for the writer that produced the bytes; they are not interchangeable.
 
 ---
 

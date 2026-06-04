@@ -170,7 +170,7 @@ IRRewrite record header (offsets common to all 11 leaves)
   +0x20+ leaf-specific saved state (see per-record rollback bodies below)
 ```
 
-> **CORRECTION (CPR-1) — the `CreateOperationRewrite` record is 32 bytes, not 48.** An earlier reading attributed `operator new(0x30)` (48 B) to `CreateOperationRewrite`. The decompile of `notifyOperationInserted` (`0x1c950260`) shows the *create* path (tag `8`, vtable address-point `0x21c236a8`) allocates `operator new(0x20)` = 32 bytes — header only, no extra saved state, because rollback just unlinks the op. The `operator new(0x30)` (48 B) allocation in the same function is the *move* path: tag `5`, vtable address-point `0x21c236f8` (`MoveOperationRewrite`), which saves the previous block (`+0x20`) and the insert-before op (`+0x28`) so rollback can move the op back. The two records are allocated by the same listener method but at different sizes for different saved state.
+> **NOTE — `CreateOperationRewrite` is 32 bytes; `MoveOperationRewrite` is 48.** Both are allocated by the same listener method `notifyOperationInserted` (`0x1c950260`), at different sizes for different saved state. The *create* path (tag `8`, vtable address-point `0x21c236a8`) allocates `operator new(0x20)` = 32 bytes — header only, no extra saved state, because rollback just unlinks the op. The *move* path (tag `5`, vtable address-point `0x21c236f8`) allocates `operator new(0x30)` = 48 bytes, saving the previous block (`+0x20`) and the insert-before op (`+0x28`) so rollback can move the op back.
 
 ---
 

@@ -165,9 +165,7 @@ VectorAdd/Max/MinSublaneReduce{BF16,F32,S32}Op : V
 VectorMax/MinIndexReduceF32Op : TR, VR, [Attrs]    (2 results: index + value)
 ```
 
-`VectorLaneSeqOp` and its B16 variants are confirmed as `ZeroRegions, OneResult` MLIR ops (e.g. the op model at `0x13f07200`) — zero operands, one result — matching the `0`-operand ODS. They are the LLO ops whose hardware ISA mnemonics are `vslaneid`/`vxlaneid`; the underlying instruction factory is `LloInstruction::CreateVectorLaneSequence{,CompressedB16,InterleavedB16}` (`0x1d4d0480` / `0x1d4d04c0` / `0x1d4d0500`).
-
-> **CORRECTION (TPU-LLO-1) —** the `tpu`-dialect overview names `tpu.iota → llo.vslaneid / llo.vxlaneid + add`. The LLO *op* class is the `VectorLaneSeqOp` family; `vslaneid`/`vxlaneid` are the **ISA-level mnemonics** of those LLO ops, not separate dialect ops. For B16 iotas the lane sequence packs through the `Interleaved`/`Compressed` B16 variants.
+`VectorLaneSeqOp` and its B16 variants are confirmed as `ZeroRegions, OneResult` MLIR ops (e.g. the op model at `0x13f07200`) — zero operands, one result — matching the `0`-operand ODS. They are the LLO ops whose hardware ISA mnemonics are `vslaneid`/`vxlaneid`; the underlying instruction factory is `LloInstruction::CreateVectorLaneSequence{,CompressedB16,InterleavedB16}` (`0x1d4d0480` / `0x1d4d04c0` / `0x1d4d0500`). When a lowering names `tpu.iota → llo.vslaneid / llo.vxlaneid + add`, the LLO *op* it means is the `VectorLaneSeqOp` family — `vslaneid`/`vxlaneid` are the ISA-level mnemonics of those ops, not separate dialect ops — and B16 iotas pack through the `Interleaved`/`Compressed` B16 variants.
 
 ---
 
@@ -286,7 +284,7 @@ LogicalResult legalize_constant(op, adaptor, rewriter):
 
 The emitted shape `llo::ConstantOp::create(OpBuilder&, Location, Type, Attribute)` matches the `ConstantOp` ODS `T, Attribute`. `i1`, signless integer ≤31-bit, F32, and representable/mask dense-splat vector constants are legalized **in place**; `index` constants are the **only** ones rewritten (rebuilt as i32 because the TPU scalar register is 32-bit) and the original erased. Anything else (e.g. a non-splat dense vector) hits `emitOpError` and is illegal.
 
-> **CORRECTION (TPU-LLO-2) —** an earlier reading called this an undetermined, possibly non-deterministic admission rule and suspected the lambda chose immediate-slot vs SMEM-load vs hardwired-constant. It does not. The lambda emits a single `llo.constant`; the constant's *fate* (a hardwired-constant `ScalarYEncoding` reference for 0/±1/±0.5/±π/±e, a bundle immediate slot if it fits the 16-bit (JF) / 20-bit (V5+) width, or an SMEM constant-pool load otherwise) is a **value-dependent, pack-time** decision in the bundle packer. See [Immediate Slot](../isa/slot-immediate.md) and [SPU / Scalar Slot](../isa/slot-spu-scalar.md). The lowering pass is a pure type legalizer; the 31-bit `cmp 0x1f` is the IR-level immediate ceiling check, not a slot selection.
+> **NOTE — the lowering pass is a pure type legalizer; constant placement is decided later.** The lambda emits a single `llo.constant`; the constant's *fate* — a hardwired-constant `ScalarYEncoding` reference for 0/±1/±0.5/±π/±e, a bundle immediate slot if it fits the 16-bit (JF) / 20-bit (V5+) width, or an SMEM constant-pool load otherwise — is a value-dependent, pack-time decision in the bundle packer. See [Immediate Slot](../isa/slot-immediate.md) and [SPU / Scalar Slot](../isa/slot-spu-scalar.md). The 31-bit `cmp 0x1f` here is the IR-level immediate ceiling check, not a slot selection.
 
 ---
 
@@ -312,7 +310,7 @@ Four `tpu` ops fan out to large, distinct LLO op multisets rather than a 1:1 tar
 
 The grep of the decompiled body confirms exactly one each of `VectorAddS32Op`, `VectorShiftLeftLogicalOp`, `VectorShiftRightLogicalOp`, `VectorOrU32Op`, `VectorXOrU32Op`, plus two `Constant`s — and **zero** `vrot` / `VectorRotate` references.
 
-> **CORRECTION (TPU-LLO-3) —** the round was earlier described as "4 mixing rotations via `llo.vrot.lane`". The binary body contains no `vrot`: the lane rotate is `(x << k) | (x >> (32-k))` via `VectorShiftLeftLogical | VectorShiftRightLogical | VectorOrU32`. Total LLO ops per `prng_random_bits` vreg ≈ `6 × rounds + fold`. Relevant ODS: `VectorShiftLeftLogicalOp : T, V, V`; `VectorOrU32Op : V, V`; `VectorAddS32Op : V, V`; `VectorRNGSetSeedOp : V` (the `prng_set_seed_32` carrier).
+> **NOTE —** the lane rotate is synthesized as `(x << k) | (x >> (32-k))` via `VectorShiftLeftLogical | VectorShiftRightLogical | VectorOrU32`; there is no hardware `vrot` in the round. Total LLO ops per `prng_random_bits` vreg ≈ `6 × rounds + fold`. Relevant ODS: `VectorShiftLeftLogicalOp : T, V, V`; `VectorOrU32Op : V, V`; `VectorAddS32Op : V, V`; `VectorRNGSetSeedOp : V` (the `prng_set_seed_32` carrier).
 
 ### tpu.stochastic_convert_elementwise → F8/Bf16 stochastic-round family
 

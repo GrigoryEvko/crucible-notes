@@ -187,7 +187,7 @@ return prefix + ShapeSizeBytesRaw(shape);   // ShapeSizeBytesRaw uses static ext
 
 So the physical byte-size is `ShapeSizeBytesRaw(shape) + prefix`, where `ShapeSizeBytesRaw` is computed from the **static (upper-bound) extents** — never a runtime value. The prefix is 1024 by default and can be overridden per-buffer by the `xla::Layout::dynamic_shape_metadata_prefix_bytes()` field.
 
-> **CORRECTION — the prefix is layout-overridable, defaulting to 1024.** Earlier notes described `ShapeWithMetadataSizeBytes` as a flat `ShapeSizeBytesRaw + 0x400`. The decompile shows the dynamic branch reads `layout().dynamic_shape_metadata_prefix_bytes()` and only falls back to `1024` when that field is zero, and that the `TOKEN` element type (13) takes neither prefix nor payload. The constant 1024 still comes from `Target::DynamicShapeMetadataPrefixBytes()` (below), which is what populates the layout field. [Confidence: CONFIRMED — read from `0x1d6aea00`.]
+> **NOTE — the prefix is layout-overridable, not a flat constant.** The dynamic branch reads `layout().dynamic_shape_metadata_prefix_bytes()` and only falls back to `1024` when that field is zero; the `TOKEN` element type (13) takes neither prefix nor payload. The constant 1024 comes from `Target::DynamicShapeMetadataPrefixBytes()` (below), which is what populates the layout field. [Confidence: CONFIRMED — read from `0x1d6aea00`.]
 
 ### The prefix constant
 
