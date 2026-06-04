@@ -1,6 +1,6 @@
 # Per-Codename `compiler_reserved` SFLAG Integers
 
-> *All addresses, file offsets, and integers on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`, build `libtpu_lts_20260413_b_RC00`; 781,691,048 B; ships with full C++ symbols). `.text`/`.lrodata`/`.rodata` VMA == file offset; `.data.rel.ro` and `filewrapper_toc` use a `−0x200000` file-offset delta. Other versions will differ.*
+> *All addresses, file offsets, and integers on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`, build `libtpu_lts_20260413_b_RC00`; 781,691,048 B; ships with full C++ symbols). `.text`/`.lrodata`/`.rodata` VMA == file offset; `.data.rel.ro` uses a `−0x200000` file-offset delta and `filewrapper_toc` a `−0x400000` delta. Other versions will differ.*
 
 ## Abstract
 
