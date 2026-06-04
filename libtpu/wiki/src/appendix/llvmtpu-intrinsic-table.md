@@ -607,11 +607,108 @@ The deep per-gen reachability is on [`isa/sequencer-ops-per-gen.md`](../isa/sequ
 
 ---
 
+## The Stream Command Is Composed, Not Per-Leaf
+
+The 834-way `llvm.tpu.stream.*` explosion was the prime suspect for a hidden per-leaf
+numeric command table: 834 distinct ops *looks like* 834 distinct hardware opcodes. The
+binary says otherwise. The numeric command the SparseCore stream sequencer consumes is
+**assembled** from four orthogonal `SparseCoreStream` proto bitfields at encode time; there
+is no static array indexed by `(pattern,verb,dtype,memspace)` and no per-intrinsic command
+constant. The 834 leaves collapse onto **4 addressing forms × an 8-value verb × a dtype bit
+× a memspace enum**, packed into one slot. This was confirmed by reading the encoder's
+`oneof` dispatch and each field accessor directly — addresses are gfc/TPU7x; `.text`
+VA==file-offset at `0xe63c000`.
+
+### The encoder dispatches on the *form*, not the leaf
+
+`SparseCoreStreamEncoder::Encode` @ `0x1eb9b4c0` selects what to encode by reading the proto
+`oneof` discriminator and bounding it at the message's field count — **not** by an
+intrinsic-ID-keyed table:
+
+```
+1eb9b55e: mov    0x58(%r15),%eax        ; oneof discriminator (which addressing form)
+1eb9b562: cmp    $0xa,%rax              ; bound = 0xa  → at most 11 cases (fields 0..10)
+1eb9b566: ja     1eb9bd64               ; default/error arm
+1eb9b571: lea    -0x13363470(%rip),%rcx ; jump table @0xb838108 (11 × int32 rel offsets)
+1eb9b5a2: cmpl   $0x8,0x58(%r15)        ; field #8 == LinearStream
+1eb9b5a7: lea    SparseCoreStream_LinearStream_globals_(%rip),%r12
+```
+
+The jump table at `.rodata` `0xb838108` is **11 entries** (fields 0–10), and `xxd` shows
+entries 8/9/10 are the only ones with distinct targets — the Linear/Strided/Indirect form
+arms — while fields 0–7 share the default arm. A 745 MB binary registering 834 separate
+stream ops still routes them all through an 11-case switch: the explosion is in the *MLIR op
+roster*, not in any HW-command table. (The SCS encoder bounds at `0xa`; the TEC encoder
+bounds at `0xb` to admit the TEC-only `IndirectVregStream` 4th form — see
+[Indirect Vreg Stream](../sparsecore/indirect-vreg-stream.md).)
+
+### The four command fields, each byte-verified from its accessor
+
+Each axis of the `(pattern,verb,dtype,memspace)` tuple is a separate bitfield with its own
+`GetConcatenatedValue`/`Matches` accessor. The shift/mask read straight from the
+disassembly is the field's exact slot position and width:
+
+| Axis | Field | Accessor @ | Byte-read body | Slot bits | Verified value(s) |
+|------|-------|-----------|----------------|-----------|-------------------|
+| **pattern** (form) | form opcode | `0x1eb9aa60` Linear | `(q[+0x18] & 0x7E0…<<52)==0x76…<<52` | bits 53–58 | Linear = `0x76>>1` = **`0x3b`** |
+| | | `0x1eb9aa80` Strided | `…==0x74…<<52` | bits 53–58 | Strided = `0x74>>1` = **`0x3a`** |
+| | | `0x1eb9aaa0` Indirect | `…==0x72…<<52` | bits 53–58 | Indirect = `0x72>>1` = **`0x39`** |
+| **verb** | `StreamOpcode` | `0x1eb9b3a0` | `(d[+0x18] >> 9) & 7` | +0x18 bit 9, w3 | GATHER=0 … SCATTER_FLOAT_ADD=6 |
+| **dtype** | `GatherScatterAddIsB16` | `0x1eb9b3c0` | `(d[+0x18] >> 0xc) & 1` | +0x18 bit 12, w1 | bf16-add = 1, f32-add = 0 |
+| **memspace** | `OffTileMemoryType` | `0x1eb9b420` | `(q[+0x10] >> 0x2f) & 7` | +0x10 bit 47, w3 | SPMEM=0 · TILE_SPMEM_N=1 · HBM=2 · HBM_4B=3 |
+
+Worked sample — 12 representative leaves and the *composed* slot command each produces. The
+command is the tuple `(form, StreamOpcode, IsB16, OffTileMemoryType)`; no single integer is
+assigned per leaf, so the "command" column is the byte-derived field assembly:
+
+| Stream leaf (pattern × verb × dtype × memspace) | form | verb | IsB16 | memspace | byte-evidence |
+|---|---|---|---|---|---|
+| `stream_linear` gather → HBM, f32 | `0x3b` | 0 | 0 | 2 | Linear `Matches`==`0x76`<<52; verb `>>9&7`=0 |
+| `stream_linear_add` scatter-f32-add → HBM | `0x3b` | 6 | 0 | 2 | `StreamOpcode>>9&7`=6; `IsB16>>0xc&1`=0 |
+| `stream_strided` gather → HBM, f32 | `0x3a` | 0 | 0 | 2 | Strided `Matches`==`0x74`<<52 |
+| `stream_strided_add` scatter-f32-add | `0x3a` | 6 | 0 | 2 | form `0x3a`; verb 6 |
+| `stream_indirect` gather → HBM, f32 | `0x39` | 0 | 0 | 2 | Indirect `Matches`==`0x72`<<52 |
+| `stream_indirect` gather → HBM_4B | `0x39` | 0 | 0 | 3 | `OffTileMemoryType>>0x2f&7`=3 |
+| `stream_indirect_add` scatter-f32-add → HBM | `0x39` | 6 | 0 | 2 | verb 6, IsB16 0 |
+| `stream_indirect_add` scatter-bf16-add → HBM | `0x39` | 6 | 1 | 2 | `IsB16>>0xc&1`=1 |
+| `stream_indirect` gather-f32-add → HBM | `0x39` | 2 | 0 | 2 | verb `GATHER_FLOAT_ADD`=2 |
+| `stream_indirect` gather-int-add → HBM | `0x39` | 1 | — | 2 | verb `GATHER_INTEGER_ADD`=1 |
+| `stream_indirect` scatter → SPMEM pool | `0x39` | 4 | 0 | 0 | verb `SCATTER`=4; memspace 0 |
+| `stream_indirect_vreg` gather (TEC-only) | `0x38` | 0 | 0 | 2 | TEC oneof bound `0xb`; form 4th case |
+
+> **NOTE — no silent cap; this is a coverage-honest negative result.** Of the **834**
+> stream leaves, **0** have an individually-byte-dumped per-leaf command integer, because
+> **no such integer exists** — the search for one terminated at the encoder's 11-case
+> `oneof` switch (`cmp $0xa`/`$0xb`) and four orthogonal field accessors. What *is*
+> byte-verified: **3 of 4** form opcodes (`0x3b`/`0x3a`/`0x39` directly from their `Matches`
+> constants; the 4th, IndirectVreg `0x38`, is documented on the
+> [sibling page](../sparsecore/indirect-vreg-stream.md) as TEC-only) and **all four** command
+> fields' shift/mask. Any one leaf's command is therefore *reconstructable* from its
+> `(pattern,verb,dtype,memspace)` name decomposition without a table — but the table itself
+> does not exist to dump. A reimplementer must build the slot by *packing these four fields*,
+> not by looking up a leaf opcode.
+
+> **GOTCHA — `(verb, dtype, memspace)` are independent of the op identity at the slot.** Two
+> distinct intrinsics (`stream_indirect` vs `stream_indirect_add`) differ only by the 3-bit
+> `StreamOpcode` they set; the bf16-vs-f32 split is one bit, not two ops with two opcodes;
+> the HBM-vs-HBM_4B split is the memspace enum, not a third op family. The 834-way ISel
+> roster encodes these *as op identity* (see the [§Stream GOTCHA](#stream-engine-the-dominant-family)
+> above), but they *converge onto* the same four-field slot. The per-leaf "opcode" a
+> reimplementer might expect is an artifact of the MLIR-layer op explosion, not a HW command
+> number.
+
+Deep field semantics, the full encode/decode bit map, and the `StreamOpcode`/`OffTileMemoryType`
+enum rosters live on [Stream Gather/Scatter](../sparsecore/stream-gather-scatter.md); this
+section's contribution is the proof that the per-leaf command gap was a *category error* — the
+command is composed, and the composition is the four fields above.
+
+---
+
 ## What Is Not Enumerated Here
 
 Honest gaps in this catalog:
 
-- **Per-leaf stream→HW opcode** — for all 834 stream ops the class→engine mapping is confirmed and the lowering pass located, but the per-`(pattern,verb,dtype,memspace)` numeric stream-engine command value is not individually byte-dumped. (`INFERRED` for the leaf opcode.)
+- **Per-leaf stream→HW opcode** — *resolved as a negative result* (see [§The Stream Command Is Composed, Not Per-Leaf](#the-stream-command-is-composed-not-per-leaf)): there is **no** 834-entry static per-leaf command table. The numeric slot command the SparseCore stream sequencer consumes is *assembled at lowering time* from four orthogonal `SparseCoreStream` proto bitfields — a 6-bit addressing-**form** opcode plus 3-bit **verb** (`StreamOpcode`), a 1-bit **dtype** select (`GatherScatterAddIsB16`), and a 3-bit **memspace** (`OffTileMemoryType`) — each read by its own confirmed accessor. The `(pattern,verb,dtype,memspace)` choice is not one opcode; it is the *Cartesian assembly* of these fields. The earlier `INFERRED` "per-leaf opcode" framing was wrong: there is nothing per-leaf to byte-dump because the encoder switch is bounded at the 4 forms, not the 834 leaves.
 - **Per-intrinsic LLVM `IntrProperties`** — *recovered* (see [§Per-Intrinsic IntrProperties](#per-intrinsic-intrproperties-llvm-attribute-table)): all 12 fn-attr sets the surface uses are byte-decoded and the per-set census is exact (sums to 1356); the `set = IntrinsicsToAttributesMap[ID−1] >> 9` lookup is deterministic. Only the per-leaf assignment for the 1340 non-sampled IDs is not individually transcribed (each is one halfword load away). The OpInterface presence on the MLIR side (`MemoryEffect` 285, `AliasAnalysis` 546, `AccessGroup` 180, `Bytecode` 188) is the dialect-layer counterpart.
 - **The 890 default-builder ops' exact arity + result `TypeConstraint`** — *arity recovered* (see [§Default-Builder Arity](#default-builder-arity-byte-read-from-the-ods-trait-pack)): the `(#results, #operands)` shape is byte-read from each op's mangled `Op<…OneResult/ZeroResults…OneOperand/NOperands<Lj N>…>` trait pack for 1060 of the 1356 ops, with the full distribution tabulated. The result `TypeConstraint` half is *resolved as a negative result*: there is no per-op `Vreg`/`Mask`/`Scalar`/`Ptr` predicate at the MLIR layer — every result trait is the generic `OneTypedResult<mlir::Type>` and the verifier discharges it through one shared `isCompatibleOuterType` check; the register-class refinement is carried only by the downstream LLVM intrinsic signature, not the ODS verifier.
 - **The scan/sort/unique-engine opcode bit layouts** — mapped to the SparseCore scan/sort/dedup units by name; the per-op HW command bit layout is not decoded (SparseCore-specific compute units, not TensorCore LLO slots).
