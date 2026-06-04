@@ -268,7 +268,7 @@ function RecordMemXferCyclesImpl(label, latency_res, bw_res, hlo, wd, CycleTable
 ### Worked Example — an HBM→VMEM operand input-DMA on v6e Ghostlite
 
 ```text
-TC_freq           = 1750 MHz            (Target+0x90c)
+TC_freq           = 1750 MHz            (Target+0x90c; v6e CONFIRMED, v7x = 1900)
 HbmFullChipBytesPerSecond = 1.638e12 B/s (Target+0x4f0, from chip_parts × stack count)
 CoresPerChip      = 1
 bytes_per_cycle   = 1.638e12 / (1750·1e6) / 1  ≈  936 B/cycle

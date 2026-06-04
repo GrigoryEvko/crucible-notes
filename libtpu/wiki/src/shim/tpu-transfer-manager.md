@@ -44,7 +44,7 @@ Every non-trivial `TpuTransferManager_*` function has the *same* skeleton, and a
 ### Algorithm
 
 ```c
-// canonical body — sub_EABA*  (e.g. GetByteSizeRequirement @ 0xEABA4C0)
+// canonical body — sub_EABA*  (e.g. GetByteSizeRequirement @ 0xeaba4c0)
 function TpuTransferManager_<Method>(<C args...>):
     // 1. marshal every rich C struct arg into a stack C++ object
     Shape         host_shape;  ApiConverter::FromC(&host_shape, c_shape)    // 320-byte xla::Shape
@@ -55,7 +55,7 @@ function TpuTransferManager_<Method>(<C args...>):
         GetUnderlyingDeepseaPlatform::platform =
             deepsea::executor::GetRegisteredDeepseaPlatform()               // one-time
     StatusOr<TransferManager*> mgr =
-        xla::TransferManager::GetForPlatform(platform)                      // 0x1342F180
+        xla::TransferManager::GetForPlatform(platform)                      // 0x1342f180
     if mgr.is_error():                                                      // payload ptr != &dword_0+1
         absl::internal_statusor::ThrowBadStatusOrAccess(mgr)               // never returns on TPU
 

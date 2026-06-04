@@ -167,7 +167,7 @@ Jellyfish and Dragonfish differ only in data, never in C++ type. Both produce th
 | Axis | Jellyfish (v0) | Dragonfish (v1) | Source | Confidence |
 |---|---|---|---|---|
 | TpuVersion enum | kJellyfish = 0 | kDragonfish = 1 | `TpuVersionToString` 0x20b3a480 | CERTAIN |
-| ToString | "jellyfish" | "dragonfish" | rodata pointer table 0x22011BF0 | CERTAIN |
+| ToString | "jellyfish" | "dragonfish" | rodata pointer table 0x22011bf0 | CERTAIN |
 | Codec class | `TpuCodecJellyfish` (named) | `TpuCodecDragonfish` (named) | symtab; `TpuCodec::Create` case 0/1 | CERTAIN |
 | TensorCore / BarnaCore | yes / yes | yes / yes | TpuChipParts (`Core.type` BARNA_CORE) | CERTAIN |
 | SparseCore | no | no | TpuChipParts (no SPARSE_CORE `Core`) | CERTAIN |

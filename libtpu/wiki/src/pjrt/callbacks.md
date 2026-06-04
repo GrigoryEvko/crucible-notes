@@ -15,7 +15,7 @@ For reimplementation, the contract is:
 - **The two callback families are independent.** Send/recv ride `PJRT_ExecuteOptions` and feed `SetUpHostCallbacksForDevice` → `TpuHostTransferManager`; the pre-fatal / slice-builder hooks ride the `callback_extension` and feed process-global `…CallbackState` registries. Neither path touches the other.
 - **The C↔C++ shim shape.** A `PJRT_SendCallbackInfo`'s C function pointer is wrapped by `CSendCallbackToCpp` into `std::function<Status(PjRtTransferMetadata const&, PjRtChunk, size_t, bool)>`; its return value is a `PJRT_Error_Code` (enum) + message that libtpu re-encodes into `absl::Status` at `pjrt_c_api_wrapper_impl.cc:2190`. There are no C++ exceptions across the boundary.
 - **The `PJRT_Chunk` wire struct.** 32 bytes: `{ void* data; size_t size; void(*deleter)(void* data, void* deleter_arg); void* deleter_arg; }`. `pjrt::ConvertToCppChunk` (`0xf8a5280`) copies all 32 bytes and replaces the C deleter with a C++ closure that calls the original C deleter on drop.
-- **The pre-fatal hook ABI.** `callback_extension` (type 14, struct @ `0x224C3B60`, ctor `CreateCallbackExtension` @ `0xe6b91e0`) has two slots: `RegisterCallback(PJRT_Callback_RegisterCallback_Args*)` @ `0xe6b9220` and `InvokeCallback(PJRT_Callback_InvokeCallback_Args*)` @ `0xe6b94c0`. A `callback_type` discriminator (`1`=SliceBuilder, `2`=Prefatal) routes to `xla::SliceBuilderCallbackState` / `xla::PreFatalErrorCallbackState`.
+- **The pre-fatal hook ABI.** `callback_extension` (type 14, struct @ `0x224c3b60`, ctor `CreateCallbackExtension` @ `0xe6b91e0`) has two slots: `RegisterCallback(PJRT_Callback_RegisterCallback_Args*)` @ `0xe6b9220` and `InvokeCallback(PJRT_Callback_InvokeCallback_Args*)` @ `0xe6b94c0`. A `callback_type` discriminator (`1`=SliceBuilder, `2`=Prefatal) routes to `xla::SliceBuilderCallbackState` / `xla::PreFatalErrorCallbackState`.
 
 | | |
 |---|---|
@@ -24,7 +24,7 @@ For reimplementation, the contract is:
 | **Recv C→C++ shim** | `pjrt::CRecvCallbackToCpp(PJRT_RecvCallbackInfo const&)` (drives `xla::CopyToDeviceStream`) |
 | **Chunk struct decode** | `pjrt::ConvertToCppChunk(PJRT_Chunk const&)` @ `0xf8a5280` (32-byte struct) |
 | **CopyToDeviceStream AddChunk** | `pjrt::PJRT_CopyToDeviceStream_AddChunk` @ `0xf86f660` (slot 83) → `xla::(anon)::TpuCopyToDeviceStream::AddChunk` @ `0xf8374e0` |
-| **Callback extension (type 14)** | struct @ `0x224C3B60`, size 40; ctor `pjrt::CreateCallbackExtension` @ `0xe6b91e0` |
+| **Callback extension (type 14)** | struct @ `0x224c3b60`, size 40; ctor `pjrt::CreateCallbackExtension` @ `0xe6b91e0` |
 | **Register entry** | `pjrt::(anon)::PJRT_Callback_RegisterCallback(PJRT_Callback_RegisterCallback_Args*)` @ `0xe6b9220` (Args min=35, current=40) |
 | **Invoke entry** | `pjrt::(anon)::PJRT_Callback_InvokeCallback(PJRT_Callback_InvokeCallback_Args*)` @ `0xe6b94c0` (Args min=33) |
 | **Pre-fatal registry** | `xla::PreFatalErrorCallbackState` — `AddCallback` @ `0xf95dc00`, `InvokeCallbacks` @ `0xf95dc80`, ctor @ `0xf95dbe0` |
@@ -172,7 +172,7 @@ When libtpu detects an unrecoverable condition (a SDC checksum mismatch, a slice
 
 ```text
 extension_start (PJRT_Api +0x08)  ──> walk .next to type == 14
-  callback_extension @ 0x224C3B60  (size 40, built by CreateCallbackExtension @ 0xe6b91e0)
+  callback_extension @ 0x224c3b60  (size 40, built by CreateCallbackExtension @ 0xe6b91e0)
     +0x00  struct_size = 40
     +0x08  type        = 14
     +0x10  next         ──> phase_compile_extension (type 9)

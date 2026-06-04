@@ -75,7 +75,7 @@ LatencyTable::Create(TpuVersion)            @0x1c89fba0
 
 ```c
 function LatencyTable_Create(version):              // sub_1C89FBA0
-    if VLOG(2) enabled:                             // cmp esi,0x2 + VLogSite @0x2236E060
+    if VLOG(2) enabled:                             // cmp esi,0x2 + VLogSite @0x2236e060
         log("Creating latency table for deepsea version: ", version)
     if registry == null:                            // (anon)::registry @0x225799f8
         LogFatal("registry != nullptr")             // latency_table.cc:120
@@ -211,7 +211,7 @@ The cost model produces cycle counts; the scheduler needs seconds. The conversio
 time_s = cycles * trip_count / (TC_freq_MHz * 1e6)   // 1e6 const @0xa2e0208
 ```
 
-`CostModelLatencyEstimator::CyclesPerMicrosecond` @ `0x10ffb3c0` is *not* a constant — it delegates straight to `TensorCoreFrequencyInMegaHertz(target)` (reading the estimator's `Target` ptr at `+0x28`), so `kCyclesPerMicrosecond == TC_freq_MHz`. For the only chip parameters embedded in this build (v7), TC = 1900 MHz. Older codenames read their frequency from per-codename chip configs not embedded here, but the wiring (`Target+0x90c` → `/freq/1e6`) is gen-invariant.
+`CostModelLatencyEstimator::CyclesPerMicrosecond` @ `0x10ffb3c0` is *not* a constant — it delegates straight to `TensorCoreFrequencyInMegaHertz(target)` (reading the estimator's `Target` ptr at `+0x28`), so `kCyclesPerMicrosecond == TC_freq_MHz`. `TensorCoreFrequencyInMegaHertz` (`0x1d615b60`) is a one-instruction `mov 0x90c(%rdi),%eax` field read; the value is selected per active `TpuVersion` from the `chip_parts` blob loaded into `Target+0x90c`. All nine codename `chip_parts` blobs are embedded in this build (see [chip_parts.binarypb Decode](../targets/chip-parts-binarypb.md)), so the per-gen TC clocks are recoverable, not inferred: v6e = 1750 MHz, v7x = 1900 MHz (CONFIRMED against the `chip_parts` `Core[TC].frequency_mhz` field — both are present as 32-bit `.rodata` constants: `0x76c` = 1900 in the v7 chip_parts block, `0x6d6` = 1750 for v6e). The wiring (`Target+0x90c` → `/freq/1e6`) is gen-invariant.
 
 ---
 

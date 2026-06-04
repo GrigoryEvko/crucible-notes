@@ -57,7 +57,7 @@ What this page owns: the **1024 B floor constant**, the **`WritePremappedHbm` pr
 
 ## The Floor Constant
 
-`jf_driver::kHbmMinimumDmaAlignment` is `1024` (`0x400`). It never appears as a named symbol in the stripped binary — it is recovered from three independent, mutually-consistent encodings in the decompile:
+`jf_driver::kHbmMinimumDmaAlignment` is `1024` (`0x400`). Although the binary is not stripped (`nm -C` resolves every method), this constant carries **no** symbol of its own (`nm` finds zero `kHbmMinimumDmaAlignment` entries): it is a compile-time constant that the optimizer folded into the immediates at each use site rather than emitting as a `.rodata` datum. It is therefore recovered from three independent, mutually-consistent encodings in the decompile:
 
 | Encoding | Where it appears | Decompile evidence |
 |---|---|---|

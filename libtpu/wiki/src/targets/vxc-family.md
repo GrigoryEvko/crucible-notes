@@ -181,7 +181,7 @@ The three codenames behind VXC differ in data (chip-parts) and in their *codec* 
 | Axis | Viperfish (v3) | Ghostlite (v4) | 6acc60406 (v5) | Source | Confidence |
 |---|---|---|---|---|---|
 | TpuVersion enum | kViperfish = 3 | kGhostlite = 4 | k6acc60406 = 5 | `TpuVersionToString` 0x20b3a480 | CERTAIN |
-| ToString | "viperfish" | "ghostlite" | "6acc60406" | rel.ro table 0x22011BF0 | CERTAIN |
+| ToString | "viperfish" | "ghostlite" | "6acc60406" | rel.ro table 0x22011bf0 | CERTAIN |
 | External name | "TPU v5" (v5p / v5e) | "TPU v6 lite" (v6e) | "TPU7x" (tpu7x) | `TpuVersionToExternalName` 0x20b3a500 | CERTAIN |
 | Init module | vxc 0x213eed20 | glc 0x213eb9e0 | gfc 0x213e9f60 | symtab | CERTAIN |
 | Codec (case in `TpuCodec::Create` 0x1e835fa0) | `CreateTpuCodecViperfish` (case 3) | `CreateTpuCodecGhostlite` (case 4) | anonymous `sub_1E838380` (case 5) | symtab | CERTAIN (v3/v4); MEDIUM (v5 anon) |

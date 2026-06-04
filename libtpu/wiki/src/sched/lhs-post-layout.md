@@ -1,6 +1,6 @@
 # LHS post_layout Variant
 
-> *All addresses on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314-cp314-manylinux_2_31_x86_64` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`). Reconstructed by static analysis of the stripped ELF; other versions will differ.*
+> *All addresses on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314-cp314-manylinux_2_31_x86_64` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`). Reconstructed by static analysis of the unstripped, full-symbol ELF (`nm -C` resolves every method); other versions will differ.*
 
 ## Abstract
 

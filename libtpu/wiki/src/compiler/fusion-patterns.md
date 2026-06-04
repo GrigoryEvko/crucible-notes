@@ -1,6 +1,6 @@
 # Fusion Patterns
 
-> *All addresses on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314-cp314-manylinux_2_31_x86_64` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`). Other versions will differ. All findings derive from static analysis of the stripped ELF; the original source is closed.*
+> *All addresses on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314-cp314-manylinux_2_31_x86_64` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`). Other versions will differ. All findings derive from static analysis of the unstripped, full-symbol ELF (`nm -C` resolves every method); the original source is closed.*
 
 ## Abstract
 

@@ -54,7 +54,7 @@ The footprint scale, for orientation: **huge** ≳ 25 MB, **large** 5–25 MB, *
 | **zlib** | `zlib_rs` Rust-port symbols @ `0x852F25E`; `deflate`/`inflate`/`crc32` C symbols | small (~0.17 MB) | CERTAIN |
 | **Xbyak** (oneDNN JIT) | `Xbyak` namespace @ `0xB38846D` | trace (~90 KB) | CERTAIN |
 | **tcmalloc** | `tcmalloc::` namespace; custom `google_malloc` ELF section | trace (~55 KB code, allocator-only) | CERTAIN |
-| **farmhash** | `farmhash` family (`farmhashna`/`uo`/`te`/`xo`/`mk`/`cc`) @ `0xFDCE579` | trace (~7 KB) | CERTAIN |
+| **farmhash** | `farmhash` family (`farmhashna`/`uo`/`te`/`xo`/`mk`/`cc`) @ `0xfdce579` | trace (~7 KB) | CERTAIN |
 
 > **NOTE —** the footprint numbers are share of *named symbol bytes*, not segment sizes. They rank libraries correctly relative to one another but should not be read as exact `.text` contributions; a TU-local helper inside Abseil that lost its namespace prefix is counted in the anonymous residue, not against Abseil. Treat the scale buckets, not the parenthetical figures, as the reliable signal.
 
@@ -94,7 +94,7 @@ Three smaller google3 staples round out the core:
 
 - **riegeli** — the record-IO format. Path literal `third_party/riegeli/` at `0x85D7066` (140,341,350) and the `riegeli::` namespace confirm it. Riegeli is the consumer that pulls in Brotli (below) as a block codec.
 - **RE2** — the regex engine. Namespace `re2::` at `0x86679B9` (140,933,561), plus the internal `re2::RegexpFlag` symbol and the `third_party/re2` path. About 18,722 mangled names carry the `re2` fragment (`nm libtpu.so | grep -c re2`), though that count includes generated automaton tables, not just engine code; the demangled `re2::` namespace itself accounts for only 605 names.
-- **farmhash** — the non-cryptographic hash. The full sub-variant family is present (`farmhashna`, `farmhashuo`, `farmhashte`, `farmhashxo`, `farmhashmk`, `farmhashcc`, starting at `0xFDCE579`), which is decisive: a coincidental string would not reproduce all six dispatch variants. Footprint is a handful of functions (~7 KB).
+- **farmhash** — the non-cryptographic hash. The full sub-variant family is present (`farmhashna`, `farmhashuo`, `farmhashte`, `farmhashxo`, `farmhashmk`, `farmhashcc`, starting at `0xfdce579`), which is decisive: a coincidental string would not reproduce all six dispatch variants. Footprint is a handful of functions (~7 KB).
 
 ---
 

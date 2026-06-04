@@ -121,7 +121,7 @@ char *GetResourceName(long r) {
 | 30..45 | `kCustomCollective` | 16 user custom-collective lanes (one shared string) | CONFIRMED |
 | 46 | (unnamed; len 0 — final catch-all) | tail sentinel | MEDIUM |
 
-> **NOTE — ids 28 and 46 are anonymous but valid.** The name-ptr table at `off_2181E148` has no relocation for index 28 (gap at slot `0x2181E1C0`), and id 46 falls through to `&nptr` (the empty string). Both are real resource ids that `GetNumAvailableResources` and `GetResourceHazardType` accept; only the print path leaves them blank. Id 28 is the SparseCore "catch-all" category (the `enum1` arm), id 46 the tail catch-all. A reimplementer must size the resource tables at 47, not 45.
+> **NOTE — ids 28 and 46 are anonymous but valid.** The name-ptr table at `off_2181E148` has no relocation for index 28 (gap at slot `0x2181e1c0`), and id 46 falls through to `&nptr` (the empty string). Both are real resource ids that `GetNumAvailableResources` and `GetResourceHazardType` accept; only the print path leaves them blank. Id 28 is the SparseCore "catch-all" category (the `enum1` arm), id 46 the tail catch-all. A reimplementer must size the resource tables at 47, not 45.
 
 > **GOTCHA — the kIci name order is not the cost-model slot order.** `GetResourceName` orders the directions `Y+, Y−, X+, X−, Z+, Z−` (ids 14..19). The cost-model `IciResource` slot labels are ordered `X, X, Y, Y, Z, Z`. The two orderings are independent naming conventions; the runtime relation is purely `id = slot + 1`, so the *physical link* a resource id denotes is whichever cost-model slot the per-collective cost was deposited into upstream, not what the name string implies. Do not assume id 14 == cost slot for X.
 

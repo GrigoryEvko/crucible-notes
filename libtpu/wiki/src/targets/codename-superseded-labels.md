@@ -14,14 +14,14 @@ The reimplementation payoff is direct: a clone that adopts any superseded label 
 |---|---|
 | **Authoritative `TpuVersion` count** | 6 (enum `0..5`), bounded in `TpuVersionToString` @ `0x20b3a480` (`a1 >= 6` → fatal) |
 | **Authoritative HAL family count** | 3 — JXC, PXC, VXC factory classes |
-| **Codename source-of-truth** | `TpuVersionToString` rel.ro table @ `0x22011BF0` (6 relocations) |
+| **Codename source-of-truth** | `TpuVersionToString` rel.ro table @ `0x22011bf0` (6 relocations) |
 | **Marketing names in binary** | none (`Trillium`/`Ironwood`/`Ghostfish` = 0 occurrences) |
 
 ---
 
 ## Count Corrections
 
-> **CORRECTION (CNT-01) — "5 TpuVersions" → 6.** An early pass enumerated five generations. The binary defines **six**: `TpuVersionToString` (`0x20b3a480`) bounds-checks `a1 >= 6` before indexing a six-entry pointer table, and the `.data.rel.ro` table at `0x22011BF0` has exactly six `R_X86_64_RELATIVE` relocations naming `jellyfish` (`0x863f064`), `dragonfish` (`0x863f392`), `pufferfish` (`0x863f1c4`), `viperfish` (`0x863f172`), `ghostlite` (`0x86864e0`), `6acc60406` (`0x863f0cf`). The most-often-missed value is `viperfish` (v3): early passes folded it into a neighbor. `TpuVersionFromProto` (`0x20b3a8c0`) likewise has cases `1..6` mapping to internal `0..5`.
+> **CORRECTION (CNT-01) — "5 TpuVersions" → 6.** An early pass enumerated five generations. The binary defines **six**: `TpuVersionToString` (`0x20b3a480`) bounds-checks `a1 >= 6` before indexing a six-entry pointer table, and the `.data.rel.ro` table at `0x22011bf0` has exactly six `R_X86_64_RELATIVE` relocations naming `jellyfish` (`0x863f064`), `dragonfish` (`0x863f392`), `pufferfish` (`0x863f1c4`), `viperfish` (`0x863f172`), `ghostlite` (`0x86864e0`), `6acc60406` (`0x863f0cf`). The most-often-missed value is `viperfish` (v3): early passes folded it into a neighbor. `TpuVersionFromProto` (`0x20b3a8c0`) likewise has cases `1..6` mapping to internal `0..5`.
 
 > **CORRECTION (CNT-02) — "2 HAL families" → 3.** An early pass reported two HAL factory classes. There are **three** distinct classes, confirmed by three separate typeinfo records: `tpu::(anon)::TpuHalJxcHardwareFactory`, `tpu::(anon)::TpuHalPxcHardwareFactory`, and `tpu::TpuHalVxcHardwareFactory`. The six generations route across them as JXC (Jellyfish, Dragonfish), PXC (Pufferfish), and VXC (Viperfish, Ghostlite, 6acc60406). The two newest generations share the **VXC** factory: the `glc` init module's CHECK string at `0x94a4a6f` reads `make_unique<TpuHalVxcHardwareFactory>(kGhostlite)`, and the `gfc` init module's at `0x94a3ef5` reads `make_unique<TpuHalVxcHardwareFactory>(k6acc60406)`. So `glc`/`gfc` are VXC-family sub-cores, not a fourth factory.
 
@@ -79,7 +79,7 @@ Two facts that an earlier pass left as cross-references rather than byte-level e
 
 | Stale label | Where it came from | Authoritative value | Evidence | Confidence |
 |---|---|---|---|---|
-| "5 TpuVersions" | early enumeration | 6 (`0..5`) | `TpuVersionToString` bound `>= 6`; 6 relocs @ `0x22011BF0` | CERTAIN |
+| "5 TpuVersions" | early enumeration | 6 (`0..5`) | `TpuVersionToString` bound `>= 6`; 6 relocs @ `0x22011bf0` | CERTAIN |
 | "2 HAL families" | early enumeration | 3 (JXC / PXC / VXC) | three factory typeinfos | CERTAIN |
 | "Ghostlite = v5p" | off-by-one Cloud name | `v6e` / "TPU v6 lite" | `TpuVersionToExternalName` case 4 | CERTAIN |
 | "6acc60406 = Trillium / v6e" | off-by-one marketing name | "TPU7x" / `tpu7x` | `TpuVersionToExternalName` case 5 | CERTAIN |

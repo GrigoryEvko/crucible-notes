@@ -25,7 +25,7 @@ For reimplementation, the contract is:
 | **Singleton storage** | `GetTpuPjrtApi()::pjrt_api @ 0x227BA840`, `.lbss` (NOBITS), 1120 B = 140 × 8 |
 | **Guard count** | 17 `__cxa_guard` blocks (16 extension builders + 1 `CreatePjrtApi`) |
 | **Guard implementation** | libtpu's own libc++abi `__cxa_guard_acquire/release/abort @ 0x213e9ac0 / 0x213e9be0 / 0x213e9c20` |
-| **Chain head passed to slot 1** | `&host_memory_allocator_extension @ 0x224C3F68` |
+| **Chain head passed to slot 1** | `&host_memory_allocator_extension @ 0x224c3f68` |
 | **TPU-injected slots** | 8, 9, 15, 87, 103 (Plugin_Initialize, Plugin_Attributes, Client_Create, TopologyDescription_Create, ExecuteContext_Create) |
 | **C-API version** | v0.103 — version qword `0x6700000000` → `{major=0, minor=0x67=103}` |
 | **Confidence** | CONFIRMED (byte-anchored vs decompile) unless a row or callout says otherwise |
@@ -132,7 +132,7 @@ The 16 extension builders and their exact construction order, `next`-linking, an
 
 > **QUIRK —** the table constructor `CreatePjrtApi` is gated by the *same kind* of guard as the 16 extension nodes — it is the 17th `__cxa_guard` block, sharing the `pjrt_api` guard byte, not a separate mechanism. So "build the extensions" and "build the table" are seventeen peers in one function, not two phases. A reimplementer who builds the table eagerly (at `dlopen`, or outside a guard) loses the lazy-on-first-call and concurrent-serialization semantics the framework relies on.
 
-> **GOTCHA —** the guard variables are libtpu's **own** libc++abi `__cxa_guard_acquire/release/abort @ 0x213e9ac0 / 0x213e9be0 / 0x213e9c20`, not glibc's. They are 17 distinct guard bytes in `.bss` (e.g. the `raw_buffer_extension` guard `@ 0x224C39E0`, with its node static at `0x224C3990`). Concurrent first-callers serialize through Itanium-ABI guard semantics: the loser blocks until the winner releases, then sees the satisfied byte and skips. After the one-shot the bytes stay set for process lifetime and readers take no lock.
+> **GOTCHA —** the guard variables are libtpu's **own** libc++abi `__cxa_guard_acquire/release/abort @ 0x213e9ac0 / 0x213e9be0 / 0x213e9c20`, not glibc's. They are 17 distinct guard bytes in `.bss` (e.g. the `raw_buffer_extension` guard `@ 0x224c39e0`, with its node static at `0x224c3990`). Concurrent first-callers serialize through Itanium-ABI guard semantics: the loser blocks until the winner releases, then sees the satisfied byte and skips. After the one-shot the bytes stay set for process lifetime and readers take no lock.
 
 ### Function Map
 
@@ -204,7 +204,7 @@ The `CreatePjrtApi` argument-to-slot mapping is byte-confirmed: in `GetTpuPjrtAp
 | 87 | `PJRT_TopologyDescription_Create` | `tpu_plugin::PJRT_TopologyDescription_Create` | `0xe6a9b20` | `pjrt::tpu_plugin` (TPU) | CONFIRMED |
 | 103 | `PJRT_ExecuteContext_Create` | `tpu_plugin::PJRT_ExecuteContext_Create` | `0xe6a9a80` | `pjrt::tpu_plugin` (TPU) | CONFIRMED |
 
-Slot 1 (`extension_start`) is also caller-supplied — argument `a6`, the chain head `&host_memory_allocator_extension @ 0x224C3F68` — but it is a data pointer, not a `tpu_plugin` function. The remaining 130 function-pointer slots are `lea`-loaded constants in `CreatePjrtApi`'s body: compile-fixed `pjrt::PJRT_*` wrappers (e.g. `a1[5]=PJRT_Error_Destroy`, `a1[16]=PJRT_Client_Destroy`), shared with the generic XLA PJRT layer and not TPU-specialized.
+Slot 1 (`extension_start`) is also caller-supplied — argument `a6`, the chain head `&host_memory_allocator_extension @ 0x224c3f68` — but it is a data pointer, not a `tpu_plugin` function. The remaining 130 function-pointer slots are `lea`-loaded constants in `CreatePjrtApi`'s body: compile-fixed `pjrt::PJRT_*` wrappers (e.g. `a1[5]=PJRT_Error_Destroy`, `a1[16]=PJRT_Client_Destroy`), shared with the generic XLA PJRT layer and not TPU-specialized.
 
 > **NOTE —** slot 9 is the deliberate odd one out. Although it is an *injected* argument (`a7`), the value `CreatePjrtApi`'s caller passes is `pjrt::PJRT_Plugin_Attributes_Xla @ 0xf85f080` — the generic XLA attributes implementation (it advertises `xla_version`, `supported_devices`, serialization metadata), **not** a `tpu_plugin` override. So of the five caller-supplied slots, only four (8/15/87/103) are genuinely TPU-specific. A reimplementer must inject the TPU `Client_Create`/`Plugin_Initialize`/`TopologyDescription_Create`/`ExecuteContext_Create` but may reuse the stock XLA attributes function.
 

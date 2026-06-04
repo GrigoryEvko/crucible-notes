@@ -26,7 +26,7 @@ For reimplementation, the contract is:
 | **Cloud-API parser** (string→`TpuType`) | `libtpu::(anon)::AcceleratorTypeToTpuVersionEnum` @ `0x204cf620` |
 | **Generation gate** | `libtpu::IsAtLeastTPU7x` @ `0x204cfda0` (resolves type, tests `TpuType >= 8`) |
 | **Human-readable form** | `tpu::TpuVersionAndVariantToHumanReadableName` @ `0x20b3b040` (same arms as forward map) |
-| **Codename source-of-truth** | `TpuVersionToString` @ `0x20b3a480`, rel.ro table @ `0x22011BF0` (indices 0..5) |
+| **Codename source-of-truth** | `TpuVersionToString` @ `0x20b3a480`, rel.ro table @ `0x22011bf0` (indices 0..5) |
 | **Marketing names in binary** | none — `Trillium`=0, `Ironwood`=0, `Ghostfish`=0 occurrences |
 
 ---
@@ -46,7 +46,7 @@ The complete cross-walk, one row per generation. The four axes are kept separate
 
 > **GOTCHA —** the Cloud name `v5p` belongs to **Viperfish (`TpuVersion` 3)**, and so does `v5e`: the parser maps **both** `v5p`→TpuType 6 and `v5e`/`v5lite`→TpuType 5, and both share Viperfish's display name `"TPU v5"` / `"TPU v5 lite"` (string `"TPU v5p"` @ `0x85c9e34`). The next generation, **Ghostlite (`TpuVersion` 4)**, is `v6e`/`v6ea`→TpuType 7. Sliding `v5p` up to Ghostlite — or sliding `v6e` down to Viperfish — is the single most common naming error; see [Superseded-Label Correction List](codename-superseded-labels.md). Canonically: **Viperfish = v5p AND v5e; Ghostlite = v6e (= marketing "Trillium"); 6acc60406 = tpu7x.** No binary string ties `6acc60406` to `v6e` or to "Trillium".
 
-> **CORRECTION (MKT-02) — resolving the Viperfish/Ghostlite Cloud-name conflict.** Two sibling Part-IV families disagree on this axis, and this page (being the authority) governs. `per-codename-hw-constants.md` labels **Viperfish = v5p/v5e** and **Ghostlite = v6e** — *correct*, and consistent with the binding chain below. Some SparseCore pages instead label **Viperfish = v5e** and **Ghostlite = v5p** (a one-generation slide) — *wrong*. The binary settles it without ambiguity: the `0x22011BF0` slot table fixes `viperfish`=`TpuVersion` 3 and `ghostlite`=4; `TpuVersionToExternalName` (`0x20b3a500`) gives 3→`"TPU v5"` and 4→`"TPU v6 lite"`; and the parser (`0x204cf620`) accepts `v5p`/`v5e`/`v5lite` into the v5 (TpuType 5/6) band and `v6e`/`v6ea` into the v6 band (TpuType 7). `v5p` is therefore a *Viperfish* Cloud name and `v6e` is a *Ghostlite* Cloud name; neither belongs to the other. (The marketing name "Trillium" attaches to Ghostlite/`v6e`, not to `6acc60406` — see [Marketing Names Are External-Only](#marketing-names-are-external-only).)
+> **CORRECTION (MKT-02) — resolving the Viperfish/Ghostlite Cloud-name conflict.** Two sibling Part-IV families disagree on this axis, and this page (being the authority) governs. `per-codename-hw-constants.md` labels **Viperfish = v5p/v5e** and **Ghostlite = v6e** — *correct*, and consistent with the binding chain below. Some SparseCore pages instead label **Viperfish = v5e** and **Ghostlite = v5p** (a one-generation slide) — *wrong*. The binary settles it without ambiguity: the `0x22011bf0` slot table fixes `viperfish`=`TpuVersion` 3 and `ghostlite`=4; `TpuVersionToExternalName` (`0x20b3a500`) gives 3→`"TPU v5"` and 4→`"TPU v6 lite"`; and the parser (`0x204cf620`) accepts `v5p`/`v5e`/`v5lite` into the v5 (TpuType 5/6) band and `v6e`/`v6ea` into the v6 band (TpuType 7). `v5p` is therefore a *Viperfish* Cloud name and `v6e` is a *Ghostlite* Cloud name; neither belongs to the other. (The marketing name "Trillium" attaches to Ghostlite/`v6e`, not to `6acc60406` — see [Marketing Names Are External-Only](#marketing-names-are-external-only).)
 
 ---
 
@@ -91,10 +91,10 @@ v7 cluster @0x84c7968:
   TPU v7x|tpu7x|TPU7x|pwr6x|...
 ```
 
-The codename ↔ `TpuVersion` binding is not an inference: `TpuVersionToString` (`0x20b3a480`) indexes the `.data.rel.ro` pointer table at `0x22011BF0` (after a `a1 >= 6` fatal-bounds check, proving exactly six entries), and every slot is materialized at link time by an `R_X86_64_RELATIVE` relocation whose addend points at the codename string:
+The codename ↔ `TpuVersion` binding is not an inference: `TpuVersionToString` (`0x20b3a480`) indexes the `.data.rel.ro` pointer table at `0x22011bf0` (after a `a1 >= 6` fatal-bounds check, proving exactly six entries), and every slot is materialized at link time by an `R_X86_64_RELATIVE` relocation whose addend points at the codename string:
 
 ```text
-0x22011BF0 + 8*v  ->  codename string (RELA addend)
+0x22011bf0 + 8*v  ->  codename string (RELA addend)
   [0]  0x863f064  "jellyfish"
   [1]  0x863f392  "dragonfish"
   [2]  0x863f1c4  "pufferfish"
@@ -111,7 +111,7 @@ The codename ↔ `TpuVersion` binding is not an inference: `TpuVersionToString` 
 
 `AcceleratorTypeToTpuVersionEnum` is the reverse direction: it takes a user-supplied accelerator-type string (the Cloud-TPU `accelerator_type`, e.g. `v6e`, `v5p`, `tpu7x`) and resolves it to a **public TpuType** integer (1-based, 1..8 — *not* the internal `TpuVersion`). `IsAtLeastTPU7x` wraps it to gate TPU7x-and-later code paths.
 
-> **QUIRK —** the parser writes the **public TpuType** axis (`v2`→1 … `tpu7x`→8), which is *not* the internal `TpuVersion` (`jellyfish`=0 … `6acc60406`=5) the display switch consumes. The two axes differ in both base (1- vs 0-based) and granularity: a single `TpuVersion` (e.g. Viperfish=3) fans out to *two* TpuTypes (`v5p`→6 and `v5e`/`v5lite`→5). Never feed a TpuType into `TpuVersionToExternalName`, and never assume the parser's integer indexes the codename table at `0x22011BF0`.
+> **QUIRK —** the parser writes the **public TpuType** axis (`v2`→1 … `tpu7x`→8), which is *not* the internal `TpuVersion` (`jellyfish`=0 … `6acc60406`=5) the display switch consumes. The two axes differ in both base (1- vs 0-based) and granularity: a single `TpuVersion` (e.g. Viperfish=3) fans out to *two* TpuTypes (`v5p`→6 and `v5e`/`v5lite`→5). Never feed a TpuType into `TpuVersionToExternalName`, and never assume the parser's integer indexes the codename table at `0x22011bf0`.
 
 ### Algorithm
 

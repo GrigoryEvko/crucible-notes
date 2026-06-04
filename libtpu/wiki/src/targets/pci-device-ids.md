@@ -204,7 +204,7 @@ PCI config (VID 0x1ae0, hdrDID, chipDID, rev)
        device-type → codename → TpuVersion (table above)
 ```
 
-The codename → `TpuVersion` direction is fixed by the `TpuVersionToString` rel.ro pointer table at `0x22011BF0` (six `R_X86_64_RELATIVE` relocations naming `jellyfish`…`6acc60406` in enum order); see [Codename Matrix](tpu-version-codename-matrix.md). The chip-DID → codename binding is what this page's DID table supplies.
+The codename → `TpuVersion` direction is fixed by the `TpuVersionToString` rel.ro pointer table at `0x22011bf0` (six `R_X86_64_RELATIVE` relocations naming `jellyfish`…`6acc60406` in enum order); see [Codename Matrix](tpu-version-codename-matrix.md). The chip-DID → codename binding is what this page's DID table supplies.
 
 ---
 

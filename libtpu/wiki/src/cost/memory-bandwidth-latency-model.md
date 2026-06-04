@@ -133,7 +133,7 @@ function DefaultHbmInitLatency(MemUnit mu, WindowDescription wd, Target t):  // 
     return init_ns * tc_ghz                                           // ns · GHz = cycles
 ```
 
-The conversion is exactly `ns · GHz`: dividing `TC_MHz` by `1000.0` yields GHz, and `nanoseconds · gigahertz` is dimensionless cycles. The `/1000.0` divisor was confirmed at `.rodata 0xa2e0430 = 1000.0`. For a non-VMEM destination on v6e (`InitialDmaLatencyInNs = 1200 ns`, illustratively `TC ≈ 1900 MHz`): `1200 · 1.9 = 2280` cycles deposited once into the latency lane. (The 1200 ns is byte-exact; the 1900 MHz is illustrative — the TC frequency is a chip-parts field, not a `.rodata` constant.)
+The conversion is exactly `ns · GHz`: dividing `TC_MHz` by `1000.0` yields GHz, and `nanoseconds · gigahertz` is dimensionless cycles. The `/1000.0` divisor was confirmed at `.rodata 0xa2e0430 = 1000.0`. For a non-VMEM destination on v6e (`InitialDmaLatencyInNs = 1200 ns`, Ghostlite TC = `1750 MHz`): `1200 · 1.75 = 2100` cycles deposited once into the latency lane. (The 1200 ns is byte-exact; the TC frequency is not a `.rodata` constant but a per-codename `chip_parts` field — `Target+0x90c` — whose value is itself recoverable: v6e = 1750 MHz, v7x = 1900 MHz, both CONFIRMED against the `kDeviceTypeInfo` `tensorcore_clk_khz` table (`+0x50`, ×1000 → Hz) and the per-codename `chip_parts` `Core[TC].frequency_mhz` row.)
 
 > **GOTCHA —** the `MemorySpace` argument to `InitialDmaLatencyInNs` here is **not** the literal tier enum — it is the operand's *element-type* field re-extracted from the shape pointer (`(WORD[shape+0xb] >> 2) & 0x1f`). For the per-tier latency this is benign because every override either ignores the argument (JF) or branches on a small set of values, but a reimplementation that passes the tier enum where the binary passes the element type will diverge on any future override that actually reads it.
 
@@ -204,7 +204,7 @@ The geometry is `bytes_per_cycle = FullChipBytesPerSecond / (TC_MHz · 1e6) / Co
 
 | Source | Address | Meaning | Confidence |
 |---|---|---|---|
-| `TensorCoreFrequencyInMegaHertz` | `0x1d615b60` | TC clock (MHz); `Target+0x90C` `uint` field, populated from chip parts (UNVERIFIED: 1900) | MEDIUM |
+| `TensorCoreFrequencyInMegaHertz` | `0x1d615b60` | TC clock (MHz); pure `mov 0x90c(%rdi),%eax` read of the `Target+0x90C` `int32` field, populated from chip parts (per-codename value CONFIRMED: v6e 1750, v7x 1900) | CERTAIN |
 | `HbmFullChipBytesPerSecond` | `0x1d6172a0` | `Target+0x4f0` field (full-chip HBM B/s) | CERTAIN |
 | `CmemFullChipBytesPerSecond` | `0x1d6172c0` | full-chip CMEM B/s (kCmem path) | CERTAIN |
 | `CoresPerChip` | `0x1d615b40` | per-`TpuCoreType` core count from topology | CERTAIN |

@@ -73,7 +73,7 @@ __int64 tpu::TpuCoreVxcDriverImpl::SetBarnaCoreRowLength(tpu::TpuCoreVxcDriverIm
 | `SetBarnaCoreHbmMuxBfifoModeTimer` | `0x1d118d20` | 199 | `kUnimplemented` |
 | `GetBarnaCoreLastIssuedInstructionTag` | `0x1d118d40` | 204 | `kUnimplemented` |
 
-The sequential source-line range (146 → 204, monotone with `.text` address) shows these are not scattered ad-hoc stubs but a *contiguous block of deliberate "this engine is gone" stubs* written in one place in the Viperfish driver source — the runtime-side fingerprint of the retirement. (Confirmed: `nm -C` finds exactly twelve `TpuCoreVxcDriverImpl::*BarnaCore*` symbols at `0x1d118be0`–`0x1d118d40`, matching the twelve on `TpuCoreJxcDriverImpl` and `TpuCorePxcDriverImpl`.)
+The sequential source-line range (146 → 204, monotone with `.text` address) shows these are not scattered ad-hoc stubs but a *contiguous block of deliberate "this engine is gone" stubs* written in one place in the Viperfish driver source — the runtime-side fingerprint of the retirement. (Confirmed: `nm -C` finds exactly twelve `TpuCoreVxcDriverImpl::*BarnaCore*` symbols at `0x1d118be0`–`0x1d118d40`, matching the twelve on `TpuCorePxcDriverImpl`. `TpuCoreJxcDriverImpl` carries **13** `*BarnaCore*` symbols — the same twelve method names plus a second `SetBarnaCoreAddressHandlerProgram` overload at a distinct address, so it is twelve distinct method names with one duplicate base name, not eleven.)
 
 ### Contrast — the live Jellyfish body
 

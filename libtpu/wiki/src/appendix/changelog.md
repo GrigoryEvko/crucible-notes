@@ -27,7 +27,8 @@ There is one release under reconstruction. Every fact below was re-confirmed aga
 | --- | --- | --- |
 | Wheel | `libtpu-0.0.40-cp314-cp314-manylinux_2_31_x86_64` | `.dist-info/METADATA` |
 | Package / Version | `libtpu` / `0.0.40` | `METADATA`: `Name: libtpu`, `Version: 0.0.40` |
-| Runtime version | 0.103 | wiki version-pin convention only — **statically unverifiable** in the binary (no `0.103` string in `.rodata`; the ABI entry points `GetPjrtApi` + `GetLibtpuSdkApi` encode no version). Pin to the build-id, not this number. |
+| Runtime / wheel version | 0.103 | wiki version-pin convention only — **statically unverifiable** as a *runtime/wheel* version (no `0.103` string in `.rodata`; the exported symbols `GetPjrtApi` + `GetLibtpuSdkApi` are versioned `@@VERS_1.0`, not 0.103). Pin to the build-id, not this number. *Distinct from* the PJRT C-API minor below. |
+| PJRT C-API version | `{major=0, minor=103}` | **binary fact** — `CreatePjrtApi @ 0xf874160` writes `movabs $0x6700000000` into `PJRT_Api+0x20` (qword `0x6700000000`, high 32 bits `0x67=103`). Confirmed; do **not** conflate with the unverifiable runtime "0.103" above. |
 | Build label | `libtpu_lts_20260413_b_RC00` | house version-pin string (LTS build of 2026-04-13) |
 | BuildID (md5) | `89edbbe81c5b328a958fe628a9f2207d` | `readelf -n` → `.note.gnu.build-id` |
 | Binary | `libtpu/libtpu.so` | `extracted/libtpu-0.0.40-cp314-…/libtpu/libtpu.so` |
@@ -38,7 +39,7 @@ There is one release under reconstruction. Every fact below was re-confirmed aga
 
 > **NOTE (PIN) —** the build-id is the canonical anchor. If `readelf -n` on your local `libtpu.so` reports a different value than `89edbbe81c5b328a958fe628a9f2207d`, you are not looking at the binary this wiki documents, and every address on every page should be treated as un-verifiable for your copy. Pin first; read second.
 
-> **GOTCHA (VER) —** the literal string `0.103` is **not** a direct substring in the binary's `.rodata` (`strings | grep 0.103` returns nothing), and there is no exported `libtpu_version` symbol either — `.rodata` carries only the bare token `libtpu_version`, and the binary's dynamic ABI entry points (`GetPjrtApi` @ `0xe6a83a0`, `GetLibtpuSdkApi`) encode no version. So `0.103` is **not** statically verifiable from this binary: it is a wiki version-pin convention paired with the wheel's `0.0.40`, not a value the binary itself asserts. The canonical anchor is the build-id; do not present `0.103` as a binary fact.
+> **GOTCHA (VER) —** disambiguate two distinct "0.103" notions. (1) The *runtime/wheel* `0.103` is **not** a binary fact: the literal string `0.103` is not a substring of `.rodata` (`strings | grep 0.103` returns nothing), there is no exported `libtpu_version` symbol (`.rodata` carries only the bare token `libtpu_version`), and the exported entry points (`GetPjrtApi` @ `0xe6a83a0`, `GetLibtpuSdkApi` @ `0x109028c0`) are versioned `@@VERS_1.0`, not 0.103. This `0.103` is a wiki version-pin convention paired with the wheel's `0.0.40`; pin to the build-id instead. (2) The *PJRT C-API* `minor=103` **is** a binary fact — `pjrt::CreatePjrtApi @ 0xf874160` executes `movabs $0x6700000000,%r9; mov %r9,0x20(%rax)`, writing the `PJRT_Api_Version` qword `0x6700000000` (`{major=0, minor=0x67=103}`) into `PJRT_Api+0x20`. Do not collapse the two: the unverifiable runtime "0.103" must not be presented as a binary fact, but the PJRT C-API `minor=103` is correctly CONFIRMED on every PJRT page.
 
 ---
 
@@ -79,7 +80,7 @@ These are the headline self-reversals — harvested from the real tagged `CORREC
 
 | Tag | What was overturned | Corrected finding | Owning page | Confidence |
 | --- | --- | --- | --- | --- |
-| **ZSTD-01** | A "trailing zstd blob at `0x20F99BEF`, ~4.1 MB, dictionary-encoded, decoding to per-codename hardware constants." | No blob exists. The offset is inside `.text`, not past EOF; the bytes are a `mov` immediate, not a zstd frame; no dictionary, no payload. Every task gated on "decode the blob" is closed *no blob exists*. | [forensics/trailing-zstd-blob.md](../forensics/trailing-zstd-blob.md) | CERTAIN |
+| **ZSTD-01** | A "trailing zstd blob at `0x20f99bef`, ~4.1 MB, dictionary-encoded, decoding to per-codename hardware constants." | No blob exists. The offset is inside `.text`, not past EOF; the bytes are a `mov` immediate, not a zstd frame; no dictionary, no payload. Every task gated on "decode the blob" is closed *no blob exists*. | [forensics/trailing-zstd-blob.md](../forensics/trailing-zstd-blob.md) | CERTAIN |
 | **GLOSS-1** | `walrus` listed among the binary's IR/compiler terms. | `walrus` is **absent**. Case-insensitive search of both name and string tables returns nothing; retained only as a flagged absence so later pages do not treat it as binary-grounded. | [glossary.md](../glossary.md) | CERTAIN |
 | **SYM-NS-1** | RE2 counted at ≈19,463 functions (a substring metric mistaken for ownership). | RE2's owned function surface is **226** functions (496 owner names); the ≈19k is `re2`-substring participation across all names — a different, non-comparable question. | [appendix/symbol-namespace-index.md](symbol-namespace-index.md) | HIGH |
 | **SYM-NS-2** | absl ≈271,942 and Eigen ≈48,153 (figures that do not reproduce). | By the name sidecar: absl **owns 27,777** functions (participates in ~117k symbols); Eigen **owns 10,419**. Participation ≠ ownership; name the surface before quoting a number. | [appendix/symbol-namespace-index.md](symbol-namespace-index.md) | HIGH |
