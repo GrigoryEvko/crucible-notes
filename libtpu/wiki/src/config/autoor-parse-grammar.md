@@ -45,7 +45,7 @@ XLA_FLAGS=--xla_tpu_<knob>=<value>
   └─ absl flag registry parses the raw string into the flag's STORED type
        (the flag is registered as AutoOr<bool>; absl invokes
         AutoOr<bool>::ParseFlag at flag-SET time — §3's grammar runs here first)
-  └─ TpuCompEnvReflection::SetFieldFromFlagString @ 0x1d73fcc0
+  └─ xla::jellyfish::SetFieldFromFlagString @ 0x1d73fcc0   (free function)
      / TpuCompEnvReflection::ReadFlag @ 0x1d74af60     ── bridge flag → TCE env
        ├─ ReadFlag dispatches on CommandLineFlag::*0x38 (the flag's TypeId)
        │    ├─ ReadFlagImpl<T>      ── non-AutoOr wrapper types (plain bool/float/…)
@@ -116,7 +116,7 @@ Each matched arm does exactly two things on success: call the type's `ParseFlag`
 | `ReadAutoOr<30>` | `0x1d74ca00` | from-current-value mirror of `<30>` | HIGH |
 | `ReadAutoOr<25>` | `0x1d785f00` | from-current-value mirror of `<25>` | HIGH |
 | `TpuCompEnvReflection::ReadFlag` | `0x1d74af60` | dispatch on `CommandLineFlag::*0x38` | HIGH |
-| `TpuCompEnvReflection::SetFieldFromFlagString` | `0x1d73fcc0` | string→TCE bridge | HIGH |
+| `xla::jellyfish::SetFieldFromFlagString` | `0x1d73fcc0` | string→TCE bridge (free function) | HIGH |
 | `NormalizeFieldType<AutoOr<T>>` | per-type | folds `AutoOr<T>` into the 20-alt variant | HIGH |
 
 ---
@@ -233,7 +233,7 @@ The consumer's polarity test ([autoproto-autoor-resolution.md](autoproto-autoor-
 
 ### Purpose
 
-The 11 enum arms accept a symbolic value name (case-insensitive) or a bare integer that is a valid enum number. The parser resolves the name through the proto2 `EnumDescriptor`, with lower-case and upper-case retries, before falling back to a numeric parse — and emits a descriptor-driven error listing every valid name on failure.
+The 10 enum arms accept a symbolic value name (case-insensitive) or a bare integer that is a valid enum number. The parser resolves the name through the proto2 `EnumDescriptor`, with lower-case and upper-case retries, before falling back to a numeric parse — and emits a descriptor-driven error listing every valid name on failure.
 
 ### Algorithm
 
@@ -265,11 +265,11 @@ function proto2::internal::AbslParseFlagImpl(value, int& out, EnumDescriptor& de
     return false
 ```
 
-So an enum knob accepts: the value name in any case (`SCAVENGE_NONE`, `scavenge_none`, `Scavenge_None` all resolve via the lower/upper retry); or a bare integer *only if* it is a valid enum number (`FindValueByNumber` gates it — an out-of-range integer is rejected even though it parses numerically). On failure the error enumerates every legal name, joined by `", "`.
+So an enum knob accepts: the value name in any case (the as-written form, plus a lower-case and an upper-case retry against the `EnumDescriptor`); or a bare integer *only if* it is a valid enum number (`FindValueByNumber` gates it — an out-of-range integer is rejected even though it parses numerically). On failure the error enumerates every legal name, joined by `", "`.
 
 ### Enum arm map
 
-The 11 enum `ParseFlag` instances (each → its `*_descriptor()` then the shared `AbslParseFlagImpl`):
+The 10 enum `ParseFlag` instances (each → its `*_descriptor()` then the shared `AbslParseFlagImpl`):
 
 | Enum type | `ParseFlag` | Dispatcher |
 |---|---|---|
@@ -284,7 +284,7 @@ The 11 enum `ParseFlag` instances (each → its `*_descriptor()` then the shared
 | `SkipConfigTypeProto_Value` | `0x1d7eccc0` | `<25>` |
 | `BufferAssignmentAlgorithmProto_Value` | `0x1d74a900` | `<30>` (prefix) |
 
-> **NOTE —** one further enum arm routes through the same `AbslParseFlagImpl` engine via the dispatcher but was not individually located in the decompile (the table above lists 10 named instances; the raw census counts 11). The eleventh follows the identical body — descriptor lookup + lower/upper retry + numeric fallback (LOW on its address, HIGH on its grammar being identical).
+> **NOTE —** the symbol census shows exactly 10 `AutoOr<EnumT_Value>::ParseFlag` instances, all 10 tabulated above. Nine route through `<25>`; the tenth (`BufferAssignmentAlgorithmProto_Value`) is one of the five `<30>` prefix arms. Every one shares the body — descriptor lookup + lower/upper retry + numeric fallback.
 
 ---
 
@@ -292,7 +292,7 @@ The 11 enum `ParseFlag` instances (each → its `*_descriptor()` then the shared
 
 ### Purpose
 
-The 12 message arms parse a structured proto-text value into a default sub-message instance. The grammar above the `"auto"` sentinel is a key=value reader, not a scalar primitive; the parsed sub-message is held in the variant alongside a has-byte.
+The message arms parse a structured proto-text value into a default sub-message instance. There are 13 message-typed `ParseFlag` instances; 12 are reached by the `<30>`/`<25>` dispatchers (the 13th, `CostModelLoggingOptions` @ `0x12fcfd00`, has a `ParseFlag` instance but is not dispatched by either selector). The grammar above the `"auto"` sentinel is a key=value reader, not a scalar primitive; the parsed sub-message is held in the variant alongside a has-byte.
 
 ### Algorithm
 
@@ -312,7 +312,7 @@ function AutoOr<MsgT>::ParseFlag(value, value_len, AutoOr<MsgT>* out):   // 0x1d
 
 ### Message arm map
 
-The 12 message-typed `ParseFlag` instances:
+The 13 message-typed `ParseFlag` instances (`CostModelLoggingOptions` has an instance but no dispatcher arm):
 
 ```text
 0x1d744f80  CostModelFlagOptions          0x1d745680  EmitterLearnedCostModelOptions
