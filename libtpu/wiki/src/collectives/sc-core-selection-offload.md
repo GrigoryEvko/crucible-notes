@@ -148,13 +148,13 @@ The reservation-map producer `GetSparseCoreResources` indexes the switch by `enu
 | `Offload` value | Enumerator | `GetSparseCoreResources` (idx = enum − 1) | `MayAddSparseCoreResource` (idx = enum − 2) |
 |---|---|---|---|
 | 0 | `OFFLOAD_UNSPECIFIED` | (no arm) | (no arm; `rt22 ×N-cores` path) |
-| 1 | `OFFLOAD_EMBEDDING` | arm 0 (embedding/general) | (no arm; `rt22 ×N-cores` path) |
+| 1 | `OFFLOAD_EMBEDDING` | `rt28` (embedding; `unk_AC0A910` = `0x1C`) | (no arm; `rt22 ×N-cores` path) |
 | 2 | `OFFLOAD_GATHER` | `rt23` `kSparseCoreGather` | `rt23` |
 | 3 | `OFFLOAD_SCATTER` | `rt24` `kSparseCoreScatter` | `rt24` |
 | 4 | `OFFLOAD_COLLECTIVE` | collective arm (async-body recurse) | async-body recurse |
 | 5 | `OFFLOAD_DATA_FORMATTING` | `rt25` `kSparseCoreDataFormatting` | `rt25` |
 | 6 | `OFFLOAD_KERNEL` | `rt26` `kSparseCoreKernel` | `rt26` |
-| 7 | `OFFLOAD_SORT` | `rt27` `kSparseCoreSort` | (no arm here) |
+| 7 | `OFFLOAD_SORT` | `rt27` `kSparseCoreSort` | `rt27` |
 | 8 | `OFFLOAD_COMPUTE` | (out of enum − 1 range) | (no arm; `rt22 ×N-cores` path) |
 
 `GetSparseCoreResources` returns the set of these resource-type IDs the collective occupies (one per device-assignment entry it walks). For a non-custom-call op it instead unwraps the `async_wrapped_instruction` and uses `AsyncTracker::GetResourceTypeForOp` (`0x13612240`) over the async body. The set it returns — `{0, 23, 24, 25, 26, 27, 28}` — is the per-collective resource key that §3's mask groups chips under.
