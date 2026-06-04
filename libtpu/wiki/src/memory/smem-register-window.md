@@ -8,7 +8,7 @@
 
 What *does* exist — and what a reimplementer who heard "SMEM register-window" was probably pointed at — are three separately-named mechanisms, none of which windows the SREG file. Two of them genuinely window *memory* (one of which can sit in SMEM); the third windows *predicate* registers. The cleanest fit for the phrase is the **CBREG** (circular-buffer register): a single register that *holds* a `{base, offset, size}` window onto on-chip memory and produces a self-advancing, wrap-at-the-end address stream. A CBREG is a register that contains a memory window — the exact inverse of a window onto registers.
 
-This page is the disambiguation-and-reconciliation note for the memory subsystem. It fixes the negative result (the SREG file is un-windowed and SMEM has no register-window machinery), enumerates the three real "windows" and states which resource each one actually windows, and shows how each relates to SMEM specifically. It does **not** re-derive the CBREG opcode bit-layout (that is [CBREG Circular-Buffer Register](../sparsecore/cbreg.md)), the SPU slot field grid ([SPU / Scalar Slot](../isa/slot-spu-scalar.md)), the scalar predicate file ([Predicate Slot](../isa/slot-predicate.md)), or the SMEM allocator ([SMEM Scalar Memory](smem-scalar-memory.md)).
+This page is the disambiguation note for the memory subsystem. It states the negative result (the SREG file is un-windowed and SMEM has no register-window machinery), enumerates the three real "windows" and states which resource each one actually windows, and shows how each relates to SMEM specifically. The CBREG opcode bit-layout is owned by [CBREG Circular-Buffer Register](../sparsecore/cbreg.md), the SPU slot field grid by [SPU / Scalar Slot](../isa/slot-spu-scalar.md), the scalar predicate file by [Predicate Slot](../isa/slot-predicate.md), and the SMEM allocator by [SMEM Scalar Memory](smem-scalar-memory.md).
 
 For reimplementation, the contract is:
 
@@ -197,7 +197,7 @@ This is the one place a reimplementer should model an actual sliding register wi
 
 ---
 
-## 5. Reconciliation — Why All Sources Agree
+## 5. The Resource Taxonomy
 
 ### The taxonomy in one table
 
@@ -214,11 +214,11 @@ Per SparseCore sequencer, the resource banks present in 0.0.40 and whether each 
 
 The only "window onto registers" is the rotating predicate file; the only "register that *is* a window onto memory" is the CBREG triple; the SREG file and SMEM are both flat. That single table is the entire disambiguation.
 
-### The three claims that looked like a conflict
+### Three things the term gets attached to
 
-The apparent tension between sibling documentation was purely terminological — "register window" was used for three different resource classes, none of them the SREG file:
+"Register window" is used loosely for three different resource classes, none of them the SREG file:
 
-| Source claim | Status | Why |
+| Claim | Status | Why |
 |---|---|---|
 | The SPU has *no* register window | **TRUE** | flat 32 SREGs, 5-bit index, LSRA spill to SMEM; `EncodingToScalarRegister` bounds `idx ≤ 0x1F` |
 | SMEM has no register-window machinery | **TRUE** | flat byte/word memory; the windows that touch SMEM are the CBREG memory-window and `OperandWindow` buffer placement, neither of which windows registers |
@@ -234,7 +234,7 @@ There is **no SMEM register-window** in the sense of a windowed or rotating *sca
 
 ## Cross-References
 
-- [Memory Hierarchy Overview](overview.md) — §1 fixes "register window is a misnomer" for every on-chip tier; this page is the proof.
+- [Memory Hierarchy Overview](overview.md) — §1 states "register window is a misnomer" for every on-chip tier; this page is the byte-level proof.
 - [SMEM Scalar Memory](smem-scalar-memory.md) — the flat SMEM scalar model and the `ScalarLoad/StoreSmem*` family that backs SREG spills.
 - [SFLAG Sync-Flag Tier](sflag-protocol.md) — the sibling flat on-chip tier; likewise not a register window.
 - [SPU / Scalar Slot](../isa/slot-spu-scalar.md) — the 32-entry flat SREG file, the 5-bit field, and `EncodingToScalarRegister`'s `idx ≤ 0x1F` bound.

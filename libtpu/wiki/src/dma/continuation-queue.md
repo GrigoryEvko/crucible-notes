@@ -58,7 +58,7 @@ The field map is carved byte-exact from the embedded `FileDescriptorProto` (`pro
 
 `has_bits` is at `struct+0x10`. The four producer sflags (#8–#11) are **top-level** `ContinuationQueue` fields, not per-core — there is one queue config per core, so a per-queue field is already per-core.
 
-> **CORRECTION (CONTQ-1) —** an earlier reading of the memory model placed the `producer_sync_flag_*` fields inside `PerCore`. The carved `DescriptorProto` shows they are `ContinuationQueue` fields #8/#9/#10/#11; `PerCore` holds only #1/#2. This is consistent with the device producer (`EmitContinuationTailcall`, [§4](#4-the-device-side-producer-ring-advance)) reading the producer base/remaining/count/index from the per-*core* queue head at `config+0x0/+0x4/+0x8/+0x1c` — those are the runtime head re-layout of fields #8/#9/#10/#11.
+> **Note —** the four `producer_sync_flag_*` fields are `ContinuationQueue` fields #8/#9/#10/#11; `PerCore` holds only #1/#2. The device producer (`EmitContinuationTailcall`, [§4](#4-the-device-side-producer-ring-advance)) reads the producer base/remaining/count/index from the per-core queue head at `config+0x0/+0x4/+0x8/+0x1c` — the runtime head re-layout of fields #8/#9/#10/#11.
 
 ### The `PerCore` sub-message
 

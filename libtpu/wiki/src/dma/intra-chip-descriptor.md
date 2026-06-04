@@ -187,7 +187,7 @@ function MemorySpaceToDriverResource(ms):
 
 The returned resource id is stamped into the descriptor's address word at bit 40 (`SetSourceAddress(resource << 0x28)` in the ICI builder ctor; the same `<< 0x28` shift renders the intra-chip endpoint), and the within-tier offset is OR'd into the low bits after granule scaling (`EncodeDmaAddressForGranule` @ `0x1d5402c0`, which additionally OR's bit 31 = `0x80000000` for HBM/external-resource operands as the external-address marker).
 
-> **CORRECTION (DMA-1) —** a sibling analysis (the ICI cross-chip descriptor work) summarized this map as "hbm→3, vmem→9, smem→6, sflag→0xa". Decompilation of `MemorySpaceToDriverResource` @ `0x1d6223e0` shows the actual returns are **hbm→2, hib→3, vmem→4, smem→6, sflag→0** (and `cmem` is a hard `FATAL`, never DMA-addressable here). The `smem→6` value is the only one that matched. The earlier "hbm→3, vmem→9, sflag→0xa" figures are the *resource ids of the wrong spaces* (hib→3, barna_core_smem→9, …) — a one-row shift, the classic off-by-one of reading the wrong switch arm. Use the switch above.
+> **Note —** the driver-resource id this function returns is *not* the LLO `MemorySpace` enum value — the map is a permutation. `hbm` (enum 1) renders to resource id **2**, `vmem` (enum 3) to **4**, `smem` (enum 5) to **6**, `sflag` (enum 6) to **0**, and `cmem` (enum 4) is a hard `FATAL` — never DMA-addressable through this path. Read the resource id off the switch arm for the *specific* space, not off the enum ordinal; the only value that happens to coincide is `smem→6`.
 
 ### The resource-id table
 

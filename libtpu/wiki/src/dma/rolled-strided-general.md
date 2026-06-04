@@ -276,11 +276,11 @@ The `dst_opcode` string-attr → 2-bit code mapping (`write_4b` / `read_and_add`
 
 ### `DmaSingleStridedStart` (`0x7`)
 
-`DmaSingleStridedStartOp::create` (`0x145bcd20`) — demangled signature `(b, loc, V, VR, V, VR, V, VR, V, V, V, V, V)` — is the `DmaSimpleStart` operand set plus **4 trailing `Value` stride args**, built from `src_byte_strides[0]`, `tgt_byte_strides[0]`, the `steps_per_stride` span, and the inner-vector-length (materialised via `arith.ConstantIndexOp`/`IndexCastOp`). By position those 4 strides bind to the `SingleStridedDma` `{source_stride, destination_stride, inner_vector_length, elements_per_stride}` slot fields (`P-3-295 §B`: slot `+0x10 >>41/35/—/29` + `+0x18 >>10`). The create arity (4 strides) and the `SmallVector` reads are CONFIRMED; the exact 1-to-1 stride-arg → slot-field order is by position (HIGH — its `build` body was not independently decoded).
+`DmaSingleStridedStartOp::create` (`0x145bcd20`) — demangled signature `(b, loc, V, VR, V, VR, V, VR, V, V, V, V, V)` — is the `DmaSimpleStart` operand set plus **4 trailing `Value` stride args**, built from `src_byte_strides[0]`, `tgt_byte_strides[0]`, the `steps_per_stride` span, and the inner-vector-length (materialised via `arith.ConstantIndexOp`/`IndexCastOp`). By position those 4 strides bind to the `SingleStridedDma` `{source_stride, destination_stride, inner_vector_length, elements_per_stride}` slot fields (slot `+0x10 >>41/35/—/29`, plus `+0x18 >>10`). The create arity (4 strides) and the `SmallVector` reads are CONFIRMED; the exact 1-to-1 stride-arg → slot-field order is by position (HIGH — its `build` body was not independently decoded).
 
 ### `DmaStridedStream` (`0x3a`)
 
-`StridedStreamStartOp::create` (`0x1460b8e0`) — demangled signature `(b, loc, b, b, b, V, VR, V, VR, V, V, V, IntegerAttr, V, VR)` — is the `LinearStream` operand set plus **2 trailing stride `Value`s** (`stride0`, `stride1`) and the `IntegerAttr` `tile_local` length-per-stride. The three leading bools mirror `LinearStream`'s `{upd, hbm4b/dstIsHbm, enable_trace}`. The 2 strides map to the `StridedStream` `{stride0, stride1}` operands (`P-3-287`); the create-arg shape is CONFIRMED, the slot-bit join is structural (HIGH).
+`StridedStreamStartOp::create` (`0x1460b8e0`) — demangled signature `(b, loc, b, b, b, V, VR, V, VR, V, V, V, IntegerAttr, V, VR)` — is the `LinearStream` operand set plus **2 trailing stride `Value`s** (`stride0`, `stride1`) and the `IntegerAttr` `tile_local` length-per-stride. The three leading bools mirror `LinearStream`'s `{upd, hbm4b/dstIsHbm, enable_trace}`. The 2 strides map to the `StridedStream` `{stride0, stride1}` operands; the create-arg shape is CONFIRMED, the slot-bit join is structural (HIGH).
 
 > **NOTE —** the `LinearStream` (`0x3b`) contiguous-stream form's full create→`Properties`→slot map (the `upd` / `hbm4b` / `enable_trace` / `opcode` / `tile_local_length_per_stride` bindings) is owned by the SparseCore stream slot-encoding page; on this page it is the `n==0`/kStream cell of [§3](#3-issuestridedtransfer--the-per-tile-callback)'s grid. `issueContiguousTransfer`'s stream call is `(false, dstIsHbm, TraceLocalDma, 0, …)` ⇒ `upd=false, hbm4b=dstIsHbm, enable_trace=TraceLocalDma, opcode=0`.
 
@@ -386,7 +386,7 @@ function issueGeneralDma(b, locGen, target, op, src, dst, len,
 | `+0x30` | `+0x70` | `getSrcSyncFlagCoreType` | `src_sync_flag_core_type` | `CoreTypeAttr` | CONFIRMED |
 | `+0x38` | `+0x78` | (getInherentAttr only) | `sync_mode` | `StringAttr` | HIGH |
 
-The create-arg → `GeneralDma` slot-field join (`P-3-295 §C`):
+The create-arg → `GeneralDma` slot-field join:
 
 - src/dst data buffers → `{src,dst}_mem_{core,mem}_id` (slot `+0x18 >>26/28/34/36`, via the buffer memrefs' `MemorySpace`s).
 - `dst_opcode` `"write_4b"` → `DstOpcode` (slot `+0x18 >>39 &0x3` = `WRITE_4B=1`).

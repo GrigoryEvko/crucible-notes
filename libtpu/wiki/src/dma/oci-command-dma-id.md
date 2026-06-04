@@ -11,7 +11,7 @@ That question is answered by the **`CmdDmaIdFromEntry<T>` selectors**: six byte-
 This page owns three things and a reimplementer must get all three right:
 
 - **The six `CmdDmaIdFromEntry<T>` selectors** — which OCI command each serves, the `int selector → trace_id_header_cmd{0,1,2}` map (cpp offset `msg + 0x18 + 8·selector`), the `index_valid` bit-`selector` gate, the null-pointer fallback to the `TraceIdHeader_globals_` default instance, and the byte-exact 38-bit `dma_id` composition.
-- **The three header bands the OCI command carries** — `trace_id_header_cmd0/1/2` (the three embedded transactions' identity keys at cpp `+0x18`/`+0x20`/`+0x28`), the `index_valid` per-transaction valid bitmask (`+0x30`), and the per-transaction `id_index0/1/2` (`+0x34`/`+0x38`/`+0x3c`) — re-derived from the embedded `FileDescriptorProto` pool and the parse-table FieldEntry cpp offsets.
+- **The three header bands the OCI command carries** — `trace_id_header_cmd0/1/2` (the three embedded transactions' identity keys at cpp `+0x18`/`+0x20`/`+0x28`), the `index_valid` per-transaction valid bitmask (`+0x30`), and the per-transaction `id_index0/1/2` (`+0x34`/`+0x38`/`+0x3c`) — read from the embedded `FileDescriptorProto` pool and the parse-table FieldEntry cpp offsets.
 - **The id → routing binding** — `GetDmaId(int)` dispatch (`trace_point_id → oneof check → helper`), the 38-bit `dma_id` as the routing key, and how the consumer `ConvertTpuTraceToXPlane<pxc>` keys an `absl::flat_hash_map<uint64, DmaTransfer>` on it to pair begin/end into a DMA timeline span. The consumer calls `GetDmaId(0)` — selector 0 / `cmd0` only.
 
 > **SCOPE —** The four-id ICR Node-Fabric DMA *band decode* (ids 48/50/51/91, the egress/ingress span reconstruction) is on [`../routing/icr-node-fabric-dma.md`](../routing/icr-node-fabric-dma.md) — link, do not duplicate. The intra-chip descriptor those commands stage is on [`intra-chip-descriptor.md`](intra-chip-descriptor.md). This page owns the **OCI *command* DMA-id selectors, the three header bands the command carries, and the id→routing binding**.
@@ -35,7 +35,7 @@ This page owns three things and a reimplementer must get all three right:
 
 The OCI command band is the deepsea read/write COMMAND trace: a command issued by an engine onto the off-chip interconnect, observed at several points on its journey (issued from engine, accepted at the memory node, completed at the TensorCore Sequencer). The crucial structural fact is that **one command event encodes one to three DMA transactions**, each transaction identified by its own `trace_id_header`.
 
-Six OCI command message classes share **one** protobuf schema (byte-exact across all six, re-derived twice — from the `FileDescriptorProto` field list and from the parse-table FieldEntry cpp offsets):
+Six OCI command message classes share **one** protobuf schema, byte-exact across all six and cross-checked against both the `FileDescriptorProto` field list and the parse-table FieldEntry cpp offsets:
 
 | proto # | field name | type | cpp off | wire tag | role |
 |---------|-----------------------|---------|---------|----------|------|
