@@ -253,12 +253,12 @@ because they do not exist in this binary:
 | GCC `crtbegin.o` artifact | Status in libtpu | Consequence |
 |---|---|---|
 | `frame_dummy` | absent | EH-frame registration is handled by `.eh_frame_hdr` + the loader, not a ctor |
-| `register_tm_clones` / `deregister_tm_clones` | absent | no `.tm_clone_table` section emitted (W030 fingerprint); no TM clone fixup |
+| `register_tm_clones` / `deregister_tm_clones` | absent | no `.tm_clone_table` section emitted; no TM clone fixup |
 | `__do_global_ctors_aux` (ctor loop) | absent | constructors are direct `DT_INIT_ARRAY` entries; loader iterates |
 | `__do_global_dtors_aux` (dtor loop) | replaced by `__do_fini` | `__cxa_finalize(__dso_handle)` only; no `.dtors` walk |
 | `.ctors` / `.dtors` sections | absent | superseded by `.init_array` / `.fini_array` |
 
-> **CORRECTION (ELF-1) —** the page title and the lifecycle map both speak of a "`__do_global_ctors`-style trampoline". The binary does **not** contain a global-constructor trampoline of the GCC `__do_global_ctors_aux` kind. The surviving CRT trampoline is the pair `__do_init` / `__do_fini`, and only `__do_fini` does real work (`__cxa_finalize`). The constructor *iteration* is performed by the loader over `DT_INIT_ARRAY`, with no in-binary loop to reverse. This is a clang-CRT vs GCC-CRT difference, not a missing function.
+> **Note:** there is no global-constructor trampoline of the GCC `__do_global_ctors_aux` kind to reverse. The surviving CRT trampoline is the pair `__do_init` / `__do_fini`, and only `__do_fini` does real work (`__cxa_finalize`). Constructor *iteration* is performed by the loader over `DT_INIT_ARRAY`. This is a clang-CRT vs GCC-CRT difference, not a missing function.
 
 ---
 

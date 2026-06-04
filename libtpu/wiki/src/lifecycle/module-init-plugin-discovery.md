@@ -131,7 +131,7 @@ dlopen("libtpu.so")
 
 `(anonymous namespace)::cpu_feature_fail_fast @ 0x2110abc0` runs *first*, before any constructor, and fences off the entire static-init storm. It calls `__cpu_indicator_init` (the GCC ifunc support routine) to populate a global feature mask (`dword_22598A0C`), then checks each ISA feature the binary was compiled to require. On a missing feature it `write(2, …)`s a `"FATAL ERROR: This binary was compiled with <feat> enabled, but this feature is not available on this processor (go/sigill-fail-fast)."` message to stderr and `raise(SIGILL)` (`raise(4)`) — a hard abort with no chance to recover.
 
-> **CORRECTION (P-3-185) —** the raw reconstruction listed only SSSE3 and CMPXCHG16B as the gated features (and left "is the gate wider?" as an open question). The decompile of `cpu_feature_fail_fast` resolves it: the gate checks **eleven** features via the `__cpu_indicator_init` mask, in a fixed fall-through order, plus a separate `cpuid` leaf-1 ECX probe for CMPXCHG16B. The full set (mask bit → feature) is below; SSSE3 + CMPXCHG16B were merely the *last two* checks the earlier trace reached.
+The gate checks **eleven** features via the `__cpu_indicator_init` mask, in a fixed fall-through order, plus a separate `cpuid` leaf-1 ECX probe for CMPXCHG16B. The full set (mask bit → feature) is below.
 
 | Order | Mask test (`dword_22598A0C &`) | Feature | Confidence |
 |---|---|---|---|
