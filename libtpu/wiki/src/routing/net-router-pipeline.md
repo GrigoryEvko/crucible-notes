@@ -211,7 +211,7 @@ function buffer_release(capture):                                  // 0x13826dc0
 
 Two invariants form the buffer handoff: **availability** (a buffer index enters a per-destination-XY ordered list keyed by release step; the next hop reads it only after it appears, which combined with the pipeline factor is why the next hop runs `kPipelineFactor` steps later) and **in-flight serialization** (the `(index, step)` pair is pushed onto the `latest_dma_out` deque, and the conflict invariant `!latest_dma_out.contains({src, block})` — checked in `LogAndValidatePaths` — forbids a second DMA from the same source block while one is in flight).
 
-> **QUIRK —** the relay buffers tracked here are **always `kAlloc`** (`RET_CHECK ptr.type == PointerType::kAlloc`, string `"type != net_router::PointerType::kAlloc"` @ `0x873065f`). The collective's real `kInput`/`kOutput` endpoints never enter the in-flight tracker; only intermediate scratch hops do.
+> **QUIRK —** the relay buffers tracked here are **always `kAlloc`** (`RET_CHECK ptr.type == PointerType::kAlloc`, string `"ptr.type == PointerType::kAlloc"` @ `0x873065f`). The collective's real `kInput`/`kOutput` endpoints never enter the in-flight tracker; only intermediate scratch hops do.
 
 ### 3.3 `$_2` — commit-placement
 
