@@ -55,6 +55,7 @@ The table below is the master index. Each row is one open item; the **Confidence
 | trailing-zstd blob → per-codename constants | CLOSED | — overturned: no blob exists | [trailing-zstd-blob](../forensics/trailing-zstd-blob.md) | CLOSED |
 | "walrus" pass-pipeline driver | CLOSED | — overturned: zero occurrences in binary | [glossary](../glossary.md) | CLOSED |
 | naive `_Z`-prefix demangle rate (98%) | CLOSED | — overturned: field-backed rate is 93.0% | [methodology-deep](methodology-deep.md) | CLOSED |
+| 7 `illegal_addr` analysis problems | CLOSED (triaged) | — triaged: 6 are an intentional `call *0x10` near-null trap in gRPC filter epilogues, 1 is a `.rodata` jump-table IDA misaligned into; no reloc, no out-of-segment data ref | [§The 7 illegal_addr Anomalies](#the-7-illegal_addr-anomalies--triage-closed) | CLOSED |
 
 > **NOTE —** the Confidence column on this page is deliberately *not* the four-level behavioral scale that [evidence-conventions](../front/evidence-conventions.md) defines for the rest of the book. Here it grades the **tractability of closing the gap**: `HIGH`/`MEDIUM` items are bounded static work this corpus already contains the inputs for; `LOW` items need a powered device or a different build; `CERTAIN (won't improve)` items are at their permanent floor.
 
@@ -114,7 +115,37 @@ The second published floor is the `problems` sidecar: **7,915** IDA analysis pro
 | `head_problem` | 545 | Instruction-head boundary ambiguity | No — bookkeeping |
 | `illegal_addr` | 7 | Reference to an address outside any segment | Yes — 7 anomalies worth a look |
 
-> **NOTE —** the 7,915 problems are overwhelmingly analysis bookkeeping (`final` + `rolled` + `head_problem` = 6,392, 81%), not knowledge gaps. The only rows a frontier auditor should chase are the **7 `illegal_addr`** anomalies — references that point outside every defined segment, which usually mean either a relocation the loader resolves at runtime or a genuine analysis miss. They are the single most tractable problems-floor item, and they have no owning deep page yet.
+> **NOTE —** the 7,915 problems are overwhelmingly analysis bookkeeping (`final` + `rolled` + `head_problem` = 6,392, 81%), not knowledge gaps. The only rows a frontier auditor should chase are the **7 `illegal_addr`** anomalies — references that point outside every defined segment, which usually mean either a relocation the loader resolves at runtime or a genuine analysis miss. They are the single most tractable problems-floor item, and they are triaged in full below.
+
+#### The 7 `illegal_addr` Anomalies — Triage (CLOSED)
+
+This meta page owns the triage, since the seven sites are a problems-floor item with no subsystem deep page of their own. Each of the seven addresses lies *inside* the executable segment (none is out-of-bounds *as a code address*); what IDA flags is that the **operand decoded at that site references an address outside every `PT_LOAD`**. The two structural causes — a near-null absolute indirect call, and a jump-table-base load IDA misaligned into — are confirmed below, with no remaining knowledge gap.
+
+The segment frame they are measured against (`readelf -lW`):
+
+```text
+LOAD  VirtAddr 0x00000000  FileSiz 0x213f25d0  Flg R E   ← .text lives here (sec [21] 0x0e63c000..0x21217484)
+LOAD  VirtAddr 0x215f25e0  FileSiz 0x00a62bc0  Flg RW
+LOAD  VirtAddr 0x222551c0  FileSiz 0x0026e6a0  Flg RW
+LOAD  VirtAddr 0x22798c30  FileSiz 0x00021c00  Flg RW
+```
+
+| Site (instr addr) | Decoded operand | Falls in | Relocation? | Classification | Confidence (closeable) |
+|---|---|---|---|---|---|
+| `0x20062a67` | `call *0x10` (`ff 14 25 10 00 00 00`) | abs `0x10` → in **no** `PT_LOAD` (ELF-header gap, below LOAD1 VMA 0) | **none** (`readelf -rW` empty at site; `0x10` unpatched) | Near-null absolute indirect call; intentional unreachable/abort tail of a fused gRPC filter epilogue | CLOSED — confirmed artifact |
+| `0x2006a8a4` | `call *0x10` (identical 7 bytes) | abs `0x10` → no `PT_LOAD` | none | same idiom (different filter fusion) | CLOSED |
+| `0x20070a95` | `call *0x10` (identical) | abs `0x10` → no `PT_LOAD` | none | same idiom | CLOSED |
+| `0x20074db2` | `call *0x10` (identical) | abs `0x10` → no `PT_LOAD` | none | same idiom | CLOSED |
+| `0x20079a52` | `call *0x10` (identical) | abs `0x10` → no `PT_LOAD` | none | same idiom | CLOSED |
+| `0x2007e7b5` | `call *0x10` (identical) | abs `0x10` → no `PT_LOAD` | none | same idiom | CLOSED |
+| `0xee6c96b` | mid-`lea` of `lea -0x4af7817(%rip),%rsi # 0xa375158` | table base `0xa375158` → **`.rodata`** (sec [11], `+0x1ed5158`) | none needed (RIP-relative, no dynamic reloc) | Jump-table dispatch; flagged byte is inside the `lea` of a `movslq (%rsi,%rdx,4); add %rsi,%rdx; jmp *%rdx` switch — IDA failed to follow the computed table, base is valid | CLOSED — analysis miss, no gap |
+
+Evidence quoted:
+
+- **The six gRPC sites are byte-identical and unique.** A whole-`.text` disassembly scan finds the `ff 14 25 10 00 00 00` / `call *0x10` encoding **exactly six times** — these six sites and nowhere else. Raw bytes at each (file offset = VMA for `.text`): `… 77 | ff 14 25 10 00 00 00 | 48 89 …`. The SIB byte `25` with no base register encodes a *disp32-absolute* memory operand, so the call dereferences fixed linear address `0x10`. That address sits below LOAD1's `VirtAddr 0x0` mapping region's first code (in the header gap) and is in no `PT_LOAD` — hence `illegal_addr`. `readelf -rW` lists **no** relocation at any of the six instruction offsets, so the loader never rewrites the `0x10`; it is a compile-time-fixed near-null pointer, the unreachable/crash tail of the heavily-templated `grpc_core::promise_filter_detail::MapResult<…>` filter-fusion combinator. (The `R_X86_64_DTPMOD64` rows that surface when grepping `0000000000000010` are TLS-module relocs whose *addend* column is `0x10`; their target VMAs are `0x22048d50…` in `.got`, unrelated to any code reference to absolute `0x10`.)
+- **The absl site is a jump table, not a bad reference.** At `0xee6c968` the instruction is `lea -0x4af7817(%rip),%rsi   # 0xa375158`, immediately followed by `movslq (%rsi,%rdx,4),%rdx ; add %rsi,%rdx ; jmp *%rdx` — the canonical relative-offset jump-table dispatch in `absl::container_internal::raw_hash_set<…tsl::tstring…>::find_large`. The flagged address `0xee6c96b` is three bytes *into* that `lea` (the RIP displacement bytes `e9 87 50 fb`), so IDA's linear sweep misaligned and then could not resolve the computed `jmp *%rdx`. The table base `0xa375158` resolves cleanly into `.rodata` (section [11], `0x84a0000..0xbe8af28`, offset `+0x1ed5158`); nothing points out of segment. This is a recoverable analysis miss, not a knowledge gap.
+
+> **GOTCHA —** none of the seven is a relocation the loader resolves at runtime (the third hypothesis the NOTE above names): `readelf -rW` is empty at every site, and the only candidate target needing a fixup — absolute `0x10` — is deliberately left unpatched. Six are an intentional near-null indirect-call trap inside a gRPC template epilogue; one is IDA misreading a `.rodata` jump table. All seven close with **zero** residual gap — the `illegal_addr` floor is fully accounted for and needs no on-device evidence.
 
 ---
 
