@@ -237,12 +237,12 @@ function CreateVcBalanceThreshold(gen):                   // 0x1fbd8320
         return ok                                         // balancing off → leave thresholds zeroed
 
     dim_sizes = topo.GetDimensionSizes()                  // vtable+0x50 (line 58)
-    max_dim   = max(dim_sizes)                            // vectorized cmovl reduction (line 59..353)
+    min_dim   = min(dim_sizes)                            // cmp/cmovl keeps the smaller (line 59..353)
 
-    // three candidate thresholds, all round-to-nearest( max_dim * mul + add ):
-    t_kind1 = round( max_dim * 0.222 + add1 )             // stored var_58 (asm @ line 162-169)
-    t_kind2 = round( max_dim * 0.207 - 0.2 )              // stored var_60 (asm @ line 155-161)
-    t_kind3 = round( max_dim * mul3  + add3 )             // stored var_50 (asm @ line 146-154)
+    // three candidate thresholds, all round-to-nearest( min_dim * mul + add ):
+    t_kind1 = round( min_dim * 0.175 - 0.15 )             // stored var_58 (asm @ line 162-169)
+    t_kind2 = round( min_dim * 0.222 - 0.1  )             // stored var_60 (asm @ line 155-161)
+    t_kind3 = round( min_dim * 0.207 - 0.2  )             // stored var_50 (asm @ line 146-154)
 
     for i in 0 .. n-1:                                    // per-axis loop (line 171)
         // skip axes whose axis-property (vtable+0x30) == 2:
@@ -259,21 +259,23 @@ function CreateVcBalanceThreshold(gen):                   // 0x1fbd8320
                     goto direct                           // a single skipped axis (line 232)
                 threshold[i] = t_kind3                    // var_50 (line 234)
             default:
-direct:         threshold[i] = round( dim_sizes[i] * 0.X + 0.Y )   // per-axis, asm @ line 194-204
+direct:         threshold[i] = round( dim_sizes[i] * 0.145 - 0.3 )  // per-axis, asm @ line 194-204
 ```
 
-The reduction at the top finds `max_dim`, the largest per-axis size; the three candidate thresholds are all `round_to_nearest(max_dim · mul ± add)` computed once via the inline SSE block (the `±0.5` magic + `vroundsd …, 0Bh` round-to-nearest). Each axis then selects a candidate by its "kind" field at `[topo+0xe8]`, with two escape hatches: axis-property 2 skips an axis entirely (no balance), and one specific axis (named by the `[topo+0x130]`/`[topo+0x134]` pair) under kind 3 falls through to a *direct* per-axis computation off that axis's own size rather than `max_dim`.
+The reduction at the top finds `min_dim`, the *smallest* per-axis size (`cmp; cmovl` keeps the lesser element — see the `objdump` below); the three candidate thresholds are all `round_to_nearest(min_dim · mul + add)` computed once via the inline SSE block (the `±0.5` magic + `vroundsd …, 0Bh` round-to-nearest). Each axis then selects a candidate by its "kind" field at `[topo+0xe8]`, with two escape hatches: axis-property 2 skips an axis entirely (no balance), and one specific axis (named by the `[topo+0x130]`/`[topo+0x134]` pair) under kind 3 falls through to a *direct* per-axis computation off that axis's own size rather than `min_dim`.
 
-The scaling multipliers (`0.207`, `0.222`, and the kind-3 / direct constants) place the threshold at roughly a fifth of the axis length — `threshold ≈ round(axis_size · ~0.2 ± const)` — so the balance gate admits only the shortest ~⅕ of dateline-crossing distances. The precise multiplier-to-kind mapping below is byte-anchored to the three rodata constants; the exact `add` constants and the third (`var_50`) multiplier were read structurally from the asm sequence, not all decoded to decimal.
+> **CORRECTION —** the top-of-function reduction is a **minimum**, not a maximum. The byte-anchored loop is `mov (%rax),%r10d; cmp %esi,%r10d; cmovl %r10d,%esi` (`0x1fbd83d0`) — `cmovl` keeps `r10d` only when it is *less than* the running `esi`, and the minimum value is reloaded into `r14d` at `0x1fbd84d0` to feed `vcvtsi2sd`. The candidate thresholds therefore scale with the *shortest* axis, not the longest.
+
+The scaling multipliers (`0.175`, `0.222`, `0.207`, and the direct `0.145`) place the threshold at roughly a fifth of the axis length — `threshold ≈ round(axis_size · ~0.2 − const)` — so the balance gate admits only the shortest ~⅕ of dateline-crossing distances. All four `mul`/`add` pairs are byte-anchored to their rodata doubles (`min_dim · {0.175 − 0.15, 0.222 − 0.1, 0.207 − 0.2}` for kinds 1/2/3, and `axis_size · 0.145 − 0.3` for the direct path); the multiplier-to-kind mapping below follows the `var_58`/`var_60`/`var_50` switch arms in the decompiled body.
 
 ### The axis-kind selector
 
 | Axis kind (`[topo+0xe8]`) | Threshold source | Scaling | Confidence |
 |---|---|---|---|
-| 1 | `t_kind1` (`var_58`) | `round(max_dim · 0.222 + add)` | HIGH |
-| 2 | `t_kind2` (`var_60`) | `round(max_dim · 0.207 − 0.2)` | HIGH |
-| 3 | `t_kind3` (`var_50`), or direct if `[topo+0x134]==1 && i==[topo+0x130]` | `round(max_dim · mul3 + add3)` | MEDIUM |
-| *(default / kind-3 skip)* | direct per-axis | `round(axis_size[i] · 0.X + 0.Y)` | MEDIUM |
+| 1 | `t_kind1` (`var_58`) | `round(min_dim · 0.175 − 0.15)` | CERTAIN |
+| 2 | `t_kind2` (`var_60`) | `round(min_dim · 0.222 − 0.1)` | CERTAIN |
+| 3 | `t_kind3` (`var_50`), or direct if `[topo+0x134]==1 && i==[topo+0x130]` | `round(min_dim · 0.207 − 0.2)` | CERTAIN |
+| *(default / kind-3 skip)* | direct per-axis | `round(axis_size[i] · 0.145 − 0.3)` | CERTAIN |
 | *(axis-property == 2)* | skipped (threshold stays 0) | — | HIGH |
 
 > **CORRECTION (P-3-355) —** an earlier reading placed the `vc_balance_enabled` / `flag_0x14` gate only inside `GetVcBalanceUsage`. `CreateVcBalanceThreshold` carries the **same** gate (`BYTE[gen+9]==1 && !BYTE[gen+0x14]`, line 56): if balancing is disabled, the threshold vector is resized but left zeroed and the function returns early. A zeroed threshold makes `GetVcBalanceUsage`'s `hops ≤ threshold[orient-1]` true only for `hops ≤ 0` (i.e. essentially never for a real hop), so the runtime gate and the build-time construction redundantly disable balancing — the construction does not rely on the runtime gate alone.
@@ -292,14 +294,18 @@ The scaling multipliers (`0.207`, `0.222`, and the kind-3 / direct constants) pl
 
 ```c
 function SetNextHopRoutingTableEntry(this, src, dst, idx, table):   // 0x1fbf1a80
-    if src == dst:
+    if src == dst:                                                 // terminal entry (immediate dst)
         table.SetUnicastTerminal(idx, 1)                           // line 0x1fbf1ac0
-        table.SetUnicastVcControl(idx, /*vc=*/1, true)             // FIXED VC=1, line 0x1fbf1adf (mov ecx,1)
+        table.SetUnicastVcControl(idx, /*vc=*/1, true)             // FIXED VC=1, mov ecx,1 @0x1fbf1ada
     else:
-        next = topo.Walk(coord, GetNextRoutingDirection(src,dst))  // vtable+0xa0, line 0x1fbf1c00
-        link = LinkMap.GetLink(...)                                // line 0x1fbf1de2
-        table.SetUnicastTarget(idx, link, 1)
-        table.SetUnicastVcControl(idx, /*vc=*/1, true)             // FIXED VC=1, line 0x1fbf1c6e
+        dir  = GetNextRoutingDirection(src, this_chip)             // 0x1fbf1aXX
+        next = topo.GetCoordinate(dir)                             // vtable+0x90, line 163 (advance one chip)
+        link = LinkMap.GetLink(this.link_map, dir)                 // 0x1fbf1de2
+        // diagnostics only — the result of these is logged but does NOT pick the VC:
+        crossed = CrossesDateline(src)                             // 0x1fbf28e0; logs "Crossed … high VC!" (:217)
+        turned  = !Direction::IsSame(this_dir, next_dir)           // logs "Turned … low VC!" (:221)
+        table.SetUnicastTarget(idx, link, 1)                       // line 0x1fbf1c?? 
+        table.SetUnicastVcControl(idx, /*vc=*/1, true)             // FIXED VC=1, mov ecx,1 @0x1fbf1c69
 
 function SetEgressRoutingTableEntry(this, src, dst, idx, table):   // 0x1fbf17c0
     if src == dst:  table.SetUnicastTerminal(idx, false)           // line 0x1fbf17fd
@@ -310,7 +316,7 @@ function SetEgressRoutingTableEntry(this, src, dst, idx, table):   // 0x1fbf17c0
         // NO SetUnicastVcControl on the egress hop
 ```
 
-> **QUIRK —** the multipod next-hop table writes a **fixed VC = 1** on every hop, terminal and non-terminal alike — *not* the slice-builder dateline/turn/balance cascade. Inter-pod links are point-to-point optical hops with no torus channel cycle to break across pods, so a single VC suffices and the dateline discipline is unnecessary. The egress table writes **no** `SetUnicastVcControl` at all (egress is the local hop into the next-hop machinery). The VC immediate `1` is byte-confirmed (`mov ecx, 1` at the call site); the IDA decompiler folds the immediate into the `SetUnicastVcControl(…)` call and does not print it.
+> **QUIRK —** the multipod next-hop table writes a **fixed VC = 1** on every hop, terminal and non-terminal alike. It is *not* the slice-builder dateline/turn/balance cascade, even though the non-terminal path still **evaluates** the dateline and turn predicates (`multipod::CrossesDateline` @ `0x1fbf28e0` and `Direction::IsSame`) and emits the same two VLOG strings — `"Crossed a dateline, forced to high VC!"` (`:217`) and `"Turned, forced to low VC!"` (`:221`). Those predicates only drive *logging*; the VC immediate handed to `SetUnicastVcControl` is a hardcoded `1` regardless of the result. Inter-pod links are point-to-point optical hops with no torus channel cycle to break across pods, so a single VC suffices and the dateline discipline does not need to *select* the VC here. The egress table writes **no** `SetUnicastVcControl` at all (egress is the local hop into the next-hop machinery). The VC immediate `1` is byte-confirmed: `mov ecx, 1` at `0x1fbf1ada` (terminal) and `0x1fbf1c69` (next-hop), each immediately preceding the `SetUnicastVcControl` call; the IDA pseudocode folds the immediate and prints only `SetUnicastVcControl(table)`.
 
 ### Deadlock freedom is delegated
 
