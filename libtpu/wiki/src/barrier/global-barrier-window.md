@@ -190,7 +190,7 @@ BarrierConfig DetermineBarrierConfigForKey(TensorCoreBarrierKey key, HloModuleCo
     if (has_conflict || beneficial) {                        // → GLOBAL(1)
         bc.type = 1;  bc.id = -1;                            // movl $1,+0x20 ; movq -1,+0x18
     } else if (key[+0x10] /*group begin*/ == key[+0x20] - 1 /*group end−1*/) {   // single replica group
-        if (key[+0x50] /*partition flag*/ != 1) {            // → REPLICA(2)
+        if (config[+0x50] /*partition flag*/ != 1) {         // → REPLICA(2)
             bc.type = 2;  bc.id = key[+0x10];                // shared key id
         } else {                                             // → GLOBAL(1) (partition-scoped singleton)
             bc.type = 1;  bc.id = -1;
@@ -203,9 +203,9 @@ BarrierConfig DetermineBarrierConfigForKey(TensorCoreBarrierKey key, HloModuleCo
 }
 ```
 
-`IsGlobalBarrierBeneficial` @`0x109c6ee0` returns true for a **singleton dimension**: it reads `config[+0x170]` (replica_count) / `config[+0x178]` (num_partitions) and `key[+0x50]` (the partition flag), returning beneficial when one axis is `1` (a degenerate collective best served by the all-cores global barrier). The pass writes only `{1, 2, 3}` — **never `MEGACORE(4)`**.
+`IsGlobalBarrierBeneficial` @`0x109c6ee0` returns true for a **singleton dimension**: gated by `key[+0x51]` (an ICI-routing-known flag — when clear it bails after a `VLOG` "Skipping evaluation of global barrier benefits due to unknown ICI routing limitations.") and `key[+0x50] == 0` (the partition flag, read here off the key), it then checks a config-derived axis pair at `+0x170` (replica_count) / `+0x178` (num_partitions) and returns beneficial only when one of those axes is `1` **and** `key[+0x10] == 1` (a degenerate singleton collective best served by the all-cores global barrier). The producer pass writes only `{1, 2, 3}` — **never `MEGACORE(4)`**.
 
-So `REPLICA(2)` is the **shared-per-replica-group** barrier: a *single* replica group, *not* partition-scoped (`key[+0x50] != 1`), *no* schedule conflict, and *not* globally beneficial. Its `id` is the shared key id (multiple collectives in the group reuse it), satisfying `0 <= id < count` for the `base + id` mapping in §1.2.
+So `REPLICA(2)` is the **shared-per-replica-group** barrier: a *single* replica group, *not* partition-scoped (`config[+0x50] != 1`), *no* schedule conflict, and *not* globally beneficial. Its `id` is the shared key id (multiple collectives in the group reuse it), satisfying `0 <= id < count` for the `base + id` mapping in §1.2.
 
 ### 4.2 Lowering (TensorCore) — `BarrierCoresTree` scoped to the replica group
 
@@ -254,12 +254,12 @@ Both SparseCore custom-kernel barrier entry points **RetCheck** type 2:
 > - `GetGlobalBarrierSyncFlagNumber` @`0x1d60f420`: `this[561] + this[560] + 4` = `base + count + 4` — exact.
 > - `net_util::GetBarrierSyncFlag` @`0x1c69ad00`: `type==1` → `target()->GetGlobalBarrierSyncFlagNumber()` → `SflagImmPtr("global barrier sync flag")`; `type==0` → CHECK-fail (`net_util.cc:2065`); else → CHECK `id < target[0x8c4]` (`:2070`) → `id + target[0x8c0]` → `SflagImmPtr("barrier sync flag number")` — exact, offsets `0x8c0`/`0x8c4` (=`2240`/`2244`) confirmed.
 > - `MaybeInsertGlobalBarrier` @`0x1321ac20`: flags read from `cfg[+0x10]` (bits `0x200`/`0x2000`/`0x40`), `cfg[+0x90]`/`cfg[+0x94]`, `bc->type [+0x20] == 3`; three error sites `custom_kernel_emitter.cc:3560`/`:3572`/`:3681`; **no call to `GetGlobalBarrierSyncFlagNumber`** anywhere in the body; insert via `mlir::detail::walk(MaybeInsertGlobalBarrier::$_0)` with `v12 = 2 − HasAnyCoreType(...)` — exact.
-> - `DetermineBarrierConfigForKey` @`0x109c6fa0`: `if (has_conflict || IsGlobalBarrierBeneficial)` → `type=1, id=-1`; else `if (key[+0x10] == key[+0x20]−1)` then `key[+0x50]!=1` → `type=2, id=key[+0x10]` else `type=1,id=-1`; else → `type=3, id=fresh`; `hasbits |= 3` — exact; **no `movl $4`**.
+> - `DetermineBarrierConfigForKey` @`0x109c6fa0`: `if (has_conflict || IsGlobalBarrierBeneficial)` → `type=1, id=-1`; else `if (key[+0x10] == key[+0x20]−1)` then `config[+0x50]!=1` → `type=2, id=key[+0x10]` else `type=1,id=-1`; else → `type=3, id=fresh`; `hasbits |= 3` — exact (partition-flag read disassembles to `cmpb $0x1,0x50(%r14)` with `%r14`=`HloModuleConfig`, the 2nd param — **config**, not the key); **no `movl $4`**.
 > - `BarrierCoresTree` @`0x1c6a75c0`: calls `GetGlobalBarrierSyncFlagNumber` → `SflagImmPtr("global barrier sync flag")` — confirmed in body.
 > - `BarrierWithinReplicaGroupStartImpl` @`0x1c698080`: `GetReplicaGroupCoreInfo` + `Pneg`/`Predicated` + `VsyncAddRemote` — confirmed.
 > - `EmitAllToAllBarrierStart` @`0x133500e0`: REPLICA(2) RetCheck (`offload_a2a_util.cc:124`, "Only custom and global barriers are supported for all-to-all collectives on SparseCore") — confirmed.
 >
-> **[HIGH]** The `CustomCallConfig` field *names* (`has_communication` @`+0x90`, `skip_device_barrier` @`+0x94`, `custom_barrier_requested` bit `0x40`) and the `TensorCoreBarrierKey` field identities (`+0x10`/`+0x20` group span, `+0x50` partition flag) — offsets byte-confirmed, names attributed from the RetCheck strings and config reads, not from struct descriptors.
+> **[HIGH]** The `CustomCallConfig` field *names* (`has_communication` @`+0x90`, `skip_device_barrier` @`+0x94`, `custom_barrier_requested` bit `0x40`) and the `TensorCoreBarrierKey` field identities (`+0x10`/`+0x20` group span; `+0x50` partition flag and `+0x51` ICI-routing-known guard as read by `IsGlobalBarrierBeneficial`) — offsets byte-confirmed, names attributed from the RetCheck strings and config reads, not from struct descriptors. NB: the REPLICA-vs-GLOBAL partition test inside `DetermineBarrierConfigForKey` reads a **distinct** `+0x50` byte off the `HloModuleConfig` (`%r14`), not off the key.
 >
 > **[LOW]** The literal per-`(codename, deployment)` `{base, count}` integers (`Target+0x8c0`/`+0x8c4`) are runtime-resolved from embedded chip-config memfile blobs and were not statically extracted; the window *geometry* (`count = |CR_TC| − 5`, GLOBAL @ `+count+4`) is CONFIRMED. See [Per-Codename Compiler-Reserved](per-codename-compiler-reserved.md). The net_util `InfoTable` on-wire indexing (how `GetReplicaGroupCoreInfo` maps a core ordinal → its peer set within the flattened R1 int literal) was not fully disassembled — proven to be a `replica_count × partition_count`-keyed int table; the per-entry meaning is LOW.
 
