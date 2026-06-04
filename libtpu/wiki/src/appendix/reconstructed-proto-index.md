@@ -1,10 +1,10 @@
 # Reconstructed-Proto Index
 
-> *Every message name, field count, and descriptor VA on this page was read from the `protodesc_cold` descriptor pool of `libtpu.so` in the `libtpu-0.0.40-cp314` wheel (BuildID md5 `89edbbe81c5b328a958fe628a9f2207d`, version 0.103, not stripped). Field numbers are stable wire identifiers; other versions may add fields but will not renumber these. Other versions differ.*
+> *Every message name, field count, and descriptor VA on this page was read from the `protodesc_cold` descriptor pool of `libtpu.so` in the `libtpu-0.0.40-cp314` wheel (BuildID md5 `89edbbe81c5b328a958fe628a9f2207d`, wheel 0.0.40, not stripped). Field numbers are stable wire identifiers; other versions may add fields but will not renumber these. Other versions differ.*
 
 ## Abstract
 
-`libtpu.so` embeds its entire protobuf type universe as serialized `google.protobuf.FileDescriptorProto` records in the `protodesc_cold` section (VA `0xbe8af30`, size `0x334180` = 3.27 MiB). The runtime rebuilds this **descriptor pool** at startup, calling `DescriptorPool::BuildFile()` for each generated `_pbz_…` symbol; the reflection layer then serves every message by name. The full enumeration — 760 file records, ~8 021 messages, ~2 031 enums — is catalogued on the sibling [protodesc-cold-catalog](protodesc-cold-catalog.md) page. This page is the narrower, higher-value index: of those ~760 descriptors, **which messages has this wiki reconstructed field-by-field**, and on **which page** does each reconstruction live.
+`libtpu.so` embeds its entire protobuf type universe as serialized `google.protobuf.FileDescriptorProto` records in the `protodesc_cold` section (VA `0xbe8af30`, size `0x334180` = 3.20 MiB). The runtime rebuilds this **descriptor pool** at startup, calling `DescriptorPool::BuildFile()` for each generated `_pbz_…` symbol; the reflection layer then serves every message by name. The full enumeration — 760 file records, ~8 021 messages, ~2 031 enums — is catalogued on the sibling [protodesc-cold-catalog](protodesc-cold-catalog.md) page. This page is the narrower, higher-value index: of those ~760 descriptors, **which messages has this wiki reconstructed field-by-field**, and on **which page** does each reconstruction live.
 
 A "reconstruction" here means the message schema was decoded from the descriptor bytes to reimplementation grade — field number → name → label → wire type → nested-type structure → oneof grouping — sufficient that a reader could regenerate the `.proto` and round-trip the wire format. The index distinguishes that from mere *cataloguing* (the sibling page lists all 760 by name/size/syntax but does not field-dump most of them). Every row carries the descriptor VA so a verifier can re-parse the source bytes with `FileDescriptorProto.ParseFromString`, and a Confidence label so a reimplementer knows which schemas to trust verbatim.
 
@@ -20,7 +20,7 @@ For a reader using this index, the contract is:
 
 | | |
 |---|---|
-| **Descriptor pool** | `protodesc_cold` @ VA `0xbe8af30`, size `0x334180` (3.27 MiB) |
+| **Descriptor pool** | `protodesc_cold` @ VA `0xbe8af30`, size `0x334180` (3.20 MiB) |
 | **Records in pool** | 760 `FileDescriptorProto`; ~8 021 messages, ~2 031 enums |
 | **Reconstructed (this index)** | ~30 messages across 5 families, ~14 owning pages |
 | **Full enumeration** | [protodesc-cold-catalog](protodesc-cold-catalog.md) — all 760 by name/size/syntax |
