@@ -12,7 +12,7 @@ For a reimplementer, the contract has three parts: (1) the 12-value `Type` enum 
 
 For reimplementation, the contract is:
 
-- **The `Type` enum** — 12 tags (0..0xb), the `MeshDim`≡`Type` aliasing, the per-emitter overload of Types 3/4, and the one universal tag (Type 5 = route schedule).
+- **The `Type` enum** — 12 tags (0..0xb), the `MeshDim`≡`Type` aliasing, the per-emitter overload of Types 3/4, and the one cross-collective tag (Type 5 = route schedule, shared by AllToAll/CollectivePermute/AllGather).
 - **The materialization path** — `GetConstantFnForCollective` (per-HLO factory) → `GenerateConstants` (`AddConstant(Type, …)`) → `GetConstant(Type)` / `GetConstantTables`; the SwissTable storage and the static-vs-dynamic carrier gate.
 - **The runtime collective-id read** — `GetReplicaId`/`GetPartitionId` = U32 `Sld` at a Target-resident word offset; `Target::Init` reserving that offset from the chip-config user-reserved SMEM region; the `partition_count==1` fold-to-0.
 
@@ -71,7 +71,7 @@ Each row pins the table-builder that feeds the `AddConstant(Type=k)` call (so th
 | 2 | `MeshDim 2` | (same, axis 2) | ND-ring replica table, mesh **axis 2** | HIGH |
 | 3 | `Type` (overloaded) | AllReduce: `CreateReplicaInfoTable[ForLimitedIciRouting]`; AllGather: `CreateStaticNDRingReplicaInfoTable` | flat within-group replica/ordinal table (AR) **or** ND-ring table (AG) | HIGH |
 | 4 | `Type` (overloaded) | `CreateReplicaInfoTableForLimitedIciRouting` / `CreateStaticReplicaInfoTableForLimitedIciRouting` | limited-ICI-routing replica table / routing-table index | HIGH |
-| 5 | `Type` (**universal**) | `net_router::CreateRoutingScheduleLiteral` / `CreateAllToAllRoutingScheduleTable` | the per-transfer ICI **route schedule** literal | CERTAIN |
+| 5 | `Type` (**cross-collective**) | `net_router::CreateRoutingScheduleLiteral` / `CreateAllToAllRoutingScheduleTable` | the per-transfer ICI **route schedule** literal | CERTAIN |
 | 6 | `Type` | `net_util::CreateNDRingReplicaInfoTable` (AllReduce) | ring AllReduce ND reorder table | HIGH |
 | 7 | `Type` (+`Status`) | `CreateBinomialReplicaInfoTable` | binomial recursive-doubling butterfly table | CERTAIN |
 | 8 | `Type` | `GenerateAllToAllTables` (table A) | AllToAll barrier membership table A | CERTAIN |
@@ -81,7 +81,7 @@ Each row pins the table-builder that feeds the `AddConstant(Type=k)` call (so th
 
 Three structural facts drive the table:
 
-- **Type 5 is the only truly cross-collective tag.** All four emitters produce *and* consume it; it carries `net_router`'s route-schedule literal — the per-transfer ICI route program. Its internal int layout is not decoded here (see [Create Routing Schedule](../routing/create-routing-schedule.md) / [Route Table Generation](../routing/route-table-generation.md)).
+- **Type 5 is the only cross-collective tag.** The three routing-driven emitters — AllToAll, CollectivePermute, and AllGather (explicit-routing path) — produce *and* consume it; it carries `net_router`'s route-schedule literal — the per-transfer ICI route program. (AllReduce does **not** touch Type 5: its ring/binomial algorithms use Types 3/4/6/7 instead — byte-confirmed, no `AddConstant(…, 5, …)` in `AllReduceEmitter::GenerateConstants`.) Its internal int layout is not decoded here (see [Create Routing Schedule](../routing/create-routing-schedule.md) / [Route Table Generation](../routing/route-table-generation.md)).
 - **Types 3 and 4 are overloaded slot indices.** The same tag carries a flat-replica table in AllReduce and an ND-ring/static table in AllGather. There is no collision because the mapper is per-lowered-instruction (see [§ The Materialization Path](#the-materialization-path)).
 - **Type 7 takes both a table and a `Status`.** On the not-binomial-viable path the AllReduce emitter does `AddConstant(Type=7, Status)`; the later `GetConstant(7)` then surfaces that error. This is the binomial-table tag — see [Binomial Recursive Doubling](binomial-recursive-doubling.md).
 
@@ -95,8 +95,8 @@ The enum was reconstructed by reading the `Type`/`MeshDim` immediate at every ca
 |---|---|---|---|---|
 | AllToAll | `AllToAllEmitterBase::GenerateConstants` @ `0x10f089a0` | 8, 9, 0xa, 5 | `CalculateWithLimitedIciRouting` (5), `GetConstantTables` (8/9/0xa) | CERTAIN |
 | CollectivePermute | `CollectivePermuteEmitter::GenerateConstants` @ `0x1346ff60` | 0xb, 5 | `EmitForLimitedIciRouting` (5), `Emit` (0xb) | HIGH |
-| AllReduce | `AllReduceEmitter::GenerateConstants` @ `0x1373cb60` | 3, 4, 6, 7(+Status), `MeshDim 1` | `GetRingLocation` (3), `GetRingLocationWithReordering` (4), `EmitAllReduceFusion`/`ConstructAsyncFusionEmitter` (6), `BuildStrategyForCrossModuleARS` (0,1), `BinomialGroupData $_1` (7) | HIGH |
-| AllGather | `AllGatherEmitter::GenerateConstants` @ `0x13801be0` | `MeshDim 1/2`, 3, 4, 5 | `InitDim` (3/4/`MeshDim`), `EmitAllGatherWithExplicitRouting` (5) | HIGH |
+| AllReduce | `AllReduceEmitter::GenerateConstants` @ `0x1373cb60` | 3, 4, 6, 7(+Status); `MeshDim 0/1` (separate cross-module-ARS mapper) | `GetRingLocation` (3), `GetRingLocationWithReordering` (4), `EmitAllReduceFusion`/`ConstructAsyncFusionEmitter` (6), `BuildStrategyForCrossModuleARS` (0,1), `BinomialGroupData $_1` (7) | HIGH |
+| AllGather | `AllGatherEmitter::GenerateConstants` @ `0x13801be0` | `MeshDim 0/1/2`, 3, 4, 5 | `InitDim` (3/4/`MeshDim`), `EmitAllGatherWithExplicitRouting` (5) | HIGH |
 
 > **GOTCHA —** a reimplementation that drives off "all 12 tags exist for every collective" is wrong. Each emitter populates only the tags its algorithm needs; AllToAll never adds Type 3, AllReduce never adds Type 8. The `Type` space is the *union* over emitters, not a per-instance schema. Add only what the chosen algorithm produces, fetch only what it consumes.
 
@@ -245,7 +245,7 @@ When there is no model parallelism (`partition_count == 1`) the partition id is 
 
 ### Who reads the runtime id
 
-`GetReplicaId` @ `0x1c69a440` has 12 callers; `GetPartitionId` @ `0x1c69a4a0` has 7. Every collective emitter reads `(replica_id, partition_id)` from these. Notable consumers: `HandleReplicaId`/`HandlePartitionId` (the HLO ops), `AllToAllEmitter::Init` / `RaggedAllToAllEmitter::Init`, the `CollectivePermuteEmitter` constructor and barrier, the `AllReduceEmitter`/`AllGatherEmitter` constructors, and `LoadBinomialReplicaInfoTable` @ `0x1375fca0` — whose table index is exactly this `replica_id` (see [Binomial Recursive Doubling](binomial-recursive-doubling.md)).
+`GetReplicaId` @ `0x1c69a440` has 12 call sites; `GetPartitionId` @ `0x1c69a4a0` has 8. Every collective emitter reads `(replica_id, partition_id)` from these. Notable consumers: `HandleReplicaId`/`HandlePartitionId` (the HLO ops), `AllToAllEmitter::Init` / `RaggedAllToAllEmitter::Init`, the `CollectivePermuteEmitter` constructor and barrier, the `AllReduceEmitter`/`AllGatherEmitter` constructors, and `LoadBinomialReplicaInfoTable` @ `0x1375fca0` — whose table index is exactly this `replica_id` (see [Binomial Recursive Doubling](binomial-recursive-doubling.md)).
 
 ### Function Map
 
@@ -342,7 +342,7 @@ So `replica_id`/`partition_id`/`slice_id` occupy three consecutive 1-word slots 
 
 ## What Is Not Decoded Here
 
-- **Type 5 internal layout.** Confirmed as the universal route-schedule carrier; its int encoding (per-transfer route program) is owned by the routing subsystem ([Create Routing Schedule](../routing/create-routing-schedule.md), [Route Table Generation](../routing/route-table-generation.md)).
+- **Type 5 internal layout.** Confirmed as the cross-collective route-schedule carrier; its int encoding (per-transfer route program) is owned by the routing subsystem ([Create Routing Schedule](../routing/create-routing-schedule.md), [Route Table Generation](../routing/route-table-generation.md)).
 - **Type 8/9/0xa and 0xb table content.** Pinned to their builders by the `AddConstant` call site; the per-element semantics are owned by [AllToAll Tables](alltoall-tables.md) (8/9/0xa) and the CollectivePermute emitter (0xb).
 - **Symbolic enumerator names** for `ConstantMapper::Type` (`Type::k…`) and `UserReservedSmemType`: the tag *integers*, their *producers*, and the type→word-offset `kBlocks` tables are byte-confirmed; the enum's own descriptor/symbol table was not extracted, so the English role names are attributed from producers and store targets.
 - **One-mapper-per-instruction** (the basis for the Type 3/4 overload being collision-free): supported by `GetConstantFnForCollective` returning a per-HLO factory, not separately proven to be exactly one mapper per lowered instruction.
@@ -357,6 +357,6 @@ So `replica_id`/`partition_id`/`slice_id` occupy three consecutive 1-word slots 
 - [Binomial Recursive Doubling](binomial-recursive-doubling.md) — the Type 7 binomial butterfly table; its index is the `GetReplicaId` SMEM read documented here
 - [SelectNDStrategy](strategy-nd-picker.md) — the strategy decision that determines which `GenerateConstants` runs and which tags it populates
 - [On-Pod Collectives — Section Map](overview.md) — the collective-lowering pipeline this constant pool serves
-- [Create Routing Schedule](../routing/create-routing-schedule.md) — the universal Type 5 route-schedule literal producer
+- [Create Routing Schedule](../routing/create-routing-schedule.md) — the cross-collective Type 5 route-schedule literal producer
 - [Route Table Generation](../routing/route-table-generation.md) — the route-table generation behind Type 5
 - [SMEM Scalar Memory](../memory/smem-scalar-memory.md) — the memory-space taxonomy (`kSmem`=5) the `Sld` validates and the scalar-load model the id read uses
