@@ -8,7 +8,7 @@
 
 The tiebreak rule is governed by a single field, the **twist-shape discriminant** `this[+0xe8]` (set by `Init`, `0x20b3e5e0`): `1 = k*k*2k`, `2 = k*2k*2k`, `3 = k*2k*nk`. The **tiebreaking length is `K`** — the minimum dimension size, computed by a `std::min_element` over the topology's dim-sizes vector at function entry (`this[+0x10..+0x18]`). Every comparison the rule makes is against `±K`, and the literal `nK` of the `k*2k*nk` shape never reaches a `GetTiebreak` arm: `Init`'s `DropDimension` collapses it to a 3-D twist before tiebreak time, so the only literal-`n` distance math lives upstream in `GetDistance`. This is the "literal-nK ordering" the page title names — the ordering rule is *literally the `±nK` (= `±K`) coordinate test on the seam dimension*, and `K` is the only length it ever compares to.
 
-`GetTiebreak` dispatches first on `this[+0xe8]`, then (for `k*2k*2k`) on the **candidate count**, which encodes the vertex's geometric class: 6 candidates ⇒ `k*k*2k` (any vertex); 4 ⇒ corner, 3 ⇒ mid, 2 ⇒ edge for `k*2k*2k`. The page documents the comparator, the three sub-rules (symmetric-route membership, parity-rotated corner, `±K` edge/mid), the five error strings that pin each path, and how the rule disambiguates the `K_2K_2K` group assignment by selecting one canonical seam route per `(src, dst)`.
+`GetTiebreak` dispatches first on `this[+0xe8]`, then (for `k*2k*2k`) on the **candidate count**, which encodes the vertex's geometric class: 6 candidates ⇒ `k*k*2k` (any vertex); 4 ⇒ corner, 3 ⇒ mid, 2 ⇒ edge for `k*2k*2k`. The page documents the comparator, the three sub-rules (symmetric-route membership, parity-rotated corner, the `±K` edge test and the `max|coord| < K` mid select), the five error strings that pin each path, and how the rule disambiguates the `K_2K_2K` group assignment by selecting one canonical seam route per `(src, dst)`.
 
 For reimplementation, the contract is:
 
@@ -70,7 +70,7 @@ function TwistedTorusTopology::Init(this, dims, flag):      // 0x20b3e5e0
     this[+0xe0] = route-cache-enabled bool
 ```
 
-The three assignments are decompile-verified at lines 730 / 734 / 738; the `wmemchr` (`0x211ac220`) and the `this[+0x134]=1` store (line 750) confirm the `nK`-axis recording. The slice-shape support is pinned to the `.rodata` string `"TPU twisted torus only supports k*k*2k and k*2k*2k and k*2k*nk slice shapes."` (`0xa02045c`).
+The three assignments are decompile-verified at lines 730 / 734 / 738; the `wmemchr` (`0x211ac220`) and the `this[+0x134]=1` store (line 750) confirm the `nK`-axis recording. The slice-shape support is pinned to the `.rodata` string `"TPU twisted torus only supports k*k*2k and k*2k*2k and k*2k*nk slice shapes."` (`0xa020458`).
 
 | `this[+0xe8]` | shape | `numK` / `num2K` | reaches a `GetTiebreak` arm? |
 |---|---|---|---|
@@ -116,14 +116,14 @@ The `Coordinates` operand layout (cross-checked against `GetCoordinate` `0x20c0b
 This path is gated on **exactly 6 candidates** (`a4[1] == &byte_6`, i.e. `candidates.size() == 6`, line 252). The rule: construct the *symmetric expected route* — a `Coordinates` of `ndims` ints, each `±tb` — and assert it is one of the 6 equal-minimum candidates, returning it on a match.
 
 ```c
-function TieBreak_kk2k(K, vertex, candidates):     // 0x20b414a2 arm
+function TieBreak_kk2k(K, vertex, candidates):     // inline block @ line 252
     if candidates.size() != 6: goto InvalidVertex   // line 252 gate
-    norm = ManhattanNorm(vertex)                     // 0x20b414b8 (= Σ|coord|), v22
+    norm = ManhattanNorm(vertex)                     // 0x20c0ba00 (= Σ|coord|), v22, line 256
     ndims = this[+0x8]                                // v24
-    // the "tb" fold:  (norm>>1) reduced by (K mod ndims == 1) carry into (ndims-1)
+    // the "tb" fold:  (norm/2) reduced modulo ((K % ndims == 0) + ndims - 1)
     tb_index = (norm/2) % ( (K % ndims == 0) + ndims - 1 )    // v25, line 261
     expected = Coordinates(ndims ints, all 0)        // operator new + memset 0, line 264
-    sign = (norm & 1) ? +K : -K                      // v27, lines 267-269
+    sign = (norm & 1) ? -K : +K                      // v27, lines 267-269 (norm even ⇒ +K)
     expected[tb_index] = sign                         // line 270 — the lone ±K seam coord
     for cand in candidates:                           // stride 28, lines 277-284
         if cand == expected:                          // Coordinates::operator==
@@ -132,7 +132,7 @@ function TieBreak_kk2k(K, vertex, candidates):     // 0x20b414a2 arm
                  "is not in its minimum route sets.")  // 0xa000dba, line 515 (=0x203)
 ```
 
-The decompile (lines 256-304) confirms each step: `ManhattanNorm` at line 256; the modular `tb` reduction at line 261 (`v22 / 2 % (((int)v117 % (int)v24 == 0) + v119[2] - 1)`, where `v117 = K`, `v24 = ndims`); the zero-fill `Coordinates` build (lines 262-271); the `(v23 & 1) ? +K : -K` sign (lines 267-269, `v23` = `norm & 0xff`); and the `operator==` candidate search (stride 28, lines 277-284). On a match the chosen candidate is copied to the sret and `*a1 = 1` (OK status); on no match the `MakeErrorImpl<13>` at line 311 fires with the string `"When applying tiebreaking rule for k*k*2k twisted torus vertex %s, expected distance %s is not in its minimum route sets."` (`0xa000dba`, source line 515).
+The decompile (lines 256-304) confirms each step: `ManhattanNorm` at line 256; the modular `tb` reduction at line 261 (`v22 / 2 % (((int)v117 % (int)v24 == 0) + v119[2] - 1)`, where `v117 = K`, `v24 = ndims`); the zero-fill `Coordinates` build (lines 262-271); the `(v23 & 1) ? -K : +K` sign (lines 267-269, `v23` = `norm & 0xff`; `v27` defaults to `-K` and is overwritten to `+K` when `norm` is even); and the `operator==` candidate search (stride 28, lines 277-284). On a match the chosen candidate is copied to the sret and `*a1 = 1` (OK status); on no match the `MakeErrorImpl<13>` at line 311 fires with the string `"When applying tiebreaking rule for k*k*2k twisted torus vertex %s, expected distance %s is not in its minimum route sets."` (`0xa000dba`, source line 515).
 
 > **NOTE —** the rule for `k*k*2k` is *membership verification*, not search-and-rank: the canonical route is fully determined by `(norm, K, ndims)` before the candidate list is consulted, and the loop only confirms that this deterministic route is actually one of the six the distance layer produced. If it is not, that is a *consistency failure* between the distance generator and the tiebreak rule — hence the error wording "is not in its minimum route sets." A reimplementer whose `GetDistances` disagrees with this `±tb` construction will trip this exact error.
 
@@ -145,10 +145,10 @@ For `k*2k*2k` the rule dispatches on the **candidate count**, which is the verte
 ```c
 function TieBreak_k2k2k(K, vertex, candidates):
     n = this[+0x8]                                   // ndims
-    switch candidates.size():
-        case 4:  return Corner(K, n, vertex, candidates)   // 0x20b415b4
-        case 3:  return Mid(K, n, candidates)              // 0x20b41744
-        case 2:  return Edge(K, vertex, candidates)        // 0x20b417c5
+    switch candidates.size():                           // not separate symbols —
+        case 4:  return Corner(K, n, vertex, candidates)   // inline block @ line 592
+        case 3:  return Mid(K, n, candidates)              // inline block @ line 459
+        case 2:  return Edge(K, vertex, candidates)        // inline block @ line 376
         default: goto InvalidVertex
 ```
 
@@ -157,7 +157,7 @@ function TieBreak_k2k2k(K, vertex, candidates):
 The corner rule first finds the **dimension whose travelling distance is short** — a dim `d` for which the max `|coord|` over all candidates is `< K` — then **rotates** to a different dimension `d'` by a parity computed from the vertex, and selects the candidate whose `d'`-coord equals `±K` (sign by the same parity bit).
 
 ```c
-function Corner(K, n, vertex, candidates):           // 0x20b415b4
+function Corner(K, n, vertex, candidates):           // inline block @ line 592
     // 1. find winning dim d: max|cand.coord(d)| over candidates < K
     for d in 0 .. n-1:                                // lines 622-659
         max_abs = 0
@@ -167,49 +167,51 @@ function Corner(K, n, vertex, candidates):           // 0x20b415b4
     else:
         return Error("…corner vertex %s, did not find a dimension whose "
                      "travelling distances are all less than tiebreaking length %d…")
-                     // 0xa01debc, source line 570
+                     // 0xa01debc, source line 610
     // 2. rotate to d' by the per-other-dim parity
     parity = XOR over dims != d of ( (vertex.coord(dim) >> 1) & 1 )   // v76, line 764
     d'     = (d + parity + 1) mod n                    // line 665: (v33 + v76 + 1) % v75
     // 3. select candidate whose coord(d') == ±K (sign by vertex parity bit)
-    target = (vertex.parity & 1) ? +K : -K             // lines 670-672 (v102 & 1)
+    target = (vertex.parity & 1) ? -K : +K             // lines 670-672 (v102 & 1; +K when parity even)
     for cand in candidates:                            // lines 676-...
         if cand.coord(d') == target: return OK(cand)
     return Error("…corner vertex %s, expected distance %d on dimension %d "
-                 "is not found among the candidates.")  // 0xa01dfed, source line 721
+                 "is not found among the candidates.")  // 0xa01dfed, source line 602
 ```
 
-Decompile anchors: the max-`|coord|` accumulation (lines 643-647), the `max_abs < K` dim-win test (line 653, `v35 < (int)v117`), the parity `v76 ^= ((unsigned)v108 >> 1) & 1` (line 764), the rotation `(v33 + v76 + 1) % v75` (line 665), and the `(v102 & 1) ? -K : +K` target (lines 670-672). The two corner errors are byte-exact: no winning dim → `0xa01debc` (line 570); no matching candidate after rotation → `0xa01dfed` (line 721).
+Decompile anchors: the max-`|coord|` accumulation (lines 643-647), the `max_abs < K` dim-win test (line 653, `v35 < (int)v117`), the parity `v76 ^= ((unsigned)v108 >> 1) & 1` (line 764), the rotation `(v33 + v76 + 1) % v75` (line 665), and the `(v102 & 1) ? -K : +K` target (lines 670-672). The two corner errors are byte-exact: no winning dim → `0xa01debc` (`MakeErrorImpl<13>`, source line 610); no matching candidate after rotation → `0xa01dfed` (source line 602).
 
 > **QUIRK —** the corner rule does **not** pick the short dimension `d` itself — it picks `d' = (d + parity + 1) mod n`, a *different* dimension chosen by a parity over the *other* dims' second bits. This deterministic rotation is what disambiguates which of the two doubled axes carries the `+K` seam for a corner chip touching both `2K` axes: a naive "pick the short dim" reimplementation will route corners onto the wrong axis and pick a different (still-valid-distance) candidate, silently producing a *different* but legal route table that no longer matches the reference caches. The exact physical diagonal this rotation disambiguates was traced to its arithmetic, not tied to the `(+K,+K)` seam orientation — MEDIUM.
 
 ### 5.2 Edge (2 candidates) and Mid (3 candidates)
 
 ```c
-function Edge(K, vertex, candidates):                // 0x20b417c5 (count==2)
+function Edge(K, vertex, candidates):                // count==2 (a4[1] == &dword_0+2)
     cand = candidates[0]                              // v50
-    for d in 0 .. ndims-1:                            // lines 382-422
-        target = (vertex.parity & 1) ? +K : -K        // v51 = -K, flipped by (v115 & 1)
+    for d in 0 .. ndims-1:                            // lines 382-457
+        target = (vertex.parity & 1) ? -K : +K        // v51 = -K default, flipped to +K when (v115 & 1)==0
         if cand.coord(d) == target: return OK(cand)    // lines 406-413
+    goto InvalidVertex                                 // line 457 — no match falls to 0xa085c3a (§6)
+    // (a GetCoordinate failure inside the loop propagates that status
+    //  with AddSourceLocationImpl at source lines 677 / 678, lines 395 / 450)
+
+function Mid(K, candidates):                          // count==3 (a4[1] == &dword_0+3)
+    for cand in candidates[0..2]:                      // up to 3 candidates, lines 461-561
+        max_abs = max over cand's dims of |coord|      // v46 / v63 / v89
+        if max_abs < K: return OK(cand)                // first under K wins (LABEL_163)
     return Error("…edge vertex %s, did not find a route whose traveling "
                  "distances are less than tiebreaking length %d for all "
-                 "dimensions among its candidates.")   // 0xa01ddf5, source line 677/678
-
-function Mid(K, candidates):                          // 0x20b41744 (count==3)
-    cand = candidates[0]
-    max_abs = max over cand's dims of |coord|
-    if max_abs < K: return OK(cand)                    // select the single candidate
-    else:           goto Edge-error                    // reuses 0xa01ddf5
+                 "dimensions among its candidates.")   // 0xa01ddf5, source line 651
 ```
 
-The edge path (count==2) walks the single candidate over its dims and selects when `coord(d) == ±K`, the sign chosen by the vertex parity bit (`v115 & 1`, line 407; `v51 = -(int)v117`, line 381). The mid path (count==3) accepts the single candidate when its max `|coord|` is below `K`, else reuses the edge error string (`0xa01ddf5`).
+The **edge** path (count==2) walks `candidates[0]` over its dims and selects when `coord(d) == ±K`, the sign chosen by the vertex parity bit (`v115 & 1`, line 407; `v51 = -(int)v117`, line 381). When no dim matches, the path falls through to the generic **Invalid vertex** error (`0xa085c3a`, `goto LABEL_117` at line 457) — *not* the `0xa01ddf5` string; the `677` / `678` source lines that appear here are `AddSourceLocationImpl` wrappers that only fire if `GetCoordinate` itself errors. The **mid** path (count==3) iterates over up to three candidates and returns the first whose max `|coord|` is below `K` (`v46`/`v63`/`v89 < K`, LABEL_163); only if *none* qualifies does it emit the `0xa01ddf5` "edge vertex" string at source line 651 (a `GetCoordinate` failure inside the scan propagates at source line 643).
 
 | count | vertex class | rule (canonical route) | success | fail string / line |
 |---|---|---|---|---|
 | 6 | (any, `k*k*2k`) | build symmetric `±tb` route, assert ∈ candidates | copy + `*a1=1` | `0xa000dba` / 515 |
-| 4 | corner | dim `d`: `max\|cand\|<K`; rotate `d'=(d+parity+1)%n`; `coord(d')==±K` | OK(cand) | `0xa01debc` 570; `0xa01dfed` 721 |
-| 3 | mid | `max\|cand\|<K` ⇒ select; else edge error | OK(cand) | `0xa01ddf5` (reuse) |
-| 2 | edge | `cand.coord(d)==±K` (vertex-parity sign) | OK(cand) | `0xa01ddf5` / 677-678 |
+| 4 | corner | dim `d`: `max\|cand\|<K`; rotate `d'=(d+parity+1)%n`; `coord(d')==±K` | OK(cand) | `0xa01debc` 610; `0xa01dfed` 602 |
+| 3 | mid | first of ≤3 cands with `max\|cand\|<K` ⇒ select | OK(cand) | `0xa01ddf5` ("edge vertex" text) / 651 |
+| 2 | edge | `cand.coord(d)==±K` (vertex-parity sign) | OK(cand) | falls to `0xa085c3a` (Invalid vertex) |
 | — | invalid | — | — | `0xa085c3a` / Invalid vertex |
 
 (`tb`/`K` = the `std::min` dim size = "tiebreaking length" = `v117`. `parity` = XOR of `((vertex.coord(otherdim) >> 1) & 1)` over the other dims.)
@@ -220,7 +222,7 @@ The edge path (count==2) walks the single candidate over its dims and selects wh
 
 ## 6. The Invalid-vertex fallthrough
 
-Any shape `∉ {1, 2}` (a non-twist topology that reached this vtable slot, or a `k*2k*nk` discriminant of `3` that `Init` should have reduced) — or, within `k*2k*2k`, a candidate count `∉ {2, 3, 4}` — falls to the generic error (`0x20b41add`):
+Any shape `∉ {1, 2}` (a non-twist topology that reached this vtable slot, or a `k*2k*nk` discriminant of `3` that `Init` should have reduced) — or, within `k*2k*2k`, a candidate count `∉ {2, 3, 4}`, or a count==2 (edge) candidate whose dims never hit `±K` — falls to the generic error (`LABEL_117`, the `FormatPack` at line 345):
 
 ```c
     // shape not 1 or 2, or unsupported candidate count
@@ -228,7 +230,7 @@ Any shape `∉ {1, 2}` (a non-twist topology that reached this vtable slot, or a
                  "tiebreaking rule.")                  // 0xa085c3a, line 345
 ```
 
-The error stringifies the topology via its virtual `Format` (the `call *0x28(%rax)` vtable dispatch, line 345 / `0x20b41b01`). This is the catch-all; in a correctly classified twist it is unreachable, which is why a discriminant of `3` reaching here is a signal that the `DropDimension` reduction in `Init` (§2) did not run.
+The error stringifies the topology via its virtual `Format` (the `(*(*(_QWORD *)this + 40))(…)` vtable dispatch at `+0x28`, line 339). This is the catch-all; in a correctly classified twist it is unreachable, which is why a discriminant of `3` reaching here is a signal that the `DropDimension` reduction in `Init` (§2) did not run.
 
 ---
 
@@ -264,11 +266,11 @@ The `k*2k*2k` tiebreak (§5) is what makes the `K_2K_2K` route table *determinis
 | `Coordinates::ManhattanNorm` | `0x20c0ba00` | `Σ\|coord\|` — the `k*k*2k` `tb` input | HIGH |
 | `Coordinates::operator==` | `0x20c0bac0` | candidate ↔ expected route compare (stride 28) | HIGH |
 | `"…k*k*2k twisted torus vertex %s, expected distance %s is not in its minimum route sets."` | `0xa000dba` | k\*k\*2k not-in-set error (line 515) | HIGH (byte-exact) |
-| `"…k*2k*2k twisted torus's edge vertex %s, did not find a route whose traveling distances are less than tiebreaking length %d…"` | `0xa01ddf5` | edge / mid error (lines 677-678) | HIGH (byte-exact) |
-| `"…k*2k*2k twisted torus's corner vertex %s, did not find a dimension whose travelling distances are all less than tiebreaking length %d…"` | `0xa01debc` | corner no-dim error (line 570) | HIGH (byte-exact) |
-| `"…k*2k*2k twisted torus's corner vertex %s, expected distance %d on dimension %d is not found among the candidates."` | `0xa01dfed` | corner no-match error (line 721) | HIGH (byte-exact) |
+| `"…k*2k*2k twisted torus's edge vertex %s, did not find a route whose traveling distances are less than tiebreaking length %d…"` | `0xa01ddf5` | "edge vertex" error, emitted by the count==3 (mid) path (source line 651) | HIGH (byte-exact) |
+| `"…k*2k*2k twisted torus's corner vertex %s, did not find a dimension whose travelling distances are all less than tiebreaking length %d…"` | `0xa01debc` | corner no-dim error (source line 610) | HIGH (byte-exact) |
+| `"…k*2k*2k twisted torus's corner vertex %s, expected distance %d on dimension %d is not found among the candidates."` | `0xa01dfed` | corner no-match error (source line 602) | HIGH (byte-exact) |
 | `"Invalid vertex %s in topology %s for algorithmic tiebreaking rule."` | `0xa085c3a` | shape∉{1,2} / bad-count fallthrough | HIGH (byte-exact) |
-| `"TPU twisted torus only supports k*k*2k and k*2k*2k and k*2k*nk slice shapes."` | `0xa02045c` | the shape-support classifier string | HIGH (byte-exact) |
+| `"TPU twisted torus only supports k*k*2k and k*2k*2k and k*2k*nk slice shapes."` | `0xa020458` | the shape-support classifier string | HIGH (byte-exact) |
 
 ---
 
