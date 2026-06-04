@@ -47,7 +47,8 @@ The primary opcode straddles a 64-bit word boundary: bit 63 of word `this+0x10` 
 
 ```c
 // SparseCoreScalarMiscIntegerAddOpcode::Matches  (gfc 0x1ebabf00)
-return ((word_0x18 >> 63) & 0x3F) == 0x0A;     // opcode 0x0a, 6-bit field
+//   shld $1, word_0x10, word_0x18  →  (word_0x18<<1) | (word_0x10>>63)
+return ((((word_0x18 << 1) | (word_0x10 >> 63)) & 0x3F) == 0x0A);   // opcode 0x0a, 6-bit straddle
 ```
 
 (The decompiler renders the straddle as `(*((__int128*)this + 1) >> 63) & 0x3F`; the `__int128` view at `+1` is the word pair at `+0x10/+0x18`.)

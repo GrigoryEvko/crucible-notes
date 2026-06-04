@@ -201,7 +201,7 @@ When the primary value names a *class*, the concrete op lives in a wider escape 
 | Config-set | 16-bit | `0x4001..0x4005` | `SetTag=0x4001`, `SetIndirectFilterValue=0x4002`, `SetDmaCredit=0x4003`, `SetDmaThrottleSflagRange=0x4004`, `SetRotatingPredicateRegister=0x4005` (GF) | HIGH |
 | Divide-push | 11-bit (Alu0) | `0x160001..0x160002` | `DivideWithRemainderXYPushQuotient`, `…PushRemainder` | HIGH |
 
-Verified anchors: `Halt` `(word15 & 0x7FF) == 0` → control 0x00; `BranchAbsolute` `(word3 & 0x7FF…) == 0x4000…` → `0x4000…>>50 = 0x04`; `ReadRegisterLccLow` `(word3 & 0x7FFFC…) == 0xA000…` → `0xA000…>>42 = 0x280`.
+Verified anchors: `Halt` `(word15 & 0x7FF) == 0` → control 0x00; `BranchAbsolute` `(word3 & 0x7FF000000000000) == 0x4000000000000` → `0x4000000000000>>48 = 0x04`; `ReadRegisterLccLow` `(word3 & 0x7FFFC…) == 0xA000…` → `0xA000…>>42 = 0x280`.
 
 > **QUIRK — register reads and config sets are not opcode `0x28x`/`0x400x` in a 6-bit field.** They cannot be; the primary opcode is only 6 bits. The `0x280+` / `0x4001+` values live in a *wider escape field* (17-bit / 16-bit) that overlays the slot when the primary opcode marks the register-read / config-set class. A reimplementer reading "ReadRegisterGtcLow = 0x282" must place 0x282 in the 17-bit field, not the 6-bit opcode field.
 
