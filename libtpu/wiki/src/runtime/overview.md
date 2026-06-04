@@ -41,7 +41,7 @@ A reimplementer's first decision is *which* of two device abstractions to model,
 ### The split
 
 ```text
-                         PJRT C API (140 slots, P-3-10 surface)
+                         PJRT C API (140 slots)
                                        │
               ┌────────────────────────┴───────────────────────┐
    MODERN (every PJRT client: JAX, PyTorch-XLA)        LEGACY (LocalClient / Service / TF-TPU op kernels)

@@ -62,7 +62,7 @@ The full `%`-spec occurrence distribution across all templates is heavily skewed
 
 ### Confidence and attribution
 
-Templates marked **CERTAIN** were spot-confirmed verbatim in the decompiled call site (see the report). The *subsystem* grouping is a keyword classification of the prose, not a per-template call-site trace; it is **HIGH** confidence for the prose content and **MEDIUM** for the exact owning pass. The **status code** column is **CERTAIN** only for the 99 `<Code>StrCat` factories (the mangled symbol names the code) and for the 390 `MakeErrorStream` sites (the macro names the code); for every other template the code is **inferred** from the prose and the dominant idiom of its subsystem, and is marked **MEDIUM** or **LOW** accordingly.
+Templates marked **CERTAIN** were spot-confirmed verbatim in the decompiled call site. The *subsystem* grouping is a keyword classification of the prose, not a per-template call-site trace; it is **HIGH** confidence for the prose content and **MEDIUM** for the exact owning pass. The **status code** column is **CERTAIN** only for the 99 `<Code>StrCat` factories (the mangled symbol names the code) and for the 390 `MakeErrorStream` sites (the macro names the code); for every other template the code is **inferred** from the prose and the dominant idiom of its subsystem, and is marked **MEDIUM** or **LOW** accordingly.
 
 ---
 
@@ -136,7 +136,7 @@ Memory-space assignment, prefetch/alternate-memory, HBM defragmentation, and the
 | `0x857eed1` | `Register allocator verification failure: live range %s; instruction %s` | `%s`/`%s`=range/instr | Internal | HIGH |
 | `0xa02b12f` | `Scoped allocation with size %s and limit %s exceeded scoped %s limit by %s.` | `%s`×4=sizes/labels | ResourceExhausted | HIGH |
 
-> **CORRECTION (P-3-201) —** the template `0xa13e8e5` "Failed to allocate node (%zu bytes). Memory limit: %zu [bytes]. Used: %zu [bytes].)" was grouped under MSA in the raw findings. Decompilation places it in `perfetto::protovm::RwProtoCursor::CreateNodeFromField` — it is the **Perfetto tracing library's** arena allocator, not the TPU memory-space assignment path. The genuine TPU heap-allocator over-budget string is `0xa1300d0` ("Failed to allocate %zu bytes…"), confirmed in `xla::AlignedAllocator::Allocate`. Do not attribute `0xa13e8e5` to TPU MSA.
+> **NOTE —** do **not** attribute the near-identical template `0xa13e8e5` ("Failed to allocate node (%zu bytes). Memory limit: %zu [bytes]. Used: %zu [bytes].)") to TPU memory-space assignment. It lives in `perfetto::protovm::RwProtoCursor::CreateNodeFromField` — the **Perfetto tracing library's** arena allocator, not the TPU MSA path. The genuine TPU heap-allocator over-budget string is `0xa1300d0` ("Failed to allocate %zu bytes…", row above), confirmed in `xla::AlignedAllocator::Allocate`.
 
 ---
 
@@ -391,3 +391,5 @@ The prose itself signposts the audience. **User-facing** (operator / JAX-user ac
 - [Hint Strings](hint-strings.md) — the *suggestion* surface (try/consider/recommended), contrasted with the failures here; the ±50 boundary cases live there
 - [Internal Pass Names](internal-pass-names.md) — pipeline-stage identifier strings that the compile/HLO error templates reference by name
 - [Execute Async on Stream](execute-async-on-stream.md) — the executor enqueue path that surfaces the runtime/driver `StatusOr<T>` templates at run time
+- [Error / Status Codes (appendix)](../appendix/error-status-codes.md) — the `absl::StatusCode` enumeration these templates are wrapped in
+- [Memory-Space Table (appendix)](../appendix/memory-space-table.md) — the memory-space color values named by the `Unsupported memory space` / `memory space colors` templates

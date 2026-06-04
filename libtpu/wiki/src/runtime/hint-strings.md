@@ -8,7 +8,7 @@ This page catalogs libtpu's **hint strings**: the advisory prose the runtime and
 
 The hint surface is signposted by **five marker tokens**, and the choice of token is itself a taxonomy of *who* fixes the problem. `--flag=value`, "Reduce … memory", and "Please remove the hosts …" are **operator-actionable** — the user has a self-service remedy. `b/<id>`, `go/<link>`, and "please file a bug" point the user *back at the XLA/TPU team* — they signal an internal limitation or a known issue, not a knob the user can turn. This split (operator-actionable vs file-it-upstream) is the page's primary axis, refined into seven **actionability classes**: flag-suggestion, doc-link, bug-report, capacity/OOM, deprecation, perf-tuning, and operator-action.
 
-This is a **reference catalog**, not an algorithm. Each section groups hints by trigger and, where the binary shows it, pairs the hint with the condition that fires it and the flag/knob it names. Flag names are byte-confirmed real `absl::Flag` globals (each has an `AbslFlagHelpGenFor<name>` symbol); their *help-text bodies* live in the config section and are out of scope here. The page does **not** claim to know which error template each hint is concatenated onto — that link is a `.text` callsite not yet traced (see [Not Traced](#not-traced)).
+This is a **reference catalog**, not an algorithm. Each section groups hints by trigger and, where the binary shows it, pairs the hint with the condition that fires it and the flag/knob it names. Flag names are byte-confirmed real `absl::Flag` globals (each has an `AbslFlagHelpGenFor<name>` symbol); their *help-text bodies* live in the [config flag families](../config/flag-families.md) and are out of scope here. The page does **not** claim to know which error template each hint is concatenated onto — that link is a `.text` callsite not yet traced (see [Not Traced](#not-traced)).
 
 The catalog contract:
 
@@ -69,11 +69,9 @@ The self-service remedy class: an error or log line names a specific `--xla_*` /
 | Offset | Hint string (verbatim) | Flag referenced | Confidence |
 |---|---|---|---|
 | `0x858bbcf` | "(1) Please use --xla_tpu_rwb_fusion=false (and --xla_tpu_dot_dot_fusion=false if failure persists), Reason: found fallback window config while lowering fusion." | `xla_tpu_rwb_fusion`, `xla_tpu_dot_dot_fusion` | CERTAIN |
-| `0xa2b7034` | (duplicate of `0x858bbcf` — same rwb/dot_dot fusion remedy) | (same) | CERTAIN |
+| `0xa2b7034` | (duplicate of `0x858bbcf` — same rwb/dot_dot fusion remedy; both copies byte-identical) | (same) | CERTAIN |
 | `0x96c35ed` | "PartialReduce is designed to be used with fusion. Did you forget to set \`--xla_tpu_nested_dot_fusion=true\`?" | `xla_tpu_nested_dot_fusion` | CERTAIN |
 | `0xa083064` | "…suboptimal MXU throughput on this HLO. Please file a bug with XLA:TPU compiler team, and use --xla_tpu_accumulate_into_mrb=false in the meantime." | `xla_tpu_accumulate_into_mrb` | HIGH |
-
-> **CORRECTION (HINT-1) —** the raw extraction listed the rwb/dot_dot duplicate at `0x2b7034`. The strings sidecar places it at `0xa2b7034` (the leading `a` was dropped); both copies of the string are byte-identical. Offsets on this page use the sidecar value.
 
 ### SparseCore / embedding
 
@@ -179,20 +177,21 @@ The file-it-upstream class. These prose strings point the user at a tracker, a t
 
 ### The TPU-lowering invariant block (`0xa0c8b1e..0xa0c9758`)
 
-A contiguous run of "should not happen" templates, one per HLO op the TPU backend expects to have been legalised away before lowering. These are pure internal-bug markers — there is no user remedy.
+A contiguous run of "should not happen" templates, one per HLO op the TPU backend expects to have been legalised away before lowering. These are pure internal-bug markers — there is no user remedy. The block is contiguous but not strictly homogeneous: the first string in the run, at `0xa0c8b1e`, is a sibling variant phrased about *layouts* rather than an un-eliminated op — "Encountered mismatched layouts for select-and-scatter. This should not happen - please file a bug against XLA." The "Encountered `<Op>` op during TPU lowering…" template proper begins at `0xa0c8b8d` (Dot).
 
 ```text
-Encountered <Op> op during TPU lowering that should have been eliminated during
-an earlier phase of compilation. This should not happen - please file a bug against XLA.
+0xa0c8b1e  Encountered mismatched layouts for select-and-scatter.
+           This should not happen - please file a bug against XLA.
+0xa0c8b8d  Encountered <Op> op during TPU lowering that should have been eliminated
+           during an earlier phase of compilation.
+           This should not happen - please file a bug against XLA.
    <Op> ∈ { Dot, Call, BatchNormTraining, BatchNormInference, BatchNormGrad,
             Pad, Reverse, select-and-scatter, custom-fusion, OutputFusion, … }   (~14 ops)
 ```
 
-> **CORRECTION (HINT-2) —** the raw notes summarised this block as a uniform "Encountered `<Op>`" template family. The first string in the run, at `0xa0c8b1e`, is actually a sibling variant — "Encountered mismatched layouts for select-and-scatter. This should not happen - please file a bug against XLA." — phrased about *layouts* rather than an un-eliminated op. The "Encountered `<Op>` op during TPU lowering…" template begins at `0xa0c8b8d` (Dot). The block is contiguous but not strictly homogeneous.
-
 ### `b/<id>` known-issue / TODO references (31 distinct)
 
-These pin a limitation to a tracked bug. They are not actionable beyond "comment/track" — the most a user does is leave a note on the bug. Representative rows; the full set of 31 is in the raw extraction.
+These pin a limitation to a tracked bug. They are not actionable beyond "comment/track" — the most a user does is leave a note on the bug. Representative rows from the 31 distinct ids follow.
 
 | `b/<id>` | Context (offset) | Class | Confidence |
 |---|---|---|---|
@@ -383,3 +382,5 @@ This page is the hint half of the diagnostic surface; several links to the rest 
 - [Error Templates](error-templates.md) — the raw error/status *templates* these hints are appended to; the fact, where the hint is the remedy.
 - [Runtime Overview](overview.md) — where in the runtime the diagnostic surface sits.
 - [Internal Pass Names](internal-pass-names.md) — the pass/lowering names that appear in many "should not happen during TPU lowering" bug-report hints.
+- [Flag Families (config)](../config/flag-families.md) — the registered `absl::Flag` globals these hints name, with their help-text bodies and defaults.
+- [XLA Flag Atlas (config)](../config/xla-flag-atlas.md) — the full `--xla_tpu_*` / `--megascale_*` knob catalog the flag-suggestion hints point to.

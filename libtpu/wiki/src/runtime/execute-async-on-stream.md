@@ -273,7 +273,7 @@ Stream ordering, the on-device program load (`tpu::System::LoadProgram` / `TpuCo
 | `xla::Executable::ExecuteAsyncOnStreamWrapper` | The profiled public C++ wrapper that calls the +24 virtual |
 | `xla::LocalExecutable::RunAsync` | The `LocalClient` per-call driver that resolves stream/ordinal and calls the wrapper |
 | `TpuExecutable_ExecuteAsyncOnStream` | The C-ABI shim that marshals C structs across the StreamExecutor boundary |
-| `xla::TpuClient` (PJRT path) | The *modern* execution path; bypasses `ExecuteAsyncOnStream` entirely via `tpu::System::Execute` |
+| [`xla::TpuClient`](../pjrt/client-and-device.md) (PJRT path) | The *modern* execution path; bypasses `ExecuteAsyncOnStream` entirely via `tpu::System::Execute` |
 
 ## Cross-References
 
@@ -282,4 +282,5 @@ Stream ordering, the on-device program load (`tpu::System::LoadProgram` / `TpuCo
 - [Completion Loop](completion-loop.md) — the async completion event the enqueue layer produces
 - [Allocator Integration](allocator-integration.md) — the `DeviceAddressAllocator` that `AllocateOutputMemoryWithInputReuse` and the C shim build
 - [Host Callbacks](host-callbacks.md) — host-side infeed/outfeed and callback dispatch during execution
+- [PJRT Executable Execution](../pjrt/executable-execution.md) — the modern `PJRT_LoadedExecutable_Execute` → `CommonPjRtLoadedExecutable::Execute` path this entry is the legacy counterpart of
 - [Runtime Overview](overview.md) — where the StreamExecutor execution path sits relative to the PJRT path

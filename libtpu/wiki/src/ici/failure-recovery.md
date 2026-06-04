@@ -63,7 +63,7 @@ Layer 5  MEGASCALE AGGREGATION — ReportError → MegascaleErrorAggregator
 
 The static-deadlock pre-check (`DetectRoutingTableDeadlock`) sits off to the side of this stack: it runs at slice **init**, not at runtime, validating that the route table chosen by discovery — including a resilient table picked to route around a known-bad link — does not contain a channel-dependency cycle. Upstream is link discovery and bring-up ([Link Bring-Up Sequence](link-bringup.md), [Topology Discovery](topology-discovery.md)); downstream consumers are the collective picker ([Degraded-Axis Ingest](../collectives/degraded-axis.md)) and the cross-pod aggregator ([Megascale Error Aggregator](../megascale/error-aggregator.md)). The overview of the whole ICI fabric is on [ICI Overview](overview.md).
 
-> **NOTE —** the raw reconstruction this page builds on did not surface `Master::ControlIciErrorReport` or `Master::DetectRoutingTableDeadlock`; both are present in the binary as full slice-builder symbols (`accel_ssw::deepsea::slice_builder`), are referenced from `Master::InitSlice` (`0x1fbbaac0`), and their bodies are decompiled below. Earlier prose that placed all cross-host escalation through the Megascale RPC alone was incomplete: the slice-builder layer has its own dedicated ICI error-report broadcast.
+> **NOTE —** cross-host escalation does not run through the Megascale RPC alone: the slice-builder layer has its own dedicated ICI error-report broadcast. `Master::ControlIciErrorReport` and `Master::DetectRoutingTableDeadlock` are present in the binary as full slice-builder symbols (`accel_ssw::deepsea::slice_builder`), are referenced from `Master::InitSlice` (`0x1fbbaac0`), and their bodies are decompiled below.
 
 ---
 
@@ -182,9 +182,7 @@ function FatalErrorCheck():                       // ici::SliceConfiguration @ 0
     return OK
 ```
 
-> **CORRECTION (FR-1) —** the earlier reconstruction recorded the log order as `network_fatal: … hardware_fatal: …`. The decompiled body emits them in the **reverse** order: `" hardware_fatal: " << hardware_fatal` is appended *before* `" network_fatal: " << network_fatal`, and the literal prefix is `"!!!! FATAL ERROR !!!! for "` (not `"… !!!! …"` with a trailing ellipsis). The two source reads are vtable+0x20 (`hardware_fatal`) at line 739 and vtable+0x28 (`network_fatal`) at line 741.
-
-The verdict, as the driver follows it on an ICI link event:
+The log line appends `hardware_fatal` (read at vtable+0x20, line 739) *before* `network_fatal` (vtable+0x28, line 741), under the literal prefix `"!!!! FATAL ERROR !!!! for "`. The verdict, as the driver follows it on an ICI link event:
 
 ```text
 ICI link IRQ → HandleIciLinkInterrupt → HandleIciLinkStatusChange
