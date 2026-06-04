@@ -21,7 +21,7 @@ For reimplementation, the contract this page completes is:
 | pxc | `…deepsea::pxc::profiler` | 12 | 59 | 61 | 61 | baseline (UHI, CMQ, BC-FSM) | CERTAIN |
 | **vfc** | `…deepsea::vxc::vfc::profiler` | 14 | 59 | 61 | 61 | UHI→HDE, CMQ→CMN-DMA | CERTAIN |
 | **vlc** | `…deepsea::vxc::vlc::profiler` | 14 | **56** | **58** | **58** | UHI→HDE, CMQ→VDQ | CERTAIN |
-| glc | `…deepsea::glc::profiler` | 14 | 59 | 61 | 61 | +lcc sync-flag | HIGH |
+| glc | `…deepsea::gxc::glc::profiler` | 14 | 59 | 61 | 61 | +lcc sync-flag | HIGH |
 | **gfc** | `…deepsea::gxc::gfc::profiler` | 14 | 59 | 61 | 61 | +STATS_COUNTER, +O2CUR, +FLL, +sync `lcc` | CERTAIN |
 
 ---
