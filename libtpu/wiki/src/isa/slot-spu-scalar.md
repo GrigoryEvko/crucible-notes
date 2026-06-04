@@ -126,7 +126,7 @@ if (lane == 1) {                                          // scalar_1
 
 Because the [41-byte wire bundle is `struct[0x0C..0x34]`](bundle-jf-41b.md), a field at word-bit `S` in struct byte `0x2D` lands at absolute bundle bit `0x2D*8 + S − 96`: lane-0 opcode `0x2D*8 + 47 − 96 = 311`, lane-1 opcode `0x2D*8 + 20 − 96 = 284`. The opcode is a single 6-bit field (`opcode & 0x3F`) with no separate class; the `switch (opcode)` covers cases 0..0x3E with a sparse legal set and rejects `opcode > 0x3E` (`"Not implemented yet."`, encoder_jf.cc:1439).
 
-> **CORRECTION (SPU-1) —** an earlier reading placed the Jellyfish `scalar_0` opcode at "bits 20-25" and `scalar_1` higher in the word. The decompiled lane branch shows the opposite: the `lane==0` (sequencer) branch shifts the opcode by 47 (abs 311) and the predicate by 53 (abs 317), while `lane==1` shifts the opcode by 20 (abs 284). "Bits 20-25" is the **lane-1** opcode placement, not lane 0. This page follows the decompile and is consistent with the [Jellyfish Bundle](bundle-jf-41b.md) scalar-slot table.
+The `lane==0` (sequencer) branch shifts the opcode by 47 (abs 311) and the predicate by 53 (abs 317); `lane==1` shifts the opcode by 20 (abs 284). The lane-1 opcode placement is consistent with the [Jellyfish Bundle](bundle-jf-41b.md) scalar-slot table.
 
 ### Pufferfish — 5-bit opcode with NeverExecute overload
 
@@ -252,8 +252,6 @@ Six immediate slots ride at the **low** end of every bundle (opposite the scalar
 | 6acc60406 | 6 | 20 b | 323, 343, 363, 383, 403, 423 | `0x1f86de20` |
 
 The V5+ slots are a perfect stride-20 ladder (`BitCopy(span, off, …, 20)`), and the GL ladder is again VF+3, the GF ladder VF−7 — the same uniform per-gen shift the scalar slot shows. A 32-bit immediate consumes an adjacent **pair** of 20-bit slots (40 ≥ 32); anything wider becomes an SMEM constant load issued by the SPU.
-
-> **CORRECTION (SPU-2) —** an earlier note placed the Viperfish immediate slots at bits `0x4a, 0x5e, 0x72, …` (74, 94, …). The decompiled `TensorCoreImmediatesEncoder::Encode` (`0x1eebee40`) packs them at **330, 350, 370, 390, 410, 430** (stride 20), with Ghostlite at 333…433 and 6acc60406 at 323…423. The earlier offsets are not what the encoder emits; this page uses the `BitCopy` arguments directly.
 
 Jellyfish's `Place16BitScalarImmediate` (`0x1e8721e0`) walks the slot-presence mask testing `0x8000/0x4000/0x2000/0x1000` and returns a `ScalarYEncoding` in `0x20..0x23` referencing the slot it filled, folding the sign bit as `(val >> 13) & 4`. A 32-bit value splits into an adjacent slot pair via `Place32BitScalarImmediate` (`0x1e8724c0`). See [Immediate Slot](slot-immediate.md) for the full per-gen encoding-id → slot-position map.
 

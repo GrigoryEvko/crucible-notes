@@ -104,7 +104,7 @@ All factories are in namespace `xla::jellyfish::LloRegionBuilder::`. The emitted
 | `VpermuteSlane` @`1d52d220` | `CreateVectorBinop` @`1d4d27c0` | (opcode arg-driven) | — | LOW (op arg-driven) |
 | `VpackiB16` @`1d553380` / `VpackcB16` @`1d562700` | `CreateVectorPack` @`1d4d3140` | (opcode arg-driven) | 2 | LOW (op arg-driven) |
 
-> **CORRECTION (XPOSE-B16) —** An earlier draft claimed `VxposeBinaryCompressedB16` appends secondary `0x158`/`0x159`/`0x156` multiply/pow sub-ops after the primary `0xa7`. The factory (`@0x1d550220`) and its constructor (`@0x1d4dd7e0`) emit **only** the single `0xa7` op (3 operands); the third operand is a `LloModule::ScalarU32ConstantImpl` scale value, not a multiply chain. The factory's one extra action is a `target().SupportsVsupp()` gate (CHECK string byte-visible at `llo_region_builder.cc:8617`). No `New(0x156/0x158/0x159)` call exists on the XLU path.
+> **NOTE —** `VxposeBinaryCompressedB16` emits a single `0xa7` op (3 operands), not a multiply/pow chain. Its factory (`@0x1d550220`) and constructor (`@0x1d4dd7e0`) take the third operand as a `LloModule::ScalarU32ConstantImpl` scale value; the only extra action is a `target().SupportsVsupp()` gate (CHECK string at `llo_region_builder.cc:8617`). No `New(0x156/0x158/0x159)` call exists on the XLU path.
 
 ---
 
@@ -126,7 +126,7 @@ IsRpu(op)            = (unsigned)(op - 17) < 0x12      // {17..34}
 VectorExtendedUsesData(op) = (op != 3)                 // only op 3 reads no vector data operand
 ```
 
-> **CORRECTION (binary-confirmed) —** The classifier source notes circulating with this roster gave `IsRpu = (op-0xf) < 0x12 = {15..32}` and called proto 33/34 "beyond IsRpu." The actual binary (`ProtoUtils::IsRpu` @ `0x1e875b60`) computes `(op - 17) < 0x12`, i.e. **`IsRpu = {17..34}`** — `PERMUTE(17)` through `CROSS_LANE_SEGMENTED_MIN_INDEX_PERMUTE(34)`. `TRANSPOSE(15)`/`TRANSPOSE_START(16)` are covered by `IsTranspose`, not `IsRpu`. This page uses the binary value.
+`ProtoUtils::IsRpu` (@ `0x1e875b60`) computes `(op - 17) < 0x12`, so the RPU band is `{17..34}` — `PERMUTE(17)` through `CROSS_LANE_SEGMENTED_MIN_INDEX_PERMUTE(34)`. `TRANSPOSE(15)`/`TRANSPOSE_START(16)` fall under `IsTranspose`, not `IsRpu`.
 
 ### Roster Table
 
@@ -403,7 +403,7 @@ Byte-exact from the per-`Target` vtable slots. `NumVexSlots()` is the per-gen `v
 | `ViperfishTarget` (v5p) | 2 | `mode != 2` (all except Compressed B8) | CONFIRMED |
 | `Target` (base) | `LogFatal` | abstract | CONFIRMED |
 
-> **CORRECTION (XPOSE-MASK) —** The PF/VF `SupportsVectorXpose` bodies (`0x1d4940a0` / `0x1d49a000`) are `return a2 != 2;` — they accept *every* `VxposeMode` **except** mode 2 (Compressed B8), not "`mode == 2`" as an earlier draft inferred from the `cmp esi, 2; ret` form. Confirmed byte-exact from the decompiled bodies; see [Transpose Reservation Latency](../cost/xpose-reservation-latency.md) for the `VxposeMode` ordinal roster.
+> **NOTE —** the PF/VF `SupportsVectorXpose` bodies (`0x1d4940a0` / `0x1d49a000`) are `return a2 != 2;`: they accept every `VxposeMode` **except** mode 2 (Compressed B8). The `cmp esi, 2; ret` form is an inequality test, not `mode == 2`. See [Transpose Reservation Latency](../cost/xpose-reservation-latency.md) for the `VxposeMode` ordinal roster.
 
 ---
 

@@ -167,7 +167,7 @@ CHECK(effective_input_feature_tile_start_in_chunks
 
 Both require the input-feature sublane chunking — *count per tile* and *tile start offset* — to be an exact multiple of `block_size`. This is the physical reason for the `"input feature to be a multiple of %d"` constraint in [§3](#3-shape-inference-and-the-constraint-gauntlet): the packed kernel is loaded into the array a `block_size`-chunk at a time, and a partial chunk has no valid latch encoding. The emitter then issues the SME structured-sparsity outer-product instruction family rather than the dense MXU `matmul`; the kept-lane pattern is carried by the packed layout (values+indices on sublanes), so no extra operand field is added to the bundle slot itself.
 
-> **CORRECTION (no new slot) —** this topic is named a "slot" by the frontier register, but at the bundle level structured sparsity adds **no new TensorCore bundle slot and no new operand field**. It is the *same* MXU `VectorExtended` slot ([MXU slot](slot-mxu.md)) and the *same* gain-latch sub-slots ([matprep / IAR / latch](slot-matprep-iar-latch.md)); what differs is (a) the instruction *family* selected (SME outer-product vs dense matmul, chosen by the emission flag) and (b) the `block_size` divisor woven into the tiling/latch math. A reimplementer should not look for a "sparsity field" in the v5+ 64-bit bundle — there isn't one. The state that makes the matmul sparse lives in the operand's packed memory layout, not in a bundle bit. Bit-position recovery for a dedicated sparsity field therefore returns *nothing*, and that absence is the finding.
+> **NOTE — no new slot.** Although this topic is named a "slot" by the frontier register, at the bundle level structured sparsity adds **no new TensorCore bundle slot and no new operand field**. It reuses the same MXU `VectorExtended` slot ([MXU slot](slot-mxu.md)) and the same gain-latch sub-slots ([matprep / IAR / latch](slot-matprep-iar-latch.md)); what differs is (a) the instruction *family* selected (SME outer-product vs dense matmul, chosen by the emission flag) and (b) the `block_size` divisor woven into the tiling/latch math. There is no "sparsity field" in the v5+ 64-bit bundle — the state that makes the matmul sparse lives in the operand's packed memory layout (values+indices on sublanes), not in a bundle bit.
 
 ---
 
@@ -229,9 +229,9 @@ The gate itself is a compiler flag whose help string *"Enable SME Structured spa
 
 - [MXU Slot](slot-mxu.md) — the `VectorExtended` matmul slot the sparse path re-uses; no sparsity field is added to it.
 - [Matprep, IAR, and Latch Sub-Slots](slot-matprep-iar-latch.md) — the gain-latch machinery whose tiling math takes the `block_size` divisor.
-- [VF 64-bit Bundle](bundle-vf-64b.md) — the Viperfish (TPU v5) bundle format; first gen with the SME path. There is no per-bundle sparsity field, and that page's VF-specific sparsity finding is independently marked open.
+- [VF 64-bit Bundle](bundle-vf-64b.md) — the Viperfish (TPU v5) bundle format; first gen with the SME path. There is no per-bundle sparsity field.
 - [GL Bundle](bundle-gl.md) / [GF Bundle](bundle-gf.md) — Ghostlite (TPU v6 lite) / 6acc60406 (TPU7x) bundle formats; v5+ family members sharing the SME path.
-- [TpuVersion / Codename Matrix](../targets/tpu-version-codename-matrix.md) — the authoritative enum↔codename↔external-name reconciliation; why `Trillium`/`Ironwood` have zero binary occurrences.
+- [TpuVersion / Codename Matrix](../targets/tpu-version-codename-matrix.md) — the authoritative enum↔codename↔external-name mapping; why `Trillium`/`Ironwood` have zero binary occurrences.
 - [Instruction-Bits Master Database](instbits-master-db.md) — the per-gen field registry; confirms the absence of a dedicated sparsity slot.
 - [ISA Overview](overview.md) — slot taxonomy and the v3 vs v4/v5+ encoder lineage split.
 - [Dot/Conv → MXU Lowering](../compiler/dot-conv-mxu-lowering.md) — the matmul-lowering pipeline this sparsity attribute rides through.

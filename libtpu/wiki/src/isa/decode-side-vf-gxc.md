@@ -221,7 +221,7 @@ The dtype-class at abs 59 is `{F32 0, E4m3 1, Bf16 2, E5m2 3}`. The MXU1 twin is
 | matmul opcode (w8) | 62 | 37 | −25 | CONFIRMED |
 | matmul format | 57 | 32 | −25 | CONFIRMED |
 
-> **CORRECTION (DEC-GXC-1) —** an earlier cross-generation table listed the `6acc60406` (gfc) inter-MXU twin as **−21** (carried over from Ghostlite). Decode-side disassembly of the gfc `MatrixMultiplyBf16Lgmr*` and `PushMatrix*Opcode::Matches` shows the twin is **−25**: MXU0 opcode @ abs 64, MXU1 @ abs 39; matmul @ 62 vs 37; format @ 57 vs 32. The +4 MXU0 drift (glc 60 → gfc 64) compounds the offset because MXU1 anchors at abs 39 across both GXC generations.
+The gfc twin is **−25** rather than Ghostlite's −21 because the gfc MXU0 anchors drift up by +4 (glc 60 → gfc 64) while the MXU1 anchor stays at abs 39 across both GXC generations: the +4 MXU0 shift compounds onto the inter-MXU delta.
 
 > **NOTE —** the glc latch valid-guard is read here as a 2-bit field at abs 58/59 in the cross-generation analysis, but the decompiled `glc PushMatrixBf16` body tests `(~v1 & bits{58,59}) != 0` (at least one of the two clear) together with the dtype-class at abs 54 — the exact guard polarity and the gfc 1-bit `bt 62` equivalent width are read as confirmed *single-bit/two-bit tests* but their full latch-vs-matmul boundary semantics are the [MXU Slot](slot-mxu.md#ghostlite-v6e--glc) page's territory (LOW confidence on the unified-opcode boundary value). The opcode, dtype-class, and matmul-format positions above are all CONFIRMED byte-exact.
 
