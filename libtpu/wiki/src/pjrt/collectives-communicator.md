@@ -202,9 +202,9 @@ The arrows are one-way: the coordination KV rendezvous must converge before mega
 | `PJRT_KeyValueGetCallback` / `PutCallback` typedefs | **ABSENT** (HIGH) | no symbol match |
 | Canonical `KeyValueStoreInterface` wrapper | **ABSENT** (HIGH) | no symbol match |
 
-> **CORRECTION (PJRT-COLL-1) —** the stub this page replaced framed the topic as `CreateCommunicators` / cross-host communicator handles. That is the in-process **Collectives extension** (type 21), a CPU-executor-backed XLA surface that is *not* the TPU multi-host coordination path and carries no KV store. That extension is documented in [the extension chain](extension-chain.md); this page is re-scoped to the actual PJRT distributed-coordination KV surface that bootstraps multi-host execution.
+> **Note —** the `CreateCommunicators` / cross-host communicator-handle surface is the in-process **Collectives extension** (type 21): a CPU-executor-backed XLA surface that is *not* the TPU multi-host coordination path and carries no KV store. It is documented in [the extension chain](extension-chain.md). This page covers the distinct PJRT distributed-coordination KV surface that bootstraps multi-host execution.
 
-The honest summary: the PJRT-level *collective communicator* surface — a discrete KV-store extension feeding a communicator factory — is **thin to absent** in this build. What is present and load-carrying is the `CoordinationServiceAgent` KV rendezvous and the client factory that threads it down to megascale. This page documents what is there.
+The summary: the PJRT-level *collective communicator* surface — a discrete KV-store extension feeding a communicator factory — is **thin to absent** in this build. What is present and load-carrying is the `CoordinationServiceAgent` KV rendezvous and the client factory that threads it down to megascale. This page documents what is there.
 
 ---
 

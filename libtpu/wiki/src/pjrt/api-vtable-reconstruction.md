@@ -118,10 +118,10 @@ function CreatePjrtApi(a1, a2, a3, a4, a5, a6, a7):  // 0xF874160
 
 The struct lives in `.lbss` (section `[47]`, NOBITS, large-model BSS), at the function-local static `_ZZN4pjrt10tpu_plugin13GetTpuPjrtApiEvE8pjrt_api @ 0x227BA840`. Two consequences for a reimplementer and for any tool that inspects the binary statically:
 
-- **Static disassembly cannot show the populated table.** The 1120 bytes are zero on disk and zero-filled at load; the function pointers only exist after the first `GetPjrtApi` call runs `CreatePjrtApi`. The slot map below is reconstructed from the *stores in the initializer*, not from a data dump — there is nothing to dump until runtime. Independent verification requires reading `/proc/self/mem` at `0x227BA840` inside a live JAX worker after the first call (not done here; runtime-evidence wave).
+- **Static disassembly cannot show the populated table.** The 1120 bytes are zero on disk and zero-filled at load; the function pointers only exist after the first `GetPjrtApi` call runs `CreatePjrtApi`. The slot map below is reconstructed from the *stores in the initializer*, not from a data dump — there is nothing to dump until runtime. Runtime confirmation would require reading `/proc/self/mem` at `0x227BA840` inside a live JAX worker after the first call.
 - **Concurrency is `__cxa_guard`, not a lock the reader holds.** First callers serialize through the Itanium ABI guard (one thread runs the constructor, the rest block on its mutex). After the first call the struct is immutable, so steady-state readers take no lock. A reimplementation that rebuilds the table per call, or that omits the one-shot guard, diverges from this contract.
 
-> **CORRECTION (P-3-10 supersedes P-2-05) —** an earlier reconstruction placed the struct in `.bss`/`.data.rel.ro` at `&stru_2F7EC0 + _GLOBAL_OFFSET_TABLE_`. That expression was an IDA PIC-relocation artifact, not a real address. The struct is in `.lbss` at the concrete VA `0x227BA840`. The earlier note also attributed slot 9 to a TPU-plugin override; it is fed from `CreatePjrtApi`'s `a7` parameter = `pjrt::PJRT_Plugin_Attributes_Xla`, a stock XLA implementation.
+> **Note —** the struct lives in `.lbss` at the concrete VA `0x227BA840`, not in `.bss`/`.data.rel.ro`; any `&stru_… + _GLOBAL_OFFSET_TABLE_` form in a disassembler is a PIC-relocation artifact, not a real address. Slot 9 is *not* a TPU-plugin override — it is fed from `CreatePjrtApi`'s `a7` parameter = `pjrt::PJRT_Plugin_Attributes_Xla`, a stock XLA implementation.
 
 ---
 

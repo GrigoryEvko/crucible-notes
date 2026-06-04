@@ -370,7 +370,7 @@ int64 GetCoreLocation(DeepseaExecutor** handle):
     return deepsea::executor::DeepseaExecutor::GetCoreLocation(*handle)  // pure tail call
 ```
 
-> **NOTE —** at 8 bytes this is a `jmp` to the C++ method — no vtable indirection, no status wrapping. The returned `TpuCoreLocation` is the same opaque coordinate handle the `TpuCoreLocation_*` cluster operates on (see [TpuTopology & TpuCoreLocation](tpu-platform-and-topology.md)). The executor exposes its own location; everything else about the mesh comes from `TpuTopology_*`.
+> **NOTE —** at 8 bytes this is a `jmp` to the C++ method — no vtable indirection, no status wrapping. The returned `TpuCoreLocation` is the same opaque coordinate handle the `TpuCoreLocation_*` cluster operates on (see [TpuTopology & TpuCoreLocation](tpu-topology.md)). The executor exposes its own location; everything else about the mesh comes from `TpuTopology_*`.
 
 ---
 

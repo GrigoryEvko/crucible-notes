@@ -41,7 +41,7 @@ For reimplementation, the contract is:
 
 `stream_executor::PlatformManager` is the process-global registry that maps a *platform name* and a *platform id* to a `Platform*`. XLA's device-enumeration code asks it for "the TPU platform" or "the host platform" by name/id and gets back the singleton `Platform` object that mints executors. There is exactly one `PlatformManager` per process, lazily constructed.
 
-> **CORRECTION (SE-1) —** the task brief and older XLA call this class `MultiPlatformManager`. **No `MultiPlatformManager` symbol exists in this binary** — `rg` over the full decompile set returns zero hits. Upstream XLA renamed `MultiPlatformManager` → `PlatformManager` and dropped the `Multi` prefix; this build carries only the new name. A reimplementer should drive off `stream_executor::PlatformManager`; the legacy name is dead.
+> **Note —** older XLA called this class `MultiPlatformManager`. No `MultiPlatformManager` symbol exists in this binary; upstream XLA renamed `MultiPlatformManager` → `PlatformManager`, dropping the `Multi` prefix, and this build carries only the new name. A reimplementer should drive off `stream_executor::PlatformManager`.
 
 ### Object Layout
 
@@ -361,7 +361,7 @@ The split is deliberate: the outer `0x18`-byte wrapper is the `Event` the SE API
 ## 6. Considerations for a Reimplementer
 
 - **Registration is a one-time, fatal-on-failure handshake.** Mirror `RegisterTpuPlatform`: gate on the backend-enabled flag, guard with a once-flag, and treat `RegisterPlatform` failure as fatal (the CHECK at `tpu_platform.cc:178`). A silently-failed registration leaves device enumeration broken with no error.
-- **Drive off `PlatformManager`, not `MultiPlatformManager`.** The legacy class name is gone from this build (§1 CORRECTION). Key the registry on the virtual platform-id.
+- **Drive off `PlatformManager`, not `MultiPlatformManager`.** The legacy class name is gone from this build (§1 Note). Key the registry on the virtual platform-id.
 - **Executors are per-ordinal singletons with a double-checked cache.** Do not build a fresh executor per call. Replicate `ExecutorCache`: fast-path `Get`, build the factory result *outside* the lock, then `find_or_prepare_insert` under the lock and discard the loser of any race.
 - **The TPU executor owns no device state.** It is a `0x48`-byte handle holder (`SE_StreamExecutor*` @ `+0x38`, ordinal @ `+0x40`). Every method forwards through `ExecutorApiFn()`; the status idiom is always *scratch / op / ok?-code-msg / free* @ `status_helper.h:38`.
 - **The host backend is synchronous by design.** `BlockHostUntilDone` returns `true`, callbacks run inline, host events are single-shot (`host_stream.cc:92` CHECK). If you add an async host worker queue (upstream XLA has one — not linked here), you must change all three. The absence of an async `HostStream` symbol is by inference (no symbol found), so confidence the linked build is purely synchronous: HIGH.

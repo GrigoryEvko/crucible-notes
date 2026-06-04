@@ -231,7 +231,7 @@ The decompiled body reads the following offsets within `PJRT_PhaseCompile_Run_Ph
 | `+0x48` | `compile_options` | `char*` — serialized `CompileOptionsProto`, fed to `ParseFromString` | HIGH |
 | `+0x50` | `compile_options_size` | `size_t` — proto byte length | HIGH |
 
-> **CORRECTION (PHASE-1) —** an earlier reading of `Run_Phase` placed the input-program span at `+0x18` *and* the phase-name span overlapping at `+0x30/+0x40` with a shared count, and mislabeled the options blob (the decompiled body reads `*(a1+72)`/`*(a1+80)`, i.e. hex `+0x48`/`+0x50`, not `+0x72`/`+0x80`). The decompiled body (`0xe6f42e0`, lines 84-85, 134-135) shows the two char-buffer spans are distinct `(ptr, size, count)` triples — programs read from `(+0x18, +0x20, +0x28)`, phase names from `(+0x30, +0x38, +0x40)` — not a shared count, and the options proto is `(ptr=+0x48, len=+0x50)`. The exact per-field *names* still depend on the public `pjrt_c_api_phase_compile.h` header order, which is not in the binary; the offsets above are read directly from the body and are HIGH.
+> **Note —** the offsets above are read directly from the `Run_Phase` body at `0xe6f42e0` (lines 84-85, 134-135): the two char-buffer spans are distinct `(ptr, size, count)` triples — programs at `(+0x18, +0x20, +0x28)`, phase names at `(+0x30, +0x38, +0x40)` — and the options proto is `(ptr=+0x48, len=+0x50)`. The decompiler renders these decimal (`*(a1+72)`/`*(a1+80)` = hex `+0x48`/`+0x50`); do not misread the decimal as hex. The exact per-field *names* depend on the public `pjrt_c_api_phase_compile.h` header order, which is not in the binary; the offsets are HIGH confidence.
 
 ### Considerations
 
