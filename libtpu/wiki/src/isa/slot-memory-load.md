@@ -45,6 +45,44 @@ On Pufferfish the `VectorLoad` slot's control fields land at absolute bundle bit
 
 ---
 
+## The VMEM-Load Encoder Algorithm (`VectorLoadEncoder::Encode`)
+
+The Pufferfish VMEM-load slot is packed by `pxc::isa::TensorCoreVectorLoadEncoder::Encode(TensorCoreVectorLoad const&, Span<uint8>)` (`0x1ee287e0`), the read-side mirror of the [cmem_load `Encode`](slot-cmem-load-pf.md#on-wire-field-map). Like every Pufferfish slot it writes each field with one call to the shared bit-packing primitive `BitCopy(buf, abs_bit, &field, src_bit=0, nbits)` (`0x1fa0a900`), and **the `dst_bit` argument is the literal absolute bundle bit** — no shift arithmetic to invert (see [Pufferfish 51B Bundle §The Direct-BitCopy Model](bundle-pf-51b.md)). The structure is byte-exact from the disassembly: predication is staged from `proto[+0x1c]` and written first **unconditionally**, then a oneof discriminator at `proto[+0x50]` selects one of ten behaviours through a self-relative jump table (`lea -0x135e338d(%rip),%rcx` → table base `0xb8454a4`; `cmp $0x9,%rax; ja <out-of-range>`), and the `VmemLoad` issue arm replays the field sequence below, each field gated by a per-field has-bit on the `TensorCoreVectorLoad_VmemLoad_globals_` submessage (`0x22410b00`):
+
+```c
+// pxc::isa::TensorCoreVectorLoadEncoder::Encode(proto, buf)  @ 0x1ee287e0  (decoded byte-exactly)
+pred = proto[+0x1c];                            // movslq 0x1c(%rsi)
+BitCopy(buf, 136, &pred, 0, 5);                 // Predication @136/5 — written first, unconditionally
+tag = proto[+0x50];                             // oneof discriminator; jump table over tags 0..9
+if (tag > 9) abort();                           // cmp $0x9; ja  -> out-of-range trap
+// dispatch via table @ 0xb8454a4 ; tag 5 (Noop) forces pred=31, tag 6 is the VmemLoad issue arm:
+if (tag == NOOP) { pred = 31; BitCopy(buf, 136, &pred, 0, 5); return OK; }   // kNeverExecute
+// ---- VmemLoad issue arm (tag 6): inner = the VmemLoad submessage (or _globals_ default if clear) ----
+inner = proto[+0x48];                           // VmemLoad submessage
+BitCopy(buf, 134, &Opcode, 0, 2);               // Opcode @134/2 — addr-mode discriminator
+if (inner.has[0x10] & 0x01) BitCopy(buf, 129, &inner.Dest,        0, 5);  // Dest vreg @129/5
+if (inner.has[0x10] & 0x02) BitCopy(buf, 126, &inner.Stride,      0, 3);  // Stride @126/3  (off +0x1c)
+if (inner.has[0x10] & 0x04) BitCopy(buf, 124, &inner.Offset,      0, 2);  // Offset @124/2  (off +0x20)
+if (inner.has[0x10] & 0x08) BitCopy(buf, 122, &inner.BaseAddress, 0, 2);  // BaseAddress @122/2 (off +0x24)
+if (inner.has[0x10] & 0x10) BitCopy(buf, 119, &inner.SublaneMask, 0, 3);  // SublaneMask @119/3 (off +0x28)
+// ----- shared operand pool (co-allocated across slots; abs 241/246/251 + 16-bit imms) -----
+if (inner.has[0x10] & 0x20) BitCopy(buf, 251, &inner.Vs2, 0, 5);   // Vs2 register selector
+if (inner.has[0x10] & 0x40) BitCopy(buf, 246, &inner.Vs1, 0, 5);   // Vs1
+if (inner.has[0x10] & 0x80) BitCopy(buf, 241, &inner.Vs0, 0, 5);   // Vs0  (dest VREG / base)
+if (inner.has[0x11] & 0x01) BitCopy(buf, 304, &inner.Imm, 0, 16);  // shared immediate word
+if (inner.has[0x11] & 0x02) BitCopy(buf, 288, &inner.Imm, 0, 16);  // shared immediate word
+if (inner.has[0x11] & 0x04) BitCopy(buf, 272, &inner.Imm, 0, 16);  // shared immediate word
+if (inner.has[0x11] & 0x08) BitCopy(buf, 256, &inner.Imm, 0, 16);  // shared immediate word
+```
+
+The dst-bit constants are read straight off the `mov $imm,%esi` immediately before each `call 1fa0a900 <BitCopy>`: `0x88`=136 (pred), `0x86`=134 (opcode), `0x81`=129 (dest), `0x7e`=126 (stride), `0x7c`=124 (offset), `0x7a`=122 (base), `0x77`=119 (sublane), and the shared-pool `0xfb`=251 / `0xf6`=246 / `0xf1`=241 (Vs2/Vs1/Vs0, w5) and `0x130`=304 / `0x120`=288 / `0x110`=272 / `0x100`=256 (immediates, w16). They agree bit-for-bit with the dedicated-region map below and with the cmem-load slot's higher-bit shared pool (Vs at 241/246/251, immediates at 256/272/288/304 — see [cmem_load §The Shared Operand Pool](slot-cmem-load-pf.md#the-shared-operand-pool)), confirming the two memory-read slots draw from one physical Y-register/immediate pool.
+
+> **NOTE — predication is written before the tag is even read.** The encoder stages `proto[+0x1c]` and emits the @136/5 predication `BitCopy` before the `proto[+0x50]` oneof discriminator load. An empty (tag-0) or Noop (tag-5) slot therefore still carries a 5-bit predication value — `31` (`kNeverExecute`) for the idle encoding — exactly as on the [cmem_load slot](slot-cmem-load-pf.md#the-oneof-tag-and-the-idle-encoding). The two memory-read slots share this idle-encoding convention; the zeroed bundle buffer is *not* the idle marker (predicate `0` is a live op).
+
+> **QUIRK — the oneof spans ten arms, not three.** The `cmp $0x9,%rax; ja` bound on the discriminator means the VMEM-load oneof has up to ten tags (`0..9`), versus the cmem_load slot's three (`0/5/6`). The extra arms are the addressing-mode variants (`VmemLoad`, `VmemLoadShuffled`, `VmemLoadIndexedIar0/1`) plus the empty/Noop idle forms — each is a distinct jump-table arm that replays the same `BitCopy` field sequence with a different `Opcode` constant at @134. A reimplementer must size the discriminator at 10 arms and route every non-idle arm through the identical field map; only the 2-bit Opcode value at @134 differs between addressing modes.
+
+---
+
 ## The Load Op List (Addressing-Mode Sub-Opcodes)
 
 Every load slot is a discriminated union; the sub-opcode field selects the addressing-mode variant. The variants by family:
