@@ -17,7 +17,7 @@ what each side reads / writes.
    Workers read their assigned coordinates via
    `SessionControl/GetChipCoordinates` and incorporate them into
    the `TpuTopologyArgsProto` that goes into the Megascale
-   `GetMultiSliceTopologyRequest.topology_args` field.
+   `GetMultiSliceTopologyRequest.tpu_topology_args` field.
 2. **Routing tables.** tpunetd's `SetRoutingTable` writes per-link
    next-hop tables for every chip; the daemon programs them into
    the ICI link hardware. Megascale's bootstrap does **not**
@@ -26,8 +26,11 @@ what each side reads / writes.
    `TpuTopologyArgsProto` is consistent across hosts of the same
    slice.
 3. **Host network bindings.** The `HostNetworkAddress` entries in
-   the Megascale request carry the host's `MEGASCALE_PORT` (or
-   `MEGASCALE_PORT_NAME` resolved over the host's DCN interface).
+   the Megascale request carry the host's `MEGASCALE_PORT`-derived
+   `address` plus an `interface_name` resolved over the host's DCN
+   interface (the `HostNetworkAddress` message has exactly four
+   fields: `address`, `interface_name`, `numa_node`,
+   `host_name_for_debugging`).
    These are NOT ICI; they are the DCN-side bindings used for
    cross-slice traffic over normal TCP/gRPC. The ICI fabric
    serves the in-slice chip-to-chip traffic; DCN serves the
@@ -105,7 +108,10 @@ Where the comparison matters:
   and the daemon proceeded with a partial slice.
 - **Host bounds.** If two hosts disagree on per-host chip count,
   the runtime cannot correctly schedule collectives that
-  partition across hosts. The drift warning at `0x9b27486` fires.
+  partition across hosts. This still surfaces through the same
+  `tpu_topology_args` comparison above — the
+  "Received topology that differs..." warning string at rodata
+  VA `0x9b27486` fires.
 - **Twist factors / topology mode.** When
   `MEGASCALE_TOPOLOGY` or `FLAGS_megascale_force_use_dcn_topology_
   from_flags` injects a synthesised topology, it must match the
@@ -114,19 +120,24 @@ Where the comparison matters:
 ## Why ICI is silent here
 
 The Megascale rendezvous **never** transports ICI link state.
-The `MultiSliceTopologyInfo` response carries:
-- `SliceInfo.topology_args` (chip layout) — agreed upon, not the
-  link state itself.
-- `SliceInfo.host_addresses` (DCN endpoints).
-- `NetworkAddressMapping.addresses` (one per `(slice_id, host_id)`
-  pair, DCN endpoints).
+The `MultiSliceTopologyInfo` message inside
+`GetMultiSliceTopologyResponse.serialized_topology_info` carries:
+- `slice_info` (repeated `SliceInfo`), where each `SliceInfo` has
+  only `slice_id` and `tpu_topology_args` (chip layout) — agreed
+  upon, not the link state itself.
+- `address_mappings` (repeated `NetworkAddressMapping`), one entry
+  per `(slice_id, host_id)` pair; each carries `addresses`
+  (repeated `HostNetworkAddress`, the DCN endpoints).
+- `incarnation_id`.
 
 No ICI link tables, no routing tables, no link health bits travel
 through Megascale. ICI's health is monitored by tpunetd's
-`SessionMaster::CheckSessionHeartbeat`, which detects link
-failures and transitions the SessionState to `kFailing` (P-3-11).
-Such failures propagate up to PJRT through the tpunetd path, NOT
-the Megascale path.
+`SessionMaster::CheckSessionHeartbeat` (`0x1ffa6180`), which
+detects link failures; the failing path runs through
+`SessionMaster::HandleFailingSession(SessionState)`, and the
+`SessionState` enum's failure value is `SESSION_STATE_FAILING`
+(P-3-11). Such failures propagate up to PJRT through the tpunetd
+path, NOT the Megascale path.
 
 The architectural separation means:
 
@@ -142,17 +153,24 @@ neither blocks the other.
 ## What about `TpuTopologyArgsProto`?
 
 This proto is the only structured artefact that crosses the
-tpunetd → Megascale boundary. Its fields (from
-`platforms/deepsea/software/superpod/routing/common/proto/`):
+tpunetd → Megascale boundary. It is defined in
+`platforms/deepsea/software/superpod/routing/common/proto/topology.proto`
+(CONFIRMED — that path is a rodata string). The reflection
+metadata in the binary exposes its scalar fields `variant` and
+`chip_config_name` plus a nested `SubSlice` message
+(`tpu.TpuTopologyArgsProto.variant`,
+`tpu.TpuTopologyArgsProto.chip_config_name`,
+`tpu.TpuTopologyArgsProto.SubSlice` are all CONFIRMED rodata
+descriptor strings).
 
-- `TpuDimensionsProto dimensions` — chip count per ICI axis,
-  effectively reflects tpunetd's `CreateNetwork` topology
-  assignment.
-- `host_count` / `host_bounds` — used to derive
-  `expected_num_hosts` in `SliceState`.
-- `process_bounds` — process-level partitioning of a host.
-- `twist`, `wrap`, `alt` — twisted-torus parameters that the
-  compiler uses to route collective routes correctly.
+INFERRED — the structural geometry (chip count per ICI axis,
+per-host bounds, process bounds, and twisted-torus twist / wrap /
+alt parameters) is populated from the tpunetd-programmed topology
+and the `TPU_PROCESS_BOUNDS`, `TPU_HOST_BOUNDS`,
+`TPU_CHIPS_PER_HOST_BOUNDS`, `TPU_TOPOLOGY_ALT`,
+`TPU_TOPOLOGY_WRAP` env vars (all CONFIRMED as binary strings).
+These drive the chip layout the compiler uses to route collective
+routes correctly.
 
 When `--megascale_force_use_dcn_topology_from_flags=true` is set,
 the runtime constructs `TpuTopologyArgsProto` entirely from the
@@ -178,11 +196,17 @@ Three concrete scenarios:
    collectives that hit the misaligned chips will fail at compile
    time with shape errors.
 3. **A host restarted after the slice was already in steady
-   state and reconnected with a different `incarnation_id`.** The
-   `LogUniqueIds` slot-2 warning at `0x9c14456` fires. tpunetd's
-   `SessionMaster` independently detects the restart via
-   heartbeat and may transition the session to `kFailing`. In
-   either case the operator sees both signals and can correlate.
+   state and reconnected with a different `incarnation_id`.**
+   `TopologyCoordinator::ProcessRequest` (`0x1cf524c0`) emits the
+   "Received incarnation ID that is different from previous
+   incarnation ID..." warning (rodata VA `0x9c14456`). Separately,
+   the inlined `LogUniqueIds` helper (folded into
+   `Communicator::Create` at `0x1cca9aa0`) tracks the three
+   `last_ids` slots under `unique_id_mutex` and logs when any
+   slot's id changes. tpunetd's `SessionMaster` independently
+   detects the restart via heartbeat and may transition the
+   session to `SESSION_STATE_FAILING`. In either case the operator
+   sees both signals and can correlate.
 
 The combined diagnostic surface is therefore: tpunetd answers
 "is ICI healthy on this host?", Megascale answers "do all hosts
