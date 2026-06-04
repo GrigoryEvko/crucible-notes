@@ -23,7 +23,7 @@ coordinate — the only bridge is the per-slice shape blob.
 
 Inside one slice, chips form a toroidal network. The shape proto:
 
-```
+```protobuf
 message ToroidalTopology {
   int64 x_dimension = 1;  int64 y_dimension = 2;  int64 z_dimension = 3;
   int64 a_dimension = 9;  int64 b_dimension = 10; int64 c_dimension = 11;  // 6D superpod
@@ -44,7 +44,7 @@ A chip is a `ChipCoordinate {repeated int64 coordinates}` — a
 variable-rank vector — paired with a physical `asic_sw.proto.ChipLocation`
 through:
 
-```
+```protobuf
 message ChipLocationToCoordinate { asic_sw.proto.ChipLocation location = 1; ChipCoordinate coordinate = 2; }
 message ChipCoordinateMapping    { repeated ChipLocationToCoordinate chip_mapping = 1; }
 ```
@@ -65,7 +65,7 @@ list. The inventory is two flat lists:
 
 Plus a separate reduction plan:
 
-```
+```protobuf
 message DCNTopology {                       // oneof "representation"
   oneof representation {
     SymmetricTree symmetric_tree = 1;       // {repeated int32 branching_per_layer}

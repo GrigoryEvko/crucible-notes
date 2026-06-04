@@ -45,7 +45,7 @@ The remaining rows are populated on other paths; offsets marked
 The runtime emits a single instrumentation log line at startup that
 echoes the election inputs:
 
-```
+```text
 megascale_coordinator_address:$0 megascale_port: $1 megascale_port_name: $2 topology_discovery_timeout: $3 barrier_timeout: $4
 ```
 
@@ -57,7 +57,7 @@ role each process is playing.
 
 ## Election sequence
 
-```
+```text
 process startup
   │
   ▼

@@ -1,6 +1,6 @@
 # Cross-Host Barrier
 
-> *All addresses on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`, x86-64, 781 691 048 bytes). Other versions will differ. Confirmed (byte-anchored): the `BarrierCoordinator` object layout, the vtable, the arrival-accounting set, the `IsComplete` test, the client replay/auto-id paths, and every log string below were re-derived from the IDA decompile + demangled `functions.json`.*
+> *All addresses on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`, x86-64, 781,691,048 bytes). Other versions will differ. Confirmed (byte-anchored): the `BarrierCoordinator` object layout, the vtable, the arrival-accounting set, the `IsComplete` test, the client replay/auto-id paths, and every log string below were re-derived from the IDA decompile + demangled `functions.json`.*
 
 ## Abstract
 

@@ -215,7 +215,7 @@ ExecutorApiFn()+368( status.code(), StatusMessageAsCStr(status) );  // report in
 destroy holder->closure; operator delete(holder, 32, 16);
 ```
 
-> **NOTE — the ExecutorApiFn slots are the contract.** The legacy host-callback path's only libtpu-visible knobs are the `TfTpu_ExecutorApiFn` table offsets: **+440** = enqueue host callback on the TPU stream, **+368** = report the resulting status back into the driver's `SE_Status`. These are part of the TPU-driver C-ABI (a separate task; not the full table). When the TPU stream reaches the enqueued callback, the driver pauses the stream, runs the trampoline on a host thread, flows the `absl::Status` back, and resumes. A reimplementer of the legacy path reproduces the 32-byte closure-holder lifecycle and these two slot calls. Confidence: CONFIRMED for the slot numbers and closure lifecycle; the driver-internal stream-pause/resume is opaque from `libtpu.so` (LOW on the exact driver mechanics). 
+> **NOTE — the ExecutorApiFn slots are the contract.** The legacy host-callback path's only libtpu-visible knobs are the `TfTpu_ExecutorApiFn` table offsets: **+440** = enqueue host callback on the TPU stream, **+368** = report the resulting status back into the driver's `SE_Status`. These are part of the TPU-driver C-ABI (a separate task; not the full table). When the TPU stream reaches the enqueued callback, the driver pauses the stream, runs the trampoline on a host thread, flows the `absl::Status` back, and resumes. A reimplementer of the legacy path reproduces the 32-byte closure-holder lifecycle and these two slot calls. Confidence: CONFIRMED for the slot numbers and closure lifecycle; the driver-internal stream-pause/resume is opaque from `libtpu.so` (LOW on the exact driver mechanics).
 
 ---
 

@@ -318,7 +318,7 @@ A `tpu_custom_call` instruction carries:
 
 The `CustomCallConfig` proto is confirmed present (`CustomCallConfig::{ByteSizeLong,Clear,CopyFrom,GetClassData}`, arena ctors, and the repeated nested submessages `CustomCallConfig_InputMemorySpaceColor` / `CustomCallConfig_OutputMemorySpaceColor` with their `RepeatedPtrFieldBase::Add` / `Arena::CopyConstruct` instantiations). Field set (names recovered; tag numbers not extracted — see [Confidence Summary](#confidence-summary)):
 
-```
+```protobuf
 message CustomCallConfig {
   bytes  mlir_module;          // serialized tpu-dialect module (bytecode or textual)
   string host_mlir_module;     // host computation used for shape inference; "" if shapes static

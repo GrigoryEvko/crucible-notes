@@ -43,7 +43,7 @@ After bootstrap:
 The Megascale bootstrap is the **middle layer** of TPU cluster
 bringup:
 
-```
+```text
    PJRT distributed CoordinationService (xla.coordination)
       ↑   (Python-level rendezvous: shard assignment, run id, ...)
       │
@@ -91,7 +91,7 @@ collectives or HeartBeat begin.
 
 The rendezvous is exactly **one gRPC round trip per worker**:
 
-```
+```text
 worker N (slice_id=S, host_id=H)
     │
     │   GetMultiSliceTopologyRequest {

@@ -71,7 +71,7 @@ The matmul throughput that Viperfish stores in its `MatmulModifier` reservation 
 
 | MXU role | Grid column | Cells | Value(s) | Meaning |
 |---|---|---:|---|---|
-| matmul throughput | res 9 | 96 | `{8, 16}` | per-issue hold; 8 = narrow format, 16 = wide | 
+| matmul throughput | res 9 | 96 | `{8, 16}` | per-issue hold; 8 = narrow format, 16 = wide |
 | matprep throughput | res 10 | 20 | `7` | per-issue matprep latch hold |
 | matprep / transpose result A | res 11 | 54 | `{1, 8, 16}` | matprep + transpose-binary + permute/rotate result |
 | transpose / permute result B | res 12 | 34 | `{1, 8, 16}` | second transpose/permute result stage |

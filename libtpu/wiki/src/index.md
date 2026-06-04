@@ -20,7 +20,7 @@ Everything here was reconstructed **purely from static analysis of the binary** 
 
 ## Two-tier C ABI
 
-```
+```text
                 JAX / PyTorch-XLA / TensorFlow
                           │
                           ▼  PJRT C-API (v0.103)
@@ -43,7 +43,7 @@ Everything here was reconstructed **purely from static analysis of the binary** 
 
 The 18 parts follow the **data's own dependency chain**, not an alphabetical or importance order. Each part can be read assuming only the parts before it:
 
-```
+```text
   silicon model ─► compiler passes ─► ISA encoding ─► cost model ─► scheduling
        (IV)             (V)              (VI)            (VII)         (VIII)
                                                                          │
@@ -127,7 +127,7 @@ Every page in this book is derived from static analysis of `libtpu.so` — its s
 
 ---
 
-# Master Index
+## Master Index
 
 ## Part 0 — Reference Apparatus (9)
 
@@ -185,7 +185,7 @@ How the 745 MB ELF is laid out and navigated. Analysis and orientation only; the
 
 The outer ABI: how the plugin loads and the 140-slot PJRT_Api struct JAX/PyTorch consume.
 
-#### Lifecycle
+### Lifecycle
 - `lifecycle/overview.md` — **Overview** · `I`  
   From `dlopen` to a usable client. _src: P-3-185_
 - `lifecycle/elf-entry-and-init-proc.md` — **ELF Entry & init_proc** · `C`  
@@ -199,7 +199,7 @@ The outer ABI: how the plugin loads and the 140-slot PJRT_Api struct JAX/PyTorch
 - `lifecycle/module-init-plugin-discovery.md` — **Module-Init & Plugin Discovery** · `C`  
   How the PJRT plugin is registered and found. _src: P-3-185_
 
-#### PJRT_Api surface
+### PJRT_Api surface
 - `pjrt/overview.md` — **Overview** · `I`  
   The C-API version, the extension-chain idea, `.lbss` storage. _src: P-3-10_
 - `pjrt/api-vtable-reconstruction.md` — **PJRT_Api 140-Slot Reconstruction** · `C`  
@@ -264,7 +264,7 @@ The inner C ABI between PJRT and the runtime/compiler: the `Tpu*` C functions th
 
 The hardware the whole compiler is parameterized by. Read before V–VIII: the cost model, ISA, and MSA defaults all key off the per-codename constants defined here. **Canonical for: per-gen hardware constants** (referenced by VI, VII, IX).
 
-#### Codename identity
+### Codename identity
 - `targets/overview.md` — **Overview** · `I`  
   Six generations, three HAL families, the dual-enum trap. _src: P-3-262, P-2-08_
 - `targets/tpu-version-codename-matrix.md` — **6-Codename Authoritative Reconciliation** · `C`  
@@ -278,7 +278,7 @@ The hardware the whole compiler is parameterized by. Read before V–VIII: the c
 - `targets/codename-superseded-labels.md` — **Superseded-Label Correction List** · `C`  
   The P-3-204 "v5p"/"Trillium" mislabels and the Ghostfish gloss. _src: P-3-262_
 
-#### HAL families
+### HAL families
 - `targets/hal-families.md` — **HAL Families** · `C`  
   jxc/pxc/vxc factories; glc/gfc under gxc; per-family Register immediates. _src: P-3-196, P-2-08_
 - `targets/hal-factory-override-matrix.md` — **HAL Factory Override Matrix** · `C`  
@@ -296,7 +296,7 @@ The hardware the whole compiler is parameterized by. Read before V–VIII: the c
 - `targets/sub-core-taxonomy.md` — **Sub-Core Taxonomy (GFC/GLC/JXC/PXC/VFC/VLC)** · `C`  
   The sub-family encoder split. _src: P-3-262, P-2-08_
 
-#### Per-codename hardware constants
+### Per-codename hardware constants
 - `targets/chip-parts-binarypb.md` — **chip_parts.binarypb Decode** · `C`  
   TpuChipPartsProto, the embedded v5/v7 blobs, the variant allow-list. _src: P-3-211, P-3-296, P-3-466_
 - `targets/per-codename-hw-constants.md` — **Per-Codename Constant Table** · `C`  
@@ -314,7 +314,7 @@ The hardware the whole compiler is parameterized by. Read before V–VIII: the c
 - `targets/accuracy-tables.md` — **Per-Gen Accuracy Tables** · `C`  
   Transcendental approximation accuracy driving precision decisions. _src: P-3-104_
 
-#### Memory model primer (detailed allocators in Part X)
+### Memory model primer (detailed allocators in Part X)
 - `targets/memory-hierarchy.md` — **Memory Hierarchy** · `I`  
   HBM/VMEM/SMEM/CMEM/SFLAG tier model + the 17 MemorySpace values. _src: P-2-01, P-3-60_
 - `targets/address-space-ids.md` — **Address-Space ID Table (AS0–AS9)** · `C`  
@@ -324,7 +324,7 @@ The hardware the whole compiler is parameterized by. Read before V–VIII: the c
 
 The IR descent and the optimization passes. Silicon-parameterized (uses IV) but ISA-light: it lowers to LLO ops by name, not bits. Output is LLO IR; encoding is VI, cost/scheduling are VII/VIII.
 
-#### Front-end and pipeline
+### Front-end and pipeline
 - `compiler/overview.md` — **Overview** · `I`  
   `DeepseaCompilerBase::RunHloPasses`, compile phases 0–3. _src: P-2-03, P-3-09_
 - `compiler/hlo-ingestion.md` — **HLO Ingestion** · `C`  
@@ -350,7 +350,7 @@ The IR descent and the optimization passes. Silicon-parameterized (uses IV) but 
 - `compiler/custom-call-lowering.md` — **Custom-Call Lowering & Registry** · `C`  
   The target catalog + the registration side. _src: P-3-51, P-3-202_
 
-#### MLIR lowering chain
+### MLIR lowering chain
 - `compiler/mhlo-xtile-tpu-lowering.md` — **MHLO → XTile → tpu** · `C`  
   The dialect-chain conversion. _src: P-3-125_
 - `compiler/mosaic-overview.md` — **Mosaic Overview** · `C`  
@@ -378,7 +378,7 @@ The IR descent and the optimization passes. Silicon-parameterized (uses IV) but 
 - `compiler/llvmtpu-intrinsic-catalog.md` — **LlvmTpu Intrinsic Catalog** · `C`  
   The 1,356 `tpu_*` backend intrinsics. _src: P-3-284, P-3-371_
 
-#### Memory & layout optimization
+### Memory & layout optimization
 - `compiler/msa-overview.md` — **MSA Overview** · `C`  
   The memory-space-assignment ILP pass. _src: P-3-38, P-3-220_
 - `compiler/msa-allocate-segment.md` — **MSA AllocateSegment** · `C`  
@@ -390,7 +390,7 @@ The IR descent and the optimization passes. Silicon-parameterized (uses IV) but 
 - `compiler/layout-assignment.md` — **Layout Assignment** · `C`  
   FindMemoryMinimizingLayout weights + AddBackendConstraints. _src: P-3-68, P-3-227, P-3-313_
 
-#### Fusion, dot/conv, tiling
+### Fusion, dot/conv, tiling
 - `compiler/fusion-patterns.md` — **Fusion Patterns** · `C`  
   The TPU-specific fusion class roster. _src: P-3-76_
 - `compiler/fusion-cost-model.md` — **Fusion Cost Model** · `C`  
@@ -408,7 +408,7 @@ The IR descent and the optimization passes. Silicon-parameterized (uses IV) but 
 
 The target representation: LLO IR and the per-generation VLIW bundle bit-layouts. Self-contained — read independently of the cost model. Bundle *packing* (LLO→bytes) is in VIII.
 
-#### Foundations
+### Foundations
 - `isa/overview.md` — **Overview** · `I`  
   LLO IR: 462 opcodes, 17 memory spaces, the proto-descriptor source. _src: P-2-01, P-2-25_
 - `isa/llo-opcode-enum.md` — **LloOpcode Enum (462)** · `C`  
@@ -428,7 +428,7 @@ The target representation: LLO IR and the per-generation VLIW bundle bit-layouts
 - `isa/record-format.md` — **239-Bit Record Format** · `C`  
   The APInt record + per-operand insertBits(value, pos, width). _src: P-3-212_
 
-#### Per-generation VLIW bundle
+### Per-generation VLIW bundle
 - `isa/bundle-jf-41b.md` — **Jellyfish 41-Byte Bundle** · `C`  
   The full slot map (EncodeBundleInternal). _src: P-3-203, P-3-384, P-3-470_
 - `isa/bundle-df.md` — **Dragonfish Bundle** · `C`  
@@ -442,7 +442,7 @@ The target representation: LLO IR and the per-generation VLIW bundle bit-layouts
 - `isa/bundle-gf.md` — **6acc60406 Bundle** · `C`  
   The dedicated predicates slot; the gfc encoder. _src: P-3-219, P-3-238_
 
-#### Per-slot encoding
+### Per-slot encoding
 - `isa/slot-mxu.md` — **MXU Slot** · `C`  
   matmul/matpush issue, latch fields, the per-gen MXU1 twin. _src: P-3-203, P-3-414, P-3-430_
 - `isa/slot-vpu.md` — **VPU (Vector-ALU) Slot** · `C`  
@@ -472,7 +472,7 @@ The target representation: LLO IR and the per-generation VLIW bundle bit-layouts
 - `isa/slot-sparsity-v5plus.md` — **Sparsity Slot (v5+)** · `O`  
   The structured-sparsity slot encoding. _src: #1092 (open)_
 
-#### Encode / decode support
+### Encode / decode support
 - `isa/v5plus-emitx-bit-positions.md` — **V5+ EmitX Absolute Bit Positions** · `C`  
   isa_emitter EmitX → BitCopy offsets (closes the InstBits gap). _src: P-3-219_
 - `isa/isa-emitter-registry.md` — **IsaEmitter Registry** · `C`  
@@ -504,7 +504,7 @@ The target representation: LLO IR and the per-generation VLIW bundle bit-layouts
 
 What every instruction costs. The largest data surface in the binary (51 source files). Consumed by the schedulers in VIII; depends on the ISA (VI) and silicon constants (IV).
 
-#### Core model
+### Core model
 - `cost/overview.md` — **Overview** · `I`  
   The Performance / CycleTable / LatencyTable family architecture. _src: P-2-04, P-3-52_
 - `cost/resource-enum.md` — **Resource Enum (23-slot)** · `C`  
@@ -524,7 +524,7 @@ What every instruction costs. The largest data surface in the binary (51 source 
 - `cost/local-dma-bandwidth.md` — **LocalDmaBandwidth** · `C`  
   Per-gen matrix + the MemXfer-latency consumer. _src: P-3-304, P-3-382, P-3-390_
 
-#### MXU latency (per-gen reservation matrices)
+### MXU latency (per-gen reservation matrices)
 - `cost/mxu-latency-overview.md` — **MXU Latency Overview** · `C`  
   MxuResource enum + the reservation-matrix concept. _src: P-3-286, P-3-373_
 - `cost/mxu-latency-jf-df.md` — **MXU Latency: JF / DF** · `C`  
@@ -542,7 +542,7 @@ What every instruction costs. The largest data surface in the binary (51 source 
 - `cost/mxu-opholdissues-stall.md` — **MxuOpHoldIssues Stall Recurrence** · `C`  
   The stall formula + the balancing gate. _src: P-3-294, P-3-380_
 
-#### Performance grids (per-gen Instruction × Resource)
+### Performance grids (per-gen Instruction × Resource)
 - `cost/performance-overview.md` — **Performance Family Overview** · `I`  
   The per-gen Performance<gen> variant model. _src: P-3-341_
 - `cost/performance-jf-df.md` — **Performance: JF / DF** · `C`  
@@ -556,7 +556,7 @@ What every instruction costs. The largest data surface in the binary (51 source 
 - `cost/performance-gf-ghperf.md` — **Performance: GF (GhPerf 465×31)** · `C`  
   The 6acc60406 occupancy grid. _src: P-3-321, P-3-407, P-3-422_
 
-#### CycleTable
+### CycleTable
 - `cost/cycletable-family.md` — **CycleTable Family** · `C`  
   LatencyTable::Create(TpuVersion) factory dispatch. _src: P-3-388, P-3-474, P-3-480_
 - `cost/jf-cycletable.md` — **JfCycleTable** · `C`  
@@ -564,7 +564,7 @@ What every instruction costs. The largest data surface in the binary (51 source 
 - `cost/vf-cycletable.md` — **VfCycleTable** · `C`  
   The 32-entry CT→(instr, res) dump + throughput bridge. _src: P-3-395, P-3-309, P-3-415_
 
-#### EUP / transcendental latency
+### EUP / transcendental latency
 - `cost/eup-latency-overview.md` — **EUP Latency Overview** · `C`  
   The push→pop software-pipelining model. _src: P-3-308, P-3-394_
 - `cost/eup-per-gen-integers.md` — **EUP Per-Gen Latency Integers** · `C`  
@@ -576,7 +576,7 @@ What every instruction costs. The largest data surface in the binary (51 source 
 - `cost/eup-lane-width-unpack.md` — **EUP Lane-Width / Unpack** · `C`  
   AluEpOpLowering unpack → compute → pack. _src: P-3-308, P-3-394_
 
-#### XLU cost
+### XLU cost
 - `cost/xlu-conflict-penalty.md` — **XLU Conflict-Penalty Table** · `C`  
   The non-MXU hazard table. _src: P-3-302, P-3-388_
 - `cost/xlu-combine-sourcebus.md` — **XLU Combine / Source-Bus** · `C`  
@@ -586,7 +586,7 @@ What every instruction costs. The largest data surface in the binary (51 source 
 - `cost/xpose-reservation-latency.md` — **Transpose-Reservation Latency** · `C`  
   XposeXLUReservationLatency + VxposeMode. _src: P-3-310, P-3-396, P-3-403_
 
-#### Conv / window cost
+### Conv / window cost
 - `cost/window-description-cost.md` — **WindowDescription Byte-Cost** · `C`  
   The conv/DMA byte+throughput primitive. _src: P-3-309, P-3-301_
 - `cost/convolution-cost-state.md` — **ConvolutionCostState** · `C`  
@@ -594,7 +594,7 @@ What every instruction costs. The largest data surface in the binary (51 source 
 - `cost/reduce-window-pooling-cost.md` — **Reduce-Window / Pooling Cost** · `C`  
   RecordReduceWindowCycles. _src: P-3-301, P-3-254_
 
-#### Misc cost
+### Misc cost
 - `cost/learned-cost-model-client.md` — **Learned Cost-Model Client** · `C`  
   EmitterLearnedCostModelOptions + the wiring status. _src: P-3-57_
 - `cost/cost-model-logging.md` — **Cost-Model Logging** · `C`  
@@ -639,7 +639,7 @@ The algorithms that consume the cost model (VII) and emit ordered, packed bundle
 
 The embedding/sparse engine (SparseCore, v5+) and its retired predecessor (BarnaCore, v2–v4). Kept whole rather than sliced across the ISA/cost/scheduling axis. The collective-offload story lives in Part XIII.
 
-#### SparseCore engines
+### SparseCore engines
 - `sparsecore/overview.md` — **Overview** · `I`  
   SCS/TAC/TEC, the 2-sequencer (SCS+TEC) model. _src: P-2-02, P-3-32, P-3-311_
 - `sparsecore/architecture.md` — **Architecture** · `C`  
@@ -657,7 +657,7 @@ The embedding/sparse engine (SparseCore, v5+) and its retired predecessor (Barna
 - `sparsecore/getsequencertype.md` — **getSequencerType** · `C`  
   Engine selection (SCS/TAC/TEC). _src: P-3-295, P-3-381_
 
-#### SparseCore ISA
+### SparseCore ISA
 - `sparsecore/scalar-opcode-enum.md` — **Scalar Opcode Enum** · `C`  
   ScsScalarMisc / ScalarAlu0 / ScalarAlu1. _src: P-3-318, P-3-404_
 - `sparsecore/vector-opcode-enum.md` — **Vector Opcode Enum** · `C`  
@@ -679,7 +679,7 @@ The embedding/sparse engine (SparseCore, v5+) and its retired predecessor (Barna
 - `sparsecore/cbreg.md` — **CBREG Circular-Buffer Register** · `C`  
   Bit layout, addressing, wrap. _src: P-3-279_
 
-#### SparseCore datapath (embeddings)
+### SparseCore datapath (embeddings)
 - `sparsecore/scan-datapath.md` — **Scan Datapath** · `C`  
   Mask consumption + ScanOp lowering. _src: P-3-473, P-3-559_
 - `sparsecore/segmented-scan.md` — **Segmented Scan** · `C`  
@@ -697,7 +697,7 @@ The embedding/sparse engine (SparseCore, v5+) and its retired predecessor (Barna
 - `sparsecore/dedup-multiplicity.md` — **Dedup Multiplicity** · `C`  
   DuplicateCount→multiplicity + Uniquify inverse-permutation. _src: P-3-337, P-3-423_
 
-#### SparseCore pointers & DMA
+### SparseCore pointers & DMA
 - `sparsecore/fat-pointers-as789.md` — **Fat Pointers (AS7/8/9)** · `C`  
   160/128/192-bit structured-pointer constructors. _src: P-3-360, P-3-446_
 - `sparsecore/addrspacecast-isel.md` — **addrspacecast ISel** · `C`  
@@ -709,7 +709,7 @@ The embedding/sparse engine (SparseCore, v5+) and its retired predecessor (Barna
 - `sparsecore/indirect-vreg-stream.md` — **IndirectVregStream** · `C`  
   The VREG-loop form. _src: P-3-295, P-3-381_
 
-#### SparseCore back-end
+### SparseCore back-end
 - `sparsecore/sc-backend-pipeline.md` — **SC Backend Pipeline** · `C`  
   RunPasses, all 12 passes, the MEGACORE barrier. _src: P-3-416_
 - `sparsecore/sc-emitx-dispatcher.md` — **SC EmitX Dispatcher** · `C`  
@@ -721,13 +721,13 @@ The embedding/sparse engine (SparseCore, v5+) and its retired predecessor (Barna
 - `sparsecore/getsparsecoreconfig.md` — **GetSparseCoreConfig** · `C`  
   The offload op-type enum source. _src: P-3-434_
 
-#### SparseCore cross-cutting
+### SparseCore cross-cutting
 - `sparsecore/sc-mxu-handshake.md` — **SC ↔ MXU Handshake** · `C`  
   The integration handshake. _src: P-3-58, P-3-125_
 - `sparsecore/sparsecore-vs-neuron-matmultsparse.md` — **SparseCore vs Neuron MatmultSparse** · `I`  
   Cross-vendor comparison. _src: P-3-177_
 
-#### BarnaCore (legacy v2–v4)
+### BarnaCore (legacy v2–v4)
 - `barnacore/overview.md` — **Overview** · `I`  
   The legacy embedding accelerator. _src: P-3-120, P-3-343_
 - `barnacore/retirement.md` — **Retirement Evidence** · `C`  
@@ -747,7 +747,7 @@ The embedding/sparse engine (SparseCore, v5+) and its retired predecessor (Barna
 
 The memory tiers' allocators and the DMA wire formats. The tier *model* is primed in IV; here are the allocator algorithms and descriptor byte layouts.
 
-#### Memory tiers
+### Memory tiers
 - `memory/overview.md` — **Overview** · `I`  
   The five on-chip tiers + host memory. _src: P-3-97, P-2-01_
 - `memory/hbm-allocator.md` — **HBM BestFit Allocator** · `C`  
@@ -773,7 +773,7 @@ The memory tiers' allocators and the DMA wire formats. The tier *model* is prime
 - `memory/embedded-tcmalloc.md` — **Embedded tcmalloc** · `C`  
   Host-CPU allocator integration + sizing. _src: P-3-149_
 
-#### DMA
+### DMA
 - `dma/intra-chip-descriptor.md` — **Intra-Chip DMA Descriptor** · `C`  
   Format, tiling, tier-pair encoding. _src: P-3-157, P-3-155_
 - `dma/tile-index-expansion.md` — **Tile-Index Expansion** · `C`  
@@ -822,7 +822,7 @@ How a compiled program runs on a stream. Consumes the ISA (VI) and memory (X).
 
 The physical fabric and how packets route across it. The geometric substrate (twisted torus) that on-pod collectives (XIII) build on.
 
-#### ICI fabric
+### ICI fabric
 - `ici/overview.md` — **Overview** · `I`  
   The inter-chip interconnect model. _src: P-3-33, P-3-53_
 - `ici/link-bringup.md` — **Link Bring-Up Sequence** · `C`  
@@ -838,7 +838,7 @@ The physical fabric and how packets route across it. The geometric substrate (tw
 - `ici/vc-balance-allocation.md` — **VC-Balance Allocation** · `C`  
   Deadlock-free virtual-channel allocation. _src: P-3-355, P-3-441_
 
-#### Routing
+### Routing
 - `routing/overview.md` — **Overview** · `I`  
   The route-generation → route-cache → emission pipeline. _src: P-3-224_
 - `routing/randomized-toroidal-wildfirst.md` — **RandomizedToroidalWildFirstPaths** · `C`  
@@ -864,7 +864,7 @@ The physical fabric and how packets route across it. The geometric substrate (tw
 - `routing/get-distances.md` — **GetDistances** · `C`  
   The nK twisted-torus distance metric. _src: P-3-363, P-3-449_
 
-#### Twisted torus geometry
+### Twisted torus geometry
 - `twist/overview.md` — **Overview** · `I`  
   The twisted-torus topology and why it exists. _src: P-3-331_
 - `twist/buildstrategy.md` — **TwistedTorusND::BuildStrategy** · `C`  
@@ -884,7 +884,7 @@ The physical fabric and how packets route across it. The geometric substrate (tw
 - `twist/sc-side-twist.md` — **SC-Side Twist** · `C`  
   GetPhase0/1Cores + EstimatePhysicalLinksUsed. _src: P-3-364, P-3-450_
 
-#### ICR node-fabric
+### ICR node-fabric
 - `routing/icr-node-fabric-dma.md` — **ICR Node-Fabric DMA Bands** · `C`  
   trace_point_ids 48/50/51/91 timeline source. _src: P-3-460, P-3-466_
 - `routing/nf-descriptor.md` — **nf_descriptor (27-field)** · `C`  
@@ -894,7 +894,7 @@ The physical fabric and how packets route across it. The geometric substrate (tw
 
 How a collective is decomposed, offloaded, and synchronized over the fabric (XII). The SparseCore-offload path bridges to IX.
 
-#### Collective algorithms
+### Collective algorithms
 - `collectives/overview.md` — **Overview** · `I` *(stub exists)*  
   The strategy picker and the algorithm family. _src: P-3-69, P-3-319_
 - `collectives/strategy-nd-picker.md` — **SelectNDStrategy** · `C`  
@@ -914,7 +914,7 @@ How a collective is decomposed, offloaded, and synchronized over the fabric (XII
 - `collectives/degraded-axis.md` — **Degraded-Axis Ingest** · `C`  
   TpuDegradedAxesProto fault-tolerant path. _src: P-3-324, P-3-410_
 
-#### SparseCore-offload collectives
+### SparseCore-offload collectives
 - `collectives/sc-offload-config-builder.md` — **SC-Offload Config Builder** · `C`  
   ConstructConfigForCollectiveUniDirNDGroups. _src: P-3-372, P-3-458_
 - `collectives/hierarchical-kind.md` — **HierarchicalKind** · `C`  
@@ -930,7 +930,7 @@ How a collective is decomposed, offloaded, and synchronized over the fabric (XII
 - `collectives/start-remote-dma.md` — **StartRemoteDma** · `C`  
   The all-to-all producer + SubsliceToFullSliceGlobalCoreId. _src: P-3-352, P-3-438_
 
-#### SFLAG & barriers
+### SFLAG & barriers
 - `barrier/overview.md` — **Overview** · `I`  
   The sync-flag-based barrier model. _src: P-3-89, P-3-451_
 - `barrier/special-purpose-sync-flags.md` — **SpecialPurposeSyncFlags** · `C`  
@@ -954,7 +954,7 @@ How a collective is decomposed, offloaded, and synchronized over the fabric (XII
 - `barrier/remote-sflag-encoders.md` — **Per-Gen Remote-SFLAG Encoders** · `C`  
   GetRemoteSyncFlagEncoderRegistry + chip-id map. _src: P-3-447, P-3-453_
 
-#### Higher-level
+### Higher-level
 - `collectives/megacore-fusion.md` — **Megacore Fusion** · `I` *(stub exists)*  
   The megacore collective fusion. _src: P-3-424, P-3-348_
 - `collectives/fp8-quantized-collective.md` — **FP8 Quantized Collective** · `C`  

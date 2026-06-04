@@ -66,7 +66,7 @@ __int64 TpuTopology::LogicalDevicesPerChip(__int64 self, __int64 core) {
 
 The TensorCore arm (`core == 0`) reduces to exactly:
 
-```
+```c
 LogicalDevicesPerChip(0) = Megacore() ? 1 : CoreCount(0)
 ```
 

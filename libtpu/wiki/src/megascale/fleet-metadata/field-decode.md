@@ -10,7 +10,7 @@ topology-args family is package `tpu`.
 `platforms/xla/megascale/common/runtime.proto` — the per-slice fleet
 entry.
 
-```
+```protobuf
 message SliceInfo {
   int32                    slice_id          = 1;   // fleet-wide slice index
   // field 2 retired (gap)
@@ -26,7 +26,7 @@ endpoints held separately in the `NetworkAddressMapping` list.
 `runtime.proto` — the serialized FLEET object (the wire form of the
 `MultiSliceTopologyAndLocation` class).
 
-```
+```protobuf
 message MultiSliceTopologyAndLocationProto {
   int32              local_slice_id = 1;   // THIS process's slice
   int32              local_host_id  = 2;   // THIS process's host (in slice)
@@ -44,7 +44,7 @@ self-locating.
 `platforms/xla/megascale/runtime/communication/transport.proto` — the
 wire payload the coordinator serializes into the bootstrap response.
 
-```
+```protobuf
 message MultiSliceTopologyInfo {
   repeated SliceInfo             slice_info       = 1;   // all slices
   repeated NetworkAddressMapping address_mappings = 2;   // all host endpoints
@@ -60,7 +60,7 @@ Pairs the slice inventory with the full endpoint table. Serialized into
 `third_party/tensorflow/compiler/xla/megascale/addresses.proto` — the
 DCN reachability layer.
 
-```
+```protobuf
 message HostNetworkAddress {
   string address                 = 1;   // ip:port / host:port of a NIC
   string interface_name          = 2;   // NIC name (DCN port)
@@ -85,7 +85,7 @@ retired field left a gap.
 
 `transport.proto` — the bootstrap RPC payloads.
 
-```
+```protobuf
 message GetMultiSliceTopologyRequest {
   NetworkAddressMapping    address_mapping   = 1;   // THIS host's identity + endpoints
   tpu.TpuTopologyArgsProto tpu_topology_args = 2;   // THIS slice's shape
@@ -105,7 +105,7 @@ the response is a single opaque `bytes` blob.
 `tpu`, editions) — the slice-shape descriptor. Full decode on the
 [Slice Shape](slice-shape.md) page.
 
-```
+```protobuf
 message TpuTopologyArgsProto {
   tpu.TpuVersionProto      version                  = 1;
   string                   variant                  = 2;
@@ -131,7 +131,7 @@ message TpuTopologyArgsProto {
 `third_party/tensorflow/compiler/xla/megascale/dcn_topology.proto` — the
 cross-slice reduction plan.
 
-```
+```protobuf
 message DCNTopology {
   oneof representation {                       // "representation"
     SymmetricTree symmetric_tree = 1;
@@ -160,7 +160,7 @@ leaves name contiguous `[slice_id_start, slice_id_end]` ranges.
 per-core handle (coupled with its slice by the
 `MultiSliceTpuCoreLocation` class).
 
-```
+```protobuf
 message TpuCoreLocationProto {
   tpu.TpuCoreTypeProto core_type         = 1;   // TENSOR / BARNA / SPARSE
   int32                logical_device_id = 2;   // device id within its slice
@@ -176,7 +176,7 @@ enum tpu.TpuCoreTypeProto {
 `runtime.proto` — a lightweight per-slice (x,y,z) view used where the
 full shape is unnecessary (e.g. the `MEGASCALE_TOPOLOGY` override path).
 
-```
+```protobuf
 message PerSliceTpuDimensionsProto {
   int32 slice_id = 1; int32 x = 2; int32 y = 3; int32 z = 4;
 }
@@ -185,7 +185,7 @@ message Topology { repeated PerSliceTpuDimensionsProto slices = 1; }
 
 ## Supporting dimension and enum types
 
-```
+```protobuf
 message TpuDimensionsProto   { int32 x=1; int32 y=2; int32 z=3; int32 w=4; }
 message TpuWrapProto         { bool  x=1; bool  y=2; bool  z=3; }
 message TpuDegradedAxesProto { bool  x=1; bool  y=2; bool  z=3; }
@@ -211,7 +211,7 @@ message TpuConfiguredPropertiesProto {
 
 `runtime.proto` carries two more fleet-scoped messages:
 
-```
+```protobuf
 message MegascaleRuntimeOptions {                 // all fields optional (oneof presence)
   bool abort_on_errors      = 1;
   bool abort_on_hangs       = 2;

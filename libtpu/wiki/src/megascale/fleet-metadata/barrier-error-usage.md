@@ -59,7 +59,7 @@ error reports into one digest, again keyed by host identity:
   in-memory `MegascaleErrorAggregator::WorkerAndCoreInfo` struct via
   `ToWorkerAndCoreInfoProto @0x1ccc4f80`):
 
-  ```
+  ```protobuf
   message WorkerAndCoreInfo {            // RapidEyeErrorDigestProto.WorkerAndCoreInfo
     string   worker_id = 1;              // "slice<slice>-task<task>"
     string   host_name = 2;
@@ -78,7 +78,7 @@ This `CoreInfo {chip_id, core_idx, physical_location}` triple is the
 
 - **Fault links** are host-granular:
 
-  ```
+  ```protobuf
   message FaultyNetworkLink {           // RapidEyeErrorDigestProto.FaultyNetworkLink
     WorkerInfo src_worker = 1;          // RapidEyeErrorDigestProto.WorkerInfo
     WorkerInfo dst_worker = 2;

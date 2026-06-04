@@ -32,7 +32,7 @@ an opaque, validated blob — it never re-derives chip coordinates.
 
 The live, in-memory fleet model is a C++ class:
 
-```
+```text
 xla::megascale::runtime::MultiSliceTopologyAndLocation
 ```
 

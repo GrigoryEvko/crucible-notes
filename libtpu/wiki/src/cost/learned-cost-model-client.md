@@ -146,7 +146,7 @@ if (*(byte*)(GetTpuCompEnv(hlo) + 0xed6) == 1            // enable_learned_cost_
 
 Reconstructed from the `CHECK_OK` designated-initializer literal and the lambda's stack-build sequence. This is the per-candidate-window feature record the client receives; the trailing `estimated_cycles_classic` is the analytic answer, supplied as a baseline/floor.
 
-```c++
+```cpp
 struct MLCostModelWindowInfo {
   absl::InlinedVector<int64_t, 6> activations_window;      // input  window dims (deep-copied)
   absl::InlinedVector<int64_t, 6> kernel_window;           // kernel window dims

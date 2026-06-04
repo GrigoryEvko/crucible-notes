@@ -20,7 +20,7 @@ rendezvous is in progress.
 The state byte lives at `+0x58` of every Coordinator instance.
 Transitions:
 
-```
+```text
        state=0
          │  first AddRequest
          ▼

@@ -12,7 +12,7 @@ the source-of-truth `P-3-11_tpunetd_protocol.txt`.
 
 ## Layering
 
-```
+```text
 +----------------------------------------------------------------+
 | XLA Megascale Runtime                                           |
 | (xla::megascale::runtime::CommunicationBackend)                 |

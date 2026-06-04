@@ -38,7 +38,7 @@ The downstream dispatch (`RunImpl` @ `0x110364a0`) switches on the resolved `one
 2. the `<Msg>_globals_` default-instance bytes in `.data`, and
 3. the serialized `google.protobuf.DescriptorProto` embedded in `protodesc_cold` (the `message_type` sub-record of `tpu_compilation_environment.proto`).
 
-```proto
+```protobuf
 // xla.jellyfish (recovered, byte-exact)
 message TpuCustomCallMemorySpaceSpec {
   oneof policy {                                       // oneof_decl[0] = "policy"

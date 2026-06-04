@@ -126,7 +126,7 @@ IsRpu(op)            = (unsigned)(op - 17) < 0x12      // {17..34}
 VectorExtendedUsesData(op) = (op != 3)                 // only op 3 reads no vector data operand
 ```
 
-> **CORRECTION (binary-confirmed).** The classifier source notes circulating with this roster gave `IsRpu = (op-0xf) < 0x12 = {15..32}` and called proto 33/34 "beyond IsRpu." The actual binary (`ProtoUtils::IsRpu` @ `0x1e875b60`) computes `(op - 17) < 0x12`, i.e. **`IsRpu = {17..34}`** — `PERMUTE(17)` through `CROSS_LANE_SEGMENTED_MIN_INDEX_PERMUTE(34)`. `TRANSPOSE(15)`/`TRANSPOSE_START(16)` are covered by `IsTranspose`, not `IsRpu`. This page uses the binary value.
+> **CORRECTION (binary-confirmed) —** The classifier source notes circulating with this roster gave `IsRpu = (op-0xf) < 0x12 = {15..32}` and called proto 33/34 "beyond IsRpu." The actual binary (`ProtoUtils::IsRpu` @ `0x1e875b60`) computes `(op - 17) < 0x12`, i.e. **`IsRpu = {17..34}`** — `PERMUTE(17)` through `CROSS_LANE_SEGMENTED_MIN_INDEX_PERMUTE(34)`. `TRANSPOSE(15)`/`TRANSPOSE_START(16)` are covered by `IsTranspose`, not `IsRpu`. This page uses the binary value.
 
 ### Roster Table
 

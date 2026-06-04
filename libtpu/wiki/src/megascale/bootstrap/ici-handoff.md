@@ -38,7 +38,7 @@ what each side reads / writes.
 
 ## Sequencing within a single host bringup
 
-```
+```text
 host bringup
   │
   ▼
@@ -89,7 +89,7 @@ slice.
 every inbound `topology_args` against the first one it saw for
 the same `slice_id`:
 
-```
+```c
 MessageDifferencer diff;
 diff.set_message_field_comparison(EQUIVALENT);
 if (!diff.Compare(req.topology_args,

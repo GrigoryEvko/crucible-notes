@@ -27,7 +27,7 @@ The fleet is the whole multi-slice job. In memory it is the
 `MultiSliceTopologyAndLocation` class; on the wire it is
 `MultiSliceTopologyAndLocationProto`:
 
-```
+```protobuf
 message MultiSliceTopologyAndLocationProto {
   int32              local_slice_id = 1;   // THIS process's slice
   int32              local_host_id  = 2;   // THIS process's host (in slice)
@@ -45,7 +45,7 @@ list without out-of-band context.
 A slice is a contiguous ICI domain — one toroidal chip network. In the
 fleet metadata it is just an index plus a shape:
 
-```
+```protobuf
 message SliceInfo {
   int32                    slice_id          = 1;
   // field 2 retired (gap)
@@ -63,7 +63,7 @@ the DCN layer needs is `product(tpu_topology_args.host_bounds)`.
 A host is named `(slice_id, host_id)` and is reachable through one or
 more DCN NICs:
 
-```
+```protobuf
 message NetworkAddressMapping {
   int32  slice_id                = 1;
   int32  host_id                 = 2;

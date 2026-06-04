@@ -305,7 +305,7 @@ The delta is exactly: `$_1` additionally treats `IsLoopFusion` and opcode `0x82`
 
 The message is registered, parseable from a flag, and reachable through `GetIlpLatencyHidingSchedulerOptions` (`@0x1d6b7e60`). Its `Clear` (`@0x1db24ea0`) zeroes a 6-bit presence bitmap at struct offset +16 (`& 0x3F`) and a payload region spanning offsets `0x18..0x32`; the `enable_ilp_latency_hiding_scheduler` bool sits at offset +48 (`0x30`), inside that payload.
 
-```proto
+```protobuf
 message IlpLatencyHidingSchedulerOptions {
   optional bool   enable_ilp_latency_hiding_scheduler = 1;  // C++ struct +48 — LIVE
   optional double max_solver_deterministic_time      = 2;   // inert
@@ -352,7 +352,7 @@ The five inert fields appear only in generated reflection code (`_table_` `@0x21
 
 ---
 
-## When Does It Replace the Greedy List Scheduler?
+## Replacement Conditions vs the Greedy List Scheduler
 
 Direct answer for the reimplementer: in `libtpu-0.0.40`, the MIP replaces the greedy memory scheduler **only when the compilation environment sets `MemorySchedulerProto::Value::ILP (6)`** — it is opt-in, not the default.
 

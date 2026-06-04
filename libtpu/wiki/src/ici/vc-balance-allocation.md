@@ -304,7 +304,7 @@ function SetNextHopRoutingTableEntry(this, src, dst, idx, table):   // 0x1fbf1a8
         // diagnostics only — the result of these is logged but does NOT pick the VC:
         crossed = CrossesDateline(src)                             // 0x1fbf28e0; logs "Crossed … high VC!" (:217)
         turned  = !Direction::IsSame(this_dir, next_dir)           // logs "Turned … low VC!" (:221)
-        table.SetUnicastTarget(idx, link, 1)                       // line 0x1fbf1c?? 
+        table.SetUnicastTarget(idx, link, 1)                       // line 0x1fbf1c??
         table.SetUnicastVcControl(idx, /*vc=*/1, true)             // FIXED VC=1, mov ecx,1 @0x1fbf1c69
 
 function SetEgressRoutingTableEntry(this, src, dst, idx, table):   // 0x1fbf17c0

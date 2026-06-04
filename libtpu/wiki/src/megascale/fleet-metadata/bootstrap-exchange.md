@@ -13,7 +13,7 @@ Each worker calls
 `DiscoverTopologyAndAddressBindings(local_slice_id, TpuTopologyArgsProto
 args, local_host_id, num_slices)` and builds a single request:
 
-```
+```protobuf
 message GetMultiSliceTopologyRequest {
   NetworkAddressMapping    address_mapping   = 1;  // THIS host's identity + endpoints
   tpu.TpuTopologyArgsProto tpu_topology_args = 2;  // THIS slice's shape
@@ -23,7 +23,7 @@ message GetMultiSliceTopologyRequest {
 
 The `address_mapping` carries the host's own identity and reachability:
 
-```
+```text
 NetworkAddressMapping {
   slice_id  = local_slice_id,
   host_id   = local_host_id,
@@ -50,7 +50,7 @@ The coordinator's `TopologyCoordinator` accumulates one request per
 equivalent `tpu_topology_args`. When all
 `num_slices · hosts_per_slice` registrations arrive it assembles:
 
-```
+```protobuf
 message MultiSliceTopologyInfo {
   repeated SliceInfo             slice_info       = 1;  // every slice + shape
   repeated NetworkAddressMapping address_mappings = 2;  // every host's endpoints
@@ -61,7 +61,7 @@ message MultiSliceTopologyInfo {
 This pairs the slice inventory (field 1) with the full endpoint table
 (field 2). The coordinator serializes it to bytes and returns:
 
-```
+```protobuf
 message GetMultiSliceTopologyResponse {
   bytes serialized_topology_info = 1;   // serialized MultiSliceTopologyInfo
 }
@@ -91,7 +91,7 @@ reach it.
 
 ## Summary of the data flow
 
-```
+```text
 PUBLISH (per host)                RECEIVE (whole fleet)
 ──────────────────                ─────────────────────
 (slice_id, host_id)        ──►    repeated SliceInfo         (all slices + shapes)

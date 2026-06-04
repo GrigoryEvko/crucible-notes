@@ -1,6 +1,6 @@
 # ErrorAggregator
 
-> *All addresses on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel (BuildID md5 `89edbbe81c5b328a958fe628a9f2207d`, 781 691 048 bytes, x86-64). Other versions will differ.*
+> *All addresses on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel (BuildID md5 `89edbbe81c5b328a958fe628a9f2207d`, 781,691,048 bytes, x86-64). Other versions will differ.*
 
 ## Abstract
 

@@ -45,7 +45,7 @@ int local_slice_id, TpuTopologyArgsProto args, int local_host_id,
 int num_slices)` (decompiled at `0x1ccacb80`). The request is built
 field-by-field:
 
-```
+```c
 GetMultiSliceTopologyRequest req(/*arena=*/nullptr);
 
 // 1. address_mapping (field 1) — a NetworkAddressMapping default-

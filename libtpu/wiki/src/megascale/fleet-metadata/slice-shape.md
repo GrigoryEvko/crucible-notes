@@ -13,7 +13,7 @@ propagated up as this single, validated blob.
 
 ## TpuTopologyArgsProto
 
-```
+```protobuf
 message TpuTopologyArgsProto {              // package tpu, editions
   tpu.TpuVersionProto      version                = 1;  // chip generation
   string                   variant                = 2;  // chip variant name
@@ -38,7 +38,7 @@ message TpuTopologyArgsProto {              // package tpu, editions
 
 The slice shape is the product of two 4D bounds:
 
-```
+```text
 slice_shape = chips_per_host_bounds ⊗ host_bounds
 ```
 
@@ -52,7 +52,7 @@ usually unused). The two quantities the rest of the system needs:
 
 Supporting dimension types:
 
-```
+```protobuf
 message TpuDimensionsProto   { int32 x=1; int32 y=2; int32 z=3; int32 w=4; }
 message TpuWrapProto         { bool  x=1; bool  y=2; bool  z=3; }   // torus closure per axis
 message TpuDegradedAxesProto { bool  x=1; bool  y=2; bool  z=3; }   // axes lost to faults
@@ -68,13 +68,13 @@ live in a separate `superpod.routing.proto.TwistedTorusShape` enum
 
 `routing_strategy` selects how traffic is routed within the slice:
 
-```
+```protobuf
 enum TpuRoutingStrategyProto { ROUTING_DEFAULT=0; ROUTING_MESH=1; ROUTING_NHOP=2; }
 ```
 
 A companion proto carries the *configured* (post-fault) properties:
 
-```
+```protobuf
 message TpuConfiguredPropertiesProto {
   tpu.TpuDegradedAxesProto    degraded_axes           = 1;  // axes degraded by faults
   bool                        is_nhop_source_relative = 2;
@@ -88,7 +88,7 @@ the routing planner.
 
 ## Chip generation and platform
 
-```
+```protobuf
 enum TpuVersionProto {
   TPU_VERSION_INVALID=0; TPU_VERSION_JELLYFISH=1; TPU_VERSION_DRAGONFISH=2;
   TPU_VERSION_PUFFERFISH=3; TPU_VERSION_VIPERFISH=4; TPU_VERSION_GHOSTLITE=5;

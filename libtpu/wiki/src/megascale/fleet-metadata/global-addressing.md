@@ -7,7 +7,7 @@ the compiler/ISA layer, computed from that composition.
 
 ## The translation chain
 
-```
+```text
 flat fleet device_id
      │  MultiSliceTopologyAndLocation::ToSliceAndLogicalDeviceId(
      │       device_id, TpuCoreType)
@@ -38,7 +38,7 @@ The `MultiSliceTopologyAndLocation` class exposes the addressing methods
 The per-core fleet handle is the class `MultiSliceTpuCoreLocation`,
 created by:
 
-```
+```c
 MultiSliceTpuCoreLocation::Create(
     const MultiSliceTopologyAndLocation& mstl,
     int device_id,
@@ -47,7 +47,7 @@ MultiSliceTpuCoreLocation::Create(
 
 It couples the device's owning slice with a `TpuCoreLocationProto`:
 
-```
+```protobuf
 message TpuCoreLocationProto {              // xla.megascale.runtime
   tpu.TpuCoreTypeProto core_type         = 1;   // TENSOR / BARNA / SPARSE
   int32                logical_device_id = 2;   // device id within its slice
