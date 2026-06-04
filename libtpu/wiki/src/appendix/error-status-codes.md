@@ -1,10 +1,10 @@
 # Error / Status Codes
 
-> *All addresses on this page apply to libtpu.so version 0.103 from the libtpu-0.0.40-cp314 wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`). Offsets are file offsets; for the `.rodata` string table these equal the virtual address (1:1 mapping). Other versions will differ.*
+> *All addresses on this page apply to the libtpu.so shipped in the libtpu-0.0.40-cp314 wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`). Offsets are file offsets; for the `.rodata` string table these equal the virtual address (1:1 mapping — `.rodata` starts at `0x84a0000` both on disk and in memory). Other builds will differ.*
 
 ## Abstract
 
-libtpu reports every failure through `absl::Status`, not through `errno` or a custom enum. A `Status` is either `OK` or carries one of the canonical `absl::StatusCode` values — `INVALID_ARGUMENT`, `INTERNAL`, `FAILED_PRECONDITION`, `UNIMPLEMENTED`, `RESOURCE_EXHAUSTED`, `NOT_FOUND`, `UNAVAILABLE`, `OUT_OF_RANGE`, `ABORTED`, `DEADLINE_EXCEEDED`, `ALREADY_EXISTS`, `PERMISSION_DENIED`, `DATA_LOSS`, `CANCELLED`, `UNKNOWN` — plus a message string. At the PJRT boundary that code is translated to a `PJRT_Error_Code` (the `PJRT_Error_GetCode` family is present, 40 symbols) so a JAX/XLA client sees the same taxonomy. This appendix is the consolidated cross-family index: it groups the message *templates* by subsystem, gives a representative verbatim string with its `.rodata` address for each family, names the StatusCode the family typically carries, and points at the deeper pages that catalogue each surface in full.
+libtpu reports every failure through `absl::Status`, not through `errno` or a custom enum. A `Status` is either `OK` or carries one of the canonical `absl::StatusCode` values — `INVALID_ARGUMENT`, `INTERNAL`, `FAILED_PRECONDITION`, `UNIMPLEMENTED`, `RESOURCE_EXHAUSTED`, `NOT_FOUND`, `UNAVAILABLE`, `OUT_OF_RANGE`, `ABORTED`, `DEADLINE_EXCEEDED`, `ALREADY_EXISTS`, `PERMISSION_DENIED`, `DATA_LOSS`, `CANCELLED`, `UNKNOWN` — plus a message string. At the PJRT boundary that code is translated to a `PJRT_Error_Code` (the four `PJRT_Error_*` C-API entry points — `PJRT_Error_Destroy`, `PJRT_Error_Message`, `PJRT_Error_GetCode`, `PJRT_Error_ForEachPayload` — plus the `pjrt::PjrtErrorCodeToStatusCode` translator are all present) so a JAX/XLA client sees the same taxonomy. This appendix is the consolidated cross-family index: it groups the message *templates* by subsystem, gives a representative verbatim string with its `.rodata` address for each family, names the StatusCode the family typically carries, and points at the deeper pages that catalogue each surface in full.
 
 There are three idioms by which TPU code constructs a non-OK `Status`, and the one used at a callsite is what fixes the StatusCode — the format string alone does not. The dominant idiom by callsite count is the streaming builder `xla::status_macros::MakeErrorStream` (the `RET_CHECK(c) << …` / `return InvalidArgument(…) << …` macro). The byte-confirmed idiom is the templated factory `xla::<Code>StrCat<Types…>(literal0, arg0, literal1, arg1, …, absl::SourceLocation)` — a flattened `absl::StrCat` whose Itanium-mangled template-argument pack names every interleaved literal segment and typed argument; one demangled example reads `xla::InvalidArgumentStrCat<char const(&)[28], long&, char const(&)[22], std::string>`. The third, used sparingly, is the prose free function `absl::<Code>Error("…")`. The error *prose* is overwhelmingly `%s`/`%d`-formatted (string args are shapes, layouts, instruction names, device names; int args are dimensions, counts, sizes) — pointer and float specifiers are confined to low-level driver and cost-model paths.
 
@@ -21,7 +21,7 @@ For reimplementation, the contract is:
 | | |
 |---|---|
 | **Status type** | `absl::Status` / `absl::StatusOr<T>` (pervasive; >2600 `absl::Status` symbols, >11500 `StatusOr` symbols) |
-| **Client-facing code** | `PJRT_Error_Code` (translated from `absl::StatusCode`; `PJRT_Error_GetCode` family present) |
+| **Client-facing code** | `PJRT_Error_Code` (translated from `absl::StatusCode` by `pjrt::PjrtErrorCodeToStatusCode`; `PJRT_Error_GetCode` / `_Message` / `_Destroy` / `_ForEachPayload` present) |
 | **Dominant construction idiom** | `xla::status_macros::MakeErrorStream` — `RET_CHECK(c) << …` / `return InvalidArgument(…) << …` |
 | **Byte-confirmed factory** | `xla::<Code>StrCat<Types…>(…, absl::SourceLocation)` — 38 InvalidArgument, 31 Unimplemented, 29 Internal, 1 ResourceExhausted (distinct C1/C2 ctors) |
 | **Prose factory** | `absl::<Code>Error("…")` (sparse) |
@@ -90,7 +90,7 @@ The single largest error block. These are the shape-inference and HLO-verifier d
 | `0xa01cdc3` | `"Bitcast requires a new on-device shape to have the same size of %d bytes, but got %d bytes."` | `INVALID_ARGUMENT` | MEDIUM |
 | `0x857b3fa` | `"sharding's tile count and device count does not match: %d vs. %d; shape=%s, sharding=%s"` | `INVALID_ARGUMENT` | MEDIUM |
 
-> **QUIRK —** the `%v` specifier in `"Bad scalar opcode in slot 0, opcode: %d bundle: %v, …"` (`0x858400c`) is not C-printf. It is the absl `AbslStringify` extension; the `bundle` argument is a per-generation `gxc::gfc::isa::TensorCoreBundle` rendered via its stringifier. The matching factory is byte-confirmed: `xla::InvalidArgumentStrCat<…, gxc::gfc::isa::TensorCoreBundle&>`, one of six `TensorCoreBundle`-bearing factory instantiations. A reimplementation that treats `%v` as a typo for `%s` will mis-format the bundle.
+> **QUIRK —** the `%v` specifier in `"Bad scalar opcode in slot 0, opcode: %d bundle: %v, …"` (`0x858400c`) is not C-printf. It is the absl `AbslStringify` extension; the `bundle` argument is a per-generation `gxc::gfc::isa::TensorCoreBundle` rendered via its stringifier. The matching factory is byte-confirmed: `xla::InvalidArgumentStrCat<char const(&)[56], absl::StatusOr<…gxc::gfc::isa::TensorCoreBundle>>`, one of six `TensorCoreBundle`-bearing factory instantiations (the per-generation `gxc::gfc` / `gxc::glc` / `vxc` variants). A reimplementation that treats `%v` as a typo for `%s` will mis-format the bundle.
 
 ---
 
@@ -262,7 +262,7 @@ To go from a grepped error string to its StatusCode, decide which idiom built it
 
 A template with the `"%s vs. %s"` / `"%d vs. %d"` comparison shape is almost always a verifier `INVALID_ARGUMENT` (Pattern C with `InvalidArgument`); a template prefixed with `TPU_RET_CHECK failure (` is `INTERNAL` (Pattern B); a template whose exact literal segments appear in a demangled `<Code>StrCat` symbol is that `<Code>` with certainty (Pattern A).
 
-At the PJRT C-API boundary, the `absl::StatusCode` is translated to a `PJRT_Error_Code` (the `PJRT_Error_GetCode` / `PJRT_Error_Destroy` family is present, 40 symbols) so a JAX/XLA client receives the same canonical taxonomy through the plugin handle. See [PJRT Overview](../pjrt/overview.md).
+At the PJRT C-API boundary, the `absl::StatusCode` is translated to a `PJRT_Error_Code` (the four `PJRT_Error_*` entry points — `PJRT_Error_Destroy`, `PJRT_Error_Message`, `PJRT_Error_GetCode`, `PJRT_Error_ForEachPayload` — and the `pjrt::PjrtErrorCodeToStatusCode` mapping function are all present) so a JAX/XLA client receives the same canonical taxonomy through the plugin handle. See [PJRT Overview](../pjrt/overview.md).
 
 ---
 
