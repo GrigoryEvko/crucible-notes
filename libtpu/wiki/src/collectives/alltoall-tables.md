@@ -203,7 +203,7 @@ function AllToAllEmitterBase::GenerateConstants(hlo, target, topo, region):  // 
         AddConstant(Type=0xa, use_static ? Literal(C) : vector(C));  // 0x10f08ee4 / 0x10f08fa2
 
     // the orthogonal partner schedule:
-    AddConstant(Type=5, CreateAllToAllRoutingScheduleTable(...));   // 0x10f09161 <- 0x10f0906f
+    AddConstant(Type=5, CreateAllToAllRoutingScheduleTable(...));   // AddConstant @0x10f09161; call @0x10f0906f -> 0x10f061c0
 ```
 
 `CollectiveShouldUseStaticInfoTable` (`0x138194c0`) computes `total = movslq(rsi) · movslq 0x4(rsi)` (= `mesh_dim0·mesh_dim1`), reads `GetTpuCompEnv`, and returns `TpuCompEnv[+0x15d0] >= total` via `cmp %rbx,0x15d0(%rax); setge`. Below the threshold the tables are small enough to bake as constants; above it they are materialized dynamically.
@@ -236,7 +236,7 @@ function EmitBarrierStartImpl(...):                            // 0x10f07240
 | `(anon)::GetConstantTables` | `0x10f07860` | reads 8/9/0xa back as `InfoTable` triple | HIGH |
 | `AllToAllEmitterBase::EmitBarrierStartImpl` | `0x10f07240` | feeds triple to barrier-start | HIGH |
 | `BarrierWithinReplicaGroupStartNoReturn` | `0x1c6983e0` | the within-group barrier consumer | HIGH |
-| `CreateAllToAllRoutingScheduleTable` | `0x10f0906f` | the orthogonal Type-5 route literal | HIGH |
+| `CreateAllToAllRoutingScheduleTable` | `0x10f061c0` | the orthogonal Type-5 route literal (call site `0x10f0906f`) | HIGH |
 
 > **QUIRK —** the carrier choice is per-instruction, not per-table-kind. All three of A/B/C take the same `use_static` decision from one `CollectiveShouldUseStaticInfoTable` call, so a single instruction never mixes a static A with a dynamic B. The threshold `TpuCompEnv[+0x15d0]` is a compile-environment knob, so the same HLO can lower to static constants on one configuration and runtime vectors on another.
 
@@ -335,7 +335,7 @@ The cost model treats the two as one family: `ComputeRaggedAllToAllCycles` (`0x1
 
 | Name | Relationship |
 |---|---|
-| `CreateAllToAllRoutingScheduleTable` @ `0x10f0906f` | the orthogonal Type-5 partner schedule (route, not membership) |
+| `CreateAllToAllRoutingScheduleTable` @ `0x10f061c0` | the orthogonal Type-5 partner schedule (route, not membership) |
 | `BarrierWithinReplicaGroupStartNoReturn` @ `0x1c6983e0` | consumer of the `(A, B, opt C)` `InfoTable` triple |
 | `CreateStaticNDRingReplicaInfoTable` @ `0x1c69e900` | AllGather ND-ring tables sharing the `MeshNDInfo` / DA-strided linearization |
 | `ComputeAllToAllCyclesHelper` @ `0x130d02a0` | shared cost helper for both all-to-all opcodes |
