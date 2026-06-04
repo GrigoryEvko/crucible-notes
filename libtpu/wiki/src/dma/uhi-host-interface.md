@@ -4,13 +4,13 @@
 
 ## Abstract
 
-The **UHI** (Universal/Unified Host Interface) band is the `pxc` (Pufferfish / BarnaCore) generation's host↔device DMA message family in the device trace stream. Every cross-boundary DMA — an infeed feeding a TensorCore queue, an outfeed draining one, a host direct-write, or a physical-address bridge response — surfaces as a sequence of UHI messages whose `package` is `asic_sw.driver.deepsea.pxc.profiler`. There are **eight** UHI message types: a transaction *start* (`UhiHostDmaTransactionStartedAddressTranslation`), a read/write *request* pair carrying the host physical address (`UhiHostPhysicalRequest{Read,Write}`), a read/write *response* pair that closes the transfer (`UhiHostPhysicalResponse{Read,Write}`), and a read/write *OCI bridge request* pair carrying the on-chip byte address (`UhiOciRequest{Read,Write}`). Each is wired into the `pxc::profiler::TraceEntry` oneof and decoded by a generated `DecodeUhi…` bit-unpacker.
+The **UHI** (Universal/Unified Host Interface) band is the `pxc` (Pufferfish / BarnaCore) generation's host↔device DMA message family in the device trace stream. Every cross-boundary DMA — an infeed feeding a TensorCore queue, an outfeed draining one, a host direct-write, or a physical-address bridge response — surfaces as a sequence of UHI messages whose `package` is `asic_sw.driver.deepsea.pxc.profiler`. There are **seven** UHI message types: a transaction *start* (`UhiHostDmaTransactionStartedAddressTranslation`), a read/write *request* pair carrying the host physical address (`UhiHostPhysicalRequest{Read,Write}`), a read/write *response* pair that closes the transfer (`UhiHostPhysicalResponse{Read,Write}`), and a read/write *OCI bridge request* pair carrying the on-chip byte address (`UhiOciRequest{Read,Write}`). Each is wired into the `pxc::profiler::TraceEntry` oneof and decoded by a generated `DecodeUhi…` bit-unpacker.
 
 This page owns the **per-message field map** (field number, name, proto type, C++ struct offset, on-wire bit width, embedded `TraceIdHeader`), the **22-value `QueueIdValues` enum** and its host-DMA role per queue name, and how a UHI message **frames** a host↔device transfer (the begin/end identity-pairing surface). The *reassembly* that turns the start+response pair into a rendered span — `DeriveHostDmaTransfers` and the tag-6/7 H2D/D2H selector — is on [Host↔Device DMA](host-device-dma.md); the shared `DmaTransfer` record + per-span XStats and the local-leg descriptor are on [Intra-Chip DMA Descriptor](intra-chip-descriptor.md). This page is the wire-format reference those two link back to.
 
 For reimplementation, the contract is:
 
-- **The eight UHI message types** — their `pxc::profiler::TraceEntry` oneof cases (0–6 for the seven `pxc` UHI messages; the OCI-bridge pair completes the band), and which three the host-DMA timeline actually keys on (`{0, 2, 4}`).
+- **The seven UHI message types** — their `pxc::profiler::TraceEntry` oneof cases (trace-point ids 0–6 / oneof cases 2–8), and which three the host-DMA timeline actually keys on (`{0, 2, 4}`).
 - **The id-0 STARTED field map** — `{trace_id_header, queue_id, sequence_number, dva, size}`, byte-exact C++ offsets and on-wire widths, decoded by `DecodeUhiHostDmaTransactionStartedAddressTranslation` (consumed-bit `CHECK 0xd8 = 216`).
 - **The id-2 / id-4 RESPONSE field map** — the identical 3-field `{trace_id_header, is_l2_pte_fetch, chunk_id}` shape, the END marker (`CHECK 0x76 = 118`).
 - **The embedded `TraceIdHeader`** — `{transaction_id, core_id, chip_id}`, field 1 of *every* UHI message; `transaction_id` alone is the per-DMA pairing key.
@@ -20,7 +20,7 @@ For reimplementation, the contract is:
 | | |
 |---|---|
 | **Proto package** | `asic_sw.driver.deepsea.pxc.profiler` (`pxc` = Pufferfish) |
-| **UHI message types** | `UhiHostDmaTransactionStartedAddressTranslation`, `UhiHostPhysicalRequest{Read,Write}`, `UhiHostPhysicalResponse{Read,Write}`, `UhiOciRequest{Read,Write}` (8 total) |
+| **UHI message types** | `UhiHostDmaTransactionStartedAddressTranslation`, `UhiHostPhysicalRequest{Read,Write}`, `UhiHostPhysicalResponse{Read,Write}`, `UhiOciRequest{Read,Write}` (7 total) |
 | **id-0 STARTED decoder** | `Decode…UhiHostDmaTransactionStartedAddressTranslation…` @ `0xf5b0b80` (consumed-bit `CHECK 0xd8 = 216`) |
 | **id-2 RESPONSE_READ decoder** | `Decode…UhiHostPhysicalResponseRead…` @ `0xf5b1300` (`CHECK 0x76 = 118`) |
 | **Host-DMA timeline keys** | UHI ids `{0, 2, 4}` only (STARTED + RESPONSE_READ + RESPONSE_WRITE) |
@@ -34,7 +34,7 @@ For reimplementation, the contract is:
 
 ## 1. The UHI Message Family and the `TraceEntry` Oneof
 
-The `pxc` device trace stream is a stream of `pxc::profiler::TraceEntry` records, each a proto2 oneof over the trace-point message types. The UHI host-interface band occupies oneof cases 2..8 (trace-point ids 0..6); the eight message *types* below are all present as demangled symbols in the binary (`UhiHost…`, `UhiOci…`, plus their generated `Decode…`/`DefaultConstruct…` helpers).
+The `pxc` device trace stream is a stream of `pxc::profiler::TraceEntry` records, each a proto2 oneof over the trace-point message types. The UHI host-interface band occupies oneof cases 2..8 (trace-point ids 0..6); the seven message *types* below are all present as demangled symbols in the binary (`UhiHost…`, `UhiOci…`, plus their generated `Decode…`/`DefaultConstruct…` helpers).
 
 | id | UHI message (`pxc::profiler::`) | oneof case | shape | role in the host-DMA chain |
 |---:|---|---:|---|---|
@@ -46,7 +46,7 @@ The `pxc` device trace stream is a stream of `pxc::profiler::TraceEntry` records
 | 5 | `UhiOciRequestRead` | 7 | 5 fields | UHI↔OCI bridge read — on-chip byte address (un-consumed) |
 | 6 | `UhiOciRequestWrite` | 8 | 5 fields | UHI↔OCI bridge write — on-chip byte address + flags (un-consumed) |
 
-> **NOTE — only three ids drive the timeline.** The `DeriveHostDmaTransfers` host-DMA producer seeds its merged trace-point set with exactly `{0, 2, 4}` (the STARTED + the two RESPONSE messages); see [Host↔Device DMA §2.1](host-device-dma.md). The REQUEST (`1`/`3`) and OCI-bridge (`5`/`6`) events are fully decoded into the proto — their `Decode…` functions are real symbols — but no XPlane pass in `libtpu.so` consumes them. They are documented here as the address-carrying half of the band a reimplementer would need to recover a host↔device address mapping (§5). Confidence: CONFIRMED (the eight message symbols + the `{0,2,4}`-only producer seed).
+> **NOTE — only three ids drive the timeline.** The `DeriveHostDmaTransfers` host-DMA producer seeds its merged trace-point set with exactly `{0, 2, 4}` (the STARTED + the two RESPONSE messages); see [Host↔Device DMA §2.1](host-device-dma.md). The REQUEST (`1`/`3`) and OCI-bridge (`5`/`6`) events are fully decoded into the proto — their `Decode…` functions are real symbols — but no XPlane pass in `libtpu.so` consumes them. They are documented here as the address-carrying half of the band a reimplementer would need to recover a host↔device address mapping (§5). Confidence: CONFIRMED (the seven message symbols + the `{0,2,4}`-only producer seed).
 
 **Proto-type legend** (`FieldDescriptorProto.type`, used in the field-map tables): `4 = UINT64`, `8 = BOOL`, `11 = MESSAGE`, `13 = UINT32`, `14 = ENUM`.
 
