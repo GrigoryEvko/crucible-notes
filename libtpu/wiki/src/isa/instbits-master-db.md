@@ -59,7 +59,7 @@ The InstBits tables are part of one contiguous TableGen-emitted region in `.lrod
 0x33666a0  getRegisterName::RegAsmOffset   ...          InstPrinter reg-name offsets
 0x3366d90  InstBits                        5667 × 32B   <-- default base bits (all-zero)
 0x33931f0  InstBits_BarnaCorePxcHwMode     5667 × 32B   <-- BarnaCore base bits (populated)
-0x33bf650  TPUDescs                        6166 × 32B   per-opcode MCInstrDesc
+0x33bf650  TPUDescs                        0x33590 B    per-opcode MCInstrDesc (6166 opcodes)
 0x33f2be0  TPUInstrNameData                274764 B     mnemonic string pool
 0x3435d30  TPUInstrNameIndices             6166 × u32   opcode -> byte offset into NameData
 0x343bd90  TPUStages                       0x7c8        pipeline stages
