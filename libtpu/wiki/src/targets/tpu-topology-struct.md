@@ -85,7 +85,9 @@ The table is the complete `tpu::TpuTopology` layout. Every offset was read byte-
 
 > **GOTCHA —** the numeric offset `0x3b8` appears in both objects with unrelated meanings. In `xla::jellyfish::Target`, `+0x3b8` is the `tpu::TpuTopology*` member. Inside `tpu::TpuTopology` itself (a `0x3c8`-byte object), `+0x3b8` is the object's own HalLocations count word (its last vector's tail). Every `[0x3b8]->[X]` on this page means "dereference the `Target`'s `TpuTopology*`, then read field X". A reimplementer who conflates the two reads garbage.
 
-> **CORRECTION (B1) —** `Target::CoresPerChip(t)` (`0x1d615b40`) returns `[0x3b8]->[0x7c + 12·t]`, i.e. the per-chip count at `+0x7c` for `t=0` (TENSOR_CORE), `+0x88` for `t=1` (SPARSE_CORE), `+0x94` for `t=2` (BARNA_CORE) — and `BUG()`s for `t≥3`. The `+0x80..+0x9c` neighbours are the corresponding *·chips* products. `Target::SupportsSparseCore` (`0x1d48fd40`) reads `[0x3b8]->[0x98] > 0`, but the constructor stores `[+0x98] = CoreCount(chip_parts, 2) · chips_product` — the type-index-2 (BARNA-slot) product, not the SPARSE_CORE one. Whether index 2 is the SparseCore slot in the runtime `TpuCoreType` enum (distinct from the proto `BARNA_CORE` ordering) was not separately resolved; the literal store is recorded here, the SparseCore-vs-Barna label is MEDIUM.
+`Target::CoresPerChip(t)` (`0x1d615b40`) returns `[0x3b8]->[0x7c + 12·t]`, i.e. the per-chip count at `+0x7c` for `t=0` (TENSOR_CORE), `+0x88` for `t=1` (SPARSE_CORE), `+0x94` for `t=2` (BARNA_CORE) — and `BUG()`s for `t≥3`. The `+0x80..+0x9c` neighbours are the corresponding *·chips* products. `Target::SupportsSparseCore` (`0x1d48fd40`) reads `[0x3b8]->[0x98] > 0`, but the constructor stores `[+0x98] = CoreCount(chip_parts, 2) · chips_product` — the type-index-2 (BARNA-slot) product, not the SPARSE_CORE one.
+
+> **NOTE —** whether index 2 is the SparseCore slot in the runtime `TpuCoreType` enum (distinct from the proto `BARNA_CORE` ordering) is not independently confirmed: the literal store at `+0x98` is `CoreCount(chip_parts, 2) · chips`, so the SparseCore-vs-Barna label on that field is MEDIUM confidence.
 
 ---
 
@@ -129,7 +131,7 @@ store:
     CHECK(this->[0x1b0] > 0 && IsPowerOfTwo(this->[0x1b0]))         // lines 269-274
 ```
 
-> **CORRECTION (B1) —** the `chunk_granules` divisor is `max(4·lane, chip_parts[+0xc8])`, taking the larger of `4·lane` and the chip-parts field, with the dividend `4·(lane·sublane)`. An earlier description had this as a `min` over `sublane·4`; the decompile (`if (*(_QWORD*)(v59+200) > v60) v60 = *(_QWORD*)(v59+200)`) is a `max` over `lane·4`. The result is force-checked to be a positive power of two (`IsPowerOfTwo(result.tc_max_packing_factor)`, FATAL at source line 129); for any generation reporting `chip_parts.version >= 2` the stored value is simply `0x20` (32).
+> **NOTE —** the `chunk_granules` divisor is `max(4·lane, chip_parts[+0xc8])` — the *larger* of `4·lane` and the chip-parts field — with the dividend `4·(lane·sublane)`. The decompile (`if (*(_QWORD*)(v59+200) > v60) v60 = *(_QWORD*)(v59+200)`) is a `max` over `lane·4`, not a `min` over `sublane·4`. The result is force-checked to be a positive power of two (`IsPowerOfTwo(result.tc_max_packing_factor)`, FATAL at source line 129); for any generation reporting `chip_parts.version >= 2` the stored value is simply `0x20` (32).
 
 > **NOTE —** the fallback writes `lane=0x80, sublane=8`, so a `TpuTopology` built from a chip-parts blob that lacks a populated VectorIsa still presents 128×8 geometry. For the v7 (`6acc60406`) chip-parts embedded in this wheel the VectorIsa is present and also reports `lane=128, sublane=8`, so the populated and fallback paths agree on this build. The `lane·sublane = 1024` product and `chunk_granules = 32` follow.
 
@@ -166,7 +168,7 @@ Two parallel surfaces read these fields: the `xla::jellyfish::Target` methods (u
 | `Target::LaneCountLog2` | `0x1d615be0` | `bsr (i32)[0x198]` | log2(lane) = 7 for 128 | CERTAIN |
 | `Target::SublaneCountLog2` | `0x1d615c40` | `bsr (i32)[0x1a0]` | log2(sublane) = 3 for 8 | CERTAIN |
 | `Target::CoresPerChip(t)` | `0x1d615b40` | `[0x3b8]->[0x7c + 12·t]` | per-coretype count; `BUG()` if `t≥3` | CERTAIN |
-| `Target::SupportsSparseCore` | `0x1d48fd40` | `[0x3b8]->[0x98] > 0` | bool (see CORRECTION above) | HIGH |
+| `Target::SupportsSparseCore` | `0x1d48fd40` | `[0x3b8]->[0x98] > 0` | bool (`+0x98` = `CoreCount(chip_parts,2)·chips`; SparseCore-vs-Barna label MEDIUM) | HIGH |
 | `Target::HbmCountPerChip` | `0x1d616080` | `chip_parts->SharedMemoryCount([0x3b8]+8, 0)` | HBM stacks; FATAL if `[0x3b8]` null | CERTAIN |
 
 > **NOTE —** `ChunkSizeBytes` reads `[0x1a8]` as a 32-bit value (`4 * *(_DWORD*)(... + 424)`), whereas the field is stored as a 64-bit `lane·sublane` product. For any realistic geometry the product fits in 32 bits, so this is harmless, but a reimplementation must store the product full-width (the `imul` is 64-bit) even though one consumer narrows it. `TileBytes`, by contrast, reads the lane field as the full 64-bit `_QWORD` and squares it.
@@ -231,10 +233,10 @@ The full `SparseCoreTarget` field map is a separate object documented in the [Sp
 
 ## Not Resolved
 
-- **Absolute lane/sublane for v0–v4.** This wheel embeds all nine `<name>_chip_parts.binarypb` blobs (jellyfish through `6acc60406`, plus the `pufferfish_lite`/`viperfish_lite`/`6acc60406_tensornode` variants), so each generation's VectorIsa is decodable directly rather than inferred from the constructor fallback. The decoded `VectorIsa.sublane_count` is 8 on every generation in this build — an older topology-descriptor analysis that reported a (16,128) tile for jellyfish/Pufferfish-class silicon is debunked by the proto, which carries `sublane_count = 8` uniformly (see [Per-Codename HW Constants](per-codename-hw-constants.md)). The 128×8 fallback the constructor would supply when a VectorIsa chain is absent coincides with what every embedded blob reports.
+- **Absolute lane/sublane for v0–v4.** This wheel embeds all nine `<name>_chip_parts.binarypb` blobs (jellyfish through `6acc60406`, plus the `pufferfish_lite`/`viperfish_lite`/`6acc60406_tensornode` variants), so each generation's VectorIsa is decodable directly rather than inferred from the constructor fallback. The decoded `VectorIsa.sublane_count` is 8 on every generation in this build; the proto carries `sublane_count = 8` uniformly across jellyfish through `6acc60406` (see [Per-Codename HW Constants](per-codename-hw-constants.md)). The 128×8 fallback the constructor would supply when a VectorIsa chain is absent coincides with what every embedded blob reports.
 - **The `+0x158..+0x190` subslice field semantics.** `GetFullSliceDeviceCount` multiplies `+0x158/+0x15c/+0x160/+0x16c/+0x170/+0x174` and gates on `+0x184/+0x190`, but which axis is the subslice base vs extent was not individually pinned. Marked MEDIUM in the layout table.
 - **The location-element structs.** The base offsets and strides of the `+0xb0..+0x2c8` vectors are recovered (Core stride `0x38`, ChipView `0x20`, Hal `0x30`), but the per-element `TpuCoreLocation` / `TpuChipLocation` field packing was not decoded.
-- **`+0x98` SparseCore-vs-Barna label.** The constructor stores `CoreCount(chip_parts, 2) · chips` there and `SupportsSparseCore` reads it; the runtime `TpuCoreType` index-2 → SparseCore-or-Barna mapping was not separately confirmed (see CORRECTION).
+- **`+0x98` SparseCore-vs-Barna label.** The constructor stores `CoreCount(chip_parts, 2) · chips` there and `SupportsSparseCore` reads it; the runtime `TpuCoreType` index-2 → SparseCore-or-Barna mapping is not separately confirmed.
 
 ---
 

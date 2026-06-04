@@ -170,7 +170,7 @@ DeviceType DeviceTypeFromDeviceIdentifiers(record):    // 0xf6993a0
     return Error("Unsupported device identifiers")      // :152
 ```
 
-> **CORRECTION (DID-01) —** earlier analysis listed the Ghostlite→`0xd` / 6acc60406→`0xc` device-type binding as cross-referenced (not pinned to a literal store), and recorded the v5 chip DID as "not recovered as a direct PCI record". Both are now byte-level facts. `DeviceTypeFromDeviceIdentifiers` stores the constants directly — `*(_DWORD*)(result+8) = 13` on the `IsGlc` branch and `= 12` on the `IsGfc` branch — and the 6acc60406 records exist in `.rodata` at `0xbdf3cc4`–`0xbdf3ce8` (anonymous, no symbol). The chip DID `0x00f2` is confirmed both in those bytes and in the `IsGfc` immediates.
+> **NOTE —** the Ghostlite→`0xd` / 6acc60406→`0xc` device-type binding is pinned to a literal store: `DeviceTypeFromDeviceIdentifiers` writes the constants directly — `*(_DWORD*)(result+8) = 13` on the `IsGlc` branch and `= 12` on the `IsGfc` branch. The 6acc60406 PCI records exist in `.rodata` at `0xbdf3cc4`–`0xbdf3ce8` (anonymous, no symbol), and the v5 chip DID `0x00f2` is confirmed both in those bytes and in the `IsGfc` immediates.
 
 ### Device-Type Map
 
@@ -212,6 +212,6 @@ The codename → `TpuVersion` direction is fixed by the `TpuVersionToString` rel
 
 - [Codename Matrix](tpu-version-codename-matrix.md) — the `TpuVersion` enum ↔ codename source-of-truth table the device-type column maps into
 - [Marketing / Cloud Naming](marketing-cloud-naming.md) — codename ↔ Cloud-TPU display name (the v6e/TPU7x cross-walk)
-- [Superseded-Label Correction List](codename-superseded-labels.md) — the v5 chip-DID and device-type pinning corrections
+- [Superseded-Label Correction List](codename-superseded-labels.md) — the v5 chip-DID and device-type label pinning
 - [HAL Families](hal-families.md) — the JXC/PXC/VXC factory routing that consumes the recognized device
 - [Chip Parts binarypb](chip-parts-binarypb.md) — the embedded per-chip proto that carries DID and core-count metadata

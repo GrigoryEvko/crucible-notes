@@ -240,7 +240,7 @@ The genuine Viperfish → Ghostlite/6acc60406 capability gains are exactly two b
 - `SupportsScVldVstIdxAdd` (0 → 1) — indexed vector load/store with add.
 - `FlopsPerSparseCore` 1 TFLOP/s → 35.95 TFLOP/s — the widened Ghostlite/6acc60406 TEC vector engine.
 
-> **GOTCHA —** `SupportsScEupOps` returns **1 on both** Viperfish and Ghostlite/6acc60406 (verified at `0x1D49C8C0` and `0x1D499420` — both `return 1`). It is *not* a per-generation delta. An earlier draft listed Viperfish `SupportsScEupOps` = 0 and counted it among the Ghostlite gains; that is incorrect — the Extended-Unit-Pipeline ops are present on Viperfish too, and the only capability-bit deltas are the two listed above.
+> **GOTCHA —** `SupportsScEupOps` returns **1 on both** Viperfish and Ghostlite/6acc60406 (verified at `0x1D49C8C0` and `0x1D499420` — both `return 1`). It is *not* a per-generation delta: the Extended-Unit-Pipeline ops are present on Viperfish too, so do not count it among the Ghostlite gains. The only capability-bit deltas are the two listed above.
 
 The `FlopsPerSparseCore` body is a small dispatcher, identical in shape across both subclasses:
 

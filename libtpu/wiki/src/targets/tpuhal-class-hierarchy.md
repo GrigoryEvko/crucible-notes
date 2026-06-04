@@ -12,7 +12,7 @@ The Hardware tree is the shallow one: `TpuHal` (abstract) → `TpuHalHardwareImp
 
 For reimplementation, the contract is:
 
-- The correction: only `TpuHalHardware*` is a `TpuHal` class; the other three roles are separate trees keyed on the same `TpuVersion`.
+- Only `TpuHalHardware*` is a `TpuHal` class; the other three roles are separate trees keyed on the same `TpuVersion`.
 - The Hardware tree's base/intermediate/leaf structure, the 23-slot vtable, and the impl object layout (208 B Jxc/Pxc, 216 B Vxc; helper pointer at +200).
 - The depth and slot counts of the paired Core (46/48-slot) and Chip (25/27-slot) trees, and the CostModel (5-slot) and Encoder (6/14/20-slot) trees.
 - The ownership-versus-data-flow coupling between the four trees.
@@ -31,7 +31,7 @@ For reimplementation, the contract is:
 
 ---
 
-## The Correction: Only Hardware Is a TpuHal Class
+## Only Hardware Is a TpuHal Class
 
 A symbol scan settles the naming question. The complete set of `tpu::TpuHal*` classes in the binary is the Hardware family plus its support classes; the three other "product" names are absent:
 
@@ -50,7 +50,7 @@ absent    tpu::TpuHalCostModel   — the role is filled by xla::jellyfish::Cycle
 absent    tpu::TpuHalEncoder     — the role is filled by tpu::TpuCodec / isa::Encoder
 ```
 
-> **CORRECTION (HAL-A3) —** the framing of "four `TpuHal` sibling product types produced by one factory" is wrong. `TpuHalFactory` produces exactly one kind of object — a `TpuHal{Jxc,Pxc,Vxc}HardwareImpl`. "Core", "CostModel", and "Encoder" are real per-family/per-generation hierarchies, but they live in `tpu::` (Core/Chip), `xla::jellyfish::` (CostModel), and `tpu::`/`isa::` (Encoder) — none of them inherit from a `TpuHal` base or are built by the HAL factory. A reimplementation that derives all four from a common `TpuHalFactory` will not match the binary's class graph.
+> **GOTCHA —** there are not "four `TpuHal` sibling product types produced by one factory." `TpuHalFactory` produces exactly one kind of object — a `TpuHal{Jxc,Pxc,Vxc}HardwareImpl`. "Core", "CostModel", and "Encoder" are real per-family/per-generation hierarchies, but they live in `tpu::` (Core/Chip), `xla::jellyfish::` (CostModel), and `tpu::`/`isa::` (Encoder) — none of them inherit from a `TpuHal` base or are built by the HAL factory. A reimplementation that derives all four from a common `TpuHalFactory` will not match the binary's class graph.
 
 ---
 

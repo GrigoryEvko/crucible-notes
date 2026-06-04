@@ -77,7 +77,7 @@ GtcSpanConverter::GtcSpanConverter(DeviceType dt):     // sub_F2CB6E0
 
 > **NOTE —** the table carries **no pointer fields** (zero relocations across `[0x1C60480, 0x1C64D48)`). The device codename string and the trace-codec factory are keyed *separately* by the same captured device identity: `DeviceTypeString`'s pointer array at `0x21772F00` (indexed by ordinal) for the name, and the per-family `DeviceIdentifiers` `std::map` factory for the codec. The ordinal selects the clock/spec (this struct); the PCI tuple selects the codec.
 
-> **CORRECTION (KDTI-SC-1) —** the `+0x438`/`+0x440` tail was previously read as `tail_v7x` "small packed sub-fields." Mapping the six `GetPerformanceCounterNames` call-site GOT displacements back through `base + ordinal*0x448` resolves them to the v7x perf-counter-set enum bases: `+0x438` is the `<12>`-set (ICR/router) base and `+0x440` is the `<3>`-set (CMNUR/HBM) base — nonzero on `DeviceType` 12 only, high dword zero (no pointer). They are **not** roofline doubles. The four `<28>` (TensorCore/SparseCore) sets are at `+0x2C8`/`+0x348`/`+0x350`/`+0x358`.
+> **NOTE —** the `+0x438`/`+0x440` tail holds v7x perf-counter-set enum bases, **not** roofline doubles. Mapping the six `GetPerformanceCounterNames` call-site GOT displacements back through `base + ordinal*0x448` resolves `+0x438` to the `<12>`-set (ICR/router) base and `+0x440` to the `<3>`-set (CMNUR/HBM) base — both nonzero on `DeviceType` 12 only, high dword zero (no pointer). The four `<28>` (TensorCore/SparseCore) sets are at `+0x2C8`/`+0x348`/`+0x350`/`+0x358`.
 
 ### DVFS Ladders
 
