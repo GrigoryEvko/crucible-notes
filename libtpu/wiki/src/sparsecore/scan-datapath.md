@@ -195,11 +195,13 @@ The `i1`-`sum` case is the SparseCore's population-count-prefix primitive — th
 
 ```text
 i1 vector  ──► tpu_mprefix (OneOperand)  ──► i32 vector (the op result)
-              (count-active prefix /
-               DuplicateCount primitive)
+              (cross-lane mask prefix-sum;
+               asm "vmprefix.xlane")
 ```
 
-`tpu_mprefix` (`0x14731a40`, trait `OneOperand`, op-name `"llvm_tpu.mprefix"`) takes the `i1` input *alone* — it has no separate mask, which is exactly why verify forbids a mask operand on `i1` inputs. The lowering builds an `i32`-vector result type up-front (from the `operand[1]` lane count), constructs the single `tpu_mprefix` op against that type, and `replaceOp`s the original `ScanOp` directly — there is NO follow-on convert and NO chained `tpu_add_scan1xNi`. The `i1`-sum scan is exactly one intrinsic. The VEX sub-opcode `tpu_mprefix` lowers to (whether it reuses `DuplicateCountInteger` or a dedicated mask-prefix encoder) is owned by [VEX](vectorextended-vex.md); LOW here.
+`tpu_mprefix` (`0x14731a40`, trait `OneOperand`, op-name `"llvm_tpu.mprefix"`) takes the `i1` input *alone* — it has no separate mask, which is exactly why verify forbids a mask operand on `i1` inputs. The lowering builds an `i32`-vector result type up-front (from the `operand[1]` lane count), constructs the single `tpu_mprefix` op against that type, and `replaceOp`s the original `ScanOp` directly — there is NO follow-on convert and NO chained `tpu_add_scan1xNi`. The `i1`-sum scan is exactly one intrinsic.
+
+> **NOTE — `tpu_mprefix` lowers to a `VectorAlu` op (`VectorMaskPrefixSum`), NOT a `VectorExtended`/VEX op.** Tracing past the intrinsic settles the long-open "which VEX sub-opcode does mprefix carry" question: it carries *none*. `llvm_tpu.mprefix` (LLVM intrinsic `13389`, machine mnemonic `scVMPREFIX`, asm `vmprefix.xlane`) instruction-selects to `SparseCoreTecVectorAlu_VectorMaskPrefixSum` — a *cross-lane mask* op in the `VectorAlu` slot, emitted by the shared `EmitCrossLaneUnop` body (`glc` `0x13a19d40`), not by any `EncodeSparseCoreTecVectorExtended<...>` encoder (no `VectorExtended` mprefix/prefix encoder exists in the binary). It is one of three M-register cross-lane unops sharing that emit body — `VectorMaskPrefixSum`, `VectorMaskPopulationCount`, `VectorMaskCountTrailingZeros` (see the [`VectorAlu` opcode roster](vector-opcode-enum.md)). The binding essentials: `VectorAlu` opcode `0x54` (84) with sub-field `1` on `vfc` (single form, `EncodeSparseCoreTecVectorAlu0VectorMaskPrefixSum` `0x1e960cc0`; `Matches`: `(opcode & 0x7F00)==0x5400 && sub==1` `0x1e950e40`); opcode `0x80` (128) with sub-field `2`(=B32)/`3`(=B16) on `gxc` `glc`/`gfc` (`EncodeSparseCoreTecVectorAlu0VectorMaskPrefixSumB32` `0x1eab4a40`, `…B16` `0x1eab4b40`) — the bit-width is carried by the 6-bit sub-field, not by a distinct opcode. The single MLIR operand reaches an M-register via `GetVMDestregno` (the M0..M15 select band — the same band the post-scan `VectorSelect` uses), and the source is routed through an X read-port (`UseVectorXPort`). So the `i1`-sum scan is a `VectorAlu` cross-lane prefix-sum over an M-register predicate, *not* a `VectorExtended` scan. CONFIRMED.
 
 ---
 
@@ -390,7 +392,9 @@ The reduction enum (`sum=0`, `max=1`, `min=2`) is read from the `ReductionKindAt
 | `EncodeSparseCoreTecVectorExtendedAddScanF32` | `0x1eb32380` | encoder; `proto+0x38` → bundle bit `0x104` (5b); glc | CONFIRMED |
 | `EncodeSparseCoreTecVectorExtendedFloatAddScan` | `0x1e9b14a0` | vfc encoder; mask arm byte-identical to glc | CONFIRMED |
 | `BroadcastBoolToVector` | `0x13d9bfa0` | `getBoolAttr(value)` → `BroadcastScalarToVector` — the scan-mask producer | CONFIRMED |
-| `tpu_mprefix::create` | `0x14731a40` | `i1` population-count prefix (`OneOperand`, `"llvm_tpu.mprefix"`) | CONFIRMED |
+| `tpu_mprefix::create` | `0x14731a40` | `i1` cross-lane mask prefix-sum (`OneOperand`, `"llvm_tpu.mprefix"`, LLVM intrinsic `13389`, mnemonic `scVMPREFIX`) | CONFIRMED |
+| `EmitCrossLaneUnop<…VectorMaskPrefixSum…>` | `0x13a19d40` (glc) / `0x139adba0` (vfc) | the emit body for `tpu_mprefix` → `VectorAlu` `VectorMaskPrefixSum`; operand → M-reg via `GetVMDestregno`, source via `UseVectorXPort` | CONFIRMED |
+| `EncodeSparseCoreTecVectorAlu0VectorMaskPrefixSum` | `0x1e960cc0` (vfc) / `0x1eab4a40` (glc-B32) / `0x1eab4b40` (glc-B16) | the `VectorAlu` encoder: opcode `0x54` sub `1` (vfc) / opcode `0x80` sub `2`=B32/`3`=B16 (glc) | CONFIRMED |
 | `mlir::tpu::ScanOp::verify` | `0x14af7460` | the typing/mask/reduction contract (10 constraints) | CONFIRMED |
 
 > **NOTE — the prior write-ups cited `tpu::ScanOp::verify` at `0x14af7460` and that is correct; the SC-side `verifyInvariantsImpl` (`0x145f9640`) does NOT carry the constraint strings.** The byte-exact constraint roster (incl. the two NEW mask-shape rules) lives in the Mosaic `tpu::ScanOp::verify`. A reimplementer searching the SC `sparse_core::ScanOp::verifyInvariantsImpl` for the messages will not find them.
@@ -403,10 +407,10 @@ The reduction enum (`sum=0`, `max=1`, `min=2`) is read from the `ReductionKindAt
 - **Mask consumption is in-HW, not pre-select.** Do not lower a masked scan as `VectorSelect(input) → scan`. Lower it as `scan(input, mask)` with the mask carried in the bundle; the HW gates lanes and inactive inputs contribute the reduction identity. The `VectorSelect` that appears is a *separate downstream* op for the output lanes.
 - **Two M-register files, two ceilings.** Scan input masks may use M0..M31 (`GetVectorMask`); post-scan `VectorSelect` masks may use only M0..M15 (`GetVMDestregno`). Allocate accordingly.
 - **operand[1] is mask for `ScanOp`, boundary for `SegmentedScanOp`.** Branch on op identity; both are SSA operand[1] but route to different bundle fields.
-- **`i1`-`sum` is the only boolean scan, and it is `mprefix` + `add_scan`.** It forbids a mask, forbids non-`sum`, and requires an `i32` output (verify constraints 2/6/8).
+- **`i1`-`sum` is the only boolean scan, and it is a SINGLE `tpu_mprefix` op — no `add_scan`.** It lowers to one `VectorAlu` `VectorMaskPrefixSum` (cross-lane mask prefix-sum), forbids a mask, forbids non-`sum`, and requires an `i32` output (verify constraints 2/6/8).
 - **i16/bf16 scan-add is GXC-only.** Gate half-precision scans on the target-capability predicate and emit the "GXC only" error otherwise; do not synthesize a `*_half_scan2xN` intrinsic on a non-GXC generation.
 - **Two scan dialects, two reduction encodings.** Mosaic `tpu.scan` uses `ReductionKindAttr` (`sum=0`/`max=1`/`min=2`); SC `sc_tpu.scan` uses a 3-char string (XOR-decoded). Verify operates on the enum; the SC lowering operates on the string.
-- **Unmapped / LOW.** The lowest per-lane HW write-enable of the in-scan mask (physical suppress-on-masked-output vs always-materialized `VectorSelect`); the exact `else` operand per scan family in the post-scan select; the rank-2 `2xN`/`half` → VEX `*PartialSum*` sub-opcode binding; the `tpu_mprefix` → VEX-bundle sub-opcode.
+- **Unmapped / LOW.** The lowest per-lane HW write-enable of the in-scan mask (physical suppress-on-masked-output vs always-materialized `VectorSelect`); the exact `else` operand per scan family in the post-scan select; the rank-2 `2xN`/`half` → VEX `*PartialSum*` sub-opcode binding. (The `tpu_mprefix` sub-opcode is no longer open — it binds to `VectorAlu` `VectorMaskPrefixSum`, opcode `0x54`/`0x80` by target, resolved in §"The i1 count-active path".)
 
 ---
 

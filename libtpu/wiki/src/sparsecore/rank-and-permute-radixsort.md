@@ -265,7 +265,7 @@ The 4-character sort-direction StringAttr is byte-confirmed against the intrinsi
 
 ## How the Radix Digit Orders the Indices
 
-The ordering is a multi-digit LSD radix sort lowered to MLIR ops. The full radix-sort emitter (`RadixSortEmitterInternal`) is the count/scan/scatter machinery whose rank pass is documented above; the count and bucket-scan halves were not body-decoded here (they live in `HistogramKeysComputeFunction` `0x133feca0`, `ScanBucketsComputeFunction` `0x13400120`, `CalculateGatherIndices` `0x13400400`). What this page pins is the rank+permute that turns a digit histogram into the per-digit permutation:
+The ordering is a multi-digit LSD radix sort lowered to MLIR ops. The full radix-sort emitter (`RadixSortEmitterInternal`) is the count/scan/scatter machinery whose rank pass is documented above; the count and bucket-scan halves — `HistogramKeysComputeFunction` `0x133feca0`, `ScanBucketsComputeFunction` `0x13400120`, `CalculateGatherIndices` `0x13400400` — are decoded in [The Histogram and Bucket-Scan Halves](#the-histogram-and-bucket-scan-halves) below. What this page pins for the rank+permute that turns a digit histogram into the per-digit permutation:
 
 1. **Digit extraction.** `GetMappedKeysForRadixSort` (`0x133fe8c0`) bucket-maps the sorted key; `GetDigits` (`0x133fe480`) computes `digit = (mapped_key >> shift) & mask` with `ShRUIOp` + `AndIOp` + `ConstantIntOp` + `MulIOp` + `BroadcastI32ToVector`. The `shift` is `RadixSortEmitterInternal+0x34` and the `mask` follows from the num-buckets exponent at `+0x28`.
 2. **Dedup on `(sorted_key, digit)`.** `UniqueOp`/`UniqueWithLaneIdsOp` collapse equal `(key, digit)` pairs, yielding the unique values, a unique index/marker, and (with lane ids) the per-unique multiplicity.
@@ -278,13 +278,138 @@ Composing the per-digit permutations across all digits yields the globally sorte
 
 ---
 
+## The Histogram and Bucket-Scan Halves
+
+The rank+permute above is the *third* phase of each digit pass. It is fed by two earlier phases — **histogram** (count keys per bucket) and **bucket-scan** (exclusive prefix-sum of the bucket counts) — plus a final **gather-index** arithmetic that turns a scanned bucket base into a per-element scatter offset. All three are per-chunk compute functions on `RadixSortEmitterInternal`, with bodies decoded here (CONFIRMED, decompile-anchored to `radix_sort_emitter_internal.cc` source lines).
+
+### Histogram — `HistogramKeysComputeFunction` `0x133feca0`
+
+The histogram phase counts, per digit value, how many keys map to each bucket. Per chunk it loads a masked window of keys, derives the digit (the same `GetMappedKeysForRadixSort` + `GetDigits` pair the rank pass uses), deduplicates on the `(key, digit)` pair, then scatters the result into the histogram buffer with a `VectorStoreIdxOp` — the same indexed-store primitive the rank pass uses for its output.
+
+```c
+function HistogramKeysComputeFunction(builder, …, key, …, range, target, opt_mask):  // sub_133feca0
+    chunk = lowering_util::LoadChunkMasked(key, …)        // masked chunk load (CHECK status line 244)
+    assignment.AddToNewScope(chunk.getDefiningOp())       // → "input_chunk" alias scope (line 246)
+
+    if  opt_mask.has_value():                             // a14 optional<int> upper bit set
+        m   = BroadcastI32ToVector(opt_mask)              // 0x133fef.. — the mask bound
+        cmp = arith::CmpIOp::create(builder, …)           // line 253 — lane-active predicate
+        v   = arith::AndIOp::create(builder, loc, chunk, cmp)  // line 255 — gate inactive lanes
+
+    mk    = GetMappedKeysForRadixSort(et, chunk, …)       // 0x133fe8c0 — bucket-map the key
+    digit = GetDigits([this+0x28],[this+0x34], chunk, mk) // 0x133fe480 — (mapped>>shift)&mask (line 269)
+    u     = UniqueOp::create(builder, loc, chunk, digit)  // 0x14622400 — dedup (key,digit) (line 272)
+    uidx  = u.getNextResultAtOffset(1).getNextResultAtOffset(0)  // unique index (the bucket slot)
+    uval  = u.getNextResultAtOffset(0)                    // unique value (the count contribution)
+    s     = VectorStoreIdxOp::create(builder, loc, /*bool*/1,    // 0x14638460 — scatter into histogram
+              uidx, ctx, uval, {digit})                   //   keyed by the digit bucket
+    assignment.AddToNewScope(s)                           // → "scatter" alias scope (CHECK line 274)
+```
+
+> **NOTE —** the histogram path uses the *plain* `UniqueOp` (3 results), never the lane-ids form — the count phase needs only the unique value and its bucket index, not the multiplicity weight that the rank phase's `PermuteOp` consumes. The optional mask argument (`std::optional<int>`, the `a14` upper-bit test at decompile line 198) is the software-coalescing tail mask: it gates the partial final chunk so out-of-range lanes contribute nothing to the histogram. When absent, the full chunk is counted.
+
+### Bucket-Scan — `ScanBucketsComputeFunction` `0x13400120`
+
+The bucket-scan converts the per-bucket histogram counts into the *scatter base offset* of each bucket — a classic exclusive prefix-sum. It is a single `ScanOp` with the `"sum"` reduction, followed by an inclusive→exclusive fix-up (`AddIOp` − `SubIOp`).
+
+```c
+function ScanBucketsComputeFunction(builder, histogram, …):  // sub_13400120
+    seg  = lowering_util::BroadcastBoolToVector(…)         // 0x13400... — all-active scan segment
+    sum  = ScanOp::create(builder, loc, vecTy, seg,        // 0x138... ScanOp, op "sc_tpu.scan"
+              histogram, StringAttr "sum")                 //   "sum" @ ptr (Twine kind 259); line 411
+    last = BroadcastVectorElementToVector(sum, n-1)        // line 420 — broadcast the inclusive total
+    add  = arith::AddIOp::create(builder, …)               // line 420 — inclusive prefix
+    arith::SubIOp::create(builder, …)                      // line 424 — subtract own count ⇒ exclusive
+    return add                                             // the exclusive bucket base offsets
+```
+
+> **CORRECTION (RP-2) —** the bucket prefix-scan is a `sparse_core::ScanOp` with the **`"sum"`** reduction StringAttr (decompile `0x13400120`: the literal `"sum"` is stored as `ptr[0]="sum"` with Twine kind `259`/`0x103` immediately before `mlir::StringAttr::get`, then passed to `ScanOp::create`). This `ScanOp` lowers through `ScanOpLowering::matchAndRewrite` (`0x1358ab00`) exactly as documented on [Scan Datapath](scan-datapath.md) — the radix bucket-scan is one *user* of that lowering, not a separate scan primitive. The inclusive scan is converted to the exclusive base offset by the trailing `AddIOp`/`SubIOp` pair (source lines 420/424). The histogram-side prefix is a vector `ScanOp`, *not* the `tpu_mprefix` `i1`-count path (that path is for boolean inputs; the histogram is an `i32` count vector).
+
+### Gather-Index — `CalculateGatherIndices` `0x13400400`
+
+The final arithmetic turns the exclusive bucket base (a per-bucket scalar) into a per-element destination index. It builds a lane sequence, adds the scanned base, then splits the per-tile geometry with a modulo/divide:
+
+```c
+function CalculateGatherIndices(builder, a2, a3, base):  // sub_13400400
+    seq = VlaneseqOp::create(builder, loc, idxVecTy)       // 0x145... "sc_tpu.vlaneseq" (line 438)
+    s32 = arith::IndexCastOp(seq)                          // index→i32 (line 441)
+    b   = vector::BroadcastOp(IndexCast(base))             // broadcast the scanned bucket base
+    pos = arith::AddIOp(s32, b)                            // line 448 — global position = lane + base
+    w   = vector::BroadcastOp(ConstantIntOp a2)            // tile-width constant (line 453)
+    lo  = arith::RemUIOp(pos, w)                           // line 455 — within-tile offset
+    hi  = arith::DivUIOp(pos, w)                           // line 459 — tile index
+    s   = vector::BroadcastOp(ConstantIntOp a3)            // tile-stride constant (line 463)
+    return arith::AddIOp(arith::MulIOp(hi, s), lo)         // line 463/464 — tile*stride + offset
+```
+
+> **NOTE —** the `RemUIOp`/`DivUIOp` split (lines 455/459) decomposes the linear scanned position into a `(tile_index, within_tile_offset)` pair, then recomposes it as `tile_index*stride + offset` (lines 463/464) so the scatter lands in the correct VMEM tile for the multi-tile scan. The two `arith::ConstantIntOp` immediates (`a2`, `a3` — tile width and tile stride) are passed in by the caller; their derivation from the `RadixSortEmitterInternal` members was not traced (LOW). `CalculateGatherIndices` is the bridge between the bucket-scan base and the rank pass's `VectorLoadStoreIdxAddOp` window.
+
+### The Three-Phase Chain
+
+| Phase | Compute fn | Key op(s) | Alias scope / output |
+|---|---|---|---|
+| 1 — Histogram | `HistogramKeysComputeFunction` `0x133feca0` | `LoadChunkMasked` → `UniqueOp` → `VectorStoreIdxOp` | `input_chunk` / `scatter` (per-bucket counts) |
+| 2 — Bucket-scan | `ScanBucketsComputeFunction` `0x13400120` | `ScanOp("sum")` → `AddIOp`/`SubIOp` | exclusive bucket base offsets |
+| 3a — Gather-index | `CalculateGatherIndices` `0x13400400` | `VlaneseqOp` + `RemUIOp`/`DivUIOp` + `MulIOp`/`AddIOp` | per-element scatter destination |
+| 3b — Rank+permute | `RankAndPermuteComputeFunction` `0x134039c0` | `UniqueWithLaneIdsOp` → `VectorLoadStoreIdxAddOp` → `PermuteOp` | the per-digit permutation |
+
+The wrappers that tile these compute functions are `HistogramKeys` `0x133ff3a0`, `ScanLocalTileHistograms` `0x13400c60`, `ScanHistogram` `0x13401000`, `ScanBuckets` `0x13401540`, and `MultiTileScanBuckets` `0x13402340` (the multi-VMEM-tile variant) — each driving its compute function through a `CreateChunkIteratorLoop` the same way [`RankAndPermute`](#the-rankandpermute-wrapper-and-the-radix-sort-chain) drives the rank pass.
+
+---
+
+## PermuteOp ISA Lowering
+
+The `PermuteOp` that the rank pass emits (`0x145f3920`, op name `sc_tpu.permute`) is itself lowered to an SC TEC VectorAlu instruction. The lowering is a thin one-pattern conversion; the heavy lifting is in the bundle encoder.
+
+### `PermuteOpLowering::matchAndRewrite` `0x135a1640`
+
+```c
+char PermuteOpLowering::matchAndRewrite(PermuteOp op, PermuteOpAdaptor a, ConversionPatternRewriter& r):
+    rty = a.getOperand(0).getType()                  // result type = type of operand[0]
+    p   = mlir::sparse_core::tpu_sc_permute::create(  // 0x14735ac0 — the lowered op
+            r, loc, TypeRange{rty}, ValueRange{op.operands})  // both PermuteOp operands flow through
+    r.replaceOp(op, p)                                // (*vtable+8)(rewriter, op, p)
+    return 1                                           // always matches
+```
+
+The decompile (`0x135a1640`) is just that: derive the result type from operand[0] (`ValueRange::dereference_iterator(…, 0)` masked with `0xF8`), build a 1-element `TypeRange`, call `tpu_sc_permute::create`, and `replaceOp`. It is registered in the SparseCore→LLVM `RewritePatternSet` alongside `UniqueOp`/`DuplicateCountOp`/`SortOp` lowerings (the `RewritePatternSet::add<…PermuteOpLowering…>` template at `0x13572820`).
+
+### The `tpu_sc_permute` Op and Its Masked Twin
+
+`tpu_sc_permute::build` (`0x147359a0`) confirms the op shape: it `addOperands` the two incoming Values (line 12) and one result type (lines 33–45) — a 2-operand, 1-result op (`NOperands<2>`, `OneTypedResult<Type>`, `MemoryEffectOpInterface`). There is a masked twin, `tpu_sc_mask_permute`, with the identical 2-operand/1-result shape — the predicated permute that gates inactive output lanes (the `tpu_sc_mask_permute` op name appears 37× in `.rodata` vs 39× for `tpu_sc_permute`).
+
+| MLIR op | Op name | Operands | Result | Confidence |
+|---|---|---:|---|---|
+| `mlir::sparse_core::PermuteOp` | `sc_tpu.permute` | 2 (data, index) | 1 (= type of operand[0]) | CONFIRMED |
+| `tpu_sc_permute` (lowered) | `tpu_sc_permute` | 2 | 1 | CONFIRMED |
+| `tpu_sc_mask_permute` (predicated) | `tpu_sc_mask_permute` | 2 | 1 | CONFIRMED |
+
+### The TEC VectorAlu Permute Opcode
+
+`tpu_sc_permute` is realised by the ISA emitter as a TEC VectorAlu `VectorPermute` instruction, dispatched per element width. The opcode lives in bits `13..20` of the VectorAlu op word (mask `0x1FE000`), byte-confirmed from the `…Opcode::Matches` predicates:
+
+| ISA op | `Matches` raw | Opcode field `(word>>13)&0xFF` | Element width | Address |
+|---|---|---:|---|---|
+| `SparseCoreTecVectorAlu0VectorPermuteB32` | `(word & 0x1FE000) == 0x10A000` | `0x85` | 32-bit | `0x1ea9f620` |
+| `SparseCoreTecVectorAlu0VectorPermuteB16` | `== 0x10C000` (`1097728`) | `0x86` | 16-bit | `0x1ea9f640` |
+| `SparseCoreTecVectorAlu0VectorPermuteB8`  | `== 0x10E000` (`1105920`) | `0x87` | 8-bit | `0x1ea9f660` |
+
+The radix-sort permute operates on `i32` indices, so it uses **`VectorPermuteB32`** (opcode field `0x85`). The bundle emit for it is the `EmitVectorBinop<…SparseCoreTecVectorAlu_VectorPermuteB32…>` / `EmitVectorY<…>` template family (gxc/glc `0x13a19ae0`/`0x13a21ec0`, gxc/gfc `0x13aae200`/`0x13aae340`), which routes the two operands through the `SparsecoreVregReadPort` set and writes the destination VREG. The viperfish (v5) generation has its own `SparseCoreTecVectorAlu_VectorPermute` emitter (`0x139ad760`) — the `B8`/`B16`/`B32` width split is a gxc-era (v6e/v7x) refinement.
+
+> **NOTE —** the permute is a cross-lane gather *within a VREG*: operand[0] is the data vector (the ranked values), operand[1] is the per-lane source-index vector (the rank). `VectorPermuteB32` reads each lane's index, fetches that source lane's element, and writes it to the destination lane — i.e. `dst[i] = src[index[i]]`. In the radix pass this realises the inverse permutation: each original id reads from the rank slot of its deduplicated representative. The `tpu_sc_mask_permute` twin adds an M-register predicate so inactive output lanes are left untouched, matching the masked-scan datapath on [Scan Datapath](scan-datapath.md).
+
+---
+
 ## Related Components
 
 | Name | Relationship |
 |---|---|
 | `RadixSortEmitter::EmitSort` `0x131c5fa0` | the `SortOp` lowering entry; calls `SingleDigitRadixSort` per digit |
-| `HistogramKeysComputeFunction` `0x133feca0` | the count half of the radix sort (not decoded here) |
-| `ScanBucketsComputeFunction` `0x13400120` | the bucket prefix-sum that feeds the rank pass |
+| `HistogramKeysComputeFunction` `0x133feca0` | the count half of the radix sort ([decoded above](#histogram--histogramkeyscomputefunction-0x133feca0)) |
+| `ScanBucketsComputeFunction` `0x13400120` | the bucket prefix-sum (`ScanOp("sum")`) that feeds the rank pass ([decoded above](#bucket-scan--scanbucketscomputefunction-0x13400120)) |
+| `CalculateGatherIndices` `0x13400400` | turns the scanned bucket base into a per-element scatter index ([decoded above](#gather-index--calculategatherindices-0x13400400)) |
+| `PermuteOpLowering::matchAndRewrite` `0x135a1640` | lowers `sc_tpu.permute` → `tpu_sc_permute` ([decoded above](#permuteoplowering-matchandrewrite-0x135a1640)) |
+| `SparseCoreTecVectorAlu0VectorPermuteB32Opcode::Matches` `0x1ea9f620` | the TEC VectorAlu permute opcode (field `0x85`, mask `0x1FE000`) |
 | `SparseDenseMatmulOpDecomposer::ReduceDuplicates` `0x136722e0` | the decomposer that emits the `reduce_duplicates` `SparseMapRow` + `DynamicBoundedSlice` (op `0x11`) custom-calls |
 
 ## Cross-References

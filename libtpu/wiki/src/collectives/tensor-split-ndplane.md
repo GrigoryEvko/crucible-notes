@@ -213,6 +213,72 @@ The dimension count is literally the sum of the three `has_*` bytes — byte-con
 
 > **NOTE —** the dense and SC paths compute the same quantity by different routes. The dense `GetCommunicationMultiplier` (`@0x127a16c0`, **[Overview §3](overview.md#3-the-collective-op-family)**) returns `ReplicaGroupsOnNDPlane(plane=2).num_mesh_dims + 1` as a link-count divisor; the SC `GetCollectiveNDPlaneDimensionCount` returns the bare `popcount` without the `+1`. The `+1` is a cost-model convention on the dense side, not a difference in the underlying axis count — both count the torus axes the replica-groups span.
 
+### 2.5 The dense `ReplicaGroupsOnNDPlane` projection (`MeshNDInfo` builder)
+
+The dense (TensorCore) counterpart of §2.1's SC `ExtractNDPlaneInfo` is `ReplicaGroupsOnNDPlane` (`@0x1c890960`). It is the builder the [AllGather ND-ring](allgather-nd-ring.md) and ReduceScatter selectors call to both *decide* dimensionality and *build* the per-axis `vector<MeshNDInfo>`. The entry function itself contains **no** coordinate math: it (a) renders the device-assignment to a string and serializes the topology (`TpuTopologySerdes::Distill` → `TpuTopologyArgs::ToProto` → `tsl::SerializeToStringDeterministic`), (b) takes `nd_plane_cache_mutex` and looks the composite key up in the `NDPlaneCacheKey → optional<vector<MeshNDInfo>>` cache (`@0x225799b8`, guarded singleton `GetNDPlaneCache`), and (c) on a miss invokes the per-axis lambda `ReplicaGroupsOnNDPlaneImpl::$_0` (`@0x1c896400`) **once per mesh axis** — `axis ∈ {0,1,2}` passed as `0x100000000 | axis` — then stores the resulting `optional<vector<MeshNDInfo>>` into the cache.
+
+```c
+function ReplicaGroupsOnNDPlane(target, device_assignment, device_list, n_dim, b):  // sub_1C890960
+    CHECK(device_assignment != nullptr)
+    key.dev   = render(device_assignment)                  // "<id>_<d0>,<d1>,…"
+    key.topo  = SerializeToStringDeterministic(Distill(target.topology).ToProto())
+    key.n_dim = n_dim; key.b = b
+    lock(nd_plane_cache_mutex)
+    CHECK(n_dim == 1 || n_dim == 2 || n_dim == 3)          // line 1155, group_utils.cc
+                                                           // "…only supports dimension n_dim = 1, 2 or 3."
+    if !cache.contains(key):
+        v = nullopt
+        for axis in {0, 1, 2}:                             // built per mesh axis
+            v = ReplicaGroupsOnNDPlaneImpl::$_0(&state, groups, 0x100000000 | axis)   // sub_1C896400
+            if !v.has_value: break                         // projection failed ⇒ no plane
+        cache[key] = v
+    result = cache[key]                                    // optional<vector<MeshNDInfo>>
+    unlock(nd_plane_cache_mutex)
+    return result
+```
+
+The lambda `$_0` (`@0x1c896400`) is where the projection actually happens; it is the dense analog of `ExtractNDPlaneInfo::$_0` (§2.2), but it emits a `MeshNDInfo` ring geometry rather than a single span stride.
+
+```c
+function ReplicaGroupsOnNDPlaneImpl::$_0(state, replica_groups, axis_flag):  // sub_1C896400
+    n_dim = state.n_dim                                    // ***(int***) = 1 | 2 | 3
+    if n_dim == 1:
+        // trivial 1-D plane: one MeshNDInfo whose single axis lists all group members
+        return optional(vector<MeshNDInfo>{ MeshNDInfo_1D(replica_groups) })
+    ldpc = LogicalDevicesPerChip(target, /*TensorCore*/0)  // megacore ⇒ 2
+    // mesh extents seeded from the chip torus (X,Y,Z at target[+0x58]/[+0x60]/[+0x161,…])
+    if axis_flag & 0x100000000:                            // a specific axis was requested
+        a = axis_flag & 3                                  // 0|1|2
+        mesh_extent[a] *= ldpc                              // fold the per-chip sub-cores into this axis
+    // multi-slice fan-out
+    num_slices = GetMultiSliceTopology(target) ? GetNumSlices(target) : 1
+    alloc PerSliceReplicaData[num_slices]                  // 88-byte stride per slice
+    for each group:
+        for each device d in group:
+            (core_id, slice) = GetMegascalePerSliceCoreIdAndSliceId(target, da, d)   // sub_1C8906E0
+            loc   = TensorCoreLocationForLogicalDeviceId(target, da, core_id, nullopt) // sub_1C8904E0
+            (cx,cy,cz) = loc.chip_coordinates()
+            idx = mixed_radix_linearize((cx,cy,cz), mesh_extent)    // Horner over mesh strides
+            per_slice[slice].grid[idx] = group_member_ordinal
+    // per (slice, group) emit one MeshNDInfo by dispatching on n_dim
+    for each slice, each group:
+        if n_dim == 2: m = ReplicaGroupForm2DRing(group, …, mesh_extent)   // sub_1C88E6E0
+        if n_dim == 3: m = ReplicaGroupsOn3DPlane(group, …, NDTopologyInfo) // sub_1C8901E0
+        if !m.has_value: return nullopt                    // group does not fit an n_dim plane
+        out.push_back(m)
+    return optional(out)
+```
+
+Three facts a reimplementer must preserve, all decompile-verified:
+
+- **The per-axis sub-core fold.** When a specific axis is requested (`axis_flag & 0x100000000`), that axis's mesh extent is pre-multiplied by `LogicalDevicesPerChip` (`mesh_extent[axis] *= ldpc`, the `v253[8*(axis&3)+16] *= v51` store). On a megacore TensorCore (`ldpc == 2`) the chosen ring axis carries *both* on-chip cores; the other two axes stay at chip granularity. A reimplementation that linearizes against the raw chip extents on all three axes will mis-place the megacore second core.
+- **`chip_coordinates`, not raw core id.** Each device is projected through `TensorCoreLocationForLogicalDeviceId` → `chip_coordinates`, then mixed-radix-linearized against the (folded) mesh extents — the same Horner-style `coord + extent·(…)` recurrence the SC path reduces mod `LogicalDevicesPerChip`. The projection is a chip-coordinate placement, not a core-id sort.
+- **`n_dim` dispatch + short-circuit.** `n_dim == 1` returns a trivial single-axis `MeshNDInfo` without any ring construction; `n_dim == 2` dispatches each group to `ReplicaGroupForm2DRing` (`@0x1c88e6e0`); `n_dim == 3` to `ReplicaGroupsOn3DPlane` (`@0x1c8901e0`). Any group that does not fit an `n_dim`-axis plane makes the helper return `nullopt`, which aborts the whole projection (`v.has_value` break in the entry loop) and is exactly the "device list does not project onto a `k`-axis plane" signal the AllGather/ReduceScatter selectors test.
+
+> **NOTE —** this resolves the `allgather-nd-ring.md` "What Was Not Resolved" entry that placed the projection math at `0x1c891402` *inside* `ReplicaGroupsOnNDPlane`. The entry function (`0x1c890960`) only builds the cache key and dispatches; the actual coordinate-projection body is the per-axis lambda `ReplicaGroupsOnNDPlaneImpl::$_0` at `0x1c896400`. The `n_dim == 1 || 2 || 3` assertion (`"…only supports dimension n_dim = 1, 2 or 3."`, group_utils.cc line 1155) is the entry function's only inline check.
+
+> **GOTCHA —** the multi-slice path is not optional bookkeeping. When `GetMultiSliceTopology` is set, the lambda allocates one `PerSliceReplicaData` (88-byte stride) per `GetNumSlices`, and a device's slot is selected by `GetMegascalePerSliceCoreIdAndSliceId` (`@0x1c8906e0`), which returns *both* a per-slice core id and the slice index. A single-slice reimplementation that ignores the slice index will collide devices from different slices into the same grid cell on a multi-slice (Megascale) topology.
+
 ---
 
 ## 3. How the two derivations meet
@@ -245,6 +311,7 @@ The `NumScOffloadDevices` total bounds the running `devcount` that `GetDimension
 > - **`ExtractNDPlaneInfo::$_0`** (`@0x133bf700`) — `coords.size()==1` fast path (`has_size=0`); `stride = coords[1] − coords[0]`; the three RetChecks at lines 922/923/925 (`"Stride must be larger or equal to 1."` / `"Stride must be less than the dimension size."` / `"Stride must divide the dimension size."`); the per-pair stride-consistency scan (line 931); the `has_size=1, size=stride` success store — all byte-exact.
 > - **`NDPlaneInfo` / `NDPlaneStrideInfo` layout** — `NDPlaneInfo::ToString @0x10fdf2a0` labels `"size_x: "`/`"size_y: "`/`"size_z: "`/`"stride_info: "`; `NDPlaneStrideInfo::ToString @0x10fe62e0` labels `"stride_x: "`/`"stride_y: "`/`"stride_z: "`/`"across_cores_on_chip: "` with reads at `+0`/`+4`, `+8`/`+0xc`, `+0x10`/`+0x14`, `+0x18`; the two consumers `GetCollectiveNDPlaneDimensionCount @0x133bb6e0` (has-bits) and `GetMinorToMajorOrder @0x133c1c40` (`has`@`+0x10`/`+0x18`/`+0x20`, `size`@`+0xc`/`+0x14`/`+0x1c`) agree with the ToString-derived layout — byte-exact.
 > - **`GetCollectiveNDPlaneDimensionCount`** (`@0x133bb6e0`) — `*((_DWORD *)this + 2) = v26 + v27 + v28` (sum of the three has-bytes) confirmed; CHECK `"collective != nullptr"` line 845; `AddSourceLocation` lines 849/852 — exact.
+> - **dense `ReplicaGroupsOnNDPlane`** (`@0x1c890960`) + lambda `ReplicaGroupsOnNDPlaneImpl::$_0` (`@0x1c896400`) — entry function builds the `NDPlaneCacheKey` (device-assignment render + `TpuTopologySerdes::Distill`/`ToProto`/`SerializeToStringDeterministic` + `n_dim` + bool) under `nd_plane_cache_mutex`, asserts `n_dim == 1||2||3` (`"…only supports dimension n_dim = 1, 2 or 3."`, group_utils.cc line 1155), and on a cache miss calls the lambda once per axis with `0x100000000 | axis` (`axis ∈ {0,1,2}`) — byte-confirmed. The lambda's per-axis sub-core fold `mesh_extent[axis&3] *= LogicalDevicesPerChip(0)` (`v253[8*(a5&3)+16] *= v51`), the `n_dim==1` trivial-`MeshNDInfo` short-circuit (`**(int**)a2 == 1` arm), the per-device `TensorCoreLocationForLogicalDeviceId` (`@0x1c8904e0`) → `chip_coordinates` → mixed-radix linearize, the multi-slice fan-out via `GetMultiSliceTopology`/`GetNumSlices`/`GetMegascalePerSliceCoreIdAndSliceId` (`@0x1c8906e0`) with an 88-byte `PerSliceReplicaData` stride, and the `n_dim`-dispatch to `ReplicaGroupForm2DRing` (`@0x1c88e6e0`) / `ReplicaGroupsOn3DPlane` (`@0x1c8901e0`) with `nullopt`-on-no-fit — all decompile-verified.
 >
 > **[LOW]** Confirmed by structure / label, not by an independent numeric consumer:
 > - The exact arithmetic the top-level `NDPlaneInfo` `size_x/y/z` ints carry (plane *extent* vs *device-count along axis*): the labels are byte-read and `size_z` (`+0x8`) is used as the iteration/plane bound by `GetMinorToMajorOrder`, but the producer arithmetic in `ExtractNDPlaneInfo`'s sret tail (`@0x133bc674`..`@0x133bc880`) was not individually decoded — the size semantic is inferred from the `"size_x: "` label and the consumer use.
