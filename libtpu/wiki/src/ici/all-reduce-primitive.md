@@ -4,7 +4,7 @@
 
 ## Abstract
 
-`xla::jellyfish::AllReduceEmitter::EmitAllReduce` (`0x13742200`, 8,026 bytes, 1,445 decompiled lines) is the **hardware-level emission entry** for an on-chip-to-on-chip AllReduce on the ICI fabric. It is *not* the algorithm and it is *not* the picker. It is the function that — once the SPMD partitioner has decided an AllReduce is needed and the [SelectNDStrategy picker](../collectives/strategy-nd-picker.md) has chosen a ring shape — constructs exactly one concrete *sub-emitter* (a `RingSumEmitter`, a `UniDirection*RingStrategy`, or one of the `RotatedPincer*`/`AsyncPincer*` family) and drives it to emit the actual per-step LLO program: the colored-ring **reduce-scatter then all-gather** loop where every step is one remote-write DMA, one remote sync-flag bump, one local sync-flag wait, and one VPU reduce. This page owns that dispatch and that per-step emission shape.
+`xla::jellyfish::AllReduceEmitter::EmitAllReduce` (`0x13742200`, 7,962 bytes, 1,445 decompiled lines) is the **hardware-level emission entry** for an on-chip-to-on-chip AllReduce on the ICI fabric. It is *not* the algorithm and it is *not* the picker. It is the function that — once the SPMD partitioner has decided an AllReduce is needed and the [SelectNDStrategy picker](../collectives/strategy-nd-picker.md) has chosen a ring shape — constructs exactly one concrete *sub-emitter* (a `RingSumEmitter`, a `UniDirection*RingStrategy`, or one of the `RotatedPincer*`/`AsyncPincer*` family) and drives it to emit the actual per-step LLO program: the colored-ring **reduce-scatter then all-gather** loop where every step is one remote-write DMA, one remote sync-flag bump, one local sync-flag wait, and one VPU reduce. This page owns that dispatch and that per-step emission shape.
 
 The signature is the contract:
 
@@ -17,13 +17,13 @@ The second argument — the **merge functor** — is the only place the reductio
 
 A reader who knows MPI ring/recursive-doubling AllReduce owns the frame: this is the function that turns "reduce with these replica groups, using *this* per-element merge" into a concrete LLO instruction stream, by selecting a sub-emitter on topology + size + prefer-flags and then walking its two-phase step loop. The reimplementation contract:
 
-- **The dispatch fork.** `EmitAllReduce` splits on topology into an **N-D arm** (multi-axis, `SelectNDStrategy`-driven) and a **1-D arm** (`GetRingLocationWrapper`-driven), with a **binomial single-phase** fast path cutting across both when `MayUseSinglePhaseRingEmitter` holds. Each arm then optionally wraps the base ring strategy in a pincer or quantized-pincer emitter.
+- **The dispatch fork.** `EmitAllReduce` first splits on the inference / size gate (`ShouldUseInferenceShortLatencyEmitter` plus a shard-size threshold) into an **N-D arm** (multi-axis, `SelectNDStrategy`-driven, decompile line 794). When that gate does not fire, the function falls into a second branch that computes `MayUseSinglePhaseRingEmitter` (line 997) and then chooses between a **binomial single-phase ring** (`CreateEmitter`, line 1054) and the **1-D arm** (`GetRingLocationWrapper`-driven, line 1093). The binomial path and the 1-D arm are therefore siblings inside the non-N-D branch — binomial is *not* a fast path that cuts across the N-D arm. Each arm then optionally wraps the base ring strategy in a pincer or quantized-pincer emitter.
 - **The per-step emission.** Whatever sub-emitter is chosen, the step body is the same four wire-level events: remote-write unicast DMA, remote sync-flag bump (receiver-side, automatic), local sync-flag wait, VPU reduce via `fmerge`. The phases are `Running phase 0` (reduce-scatter), `Running phase 1` (all-gather), and an optional `Running phase 2` (cleanup).
 - **The sub-emitter routing.** The exact set of terminal classes (`RingSumEmitter`, `UniDirection1DRingStrategy`, `StrategyRing`, `UniDirectionNDRingStrategy`, `RotatedPincerEmitter`, `RotatedPincerShortEmitter`, `RotatedPincerQuantizedEmitter`) and the predicate gates that route between them.
 
 | | |
 |---|---|
-| **Emission entry** | `AllReduceEmitter::EmitAllReduce` @ `0x13742200` (8,026 B / 1,445 lines) |
+| **Emission entry** | `AllReduceEmitter::EmitAllReduce` @ `0x13742200` (7,962 B / 1,445 lines) |
 | **Top-level wrapper** | `AllReduceEmitter::Emit` @ `0x13745de0` (sync → `EmitAllReduce`, fusion → `EmitAllReduceFusion`) |
 | **Fusion variant** | `AllReduceEmitter::EmitAllReduceFusion` @ `0x13746360` |
 | **Picker (upstream)** | `BaseStrategyND::SelectNDStrategy` @ `0x137c78e0` — see [strategy-nd-picker](../collectives/strategy-nd-picker.md) |
@@ -70,6 +70,8 @@ What this page does **not** cover, with links:
 
 `EmitAllReduce` is a tall `if/else` cascade. After validating the instruction and reading its `BackendConfig` (`HloInstruction::backend_config<jellyfish::BackendConfig>` at line 656, which carries the `BarrierConfig` and any prefer-flags baked at partition time), it splits the world into three mutually-exclusive paths. The decompile site numbers below are from `0x13742200`.
 
+The top-level branch is the **N-D / non-N-D split** at line 775 (`if (!ShouldUseInferenceShortLatencyEmitter && !(size_gate | …))`). The N-D arm lives in the *taken* side (Step 2 below, `SelectNDStrategy` at line 794); the binomial and 1-D arms are siblings in the *else* side (line 985 onward), separated by the `MayUseSinglePhaseRingEmitter` test at line 1010. The Steps below are ordered binomial → N-D → 1-D for narrative clarity, which is *not* the source order; consult the line numbers for the actual control flow.
+
 ### Step 0 — prologue: replica groups, cross-module test, barrier config
 
 ```text
@@ -83,12 +85,14 @@ emit_all_reduce(replica_groups, fmerge):                     # 0x13742200
 
 `IsCrossModuleReduceInstruction` (line 557, 560) classifies the AllReduce as cross-module (reduce across replicas *and* partitions simultaneously) vs single-module. It is read as the boolean `IsCrossModuleReduceInstruction` (stored at `[rbp-2Ah]`) and threaded into every downstream builder — it changes which replica-group fold the ring locator uses and gates the binomial cross-module sub-path.
 
-### Step 1 — binomial single-phase fast path (cuts across both arms)
+### Step 1 — binomial single-phase ring (sibling of the 1-D arm, line 1010+)
 
 ```text
-    if RingSumEmitter::MayUseSinglePhaseRingEmitter(mem_unit, span_size,    # 0x1375c1c0, line 997
-                                                    max_scratch, target, env):
-        # build the binomial single-phase emitter; install two closures:
+    may_single = RingSumEmitter::MayUseSinglePhaseRingEmitter(mem_unit,     # 0x1375c1c0, line 997
+                                  span_size, max_scratch, target, env)
+    if env.force_1d_ring != 1 or (size_gate | short_latency                # line 1010 — branch test
+                                  | may_single | (num_colors != 3)):
+        # build the binomial / single-phase ring emitter; install two closures:
         ring_loc_provider = $_0  # returns net_util::RingLocation   (line 1031)
         group_provider    = $_1  # returns BinomialGroupData         (line 1039)
         emitter = RingSumEmitter::CreateEmitter(span_size, max_scratch,      # 0x13760720, line 1054
@@ -97,7 +101,7 @@ emit_all_reduce(replica_groups, fmerge):                     # 0x13742200
         return
 ```
 
-`MayUseSinglePhaseRingEmitter` (`0x1375c1c0`) is the gate; `CreateEmitter` (`0x13760720`) constructs the concrete `BinomialSinglePhaseRingSumEmitter` (when the viability gate passes) or a plain `RingSumEmitter`. The two closures `$_0` and `$_1` are the smoking gun for the binomial datapath: `$_0` yields a `net_util::RingLocation` (the core's ring position) and `$_1` yields a `BinomialGroupData` (the precomputed counterparts vector read from the `int32[N×8]` replica table). The **algorithm those closures feed** — the recursive-doubling butterfly — is documented in full on [Binomial / Recursive-Doubling](../collectives/binomial-recursive-doubling.md); this page's only claim is that `EmitAllReduce` constructs the emitter and supplies the two providers.
+`MayUseSinglePhaseRingEmitter` (`0x1375c1c0`) is one term of the branch test at line 1010 — the binomial/ring side is taken unless the env's force-1D-ring flag is set *and* none of `{size_gate, short_latency, may_single, num_colors!=3}` holds, in which case control falls through to the 1-D arm. `CreateEmitter` (`0x13760720`) then constructs the concrete `BinomialSinglePhaseRingSumEmitter` (when the viability flag is set) or a plain `SinglePhaseRingSumEmitter` ring (both `SetEmitter` tags — `"BinomialSinglePhaseRingSumEmitter"` and `"SinglePhaseRingSumEmitter"` — are present in the `CreateEmitter` body). The two closures `$_0` and `$_1` are the smoking gun for the binomial datapath: `$_0` yields a `net_util::RingLocation` (the core's ring position) and `$_1` yields a `BinomialGroupData` (the precomputed counterparts vector read from the `int32[N×8]` replica table). The **algorithm those closures feed** — the recursive-doubling butterfly — is documented in full on [Binomial / Recursive-Doubling](../collectives/binomial-recursive-doubling.md); this page's only claim is that `EmitAllReduce` constructs the emitter and supplies the two providers.
 
 > **NOTE —** `MayUseSinglePhaseRingEmitter` is a *prefer* gate, not a correctness gate. The viability constraint (`N` a power of two, `N ≤ 128`) is enforced inside the binomial emitter, not here. If the gate passes but the ring is non-power-of-2, `CreateEmitter` falls back to a ring `RingSumEmitter`. A reimplementer must not treat the binomial path as "always taken when small."
 
@@ -162,7 +166,7 @@ The full set of terminal sub-emitters `EmitAllReduce` can construct, with the de
 | Sub-emitter | Built by | Arm | Gate | Conf |
 |---|---|---|---|---|
 | `BinomialSinglePhaseRingSumEmitter` | `RingSumEmitter::CreateEmitter` @ line 1054 | binomial | `MayUseSinglePhaseRingEmitter` + power-of-2 `N≤128` | HIGH |
-| `RingSumEmitter` (plain ring) | `RingSumEmitter::CreateEmitter` @ line 1054 | binomial | `MayUseSinglePhaseRingEmitter`, non-binomial fallback | HIGH |
+| `SinglePhaseRingSumEmitter` (plain ring) | `RingSumEmitter::CreateEmitter` @ line 1054 | binomial | `MayUseSinglePhaseRingEmitter`, non-binomial fallback | HIGH |
 | `UniDirection1DRingStrategy` | `make_unique` @ line 1120 | 1-D | single axis, unidirectional | HIGH |
 | `StrategyRing` | `make_unique` @ line 1134 | 1-D | single axis, ring (non-unidir) | HIGH |
 | `UniDirectionNDRingStrategy` | `operator new(0x5B0)` @ line 815 | N-D | multi-axis, no pincer | HIGH |
@@ -188,7 +192,7 @@ for color in 0 .. num_colors-1:                      # concurrent rings, one per
 
     # ---- (optional) startup barrier ----
     if barrier.scope != none:                         # BarrierConfig from backend_config
-        BarrierStart(barrier_sync_flag, ...)          # kAll / kCrossReplica / kPartitionedCores
+        BarrierStart(barrier_sync_flag, ...)          # TreeBarrierType::kAll / kCrossReplica
 
     # ---- PHASE 0: reduce-scatter (N-1 steps, ring) / log2(N) steps (binomial) ----
     for i in 0 .. steps-1:
