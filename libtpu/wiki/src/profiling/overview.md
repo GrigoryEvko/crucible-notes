@@ -99,7 +99,7 @@ The two metadata lists per `XPlane` are *interned tables*: an `XEvent` carries o
 
 Two sources feed one `XSpace`. **Host** events come from `tsl::profiler::TraceMe` scopes on TPU-runtime threads (`TpuCompile`, `TpuExecute`, queue submission, megascale transport) and land on the `/host:0` plane via the `HostTracer`/`ThreadpoolProfilerInterface` sub-profilers. **Device** events come from the per-core hardware ring buffers drained and decoded as above, landing on `/device:TPU:N` planes via `TpuProfilerImpl`. The `TraceMe` macro mechanics and the host-plane shaping are owned by [XPlane / XStat / TraceMe](xplane-xstat-traceme.md).
 
-> **GOTCHA —** the device-trace `trace_point_id` space (banded hardware enum, gappy, max handled `0x95` for pxc plus a `0xff` dummy) is a *different namespace* from the `XEventMetadata.metadata_id` space (a dense per-plane interning index). The codec's id is mapped to an `XEventMetadata` name string during stage 5; the `XEvent.metadata_id` is then allocated fresh per plane. A reimplementation that conflates the two will mis-key every device event. See [XEvent Metadata IDs](xevent-metadata-ids.md) and [TracePoints Master Registry](tracepoints-master-registry.md).
+> **GOTCHA —** the device-trace `trace_point_id` space (banded hardware enum, gappy; the pxc decode jump table at `0xab85bc0` bounds the 8-bit wire id at `0x6e`=110 — `cmp $0x6e,%rax; ja <error>` @ `0xf5af451` — with 64 handled indices and a `DummyTracePoint` variant) is a *different namespace* from the `XEventMetadata.metadata_id` space (a dense per-plane interning index). The codec's id is mapped to an `XEventMetadata` name string during stage 5; the `XEvent.metadata_id` is then allocated fresh per plane. A reimplementation that conflates the two will mis-key every device event. See [XEvent Metadata IDs](xevent-metadata-ids.md) and [TracePoints Master Registry](tracepoints-master-registry.md).
 
 ---
 
@@ -142,7 +142,7 @@ There is no single device-trace codec: each TPU chip family has its own `TraceCo
 
 ## The Trace-Point / Payload Taxonomy
 
-The ~99–144 trace points per family (per-gen cardinality differs) are not a flat enum — they are organized into *subsystem bands* of contiguous `trace_point_id` ranges, with reserved gaps between bands that all dispatch to a common error label. The bands carve the device-trace space by hardware unit; each band's payload field maps live on a dedicated page so this opener stays a map, not a dump.
+The trace points per family (per-gen cardinality differs — 78–128 oneof variants depending on gen; pxc=99) are not a flat enum — they are organized into *subsystem bands* of contiguous `trace_point_id` ranges, with reserved gaps between bands that all dispatch to a common error label. The decode jump-table index span is wider than the variant count (pxc bounds the wire id at `0x6e`=110, vlc at `0x8f`=143, vfc at `0x5f`=95, gfc at `0x64`=100), since gappy bands leave reserved slots routed to the error label. The bands carve the device-trace space by hardware unit; each band's payload field maps live on a dedicated page so this opener stays a map, not a dump.
 
 | Band | `trace_point_id` range (pxc) | Subsystem | Payload page | Confidence |
 |---|---|---|---|---|
@@ -150,9 +150,10 @@ The ~99–144 trace points per family (per-gen cardinality differs) are not a fl
 | OCI | 20–27 | on-chip interconnect engine | [Payload: UHI/OCI/ICI/DMA](payload-uhi-oci-ici-dma.md) | HIGH |
 | ICI | 40–55 | inter-chip-interconnect / collective fabric | [Payload: UHI/OCI/ICI/DMA](payload-uhi-oci-ici-dma.md) | HIGH |
 | TCS | 80–97 | TensorCore sequencer sync/control + throttle | [Payload: SparseCore Band](payload-sc-band.md) | HIGH |
-| BC | 100–134 | BcFsm / Bcs / BcOci (SparseCore/broadcast) controllers | [Payload: SparseCore Band](payload-sc-band.md) | HIGH |
-| CMQ | 140–149 | command-queue / VPU DMA | [Payload: UHI/OCI/ICI/DMA](payload-uhi-oci-ici-dma.md) | MEDIUM |
-| (reserved) | 11–19, 28–39, 56–79, 98–99, 135–139, 150–254 | unused — all → common error label | n/a (decode rejects) | CERTAIN |
+| BC | 100–110 | BcFsm / Bcs / BcOci (SparseCore/broadcast) controllers — pxc top-level indices `BcFsmChannelController0..10` | [Payload: SparseCore Band](payload-sc-band.md) | HIGH |
+| CMQ | (sub-dispatch) | command-queue / VPU DMA — reached *within* BC case bodies, not a distinct top-level wire id | [Payload: UHI/OCI/ICI/DMA](payload-uhi-oci-ici-dma.md) | MEDIUM |
+| (reserved) | 11–19, 28–39, 56–79, 98–99 | unused — all → common error label `0xf5b032f` | n/a (decode rejects) | CERTAIN |
+| (out of range) | ≥ 111 | rejected by the `cmp $0x6e,%rax; ja` bound @ `0xf5af451` | n/a | CERTAIN |
 
 A small set of cross-cutting render/timeline concerns sit above the raw bands: the ICR DMA-timeline derivation ([ICR DMA-Timeline Band](icr-dma-timeline-band.md)), DMA endpoint rendering ([DMA Endpoint Rendering](dma-endpoint-rendering.md)), and the v7x performance-counter lines ([v7x Perf-Counters](v7x-perf-counters.md)). Most variant messages also carry a shared `TraceIdHeader` (`transaction_id:21`, `core_id:3`, `chip_id:12│14`) immediately after the header — 36 bits on pxc, 38 bits on vfc/vlc/glc/gfc where `chip_id` widens to 14 — the per-transaction identity that lets a multi-packet DMA be stitched back together; some events (OCI read/write) carry three of them.
 

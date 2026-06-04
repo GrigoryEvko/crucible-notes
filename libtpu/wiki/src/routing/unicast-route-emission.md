@@ -89,7 +89,7 @@ The driver and the entry build read a fixed set of generator fields. These are t
 | `use_cache_` | `gen+0x129` | cached `GetPath` vs live `GetStaticPath` |
 | RouteTargetCache | `gen+0x130` (`*((qword*)this+38)`) | the 2-D path + per-link byte caches |
 
-> **[CONFIRMED]** Every offset above appears as a direct field access in `CreateUnicastRoutingTables`/`CreateSrcDestUnicastRoutingTable`: `gen+0x3c` as `*(int*)(a1+60)` (status-vector size, `@0x1fbd5343`), `gen+0x40` as `*((int*)v2+16)` (inner-loop bound, `@0x1fbd7240`), `use_cache_` as `*((_BYTE*)this+297)` (`@0x1fbd5688`), and the `RouteTargetCache` at `*((qword*)this+38)` (`gen+0x130`). The `use_cache_` field name is confirmed by the `LogMessageFatal(..., 417, "use_cache_")` consistency assert.
+> **[CONFIRMED]** Every offset above appears as a direct field access in `CreateUnicastRoutingTables`/`CreateSrcDestUnicastRoutingTable`: `gen+0x3c` as `*(int*)(a1+60)` (status-vector size, `@0x1fbd5343`), `gen+0x40` as `*((int*)v2+16)` (inner-loop bound, `@0x1fbd7240`), `use_cache_` as `*((_BYTE*)this+297)` (`cmpb $1,0x129(%r15)` `@0x1fbd573d`), and the `RouteTargetCache` at `*((qword*)this+38)` (`gen+0x130`). The `use_cache_` field name is confirmed by the `LogMessageFatal(..., 417, "use_cache_")` consistency assert.
 
 ---
 
@@ -200,7 +200,7 @@ function CreateSrcDestUnicastRoutingTable(gen, int src, int dst):    // @0x1fbd5
     nexthop = GetNextHopTable(src, /*egress=*/true)   // @0x1fbd5701, line 377
 
     // 3. PATH SOURCE dispatch on use_cache_ (gen+0x129)
-    if gen[+0x129] == 1:                         // @0x1fbd5688
+    if gen[+0x129] == 1:                         // @0x1fbd573d  (cmpb $1,0x129(%r15))
         path = RouteTargetCache::GetPath(src, dst)        // @0x1fbd42c0 — precomputed IciRoutePath
     else:
         path = GetStaticPath(src_coord, dst_coord)        // @0x1fbd57f6, line 384 — compute now

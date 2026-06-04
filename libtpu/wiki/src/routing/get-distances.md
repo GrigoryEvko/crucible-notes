@@ -58,7 +58,7 @@ TwistedTorusTopology::GetDistances (0x20b420e0)          ── vtable+0xc0, can
 function GetDistances(this, src, dst):                   // 0x20b420e0
     if !CheckBoundary(src):  return Error(line 390)       // 0x20b42106
     if !CheckBoundary(dst):  return Error(line 391)       // 0x20b4211b
-    raw   = Coordinates::Subtract(src, dst)               // 0x20b42120, line 394 — plain mesh delta
+    raw   = Coordinates::Subtract(src, dst)               // 0x20b42137, line 394 — plain mesh delta
     base  = this->vtable[0x98](src, raw)                  // 0x20b42174, line 395 — fold into dim range
                                                           //   (base is the "from-origin" coord passed below)
     wrap  = this->wrap_applies                            // this+0xf0, vector<bool>: which axes may wrap
@@ -90,7 +90,7 @@ function GetDistances(this, src, dst):                   // 0x20b420e0
 
 > **GOTCHA —** the combination count has two distinct bounds and they are *not* the same value. The inner accept/reject loop is capped at `n_combos = max(1<<popcount, 1)` (set to `1` when `1<<m < 2`, i.e. when no axis wraps — `0x20b42404`). But the **outer** loop-continuation test reloads `ndims` and compares `combo >= (1 << ndims)` (`0x20b4244c`/`0x20b42460` region), not `1 << m`. A reimplementation that drives both bounds off the popcount will iterate too few combinations on a topology where `wrappable < ndims`; one that drives both off `ndims` builds redundant Polarity spans on non-wrappable axes (harmless — those axes get `pol = POSITIVE/NEGATIVE` but `wmask[a] = 0`, so no wrap fires). The safe reading: build `2^ndims` Polarity spans, but only the axes whose `wrap_applies` bit is set actually wrap; duplicate displacement vectors collapse in the keep-all-ties set because `operator<` orders them identically.
 
-> **QUIRK —** the generator computes a `Coordinates::Subtract` (`0x20b42120`, line 394) — the *plain mesh* delta — before the Polarity loop, then normalizes it through `vtable+0x98` (line 395) into a `base` coordinate that is the actual argument to `GetDistanceFromOrigin`. So the per-axis distance is computed *from the normalized mesh delta*, not from `dst` directly; the Polarity loop then re-introduces the wrap on top of it. This is the opposite of the intuitive "compute fresh per combination" reading and matters for matching the wrap arithmetic exactly — `GetDistanceFromOrigin` sees a coordinate already reduced into `[0, dimsize)` per axis, and its `delta = c − accum` runs against a zero-initialized accumulator.
+> **QUIRK —** the generator computes a `Coordinates::Subtract` (`0x20b42137`, line 394) — the *plain mesh* delta — before the Polarity loop, then normalizes it through `vtable+0x98` (line 395) into a `base` coordinate that is the actual argument to `GetDistanceFromOrigin`. So the per-axis distance is computed *from the normalized mesh delta*, not from `dst` directly; the Polarity loop then re-introduces the wrap on top of it. This is the opposite of the intuitive "compute fresh per combination" reading and matters for matching the wrap arithmetic exactly — `GetDistanceFromOrigin` sees a coordinate already reduced into `[0, dimsize)` per axis, and its `delta = c − accum` runs against a zero-initialized accumulator.
 
 ### The keep-all-ties set
 
@@ -248,7 +248,7 @@ function GetDistance(this, src, dst):                    // 0x20b408e0, vtable+0
 
 > **NOTE —** the per-pair cache-miss fall-through to the live metric is byte-confirmed structurally: after `GetDistanceFromCache` (`0x20b40fa0`) returns, `GetDistance` branches on the `StatusOr` ok-bit (`0x20b40922`) and proceeds to `LABEL_8` — the live computation — when the lookup is *not* ok. This is distinct from the *whole-cache* miss in `InitRouteSolution`, which hard-errors `"Cannot find route cache: "` with no live fallback (see [`toroidal-route-cache`](toroidal-route-cache.md)). A single absent `(src,dst)` pair degrades to the live metric; an absent baked cache *file* for the slice shape aborts bring-up. Confidence: HIGH (the fall-through path is observed; the exact live-recompute inline body was traced to the branch, not re-derived line-by-line for every cache type).
 
-> **GOTCHA —** the `DropDimnesion` spelling (one transposed letter) is the real symbol in the binary (`accel_ssw::deepsea::slice_builder::(anonymous namespace)::DropDimnesion`, called at `0x20b40988`). Grep for it verbatim; do not "correct" it.
+> **GOTCHA —** the `DropDimnesion` spelling (one transposed letter) is the real symbol in the binary (`accel_ssw::deepsea::slice_builder::(anonymous namespace)::DropDimnesion` @ `0x20b3f4e0`, called at `0x20b40999`). Grep for it verbatim; do not "correct" it.
 
 ---
 
