@@ -4,16 +4,16 @@
 
 ## Abstract
 
-`TraceEntriesCoder` is the on-device profiler trace-entry codec: the fixed-width, LSB-first bit format that every TPU hardware trace event packs into, and the per-chip-family decoder/encoder that translates between that wire packet and a proto2 `TraceEntry` message. It is the bottom-most layer of the [xprof device-trace pipeline](overview.md) — the stage between the compressed [riegeli container](riegeli-trace-container.md) and the [`TraceEntry → XEvent/XStat`](trace-entry-to-xevent.md) shaping. Where a route-cache record is a self-delimiting varint stream, a profiler trace event is the opposite: a **constant 16-byte (128-bit) packet** with a 2-bit framing prefix, a fixed 59-bit header, an optional 36-bit transaction-identity sub-record, and a per-event fixed-width payload, all read with the shared `GetBits64`/`SkipBits` bit-codec primitives.
+`TraceEntriesCoder` is the on-device profiler trace-entry codec: the fixed-width, LSB-first bit format that every TPU hardware trace event packs into, and the per-chip-family decoder/encoder that translates between that wire packet and a proto2 `TraceEntry` message. It is the bottom-most layer of the [xprof device-trace pipeline](overview.md) — the stage between the compressed [riegeli container](riegeli-trace-container.md) and the [`TraceEntry → XEvent/XStat`](trace-entry-to-xevent.md) shaping. Where a route-cache record is a self-delimiting varint stream, a profiler trace event is the opposite: a **constant 16-byte (128-bit) packet** with a 2-bit framing prefix, a 56- or 59-bit header (59 for pxc/vfc/glc/gfc, 56 for vlc), an optional 36-bit transaction-identity sub-record, and a per-event fixed-width payload, all read with the shared `GetBits64`/`SkipBits` bit-codec primitives.
 
-The codec has a deliberately asymmetric two-id-space dispatch, and getting it right is the whole reimplementation. **Decode** peeks the 2 framing bits and the 8-bit `trace_point_id` — the *banded hardware enum value*, gappy, max `0x6e` for pxc — and indexes a 111-entry `rel32` jump table to reach an anonymous-namespace `Decode<EventName>()`. **Encode** dispatches on the *dense proto oneof field number* stored at `TraceEntry+0x28` through a parallel jump table. The two id spaces are not interchangeable; the registry that pairs them is owned by [TracePoints Master Registry](tracepoints-master-registry.md), and a reimplementation that drives encode off the wire id (or decode off the oneof field) mis-keys every event.
+The codec has a deliberately asymmetric two-id-space dispatch, and getting it right is the whole reimplementation. **Decode** peeks the 2 framing bits and the 8-bit `trace_point_id` — the *banded hardware enum value*, gappy, max handled `0x95` (149) for pxc plus a `0xff` dummy — and indexes a pair of contiguous `rel32` jump tables (the first @ `0xab85bc0` bounded at `0x6e`, the second @ `0xab85d7c` for ids `0x6f..0xff`) to reach an anonymous-namespace `Decode<EventName>()`. **Encode** dispatches on the *dense proto oneof field number* stored at `TraceEntry+0x28` through a parallel jump table. The two id spaces are not interchangeable; the registry that pairs them is owned by [TracePoints Master Registry](tracepoints-master-registry.md), and a reimplementation that drives encode off the wire id (or decode off the oneof field) mis-keys every event.
 
 This page owns the **codec format and dispatch**: the 16-byte packet, the framing/header/TraceIdHeader bit layout, the per-event total-bit `CHECK` validation, the per-family `CreateTraceCodec`/`GetTraceCodec` factory wiring, and how the header split shifts across silicon generations. It does **not** own the per-band payload field maps ([UHI/OCI/ICI/DMA](payload-uhi-oci-ici-dma.md), [SparseCore band](payload-sc-band.md), [vfc/vlc/gfc](payload-vfc-vlc-gfc.md), [jxc legacy](payload-jxc-legacy.md)), the trace-point id registry ([master registry](tracepoints-master-registry.md)), the compressed container ([riegeli](riegeli-trace-container.md)), or the XEvent translation ([trace-entry-to-xevent](trace-entry-to-xevent.md)).
 
 For reimplementation, the contract is:
 
 - **The fixed 16-byte packet and the bit-stream reader** — LSB-first, `GetBits64NoInline(n)` for an n-bit field, `SkipBitsNoInline(n)` to advance, masked by `mask_[k] = (1<<k)-1`.
-- **The 2-bit framing prefix + 59-bit `TraceHeader` + optional 36-bit `TraceIdHeader`** — the universal envelope, with the per-gen `block_id`/`timestamp` split.
+- **The 2-bit framing prefix + 56/59-bit `TraceHeader` + optional 36-bit `TraceIdHeader`** — the envelope, with the per-family `block_id`/`timestamp` split (pxc/vfc/glc/gfc = 59-bit header; vlc = 56-bit).
 - **The dual dispatch** — decode by 8-bit wire `trace_point_id` (`DecodeEntry` jump table), encode by dense oneof field number (`EncodeEntry` jump table); the `valid`/`started` framing semantics; the per-event total-bit `CHECK`.
 - **The per-family factory** — `GetTraceCodec(DeviceIdentifiers, int)` selecting one of pxc/vfc/vlc/glc/gfc fixed-width codecs (or the jxc legacy `PerformanceTraceEntry` path) from a static type-factory keyed by chip codename.
 
@@ -22,8 +22,8 @@ For reimplementation, the contract is:
 | **Codec interface** | `asic_sw::driver::deepsea::profiler::TraceCodecInterface<TraceEntry>` (abstract; vtable: `DecodeEntry`/`EncodeEntry`/`GetMaxEntrySize`/`GetEntryPacketSize`) |
 | **Packet size** | fixed **16 bytes (128 bits)** — `GetEntryPacketSize()==0x10`, `GetMaxEntrySize()==0x20` (decoded-proto upper bound), all 5 families |
 | **Bit order** | LSB-first; read via `BitDecoder::GetBits64NoInline` @ `0x21073760`, `SkipBitsNoInline` @ `0x21073580`, mask table `mask_` @ `0xbe79440` |
-| **Header layout** | `valid:1 · started:1 · trace_point_id:8 · block_id:3│6 · timestamp:48│45` — framing+header = **61 bits**; payload begins at **bit 61** |
-| **Decode entry** | `pxc TraceEntriesCoder::DecodeEntry` @ `0xf5af3a0` → 111-entry `rel32` jump table @ `0xab85bc0` |
+| **Header layout** | `valid:1 · started:1 · trace_point_id:8 · block_id:3│6 · timestamp:48│45` — framing+header = **61 bits** for pxc/vfc/glc/gfc (payload @ **bit 61**); **vlc is 8/3/45 → 56-bit header, payload @ bit 58** |
+| **Decode entry** | `pxc TraceEntriesCoder::DecodeEntry` @ `0xf5af3a0` → two contiguous `rel32` jump tables: 111-entry @ `0xab85bc0` (ids `0..0x6e`) + 145-entry @ `0xab85d7c` (ids `0x6f..0xff`) |
 | **Encode entry** | `pxc TraceEntriesCoder::EncodeEntry` @ `0xf5c5e60` → parallel jump table @ `0xab85fc0` |
 | **Decode driver** | `xprof::tpu::DecodeTraceBuffers<TraceEntry>` @ `0xf59ffa0` (pxc) — inflates + walks 16-byte packets |
 | **Codec selector** | `xprof::tpu::GetTraceCodec(asic_sw::DeviceIdentifiers, int)` @ `0xf5a2900` |
@@ -64,30 +64,30 @@ Fields are extracted with two primitives from `bitcoding.cc`:
 
 ---
 
-## The Framing Prefix and the 59-Bit TraceHeader
+## The Framing Prefix and the TraceHeader
 
-Every packet opens with a 2-bit framing prefix and a 59-bit `TraceHeader`, together a fixed **61-bit envelope**, after which the typed payload always begins at **bit 61**.
+Every packet opens with a 2-bit framing prefix and a `TraceHeader`, together a **59- or 61-bit envelope** depending on family, after which the typed payload begins.
 
 ```text
  bit  field                 width                    proto
  ───  ────────────────────  ───────────────────────  ──────────────────────────────
   0   valid                 1                        (framing — 0 ⇒ end of buffer)
-  1   started               1                        (framing — valid&&!started ⇒ FATAL)
+  1   started               1                        (framing — valid&&!started ⇒ error)
  2-9  trace_point_id        8                        TraceHeader.trace_point_id  (f1)
 10-K  trace_point_block_id  3 (pxc/vlc) │ 6 (vfc/glc/gfc)   TraceHeader.f2
-K+1   timestamp             48 (pxc/vlc) │ 45 (vfc/glc/gfc)  TraceHeader.f3
- …60  (header ends at bit 60; total framing+header = 61)
- 61-  per-event payload     variable (fixed per id)
+K+1   timestamp             48 (pxc) │ 45 (vfc/vlc/glc/gfc)  TraceHeader.f3
+      (pxc/vfc/glc/gfc header ends at bit 60 ⇒ framing+header = 61, payload @ bit 61)
+      (vlc header ends at bit 57 ⇒ framing+header = 58, payload @ bit 58)
 ```
 
-The **header sub-budget (id + block_id + timestamp) is invariably 59 bits**. Newer silicon widens `block_id` from 3 to 6 bits and narrows the `timestamp` from 48 to 45 bits to keep that 59-bit envelope constant — so the payload origin never moves off bit 61, regardless of generation. This is the key invariant a cross-gen reimplementation must encode: do not hardcode the timestamp width; derive it from `59 - 8 - block_w`.
+The header sub-budget (id + block_id + timestamp) is **59 bits for pxc/vfc/glc/gfc** but **56 bits for vlc** (byte-confirmed: vlc `DecodeTraceHeader @0xf5f5b40` reads `8 / 3 / 45`, not `8 / 3 / 48`). For the 59-bit families, newer silicon widens `block_id` from 3 to 6 bits and narrows the `timestamp` from 48 to 45 bits to keep the envelope constant — so for those four the payload origin stays at bit 61. **vlc is the outlier**: it keeps the 3-bit `block_id` *and* the 45-bit `timestamp`, so its header is only 56 bits and its payload begins at bit 58 (vlc `Encode<…> @0xf5f3700` confirms the inverse: `block<<10`, `ts(45)<<13`, `payload<<58`). A cross-gen reimplementation must derive the timestamp width and payload origin per family from the family's `DecodeTraceHeader`, never assume a fixed 59-bit envelope.
 
 ### Framing semantics — valid and started
 
 The two framing bits are not part of the proto; they are wire-level flow control:
 
 - **`valid`** (bit 0) is the empty-slot sentinel. A `valid == 0` packet means *graceful end of stream* — the buffer can be drained to its capacity without an explicit entry count; the decoder stops and reports success with `*started_out = 0`. This is why a ring buffer can be over-allocated and read until the first cleared slot.
-- **`started`** (bit 1) catches torn/partial hardware writes. `valid && !started` is a fatal error: the decoder builds `MakeErrorImpl<3>("Found a valid but not started packet.")` (string @ `0x9ff8a9c`, status code `0x2e02`) and aborts.
+- **`started`** (bit 1) catches torn/partial hardware writes. `valid && !started` returns an `INVALID_ARGUMENT` status: the decoder builds `MakeErrorImpl<3>("Found a valid but not started packet.")` (string @ `0x9ff8a9c`; the `<3>` template arg is the `INVALID_ARGUMENT` status code, and `0x2e02` is the source-location line passed to `AddSourceLocationImpl`).
 
 The decompiled head of `DecodeEntry` shows the exact read order and branch logic:
 
@@ -101,11 +101,19 @@ if (valid) {
     if (started) {
         *valid_out   = 1;
         *started_out = 0;              // (sic — set then overwritten by handler success path)
-        switch (id) {                  // 8-bit banded wire id → 111-entry jump table @0xab85bc0
-            case 0:  DecodeUhiHostDmaTransactionStartedAddressTranslation(...); break;
-            case 1:  DecodeUhiHostPhysicalRequestRead(...);                     break;
-            // … ids 0-10 UHI, 20-27 OCI, 40-55 ICI, 80-97 TCS, 100-110 CMQ …
-            default: /* common error label @0xf5b032f */                        break;
+        if (id <= 0x6e) {              // first jump table @0xab85bc0 (111 entries, ids 0..0x6e)
+            switch (id) {
+                case 0:  DecodeUhiHostDmaTransactionStartedAddressTranslation(...); break;
+                case 1:  DecodeUhiHostPhysicalRequestRead(...);                     break;
+                // … 0-6 UHI, 7-10/20-27 OCI, 40-48 ICI, 49-55 OCI, 80-90 TCS, 97 throttle …
+                default: goto second_table;   // reserved slots fall to @0xf5b032f
+            }
+        } else {                       // second jump table @0xab85d7c (ids 0x6f..0xff)
+        second_table:                  // @0xf5b032f: id -= 0x6f; if (id > 0x90) goto unhandled;
+            switch (id) {
+                // … 100-134 BcFsm/Bcs/BcOci (SparseCore), 140-149 CMQ, 0xff dummy …
+                default: goto unhandled;       // @0xf5b0b33: bytes_consumed=0, return OK
+            }
         }
     } else {
         return MakeErrorImpl<3>("Found a valid but not started packet.");  // @0x9ff8a9c
@@ -135,7 +143,7 @@ The `|= 1 / 2 / 4` are the proto2 *has-bits* (presence byte at `TraceHeader+0x10
 |---|---|---|---|---|---|---|---|
 | pxc | `0xf5d4f20` | 8 | 3 | 48 | 59 | 61 | CERTAIN |
 | vfc | `0xf628080` | 8 | 6 | 45 | 59 | 61 | CERTAIN |
-| vlc | `0xf5f5b40` | 8 | 3 | 48 | 59 | 61 | CERTAIN |
+| vlc | `0xf5f5b40` | 8 | 3 | **45** | **56** | **58** | CERTAIN |
 | glc | `0xf65eaa0` | 8 | 6 | 45 | 59 | 61 | CERTAIN |
 | gfc | `0xf697b00` | 8 | 6 | 45 | 59 | 61 | CERTAIN |
 
@@ -163,7 +171,7 @@ Byte-confirmed in `DecodeUhiHostPhysicalRequestRead` @ `0xf5b0f20`, where the th
 GetBits64NoInline(dec, 21, &transaction_id);   // TraceIdHeader f1
 GetBits64NoInline(dec,  3, &core_id);          // f2 (3-bit enum)
 GetBits64NoInline(dec, 12, &chip_id);          // f3
-// then the typed payload: 30, 1, 1, 29, 26, 8, 20, 20 …
+// then the typed payload: 1, 30, 1, 1, 29, 26, 8, 20, 20 …
 ```
 
 The 3-bit `core_id` exactly fits the 8-value `CORE_ID` enum (`RESERVED/NONCORE/TC0/TC1/BC0..BC3`). Some events carry **multiple** `TraceIdHeader`s — OCI read/write commands embed three (`cmd0/cmd1/cmd2`), i.e. `3 × 36 = 108` bits of identity before any other payload. The per-band detail of which events carry one, three, or zero is owned by the [payload pages](payload-uhi-oci-ici-dma.md).
@@ -176,18 +184,21 @@ The codec is deliberately asymmetric: decode and encode index *different* jump t
 
 ### Decode — by 8-bit wire trace_point_id
 
-`DecodeEntry` dispatches on the 8-bit on-wire `trace_point_id` — the **banded hardware enum**, gappy, max `0x6e = 110` for pxc — through a 111-entry `rel32` jump table at `0xab85bc0`. The table is read byte-exact; its band structure mirrors the [trace-point registry](tracepoints-master-registry.md):
+`DecodeEntry` dispatches on the 8-bit on-wire `trace_point_id` — the **banded hardware enum**, gappy, max handled `0x95 = 149` for pxc (plus a `0xff` dummy) — through **two contiguous `rel32` jump tables**: the first @ `0xab85bc0` (111 entries) covers ids `0..0x6e` (`cmp $0x6e; ja`), and a `default`-path second table @ `0xab85d7c` (145 entries, reached at `0xf5b032f` where `id -= 0x6f; cmp $0x90; ja`) covers ids `0x6f..0xff`. The tables are read byte-exact; their band structure mirrors the [trace-point registry](tracepoints-master-registry.md):
 
 | Band | `trace_point_id` (pxc) | Subsystem |
 |---|---|---|
-| UHI | 0–10 | host-DMA / address translation |
-| OCI | 20–27 | on-chip interconnect engine |
-| ICI | 40–55 | inter-chip interconnect / collective fabric |
-| TCS | 80–97 | TensorCore sequencer sync/control + throttle |
-| CMQ | 100–110 | command queue |
-| (reserved) | 11–19, 28–39, 56–79, 98–99 | all → common error label `0xf5b032f` |
+| UHI | 0–6 | host-DMA / address translation |
+| OCI | 7–10, 20–27, 49–55 (+ scattered) | on-chip interconnect engine |
+| ICI | 40–48 | inter-chip interconnect / collective fabric |
+| TCS | 80–90 | TensorCore sequencer sync/control |
+| Throttle | 97 | thermal/electrical throttle state |
+| BC (SparseCore/broadcast) | 100–134 | BcFsm / Bcs / BcOci controllers |
+| CMQ | 140–149 | command queue / VPU DMA |
+| Dummy | 255 (`0xff`) | `DummyTraceEntryDummyTracePoint` |
+| (reserved) | 11–19, 28–39, 56–79, 91–96, 98–99, 135–139, 150–254 | unhandled → graceful return |
 
-> **GOTCHA —** the reserved id ranges do **not** fall through to a neighbour handler — every reserved `rel32` slot points at the *same* common error label (`0xf5b032f`). This directly confirms the band gaps are deliberate reserved space, not a decode bug. Drive band detection off the per-family jump table contents, never off a hardcoded pxc range; the band boundaries shift per generation as trace-point cardinality grows (≈99 → ≈144 events).
+> **GOTCHA —** the reserved id ranges do **not** fall through to a neighbour handler. Reserved slots in the **first** table (ids ≤ `0x6e`) jump to `0xf5b032f`, which is *not* an error label — it is the entry to the **second** dispatch table; both tables' out-of-range / unfilled slots ultimately land at `0xf5b0b33`, which sets `bytes_consumed = 0` and returns `OK` (an unhandled id is silently skipped, not a status error). This confirms the band gaps are deliberate reserved space, not a decode bug. Drive band detection off the per-family jump table contents, never off a hardcoded pxc range; the band boundaries shift per generation as trace-point cardinality grows (99 handled cases for pxc → 144 for gfc).
 
 ### Encode — by dense oneof field number
 
@@ -204,12 +215,12 @@ goto *jumptable_0xab85fc0[idx];          // → Encode<Name>()
 word0  =  (mask_[1] & flag) * 3;         // flag*3 ⇒ bits 0 and 1 both set (valid=1, started=1)
 word0 |=  id    << 2;                     // trace_point_id
 word0 |=  block << 10;                    // block_id
-word0 |=  ts    << 13;                    // timestamp (pxc) — vfc shifts <<16 (6-bit block)
-word0 |=  payload_lo << 61;               // payload begins at bit 61
+word0 |=  ts    << 13;                    // timestamp (pxc/vlc) — vfc/glc/gfc shift <<16 (6-bit block)
+word0 |=  payload_lo << 61;               // payload @ bit 61 (pxc/vfc/glc/gfc); vlc shifts <<58
 // word1 = remaining payload; two qwords (16 B) written to the encoder SSO buffer
 ```
 
-The encode shifts are the byte-exact inverse of the decode `GetBits` widths: `<<2` (after the 2 framing bits), `<<10` (after id), `<<13` for pxc (after 3-bit block) or `<<16` for vfc (after 6-bit block), and `<<61` for the payload origin. The framing is written as `flag*3` — `mask_[1] & 1` then `lea(r8,r8,2)` — which sets **both** bit 0 and bit 1, i.e. `valid=1, started=1` for every real entry.
+The encode shifts are the byte-exact inverse of the decode `GetBits` widths: `<<2` (after the 2 framing bits), `<<10` (after id), then the block/timestamp split is family-dependent — pxc/vlc shift `ts<<13` (after a 3-bit block), vfc/glc/gfc shift `ts<<16` (after a 6-bit block) — and the payload origin is `<<61` for pxc/vfc/glc/gfc but **`<<58` for vlc** (vlc's 45-bit timestamp + 3-bit block ⇒ 56-bit header; byte-confirmed at `Encode<…> @0xf5f3700`). The framing is written as `flag*3` — `mask_[1] & 1` then `lea(r8,r8,2)` — which sets **both** bit 0 and bit 1, i.e. `valid=1, started=1` for every real entry.
 
 ### The two id spaces, paired
 
@@ -225,7 +236,7 @@ The wire id and the oneof field are distinct namespaces; the handler stamps the 
 
 Per-family oneof-field encode bounds (the `cmp $imm` before the jump): pxc `0x62`, vlc `0x4d`, vfc `0x79`, glc `0x7f`, gfc `0x7f`. The full id↔field registry is owned by [TracePoints Master Registry](tracepoints-master-registry.md).
 
-> **QUIRK —** decode max wire id (`0x6e` pxc) and encode max oneof field (`0x62` pxc) differ because the wire id is *banded with gaps* while the oneof field is *dense*. Both count the same set of events; only the indexing differs. A reimplementation that sizes one table to the other's bound will overrun or truncate.
+> **QUIRK —** decode max handled wire id (`0x95` pxc, spread across two jump tables split at `0x6e`/`0x6f`) and encode max oneof field (`0x62` pxc, after the `field-2` bias) differ because the wire id is *banded with gaps* while the oneof field is *dense*. Both count the same set of events (99 for pxc); only the indexing differs. A reimplementation that sizes one table to the other's bound will overrun or truncate.
 
 ---
 
@@ -253,19 +264,19 @@ function Decode<Name>(view, started_out, entry):
 
 The final `CHECK` validates that the handler consumed exactly the bit count the format demands — `absl::log_internal::MakeCheckOpString<…>(consumed, K, "decoder.BitsDecoded() == K")` fires a fatal log on mismatch. This is the codec's self-consistency guard: it pins each event's total wire width.
 
-Representative byte-confirmed total-bit `CHECK` constants (one per subsystem band) and their payload-width sequences (bit widths *within* the payload, after bit 61):
+Byte-confirmed total-bit `CHECK` constants (read directly from each decoder's `MakeCheckOpString` sites) and their full width sequences. Each sequence begins with the 2 framing bits, then `[8/3/48]` `DecodeTraceHeader`, then (for events that carry identity) the `[21/3/12]` `TraceIdHeader`, then the typed payload:
 
-| Event (pxc) | id | oneof | decoder | total bits | payload widths (after bit 61) |
+| Event (pxc) | id | oneof | decoder | `CHECK` constant(s) | width sequence (framing · header · [idhdr] · payload) |
 |---|---|---|---|---|---|
-| `UhiHostDmaTransactionStartedAddressTranslation` | 0 | 2 | `0xf5b0b80` | 128 | full packet (widest UHI event) |
-| `UhiHostPhysicalRequestRead` | 1 | 3 | `0xf5b0f20` | 118 | `[21/3/12]` + `30,1,1,29,26,8,20,20` |
-| `TcsInternalSetSyncFlag` | 81 | 38 | `0xf5b97a0` | 121 | (no id-header) `32,1,9,16,1,1` |
-| `IciPacketPacketReceivedOnLinkInput` | 40 | 21 | `0xf5b56c0` | 125 | `[21/3/12]` + `3,3,6,1,1,12,1,1` |
-| `ThrottleStateThermalAndElectrical` | 97 | 54 | `0xf5bc620` | 128 | discriminated A/B (oneof `0x36`/`0x37`) |
+| `UhiHostDmaTransactionStartedAddressTranslation` | 0 | 2 | `0xf5b0b80` | 128, 216 | `2 · 8/3/48 · 21/3/12 · 5,16,10,1,1,54,32` |
+| `UhiHostPhysicalRequestRead` | 1 | 3 | `0xf5b0f20` | 128, 233 | `2 · 8/3/48 · 21/3/12 · 1,30,1,1,29,26,8,20,20` |
+| `TcsInternalSetSyncFlag` | 81 | 38 | `0xf5b97a0` | 121 | `2 · 8/3/48 · (no idhdr) · 32,1,9,16,1,1` |
+| `IciPacketPacketReceivedOnLinkInput` | 40 | 21 | `0xf5b56c0` | 125 | `2 · 8/3/48 · 21/3/12 · 3,3,6,1,1,12,1,1` |
+| `ThrottleStateThermalAndElectrical` | 97 | 54 | `0xf5bc620` | 120 | `2 · 8/3/48 · (no idhdr) · 4,5,5,10,4,21,5,5` |
 
-> **CORRECTION (TEC-1) —** the per-event `CHECK` constant is **not always a single value**. `DecodeUhiHostPhysicalRequestRead` contains two `MakeCheckOpString` sites — `BitsDecoded() == 128` and `== 233` — on two branches of a conditional payload; the `118`-bit figure is the minimal no-optional-field path. The *mechanism* (a hardcoded total-bit `CHECK` per consumed path) is byte-confirmed CERTAIN; the precise constant is branch-dependent for events with optional/repeated payload fields. Treat the table constants as the representative path, and recover the exact set per branch from the event's `Decode<Name>`/`Encode<Name>` pair (HIGH confidence on the listed primary-path values).
+> **NOTE —** the per-event `CHECK` constant is **not always a single value**. Both `DecodeUhiHostDmaTransactionStartedAddressTranslation` and `DecodeUhiHostPhysicalRequestRead` contain two `MakeCheckOpString` sites — the first `CHECK`s the prefix path at `128` bits, the second `CHECK`s the full path (`216` and `233` respectively) after an optional/conditional payload group. The `ThrottleStateThermalAndElectrical` decoder, despite its name, carries a single oneof case (field `54 = 0x36`) and a single `CHECK == 120` (there is no `0x36`/`0x37` A/B discrimination at decode). The mechanism — a hardcoded total-bit `CHECK` per consumed path — is byte-confirmed CERTAIN; the precise constant is branch-dependent for events with optional/repeated payload fields. Recover the exact set per branch from the event's `Decode<Name>`/`Encode<Name>` pair.
 
-The per-band semantic field maps — what each width *means* — are owned by the payload pages: [UHI/OCI/ICI/DMA](payload-uhi-oci-ici-dma.md), [SparseCore band](payload-sc-band.md), [vfc/vlc/gfc](payload-vfc-vlc-gfc.md). The exhaustive (offset, width, semantic) tuple for all ~99–144 events per family is mechanically dumpable from the `Decode<Name>`/`Encode<Name>` pairs but is **not** tabulated here (LOW confidence on completeness — same gap as the payload pages note).
+The per-band semantic field maps — what each width *means* — are owned by the payload pages: [UHI/OCI/ICI/DMA](payload-uhi-oci-ici-dma.md), [SparseCore band](payload-sc-band.md), [vfc/vlc/gfc](payload-vfc-vlc-gfc.md). The exhaustive (offset, width, semantic) tuple for all 99–144 events per family is mechanically dumpable from the `Decode<Name>`/`Encode<Name>` pairs but is **not** tabulated here (LOW confidence on completeness — same gap as the payload pages note).
 
 ---
 
@@ -301,14 +312,14 @@ The per-chip-family codec is a concrete `TraceCodecInterface<TraceEntry>` (abstr
 |---|---|---|---|---|---|---|
 | pxc | `0xf5af2c0` (`plc` symbol) | `0xf5af3a0` | `0xf5d4f20` | 3/48 | `<pxc::…::TraceEntry>` | CERTAIN |
 | vfc | `0xf5f5da0` | (per family) | `0xf628080` | 6/45 | `<vxc::vfc::…::TraceEntry>` | CERTAIN |
-| vlc | `0xf5d5180` | (per family) | `0xf5f5b40` | 3/48 | `<vxc::vlc::…::TraceEntry>` | CERTAIN |
+| vlc | `0xf5d5180` | (per family) | `0xf5f5b40` | **3/45** | `<vxc::vlc::…::TraceEntry>` | CERTAIN |
 | glc | `0xf6282e0` | (per family) | `0xf65eaa0` | 6/45 | `<gxc::glc::…::TraceEntry>` | CERTAIN |
 | gfc | `0xf65ed00` | (per family) | `0xf697b00` | 6/45 | `<gxc::gfc::…::TraceEntry>` | CERTAIN |
 | jxc | (legacy path) | — | — | — | `<jxc::PerformanceTraceEntry>` | HIGH |
 
 ### GetTraceCodec — the selector
 
-`xprof::tpu::GetTraceCodec(asic_sw::DeviceIdentifiers, int)` @ `0xf5a2900` is the runtime selector. The decompile shows it walking a chain of `asic_sw::internal::TypeFactoryBase<DeviceIdentifiers, &DeviceIdentifiersAsString, TraceCodecInterface<…::TraceEntry>, false>::Create<>` attempts — one per family (vlc, vfc, glc) — and falling through to the **pxc** factory as the default:
+`xprof::tpu::GetTraceCodec(asic_sw::DeviceIdentifiers, int)` @ `0xf5a2900` is the runtime selector. The decompile shows it walking a chain of `asic_sw::internal::TypeFactoryBase<DeviceIdentifiers, &DeviceIdentifiersAsString, TraceCodecInterface<…::TraceEntry>, false>::Create<>` attempts — the function body references the `vlc`, `vfc`, `glc`, `gfc`, and `jxc` family codecs — and falls through to the **pxc** factory as the default:
 
 ```c
 // GetTraceCodec @0xf5a2900 (decompiled skeleton)
@@ -316,7 +327,7 @@ function GetTraceCodec(out, device_ids, gen):
     if (try TypeFactoryBase<…vlc::TraceEntry>::Create(out, device_ids)) return out;
     if (try TypeFactoryBase<…vfc::TraceEntry>::Create(out, device_ids)) return out;
     if (try TypeFactoryBase<…glc::TraceEntry>::Create(out, device_ids)) return out;
-    // … gfc via its own GetTraceCodec<gfc::TraceEntry> @0xf5a2b60 …
+    // … gfc via its own GetTraceCodec<gfc::TraceEntry> @0xf5a2b60; jxc PerformanceTraceEntry path …
     TypeFactoryBase<…pxc::TraceEntry>::Create(out, device_ids);     // default
     return out;
 ```
@@ -336,9 +347,10 @@ Each family also has a templated `GetTraceCodec<…::TraceEntry>` instantiation 
 | `TraceIdHeader` (proto2) | `+0x10` presence; `+0x18` transaction_id; `+0x1c` core_id; `+0x20` chip_id | the 36-bit identity sub-record |
 | `BitDecoder` | `+0x8` cursor, `+0x10` end, `+0x18` buffer (LSB-first), `+0x20` bits_avail (0x28 total) | the bit-stream window |
 | `mask_` | `0xbe79440` | 65-qword mask table, `mask_[k]=(1<<k)-1` |
-| Decode jump table | `0xab85bc0` | 111 `rel32` entries, indexed by 8-bit `trace_point_id` (pxc) |
+| Decode jump table (low) | `0xab85bc0` | 111 `rel32` entries, ids `0..0x6e`, indexed by 8-bit `trace_point_id` (pxc) |
+| Decode jump table (high) | `0xab85d7c` | 145 `rel32` entries, ids `0x6f..0xff` (`id-0x6f`), contiguous after the low table |
 | Encode jump table | `0xab85fc0` | `rel32` entries, indexed by `oneof_field - 2` (pxc) |
-| `MakeErrorImpl<3>` string | `0x9ff8a9c` | `"Found a valid but not started packet."` (status `0x2e02`) |
+| `MakeErrorImpl<3>` string | `0x9ff8a9c` | `"Found a valid but not started packet."` (INVALID_ARGUMENT; `0x2e02` is the source line) |
 
 ---
 
