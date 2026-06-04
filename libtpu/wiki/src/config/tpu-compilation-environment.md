@@ -202,7 +202,7 @@ Of the 1121 fields, 349 are message-typed. Almost all are not hand-written sub-m
 
 ### The typed helper message — `RangeSpecProto`
 
-A small set of fields are typed `RangeSpecProto` (101 helper symbols in the binary), used for fields that name an instruction/buffer *range* rather than a scalar — e.g. #50 `xla_jf_naive_bundle_packer` (`+0x228`), #60 `xla_jf_bounds_check_annotate_only` (`+0x230`), #65 `xla_jf_lsra_v2_alloc_only` (`+0x238`). Their default is the empty message (an unset range = apply-to-all / apply-to-none per consumer). These sit at contiguous struct offsets in the message region because, as message fields, they are stored inline (not as the 8-byte scalar union that bool/int fields use).
+A small set of fields are typed `RangeSpecProto` (its own generated message class with parse table `_table_ @ 0x21cf9c90`), used for fields that name an instruction/buffer *range* rather than a scalar — e.g. #50 `xla_jf_naive_bundle_packer` (`+0x228`), #60 `xla_jf_bounds_check_annotate_only` (`+0x230`), #65 `xla_jf_lsra_v2_alloc_only` (`+0x238`). Their default is the empty message (an unset range = apply-to-all / apply-to-none per consumer). These sit at contiguous struct offsets in the message region because, as message fields, they are stored inline (not as the 8-byte scalar union that bool/int fields use).
 
 ### The AutoProto oneof — 30 arms
 
