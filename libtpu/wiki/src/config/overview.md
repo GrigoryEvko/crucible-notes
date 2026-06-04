@@ -4,7 +4,7 @@
 
 ## Abstract
 
-libtpu has no command line of its own — it is a `.so` loaded by JAX/PJRT — yet it is configured almost entirely by *command-line-style flags*. The configuration system is the machinery that turns a user-supplied string into an effective, per-TPU-generation compile decision. There are three layers, and this page is the map of how a single knob travels through all three. **Layer 1 (flag ingest)** fabricates an `argv` from the `LIBTPU_INIT_ARGS` environment variable and hands it to `absl::ParseCommandLine`, which binds values onto the ~2048 `absl::Flag<T> FLAGS_<name>` globals that the `dlopen` constructor storm pre-registered. **Layer 2 (the two protos)** is where those bound flags become structured config: the generic `xla_*` flags land in `xla::DebugOptions` (~111 wire-fields, the proto XLA shares across CPU/GPU/TPU), and the TPU-private `xla_tpu_*` / `xla_jf_*` / `megascale_*` flags land in `TpuCompilationEnvironment` (TCE) — a 1121-field master proto whose every field *is* a registered flag. **Layer 3 (the AUTO resolver)** is the part with no LLVM analogue: ~330 TCE fields are not plain values but `AutoProto` oneofs read through an `AutoOr<T>` tri-state (`AUTO` / `ENABLED` / `DISABLED`), and ~130 hand-written accessors collapse that tri-state into a concrete value using a per-knob polarity that *is* the documented default.
+libtpu has no command line of its own — it is a `.so` loaded by JAX/PJRT — yet it is configured almost entirely by *command-line-style flags*. The configuration system is the machinery that turns a user-supplied string into an effective, per-TPU-generation compile decision. There are three layers, and this page is the map of how a single knob travels through all three. **Layer 1 (flag ingest)** fabricates an `argv` from the `LIBTPU_INIT_ARGS` environment variable and hands it to `absl::ParseCommandLine`, which binds values onto the ~2048 `absl::Flag<T> FLAGS_<name>` globals that the `dlopen` constructor storm pre-registered. **Layer 2 (the two protos)** is where those bound flags become structured config: the generic `xla_*` flags land in `xla::DebugOptions` (290 wire-fields, the proto XLA shares across CPU/GPU/TPU), and the TPU-private `xla_tpu_*` / `xla_jf_*` / `megascale_*` flags land in `TpuCompilationEnvironment` (TCE) — a 1121-field master proto whose every field *is* a registered flag. **Layer 3 (the AUTO resolver)** is the part with no LLVM analogue: ~330 TCE fields are not plain values but `AutoProto` oneofs read through an `AutoOr<T>` tri-state (`AUTO` / `ENABLED` / `DISABLED`), and ~130 hand-written accessors collapse that tri-state into a concrete value using a per-knob polarity that *is* the documented default.
 
 The reference frame for a reimplementer is XLA's own flag system, with two TPU-specific twists. First, the flag *registry* is built at load time, not at parse time: `ParseCommandLine` only binds values to a table the constructor storm already populated, so a reimplementation that defers flag *registration* to init time has nothing to parse against. Second, the "default" of a knob is not a single number — for the ~330 AutoProto fields it is a *resolution rule* baked into each consumer (`AUTO`→off vs `AUTO`→on), and on top of *that* the per-codename MSA overlay rewrites a family of fields per `TpuVersion`. The effective value a JAX user gets is `flag-default ⊕ AUTO-resolution-polarity ⊕ per-version-overlay`, evaluated lazily at the consumer.
 
@@ -21,7 +21,7 @@ For reimplementation, the contract is:
 | **Flag ingest** | `tensorflow::tpu::GetLibTpuInitArguments @ 0x20ccca20` → `absl::ParseCommandLine` (inside `RealInitGoogle @ 0x210ae860`) |
 | **Env funnel** | `LIBTPU_INIT_ARGS` (str @ file `0x918c880`); the *whole* registered flag set is settable through it |
 | **Registered flags** | ~2048 `absl::Flag<T> FLAGS_<name>` globals (P-3-193 family breakdown); 2107 distinct names |
-| **DebugOptions proto** | `xla::DebugOptions`, ~111 wire-fields, 22 nested enums; `DefaultDebugOptionsIgnoringFlags @ 0x1e66a860` |
+| **DebugOptions proto** | `xla::DebugOptions`, 290 wire-fields, 17 nested enums; `DefaultDebugOptionsIgnoringFlags @ 0x1e66a860` |
 | **TCE proto** | `xla::jellyfish::TpuCompilationEnvironment`, 1121 fields, `sizeof 0x15e8`; `_table_ @ 0x21cfa9e0` |
 | **Flag→TCE bridge** | `OverrideTpuCompEnvByCmdLineFlags @ 0x1d73e640` · `SetFieldFromFlagString @ 0x1d73fcc0` · `CreateDefaultTpuCompEnv @ 0x1d73dfa0` |
 | **AUTO resolver** | `AutoOr<bool>::FromProtoOrDie @ 0xf795300` (`(present<<8)|val`); ~130 `ObjectView<TCE>` accessors `0x1d6b6420..0x1d6b9f60` |
@@ -49,8 +49,8 @@ STAGE 1 — INGEST  (env string → typed flag globals)            [env-vars.md,
                                                        (registry pre-built by the dlopen ctor storm)
 
 STAGE 2a — DEBUGOPTIONS  (the xla_* subset → shared proto)     [debugoptions-proto.md]
-  FLAGS_xla_foo  ↔  xla::DebugOptions.xla_foo                  ── 94 of 111 fields flag-wired
-    baseline = DefaultDebugOptionsIgnoringFlags   0x1e66a860    (17 fields are GPU/CPU proto-only)
+  FLAGS_xla_foo  ↔  xla::DebugOptions.xla_foo                  ── 290 fields; only 2 standalone-flag-wired
+    baseline = DefaultDebugOptionsIgnoringFlags   0x1e66a860    (rest reached via PJRT debug_options proto path)
 
 STAGE 2b — TCE  (the xla_tpu_*/xla_jf_*/megascale_* set → TPU proto)  [tpu-compilation-environment.md]
   FLAGS_xla_tpu_foo  →  TpuCompilationEnvironment field        ── 1121 fields, 1:1 flag↔field
@@ -74,7 +74,7 @@ The single most important structural fact is that the flag *families* split acro
 
 | Family | Count | Lands in | Detail page |
 |---|---:|---|---|
-| `xla_*` (generic) | 138 | `xla::DebugOptions` (94 of them flag-wired) | [debugoptions-proto.md](debugoptions-proto.md) |
+| `xla_*` (generic) | 138 | `xla::DebugOptions` (290-field proto; most reached via PJRT, not standalone flags) | [debugoptions-proto.md](debugoptions-proto.md) |
 | `xla_tpu_*` | 968 | `TpuCompilationEnvironment` (standalone, TPU-private) | [tpu-compilation-environment.md](tpu-compilation-environment.md) |
 | `xla_jf_*` | 148 | `TpuCompilationEnvironment` (Jellyfish backend) | [flag-families.md](flag-families.md) |
 | `xla_sc_*` / `barna_core_*` | 92 / 61 | `TpuCompilationEnvironment` (SparseCore / embedding) | [flag-families.md](flag-families.md) |
@@ -82,7 +82,7 @@ The single most important structural fact is that the flag *families* split acro
 | `xla_msa_*` / `xla_gf_*` / `xla_ior_*` / `xla_mosaic_*` / `xla_llo_*` | 49 | TCE + DebugOptions mix | [flag-families.md](flag-families.md) |
 | `tpu_*` | 69 | runtime/cache/driver (not compile-time) | [flag-families.md](flag-families.md) |
 
-> **QUIRK —** no `xla_gpu_*` flag is registered in this build (zero `AbslFlagHelpGenForxla_gpu_*` symbols), yet 17 GPU/CPU fields survive in the *shared* `DebugOptions` descriptor as proto-only fields. The TPU build strips the GPU flag wiring but keeps the GPU fields in the proto. A reimplementer enumerating DebugOptions fields will see GPU fields with no flag behind them — they are inert on TPU. (HIGH confidence; the proto-only set is enumerated on [debugoptions-proto.md](debugoptions-proto.md).)
+> **QUIRK —** no `xla_gpu_*` flag is registered in this build (zero `AbslFlagHelpGenForxla_gpu_*` symbols), yet the GPU/CPU fields survive in the *shared* `DebugOptions` descriptor as inert metadata — the bulk of the 290 fields are GPU/CPU carryovers with no flag behind them on TPU. The TPU build strips the GPU flag wiring but keeps the GPU fields in the proto. A reimplementer enumerating DebugOptions fields will see GPU fields with no flag behind them — they are inert on TPU. (CONFIRMED; the carryover set is enumerated on [debugoptions-proto.md](debugoptions-proto.md).)
 
 ---
 
@@ -122,7 +122,7 @@ Once `ParseCommandLine` has bound values onto the flag globals, two distinct con
 
 ### `xla::DebugOptions` — the shared, generic proto
 
-`DebugOptions` is the proto XLA shares across all backends; the `xla_*` (non-tpu) flags are its fields by 1:1 name (`--xla_foo` ↔ field `xla_foo`). 111 wire-field tags are present in libtpu's descriptor pool; 94 are flag-wired, 17 are GPU/CPU proto-only. The all-default baseline is `DefaultDebugOptionsIgnoringFlags @ 0x1e66a860` (confirmed in the decompile alongside `GetNonDefaultDebugOptions @ 0x1c920540` and `DumpNonDefaultDebugOptions @ 0x1c920d80`, which diff a config against that baseline for logging). The proto carries 22 nested enums (`StepMarkerLocation`, `CommandBufferSchedulingMode`, `WhileLoopUnrolling`, …) and an escape-hatch `xla_backend_extra_options` string→string map. Details, the proto-only field list, and the baseline values are on [debugoptions-proto.md](debugoptions-proto.md) and [default-debugoptions.md](default-debugoptions.md).
+`DebugOptions` is the proto XLA shares across all backends; the `xla_*` (non-tpu) flags name its fields (`--xla_foo` ↔ field `xla_foo`). 290 live wire-fields are present in libtpu's descriptor pool (max field# 501, 211 numbering gaps); most are GPU/CPU carryovers inert on TPU, and a direct cross-match finds only two registered-flag intersections (`xla_tpu_detect_nan`, `xla_tpu_detect_inf`) — the classic dump/HLO knobs reach DebugOptions through the PJRT `CompileOptions.debug_options` proto path, not as standalone absl flags. The all-default baseline is `DefaultDebugOptionsIgnoringFlags @ 0x1e66a860` (confirmed in the decompile alongside `GetNonDefaultDebugOptions @ 0x1c920540` and `DumpNonDefaultDebugOptions @ 0x1c920d80`, which diff a config against that baseline for logging). The proto carries 17 nested enums (`StepMarkerLocation`, `CommandBufferSchedulingMode`, `WhileLoopUnrolling`, …) and an escape-hatch `xla_backend_extra_options` string→string map. Details, the proto-only field list, and the baseline values are on [debugoptions-proto.md](debugoptions-proto.md) and [default-debugoptions.md](default-debugoptions.md).
 
 ### `TpuCompilationEnvironment` (TCE) — the TPU-private master proto
 
@@ -204,7 +204,7 @@ The same logical knob can be addressed with a version-qualified prefix so that o
 - [env-vars.md](env-vars.md) — the env-var roster (`LIBTPU_INIT_ARGS`, `TPU_LOAD_LIBRARY`, `LIBTPU_ON_GCE`, `TPU_LIBRARY_PATH`) and their consumers
 - [xla-flag-atlas.md](xla-flag-atlas.md) — the ~2107-name flag surface and the `AbslFlagHelpGenFor` enumeration method
 - [flag-families.md](flag-families.md) — the family breakdown (`xla_tpu_*`, `xla_jf_*`, `megascale_*`, `xla_sc_*`, `barna_core_*`, …) and which proto each lands in
-- [debugoptions-proto.md](debugoptions-proto.md) — `xla::DebugOptions`: 111 wire-fields, 22 enums, the 94 flag-wired vs 17 proto-only split
+- [debugoptions-proto.md](debugoptions-proto.md) — `xla::DebugOptions`: 290 wire-fields, 17 enums, the GPU/CPU-carryover vs flag-wired split
 - [default-debugoptions.md](default-debugoptions.md) — the `DefaultDebugOptionsIgnoringFlags @ 0x1e66a860` baseline
 - [tpu-compilation-environment.md](tpu-compilation-environment.md) — the TCE proto, `_table_` header, field#→offset mechanism
 - [tce-field-dictionary-a.md](tce-field-dictionary-a.md) / [tce-field-dictionary-b.md](tce-field-dictionary-b.md) — the per-field name/type/meaning dictionaries
