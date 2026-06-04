@@ -20,7 +20,7 @@ For reimplementation, the contract is:
 
 | | |
 |---|---|
-| **Firmware link-state read** | `jxc::IciControl::IsLinkUp(int)` @ `0xe7afe80` (state==1, port `< 5`) |
+| **Firmware link-state read** | `jxc::IciControl::IsLinkUp(int)` @ `0xe7afe80` (per-port bit `(state>>link)&1`, port `< 5`) |
 | **Interrupt status handler** | `jxc::IciControl::HandleIciLinkStatusChange(Span<int>,bool)` @ `0x21381e40` |
 | **All-links-up compare** | `jxc::IciControl::AllLinksUp(Span<int>,bool)` @ `0xe7b0200` |
 | **Health predicate** | `jxc::IciControl::IsHealthy(int)` @ `0xe7af720` (4-port loop) |
@@ -92,12 +92,14 @@ IciControl::IsHealthy (0xe7af720)                             ── 4-port heal
 ```c
 function IsLinkUp(link):                 // IciControl::IsLinkUp @ 0xe7afe80
     if link >= 5:                        // cmp $0x5 — ports 0..4 valid; ≥5 fails
-        return Error("port_ready_state index is invalid.")
-    state = fw->ReadPortReadyState(link) // vtable+0x40 on the firmware-comm object
-    return state == 1                    // 1 == the "up" code (same mailbox as bring-up)
+        return MakeErrorImpl<3>("Invalid link number %d", link)  // kInvalidArgument, line 153
+    state = fw->ReadPortReadyState()     // vtable+0x40 on the firmware-comm object, line 150
+    if link == 4:                        // default switch arm inside the <5 branch
+        LOG(FATAL) "port_ready index is invalid. "
+    return (state >> link) & 1           // per-port bit, ports 0..3; up iff bit set
 ```
 
-> **QUIRK —** the bound is `< 5`, not `< 4`. The host models up to **5** ICI ports per chip (4 physical SerDes + 1 reserved/loopback slot), even though `IsHealthy` iterates only the 4 physical ports. A reimplementation that sizes the port array at 4 will overflow on the reserved index.
+> **QUIRK —** the bound is `< 5`, not `< 4`. The host models up to **5** ICI ports per chip (4 physical SerDes + 1 reserved/loopback slot). The `< 5` index check returns `kInvalidArgument` (`"Invalid link number %d"`, line 153) only for `link >= 5`; index `4` passes the bound but hits a `LOG(FATAL)` default switch arm (`"port_ready index is invalid. "`), so only ports `0..3` actually resolve. `IsHealthy` iterates only those 4 physical ports. A reimplementation that sizes the port array at 4 will overflow on the reserved index. (The fuller `"port_ready_state index is invalid."` string belongs to the sibling `GetLinkStackReadyState` @ `0xe7afd00`, which extracts a 4-bit nibble per port rather than a single bit.)
 
 `HandleIciLinkStatusChange` is the interrupt-driven reaction, verified at `ici_control.cc:193/199/201/202`:
 
