@@ -335,6 +335,63 @@ Independent of the carrier split, three activation families are never output-fus
 
 Which *transcendental* opcodes a given generation has (and thus which activations fuse directly vs. fall back to a polynomial) is owned by the activation-inventory analysis; the relevant fact for *this* page is that the recognized shape (e.g. Conv+Bias+GELU) is only matchable when the target gen has the `Erf` ACT opcode.
 
+### `ReduceEmitter::EmitReduction` — the axis dispatcher behind `ReduceFuser`
+
+`ReduceFuser` / `ReduceOutputFuser` (rows in the [Fuser Map](#fuser-map)) recognize a `kReduce` and hand it to `xla::jellyfish::ReduceEmitter`, whose top-level entry is `EmitReduction` (`0x13e16240`, in `platforms/xla/service/jellyfish/lowering/reduce_emitter.cc`). This is the function that decides *which physical reduction primitive* a logical reduce becomes — and it is a thin dispatcher, not a loop nest: it validates, computes two axis bits, and tail-calls exactly one of five specialized emitters. Recovered by windowed disassembly of `0x13e16240`–`0x13e16720` (the next symbol, `EmitPrologue`; 1248 bytes).
+
+```c
+function ReduceEmitter::EmitReduction(this, reduce_map, window, dims,
+                                      output_span /*Span<LloValue* const>*/, builder):
+    // 1. Copy the window's working LloValue* array into a heap scratch buffer
+    n   = window->[0x358]                          // element count
+    src = window->[0x350]                          // LloValue** base
+    if n >> 0x3d != 0: throw length_error          // count*8 overflow guard
+    buf = operator new(n*8); memcpy(buf, src, n*8) // freed at function exit
+
+    // 2. CHECK every output operand lives in VMEM
+    for v in output_span:                          // unrolled x4 + scalar tail
+        ms = (v->[0xb] >> 2) & 0x1f                 // LloValue.memory_space bitfield
+        CHECK_EQ(ms, MemorySpace::kVmem /*==3*/)    // reduce_emitter.cc:1400
+                                                    // "output_span->memory_space() == MemorySpace::kVmem"
+
+    // 3. Fast path: a "keep sublanes" flag on the emitter
+    if this->[0x610] != 0:
+        return EmitKeepSublanesReduction(...)       // 0x13e11f40 (tail call)
+
+    // 4. Otherwise compute the two axis bits from the window's reduced-dimension list
+    kind = this->[0x2e8]                            // shape dimension-storage kind
+    CHECK(kind == 3 || kind == 5)                   // else FATAL shape.h, reduce_emitter.cc:843
+    ndim = (*dim_ptr) >> 1                          // tagged length; loss-of-tag → /2
+    CHECK(ndim >= 1)                                // "input_rank >= 1", reduce_emitter.cc:1407
+
+    last      = ndim - 1
+    lane_bit  = bit_test(this->minor_mask  @ [0x590], last)   // reduces minormost (lane) axis?
+    sub_bit   = (ndim == 1) ? 1 : bit_test(same_mask, ndim-2) // reduces second-minor (sublane) axis?
+
+    // window shape sign-probes pick the operand-shape pointer to forward (0x268/0x270, 0x168/0x170)
+
+    // 5. Four-way dispatch on (lane_bit, sub_bit)
+    if  sub_bit && lane_bit: r = EmitLaneAndSublaneReduction(...)  // 0x13e122c0
+    elif lane_bit:           r = EmitLaneReduction(...)            // 0x13e12d80
+    elif sub_bit:            r = EmitSublaneReduction(...)         // 0x13e15260
+    else:                    r = EmitMajorReduction(...)           // 0x13e15b00  (leading/major-dim)
+
+    free(buf)
+    return r
+```
+
+| Sub-emitter | Addr | Fires when the reduce touches… |
+|---|---|---|
+| `EmitKeepSublanesReduction` | `0x13e11f40` | the `this->[0x610]` keep-sublanes flag is set (segmented/windowed reduce that must preserve the sublane layout) |
+| `EmitLaneAndSublaneReduction` | `0x13e122c0` | both the lane (minormost) **and** sublane (second-minor) axes — a full 2D in-tile reduction |
+| `EmitLaneReduction` | `0x13e12d80` | only the lane axis (`llo.v*.xlane.*` cross-lane tree) |
+| `EmitSublaneReduction` | `0x13e15260` | only the sublane axis (`llo.v*.slane.*`) |
+| `EmitMajorReduction` | `0x13e15b00` | neither in-tile axis — a reduction over a leading/major dimension, accumulated across tiles |
+
+> **NOTE — the lane/sublane split is decided here, not in `ReduceFuser`.** `ReduceFuser` only knows it has a `kReduce`; it is `EmitReduction` that maps the reduced HLO dimensions onto the physical `xlane`/`slane` axes by bit-testing the reduced-dimension mask at `this->[0x590]` against the minormost (`ndim-1`) and second-minor (`ndim-2`) positions. The four-way fan-out is why the `ReduceFuser` row lists `llo.vmax.{x,s}lane.*` — those two suffixes are exactly the lane-only and sublane-only emitters; the `LaneAndSublane` and `Major` cases compose or sequence them. [Confidence: HIGH — every address is a resolved direct `call`/`jmp` target in the `0x13e16240` window; the CHECK strings (`output_span->memory_space() == MemorySpace::kVmem`, `input_rank >= 1`) are read from `.rodata` at the FATAL sites.]
+
+> **QUIRK — VMEM residency is a hard CHECK, not a fallback.** Before any axis logic, `EmitReduction` asserts `CHECK_EQ(v->memory_space(), kVmem)` for every output operand (`reduce_emitter.cc:1400`). The reduce emitter has no spill path: a reduce whose output landed in HBM or a non-VMEM space is a compiler invariant violation that aborts, not a slow case. This is the lowering-side mirror of the `FusionFitsInVmem` gate above — fusion must have already guaranteed the reduce output fits in VMEM, or this CHECK fires. [Confidence: HIGH — `cmp $0x3` against the byte-`0xb` `(>>2)&0x1f` `memory_space` field, FATAL via `MakeCheckOpString<MemorySpace,MemorySpace>` at line `0x578`=1400.]
+
 ---
 
 ## Related Components
