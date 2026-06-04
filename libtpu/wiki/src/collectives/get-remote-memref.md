@@ -230,11 +230,12 @@ getRemoteDeviceAndSparseCoreIds<EnqueueDMAOp>(builder, deviceId, coreId):
    deviceId = arith::IndexCastOp::create(... deviceId)     ; 0x13511722
    coreId   = arith::IndexCastOp::create(... coreId)       ; 0x135117C3
    switch (EnqueueDMAOp::getTargetCoreType()):              ; 0x14AF8B20
-       case 0 (TENSOR):  r13 = 0
-       case 1:           r13 = 2
+       case 0 (TENSOR):  r13 = 2
+       case 1:           r13 = 4
        case 2 (SPARSE):  tec  = *(int*)(*(QWORD*)(target + 0x948) + 0x90)   ; per-SC TEC count
                          coreId = DivUIOp(coreId, ConstantIndexOp(tec))     ; the SPARSE sub-core divide
                          r13 = 4
+   coreId = AddIOp(coreId, ConstantIndexOp(r13))            ; r13 added back as a core-type offset
    return FailureOr<DeviceAndCoreIds>{ deviceId, coreId }
 ```
 
