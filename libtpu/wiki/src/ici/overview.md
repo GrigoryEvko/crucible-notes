@@ -25,7 +25,7 @@ For reimplementation, the contract of the ICI subsystem is:
 | **Physical ports per chip** | **4** SerDes (`LINK0..LINK3`) — confirmed by the MGT stall-counter set |
 | **Logical directions** | ≤**6** (`kIciX/Y/Z {Plus,Minus}`); 2-D slice = 4, 3-D part = 6 |
 | **Topology discovery** | `Master::DiscoverTopology` @`0x1fbbe4e0` → `TopologyDiscoverer::Discover` @`0x1fbff7e0` |
-| **DL-up poll loop** | `IciControl::WaitForLinksUp` @`0xe7b1060` (1 ms quantum `0x3D0901`, 500 ms `0x77359401` fallback) |
+| **DL-up poll loop** | `IciControl::WaitForLinksUp` @`0xe7b1060` (fixed 1 ms sleep quantum, `mov $0x3D0900,%eax` @`0xe7b11c2`; no second/longer tier) |
 | **All-reduce emitter** | `AllReduceEmitter::EmitAllReduce` @`0x13742200`; strategy picker `BaseStrategyND::SelectNDStrategy` @`0x137c78e0` |
 | **Routing model** | Static, per-chip, dimension-order on a 3-D (twisted) torus; no runtime reroute |
 
@@ -194,7 +194,7 @@ Bring-up and runtime faults flow through a five-value `SliceFailureType` enum an
 
 > **[CONFIRMED]** The link model, bring-up entry, discovery entry, link count, and the all-reduce family were cross-checked against the IDA decompile of `libtpu.so` v0.0.40:
 > - `Master::InitSlice` @`0x1fbbaac0`: 11 `ExecuteOnAllWorkers` fan-out sites plus the `DiscoverTopology`, `SetGlobalChipId`, `SetRoutingTable`, `SetGtcConfiguration`, `ControlIciErrorReport`, `EnableIciDataLink`, `DetectRoutingTableDeadlock` sub-calls — the 16-step sequence is consistent.
-> - `IciControl::WaitForLinksUp` @`0xe7b1060`: the `0x3D0901` comparand (1 ms quantum), `AbslInternalSleepFor`, `IsLinkUp` + `GetLinkStackReadyState` per link, and `NameOfDenseEnum<&LinkStackReadyState_descriptor, 0, 7>` (7-value enum) — exact.
+> - `IciControl::WaitForLinksUp` @`0xe7b1060`: a single fixed sleep quantum `mov $0x3D0900,%eax` @`0xe7b11c2` feeding `AbslInternalSleepFor` (one tier only — no 500 ms fallback path exists), the `cmp $0x3D0901,%edx` deadline branch @`0xe7b1198`, `IsLinkUp` + `GetLinkStackReadyState` per link, and `NameOfDenseEnum<&LinkStackReadyState_descriptor, 0, 7>` (8-valued firmware code 0..7 → software enum) — exact.
 > - `Master::DiscoverTopology` @`0x1fbbe4e0` and `TopologyDiscoverer::Discover` @`0x1fbff7e0` present; the composite sub-objects and `ResilientToroidalTopology` install are reconstructed from the discovery chain.
 > - 4-SerDes-port count: confirmed by the `MGT_USER_ICI_LINK[0-3]_STALLS_*` counter set (4 links × 9 stall categories) in `.rodata`.
 > - `AllReduceEmitter::EmitAllReduce` @`0x13742200`: references `Pincer`, `UniDirection`, `Binomial`, `RingLocation`; `BaseStrategyND::ComputeColorDimensions` @`0x137c3ba0` signature carries `bitset<3>` and returns `long[6][3]` (`PA6_A3_l`); `GetResourceFromIciResource` @`0x1c894c00` and `CalculateBisectionBandwidth` @`0x133ef4c0` over `vector<IciResource>` present — exact.
