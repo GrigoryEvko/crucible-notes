@@ -1,6 +1,6 @@
 # Methodology (Deep)
 
-> *All counts, sizes, and addresses on this page apply to the `libtpu.so` inside `libtpu-0.0.40-cp314-cp314-manylinux_2_31_x86_64.whl`: a 781,691,048-byte ELF64 shared object, build-id `89edbbe81c5b328a958fe628a9f2207d`, reported runtime version `0.103`. A different wheel will differ in every figure below.*
+> *All counts, sizes, and addresses on this page apply to the `libtpu.so` inside `libtpu-0.0.40-cp314-cp314-manylinux_2_31_x86_64.whl`: a 781,691,048-byte ELF64 shared object, build-id `89edbbe81c5b328a958fe628a9f2207d` (wheel `0.0.40`). A different wheel will differ in every figure below.*
 
 ## Abstract
 
@@ -28,7 +28,7 @@ For an auditor, the contract is:
 | **Per-function artifacts** | 884,843 each in `context/`, `decompiled/`, `disasm/`, `graphs/` |
 | **Decompilation failures** | **516** (no `cfunc` returned) |
 | **Analysis problems** | **7,915** (`problems` sidecar, 805,426 B) |
-| **Switch tables / segments / RTTI rows** | 33,016 · 55 · 160,566 |
+| **Switch tables / segments / RTTI rows** | 33,016 · 55 · 160,351 |
 | **Confidence semantics** | Defined once in [evidence-conventions](../front/evidence-conventions.md) |
 
 ---
@@ -51,7 +51,7 @@ The deliverable of extraction is the sidecar family: one JSON file per kind of r
 | `function_addresses` | Flat address→name index (fast lookup) | 187,509,657 B (179 MB) | 884,832 | CERTAIN |
 | `fixups` | Relocations / address fixups | 119,612,914 B (115 MB) | — | CERTAIN |
 | `data_tables` | Recovered static data tables | 114,277,117 B (109 MB) | — | CERTAIN |
-| `rtti` | C++ RTTI: type-info, vtables, class hierarchy | 64,877,616 B (62 MB) | 160,566 | CERTAIN |
+| `rtti` | C++ RTTI: type-info, vtables, class hierarchy | 64,877,616 B (62 MB) | 160,351 | CERTAIN |
 | `problems` | IDA-flagged analysis problems (`addr`/`func`/`type`) | 805,426 B (788 KB) | 7,915 | CERTAIN |
 | `structures` | Recovered struct/class layouts | 289,703 B (284 KB) | — | HIGH |
 | `native_imports` | Dynamic-import (PLT/GOT) symbol surface | 221,835 B (217 KB) | — | HIGH |
@@ -90,7 +90,7 @@ Per-function artifact files (each directory) .. 884,843
 Strings ....................................... 1,249,324
 Switch / jump tables .......................... 33,016
 ELF segments .................................. 55
-RTTI rows (type-info + vtable entries) ........ 160,566
+RTTI rows (type-info + vtable entries) ........ 160,351
 
 Decompilation failures (no cfunc) .............     516   (0.058% of functions)
 Analysis problems (problems sidecar) ..........   7,915
@@ -175,7 +175,7 @@ A symbolized binary is seductive — a name reads like documentation — so ever
 
 ```text
 RTTI ↔ vtable
-  Source: rtti sidecar (160,566 rows) + the function whose address sits in a
+  Source: rtti sidecar (160,351 rows) + the function whose address sits in a
   vtable slot. A type-info record names a class; the vtable lists its virtual
   method addresses; each address resolves (via functions sidecar) to a named
   member. Agreement of all three pins a method's identity and its dispatch
@@ -280,5 +280,5 @@ The decompilation pass did not run as one monolithic export. It was driven in ~9
 - [Evidence & Confidence Conventions](../front/evidence-conventions.md) — owns the four-level Confidence scale and the known-extraction-limits contract that this page's failure taxonomy quantifies.
 - [Forensics Overview](../forensics/overview.md) — the structural starting point: sections, sizes, and headline counts confirmed directly against the bytes.
 - [Dispatch-Table Taxonomy](../forensics/dispatch-table-taxonomy.md) — how the 33,016 `switches` and the RTTI graph are read; the `fixup↔table` cross-validation pattern in practice.
-- [RTTI / Vtable Census](../forensics/rtti-vtable-census.md) — the 160,566-row `rtti` sidecar in depth; the `RTTI↔vtable` agreement pattern's home page.
+- [RTTI / Vtable Census](../forensics/rtti-vtable-census.md) — the 160,351-row `rtti` sidecar in depth; the `RTTI↔vtable` agreement pattern's home page.
 - [Symbol Namespace Index](symbol-namespace-index.md) — what the 822,847 demangled names partition into; the namespace surface the coverage dashboard summarizes.
