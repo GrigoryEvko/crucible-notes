@@ -83,7 +83,7 @@ function StartRemoteDma(b, src, dst, remoteCoreId, ...):       // 0x133EBCC0
     fullSlice   = SubsliceToFullSlice(b, chipId)                // 0x133E79A0 @0x133EBF22 → v132
 
     // [7] optional strides → ISA strides, then EMIT
-    if dma_strides.present[+112] == 1:                          // @0x133EBFAB
+    if dma_strides.present[+112] == 1:                          // @0x133EBF94
         isaStrides = ConvertDmaStridesToIsaStrides(b, dma_strides)   // 0x133EAFC0 @0x133EBFB0
         DmaGeneralStartOp::create(b, ..., remoteBase, ..., fullSlice, ...,
                                   isaStrides...)                // 0x145B1880 @0x133EC1DC  (with strides)
@@ -112,7 +112,7 @@ The prologue runs three `GetMemorySpace(...) == 2` tests (memory space 2 == `til
 
 ### The two emit shapes
 
-The driver ends in one of two `DmaGeneralStartOp::create` calls, selected on the optional `DmaStrides` present byte (`*(dma_strides + 112) == 1`, `0x133EBFAB`):
+The driver ends in one of two `DmaGeneralStartOp::create` calls, selected on the optional `DmaStrides` present byte (`*(dma_strides + 112) == 1`, `0x133EBF94`):
 
 - **strided** (`0x145B1880`, call @`0x133EC1DC`): the longer arg list, preceded by `ConvertDmaStridesToIsaStrides` (`0x133EAFC0`) which lowers the `DmaStrides` triple to ISA stride form; the emit carries the extra stride `ValueRange`s.
 - **contiguous** (`0x145B16E0`, call @`0x133EC41D`): the shorter arg list, no stride operands.
@@ -266,7 +266,7 @@ The headline negative result: **the cross-chip pointer the DMA engine consumes d
 | `LoadSubsliceOrigin` | `0x133E7840` | `SubsliceOriginOp` (runtime origin chip id) → coords | CONFIRMED |
 | `ChipIdToCoordinates` | `0x133E7640` | radix decompose chip id → `(x, y, z)` | CONFIRMED |
 | `ComputeRemoteCoreIndex` | `0x133E7F80` | megacore-aware destination core index | CONFIRMED |
-| `IdxConst` | `0x133E6BA0` | `arith.ConstantIndexOp` (with `v ≥ 0` check) | CONFIRMED |
+| `IdxConst` | `0x133E6BA0` | `arith.ConstantIndexOp` (with `value < kMaxNumberOfElements` = `< 2³²` check) | CONFIRMED |
 | `GetRemoteMemBase` | `0x13D88660` | remote data base (fed the global core id) | CONFIRMED |
 | `ConvertDmaStridesToIsaStrides` | `0x133EAFC0` | `DmaStrides` → ISA stride form | CONFIRMED |
 | `DmaGeneralStartOp::create` | `0x145B1880` / `0x145B16E0` | emit `sc_tpu.dma_general_start` (strided / contiguous) | HIGH (operand→field map) |
