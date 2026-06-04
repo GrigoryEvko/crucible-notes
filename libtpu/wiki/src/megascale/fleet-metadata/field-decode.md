@@ -250,7 +250,7 @@ view into the `HostCommandSchedulerFactory`.
 | Type / string | rg -a count |
 |---------------|-------------|
 | `MultiSliceTopologyAndLocationProto` (string) | 37 |
-| `MultiSliceTopologyAndLocation` (class symbols) | 11 |
+| `MultiSliceTopologyAndLocation` (distinct member fns) | 7 |
 | `NetworkAddressMapping` | 102 |
 | `HostNetworkAddress` | 58 |
 | `EndpointAddresses` | 136 |
