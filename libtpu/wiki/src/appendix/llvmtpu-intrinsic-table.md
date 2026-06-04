@@ -1,6 +1,6 @@
 # LlvmTpu Intrinsic Table
 
-> *All counts, names, and addresses on this page apply to `libtpu.so` v0.103 from the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`, 745 MB, ELF x86-64, not stripped). Other libtpu builds add/remove intrinsics per generation; the 1356 figure is exact for this build.*
+> *All counts, names, and addresses on this page apply to `libtpu.so` from the `libtpu-0.0.40-cp314` wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`, 745 MB, ELF x86-64, not stripped). Other libtpu builds add/remove intrinsics per generation; the 1356 figure is exact for this build.*
 
 ## Abstract
 
@@ -13,7 +13,7 @@ The single most important structural fact, and a correction to the naive expecta
 For reimplementation, the catalog must capture:
 
 - **The name↔class bijection** — every `llvm.tpu.X` intrinsic has one `mlir::sparse_core::tpu_X` Model and vice-versa; the printed-name string IS the LLVM intrinsic name carried into the backend.
-- **The functional taxonomy** — every intrinsic belongs to exactly one of ~20 families; the families sum to 1356.
+- **The functional taxonomy** — every intrinsic belongs to exactly one of ~20 families; the 20 enumerated families recover 1341 of the 1356, with ~15 left on MEDIUM-confidence family boundaries (see [§At-a-Glance](#at-a-glance--family-taxonomy)).
 - **The family→hardware map** — which LLO slot/op, SparseCore compute unit, or stream-engine descriptor each family lowers to, and via which pass.
 - **Per-gen variation** — newer generations add intrinsics (this build is the union for its target gens); the count is a per-build snapshot.
 
@@ -48,7 +48,7 @@ The 1356 figure is not taken on faith; it is the agreement point of two independ
 
 ## At-a-Glance — Family Taxonomy
 
-Every intrinsic is assigned to exactly one family; the families sum to 1356. The LLO/HW column is the lowering target: a TensorCore-style LLO slot/op where the SparseCore reuses it, a SparseCore-specific compute unit, or the SparseCore stream engine. Status: `C` = encoding byte-confirmed elsewhere, `I` = engine identified by name family, opcode not individually byte-dumped.
+Every intrinsic is assigned to exactly one family. The 20 enumerated family rows recover 1341 of the 1356 grep-confirmed names; the remaining 15 sit on the MEDIUM-confidence boundaries between adjacent families and are carried in the explicit remainder row rather than force-assigned. The LLO/HW column is the lowering target: a TensorCore-style LLO slot/op where the SparseCore reuses it, a SparseCore-specific compute unit, or the SparseCore stream engine. Status: `C` = encoding byte-confirmed elsewhere, `I` = engine identified by name family, opcode not individually byte-dumped.
 
 | Family | # | LLO op / hardware unit | St | Confidence |
 |---|---:|---|---|---|
@@ -72,9 +72,10 @@ Every intrinsic is assigned to exactly one family; the families sum to 1356. The
 | [sort / unique / dupcount](#sort--unique--dupcount) | 11 | SparseCore sort/dedup unit (embedding dedup) | I | MEDIUM |
 | [task / control / structural](#task--control--structural) | 10 | SparseCore tile-task + structural (task_dispatch, loop_*, barrier, nop) | C | MEDIUM |
 | [i1-mask width conversion](#i1-mask-width-conversion) | 5 | VPU mask slot — vector-mask width re-pack | C | HIGH |
+| unclassified remainder (boundary/misc) | 15 | spread across the MEDIUM-confidence families — not separately enumerated | I | LOW |
 | **Total** | **1356** | | | |
 
-Sum check: `834+87+74+47+40+32+28+24+22+22+21+16+16+14+14+12+12+11+10+5 = 1356`.
+Sum check: `834+87+74+47+40+32+28+24+22+22+21+16+16+14+14+12+12+11+10+5 = 1341`; the 20 enumerated families recover 1341 of the 1356 grep-confirmed names, leaving 15 intrinsics on the MEDIUM-confidence family boundaries that this taxonomy does not separately bucket (the "unclassified remainder" row above). The 1356 total is the byte-confirmed truth; the per-family split is the analyst classification and is exact only for the grep-anchored families (stream, pack/unpack, vld/vst, wait/watch, dma, scan, convert, alloca, sync, addrspacecast, i1-width).
 
 ---
 
@@ -174,7 +175,7 @@ The sflag (semaphore-flag) atomic surface splits into three sub-families that th
 | `llvm.tpu.syncadd.done` / `.notdone` | add + signal done / not-done |
 | `llvm.tpu.syncadd.remote` / `.remote.done` / `.remote.doneinv` | add to a peer core's sflag over ICI |
 | `llvm.tpu.syncadd.tile` / `.both` / `.other` | per-tile / both-direction / other-bank target |
-| `llvm.tpu.syncset` / `.done` / `.notdone` / `.both` | atomic set |
+| `llvm.tpu.syncset.done` / `.notdone` / `.both` / `.both.done` | atomic set |
 | `llvm.tpu.syncset.remote[.done/.doneinv]` | remote set over ICI |
 | `llvm.tpu.syncset.tile[.done/.doneinv]` | per-tile set |
 | `llvm.tpu.syncsetpa` | set, public-access bank |
@@ -367,7 +368,7 @@ The dual base (`smem.base` vs `tilespmem.base`) is the dual-address-space window
 
 ## Trace / Telemetry / sc-control
 
-12 ops. SparseCore control/trace and telemetry. Representative: `llvm.tpu.strace`, `llvm.tpu.event`, `llvm.tpu.spill.debug`, `llvm.tpu.log`, `llvm.tpu.mprefix`, `llvm.tpu.read.global.cycle.count`, `llvm.tpu.read.local.cycle.count`, `llvm.tpu.ssetpstate`, `llvm.tpu.ssettm`, `llvm.tpu.sc.dma.core.id`, `llvm.tpu.sc.sint`. (`MEDIUM` — boundary with task/structural.)
+12 ops. SparseCore control/trace and telemetry. Representative: `llvm.tpu.sc.strace`, `llvm.tpu.event`, `llvm.tpu.spill.debug`, `llvm.tpu.log`, `llvm.tpu.mprefix`, `llvm.tpu.read.global.cycle.count`, `llvm.tpu.read.local.cycle.count`, `llvm.tpu.ssetpstate`, `llvm.tpu.sc.ssettm`, `llvm.tpu.sc.dma.core.id`, `llvm.tpu.sc.sint`. (`MEDIUM` — boundary with task/structural.)
 
 ---
 
@@ -444,7 +445,7 @@ The 890 default-builder ops (bare transcendentals `tpu_sin`/`tpu_rcp`, the `tpu_
 | `registerLlvmTpuDialectOperations6` | `0x148dc3c0` |
 | `registerLlvmTpuDialectOperations7` | `0x1492d5c0` |
 | `registerLlvmTpuDialectOperations8` | `0x14982d00` |
-| `registerLlvmTpuDialectOperations9` | (final batch) |
+| `registerLlvmTpuDialectOperations9` | `0x149d88e0` (final batch) |
 
 > **NOTE —** these intrinsics register through this separate 10-batch `LlvmTpuDialect` path, *not* through the high-level `ScDialect` 115-op `addOperations` `@0x14594f60`. A reimplementer tracing only the `ScDialect` registration will see "none distinct" for the intrinsic surface and miss all 1356.
 
