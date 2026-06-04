@@ -27,7 +27,7 @@ For orientation, the contract this section reconstructs is:
 | **Device sub-profiler** | `xprof::tpu::TpuProfilerImpl::CollectData(XSpace*)` @ `0xef34860` |
 | **Backend** | `tsl::profiler::ProfilerCollection` (built by `CreateProfilers` @ `0x1cf50860`) |
 | **xprof export** | serialized `XSpace` bytes via [PJRT Profiler extension](../pjrt/ext-profiler.md) (type 1) + legacy `TpuProfiler_*` C-ABI |
-| **Telemetry schema** | `tpu_telemetry.proto` (6 msgs, 2 enums) → `AllCoreStateSummaries`, gRPC-pulled |
+| **Telemetry schema** | `platforms/deepsea/jellyfish/xdb/tpu_telemetry/tpu_telemetry.proto` (6 msgs, 2 enums) → `AllCoreStateSummaries`, gRPC-pulled |
 | **Run gate** | `xprof::tpu::TpuProfilerControlListener` @ `GetOrCreateTpuProfilerControlListener` `0xf332800` |
 
 ---
@@ -54,7 +54,7 @@ The xprof half of the subsystem is a five-stage flow from hardware ring buffer t
 [5] xprof::tpu TpuXLineBuilder::AddEvent → device-plane XEvent + XStats
       │  trace_point_id → XEventMetadata.name ; timestamp → XEvent offset/duration_ps ; scalars → XStat
       ▼
-   one tensorflow.profiler.XSpace  ── serialized ──▶ PJRT_Profiler_CollectData buffer
+   one tensorflow.profiler.XSpace  ── serialized ──▶ PLUGIN_Profiler_CollectData buffer
 ```
 
 ### [1] Capture — on-device trace points
@@ -112,7 +112,7 @@ Each backend op (`ProfilerCollection::Start` @ `0xf6a1640`, `Stop` @ `0xf6a16c0`
 | Sub-profiler | Side | Key symbol | Addr | Confidence |
 |---|---|---|---|---|
 | `xprof::tpu::TpuProfilerImpl` | device — drains per-chip ring buffers, decodes, builds device planes | `TpuProfilerImpl::CollectData(XSpace*)` | `0xef34860` | CERTAIN |
-| `xprof::cpu::HostTracer` | host — `TraceMe`/CPU events into `/host:0` | (factory-registered; `CollectData` per interface) | — | HIGH |
+| `xla::profiler::HostTracer` | host — `TraceMe`/CPU events into `/host:0` (factory in `xprof::cpu`) | `HostTracer::CollectData(XSpace*)` | `0xf32fb40` | CERTAIN |
 | `tsl::profiler::ThreadpoolProfilerInterface` | host — threadpool dispatch events | `ThreadpoolProfilerInterface::CollectData(XSpace*)` | `0xf3326c0` | CERTAIN |
 
 `CreateProfilers` wraps each factory output in a `ProfilerController` for crash isolation; the full factory inventory is populated lazily across several static-init blocks and is not exhaustively enumerated (LOW confidence on completeness — same gap noted on the PJRT page).
@@ -129,7 +129,7 @@ There is no single device-trace codec: each TPU chip family has its own `TraceCo
 
 | Family | `CreateTraceCodec` | TraceEntry type | block_id | timestamp | Codec page area | Confidence |
 |---|---|---|---|---|---|---|
-| pxc | `pxc::driver::profiler::CreateTraceCodec` (`plc` symbol @ `0xf5af2c0`) | fixed-width `TraceEntry` | 3 | 48 | [TraceEntriesCoder](trace-entries-coder.md) | CERTAIN |
+| pxc | `plc::driver::profiler::CreateTraceCodec` @ `0xf5af2c0` (pxc family) | fixed-width `TraceEntry` | 3 | 48 | [TraceEntriesCoder](trace-entries-coder.md) | CERTAIN |
 | vfc | `vfc::driver::profiler::CreateTraceCodec` @ `0xf5f5da0` | fixed-width `TraceEntry` | 6 | 45 | [Payload: vfc/vlc/gfc](payload-vfc-vlc-gfc.md) | CERTAIN |
 | vlc | `vlc::driver::profiler::CreateTraceCodec` @ `0xf5d5180` | fixed-width `TraceEntry` | 3 | 48 | [Payload: vfc/vlc/gfc](payload-vfc-vlc-gfc.md) | CERTAIN |
 | glc | `glc::driver::profiler::CreateTraceCodec` @ `0xf6282e0` | fixed-width `TraceEntry` | 6 | 45 | [Payload: vfc/vlc/gfc](payload-vfc-vlc-gfc.md) | CERTAIN |
@@ -161,7 +161,7 @@ A small set of cross-cutting render/timeline concerns sit above the raw bands: t
 
 ## Telemetry: The Orthogonal State Snapshot
 
-`tpu_telemetry.proto` (package `platforms_deepsea.jellyfish.xdb.tpu_telemetry`, 6 messages, 2 enums, no imports) is **not** part of the xprof pipeline — it is a separate, pull-on-demand core-state snapshot produced by the on-host xdb state server, confirmed in the binary by the `libtpu.sdk.tpu_telemetry.*` serialize symbols. Its root, `AllCoreStateSummaries`, is a `map<int32 global_core_id, CurrentCoreStateSummary>`; each `CurrentCoreStateSummary` carries `repeated SequencerInfo` (per hardware sequencer: `pc`, `tag`, `tracemark`, `program_id`, `run_id`, `hlo_location`) and a `repeated QueuedProgramInfo` launch queue. The full field-by-field schema, the producer/consumer graph (xdb debugger, Cloud TPU `RuntimeMetricService.GetTpuRuntimeStatus`, Megascale hang-detector), and the boundary against the companion hardware-telemetry protos are owned by [tpu_telemetry.proto](tpu-telemetry-proto.md).
+`tpu_telemetry.proto` (package `platforms_deepsea.jellyfish.xdb.tpu_telemetry`, 6 messages, 2 enums, no imports) is **not** part of the xprof pipeline — it is a separate, pull-on-demand core-state snapshot produced by the on-host xdb state server, confirmed in the binary by the `platforms_deepsea::jellyfish::xdb::tpu_telemetry::*` proto symbols (e.g. `AllCoreStateSummaries`, `CurrentCoreStateSummary`, `SequencerInfo`, `QueuedProgramInfo`, `TpuCoreIdentifier`, `TpuCoreOnChipProto`) and the descriptor path `platforms/deepsea/jellyfish/xdb/tpu_telemetry/tpu_telemetry.proto`. Its root, `AllCoreStateSummaries`, is a `map<int32 global_core_id, CurrentCoreStateSummary>`; each `CurrentCoreStateSummary` carries `repeated SequencerInfo` (per hardware sequencer: `pc`, `tag`, `tracemark`, `program_id`, `run_id`, `hlo_location`) and a `repeated QueuedProgramInfo` launch queue. The full field-by-field schema, the producer/consumer graph (xdb debugger, Cloud TPU `RuntimeMetricService.GetTpuRuntimeStatus`, Megascale hang-detector), and the boundary against the companion hardware-telemetry protos are owned by [tpu_telemetry.proto](tpu-telemetry-proto.md).
 
 It carries *core execution state* only — not HBM bytes, temperature, watts, ICI BER, or ECC counters; those live in purpose-built companion protos (`utilization_metrics.proto`, `power_metrics.proto`, `error_report.proto`, …) outside this schema. The one gen-aware surface is the `TpuCoreTypeProto` / `TpuSequencerTypeProto` enum, which encodes the SparseCore evolution: `SPARSE_CORE_V0` (sequencer + address handler) vs the current `SPARSE_CORE` (scalar sequencer + Tile-Access-Core + Tile-Execute-Core sequencers, ids 4/5/6).
 
