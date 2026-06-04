@@ -149,7 +149,7 @@ When the primary 6-bit value names a class, the concrete op lives in a wider esc
 
 ### Control ops (11-bit escape)
 
-These are the branch/call/fence/convert ops. The escape field sits above the 6-bit primary (Alu0 struct bit 48 / Alu1 bit 21). `Halt` (`0x1eb67500`) confirms the base: `(word15 & 0x7FF) == 0` → control `0x00`. `BranchAbsolute` (`0x1eb67d40`): `(word3 & 0x7FF000000000000) == 0x4000000000000`, `0x4000000000000 >> 50 = 0x04`.
+These are the branch/call/fence/convert ops. The escape field sits above the 6-bit primary (Alu0 struct bit 48 / Alu1 bit 21). `Halt` (`0x1eb67500`) confirms the base: `(word15 & 0x7FF) == 0` → control `0x00`. `BranchAbsolute` (`0x1eb67d40`): `(word3 & 0x7FF000000000000) == 0x4000000000000`, `0x4000000000000 >> 48 = 0x04`.
 
 | Opcode | Mnemonic | Opcode | Mnemonic |
 |---:|---|---:|---|
