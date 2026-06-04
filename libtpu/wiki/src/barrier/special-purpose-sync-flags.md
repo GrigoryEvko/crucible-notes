@@ -87,7 +87,7 @@ Two properties matter for a reimplementer:
 - **The scalars are stored verbatim.** The writer's `>>8` / `<<8` split + low-byte `movzbl` (visible in the raw disassembly) is a register-allocation artifact: it reconstructs the exact proto value while carrying the presence bool separately in bit 32 of the packed qword. The presence bool is computed `setg` (`value > 0`), so a zero or negative value reads as absent.
 - **The element ordering is not the proto order.** Note the element stores `tile_overlay` first (`+0x20`) then `sequencer_overlay` (`+0x28`), inverting the proto field order (f4 `sequencer_overlay`, f5 `tile_overlay`). The struct sinks (§5) read the element offsets, not the proto offsets — `Target::Init` reads element `+0x28` for `sequencer_overlay`.
 
-> **CONFIRMED (decompile) —** in `FromProto`, the element base is `v1047 << 6` (= `core * 0x40`) and the scalar presence is packed via `| 0x100000000` (lines `v705 + 0x100000000`, `v436 | 0x100000000`, `*((unsigned int *)v753 + 6) | 0x100000000`). The repeated-field copy is `_Znwm` + `memcpy`. This matches the proto→element→struct chain exactly.
+> **CONFIRMED (decompile) —** in the `special_purpose_sync_flags` loop of `FromProto`, the element base is `v1047 << 6` (= `core * 0x40`), and per element the four scalars are reconstructed verbatim (`>>8` / `<<8 | low-byte` register split) with the presence bool stored separately: `sequencer_overlay` presence is carried as `v706 = v705 + 0x100000000` (= `*(int*)(msg+0x30)`, bit 32 = `value > 0`); `tile_overlay`/`global_barrier`/`local_barrier` presence are the byte `setg` flags `v710`/`v711`/`v714` (= `*(int*)(msg+0x34/0x38/0x3c) > 0`) written at element `+0x24`/`+0x34`/`+0x3c`. The readers (`Target::Init` / `SparseCoreTarget::Init`) test `& 0x100000000` on the packed qword. The repeated-field copy is `operator new(4*count)` + `memcpy`. This matches the proto→element→struct chain exactly.
 
 ---
 
@@ -219,7 +219,7 @@ EnumMap<TpuCoreType, SpecialPurposeSyncFlags, 3>  @TpuChipConfig+0x2a0  (stride 
         │     +0x38 local_barrier_sflag → +0x208  (→ ReservedLocalBarrierSflag, MemSpace 5)
         │
         ├── TpuPxcDriver::InitializeCores @0xe806500  (reads only the cr vector +0x08/+0x10)
-        └── TpuProfilerControlListener::CanStartProfiler @0xf3328f9  (profiler gate)
+        └── TpuProfilerControlListener::CanStartProfiler @0xf3328c0  (profiler gate)
 ```
 
 The `compiler_reserved` carve (the `−5` reservation on TC, the SC full-range, and the per-id / global / megacore / all-reduce SFLAG formulas built from `base`/`count`) is the subject of [Barrier-to-SFLAG Binding](barrier-to-sflag-binding.md). This page stops at the field stores; it does not re-derive the number formulas.
@@ -230,7 +230,7 @@ The `compiler_reserved` carve (the `−5` reservation on TC, the SC full-range, 
 
 > **[CONFIRMED]** Re-derived from the IDA decompile of `libtpu.so` v0.0.40 for this page:
 > - `GetSpecialPurposeSyncFlags` @`0x20afcf40`: `v2 = *(chip+864)`; `if (!_bittest64(&v2, core)) return 0`; `if ((unsigned)core >= 3) ud1`; `return chip + 672 + (core<<6)` — i.e. `+0x360` bitmask, `+0x2a0` base, `core<<6` stride — byte-exact.
-> - `TpuChipConfig::FromProto` @`0x20aea100`: element base `core << 6`; scalar presence packed via `| 0x100000000` (three independent sites); `compiler_reserved` via `_Znwm` + `memcpy` — confirms the element build and the (value, present) packing.
+> - `TpuChipConfig::FromProto` @`0x20aea100`: in the `special_purpose_sync_flags` loop the element base is `core << 6`; the four scalars are stored verbatim (`>>8`/`<<8|low-byte` reconstruction), `sequencer_overlay` presence carried as `v705 + 0x100000000` and the other three as `setg (value > 0)` bytes at element `+0x24`/`+0x34`/`+0x3c`; `compiler_reserved` via `operator new(4*count)` + `memcpy` — confirms the element build and the (value, present) packing.
 > - `Target::Init` @`0x1d60fc20`: `*((_DWORD*)target + 560) = *base` (= `Target+0x8c0` base); `*((_DWORD*)target + 561) = size − 5` (= `Target+0x8c4` count); sequencer_overlay gated by `& 0x100000000` at element `+0x28`; `DieBecauseNull("…GetSpecialPurposeSyncFlags( ::tpu::TpuCoreType::kTensorCore)")` on `NULL` — exact.
 > - `SparseCoreTarget::Init` @`0x1d612b20`: `+464`/`+468` = `+0x1d0`/`+0x1d4` (base / count, no −5); the four scalar stores `+488`/`+512`/`+516`/`+520` (= `+0x1e8`/`+0x200`/`+0x204`/`+0x208`), each gated by `& 0x100000000` — exact.
 >
