@@ -1,6 +1,6 @@
 # filewrapper_toc Catalog
 
-> *All addresses on this page apply to libtpu.so v0.103 from the libtpu-0.0.40-cp314 wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`). Other versions will differ.*
+> *All addresses on this page apply to libtpu.so from the libtpu-0.0.40-cp314 wheel (build-id `89edbbe81c5b328a958fe628a9f2207d`). Other versions will differ.*
 
 ## Abstract
 
@@ -71,7 +71,7 @@ filewrapper_toc @ 0x224bf798 (488 B)
   slot 1  @ 0x224bf7a0  --reloc-->  desc 0x215fc950
   slot 2  @ 0x224bf7a8  --reloc-->  desc 0x217935a0
   ...
-  slot 60 @ 0x224bf970  --reloc-->  desc 0x2203ff90
+  slot 60 @ 0x224bf978  --reloc-->  desc 0x2203ff90
 ```
 
 The count is doubly confirmed: `0x1e8 / 8 = 61`, and exactly 61 relocations
@@ -369,7 +369,7 @@ The precomputed all-reduce / ICI route tables. There are three sub-kinds:
 > `8x8x8.binarypb.compressed` at entries 27, 54, 57 with sizes 171,623 /
 > 173,801 / 176,905 B). These are **distinct blobs** — different fault-count
 > instances of the same shape, re-registered under the same basename. The ten
-> `.compressed` entries alone are ~4.05 MiB, the bulk of the TOC payload. As
+> `.compressed` entries alone are 3,753,440 B (~3.58 MiB), the bulk of the TOC payload. As
 > with `architectural_resources.binarypb`, do not dedup on basename: the data
 > VAs and sizes differ.
 
