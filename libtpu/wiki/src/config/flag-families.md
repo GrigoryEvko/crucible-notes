@@ -101,7 +101,7 @@ These prefixes are TPU-specific. Every one is a registered flag whose value land
 
 ### `xla_tpu_*` — the master TPU surface
 
-The dominant family: **904 registered flags** (`AbslFlagHelpGenForxla_tpu_*` symbols; the catalogued 968-distinct union additionally counts rodata-only aliases and error-message-only references). Every `xla_tpu_*` flag is a TCE field by name. The family spans the entire TPU compiler and runtime: scheduler (LHS/ILP/BRKGA/Dozer/LEM), MSA (scoped VMEM/CMEM, prefetch), fusion (rwb/dot-dot/nested-dot/MRB), ICI collectives, numerics, layout, dot/conv, autotune/AutoFDO, and debug/dump. The subsystem keyword taxonomy and representative flags per group are on [xla-flag-atlas.md](xla-flag-atlas.md). ~330 of the TCE fields these flags back are `AutoProto` tri-state knobs (resolved through `AutoOr<T>`), detailed on [overview.md](overview.md) §4.
+The dominant family: **909 registered flags** (`AbslFlagHelpGenForxla_tpu_*` symbols; the catalogued 968-distinct union additionally counts rodata-only aliases and error-message-only references). Every `xla_tpu_*` flag is a TCE field by name. The family spans the entire TPU compiler and runtime: scheduler (LHS/ILP/BRKGA/Dozer/LEM), MSA (scoped VMEM/CMEM, prefetch), fusion (rwb/dot-dot/nested-dot/MRB), ICI collectives, numerics, layout, dot/conv, autotune/AutoFDO, and debug/dump. The subsystem keyword taxonomy and representative flags per group are on [xla-flag-atlas.md](xla-flag-atlas.md). ~330 of the TCE fields these flags back are `AutoProto` tri-state knobs (resolved through `AutoOr<T>`), detailed on [overview.md](overview.md) §4.
 
 ### Codename families — `jf` / `pf` / `vf` / `gf` (per-`TpuVersion`)
 
@@ -179,7 +179,7 @@ The full prefix → owner / routing / live-vs-inert table. Counts are registrati
 
 | Prefix | Registered | Subsystem owner | Sink | Live? |
 |---|---:|---|---|---|
-| `xla_tpu_*` | 904 | TPU compiler + runtime (master surface) | TCE | LIVE |
+| `xla_tpu_*` | 909 | TPU compiler + runtime (master surface) | TCE | LIVE |
 | `megascale_*` | 150 | Megascale DCN collective runtime | standalone | LIVE |
 | `xla_jf_*` | 148 | Jellyfish — TPU XLA backend core | TCE | LIVE |
 | `xla_*` (generic) | 138 | Generic XLA (scheduler/MSA/collective/dump) | `DebugOptions` | LIVE (94/111 wired) |
