@@ -89,8 +89,6 @@ The enum names and numeric values are byte-recovered from the embedded proto des
 
 > **NOTE —** every case `1..8` builds a 112-byte object with the **identical layout** — base vptr `off_21CF7F08`, `AliasInfo*` at +8, the size-function `AnyInvocable` at +16/+64, an empty post-process `std::function` hook at +88/+96, and a bool at +104 — then patches the final vptr to the subclass vtable. `BRKGA` (case 4) patches to `off_217FA2C0`; `ILP` (case 6) patches to `off_217FA470`. The schedulers are siblings sharing one storage shape; only the vptr and the +104 bool value differ.
 
-> **CORRECTION (ILP-1) —** an earlier draft of this page claimed `GetMemorySchedulerAlgorithm` had no `ILP` enum case, that the `ILPMemoryScheduler` vtable had zero code consumers, and that the MIP was dead code. Decompilation of `sub_10ABD6A0` shows case 6 (`MemorySchedulerProto::Value::ILP`) constructs the class and stores `off_217FA470`; the proto descriptor assigns `ILP = 6`; and the dispatcher is called from live bring-up (`RunHloScheduler @0x1096fac0`, `PostMainFusionHloOptimize @0x10966560`). The MIP is an on-demand scheduler, fully reachable, not dead code. The earlier draft also mis-mapped cases 5/6/7/9.
-
 ### Object layout and the hard fallback
 
 The outer `Run` (`@0x10acd020`, ~861 lines) has the reconstructed signature:

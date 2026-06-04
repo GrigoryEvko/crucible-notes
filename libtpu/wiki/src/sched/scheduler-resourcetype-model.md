@@ -152,7 +152,7 @@ long GetResourceTypeForOp(int op) {
 
 The opcode integers are the XLA `HloOpcode` enum values. Note ids 86 (`ragged-all-to-all`) and 93 (`reduce-scatter`) are handled by explicit `default`-block compares rather than the dense jump table over `op - 6`.
 
-> **CORRECTION (RT-1) —** an earlier reading attributed opcode `0x56` (ragged-all-to-all) to id 6 and implicitly bound scheduler key 6 to "ragged-a2a". The byte-exact switch overturns it: `0x56 → 12` (`kRaggedAllToAll`) and `0x5d → 6` (`kReduceScatter`). With the authoritative names read, the `SetConcurrentResourceLimits` knob→key bindings are self-consistent: key 2 ← `kAllGather`, key 3 ← `kAllReduce`, key 6 ← `kReduceScatter`.
+> **NOTE — `0x56` is ragged-all-to-all (id 12), and `0x5d` is reduce-scatter (id 6).** It is easy to misread the switch and bind key 6 to ragged-a2a; the byte-exact mapping is `0x56 → 12` (`kRaggedAllToAll`) and `0x5d → 6` (`kReduceScatter`). With these names, the `SetConcurrentResourceLimits` knob→key bindings are self-consistent: key 2 ← `kAllGather`, key 3 ← `kAllReduce`, key 6 ← `kReduceScatter`.
 
 ### Layer B — `TpuAsyncTracker::GetResourcesFromInstructionImpl` @ `0x11001040`
 
@@ -262,7 +262,7 @@ else if (ShouldEnableConcurrentSparseCoreOffloading()) {        // @0x1d6b6f80
 // else: arg11 stays 1
 ```
 
-> **CORRECTION (RT-2) —** an earlier reading gave the third (neither-queuing-nor-concurrent) arm as `arg11 = 0`. The byte-exact `GetTpuAsyncTracker` @ `0x10975520` sets the default to `1` (`v15 = 1`) *before* the concurrent-offload branch, and only writes `0` inside that branch when `LogicalDevicesPerChip(SC) <= 0`. So when SparseCore offload is disabled altogether, id 22's cap is `1`, not `0`.
+> **NOTE — when SparseCore offload is disabled, id 22's cap is `1`, not `0`.** The byte-exact `GetTpuAsyncTracker` @ `0x10975520` sets the default to `1` (`v15 = 1`) *before* the concurrent-offload branch, and only writes `0` inside that branch when `LogicalDevicesPerChip(SC) <= 0`. The neither-queuing-nor-concurrent arm therefore leaves the cap at `1`.
 
 `Target::CoresPerChip(kSparseCore)` reads `Target[+0x3b8]` (the `tpu::TpuTopology*`, off 952) at `topo + coreType*0xc + 0x7c` (coreType 2 = SparseCore → offset `0x94` = 148) — a per-core-type `int32` in the topology struct ([TPU Topology Struct](../targets/tpu-topology-struct.md)). `Target::LogicalDevicesPerChip(kSparseCore)` calls `TpuTopology::LogicalDevicesPerChip` → `TpuChipParts::CoreCount` + `TpuChipConfig::Megacore`, so the divisor is the megacore collapse (`ldpc(SC) == 2` on megacore parts). The result — physical SC cores per chip divided by logical devices per chip — is the only target resource whose cap is a hardware count rather than a config knob.
 

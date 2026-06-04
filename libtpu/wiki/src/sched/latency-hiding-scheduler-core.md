@@ -345,7 +345,7 @@ The hazard codes are: `0` = unsharable (single-issue), `1` = serial (one in flig
 
 ## Memory-Budget Driver — `RunImpl`
 
-The drain loop above schedules *one* attempt. `LatencyHidingScheduler::RunImpl` (`0x136321a0`, LHS src 4182) wraps it in a memory-pressure retry loop. After each scheduling attempt it checks whether the resulting peak HBM footprint fits the budget; if not, it tightens the budget and re-runs, forcing the comparator's memory keys (5–7) to fire more aggressively on the next pass.
+The drain loop above schedules *one* attempt. `LatencyHidingScheduler::RunImpl` (`0x136321a0`, LHS src 4182) wraps it in a memory-pressure retry loop. After each scheduling attempt it checks whether the resulting peak HBM footprint fits the budget; if not, it tightens the budget and re-runs, forcing the comparator's memory keys (6–8) to fire more aggressively on the next pass.
 
 ```c
 // LatencyHidingScheduler::RunImpl memory retry  @ 0x136321a0  (lines 882-926)
@@ -360,7 +360,7 @@ double next_memory_limit(uint64 current) {
 }
 ```
 
-> **CORRECTION (LHS-1) —** the OSS name `next_memory_limit` reads as if it relaxes the budget upward, and an early framing assumed so. The byte-exact factor is `qword_A2DFD10 = 0.9` (read at RunImpl lines 892/918), so each retry **shrinks** the budget by 10%, not grows it. A failed attempt asks the list scheduler to fit a 10%-smaller budget, which pushes it to favor the memory-pressure-reducing candidate keys (5–7) over the latency-hiding keys — trading overlap for a lower HBM peak. The loop is inert (`memory_limit == -1`) unless `EnableSchedulerMemoryPressureTracking` or the post-SC-assignment rerun byte makes the limit finite.
+> **NOTE — `next_memory_limit` shrinks the budget; it does not relax it.** The OSS name reads as if it relaxes the budget upward, but the byte-exact factor is `qword_A2DFD10 = 0.9` (read at RunImpl lines 892/918), so each retry **shrinks** the budget by 10%. A failed attempt asks the list scheduler to fit a 10%-smaller budget, which pushes it to favor the memory-pressure-reducing candidate keys (6–8) over the latency-hiding keys — trading overlap for a lower HBM peak. The loop is inert (`memory_limit == -1`) unless `EnableSchedulerMemoryPressureTracking` or the post-SC-assignment rerun byte makes the limit finite.
 
 The peak-footprint estimate's fragmentation term comes from `EstimateFragmentationSize` (`0x13633c00`, LHS src 334/336), which is *not* a closed-form alignment formula but a full heap simulation: it builds a `GlobalDecreasingSizeBestFitHeap<HloValue>` (largest-buffer-first best-fit, alignment 1) and runs `HeapSimulator::Run`, returning `max(0, heap.fragmentation_size)` — the bytes lost to allocator gaps. The `vmaxsd`/`vmulsd` constants (`qword_A2DFD10`, `qword_A2DF388`) and the heap construction are byte-confirmed in the decompile.
 
@@ -396,7 +396,7 @@ The matmul's `NodeCost` is `212 / (f·1e6)` s; the all-reduce's transfer cost is
 | Comparator is the 22-key `ReadySetLt` chain (all reason strings present) | `0x13618880`, lines 534–1553 (22 `kXxx` strings) | CONFIRMED |
 | Latency-hiding term `max(0, current_time − ready_time)` | `vsubsd [r14+138h]−[r12+28h]` + `vmaxsd` @ lines 988-991 | CONFIRMED |
 | Async depth/height read at `[+0x38]`/`[+0x40]`, precomputed by max-propagation | `InitializeGraphAnalysis` @ `0x1362a860` lines 481-1000 | CONFIRMED |
-| Memory-peak gate (key 5) precedes all overlap keys | `kMemoryPeakOverLimit` branch @ line 771, before async keys | CONFIRMED |
+| Memory-peak gate (key 6) precedes all overlap keys | `kMemoryPeakOverLimit` branch @ line 771, before async keys | CONFIRMED |
 | `TpuAsyncTracker` 0..46 split; base hazard `4*(r!=5)`; TPU table `[0,1,1,…,2]` | `GetResourceName`/`GetResourceHazardType` @ `0x10fff420`/`0x110015e0` | CONFIRMED |
 | Collectives overlap by ICI direction (byte `+208`), priced via `GetCycles` | `MayAddIciLinks` @ `0x10fffb20` lines 130/187 | HIGH |
 | `next_memory_limit` shrinks budget by 0.9 each retry | `qword_A2DFD10` @ RunImpl `0x136321a0` line 918 | CONFIRMED |

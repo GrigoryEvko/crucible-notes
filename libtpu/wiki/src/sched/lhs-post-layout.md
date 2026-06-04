@@ -66,9 +66,7 @@ DeepseaCompilerBase::RunHloPasses (0x1093a420)        [Phase 7 / final]
 
 ### Two pipelines, not one nested pipeline
 
-`final_scheduler` (`&v318`) runs first and completes (`Run` at line 620) before `async_scheduling` (`&v341`) is even constructed. The base schedule produced by `HloMemorySchedulerWithBrkgaFallback` (line 567) is what satisfies the LHS precondition `module->has_schedule()`. This is precisely why the LHS can run *here* but could not at the Phase-6 "Pre main fusion" slot — there is no prior memory schedule there.
-
-> **CORRECTION (LHS-POST-1) —** an earlier reading treated `async_scheduling` as a nested child of `final_scheduler`. The decompile shows two independent local `HloPassPipeline` objects, each driven by its own `HloPassInterface::Run`. They run one after another, sharing only the module.
+`final_scheduler` (`&v318`) and `async_scheduling` (`&v341`) are two independent local `HloPassPipeline` objects, each driven by its own `HloPassInterface::Run`; they are not one nested pipeline. `final_scheduler` runs first and completes (`Run` at line 620) before `async_scheduling` (`&v341`) is even constructed, sharing only the module. The base schedule produced by `HloMemorySchedulerWithBrkgaFallback` (line 567) is what satisfies the LHS precondition `module->has_schedule()`. This is precisely why the LHS can run *here* but could not at the Phase-6 "Pre main fusion" slot — there is no prior memory schedule there.
 
 ---
 
@@ -292,7 +290,7 @@ function LatencyHidingScheduler_RunImpl(module, ctx, core):   // 0x136321a0
 
 ### Memory-pressure retry loop
 
-Recovered from the `RunImpl` decompile (lines 873–919, source 4182). When the produced schedule exceeds the memory limit, the scheduler relaxes the limit by a multiplicative factor and reschedules:
+Recovered from the `RunImpl` decompile (lines 873–919, source 4182). When the produced schedule exceeds the memory limit, the scheduler **tightens** the limit by a multiplicative factor (`0.9`, a 10% shrink — see the byte-anchored [core page](latency-hiding-scheduler-core.md)) and reschedules, driving the comparator's memory-pressure keys to fire harder:
 
 ```c
 // only if config.estimate_fragmentation_size (a SchedulingContext config byte)
@@ -315,9 +313,9 @@ for (int attempt = 0; attempt < max_retries; ++attempt) {
 }
 ```
 
-`next_memory_limit()` is the AVX relax-by-factor: `vmulsd xmm0, xmm0, [qword_A2DFD10]` (the scale constant) followed by a `vsubsd`/`vcvttsd2si` clamp and a sign-extend — i.e. `new_limit = clamp(round(old_limit * FACTOR))`. In the post_layout variant this loop is *live* (budget is real) whenever `EnableSchedulerMemoryPressureTracking` is true **or** the `v45` rerun byte is set; otherwise `memory_limit == -1` and the loop is inert.
+`next_memory_limit()` is the AVX shrink-by-factor: `vmulsd xmm0, xmm0, [qword_A2DFD10]` (the scale constant `0.9`) followed by a `vsubsd`/`vcvttsd2si` clamp and a sign-extend — i.e. `new_limit = clamp(floor(old_limit * 0.9))`. In the post_layout variant this loop is *live* (budget is real) whenever `EnableSchedulerMemoryPressureTracking` is true **or** the `v45` rerun byte is set; otherwise `memory_limit == -1` and the loop is inert.
 
-> **GOTCHA (LOW) —** the exact numeric relax factor (`qword_A2DFD10`) and clamp constants (`xmmword_A2C1520`, `qword_A2DF388`) were recovered as AVX immediates but **not** converted to a decimal multiplier. `EstimateFragmentationSize` is TPU-private (same name as OSS, different TU); its peak-live-with-fragmentation model and allocator-alignment assumptions were not traced. Treat both as inferred.
+> **GOTCHA (LOW) —** `EstimateFragmentationSize` is TPU-private (same name as OSS, different TU); its peak-live-with-fragmentation model and allocator-alignment assumptions were not traced beyond the `GlobalDecreasingSizeBestFitHeap` HeapSimulator run named on the [core page](latency-hiding-scheduler-core.md). Treat the fragmentation model as inferred.
 
 ---
 

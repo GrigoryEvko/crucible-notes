@@ -234,7 +234,7 @@ function BounceBetweenMsrs(target, span):
     return OK
 ```
 
-> **CORRECTION (MRB-BOUNCE-OFFSETS) —** the bounce stamps the bank onto the sequence's **latch** list (`[seq+0x18]`/`[seq+0x20]`, the stationary-operand staging ops `0x8d..0x96`) and onto **`matmuls[0]`** (`[seq+0x48][0]`), not onto a matres. The `[seq+0x48]`/`[seq+0x50]` array is the *matmuls* vector — pinned by the `RET_CHECK(!sequence->matmuls.empty())` string at `mxu_assigner.cc:1063` guarding `[seq+0x50]`. The full `MxuSequence` sub-vector map (cross-checked against the [MxuSequence struct](mxu-sequence-struct.md) deleter and `SetLatchIndices`) is: latches `+0x18`/`+0x20`, matmuls `+0x48`/`+0x50`, matreses `+0x60`/`+0x68`. (Earlier raw notes labeled `+0x48`/`+0x50` as matreses; the check string corrects it.)
+> **NOTE — the bank is stamped onto the latch list and `matmuls[0]`, not onto a matres.** The bounce writes the bank onto the sequence's **latch** list (`[seq+0x18]`/`[seq+0x20]`, the stationary-operand staging ops `0x8d..0x96`) and onto **`matmuls[0]`** (`[seq+0x48][0]`). The `[seq+0x48]`/`[seq+0x50]` array is the *matmuls* vector, pinned by the `RET_CHECK(!sequence->matmuls.empty())` string at `mxu_assigner.cc:1063` guarding `[seq+0x50]`. The full `MxuSequence` sub-vector map (cross-checked against the [MxuSequence struct](mxu-sequence-struct.md) deleter and `SetLatchIndices`) is: latches `+0x18`/`+0x20`, matmuls `+0x48`/`+0x50`, matreses `+0x60`/`+0x68`.
 
 ### Why `0xa5` Aborts the Whole Pass
 

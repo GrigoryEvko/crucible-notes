@@ -199,7 +199,7 @@ function AdvanceTimeTo(new_time):                        // @0x10f5e9e0
     this.latest_matmul_ = new_time                            // commit the clock  (line 754)
 ```
 
-> **GOTCHA —** the guard fires when `latest_matmul_ > new_time` (line 128), i.e. **time must be non-decreasing**. Because the driver feeds accumulations in introsorted program order, `new_time` never regresses and the guard never trips in normal operation; it is a structural invariant check, not a runtime branch. (An earlier synthesis transcribed this guard with the inequality flipped — the decompile is definitive: FATAL on `current > new`, success on `current <= new`.) The eviction comparison in the loop, by contrast, is strict `<`: a chain whose result lands *exactly* at `new_time` is not yet retired and keeps its entry.
+> **GOTCHA —** the guard fires when `latest_matmul_ > new_time` (line 128), i.e. **time must be non-decreasing** (FATAL on `current > new`, success on `current <= new`). Because the driver feeds accumulations in introsorted program order, `new_time` never regresses and the guard never trips in normal operation; it is a structural invariant check, not a runtime branch. The eviction comparison in the loop, by contrast, is strict `<`: a chain whose result lands *exactly* at `new_time` is not yet retired and keeps its entry.
 
 > **NOTE —** the eviction loop branches on the relation-node "complete" byte at `*(node−8)`: when it is **≠ 1** the chain is done, so its MRB entry is recycled via `ReleaseMrbReservation` (VLOG "… releasing MRB entry, as it is complete", cc:1355); when it is **== 1** the chain still has a pending next-accumulation, so it is logged as "Chain holding … is now evictable, next Accumulation is …" (mxu_accumulation.cc:1347) and erased *without* a release. On the release path the chain's own `*(chain+0x2c)` validity byte is asserted nonzero (`BUG()` if 0) before the `MrbEntry` is read from `chain+0x20`/`chain+0x28`.
 
@@ -272,7 +272,7 @@ function SplitAccumulationChain(chain, split_point):     // @0x10f598e0
         .insert({ split_point.matmul_program_order, tail })            // @0x10f5d2e0 (line 204)
 ```
 
-> **GOTCHA —** step 3 keeps the *head* short and emits the *tail* as the new deferred chain — the head's `len` is set to `consumed` (line 128), not to `len − consumed`. (An earlier reading had the head retain `len − consumed`; the decompile is definitive — `*(chain+0x18) = consumed`, and the heap node gets `len − consumed`.) The split point is the boundary: everything before it stays in place, everything from it onward is deferred and re-reserved when the clock later reaches `split_point.matmul_program_order`.
+> **GOTCHA —** step 3 keeps the *head* short and emits the *tail* as the new deferred chain — the head's `len` is set to `consumed` (`*(chain+0x18) = consumed`, line 128), not to `len − consumed`; the heap-owned tail node gets `len − consumed`. The split point is the boundary: everything before it stays in place, everything from it onward is deferred and re-reserved when the clock later reaches `split_point.matmul_program_order`.
 
 > **NOTE —** the tail is owned by a `btree_map<long, unique_ptr<AccumulationChainAfterSplit>>` keyed by program order, so deferred remainders are walked back into the timeline in order. This is the one place the allocator allocates a chain on the heap; the original chains live in the driver's working vector.
 

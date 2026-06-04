@@ -172,7 +172,7 @@ mxu_latency_balancing.cc:686   "max mxu latency: <N> on mxu<M>"
 mxu_latency_balancing.cc:758   "DECISION: moving <N> matmuls on sequence <S> from <A> to <B>"
 ```
 
-> **CORRECTION (MXU-BINPACK-1) —** an earlier synthesis described PASS 2 as a *single swap pass* with "iterate-to-fixpoint INFERRED". The decompile is unambiguous: PASS 2 is an **outer loop that recomputes the min/max MXU and the `ceil(total/num_mxus)` target each iteration** and runs until the most-loaded unit reaches the balance target (the `LABEL_378` exit). It is a real iterating rebalance, not a single pass. (Confidence: CONFIRMED.)
+> **NOTE — PASS 2 is an iterating rebalance, not a single swap pass.** It is an **outer loop that recomputes the min/max MXU and the `ceil(total/num_mxus)` target each iteration** and runs until the most-loaded unit reaches the balance target (the `LABEL_378` exit). A reimplementer must not collapse it to one swap. (Confidence: CONFIRMED.)
 
 ### PASS 2 cost — `LatencyChangeIfMoveTo`
 

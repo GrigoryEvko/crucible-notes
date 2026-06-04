@@ -181,7 +181,7 @@ Running the two tables in series — GLM through `dword_AEF42AC`, then the VEopc
 | 4 | int8 / S8 | 8 | `0xa` |
 | 5 | fp8-conv | 11 | `0xe` |
 
-> **CORRECTION (ENC-JF-2) —** an earlier draft claimed two GLM collisions (GLM0/GLM4 both `0x9`, GLM1/GLM5 both `0xd`). Re-reading `EncoderJf::EncodeVectorExtendedInstruction` (`0x1e869f00`) shows this is wrong: the `LABEL_55` cases (VEopcode 8, 11) add `0x20000000` on top of the same base the `LABEL_53` cases use, so VEopcode 8 encodes field `0xa` (not `0x9`) and VEopcode 11 encodes `0xe` (not `0xd`). The six JF latch opcode-fields are `{0x9, 0xd, 0xb, 0xf, 0xa, 0xe}` — **all distinct**. The GLM→opcode-field map is a bijection over the six latch modes.
+> **NOTE — the six GLM opcode-fields are all distinct; the map is a bijection.** In `EncoderJf::EncodeVectorExtendedInstruction` (`0x1e869f00`) the `LABEL_55` cases (VEopcode 8, 11) add `0x20000000` on top of the same base the `LABEL_53` cases use, so VEopcode 8 encodes field `0xa` (not `0x9`) and VEopcode 11 encodes `0xe` (not `0xd`). The six JF latch opcode-fields are therefore `{0x9, 0xd, 0xb, 0xf, 0xa, 0xe}` — all distinct, a bijection over the six latch modes. It is easy to misread GLM0/GLM4 and GLM1/GLM5 as colliding (`0x9`/`0xd`); the `0x20000000` term is what separates them.
 
 > **NOTE — the JF VectorExtended slot carries no separate format field.** Although the opcode field distinguishes all six latch GLMs, it is a single 6-bit field with no companion `MatmulDataFormat` like VF's `@abs51`. The dtype is implicit in the opcode value, so a JF decoder reconstructs the data type from the opcode field alone (`0x9`→bf16 NO_XPOSE, `0xa`→int8, …), not from a side field.
 
@@ -195,7 +195,7 @@ Running the two tables in series — GLM through `dword_AEF42AC`, then the VEopc
 | `EncoderJf::EncodeVectorExtendedInstruction` | `sub_1E869F00` | 35-case VEopcode → bundle bits; pred `@abs35`, mxu-id `@abs27`, opcode `@abs29` | CONFIRMED |
 | `dword_AEF42AC` | `.rodata` | 6-entry GLM→VEopcode table `{7,10,9,12,8,11}` | CONFIRMED |
 
-> **CORRECTION (ENC-JF-1) —** the encoder reads the MXU id from proto `+0x64` (`*((DWORD*)ve + 25)`) while `AddMxuNumToVectorExtended` *writes* `mxu_num` to proto `+0x70`. The two reconcile as the emitter holding the submessage through an indirection while the encoder receives it directly; the unit-id → `@abs27-28` binding is byte-exact either way, but which protobuf field number occupies `+0x64` vs `+0x70` was not cross-checked against the proto descriptor. **MEDIUM** on the exact field-number layout; CONFIRMED on the bundle-bit binding.
+> **NOTE — encoder reads MXU id from proto `+0x64`; the emitter writes it to `+0x70`.** The encoder reads the MXU id from proto `+0x64` (`*((DWORD*)ve + 25)`) while `AddMxuNumToVectorExtended` *writes* `mxu_num` to proto `+0x70`. The two reconcile as the emitter holding the submessage through an indirection while the encoder receives it directly; the unit-id → `@abs27-28` binding is byte-exact either way, but which protobuf field number occupies `+0x64` vs `+0x70` was not cross-checked against the proto descriptor. **MEDIUM** on the exact field-number layout; CONFIRMED on the bundle-bit binding.
 
 ---
 
