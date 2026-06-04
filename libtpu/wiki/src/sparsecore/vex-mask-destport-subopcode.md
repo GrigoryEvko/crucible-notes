@@ -32,7 +32,7 @@ For reimplementation, the contract is:
 | **Sub-opcode range** | `0x04..0x33` contiguous, 48 encoders (32 reachable, 16 unreachable, 4 dtype-shared) |
 | **Confidence** | CONFIRMED (decompile-anchored) unless a row or callout says otherwise |
 
-> **NOTE — this page decodes three VEX *control* fields; the seven `V0..V6` *operand* read-ports and the 7-entry greedy allocator (`FindAndEmitToUnusedPort`) live on the [VEX operand-port binding](vex-operand-port.md) page and are not re-derived here.** The masked-scan *inactive-lane output* micro-semantic and the internal layout of the M-register predicate word are one layer below this encoding and are covered on the [M-register predicate](m-register-predicate.md) page. The VEX opcode → op dispatch table and the full op roster live on the [VectorExtended / VEX](vectorextended-vex.md) page.
+> **NOTE — this page decodes three VEX *control* fields; the seven `V0..V6` *operand* read-ports and the 7-entry greedy allocator (`FindAndEmitToUnusedPort`) live on the [VEX operand-port binding](vex-operand-port.md) page and are not covered here.** The masked-scan *inactive-lane output* micro-semantic and the internal layout of the M-register predicate word are one layer below this encoding and are covered on the [M-register predicate](m-register-predicate.md) page. The VEX opcode → op dispatch table and the full op roster live on the [VectorExtended / VEX](vectorextended-vex.md) page.
 
 ---
 
@@ -61,7 +61,7 @@ Three facts fall out of this:
 
 Both instances shown here are the Ghostlite (`gxc::glc`) target; a second instantiation, `GetVectorMask<glc::isa::SparsecoreVmask>` `@0x13a2d900`, is byte-identical (same band, same `id − 0x5f`), and both are used interchangeably by the VEX emitters. (The 6acc60406/`gfc` target carries its own structurally-identical copies at `0x13aa9b60` / `0x13ab1c80`.)
 
-> **NOTE — what an M-register *is*.** The named register holds a 2D (lane-range × sublane-range) active/inactive predicate, constructed by the region builder from four bound arguments checked against `Target::SublaneCount` and `Target::LaneCount` (the exact lane/sublane counts are a target-table value, not re-derived here). The bundle field selects *which* M-register; the *content* of the predicate word (its (lane,sublane) bit packing and the inactive-lane output disposition) is one layer below this encoding — see [M-register predicate](m-register-predicate.md).
+> **NOTE — what an M-register *is*.** The named register holds a 2D (lane-range × sublane-range) active/inactive predicate, constructed by the region builder from four bound arguments checked against `Target::SublaneCount` and `Target::LaneCount` (the exact lane/sublane counts are a target-table value, not covered here). The bundle field selects *which* M-register; the *content* of the predicate word (its (lane,sublane) bit packing and the inactive-lane output disposition) is one layer below this encoding — see [M-register predicate](m-register-predicate.md).
 
 ### 1.2 The proto layout and the unconditional present-bit
 

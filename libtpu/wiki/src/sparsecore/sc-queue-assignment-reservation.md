@@ -174,7 +174,7 @@ Each field's `_impl_` byte-offset is byte-confirmed from the `RunHloScheduler` C
 
 ### Resource-ID → collective correspondence
 
-The keys are AsyncTracker scheduling resource-type IDs. The base IDs `{2,3,6}` and the SC IDs `{23..28}` index the same resource space `GetSparseCoreResources` (`0x10FDC0A0`) and `MayAddSparseCoreResource` (`0x11000480`) produce. The authoritative `kSparseCore*` names and the opcode→id switch (including the `0x56 → 12`, `0x5d → 6` correction) live on [ResourceType Taxonomy](../sched/scheduler-resourcetype-model.md); the SC categories the knob names attribute are:
+The keys are AsyncTracker scheduling resource-type IDs. The base IDs `{2,3,6}` and the SC IDs `{23..28}` index the same resource space `GetSparseCoreResources` (`0x10FDC0A0`) and `MayAddSparseCoreResource` (`0x11000480`) produce. The authoritative `kSparseCore*` names and the opcode→id switch (including the `0x56 → 12`, `0x5d → 6` mapping) live on [ResourceType Taxonomy](../sched/scheduler-resourcetype-model.md); the SC categories the knob names attribute are:
 
 | key | resource category | TCE knob (field) | unit | default-at-build |
 |---|---|---|---|---|

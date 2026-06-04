@@ -213,7 +213,7 @@ The call (`@0x1332df2e`) targets `EmitVectorizedLoop @0x1332e1c0`. Its mangled n
 
 ### Purpose
 
-`EmitValencyLoop` is the per-id **scalar** form of the embedding sum-lookup. A *different*, dedup-optimised lowering exists: the HLO `SparseDenseMatmulOpDecomposer` decomposition that sorts the ids, collapses duplicates (CSR→ELL), gathers over the unique window, and segment-reduces. This unit documents that wiring — the layer this loop sits beside — and the SC-dialect op operand/result threading it lowers to. It corrects any implication that the DotCombiner emitter itself runs the sort/unique DAG: it does not; the dedup path is the decomposer's.
+`EmitValencyLoop` is the per-id **scalar** form of the embedding sum-lookup. A *different*, dedup-optimised lowering exists: the HLO `SparseDenseMatmulOpDecomposer` decomposition that sorts the ids, collapses duplicates (CSR→ELL), gathers over the unique window, and segment-reduces. This unit documents that wiring — the layer this loop sits beside — and the SC-dialect op operand/result threading it lowers to. The DotCombiner emitter itself does not run the sort/unique DAG; the dedup path is the decomposer's.
 
 ### The HLO Dedup Datapath (`SparseDenseMatmulOpDecomposer`)
 

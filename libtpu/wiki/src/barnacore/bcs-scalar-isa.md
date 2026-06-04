@@ -10,7 +10,7 @@ The closest familiar analog is a CISC ISA recovered not from a manual but from a
 
 For reimplementation, the contract is:
 
-- **The op count reconciles three ways.** The RTTI typeinfo count is **61 Scalar0 / 59 Scalar1** (the "122" of the brief is the 61+61 typeinfo upper bound; the precise figure is 61+59=120). Subtracting the abstract base, the `ResourceUsageEntry_DoNotUse` proto-map entry, and the codec-template typeinfo from each pipe leaves **58 Scalar0 + 56 Scalar1 = 114 concrete ISA ops** — independently corroborated by P-2-02's "62+52=114". The 114 are enumerated in full below.
+- **The op count.** The RTTI typeinfo count is **61 Scalar0 / 59 Scalar1** = 120 typeinfos. Subtracting the abstract base, the `ResourceUsageEntry_DoNotUse` proto-map entry, and the codec-template typeinfo from each pipe leaves **58 Scalar0 + 56 Scalar1 = 114 concrete ISA ops**. The 114 are enumerated in full below.
 - **The shared header + shared ALU tail are identical across both pipes; the pipes diverge only in the middle band.** Ordinals 0..12 (Noop, Halt, HostInterrupt, Trace, the 6 `Sync*` waits at ords 4..9, SyncAdd, PopHmf, Delay) and the ALU/compare tail (Convert, IntAdd/Sub, bitwise, FloatMax/Min, shifts, Move, Clz, the 6 int compares, AddCarryOut, PredicateOr, the 6 float compares, IsInfOrNan) are present on both. The split is in the control/DMA/SMEM band.
 - **The asymmetric split.** Scalar0 = **control + DMA + multiply** pipe (3 Branch + 3 Call + 3 Dma + FloatMul/UintMul); Scalar1 = **load-store + sync-completion + add/sub** pipe (LoadSmem/LoadSmemOffset/StoreSmemAbsolute + ReadDone/WriteDone/ReadPublicAccess/WritePublicAccess + FloatAdd/FloatSub). **47 ops are present in both pipes** (dual-issuable by RTTI), of which **38 route through `FindFreeScalarSlot<S0_X, S1_X>`** and 9 more (the 5 non-equal float compares, plus Noop/Trace/HostInterrupt/SetTracemarkRegister) are dual by virtue of owning a vtable in each pipe without a `FindFreeScalarSlot` pair.
 - **The 20→13 embedding lowering.** The 20 high-level `kBarnaCore*` LLO ops are never directly priced (they LogFatal in the latency classifier); each has a `Bc<Op>` builder → `CreateBarnaCore<Op>` (LLO opcode `0x1bb..0x1c7`) → `BcsLloEmitter` expansion into the 13 priced primitives = scalar address math on the shared BCS ALU + a BarnaCore DMA (`BcDma`/`DmaGeneral`) + sync (`BcSwait*`/`BcSsyncAdd`/`BcSdoneWrite`).
@@ -21,7 +21,7 @@ For reimplementation, the contract is:
 | **Bundle** | `BarnaCoreSequencerBundle` — 2 scalar slots: `scalar_0`, `scalar_1` (`_table_` @ `0x21e868d8`) |
 | **Opcode model** | proto oneof field number; order = oneof declaration order = wire tag order |
 | **Op-class namespace** | `asic_sw::deepsea::pxc::pfc::isa::BarnaCoreSequencerScalar{0,1}_<Op>` |
-| **Concrete op count** | **58 Scalar0 + 56 Scalar1 = 114** (typeinfo 61+59=120; brief "122" = 61+61 upper bound) |
+| **Concrete op count** | **58 Scalar0 + 56 Scalar1 = 114** (RTTI typeinfo count 61+59=120) |
 | **Pipe binding source** | `FindFreeScalarSlot<Scalar0_X, Scalar1_Y>` instantiations (`void` 2nd arg = pipe-only) |
 | **Dual-issue / S0-only / S1-only** | 47 in both pipes (38 via `FindFreeScalarSlot`, 9 RTTI-only) · 11 S0-only (FloatMul + UintMul via `<S0,void>`, + 9 structural control/DMA) · 9 S1-only (6 via `<void,S1>`, + 3 structural SMEM) |
 | **Embedding primitives** | 13 priced (scalar ALU + `BcDma`/`DmaGeneral` + `BcSwait*`/`BcSsyncAdd`/`BcSdoneWrite`) |
@@ -73,7 +73,7 @@ The five rows sum to the 67 distinct op classes across the union (38 + 9 + 2 + 9
 
 The interpretation is a deliberate port-pressure split for the embedding sequencer: **multiply** on pipe0 vs **add/sub** on pipe1 (a float-port split), the **SMEM load/store** datapath on pipe1 so a load can co-issue with a control/DMA on pipe0, and the four **sync-completion-register accessors** (`Read/Write` × `Done/PublicAccess`) on pipe1 — sync-done bookkeeping rides the load-store pipe while pipe0 drives control flow and DMA.
 
-> **GOTCHA — `ScalarHalt` is in BOTH pipes, correcting an earlier Scalar0-only placement.** The decompile shows both `BarnaCoreSequencerScalar0_ScalarHalt` and `BarnaCoreSequencerScalar1_ScalarHalt` op-class symbols, and the dual-issue `FindFreeScalarSlot<Scalar0_ScalarHalt, Scalar1_ScalarHalt>` instantiation (`@0x140e79e0`). A scheduler that forces Halt onto pipe0 will fail to dual-issue it with a pipe0 control op when pipe1 is free. `ScalarFence` and `IssueFsm` are likewise dual through a `FindFreeScalarSlot` pair; `Noop`, `Trace`, `HostInterrupt`, and `ScalarSetTracemarkRegister` are dual by owning a vtable in each pipe even though no `FindFreeScalarSlot` pair is emitted for them.
+> **GOTCHA — `ScalarHalt` is in BOTH pipes.** The decompile shows both `BarnaCoreSequencerScalar0_ScalarHalt` and `BarnaCoreSequencerScalar1_ScalarHalt` op-class symbols, and the dual-issue `FindFreeScalarSlot<Scalar0_ScalarHalt, Scalar1_ScalarHalt>` instantiation (`@0x140e79e0`). A scheduler that forces Halt onto pipe0 will fail to dual-issue it with a pipe0 control op when pipe1 is free. `ScalarFence` and `IssueFsm` are likewise dual through a `FindFreeScalarSlot` pair; `Noop`, `Trace`, `HostInterrupt`, and `ScalarSetTracemarkRegister` are dual by owning a vtable in each pipe even though no `FindFreeScalarSlot` pair is emitted for them.
 
 > **QUIRK — the `void` second template arg is the pipe-only marker, not an encoding artifact.** `FindFreeScalarSlot<...ScalarFloatMulEvEE>` (the trailing `EvE` = `<…, void>`) is what proves `ScalarFloatMul` cannot take pipe1; there is no `BarnaCoreSequencerScalar1_ScalarFloatMul` op-class symbol. A reimplementer reads the pipe binding from the template arg list, not from the bundle bits.
 
@@ -282,7 +282,7 @@ A `LocalGather` therefore costs `{≈10 scalar ALU ops + 2 BcDma + sync}`; a `Gl
 
 ## Contrast: BCS vs the SparseCore SCS Successor
 
-The BCS dual-scalar pipe is the structural ancestor of the SCS three-scalar-slot model. The convergence is close enough to be the retirement evidence (P-2-02): the Pufferfish BC sequencer scalar ISA mirrors the SC scalar ALU op-for-op in the arithmetic/compare/sync block.
+The BCS dual-scalar pipe is the structural ancestor of the SCS three-scalar-slot model. The convergence is close enough to be retirement evidence: the Pufferfish BC sequencer scalar ISA mirrors the SC scalar ALU op-for-op in the arithmetic/compare/sync block.
 
 | Aspect | BCS (BarnaCore, this page) | SCS ([successor](../sparsecore/scalar-opcode-enum.md)) |
 |---|---|---|
@@ -311,7 +311,7 @@ All addresses are Pufferfish (`pxc::pfc`) BCS; the proto-oneof ordinal is the op
 | `BarnaCoreSequencerScalar0` abstract base `_ZTV` | `0x21e87840` | vtable for typeinfo reconciliation | CONFIRMED |
 | `FindFreeScalarSlot<…SyncAdd, …SyncAdd>` | `0x140efa80` | dual-issue binding (38 such pairs) | CONFIRMED |
 | `FindFreeScalarSlot<…ScalarFloatMul, void>` | `0x140ee020` | Scalar0-only binding (`EvE` marker) | CONFIRMED |
-| `FindFreeScalarSlot<…ScalarHalt, …ScalarHalt>` | `0x140e79e0` | Halt is dual (corrects S0-only) | CONFIRMED |
+| `FindFreeScalarSlot<…ScalarHalt, …ScalarHalt>` | `0x140e79e0` | Halt is dual-issuable | CONFIRMED |
 | `LloInstruction::CreateBarnaCoreDma` | `0x1d4e1c20` | `LloInstruction::New(443,…)` = `0x1bb` | CONFIRMED |
 | `LloInstruction::CreateBarnaCoreLocalGather` | `0x1d4e2040` | `New(449,…)` = `0x1c1` | CONFIRMED |
 | `LloInstruction::CreateBarnaCoreSparseReduce` | `0x1d4e2120` | `New(451,…)` = `0x1c3` | CONFIRMED |
@@ -331,7 +331,7 @@ All addresses are Pufferfish (`pxc::pfc`) BCS; the proto-oneof ordinal is the op
 ## Considerations
 
 - **The opcode is the oneof field number, not a bit field.** The roster above is the *logical* opcode space (the codec selector). The physical 32-byte bundle bit allocation is `InstBits_BarnaCorePxcHwMode`'s concern — see [BCS 32-Byte Bundle](bcs-32byte-bundle.md). Do not read the oneof ordinal as a bit position.
-- **The "122" of the task brief is the typeinfo upper bound, not the op count.** Counting RTTI typeinfos gives 61 Scalar0 + 59 Scalar1 = 120 (the brief's 61+61=122 over-counts Scalar1 by 2); the concrete ISA op count is 58 + 56 = 114, corroborated independently by P-2-02's 62+52=114. A reimplementer needs 114 op encoders, not 122.
+- **The typeinfo count is not the op count.** Counting RTTI typeinfos gives 61 Scalar0 + 59 Scalar1 = 120; the concrete ISA op count is 58 + 56 = 114 after subtracting the abstract base, the proto-map entry, and the codec-template typeinfo from each pipe. A reimplementer needs 114 op encoders.
 - **Pipe binding is read from template args, not bundle bits.** `<S0_X, void>` / `<void, S1_X>` mark the FindFreeScalarSlot pipe-only ops; structural pipe-only ops have a vtable in only one pipe. The 38 dual-issue / 2 S0-only / 6 S1-only split plus the structural control-DMA/SMEM ops is the complete picture.
 - **The 20 high-level ops carry NO standalone latency.** They LogFatal in the direct classifier; their cost is the runtime-dynamic sum of the 13 primitives they expand into. Any cost model must walk the `BcsLloEmitter` expansion, not look up the high-level op.
 - **`SparseReduce`/segmented-reduce being LogFatal is a feature absence, not a stub.** BarnaCore genuinely has no native vector reduce; the embedding reduction is an FSM + DMA accumulate. A reimplementation that emits a channel reduce op will hit the same `Not implemented` fatal.

@@ -99,7 +99,7 @@ Decompile cross-check — gfc `SparseCoreScalarAlu0Encoder::Encode` (`0x1eb693c0
 
 ## TAC Bundle Map (64 bytes / 512 bits, VF/GL only)
 
-A 64-byte bundle that **reuses the SCS low region (bits 7..191) and leaves the upper 320 bits empty** — TAC has no vector path, so its width buys concurrent scalar address-op parallelism, not vector compute. Present only on Viperfish (`vxc.vfc`) and Ghostlite (`gxc.glc`); **absent on gfc** (the TAC codec survives there only as a standalone legacy path — see the [TEC-ACCESS correction](#per-generation-deltas)). Documented in full on [TAC Engine](tac-engine.md); the slot bases:
+A 64-byte bundle that **reuses the SCS low region (bits 7..191) and leaves the upper 320 bits empty** — TAC has no vector path, so its width buys concurrent scalar address-op parallelism, not vector compute. Present only on Viperfish (`vxc.vfc`) and Ghostlite (`gxc.glc`); **absent on gfc** (the TAC codec survives there only as a standalone legacy path — see [Per-Generation Deltas](#per-generation-deltas)). Documented in full on [TAC Engine](tac-engine.md); the slot bases:
 
 | Slot | Base | End | Width | Opcode bit | Confidence |
 |---|---:|---:|---:|---:|---|
@@ -262,7 +262,7 @@ The low region (bits 7..191) and the scalar template are byte-identical across a
 
 > **QUIRK — the TEC vector-ALU width crosses the 7-bit ceiling between Viperfish and Ghostlite.** Viperfish's 148-op vector-ALU set only just exceeds 128 (the top ops fold into reserved encodings), so its opcode field is 7 bits and its slot 36 bits. Ghostlite's 229-op set forces the field to 8 bits and the slot to 37 bits, shifting the GF vector lanes up ~6 bits (VF Alu0 base 432 → GF Alu0 base 438). Decompile cross-check: vfc `VectorAlu0` (`0x1e954ae0`) writes its VREG selectors at `432/438/444/450` and its opcode at `456` (= 432+24, 7-bit), with the single-channel predication header at `463/467` — the narrow 36-bit form. gfc `VectorAlu0` (`0x1ec11100`) writes selectors at `438/444/450/456`, opcode at `462` (8-bit), header at `470/473/474` — the wide 37-bit form.
 
-> **CORRECTION (TEC-ACCESS) —** an earlier hypothesis held that on the TAC-bearing gens (VF/GL) the region→sequencer outliner produces an `"access"` (TAC) function alongside `"execute"` (TEC). Decompilation overturns this: the outliner per-op callback (`0x136066e0`) stamps `sc.sequencer="execute"` *unconditionally* on every gen, and there is no `HasAccessSequencerTypeAttribute` / length-6 `"access"` predicate anywhere in the lowering chain. The TAC codec (`SparseCoreTacCodecBase`, `TpuSequencerType=4`, glc) survives only as a standalone encoder for the legacy `ProgramWrapper.tac` proto field; it is never reached from the MLIR tile-task pipeline. The TAC *bundle layout* above is still the real glc/vfc TAC slot map — but it is produced by the legacy codec path, not by the outliner. See [TEC §The VF (Access/Execute) Split](tec-engine.md#the-vf-accessexecute-split).
+> **Note — the TAC bundle layout is produced by the legacy codec path, not the outliner.** The region→sequencer outliner does *not* emit an `"access"` (TAC) function on any gen: its per-op callback (`0x136066e0`) stamps `sc.sequencer="execute"` unconditionally, and there is no `HasAccessSequencerTypeAttribute` / length-6 `"access"` predicate anywhere in the lowering chain. The TAC codec (`SparseCoreTacCodecBase`, `TpuSequencerType=4`, glc) survives only as a standalone encoder for the legacy `ProgramWrapper.tac` proto field; it is never reached from the MLIR tile-task pipeline. The TAC bundle layout above is the real glc/vfc TAC slot map, but it is produced by that legacy codec path. See the [TEC engine](tec-engine.md) for the full byte-level account.
 
 ---
 
@@ -304,7 +304,7 @@ The low region (bits 7..191) and the scalar template are byte-identical across a
 
 - [SCS (Scalar) Engine](scs-engine.md) — the 32-byte bundle, the scalar opcode roster, and the launch-by-attribute issue model the SCS column draws from.
 - [TAC Engine](tac-engine.md) — the VF/GL-only 64-byte bundle that reuses the SCS low region; per-gen presence and the gfc-drops-TAC evidence.
-- [TEC (Vector) Engine](tec-engine.md) — the 64-byte vector bundle, the 37-bit vector-ALU template, immediate-slot indexing, and the access/execute split correction.
+- [TEC (Vector) Engine](tec-engine.md) — the 64-byte vector bundle, the 37-bit vector-ALU template, immediate-slot indexing, and the access/execute split.
 - [Scalar Opcode Enum](scalar-opcode-enum.md) — the `SparseCoreScalarAlu` / `SparseCoreScalarMisc` roster carried in the 6-bit opcode field at `@127/154/181`.
 - [Vector Opcode Enum](vector-opcode-enum.md) — the per-slot, per-gen TEC vector op roster carried in the 8-bit opcode field at `@239/283/353/388/425/462`.
 - [Region → Sequencer Outliner](region-to-sequencer-outliner.md) — the `TileTaskOutliningPass` that stamps `sc.sequencer` and thereby selects which engine bundle (and slot map) encodes a function.

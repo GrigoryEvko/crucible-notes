@@ -163,7 +163,7 @@ The lowering reads `getReductionOp()` (the 3-char scan kind) and the result `Vec
 
 The `1xNf`/`1xNi`/`2xN` suffix is the lane packing: `1xNf` = one f32 per lane, `1xNi` = one int32, `2xN` = two bf16 per lane (the packed pair). `half` is the PartialSum widen (bf16/s16 accumulated into f32/s32). Only `add` has the `half` widen — `min`/`max` need no wider accumulator.
 
-> **CORRECTION (SEGADD-1) — the `tpu_max_seg_scan2xN` / `tpu_min_seg_scan2xN` op *types* exist, but the lowering never emits them.** The decompile shows full op-definition symbol sets for `tpu_max_seg_scan2xN` and `tpu_min_seg_scan2xN` (and the ISA carries `SegmentedMin/MaxScanBf16` ops 48/49). But `SegmentedScanOpLowering` only creates the `1xN` form for `min`/`max` segmented scans — the packed-bf16-pair segmented min/max is *defined* in the dialect for completeness yet *unreachable* from this lowering. A reimplementer driving off the op-definition list will allocate handlers the lowering never invokes. Only `add` has a reachable segmented `2xN` path (`tpu_add_half_seg_scan2xN`).
+> **GOTCHA — the `tpu_max_seg_scan2xN` / `tpu_min_seg_scan2xN` op *types* exist, but the lowering never emits them.** The decompile shows full op-definition symbol sets for `tpu_max_seg_scan2xN` and `tpu_min_seg_scan2xN` (and the ISA carries `SegmentedMin/MaxScanBf16` ops 48/49). But `SegmentedScanOpLowering` only creates the `1xN` form for `min`/`max` segmented scans — the packed-bf16-pair segmented min/max is *defined* in the dialect for completeness yet *unreachable* from this lowering. A reimplementer driving off the op-definition list will allocate handlers the lowering never invokes. Only `add` has a reachable segmented `2xN` path (`tpu_add_half_seg_scan2xN`).
 
 ---
 

@@ -149,7 +149,7 @@ Emit outer loop (0x1332bda0)
 
 The `scf::IfOp` `then` region runs `EmitSampleCombiner`; the `else` region is empty (the `IfOp` is created with a null `else` builder). This makes the `IfOp` a **tile bounds guard**, not a two-way dispatch: it executes the combiner for in-range samples and does nothing for the padding lanes of the last partial tile. After the loop, `SfenceOp::create(…, "all", 3)` and `lowering_util::InsertTileBarrier` provide the inter-tile synchronization.
 
-> **NOTE — the bounds-guard `IfOp` is not a minibatch dispatch.** An earlier survey ([Embedding Minibatching](embedding-minibatching.md)) left open whether this `IfOp` selected between a minibatch and non-minibatch combiner. It does not: it gates `EmitSampleCombiner` on `s_index < n_samples` only. The non-minibatch combine path is the *separate* `GatherMulScatterSparseDenseMatmulOpDecomposer` HLO decomposition, not an else-branch here.
+> **NOTE — the bounds-guard `IfOp` is not a minibatch dispatch.** This `IfOp` does not select between a minibatch and non-minibatch combiner; it gates `EmitSampleCombiner` on `s_index < n_samples` only. The non-minibatch combine path is the *separate* [`GatherMulScatterSparseDenseMatmulOpDecomposer`](embedding-minibatching.md) HLO decomposition, not an else-branch here.
 
 The `CmpIOp` predicate value (`6` = unsigned-less-than) is emitted as an inlined register argument and is not visible as a literal in the decompiled C; it is read from the disassembly. The predicate identity is HIGH; the `CmpIOp` op and its placement are CONFIRMED.
 

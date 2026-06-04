@@ -114,7 +114,7 @@ function RankAndPermuteComputeFunction(...):              // sub_134039c0
     return ok                                                // eax=1; free the SmallVectors
 ```
 
-> **CORRECTION (RP-1) —** the two `Unique` create calls take operands in the order `create(builder, loc, sorted_key, digit)` — the original sorted-key Value first, the `GetDigits` radix digit second (decompile `0x134039c0` lines 529 / 569: `UniqueWithLaneIdsOp::create(&a8, loc, a19, Digits)` and `UniqueOp::create(&a8, loc, a19, Digits)`). Earlier survey notes labeled these `(key1=digit, key0=sorted_key)` with the register order reversed; the dedup semantics (keyed on the `(sorted_key, digit)` pair) are unchanged, but the positional operand order is `(sorted_key, digit)`. The same `sorted_key` Value (`a19`) is reused as the keying operand of the final `VectorStoreIdxOp` (line 878).
+> **NOTE — `Unique` operand order is `(sorted_key, digit)`.** Both `Unique` create calls take operands in the order `create(builder, loc, sorted_key, digit)` — the original sorted-key Value first, the `GetDigits` radix digit second (decompile `0x134039c0` lines 529 / 569: `UniqueWithLaneIdsOp::create(&a8, loc, a19, Digits)` and `UniqueOp::create(&a8, loc, a19, Digits)`). The dedup is keyed on the `(sorted_key, digit)` pair. The same `sorted_key` Value (`a19`) is reused as the keying operand of the final `VectorStoreIdxOp` (line 878).
 
 ### The Unique SSA Shape
 
@@ -323,7 +323,7 @@ function ScanBucketsComputeFunction(builder, histogram, …):  // sub_13400120
     return add                                             // the exclusive bucket base offsets
 ```
 
-> **CORRECTION (RP-2) —** the bucket prefix-scan is a `sparse_core::ScanOp` with the **`"sum"`** reduction StringAttr (decompile `0x13400120`: the literal `"sum"` is stored as `ptr[0]="sum"` with Twine kind `259`/`0x103` immediately before `mlir::StringAttr::get`, then passed to `ScanOp::create`). This `ScanOp` lowers through `ScanOpLowering::matchAndRewrite` (`0x1358ab00`) exactly as documented on [Scan Datapath](scan-datapath.md) — the radix bucket-scan is one *user* of that lowering, not a separate scan primitive. The inclusive scan is converted to the exclusive base offset by the trailing `AddIOp`/`SubIOp` pair (source lines 420/424). The histogram-side prefix is a vector `ScanOp`, *not* the `tpu_mprefix` `i1`-count path (that path is for boolean inputs; the histogram is an `i32` count vector).
+> **NOTE — the bucket prefix-scan is a `sparse_core::ScanOp` with the `"sum"` reduction.** The reduction StringAttr is `"sum"` (decompile `0x13400120`: the literal `"sum"` is stored as `ptr[0]="sum"` with Twine kind `259`/`0x103` immediately before `mlir::StringAttr::get`, then passed to `ScanOp::create`). This `ScanOp` lowers through `ScanOpLowering::matchAndRewrite` (`0x1358ab00`) exactly as documented on the [Scan Datapath](scan-datapath.md) — the radix bucket-scan is one *user* of that lowering, not a separate scan primitive. The inclusive scan is converted to the exclusive base offset by the trailing `AddIOp`/`SubIOp` pair (source lines 420/424). The histogram-side prefix is a vector `ScanOp`, *not* the `tpu_mprefix` `i1`-count path (that path is for boolean inputs; the histogram is an `i32` count vector).
 
 ### Gather-Index — `CalculateGatherIndices` `0x13400400`
 

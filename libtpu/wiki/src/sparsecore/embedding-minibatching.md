@@ -81,9 +81,9 @@ CreateDynamicSliceCsr (0x13489ea0)  — decompile-confirmed op DAG, in order
 
 The three multiplies are opcode `0x4b` (MULTIPLY) and the single add is `0x3` (ADD), both read against the alphabetical `StringToHloOpcode` init table (`0x1e5ef040`), where `add`=`0x3`, `multiply`=`0x4b`, and `dynamic-slice`=`0x36`. **`0x36` is never emitted here** — there is no HLO dynamic-slice anywhere in this function. The shapes are built with `ShapeUtil::MakeValidatedShape(S32 /*PrimitiveType 4*/, …)`.
 
-> **CORRECTION — "DynamicSlice + Binary + CustomCall" is structurally wrong.** An earlier structural read described this as an HLO dynamic-slice plus a binary plus a custom-call. The decompiled body emits **only** `kMultiply` (×3) and `kAdd` (×1) as HLO opcodes, plus `Constant`/`CustomCall`/`GetTupleElement`/`Tuple`. The `"DynamicSliceCsr"` string is a `SparseCoreOperationType` custom-call name (op-type `0x10`), not `HloOpcode::kDynamicSlice`. The per-minibatch CSR row-pointer window is sliced *inside* the inner `SparseDenseMatmulOp`, parameterised by the `{base, padded}` this tuple carries.
+> **NOTE — `CreateDynamicSliceCsr` emits no HLO dynamic-slice.** The decompiled body emits **only** `kMultiply` (×3) and `kAdd` (×1) as HLO opcodes, plus `Constant`/`CustomCall`/`GetTupleElement`/`Tuple`. The `"DynamicSliceCsr"` string is a `SparseCoreOperationType` custom-call name (op-type `0x10`), not `HloOpcode::kDynamicSlice`. The per-minibatch CSR row-pointer window is sliced *inside* the inner `SparseDenseMatmulOp`, parameterised by the `{base, padded}` this tuple carries.
 
-> **NOTE — the early-return guard string.** The `num <= 0` guard `RetCheck`s with the message `"max_ids_per_partition > 0"` (`platforms/xla/sparse_core/hlo/minibatching_decomposer.cc:154`), and a second `RetCheck` on the inner-call result checks `"concatenated_csr_tuple.size() > kCsrTupleRowPtrIndex"` (line 177). Both strings are read directly from the decompiled body. (An earlier note phrased the first guard as `"num<=0"`; the real `.rodata` string is `max_ids_per_partition > 0` — corrected here.)
+> **NOTE — the early-return guard string.** The `num <= 0` guard `RetCheck`s with the message `"max_ids_per_partition > 0"` (`platforms/xla/sparse_core/hlo/minibatching_decomposer.cc:154`), and a second `RetCheck` on the inner-call result checks `"concatenated_csr_tuple.size() > kCsrTupleRowPtrIndex"` (line 177). Both strings are read directly from the decompiled body.
 
 ### `GetPaddedRowCount` — the granule clamp
 
@@ -105,7 +105,7 @@ int GetPaddedRowCount(const Target &t, int num) {
 
 So the padded row count is `max( max(GranuleBytes/4, num), cfg )` — a granule-aligned floor on the per-minibatch row count.
 
-> **CORRECTION — the config bound is a floor (`max`), not a cap (`min`).** An earlier reading described the final step as `min(r, cfg-max)`, i.e. the config field as an upper cap. The decompiled comparison is `if ((int)r <= cfg) r = cfg`, which raises `r` *up* to `cfg` when `r` is below it — a **lower** bound. The padded count is therefore `max(max(GranuleBytes/4, num), cfg)`. The `SupportsSparseCore()` gate and the `target.h:1709` `LOG(FATAL)` are confirmed unchanged. The semantic identity of the `cfg` field (`[Target+0x948]→[+0x94]`) is read structurally — it is a per-target row-count config, but its proto field *name* was not decoded (INFERRED).
+> **NOTE — the config bound is a floor (`max`), not a cap (`min`).** The decompiled comparison is `if ((int)r <= cfg) r = cfg`, which raises `r` *up* to `cfg` when `r` is below it — a **lower** bound. The padded count is therefore `max(max(GranuleBytes/4, num), cfg)`. The semantic identity of the `cfg` field (`[Target+0x948]→[+0x94]`) is read structurally — it is a per-target row-count config, but its proto field *name* was not decoded (INFERRED).
 
 ### The forward / backward pass roster
 
@@ -217,7 +217,7 @@ This is the dialect `SegmentedScanOp` **builder**: it produces the op that the S
 
 Each dispatches on `EnableEmbeddingDataFormattingOffload(GetTpuCompEnv(op))` (`0x1d6b94a0` / `0x1d73de80`): `true` → the **Sc** (on-device SparseCore) variant; `false` → the **Tc** (host/TensorCore) variant. The Sc unstack (`DecomposeActivationsUnstackSc` `0x13682d40`) splits the packed stacked-table activation into per-table dense rows via `CreateSlice` + `CreateReshape` + `CreateConvert` + `CreateTuple`, driven by `StackedTableConfig::Extract` (`0x13681160`), sized by `ElementPackingFactor` (`0x1d6b03e0`) × `NumEmbeddingDevices` (`0x1d6b8a00`). The Sc stack (`DecomposeGradientsStackSc` `0x13684d40`) is the inverse: per-table dense grads → packed stacked grad via `CreateConcatenate` + `CreatePad` (pad to stacked extent) + `CreateSlice` + `CreateConvert` + `CreateUnary`.
 
-> **CORRECTION — this pass does not feed the SegmentedScan operands.** It would be natural to assume the "data formatting decomposer" reformats the CSR/id/sample/gain operands that the SegmentedScan reads. It does **not**. The CSR→segment-id provenance is `MinibatchingDecomposition` (Unit 1). `EmbeddingDataFormattingDecomposer` only touches activations/gradients (the dense ↔ packed-stacked-table layout adapter). Keep the two passes' operand domains separate.
+> **GOTCHA — this pass does not feed the SegmentedScan operands.** It would be natural to assume the "data formatting decomposer" reformats the CSR/id/sample/gain operands that the SegmentedScan reads. It does **not**. The CSR→segment-id provenance is `MinibatchingDecomposition` (Unit 1). `EmbeddingDataFormattingDecomposer` only touches activations/gradients (the dense ↔ packed-stacked-table layout adapter). Keep the two passes' operand domains separate.
 
 ---
 

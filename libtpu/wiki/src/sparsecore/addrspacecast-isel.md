@@ -204,7 +204,7 @@ So every cast intrinsic node that survives to `Select` is handed to the generic 
 
 `SelectCodeCommon` walks the MatcherTable (size `0x37CAC` = 228 524 bytes). Its top-level `OPC_SwitchOpcode` has an arm for opcode 48 (`ISD::INTRINSIC_WO_CHAIN`) that matches ~150 TPU load/store/vector/scalar/sync intrinsics by child-0 integer ID — but the sixteen cast IDs `0x33b0..0x33bf` are **absent** from it (and from every other arm). A cast `INTRINSIC_WO_CHAIN` node reaching the matcher unfolded would therefore `CannotYetSelect`.
 
-> **QUIRK —** opcode 48 in the matcher *is* `ISD::INTRINSIC_WO_CHAIN`, and it *is* present (a multi-kilobyte arm matching ~150 intrinsics) — it simply does not list the cast IDs. The earlier reading that "`INTRINSIC_WO_CHAIN` is absent from the matcher" was wrong; the absence is specific to the cast IDs, not the opcode. A reimplementer who adds a TableGen pattern for the cast intrinsics expecting them to match like loads will find no slot reserved — by design, because the cast is meant to be consumed before it reaches the matcher.
+> **QUIRK —** opcode 48 in the matcher *is* `ISD::INTRINSIC_WO_CHAIN`, and it *is* present (a multi-kilobyte arm matching ~150 intrinsics) — it simply does not list the cast IDs. The absence is specific to the cast IDs, not the opcode. A reimplementer who adds a TableGen pattern for the cast intrinsics expecting them to match like loads will find no slot reserved — by design, because the cast is meant to be consumed before it reaches the matcher.
 
 ### How the cast is discharged before the matcher
 
