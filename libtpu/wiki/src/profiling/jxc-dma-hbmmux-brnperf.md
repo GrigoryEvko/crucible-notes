@@ -1,6 +1,6 @@
 # jxc DMA / HbmMux / brn_perf Bands
 
-> *All addresses on this page apply to `libtpu.so` v0.0.40 (libtpu-0.0.40-cp314, build-id `89edbbe81c5b328a958fe628a9f2207d`, plugin version 0.103). VMAs equal file offsets in `.text`/`.rodata`; `.data.rel.ro` sits at VMA −0x200000 from file offset. Other versions will differ.*
+> *All addresses on this page apply to `libtpu.so` v0.0.40 (libtpu-0.0.40-cp314, build-id `89edbbe81c5b328a958fe628a9f2207d`). VMAs equal file offsets in `.text`/`.rodata`; `.data.rel.ro` sits at VMA −0x200000 from file offset. Other versions will differ.*
 
 ## Abstract
 
@@ -128,14 +128,14 @@ The low 56 bits of `dma_id` are the flow identity; the low two-bit tag `3` marks
 
 `GetDmaId` @ `0xf698180` derives the synthetic 27-bit key that pairs a `*_COMMAND` with its `*_DATA_END`. It is the `jxc` proto2-field analog of the deepsea bit-packed composer `TraceEntryWrapper<pxc>::GetDmaId(int)` @ `0xf699ca0`: where the deepsea path slices bit windows out of a 16-byte packet, the `jxc` path folds proto2 message fields.
 
-> **CORRECTION (JXC-DMA-1) —** the composer's switch dispatches on the **`EntryDataCase`** discriminator (`*(submsg_ptr + 0x30)`, the proto2 oneof tag), **not** on `(nf.id − 3)`. The `(nf.id − 3)` switch is the *Dma subscriber's* engine selector (`0xf1dfee0`); `GetDmaId` is a separate function whose `case 3` reads the `nf_descriptor` layout, `case 4/5/6/8` read the cmd/data-end layouts, and `case 0x12/0x13` read two further oneof arms. Cases `7,9..0x11` fall through to `result = id & 0xff` (the "simple" key). Treat the two switches as distinct dispatch keys.
+> **CORRECTION (JXC-DMA-1) —** the composer's switch dispatches on the **`EntryDataCase`** discriminator (`*(submsg_ptr + 0x30)`, the proto2 oneof tag), **not** on `(nf.id − 3)`. The `(nf.id − 3)` switch is the *Dma subscriber's* engine selector (`0xf1dfee0`); `GetDmaId` is a separate function whose `case 3` reads the `nf_descriptor` layout, `case 4/5/6/8` read the cmd/data-end layouts, and `case 0x12/0x13` read two further oneof arms. Cases `7,9..0x11` jump straight to the composite-merge label (`0xf69824e`) without ever loading a field — at entry the function zeroes `eax`/`edx` (`xor eax,eax; xor edx,edx`), so the merge (`movzbl al; or ecx`) folds `0 | 0` and these arms return `0`, *not* `id & 0xff`. Treat the two switches as distinct dispatch keys.
 
 ### Algorithm
 
 ```c
 function GetDmaId(self):                                    // 0xf698180
     msg = *(self + 16)
-    a = 0; chip = 0                                         // eax / v3 cleared
+    a = 0; node = 0                                         // xor eax,eax; xor edx,edx at entry
     switch EntryDataCase(msg):                              // *(msg + 0x30)
         case 3:   // nf_descriptor
             a    = field[8]   // trace_id   (+0x20)
@@ -155,7 +155,7 @@ function GetDmaId(self):                                    // 0xf698180
         case 0x12: a=field[8]; node=field[6]; rsrc=field[17]; chip=*(msg+32); goto TAIL_A
         case 0x13: a=field[7]; node=field[6]; rsrc=field[15]; chip=*(msg+32); goto TAIL_A
         case 7,9,10,11,12,13,14,15,16,17:                   // simple
-            return a & 0xff                                // id low byte only
+            return 0                                        // a/edx never reassigned; eax=0 at entry
         default: return 0
     TAIL_A:
         mid  = (a & 0x1F00) | ((rsrc & 3) << 13) | ((node << 15) & 0xFFFF)
