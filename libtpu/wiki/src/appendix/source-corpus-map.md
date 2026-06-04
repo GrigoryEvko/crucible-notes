@@ -1,6 +1,6 @@
 # Source-Corpus Map
 
-> *Every figure on this page is the provenance manifest for `libtpu-0.0.40-cp314-cp314-manylinux_2_31_x86_64.whl`. The analyzed payload is two ELF64 shared objects: `libtpu.so` (781,691,048 bytes, build-id `89edbbe81c5b328a958fe628a9f2207d`, reported version 0.103) and `sdk.so` (22,541,240 bytes, build-id `4e9025466f71009fccb46a803806411c63744a0a`). Other wheel builds rename the package and rehash every build-id.*
+> *Every figure on this page is the provenance manifest for `libtpu-0.0.40-cp314-cp314-manylinux_2_31_x86_64.whl`. The analyzed payload is two ELF64 shared objects: `libtpu.so` (781,691,048 bytes, build-id `89edbbe81c5b328a958fe628a9f2207d`, wheel `0.0.40`) and `sdk.so` (22,541,240 bytes, build-id `4e9025466f71009fccb46a803806411c63744a0a`). Other wheel builds rename the package and rehash every build-id.*
 
 ## Abstract
 
@@ -17,7 +17,7 @@ The page is organized as four catalogs, each with a Confidence column on every f
 | **Analyzed objects** | `libtpu.so` (745 MiB) + `sdk.so` (21.5 MiB) |
 | **libtpu.so build-id** | `89edbbe81c5b328a958fe628a9f2207d` (GNU, 16 bytes) |
 | **sdk.so build-id** | `4e9025466f71009fccb46a803806411c63744a0a` (GNU, 20 bytes) |
-| **libtpu.so functions (IDA)** | 884,843 |
+| **libtpu.so functions (IDA)** | 884,832 (records; 884,843 artifact files — see CORPUS-2) |
 | **sdk.so functions (IDA)** | 94,732 |
 | **Embedded schema descriptors** | 760 `FileDescriptorProto` blobs in `protodesc_cold` |
 | **Embedded virtual files** | 61 entries in the `filewrapper_toc` registry |
@@ -102,7 +102,7 @@ The two `.so` files are the actual reverse-engineering subjects. Their ELF heade
 
 > **GOTCHA —** the two objects differ in `OS/ABI` (`SYSV` vs `GNU`) and in build-id **length** — `libtpu.so` carries a 16-byte (128-bit) build-id, `sdk.so` a 20-byte (160-bit) one. This is independent corroboration of the two-binary-split thesis: they were produced by different link configurations, not a single linker invocation. Pin to the full build-id, never to a truncated prefix that could collide.
 
-> **GOTCHA —** the wheel is colloquially called a "stripped 745 MB plugin," but neither object is stripped. Both retain a full `.symtab` — `1,232,970` symbol-table entries in `libtpu.so` with a ~172 MiB `.strtab` — which is exactly why IDA recovers ~884k *named* functions instead of `sub_` blanks. The `.symtab` is non-`SHF_ALLOC` (it never loads at runtime; the runtime sees only the 741-entry `.dynsym`), but it is present on disk and is what makes deep static analysis possible. Analysis depth here is governed by the surviving `.symtab`, not by the small `.dynsym`. See [ELF Anatomy](../forensics/elf-anatomy.md) for the full section/segment tables.
+> **GOTCHA —** the wheel is colloquially called a "stripped 745 MB plugin," but neither object is stripped. Both retain a full `.symtab` — `1,233,710` symbol-table entries in `libtpu.so` (1,232,970 local + 740 global) with a ~172 MiB `.strtab` — which is exactly why IDA recovers ~884k *named* functions instead of `sub_` blanks. The `.symtab` is non-`SHF_ALLOC` (it never loads at runtime; the runtime sees only the 741-entry `.dynsym`), but it is present on disk and is what makes deep static analysis possible. Analysis depth here is governed by the surviving `.symtab`, not by the small `.dynsym`. See [ELF Anatomy](../forensics/elf-anatomy.md) for the full section/segment tables.
 
 ### Roles
 
@@ -165,16 +165,16 @@ Both objects were processed to full per-function coverage. The IDA run manifest 
 
 | Object | Functions | Mode | Per-function trees | `.i64` database | binwalk | Confidence |
 |---|---:|---|---|---|---|---|
-| `libtpu.so` | 884,843 | fast | context + decompiled + disasm + graphs | yes | 1 file carved (trailing blob) | CERTAIN |
+| `libtpu.so` | 884,832 | fast | context + decompiled + disasm + graphs | yes | 1 file carved (trailing blob) | CERTAIN |
 | `sdk.so` | 94,732 | full | context + decompiled + disasm + graphs | yes | pending | CERTAIN |
 
-> **CORRECTION (CORPUS-2) —** the wiki's running per-object figures differ by a handful of functions across pages (e.g. `binary-layout.md` cites 884,832 for `libtpu.so`). The canonical value is the IDA run manifest's `observed_total_functions`: **884,843** for `libtpu.so` and **94,732** for `sdk.so`, each matching the file count in that object's `context/`, `decompiled/`, and `disasm/` trees exactly. The ~11-function spread in older prose is a stale intermediate count; trust the manifest.
+> **CORRECTION (CORPUS-2) —** two distinct counts are in play for `libtpu.so` and must not be conflated. The **function-record count** — the `length` of the `functions` sidecar, and the figure every other page cites as a "function count" — is **884,832**. The **per-function artifact-file count** in the `context/`, `decompiled/`, and `disasm/` trees is **884,843**, exactly 11 higher: a handful of thunk/alias/data-stub entries receive an artifact file without being booked as a full function record. Cite **884,832** for any function *count* (matching [Binary Layout](binary-layout.md), [Evidence-Anchor Index](evidence-anchor-index.md), and [Methodology (Deep)](methodology-deep.md)); cite **884,843** only for artifact-file *coverage*. `sdk.so` is **94,732**.
 
 > **GOTCHA —** the IDA *mode* labels are counter-intuitive. `libtpu.so` — the 745 MiB primary target — ran in `fast` mode; the small `sdk.so` ran in `full` mode. "Full" vs "fast" governs decompiler thoroughness per function, not coverage breadth: both objects reached 100% function coverage (zero `canonical_deficits`). A reimplementer reading a decompiled `libtpu.so` body should treat marginal decompiler artifacts as expected for the fast pass, and cross-check against the disasm tree.
 
 ### Per-function trees (`libtpu.so`)
 
-For each of the 884,843 functions, four artifacts are emitted. The trees are enormous and exist only as analysis scaffolding; they are never read whole.
+For each function, four artifact trees are emitted; the `context/`, `decompiled/`, and `disasm/` trees hold **884,843** files each — 11 more than the 884,832 function records (see CORPUS-2). The trees are enormous and exist only as analysis scaffolding; they are never read whole.
 
 | Tree | Files | Total bytes | Contents | Confidence |
 |---|---:|---:|---|---|
