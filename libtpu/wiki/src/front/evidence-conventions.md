@@ -109,7 +109,7 @@ These headline figures are confirmed directly against the binary and its sidecar
 | RTTI records | 160,351 | `rtti` sidecar | CERTAIN |
 | Data tables | 40,313 | `data_tables` sidecar | CERTAIN |
 | Switch dispatches | 33,016 | `switches` sidecar | CERTAIN |
-| Pointer fixups | 1,069,603 | `fixups` sidecar | CERTAIN |
+| Pointer fixups | 1,069,659 | `fixups` sidecar | CERTAIN |
 
 That the object is **not stripped** is the single most consequential fact for trust: with ~99.66 % of functions named and ~93 % carrying a full demangled C++ signature, most role claims start from a real symbol rather than a `sub_` guess, which is what makes so many claims reachable at High rather than Inferred.
 
