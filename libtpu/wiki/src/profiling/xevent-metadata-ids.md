@@ -8,7 +8,7 @@ An `XEvent` on a device or host timeline carries no name — it carries an `int6
 
 The single fact that governs the whole catalog: **an XEvent metadata id is not a global type number — it is a per-plane interning key.** The integer `7` on `/device:TPU:0` and the integer `7` on `/host:0` denote different events, because each `XPlane` builds its own `event_metadata` map at collection time. A consumer must read the plane's dictionary to resolve any id; there is no cross-plane id namespace. Consequently the catalog has two halves with two different id-assignment regimes. **Device-plane events** are seeded by a *static, wire-stable* hardware enum: each chip family's `TraceEntries.TracePointId` value (banded 0–255, with gaps) is stamped into the hardware ring buffer's `TraceHeader.trace_point_id`, and its enum-value *string* becomes the `XEventMetadata.name`. **Host-plane events** are *dynamically name-interned*: a `tsl::profiler::TraceMe` label flows through `XPlaneBuilder::GetOrCreateEventMetadata(string_view)`, which hashes the label and hands out the next free plane-local id on first sight.
 
-The device half is therefore catalogable by the enum it derives from. There are five per-chip `TraceEntries.TracePointId` enums (one per silicon family), 99/122/78/122/144 values each, re-banded across generations rather than strictly additive. The host half is catalogable only by name — the integers are a `tsl` build detail (`HostEventType`), not a wire contract — so this page lists host events by their confirmed ASCII label. Both halves are grouped below by the cross-cutting category a profile consumer sees on the timeline: TensorCore-sequencer / compute, DMA & memory transfer, sync & fence, control & instrumentation, collective substrate, throttle & power, SparseCore, and the host-scope band.
+The device half is therefore catalogable by the enum it derives from. There are five per-chip `TraceEntries.TracePointId` enums (one per silicon family), 99/122/78/135/144 values each, re-banded across generations rather than strictly additive. The host half is catalogable only by name — the integers are a `tsl` build detail (`HostEventType`), not a wire contract — so this page lists host events by their confirmed ASCII label. Both halves are grouped below by the cross-cutting category a profile consumer sees on the timeline: TensorCore-sequencer / compute, DMA & memory transfer, sync & fence, control & instrumentation, collective substrate, throttle & power, SparseCore, and the host-scope band.
 
 The catalog this page reconstructs covers:
 
@@ -23,7 +23,7 @@ The catalog this page reconstructs covers:
 | **Device id regime** | static — `TraceEntries.TracePointId` enum value string |
 | **Host id regime** | dynamic — `GetOrCreateEventMetadata(string_view)` name intern |
 | **Device chip families** | 5 — pxc, vfc, vlc, glc, gfc |
-| **Device event counts** | 99 / 122 / 78 / 122 / 144 (pxc/vfc/vlc/glc/gfc) |
+| **Device event counts** | 99 / 122 / 78 / 135 / 144 (pxc/vfc/vlc/glc/gfc) |
 | **TracePointId value range** | banded 0–255 with reserved gaps; sentinel `255` (pxc only) |
 | **Device builder** | `xprof::TpuXPlaneBuilder` / `TpuXLineBuilder::AddEvent` |
 | **Host builder** | `tsl::profiler::XPlaneBuilder::GetOrCreateEventMetadata` |
