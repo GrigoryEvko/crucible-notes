@@ -21,7 +21,7 @@ For reimplementation, the contract is:
 |---|---|
 | **Entry point** | `TwistedTorusND::BuildStrategy` `0x137d0c00` (~0x18c0 B, ends at next symbol `0x137d24c0`) |
 | **Signature** | `(TwistedTorusND* this, const Target&, LloRegionBuilder*)` |
-| **Prologue** | `UpdateMinMaxDims` `0x137d0260` · `InitColorDimensions` `0x137d0800` |
+| **Prologue** | run by the **ctor** `TwistedTorusND::TwistedTorusND` `0x137d0040` (not by `BuildStrategy`): `UpdateMinMaxDims` `0x137d0260` · `InitColorDimensions` `0x137d0800` |
 | **ND-ring gate** | `[obj+0xa8] == 1` (ND ring vs 1-D ring; same as base `StrategyND`) |
 | **Classifier fields** | `num_max_dims_` `[obj+0x600]` (qword idx 192) · `num_min_dims_` `[obj+0x608]` (idx 193) |
 | **Base-ring helpers** | `ComputeOrdinal` `0x137c5300` · `Torus2DevicePhase0Neighbor` `0x137c57a0` · `MeshStrideNPhasekNeighbor` `0x137c5cc0` |
