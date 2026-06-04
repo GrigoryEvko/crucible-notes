@@ -29,7 +29,7 @@ For reimplementation, the contract is:
 | **Local-add primitive** | `LloRegionBuilder::VsyncAdd` @`0x1d523200` → `VSyncAddOp` (`CreateVectorSyncFlagAdd` @`0x1d4dc1c0`) |
 | **Wait primitive** | `LloRegionBuilder::VwaitGeSV` @`0x1d522f80` (int form @`0x1d54c4a0`) → `VWaitGeOp` |
 | **Remote-addr fold** | `EncodeRemoteSyncFlagAddress` @`0x1d54da40` (per-codename JfDf/Viperfish/Pufferfish/Ghostlite) |
-| **InfoTable build** | `CreateStaticReplicaInfoTable` @`0x1c69b780` → `InfoTable{tag=1, ptr, count, byte_size}` |
+| **InfoTable build** | `CreateStaticReplicaInfoTable` @`0x1c69b780` → `InfoTable{tag=1, ptr, byte_len, byte_size}` |
 | **InfoTable read** | `GetReplicaGroupCoreInfo` @`0x1c698740` → `LoadInfoTable` @`0x1c69ff20` → peer `CoreLocationBase` list |
 | **Tree-shape select** | `GetTreeBarrierInfoTable` @`0x1c6a8780` (ALL_CORES / REPLICATED / PARTITIONED) |
 | **Global sflag source** | `Target::GetGlobalBarrierSyncFlagNumber` @`0x1d60f420` (`base+count+4`, [Global-Barrier Window](global-barrier-window.md)) |
@@ -49,10 +49,11 @@ Every cross-core SFLAG write the TensorCore tree/star barriers emit goes through
 The signal builder's body is exactly the three-call chain (confirmed in the decompile of `0x1d522f40`):
 
 ```c
-// LloRegionBuilder::VsyncAddRemote(value, peer_loc, sflag, is_remote)   @0x1d522f40
-LloValue *enc = LloRegionBuilder::EncodeRemoteSyncFlagAddress(this, peer_loc, sflag, is_remote); // 0x1d54da40
-LloInstruction *op = LloInstruction::CreateVectorSyncFlagAddRemote(enc, value, *this, region);   // 0x1d4dc340
-return LloRegion::AppendInstruction(region, op, 0, region_ctx);                                   // 0x1d50f9a0
+// LloRegionBuilder::VsyncAddRemote(LloValue* sflag, CoreLocationBase const& peer_loc,
+//                                  LloValue* value, bool is_remote)        @0x1d522f40
+LloValue *enc = LloRegionBuilder::EncodeRemoteSyncFlagAddress(this, sflag, peer_loc, is_remote);  // 0x1d54da40
+LloInstruction *op = LloInstruction::CreateVectorSyncFlagAddRemote(enc, value, *this, region);    // 0x1d4dc340
+return LloRegion::AppendInstruction(region, op, 0, region_ctx);                                    // 0x1d50f9a0
 ```
 
 `EncodeRemoteSyncFlagAddress` @`0x1d54da40` folds the peer `CoreLocationBase` and the local sflag number into an ICI-routable remote-sflag address. It dispatches per chip codename — `EncodeRemoteSyncFlagAddressJfDf`, `…Viperfish`, `…Pufferfish`, `…Ghostlite` are all present in `functions.json` — so the *exact* address bit-layout is generation-specific. The high-level contract ("`VsyncAddRemote` targets a peer chosen by a `CoreLocationBase`, against the local sflag number") is gen-independent and byte-confirmed; the per-codename encoding is documented separately ([Remote SFLAG Encoders](remote-sflag-encoders.md)).
@@ -152,7 +153,8 @@ InfoTable CreateStaticReplicaInfoTable(
     bool b4, bool use_partition, DeviceAssignment*):
 
   table_len = replica_count * (use_partition ? partition_count : 1)   // entries, int32 each
-  int32 *table = alloc(table_len); memset(table, 0, …)
+  int32 *table = operator new(16 * table_len); memset(table, 0, 16 * table_len)
+  // (over-allocates 16 B/entry — the SmallVector-backed alloc path; only the int32 lanes are used)
   for each ReplicaGroup g (stride 0x30):
       n   = g.replica_ids_size [g+0x1c]
       ids = g.replica_ids (inline [g+0x18] or heap [g+0x20])
@@ -162,7 +164,9 @@ InfoTable CreateStaticReplicaInfoTable(
           // 2D / use_partition: also div/mod device_id by partition_count and
           //   flatten through the DeviceAssignment dims (imul/add chain @0x1c69bb70),
           //   bounds-checked via proto2::internal::LogIndexOutOfBoundsAndAbort @0x21063300
-  return InfoTable{ tag=1 [+0], data_ptr [+8], count=table_len [+0x10], byte_size=table_len*4 [+0x18] }
+  return InfoTable{ tag=1 [+0], data_ptr [+8], byte_len=table_len*4 [+0x10], byte_size=table_len*4 [+0x18] }
+  // NOTE: in the decompile [+0x10] is stored as (16*table_len)>>2 == table_len*4 — a BYTE length,
+  //       equal to [+0x18], not the int32 element count (table_len).
 ```
 
 The decompile confirms the signature, the `memset`, the per-`ReplicaGroup` walk, the `LogIndexOutOfBoundsAndAbort` bounds checks, and the `InfoTable{tag,ptr,count,bytes}` result shape. **The table is indexed by the flattened global `device_id` and stores that device's ordinal within its replica group** (the 1D form). There is one such table per `(replica_count × partition_count)` topology, derived directly from the HLO collective's `replica_groups` attribute (and the `DeviceAssignment` for the 2D form). `CreateReplicaInfoTable` @`0x1c69b660` is the thin wrapper.
@@ -252,7 +256,7 @@ The three tables are keyed and registered once per program:
 > - The Vsync creators: `CreateVectorSyncFlagAddRemote(LloValue*, LloValue*, LloRegion*)` and `CreateVectorSyncFlagAdd(LloValue*, LloValue*, optional<bool>, LloRegion*)` present in `functions.json`; MLIR ops `VSyncAddRemoteOp` / `VSyncAddOp` / `VWaitGeOp` / `VWaitEqOp` / `VSyncReadOp` confirmed in the `addOperations` registration list.
 > - `BarrierCoresTree` @`0x1c6a75c0`: the GLOBAL-sflag materialisation (`GetGlobalBarrierSyncFlagNumber` @`0x1d60f420` + `SflagImmPtr "global barrier sync flag"`); the **two-phase** sweep (`.rodata` `"tree-barrier-phase-1"` / `"tree-barrier-phase-2"`, each `GetLimitedIciRoutingTableIndex` @`0x1c6a5e80` + `SimpleLoop` @`0x1d57d4a0` stride `0x10` + `VsyncAddRemote`); the `VwaitGeSV` + `VsyncAdd` rendezvous; the `BarrierCoresTreeCustom` `"custom-tree-barrier"` variant — confirmed.
 > - The star (`StartImpl` @`0x1c698080` / Join @`0x1c6ad400`): the `Pneg`/`Predicated` gate, the `ScheckGe`/`ScheckLt`/`ScheckNe` guards (`"Non-master core has same location as master core!"`, `"Barriering with self!"`), `VwaitGeSV` annotated `"replica-group-barrier-wait"`, the `VsyncAdd` reset, the per-peer `VsyncAddRemote` loop — confirmed byte-for-byte.
-> - `CreateStaticReplicaInfoTable` @`0x1c69b780`: the `Span<ReplicaGroup>, long, long, bool, bool, DeviceAssignment*` signature, the `memset`, the per-group fill, the `LogIndexOutOfBoundsAndAbort` @`0x21063300` bounds checks, the `InfoTable{tag,ptr,count,bytes}` result — confirmed.
+> - `CreateStaticReplicaInfoTable` @`0x1c69b780`: the `Span<ReplicaGroup>, long, long, bool, bool, DeviceAssignment*` signature, the `memset`, the per-group fill, the `LogIndexOutOfBoundsAndAbort` @`0x21063300` bounds checks, the `InfoTable{tag=1, ptr, byte_len=4·table_len, byte_size=4·table_len}` result (the `[+0x10]` field is a byte length `(16·table_len)>>2`, **not** the element count) — confirmed.
 > - `LoadInfoTable` @`0x1c69ff20`: element width `(*(byte*)(table+0xb) >> 2) & 0x1F`, `WordSizeBytes` / `SmemWordSizeBytes`, `SmulU32` + `SdivmodU32` index→`(word,lane)` — exact.
 > - `GetReplicaGroupCoreInfo` @`0x1c698740`: `Replica/PartitionIdLocationWordOffset` via `SmemWordImmPtr` + `Sld`, 1D-single / 2D-double `LoadInfoTable`, `FromGlobalCoreId` — confirmed.
 > - `GetTreeBarrierInfoTable` @`0x1c6a8780`: the `TpuTopology, DeviceAssignment, TreeBarrierType` signature and the three pair-mapping closures — confirmed; the registry keys / tags in `GetOrCreateTreeBarrierInfoTable` @`0x1c6b60e0` — confirmed.
