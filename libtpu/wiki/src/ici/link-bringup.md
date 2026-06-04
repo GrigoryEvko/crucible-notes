@@ -9,13 +9,13 @@ ICI link bring-up is the act of taking four cold SerDes ports on every chip in a
 
 The shape will be familiar to anyone who has brought up a multi-node fabric (InfiniBand subnet manager, NVLink/NVSwitch fabric manager): a single global orderer fans work out to per-node agents over RPC, then polls each node to a ready state before advancing. The divergence from those fabrics is the **firmware/host seam**. The analog PHY — SerDes calibration, adaptive equalization, lane lock, 64b/66b alignment — is entirely firmware-owned on the chip's embedded core; the host has no software hook into it. The host only flips `enable_ici_serdes_training`, then observes progress through a single per-port 3-bit `port_ready_state` register, remapped to the software `LinkStackReadyState` enum. Everything from the data-link layer up is host/driver-owned, and that is what `Master` orders and `IciControl` polls.
 
-This page documents three things a reimplementer must reproduce: (1) the **16-step `InitSlice` sequence** — which steps are `ExecuteOnAllWorkers` gRPC fan-outs, which are local-and-locked, which are sequential, and the gates on two of them; (2) the **`WaitForLinksUp` poll loop** — the dual-quantum (1 ms / 500 ms) `AbslInternalSleepFor` cadence, the `IsLinkUp` ∧ `GetLinkStackReadyState` per-link exit condition, and the deadline arithmetic; and (3) the **link-state model** — the firmware-to-software state remap at `0xe7b6400`, the 7-value `LinkStackReadyState` enum, and the per-port `DataLinkLayerState`. Topology discovery (step 2's payload) lives on [Topology Discovery](topology-discovery.md); the fault/reset paths live on [Failure Recovery](failure-recovery.md); the section map is on [overview](overview.md). This page does not duplicate those.
+This page documents three things a reimplementer must reproduce: (1) the **16-step `InitSlice` sequence** — which steps are `ExecuteOnAllWorkers` gRPC fan-outs, which are local-and-locked, which are sequential, and the gates on two of them; (2) the **`WaitForLinksUp` poll loop** — the fixed 1 ms `AbslInternalSleepFor` quantum (clamped down to the remaining budget when under 1 ms), the `IsLinkUp` ∧ `GetLinkStackReadyState` per-link exit condition, and the deadline arithmetic; and (3) the **link-state model** — the firmware-to-software state remap at `0xe7b6400`, the 7-value `LinkStackReadyState` enum, and the per-port `DataLinkLayerState`. Topology discovery (step 2's payload) lives on [Topology Discovery](topology-discovery.md); the fault/reset paths live on [Failure Recovery](failure-recovery.md); the section map is on [overview](overview.md). This page does not duplicate those.
 
 For reimplementation, the contract is:
 
-- The **16-step `InitSlice` ordering** and the dispatch class of each step (fanout / local-locked / sequential / gated). Order is load-bearing: routing is installed before data-link is enabled, data-link-up is waited on before coordinates are pushed.
+- The **16-step `InitSlice` ordering** and the dispatch class of each step (fanout / local-locked / sequential / gated). Order is a correctness constraint: routing is installed before data-link is enabled, data-link-up is waited on before coordinates are pushed.
 - The **PHY/host seam**: the host writes `enable_ici_serdes_training` + a `disabled_serdes_index` mask through `EnableIciPorts`, then polls a per-port `port_ready_state`. It never touches the analog PHY.
-- The **`WaitForLinksUp` poll**: per-link `IsLinkUp(l) == up ∧ GetLinkStackReadyState(l) == ready`, slept on a 1 ms quantum (clamped up to 500 ms for long deadlines), bounded by `Now() + configure_ici_timeout + wait_for_data_link_up_timeout`.
+- The **`WaitForLinksUp` poll**: per-link `IsLinkUp(l) == up ∧ GetLinkStackReadyState(l) == ready`, slept on a fixed 1 ms quantum (`0x3D0900` q-ns; clamped down to the remaining budget when it is under 1 ms), bounded by `Now() + configure_ici_timeout + wait_for_data_link_up_timeout`.
 - The **state model**: firmware `port_ready_state ∈ [0,7]` → `LinkStackReadyState` (identity remap at `0xe7b6400`, ≥8 is an error), and the per-port `DataLinkLayerState` the driver flips on enable and clears on reset.
 
 | | |
@@ -23,7 +23,7 @@ For reimplementation, the contract is:
 | **Slice controller entry** | `Master::InitSlice` @`0x1fbbaac0` (578 decompiled lines; 11 `ExecuteOnAllWorkers` sites) |
 | **Step count** | 16 ordered steps; ~11 fanout, the rest local-locked / sequential |
 | **DL-up poll loop** | `IciControl::WaitForLinksUp` @`0xe7b1060` (`set<int>, absl::Duration, bool`) |
-| **Poll quantum** | 1 ms (`0x3D0900` q-ns); comparand `0x3D0901`; fallback 500 ms (`0x77359400`), comparand `0x77359401` |
+| **Poll quantum** | fixed 1 ms (`mov $0x3D0900,%eax` @`0xe7b11c2`); comparand `cmp $0x3D0901` @`0xe7b1198` selects the full-remaining-budget sleep when under 1 ms |
 | **Per-link exit** | `IsLinkUp` @`0xe7afe80` ∧ `GetLinkStackReadyState` @`0xe7afd00` |
 | **Link-state enum** | `LinkStackReadyState` — 7 values, descriptor `0xe7b6540`; FW→SW remap `0xe7b6400` |
 | **SerDes enable (driver)** | `jfc::Ici::EnableIciPorts` @`0xe7accc0` / `dfc::Ici::EnableIciPorts` @`0xe76e980` |
@@ -182,13 +182,13 @@ function WaitForLinksUp(this, links, budget, include_loopback):   // 0xe7b1060
             return DEADLINE_EXCEEDED(per-link state)   // names rendered via NameOfDenseEnum<...,0,7>
         remaining = deadline - now
         // quantum selection (verified constants):
-        //   if remaining >= 0x3D0901 q-ns (≈1 ms)  → base poll quantum is 1 ms
-        //   if remaining >= 0x77359401 q-ns (≈500 ms) → clamp the sleep up to the 500 ms cadence
-        quantum = clamp(remaining, 1ms, 500ms)
+        //   if remaining >= 0x3D0901 q-ns (> 1 ms)  → sleep a fixed 1 ms (0x3D0900 q-ns)
+        //   else                                    → sleep the whole remaining budget
+        quantum = (remaining > 1ms) ? 1ms : remaining
         AbslInternalSleepFor(quantum)                  // yields; firmware advances PHY in the gap
 ```
 
-The two comparands recovered from the disassembly (`v184 >= 0x3D0901` at decompile line 299) are the off-by-one upper guards on the encoded quarter-nanosecond durations: `0x3D0900` = 4,000,000 q-ns = **1 ms** (the base quantum) and `0x77359400` = 2,000,000,000 q-ns = **500 ms** (the long-deadline cadence). The loop sleeps 1 ms when the remaining budget is short and stretches toward a 500 ms cadence when a long deadline makes tight polling wasteful — the classic "poll fast near the wire, poll slow when you have minutes to wait" trade-off. `absl::InfiniteFuture` (int64 max, low word `0xFFFFFFFF`) collapses the deadline to `gpr_inf_future` and the loop blocks indefinitely.
+The single comparand recovered from the disassembly (`cmp $0x3D0901,%edx` @`0xe7b1198`, decompile line 299) is the off-by-one upper guard on the encoded quarter-nanosecond remaining budget: when the seconds part is zero and the sub-second part is `< 0x3D0901` q-ns (≤ 1 ms) the loop sleeps the **whole remaining budget**; otherwise it sleeps a fixed `0x3D0900` = 4,000,000 q-ns = **1 ms** (`mov $0x3D0900,%eax` @`0xe7b11c2`). There is **no** second (500 ms) cadence in this loop — the quantum is a flat 1 ms with a short-budget clamp, not a dual-tier back-off. `absl::InfiniteFuture` (int64 max, low word `0xFFFFFFFF`) collapses the deadline to `gpr_inf_future` and the loop blocks indefinitely.
 
 > **QUIRK —** the per-link failure message is rendered by `proto2::internal::NameOfDenseEnum<&LinkStackReadyState_descriptor, 0, 7>` (verified at decompile lines 947–950) — the second template argument `7` is the enum arity, confirming the **7-value** `LinkStackReadyState` enum. The names are pulled from the proto descriptor at runtime, not from `.rodata` string literals, so a static dump of the binary will not show the seven enum-value strings even though the arity is provable.
 
@@ -260,27 +260,27 @@ The per-link config is a repeated `EnableIciDataLinkRequest_IciDataLinkConfigura
 
 ### The `EnableIci` one-shot gate
 
-The chip-local `SliceConfiguration::EnableIci` @`0x1fdb1dc0` is a one-shot. It sets `ports_enabled` (offset `0xe8`) and refuses a second call:
+The chip-local `jxc::SliceConfiguration::EnableIci` @`0xe799da0` sets `ports_enabled` (offset `0xe8` = `+232`, set at `slice_configuration.cc:291–295`) and `WaitForDataLinkUp` reads it back as the enable-before-wait gate. The one-shot guard itself lives one layer down, in the driver's `jfc::Ici::EnableIciPorts` (and the `dfc` twin), which keys its own bool and rejects a re-enable:
 
-| Guard | Trigger | Message |
-|---|---|---|
-| Enable-once | `EnableIci` called while `0xe8 == 1` | `"ICI ports should only be enabled once."` |
-| Enable-before-wait | `WaitForDataLinkUp` while `0xe8 == 0` | `"EnableIci() must be called before WaitForDataLinkUp()"` |
+| Guard | Owner / VA | Trigger | Message |
+|---|---|---|---|
+| Enable-once | `jfc::Ici::EnableIciPorts` @`0xe7accc0` (`ici.cc:111`); flag at `+0x14` | `EnableIciPorts` called while already enabled | `"ICI ports should only be enabled once."` |
+| Enable-before-wait | `jxc::SliceConfiguration::WaitForDataLinkUp` @`0xe799ec0` (`slice_configuration.cc:307`); tests `0xe8` | `WaitForDataLinkUp` while `0xe8 == 0` | `"EnableIci() must be called before WaitForDataLinkUp()"` |
 
 `LinksDownReset` ([failure-recovery](failure-recovery.md)) clears `0xe8` so the slice can be re-enabled after a reset.
 
 ### Driver-side bring-up state
 
-The chip-local `SliceConfiguration` holds the per-port DL state and enable bookkeeping. The fields a reimplementer must replicate (offsets in the modern `asic_sw::driver::deepsea::ici::SliceConfiguration`):
+The chip-local `SliceConfiguration` holds the per-port DL state and enable bookkeeping. The one field anchored byte-exact is the `ports_enabled` bool in `asic_sw::driver::deepsea::jxc::SliceConfiguration`, at offset `0xe8` (`= +232`); the modern `ici::SliceConfiguration` @`0x1fdb43e0` carries the same logical state but at a shifted layout (its enabled-port array/length/capacity live at `0x108`/`0x110`/`0x118`, verified in `ici::SliceConfiguration::EnableIci`). The fields a reimplementer must replicate:
 
-| Offset | Type | Field | Set by | Cleared by |
-|---|---|---|---|---|
-| `0xe0` | bool | `links_open` (`Ici::Open` returned OK) | ctor end | `LinksDownReset` |
-| `0xe8` | bool | `ports_enabled` (`EnableIci` called once) | `EnableIci` | `LinksDownReset` |
-| `0xf0` | int32* | per-port `DataLinkLayerState` array | `EnableIci` | overwritten by `CollectDataLinkState` |
-| `0xf8` | uint64 | DL-state array length | ctor | (immutable) |
-| `0x108` | int* | enabled-port indices | `EnableIci` | `LinksDownReset` |
-| `0x110` | uint64 | enabled-port count | `EnableIci` | `LinksDownReset` (→ 0) |
+| Offset | Class | Type | Field | Set by | Cleared by | Confidence |
+|---|---|---|---|---|---|---|
+| `0xe8` | `jxc::SliceConfiguration` | bool | `ports_enabled` (`EnableIci` called) | `jxc::SliceConfiguration::EnableIci` @`0xe799da0` (`slice_configuration.cc:291–295`) | `LinksDownReset` @`0xe79a440` (`+232 = 0`) | CERTAIN |
+| `0x108` | `ici::SliceConfiguration` | int* | enabled-port indices | `ici::SliceConfiguration::EnableIci` @`0x1fdb43e0` | `LinksDownReset` | HIGH |
+| `0x110` | `ici::SliceConfiguration` | uint64 | enabled-port count | `EnableIci` | `LinksDownReset` (→ 0) | HIGH |
+| `0x118` | `ici::SliceConfiguration` | uint64 | enabled-port capacity | `EnableIci` | (immutable) | HIGH |
+
+The per-port `DataLinkLayerState` array (re-read by `CollectDataLinkState`) is owned by `IciPortUser` per port (below), not by an inline `SliceConfiguration` field on this build.
 
 ---
 
@@ -323,10 +323,10 @@ Both raise `"… Must call Initialize() first"` if invoked before driver init. `
 
 ## 5. Considerations
 
-- **Order is correctness, not optimization.** A reimplementation that enables the data link (step 10) before installing routing (step 6) will move flits with no routing table resident; one that pushes coordinates (step 14) before DL-up (step 11) will publish a coordinate map built from incomplete discovery. The four ordering edges — discovery → chip-ids, routing → DL-enable, DL-up → coordinates, GTC-config → GTC-reset — are the load points.
+- **Order is correctness, not optimization.** A reimplementation that enables the data link (step 10) before installing routing (step 6) will move flits with no routing table resident; one that pushes coordinates (step 14) before DL-up (step 11) will publish a coordinate map built from incomplete discovery. The four ordering edges — discovery → chip-ids, routing → DL-enable, DL-up → coordinates, GTC-config → GTC-reset — are the critical points.
 - **The poll budget is a sum, not a single timeout.** `WaitForLinksUp` is handed `configure_ici_timeout + wait_for_data_link_up_timeout`, so a heterogeneous pod with one slow chip needs the per-chip `ChipDataLinkUpTimeout` override; bumping only the global `wait_for_data_link_up_timeout` extends every chip's deadline uniformly.
 - **PHY is opaque.** There is no host-visible knob for SerDes equalization taps, baud, or lane width — those are firmware-internal. The host's leverage is exactly three flags (`enable_ici_serdes_training`, `ignore_external_ici_ports`, `disabled_serdes_index`) plus the poll deadline. A reimplementer must own the firmware side separately to reproduce PHY training; this page covers only the host/driver half.
-- **Single-chip slices skip the GTC tree.** When a slice owns one chip, steps 7–8/12–13 degenerate: `SliceConfiguration::EnableSingleChipGtc` @`0x1fdb38e0` / `IciControl::SetupSingleGtc` @`0xe7b49c0` install a self-leader GTC instead of a peer tree, and `"Failed to find any enabled ICI port as the single-chip GTC leader"` fires if no enabled port exists.
+- **Single-chip slices skip the GTC tree.** When a slice owns one chip, steps 7–8/12–13 degenerate: `jxc::SliceConfiguration::EnableSingleChipGtc` @`0xe799a00` (`slice_configuration.cc:252`; `ici::SliceConfiguration::EnableSingleChipGtc` @`0x1fdb38e0` is the modern twin) / `IciControl::SetupSingleGtc` @`0xe7b49c0` install a self-leader GTC instead of a peer tree, and `"Failed to find any enabled ICI port as the single-chip GTC leader"` fires if no enabled port exists.
 
 ---
 
@@ -334,7 +334,7 @@ Both raise `"… Must call Initialize() first"` if invoked before driver init. `
 
 > **[CONFIRMED]** Cross-checked against the IDA decompile of `libtpu.so` v0.0.40:
 > - `Master::InitSlice` @`0x1fbbaac0` (578 lines): exactly **11** `ExecuteOnAllWorkers` sites; named callables in order `GetLocalTopology, SetGlobalChipId, SetRoutingTable, SetGtcConfiguration, ControlIciErrorReport, EnableIciDataLink`; `DiscoverTopology` (local) between sites 1 and 2; `DetectRoutingTableDeadlock` gated before `SetRoutingTable`. The 16-step sequence is consistent.
-> - `IciControl::WaitForLinksUp` @`0xe7b1060`: `absl::Now()` deadline base, comparand `0x3D0901` (line 299), per-link `IsLinkUp` (line 316) ∧ `GetLinkStackReadyState` (line 325), `AbslInternalSleepFor` (line 896), and `NameOfDenseEnum<&LinkStackReadyState_descriptor, 0, 7>` (lines 947–950, with `NameOfDenseEnumSlow` fallback) — exact; the **7-value** arity is proven by the template argument.
+> - `IciControl::WaitForLinksUp` @`0xe7b1060`: `absl::Now()` deadline base, single comparand `cmp $0x3D0901` @`0xe7b1198` (line 299) feeding the fixed `mov $0x3D0900,%eax` @`0xe7b11c2` 1 ms quantum (no second 500 ms tier — `0x77359400` does **not** appear in this function's `0xe7b1060–0xe7b1900` range), per-link `IsLinkUp` (line 316) ∧ `GetLinkStackReadyState` (line 325), `AbslInternalSleepFor` (line 896), and `NameOfDenseEnum<&LinkStackReadyState_descriptor, 0, 7>` (lines 947–950, with `NameOfDenseEnumSlow` fallback) — exact; the **7-value** arity is proven by the template argument.
 > - `EnableIciDataLink` @`0x1fbc0ee0`: builds a repeated `EnableIciDataLinkRequest_IciDataLinkConfiguration` (`RepeatedPtrFieldBase::Add<…>` at line 133) — confirms the per-link config fan-out.
 > - `FirmwareStateToLinkStackReadyState` @`0xe7b6400`: an 8-arm identity `switch` returning `StatusOr<LinkStackReadyState>`; `default` → `"Unknown ready_state %d"` at `ici_link_info.cc:54` — overturns the earlier permutation claim (CORRECTION BRINGUP-01).
 >
