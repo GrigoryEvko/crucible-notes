@@ -16,7 +16,7 @@ The **unicast emission layer** above this mapper — the per-source fiber fan-ou
 Contract of the entry mapper as observed in the binary:
 
 - `Map` returns a **single `int` routing-table index** (a chip id), not a hop list: the success path writes `*((int*)result + 2) = index` and `*result = 1` (ok-Status). The on-chip routing engine consumes this index to forward toward `dst` (see `tpu::RoutingTableEntryForICILimitedRouting` and `net_util::MapSrcDstCoreToRoutingTableIndex`).
-- The mapper **validates `src` and `dst`** against `topology->TotalSize()` (the chip count, interface vtable slot `+0x78`) before any scheme runs; out-of-range chip ids return `INVALID_ARGUMENT`.
+- The mapper **validates `src` and `dst`** against `topology->TotalSize()` (the chip count, interface vtable slot `+0x78`) before any scheme runs; out-of-range chip ids return `FAILED_PRECONDITION` (`MakeErrorImpl<9>`).
 - The scheme is the `RoutingScheme` enum (`a5`): **`0` = all-to-all (direct)**, **`1` = n-hop (one/two/four/eight neighbors)**, **`2` = two-axes**. Schemes `0` and `2` carry topology-size preconditions (all-to-all ≤ 16 chips; two-axes 2-D only and ≤ 64 chips, wrap dims of length 16).
 - `GetPhysicalToLogicalMapping3D` is a **pure copy of placement**: each `(replica, partition)` is resolved to its physical chip coordinate and the logical id is stored at `mapping[cY][cX][cZ].{first|second}`; leaves are pre-initialised to `{-1,-1}` (unmapped). `per_partition` selects whether the stored id is the raw partition index or the flattened `partition·replicas + replica`.
 
@@ -70,7 +70,7 @@ if (src < 0 || src >= n)  return INVALID_ARGUMENT("Invalid source chip ID")
 if (dst < 0 || dst >= n)  return INVALID_ARGUMENT("Invalid destination chip ID")
 ```
 
-> **[CONFIRMED]** Both checks call interface slot `+0x78` (`+120`) for `n`; the strings `"Invalid source chip ID"` (len 22, line 34) and `"Invalid destination chip ID"` (len 27, line 37) are `MakeErrorImpl<9>` (INVALID_ARGUMENT) at the TU `dma_destination_routing_table_entry_mapper.cc`.
+> **[CONFIRMED]** Both checks call interface slot `+0x78` (`+120`) for `n`; the strings `"Invalid source chip ID"` (len 22, line 34) and `"Invalid destination chip ID"` (len 27, line 37) are `MakeErrorImpl<9>` (absl `kFailedPrecondition` = `9`, i.e. FAILED_PRECONDITION — **not** INVALID_ARGUMENT) at the TU `dma_destination_routing_table_entry_mapper.cc`. (All of the mapper's own topology-precondition errors use `<9>`; only the `not-reachable` and `unsupported-scheme` paths use `MakeErrorImpl<3>` = `kInvalidArgument`.)
 
 ### 1.3 Scheme dispatch + preconditions
 
@@ -325,19 +325,19 @@ The Type-5 schedule literal and Type-0xb table layout are documented on the coll
 
 | String (in `dma_destination_routing_table_entry_mapper.cc`) | Line | Status code | Condition |
 |-------------------------------------------------------------|------|-------------|-----------|
-| `Invalid source chip ID` | 34 | INVALID_ARGUMENT | `src` out of `[0, TotalSize)` |
-| `Invalid destination chip ID` | 37 | INVALID_ARGUMENT | `dst` out of `[0, TotalSize)` |
-| `Two axes routing is only supported for 2-D topologies` | 50 | INVALID_ARGUMENT | `scheme==2`, dim count != 2 |
-| `Two axes routing is only supported for slices with <= 64 chips` | 54 | INVALID_ARGUMENT | `scheme==2`, `TotalSize > 64` |
-| `Two axes routing must use axes of size <= 8` | 63 | INVALID_ARGUMENT | `scheme==2`, axis size ≥ 9 |
-| `All to all routing is only supported for slices with <= 16 chips` | 44 | INVALID_ARGUMENT | `scheme==0`, `TotalSize >= 17` |
-| `All wrap-around dimensions must be of length 16` | 77 | INVALID_ARGUMENT | wrap dim length != 16 |
+| `Invalid source chip ID` | 34 | FAILED_PRECONDITION (`<9>`) | `src` out of `[0, TotalSize)` |
+| `Invalid destination chip ID` | 37 | FAILED_PRECONDITION (`<9>`) | `dst` out of `[0, TotalSize)` |
+| `Two axes routing is only supported for 2-D topologies` | 50 | FAILED_PRECONDITION (`<9>`) | `scheme==2`, dim count != 2 |
+| `Two axes routing is only supported for slices with <= 64 chips` | 54 | FAILED_PRECONDITION (`<9>`) | `scheme==2`, `TotalSize > 64` |
+| `Two axes routing must use axes of size <= 8` | 63 | FAILED_PRECONDITION (`<9>`) | `scheme==2`, axis size ≥ 9 |
+| `All to all routing is only supported for slices with <= 16 chips` | 44 | FAILED_PRECONDITION (`<9>`) | `scheme==0`, `TotalSize >= 17` |
+| `All wrap-around dimensions must be of length 16` | 77 | FAILED_PRECONDITION (`<9>`) | wrap dim length < 16 |
 | `Chip ID %d is not reachable from chip ID %d for this topology, %s` | 196 | INVALID_ARGUMENT (`<3>`) | `CheckReachable` false |
-| `Unsupported routing scheme: %d` | 94 | (`<3>`) | scheme not in `{0,1,2}` |
+| `Unsupported routing scheme: %d` | 94 | INVALID_ARGUMENT (`<3>`) | scheme not in `{0,1,2}` |
 | `routing_table_index != source_chip_id` | 387 | RET_CHECK | computed index == src (self-loop) |
-| `toplogy must be 2d for limited ICI routing, z: %d` (in `n_hop_route.cc`) | 40 | INVALID_ARGUMENT | Z dim != 1 |
+| `toplogy must be 2d for limited ICI routing, z: %d` (in `n_hop_route.cc`) | 40 | INVALID_ARGUMENT (`InvalidArgumentErrorBuilder`) | Z dim != 1 |
 
-> **[CONFIRMED]** All strings above were read at their referenced `MakeErrorImpl` / `InvalidArgumentErrorBuilder` / `RetCheckFailSlowPath` call sites in the two TUs.
+> **[CONFIRMED]** All strings above were read at their referenced `MakeErrorImpl` / `InvalidArgumentErrorBuilder` / `RetCheckFailSlowPath` call sites in the two TUs. The mapper's own six precondition errors are `MakeErrorImpl<9>` (absl `kFailedPrecondition`); the `not-reachable` (line 196) and `unsupported-scheme` (line 94) paths are `MakeErrorImpl<3>` (`kInvalidArgument`); and the three `n_hop_route.cc` errors (`Invalid source/destination chip id`, `toplogy must be 2d`) are `util::InvalidArgumentErrorBuilder`.
 
 ---
 
