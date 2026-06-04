@@ -408,7 +408,7 @@ JAX / PT-XLA ──Create──► PLUGIN_Profiler_Create  (0xE6F0C60)
 | Layer | Owns | Relationship |
 |---|---|---|
 | [PJRT Profiler extension](../pjrt/ext-profiler.md) | extension struct, `PLUGIN_Profiler_Api` vtable, handle, 5-method lifecycle | calls `CreateProfilers` and the `ProfilerCollection` fan-out documented here |
-| [Legacy `TpuProfiler_*` ABI](tpu-profiler-abi.md) | the 4 C exports + 120-byte handle | reaches the *same* registry/collection via `CreateProfilers` |
+| [Legacy `TpuProfiler_*` ABI](tpu-profiler-abi.md) | the 5 C exports + 120-byte handle | reaches the *same* registry/collection via `CreateProfilers` |
 | [XPlane / XStat / TraceMe](xplane-xstat-traceme.md) | the XSpace event hierarchy + host capture | the proto these collectors append into |
 | [Trace-entries coder](trace-entries-coder.md) | per-chip `TraceEntry` decode | the device payload `ConvertResponseToTpuXSpace` folds in |
 
