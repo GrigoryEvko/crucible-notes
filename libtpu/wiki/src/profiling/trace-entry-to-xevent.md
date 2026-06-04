@@ -174,7 +174,7 @@ function TpuXLineBuilder::AddEvent<lambda>(subscriber, gtc, trace_point_id):   /
 
 The stateful/decorating subscribers compute a human-readable name from decoded fields:
 
-- **Sync** — `GetSyncFlagEventName<TraceEntry>` @ `0xf1ef840` builds a name from the event `oneof` case (`entry+0x28`) prefix plus the `sync_flag_number` (`StrCat` + `FastIntToBuffer`). The prefixes are byte-decoded rodata: `"SyncWait:"` / `"SyncNoWait:"` / `"Barrier Wait:"` / `"Sync Wait:"` (wait variants, cases `0x25`/`0x2b`/`0x2c`), `"Add:"` (`0x27`, AddSyncFlag), `"Set:"` (`0x26`, SetSyncFlag), `"Read:"` (`0x2d`, ReadSyncFlag). A successful wait → `"SyncWait:<sync_flag_number>"`.
+- **Sync** — `GetSyncFlagEventName<TraceEntry>` @ `0xf1ef840` switches on `TraceHeader.trace_point_id` (`+0x18`), picks a fixed prefix string, and appends the `sync_flag_number` (`StrCat` + `FastIntToBuffer`). The prefixes are byte-decoded rodata literals, keyed by `trace_point_id`: `80`→`"SyncWait:"`, `86`→`"SyncWait:"`, `87`→`"SyncNoWait:"`, `81`→`"Set:"`, `82`→`"Add:"`, `88`→`"Read:"` (the `default` arm — ids `83`–`85` — returns an empty string). Within each arm the event-`oneof` discriminant at `entry+0x28` (`0x25`/`0x26`/`0x27`/`0x2b`/`0x2c`/`0x2d` respectively) is compared only to pick the correct typed accessor for the `sync_flag_number`. A blocking wait (id `86` or DMA-done id `80`) → `"SyncWait:<sync_flag_number>"`. (Note: `"Barrier Wait:"`/`"Sync Wait:"` *do* exist as rodata strings but belong to a different code path; `GetSyncFlagEventName` never emits them.)
 - **HLO** — `TpuXPlaneBuilder::GetOrCreateXlaEventMetadata(pair<hlo_module, hlo_op>)` @ `0xf1e4e40` plus `Symbolizer::{TensorCore,BarnaCore,SparseCore}Symbolize` (`0xf57ce60`/`da0`/`ccc0`) and `SetNameIfEmpty` @ `0xf1e4f40` → the HLO op name, interned on the `"XLA Ops"` line. Driven by `TRACE_INSTRUCTION`/`SET_TRACEMARK` (pxc `85`/`84`).
 - **Fixed counter labels** — a few counter-line events use a constant rodata name, e.g. `"TensorCore Infeed Buffer"` (`@0x85b4e21`) interned via `GetOrCreateEventMetadata(string_view)` @ `0x1cf4d0c0` on the counter line.
 
@@ -235,16 +235,19 @@ Some event kinds are *spans*, not points: a sync wait and a DMA each arrive as t
 
 ### Sync-flag pairing — `SyncTracker`
 
-`SyncTracker` is a per-core, per-sync-flag state machine. `SyncSubscriber` owns one and feeds it every sync trace-point in `{80,81,82,86,87,88}` (selection mask `0x1c7`, byte-decoded). The match key is `sync_flag_number`.
+`SyncTracker` is a per-core, per-sync-flag state machine. `SyncSubscriber::ProcessTraceEntry` (pxc `0xf1eeee0`) dispatches on every sync trace-point in `{80,81,82,86,87,88}` (selected by `(id-80 < 9) & (0x1C7 >> (id-80))`, byte-decoded). Of those, the tracker itself only consumes the two span-forming ids — `86` (block) and `80` (unblock); the rest are rendered as point/counter events. The match key is `sync_flag_number`.
 
 ```c
 function SyncTracker::ProcessTraceEntry(entry):          // pxc 0xf1ef3c0
+    if entry.wrapper_case != 2: return                   // *a2 == 2 gate
     switch entry.header.trace_point_id:                  // +0x18
         case 86: // UNSUCCESSFUL_SYNC_ATTEMPT — the WAIT BLOCKS
             ProcessSyncBlock(sync_flag_value, sync_flag_number)     // 0xf2c46a0
-        case 87: // SUCCESSFUL_SYNC_ATTEMPT      ── the WAIT ENDS
         case 80: // EXTERNAL_SYNC_FLAG_UPDATE_DMA_DONE ── DMA-side unblock
             return ProcessSyncUnblock(value, sync_flag_number)      // 0xf2c4700
+        // NOTE: this tracker only handles 86 (block) and 80 (unblock).
+        // id 87 (SUCCESSFUL_SYNC_ATTEMPT) is NOT processed here — it names
+        // a "SyncNoWait:" instantaneous event, not the end of a wait span.
 
 function ProcessSyncBlock(value, sfn):                   // 0xf2c46a0
     state.value          = value                         // +0x08
@@ -262,7 +265,7 @@ function ProcessSyncUnblock(value, sfn) -> optional<SyncWaitInfo>:   // 0xf2c470
 
 On a match, `SyncSubscriber::AddSyncWaitEvent` @ `0xf1ef520` builds a `GtcSpan{start, end}` from the returned `SyncWaitInfo` and emits one duration `XEvent` on `TpuComponent 17` ("Tensor Core Sync Flag"), named `"SyncWait:<sfn>"`, with the `ref_value` wait-reason stat. Out-of-order and vector-wait completions (`ProcessSyncBlockOOO` @ `0xf2c47e0`, `ProcessSyncUnblockForVwait` @ `0xf2c4740`) extend the match to also compare a second transaction/value at `state+0x20`.
 
-> **GOTCHA —** the begin packet is `UNSUCCESSFUL_SYNC_ATTEMPT` (id 86), not a "begin" opcode — the hardware emits a *failed* sync attempt when the wait blocks, and a *successful* attempt (id 87) when it unblocks. A reimplementation reading the names literally will invert begin/end. The pairing semantics are: **block = the wait started (failed attempt); unblock = the wait finished (successful attempt or external DMA-done)**. Instantaneous sync-flag ops (`Set`/`Add`/`Read`, ids 81/82/88) are *not* paired — they become point events or counter samples.
+> **GOTCHA —** the begin packet is `UNSUCCESSFUL_SYNC_ATTEMPT` (id 86), not a "begin" opcode — the hardware emits a *failed* sync attempt when the wait blocks. The closing packet in the tracker is the external `EXTERNAL_SYNC_FLAG_UPDATE_DMA_DONE` (id 80), **not** the `SUCCESSFUL_SYNC_ATTEMPT` (id 87): `SyncTracker::ProcessTraceEntry` only routes id 86 → `ProcessSyncBlock` and id 80 → `ProcessSyncUnblock`. A reimplementation reading the names literally will invert begin/end or wrongly close the span on id 87. The pairing semantics are: **block = the wait started (id 86, failed attempt); unblock = the DMA that the wait was blocked on completed (id 80)**. Id 87 (`SUCCESSFUL_SYNC_ATTEMPT`) is a separate, instantaneous `"SyncNoWait:"` event — a sync flag that was already satisfied, so no span. Instantaneous sync-flag ops (`Set`/`Add`/`Read`, ids 81/82/88) are likewise *not* paired — they become point events or counter samples.
 
 ### DMA pairing — `DmaSubscriber`
 
@@ -343,14 +346,14 @@ The fixed event→lane routing, byte-confirmed in each subscriber body:
 | `TensorCoreStepSubscriber` / `StepTracker` | SET_TRACEMARK (step marks) | 1 / 117 "Steps" / "SC Steps" | MEDIUM |
 | `ScalarFenceSubscriber` | 89/90 (SCALAR_FENCE_START/END) | 9 "Scalar Unit" (fence span) | MEDIUM |
 | `DmaSubscriber` | DMA req / data-end | mem / Memcpy line by `dma_id` | HIGH |
-| `FirmwareSubscriber` | manager/power FW events | 120–130, 134–138 (`kComponents`, byte-read) | HIGH |
+| `FirmwareSubscriber` | manager/power FW events | 120–130, 134–139, 141, 143 (`kComponents`, byte-read) | HIGH |
 | `PowerThrottleSubscriber` | 97 / 200.. (THROTTLE_*) | 58 "Power Throttle" | MEDIUM |
 | `SpiSamplerSubscriber` | 168/169 (SPI_SAMPLER_*) | 118/119 "SPI Sampler Power Meter(W)" | MEDIUM |
 | `SparseCore{Hlo,Task,Overlay,Syncs,Step}Subscriber` | SC_* (108..135) | 46/47/48, 65/66/67/142 | MEDIUM |
 | `…OnDeviceTraceMeSubscriber` | TraceMark TraceMe records | 6, 100, 101–116 "TraceMe" lanes | MEDIUM |
 | `LloOpEventSubscriber` | TRACE_INSTRUCTION (LLO ops) | 8 "Tensor Core" + units 9–16 | MEDIUM |
 
-`FirmwareSubscriber::GetTrackedComponents()::kComponents` byte-confirmed = `{120,121,122,123,124,125,126,127,128,129,130,134,135,136,137,138}` (vfc/glc/gfc).
+`FirmwareSubscriber::GetTrackedComponents()::kComponents` byte-confirmed (19-entry `int32` array, size `0x4c`, identical for vfc/vlc/glc/gfc) = `{120,121,122,123,124,125,126,127,128,129,130, 134,135,136,137,138,139, 141, 143}` (note the gaps at 131–133, 140, 142).
 
 ---
 
@@ -361,14 +364,14 @@ All four deliverables — naming, stats, pairing, line — in one row per repres
 | Wire trace-point (pxc) | Subscriber | XLine | XEvent name source | Pairing key | Per-event XStats |
 |---|---|---|---|---|---|
 | 86 UNSUCCESSFUL_SYNC_ATTEMPT (begin) | Sync | 17 Sync Flag | `SyncWait:<sfn>` | `sync_flag_number` (block) | device_*_ps + "…waiting for Host Infeed" (ref) |
-| 87 SUCCESSFUL_SYNC_ATTEMPT (end) | Sync | 17 | `SyncWait:<sfn>` | `sync_flag_number` (unblock) | (closes the span) |
-| 80 EXT_SYNC_FLAG_UPDATE_DMA_DONE | Sync | 17 | `SyncWait:<sfn>` | `sync_flag_number` (unblock) | (DMA-side unblock) |
+| 80 EXT_SYNC_FLAG_UPDATE_DMA_DONE (end) | Sync | 17 | `SyncWait:<sfn>` | `sync_flag_number` (unblock) | (closes the span begun by id 86) |
+| 87 SUCCESSFUL_SYNC_ATTEMPT | Sync | 17 | `SyncNoWait:<sfn>` | (instantaneous, no span) | device_*_ps only |
 | 81/82/88 SET/ADD/READ_SYNC_FLAG | Sync | 17 / counter | `Set:/Add:/Read:<sfn>` | (instantaneous) | "Available Count" (counter) |
 | 84/85 SET_TRACEMARK / TRACE_INSTRUCTION | HLO | 3 XLA Ops | HLO op (symbolizer) | (none) | hlo_op/hlo_module/program_id |
 | CMQ/HDE DMA req + data-end | Dma | mem / Memcpy | decimal id / op name | `dma_id` (First→Last) | uint64 byte count |
 | 97 / 200.. THROTTLE_* | PowerThrottle | 58 Throttle | decimal id | run-length / point | throttle counters |
 | 168/169 SPI_SAMPLER_* | SpiSampler | 118/119 Meter | decimal id | per-frame | power(W) double |
-| MGR / power FW | Firmware | 120–130 / 134–138 | decimal id / label | run-length | power/util counters |
+| MGR / power FW | Firmware | 120–130 / 134–139 / 141 / 143 | decimal id / label | run-length | power/util counters |
 | (any unhandled banded id) | raw `TraceEventSubscriber` | the owning line | **decimal string of id** | (none) | device_*_ps only |
 
 ---
