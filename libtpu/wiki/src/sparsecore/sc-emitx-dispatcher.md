@@ -27,7 +27,7 @@ For reimplementation, the contract is:
 | **Proto oneof** | `SparseCoreScalarAlu`; discriminator `[proto+0x50]` (`_oneof_case_[0]`), active msg `[proto+0x48]` |
 | **EmitX families** | `EmitScalarUnop` · `EmitScalarBinop` · `EmitScalarCompareOp<PredicateDest,…>` · `EmitScalarYUnop` · `EmitScalarWeird<PredicateDest,…>` · `EmitSetRegister` + 20 direct `mutable_<op>()` accessors |
 | **Default error** | `"Unsupported opcode for Scalar Alu slot: $0 : $1"` (`isa_emitter.cc`) |
-| **Confidence** | CONFIRMED (decompile-anchored) unless a row or callout says otherwise. **TABLE A opcode→op mappings re-derived from the decompile — they CORRECT the raw narration (see [§Provenance Note](#provenance-note-corrections-to-the-raw-narration)).** |
+| **Confidence** | CONFIRMED (decompile-anchored) unless a row or callout says otherwise. The TABLE A opcode→op mappings are read directly from the `0x139f09c0` `switch`. |
 
 > **NOTE — "EmitX dispatcher" is two tables, not one.** Do not look for a single op→EmitX map. The engine is chosen by the *section name* (a runtime RE2 match), the op by the *opcode* (a `.rodata` jump table). The OneSlot router ([oneslot-router.md](oneslot-router.md)) inserts a third decision — the *slot within the bundle* — between them. A reimplementer needs all three; this page owns the engine classifier and the ScalarAlu op table.
 
@@ -255,18 +255,7 @@ SC dialect → LowerToSparseCoreLlvmPass → LLVM backend → MCInst (in a named
 
 The two classifier keys are orthogonal: the **section name** (RE2 → `SectionKind` → engine tag) picks the engine program and therefore which `ConsumeScalarAluInstruction<…Bundle>` instantiation runs; the **`MCInst` opcode** (`0xae8db28` jt) picks the op + EmitX template inside it.
 
----
-
-## Provenance Note — Corrections to the Raw Narration
-
-This page's TABLE A was re-derived directly from the `ConsumeScalarAluInstruction<glc::SparseCoreTacBundle>` (`0x139f09c0`) decompiled `switch`. That re-derivation **corrects** several opcode→op assignments that were scrambled in the upstream raw narration:
-
-- The **float-compare opcodes** map to `CompareFloatingPoint{Eq, Gte, Gt, Lte, Lt, Neq}` for `0x223–0x22e` in that order (oneof `37, 40, 39, 42, 41, 38`); the raw narration had paired several of these opcodes with the wrong relation (e.g. it listed `0x223,0x224` as `Min`, which the decompile shows is `CompareFloatingPointEq`).
-- The **`Set*` opcodes** map as `0x27b,0x27c → SetDmaCredit` (oneof 73), `0x27d,0x27e → SetIndirectFilterValue` (72), `0x27f,0x280 → SetPrefetchDepth` (71), `0x283,0x284 → SetDmaThrottleSflagRange` (74), `0x285,0x286 → SetTag` (8). The raw narration mis-assigned these (it omitted `SetPrefetchDepth`'s opcode and listed `0x27d,0x27e` as a compare).
-- `Max`/`Min` are at `0x231,0x232` / `0x233,0x234` (oneof 29/30), **not** at `0x25d,0x25e` (which is `ConvertInt32ToFloat32`, oneof 16).
-- `0x24d` is **`delay`** (a direct accessor with inline operand write), not part of the Halt arm. `Halt` is reached from in-table `0x23b` and OOB `0xb25` only.
-
-On the engine-classifier side, the `crc32` map and the `DefaultConstruct` engine tags `6/7/8` were already correct, but the SCS regex kind was mis-stated: `.text(\.scs.*)?$` stores kind **8** (= the SCS engine tag, read from `v8[266]` in the decompile), not 9, and kind **9** belongs to `.note.GNU-stack` (`v8[304]`). That correction removes the previously-claimed `9↔8` normalization edge — there is none. The op jump table's structure (111 entries, base `0x222`, bound `0x6e`, 37 in-table arms + 2 OOB, the three in-table arm shapes, the EmitX families, the per-`(gen,bundle)` table family) is unchanged by this pass.
+> **GOTCHA — two `0xC0`-adjacent traps in the op/kind mapping.** Two assignments are easy to get backwards and are byte-pinned here: the SCS regex `.text(\.scs.*)?$` stores `SectionKind` **8** — the same value `ConsumeProgram` reads back as the SCS engine tag (`v8[266]=8`), so there is no `9↔8` normalization edge; kind **9** belongs only to `.note.GNU-stack` (`v8[304]`). And `0x25d,0x25e` is `ConvertInt32ToFloat32` (oneof 16), **not** `Max`/`Min` — `Max`/`Min` live at `0x231,0x232` / `0x233,0x234` (oneof 29/30).
 
 ---
 
