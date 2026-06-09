@@ -11,6 +11,7 @@ create-missing = true
 
 [output.html]
 default-theme = "light"
+additional-js = ["ai-disclaimer.js"]
 preferred-dark-theme = "navy"
 git-repository-url = "https://github.com/GrigoryEvko/nvopen-tools"
 additional-css = ["custom.css"]

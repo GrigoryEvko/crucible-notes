@@ -1,0 +1,21 @@
+[book]
+title = "AWS Neuron Platform — Cross-Stack Reference"
+authors = ["nvopen-tools contributors"]
+description = "Cross-binary orientation for the AWS Neuron stack: end-to-end flow, codename decoder, ABI versioning matrix, NEFF and BIR file formats, IOCTL→user-API traceability. Companion to the per-component wikis."
+language = "en"
+src = "src"
+
+[output.html]
+default-theme = "navy"
+additional-js = ["ai-disclaimer.js"]
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/GrigoryEvko/nvopen-tools"
+edit-url-template = "https://github.com/GrigoryEvko/nvopen-tools/edit/main/neuron-platform/wiki/{path}"
+
+[output.html.search]
+enable = true
+limit-results = 30
+
+[output.html.fold]
+enable = true
+level = 2

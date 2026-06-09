@@ -1,0 +1,21 @@
+[book]
+title = "neuronx-misc — Tools, Framework Bindings, and Kubernetes Integration"
+authors = ["nvopen-tools contributors"]
+description = "Reference for the supporting binaries: neuron-ls/monitor/top/bench/profile/explorer/dbg diagnostic tools, libndbg.so debug library (cayman/mariana/sunda backends), k8s device plugin + scheduler (Go), OCI runtime hook (C++), and the torch_neuronx / jax_neuronx / tensorflow_neuronx / tensorboard_plugin_neuronx framework bindings."
+language = "en"
+src = "src"
+
+[output.html]
+default-theme = "navy"
+additional-js = ["ai-disclaimer.js"]
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/GrigoryEvko/nvopen-tools"
+edit-url-template = "https://github.com/GrigoryEvko/nvopen-tools/edit/main/neuronx-misc/wiki/{path}"
+
+[output.html.search]
+enable = true
+limit-results = 30
+
+[output.html.fold]
+enable = true
+level = 2

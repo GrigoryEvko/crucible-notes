@@ -1,0 +1,21 @@
+[book]
+title = "Neuron JAX/PJRT Stack — libneuronxla + neuronx-collectives Reference"
+authors = ["nvopen-tools contributors"]
+description = "Combined reference for the Neuron PJRT plugin (libneuronpjrt.so) and the collective-communications stack (libnccom.so as NCCL fork, libnccom-net.so as aws-ofi-nccl rebuild). Documents the JAX/XLA entry path and how collectives route from PJRT to EFA NICs."
+language = "en"
+src = "src"
+
+[output.html]
+default-theme = "navy"
+additional-js = ["ai-disclaimer.js"]
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/GrigoryEvko/nvopen-tools"
+edit-url-template = "https://github.com/GrigoryEvko/nvopen-tools/edit/main/neuron-jax-stack/wiki/{path}"
+
+[output.html.search]
+enable = true
+limit-results = 30
+
+[output.html.fold]
+enable = true
+level = 2
