@@ -9,3 +9,12 @@
     .content main table code,
     .content main table tt { white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
 }
+
+/* ── Pinned menu bar ──────────────────────────────────────────
+   Keep the top menu bar pinned while scrolling (mdBook hides it on scroll-down
+   by default); the AI-disclaimer bar sits directly beneath it. */
+#menu-bar {
+    position: -webkit-sticky !important;
+    position: sticky !important;
+    top: 0 !important;
+}
