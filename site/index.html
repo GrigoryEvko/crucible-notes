@@ -271,10 +271,36 @@
         a:has(.badge) {
             border-bottom: none !important;
         }
+
+        /* ── AI-generated disclaimer bar ─────────────────────────────── */
+        #ai-disclaimer-bar {
+            position: -webkit-sticky;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            box-sizing: border-box;
+            margin: 0 auto 1.4em;
+            padding: 8px 18px;
+            background: #b05a55;
+            color: #f4e8d0;
+            font-size: 1em;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            text-transform: uppercase;
+            text-align: center;
+            line-height: 1.4;
+            border: 1px solid rgba(0, 0, 0, 0.2);
+            border-radius: 6px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.14);
+        }
+        @media (max-width: 800px) {
+            #ai-disclaimer-bar { font-size: 0.8em; padding: 6px 10px; letter-spacing: 0; }
+        }
     </style>
 </head>
 <body>
     <div class="container">
+        <div id="ai-disclaimer-bar" role="note">AI-GENERATED REVERSE-ENGINEERING NOTES — AUTHOR'S PERSONAL REFERENCE ONLY. EVERYTHING HERE IS A BEST-GUESS RECONSTRUCTION, NOT A RELIABLE SOURCE.</div>
         <h1>nvopen-tools</h1>
         <p class="subtitle">Reverse engineering reference for NVIDIA's CUDA compiler toolchain</p>
 
@@ -351,7 +377,7 @@
                     <td><a href="./libtpu/"><strong>libtpu</strong></a></td>
                     <td>Google TPU PJRT plugin, 745 MB stripped ELF &mdash; 6 silicon generations, LLO VLIW ISA, TensorCore/SparseCore cost model</td>
                     <td><a href="./libtpu/">wiki</a></td>
-                    <td><a href="./libtpu/"><span class="badge badge-wip">Partial</span></a></td>
+                    <td><a href="./libtpu/"><span class="badge badge-live">Live</span></a></td>
                 </tr>
             </tbody>
         </table>

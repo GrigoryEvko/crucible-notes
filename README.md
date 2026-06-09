@@ -2,6 +2,9 @@
 
 Reverse engineering reference for NVIDIA's CUDA compiler toolchain and Google's TPU compiler stack.
 
+> **AI-GENERATED REVERSE-ENGINEERING NOTES — AUTHOR'S PERSONAL REFERENCE ONLY.**
+> Everything here is a best-guess reconstruction from static binary analysis, **not a reliable source.**
+
 **[Documentation](https://gh.evko.io/nvopen-tools/)**
 
 ## Components
@@ -15,7 +18,7 @@ Reverse engineering reference for NVIDIA's CUDA compiler toolchain and Google's 
 | **nvcc** | CUDA compilation driver | — | Decompiled |
 | **nvptxcompiler** | PTX JIT compilation library (86 MB static lib, 392 objects) | — | Decompiled |
 | **cudafe++** | CUDA C++ frontend (8.5 MB, EDG 6.6, 6,483 functions) | **[wiki](https://gh.evko.io/nvopen-tools/cudafe++/)** | 69 pages |
-| **libtpu** | Google TPU PJRT plugin (745 MB, 6 silicon gens, LLO VLIW ISA + cost model) | **[wiki](https://gh.evko.io/nvopen-tools/libtpu/)** | 104 pages · Partial |
+| **libtpu** | Google TPU PJRT plugin (745 MB, 6 silicon gens, LLO VLIW ISA + cost model) | **[wiki](https://gh.evko.io/nvopen-tools/libtpu/)** | 424 pages |
 | **fatbin** | Fat binary manipulation tools | [readme](fatbin/README.md) | Released |
 
 All analysis is from static reverse engineering of stripped x86-64 ELF binaries using IDA Pro 9.x. No source code or any other restricted or copyrighted material was used — all findings derive solely from analysis of compiled binaries.
