@@ -171,6 +171,7 @@
 - [Address Spaces](./reference/address-spaces.md)
 - [Register Classes](./reference/register-classes.md)
 - [NVPTX Machine Opcodes](./reference/nvptx-opcodes.md)
+- [Encrypted Data Tables](./reference/encrypted-data-tables.md)
 
 # Configuration
 

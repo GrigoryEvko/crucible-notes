@@ -141,3 +141,4 @@
 - [NVIDIA ELF Section Catalog](reference/section-catalog.md)
 - [elfLink Error Codes](reference/elflink-errors.md)
 - [ROT13-Encoded Pass Names](reference/rot13-passes.md)
+- [String-Pool Encryption](reference/string-pool-cipher.md)

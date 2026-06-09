@@ -133,3 +133,6 @@ some_docs/
 /ptxas/ptxas
 /cudafe++/cudafe++
 /tileiras/tileiras
+
+# Deciphered/decoded blobs (local reference archive — large, not for publication)
+/decoded/
