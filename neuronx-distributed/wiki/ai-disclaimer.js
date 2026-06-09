@@ -9,7 +9,17 @@
     'font-size:1.75rem;font-weight:600;letter-spacing:0.02em;text-transform:uppercase;' +
     'text-align:center;line-height:1.4;border:1px solid rgba(0,0,0,0.20);border-top:none;' +
     'border-radius:0 0 6px 6px;box-shadow:0 2px 4px rgba(0,0,0,0.14);}' +
-    '@media print{#ai-disclaimer-bar{position:static;}}';
+    '@media print{#ai-disclaimer-bar{position:static;}}' +
+    // shrink the disclaimer bar on narrow screens so it doesn't eat the viewport
+    '@media (max-width:800px){#ai-disclaimer-bar{font-size:1.15rem;padding:5px 10px;' +
+    'letter-spacing:0;line-height:1.3;}}' +
+    // let tables wrap and shrink on narrow screens instead of forcing horizontal scroll
+    '@media (max-width:800px){' +
+    '.content main table{font-size:1.05rem;line-height:1.35;}' +
+    '.content main table th,.content main table td{padding:0.3em 0.45em;' +
+    'overflow-wrap:anywhere;word-break:break-word;}' +
+    '.content main table code,.content main table tt{white-space:normal;' +
+    'overflow-wrap:anywhere;word-break:break-word;}}';
   var TEXT = "AI-GENERATED REVERSE-ENGINEERING NOTES — AUTHOR’S PERSONAL REFERENCE ONLY. " +
              "EVERYTHING HERE IS A BEST-GUESS RECONSTRUCTION, NOT A RELIABLE SOURCE.";
   function build() {
